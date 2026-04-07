@@ -1,0 +1,283 @@
+                  {activePage === 'overview' && (
+                     <div className="space-y-8">
+                        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
+                           <div>
+                              <div className="text-cyan-500 font-mono text-xs mb-2 tracking-widest uppercase flex items-center gap-2"><div className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" /> AI Star Agency</div>
+                              <h1 className="text-4xl font-black tracking-tight text-white mb-1">{lang === 'zh' ? '我的经纪公司' : 'My Agency'}</h1>
+                              <p className="text-gray-400 font-medium">{lang === 'zh' ? '管理你的AI歌手矩阵，拓展艺人阵容，探索市场机会' : 'Manage your AI artist roster, expand your lineup, explore market opportunities'}</p>
+                           </div>
+                           <div className="flex gap-3">
+                              <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black tracking-widest h-12 px-6 rounded-xl shadow-[0_0_30px_rgba(168,85,247,0.3)] hover:shadow-[0_0_40px_rgba(168,85,247,0.5)] transition-all hover:scale-[1.02]">
+                                 <Plus className="w-5 h-5 mr-2" /> {lang === 'zh' ? '孵化新歌手' : 'Create New Artist'}
+                              </Button>
+                              <Button variant="outline" className="border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/20 hover:text-cyan-200 font-bold tracking-widest h-12 px-6 rounded-xl transition-all bg-black/20">
+                                 <ShoppingBag className="w-5 h-5 mr-2" /> {lang === 'zh' ? '艺人市场' : 'Artist Market'}
+                              </Button>
+                           </div>
+                        </div>
+
+                        {/* 数据概览卡片 */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
+                           {[
+                              { label: lang === 'zh' ? '旗下艺人' : 'Artists', value: "8", icon: <Users className="w-5 h-5 text-purple-400"/>, change: "+2", glow: "group-hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] group-hover:border-purple-500/30" },
+                              { label: lang === 'zh' ? '总播放量' : 'Total Plays', value: "4.2M", icon: <Music2 className="w-5 h-5 text-cyan-400"/>, change: "+24%", glow: "group-hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] group-hover:border-cyan-500/30" },
+                              { label: lang === 'zh' ? '市场签约' : 'Market Signings', value: "3", icon: <ShoppingBag className="w-5 h-5 text-emerald-400"/>, change: "+1", glow: "group-hover:shadow-[0_0_30px_rgba(52,211,153,0.15)] group-hover:border-emerald-500/30" },
+                              { label: lang === 'zh' ? '公司收益' : 'Company Revenue', value: "¥45k", icon: <Wallet className="w-5 h-5 text-pink-400"/>, change: "+12%", glow: "group-hover:shadow-[0_0_30px_rgba(244,114,182,0.15)] group-hover:border-pink-500/30" },
+                           ].map((stat, i) => (
+                              <Card key={i} className={`group bg-gradient-to-br from-white/[0.03] to-transparent border-white/10 hover:bg-white/[0.05] transition-all duration-500 relative overflow-hidden ${stat.glow}`}>
+                                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl group-hover:bg-white/10 transition-colors" />
+                                 <CardContent className="p-6 relative z-10">
+                                    <div className="flex justify-between items-start mb-6">
+                                       <div className="p-3 bg-black/50 rounded-xl border border-white/5 shadow-inner">{stat.icon}</div>
+                                       <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">{stat.change}</Badge>
+                                    </div>
+                                    <div className="text-3xl font-black text-white mb-1 tracking-tight">{stat.value}</div>
+                                    <div className="text-sm text-gray-500 font-medium">{stat.label}</div>
+                                 </CardContent>
+                              </Card>
+                           ))}
+                        </div>
+
+                        {/* Tab 切换内容 */}
+                        <Tabs defaultValue="my_artists" className="w-full">
+                           <TabsList className="bg-black/60 border border-white/5 w-full md:w-auto rounded-xl p-1.5 gap-1.5">
+                              <TabsTrigger value="my_artists" className="rounded-lg data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300 flex items-center gap-2 px-4">
+                                 <Users className="w-4 h-4" />
+                                 {lang === 'zh' ? '我孵化的艺人' : 'My Artists'}
+                              </TabsTrigger>
+                              <TabsTrigger value="market" className="rounded-lg data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-300 flex items-center gap-2 px-4">
+                                 <ShoppingBag className="w-4 h-4" />
+                                 {lang === 'zh' ? '艺人市场' : 'Artist Market'}
+                              </TabsTrigger>
+                              <TabsTrigger value="listed" className="rounded-lg data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-300 flex items-center gap-2 px-4">
+                                 <Globe2 className="w-4 h-4" />
+                                 {lang === 'zh' ? '已发布到市场' : 'Listed Artists'}
+                              </TabsTrigger>
+                           </TabsList>
+
+                           {/* 我孵化的艺人 */}
+                           <TabsContent value="my_artists" className="mt-6 space-y-4">
+                              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                 {MOCK_SINGERS.slice(0, 5).map((artist, idx) => (
+                                    <motion.div
+                                       key={artist.id}
+                                       initial={{ opacity: 0, y: 20 }}
+                                       animate={{ opacity: 1, y: 0 }}
+                                       transition={{ delay: idx * 0.1 }}
+                                    >
+                                       <Card className="bg-[#0c0c0e]/80 backdrop-blur-xl border-white/10 hover:border-purple-500/30 transition-all cursor-pointer group overflow-hidden relative">
+                                          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                          <CardContent className="p-0">
+                                             <div className="relative h-48 overflow-hidden">
+                                                <img src={artist.avatar} alt={artist.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                                                <div className="absolute top-3 right-3">
+                                                   <Badge className="bg-emerald-500/80 text-white border-0 shadow-lg backdrop-blur-md">
+                                                      {lang === 'zh' ? '活跃' : 'Active'}
+                                                   </Badge>
+                                                </div>
+                                                <div className="absolute bottom-4 left-4 right-4">
+                                                   <h3 className="text-xl font-black text-white mb-1 tracking-tight drop-shadow-lg">{artist.name}</h3>
+                                                   <p className="text-xs text-cyan-400 font-mono tracking-wider">{artist.style}</p>
+                                                </div>
+                                             </div>
+                                             
+                                             <div className="p-5 space-y-4">
+                                                <div className="grid grid-cols-3 gap-3">
+                                                   <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+                                                      <div className="text-lg font-black text-white mb-1">{12 - idx * 2}</div>
+                                                      <div className="text-[9px] text-gray-500 uppercase tracking-widest">{lang === 'zh' ? '作品' : 'Songs'}</div>
+                                                   </div>
+                                                   <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+                                                      <div className="text-lg font-black text-cyan-400 mb-1">{(1.5 - idx * 0.2).toFixed(1)}M</div>
+                                                      <div className="text-[9px] text-gray-500 uppercase tracking-widest">{lang === 'zh' ? '播放' : 'Plays'}</div>
+                                                   </div>
+                                                   <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+                                                      <div className="text-lg font-black text-emerald-400 mb-1">¥{(15 - idx * 2).toFixed(1)}k</div>
+                                                      <div className="text-[9px] text-gray-500 uppercase tracking-widest">{lang === 'zh' ? '收益' : 'Revenue'}</div>
+                                                   </div>
+                                                </div>
+                                                
+                                                <div className="flex gap-2">
+                                                   <Button size="sm" variant="outline" className="flex-1 border-white/10 hover:bg-purple-500/20 hover:border-purple-500/50 hover:text-purple-300 text-xs h-9" onClick={() => setActiveSinger(artist)}>
+                                                      <UserCircle className="w-3 h-3 mr-1" />
+                                                      {lang === 'zh' ? '管理' : 'Manage'}
+                                                   </Button>
+                                                   <Button size="sm" variant="outline" className="flex-1 border-white/10 hover:bg-cyan-500/20 hover:border-cyan-500/50 hover:text-cyan-300 text-xs h-9" onClick={() => setActivePage('studio')}>
+                                                      <Music className="w-3 h-3 mr-1" />
+                                                      {lang === 'zh' ? '创作' : 'Create'}
+                                                   </Button>
+                                                </div>
+                                             </div>
+                                          </CardContent>
+                                       </Card>
+                                    </motion.div>
+                                 ))}
+                                 
+                                 <Card className="bg-[#0c0c0e]/80 backdrop-blur-xl border-2 border-dashed border-white/10 hover:border-purple-500/50 transition-all cursor-pointer group flex items-center justify-center min-h-[400px]">
+                                    <CardContent className="text-center p-8">
+                                       <div className="w-20 h-20 rounded-full bg-purple-500/10 border-2 border-purple-500/30 flex items-center justify-center mx-auto mb-6 group-hover:scale-110 group-hover:bg-purple-500/20 group-hover:border-purple-500/50 transition-all">
+                                          <Plus className="w-10 h-10 text-purple-400" />
+                                       </div>
+                                       <h3 className="text-xl font-bold text-white mb-2">{lang === 'zh' ? '孵化新AI歌手' : 'Create New AI Artist'}</h3>
+                                       <p className="text-sm text-gray-500 mb-6">{lang === 'zh' ? '从零开始打造你的虚拟偶像' : 'Build your virtual idol from scratch'}</p>
+                                       <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold" onClick={() => setActivePage('persona')}>
+                                          <Wand2 className="w-4 h-4 mr-2" />
+                                          {lang === 'zh' ? '开始孵化' : 'Start Creating'}
+                                       </Button>
+                                    </CardContent>
+                                 </Card>
+                              </div>
+                           </TabsContent>
+
+                           {/* 艺人市场 */}
+                           <TabsContent value="market" className="mt-6 space-y-4">
+                              <div className="mb-6 flex flex-col md:flex-row gap-4">
+                                 <Input placeholder={lang === 'zh' ? '搜索艺人名称、风格...' : 'Search artist name, style...'} className="flex-1 bg-black/50 border-white/10 h-12 focus:border-cyan-500/50" />
+                                 <div className="flex gap-2">
+                                    <Button variant="outline" className="border-white/10 hover:bg-white/5 px-6 h-12">
+                                       {lang === 'zh' ? '全部风格' : 'All Styles'}
+                                       <ChevronDown className="w-4 h-4 ml-2" />
+                                    </Button>
+                                    <Button variant="outline" className="border-white/10 hover:bg-white/5 px-6 h-12">
+                                       {lang === 'zh' ? '价格排序' : 'Price'}
+                                       <ChevronDown className="w-4 h-4 ml-2" />
+                                    </Button>
+                                 </div>
+                              </div>
+                              
+                              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                 {[
+                                    { id: 101, name: "Stella Vox", style: "Dream Pop", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400", songs: 20, followers: "45K", price: "¥8,800", owner: "StarLab Studio" },
+                                    { id: 102, name: "Nyx Shadow", style: "Gothic Rock", avatar: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400", songs: 18, followers: "38K", price: "¥7,500", owner: "DarkWave Collective" },
+                                    { id: 103, name: "Ray Beam", style: "Electro House", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400", songs: 25, followers: "52K", price: "¥9,900", owner: "Pulse Agency" },
+                                    { id: 104, name: "Iris Flow", style: "Lo-fi Hip Hop", avatar: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400", songs: 30, followers: "68K", price: "¥12,000", owner: "Chill Beats Co." },
+                                 ].map((artist) => (
+                                    <Card key={artist.id} className="bg-[#0c0c0e]/80 backdrop-blur-xl border-white/10 hover:border-cyan-500/30 transition-all cursor-pointer group overflow-hidden relative">
+                                       <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                       <CardContent className="p-0">
+                                          <div className="relative h-48 overflow-hidden">
+                                             <img src={artist.avatar} alt={artist.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                                             <div className="absolute top-3 right-3">
+                                                <Badge className="bg-cyan-500/80 text-white border-0 shadow-lg backdrop-blur-md">
+                                                   {lang === 'zh' ? '可签约' : 'Available'}
+                                                </Badge>
+                                             </div>
+                                             <div className="absolute bottom-4 left-4 right-4">
+                                                <h3 className="text-xl font-black text-white mb-1 tracking-tight drop-shadow-lg">{artist.name}</h3>
+                                                <p className="text-xs text-cyan-400 font-mono tracking-wider">{artist.style}</p>
+                                             </div>
+                                          </div>
+                                          
+                                          <div className="p-5 space-y-4">
+                                             <div className="flex items-center justify-between text-xs text-gray-400">
+                                                <span className="flex items-center gap-1">
+                                                   <UserCircle className="w-3 h-3" />
+                                                   {artist.owner}
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                   <Users className="w-3 h-3" />
+                                                   {artist.followers}
+                                                </span>
+                                             </div>
+                                             
+                                             <div className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/20">
+                                                <span className="text-xs text-gray-400">{lang === 'zh' ? '签约价格' : 'Signing Price'}</span>
+                                                <span className="text-xl font-black text-cyan-400 font-mono">{artist.price}</span>
+                                             </div>
+                                             
+                                             <Button className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold h-10" onClick={() => alert(lang === 'zh' ? '签约功能开发中...' : 'Signing feature coming soon...')}>
+                                                <ShoppingBag className="w-4 h-4 mr-2" />
+                                                {lang === 'zh' ? '立即签约' : 'Sign Now'}
+                                             </Button>
+                                          </div>
+                                       </CardContent>
+                                    </Card>
+                                 ))}
+                              </div>
+                           </TabsContent>
+
+                           {/* 已发布到市场 */}
+                           <TabsContent value="listed" className="mt-6 space-y-4">
+                              <div className="mb-6 p-6 rounded-xl bg-gradient-to-r from-emerald-900/20 to-cyan-900/20 border border-emerald-500/20">
+                                 <div className="flex items-start gap-4">
+                                    <div className="p-3 bg-emerald-500/20 rounded-xl">
+                                       <Globe2 className="w-6 h-6 text-emerald-400" />
+                                    </div>
+                                    <div className="flex-1">
+                                       <h3 className="text-lg font-bold text-white mb-2">{lang === 'zh' ? '艺人市场发布' : 'Artist Market Listing'}</h3>
+                                       <p className="text-sm text-gray-400 leading-relaxed mb-4">
+                                          {lang === 'zh' 
+                                             ? '将你孵化的AI歌手发布到市场，让其他制作人可以签约合作。你将获得签约费用的80%作为收益，同时保留原创者身份标识。'
+                                             : 'List your AI artists on the market for other producers to sign. You\'ll earn 80% of signing fees while retaining creator attribution.'}
+                                       </p>
+                                       <Button className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
+                                          <Plus className="w-4 h-4 mr-2" />
+                                          {lang === 'zh' ? '发布新艺人到市场' : 'List New Artist'}
+                                       </Button>
+                                    </div>
+                                 </div>
+                              </div>
+
+                              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                 {[
+                                    { id: 1, name: "Echo Noir", style: "Dark Synthwave", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400", listPrice: "¥8,900", views: 1240, inquiries: 8, status: "active" },
+                                    { id: 2, name: "Zephyr X", style: "Industrial Metal", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400", listPrice: "¥6,500", views: 890, inquiries: 5, status: "active" },
+                                 ].map((artist) => (
+                                    <Card key={artist.id} className="bg-[#0c0c0e]/80 backdrop-blur-xl border-white/10 hover:border-emerald-500/30 transition-all group overflow-hidden relative">
+                                       <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                       <CardContent className="p-0">
+                                          <div className="relative h-48 overflow-hidden">
+                                             <img src={artist.avatar} alt={artist.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                                             <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
+                                                <Badge className="bg-emerald-500/80 text-white border-0 shadow-lg backdrop-blur-md">
+                                                   {lang === 'zh' ? '市场中' : 'Listed'}
+                                                </Badge>
+                                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0 bg-black/60 hover:bg-red-500/20 hover:text-red-400 backdrop-blur-md">
+                                                   <Settings className="w-4 h-4" />
+                                                </Button>
+                                             </div>
+                                             <div className="absolute bottom-4 left-4 right-4">
+                                                <h3 className="text-xl font-black text-white mb-1 tracking-tight drop-shadow-lg">{artist.name}</h3>
+                                                <p className="text-xs text-emerald-400 font-mono tracking-wider">{artist.style}</p>
+                                             </div>
+                                          </div>
+                                          
+                                          <div className="p-5 space-y-4">
+                                             <div className="grid grid-cols-2 gap-3">
+                                                <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+                                                   <div className="text-lg font-black text-cyan-400 mb-1">{artist.views}</div>
+                                                   <div className="text-[9px] text-gray-500 uppercase tracking-widest">{lang === 'zh' ? '浏览量' : 'Views'}</div>
+                                                </div>
+                                                <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+                                                   <div className="text-lg font-black text-purple-400 mb-1">{artist.inquiries}</div>
+                                                   <div className="text-[9px] text-gray-500 uppercase tracking-widest">{lang === 'zh' ? '询价' : 'Inquiries'}</div>
+                                                </div>
+                                             </div>
+                                             
+                                             <div className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20">
+                                                <span className="text-xs text-gray-400">{lang === 'zh' ? '标价' : 'Price'}</span>
+                                                <span className="text-lg font-black text-emerald-400 font-mono">{artist.listPrice}</span>
+                                             </div>
+                                             
+                                             <div className="flex gap-2">
+                                                <Button size="sm" variant="outline" className="flex-1 border-white/10 hover:bg-emerald-500/20 hover:border-emerald-500/50 hover:text-emerald-300 text-xs h-9">
+                                                   <BarChart3 className="w-3 h-3 mr-1" />
+                                                   {lang === 'zh' ? '数据' : 'Analytics'}
+                                                </Button>
+                                                <Button size="sm" variant="outline" className="flex-1 border-white/10 hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-300 text-xs h-9">
+                                                   <X className="w-3 h-3 mr-1" />
+                                                   {lang === 'zh' ? '下架' : 'Unlist'}
+                                                </Button>
+                                             </div>
+                                          </div>
+                                       </CardContent>
+                                    </Card>
+                                 ))}
+                              </div>
+                           </TabsContent>
+                        </Tabs>
+                     </div>
+                  )}

@@ -1,0 +1,16 @@
+需要在ProducerDashboard组件的return语句的</div>之前（第3233行）添加以下代码：
+
+       {/* Global Audio Player */}
+       <GlobalAudioPlayer
+         currentSong={currentPlayingSong}
+         isPlaying={isPlaying}
+         onPlayPause={() => setIsPlaying(!isPlaying)}
+         onNext={handleNextSong}
+         onPrevious={handlePreviousSong}
+         onClose={handleClosePlayer}
+         onSeek={handleSeek}
+         currentTime={currentTime}
+         duration={duration}
+       />
+
+这个组件会渲染在整个Dashboard的最顶层，作为浮动音频播放器。
