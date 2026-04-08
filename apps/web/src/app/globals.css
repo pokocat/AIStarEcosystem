@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@source "../**/*.{js,ts,jsx,tsx,mdx}";
+@import "tw-animate-css";
+@import "../styles/globals.css";
+
+@layer base {
+  html,
+  body {
+    min-height: 100vh;
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: #000;
+    color: white;
+  }
+}
