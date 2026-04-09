@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AnalyticsDashboardPayload } from "@/types/contracts/analytics";
-import { fetcher } from "@/lib/http/fetcher";
+import { getAnalyticsDashboard } from "@/api/analytics";
 
 export function useDashboardData() {
   const [data, setData] = useState<AnalyticsDashboardPayload | null>(null);
@@ -12,7 +12,7 @@ export function useDashboardData() {
   useEffect(() => {
     let alive = true;
 
-    fetcher<AnalyticsDashboardPayload>("/api/analytics/dashboard")
+    getAnalyticsDashboard()
       .then((payload) => {
         if (!alive) return;
         setData(payload);

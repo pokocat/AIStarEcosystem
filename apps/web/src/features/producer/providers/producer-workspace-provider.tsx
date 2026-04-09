@@ -2,7 +2,7 @@
 
 import { createContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { fetcher } from "@/lib/http/fetcher";
+import { publishDistribution } from "@/api/distribution";
 import { useDictionary } from "@/features/shared/hooks/use-dictionary";
 import { useDashboardData } from "@/features/analytics/hooks/use-dashboard-data";
 import { useMarketplaceListings } from "@/features/marketplace/hooks/use-marketplace-listings";
@@ -127,10 +127,7 @@ export function ProducerWorkspaceProvider({ children }: { children: ReactNode })
       mintCollection: nft.mintCollection,
       signArtist: marketplace.signArtist,
       publishDistribution: async (request) => {
-        return fetcher<{ success: boolean; publishJobId: string }>("/api/distribution/publish", {
-          method: "POST",
-          body: JSON.stringify(request)
-        });
+        return publishDistribution(request);
       }
     }),
     [
