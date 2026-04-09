@@ -16,12 +16,12 @@ export default function ProducerDistributionRoute() {
   const workspace = useProducerWorkspace();
   const [publishState, setPublishState] = useState<string | null>(null);
 
-  if (workspace.isBootstrapping || !workspace.trackWorkspace || !workspace.dashboard) {
-    return <LoadingPanel label="Loading distribution center..." />;
-  }
-
   if (workspace.errors.length) {
     return <ErrorPanel title="Failed to load distribution center" detail={workspace.errors[0]} />;
+  }
+
+  if (workspace.isBootstrapping || !workspace.trackWorkspace || !workspace.dashboard) {
+    return <LoadingPanel label="Loading distribution center..." />;
   }
 
   return (
