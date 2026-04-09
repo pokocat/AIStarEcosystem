@@ -64,6 +64,11 @@ export default function ProducerOverviewRoute() {
   const [viewingArtist, setViewingArtist] = useState<LegacyArtist | null>(null);
   const [listingOpen, setListingOpen] = useState(false);
 
+  const activeSingerCard = useMemo(
+    () => (workspace.activeSinger ? toLegacyActiveSinger(workspace.activeSinger) : null),
+    [workspace.activeSinger]
+  );
+
   if (workspace.isBootstrapping || !workspace.dashboard || !workspace.activeSinger) {
     return <LoadingPanel label="Loading producer overview..." />;
   }
@@ -101,7 +106,6 @@ export default function ProducerOverviewRoute() {
   ];
 
   const priorityListings = marketListings.slice(0, 3).map(toLegacyMarketArtist);
-  const activeSingerCard = useMemo(() => toLegacyActiveSinger(workspace.activeSinger!), [workspace.activeSinger]);
 
   return (
     <div className="space-y-8">
