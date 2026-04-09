@@ -11,12 +11,12 @@ export default function CoachRoute() {
   const { lang, copy, toggleLang } = useDictionary();
   const dashboard = useDashboardData();
 
-  if (dashboard.isLoading || !dashboard.data) {
-    return <LoadingPanel label="Loading coach dashboard..." />;
-  }
-
   if (dashboard.error) {
     return <ErrorPanel title="Failed to load coach dashboard" detail={dashboard.error} />;
+  }
+
+  if (dashboard.isLoading || !dashboard.data) {
+    return <LoadingPanel label="Loading coach dashboard..." />;
   }
 
   return (

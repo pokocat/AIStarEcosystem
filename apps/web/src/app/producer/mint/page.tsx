@@ -22,12 +22,12 @@ export default function ProducerMintRoute() {
     [selectedTrack]
   );
 
-  if (workspace.isBootstrapping || !workspace.trackWorkspace) {
-    return <LoadingPanel label="Loading mint center..." />;
-  }
-
   if (workspace.errors.length) {
     return <ErrorPanel title="Failed to load mint center" detail={workspace.errors[0]} />;
+  }
+
+  if (workspace.isBootstrapping || !workspace.trackWorkspace) {
+    return <LoadingPanel label="Loading mint center..." />;
   }
 
   return (

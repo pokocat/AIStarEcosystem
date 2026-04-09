@@ -13,12 +13,12 @@ export default function FanRoute() {
   const tracks = useTracks(lang);
   const collections = useNftCollections();
 
-  if (tracks.isLoading || collections.isLoading || !tracks.data || !collections.data) {
-    return <LoadingPanel label="Loading fan experience..." />;
-  }
-
   if (tracks.error || collections.error) {
     return <ErrorPanel title="Failed to load fan experience" detail={tracks.error ?? collections.error ?? undefined} />;
+  }
+
+  if (tracks.isLoading || collections.isLoading || !tracks.data || !collections.data) {
+    return <LoadingPanel label="Loading fan experience..." />;
   }
 
   return (

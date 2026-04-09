@@ -49,12 +49,12 @@ export default function ProducerStudioRoute() {
     [currentTrackId, tracks]
   );
 
-  if (workspace.isBootstrapping || !workspace.trackWorkspace || !workspace.activeSinger) {
-    return <LoadingPanel label="Loading studio..." />;
-  }
-
   if (workspace.errors.length) {
     return <ErrorPanel title="Failed to load studio" detail={workspace.errors[0]} />;
+  }
+
+  if (workspace.isBootstrapping || !workspace.trackWorkspace || !workspace.activeSinger) {
+    return <LoadingPanel label="Loading studio..." />;
   }
 
   const selectTrack = (track: TrackSummary) => {

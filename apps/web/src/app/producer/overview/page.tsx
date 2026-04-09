@@ -69,12 +69,12 @@ export default function ProducerOverviewRoute() {
     [workspace.activeSinger]
   );
 
-  if (workspace.isBootstrapping || !workspace.dashboard || !workspace.activeSinger) {
-    return <LoadingPanel label="Loading producer overview..." />;
-  }
-
   if (workspace.errors.length) {
     return <ErrorPanel title="Failed to load producer overview" detail={workspace.errors[0]} />;
+  }
+
+  if (workspace.isBootstrapping || !workspace.dashboard || !workspace.activeSinger) {
+    return <LoadingPanel label="Loading producer overview..." />;
   }
 
   const { producerMetrics, earningsSeries, transactions, marketListings } = workspace.dashboard;
