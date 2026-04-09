@@ -11,12 +11,12 @@ export default function ProducerEarningsRoute() {
   const { copy } = useDictionary();
   const workspace = useProducerWorkspace();
 
-  if (workspace.isBootstrapping || !workspace.dashboard) {
-    return <LoadingPanel label="Loading earnings center..." />;
-  }
-
   if (workspace.errors.length) {
     return <ErrorPanel title="Failed to load earnings center" detail={workspace.errors[0]} />;
+  }
+
+  if (workspace.isBootstrapping || !workspace.dashboard) {
+    return <LoadingPanel label="Loading earnings center..." />;
   }
 
   const { earningsSeries, transactions } = workspace.dashboard;
