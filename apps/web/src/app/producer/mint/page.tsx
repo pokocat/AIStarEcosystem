@@ -17,6 +17,11 @@ export default function ProducerMintRoute() {
   const workspace = useProducerWorkspace();
   const [selectedTrack, setSelectedTrack] = useState<TrackSummary | null>(null);
 
+  const trackForDialog = useMemo(
+    () => (selectedTrack ? { ...selectedTrack, duration: selectedTrack.durationLabel } : undefined),
+    [selectedTrack]
+  );
+
   if (workspace.isBootstrapping || !workspace.trackWorkspace) {
     return <LoadingPanel label="Loading mint center..." />;
   }
@@ -24,11 +29,6 @@ export default function ProducerMintRoute() {
   if (workspace.errors.length) {
     return <ErrorPanel title="Failed to load mint center" detail={workspace.errors[0]} />;
   }
-
-  const trackForDialog = useMemo(
-    () => (selectedTrack ? { ...selectedTrack, duration: selectedTrack.durationLabel } : undefined),
-    [selectedTrack]
-  );
 
   return (
     <div className="grid gap-8 lg:grid-cols-2">
