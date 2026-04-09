@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetcher } from "@/lib/http/fetcher";
 import type { NftCollectionsPayload, NftMintRequest } from "@/types/contracts/nft";
+import { getNftCollections, mintNft } from "@/api/nft";
 
 export function useNftCollections() {
   const [data, setData] = useState<NftCollectionsPayload | null>(null);
@@ -12,7 +12,7 @@ export function useNftCollections() {
   useEffect(() => {
     let alive = true;
 
-    fetcher<NftCollectionsPayload>("/api/nft/collections")
+    getNftCollections()
       .then((payload) => {
         if (!alive) return;
         setData(payload);
@@ -32,10 +32,7 @@ export function useNftCollections() {
   }, []);
 
   const mintCollection = async (request: NftMintRequest) => {
-    return fetcher<{ success: boolean; contractAddress: string; tokenId: string }>("/api/nft/mint", {
-      method: "POST",
-      body: JSON.stringify(request)
-    });
+    return mintNft(request);
   };
 
   return { data, isLoading, error, mintCollection };

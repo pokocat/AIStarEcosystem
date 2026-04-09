@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetcher } from "@/lib/http/fetcher";
 import type { ArtistSigningRequest, MarketplaceListing } from "@/types/contracts/marketplace";
+import { getMarketplaceListings, signArtist } from "@/api/marketplace";
 
 export function useMarketplaceListings() {
   const [data, setData] = useState<MarketplaceListing[]>([]);
@@ -12,7 +12,7 @@ export function useMarketplaceListings() {
   useEffect(() => {
     let alive = true;
 
-    fetcher<MarketplaceListing[]>("/api/marketplace/listings")
+    getMarketplaceListings()
       .then((payload) => {
         if (!alive) return;
         setData(payload);
@@ -31,12 +31,9 @@ export function useMarketplaceListings() {
     };
   }, []);
 
-  const signArtist = async (request: ArtistSigningRequest) => {
-    return fetcher<{ success: boolean; signedArtistId: string }>("/api/marketplace/sign", {
-      method: "POST",
-      body: JSON.stringify(request)
-    });
+  const handleSignArtist = async (request: ArtistSigningRequest) => {
+    return signArtist(request);
   };
 
-  return { data, isLoading, error, signArtist };
+  return { data, isLoading, error, signArtist: handleSignArtist };
 }

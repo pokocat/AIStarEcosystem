@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { Lang } from "@/types/app";
-import { fetcher } from "@/lib/http/fetcher";
 import type { TrackGenerationRequest, TrackSummary, TrackWorkspacePayload } from "@/types/contracts/tracks";
+import { generateTrack, getMyTracks } from "@/api/tracks";
 
 export function useTracks(lang: Lang) {
   const [data, setData] = useState<TrackWorkspacePayload | null>(null);
@@ -13,7 +13,7 @@ export function useTracks(lang: Lang) {
   useEffect(() => {
     let alive = true;
 
-    fetcher<TrackWorkspacePayload>(`/api/tracks/my?lang=${lang}`)
+    getMyTracks(lang)
       .then((payload) => {
         if (!alive) return;
         setData(payload);
@@ -32,14 +32,11 @@ export function useTracks(lang: Lang) {
     };
   }, [lang]);
 
-  const generateTrack = async (request: TrackGenerationRequest) => {
-    const track = await fetcher<TrackSummary>(`/api/tracks/generate?lang=${lang}`, {
-      method: "POST",
-      body: JSON.stringify(request)
-    });
+  const handleGenerateTrack = async (request: TrackGenerationRequest): Promise<TrackSummary> => {
+    const track = await generateTrack(lang, request);
     setData((current) => (current ? { ...current, tracks: [track, ...current.tracks] } : current));
     return track;
   };
 
-  return { data, isLoading, error, generateTrack };
+  return { data, isLoading, error, generateTrack: handleGenerateTrack };
 }
