@@ -14,12 +14,12 @@ export default function ProducerIncubatorRoute() {
   const router = useRouter();
   const workspace = useProducerWorkspace();
 
-  if (workspace.isBootstrapping || !workspace.singerWorkspace) {
-    return <LoadingPanel label="Loading AI incubator..." />;
-  }
-
   if (workspace.errors.length) {
     return <ErrorPanel title="Failed to load AI incubator" detail={workspace.errors[0]} />;
+  }
+
+  if (workspace.isBootstrapping || !workspace.singerWorkspace) {
+    return <LoadingPanel label="Loading AI incubator..." />;
   }
 
   return (
