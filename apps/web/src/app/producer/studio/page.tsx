@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
-import { Mic2, Play, Sparkles, Volume2, Wand2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Edit2, Mic2, Play, Sparkles, Volume2, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,7 @@ const MusicGenerationDialog = dynamic(() => import("@/components/MusicGeneration
 const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"), { ssr: false });
 
 export default function ProducerStudioRoute() {
+  const router = useRouter();
   const { copy } = useDictionary();
   const workspace = useProducerWorkspace();
   const [showGenerator, setShowGenerator] = useState(false);
@@ -149,8 +151,21 @@ export default function ProducerStudioRoute() {
                   <Badge variant="outline" className="border-white/10 text-gray-300">
                     {track.plays.toLocaleString()}
                   </Badge>
-                  <Button size="icon" variant="ghost" className="h-9 w-9 rounded-full hover:bg-purple-500/20 hover:text-purple-300">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-9 w-9 rounded-full hover:bg-purple-500/20 hover:text-purple-300"
+                    onClick={(e) => { e.stopPropagation(); selectTrack(track); }}
+                  >
                     <Play className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-9 w-9 rounded-full hover:bg-cyan-500/20 hover:text-cyan-300"
+                    onClick={(e) => { e.stopPropagation(); router.push(`/producer/editor?trackId=${track.id}&title=${encodeURIComponent(track.title)}`); }}
+                  >
+                    <Edit2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

@@ -63,9 +63,19 @@ export const appDictionary = {
         distribution: "发行页面",
         mint: "NFT 铸造",
         earnings: "财务中心",
+        community: "社区广场",
         logout: "退出登录",
         switch: "切换艺人",
         new_project: "孵化新歌手"
+      },
+      locked: {
+        title: "即将解锁",
+        desc: "社区功能正在开发中，升级到 Pro 计划可优先体验粉丝 DAO、社区治理与共创活动。",
+        back: "返回总览"
+      },
+      intro: {
+        maker_desc: "孵化 AI 歌手，完成创作、发行与变现全流程。",
+        maker_btn: "进入工作台"
       },
       overview: {
         title: "制作人工作台",
@@ -191,9 +201,19 @@ export const appDictionary = {
         distribution: "Distribution",
         mint: "NFT Mint",
         earnings: "Earnings",
+        community: "Community",
         logout: "Logout",
         switch: "Switch Singer",
         new_project: "Create Singer"
+      },
+      locked: {
+        title: "Coming Soon",
+        desc: "Community features are in development. Upgrade to Pro for early access to Fan DAO, governance, and co-creation events.",
+        back: "Back to Overview"
+      },
+      intro: {
+        maker_desc: "Incubate AI singers and manage the full creation-to-monetization loop.",
+        maker_btn: "Enter Workspace"
       },
       overview: {
         title: "Producer Workspace",

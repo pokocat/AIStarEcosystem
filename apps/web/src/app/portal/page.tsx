@@ -24,7 +24,7 @@ export default function PortalRoute() {
           return;
         }
 
-        router.push("/producer/overview");
+        router.push("/producer-intro");
       }}
     />
   );
