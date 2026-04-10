@@ -9,10 +9,12 @@ import {
   Fingerprint,
   Globe,
   LayoutDashboard,
+  Lock,
   LogOut,
   Menu,
   Mic2,
   Rocket,
+  Smile,
   Wallet,
   X,
   Zap
@@ -37,7 +39,8 @@ const routeMap = {
   studio: "/producer/studio",
   distribution: "/producer/distribution",
   nft_mint: "/producer/mint",
-  earnings: "/producer/earnings"
+  earnings: "/producer/earnings",
+  community: "/producer/community"
 } as const;
 
 export function ProducerShell({ children }: ProducerShellProps) {
@@ -50,12 +53,13 @@ export function ProducerShell({ children }: ProducerShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems = [
-    { href: routeMap.overview, label: copy.producer.sidebar.dashboard, icon: LayoutDashboard },
-    { href: routeMap.persona, label: copy.producer.sidebar.incubator, icon: Fingerprint },
-    { href: routeMap.studio, label: copy.producer.sidebar.studio, icon: Mic2 },
-    { href: routeMap.distribution, label: copy.producer.sidebar.distribution, icon: Rocket },
-    { href: routeMap.nft_mint, label: copy.producer.sidebar.mint, icon: Coins },
-    { href: routeMap.earnings, label: copy.producer.sidebar.earnings, icon: Wallet }
+    { href: routeMap.overview, label: copy.producer.sidebar.dashboard, icon: LayoutDashboard, locked: false },
+    { href: routeMap.persona, label: copy.producer.sidebar.incubator, icon: Fingerprint, locked: false },
+    { href: routeMap.studio, label: copy.producer.sidebar.studio, icon: Mic2, locked: false },
+    { href: routeMap.distribution, label: copy.producer.sidebar.distribution, icon: Rocket, locked: false },
+    { href: routeMap.nft_mint, label: copy.producer.sidebar.mint, icon: Coins, locked: false },
+    { href: routeMap.earnings, label: copy.producer.sidebar.earnings, icon: Wallet, locked: false },
+    { href: routeMap.community, label: copy.producer.sidebar.community, icon: Smile, locked: true }
   ];
 
   const currentTitle = navItems.find((item) => pathname.startsWith(item.href))?.label ?? copy.producer.sidebar.dashboard;
@@ -70,7 +74,7 @@ export function ProducerShell({ children }: ProducerShellProps) {
 
   const sidebarItems = navItems.map((item) => {
     const Icon = item.icon;
-    const active = pathname === item.href;
+    const active = pathname.startsWith(item.href);
     const classes = active ? themeStyles.itemActive : themeStyles.itemBase;
 
     return (
@@ -81,7 +85,8 @@ export function ProducerShell({ children }: ProducerShellProps) {
         className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${classes}`}
       >
         <Icon className="h-4 w-4" />
-        <span>{item.label}</span>
+        <span className="flex-1">{item.label}</span>
+        {item.locked && <Lock className="h-3 w-3 text-gray-600" />}
       </Link>
     );
   });
@@ -214,9 +219,9 @@ export function ProducerShell({ children }: ProducerShellProps) {
       </main>
 
       <div className="fixed bottom-0 left-0 right-0 z-40 flex h-[88px] items-center justify-around border-t border-white/10 bg-[#0c0c0e]/95 px-2 pt-2 backdrop-blur-xl md:hidden">
-        {navItems.map((item) => {
+        {navItems.filter((item) => !item.locked).map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href;
+          const active = pathname.startsWith(item.href);
 
           return (
             <Link
