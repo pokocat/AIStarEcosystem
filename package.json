@@ -60,9 +60,6 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "web:dev": "npm --prefix apps/web run dev",
-    "web:build": "npm --prefix apps/web run build",
-    "web:test": "npm --prefix apps/web run test"
+    "build": "vite build"
   }
 }
