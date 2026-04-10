@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { Award, ChevronRight, Globe as GlobeIcon, Heart, Zap } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import type { Lang } from '../types/app';
@@ -12,6 +13,10 @@ interface PortalPageProps {
 }
 
 export function PortalPage({ lang, copy, onSelectRole, onToggleLang }: PortalPageProps) {
+  const buildBackgroundStyle = (backgroundUrl: string): CSSProperties => ({
+    backgroundImage: `url(${backgroundUrl})`,
+  });
+
   return (
     <div className="h-screen w-full flex bg-black overflow-hidden font-sans relative">
       <div className="absolute top-4 right-4 z-50">
@@ -21,7 +26,10 @@ export function PortalPage({ lang, copy, onSelectRole, onToggleLang }: PortalPag
       </div>
 
       <div onClick={() => onSelectRole('fan')} className="relative flex-1 border-r border-white/10 transition-all duration-700 ease-in-out hover:flex-[2.5] group cursor-pointer overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1514525253440-b393452e2347?w=1200&q=80')] bg-cover bg-center transition-transform duration-1000 group-hover:scale-110" />
+        <div
+          style={buildBackgroundStyle("https://images.unsplash.com/photo-1514525253440-b393452e2347?w=1200&q=80")}
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110"
+        />
         <div className="absolute inset-0 bg-black/70 group-hover:bg-pink-900/60 transition-colors duration-500" />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center z-10">
           <Heart className="w-16 h-16 text-white/50 group-hover:text-white mb-6 transition-colors duration-300 transform group-hover:-translate-y-4" />
@@ -34,7 +42,10 @@ export function PortalPage({ lang, copy, onSelectRole, onToggleLang }: PortalPag
       </div>
 
       <div onClick={() => onSelectRole('producer_intro')} className="relative flex-1 border-r border-white/10 transition-all duration-700 ease-in-out hover:flex-[2.5] group cursor-pointer overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=1200&q=80')] bg-cover bg-center transition-transform duration-1000 group-hover:scale-110" />
+        <div
+          style={buildBackgroundStyle("https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=1200&q=80")}
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110"
+        />
         <div className="absolute inset-0 bg-black/70 group-hover:bg-cyan-900/60 transition-colors duration-500" />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center z-10">
           <Zap className="w-16 h-16 text-white/50 group-hover:text-white mb-6 transition-colors duration-300 transform group-hover:-translate-y-4" />
@@ -47,7 +58,10 @@ export function PortalPage({ lang, copy, onSelectRole, onToggleLang }: PortalPag
       </div>
 
       <div onClick={() => onSelectRole('coach')} className="relative flex-1 transition-all duration-700 ease-in-out hover:flex-[2.5] group cursor-pointer overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&q=80')] bg-cover bg-center transition-transform duration-1000 group-hover:scale-110" />
+        <div
+          style={buildBackgroundStyle("https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&q=80")}
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110"
+        />
         <div className="absolute inset-0 bg-black/70 group-hover:bg-purple-900/60 transition-colors duration-500" />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center z-10">
           <Award className="w-16 h-16 text-white/50 group-hover:text-white mb-6 transition-colors duration-300 transform group-hover:-translate-y-4" />
