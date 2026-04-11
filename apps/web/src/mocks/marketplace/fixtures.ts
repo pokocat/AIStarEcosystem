@@ -1,39 +1,64 @@
-export const marketplaceListingFixtures = [
+import type { MarketplaceArtist } from "@/types/contracts/marketplace";
+
+export const marketplaceListingFixtures: MarketplaceArtist[] = [
   {
     id: "listing-1",
-    artistId: "singer-1",
+    singerId: "singer-1",
+    sellerId: "seller-guild-1",
     name: "Neon Warrior",
     style: "EDM",
     avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400",
-    priceLabel: "¥ 8,800",
-    owner: "Creator Guild",
-    songs: 12,
-    followersLabel: "25k",
+    signingPrice: 8800,
     description: "Cyberpunk dance-pop virtual idol ready for campaign scaling.",
-    autoReplyEnabled: true
+    songsCount: 12,
+    followersCount: 25000,
+    creatorUsername: "Creator Guild",
+    licenseType: "nonExclusive",
+    enableAutoReply: true,
+    status: "active",
+    views: 1240,
+    inquiries: 18,
+    createdAt: "2026-03-01T10:00:00Z",
+    updatedAt: "2026-04-01T10:00:00Z"
   },
   {
     id: "listing-2",
-    artistId: "singer-2",
+    singerId: "singer-2",
+    sellerId: "seller-guild-1",
     name: "Cloud Fairy",
     style: "Ancient Pop",
     avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400",
-    priceLabel: "¥ 10,000",
-    owner: "Creator Guild",
-    songs: 15,
-    followersLabel: "33k",
-    description: "High-retention idol suited for fantasy-themed campaigns."
+    signingPrice: 10000,
+    description: "High-retention idol suited for fantasy-themed campaigns.",
+    songsCount: 15,
+    followersCount: 33000,
+    creatorUsername: "Creator Guild",
+    licenseType: "nonExclusive",
+    enableAutoReply: false,
+    status: "active",
+    views: 980,
+    inquiries: 12,
+    createdAt: "2026-03-05T10:00:00Z",
+    updatedAt: "2026-04-02T10:00:00Z"
   },
   {
     id: "listing-3",
-    artistId: "singer-4",
+    singerId: "singer-4",
+    sellerId: "seller-guild-1",
     name: "Midnight DJ",
     style: "Deep House",
     avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400",
-    priceLabel: "¥ 11,200",
-    owner: "Creator Guild",
-    songs: 18,
-    followersLabel: "41k",
-    description: "Festival-ready DJ profile with strong club distribution fit."
+    signingPrice: 11200,
+    description: "Festival-ready DJ profile with strong club distribution fit.",
+    songsCount: 18,
+    followersCount: 41000,
+    creatorUsername: "Creator Guild",
+    licenseType: "exclusive",
+    enableAutoReply: true,
+    status: "active",
+    views: 1580,
+    inquiries: 25,
+    createdAt: "2026-03-10T10:00:00Z",
+    updatedAt: "2026-04-03T10:00:00Z"
   }
 ];

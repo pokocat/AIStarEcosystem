@@ -9,14 +9,14 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Progress } from "./ui/progress";
 import { Switch } from "./ui/switch";
-import type { DistributionChannelConfig, DistributionPublishRequest, PlatformAccountBinding } from "@/types/contracts/distribution";
+import type { DistributionChannel, DistributionPublishRequest, PlatformAccount, PlatformAccountKey } from "@/types/contracts/distribution";
 import type { TrackSummary } from "@/types/contracts/tracks";
 
 interface DistributionPageProps {
   songs: TrackSummary[];
   lang: "zh" | "en";
-  channels: DistributionChannelConfig[];
-  accountBindings: PlatformAccountBinding[];
+  channels: DistributionChannel[];
+  accountBindings: PlatformAccount[];
   onSubmit: (request: DistributionPublishRequest) => Promise<void>;
 }
 
@@ -26,14 +26,24 @@ const channelIcons = {
   shortVideo: Youtube
 } as const;
 
+/** UI display name for each platform key (used when backend label fields are absent) */
+const platformLabels: Record<PlatformAccountKey, { zh: string; en: string }> = {
+  distrokid:      { zh: "DistroKid",          en: "DistroKid" },
+  tencentMusic:   { zh: "腾讯音乐人",          en: "Tencent Music" },
+  neteaseMusic:   { zh: "网易云音乐人",         en: "NetEase Music" },
+  spotifyArtists: { zh: "Spotify for Artists", en: "Spotify for Artists" },
+  douyinCreator:  { zh: "抖音创作者平台",       en: "Douyin Creator" },
+  tiktokBusiness: { zh: "TikTok for Business", en: "TikTok Business" }
+};
+
 export default function DistributionPage({ songs, lang, channels, accountBindings, onSubmit }: DistributionPageProps) {
   const [selectedTrack, setSelectedTrack] = useState<TrackSummary | null>(songs[0] || null);
   const [selectedChannels, setSelectedChannels] = useState<string[]>(["domestic", "global"]);
   const [releaseDate, setReleaseDate] = useState("");
   const [releaseTime, setReleaseTime] = useState("");
   const [preSaveEnabled, setPreSaveEnabled] = useState(false);
-  const [accountStatus, setAccountStatus] = useState<Record<string, PlatformAccountBinding>>(
-    Object.fromEntries(accountBindings.map((binding) => [binding.id, binding]))
+  const [accountStatus, setAccountStatus] = useState<Record<string, PlatformAccount>>(
+    Object.fromEntries(accountBindings.map((binding) => [binding.platformKey, binding]))
   );
 
   const t = lang === "zh"
@@ -98,30 +108,32 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
     setSelectedChannels((current) => (current.includes(channelId) ? current.filter((id) => id !== channelId) : [...current, channelId]));
   };
 
-  const handleConnectAccount = (accountKey: string) => {
+  const handleConnectAccount = (platformKey: PlatformAccountKey) => {
     setAccountStatus((current) => ({
       ...current,
-      [accountKey]: {
-        ...current[accountKey],
+      [platformKey]: {
+        ...current[platformKey],
         connected: true,
-        email: "user@demo.com"
+        email: "user@demo.com",
+        connectedAt: new Date().toISOString()
       }
     }));
   };
 
-  const handleDisconnectAccount = (accountKey: string) => {
+  const handleDisconnectAccount = (platformKey: PlatformAccountKey) => {
     setAccountStatus((current) => ({
       ...current,
-      [accountKey]: {
-        ...current[accountKey],
+      [platformKey]: {
+        ...current[platformKey],
         connected: false,
-        email: undefined
+        email: null,
+        connectedAt: null
       }
     }));
   };
 
   const requiredAccounts = useMemo(() => {
-    const required = new Set<string>();
+    const required = new Set<PlatformAccountKey>();
     selectedChannels.forEach((channelId) => {
       const channel = channels.find((item) => item.id === channelId);
       channel?.requiredAccounts.forEach((account) => required.add(account));
@@ -130,7 +142,7 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
   }, [channels, selectedChannels]);
 
   const unconnectedAccounts = requiredAccounts.filter((account) => !accountStatus[account]?.connected);
-  const totalPlatforms = selectedChannels.reduce((sum, channelId) => sum + (channels.find((item) => item.id === channelId)?.coverageCount || 0), 0);
+  const totalPlatforms = selectedChannels.reduce((sum, channelId) => sum + (channels.find((item) => item.id === channelId)?.platformCount || 0), 0);
   const canSubmit = !!selectedTrack && selectedChannels.length > 0 && unconnectedAccounts.length === 0;
 
   return (
@@ -153,7 +165,7 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {songs.filter((song) => song.status !== "Processing").map((song) => (
+            {songs.filter((song) => song.status !== "processing").map((song) => (
               <label key={song.id} className={`flex items-center gap-4 p-4 rounded-xl bg-black/40 border transition-all cursor-pointer ${selectedTrack?.id === song.id ? "border-cyan-500 bg-cyan-500/10" : "border-white/5 hover:border-cyan-500/50"}`}>
                 <input type="radio" name="release-track" checked={selectedTrack?.id === song.id} onChange={() => setSelectedTrack(song)} className="w-4 h-4 accent-cyan-500" />
                 <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center">
@@ -162,13 +174,13 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
                 <div className="flex-1">
                   <div className="font-bold text-sm text-white mb-1">{song.title}</div>
                   <div className="text-[10px] text-gray-500 flex items-center gap-3 font-mono">
-                    <span>{song.date}</span>
+                    <span>{song.createdAt.slice(0, 10)}</span>
                     <span className="w-1 h-1 rounded-full bg-gray-600" />
-                    <span>{song.status === "Published" ? t.published : t.draft}</span>
+                    <span>{song.status === "published" ? t.published : t.draft}</span>
                   </div>
                 </div>
-                <Badge className={`${song.status === "Published" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"} border text-[10px]`}>
-                  {song.status === "Published" ? t.reRelease : t.firstRelease}
+                <Badge className={`${song.status === "published" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"} border text-[10px]`}>
+                  {song.status === "published" ? t.reRelease : t.firstRelease}
                 </Badge>
               </label>
             ))}
@@ -186,13 +198,13 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
           <CardContent className="space-y-4">
             {channels.map((channel) => {
               const isSelected = selectedChannels.includes(channel.id);
-              const Icon = channelIcons[channel.iconKey];
+              const Icon = channelIcons[channel.id] ?? Globe;
 
               return (
                 <div key={channel.id} className={`rounded-xl border transition-all ${isSelected ? "border-purple-500 bg-purple-500/10" : "border-white/10 bg-black/40"}`}>
                   <label className="flex items-start gap-4 p-5 cursor-pointer">
                     <input type="checkbox" checked={isSelected} onChange={() => toggleChannel(channel.id)} className="w-5 h-5 accent-purple-500 mt-0.5" />
-                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${channel.iconBg} flex items-center justify-center shadow-lg shrink-0`}>
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center shadow-lg shrink-0">
                       <Icon className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex-1">
@@ -209,33 +221,34 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
                           {t.requiredAccounts}
                         </Label>
                         <div className="space-y-2">
-                          {channel.requiredAccounts.map((accountKey) => {
-                            const account = accountStatus[accountKey];
+                          {channel.requiredAccounts.map((platformKey) => {
+                            const account = accountStatus[platformKey];
                             const isConnected = account?.connected;
-                            const isOptional = accountKey === "spotify_artists";
+                            const isOptional = platformKey === "spotifyArtists";
+                            const displayName = platformLabels[platformKey]?.[lang] ?? platformKey;
 
                             return (
-                              <div key={accountKey} className={`flex items-center justify-between p-3 rounded-lg border ${isConnected ? "bg-emerald-500/5 border-emerald-500/20" : "bg-yellow-500/5 border-yellow-500/20"}`}>
+                              <div key={platformKey} className={`flex items-center justify-between p-3 rounded-lg border ${isConnected ? "bg-emerald-500/5 border-emerald-500/20" : "bg-yellow-500/5 border-yellow-500/20"}`}>
                                 <div className="flex items-center gap-3">
                                   {isConnected ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-yellow-400" />}
                                   <div>
                                     <div className="text-sm font-bold text-white">
-                                      {lang === "zh" ? account.labelZh : account.labelEn}
+                                      {displayName}
                                       {isOptional && (
                                         <Badge className="ml-2 bg-gray-500/20 text-gray-400 border-0 text-[9px]">
                                           {t.optional}
                                         </Badge>
                                       )}
                                     </div>
-                                    {isConnected && account.email && <div className="text-[10px] text-emerald-400 font-mono mt-0.5">{account.email}</div>}
+                                    {isConnected && account?.email && <div className="text-[10px] text-emerald-400 font-mono mt-0.5">{account.email}</div>}
                                   </div>
                                 </div>
                                 {isConnected ? (
-                                  <Button size="sm" variant="ghost" onClick={() => handleDisconnectAccount(accountKey)} className="text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 h-8">
+                                  <Button size="sm" variant="ghost" onClick={() => handleDisconnectAccount(platformKey)} className="text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 h-8">
                                     {t.disconnect}
                                   </Button>
                                 ) : (
-                                  <Button size="sm" onClick={() => handleConnectAccount(accountKey)} className="bg-blue-600 hover:bg-blue-500 text-white h-8 px-3 text-xs font-bold">
+                                  <Button size="sm" onClick={() => handleConnectAccount(platformKey)} className="bg-blue-600 hover:bg-blue-500 text-white h-8 px-3 text-xs font-bold">
                                     <Plus className="w-3 h-3 mr-1" />
                                     {t.authorize}
                                   </Button>
@@ -294,7 +307,7 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
 
             <Button
               disabled={!canSubmit}
-              onClick={() => selectedTrack && onSubmit({ trackId: selectedTrack.id, channelIds: selectedChannels, releaseDate, releaseTime, preSaveEnabled })}
+              onClick={() => selectedTrack && onSubmit({ trackId: selectedTrack.id, channelIds: selectedChannels as any, releaseDate, releaseTime, preSaveEnabled })}
               className={`w-full h-14 font-black tracking-wider text-white shadow-[0_0_30px_rgba(168,85,247,0.3)] border border-purple-500/50 rounded-xl ${canSubmit ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500" : "bg-gray-800 border-gray-700 cursor-not-allowed opacity-50"}`}
             >
               <Rocket className="w-5 h-5 mr-2" /> {t.submit}
@@ -322,7 +335,7 @@ export default function DistributionPage({ songs, lang, channels, accountBinding
                   </div>
                   <div className="flex-1">
                     <div className="font-bold text-sm text-white mb-1">{selectedTrack.title}</div>
-                    <div className="text-[10px] text-gray-500 font-mono">{selectedTrack.date}</div>
+                    <div className="text-[10px] text-gray-500 font-mono">{selectedTrack.createdAt.slice(0, 10)}</div>
                   </div>
                 </div>
               </div>

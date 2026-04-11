@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDictionary } from "@/features/shared/hooks/use-dictionary";
 import { useProducerWorkspace } from "@/features/producer/hooks/use-producer-workspace";
 import { ErrorPanel, LoadingPanel } from "@/features/shared/components/page-feedback";
+import { formatCurrencyCny } from "@/mocks/shared";
 
 export default function ProducerEarningsRoute() {
   const { copy } = useDictionary();
@@ -37,11 +38,11 @@ export default function ProducerEarningsRoute() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={earningsSeries}>
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="name" stroke="#6b7280" />
+                <XAxis dataKey="period" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
                 <Tooltip contentStyle={{ background: "#0c0c0e", border: "1px solid rgba(255,255,255,0.1)" }} />
-                <Bar dataKey="song" fill="#06b6d4" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="badge" fill="#a855f7" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="songRevenue" fill="#06b6d4" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="badgeRevenue" fill="#a855f7" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -63,27 +64,31 @@ export default function ProducerEarningsRoute() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {transactions.map((transaction) => (
-                    <tr key={transaction.id} className="hover:bg-white/5">
-                      <td className="p-4 text-gray-500">{transaction.date}</td>
-                      <td className="p-4 font-bold text-gray-300">{transaction.description}</td>
-                      <td className={`p-4 font-mono font-black ${transaction.amountLabel.startsWith("+") ? "text-emerald-400" : "text-white"}`}>
-                        {transaction.amountLabel}
-                      </td>
-                      <td className="p-4 text-right">
-                        <Badge
-                          variant="outline"
-                          className={
-                            transaction.status === "Completed"
-                              ? "border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 font-bold text-emerald-400"
-                              : "border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 font-bold text-yellow-400"
-                          }
-                        >
-                          {transaction.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
+                  {transactions.map((transaction) => {
+                    const isIncome = transaction.direction === "in";
+                    const amountStr = `${isIncome ? "+" : "-"} ${formatCurrencyCny(transaction.amount)}`;
+                    return (
+                      <tr key={transaction.id} className="hover:bg-white/5">
+                        <td className="p-4 text-gray-500">{transaction.createdAt.slice(0, 10)}</td>
+                        <td className="p-4 font-bold text-gray-300">{transaction.description}</td>
+                        <td className={`p-4 font-mono font-black ${isIncome ? "text-emerald-400" : "text-white"}`}>
+                          {amountStr}
+                        </td>
+                        <td className="p-4 text-right">
+                          <Badge
+                            variant="outline"
+                            className={
+                              transaction.status === "completed"
+                                ? "border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 font-bold text-emerald-400"
+                                : "border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 font-bold text-yellow-400"
+                            }
+                          >
+                            {transaction.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

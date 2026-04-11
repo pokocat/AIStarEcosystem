@@ -10,16 +10,15 @@ export function buildTrackWorkspace(lang: Lang): TrackWorkspacePayload {
       title: pickLocalizedText(lang, track.title),
       style: track.style,
       durationSec: track.durationSec,
-      durationLabel: track.durationLabel,
       status: track.status,
-      date: track.date,
-      plays: track.plays
+      createdAt: track.createdAt,
+      playCount: track.playCount
     })),
     chartEntries: chartFixtures,
     lyrics: lyricFixtures,
     discoverySpotlight: {
       badge: lang === "zh" ? "新发行" : "New Release",
-      title: lang === "zh" ? "Electric Dreams" : "Electric Dreams",
+      title: "Electric Dreams",
       artist: "Project: Zero",
       coverUrl: "https://images.unsplash.com/photo-1514525253440-b393452e2347?w=600",
       subtitle: lang === "zh" ? "Project: Zero · EP" : "Project: Zero · EP"

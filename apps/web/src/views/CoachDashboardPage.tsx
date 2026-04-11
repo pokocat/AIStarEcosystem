@@ -9,20 +9,20 @@ import { Card, CardContent } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { Award, ChevronRight, Disc, Globe as GlobeIcon, LayoutDashboard, LogOut, MessageSquare, Settings, TrendingUp, Users } from "lucide-react";
 import type { Lang } from "../types/app";
-import type { CoachTrainee, DashboardMetrics } from "@/types/contracts/analytics";
+import type { DashboardMetrics, TraineeKPI } from "@/types/contracts/analytics";
 
 interface CoachDashboardPageProps {
   lang: Lang;
   copy: any;
   metrics: DashboardMetrics;
-  trainees: CoachTrainee[];
+  trainees: TraineeKPI[];
   onLogout: () => void;
   onToggleLang: () => void;
 }
 
 export function CoachDashboardPage({ lang, copy, metrics, trainees, onLogout, onToggleLang }: CoachDashboardPageProps) {
   const [selectedTrainee, setSelectedTrainee] = useState<string | null>(null);
-  const trainee = trainees.find((item) => item.id === selectedTrainee) || null;
+  const trainee = trainees.find((item) => item.traineeId === selectedTrainee) || null;
 
   return (
     <div className="flex h-screen bg-[#0f0f12] text-white overflow-hidden">
@@ -65,11 +65,11 @@ export function CoachDashboardPage({ lang, copy, metrics, trainees, onLogout, on
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {trainees.map((item) => (
-                    <tr key={item.id} onClick={() => setSelectedTrainee(item.id)} className={`hover:bg-white/5 cursor-pointer transition-colors ${selectedTrainee === item.id ? "bg-purple-900/20" : ""}`}>
-                      <td className="p-4 flex items-center gap-3"><Avatar className="w-8 h-8 rounded-md"><AvatarImage src={item.avatarUrl} /><AvatarFallback>{item.name[0]}</AvatarFallback></Avatar><div><div className="font-bold">{item.name}</div><div className="text-xs text-gray-500">{item.lastActive}</div></div></td>
-                      <td className="p-4"><Badge variant="outline" className={`${item.status === "On Track" ? "border-green-500/30 text-green-400 bg-green-500/10" : ""} ${item.status === "Warning" ? "border-red-500/30 text-red-400 bg-red-500/10" : ""} ${item.status === "Star" ? "border-yellow-500/30 text-yellow-400 bg-yellow-500/10" : ""}`}>{item.status}</Badge></td>
-                      <td className="p-4"><div className="flex items-center gap-3"><Progress value={item.progress} className="h-1.5 w-24 bg-gray-800" /><span className="text-xs text-gray-500">{item.progress}%</span></div></td>
-                      <td className="p-4 font-mono">¥ {item.revenue}</td>
+                    <tr key={item.traineeId} onClick={() => setSelectedTrainee(item.traineeId)} className={`hover:bg-white/5 cursor-pointer transition-colors ${selectedTrainee === item.traineeId ? "bg-purple-900/20" : ""}`}>
+                      <td className="p-4 flex items-center gap-3"><Avatar className="w-8 h-8 rounded-md"><AvatarImage src={item.avatarUrl} /><AvatarFallback>{item.username[0]}</AvatarFallback></Avatar><div><div className="font-bold">{item.username}</div><div className="text-xs text-gray-500">{item.weekStart}</div></div></td>
+                      <td className="p-4"><Badge variant="outline" className={`${item.status === "active" ? "border-green-500/30 text-green-400 bg-green-500/10" : ""} ${item.status === "inactive" ? "border-red-500/30 text-red-400 bg-red-500/10" : ""} ${item.status === "graduated" ? "border-yellow-500/30 text-yellow-400 bg-yellow-500/10" : ""}`}>{item.status}</Badge></td>
+                      <td className="p-4"><div className="flex items-center gap-3"><Progress value={item.weeklyProgress} className="h-1.5 w-24 bg-gray-800" /><span className="text-xs text-gray-500">{item.weeklyProgress}%</span></div></td>
+                      <td className="p-4 font-mono">¥ {item.weeklyRevenue.toLocaleString()}</td>
                       <td className="p-4 text-right"><Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10"><ChevronRight className="w-4 h-4" /></Button></td>
                     </tr>
                   ))}
@@ -81,11 +81,11 @@ export function CoachDashboardPage({ lang, copy, metrics, trainees, onLogout, on
           <AnimatePresence>
             {trainee && (
               <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 350, opacity: 1 }} exit={{ width: 0, opacity: 0 }} className="border-l border-white/10 bg-[#141418] flex flex-col">
-                <div className="p-6 border-b border-white/10 flex justify-between items-start"><div className="flex flex-col items-center w-full"><div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-purple-500 to-pink-500 mb-3"><img src={trainee.avatarUrl} className="w-full h-full rounded-full object-cover border-4 border-[#141418]" alt={trainee.name} /></div><h3 className="text-xl font-bold">{trainee.name}</h3><p className="text-sm text-gray-400">Level 3 Producer</p><div className="flex gap-2 mt-4 w-full"><Button className="flex-1 bg-white text-black hover:bg-gray-200">{copy.detail.msg}</Button><Button variant="outline" className="flex-1 border-white/10">{copy.detail.profile}</Button></div></div></div>
+                <div className="p-6 border-b border-white/10 flex justify-between items-start"><div className="flex flex-col items-center w-full"><div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-purple-500 to-pink-500 mb-3"><img src={trainee.avatarUrl} className="w-full h-full rounded-full object-cover border-4 border-[#141418]" alt={trainee.username} /></div><h3 className="text-xl font-bold">{trainee.username}</h3><p className="text-sm text-gray-400">Level 3 Producer</p><div className="flex gap-2 mt-4 w-full"><Button className="flex-1 bg-white text-black hover:bg-gray-200">{copy.detail.msg}</Button><Button variant="outline" className="flex-1 border-white/10">{copy.detail.profile}</Button></div></div></div>
                 <div className="p-6 space-y-6 flex-1 overflow-y-auto">
                   <div>
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">{copy.detail.latest}</h4>
-                    <div className="bg-black/40 p-3 rounded-lg border border-white/5"><div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 bg-cyan-900/20 rounded flex items-center justify-center text-cyan-400"><Disc className="w-5 h-5" /></div><div><div className="font-bold text-sm">{trainee.latestSubmissionTitle}</div><div className="text-xs text-gray-500">{copy.detail.submitted} {trainee.lastActive}</div></div></div><div className="h-8 bg-gray-800 rounded flex items-center justify-center gap-1 opacity-50">{[...Array(15)].map((_, index) => <div key={index} className="w-1 bg-gray-400 rounded-full" style={{ height: `${8 + (index % 6) * 3}px` }} />)}</div><div className="flex gap-2 mt-3"><Button size="sm" className="flex-1 bg-green-600 hover:bg-green-500 h-8 text-xs">{copy.detail.approve}</Button><Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 h-8 text-xs">{copy.detail.reject}</Button></div></div>
+                    <div className="bg-black/40 p-3 rounded-lg border border-white/5"><div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 bg-cyan-900/20 rounded flex items-center justify-center text-cyan-400"><Disc className="w-5 h-5" /></div><div><div className="font-bold text-sm">{trainee.pendingReviews > 0 ? `${trainee.pendingReviews} pending review(s)` : "No pending reviews"}</div><div className="text-xs text-gray-500">{copy.detail.submitted} {trainee.weekStart}</div></div></div><div className="h-8 bg-gray-800 rounded flex items-center justify-center gap-1 opacity-50">{[...Array(15)].map((_, index) => <div key={index} className="w-1 bg-gray-400 rounded-full" style={{ height: `${8 + (index % 6) * 3}px` }} />)}</div><div className="flex gap-2 mt-3"><Button size="sm" className="flex-1 bg-green-600 hover:bg-green-500 h-8 text-xs">{copy.detail.approve}</Button><Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 h-8 text-xs">{copy.detail.reject}</Button></div></div>
                   </div>
                   <div><h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">{copy.detail.radar}</h4><div className="aspect-square bg-black/40 rounded-lg border border-white/5 flex items-center justify-center relative"><div className="w-32 h-32 border border-gray-700 rounded-full opacity-30 absolute" /><div className="w-20 h-20 border border-gray-700 rounded-full opacity-30 absolute" /><div className="w-10 h-10 border border-gray-700 rounded-full opacity-30 absolute" /><svg className="w-full h-full absolute p-8" viewBox="0 0 100 100"><path d="M50 10 L80 40 L70 80 L30 80 L20 40 Z" fill="rgba(147, 51, 234, 0.4)" stroke="#9333ea" strokeWidth="2" /></svg></div></div>
                 </div>

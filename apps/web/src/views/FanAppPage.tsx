@@ -78,7 +78,7 @@ export function FanAppPage({ lang, copy, chartData, lyrics, marketCollections, d
                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-black text-white text-xs font-bold px-2 py-0.5 rounded-full border border-black">{rank}</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-bold text-sm truncate w-24">{item.artist}</div>
+                        <div className="font-bold text-sm truncate w-24">{item.artistName}</div>
                         <div className="text-xs text-gray-500 flex items-center justify-center gap-1">
                           <Flame className="w-3 h-3 text-orange-500" /> {item.votes}
                         </div>
@@ -95,7 +95,7 @@ export function FanAppPage({ lang, copy, chartData, lyrics, marketCollections, d
                     <img src={item.coverUrl} className="w-12 h-12 rounded-lg object-cover" alt={item.title} />
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm truncate">{item.title}</div>
-                      <div className="text-xs text-gray-400">{item.artist}</div>
+                      <div className="text-xs text-gray-400">{item.artistName}</div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <div className="text-xs font-bold text-gray-300 flex items-center gap-1">
@@ -126,7 +126,7 @@ export function FanAppPage({ lang, copy, chartData, lyrics, marketCollections, d
                     <div className="p-3">
                       <h4 className="font-bold text-sm truncate">{item.name}</h4>
                       <div className="flex justify-between items-center mt-2">
-                        <span className="text-cyan-400 font-bold text-sm">{item.priceLabel}</span>
+                        <span className="text-cyan-400 font-bold text-sm">{item.priceEth} ETH</span>
                         <Button size="sm" className="h-6 text-xs bg-white text-black hover:bg-gray-200">{copy.mint}</Button>
                       </div>
                     </div>
@@ -154,7 +154,7 @@ export function FanAppPage({ lang, copy, chartData, lyrics, marketCollections, d
                     <div key={item.id} className="w-32 flex-shrink-0 space-y-2">
                       <img src={item.coverUrl} className="w-32 h-32 rounded-lg object-cover" alt={item.title} />
                       <div className="text-sm font-bold truncate">{item.title}</div>
-                      <div className="text-xs text-gray-500">{item.artist}</div>
+                      <div className="text-xs text-gray-500">{item.artistName}</div>
                     </div>
                   ))}
                 </div>
@@ -171,7 +171,7 @@ export function FanAppPage({ lang, copy, chartData, lyrics, marketCollections, d
               </div>
               <div>
                 <div className="text-sm font-bold text-white">{topSong.title}</div>
-                <div className="text-xs text-gray-400">{topSong.artist}</div>
+                <div className="text-xs text-gray-400">{topSong.artistName}</div>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -207,7 +207,7 @@ export function FanAppPage({ lang, copy, chartData, lyrics, marketCollections, d
                 </div>
                 <div className="text-center space-y-2">
                   <h2 className="text-2xl font-bold text-white">{topSong.title}</h2>
-                  <p className="text-cyan-400 font-medium text-lg">{topSong.artist}</p>
+                  <p className="text-cyan-400 font-medium text-lg">{topSong.artistName}</p>
                 </div>
                 <div className="w-full space-y-4">
                   <div className="h-32 overflow-hidden relative mask-linear-y text-center">

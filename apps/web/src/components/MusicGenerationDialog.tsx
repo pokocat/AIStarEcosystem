@@ -281,7 +281,7 @@ export default function MusicGenerationDialog({ isOpen, onClose, onGenerate, onS
                     <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center"><Music className="w-10 h-10 text-purple-400" /></div>
                     <div className="flex-1">
                       <Input value={generatedTrack.title} onChange={(event) => setGeneratedTrack({ ...generatedTrack, title: event.target.value })} className="bg-black/50 border-white/10 h-12 text-lg font-bold mb-2" />
-                      <div className="flex items-center gap-3 text-sm text-gray-400"><span>{generatedTrack.style}</span><span>•</span><span>{generatedTrack.durationLabel}</span></div>
+                      <div className="flex items-center gap-3 text-sm text-gray-400"><span>{generatedTrack.style}</span><span>•</span><span>{Math.floor(generatedTrack.durationSec / 60)}:{String(generatedTrack.durationSec % 60).padStart(2, "0")}</span></div>
                     </div>
                   </div>
                   <div className="space-y-4">

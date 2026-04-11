@@ -1,12 +1,12 @@
-export const distributionChannelFixtures = [
+import type { DistributionChannel, PlatformAccount } from "@/types/contracts/distribution";
+
+export const distributionChannelFixtures: DistributionChannel[] = [
   {
     id: "domestic",
     name: "国内AI专属通道",
     nameEn: "Domestic AI Channel",
     description: "腾讯音乐人 / 网易云音乐人",
-    iconKey: "domestic" as const,
-    iconBg: "from-cyan-500 to-blue-600",
-    requiredAccounts: ["tencent_music", "netease_music"],
+    requiredAccounts: ["tencentMusic", "neteaseMusic"],
     benefits: [
       "✓ 自动标记 AI 创作标签",
       "✓ QQ音乐、酷狗、酷我同步上架",
@@ -17,16 +17,15 @@ export const distributionChannelFixtures = [
       "✓ QQ Music, Kugou, Kuwo sync",
       "✓ Pure AI works supported"
     ],
-    coverageCount: 4
+    platformCount: 4,
+    isActive: true
   },
   {
     id: "global",
     name: "全球流媒体发行",
     nameEn: "Global DSPs",
     description: "DistroKid / TuneCore / CD Baby",
-    iconKey: "global" as const,
-    iconBg: "from-emerald-500 to-teal-600",
-    requiredAccounts: ["distrokid", "spotify_artists"],
+    requiredAccounts: ["distrokid", "spotifyArtists"],
     benefits: [
       "✓ Spotify, Apple Music, YouTube Music, Amazon",
       "✓ 150+ 平台同步发行",
@@ -37,16 +36,15 @@ export const distributionChannelFixtures = [
       "✓ 150+ platforms sync",
       "✓ ISRC & UPC support"
     ],
-    coverageCount: 150
+    platformCount: 150,
+    isActive: true
   },
   {
     id: "shortVideo",
     name: "短视频矩阵打歌",
     nameEn: "Short Video Matrix",
     description: "抖音 / TikTok / 快手 / Reels",
-    iconKey: "shortVideo" as const,
-    iconBg: "from-pink-500 to-rose-600",
-    requiredAccounts: ["douyin_creator", "tiktok_business"],
+    requiredAccounts: ["douyinCreator", "tiktokBusiness"],
     benefits: [
       "✓ 自动生成 15s/30s/60s 竖屏切片",
       "✓ 批量发布至多平台矩阵账号",
@@ -57,15 +55,64 @@ export const distributionChannelFixtures = [
       "✓ Batch post to matrix accounts",
       "✓ Drive traffic to full version & NFT"
     ],
-    coverageCount: 6
+    platformCount: 6,
+    isActive: true
   }
 ];
 
-export const distributionAccountFixtures = [
-  { id: "distrokid", labelZh: "DistroKid", labelEn: "DistroKid", connected: true, email: "artist@demo.com" },
-  { id: "tencent_music", labelZh: "腾讯音乐人", labelEn: "Tencent Music", connected: false },
-  { id: "netease_music", labelZh: "网易云音乐人", labelEn: "NetEase Music", connected: false },
-  { id: "spotify_artists", labelZh: "Spotify for Artists", labelEn: "Spotify for Artists", connected: false },
-  { id: "douyin_creator", labelZh: "抖音创作者平台", labelEn: "Douyin Creator", connected: false },
-  { id: "tiktok_business", labelZh: "TikTok for Business", labelEn: "TikTok Business", connected: false }
+export const distributionAccountFixtures: PlatformAccount[] = [
+  {
+    id: "acct-1",
+    userId: "user-demo",
+    platformKey: "distrokid",
+    connected: true,
+    email: "artist@demo.com",
+    connectedAt: "2026-01-10T08:00:00Z",
+    updatedAt: "2026-01-10T08:00:00Z"
+  },
+  {
+    id: "acct-2",
+    userId: "user-demo",
+    platformKey: "tencentMusic",
+    connected: false,
+    email: null,
+    connectedAt: null,
+    updatedAt: "2026-01-01T00:00:00Z"
+  },
+  {
+    id: "acct-3",
+    userId: "user-demo",
+    platformKey: "neteaseMusic",
+    connected: false,
+    email: null,
+    connectedAt: null,
+    updatedAt: "2026-01-01T00:00:00Z"
+  },
+  {
+    id: "acct-4",
+    userId: "user-demo",
+    platformKey: "spotifyArtists",
+    connected: false,
+    email: null,
+    connectedAt: null,
+    updatedAt: "2026-01-01T00:00:00Z"
+  },
+  {
+    id: "acct-5",
+    userId: "user-demo",
+    platformKey: "douyinCreator",
+    connected: false,
+    email: null,
+    connectedAt: null,
+    updatedAt: "2026-01-01T00:00:00Z"
+  },
+  {
+    id: "acct-6",
+    userId: "user-demo",
+    platformKey: "tiktokBusiness",
+    connected: false,
+    email: null,
+    connectedAt: null,
+    updatedAt: "2026-01-01T00:00:00Z"
+  }
 ];

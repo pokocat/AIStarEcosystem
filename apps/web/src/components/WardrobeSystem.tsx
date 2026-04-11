@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { ArrowLeft, Check, Crown, Eye, Filter, Heart, Lock, Save, Search, Shirt, ShoppingBag, Shuffle, Star, TrendingUp, X } from "lucide-react";
-import type { SingerDetail, WardrobeCategory, WardrobeItem } from "@/types/contracts/singers";
+import type { ClothingCategory, SingerDetail, WardrobeItem } from "@/types/contracts/singers";
 
 interface WardrobeSystemProps {
   lang: "zh" | "en";
@@ -26,7 +26,7 @@ const rarityColors = {
 export function WardrobeSystem({ lang, onBack, activeSinger, catalog }: WardrobeSystemProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [equippedItems, setEquippedItems] = useState<Record<Exclude<WardrobeCategory, "outfit">, WardrobeItem | null>>({
+  const [equippedItems, setEquippedItems] = useState<Record<Exclude<ClothingCategory, "outfit">, WardrobeItem | null>>({
     top: null,
     bottom: null,
     accessory: null,

@@ -67,7 +67,7 @@ export function SingerEditor({
       avatarUrl: template.avatarUrl,
       style: template.style,
       tags: template.tags,
-      parameters: template.preset
+      parameters: template.presetParams
     }));
   };
 

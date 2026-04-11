@@ -8,16 +8,15 @@ export function resolveSingerWorkspace(lang: Lang) {
 
 export function resolveCreatedSinger(lang: Lang): SingerDetail {
   const workspace = buildSingerWorkspace(lang);
+  const base = workspace.singers[0];
   return {
-    ...workspace.singers[0],
+    ...base,
     id: `draft-${Date.now()}`,
     name: lang === "zh" ? "新歌手" : "New Singer",
     style: lang === "zh" ? "未定义" : "Undefined",
     status: "draft",
     quality: "common",
-    songsCount: 0,
-    fansCount: 0,
-    popularity: 0,
-    tags: ["new"]
+    tags: ["new"],
+    stats: { songs: 0, fans: 0, popularity: 0 }
   };
 }
