@@ -6,4 +6,11 @@ build
 **/.next
 **/.vite
 **/.vitepress
-.claude/settings.local.json
+**/.claude
+**/.mvn
+**/.idea
+**/.vscode
+**/.DS_Store
+**/dist
+**/target
+**/out
