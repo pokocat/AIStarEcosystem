@@ -1,0 +1,2615 @@
+openapi: 3.1.0
+info:
+  title: AI Star Eco API
+  version: 1.0.0
+  description: |
+    AI Star Eco 平台前后端接口规范。
+    所有 JSON 字段使用 camelCase。后端 Spring Boot 通过
+    `spring.jackson.property-naming-strategy=LOWER_CAMEL_CASE` 对齐。
+
+servers:
+  - url: /api
+    description: API base path
+
+security:
+  - bearerAuth: []
+
+# ─────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ── Reusable response wrappers ──────────
+  schemas:
+
+    SuccessResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          description: 单条响应数据（类型由各接口具体指定）
+        message:
+          type: string
+          example: 操作成功
+
+    PaginationMeta:
+      type: object
+      required: [page, limit, total, totalPages, hasNext, hasPrev]
+      properties:
+        page:       { type: integer, example: 1 }
+        limit:      { type: integer, example: 20 }
+        total:      { type: integer, example: 100 }
+        totalPages: { type: integer, example: 5 }
+        hasNext:    { type: boolean }
+        hasPrev:    { type: boolean }
+
+    ErrorDetail:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 业务错误码（英文大写下划线）
+          example: SINGER_NOT_FOUND
+        message:
+          type: string
+          description: 用户友好错误信息（中文）
+          example: 歌手不存在
+        messageEn:
+          type: string
+          example: Singer not found
+        details:
+          description: 附加错误详情
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+
+    AsyncJobStarted:
+      type: object
+      required: [jobId, status, pollUrl, pollIntervalMs]
+      properties:
+        jobId:           { type: string, format: uuid }
+        status:          { type: string, enum: [queued] }
+        pollUrl:         { type: string }
+        pollIntervalMs:  { type: integer, example: 2000 }
+        estimatedSeconds: { type: integer }
+
+    # ── Enums ───────────────────────────────
+
+    UserRole:
+      type: string
+      enum: [fan, producer, coach]
+      description: |
+        fan=粉丝（星际听众）
+        producer=制作人（造梦架构师）
+        coach=掌门人（生态领航员）
+
+    PlanType:
+      type: string
+      enum: [free, pro, enterprise]
+
+    SingerStatus:
+      type: string
+      enum: [active, draft, archived]
+
+    SingerQuality:
+      type: string
+      enum: [common, rare, epic, legendary]
+      description: |
+        common=普通(灰色,⭐⭐)
+        rare=稀有(蓝色,⭐⭐⭐)
+        epic=史诗(紫色,⭐⭐⭐⭐)
+        legendary=传说(金色,⭐⭐⭐⭐⭐+皇冠)
+
+    ClothingCategory:
+      type: string
+      enum: [top, bottom, accessory, shoes, hair, outfit]
+
+    PoseCategory:
+      type: string
+      enum: [standing, sitting, dancing, singing, action]
+
+    PoseDifficulty:
+      type: string
+      enum: [easy, medium, hard]
+
+    ExpressionCategory:
+      type: string
+      enum: [happy, sad, cool, surprised, other]
+
+    TrackStatus:
+      type: string
+      enum: [draft, processing, published]
+
+    GenerationMode:
+      type: string
+      enum:
+        [text, melody, advanced, interactive, lyrics, inspiration,
+         image, remix, fun, acrostic, gift]
+
+    GenerationStage:
+      type: string
+      enum: [analyzing, composing, arranging, mixing, mastering, finalizing]
+
+    MintStatus:
+      type: string
+      enum: [pending, minting, success, failed]
+
+    MintStage:
+      type: string
+      enum: [preparing, ipfsUpload, contractCall, confirming, completed]
+
+    WalletType:
+      type: string
+      enum: [metamask, walletconnect, coinbase]
+
+    NFTRarity:
+      type: string
+      enum: [common, rare, epic, legendary]
+
+    TransactionType:
+      type: string
+      enum:
+        [royalty, nftSale, tip, signingFee, withdrawal,
+         aiCredit, distribution, platformFee]
+
+    TransactionDirection:
+      type: string
+      enum: [in, out]
+
+    TransactionStatus:
+      type: string
+      enum: [pending, completed, failed]
+
+    LicenseType:
+      type: string
+      enum: [exclusive, nonExclusive]
+
+    ListingStatus:
+      type: string
+      enum: [pending, active, sold, removed]
+
+    TraineeStatus:
+      type: string
+      enum: [active, inactive, graduated]
+
+    ChartTrend:
+      type: string
+      enum: [up, down, same]
+
+    DistributionChannelId:
+      type: string
+      enum: [domestic, global, shortVideo]
+
+    PlatformAccountKey:
+      type: string
+      enum:
+        [distrokid, tencentMusic, neteaseMusic,
+         spotifyArtists, douyinCreator, tiktokBusiness]
+
+    DistributionJobStatus:
+      type: string
+      enum: [pending, processing, partial, completed, failed]
+
+    # ── 2.1 User ────────────────────────────
+
+    User:
+      type: object
+      required: [id, username, email, role, plan, credits, langPreference,
+                 themePreference, createdAt, updatedAt]
+      properties:
+        id:              { type: string, format: uuid }
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          description: 唯一，字母数字下划线
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        avatarUrl:       { type: string, format: uri, nullable: true }
+        role:            { $ref: '#/components/schemas/UserRole' }
+        plan:            { $ref: '#/components/schemas/PlanType' }
+        credits:
+          type: integer
+          minimum: 0
+          default: 100
+        langPreference:
+          type: string
+          enum: [zh, en]
+          default: zh
+        themePreference:
+          type: string
+          default: cyberpunk
+        walletAddress:   { type: string, nullable: true, description: ETH格式 }
+        createdAt:       { type: string, format: date-time }
+        updatedAt:       { type: string, format: date-time }
+
+    # ── 2.3 PersonaParams ───────────────────
+
+    PersonaParams:
+      type: object
+      required: [sweetness, energy, mystery]
+      properties:
+        sweetness:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 70
+        energy:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 80
+        mystery:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 50
+
+    # ── 2.2 Singer ──────────────────────────
+
+    SingerStats:
+      type: object
+      required: [songs, fans, popularity]
+      properties:
+        songs:      { type: integer, minimum: 0, default: 0 }
+        fans:       { type: integer, minimum: 0, default: 0 }
+        popularity: { type: integer, minimum: 0, maximum: 100, default: 0 }
+
+    EquippedItems:
+      type: object
+      properties:
+        top:       { type: string, nullable: true, description: ClothingItem.id }
+        bottom:    { type: string, nullable: true }
+        accessory: { type: string, nullable: true }
+        shoes:     { type: string, nullable: true }
+        hair:      { type: string, nullable: true }
+
+    SingerSummary:
+      type: object
+      required: [id, name, style, status, avatarUrl]
+      properties:
+        id:        { type: string, format: uuid }
+        name:      { type: string, minLength: 1, maxLength: 100 }
+        style:     { type: string, maxLength: 50 }
+        status:    { $ref: '#/components/schemas/SingerStatus' }
+        avatarUrl: { type: string, format: uri }
+
+    SingerDetail:
+      allOf:
+        - $ref: '#/components/schemas/SingerSummary'
+        - type: object
+          required: [ownerId, quality, tags, parameters, equippedWardrobe,
+                     isPublic, stats, createdAt, updatedAt]
+          properties:
+            ownerId:             { type: string, format: uuid }
+            quality:             { $ref: '#/components/schemas/SingerQuality' }
+            tags:
+              type: array
+              items: { type: string }
+              maxItems: 10
+              default: []
+            parameters:          { $ref: '#/components/schemas/PersonaParams' }
+            equippedWardrobe:    { $ref: '#/components/schemas/EquippedItems' }
+            activePoseId:        { type: string, nullable: true }
+            activeExpressionId:  { type: string, nullable: true }
+            activeGesture:       { type: string, nullable: true }
+            parentAId:           { type: string, nullable: true, description: 基因混合父本A }
+            parentBId:           { type: string, nullable: true }
+            geneticRatio:
+              type: integer
+              minimum: 0
+              maximum: 100
+              nullable: true
+              description: 0=纯A，100=纯B
+            isPublic:            { type: boolean, default: false }
+            stats:               { $ref: '#/components/schemas/SingerStats' }
+            createdAt:           { type: string, format: date-time }
+            updatedAt:           { type: string, format: date-time }
+
+    CreateSingerRequest:
+      type: object
+      required: [name, style, quality, parameters]
+      properties:
+        name:       { type: string, minLength: 1, maxLength: 100 }
+        style:      { type: string, maxLength: 50 }
+        quality:    { $ref: '#/components/schemas/SingerQuality' }
+        tags:       { type: array, items: { type: string }, maxItems: 10 }
+        parameters: { $ref: '#/components/schemas/PersonaParams' }
+        officialIpId: { type: string, description: 使用官方IP模板时传入 }
+
+    # ── 2.4 OfficialIP ──────────────────────
+
+    OfficialIp:
+      type: object
+      required: [id, name, nameEn, avatarUrl, style, styleEn, rarity,
+                 tags, presetParams, isActive, sortOrder, createdAt]
+      properties:
+        id:          { type: string, format: uuid }
+        name:        { type: string }
+        nameEn:      { type: string }
+        avatarUrl:   { type: string, format: uri }
+        style:       { type: string }
+        styleEn:     { type: string }
+        rarity:      { $ref: '#/components/schemas/SingerQuality' }
+        tags:        { type: array, items: { type: string } }
+        presetParams: { $ref: '#/components/schemas/PersonaParams' }
+        isActive:    { type: boolean, default: true }
+        sortOrder:   { type: integer }
+        createdAt:   { type: string, format: date-time }
+
+    # ── 2.5 Wardrobe ────────────────────────
+
+    ClothingItem:
+      type: object
+      required: [id, name, nameEn, category, imageUrl, rarity, price,
+                 tags, isLocked, isNew, isTrending, sortOrder, isActive, createdAt]
+      properties:
+        id:         { type: string }
+        name:       { type: string }
+        nameEn:     { type: string }
+        category:   { $ref: '#/components/schemas/ClothingCategory' }
+        imageUrl:   { type: string, format: uri }
+        rarity:     { $ref: '#/components/schemas/SingerQuality' }
+        price:
+          type: integer
+          minimum: 0
+          maximum: 9999
+        tags:       { type: array, items: { type: string } }
+        isLocked:   { type: boolean, default: false }
+        isNew:      { type: boolean, default: false }
+        isTrending: { type: boolean, default: false }
+        sortOrder:  { type: integer }
+        isActive:   { type: boolean, default: true }
+        createdAt:  { type: string, format: date-time }
+
+    SavedOutfit:
+      type: object
+      required: [id, singerId, ownerId, name, items, createdAt]
+      properties:
+        id:        { type: string, format: uuid }
+        singerId:  { type: string, format: uuid }
+        ownerId:   { type: string, format: uuid }
+        name:      { type: string }
+        items:     { $ref: '#/components/schemas/EquippedItems' }
+        createdAt: { type: string, format: date-time }
+
+    UserWardrobeItem:
+      type: object
+      required: [id, userId, itemId, isFavorited, isUnlocked, acquiredAt]
+      properties:
+        id:          { type: string, format: uuid }
+        userId:      { type: string, format: uuid }
+        itemId:      { type: string }
+        isFavorited: { type: boolean }
+        isUnlocked:  { type: boolean }
+        acquiredAt:  { type: string, format: date-time }
+
+    # ── 2.6 Pose / Expression / Gesture ─────
+
+    Pose:
+      type: object
+      required: [id, name, nameEn, category, thumbnailUrl, difficulty,
+                 isLocked, isNew, sortOrder, isActive, createdAt]
+      properties:
+        id:           { type: string }
+        name:         { type: string }
+        nameEn:       { type: string }
+        category:     { $ref: '#/components/schemas/PoseCategory' }
+        thumbnailUrl: { type: string, format: uri }
+        animationUrl: { type: string, format: uri, nullable: true, description: Phase 3预留 }
+        difficulty:   { $ref: '#/components/schemas/PoseDifficulty' }
+        isLocked:     { type: boolean }
+        isNew:        { type: boolean }
+        sortOrder:    { type: integer }
+        isActive:     { type: boolean }
+        createdAt:    { type: string, format: date-time }
+
+    Expression:
+      type: object
+      required: [id, name, nameEn, emoji, defaultIntensity, category,
+                 sortOrder, isActive]
+      properties:
+        id:               { type: string }
+        name:             { type: string }
+        nameEn:           { type: string }
+        emoji:            { type: string }
+        defaultIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 80
+        category:         { $ref: '#/components/schemas/ExpressionCategory' }
+        sortOrder:        { type: integer }
+        isActive:         { type: boolean }
+
+    Gesture:
+      type: object
+      required: [id, name, nameEn, emoji, sortOrder, isActive]
+      properties:
+        id:        { type: string }
+        name:      { type: string }
+        nameEn:    { type: string }
+        emoji:     { type: string }
+        sortOrder: { type: integer }
+        isActive:  { type: boolean }
+
+    SingerPoseConfig:
+      type: object
+      required: [singerId, expressionIntensity, updatedAt]
+      properties:
+        singerId:            { type: string, format: uuid }
+        poseId:              { type: string, nullable: true }
+        expressionId:        { type: string, nullable: true }
+        expressionIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 80
+        gestureId:           { type: string, nullable: true }
+        updatedAt:           { type: string, format: date-time }
+
+    # ── 2.7 Track ───────────────────────────
+
+    LyricLine:
+      type: object
+      required: [time, text]
+      properties:
+        time:
+          type: integer
+          minimum: 0
+          description: 时间偏移（秒），单调递增
+        text:
+          type: string
+          minLength: 1
+          maxLength: 200
+        duration:
+          type: integer
+          nullable: true
+          description: 该行时长（秒）
+
+    Track:
+      type: object
+      required: [id, producerId, title, generationMode, status, playCount,
+                 createdAt, updatedAt]
+      properties:
+        id:             { type: string, format: uuid }
+        producerId:     { type: string, format: uuid }
+        singerId:       { type: string, format: uuid, nullable: true }
+        title:          { type: string, minLength: 1, maxLength: 200 }
+        audioUrl:       { type: string, format: uri, nullable: true }
+        coverUrl:       { type: string, format: uri, nullable: true }
+        generationMode: { $ref: '#/components/schemas/GenerationMode' }
+        prompt:         { type: string, nullable: true }
+        style:          { type: string, maxLength: 100, nullable: true }
+        bpm:
+          type: integer
+          minimum: 40
+          maximum: 240
+          nullable: true
+        key:            { type: string, nullable: true, example: C }
+        durationSec:
+          type: integer
+          minimum: 30
+          maximum: 600
+          default: 120
+        lyrics:
+          type: array
+          items: { $ref: '#/components/schemas/LyricLine' }
+          nullable: true
+        status:    { $ref: '#/components/schemas/TrackStatus' }
+        playCount: { type: integer, minimum: 0, default: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    TrackSummary:
+      type: object
+      required: [id, title, style, durationSec, status, createdAt, playCount]
+      properties:
+        id:          { type: string, format: uuid }
+        title:       { type: string }
+        style:       { type: string }
+        durationSec: { type: integer }
+        status:      { $ref: '#/components/schemas/TrackStatus' }
+        createdAt:   { type: string, format: date-time }
+        playCount:   { type: integer }
+
+    # ── 2.8 TrackGeneration ─────────────────
+
+    TrackGenerationRequest:
+      type: object
+      required: [mode, prompt, durationSec]
+      properties:
+        singerId:           { type: string, format: uuid, nullable: true }
+        mode:               { $ref: '#/components/schemas/GenerationMode' }
+        title:              { type: string, nullable: true }
+        prompt:             { type: string }
+        style:              { type: string, nullable: true }
+        durationSec:        { type: integer, minimum: 30, maximum: 600, default: 120 }
+        bpm:                { type: integer, minimum: 40, maximum: 240, nullable: true }
+        key:                { type: string, nullable: true }
+        songStructure:      { type: string, nullable: true }
+        mood:               { type: string, nullable: true }
+        instruments:        { type: string, nullable: true }
+        lyricsText:         { type: string, nullable: true, description: 歌词成歌模式 }
+        melodyFileUrl:      { type: string, format: uri, nullable: true }
+        referenceImageUrl:  { type: string, format: uri, nullable: true }
+        originalSongRef:    { type: string, nullable: true }
+        remixTarget:        { type: string, nullable: true }
+        acrosticWord:
+          type: string
+          minLength: 1
+          maxLength: 8
+          nullable: true
+        acrosticTopic:      { type: string, nullable: true }
+        giftTo:             { type: string, nullable: true }
+        giftOccasion:       { type: string, nullable: true }
+        giftMessage:        { type: string, nullable: true }
+        funTheme:           { type: string, nullable: true }
+        corePhrase:         { type: string, nullable: true }
+
+    TrackGenerationResponse:
+      type: object
+      required: [jobId, status, progress, currentStage]
+      properties:
+        jobId:            { type: string, format: uuid }
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        progress:         { type: integer, minimum: 0, maximum: 100 }
+        currentStage:     { $ref: '#/components/schemas/GenerationStage' }
+        track:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Track'
+        errorMessage:     { type: string, nullable: true }
+        estimatedSeconds: { type: integer, nullable: true }
+
+    # ── 2.9 Lyrics (inline in Track) ────────
+    # LyricLine already defined above
+
+    # ── 2.10 NFT Collection ─────────────────
+
+    NFTPerks:
+      type: object
+      required: [futureAirdrop, exclusiveAccess, meetupPriority]
+      properties:
+        futureAirdrop:    { type: boolean }
+        exclusiveAccess:  { type: boolean }
+        meetupPriority:   { type: boolean }
+
+    NFTCollection:
+      type: object
+      required: [id, creatorId, trackId, name, supply, priceEth, royaltyPct,
+                 rarity, enableAirdrop, perks, mintedCount, status, chain,
+                 createdAt, updatedAt]
+      properties:
+        id:                   { type: string, format: uuid }
+        creatorId:            { type: string, format: uuid }
+        trackId:              { type: string, format: uuid }
+        singerId:             { type: string, format: uuid, nullable: true }
+        name:                 { type: string, maxLength: 100 }
+        description:          { type: string, nullable: true }
+        coverUrl:             { type: string, format: uri, nullable: true }
+        supply:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        priceEth:
+          type: string
+          description: decimal字符串，如 "0.05"
+        royaltyPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 10
+        rarity:               { $ref: '#/components/schemas/NFTRarity' }
+        enableAirdrop:        { type: boolean, default: false }
+        perks:                { $ref: '#/components/schemas/NFTPerks' }
+        contractAddress:      { type: string, nullable: true }
+        tokenIdRangeStart:    { type: integer, nullable: true }
+        tokenIdRangeEnd:      { type: integer, nullable: true }
+        mintedCount:          { type: integer, minimum: 0, default: 0 }
+        status:               { $ref: '#/components/schemas/MintStatus' }
+        chain:                { type: string, default: ethereum }
+        ipfsMetadataUrl:      { type: string, nullable: true }
+        createdAt:            { type: string, format: date-time }
+        updatedAt:            { type: string, format: date-time }
+
+    NFTCollectionSummary:
+      type: object
+      required: [id, name, coverUrl, priceEth, remaining, rarity]
+      properties:
+        id:        { type: string, format: uuid }
+        name:      { type: string }
+        coverUrl:  { type: string, format: uri, nullable: true }
+        priceEth:  { type: string, description: decimal字符串 }
+        remaining: { type: integer }
+        rarity:    { $ref: '#/components/schemas/NFTRarity' }
+        trackId:   { type: string, format: uuid, nullable: true }
+
+    NftMintRequest:
+      type: object
+      required: [trackId, collectionName, supply, priceEth, royaltyPct, rarity, enableAirdrop]
+      properties:
+        trackId:        { type: string, format: uuid }
+        collectionName: { type: string }
+        supply:         { type: integer, minimum: 1, maximum: 10000 }
+        priceEth:       { type: number }
+        royaltyPct:     { type: integer, minimum: 0, maximum: 100 }
+        rarity:         { $ref: '#/components/schemas/NFTRarity' }
+        enableAirdrop:  { type: boolean }
+
+    # ── 2.11 NFTMintJob ─────────────────────
+
+    NFTMintJob:
+      type: object
+      required: [id, collectionId, userId, walletAddress, walletType,
+                 status, currentStage, createdAt]
+      properties:
+        id:            { type: string, format: uuid }
+        collectionId:  { type: string, format: uuid }
+        userId:        { type: string, format: uuid }
+        walletAddress: { type: string }
+        walletType:    { $ref: '#/components/schemas/WalletType' }
+        status:        { $ref: '#/components/schemas/MintStatus' }
+        currentStage:  { $ref: '#/components/schemas/MintStage' }
+        txHash:        { type: string, nullable: true }
+        gasFeeEth:     { type: string, nullable: true }
+        errorMessage:  { type: string, nullable: true }
+        createdAt:     { type: string, format: date-time }
+        completedAt:   { type: string, format: date-time, nullable: true }
+
+    # ── 2.12 Finance ────────────────────────
+
+    Transaction:
+      type: object
+      required: [id, userId, type, direction, amount, currency, status,
+                 description, createdAt]
+      properties:
+        id:          { type: string, format: uuid }
+        userId:      { type: string, format: uuid }
+        type:        { $ref: '#/components/schemas/TransactionType' }
+        direction:   { $ref: '#/components/schemas/TransactionDirection' }
+        amount:
+          type: number
+          description: 金额，精度2位
+        currency:    { type: string, default: CNY }
+        status:      { $ref: '#/components/schemas/TransactionStatus' }
+        referenceId: { type: string, nullable: true }
+        description: { type: string, maxLength: 200 }
+        createdAt:   { type: string, format: date-time }
+
+    WalletBalance:
+      type: object
+      required: [userId, available, pending, totalEarned, currency, updatedAt]
+      properties:
+        userId:       { type: string, format: uuid }
+        available:    { type: number }
+        pending:      { type: number }
+        totalEarned:  { type: number }
+        currency:     { type: string, default: CNY }
+        updatedAt:    { type: string, format: date-time }
+
+    # ── 2.13 Earnings Chart ─────────────────
+
+    EarningDataPoint:
+      type: object
+      required: [period, songRevenue, badgeRevenue]
+      properties:
+        period:
+          type: string
+          description: 时间周期标识，如 "2026-W14" 或 "2026-04" 或 "1"~"7"
+        songRevenue:   { type: number, description: 流媒体版税收益 }
+        badgeRevenue:  { type: number, description: NFT勋章收益 }
+
+    DashboardStats:
+      type: object
+      required: [userId, ecoValue, estimatedRoyalty, badgeHolders,
+                 totalStreams, totalFans, updatedAt]
+      properties:
+        userId:           { type: string, format: uuid }
+        ecoValue:         { type: number, description: 生态估值（元）}
+        estimatedRoyalty: { type: number, description: 预估版税（元）}
+        badgeHolders:     { type: integer }
+        totalStreams:      { type: integer }
+        totalFans:         { type: integer }
+        updatedAt:         { type: string, format: date-time }
+
+    # ── 2.14 MarketplaceArtist ──────────────
+
+    MarketplaceArtist:
+      type: object
+      required: [id, singerId, sellerId, name, avatarUrl, style, signingPrice,
+                 songsCount, followersCount, creatorUsername, licenseType,
+                 enableAutoReply, status, views, inquiries, createdAt, updatedAt]
+      properties:
+        id:               { type: string, format: uuid }
+        singerId:         { type: string, format: uuid }
+        sellerId:         { type: string, format: uuid }
+        name:             { type: string }
+        avatarUrl:        { type: string, format: uri }
+        style:            { type: string }
+        signingPrice:
+          type: integer
+          minimum: 1
+          default: 8800
+          description: 签约价格（元），建议范围 5000–15000
+        description:      { type: string, nullable: true }
+        songsCount:       { type: integer }
+        followersCount:   { type: integer }
+        creatorUsername:  { type: string }
+        licenseType:      { $ref: '#/components/schemas/LicenseType' }
+        enableAutoReply:  { type: boolean }
+        status:           { $ref: '#/components/schemas/ListingStatus' }
+        views:            { type: integer, default: 0 }
+        inquiries:        { type: integer, default: 0 }
+        createdAt:        { type: string, format: date-time }
+        updatedAt:        { type: string, format: date-time }
+
+    # ── 2.14 ArtistAnalytics ────────────────
+
+    RecentSong:
+      type: object
+      required: [id, title, plays, date, duration]
+      properties:
+        id:       { type: string, format: uuid }
+        title:    { type: string }
+        plays:    { type: integer }
+        date:     { type: string, format: date }
+        duration: { type: string, example: "3:45" }
+
+    ArtistAnalytics:
+      type: object
+      required: [singerId, totalSongs, totalPlays, totalRevenue, avgPlayRate,
+                 activeDays, recentSongs, fanGrowthData, playTrendData, updatedAt]
+      properties:
+        singerId:       { type: string, format: uuid }
+        totalSongs:     { type: integer }
+        totalPlays:     { type: integer }
+        totalRevenue:   { type: number }
+        avgPlayRate:    { type: number, minimum: 0, maximum: 100 }
+        activeDays:     { type: integer }
+        recentSongs:
+          type: array
+          items: { $ref: '#/components/schemas/RecentSong' }
+        fanGrowthData:
+          type: array
+          items: { type: integer }
+          description: 7天粉丝增长趋势
+        playTrendData:
+          type: array
+          items: { type: integer }
+          description: 7天播放趋势
+        updatedAt:      { type: string, format: date-time }
+
+    # ── 2.15 SigningContract ────────────────
+
+    SigningContract:
+      type: object
+      required: [id, listingId, buyerId, sellerId, singerId, signingPrice,
+                 revenueSplitBuyer, revenueSplitSeller, termsAgreed,
+                 paymentStatus, contractStatus, createdAt]
+      properties:
+        id:                  { type: string, format: uuid }
+        listingId:           { type: string, format: uuid }
+        buyerId:             { type: string, format: uuid }
+        sellerId:            { type: string, format: uuid }
+        singerId:            { type: string, format: uuid }
+        signingPrice:        { type: number }
+        revenueSplitBuyer:
+          type: integer
+          default: 70
+          description: 买家收益分成比例%
+        revenueSplitSeller:
+          type: integer
+          default: 30
+          description: 卖家收益分成比例%
+        termsAgreed:         { type: boolean }
+        termsAgreedAt:       { type: string, format: date-time, nullable: true }
+        paymentStatus:
+          type: string
+          enum: [pending, paid, refunded]
+        contractStatus:
+          type: string
+          enum: [active, terminated]
+        createdAt:           { type: string, format: date-time }
+        activatedAt:         { type: string, format: date-time, nullable: true }
+
+    # ── 2.16 ArtistListingRequest ───────────
+
+    ArtistListingRequest:
+      type: object
+      required: [singerId, signingPrice, licenseType, enableAutoReply]
+      properties:
+        singerId:        { type: string, format: uuid }
+        signingPrice:
+          type: integer
+          minimum: 1
+          description: 建议范围 5000–15000
+        description:
+          type: string
+          maxLength: 2000
+          default: ""
+        licenseType:     { $ref: '#/components/schemas/LicenseType' }
+        enableAutoReply: { type: boolean }
+
+    # ── 2.17 DistributionChannel ────────────
+
+    DistributionChannel:
+      type: object
+      required: [id, name, nameEn, description, requiredAccounts, benefits,
+                 benefitsEn, platformCount, isActive]
+      properties:
+        id:               { $ref: '#/components/schemas/DistributionChannelId' }
+        name:             { type: string }
+        nameEn:           { type: string }
+        description:      { type: string }
+        requiredAccounts:
+          type: array
+          items: { $ref: '#/components/schemas/PlatformAccountKey' }
+        benefits:         { type: array, items: { type: string } }
+        benefitsEn:       { type: array, items: { type: string } }
+        platformCount:    { type: integer }
+        isActive:         { type: boolean }
+
+    # ── 2.18 PlatformAccount ────────────────
+
+    PlatformAccount:
+      type: object
+      required: [id, userId, platformKey, connected, updatedAt]
+      properties:
+        id:             { type: string, format: uuid }
+        userId:         { type: string, format: uuid }
+        platformKey:    { $ref: '#/components/schemas/PlatformAccountKey' }
+        connected:      { type: boolean }
+        email:          { type: string, format: email, nullable: true }
+        connectedAt:    { type: string, format: date-time, nullable: true }
+        updatedAt:      { type: string, format: date-time }
+
+    # ── 2.19 DistributionJob ────────────────
+
+    PlatformResult:
+      type: object
+      required: [platformKey, channelId, status]
+      properties:
+        platformKey:   { $ref: '#/components/schemas/PlatformAccountKey' }
+        channelId:     { $ref: '#/components/schemas/DistributionChannelId' }
+        status:
+          type: string
+          enum: [success, failed, pending]
+        trackUrl:      { type: string, format: uri, nullable: true }
+        errorMessage:  { type: string, nullable: true }
+
+    DistributionJob:
+      type: object
+      required: [id, producerId, trackId, selectedChannels, enablePreSave,
+                 status, platformResults, submittedAt]
+      properties:
+        id:               { type: string, format: uuid }
+        producerId:       { type: string, format: uuid }
+        trackId:          { type: string, format: uuid }
+        singerId:         { type: string, format: uuid, nullable: true }
+        selectedChannels:
+          type: array
+          items: { $ref: '#/components/schemas/DistributionChannelId' }
+        releaseDate:
+          type: string
+          format: date
+          nullable: true
+          description: null表示立即发行
+        releaseTime:
+          type: string
+          nullable: true
+          example: "18:00"
+        enablePreSave:    { type: boolean, default: false }
+        preSaveStartDays: { type: integer, default: 15 }
+        status:           { $ref: '#/components/schemas/DistributionJobStatus' }
+        platformResults:
+          type: array
+          items: { $ref: '#/components/schemas/PlatformResult' }
+        submittedAt:      { type: string, format: date-time }
+        completedAt:      { type: string, format: date-time, nullable: true }
+
+    DistributionPublishRequest:
+      type: object
+      required: [trackId, channelIds]
+      properties:
+        trackId:        { type: string, format: uuid }
+        channelIds:
+          type: array
+          items: { $ref: '#/components/schemas/DistributionChannelId' }
+          minItems: 1
+        releaseDate:    { type: string, format: date }
+        releaseTime:    { type: string, example: "18:00" }
+        preSaveEnabled: { type: boolean, default: false }
+
+    # ── 2.20 ChartEntry ─────────────────────
+
+    ChartEntry:
+      type: object
+      required: [id, chartId, trackId, singerId, title, artistName, coverUrl,
+                 votes, trend, rank, updatedAt]
+      properties:
+        id:          { type: string, format: uuid }
+        chartId:     { type: string, example: weekly_hot }
+        trackId:     { type: string, format: uuid }
+        singerId:    { type: string, format: uuid }
+        title:       { type: string }
+        artistName:  { type: string }
+        coverUrl:    { type: string, format: uri }
+        votes:       { type: integer, minimum: 0, default: 0 }
+        trend:       { $ref: '#/components/schemas/ChartTrend' }
+        rank:        { type: integer, minimum: 1 }
+        prevRank:    { type: integer, nullable: true }
+        updatedAt:   { type: string, format: date-time }
+
+    VoteRecord:
+      type: object
+      required: [id, chartEntryId, userId, votedAt]
+      properties:
+        id:           { type: string, format: uuid }
+        chartEntryId: { type: string, format: uuid }
+        userId:       { type: string, format: uuid }
+        votedAt:      { type: string, format: date-time }
+
+    # ── 2.21 Coach / Trainee ────────────────
+
+    CoachTrainee:
+      type: object
+      required: [id, coachId, traineeId, status, revenueSharePct,
+                 joinedAt, updatedAt]
+      properties:
+        id:             { type: string, format: uuid }
+        coachId:        { type: string, format: uuid }
+        traineeId:      { type: string, format: uuid }
+        status:         { $ref: '#/components/schemas/TraineeStatus' }
+        revenueSharePct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        joinedAt:       { type: string, format: date-time }
+        updatedAt:      { type: string, format: date-time }
+
+    TraineeKPI:
+      type: object
+      required: [traineeId, username, avatarUrl, status, weeklySongs,
+                 weeklyProgress, weeklyRevenue, successRate, pendingReviews,
+                 weekStart]
+      properties:
+        traineeId:       { type: string, format: uuid }
+        username:        { type: string }
+        avatarUrl:       { type: string, format: uri }
+        status:          { $ref: '#/components/schemas/TraineeStatus' }
+        weeklySongs:     { type: integer }
+        weeklyProgress:  { type: integer, minimum: 0, maximum: 100 }
+        weeklyRevenue:   { type: number }
+        successRate:     { type: integer, minimum: 0, maximum: 100 }
+        pendingReviews:  { type: integer }
+        weekStart:       { type: string, format: date }
+
+    SubmissionReview:
+      type: object
+      required: [id, coachId, traineeId, trackId, status, submittedAt]
+      properties:
+        id:             { type: string, format: uuid }
+        coachId:        { type: string, format: uuid }
+        traineeId:      { type: string, format: uuid }
+        trackId:        { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        reviewComment:  { type: string, nullable: true }
+        submittedAt:    { type: string, format: date-time }
+        reviewedAt:     { type: string, format: date-time, nullable: true }
+
+# ─────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────
+paths:
+
+  # ── 3.1 Auth ────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password]
+              properties:
+                username: { type: string, minLength: 3, maxLength: 50 }
+                email:    { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/User' }
+        '400':
+          description: 字段校验失败
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:         { $ref: '#/components/schemas/User' }
+                          accessToken:  { type: string }
+                          refreshToken: { type: string }
+        '401':
+          description: 邮箱或密码错误
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      responses:
+        '200':
+          description: 登出成功
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Token刷新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          accessToken: { type: string }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      responses:
+        '200':
+          description: 当前用户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/User' }
+    patch:
+      tags: [auth]
+      operationId: updateMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                langPreference:  { type: string, enum: [zh, en] }
+                themePreference: { type: string }
+                avatarUrl:       { type: string, format: uri }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/User' }
+
+  # ── 3.2 Singers ─────────────────────────
+
+  /singers:
+    get:
+      tags: [singers]
+      operationId: listSingers
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/SingerStatus' }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: 歌手列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SingerSummary' }
+                      pagination: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [singers]
+      operationId: createSinger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSingerRequest' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SingerDetail' }
+        '402':
+          description: 积分不足
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: 套餐歌手数量上限
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /singers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [singers]
+      operationId: getSinger
+      responses:
+        '200':
+          description: 歌手详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SingerDetail' }
+        '404':
+          description: 歌手不存在
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      tags: [singers]
+      operationId: updateSinger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:       { type: string }
+                style:      { type: string }
+                tags:       { type: array, items: { type: string } }
+                status:     { $ref: '#/components/schemas/SingerStatus' }
+                isPublic:   { type: boolean }
+                parameters: { $ref: '#/components/schemas/PersonaParams' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SingerDetail' }
+    delete:
+      tags: [singers]
+      operationId: deleteSinger
+      description: 软删除（归档）
+      responses:
+        '200':
+          description: 归档成功
+
+  /singers/{id}/wardrobe:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [singers]
+      operationId: updateSingerWardrobe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EquippedItems' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/EquippedItems' }
+
+  /singers/{id}/pose:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [singers]
+      operationId: updateSingerPose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                poseId:              { type: string, nullable: true }
+                expressionId:        { type: string, nullable: true }
+                expressionIntensity: { type: integer, minimum: 0, maximum: 100 }
+                gestureId:           { type: string, nullable: true }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SingerPoseConfig' }
+
+  /singers/generate:
+    post:
+      tags: [singers]
+      operationId: generateSinger
+      description: AI生成歌手
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parameters]
+              properties:
+                parameters:   { $ref: '#/components/schemas/PersonaParams' }
+                prompt:       { type: string }
+                referenceImageUrl: { type: string, format: uri }
+      responses:
+        '201':
+          description: 生成成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SingerDetail' }
+
+  # ── 3.3 Official IPs ─────────────────────
+
+  /official-ips:
+    get:
+      tags: [officialIps]
+      operationId: listOfficialIps
+      responses:
+        '200':
+          description: 官方IP列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/OfficialIp' }
+
+  /official-ips/{id}:
+    get:
+      tags: [officialIps]
+      operationId: getOfficialIp
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 官方IP详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/OfficialIp' }
+
+  # ── 3.4 Wardrobe ─────────────────────────
+
+  /wardrobe/items:
+    get:
+      tags: [wardrobe]
+      operationId: listWardrobeItems
+      parameters:
+        - name: category
+          in: query
+          schema: { $ref: '#/components/schemas/ClothingCategory' }
+        - name: rarity
+          in: query
+          schema: { $ref: '#/components/schemas/SingerQuality' }
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: 服装库列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ClothingItem' }
+
+  /wardrobe/my-items:
+    get:
+      tags: [wardrobe]
+      operationId: listMyWardrobeItems
+      responses:
+        '200':
+          description: 用户已拥有/收藏服装
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/UserWardrobeItem' }
+
+  /wardrobe/items/{id}/favorite:
+    post:
+      tags: [wardrobe]
+      operationId: toggleFavoriteWardrobeItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 收藏/取消收藏成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          isFavorited: { type: boolean }
+
+  /wardrobe/items/{id}/unlock:
+    post:
+      tags: [wardrobe]
+      operationId: unlockWardrobeItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 解锁成功
+        '402':
+          description: 积分不足
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /wardrobe/outfits:
+    get:
+      tags: [wardrobe]
+      operationId: listSavedOutfits
+      responses:
+        '200':
+          description: 保存的套装列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SavedOutfit' }
+    post:
+      tags: [wardrobe]
+      operationId: saveOutfit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [singerId, name, items]
+              properties:
+                singerId: { type: string, format: uuid }
+                name:     { type: string }
+                items:    { $ref: '#/components/schemas/EquippedItems' }
+      responses:
+        '201':
+          description: 套装保存成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SavedOutfit' }
+
+  /wardrobe/outfits/{id}:
+    delete:
+      tags: [wardrobe]
+      operationId: deleteOutfit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 删除成功
+
+  # ── 3.5 Poses / Expressions / Gestures ──
+
+  /poses:
+    get:
+      tags: [poses]
+      operationId: listPoses
+      parameters:
+        - name: category
+          in: query
+          schema: { $ref: '#/components/schemas/PoseCategory' }
+        - name: difficulty
+          in: query
+          schema: { $ref: '#/components/schemas/PoseDifficulty' }
+      responses:
+        '200':
+          description: 姿态列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Pose' }
+
+  /poses/{id}/unlock:
+    post:
+      tags: [poses]
+      operationId: unlockPose
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 解锁成功
+        '402':
+          description: 积分不足
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /expressions:
+    get:
+      tags: [poses]
+      operationId: listExpressions
+      responses:
+        '200':
+          description: 表情列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Expression' }
+
+  /gestures:
+    get:
+      tags: [poses]
+      operationId: listGestures
+      responses:
+        '200':
+          description: 手势列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Gesture' }
+
+  # ── 3.6 Tracks ───────────────────────────
+
+  /tracks:
+    get:
+      tags: [tracks]
+      operationId: listTracks
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TrackStatus' }
+        - name: singerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: 曲目列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/TrackSummary' }
+                      pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /tracks/generate:
+    post:
+      tags: [tracks]
+      operationId: generateTrack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrackGenerationRequest' }
+      responses:
+        '202':
+          description: 任务已创建，轮询job_id
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AsyncJobStarted' }
+        '402':
+          description: 积分不足
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /tracks/generate/{jobId}:
+    get:
+      tags: [tracks]
+      operationId: getTrackGenerationStatus
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 任务状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TrackGenerationResponse' }
+
+  /tracks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [tracks]
+      operationId: getTrack
+      responses:
+        '200':
+          description: 曲目详情（含歌词）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Track' }
+    patch:
+      tags: [tracks]
+      operationId: updateTrack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:    { type: string }
+                coverUrl: { type: string, format: uri }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Track' }
+    delete:
+      tags: [tracks]
+      operationId: deleteTrack
+      responses:
+        '200':
+          description: 删除成功
+
+  /tracks/{id}/publish:
+    post:
+      tags: [tracks]
+      operationId: publishTrack
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 发布成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Track' }
+
+  # ── 3.7 NFT ──────────────────────────────
+
+  /nft/collections:
+    get:
+      tags: [nft]
+      operationId: listNftCollections
+      responses:
+        '200':
+          description: NFT合集列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/NFTCollectionSummary' }
+    post:
+      tags: [nft]
+      operationId: createNftCollection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NftMintRequest' }
+      responses:
+        '201':
+          description: 合集配置已创建
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NFTCollection' }
+
+  /nft/collections/{id}:
+    get:
+      tags: [nft]
+      operationId: getNftCollection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 合集详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NFTCollection' }
+
+  /nft/mint:
+    post:
+      tags: [nft]
+      operationId: mintNft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [collectionId, walletAddress, walletType]
+              properties:
+                collectionId:  { type: string, format: uuid }
+                walletAddress: { type: string }
+                walletType:    { $ref: '#/components/schemas/WalletType' }
+      responses:
+        '202':
+          description: 铸造任务已创建
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AsyncJobStarted' }
+
+  /nft/mint/{jobId}:
+    get:
+      tags: [nft]
+      operationId: getNftMintStatus
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 铸造状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NFTMintJob' }
+
+  # ── 3.8 Finance ──────────────────────────
+
+  /finance/balance:
+    get:
+      tags: [finance]
+      operationId: getWalletBalance
+      responses:
+        '200':
+          description: 账户余额
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/WalletBalance' }
+
+  /finance/transactions:
+    get:
+      tags: [finance]
+      operationId: listTransactions
+      parameters:
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/TransactionType' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TransactionStatus' }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: 交易记录
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Transaction' }
+                      pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /finance/stats:
+    get:
+      tags: [finance]
+      operationId: getEarningStats
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [7d, 30d, 12m]
+      responses:
+        '200':
+          description: 收益统计图表数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/EarningDataPoint' }
+
+  /finance/withdraw:
+    post:
+      tags: [finance]
+      operationId: withdraw
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, walletAddress]
+              properties:
+                amount:        { type: number }
+                walletAddress: { type: string }
+      responses:
+        '200':
+          description: 提现申请已提交
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Transaction' }
+
+  # ── 3.9 Marketplace ──────────────────────
+
+  /marketplace:
+    get:
+      tags: [marketplace]
+      operationId: listMarketplace
+      security: []
+      parameters:
+        - name: style
+          in: query
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [priceAsc, priceDesc, newest, popular]
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: 市场艺人列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/MarketplaceArtist' }
+                      pagination: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [marketplace]
+      operationId: listArtist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArtistListingRequest' }
+      responses:
+        '201':
+          description: 挂牌成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MarketplaceArtist' }
+        '409':
+          description: 艺人已在市场挂牌
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /marketplace/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [marketplace]
+      operationId: getMarketplaceListing
+      responses:
+        '200':
+          description: 艺人挂牌详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MarketplaceArtist' }
+    patch:
+      tags: [marketplace]
+      operationId: updateListing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signingPrice:    { type: integer }
+                description:     { type: string }
+                enableAutoReply: { type: boolean }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MarketplaceArtist' }
+    delete:
+      tags: [marketplace]
+      operationId: removeListing
+      description: 下架艺人
+      responses:
+        '200':
+          description: 下架成功
+
+  /marketplace/{id}/sign:
+    post:
+      tags: [marketplace]
+      operationId: signArtist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agreedToTerms]
+              properties:
+                agreedToTerms: { type: boolean }
+      responses:
+        '200':
+          description: 签约成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SigningContract' }
+        '409':
+          description: 艺人已被签约
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /marketplace/{id}/analytics:
+    get:
+      tags: [marketplace]
+      operationId: getArtistAnalytics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 艺人数据分析
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ArtistAnalytics' }
+
+  # ── 3.10 Distribution ────────────────────
+
+  /distribution/channels:
+    get:
+      tags: [distribution]
+      operationId: listDistributionChannels
+      responses:
+        '200':
+          description: 发行渠道列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/DistributionChannel' }
+
+  /distribution/accounts:
+    get:
+      tags: [distribution]
+      operationId: listPlatformAccounts
+      responses:
+        '200':
+          description: 用户绑定的平台账号状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PlatformAccount' }
+
+  /distribution/accounts/{platform}/connect:
+    post:
+      tags: [distribution]
+      operationId: connectPlatformAccount
+      parameters:
+        - name: platform
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/PlatformAccountKey' }
+      responses:
+        '200':
+          description: OAuth授权跳转URL
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          redirectUrl: { type: string, format: uri }
+
+  /distribution/accounts/{platform}/disconnect:
+    post:
+      tags: [distribution]
+      operationId: disconnectPlatformAccount
+      parameters:
+        - name: platform
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/PlatformAccountKey' }
+      responses:
+        '200':
+          description: 解绑成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PlatformAccount' }
+
+  /distribution/jobs:
+    get:
+      tags: [distribution]
+      operationId: listDistributionJobs
+      responses:
+        '200':
+          description: 发行任务列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/DistributionJob' }
+    post:
+      tags: [distribution]
+      operationId: submitDistributionJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DistributionPublishRequest' }
+      responses:
+        '202':
+          description: 发行任务已提交
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/DistributionJob' }
+        '422':
+          description: 发行前置条件未满足（如账号未绑定）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /distribution/jobs/{id}:
+    get:
+      tags: [distribution]
+      operationId: getDistributionJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 发行任务状态与结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/DistributionJob' }
+
+  # ── 3.11 Charts ──────────────────────────
+
+  /charts:
+    get:
+      tags: [charts]
+      operationId: listCharts
+      security: []
+      responses:
+        '200':
+          description: 榜单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            chartId: { type: string }
+                            name:    { type: string }
+
+  /charts/{chartId}:
+    get:
+      tags: [charts]
+      operationId: getChart
+      security: []
+      parameters:
+        - name: chartId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 榜单数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ChartEntry' }
+
+  /charts/{entryId}/vote:
+    post:
+      tags: [charts]
+      operationId: voteChartEntry
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 投票成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/VoteRecord' }
+        '429':
+          description: 今日投票次数已达上限（每用户每天3票）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── 3.12 Coach ───────────────────────────
+
+  /coach/trainees:
+    get:
+      tags: [coach]
+      operationId: listTrainees
+      responses:
+        '200':
+          description: 学员列表（含KPI）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/TraineeKPI' }
+
+  /coach/trainees/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [coach]
+      operationId: getTrainee
+      responses:
+        '200':
+          description: 学员详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TraineeKPI' }
+
+  /coach/trainees/{id}/status:
+    patch:
+      tags: [coach]
+      operationId: updateTraineeStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/TraineeStatus' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CoachTrainee' }
+
+  /coach/reviews:
+    get:
+      tags: [coach]
+      operationId: listReviews
+      responses:
+        '200':
+          description: 待审核作品列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SubmissionReview' }
+
+  /coach/reviews/{id}/approve:
+    post:
+      tags: [coach]
+      operationId: approveReview
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 通过成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SubmissionReview' }
+
+  /coach/reviews/{id}/reject:
+    post:
+      tags: [coach]
+      operationId: rejectReview
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [comment]
+              properties:
+                comment: { type: string }
+      responses:
+        '200':
+          description: 驳回成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SubmissionReview' }
+
+  /coach/stats:
+    get:
+      tags: [coach]
+      operationId: getCoachStats
+      responses:
+        '200':
+          description: 小队整体KPI统计
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          totalTrainees:  { type: integer }
+                          activeTrainees: { type: integer }
+                          totalRevenue:   { type: number }
+                          weeklyRevenue:  { type: number }
+                          pendingReviews: { type: integer }
+
+  # ── 3.13 Credits ─────────────────────────
+
+  /credits/balance:
+    get:
+      tags: [credits]
+      operationId: getCreditsBalance
+      responses:
+        '200':
+          description: 积分余额
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          balance: { type: integer }
+
+  /credits/history:
+    get:
+      tags: [credits]
+      operationId: getCreditsHistory
+      responses:
+        '200':
+          description: 积分消耗/获取记录
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:          { type: string, format: uuid }
+                            delta:       { type: integer, description: 正=获取，负=消耗 }
+                            reason:      { type: string }
+                            createdAt:   { type: string, format: date-time }
+                      pagination: { $ref: '#/components/schemas/PaginationMeta' }
