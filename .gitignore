@@ -1,0 +1,11 @@
+**/.claude
+**/.idea
+**/.vscode
+**/target
+**/build
+**/out
+**/dist
+**/node_modules
+**/.DS_Store
+**/.next
+**/.mvn
