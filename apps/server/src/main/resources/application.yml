@@ -25,3 +25,8 @@ logging:
   level:
     com.aistareco: INFO
     org.hibernate.SQL: WARN
+
+aep:
+  jwt:
+    secret: aep-dev-secret-key-change-in-prod-32chars
+    expiration-ms: 3600000
