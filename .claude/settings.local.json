@@ -1,4 +1,6 @@
 {
+  "bypassPermissions": true,
+  "defaultMode": "bypassPermissions",
   "permissions": {
     "allow": [
       "Bash(mvn compile:*)",
