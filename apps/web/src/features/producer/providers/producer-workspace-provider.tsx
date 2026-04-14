@@ -37,7 +37,7 @@ export interface ProducerWorkspaceContextValue {
   deleteSinger: ReturnType<typeof useSingers>["deleteSinger"];
   generateTrack: (request: TrackGenerationRequest) => Promise<Awaited<ReturnType<ReturnType<typeof useTracks>["generateTrack"]>>>;
   mintCollection: (request: NftMintRequest) => Promise<Awaited<ReturnType<ReturnType<typeof useNftCollections>["mintCollection"]>>>;
-  signArtist: (request: ArtistSigningRequest) => Promise<Awaited<ReturnType<ReturnType<typeof useMarketplaceListings>["signArtist"]>>>;
+  signArtist: (listingId: string, request: ArtistSigningRequest) => Promise<Awaited<ReturnType<ReturnType<typeof useMarketplaceListings>["signArtist"]>>>;
   publishDistribution: (request: DistributionPublishRequest) => Promise<{ success: boolean; publishJobId: string }>;
 }
 

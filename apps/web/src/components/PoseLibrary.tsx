@@ -96,7 +96,7 @@ export function PoseLibrary({ lang, onBack, activeSinger, poses, expressions, ge
                       <Card className={`relative bg-[#0c0c0e]/80 backdrop-blur-xl border-white/10 hover:border-cyan-500/30 transition-all cursor-pointer group overflow-hidden ${selectedPose?.id === pose.id ? "ring-2 ring-cyan-500/50" : ""} ${pose.isLocked ? "opacity-50" : ""}`} onClick={() => !pose.isLocked && setSelectedPose(pose)}>
                         <CardContent className="p-0">
                           <div className="relative aspect-square overflow-hidden">
-                            <img src={pose.thumbnail} alt={pose.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                            <img src={pose.thumbnailUrl} alt={pose.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
                             <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
                               <div className="flex flex-col gap-1">
@@ -138,7 +138,7 @@ export function PoseLibrary({ lang, onBack, activeSinger, poses, expressions, ge
                   <div className="relative mb-6">
                     <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500 to-purple-500 rounded-3xl blur-3xl opacity-20" />
                     <div className="relative w-72 h-72 rounded-3xl overflow-hidden border-2 border-white/20">
-                      <img src={selectedPose.thumbnail} alt={selectedPose.name} className="w-full h-full object-cover" />
+                      <img src={selectedPose.thumbnailUrl} alt={selectedPose.name} className="w-full h-full object-cover" />
                     </div>
                   </div>
                   <h3 className="text-2xl font-black text-white mb-2">{selectedPose.name}</h3>
@@ -222,7 +222,7 @@ export function PoseLibrary({ lang, onBack, activeSinger, poses, expressions, ge
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {gestures.map((gesture) => (
                       <motion.div key={gesture.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setSelectedGesture(gesture.id)} className={`p-6 rounded-2xl border-2 flex flex-col items-center cursor-pointer transition-all ${selectedGesture === gesture.id ? "bg-purple-500/20 border-purple-500/50 shadow-lg shadow-purple-500/20" : "bg-black/40 border-white/10 hover:border-purple-500/30"}`}>
-                        <div className="text-6xl mb-3">{gesture.icon}</div>
+                        <div className="text-6xl mb-3">{gesture.emoji}</div>
                         <div className="text-sm font-bold text-white text-center">{gesture.name}</div>
                         <Badge variant="outline" className="mt-2 text-xs border-white/20">
                           {gesture.category}

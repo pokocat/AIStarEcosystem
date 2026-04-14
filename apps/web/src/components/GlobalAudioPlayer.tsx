@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'motion/react';
 interface Song {
   id: string;
   title: string;
-  date: string;
+  createdAt: string;
   status: string;
   audioUrl?: string;
 }
@@ -118,7 +118,7 @@ export default function GlobalAudioPlayer({
                 
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-white truncate mb-1">{currentSong.title}</div>
-                  <div className="text-xs text-gray-500 font-mono">{currentSong.date}</div>
+                  <div className="text-xs text-gray-500 font-mono">{currentSong.createdAt.slice(0, 10)}</div>
                 </div>
               </div>
 

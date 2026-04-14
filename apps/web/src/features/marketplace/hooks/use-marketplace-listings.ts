@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ArtistSigningRequest, MarketplaceListing } from "@/types/contracts/marketplace";
+import type { ArtistSigningRequest, MarketplaceArtist } from "@/types/contracts/marketplace";
 import { getMarketplaceListings, signArtist } from "@/api/marketplace";
 
 export function useMarketplaceListings() {
-  const [data, setData] = useState<MarketplaceListing[]>([]);
+  const [data, setData] = useState<MarketplaceArtist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,8 +31,8 @@ export function useMarketplaceListings() {
     };
   }, []);
 
-  const handleSignArtist = async (request: ArtistSigningRequest) => {
-    return signArtist(request);
+  const handleSignArtist = async (listingId: string, request: ArtistSigningRequest) => {
+    return signArtist(listingId, request);
   };
 
   return { data, isLoading, error, signArtist: handleSignArtist };

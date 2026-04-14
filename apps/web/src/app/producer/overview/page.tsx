@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useProducerWorkspace } from "@/features/producer/hooks/use-producer-workspace";
 import { useDictionary } from "@/features/shared/hooks/use-dictionary";
 import { ErrorPanel, LoadingPanel } from "@/features/shared/components/page-feedback";
-import type { MarketplaceListing } from "@/types/contracts/marketplace";
+import { formatCurrencyCny } from "@/mocks/shared";
+import type { MarketplaceArtist } from "@/types/contracts/marketplace";
 import type { SingerDetail } from "@/types/contracts/singers";
 
 const ArtistSigningDialog = dynamic(() => import("@/components/ArtistSigningDialog"), { ssr: false });
@@ -28,18 +29,22 @@ interface LegacyArtist {
   owner: string;
   songs: number;
   followers: string;
+  listingId?: string;
 }
 
-function toLegacyMarketArtist(listing: MarketplaceListing): LegacyArtist {
+function toLegacyMarketArtist(listing: MarketplaceArtist): LegacyArtist {
   return {
-    id: Number.parseInt(listing.artistId.replace(/\D/g, ""), 10) || 0,
+    id: Number.parseInt(listing.singerId.replace(/\D/g, ""), 10) || 0,
     name: listing.name,
     style: listing.style,
     avatar: listing.avatarUrl,
-    price: listing.priceLabel,
-    owner: listing.owner,
-    songs: listing.songs,
-    followers: listing.followersLabel
+    price: formatCurrencyCny(listing.signingPrice),
+    owner: listing.creatorUsername,
+    songs: listing.songsCount,
+    followers: listing.followersCount >= 1000
+      ? `${(listing.followersCount / 1000).toFixed(1)}k`
+      : listing.followersCount.toString(),
+    listingId: listing.id
   };
 }
 
@@ -49,11 +54,16 @@ function toLegacyActiveSinger(singer: SingerDetail): LegacyArtist {
     name: singer.name,
     style: singer.style,
     avatar: singer.avatarUrl,
-    price: `¥ ${(6800 + singer.popularity * 35).toLocaleString()}`,
+    price: formatCurrencyCny(6800 + singer.stats.popularity * 35),
     owner: "AI Star Eco",
-    songs: singer.songsCount,
-    followers: `${(singer.fansCount / 1000).toFixed(1)}k`
+    songs: singer.stats.songs,
+    followers: `${(singer.stats.fans / 1000).toFixed(1)}k`
   };
+}
+
+function formatTransactionAmount(amount: number, direction: "in" | "out"): string {
+  const prefix = direction === "in" ? "+" : "-";
+  return `${prefix} ${formatCurrencyCny(amount)}`;
 }
 
 export default function ProducerOverviewRoute() {
@@ -167,11 +177,11 @@ export default function ProducerOverviewRoute() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="name" stroke="#6b7280" />
+                <XAxis dataKey="period" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
                 <Tooltip contentStyle={{ background: "#0c0c0e", border: "1px solid rgba(255,255,255,0.1)" }} />
-                <Area type="monotone" dataKey="song" stroke="#06b6d4" fill="url(#overview-song)" />
-                <Area type="monotone" dataKey="badge" stroke="#a855f7" fill="url(#overview-badge)" />
+                <Area type="monotone" dataKey="songRevenue" stroke="#06b6d4" fill="url(#overview-song)" />
+                <Area type="monotone" dataKey="badgeRevenue" stroke="#a855f7" fill="url(#overview-badge)" />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -260,27 +270,31 @@ export default function ProducerOverviewRoute() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {transactions.slice(0, 5).map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-white/5">
-                    <td className="p-4 text-gray-500">{transaction.date}</td>
-                    <td className="p-4 font-bold text-gray-300">{transaction.description}</td>
-                    <td className={`p-4 font-mono font-black ${transaction.amountLabel.startsWith("+") ? "text-emerald-400" : "text-white"}`}>
-                      {transaction.amountLabel}
-                    </td>
-                    <td className="p-4 text-right">
-                      <Badge
-                        variant="outline"
-                        className={
-                          transaction.status === "Completed"
-                            ? "border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 font-bold text-emerald-400"
-                            : "border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 font-bold text-yellow-400"
-                        }
-                      >
-                        {transaction.status}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
+                {transactions.slice(0, 5).map((transaction) => {
+                  const amountStr = formatTransactionAmount(transaction.amount, transaction.direction);
+                  const isIncome = transaction.direction === "in";
+                  return (
+                    <tr key={transaction.id} className="hover:bg-white/5">
+                      <td className="p-4 text-gray-500">{transaction.createdAt.slice(0, 10)}</td>
+                      <td className="p-4 font-bold text-gray-300">{transaction.description}</td>
+                      <td className={`p-4 font-mono font-black ${isIncome ? "text-emerald-400" : "text-white"}`}>
+                        {amountStr}
+                      </td>
+                      <td className="p-4 text-right">
+                        <Badge
+                          variant="outline"
+                          className={
+                            transaction.status === "completed"
+                              ? "border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 font-bold text-emerald-400"
+                              : "border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 font-bold text-yellow-400"
+                          }
+                        >
+                          {transaction.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -293,9 +307,8 @@ export default function ProducerOverviewRoute() {
         onClose={() => setSigningArtist(null)}
         onSuccess={async () => {
           if (!signingArtist) return;
-          const listing = marketListings.find((item) => item.name === signingArtist.name);
-          if (listing) {
-            await workspace.signArtist({ artistId: listing.artistId, offerPriceLabel: listing.priceLabel });
+          if (signingArtist.listingId) {
+            await workspace.signArtist(signingArtist.listingId, { agreedToTerms: true });
           }
           setSigningArtist(null);
         }}

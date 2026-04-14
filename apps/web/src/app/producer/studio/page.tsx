@@ -143,13 +143,13 @@ export default function ProducerStudioRoute() {
                   <div>
                     <div className="font-bold text-white">{track.title}</div>
                     <div className="mt-1 text-xs text-gray-500">
-                      {track.date} · {track.status} · {track.durationLabel}
+                      {track.createdAt.slice(0, 10)} · {track.status} · {Math.floor(track.durationSec / 60)}:{String(track.durationSec % 60).padStart(2, "0")}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge variant="outline" className="border-white/10 text-gray-300">
-                    {track.plays.toLocaleString()}
+                    {track.playCount.toLocaleString()}
                   </Badge>
                   <Button
                     size="icon"

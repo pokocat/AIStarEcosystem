@@ -28,22 +28,45 @@ export function buildSingerWorkspace(lang: Lang): SingerWorkspacePayload {
     status: singer.status,
     quality: singer.quality,
     avatarUrl: singer.avatarUrl,
-    createdAt: singer.createdAt,
-    songsCount: singer.songsCount,
-    fansCount: singer.fansCount,
-    popularity: singer.popularity,
+    ownerId: "user-demo",
     tags: singer.tags,
-    parameters: singer.parameters
+    parameters: singer.parameters,
+    equippedWardrobe: {
+      top: null,
+      bottom: null,
+      accessory: null,
+      shoes: null,
+      hair: null
+    },
+    activePoseId: null,
+    activeExpressionId: null,
+    activeGesture: null,
+    parentAId: null,
+    parentBId: null,
+    geneticRatio: null,
+    isPublic: singer.status === "active",
+    stats: {
+      songs: singer.songsCount,
+      fans: singer.fansCount,
+      popularity: singer.popularity
+    },
+    createdAt: singer.createdAt,
+    updatedAt: singer.createdAt
   }));
 
   const officialIpTemplates: OfficialIpTemplate[] = officialIpFixtures.map((template) => ({
     id: template.id,
     name: pickLocalizedText(lang, template.name),
+    nameEn: template.nameEn,
     style: pickLocalizedText(lang, template.style),
+    styleEn: template.styleEn,
     rarity: template.rarity,
     avatarUrl: template.avatarUrl,
     tags: template.tags,
-    preset: template.preset
+    presetParams: template.presetParams,
+    isActive: template.isActive,
+    sortOrder: template.sortOrder,
+    createdAt: template.createdAt
   }));
 
   const personaPresets: PersonaPreset[] = personaPresetFixtures.map((preset) => ({
@@ -56,6 +79,7 @@ export function buildSingerWorkspace(lang: Lang): SingerWorkspacePayload {
   const wardrobeCatalog: WardrobeItem[] = wardrobeFixtures.map((item) => ({
     id: item.id,
     name: pickLocalizedText(lang, item.name),
+    nameEn: item.nameEn,
     category: item.category,
     imageUrl: item.imageUrl,
     rarity: item.rarity,
@@ -63,32 +87,45 @@ export function buildSingerWorkspace(lang: Lang): SingerWorkspacePayload {
     tags: item.tags,
     isLocked: item.isLocked,
     isNew: item.isNew,
-    isTrending: item.isTrending
+    isTrending: item.isTrending,
+    sortOrder: item.sortOrder,
+    isActive: item.isActive,
+    createdAt: item.createdAt
   }));
 
   const poseCatalog: PosePreset[] = poseFixtures.map((pose) => ({
     id: pose.id,
     name: pickLocalizedText(lang, pose.name),
+    nameEn: pose.nameEn,
     category: pose.category,
-    thumbnail: pose.thumbnail,
+    thumbnailUrl: pose.thumbnailUrl,
+    animationUrl: null,
     difficulty: pose.difficulty,
     isLocked: pose.isLocked,
-    isNew: pose.isNew
+    isNew: pose.isNew,
+    sortOrder: pose.sortOrder,
+    isActive: pose.isActive,
+    createdAt: pose.createdAt
   }));
 
   const expressionCatalog: ExpressionPreset[] = expressionFixtures.map((expression) => ({
     id: expression.id,
     name: pickLocalizedText(lang, expression.name),
+    nameEn: expression.nameEn,
     emoji: expression.emoji,
-    intensity: expression.intensity,
-    category: expression.category
+    defaultIntensity: expression.defaultIntensity,
+    category: expression.category,
+    sortOrder: expression.sortOrder,
+    isActive: expression.isActive
   }));
 
   const gestureCatalog: GesturePreset[] = gestureFixtures.map((gesture) => ({
     id: gesture.id,
     name: pickLocalizedText(lang, gesture.name),
-    icon: gesture.icon,
-    category: gesture.category
+    nameEn: gesture.nameEn,
+    emoji: gesture.emoji,
+    sortOrder: gesture.sortOrder,
+    isActive: gesture.isActive
   }));
 
   return {

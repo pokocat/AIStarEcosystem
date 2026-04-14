@@ -18,7 +18,13 @@ export default function ProducerMintRoute() {
   const [selectedTrack, setSelectedTrack] = useState<TrackSummary | null>(null);
 
   const trackForDialog = useMemo(
-    () => (selectedTrack ? { ...selectedTrack, duration: selectedTrack.durationLabel } : undefined),
+    () =>
+      selectedTrack
+        ? {
+            ...selectedTrack,
+            duration: `${Math.floor(selectedTrack.durationSec / 60)}:${String(selectedTrack.durationSec % 60).padStart(2, "0")}`
+          }
+        : undefined,
     [selectedTrack]
   );
 
@@ -43,7 +49,7 @@ export default function ProducerMintRoute() {
               <div key={track.id} className="space-y-3 rounded-xl border border-white/10 bg-black/40 p-4">
                 <div className="font-bold text-white">{track.title}</div>
                 <div className="text-xs text-gray-500">
-                  {track.status} · {track.date} · {track.durationLabel}
+                  {track.status} · {track.createdAt.slice(0, 10)} · {Math.floor(track.durationSec / 60)}:{String(track.durationSec % 60).padStart(2, "0")}
                 </div>
                 <Button
                   className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500"
@@ -73,7 +79,7 @@ export default function ProducerMintRoute() {
               <div key={collection.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-black/40 px-4 py-3">
                 <div>
                   <div className="font-bold text-white">{collection.name}</div>
-                  <div className="text-xs text-gray-500">{collection.priceLabel}</div>
+                  <div className="text-xs text-gray-500">{collection.priceEth} ETH</div>
                 </div>
                 <div className="text-xs text-cyan-400">Remaining {collection.remaining}</div>
               </div>

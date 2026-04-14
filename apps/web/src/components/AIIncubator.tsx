@@ -176,7 +176,7 @@ export function AIIncubator({
               <Music className="w-6 h-6 text-yellow-400" />
             </div>
             <div>
-              <div className="text-2xl font-black text-white">{singers.reduce((sum, singer) => sum + singer.songsCount, 0)}</div>
+              <div className="text-2xl font-black text-white">{singers.reduce((sum, singer) => sum + singer.stats.songs, 0)}</div>
               <div className="text-xs text-gray-400">{lang === "zh" ? "作品" : "Songs"}</div>
             </div>
           </CardContent>
@@ -189,7 +189,7 @@ export function AIIncubator({
             </div>
             <div>
               <div className="text-2xl font-black text-white">
-                {Math.round(singers.reduce((sum, singer) => sum + singer.fansCount, 0) / 1000)}K
+                {Math.round(singers.reduce((sum, singer) => sum + singer.stats.fans, 0) / 1000)}K
               </div>
               <div className="text-xs text-gray-400">{lang === "zh" ? "粉丝" : "Fans"}</div>
             </div>
@@ -273,15 +273,15 @@ export function AIIncubator({
 
                   <div className="grid grid-cols-3 gap-3 mb-4 p-3 rounded-lg bg-black/40 border border-white/5">
                     <div className="text-center">
-                      <div className="text-lg font-black text-white">{singer.songsCount}</div>
+                      <div className="text-lg font-black text-white">{singer.stats.songs}</div>
                       <div className="text-xs text-gray-500">{lang === "zh" ? "作品" : "Songs"}</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-black text-white">{(singer.fansCount / 1000).toFixed(1)}K</div>
+                      <div className="text-lg font-black text-white">{(singer.stats.fans / 1000).toFixed(1)}K</div>
                       <div className="text-xs text-gray-500">{lang === "zh" ? "粉丝" : "Fans"}</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-black text-white">{singer.popularity}</div>
+                      <div className="text-lg font-black text-white">{singer.stats.popularity}</div>
                       <div className="text-xs text-gray-500">{lang === "zh" ? "人气" : "Pop"}</div>
                     </div>
                   </div>
