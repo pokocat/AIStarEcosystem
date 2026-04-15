@@ -1,12 +1,16 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.TenantDto;
+import com.aistareco.aep.security.AdminPrincipal;
+import com.aistareco.aep.service.AdminAuditRecorder;
 import com.aistareco.aep.service.TenantService;
 import com.aistareco.common.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -16,9 +20,11 @@ import java.util.Map;
 public class AdminTenantController {
 
     private final TenantService tenantService;
+    private final AdminAuditRecorder auditRecorder;
 
-    public AdminTenantController(TenantService tenantService) {
+    public AdminTenantController(TenantService tenantService, AdminAuditRecorder auditRecorder) {
         this.tenantService = tenantService;
+        this.auditRecorder = auditRecorder;
     }
 
     @GetMapping
@@ -37,12 +43,25 @@ public class AdminTenantController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<TenantDto> create(@RequestBody Map<String, Object> body) {
-        return ApiResponse.of(tenantService.create(body));
+    public ApiResponse<TenantDto> create(
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal AdminPrincipal principal,
+            HttpServletRequest request
+    ) {
+        TenantDto tenant = tenantService.create(body);
+        auditRecorder.success(principal, request, "tenant.create", "tenant", tenant.id(), "创建租户");
+        return ApiResponse.of(tenant);
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<TenantDto> update(@PathVariable String id, @RequestBody Map<String, Object> body) {
-        return ApiResponse.of(tenantService.update(id, body));
+    public ApiResponse<TenantDto> update(
+            @PathVariable String id,
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal AdminPrincipal principal,
+            HttpServletRequest request
+    ) {
+        TenantDto tenant = tenantService.update(id, body);
+        auditRecorder.success(principal, request, "tenant.update", "tenant", id, "更新租户");
+        return ApiResponse.of(tenant);
     }
 }

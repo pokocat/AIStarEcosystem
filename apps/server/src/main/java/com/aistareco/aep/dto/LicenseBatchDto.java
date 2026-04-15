@@ -9,10 +9,10 @@ public record LicenseBatchDto(
         String batchNo,
         String productId,
         String planId,
-        LicenseBatch.LicenseType licenseType,
+        String licenseType,
         Integer durationDays,
         long creditDelta,
-        LicenseBatch.SettlementMode settlementMode,
+        String settlementMode,
         int totalCount,
         int activatedCount,
         String channelPartnerId,
@@ -23,8 +23,8 @@ public record LicenseBatchDto(
     public static LicenseBatchDto from(LicenseBatch b) {
         return new LicenseBatchDto(
                 b.getId(), b.getBatchNo(), b.getProductId(), b.getPlanId(),
-                b.getLicenseType(), b.getDurationDays(), b.getCreditDelta(),
-                b.getSettlementMode(), b.getTotalCount(), b.getActivatedCount(),
+                b.getLicenseType().name().toLowerCase(), b.getDurationDays(), b.getCreditDelta(),
+                b.getSettlementMode().name().toLowerCase(), b.getTotalCount(), b.getActivatedCount(),
                 b.getChannelPartnerId(), b.getValidFrom(), b.getValidTo(), b.getCreatedAt()
         );
     }

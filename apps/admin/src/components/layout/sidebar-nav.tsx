@@ -5,11 +5,14 @@ import { usePathname } from "next/navigation";
 import {
   Building2,
   Coins,
+  Flag,
   FileText,
+  Gauge,
   Key,
   LayoutDashboard,
-  Package,
+  Settings2,
   Shield,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,11 +28,16 @@ export const navItems: NavItem[] = [
   { href: "/dashboard", label: "总览看板", icon: LayoutDashboard, section: "概览" },
   { href: "/users", label: "用户管理", icon: Users, section: "运营" },
   { href: "/tenants", label: "租户空间", icon: Building2, section: "运营" },
-  { href: "/products", label: "产品与套餐", icon: Package, section: "目录" },
+  { href: "/plans", label: "套餐与权益", icon: Shield, section: "目录" },
+  { href: "/features", label: "功能开关", icon: Flag, section: "目录" },
   { href: "/entitlements", label: "权益配置", icon: Shield, section: "目录" },
   { href: "/licenses", label: "许可证", icon: Key, section: "商业" },
   { href: "/credits", label: "积分钱包", icon: Coins, section: "商业" },
+  { href: "/credits/adjust", label: "手动补点", icon: Coins, section: "商业" },
+  { href: "/price-rules", label: "价格规则", icon: Gauge, section: "商业" },
   { href: "/audit", label: "审计日志", icon: FileText, section: "合规" },
+  { href: "/risk", label: "风控事件", icon: TriangleAlert, section: "合规" },
+  { href: "/settings", label: "系统设置", icon: Settings2, section: "系统" },
 ];
 
 export function getPageTitle(pathname: string) {

@@ -1,11 +1,52 @@
+"use client";
+
+import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/providers/auth-provider";
+import type { AdminAuthResponse } from "@/types";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { signIn } = useAuth();
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("admin123");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"}/api/admin/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error?.message ?? "登录失败，请检查用户名和密码。");
+      }
+
+      signIn(json.data as AdminAuthResponse);
+      router.replace("/dashboard");
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "登录失败，请稍后重试。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_32%),linear-gradient(180deg,_#f7f9fc_0%,_#eef3fb_52%,_#e6edf8_100%)]">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:36px_36px]" />
@@ -53,19 +94,21 @@ export default function LoginPage() {
             <CardHeader className="space-y-3">
               <CardTitle className="text-2xl text-slate-950">登录管理后台</CardTitle>
               <CardDescription className="text-base leading-7 text-slate-600">
-                当前认证尚未接入，这里先作为后台入口与视觉占位页使用。
+                使用 Spring Security + JWT 管理员认证。默认开发账号已在后端启动时自动注入。
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
+            <CardContent>
+              <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-slate-700">
-                  工作邮箱
+                  用户名或邮箱
                 </Label>
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="operator@aistareco.com"
-                  defaultValue="operator@aistareco.com"
+                  type="text"
+                  placeholder="admin / admin@aistareco.com"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
                   className="border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
                 />
               </div>
@@ -76,25 +119,36 @@ export default function LoginPage() {
                 <Input
                   id="password"
                   type="password"
-                  defaultValue="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                   className="border-slate-200 bg-white text-slate-900"
                 />
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                临时占位说明：待 Spring Security 管理员认证接入后，这里应对接统一身份登录流程。
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+                开发环境默认账号：`admin / admin123`、`finance / finance123`
               </div>
+              {error ? (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
+                  {error}
+                </div>
+              ) : null}
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button asChild className="h-11 flex-1 bg-slate-950 text-white hover:bg-slate-800">
-                  <Link href="/dashboard">进入看板</Link>
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="h-11 flex-1 bg-slate-950 text-white hover:bg-slate-800"
+                >
+                  {submitting ? "登录中..." : "进入看板"}
                 </Button>
                 <Button
                   asChild
                   variant="outline"
                   className="h-11 flex-1 border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                 >
-                  <Link href="/users">预览用户管理</Link>
+                  <Link href="http://localhost:8080/h2-console" target="_blank">查看 H2 控制台</Link>
                 </Button>
               </div>
+              </form>
             </CardContent>
           </Card>
         </div>

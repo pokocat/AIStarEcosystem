@@ -24,6 +24,8 @@ public class AepUser {
     private String displayName;
     private String avatarUrl;
     private String walletAddress;
+    private String themePreference;
+    private String passwordHash;
 
     @Enumerated(EnumType.STRING)
     private UserRole role;
@@ -45,7 +47,7 @@ public class AepUser {
     private Instant lastLoginAt;
 
     public enum UserRole {
-        FAN, PRODUCER, COACH, PLATFORM_OPERATOR, FINANCE_ADMIN
+        FAN, PRODUCER, COACH, PLATFORM_OWNER, PLATFORM_OPERATOR, FINANCE_ADMIN, CHANNEL_MANAGER
     }
 
     public enum UserPlan {

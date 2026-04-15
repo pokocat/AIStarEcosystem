@@ -24,6 +24,7 @@ public class Entitlement {
     private EntitlementType entitlementType;
 
     private String featureCode;
+    @Column(name = "entitlement_value")
     private String value;
     private Instant validFrom;
     private Instant validTo;

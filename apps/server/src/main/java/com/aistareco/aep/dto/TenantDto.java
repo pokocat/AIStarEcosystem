@@ -7,15 +7,15 @@ import java.time.Instant;
 public record TenantDto(
         String id,
         String name,
-        Tenant.TenantType type,
-        Tenant.TenantStatus status,
+        String type,
+        String status,
         String ownerUserId,
         Instant createdAt,
         Instant updatedAt
 ) {
     public static TenantDto from(Tenant t) {
         return new TenantDto(
-                t.getId(), t.getName(), t.getType(), t.getStatus(),
+                t.getId(), t.getName(), t.getType().name().toLowerCase(), t.getStatus().name().toLowerCase(),
                 t.getOwnerUserId(), t.getCreatedAt(), t.getUpdatedAt()
         );
     }

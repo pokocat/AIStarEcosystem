@@ -8,7 +8,7 @@ public record LicenseKeyDto(
         String id,
         String batchId,
         String maskedCode,
-        LicenseKey.LicenseKeyStatus status,
+        String status,
         String activatedByUserId,
         String activatedTenantId,
         Instant activatedAt,
@@ -17,7 +17,7 @@ public record LicenseKeyDto(
 ) {
     public static LicenseKeyDto from(LicenseKey k) {
         return new LicenseKeyDto(
-                k.getId(), k.getBatchId(), k.getMaskedCode(), k.getStatus(),
+                k.getId(), k.getBatchId(), k.getMaskedCode(), k.getStatus().name().toLowerCase(),
                 k.getActivatedByUserId(), k.getActivatedTenantId(),
                 k.getActivatedAt(), k.getExpiresAt(), k.getCreatedAt()
         );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { KeyRound, Layers3, RefreshCw } from "lucide-react";
 import { apiFetch, normalizePageResponse } from "@/lib/api";
 import { formatCount, formatDate } from "@/lib/utils";
@@ -368,8 +369,13 @@ export default function LicensesPage() {
                   ) : (
                     batches.map((batch) => (
                       <TableRow key={batch.id || batch.batchNo}>
-                        <TableCell className="font-mono text-sm font-semibold text-slate-950">
-                          {batch.batchNo}
+                        <TableCell className="font-mono text-sm font-semibold">
+                          <Link
+                            href={`/licenses/${batch.id}`}
+                            className="text-slate-950 transition-colors hover:text-sky-700 hover:underline"
+                          >
+                            {batch.batchNo}
+                          </Link>
                         </TableCell>
                         <TableCell>
                           <Badge variant={licenseTypeVariant(batch.licenseType)}>
@@ -449,8 +455,17 @@ export default function LicensesPage() {
                         <TableCell className="font-mono text-sm font-semibold text-slate-950">
                           {key.maskedCode}
                         </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {key.batchId || "未关联"}
+                        <TableCell className="font-mono text-xs">
+                          {key.batchId ? (
+                            <Link
+                              href={`/licenses/${key.batchId}`}
+                              className="text-muted-foreground transition-colors hover:text-sky-700 hover:underline"
+                            >
+                              {key.batchId}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">未关联</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant={keyStatusVariant(key.status)}>

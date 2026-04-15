@@ -13,7 +13,7 @@ public record AuditLogDto(
         String resourceId,
         String ipAddress,
         String userAgent,
-        AuditLog.AuditResult result,
+        String result,
         String detail,
         Instant createdAt
 ) {
@@ -21,7 +21,7 @@ public record AuditLogDto(
         return new AuditLogDto(
                 a.getId(), a.getUserId(), a.getTenantId(),
                 a.getAction(), a.getResourceType(), a.getResourceId(),
-                a.getIpAddress(), a.getUserAgent(), a.getResult(),
+                a.getIpAddress(), a.getUserAgent(), a.getResult().name().toLowerCase(),
                 a.getDetail(), a.getCreatedAt()
         );
     }

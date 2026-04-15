@@ -1,5 +1,12 @@
 // User
-export type UserRole = 'fan' | 'producer' | 'coach' | 'platform_operator' | 'finance_admin';
+export type UserRole =
+  | 'fan'
+  | 'producer'
+  | 'coach'
+  | 'platform_owner'
+  | 'platform_operator'
+  | 'finance_admin'
+  | 'channel_manager';
 export type UserStatus = 'active' | 'suspended' | 'deleted';
 export type UserPlan = 'free' | 'pro' | 'enterprise';
 
@@ -10,12 +17,14 @@ export interface User {
   phone: string | null;
   displayName: string | null;
   avatarUrl: string | null;
+  walletAddress?: string | null;
   role: UserRole;
   plan: UserPlan;
   credits: number;
   status: UserStatus;
   emailVerified: boolean;
   phoneVerified: boolean;
+  langPreference?: string | null;
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
@@ -193,4 +202,44 @@ export interface DashboardStats {
   totalCreditsIssued: number;
   products: number;
   auditEvents: number;
+}
+
+export interface AdminAuthResponse {
+  token: string;
+  expiresAt: string;
+  user: User;
+}
+
+export interface FeatureConfigItem {
+  id: string;
+  configKey: string;
+  configGroup: string;
+  valueType: 'INT' | 'FLOAT' | 'BOOL' | 'STRING' | 'JSON';
+  value: string;
+  defaultValue: string;
+  scope: 'GLOBAL' | 'PRODUCT' | 'PLAN' | 'TENANT';
+  productId: string | null;
+  planId: string | null;
+  tenantId: string | null;
+  isActive: boolean;
+  isEditableByOperator: boolean;
+  description: string | null;
+  minValue: string | null;
+  maxValue: string | null;
+  updatedBy: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface ConfigHistoryEntry {
+  id: string;
+  configKey: string;
+  oldValue: string;
+  newValue: string;
+  changedBy: string;
+  changedByRole: string;
+  changeReason: string;
+  effectiveAt: string | null;
+  revertedAt: string | null;
+  createdAt: string;
 }

@@ -2,12 +2,16 @@ package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.PlanDto;
 import com.aistareco.aep.dto.ProductDto;
+import com.aistareco.aep.security.AdminPrincipal;
+import com.aistareco.aep.service.AdminAuditRecorder;
 import com.aistareco.aep.service.ProductService;
 import com.aistareco.common.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,9 +22,11 @@ import java.util.Map;
 public class AdminProductController {
 
     private final ProductService productService;
+    private final AdminAuditRecorder auditRecorder;
 
-    public AdminProductController(ProductService productService) {
+    public AdminProductController(ProductService productService, AdminAuditRecorder auditRecorder) {
         this.productService = productService;
+        this.auditRecorder = auditRecorder;
     }
 
     // --- Products ---
@@ -32,13 +38,26 @@ public class AdminProductController {
 
     @PostMapping("/products")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<ProductDto> createProduct(@RequestBody Map<String, Object> body) {
-        return ApiResponse.of(productService.createProduct(body));
+    public ApiResponse<ProductDto> createProduct(
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal AdminPrincipal principal,
+            HttpServletRequest request
+    ) {
+        ProductDto product = productService.createProduct(body);
+        auditRecorder.success(principal, request, "product.create", "product", product.id(), "创建产品");
+        return ApiResponse.of(product);
     }
 
     @PutMapping("/products/{id}")
-    public ApiResponse<ProductDto> updateProduct(@PathVariable String id, @RequestBody Map<String, Object> body) {
-        return ApiResponse.of(productService.updateProduct(id, body));
+    public ApiResponse<ProductDto> updateProduct(
+            @PathVariable String id,
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal AdminPrincipal principal,
+            HttpServletRequest request
+    ) {
+        ProductDto product = productService.updateProduct(id, body);
+        auditRecorder.success(principal, request, "product.update", "product", id, "更新产品");
+        return ApiResponse.of(product);
     }
 
     // --- Plans ---
@@ -55,12 +74,25 @@ public class AdminProductController {
 
     @PostMapping("/plans")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<PlanDto> createPlan(@RequestBody Map<String, Object> body) {
-        return ApiResponse.of(productService.createPlan(body));
+    public ApiResponse<PlanDto> createPlan(
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal AdminPrincipal principal,
+            HttpServletRequest request
+    ) {
+        PlanDto plan = productService.createPlan(body);
+        auditRecorder.success(principal, request, "plan.create", "plan", plan.id(), "创建套餐");
+        return ApiResponse.of(plan);
     }
 
     @PutMapping("/plans/{id}")
-    public ApiResponse<PlanDto> updatePlan(@PathVariable String id, @RequestBody Map<String, Object> body) {
-        return ApiResponse.of(productService.updatePlan(id, body));
+    public ApiResponse<PlanDto> updatePlan(
+            @PathVariable String id,
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal AdminPrincipal principal,
+            HttpServletRequest request
+    ) {
+        PlanDto plan = productService.updatePlan(id, body);
+        auditRecorder.success(principal, request, "plan.update", "plan", id, "更新套餐");
+        return ApiResponse.of(plan);
     }
 }

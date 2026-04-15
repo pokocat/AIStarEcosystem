@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Building2, RefreshCw, Users2 } from "lucide-react";
 import { apiFetch, normalizePageResponse } from "@/lib/api";
 import { formatCount, formatDate } from "@/lib/utils";
@@ -212,7 +213,14 @@ export default function TenantsPage() {
               ) : (
                 tenants.map((tenant) => (
                   <TableRow key={tenant.id || tenant.name}>
-                    <TableCell className="font-medium text-slate-950">{tenant.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/tenants/${tenant.id}`}
+                        className="text-slate-950 transition-colors hover:text-sky-700 hover:underline"
+                      >
+                        {tenant.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={typeVariant(tenant.type)}>{typeLabel(tenant.type)}</Badge>
                     </TableCell>

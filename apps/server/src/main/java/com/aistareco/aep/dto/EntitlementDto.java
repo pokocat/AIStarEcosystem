@@ -9,19 +9,19 @@ public record EntitlementDto(
         String tenantId,
         String productId,
         String planId,
-        Entitlement.EntitlementType entitlementType,
+        String entitlementType,
         String featureCode,
         String value,
         Instant validFrom,
         Instant validTo,
-        Entitlement.EntitlementStatus status,
+        String status,
         Instant createdAt
 ) {
     public static EntitlementDto from(Entitlement e) {
         return new EntitlementDto(
                 e.getId(), e.getTenantId(), e.getProductId(), e.getPlanId(),
-                e.getEntitlementType(), e.getFeatureCode(), e.getValue(),
-                e.getValidFrom(), e.getValidTo(), e.getStatus(), e.getCreatedAt()
+                e.getEntitlementType().name().toLowerCase(), e.getFeatureCode(), e.getValue(),
+                e.getValidFrom(), e.getValidTo(), e.getStatus().name().toLowerCase(), e.getCreatedAt()
         );
     }
 }

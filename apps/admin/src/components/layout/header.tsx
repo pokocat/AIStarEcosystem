@@ -3,6 +3,7 @@
 import { Bell, ChevronDown, Menu, Search, ShieldCheck, User } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { getPageTitle, SidebarNav } from "@/components/layout/sidebar-nav";
+import { useAuth } from "@/providers/auth-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,17 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 export function Header() {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
+  const { user, logout } = useAuth();
+  const badgeLabel =
+    user?.role === "platform_operator"
+      ? "平台运营"
+      : user?.role === "finance_admin"
+        ? "财务管理员"
+        : user?.role === "platform_owner"
+          ? "平台所有者"
+          : user?.role === "channel_manager"
+            ? "渠道经理"
+            : "管理员";
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-background/85 backdrop-blur-xl">
@@ -50,7 +62,7 @@ export function Header() {
           <div className="mt-1 flex items-center gap-3">
             <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
             <Badge variant="secondary" className="hidden md:inline-flex">
-              模拟数据
+              {badgeLabel}
             </Badge>
           </div>
         </div>
@@ -68,9 +80,11 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 rounded-full px-2">
               <Avatar className="h-9 w-9">
-                <AvatarFallback>A</AvatarFallback>
+                <AvatarFallback>{user?.username?.slice(0, 1).toUpperCase() ?? "A"}</AvatarFallback>
               </Avatar>
-              <span className="hidden text-sm font-medium md:inline-flex">管理员</span>
+              <span className="hidden text-sm font-medium md:inline-flex">
+                {user?.displayName ?? user?.username ?? "管理员"}
+              </span>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
@@ -83,11 +97,14 @@ export function Header() {
             </DropdownMenuItem>
             <DropdownMenuItem>
               <ShieldCheck className="mr-2 h-4 w-4" />
-              安全设置
+              {badgeLabel}
             </DropdownMenuItem>
             <DropdownMenuItem>偏好设置</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={logout}
+            >
               退出登录
             </DropdownMenuItem>
           </DropdownMenuContent>

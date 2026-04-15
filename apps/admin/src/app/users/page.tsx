@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { RefreshCw, ShieldCheck, Users } from "lucide-react";
 import { apiFetch, normalizePageResponse } from "@/lib/api";
 import { formatCount, formatDate } from "@/lib/utils";
@@ -108,12 +109,14 @@ function normalizeUser(item: Partial<User>): User {
     phone: item.phone ?? null,
     displayName: item.displayName ?? null,
     avatarUrl: item.avatarUrl ?? null,
+    walletAddress: item.walletAddress ?? null,
     role: (item.role ?? "fan") as User["role"],
     plan: (item.plan ?? "free") as User["plan"],
     credits: Number(item.credits ?? 0),
     status: (item.status ?? "active") as User["status"],
     emailVerified: Boolean(item.emailVerified),
     phoneVerified: Boolean(item.phoneVerified),
+    langPreference: item.langPreference ?? null,
     createdAt: item.createdAt ?? "",
     updatedAt: item.updatedAt ?? "",
     lastLoginAt: item.lastLoginAt ?? null,
@@ -253,7 +256,12 @@ export default function UsersPage() {
                 users.map((user) => (
                   <TableRow key={user.id || user.username}>
                     <TableCell className="font-medium">
-                      <div className="text-slate-950">{user.username}</div>
+                      <Link
+                        href={`/users/${user.id}`}
+                        className="text-slate-950 transition-colors hover:text-sky-700 hover:underline"
+                      >
+                        {user.username}
+                      </Link>
                       {user.displayName && (
                         <div className="text-xs text-muted-foreground">{user.displayName}</div>
                       )}

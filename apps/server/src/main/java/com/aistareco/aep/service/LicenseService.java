@@ -38,6 +38,12 @@ public class LicenseService {
         return batchRepo.findAll(pageable).map(LicenseBatchDto::from);
     }
 
+    public LicenseBatchDto findBatchById(String id) {
+        return batchRepo.findById(id)
+                .map(LicenseBatchDto::from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "License batch not found: " + id));
+    }
+
     @Transactional
     public LicenseBatchDto createBatch(Map<String, Object> body) {
         int count = getInt(body, "totalCount", 1);

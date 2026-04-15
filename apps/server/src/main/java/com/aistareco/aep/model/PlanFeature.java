@@ -16,5 +16,6 @@ public class PlanFeature {
 
     private String planId;
     private String featureCode;
+    @Column(name = "feature_value")
     private String value;
 }
