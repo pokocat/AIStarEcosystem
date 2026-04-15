@@ -1,14 +1,15 @@
 # 统一认证、权益、分销与积分计量平台技术方案
 
-**文档版本**: v1.1.0  
-**最后更新**: 2026-04-14  
-**当前状态**: AI Star Eco Phase 1 对齐稿  
+**文档版本**: v1.2.0  
+**最后更新**: 2026-04-15  
+**当前状态**: AI Star Eco Phase 1 实施中 — 管理后台认证与权益管理已落地  
 
 ## 文档版本迭代记录
 
 | 版本 | 日期 | 变更说明 |
 |------|------|----------|
-| v1.1.0 | 2026-04-14 | 根据 2026-04-14 需求对齐会议，补充激活码授权、预付/激活结算模式、独立运行并预留对接“艺人公司”系统、统一积分消费、编辑能力分层与外部收益回流规则。 |
+| v1.2.0 | 2026-04-15 | 实施管理后台认证体系（JWT 登录 + 角色鉴权）、秘钥激活注册流程、权益配置 CRUD 功能、管理员与普通用户角色分离。更新实现状态附录。 |
+| v1.1.0 | 2026-04-14 | 根据 2026-04-14 需求对齐会议，补充激活码授权、预付/激活结算模式、独立运行并预留对接”艺人公司”系统、统一积分消费、编辑能力分层与外部收益回流规则。 |
 | v1.0.0 | 历史基线 | 仓库原有统一认证、权益、分销与积分计量平台方案。 |
 
 ## 1. 文档目标
@@ -1941,12 +1942,12 @@ flowchart LR
 
 管理后台（Admin Console）是面向平台运营人员的内部工具，与面向用户的 AI Star Eco 产品前端完全独立：
 
-| 维度   | 用户侧前端（apps/web）                | 管理后台（apps/web/admin）                      |
+| 维度   | 用户侧前端（apps/web）                | 管理后台（apps/admin）                      |
 | ---- | ------------------------------ | ----------------------------------------- |
-| 访问路径 | `/portal`、`/producer`、`/fan` 等 | `/admin/*`                                |
-| 目标用户 | 普通用户（Fan / Producer / Coach）   | 平台运营、财务、客服、技术管理员                          |
-| 认证方式 | 标准 JWT 登录                      | JWT + 平台级角色校验（需 `platform_operator` 以上角色） |
-| 访问控制 | 前端路由 + 后端接口鉴权                  | middleware.ts 强制拦截，非管理员 302 到 /portal     |
+| 访问路径 | `/`（用户侧独立站点） | `/`（管理后台独立站点，端口 3001）              |
+| 目标用户 | 普通用户（FAN / PRODUCER / COACH），通过秘钥激活注册 | 系统管理员（PLATFORM\_OPERATOR / FINANCE\_ADMIN） |
+| 认证方式 | 秘钥激活注册 → JWT | 用户名密码登录 → JWT（BCrypt 密码哈希） |
+| 访问控制 | 前端路由 + 后端接口鉴权 | AuthProvider 路由守卫 + Spring Security `hasAnyRole` + JwtAuthenticationFilter |
 
 ### B.2 后台导航结构
 
@@ -2351,3 +2352,153 @@ Admin 和 Web 之间**不共享运行时代码**，但共享以下内容：
 | 套餐限额未落地        | 套餐体系未与产品功能对应                                   | 8.2 补充了 free/pro/enterprise 各功能限额对照表                                      |
 | 积分扣费规则不具体      | 仅有抽象的三阶段模型                                     | 10.5 补充了 AI Star Eco 各操作的积分消耗规则表                                          |
 | 权益类型不足         | 未包含歌手名额、NFT 铸造配额等 AI 产品特有权益                    | 8.4 补充了 singer\_slot、nft\_mint\_quota、distribution\_tier、model\_tier 权益类型 |
+
+***
+
+## 附录 C：实现状态跟踪（v1.2.0 更新）
+
+> 本附录记录 apps/admin 与 apps/server 的实际实现状态，与前述规划对照。
+
+### C.1 核心架构决策
+
+| 决策项 | 实现方案 | 状态 |
+|--------|----------|------|
+| 管理后台独立工程 | `apps/admin`（Next.js 14，端口 3001），与 `apps/web` 完全隔离 | 已实现 |
+| 后端共用 | `apps/server`（Spring Boot 3.3.5，端口 8080），Admin 与 Web 共用同一后端 | 已实现 |
+| 数据库 | H2 嵌入式（开发阶段），DDL auto-update，文件存储于 `./data/aistareco` | 已实现 |
+| 认证方案 | JWT（JJWT 0.12.6）+ BCrypt 密码哈希 + Spring Security Filter Chain | 已实现 |
+| API 契约 | 所有响应统一包装为 `{"data": ...}` 格式（`ApiResponse<T>`） | 已实现 |
+
+### C.2 管理员与用户角色分离
+
+系统明确区分 **系统管理员** 和 **普通用户**，两者的入口和权限完全隔离：
+
+| 维度 | 系统管理员 | 普通用户 |
+|------|-----------|----------|
+| 角色 | `PLATFORM_OPERATOR`、`FINANCE_ADMIN` | `FAN`、`PRODUCER`、`COACH` |
+| 入口 | 管理后台 `apps/admin`（JWT 登录） | 用户侧 `apps/web`（秘钥激活注册） |
+| 鉴权 | Spring Security `hasAnyRole('PLATFORM_OPERATOR', 'FINANCE_ADMIN')` | 无管理后台访问权限 |
+| 数据权限 | 所有数据的 CRUD 操作权限 | 仅自身租户范围内的数据 |
+| 密码 | 有 `passwordHash` 字段，BCrypt 加密 | 通过秘钥激活注册，无需密码 |
+
+**安全保障：**
+- `/api/admin/**` 路径统一要求管理员角色（`PLATFORM_OPERATOR` 或 `FINANCE_ADMIN`）
+- `/api/admin/auth/login` 为唯一公开的管理后台端点
+- JWT Token 携带 `userId`、`username`、`role`，前端每次请求通过 `Authorization: Bearer <token>` 传递
+- 前端 `AuthProvider` + `AppFrame` 实现路由守卫，未认证用户自动重定向到 `/login`
+
+### C.3 秘钥注册流程（已实现）
+
+账户通过秘钥（License Key）激活注册，流程如下：
+
+```
+用户持有秘钥 → POST /api/auth/activate
+    → SHA-256 哈希匹配 → 校验秘钥状态（CREATED/ALLOCATED/SOLD）
+    → 创建 AepUser（角色 FAN）
+    → 创建 Personal Tenant
+    → 创建 Membership（OWNER）
+    → 创建 Wallet（初始积分来自批次 creditDelta）
+    → 创建 Entitlement（如果是 PLAN_ACTIVATION 类型批次）
+    → 激活 LicenseKey（状态 → ACTIVATED）
+    → 增加 LicenseBatch.activatedCount
+    → 返回 JWT Token + 用户信息
+```
+
+**秘钥来源支持：**
+
+| 来源 | 状态 | 说明 |
+|------|------|------|
+| 系统内后台导入 | 已实现 | 管理员通过 `POST /api/admin/license-batches` 创建批次，自动生成秘钥 |
+| 外部 CRM 系统对接 | 预留接口 | `LicenseActivationController` 和 `LicenseBatch.channelPartnerId` 已预留，后续实现同步 |
+
+### C.4 权益管理功能（已修复）
+
+权益配置页面现已支持完整的 CRUD 操作：
+
+| 操作 | 前端入口 | 后端 API | 状态 |
+|------|----------|----------|------|
+| 列表查询 | 权益配置页表格 + 分页 | `GET /api/admin/entitlements` | 已实现 |
+| 新增权益 | 「新增权益」按钮 → 弹窗表单 | `POST /api/admin/entitlements` | 已实现 |
+| 编辑权益 | 行操作栏「编辑」→ 弹窗表单 | `PUT /api/admin/entitlements/{id}` | 已实现 |
+| 查看详情 | 点击行 → 侧边抽屉 | 前端展示（复用列表数据） | 已实现 |
+| 撤销权益 | 行操作栏「撤销」→ 确认弹窗 | `DELETE /api/admin/entitlements/{id}` | 已实现 |
+
+**支持的权益类型：**
+`FEATURE_ACCESS`、`SEAT_LIMIT`、`QUOTA_LIMIT`、`MONTHLY_CREDIT`、`ADDON`、`SINGER_SLOT`、`NFT_MINT_QUOTA`、`DISTRIBUTION_TIER`
+
+### C.5 管理后台页面实现状态
+
+| 页面 | 路由 | 功能 | 状态 |
+|------|------|------|------|
+| 登录 | `/login` | JWT 认证登录（用户名 / 邮箱 + 密码） | 已实现 |
+| 总览看板 | `/dashboard` | 统计卡片、快速导航 | 已实现 |
+| 用户管理 | `/users` | 列表、搜索、详情抽屉、编辑角色/状态 | 已实现 |
+| 租户空间 | `/tenants` | 列表展示 | 已实现 |
+| 产品与套餐 | `/products` | 产品卡片、套餐价格表 | 已实现 |
+| 权益配置 | `/entitlements` | 列表、新增、编辑、撤销、详情抽屉 | 已实现 |
+| 许可证 | `/licenses` | 批次/密钥双 Tab、详情抽屉 | 已实现 |
+| 积分钱包 | `/credits` | 钱包列表、账本流水 | 已实现 |
+| 审计日志 | `/audit` | 日志查询 | 已实现 |
+
+### C.6 后端 API 端点清单
+
+#### 管理员认证（公开）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/admin/auth/login` | 管理员登录，返回 JWT Token |
+| GET | `/api/admin/auth/me` | 获取当前登录管理员信息 |
+
+#### 秘钥激活（公开）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/auth/activate` | 用户通过秘钥激活注册 |
+
+#### 管理后台 API（需管理员角色）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/users` | 用户列表（分页、按状态/角色筛选） |
+| GET | `/api/admin/users/{id}` | 用户详情 |
+| POST | `/api/admin/users` | 创建用户 |
+| PUT/PATCH | `/api/admin/users/{id}` | 更新用户 |
+| DELETE | `/api/admin/users/{id}` | 软删除用户 |
+| GET | `/api/admin/entitlements` | 权益列表（分页、按租户/产品筛选） |
+| POST | `/api/admin/entitlements` | 创建权益 |
+| PUT | `/api/admin/entitlements/{id}` | 更新权益 |
+| DELETE | `/api/admin/entitlements/{id}` | 撤销权益 |
+| GET | `/api/admin/license-batches` | 批次列表 |
+| POST | `/api/admin/license-batches` | 创建批次（自动生成秘钥） |
+| GET | `/api/admin/license-keys` | 密钥列表（按批次/状态筛选） |
+| PUT | `/api/admin/license-keys/{id}/revoke` | 吊销密钥 |
+| GET | `/api/admin/products` | 产品列表 |
+| GET | `/api/admin/plans` | 套餐列表 |
+| GET | `/api/admin/tenants` | 租户列表 |
+| GET | `/api/admin/credits/wallets` | 钱包列表 |
+| GET | `/api/admin/credits/ledger` | 账本流水 |
+| GET | `/api/admin/audit` | 审计日志 |
+| GET | `/api/admin/stats` | 仪表盘统计 |
+
+### C.7 数据模型变更记录
+
+| 实体 | 变更 | 说明 |
+|------|------|------|
+| `AepUser` | 新增 `passwordHash` 字段 | 管理员密码哈希（BCrypt），普通用户为 null（通过秘钥注册） |
+
+### C.8 开发环境默认账户
+
+| 用户名 | 密码 | 角色 | 说明 |
+|--------|------|------|------|
+| `admin` | `admin123` | `PLATFORM_OPERATOR` | 系统管理员，拥有所有数据操作权限 |
+| `finance` | `finance123` | `FINANCE_ADMIN` | 财务管理员，拥有所有数据操作权限 |
+
+### C.9 后续待实现项（Roadmap）
+
+| 功能 | 优先级 | 说明 |
+|------|--------|------|
+| 外部 CRM 秘钥同步 | P1 | 通过 `channelPartnerId` 对接外部 CRM 系统的批次导入 |
+| 管理员操作审计记录 | P1 | 管理员每次数据操作自动写入 AuditLog |
+| Token 刷新机制 | P1 | JWT Token 过期后自动刷新 |
+| 用户侧 Web 前端认证集成 | P0 | `apps/web` 接入秘钥激活注册 + JWT 登录 |
+| RBAC 细粒度权限 | P2 | 实现 Role + Permission 模型，替代当前角色枚举 |
+| 微信 / Google OAuth | P1 | 接入第三方登录 |
+| 管理员密码修改 | P1 | 安全设置页面 |
+| 批量导入秘钥 | P1 | CSV/Excel 批量创建秘钥 |

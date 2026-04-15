@@ -1,14 +1,51 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BadgeCheck, RefreshCw, SlidersHorizontal } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  BadgeCheck,
+  ChevronRight,
+  Edit2,
+  Plus,
+  RefreshCw,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { apiFetch, normalizePageResponse } from "@/lib/api";
-import { formatCount, formatDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
+import { formatCount, formatDate, formatDateTime } from "@/lib/utils";
 import { Entitlement, PageResponse } from "@/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -18,6 +55,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+/* ─── helpers ─── */
 
 function statusVariant(status: Entitlement["status"]) {
   switch (status) {
@@ -33,39 +72,26 @@ function statusVariant(status: Entitlement["status"]) {
 }
 
 function entitlementTypeLabel(type: Entitlement["entitlementType"]) {
-  switch (type) {
-    case "feature_access":
-      return "功能访问";
-    case "seat_limit":
-      return "席位上限";
-    case "quota_limit":
-      return "额度限制";
-    case "monthly_credit":
-      return "月度积分";
-    case "addon":
-      return "增值能力";
-    case "singer_slot":
-      return "歌手席位";
-    case "nft_mint_quota":
-      return "NFT 铸造额度";
-    case "distribution_tier":
-      return "分发等级";
-    default:
-      return type;
-  }
+  const labels: Record<Entitlement["entitlementType"], string> = {
+    feature_access: "功能访问",
+    seat_limit: "席位上限",
+    quota_limit: "额度限制",
+    monthly_credit: "月度积分",
+    addon: "增值能力",
+    singer_slot: "歌手席位",
+    nft_mint_quota: "NFT 铸造额度",
+    distribution_tier: "分发等级",
+  };
+  return labels[type] ?? type;
 }
 
 function statusLabel(status: Entitlement["status"]) {
-  switch (status) {
-    case "active":
-      return "生效中";
-    case "expired":
-      return "已过期";
-    case "revoked":
-      return "已撤销";
-    default:
-      return status;
-  }
+  const labels: Record<Entitlement["status"], string> = {
+    active: "生效中",
+    expired: "已过期",
+    revoked: "已撤销",
+  };
+  return labels[status] ?? status;
 }
 
 function normalizeEntitlement(item: Partial<Entitlement>): Entitlement {
@@ -84,12 +110,482 @@ function normalizeEntitlement(item: Partial<Entitlement>): Entitlement {
   };
 }
 
+/* ─── InfoRow ─── */
+
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="text-sm text-foreground">{children}</div>
+    </div>
+  );
+}
+
+/* ─── Detail Drawer ─── */
+
+function EntitlementDetailDrawer({
+  entitlement,
+  open,
+  onClose,
+  onEdit,
+  onRevoke,
+}: {
+  entitlement: Entitlement | null;
+  open: boolean;
+  onClose: () => void;
+  onEdit: (e: Entitlement) => void;
+  onRevoke: (e: Entitlement) => void;
+}) {
+  if (!entitlement) return null;
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="right" size="md" className="flex flex-col">
+        <SheetHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+              <BadgeCheck className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <SheetTitle className="truncate">
+                {entitlementTypeLabel(entitlement.entitlementType)}
+              </SheetTitle>
+              <SheetDescription className="font-mono text-xs">
+                {entitlement.featureCode}
+              </SheetDescription>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Badge variant={statusVariant(entitlement.status)}>
+              {statusLabel(entitlement.status)}
+            </Badge>
+          </div>
+        </SheetHeader>
+
+        <SheetBody className="flex flex-col gap-6">
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              权益信息
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <InfoRow label="权益类型">
+                <Badge variant="secondary">
+                  {entitlementTypeLabel(entitlement.entitlementType)}
+                </Badge>
+              </InfoRow>
+              <InfoRow label="权益值">
+                <span className="font-mono font-semibold">{entitlement.value}</span>
+              </InfoRow>
+              <InfoRow label="功能编码">
+                <code className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                  {entitlement.featureCode}
+                </code>
+              </InfoRow>
+              <InfoRow label="状态">
+                <Badge variant={statusVariant(entitlement.status)}>
+                  {statusLabel(entitlement.status)}
+                </Badge>
+              </InfoRow>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              关联信息
+            </p>
+            <div className="grid grid-cols-1 gap-3">
+              <InfoRow label="租户 ID">
+                <span className="font-mono text-xs break-all">{entitlement.tenantId || "未关联"}</span>
+              </InfoRow>
+              <InfoRow label="产品 ID">
+                <span className="font-mono text-xs break-all">{entitlement.productId || "未关联"}</span>
+              </InfoRow>
+              {entitlement.planId && (
+                <InfoRow label="套餐 ID">
+                  <span className="font-mono text-xs break-all">{entitlement.planId}</span>
+                </InfoRow>
+              )}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              时间记录
+            </p>
+            <div className="grid grid-cols-1 gap-3">
+              <InfoRow label="创建时间">{formatDateTime(entitlement.createdAt)}</InfoRow>
+              <InfoRow label="生效时间">{formatDateTime(entitlement.validFrom)}</InfoRow>
+              <InfoRow label="结束时间">
+                {entitlement.validTo ? formatDateTime(entitlement.validTo) : (
+                  <span className="text-muted-foreground">永久有效</span>
+                )}
+              </InfoRow>
+            </div>
+          </div>
+        </SheetBody>
+
+        <SheetFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            关闭
+          </Button>
+          {entitlement.status === "active" && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => onEdit(entitlement)}>
+                <Edit2 className="mr-2 h-3.5 w-3.5" />
+                编辑
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => onRevoke(entitlement)}>
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                撤销
+              </Button>
+            </>
+          )}
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/* ─── Create / Edit Dialog ─── */
+
+interface EntitlementFormData {
+  tenantId: string;
+  productId: string;
+  planId: string;
+  entitlementType: string;
+  featureCode: string;
+  value: string;
+  validFrom: string;
+  validTo: string;
+  status: string;
+}
+
+const EMPTY_FORM: EntitlementFormData = {
+  tenantId: "",
+  productId: "",
+  planId: "",
+  entitlementType: "FEATURE_ACCESS",
+  featureCode: "",
+  value: "",
+  validFrom: "",
+  validTo: "",
+  status: "ACTIVE",
+};
+
+function EntitlementFormDialog({
+  mode,
+  entitlement,
+  open,
+  onClose,
+  onSaved,
+}: {
+  mode: "create" | "edit";
+  entitlement: Entitlement | null;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<EntitlementFormData>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode === "edit" && entitlement) {
+      setForm({
+        tenantId: entitlement.tenantId,
+        productId: entitlement.productId,
+        planId: entitlement.planId ?? "",
+        entitlementType: entitlement.entitlementType.toUpperCase(),
+        featureCode: entitlement.featureCode,
+        value: entitlement.value,
+        validFrom: entitlement.validFrom ? entitlement.validFrom.substring(0, 16) : "",
+        validTo: entitlement.validTo ? entitlement.validTo.substring(0, 16) : "",
+        status: entitlement.status.toUpperCase(),
+      });
+    } else {
+      setForm(EMPTY_FORM);
+    }
+    setError(null);
+  }, [mode, entitlement, open]);
+
+  function updateField(key: keyof EntitlementFormData, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSave() {
+    if (!form.tenantId.trim() || !form.productId.trim() || !form.featureCode.trim()) {
+      setError("租户 ID、产品 ID 和功能编码不能为空");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const payload: Record<string, unknown> = {
+        tenantId: form.tenantId,
+        productId: form.productId,
+        planId: form.planId || null,
+        entitlementType: form.entitlementType,
+        featureCode: form.featureCode,
+        value: form.value,
+      };
+      if (form.validFrom) {
+        payload.validFrom = new Date(form.validFrom).toISOString();
+      }
+      if (form.validTo) {
+        payload.validTo = new Date(form.validTo).toISOString();
+      }
+
+      if (mode === "edit" && entitlement) {
+        payload.status = form.status;
+        await apiFetch(`/api/admin/entitlements/${entitlement.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch("/api/admin/entitlements", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{mode === "create" ? "新增权益" : "编辑权益"}</DialogTitle>
+          <DialogDescription>
+            {mode === "create"
+              ? "为指定租户添加一条新的权益配置记录。"
+              : `编辑权益 ${entitlement?.featureCode ?? ""}`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-tenant">租户 ID *</Label>
+              <Input
+                id="ent-tenant"
+                placeholder="租户 UUID"
+                value={form.tenantId}
+                onChange={(e) => updateField("tenantId", e.target.value)}
+                disabled={mode === "edit"}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-product">产品 ID *</Label>
+              <Input
+                id="ent-product"
+                placeholder="产品 UUID"
+                value={form.productId}
+                onChange={(e) => updateField("productId", e.target.value)}
+                disabled={mode === "edit"}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-type">权益类型</Label>
+              <Select
+                value={form.entitlementType}
+                onValueChange={(v) => updateField("entitlementType", v)}
+              >
+                <SelectTrigger id="ent-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FEATURE_ACCESS">功能访问</SelectItem>
+                  <SelectItem value="SEAT_LIMIT">席位上限</SelectItem>
+                  <SelectItem value="QUOTA_LIMIT">额度限制</SelectItem>
+                  <SelectItem value="MONTHLY_CREDIT">月度积分</SelectItem>
+                  <SelectItem value="ADDON">增值能力</SelectItem>
+                  <SelectItem value="SINGER_SLOT">歌手席位</SelectItem>
+                  <SelectItem value="NFT_MINT_QUOTA">NFT 铸造额度</SelectItem>
+                  <SelectItem value="DISTRIBUTION_TIER">分发等级</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-feature">功能编码 *</Label>
+              <Input
+                id="ent-feature"
+                placeholder="例如 singer.create"
+                value={form.featureCode}
+                onChange={(e) => updateField("featureCode", e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-value">值</Label>
+              <Input
+                id="ent-value"
+                placeholder="true / 100 / ..."
+                value={form.value}
+                onChange={(e) => updateField("value", e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-plan">套餐 ID</Label>
+              <Input
+                id="ent-plan"
+                placeholder="可选"
+                value={form.planId}
+                onChange={(e) => updateField("planId", e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-from">生效时间</Label>
+              <Input
+                id="ent-from"
+                type="datetime-local"
+                value={form.validFrom}
+                onChange={(e) => updateField("validFrom", e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-to">结束时间</Label>
+              <Input
+                id="ent-to"
+                type="datetime-local"
+                value={form.validTo}
+                onChange={(e) => updateField("validTo", e.target.value)}
+              />
+            </div>
+          </div>
+
+          {mode === "edit" && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ent-status">状态</Label>
+              <Select
+                value={form.status}
+                onValueChange={(v) => updateField("status", v)}
+              >
+                <SelectTrigger id="ent-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">生效中</SelectItem>
+                  <SelectItem value="EXPIRED">已过期</SelectItem>
+                  <SelectItem value="REVOKED">已撤销</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            取消
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? "保存中..." : mode === "create" ? "创建" : "保存更改"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─── Revoke Confirm Dialog ─── */
+
+function RevokeConfirmDialog({
+  entitlement,
+  open,
+  onClose,
+  onConfirm,
+}: {
+  entitlement: Entitlement | null;
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [revoking, setRevoking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRevoke() {
+    if (!entitlement) return;
+    setRevoking(true);
+    setError(null);
+    try {
+      await apiFetch(`/api/admin/entitlements/${entitlement.id}`, { method: "DELETE" });
+      onConfirm();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "撤销失败");
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  if (!entitlement) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>确认撤销权益</DialogTitle>
+          <DialogDescription>
+            即将撤销 <span className="font-medium font-mono text-foreground">{entitlement.featureCode}</span> 权益。
+            此操作不可恢复。
+          </DialogDescription>
+        </DialogHeader>
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            {error}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={revoking}>
+            取消
+          </Button>
+          <Button variant="destructive" size="sm" onClick={handleRevoke} disabled={revoking}>
+            {revoking ? "撤销中..." : "确认撤销"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─── Main Page ─── */
+
 export default function EntitlementsPage() {
+  const { isAdmin } = useAuth();
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+
+  // Dialogs / Drawers
+  const [selectedEntitlement, setSelectedEntitlement] = useState<Entitlement | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Entitlement | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<Entitlement | null>(null);
 
   async function fetchEntitlements(targetPage = 0) {
     setLoading(true);
@@ -130,18 +626,28 @@ export default function EntitlementsPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">权益配置</h2>
           <p className="text-sm text-muted-foreground">
-            审核租户已授予的功能、额度和套餐衍生权益。
+            管理租户的功能、额度和套餐衍生权益。支持新增、编辑和撤销操作。
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchEntitlements(page)}
-          disabled={loading}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          刷新数据
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            新增权益
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchEntitlements(page)}
+            disabled={loading}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            刷新数据
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -212,22 +718,27 @@ export default function EntitlementsPage() {
                 <TableHead>状态</TableHead>
                 <TableHead>生效时间</TableHead>
                 <TableHead>结束时间</TableHead>
+                <TableHead className="w-24 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {entitlements.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                    当前没有可展示的权益数据。
+                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                    当前没有可展示的权益数据。点击「新增权益」创建第一条记录。
                   </TableCell>
                 </TableRow>
               ) : (
                 entitlements.map((item) => (
-                  <TableRow key={item.id || `${item.tenantId}-${item.featureCode}`}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                  <TableRow
+                    key={item.id || `${item.tenantId}-${item.featureCode}`}
+                    className="group cursor-pointer"
+                    onClick={() => setSelectedEntitlement(item)}
+                  >
+                    <TableCell className="font-mono text-xs text-muted-foreground max-w-[100px] truncate">
                       {item.tenantId || "未关联"}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                    <TableCell className="font-mono text-xs text-muted-foreground max-w-[100px] truncate">
                       {item.productId || "未关联"}
                     </TableCell>
                     <TableCell>
@@ -249,6 +760,48 @@ export default function EntitlementsPage() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDate(item.validTo)}
+                    </TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="编辑权益"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditTarget(item);
+                          }}
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        {item.status === "active" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                            title="撤销权益"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRevokeTarget(item);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="查看详情"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedEntitlement(item);
+                          }}
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -281,6 +834,47 @@ export default function EntitlementsPage() {
           </Button>
         </div>
       )}
+
+      {/* Detail Drawer */}
+      <EntitlementDetailDrawer
+        entitlement={selectedEntitlement}
+        open={!!selectedEntitlement}
+        onClose={() => setSelectedEntitlement(null)}
+        onEdit={(e) => {
+          setSelectedEntitlement(null);
+          setEditTarget(e);
+        }}
+        onRevoke={(e) => {
+          setSelectedEntitlement(null);
+          setRevokeTarget(e);
+        }}
+      />
+
+      {/* Create Dialog */}
+      <EntitlementFormDialog
+        mode="create"
+        entitlement={null}
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSaved={() => fetchEntitlements(page)}
+      />
+
+      {/* Edit Dialog */}
+      <EntitlementFormDialog
+        mode="edit"
+        entitlement={editTarget}
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => fetchEntitlements(page)}
+      />
+
+      {/* Revoke Confirm */}
+      <RevokeConfirmDialog
+        entitlement={revokeTarget}
+        open={!!revokeTarget}
+        onClose={() => setRevokeTarget(null)}
+        onConfirm={() => fetchEntitlements(page)}
+      />
     </div>
   );
 }

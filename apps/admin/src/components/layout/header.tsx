@@ -1,7 +1,8 @@
 "use client";
 
-import { Bell, ChevronDown, Menu, Search, ShieldCheck, User } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Menu, Search, ShieldCheck, User } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/auth";
 import { getPageTitle, SidebarNav } from "@/components/layout/sidebar-nav";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,29 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
+function roleLabel(role: string | undefined): string {
+  switch (role?.toLowerCase()) {
+    case "platform_operator": return "平台运营";
+    case "finance_admin": return "财务管理员";
+    default: return role ?? "未知角色";
+  }
+}
+
+function roleBadgeVariant(role: string | undefined) {
+  switch (role?.toLowerCase()) {
+    case "platform_operator": return "default" as const;
+    case "finance_admin": return "info" as const;
+    default: return "secondary" as const;
+  }
+}
+
 export function Header() {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
+  const { user, logout, isAdmin } = useAuth();
+
+  const displayName = user?.displayName ?? user?.username ?? "管理员";
+  const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-background/85 backdrop-blur-xl">
@@ -49,9 +70,11 @@ export function Header() {
           </p>
           <div className="mt-1 flex items-center gap-3">
             <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
-            <Badge variant="secondary" className="hidden md:inline-flex">
-              模拟数据
-            </Badge>
+            {user && (
+              <Badge variant={roleBadgeVariant(user.role)} className="hidden md:inline-flex">
+                {roleLabel(user.role)}
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -68,14 +91,22 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 rounded-full px-2">
               <Avatar className="h-9 w-9">
-                <AvatarFallback>A</AvatarFallback>
+                <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
-              <span className="hidden text-sm font-medium md:inline-flex">管理员</span>
+              <span className="hidden text-sm font-medium md:inline-flex">{displayName}</span>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>我的账户</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">{displayName}</p>
+                <p className="text-xs text-muted-foreground">{user?.email ?? user?.username}</p>
+                <Badge variant={roleBadgeVariant(user?.role)} className="w-fit mt-1 text-[10px]">
+                  {isAdmin ? "系统管理员" : roleLabel(user?.role)}
+                </Badge>
+              </div>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <User className="mr-2 h-4 w-4" />
@@ -85,9 +116,12 @@ export function Header() {
               <ShieldCheck className="mr-2 h-4 w-4" />
               安全设置
             </DropdownMenuItem>
-            <DropdownMenuItem>偏好设置</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={logout}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
               退出登录
             </DropdownMenuItem>
           </DropdownMenuContent>

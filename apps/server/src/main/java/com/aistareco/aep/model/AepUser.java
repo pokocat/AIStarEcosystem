@@ -19,6 +19,7 @@ public class AepUser {
     @Column(unique = true, nullable = false)
     private String username;
 
+    private String passwordHash;
     private String email;
     private String phone;
     private String displayName;

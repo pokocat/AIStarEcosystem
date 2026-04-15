@@ -2,15 +2,35 @@
 
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 
 export function AppFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { loading, token } = useAuth();
   const isAuthPage = pathname === "/login";
 
   if (isAuthPage) {
     return <main className="min-h-screen bg-background">{children}</main>;
+  }
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">正在验证身份...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated, the AuthProvider will redirect to login
+  if (!token) {
+    return null;
   }
 
   return (
