@@ -42,16 +42,16 @@ public class AdminStatsController {
 
     @GetMapping
     public ApiResponse<AdminStatsDto> getStats() {
-        long totalUsers = userRepo.count();
-        long activeTenants = tenantRepo.countByStatus(Tenant.TenantStatus.ACTIVE);
-        long activeLicenseKeys = licenseKeyRepo.countByStatus(LicenseKey.LicenseKeyStatus.ACTIVATED);
+        long totalUsers        = userRepo.count();
+        long activeTenants     = tenantRepo.countByStatus(Tenant.TenantStatus.ACTIVE);
+        long activeLicenses    = licenseKeyRepo.countByStatus(LicenseKey.LicenseKeyStatus.ACTIVATED);
         long totalCreditsIssued = ledgerRepo.sumTotalCreditsIssued();
-        long totalProducts = productRepo.count();
-        long totalAuditEvents = auditRepo.count();
+        long products          = productRepo.count();
+        long auditEvents       = auditRepo.count();
 
         AdminStatsDto stats = new AdminStatsDto(
-                totalUsers, activeTenants, activeLicenseKeys,
-                totalCreditsIssued, totalProducts, totalAuditEvents
+                totalUsers, activeTenants, activeLicenses,
+                totalCreditsIssued, products, auditEvents
         );
         return ApiResponse.of(stats);
     }

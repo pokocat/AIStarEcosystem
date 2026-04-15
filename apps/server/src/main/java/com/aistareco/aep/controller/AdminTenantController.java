@@ -45,4 +45,9 @@ public class AdminTenantController {
     public ApiResponse<TenantDto> update(@PathVariable String id, @RequestBody Map<String, Object> body) {
         return ApiResponse.of(tenantService.update(id, body));
     }
+
+    @PatchMapping("/{id}")
+    public ApiResponse<TenantDto> patch(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        return ApiResponse.of(tenantService.update(id, body));
+    }
 }

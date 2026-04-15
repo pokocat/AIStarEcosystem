@@ -51,6 +51,11 @@ public class AdminUserController {
         return ApiResponse.of(userService.update(id, body));
     }
 
+    @PatchMapping("/{id}")
+    public ApiResponse<AepUserDto> patch(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        return ApiResponse.of(userService.update(id, body));
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String id) {

@@ -35,14 +35,14 @@ export function normalizeDashboardStats(input: unknown): DashboardStats {
   return {
     totalUsers: pickNumber(source, ["totalUsers", "userCount", "users", "totalUserCount"]),
     activeTenants: pickNumber(source, ["activeTenants", "tenantCount", "tenants"]),
-    activeLicenses: pickNumber(source, ["activeLicenses", "licenseCount", "licenses"]),
+    activeLicenses: pickNumber(source, ["activeLicenses", "activeLicenseKeys", "licenseCount", "licenses"]),
     totalCreditsIssued: pickNumber(source, [
       "totalCreditsIssued",
       "creditsIssued",
       "totalCredits",
       "credits",
     ]),
-    products: pickNumber(source, ["products", "productCount", "planCount"]),
+    products: pickNumber(source, ["products", "totalProducts", "productCount", "planCount"]),
     auditEvents: pickNumber(source, ["auditEvents", "auditLogCount", "totalAuditEvents"]),
   };
 }

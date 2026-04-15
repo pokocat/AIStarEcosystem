@@ -18,6 +18,6 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
 
     Page<LedgerEntry> findByWalletIdAndTenantId(String walletId, String tenantId, Pageable pageable);
 
-    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.entryType = 'CREDIT'")
+    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.entryType = com.aistareco.aep.model.LedgerEntry.LedgerEntryType.CREDIT")
     long sumTotalCreditsIssued();
 }

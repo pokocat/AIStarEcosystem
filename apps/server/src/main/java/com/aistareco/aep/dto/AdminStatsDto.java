@@ -3,8 +3,8 @@ package com.aistareco.aep.dto;
 public record AdminStatsDto(
         long totalUsers,
         long activeTenants,
-        long activeLicenseKeys,
+        long activeLicenses,
         long totalCreditsIssued,
-        long totalProducts,
-        long totalAuditEvents
+        long products,
+        long auditEvents
 ) {}
