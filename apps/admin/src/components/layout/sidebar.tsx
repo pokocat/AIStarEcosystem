@@ -1,109 +1,42 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  Package,
-  Shield,
-  Key,
-  Coins,
-  FileText,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-
-const navItems = [
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Users",
-    href: "/users",
-    icon: Users,
-  },
-  {
-    label: "Tenants",
-    href: "/tenants",
-    icon: Building2,
-  },
-  {
-    label: "Products & Plans",
-    href: "/products",
-    icon: Package,
-  },
-  {
-    label: "Entitlements",
-    href: "/entitlements",
-    icon: Shield,
-  },
-  {
-    label: "Licenses",
-    href: "/licenses",
-    icon: Key,
-  },
-  {
-    label: "Credits",
-    href: "/credits",
-    icon: Coins,
-  },
-  {
-    label: "Audit Logs",
-    href: "/audit",
-    icon: FileText,
-  },
-];
+import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { Badge } from "@/components/ui/badge";
 
 export function Sidebar() {
-  const pathname = usePathname();
-
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar">
-      {/* Logo area */}
-      <div className="flex h-16 items-center border-b border-sidebar-border px-6">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-600 text-white font-bold text-sm">
-            AEP
+    <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-sidebar-border bg-sidebar lg:flex lg:flex-col">
+      <div className="border-b border-sidebar-border px-6 py-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold text-white shadow-inner">
+              AEP
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-sidebar-foreground/45">
+                AI Star Eco
+              </p>
+              <p className="mt-1 text-base font-semibold text-sidebar-foreground">管理后台</p>
+            </div>
           </div>
-          <span className="font-semibold text-sidebar-foreground">Admin Console</span>
+          <Badge variant="outline" className="border-white/15 bg-white/5 text-sidebar-foreground">
+            beta
+          </Badge>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
-        <ul className="space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href));
-
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-primary"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                  )}
-                >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+      <nav className="flex-1 overflow-y-auto px-3 py-5">
+        <SidebarNav />
       </nav>
 
-      {/* Footer */}
-      <div className="border-t border-sidebar-border px-4 py-3">
-        <p className="text-xs text-sidebar-foreground/40">AEP v0.1.0</p>
+      <div className="border-t border-sidebar-border px-4 py-4">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <p className="text-xs font-medium text-sidebar-foreground/55">运行环境</p>
+          <p className="mt-1 text-sm font-semibold text-sidebar-foreground">本地开发</p>
+          <p className="mt-1 text-xs leading-5 text-sidebar-foreground/50">
+            后端默认连接 `http://localhost:8080`
+          </p>
+        </div>
       </div>
     </aside>
   );
