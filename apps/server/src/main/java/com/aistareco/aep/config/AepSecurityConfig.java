@@ -30,13 +30,11 @@ public class AepSecurityConfig {
                         // Public endpoints
                         .requestMatchers("/api/admin/auth/login").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
                         // Admin endpoints require admin roles
                         .requestMatchers("/api/admin/**").hasAnyRole("PLATFORM_OPERATOR", "FINANCE_ADMIN")
                         // Everything else is open (singer ecosystem APIs, etc.)
                         .anyRequest().permitAll()
                 )
-                .headers(headers -> headers.frameOptions(fo -> fo.sameOrigin()))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

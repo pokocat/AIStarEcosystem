@@ -25,7 +25,7 @@ public class Entitlement {
 
     private String featureCode;
 
-    @Column(name = "ent_value")
+    @Column(name = "`value`")
     private String value;
 
     private Instant validFrom;
