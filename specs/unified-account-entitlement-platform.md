@@ -1,13 +1,14 @@
 # 统一认证、权益、分销与积分计量平台技术方案
 
-**文档版本**: v1.2.0  
-**最后更新**: 2026-04-15  
-**当前状态**: AI Star Eco Phase 1 实施中 — 管理后台认证与权益管理已落地  
+**文档版本**: v1.3.0  
+**最后更新**: 2026-04-16  
+**当前状态**: AI Star Eco Phase 1 实施中 — 数据模型重构完成，平台用户/管理员分离，租户-秘钥归属体系落地  
 
 ## 文档版本迭代记录
 
 | 版本 | 日期 | 变更说明 |
 |------|------|----------|
+| v1.3.0 | 2026-04-16 | 重构平台用户与管理员模型：新增 `AdminUser` 实体（超管/运营），`AepUser` 改用 AI 艺人角色（AI_SINGER / AI_ARTIST / ECONOMIC_COMPANY），移除 UserPlan。重构租户-秘钥归属：`LicenseBatch` 新增 `ownerTenantId`，激活时按批次归属租户。`LedgerEntry` 新增 `userId` 实现用户级积分追踪。新增管理员账号 CRUD、用户权益开通、积分人工调差 API。前端新增管理员账号页，更新所有相关页面与导航。详见附录 C。 |
 | v1.2.0 | 2026-04-15 | 实施管理后台认证体系（JWT 登录 + 角色鉴权）、秘钥激活注册流程、权益配置 CRUD 功能、管理员与普通用户角色分离。更新实现状态附录。 |
 | v1.1.0 | 2026-04-14 | 根据 2026-04-14 需求对齐会议，补充激活码授权、预付/激活结算模式、独立运行并预留对接”艺人公司”系统、统一积分消费、编辑能力分层与外部收益回流规则。 |
 | v1.0.0 | 历史基线 | 仓库原有统一认证、权益、分销与积分计量平台方案。 |
@@ -1945,9 +1946,9 @@ flowchart LR
 | 维度   | 用户侧前端（apps/web）                | 管理后台（apps/admin）                      |
 | ---- | ------------------------------ | ----------------------------------------- |
 | 访问路径 | `/`（用户侧独立站点） | `/`（管理后台独立站点，端口 3001）              |
-| 目标用户 | 普通用户（FAN / PRODUCER / COACH），通过秘钥激活注册 | 系统管理员（PLATFORM\_OPERATOR / FINANCE\_ADMIN） |
+| 目标用户 | 平台用户（AI_SINGER / AI_ARTIST / ECONOMIC_COMPANY），通过秘钥激活注册 | 平台管理员（SUPER\_ADMIN / OPERATOR），独立 `admin_users` 表 |
 | 认证方式 | 秘钥激活注册 → JWT | 用户名密码登录 → JWT（BCrypt 密码哈希） |
-| 访问控制 | 前端路由 + 后端接口鉴权 | AuthProvider 路由守卫 + Spring Security `hasAnyRole` + JwtAuthenticationFilter |
+| 访问控制 | 前端路由 + 后端接口鉴权 | AuthProvider 路由守卫 + Spring Security `hasAnyRole("SUPER_ADMIN","OPERATOR")` + JwtAuthenticationFilter |
 
 ### B.2 后台导航结构
 
@@ -2194,24 +2195,25 @@ Admin Console
 
 ### B.4 后台访问控制矩阵
 
-| 模块            | platform\_owner | platform\_operator | finance\_admin | channel\_manager |
-| ------------- | :-------------: | :----------------: | :------------: | :--------------: |
-| 概览看板          |        ✅        |          ✅         |        ✅       |         ✅        |
-| 用户列表 / 详情（只读） |        ✅        |          ✅         |        ✅       |         ❌        |
-| 封禁 / 解封用户     |        ✅        |          ✅         |        ❌       |         ❌        |
-| 强制下线设备        |        ✅        |          ✅         |        ❌       |         ❌        |
-| 删除账号（软删除）     |        ✅        |          ❌         |        ❌       |         ❌        |
-| 租户管理（只读）      |        ✅        |          ✅         |        ✅       |         ❌        |
-| 租户冻结          |        ✅        |          ✅         |        ❌       |         ❌        |
-| 套餐配置编辑        |        ✅        |          ✅         |        ❌       |         ❌        |
-| 积分补点 / 扣点     |        ✅        |          ❌         |        ✅       |         ❌        |
-| 价格规则管理        |        ✅        |          ❌         |        ✅       |         ❌        |
-| 卡密批次创建        |        ✅        |          ✅         |        ❌       |         ✅        |
-| 卡密吊销          |        ✅        |          ✅         |        ❌       |         ✅        |
-| 渠道管理          |        ✅        |          ❌         |        ❌       |         ✅        |
-| 审计日志（只读）      |        ✅        |          ✅         |        ✅       |         ✅        |
-| 风控事件处理        |        ✅        |          ✅         |        ❌       |         ❌        |
-| 系统设置          |        ✅        |          ❌         |        ❌       |         ❌        |
+> v1.3.0 实际实现的角色为 `SUPER_ADMIN`（超级管理员）和 `OPERATOR`（运营）两级，未来可扩展细粒度 RBAC。
+
+| 模块                | SUPER\_ADMIN | OPERATOR |
+| ------------------- | :----------: | :------: |
+| 概览看板              |      ✅      |    ✅    |
+| 平台用户列表 / 详情    |      ✅      |    ✅    |
+| 封禁 / 解封用户        |      ✅      |    ✅    |
+| 删除账号（软删除）     |      ✅      |    ❌    |
+| 为用户开通权益         |      ✅      |    ✅    |
+| 人工调差积分           |      ✅      |    ✅    |
+| 管理员账号 CRUD       |      ✅      |    ❌    |
+| 租户管理（只读）       |      ✅      |    ✅    |
+| 租户冻结              |      ✅      |    ✅    |
+| 套餐 / 权益配置编辑   |      ✅      |    ✅    |
+| 卡密批次创建          |      ✅      |    ✅    |
+| 卡密吊销              |      ✅      |    ✅    |
+| 积分钱包查看          |      ✅      |    ✅    |
+| 审计日志（只读）       |      ✅      |    ✅    |
+| 系统设置              |      ✅      |    ❌    |
 
 ### B.5 后台工程实现规划：apps/admin 独立站点
 
@@ -2327,7 +2329,7 @@ Admin 和 Web 之间**不共享运行时代码**，但共享以下内容：
 └─────────────────────────────────────────────────────┘
 ```
 
-后端 Spring Boot 对应新增 `/api/admin/**` 接口路由，统一要求 `platform_operator` 以上角色（通过 `@PreAuthorize("hasRole('PLATFORM_OPERATOR')")` 注解实现）。
+后端 Spring Boot 对应新增 `/api/admin/**` 接口路由，统一要求 `SUPER_ADMIN` 或 `OPERATOR` 角色（通过 Spring Security `.hasAnyRole("SUPER_ADMIN", "OPERATOR")` 实现，匹配 `admin_users` 表的 `AdminRole` 枚举）。
 
 ***
 
@@ -2355,9 +2357,9 @@ Admin 和 Web 之间**不共享运行时代码**，但共享以下内容：
 
 ***
 
-## 附录 C：实现状态跟踪（v1.2.0 更新）
+## 附录 C：实现状态跟踪（v1.3.0 更新）
 
-> 本附录记录 apps/admin 与 apps/server 的实际实现状态，与前述规划对照。
+> 本附录记录 `apps/admin` 与 `apps/server` 的实际实现状态，与前述规划对照。每次版本迭代在原有基础上追加变更说明。
 
 ### C.1 核心架构决策
 
@@ -2368,52 +2370,83 @@ Admin 和 Web 之间**不共享运行时代码**，但共享以下内容：
 | 数据库 | H2 嵌入式（开发阶段），DDL auto-update，文件存储于 `./data/aistareco` | 已实现 |
 | 认证方案 | JWT（JJWT 0.12.6）+ BCrypt 密码哈希 + Spring Security Filter Chain | 已实现 |
 | API 契约 | 所有响应统一包装为 `{"data": ...}` 格式（`ApiResponse<T>`） | 已实现 |
+| 管理员独立实体 | `AdminUser`（`admin_users` 表），与平台用户 `AepUser`（`aep_users` 表）完全隔离 | v1.3.0 新增 |
+| 租户-秘钥归属 | `LicenseBatch.ownerTenantId`（可空）决定激活后用户归属哪个租户 | v1.3.0 新增 |
+| 用户级积分追踪 | `LedgerEntry.userId`（可空）记录触发积分变动的具体用户，支持在租户维度下按用户汇总 | v1.3.0 新增 |
 
-### C.2 管理员与用户角色分离
+### C.2 管理员与平台用户分离（v1.3.0 重构）
 
-系统明确区分 **系统管理员** 和 **普通用户**，两者的入口和权限完全隔离：
+v1.3.0 将管理员与平台用户彻底拆分为两张独立实体表，不再混用 `AepUser`：
 
-| 维度 | 系统管理员 | 普通用户 |
-|------|-----------|----------|
-| 角色 | `PLATFORM_OPERATOR`、`FINANCE_ADMIN` | `FAN`、`PRODUCER`、`COACH` |
-| 入口 | 管理后台 `apps/admin`（JWT 登录） | 用户侧 `apps/web`（秘钥激活注册） |
-| 鉴权 | Spring Security `hasAnyRole('PLATFORM_OPERATOR', 'FINANCE_ADMIN')` | 无管理后台访问权限 |
-| 数据权限 | 所有数据的 CRUD 操作权限 | 仅自身租户范围内的数据 |
-| 密码 | 有 `passwordHash` 字段，BCrypt 加密 | 通过秘钥激活注册，无需密码 |
+| 维度 | 平台管理员（`AdminUser`） | 平台用户（`AepUser`） |
+|------|-------------------------|----------------------|
+| 数据库表 | `admin_users` | `aep_users` |
+| 角色枚举 | `SUPER_ADMIN`、`OPERATOR` | `AI_SINGER`、`AI_ARTIST`、`ECONOMIC_COMPANY` |
+| 注册方式 | 后台 DataInitializer 初始化 / 超管创建 | 秘钥激活（`POST /api/auth/activate`） |
+| 登录入口 | `POST /api/admin/auth/login` | `POST /api/auth/login`（用户侧，未来实现） |
+| 鉴权规则 | Spring Security `hasAnyRole("SUPER_ADMIN", "OPERATOR")` | 无管理后台访问权限 |
+| 数据权限 | 全平台所有数据读写 | 仅自身租户范围内的数据（`/api/me/**`） |
+| 密码 | `passwordHash`（BCrypt），必填 | 无密码，通过秘钥激活获取 JWT |
 
-**安全保障：**
-- `/api/admin/**` 路径统一要求管理员角色（`PLATFORM_OPERATOR` 或 `FINANCE_ADMIN`）
-- `/api/admin/auth/login` 为唯一公开的管理后台端点
-- JWT Token 携带 `userId`、`username`、`role`，前端每次请求通过 `Authorization: Bearer <token>` 传递
-- 前端 `AuthProvider` + `AppFrame` 实现路由守卫，未认证用户自动重定向到 `/login`
+**字段清理（v1.3.0）：** `AepUser` 移除了 `UserPlan` 枚举及 `plan` 字段（原 `FREE/PRO/ENTERPRISE`）；套餐/权益完全由 `Entitlement` 记录管理，不再写入用户主表。
 
-### C.3 秘钥注册流程（已实现）
+**Spring Security 角色映射：** JWT 中 `role` 字段值为 `SUPER_ADMIN` / `OPERATOR`，`JwtAuthenticationFilter` 在 SecurityContext 中添加 `ROLE_SUPER_ADMIN` / `ROLE_OPERATOR` 权威，`hasAnyRole(...)` 自动匹配前缀后的名称。
 
-账户通过秘钥（License Key）激活注册，流程如下：
+### C.3 租户-秘钥归属体系（v1.3.0 重构）
+
+v1.3.0 引入 **批次归属租户** 机制，支持渠道型租户（经纪公司）分发秘钥并收纳激活用户：
+
+#### 激活流程（按批次归属分支）
 
 ```
 用户持有秘钥 → POST /api/auth/activate
     → SHA-256 哈希匹配 → 校验秘钥状态（CREATED/ALLOCATED/SOLD）
-    → 创建 AepUser（角色 FAN）
-    → 创建 Personal Tenant
-    → 创建 Membership（OWNER）
-    → 创建 Wallet（初始积分来自批次 creditDelta）
-    → 创建 Entitlement（如果是 PLAN_ACTIVATION 类型批次）
+    → 解析请求体中的 userRole（默认 AI_SINGER）
+    → 创建 AepUser（角色 = userRole）
+    ↓
+    ┌─ [批次有 ownerTenantId 且租户存在] ──────────────────────────────────────┐
+    │  用户加入已有租户（渠道分发模式）                                           │
+    │  → Membership（userId, ownerTenantId, role=MEMBER）                     │
+    │  → 不创建新租户，不创建独立钱包（共享租户钱包）                              │
+    └──────────────────────────────────────────────────────────────────────────┘
+    ┌─ [批次无 ownerTenantId 或租户不存在] ────────────────────────────────────┐
+    │  为用户创建个人租户（平台直销模式，兼容旧流程）                              │
+    │  → 创建 Personal Tenant                                                  │
+    │  → Membership（OWNER）                                                   │
+    │  → 创建 Wallet（初始积分来自批次 creditDelta）                             │
+    │  → 创建 Entitlement（如果批次类型是 PLAN_ACTIVATION）                     │
+    └──────────────────────────────────────────────────────────────────────────┘
     → 激活 LicenseKey（状态 → ACTIVATED）
-    → 增加 LicenseBatch.activatedCount
+    → LicenseBatch.activatedCount + 1
     → 返回 JWT Token + 用户信息
 ```
 
-**秘钥来源支持：**
+#### 秘钥批次类型
 
-| 来源 | 状态 | 说明 |
-|------|------|------|
-| 系统内后台导入 | 已实现 | 管理员通过 `POST /api/admin/license-batches` 创建批次，自动生成秘钥 |
-| 外部 CRM 系统对接 | 预留接口 | `LicenseActivationController` 和 `LicenseBatch.channelPartnerId` 已预留，后续实现同步 |
+| `ownerTenantId` | 说明 |
+|-----------------|------|
+| 非空（已有租户 ID） | 渠道分发批次：激活后用户加入该租户，租户拥有者负责统一钱包管理 |
+| 空（null） | 平台直销批次：激活后自动为用户创建个人租户 + 钱包，兼容旧有逻辑 |
 
-### C.4 权益管理功能（已修复）
+### C.4 用户级积分追踪（v1.3.0 新增）
 
-权益配置页面现已支持完整的 CRUD 操作：
+`LedgerEntry` 新增 `userId`（可空字符串）字段，用于在租户共享钱包场景下追踪是哪个具体用户触发了积分变动：
+
+| 场景 | `tenantId` | `userId` | 说明 |
+|------|-----------|---------|------|
+| 租户充值 | 目标租户 ID | null | 管理员对租户整体充值 |
+| 用户消耗 | 用户归属租户 ID | 触发用户 ID | 用户调用 AI 能力扣费 |
+| 人工调差（按用户） | 用户主租户 ID | 目标用户 ID | 运营人工增减积分，归属到用户 |
+| 权益赠送积分 | 目标租户 ID | null | 批次激活时初始赠送 |
+
+后端新增查询支持：
+- `GET /api/admin/credits/ledger?tenantId=xxx`：租户维度流水
+- `GET /api/admin/credits/ledger?userId=xxx`：用户维度流水（跨租户汇聚）
+- `LedgerEntryRepository.findByUserId(userId, pageable)`：JPA 方法自动实现
+
+### C.5 权益管理功能
+
+权益配置页面支持完整的 CRUD 操作，同时新增运营动作：
 
 | 操作 | 前端入口 | 后端 API | 状态 |
 |------|----------|----------|------|
@@ -2422,83 +2455,153 @@ Admin 和 Web 之间**不共享运行时代码**，但共享以下内容：
 | 编辑权益 | 行操作栏「编辑」→ 弹窗表单 | `PUT /api/admin/entitlements/{id}` | 已实现 |
 | 查看详情 | 点击行 → 侧边抽屉 | 前端展示（复用列表数据） | 已实现 |
 | 撤销权益 | 行操作栏「撤销」→ 确认弹窗 | `DELETE /api/admin/entitlements/{id}` | 已实现 |
+| 为指定用户开通权益 | 用户管理页操作列 | `POST /api/admin/users/{id}/entitlements` | v1.3.0 新增 |
 
 **支持的权益类型：**
 `FEATURE_ACCESS`、`SEAT_LIMIT`、`QUOTA_LIMIT`、`MONTHLY_CREDIT`、`ADDON`、`SINGER_SLOT`、`NFT_MINT_QUOTA`、`DISTRIBUTION_TIER`
 
-### C.5 管理后台页面实现状态
+### C.6 管理后台页面实现状态
 
 | 页面 | 路由 | 功能 | 状态 |
 |------|------|------|------|
 | 登录 | `/login` | JWT 认证登录（用户名 / 邮箱 + 密码） | 已实现 |
 | 总览看板 | `/dashboard` | 统计卡片、快速导航 | 已实现 |
-| 用户管理 | `/users` | 列表、搜索、详情抽屉、编辑角色/状态 | 已实现 |
+| 平台用户管理 | `/users` | 列表、搜索、详情抽屉、编辑角色/状态、开通权益、人工调差积分 | v1.3.0 更新 |
+| 管理员账号 | `/admins` | 列表、创建管理员、编辑角色/状态、删除 | v1.3.0 新增 |
 | 租户空间 | `/tenants` | 列表展示 | 已实现 |
 | 产品与套餐 | `/products` | 产品卡片、套餐价格表 | 已实现 |
 | 权益配置 | `/entitlements` | 列表、新增、编辑、撤销、详情抽屉 | 已实现 |
-| 许可证 | `/licenses` | 批次/密钥双 Tab、详情抽屉 | 已实现 |
-| 积分钱包 | `/credits` | 钱包列表、账本流水 | 已实现 |
+| 许可证 | `/licenses` | 批次/密钥双 Tab、详情抽屉（含所属租户展示） | v1.3.0 更新 |
+| 积分钱包 | `/credits` | 钱包列表、账本流水（含 userId 字段） | v1.3.0 更新 |
 | 审计日志 | `/audit` | 日志查询 | 已实现 |
 
-### C.6 后端 API 端点清单
+**侧边栏导航分组（v1.3.0 更新）：**
+
+```
+账户
+├── 平台用户     /users     AI 歌手、艺人与经纪公司账号
+├── 管理员账号   /admins    后台运营人员账号管理（新增）
+└── 租户工作区   /tenants   密钥分发渠道与归属管理
+
+运营
+├── 产品与套餐   /products
+├── 权益配置     /entitlements
+├── 许可证管理   /licenses
+└── 积分钱包     /credits
+
+系统
+└── 审计日志     /audit
+```
+
+### C.7 后端 API 端点清单（v1.3.0 完整版）
 
 #### 管理员认证（公开）
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/admin/auth/login` | 管理员登录，返回 JWT Token |
-| GET | `/api/admin/auth/me` | 获取当前登录管理员信息 |
+| POST | `/api/admin/auth/login` | 管理员登录（查 `admin_users` 表），返回 JWT Token |
+| GET | `/api/admin/auth/me` | 获取当前登录管理员信息（返回 `AdminUserDto`） |
 
 #### 秘钥激活（公开）
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/auth/activate` | 用户通过秘钥激活注册 |
+| POST | `/api/auth/activate` | 用户通过秘钥激活注册，支持 `userRole` 参数 |
 
-#### 管理后台 API（需管理员角色）
+#### 用户侧自助 API（需平台用户 JWT）
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/admin/users` | 用户列表（分页、按状态/角色筛选） |
-| GET | `/api/admin/users/{id}` | 用户详情 |
-| POST | `/api/admin/users` | 创建用户 |
-| PUT/PATCH | `/api/admin/users/{id}` | 更新用户 |
-| DELETE | `/api/admin/users/{id}` | 软删除用户 |
+| GET | `/api/me` | 当前用户信息 |
+| GET | `/api/me/tenants` | 当前用户所属租户列表 |
+| GET | `/api/me/wallet` | 当前用户（主租户）钱包信息 |
+| GET | `/api/me/entitlements` | 当前用户权益列表 |
+| GET | `/api/me/ledger` | 当前用户账本流水（分页） |
+
+#### 管理后台 API（需 SUPER_ADMIN 或 OPERATOR 角色）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/staff` | 管理员账号列表 |
+| POST | `/api/admin/staff` | 创建管理员账号 |
+| PUT | `/api/admin/staff/{id}` | 更新管理员信息（角色/状态/密码） |
+| DELETE | `/api/admin/staff/{id}` | 删除管理员账号 |
+| GET | `/api/admin/users` | 平台用户列表（分页、按状态/角色筛选） |
+| GET | `/api/admin/users/{id}` | 平台用户详情 |
+| POST | `/api/admin/users` | 创建平台用户 |
+| PUT/PATCH | `/api/admin/users/{id}` | 更新平台用户 |
+| DELETE | `/api/admin/users/{id}` | 软删除平台用户 |
+| POST | `/api/admin/users/{id}/entitlements` | 为用户开通权益（运营动作） |
+| POST | `/api/admin/users/{id}/credits/adjust` | 人工调整用户积分（运营动作） |
 | GET | `/api/admin/entitlements` | 权益列表（分页、按租户/产品筛选） |
 | POST | `/api/admin/entitlements` | 创建权益 |
 | PUT | `/api/admin/entitlements/{id}` | 更新权益 |
 | DELETE | `/api/admin/entitlements/{id}` | 撤销权益 |
 | GET | `/api/admin/license-batches` | 批次列表 |
-| POST | `/api/admin/license-batches` | 创建批次（自动生成秘钥） |
+| POST | `/api/admin/license-batches` | 创建批次（含 `ownerTenantId`，自动生成秘钥） |
 | GET | `/api/admin/license-keys` | 密钥列表（按批次/状态筛选） |
 | PUT | `/api/admin/license-keys/{id}/revoke` | 吊销密钥 |
 | GET | `/api/admin/products` | 产品列表 |
 | GET | `/api/admin/plans` | 套餐列表 |
 | GET | `/api/admin/tenants` | 租户列表 |
 | GET | `/api/admin/credits/wallets` | 钱包列表 |
-| GET | `/api/admin/credits/ledger` | 账本流水 |
+| POST | `/api/admin/credits/wallets/{id}/credit` | 向钱包充值（含 `userId` 归属） |
+| GET | `/api/admin/credits/ledger` | 账本流水（支持 `?userId=` 过滤） |
 | GET | `/api/admin/audit` | 审计日志 |
 | GET | `/api/admin/stats` | 仪表盘统计 |
 
-### C.7 数据模型变更记录
+### C.8 数据模型变更记录
+
+#### v1.3.0 变更
+
+| 实体 | 变更类型 | 详情 |
+|------|----------|------|
+| `AdminUser`（新增） | 新实体 | 平台管理员独立实体，存于 `admin_users` 表；字段：`id, username, passwordHash, email, displayName, role(SUPER_ADMIN/OPERATOR), status(ACTIVE/SUSPENDED), createdAt, updatedAt, lastLoginAt` |
+| `AepUser` | 角色枚举重构 | `UserRole` 从 `FAN/PRODUCER/COACH` 改为 `AI_SINGER/AI_ARTIST/ECONOMIC_COMPANY`；移除 `UserPlan` 枚举及 `plan` 字段 |
+| `LicenseBatch` | 新增字段 | `ownerTenantId String`（可空）：批次所属/分发渠道租户 ID；为空时激活创建个人租户 |
+| `LedgerEntry` | 新增字段 | `userId String`（可空）：触发此流水的平台用户 ID，支持用户级积分追踪 |
+| `AepUserDto` | 移除字段 | 移除 `plan` 字段 |
+| `LicenseBatchDto` | 新增字段 | 新增 `ownerTenantId` 映射 |
+| `LedgerEntryDto` | 新增字段 | 新增 `userId` 映射 |
+| `AdminUserDto`（新增） | 新 DTO | `id, username, email, displayName, role, status, createdAt, updatedAt, lastLoginAt` |
+
+#### v1.2.0 变更
 
 | 实体 | 变更 | 说明 |
 |------|------|------|
 | `AepUser` | 新增 `passwordHash` 字段 | 管理员密码哈希（BCrypt），普通用户为 null（通过秘钥注册） |
 
-### C.8 开发环境默认账户
+### C.9 开发环境默认账户（v1.3.0 更新）
+
+#### 平台管理员（`admin_users` 表）
 
 | 用户名 | 密码 | 角色 | 说明 |
 |--------|------|------|------|
-| `admin` | `admin123` | `PLATFORM_OPERATOR` | 系统管理员，拥有所有数据操作权限 |
-| `finance` | `finance123` | `FINANCE_ADMIN` | 财务管理员，拥有所有数据操作权限 |
+| `admin` | `admin123` | `SUPER_ADMIN` | 超级管理员，全部操作权限 |
+| `operator` | `operator123` | `OPERATOR` | 运营账号，日常运营操作 |
 
-### C.9 后续待实现项（Roadmap）
+#### 平台用户（`aep_users` 表，通过 DataInitializer 预置）
+
+| 用户名 | 角色 | 所属租户 | 说明 |
+|--------|------|----------|------|
+| `singer_luna` | `AI_SINGER` | 星梦娱乐经纪公司 | 渠道分发批次激活，加入经纪公司租户 |
+| `artist_nova` | `AI_ARTIST` | 星梦娱乐经纪公司 | 渠道分发批次激活，加入经纪公司租户 |
+| `agency_starlight` | `ECONOMIC_COMPANY` | 星梦娱乐经纪公司（OWNER） | 经纪公司账号，租户所有者 |
+
+#### 预置批次
+
+| 批次号 | `ownerTenantId` | 说明 |
+|--------|-----------------|------|
+| `BATCH-XINGMENG-001` | 星梦娱乐经纪公司 ID | 渠道分发批次，激活后加入该租户 |
+| `BATCH-DIRECT-001` | null | 平台直销批次，激活后各自创建个人租户 |
+
+### C.10 后续待实现项（Roadmap）
 
 | 功能 | 优先级 | 说明 |
 |------|--------|------|
-| 外部 CRM 秘钥同步 | P1 | 通过 `channelPartnerId` 对接外部 CRM 系统的批次导入 |
-| 管理员操作审计记录 | P1 | 管理员每次数据操作自动写入 AuditLog |
-| Token 刷新机制 | P1 | JWT Token 过期后自动刷新 |
+| 外部 CRM 秘钥批量导入 | P1 | CSV/Excel 批量创建秘钥，`channelPartnerId` 对接外部 CRM 批次同步 |
+| 管理员操作审计记录 | P1 | 管理员每次 `/api/admin/**` 写操作自动写入 `AuditLog` |
+| Token 刷新机制 | P1 | JWT Access Token 过期后使用 Refresh Token 静默续签 |
 | 用户侧 Web 前端认证集成 | P0 | `apps/web` 接入秘钥激活注册 + JWT 登录 |
-| RBAC 细粒度权限 | P2 | 实现 Role + Permission 模型，替代当前角色枚举 |
-| 微信 / Google OAuth | P1 | 接入第三方登录 |
-| 管理员密码修改 | P1 | 安全设置页面 |
-| 批量导入秘钥 | P1 | CSV/Excel 批量创建秘钥 |
+| RBAC 细粒度权限 | P2 | 实现 Role + Permission 模型，替代当前 `SUPER_ADMIN/OPERATOR` 二元枚举 |
+| 微信 / Google OAuth | P1 | 接入第三方登录（平台用户侧） |
+| 管理员密码修改 | P1 | 安全设置页面，支持当前管理员修改自身密码 |
+| 租户钱包视图 | P1 | 管理后台支持以租户维度查看所有成员的积分消耗分布 |
+| 前端用户权益开通弹窗 | P1 | 用户详情页「开通权益」操作使用完整表单（当前仅后端 API 已实现） |
+| 积分人工调差前端页面 | P1 | 专用调差页面（`/credits/adjust`），支持搜索目标用户/租户 |
