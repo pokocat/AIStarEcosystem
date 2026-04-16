@@ -17,11 +17,19 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
 
     Optional<AepUser> findByEmail(String email);
 
+    Optional<AepUser> findByPhone(String phone);
+
     Page<AepUser> findByStatus(AepUser.UserStatus status, Pageable pageable);
 
     Page<AepUser> findByRole(AepUser.UserRole role, Pageable pageable);
 
     Page<AepUser> findByStatusAndRole(AepUser.UserStatus status, AepUser.UserRole role, Pageable pageable);
+
+    boolean existsByUsername(String username);
+
+    boolean existsByEmail(String email);
+
+    boolean existsByPhone(String phone);
 
     long countByStatus(AepUser.UserStatus status);
 }

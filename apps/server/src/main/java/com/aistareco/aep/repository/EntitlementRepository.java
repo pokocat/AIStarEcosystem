@@ -19,6 +19,8 @@ public interface EntitlementRepository extends JpaRepository<Entitlement, String
 
     Page<Entitlement> findByTenantIdAndProductId(String tenantId, String productId, Pageable pageable);
 
+    List<Entitlement> findByTenantIdOrderByCreatedAtDesc(String tenantId);
+
     List<Entitlement> findByTenantIdAndStatus(String tenantId, Entitlement.EntitlementStatus status);
 
     long countByStatus(Entitlement.EntitlementStatus status);

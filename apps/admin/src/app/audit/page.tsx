@@ -244,7 +244,7 @@ export default function AuditPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">审计日志</h2>
           <p className="text-sm text-muted-foreground">
-            查看平台操作记录、安全事件与资源访问结果。点击行查看完整详情。
+            统一查看平台操作记录、安全结果与资源访问轨迹。
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchLogs(page)} disabled={loading}>

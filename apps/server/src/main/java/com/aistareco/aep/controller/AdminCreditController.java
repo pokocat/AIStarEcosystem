@@ -1,10 +1,10 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.LedgerEntryDto;
+import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.dto.WalletDto;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.common.ApiResponse;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -23,12 +23,12 @@ public class AdminCreditController {
     }
 
     @GetMapping("/wallets")
-    public ApiResponse<Page<WalletDto>> listWallets(
+    public ApiResponse<PageEnvelope<WalletDto>> listWallets(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(creditService.listWallets(pageable));
+        return ApiResponse.of(PageEnvelope.from(creditService.listWallets(pageable)));
     }
 
     @GetMapping("/wallets/{tenantId}")
@@ -44,13 +44,13 @@ public class AdminCreditController {
     }
 
     @GetMapping("/ledger-entries")
-    public ApiResponse<Page<LedgerEntryDto>> listLedgerEntries(
+    public ApiResponse<PageEnvelope<LedgerEntryDto>> listLedgerEntries(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String walletId,
             @RequestParam(required = false) String tenantId) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(creditService.listLedgerEntries(walletId, tenantId, pageable));
+        return ApiResponse.of(PageEnvelope.from(creditService.listLedgerEntries(walletId, tenantId, pageable)));
     }
 }

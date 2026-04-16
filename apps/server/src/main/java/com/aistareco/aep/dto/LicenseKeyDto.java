@@ -3,12 +3,13 @@ package com.aistareco.aep.dto;
 import com.aistareco.aep.model.LicenseKey;
 
 import java.time.Instant;
+import java.util.Locale;
 
 public record LicenseKeyDto(
         String id,
         String batchId,
         String maskedCode,
-        LicenseKey.LicenseKeyStatus status,
+        String status,
         String activatedByUserId,
         String activatedTenantId,
         Instant activatedAt,
@@ -17,9 +18,13 @@ public record LicenseKeyDto(
 ) {
     public static LicenseKeyDto from(LicenseKey k) {
         return new LicenseKeyDto(
-                k.getId(), k.getBatchId(), k.getMaskedCode(), k.getStatus(),
+                k.getId(), k.getBatchId(), k.getMaskedCode(), lower(k.getStatus()),
                 k.getActivatedByUserId(), k.getActivatedTenantId(),
                 k.getActivatedAt(), k.getExpiresAt(), k.getCreatedAt()
         );
+    }
+
+    private static String lower(Enum<?> value) {
+        return value == null ? null : value.name().toLowerCase(Locale.ROOT);
     }
 }

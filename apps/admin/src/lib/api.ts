@@ -1,5 +1,5 @@
 import type { PageResponse } from "@/types";
-import { getStoredToken } from "@/lib/auth";
+import { clearAdminAuth, getStoredToken } from "@/lib/auth";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -19,7 +19,18 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     ...init,
     headers,
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (res.status === 401) {
+    clearAdminAuth();
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+    throw new Error("登录状态已失效，请重新登录");
+  }
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    const message = json?.error?.message ?? json?.message ?? `API error ${res.status}`;
+    throw new Error(message);
+  }
   const json = await res.json();
   return json.data ?? json;
 }

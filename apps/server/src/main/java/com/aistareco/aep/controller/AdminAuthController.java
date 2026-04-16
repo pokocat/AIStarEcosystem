@@ -19,8 +19,10 @@ import java.util.Set;
 public class AdminAuthController {
 
     private static final Set<AepUser.UserRole> ADMIN_ROLES = Set.of(
+            AepUser.UserRole.PLATFORM_OWNER,
             AepUser.UserRole.PLATFORM_OPERATOR,
-            AepUser.UserRole.FINANCE_ADMIN
+            AepUser.UserRole.FINANCE_ADMIN,
+            AepUser.UserRole.CHANNEL_MANAGER
     );
 
     private final AepUserRepository userRepo;
@@ -59,6 +61,9 @@ public class AdminAuthController {
         if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户已被停用");
         }
+
+        user.setLastLoginAt(java.time.Instant.now());
+        userRepo.save(user);
 
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole().name());
 

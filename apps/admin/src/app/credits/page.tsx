@@ -437,7 +437,7 @@ export default function CreditsPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">积分钱包</h2>
           <p className="text-sm text-muted-foreground">
-            查看租户钱包余额、结构分布以及积分流水明细。点击行查看详情。
+            统一查看钱包余额结构、租户积分沉淀与账本流水明细。
           </p>
         </div>
         <Button
@@ -484,7 +484,7 @@ export default function CreditsPage() {
         <Card className="border-border/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">流水记录</CardTitle>
-            <CardDescription>进入"积分流水"标签后按分页加载</CardDescription>
+            <CardDescription>切换到流水页签后按分页方式加载</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold tracking-tight text-slate-950">
@@ -496,9 +496,9 @@ export default function CreditsPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border">
-        {([
-          { key: "wallets" as const, label: "钱包余额" },
-          { key: "ledger" as const, label: "积分流水" },
+          {([
+          { key: "wallets" as const, label: "钱包概览" },
+          { key: "ledger" as const, label: "账本流水" },
         ]).map((tab) => (
           <Button
             key={tab.key}

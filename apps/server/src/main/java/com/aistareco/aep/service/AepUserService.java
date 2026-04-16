@@ -1,8 +1,10 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AepUserDto;
+import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.repository.AepUserRepository;
+import com.aistareco.aep.repository.TenantRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -17,9 +20,11 @@ import java.util.UUID;
 public class AepUserService {
 
     private final AepUserRepository userRepo;
+    private final TenantRepository tenantRepo;
 
-    public AepUserService(AepUserRepository userRepo) {
+    public AepUserService(AepUserRepository userRepo, TenantRepository tenantRepo) {
         this.userRepo = userRepo;
+        this.tenantRepo = tenantRepo;
     }
 
     public Page<AepUserDto> list(AepUser.UserStatus status, AepUser.UserRole role, Pageable pageable) {
@@ -40,6 +45,16 @@ public class AepUserService {
         return userRepo.findById(id)
                 .map(AepUserDto::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + id));
+    }
+
+    public List<TenantDto> listOwnedTenants(String userId) {
+        if (!userRepo.existsById(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId);
+        }
+
+        return tenantRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(TenantDto::from)
+                .toList();
     }
 
     public AepUserDto create(Map<String, Object> body) {

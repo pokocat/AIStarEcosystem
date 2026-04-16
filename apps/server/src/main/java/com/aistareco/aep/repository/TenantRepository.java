@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface TenantRepository extends JpaRepository<Tenant, String>,
         PagingAndSortingRepository<Tenant, String> {
@@ -14,6 +16,8 @@ public interface TenantRepository extends JpaRepository<Tenant, String>,
     Page<Tenant> findByStatus(Tenant.TenantStatus status, Pageable pageable);
 
     Page<Tenant> findByType(Tenant.TenantType type, Pageable pageable);
+
+    List<Tenant> findByOwnerUserIdOrderByCreatedAtDesc(String ownerUserId);
 
     long countByStatus(Tenant.TenantStatus status);
 }

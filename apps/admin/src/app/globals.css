@@ -29,7 +29,7 @@
   --input: 214 32% 91%;
   --ring: 221 83% 53%;
 
-  --radius: 0.9rem;
+  --radius: 0.75rem;
 
   --sidebar-background: 223 44% 12%;
   --sidebar-foreground: 214 32% 91%;
@@ -52,16 +52,33 @@ body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 22%),
-    linear-gradient(180deg, hsl(var(--background)), hsl(210 30% 97%));
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.06), transparent 20%),
+    linear-gradient(180deg, hsl(var(--background)), hsl(210 26% 97%));
   color: hsl(var(--foreground));
   font-family: var(--font-admin-sans), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
   background: rgba(59, 130, 246, 0.18);
+}
+
+a {
+  text-underline-offset: 3px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 @theme inline {

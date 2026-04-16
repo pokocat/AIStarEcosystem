@@ -22,7 +22,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">正在验证身份...</p>
+          <p className="text-sm text-muted-foreground">正在校验管理员登录态…</p>
         </div>
       </div>
     );
@@ -38,8 +38,8 @@ export function AppFrame({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+        <main id="main-content" className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1520px] px-4 py-5 sm:px-6 lg:px-8">{children}</div>
         </main>
       </div>
     </div>

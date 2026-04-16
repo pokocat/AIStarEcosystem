@@ -20,7 +20,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "AI Star Eco 管理后台",
-  description: "AI Star Eco 账户、权益、许可证与积分管理后台",
+  description: "AI Star Eco 账户、租户、卡密、积分与审计运营后台",
 };
 
 export default function RootLayout({
@@ -31,6 +31,12 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={`${notoSansSc.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans antialiased">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-slate-950 focus:px-3 focus:py-2 focus:text-white"
+        >
+          跳转到主要内容
+        </a>
         <AuthProvider>
           <AppFrame>{children}</AppFrame>
         </AuthProvider>

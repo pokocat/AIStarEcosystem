@@ -1,16 +1,21 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.AepUserDto;
+import com.aistareco.aep.dto.PageEnvelope;
+import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.service.AepUserService;
 import com.aistareco.common.ApiResponse;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
+import java.util.List;
+import java.util.Locale;
+import org.springframework.http.HttpStatusCode;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -23,21 +28,26 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public ApiResponse<Page<AepUserDto>> list(
+    public ApiResponse<PageEnvelope<AepUserDto>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String role) {
 
-        AepUser.UserStatus statusEnum = status != null ? AepUser.UserStatus.valueOf(status) : null;
-        AepUser.UserRole roleEnum = role != null ? AepUser.UserRole.valueOf(role) : null;
+        AepUser.UserStatus statusEnum = parseEnum(status, AepUser.UserStatus.class, "不支持的用户状态筛选值");
+        AepUser.UserRole roleEnum = parseEnum(role, AepUser.UserRole.class, "不支持的用户角色筛选值");
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(userService.list(statusEnum, roleEnum, pageable));
+        return ApiResponse.of(PageEnvelope.from(userService.list(statusEnum, roleEnum, pageable)));
     }
 
     @GetMapping("/{id}")
     public ApiResponse<AepUserDto> getById(@PathVariable String id) {
         return ApiResponse.of(userService.findById(id));
+    }
+
+    @GetMapping("/{id}/tenants")
+    public ApiResponse<List<TenantDto>> listOwnedTenants(@PathVariable String id) {
+        return ApiResponse.of(userService.listOwnedTenants(id));
     }
 
     @PostMapping
@@ -60,5 +70,17 @@ public class AdminUserController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String id) {
         userService.delete(id);
+    }
+
+    private <E extends Enum<E>> E parseEnum(String raw, Class<E> type, String errorMessage) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Enum.valueOf(type, raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, errorMessage);
+        }
     }
 }

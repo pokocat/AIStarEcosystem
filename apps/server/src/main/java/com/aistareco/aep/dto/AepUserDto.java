@@ -3,6 +3,7 @@ package com.aistareco.aep.dto;
 import com.aistareco.aep.model.AepUser;
 
 import java.time.Instant;
+import java.util.Locale;
 
 public record AepUserDto(
         String id,
@@ -12,10 +13,10 @@ public record AepUserDto(
         String displayName,
         String avatarUrl,
         String walletAddress,
-        AepUser.UserRole role,
-        AepUser.UserPlan plan,
+        String role,
+        String plan,
         long credits,
-        AepUser.UserStatus status,
+        String status,
         boolean emailVerified,
         boolean phoneVerified,
         String langPreference,
@@ -27,9 +28,13 @@ public record AepUserDto(
         return new AepUserDto(
                 u.getId(), u.getUsername(), u.getEmail(), u.getPhone(),
                 u.getDisplayName(), u.getAvatarUrl(), u.getWalletAddress(),
-                u.getRole(), u.getPlan(), u.getCredits(), u.getStatus(),
+                lower(u.getRole()), lower(u.getPlan()), u.getCredits(), lower(u.getStatus()),
                 u.isEmailVerified(), u.isPhoneVerified(), u.getLangPreference(),
                 u.getCreatedAt(), u.getUpdatedAt(), u.getLastLoginAt()
         );
+    }
+
+    private static String lower(Enum<?> value) {
+        return value == null ? null : value.name().toLowerCase(Locale.ROOT);
     }
 }

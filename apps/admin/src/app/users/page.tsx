@@ -70,8 +70,10 @@ function statusVariant(status: User["status"]) {
 
 function roleVariant(role: User["role"]) {
   switch (role) {
+    case "platform_owner":    return "default";
     case "platform_operator": return "default";
     case "finance_admin":     return "info";
+    case "channel_manager":   return "secondary";
     case "producer":
     case "coach":             return "secondary";
     default:                  return "outline";
@@ -88,8 +90,10 @@ function planVariant(plan: User["plan"]) {
 
 function roleLabel(role: User["role"]) {
   const labels: Record<User["role"], string> = {
+    platform_owner: "平台所有者",
     platform_operator: "平台运营",
     finance_admin: "财务管理员",
+    channel_manager: "渠道管理员",
     producer: "制作人",
     coach: "掌门人",
     fan: "粉丝",
@@ -388,7 +392,9 @@ function EditUserDialog({
                 <SelectItem value="producer">制作人</SelectItem>
                 <SelectItem value="coach">掌门人</SelectItem>
                 <SelectItem value="finance_admin">财务管理员</SelectItem>
+                <SelectItem value="channel_manager">渠道管理员</SelectItem>
                 <SelectItem value="platform_operator">平台运营</SelectItem>
+                <SelectItem value="platform_owner">平台所有者</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -468,7 +474,7 @@ export default function UsersPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">用户管理</h2>
           <p className="text-sm text-muted-foreground">
-            查看平台用户身份、套餐、角色状态与基础验证信息。
+            统一查看账号身份、套餐层级、验证状态与最近登录情况。
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchUsers(page)} disabled={loading}>
@@ -510,7 +516,7 @@ export default function UsersPage() {
         <Card className="border-border/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">分页状态</CardTitle>
-            <CardDescription>便于运营同学快速判断是否还有更多记录</CardDescription>
+            <CardDescription>用于快速判断当前浏览位置与剩余页数</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold tracking-tight text-slate-950">
@@ -562,9 +568,9 @@ export default function UsersPage() {
                 <TableHead>联系信息</TableHead>
                 <TableHead>角色</TableHead>
                 <TableHead>套餐</TableHead>
-                <TableHead className="text-right">积分</TableHead>
+                <TableHead className="text-right">积分余额</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
+                <TableHead>注册时间</TableHead>
                 <TableHead className="w-20 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -589,10 +595,10 @@ export default function UsersPage() {
                             {(user.displayName ?? user.username).slice(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <div className="text-slate-950 font-medium">{user.username}</div>
+                        <div className="min-w-0">
+                          <div className="truncate text-slate-950 font-medium">{user.username}</div>
                           {user.displayName && (
-                            <div className="text-xs text-muted-foreground">{user.displayName}</div>
+                            <div className="truncate text-xs text-muted-foreground">{user.displayName}</div>
                           )}
                         </div>
                       </div>

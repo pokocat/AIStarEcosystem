@@ -1,9 +1,9 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.EntitlementDto;
+import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.service.EntitlementService;
 import com.aistareco.common.ApiResponse;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -22,14 +22,14 @@ public class AdminEntitlementController {
     }
 
     @GetMapping
-    public ApiResponse<Page<EntitlementDto>> list(
+    public ApiResponse<PageEnvelope<EntitlementDto>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String productId) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(entitlementService.list(tenantId, productId, pageable));
+        return ApiResponse.of(PageEnvelope.from(entitlementService.list(tenantId, productId, pageable)));
     }
 
     @PostMapping

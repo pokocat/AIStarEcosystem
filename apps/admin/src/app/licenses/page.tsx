@@ -489,7 +489,7 @@ export default function LicensesPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">许可证管理</h2>
           <p className="text-sm text-muted-foreground">
-            追踪许可证批次、密钥激活状态与发放节奏。点击行查看完整详情。
+            统一追踪卡密批次、单码状态、激活进度与发放节奏。
           </p>
         </div>
         <Button
@@ -510,7 +510,7 @@ export default function LicensesPage() {
         <Card className="border-border/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">批次数量</CardTitle>
-            <CardDescription>当前页许可证批次记录数</CardDescription>
+            <CardDescription>当前页已加载的卡密批次记录数</CardDescription>
           </CardHeader>
           <CardContent className="flex items-end justify-between">
             <div className="text-3xl font-semibold tracking-tight text-slate-950">
@@ -524,7 +524,7 @@ export default function LicensesPage() {
         <Card className="border-border/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">密钥数量</CardTitle>
-            <CardDescription>当前页许可证密钥记录数</CardDescription>
+            <CardDescription>当前页已加载的单码记录数</CardDescription>
           </CardHeader>
           <CardContent className="flex items-end justify-between">
             <div className="text-3xl font-semibold tracking-tight text-slate-950">
@@ -538,7 +538,7 @@ export default function LicensesPage() {
         <Card className="border-border/80 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">已激活数</CardTitle>
-            <CardDescription>本页批次已激活许可证汇总</CardDescription>
+            <CardDescription>本页批次内已完成激活的单码汇总</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold tracking-tight text-slate-950">
@@ -550,9 +550,9 @@ export default function LicensesPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border">
-        {([
-          { key: "batches" as const, label: "许可证批次" },
-          { key: "keys" as const, label: "许可证密钥" },
+          {([
+          { key: "batches" as const, label: "卡密批次" },
+          { key: "keys" as const, label: "单码列表" },
         ]).map((tab) => (
           <Button
             key={tab.key}
@@ -589,9 +589,9 @@ export default function LicensesPage() {
                   <TableRow>
                     <TableHead>批次编号</TableHead>
                     <TableHead>类型</TableHead>
-                    <TableHead>产品 ID</TableHead>
+                    <TableHead>产品</TableHead>
                     <TableHead>结算方式</TableHead>
-                    <TableHead className="text-right">总数量</TableHead>
+                    <TableHead className="text-right">发码量</TableHead>
                     <TableHead className="text-right">已激活</TableHead>
                     <TableHead>生效日期</TableHead>
                     <TableHead className="w-12 text-right">详情</TableHead>
@@ -601,7 +601,7 @@ export default function LicensesPage() {
                   {batches.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
-                        当前没有可展示的许可证批次。
+                        当前没有可展示的卡密批次。
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -679,11 +679,11 @@ export default function LicensesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>密钥</TableHead>
-                    <TableHead>批次 ID</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>激活租户</TableHead>
-                    <TableHead>激活时间</TableHead>
+                      <TableHead>密钥</TableHead>
+                      <TableHead>所属批次</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>激活租户</TableHead>
+                      <TableHead>激活时间</TableHead>
                     <TableHead>过期时间</TableHead>
                     <TableHead className="w-12 text-right">详情</TableHead>
                   </TableRow>
@@ -692,7 +692,7 @@ export default function LicensesPage() {
                   {keys.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
-                        当前没有可展示的许可证密钥。
+                        当前没有可展示的单码记录。
                       </TableCell>
                     </TableRow>
                   ) : (

@@ -4,10 +4,13 @@ import { useEffect, useState, useMemo } from "react";
 import type { ReactNode } from "react";
 import {
   Building2,
+  CircleDot,
   ChevronRight,
   Edit2,
+  RadioTower,
   RefreshCw,
   Search,
+  UserSquare2,
   Users2,
   X,
 } from "lucide-react";
@@ -94,10 +97,10 @@ function statusLabel(status: Tenant["status"]) {
 
 function typeIcon(type: Tenant["type"]) {
   switch (type) {
-    case "organization": return "🏢";
-    case "channel":      return "📡";
-    case "personal":     return "👤";
-    default:             return "🔷";
+    case "organization": return Building2;
+    case "channel":      return RadioTower;
+    case "personal":     return UserSquare2;
+    default:             return CircleDot;
   }
 }
 
@@ -138,14 +141,15 @@ function TenantDetailDrawer({
   onEdit: (t: Tenant) => void;
 }) {
   if (!tenant) return null;
+  const TenantTypeIcon = typeIcon(tenant.type);
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="right" size="md" className="flex flex-col">
         <SheetHeader>
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-2xl">
-              {typeIcon(tenant.type)}
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <TenantTypeIcon className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <SheetTitle className="truncate">{tenant.name}</SheetTitle>
@@ -170,7 +174,7 @@ function TenantDetailDrawer({
               </InfoRow>
               <InfoRow label="工作区类型">
                 <div className="flex items-center gap-2">
-                  <span>{typeIcon(tenant.type)}</span>
+                  <TenantTypeIcon className="h-4 w-4 text-muted-foreground" />
                   <Badge variant={typeVariant(tenant.type)}>{typeLabel(tenant.type)}</Badge>
                 </div>
               </InfoRow>
@@ -364,7 +368,7 @@ export default function TenantsPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">租户空间</h2>
           <p className="text-sm text-muted-foreground">
-            管理组织、渠道与个人工作区的归属、状态和创建信息。
+            统一查看组织、渠道与个人工作区的归属、状态和开通基础信息。
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchTenants(page)} disabled={loading}>
@@ -427,7 +431,7 @@ export default function TenantsPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="搜索租户名称、所有者 ID…"
+          placeholder="搜索租户名称、所有者 ID 或租户编号…"
           className="pl-9"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -478,8 +482,11 @@ export default function TenantsPage() {
                   >
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2.5">
-                        <span className="text-lg">{typeIcon(tenant.type)}</span>
-                        <span className="text-slate-950">{tenant.name}</span>
+                        {(() => {
+                          const RowTypeIcon = typeIcon(tenant.type);
+                          return <RowTypeIcon className="h-4 w-4 shrink-0 text-muted-foreground" />;
+                        })()}
+                        <span className="truncate text-slate-950">{tenant.name}</span>
                       </div>
                     </TableCell>
                     <TableCell>

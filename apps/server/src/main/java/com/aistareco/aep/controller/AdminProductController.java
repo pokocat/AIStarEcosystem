@@ -1,10 +1,10 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.PlanDto;
+import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.dto.ProductDto;
 import com.aistareco.aep.service.ProductService;
 import com.aistareco.common.ApiResponse;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -44,13 +44,13 @@ public class AdminProductController {
     // --- Plans ---
 
     @GetMapping("/plans")
-    public ApiResponse<Page<PlanDto>> listPlans(
+    public ApiResponse<PageEnvelope<PlanDto>> listPlans(
             @RequestParam(required = false) String productId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(productService.listPlans(productId, pageable));
+        return ApiResponse.of(PageEnvelope.from(productService.listPlans(productId, pageable)));
     }
 
     @PostMapping("/plans")

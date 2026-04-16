@@ -17,6 +17,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PlanRepository planRepo;
     private final AepUserRepository userRepo;
     private final TenantRepository tenantRepo;
+    private final MembershipRepository membershipRepo;
     private final EntitlementRepository entitlementRepo;
     private final WalletRepository walletRepo;
     private final PasswordEncoder passwordEncoder;
@@ -25,6 +26,7 @@ public class DataInitializer implements CommandLineRunner {
                             PlanRepository planRepo,
                             AepUserRepository userRepo,
                             TenantRepository tenantRepo,
+                            MembershipRepository membershipRepo,
                             EntitlementRepository entitlementRepo,
                             WalletRepository walletRepo,
                             PasswordEncoder passwordEncoder) {
@@ -32,6 +34,7 @@ public class DataInitializer implements CommandLineRunner {
         this.planRepo = planRepo;
         this.userRepo = userRepo;
         this.tenantRepo = tenantRepo;
+        this.membershipRepo = membershipRepo;
         this.entitlementRepo = entitlementRepo;
         this.walletRepo = walletRepo;
         this.passwordEncoder = passwordEncoder;
@@ -103,6 +106,46 @@ public class DataInitializer implements CommandLineRunner {
                 .build();
         userRepo.save(financeAdmin);
 
+        // Seed platform owner
+        String ownerId = UUID.randomUUID().toString();
+        AepUser platformOwner = AepUser.builder()
+                .id(ownerId)
+                .username("owner")
+                .passwordHash(passwordEncoder.encode("owner123"))
+                .email("owner@aistareco.com")
+                .displayName("平台所有者")
+                .role(AepUser.UserRole.PLATFORM_OWNER)
+                .plan(AepUser.UserPlan.ENTERPRISE)
+                .credits(0L)
+                .status(AepUser.UserStatus.ACTIVE)
+                .emailVerified(true)
+                .phoneVerified(false)
+                .langPreference("zh-CN")
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        userRepo.save(platformOwner);
+
+        // Seed channel manager
+        String channelManagerId = UUID.randomUUID().toString();
+        AepUser channelManager = AepUser.builder()
+                .id(channelManagerId)
+                .username("channel")
+                .passwordHash(passwordEncoder.encode("channel123"))
+                .email("channel@aistareco.com")
+                .displayName("渠道管理员")
+                .role(AepUser.UserRole.CHANNEL_MANAGER)
+                .plan(AepUser.UserPlan.ENTERPRISE)
+                .credits(0L)
+                .status(AepUser.UserStatus.ACTIVE)
+                .emailVerified(true)
+                .phoneVerified(false)
+                .langPreference("zh-CN")
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        userRepo.save(channelManager);
+
         // Seed sample regular users (registered via license key)
         String userId1 = UUID.randomUUID().toString();
         AepUser regularUser = AepUser.builder()
@@ -152,6 +195,35 @@ public class DataInitializer implements CommandLineRunner {
                 .build();
         tenantRepo.save(adminTenant);
 
+        membershipRepo.save(Membership.builder()
+                .id(UUID.randomUUID().toString())
+                .tenantId(adminTenantId)
+                .userId(adminId)
+                .tenantRole("tenant_admin")
+                .joinedAt(now)
+                .build());
+        membershipRepo.save(Membership.builder()
+                .id(UUID.randomUUID().toString())
+                .tenantId(adminTenantId)
+                .userId(ownerId)
+                .tenantRole("tenant_owner")
+                .joinedAt(now)
+                .build());
+        membershipRepo.save(Membership.builder()
+                .id(UUID.randomUUID().toString())
+                .tenantId(adminTenantId)
+                .userId(financeAdminId)
+                .tenantRole("finance_admin")
+                .joinedAt(now)
+                .build());
+        membershipRepo.save(Membership.builder()
+                .id(UUID.randomUUID().toString())
+                .tenantId(adminTenantId)
+                .userId(channelManagerId)
+                .tenantRole("channel_manager")
+                .joinedAt(now)
+                .build());
+
         // Seed user tenants
         String userTenantId = UUID.randomUUID().toString();
         Tenant userTenant = Tenant.builder()
@@ -164,6 +236,13 @@ public class DataInitializer implements CommandLineRunner {
                 .updatedAt(now)
                 .build();
         tenantRepo.save(userTenant);
+        membershipRepo.save(Membership.builder()
+                .id(UUID.randomUUID().toString())
+                .tenantId(userTenantId)
+                .userId(userId1)
+                .tenantRole("tenant_owner")
+                .joinedAt(now.minus(7, ChronoUnit.DAYS))
+                .build());
 
         // Seed sample entitlements
         entitlementRepo.save(Entitlement.builder()
@@ -222,6 +301,17 @@ public class DataInitializer implements CommandLineRunner {
                 .build());
 
         // Seed wallets
+        walletRepo.save(Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .tenantId(adminTenantId)
+                .totalBalance(0)
+                .giftBalance(0)
+                .rechargeBalance(0)
+                .planBalance(0)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+
         walletRepo.save(Wallet.builder()
                 .id(UUID.randomUUID().toString())
                 .tenantId(userTenantId)

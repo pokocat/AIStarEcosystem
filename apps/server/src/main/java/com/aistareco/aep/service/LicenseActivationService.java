@@ -40,6 +40,8 @@ public class LicenseActivationService {
     private final MembershipRepository membershipRepo;
     private final WalletRepository walletRepo;
     private final EntitlementRepository entitlementRepo;
+    private final LedgerEntryRepository ledgerRepo;
+    private final PlanRepository planRepo;
     private final JwtUtil jwtUtil;
 
     public LicenseActivationService(LicenseKeyRepository keyRepo,
@@ -49,6 +51,8 @@ public class LicenseActivationService {
                                      MembershipRepository membershipRepo,
                                      WalletRepository walletRepo,
                                      EntitlementRepository entitlementRepo,
+                                     LedgerEntryRepository ledgerRepo,
+                                     PlanRepository planRepo,
                                      JwtUtil jwtUtil) {
         this.keyRepo = keyRepo;
         this.batchRepo = batchRepo;
@@ -57,6 +61,8 @@ public class LicenseActivationService {
         this.membershipRepo = membershipRepo;
         this.walletRepo = walletRepo;
         this.entitlementRepo = entitlementRepo;
+        this.ledgerRepo = ledgerRepo;
+        this.planRepo = planRepo;
         this.jwtUtil = jwtUtil;
     }
 
@@ -91,10 +97,12 @@ public class LicenseActivationService {
             throw new ResponseStatusException(HttpStatus.GONE, "该激活码已过期");
         }
 
-        // Create or find the user
+        // Create the user
         String username = body.getOrDefault("username", "user_" + System.currentTimeMillis());
         String email = body.get("email");
         String phone = body.get("phone");
+        validateUserIdentity(username, email, phone);
+        AepUser.UserPlan resolvedPlan = resolvePlan(batch.getPlanId());
 
         AepUser user = AepUser.builder()
                 .id(UUID.randomUUID().toString())
@@ -103,8 +111,8 @@ public class LicenseActivationService {
                 .phone(phone)
                 .displayName(body.get("displayName"))
                 .role(AepUser.UserRole.FAN)
-                .plan(AepUser.UserPlan.FREE)
-                .credits(0)
+                .plan(resolvedPlan)
+                .credits(batch.getCreditDelta())
                 .status(AepUser.UserStatus.ACTIVE)
                 .emailVerified(false)
                 .phoneVerified(false)
@@ -148,6 +156,22 @@ public class LicenseActivationService {
                 .build();
         walletRepo.save(wallet);
 
+        if (batch.getCreditDelta() > 0) {
+            LedgerEntry ledgerEntry = LedgerEntry.builder()
+                    .id(UUID.randomUUID().toString())
+                    .walletId(wallet.getId())
+                    .tenantId(tenant.getId())
+                    .entryType(LedgerEntry.LedgerEntryType.CREDIT)
+                    .amount(batch.getCreditDelta())
+                    .balanceAfter(wallet.getTotalBalance())
+                    .description("激活码发放初始积分")
+                    .referenceId(key.getId())
+                    .referenceType("license_activation")
+                    .createdAt(now)
+                    .build();
+            ledgerRepo.save(ledgerEntry);
+        }
+
         // Create entitlement based on batch type
         if (batch.getLicenseType() == LicenseBatch.LicenseType.PLAN_ACTIVATION) {
             Instant validTo = batch.getDurationDays() != null
@@ -189,8 +213,42 @@ public class LicenseActivationService {
         return Map.of(
                 "token", token,
                 "user", AepUserDto.from(user),
-                "tenantId", tenant.getId()
+                "tenantId", tenant.getId(),
+                "wallet", Map.of(
+                        "tenantId", tenant.getId(),
+                        "totalBalance", wallet.getTotalBalance(),
+                        "giftBalance", wallet.getGiftBalance()
+                )
         );
+    }
+
+    private void validateUserIdentity(String username, String email, String phone) {
+        if (userRepo.existsByUsername(username)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "用户名已存在，请更换后重试");
+        }
+        if (email != null && !email.isBlank() && userRepo.existsByEmail(email)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "该邮箱已绑定其他账号");
+        }
+        if (phone != null && !phone.isBlank() && userRepo.existsByPhone(phone)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "该手机号已绑定其他账号");
+        }
+    }
+
+    private AepUser.UserPlan resolvePlan(String planId) {
+        if (planId == null || planId.isBlank()) {
+            return AepUser.UserPlan.FREE;
+        }
+
+        return planRepo.findById(planId)
+                .map(plan -> {
+                    String code = plan.getCode() == null ? "" : plan.getCode().trim().toLowerCase();
+                    return switch (code) {
+                        case "enterprise" -> AepUser.UserPlan.ENTERPRISE;
+                        case "pro" -> AepUser.UserPlan.PRO;
+                        default -> AepUser.UserPlan.FREE;
+                    };
+                })
+                .orElse(AepUser.UserPlan.FREE);
     }
 
     private String sha256(String input) {

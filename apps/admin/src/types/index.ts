@@ -1,5 +1,12 @@
 // User
-export type UserRole = 'fan' | 'producer' | 'coach' | 'platform_operator' | 'finance_admin';
+export type UserRole =
+  | 'fan'
+  | 'producer'
+  | 'coach'
+  | 'platform_owner'
+  | 'platform_operator'
+  | 'finance_admin'
+  | 'channel_manager';
 export type UserStatus = 'active' | 'suspended' | 'deleted';
 export type UserPlan = 'free' | 'pro' | 'enterprise';
 

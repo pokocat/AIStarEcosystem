@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, Link2, ServerCrash } from "lucide-react";
+import { ArrowRight, BadgeCheck, RefreshCw, ShieldAlert } from "lucide-react";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { DashboardStats } from "@/types";
 import { apiFetch } from "@/lib/api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { dashboardFallbackStats, normalizeDashboardStats } from "@/lib/dashboard";
 
@@ -25,7 +23,7 @@ export default function DashboardPage() {
         const data = await apiFetch<DashboardStats>("/api/admin/stats");
         setStats(normalizeDashboardStats(data));
       } catch {
-        setError("当前未能从后端读取管理指标，页面已自动回退到占位数据。");
+        setError("当前未能读取实时指标，页面已自动回退为占位统计。");
         setStats(dashboardFallbackStats);
       } finally {
         setLoading(false);
@@ -36,91 +34,107 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Card className="overflow-hidden border-border/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(239,246,255,0.98))] shadow-[0_16px_60px_rgba(15,23,42,0.08)]">
-          <CardHeader className="pb-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="secondary">中文运营后台</Badge>
-              <Badge variant="outline">shadcn/ui 规范整理</Badge>
+    <div className="flex flex-col gap-5">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Card className="overflow-hidden border-border/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(239,246,255,0.98))] shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+          <CardHeader className="space-y-3">
+            <div className="inline-flex w-fit items-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[12px] font-medium text-sky-800">
+              今日概览
             </div>
-            <CardTitle className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-              统一查看账户、权益、许可证与积分运营状态。
+            <CardTitle className="text-[28px] leading-tight text-slate-950">
+              统一查看账户、租户、卡密、积分与审计运行状态。
             </CardTitle>
-            <CardDescription className="max-w-3xl text-base leading-7">
-              这个后台与前台业务站点解耦，聚焦平台运营场景。页面默认优先展示状态、表格和操作入口，并且在后端数据不完整时自动降级，不再因为字段缺失直接崩溃。
+            <CardDescription className="max-w-3xl text-[14px] leading-7 text-slate-600">
+              看板优先展示平台运营最常关注的核心指标，便于快速发现账户异常、库存变化和账务波动。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
-            <Button asChild>
+            <Button asChild size="sm">
               <Link href="/users">
-                进入用户管理
+                查看用户账户
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-            <Button asChild variant="outline">
+            <Button asChild size="sm" variant="outline">
+              <Link href="/licenses">
+                查看卡密批次
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
               <Link href="/audit">
-                查看审计日志
-                <Link2 className="ml-2 h-4 w-4" />
+                查看系统审计
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-[0_12px_40px_rgba(15,23,42,0.06)]">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">连接状态</CardTitle>
-            <CardDescription>当前管理后台与后端之间的运行情况</CardDescription>
+        <Card className="border-border/80 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
+          <CardHeader className="flex flex-row items-start justify-between gap-3 pb-3">
+            <div>
+              <CardTitle className="text-[15px]">数据状态</CardTitle>
+              <CardDescription>后台与服务端的当前读取情况</CardDescription>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => window.location.reload()}
+              className="h-8"
+            >
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              刷新
+            </Button>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  error ? "bg-amber-500" : loading ? "bg-sky-500" : "bg-emerald-500"
-                }`}
-              />
-              <div>
-                <p className="text-sm font-medium text-slate-900">
-                  {loading ? "正在连接后端" : error ? "已进入回退模式" : "后端连接正常"}
-                </p>
-                <p className="text-xs text-muted-foreground">目标地址：`http://localhost:8080`</p>
-              </div>
+          <CardContent className="space-y-3">
+            <div className="rounded-xl border border-border bg-slate-50 px-3 py-3">
+              <p className="text-[12px] text-slate-500">指标来源</p>
+              <p className="mt-1 text-[13px] font-medium text-slate-900">
+                {error ? "占位数据" : loading ? "正在读取" : "实时接口"}
+              </p>
             </div>
-            <Separator />
-            <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-              <p>建议下一步接通 `/api/admin/**` 与 Spring Security 管理员角色体系。</p>
-              <p>在此之前，各页面会优先保证可读性与稳健性，即使数据形状不稳定也不再直接报错。</p>
+            <div className="rounded-xl border border-border bg-slate-50 px-3 py-3">
+              <p className="text-[12px] text-slate-500">后端地址</p>
+              <p className="mt-1 font-mono text-[12px] text-slate-900">http://localhost:8080</p>
             </div>
+            <Alert variant={error ? "warning" : "info"}>
+              <AlertTitle>{error ? "已进入回退模式" : "当前连接正常"}</AlertTitle>
+              <AlertDescription>
+                {error
+                  ? error
+                  : "如需排查异常，请优先核对管理员登录态、服务端状态与数据库连接。"}
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       </section>
 
       {error && (
         <Alert variant="warning">
-          <AlertCircle className="mb-2 h-4 w-4" />
-          <AlertTitle>后端指标暂不可用</AlertTitle>
+          <AlertTitle>实时指标暂不可用</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">核心指标</h2>
-          <p className="text-sm text-muted-foreground">
-            统计卡片已加上响应归一化保护，缺字段时会回退为 `0`，不会再触发运行时异常。
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-[18px] font-semibold text-slate-950">核心指标</h2>
+          <p className="text-[13px] text-muted-foreground">
+            默认按当前服务端返回结果展示，字段缺失时自动归一化为 `0`。
           </p>
         </div>
 
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
               <Card key={index} className="border-border/80">
-                <CardHeader className="flex flex-col gap-3">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-40" />
+                <CardHeader className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-36" />
                 </CardHeader>
                 <CardContent>
-                  <Skeleton className="h-9 w-24" />
+                  <Skeleton className="h-8 w-20" />
                 </CardContent>
               </Card>
             ))}
@@ -130,50 +144,65 @@ export default function DashboardPage() {
         )}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-border/80 shadow-[0_12px_35px_rgba(15,23,42,0.05)]">
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Card className="border-border/80 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
           <CardHeader>
-            <CardTitle className="text-lg">快捷入口</CardTitle>
-            <CardDescription>运营团队最常进入的核心工作页面</CardDescription>
+            <CardTitle className="text-[15px]">快捷入口</CardTitle>
+            <CardDescription>平台运营日常最常访问的页面</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             {[
-              { href: "/users", label: "用户管理", desc: "账号生命周期、角色与状态巡检" },
-              { href: "/tenants", label: "租户空间", desc: "工作区归属、类型与启用状态" },
-              { href: "/licenses", label: "许可证管理", desc: "批次、密钥与激活追踪" },
-              { href: "/credits", label: "积分钱包", desc: "余额结构与流水核查" },
+              { href: "/users", label: "用户账户", desc: "查看账号状态、角色与资料完整度" },
+              { href: "/tenants", label: "租户工作区", desc: "查看工作区归属和启用状态" },
+              { href: "/licenses", label: "卡密批次", desc: "查看批次库存与单码状态" },
+              { href: "/credits", label: "钱包流水", desc: "查看余额结构与账本记录" },
             ].map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className="rounded-2xl border border-border bg-card px-4 py-4 transition-colors hover:bg-accent"
               >
-                <p className="font-medium text-slate-950">{item.label}</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.desc}</p>
+                <p className="text-[14px] font-semibold text-slate-950">{item.label}</p>
+                <p className="mt-1 text-[12px] leading-6 text-muted-foreground">{item.desc}</p>
               </Link>
             ))}
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-[0_12px_35px_rgba(15,23,42,0.05)]">
+        <Card className="border-border/80 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
           <CardHeader>
-            <CardTitle className="text-lg">系统说明</CardTitle>
-            <CardDescription>本轮后台整理的实现重点</CardDescription>
+            <CardTitle className="text-[15px]">待关注事项</CardTitle>
+            <CardDescription>适合在值班或巡检时优先关注的几个方向</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+          <CardContent className="space-y-3">
             <Alert variant="info">
-              <AlertTitle>界面基础已统一</AlertTitle>
+              <AlertTitle>优先核对账户与租户的归属关系</AlertTitle>
               <AlertDescription>
-                告警、头像、抽屉、骨架屏、侧栏和表格都已统一到同一套 shadcn/ui 组合方式，中文界面层级也重新校准过。
+                建议结合“用户账户”和“租户工作区”页面，检查高价值账号是否归属正确、是否存在异常停用。
               </AlertDescription>
             </Alert>
             <Alert variant="default">
-              <ServerCrash className="mb-2 h-4 w-4" />
-              <AlertTitle>接口容错已补齐</AlertTitle>
+              <AlertTitle>关注卡密库存与激活节奏</AlertTitle>
               <AlertDescription>
-                后台页面会先归一化后端响应，再参与渲染。即使拿到数组、分页对象或嵌套字段，页面也能继续显示而不是直接报错。
+                如批次激活率突增或突降，应及时进入“卡密批次”页核对渠道投放和库存回收情况。
               </AlertDescription>
             </Alert>
+            <Alert variant="warning">
+              <ShieldAlert className="h-4 w-4" />
+              <AlertTitle>巡检账本与审计记录</AlertTitle>
+              <AlertDescription>
+                积分补录、卡密吊销、权限调整等高风险动作，建议联动“钱包流水”和“系统审计”交叉核查。
+              </AlertDescription>
+            </Alert>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-[13px] leading-6 text-emerald-900">
+              <div className="flex items-center gap-2 font-medium">
+                <BadgeCheck className="h-4 w-4" />
+                当前这版后台已按管理场景压缩信息密度
+              </div>
+              <p className="mt-2 text-[12px] leading-6 text-emerald-800">
+                表格、卡片、页头和登录页已统一到更适合中文管理后台的视觉节奏，便于连续巡检和密集操作。
+              </p>
+            </div>
           </CardContent>
         </Card>
       </section>

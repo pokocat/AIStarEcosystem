@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,6 +41,12 @@ public class EntitlementService {
         return entitlementRepo.findById(id)
                 .map(EntitlementDto::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Entitlement not found: " + id));
+    }
+
+    public List<EntitlementDto> listByTenant(String tenantId) {
+        return entitlementRepo.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .map(EntitlementDto::from)
+                .toList();
     }
 
     public EntitlementDto create(Map<String, Object> body) {

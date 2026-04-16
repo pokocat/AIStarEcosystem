@@ -57,9 +57,12 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+      <DialogPrimitive.Close
+        aria-label="关闭侧边详情"
+        className="absolute right-4 top-4 z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
         <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </SheetPortal>
@@ -67,7 +70,7 @@ const SheetContent = React.forwardRef<
 SheetContent.displayName = DialogPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col gap-1.5 border-b border-border px-6 py-5 pr-12", className)} {...props} />
+  <div className={cn("flex flex-col gap-1.5 border-b border-border px-5 py-4 pr-12", className)} {...props} />
 );
 SheetHeader.displayName = "SheetHeader";
 
@@ -96,13 +99,13 @@ const SheetDescription = React.forwardRef<
 SheetDescription.displayName = DialogPrimitive.Description.displayName;
 
 const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex-1 overflow-y-auto px-6 py-5", className)} {...props} />
+  <div className={cn("flex-1 overflow-y-auto px-5 py-4", className)} {...props} />
 );
 SheetBody.displayName = "SheetBody";
 
 const SheetFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex items-center justify-end gap-2 border-t border-border px-6 py-4", className)}
+    className={cn("flex items-center justify-end gap-2 border-t border-border px-5 py-3", className)}
     {...props}
   />
 );

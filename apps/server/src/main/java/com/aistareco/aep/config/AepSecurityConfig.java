@@ -3,6 +3,7 @@ package com.aistareco.aep.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -13,6 +14,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class AepSecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
@@ -31,8 +33,15 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/admin/auth/login").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
+                        .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
+                        .requestMatchers("/api/me/**").authenticated()
                         // Admin endpoints require admin roles
-                        .requestMatchers("/api/admin/**").hasAnyRole("PLATFORM_OPERATOR", "FINANCE_ADMIN")
+                        .requestMatchers("/api/admin/**").hasAnyRole(
+                                "PLATFORM_OWNER",
+                                "PLATFORM_OPERATOR",
+                                "FINANCE_ADMIN",
+                                "CHANNEL_MANAGER"
+                        )
                         // Everything else is open (singer ecosystem APIs, etc.)
                         .anyRequest().permitAll()
                 )

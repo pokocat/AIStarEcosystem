@@ -46,7 +46,7 @@ public class AepUser {
     private Instant lastLoginAt;
 
     public enum UserRole {
-        FAN, PRODUCER, COACH, PLATFORM_OPERATOR, FINANCE_ADMIN
+        FAN, PRODUCER, COACH, PLATFORM_OWNER, PLATFORM_OPERATOR, FINANCE_ADMIN, CHANNEL_MANAGER
     }
 
     public enum UserPlan {
