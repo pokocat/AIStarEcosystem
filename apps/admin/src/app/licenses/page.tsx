@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { apiFetch, normalizePageResponse } from "@/lib/api";
 import { formatCount, formatDate, formatDateTime } from "@/lib/utils";
-import { LicenseBatch, LicenseKey, PageResponse } from "@/types";
+import { LicenseBatch, LicenseKey, PageResponse, Plan, Product } from "@/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -137,10 +137,14 @@ function BatchDetailDrawer({
   batch,
   open,
   onClose,
+  productMap,
+  planMap,
 }: {
   batch: LicenseBatch | null;
   open: boolean;
   onClose: () => void;
+  productMap: Map<string, Product>;
+  planMap: Map<string, Plan>;
 }) {
   if (!batch) return null;
 
@@ -236,12 +240,20 @@ function BatchDetailDrawer({
               关联信息
             </p>
             <div className="grid grid-cols-1 gap-3">
-              <InfoRow label="产品 ID">
-                <span className="font-mono text-xs break-all">{batch.productId || "未关联"}</span>
+              <InfoRow label="产品">
+                {productMap.has(batch.productId) ? (
+                  <span className="font-medium">{productMap.get(batch.productId)!.name}</span>
+                ) : (
+                  <span className="font-mono text-xs break-all">{batch.productId || "未关联"}</span>
+                )}
               </InfoRow>
               {batch.planId && (
-                <InfoRow label="套餐 ID">
-                  <span className="font-mono text-xs break-all">{batch.planId}</span>
+                <InfoRow label="套餐">
+                  {planMap.has(batch.planId) ? (
+                    <span className="font-medium">{planMap.get(batch.planId)!.name}</span>
+                  ) : (
+                    <span className="font-mono text-xs break-all">{batch.planId}</span>
+                  )}
                 </InfoRow>
               )}
               {batch.channelPartnerId && (
@@ -431,6 +443,28 @@ export default function LicensesPage() {
   const [keyError, setKeyError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<LicenseKey | null>(null);
 
+  const [products, setProducts] = useState<Product[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+
+  const productMap = new Map(products.map((p) => [p.id, p]));
+  const planMap = new Map(plans.map((p) => [p.id, p]));
+
+  async function fetchMeta() {
+    try {
+      const [prodData, planData] = await Promise.all([
+        apiFetch<unknown>("/api/admin/products"),
+        apiFetch<unknown>("/api/admin/plans?page=0&size=100"),
+      ]);
+      const prodList = Array.isArray(prodData)
+        ? (prodData as Product[])
+        : normalizePageResponse<Product>(prodData).content;
+      setProducts(prodList);
+      setPlans(normalizePageResponse<Plan>(planData).content);
+    } catch {
+      // fallback: keep empty lists, IDs will be shown as-is
+    }
+  }
+
   async function fetchBatches(targetPage = 0) {
     setBatchLoading(true);
     setBatchError(null);
@@ -473,7 +507,7 @@ export default function LicensesPage() {
     }
   }
 
-  useEffect(() => { fetchBatches(0); }, []);
+  useEffect(() => { fetchBatches(0); fetchMeta(); }, []);
 
   function handleTabChange(tab: Tab) {
     setActiveTab(tab);
@@ -619,8 +653,10 @@ export default function LicensesPage() {
                             {licenseTypeLabel(batch.licenseType)}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground max-w-[100px] truncate">
-                          {batch.productId || "未关联"}
+                        <TableCell className="text-sm max-w-[120px] truncate">
+                          {productMap.has(batch.productId)
+                            ? productMap.get(batch.productId)!.name
+                            : <span className="font-mono text-xs text-muted-foreground">{batch.productId || "未关联"}</span>}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{settlementLabel(batch.settlementMode)}</Badge>
@@ -754,6 +790,8 @@ export default function LicensesPage() {
         batch={selectedBatch}
         open={!!selectedBatch}
         onClose={() => setSelectedBatch(null)}
+        productMap={productMap}
+        planMap={planMap}
       />
       <KeyDetailDrawer
         licenseKey={selectedKey}

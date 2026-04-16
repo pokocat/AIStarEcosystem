@@ -14,7 +14,7 @@ import {
 import { apiFetch, normalizePageResponse } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatCount, formatDate, formatDateTime } from "@/lib/utils";
-import { Entitlement, PageResponse } from "@/types";
+import { Entitlement, PageResponse, Plan, Product } from "@/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -129,12 +129,16 @@ function EntitlementDetailDrawer({
   onClose,
   onEdit,
   onRevoke,
+  productMap,
+  planMap,
 }: {
   entitlement: Entitlement | null;
   open: boolean;
   onClose: () => void;
   onEdit: (e: Entitlement) => void;
   onRevoke: (e: Entitlement) => void;
+  productMap: Map<string, Product>;
+  planMap: Map<string, Plan>;
 }) {
   if (!entitlement) return null;
 
@@ -199,12 +203,20 @@ function EntitlementDetailDrawer({
               <InfoRow label="租户 ID">
                 <span className="font-mono text-xs break-all">{entitlement.tenantId || "未关联"}</span>
               </InfoRow>
-              <InfoRow label="产品 ID">
-                <span className="font-mono text-xs break-all">{entitlement.productId || "未关联"}</span>
+              <InfoRow label="产品">
+                {productMap.has(entitlement.productId) ? (
+                  <span className="font-medium">{productMap.get(entitlement.productId)!.name}</span>
+                ) : (
+                  <span className="font-mono text-xs break-all">{entitlement.productId || "未关联"}</span>
+                )}
               </InfoRow>
               {entitlement.planId && (
-                <InfoRow label="套餐 ID">
-                  <span className="font-mono text-xs break-all">{entitlement.planId}</span>
+                <InfoRow label="套餐">
+                  {planMap.has(entitlement.planId) ? (
+                    <span className="font-medium">{planMap.get(entitlement.planId)!.name}</span>
+                  ) : (
+                    <span className="font-mono text-xs break-all">{entitlement.planId}</span>
+                  )}
                 </InfoRow>
               )}
             </div>
@@ -282,12 +294,16 @@ function EntitlementFormDialog({
   open,
   onClose,
   onSaved,
+  products,
+  plans,
 }: {
   mode: "create" | "edit";
   entitlement: Entitlement | null;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  products: Product[];
+  plans: Plan[];
 }) {
   const [form, setForm] = useState<EntitlementFormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -312,13 +328,15 @@ function EntitlementFormDialog({
     setError(null);
   }, [mode, entitlement, open]);
 
+  const availablePlans = plans.filter((p) => p.productId === form.productId);
+
   function updateField(key: keyof EntitlementFormData, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   async function handleSave() {
-    if (!form.tenantId.trim() || !form.productId.trim() || !form.featureCode.trim()) {
-      setError("租户 ID、产品 ID 和功能编码不能为空");
+    if (!form.tenantId.trim() || !form.productId || !form.featureCode.trim()) {
+      setError("租户 ID、产品和功能编码不能为空");
       return;
     }
     setSaving(true);
@@ -385,14 +403,24 @@ function EntitlementFormDialog({
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="ent-product">产品 ID *</Label>
-              <Input
-                id="ent-product"
-                placeholder="产品 UUID"
+              <Label htmlFor="ent-product">产品 *</Label>
+              <Select
                 value={form.productId}
-                onChange={(e) => updateField("productId", e.target.value)}
+                onValueChange={(v) => {
+                  updateField("productId", v);
+                  updateField("planId", "");
+                }}
                 disabled={mode === "edit"}
-              />
+              >
+                <SelectTrigger id="ent-product">
+                  <SelectValue placeholder="选择产品" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -440,13 +468,22 @@ function EntitlementFormDialog({
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="ent-plan">套餐 ID</Label>
-              <Input
-                id="ent-plan"
-                placeholder="可选"
-                value={form.planId}
-                onChange={(e) => updateField("planId", e.target.value)}
-              />
+              <Label htmlFor="ent-plan">套餐</Label>
+              <Select
+                value={form.planId || "__none__"}
+                onValueChange={(v) => updateField("planId", v === "__none__" ? "" : v)}
+                disabled={!form.productId}
+              >
+                <SelectTrigger id="ent-plan">
+                  <SelectValue placeholder="不关联套餐" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">不关联套餐</SelectItem>
+                  {availablePlans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -581,11 +618,33 @@ export default function EntitlementsPage() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  const [products, setProducts] = useState<Product[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+
   // Dialogs / Drawers
   const [selectedEntitlement, setSelectedEntitlement] = useState<Entitlement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Entitlement | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<Entitlement | null>(null);
+
+  const productMap = new Map(products.map((p) => [p.id, p]));
+  const planMap = new Map(plans.map((p) => [p.id, p]));
+
+  async function fetchMeta() {
+    try {
+      const [prodData, planData] = await Promise.all([
+        apiFetch<unknown>("/api/admin/products"),
+        apiFetch<unknown>("/api/admin/plans?page=0&size=100"),
+      ]);
+      const prodList = Array.isArray(prodData)
+        ? (prodData as Product[])
+        : (normalizePageResponse<Product>(prodData).content);
+      setProducts(prodList);
+      setPlans(normalizePageResponse<Plan>(planData).content);
+    } catch {
+      // fallback: keep empty lists, IDs will be shown as-is
+    }
+  }
 
   async function fetchEntitlements(targetPage = 0) {
     setLoading(true);
@@ -616,6 +675,7 @@ export default function EntitlementsPage() {
 
   useEffect(() => {
     fetchEntitlements(0);
+    fetchMeta();
   }, []);
 
   const activeCount = entitlements.filter((item) => item.status === "active").length;
@@ -711,7 +771,7 @@ export default function EntitlementsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>租户 ID</TableHead>
-                <TableHead>产品 ID</TableHead>
+                <TableHead>产品</TableHead>
                 <TableHead>权益类型</TableHead>
                 <TableHead>功能编码</TableHead>
                 <TableHead>值</TableHead>
@@ -738,8 +798,10 @@ export default function EntitlementsPage() {
                     <TableCell className="font-mono text-xs text-muted-foreground max-w-[100px] truncate">
                       {item.tenantId || "未关联"}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground max-w-[100px] truncate">
-                      {item.productId || "未关联"}
+                    <TableCell className="text-sm max-w-[120px] truncate">
+                      {productMap.has(item.productId)
+                        ? productMap.get(item.productId)!.name
+                        : <span className="font-mono text-xs text-muted-foreground">{item.productId || "未关联"}</span>}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">
@@ -848,6 +910,8 @@ export default function EntitlementsPage() {
           setSelectedEntitlement(null);
           setRevokeTarget(e);
         }}
+        productMap={productMap}
+        planMap={planMap}
       />
 
       {/* Create Dialog */}
@@ -857,6 +921,8 @@ export default function EntitlementsPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onSaved={() => fetchEntitlements(page)}
+        products={products}
+        plans={plans}
       />
 
       {/* Edit Dialog */}
@@ -866,6 +932,8 @@ export default function EntitlementsPage() {
         open={!!editTarget}
         onClose={() => setEditTarget(null)}
         onSaved={() => fetchEntitlements(page)}
+        products={products}
+        plans={plans}
       />
 
       {/* Revoke Confirm */}
