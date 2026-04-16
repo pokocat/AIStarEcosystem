@@ -35,12 +35,10 @@ public class AepSecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/me/**").authenticated()
-                        // Admin endpoints require admin roles
+                        // Admin endpoints require platform admin staff roles
                         .requestMatchers("/api/admin/**").hasAnyRole(
-                                "PLATFORM_OWNER",
-                                "PLATFORM_OPERATOR",
-                                "FINANCE_ADMIN",
-                                "CHANNEL_MANAGER"
+                                "SUPER_ADMIN",
+                                "OPERATOR"
                         )
                         // Everything else is open (singer ecosystem APIs, etc.)
                         .anyRequest().permitAll()

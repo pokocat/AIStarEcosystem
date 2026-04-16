@@ -1,14 +1,12 @@
-// User
+// ─── Platform User (平台用户) ──────────────────────────────────────────────────
+// Users who register by activating a license key.
+// Roles reflect their identity in the AI artist ecosystem.
 export type UserRole =
-  | 'fan'
-  | 'producer'
-  | 'coach'
-  | 'platform_owner'
-  | 'platform_operator'
-  | 'finance_admin'
-  | 'channel_manager';
+  | 'ai_singer'         // AI 歌手
+  | 'ai_artist'         // AI 艺人
+  | 'economic_company'; // 经纪公司
+
 export type UserStatus = 'active' | 'suspended' | 'deleted';
-export type UserPlan = 'free' | 'pro' | 'enterprise';
 
 export interface User {
   id: string;
@@ -18,7 +16,6 @@ export interface User {
   displayName: string | null;
   avatarUrl: string | null;
   role: UserRole;
-  plan: UserPlan;
   credits: number;
   status: UserStatus;
   emailVerified: boolean;
@@ -28,7 +25,27 @@ export interface User {
   lastLoginAt: string | null;
 }
 
-// Tenant
+// ─── Admin Staff (管理员账号) ───────────────────────────────────────────────────
+// Platform staff — separated from end-users.
+export type AdminRole = 'super_admin' | 'operator';
+export type AdminStatus = 'active' | 'suspended';
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  email: string | null;
+  displayName: string | null;
+  role: AdminRole;
+  status: AdminStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+}
+
+// ─── Tenant (租户) ────────────────────────────────────────────────────────────
+// A tenant represents a distribution channel or user workspace.
+// One tenant can own a batch of license keys; users who activate those keys
+// become members of that tenant.
 export type TenantType = 'personal' | 'organization' | 'channel';
 export type TenantStatus = 'active' | 'suspended' | 'deleted';
 export interface Tenant {
@@ -36,12 +53,12 @@ export interface Tenant {
   name: string;
   type: TenantType;
   status: TenantStatus;
-  ownerUserId: string;
+  ownerUserId: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-// Membership
+// ─── Membership ───────────────────────────────────────────────────────────────
 export interface Membership {
   id: string;
   tenantId: string;
@@ -50,7 +67,7 @@ export interface Membership {
   joinedAt: string;
 }
 
-// Product
+// ─── Product & Plan ───────────────────────────────────────────────────────────
 export interface Product {
   id: string;
   code: string;
@@ -60,7 +77,6 @@ export interface Product {
   createdAt: string;
 }
 
-// Plan
 export interface Plan {
   id: string;
   productId: string;
@@ -71,7 +87,7 @@ export interface Plan {
   enabled: boolean;
 }
 
-// Entitlement
+// ─── Entitlement ──────────────────────────────────────────────────────────────
 export type EntitlementType =
   | 'feature_access'
   | 'seat_limit'
@@ -96,7 +112,7 @@ export interface Entitlement {
   createdAt: string;
 }
 
-// LicenseBatch
+// ─── License Batch / Key ──────────────────────────────────────────────────────
 export type LicenseType = 'plan_activation' | 'credit_pack' | 'seat_expansion' | 'addon';
 export type SettlementMode = 'prepaid' | 'on_activation';
 export interface LicenseBatch {
@@ -104,6 +120,8 @@ export interface LicenseBatch {
   batchNo: string;
   productId: string;
   planId: string | null;
+  /** The tenant that owns/distributes this batch. Users who activate a key join this tenant. */
+  ownerTenantId: string | null;
   licenseType: LicenseType;
   durationDays: number | null;
   creditDelta: number;
@@ -116,7 +134,6 @@ export interface LicenseBatch {
   createdAt: string;
 }
 
-// LicenseKey
 export type LicenseKeyStatus =
   | 'created'
   | 'allocated'
@@ -136,7 +153,7 @@ export interface LicenseKey {
   createdAt: string;
 }
 
-// Wallet / Credits
+// ─── Wallet / Credits ─────────────────────────────────────────────────────────
 export interface Wallet {
   id: string;
   tenantId: string;
@@ -153,6 +170,8 @@ export interface LedgerEntry {
   id: string;
   walletId: string;
   tenantId: string;
+  /** User who triggered this entry (for user-level consumption tracking). Null for system entries. */
+  userId: string | null;
   entryType: LedgerEntryType;
   amount: number;
   balanceAfter: number;
@@ -162,7 +181,7 @@ export interface LedgerEntry {
   createdAt: string;
 }
 
-// AuditLog
+// ─── Audit Log ────────────────────────────────────────────────────────────────
 export interface AuditLog {
   id: string;
   userId: string | null;
@@ -177,7 +196,7 @@ export interface AuditLog {
   createdAt: string;
 }
 
-// API
+// ─── API helpers ──────────────────────────────────────────────────────────────
 export interface PageResponse<T> {
   content: T[];
   totalElements: number;
@@ -192,7 +211,7 @@ export interface ApiResponse<T> {
   data: T;
 }
 
-// Dashboard Stats
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
 export interface DashboardStats {
   totalUsers: number;
   activeTenants: number;

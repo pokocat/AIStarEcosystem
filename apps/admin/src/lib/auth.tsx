@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { User } from "@/types";
+import { AdminUser } from "@/types";
 
 const TOKEN_KEY = "aep_admin_token";
 const USER_KEY = "aep_admin_user";
@@ -11,7 +11,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 interface AuthState {
   token: string | null;
-  user: User | null;
+  user: AdminUser | null;
   loading: boolean;
 }
 
@@ -41,16 +41,16 @@ function readTokenCookie(): string | null {
   return cookie ? decodeURIComponent(cookie.split("=").slice(1).join("=")) : null;
 }
 
-function persistUser(user: User) {
+function persistUser(user: AdminUser) {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
-function readStoredUser(): User | null {
+function readStoredUser(): AdminUser | null {
   const userJson = localStorage.getItem(USER_KEY);
   if (!userJson) return null;
 
   try {
-    return JSON.parse(userJson) as User;
+    return JSON.parse(userJson) as AdminUser;
   } catch {
     localStorage.removeItem(USER_KEY);
     return null;
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const json = await res.json();
-        const user = (json.data ?? json) as User;
+        const user = (json.data ?? json) as AdminUser;
         persistUser(user);
 
         if (!cancelled) {
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = json.data ?? json;
       const token = data.token as string;
-      const user = data.user as User;
+      const user = data.user as AdminUser;
 
       setTokenCookie(token);
       persistUser(user);
@@ -155,16 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.replace("/login");
   }, [router]);
 
-  const isAdmin = [
-    "platform_owner",
-    "platform_operator",
-    "finance_admin",
-    "channel_manager",
-    "PLATFORM_OWNER",
-    "PLATFORM_OPERATOR",
-    "FINANCE_ADMIN",
-    "CHANNEL_MANAGER",
-  ].includes(state.user?.role ?? "");
+  const isAdmin = ["super_admin", "operator", "SUPER_ADMIN", "OPERATOR"].includes(
+    state.user?.role ?? ""
+  );
 
   return (
     <AuthContext.Provider value={{ ...state, login, logout, isAdmin }}>

@@ -19,14 +19,10 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 function roleLabel(role: string | undefined): string {
   switch (role?.toLowerCase()) {
-    case "platform_owner":
-      return "平台所有者";
-    case "platform_operator":
-      return "平台运营";
-    case "finance_admin":
-      return "财务管理员";
-    case "channel_manager":
-      return "渠道管理员";
+    case "super_admin":
+      return "超级管理员";
+    case "operator":
+      return "运营";
     default:
       return role ?? "未知角色";
   }
@@ -34,13 +30,9 @@ function roleLabel(role: string | undefined): string {
 
 function roleBadgeVariant(role: string | undefined) {
   switch (role?.toLowerCase()) {
-    case "platform_owner":
-      return "destructive" as const;
-    case "platform_operator":
+    case "super_admin":
       return "default" as const;
-    case "finance_admin":
-      return "info" as const;
-    case "channel_manager":
+    case "operator":
       return "secondary" as const;
     default:
       return "secondary" as const;

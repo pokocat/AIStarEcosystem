@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Package,
   Shield,
+  UserCog,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -32,16 +33,23 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/users",
-    label: "用户账户",
-    description: "账号状态、角色与资料",
+    label: "平台用户",
+    description: "AI 歌手、艺人与经纪公司账号",
     icon: Users,
     section: "账户",
   },
   {
     href: "/tenants",
     label: "租户工作区",
-    description: "空间归属与开通状态",
+    description: "密钥分发渠道与归属管理",
     icon: Building2,
+    section: "账户",
+  },
+  {
+    href: "/admins",
+    label: "管理员账号",
+    description: "后台运营人员账号管理",
+    icon: UserCog,
     section: "账户",
   },
   {

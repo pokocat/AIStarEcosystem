@@ -22,6 +22,13 @@ public class LicenseBatch {
     private String productId;
     private String planId;
 
+    /**
+     * The tenant that owns / distributes this batch.
+     * When a user activates a key from this batch, they become a member of this tenant.
+     * If null, a personal tenant is created for the activating user (legacy / platform-direct flow).
+     */
+    private String ownerTenantId;
+
     @Enumerated(EnumType.STRING)
     private LicenseType licenseType;
 
@@ -33,7 +40,10 @@ public class LicenseBatch {
 
     private int totalCount;
     private int activatedCount;
+
+    /** Deprecated: use ownerTenantId. Kept for external CRM reference only. */
     private String channelPartnerId;
+
     private Instant validFrom;
     private Instant validTo;
     private Instant createdAt;

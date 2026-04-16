@@ -1,9 +1,9 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.config.JwtUtil;
-import com.aistareco.aep.dto.AepUserDto;
-import com.aistareco.aep.model.AepUser;
-import com.aistareco.aep.repository.AepUserRepository;
+import com.aistareco.aep.dto.AdminUserDto;
+import com.aistareco.aep.model.AdminUser;
+import com.aistareco.aep.repository.AdminUserRepository;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -12,27 +12,23 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
 import java.util.Map;
-import java.util.Set;
 
+/**
+ * Authentication for platform admin staff (管理员登录).
+ * Uses AdminUser table — completely separate from platform end-users (AepUser).
+ */
 @RestController
 @RequestMapping("/api/admin/auth")
 public class AdminAuthController {
 
-    private static final Set<AepUser.UserRole> ADMIN_ROLES = Set.of(
-            AepUser.UserRole.PLATFORM_OWNER,
-            AepUser.UserRole.PLATFORM_OPERATOR,
-            AepUser.UserRole.FINANCE_ADMIN,
-            AepUser.UserRole.CHANNEL_MANAGER
-    );
-
-    private final AepUserRepository userRepo;
+    private final AdminUserRepository adminUserRepo;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
-    public AdminAuthController(AepUserRepository userRepo,
+    public AdminAuthController(AdminUserRepository adminUserRepo,
                                 PasswordEncoder passwordEncoder,
                                 JwtUtil jwtUtil) {
-        this.userRepo = userRepo;
+        this.adminUserRepo = adminUserRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
@@ -46,40 +42,36 @@ public class AdminAuthController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "用户名和密码不能为空");
         }
 
-        AepUser user = userRepo.findByUsername(username)
-                .or(() -> userRepo.findByEmail(username))
+        AdminUser admin = adminUserRepo.findByUsername(username)
+                .or(() -> adminUserRepo.findByEmail(username))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误"));
 
-        if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
+        if (admin.getPasswordHash() == null || !passwordEncoder.matches(password, admin.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
         }
 
-        if (!ADMIN_ROLES.contains(user.getRole())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户没有管理后台访问权限");
-        }
-
-        if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
+        if (admin.getStatus() != AdminUser.AdminStatus.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户已被停用");
         }
 
-        user.setLastLoginAt(java.time.Instant.now());
-        userRepo.save(user);
+        admin.setLastLoginAt(java.time.Instant.now());
+        adminUserRepo.save(admin);
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole().name());
+        String token = jwtUtil.generateToken(admin.getId(), admin.getUsername(), admin.getRole().name());
 
         return ApiResponse.of(Map.of(
                 "token", token,
-                "user", AepUserDto.from(user)
+                "user", AdminUserDto.from(admin)
         ));
     }
 
     @GetMapping("/me")
-    public ApiResponse<AepUserDto> me(Principal principal) {
+    public ApiResponse<AdminUserDto> me(Principal principal) {
         if (principal == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "未登录");
         }
-        AepUser user = userRepo.findById(principal.getName())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
-        return ApiResponse.of(AepUserDto.from(user));
+        AdminUser admin = adminUserRepo.findById(principal.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在"));
+        return ApiResponse.of(AdminUserDto.from(admin));
     }
 }

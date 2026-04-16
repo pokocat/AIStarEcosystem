@@ -19,6 +19,13 @@ public class LedgerEntry {
     private String walletId;
     private String tenantId;
 
+    /**
+     * The platform user who triggered this entry (user-level attribution).
+     * Enables per-user consumption statistics within a tenant.
+     * Null for system-initiated entries (e.g., plan credit topups).
+     */
+    private String userId;
+
     @Enumerated(EnumType.STRING)
     private LedgerEntryType entryType;
 

@@ -70,44 +70,20 @@ function statusVariant(status: User["status"]) {
 
 function roleVariant(role: User["role"]) {
   switch (role) {
-    case "platform_owner":    return "default";
-    case "platform_operator": return "default";
-    case "finance_admin":     return "info";
-    case "channel_manager":   return "secondary";
-    case "producer":
-    case "coach":             return "secondary";
-    default:                  return "outline";
-  }
-}
-
-function planVariant(plan: User["plan"]) {
-  switch (plan) {
-    case "enterprise": return "default";
-    case "pro":        return "info";
-    default:           return "outline";
+    case "economic_company": return "default";
+    case "ai_artist":        return "info";
+    case "ai_singer":        return "secondary";
+    default:                 return "outline";
   }
 }
 
 function roleLabel(role: User["role"]) {
   const labels: Record<User["role"], string> = {
-    platform_owner: "平台所有者",
-    platform_operator: "平台运营",
-    finance_admin: "财务管理员",
-    channel_manager: "渠道管理员",
-    producer: "制作人",
-    coach: "掌门人",
-    fan: "粉丝",
+    ai_singer:        "AI 歌手",
+    ai_artist:        "AI 艺人",
+    economic_company: "经纪公司",
   };
   return labels[role] ?? role;
-}
-
-function planLabel(plan: User["plan"]) {
-  const labels: Record<User["plan"], string> = {
-    enterprise: "企业版",
-    pro: "专业版",
-    free: "免费版",
-  };
-  return labels[plan] ?? plan;
 }
 
 function statusLabel(status: User["status"]) {
@@ -127,8 +103,7 @@ function normalizeUser(item: Partial<User>): User {
     phone:         item.phone ?? null,
     displayName:   item.displayName ?? null,
     avatarUrl:     item.avatarUrl ?? null,
-    role:          (item.role ?? "fan") as User["role"],
-    plan:          (item.plan ?? "free") as User["plan"],
+    role:          (item.role ?? "ai_singer") as User["role"],
     credits:       Number(item.credits ?? 0),
     status:        (item.status ?? "active") as User["status"],
     emailVerified: Boolean(item.emailVerified),
@@ -192,7 +167,6 @@ function UserDetailDrawer({
           <div className="flex flex-wrap gap-2 pt-1">
             <Badge variant={statusVariant(user.status)}>{statusLabel(user.status)}</Badge>
             <Badge variant={roleVariant(user.role)}>{roleLabel(user.role)}</Badge>
-            <Badge variant={planVariant(user.plan)}>{planLabel(user.plan)}</Badge>
           </div>
         </SheetHeader>
 
@@ -244,9 +218,6 @@ function UserDetailDrawer({
               </InfoRow>
               <InfoRow label="账户角色">
                 <Badge variant={roleVariant(user.role)}>{roleLabel(user.role)}</Badge>
-              </InfoRow>
-              <InfoRow label="套餐">
-                <Badge variant={planVariant(user.plan)}>{planLabel(user.plan)}</Badge>
               </InfoRow>
             </div>
           </div>
@@ -327,7 +298,7 @@ function EditUserDialog({
   onSave: (updated: User) => void;
 }) {
   const [status, setStatus] = useState<User["status"]>("active");
-  const [role, setRole] = useState<User["role"]>("fan");
+  const [role, setRole] = useState<User["role"]>("ai_singer");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -388,13 +359,9 @@ function EditUserDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="fan">粉丝</SelectItem>
-                <SelectItem value="producer">制作人</SelectItem>
-                <SelectItem value="coach">掌门人</SelectItem>
-                <SelectItem value="finance_admin">财务管理员</SelectItem>
-                <SelectItem value="channel_manager">渠道管理员</SelectItem>
-                <SelectItem value="platform_operator">平台运营</SelectItem>
-                <SelectItem value="platform_owner">平台所有者</SelectItem>
+                <SelectItem value="ai_singer">AI 歌手</SelectItem>
+                <SelectItem value="ai_artist">AI 艺人</SelectItem>
+                <SelectItem value="economic_company">经纪公司</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -474,7 +441,7 @@ export default function UsersPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">用户管理</h2>
           <p className="text-sm text-muted-foreground">
-            统一查看账号身份、套餐层级、验证状态与最近登录情况。
+            平台用户（通过激活码注册的 AI 歌手、AI 艺人及经纪公司）账号状态与管理。
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchUsers(page)} disabled={loading}>
@@ -567,7 +534,6 @@ export default function UsersPage() {
                 <TableHead>用户</TableHead>
                 <TableHead>联系信息</TableHead>
                 <TableHead>角色</TableHead>
-                <TableHead>套餐</TableHead>
                 <TableHead className="text-right">积分余额</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>注册时间</TableHead>
@@ -608,9 +574,6 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={roleVariant(user.role)}>{roleLabel(user.role)}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={planVariant(user.plan)}>{planLabel(user.plan)}</Badge>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {formatCount(user.credits)}

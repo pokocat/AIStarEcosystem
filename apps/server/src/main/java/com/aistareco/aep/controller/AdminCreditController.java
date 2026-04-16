@@ -43,14 +43,19 @@ public class AdminCreditController {
         return ApiResponse.of(creditService.creditWallet(tenantId, body));
     }
 
+    /**
+     * Query ledger entries.
+     * Supports filtering by tenantId (租户视角), userId (用户视角), or walletId.
+     */
     @GetMapping("/ledger-entries")
     public ApiResponse<PageEnvelope<LedgerEntryDto>> listLedgerEntries(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String walletId,
-            @RequestParam(required = false) String tenantId) {
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String userId) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(creditService.listLedgerEntries(walletId, tenantId, pageable)));
+        return ApiResponse.of(PageEnvelope.from(creditService.listLedgerEntries(walletId, tenantId, userId, pageable)));
     }
 }

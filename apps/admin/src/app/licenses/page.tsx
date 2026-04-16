@@ -139,12 +139,14 @@ function BatchDetailDrawer({
   onClose,
   productMap,
   planMap,
+  tenantMap,
 }: {
   batch: LicenseBatch | null;
   open: boolean;
   onClose: () => void;
   productMap: Map<string, Product>;
   planMap: Map<string, Plan>;
+  tenantMap: Map<string, import("@/types").Tenant>;
 }) {
   if (!batch) return null;
 
@@ -256,6 +258,17 @@ function BatchDetailDrawer({
                   )}
                 </InfoRow>
               )}
+              <InfoRow label="所属租户">
+                {batch.ownerTenantId ? (
+                  tenantMap.has(batch.ownerTenantId) ? (
+                    <span className="font-medium">{tenantMap.get(batch.ownerTenantId)!.name}</span>
+                  ) : (
+                    <span className="font-mono text-xs break-all">{batch.ownerTenantId}</span>
+                  )
+                ) : (
+                  <span className="text-muted-foreground text-xs">平台直销（无归属租户）</span>
+                )}
+              </InfoRow>
               {batch.channelPartnerId && (
                 <InfoRow label="渠道合作方 ID">
                   <span className="font-mono text-xs break-all">{batch.channelPartnerId}</span>
@@ -445,21 +458,25 @@ export default function LicensesPage() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [tenants, setTenants] = useState<import("@/types").Tenant[]>([]);
 
   const productMap = new Map(products.map((p) => [p.id, p]));
   const planMap = new Map(plans.map((p) => [p.id, p]));
+  const tenantMap = new Map(tenants.map((t) => [t.id, t]));
 
   async function fetchMeta() {
     try {
-      const [prodData, planData] = await Promise.all([
+      const [prodData, planData, tenantData] = await Promise.all([
         apiFetch<unknown>("/api/admin/products"),
         apiFetch<unknown>("/api/admin/plans?page=0&size=100"),
+        apiFetch<unknown>("/api/admin/tenants?page=0&size=200"),
       ]);
       const prodList = Array.isArray(prodData)
         ? (prodData as Product[])
         : normalizePageResponse<Product>(prodData).content;
       setProducts(prodList);
       setPlans(normalizePageResponse<Plan>(planData).content);
+      setTenants(normalizePageResponse<import("@/types").Tenant>(tenantData).content);
     } catch {
       // fallback: keep empty lists, IDs will be shown as-is
     }
@@ -624,6 +641,7 @@ export default function LicensesPage() {
                     <TableHead>批次编号</TableHead>
                     <TableHead>类型</TableHead>
                     <TableHead>产品</TableHead>
+                    <TableHead>所属租户</TableHead>
                     <TableHead>结算方式</TableHead>
                     <TableHead className="text-right">发码量</TableHead>
                     <TableHead className="text-right">已激活</TableHead>
@@ -634,7 +652,7 @@ export default function LicensesPage() {
                 <TableBody>
                   {batches.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                      <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                         当前没有可展示的卡密批次。
                       </TableCell>
                     </TableRow>
@@ -657,6 +675,15 @@ export default function LicensesPage() {
                           {productMap.has(batch.productId)
                             ? productMap.get(batch.productId)!.name
                             : <span className="font-mono text-xs text-muted-foreground">{batch.productId || "未关联"}</span>}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[140px] truncate">
+                          {batch.ownerTenantId ? (
+                            tenantMap.has(batch.ownerTenantId)
+                              ? tenantMap.get(batch.ownerTenantId)!.name
+                              : <span className="font-mono text-xs text-muted-foreground">{batch.ownerTenantId}</span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">平台直销</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{settlementLabel(batch.settlementMode)}</Badge>
@@ -792,6 +819,7 @@ export default function LicensesPage() {
         onClose={() => setSelectedBatch(null)}
         productMap={productMap}
         planMap={planMap}
+        tenantMap={tenantMap}
       />
       <KeyDetailDrawer
         licenseKey={selectedKey}

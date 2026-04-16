@@ -51,7 +51,6 @@ public class AepUserService {
         if (!userRepo.existsById(userId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId);
         }
-
         return tenantRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(TenantDto::from)
                 .toList();
@@ -66,8 +65,7 @@ public class AepUserService {
                 .displayName(getString(body, "displayName"))
                 .avatarUrl(getString(body, "avatarUrl"))
                 .walletAddress(getString(body, "walletAddress"))
-                .role(parseEnum(body, "role", AepUser.UserRole.class, AepUser.UserRole.FAN))
-                .plan(parseEnum(body, "plan", AepUser.UserPlan.class, AepUser.UserPlan.FREE))
+                .role(parseEnum(body, "role", AepUser.UserRole.class, AepUser.UserRole.AI_SINGER))
                 .credits(getLong(body, "credits", 0L))
                 .status(AepUser.UserStatus.ACTIVE)
                 .emailVerified(false)
@@ -87,9 +85,8 @@ public class AepUserService {
         if (body.containsKey("displayName")) user.setDisplayName(getString(body, "displayName"));
         if (body.containsKey("avatarUrl")) user.setAvatarUrl(getString(body, "avatarUrl"));
         if (body.containsKey("walletAddress")) user.setWalletAddress(getString(body, "walletAddress"));
-        if (body.containsKey("role")) user.setRole(AepUser.UserRole.valueOf(getString(body, "role")));
-        if (body.containsKey("plan")) user.setPlan(AepUser.UserPlan.valueOf(getString(body, "plan")));
-        if (body.containsKey("status")) user.setStatus(AepUser.UserStatus.valueOf(getString(body, "status")));
+        if (body.containsKey("role")) user.setRole(AepUser.UserRole.valueOf(getString(body, "role").toUpperCase()));
+        if (body.containsKey("status")) user.setStatus(AepUser.UserStatus.valueOf(getString(body, "status").toUpperCase()));
         if (body.containsKey("langPreference")) user.setLangPreference(getString(body, "langPreference"));
         user.setUpdatedAt(Instant.now());
         return AepUserDto.from(userRepo.save(user));
@@ -121,7 +118,7 @@ public class AepUserService {
         Object val = body.get(key);
         if (val == null) return defaultVal;
         try {
-            return Enum.valueOf(enumClass, val.toString());
+            return Enum.valueOf(enumClass, val.toString().toUpperCase());
         } catch (IllegalArgumentException e) {
             return defaultVal;
         }

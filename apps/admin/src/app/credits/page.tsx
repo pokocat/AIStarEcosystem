@@ -79,6 +79,7 @@ function normalizeEntry(item: Partial<LedgerEntry>): LedgerEntry {
     id:            item.id ?? "",
     walletId:      item.walletId ?? "",
     tenantId:      item.tenantId ?? "未分配租户",
+    userId:        item.userId ?? null,
     entryType:     (item.entryType ?? "credit") as LedgerEntry["entryType"],
     amount:        Number(item.amount ?? 0),
     balanceAfter:  Number(item.balanceAfter ?? 0),

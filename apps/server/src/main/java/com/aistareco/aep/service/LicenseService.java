@@ -52,6 +52,7 @@ public class LicenseService {
                 .batchNo("BATCH-" + System.currentTimeMillis())
                 .productId(getString(body, "productId"))
                 .planId(getString(body, "planId"))
+                .ownerTenantId(getString(body, "ownerTenantId"))
                 .licenseType(parseEnum(body, "licenseType", LicenseBatch.LicenseType.class, LicenseBatch.LicenseType.PLAN_ACTIVATION))
                 .durationDays(getInt(body, "durationDays", null))
                 .creditDelta(getLong(body, "creditDelta", 0L))
