@@ -15,6 +15,7 @@ import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTyp
 import type { Transaction } from "@/types/finance";
 import { REVENUE_MONTHLY, REVENUE_SOURCES, TRANSACTIONS } from "@/mocks/finance";
 import { formatCredits, formatSignedCredits } from "@/lib/format";
+import { toast } from "@/lib/toast";
 
 export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: Artist }) => {
   const zh = lang === 'zh';
@@ -36,8 +37,13 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="border-white/10 text-gray-400 gap-1 text-xs"><Download className="w-3.5 h-3.5" /> {zh ? '导出报表' : 'Export'}</Button>
-          <Button className="bg-gradient-to-r from-green-500 to-cyan-500 hover:opacity-90 gap-2"><ArrowDownToLine className="w-4 h-4" /> {zh ? '提现' : 'Withdraw'}</Button>
+          <Button
+            variant="outline"
+            onClick={() => toast.success(zh ? '报表导出中' : 'Exporting report', { description: zh ? '下载链接已发送至邮箱' : 'Download link sent to your email' })}
+            className="border-white/10 text-gray-400 gap-1 text-xs"><Download className="w-3.5 h-3.5" /> {zh ? '导出报表' : 'Export'}</Button>
+          <Button
+            onClick={() => toast.info(zh ? '提现申请已提交' : 'Withdrawal submitted', { description: zh ? `可用余额 ${totalBalance}，3-5 工作日到账` : `Available ${totalBalance}, arrives in 3-5 business days` })}
+            className="bg-gradient-to-r from-green-500 to-cyan-500 hover:opacity-90 gap-2"><ArrowDownToLine className="w-4 h-4" /> {zh ? '提现' : 'Withdraw'}</Button>
         </div>
       </div>
 

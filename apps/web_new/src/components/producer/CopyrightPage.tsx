@@ -12,6 +12,7 @@ import { Progress } from "../ui/progress";
 import { motion, AnimatePresence } from "motion/react";
 import type { Lang } from "../../translations";
 import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTypes';
+import { toast } from "@/lib/toast";
 
 interface CopyrightAsset {
   id: string;
@@ -68,7 +69,9 @@ export const CopyrightPage = ({ lang, activeArtist }: { lang: Lang; activeArtist
           <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{zh ? '版权与链上资产' : 'Copyright & On-chain Assets'}</h1>
           <p className="text-gray-400 font-light mt-1">{zh ? '区块链确权 · NFT铸造 · 版权追踪' : 'Blockchain copyright · NFT minting · Rights tracking'}</p>
         </div>
-        <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
+        <Button
+          onClick={() => toast.info(zh ? '版权登记流程' : 'Copyright registration', { description: zh ? '上链确权需作品源文件，当前版本请通过工作坊登记' : 'Upload source file via Studio to register on-chain' })}
+          className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
           <Plus className="w-4 h-4" /> {zh ? '登记版权' : 'Register Copyright'}
         </Button>
       </div>
@@ -142,7 +145,7 @@ export const CopyrightPage = ({ lang, activeArtist }: { lang: Lang; activeArtist
                     </td>
                     <td className="px-4 py-3">
                       {asset.chainId !== '-' ? (
-                        <span className="text-xs text-cyan-400 font-mono flex items-center gap-1">{asset.chainId} <Copy className="w-3 h-3 text-gray-500 cursor-pointer hover:text-white" /></span>
+                        <span className="text-xs text-cyan-400 font-mono flex items-center gap-1">{asset.chainId} <Copy onClick={() => { navigator.clipboard?.writeText(asset.chainId); toast.success(zh ? '链上ID已复制' : 'Chain ID copied'); }} className="w-3 h-3 text-gray-500 cursor-pointer hover:text-white" /></span>
                       ) : <span className="text-xs text-gray-600">-</span>}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-400">{asset.royaltyRate}%</td>
@@ -179,7 +182,11 @@ export const CopyrightPage = ({ lang, activeArtist }: { lang: Lang; activeArtist
               </div>
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>{nft.holders} {zh ? '持有人' : 'holders'}</span>
-                <Button variant="ghost" size="sm" className="text-purple-400 hover:bg-purple-500/10 text-[10px] h-6 px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toast.info(zh ? `${nft.name} · 详情` : `${nft.name} · Details`, { description: zh ? `地板价 ${nft.floorPrice} · ${nft.holders} 位持有人 · 已铸造 ${nft.totalMinted}/${nft.maxSupply}` : `Floor ${nft.floorPrice} · ${nft.holders} holders · Minted ${nft.totalMinted}/${nft.maxSupply}` })}
+                  className="text-purple-400 hover:bg-purple-500/10 text-[10px] h-6 px-2">
                   {zh ? '查看详情' : 'Details'} <ArrowUpRight className="w-3 h-3 ml-0.5" />
                 </Button>
               </div>

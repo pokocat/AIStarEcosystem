@@ -125,7 +125,7 @@ export const FanAppFull = ({ onBack, lang, setLang }: { onBack: () => void; lang
                   <Badge className="bg-pink-500/20 text-pink-400 border-pink-500/30 text-[10px] mb-2">🔥 本周热门</Badge>
                   <h2 className="text-2xl font-extrabold mb-1" style={{ fontFamily: "var(--font-display)" }}>Neon Tears</h2>
                   <p className="text-sm text-gray-400 mb-3">by Neon V · 1.2M 播放</p>
-                  <Button onClick={() => playTrack(HotTracks[0])} size="sm" className="bg-white text-black hover:bg-gray-200 gap-1 rounded-full px-4">
+                  <Button onClick={() => playTrack(HotTracks[0])} size="sm" className="bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:opacity-90 gap-1 rounded-full px-4">
                     <Play className="w-3.5 h-3.5" /> 立即收听
                   </Button>
                 </motion.div>
@@ -343,7 +343,7 @@ export const FanAppFull = ({ onBack, lang, setLang }: { onBack: () => void; lang
                 </button>
                 <button className="p-1.5 text-gray-500"><SkipBack className="w-4 h-4" /></button>
                 <button onClick={() => setIsPlaying(!isPlaying)}
-                  className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-black">
+                  className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white shadow-[0_0_20px_rgba(236,72,153,0.4)]">
                   {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                 </button>
                 <button className="p-1.5 text-gray-500"><SkipForward className="w-4 h-4" /></button>

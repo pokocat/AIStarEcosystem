@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import { toast } from '@/lib/toast';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -145,12 +146,11 @@ export default function DistributionPage({ songs, lang }: DistributionPageProps)
   };
 
   const handleConnectAccount = (accountKey: string) => {
-    // 模拟OAuth授权流程
-    console.log('Connecting account:', accountKey);
     setAccountStatus(prev => ({
       ...prev,
       [accountKey]: { connected: true, email: 'user@demo.com' }
     }));
+    toast.success('账号授权成功', { description: accountKey });
   };
 
   const handleDisconnectAccount = (accountKey: string) => {

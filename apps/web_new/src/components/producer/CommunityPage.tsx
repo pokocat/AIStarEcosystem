@@ -18,11 +18,21 @@ import {
   ACTION_COLORS, ACTION_ICONS,
   EVENT_ICONS, EVENT_STATUS_STYLES,
 } from "@/constants/community-ui";
+import { toast } from "@/lib/toast";
 
 export const CommunityPage = ({ lang, activeArtist }: { lang: Lang; activeArtist: Artist }) => {
   const zh = lang === 'zh';
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
   const isIdol = activeArtist.type === 'idol';
+  const [draft, setDraft] = useState('');
+  const postDraft = () => {
+    if (!draft.trim()) {
+      toast.error(zh ? '内容不能为空' : 'Content required');
+      return;
+    }
+    toast.success(zh ? '已发布到粉丝群' : 'Posted to fan community', { description: draft.slice(0, 60) });
+    setDraft('');
+  };
 
   return (
     <div className="space-y-6">
@@ -36,8 +46,13 @@ export const CommunityPage = ({ lang, activeArtist }: { lang: Lang; activeArtist
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="border-white/10 text-gray-400 gap-1 text-xs"><Bell className="w-3.5 h-3.5" /> {zh ? '群发通知' : 'Notify All'}</Button>
-          <Button className="bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 gap-2"><Sparkles className="w-4 h-4" /> {zh ? '创建活动' : 'New Event'}</Button>
+          <Button
+            variant="outline"
+            onClick={() => toast.success(zh ? '通知已发送' : 'Notification sent', { description: zh ? `已推送给全体 ${FAN_TIERS.reduce((s, t) => s + t.count, 0).toLocaleString()} 粉丝` : 'Pushed to all fans' })}
+            className="border-white/10 text-gray-400 gap-1 text-xs"><Bell className="w-3.5 h-3.5" /> {zh ? '群发通知' : 'Notify All'}</Button>
+          <Button
+            onClick={() => toast.info(zh ? '活动向导即将开放' : 'Event wizard coming soon', { description: zh ? '当前版本请使用"发布公告"沟通粉丝' : 'Use post announcement in the meantime' })}
+            className="bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 gap-2"><Sparkles className="w-4 h-4" /> {zh ? '创建活动' : 'New Event'}</Button>
         </div>
       </div>
 
@@ -147,9 +162,13 @@ export const CommunityPage = ({ lang, activeArtist }: { lang: Lang; activeArtist
       {/* Quick reply bar */}
       <div className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
         <div className="flex gap-3">
-          <input className="flex-1 bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-pink-500/40 focus:outline-none transition"
+          <input
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') postDraft(); }}
+            className="flex-1 bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-pink-500/40 focus:outline-none transition"
             placeholder={zh ? '发布社群公告或回复粉丝...' : 'Post announcement or reply to fans...'} />
-          <Button className="bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 gap-1"><Send className="w-4 h-4" /> {zh ? '发布' : 'Post'}</Button>
+          <Button onClick={postDraft} className="bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 gap-1"><Send className="w-4 h-4" /> {zh ? '发布' : 'Post'}</Button>
         </div>
       </div>
     </div>

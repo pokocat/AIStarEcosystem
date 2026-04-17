@@ -14,7 +14,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import type { Lang } from "../../translations";
 import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTypes';
 import type { DistributionContentItem as ContentItem, Platform } from "@/types/distribution";
-import { PLATFORMS, CONTENT_ITEMS, PLATFORM_DATA } from "@/mocks/distribution";
+import { PLATFORMS as PLATFORMS_SEED, CONTENT_ITEMS, PLATFORM_DATA } from "@/mocks/distribution";
+import { toast } from "@/lib/toast";
 
 const STATUS_STYLES = {
   published: { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20', icon: CheckCircle2, zh: '已发布', en: 'Published' },
@@ -26,11 +27,29 @@ const STATUS_STYLES = {
 export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArtist: Artist }) => {
   const zh = lang === 'zh';
   const [platformFilter, setPlatformFilter] = useState<'all' | 'music' | 'video' | 'social' | 'live'>('all');
+  const [platforms, setPlatforms] = useState<Platform[]>(PLATFORMS_SEED);
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
 
-  const filteredPlatforms = platformFilter === 'all' ? PLATFORMS : PLATFORMS.filter(p => p.category === platformFilter);
-  const connectedCount = PLATFORMS.filter(p => p.status === 'connected').length;
+  const filteredPlatforms = platformFilter === 'all' ? platforms : platforms.filter(p => p.category === platformFilter);
+  const connectedCount = platforms.filter(p => p.status === 'connected').length;
   const totalFollowers = '1.36M';
+
+  const connectPlatform = (id: string) => {
+    const p = platforms.find(x => x.id === id);
+    if (!p) return;
+    if (p.status === 'connected') return;
+    setPlatforms(prev => prev.map(x => x.id === id ? { ...x, status: 'pending' } : x));
+    toast.info(zh ? `${p.name} 接入审核中` : `${p.name} pending review`, { description: zh ? '通常 1-2 个工作日完成' : 'Usually resolves in 1-2 business days' });
+  };
+
+  const quickDistribute = () => {
+    const connected = platforms.filter(p => p.status === 'connected').length;
+    if (connected === 0) {
+      toast.error(zh ? '暂无已接入平台' : 'No connected platforms', { description: zh ? '请先接入至少一个分发平台' : 'Connect at least one platform first' });
+      return;
+    }
+    toast.success(zh ? `一键分发已启动` : 'Distribution started', { description: zh ? `正在推送至 ${connected} 个已接入平台` : `Pushing to ${connected} connected platforms` });
+  };
 
   return (
     <div className="space-y-6">
@@ -40,7 +59,7 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
           <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{zh ? '全网矩阵分发' : 'Distribution Matrix'}</h1>
           <p className="text-gray-400 font-light mt-1">{zh ? '一键分发至全球150+平台' : 'One-click distribution to 150+ platforms'}</p>
         </div>
-        <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
+        <Button onClick={quickDistribute} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
           <Send className="w-4 h-4" /> {zh ? '一键分发' : 'Quick Distribute'}
         </Button>
       </div>
@@ -48,7 +67,7 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: zh ? '已接入平台' : 'Connected', value: `${connectedCount}/${PLATFORMS.length}`, icon: Globe, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+          { label: zh ? '已接入平台' : 'Connected', value: `${connectedCount}/${platforms.length}`, icon: Globe, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
           { label: zh ? '全网粉丝' : 'Total Followers', value: totalFollowers, icon: Eye, color: 'text-purple-400', bg: 'bg-purple-500/10' },
           { label: zh ? '总播放量' : 'Total Views', value: '5.8M', icon: Play, color: 'text-pink-400', bg: 'bg-pink-500/10' },
           { label: zh ? '本月增长' : 'Monthly Growth', value: '+18.5%', icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-500/10' },
@@ -136,7 +155,12 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
                   <div className="text-[10px] text-gray-600 mt-1">{zh ? '同步: ' : 'Sync: '}{platform.lastSync}</div>
                 </>
               ) : (
-                <Button variant="outline" size="sm" className="mt-2 text-[10px] h-6 border-white/10 text-gray-400 w-full">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={platform.status === 'pending'}
+                  onClick={() => connectPlatform(platform.id)}
+                  className="mt-2 text-[10px] h-6 border-white/10 text-gray-400 w-full">
                   {platform.status === 'pending' ? (zh ? '审核中' : 'Pending') : (zh ? '接入' : 'Connect')}
                 </Button>
               )}

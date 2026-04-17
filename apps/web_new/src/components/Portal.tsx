@@ -46,7 +46,7 @@ export function Portal({ onSelectRole, lang, setLang }: PortalProps) {
           </h2>
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 transform translate-y-4 group-hover:translate-y-0">
             <p className="text-sm text-white/70 max-w-xs mx-auto mb-8 leading-relaxed">{t.fan_desc}</p>
-            <Button className="bg-white text-pink-900 hover:bg-white/90 rounded-full px-8 font-bold">
+            <Button className="bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:opacity-90 rounded-full px-8 font-bold shadow-[0_0_30px_rgba(244,114,182,0.35)]">
               {t.fan_btn} <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
@@ -67,7 +67,7 @@ export function Portal({ onSelectRole, lang, setLang }: PortalProps) {
           </h2>
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 transform translate-y-4 group-hover:translate-y-0">
             <p className="text-sm text-white/70 max-w-xs mx-auto mb-8 leading-relaxed">{t.maker_desc}</p>
-            <Button className="bg-white text-cyan-900 hover:bg-white/90 rounded-full px-8 font-bold">
+            <Button className="bg-gradient-to-r from-cyan-500 to-sky-500 text-white hover:opacity-90 rounded-full px-8 font-bold shadow-[0_0_30px_rgba(6,182,212,0.35)]">
               {t.maker_btn} <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
@@ -88,7 +88,7 @@ export function Portal({ onSelectRole, lang, setLang }: PortalProps) {
           </h2>
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 transform translate-y-4 group-hover:translate-y-0">
             <p className="text-sm text-white/70 max-w-xs mx-auto mb-8 leading-relaxed">{t.studio_desc}</p>
-            <Button className="bg-white text-purple-900 hover:bg-white/90 rounded-full px-8 font-bold">
+            <Button className="bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white hover:opacity-90 rounded-full px-8 font-bold shadow-[0_0_30px_rgba(168,85,247,0.35)]">
               {t.studio_btn} <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           </div>

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from '@/lib/toast';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -545,7 +546,7 @@ export function NoticeBoard({ lang, artist, onBack }: NoticeBoardProps) {
                                     className="bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white font-bold"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      alert(lang === 'zh' ? `已接取通告：${notice.title}` : `Notice accepted: ${notice.title}`);
+                                      toast.success(lang === 'zh' ? '通告已接取' : 'Notice accepted', { description: notice.title });
                                     }}
                                   >
                                     <CheckCircle2 className="w-4 h-4 mr-2" />

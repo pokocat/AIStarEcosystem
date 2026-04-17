@@ -44,7 +44,7 @@ export function ProducerIntro({ onEnterApp, lang, setLang }: ProducerIntroProps)
           <Button
             onClick={onEnterApp}
             size="lg"
-            className="h-14 px-10 text-lg bg-white text-black hover:bg-gray-200"
+            className="h-14 px-10 text-lg bg-gradient-to-r from-cyan-500 to-purple-600 text-white hover:opacity-90 shadow-[0_0_30px_rgba(6,182,212,0.3)]"
           >
             {lang === "zh" ? "进入制作人控制台" : "Enter Producer Console"}
             <ArrowRight className="ml-2" />

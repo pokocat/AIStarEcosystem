@@ -46,25 +46,28 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  /* Surfaces — near-black with subtle cyan-tinted depth */
+  --background: #000000;
+  --foreground: #f5f6f8;
+  --card: rgba(17, 24, 39, 0.5);            /* gray-900/50 — app-wide card surface */
+  --card-foreground: #f5f6f8;
+  --popover: #0b0b10;
+  --popover-foreground: #f5f6f8;
+  /* Primary = neon cyan so default buttons align with the gradient CTA aesthetic */
+  --primary: #06b6d4;
+  --primary-foreground: #0a0a0a;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #f5f6f8;
+  --muted: rgba(255, 255, 255, 0.04);
+  --muted-foreground: #9ca3af;              /* gray-400 */
+  --accent: rgba(6, 182, 212, 0.12);
+  --accent-foreground: #67e8f9;             /* cyan-300 */
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --input-background: rgba(255, 255, 255, 0.04);
+  --ring: rgba(6, 182, 212, 0.6);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);
