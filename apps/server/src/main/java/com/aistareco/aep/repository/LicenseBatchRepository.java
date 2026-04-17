@@ -15,7 +15,7 @@ public interface LicenseBatchRepository extends JpaRepository<LicenseBatch, Stri
 
     Optional<LicenseBatch> findByBatchNo(String batchNo);
 
-    Page<LicenseBatch> findByProductId(String productId, Pageable pageable);
+    Page<LicenseBatch> findByIssuerTenantId(String issuerTenantId, Pageable pageable);
 
-    Page<LicenseBatch> findByLicenseType(LicenseBatch.LicenseType licenseType, Pageable pageable);
+    Page<LicenseBatch> findByStatus(LicenseBatch.LicenseBatchStatus status, Pageable pageable);
 }

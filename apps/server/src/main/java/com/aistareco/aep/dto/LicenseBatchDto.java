@@ -8,27 +8,24 @@ import java.util.Locale;
 public record LicenseBatchDto(
         String id,
         String batchNo,
-        String productId,
-        String planId,
-        String ownerTenantId,
-        String licenseType,
-        Integer durationDays,
-        long creditDelta,
-        String settlementMode,
+        String name,
+        String issuerTenantId,
+        long initialCreditGrant,
         int totalCount,
         int activatedCount,
-        String channelPartnerId,
         Instant validFrom,
         Instant validTo,
+        String status,
         Instant createdAt
 ) {
     public static LicenseBatchDto from(LicenseBatch b) {
         return new LicenseBatchDto(
-                b.getId(), b.getBatchNo(), b.getProductId(), b.getPlanId(),
-                b.getOwnerTenantId(),
-                lower(b.getLicenseType()), b.getDurationDays(), b.getCreditDelta(),
-                lower(b.getSettlementMode()), b.getTotalCount(), b.getActivatedCount(),
-                b.getChannelPartnerId(), b.getValidFrom(), b.getValidTo(), b.getCreatedAt()
+                b.getId(), b.getBatchNo(), b.getName(),
+                b.getIssuerTenantId(),
+                b.getInitialCreditGrant(),
+                b.getTotalCount(), b.getActivatedCount(),
+                b.getValidFrom(), b.getValidTo(),
+                lower(b.getStatus()), b.getCreatedAt()
         );
     }
 

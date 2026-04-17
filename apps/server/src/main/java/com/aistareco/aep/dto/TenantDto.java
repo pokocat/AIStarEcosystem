@@ -8,16 +8,15 @@ import java.util.Locale;
 public record TenantDto(
         String id,
         String name,
-        String type,
+        String kind,
         String status,
-        String ownerUserId,
         Instant createdAt,
         Instant updatedAt
 ) {
     public static TenantDto from(Tenant t) {
         return new TenantDto(
-                t.getId(), t.getName(), lower(t.getType()), lower(t.getStatus()),
-                t.getOwnerUserId(), t.getCreatedAt(), t.getUpdatedAt()
+                t.getId(), t.getName(), lower(t.getKind()), lower(t.getStatus()),
+                t.getCreatedAt(), t.getUpdatedAt()
         );
     }
 

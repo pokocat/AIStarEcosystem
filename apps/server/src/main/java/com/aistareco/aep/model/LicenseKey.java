@@ -18,7 +18,7 @@ public class LicenseKey {
 
     private String batchId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String codeHash;
 
     private String maskedCode;
@@ -27,12 +27,11 @@ public class LicenseKey {
     private LicenseKeyStatus status;
 
     private String activatedByUserId;
-    private String activatedTenantId;
     private Instant activatedAt;
     private Instant expiresAt;
     private Instant createdAt;
 
     public enum LicenseKeyStatus {
-        CREATED, ALLOCATED, SOLD, ACTIVATED, EXPIRED, REVOKED
+        CREATED, ACTIVATED, EXPIRED, REVOKED
     }
 }

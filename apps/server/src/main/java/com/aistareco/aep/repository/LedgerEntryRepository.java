@@ -14,12 +14,12 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
 
     Page<LedgerEntry> findByWalletId(String walletId, Pageable pageable);
 
-    Page<LedgerEntry> findByTenantId(String tenantId, Pageable pageable);
-
-    Page<LedgerEntry> findByWalletIdAndTenantId(String walletId, String tenantId, Pageable pageable);
-
     Page<LedgerEntry> findByUserId(String userId, Pageable pageable);
 
-    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.entryType = com.aistareco.aep.model.LedgerEntry.LedgerEntryType.CREDIT")
+    /**
+     * Sum of all positive credits ever issued (license grants + recharges + gifts + income + refunds + adjusts).
+     * Used by admin stats dashboards.
+     */
+    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.amount > 0")
     long sumTotalCreditsIssued();
 }

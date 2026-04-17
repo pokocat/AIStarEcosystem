@@ -5,6 +5,10 @@ import lombok.*;
 
 import java.time.Instant;
 
+/**
+ * Immutable credit transaction log per wallet.
+ * Schema/contract aligned with /product_spec.md §1.4.
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -17,18 +21,14 @@ public class LedgerEntry {
     private String id;
 
     private String walletId;
-    private String tenantId;
 
-    /**
-     * The platform user who triggered this entry (user-level attribution).
-     * Enables per-user consumption statistics within a tenant.
-     * Null for system-initiated entries (e.g., plan credit topups).
-     */
+    /** Wallet owner — denormalized for per-user queries. */
     private String userId;
 
     @Enumerated(EnumType.STRING)
     private LedgerEntryType entryType;
 
+    /** Signed: positive = credit, negative = debit. */
     private long amount;
     private long balanceAfter;
     private String description;
@@ -37,6 +37,15 @@ public class LedgerEntry {
     private Instant createdAt;
 
     public enum LedgerEntryType {
-        CREDIT, DEBIT, FREEZE, UNFREEZE, EXPIRE
+        LICENSE_GRANT,
+        RECHARGE,
+        REFUND,
+        INCOME,
+        GIFT,
+        SPEND,
+        WITHDRAW,
+        FREEZE,
+        UNFREEZE,
+        ADJUST
     }
 }

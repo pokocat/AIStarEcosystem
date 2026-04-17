@@ -21,9 +21,9 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
 
     Page<AepUser> findByStatus(AepUser.UserStatus status, Pageable pageable);
 
-    Page<AepUser> findByRole(AepUser.UserRole role, Pageable pageable);
+    Page<AepUser> findByKind(AepUser.AccountKind kind, Pageable pageable);
 
-    Page<AepUser> findByStatusAndRole(AepUser.UserStatus status, AepUser.UserRole role, Pageable pageable);
+    Page<AepUser> findByStatusAndKind(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable);
 
     boolean existsByUsername(String username);
 

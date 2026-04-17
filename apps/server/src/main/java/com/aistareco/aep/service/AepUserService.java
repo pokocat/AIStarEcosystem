@@ -1,10 +1,8 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AepUserDto;
-import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.repository.AepUserRepository;
-import com.aistareco.aep.repository.TenantRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -12,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,21 +17,19 @@ import java.util.UUID;
 public class AepUserService {
 
     private final AepUserRepository userRepo;
-    private final TenantRepository tenantRepo;
 
-    public AepUserService(AepUserRepository userRepo, TenantRepository tenantRepo) {
+    public AepUserService(AepUserRepository userRepo) {
         this.userRepo = userRepo;
-        this.tenantRepo = tenantRepo;
     }
 
-    public Page<AepUserDto> list(AepUser.UserStatus status, AepUser.UserRole role, Pageable pageable) {
+    public Page<AepUserDto> list(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable) {
         Page<AepUser> page;
-        if (status != null && role != null) {
-            page = userRepo.findByStatusAndRole(status, role, pageable);
+        if (status != null && kind != null) {
+            page = userRepo.findByStatusAndKind(status, kind, pageable);
         } else if (status != null) {
             page = userRepo.findByStatus(status, pageable);
-        } else if (role != null) {
-            page = userRepo.findByRole(role, pageable);
+        } else if (kind != null) {
+            page = userRepo.findByKind(kind, pageable);
         } else {
             page = userRepo.findAll(pageable);
         }
@@ -47,15 +42,6 @@ public class AepUserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + id));
     }
 
-    public List<TenantDto> listOwnedTenants(String userId) {
-        if (!userRepo.existsById(userId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId);
-        }
-        return tenantRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(TenantDto::from)
-                .toList();
-    }
-
     public AepUserDto create(Map<String, Object> body) {
         AepUser user = AepUser.builder()
                 .id(UUID.randomUUID().toString())
@@ -65,8 +51,7 @@ public class AepUserService {
                 .displayName(getString(body, "displayName"))
                 .avatarUrl(getString(body, "avatarUrl"))
                 .walletAddress(getString(body, "walletAddress"))
-                .role(parseEnum(body, "role", AepUser.UserRole.class, AepUser.UserRole.AI_SINGER))
-                .credits(getLong(body, "credits", 0L))
+                .kind(parseEnum(body, "kind", AepUser.AccountKind.class, AepUser.AccountKind.PERSONAL))
                 .status(AepUser.UserStatus.ACTIVE)
                 .emailVerified(false)
                 .phoneVerified(false)
@@ -85,7 +70,7 @@ public class AepUserService {
         if (body.containsKey("displayName")) user.setDisplayName(getString(body, "displayName"));
         if (body.containsKey("avatarUrl")) user.setAvatarUrl(getString(body, "avatarUrl"));
         if (body.containsKey("walletAddress")) user.setWalletAddress(getString(body, "walletAddress"));
-        if (body.containsKey("role")) user.setRole(AepUser.UserRole.valueOf(getString(body, "role").toUpperCase()));
+        if (body.containsKey("kind")) user.setKind(AepUser.AccountKind.valueOf(getString(body, "kind").toUpperCase()));
         if (body.containsKey("status")) user.setStatus(AepUser.UserStatus.valueOf(getString(body, "status").toUpperCase()));
         if (body.containsKey("langPreference")) user.setLangPreference(getString(body, "langPreference"));
         user.setUpdatedAt(Instant.now());
@@ -100,18 +85,9 @@ public class AepUserService {
         userRepo.save(user);
     }
 
-    // --- helpers ---
-
     private String getString(Map<String, Object> body, String key) {
         Object val = body.get(key);
         return val != null ? val.toString() : null;
-    }
-
-    private long getLong(Map<String, Object> body, String key, long defaultVal) {
-        Object val = body.get(key);
-        if (val == null) return defaultVal;
-        if (val instanceof Number n) return n.longValue();
-        return Long.parseLong(val.toString());
     }
 
     private <E extends Enum<E>> E parseEnum(Map<String, Object> body, String key, Class<E> enumClass, E defaultVal) {

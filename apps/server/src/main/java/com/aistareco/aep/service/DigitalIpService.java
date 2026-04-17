@@ -1,0 +1,274 @@
+package com.aistareco.aep.service;
+
+import com.aistareco.aep.dto.DigitalIpDto;
+import com.aistareco.aep.model.DigitalIp;
+import com.aistareco.aep.repository.AepUserRepository;
+import com.aistareco.aep.repository.DigitalIpRepository;
+import com.aistareco.aep.repository.StudioRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+
+@Service
+public class DigitalIpService {
+
+    private final DigitalIpRepository ipRepo;
+    private final AepUserRepository userRepo;
+    private final StudioRepository studioRepo;
+
+    public DigitalIpService(DigitalIpRepository ipRepo,
+                            AepUserRepository userRepo,
+                            StudioRepository studioRepo) {
+        this.ipRepo = ipRepo;
+        this.userRepo = userRepo;
+        this.studioRepo = studioRepo;
+    }
+
+    public Page<DigitalIpDto> list(String ownerUserId, String studioId,
+                                   DigitalIp.DigitalIpKind kind, Pageable pageable) {
+        Page<DigitalIp> page;
+        if (ownerUserId != null && !ownerUserId.isBlank()) {
+            page = ipRepo.findByOwnerUserId(ownerUserId, pageable);
+        } else if (studioId != null && !studioId.isBlank()) {
+            page = ipRepo.findByStudioId(studioId, pageable);
+        } else if (kind != null) {
+            page = ipRepo.findByKind(kind, pageable);
+        } else {
+            page = ipRepo.findAll(pageable);
+        }
+        return page.map(DigitalIpDto::from);
+    }
+
+    public DigitalIpDto findById(String id) {
+        return DigitalIpDto.from(loadOrThrow(id));
+    }
+
+    public DigitalIpDto findOwnedById(String id, String ownerUserId) {
+        DigitalIp ip = loadOrThrow(id);
+        requireOwner(ip, ownerUserId);
+        return DigitalIpDto.from(ip);
+    }
+
+    public DigitalIpDto create(Map<String, Object> body, String enforcedOwnerUserId) {
+        String ownerUserId = enforcedOwnerUserId != null
+                ? enforcedOwnerUserId
+                : getString(body, "ownerUserId");
+        if (ownerUserId == null || ownerUserId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ownerUserId 必填");
+        }
+        if (!userRepo.existsById(ownerUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ownerUserId 对应的用户不存在: " + ownerUserId);
+        }
+
+        String studioId = getString(body, "studioId");
+        if (studioId != null && !studioId.isBlank() && !studioRepo.existsById(studioId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studioId 对应的工作室不存在: " + studioId);
+        }
+
+        Instant now = Instant.now();
+        DigitalIp ip = DigitalIp.builder()
+                .id(UUID.randomUUID().toString())
+                .name(requireString(body, "name"))
+                .kind(parseEnum(body, "kind", DigitalIp.DigitalIpKind.class, DigitalIp.DigitalIpKind.SINGER))
+                .quality(parseEnum(body, "quality", DigitalIp.Quality.class, DigitalIp.Quality.COMMON))
+                .status(parseEnum(body, "status", DigitalIp.DigitalIpStatus.class, DigitalIp.DigitalIpStatus.TRAINEE))
+                .level(getInt(body, "level", 1))
+                .exp(getInt(body, "exp", 0))
+                .maxExp(getInt(body, "maxExp", 100))
+                .avatarUrl(getString(body, "avatar"))
+                .bio(getString(body, "bio"))
+                .studioId(studioId)
+                .ownerUserId(ownerUserId)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        applyTalents(ip, asMap(body.get("talents")));
+        applyStats(ip, asMap(body.get("stats")));
+        applyDomains(ip, body.get("domains"));
+
+        return DigitalIpDto.from(ipRepo.save(ip));
+    }
+
+    public DigitalIpDto update(String id, Map<String, Object> body) {
+        return DigitalIpDto.from(applyUpdate(loadOrThrow(id), body));
+    }
+
+    public DigitalIpDto updateOwned(String id, String ownerUserId, Map<String, Object> body) {
+        DigitalIp ip = loadOrThrow(id);
+        requireOwner(ip, ownerUserId);
+        // Owner cannot re-assign ownership.
+        body.remove("ownerUserId");
+        return DigitalIpDto.from(applyUpdate(ip, body));
+    }
+
+    public void delete(String id) {
+        if (!ipRepo.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Digital IP not found: " + id);
+        }
+        ipRepo.deleteById(id);
+    }
+
+    public void deleteOwned(String id, String ownerUserId) {
+        DigitalIp ip = loadOrThrow(id);
+        requireOwner(ip, ownerUserId);
+        ipRepo.delete(ip);
+    }
+
+    // ── internal ────────────────────────────────────────────────────────────
+
+    private DigitalIp applyUpdate(DigitalIp ip, Map<String, Object> body) {
+        if (body.containsKey("name")) ip.setName(getString(body, "name"));
+        if (body.containsKey("kind")) ip.setKind(DigitalIp.DigitalIpKind.valueOf(getString(body, "kind").toUpperCase(Locale.ROOT)));
+        if (body.containsKey("quality")) ip.setQuality(DigitalIp.Quality.valueOf(getString(body, "quality").toUpperCase(Locale.ROOT)));
+        if (body.containsKey("status")) ip.setStatus(DigitalIp.DigitalIpStatus.valueOf(getString(body, "status").toUpperCase(Locale.ROOT)));
+        if (body.containsKey("level")) ip.setLevel(getInt(body, "level", ip.getLevel()));
+        if (body.containsKey("exp")) ip.setExp(getInt(body, "exp", ip.getExp()));
+        if (body.containsKey("maxExp")) ip.setMaxExp(getInt(body, "maxExp", ip.getMaxExp()));
+        if (body.containsKey("avatar")) ip.setAvatarUrl(getString(body, "avatar"));
+        if (body.containsKey("bio")) ip.setBio(getString(body, "bio"));
+
+        if (body.containsKey("studioId")) {
+            String studioId = getString(body, "studioId");
+            if (studioId != null && !studioId.isBlank() && !studioRepo.existsById(studioId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studioId 对应的工作室不存在: " + studioId);
+            }
+            ip.setStudioId((studioId == null || studioId.isBlank()) ? null : studioId);
+        }
+
+        if (body.containsKey("ownerUserId")) {
+            String ownerUserId = getString(body, "ownerUserId");
+            if (ownerUserId == null || ownerUserId.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ownerUserId 不可为空");
+            }
+            if (!userRepo.existsById(ownerUserId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ownerUserId 对应的用户不存在: " + ownerUserId);
+            }
+            ip.setOwnerUserId(ownerUserId);
+        }
+
+        if (body.containsKey("talents")) applyTalents(ip, asMap(body.get("talents")));
+        if (body.containsKey("stats")) applyStats(ip, asMap(body.get("stats")));
+        if (body.containsKey("domains")) applyDomains(ip, body.get("domains"));
+        if (body.containsKey("lastActive")) ip.setLastActiveAt(parseInstant(body.get("lastActive")));
+
+        ip.setUpdatedAt(Instant.now());
+        return ipRepo.save(ip);
+    }
+
+    private void applyTalents(DigitalIp ip, Map<String, Object> talents) {
+        if (talents == null) return;
+        if (talents.containsKey("singing")) ip.setTalentSinging(toInt(talents.get("singing"), ip.getTalentSinging()));
+        if (talents.containsKey("acting")) ip.setTalentActing(toInt(talents.get("acting"), ip.getTalentActing()));
+        if (talents.containsKey("dancing")) ip.setTalentDancing(toInt(talents.get("dancing"), ip.getTalentDancing()));
+        if (talents.containsKey("hosting")) ip.setTalentHosting(toInt(talents.get("hosting"), ip.getTalentHosting()));
+        if (talents.containsKey("comedy")) ip.setTalentComedy(toInt(talents.get("comedy"), ip.getTalentComedy()));
+        if (talents.containsKey("variety")) ip.setTalentVariety(toInt(talents.get("variety"), ip.getTalentVariety()));
+    }
+
+    private void applyStats(DigitalIp ip, Map<String, Object> stats) {
+        if (stats == null) return;
+        if (stats.containsKey("songs")) ip.setStatSongs(toInt(stats.get("songs"), ip.getStatSongs()));
+        if (stats.containsKey("dramas")) ip.setStatDramas(toInt(stats.get("dramas"), ip.getStatDramas()));
+        if (stats.containsKey("ads")) ip.setStatAds(toInt(stats.get("ads"), ip.getStatAds()));
+        if (stats.containsKey("variety")) ip.setStatVariety(toInt(stats.get("variety"), ip.getStatVariety()));
+        if (stats.containsKey("fans")) ip.setStatFans(toLong(stats.get("fans"), ip.getStatFans()));
+        if (stats.containsKey("revenue")) ip.setStatRevenueCredits(toLong(stats.get("revenue"), ip.getStatRevenueCredits()));
+        if (stats.containsKey("monthlyRevenue")) ip.setStatMonthlyRevenueCredits(toLong(stats.get("monthlyRevenue"), ip.getStatMonthlyRevenueCredits()));
+        if (stats.containsKey("popularity")) ip.setStatPopularity(toInt(stats.get("popularity"), ip.getStatPopularity()));
+        if (stats.containsKey("endorsements")) ip.setStatEndorsements(toInt(stats.get("endorsements"), ip.getStatEndorsements()));
+        if (stats.containsKey("commercialValue")) ip.setStatCommercialValueCredits(toLong(stats.get("commercialValue"), ip.getStatCommercialValueCredits()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyDomains(DigitalIp ip, Object raw) {
+        if (raw == null) {
+            ip.setDomains(null);
+            return;
+        }
+        if (raw instanceof java.util.List<?> list) {
+            ip.setDomains(list.stream().map(Object::toString).toList());
+        }
+    }
+
+    private DigitalIp loadOrThrow(String id) {
+        return ipRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Digital IP not found: " + id));
+    }
+
+    private void requireOwner(DigitalIp ip, String ownerUserId) {
+        if (ownerUserId == null || !ownerUserId.equals(ip.getOwnerUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作该 Digital IP");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object raw) {
+        return raw instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
+    }
+
+    private String getString(Map<String, Object> body, String key) {
+        Object val = body.get(key);
+        return val != null ? val.toString() : null;
+    }
+
+    private String requireString(Map<String, Object> body, String key) {
+        String val = getString(body, key);
+        if (val == null || val.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, key + " 必填");
+        }
+        return val;
+    }
+
+    private int getInt(Map<String, Object> body, String key, int defaultVal) {
+        return toInt(body.get(key), defaultVal);
+    }
+
+    private static int toInt(Object raw, int defaultVal) {
+        if (raw == null) return defaultVal;
+        if (raw instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(raw.toString().trim());
+        } catch (NumberFormatException ex) {
+            return defaultVal;
+        }
+    }
+
+    private static long toLong(Object raw, long defaultVal) {
+        if (raw == null) return defaultVal;
+        if (raw instanceof Number n) return n.longValue();
+        try {
+            return Long.parseLong(raw.toString().trim());
+        } catch (NumberFormatException ex) {
+            return defaultVal;
+        }
+    }
+
+    private static Instant parseInstant(Object raw) {
+        if (raw == null) return null;
+        if (raw instanceof Number n) return Instant.ofEpochMilli(n.longValue());
+        try {
+            return Instant.parse(raw.toString());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private <E extends Enum<E>> E parseEnum(Map<String, Object> body, String key,
+                                             Class<E> enumClass, E defaultVal) {
+        Object val = body.get(key);
+        if (val == null) return defaultVal;
+        try {
+            return Enum.valueOf(enumClass, val.toString().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return defaultVal;
+        }
+    }
+}

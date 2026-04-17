@@ -14,6 +14,7 @@ import type { Lang } from "../../translations";
 import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTypes';
 import type { Transaction } from "@/types/finance";
 import { REVENUE_MONTHLY, REVENUE_SOURCES, TRANSACTIONS } from "@/mocks/finance";
+import { formatCredits, formatSignedCredits } from "@/lib/format";
 
 export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: Artist }) => {
   const zh = lang === 'zh';
@@ -22,7 +23,7 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
 
   const totalBalance = '¥128,500';
   const pendingAmount = '¥5,300';
-  const monthlyRevenue = activeArtist.stats.monthlyRevenue;
+  const monthlyRevenue = formatCredits(activeArtist.stats.monthlyRevenue);
 
   return (
     <div className="space-y-6">
@@ -155,7 +156,7 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
                       <span className="text-sm font-medium">{tx.source}</span>
                     </div>
                   </td>
-                  <td className={`px-4 py-3 text-sm font-bold ${tx.type === 'income' ? 'text-green-400' : 'text-red-400'}`} style={{ fontFamily: "var(--font-display)" }}>{tx.amount}</td>
+                  <td className={`px-4 py-3 text-sm font-bold ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`} style={{ fontFamily: "var(--font-display)" }}>{formatSignedCredits(tx.amount)}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{tx.date}</td>
                   <td className="px-4 py-3">
                     <Badge className={`text-[10px] border-0 ${

@@ -5,6 +5,10 @@ import lombok.*;
 
 import java.time.Instant;
 
+/**
+ * License batch. Each key in the batch grants the same initial credit amount when activated.
+ * Plans / subscriptions removed entirely (see /product_spec.md §0.1, §2.1).
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -19,40 +23,33 @@ public class LicenseBatch {
     @Column(unique = true, nullable = false)
     private String batchNo;
 
-    private String productId;
-    private String planId;
+    /** Marketing display name, e.g. "种子用户包". */
+    @Column(nullable = false)
+    private String name;
 
     /**
-     * The tenant that owns / distributes this batch.
-     * When a user activates a key from this batch, they become a member of this tenant.
-     * If null, a personal tenant is created for the activating user (legacy / platform-direct flow).
+     * Tenant that issued / distributes this batch.
+     * Activating a key adds the user as a member of this tenant — used for issuer
+     * activation analytics.
      */
-    private String ownerTenantId;
+    @Column(nullable = false)
+    private String issuerTenantId;
 
-    @Enumerated(EnumType.STRING)
-    private LicenseType licenseType;
-
-    private Integer durationDays;
-    private long creditDelta;
-
-    @Enumerated(EnumType.STRING)
-    private SettlementMode settlementMode;
+    /** One-time credits granted on activation. Same value for every key in the batch. */
+    private long initialCreditGrant;
 
     private int totalCount;
     private int activatedCount;
 
-    /** Deprecated: use ownerTenantId. Kept for external CRM reference only. */
-    private String channelPartnerId;
-
     private Instant validFrom;
     private Instant validTo;
+
+    @Enumerated(EnumType.STRING)
+    private LicenseBatchStatus status;
+
     private Instant createdAt;
 
-    public enum LicenseType {
-        PLAN_ACTIVATION, CREDIT_PACK, SEAT_EXPANSION, ADDON
-    }
-
-    public enum SettlementMode {
-        PREPAID, ON_ACTIVATION
+    public enum LicenseBatchStatus {
+        ACTIVE, EXHAUSTED, REVOKED, EXPIRED
     }
 }

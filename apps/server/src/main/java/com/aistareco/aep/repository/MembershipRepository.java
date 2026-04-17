@@ -18,4 +18,6 @@ public interface MembershipRepository extends JpaRepository<Membership, String>,
     List<Membership> findByUserId(String userId);
 
     Page<Membership> findByTenantId(String tenantId, Pageable pageable);
+
+    long countByTenantId(String tenantId);
 }

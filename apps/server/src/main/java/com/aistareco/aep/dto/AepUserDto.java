@@ -13,8 +13,7 @@ public record AepUserDto(
         String displayName,
         String avatarUrl,
         String walletAddress,
-        String role,
-        long credits,
+        String kind,
         String status,
         boolean emailVerified,
         boolean phoneVerified,
@@ -27,7 +26,7 @@ public record AepUserDto(
         return new AepUserDto(
                 u.getId(), u.getUsername(), u.getEmail(), u.getPhone(),
                 u.getDisplayName(), u.getAvatarUrl(), u.getWalletAddress(),
-                lower(u.getRole()), u.getCredits(), lower(u.getStatus()),
+                lower(u.getKind()), lower(u.getStatus()),
                 u.isEmailVerified(), u.isPhoneVerified(), u.getLangPreference(),
                 u.getCreatedAt(), u.getUpdatedAt(), u.getLastLoginAt()
         );

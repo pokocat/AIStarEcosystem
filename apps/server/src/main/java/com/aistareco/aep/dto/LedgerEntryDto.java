@@ -8,7 +8,6 @@ import java.util.Locale;
 public record LedgerEntryDto(
         String id,
         String walletId,
-        String tenantId,
         String userId,
         String entryType,
         long amount,
@@ -20,7 +19,7 @@ public record LedgerEntryDto(
 ) {
     public static LedgerEntryDto from(LedgerEntry e) {
         return new LedgerEntryDto(
-                e.getId(), e.getWalletId(), e.getTenantId(), e.getUserId(),
+                e.getId(), e.getWalletId(), e.getUserId(),
                 lower(e.getEntryType()), e.getAmount(), e.getBalanceAfter(),
                 e.getDescription(), e.getReferenceId(), e.getReferenceType(),
                 e.getCreatedAt()

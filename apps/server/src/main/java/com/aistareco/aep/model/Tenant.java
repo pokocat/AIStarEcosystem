@@ -5,6 +5,13 @@ import lombok.*;
 
 import java.time.Instant;
 
+/**
+ * Tenant — license-issuance attribution container.
+ * A Tenant groups users that activated keys from the same issuer (机构 / 渠道).
+ * Used for activation analytics; not for billing/wallet (wallets live on AepUser).
+ *
+ * Schema/contract aligned with /product_spec.md §1.5.
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -20,17 +27,16 @@ public class Tenant {
     private String name;
 
     @Enumerated(EnumType.STRING)
-    private TenantType type;
+    private TenantKind kind;
 
     @Enumerated(EnumType.STRING)
     private TenantStatus status;
 
-    private String ownerUserId;
     private Instant createdAt;
     private Instant updatedAt;
 
-    public enum TenantType {
-        PERSONAL, ORGANIZATION, CHANNEL
+    public enum TenantKind {
+        PLATFORM, PERSONAL, ORGANIZATION
     }
 
     public enum TenantStatus {

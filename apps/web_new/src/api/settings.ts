@@ -1,17 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/settings.ts — 设置（订阅计划 / 账单记录）API 封装。
+// api/settings.ts — 设置（积分包 / 充值历史）API 封装。
+// 已废弃订阅相关接口，改为积分包售卖。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { SubscriptionPlan, BillingRecord } from "@/types/settings";
-import { SUBSCRIPTION_PLANS, BILLING_HISTORY } from "@/mocks/settings";
+import type { CreditPack, RechargeRecord } from "@/types/settings";
+import { CREDIT_PACKS, RECHARGE_HISTORY } from "@/mocks/settings";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
-export async function listSubscriptionPlans(): Promise<SubscriptionPlan[]> {
-  if (USE_MOCK) return mockDelay(SUBSCRIPTION_PLANS);
-  return apiFetch<SubscriptionPlan[]>("/settings/subscription-plans");
+export async function listCreditPacks(): Promise<CreditPack[]> {
+  if (USE_MOCK) return mockDelay(CREDIT_PACKS);
+  return apiFetch<CreditPack[]>("/settings/credit-packs");
 }
 
-export async function listBillingHistory(): Promise<BillingRecord[]> {
-  if (USE_MOCK) return mockDelay(BILLING_HISTORY);
-  return apiFetch<BillingRecord[]>("/settings/billing-history");
+export async function listRechargeHistory(): Promise<RechargeRecord[]> {
+  if (USE_MOCK) return mockDelay(RECHARGE_HISTORY);
+  return apiFetch<RechargeRecord[]>("/settings/recharge-history");
 }

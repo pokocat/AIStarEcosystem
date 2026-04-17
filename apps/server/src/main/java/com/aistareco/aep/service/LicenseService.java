@@ -32,8 +32,6 @@ public class LicenseService {
         this.keyRepo = keyRepo;
     }
 
-    // --- Batches ---
-
     public Page<LicenseBatchDto> listBatches(Pageable pageable) {
         return batchRepo.findAll(pageable).map(LicenseBatchDto::from);
     }
@@ -47,26 +45,30 @@ public class LicenseService {
     @Transactional
     public LicenseBatchDto createBatch(Map<String, Object> body) {
         int count = getInt(body, "totalCount", 1);
+        String issuerTenantId = getString(body, "issuerTenantId");
+        if (issuerTenantId == null || issuerTenantId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "issuerTenantId 不能为空");
+        }
+        String name = getString(body, "name");
+        if (name == null || name.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "批次 name 不能为空");
+        }
+
         LicenseBatch batch = LicenseBatch.builder()
                 .id(UUID.randomUUID().toString())
                 .batchNo("BATCH-" + System.currentTimeMillis())
-                .productId(getString(body, "productId"))
-                .planId(getString(body, "planId"))
-                .ownerTenantId(getString(body, "ownerTenantId"))
-                .licenseType(parseEnum(body, "licenseType", LicenseBatch.LicenseType.class, LicenseBatch.LicenseType.PLAN_ACTIVATION))
-                .durationDays(getInt(body, "durationDays", null))
-                .creditDelta(getLong(body, "creditDelta", 0L))
-                .settlementMode(parseEnum(body, "settlementMode", LicenseBatch.SettlementMode.class, LicenseBatch.SettlementMode.PREPAID))
+                .name(name)
+                .issuerTenantId(issuerTenantId)
+                .initialCreditGrant(getLong(body, "initialCreditGrant", 0L))
                 .totalCount(count)
                 .activatedCount(0)
-                .channelPartnerId(getString(body, "channelPartnerId"))
                 .validFrom(parseInstant(body, "validFrom"))
                 .validTo(parseInstant(body, "validTo"))
+                .status(LicenseBatch.LicenseBatchStatus.ACTIVE)
                 .createdAt(Instant.now())
                 .build();
         batchRepo.save(batch);
 
-        // Generate license keys
         for (int i = 0; i < count; i++) {
             String rawCode = UUID.randomUUID().toString().replace("-", "").toUpperCase();
             String codeHash = sha256(rawCode);
@@ -84,8 +86,6 @@ public class LicenseService {
 
         return LicenseBatchDto.from(batch);
     }
-
-    // --- Keys ---
 
     public Page<LicenseKeyDto> listKeys(String batchId, LicenseKey.LicenseKeyStatus status, Pageable pageable) {
         Page<LicenseKey> page;
@@ -107,8 +107,6 @@ public class LicenseService {
         key.setStatus(LicenseKey.LicenseKeyStatus.REVOKED);
         return LicenseKeyDto.from(keyRepo.save(key));
     }
-
-    // --- helpers ---
 
     private String sha256(String input) {
         try {
@@ -143,15 +141,5 @@ public class LicenseService {
         Object val = body.get(key);
         if (val == null) return null;
         return Instant.parse(val.toString());
-    }
-
-    private <E extends Enum<E>> E parseEnum(Map<String, Object> body, String key, Class<E> enumClass, E defaultVal) {
-        Object val = body.get(key);
-        if (val == null) return defaultVal;
-        try {
-            return Enum.valueOf(enumClass, val.toString());
-        } catch (IllegalArgumentException ex) {
-            return defaultVal;
-        }
     }
 }

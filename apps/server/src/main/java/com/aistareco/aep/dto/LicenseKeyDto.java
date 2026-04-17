@@ -11,7 +11,6 @@ public record LicenseKeyDto(
         String maskedCode,
         String status,
         String activatedByUserId,
-        String activatedTenantId,
         Instant activatedAt,
         Instant expiresAt,
         Instant createdAt
@@ -19,7 +18,7 @@ public record LicenseKeyDto(
     public static LicenseKeyDto from(LicenseKey k) {
         return new LicenseKeyDto(
                 k.getId(), k.getBatchId(), k.getMaskedCode(), lower(k.getStatus()),
-                k.getActivatedByUserId(), k.getActivatedTenantId(),
+                k.getActivatedByUserId(),
                 k.getActivatedAt(), k.getExpiresAt(), k.getCreatedAt()
         );
     }

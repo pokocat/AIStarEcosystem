@@ -1,11 +1,7 @@
 package com.aistareco.aep.controller;
 
-import com.aistareco.aep.dto.EntitlementDto;
 import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.dto.TenantDto;
-import com.aistareco.aep.dto.WalletDto;
-import com.aistareco.aep.service.CreditService;
-import com.aistareco.aep.service.EntitlementService;
 import com.aistareco.aep.service.TenantService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.data.domain.PageRequest;
@@ -14,24 +10,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/tenants")
 public class AdminTenantController {
 
     private final TenantService tenantService;
-    private final CreditService creditService;
-    private final EntitlementService entitlementService;
 
-    public AdminTenantController(
-            TenantService tenantService,
-            CreditService creditService,
-            EntitlementService entitlementService
-    ) {
+    public AdminTenantController(TenantService tenantService) {
         this.tenantService = tenantService;
-        this.creditService = creditService;
-        this.entitlementService = entitlementService;
     }
 
     @GetMapping
@@ -46,16 +33,6 @@ public class AdminTenantController {
     @GetMapping("/{id}")
     public ApiResponse<TenantDto> getById(@PathVariable String id) {
         return ApiResponse.of(tenantService.findById(id));
-    }
-
-    @GetMapping("/{id}/wallet")
-    public ApiResponse<WalletDto> getWallet(@PathVariable String id) {
-        return ApiResponse.of(creditService.findWalletByTenantId(id));
-    }
-
-    @GetMapping("/{id}/entitlements")
-    public ApiResponse<List<EntitlementDto>> listEntitlements(@PathVariable String id) {
-        return ApiResponse.of(entitlementService.listByTenant(id));
     }
 
     @PostMapping

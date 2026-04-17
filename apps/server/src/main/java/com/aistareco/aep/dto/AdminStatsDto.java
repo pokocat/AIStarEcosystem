@@ -5,6 +5,5 @@ public record AdminStatsDto(
         long activeTenants,
         long activeLicenses,
         long totalCreditsIssued,
-        long products,
         long auditEvents
 ) {}

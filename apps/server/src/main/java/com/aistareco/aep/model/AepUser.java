@@ -7,8 +7,10 @@ import java.time.Instant;
 
 /**
  * Platform end-user account (平台用户账号).
- * Users are registered by activating a license key.
+ * Users are registered by activating a license key (see LicenseActivationService).
  * Admin staff accounts are stored in AdminUser instead.
+ *
+ * Schema/contract aligned with /product_spec.md §1.2.
  */
 @Data
 @Builder
@@ -31,13 +33,15 @@ public class AepUser {
     private String avatarUrl;
     private String walletAddress;
 
+    /**
+     * Account kind. Drives whether the studio console is available.
+     * personal = consumer / fan; studio = operator running a Studio profile.
+     */
     @Enumerated(EnumType.STRING)
-    private UserRole role;
+    private AccountKind kind;
 
     @Enumerated(EnumType.STRING)
     private UserStatus status;
-
-    private long credits;
 
     private boolean emailVerified;
     private boolean phoneVerified;
@@ -47,16 +51,8 @@ public class AepUser {
     private Instant updatedAt;
     private Instant lastLoginAt;
 
-    /**
-     * Platform user roles — reflects the user's identity in the AI artist ecosystem.
-     * AI_SINGER:        AI 歌手 — virtual singer
-     * AI_ARTIST:        AI 艺人 — AI artist (broader creative role)
-     * ECONOMIC_COMPANY: 经纪公司 — talent/economic company managing AI artists
-     */
-    public enum UserRole {
-        AI_SINGER,
-        AI_ARTIST,
-        ECONOMIC_COMPANY
+    public enum AccountKind {
+        PERSONAL, STUDIO
     }
 
     public enum UserStatus {

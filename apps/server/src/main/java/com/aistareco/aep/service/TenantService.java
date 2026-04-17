@@ -36,9 +36,8 @@ public class TenantService {
         Tenant tenant = Tenant.builder()
                 .id(UUID.randomUUID().toString())
                 .name(getString(body, "name"))
-                .type(parseEnum(body, "type", Tenant.TenantType.class, Tenant.TenantType.PERSONAL))
+                .kind(parseEnum(body, "kind", Tenant.TenantKind.class, Tenant.TenantKind.ORGANIZATION))
                 .status(Tenant.TenantStatus.ACTIVE)
-                .ownerUserId(getString(body, "ownerUserId"))
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
@@ -49,9 +48,8 @@ public class TenantService {
         Tenant tenant = tenantRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found: " + id));
         if (body.containsKey("name")) tenant.setName(getString(body, "name"));
-        if (body.containsKey("type")) tenant.setType(Tenant.TenantType.valueOf(getString(body, "type")));
-        if (body.containsKey("status")) tenant.setStatus(Tenant.TenantStatus.valueOf(getString(body, "status")));
-        if (body.containsKey("ownerUserId")) tenant.setOwnerUserId(getString(body, "ownerUserId"));
+        if (body.containsKey("kind")) tenant.setKind(Tenant.TenantKind.valueOf(getString(body, "kind").toUpperCase()));
+        if (body.containsKey("status")) tenant.setStatus(Tenant.TenantStatus.valueOf(getString(body, "status").toUpperCase()));
         tenant.setUpdatedAt(Instant.now());
         return TenantDto.from(tenantRepo.save(tenant));
     }
@@ -65,7 +63,7 @@ public class TenantService {
         Object val = body.get(key);
         if (val == null) return defaultVal;
         try {
-            return Enum.valueOf(enumClass, val.toString());
+            return Enum.valueOf(enumClass, val.toString().toUpperCase());
         } catch (IllegalArgumentException e) {
             return defaultVal;
         }

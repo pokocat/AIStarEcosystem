@@ -11,6 +11,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Progress } from "../ui/progress";
 import { motion, AnimatePresence } from "motion/react";
+import { formatCompactNumber, formatCredits } from "@/lib/format";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import type { Lang } from "../../translations";
 import {
@@ -165,7 +166,7 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
                   { label: zh ? '影视' : 'Dramas', value: artist.stats.dramas, icon: Film, color: 'text-purple-400' },
                   { label: zh ? '广告' : 'Ads', value: artist.stats.ads, icon: ShoppingBag, color: 'text-pink-400' },
                   { label: zh ? '综艺' : 'Shows', value: artist.stats.variety, icon: Tv, color: 'text-amber-400' },
-                  { label: zh ? '粉丝' : 'Fans', value: artist.stats.fans, icon: Heart, color: 'text-red-400' },
+                  { label: zh ? '粉丝' : 'Fans', value: formatCompactNumber(artist.stats.fans), icon: Heart, color: 'text-red-400' },
                   { label: zh ? '人气值' : 'Popularity', value: artist.stats.popularity, icon: TrendingUp, color: 'text-green-400' },
                 ].map((s, i) => (
                   <div key={i} className="bg-black/30 rounded-lg p-4 border border-white/5 text-center">
@@ -177,8 +178,8 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
               </div>
               <div className="bg-black/30 rounded-lg p-4 border border-white/5">
                 <div className="text-xs text-gray-500 mb-2">{zh ? '总收益' : 'Total Revenue'}</div>
-                <div className="text-2xl font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{artist.stats.revenue}</div>
-                <div className="text-xs text-gray-500 mt-1">{zh ? '月均' : 'Monthly'}: {artist.stats.monthlyRevenue}</div>
+                <div className="text-2xl font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{formatCredits(artist.stats.revenue)}</div>
+                <div className="text-xs text-gray-500 mt-1">{zh ? '月均' : 'Monthly'}: {formatCredits(artist.stats.monthlyRevenue)}</div>
               </div>
             </div>
           )}
@@ -269,7 +270,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
     list.sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       if (sortBy === 'level') return b.level - a.level;
-      return parseInt(b.stats.revenue.replace(/[^0-9]/g, '')) - parseInt(a.stats.revenue.replace(/[^0-9]/g, ''));
+      return b.stats.revenue - a.stats.revenue;
     });
     return list;
   }, [searchQuery, typeFilter, statusFilter, sortBy]);
@@ -376,7 +377,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
                 {/* Key stats */}
                 <div className="grid grid-cols-3 gap-2 mb-4">
                   <div className="text-center bg-black/20 rounded-lg py-2">
-                    <div className="text-sm font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{artist.stats.fans}</div>
+                    <div className="text-sm font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{formatCompactNumber(artist.stats.fans)}</div>
                     <div className="text-[10px] text-gray-500">{zh ? '粉丝' : 'Fans'}</div>
                   </div>
                   <div className="text-center bg-black/20 rounded-lg py-2">
@@ -384,7 +385,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
                     <div className="text-[10px] text-gray-500">{zh ? '作品' : 'Works'}</div>
                   </div>
                   <div className="text-center bg-black/20 rounded-lg py-2">
-                    <div className="text-sm font-bold text-pink-400" style={{ fontFamily: "var(--font-display)" }}>{artist.stats.monthlyRevenue}</div>
+                    <div className="text-sm font-bold text-pink-400" style={{ fontFamily: "var(--font-display)" }}>{formatCredits(artist.stats.monthlyRevenue)}</div>
                     <div className="text-[10px] text-gray-500">{zh ? '月收' : 'Monthly'}</div>
                   </div>
                 </div>
@@ -448,8 +449,8 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
                     <td className="px-4 py-3"><span className="text-sm font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>Lv.{artist.level}</span></td>
                     <td className="px-4 py-3"><Badge className={`text-[10px] ${qualConf.color} ${qualConf.bg} border-0`}>{zh ? qualConf.zh : qualConf.en}</Badge></td>
                     <td className="px-4 py-3"><span className="flex items-center gap-1 text-xs"><div className={`w-1.5 h-1.5 rounded-full ${statusConf.dot}`} />{zh ? statusConf.zh : statusConf.en}</span></td>
-                    <td className="px-4 py-3 text-sm text-gray-400">{artist.stats.fans}</td>
-                    <td className="px-4 py-3 text-sm text-gray-400">{artist.stats.monthlyRevenue}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400">{formatCompactNumber(artist.stats.fans)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400">{formatCredits(artist.stats.monthlyRevenue)}</td>
                     <td className="px-4 py-3"><Eye className="w-4 h-4 text-gray-500 hover:text-cyan-400 transition" /></td>
                   </motion.tr>
                 );

@@ -6,19 +6,21 @@ import java.time.Instant;
 
 public record WalletDto(
         String id,
-        String tenantId,
+        String userId,
         long totalBalance,
-        long giftBalance,
+        long licenseBalance,
         long rechargeBalance,
-        long planBalance,
+        long giftBalance,
+        long pendingBalance,
         Instant createdAt,
         Instant updatedAt
 ) {
     public static WalletDto from(Wallet w) {
         return new WalletDto(
-                w.getId(), w.getTenantId(),
-                w.getTotalBalance(), w.getGiftBalance(),
-                w.getRechargeBalance(), w.getPlanBalance(),
+                w.getId(), w.getUserId(),
+                w.getTotalBalance(), w.getLicenseBalance(),
+                w.getRechargeBalance(), w.getGiftBalance(),
+                w.getPendingBalance(),
                 w.getCreatedAt(), w.getUpdatedAt()
         );
     }
