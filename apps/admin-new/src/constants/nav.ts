@@ -1,28 +1,38 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// nav.ts — 管理后台侧栏分组。
+// 主链：平台账户 → AI 经纪公司 → AI 艺人 → AI 作品 → 分发 → 收益。
+// 见 product_spec.md §9「Admin Console 产品功能逻辑」。
+// ─────────────────────────────────────────────────────────────────────────────
+
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
+  Users,
+  Building2,
+  Network,
+  KeySquare,
+  Sparkles,
   Music2,
   Disc3,
-  Film,
   Mic2,
+  Clapperboard,
+  Film,
+  Megaphone,
+  AudioLines,
   ShieldCheck,
-  Users,
-  UserCog,
-  Handshake,
-  Send,
   Radio,
+  Send,
+  Gift,
   Wallet,
   AlertTriangle,
-  Heart,
-  Gift,
   PartyPopper,
+  Heart,
+  Tags,
   Shirt,
   PersonStanding,
-  Tags,
+  Coins,
   Bell,
   History,
-  Settings2,
-  Sparkles,
 } from "lucide-react";
 
 export interface NavItem {
@@ -38,6 +48,11 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+export const ADMIN_BRAND = {
+  title: "AI Star Eco",
+  subtitle: "运营工作台",
+};
+
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "全局",
@@ -46,60 +61,65 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "内容审核",
+    label: "平台账户",
     items: [
-      { href: "/content/songs", label: "歌曲审核", icon: Music2, badgeKey: "songs_review", description: "混音完成待发行的单曲" },
-      { href: "/content/albums", label: "专辑审核", icon: Disc3, description: "专辑排期与发行" },
-      { href: "/content/concerts", label: "演出管理", icon: Mic2, badgeKey: "concert_selling", description: "售票中的演出" },
-      { href: "/content/film", label: "影视 / MV", icon: Film, badgeKey: "film_post", description: "后期制作 & 上线审核" },
-      { href: "/content/copyright", label: "版权核验", icon: ShieldCheck, badgeKey: "copyright_pending", description: "待核验版权登记" },
+      { href: "/platform/accounts", label: "账号",              icon: Users,     badgeKey: "account_suspended", description: "AepUser：登录账号与状态" },
+      { href: "/platform/studios",  label: "经纪公司 / 工作室", icon: Building2, description: "Studio：业务主体档案与聚合指标" },
+      { href: "/platform/tenants",  label: "机构 Tenant",       icon: Network,   description: "License 发放方与归属统计" },
+      { href: "/platform/licenses", label: "License 批次",      icon: KeySquare, badgeKey: "license_low",       description: "批次 / 单码 / 核销" },
     ],
   },
   {
-    label: "艺人与经纪",
+    label: "AI 艺人",
     items: [
-      { href: "/artists/lifecycle", label: "艺人生命周期", icon: Sparkles, badgeKey: "artist_trainee", description: "练习生→出道→活跃" },
-      { href: "/artists/roster", label: "艺人档案", icon: Users, description: "全站艺人档案" },
-      { href: "/coach/contracts", label: "合约管理", icon: Handshake, badgeKey: "contract_expiring", description: "MCN 签约与续约" },
-      { href: "/coach/mcn", label: "MCN 机构", icon: UserCog, description: "机构与分成" },
+      { href: "/artists/lifecycle", label: "艺人生命周期", icon: Sparkles, badgeKey: "artist_trainee", description: "练习生 → 出道 → 活跃" },
+      { href: "/artists/roster",    label: "艺人档案",     icon: Users,    description: "全站艺人档案与属主 Studio" },
+    ],
+  },
+  {
+    label: "AI 作品",
+    items: [
+      { href: "/content/songs",     label: "歌曲",      icon: Music2,       badgeKey: "songs_review",      description: "混音完成待发行的单曲" },
+      { href: "/content/albums",    label: "专辑",      icon: Disc3,        description: "专辑排期与发行" },
+      { href: "/content/concerts",  label: "演唱会",    icon: Mic2,         badgeKey: "concert_selling",   description: "售票中的线上/线下演唱会" },
+      { href: "/content/dramas",    label: "短剧",      icon: Clapperboard, description: "虚拟演员短剧项目" },
+      { href: "/content/movies",    label: "电影",      icon: Film,         description: "电影角色与后期" },
+      { href: "/content/ads",       label: "商业广告",  icon: Megaphone,    description: "品牌代言 / TVC / 数字广告" },
+      { href: "/content/voice",     label: "配音作品",  icon: AudioLines,   description: "动画 / 纪录片 / 有声书 / 游戏配音" },
+      { href: "/content/copyright", label: "版权核验",  icon: ShieldCheck,  badgeKey: "copyright_pending", description: "待核验版权登记" },
     ],
   },
   {
     label: "分发与变现",
     items: [
-      { href: "/distribution/platforms", label: "分发渠道", icon: Radio, badgeKey: "platform_pending", description: "平台接入审核" },
-      { href: "/distribution/queue", label: "发行队列", icon: Send, badgeKey: "dist_reviewing", description: "待审核内容分发" },
-      { href: "/finance/settlement", label: "结算中心", icon: Wallet, badgeKey: "txn_actionable", description: "待复核与处理中流水" },
-      { href: "/finance/risk", label: "异常风控", icon: AlertTriangle, description: "异常打赏与提现" },
+      { href: "/distribution/platforms", label: "分发渠道",  icon: Radio,        badgeKey: "platform_pending", description: "平台接入审核" },
+      { href: "/distribution/queue",     label: "发行队列",  icon: Send,         badgeKey: "dist_reviewing",   description: "待审核内容分发" },
+      { href: "/monetization/nft",       label: "NFT 市场",  icon: Gift,         description: "收藏品上架与复核" },
+      { href: "/finance/ledger",         label: "结算中心",  icon: Wallet,       badgeKey: "txn_actionable",   description: "钱包 / 流水 / 复核（credits）" },
+      { href: "/finance/risk",           label: "异常风控",  icon: AlertTriangle, description: "异常打赏与提现" },
     ],
   },
   {
-    label: "社群与粉丝",
+    label: "社群",
     items: [
-      { href: "/community/events", label: "活动管理", icon: PartyPopper, badgeKey: "event_upcoming", description: "投票 / 见面会 / 挑战赛" },
-      { href: "/community/moderation", label: "互动审核", icon: Heart, description: "动态与打赏审核" },
-      { href: "/fan/nft-market", label: "NFT 市场", icon: Gift, description: "收藏品上架与复核" },
+      { href: "/community/events",     label: "社群活动", icon: PartyPopper, badgeKey: "event_upcoming", description: "投票 / 见面会 / 挑战赛" },
+      { href: "/community/moderation", label: "互动审核", icon: Heart,       description: "动态与打赏审核" },
     ],
   },
   {
-    label: "运营基础数据",
+    label: "基础数据",
     items: [
-      { href: "/base/genres", label: "曲风 / 领域", icon: Tags, description: "基础分类维护" },
-      { href: "/base/wardrobe", label: "造型库", icon: Shirt, description: "服装与道具" },
-      { href: "/base/pose", label: "动作与表情", icon: PersonStanding, description: "动作 / 表情 / 手势库" },
-      { href: "/base/plans", label: "订阅套餐", icon: Settings2, description: "Free / Pro / Enterprise" },
+      { href: "/base/genres",       label: "曲风 / 领域", icon: Tags,           description: "基础分类维护" },
+      { href: "/base/wardrobe",     label: "造型库",      icon: Shirt,          description: "服装与道具" },
+      { href: "/base/pose",         label: "动作与表情",  icon: PersonStanding, description: "动作 / 表情 / 手势库" },
+      { href: "/base/credit-packs", label: "积分包",      icon: Coins,          description: "积分售卖规格（替代原订阅）" },
     ],
   },
   {
     label: "消息与日志",
     items: [
-      { href: "/notifications", label: "消息中心", icon: Bell, description: "运营推送与告警" },
-      { href: "/audit", label: "审计日志", icon: History, description: "所有人工介入记录" },
+      { href: "/notifications", label: "消息中心", icon: Bell,    description: "运营推送与告警" },
+      { href: "/audit",         label: "审计日志", icon: History, description: "所有人工介入记录" },
     ],
   },
 ];
-
-export const ADMIN_BRAND = {
-  title: "AI Star Eco",
-  subtitle: "运营工作台",
-};

@@ -1,18 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// mocks/settings.ts — 订阅计划 / 账单历史样本数据。
+// mocks/settings.ts — 积分包 / 充值与兑换历史样本。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { SubscriptionPlan, BillingRecord } from "@/types/settings";
+import type { CreditPack, RechargeRecord } from "@/types/settings";
 
-export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
-  { id: "plan-free", code: "free",       name: "免费版", price: "¥0",      features: ["3个AI艺人", "基础工坊", "5GB存储"],                                    current: false },
-  { id: "plan-pro",  code: "pro",        name: "专业版", price: "¥299/月", features: ["20个AI艺人", "全功能工坊", "100GB存储", "优先AI算力"],                current: true  },
-  { id: "plan-ent",  code: "enterprise", name: "企业版", price: "¥999/月", features: ["无限AI艺人", "API访问", "1TB存储", "专属客服", "白标方案"],            current: false },
+export const CREDIT_PACKS: CreditPack[] = [
+  { id: "pack-starter",    code: "starter",    name: "入门包", credits:   1_000, priceCents:     9_900, highlights: ["1,000 积分", "适合体验"],        recommended: false, status: "active" },
+  { id: "pack-standard",   code: "standard",   name: "标准包", credits:  10_000, priceCents:    89_900, highlights: ["10,000 积分", "性价比之选"],      recommended: true,  status: "active" },
+  { id: "pack-pro",        code: "pro",        name: "专业包", credits:  50_000, priceCents:   399_900, highlights: ["50,000 积分", "重度创作"],        recommended: false, status: "active" },
+  { id: "pack-enterprise", code: "enterprise", name: "企业包", credits: 500_000, priceCents: 3_499_900, highlights: ["500,000 积分", "团队/机构使用"],  recommended: false, status: "active" },
 ];
 
-export const BILLING_HISTORY: BillingRecord[] = [
-  { id: "b-1", date: "2025-04-01", desc: "Pro Plan — April",    amount: "¥299" },
-  { id: "b-2", date: "2025-03-01", desc: "Pro Plan — March",    amount: "¥299" },
-  { id: "b-3", date: "2025-02-15", desc: "AI算力加购 50h",       amount: "¥99"  },
-  { id: "b-4", date: "2025-02-01", desc: "Pro Plan — February", amount: "¥299" },
+export const RECHARGE_HISTORY: RechargeRecord[] = [
+  { id: "r-1",  date: "2026-04-10", desc: "标准包",        source: "credit_pack",    creditsAdded: 10_000, priceCents: 89_900, userId: "u-001" },
+  { id: "r-2",  date: "2026-03-22", desc: "License 兑换",  source: "license_redeem", creditsAdded:  5_000, priceCents:      0, userId: "u-003" },
+  { id: "r-3",  date: "2026-02-15", desc: "入门包",        source: "credit_pack",    creditsAdded:  1_000, priceCents:  9_900, userId: "u-003" },
+  { id: "r-4",  date: "2026-01-08", desc: "新春活动赠送",  source: "promo_gift",     creditsAdded:  2_000, priceCents:      0, userId: "u-002" },
+  { id: "r-5",  date: "2026-02-11", desc: "License 兑换",  source: "license_redeem", creditsAdded: 10_000, priceCents:      0, userId: "u-005" },
 ];

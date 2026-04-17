@@ -149,3 +149,71 @@ export const POSE_DIFFICULTY: Record<string, StatusMeta> = {
 };
 
 // Wardrobe rarity uses ARTIST_QUALITY visually
+
+// ── 平台账户域 ────────────────────────────────────────────────────────────────
+export const ACCOUNT_STATUS: Record<string, StatusMeta> = {
+  active: { label: "启用", tone: "success" },
+  suspended: { label: "停用", tone: "warning", actionable: true },
+  deleted: { label: "已注销", tone: "danger" },
+};
+
+export const ACCOUNT_KIND: Record<string, StatusMeta> = {
+  personal: { label: "个人", tone: "neutral" },
+  studio: { label: "工作室", tone: "primary" },
+};
+
+export const TENANT_KIND: Record<string, StatusMeta> = {
+  platform: { label: "平台", tone: "primary" },
+  personal: { label: "个人池", tone: "neutral" },
+  organization: { label: "机构", tone: "info" },
+};
+
+export const STUDIO_KIND: Record<string, StatusMeta> = {
+  personal_creator: { label: "个人创作者", tone: "neutral" },
+  music_studio:     { label: "音乐工作室", tone: "info" },
+  drama_studio:     { label: "短剧工作室", tone: "primary" },
+  variety_studio:   { label: "综艺工作室", tone: "warning" },
+  agency:           { label: "经纪公司",   tone: "primary" },
+  mcn:              { label: "MCN 机构",   tone: "success" },
+};
+
+export const STUDIO_STATUS: Record<string, StatusMeta> = {
+  active: { label: "正常", tone: "success" },
+  suspended: { label: "暂停", tone: "warning", actionable: true },
+  deleted: { label: "已注销", tone: "danger" },
+};
+
+// ── License ──────────────────────────────────────────────────────────────────
+export const LICENSE_BATCH_STATUS: Record<string, StatusMeta> = {
+  active:    { label: "发放中", tone: "success" },
+  exhausted: { label: "已售罄", tone: "neutral" },
+  revoked:   { label: "已撤回", tone: "danger" },
+  expired:   { label: "已过期", tone: "warning" },
+};
+
+export const LICENSE_KEY_STATUS: Record<string, StatusMeta> = {
+  created:   { label: "未兑换", tone: "neutral" },
+  activated: { label: "已兑换", tone: "success" },
+  expired:   { label: "已过期", tone: "warning" },
+  revoked:   { label: "已撤回", tone: "danger" },
+};
+
+// ── Ledger / Wallet ──────────────────────────────────────────────────────────
+export const LEDGER_ENTRY_TYPE: Record<string, StatusMeta> = {
+  license_grant: { label: "License 入账", tone: "primary" },
+  recharge:      { label: "充值",         tone: "success" },
+  refund:        { label: "退款",         tone: "info" },
+  income:        { label: "业务收益",     tone: "success" },
+  gift:          { label: "赠送",         tone: "info" },
+  spend:         { label: "消费",         tone: "neutral" },
+  withdraw:      { label: "提现",         tone: "warning" },
+  freeze:        { label: "冻结",         tone: "danger", actionable: true },
+  unfreeze:      { label: "解冻",         tone: "info" },
+  adjust:        { label: "人工调账",     tone: "warning", actionable: true },
+};
+
+// ── 积分包 ───────────────────────────────────────────────────────────────────
+export const CREDIT_PACK_STATUS: Record<string, StatusMeta> = {
+  active:   { label: "上架", tone: "success" },
+  archived: { label: "下架", tone: "neutral" },
+};

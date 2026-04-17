@@ -38,7 +38,8 @@ import {
   PLATFORM_STATUS,
   TRANSACTION_STATUS,
 } from "@/constants/status";
-import { daysUntil, formatCurrencyCN } from "@/lib/utils";
+import { daysUntil } from "@/lib/utils";
+import { formatCredits, formatSignedCredits } from "@/lib/format";
 
 export default function DashboardPage() {
   const totalArtists = MOCK_ARTISTS.length;
@@ -95,8 +96,8 @@ export default function DashboardPage() {
           icon={Users}
         />
         <StatCard
-          label="GMV（近 6 月）"
-          value={formatCurrencyCN(gmv)}
+          label="GMV · credits（近 6 月）"
+          value={formatCredits(gmv)}
           hint="流媒体 / 代言 / NFT / 现场合计"
           icon={Wallet}
           delta={{ value: "12.4%", positive: true }}
@@ -121,11 +122,11 @@ export default function DashboardPage() {
       <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         {[
           { href: "/artists/lifecycle", icon: Flame, label: "练习生", count: traineeCount, tone: "primary" },
-          { href: "/coach/contracts", icon: Handshake, label: "合约异常", count: expiringContracts, tone: "danger" },
+          { href: "/platform/studios", icon: Handshake, label: "合约异常", count: expiringContracts, tone: "danger" },
           { href: "/distribution/platforms", icon: Radio, label: "渠道接入", count: pendingPlatforms, tone: "warning" },
           { href: "/content/songs", icon: Music2, label: "歌曲制作中", count: songsInProduction, tone: "info" },
-          { href: "/content/film", icon: Film, label: "影视项目", count: inProductionFilm, tone: "info" },
-          { href: "/finance/settlement", icon: AlertTriangle, label: "结算待复核", count: actionableTxns.length, tone: "danger" },
+          { href: "/content/dramas", icon: Film, label: "影视项目", count: inProductionFilm, tone: "info" },
+          { href: "/finance/ledger", icon: AlertTriangle, label: "结算待复核", count: actionableTxns.length, tone: "danger" },
         ].map((item) => {
           const Icon = item.icon;
           const hasItems = item.count > 0;
@@ -170,7 +171,7 @@ export default function DashboardPage() {
               <CardDescription>按品类堆叠：流媒体 / 代言 / NFT / 现场</CardDescription>
             </div>
             <Button asChild variant="ghost" size="sm">
-              <Link href="/finance/settlement">查看明细 <ArrowRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/finance/ledger">查看明细 <ArrowRight className="h-3.5 w-3.5" /></Link>
             </Button>
           </CardHeader>
           <CardContent>
@@ -200,7 +201,7 @@ export default function DashboardPage() {
               <CardDescription>按到期日升序</CardDescription>
             </div>
             <Button asChild variant="ghost" size="sm">
-              <Link href="/coach/contracts">全部合约 <ArrowRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/platform/studios">全部合约 <ArrowRight className="h-3.5 w-3.5" /></Link>
             </Button>
           </CardHeader>
           <CardContent className="divide-y divide-border -mx-2">
@@ -333,7 +334,7 @@ export default function DashboardPage() {
                   <div className="font-medium truncate">{t.source}</div>
                   <div className="text-xs text-muted-foreground">{t.date}</div>
                 </div>
-                <div className="text-sm tabular-nums font-medium">{t.amount}</div>
+                <div className="text-sm tabular-nums font-medium">{formatSignedCredits(t.amount)}</div>
                 <StatusBadge meta={TRANSACTION_STATUS[t.status]} />
               </div>
             ))}
