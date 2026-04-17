@@ -13,7 +13,7 @@ import { useTheme, themeConfig } from "../ThemeProvider";
 import { ThemeSwitcher } from "../ThemeSwitcher";
 import type { Lang } from "../../translations";
 import { SETTINGS_SECTIONS } from "@/constants/settings-sections";
-import { CREDIT_PACKS, RECHARGE_HISTORY } from "@/mocks/settings";
+import { RECHARGE_HISTORY } from "@/mocks/settings";
 import { formatCredits, formatCurrency } from "@/lib/format";
 
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
@@ -41,8 +41,6 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
     email: true, push: true, sms: false,
     newFan: true, revenue: true, contentReview: true, systemUpdate: false, marketing: false,
   });
-
-  const creditPacks = CREDIT_PACKS;
 
   const handleSave = () => {
     setSaved(true);
@@ -215,42 +213,20 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
               </div>
             )}
 
-            {/* Billing */}
+            {/* Spend Flow */}
             {section === 'billing' && (
-              <div className="space-y-4">
-                <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-                  <h3 className="text-lg font-bold mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '积分包' : 'Credit Packs'}</h3>
-                  <div className="grid sm:grid-cols-4 gap-4">
-                    {creditPacks.map((pack, i) => (
-                      <motion.div key={pack.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .08 }}
-                        className={`rounded-xl p-5 border transition ${pack.recommended ? 'bg-cyan-500/5 border-cyan-500/30' : 'bg-black/20 border-white/5 hover:border-white/15'}`}>
-                        {pack.recommended && <Badge className="text-[10px] bg-cyan-500/10 text-cyan-400 border-0 mb-2">{zh ? '推荐' : 'Recommended'}</Badge>}
-                        <div className="text-sm font-bold mb-1">{pack.name}</div>
-                        <div className="text-xl font-extrabold mb-1" style={{ fontFamily: "var(--font-display)" }}>{formatCredits(pack.credits)} <span className="text-xs text-gray-400 font-normal">{zh ? '积分' : 'credits'}</span></div>
-                        <div className="text-sm text-gray-400 mb-3">{formatCurrency(pack.priceCents, "CNY")}</div>
-                        <div className="space-y-1.5">
-                          {pack.highlights.map((f, j) => (
-                            <div key={j} className="text-xs text-gray-400 flex items-center gap-1.5"><Check className="w-3 h-3 text-cyan-400" /> {f}</div>
-                          ))}
-                        </div>
-                        <Button variant="outline" size="sm" className="w-full mt-4 border-white/10 text-gray-400 text-xs">{zh ? '购买' : 'Buy'}</Button>
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-                <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-                  <h3 className="text-sm font-bold mb-3">{zh ? '充值记录' : 'Recharge History'}</h3>
-                  <div className="space-y-2">
-                    {RECHARGE_HISTORY.map(r => (
-                      <div key={r.id} className="flex items-center justify-between p-3 rounded-lg border border-white/5 text-xs">
-                        <div><span className="text-gray-500">{r.date}</span> <span className="text-white ml-2">{r.desc}</span></div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-gray-500">{r.priceCents > 0 ? formatCurrency(r.priceCents, "CNY") : (zh ? '免费' : 'Free')}</span>
-                          <span className="text-cyan-400 font-semibold">+{formatCredits(r.creditsAdded)}</span>
-                        </div>
+              <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
+                <h3 className="text-lg font-bold mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '消费流水' : 'Spend History'}</h3>
+                <div className="space-y-2">
+                  {RECHARGE_HISTORY.map(r => (
+                    <div key={r.id} className="flex items-center justify-between p-3 rounded-lg border border-white/5 text-xs">
+                      <div><span className="text-gray-500">{r.date}</span> <span className="text-white ml-2">{r.desc}</span></div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-gray-500">{r.priceCents > 0 ? formatCurrency(r.priceCents, "CNY") : (zh ? '免费' : 'Free')}</span>
+                        <span className="text-cyan-400 font-semibold">+{formatCredits(r.creditsAdded)}</span>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

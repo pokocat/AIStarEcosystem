@@ -143,26 +143,26 @@ export const ArtistRadarCard = ({ lang, artist }: { lang: Lang; artist: Artist }
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .25 }}
-      className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+      className="bg-gray-900/50 border border-white/5 rounded-xl p-6 overflow-hidden min-w-0">
+      <div className="flex items-center justify-between mb-4 gap-2 min-w-0">
+        <h3 className="text-lg font-bold tracking-tight truncate" style={{ fontFamily: "var(--font-display)" }}>
           {zh ? '当前艺人能力' : 'Active Artist Stats'}
         </h3>
-        <Badge className={`text-[10px] ${typeConf.bgColor} ${typeConf.color} border-0`}>
+        <Badge className={`text-[10px] ${typeConf.bgColor} ${typeConf.color} border-0 shrink-0`}>
           {typeConf.icon} {zh ? ARTIST_TYPE_LABELS[artist.type].zh : ARTIST_TYPE_LABELS[artist.type].en}
         </Badge>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center gap-4">
+      <div className="flex flex-col items-center gap-4 min-w-0">
         {/* Artist info */}
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative">
+        <div className="flex items-center gap-3 w-full min-w-0">
+          <div className="relative shrink-0">
             <img src={artist.avatar} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-cyan-500/20" />
             <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[10px]`}>{typeConf.icon}</div>
           </div>
-          <div>
-            <div className="text-base font-bold">{artist.name}</div>
-            <div className="text-xs text-gray-500">Lv.{artist.level} · {artist.quality.toUpperCase()}</div>
+          <div className="min-w-0">
+            <div className="text-base font-bold truncate">{artist.name}</div>
+            <div className="text-xs text-gray-500 truncate">Lv.{artist.level} · {artist.quality.toUpperCase()}</div>
             <div className="flex items-center gap-2 mt-1">
               <div className="text-[10px] text-cyan-400 font-semibold flex items-center gap-0.5"><Zap className="w-3 h-3" /> {avgTalent}</div>
               <div className="text-[10px] text-gray-500">/</div>
@@ -172,7 +172,7 @@ export const ArtistRadarCard = ({ lang, artist }: { lang: Lang; artist: Artist }
         </div>
 
         {/* Radar */}
-        <div className="flex-1 flex justify-center">
+        <div className="w-full flex justify-center overflow-hidden">
           <RadarCanvas artist={artist} size={160} />
         </div>
       </div>

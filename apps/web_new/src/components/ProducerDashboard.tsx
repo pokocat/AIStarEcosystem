@@ -17,7 +17,6 @@ import { Progress } from "./ui/progress";
 import { motion, AnimatePresence } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { useTheme, themeConfig } from "./ThemeProvider";
-import { ThemeSwitcher } from "./ThemeSwitcher";
 import { TRANSLATIONS, type Lang } from "../translations";
 import { MCNMatrix } from "./producer/MCNMatrix";
 import { IncubationWizard } from "./producer/IncubationWizard";
@@ -28,6 +27,8 @@ import { CommunityPage } from "./producer/CommunityPage";
 import { FinancePage } from "./producer/FinancePage";
 import { SettingsPage } from "./producer/SettingsPage";
 import { NotificationPanel } from "./producer/NotificationPanel";
+import { INITIAL_NOTIFICATIONS } from "@/mocks/notifications";
+import type { Notification } from "@/types/notification";
 import { Bell } from 'lucide-react';
 import { CommandPalette } from "./producer/CommandPalette";
 import { ArtistRadarCard } from "./producer/ArtistRadarCard";
@@ -107,7 +108,7 @@ const SidebarItem = ({ icon: Icon, label, id, active, onClick, themeStyles }: an
 );
 
 /* ======== Enhanced Overview Page ======== */
-const OverviewPage = ({ lang, activeSinger, onNavigate }: { lang: Lang; activeSinger: Artist; onNavigate: (page: string) => void }) => {
+const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: Lang; activeSinger: Artist; onNavigate: (page: string) => void; onOpenTrack: (trackId: number) => void }) => {
   const zh = lang === 'zh';
   const t = TRANSLATIONS[lang].producer.overview;
 
@@ -273,6 +274,7 @@ const OverviewPage = ({ lang, activeSinger, onNavigate }: { lang: Lang; activeSi
             <tbody>
               {TRACKS.map((track, i) => (
                 <motion.tr key={track.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .05 }}
+                  onClick={() => onOpenTrack(track.id)}
                   className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer">
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-3">
@@ -304,14 +306,43 @@ const OverviewPage = ({ lang, activeSinger, onNavigate }: { lang: Lang; activeSi
 };
 
 /* ======== Studio Page (dynamic by artist type) ======== */
-const StudioPage = ({ lang, activeArtist }: { lang: Lang; activeArtist: Artist }) => {
+const StudioPage = ({ lang, activeArtist, selectedTrackId, onClearSelection }: { lang: Lang; activeArtist: Artist; selectedTrackId: number | null; onClearSelection: () => void }) => {
   const zh = lang === 'zh';
   const t = TRANSLATIONS[lang].producer.studio;
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
   const workshopName = zh ? typeConf.workshop.zh : typeConf.workshop.en;
+  const selectedTrack = selectedTrackId ? TRACKS.find(t => t.id === selectedTrackId) : null;
 
   return (
     <div className="space-y-6">
+      {selectedTrack && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 rounded-xl p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-12 h-12 rounded-lg bg-cyan-500/20 flex items-center justify-center shrink-0">
+                <Music className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-lg font-bold truncate">{selectedTrack.title}</div>
+                <div className="text-xs text-gray-400 mt-1 flex flex-wrap gap-x-3">
+                  <span>{zh ? '状态' : 'Status'}: <Badge className={`text-[10px] ml-1 ${
+                    selectedTrack.status === 'Published' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                    selectedTrack.status === 'Draft' ? 'bg-gray-500/10 text-gray-400 border-gray-500/20' :
+                    'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  }`}>{selectedTrack.status}</Badge></span>
+                  <span>{zh ? '播放量' : 'Plays'}: <span className="text-white">{selectedTrack.plays}</span></span>
+                  <span>{zh ? '收入' : 'Revenue'}: <span className="text-white">{selectedTrack.revenue}</span></span>
+                  <span>{zh ? '日期' : 'Date'}: <span className="text-white">{selectedTrack.date}</span></span>
+                </div>
+              </div>
+            </div>
+            <button onClick={onClearSelection} className="text-gray-500 hover:text-white transition shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </motion.div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{workshopName}</h1>
@@ -379,7 +410,11 @@ const StudioPage = ({ lang, activeArtist }: { lang: Lang; activeArtist: Artist }
         <div className="space-y-2">
           {TRACKS.map((track, i) => (
             <motion.div key={track.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * .05 }}
-              className="flex items-center justify-between p-3 rounded-lg hover:bg-white/[0.03] transition cursor-pointer group border border-transparent hover:border-white/5">
+              className={`flex items-center justify-between p-3 rounded-lg transition cursor-pointer group border ${
+                track.id === selectedTrackId
+                  ? 'bg-cyan-500/10 border-cyan-500/30'
+                  : 'border-transparent hover:bg-white/[0.03] hover:border-white/5'
+              }`}>
               <div className="flex items-center gap-3">
                 <button className="w-8 h-8 rounded-full bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition">
                   <Play className="w-3.5 h-3.5 text-cyan-400 ml-0.5" />
@@ -414,6 +449,9 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   const [showArtistSwitcher, setShowArtistSwitcher] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
+  const unreadCount = notifications.filter(n => !n.read).length;
+  const [selectedTrackId, setSelectedTrackId] = useState<number | null>(null);
 
   // Cmd+K shortcut
   useEffect(() => {
@@ -449,19 +487,24 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     return item.icon;
   };
 
+  const openTrack = (trackId: number) => {
+    setSelectedTrackId(trackId);
+    setActivePage('studio');
+  };
+
   const renderPage = () => {
     switch (activePage) {
-      case 'overview': return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} />;
+      case 'overview': return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} onOpenTrack={openTrack} />;
       case 'artists': return <MCNMatrix lang={lang} onCreateArtist={() => setActivePage('incubator')} />;
       case 'incubator': return <IncubationWizard lang={lang} onClose={() => setActivePage('artists')} onCreated={() => setActivePage('artists')} />;
-      case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} />;
+      case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} selectedTrackId={selectedTrackId} onClearSelection={() => setSelectedTrackId(null)} />;
       case 'wardrobe': return <WardrobePage lang={lang} activeArtist={activeArtist} />;
       case 'distribution': return <DistributionPage lang={lang} activeArtist={activeArtist} />;
       case 'copyright': return <CopyrightPage lang={lang} activeArtist={activeArtist} />;
       case 'community': return <CommunityPage lang={lang} activeArtist={activeArtist} />;
       case 'finance': return <FinancePage lang={lang} activeArtist={activeArtist} />;
       case 'settings': return <SettingsPage lang={lang} setLang={setLang} />;
-      default: return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} />;
+      default: return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} onOpenTrack={openTrack} />;
     }
   };
 
@@ -554,7 +597,6 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
 
       {/* Bottom */}
       <div className="px-3 py-3 border-t border-white/5 space-y-1">
-        {(sidebarOpen || isMobile) && <ThemeSwitcher lang={zh ? 'zh' : 'en'} />}
         <SidebarItem icon={Settings} label={(sidebarOpen || isMobile) ? (zh ? '设置' : 'Settings') : ''} id="settings" active={activePage} onClick={setActivePage} themeStyles={themeStyles} />
         <button onClick={onLogout} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${themeStyles.itemBase}`}>
           <LogOut size={18} />
@@ -605,15 +647,18 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => setLang(zh ? 'en' : 'zh')} className="hover:bg-white/10 text-gray-400">
-              <GlobeIcon className="w-4 h-4 mr-1" /> {zh ? 'EN' : '中'}
-            </Button>
             <div className="relative">
               <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-lg hover:bg-white/10 transition text-gray-400 hover:text-white">
                 <Bell className="w-4 h-4" />
-                <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
+                {unreadCount > 0 && <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}
               </button>
-              <NotificationPanel lang={lang} open={showNotifications} onClose={() => setShowNotifications(false)} />
+              <NotificationPanel
+                lang={lang}
+                open={showNotifications}
+                onClose={() => setShowNotifications(false)}
+                notifications={notifications}
+                setNotifications={setNotifications}
+              />
             </div>
             <div className="flex items-center gap-2 bg-white/[0.03] rounded-full px-2 py-1">
               <img src={activeArtist.avatar} alt="" className="w-6 h-6 rounded-full object-cover border border-white/10" />

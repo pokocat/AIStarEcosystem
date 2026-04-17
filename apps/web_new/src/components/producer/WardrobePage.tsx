@@ -87,23 +87,44 @@ export const WardrobePage = ({ lang, activeArtist }: { lang: Lang; activeArtist:
   const [category, setCategory] = useState<ItemCategory | 'all'>('all');
   const [tab, setTab] = useState<'owned' | 'shop'>('owned');
   const [search, setSearch] = useState('');
-  const [selectedItem, setSelectedItem] = useState<WardrobeItem | null>(null);
+  const [items, setItems] = useState<WardrobeItem[]>(WARDROBE_ITEMS);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const selectedItem = selectedItemId ? items.find(i => i.id === selectedItemId) ?? null : null;
 
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
 
+  const toggleEquip = (id: string) => {
+    setItems(prev => {
+      const target = prev.find(i => i.id === id);
+      if (!target || !target.owned) return prev;
+      if (target.equipped) {
+        return prev.map(i => i.id === id ? { ...i, equipped: false } : i);
+      }
+      return prev.map(i => {
+        if (i.id === id) return { ...i, equipped: true };
+        if (i.category === target.category && i.equipped) return { ...i, equipped: false };
+        return i;
+      });
+    });
+  };
+
+  const buyItem = (id: string) => {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, owned: true } : i));
+  };
+
   const filteredItems = useMemo(() => {
-    let items = WARDROBE_ITEMS.filter(item =>
+    let list = items.filter(item =>
       item.forTypes === 'all' || item.forTypes.includes(activeArtist.type)
     );
-    if (category !== 'all') items = items.filter(i => i.category === category);
-    if (tab === 'owned') items = items.filter(i => i.owned);
-    if (tab === 'shop') items = items.filter(i => !i.owned);
-    if (search) items = items.filter(i => (zh ? i.name.zh : i.name.en).toLowerCase().includes(search.toLowerCase()));
-    return items;
-  }, [category, tab, search, activeArtist.type, zh]);
+    if (category !== 'all') list = list.filter(i => i.category === category);
+    if (tab === 'owned') list = list.filter(i => i.owned);
+    if (tab === 'shop') list = list.filter(i => !i.owned);
+    if (search) list = list.filter(i => (zh ? i.name.zh : i.name.en).toLowerCase().includes(search.toLowerCase()));
+    return list;
+  }, [items, category, tab, search, activeArtist.type, zh]);
 
-  const ownedCount = WARDROBE_ITEMS.filter(i => i.owned && (i.forTypes === 'all' || i.forTypes.includes(activeArtist.type))).length;
-  const equippedCount = WARDROBE_ITEMS.filter(i => i.equipped).length;
+  const ownedCount = items.filter(i => i.owned && (i.forTypes === 'all' || i.forTypes.includes(activeArtist.type))).length;
+  const equippedCount = items.filter(i => i.equipped).length;
 
   return (
     <div className="space-y-6">
@@ -170,7 +191,7 @@ export const WardrobePage = ({ lang, activeArtist }: { lang: Lang; activeArtist:
           const rarity = RARITY_STYLES[item.rarity];
           return (
             <motion.div key={item.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * .03 }}
-              onClick={() => setSelectedItem(item)}
+              onClick={() => setSelectedItemId(item.id)}
               className={`relative bg-gray-900/50 border rounded-xl p-4 cursor-pointer transition hover:border-white/20 group ${item.equipped ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-white/5'}`}>
               {/* Rarity indicator */}
               {(item.rarity === 'legendary' || item.rarity === 'epic') && (
@@ -214,7 +235,7 @@ export const WardrobePage = ({ lang, activeArtist }: { lang: Lang; activeArtist:
       {/* Detail Panel */}
       <AnimatePresence>
         {selectedItem && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedItem(null)}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedItemId(null)}>
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={e => e.stopPropagation()}
               className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-md p-6">
@@ -232,15 +253,19 @@ export const WardrobePage = ({ lang, activeArtist }: { lang: Lang; activeArtist:
               </div>
               <div className="flex gap-2">
                 {selectedItem.owned ? (
-                  <Button className={`flex-1 ${selectedItem.equipped ? 'bg-gray-700 text-gray-300' : 'bg-gradient-to-r from-cyan-500 to-purple-600'}`}>
+                  <Button
+                    onClick={() => toggleEquip(selectedItem.id)}
+                    className={`flex-1 ${selectedItem.equipped ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90'}`}>
                     {selectedItem.equipped ? (zh ? '取消装备' : 'Unequip') : (zh ? '装备' : 'Equip')}
                   </Button>
                 ) : (
-                  <Button className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:opacity-90">
+                  <Button
+                    onClick={() => buyItem(selectedItem.id)}
+                    className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:opacity-90">
                     <ShoppingBag className="w-3.5 h-3.5 mr-1" /> {zh ? `购买 ¥${selectedItem.price.toLocaleString()}` : `Buy ¥${selectedItem.price.toLocaleString()}`}
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => setSelectedItem(null)} className="border-white/10 text-gray-400">{zh ? '关闭' : 'Close'}</Button>
+                <Button variant="outline" onClick={() => setSelectedItemId(null)} className="border-white/10 text-gray-400">{zh ? '关闭' : 'Close'}</Button>
               </div>
             </motion.div>
           </motion.div>

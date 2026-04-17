@@ -10,6 +10,6 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "account",      icon: Key,        label: "账号安全" },
   { id: "notification", icon: Bell,       label: "通知设置" },
   { id: "appearance",   icon: Palette,    label: "外观与语言" },
-  { id: "billing",      icon: CreditCard, label: "订阅与账单" },
+  { id: "billing",      icon: CreditCard, label: "消费流水" },
   { id: "data",         icon: Download,   label: "数据管理" },
 ];

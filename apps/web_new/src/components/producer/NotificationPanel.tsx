@@ -10,12 +10,18 @@ import { Badge } from "../ui/badge";
 import { motion, AnimatePresence } from "motion/react";
 import type { Lang } from "../../translations";
 import type { Notification } from "@/types/notification";
-import { INITIAL_NOTIFICATIONS } from "@/mocks/notifications";
 import { NOTIFICATION_ICON_MAP as ICON_MAP } from "@/constants/notification-ui";
 
-export const NotificationPanel = ({ lang, open, onClose }: { lang: Lang; open: boolean; onClose: () => void }) => {
+interface NotificationPanelProps {
+  lang: Lang;
+  open: boolean;
+  onClose: () => void;
+  notifications: Notification[];
+  setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
+}
+
+export const NotificationPanel = ({ lang, open, onClose, notifications, setNotifications }: NotificationPanelProps) => {
   const zh = lang === 'zh';
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -30,9 +36,9 @@ export const NotificationPanel = ({ lang, open, onClose }: { lang: Lang; open: b
       {open && (
         <>
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={onClose} className="fixed inset-0 z-40" />
-          <motion.div initial={{ opacity: 0, y: -10, x: 20 }} animate={{ opacity: 1, y: 0, x: 0 }} exit={{ opacity: 0, y: -10 }}
-            className="absolute right-0 top-full mt-2 w-96 max-h-[520px] bg-gray-900 border border-white/10 rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden">
+            onClick={onClose} className="fixed inset-0 z-[100]" />
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            className="fixed right-4 top-16 w-96 max-w-[calc(100vw-2rem)] max-h-[520px] bg-gray-900 border border-white/10 rounded-xl shadow-2xl z-[110] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-white/5">
               <div className="flex items-center gap-2">
