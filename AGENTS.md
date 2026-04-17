@@ -19,7 +19,7 @@ ai-singer/
 ├── specs/
 │   ├── openapi.yaml                           # OpenAPI 3.1 — shared API contract
 │   └── unified-account-entitlement-platform.md  # Full platform architecture spec
-└── src/                 # ⚠️ Figma prototype only — NOT real application code
+└── figma/                 # ⚠️ Figma prototype only — NOT real application code
     └── App.tsx          # Single-file Figma Make export for UI prototyping
 ```
 

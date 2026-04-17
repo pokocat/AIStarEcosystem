@@ -1,0 +1,476 @@
+"use client";
+
+import React, { useState, useMemo } from 'react';
+import {
+  Users, Plus, Search, Grid3X3, List, ChevronDown, Eye, Edit, Copy,
+  Star, Music, Film, ShoppingBag, Tv, Mic, GraduationCap, Gamepad,
+  X, Mic2, Video, Sparkles, Headphones, Zap, Award, TrendingUp,
+  BarChart3, Heart, Crown, ArrowUpRight
+} from 'lucide-react';
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Progress } from "../ui/progress";
+import { motion, AnimatePresence } from "motion/react";
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
+import type { Lang } from "../../translations";
+import {
+  type Artist, type ArtistType, type Quality,
+  MOCK_ARTISTS, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS,
+  QUALITY_CONFIG, STATUS_CONFIG, TALENT_LABELS
+} from './ArtistTypes';
+
+/* ======== Artist Detail Dialog ======== */
+const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: Lang; onClose: () => void }) => {
+  const zh = lang === 'zh';
+  const [tab, setTab] = useState<'basic' | 'talents' | 'stats' | 'works' | 'commercial'>('basic');
+  const typeConf = ARTIST_TYPE_CONFIG[artist.type];
+  const qualConf = QUALITY_CONFIG[artist.quality];
+  const statusConf = STATUS_CONFIG[artist.status];
+
+  const radarData = Object.entries(TALENT_LABELS).map(([key, lbl]) => ({
+    subject: zh ? lbl.zh : lbl.en,
+    value: artist.talents[key as keyof typeof artist.talents],
+    cap: typeConf.talentCaps[key as keyof typeof artist.talents],
+  }));
+
+  const tabs = [
+    { id: 'basic' as const, label: zh ? '基本信息' : 'Basic' },
+    { id: 'talents' as const, label: zh ? '才艺能力' : 'Talents' },
+    { id: 'stats' as const, label: zh ? '数据统计' : 'Stats' },
+    { id: 'works' as const, label: zh ? '专属工坊' : 'Workshop' },
+    { id: 'commercial' as const, label: zh ? '商业价值' : 'Commercial' },
+  ];
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-white/5">
+          <div className="flex items-center gap-4">
+            <img src={artist.avatar} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-white/10" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>{artist.name}</span>
+                <span className="text-lg">{typeConf.icon}</span>
+                <Badge className={`text-xs ${qualConf.color} ${qualConf.bg} ${qualConf.border}`}>{zh ? qualConf.zh : qualConf.en}</Badge>
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                <span>{zh ? ARTIST_TYPE_LABELS[artist.type].zh : ARTIST_TYPE_LABELS[artist.type].en}</span>
+                <span className="flex items-center gap-1"><div className={`w-1.5 h-1.5 rounded-full ${statusConf.dot}`} />{zh ? statusConf.zh : statusConf.en}</span>
+                <span>Lv.{artist.level}</span>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-white/5 px-6">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-3 text-sm transition relative ${tab === t.id ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+              {t.label}
+              {tab === t.id && <motion.div layoutId="detail-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {tab === 'basic' && (
+            <div className="space-y-6">
+              <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                <p className="text-sm text-gray-300 leading-relaxed">{artist.bio}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                  <div className="text-xs text-gray-500 mb-1">{zh ? '创建日期' : 'Created'}</div>
+                  <div className="text-sm font-semibold">{artist.createdAt}</div>
+                </div>
+                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                  <div className="text-xs text-gray-500 mb-1">{zh ? '最后活跃' : 'Last Active'}</div>
+                  <div className="text-sm font-semibold">{artist.lastActive}</div>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 mb-2">{zh ? '活跃领域' : 'Active Domains'}</div>
+                <div className="flex flex-wrap gap-2">
+                  {artist.domains.map(d => <Badge key={d} className="text-xs bg-white/5 text-gray-300 border-white/10">{d}</Badge>)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 mb-2">{zh ? '等级进度' : 'Level Progress'}</div>
+                <div className="flex items-center gap-3">
+                  <span className="text-cyan-400 font-bold" style={{ fontFamily: "var(--font-display)" }}>Lv.{artist.level}</span>
+                  <div className="flex-1"><Progress value={(artist.exp / artist.maxExp) * 100} className="h-2" /></div>
+                  <span className="text-xs text-gray-500">{artist.exp}/{artist.maxExp} EXP</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'talents' && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
+                    <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#888', fontSize: 11 }} />
+                    <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
+                    <Radar name="Value" dataKey="value" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.25} strokeWidth={2} />
+                    <Radar name="Cap" dataKey="cap" stroke="#a855f7" fill="none" strokeWidth={1} strokeDasharray="4 4" />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {Object.entries(TALENT_LABELS).map(([key, lbl]) => {
+                  const val = artist.talents[key as keyof typeof artist.talents];
+                  const cap = typeConf.talentCaps[key as keyof typeof artist.talents];
+                  const isPrimary = typeConf.primaryTalents.includes(key as any);
+                  return (
+                    <div key={key}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-gray-400 flex items-center gap-1.5">
+                          {zh ? lbl.zh : lbl.en}
+                          {isPrimary && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
+                        </span>
+                        <span className="font-semibold" style={{ color: lbl.color }}>{val}<span className="text-gray-600">/{cap}</span></span>
+                      </div>
+                      <div className="h-2 bg-gray-800 rounded-full overflow-hidden relative">
+                        <div className="h-full rounded-full" style={{ width: `${val}%`, background: lbl.color }} />
+                        <div className="absolute top-0 h-full w-px bg-white/30" style={{ left: `${cap}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="mt-4 p-3 bg-black/30 rounded-lg border border-white/5 text-xs text-gray-500">
+                  <Star className="w-3 h-3 text-amber-400 fill-amber-400 inline mr-1" />
+                  {zh ? '主属性 — 成长速度+50%，可达满值' : 'Primary — +50% growth, can reach max'}
+                  <br />
+                  <span className="inline-block w-2 h-px bg-purple-400 mr-1 align-middle" style={{ borderTop: '1px dashed #a855f7' }} />
+                  {zh ? '虚线 = 天赋上限' : 'Dashed = Talent Cap'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'stats' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: zh ? '歌曲' : 'Songs', value: artist.stats.songs, icon: Music, color: 'text-cyan-400' },
+                  { label: zh ? '影视' : 'Dramas', value: artist.stats.dramas, icon: Film, color: 'text-purple-400' },
+                  { label: zh ? '广告' : 'Ads', value: artist.stats.ads, icon: ShoppingBag, color: 'text-pink-400' },
+                  { label: zh ? '综艺' : 'Shows', value: artist.stats.variety, icon: Tv, color: 'text-amber-400' },
+                  { label: zh ? '粉丝' : 'Fans', value: artist.stats.fans, icon: Heart, color: 'text-red-400' },
+                  { label: zh ? '人气值' : 'Popularity', value: artist.stats.popularity, icon: TrendingUp, color: 'text-green-400' },
+                ].map((s, i) => (
+                  <div key={i} className="bg-black/30 rounded-lg p-4 border border-white/5 text-center">
+                    <s.icon className={`w-4 h-4 mx-auto mb-2 ${s.color} opacity-60`} />
+                    <div className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>{s.value}</div>
+                    <div className="text-xs text-gray-500">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                <div className="text-xs text-gray-500 mb-2">{zh ? '总收益' : 'Total Revenue'}</div>
+                <div className="text-2xl font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{artist.stats.revenue}</div>
+                <div className="text-xs text-gray-500 mt-1">{zh ? '月均' : 'Monthly'}: {artist.stats.monthlyRevenue}</div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'works' && (
+            <div className="space-y-4">
+              <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">{typeConf.icon}</span>
+                  <h4 className="font-bold">{zh ? typeConf.workshop.zh : typeConf.workshop.en}</h4>
+                </div>
+                <p className="text-xs text-gray-500 mb-4">{zh ? '该艺人类型的专属创作工坊和内容模板' : 'Exclusive workshop and content templates for this artist type'}</p>
+                <div className="mb-4">
+                  <div className="text-xs text-gray-500 mb-2">{zh ? '可用模板' : 'Templates'}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(zh ? typeConf.templates.zh : typeConf.templates.en).map(t => (
+                      <Badge key={t} className="text-xs bg-cyan-500/10 text-cyan-400 border-cyan-500/20">{t}</Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <div className="text-xs text-gray-500 mb-2">{zh ? '内容格式' : 'Content Formats'}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(zh ? typeConf.contentFormats.zh : typeConf.contentFormats.en).map(f => (
+                      <Badge key={f} className="text-xs bg-purple-500/10 text-purple-400 border-purple-500/20">{f}</Badge>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-2">{zh ? '主要领域' : 'Primary Domains'}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(zh ? typeConf.primaryDomains.zh : typeConf.primaryDomains.en).map(d => (
+                      <Badge key={d} className="text-xs bg-pink-500/10 text-pink-400 border-pink-500/20">{d}</Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'commercial' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                  <div className="text-xs text-gray-500 mb-1">{zh ? '商业价值' : 'Commercial Value'}</div>
+                  <div className="text-2xl font-bold text-amber-400" style={{ fontFamily: "var(--font-display)" }}>{artist.commercialValue}</div>
+                </div>
+                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                  <div className="text-xs text-gray-500 mb-1">{zh ? '代言数' : 'Endorsements'}</div>
+                  <div className="text-2xl font-bold text-pink-400" style={{ fontFamily: "var(--font-display)" }}>{artist.endorsements}</div>
+                </div>
+              </div>
+              <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                <div className="text-xs text-gray-500 mb-3">{zh ? '变现路径' : 'Monetization Paths'}</div>
+                <div className="space-y-2">
+                  {(zh ? typeConf.monetization.zh : typeConf.monetization.en).map((m, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                      <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                      <span className="text-gray-300">{m}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+/* ======== Main MCN Matrix Component ======== */
+export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist: () => void }) => {
+  const zh = lang === 'zh';
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<ArtistType | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'name' | 'level' | 'revenue'>('level');
+  const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+
+  const filtered = useMemo(() => {
+    let list = [...MOCK_ARTISTS];
+    if (searchQuery) list = list.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    if (typeFilter !== 'all') list = list.filter(a => a.type === typeFilter);
+    if (statusFilter !== 'all') list = list.filter(a => a.status === statusFilter);
+    list.sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'level') return b.level - a.level;
+      return parseInt(b.stats.revenue.replace(/[^0-9]/g, '')) - parseInt(a.stats.revenue.replace(/[^0-9]/g, ''));
+    });
+    return list;
+  }, [searchQuery, typeFilter, statusFilter, sortBy]);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: MOCK_ARTISTS.length };
+    MOCK_ARTISTS.forEach(a => { counts[a.type] = (counts[a.type] || 0) + 1; });
+    return counts;
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+            {zh ? 'AI 艺人孵化矩阵' : 'AI Artist Matrix'}
+          </h1>
+          <p className="text-gray-400 font-light mt-1">{zh ? '管理你的AI艺人生态' : 'Manage your AI artist ecosystem'}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={onCreateArtist} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
+            <Plus className="w-4 h-4" /> {zh ? '孵化新艺人' : 'New Artist'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Type Filter Tabs */}
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setTypeFilter('all')}
+          className={`px-3 py-1.5 text-xs rounded-full border transition ${typeFilter === 'all' ? 'bg-white/10 text-white border-white/20' : 'text-gray-500 border-white/5 hover:border-white/15'}`}>
+          {zh ? '全部' : 'All'} ({typeCounts.all})
+        </button>
+        {(Object.keys(ARTIST_TYPE_LABELS) as ArtistType[]).map(type => (
+          <button key={type} onClick={() => setTypeFilter(type)}
+            className={`px-3 py-1.5 text-xs rounded-full border transition flex items-center gap-1 ${typeFilter === type ? `${ARTIST_TYPE_CONFIG[type].bgColor} ${ARTIST_TYPE_CONFIG[type].color} ${ARTIST_TYPE_CONFIG[type].borderColor}` : 'text-gray-500 border-white/5 hover:border-white/15'}`}>
+            {ARTIST_TYPE_CONFIG[type].icon} {zh ? ARTIST_TYPE_LABELS[type].zh : ARTIST_TYPE_LABELS[type].en}
+            {typeCounts[type] ? ` (${typeCounts[type]})` : ''}
+          </button>
+        ))}
+      </div>
+
+      {/* Search + Controls */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            className="w-full bg-gray-900/50 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none transition"
+            placeholder={zh ? '搜索艺人...' : 'Search artists...'} />
+        </div>
+        <div className="flex gap-2">
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+            className="bg-gray-900/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-400 focus:outline-none">
+            <option value="level">{zh ? '按等级' : 'By Level'}</option>
+            <option value="name">{zh ? '按名称' : 'By Name'}</option>
+            <option value="revenue">{zh ? '按收益' : 'By Revenue'}</option>
+          </select>
+          <div className="flex border border-white/10 rounded-lg overflow-hidden">
+            <button onClick={() => setViewMode('grid')} className={`px-3 py-2 transition ${viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-gray-500'}`}><Grid3X3 className="w-4 h-4" /></button>
+            <button onClick={() => setViewMode('list')} className={`px-3 py-2 transition ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-gray-500'}`}><List className="w-4 h-4" /></button>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid View */}
+      {viewMode === 'grid' && (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((artist, i) => {
+            const typeConf = ARTIST_TYPE_CONFIG[artist.type];
+            const qualConf = QUALITY_CONFIG[artist.quality];
+            const statusConf = STATUS_CONFIG[artist.status];
+            return (
+              <motion.div key={artist.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .06 }}
+                onClick={() => setSelectedArtist(artist)}
+                className="bg-gray-900/50 border border-white/5 rounded-xl p-5 hover:border-cyan-500/20 transition cursor-pointer group relative overflow-hidden">
+                {/* Quality glow */}
+                {artist.quality === 'legendary' && <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full blur-2xl" />}
+                {artist.quality === 'epic' && <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/10 rounded-full blur-xl" />}
+
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="relative">
+                    <img src={artist.avatar} alt="" className={`w-12 h-12 rounded-full object-cover border-2 ${qualConf.border}`} />
+                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[10px]`}>{typeConf.icon}</div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white truncate">{artist.name}</span>
+                      <Badge className={`text-[10px] ${qualConf.color} ${qualConf.bg} border-0 px-1.5`}>{zh ? qualConf.zh : qualConf.en}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-xs ${typeConf.color}`}>{zh ? ARTIST_TYPE_LABELS[artist.type].zh : ARTIST_TYPE_LABELS[artist.type].en}</span>
+                      <span className="flex items-center gap-1 text-xs text-gray-500"><div className={`w-1.5 h-1.5 rounded-full ${statusConf.dot}`} />{zh ? statusConf.zh : statusConf.en}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Level bar */}
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs text-cyan-400 font-bold" style={{ fontFamily: "var(--font-display)" }}>Lv.{artist.level}</span>
+                  <div className="flex-1"><Progress value={(artist.exp / artist.maxExp) * 100} className="h-1.5" /></div>
+                </div>
+
+                {/* Key stats */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="text-center bg-black/20 rounded-lg py-2">
+                    <div className="text-sm font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{artist.stats.fans}</div>
+                    <div className="text-[10px] text-gray-500">{zh ? '粉丝' : 'Fans'}</div>
+                  </div>
+                  <div className="text-center bg-black/20 rounded-lg py-2">
+                    <div className="text-sm font-bold text-purple-400" style={{ fontFamily: "var(--font-display)" }}>{artist.stats.songs + artist.stats.dramas + artist.stats.ads + artist.stats.variety}</div>
+                    <div className="text-[10px] text-gray-500">{zh ? '作品' : 'Works'}</div>
+                  </div>
+                  <div className="text-center bg-black/20 rounded-lg py-2">
+                    <div className="text-sm font-bold text-pink-400" style={{ fontFamily: "var(--font-display)" }}>{artist.stats.monthlyRevenue}</div>
+                    <div className="text-[10px] text-gray-500">{zh ? '月收' : 'Monthly'}</div>
+                  </div>
+                </div>
+
+                {/* Talent bars — top 3 */}
+                <div className="space-y-1.5">
+                  {Object.entries(artist.talents)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3)
+                    .map(([key, val]) => {
+                      const lbl = TALENT_LABELS[key as keyof typeof TALENT_LABELS];
+                      return (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-[10px] text-gray-500 w-10 shrink-0">{zh ? lbl.zh : lbl.en}</span>
+                          <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${val}%`, background: lbl.color }} />
+                          </div>
+                          <span className="text-[10px] font-semibold w-6 text-right" style={{ color: lbl.color }}>{val}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+
+                {/* Hover action hint */}
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition">
+                  <Eye className="w-4 h-4 text-cyan-400" />
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* List View */}
+      {viewMode === 'list' && (
+        <div className="bg-gray-900/50 border border-white/5 rounded-xl overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/5">
+                {[zh ? '艺人' : 'Artist', zh ? '类型' : 'Type', zh ? '等级' : 'Level', zh ? '品质' : 'Quality', zh ? '状态' : 'Status', zh ? '粉丝' : 'Fans', zh ? '月收益' : 'Monthly', ''].map((h, i) => (
+                  <th key={i} className="text-left text-xs text-gray-500 font-medium uppercase tracking-wider px-4 py-3">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((artist, i) => {
+                const typeConf = ARTIST_TYPE_CONFIG[artist.type];
+                const qualConf = QUALITY_CONFIG[artist.quality];
+                const statusConf = STATUS_CONFIG[artist.status];
+                return (
+                  <motion.tr key={artist.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .03 }}
+                    onClick={() => setSelectedArtist(artist)}
+                    className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <img src={artist.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-white/10" />
+                        <span className="text-sm font-semibold">{artist.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><span className={`text-xs ${typeConf.color}`}>{typeConf.icon} {zh ? ARTIST_TYPE_LABELS[artist.type].zh : ARTIST_TYPE_LABELS[artist.type].en}</span></td>
+                    <td className="px-4 py-3"><span className="text-sm font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>Lv.{artist.level}</span></td>
+                    <td className="px-4 py-3"><Badge className={`text-[10px] ${qualConf.color} ${qualConf.bg} border-0`}>{zh ? qualConf.zh : qualConf.en}</Badge></td>
+                    <td className="px-4 py-3"><span className="flex items-center gap-1 text-xs"><div className={`w-1.5 h-1.5 rounded-full ${statusConf.dot}`} />{zh ? statusConf.zh : statusConf.en}</span></td>
+                    <td className="px-4 py-3 text-sm text-gray-400">{artist.stats.fans}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400">{artist.stats.monthlyRevenue}</td>
+                    <td className="px-4 py-3"><Eye className="w-4 h-4 text-gray-500 hover:text-cyan-400 transition" /></td>
+                  </motion.tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {filtered.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Users className="w-12 h-12 text-gray-600 mb-4" />
+          <h3 className="text-lg font-bold text-gray-400">{zh ? '暂无匹配艺人' : 'No Artists Found'}</h3>
+          <p className="text-sm text-gray-500 mt-1">{zh ? '尝试调整筛选条件' : 'Try adjusting your filters'}</p>
+        </div>
+      )}
+
+      {/* Detail Dialog */}
+      <AnimatePresence>
+        {selectedArtist && <ArtistDetailDialog artist={selectedArtist} lang={lang} onClose={() => setSelectedArtist(null)} />}
+      </AnimatePresence>
+    </div>
+  );
+};
