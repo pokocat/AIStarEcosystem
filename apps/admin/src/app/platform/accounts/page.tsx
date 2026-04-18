@@ -11,27 +11,55 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { ACCOUNTS, TENANTS, MEMBERSHIPS } from "@/mocks/accounts";
+import { listUsers } from "@/api/users";
+import { listTenants, listMemberships } from "@/api/tenants";
 import { ACCOUNT_KIND, ACCOUNT_STATUS } from "@/constants/status";
-import type { AepUser, AccountKind, AccountStatus } from "@/types/account";
+import type { AepUser, AccountKind, AccountStatus, Tenant, Membership } from "@/types/account";
 import { formatDateCN } from "@/lib/utils";
 
 export default function AccountsPage() {
+  const [users, setUsers] = React.useState<AepUser[]>([]);
+  const [tenants, setTenants] = React.useState<Tenant[]>([]);
+  const [memberships, setMemberships] = React.useState<Membership[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<"all" | AccountKind>("all");
   const [status, setStatus] = React.useState<"all" | AccountStatus>("all");
   const [target, setTarget] = React.useState<{ user: AepUser; action: "suspend" | "reactivate" } | null>(null);
 
-  const tenantById = React.useMemo(() => new Map(TENANTS.map((t) => [t.id, t])), []);
-  const tenantOfUser = React.useCallback(
-    (userId: string) => {
-      const m = MEMBERSHIPS.find((x) => x.userId === userId);
-      return m ? tenantById.get(m.tenantId) : undefined;
-    },
-    [tenantById]
-  );
+  const reload = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [u, t, m] = await Promise.all([
+        listUsers(0, 200),
+        listTenants(0, 200),
+        listMemberships(undefined, undefined, 0, 500),
+      ]);
+      setUsers(u);
+      setTenants(t);
+      setMemberships(m);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const filtered = ACCOUNTS.filter((a) => {
+  React.useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const tenantById = React.useMemo(() => new Map(tenants.map((t) => [t.id, t])), [tenants]);
+  const membershipByUser = React.useMemo(() => {
+    const m = new Map<string, Membership>();
+    for (const x of memberships) if (!m.has(x.userId)) m.set(x.userId, x);
+    return m;
+  }, [memberships]);
+
+  const filtered = users.filter((a) => {
     if (kind !== "all" && a.kind !== kind) return false;
     if (status !== "all" && a.status !== status) return false;
     if (query) {
@@ -42,10 +70,10 @@ export default function AccountsPage() {
   });
 
   const counts = {
-    total: ACCOUNTS.length,
-    active: ACCOUNTS.filter((a) => a.status === "active").length,
-    suspended: ACCOUNTS.filter((a) => a.status === "suspended").length,
-    studio: ACCOUNTS.filter((a) => a.kind === "studio").length,
+    total: users.length,
+    active: users.filter((a) => a.status === "active").length,
+    suspended: users.filter((a) => a.status === "suspended").length,
+    studio: users.filter((a) => a.kind === "studio").length,
   };
 
   return (
@@ -111,8 +139,19 @@ export default function AccountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((u) => {
-                const t = tenantOfUser(u.id);
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                </TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
+                </TableRow>
+              )}
+              {!loading && !loadError && filtered.map((u) => {
+                const m = membershipByUser.get(u.id);
+                const t = m ? tenantById.get(m.tenantId) : undefined;
                 return (
                   <TableRow key={u.id}>
                     <TableCell>
@@ -144,6 +183,11 @@ export default function AccountsPage() {
                   </TableRow>
                 );
               })}
+              {!loading && !loadError && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">没有匹配的账号</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

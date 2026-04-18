@@ -8,19 +8,50 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
-import { TENANTS, MEMBERSHIPS } from "@/mocks/accounts";
-import { LICENSE_BATCHES } from "@/mocks/licenses";
+import { listTenants, listMemberships } from "@/api/tenants";
+import { listBatches } from "@/api/licenses";
+import type { Tenant, Membership } from "@/types/account";
+import type { LicenseBatch } from "@/types/license";
 import { TENANT_KIND, ACCOUNT_STATUS } from "@/constants/status";
 import { formatDateCN } from "@/lib/utils";
 import { formatCredits } from "@/lib/format";
 
 export default function TenantsPage() {
+  const [tenants, setTenants] = React.useState<Tenant[]>([]);
+  const [memberships, setMemberships] = React.useState<Membership[]>([]);
+  const [batches, setBatches] = React.useState<LicenseBatch[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  const reload = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [t, m, b] = await Promise.all([
+        listTenants(0, 200),
+        listMemberships(undefined, undefined, 0, 500),
+        listBatches(0, 200),
+      ]);
+      setTenants(t);
+      setMemberships(m);
+      setBatches(b);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void reload();
+  }, [reload]);
+
   const byTenant = React.useMemo(() => {
     const memberCount = new Map<string, number>();
     const licenseBatchCount = new Map<string, number>();
     const licenseGrantCredits = new Map<string, number>();
-    MEMBERSHIPS.forEach((m) => memberCount.set(m.tenantId, (memberCount.get(m.tenantId) ?? 0) + 1));
-    LICENSE_BATCHES.forEach((b) => {
+    memberships.forEach((m) => memberCount.set(m.tenantId, (memberCount.get(m.tenantId) ?? 0) + 1));
+    batches.forEach((b) => {
       licenseBatchCount.set(b.issuerTenantId, (licenseBatchCount.get(b.issuerTenantId) ?? 0) + 1);
       licenseGrantCredits.set(
         b.issuerTenantId,
@@ -28,7 +59,9 @@ export default function TenantsPage() {
       );
     });
     return { memberCount, licenseBatchCount, licenseGrantCredits };
-  }, []);
+  }, [memberships, batches]);
+
+  const totalGranted = batches.reduce((s, b) => s + b.initialCreditGrant * b.activatedCount, 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -39,14 +72,12 @@ export default function TenantsPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="机构总数"            value={TENANTS.length}                        icon={Network}   />
-        <StatCard label="归属用户总数"        value={MEMBERSHIPS.length}                    icon={Users}     />
-        <StatCard label="秘钥批次总数"        value={LICENSE_BATCHES.length}                icon={KeySquare} />
+        <StatCard label="机构总数"            value={tenants.length}       icon={Network}   />
+        <StatCard label="归属用户总数"        value={memberships.length}   icon={Users}     />
+        <StatCard label="秘钥批次总数"        value={batches.length}       icon={KeySquare} />
         <StatCard
           label="累计发放点数"
-          value={formatCredits(
-            LICENSE_BATCHES.reduce((s, b) => s + b.initialCreditGrant * b.activatedCount, 0)
-          )}
+          value={formatCredits(totalGranted)}
           icon={KeySquare}
           tone="success"
         />
@@ -71,7 +102,17 @@ export default function TenantsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {TENANTS.map((t) => (
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                </TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
+                </TableRow>
+              )}
+              {!loading && !loadError && tenants.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
                   <TableCell><StatusBadge meta={TENANT_KIND[t.kind]} /></TableCell>
@@ -87,6 +128,11 @@ export default function TenantsPage() {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && !loadError && tenants.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">暂无机构</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

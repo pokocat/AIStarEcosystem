@@ -21,6 +21,7 @@ export * as PoseApi from "./pose";
 export * as SettingsApi from "./settings";
 export * as StatsApi from "./stats";
 export * as StudiosApi from "./studios";
+export * as TenantsApi from "./tenants";
 export * as UsersApi from "./users";
 export * as WalletApi from "./wallet";
 export * as WardrobeApi from "./wardrobe";

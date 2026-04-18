@@ -10,24 +10,58 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { LICENSE_BATCHES, LICENSE_KEYS } from "@/mocks/licenses";
-import { TENANTS, ACCOUNTS } from "@/mocks/accounts";
+import { listBatches, listKeys } from "@/api/licenses";
+import { listTenants } from "@/api/tenants";
+import { listUsers } from "@/api/users";
 import { LICENSE_BATCH_STATUS, LICENSE_KEY_STATUS, LICENSE_TIER } from "@/constants/status";
-import { LICENSE_TIERS, type LicenseBatch } from "@/types/license";
+import { LICENSE_TIERS, type LicenseBatch, type LicenseKey } from "@/types/license";
+import type { Tenant } from "@/types/account";
+import type { AepUser } from "@/types/account";
 import { formatDateCN } from "@/lib/utils";
 import { formatCredits, formatPercent } from "@/lib/format";
 
 export default function LicensesPage() {
+  const [batches, setBatches] = React.useState<LicenseBatch[]>([]);
+  const [keys, setKeys] = React.useState<LicenseKey[]>([]);
+  const [tenants, setTenants] = React.useState<Tenant[]>([]);
+  const [users, setUsers] = React.useState<AepUser[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ batch: LicenseBatch; action: "revoke" } | null>(null);
 
-  const tenantById = React.useMemo(() => new Map(TENANTS.map((t) => [t.id, t])), []);
-  const userById = React.useMemo(() => new Map(ACCOUNTS.map((u) => [u.id, u])), []);
-  const batchById = React.useMemo(() => new Map(LICENSE_BATCHES.map((b) => [b.id, b])), []);
+  const reload = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [b, k, t, u] = await Promise.all([
+        listBatches(0, 200),
+        listKeys(undefined, 0, 500),
+        listTenants(0, 200),
+        listUsers(0, 500),
+      ]);
+      setBatches(b);
+      setKeys(k);
+      setTenants(t);
+      setUsers(u);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const active = LICENSE_BATCHES.filter((b) => b.status === "active");
-  const activatedKeys = LICENSE_KEYS.filter((k) => k.status === "activated").length;
-  const pendingKeys = LICENSE_KEYS.filter((k) => k.status === "created").length;
-  const totalGranted = LICENSE_BATCHES.reduce((s, b) => s + b.initialCreditGrant * b.activatedCount, 0);
+  React.useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const tenantById = React.useMemo(() => new Map(tenants.map((t) => [t.id, t])), [tenants]);
+  const userById = React.useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+  const batchById = React.useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
+
+  const active = batches.filter((b) => b.status === "active");
+  const activatedKeys = keys.filter((k) => k.status === "activated").length;
+  const pendingKeys = keys.filter((k) => k.status === "created").length;
+  const totalGranted = batches.reduce((s, b) => s + b.initialCreditGrant * b.activatedCount, 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -72,8 +106,8 @@ export default function LicensesPage() {
 
       <Tabs defaultValue="batches" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="batches">批次 ({LICENSE_BATCHES.length})</TabsTrigger>
-          <TabsTrigger value="keys">秘钥 ({LICENSE_KEYS.length})</TabsTrigger>
+          <TabsTrigger value="batches">批次 ({batches.length})</TabsTrigger>
+          <TabsTrigger value="keys">秘钥 ({keys.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="batches">
@@ -95,7 +129,17 @@ export default function LicensesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {LICENSE_BATCHES.map((b) => {
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && loadError && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && !loadError && batches.map((b) => {
                     const issuer = tenantById.get(b.issuerTenantId);
                     const rate = b.totalCount > 0 ? (b.activatedCount / b.totalCount) * 100 : 0;
                     return (
@@ -129,6 +173,11 @@ export default function LicensesPage() {
                       </TableRow>
                     );
                   })}
+                  {!loading && !loadError && batches.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">暂无批次</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -152,7 +201,12 @@ export default function LicensesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {LICENSE_KEYS.map((k) => {
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && !loadError && keys.map((k) => {
                     const b = batchById.get(k.batchId);
                     const user = k.activatedByUserId ? userById.get(k.activatedByUserId) : undefined;
                     return (
@@ -167,6 +221,11 @@ export default function LicensesPage() {
                       </TableRow>
                     );
                   })}
+                  {!loading && !loadError && keys.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无秘钥</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

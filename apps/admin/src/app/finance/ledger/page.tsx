@@ -12,11 +12,13 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
 import { RevenueTrendChart } from "@/components/RevenueTrendChart";
 import { RevenueSourcePie } from "@/components/RevenueSourcePie";
-import { TRANSACTIONS, REVENUE_MONTHLY, REVENUE_SOURCES } from "@/mocks/finance";
-import { WALLETS, LEDGER_ENTRIES } from "@/mocks/wallet";
-import { ACCOUNTS } from "@/mocks/accounts";
+import { listWallets, listLedgerEntries } from "@/api/wallet";
+import { getMonthlyRevenue, getRevenueSources, listTransactions } from "@/api/finance";
+import { listUsers } from "@/api/users";
 import { TRANSACTION_STATUS, LEDGER_ENTRY_TYPE } from "@/constants/status";
-import type { Transaction } from "@/types/finance";
+import type { Transaction, MonthlyRevenuePoint, RevenueSource } from "@/types/finance";
+import type { Wallet, LedgerEntry } from "@/types/wallet";
+import type { AepUser } from "@/types/account";
 import { formatCredits, formatSignedCredits, formatCompactNumber } from "@/lib/format";
 import { formatDateCN } from "@/lib/utils";
 
@@ -29,18 +31,57 @@ const TXN_TYPE_LABEL: Record<string, string> = {
 };
 
 export default function LedgerPage() {
+  const [wallets, setWallets] = React.useState<Wallet[]>([]);
+  const [ledger, setLedger] = React.useState<LedgerEntry[]>([]);
+  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+  const [monthly, setMonthly] = React.useState<MonthlyRevenuePoint[]>([]);
+  const [sources, setSources] = React.useState<RevenueSource[]>([]);
+  const [users, setUsers] = React.useState<AepUser[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
   const [target, setTarget] = React.useState<{ txn: Transaction; action: "approve" | "reject" } | null>(null);
 
-  const pending = TRANSACTIONS.filter((t) => t.status === "pending");
-  const processing = TRANSACTIONS.filter((t) => t.status === "processing");
-  const completed = TRANSACTIONS.filter((t) => t.status === "completed");
+  const reload = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [w, l, tx, mr, rs, u] = await Promise.all([
+        listWallets(0, 200),
+        listLedgerEntries(undefined, undefined, 0, 200),
+        listTransactions(0, 200),
+        getMonthlyRevenue(),
+        getRevenueSources(),
+        listUsers(0, 500),
+      ]);
+      setWallets(w);
+      setLedger(l);
+      setTransactions(tx);
+      setMonthly(mr);
+      setSources(rs);
+      setUsers(u);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const totalBalance = WALLETS.reduce((s, w) => s + w.totalBalance, 0);
-  const totalPending = WALLETS.reduce((s, w) => s + w.pendingBalance, 0);
-  const inflow = TRANSACTIONS.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-  const outflow = -TRANSACTIONS.filter((t) => t.amount < 0).reduce((s, t) => s + t.amount, 0);
+  React.useEffect(() => {
+    void reload();
+  }, [reload]);
 
-  const userNameOf = (id?: string) => ACCOUNTS.find((a) => a.id === id)?.displayName ?? id ?? "—";
+  const userById = React.useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+  const userNameOf = (id?: string) => (id ? userById.get(id)?.displayName : undefined) ?? id ?? "—";
+
+  const pending = transactions.filter((t) => t.status === "pending");
+  const processing = transactions.filter((t) => t.status === "processing");
+  const completed = transactions.filter((t) => t.status === "completed");
+
+  const totalBalance = wallets.reduce((s, w) => s + w.totalBalance, 0);
+  const totalPending = wallets.reduce((s, w) => s + w.pendingBalance, 0);
+  const inflow = transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const outflow = -transactions.filter((t) => t.amount < 0).reduce((s, t) => s + t.amount, 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -54,6 +95,14 @@ export default function LedgerPage() {
           </Button>
         }
       />
+
+      {loadError && (
+        <Card className="mb-6 border-rose-200 bg-rose-50/60">
+          <CardContent className="py-3 text-sm text-rose-700 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" /> 加载失败：{loadError}
+          </CardContent>
+        </Card>
+      )}
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="钱包余额合计" value={formatCredits(totalBalance)} icon={WalletIcon} tone="success" />
@@ -75,7 +124,11 @@ export default function LedgerPage() {
             <CardDescription>单位：积分 · 不含出账</CardDescription>
           </CardHeader>
           <CardContent>
-            <RevenueTrendChart data={REVENUE_MONTHLY} />
+            {monthly.length > 0 ? (
+              <RevenueTrendChart data={monthly} />
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">暂无数据</div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -84,15 +137,19 @@ export default function LedgerPage() {
             <CardDescription>按品类聚合</CardDescription>
           </CardHeader>
           <CardContent>
-            <RevenueSourcePie data={REVENUE_SOURCES} />
+            {sources.length > 0 ? (
+              <RevenueSourcePie data={sources} />
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">暂无数据</div>
+            )}
           </CardContent>
         </Card>
       </section>
 
       <Tabs defaultValue="wallets" className="mb-6">
         <TabsList>
-          <TabsTrigger value="wallets">钱包快照 ({WALLETS.length})</TabsTrigger>
-          <TabsTrigger value="ledger">点数流水 ({LEDGER_ENTRIES.length})</TabsTrigger>
+          <TabsTrigger value="wallets">钱包快照 ({wallets.length})</TabsTrigger>
+          <TabsTrigger value="ledger">点数流水 ({ledger.length})</TabsTrigger>
           <TabsTrigger value="transactions">
             业务交易
             {pending.length + processing.length > 0 && (
@@ -120,7 +177,12 @@ export default function LedgerPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {WALLETS.map((w) => (
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && wallets.map((w) => (
                     <TableRow key={w.id}>
                       <TableCell className="font-medium">{userNameOf(w.userId)}</TableCell>
                       <TableCell className="text-right tabular-nums font-medium">{formatCredits(w.totalBalance)}</TableCell>
@@ -133,6 +195,11 @@ export default function LedgerPage() {
                       <TableCell className="text-sm text-muted-foreground">{formatDateCN(w.updatedAt)}</TableCell>
                     </TableRow>
                   ))}
+                  {!loading && wallets.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无钱包</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -159,7 +226,12 @@ export default function LedgerPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {LEDGER_ENTRIES.map((e) => (
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && ledger.map((e) => (
                     <TableRow key={e.id}>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">#{e.id.toUpperCase()}</TableCell>
                       <TableCell className="text-sm">{userNameOf(e.userId)}</TableCell>
@@ -172,6 +244,11 @@ export default function LedgerPage() {
                       <TableCell className="text-sm text-muted-foreground">{formatDateCN(e.createdAt)}</TableCell>
                     </TableRow>
                   ))}
+                  {!loading && ledger.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无流水</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -202,7 +279,7 @@ export default function LedgerPage() {
                 {([
                   ["actionable", [...pending, ...processing]],
                   ["completed", completed],
-                  ["all", TRANSACTIONS],
+                  ["all", transactions],
                 ] as const).map(([key, rows]) => (
                   <TabsContent key={key} value={key}>
                     <Table>
@@ -246,6 +323,11 @@ export default function LedgerPage() {
                             </TableCell>
                           </TableRow>
                         ))}
+                        {rows.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">暂无交易</TableCell>
+                          </TableRow>
+                        )}
                       </TableBody>
                     </Table>
                   </TabsContent>
@@ -256,7 +338,7 @@ export default function LedgerPage() {
         </TabsContent>
       </Tabs>
 
-      {pending.length === 0 && processing.length === 0 && (
+      {!loading && pending.length === 0 && processing.length === 0 && (
         <Card className="bg-emerald-50/50 border-emerald-200">
           <CardContent className="py-3 text-sm text-emerald-800 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" /> 没有待人工复核的流水。
