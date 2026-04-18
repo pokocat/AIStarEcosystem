@@ -110,15 +110,55 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
     setState(s => ({ ...s, type, talents: { ...ARTIST_TYPE_CONFIG[type].initialTalents } }));
   };
 
+  // 预制 AI 艺人样本库：每种艺人类型配 3 个中文艺名 + 贴合人设的简介
+  const RANDOM_PRESETS: Record<ArtistType, { name: string; bio: string }[]> = {
+    singer: [
+      { name: '星澪 Xingli', bio: '出身于数据星海的电子声线歌手，擅长氛围电子、未来 R&B；代表作《霓虹心跳》《星海回声》。嗓音兼具少年感和金属质感。' },
+      { name: '夜语 Yeyu', bio: '深夜系创作女伶，融合爵士和合成流行。擅长在慢歌中制造情绪钩子，被乐评称为“耳机里的告白”。' },
+      { name: '苏陌 Su Mo', bio: '来自虚拟成都的独立唱作人，偏爱复古蒸汽波；自弹自唱＋AI 编曲，擅长温柔治愈向都市民谣。' },
+    ],
+    actor: [
+      { name: '江予安 Jiang Yu\'an', bio: '虚拟影视新生代，气质沉静、镜头感极强。偏爱悬疑文艺片，被算法标记为“下一位被摄影机宠爱的数字演员”。' },
+      { name: '白见瑟 Bai Jianse', bio: '古装造型担当，五官立体、身段从容；擅长演绎权谋戏与悲情女主，定妆照登上多次站内热搜。' },
+      { name: '陆决 Lu Jue', bio: '数字硬汉系男主，体态挺拔、眼神克制。擅长刑侦、军旅、科幻动作题材，动作捕捉表现稳定。' },
+    ],
+    entertainer: [
+      { name: '叮当 Dingdang', bio: '综艺气氛担当，反应飞快、金句密集。擅长即兴游戏和户外真人秀，主持节奏稳中带皮。' },
+      { name: '米可 Miko', bio: '萌系综艺 AI，天然呆＋高情商，擅长团综和观察类节目。弹幕盛赞“被她逗笑的概率是 92%”。' },
+      { name: '阿栗 A Li', bio: '脱口秀风格综艺咖，冷幽默、善吐槽、能带节目。擅长即兴辩论和段子类 Vlog。' },
+    ],
+    dancer: [
+      { name: '霓九 Ni Jiu', bio: 'K-Pop 风格编舞天才，四肢线条利落，擅长 Urban / Jazz Funk / Girls Hip-Hop；舞台爆发力满分。' },
+      { name: '流云 Liuyun', bio: '中国风古典舞者，水袖、扇舞、长剑均游刃有余；擅长在写意场景中塑造意境感。' },
+      { name: '疾光 Jiguang', bio: '街舞 Breaking 新锐，Power Move 流畅；曾于虚拟舞者大赛拿下全国亚军。' },
+    ],
+    host: [
+      { name: '林慢 Lin Man', bio: '文艺访谈主持人，温柔不冷场、擅长深度对话；声线稳、共情强，是深夜节目的黄金搭子。' },
+      { name: '郑野 Zheng Ye', bio: '新闻资讯主持人，播报节奏干净利落；擅长解读财经与科技事件，逻辑感强。' },
+      { name: '可乐 Kele', bio: '直播带货 AI 主持，口条快、互动爆棚；能同时串场、讲解、控场，是品牌直播的稳定产出者。' },
+    ],
+    all_rounder: [
+      { name: '苏九歌 Su Jiuge', bio: '唱跳演三栖全能 AI，音色辨识度高，舞台控场稳定；粉丝称“数字化时代的流量模板”。' },
+      { name: '陈诺宁 Chen Nuoning', bio: '多栖偶像型，唱歌＋影视＋综艺三线开花；团体出身，单飞后代言数量稳步增长。' },
+      { name: '言夕 Yan Xi', bio: '风格多变的全能 AI，能驾驭古风、电子、日系 City-Pop；擅长舞台剧和短剧跨界。' },
+    ],
+    idol: [
+      { name: '小月芽 Xiaoyueya', bio: '甜系养成偶像，招牌微笑＋元气舞台。粉丝社群活跃度极高，月饼头＋JK 造型是标志性形象。' },
+      { name: '陆昭昭 Lu Zhaozhao', bio: '日系学生偶像路线，声线偏软、表情管理满分；擅长应援向单曲与粉丝互动直播。' },
+      { name: '云希 Yunxi', bio: '韩系酷飒女团风，舞台张力强、Vocal 稳；擅长 Girl Crush 概念曲和团综互动。' },
+    ],
+  };
+
   const randomize = () => {
     const types: ArtistType[] = ['singer', 'actor', 'entertainer', 'dancer', 'host', 'all_rounder', 'idol'];
     const rType = types[Math.floor(Math.random() * types.length)];
-    const names = ['Pixel Dream', 'Nova X', 'Crystal Moon', 'Thunder Byte', 'Velvet Code', 'Cyber Rain', 'Neon Pulse'];
+    const pool = RANDOM_PRESETS[rType];
+    const preset = pool[Math.floor(Math.random() * pool.length)];
     setState({
       ...state,
-      name: names[Math.floor(Math.random() * names.length)],
+      name: preset.name,
       type: rType,
-      bio: zh ? '由AI随机生成的虚拟艺人。' : 'AI-generated virtual artist.',
+      bio: preset.bio,
       sweetness: Math.floor(Math.random() * 100),
       energy: Math.floor(Math.random() * 100),
       mystery: Math.floor(Math.random() * 100),

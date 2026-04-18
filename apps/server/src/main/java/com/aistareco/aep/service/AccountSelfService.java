@@ -57,6 +57,8 @@ public class AccountSelfService {
         if (body.containsKey("displayName")) user.setDisplayName(asString(body.get("displayName")));
         if (body.containsKey("avatarUrl"))   user.setAvatarUrl(asString(body.get("avatarUrl")));
         if (body.containsKey("phone"))       user.setPhone(asString(body.get("phone")));
+        if (body.containsKey("email"))       user.setEmail(asString(body.get("email")));
+        if (body.containsKey("bio"))         user.setBio(asString(body.get("bio")));
         if (body.containsKey("langPreference")) user.setLangPreference(asString(body.get("langPreference")));
 
         user.setUpdatedAt(Instant.now());

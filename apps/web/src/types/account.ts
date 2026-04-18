@@ -18,6 +18,7 @@ export interface AepUser {
   displayName: string;
   avatarUrl?: string;
   walletAddress?: string;       // 链上地址（可选）
+  bio?: string;                 // 用户自填简介
   kind: AccountKind;            // personal=粉丝/普通用户; studio=工作室运营者
   status: AccountStatus;
   emailVerified: boolean;

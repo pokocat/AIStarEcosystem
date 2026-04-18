@@ -30,8 +30,10 @@ import { SettingsPage } from "./producer/SettingsPage";
 import { NotificationPanel } from "./producer/NotificationPanel";
 import { INITIAL_NOTIFICATIONS } from "@/mocks/notifications";
 import type { Notification } from "@/types/notification";
-import { NotificationsApi } from "@/api";
-import { Bell } from 'lucide-react';
+import { NotificationsApi, AccountApi } from "@/api";
+import { Bell, Coins } from 'lucide-react';
+import { formatCredits } from "@/lib/format";
+import type { Wallet as WalletSnapshot } from "@/types/wallet";
 import { CommandPalette } from "./producer/CommandPalette";
 import { ArtistRadarCard } from "./producer/ArtistRadarCard";
 import {
@@ -41,6 +43,7 @@ import {
 import { ActivityFeed } from "./producer/ActivityFeed";
 import { FloatingActions } from "./producer/FloatingActions";
 import { OverviewSkeleton } from "./producer/SkeletonLoader";
+import { usePageParam } from "@/lib/use-page-param";
 
 const EARNING_DATA = [
   { name: '1月', song: 4000, nft: 2400, tips: 1200 },
@@ -446,7 +449,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   const { theme } = useTheme();
   const themeStyles = themeConfig[theme].sidebar;
   const [activeArtist, setActiveArtist] = useState<Artist>(MOCK_ARTISTS[0]);
-  const [activePage, setActivePage] = useState('overview');
+  const [activePage, setActivePage] = usePageParam<string>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [showArtistSwitcher, setShowArtistSwitcher] = useState(false);
@@ -454,6 +457,15 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
   const unreadCount = notifications.filter(n => !n.read).length;
+  const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    AccountApi.getMyWallet()
+      .then((w) => { if (!cancelled) setWallet(w); })
+      .catch(() => { /* 钱包未开通或接口失败，保持占位 */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // 加载真实通知（后端返回空时保留 INITIAL_NOTIFICATIONS 兜底）
   useEffect(() => {
@@ -663,6 +675,15 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
             </button>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setActivePage('finance')}
+              title={zh ? '点击查看账单流水' : 'View ledger'}
+              className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-full px-3 py-1.5 transition">
+              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs font-semibold text-amber-300 tabular-nums">
+                {wallet ? formatCredits(wallet.totalBalance) : '—'}
+              </span>
+            </button>
             <div className="relative">
               <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-lg hover:bg-white/10 transition text-gray-400 hover:text-white">
                 <Bell className="w-4 h-4" />

@@ -235,9 +235,14 @@ export const WardrobePage = ({ lang, activeArtist }: { lang: Lang; activeArtist:
       {/* Detail Panel */}
       <AnimatePresence>
         {selectedItem && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedItemId(null)}>
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={e => e.stopPropagation()}
+          <motion.div key={selectedItem.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            onClick={() => setSelectedItemId(null)}>
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-none" />
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+              onClick={e => e.stopPropagation()}
               className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-md p-6">
               <div className={`w-24 h-24 rounded-xl ${RARITY_STYLES[selectedItem.rarity].bg} flex items-center justify-center mx-auto mb-4`}>
                 <span className="text-5xl">{selectedItem.preview}</span>

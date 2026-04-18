@@ -6,8 +6,11 @@ import {
   Music, Gem,
   ChevronLeft,
   Globe as GlobeIcon,
-  Sparkles, Award, Bell,
+  Sparkles, Award, Bell, Coins,
 } from 'lucide-react';
+import type { Wallet } from "@/types/wallet";
+import { formatCredits } from "@/lib/format";
+import { AccountApi } from "@/api";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
@@ -34,10 +37,11 @@ import {
   CHART_TABS,
   NFT_CATEGORY_TABS,
 } from "@/constants/fan-ui";
+import { usePageParam } from "@/lib/use-page-param";
 
 export const FanAppFull = ({ onBack, lang, setLang }: { onBack: () => void; lang: Lang; setLang: (l: Lang) => void }) => {
   const zh = lang === 'zh';
-  const [activeTab, setActiveTab] = useState<FanTab>('home');
+  const [activeTab, setActiveTab] = usePageParam<FanTab>('home');
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [TrendingArtists, setTrendingArtists] = useState<FanArtist[]>(TrendingArtists_SEED);
@@ -50,6 +54,15 @@ export const FanAppFull = ({ onBack, lang, setLang }: { onBack: () => void; lang
   const [showPlayer] = useState(true);
   const [progress, setProgress] = useState(35);
   const [followedArtists, setFollowedArtists] = useState<Set<string>>(new Set(DefaultFollowedArtistIds));
+  const [wallet, setWallet] = useState<Wallet | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    AccountApi.getMyWallet()
+      .then((w) => { if (!cancelled) setWallet(w); })
+      .catch(() => { /* 钱包未开通 */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +126,12 @@ export const FanAppFull = ({ onBack, lang, setLang }: { onBack: () => void; lang
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full px-3 py-1.5">
+            <Coins className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-semibold text-amber-300 tabular-nums">
+              {wallet ? formatCredits(wallet.totalBalance) : '—'}
+            </span>
+          </div>
           <Button variant="ghost" size="sm" onClick={() => setLang(zh ? 'en' : 'zh')} className="hover:bg-white/10 text-gray-400 h-8">
             <GlobeIcon className="w-3.5 h-3.5 mr-1" /> {zh ? 'EN' : '中'}
           </Button>

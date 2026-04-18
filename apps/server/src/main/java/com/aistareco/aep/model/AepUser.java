@@ -33,6 +33,9 @@ public class AepUser {
     private String avatarUrl;
     private String walletAddress;
 
+    @Column(length = 1024)
+    private String bio;
+
     /**
      * Account kind. Drives whether the studio console is available.
      * personal = consumer / fan; studio = operator running a Studio profile.

@@ -89,7 +89,7 @@ export default function ArtistDetailDialog({ artist, isOpen, onClose, lang, onCr
   ];
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-4xl max-h-[90vh] bg-[#0c0c0e] border-white/10 text-white p-0 overflow-hidden">
         {/* Hero Section */}
         <div className="relative h-64 overflow-hidden">

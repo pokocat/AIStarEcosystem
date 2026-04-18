@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bell, X, Check, CheckCheck, Trash2, Heart, TrendingUp,
   Music, Shield, Users, Sparkles, AlertCircle, Zap
@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "motion/react";
 import type { Lang } from "../../translations";
 import type { Notification } from "@/types/notification";
 import { NOTIFICATION_ICON_MAP as ICON_MAP } from "@/constants/notification-ui";
+import { NotificationsApi } from "@/api";
 
 interface NotificationPanelProps {
   lang: Lang;
@@ -27,9 +28,35 @@ export const NotificationPanel = ({ lang, open, onClose, notifications, setNotif
   const unreadCount = notifications.filter(n => !n.read).length;
   const filtered = filter === 'all' ? notifications : notifications.filter(n => !n.read);
 
-  const markAllRead = () => setNotifications(ns => ns.map(n => ({ ...n, read: true })));
-  const markRead = (id: string) => setNotifications(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
-  const removeNotif = (id: string) => setNotifications(ns => ns.filter(n => n.id !== id));
+  const markAllRead = () => {
+    setNotifications(ns => ns.map(n => ({ ...n, read: true })));
+    NotificationsApi.markAllNotificationsRead().catch(() => { /* optimistic: tolerate failure */ });
+  };
+  const markRead = (id: string) => {
+    setNotifications(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
+    NotificationsApi.markNotificationRead(id).catch(() => { /* optimistic */ });
+  };
+  const removeNotif = (id: string) => {
+    setNotifications(ns => ns.filter(n => n.id !== id));
+    NotificationsApi.deleteNotification(id).catch(() => { /* optimistic */ });
+  };
+
+  // 鼠标离开浮层后 800ms 自动关闭；鼠标再次进入取消关闭
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = () => {
+    if (leaveTimer.current) {
+      clearTimeout(leaveTimer.current);
+      leaveTimer.current = null;
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    leaveTimer.current = setTimeout(() => onClose(), 800);
+  };
+  useEffect(() => {
+    if (!open) cancelClose();
+    return cancelClose;
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -38,6 +65,8 @@ export const NotificationPanel = ({ lang, open, onClose, notifications, setNotif
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={onClose} className="fixed inset-0 z-[100]" />
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
             className="fixed right-4 top-16 w-96 max-w-[calc(100vw-2rem)] max-h-[520px] bg-gray-900 border border-white/10 rounded-xl shadow-2xl z-[110] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-white/5">

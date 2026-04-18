@@ -15,7 +15,7 @@ import type { Lang } from "../../translations";
 import { SETTINGS_SECTIONS } from "@/constants/settings-sections";
 import { RECHARGE_HISTORY } from "@/mocks/settings";
 import type { RechargeRecord } from "@/types/settings";
-import { SettingsApi } from "@/api";
+import { SettingsApi, AccountApi } from "@/api";
 import { formatCredits, formatCurrency } from "@/lib/format";
 
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
@@ -30,13 +30,15 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
   const { theme } = useTheme();
   const [section, setSection] = useState('profile');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Mock form data
+  // Profile 从 /api/me 拉取，保存后回写同一接口
   const [profile, setProfile] = useState({
-    displayName: 'CyberProducer_01',
-    email: 'producer@aistareco.com',
-    bio: zh ? '全栈AI艺人经纪人，专注赛博朋克风格' : 'Full-stack AI artist manager, cyberpunk enthusiast',
-    phone: '+86 138****8888',
+    displayName: '',
+    email: '',
+    bio: '',
+    phone: '',
   });
 
   const [notifications, setNotifications] = useState({
@@ -51,12 +53,37 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
     SettingsApi.listRechargeHistory()
       .then(list => { if (!cancelled && list.length > 0) setRechargeHistory(list); })
       .catch(() => { /* mock 兜底 */ });
+    AccountApi.getMe()
+      .then(me => {
+        if (cancelled) return;
+        setProfile({
+          displayName: me.displayName ?? '',
+          email: me.email ?? '',
+          bio: me.bio ?? '',
+          phone: me.phone ?? '',
+        });
+      })
+      .catch(() => { /* 未登录或接口失败，保持空表单 */ });
     return () => { cancelled = true; };
   }, []);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await AccountApi.updateProfile({
+        displayName: profile.displayName,
+        email: profile.email,
+        bio: profile.bio,
+        phone: profile.phone,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      setSaveError(err?.message ?? (zh ? '保存失败' : 'Save failed'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -114,9 +141,16 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
                   <textarea value={profile.bio} onChange={e => setProfile(p => ({ ...p, bio: e.target.value }))}
                     className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-3 text-sm text-white focus:border-cyan-500/40 focus:outline-none transition h-20 resize-none" />
                 </div>
-                <Button onClick={handleSave} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1">
-                  {saved ? <><Check className="w-4 h-4" /> {zh ? '已保存' : 'Saved'}</> : <><Save className="w-4 h-4" /> {zh ? '保存更改' : 'Save Changes'}</>}
-                </Button>
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1 disabled:opacity-60">
+                    {saving
+                      ? <>{zh ? '保存中...' : 'Saving...'}</>
+                      : saved
+                        ? <><Check className="w-4 h-4" /> {zh ? '已保存' : 'Saved'}</>
+                        : <><Save className="w-4 h-4" /> {zh ? '保存更改' : 'Save Changes'}</>}
+                  </Button>
+                  {saveError && <span className="text-xs text-red-400">{saveError}</span>}
+                </div>
               </div>
             )}
 

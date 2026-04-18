@@ -154,7 +154,7 @@ export default function ArtistSigningDialog({ artist, isOpen, onClose, onSuccess
   const currentStepIndex = steps.findIndex(s => s.key === step);
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent className="max-w-2xl bg-[#0c0c0e] border-white/10 text-white p-0 overflow-hidden">
         {/* Progress Steps */}
         <div className="px-8 pt-8 pb-4">

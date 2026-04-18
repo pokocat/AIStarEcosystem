@@ -15,9 +15,9 @@ export async function getMe(): Promise<AepUser> {
   return apiFetch<AepUser>("/me");
 }
 
-/** 更新当前用户的可编辑资料（displayName / avatarUrl / phone / langPreference） */
+/** 更新当前用户的可编辑资料 */
 export async function updateProfile(
-  data: Partial<Pick<AepUser, "displayName" | "avatarUrl" | "phone" | "langPreference">>
+  data: Partial<Pick<AepUser, "displayName" | "avatarUrl" | "phone" | "email" | "bio" | "langPreference">>
 ): Promise<AepUser> {
   if (USE_MOCK) return mockDelay({ ...CURRENT_USER, ...data });
   return apiFetch<AepUser>("/me", {
