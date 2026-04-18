@@ -51,11 +51,25 @@ public class DevAutoAuthFilter extends OncePerRequestFilter {
 
         if (!alreadyAuthed && (authHeader == null || !authHeader.startsWith("Bearer "))) {
             String path = request.getRequestURI();
-            if (path.startsWith("/api/me/") || path.startsWith("/api/admin/")) {
+            if (shouldAutoAuth(path)) {
                 seedAuth(path);
             }
         }
         chain.doFilter(request, response);
+    }
+
+    /**
+     * 哪些路径需要在 dev 环境下"自动登录"：
+     * - 默认是所有 /api/* 接口（因为绝大多数 controller 会注入 Principal）
+     * - 明确公开的端点排除：/api/auth/**、/api/admin/auth/**、/api/config/**
+     * - 非 /api 前缀（如 /h2-console）不管
+     */
+    private static boolean shouldAutoAuth(String path) {
+        if (path == null || !path.startsWith("/api/")) return false;
+        if (path.startsWith("/api/auth/")) return false;
+        if (path.startsWith("/api/admin/auth/")) return false;
+        if (path.startsWith("/api/config/")) return false;
+        return true;
     }
 
     private void seedAuth(String path) {

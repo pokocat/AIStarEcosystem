@@ -3,6 +3,7 @@ package com.aistareco.aep.config;
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,7 @@ import java.util.UUID;
  * Idempotent: skips when admin staff already exist.
  */
 @Component
+@Order(1)
 public class DataInitializer implements CommandLineRunner {
 
     private final AdminUserRepository adminUserRepo;
