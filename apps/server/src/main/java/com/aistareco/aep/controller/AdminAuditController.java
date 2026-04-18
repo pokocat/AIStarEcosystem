@@ -4,7 +4,6 @@ import com.aistareco.aep.dto.AuditLogDto;
 import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.model.AuditLog;
 import com.aistareco.aep.service.AuditService;
-import com.aistareco.common.ApiResponse;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +23,7 @@ public class AdminAuditController {
     }
 
     @GetMapping
-    public ApiResponse<PageEnvelope<AuditLogDto>> list(
+    public PageEnvelope<AuditLogDto> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String userId,
@@ -33,7 +32,7 @@ public class AdminAuditController {
 
         AuditLog.AuditResult resultEnum = parseResult(result);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(auditService.list(userId, action, resultEnum, pageable)));
+        return PageEnvelope.from(auditService.list(userId, action, resultEnum, pageable));
     }
 
     private AuditLog.AuditResult parseResult(String result) {

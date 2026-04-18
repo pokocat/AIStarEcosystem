@@ -20,12 +20,12 @@ public class AdminCreditController {
     }
 
     @GetMapping("/wallets")
-    public ApiResponse<PageEnvelope<WalletDto>> listWallets(
+    public PageEnvelope<WalletDto> listWallets(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(creditService.listWallets(pageable)));
+        return PageEnvelope.from(creditService.listWallets(pageable));
     }
 
     @GetMapping("/wallets/{userId}")
@@ -37,13 +37,13 @@ public class AdminCreditController {
      * Query ledger entries. Supports filtering by walletId or userId.
      */
     @GetMapping("/ledger-entries")
-    public ApiResponse<PageEnvelope<LedgerEntryDto>> listLedgerEntries(
+    public PageEnvelope<LedgerEntryDto> listLedgerEntries(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String walletId,
             @RequestParam(required = false) String userId) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(creditService.listLedgerEntries(walletId, userId, pageable)));
+        return PageEnvelope.from(creditService.listLedgerEntries(walletId, userId, pageable));
     }
 }

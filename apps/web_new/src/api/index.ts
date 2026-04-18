@@ -3,6 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export * from "./_client";
+export * as AccountApi from "./account";
+export * as AuthApi from "./auth";
 export * as ArtistsApi from "./artists";
 export * as MusicApi from "./music";
 export * as FilmApi from "./film";

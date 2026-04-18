@@ -14,11 +14,14 @@ export type StudioKind =
   | "agency"
   | "mcn";
 
+export type StudioStatus = "active" | "suspended" | "deleted";
+
 export interface Studio {
   id: ID;
   ownerUserId: ID;             // 1:1 → AepUser
   name: string;
   kind: StudioKind;
+  status: StudioStatus;
   bio?: string;
   logoUrl?: string;
   contactEmail?: string;

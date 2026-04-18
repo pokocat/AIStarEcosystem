@@ -25,7 +25,7 @@ public class AdminDigitalIpController {
     }
 
     @GetMapping
-    public ApiResponse<PageEnvelope<DigitalIpDto>> list(
+    public PageEnvelope<DigitalIpDto> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String ownerUserId,
@@ -34,7 +34,7 @@ public class AdminDigitalIpController {
 
         DigitalIp.DigitalIpKind kindEnum = parseEnum(kind, DigitalIp.DigitalIpKind.class, "不支持的类型筛选值");
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(service.list(ownerUserId, studioId, kindEnum, pageable)));
+        return PageEnvelope.from(service.list(ownerUserId, studioId, kindEnum, pageable));
     }
 
     @GetMapping("/{id}")

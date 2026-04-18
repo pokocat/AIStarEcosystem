@@ -16,6 +16,7 @@ export type StudioKind =
 
 export type StudioStatus = "active" | "suspended" | "deleted";
 
+/** 基础 Studio — 与 web_new/types/studio.ts 及后端 StudioDto 对齐 */
 export interface Studio {
   id: ID;
   ownerUserId: ID;
@@ -28,10 +29,12 @@ export interface Studio {
   contactPhone?: string;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+}
 
-  // ── admin 侧聚合指标（只读，由后端计算） ──
-  artistCount: number;       // 名下艺人数
-  songCount: number;         // 名下歌曲数
-  totalRevenueCredits: number; // 累计收益 (credits)
+/** Admin 扩展视图 — 后端 AdminStudioDto 返回的聚合指标（只读） */
+export interface AdminStudio extends Studio {
+  artistCount: number;           // 名下艺人数
+  songCount: number;             // 名下歌曲数
+  totalRevenueCredits: number;   // 累计收益 (credits)
   monthlyRevenueCredits: number; // 当月收益 (credits)
 }

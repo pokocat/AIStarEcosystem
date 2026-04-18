@@ -29,7 +29,7 @@ export const MOCK_ARTISTS: Artist[] = [
     bio: "Cyberpunk风格AI歌手，擅长电子音乐和未来感旋律。",
     domains: ["音乐", "舞台表演"],
     endorsements: 5,
-    commercialValue: "A",
+    commercialValue: 1_200_000,
   },
   {
     id: "2",
@@ -51,7 +51,7 @@ export const MOCK_ARTISTS: Artist[] = [
     bio: "顶级偶像型AI艺人，超强粉丝运营力，应援文化引领者。",
     domains: ["音乐", "综艺", "商业代言", "舞台表演"],
     endorsements: 12,
-    commercialValue: "S",
+    commercialValue: 5_800_000,
   },
   {
     id: "3",
@@ -73,7 +73,7 @@ export const MOCK_ARTISTS: Artist[] = [
     bio: "实力派AI演员，擅长悬疑短剧和情感微电影。",
     domains: ["影视", "商业代言"],
     endorsements: 8,
-    commercialValue: "A+",
+    commercialValue: 2_100_000,
   },
   {
     id: "4",
@@ -95,7 +95,7 @@ export const MOCK_ARTISTS: Artist[] = [
     bio: "顶级综艺咖，笑点密集，弹幕互动王者。",
     domains: ["综艺", "曲艺表演", "游戏娱乐"],
     endorsements: 6,
-    commercialValue: "A+",
+    commercialValue: 3_200_000,
   },
   {
     id: "5",
@@ -117,7 +117,7 @@ export const MOCK_ARTISTS: Artist[] = [
     bio: "街舞风格AI舞者，擅长编舞教学和舞台表演。",
     domains: ["舞台表演", "音乐", "教育培训"],
     endorsements: 2,
-    commercialValue: "B+",
+    commercialValue: 480_000,
   },
   {
     id: "6",
@@ -139,7 +139,7 @@ export const MOCK_ARTISTS: Artist[] = [
     bio: "新人AI主持人，声线温暖，控场能力突出。",
     domains: ["综艺", "教育培训"],
     endorsements: 1,
-    commercialValue: "B",
+    commercialValue: 120_000,
   },
   {
     id: "7",
@@ -161,6 +161,6 @@ export const MOCK_ARTISTS: Artist[] = [
     bio: "传说级全能艺人，跨领域联动王者，无短板的六边形战士。",
     domains: ["音乐", "影视", "综艺", "舞台表演", "商业代言"],
     endorsements: 10,
-    commercialValue: "S",
+    commercialValue: 4_500_000,
   },
 ];

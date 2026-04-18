@@ -1,6 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // mocks/artists.ts — Artist 实体样本数据。
 // 后端尚未接入时，由前端 api 层回退到此。接入后此文件仅用于单测 / Storybook。
+//
+// 数值字段全部为原始整数（fans = 真实粉丝数，revenue = 积分原始值）。
+// 展示侧由 lib/format.ts 处理（formatCompactNumber、formatCredits）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Artist } from "@/types/artist";
@@ -19,14 +22,14 @@ export const MOCK_ARTISTS: Artist[] = [
     talents: { singing: 88, acting: 32, dancing: 65, hosting: 18, comedy: 22, variety: 45 },
     stats: {
       songs: 24, dramas: 1, ads: 5, variety: 3,
-      fans: "128K", revenue: "¥452,000", monthlyRevenue: "¥45,200", popularity: 87,
+      fans: 128_000, revenue: 452_000, monthlyRevenue: 45_200, popularity: 87,
     },
     createdAt: "2024-01-15",
     lastActive: "2025-04-14",
     bio: "Cyberpunk风格AI歌手，擅长电子音乐和未来感旋律。",
     domains: ["音乐", "舞台表演"],
     endorsements: 5,
-    commercialValue: "¥1.2M",
+    commercialValue: 1_200_000,
   },
   {
     id: "2",
@@ -41,14 +44,14 @@ export const MOCK_ARTISTS: Artist[] = [
     talents: { singing: 78, acting: 45, dancing: 82, hosting: 38, comedy: 28, variety: 72 },
     stats: {
       songs: 18, dramas: 3, ads: 12, variety: 8,
-      fans: "326K", revenue: "¥1,280,000", monthlyRevenue: "¥128,000", popularity: 95,
+      fans: 326_000, revenue: 1_280_000, monthlyRevenue: 128_000, popularity: 95,
     },
     createdAt: "2023-11-20",
     lastActive: "2025-04-15",
     bio: "顶级偶像型AI艺人，超强粉丝运营力，应援文化引领者。",
     domains: ["音乐", "综艺", "商业代言", "舞台表演"],
     endorsements: 12,
-    commercialValue: "¥5.8M",
+    commercialValue: 5_800_000,
   },
   {
     id: "3",
@@ -63,14 +66,14 @@ export const MOCK_ARTISTS: Artist[] = [
     talents: { singing: 22, acting: 82, dancing: 18, hosting: 35, comedy: 55, variety: 42 },
     stats: {
       songs: 2, dramas: 15, ads: 8, variety: 5,
-      fans: "89K", revenue: "¥320,000", monthlyRevenue: "¥32,000", popularity: 72,
+      fans: 89_000, revenue: 320_000, monthlyRevenue: 32_000, popularity: 72,
     },
     createdAt: "2024-03-10",
     lastActive: "2025-04-13",
     bio: "实力派AI演员，擅长悬疑短剧和情感微电影。",
     domains: ["影视", "商业代言"],
     endorsements: 8,
-    commercialValue: "¥2.1M",
+    commercialValue: 2_100_000,
   },
   {
     id: "4",
@@ -85,14 +88,14 @@ export const MOCK_ARTISTS: Artist[] = [
     talents: { singing: 25, acting: 42, dancing: 30, hosting: 58, comedy: 85, variety: 90 },
     stats: {
       songs: 5, dramas: 2, ads: 6, variety: 22,
-      fans: "215K", revenue: "¥580,000", monthlyRevenue: "¥58,000", popularity: 88,
+      fans: 215_000, revenue: 580_000, monthlyRevenue: 58_000, popularity: 88,
     },
     createdAt: "2024-02-05",
     lastActive: "2025-04-15",
     bio: "顶级综艺咖，笑点密集，弹幕互动王者。",
     domains: ["综艺", "曲艺表演", "游戏娱乐"],
     endorsements: 6,
-    commercialValue: "¥3.2M",
+    commercialValue: 3_200_000,
   },
   {
     id: "5",
@@ -107,14 +110,14 @@ export const MOCK_ARTISTS: Artist[] = [
     talents: { singing: 30, acting: 18, dancing: 78, hosting: 12, comedy: 20, variety: 35 },
     stats: {
       songs: 3, dramas: 0, ads: 2, variety: 4,
-      fans: "45K", revenue: "¥86,000", monthlyRevenue: "¥8,600", popularity: 62,
+      fans: 45_000, revenue: 86_000, monthlyRevenue: 8_600, popularity: 62,
     },
     createdAt: "2024-06-12",
     lastActive: "2025-04-12",
     bio: "街舞风格AI舞者，擅长编舞教学和舞台表演。",
     domains: ["舞台表演", "音乐", "教育培训"],
     endorsements: 2,
-    commercialValue: "¥480K",
+    commercialValue: 480_000,
   },
   {
     id: "6",
@@ -129,14 +132,14 @@ export const MOCK_ARTISTS: Artist[] = [
     talents: { singing: 18, acting: 28, dancing: 12, hosting: 72, comedy: 38, variety: 55 },
     stats: {
       songs: 1, dramas: 0, ads: 1, variety: 6,
-      fans: "18K", revenue: "¥32,000", monthlyRevenue: "¥3,200", popularity: 45,
+      fans: 18_000, revenue: 32_000, monthlyRevenue: 3_200, popularity: 45,
     },
     createdAt: "2024-09-01",
     lastActive: "2025-04-11",
     bio: "新人AI主持人，声线温暖，控场能力突出。",
     domains: ["综艺", "教育培训"],
     endorsements: 1,
-    commercialValue: "¥120K",
+    commercialValue: 120_000,
   },
   {
     id: "7",
@@ -151,13 +154,13 @@ export const MOCK_ARTISTS: Artist[] = [
     talents: { singing: 72, acting: 68, dancing: 70, hosting: 65, comedy: 60, variety: 75 },
     stats: {
       songs: 15, dramas: 8, ads: 10, variety: 12,
-      fans: "280K", revenue: "¥960,000", monthlyRevenue: "¥96,000", popularity: 91,
+      fans: 280_000, revenue: 960_000, monthlyRevenue: 96_000, popularity: 91,
     },
     createdAt: "2023-08-15",
     lastActive: "2025-04-15",
     bio: "传说级全能艺人，跨领域联动王者，无短板的六边形战士。",
     domains: ["音乐", "影视", "综艺", "舞台表演", "商业代言"],
     endorsements: 10,
-    commercialValue: "¥4.5M",
+    commercialValue: 4_500_000,
   },
 ];

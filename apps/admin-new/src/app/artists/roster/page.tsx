@@ -15,6 +15,7 @@ import { MOCK_ARTISTS } from "@/mocks/artists";
 import { ARTIST_STATUS, ARTIST_QUALITY } from "@/constants/status";
 import { ARTIST_TYPE_META } from "@/constants/artist-meta";
 import { formatDateCN } from "@/lib/utils";
+import { formatCompactNumber, formatCredits } from "@/lib/format";
 
 export default function RosterPage() {
   const [q, setQ] = React.useState("");
@@ -139,8 +140,8 @@ export default function RosterPage() {
                     <TableCell><StatusBadge meta={ARTIST_STATUS[a.status]} /></TableCell>
                     <TableCell><StatusBadge meta={ARTIST_QUALITY[a.quality]} /></TableCell>
                     <TableCell className="text-sm tabular-nums">{a.level}</TableCell>
-                    <TableCell className="text-sm tabular-nums">{a.stats.fans}</TableCell>
-                    <TableCell className="text-sm tabular-nums">{a.stats.monthlyRevenue}</TableCell>
+                    <TableCell className="text-sm tabular-nums">{formatCompactNumber(a.stats.fans)}</TableCell>
+                    <TableCell className="text-sm tabular-nums">{formatCredits(a.stats.monthlyRevenue)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       <div className="flex flex-wrap gap-1 max-w-[180px]">
                         {a.domains.slice(0, 3).map((d) => (

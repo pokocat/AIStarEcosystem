@@ -8,6 +8,7 @@ import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { formatCompactNumber, formatCredits } from "@/lib/format";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
@@ -109,11 +110,11 @@ export default function ArtistLifecyclePage() {
                       <div className="grid grid-cols-2 gap-2 text-xs mb-2.5">
                         <div>
                           <div className="text-muted-foreground">粉丝</div>
-                          <div className="tabular-nums font-medium">{a.stats.fans}</div>
+                          <div className="tabular-nums font-medium">{formatCompactNumber(a.stats.fans)}</div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">月收益</div>
-                          <div className="tabular-nums font-medium">{a.stats.monthlyRevenue}</div>
+                          <div className="tabular-nums font-medium">{formatCredits(a.stats.monthlyRevenue)}</div>
                         </div>
                       </div>
 

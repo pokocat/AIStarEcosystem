@@ -34,13 +34,13 @@ public class AdminStaffController {
     }
 
     @GetMapping
-    public ApiResponse<PageEnvelope<AdminUserDto>> list(
+    public PageEnvelope<AdminUserDto> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<AdminUserDto> result = adminUserRepo.findAll(pageable).map(AdminUserDto::from);
-        return ApiResponse.of(PageEnvelope.from(result));
+        return PageEnvelope.from(result);
     }
 
     @GetMapping("/{id}")

@@ -33,6 +33,10 @@ public class Studio {
     @Column(nullable = false)
     private StudioKind kind;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private StudioStatus status;
+
     @Column(columnDefinition = "TEXT")
     private String bio;
 
@@ -50,5 +54,11 @@ public class Studio {
         VARIETY_STUDIO,
         AGENCY,
         MCN
+    }
+
+    public enum StudioStatus {
+        ACTIVE,
+        SUSPENDED,
+        DELETED
     }
 }

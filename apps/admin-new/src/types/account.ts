@@ -56,3 +56,21 @@ export interface Membership {
   licenseKeyId?: ID;
   joinedAt: ISODateTime;
 }
+
+// ── 管理员账号（后台运营人员）────────────────────────────────────────────────
+// 对应后端 AdminUserDto / admin_users 表
+
+export type AdminRole = "super_admin" | "operator";
+export type AdminStatus = "active" | "suspended";
+
+export interface AdminUser {
+  id: ID;
+  username: string;
+  email: string;
+  displayName: string;
+  role: AdminRole;
+  status: AdminStatus;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+  lastLoginAt?: ISODateTime;
+}

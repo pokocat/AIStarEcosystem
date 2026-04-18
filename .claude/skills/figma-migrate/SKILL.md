@@ -1,6 +1,6 @@
 ---
 name: figma-migrate
-description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web_new，遵循 types/mocks/constants/api/component 五件套 + 中文单语约束。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web_new"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"。完成后必须更新 README 版本日志与 FRONTEND_CONTRACT_DIFF.md。
+description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web_new，并同步到 apps/admin-new（管理后台）和 apps/server（Spring Boot 后端），实现三端数据模型完整对齐。遵循 types/mocks/constants/api/component 五件套 + 中文单语约束 + 三端同步（web_new ↔ admin_new ↔ server）。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web_new"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"、"数据模型对齐"。完成后必须更新 README 版本日志与 FRONTEND_CONTRACT_DIFF.md。
 ---
 
 # Figma → apps/web_new 迁移手册
@@ -25,7 +25,7 @@ description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的
 5. **可选字段访问必须守护**。例：`date ? new Date(date).toLocaleDateString('zh-CN') : ''`，不要写 `date?.toLocaleDateString(...)`（Date 方法在字符串上不存在）。
 6. **Array mutation 必前置 spread**：`[...arr].sort(...)`。
 7. **lucide-react 图标按需 import**。清理后跑 tsc，删除未使用图标。
-8. **无需改后端代码**。发现接口缺口 → 记录到 `apps/web_new/specs/FRONTEND_CONTRACT_DIFF.md`。
+8. **三端同步**。web_new 的每个领域类型都必须同步到 admin_new（admin 是 web 的管理后台，需要管理 web 的所有数据）和 server（后端是数据的最终存储）。具体规则见章节 1.5「三端数据模型对齐 SOP」。
 9. **组件只读 `@/mocks/`，不在 UI 路径上调 API 层**（详见步骤 5 / 6）。
 10. **Skill 自更新义务**。每次迭代结束，回顾本次踩到的新坑、发现的新模式、纠正的旧指引；只要"下次再遇同类场景会复用"，**必须把经验沉淀回本 SKILL.md**（见章节 5）。
 
@@ -119,6 +119,128 @@ export * as XxxApi from "./<domain>";
 4. 确保宿主组件的 `import` 增补了新组件。
 5. 如果是全新路由（而非子页面），则在 `apps/web_new/src/app/<route>/page.tsx` 新建一个 Next App Router 路由壳。
 
+### 步骤 7.5 — 三端数据模型对齐
+
+> **核心原则**：admin_new 是 web_new 的管理后台，web 的所有数据都需要在 admin 里能浏览和运营管理；server 是数据的最终存储和 API 提供方。因此 **web_new 新增/变更的任何领域类型，必须同步到 admin_new 和 server**。
+
+#### 架构约定
+
+```
+┌─────────────┐    /api/*  proxy    ┌──────────────────┐
+│  web_new    │ ──────────────────→ │                  │
+│  :3000      │                      │  Spring Boot     │
+└─────────────┘                      │  server :8080    │
+                                     │                  │
+┌─────────────┐    /api/*  proxy    │  /api/me/*       │
+│  admin_new  │ ──────────────────→ │  /api/admin/*    │
+│  :3001      │                      └──────────────────┘
+└─────────────┘
+```
+
+- web_new 用户端接口路径：`/api/me/*`（登录用户自己的数据）
+- admin_new 管理端接口路径：`/api/admin/*`（全平台数据 CRUD）
+- 两端都通过 `next.config.mjs` rewrites 代理到 `http://localhost:8080`
+
+#### 数值字段一律存原始整数
+
+**不要**在类型定义里用预格式化字符串（如 `fans: "128K"` 或 `revenue: "¥452,000"`）。
+
+正确做法：
+- types 里定义为 `number`
+- mocks 里用原始整数：`fans: 128_000, revenue: 452_000`
+- 组件展示时调用 `lib/format.ts`：`formatCompactNumber(fans)` → `"128K"`
+
+例外：coach/fan 等聚合视图 DTO 中的展示文案字段（如 `SignedArtist.monthlyRevenue`）由后端格式化返回。
+
+#### 每个领域的三端文件清单
+
+当 web_new 新增一个领域 `<domain>` 时，以下文件**全部**需要创建/更新：
+
+**web_new（用户前端）**：
+| 文件 | 作用 |
+|------|------|
+| `src/types/<domain>.ts` | 类型定义（唯一事实源） |
+| `src/mocks/<domain>.ts` | 静态样本数据 |
+| `src/api/<domain>.ts` | API 封装（USE_MOCK 开关） |
+| `src/api/index.ts` | 追加 `export * as XxxApi from "./<domain>"` |
+| `src/constants/<domain>-ui.ts` | UI 配置（图标/颜色/文案映射） |
+| `src/components/.../<Component>.tsx` | 组件 |
+
+**admin_new（管理后台）**：
+| 文件 | 作用 |
+|------|------|
+| `src/types/<domain>.ts` | **与 web_new 完全相同**（直接复制）；如需 admin 扩展字段，用 `interface AdminXxx extends Xxx` |
+| `src/mocks/<domain>.ts` | 样本数据（可加 admin 专属字段如 `userId`） |
+| `src/api/<domain>.ts` | API 封装（路径用 `/admin/<domain>/...`） |
+| `src/api/index.ts` | 追加导出 |
+
+**server（Spring Boot 后端）**：
+| 文件 | 作用 |
+|------|------|
+| `aep/model/<Entity>.java` | JPA 实体（@Entity，表名 `aep_xxx`） |
+| `aep/dto/<Entity>Dto.java` | DTO record（字段名**必须与前端 TS 完全一致**） |
+| `aep/repository/<Entity>Repository.java` | `extends JpaRepository<Entity, String>` |
+| `aep/controller/Admin<Domain>Controller.java` | `@RequestMapping("/api/admin/<domain>")` |
+
+#### Server DTO 字段命名规则
+
+DTO 是前后端的对接契约，字段名必须与前端 TypeScript interface **完全一致**：
+
+| Java model 字段 | DTO 字段 | 前端 TS 字段 | 说明 |
+|-----------------|---------|-------------|------|
+| `description` | `desc` | `desc` | 缩写要跟前端走 |
+| `artistName` | `artist` | `artist` | 视图字段重命名 |
+| `createdAt` (Instant) | `time` (String) | `time` | 相对时间需在 DTO 计算 |
+| `contentType` | `type` | `type` | Java 关键字冲突时 model 改名，DTO 保持 |
+| enum `POST_PRODUCTION` | `"post-production"` | `"post-production"` | 含连字符的用 `wire` 模式 |
+| enum `MUSIC` (PascalCase前端) | `"Music"` | `"Music"` | 前端非全小写的也用 `wire` 模式 |
+
+enum 含连字符的处理模式：
+```java
+public enum DramaStatus {
+    CASTING("casting"), FILMING("filming"),
+    POST_PRODUCTION("post-production"), RELEASED("released");
+    private final String wire;
+    DramaStatus(String w) { this.wire = w; }
+    public String getWire() { return wire; }
+}
+// DTO 里：status = entity.getStatus().getWire()
+```
+
+#### ApiResponse 格式
+
+所有非分页接口返回：
+```json
+{ "success": true, "data": <T>, "message": null }
+```
+
+分页接口直接返回 `PageEnvelope`（**不要**再嵌套 `ApiResponse`）：
+```json
+{
+  "success": true,
+  "data": [...],
+  "pagination": { "page": 0, "limit": 20, "total": 100, "totalPages": 5, "hasNext": true, "hasPrev": false }
+}
+```
+
+#### 对齐自检命令
+
+```bash
+# 1. 对比 web_new 与 admin_new 的 types 目录是否一致
+diff <(ls apps/web_new/src/types/*.ts | xargs -I{} basename {}) \
+     <(ls apps/admin-new/src/types/*.ts | xargs -I{} basename {})
+
+# 2. 确认 admin_new 每个 mock 文件都有对应的 api 文件
+for f in $(ls apps/admin-new/src/mocks/*.ts | xargs -I{} basename {} .ts); do
+  [ -f "apps/admin-new/src/api/$f.ts" ] || echo "MISSING api/$f.ts"
+done
+
+# 3. 编译验证三端
+cd apps/web_new && npx tsc --noEmit
+cd apps/admin-new && npx tsc --noEmit
+cd apps/server && ./mvnw compile -q -o
+```
+
 ### 步骤 8 — 验收
 
 ```bash
@@ -176,19 +298,40 @@ cd apps/web_new && ./node_modules/.bin/tsc --noEmit
 8. **`AnimatePresence` + `motion.div key` 切换**：迁移保留；若出现"切换后不见了"通常是 key 重复或 `mode="wait"` 丢了。
 9. **页面外包 `<AnimatePresence>` 做路由淡入**：Next App Router 按路由单独渲染，跨页动画会消失，这是已知差异（见 README "与 Figma 原型的已知差异"一节）。
 10. **组件在 mount 时 `useEffect` 调 `XxxApi.getXxxOptions()` 会崩**：`USE_MOCK` 默认 `false`，请求打到不存在的 `/api/<domain>/options` 返回 404 HTML，`apiFetch.json()` 解析失败抛 "Invalid JSON from /xxx"。→ 组件直接 `import { XXX_OPTIONS } from "@/mocks/<domain>"`，别走 API 层（2026-04-18 踩坑）。
+11. **admin_new 必须覆盖 web_new 的所有领域**。admin 是 web 的管理后台，web 的所有数据都需要在 admin 里能浏览和运营管理。"这个领域 admin 不需要"的判断几乎总是错的。如果 web_new 有 `types/xxx.ts`，admin_new 就必须有同名文件 + 对应的 api + mocks。（2026-04-18 踩坑：曾错误判断 appearance-forge 是"用户专属功能，admin 不需要"）
+12. **Server DTO 字段名必须与前端 TS 完全一致**。Java model 字段可以用自己的命名（如 `description`、`artistName`、`contentType`），但 DTO record 的字段名必须严格匹配前端（如 `desc`、`artist`、`type`）。DTO 的 `from()` 方法负责做映射。（2026-04-18 踩坑：`entryType` vs `type`、`endorsements` 嵌套位置不一致导致前后端对不上）
+13. **Server ApiResponse 必须包含 `success: true`**。前端 `apiFetch` 在 line 91 校验 `envelope.success !== true` 会拒绝没有 success 字段的响应。分页接口用 `PageEnvelope`（自带 success），不要再套 `ApiResponse`。（2026-04-18 踩坑：原始 ApiResponse 只有 `{ data: T }` 没有 success 字段）
+14. **预格式化字符串 vs 原始数值**。类型里的 `fans`、`revenue`、`monthlyRevenue`、`commercialValue` 等数值字段**必须**定义为 `number`，不要用 `string`。格式化由前端 `lib/format.ts` 统一处理。admin_new 曾错误地把 `fans: string`（如 "128K"），导致与 server 的 `long` 类型对不上。（2026-04-18 踩坑）
+15. **Pagination 格式**。Server 分页接口返回 `PageEnvelope`，前端用 `PaginatedResponse`。两者结构必须一致：`{ success, data[], pagination: { page, limit, total, totalPages, hasNext, hasPrev } }`。Controller 直接返回 `PageEnvelope.from(page)`，**不要**再包一层 `ApiResponse.of(PageEnvelope.from(page))`，否则会出现 `data.data` 双层嵌套。（2026-04-18 踩坑）
 
 ---
 
 ## 4. 完成清单（交付前自检）
 
+### web_new（用户前端）
 - [ ] `types/<domain>.ts` 中所有 interface 导出，字段注释清晰
-- [ ] `mocks/<domain>.ts` 有 ≥ 3 条样本，无 `Date` 对象
+- [ ] `mocks/<domain>.ts` 有 ≥ 3 条样本，无 `Date` 对象，数值字段用原始整数
 - [ ] `constants/<domain>-ui.ts` 抽尽 Tailwind 串 + 图标映射
 - [ ] `api/<domain>.ts` 每个函数都走 `if (USE_MOCK)` 分支；`api/index.ts` 追加命名空间
 - [ ] `components/<path>/<Component>.tsx` 顶部 `"use client"`；全中文；无内联数据；**直接读 mocks**（不在 UI 路径调 API 层）
 - [ ] 宿主组件（ProducerDashboard / CoachDashboard / ...）的 SIDEBAR 与 switch-case 都加了新条目
 - [ ] `tsc --noEmit` 0 error
 - [ ] `npm run dev` 打开新页面不抛 "Invalid JSON from /xxx" 这类运行时错误
+
+### admin_new（管理后台）
+- [ ] `types/<domain>.ts` 与 web_new 版本一致（如有 admin 扩展字段，用 `interface AdminXxx extends Xxx`）
+- [ ] `mocks/<domain>.ts` 样本数据与 web_new 结构对齐（admin 视图可加 `userId` 等管理字段）
+- [ ] `api/<domain>.ts` 每个函数走 `if (USE_MOCK)` 分支；API 路径用 `/admin/<domain>/...`；`api/index.ts` 追加命名空间
+- [ ] `tsc --noEmit` 0 error
+
+### server（Spring Boot 后端）
+- [ ] `aep/model/<Entity>.java` JPA 实体，表名 `aep_xxx`
+- [ ] `aep/dto/<Entity>Dto.java` 字段名与前端 TS interface **完全一致**
+- [ ] `aep/repository/<Entity>Repository.java` extends JpaRepository
+- [ ] `aep/controller/Admin<Domain>Controller.java` 端点路径 `/api/admin/<domain>/...`
+- [ ] `./mvnw compile -q -o` 0 error
+
+### 文档 & 自更新
 - [ ] `README.md` 版本号 + 版本日志 已追加
 - [ ] `specs/FRONTEND_CONTRACT_DIFF.md` 附录已追加
 - [ ] `grep -RIn "{ zh:" apps/web_new/src/components/<path>` 无命中

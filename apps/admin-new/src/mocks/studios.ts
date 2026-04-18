@@ -2,9 +2,9 @@
 // mocks/studios.ts — 经纪公司 / 工作室样本。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Studio } from "@/types/studio";
+import type { AdminStudio } from "@/types/studio";
 
-export const STUDIOS: Studio[] = [
+export const STUDIOS: AdminStudio[] = [
   {
     id: "s-skywave",
     ownerUserId: "u-001",

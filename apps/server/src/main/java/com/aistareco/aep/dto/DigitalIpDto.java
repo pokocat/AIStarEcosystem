@@ -25,6 +25,10 @@ public record DigitalIpDto(
         Stats stats,
         String bio,
         List<String> domains,
+        /** 商业代言数 */
+        int endorsements,
+        /** 商业价值（credits 原始值） */
+        long commercialValue,
         String studioId,
         String ownerUserId,
         Instant createdAt,
@@ -37,8 +41,7 @@ public record DigitalIpDto(
 
     public record Stats(
             int songs, int dramas, int ads, int variety,
-            long fans, long revenue, long monthlyRevenue, int popularity,
-            int endorsements, long commercialValue
+            long fans, long revenue, long monthlyRevenue, int popularity
     ) {}
 
     public static DigitalIpDto from(DigitalIp ip) {
@@ -54,9 +57,10 @@ public record DigitalIpDto(
                 new Stats(
                         ip.getStatSongs(), ip.getStatDramas(), ip.getStatAds(), ip.getStatVariety(),
                         ip.getStatFans(), ip.getStatRevenueCredits(), ip.getStatMonthlyRevenueCredits(),
-                        ip.getStatPopularity(), ip.getStatEndorsements(), ip.getStatCommercialValueCredits()
+                        ip.getStatPopularity()
                 ),
                 ip.getBio(), ip.getDomains(),
+                ip.getStatEndorsements(), ip.getStatCommercialValueCredits(),
                 ip.getStudioId(), ip.getOwnerUserId(),
                 ip.getCreatedAt(), ip.getLastActiveAt(), ip.getUpdatedAt()
         );

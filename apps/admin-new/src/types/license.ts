@@ -32,10 +32,23 @@ export type LicenseKeyStatus = "created" | "activated" | "expired" | "revoked";
 export interface LicenseKey {
   id: ID;
   batchId: ID;
-  maskedCode: string;
+  maskedCode: string;              // "XXXX-XXXX-****-****" 仅展示用
   status: LicenseKeyStatus;
   activatedByUserId?: ID;
   activatedAt?: ISODateTime;
   expiresAt?: ISODateTime;
   createdAt: ISODateTime;
+}
+
+// ── 兑换接口入参 / 出参 ────────────────────────────────────────────────────────
+
+export interface LicenseRedeemRequest {
+  code: string;                    // 用户输入的明文 License Key
+}
+
+export interface LicenseRedeemResult {
+  licenseKeyId: ID;
+  tenantId: ID;
+  creditsGranted: number;
+  newTotalBalance: number;
 }

@@ -10,12 +10,12 @@ import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
 export async function listArtists(): Promise<Artist[]> {
   if (USE_MOCK) return mockDelay(MOCK_ARTISTS);
-  return apiFetch<Artist[]>("/artists");
+  return apiFetch<Artist[]>("/me/digital-ips");
 }
 
 export async function getArtist(id: ID): Promise<Artist | null> {
   if (USE_MOCK) {
     return mockDelay(MOCK_ARTISTS.find((a) => a.id === id) ?? null);
   }
-  return apiFetch<Artist | null>(`/artists/${encodeURIComponent(id)}`);
+  return apiFetch<Artist | null>(`/me/digital-ips/${encodeURIComponent(id)}`);
 }

@@ -28,12 +28,12 @@ public class AdminLicenseController {
     // --- License Batches ---
 
     @GetMapping("/license-batches")
-    public ApiResponse<PageEnvelope<LicenseBatchDto>> listBatches(
+    public PageEnvelope<LicenseBatchDto> listBatches(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(licenseService.listBatches(pageable)));
+        return PageEnvelope.from(licenseService.listBatches(pageable));
     }
 
     @GetMapping("/license-batches/{id}")
@@ -42,7 +42,7 @@ public class AdminLicenseController {
     }
 
     @GetMapping("/license-batches/{id}/keys")
-    public ApiResponse<PageEnvelope<LicenseKeyDto>> listKeysByBatch(
+    public PageEnvelope<LicenseKeyDto> listKeysByBatch(
             @PathVariable String id,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -50,7 +50,7 @@ public class AdminLicenseController {
 
         LicenseKey.LicenseKeyStatus statusEnum = parseStatus(status);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(licenseService.listKeys(id, statusEnum, pageable)));
+        return PageEnvelope.from(licenseService.listKeys(id, statusEnum, pageable));
     }
 
     @PostMapping("/license-batches")
@@ -62,7 +62,7 @@ public class AdminLicenseController {
     // --- License Keys ---
 
     @GetMapping("/license-keys")
-    public ApiResponse<PageEnvelope<LicenseKeyDto>> listKeys(
+    public PageEnvelope<LicenseKeyDto> listKeys(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String batchId,
@@ -70,7 +70,7 @@ public class AdminLicenseController {
 
         LicenseKey.LicenseKeyStatus statusEnum = parseStatus(status);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(licenseService.listKeys(batchId, statusEnum, pageable)));
+        return PageEnvelope.from(licenseService.listKeys(batchId, statusEnum, pageable));
     }
 
     @PutMapping("/license-keys/{id}/revoke")

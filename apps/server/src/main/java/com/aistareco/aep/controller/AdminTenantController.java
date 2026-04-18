@@ -22,12 +22,12 @@ public class AdminTenantController {
     }
 
     @GetMapping
-    public ApiResponse<PageEnvelope<TenantDto>> list(
+    public PageEnvelope<TenantDto> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(tenantService.list(pageable)));
+        return PageEnvelope.from(tenantService.list(pageable));
     }
 
     @GetMapping("/{id}")

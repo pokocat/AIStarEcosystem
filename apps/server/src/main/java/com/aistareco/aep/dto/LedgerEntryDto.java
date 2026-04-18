@@ -9,7 +9,7 @@ public record LedgerEntryDto(
         String id,
         String walletId,
         String userId,
-        String entryType,
+        String type,
         long amount,
         long balanceAfter,
         String description,

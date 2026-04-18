@@ -47,24 +47,24 @@ public class AccountController {
     }
 
     @GetMapping("/ledger")
-    public ApiResponse<PageEnvelope<LedgerEntryDto>> ledger(
+    public PageEnvelope<LedgerEntryDto> ledger(
             Principal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(accountSelfService.listLedger(principal.getName(), pageable)));
+        return PageEnvelope.from(accountSelfService.listLedger(principal.getName(), pageable));
     }
 
     @GetMapping("/digital-ips")
-    public ApiResponse<PageEnvelope<DigitalIpDto>> listDigitalIps(
+    public PageEnvelope<DigitalIpDto> listDigitalIps(
             Principal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(
-                digitalIpService.list(principal.getName(), null, null, pageable)));
+        return PageEnvelope.from(
+                digitalIpService.list(principal.getName(), null, null, pageable));
     }
 
     @GetMapping("/digital-ips/{id}")

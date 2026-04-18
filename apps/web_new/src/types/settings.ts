@@ -24,15 +24,19 @@ export interface SettingsSection {
 // ── 积分包（一次性购买点数的售卖单元） ──────────────────────────────────────
 
 export type CreditPackTier = "starter" | "standard" | "pro" | "enterprise";
+export type CreditPackStatus = "active" | "archived";
 
 export interface CreditPack {
   id: ID;
   code: CreditPackTier;
   name: string;                  // "标准包"
-  credits: number;               // 该包面值（credits 原始数值）
-  priceCents: number;            // 售价（人民币分）
+  /** 包面值（credits 原始数值） */
+  credits: number;
+  /** 售价（人民币分） */
+  priceCents: number;
   highlights: string[];          // 营销卖点
   recommended?: boolean;
+  status: CreditPackStatus;
 }
 
 // ── 充值 / License 兑换历史 ──────────────────────────────────────────────────
@@ -48,4 +52,6 @@ export interface RechargeRecord {
   creditsAdded: number;
   /** 实付金额（人民币分），License 兑换 / 赠送场景为 0 */
   priceCents: number;
+  /** 入账用户 id（admin 侧列表视图） */
+  userId?: ID;
 }

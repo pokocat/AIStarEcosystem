@@ -31,7 +31,7 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public ApiResponse<PageEnvelope<AepUserDto>> list(
+    public PageEnvelope<AepUserDto> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
@@ -40,7 +40,7 @@ public class AdminUserController {
         AepUser.UserStatus statusEnum = parseEnum(status, AepUser.UserStatus.class, "不支持的用户状态筛选值");
         AepUser.AccountKind kindEnum = parseEnum(kind, AepUser.AccountKind.class, "不支持的账号类型筛选值");
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ApiResponse.of(PageEnvelope.from(userService.list(statusEnum, kindEnum, pageable)));
+        return PageEnvelope.from(userService.list(statusEnum, kindEnum, pageable));
     }
 
     @GetMapping("/{id}")

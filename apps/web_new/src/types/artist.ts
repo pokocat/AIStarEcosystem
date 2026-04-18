@@ -72,6 +72,12 @@ export interface Artist {
   domains: string[];
   /** 商业代言数（个） */
   endorsements: number;
-  /** 商业价值评级（预格式化文案，如 "A+"） */
-  commercialValue: string;
+  /** 商业价值（credits 原始值）。展示请用 formatCredits()。 */
+  commercialValue: number;
+  /** 所属工作室 ID（可选） */
+  studioId?: ID;
+  /** 拥有者账户 ID */
+  ownerUserId?: ID;
+  /** 最后更新时间 */
+  updatedAt?: ISODateTime;
 }

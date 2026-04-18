@@ -1,4 +1,25 @@
 {
-  "bypassPermissions": true,
-  "defaultMode": "bypassPermissions"
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(npx tsc *)",
+      "Bash(./mvnw compile *)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/admin-new/next.config.*)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/web_new/src/types/*.ts)",
+      "Bash(xargs -I{} basename {})",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/admin-new/src/types/*.ts)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/web_new/src/api/*.ts)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/admin-new/src/api/*.ts)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/web_new/src/mocks/*.ts)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/admin-new/src/mocks/*.ts)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/dto/*.java)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/dto/*.java)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/model/*.java)",
+      "Bash(xargs -I{} basename {} .java)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/repository/*.java)",
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/controller/*.java)"
+    ],
+    "bypassPermissions": true
+  }
 }

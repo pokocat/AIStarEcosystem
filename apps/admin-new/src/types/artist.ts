@@ -36,17 +36,18 @@ export interface TalentProfile {
 export type TalentKey = keyof TalentProfile;
 
 // ── 艺人业务统计 ──────────────────────────────────────────────────────────────
+// 数值字段全部按 product_spec.md §3.1 存原始整型，展示侧由 lib/format.ts 处理。
 export interface ArtistStats {
   songs: number;                 // 已发行歌曲数
   dramas: number;                // 已参演剧集数
   ads: number;                   // 已接广告数
   variety: number;               // 综艺上节数
-  /** 粉丝数。前端预格式化文案（如 "2.3M"），后端若返回数值，由前端统一格式化。 */
-  fans: string;
-  /** 总收益（预格式化展示文案） */
-  revenue: string;
-  /** 月度收益（预格式化展示文案） */
-  monthlyRevenue: string;
+  /** 粉丝数（原始整数）。展示请用 formatCompactNumber()。 */
+  fans: number;
+  /** 总收益（积分原始值）。展示请用 formatCredits()。 */
+  revenue: number;
+  /** 月度收益（积分原始值） */
+  monthlyRevenue: number;
   /** 人气值 0–100 */
   popularity: number;
 }
@@ -71,6 +72,12 @@ export interface Artist {
   domains: string[];
   /** 商业代言数（个） */
   endorsements: number;
-  /** 商业价值评级（预格式化文案，如 "A+"） */
-  commercialValue: string;
+  /** 商业价值（credits 原始值）。展示请用 formatCredits()。 */
+  commercialValue: number;
+  /** 所属工作室 ID（可选） */
+  studioId?: ID;
+  /** 拥有者账户 ID */
+  ownerUserId?: ID;
+  /** 最后更新时间 */
+  updatedAt?: ISODateTime;
 }

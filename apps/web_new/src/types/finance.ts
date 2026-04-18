@@ -21,6 +21,8 @@ export interface Transaction {
   date: ISODate;
   status: TransactionStatus;
   type: TransactionType;
+  /** 账户持有人 id（可选，用于多账户视图） */
+  userId?: ID;
 }
 
 // ── 月度收益曲线（数值原始） ──────────────────────────────────────────────────

@@ -14,13 +14,13 @@ import { ActionDialog } from "@/components/ActionDialog";
 import { STUDIOS } from "@/mocks/studios";
 import { ACCOUNTS } from "@/mocks/accounts";
 import { STUDIO_KIND, STUDIO_STATUS } from "@/constants/status";
-import type { Studio, StudioKind } from "@/types/studio";
+import type { AdminStudio, StudioKind } from "@/types/studio";
 import { formatCredits } from "@/lib/format";
 
 export default function StudiosPage() {
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<"all" | StudioKind>("all");
-  const [target, setTarget] = React.useState<{ studio: Studio; action: "suspend" | "reactivate" } | null>(null);
+  const [target, setTarget] = React.useState<{ studio: AdminStudio; action: "suspend" | "reactivate" } | null>(null);
 
   const userById = React.useMemo(() => new Map(ACCOUNTS.map((u) => [u.id, u])), []);
 

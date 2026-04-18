@@ -10,6 +10,7 @@ public record StudioDto(
         String ownerUserId,
         String name,
         String kind,
+        String status,
         String bio,
         String logoUrl,
         String contactEmail,
@@ -20,7 +21,8 @@ public record StudioDto(
     public static StudioDto from(Studio s) {
         return new StudioDto(
                 s.getId(), s.getOwnerUserId(), s.getName(),
-                lower(s.getKind()), s.getBio(), s.getLogoUrl(),
+                lower(s.getKind()), lower(s.getStatus()),
+                s.getBio(), s.getLogoUrl(),
                 s.getContactEmail(), s.getContactPhone(),
                 s.getCreatedAt(), s.getUpdatedAt()
         );

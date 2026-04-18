@@ -225,7 +225,7 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-black/30 rounded-lg p-4 border border-white/5">
                   <div className="text-xs text-gray-500 mb-1">{zh ? '商业价值' : 'Commercial Value'}</div>
-                  <div className="text-2xl font-bold text-amber-400" style={{ fontFamily: "var(--font-display)" }}>{artist.commercialValue}</div>
+                  <div className="text-2xl font-bold text-amber-400" style={{ fontFamily: "var(--font-display)" }}>¥{formatCompactNumber(artist.commercialValue)}</div>
                 </div>
                 <div className="bg-black/30 rounded-lg p-4 border border-white/5">
                   <div className="text-xs text-gray-500 mb-1">{zh ? '代言数' : 'Endorsements'}</div>
