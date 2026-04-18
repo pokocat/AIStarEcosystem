@@ -16,7 +16,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class AccountSelfService {
@@ -45,6 +47,24 @@ public class AccountSelfService {
         return userRepo.findById(userId)
                 .map(AepUserDto::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户不存在"));
+    }
+
+    /** 用户修改自己的可编辑字段：displayName / avatarUrl / phone / langPreference。 */
+    public AepUserDto updateCurrentUser(String userId, Map<String, Object> body) {
+        var user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户不存在"));
+
+        if (body.containsKey("displayName")) user.setDisplayName(asString(body.get("displayName")));
+        if (body.containsKey("avatarUrl"))   user.setAvatarUrl(asString(body.get("avatarUrl")));
+        if (body.containsKey("phone"))       user.setPhone(asString(body.get("phone")));
+        if (body.containsKey("langPreference")) user.setLangPreference(asString(body.get("langPreference")));
+
+        user.setUpdatedAt(Instant.now());
+        return AepUserDto.from(userRepo.save(user));
+    }
+
+    private static String asString(Object v) {
+        return v == null ? null : v.toString();
     }
 
     /**

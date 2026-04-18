@@ -5,6 +5,7 @@ import com.aistareco.aep.model.DigitalIp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Wire-format for {@link DigitalIp}.
@@ -31,6 +32,8 @@ public record DigitalIpDto(
         long commercialValue,
         String studioId,
         String ownerUserId,
+        /** 孵化向导产出的自由键值对 */
+        Map<String, Object> incubationParams,
         Instant createdAt,
         Instant lastActive,
         Instant updatedAt
@@ -62,6 +65,7 @@ public record DigitalIpDto(
                 ip.getBio(), ip.getDomains(),
                 ip.getStatEndorsements(), ip.getStatCommercialValueCredits(),
                 ip.getStudioId(), ip.getOwnerUserId(),
+                ip.getIncubationParams(),
                 ip.getCreatedAt(), ip.getLastActiveAt(), ip.getUpdatedAt()
         );
     }

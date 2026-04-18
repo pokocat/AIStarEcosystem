@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Users, Plus, Search, Grid3X3, List, ChevronDown, Eye, Edit, Copy,
   Star, Music, Film, ShoppingBag, Tv, Mic, GraduationCap, Gamepad,
   X, Mic2, Video, Sparkles, Headphones, Zap, Award, TrendingUp,
-  BarChart3, Heart, Crown, ArrowUpRight
+  BarChart3, Heart, Crown, ArrowUpRight, Loader2, AlertCircle
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -16,9 +16,10 @@ import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Responsi
 import type { Lang } from "../../translations";
 import {
   type Artist, type ArtistType, type Quality,
-  MOCK_ARTISTS, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS,
+  ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS,
   QUALITY_CONFIG, STATUS_CONFIG, TALENT_LABELS
 } from './ArtistTypes';
+import { ArtistsApi, ApiError } from "@/api";
 
 /* ======== Artist Detail Dialog ======== */
 const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: Lang; onClose: () => void }) => {
@@ -261,9 +262,33 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
   const [sortBy, setSortBy] = useState<'name' | 'level' | 'revenue'>('level');
   const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    ArtistsApi.listArtists()
+      .then(list => {
+        if (!cancelled) setArtists(list);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        const msg = err instanceof ApiError
+          ? `${err.message}（${err.code}）`
+          : err instanceof Error ? err.message : String(err);
+        setLoadError(msg);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const filtered = useMemo(() => {
-    let list = [...MOCK_ARTISTS];
+    let list = [...artists];
     if (searchQuery) list = list.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()));
     if (typeFilter !== 'all') list = list.filter(a => a.type === typeFilter);
     if (statusFilter !== 'all') list = list.filter(a => a.status === statusFilter);
@@ -273,13 +298,13 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
       return b.stats.revenue - a.stats.revenue;
     });
     return list;
-  }, [searchQuery, typeFilter, statusFilter, sortBy]);
+  }, [artists, searchQuery, typeFilter, statusFilter, sortBy]);
 
   const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: MOCK_ARTISTS.length };
-    MOCK_ARTISTS.forEach(a => { counts[a.type] = (counts[a.type] || 0) + 1; });
+    const counts: Record<string, number> = { all: artists.length };
+    artists.forEach(a => { counts[a.type] = (counts[a.type] || 0) + 1; });
     return counts;
-  }, []);
+  }, [artists]);
 
   return (
     <div className="space-y-6">
@@ -335,8 +360,30 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
         </div>
       </div>
 
+      {/* Loading / Error / Empty */}
+      {loading && (
+        <div className="flex items-center justify-center gap-2 py-16 text-gray-500 text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          {zh ? '正在加载艺人...' : 'Loading artists...'}
+        </div>
+      )}
+      {!loading && loadError && (
+        <div className="flex items-center justify-center gap-2 py-16 text-red-400 text-sm">
+          <AlertCircle className="w-4 h-4" />
+          {zh ? `加载失败：${loadError}` : `Load failed: ${loadError}`}
+        </div>
+      )}
+      {!loading && !loadError && filtered.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-500 text-sm">
+          <Users className="w-8 h-8 mb-3 opacity-50" />
+          {artists.length === 0
+            ? (zh ? '还没有艺人，点击右上角孵化一个吧' : 'No artists yet — create one to get started')
+            : (zh ? '当前筛选下没有匹配的艺人' : 'No artists match the current filter')}
+        </div>
+      )}
+
       {/* Grid View */}
-      {viewMode === 'grid' && (
+      {!loading && !loadError && filtered.length > 0 && viewMode === 'grid' && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((artist, i) => {
             const typeConf = ARTIST_TYPE_CONFIG[artist.type];
@@ -420,7 +467,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
       )}
 
       {/* List View */}
-      {viewMode === 'list' && (
+      {!loading && !loadError && filtered.length > 0 && viewMode === 'list' && (
         <div className="bg-gray-900/50 border border-white/5 rounded-xl overflow-hidden">
           <table className="w-full">
             <thead>

@@ -16,6 +16,7 @@ import {
   type ArtistType, type TalentProfile,
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, QUALITY_CONFIG, TALENT_LABELS
 } from './ArtistTypes';
+import { ArtistsApi, ApiError } from "@/api";
 
 interface WizardState {
   name: string;
@@ -122,9 +123,72 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
     });
   };
 
-  const handleCreate = () => {
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
+
+  const trimmedName = state.name.trim();
+  const trimmedBio = state.bio.trim();
+  const basicValid = trimmedName.length > 0 && trimmedBio.length > 0;
+  const nameError = showValidation && trimmedName.length === 0;
+  const bioError = showValidation && trimmedBio.length === 0;
+
+  const goNext = () => {
+    if (step === 0 && !basicValid) {
+      setShowValidation(true);
+      return;
+    }
+    setShowValidation(false);
+    setStep(s => s + 1);
+  };
+
+  const handleCreate = async () => {
+    if (!basicValid) {
+      setShowValidation(true);
+      setStep(0);
+      return;
+    }
     setCreating(true);
-    setTimeout(() => { setCreating(false); setCreated(true); }, 2000);
+    setErrorMsg(null);
+    try {
+      await ArtistsApi.createArtist({
+        name: trimmedName,
+        type: state.type,
+        quality: "common",
+        status: "trainee",
+        level: 1,
+        exp: 0,
+        maxExp: 100,
+        avatar: "",
+        talents: state.talents,
+        stats: {
+          songs: 0, dramas: 0, ads: 0, variety: 0,
+          fans: 0, revenue: 0, monthlyRevenue: 0, popularity: 0,
+        },
+        bio: trimmedBio,
+        domains: [],
+        endorsements: 0,
+        commercialValue: 0,
+        incubationParams: {
+          faceStyle: state.faceStyle,
+          fashionStyle: state.fashionStyle,
+          age: state.age,
+          height: state.height,
+          sweetness: state.sweetness,
+          energy: state.energy,
+          mystery: state.mystery,
+          confidence: state.confidence,
+          extraPersona: state.extraPersona,
+        },
+      });
+      setCreated(true);
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? `创建失败：${err.message}（${err.code}）`
+        : `创建失败：${err instanceof Error ? err.message : String(err)}`;
+      setErrorMsg(msg);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const talentKeys = Object.keys(TALENT_LABELS) as (keyof TalentProfile)[];
@@ -191,16 +255,26 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
               <div className="space-y-5">
                 <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-4">
                   <div>
-                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.name}</label>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                      {t.name} <span className="text-red-400">*</span>
+                    </label>
                     <input value={state.name} onChange={e => setState(s => ({ ...s, name: e.target.value }))}
-                      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none transition"
+                      className={`w-full bg-black/30 border rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none transition ${nameError ? 'border-red-500/60 focus:border-red-500/80' : 'border-white/10 focus:border-cyan-500/40'}`}
                       placeholder={t.name_placeholder} />
+                    {nameError && (
+                      <p className="mt-1 text-xs text-red-400">{zh ? '请填写艺人名称' : 'Artist name is required'}</p>
+                    )}
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.bio}</label>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                      {t.bio} <span className="text-red-400">*</span>
+                    </label>
                     <textarea value={state.bio} onChange={e => setState(s => ({ ...s, bio: e.target.value }))}
-                      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none transition h-24 resize-none"
+                      className={`w-full bg-black/30 border rounded-lg px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none transition h-24 resize-none ${bioError ? 'border-red-500/60 focus:border-red-500/80' : 'border-white/10 focus:border-cyan-500/40'}`}
                       placeholder={t.bio_placeholder} />
+                    {bioError && (
+                      <p className="mt-1 text-xs text-red-400">{zh ? '请填写艺人简介' : 'Bio is required'}</p>
+                    )}
                   </div>
                   <Button variant="outline" size="sm" className="border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/10 gap-1 text-xs">
                     <Wand2 className="w-3 h-3" /> {t.ai_suggest}
@@ -426,14 +500,24 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
           <ArrowLeft className="w-3.5 h-3.5" /> {step === 0 ? t.btn_cancel : t.btn_prev}
         </Button>
         {step < 4 ? (
-          <Button size="sm" onClick={() => setStep(s => s + 1)} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1">
+          <Button size="sm" onClick={goNext} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1">
             {t.btn_next} <ArrowRight className="w-3.5 h-3.5" />
           </Button>
         ) : (
-          <Button size="sm" onClick={handleCreate} disabled={creating || !state.name}
-            className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1 disabled:opacity-50">
-            {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {t.creating}</> : <><Sparkles className="w-3.5 h-3.5" /> {t.btn_create}</>}
-          </Button>
+          <div className="flex flex-col items-end gap-2">
+            {errorMsg && (
+              <div className="text-xs text-red-400 max-w-xs text-right">{errorMsg}</div>
+            )}
+            {!basicValid && (
+              <div className="text-xs text-red-400 max-w-xs text-right">
+                {zh ? '请先在第一步填写艺人名称与简介' : 'Fill in name and bio in Step 1 first'}
+              </div>
+            )}
+            <Button size="sm" onClick={handleCreate} disabled={creating || !basicValid}
+              className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1 disabled:opacity-50">
+              {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {t.creating}</> : <><Sparkles className="w-3.5 h-3.5" /> {t.btn_create}</>}
+            </Button>
+          </div>
         )}
       </div>
     </div>

@@ -147,6 +147,7 @@ public class DataInitializer implements CommandLineRunner {
                 .ownerUserId(studioUser.getId())
                 .name("星光工作室")
                 .kind(Studio.StudioKind.AGENCY)
+                .status(Studio.StudioStatus.ACTIVE)
                 .bio("专注于 AI 虚拟艺人孵化的精品工作室。")
                 .contactEmail("contact@starlight.example.com")
                 .createdAt(now.minus(30, ChronoUnit.DAYS))

@@ -35,7 +35,8 @@ public class Studio {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private StudioStatus status;
+    @Builder.Default
+    private StudioStatus status = StudioStatus.ACTIVE;
 
     @Column(columnDefinition = "TEXT")
     private String bio;
@@ -46,6 +47,13 @@ public class Studio {
 
     private Instant createdAt;
     private Instant updatedAt;
+
+    @PrePersist
+    void applyDefaults() {
+        if (status == null) {
+            status = StudioStatus.ACTIVE;
+        }
+    }
 
     public enum StudioKind {
         PERSONAL_CREATOR,

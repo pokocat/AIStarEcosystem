@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -11,11 +11,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import {
   Music, Play, TrendingUp, DollarSign,
   Calendar, MapPin, Users, Star, Clock, Zap, BarChart3,
-  Disc3, Headphones, Share2, Eye, Plus, Trophy
+  Disc3, Headphones, Share2, Eye, Plus, Trophy, Loader2, AlertCircle
 } from 'lucide-react';
-import type { Song, Album, Concert } from '@/types/music';
-import { SONGS, ALBUMS, CONCERTS, MUSIC_GENRES } from '@/mocks/music';
+import type { Song, Album, Concert, MusicGenre } from '@/types/music';
 import { MUSIC_STATUS_COLORS } from '@/constants/music-ui';
+import { MusicApi, ApiError } from '@/api';
 
 interface MusicBusinessProps {
   lang: 'zh' | 'en';
@@ -26,17 +26,40 @@ interface MusicBusinessProps {
 export function MusicBusiness({ lang, artist, onBack }: MusicBusinessProps) {
   const [activeTab, setActiveTab] = useState('overview');
 
-  // 歌曲库
-  const [songs, setSongs] = useState<Song[]>(SONGS);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [concerts, setConcerts] = useState<Concert[]>([]);
+  const [musicGenres, setMusicGenres] = useState<MusicGenre[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 专辑库
-  const [albums, setAlbums] = useState<Album[]>(ALBUMS);
-
-  // 演唱会
-  const [concerts, setConcerts] = useState<Concert[]>(CONCERTS);
-
-  // 音乐风格
-  const musicGenres = MUSIC_GENRES;
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    Promise.all([
+      MusicApi.listSongs(),
+      MusicApi.listAlbums(),
+      MusicApi.listConcerts(),
+      MusicApi.listGenres(),
+    ])
+      .then(([s, a, c, g]) => {
+        if (cancelled) return;
+        setSongs(s);
+        setAlbums(a);
+        setConcerts(c);
+        setMusicGenres(g);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        const msg = err instanceof ApiError
+          ? `${err.message}（${err.code}）`
+          : err instanceof Error ? err.message : String(err);
+        setLoadError(msg);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // 计算总统计
   const totalStats = {
@@ -57,6 +80,22 @@ export function MusicBusiness({ lang, artist, onBack }: MusicBusinessProps) {
   };
 
   const statusColors = MUSIC_STATUS_COLORS;
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center gap-2 text-gray-500 text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" /> 正在加载音乐业务数据...
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="h-full flex items-center justify-center gap-2 text-red-400 text-sm">
+        <AlertCircle className="w-4 h-4" /> 加载失败：{loadError}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">

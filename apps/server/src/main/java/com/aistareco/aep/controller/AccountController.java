@@ -36,6 +36,11 @@ public class AccountController {
         return ApiResponse.of(accountSelfService.getCurrentUser(principal.getName()));
     }
 
+    @PatchMapping
+    public ApiResponse<AepUserDto> updateMe(Principal principal, @RequestBody Map<String, Object> body) {
+        return ApiResponse.of(accountSelfService.updateCurrentUser(principal.getName(), body));
+    }
+
     @GetMapping("/tenants")
     public ApiResponse<List<TenantDto>> tenants(Principal principal) {
         return ApiResponse.of(accountSelfService.listCurrentTenants(principal.getName()));

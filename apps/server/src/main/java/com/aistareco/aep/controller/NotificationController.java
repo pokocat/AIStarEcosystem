@@ -1,0 +1,75 @@
+package com.aistareco.aep.controller;
+
+import com.aistareco.aep.dto.NotificationDto;
+import com.aistareco.aep.model.Notification;
+import com.aistareco.aep.repository.NotificationRepository;
+import com.aistareco.common.ApiResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.security.Principal;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 当前用户的通知中心：/api/notifications/*。
+ * 管理写入（面向所有用户）仍走 {@link AdminNotificationController}。
+ */
+@RestController
+@RequestMapping("/api/notifications")
+public class NotificationController {
+
+    private final NotificationRepository repo;
+
+    public NotificationController(NotificationRepository repo) {
+        this.repo = repo;
+    }
+
+    @GetMapping
+    public ApiResponse<List<NotificationDto>> list(Principal principal) {
+        List<NotificationDto> items = repo.findByUserIdOrderByCreatedAtDesc(principal.getName())
+                .stream().map(NotificationDto::from).toList();
+        return ApiResponse.of(items);
+    }
+
+    @PostMapping("/{id}/read")
+    public ApiResponse<NotificationDto> markRead(Principal principal, @PathVariable String id) {
+        Notification n = loadOwned(id, principal.getName());
+        n.setRead(true);
+        repo.save(n);
+        return ApiResponse.of(NotificationDto.from(n));
+    }
+
+    @PostMapping("/read-all")
+    @Transactional
+    public ApiResponse<Map<String, Object>> markAllRead(Principal principal) {
+        List<Notification> mine = repo.findByUserIdOrderByCreatedAtDesc(principal.getName());
+        int updated = 0;
+        for (Notification n : mine) {
+            if (!n.isRead()) {
+                n.setRead(true);
+                updated++;
+            }
+        }
+        if (updated > 0) repo.saveAll(mine);
+        return ApiResponse.of(Map.of("updated", updated));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(Principal principal, @PathVariable String id) {
+        Notification n = loadOwned(id, principal.getName());
+        repo.delete(n);
+    }
+
+    private Notification loadOwned(String id, String userId) {
+        Notification n = repo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "通知不存在"));
+        if (!userId.equals(n.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作该通知");
+        }
+        return n;
+    }
+}

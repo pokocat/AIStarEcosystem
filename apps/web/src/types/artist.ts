@@ -80,4 +80,11 @@ export interface Artist {
   ownerUserId?: ID;
   /** 最后更新时间 */
   updatedAt?: ISODateTime;
+  /**
+   * 孵化 / 设定参数 —— 自由键值对。
+   * 由孵化向导产出（如 faceStyle / fashionStyle / age / height /
+   * sweetness / energy / mystery / confidence / extraPersona 等）。
+   * 存在于后端 JSON 列 digital_ips.incubation_params，字段可随业务演进新增。
+   */
+  incubationParams?: Record<string, unknown>;
 }

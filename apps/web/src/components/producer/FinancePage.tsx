@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Wallet, TrendingUp, ArrowDownToLine, ArrowUpRight, CreditCard,
   PieChart as PieChartIcon, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, BarChart3, Coins, Banknote, Receipt, Download
+  DollarSign, BarChart3, Coins, Banknote, Receipt, Download, Loader2
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -12,19 +12,75 @@ import { motion } from "motion/react";
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 import type { Lang } from "../../translations";
 import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTypes';
-import type { Transaction } from "@/types/finance";
-import { REVENUE_MONTHLY, REVENUE_SOURCES, TRANSACTIONS } from "@/mocks/finance";
+import type { Transaction, TransactionStatus, TransactionType } from "@/types/finance";
+import type { Wallet as WalletModel, LedgerEntry, LedgerEntryType } from "@/types/wallet";
+import { REVENUE_MONTHLY, REVENUE_SOURCES } from "@/mocks/finance";
 import { formatCredits, formatSignedCredits } from "@/lib/format";
 import { toast } from "@/lib/toast";
+import { AccountApi, ApiError } from "@/api";
+
+// LedgerEntry → Transaction（展示侧投影）
+const LEDGER_TO_TX_TYPE: Record<LedgerEntryType, TransactionType> = {
+  license_grant: "license_grant",
+  recharge: "recharge",
+  refund: "recharge",
+  income: "income",
+  gift: "income",
+  spend: "spend",
+  withdraw: "withdrawal",
+  freeze: "spend",
+  unfreeze: "income",
+  adjust: "income",
+};
+
+function ledgerToTransaction(entry: LedgerEntry): Transaction {
+  const status: TransactionStatus = entry.type === "freeze" ? "pending" : "completed";
+  return {
+    id: entry.id,
+    source: entry.description || entry.type,
+    amount: entry.amount,
+    date: (entry.createdAt || "").slice(0, 10),
+    status,
+    type: LEDGER_TO_TX_TYPE[entry.type] ?? "income",
+    userId: entry.userId,
+  };
+}
 
 export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: Artist }) => {
   const zh = lang === 'zh';
   const [tab, setTab] = useState<'overview' | 'transactions'>('overview');
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
 
-  const totalBalance = '¥128,500';
-  const pendingAmount = '¥5,300';
+  const [wallet, setWallet] = useState<WalletModel | null>(null);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    Promise.all([AccountApi.getMyWallet(), AccountApi.getMyLedger(0, 50)])
+      .then(([w, entries]) => {
+        if (cancelled) return;
+        setWallet(w);
+        setLedger(entries);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        const msg = err instanceof ApiError
+          ? `${err.message}（${err.code}）`
+          : err instanceof Error ? err.message : String(err);
+        setLoadError(msg);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const totalBalance = wallet ? formatCredits(wallet.totalBalance) : '—';
+  const pendingAmount = wallet ? formatCredits(wallet.pendingBalance) : '—';
   const monthlyRevenue = formatCredits(activeArtist.stats.monthlyRevenue);
+  const transactions = useMemo(() => ledger.map(ledgerToTransaction), [ledger]);
 
   return (
     <div className="space-y-6">
@@ -142,6 +198,22 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
 
       {tab === 'transactions' && (
         <div className="bg-gray-900/50 border border-white/5 rounded-xl overflow-hidden">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-10 text-gray-500 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {zh ? '正在加载流水...' : 'Loading ledger...'}
+            </div>
+          )}
+          {!loading && loadError && (
+            <div className="flex items-center justify-center gap-2 py-10 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4" />
+              {zh ? `加载失败：${loadError}` : `Load failed: ${loadError}`}
+            </div>
+          )}
+          {!loading && !loadError && transactions.length === 0 && (
+            <div className="py-10 text-center text-gray-500 text-sm">{zh ? '暂无交易流水' : 'No transactions yet'}</div>
+          )}
+          {!loading && !loadError && transactions.length > 0 && (
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/5">
@@ -151,7 +223,7 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
               </tr>
             </thead>
             <tbody>
-              {TRANSACTIONS.map((tx, i) => (
+              {transactions.map((tx, i) => (
                 <motion.tr key={tx.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .04 }}
                   className="border-b border-white/5 hover:bg-white/[0.02] transition">
                   <td className="px-4 py-3">
@@ -177,6 +249,7 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
               ))}
             </tbody>
           </table>
+          )}
         </div>
       )}
     </div>

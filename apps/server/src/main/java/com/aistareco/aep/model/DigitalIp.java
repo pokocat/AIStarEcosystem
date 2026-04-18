@@ -1,11 +1,13 @@
 package com.aistareco.aep.model;
 
+import com.aistareco.common.JsonMapConverter;
 import com.aistareco.common.StringListConverter;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Digital IP — the platform's first-class managed IP entity (虚拟艺人 / IP).
@@ -75,6 +77,15 @@ public class DigitalIp {
     @Column(columnDefinition = "TEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> domains;
+
+    /**
+     * 孵化 / 设定参数 —— 由前端孵化向导产出的自由键值对
+     * (e.g. faceStyle, fashionStyle, age, height, sweetness, energy, mystery, confidence…)
+     * 以 JSON 形式存在单列，字段演进时无需迁移表结构。
+     */
+    @Column(name = "incubation_params", columnDefinition = "TEXT")
+    @Convert(converter = JsonMapConverter.class)
+    private Map<String, Object> incubationParams;
 
     /** FK → aep_studios.id (nullable; an IP may not yet be attached to a Studio). */
     private String studioId;

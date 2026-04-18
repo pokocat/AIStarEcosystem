@@ -72,11 +72,13 @@ public class DigitalIpService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studioId 对应的工作室不存在: " + studioId);
         }
 
+        // 前端 Artist 类型用 `type` 字段，DTO 输出也是 `type`；同时兼容 `kind`。
+        String kindKey = body.containsKey("type") ? "type" : "kind";
         Instant now = Instant.now();
         DigitalIp ip = DigitalIp.builder()
                 .id(UUID.randomUUID().toString())
                 .name(requireString(body, "name"))
-                .kind(parseEnum(body, "kind", DigitalIp.DigitalIpKind.class, DigitalIp.DigitalIpKind.SINGER))
+                .kind(parseEnum(body, kindKey, DigitalIp.DigitalIpKind.class, DigitalIp.DigitalIpKind.SINGER))
                 .quality(parseEnum(body, "quality", DigitalIp.Quality.class, DigitalIp.Quality.COMMON))
                 .status(parseEnum(body, "status", DigitalIp.DigitalIpStatus.class, DigitalIp.DigitalIpStatus.TRAINEE))
                 .level(getInt(body, "level", 1))
@@ -93,6 +95,7 @@ public class DigitalIpService {
         applyTalents(ip, asMap(body.get("talents")));
         applyStats(ip, asMap(body.get("stats")));
         applyDomains(ip, body.get("domains"));
+        applyIncubationParams(ip, body.get("incubationParams"));
 
         return DigitalIpDto.from(ipRepo.save(ip));
     }
@@ -126,7 +129,9 @@ public class DigitalIpService {
 
     private DigitalIp applyUpdate(DigitalIp ip, Map<String, Object> body) {
         if (body.containsKey("name")) ip.setName(getString(body, "name"));
-        if (body.containsKey("kind")) ip.setKind(DigitalIp.DigitalIpKind.valueOf(getString(body, "kind").toUpperCase(Locale.ROOT)));
+        // `type` 与 `kind` 均可（前端 Artist.type → 后端 DigitalIp.kind）
+        if (body.containsKey("type")) ip.setKind(DigitalIp.DigitalIpKind.valueOf(getString(body, "type").toUpperCase(Locale.ROOT)));
+        else if (body.containsKey("kind")) ip.setKind(DigitalIp.DigitalIpKind.valueOf(getString(body, "kind").toUpperCase(Locale.ROOT)));
         if (body.containsKey("quality")) ip.setQuality(DigitalIp.Quality.valueOf(getString(body, "quality").toUpperCase(Locale.ROOT)));
         if (body.containsKey("status")) ip.setStatus(DigitalIp.DigitalIpStatus.valueOf(getString(body, "status").toUpperCase(Locale.ROOT)));
         if (body.containsKey("level")) ip.setLevel(getInt(body, "level", ip.getLevel()));
@@ -157,6 +162,7 @@ public class DigitalIpService {
         if (body.containsKey("talents")) applyTalents(ip, asMap(body.get("talents")));
         if (body.containsKey("stats")) applyStats(ip, asMap(body.get("stats")));
         if (body.containsKey("domains")) applyDomains(ip, body.get("domains"));
+        if (body.containsKey("incubationParams")) applyIncubationParams(ip, body.get("incubationParams"));
         if (body.containsKey("lastActive")) ip.setLastActiveAt(parseInstant(body.get("lastActive")));
 
         ip.setUpdatedAt(Instant.now());
@@ -185,6 +191,26 @@ public class DigitalIpService {
         if (stats.containsKey("popularity")) ip.setStatPopularity(toInt(stats.get("popularity"), ip.getStatPopularity()));
         if (stats.containsKey("endorsements")) ip.setStatEndorsements(toInt(stats.get("endorsements"), ip.getStatEndorsements()));
         if (stats.containsKey("commercialValue")) ip.setStatCommercialValueCredits(toLong(stats.get("commercialValue"), ip.getStatCommercialValueCredits()));
+    }
+
+    /**
+     * 合并孵化参数 —— 不覆盖旧键，传入 {@code null} 则整体清空。
+     * 前端 PATCH/PUT 可以只传需要更新的键，例如 {@code {"age": 22}}。
+     */
+    private void applyIncubationParams(DigitalIp ip, Object raw) {
+        if (raw == null) {
+            ip.setIncubationParams(null);
+            return;
+        }
+        Map<String, Object> incoming = asMap(raw);
+        if (incoming == null) return;
+        Map<String, Object> current = ip.getIncubationParams();
+        if (current == null) {
+            ip.setIncubationParams(new java.util.LinkedHashMap<>(incoming));
+        } else {
+            current.putAll(incoming);
+            ip.setIncubationParams(current);
+        }
     }
 
     @SuppressWarnings("unchecked")

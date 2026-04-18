@@ -18,7 +18,8 @@
       "Bash(xargs -I{} basename {} .java)",
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/repository/*.java)",
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/controller/*.java)",
-      "Bash(ls *)"
+      "Bash(ls *)",
+      "Bash(./mvnw -q -o compile)"
     ],
     "defaultMode": "bypassPermissions",
     "bypassPermissions": true
