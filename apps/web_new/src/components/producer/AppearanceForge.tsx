@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   Sparkles, Upload, Shuffle, Type, Layers, Image as ImageIcon,
   Lock, Unlock, RefreshCw, Download, Save, History,
@@ -11,14 +11,8 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import type { Lang } from "../../translations";
 import { type Artist } from "./ArtistTypes";
-import type {
-  ForgeMode,
-  ForgeOptions,
-  ForgeRequest,
-  ForgeResult,
-} from "@/types/appearance-forge";
+import type { ForgeMode, ForgeResult } from "@/types/appearance-forge";
 import {
-  FORGE_OPTIONS as DEFAULT_OPTIONS,
   FORGE_TEMPLATES,
   HAIR_STYLES,
   EYE_COLORS,
@@ -31,8 +25,10 @@ import {
   MODE_CONFIG,
   FORGE_BUTTON_GRADIENT,
   FORGE_HISTORY_MAX,
+  MOCK_FORGE_DURATION_MS,
 } from "@/constants/appearance-forge-ui";
-import { AppearanceForgeApi } from "@/api";
+// 真后端接入时改为 `import { AppearanceForgeApi } from "@/api";` 并调用 `AppearanceForgeApi.generateForge/saveForgeBlueprint`。
+// 当前兄弟组件统一直接消费 mocks，避免在 `NEXT_PUBLIC_USE_MOCK` 未设置时打到不存在的后端。
 
 interface Props {
   // 保留 lang 形参以与兄弟组件签名一致（web_new 已收敛为中文单语，不读取此值）。
@@ -41,7 +37,6 @@ interface Props {
 }
 
 export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
-  const [options, setOptions] = useState<ForgeOptions>(DEFAULT_OPTIONS);
   const [mode, setMode] = useState<ForgeMode>("template_photo");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
@@ -61,22 +56,13 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
   const [lockedFeatures, setLockedFeatures] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 拉取静态选项（mock 下几乎瞬时返回；真实后端下可能有网络延迟）。
-  useEffect(() => {
-    let cancelled = false;
-    AppearanceForgeApi.getForgeOptions().then(opts => {
-      if (!cancelled) setOptions(opts);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  const templates = options.templates.length ? options.templates : FORGE_TEMPLATES;
-  const hairs = options.hairStyles.length ? options.hairStyles : HAIR_STYLES;
-  const eyes = options.eyeColors.length ? options.eyeColors : EYE_COLORS;
-  const tags = options.styleTags.length ? options.styleTags : STYLE_TAGS;
-  const sliders = options.faceSliders.length ? options.faceSliders : FACE_SLIDERS;
-  const schemes = options.colorSchemes.length ? options.colorSchemes : COLOR_SCHEMES;
-  const suggestions = options.promptSuggestions.length ? options.promptSuggestions : PROMPT_SUGGESTIONS;
+  const templates = FORGE_TEMPLATES;
+  const hairs = HAIR_STYLES;
+  const eyes = EYE_COLORS;
+  const tags = STYLE_TAGS;
+  const sliders = FACE_SLIDERS;
+  const schemes = COLOR_SCHEMES;
+  const suggestions = PROMPT_SUGGESTIONS;
 
   const handleUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -94,30 +80,23 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
     setLockedFeatures(prev => prev.includes(feature) ? prev.filter(f => f !== feature) : [...prev, feature]);
   };
 
-  const buildRequest = (): ForgeRequest => ({
-    artistId: activeArtist.id,
-    mode,
-    templateId: selectedTemplate,
-    uploadedPhoto: mode === "template_photo" ? uploadedPhoto : null,
-    fusionRatio,
-    prompt,
-    hairId: selectedHair,
-    eyeId: selectedEye,
-    styleTagIds: selectedTags,
-    faceValues,
-    lockedFeatures,
-    colorSchemeId: selectedScheme,
-  });
-
   const runGenerate = async () => {
     setGenerating(true);
-    try {
-      const r = await AppearanceForgeApi.generateForge(buildRequest());
-      setResult(r);
-      setHistory(prev => [r, ...prev].slice(0, FORGE_HISTORY_MAX));
-    } finally {
-      setGenerating(false);
-    }
+    await new Promise(r => setTimeout(r, MOCK_FORGE_DURATION_MS));
+    const tpl =
+      FORGE_TEMPLATES.find(t => t.id === selectedTemplate) ??
+      FORGE_TEMPLATES[Math.floor(Math.random() * FORGE_TEMPLATES.length)];
+    const r: ForgeResult = {
+      id: Date.now().toString(),
+      image: tpl.image,
+      prompt: prompt || `自动生成 - ${tpl.name}`,
+      mode,
+      createdAt: new Date().toISOString(),
+      locked: [...lockedFeatures],
+    };
+    setResult(r);
+    setHistory(prev => [r, ...prev].slice(0, FORGE_HISTORY_MAX));
+    setGenerating(false);
   };
 
   const runRandomize = () => {
@@ -357,7 +336,6 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => AppearanceForgeApi.saveForgeBlueprint(activeArtist.id, result.id)}
                           className="w-8 h-8 rounded-lg bg-black/40 backdrop-blur flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition"
                           title="保存蓝图"
                         >
