@@ -13,8 +13,8 @@ export const CREDIT_PACKS: CreditPack[] = [
 
 export const RECHARGE_HISTORY: RechargeRecord[] = [
   { id: "r-1",  date: "2026-04-10", desc: "标准包",        source: "credit_pack",    creditsAdded: 10_000, priceCents: 89_900, userId: "u-001" },
-  { id: "r-2",  date: "2026-03-22", desc: "License 兑换",  source: "license_redeem", creditsAdded:  5_000, priceCents:      0, userId: "u-003" },
+  { id: "r-2",  date: "2026-03-22", desc: "秘钥兑换",  source: "license_redeem", creditsAdded:  5_000, priceCents:      0, userId: "u-003" },
   { id: "r-3",  date: "2026-02-15", desc: "入门包",        source: "credit_pack",    creditsAdded:  1_000, priceCents:  9_900, userId: "u-003" },
   { id: "r-4",  date: "2026-01-08", desc: "新春活动赠送",  source: "promo_gift",     creditsAdded:  2_000, priceCents:      0, userId: "u-002" },
-  { id: "r-5",  date: "2026-02-11", desc: "License 兑换",  source: "license_redeem", creditsAdded: 10_000, priceCents:      0, userId: "u-005" },
+  { id: "r-5",  date: "2026-02-11", desc: "秘钥兑换",  source: "license_redeem", creditsAdded: 10_000, priceCents:      0, userId: "u-005" },
 ];

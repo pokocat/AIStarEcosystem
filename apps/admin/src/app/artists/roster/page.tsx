@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Search, Users } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,22 +12,72 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatCard } from "@/components/StatCard";
-import { MOCK_ARTISTS } from "@/mocks/artists";
+import { listDigitalIps } from "@/api/digital-ips";
+import { listStudios } from "@/api/studios";
 import { ARTIST_STATUS, ARTIST_QUALITY } from "@/constants/status";
 import { ARTIST_TYPE_META } from "@/constants/artist-meta";
+import type { Artist } from "@/types/artist";
+import type { AdminStudio } from "@/types/studio";
 import { formatDateCN } from "@/lib/utils";
 import { formatCompactNumber, formatCredits } from "@/lib/format";
 
 export default function RosterPage() {
+  const [artists, setArtists] = React.useState<Artist[]>([]);
+  const [studios, setStudios] = React.useState<AdminStudio[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState("all");
   const [status, setStatus] = React.useState("all");
   const [quality, setQuality] = React.useState("all");
+  const [studioFilter, setStudioFilter] = React.useState("all");
 
-  const filtered = MOCK_ARTISTS.filter((a) => {
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [a, s] = await Promise.all([
+          listDigitalIps(0, 200),
+          listStudios(0, 200),
+        ]);
+        if (cancelled) return;
+        setArtists(a);
+        setStudios(s);
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 艺人档案由激活的经纪公司账户创建，ownerUserId / studioId 记录从属关系（来自后端 DigitalIpDto）。
+  const studioById = React.useMemo(() => new Map(studios.map((s) => [s.id, s])), [studios]);
+  const studioByOwner = React.useMemo(
+    () => new Map(studios.map((s) => [s.ownerUserId, s])),
+    [studios]
+  );
+  const resolveStudio = React.useCallback(
+    (a: Artist) => {
+      if (a.studioId) return studioById.get(a.studioId);
+      if (a.ownerUserId) return studioByOwner.get(a.ownerUserId);
+      return undefined;
+    },
+    [studioById, studioByOwner]
+  );
+
+  const filtered = artists.filter((a) => {
     if (type !== "all" && a.type !== type) return false;
     if (status !== "all" && a.status !== status) return false;
     if (quality !== "all" && a.quality !== quality) return false;
+    if (studioFilter !== "all" && resolveStudio(a)?.id !== studioFilter) return false;
     if (q && !a.name.toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
@@ -35,30 +86,30 @@ export default function RosterPage() {
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
         title="艺人档案"
-        description="全站虚拟艺人档案·支持检索、状态流转与品质调整"
+        description="全站虚拟艺人档案（来自后端 /admin/digital-ips）·支持按经纪公司筛选、状态流转与品质调整"
         breadcrumb={[{ label: "艺人与经纪" }, { label: "艺人档案" }]}
         actions={<Button size="sm">新建艺人档案</Button>}
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="档案总数" value={MOCK_ARTISTS.length} icon={Users} />
+        <StatCard label="档案总数" value={artists.length} icon={Users} />
         <StatCard
           label="传说级"
-          value={MOCK_ARTISTS.filter((a) => a.quality === "legendary").length}
+          value={artists.filter((a) => a.quality === "legendary").length}
           hint="品质管控目标"
           icon={Users}
           tone="warning"
         />
         <StatCard
           label="活跃艺人"
-          value={MOCK_ARTISTS.filter((a) => a.status === "active").length}
+          value={artists.filter((a) => a.status === "active").length}
           icon={Users}
           tone="success"
         />
         <StatCard
-          label="领域覆盖"
-          value={new Set(MOCK_ARTISTS.flatMap((a) => a.domains)).size}
-          hint="主营领域去重"
+          label="覆盖经纪公司"
+          value={new Set(artists.map((a) => resolveStudio(a)?.id).filter(Boolean)).size}
+          hint="含个人创作者"
           icon={Users}
         />
       </section>
@@ -75,6 +126,15 @@ export default function RosterPage() {
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
+          <Select value={studioFilter} onValueChange={setStudioFilter}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部经纪公司</SelectItem>
+              {studios.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={type} onValueChange={setType}>
             <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -103,25 +163,41 @@ export default function RosterPage() {
             </SelectContent>
           </Select>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[1100px]">
             <TableHeader>
               <TableRow>
-                <TableHead>艺人</TableHead>
+                <TableHead className="min-w-[220px]">艺人</TableHead>
+                <TableHead className="min-w-[160px]">所属经纪公司</TableHead>
                 <TableHead>分类</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>品质</TableHead>
-                <TableHead>Lv</TableHead>
+                <TableHead className="min-w-[96px]">状态</TableHead>
+                <TableHead className="min-w-[72px]">品质</TableHead>
+                <TableHead>等级</TableHead>
                 <TableHead>粉丝</TableHead>
                 <TableHead>月收益</TableHead>
-                <TableHead>领域</TableHead>
-                <TableHead>最近活跃</TableHead>
+                <TableHead className="min-w-[220px]">领域</TableHead>
+                <TableHead className="min-w-[110px]">最近活跃</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((a) => {
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
+                    加载中…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center py-10 text-rose-600">
+                    加载失败：{loadError}
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && !loadError && filtered.map((a) => {
                 const meta = ARTIST_TYPE_META[a.type];
+                const studio = resolveStudio(a);
                 return (
                   <TableRow key={a.id}>
                     <TableCell>
@@ -130,35 +206,56 @@ export default function RosterPage() {
                           <AvatarImage src={a.avatar} alt={a.name} />
                           <AvatarFallback>{a.name.slice(0, 2)}</AvatarFallback>
                         </Avatar>
-                        <div>
+                        <div className="min-w-0">
                           <div className="font-medium">{a.name}</div>
                           <div className="text-xs text-muted-foreground truncate max-w-[240px]">{a.bio}</div>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{meta.icon} {meta.label}</TableCell>
+                    <TableCell className="text-sm">
+                      {studio ? (
+                        <Link
+                          href="/platform/studios"
+                          className="text-foreground hover:text-primary hover:underline whitespace-nowrap"
+                        >
+                          {studio.name}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">
+                      {meta ? `${meta.icon} ${meta.label}` : a.type}
+                    </TableCell>
                     <TableCell><StatusBadge meta={ARTIST_STATUS[a.status]} /></TableCell>
                     <TableCell><StatusBadge meta={ARTIST_QUALITY[a.quality]} /></TableCell>
                     <TableCell className="text-sm tabular-nums">{a.level}</TableCell>
                     <TableCell className="text-sm tabular-nums">{formatCompactNumber(a.stats.fans)}</TableCell>
                     <TableCell className="text-sm tabular-nums">{formatCredits(a.stats.monthlyRevenue)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      <div className="flex flex-wrap gap-1 max-w-[180px]">
+                    <TableCell className="text-xs">
+                      <div className="flex flex-wrap gap-1">
                         {a.domains.slice(0, 3).map((d) => (
-                          <span key={d} className="rounded bg-surface-muted px-1.5 py-0.5">{d}</span>
+                          <span
+                            key={d}
+                            className="inline-flex whitespace-nowrap rounded bg-surface-muted px-1.5 py-0.5 text-muted-foreground"
+                          >
+                            {d}
+                          </span>
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDateCN(a.lastActive)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDateCN(a.lastActive)}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="ghost">详情</Button>
+                      <Button size="sm" variant="ghost" asChild>
+                        <Link href={`/artists/roster/${a.id}`}>详情</Link>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
               })}
-              {filtered.length === 0 && (
+              {!loading && !loadError && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                     没有匹配的艺人
                   </TableCell>
                 </TableRow>

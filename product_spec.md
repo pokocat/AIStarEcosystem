@@ -667,3 +667,129 @@ P4 交付时下述页面与常量已从 admin-new 移除（替代路径在括号
 - `/content/film`（拆分为 `/content/{dramas,movies,ads,voice}`）
 - `/finance/settlement`（→ `/finance/ledger`，从「元」切到 credits）
 - `types/settings.ts` 中的 `SubscriptionPlan` / `BillingRecord`；`types/finance.ts` 中的 `WalletSummary`（迁至 `types/wallet.ts`）。
+
+---
+
+## 10. 音乐工坊 产品逻辑（Music Workshop）
+
+> 对应前端页面 `apps/web/src/components/MusicBusiness.tsx`（Producer 侧「音乐工坊」Tab）
+> 与 admin `/content/songs`、`/content/albums`、`/content/concerts`。
+> 本章锁定 2026-04-18 与用户对齐的结论。
+
+### 10.1 核心链路（以 DigitalIp 为歌手的数字音乐发行）
+
+```
+AI 艺人 (DigitalIp)
+   └─ AI 歌曲 (Song)       ← 必须绑定 artistId；对接外部音乐发行平台时
+        ├─ 歌单 (Album)     ← 歌曲的合集（非"专辑发行"）
+        └─ 分发 (Distribution → 外部音乐发行开放平台)
+             └─ 播放量 / 版税 (Wallet / LedgerEntry)
+```
+
+**硬性约束**：
+- **Song 必须先有 artist**：创建歌曲前必须先在「AI 孵化」里拥有至少一位 DigitalIp。未绑定 `artistId` 的 Song 不能保存，更不能分发。
+- **Song.artistId 即外部平台上的"演唱歌手"**：未来接入 QQ 音乐 / 网易云 / YouTube Music 等发行 OpenAPI 时，元数据里的 `artist_name` / `performer` 直接取 `DigitalIp.name`；ISRC、词曲版权归属、分润账户也都挂在这条 `artistId` 下。
+- **数字音乐 = 纯线上发行**：没有实体专辑、没有首发日、没有"策划→录制→发布"的专辑生命周期。
+
+### 10.2 Song（歌曲）—— 前端类型变更
+
+`apps/web/src/types/music.ts` 的 `Song` 在现有字段之外需要扩展：
+
+| 字段             | 类型                  | 说明 |
+|------------------|-----------------------|------|
+| `artistId`       | `ID` **(必填)**        | 演唱歌手 = `DigitalIp.id`；后端校验 ownership |
+| `audioUrl`       | `string`（可选）       | 音频资源地址。**当前 mock 占位 URL（CDN 假地址或空）**；后续统一迁移到 OSS / 对象存储，前端不感知 |
+| `coverUrl`       | `string`（可选）       | 歌曲封面；没有时由前端生成基于 artist.avatar 的渐变占位 |
+| `lyrics`         | `string`（可选）       | 歌词正文（MVP 纯文本；LRC 时间轴版留待 P2） |
+| `modelVersion`   | `string`（可选）       | 生成模型版本（如 `"suno-v3"` / `"musicgen-large"`）。仅由 admin 工作流计费配置下发 |
+| `thinkDepth`     | `"fast" \| "standard" \| "deep"`（可选） | 生成深度档位。配合 `modelVersion` 查扣费标准 |
+| `creditsSpent`   | `number`（可选）       | 本次生成实际扣费（credits 原始值）；由后端在创建时写入 |
+| `createdAt`      | `ISODateTime`（可选）  | 创建时间（与 DigitalIp 对齐，便于排序） |
+
+**保留**：`title / genre / duration / status / plays / revenue / rating / releaseDate`。
+**SongStatus**：维持 `"recording" \| "mixing" \| "released"`；发布即可分发。
+
+### 10.3 扣费策略（Credits Pricing for Workflows）
+
+- MVP：前端创建 Song 时**扣固定随机值占位**（如 `50–200 credits` 间随机），后端返回 `creditsSpent` 落库。
+- 正式：admin 侧新增 **"工作流计费"** 配置（路径暂命名 `/base/workflow-pricing`，或挂在 `/platform/config` 下的 key `music.workflowPricing`）。
+  - 配置形如 `{ modelVersion × thinkDepth → creditsPerCall }`；
+  - 管理员可随时增减模型 / 调整单价；
+  - 后端在 `POST /me/songs` 入口按 `(modelVersion, thinkDepth)` 读表扣费，失败即 402（余额不足）+ 引导充值；
+  - 所有扣费写入 `LedgerEntry`，`reference.type = "song_generation"`、`reference.id = song.id`。
+- 本配置**也服务于**未来的锻造炉（ForgeTemplate）、形象工坊（AppearanceForge）、pose / wardrobe 生成等工作流，形成统一「按调用计费」模型。
+
+### 10.4 Album（合集 / 歌单）—— 降级为歌曲集合
+
+数字音乐没有"发行专辑"。`Album` 在本平台**语义重定义为"AI 歌手的歌曲合集 / 歌单"**：
+
+| 字段              | 类型           | 说明 |
+|-------------------|----------------|------|
+| `id`              | `ID`           | |
+| `name`            | `string`       | 合集名 |
+| `artistId`        | `ID` **(必填)** | 所属 DigitalIp |
+| `cover`           | `string`       | 合集封面 |
+| `trackIds`        | `ID[]`         | 收录歌曲 id 顺序（即歌单曲序） |
+| `createdAt`       | `ISODateTime`  | |
+
+**删除字段**（不再承载这些概念）：
+- `trackCount`（由 `trackIds.length` 派生）
+- `status`（`planning / recording / released` 全部移除 —— 合集没有生命周期）
+- `sales` / `revenue`（销售不存在；收益按歌曲聚合即可）
+
+**admin 影响**：`/content/albums` 的页面文案从"专辑排期/发行"改为"歌手歌单 / 合集运营"（改封面、调曲序、写简介）；删除"销量 / 专辑收入"展板。
+
+### 10.5 Concert（演唱会）—— 最简骨架，不深挖
+
+按用户确认，现阶段不做演唱会运营的深度功能。**保留最小字段**用于未来扩展，但当前 UI **隐藏** 推广售票、票价统计、倒计时、容量等模块：
+
+- 保留字段：`id / name / artistIds[] / date / status / streamUrl?`（线上直播链接）
+- 暂不实现：票价 / 容量 / 已售 / 推广 / 售票进度 / 回顾
+- 前端做法：MusicBusiness 的「演唱会」Tab 仅展示一个空的"敬请期待"占位，或降级为"最近一场直播"的只读卡片
+
+### 10.6 创作闭环 —— 前端交互 SOP
+
+1. 用户进入 **Producer 侧 音乐工坊 → 歌曲录制** Tab
+2. 必须先选中一位 **AI 艺人**（若名下无艺人，按钮置灰 + 提示"先去 AI 孵化创建一位艺人"）
+3. 点击"开始录制" → 弹出已有的 `MusicGenerationDialog`（已有 484 行实现，接到 onSuccess）
+4. Dialog 提交后：前端调用 `MusicApi.createSong({ artistId, title, genre, modelVersion, thinkDepth, ... })`
+5. 后端：
+   - 校验 `artistId` 归属当前登录 `AepUser`（通过 `DigitalIp.ownerUserId`）
+   - 读工作流计费表 → 扣 credits（余额不足 → 402）
+   - 创建 Song 记录，`status="recording"`，塞入 `audioUrl`（mock 模式：固定占位）
+   - 写 LedgerEntry
+6. 前端 toast 成功 + 新歌插入列表首位；点"播放"触发 `GlobalAudioPlayer`
+7. Song 状态流转：`recording → mixing → released`（每次流转可能再次扣费，MVP 可免）
+8. `released` 后：卡片出现「分发」按钮跳 `/distribution`，预填 `song.id + artistId`
+
+### 10.7 "半成品" → MVP 补齐清单（当前迭代聚焦）
+
+P0（必做，打通主动脉）：
+
+1. `types/music.ts` 扩 Song 字段（10.2）；Album 降级为歌单（10.4）；Concert 字段 10.5 裁剪
+2. `mocks/music.ts` 补 `artistId` 引用，占位 `audioUrl`，移除 Album 的 sales/revenue/status
+3. `api/music.ts` 新增 `createSong / advanceSongStatus`；mock 模式随机扣费（`creditsSpent = 50 + Math.random()*150 | 0`）
+4. 后端 `Song` / `Album` / `Concert` 模型与 DTO 对齐（10.2/10.4/10.5）；`AccountController` 新增 `POST /api/me/songs`
+5. `MusicBusiness.tsx` 死按钮全部接上：选艺人 → 打开 `MusicGenerationDialog` → 调 `createSong` → 播放接 `GlobalAudioPlayer`
+6. 金额/数字展示替换为 `formatCredits / formatCompactNumber`
+7. Album Tab 文案改歌单；Concert Tab 简化到占位
+
+P1（体验/完整性）：
+
+8. 歌曲详情 Drawer（封面上传、歌词编辑、曲风改、流转状态）
+9. Album 作为"歌手歌单"，可拖拽调曲序、添加/移除歌曲
+10. 发布（released）后一键跳 `/distribution` 预填
+11. 数据概览改为折线图（近 30 天 播放 / 收入） + 热门 Top 10 切换维度
+
+P2（待 admin 工作流计费配置上线后）：
+
+12. admin `/base/workflow-pricing`（或 `/platform/config` key `music.workflowPricing`）
+13. 前端生成对话框按 `(modelVersion, thinkDepth)` 显示实时单价 + 余额不足前置校验
+
+### 10.8 决策记录
+
+- [x] **D10.1**：Song 必须绑定 `artistId`，否则不能保存/分发（对接发行平台以此为"歌手"身份）
+- [x] **D10.2**：`audioUrl` 当前用 mock 占位；未来迁 OSS / 对象存储，前端/DTO 字段不变
+- [x] **D10.3**：创作扣费 = 工作流计费配置表驱动，admin 可改；MVP 用随机占位值
+- [x] **D10.4**：Album 降级为"AI 歌手歌单 / 合集"，**取消** 专辑发行生命周期与销售字段
+- [x] **D10.5**：Concert 本阶段不做深度运营；保留字段但前端 UI 降级为占位

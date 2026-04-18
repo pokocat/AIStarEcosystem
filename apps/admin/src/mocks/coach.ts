@@ -43,9 +43,9 @@ export const CopyrightPending: CopyrightItem[] = [
 ];
 
 export const CategoryDist: CoachCategoryDistribution[] = [
-  { name: "Streaming",    value: 40, color: "#06b6d4" },
-  { name: "Endorsement",  value: 25, color: "#a855f7" },
-  { name: "NFT",          value: 18, color: "#ec4899" },
-  { name: "Live",         value: 12, color: "#f59e0b" },
-  { name: "Others",       value: 5,  color: "#22c55e" },
+  { name: "流媒体",   value: 40, color: "#06b6d4" },
+  { name: "代言",     value: 25, color: "#a855f7" },
+  { name: "数字藏品", value: 18, color: "#ec4899" },
+  { name: "现场",     value: 12, color: "#f59e0b" },
+  { name: "其他",     value: 5,  color: "#22c55e" },
 ];

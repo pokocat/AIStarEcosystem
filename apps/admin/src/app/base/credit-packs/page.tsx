@@ -18,7 +18,7 @@ import { formatDateCN } from "@/lib/utils";
 
 const SOURCE_LABEL: Record<string, string> = {
   credit_pack: "积分包",
-  license_redeem: "License 兑换",
+  license_redeem: "秘钥兑换",
   promo_gift: "活动赠送",
 };
 
@@ -32,7 +32,7 @@ export default function CreditPacksPage() {
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
         title="积分包"
-        description="积分售卖规格（替代订阅模型）。点数永不过期，参见 product_spec.md §0.1。"
+        description="积分售卖规格（替代订阅模型）。点数永不过期。"
         breadcrumb={[{ label: "基础数据" }, { label: "积分包" }]}
         actions={
           <Button size="sm">

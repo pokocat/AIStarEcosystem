@@ -4,6 +4,9 @@
 //
 // 数值字段全部为原始整数（fans = 真实粉丝数，revenue = 积分原始值）。
 // 展示侧由 lib/format.ts 处理（formatCompactNumber、formatCredits）。
+//
+// ownerUserId / studioId：艺人档案的「归属经纪公司」。后端通过 ownerUserId →
+// Membership → Studio 关联。此处直接在 mock 数据里体现从属关系。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Artist } from "@/types/artist";
@@ -26,10 +29,12 @@ export const MOCK_ARTISTS: Artist[] = [
     },
     createdAt: "2024-01-15",
     lastActive: "2025-04-14",
-    bio: "Cyberpunk风格AI歌手，擅长电子音乐和未来感旋律。",
+    bio: "赛博朋克风格 AI 歌手，擅长电子音乐与未来感旋律。",
     domains: ["音乐", "舞台表演"],
     endorsements: 5,
     commercialValue: 1_200_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "2",
@@ -48,10 +53,12 @@ export const MOCK_ARTISTS: Artist[] = [
     },
     createdAt: "2023-11-20",
     lastActive: "2025-04-15",
-    bio: "顶级偶像型AI艺人，超强粉丝运营力，应援文化引领者。",
+    bio: "顶级偶像型 AI 艺人，超强粉丝运营力，应援文化引领者。",
     domains: ["音乐", "综艺", "商业代言", "舞台表演"],
     endorsements: 12,
     commercialValue: 5_800_000,
+    studioId: "s-nebula",
+    ownerUserId: "u-002",
   },
   {
     id: "3",
@@ -70,10 +77,12 @@ export const MOCK_ARTISTS: Artist[] = [
     },
     createdAt: "2024-03-10",
     lastActive: "2025-04-13",
-    bio: "实力派AI演员，擅长悬疑短剧和情感微电影。",
+    bio: "实力派 AI 演员，擅长悬疑短剧与情感微电影。",
     domains: ["影视", "商业代言"],
     endorsements: 8,
     commercialValue: 2_100_000,
+    studioId: "s-dramalab",
+    ownerUserId: "u-004",
   },
   {
     id: "4",
@@ -96,6 +105,8 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["综艺", "曲艺表演", "游戏娱乐"],
     endorsements: 6,
     commercialValue: 3_200_000,
+    studioId: "s-nebula",
+    ownerUserId: "u-002",
   },
   {
     id: "5",
@@ -114,10 +125,12 @@ export const MOCK_ARTISTS: Artist[] = [
     },
     createdAt: "2024-06-12",
     lastActive: "2025-04-12",
-    bio: "街舞风格AI舞者，擅长编舞教学和舞台表演。",
+    bio: "街舞风格 AI 舞者，擅长编舞教学与舞台表演。",
     domains: ["舞台表演", "音乐", "教育培训"],
     endorsements: 2,
     commercialValue: 480_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "6",
@@ -136,10 +149,12 @@ export const MOCK_ARTISTS: Artist[] = [
     },
     createdAt: "2024-09-01",
     lastActive: "2025-04-11",
-    bio: "新人AI主持人，声线温暖，控场能力突出。",
+    bio: "新人 AI 主持人，声线温暖，控场能力突出。",
     domains: ["综艺", "教育培训"],
     endorsements: 1,
     commercialValue: 120_000,
+    studioId: "s-moka",
+    ownerUserId: "u-005",
   },
   {
     id: "7",
@@ -162,5 +177,7 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["音乐", "影视", "综艺", "舞台表演", "商业代言"],
     endorsements: 10,
     commercialValue: 4_500_000,
+    studioId: "s-nebula",
+    ownerUserId: "u-002",
   },
 ];

@@ -19,6 +19,7 @@ export interface AepUser {
   displayName: string;
   avatarUrl?: string;
   walletAddress?: string;
+  bio?: string;
   kind: AccountKind;
   status: AccountStatus;
   emailVerified: boolean;

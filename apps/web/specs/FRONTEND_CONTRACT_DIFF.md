@@ -430,3 +430,35 @@
 1. 生成接口按 `AsyncJobStarted` 封装（复用 `_shared.ts` 异步壳）；
 2. 图片存储使用 `imageUrl`（与 wardrobe 一致）；
 3. `uploadedPhoto` DataURL 在后端应提前转存对象存储，请求体改为 `photoAssetId`。
+
+
+## 附录 · 音乐工坊（product_spec.md §10）
+
+本次 v2.2 落地音乐工坊 P0 主动脉，相关契约差异：
+
+**Song 类型新增字段**（OpenAPI 尚未涵盖）：
+
+| 前端类型字段 | OpenAPI Schema | 状态 | 说明 |
+|---|---|---|---|
+| `artistId` | ❌ 无 | ❌ 不存在 | 必填；对接发行平台时即为歌手身份；后端已在 `aep_songs.artist_id` 落列 |
+| `audioUrl` | ❌ 无 | ❌ 不存在 | 当前 mock 占位 URL；后续迁 OSS |
+| `coverUrl` / `lyrics` / `modelVersion` / `thinkDepth` / `creditsSpent` / `createdAt` | ❌ 无 | ❌ 不存在 | 见 product_spec.md §10.2 |
+
+**Album 字段变更**：
+- **新增**：`artistId` / `trackIds`（前端、后端均已落列）
+- **删除前端契约**：`trackCount` / `status` / `sales` / `revenue`（admin 存量过渡页面仍读取，标记 @deprecated）
+
+**Concert 字段变更**：
+- **新增**：`artistIds` / `streamUrl`
+- **弱化前端契约**：`venue` / `ticketPrice` / `capacity` / `soldTickets` / `revenue` 标记 @deprecated（admin 过渡使用）
+
+**新增接口**（均走 `/api/me/*`）：
+- `GET  /me/songs` — 列出当前用户名下所有 AI 艺人的歌曲（按 artistId JOIN DigitalIp.ownerUserId）
+- `POST /me/songs` — 创建歌曲；body 必含 `artistId`，后端校验 ownership + 按 (modelVersion, thinkDepth) 扣 credits
+- `POST /me/songs/:id/advance` — 推进状态机（MVP 无扣费）
+
+**结论**：OpenAPI 未覆盖。后端落地建议：
+1. 扣费策略由 admin 侧 `/platform/config` key `music.workflowPricing` 下发，Controller 读配置扣费；
+2. 创建入口需写入 `LedgerEntry` 并将 `reference.type='song_generation'` / `reference.id=song.id`；
+3. 发布（released）后触发分发流程（未来对接音乐发行开放平台，以 `artistId` 映射为外部 "歌手"）。
+

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { CheckCircle2, Music2, PauseCircle, Search, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
@@ -11,9 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { SONGS, MUSIC_GENRES } from "@/mocks/music";
 import { SONG_STATUS } from "@/constants/status";
+import { MOCK_ARTISTS } from "@/mocks/artists";
+import { STUDIOS } from "@/mocks/studios";
 import type { Song, SongStatus } from "@/types/music";
+import { listSongs, listGenres, approveSong, rejectSong } from "@/api/music";
 import { formatCountCN, formatCurrencyCN, formatDateCN } from "@/lib/utils";
 
 function formatDuration(sec: number) {
@@ -23,14 +26,34 @@ function formatDuration(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+type ActionKind = "approve" | "reject";
+
 export default function SongsReviewPage() {
+  const [songs, setSongs] = React.useState<Song[]>([]);
+  const [genres, setGenres] = React.useState<{ id: string; name: string; icon: string }[]>([]);
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<"all" | SongStatus>("all");
   const [genre, setGenre] = React.useState<string>("all");
   const [target, setTarget] = React.useState<Song | null>(null);
-  const [action, setAction] = React.useState<"approve" | "reject" | "hold" | null>(null);
+  const [action, setAction] = React.useState<ActionKind | null>(null);
 
-  const filtered = SONGS.filter((s) => {
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [s, g] = await Promise.all([listSongs(), listGenres()]);
+      if (!alive) return;
+      setSongs(s);
+      setGenres(g);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const artistById = React.useMemo(() => new Map(MOCK_ARTISTS.map((a) => [a.id, a])), []);
+  const studioById = React.useMemo(() => new Map(STUDIOS.map((s) => [s.id, s])), []);
+
+  const filtered = songs.filter((s) => {
     if (status !== "all" && s.status !== status) return false;
     if (genre !== "all" && s.genre !== genre) return false;
     if (query && !s.title.toLowerCase().includes(query.toLowerCase())) return false;
@@ -38,28 +61,42 @@ export default function SongsReviewPage() {
   });
 
   const counts = {
-    recording: SONGS.filter((s) => s.status === "recording").length,
-    mixing: SONGS.filter((s) => s.status === "mixing").length,
-    released: SONGS.filter((s) => s.status === "released").length,
+    recording: songs.filter((s) => s.status === "recording").length,
+    mixing: songs.filter((s) => s.status === "mixing").length,
+    released: songs.filter((s) => s.status === "released").length,
   };
 
-  const openAction = (song: Song, a: "approve" | "reject" | "hold") => {
+  const openAction = (song: Song, a: ActionKind) => {
     setTarget(song);
     setAction(a);
   };
 
+  const closeDialog = () => {
+    setTarget(null);
+    setAction(null);
+  };
+
+  const handleConfirm = async (reason: string) => {
+    if (!target || !action) return;
+    const id = target.id;
+    const updated =
+      action === "approve"
+        ? await approveSong(id, { reason })
+        : await rejectSong(id, { reason });
+    setSongs((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+  };
+
   const actionConfig = {
-    approve: { title: "审核通过并发行", tone: "success" as const, icon: CheckCircle2, confirm: "通过发行" },
-    reject: { title: "驳回单曲", tone: "danger" as const, icon: XCircle, confirm: "驳回" },
-    hold: { title: "挂起观察", tone: "warning" as const, icon: PauseCircle, confirm: "挂起" },
+    approve: { title: "人工通过并上架", tone: "success" as const, icon: CheckCircle2, confirm: "通过并上架" },
+    reject:  { title: "驳回并下架",     tone: "danger"  as const, icon: XCircle,      confirm: "驳回" },
   };
 
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
-        title="歌曲审核"
-        description="单曲从制作到公开发行前必须经过平台审核"
-        breadcrumb={[{ label: "内容审核" }, { label: "歌曲审核" }]}
+        title="歌曲列表"
+        description="默认策略：新建音乐自动通过审核并上架。本页用于查看发行情况与人工干预（如违规下架）。"
+        breadcrumb={[{ label: "AI 作品" }, { label: "歌曲" }]}
         actions={
           <Button size="sm" variant="outline">
             导出清单
@@ -73,7 +110,7 @@ export default function SongsReviewPage() {
         <StatCard label="已发行" value={counts.released} icon={CheckCircle2} tone="success" />
         <StatCard
           label="近 30 天播放"
-          value={formatCountCN(SONGS.reduce((a, b) => a + b.plays, 0))}
+          value={formatCountCN(songs.reduce((a, b) => a + b.plays, 0))}
           hint="累计播放量"
           icon={Music2}
         />
@@ -108,14 +145,13 @@ export default function SongsReviewPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部曲风</SelectItem>
-              {MUSIC_GENRES.map((g) => (
+              {genres.map((g) => (
                 <SelectItem key={g.id} value={g.name}>
                   {g.icon} {g.name}
                 </SelectItem>
               ))}
-              {/* Include any unmapped genres present in data */}
-              {Array.from(new Set(SONGS.map((s) => s.genre)))
-                .filter((g) => !MUSIC_GENRES.some((m) => m.name === g))
+              {Array.from(new Set(songs.map((s) => s.genre)))
+                .filter((g) => !genres.some((m) => m.name === g))
                 .map((g) => (
                   <SelectItem key={g} value={g}>
                     {g}
@@ -124,11 +160,12 @@ export default function SongsReviewPage() {
             </SelectContent>
           </Select>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[980px]">
             <TableHeader>
               <TableRow>
                 <TableHead>曲目</TableHead>
+                <TableHead>艺人 / 经纪公司</TableHead>
                 <TableHead>曲风</TableHead>
                 <TableHead>时长</TableHead>
                 <TableHead>状态</TableHead>
@@ -139,46 +176,51 @@ export default function SongsReviewPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>
-                    <div className="font-medium">{s.title}</div>
-                    <div className="text-xs text-muted-foreground">ID {s.id}</div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{s.genre}</TableCell>
-                  <TableCell className="tabular-nums text-sm">{formatDuration(s.duration)}</TableCell>
-                  <TableCell>
-                    <StatusBadge meta={SONG_STATUS[s.status]} />
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{formatCountCN(s.plays)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{formatCurrencyCN(s.revenue)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {s.releaseDate ? formatDateCN(s.releaseDate) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {s.status === "mixing" ? (
+              {filtered.map((s) => {
+                const artist = s.artistId ? artistById.get(s.artistId) : undefined;
+                const studio = s.studioId ? studioById.get(s.studioId) : undefined;
+                return (
+                  <TableRow key={s.id}>
+                    <TableCell>
+                      <div className="font-medium">{s.title}</div>
+                      <div className="text-xs text-muted-foreground">编号 {s.id}</div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <div>{artist?.name ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">{studio?.name ?? "—"}</div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{s.genre}</TableCell>
+                    <TableCell className="tabular-nums text-sm">{formatDuration(s.duration)}</TableCell>
+                    <TableCell>
+                      <StatusBadge meta={SONG_STATUS[s.status]} />
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{formatCountCN(s.plays)}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{formatCurrencyCN(s.revenue)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.releaseDate ? formatDateCN(s.releaseDate) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button size="sm" variant="success" onClick={() => openAction(s, "approve")}>
-                          通过
+                        <Button size="sm" variant="ghost" asChild>
+                          <Link href={`/content/songs/${s.id}`}>详情</Link>
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => openAction(s, "hold")}>
-                          挂起
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => openAction(s, "reject")}>
-                          驳回
-                        </Button>
+                        {s.status !== "released" ? (
+                          <Button size="sm" variant="success" onClick={() => openAction(s, "approve")}>
+                            通过
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="destructive" onClick={() => openAction(s, "reject")}>
+                            驳回
+                          </Button>
+                        )}
                       </div>
-                    ) : (
-                      <Button size="sm" variant="ghost">
-                        查看
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
                     没有匹配的曲目
                   </TableCell>
                 </TableRow>
@@ -192,10 +234,7 @@ export default function SongsReviewPage() {
         <ActionDialog
           open={!!target}
           onOpenChange={(open) => {
-            if (!open) {
-              setTarget(null);
-              setAction(null);
-            }
+            if (!open) closeDialog();
           }}
           title={actionConfig[action].title}
           description={`目标曲目：《${target.title}》 · ${target.genre} · ${formatDuration(target.duration)}`}
@@ -203,6 +242,7 @@ export default function SongsReviewPage() {
           tone={actionConfig[action].tone}
           confirmLabel={actionConfig[action].confirm}
           requireReason={action !== "approve"}
+          onConfirm={handleConfirm}
         />
       )}
     </div>

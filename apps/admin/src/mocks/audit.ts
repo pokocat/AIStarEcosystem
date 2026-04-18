@@ -41,7 +41,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     ipAddress: "36.110.21.77",
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4)",
     result: "success",
-    detail: "激活 License: LK-10032，发放 1,000 credits",
+    detail: "激活秘钥：LK-10032，发放 1,000 积分",
     createdAt: "2026-04-15T10:05:00Z",
   },
   {
@@ -67,7 +67,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     ipAddress: "101.87.140.55",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     result: "success",
-    detail: "人工调账 +500 credits（客服补偿），工单 ticket-9981",
+    detail: "人工调账 +500 积分（客服补偿），工单 ticket-9981",
     createdAt: "2026-04-11T14:20:00Z",
   },
 ];

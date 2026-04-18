@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "../styles/globals.css";
-import { Sidebar } from "@/components/shell/Sidebar";
-import { Topbar } from "@/components/shell/Topbar";
+import { AppShell } from "@/components/shell/AppShell";
 import { computeBadges } from "@/lib/badges";
 
 export const metadata: Metadata = {
@@ -16,13 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       <body>
-        <div className="flex min-h-screen bg-background">
-          <Sidebar badges={badges} />
-          <div className="flex flex-1 min-w-0 flex-col">
-            <Topbar unread={unread} />
-            <main className="flex-1 min-w-0 px-6 py-6">{children}</main>
-          </div>
-        </div>
+        <AppShell badges={badges} unread={unread}>
+          {children}
+        </AppShell>
       </body>
     </html>
   );

@@ -33,17 +33,17 @@ export default function TenantsPage() {
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
-        title="机构 Tenant"
-        description="记录用户由哪个发放方导入。用于 License 核销率与累计发放点数统计。"
-        breadcrumb={[{ label: "平台账户" }, { label: "机构 Tenant" }]}
+        title="机构"
+        description="记录用户由哪个发放方导入。用于秘钥核销率与累计发放点数统计。"
+        breadcrumb={[{ label: "平台账户" }, { label: "机构" }]}
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="机构总数"            value={TENANTS.length}                        icon={Network}   />
         <StatCard label="归属用户总数"        value={MEMBERSHIPS.length}                    icon={Users}     />
-        <StatCard label="License 批次总数"    value={LICENSE_BATCHES.length}                icon={KeySquare} />
+        <StatCard label="秘钥批次总数"        value={LICENSE_BATCHES.length}                icon={KeySquare} />
         <StatCard
-          label="累计发放点数 · credits"
+          label="累计发放点数"
           value={formatCredits(
             LICENSE_BATCHES.reduce((s, b) => s + b.initialCreditGrant * b.activatedCount, 0)
           )}
@@ -63,7 +63,7 @@ export default function TenantsPage() {
                 <TableHead>机构</TableHead>
                 <TableHead>类型</TableHead>
                 <TableHead className="text-right">归属用户</TableHead>
-                <TableHead className="text-right">License 批次</TableHead>
+                <TableHead className="text-right">秘钥批次</TableHead>
                 <TableHead className="text-right">累计发放点数</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>状态</TableHead>

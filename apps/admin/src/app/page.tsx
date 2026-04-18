@@ -96,9 +96,9 @@ export default function DashboardPage() {
           icon={Users}
         />
         <StatCard
-          label="GMV · credits（近 6 月）"
+          label="近 6 月 GMV · 积分"
           value={formatCredits(gmv)}
-          hint="流媒体 / 代言 / NFT / 现场合计"
+          hint="流媒体 / 代言 / 数字藏品 / 现场合计"
           icon={Wallet}
           delta={{ value: "12.4%", positive: true }}
         />
@@ -168,7 +168,7 @@ export default function DashboardPage() {
           <CardHeader className="flex-row items-center justify-between">
             <div>
               <CardTitle>平台 GMV 趋势 · 近 6 月</CardTitle>
-              <CardDescription>按品类堆叠：流媒体 / 代言 / NFT / 现场</CardDescription>
+              <CardDescription>按品类堆叠：流媒体 / 代言 / 数字藏品 / 现场</CardDescription>
             </div>
             <Button asChild variant="ghost" size="sm">
               <Link href="/finance/ledger">查看明细 <ArrowRight className="h-3.5 w-3.5" /></Link>

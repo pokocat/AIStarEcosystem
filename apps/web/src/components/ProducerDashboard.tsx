@@ -467,14 +467,14 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     return () => { cancelled = true; };
   }, []);
 
-  // 加载真实通知（后端返回空时保留 INITIAL_NOTIFICATIONS 兜底）
+  // 加载真实通知。成功即以后端数据为准（即使为空），避免残留 mock ID 触发 404。
   useEffect(() => {
     let cancelled = false;
     NotificationsApi.listNotifications()
       .then((list) => {
-        if (!cancelled && list && list.length > 0) setNotifications(list);
+        if (!cancelled && Array.isArray(list)) setNotifications(list);
       })
-      .catch(() => { /* 静默失败，保留 mock 兜底 */ });
+      .catch(() => { /* 静默失败，保留 mock 兜底仅在未收到响应时 */ });
     return () => { cancelled = true; };
   }, []);
 

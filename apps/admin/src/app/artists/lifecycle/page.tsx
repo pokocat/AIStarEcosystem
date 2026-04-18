@@ -93,7 +93,7 @@ export default function ArtistLifecyclePage() {
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">{a.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {typeMeta.icon} {typeMeta.label} · Lv.{a.level}
+                            {typeMeta.icon} {typeMeta.label} · 等级 {a.level}
                           </div>
                         </div>
                         <StatusBadge meta={ARTIST_QUALITY[a.quality]} />

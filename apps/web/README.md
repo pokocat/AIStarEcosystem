@@ -2,8 +2,8 @@
 
 本项目是 Figma Make 原型（导出在 `../../figma/`）的 Next.js 14（App Router）重写版本，与 `apps/web` 并存，共享 `apps/server` 后端。
 
-**当前版本：v2.1.0（2026-04-18）**
-v2.1 新增 Producer 侧"AI 形象锻造炉"页面，完整走通 types / mocks / constants / api / component 五件套。
+**当前版本：v2.3.0（2026-04-19）**
+v2.3 音乐工坊 P1：新增歌曲详情抽屉（改标题/曲风/封面/歌词 + 只读扣费信息）、近 30 天播放/收入趋势折线图、已发布歌曲"分发"按钮跳转 `?tab=distribution`。v2.2（2026-04-18）打通了 P0 主动脉：Song 绑定 artistId、"开始创作"→ `MusicGenerationDialog` → `MusicApi.createSong` → 内联试听；Album 降级为"歌手歌单"，Concert 仅保留线上直播占位。见 product_spec.md §10。
 自 v2 起，前端以 `src/types/*` 为数据契约的唯一真值源。后端 `specs/openapi.yaml` 与前端的差异记录于 [`specs/FRONTEND_CONTRACT_DIFF.md`](specs/FRONTEND_CONTRACT_DIFF.md)。
 
 ## 快速开始
@@ -129,7 +129,29 @@ import type { Song } from "@/types/music";
 
 ## 版本日志
 
-### v2.1.0 — 2026-04-18（本次）
+### v2.3.0 — 2026-04-19（本次）
+- **音乐工坊 P1 三件**：（1）歌曲详情抽屉；（2）近 30 天趋势折线图；（3）分发跳转。
+- **types** — `src/types/music.ts` 新增 `MusicTrendPoint`。
+- **mocks** — `src/mocks/music.ts` 新增 `MUSIC_TRENDS_30D`（合成 30 天趋势，周末系数 +25% 作为波动示例）。
+- **api** — `src/api/music.ts` 新增 `updateSong(id, patch)` / `listTrends30d()`。
+- **components**
+  - 新增 `src/components/producer/SongDetailDrawer.tsx`：shadcn Sheet 抽屉，允许修改 title / genre / coverUrl / lyrics；展示只读的状态、扣费、模型、深度、统计。
+  - 新增 `src/components/producer/MusicTrendChart.tsx`：recharts AreaChart，支持 plays / revenue 维度切换。
+  - `MusicBusiness.tsx`：每张歌曲卡片加 Edit3 图标按钮 → 打开抽屉；overview Tab 插入趋势图卡片；released 状态的"分发"按钮调 `router.push('?tab=distribution&songId=...')`。
+- **server** — `AccountController` 新增 `PATCH /api/me/songs/{id}`（校验 artistId → DigitalIp.ownerUserId，允许改 title/genre/coverUrl/lyrics/duration）。
+- **admin/三端同步** — 本次仅前端改动；admin types/mocks 已在 v2.2 对齐。
+
+### v2.2.0 — 2026-04-18
+- **音乐工坊 P0 主动脉打通**（see product_spec.md §10）：`MusicBusiness.tsx` 里原本死掉的"开始录制 / 继续制作 / 推广售票"按钮接入真实流程。
+- **types** — `src/types/music.ts`：`Song` 增 `artistId`（必填）/ `audioUrl` / `coverUrl` / `lyrics` / `modelVersion` / `thinkDepth` / `creditsSpent` / `createdAt`；`Album` 降级为 "AI 歌手歌单"（删 `trackCount`/`status`/`sales`/`revenue`，改用 `artistId` + `trackIds`）；`Concert` 简化为 `artistIds` + `streamUrl`。新增 `CreateSongRequest` / `ThinkDepth`。
+- **mocks** — `src/mocks/music.ts`：每首 Song 绑定 `artistId`，`audioUrl` 使用占位 URL（未来迁 OSS）。
+- **constants** — `src/constants/music-ui.ts`：移除 Album 状态色，新增 `SONG_STATUS_LABEL` / `CONCERT_STATUS_LABEL` / `PLACEHOLDER_AUDIO_URL` / `MODEL_VERSION_OPTIONS` / `THINK_DEPTH_OPTIONS` / `mockCreditsFor()`。
+- **api** — `src/api/music.ts`：新增 `createSong(req)` / `advanceSongStatus(id, next)`；list 端点迁至 `/me/*`。
+- **component** — `src/components/MusicBusiness.tsx` 重写：按当前 artist 过滤作品；"开始创作"接入 `MusicGenerationDialog`；内联 `<audio>` 播放；状态流转（recording → mixing → released）；"歌单 / 线上直播"Tab 改文案。
+- **三端同步** — `apps/admin/src/types|mocks/music.ts` 同步新字段（遗留字段标 @deprecated 供过渡页面）；`apps/server` Song 新增列 + SongDto 扩展 + AccountController 增 `GET /api/me/songs` 与 `POST /api/me/songs`（校验艺人 ownership + 占位扣 credits）。
+- **契约差异** — `specs/FRONTEND_CONTRACT_DIFF.md` 将追加"音乐工坊 §10"小节。
+
+### v2.1.0 — 2026-04-18
 - **新增**：Producer 侧 "AI 形象锻造炉"（原 Figma 新增 `AppearanceForge`）。
 - **types** — `src/types/appearance-forge.ts`：`ForgeMode` / `ForgeTemplate` / `LabeledOption` / `FaceSlider` / `ColorScheme` / `ForgeRequest` / `ForgeResult` / `ForgeOptions`。
 - **mocks** — `src/mocks/appearance-forge.ts`：6 套模版、6 款发型、6 款瞳色、8 类风格标签、6 项面部滑块、4 套主题配色。

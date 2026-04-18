@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/wallet.ts — 钱包与流水管理 API。对应 AdminWalletController。
+// api/wallet.ts — 钱包与流水管理 API。对应 AdminCreditController
+// (/api/admin/wallets, /api/admin/ledger-entries)。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Wallet, LedgerEntry } from "@/types/wallet";

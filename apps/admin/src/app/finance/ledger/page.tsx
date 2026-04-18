@@ -25,7 +25,7 @@ const TXN_TYPE_LABEL: Record<string, string> = {
   withdrawal: "提现",
   spend: "消费",
   recharge: "充值",
-  license_grant: "License 入账",
+  license_grant: "秘钥入账",
 };
 
 export default function LedgerPage() {
@@ -46,7 +46,7 @@ export default function LedgerPage() {
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
         title="结算中心"
-        description="钱包 / 点数流水 / 业务交易复核。所有金额单位：credits（见 product_spec.md §1.3 / §1.4）。"
+        description="钱包 / 点数流水 / 业务交易复核。所有金额单位：积分。"
         breadcrumb={[{ label: "分发与变现" }, { label: "结算中心" }]}
         actions={
           <Button size="sm" variant="outline">
@@ -56,9 +56,9 @@ export default function LedgerPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="钱包余额合计 · credits" value={formatCredits(totalBalance)} icon={WalletIcon} tone="success" />
-        <StatCard label="本期入账 · credits"   value={formatCredits(inflow)}       icon={Coins}     tone="success" />
-        <StatCard label="本期出账 · credits"   value={formatCredits(outflow)}      icon={Coins} />
+        <StatCard label="钱包余额合计" value={formatCredits(totalBalance)} icon={WalletIcon} tone="success" />
+        <StatCard label="本期入账"     value={formatCredits(inflow)}       icon={Coins}     tone="success" />
+        <StatCard label="本期出账"     value={formatCredits(outflow)}      icon={Coins} />
         <StatCard
           label="冻结 / 处理中"
           value={formatCredits(totalPending)}
@@ -72,7 +72,7 @@ export default function LedgerPage() {
         <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>入账趋势 · 近 6 月</CardTitle>
-            <CardDescription>单位：credits · 不含出账</CardDescription>
+            <CardDescription>单位：积分 · 不含出账</CardDescription>
           </CardHeader>
           <CardContent>
             <RevenueTrendChart data={REVENUE_MONTHLY} />
@@ -112,7 +112,7 @@ export default function LedgerPage() {
                   <TableRow>
                     <TableHead>账号</TableHead>
                     <TableHead className="text-right">总余额</TableHead>
-                    <TableHead className="text-right">License</TableHead>
+                    <TableHead className="text-right">秘钥</TableHead>
                     <TableHead className="text-right">充值</TableHead>
                     <TableHead className="text-right">赠送</TableHead>
                     <TableHead className="text-right">冻结</TableHead>

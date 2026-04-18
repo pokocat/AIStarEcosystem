@@ -14,10 +14,12 @@ import { CONCERT_STATUS } from "@/constants/status";
 import { formatCurrencyCN, formatDateCN } from "@/lib/utils";
 
 export default function ConcertsPage() {
-  const totalSeats = CONCERTS.reduce((a, b) => a + b.capacity, 0);
-  const totalSold = CONCERTS.reduce((a, b) => a + b.soldTickets, 0);
+  // 遗留字段已在 types/music.ts 里标记 @deprecated（product_spec.md §10.5），
+  // 本页面属 P1 待迁 "线上直播管理" 的过渡态，统一用 ?? 0 取值保持编译。
+  const totalSeats = CONCERTS.reduce((a, b) => a + (b.capacity ?? 0), 0);
+  const totalSold = CONCERTS.reduce((a, b) => a + (b.soldTickets ?? 0), 0);
   const selling = CONCERTS.filter((c) => c.status === "selling");
-  const totalRevenue = CONCERTS.reduce((a, b) => a + b.revenue, 0);
+  const totalRevenue = CONCERTS.reduce((a, b) => a + (b.revenue ?? 0), 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -55,20 +57,22 @@ export default function ConcertsPage() {
             </TableHeader>
             <TableBody>
               {CONCERTS.map((c) => {
-                const rate = c.capacity > 0 ? Math.round((c.soldTickets / c.capacity) * 100) : 0;
+                const capacity = c.capacity ?? 0;
+                const sold = c.soldTickets ?? 0;
+                const rate = capacity > 0 ? Math.round((sold / capacity) * 100) : 0;
                 return (
                   <TableRow key={c.id}>
                     <TableCell>
                       <div className="font-medium">{c.name}</div>
                       <div className="text-xs text-muted-foreground">ID {c.id}</div>
                     </TableCell>
-                    <TableCell className="text-sm">{c.venue}</TableCell>
+                    <TableCell className="text-sm">{c.venue ?? "—"}</TableCell>
                     <TableCell className="text-sm">{formatDateCN(c.date)}</TableCell>
-                    <TableCell className="tabular-nums text-sm">¥{c.ticketPrice}</TableCell>
+                    <TableCell className="tabular-nums text-sm">¥{c.ticketPrice ?? 0}</TableCell>
                     <TableCell className="min-w-[160px]">
                       <div className="flex items-center gap-2 text-xs mb-1 tabular-nums">
-                        <span className="font-medium">{c.soldTickets.toLocaleString("zh-CN")}</span>
-                        <span className="text-muted-foreground">/ {c.capacity.toLocaleString("zh-CN")}</span>
+                        <span className="font-medium">{sold.toLocaleString("zh-CN")}</span>
+                        <span className="text-muted-foreground">/ {capacity.toLocaleString("zh-CN")}</span>
                         <span className="ml-auto text-muted-foreground">{rate}%</span>
                       </div>
                       <Progress value={rate} />
@@ -77,7 +81,7 @@ export default function ConcertsPage() {
                       <StatusBadge meta={CONCERT_STATUS[c.status]} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm font-medium">
-                      {formatCurrencyCN(c.revenue)}
+                      {formatCurrencyCN(c.revenue ?? 0)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="ghost">

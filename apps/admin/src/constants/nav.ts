@@ -64,11 +64,11 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "平台账户",
     items: [
-      { href: "/platform/accounts", label: "账号",              icon: Users,     badgeKey: "account_suspended", description: "AepUser：登录账号与状态" },
-      { href: "/platform/studios",  label: "经纪公司 / 工作室", icon: Building2, description: "Studio：业务主体档案与聚合指标" },
-      { href: "/platform/tenants",  label: "机构 Tenant",       icon: Network,   description: "License 发放方与归属统计" },
-      { href: "/platform/licenses", label: "License 批次",      icon: KeySquare, badgeKey: "license_low",       description: "批次 / 单码 / 核销" },
-      { href: "/platform/config",   label: "平台配置",          icon: Settings2, description: "孵化 / 锻造炉 JSON 配置" },
+      { href: "/platform/accounts", label: "账号",              icon: Users,     badgeKey: "account_suspended", description: "登录账号与状态" },
+      { href: "/platform/studios",  label: "经纪公司 / 工作室", icon: Building2, description: "业务主体档案与聚合指标" },
+      { href: "/platform/tenants",  label: "机构",              icon: Network,   description: "秘钥发放方与归属统计" },
+      { href: "/platform/licenses", label: "秘钥批次",          icon: KeySquare, badgeKey: "license_low",       description: "批次 / 秘钥 / 核销" },
+      { href: "/platform/config",   label: "平台配置",          icon: Settings2, description: "孵化 / 锻造炉 配置" },
     ],
   },
   {
@@ -96,8 +96,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/distribution/platforms", label: "分发渠道",  icon: Radio,        badgeKey: "platform_pending", description: "平台接入审核" },
       { href: "/distribution/queue",     label: "发行队列",  icon: Send,         badgeKey: "dist_reviewing",   description: "待审核内容分发" },
-      { href: "/monetization/nft",       label: "NFT 市场",  icon: Gift,         description: "收藏品上架与复核" },
-      { href: "/finance/ledger",         label: "结算中心",  icon: Wallet,       badgeKey: "txn_actionable",   description: "钱包 / 流水 / 复核（credits）" },
+      { href: "/monetization/nft",       label: "数字藏品",  icon: Gift,         description: "收藏品上架与复核" },
+      { href: "/finance/ledger",         label: "结算中心",  icon: Wallet,       badgeKey: "txn_actionable",   description: "钱包 / 流水 / 复核（积分）" },
       { href: "/finance/risk",           label: "异常风控",  icon: AlertTriangle, description: "异常打赏与提现" },
     ],
   },

@@ -15,6 +15,8 @@ public interface DigitalIpRepository extends JpaRepository<DigitalIp, String>,
 
     Page<DigitalIp> findByOwnerUserId(String ownerUserId, Pageable pageable);
 
+    List<DigitalIp> findByOwnerUserId(String ownerUserId);
+
     Page<DigitalIp> findByStudioId(String studioId, Pageable pageable);
 
     Page<DigitalIp> findByKind(DigitalIp.DigitalIpKind kind, Pageable pageable);

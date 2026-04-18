@@ -11,37 +11,72 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { STUDIOS } from "@/mocks/studios";
-import { ACCOUNTS } from "@/mocks/accounts";
+import { listStudios, setStudioStatus } from "@/api/studios";
+import { listUsers } from "@/api/users";
 import { STUDIO_KIND, STUDIO_STATUS } from "@/constants/status";
 import type { AdminStudio, StudioKind } from "@/types/studio";
+import type { AepUser } from "@/types/account";
 import { formatCredits } from "@/lib/format";
 
 export default function StudiosPage() {
+  const [studios, setStudios] = React.useState<AdminStudio[]>([]);
+  const [accounts, setAccounts] = React.useState<AepUser[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<"all" | StudioKind>("all");
   const [target, setTarget] = React.useState<{ studio: AdminStudio; action: "suspend" | "reactivate" } | null>(null);
 
-  const userById = React.useMemo(() => new Map(ACCOUNTS.map((u) => [u.id, u])), []);
+  const reload = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [s, u] = await Promise.all([
+        listStudios(0, 200),
+        listUsers(0, 200),
+      ]);
+      setStudios(s);
+      setAccounts(u);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const filtered = STUDIOS.filter((s) => {
+  React.useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const userById = React.useMemo(() => new Map(accounts.map((u) => [u.id, u])), [accounts]);
+
+  const filtered = studios.filter((s) => {
     if (kind !== "all" && s.kind !== kind) return false;
     if (query && !s.name.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
 
   const counts = {
-    total: STUDIOS.length,
-    artists: STUDIOS.reduce((sum, s) => sum + s.artistCount, 0),
-    songs: STUDIOS.reduce((sum, s) => sum + s.songCount, 0),
-    revenueCredits: STUDIOS.reduce((sum, s) => sum + s.totalRevenueCredits, 0),
+    total: studios.length,
+    artists: studios.reduce((sum, s) => sum + s.artistCount, 0),
+    songs: studios.reduce((sum, s) => sum + s.songCount, 0),
+    revenueCredits: studios.reduce((sum, s) => sum + s.totalRevenueCredits, 0),
   };
+
+  async function handleConfirm() {
+    if (!target) return;
+    const nextStatus = target.action === "suspend" ? "suspended" : "active";
+    await setStudioStatus(target.studio.id, nextStatus);
+    setTarget(null);
+    await reload();
+  }
 
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
         title="经纪公司 / 工作室"
-        description="Studio：业务主体档案与聚合指标。每个 Studio 1:1 关联一个 AepUser。"
+        description="Studio：业务主体档案与聚合指标（来自后端 /admin/studios）。每个 Studio 1:1 关联一个 AepUser。"
         breadcrumb={[{ label: "平台账户" }, { label: "经纪公司 / 工作室" }]}
       />
 
@@ -49,7 +84,7 @@ export default function StudiosPage() {
         <StatCard label="主体总数"       value={counts.total}                    icon={Building2} />
         <StatCard label="名下艺人"       value={counts.artists}                  icon={Sparkles}  tone="default" />
         <StatCard label="作品总数"       value={counts.songs}                    icon={Music2}    />
-        <StatCard label="累计收益 · credits" value={formatCredits(counts.revenueCredits)} icon={Coins} tone="success" />
+        <StatCard label="累计收益（积分）" value={formatCredits(counts.revenueCredits)} icon={Coins} tone="success" />
       </section>
 
       <Card>
@@ -76,23 +111,35 @@ export default function StudiosPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[1100px]">
             <TableHeader>
               <TableRow>
-                <TableHead>主体</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>所属账号</TableHead>
+                <TableHead className="min-w-[220px]">主体</TableHead>
+                <TableHead className="min-w-[120px]">类型</TableHead>
+                <TableHead className="min-w-[140px]">所属账号</TableHead>
                 <TableHead className="text-right">名下艺人</TableHead>
                 <TableHead className="text-right">作品</TableHead>
                 <TableHead className="text-right">月度收益</TableHead>
                 <TableHead className="text-right">累计收益</TableHead>
-                <TableHead>状态</TableHead>
+                <TableHead className="min-w-[96px]">状态</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((s) => {
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                </TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-10 text-rose-600">
+                    加载失败：{loadError}
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && !loadError && filtered.map((s) => {
                 const owner = userById.get(s.ownerUserId);
                 return (
                   <TableRow key={s.id}>
@@ -103,7 +150,7 @@ export default function StudiosPage() {
                       </div>
                     </TableCell>
                     <TableCell><StatusBadge meta={STUDIO_KIND[s.kind]} /></TableCell>
-                    <TableCell className="text-sm">{owner ? `@${owner.username}` : "—"}</TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{owner ? `@${owner.username}` : "—"}</TableCell>
                     <TableCell className="text-right tabular-nums">{s.artistCount}</TableCell>
                     <TableCell className="text-right tabular-nums">{s.songCount}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatCredits(s.monthlyRevenueCredits)}</TableCell>
@@ -125,6 +172,13 @@ export default function StudiosPage() {
                   </TableRow>
                 );
               })}
+              {!loading && !loadError && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                    没有匹配的主体
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -139,6 +193,7 @@ export default function StudiosPage() {
           tone={target.action === "suspend" ? "danger" : "success"}
           confirmLabel={target.action === "suspend" ? "暂停" : "恢复"}
           requireReason
+          onConfirm={handleConfirm}
         />
       )}
     </div>

@@ -21,7 +21,7 @@ function buildRiskCases() {
   const txnCases = TRANSACTIONS.flatMap((t) => {
     const abs = Math.abs(t.amount);
     const risks: { kind: string; level: "high" | "mid" | "low"; detail: string }[] = [];
-    if (abs >= 20_000) risks.push({ kind: "大额流水", level: "mid", detail: `单笔 ${formatSignedCredits(t.amount)} credits` });
+    if (abs >= 20_000) risks.push({ kind: "大额流水", level: "mid", detail: `单笔 ${formatSignedCredits(t.amount)} 积分` });
     if ((t.type === "withdrawal" || t.type === "spend") && t.status !== "completed")
       risks.push({ kind: "异常出账", level: "high", detail: `状态 ${t.status}` });
     if (t.source.includes("打赏") && abs >= 5_000)

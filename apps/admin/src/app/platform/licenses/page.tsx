@@ -12,8 +12,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
 import { LICENSE_BATCHES, LICENSE_KEYS } from "@/mocks/licenses";
 import { TENANTS, ACCOUNTS } from "@/mocks/accounts";
-import { LICENSE_BATCH_STATUS, LICENSE_KEY_STATUS } from "@/constants/status";
-import type { LicenseBatch } from "@/types/license";
+import { LICENSE_BATCH_STATUS, LICENSE_KEY_STATUS, LICENSE_TIER } from "@/constants/status";
+import { LICENSE_TIERS, type LicenseBatch } from "@/types/license";
 import { formatDateCN } from "@/lib/utils";
 import { formatCredits, formatPercent } from "@/lib/format";
 
@@ -32,9 +32,9 @@ export default function LicensesPage() {
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
-        title="License 批次"
-        description="批次 = 入场券 + 初始点数包。核销时一次性发放 credits，不设订阅。"
-        breadcrumb={[{ label: "平台账户" }, { label: "License 批次" }]}
+        title="秘钥批次"
+        description="批次 = 入场券 + 初始点数包。核销时一次性发放积分，不设订阅。"
+        breadcrumb={[{ label: "平台账户" }, { label: "秘钥批次" }]}
         actions={
           <Button size="sm">
             <Plus className="h-3.5 w-3.5" /> 新建批次
@@ -42,27 +42,49 @@ export default function LicensesPage() {
         }
       />
 
+      {/* 等级说明 */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {Object.values(LICENSE_TIERS).map((t) => (
+          <Card key={t.key}>
+            <CardHeader className="flex-row items-center justify-between pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <StatusBadge meta={LICENSE_TIER[t.key]} />
+                <span>{t.label}</span>
+              </CardTitle>
+              <span className="text-lg font-semibold tabular-nums">
+                {formatCredits(t.initialCreditGrant)}
+              </span>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground space-y-1">
+              <div>激活账户：<span className="text-foreground font-medium">{t.accountLabel}</span></div>
+              <div>{t.description}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="发放中批次"        value={active.length}                 icon={KeySquare} tone="success" />
-        <StatCard label="已兑换 License"    value={activatedKeys}                 icon={CheckCircle2} tone="success" />
-        <StatCard label="未兑换单码"        value={pendingKeys}                   icon={AlertCircle}  tone={pendingKeys ? "warning" : "default"} />
-        <StatCard label="累计发放点数"      value={formatCredits(totalGranted)}   icon={KeySquare}    tone="default" />
+        <StatCard label="发放中批次"    value={active.length}                 icon={KeySquare}   tone="success" />
+        <StatCard label="已兑换秘钥"    value={activatedKeys}                 icon={CheckCircle2} tone="success" />
+        <StatCard label="未兑换秘钥"    value={pendingKeys}                   icon={AlertCircle}  tone={pendingKeys ? "warning" : "default"} />
+        <StatCard label="累计发放点数"  value={formatCredits(totalGranted)}   icon={KeySquare}    tone="default" />
       </section>
 
       <Tabs defaultValue="batches" className="space-y-4">
         <TabsList>
           <TabsTrigger value="batches">批次 ({LICENSE_BATCHES.length})</TabsTrigger>
-          <TabsTrigger value="keys">单码 ({LICENSE_KEYS.length})</TabsTrigger>
+          <TabsTrigger value="keys">秘钥 ({LICENSE_KEYS.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="batches">
           <Card>
             <CardHeader><CardTitle>批次列表</CardTitle></CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>批次号 / 名称</TableHead>
+                    <TableHead>等级</TableHead>
                     <TableHead>发放方</TableHead>
                     <TableHead className="text-right">单包点数</TableHead>
                     <TableHead className="text-right">核销 / 总量</TableHead>
@@ -84,6 +106,7 @@ export default function LicensesPage() {
                             <span className="text-xs text-muted-foreground tabular-nums">{b.batchNo}</span>
                           </div>
                         </TableCell>
+                        <TableCell><StatusBadge meta={LICENSE_TIER[b.tier]} /></TableCell>
                         <TableCell className="text-sm">{issuer?.name ?? "—"}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatCredits(b.initialCreditGrant)}</TableCell>
                         <TableCell className="text-right tabular-nums">
@@ -114,12 +137,13 @@ export default function LicensesPage() {
 
         <TabsContent value="keys">
           <Card>
-            <CardHeader><CardTitle>单码列表</CardTitle></CardHeader>
-            <CardContent className="p-0">
+            <CardHeader><CardTitle>秘钥列表</CardTitle></CardHeader>
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>License Key</TableHead>
+                    <TableHead>秘钥编码</TableHead>
+                    <TableHead>等级</TableHead>
                     <TableHead>所属批次</TableHead>
                     <TableHead>兑换人</TableHead>
                     <TableHead>兑换时间</TableHead>
@@ -134,6 +158,7 @@ export default function LicensesPage() {
                     return (
                       <TableRow key={k.id}>
                         <TableCell className="font-mono text-xs">{k.maskedCode}</TableCell>
+                        <TableCell>{b ? <StatusBadge meta={LICENSE_TIER[b.tier]} /> : "—"}</TableCell>
                         <TableCell className="text-sm">{b?.name ?? "—"}</TableCell>
                         <TableCell className="text-sm">{user?.displayName ?? "—"}</TableCell>
                         <TableCell className="text-xs">{k.activatedAt ? formatDateCN(k.activatedAt) : "—"}</TableCell>
@@ -154,7 +179,7 @@ export default function LicensesPage() {
           open={!!target}
           onOpenChange={(open) => !open && setTarget(null)}
           title={`撤回批次：${target.batch.name}`}
-          description={`批次号 ${target.batch.batchNo}，已核销 ${target.batch.activatedCount} 个单码。撤回后未兑换单码失效。`}
+          description={`批次号 ${target.batch.batchNo}，已核销 ${target.batch.activatedCount} 个秘钥。撤回后未兑换秘钥失效。`}
           tone="danger"
           confirmLabel="撤回批次"
           requireReason

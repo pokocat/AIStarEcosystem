@@ -4,8 +4,13 @@ import com.aistareco.aep.dto.AepUserDto;
 import com.aistareco.aep.dto.DigitalIpDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.PageEnvelope;
+import com.aistareco.aep.dto.SongDto;
 import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.dto.WalletDto;
+import com.aistareco.aep.model.DigitalIp;
+import com.aistareco.aep.model.Song;
+import com.aistareco.aep.repository.DigitalIpRepository;
+import com.aistareco.aep.repository.SongRepository;
 import com.aistareco.aep.service.AccountSelfService;
 import com.aistareco.aep.service.DigitalIpService;
 import com.aistareco.common.ApiResponse;
@@ -13,10 +18,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
+import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/me")
@@ -24,11 +33,17 @@ public class AccountController {
 
     private final AccountSelfService accountSelfService;
     private final DigitalIpService digitalIpService;
+    private final SongRepository songRepo;
+    private final DigitalIpRepository digitalIpRepo;
 
     public AccountController(AccountSelfService accountSelfService,
-                             DigitalIpService digitalIpService) {
+                             DigitalIpService digitalIpService,
+                             SongRepository songRepo,
+                             DigitalIpRepository digitalIpRepo) {
         this.accountSelfService = accountSelfService;
         this.digitalIpService = digitalIpService;
+        this.songRepo = songRepo;
+        this.digitalIpRepo = digitalIpRepo;
     }
 
     @GetMapping
@@ -101,5 +116,125 @@ public class AccountController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteDigitalIp(Principal principal, @PathVariable String id) {
         digitalIpService.deleteOwned(id, principal.getName());
+    }
+
+    // ── 音乐工坊（product_spec.md §10） ──────────────────────────────────────
+
+    /** 列出当前用户名下所有 AI 艺人的歌曲（按创建倒序）。 */
+    @GetMapping("/songs")
+    public ApiResponse<List<SongDto>> listMySongs(Principal principal) {
+        List<String> ownedArtistIds = digitalIpRepo
+                .findByOwnerUserId(principal.getName())
+                .stream()
+                .map(DigitalIp::getId)
+                .toList();
+        if (ownedArtistIds.isEmpty()) {
+            return ApiResponse.of(List.of());
+        }
+        List<SongDto> songs = ownedArtistIds.stream()
+                .flatMap(artistId -> songRepo
+                        .findByArtistIdOrderByCreatedAtDesc(artistId).stream())
+                .map(SongDto::from)
+                .toList();
+        return ApiResponse.of(songs);
+    }
+
+    /** 更新歌曲（标题 / 曲风 / 封面 / 歌词 / 时长）。ownership 走 artistId 反查。 */
+    @PatchMapping("/songs/{id}")
+    public ApiResponse<SongDto> patchSong(Principal principal,
+                                           @PathVariable String id,
+                                           @RequestBody Map<String, Object> body) {
+        Song existing = songRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "歌曲不存在"));
+        String artistId = existing.getArtistId();
+        if (artistId == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "歌曲缺少艺人归属");
+        }
+        DigitalIp artist = digitalIpRepo.findById(artistId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "艺人不存在"));
+        if (!principal.getName().equals(artist.getOwnerUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该歌曲不属于当前用户");
+        }
+
+        if (body.containsKey("title"))       existing.setTitle(strOr(body.get("title"), existing.getTitle()));
+        if (body.containsKey("genre"))       existing.setGenre(str(body.get("genre")));
+        if (body.containsKey("coverUrl"))    existing.setCoverUrl(str(body.get("coverUrl")));
+        if (body.containsKey("lyrics"))      existing.setLyrics(str(body.get("lyrics")));
+        if (body.containsKey("duration"))    existing.setDuration(intOr(body.get("duration"), existing.getDuration()));
+        Song saved = songRepo.save(existing);
+        return ApiResponse.of(SongDto.from(saved));
+    }
+
+    /**
+     * 创建 AI 歌曲。artistId 必填；按 (modelVersion, thinkDepth) 扣 credits。
+     * MVP 扣费策略为占位随机值；正式策略见 product_spec.md §10.3。
+     */
+    @PostMapping("/songs")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<SongDto> createSong(Principal principal,
+                                            @RequestBody Map<String, Object> body) {
+        String artistId = str(body.get("artistId"));
+        if (artistId == null || artistId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "artistId 必填");
+        }
+        DigitalIp artist = digitalIpRepo.findById(artistId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "艺人不存在"));
+        if (!principal.getName().equals(artist.getOwnerUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该艺人不属于当前用户");
+        }
+
+        String modelVersion = str(body.get("modelVersion"));
+        String thinkDepth = str(body.get("thinkDepth"));
+        long creditsSpent = mockCreditsFor(modelVersion, thinkDepth);
+
+        Song song = Song.builder()
+                .id("s-" + UUID.randomUUID().toString().substring(0, 8))
+                .title(strOr(body.get("title"), "未命名作品"))
+                .genre(strOr(body.get("genre"), "Pop"))
+                .duration(intOr(body.get("duration"), 180))
+                .status(Song.SongStatus.RECORDING)
+                .plays(0)
+                .revenue(0)
+                .rating(0)
+                .artistId(artistId)
+                .audioUrl("https://cdn.placeholder.local/mock/audio.mp3")
+                .lyrics(str(body.get("lyrics")))
+                .modelVersion(modelVersion)
+                .thinkDepth(thinkDepth)
+                .creditsSpent(creditsSpent)
+                .createdAt(Instant.now())
+                .build();
+        Song saved = songRepo.save(song);
+        return ApiResponse.of(SongDto.from(saved));
+    }
+
+    private static long mockCreditsFor(String modelVersion, String thinkDepth) {
+        long base = modelVersion != null && modelVersion.contains("deep") ? 120 : 60;
+        double mult = "deep".equalsIgnoreCase(thinkDepth) ? 2.0
+                : "standard".equalsIgnoreCase(thinkDepth) ? 1.3
+                : 1.0;
+        return Math.round(base * mult + Math.random() * 40);
+    }
+
+    private static String str(Object v) {
+        return v == null ? null : v.toString();
+    }
+
+    private static String strOr(Object v, String fallback) {
+        String s = str(v);
+        return (s == null || s.isBlank()) ? fallback : s;
+    }
+
+    private static int intOr(Object v, int fallback) {
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String s) {
+            try { return Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) {}
+        }
+        return fallback;
+    }
+
+    @SuppressWarnings("unused")
+    private static String lowerOrNull(String s) {
+        return s == null ? null : s.toLowerCase(Locale.ROOT);
     }
 }

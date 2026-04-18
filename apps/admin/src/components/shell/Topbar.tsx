@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, HelpCircle, Search } from "lucide-react";
+import { Bell, HelpCircle, Menu, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -8,23 +8,35 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 interface TopbarProps {
   operator?: { name: string; role: string; initials: string };
   unread?: number;
+  onMenuClick?: () => void;
 }
 
 export function Topbar({
-  operator = { name: "张运营", role: "platform_operator", initials: "ZY" },
+  operator = { name: "张运营", role: "平台运营", initials: "ZY" },
   unread = 0,
+  onMenuClick,
 }: TopbarProps) {
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/90 px-5 backdrop-blur">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/90 px-4 md:px-5 backdrop-blur">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="lg:hidden -ml-1"
+        aria-label="打开菜单"
+        onClick={onMenuClick}
+      >
+        <Menu className="h-4 w-4" />
+      </Button>
+
       <div className="flex-1 max-w-xl relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="搜索艺人 / 歌曲 / 订单号 / 合约… (⌘K)"
+          placeholder="搜索艺人 / 歌曲 / 订单号 / 合约…"
           className="pl-8 bg-surface-muted border-transparent focus-visible:border-border"
         />
       </div>
 
-      <Button variant="ghost" size="icon" aria-label="帮助">
+      <Button variant="ghost" size="icon" aria-label="帮助" className="hidden md:inline-flex">
         <HelpCircle className="h-4 w-4 text-muted-foreground" />
       </Button>
 
@@ -37,7 +49,7 @@ export function Topbar({
         )}
       </Button>
 
-      <div className="flex items-center gap-2.5 pl-2 border-l border-border">
+      <div className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-border">
         <Avatar className="h-8 w-8">
           <AvatarFallback className="bg-indigo-100 text-indigo-700 text-xs font-semibold">
             {operator.initials}

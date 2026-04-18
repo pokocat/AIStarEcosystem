@@ -16,9 +16,9 @@ export async function listDigitalIps(
   });
 }
 
-export async function getDigitalIp(id: ID): Promise<Artist> {
-  if (USE_MOCK) return mockDelay(MOCK_ARTISTS.find((a) => a.id === id)!);
-  return apiFetch<Artist>(`/admin/digital-ips/${encodeURIComponent(id)}`);
+export async function getDigitalIp(id: ID): Promise<Artist | null> {
+  if (USE_MOCK) return mockDelay(MOCK_ARTISTS.find((a) => a.id === id) ?? null);
+  return apiFetch<Artist | null>(`/admin/digital-ips/${encodeURIComponent(id)}`);
 }
 
 export async function createDigitalIp(data: Partial<Artist>): Promise<Artist> {

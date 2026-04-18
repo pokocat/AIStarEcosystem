@@ -17,11 +17,13 @@ export default function AlbumsPage() {
   const [target, setTarget] = React.useState<Album | null>(null);
   const [action, setAction] = React.useState<"approve" | "schedule" | "reject" | null>(null);
 
+  // 遗留字段 @deprecated（product_spec.md §10.4）；本页面 P1 迁 "歌单运营" 后重写。
   const counts = {
     planning: ALBUMS.filter((a) => a.status === "planning").length,
     recording: ALBUMS.filter((a) => a.status === "recording").length,
     released: ALBUMS.filter((a) => a.status === "released").length,
   };
+  const albumStatus = (a: Album) => a.status ?? "released";
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -37,7 +39,7 @@ export default function AlbumsPage() {
         <StatCard label="已发行" value={counts.released} icon={CheckCircle2} tone="success" />
         <StatCard
           label="累计销量"
-          value={formatCountCN(ALBUMS.reduce((a, b) => a + b.sales, 0))}
+          value={formatCountCN(ALBUMS.reduce((a, b) => a + (b.sales ?? 0), 0))}
           hint="全部专辑合计"
           icon={Disc3}
         />
@@ -54,10 +56,10 @@ export default function AlbumsPage() {
               <div className="flex-1 min-w-0">
                 <CardTitle className="truncate">{a.name}</CardTitle>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {a.trackCount} 首 · ID {a.id}
+                  {a.trackCount ?? a.trackIds.length} 首 · ID {a.id}
                 </div>
                 <div className="mt-1.5">
-                  <StatusBadge meta={ALBUM_STATUS[a.status]} />
+                  <StatusBadge meta={ALBUM_STATUS[albumStatus(a)]} />
                 </div>
               </div>
             </CardHeader>
@@ -65,15 +67,15 @@ export default function AlbumsPage() {
               <dl className="grid grid-cols-2 gap-3 text-sm mb-4">
                 <div>
                   <dt className="text-xs text-muted-foreground">销量</dt>
-                  <dd className="tabular-nums font-medium">{formatCountCN(a.sales)}</dd>
+                  <dd className="tabular-nums font-medium">{formatCountCN(a.sales ?? 0)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">销售额</dt>
-                  <dd className="tabular-nums font-medium">{formatCurrencyCN(a.revenue)}</dd>
+                  <dd className="tabular-nums font-medium">{formatCurrencyCN(a.revenue ?? 0)}</dd>
                 </div>
               </dl>
               <div className="flex items-center gap-1.5">
-                {a.status !== "released" ? (
+                {albumStatus(a) !== "released" ? (
                   <>
                     <Button
                       size="sm"
@@ -135,7 +137,7 @@ export default function AlbumsPage() {
               ? `排期《${target.name}》`
               : `驳回《${target.name}》`
           }
-          description={`${target.trackCount} 首曲目 · 当前状态 ${ALBUM_STATUS[target.status]?.label ?? ""}`}
+          description={`${target.trackCount ?? target.trackIds.length} 首曲目 · 当前状态 ${ALBUM_STATUS[albumStatus(target)]?.label ?? ""}`}
           tone={action === "reject" ? "danger" : action === "approve" ? "success" : "warning"}
           confirmLabel={action === "approve" ? "立即发行" : action === "schedule" ? "设定上架日期" : "驳回"}
           requireReason={action === "reject"}

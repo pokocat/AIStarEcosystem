@@ -26,9 +26,9 @@ export default function NftMarketPage() {
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
-        title="NFT 市场"
-        description="粉丝端收藏品上架审核与持有量监控。"
-        breadcrumb={[{ label: "分发与变现" }, { label: "NFT 市场" }]}
+        title="数字藏品"
+        description="粉丝端数字藏品上架审核与持有量监控。"
+        breadcrumb={[{ label: "分发与变现" }, { label: "数字藏品" }]}
       />
 
       <section className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
