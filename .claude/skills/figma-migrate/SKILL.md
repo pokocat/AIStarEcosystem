@@ -26,6 +26,8 @@ description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的
 6. **Array mutation 必前置 spread**：`[...arr].sort(...)`。
 7. **lucide-react 图标按需 import**。清理后跑 tsc，删除未使用图标。
 8. **无需改后端代码**。发现接口缺口 → 记录到 `apps/web_new/specs/FRONTEND_CONTRACT_DIFF.md`。
+9. **组件只读 `@/mocks/`，不在 UI 路径上调 API 层**（详见步骤 5 / 6）。
+10. **Skill 自更新义务**。每次迭代结束，回顾本次踩到的新坑、发现的新模式、纠正的旧指引；只要"下次再遇同类场景会复用"，**必须把经验沉淀回本 SKILL.md**（见章节 5）。
 
 ---
 
@@ -69,9 +71,13 @@ diff figma/src/components/<X>.tsx apps/web_new/src/components/<X>.tsx
 - 伪异步耗时、历史上限等"tweakable 常量"也放这里。
 - **图标必须从 lucide-react 导入到本文件**；`types/` 不能 import 运行时值。
 
-### 步骤 5 — API 封装 `api/<domain>.ts`
+### 步骤 5 — API 封装 `api/<domain>.ts`（**仅作为后端对接钩子**，组件不直接调用）
 
-模板（必须按此结构）：
+仓库当前现状（2026-04-18）：**`NEXT_PUBLIC_USE_MOCK` 默认 `false`**，未显式配 `.env.local` 时 `apiFetch` 会打到实际不存在的后端并抛 "Invalid JSON from /xxx"。所有兄弟组件（DistributionPage / WardrobePage / FinancePage / ...）因此**都直接消费 `@/mocks/`**，没有一个通过 `XxxApi.listXxx()` 调起 API 层。
+
+所以 `api/<domain>.ts` 的职责是：**预埋后端对接的单点入口**。写好、加到 `api/index.ts`，但**组件不调用它**。等后端就绪再把组件里的 mock 直接读切换为 API 调用即可。
+
+模板（按此结构写，但组件不 import）：
 
 ```ts
 import type { XxxOptions, XxxRequest, XxxResult } from "@/types/<domain>";
@@ -84,10 +90,7 @@ export async function getXxxOptions(): Promise<XxxOptions> {
 }
 
 export async function runXxx(req: XxxRequest): Promise<XxxResult> {
-  if (USE_MOCK) {
-    // 按请求伪构造结果；尊重 req.xxxId 等参数，避免随机导致 UI 跳变。
-    return mockDelay({ /* ... */ }, 2000);
-  }
+  if (USE_MOCK) return mockDelay({ /* 按 req 合成伪结果 */ }, 2000);
   return apiFetch<XxxResult>("/<domain>/run", { method: "POST", body: req });
 }
 ```
@@ -101,8 +104,10 @@ export * as XxxApi from "./<domain>";
 ### 步骤 6 — 组件落地 `components/<...>/<Component>.tsx`
 
 - 顶部加 `"use client";`（web_new 使用 App Router，业务组件默认是 Server Components，带状态/事件的组件必须声明）。
-- 从 `@/types`、`@/mocks`、`@/constants`、`@/api` 按需 import；**不要再有内联数据**。
-- 使用 `useEffect` + `XxxApi.getXxxOptions()` 拉取选项，`useState(DEFAULT_OPTIONS)` 兜底（mock 模式下也有默认值）。
+- 从 `@/types`、`@/mocks`、`@/constants` 按需 import；**不要再有内联数据**。
+- **直接读取 `@/mocks/<domain>`** 做静态选项，**不要** `useEffect + XxxApi.getXxxOptions()`——会在默认 `USE_MOCK=false` 时抛 "Invalid JSON from /xxx"。
+- 异步动作（生成 / 保存）在组件里用 `setTimeout` 合成结果，真实延迟常量复用 `constants/<domain>-ui.ts` 里的 `MOCK_XXX_DURATION_MS`。
+- `api/<domain>.ts` 的函数仍然导出、仍然注册到 `api/index.ts`——供未来后端就绪时作为切换锚点，但本次迭代不在组件里 import。
 - 接受 `lang: Lang` prop 但不读取（保持与兄弟组件签名一致，便于 ProducerDashboard 等路由壳统一透传）。
 - 所有文案、占位符、toast 文案直接写中文。删除 `zh ? 'X' : 'Y'` 三元。
 
@@ -170,6 +175,7 @@ cd apps/web_new && ./node_modules/.bin/tsc --noEmit
 7. **Tailwind 渐变类名在 class 字符串里插值**：用 `bg-gradient-to-r ${conf.gradient}`（gradient 是 `from-xxx to-yyy`）。**不要**把 `from-xxx-500` 这种动态拼接写成部分字符串拼接（Tailwind JIT 要求完整类名），整段渐变建议直接作为完整字符串存入 `MODE_CONFIG.gradient`。
 8. **`AnimatePresence` + `motion.div key` 切换**：迁移保留；若出现"切换后不见了"通常是 key 重复或 `mode="wait"` 丢了。
 9. **页面外包 `<AnimatePresence>` 做路由淡入**：Next App Router 按路由单独渲染，跨页动画会消失，这是已知差异（见 README "与 Figma 原型的已知差异"一节）。
+10. **组件在 mount 时 `useEffect` 调 `XxxApi.getXxxOptions()` 会崩**：`USE_MOCK` 默认 `false`，请求打到不存在的 `/api/<domain>/options` 返回 404 HTML，`apiFetch.json()` 解析失败抛 "Invalid JSON from /xxx"。→ 组件直接 `import { XXX_OPTIONS } from "@/mocks/<domain>"`，别走 API 层（2026-04-18 踩坑）。
 
 ---
 
@@ -179,9 +185,37 @@ cd apps/web_new && ./node_modules/.bin/tsc --noEmit
 - [ ] `mocks/<domain>.ts` 有 ≥ 3 条样本，无 `Date` 对象
 - [ ] `constants/<domain>-ui.ts` 抽尽 Tailwind 串 + 图标映射
 - [ ] `api/<domain>.ts` 每个函数都走 `if (USE_MOCK)` 分支；`api/index.ts` 追加命名空间
-- [ ] `components/<path>/<Component>.tsx` 顶部 `"use client"`；全中文；无内联数据；从 `@/api` 调用
+- [ ] `components/<path>/<Component>.tsx` 顶部 `"use client"`；全中文；无内联数据；**直接读 mocks**（不在 UI 路径调 API 层）
 - [ ] 宿主组件（ProducerDashboard / CoachDashboard / ...）的 SIDEBAR 与 switch-case 都加了新条目
 - [ ] `tsc --noEmit` 0 error
+- [ ] `npm run dev` 打开新页面不抛 "Invalid JSON from /xxx" 这类运行时错误
 - [ ] `README.md` 版本号 + 版本日志 已追加
 - [ ] `specs/FRONTEND_CONTRACT_DIFF.md` 附录已追加
 - [ ] `grep -RIn "{ zh:" apps/web_new/src/components/<path>` 无命中
+- [ ] **本次迭代有新复用价值的经验已沉淀回本 SKILL.md**（章节 5）
+
+---
+
+## 5. Skill 自更新（每次迭代必做）
+
+本 Skill 是**活文档**，不是一次性模板。每次跑完一次迁移，在提交 PR 之前问自己：
+
+1. **指引被推翻了吗？**（用户否定了某条做法 / 运行时抛错让我改方向 / 发现既有指令与实际代码模式冲突）
+   → 修正对应章节，并在被改段落旁标注「YYYY-MM-DD 修正」，便于追溯。
+2. **出现了之前没讲过、但下次还会遇到的新模式？**（新的组件模板、新的命名约定、新的避坑套路、新的工程约束）
+   → 加到第 3 章"常见坑"（一句话说清症状 + 一句话给对策），必要时扩写主流程。
+3. **出现了值得抄的命令 / grep 正则 / 一键清理脚本？**
+   → 加到第 2 章"快速命令速查"。
+4. **硬约束有增删？**（比如本次确立的"组件不走 API 层"就是从经验里提炼出的硬约束）
+   → 加到第 0 章。
+5. **完成清单漏了什么检查点？**（如果这次是因为跳过某步才出事）
+   → 加到第 4 章。
+
+**判断标准**：只要"下次再遇到同类场景我会希望过去的自己提醒我"，就沉淀下来。宁可偏多，也不要让后人再踩同一个坑。
+
+**反模式**：
+- 把一次性决策（"这次选了 cyan 色调"）当成通用规则写进来 —— 不写。
+- 记流水账（"今天改了 X 文件"）—— 写 PR 描述，不是 Skill。
+- 写抽象废话（"注意代码质量"）—— 无操作性，不写。
+
+更新完 SKILL.md 后，和本次业务代码在**同一个 commit**里一起提交，commit message 加 `chore(skill):` 前缀或放在 `feat(xxx):` 的 body 里，方便追溯"经验与代码同源"。

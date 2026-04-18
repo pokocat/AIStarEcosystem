@@ -1,23 +1,4 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(mvn compile:*)",
-      "Bash(where mvn:*)",
-      "Bash(where java:*)",
-      "Bash(java -version)",
-      "Bash(cmd /c \"mvnw.cmd compile 2>&1\")",
-      "Bash(powershell -Command \"if \\(!\\(Test-Path '.mvn\\\\wrapper\\\\maven-wrapper.jar'\\)\\) { Invoke-WebRequest -Uri 'https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper/3.3.2/maven-wrapper-3.3.2.jar' -OutFile '.mvn\\\\wrapper\\\\maven-wrapper.jar' }; java -cp '.mvn\\\\wrapper\\\\maven-wrapper.jar' org.apache.maven.wrapper.MavenWrapperMain compile 2>&1\")",
-      "Bash(java -cp \".mvn/wrapper/maven-wrapper.jar\" org.apache.maven.wrapper.MavenWrapperMain compile \"-Dmaven.multiModuleProjectDirectory=.\")",
-      "Bash(\"/c/Users/pokoc/.m2/wrapper/dists/apache-maven-3.9.9-bin/33b4b2b4/apache-maven-3.9.9/bin/mvn\" compile:*)",
-      "Bash(find /c/Users/pokoc/dev/Aisingerecosystemcopy/apps/web/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -l \"^export interface\\\\|^export type\" {} \\\\;)",
-      "Bash(git -C /c/Users/pokoc/dev/Aisingerecosystemcopy/.claude/worktrees/magical-chaum log --oneline -5)",
-      "Bash(git -C /c/Users/pokoc/dev/Aisingerecosystemcopy show HEAD:apps/web/src/types/contracts/singers.ts)",
-      "Bash(git -C /c/Users/pokoc/dev/Aisingerecosystemcopy branch --show-current)",
-      "Bash(git -C /c/Users/pokoc/dev/Aisingerecosystemcopy/.claude/worktrees/magical-chaum show HEAD:apps/web/src/types/contracts/singers.ts)",
-      "mcp__4b4d504d-9c0a-4044-8117-5e80e42287cb__get_design_context",
-      "Bash(npx tsc *)"
-    ]
-  },
   "bypassPermissions": true,
   "defaultMode": "bypassPermissions"
 }
