@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(grep -E \"\\\\.ts$\")",
       "Bash(npx tsc *)",
@@ -18,8 +17,10 @@
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/model/*.java)",
       "Bash(xargs -I{} basename {} .java)",
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/repository/*.java)",
-      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/controller/*.java)"
+      "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/controller/*.java)",
+      "Bash(ls *)"
     ],
+    "defaultMode": "bypassPermissions",
     "bypassPermissions": true
   }
 }

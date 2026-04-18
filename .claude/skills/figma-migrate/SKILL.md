@@ -1,13 +1,13 @@
 ---
 name: figma-migrate
-description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web_new，并同步到 apps/admin-new（管理后台）和 apps/server（Spring Boot 后端），实现三端数据模型完整对齐。遵循 types/mocks/constants/api/component 五件套 + 中文单语约束 + 三端同步（web_new ↔ admin_new ↔ server）。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web_new"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"、"数据模型对齐"。完成后必须更新 README 版本日志与 FRONTEND_CONTRACT_DIFF.md。
+description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web，并同步到 apps/admin（管理后台）和 apps/server（Spring Boot 后端），实现三端数据模型完整对齐。遵循 types/mocks/constants/api/component 五件套 + 中文单语约束 + 三端同步（web ↔ admin ↔ server）。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"、"数据模型对齐"。完成后必须更新 README 版本日志与 FRONTEND_CONTRACT_DIFF.md。
 ---
 
-# Figma → apps/web_new 迁移手册
+# Figma → apps/web 迁移手册
 
-本技能指导将 `figma/src/**`（Figma Make 导出的一次性 React 产物）里新增或变更的页面 / 组件同步进 `apps/web_new`（长期维护的 Next.js 14 工程）。
+本技能指导将 `figma/src/**`（Figma Make 导出的一次性 React 产物）里新增或变更的页面 / 组件同步进 `apps/web`（长期维护的 Next.js 14 工程）。
 
-> **前置文档**：`apps/web_new/FIGMA_MIGRATION_GUIDE.md` 是全量首迁手册；本 Skill 聚焦"增量迭代"场景（Figma 做了改动，仅需把新增/变更部分落到 web_new）。首迁时仍以 `FIGMA_MIGRATION_GUIDE.md` 为准。
+> **前置文档**：`apps/web/FIGMA_MIGRATION_GUIDE.md` 是全量首迁手册；本 Skill 聚焦"增量迭代"场景（Figma 做了改动，仅需把新增/变更部分落到 web）。首迁时仍以 `FIGMA_MIGRATION_GUIDE.md` 为准。
 
 ---
 
@@ -15,17 +15,17 @@ description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的
 
 1. **中文单语**。删除所有 `{ zh: 'X', en: 'Y' }` 字典、`lang === 'zh' ? ... : ...` 三元；只保留中文分支。`Lang` prop 形参可保留以兼容兄弟组件签名，但运行时不读取。
 2. **五件套齐全**。新页面必须同时落：
-   - `apps/web_new/src/types/<domain>.ts`
-   - `apps/web_new/src/mocks/<domain>.ts`
-   - `apps/web_new/src/constants/<domain>-ui.ts`
-   - `apps/web_new/src/api/<domain>.ts` 并在 `apps/web_new/src/api/index.ts` 追加 `export * as XxxApi from "./<domain>";`
-   - `apps/web_new/src/components/<...>/<Component>.tsx`
+   - `apps/web/src/types/<domain>.ts`
+   - `apps/web/src/mocks/<domain>.ts`
+   - `apps/web/src/constants/<domain>-ui.ts`
+   - `apps/web/src/api/<domain>.ts` 并在 `apps/web/src/api/index.ts` 追加 `export * as XxxApi from "./<domain>";`
+   - `apps/web/src/components/<...>/<Component>.tsx`
 3. **数据模型抽象**。组件里**严禁内联数组 / 字典 / 颜色串**。模版、选项清单、枚举配色全部外化到 types/mocks/constants。
 4. **日期字段用 `ISODateTime`（字符串），不用 `Date` 对象**。金额数字保留，不要预格式化后丢失原值。
 5. **可选字段访问必须守护**。例：`date ? new Date(date).toLocaleDateString('zh-CN') : ''`，不要写 `date?.toLocaleDateString(...)`（Date 方法在字符串上不存在）。
 6. **Array mutation 必前置 spread**：`[...arr].sort(...)`。
 7. **lucide-react 图标按需 import**。清理后跑 tsc，删除未使用图标。
-8. **三端同步**。web_new 的每个领域类型都必须同步到 admin_new（admin 是 web 的管理后台，需要管理 web 的所有数据）和 server（后端是数据的最终存储）。具体规则见章节 1.5「三端数据模型对齐 SOP」。
+8. **三端同步**。web 的每个领域类型都必须同步到 admin（admin 是 web 的管理后台，需要管理 web 的所有数据）和 server（后端是数据的最终存储）。具体规则见章节 1.5「三端数据模型对齐 SOP」。
 9. **组件只读 `@/mocks/`，不在 UI 路径上调 API 层**（详见步骤 5 / 6）。
 10. **Skill 自更新义务**。每次迭代结束，回顾本次踩到的新坑、发现的新模式、纠正的旧指引；只要"下次再遇同类场景会复用"，**必须把经验沉淀回本 SKILL.md**（见章节 5）。
 
@@ -39,8 +39,8 @@ description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的
 # 列出 figma/src/components 下最近修改的文件
 ls -lt figma/src/components/ | head -20
 
-# diff figma 与 web_new 同名组件
-diff figma/src/components/<X>.tsx apps/web_new/src/components/<X>.tsx
+# diff figma 与 web 同名组件
+diff figma/src/components/<X>.tsx apps/web/src/components/<X>.tsx
 ```
 
 **判断**：
@@ -95,7 +95,7 @@ export async function runXxx(req: XxxRequest): Promise<XxxResult> {
 }
 ```
 
-**然后**：在 `apps/web_new/src/api/index.ts` 追加命名空间：
+**然后**：在 `apps/web/src/api/index.ts` 追加命名空间：
 
 ```ts
 export * as XxxApi from "./<domain>";
@@ -103,7 +103,7 @@ export * as XxxApi from "./<domain>";
 
 ### 步骤 6 — 组件落地 `components/<...>/<Component>.tsx`
 
-- 顶部加 `"use client";`（web_new 使用 App Router，业务组件默认是 Server Components，带状态/事件的组件必须声明）。
+- 顶部加 `"use client";`（web 使用 App Router，业务组件默认是 Server Components，带状态/事件的组件必须声明）。
 - 从 `@/types`、`@/mocks`、`@/constants` 按需 import；**不要再有内联数据**。
 - **直接读取 `@/mocks/<domain>`** 做静态选项，**不要** `useEffect + XxxApi.getXxxOptions()`——会在默认 `USE_MOCK=false` 时抛 "Invalid JSON from /xxx"。
 - 异步动作（生成 / 保存）在组件里用 `setTimeout` 合成结果，真实延迟常量复用 `constants/<domain>-ui.ts` 里的 `MOCK_XXX_DURATION_MS`。
@@ -117,28 +117,28 @@ export * as XxxApi from "./<domain>";
 2. 在 `SIDEBAR_GROUPS` / 对应菜单里新增 `{ id, icon, zh, en }`（为兼容老字段，`en` 填与 `zh` 相同的中文也可）。
 3. 在 `renderPage()` / `switch (activePage)` 里新增 `case 'xxx': return <NewComponent lang={lang} activeArtist={activeArtist} />;`。
 4. 确保宿主组件的 `import` 增补了新组件。
-5. 如果是全新路由（而非子页面），则在 `apps/web_new/src/app/<route>/page.tsx` 新建一个 Next App Router 路由壳。
+5. 如果是全新路由（而非子页面），则在 `apps/web/src/app/<route>/page.tsx` 新建一个 Next App Router 路由壳。
 
 ### 步骤 7.5 — 三端数据模型对齐
 
-> **核心原则**：admin_new 是 web_new 的管理后台，web 的所有数据都需要在 admin 里能浏览和运营管理；server 是数据的最终存储和 API 提供方。因此 **web_new 新增/变更的任何领域类型，必须同步到 admin_new 和 server**。
+> **核心原则**：admin 是 web 的管理后台，web 的所有数据都需要在 admin 里能浏览和运营管理；server 是数据的最终存储和 API 提供方。因此 **web 新增/变更的任何领域类型，必须同步到 admin 和 server**。
 
 #### 架构约定
 
 ```
 ┌─────────────┐    /api/*  proxy    ┌──────────────────┐
-│  web_new    │ ──────────────────→ │                  │
+│  web    │ ──────────────────→ │                  │
 │  :3000      │                      │  Spring Boot     │
 └─────────────┘                      │  server :8080    │
                                      │                  │
 ┌─────────────┐    /api/*  proxy    │  /api/me/*       │
-│  admin_new  │ ──────────────────→ │  /api/admin/*    │
+│  admin  │ ──────────────────→ │  /api/admin/*    │
 │  :3001      │                      └──────────────────┘
 └─────────────┘
 ```
 
-- web_new 用户端接口路径：`/api/me/*`（登录用户自己的数据）
-- admin_new 管理端接口路径：`/api/admin/*`（全平台数据 CRUD）
+- web 用户端接口路径：`/api/me/*`（登录用户自己的数据）
+- admin 管理端接口路径：`/api/admin/*`（全平台数据 CRUD）
 - 两端都通过 `next.config.mjs` rewrites 代理到 `http://localhost:8080`
 
 #### 数值字段一律存原始整数
@@ -154,9 +154,9 @@ export * as XxxApi from "./<domain>";
 
 #### 每个领域的三端文件清单
 
-当 web_new 新增一个领域 `<domain>` 时，以下文件**全部**需要创建/更新：
+当 web 新增一个领域 `<domain>` 时，以下文件**全部**需要创建/更新：
 
-**web_new（用户前端）**：
+**web（用户前端）**：
 | 文件 | 作用 |
 |------|------|
 | `src/types/<domain>.ts` | 类型定义（唯一事实源） |
@@ -166,10 +166,10 @@ export * as XxxApi from "./<domain>";
 | `src/constants/<domain>-ui.ts` | UI 配置（图标/颜色/文案映射） |
 | `src/components/.../<Component>.tsx` | 组件 |
 
-**admin_new（管理后台）**：
+**admin（管理后台）**：
 | 文件 | 作用 |
 |------|------|
-| `src/types/<domain>.ts` | **与 web_new 完全相同**（直接复制）；如需 admin 扩展字段，用 `interface AdminXxx extends Xxx` |
+| `src/types/<domain>.ts` | **与 web 完全相同**（直接复制）；如需 admin 扩展字段，用 `interface AdminXxx extends Xxx` |
 | `src/mocks/<domain>.ts` | 样本数据（可加 admin 专属字段如 `userId`） |
 | `src/api/<domain>.ts` | API 封装（路径用 `/admin/<domain>/...`） |
 | `src/api/index.ts` | 追加导出 |
@@ -226,28 +226,28 @@ public enum DramaStatus {
 #### 对齐自检命令
 
 ```bash
-# 1. 对比 web_new 与 admin_new 的 types 目录是否一致
-diff <(ls apps/web_new/src/types/*.ts | xargs -I{} basename {}) \
-     <(ls apps/admin-new/src/types/*.ts | xargs -I{} basename {})
+# 1. 对比 web 与 admin 的 types 目录是否一致
+diff <(ls apps/web/src/types/*.ts | xargs -I{} basename {}) \
+     <(ls apps/admin/src/types/*.ts | xargs -I{} basename {})
 
-# 2. 确认 admin_new 每个 mock 文件都有对应的 api 文件
-for f in $(ls apps/admin-new/src/mocks/*.ts | xargs -I{} basename {} .ts); do
-  [ -f "apps/admin-new/src/api/$f.ts" ] || echo "MISSING api/$f.ts"
+# 2. 确认 admin 每个 mock 文件都有对应的 api 文件
+for f in $(ls apps/admin/src/mocks/*.ts | xargs -I{} basename {} .ts); do
+  [ -f "apps/admin/src/api/$f.ts" ] || echo "MISSING api/$f.ts"
 done
 
 # 3. 编译验证三端
-cd apps/web_new && npx tsc --noEmit
-cd apps/admin-new && npx tsc --noEmit
+cd apps/web && npx tsc --noEmit
+cd apps/admin && npx tsc --noEmit
 cd apps/server && ./mvnw compile -q -o
 ```
 
 ### 步骤 8 — 验收
 
 ```bash
-cd apps/web_new
+cd apps/web
 ./node_modules/.bin/tsc --noEmit        # 必须 0 error
 # 在 worktree 中若无 node_modules，可 symlink：
-#   ln -sf <repo>/apps/web_new/node_modules <worktree>/apps/web_new/node_modules
+#   ln -sf <repo>/apps/web/node_modules <worktree>/apps/web/node_modules
 ```
 
 可选：`npm run build` 检查 bundle 体积；如果只做一个页面且没有引新大依赖，跳过也可。
@@ -256,11 +256,11 @@ cd apps/web_new
 
 **必改**两份：
 
-1. `apps/web_new/README.md`
+1. `apps/web/README.md`
    - 顶部"当前版本"段 → 升一位小版本（v2.0 → v2.1），写一句话变更。
    - "版本日志"段倒序追加一条，逐项列清：新增哪些 types / mocks / constants / api / component / 路由 / 契约差异。
 
-2. `apps/web_new/specs/FRONTEND_CONTRACT_DIFF.md`
+2. `apps/web/specs/FRONTEND_CONTRACT_DIFF.md`
    - 在文末追加一个"附录 · <新域名>"小节。
    - 表格列出新增的前端类型，`OpenAPI Schema` 列写 ❌ 无、`状态` 列写 ❌ 不存在（新域）或 ⚠️ 部分一致（补充字段）。
    - 列出新增的 REST 路径与推荐的后端实现策略。
@@ -275,13 +275,13 @@ ls -lt figma/src/components/ | head -20
 ls -lt figma/src/components/producer/ | head -10
 
 # 反向 diff 找改动点
-diff -r figma/src/components/ apps/web_new/src/components/ | head -40
+diff -r figma/src/components/ apps/web/src/components/ | head -40
 
 # 残留 i18n 审计
-grep -RIn "{ zh:\|lang === 'en'\|lang === 'zh'" apps/web_new/src/components/<domain>/ apps/web_new/src/components/<Component>.tsx
+grep -RIn "{ zh:\|lang === 'en'\|lang === 'zh'" apps/web/src/components/<domain>/ apps/web/src/components/<Component>.tsx
 
 # tsc 验收（注意 worktree 需要先 symlink node_modules）
-cd apps/web_new && ./node_modules/.bin/tsc --noEmit
+cd apps/web && ./node_modules/.bin/tsc --noEmit
 ```
 
 ---
@@ -298,17 +298,17 @@ cd apps/web_new && ./node_modules/.bin/tsc --noEmit
 8. **`AnimatePresence` + `motion.div key` 切换**：迁移保留；若出现"切换后不见了"通常是 key 重复或 `mode="wait"` 丢了。
 9. **页面外包 `<AnimatePresence>` 做路由淡入**：Next App Router 按路由单独渲染，跨页动画会消失，这是已知差异（见 README "与 Figma 原型的已知差异"一节）。
 10. **组件在 mount 时 `useEffect` 调 `XxxApi.getXxxOptions()` 会崩**：`USE_MOCK` 默认 `false`，请求打到不存在的 `/api/<domain>/options` 返回 404 HTML，`apiFetch.json()` 解析失败抛 "Invalid JSON from /xxx"。→ 组件直接 `import { XXX_OPTIONS } from "@/mocks/<domain>"`，别走 API 层（2026-04-18 踩坑）。
-11. **admin_new 必须覆盖 web_new 的所有领域**。admin 是 web 的管理后台，web 的所有数据都需要在 admin 里能浏览和运营管理。"这个领域 admin 不需要"的判断几乎总是错的。如果 web_new 有 `types/xxx.ts`，admin_new 就必须有同名文件 + 对应的 api + mocks。（2026-04-18 踩坑：曾错误判断 appearance-forge 是"用户专属功能，admin 不需要"）
+11. **admin 必须覆盖 web 的所有领域**。admin 是 web 的管理后台，web 的所有数据都需要在 admin 里能浏览和运营管理。"这个领域 admin 不需要"的判断几乎总是错的。如果 web 有 `types/xxx.ts`，admin 就必须有同名文件 + 对应的 api + mocks。（2026-04-18 踩坑：曾错误判断 appearance-forge 是"用户专属功能，admin 不需要"）
 12. **Server DTO 字段名必须与前端 TS 完全一致**。Java model 字段可以用自己的命名（如 `description`、`artistName`、`contentType`），但 DTO record 的字段名必须严格匹配前端（如 `desc`、`artist`、`type`）。DTO 的 `from()` 方法负责做映射。（2026-04-18 踩坑：`entryType` vs `type`、`endorsements` 嵌套位置不一致导致前后端对不上）
 13. **Server ApiResponse 必须包含 `success: true`**。前端 `apiFetch` 在 line 91 校验 `envelope.success !== true` 会拒绝没有 success 字段的响应。分页接口用 `PageEnvelope`（自带 success），不要再套 `ApiResponse`。（2026-04-18 踩坑：原始 ApiResponse 只有 `{ data: T }` 没有 success 字段）
-14. **预格式化字符串 vs 原始数值**。类型里的 `fans`、`revenue`、`monthlyRevenue`、`commercialValue` 等数值字段**必须**定义为 `number`，不要用 `string`。格式化由前端 `lib/format.ts` 统一处理。admin_new 曾错误地把 `fans: string`（如 "128K"），导致与 server 的 `long` 类型对不上。（2026-04-18 踩坑）
+14. **预格式化字符串 vs 原始数值**。类型里的 `fans`、`revenue`、`monthlyRevenue`、`commercialValue` 等数值字段**必须**定义为 `number`，不要用 `string`。格式化由前端 `lib/format.ts` 统一处理。admin 曾错误地把 `fans: string`（如 "128K"），导致与 server 的 `long` 类型对不上。（2026-04-18 踩坑）
 15. **Pagination 格式**。Server 分页接口返回 `PageEnvelope`，前端用 `PaginatedResponse`。两者结构必须一致：`{ success, data[], pagination: { page, limit, total, totalPages, hasNext, hasPrev } }`。Controller 直接返回 `PageEnvelope.from(page)`，**不要**再包一层 `ApiResponse.of(PageEnvelope.from(page))`，否则会出现 `data.data` 双层嵌套。（2026-04-18 踩坑）
 
 ---
 
 ## 4. 完成清单（交付前自检）
 
-### web_new（用户前端）
+### web（用户前端）
 - [ ] `types/<domain>.ts` 中所有 interface 导出，字段注释清晰
 - [ ] `mocks/<domain>.ts` 有 ≥ 3 条样本，无 `Date` 对象，数值字段用原始整数
 - [ ] `constants/<domain>-ui.ts` 抽尽 Tailwind 串 + 图标映射
@@ -318,9 +318,9 @@ cd apps/web_new && ./node_modules/.bin/tsc --noEmit
 - [ ] `tsc --noEmit` 0 error
 - [ ] `npm run dev` 打开新页面不抛 "Invalid JSON from /xxx" 这类运行时错误
 
-### admin_new（管理后台）
-- [ ] `types/<domain>.ts` 与 web_new 版本一致（如有 admin 扩展字段，用 `interface AdminXxx extends Xxx`）
-- [ ] `mocks/<domain>.ts` 样本数据与 web_new 结构对齐（admin 视图可加 `userId` 等管理字段）
+### admin（管理后台）
+- [ ] `types/<domain>.ts` 与 web 版本一致（如有 admin 扩展字段，用 `interface AdminXxx extends Xxx`）
+- [ ] `mocks/<domain>.ts` 样本数据与 web 结构对齐（admin 视图可加 `userId` 等管理字段）
 - [ ] `api/<domain>.ts` 每个函数走 `if (USE_MOCK)` 分支；API 路径用 `/admin/<domain>/...`；`api/index.ts` 追加命名空间
 - [ ] `tsc --noEmit` 0 error
 
@@ -334,7 +334,7 @@ cd apps/web_new && ./node_modules/.bin/tsc --noEmit
 ### 文档 & 自更新
 - [ ] `README.md` 版本号 + 版本日志 已追加
 - [ ] `specs/FRONTEND_CONTRACT_DIFF.md` 附录已追加
-- [ ] `grep -RIn "{ zh:" apps/web_new/src/components/<path>` 无命中
+- [ ] `grep -RIn "{ zh:" apps/web/src/components/<path>` 无命中
 - [ ] **本次迭代有新复用价值的经验已沉淀回本 SKILL.md**（章节 5）
 
 ---

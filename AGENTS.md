@@ -4,327 +4,331 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Repository Overview
 
-**AI Star Eco** — an AI virtual singer incubation and distribution platform with bilingual (Chinese/English) support. Three user roles: Fan（粉丝）, Producer（制作人）, Coach（掌门人/MCN）.
+**AI Star Eco** — AI 虚拟艺人孵化与发行平台。三种用户角色：Fan（粉丝）、Producer（制作人）、Coach（掌门人/MCN）。平台包含用户前端、管理后台、后端服务三端，数据模型完整对齐。
 
 ***
 
 ## Monorepo Structure
 
 ```
-ai-singer/
+Aisingerecosystem/
 ├── apps/
-│   ├── server/          # Backend: Spring Boot 3.3.5 (Java 17) — port 8080
-│   ├── web/             # Frontend: Next.js 14 (TypeScript) — port 3000
-│   └── admin/           # Admin console: planned independent Next.js app (not yet created)
-├── specs/
-│   ├── openapi.yaml                           # OpenAPI 3.1 — shared API contract
-│   └── unified-account-entitlement-platform.md  # Full platform architecture spec
-└── figma/                 # ⚠️ Figma prototype only — NOT real application code
-    └── App.tsx          # Single-file Figma Make export for UI prototyping
+│   ├── server/          # 后端: Spring Boot 3.3.5 (Java 17) — port 8080
+│   ├── web/             # 用户前端: Next.js 14 (TypeScript) — port 3000
+│   └── admin/           # 管理后台: Next.js 14 (TypeScript) — port 3001
+├── figma/               # ⚠️ Figma Make 导出的原型代码（非正式应用代码）
+└── .claude/
+    └── skills/
+        └── figma-migrate/SKILL.md   # Figma → 三端迁移技能文档
 ```
 
-> **IMPORTANT**: The `src/` directory at the repo root is a **Figma prototyping workspace** (exported by Figma Make). It is NOT part of the real application. `src/PRODUCT_SPEC.md` and `src/BACKEND_API_SPEC.md` contain product requirements and serve as reference, not implementation. All real code lives in `apps/`.
+> **重要**: `figma/` 目录是 Figma Make 的一次性导出，仅供 UI 原型参考。所有正式代码在 `apps/` 下。
 
 ***
 
-## apps/server — Spring Boot Backend
+## 三端数据流转架构
 
-### Commands
+```
+┌─────────────┐    rewrite /api/*    ┌──────────────────────────────┐
+│  web        │ ──────────────────→ │                              │
+│  :3000      │  proxy               │  Spring Boot server :8080   │
+│  用户前端    │                      │                              │
+└─────────────┘                      │  /api/me/*      (用户自身)   │
+                                     │  /api/auth/*    (鉴权)       │
+┌─────────────┐    rewrite /api/*    │  /api/admin/*   (管理端)     │
+│  admin      │ ──────────────────→ │  /api/singers/* (legacy)     │
+│  :3001      │  proxy               │  /api/tracks/*  (legacy)     │
+│  管理后台    │                      │                              │
+└─────────────┘                      └──────────────────────────────┘
+```
+
+- web 用户端接口：`/api/me/*`（登录用户自己的数据）
+- admin 管理端接口：`/api/admin/*`（全平台数据 CRUD，需 SUPER_ADMIN / OPERATOR 角色）
+- 两端通过 `next.config.mjs` rewrites 代理到后端
+- 认证：Spring Security + JWT（JJWT 0.12.6），无状态 session
+
+### Mock / Live 切换
+
+两个前端均通过 `.env.local` 的 `NEXT_PUBLIC_USE_MOCK` 控制：
+- `=1`：纯前端开发，使用 `mocks/` 静态数据
+- `=0`：前后端联调，调用真实后端 API
+
+***
+
+## 领域模型完整对齐表（20 个领域）
+
+每个领域在三端的文件位置：
+
+| 领域 | web types | web api | web mocks | admin types | admin api | admin mocks | server model | server dto | server controller |
+|------|-----------|---------|-----------|-------------|-----------|-------------|-------------|-----------|-------------------|
+| account | ✅ | ✅ | ✅ | ✅ (+AdminUser) | ✅ users | ✅ | AepUser, AdminUser | ✅ | AccountController, AdminUserController |
+| artist (DigitalIp) | ✅ | ✅ | ✅ | ✅ | ✅ digital-ips | ✅ | DigitalIp | ✅ | AdminDigitalIpController |
+| wallet / ledger | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Wallet, LedgerEntry | ✅ | AdminCreditController |
+| license | ✅ | ✅ auth | — | ✅ | ✅ | ✅ | LicenseBatch, LicenseKey | ✅ | AdminLicenseController |
+| studio | ✅ | — | — | ✅ (AdminStudio) | ✅ | ✅ | Studio | StudioDto, AdminStudioDto | AdminTenantController |
+| auth | ✅ | ✅ | — | ✅ | ✅ | — | — | — | AdminAuthController, LicenseActivationController |
+| audit | — | — | — | ✅ | ✅ | ✅ | AuditLog | ✅ | AdminAuditController |
+| notification | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Notification | ✅ | AdminNotificationController |
+| music | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Song, Album, Concert, MusicGenre | ✅ | AdminMusicController |
+| film | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Drama, Movie, Advertisement, VoiceWork | ✅ | AdminFilmController |
+| coach | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | SignedArtist, DistributionQueueItem, CopyrightItem | ✅ | AdminCoachController |
+| fan | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — (view DTOs) | ✅ | AdminFanController |
+| community | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | FanTier, FanGrowthPoint, FanActivity, CommunityEvent | ✅ | AdminCommunityController |
+| distribution | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Platform, DistributionContent | ✅ | AdminDistributionController |
+| finance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — (view DTOs from LedgerEntry) | ✅ | AdminFinanceController |
+| settings | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | CreditPack, RechargeRecord | ✅ | AdminSettingsController |
+| wardrobe | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | WardrobeItem (legacy) | ✅ | — (legacy) |
+| pose/expr/gesture | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Pose, Expression, Gesture (legacy) | ✅ | — (legacy) |
+| appearance-forge | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ForgeTemplate, ForgeResult | ✅ | AdminForgeController |
+| stats | — | — | — | — | ✅ | — | — | AdminStatsDto | AdminStatsController |
+
+***
+
+## apps/server — Spring Boot 后端
+
+### 启动命令
 
 ```bash
 cd apps/server
-./mvnw spring-boot:run    # Start dev server on port 8080
-./mvnw test               # Run tests
-./mvnw package            # Build JAR
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev   # 开发模式 (H2)
+./mvnw spring-boot:run -Dspring-boot.run.profiles=mysql  # MySQL 模式
+./mvnw compile -q -o                                      # 编译检查（离线）
+./mvnw test                                               # 运行测试
 ```
 
-### Tech Stack
+### 技术栈
 
 - **Spring Boot 3.3.5** + **Java 17**
-- **Spring Data JPA** — ORM layer
-- **H2 (file mode)** — dev/test database (`./data/aistareco.mv.db`). Must be replaced with PostgreSQL for production.
-- **Lombok** — boilerplate reduction
-- **Spring Boot Validation** — `@Valid` on request DTOs
+- **Spring Data JPA** + **Hibernate** (ddl-auto: update)
+- **Spring Security** + **JWT** (JJWT 0.12.6) — 无状态认证
+- **H2** (开发) / **MySQL** (生产)
+- **Lombok** — 减少样板代码
+- **Jackson** — JSON 序列化（default-property-inclusion: non_null）
 
-### Package Structure
+### 包结构
 
 ```
 com.aistareco/
 ├── AiStarEcoApplication.java
 ├── common/
-│   ├── ApiResponse.java          # Unified response wrapper: { data: T }
-│   ├── ApiErrorBody.java         # Error payload: { code, message }
-│   ├── BusinessException.java    # Domain-level checked exception
+│   ├── ApiResponse.java           # { success: true, data: T, message? }
+│   ├── StringListConverter.java   # JPA: List<String> ↔ TEXT (JSON)
 │   └── GlobalExceptionHandler.java
 ├── config/
-│   └── CorsConfig.java           # CORS (currently open; restrict in prod)
-├── controller/                   # REST controllers (one per domain)
-│   ├── SingerController.java
-│   ├── TrackController.java
-│   ├── MarketplaceController.java
-│   ├── DistributionController.java
-│   ├── NftController.java
-│   └── AnalyticsController.java
-├── service/                      # Business logic
-├── repository/                   # Spring Data JPA repositories
-├── model/                        # JPA entities
-│   ├── Singer.java
-│   ├── Track.java
-│   ├── MarketplaceListing.java
-│   ├── NftCollection.java
-│   └── ...
-└── dto/                          # Request/response DTOs
+│   └── CorsConfig.java           # CORS (localhost:* + credentials)
+├── controller/                    # Legacy 控制器 (singers, tracks, marketplace, nft)
+├── model/                         # Legacy JPA 实体
+├── dto/                           # Legacy DTOs
+└── aep/                           # ★ AEP 平台（新架构）
+    ├── config/
+    │   ├── AepSecurityConfig.java     # Security filter chain + JWT
+    │   └── JwtAuthenticationFilter.java
+    ├── model/                     # 33 个 JPA 实体
+    ├── dto/                       # 50 个 DTO records
+    ├── repository/                # 33 个 JPA 仓储
+    ├── service/                   # 业务逻辑层
+    └── controller/                # 21 个 REST 控制器
 ```
 
-### Response Convention
+### API 响应格式
 
-All endpoints return `ApiResponse<T>` (`{ "data": ... }`) on success, or `ApiErrorBody` (`{ "error": { "code": "...", "message": "..." } }`) on error. Match this in any new endpoints.
-
-### Current Status
-
-The backend currently has **no authentication**. All controllers are open. Authentication integration (Spring Security + JWT) is planned as Phase 1 of the unified account platform.
-
-### Planned Additions (Phase 1 — authentication platform)
-
-```xml
-spring-boot-starter-security
-spring-security-oauth2-resource-server   <!-- JWT Bearer verification -->
-spring-security-oauth2-jose              <!-- JWT signing/parsing -->
-postgresql                               <!-- production database driver -->
-flyway-core                              <!-- DB migrations -->
-spring-boot-starter-data-redis           <!-- nonce cache, rate limiting -->
+**普通接口**（包在 `ApiResponse` 里）：
+```json
+{ "success": true, "data": <T>, "message": null }
 ```
 
-New packages to be added:
+**分页接口**（直接返回 `PageEnvelope`，不嵌套 `ApiResponse`）：
+```json
+{
+  "success": true,
+  "data": [...],
+  "pagination": { "page": 0, "limit": 20, "total": 100, "totalPages": 5, "hasNext": true, "hasPrev": false }
+}
+```
 
-- `identity/` — auth, token, OAuth
-- `tenant/` — tenant, membership
-- `authz/` — RBAC roles/permissions
-- `entitlement/` — plans, features, subscriptions
-- `credit/` — wallet, ledger, metering
-- `audit/` — audit log (AOP-based)
+### 安全模型
+
+```
+/api/auth/**          → permitAll（注册/激活）
+/api/admin/auth/login → permitAll（管理员登录）
+/api/me/**            → authenticated（需 JWT）
+/api/admin/**         → hasRole(SUPER_ADMIN, OPERATOR)
+其他                   → permitAll
+```
+
+### DTO 命名规则
+
+DTO record 的字段名**必须与前端 TypeScript interface 完全一致**。Java model 字段可以不同，由 `from()` 方法做映射：
+
+```java
+// Model: description → DTO: desc
+// Model: artistName  → DTO: artist
+// Model: contentType → DTO: type
+// Enum: POST_PRODUCTION → wire: "post-production"（含连字符用 wire 模式）
+```
 
 ***
 
-## apps/web — Next.js Frontend
+## apps/web — 用户前端
 
-### Commands
+### 启动命令
 
 ```bash
 cd apps/web
 npm install
-npm run dev           # Dev server on port 3000
-npm run build         # Production build
-npm run test          # Vitest unit tests
-npm run codegen       # Generate TypeScript types from specs/openapi.yaml
+npm run dev        # 开发服务器 port 3000
+npx tsc --noEmit   # 类型检查
+npm run build      # 生产构建
 ```
 
-### Tech Stack
+### 技术栈
 
 - **Next.js 14** (App Router) + **TypeScript**
-- **Tailwind CSS v4** + **shadcn/ui** (Radix UI primitives in `src/components/ui/`)
-- **Recharts** — charts and data visualizations
-- **Lucide React** — icons
-- **Motion (Framer Motion)** — animations
-- **Vitest** — unit testing (`src/lib/http/fetcher.test.ts`)
-- **openapi-typescript** — generates `src/api/generated/schema.ts` from `specs/openapi.yaml`
+- **Tailwind CSS v4** + **shadcn/ui** (Radix UI)
+- **Recharts** — 图表
+- **Lucide React** — 图标
+- **Motion (Framer Motion)** — 动画
 
-### Directory Structure
+### 目录结构
 
 ```
 apps/web/src/
-├── app/
-│   ├── layout.tsx            # Root layout
-│   ├── page.tsx              # Home page
-│   ├── portal/               # Role selection page (fan / producer / coach)
-│   ├── fan/                  # Fan view
-│   ├── producer-intro/       # Producer onboarding
-│   ├── producer/             # Producer dashboard (requires layout.tsx shell)
-│   │   ├── layout.tsx        # Producer shell with sidebar nav
-│   │   ├── overview/         # Dashboard overview
-│   │   ├── incubator/        # AI singer gallery
-│   │   ├── editor/           # Singer editor
-│   │   ├── studio/           # Music generation
-│   │   ├── distribution/     # Music publishing
-│   │   ├── mint/             # NFT minting
-│   │   ├── earnings/         # Revenue & transactions
-│   │   └── community/        # Community / charts
-│   ├── coach/                # Coach (MCN) dashboard
-│   └── api/                  # Next.js Route Handlers (BFF layer — currently returns mock data)
-│       ├── singers/          # POST /api/singers, GET /api/singers/my, etc.
-│       ├── tracks/
-│       ├── marketplace/
-│       ├── nft/
-│       ├── distribution/
-│       └── analytics/
-├── api/                      # Typed API client functions (call route handlers)
-│   ├── singers.ts
-│   ├── tracks.ts
-│   └── ...
-├── components/
-│   ├── ui/                   # shadcn/ui primitives — do NOT modify directly
-│   ├── AIIncubator.tsx       # Singer gallery
-│   ├── SingerEditor.tsx      # Singer creation/edit (6-tab tool)
-│   ├── ArtistSigningDialog.tsx
-│   ├── ArtistDetailDialog.tsx
-│   ├── ArtistListingDialog.tsx
-│   ├── DistributionPage.tsx
-│   ├── MusicGenerationDialog.tsx
-│   ├── NFTMintingDialog.tsx
-│   ├── ThemeProvider.tsx     # Custom theme context (6 themes)
-│   └── GlobalAudioPlayer.tsx
-├── features/                 # Domain-scoped hooks and providers
-│   ├── producer/
-│   │   ├── hooks/use-producer-workspace.ts
-│   │   └── providers/producer-workspace-provider.tsx
-│   ├── singers/hooks/use-singers.ts
-│   ├── tracks/hooks/use-tracks.ts
-│   ├── marketplace/hooks/
-│   ├── nft/hooks/
-│   ├── analytics/hooks/
-│   └── shared/
-│       ├── components/page-feedback.tsx  # LoadingPanel, ErrorPanel
-│       └── hooks/use-dictionary.ts       # i18n (zh/en)
+├── types/           # 20 个领域类型文件（唯一事实源）
+│   ├── _shared.ts   # ID, ISODateTime, Rarity, Money, ApiResponse, PaginationMeta
+│   ├── artist.ts    # Artist, ArtistStats, TalentProfile
+│   ├── account.ts   # AepUser, Tenant, Membership
+│   ├── wallet.ts    # Wallet, LedgerEntry
+│   ├── music.ts     # Song, Album, Concert, MusicGenre
+│   ├── film.ts      # Drama, Movie, Advertisement, VoiceWork
+│   └── ...          # 其余 14 个领域
+├── mocks/           # 静态样本数据（USE_MOCK=1 时使用）
+├── api/             # API 封装层（USE_MOCK 开关切换 mock/live）
+│   ├── _client.ts   # apiFetch + USE_MOCK + mockDelay
+│   ├── account.ts   # /me, /me/wallet, /me/ledger
+│   ├── artists.ts   # /me/digital-ips
+│   ├── auth.ts      # /auth/activate
+│   └── ...          # 其余领域
+├── constants/       # UI 配置（图标/颜色/文案映射）
+├── components/      # 业务组件
+│   ├── ui/          # shadcn/ui 原子组件（勿直接修改）
+│   └── producer/    # 制作人面板组件
 ├── lib/
-│   └── http/fetcher.ts       # Base HTTP client — wraps fetch, parses { data } envelope
-├── mocks/                    # MSW-style mock resolvers (used by route handlers in dev)
-│   ├── singers/{factory,fixtures,resolver}.ts
-│   ├── tracks/
-│   └── ...
-├── providers/
-│   ├── app-providers.tsx     # Root providers tree
-│   └── app-preferences-provider.tsx
-├── types/
-│   ├── app.ts                # UI-only types: Lang, RootView, ProducerPage
-│   └── contracts/            # Domain types (generated or hand-written from openapi)
-│       ├── singers.ts
-│       ├── tracks.ts
-│       └── ...
-└── views/                    # Top-level page view components (used by app/*/page.tsx)
-    ├── HomePage.tsx
-    ├── PortalPage.tsx
-    ├── FanAppPage.tsx
-    ├── ProducerIntroPage.tsx
-    └── CoachDashboardPage.tsx
+│   └── format.ts    # 统一格式化（formatCredits, formatCompactNumber, formatDuration）
+└── app/             # Next.js App Router 路由
 ```
 
-### BFF Layer (Route Handlers)
+### 数值字段规范
 
-`app/api/**` are Next.js Route Handlers acting as a BFF (Backend-for-Frontend). They currently return mock data from `src/mocks/`. When authentication is implemented, they will proxy requests to `apps/server` with the user's JWT.
+所有数值字段存**原始整数**，展示时由 `lib/format.ts` 格式化：
+- `fans: 128_000` → `formatCompactNumber()` → `"128K"`
+- `revenue: 452_000` → `formatCredits()` → `"452,000"`
+- `priceCents: 9_900` → `formatCurrency()` → `"¥99.00"`
 
-Current mock flow: `Page → feature hook → api/*.ts client → app/api/** route handler → mocks/*/resolver.ts`
-
-Target flow (post-auth): `Page → feature hook → api/*.ts client → app/api/** route handler → apps/server (Spring Boot) with Bearer JWT`
-
-### Theme System
-
-Six themes defined in `ThemeProvider.tsx`: `cyberpunk`, `glassmorphism`, `gradient`, `neumorphism`, `terminal`, `minimal`. Use `useTheme()` hook. UI is predominantly **dark** — CSS custom properties drive color tokens.
-
-### i18n
-
-`useDictionary()` hook provides `copy` object with all UI strings in `zh` (default) and `en`. Dictionary source is in `mocks/i18n/dictionary.ts`. Both keys must be updated together when adding new strings.
-
-### Current Status
-
-All data is **mocked** — no real API calls to `apps/server` yet. Authentication is not implemented. Route Handlers return fixture data.
+**严禁**在类型定义中使用预格式化字符串（如 `fans: "128K"`）。
 
 ***
 
-## specs/openapi.yaml — API Contract
+## apps/admin — 管理后台
 
-Shared OpenAPI 3.1 spec. **This is the source of truth for API shapes.**
+### 启动命令
 
-- Backend: `apps/server` (eventually validated via `springdoc-openapi`)
-- Frontend: run `npm run codegen` in `apps/web` to regenerate `src/api/generated/schema.ts`
-
-When adding new endpoints, always update `openapi.yaml` first, then regenerate types.
-
-***
-
-## apps/admin — Admin Console (Planned)
-
-An independent Next.js application for platform operators. **Not yet created.**
-
-Key decisions:
-
-- **Separate from** **`apps/web`** — different bundle, can be deployed to internal network / behind VPN
-- **Reuses** **`apps/server`** **backend** — same Spring Boot, same `/api/admin/**` endpoints, different JWT role requirement (`platform_operator` or above)
-- **UI style**: lighter/data-dense UI suitable for admin operations (vs the dark cyberpunk theme of apps/web)
-
-Planned route structure: `/admin` (dashboard), `/admin/users`, `/admin/tenants`, `/admin/plans`, `/admin/credits/adjust`, `/admin/licenses`, `/admin/audit`, `/admin/risk`
-
-See `specs/unified-account-entitlement-platform.md` Appendix B for full Admin Console page-by-page design spec.
-
-***
-
-## Platform Architecture (Unified Account & Entitlement)
-
-Full spec: `specs/unified-account-entitlement-platform.md`
-
-### Three-Phase Roadmap
-
-**Phase 1 (current) — Core flow:**
-
-1. Account registration (email + Google OAuth + WeChat OAuth)
-2. Create virtual AI singer (with ownership binding + quota enforcement)
-3. Generate music / MV video (with credit pre-deduction + settlement)
-4. Public distribution (platform-internal publish)
-
-**Phase 2 — Copyright & channels:**
-
-- DistroKid / Tencent Music / NetEase Music OAuth binding (business layer, NOT auth center)
-- ISRC copyright registration
-- Revenue flow, MCN Coach-trainee system
-
-**Phase 3 — NFT & Web3:**
-
-- MetaMask / WalletConnect login (EIP-4361 signature auth)
-- NFT minting (ERC-721/ERC-1155)
-- Fan DAO governance
-
-### User Roles
-
-| Role       | Chinese | Access                                                 |
-| ---------- | ------- | ------------------------------------------------------ |
-| `fan`      | 星际听众    | Music discovery, charts, NFT badge market              |
-| `producer` | 造梦架构师   | Full dashboard — singer creation, studio, distribution |
-| `coach`    | 生态领航员   | MCN management backend, trainee oversight              |
-
-### Plans & Credit Limits
-
-| Feature               | free          | pro            | enterprise     |
-| --------------------- | ------------- | -------------- | -------------- |
-| AI singers            | ≤ 3           | ≤ 20           | unlimited      |
-| Music generation      | 5 credits/day | 50 credits/day | unlimited      |
-| NFT minting           | —             | ≤ 10/month     | unlimited      |
-| Distribution channels | domestic only | all            | all + priority |
-| Market signing        | —             | —              | ✅              |
-
-Credit costs: music generation = 5 credits/task; registration grants 100 gift credits.
-
-### Key Domain Entities (planned, not yet implemented)
-
-```
-User → Membership → Tenant → Entitlement
-                           → Wallet → LedgerEntry (immutable ledger)
-Plan → Feature (permission points)
-LicenseBatch → LicenseKey → Activation
-Meter + PriceRule → ConsumeOrder (pre-deduct → settle → refund on failure)
-AuditLog (append-only)
+```bash
+cd apps/admin
+npm install
+npm run dev -- -p 3001   # 开发服务器 port 3001
+npx tsc --noEmit         # 类型检查
 ```
 
-### Admin Roles (platform operators)
+### 技术栈
 
-`platform_owner` > `platform_operator` > `finance_admin` / `channel_manager`
+与 web 相同（Next.js 14 + TypeScript + Tailwind + shadcn/ui）。UI 风格为浅色数据密集型管理界面。
+
+### 目录结构
+
+```
+apps/admin/src/
+├── types/           # 21 个领域类型文件（与 web 一致 + audit.ts）
+├── mocks/           # 管理视图样本数据（可含 userId 等管理字段）
+├── api/             # 22 个 API 文件（路径用 /admin/... 前缀）
+│   ├── _client.ts   # 与 web 相同的 apiFetch 底座
+│   ├── users.ts     # /admin/users
+│   ├── digital-ips.ts  # /admin/digital-ips
+│   ├── licenses.ts  # /admin/license-batches, /admin/license-keys
+│   ├── audit.ts     # /admin/audit-logs
+│   └── ...          # 其余领域
+├── components/      # 管理组件
+├── constants/       # 状态/枚举配置
+└── app/             # 路由页面
+    ├── page.tsx             # Dashboard 首页
+    ├── artists/             # 艺人管理
+    │   ├── roster/          # 花名册
+    │   └── lifecycle/       # 生命周期
+    ├── platform/            # 平台管理
+    │   ├── users/           # 用户列表
+    │   ├── tenants/         # 机构管理
+    │   ├── studios/         # 工作室管理
+    │   └── licenses/        # License 管理
+    ├── content/             # 内容管理
+    ├── finance/             # 财务管理
+    ├── monetization/        # 变现管理
+    └── base/                # 基础数据
+```
+
+### admin 与 web 的类型关系
+
+- admin 的 types 文件与 web **完全一致**（直接复制）
+- admin 独有的扩展类型用 `interface AdminXxx extends Xxx`（如 `AdminStudio extends Studio`）
+- admin 独有的类型放在单独文件中（如 `audit.ts`、`AdminUser` in `account.ts`）
 
 ***
 
-## Key Conventions
+## 关键约定
 
-- **API response envelope**: `{ "data": T }` for success; `{ "error": { "code": string, "message": string } }` for errors. Never return raw values.
-- **No direct balance mutation**: All credit changes must go through `LedgerEntry` (immutable ledger). Never update a balance field directly.
-- **Ownership checks**: Once auth is in place, every singer/track mutation must verify `ownerUserId == currentUser.id`.
-- **OpenAPI first**: Define the endpoint in `specs/openapi.yaml` before implementing it, then run `npm run codegen` in `apps/web`.
-- **Mock isolation**: Mocks in `apps/web/src/mocks/` are dev-only. Route Handlers (`app/api/`) proxy to mocks today, will proxy to Spring Boot after auth is wired.
-- **No test runner in apps/server yet**: `apps/web` uses Vitest. `apps/server` has `spring-boot-starter-test` but no test files yet.
+### 数据模型对齐规则
 
+1. **三端同步**：web 新增/变更任何领域类型，必须同步到 admin 和 server
+2. **admin 覆盖 web 所有领域**：admin 是 web 的管理后台，web 的所有数据都需要在 admin 里管理
+3. **DTO 字段名 = 前端 TS 字段名**：server DTO 的 record 字段必须与前端 interface 完全一致
+4. **数值存原始整数**：`number` 不是 `string`，格式化在展示层完成
+5. **enum 小写**：Java enum `ACTIVE` → DTO 输出 `"active"`；含连字符的用 wire 模式
+
+### 新增领域 SOP
+
+当需要新增一个领域 `<domain>` 时，完整清单：
+
+```
+web/src/types/<domain>.ts          ← 类型定义（唯一事实源）
+web/src/mocks/<domain>.ts          ← 样本数据
+web/src/api/<domain>.ts            ← API 封装（USE_MOCK 开关）
+web/src/api/index.ts               ← 追加 export
+web/src/constants/<domain>-ui.ts   ← UI 配置
+
+admin/src/types/<domain>.ts        ← 与 web 一致
+admin/src/mocks/<domain>.ts        ← 管理视图样本
+admin/src/api/<domain>.ts          ← API 路径用 /admin/...
+admin/src/api/index.ts             ← 追加 export
+
+server/.../aep/model/<Entity>.java       ← JPA 实体
+server/.../aep/dto/<Entity>Dto.java      ← DTO record
+server/.../aep/repository/<Entity>Repository.java  ← 仓储
+server/.../aep/controller/Admin<Domain>Controller.java  ← REST 端点
+```
+
+### 编译验证
+
+```bash
+cd apps/web && npx tsc --noEmit       # web 类型检查
+cd apps/admin && npx tsc --noEmit     # admin 类型检查
+cd apps/server && ./mvnw compile -q -o # server 编译
+```
+
+三端必须全部零错误。
+
+### 其他约定
+
+- **API 响应壳**：成功 `{ success: true, data: T }`；分页用 `PageEnvelope`（不嵌套 `ApiResponse`）
+- **不可直接改余额**：所有积分变动必须经过 `LedgerEntry`（不可变账本），禁止直接更新余额字段
+- **所有权检查**：`/api/me/*` 端点必须校验 `ownerUserId == currentUser.id`
+- **中文单语**：前端文案全部中文，删除 `{ zh: 'X', en: 'Y' }` 字典和 `lang === 'zh' ? ... : ...` 三元
+- **组件直读 mocks**：组件直接 `import { DATA } from "@/mocks/xxx"`，不在 UI 路径调 API 层（避免 USE_MOCK=0 时 404）
+- **迁移技能**：Figma 原型变更时，按 `.claude/skills/figma-migrate/SKILL.md` 执行三端同步
