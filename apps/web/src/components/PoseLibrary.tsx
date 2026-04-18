@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -10,8 +10,9 @@ import {
   Sparkles, Smile, Music, Hand, ArrowLeft,
   Play, Save, Share2, Eye, Wand2, Download
 } from 'lucide-react';
-import type { Pose, Expression } from "@/types/pose";
+import type { Pose, Expression, Gesture } from "@/types/pose";
 import { POSE_DATABASE, EXPRESSION_DATABASE, GESTURE_DATABASE } from "@/mocks/pose";
+import { PoseApi } from "@/api";
 import { POSE_DIFFICULTY_COLORS, POSE_CATEGORY_OPTIONS } from "@/constants/pose-ui";
 
 interface PoseLibraryProps {
@@ -26,9 +27,24 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
   const [selectedGesture, setSelectedGesture] = useState<string | null>(null);
   const [customIntensity, setCustomIntensity] = useState(80);
 
-  const poseDatabase = POSE_DATABASE;
-  const expressionDatabase = EXPRESSION_DATABASE;
-  const gestureDatabase = GESTURE_DATABASE;
+  const [poseDatabase, setPoseDatabase] = useState<Pose[]>(POSE_DATABASE);
+  const [expressionDatabase, setExpressionDatabase] = useState<Expression[]>(EXPRESSION_DATABASE);
+  const [gestureDatabase, setGestureDatabase] = useState<Gesture[]>(GESTURE_DATABASE);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      PoseApi.listPoses().catch(() => [] as Pose[]),
+      PoseApi.listExpressions().catch(() => [] as Expression[]),
+      PoseApi.listGestures().catch(() => [] as Gesture[]),
+    ]).then(([p, e, g]) => {
+      if (cancelled) return;
+      if (p.length > 0) setPoseDatabase(p);
+      if (e.length > 0) setExpressionDatabase(e);
+      if (g.length > 0) setGestureDatabase(g);
+    });
+    return () => { cancelled = true; };
+  }, []);
   const poseCategories = POSE_CATEGORY_OPTIONS.map(opt => ({
     ...opt,
     count: poseDatabase.filter(p => p.category === opt.id).length,

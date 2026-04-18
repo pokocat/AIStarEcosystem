@@ -26,6 +26,9 @@ public class CopyrightItem {
 
     private LocalDate submittedDate;
 
+    /** FK → aep_users.id：用户提交版权登记时的归属账户。admin 直接录入时可为空。 */
+    private String submittedByUserId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private CopyrightStatus status;

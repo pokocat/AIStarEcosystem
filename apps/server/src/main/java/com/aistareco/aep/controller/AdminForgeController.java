@@ -33,10 +33,8 @@ public class AdminForgeController {
         // Return templates with empty option lists as placeholder
         ForgeOptionsDto opts = new ForgeOptionsDto(
                 templates,
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of()
+                List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of()
         );
         return ApiResponse.of(opts);
     }

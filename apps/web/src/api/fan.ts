@@ -44,7 +44,9 @@ export async function getMyFollowedArtistIds(): Promise<string[]> {
 }
 
 // ── 互动（like / follow） ────────────────────────────────────────────────────
-// ⚠️ 后端暂未实现这些端点。接入真实后端前请用 USE_MOCK=1。
+// ⚠️ TODO(Phase-2): fan_likes / fan_follows 关系表未落库。
+// 本期这 4 个 mutation 仅本地 / mock 生效；FanApp UI 顶部有 Banner 提示。
+// 待关系表建出后，替换为真实 apiFetch 并移除本段注释。
 
 export async function likeTrack(trackId: string): Promise<void> {
   if (USE_MOCK) { await mockDelay(undefined); return; }

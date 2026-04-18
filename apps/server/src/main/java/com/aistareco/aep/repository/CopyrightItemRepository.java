@@ -10,4 +10,6 @@ import java.util.List;
 public interface CopyrightItemRepository extends JpaRepository<CopyrightItem, String> {
 
     List<CopyrightItem> findByStatus(CopyrightItem.CopyrightStatus status);
+
+    List<CopyrightItem> findBySubmittedByUserIdOrderBySubmittedDateDesc(String userId);
 }

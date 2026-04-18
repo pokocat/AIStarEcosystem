@@ -1,12 +1,15 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.*;
+import com.aistareco.aep.model.ForgeBlueprint;
 import com.aistareco.aep.model.ForgeResult;
+import com.aistareco.aep.repository.ForgeBlueprintRepository;
 import com.aistareco.aep.repository.ForgeResultRepository;
 import com.aistareco.aep.repository.ForgeTemplateRepository;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,11 +28,14 @@ public class ForgeController {
 
     private final ForgeTemplateRepository templateRepo;
     private final ForgeResultRepository resultRepo;
+    private final ForgeBlueprintRepository blueprintRepo;
 
     public ForgeController(ForgeTemplateRepository templateRepo,
-                           ForgeResultRepository resultRepo) {
+                           ForgeResultRepository resultRepo,
+                           ForgeBlueprintRepository blueprintRepo) {
         this.templateRepo = templateRepo;
         this.resultRepo = resultRepo;
+        this.blueprintRepo = blueprintRepo;
     }
 
     @GetMapping("/options")
@@ -37,7 +43,9 @@ public class ForgeController {
         List<ForgeTemplateDto> templates = templateRepo.findAll().stream()
                 .map(ForgeTemplateDto::from).toList();
         ForgeOptionsDto opts = new ForgeOptionsDto(
-                templates, List.of(), List.of(), List.of(), List.of()
+                templates,
+                List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of()
         );
         return ApiResponse.of(opts);
     }
@@ -66,11 +74,42 @@ public class ForgeController {
 
     @PostMapping("/blueprint")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<Map<String, Object>> saveBlueprint(@RequestBody Map<String, Object> body) {
+    @SuppressWarnings("unchecked")
+    public ApiResponse<ForgeBlueprintDto> saveBlueprint(@RequestBody Map<String, Object> body) {
         String artistId = (String) body.get("artistId");
         String resultId = (String) body.get("resultId");
-        // 当前仅做幂等成功响应；蓝图快照表待 spec 最终确认后再落库。
-        return ApiResponse.of(Map.of("ok", true, "artistId", artistId, "resultId", resultId));
+        if (artistId == null || artistId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "artistId 必填");
+        }
+        if (resultId == null || resultId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "resultId 必填");
+        }
+        Map<String, Object> snapshot = body.get("snapshot") instanceof Map<?, ?> m
+                ? new java.util.LinkedHashMap<>((Map<String, Object>) m)
+                : new java.util.LinkedHashMap<>();
+        // 若前端未单独传 snapshot，把 body 中除 artistId/resultId 外的字段全部存入快照。
+        if (snapshot.isEmpty()) {
+            for (Map.Entry<String, Object> e : body.entrySet()) {
+                if (!"artistId".equals(e.getKey()) && !"resultId".equals(e.getKey())) {
+                    snapshot.put(e.getKey(), e.getValue());
+                }
+            }
+        }
+        ForgeBlueprint bp = ForgeBlueprint.builder()
+                .id(UUID.randomUUID().toString())
+                .artistId(artistId)
+                .resultId(resultId)
+                .snapshotJson(snapshot)
+                .createdAt(Instant.now())
+                .build();
+        blueprintRepo.save(bp);
+        return ApiResponse.of(ForgeBlueprintDto.from(bp));
+    }
+
+    @GetMapping("/blueprints")
+    public ApiResponse<List<ForgeBlueprintDto>> blueprints(@RequestParam String artistId) {
+        return ApiResponse.of(blueprintRepo.findByArtistIdOrderByCreatedAtDesc(artistId)
+                .stream().map(ForgeBlueprintDto::from).toList());
     }
 
     private ForgeResult.ForgeMode parseMode(String raw) {

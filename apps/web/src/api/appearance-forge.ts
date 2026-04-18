@@ -52,14 +52,38 @@ export async function generateForge(req: ForgeRequest): Promise<ForgeResult> {
   });
 }
 
+/** 后端返回的蓝图视图。 */
+export interface ForgeBlueprintWire {
+  id: ID;
+  artistId: ID;
+  resultId: ID;
+  snapshot: Record<string, unknown>;
+  createdAt: string;
+}
+
 /** 将本次生成存为艺人的固定形象"蓝图"。 */
 export async function saveForgeBlueprint(
   artistId: ID,
   resultId: ID,
-): Promise<{ ok: true }> {
-  if (USE_MOCK) return mockDelay({ ok: true });
-  return apiFetch<{ ok: true }>("/appearance-forge/blueprint", {
+  snapshot?: Record<string, unknown>,
+): Promise<ForgeBlueprintWire> {
+  if (USE_MOCK) {
+    return mockDelay({
+      id: `mock-${Date.now()}`,
+      artistId, resultId,
+      snapshot: snapshot ?? {},
+      createdAt: new Date().toISOString(),
+    });
+  }
+  return apiFetch<ForgeBlueprintWire>("/appearance-forge/blueprint", {
     method: "POST",
-    body: { artistId, resultId },
+    body: { artistId, resultId, snapshot },
+  });
+}
+
+export async function listBlueprints(artistId: ID): Promise<ForgeBlueprintWire[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch<ForgeBlueprintWire[]>("/appearance-forge/blueprints", {
+    query: { artistId },
   });
 }

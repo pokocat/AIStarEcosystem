@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   User, Shield, Bell, Palette, Globe, CreditCard, Key,
   Save, ChevronRight, Moon, Sun, Monitor, Check, Mail,
@@ -14,6 +14,8 @@ import { ThemeSwitcher } from "../ThemeSwitcher";
 import type { Lang } from "../../translations";
 import { SETTINGS_SECTIONS } from "@/constants/settings-sections";
 import { RECHARGE_HISTORY } from "@/mocks/settings";
+import type { RechargeRecord } from "@/types/settings";
+import { SettingsApi } from "@/api";
 import { formatCredits, formatCurrency } from "@/lib/format";
 
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
@@ -41,6 +43,16 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
     email: true, push: true, sms: false,
     newFan: true, revenue: true, contentReview: true, systemUpdate: false, marketing: false,
   });
+
+  const [rechargeHistory, setRechargeHistory] = useState<RechargeRecord[]>(RECHARGE_HISTORY);
+
+  useEffect(() => {
+    let cancelled = false;
+    SettingsApi.listRechargeHistory()
+      .then(list => { if (!cancelled && list.length > 0) setRechargeHistory(list); })
+      .catch(() => { /* mock 兜底 */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSave = () => {
     setSaved(true);
@@ -218,7 +230,7 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
               <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
                 <h3 className="text-lg font-bold mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '消费流水' : 'Spend History'}</h3>
                 <div className="space-y-2">
-                  {RECHARGE_HISTORY.map(r => (
+                  {rechargeHistory.map(r => (
                     <div key={r.id} className="flex items-center justify-between p-3 rounded-lg border border-white/5 text-xs">
                       <div><span className="text-gray-500">{r.date}</span> <span className="text-white ml-2">{r.desc}</span></div>
                       <div className="flex items-center gap-3">

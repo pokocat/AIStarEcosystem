@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { Drama, Movie, Advertisement, VoiceWork } from "@/types/film";
 import { DRAMAS, MOVIES, ADS, VOICE_WORKS } from "@/mocks/film";
+import { FilmApi } from "@/api";
 import { FILM_STATUS_COLORS, MOVIE_ROLE_BADGE_COLORS } from "@/constants/film-ui";
 
 interface FilmBusinessProps {
@@ -30,6 +31,24 @@ export function FilmBusiness({ lang: _lang, artist, onBack }: FilmBusinessProps)
   const [movies, setMovies] = useState<Movie[]>(MOVIES);
   const [ads, setAds] = useState<Advertisement[]>(ADS);
   const [voiceWorks, setVoiceWorks] = useState<VoiceWork[]>(VOICE_WORKS);
+
+  // 后端返回非空时替换 mock；否则继续用 DRAMAS/MOVIES/ADS/VOICE_WORKS 兜底
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      FilmApi.listDramas().catch(() => [] as Drama[]),
+      FilmApi.listMovies().catch(() => [] as Movie[]),
+      FilmApi.listAds().catch(() => [] as Advertisement[]),
+      FilmApi.listVoiceWorks().catch(() => [] as VoiceWork[]),
+    ]).then(([d, m, a, v]) => {
+      if (cancelled) return;
+      if (d.length > 0) setDramas(d);
+      if (m.length > 0) setMovies(m);
+      if (a.length > 0) setAds(a);
+      if (v.length > 0) setVoiceWorks(v);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // 计算总统计
   const totalStats = {

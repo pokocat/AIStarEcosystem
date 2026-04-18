@@ -30,6 +30,7 @@ import { SettingsPage } from "./producer/SettingsPage";
 import { NotificationPanel } from "./producer/NotificationPanel";
 import { INITIAL_NOTIFICATIONS } from "@/mocks/notifications";
 import type { Notification } from "@/types/notification";
+import { NotificationsApi } from "@/api";
 import { Bell } from 'lucide-react';
 import { CommandPalette } from "./producer/CommandPalette";
 import { ArtistRadarCard } from "./producer/ArtistRadarCard";
@@ -453,6 +454,18 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  // 加载真实通知（后端返回空时保留 INITIAL_NOTIFICATIONS 兜底）
+  useEffect(() => {
+    let cancelled = false;
+    NotificationsApi.listNotifications()
+      .then((list) => {
+        if (!cancelled && list && list.length > 0) setNotifications(list);
+      })
+      .catch(() => { /* 静默失败，保留 mock 兜底 */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const [selectedTrackId, setSelectedTrackId] = useState<number | null>(null);
 
   // Cmd+K shortcut

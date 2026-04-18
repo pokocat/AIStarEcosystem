@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Globe, Send, CheckCircle2, Clock, AlertCircle, Play, BarChart3,
   TrendingUp, Eye, ArrowUpRight, Filter, ChevronRight, Zap, Rocket,
@@ -13,8 +13,13 @@ import { motion } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Lang } from "../../translations";
 import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTypes';
-import type { DistributionContentItem as ContentItem, Platform } from "@/types/distribution";
-import { PLATFORMS as PLATFORMS_SEED, CONTENT_ITEMS, PLATFORM_DATA } from "@/mocks/distribution";
+import type { DistributionContentItem as ContentItem, Platform, PlatformViewPoint } from "@/types/distribution";
+import {
+  PLATFORMS as PLATFORMS_SEED,
+  CONTENT_ITEMS as CONTENT_ITEMS_SEED,
+  PLATFORM_DATA as PLATFORM_DATA_SEED,
+} from "@/mocks/distribution";
+import { DistributionApi } from "@/api";
 import { toast } from "@/lib/toast";
 
 const STATUS_STYLES = {
@@ -28,6 +33,23 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
   const zh = lang === 'zh';
   const [platformFilter, setPlatformFilter] = useState<'all' | 'music' | 'video' | 'social' | 'live'>('all');
   const [platforms, setPlatforms] = useState<Platform[]>(PLATFORMS_SEED);
+  const [contentItems, setContentItems] = useState<ContentItem[]>(CONTENT_ITEMS_SEED);
+  const [platformViews, setPlatformViews] = useState<PlatformViewPoint[]>(PLATFORM_DATA_SEED);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      DistributionApi.listPlatforms().catch(() => [] as Platform[]),
+      DistributionApi.listDistributionContent().catch(() => [] as ContentItem[]),
+      DistributionApi.getPlatformViewStats().catch(() => [] as PlatformViewPoint[]),
+    ]).then(([p, c, v]) => {
+      if (cancelled) return;
+      if (p.length > 0) setPlatforms(p);
+      if (c.length > 0) setContentItems(c);
+      if (v.length > 0) setPlatformViews(v);
+    });
+    return () => { cancelled = true; };
+  }, []);
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
 
   const filteredPlatforms = platformFilter === 'all' ? platforms : platforms.filter(p => p.category === platformFilter);
@@ -86,7 +108,7 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
         <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '平台播放量分布' : 'Platform Views'}</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={PLATFORM_DATA}>
+            <BarChart data={platformViews}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
               <XAxis dataKey="name" stroke="#555" fontSize={10} />
               <YAxis stroke="#555" fontSize={10} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}K`} />
@@ -101,7 +123,7 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
             <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{zh ? '内容分发状态' : 'Content Status'}</h3>
           </div>
           <div className="space-y-2">
-            {CONTENT_ITEMS.map((item, i) => {
+            {contentItems.map((item, i) => {
               const st = STATUS_STYLES[item.status];
               const StIcon = st.icon;
               return (

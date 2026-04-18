@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Heart, Users, MessageCircle, Trophy, Gift, TrendingUp,
   Star, Crown, Zap, Bell, Send, ThumbsUp, Share2, BarChart3,
@@ -13,7 +13,14 @@ import { motion } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Lang } from "../../translations";
 import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTypes';
-import { FAN_TIERS, FAN_GROWTH, ACTIVITIES, EVENTS } from "@/mocks/community";
+import type { FanTier, FanGrowthPoint, FanActivity, CommunityEvent } from "@/types/community";
+import {
+  FAN_TIERS as FAN_TIERS_SEED,
+  FAN_GROWTH as FAN_GROWTH_SEED,
+  ACTIVITIES as ACTIVITIES_SEED,
+  EVENTS as EVENTS_SEED,
+} from "@/mocks/community";
+import { CommunityApi, ApiError } from "@/api";
 import {
   ACTION_COLORS, ACTION_ICONS,
   EVENT_ICONS, EVENT_STATUS_STYLES,
@@ -25,13 +32,42 @@ export const CommunityPage = ({ lang, activeArtist }: { lang: Lang; activeArtist
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
   const isIdol = activeArtist.type === 'idol';
   const [draft, setDraft] = useState('');
-  const postDraft = () => {
+
+  const [FAN_TIERS, setFanTiers] = useState<FanTier[]>(FAN_TIERS_SEED);
+  const [FAN_GROWTH, setFanGrowth] = useState<FanGrowthPoint[]>(FAN_GROWTH_SEED);
+  const [ACTIVITIES, setActivities] = useState<FanActivity[]>(ACTIVITIES_SEED);
+  const [EVENTS, setEvents] = useState<CommunityEvent[]>(EVENTS_SEED);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      CommunityApi.listFanTiers().catch(() => [] as FanTier[]),
+      CommunityApi.getFanGrowth().catch(() => [] as FanGrowthPoint[]),
+      CommunityApi.listActivities().catch(() => [] as FanActivity[]),
+      CommunityApi.listEvents().catch(() => [] as CommunityEvent[]),
+    ]).then(([t, g, a, e]) => {
+      if (cancelled) return;
+      if (t.length > 0) setFanTiers(t);
+      if (g.length > 0) setFanGrowth(g);
+      if (a.length > 0) setActivities(a);
+      if (e.length > 0) setEvents(e);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const postDraft = async () => {
     if (!draft.trim()) {
       toast.error(zh ? '内容不能为空' : 'Content required');
       return;
     }
-    toast.success(zh ? '已发布到粉丝群' : 'Posted to fan community', { description: draft.slice(0, 60) });
-    setDraft('');
+    try {
+      await CommunityApi.createPost(draft.trim(), activeArtist.id);
+      toast.success(zh ? '已发布到粉丝群' : 'Posted to fan community', { description: draft.slice(0, 60) });
+      setDraft('');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
+      toast.error(zh ? '发布失败' : 'Post failed', { description: msg });
+    }
   };
 
   return (

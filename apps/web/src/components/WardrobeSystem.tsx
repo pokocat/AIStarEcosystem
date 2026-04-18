@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { ClothingItem, EquippedSlots, EquipSlot, SavedOutfit } from "@/types/wardrobe";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
+import { WardrobeApi } from "@/api";
 import {
   RARITY_COLORS, RARITY_STAR_COUNT,
   WARDROBE_CATEGORY_OPTIONS, EQUIP_SLOT_LABELS,
@@ -34,7 +35,30 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
   const [favorites, setFavorites] = useState<string[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
 
-  const clothingDatabase = CLOTHING_DATABASE;
+  const [clothingDatabase, setClothingDatabase] = useState<ClothingItem[]>(CLOTHING_DATABASE);
+
+  useEffect(() => {
+    let cancelled = false;
+    WardrobeApi.listClothing()
+      .then(list => { if (!cancelled && list.length > 0) setClothingDatabase(list); })
+      .catch(() => { /* mock 兜底 */ });
+    WardrobeApi.listOutfits()
+      .then(wire => {
+        if (cancelled || !wire || wire.length === 0) return;
+        const outfits: SavedOutfit[] = wire.map(o => {
+          const slots: EquippedSlots = { top: null, bottom: null, accessory: null, shoes: null, hair: null };
+          for (const [k, itemId] of Object.entries(o.slots)) {
+            const item = (clothingDatabase.find(c => c.id === itemId)) || null;
+            (slots as any)[k] = item;
+          }
+          return { id: o.id, name: o.name, items: slots, createdAt: o.createdAt };
+        });
+        setSavedOutfits(outfits);
+      })
+      .catch(() => { /* 忽略 */ });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 筛选服装
   const filteredClothing = clothingDatabase.filter(item => {

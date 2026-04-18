@@ -14,10 +14,14 @@ import type { Lang } from "../../translations";
 import { type Artist, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from './ArtistTypes';
 import type { Transaction, TransactionStatus, TransactionType } from "@/types/finance";
 import type { Wallet as WalletModel, LedgerEntry, LedgerEntryType } from "@/types/wallet";
-import { REVENUE_MONTHLY, REVENUE_SOURCES } from "@/mocks/finance";
+import type { MonthlyRevenuePoint, RevenueSource } from "@/types/finance";
+import {
+  REVENUE_MONTHLY as SEED_MONTHLY_REVENUE,
+  REVENUE_SOURCES as SEED_REVENUE_SOURCES,
+} from "@/mocks/finance";
 import { formatCredits, formatSignedCredits } from "@/lib/format";
 import { toast } from "@/lib/toast";
-import { AccountApi, ApiError } from "@/api";
+import { AccountApi, FinanceApi, ApiError } from "@/api";
 
 // LedgerEntry → Transaction（展示侧投影）
 const LEDGER_TO_TX_TYPE: Record<LedgerEntryType, TransactionType> = {
@@ -53,8 +57,22 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
 
   const [wallet, setWallet] = useState<WalletModel | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [monthlyRevenueSeries, setMonthlyRevenueSeries] = useState<MonthlyRevenuePoint[]>(SEED_MONTHLY_REVENUE);
+  const [revenueSources, setRevenueSources] = useState<RevenueSource[]>(SEED_REVENUE_SOURCES);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // 聚合数据独立拉取：后端非空则替换，否则保留 mock 兜底
+  useEffect(() => {
+    let cancelled = false;
+    FinanceApi.getMonthlyRevenue()
+      .then(m => { if (!cancelled && m.length > 0) setMonthlyRevenueSeries(m); })
+      .catch(() => {});
+    FinanceApi.getRevenueSources()
+      .then(s => { if (!cancelled && s.length > 0) setRevenueSources(s); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,7 +174,7 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
           <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
             <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '收益趋势' : 'Revenue Trend'}</h3>
             <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={REVENUE_MONTHLY}>
+              <AreaChart data={monthlyRevenueSeries}>
                 <defs>
                   <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -177,15 +195,15 @@ export const FinancePage = ({ lang, activeArtist }: { lang: Lang; activeArtist: 
             <div className="h-[180px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={REVENUE_SOURCES} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
-                    {REVENUE_SOURCES.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  <Pie data={revenueSources} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
+                    {revenueSources.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: '#111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }} formatter={(value: number, name: string) => [`${value}%`, name]} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-2">
-              {REVENUE_SOURCES.map((s, i) => (
+              {revenueSources.map((s, i) => (
                 <span key={i} className="text-[10px] text-gray-400 flex items-center gap-1">
                   <div className="w-2 h-2 rounded-full" style={{ background: s.color }} />
                   {s.name} {s.value}%

@@ -9,6 +9,7 @@ import type {
   FanActivity,
   CommunityEvent,
 } from "@/types/community";
+import type { ID } from "@/types/_shared";
 import { FAN_TIERS, FAN_GROWTH, ACTIVITIES, EVENTS } from "@/mocks/community";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
@@ -30,4 +31,54 @@ export async function listActivities(): Promise<FanActivity[]> {
 export async function listEvents(): Promise<CommunityEvent[]> {
   if (USE_MOCK) return mockDelay(EVENTS);
   return apiFetch<CommunityEvent[]>("/community/events");
+}
+
+export interface CommunityPostWire {
+  id: ID;
+  userId: ID;
+  artistId: ID | null;
+  content: string;
+  mediaUrls: string[];
+  createdAt: string;
+}
+
+export async function listPosts(page = 0, size = 20): Promise<CommunityPostWire[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch<CommunityPostWire[]>("/community/posts", { query: { page, size } });
+}
+
+export async function createPost(
+  content: string,
+  artistId?: ID,
+  mediaUrls: string[] = [],
+): Promise<CommunityPostWire> {
+  if (USE_MOCK) {
+    return mockDelay({
+      id: `mock-${Date.now()}`,
+      userId: "mock-user",
+      artistId: artistId ?? null,
+      content, mediaUrls,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  return apiFetch<CommunityPostWire>("/community/posts", {
+    method: "POST",
+    body: { content, artistId, mediaUrls },
+  });
+}
+
+export async function rsvpEvent(eventId: ID): Promise<void> {
+  if (USE_MOCK) { await mockDelay(undefined); return; }
+  await apiFetch<void>(
+    `/community/events/${encodeURIComponent(eventId)}/rsvp`,
+    { method: "POST" },
+  );
+}
+
+export async function cancelRsvp(eventId: ID): Promise<void> {
+  if (USE_MOCK) { await mockDelay(undefined); return; }
+  await apiFetch<void>(
+    `/community/events/${encodeURIComponent(eventId)}/rsvp`,
+    { method: "DELETE" },
+  );
 }

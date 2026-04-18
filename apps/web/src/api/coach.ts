@@ -42,3 +42,25 @@ export async function getCategoryDistribution(): Promise<CoachCategoryDistributi
   if (USE_MOCK) return mockDelay(CategoryDist);
   return apiFetch<CoachCategoryDistribution[]>("/coach/category-distribution");
 }
+
+/** 用户提交版权登记 (backed by aep_copyrights.submittedByUserId)。 */
+export async function submitCopyright(payload: {
+  title: string;
+  artist?: string;
+  type?: string;
+}): Promise<CopyrightItem> {
+  if (USE_MOCK) {
+    return mockDelay({
+      id: `mock-${Date.now()}`,
+      title: payload.title,
+      artist: payload.artist ?? "",
+      type: payload.type ?? "",
+      submitted: new Date().toISOString().slice(0, 10),
+      status: "pending",
+    } as CopyrightItem);
+  }
+  return apiFetch<CopyrightItem>("/coach/copyright", {
+    method: "POST",
+    body: payload,
+  });
+}

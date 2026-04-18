@@ -14,15 +14,20 @@ import { Progress } from "./ui/progress";
 import { motion, AnimatePresence } from "motion/react";
 import type { Lang } from "../translations";
 import { DanmakuOverlay } from "./DanmakuLive";
-import type { FanTab, TrackItem } from "@/types/fan";
+// TODO(Phase-2): fan_likes / fan_follows 关系表未落库，本期所有互动仅本地模拟。
+// 列表读取已走 /api/fan/*（trending-artists/hot-tracks/nft-market/me），
+// 但 likeTrack/unlikeTrack/followArtist/unfollowArtist 的写端点尚未实现；
+// 详见 apps/web/src/api/fan.ts 顶部注释。
+import type { FanTab, FanArtist, TrackItem, NFTItem } from "@/types/fan";
 import {
-  TrendingArtists,
-  HotTracks,
-  NFTMarket,
+  TrendingArtists as TrendingArtists_SEED,
+  HotTracks as HotTracks_SEED,
+  NFTMarket as NFTMarket_SEED,
   DefaultFanProfile,
   DefaultLikedTrackIds,
   DefaultFollowedArtistIds,
 } from "@/mocks/fan";
+import { FanApi } from "@/api";
 import {
   RARITY_STYLES,
   FAN_NAV_ITEMS,
@@ -34,12 +39,32 @@ export const FanAppFull = ({ onBack, lang, setLang }: { onBack: () => void; lang
   const zh = lang === 'zh';
   const [activeTab, setActiveTab] = useState<FanTab>('home');
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState<TrackItem>(HotTracks[0]);
+
+  const [TrendingArtists, setTrendingArtists] = useState<FanArtist[]>(TrendingArtists_SEED);
+  const [HotTracks, setHotTracks] = useState<TrackItem[]>(HotTracks_SEED);
+  const [NFTMarket, setNFTMarket] = useState<NFTItem[]>(NFTMarket_SEED);
+
+  const [currentTrack, setCurrentTrack] = useState<TrackItem>(HotTracks_SEED[0]);
   const [likedTracks, setLikedTracks] = useState<Set<string>>(new Set(DefaultLikedTrackIds));
   const [searchQuery, setSearchQuery] = useState('');
   const [showPlayer] = useState(true);
   const [progress, setProgress] = useState(35);
   const [followedArtists, setFollowedArtists] = useState<Set<string>>(new Set(DefaultFollowedArtistIds));
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      FanApi.listTrendingArtists().catch(() => [] as FanArtist[]),
+      FanApi.listHotTracks().catch(() => [] as TrackItem[]),
+      FanApi.listNFTMarket().catch(() => [] as NFTItem[]),
+    ]).then(([a, t, n]) => {
+      if (cancelled) return;
+      if (a.length > 0) setTrendingArtists(a);
+      if (t.length > 0) { setHotTracks(t); setCurrentTrack(t[0]); }
+      if (n.length > 0) setNFTMarket(n);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Mock fan profile
   const fanProfile = {
@@ -96,6 +121,11 @@ export const FanAppFull = ({ onBack, lang, setLang }: { onBack: () => void; lang
             <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500" />
           </button>
         </div>
+      </div>
+
+      {/* Phase-2 占位：点赞 / 关注本期仅本地模拟，未写入后端 */}
+      <div className="px-4 py-2 text-[11px] text-amber-400 bg-amber-500/10 border-b border-amber-500/20 shrink-0">
+        {zh ? '⚠️ 本期互动（点赞 / 关注）仅本地保存，尚未写入后端；刷新即清空。' : '⚠️ Likes / follows are local-only this phase and will reset on refresh.'}
       </div>
 
       {/* Main Content */}
