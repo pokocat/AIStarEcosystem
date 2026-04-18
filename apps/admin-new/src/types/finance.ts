@@ -1,42 +1,47 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// finance.ts — 财务 / 收益 / 交易流水。
+// finance.ts — 财务展示类型（图表 / 业务交易视图）。
+// 钱包余额与流水的「事实数据」在 wallet.ts；此处只承载展示侧聚合视图。
+// 所有金额一律原始数值（credits），格式化由 lib/format.ts 完成。
+// 见 product_spec.md §1.4 / §3.1。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID, ISODate } from "./_shared";
 
+// ── 业务交易（前端展示用，源自 wallet.LedgerEntry 的派生） ────────────────────
+
 export type TransactionStatus = "completed" | "pending" | "processing";
-export type TransactionType = "income" | "withdrawal";
+export type TransactionType =
+  | "income"
+  | "withdrawal"
+  | "spend"
+  | "recharge"
+  | "license_grant";
 
 export interface Transaction {
   id: ID;
-  /** 来源/描述（中文，前端展示用） */
+  /** 来源/描述（中性文案，前端可本地化） */
   source: string;
-  /** 金额文案：正数以 "+¥..." / 负数以 "-¥..." 前缀展示 */
-  amount: string;
+  /** 原始数值（credits）；正数=入账，负数=出账 */
+  amount: number;
   date: ISODate;
   status: TransactionStatus;
   type: TransactionType;
+  /** 账户持有人 id（可选，用于多账户视图） */
+  userId?: ID;
 }
+
+// ── 月度收益曲线（数值原始，单位 credits） ────────────────────────────────────
 
 export interface MonthlyRevenuePoint {
-  month: string;    // "1月" / "Jan" 等展示文案
-  revenue: number;  // 原始数值
+  month: string;
+  revenue: number;
 }
+
+// ── 收益来源占比（饼图） ──────────────────────────────────────────────────────
 
 export interface RevenueSource {
-  /** 来源名（中文） */
   name: string;
-  /** 百分比占比 0–100 */
+  /** 百分比 0–100，原始数值 */
   value: number;
-  /** 饼图色值 */
   color: string;
-}
-
-export interface WalletSummary {
-  /** 总余额展示文案（如 "¥128,500"） */
-  totalBalance: string;
-  /** 结算中金额文案 */
-  pendingAmount: string;
-  /** 月度环比变化（展示文案，如 "+12%"） */
-  monthChange?: string;
 }

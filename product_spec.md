@@ -567,3 +567,103 @@ export interface LicenseKey {
 - [x] **D6**：Wallet 挂在 `AepUser`
 
 > 上述决策已锁定，进入 P1 实施阶段。
+
+---
+
+## 9. Admin Console 产品功能逻辑（`apps/admin-new`）
+
+> 管理后台是 `apps/web_new` 背后的运营工作台。**数据模型与前台 1:1 对应**：`admin-new/src/types/*` 与 `web_new/src/types/*` 同构，任何字段/枚举改动需同步两端。
+
+### 9.1 主链路
+
+整条业务链以 Studio 为轴心：
+
+```
+平台账户 (AepUser / Tenant)
+   └─ 经纪公司 (Studio)
+        └─ AI 艺人 (DigitalIp / Singer)
+             └─ AI 作品 (Song / Album / Concert / Drama / Movie / Ad / VoiceWork)
+                  └─ 分发 (Platform / DistributionQueue)
+                       └─ 收益 (Wallet / LedgerEntry ≡ credits)
+```
+
+管理后台每个分组对应链路中的一环，所有数值一律 credits，不再使用 ¥/$ 字符串。
+
+### 9.2 侧栏分组 → 路由映射
+
+| 分组       | 路由                   | 核心实体             | 作用                             |
+| ---------- | ---------------------- | -------------------- | -------------------------------- |
+| 全局       | `/`                    | —                    | KPI + 待办队列                   |
+| 平台账户   | `/platform/accounts`   | `AepUser`            | 登录账号 / kind / status         |
+|            | `/platform/studios`    | `Studio`             | 业务主体 + 聚合指标（§1.5）       |
+|            | `/platform/tenants`    | `Tenant`             | License 发放方                   |
+|            | `/platform/licenses`   | `LicenseBatch/Key`   | 批次发放 + 核销 + 撤回（§2）     |
+| AI 艺人    | `/artists/lifecycle`   | `DigitalIp`          | 练习生→出道→活跃                 |
+|            | `/artists/roster`      | `DigitalIp`          | 全站艺人档案 + 属主 Studio       |
+| AI 作品    | `/content/songs`       | `Song`               | 混音/发行                        |
+|            | `/content/albums`      | `Album`              | 专辑排期                         |
+|            | `/content/concerts`    | `Concert`            | 售票中演出                       |
+|            | `/content/dramas`      | `Drama`              | 短剧审核                         |
+|            | `/content/movies`      | `Movie`              | 电影上映审核                     |
+|            | `/content/ads`         | `Advertisement`      | 品牌代言 / TVC                   |
+|            | `/content/voice`       | `VoiceWork`          | 动画/纪录片/有声书/游戏配音      |
+|            | `/content/copyright`   | `CopyrightRecord`    | 版权核验                         |
+| 分发与变现 | `/distribution/platforms` | `Platform`        | 渠道接入审核                     |
+|            | `/distribution/queue`  | `DistributionItem`   | 发行队列复核                     |
+|            | `/monetization/nft`    | `NFTItem`            | 收藏品上架                       |
+|            | `/finance/ledger`      | `Wallet/LedgerEntry` | 钱包 + 点数流水 + 业务交易复核   |
+|            | `/finance/risk`        | 合成               | 大额流水 / 异常提现风控          |
+| 社群       | `/community/events`    | `CommunityEvent`     | 投票/见面会/挑战赛               |
+|            | `/community/moderation`| `Activity`           | 动态与打赏审核                   |
+| 基础数据   | `/base/genres`         | `Genre`              | 曲风 / 领域                      |
+|            | `/base/wardrobe`       | `WardrobeItem`       | 造型库                           |
+|            | `/base/pose`           | `Pose`               | 动作 / 表情 / 手势               |
+|            | `/base/credit-packs`   | `CreditPack`         | 点数售卖规格（取代订阅）         |
+| 消息与日志 | `/notifications`       | `Notification`       | 运营推送                         |
+|            | `/audit`               | `AuditEntry`         | 所有人工介入审计                 |
+
+### 9.3 admin-new ↔ web_new 类型对齐
+
+以下类型在两端同名同构（字段级相同），差异仅在于 admin 会**外挂聚合字段**用于后台看板：
+
+| 文件            | 同构类型                                          | admin 侧外挂字段 |
+| --------------- | ------------------------------------------------- | ---------------- |
+| `types/account.ts` | `AepUser` / `Tenant` / `Membership`             | —                |
+| `types/studio.ts`  | `Studio` / `StudioKind`                         | `artistCount` / `songCount` / `totalRevenueCredits` / `monthlyRevenueCredits` |
+| `types/license.ts` | `LicenseBatch` / `LicenseKey`                   | —                |
+| `types/wallet.ts`  | `Wallet` / `LedgerEntry` / `LedgerEntryType`    | —                |
+| `types/finance.ts` | `Transaction`（credits）/ `MonthlyRevenuePoint` | `TransactionType` 扩展了 `spend` / `recharge` / `license_grant` |
+| `types/settings.ts`| `CreditPack` / `RechargeRecord`                 | —（**已删除** `SubscriptionPlan` / `BillingRecord`）|
+
+### 9.4 关键人工介入点（actionable queue）
+
+全部由 `StatusMeta.actionable: true` 驱动，汇总到首页「待办队列」：
+
+- `ARTIST_STATUS.trainee` / `debut`
+- `SIGNED_ARTIST_STATUS.negotiating` / `expiring`
+- `DISTRIBUTION_QUEUE_STATUS.reviewing`
+- `COPYRIGHT_STATUS.pending`
+- `PLATFORM_STATUS.pending`
+- `DRAMA_STATUS["post-production"]` / `MOVIE_STATUS["post-production"]` / `AD_STATUS.negotiating`
+- `CONCERT_STATUS.selling`
+- `TRANSACTION_STATUS.pending` / `processing`
+- `LEDGER_ENTRY_TYPE.freeze` / `adjust`
+- `ACCOUNT_STATUS.suspended` / `STUDIO_STATUS.suspended`
+- `COMMUNITY_EVENT_STATUS.upcoming`
+
+### 9.5 金额展示约定
+
+- 所有 credits 字段由 `lib/format.ts` 的 `formatCredits` / `formatSignedCredits` / `formatCompactNumber` 处理；
+- `CreditPack.priceCents` 使用 `formatCurrency(cents)` 展示（CNY，后端以「分」为单位）；
+- **绝对禁止** 将数值字段以字符串形式从 mock/DTO 传入组件（见 §3.1）。
+
+### 9.6 删除项
+
+P4 交付时下述页面与常量已从 admin-new 移除（替代路径在括号内）：
+
+- `/base/plans`（→ `/base/credit-packs`）
+- `/coach/contracts` / `/coach/mcn`（并入 `/platform/studios`）
+- `/fan/nft-market`（→ `/monetization/nft`）
+- `/content/film`（拆分为 `/content/{dramas,movies,ads,voice}`）
+- `/finance/settlement`（→ `/finance/ledger`，从「元」切到 credits）
+- `types/settings.ts` 中的 `SubscriptionPlan` / `BillingRecord`；`types/finance.ts` 中的 `WalletSummary`（迁至 `types/wallet.ts`）。

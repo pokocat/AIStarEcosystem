@@ -8,34 +8,30 @@ import { Badge } from "@/components/ui/badge";
 import { TRANSACTIONS } from "@/mocks/finance";
 import { ACTIVITIES } from "@/mocks/community";
 import { formatDateCN } from "@/lib/utils";
-
-function parseAmount(a: string): number {
-  return Number(a.replace(/[^\d-]/g, "")) || 0;
-}
+import { formatSignedCredits } from "@/lib/format";
 
 /**
- * Synthesize risk cases from transaction + activity mocks.
- * Rule-set:
- *  - amount > ¥20,000 single txn → 大额异动
- *  - withdrawal + status !== completed → 异常提现
- *  - gift amount ≥ ¥500 from new user → 刷礼物疑点
+ * 基于 credits 阈值合成风控样本（纯展示）：
+ *  - 单笔绝对值 ≥ 20,000 credits → 大额流水
+ *  - 出账类（withdrawal/spend）状态不是 completed → 异常出账
+ *  - 打赏类汇总 ≥ 5,000 credits → 打赏突增
+ *  - 粉丝端 ¥ 打赏 ≥ 300 → 粉丝异常打赏
  */
 function buildRiskCases() {
   const txnCases = TRANSACTIONS.flatMap((t) => {
-    const amount = parseAmount(t.amount);
-    const abs = Math.abs(amount);
+    const abs = Math.abs(t.amount);
     const risks: { kind: string; level: "high" | "mid" | "low"; detail: string }[] = [];
-    if (abs >= 20000) risks.push({ kind: "大额流水", level: "mid", detail: `单笔 ${t.amount}` });
-    if (t.type === "withdrawal" && t.status !== "completed")
-      risks.push({ kind: "异常提现", level: "high", detail: `状态 ${t.status}` });
-    if (t.source.includes("打赏") && abs >= 5000)
+    if (abs >= 20_000) risks.push({ kind: "大额流水", level: "mid", detail: `单笔 ${formatSignedCredits(t.amount)} credits` });
+    if ((t.type === "withdrawal" || t.type === "spend") && t.status !== "completed")
+      risks.push({ kind: "异常出账", level: "high", detail: `状态 ${t.status}` });
+    if (t.source.includes("打赏") && abs >= 5_000)
       risks.push({ kind: "打赏突增", level: "low", detail: "汇总金额偏高，建议抽样核查" });
     return risks.map((r, idx) => ({
       id: `${t.id}-${idx}`,
       refId: t.id,
       date: t.date,
       source: t.source,
-      amount: t.amount,
+      amount: formatSignedCredits(t.amount),
       ...r,
     }));
   });
