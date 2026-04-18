@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Sparkles, Shuffle, Wand2, X,
   Mic2, Video, Star, Headphones, Zap, CheckCircle2, Loader2
@@ -16,7 +16,7 @@ import {
   type ArtistType, type TalentProfile,
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, QUALITY_CONFIG, TALENT_LABELS
 } from './ArtistTypes';
-import { ArtistsApi, ApiError } from "@/api";
+import { ArtistsApi, ConfigApi, ApiError } from "@/api";
 
 interface WizardState {
   name: string;
@@ -41,7 +41,14 @@ const INITIAL_STATE: WizardState = {
   talents: { ...ARTIST_TYPE_CONFIG.singer.initialTalents },
 };
 
-const TEMPLATES: { id: string; type: ArtistType; zh: string; en: string; color: string }[] = [
+// 默认值仅作为后端未 seed / 离线时的 fallback。真值源在 platform_configs：
+//   - incubation.templates  (key: ArtistType 枚举 + 文案)
+//   - incubation.faceStyles / fashionStyles (LabeledOption i18n)
+// 管理端改这些 key 即可热更前端选项。
+type WizardTemplate = { id: string; type: ArtistType; zh: string; en: string; color: string };
+type LabeledI18n = { id: string; zh: string; en: string };
+
+const FALLBACK_TEMPLATES: WizardTemplate[] = [
   { id: 'cute', type: 'idol', zh: '甜美偶像', en: 'Cute Idol', color: 'border-pink-500/30 hover:border-pink-400/60' },
   { id: 'cool', type: 'singer', zh: '酷炫歌手', en: 'Cool Singer', color: 'border-cyan-500/30 hover:border-cyan-400/60' },
   { id: 'elegant', type: 'actor', zh: '优雅演员', en: 'Elegant Actor', color: 'border-purple-500/30 hover:border-purple-400/60' },
@@ -50,7 +57,7 @@ const TEMPLATES: { id: string; type: ArtistType; zh: string; en: string; color: 
   { id: 'custom', type: 'singer', zh: '自定义', en: 'Custom', color: 'border-white/10 hover:border-white/30' },
 ];
 
-const FACE_STYLES = [
+const FALLBACK_FACE_STYLES: LabeledI18n[] = [
   { id: 'sweet', zh: '甜美', en: 'Sweet' },
   { id: 'cool', zh: '酷帅', en: 'Cool' },
   { id: 'elegant', zh: '优雅', en: 'Elegant' },
@@ -59,7 +66,7 @@ const FACE_STYLES = [
   { id: 'soft', zh: '温柔', en: 'Soft' },
 ];
 
-const FASHION_STYLES = [
+const FALLBACK_FASHION_STYLES: LabeledI18n[] = [
   { id: 'modern', zh: '现代潮流', en: 'Modern' },
   { id: 'retro', zh: '复古', en: 'Retro' },
   { id: 'cyberpunk', zh: '赛博朋克', en: 'Cyberpunk' },
@@ -125,6 +132,27 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+
+  // 从 platform_configs 拉 incubation.* 配置；未 seed 或离线则用 FALLBACK_*
+  const [FACE_STYLES, setFaceStyles] = useState<LabeledI18n[]>(FALLBACK_FACE_STYLES);
+  const [FASHION_STYLES, setFashionStyles] = useState<LabeledI18n[]>(FALLBACK_FASHION_STYLES);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [TEMPLATES, setTemplates] = useState<WizardTemplate[]>(FALLBACK_TEMPLATES);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.faceStyles", FALLBACK_FACE_STYLES),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.fashionStyles", FALLBACK_FASHION_STYLES),
+      ConfigApi.getConfig<WizardTemplate[]>("incubation.templates", FALLBACK_TEMPLATES),
+    ]).then(([face, fashion, templates]) => {
+      if (cancelled) return;
+      if (face && face.length > 0) setFaceStyles(face);
+      if (fashion && fashion.length > 0) setFashionStyles(fashion);
+      if (templates && templates.length > 0) setTemplates(templates);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const trimmedName = state.name.trim();
   const trimmedBio = state.bio.trim();

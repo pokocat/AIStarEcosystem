@@ -8,5 +8,6 @@ import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
 
 export async function listClothing(): Promise<ClothingItem[]> {
   if (USE_MOCK) return mockDelay(CLOTHING_DATABASE);
-  return apiFetch<ClothingItem[]>("/admin/wardrobe/items");
+  // 复用 user-side read 端点；admin 通过 ROLE 网关仍可访问 `/api/wardrobe/items`
+  return apiFetch<ClothingItem[]>("/wardrobe/items");
 }

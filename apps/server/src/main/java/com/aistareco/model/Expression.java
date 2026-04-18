@@ -17,4 +17,12 @@ public class Expression {
     private String emoji;
     private int intensity;
     private String category;
+
+    private int priceCredits;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private WardrobeItem.SaleStatus saleStatus;
+
+    private String previewUrl;
 }

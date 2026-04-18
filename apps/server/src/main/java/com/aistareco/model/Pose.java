@@ -19,4 +19,12 @@ public class Pose {
     private String difficulty;
     private boolean locked;
     private boolean newItem;
+
+    private int priceCredits;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private WardrobeItem.SaleStatus saleStatus;
+
+    private String previewUrl;
 }

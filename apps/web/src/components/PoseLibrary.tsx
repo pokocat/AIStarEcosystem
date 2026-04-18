@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import type { Pose, Expression, Gesture } from "@/types/pose";
 import { POSE_DATABASE, EXPRESSION_DATABASE, GESTURE_DATABASE } from "@/mocks/pose";
-import { PoseApi } from "@/api";
+import { PoseApi, StoreApi } from "@/api";
+import type { StoreItemType } from "@/api/store";
 import { POSE_DIFFICULTY_COLORS, POSE_CATEGORY_OPTIONS } from "@/constants/pose-ui";
 
 interface PoseLibraryProps {
@@ -30,6 +31,37 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
   const [poseDatabase, setPoseDatabase] = useState<Pose[]>(POSE_DATABASE);
   const [expressionDatabase, setExpressionDatabase] = useState<Expression[]>(EXPRESSION_DATABASE);
   const [gestureDatabase, setGestureDatabase] = useState<Gesture[]>(GESTURE_DATABASE);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+
+  type OwnedLike = { id: string; saleStatus?: string; priceCredits?: number; owned?: boolean; name: string };
+  const requiresPurchase = (item: OwnedLike): boolean =>
+    (item.saleStatus ?? "FREE") === "PAID" && !item.owned && (item.priceCredits ?? 0) > 0;
+
+  async function tryRedeem<T extends OwnedLike>(
+    item: T,
+    type: StoreItemType,
+    setList: React.Dispatch<React.SetStateAction<T[]>>,
+  ): Promise<boolean> {
+    if (!requiresPurchase(item)) return true;
+    const confirmed = typeof window !== "undefined"
+      ? window.confirm(`购买「${item.name}」需消耗 ${item.priceCredits} 积分，确定？`)
+      : true;
+    if (!confirmed) return false;
+    setPurchasing(item.id);
+    try {
+      await StoreApi.redeem(type, item.id);
+      setList(prev => prev.map(p => (p.id === item.id ? { ...p, owned: true } : p)));
+      setToast({ type: "ok", msg: `已购买：${item.name}` });
+      return true;
+    } catch (e: any) {
+      setToast({ type: "err", msg: typeof e?.message === "string" ? e.message : "购买失败" });
+      return false;
+    } finally {
+      setPurchasing(null);
+      setTimeout(() => setToast(null), 2500);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +85,13 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
 
   return (
     <div className="h-[calc(100vh-180px)] flex flex-col">
+      {toast && (
+        <div className={`mb-3 px-4 py-2 rounded-lg text-sm font-bold border ${
+          toast.type === "ok"
+            ? "bg-green-500/10 border-green-500/30 text-green-300"
+            : "bg-red-500/10 border-red-500/30 text-red-300"
+        }`}>{toast.msg}</div>
+      )}
       {/* 顶部标题栏 */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/10 pb-6 mb-6">
         <div>
@@ -121,11 +160,15 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03 }}
                     >
-                      <Card 
+                      <Card
                         className={`relative bg-[#0c0c0e]/80 backdrop-blur-xl border-white/10 hover:border-cyan-500/30 transition-all cursor-pointer group overflow-hidden ${
                           selectedPose?.id === pose.id ? 'ring-2 ring-cyan-500/50' : ''
-                        } ${pose.isLocked ? 'opacity-50' : ''}`}
-                        onClick={() => !pose.isLocked && setSelectedPose(pose)}
+                        } ${pose.isLocked || pose.saleStatus === "LOCKED" ? 'opacity-50' : ''}`}
+                        onClick={async () => {
+                          if (pose.isLocked || pose.saleStatus === "LOCKED") return;
+                          const ok = await tryRedeem(pose, "POSE", setPoseDatabase);
+                          if (ok) setSelectedPose(pose);
+                        }}
                       >
                         <CardContent className="p-0">
                           <div className="relative aspect-square overflow-hidden">
@@ -159,8 +202,19 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                             )}
                           </div>
 
-                          <div className="p-3">
-                            <h4 className="font-bold text-sm text-white line-clamp-1">{pose.name}</h4>
+                          <div className="p-3 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <h4 className="font-bold text-sm text-white line-clamp-1">{pose.name}</h4>
+                              <span className="text-xs font-mono">
+                                {pose.owned ? (
+                                  <span className="text-green-400">{lang === 'zh' ? '已拥有' : 'Owned'}</span>
+                                ) : (pose.saleStatus ?? 'FREE') === 'PAID' && (pose.priceCredits ?? 0) > 0 ? (
+                                  <span className="text-yellow-400">{pose.priceCredits}⭐</span>
+                                ) : (
+                                  <span className="text-cyan-300">{lang === 'zh' ? '免费' : 'Free'}</span>
+                                )}
+                              </span>
+                            </div>
                             <p className="text-xs text-gray-500 capitalize">{pose.category}</p>
                           </div>
                         </CardContent>
@@ -230,15 +284,24 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                         key={expr.id}
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.95 }}
-                        onClick={() => setSelectedExpression(expr)}
+                        onClick={async () => {
+                          if (expr.saleStatus === "LOCKED") return;
+                          const ok = await tryRedeem(expr, "EXPRESSION", setExpressionDatabase);
+                          if (ok) setSelectedExpression(expr);
+                        }}
                         className={`aspect-square rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all ${
                           selectedExpression?.id === expr.id
                             ? 'bg-pink-500/20 border-pink-500/50 shadow-lg shadow-pink-500/20'
                             : 'bg-black/40 border-white/10 hover:border-pink-500/30'
-                        }`}
+                        } ${expr.saleStatus === "LOCKED" ? 'opacity-50' : ''}`}
                       >
                         <div className="text-5xl mb-2">{expr.emoji}</div>
                         <div className="text-xs font-bold text-white">{expr.name}</div>
+                        {expr.owned ? (
+                          <div className="text-[10px] text-green-400 mt-1">{lang === 'zh' ? '已拥有' : 'Owned'}</div>
+                        ) : (expr.saleStatus ?? 'FREE') === 'PAID' && (expr.priceCredits ?? 0) > 0 ? (
+                          <div className="text-[10px] text-yellow-400 mt-1">{expr.priceCredits}⭐</div>
+                        ) : null}
                       </motion.div>
                     ))}
                   </div>
@@ -288,16 +351,25 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                         key={gesture.id}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        onClick={() => setSelectedGesture(gesture.id)}
+                        onClick={async () => {
+                          if (gesture.saleStatus === "LOCKED") return;
+                          const ok = await tryRedeem(gesture, "GESTURE", setGestureDatabase);
+                          if (ok) setSelectedGesture(gesture.id);
+                        }}
                         className={`p-6 rounded-2xl border-2 flex flex-col items-center cursor-pointer transition-all ${
                           selectedGesture === gesture.id
                             ? 'bg-purple-500/20 border-purple-500/50 shadow-lg shadow-purple-500/20'
                             : 'bg-black/40 border-white/10 hover:border-purple-500/30'
-                        }`}
+                        } ${gesture.saleStatus === "LOCKED" ? 'opacity-50' : ''}`}
                       >
                         <div className="text-6xl mb-3">{gesture.icon}</div>
                         <div className="text-sm font-bold text-white text-center">{gesture.name}</div>
                         <Badge variant="outline" className="mt-2 text-xs border-white/20">{gesture.category}</Badge>
+                        {gesture.owned ? (
+                          <div className="text-[10px] text-green-400 mt-1">{lang === 'zh' ? '已拥有' : 'Owned'}</div>
+                        ) : (gesture.saleStatus ?? 'FREE') === 'PAID' && (gesture.priceCredits ?? 0) > 0 ? (
+                          <div className="text-[10px] text-yellow-400 mt-1">{gesture.priceCredits}⭐</div>
+                        ) : null}
                       </motion.div>
                     ))}
                   </div>

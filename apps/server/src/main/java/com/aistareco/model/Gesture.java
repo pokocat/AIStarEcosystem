@@ -16,4 +16,12 @@ public class Gesture {
     private String nameEn;
     private String icon;
     private String category;
+
+    private int priceCredits;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private WardrobeItem.SaleStatus saleStatus;
+
+    private String previewUrl;
 }

@@ -9,6 +9,8 @@ export type ClothingCategory = "top" | "bottom" | "accessory" | "shoes" | "hair"
 /** 可装备槽位（outfit 类型不占单槽，排除）。 */
 export type EquipSlot = Exclude<ClothingCategory, "outfit">;
 
+export type SaleStatus = "FREE" | "PAID" | "LOCKED";
+
 export interface ClothingItem {
   id: ID;
   name: string;
@@ -20,6 +22,9 @@ export interface ClothingItem {
   isLocked?: boolean;
   isNew?: boolean;
   isTrending?: boolean;
+  priceCredits?: number;
+  saleStatus?: SaleStatus;
+  previewUrl?: string;
 }
 
 export type EquippedSlots = Record<EquipSlot, ClothingItem | null>;

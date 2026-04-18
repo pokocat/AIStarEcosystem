@@ -2,8 +2,11 @@ package com.aistareco.aep.config;
 
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
+import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.model.*;
 import com.aistareco.repository.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
@@ -61,6 +64,9 @@ public class DemoCatalogSeeder implements CommandLineRunner {
     private final CommunityPostRepository postRepo;
     private final EventRsvpRepository rsvpRepo;
 
+    private final PlatformConfigService configService;
+    private final ObjectMapper objectMapper;
+
     public DemoCatalogSeeder(
             AepUserRepository userRepo, DigitalIpRepository ipRepo,
             WalletRepository walletRepo, LedgerEntryRepository ledgerRepo,
@@ -74,7 +80,8 @@ public class DemoCatalogSeeder implements CommandLineRunner {
             NftCollectionRepository nftRepo,
             SavedOutfitRepository savedOutfitRepo, ForgeBlueprintRepository blueprintRepo,
             CreditPurchaseRepository purchaseRepo, PlatformConnectionRepository platformConnRepo,
-            CommunityPostRepository postRepo, EventRsvpRepository rsvpRepo
+            CommunityPostRepository postRepo, EventRsvpRepository rsvpRepo,
+            PlatformConfigService configService, ObjectMapper objectMapper
     ) {
         this.userRepo = userRepo; this.ipRepo = ipRepo;
         this.walletRepo = walletRepo; this.ledgerRepo = ledgerRepo;
@@ -89,6 +96,7 @@ public class DemoCatalogSeeder implements CommandLineRunner {
         this.savedOutfitRepo = savedOutfitRepo; this.blueprintRepo = blueprintRepo;
         this.purchaseRepo = purchaseRepo; this.platformConnRepo = platformConnRepo;
         this.postRepo = postRepo; this.rsvpRepo = rsvpRepo;
+        this.configService = configService; this.objectMapper = objectMapper;
     }
 
     @Override
@@ -102,6 +110,7 @@ public class DemoCatalogSeeder implements CommandLineRunner {
                 .filter(u -> u.getKind() == AepUser.AccountKind.PERSONAL)
                 .findFirst().orElse(null);
 
+        seedPlatformConfigs();
         seedMusicGenres();
         seedSongs(now);
         seedAlbums();
@@ -283,16 +292,24 @@ public class DemoCatalogSeeder implements CommandLineRunner {
         wardrobeRepo.saveAll(List.of(
                 WardrobeItem.builder().id("cloth-1").nameZh("星空外套").nameEn("Galaxy Jacket")
                         .category("top").imageUrl("").rarity("epic").price(2_800)
-                        .tags(List.of("cyberpunk", "neon")).locked(false).newItem(true).trending(true).build(),
+                        .tags(List.of("cyberpunk", "neon")).locked(false).newItem(true).trending(true)
+                        .priceCredits(0).saleStatus(WardrobeItem.SaleStatus.FREE)
+                        .previewUrl("").build(),
                 WardrobeItem.builder().id("cloth-2").nameZh("银河长裙").nameEn("Milky Dress")
                         .category("bottom").imageUrl("").rarity("rare").price(1_600)
-                        .tags(List.of("elegant")).locked(false).newItem(false).trending(false).build(),
+                        .tags(List.of("elegant")).locked(false).newItem(false).trending(false)
+                        .priceCredits(200).saleStatus(WardrobeItem.SaleStatus.PAID)
+                        .previewUrl("").build(),
                 WardrobeItem.builder().id("cloth-3").nameZh("机械耳饰").nameEn("Mech Earring")
                         .category("accessory").imageUrl("").rarity("legendary").price(4_500)
-                        .tags(List.of("cyber", "accessory")).locked(true).newItem(false).trending(true).build(),
+                        .tags(List.of("cyber", "accessory")).locked(true).newItem(false).trending(true)
+                        .priceCredits(500).saleStatus(WardrobeItem.SaleStatus.PAID)
+                        .previewUrl("").build(),
                 WardrobeItem.builder().id("cloth-4").nameZh("霓虹球鞋").nameEn("Neon Sneakers")
                         .category("shoes").imageUrl("").rarity("rare").price(1_200)
-                        .tags(List.of("street", "neon")).locked(false).newItem(true).trending(false).build()
+                        .tags(List.of("street", "neon")).locked(false).newItem(true).trending(false)
+                        .priceCredits(150).saleStatus(WardrobeItem.SaleStatus.PAID)
+                        .previewUrl("").build()
         ));
     }
 
@@ -301,33 +318,42 @@ public class DemoCatalogSeeder implements CommandLineRunner {
             poseRepo.saveAll(List.of(
                     Pose.builder().id("pose-1").nameZh("舞台 C 位").nameEn("Center Stage")
                             .category("standing").thumbnail("").difficulty("medium")
-                            .locked(false).newItem(true).build(),
+                            .locked(false).newItem(true)
+                            .priceCredits(0).saleStatus(WardrobeItem.SaleStatus.FREE).build(),
                     Pose.builder().id("pose-2").nameZh("旋转三连").nameEn("Triple Spin")
                             .category("dancing").thumbnail("").difficulty("hard")
-                            .locked(false).newItem(false).build(),
+                            .locked(false).newItem(false)
+                            .priceCredits(300).saleStatus(WardrobeItem.SaleStatus.PAID).build(),
                     Pose.builder().id("pose-3").nameZh("麦霸握话筒").nameEn("Mic Grip")
                             .category("singing").thumbnail("").difficulty("easy")
-                            .locked(false).newItem(false).build()
+                            .locked(false).newItem(false)
+                            .priceCredits(0).saleStatus(WardrobeItem.SaleStatus.FREE).build()
             ));
         }
         if (expressionRepo.count() == 0) {
             expressionRepo.saveAll(List.of(
                     Expression.builder().id("exp-1").nameZh("灿烂笑").nameEn("Big Smile")
-                            .emoji("😄").intensity(85).category("happy").build(),
+                            .emoji("😄").intensity(85).category("happy")
+                            .priceCredits(0).saleStatus(WardrobeItem.SaleStatus.FREE).build(),
                     Expression.builder().id("exp-2").nameZh("酷峻冷漠").nameEn("Cold Stare")
-                            .emoji("😎").intensity(70).category("cool").build(),
+                            .emoji("😎").intensity(70).category("cool")
+                            .priceCredits(100).saleStatus(WardrobeItem.SaleStatus.PAID).build(),
                     Expression.builder().id("exp-3").nameZh("惊喜").nameEn("Surprised")
-                            .emoji("😲").intensity(60).category("surprised").build()
+                            .emoji("😲").intensity(60).category("surprised")
+                            .priceCredits(0).saleStatus(WardrobeItem.SaleStatus.FREE).build()
             ));
         }
         if (gestureRepo.count() == 0) {
             gestureRepo.saveAll(List.of(
                     Gesture.builder().id("ges-1").nameZh("挥手致意").nameEn("Wave")
-                            .icon("👋").category("greeting").build(),
+                            .icon("👋").category("greeting")
+                            .priceCredits(0).saleStatus(WardrobeItem.SaleStatus.FREE).build(),
                     Gesture.builder().id("ges-2").nameZh("比心").nameEn("Heart Sign")
-                            .icon("🫶").category("love").build(),
+                            .icon("🫶").category("love")
+                            .priceCredits(120).saleStatus(WardrobeItem.SaleStatus.PAID).build(),
                     Gesture.builder().id("ges-3").nameZh("rock").nameEn("Rock")
-                            .icon("🤘").category("energy").build()
+                            .icon("🤘").category("energy")
+                            .priceCredits(0).saleStatus(WardrobeItem.SaleStatus.FREE).build()
             ));
         }
     }
@@ -509,5 +535,120 @@ public class DemoCatalogSeeder implements CommandLineRunner {
                 .eventId("ev-2").userId(fan.getId())
                 .createdAt(now.minus(1, ChronoUnit.HOURS))
                 .build());
+    }
+
+    // ── platform_configs 种子（孵化向导 + 锻造炉选项） ───────────────────────
+
+    private void seedPlatformConfigs() {
+        seedJson("incubation.faceStyles", "孵化向导 · 面部风格选项",
+                """
+                [
+                  {"id":"sweet","zh":"甜美","en":"Sweet"},
+                  {"id":"cool","zh":"酷帅","en":"Cool"},
+                  {"id":"elegant","zh":"优雅","en":"Elegant"},
+                  {"id":"cute","zh":"可爱","en":"Cute"},
+                  {"id":"sharp","zh":"凌厉","en":"Sharp"},
+                  {"id":"soft","zh":"温柔","en":"Soft"}
+                ]
+                """);
+
+        seedJson("incubation.fashionStyles", "孵化向导 · 服装风格选项",
+                """
+                [
+                  {"id":"modern","zh":"现代潮流","en":"Modern"},
+                  {"id":"retro","zh":"复古","en":"Retro"},
+                  {"id":"cyberpunk","zh":"赛博朋克","en":"Cyberpunk"},
+                  {"id":"casual","zh":"休闲","en":"Casual"},
+                  {"id":"formal","zh":"正式","en":"Formal"},
+                  {"id":"sporty","zh":"运动","en":"Sporty"}
+                ]
+                """);
+
+        seedJson("incubation.templates", "孵化向导 · 一键模版",
+                """
+                [
+                  {"id":"cute","type":"idol","zh":"甜美偶像","en":"Cute Idol","color":"border-pink-500/30 hover:border-pink-400/60"},
+                  {"id":"cool","type":"singer","zh":"酷炫歌手","en":"Cool Singer","color":"border-cyan-500/30 hover:border-cyan-400/60"},
+                  {"id":"elegant","type":"actor","zh":"优雅演员","en":"Elegant Actor","color":"border-purple-500/30 hover:border-purple-400/60"},
+                  {"id":"energetic","type":"entertainer","zh":"活力综艺","en":"Energetic Host","color":"border-amber-500/30 hover:border-amber-400/60"},
+                  {"id":"mysterious","type":"dancer","zh":"神秘舞者","en":"Mysterious Dancer","color":"border-green-500/30 hover:border-green-400/60"},
+                  {"id":"custom","type":"singer","zh":"自定义","en":"Custom","color":"border-white/10 hover:border-white/30"}
+                ]
+                """);
+
+        seedJson("forge.hairStyles", "锻造炉 · 发型选项（LabeledOption）",
+                """
+                [
+                  {"id":"long-straight","label":"长直发","color":null},
+                  {"id":"short-bob","label":"波波头","color":null},
+                  {"id":"ponytail","label":"马尾","color":null},
+                  {"id":"curly","label":"卷发","color":null},
+                  {"id":"undercut","label":"侧剃","color":null}
+                ]
+                """);
+
+        seedJson("forge.eyeColors", "锻造炉 · 瞳色选项（LabeledOption + color hex）",
+                """
+                [
+                  {"id":"amber","label":"琥珀","color":"#f59e0b"},
+                  {"id":"azure","label":"天蓝","color":"#06b6d4"},
+                  {"id":"emerald","label":"翡翠","color":"#10b981"},
+                  {"id":"violet","label":"紫罗兰","color":"#a855f7"},
+                  {"id":"ruby","label":"红宝石","color":"#ef4444"}
+                ]
+                """);
+
+        seedJson("forge.styleTags", "锻造炉 · 风格标签",
+                """
+                [
+                  {"id":"cyberpunk","label":"赛博朋克","color":null},
+                  {"id":"gothic","label":"哥特","color":null},
+                  {"id":"holo","label":"全息","color":null},
+                  {"id":"streetwear","label":"街头","color":null},
+                  {"id":"ethereal","label":"空灵","color":null}
+                ]
+                """);
+
+        seedJson("forge.faceSliders", "锻造炉 · 面部微调滑块（0-100）",
+                """
+                [
+                  {"id":"eyeSize","label":"眼睛大小"},
+                  {"id":"noseHeight","label":"鼻梁高度"},
+                  {"id":"lipThickness","label":"唇厚度"},
+                  {"id":"faceWidth","label":"脸型宽度"},
+                  {"id":"chinSharpness","label":"下颌锐利度"}
+                ]
+                """);
+
+        seedJson("forge.colorSchemes", "锻造炉 · 主题配色",
+                """
+                [
+                  {"id":"neon-sunset","name":"霓虹日落","colors":["#f472b6","#f59e0b"]},
+                  {"id":"cyber-rain","name":"赛博雨","colors":["#06b6d4","#a855f7"]},
+                  {"id":"forest-mist","name":"雾林","colors":["#10b981","#06b6d4"]},
+                  {"id":"midnight","name":"午夜","colors":["#1e293b","#a855f7"]}
+                ]
+                """);
+
+        seedJson("forge.promptSuggestions", "锻造炉 · 指令输入框推荐标签（string[]）",
+                """
+                [
+                  "cyberpunk neon portrait",
+                  "soft pastel anime style",
+                  "hyperrealistic fashion shoot",
+                  "ethereal holographic glow",
+                  "street style candid photo"
+                ]
+                """);
+    }
+
+    private void seedJson(String key, String description, String json) {
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            configService.seedIfAbsent(key, node, description);
+        } catch (Exception e) {
+            // seed 失败不阻断启动；日志留给 Spring
+            throw new RuntimeException("seed platform_config " + key + " failed", e);
+        }
     }
 }

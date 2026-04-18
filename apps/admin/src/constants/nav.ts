@@ -33,6 +33,7 @@ import {
   Coins,
   Bell,
   History,
+  Settings2,
 } from "lucide-react";
 
 export interface NavItem {
@@ -67,6 +68,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/platform/studios",  label: "经纪公司 / 工作室", icon: Building2, description: "Studio：业务主体档案与聚合指标" },
       { href: "/platform/tenants",  label: "机构 Tenant",       icon: Network,   description: "License 发放方与归属统计" },
       { href: "/platform/licenses", label: "License 批次",      icon: KeySquare, badgeKey: "license_low",       description: "批次 / 单码 / 核销" },
+      { href: "/platform/config",   label: "平台配置",          icon: Settings2, description: "孵化 / 锻造炉 JSON 配置" },
     ],
   },
   {

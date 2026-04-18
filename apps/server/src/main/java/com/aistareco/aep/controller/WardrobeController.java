@@ -3,7 +3,9 @@ package com.aistareco.aep.controller;
 import com.aistareco.aep.dto.ClothingItemDto;
 import com.aistareco.aep.dto.SavedOutfitDto;
 import com.aistareco.aep.model.SavedOutfit;
+import com.aistareco.aep.model.UserInventory;
 import com.aistareco.aep.repository.SavedOutfitRepository;
+import com.aistareco.aep.service.StoreService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.repository.WardrobeItemRepository;
 import org.springframework.data.domain.Sort;
@@ -27,17 +29,24 @@ public class WardrobeController {
 
     private final WardrobeItemRepository itemRepo;
     private final SavedOutfitRepository outfitRepo;
+    private final StoreService storeService;
 
     public WardrobeController(WardrobeItemRepository itemRepo,
-                              SavedOutfitRepository outfitRepo) {
+                              SavedOutfitRepository outfitRepo,
+                              StoreService storeService) {
         this.itemRepo = itemRepo;
         this.outfitRepo = outfitRepo;
+        this.storeService = storeService;
     }
 
     @GetMapping("/items")
-    public ApiResponse<List<ClothingItemDto>> items() {
+    public ApiResponse<List<ClothingItemDto>> items(Principal principal) {
+        String userId = principal != null ? principal.getName() : null;
         return ApiResponse.of(itemRepo.findAll(Sort.by("id").ascending())
-                .stream().map(ClothingItemDto::from).toList());
+                .stream()
+                .map(w -> ClothingItemDto.from(w,
+                        userId != null && storeService.isOwned(userId, UserInventory.ItemType.WARDROBE, w.getId())))
+                .toList());
     }
 
     @GetMapping("/outfits")

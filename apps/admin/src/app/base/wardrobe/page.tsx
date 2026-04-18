@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Shirt, Sparkles, Lock, TrendingUp, Plus } from "lucide-react";
+import { Shirt, Sparkles, Lock, TrendingUp, Plus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ARTIST_QUALITY } from "@/constants/status";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
-import type { ClothingCategory } from "@/types/wardrobe";
+import type { ClothingCategory, ClothingItem, SaleStatus } from "@/types/wardrobe";
+import { WardrobeApi, StoreApi } from "@/api";
 
 const CATEGORY_LABEL: Record<ClothingCategory, string> = {
   top: "上衣",
@@ -33,25 +36,81 @@ const CATEGORIES: { value: ClothingCategory | "all"; label: string }[] = [
   { value: "hair", label: "发型" },
 ];
 
+const SALE_LABEL: Record<SaleStatus, string> = {
+  FREE: "免费",
+  PAID: "付费",
+  LOCKED: "未上架",
+};
+
+const SALE_TONE: Record<SaleStatus, React.ComponentProps<typeof Badge>["tone"]> = {
+  FREE: "info",
+  PAID: "success",
+  LOCKED: "neutral",
+};
+
 export default function WardrobePage() {
   const [cat, setCat] = React.useState<ClothingCategory | "all">("all");
   const [query, setQuery] = React.useState("");
+  const [items, setItems] = React.useState<ClothingItem[]>(CLOTHING_DATABASE);
+  const [editing, setEditing] = React.useState<ClothingItem | null>(null);
+  const [editPrice, setEditPrice] = React.useState<string>("0");
+  const [editStatus, setEditStatus] = React.useState<SaleStatus>("FREE");
+  const [saving, setSaving] = React.useState(false);
+  const [toast, setToast] = React.useState<{ type: "ok" | "err"; msg: string } | null>(null);
 
-  const list = CLOTHING_DATABASE.filter((c) => {
+  React.useEffect(() => {
+    WardrobeApi.listClothing()
+      .then((list) => { if (list && list.length > 0) setItems(list); })
+      .catch(() => { /* 沿用 mock */ });
+  }, []);
+
+  const list = items.filter((c) => {
     if (cat !== "all" && c.category !== cat) return false;
     if (query && !c.name.includes(query) && !c.tags.join(" ").toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
 
-  const locked = CLOTHING_DATABASE.filter((c) => c.isLocked).length;
-  const trending = CLOTHING_DATABASE.filter((c) => c.isTrending).length;
-  const newCount = CLOTHING_DATABASE.filter((c) => c.isNew).length;
+  const paid = items.filter((c) => c.saleStatus === "PAID").length;
+  const locked = items.filter((c) => c.saleStatus === "LOCKED" || c.isLocked).length;
+  const free = items.filter((c) => !c.saleStatus || c.saleStatus === "FREE").length;
+
+  const openEdit = (item: ClothingItem) => {
+    setEditing(item);
+    setEditPrice(String(item.priceCredits ?? 0));
+    setEditStatus(item.saleStatus ?? "FREE");
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const price = Number(editPrice);
+    if (!Number.isFinite(price) || price < 0) {
+      setToast({ type: "err", msg: "价格必须是非负整数" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await StoreApi.updatePricing("WARDROBE", editing.id, {
+        priceCredits: price,
+        saleStatus: editStatus,
+      });
+      setItems((prev) => prev.map((it) => it.id === editing.id
+        ? { ...it, priceCredits: price, saleStatus: editStatus }
+        : it));
+      setToast({ type: "ok", msg: `已更新：${editing.name}` });
+      setEditing(null);
+    } catch (e: any) {
+      setToast({ type: "err", msg: typeof e?.message === "string" ? e.message : "保存失败" });
+    } finally {
+      setSaving(false);
+      setTimeout(() => setToast(null), 2500);
+    }
+  };
 
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
         title="造型库"
-        description="服装 / 配饰 / 发型等虚拟物品的上架、稀有度与解锁状态管理"
+        description="服装 / 配饰 / 发型等虚拟物品的上架、稀有度与积分定价管理"
         breadcrumb={[{ label: "运营基础数据" }, { label: "造型库" }]}
         actions={
           <Button size="sm">
@@ -60,11 +119,19 @@ export default function WardrobePage() {
         }
       />
 
+      {toast && (
+        <div className={`mb-4 rounded-md px-3 py-2 text-sm ${toast.type === "ok"
+            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
+          {toast.msg}
+        </div>
+      )}
+
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="物品总数" value={CLOTHING_DATABASE.length} icon={Shirt} />
-        <StatCard label="新品" value={newCount} icon={Sparkles} tone="success" />
-        <StatCard label="热门" value={trending} icon={TrendingUp} tone="warning" />
-        <StatCard label="锁定中" value={locked} icon={Lock} />
+        <StatCard label="物品总数" value={items.length} icon={Shirt} />
+        <StatCard label="免费" value={free} icon={Sparkles} />
+        <StatCard label="付费" value={paid} icon={TrendingUp} tone="success" />
+        <StatCard label="未上架" value={locked} icon={Lock} />
       </section>
 
       <Card>
@@ -91,31 +158,41 @@ export default function WardrobePage() {
 
             <TabsContent value={cat}>
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {list.map((c) => (
-                  <div key={c.id} className="rounded-xl border border-border bg-card overflow-hidden card-shadow">
-                    <div className="aspect-square relative bg-surface-muted">
-                      <Image src={c.imageUrl} alt={c.name} fill sizes="200px" className="object-cover" />
-                      <div className="absolute top-1.5 left-1.5 flex gap-1">
-                        {c.isNew && <Badge tone="success">新</Badge>}
-                        {c.isTrending && <Badge tone="warning">热</Badge>}
-                        {c.isLocked && <Badge tone="neutral">🔒</Badge>}
+                {list.map((c) => {
+                  const status: SaleStatus = c.saleStatus ?? "FREE";
+                  const hasImg = Boolean(c.imageUrl);
+                  return (
+                    <div key={c.id} className="rounded-xl border border-border bg-card overflow-hidden card-shadow">
+                      <div className="aspect-square relative bg-surface-muted">
+                        {hasImg ? (
+                          <Image src={c.imageUrl} alt={c.name} fill sizes="200px" className="object-cover" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-muted-foreground text-xs">无预览</div>
+                        )}
+                        <div className="absolute top-1.5 left-1.5 flex gap-1">
+                          {c.isNew && <Badge tone="success">新</Badge>}
+                          {c.isTrending && <Badge tone="warning">热</Badge>}
+                          <Badge tone={SALE_TONE[status]}>{SALE_LABEL[status]}</Badge>
+                        </div>
+                        <div className="absolute top-1.5 right-1.5">
+                          <StatusBadge meta={ARTIST_QUALITY[c.rarity]} />
+                        </div>
                       </div>
-                      <div className="absolute top-1.5 right-1.5">
-                        <StatusBadge meta={ARTIST_QUALITY[c.rarity]} />
+                      <div className="p-3">
+                        <div className="font-medium text-sm truncate">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">{CATEGORY_LABEL[c.category]}</div>
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="text-sm tabular-nums font-medium">
+                            {status === "PAID" ? `${c.priceCredits ?? 0}⭐` : SALE_LABEL[status]}
+                          </div>
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openEdit(c)}>
+                            <Pencil className="h-3 w-3 mr-1" /> 定价
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                    <div className="p-3">
-                      <div className="font-medium text-sm truncate">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">{CATEGORY_LABEL[c.category]}</div>
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="text-sm tabular-nums font-medium">¥{c.price}</div>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs">
-                          编辑
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {list.length === 0 && (
                 <div className="py-8 text-center text-sm text-muted-foreground">未找到匹配物品</div>
@@ -124,6 +201,43 @@ export default function WardrobePage() {
           </Tabs>
         </CardContent>
       </Card>
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>定价：{editing?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-xs text-muted-foreground">销售状态</label>
+              <Select value={editStatus} onValueChange={(v) => setEditStatus(v as SaleStatus)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FREE">免费（默认可用）</SelectItem>
+                  <SelectItem value="PAID">付费（扣积分购买）</SelectItem>
+                  <SelectItem value="LOCKED">未上架（商店不显示）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">积分价格 (priceCredits)</label>
+              <Input
+                type="number"
+                min={0}
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value)}
+                disabled={editStatus !== "PAID"}
+                placeholder="0 表示免费"
+              />
+              <p className="text-xs text-muted-foreground mt-1">仅当销售状态为「付费」时生效。</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>取消</Button>
+            <Button onClick={saveEdit} disabled={saving}>{saving ? "保存中…" : "保存"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -24,3 +24,5 @@ export * as StudiosApi from "./studios";
 export * as UsersApi from "./users";
 export * as WalletApi from "./wallet";
 export * as WardrobeApi from "./wardrobe";
+export * as StoreApi from "./store";
+export * as PlatformConfigApi from "./platform-config";

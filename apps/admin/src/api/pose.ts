@@ -8,15 +8,15 @@ import { POSE_DATABASE, EXPRESSION_DATABASE, GESTURE_DATABASE } from "@/mocks/po
 
 export async function listPoses(): Promise<Pose[]> {
   if (USE_MOCK) return mockDelay(POSE_DATABASE);
-  return apiFetch<Pose[]>("/admin/poses");
+  return apiFetch<Pose[]>("/poses");
 }
 
 export async function listExpressions(): Promise<Expression[]> {
   if (USE_MOCK) return mockDelay(EXPRESSION_DATABASE);
-  return apiFetch<Expression[]>("/admin/expressions");
+  return apiFetch<Expression[]>("/expressions");
 }
 
 export async function listGestures(): Promise<Gesture[]> {
   if (USE_MOCK) return mockDelay(GESTURE_DATABASE);
-  return apiFetch<Gesture[]>("/admin/gestures");
+  return apiFetch<Gesture[]>("/gestures");
 }

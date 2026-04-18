@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { ClothingItem, EquippedSlots, EquipSlot, SavedOutfit } from "@/types/wardrobe";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
-import { WardrobeApi } from "@/api";
+import { WardrobeApi, StoreApi } from "@/api";
 import {
   RARITY_COLORS, RARITY_STAR_COUNT,
   WARDROBE_CATEGORY_OPTIONS, EQUIP_SLOT_LABELS,
@@ -36,6 +36,8 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
 
   const [clothingDatabase, setClothingDatabase] = useState<ClothingItem[]>(CLOTHING_DATABASE);
+  const [pendingPurchase, setPendingPurchase] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,10 +70,41 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
     return matchCategory && matchSearch;
   });
 
-  // 装备/卸下服装
-  const toggleEquip = (item: ClothingItem) => {
-    if (item.isLocked) return;
+  const requiresPurchase = (item: ClothingItem): boolean =>
+    (item.saleStatus ?? "FREE") === "PAID" && !item.owned && (item.priceCredits ?? 0) > 0;
+
+  const isBlocked = (item: ClothingItem): boolean =>
+    item.isLocked || (item.saleStatus === "LOCKED");
+
+  const doPurchase = async (item: ClothingItem) => {
+    setPendingPurchase(item.id);
+    try {
+      await StoreApi.redeem("WARDROBE", item.id);
+      setClothingDatabase(prev => prev.map(c =>
+        c.id === item.id ? { ...c, owned: true } : c
+      ));
+      setToast({ type: "ok", msg: `已购买：${item.name}` });
+    } catch (e: any) {
+      const msg = typeof e?.message === "string" ? e.message : "购买失败";
+      setToast({ type: "err", msg });
+    } finally {
+      setPendingPurchase(null);
+      setTimeout(() => setToast(null), 2500);
+    }
+  };
+
+  // 装备/卸下服装；如果是 PAID 且未拥有，走购买流程（成功后再装备）
+  const toggleEquip = async (item: ClothingItem) => {
+    if (isBlocked(item)) return;
     if (item.category === 'outfit') return;
+    if (requiresPurchase(item)) {
+      const confirmed = typeof window !== "undefined"
+        ? window.confirm(`购买「${item.name}」需消耗 ${item.priceCredits} 积分，确定？`)
+        : true;
+      if (!confirmed) return;
+      await doPurchase(item);
+      return;
+    }
     const category = item.category as EquipSlot;
     if (equippedItems[category]?.id === item.id) {
       setEquippedItems({ ...equippedItems, [category]: null });
@@ -121,6 +154,13 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
 
   return (
     <div className="h-[calc(100vh-180px)] flex flex-col">
+      {toast && (
+        <div className={`mb-3 px-4 py-2 rounded-lg text-sm font-bold border ${
+          toast.type === "ok"
+            ? "bg-green-500/10 border-green-500/30 text-green-300"
+            : "bg-red-500/10 border-red-500/30 text-red-300"
+        }`}>{toast.msg}</div>
+      )}
       {/* 顶部标题栏 */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/10 pb-6 mb-6">
         <div>
@@ -265,7 +305,15 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
                                 {item.rarity.toUpperCase()}
                               </Badge>
                               <span className="text-yellow-400 font-mono font-bold text-sm">
-                                {item.isLocked ? <Lock className="w-4 h-4" /> : `¥${item.price}`}
+                                {item.isLocked || item.saleStatus === "LOCKED" ? (
+                                  <Lock className="w-4 h-4" />
+                                ) : item.owned ? (
+                                  <span className="text-green-400">{lang === 'zh' ? '已拥有' : 'Owned'}</span>
+                                ) : (item.saleStatus ?? 'FREE') === 'PAID' && (item.priceCredits ?? 0) > 0 ? (
+                                  <span>{item.priceCredits}⭐</span>
+                                ) : (
+                                  <span className="text-cyan-300">{lang === 'zh' ? '免费' : 'Free'}</span>
+                                )}
                               </span>
                             </div>
                           </div>

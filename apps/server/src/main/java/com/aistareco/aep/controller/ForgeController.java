@@ -6,7 +6,11 @@ import com.aistareco.aep.model.ForgeResult;
 import com.aistareco.aep.repository.ForgeBlueprintRepository;
 import com.aistareco.aep.repository.ForgeResultRepository;
 import com.aistareco.aep.repository.ForgeTemplateRepository;
+import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.common.ApiResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.CollectionType;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,13 +33,19 @@ public class ForgeController {
     private final ForgeTemplateRepository templateRepo;
     private final ForgeResultRepository resultRepo;
     private final ForgeBlueprintRepository blueprintRepo;
+    private final PlatformConfigService configService;
+    private final ObjectMapper objectMapper;
 
     public ForgeController(ForgeTemplateRepository templateRepo,
                            ForgeResultRepository resultRepo,
-                           ForgeBlueprintRepository blueprintRepo) {
+                           ForgeBlueprintRepository blueprintRepo,
+                           PlatformConfigService configService,
+                           ObjectMapper objectMapper) {
         this.templateRepo = templateRepo;
         this.resultRepo = resultRepo;
         this.blueprintRepo = blueprintRepo;
+        this.configService = configService;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/options")
@@ -44,10 +54,32 @@ public class ForgeController {
                 .map(ForgeTemplateDto::from).toList();
         ForgeOptionsDto opts = new ForgeOptionsDto(
                 templates,
-                List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of()
+                readList("forge.hairStyles", LabeledOptionDto.class),
+                readList("forge.eyeColors", LabeledOptionDto.class),
+                readList("forge.styleTags", LabeledOptionDto.class),
+                readList("forge.faceSliders", FaceSliderDto.class),
+                readList("forge.colorSchemes", ColorSchemeDto.class),
+                readList("forge.promptSuggestions", String.class)
         );
         return ApiResponse.of(opts);
+    }
+
+    /**
+     * 从 platform_configs 读取指定 key 的 JSON 数组并反序列化为 {@code List<T>}。
+     * 读取失败（未 seed / JSON 不合法 / 类型不匹配）时返回空列表。
+     */
+    private <T> List<T> readList(String key, Class<T> elementType) {
+        var dto = configService.findByKey(key).orElse(null);
+        if (dto == null || dto.value() == null) return List.of();
+        JsonNode node = dto.value();
+        if (!node.isArray()) return List.of();
+        CollectionType type = objectMapper.getTypeFactory()
+                .constructCollectionType(List.class, elementType);
+        try {
+            return objectMapper.convertValue(node, type);
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     @GetMapping("/history")
