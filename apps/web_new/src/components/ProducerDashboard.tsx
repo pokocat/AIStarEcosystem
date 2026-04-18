@@ -21,6 +21,7 @@ import { TRANSLATIONS, type Lang } from "../translations";
 import { MCNMatrix } from "./producer/MCNMatrix";
 import { IncubationWizard } from "./producer/IncubationWizard";
 import { WardrobePage } from "./producer/WardrobePage";
+import { AppearanceForge } from "./producer/AppearanceForge";
 import { DistributionPage } from "./producer/DistributionPage";
 import { CopyrightPage } from "./producer/CopyrightPage";
 import { CommunityPage } from "./producer/CommunityPage";
@@ -75,6 +76,7 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { id: 'artists', icon: Users, zh: 'MCN与孵化', en: 'MCN Matrix' },
       { id: 'incubator', icon: Wand2, zh: 'AI艺人孵化', en: 'AI Incubator' },
+      { id: 'appearance', icon: Sparkles, zh: 'AI形象锻造', en: 'Appearance Forge' },
       { id: 'wardrobe', icon: Shirt, zh: '造型与道具', en: 'Wardrobe' },
     ]
   },
@@ -498,6 +500,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
       case 'artists': return <MCNMatrix lang={lang} onCreateArtist={() => setActivePage('incubator')} />;
       case 'incubator': return <IncubationWizard lang={lang} onClose={() => setActivePage('artists')} onCreated={() => setActivePage('artists')} />;
       case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} selectedTrackId={selectedTrackId} onClearSelection={() => setSelectedTrackId(null)} />;
+      case 'appearance': return <AppearanceForge lang={lang} activeArtist={activeArtist} />;
       case 'wardrobe': return <WardrobePage lang={lang} activeArtist={activeArtist} />;
       case 'distribution': return <DistributionPage lang={lang} activeArtist={activeArtist} />;
       case 'copyright': return <CopyrightPage lang={lang} activeArtist={activeArtist} />;

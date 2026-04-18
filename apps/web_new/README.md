@@ -2,7 +2,8 @@
 
 本项目是 Figma Make 原型（导出在 `../../figma/`）的 Next.js 14（App Router）重写版本，与 `apps/web` 并存，共享 `apps/server` 后端。
 
-**当前版本：v2.0.0（2026-04-17）**
+**当前版本：v2.1.0（2026-04-18）**
+v2.1 新增 Producer 侧"AI 形象锻造炉"页面，完整走通 types / mocks / constants / api / component 五件套。
 自 v2 起，前端以 `src/types/*` 为数据契约的唯一真值源。后端 `specs/openapi.yaml` 与前端的差异记录于 [`specs/FRONTEND_CONTRACT_DIFF.md`](specs/FRONTEND_CONTRACT_DIFF.md)。
 
 ## 快速开始
@@ -128,7 +129,16 @@ import type { Song } from "@/types/music";
 
 ## 版本日志
 
-### v2.0.0 — 2026-04-17（本次）
+### v2.1.0 — 2026-04-18（本次）
+- **新增**：Producer 侧 "AI 形象锻造炉"（原 Figma 新增 `AppearanceForge`）。
+- **types** — `src/types/appearance-forge.ts`：`ForgeMode` / `ForgeTemplate` / `LabeledOption` / `FaceSlider` / `ColorScheme` / `ForgeRequest` / `ForgeResult` / `ForgeOptions`。
+- **mocks** — `src/mocks/appearance-forge.ts`：6 套模版、6 款发型、6 款瞳色、8 类风格标签、6 项面部滑块、4 套主题配色。
+- **constants** — `src/constants/appearance-forge-ui.ts`：4 种锻造模式的 icon/渐变/文案；伪异步时长、历史缓存上限。
+- **api** — `src/api/appearance-forge.ts`：`getForgeOptions` / `listForgeHistory` / `generateForge` / `saveForgeBlueprint`，以 `USE_MOCK` 切换；API 入口追加 `AppearanceForgeApi` 命名空间。
+- **component** — `src/components/producer/AppearanceForge.tsx`：zh-only；`ProducerDashboard` 左侧栏"艺人管理"分组加入 `AI形象锻造`（id=`appearance`）。
+- **契约差异** — `specs/FRONTEND_CONTRACT_DIFF.md` 新增 "AppearanceForge" 章节，标记为"仅前端存在（后端待补）"。
+
+### v2.0.0 — 2026-04-17
 - **重构目标**：将前端建立为数据契约的唯一真值源，为后端接入铺设可切换的 API 封装层。
 - **P0 领域骨架** — 新建 `src/types/_shared.ts`（`Rarity` / `ID` / `ISODateTime` / `Money` / `ApiResponse` / `PaginationMeta` / `ListQuery`）。
 - **P1 艺人域** — `src/types/artist.ts` + `src/mocks/artists.ts`；支持 7 类艺人、6 维才艺、稀有度四档。

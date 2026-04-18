@@ -404,3 +404,29 @@
 ---
 
 生成于 2026-04-17 | 下一步建议：按 P0 → P1 → P2 的优先级分批对齐，预计需 2-3 个迭代完成完全同步。
+
+---
+
+## 附录 · AI 形象锻造（`appearance-forge.ts`）— 2026-04-18 新增
+
+| 前端类型 | OpenAPI Schema | 状态 | 差异说明 |
+|---|---|---|---|
+| `ForgeMode` | ❌ 无 | ❌ 不存在 | 4 种模式：`template_photo` / `prompt_only` / `template_prompt` / `random` |
+| `ForgeTemplate` | ❌ 无 | ❌ 不存在 | id + name + image + tags[] + style |
+| `LabeledOption`（发型 / 瞳色 / 风格标签） | ❌ 无 | ❌ 不存在 | 下拉清单；仅部分含颜色字段 |
+| `FaceSlider` / `faceValues` | ❌ 无 | ❌ 不存在 | 6 项面部微调，值域 0-100 |
+| `ColorScheme` | ❌ 无 | ❌ 不存在 | 两色渐变主题配色 |
+| `ForgeRequest` | ❌ 无 | ❌ 不存在 | 生成调用参数；含 artistId / mode / templateId / uploadedPhoto / prompt / faceValues / lockedFeatures |
+| `ForgeResult` | ❌ 无 | ❌ 不存在 | 含 id / image / prompt / mode / createdAt / locked[] |
+| `ForgeOptions` | ❌ 无 | ❌ 不存在 | 静态选项批量下发包 |
+
+**接口：**
+- `GET  /appearance-forge/options` — 拉取静态模版 / 选项清单
+- `GET  /appearance-forge/history?artistId=` — 该艺人历史生成记录
+- `POST /appearance-forge/generate` — 异步生成（mock 模式同步返回）
+- `POST /appearance-forge/blueprint` — 保存为艺人形象蓝图
+
+**结论**：该域为前端全新超前领域，OpenAPI 完全缺失。后端介入时建议：
+1. 生成接口按 `AsyncJobStarted` 封装（复用 `_shared.ts` 异步壳）；
+2. 图片存储使用 `imageUrl`（与 wardrobe 一致）；
+3. `uploadedPhoto` DataURL 在后端应提前转存对象存储，请求体改为 `photoAssetId`。

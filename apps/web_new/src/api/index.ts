@@ -15,3 +15,4 @@ export * as CommunityApi from "./community";
 export * as FinanceApi from "./finance";
 export * as NotificationsApi from "./notifications";
 export * as SettingsApi from "./settings";
+export * as AppearanceForgeApi from "./appearance-forge";
