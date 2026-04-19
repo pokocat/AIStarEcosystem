@@ -1,5 +1,7 @@
 # AI Star Eco Server
 
+> 线上部署、增量发布 SOP、`/static/videos` 共享静态资源说明，以及本地联调方式见 [`../../DEPLOYMENT.md`](../../DEPLOYMENT.md)。
+
 Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘钥）、积分钱包、审计日志等核心业务。
 
 ## 技术栈
