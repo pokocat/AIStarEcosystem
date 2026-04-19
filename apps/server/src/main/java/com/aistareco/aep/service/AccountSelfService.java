@@ -2,12 +2,14 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AepUserDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
+import com.aistareco.aep.dto.MeDto;
 import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.dto.WalletDto;
 import com.aistareco.aep.model.Membership;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.aep.repository.MembershipRepository;
+import com.aistareco.aep.repository.StudioRepository;
 import com.aistareco.aep.repository.TenantRepository;
 import com.aistareco.aep.repository.WalletRepository;
 import org.springframework.data.domain.Page;
@@ -28,19 +30,22 @@ public class AccountSelfService {
     private final TenantRepository tenantRepo;
     private final WalletRepository walletRepo;
     private final LedgerEntryRepository ledgerRepo;
+    private final StudioRepository studioRepo;
 
     public AccountSelfService(
             AepUserRepository userRepo,
             MembershipRepository membershipRepo,
             TenantRepository tenantRepo,
             WalletRepository walletRepo,
-            LedgerEntryRepository ledgerRepo
+            LedgerEntryRepository ledgerRepo,
+            StudioRepository studioRepo
     ) {
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
         this.tenantRepo = tenantRepo;
         this.walletRepo = walletRepo;
         this.ledgerRepo = ledgerRepo;
+        this.studioRepo = studioRepo;
     }
 
     public AepUserDto getCurrentUser(String userId) {
@@ -49,8 +54,22 @@ public class AccountSelfService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户不存在"));
     }
 
-    /** 用户修改自己的可编辑字段：displayName / avatarUrl / phone / langPreference。 */
-    public AepUserDto updateCurrentUser(String userId, Map<String, Object> body) {
+    /**
+     * GET /api/me — user + owning Studio (if any). Web frontend treats the studio as
+     * "the agency entity the logged-in user operates as".
+     */
+    public MeDto getCurrentMe(String userId) {
+        var user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户不存在"));
+        var studio = studioRepo.findByOwnerUserId(userId).orElse(null);
+        return MeDto.from(user, studio);
+    }
+
+    /**
+     * 用户修改自己的可编辑字段：displayName / avatarUrl / phone / langPreference / bio。
+     * 返回的 MeDto 会嵌入当前用户所属的 Studio（便于前端设置页一次性刷新）。
+     */
+    public MeDto updateCurrentUser(String userId, Map<String, Object> body) {
         var user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户不存在"));
 
@@ -62,7 +81,9 @@ public class AccountSelfService {
         if (body.containsKey("langPreference")) user.setLangPreference(asString(body.get("langPreference")));
 
         user.setUpdatedAt(Instant.now());
-        return AepUserDto.from(userRepo.save(user));
+        var saved = userRepo.save(user);
+        var studio = studioRepo.findByOwnerUserId(userId).orElse(null);
+        return MeDto.from(saved, studio);
     }
 
     private static String asString(Object v) {

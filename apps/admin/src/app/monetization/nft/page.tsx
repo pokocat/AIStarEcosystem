@@ -9,18 +9,36 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { NFTMarket } from "@/mocks/fan";
+import { listNFTMarket } from "@/api/fan";
 import { ARTIST_QUALITY } from "@/constants/status";
 import type { NFTItem } from "@/types/fan";
 import { formatCompactNumber } from "@/lib/format";
 
 export default function NftMarketPage() {
+  const [items, setItems] = React.useState<NFTItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ nft: NFTItem; action: "approve" | "archive" } | null>(null);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listNFTMarket();
+        if (active) setItems(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const counts = {
-    total: NFTMarket.length,
-    legendary: NFTMarket.filter((n) => n.rarity === "legendary").length,
-    totalHolders: NFTMarket.reduce((s, n) => s + n.holders, 0),
+    total: items.length,
+    legendary: items.filter((n) => n.rarity === "legendary").length,
+    totalHolders: items.reduce((s, n) => s + n.holders, 0),
   };
 
   return (
@@ -52,7 +70,22 @@ export default function NftMarketPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {NFTMarket.map((n) => (
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                </TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
+                </TableRow>
+              )}
+              {!loading && !loadError && items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">暂无藏品</TableCell>
+                </TableRow>
+              )}
+              {!loading && !loadError && items.map((n) => (
                 <TableRow key={n.id}>
                   <TableCell className="font-medium flex items-center gap-2">
                     <span className="text-2xl">{n.preview}</span>

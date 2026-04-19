@@ -29,3 +29,13 @@ export interface Studio {
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
+
+/** 中文显示映射：{@link StudioKind} → 中文。 */
+export const STUDIO_KIND_LABEL_ZH: Record<StudioKind, string> = {
+  personal_creator: "个人创作者",
+  music_studio: "音乐工作室",
+  drama_studio: "短剧工作室",
+  variety_studio: "综艺工作室",
+  agency: "经纪公司",
+  mcn: "MCN 机构",
+};

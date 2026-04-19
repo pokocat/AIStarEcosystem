@@ -14,22 +14,25 @@ import type { CommandItem } from "@/types/navigation";
 import { PAGE_ITEMS, ACTION_ITEMS } from "@/constants/command-items";
 
 export const CommandPalette = ({
-  lang, open, onClose, onNavigate, onSwitchArtist
+  lang, open, onClose, onNavigate, onSwitchArtist, artists
 }: {
   lang: Lang;
   open: boolean;
   onClose: () => void;
   onNavigate: (pageId: string) => void;
   onSwitchArtist: (artist: Artist) => void;
+  /** 可切换艺人列表；缺省时回退到 mocks（离线演示用）。 */
+  artists?: Artist[];
 }) => {
   const zh = lang === 'zh';
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Build artist items
+  // Build artist items — 优先使用父级真实列表，兜底 MOCK_ARTISTS
+  const artistPool = artists && artists.length > 0 ? artists : MOCK_ARTISTS;
   const artistItems: CommandItem[] = useMemo(() =>
-    MOCK_ARTISTS.map(a => ({
+    artistPool.map(a => ({
       id: `artist-${a.id}`,
       type: 'artist' as const,
       icon: Users,
@@ -38,7 +41,7 @@ export const CommandPalette = ({
       keywords: [a.name.toLowerCase(), ARTIST_TYPE_LABELS[a.type].zh],
       artist: a,
     })),
-  []);
+  [artistPool]);
 
   const allItems = useMemo(() => [...ACTION_ITEMS, ...PAGE_ITEMS, ...artistItems], [artistItems]);
 

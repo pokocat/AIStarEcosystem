@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { CREDIT_PACKS, RECHARGE_HISTORY } from "@/mocks/settings";
+import { listCreditPacks, listRechargeHistory } from "@/api/settings";
 import { CREDIT_PACK_STATUS } from "@/constants/status";
-import type { CreditPack } from "@/types/settings";
+import type { CreditPack, RechargeRecord } from "@/types/settings";
 import { formatCredits, formatCurrency } from "@/lib/format";
 import { formatDateCN } from "@/lib/utils";
 
@@ -23,10 +23,29 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export default function CreditPacksPage() {
+  const [packs, setPacks] = React.useState<CreditPack[]>([]);
+  const [history, setHistory] = React.useState<RechargeRecord[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ pack: CreditPack; action: "edit" | "promote" | "archive" } | null>(null);
 
-  const totalCreditsSold = RECHARGE_HISTORY.filter((r) => r.source === "credit_pack").reduce((s, r) => s + r.creditsAdded, 0);
-  const totalRevenueCents = RECHARGE_HISTORY.reduce((s, r) => s + r.priceCents, 0);
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [p, h] = await Promise.all([listCreditPacks(), listRechargeHistory(0, 200)]);
+        if (active) { setPacks(p); setHistory(h); }
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const totalCreditsSold = history.filter((r) => r.source === "credit_pack").reduce((s, r) => s + r.creditsAdded, 0);
+  const totalRevenueCents = history.reduce((s, r) => s + r.priceCents, 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -42,14 +61,20 @@ export default function CreditPacksPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="在售规格"        value={CREDIT_PACKS.filter((p) => p.status === "active").length} icon={Coins} />
-        <StatCard label="充值记录"        value={RECHARGE_HISTORY.length}                                  icon={Receipt} />
+        <StatCard label="在售规格"        value={packs.filter((p) => p.status === "active").length} icon={Coins} />
+        <StatCard label="充值记录"        value={history.length}                                  icon={Receipt} />
         <StatCard label="累计售出积分"    value={formatCredits(totalCreditsSold)}                          icon={Coins}     tone="success" />
         <StatCard label="累计实付"        value={formatCurrency(totalRevenueCents)}                        icon={Receipt}   tone="success" />
       </section>
 
+      {loading && <div className="py-6 text-center text-sm text-muted-foreground">加载中…</div>}
+      {!loading && loadError && <div className="py-6 text-center text-sm text-rose-600">加载失败：{loadError}</div>}
+
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {CREDIT_PACKS.map((p) => (
+        {!loading && !loadError && packs.length === 0 && (
+          <div className="col-span-full py-6 text-center text-sm text-muted-foreground">暂无积分包</div>
+        )}
+        {packs.map((p) => (
           <Card key={p.id} className={p.recommended ? "ring-2 ring-indigo-500" : ""}>
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
@@ -102,7 +127,7 @@ export default function CreditPacksPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {RECHARGE_HISTORY.map((r) => (
+              {history.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs text-muted-foreground tabular-nums">#{r.id.toUpperCase()}</TableCell>
                   <TableCell className="text-sm">{formatDateCN(r.date)}</TableCell>
@@ -116,7 +141,7 @@ export default function CreditPacksPage() {
           </Table>
           <div className="px-4 py-3 text-xs text-muted-foreground border-t">
             积分包状态：
-            {CREDIT_PACKS.map((p) => (
+            {packs.map((p) => (
               <span key={p.id} className="ml-2 inline-flex items-center gap-1">
                 {p.name}
                 <StatusBadge meta={CREDIT_PACK_STATUS[p.status]} />

@@ -1,3 +1,6 @@
+"use client";
+
+import * as React from "react";
 import { AlertTriangle, Flame, Users } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
@@ -5,8 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { TRANSACTIONS } from "@/mocks/finance";
-import { ACTIVITIES } from "@/mocks/community";
+import { listTransactions } from "@/api/finance";
+import { listActivities } from "@/api/community";
+import type { Transaction } from "@/types/finance";
+import type { FanActivity } from "@/types/community";
 import { formatDateCN } from "@/lib/utils";
 import { formatSignedCredits } from "@/lib/format";
 
@@ -17,8 +22,8 @@ import { formatSignedCredits } from "@/lib/format";
  *  - 打赏类汇总 ≥ 5,000 credits → 打赏突增
  *  - 粉丝端 ¥ 打赏 ≥ 300 → 粉丝异常打赏
  */
-function buildRiskCases() {
-  const txnCases = TRANSACTIONS.flatMap((t) => {
+function buildRiskCases(transactions: Transaction[], activities: FanActivity[]) {
+  const txnCases = transactions.flatMap((t) => {
     const abs = Math.abs(t.amount);
     const risks: { kind: string; level: "high" | "mid" | "low"; detail: string }[] = [];
     if (abs >= 20_000) risks.push({ kind: "大额流水", level: "mid", detail: `单笔 ${formatSignedCredits(t.amount)} 积分` });
@@ -36,7 +41,8 @@ function buildRiskCases() {
     }));
   });
 
-  const fanCases = ACTIVITIES.filter((a) => a.type === "gift" && /¥(\d+)/.test(a.action))
+  const fanCases = activities
+    .filter((a) => a.type === "gift" && /¥(\d+)/.test(a.action))
     .map((a, i) => {
       const m = /¥(\d+)/.exec(a.action);
       const v = m ? Number(m[1]) : 0;
@@ -58,7 +64,27 @@ function buildRiskCases() {
 }
 
 export default function RiskPage() {
-  const cases = buildRiskCases();
+  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+  const [activities, setActivities] = React.useState<FanActivity[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [tx, act] = await Promise.all([listTransactions(0, 200), listActivities()]);
+        if (active) { setTransactions(tx); setActivities(act); }
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const cases = buildRiskCases(transactions, activities);
   const highCount = cases.filter((c) => c.level === "high").length;
   const midCount = cases.filter((c) => c.level === "mid").length;
 
@@ -95,7 +121,13 @@ export default function RiskPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {cases.map((c) => (
+              {loading && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && cases.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell>
                     <Badge tone={c.level === "high" ? "danger" : c.level === "mid" ? "warning" : "info"}>
@@ -115,7 +147,7 @@ export default function RiskPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {cases.length === 0 && (
+              {!loading && !loadError && cases.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">暂无风险事件</TableCell>
                 </TableRow>

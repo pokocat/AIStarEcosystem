@@ -9,17 +9,35 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { CopyrightPending } from "@/mocks/coach";
+import { listPendingCopyright } from "@/api/coach";
 import { COPYRIGHT_STATUS } from "@/constants/status";
 import type { CopyrightItem } from "@/types/coach";
 import { daysUntil, formatDateCN } from "@/lib/utils";
 
 export default function CopyrightPage() {
+  const [items, setItems] = React.useState<CopyrightItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<CopyrightItem | null>(null);
   const [action, setAction] = React.useState<"verify" | "reject" | null>(null);
 
-  const pending = CopyrightPending.filter((c) => c.status === "pending");
-  const verified = CopyrightPending.filter((c) => c.status === "verified");
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listPendingCopyright();
+        if (active) setItems(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const pending = items.filter((c) => c.status === "pending");
+  const verified = items.filter((c) => c.status === "verified");
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -37,7 +55,7 @@ export default function CopyrightPage() {
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="待核验" value={pending.length} icon={ShieldAlert} tone={pending.length ? "danger" : "default"} />
         <StatCard label="已核验" value={verified.length} icon={ShieldCheck} tone="success" />
-        <StatCard label="总登记" value={CopyrightPending.length} icon={FileCheck2} />
+        <StatCard label="总登记" value={items.length} icon={FileCheck2} />
         <StatCard label="超 7 天未处理" value={pending.filter((p) => -daysUntil(p.submitted) > 7).length} hint="SLA 预警" icon={ShieldAlert} tone="warning" />
       </section>
 
@@ -59,7 +77,16 @@ export default function CopyrightPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {CopyrightPending.map((c) => {
+              {loading && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && items.length === 0 && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无登记</TableCell></TableRow>
+              )}
+              {!loading && !loadError && items.map((c) => {
                 const wait = -daysUntil(c.submitted);
                 const slaWarn = wait > 7 && c.status === "pending";
                 return (

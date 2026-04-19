@@ -8,20 +8,38 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { ALBUMS } from "@/mocks/music";
+import { listAlbums } from "@/api/music";
 import { ALBUM_STATUS } from "@/constants/status";
 import type { Album } from "@/types/music";
 import { formatCurrencyCN, formatCountCN } from "@/lib/utils";
 
 export default function AlbumsPage() {
+  const [albums, setAlbums] = React.useState<Album[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<Album | null>(null);
   const [action, setAction] = React.useState<"approve" | "schedule" | "reject" | null>(null);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listAlbums();
+        if (active) setAlbums(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   // 遗留字段 @deprecated（product_spec.md §10.4）；本页面 P1 迁 "歌单运营" 后重写。
   const counts = {
-    planning: ALBUMS.filter((a) => a.status === "planning").length,
-    recording: ALBUMS.filter((a) => a.status === "recording").length,
-    released: ALBUMS.filter((a) => a.status === "released").length,
+    planning: albums.filter((a) => a.status === "planning").length,
+    recording: albums.filter((a) => a.status === "recording").length,
+    released: albums.filter((a) => a.status === "released").length,
   };
   const albumStatus = (a: Album) => a.status ?? "released";
 
@@ -39,14 +57,20 @@ export default function AlbumsPage() {
         <StatCard label="已发行" value={counts.released} icon={CheckCircle2} tone="success" />
         <StatCard
           label="累计销量"
-          value={formatCountCN(ALBUMS.reduce((a, b) => a + (b.sales ?? 0), 0))}
+          value={formatCountCN(albums.reduce((a, b) => a + (b.sales ?? 0), 0))}
           hint="全部专辑合计"
           icon={Disc3}
         />
       </section>
 
+      {loading && <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>}
+      {!loading && loadError && <div className="py-8 text-center text-sm text-rose-600">加载失败：{loadError}</div>}
+
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {ALBUMS.map((a) => (
+        {!loading && !loadError && albums.length === 0 && (
+          <div className="col-span-full py-8 text-center text-sm text-muted-foreground">暂无专辑</div>
+        )}
+        {albums.map((a) => (
           <Card key={a.id}>
             <CardHeader className="flex-row gap-4 items-center">
               <div className="relative h-16 w-16 rounded-md overflow-hidden bg-surface-muted shrink-0">

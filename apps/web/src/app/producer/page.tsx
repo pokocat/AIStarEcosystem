@@ -7,5 +7,6 @@ import { useLang } from "@/lib/lang-context";
 export default function ProducerRoute() {
   const router = useRouter();
   const { lang, setLang } = useLang();
-  return <ProducerDashboard onLogout={() => router.push("/")} lang={lang} setLang={setLang} />;
+  // onLogout 触发时 AuthProvider 已清 token，这里只做路由跳转。
+  return <ProducerDashboard onLogout={() => router.push("/login")} lang={lang} setLang={setLang} />;
 }

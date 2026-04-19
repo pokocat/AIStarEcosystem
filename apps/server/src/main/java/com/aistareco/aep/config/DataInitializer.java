@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -28,6 +29,7 @@ public class DataInitializer implements CommandLineRunner {
     private final WalletRepository walletRepo;
     private final LedgerEntryRepository ledgerRepo;
     private final StudioRepository studioRepo;
+    private final DigitalIpRepository digitalIpRepo;
     private final LicenseBatchRepository licenseBatchRepo;
     private final LicenseKeyRepository licenseKeyRepo;
     private final PasswordEncoder passwordEncoder;
@@ -39,6 +41,7 @@ public class DataInitializer implements CommandLineRunner {
                             WalletRepository walletRepo,
                             LedgerEntryRepository ledgerRepo,
                             StudioRepository studioRepo,
+                            DigitalIpRepository digitalIpRepo,
                             LicenseBatchRepository licenseBatchRepo,
                             LicenseKeyRepository licenseKeyRepo,
                             PasswordEncoder passwordEncoder) {
@@ -49,6 +52,7 @@ public class DataInitializer implements CommandLineRunner {
         this.walletRepo = walletRepo;
         this.ledgerRepo = ledgerRepo;
         this.studioRepo = studioRepo;
+        this.digitalIpRepo = digitalIpRepo;
         this.licenseBatchRepo = licenseBatchRepo;
         this.licenseKeyRepo = licenseKeyRepo;
         this.passwordEncoder = passwordEncoder;
@@ -144,7 +148,7 @@ public class DataInitializer implements CommandLineRunner {
 
         seedMembershipAndWallet(studioUser.getId(), agencyTenantId, 3000L, now.minus(30, ChronoUnit.DAYS));
 
-        studioRepo.save(Studio.builder()
+        Studio starlightStudio = studioRepo.save(Studio.builder()
                 .id(UUID.randomUUID().toString())
                 .ownerUserId(studioUser.getId())
                 .name("星光工作室")
@@ -155,6 +159,66 @@ public class DataInitializer implements CommandLineRunner {
                 .createdAt(now.minus(30, ChronoUnit.DAYS))
                 .updatedAt(now)
                 .build());
+
+        // 星光工作室签约艺人 × 3（ownerUserId 指向 studioUser，studioId 指向 starlightStudio）
+        seedDigitalIps(studioUser.getId(), starlightStudio.getId(), List.of(
+                new IpSeed("星野瞳", DigitalIp.DigitalIpKind.SINGER, DigitalIp.Quality.EPIC,
+                        DigitalIp.DigitalIpStatus.ACTIVE, 42, 88,
+                        "https://images.unsplash.com/photo-1745532665626-09f20c9408dd?w=200&q=80",
+                        "赛博朋克风格 AI 歌手，擅长电子音乐与未来感旋律。"),
+                new IpSeed("夏栖羽", DigitalIp.DigitalIpKind.IDOL, DigitalIp.Quality.LEGENDARY,
+                        DigitalIp.DigitalIpStatus.ACTIVE, 58, 95,
+                        "https://images.unsplash.com/photo-1596395463910-3ac2899a5bea?w=200&q=80",
+                        "顶级偶像型 AI 艺人，超强粉丝运营力与应援文化引领者。"),
+                new IpSeed("林夜川", DigitalIp.DigitalIpKind.ACTOR, DigitalIp.Quality.RARE,
+                        DigitalIp.DigitalIpStatus.ACTIVE, 35, 72,
+                        "https://images.unsplash.com/photo-1694877286935-0e7decac9bb1?w=200&q=80",
+                        "暗黑系演员型 AI 艺人，悬疑电影与犯罪剧领域的新生力量。")
+        ), now);
+
+        // ─── 第二个经纪公司账号（演示切换） ────────────────────────────────────
+        AepUser agencyUser = AepUser.builder()
+                .id(UUID.randomUUID().toString())
+                .username("agency_moonrise")
+                .email("moonrise@example.com")
+                .displayName("月升经纪")
+                .kind(AepUser.AccountKind.STUDIO)
+                .status(AepUser.UserStatus.ACTIVE)
+                .emailVerified(true)
+                .phoneVerified(false)
+                .createdAt(now.minus(60, ChronoUnit.DAYS))
+                .updatedAt(now)
+                .build();
+        userRepo.save(agencyUser);
+
+        seedMembershipAndWallet(agencyUser.getId(), agencyTenantId, 5000L, now.minus(60, ChronoUnit.DAYS));
+
+        Studio moonriseStudio = studioRepo.save(Studio.builder()
+                .id(UUID.randomUUID().toString())
+                .ownerUserId(agencyUser.getId())
+                .name("月升传媒")
+                .kind(Studio.StudioKind.MCN)
+                .status(Studio.StudioStatus.ACTIVE)
+                .bio("覆盖短剧 / 综艺 / 直播的 MCN 机构，AI 艺人矩阵化运营。")
+                .contactEmail("contact@moonrise.example.com")
+                .createdAt(now.minus(60, ChronoUnit.DAYS))
+                .updatedAt(now)
+                .build());
+
+        seedDigitalIps(agencyUser.getId(), moonriseStudio.getId(), List.of(
+                new IpSeed("苏安歌", DigitalIp.DigitalIpKind.ALL_ROUNDER, DigitalIp.Quality.EPIC,
+                        DigitalIp.DigitalIpStatus.ACTIVE, 48, 80,
+                        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&q=80",
+                        "声线清甜的全能型 AI 艺人,擅长 OST 与综艺主持。"),
+                new IpSeed("白予辰", DigitalIp.DigitalIpKind.HOST, DigitalIp.Quality.RARE,
+                        DigitalIp.DigitalIpStatus.DEBUT, 22, 60,
+                        "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&q=80",
+                        "理性冷静的主持人型 AI 艺人,新闻与科技访谈首选。"),
+                new IpSeed("米可乐", DigitalIp.DigitalIpKind.ENTERTAINER, DigitalIp.Quality.COMMON,
+                        DigitalIp.DigitalIpStatus.TRAINEE, 8, 40,
+                        "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80",
+                        "幽默风趣的综艺担当,直播间即兴互动能力强。")
+        ), now);
 
         // ─── License batches ────────────────────────────────────────────────────
         LicenseBatch agencyBatch = LicenseBatch.builder()
@@ -240,6 +304,50 @@ public class DataInitializer implements CommandLineRunner {
                     .build());
         }
     }
+
+    /** Seed DigitalIp rows for a studio (both ownerUserId and studioId pointed at the studio). */
+    private void seedDigitalIps(String ownerUserId, String studioId, List<IpSeed> seeds, Instant when) {
+        int i = 0;
+        for (IpSeed seed : seeds) {
+            digitalIpRepo.save(DigitalIp.builder()
+                    .id(UUID.randomUUID().toString())
+                    .name(seed.name())
+                    .kind(seed.kind())
+                    .quality(seed.quality())
+                    .status(seed.status())
+                    .level(seed.level())
+                    .exp(0)
+                    .maxExp(seed.level() * 200)
+                    .avatarUrl(seed.avatar())
+                    .bio(seed.bio())
+                    .talentSinging(seed.kind() == DigitalIp.DigitalIpKind.SINGER ? 85 : 40)
+                    .talentActing(seed.kind() == DigitalIp.DigitalIpKind.ACTOR ? 82 : 35)
+                    .talentDancing(seed.kind() == DigitalIp.DigitalIpKind.DANCER ? 88 : 40)
+                    .talentHosting(seed.kind() == DigitalIp.DigitalIpKind.HOST ? 80 : 30)
+                    .talentComedy(seed.kind() == DigitalIp.DigitalIpKind.ENTERTAINER ? 70 : 25)
+                    .talentVariety(seed.kind() == DigitalIp.DigitalIpKind.ALL_ROUNDER ? 82 : 40)
+                    .statFans(seed.popularity() * 2_000L)
+                    .statPopularity(seed.popularity())
+                    .ownerUserId(ownerUserId)
+                    .studioId(studioId)
+                    .createdAt(when.minus(i, ChronoUnit.DAYS))
+                    .updatedAt(when)
+                    .lastActiveAt(when)
+                    .build());
+            i++;
+        }
+    }
+
+    private record IpSeed(
+            String name,
+            DigitalIp.DigitalIpKind kind,
+            DigitalIp.Quality quality,
+            DigitalIp.DigitalIpStatus status,
+            int level,
+            int popularity,
+            String avatar,
+            String bio
+    ) {}
 
     private String sha256Hex(String input) {
         try {

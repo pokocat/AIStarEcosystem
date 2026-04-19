@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionDialog } from "@/components/ActionDialog";
 import { SONG_STATUS } from "@/constants/status";
-import { MOCK_ARTISTS } from "@/mocks/artists";
-import { STUDIOS } from "@/mocks/studios";
+import { getDigitalIp } from "@/api/digital-ips";
+import { getStudio } from "@/api/studios";
 import type { Song } from "@/types/music";
+import type { Artist } from "@/types/artist";
+import type { AdminStudio } from "@/types/studio";
 import { getSong, approveSong, rejectSong } from "@/api/music";
 import { formatCountCN, formatCurrencyCN, formatDateCN } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
@@ -27,6 +29,8 @@ export default function SongDetailPage() {
   const id = params?.id;
 
   const [song, setSong] = React.useState<Song | null>(null);
+  const [artist, setArtist] = React.useState<Artist | null>(null);
+  const [studio, setStudio] = React.useState<AdminStudio | null>(null);
   const [notFound, setNotFound] = React.useState(false);
   const [action, setAction] = React.useState<ActionKind | null>(null);
 
@@ -34,8 +38,16 @@ export default function SongDetailPage() {
     if (!id) return;
     let alive = true;
     getSong(id)
-      .then((s) => {
-        if (alive) setSong(s);
+      .then(async (s) => {
+        if (!alive) return;
+        setSong(s);
+        const [a, st] = await Promise.all([
+          s.artistId ? getDigitalIp(s.artistId).catch(() => null) : Promise.resolve(null),
+          s.studioId ? getStudio(s.studioId).catch(() => null) : Promise.resolve(null),
+        ]);
+        if (!alive) return;
+        setArtist(a);
+        setStudio(st);
       })
       .catch(() => {
         if (alive) setNotFound(true);
@@ -61,9 +73,6 @@ export default function SongDetailPage() {
   if (!song) {
     return <div className="py-12 text-center text-sm text-muted-foreground">加载中…</div>;
   }
-
-  const artist = song.artistId ? MOCK_ARTISTS.find((a) => a.id === song.artistId) : undefined;
-  const studio = song.studioId ? STUDIOS.find((s) => s.id === song.studioId) : undefined;
 
   const handleConfirm = async (reason: string) => {
     if (!action || !song) return;

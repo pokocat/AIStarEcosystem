@@ -1,3 +1,6 @@
+"use client";
+
+import * as React from "react";
 import Link from "next/link";
 import {
   Users,
@@ -19,18 +22,12 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { CoachRevenueChart } from "@/components/CoachRevenueChart";
 import { RevenueSourcePie } from "@/components/RevenueSourcePie";
-
-import { MOCK_ARTISTS } from "@/mocks/artists";
-import {
-  SignedArtists,
-  DistributionQueue,
-  CopyrightPending,
-  CoachRevenueData,
-} from "@/mocks/coach";
-import { SONGS } from "@/mocks/music";
-import { DRAMAS, MOVIES, ADS } from "@/mocks/film";
-import { PLATFORMS } from "@/mocks/distribution";
-import { TRANSACTIONS, REVENUE_SOURCES } from "@/mocks/finance";
+import { listDigitalIps } from "@/api/digital-ips";
+import { listSignedArtists, listDistributionQueue, listPendingCopyright, getCoachRevenue } from "@/api/coach";
+import { listSongs } from "@/api/music";
+import { listDramas, listMovies, listAds } from "@/api/film";
+import { listPlatforms } from "@/api/distribution";
+import { listTransactions, getRevenueSources } from "@/api/finance";
 import {
   SIGNED_ARTIST_STATUS,
   DISTRIBUTION_QUEUE_STATUS,
@@ -40,28 +37,94 @@ import {
 } from "@/constants/status";
 import { daysUntil } from "@/lib/utils";
 import { formatCredits, formatSignedCredits } from "@/lib/format";
+import type { Artist } from "@/types/artist";
+import type {
+  SignedArtist,
+  DistributionQueueItem,
+  CopyrightItem,
+  CoachRevenuePoint,
+} from "@/types/coach";
+import type { Song } from "@/types/music";
+import type { Drama, Movie, Advertisement } from "@/types/film";
+import type { Platform } from "@/types/distribution";
+import type { Transaction, RevenueSource } from "@/types/finance";
 
 export default function DashboardPage() {
-  const totalArtists = MOCK_ARTISTS.length;
-  const traineeCount = MOCK_ARTISTS.filter((a) => a.status === "trainee" || a.status === "debut").length;
-  const expiringContracts = SignedArtists.filter((a) => a.status === "expiring" || a.status === "negotiating").length;
-  const reviewingDist = DistributionQueue.filter((d) => d.status === "reviewing").length;
-  const pendingCopyright = CopyrightPending.filter((c) => c.status === "pending").length;
-  const pendingPlatforms = PLATFORMS.filter((p) => p.status === "pending").length;
-  const actionableTxns = TRANSACTIONS.filter((t) => t.status === "pending" || t.status === "processing");
+  const [artists, setArtists] = React.useState<Artist[]>([]);
+  const [signedArtists, setSignedArtists] = React.useState<SignedArtist[]>([]);
+  const [distributionQueue, setDistributionQueue] = React.useState<DistributionQueueItem[]>([]);
+  const [copyrightItems, setCopyrightItems] = React.useState<CopyrightItem[]>([]);
+  const [coachRevenue, setCoachRevenue] = React.useState<CoachRevenuePoint[]>([]);
+  const [songs, setSongs] = React.useState<Song[]>([]);
+  const [dramas, setDramas] = React.useState<Drama[]>([]);
+  const [movies, setMovies] = React.useState<Movie[]>([]);
+  const [ads, setAds] = React.useState<Advertisement[]>([]);
+  const [platforms, setPlatforms] = React.useState<Platform[]>([]);
+  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+  const [revenueSources, setRevenueSources] = React.useState<RevenueSource[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [a, sa, dq, cp, cr, s, d, m, ad, pl, tx, rs] = await Promise.all([
+          listDigitalIps(0, 500),
+          listSignedArtists(),
+          listDistributionQueue(),
+          listPendingCopyright(),
+          getCoachRevenue(),
+          listSongs(),
+          listDramas(),
+          listMovies(),
+          listAds(),
+          listPlatforms(),
+          listTransactions(0, 200),
+          getRevenueSources(),
+        ]);
+        if (!active) return;
+        setArtists(a);
+        setSignedArtists(sa);
+        setDistributionQueue(dq);
+        setCopyrightItems(cp);
+        setCoachRevenue(cr);
+        setSongs(s);
+        setDramas(d);
+        setMovies(m);
+        setAds(ad);
+        setPlatforms(pl);
+        setTransactions(tx);
+        setRevenueSources(rs);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const totalArtists = artists.length;
+  const traineeCount = artists.filter((a) => a.status === "trainee" || a.status === "debut").length;
+  const expiringContracts = signedArtists.filter((a) => a.status === "expiring" || a.status === "negotiating").length;
+  const reviewingDist = distributionQueue.filter((d) => d.status === "reviewing").length;
+  const pendingCopyright = copyrightItems.filter((c) => c.status === "pending").length;
+  const pendingPlatforms = platforms.filter((p) => p.status === "pending").length;
+  const actionableTxns = transactions.filter((t) => t.status === "pending" || t.status === "processing");
   const inProductionFilm = [
-    ...DRAMAS.filter((d) => d.status === "post-production" || d.status === "filming"),
-    ...MOVIES.filter((m) => m.status === "post-production" || m.status === "filming"),
-    ...ADS.filter((a) => a.status === "negotiating" || a.status === "shooting"),
+    ...dramas.filter((d) => d.status === "post-production" || d.status === "filming"),
+    ...movies.filter((m) => m.status === "post-production" || m.status === "filming"),
+    ...ads.filter((a) => a.status === "negotiating" || a.status === "shooting"),
   ].length;
-  const songsInProduction = SONGS.filter((s) => s.status !== "released").length;
-  const gmv = CoachRevenueData.reduce(
+  const songsInProduction = songs.filter((s) => s.status !== "released").length;
+  const gmv = coachRevenue.reduce(
     (acc, m) => acc + m.streaming + m.endorsement + m.nft + m.live,
     0
   );
 
   // High-priority action rows
-  const urgentContracts = SignedArtists
+  const urgentContracts = signedArtists
     .map((a) => ({ ...a, days: daysUntil(a.contractEnd) }))
     .filter((a) => a.status === "expiring" || a.status === "negotiating" || a.days < 120)
     .sort((a, b) => a.days - b.days)
@@ -87,6 +150,14 @@ export default function DashboardPage() {
         }
       />
 
+      {loadError && (
+        <Card className="mb-6 border-rose-200 bg-rose-50/60">
+          <CardContent className="py-3 text-sm text-rose-700 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" /> 加载失败：{loadError}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Top KPI */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
@@ -100,12 +171,11 @@ export default function DashboardPage() {
           value={formatCredits(gmv)}
           hint="流媒体 / 代言 / 数字藏品 / 现场合计"
           icon={Wallet}
-          delta={{ value: "12.4%", positive: true }}
         />
         <StatCard
           label="发行队列待审核"
           value={reviewingDist}
-          hint={`全部 ${DistributionQueue.length} 项在途`}
+          hint={`全部 ${distributionQueue.length} 项在途`}
           icon={Send}
           tone={reviewingDist > 0 ? "warning" : "default"}
         />
@@ -175,7 +245,13 @@ export default function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <CoachRevenueChart data={CoachRevenueData} />
+            {coachRevenue.length > 0 ? (
+              <CoachRevenueChart data={coachRevenue} />
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
+                {loading ? "加载中…" : "暂无数据"}
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -184,7 +260,13 @@ export default function DashboardPage() {
             <CardDescription>当月占比 · 单位 %</CardDescription>
           </CardHeader>
           <CardContent>
-            <RevenueSourcePie data={REVENUE_SOURCES} />
+            {revenueSources.length > 0 ? (
+              <RevenueSourcePie data={revenueSources} />
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
+                {loading ? "加载中…" : "暂无数据"}
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -233,7 +315,9 @@ export default function DashboardPage() {
               </div>
             ))}
             {urgentContracts.length === 0 && (
-              <div className="px-2 py-6 text-center text-sm text-muted-foreground">暂无待处理合约</div>
+              <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                {loading ? "加载中…" : "暂无待处理合约"}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -252,7 +336,7 @@ export default function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="divide-y divide-border -mx-2">
-            {DistributionQueue.slice(0, 5).map((d) => (
+            {distributionQueue.slice(0, 5).map((d) => (
               <div key={d.id} className="flex items-center gap-3 px-2 py-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-muted text-xs font-medium text-muted-foreground">
                   {d.type === "Music" ? "🎵" : d.type === "Video" ? "🎬" : "📡"}
@@ -266,6 +350,9 @@ export default function DashboardPage() {
                 <StatusBadge meta={DISTRIBUTION_QUEUE_STATUS[d.status]} />
               </div>
             ))}
+            {!loading && distributionQueue.length === 0 && (
+              <div className="px-2 py-6 text-center text-sm text-muted-foreground">暂无发行任务</div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -281,7 +368,7 @@ export default function DashboardPage() {
             <CardDescription>待核验的版权登记</CardDescription>
           </CardHeader>
           <CardContent className="divide-y divide-border -mx-2">
-            {CopyrightPending.map((c) => (
+            {copyrightItems.map((c) => (
               <div key={c.id} className="flex items-center gap-3 px-2 py-2.5">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{c.title}</div>
@@ -292,6 +379,9 @@ export default function DashboardPage() {
                 <StatusBadge meta={COPYRIGHT_STATUS[c.status]} />
               </div>
             ))}
+            {!loading && copyrightItems.length === 0 && (
+              <div className="px-2 py-6 text-center text-sm text-muted-foreground">暂无版权登记</div>
+            )}
           </CardContent>
         </Card>
 
@@ -304,7 +394,7 @@ export default function DashboardPage() {
             <CardDescription>待审核 / 已断开的分发渠道</CardDescription>
           </CardHeader>
           <CardContent className="divide-y divide-border -mx-2">
-            {PLATFORMS.filter((p) => p.status !== "connected").map((p) => (
+            {platforms.filter((p) => p.status !== "connected").map((p) => (
               <div key={p.id} className="flex items-center gap-3 px-2 py-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-muted text-base">
                   {p.icon}
@@ -316,6 +406,9 @@ export default function DashboardPage() {
                 <StatusBadge meta={PLATFORM_STATUS[p.status]} />
               </div>
             ))}
+            {!loading && platforms.filter((p) => p.status !== "connected").length === 0 && (
+              <div className="px-2 py-6 text-center text-sm text-muted-foreground">所有渠道已接入</div>
+            )}
           </CardContent>
         </Card>
 

@@ -12,7 +12,7 @@ import { formatCompactNumber, formatCredits } from "@/lib/format";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { MOCK_ARTISTS } from "@/mocks/artists";
+import { listDigitalIps } from "@/api/digital-ips";
 import { ARTIST_STATUS, ARTIST_QUALITY } from "@/constants/status";
 import { ARTIST_TYPE_META, ARTIST_NEXT_STATUS } from "@/constants/artist-meta";
 import type { Artist, ArtistStatus } from "@/types/artist";
@@ -26,10 +26,28 @@ const LIFECYCLE_COLUMNS: { status: ArtistStatus; label: string; tone: string }[]
 ];
 
 export default function ArtistLifecyclePage() {
+  const [artists, setArtists] = React.useState<Artist[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ artist: Artist; to: string; label: string } | null>(null);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listDigitalIps(0, 500);
+        if (active) setArtists(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const counts = LIFECYCLE_COLUMNS.reduce<Record<string, number>>((acc, col) => {
-    acc[col.status] = MOCK_ARTISTS.filter((a) => a.status === col.status).length;
+    acc[col.status] = artists.filter((a) => a.status === col.status).length;
     return acc;
   }, {});
 
@@ -68,10 +86,13 @@ export default function ArtistLifecyclePage() {
         ))}
       </section>
 
+      {loading && <div className="py-6 text-center text-sm text-muted-foreground">加载中…</div>}
+      {!loading && loadError && <div className="py-6 text-center text-sm text-rose-600">加载失败：{loadError}</div>}
+
       {/* Kanban-style lifecycle board */}
       <section className="grid grid-cols-1 lg:grid-cols-5 gap-3">
         {LIFECYCLE_COLUMNS.map((col) => {
-          const items = MOCK_ARTISTS.filter((a) => a.status === col.status);
+          const items = artists.filter((a) => a.status === col.status);
           return (
             <div key={col.status} className={"rounded-xl border p-3 " + col.tone}>
               <div className="flex items-center justify-between mb-3">

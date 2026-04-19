@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react';
 import {
   User, Shield, Bell, Palette, Globe, CreditCard, Key,
   Save, ChevronRight, Moon, Sun, Monitor, Check, Mail,
-  Smartphone, Lock, Eye, EyeOff, LogOut, Trash2, Download
+  Smartphone, Lock, Eye, EyeOff, LogOut, Trash2, Download,
+  Building2, Calendar, Link as LinkIcon
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -15,6 +16,8 @@ import type { Lang } from "../../translations";
 import { SETTINGS_SECTIONS } from "@/constants/settings-sections";
 import { RECHARGE_HISTORY } from "@/mocks/settings";
 import type { RechargeRecord } from "@/types/settings";
+import type { Studio } from "@/types/account";
+import { STUDIO_KIND_LABEL_ZH } from "@/types/account";
 import { SettingsApi, AccountApi } from "@/api";
 import { formatCredits, formatCurrency } from "@/lib/format";
 
@@ -40,6 +43,8 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
     bio: '',
     phone: '',
   });
+  const [studio, setStudio] = useState<Studio | null>(null);
+  const [username, setUsername] = useState<string>('');
 
   const [notifications, setNotifications] = useState({
     email: true, push: true, sms: false,
@@ -62,10 +67,17 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
           bio: me.bio ?? '',
           phone: me.phone ?? '',
         });
+        setStudio(me.studio ?? null);
+        setUsername(me.username ?? '');
       })
       .catch(() => { /* 未登录或接口失败，保持空表单 */ });
     return () => { cancelled = true; };
   }, []);
+
+  const formatDate = (iso?: string) => {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('zh-CN'); } catch { return iso; }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -115,6 +127,64 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
           <motion.div key={section} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: .2 }}>
             {/* Profile */}
             {section === 'profile' && (
+              <div className="space-y-6">
+                {/* 经纪公司资料（仅 studio 账户可见） */}
+                {studio && (
+                  <div className="bg-gradient-to-br from-cyan-500/5 to-purple-500/5 border border-cyan-500/20 rounded-xl p-6 space-y-4">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                          <Building2 className="w-6 h-6 text-cyan-300" />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-lg font-bold truncate" style={{ fontFamily: "var(--font-display)" }}>
+                            {studio.name}
+                          </h3>
+                          <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                            <Badge className="bg-cyan-500/10 text-cyan-300 border-cyan-500/20">
+                              {STUDIO_KIND_LABEL_ZH[studio.kind] ?? studio.kind}
+                            </Badge>
+                            <Badge className={studio.status === 'active'
+                              ? 'bg-green-500/10 text-green-300 border-green-500/20'
+                              : 'bg-red-500/10 text-red-300 border-red-500/20'}>
+                              {studio.status === 'active' ? '运营中' : studio.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                      <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                        <div className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">经纪公司 ID</div>
+                        <div className="text-gray-200 font-mono break-all">{studio.id}</div>
+                      </div>
+                      <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                        <div className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">运营账户</div>
+                        <div className="text-gray-200">@{username}</div>
+                      </div>
+                      {studio.contactEmail && (
+                        <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                          <div className="text-[11px] text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1"><Mail className="w-3 h-3" /> 对外联系邮箱</div>
+                          <div className="text-gray-200 break-all">{studio.contactEmail}</div>
+                        </div>
+                      )}
+                      <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                        <div className="text-[11px] text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1"><Calendar className="w-3 h-3" /> 成立时间</div>
+                        <div className="text-gray-200">{formatDate(studio.createdAt)}</div>
+                      </div>
+                      {studio.bio && (
+                        <div className="bg-black/30 border border-white/5 rounded-lg p-3 sm:col-span-2">
+                          <div className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">简介</div>
+                          <div className="text-gray-200 leading-relaxed">{studio.bio}</div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-500">
+                      修改经纪公司档案需联系平台运营（admin 控制台）。此处为 1:1 关联当前登录账户的只读视图。
+                    </p>
+                  </div>
+                )}
+
               <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-6">
                 <h3 className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>{zh ? '个人资料' : 'Profile'}</h3>
                 <div className="flex items-center gap-6">
@@ -151,6 +221,7 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
                   </Button>
                   {saveError && <span className="text-xs text-red-400">{saveError}</span>}
                 </div>
+              </div>
               </div>
             )}
 

@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { INITIAL_NOTIFICATIONS } from "@/mocks/notifications";
+import { listNotifications, markNotificationRead } from "@/api/notifications";
 import { NOTIFICATION_TYPE } from "@/constants/status";
 import type { Notification, NotificationAudienceScope, NotificationType } from "@/types/notification";
 
@@ -64,9 +64,26 @@ function AudienceBadge({ audience }: { audience: Notification["audience"] }) {
 }
 
 export default function NotificationsPage() {
-  const [list, setList] = React.useState<Notification[]>(INITIAL_NOTIFICATIONS);
+  const [list, setList] = React.useState<Notification[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<NotificationType | "all" | "unread">("all");
   const [audienceFilter, setAudienceFilter] = React.useState<"all" | NotificationAudienceScope>("all");
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listNotifications();
+        if (active) setList(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const unread = list.filter((n) => !n.read).length;
 
@@ -77,8 +94,10 @@ export default function NotificationsPage() {
     return true;
   });
 
-  const toggleRead = (id: string) =>
+  const toggleRead = (id: string) => {
     setList((prev) => prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n)));
+    markNotificationRead(id).catch(() => { /* 后端未读/已读切换暂未持久化时静默 */ });
+  };
   const markAllRead = () => setList((prev) => prev.map((n) => ({ ...n, read: true })));
 
   return (
@@ -131,7 +150,9 @@ export default function NotificationsPage() {
 
             <TabsContent value={tab}>
               <div className="divide-y divide-border">
-                {filtered.map((n) => {
+                {loading && <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>}
+                {!loading && loadError && <div className="py-8 text-center text-sm text-rose-600">加载失败：{loadError}</div>}
+                {!loading && !loadError && filtered.map((n) => {
                   const meta = NOTIFICATION_TYPE[n.type];
                   const Icon = TYPE_ICON[n.type];
                   return (
@@ -160,7 +181,7 @@ export default function NotificationsPage() {
                     </div>
                   );
                 })}
-                {filtered.length === 0 && (
+                {!loading && !loadError && filtered.length === 0 && (
                   <div className="py-8 text-center text-sm text-muted-foreground">暂无消息</div>
                 )}
               </div>

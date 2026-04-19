@@ -15,6 +15,35 @@ export const API_BASE_URL: string =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL) ||
   "/api";
 
+/** JWT 存储的 localStorage 键名。 */
+export const AUTH_TOKEN_KEY = "aistareco.auth.token";
+
+export function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAuthToken(token: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    /* 隐私模式 / storage 满，静默失败 */
+  }
+}
+
+/** 401 回调——由 AuthContext 注册，用于把用户踢回 /login。 */
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+export function registerUnauthorizedHandler(fn: UnauthorizedHandler | null) {
+  unauthorizedHandler = fn;
+}
+
 export class ApiError extends Error {
   code: string;
   details?: unknown;
@@ -58,16 +87,24 @@ export async function apiFetch<T>(
   const { method = "GET", body, query, headers, signal } = opts;
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
 
+  const token = getAuthToken();
   const res = await fetch(url, {
     method,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
     credentials: "include",
   });
+
+  if (res.status === 401) {
+    setAuthToken(null);
+    unauthorizedHandler?.();
+    throw new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401);
+  }
 
   let parsed: unknown;
   try {

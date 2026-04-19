@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID, ISODateTime } from "./_shared";
+import type { Studio } from "./studio";
 
 // ── 账号 ──────────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,17 @@ export interface AepUser {
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
   lastLoginAt?: ISODateTime;
+  /**
+   * 当前用户名下的经纪公司/工作室档案（后端 GET /api/me 返回）。
+   * 服务端逻辑：Studio.ownerUserId == AepUser.id（1:1），无则为 null。
+   */
+  studio?: Studio | null;
 }
+
+// 经纪公司 / 工作室档案类型：见 ./studio.ts。在此仅 re-export 便于组件从
+// "@/types/account" 同时拿到 AepUser 与其关联的 Studio 摘要。
+export type { Studio, StudioKind, StudioStatus } from "./studio";
+export { STUDIO_KIND_LABEL_ZH } from "./studio";
 
 // ── 机构归属（仅用于 License 核销统计） ──────────────────────────────────────
 

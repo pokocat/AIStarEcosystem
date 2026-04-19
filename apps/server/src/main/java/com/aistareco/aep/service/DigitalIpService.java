@@ -46,6 +46,37 @@ public class DigitalIpService {
         return page.map(DigitalIpDto::from);
     }
 
+    /**
+     * Studio-scoped listing for GET /api/me/digital-ips — parity with admin's studio→artist
+     * affiliation. Returns artists where {@code ownerUserId == userId} OR
+     * {@code studioId == the user's Studio.id}, de-duplicated and sorted by createdAt desc.
+     * <p>
+     * Rationale: an agency-kind user sees every artist attached to their studio, not just
+     * the ones they personally created. Mirrors AdminDigitalIpController filter semantics.
+     */
+    public java.util.List<DigitalIpDto> listForUser(String userId) {
+        java.util.LinkedHashMap<String, DigitalIp> merged = new java.util.LinkedHashMap<>();
+        for (DigitalIp ip : ipRepo.findByOwnerUserId(userId)) {
+            merged.put(ip.getId(), ip);
+        }
+        studioRepo.findByOwnerUserId(userId).ifPresent(studio -> {
+            for (DigitalIp ip : ipRepo.findByStudioId(studio.getId())) {
+                merged.putIfAbsent(ip.getId(), ip);
+            }
+        });
+        return merged.values().stream()
+                .sorted((left, right) -> {
+                    Instant a = left.getCreatedAt();
+                    Instant b = right.getCreatedAt();
+                    if (a == null && b == null) return 0;
+                    if (a == null) return 1;
+                    if (b == null) return -1;
+                    return b.compareTo(a);
+                })
+                .map(DigitalIpDto::from)
+                .toList();
+    }
+
     public DigitalIpDto findById(String id) {
         return DigitalIpDto.from(loadOrThrow(id));
     }

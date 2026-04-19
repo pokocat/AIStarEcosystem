@@ -10,9 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { TRANSACTIONS } from "@/mocks/finance";
-import { SignedArtists, DistributionQueue, CopyrightPending } from "@/mocks/coach";
-import { PLATFORMS } from "@/mocks/distribution";
+import { listTransactions } from "@/api/finance";
+import { listSignedArtists, listDistributionQueue, listPendingCopyright } from "@/api/coach";
+import { listPlatforms } from "@/api/distribution";
+import type { Transaction } from "@/types/finance";
+import type { SignedArtist, DistributionQueueItem, CopyrightItem } from "@/types/coach";
+import type { Platform } from "@/types/distribution";
 import { formatDateCN } from "@/lib/utils";
 
 type AuditDomain = "finance" | "contract" | "distribution" | "copyright" | "platform";
@@ -48,10 +51,16 @@ const RESULT_LABEL: Record<AuditEntry["result"], string> = {
   rejected: "已驳回",
 };
 
-function buildEntries(): AuditEntry[] {
+function buildEntries(
+  transactions: Transaction[],
+  signedArtists: SignedArtist[],
+  distributionQueue: DistributionQueueItem[],
+  copyrightItems: CopyrightItem[],
+  platforms: Platform[],
+): AuditEntry[] {
   const entries: AuditEntry[] = [];
 
-  TRANSACTIONS.forEach((t) => {
+  transactions.forEach((t) => {
     entries.push({
       id: `txn-${t.id}`,
       time: t.date,
@@ -59,12 +68,12 @@ function buildEntries(): AuditEntry[] {
       domain: "finance",
       action: t.type === "withdrawal" ? "提现复核" : "入账登记",
       ref: `#${t.id.toUpperCase()}`,
-      result: t.status === "completed" ? "success" : t.status === "pending" ? "pending" : "pending",
+      result: t.status === "completed" ? "success" : "pending",
       detail: `${t.source} · ${t.amount}`,
     });
   });
 
-  SignedArtists.forEach((s) => {
+  signedArtists.forEach((s) => {
     if (s.status === "negotiating") {
       entries.push({
         id: `con-${s.id}`,
@@ -79,7 +88,7 @@ function buildEntries(): AuditEntry[] {
     }
   });
 
-  DistributionQueue.forEach((d) => {
+  distributionQueue.forEach((d) => {
     entries.push({
       id: `dist-${d.id}`,
       time: d.date,
@@ -92,7 +101,7 @@ function buildEntries(): AuditEntry[] {
     });
   });
 
-  CopyrightPending.forEach((c) => {
+  copyrightItems.forEach((c) => {
     entries.push({
       id: `cp-${c.id}`,
       time: c.submitted,
@@ -105,7 +114,7 @@ function buildEntries(): AuditEntry[] {
     });
   });
 
-  PLATFORMS.forEach((p) => {
+  platforms.forEach((p) => {
     if (p.status === "pending" || p.status === "disconnected") {
       entries.push({
         id: `plat-${p.id}`,
@@ -124,10 +133,47 @@ function buildEntries(): AuditEntry[] {
 }
 
 export default function AuditPage() {
+  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+  const [signedArtists, setSignedArtists] = React.useState<SignedArtist[]>([]);
+  const [distributionQueue, setDistributionQueue] = React.useState<DistributionQueueItem[]>([]);
+  const [copyrightItems, setCopyrightItems] = React.useState<CopyrightItem[]>([]);
+  const [platforms, setPlatforms] = React.useState<Platform[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
   const [query, setQuery] = React.useState("");
   const [domain, setDomain] = React.useState<AuditDomain | "all">("all");
 
-  const entries = React.useMemo(() => buildEntries(), []);
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [tx, sa, dq, cp, pl] = await Promise.all([
+          listTransactions(0, 200),
+          listSignedArtists(),
+          listDistributionQueue(),
+          listPendingCopyright(),
+          listPlatforms(),
+        ]);
+        if (!active) return;
+        setTransactions(tx);
+        setSignedArtists(sa);
+        setDistributionQueue(dq);
+        setCopyrightItems(cp);
+        setPlatforms(pl);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const entries = React.useMemo(
+    () => buildEntries(transactions, signedArtists, distributionQueue, copyrightItems, platforms),
+    [transactions, signedArtists, distributionQueue, copyrightItems, platforms],
+  );
   const filtered = entries.filter((e) => {
     if (domain !== "all" && e.domain !== domain) return false;
     if (query) {
@@ -196,7 +242,13 @@ export default function AuditPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((e) => {
+                  {loading && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+                  )}
+                  {!loading && loadError && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+                  )}
+                  {!loading && !loadError && filtered.map((e) => {
                     const meta = DOMAIN_META[e.domain];
                     const Icon = meta.icon;
                     return (
@@ -217,7 +269,7 @@ export default function AuditPage() {
                       </TableRow>
                     );
                   })}
-                  {filtered.length === 0 && (
+                  {!loading && !loadError && filtered.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                         无匹配记录

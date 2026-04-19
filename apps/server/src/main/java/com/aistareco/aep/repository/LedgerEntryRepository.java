@@ -48,4 +48,22 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
             "WHERE e.userId = :userId AND e.amount > 0 " +
             "GROUP BY e.entryType")
     List<Object[]> aggregateIncomeByType(@Param("userId") String userId);
+
+    /**
+     * 平台级：自 since 起的所有入账条目（amount &gt; 0），留给 Service 层做月度分桶。
+     * 用于 admin 财务图表。
+     */
+    @Query("SELECT e FROM LedgerEntry e " +
+            "WHERE e.amount > 0 AND e.createdAt >= :since " +
+            "ORDER BY e.createdAt ASC")
+    List<LedgerEntry> findAllPositiveSince(@Param("since") Instant since);
+
+    /**
+     * 平台级：按 entryType 分桶的入账总额（全期），用于饼图聚合。
+     */
+    @Query("SELECT e.entryType, COALESCE(SUM(e.amount), 0) " +
+            "FROM LedgerEntry e " +
+            "WHERE e.amount > 0 " +
+            "GROUP BY e.entryType")
+    List<Object[]> aggregateIncomeByTypeAll();
 }

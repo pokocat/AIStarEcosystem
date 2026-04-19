@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
-import { VOICE_WORKS } from "@/mocks/film";
+import { listVoiceWorks } from "@/api/film";
 import { VOICE_WORK_STATUS } from "@/constants/status";
+import type { VoiceWork } from "@/types/film";
 import { formatCredits } from "@/lib/format";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -20,11 +21,30 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function VoicePage() {
+  const [works, setWorks] = React.useState<VoiceWork[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listVoiceWorks();
+        if (active) setWorks(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const counts = {
-    total: VOICE_WORKS.length,
-    delivered: VOICE_WORKS.filter((v) => v.status === "delivered").length,
-    recording: VOICE_WORKS.filter((v) => v.status === "recording").length,
-    totalPay: VOICE_WORKS.reduce((s, v) => s + v.payment, 0),
+    total: works.length,
+    delivered: works.filter((v) => v.status === "delivered").length,
+    recording: works.filter((v) => v.status === "recording").length,
+    totalPay: works.reduce((s, v) => s + v.payment, 0),
   };
 
   return (
@@ -57,7 +77,16 @@ export default function VoicePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {VOICE_WORKS.map((v) => (
+              {loading && (
+                <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={6} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && works.length === 0 && (
+                <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">暂无项目</TableCell></TableRow>
+              )}
+              {!loading && !loadError && works.map((v) => (
                 <TableRow key={v.id}>
                   <TableCell className="font-medium">{v.project}</TableCell>
                   <TableCell className="text-sm">{TYPE_LABEL[v.type] ?? v.type}</TableCell>

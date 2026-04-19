@@ -13,9 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
 import { SONG_STATUS } from "@/constants/status";
-import { MOCK_ARTISTS } from "@/mocks/artists";
-import { STUDIOS } from "@/mocks/studios";
+import { listDigitalIps } from "@/api/digital-ips";
+import { listStudios } from "@/api/studios";
 import type { Song, SongStatus } from "@/types/music";
+import type { Artist } from "@/types/artist";
+import type { AdminStudio } from "@/types/studio";
 import { listSongs, listGenres, approveSong, rejectSong } from "@/api/music";
 import { formatCountCN, formatCurrencyCN, formatDateCN } from "@/lib/utils";
 
@@ -31,6 +33,8 @@ type ActionKind = "approve" | "reject";
 export default function SongsReviewPage() {
   const [songs, setSongs] = React.useState<Song[]>([]);
   const [genres, setGenres] = React.useState<{ id: string; name: string; icon: string }[]>([]);
+  const [artists, setArtists] = React.useState<Artist[]>([]);
+  const [studios, setStudios] = React.useState<AdminStudio[]>([]);
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<"all" | SongStatus>("all");
   const [genre, setGenre] = React.useState<string>("all");
@@ -40,18 +44,25 @@ export default function SongsReviewPage() {
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      const [s, g] = await Promise.all([listSongs(), listGenres()]);
+      const [s, g, a, st] = await Promise.all([
+        listSongs(),
+        listGenres(),
+        listDigitalIps(0, 500),
+        listStudios(0, 200),
+      ]);
       if (!alive) return;
       setSongs(s);
       setGenres(g);
+      setArtists(a);
+      setStudios(st);
     })();
     return () => {
       alive = false;
     };
   }, []);
 
-  const artistById = React.useMemo(() => new Map(MOCK_ARTISTS.map((a) => [a.id, a])), []);
-  const studioById = React.useMemo(() => new Map(STUDIOS.map((s) => [s.id, s])), []);
+  const artistById = React.useMemo(() => new Map(artists.map((a) => [a.id, a])), [artists]);
+  const studioById = React.useMemo(() => new Map(studios.map((s) => [s.id, s])), [studios]);
 
   const filtered = songs.filter((s) => {
     if (status !== "all" && s.status !== status) return false;

@@ -9,17 +9,36 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
-import { CONCERTS } from "@/mocks/music";
+import { listConcerts } from "@/api/music";
 import { CONCERT_STATUS } from "@/constants/status";
+import type { Concert } from "@/types/music";
 import { formatCurrencyCN, formatDateCN } from "@/lib/utils";
 
 export default function ConcertsPage() {
-  // 遗留字段已在 types/music.ts 里标记 @deprecated（product_spec.md §10.5），
-  // 本页面属 P1 待迁 "线上直播管理" 的过渡态，统一用 ?? 0 取值保持编译。
-  const totalSeats = CONCERTS.reduce((a, b) => a + (b.capacity ?? 0), 0);
-  const totalSold = CONCERTS.reduce((a, b) => a + (b.soldTickets ?? 0), 0);
-  const selling = CONCERTS.filter((c) => c.status === "selling");
-  const totalRevenue = CONCERTS.reduce((a, b) => a + (b.revenue ?? 0), 0);
+  const [concerts, setConcerts] = React.useState<Concert[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listConcerts();
+        if (active) setConcerts(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  // 遗留字段已在 types/music.ts 里标记 @deprecated（product_spec.md §10.5）。
+  const totalSeats = concerts.reduce((a, b) => a + (b.capacity ?? 0), 0);
+  const totalSold = concerts.reduce((a, b) => a + (b.soldTickets ?? 0), 0);
+  const selling = concerts.filter((c) => c.status === "selling");
+  const totalRevenue = concerts.reduce((a, b) => a + (b.revenue ?? 0), 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -31,9 +50,9 @@ export default function ConcertsPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="总演出" value={CONCERTS.length} icon={Mic2} />
+        <StatCard label="总演出" value={concerts.length} icon={Mic2} />
         <StatCard label="售票中" value={selling.length} icon={TicketCheck} tone="warning" />
-        <StatCard label="座位售出率" value={`${Math.round((totalSold / totalSeats) * 100)}%`} icon={CheckCircle2} tone="success" />
+        <StatCard label="座位售出率" value={totalSeats > 0 ? `${Math.round((totalSold / totalSeats) * 100)}%` : "—"} icon={CheckCircle2} tone="success" />
         <StatCard label="累计票房" value={formatCurrencyCN(totalRevenue)} icon={CalendarClock} />
       </section>
 
@@ -56,7 +75,16 @@ export default function ConcertsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {CONCERTS.map((c) => {
+              {loading && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && concerts.length === 0 && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">暂无演出</TableCell></TableRow>
+              )}
+              {!loading && !loadError && concerts.map((c) => {
                 const capacity = c.capacity ?? 0;
                 const sold = c.soldTickets ?? 0;
                 const rate = capacity > 0 ? Math.round((sold / capacity) * 100) : 0;

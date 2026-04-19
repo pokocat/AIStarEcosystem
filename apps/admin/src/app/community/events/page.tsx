@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { EVENTS } from "@/mocks/community";
+import { listEvents } from "@/api/community";
 import { COMMUNITY_EVENT_STATUS, COMMUNITY_EVENT_TYPE } from "@/constants/status";
 import type { CommunityEvent, CommunityEventType } from "@/types/community";
 import { formatDateCN } from "@/lib/utils";
@@ -22,12 +22,30 @@ const TYPE_ICON: Record<CommunityEventType, LucideIcon> = {
 };
 
 export default function EventsPage() {
+  const [events, setEvents] = React.useState<CommunityEvent[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ event: CommunityEvent; action: "launch" | "end" | "cancel" } | null>(null);
 
-  const live = EVENTS.filter((e) => e.status === "live").length;
-  const upcoming = EVENTS.filter((e) => e.status === "upcoming").length;
-  const ended = EVENTS.filter((e) => e.status === "ended").length;
-  const participants = EVENTS.reduce((a, b) => a + b.participants, 0);
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listEvents();
+        if (active) setEvents(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const live = events.filter((e) => e.status === "live").length;
+  const upcoming = events.filter((e) => e.status === "upcoming").length;
+  const ended = events.filter((e) => e.status === "ended").length;
+  const participants = events.reduce((a, b) => a + b.participants, 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -45,8 +63,14 @@ export default function EventsPage() {
         <StatCard label="累计参与" value={participants.toLocaleString("zh-CN")} icon={PartyPopper} />
       </section>
 
+      {loading && <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>}
+      {!loading && loadError && <div className="py-8 text-center text-sm text-rose-600">加载失败：{loadError}</div>}
+
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {EVENTS.map((e) => {
+        {!loading && !loadError && events.length === 0 && (
+          <div className="col-span-full py-8 text-center text-sm text-muted-foreground">暂无活动</div>
+        )}
+        {events.map((e) => {
           const Icon = TYPE_ICON[e.type];
           return (
             <Card key={e.id}>

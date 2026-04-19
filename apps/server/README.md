@@ -117,65 +117,110 @@ Content-Type: application/json
 
 ## API 端点
 
+以 `/api/admin/**` 为前缀的接口对齐 `apps/admin` 运营后台；`/api/**`（不含 `admin/`）给终端用户使用（`apps/web`）。列表响应走 `PageEnvelope`，单体响应走 `ApiResponse`，见 product_spec.md §6.4。
+
 ### 公开端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/admin/auth/login` | 管理员登录 |
-| POST | `/api/auth/activate` | 秘钥激活注册 |
+| POST | `/api/admin/auth/login` | 管理员登录（用户名/密码 → JWT） |
+| POST | `/api/auth/activate` | 用户侧秘钥激活注册 |
 
 ### 管理后台（需 Bearer Token，PLATFORM_OPERATOR / FINANCE_ADMIN）
+
+#### 平台账户 / 权益
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/admin/auth/me` | 当前登录管理员信息 |
-| GET | `/api/admin/stats` | 仪表盘统计 |
-| GET/POST/PUT/PATCH/DELETE | `/api/admin/users/**` | 用户管理 |
-| GET/POST/PUT/DELETE | `/api/admin/entitlements/**` | 权益配置 |
-| GET/POST | `/api/admin/license-batches` | 许可证批次 |
-| GET | `/api/admin/license-keys` | 许可证密钥 |
-| PUT | `/api/admin/license-keys/{id}/revoke` | 吊销密钥 |
-| GET | `/api/admin/products` | 产品列表 |
-| GET | `/api/admin/plans` | 套餐列表 |
-| GET | `/api/admin/tenants` | 租户列表 |
-| GET | `/api/admin/credits/wallets` | 钱包列表 |
-| GET | `/api/admin/credits/ledger` | 账本流水 |
-| GET | `/api/admin/audit` | 审计日志 |
+| GET | `/api/admin/stats` | 仪表盘统计（用户/作品/收益聚合） |
+| GET · POST · PUT · PATCH · DELETE | `/api/admin/users/**` | `AepUser` CRUD；`GET /{id}/wallet`；`POST /{id}/credits/adjust` 调账 |
+| GET · POST · PUT · PATCH | `/api/admin/tenants/**` | `Tenant` 列表 / 创建 / 更新 |
+| GET | `/api/admin/memberships` | `Membership` 列表，支持 `?tenantId` / `?userId` 过滤 |
+| GET · POST · PUT · PATCH | `/api/admin/studios/**` | `Studio` CRUD；`GET` 返回 `AdminStudioDto`（含聚合指标） |
+| GET | `/api/admin/license-batches` | 秘钥批次列表 |
+| POST | `/api/admin/license-batches` | 新建批次 |
+| GET | `/api/admin/license-batches/{id}/keys` | 批次下的秘钥 |
+| GET | `/api/admin/license-keys` | 秘钥全局列表（支持 `batchId` / `status`） |
+| PUT | `/api/admin/license-keys/{id}/revoke` | 吊销秘钥 |
 
-所有响应统一包装为 `{"data": ...}` 格式。
+#### 财务 / 钱包
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/wallets` | 钱包列表（`WalletDto`） |
+| GET | `/api/admin/wallets/{userId}` | 按用户查钱包 |
+| GET | `/api/admin/ledger-entries` | 点数流水，支持 `walletId` / `userId` 过滤 |
+| GET | `/api/admin/finance/transactions` | 业务交易（由 `LedgerEntry` 派生，见 product_spec §9.7） |
+| GET | `/api/admin/finance/revenue/monthly` | 近 6 月入账趋势 |
+| GET | `/api/admin/finance/revenue/sources` | 入账来源饼图 |
+
+#### 内容 / IP / 分发
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET · POST · PUT · PATCH · DELETE | `/api/admin/digital-ips/**` | AI 艺人档案 |
+| GET · POST | `/api/admin/music/songs`<br>`POST /songs/{id}/approve`<br>`POST /songs/{id}/reject` | 歌曲管理 + 人工复核 |
+| GET | `/api/admin/music/albums` · `/concerts` · `/genres` | 专辑 / 演唱会 / 曲风 |
+| GET · POST · PUT | `/api/admin/film/**` | 短剧 / 电影 / 广告 / 配音 |
+| GET · POST · PUT | `/api/admin/distribution/**` | 渠道接入与发行队列 |
+| GET · POST · DELETE | `/api/admin/store/**` | NFT / 点数包 / 商品 |
+| GET · POST · PUT | `/api/admin/community/**` | 动态 / 活动审核 |
+| GET · POST | `/api/admin/fan/**` | 粉丝域（档案/等级/活动） |
+| GET · POST | `/api/admin/coach/**` | 教练与培训 |
+| GET · POST | `/api/admin/appearance-forge/**` | 形象工坊模板 / 蓝图 |
+
+#### 平台配置 / 审计 / 消息
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET · POST · PUT | `/api/admin/settings/**` | 平台设置 |
+| GET · POST · PUT | `/api/admin/platform-configs/**` | 键值配置项 |
+| GET | `/api/admin/audit-logs` | 审计日志 |
+| GET | `/api/admin/notifications` | 运营推送 |
+| GET · POST · DELETE | `/api/admin/staff/**` | 后台运营账号（P2） |
+
+> 响应约定：分页接口返回 `{ success, data, pagination }`（`PageEnvelope`）；其余返回 `{ success, data }`（`ApiResponse`）。前端 `apiFetch` 只解 `data`。
 
 ## 项目结构
 
 ```
-src/main/java/com/aistareco/
-├── AiStarEcoApplication.java          # 入口
-├── aep/                               # 账户与权益平台模块
-│   ├── config/
-│   │   ├── AepSecurityConfig.java     # Spring Security 配置
-│   │   ├── JwtUtil.java               # JWT 生成/验证
-│   │   ├── JwtAuthenticationFilter.java # JWT 过滤器
-│   │   └── DataInitializer.java       # 种子数据
-│   ├── controller/                    # REST 控制器
-│   │   ├── AdminAuthController.java   # 管理员认证
-│   │   ├── AdminUserController.java   # 用户管理
-│   │   ├── AdminEntitlementController.java  # 权益管理
-│   │   ├── AdminLicenseController.java      # 许可证管理
-│   │   ├── AdminProductController.java      # 产品管理
-│   │   ├── AdminCreditController.java       # 积分管理
-│   │   ├── AdminTenantController.java       # 租户管理
-│   │   ├── AdminStatsController.java        # 统计
-│   │   ├── AdminAuditController.java        # 审计日志
-│   │   └── LicenseActivationController.java # 秘钥激活（公开）
-│   ├── model/          # JPA 实体（AepUser, Tenant, Entitlement, LicenseBatch, LicenseKey, Wallet, ...）
-│   ├── repository/     # Spring Data JPA 仓库
-│   ├── service/        # 业务逻辑层
-│   └── dto/            # 数据传输对象
-├── common/             # 通用工具（ApiResponse, GlobalExceptionHandler）
-├── controller/         # 歌手生态业务控制器（Singer, Track, Marketplace, ...）
-├── model/              # 歌手生态实体
-├── repository/         # 歌手生态仓库
-├── service/            # 歌手生态服务
-└── dto/                # 歌手生态 DTO
+src/main/java/com/aistareco/aep/
+├── AiStarEcoApplication.java              # 入口
+├── config/
+│   ├── AepSecurityConfig.java             # Spring Security 配置
+│   ├── JwtUtil.java                       # JWT 生成/验证
+│   ├── JwtAuthenticationFilter.java       # JWT 过滤器
+│   └── DataInitializer.java               # 种子数据
+├── controller/                            # REST 控制器
+│   ├── AdminAuthController.java           # 管理员认证
+│   ├── AdminStatsController.java          # 仪表盘统计
+│   ├── AdminUserController.java           # 平台账号
+│   ├── AdminTenantController.java         # 机构
+│   ├── AdminMembershipController.java     # 用户-机构归属（只读列表）
+│   ├── AdminStudioController.java         # 业务主体（含聚合指标）
+│   ├── AdminLicenseController.java        # 秘钥批次 / 单码
+│   ├── AdminCreditController.java         # 钱包 / 点数流水
+│   ├── AdminFinanceController.java        # 业务交易 / 入账趋势 / 来源饼图
+│   ├── AdminDigitalIpController.java      # AI 艺人档案
+│   ├── AdminMusicController.java          # 歌曲 / 专辑 / 演唱会
+│   ├── AdminFilmController.java           # 短剧 / 电影 / 广告 / 配音
+│   ├── AdminDistributionController.java   # 分发渠道 / 队列
+│   ├── AdminStoreController.java          # NFT / 商品
+│   ├── AdminCommunityController.java      # 动态 / 活动审核
+│   ├── AdminFanController.java            # 粉丝域
+│   ├── AdminCoachController.java          # 教练
+│   ├── AdminForgeController.java          # 形象工坊
+│   ├── AdminSettingsController.java       # 平台设置
+│   ├── AdminPlatformConfigController.java # 配置键值
+│   ├── AdminAuditController.java          # 审计日志
+│   ├── AdminNotificationController.java   # 运营推送
+│   ├── AdminStaffController.java          # 运营账号
+│   └── LicenseActivationController.java   # 秘钥激活（公开）
+├── model/         # JPA 实体（AepUser / Tenant / Membership / Studio / LicenseBatch / LicenseKey / Wallet / LedgerEntry / DigitalIp / Song / ...）
+├── repository/    # Spring Data JPA 仓库
+├── service/       # 业务逻辑层（StudioService / TenantService / LicenseService / CreditService / AdminFinanceService / ...）
+└── dto/           # 传输对象（含 PageEnvelope / ApiResponse）
 ```
 
 ## 数据模型
@@ -190,20 +235,20 @@ src/main/java/com/aistareco/
 | `COACH` | 普通用户 | 掌门人，通过秘钥注册 |
 | `FAN` | 普通用户 | 粉丝，通过秘钥注册 |
 
-### 核心表
+### 核心表（账户与计费域）
+
+> 已废弃：`aep_products` / `aep_plans` / `aep_features` / `aep_plan_features` / `aep_entitlements` —— 订阅 / 权益模型被「一次性点数发放 + License」替代，见 product_spec.md §0.1、§0.2。
 
 | 表 | 说明 |
 |------|------|
-| `aep_users` | 用户（含 `passwordHash` 供管理员使用） |
-| `aep_tenants` | 租户（PERSONAL / ORGANIZATION / CHANNEL） |
-| `aep_memberships` | 用户-租户关系 |
-| `aep_products` | 产品 |
-| `aep_plans` | 套餐 |
-| `aep_features` | 功能定义 |
-| `aep_plan_features` | 套餐-功能映射 |
-| `aep_entitlements` | 权益记录 |
-| `aep_license_batches` | 许可证批次 |
-| `aep_license_keys` | 许可证密钥 |
-| `aep_wallets` | 积分钱包（四科目余额） |
-| `aep_ledger_entries` | 不可变积分流水 |
+| `aep_users` | 用户（含 `password_hash` 供管理员使用） |
+| `aep_tenants` | 机构（PLATFORM / PERSONAL / ORGANIZATION），承载 License 发放方统计 |
+| `aep_memberships` | 用户 ↔ 机构 关系（含 `source` / `license_key_id`） |
+| `aep_studios` | 业务主体（1:1 AepUser，kind: personal_creator / music_studio / drama_studio / variety_studio / agency / mcn） |
+| `aep_license_batches` | 秘钥批次（含 `initial_credit_grant`） |
+| `aep_license_keys` | 秘钥单码 |
+| `aep_wallets` | 钱包（license / recharge / gift / pending 四科目，`total_balance` = 前三项之和） |
+| `aep_ledger_entries` | 不可变点数流水，Admin Finance 图表由此派生 |
 | `aep_audit_logs` | 审计日志 |
+
+内容/IP 域相关表（`digital_ips` / `aep_songs` / `aep_albums` / `aep_concerts` / `aep_dramas` / `aep_movies` / `aep_advertisements` / `aep_voice_works` / `copyright_items` / `distribution_*` / `nft_items` / `community_*` / …）见 product_spec.md §4–§5。

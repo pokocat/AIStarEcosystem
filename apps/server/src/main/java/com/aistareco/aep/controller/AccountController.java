@@ -1,8 +1,8 @@
 package com.aistareco.aep.controller;
 
-import com.aistareco.aep.dto.AepUserDto;
 import com.aistareco.aep.dto.DigitalIpDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
+import com.aistareco.aep.dto.MeDto;
 import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.dto.SongDto;
 import com.aistareco.aep.dto.TenantDto;
@@ -47,12 +47,12 @@ public class AccountController {
     }
 
     @GetMapping
-    public ApiResponse<AepUserDto> me(Principal principal) {
-        return ApiResponse.of(accountSelfService.getCurrentUser(principal.getName()));
+    public ApiResponse<MeDto> me(Principal principal) {
+        return ApiResponse.of(accountSelfService.getCurrentMe(principal.getName()));
     }
 
     @PatchMapping
-    public ApiResponse<AepUserDto> updateMe(Principal principal, @RequestBody Map<String, Object> body) {
+    public ApiResponse<MeDto> updateMe(Principal principal, @RequestBody Map<String, Object> body) {
         return ApiResponse.of(accountSelfService.updateCurrentUser(principal.getName(), body));
     }
 
@@ -76,15 +76,14 @@ public class AccountController {
         return PageEnvelope.from(accountSelfService.listLedger(principal.getName(), pageable));
     }
 
+    /**
+     * 当前用户可见的 Digital IP 列表 = ownerUserId == me ∪ studioId == myStudio.id。
+     * 与 admin 侧按 studioId 过滤艺人保持对齐（经纪公司账户可看到挂在其 studio 下的全部艺人）。
+     * 直接返回 List（非分页）——当前 MVP 单工作室艺人数量不大；后续需要分页再切 Page。
+     */
     @GetMapping("/digital-ips")
-    public PageEnvelope<DigitalIpDto> listDigitalIps(
-            Principal principal,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
-    ) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return PageEnvelope.from(
-                digitalIpService.list(principal.getName(), null, null, pageable));
+    public ApiResponse<List<DigitalIpDto>> listDigitalIps(Principal principal) {
+        return ApiResponse.of(digitalIpService.listForUser(principal.getName()));
     }
 
     @GetMapping("/digital-ips/{id}")

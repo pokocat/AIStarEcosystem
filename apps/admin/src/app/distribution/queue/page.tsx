@@ -10,19 +10,39 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { DistributionQueue } from "@/mocks/coach";
-import { CONTENT_ITEMS } from "@/mocks/distribution";
+import { listDistributionQueue } from "@/api/coach";
+import { listDistributionContent } from "@/api/distribution";
 import { DISTRIBUTION_QUEUE_STATUS, CONTENT_DISTRIBUTION_STATUS } from "@/constants/status";
 import type { DistributionQueueItem } from "@/types/coach";
+import type { DistributionContentItem } from "@/types/distribution";
 import { formatDateCN } from "@/lib/utils";
 
 export default function QueuePage() {
+  const [queue, setQueue] = React.useState<DistributionQueueItem[]>([]);
+  const [content, setContent] = React.useState<DistributionContentItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ item: DistributionQueueItem; action: "approve" | "reject" } | null>(null);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [q, c] = await Promise.all([listDistributionQueue(), listDistributionContent()]);
+        if (active) { setQueue(q); setContent(c); }
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const counts = {
-    reviewing: DistributionQueue.filter((q) => q.status === "reviewing").length,
-    approved: DistributionQueue.filter((q) => q.status === "approved").length,
-    distributing: DistributionQueue.filter((q) => q.status === "distributing").length,
+    reviewing: queue.filter((q) => q.status === "reviewing").length,
+    approved: queue.filter((q) => q.status === "approved").length,
+    distributing: queue.filter((q) => q.status === "distributing").length,
   };
 
   return (
@@ -37,7 +57,7 @@ export default function QueuePage() {
         <StatCard label="待审核" value={counts.reviewing} icon={Clock} tone="warning" />
         <StatCard label="已通过" value={counts.approved} icon={CheckCircle2} tone="success" />
         <StatCard label="分发中" value={counts.distributing} icon={Send} />
-        <StatCard label="队列总数" value={DistributionQueue.length} icon={Send} />
+        <StatCard label="队列总数" value={queue.length} icon={Send} />
       </section>
 
       <Card>
@@ -65,7 +85,16 @@ export default function QueuePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {DistributionQueue.map((q) => (
+                  {loading && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+                  )}
+                  {!loading && loadError && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+                  )}
+                  {!loading && !loadError && queue.length === 0 && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">队列为空</TableCell></TableRow>
+                  )}
+                  {!loading && !loadError && queue.map((q) => (
                     <TableRow key={q.id}>
                       <TableCell className="font-medium">{q.title}</TableCell>
                       <TableCell className="text-sm">{q.artist}</TableCell>
@@ -109,7 +138,13 @@ export default function QueuePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {CONTENT_ITEMS.map((c) => (
+                  {loading && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+                  )}
+                  {!loading && !loadError && content.length === 0 && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无内容</TableCell></TableRow>
+                  )}
+                  {!loading && !loadError && content.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">{c.title}</TableCell>
                       <TableCell className="text-sm capitalize">{c.type}</TableCell>

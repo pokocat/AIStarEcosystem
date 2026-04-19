@@ -13,12 +13,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { getDigitalIp } from "@/api/digital-ips";
 import { listStudios } from "@/api/studios";
-import { ACCOUNTS } from "@/mocks/accounts";
-import { SONGS } from "@/mocks/music";
+import { listUsers } from "@/api/users";
+import { listSongs } from "@/api/music";
 import { ARTIST_QUALITY, ARTIST_STATUS, STUDIO_KIND } from "@/constants/status";
 import { ARTIST_TYPE_META, TALENT_LABELS } from "@/constants/artist-meta";
 import type { Artist } from "@/types/artist";
 import type { AdminStudio } from "@/types/studio";
+import type { AepUser } from "@/types/account";
+import type { Song } from "@/types/music";
 import { formatCompactNumber, formatCredits } from "@/lib/format";
 import { formatDateCN } from "@/lib/utils";
 
@@ -28,6 +30,8 @@ export default function ArtistDetailPage() {
 
   const [artist, setArtist] = React.useState<Artist | null>(null);
   const [studios, setStudios] = React.useState<AdminStudio[]>([]);
+  const [users, setUsers] = React.useState<AepUser[]>([]);
+  const [songs, setSongs] = React.useState<Song[]>([]);
   const [status, setStatus] = React.useState<"loading" | "ok" | "notfound" | "error">("loading");
   const [errorMsg, setErrorMsg] = React.useState("");
 
@@ -37,7 +41,12 @@ export default function ArtistDetailPage() {
     (async () => {
       setStatus("loading");
       try {
-        const [a, s] = await Promise.all([getDigitalIp(id), listStudios(0, 200)]);
+        const [a, s, u, songList] = await Promise.all([
+          getDigitalIp(id),
+          listStudios(0, 200),
+          listUsers(0, 500),
+          listSongs(),
+        ]);
         if (cancelled) return;
         if (!a) {
           setStatus("notfound");
@@ -45,6 +54,8 @@ export default function ArtistDetailPage() {
         }
         setArtist(a);
         setStudios(s);
+        setUsers(u);
+        setSongs(songList);
         setStatus("ok");
       } catch (err) {
         if (cancelled) return;
@@ -77,12 +88,12 @@ export default function ArtistDetailPage() {
   const studio =
     studios.find((s) => s.id === artist.studioId) ??
     studios.find((s) => s.ownerUserId === artist.ownerUserId);
-  const owner = studio ? ACCOUNTS.find((u) => u.id === studio.ownerUserId) : undefined;
+  const owner = studio ? users.find((u) => u.id === studio.ownerUserId) : undefined;
   const meta = ARTIST_TYPE_META[artist.type];
 
-  // 从属关系下的代表作（demo：按 SONGS 中若有 artistId 字段可过滤；此处展示前 3 首）
-  const relatedSongs = SONGS.filter((s) => s.artistId === artist.id).slice(0, 5);
-  const fallbackSongs = relatedSongs.length === 0 ? SONGS.slice(0, 3) : relatedSongs;
+  // 从属关系下的代表作（按 artistId 过滤，前 5 首；无匹配则降级展示前 3 首最新歌曲）
+  const relatedSongs = songs.filter((s) => s.artistId === artist.id).slice(0, 5);
+  const fallbackSongs = relatedSongs.length === 0 ? songs.slice(0, 3) : relatedSongs;
 
   const expPercent = Math.min(100, Math.round((artist.exp / artist.maxExp) * 100));
 

@@ -2,7 +2,7 @@
 // mocks/account.ts — 当前登录用户 & 所属租户样本（web 端）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AepUser, Tenant } from "@/types/account";
+import type { AepUser, Studio, Tenant } from "@/types/account";
 
 /** 当前登录用户（取第一个工作室账号）。 */
 export const CURRENT_USER: AepUser = {
@@ -21,6 +21,17 @@ export const CURRENT_USER: AepUser = {
   createdAt: "2025-09-12T08:10:00Z",
   updatedAt: "2026-04-10T11:22:00Z",
   lastLoginAt: "2026-04-17T02:18:00Z",
+  studio: {
+    id: "s-skywave",
+    ownerUserId: "u-001",
+    name: "星浪工作室",
+    kind: "agency",
+    status: "active",
+    bio: "专注 AI 虚拟艺人孵化与跨端发行。",
+    contactEmail: "ops@skywave.io",
+    createdAt: "2025-09-12T08:10:00Z",
+    updatedAt: "2026-04-10T11:22:00Z",
+  } satisfies Studio,
 };
 
 /** 当前用户可见的租户列表。 */

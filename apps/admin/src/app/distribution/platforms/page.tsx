@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { PLATFORMS } from "@/mocks/distribution";
+import { listPlatforms } from "@/api/distribution";
 import { PLATFORM_STATUS } from "@/constants/status";
 import type { Platform, PlatformCategory } from "@/types/distribution";
 
@@ -22,15 +22,33 @@ const CATEGORIES: { value: PlatformCategory | "all"; label: string }[] = [
 ];
 
 export default function PlatformsPage() {
+  const [platforms, setPlatforms] = React.useState<Platform[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [cat, setCat] = React.useState<PlatformCategory | "all">("all");
   const [target, setTarget] = React.useState<{ platform: Platform; action: "approve" | "reject" | "reconnect" | "disconnect" } | null>(null);
 
-  const list = PLATFORMS.filter((p) => cat === "all" || p.category === cat);
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listPlatforms();
+        if (active) setPlatforms(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const list = platforms.filter((p) => cat === "all" || p.category === cat);
 
   const byStatus = {
-    connected: PLATFORMS.filter((p) => p.status === "connected").length,
-    pending: PLATFORMS.filter((p) => p.status === "pending").length,
-    disconnected: PLATFORMS.filter((p) => p.status === "disconnected").length,
+    connected: platforms.filter((p) => p.status === "connected").length,
+    pending: platforms.filter((p) => p.status === "pending").length,
+    disconnected: platforms.filter((p) => p.status === "disconnected").length,
   };
 
   return (
@@ -42,7 +60,7 @@ export default function PlatformsPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="渠道总数" value={PLATFORMS.length} icon={Radio} />
+        <StatCard label="渠道总数" value={platforms.length} icon={Radio} />
         <StatCard label="已接入" value={byStatus.connected} icon={Signal} tone="success" />
         <StatCard label="接入审核中" value={byStatus.pending} icon={PlugZap} tone="warning" />
         <StatCard label="已断开" value={byStatus.disconnected} icon={Unplug} tone="danger" />
@@ -63,6 +81,11 @@ export default function PlatformsPage() {
             </TabsList>
 
             <TabsContent value={cat}>
+              {loading && <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>}
+              {!loading && loadError && <div className="py-8 text-center text-sm text-rose-600">加载失败：{loadError}</div>}
+              {!loading && !loadError && list.length === 0 && (
+                <div className="py-8 text-center text-sm text-muted-foreground">暂无渠道</div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {list.map((p) => (
                   <div

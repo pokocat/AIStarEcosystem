@@ -462,3 +462,29 @@
 2. 创建入口需写入 `LedgerEntry` 并将 `reference.type='song_generation'` / `reference.id=song.id`；
 3. 发布（released）后触发分发流程（未来对接音乐发行开放平台，以 `artistId` 映射为外部 "歌手"）。
 
+
+## 附录 · AI 生成工作流（创作工坊 LLM Playground · v2.4）
+
+本次 v2.4 落地 StudioPage 的 LLM Playground，新增 `generation` 领域。当前属**纯前端交互模拟**（typewriter + 候选池随机），相关契约钩子已预埋：
+
+**前端类型（新域，OpenAPI 无）**：
+
+| 前端类型 | OpenAPI Schema | 状态 | 说明 |
+|---|---|---|---|
+| `GenerationStage` | ❌ 无 | ❌ 不存在 | 8 值枚举；后端 SSE 事件的 event type 可直接复用 |
+| `GenerationMessage` | ❌ 无 | ❌ 不存在 | 对话气泡；后端建议存入 `aep_generation_message` 审计表 |
+| `GeneratedMusicDraft` | ❌ 无 | ❌ 不存在 | 最终产物结构；`creditsEstimate` 由后端按模型/深度表查得 |
+| `GenerationRequest` / `GenerationResult` | ❌ 无 | ❌ 不存在 | P2 后端对接用 |
+| `GenerationJob`（admin） | ❌ 无 | ❌ 不存在 | 审计实体；P2 建议落表 `aep_generation_job` |
+
+**新增接口（均为预留钩子，前端组件走本地流式模拟，不实际调用）**：
+- `POST /me/generation/run` — 触发一次生成；推荐后端走 SSE / WebSocket 流式回推 `stage` 事件，最后一个事件携带 `draft` payload
+- `GET  /admin/generation/jobs` — 列出全平台生成任务（审计）
+- `GET  /admin/generation/jobs/:id` — 详情
+- `POST /admin/generation/jobs/:id/abort` — 人工中止
+- `POST /admin/generation/jobs/:id/refund` — 退费
+
+**后端实现建议（待办）**：
+1. 模型 × 深度价表由 `/admin/platform/config` 下发，与 `MusicApi.createSong` 的扣费逻辑共用；
+2. 生成流程应在 `accept` 时才落库为 `Song`（与当前前端 `MusicApi.createSong` 对齐），`GenerationJob.resultSongId` 记录落库结果；
+3. 审计日志：每条生成无论是否 accept 都写 `GenerationJob` + `GenerationMessage[]`（含用户 prompt 与模型回写片段），支持合规回溯。

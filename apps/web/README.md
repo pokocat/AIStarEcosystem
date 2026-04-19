@@ -2,8 +2,9 @@
 
 本项目是 Figma Make 原型（导出在 `../../figma/`）的 Next.js 14（App Router）重写版本，与 `apps/web` 并存，共享 `apps/server` 后端。
 
-**当前版本：v2.3.0（2026-04-19）**
-v2.3 音乐工坊 P1：新增歌曲详情抽屉（改标题/曲风/封面/歌词 + 只读扣费信息）、近 30 天播放/收入趋势折线图、已发布歌曲"分发"按钮跳转 `?tab=distribution`。v2.2（2026-04-18）打通了 P0 主动脉：Song 绑定 artistId、"开始创作"→ `MusicGenerationDialog` → `MusicApi.createSong` → 内联试听；Album 降级为"歌手歌单"，Concert 仅保留线上直播占位。见 product_spec.md §10。
+**当前版本：v2.4.0（2026-04-19）**
+v2.4 创作工坊 LLM Playground：新建 `generation` 领域五件套；StudioPage 从 ProducerDashboard 抽离并重写，接入 `AIGenerationPanel`（阶段 stepper + typewriter 流式对话 + 结构化 draft 采纳）；作品列表改为按 `activeArtist.id` 过滤真实 Song；侧栏新增"音乐工坊"入口指向 `MusicBusiness`。
+v2.3（2026-04-19）音乐工坊 P1：新增歌曲详情抽屉（改标题/曲风/封面/歌词 + 只读扣费信息）、近 30 天播放/收入趋势折线图、已发布歌曲"分发"按钮跳转 `?tab=distribution`。v2.2（2026-04-18）打通了 P0 主动脉：Song 绑定 artistId、"开始创作"→ `MusicGenerationDialog` → `MusicApi.createSong` → 内联试听；Album 降级为"歌手歌单"，Concert 仅保留线上直播占位。见 product_spec.md §10。
 自 v2 起，前端以 `src/types/*` 为数据契约的唯一真值源。后端 `specs/openapi.yaml` 与前端的差异记录于 [`specs/FRONTEND_CONTRACT_DIFF.md`](specs/FRONTEND_CONTRACT_DIFF.md)。
 
 ## 快速开始
@@ -129,7 +130,23 @@ import type { Song } from "@/types/music";
 
 ## 版本日志
 
-### v2.3.0 — 2026-04-19（本次）
+### v2.4.0 — 2026-04-19（本次）
+- **创作工坊 LLM Playground**：StudioPage 从 `ProducerDashboard.tsx` 拆出为 `src/components/producer/StudioPage.tsx`，接入新 `AIGenerationPanel`，模拟与大模型对话逐段流式生成数字音乐草案；采纳后走 `MusicApi.createSong` 落库为新 Song。
+- **新增 generation 领域五件套**
+  - `src/types/generation.ts` — `GenerationStage`、`StreamStage`、`GenerationMessage`、`GeneratedMusicDraft`、`GenerationRequest`、`GenerationResult`。
+  - `src/mocks/generation.ts` — `STAGE_SEQUENCE`、`STAGE_SCRIPT`（5 阶段分组脚本，支持 `{{prompt}}` / `{{artist}}` 插值）、`MOCK_DRAFTS`（4 条候选产物）。
+  - `src/constants/generation-ui.ts` — `STAGE_CONFIG`（图标 + 色板）、`STREAM_CHUNK_SIZE`、`STREAM_INTERVAL_MS`、`STAGE_HOLD_MS`、`PRE_ANALYZE_MS`。
+  - `src/api/generation.ts` — `runGeneration(req)` 预埋后端对接锚点（组件侧走 typewriter 本地模拟，未 import）。
+  - `src/api/index.ts` — `export * as GenerationApi from "./generation";`
+- **新增 `src/components/producer/AIGenerationPanel.tsx`**：阶段 stepper、typewriter 吐字、光标闪烁、采纳 / 再生成 / 停止按钮、模型与深度选择（复用 `MODEL_VERSION_OPTIONS` / `THINK_DEPTH_OPTIONS`）。
+- **作品列表真数据驱动**：按 `activeArtist.id` 过滤 `MusicApi.listSongs()` 结果，AI 生成新歌立即 prepend。
+- **ProducerDashboard**：
+  - 删除原 inline `StudioPage`（130 行旧 UI 废弃）。
+  - 侧栏新增 `{ id: 'music', icon: Music, zh: '音乐工坊' }`，挂接 `MusicBusiness`。
+- **admin 镜像** — `apps/admin/src/types/generation.ts`（新增 `GenerationJob` 审计实体：userId/artistId/prompt/status/creditsSpent/resultSongId 等）、`mocks/generation.ts`（4 条覆盖 running/done/aborted/error 的样本）、`api/generation.ts`（`listJobs`、`getJob`、`abortJob`、`refundJob`）、`api/index.ts` 追加 `GenerationApi`。
+- **契约增量**：`POST /me/generation/run`（预留后端钩子）、`GET/POST /admin/generation/jobs[/:id][/abort|/refund]`（admin 审计）。
+
+### v2.3.0 — 2026-04-19
 - **音乐工坊 P1 三件**：（1）歌曲详情抽屉；（2）近 30 天趋势折线图；（3）分发跳转。
 - **types** — `src/types/music.ts` 新增 `MusicTrendPoint`。
 - **mocks** — `src/mocks/music.ts` 新增 `MUSIC_TRENDS_30D`（合成 30 天趋势，周末系数 +25% 作为波动示例）。

@@ -9,8 +9,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MUSIC_GENRES, SONGS } from "@/mocks/music";
-import { MOCK_ARTISTS } from "@/mocks/artists";
+import { listGenres, listSongs } from "@/api/music";
+import { listDigitalIps } from "@/api/digital-ips";
+import type { MusicGenre, Song } from "@/types/music";
+import type { Artist } from "@/types/artist";
 
 const DOMAINS = [
   { id: "music", name: "音乐", icon: "🎵" },
@@ -24,17 +26,37 @@ const DOMAINS = [
 ];
 
 export default function GenresPage() {
+  const [genres, setGenres] = React.useState<MusicGenre[]>([]);
+  const [songs, setSongs] = React.useState<Song[]>([]);
+  const [artists, setArtists] = React.useState<Artist[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      const [g, s, a] = await Promise.all([
+        listGenres().catch(() => [] as MusicGenre[]),
+        listSongs().catch(() => [] as Song[]),
+        listDigitalIps(0, 500).catch(() => [] as Artist[]),
+      ]);
+      if (!active) return;
+      setGenres(g);
+      setSongs(s);
+      setArtists(a);
+    })();
+    return () => { active = false; };
+  }, []);
+
   const genreUsage = React.useMemo(() => {
     const map = new Map<string, number>();
-    SONGS.forEach((s) => map.set(s.genre, (map.get(s.genre) ?? 0) + 1));
+    songs.forEach((s) => map.set(s.genre, (map.get(s.genre) ?? 0) + 1));
     return map;
-  }, []);
+  }, [songs]);
 
   const domainUsage = React.useMemo(() => {
     const map = new Map<string, number>();
-    MOCK_ARTISTS.forEach((a) => a.domains.forEach((d) => map.set(d, (map.get(d) ?? 0) + 1)));
+    artists.forEach((a) => a.domains.forEach((d) => map.set(d, (map.get(d) ?? 0) + 1)));
     return map;
-  }, []);
+  }, [artists]);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -50,10 +72,10 @@ export default function GenresPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="曲风数量" value={MUSIC_GENRES.length} icon={Music2} />
+        <StatCard label="曲风数量" value={genres.length} icon={Music2} />
         <StatCard label="领域数量" value={DOMAINS.length} icon={Layers} />
         <StatCard label="已使用曲风" value={genreUsage.size} icon={Tags} tone="success" />
-        <StatCard label="覆盖艺人数" value={MOCK_ARTISTS.length} icon={Tags} />
+        <StatCard label="覆盖艺人数" value={artists.length} icon={Tags} />
       </section>
 
       <Card>
@@ -63,7 +85,7 @@ export default function GenresPage() {
         <CardContent>
           <Tabs defaultValue="genres">
             <TabsList>
-              <TabsTrigger value="genres">音乐曲风 ({MUSIC_GENRES.length})</TabsTrigger>
+              <TabsTrigger value="genres">音乐曲风 ({genres.length})</TabsTrigger>
               <TabsTrigger value="domains">艺人领域 ({DOMAINS.length})</TabsTrigger>
             </TabsList>
 
@@ -80,7 +102,7 @@ export default function GenresPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {MUSIC_GENRES.map((g) => {
+                  {genres.map((g) => {
                     const used = genreUsage.get(g.name) ?? 0;
                     return (
                       <TableRow key={g.id}>

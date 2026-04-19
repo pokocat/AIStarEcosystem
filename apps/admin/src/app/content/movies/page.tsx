@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { MOVIES } from "@/mocks/film";
+import { listMovies } from "@/api/film";
 import { MOVIE_STATUS } from "@/constants/status";
 import type { Movie } from "@/types/film";
 import { formatCompactNumber, formatCredits } from "@/lib/format";
@@ -17,13 +17,31 @@ import { formatCompactNumber, formatCredits } from "@/lib/format";
 const ROLE_LABEL: Record<string, string> = { lead: "主角", supporting: "配角", cameo: "客串" };
 
 export default function MoviesPage() {
+  const [movies, setMovies] = React.useState<Movie[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<Movie | null>(null);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listMovies();
+        if (active) setMovies(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const counts = {
-    total: MOVIES.length,
-    released: MOVIES.filter((m) => m.status === "released").length,
-    postProd: MOVIES.filter((m) => m.status === "post-production").length,
-    totalBox: MOVIES.reduce((s, m) => s + (m.boxOffice ?? 0), 0),
+    total: movies.length,
+    released: movies.filter((m) => m.status === "released").length,
+    postProd: movies.filter((m) => m.status === "post-production").length,
+    totalBox: movies.reduce((s, m) => s + (m.boxOffice ?? 0), 0),
   };
 
   return (
@@ -57,7 +75,16 @@ export default function MoviesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {MOVIES.map((m) => (
+              {loading && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && movies.length === 0 && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无片目</TableCell></TableRow>
+              )}
+              {!loading && !loadError && movies.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="font-medium">{m.title}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{m.genre}</TableCell>

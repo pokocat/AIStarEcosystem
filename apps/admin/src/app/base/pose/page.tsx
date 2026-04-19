@@ -14,7 +14,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
 import { POSE_DIFFICULTY } from "@/constants/status";
-import { POSE_DATABASE, EXPRESSION_DATABASE, GESTURE_DATABASE } from "@/mocks/pose";
 import type { PoseCategory, Pose, Expression, Gesture, SaleStatus } from "@/types/pose";
 import { PoseApi, StoreApi } from "@/api";
 
@@ -40,9 +39,9 @@ type EditTarget =
 
 export default function PosePage() {
   const [poseCat, setPoseCat] = React.useState<PoseCategory | "all">("all");
-  const [poses, setPoses] = React.useState<Pose[]>(POSE_DATABASE);
-  const [expressions, setExpressions] = React.useState<Expression[]>(EXPRESSION_DATABASE);
-  const [gestures, setGestures] = React.useState<Gesture[]>(GESTURE_DATABASE);
+  const [poses, setPoses] = React.useState<Pose[]>([]);
+  const [expressions, setExpressions] = React.useState<Expression[]>([]);
+  const [gestures, setGestures] = React.useState<Gesture[]>([]);
 
   const [editing, setEditing] = React.useState<EditTarget | null>(null);
   const [editPrice, setEditPrice] = React.useState<string>("0");
@@ -56,9 +55,9 @@ export default function PosePage() {
       PoseApi.listExpressions().catch(() => [] as Expression[]),
       PoseApi.listGestures().catch(() => [] as Gesture[]),
     ]).then(([p, e, g]) => {
-      if (p.length > 0) setPoses(p);
-      if (e.length > 0) setExpressions(e);
-      if (g.length > 0) setGestures(g);
+      setPoses(p);
+      setExpressions(e);
+      setGestures(g);
     });
   }, []);
 

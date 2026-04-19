@@ -9,19 +9,37 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { DRAMAS } from "@/mocks/film";
+import { listDramas } from "@/api/film";
 import { DRAMA_STATUS } from "@/constants/status";
 import type { Drama } from "@/types/film";
 import { formatCompactNumber, formatCredits } from "@/lib/format";
 
 export default function DramasPage() {
+  const [dramas, setDramas] = React.useState<Drama[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ drama: Drama; action: "approve" | "reject" } | null>(null);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listDramas();
+        if (active) setDramas(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const counts = {
-    total: DRAMAS.length,
-    released: DRAMAS.filter((d) => d.status === "released").length,
-    postProd: DRAMAS.filter((d) => d.status === "post-production").length,
-    totalViews: DRAMAS.reduce((s, d) => s + d.views, 0),
+    total: dramas.length,
+    released: dramas.filter((d) => d.status === "released").length,
+    postProd: dramas.filter((d) => d.status === "post-production").length,
+    totalViews: dramas.reduce((s, d) => s + d.views, 0),
   };
 
   return (
@@ -56,7 +74,16 @@ export default function DramasPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {DRAMAS.map((d) => (
+              {loading && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && dramas.length === 0 && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">暂无剧目</TableCell></TableRow>
+              )}
+              {!loading && !loadError && dramas.map((d) => (
                 <TableRow key={d.id}>
                   <TableCell className="font-medium">{d.title}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{d.genre}</TableCell>

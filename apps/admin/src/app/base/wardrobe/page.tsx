@@ -14,7 +14,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ARTIST_QUALITY } from "@/constants/status";
-import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
 import type { ClothingCategory, ClothingItem, SaleStatus } from "@/types/wardrobe";
 import { WardrobeApi, StoreApi } from "@/api";
 
@@ -51,7 +50,7 @@ const SALE_TONE: Record<SaleStatus, React.ComponentProps<typeof Badge>["tone"]> 
 export default function WardrobePage() {
   const [cat, setCat] = React.useState<ClothingCategory | "all">("all");
   const [query, setQuery] = React.useState("");
-  const [items, setItems] = React.useState<ClothingItem[]>(CLOTHING_DATABASE);
+  const [items, setItems] = React.useState<ClothingItem[]>([]);
   const [editing, setEditing] = React.useState<ClothingItem | null>(null);
   const [editPrice, setEditPrice] = React.useState<string>("0");
   const [editStatus, setEditStatus] = React.useState<SaleStatus>("FREE");
@@ -60,8 +59,8 @@ export default function WardrobePage() {
 
   React.useEffect(() => {
     WardrobeApi.listClothing()
-      .then((list) => { if (list && list.length > 0) setItems(list); })
-      .catch(() => { /* 沿用 mock */ });
+      .then((list) => setItems(list ?? []))
+      .catch(() => { /* ignore */ });
   }, []);
 
   const list = items.filter((c) => {

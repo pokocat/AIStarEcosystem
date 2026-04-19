@@ -9,19 +9,37 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { ADS } from "@/mocks/film";
+import { listAds } from "@/api/film";
 import { AD_STATUS } from "@/constants/status";
 import type { Advertisement } from "@/types/film";
 import { formatCompactNumber, formatCredits } from "@/lib/format";
 
 export default function AdsPage() {
+  const [ads, setAds] = React.useState<Advertisement[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [target, setTarget] = React.useState<{ ad: Advertisement; action: "approve" | "reject" } | null>(null);
 
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listAds();
+        if (active) setAds(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const counts = {
-    total: ADS.length,
-    negotiating: ADS.filter((a) => a.status === "negotiating").length,
-    completed: ADS.filter((a) => a.status === "completed").length,
-    totalPayCredits: ADS.reduce((s, a) => s + a.payment, 0),
+    total: ads.length,
+    negotiating: ads.filter((a) => a.status === "negotiating").length,
+    completed: ads.filter((a) => a.status === "completed").length,
+    totalPayCredits: ads.reduce((s, a) => s + a.payment, 0),
   };
 
   return (
@@ -56,7 +74,16 @@ export default function AdsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ADS.map((a) => (
+              {loading && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && ads.length === 0 && (
+                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">暂无广告合约</TableCell></TableRow>
+              )}
+              {!loading && !loadError && ads.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell className="font-medium">{a.brand}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{a.product}</TableCell>

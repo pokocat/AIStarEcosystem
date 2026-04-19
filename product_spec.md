@@ -668,6 +668,60 @@ P4 交付时下述页面与常量已从 admin-new 移除（替代路径在括号
 - `/finance/settlement`（→ `/finance/ledger`，从「元」切到 credits）
 - `types/settings.ts` 中的 `SubscriptionPlan` / `BillingRecord`；`types/finance.ts` 中的 `WalletSummary`（迁至 `types/wallet.ts`）。
 
+### 9.7 Admin 后端接口清单（`/api/admin/**`）
+
+后端 `apps/server` 现已与 `apps/admin` 1:1 落齐。除 `/auth` 登录外，下列接口均需 Bearer Token（`PLATFORM_OPERATOR` / `FINANCE_ADMIN`）。**列表响应走 `PageEnvelope`，单体/命令响应走 `ApiResponse`**（见 §6.4）。
+
+| 路由前缀                              | Controller                         | 对应 admin 页面 / API 客户端                          |
+| ------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
+| `POST /admin/auth/login`              | `AdminAuthController`              | 登录页 / `api/auth.ts`                                |
+| `GET /admin/auth/me`                  | `AdminAuthController`              | 全局守卫                                              |
+| `GET /admin/stats`                    | `AdminStatsController`             | 首页看板 / `api/stats.ts`                             |
+| `GET·POST·PUT·PATCH·DELETE /admin/users/**` | `AdminUserController`         | `/platform/accounts` / `api/users.ts`                 |
+| `GET·POST·PUT·PATCH /admin/tenants/**`| `AdminTenantController`            | `/platform/tenants` / `api/tenants.ts`                |
+| `GET /admin/memberships`              | `AdminMembershipController`        | `/platform/accounts` 归属列 / `api/tenants.ts`        |
+| `GET·POST·PUT·PATCH /admin/studios/**`| `AdminStudioController`            | `/platform/studios` / `api/studios.ts`                |
+| `GET·POST /admin/license-batches/**`<br>`GET·PUT /admin/license-keys/**` | `AdminLicenseController` | `/platform/licenses` / `api/licenses.ts` |
+| `GET /admin/wallets/**`<br>`GET /admin/ledger-entries` | `AdminCreditController` | `/finance/ledger` 钱包与点数流水 / `api/wallet.ts`     |
+| `GET /admin/finance/transactions`<br>`GET /admin/finance/revenue/monthly`<br>`GET /admin/finance/revenue/sources` | `AdminFinanceController` | `/finance/ledger` 业务交易 + 图表 / `api/finance.ts` |
+| `GET·POST /admin/music/**`            | `AdminMusicController`             | `/content/songs` / `api/music.ts`                     |
+| `GET·POST·PUT·PATCH·DELETE /admin/digital-ips/**` | `AdminDigitalIpController` | `/artists/roster` / `api/digital-ips.ts`           |
+| `GET·PUT /admin/community/**`         | `AdminCommunityController`         | `/community/*` / `api/community.ts`                   |
+| `GET·POST /admin/distribution/**`     | `AdminDistributionController`      | `/distribution/*` / `api/distribution.ts`             |
+| `GET·POST·DELETE /admin/store/**`     | `AdminStoreController`             | `/monetization/nft` 等 / `api/store.ts`               |
+| `GET·POST·DELETE /admin/fan/**`       | `AdminFanController`               | `/community/*` 粉丝子域 / `api/fan.ts`                |
+| `GET·POST /admin/film/**`             | `AdminFilmController`              | `/content/{dramas,movies,ads,voice}` / `api/film.ts`  |
+| `GET·POST /admin/coach/**`            | `AdminCoachController`             | 教练/培训子域 / `api/coach.ts`                        |
+| `GET·POST /admin/appearance-forge/**` | `AdminForgeController`             | 形象工坊 / `api/appearance-forge.ts`                  |
+| `GET·POST·PUT /admin/settings/**`     | `AdminSettingsController`          | `/platform/config` / `api/settings.ts`                |
+| `GET·POST·PUT /admin/platform-configs/**` | `AdminPlatformConfigController` | `/platform/config` 次级 / `api/platform-config.ts`   |
+| `GET /admin/audit-logs`               | `AdminAuditController`             | `/audit` / `api/audit.ts`                             |
+| `GET /admin/notifications`            | `AdminNotificationController`      | `/notifications` / `api/notifications.ts`             |
+| `GET·POST·DELETE /admin/staff/**`     | `AdminStaffController`             | 运营团队（P2）                                        |
+
+**Studio 聚合指标**：`GET /admin/studios` 返回 `AdminStudioDto`（`StudioDto` 外挂 `artistCount / songCount / totalRevenueCredits / monthlyRevenueCredits`），聚合由 `StudioService.toAdminDto` 以 `studioId → List<DigitalIp>` 汇总 `stat*` 字段；若 `DigitalIp.studioId` 为空则 fallback 到 `ownerUserId` 匹配（兼容旧数据）。`PUT` 返回基础 `StudioDto`，不含聚合字段。
+
+**Admin Finance 聚合**（`AdminFinanceService`）：以 `LedgerEntry` 事实表为唯一来源，只读派生。
+
+| 视图          | 来源                                          | 规则                                                                 |
+| ------------- | --------------------------------------------- | -------------------------------------------------------------------- |
+| 业务交易列表   | `LedgerEntry` 倒序，支持 `userId` 过滤        | `type` 按 `LedgerEntryType` 映射为 `license_grant / recharge / withdrawal / spend / income`（`FREEZE` 归 `spend`；`GIFT/REFUND/UNFREEZE/ADJUST` 归 `income`）；`status` 始终 `completed`（事实表无生命周期） |
+| 月度入账趋势   | `findAllPositiveSince(T-5月1日)`              | 按 `yyyy-MM`（Asia/Shanghai）分桶，补齐 6 个月，缺失桶填 0            |
+| 入账来源饼图   | `aggregateIncomeByTypeAll()`                  | 按 `entryType` 聚合，只返回 `sum > 0` 的桶；`label/color` 映射见下   |
+
+`RevenueSource` 映射约定（与 `RevenueSourcePie` 的 tailwind 语义色对齐）：
+
+| entryType       | label      | color     |
+| --------------- | ---------- | --------- |
+| `LICENSE_GRANT` | 秘钥核销   | `#6366f1` |
+| `RECHARGE`      | 充值       | `#10b981` |
+| `INCOME`        | 业务收益   | `#f59e0b` |
+| `GIFT`          | 平台赠送   | `#ec4899` |
+| `REFUND`        | 退款       | `#94a3b8` |
+| `ADJUST`        | 调账       | `#64748b` |
+
+> 业务交易复核需要独立的「pending/processing/completed」状态机时，应在 Ledger 外引入单独的 `Transaction` 事实表，本接口不承担该生命周期。
+
 ---
 
 ## 10. 音乐工坊 产品逻辑（Music Workshop）
@@ -793,3 +847,114 @@ P2（待 admin 工作流计费配置上线后）：
 - [x] **D10.3**：创作扣费 = 工作流计费配置表驱动，admin 可改；MVP 用随机占位值
 - [x] **D10.4**：Album 降级为"AI 歌手歌单 / 合集"，**取消** 专辑发行生命周期与销售字段
 - [x] **D10.5**：Concert 本阶段不做深度运营；保留字段但前端 UI 降级为占位
+
+---
+
+## 11. 经纪公司视角登录 & 签约艺人从属（2026-04-19）
+
+Web 端此前无任何登录入口，`ProducerDashboard` 以硬编码 `MOCK_ARTISTS[0]` 作为当前艺人；一旦后端接入真实数据（空列表或缺少归属），「创作工坊 → 采纳入库」会报 `artistId 必填`。本节把三端对"经纪公司 ↔ 签约艺人"这一从属关系的处理对齐。
+
+### 11.1 核心概念
+
+一个 **登录账户 (AepUser, kind=STUDIO)** 对应 **一家经纪公司 (Studio)**（1:1，`Studio.ownerUserId → AepUser.id`）。
+
+一位 **AI 艺人 (DigitalIp)** 挂在一家经纪公司旗下，由两条外键共同表达：
+
+| 字段 | 约束 | 语义 |
+|------|------|------|
+| `DigitalIp.ownerUserId` | NOT NULL | 最初创建/拥有该艺人的账户。ownership 的最终裁判。 |
+| `DigitalIp.studioId`   | nullable | 当前签约的 Studio（便于 MCN 下艺人集中管理）。 |
+
+"我的签约艺人" = `ownerUserId == me.id ∪ studioId == myStudio.id`，去重后按 `createdAt desc`。admin 侧 `AdminDigitalIpController` 已支持按 `?ownerUserId` / `?studioId` 过滤，web 侧以联合口径返回给登录用户。
+
+### 11.2 后端契约
+
+| 端点 | 方法 | 用途 | Profile |
+|------|------|------|---------|
+| `/api/auth/dev-accounts` | GET  | 返回可选 STUDIO 账号列表（下拉）：`[ { username, displayName, studioName, studioKind } ]` | `dev` 专用 |
+| `/api/auth/dev-login`    | POST | body `{ username? }`（缺省选第一位 STUDIO）免密签发 JWT：`{ token, user: MeDto }` | `dev` 专用 |
+| `/api/me`                | GET  | 返回 `MeDto` = AepUserDto 全字段 **+ `studio: StudioDto \| null`** | 全 profile |
+| `/api/me`                | PATCH| 同上；可更新 displayName/email/bio/phone/avatarUrl/langPreference | 全 profile |
+| `/api/me/digital-ips`    | GET  | 经纪公司签约艺人列表（`ownerUserId==me ∪ studioId==myStudio.id`） | 全 profile |
+
+**MeDto** 字段结构（`com.aistareco.aep.dto.MeDto`）：
+
+```json
+{
+  "id": "u-xxx",
+  "username": "studio_starlight",
+  "displayName": "星光经纪",
+  "kind": "studio",
+  "status": "active",
+  "bio": "...", "email": "...", "phone": "...", "avatarUrl": "...",
+  "emailVerified": true, "phoneVerified": true,
+  "langPreference": "zh",
+  "createdAt": "...", "updatedAt": "...", "lastLoginAt": "...",
+  "studio": {
+    "id": "s-xxx", "ownerUserId": "u-xxx",
+    "name": "星光工作室", "kind": "agency", "status": "active",
+    "bio": "...", "logoUrl": "...", "contactEmail": "...", "contactPhone": "...",
+    "createdAt": "...", "updatedAt": "..."
+  }
+}
+```
+
+**Dev profile 安全约束**：
+
+- `DevAuthController` 带 `@Profile("dev")`，生产 profile（`prod`/`mysql`）下该 Bean 不注入，端点自动 404。
+- 该端点**完全跳过密码**，仅用于本地联调与演示。接入正式鉴权需改走 LicenseActivation 流程或引入标准的账号密码登录。
+- 已有的 `DevAutoAuthFilter`（dev profile）作为兜底：未带 `Authorization` 时自动选取第一位 STUDIO 用户。手动登录（带 JWT）会短路此 filter。
+
+**种子数据** (`DataInitializer`，`dev` profile 首次启动自动播)：
+
+| username | 显示名 | Studio | 签约艺人 |
+|----------|--------|--------|----------|
+| `studio_starlight` | 星光经纪 | 星光工作室（kind=`agency`）     | 星野瞳（singer）/ 夏栖羽（idol）/ 林夜川（actor） |
+| `agency_moonrise`  | 月升经纪 | 月升传媒（kind=`mcn`）           | 苏安歌（all_rounder）/ 白予辰（host）/ 米可乐（entertainer） |
+| `fan_luna`         | Luna 粉丝 | —（kind=`personal` 非 STUDIO） | — |
+
+### 11.3 前端契约
+
+**Web 端（`apps/web`）**
+
+| 模块 | 变更 |
+|------|------|
+| `api/_client.ts`           | `apiFetch` 注入 `Authorization: Bearer <token>`（localStorage key = `aistareco.auth.token`）；HTTP 401 自动清 token 并走注册的回调（推 `/login`）。新增 `getAuthToken / setAuthToken / registerUnauthorizedHandler` 工具。 |
+| `api/auth.ts`              | 新增 `listDevAccounts()` / `devLogin(username?)` / `logout()`；`devLogin` 成功后把 token 写入 localStorage。 |
+| `lib/auth-context.tsx`     | 新增 `<AuthProvider>` + `useAuth()`：启动读 token → `AccountApi.getMe()` → 把 `user` 放到 context；401 → 清 token → 推 `/login`。 |
+| `app/login/page.tsx`       | 新增登录页：下拉选择经纪公司账号 → 点击「登录进入」→ 调 `devLogin` → 跳 `/producer`。 |
+| `types/account.ts`         | `AepUser` 新增可选 `studio?: Studio \| null`；与 `types/studio.ts` 的 Studio / StudioKind 保持一致。 |
+| `types/studio.ts`          | 新增 `STUDIO_KIND_LABEL_ZH`（6 种 Studio kind → 中文名）。 |
+| `components/ProducerDashboard.tsx` | 移除 `useState<Artist>(MOCK_ARTISTS[0])` 硬编码；改为 `ArtistsApi.listArtists()` 驱动 `artists` 列表，`activeArtist` 初始取第一位；左上切换器、`CommandPalette`、右上当前艺人胸牌全部读同一 state；无签约艺人时展示空态（提示去 MCN 创建或联系运营）。 |
+| `components/producer/AIGenerationPanel.tsx` | `accept()` 增加 `artistId` 空值守卫；"采纳并入库"按钮在无 artistId 时 disabled。彻底解决"当前未选艺人 → 后端 400 artistId 必填"那条链路。 |
+| `components/producer/SettingsPage.tsx`       | 个人资料页顶部新增「经纪公司资料」卡片：显示 studio 名 / kind（中文 badge）/ status / id / 运营账户 / 联系邮箱 / 成立时间 / 简介。只读（修改需走 admin 控制台）。 |
+
+**登录后流程**（USE_MOCK=0）：
+
+```
+用户访问 /producer (未登录)
+  → AuthProvider 见无 token → 推 /login
+  → 拉 GET /api/auth/dev-accounts → 渲染下拉
+  → 用户点「登录进入」→ POST /api/auth/dev-login { username }
+  → 后端签 JWT，前端 setAuthToken
+  → 跳 /producer
+  → AuthProvider 调 AccountApi.getMe() 拿到 user + studio
+  → ProducerDashboard 调 ArtistsApi.listArtists() 拿到签约艺人
+  → activeArtist 初始化为第一位；左上 / 右上 / 工坊全局一致
+```
+
+### 11.4 三端数据模型对齐（amend §9.3）
+
+| 领域 | web types | web api | server DTO | server 路径 |
+|------|-----------|---------|------------|-------------|
+| me（含 studio 嵌入） | `AepUser.studio?: Studio` | `AccountApi.getMe()` | `MeDto`（AepUserDto + StudioDto） | `GET /api/me` |
+| dev 登录 | `AuthApi.devLogin() / listDevAccounts()` | `DevLoginResult / DevAccount` | `DevAuthController`（@Profile("dev")） | `POST /api/auth/dev-login`, `GET /api/auth/dev-accounts` |
+| 经纪公司签约艺人 | `ArtistsApi.listArtists()` | `Artist[]` | `List<DigitalIpDto>`（`DigitalIpService.listForUser`） | `GET /api/me/digital-ips` |
+
+### 11.5 决策记录
+
+- [x] **D11.1**：dev-login 仅在 `dev` profile 启用；生产 profile Bean 不注入，端点 404。演示部署若需保留，应显式打开；正式上线前必须切换为真登录。
+- [x] **D11.2**：`/api/me` 返回嵌套 `studio`（而非另开 `/api/me/studio`）；原因：前端每次 `useAuth()` 都希望一次性拿到经纪公司档案，减少请求数与竞态。
+- [x] **D11.3**：`/api/me/digital-ips` 改为 `ownerUserId ∪ studioId` 联合列表，**不分页**（MVP 单工作室艺人数量不大，未来按需切 Page）。
+- [x] **D11.4**：StudioPage 的采纳按钮在无 artistId 时 disabled；根本原因是空列表场景下的兜底，不再让用户踩到 `artistId 必填` 的后端错误。
+- [x] **D11.5**：Studio 档案修改入口统一走 admin 控制台。用户侧 `SettingsPage` 只读展示（修改 displayName/email/phone/bio 等个人字段仍走 `PATCH /api/me`）。

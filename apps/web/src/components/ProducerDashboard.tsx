@@ -27,10 +27,13 @@ import { CopyrightPage } from "./producer/CopyrightPage";
 import { CommunityPage } from "./producer/CommunityPage";
 import { FinancePage } from "./producer/FinancePage";
 import { SettingsPage } from "./producer/SettingsPage";
+import { MusicBusiness } from "./MusicBusiness";
+import { StudioPage } from "./producer/StudioPage";
 import { NotificationPanel } from "./producer/NotificationPanel";
 import { INITIAL_NOTIFICATIONS } from "@/mocks/notifications";
 import type { Notification } from "@/types/notification";
-import { NotificationsApi, AccountApi } from "@/api";
+import { NotificationsApi, AccountApi, ArtistsApi } from "@/api";
+import { useAuth } from "@/lib/auth-context";
 import { Bell, Coins } from 'lucide-react';
 import { formatCredits } from "@/lib/format";
 import type { Wallet as WalletSnapshot } from "@/types/wallet";
@@ -88,6 +91,7 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
     title: { zh: '内容创作', en: 'Creation' },
     items: [
       { id: 'studio', icon: Music, zh: '创作工坊', en: 'Workshop', dynamicLabel: true },
+      { id: 'music', icon: Music, zh: '音乐工坊', en: 'Music Workshop' },
       { id: 'copyright', icon: Shield, zh: '版权资产', en: 'Copyright' },
     ]
   },
@@ -311,144 +315,19 @@ const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: L
   );
 };
 
-/* ======== Studio Page (dynamic by artist type) ======== */
-const StudioPage = ({ lang, activeArtist, selectedTrackId, onClearSelection }: { lang: Lang; activeArtist: Artist; selectedTrackId: number | null; onClearSelection: () => void }) => {
-  const zh = lang === 'zh';
-  const t = TRANSLATIONS[lang].producer.studio;
-  const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
-  const workshopName = zh ? typeConf.workshop.zh : typeConf.workshop.en;
-  const selectedTrack = selectedTrackId ? TRACKS.find(t => t.id === selectedTrackId) : null;
-
-  return (
-    <div className="space-y-6">
-      {selectedTrack && (
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 rounded-xl p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-4 min-w-0">
-              <div className="w-12 h-12 rounded-lg bg-cyan-500/20 flex items-center justify-center shrink-0">
-                <Music className="w-5 h-5 text-cyan-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-lg font-bold truncate">{selectedTrack.title}</div>
-                <div className="text-xs text-gray-400 mt-1 flex flex-wrap gap-x-3">
-                  <span>{zh ? '状态' : 'Status'}: <Badge className={`text-[10px] ml-1 ${
-                    selectedTrack.status === 'Published' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                    selectedTrack.status === 'Draft' ? 'bg-gray-500/10 text-gray-400 border-gray-500/20' :
-                    'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                  }`}>{selectedTrack.status}</Badge></span>
-                  <span>{zh ? '播放量' : 'Plays'}: <span className="text-white">{selectedTrack.plays}</span></span>
-                  <span>{zh ? '收入' : 'Revenue'}: <span className="text-white">{selectedTrack.revenue}</span></span>
-                  <span>{zh ? '日期' : 'Date'}: <span className="text-white">{selectedTrack.date}</span></span>
-                </div>
-              </div>
-            </div>
-            <button onClick={onClearSelection} className="text-gray-500 hover:text-white transition shrink-0">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </motion.div>
-      )}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{workshopName}</h1>
-          <p className="text-gray-400 font-light mt-1 flex items-center gap-2">
-            <span className="text-lg">{typeConf.icon}</span>
-            {zh ? `${ARTIST_TYPE_LABELS[activeArtist.type].zh}专属创作工坊` : `${ARTIST_TYPE_LABELS[activeArtist.type].en} Exclusive Workshop`}
-          </p>
-        </div>
-        <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2"><Sparkles className="w-4 h-4" /> {t.generate_btn}</Button>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Templates */}
-        <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '可用模板' : 'Templates'}</h3>
-          <div className="space-y-2">
-            {(zh ? typeConf.templates.zh : typeConf.templates.en).map((tmpl, i) => (
-              <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * .05 }}
-                className="flex items-center justify-between p-3 rounded-lg border border-white/5 hover:border-cyan-500/20 transition cursor-pointer group">
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg ${typeConf.bgColor} flex items-center justify-center`}>
-                    <span className="text-sm">{typeConf.icon}</span>
-                  </div>
-                  <span className="text-sm font-medium">{tmpl}</span>
-                </div>
-                <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition text-cyan-400 text-xs">
-                  {zh ? '使用' : 'Use'} <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick gen */}
-        <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{t.quick_gen}</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{zh ? '内容名称' : 'Content Name'}</label>
-              <input className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none transition" placeholder={zh ? '输入名称...' : 'Enter name...'} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{zh ? '内容格式' : 'Format'}</label>
-              <div className="flex flex-wrap gap-2">
-                {(zh ? typeConf.contentFormats.zh : typeConf.contentFormats.en).map(f => (
-                  <button key={f} className="px-3 py-1.5 text-xs border border-white/10 rounded-full text-gray-400 hover:border-cyan-500/30 hover:text-cyan-400 transition font-medium">{f}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{zh ? '创作描述' : 'Description'}</label>
-              <textarea className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none transition h-28 resize-none"
-                placeholder={zh ? '描述你想创作的内容...' : 'Describe what you want to create...'} />
-            </div>
-            <Button className="w-full bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 h-11 gap-2">
-              <Sparkles className="w-4 h-4" /> {t.generate_btn}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Existing tracks */}
-      <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-        <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '作品列表' : 'Works List'}</h3>
-        <div className="space-y-2">
-          {TRACKS.map((track, i) => (
-            <motion.div key={track.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * .05 }}
-              className={`flex items-center justify-between p-3 rounded-lg transition cursor-pointer group border ${
-                track.id === selectedTrackId
-                  ? 'bg-cyan-500/10 border-cyan-500/30'
-                  : 'border-transparent hover:bg-white/[0.03] hover:border-white/5'
-              }`}>
-              <div className="flex items-center gap-3">
-                <button className="w-8 h-8 rounded-full bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition">
-                  <Play className="w-3.5 h-3.5 text-cyan-400 ml-0.5" />
-                </button>
-                <div>
-                  <div className="text-sm font-semibold">{track.title}</div>
-                  <div className="text-xs text-gray-500 font-light">{track.date} · {track.plays} {zh ? '播放' : 'plays'}</div>
-                </div>
-              </div>
-              <Badge className={`text-xs ${
-                track.status === 'Published' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                track.status === 'Draft' ? 'bg-gray-500/10 text-gray-400 border-gray-500/20' :
-                'bg-amber-500/10 text-amber-400 border-amber-500/20'
-              }`}>{track.status}</Badge>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
+// StudioPage 已拆分至 ./producer/StudioPage.tsx（LLM Playground + 真实歌曲列表）
 
 /* ======== Main Dashboard ======== */
 const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; lang: Lang; setLang: (l: Lang) => void }) => {
   const zh = lang === 'zh';
   const { theme } = useTheme();
   const themeStyles = themeConfig[theme].sidebar;
-  const [activeArtist, setActiveArtist] = useState<Artist>(MOCK_ARTISTS[0]);
+  const { user, logout: authLogout } = useAuth();
+  // 艺人列表 = 当前经纪公司名下签约艺人（ownerUserId OR studioId == myStudio.id）
+  // 由后端 GET /api/me/digital-ips 驱动；USE_MOCK=1 时 api 层回退到 mocks/artists.ts。
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [artistsLoading, setArtistsLoading] = useState(true);
+  const [activeArtist, setActiveArtist] = useState<Artist | null>(null);
   const [activePage, setActivePage] = usePageParam<string>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebar, setMobileSidebar] = useState(false);
@@ -466,6 +345,24 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
       .catch(() => { /* 钱包未开通或接口失败，保持占位 */ });
     return () => { cancelled = true; };
   }, []);
+
+  // 拉取经纪公司签约艺人列表。activeArtist 初始取第一位（列表为空即 null）。
+  useEffect(() => {
+    let cancelled = false;
+    setArtistsLoading(true);
+    ArtistsApi.listArtists()
+      .then(list => {
+        if (cancelled) return;
+        setArtists(list);
+        setActiveArtist(prev => {
+          if (prev && list.some(a => a.id === prev.id)) return prev;
+          return list[0] ?? null;
+        });
+      })
+      .catch(() => { /* 静默失败，artists 保持空 */ })
+      .finally(() => { if (!cancelled) setArtistsLoading(false); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   // 加载真实通知。成功即以后端数据为准（即使为空），避免残留 mock ID 触发 404。
   useEffect(() => {
@@ -492,11 +389,11 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
+  const typeConf = activeArtist ? ARTIST_TYPE_CONFIG[activeArtist.type] : null;
 
   // Dynamic sidebar label for workshop
   const getSidebarLabel = (item: { id: string; zh: string; en: string; dynamicLabel?: boolean }) => {
-    if (item.dynamicLabel) {
+    if (item.dynamicLabel && typeConf) {
       return zh ? typeConf.workshop.zh : typeConf.workshop.en;
     }
     return zh ? item.zh : item.en;
@@ -504,7 +401,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
 
   // Dynamic workshop icon
   const getIcon = (item: { id: string; icon: any }) => {
-    if (item.id === 'studio') {
+    if (item.id === 'studio' && activeArtist) {
       const iconMap: Record<ArtistType, any> = {
         singer: Music, actor: Film, entertainer: Tv, dancer: Star,
         host: Mic, all_rounder: Layers, idol: Heart,
@@ -519,19 +416,51 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     setActivePage('studio');
   };
 
+  // 需要 activeArtist 的页面在无签约艺人时显示友好空状态。
+  const noArtistState = (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
+      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border-2 border-cyan-500/30 flex items-center justify-center mb-4">
+        <Users className="w-7 h-7 text-cyan-300" />
+      </div>
+      <h2 className="text-xl font-bold mb-2" style={{ fontFamily: "var(--font-display)" }}>
+        {artistsLoading ? '载入签约艺人中...' : '当前经纪公司暂无签约艺人'}
+      </h2>
+      <p className="text-sm text-gray-400 max-w-md mb-5 font-light">
+        {artistsLoading
+          ? '正在从后端拉取 /api/me/digital-ips，请稍候。'
+          : '请先在「MCN与孵化」里创建一位 AI 艺人；或联系平台运营将现有艺人归属到当前 studio。'}
+      </p>
+      {!artistsLoading && (
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setActivePage('artists')} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90">
+            进入艺人管理
+          </Button>
+          <Button variant="outline" onClick={() => setActivePage('incubator')} className="border-white/10">
+            开启 AI 孵化向导
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   const renderPage = () => {
+    // settings 和 artists/incubator 不依赖 activeArtist
+    if (activePage === 'settings') return <SettingsPage lang={lang} setLang={setLang} />;
+    if (activePage === 'artists') return <MCNMatrix lang={lang} onCreateArtist={() => setActivePage('incubator')} />;
+    if (activePage === 'incubator') return <IncubationWizard lang={lang} onClose={() => setActivePage('artists')} onCreated={() => setActivePage('artists')} />;
+
+    if (!activeArtist) return noArtistState;
+
     switch (activePage) {
       case 'overview': return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} onOpenTrack={openTrack} />;
-      case 'artists': return <MCNMatrix lang={lang} onCreateArtist={() => setActivePage('incubator')} />;
-      case 'incubator': return <IncubationWizard lang={lang} onClose={() => setActivePage('artists')} onCreated={() => setActivePage('artists')} />;
       case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} selectedTrackId={selectedTrackId} onClearSelection={() => setSelectedTrackId(null)} />;
+      case 'music': return <MusicBusiness lang={lang} artist={{ id: activeArtist.id, name: activeArtist.name, avatar: activeArtist.avatar }} onBack={() => setActivePage('overview')} />;
       case 'appearance': return <AppearanceForge lang={lang} activeArtist={activeArtist} />;
       case 'wardrobe': return <WardrobePage lang={lang} activeArtist={activeArtist} />;
       case 'distribution': return <DistributionPage lang={lang} activeArtist={activeArtist} />;
       case 'copyright': return <CopyrightPage lang={lang} activeArtist={activeArtist} />;
       case 'community': return <CommunityPage lang={lang} activeArtist={activeArtist} />;
       case 'finance': return <FinancePage lang={lang} activeArtist={activeArtist} />;
-      case 'settings': return <SettingsPage lang={lang} setLang={setLang} />;
       default: return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} onOpenTrack={openTrack} />;
     }
   };
@@ -555,30 +484,51 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
         {isMobile && <button onClick={() => setMobileSidebar(false)} className="ml-auto"><X className="w-5 h-5 text-gray-400" /></button>}
       </div>
 
-      {/* Active artist switcher */}
+      {/* Active artist switcher — 数据源：GET /api/me/digital-ips（经纪公司签约艺人列表） */}
       {(sidebarOpen || isMobile) && (
         <div className="px-3 py-3 border-b border-white/5 relative">
-          <button onClick={() => setShowArtistSwitcher(!showArtistSwitcher)}
-            className="w-full flex items-center gap-3 p-2 rounded-lg bg-white/[0.03] cursor-pointer hover:bg-white/[0.06] transition">
-            <div className="relative">
-              <img src={activeArtist.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-cyan-500/20" />
-              <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[8px]`}>{typeConf.icon}</div>
-            </div>
-            <div className="flex-1 min-w-0 text-left">
-              <div className="text-sm font-semibold truncate">{activeArtist.name}</div>
-              <div className="text-[10px] text-gray-500 flex items-center gap-1">
-                {zh ? ARTIST_TYPE_LABELS[activeArtist.type].zh : ARTIST_TYPE_LABELS[activeArtist.type].en}
-                <span className="text-cyan-400">Lv.{activeArtist.level}</span>
-              </div>
-            </div>
-            <ChevronDown className={`w-3 h-3 text-gray-500 transition ${showArtistSwitcher ? 'rotate-180' : ''}`} />
+          <button
+            onClick={() => activeArtist && setShowArtistSwitcher(!showArtistSwitcher)}
+            disabled={!activeArtist}
+            className="w-full flex items-center gap-3 p-2 rounded-lg bg-white/[0.03] cursor-pointer hover:bg-white/[0.06] transition disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {activeArtist && typeConf ? (
+              <>
+                <div className="relative">
+                  <img src={activeArtist.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-cyan-500/20" />
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[8px]`}>{typeConf.icon}</div>
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="text-sm font-semibold truncate">{activeArtist.name}</div>
+                  <div className="text-[10px] text-gray-500 flex items-center gap-1">
+                    {zh ? ARTIST_TYPE_LABELS[activeArtist.type].zh : ARTIST_TYPE_LABELS[activeArtist.type].en}
+                    <span className="text-cyan-400">Lv.{activeArtist.level}</span>
+                  </div>
+                </div>
+                <ChevronDown className={`w-3 h-3 text-gray-500 transition ${showArtistSwitcher ? 'rotate-180' : ''}`} />
+              </>
+            ) : (
+              <>
+                <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-gray-500">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="text-sm font-semibold truncate text-gray-400">
+                    {artistsLoading ? '载入中...' : '暂无签约艺人'}
+                  </div>
+                  <div className="text-[10px] text-gray-500">点击上方「MCN与孵化」创建</div>
+                </div>
+              </>
+            )}
           </button>
           {/* Dropdown */}
           <AnimatePresence>
-            {showArtistSwitcher && (
+            {showArtistSwitcher && activeArtist && (
               <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
                 className="absolute left-3 right-3 top-full mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
-                {MOCK_ARTISTS.map(artist => {
+                {artists.length === 0 ? (
+                  <div className="text-xs text-gray-500 text-center py-4 px-3">暂无可选艺人</div>
+                ) : artists.map(artist => {
                   const tc = ARTIST_TYPE_CONFIG[artist.type];
                   return (
                     <button key={artist.id}
@@ -626,9 +576,9 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
       {/* Bottom */}
       <div className="px-3 py-3 border-t border-white/5 space-y-1">
         <SidebarItem icon={Settings} label={(sidebarOpen || isMobile) ? (zh ? '设置' : 'Settings') : ''} id="settings" active={activePage} onClick={setActivePage} themeStyles={themeStyles} />
-        <button onClick={onLogout} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${themeStyles.itemBase}`}>
+        <button onClick={() => { authLogout(); onLogout(); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${themeStyles.itemBase}`}>
           <LogOut size={18} />
-          {(sidebarOpen || isMobile) && <span className="font-medium">{zh ? '返回首页' : 'Back Home'}</span>}
+          {(sidebarOpen || isMobile) && <span className="font-medium">{zh ? '退出登录' : 'Log out'}</span>}
         </button>
       </div>
     </>
@@ -697,11 +647,17 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
                 setNotifications={setNotifications}
               />
             </div>
-            <div className="flex items-center gap-2 bg-white/[0.03] rounded-full px-2 py-1">
-              <img src={activeArtist.avatar} alt="" className="w-6 h-6 rounded-full object-cover border border-white/10" />
-              <span className="text-xs text-gray-400 hidden sm:block">{activeArtist.name}</span>
-              <span className="text-[10px]">{typeConf.icon}</span>
-            </div>
+            {activeArtist && typeConf ? (
+              <div className="flex items-center gap-2 bg-white/[0.03] rounded-full px-2 py-1">
+                <img src={activeArtist.avatar} alt="" className="w-6 h-6 rounded-full object-cover border border-white/10" />
+                <span className="text-xs text-gray-400 hidden sm:block">{activeArtist.name}</span>
+                <span className="text-[10px]">{typeConf.icon}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-white/[0.03] rounded-full px-3 py-1 text-[11px] text-gray-500">
+                <Users className="w-3 h-3" /> 无签约艺人
+              </div>
+            )}
           </div>
         </div>
 
@@ -721,6 +677,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
           onClose={() => setShowCommandPalette(false)}
           onNavigate={setActivePage}
           onSwitchArtist={setActiveArtist}
+          artists={artists}
         />
 
         {/* Floating Quick Actions */}

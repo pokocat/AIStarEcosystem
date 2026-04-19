@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { ACTIVITIES } from "@/mocks/community";
+import { listActivities } from "@/api/community";
 import type { FanActivity, FanActionType } from "@/types/community";
 
 const TYPE_META: Record<FanActionType, { label: string; icon: LucideIcon; tone: "success" | "info" | "primary" | "warning" }> = {
@@ -36,25 +36,43 @@ function riskLevel(a: FanActivity): "high" | "mid" | "low" | "none" {
 }
 
 export default function ModerationPage() {
+  const [activities, setActivities] = React.useState<FanActivity[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<FanActionType | "all" | "flagged">("all");
   const [target, setTarget] = React.useState<{ a: FanActivity; action: "hide" | "ban" | "verify" } | null>(null);
 
-  const flagged = ACTIVITIES.filter((a) => riskLevel(a) === "high" || riskLevel(a) === "mid");
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await listActivities();
+        if (active) setActivities(data);
+      } catch (err) {
+        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const flagged = activities.filter((a) => riskLevel(a) === "high" || riskLevel(a) === "mid");
   const list =
     tab === "all"
-      ? ACTIVITIES
+      ? activities
       : tab === "flagged"
       ? flagged
-      : ACTIVITIES.filter((a) => a.type === tab);
+      : activities.filter((a) => a.type === tab);
 
   const counts = {
-    gift: ACTIVITIES.filter((a) => a.type === "gift").length,
-    comment: ACTIVITIES.filter((a) => a.type === "comment").length,
-    share: ACTIVITIES.filter((a) => a.type === "share").length,
-    follow: ACTIVITIES.filter((a) => a.type === "follow").length,
+    gift: activities.filter((a) => a.type === "gift").length,
+    comment: activities.filter((a) => a.type === "comment").length,
+    share: activities.filter((a) => a.type === "share").length,
+    follow: activities.filter((a) => a.type === "follow").length,
   };
 
-  const giftTotal = ACTIVITIES.filter((a) => a.type === "gift").reduce((s, a) => s + parseGift(a.action), 0);
+  const giftTotal = activities.filter((a) => a.type === "gift").reduce((s, a) => s + parseGift(a.action), 0);
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -65,10 +83,10 @@ export default function ModerationPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="互动总量" value={ACTIVITIES.length} icon={Heart} />
+        <StatCard label="互动总量" value={activities.length} icon={Heart} />
         <StatCard label="打赏金额" value={`¥${giftTotal.toLocaleString("zh-CN")}`} icon={Gift} tone="warning" />
         <StatCard label="疑似异常" value={flagged.length} icon={ShieldAlert} tone={flagged.length ? "danger" : "default"} />
-        <StatCard label="高额打赏" value={ACTIVITIES.filter((a) => a.type === "gift" && parseGift(a.action) >= 500).length} icon={Flame} tone="danger" />
+        <StatCard label="高额打赏" value={activities.filter((a) => a.type === "gift" && parseGift(a.action) >= 500).length} icon={Flame} tone="danger" />
       </section>
 
       <Card>
@@ -78,7 +96,7 @@ export default function ModerationPage() {
         <CardContent>
           <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
             <TabsList>
-              <TabsTrigger value="all">全部 ({ACTIVITIES.length})</TabsTrigger>
+              <TabsTrigger value="all">全部 ({activities.length})</TabsTrigger>
               <TabsTrigger value="flagged">疑似异常 ({flagged.length})</TabsTrigger>
               <TabsTrigger value="gift">打赏 ({counts.gift})</TabsTrigger>
               <TabsTrigger value="comment">评论 ({counts.comment})</TabsTrigger>
@@ -88,7 +106,9 @@ export default function ModerationPage() {
 
             <TabsContent value={tab}>
               <div className="divide-y divide-border">
-                {list.map((a) => {
+                {loading && <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>}
+                {!loading && loadError && <div className="py-8 text-center text-sm text-rose-600">加载失败：{loadError}</div>}
+                {!loading && !loadError && list.map((a) => {
                   const meta = TYPE_META[a.type];
                   const Icon = meta.icon;
                   const risk = riskLevel(a);
@@ -127,7 +147,7 @@ export default function ModerationPage() {
                     </div>
                   );
                 })}
-                {list.length === 0 && (
+                {!loading && !loadError && list.length === 0 && (
                   <div className="py-8 text-center text-sm text-muted-foreground">该分类暂无动态</div>
                 )}
               </div>
