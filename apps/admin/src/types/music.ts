@@ -40,6 +40,10 @@ export interface Song {
 
   // ── admin 扩展：用于"审核视图"关联上下文 ────────────────────────────────
   studioId?: ID;
+  /** 艺人名（admin 列表便利字段，由后端 enrich 填充） */
+  artistName?: string;
+  /** 工作室名（admin 列表便利字段，由后端 enrich 填充） */
+  studioName?: string;
   description?: string;
 }
 

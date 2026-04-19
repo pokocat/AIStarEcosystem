@@ -30,6 +30,8 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["音乐", "舞台表演"],
     endorsements: 5,
     commercialValue: 1_200_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "2",
@@ -52,6 +54,8 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["音乐", "综艺", "商业代言", "舞台表演"],
     endorsements: 12,
     commercialValue: 5_800_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "3",
@@ -74,6 +78,8 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["影视", "商业代言"],
     endorsements: 8,
     commercialValue: 2_100_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "4",
@@ -96,6 +102,8 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["综艺", "曲艺表演", "游戏娱乐"],
     endorsements: 6,
     commercialValue: 3_200_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "5",
@@ -118,6 +126,8 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["舞台表演", "音乐", "教育培训"],
     endorsements: 2,
     commercialValue: 480_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "6",
@@ -140,6 +150,8 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["综艺", "教育培训"],
     endorsements: 1,
     commercialValue: 120_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
   {
     id: "7",
@@ -162,5 +174,7 @@ export const MOCK_ARTISTS: Artist[] = [
     domains: ["音乐", "影视", "综艺", "舞台表演", "商业代言"],
     endorsements: 10,
     commercialValue: 4_500_000,
+    studioId: "s-skywave",
+    ownerUserId: "u-001",
   },
 ];

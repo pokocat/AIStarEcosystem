@@ -21,6 +21,12 @@ public record SongDto(
         Instant releaseDate,
         // ── product_spec.md §10.2 新增字段 ───────────────────────────────────
         String artistId,
+        /** 艺人名（admin 列表便利字段；简单 /me 视图下可为 null）。 */
+        String artistName,
+        /** 所属工作室 id（由 artist 反查，冗余，便于筛选）。 */
+        String studioId,
+        /** 所属工作室名（admin 列表便利字段）。 */
+        String studioName,
         String audioUrl,
         String coverUrl,
         String lyrics,
@@ -30,6 +36,10 @@ public record SongDto(
         Instant createdAt
 ) {
     public static SongDto from(Song s) {
+        return from(s, null, null, null);
+    }
+
+    public static SongDto from(Song s, String artistName, String studioId, String studioName) {
         return new SongDto(
                 s.getId(),
                 s.getTitle(),
@@ -41,6 +51,9 @@ public record SongDto(
                 s.getRating(),
                 s.getReleaseDate(),
                 s.getArtistId(),
+                artistName,
+                studioId,
+                studioName,
                 s.getAudioUrl(),
                 s.getCoverUrl(),
                 s.getLyrics(),

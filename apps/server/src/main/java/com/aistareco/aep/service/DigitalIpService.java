@@ -99,7 +99,13 @@ public class DigitalIpService {
         }
 
         String studioId = getString(body, "studioId");
-        if (studioId != null && !studioId.isBlank() && !studioRepo.existsById(studioId)) {
+        if (studioId == null || studioId.isBlank()) {
+            // 一个账号对应一个 Studio — 自动从 owner 回填；找不到则 409。
+            studioId = studioRepo.findByOwnerUserId(ownerUserId)
+                    .map(com.aistareco.aep.model.Studio::getId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                            "当前账号尚未创建工作室，无法创建艺人"));
+        } else if (!studioRepo.existsById(studioId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studioId 对应的工作室不存在: " + studioId);
         }
 
@@ -173,10 +179,13 @@ public class DigitalIpService {
 
         if (body.containsKey("studioId")) {
             String studioId = getString(body, "studioId");
-            if (studioId != null && !studioId.isBlank() && !studioRepo.existsById(studioId)) {
+            if (studioId == null || studioId.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studioId 不可为空");
+            }
+            if (!studioRepo.existsById(studioId)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studioId 对应的工作室不存在: " + studioId);
             }
-            ip.setStudioId((studioId == null || studioId.isBlank()) ? null : studioId);
+            ip.setStudioId(studioId);
         }
 
         if (body.containsKey("ownerUserId")) {

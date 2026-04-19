@@ -30,6 +30,7 @@ public class DataInitializer implements CommandLineRunner {
     private final LedgerEntryRepository ledgerRepo;
     private final StudioRepository studioRepo;
     private final DigitalIpRepository digitalIpRepo;
+    private final SongRepository songRepo;
     private final LicenseBatchRepository licenseBatchRepo;
     private final LicenseKeyRepository licenseKeyRepo;
     private final PasswordEncoder passwordEncoder;
@@ -42,6 +43,7 @@ public class DataInitializer implements CommandLineRunner {
                             LedgerEntryRepository ledgerRepo,
                             StudioRepository studioRepo,
                             DigitalIpRepository digitalIpRepo,
+                            SongRepository songRepo,
                             LicenseBatchRepository licenseBatchRepo,
                             LicenseKeyRepository licenseKeyRepo,
                             PasswordEncoder passwordEncoder) {
@@ -53,6 +55,7 @@ public class DataInitializer implements CommandLineRunner {
         this.ledgerRepo = ledgerRepo;
         this.studioRepo = studioRepo;
         this.digitalIpRepo = digitalIpRepo;
+        this.songRepo = songRepo;
         this.licenseBatchRepo = licenseBatchRepo;
         this.licenseKeyRepo = licenseKeyRepo;
         this.passwordEncoder = passwordEncoder;
@@ -113,22 +116,34 @@ public class DataInitializer implements CommandLineRunner {
                 .build());
 
         // ─── Demo platform users + wallets ──────────────────────────────────────
-        // User 1 — personal fan
-        AepUser fanUser = AepUser.builder()
+        // 所有账号 = Studio。独立创作者账号（原 fan_luna）也挂一个 PERSONAL_CREATOR 工作室。
+        AepUser lunaUser = AepUser.builder()
                 .id(UUID.randomUUID().toString())
-                .username("fan_luna")
+                .username("creator_luna")
                 .email("luna@example.com")
-                .displayName("Luna 粉丝")
-                .kind(AepUser.AccountKind.PERSONAL)
+                .displayName("Luna 个人创作者")
+                .kind(AepUser.AccountKind.STUDIO)
                 .status(AepUser.UserStatus.ACTIVE)
                 .emailVerified(true)
                 .phoneVerified(false)
                 .createdAt(now.minus(7, ChronoUnit.DAYS))
                 .updatedAt(now)
                 .build();
-        userRepo.save(fanUser);
+        userRepo.save(lunaUser);
 
-        seedMembershipAndWallet(fanUser.getId(), platformTenantId, 500L, now.minus(7, ChronoUnit.DAYS));
+        seedMembershipAndWallet(lunaUser.getId(), platformTenantId, 500L, now.minus(7, ChronoUnit.DAYS));
+
+        Studio lunaStudio = studioRepo.save(Studio.builder()
+                .id(UUID.randomUUID().toString())
+                .ownerUserId(lunaUser.getId())
+                .name("Luna 个人工作室")
+                .kind(Studio.StudioKind.PERSONAL_CREATOR)
+                .status(Studio.StudioStatus.ACTIVE)
+                .bio("独立创作者单人工作室，以短视频 BGM 切入。")
+                .contactEmail("luna@example.com")
+                .createdAt(now.minus(7, ChronoUnit.DAYS))
+                .updatedAt(now)
+                .build());
 
         // User 2 — studio operator (经纪/工作室)
         AepUser studioUser = AepUser.builder()
@@ -161,7 +176,7 @@ public class DataInitializer implements CommandLineRunner {
                 .build());
 
         // 星光工作室签约艺人 × 3（ownerUserId 指向 studioUser，studioId 指向 starlightStudio）
-        seedDigitalIps(studioUser.getId(), starlightStudio.getId(), List.of(
+        List<DigitalIp> starlightIps = seedDigitalIps(studioUser.getId(), starlightStudio.getId(), List.of(
                 new IpSeed("星野瞳", DigitalIp.DigitalIpKind.SINGER, DigitalIp.Quality.EPIC,
                         DigitalIp.DigitalIpStatus.ACTIVE, 42, 88,
                         "https://images.unsplash.com/photo-1745532665626-09f20c9408dd?w=200&q=80",
@@ -205,7 +220,7 @@ public class DataInitializer implements CommandLineRunner {
                 .updatedAt(now)
                 .build());
 
-        seedDigitalIps(agencyUser.getId(), moonriseStudio.getId(), List.of(
+        List<DigitalIp> moonriseIps = seedDigitalIps(agencyUser.getId(), moonriseStudio.getId(), List.of(
                 new IpSeed("苏安歌", DigitalIp.DigitalIpKind.ALL_ROUNDER, DigitalIp.Quality.EPIC,
                         DigitalIp.DigitalIpStatus.ACTIVE, 48, 80,
                         "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&q=80",
@@ -219,6 +234,27 @@ public class DataInitializer implements CommandLineRunner {
                         "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80",
                         "幽默风趣的综艺担当,直播间即兴互动能力强。")
         ), now);
+
+        // Luna 个人工作室（1 艺人）
+        List<DigitalIp> lunaIps = seedDigitalIps(lunaUser.getId(), lunaStudio.getId(), List.of(
+                new IpSeed("沐月", DigitalIp.DigitalIpKind.SINGER, DigitalIp.Quality.COMMON,
+                        DigitalIp.DigitalIpStatus.DEBUT, 12, 45,
+                        "https://images.unsplash.com/photo-1611432579402-7037e3e2c1e4?w=200&q=80",
+                        "治愈系民谣 AI 歌手，主打短视频 BGM 场景。")
+        ), now);
+
+        // 为每个 Studio 的首艺人挂两首 seed Song，验证 §10.2 字段链路。
+        seedSongsFor(starlightIps.get(0),
+                List.of(new SongSeed("赛博之夜", "电子舞曲", 245, Song.SongStatus.RELEASED, 582_000L, 18_600L),
+                        new SongSeed("霓虹梦境", "电子舞曲", 198, Song.SongStatus.MIXING, 0L, 0L)),
+                now);
+        seedSongsFor(moonriseIps.get(0),
+                List.of(new SongSeed("星光漫步", "流行", 203, Song.SongStatus.RELEASED, 423_000L, 12_400L),
+                        new SongSeed("月升之约", "流行", 215, Song.SongStatus.RECORDING, 0L, 0L)),
+                now);
+        seedSongsFor(lunaIps.get(0),
+                List.of(new SongSeed("晨光", "民谣", 175, Song.SongStatus.RELEASED, 68_000L, 2_400L)),
+                now);
 
         // ─── License batches ────────────────────────────────────────────────────
         LicenseBatch agencyBatch = LicenseBatch.builder()
@@ -306,10 +342,11 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     /** Seed DigitalIp rows for a studio (both ownerUserId and studioId pointed at the studio). */
-    private void seedDigitalIps(String ownerUserId, String studioId, List<IpSeed> seeds, Instant when) {
+    private List<DigitalIp> seedDigitalIps(String ownerUserId, String studioId, List<IpSeed> seeds, Instant when) {
+        List<DigitalIp> saved = new java.util.ArrayList<>();
         int i = 0;
         for (IpSeed seed : seeds) {
-            digitalIpRepo.save(DigitalIp.builder()
+            saved.add(digitalIpRepo.save(DigitalIp.builder()
                     .id(UUID.randomUUID().toString())
                     .name(seed.name())
                     .kind(seed.kind())
@@ -333,6 +370,32 @@ public class DataInitializer implements CommandLineRunner {
                     .createdAt(when.minus(i, ChronoUnit.DAYS))
                     .updatedAt(when)
                     .lastActiveAt(when)
+                    .build()));
+            i++;
+        }
+        return saved;
+    }
+
+    private void seedSongsFor(DigitalIp artist, List<SongSeed> seeds, Instant when) {
+        int i = 0;
+        for (SongSeed seed : seeds) {
+            songRepo.save(Song.builder()
+                    .id("s-" + UUID.randomUUID().toString().substring(0, 8))
+                    .title(seed.title())
+                    .genre(seed.genre())
+                    .duration(seed.duration())
+                    .status(seed.status())
+                    .plays(seed.plays())
+                    .revenue(seed.revenue())
+                    .rating(0)
+                    .releaseDate(seed.status() == Song.SongStatus.RELEASED ? when.minus(i + 3L, ChronoUnit.DAYS) : null)
+                    .artistId(artist.getId())
+                    .audioUrl("https://cdn.placeholder.local/mock/audio.mp3")
+                    .coverUrl(artist.getAvatarUrl())
+                    .modelVersion("suno-v3")
+                    .thinkDepth("standard")
+                    .creditsSpent(120L)
+                    .createdAt(when.minus(i, ChronoUnit.DAYS))
                     .build());
             i++;
         }
@@ -347,6 +410,15 @@ public class DataInitializer implements CommandLineRunner {
             int popularity,
             String avatar,
             String bio
+    ) {}
+
+    private record SongSeed(
+            String title,
+            String genre,
+            int duration,
+            Song.SongStatus status,
+            long plays,
+            long revenue
     ) {}
 
     private String sha256Hex(String input) {

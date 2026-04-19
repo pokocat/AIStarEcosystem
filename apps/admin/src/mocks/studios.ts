@@ -8,6 +8,7 @@ export const STUDIOS: AdminStudio[] = [
   {
     id: "s-skywave",
     ownerUserId: "u-001",
+    ownerUsername: "skywave_studio",
     name: "星浪工作室",
     kind: "music_studio",
     status: "active",
@@ -25,6 +26,7 @@ export const STUDIOS: AdminStudio[] = [
   {
     id: "s-nebula",
     ownerUserId: "u-002",
+    ownerUsername: "nebula_mcn",
     name: "星云 MCN",
     kind: "mcn",
     status: "active",
@@ -40,6 +42,7 @@ export const STUDIOS: AdminStudio[] = [
   {
     id: "s-dramalab",
     ownerUserId: "u-004",
+    ownerUsername: "drama_lab",
     name: "短剧实验室",
     kind: "drama_studio",
     status: "suspended",
@@ -55,6 +58,7 @@ export const STUDIOS: AdminStudio[] = [
   {
     id: "s-moka",
     ownerUserId: "u-005",
+    ownerUsername: "solo_creator_moka",
     name: "摩卡个人创作室",
     kind: "personal_creator",
     status: "active",

@@ -141,6 +141,7 @@ export default function StudiosPage() {
               )}
               {!loading && !loadError && filtered.map((s) => {
                 const owner = userById.get(s.ownerUserId);
+                const ownerUsername = owner?.username ?? s.ownerUsername;
                 return (
                   <TableRow key={s.id}>
                     <TableCell>
@@ -150,7 +151,7 @@ export default function StudiosPage() {
                       </div>
                     </TableCell>
                     <TableCell><StatusBadge meta={STUDIO_KIND[s.kind]} /></TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">{owner ? `@${owner.username}` : "—"}</TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{ownerUsername ? `@${ownerUsername}` : "—"}</TableCell>
                     <TableCell className="text-right tabular-nums">{s.artistCount}</TableCell>
                     <TableCell className="text-right tabular-nums">{s.songCount}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatCredits(s.monthlyRevenueCredits)}</TableCell>

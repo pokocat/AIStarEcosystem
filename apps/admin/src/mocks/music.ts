@@ -28,6 +28,8 @@ export const SONGS: Song[] = [
     creditsSpent: 80,
     createdAt: "2026-02-20T08:00:00Z",
     studioId: "s-skywave",
+    artistName: "Neon V",
+    studioName: "星浪工作室",
     description: "收录于《赛博梦境精选》合集的主打曲，融合复古合成器与未来主义节拍。",
   },
   {
@@ -48,6 +50,8 @@ export const SONGS: Song[] = [
     creditsSpent: 60,
     createdAt: "2026-03-01T08:00:00Z",
     studioId: "s-nebula",
+    artistName: "Luna Soft",
+    studioName: "星云 MCN",
     description: "甜系偶像曲目，粉丝应援现场高频点播。",
   },
   {
@@ -66,6 +70,8 @@ export const SONGS: Song[] = [
     creditsSpent: 230,
     createdAt: "2026-04-10T08:00:00Z",
     studioId: "s-skywave",
+    artistName: "Neon V",
+    studioName: "星浪工作室",
     description: "Neon V 的实验性单曲，混音阶段。",
   },
 ];

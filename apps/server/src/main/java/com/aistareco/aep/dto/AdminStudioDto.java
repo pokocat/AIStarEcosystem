@@ -12,6 +12,7 @@ import java.util.Locale;
 public record AdminStudioDto(
         String id,
         String ownerUserId,
+        String ownerUsername,
         String name,
         String kind,
         String status,
@@ -28,12 +29,13 @@ public record AdminStudioDto(
         long monthlyRevenueCredits
 ) {
     public static AdminStudioDto from(Studio s,
+                                      String ownerUsername,
                                       int artistCount,
                                       int songCount,
                                       long totalRevenueCredits,
                                       long monthlyRevenueCredits) {
         return new AdminStudioDto(
-                s.getId(), s.getOwnerUserId(), s.getName(),
+                s.getId(), s.getOwnerUserId(), ownerUsername, s.getName(),
                 lower(s.getKind()), lower(s.getStatus()),
                 s.getBio(), s.getLogoUrl(),
                 s.getContactEmail(), s.getContactPhone(),

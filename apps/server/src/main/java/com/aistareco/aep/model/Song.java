@@ -39,8 +39,8 @@ public class Song {
 
     // ── product_spec.md §10.2 新增字段 ────────────────────────────────────────
 
-    /** 演唱歌手 = DigitalIp.id；新建歌曲时必填，DB 层保留 nullable 以便向后兼容。 */
-    @Column(name = "artist_id", length = 36)
+    /** 演唱歌手 = DigitalIp.id；新建歌曲时必填，一首歌必属一个艺人（N:1）。 */
+    @Column(name = "artist_id", length = 36, nullable = false)
     private String artistId;
 
     /** 音频资源地址（当前 mock 占位；后续迁 OSS / 对象存储）。 */

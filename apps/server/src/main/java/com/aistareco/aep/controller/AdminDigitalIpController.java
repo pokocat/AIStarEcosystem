@@ -3,25 +3,39 @@ package com.aistareco.aep.controller;
 import com.aistareco.aep.dto.DigitalIpDto;
 import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.model.DigitalIp;
+import com.aistareco.aep.model.Studio;
+import com.aistareco.aep.repository.DigitalIpRepository;
+import com.aistareco.aep.repository.StudioRepository;
 import com.aistareco.aep.service.DigitalIpService;
 import com.aistareco.common.ApiResponse;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin/digital-ips")
 public class AdminDigitalIpController {
 
     private final DigitalIpService service;
+    private final DigitalIpRepository ipRepo;
+    private final StudioRepository studioRepo;
 
-    public AdminDigitalIpController(DigitalIpService service) {
+    public AdminDigitalIpController(DigitalIpService service,
+                                     DigitalIpRepository ipRepo,
+                                     StudioRepository studioRepo) {
         this.service = service;
+        this.ipRepo = ipRepo;
+        this.studioRepo = studioRepo;
     }
 
     @GetMapping
@@ -34,12 +48,40 @@ public class AdminDigitalIpController {
 
         DigitalIp.DigitalIpKind kindEnum = parseEnum(kind, DigitalIp.DigitalIpKind.class, "不支持的类型筛选值");
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return PageEnvelope.from(service.list(ownerUserId, studioId, kindEnum, pageable));
+
+        Page<DigitalIp> entityPage;
+        if (ownerUserId != null && !ownerUserId.isBlank()) {
+            entityPage = ipRepo.findByOwnerUserId(ownerUserId, pageable);
+        } else if (studioId != null && !studioId.isBlank()) {
+            entityPage = ipRepo.findByStudioId(studioId, pageable);
+        } else if (kindEnum != null) {
+            entityPage = ipRepo.findByKind(kindEnum, pageable);
+        } else {
+            entityPage = ipRepo.findAll(pageable);
+        }
+
+        Map<String, String> studioNames = loadStudioNames(entityPage.getContent());
+        return PageEnvelope.from(entityPage.map(ip -> DigitalIpDto.from(ip, studioNames.get(ip.getStudioId()))));
     }
 
     @GetMapping("/{id}")
     public ApiResponse<DigitalIpDto> getById(@PathVariable String id) {
-        return ApiResponse.of(service.findById(id));
+        DigitalIp ip = ipRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Digital IP not found: " + id));
+        String studioName = ip.getStudioId() == null ? null :
+                studioRepo.findById(ip.getStudioId()).map(Studio::getName).orElse(null);
+        return ApiResponse.of(DigitalIpDto.from(ip, studioName));
+    }
+
+    private Map<String, String> loadStudioNames(java.util.Collection<DigitalIp> items) {
+        Set<String> studioIds = items.stream()
+                .map(DigitalIp::getStudioId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (studioIds.isEmpty()) return Map.of();
+        Map<String, String> names = new HashMap<>();
+        studioRepo.findAllById(studioIds).forEach(s -> names.put(s.getId(), s.getName()));
+        return names;
     }
 
     @PostMapping

@@ -33,6 +33,8 @@ export interface Studio {
 
 /** Admin 扩展视图 — 后端 AdminStudioDto 返回的聚合指标（只读） */
 export interface AdminStudio extends Studio {
+  /** 账号用户名（来自 owner AepUser.username，admin 列表便利字段） */
+  ownerUsername?: string;
   artistCount: number;           // 名下艺人数
   songCount: number;             // 名下歌曲数
   totalRevenueCredits: number;   // 累计收益 (credits)

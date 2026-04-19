@@ -440,7 +440,7 @@
 
 | 前端类型字段 | OpenAPI Schema | 状态 | 说明 |
 |---|---|---|---|
-| `artistId` | ❌ 无 | ❌ 不存在 | 必填；对接发行平台时即为歌手身份；后端已在 `aep_songs.artist_id` 落列 |
+| `artistId` | ❌ 无 | ✅ 已对齐 | 必填（DB NOT NULL）；对接发行平台时即为歌手身份；后端在 `aep_songs.artist_id` 已落列并收紧为 NOT NULL |
 | `audioUrl` | ❌ 无 | ❌ 不存在 | 当前 mock 占位 URL；后续迁 OSS |
 | `coverUrl` / `lyrics` / `modelVersion` / `thinkDepth` / `creditsSpent` / `createdAt` | ❌ 无 | ❌ 不存在 | 见 product_spec.md §10.2 |
 
@@ -488,3 +488,22 @@
 1. 模型 × 深度价表由 `/admin/platform/config` 下发，与 `MusicApi.createSong` 的扣费逻辑共用；
 2. 生成流程应在 `accept` 时才落库为 `Song`（与当前前端 `MusicApi.createSong` 对齐），`GenerationJob.resultSongId` 记录落库结果；
 3. 审计日志：每条生成无论是否 accept 都写 `GenerationJob` + `GenerationMessage[]`（含用户 prompt 与模型回写片段），支持合规回溯。
+
+---
+
+## 附录 · 账号 = Studio 收紧（v2.5 · 2026-04-19）
+
+本次收紧把 **"一个账号 = 一个 Studio"** 从约定变成硬契约：
+
+| 维度 | 变化 |
+|------|------|
+| `LicenseRedeemRequest` | 必填 `studioName`；可选 `studioKind`（默认 personal_creator）。后端 `LicenseActivationService` 在同一事务内 AepUser + Studio + Wallet + Membership + LedgerEntry 一起落库 |
+| `LicenseRedeemResult` | 响应新增 `studio: StudioDto`（与 AepUser 一同返回） |
+| `DigitalIp.studioId` | DB 层 `nullable=false`；创建艺人时若未传则后端按 owner→Studio 自动回填；无 Studio 返 409 |
+| `DigitalIp.ownerUserId` | 前端 `Artist.ownerUserId` 类型收紧为必填（与 server 的 NOT NULL 对齐）；`studioId` 同样必填 |
+| `Song.artistId` | DB 层 `nullable=false`；创建歌曲时必传，后端校验 ownership |
+| `GET /me/songs` | 新增 `?artistId=` 筛选参数（StudioPage 按艺人查歌曲直接走参数，无需前端 filter） |
+| `AdminStudioDto` | 新增 `ownerUsername` 冗余字段 |
+| `AdminDigitalIpDto`（复用 `DigitalIpDto`） | 新增 `studioName` 便利字段 |
+| `AdminMusicController` Song DTO | 新增 `artistName / studioId / studioName` 便利字段 |
+| DataInitializer | 移除 personal-kind 示例账号；每个 Studio 首艺人种 1–2 首 Song

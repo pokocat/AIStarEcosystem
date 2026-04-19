@@ -31,6 +31,8 @@ public record DigitalIpDto(
         /** 商业价值（credits 原始值） */
         long commercialValue,
         String studioId,
+        /** 所属工作室名（admin/列表视图便利字段，/me 视图下可为 null）。 */
+        String studioName,
         String ownerUserId,
         /** 孵化向导产出的自由键值对 */
         Map<String, Object> incubationParams,
@@ -48,6 +50,10 @@ public record DigitalIpDto(
     ) {}
 
     public static DigitalIpDto from(DigitalIp ip) {
+        return from(ip, null);
+    }
+
+    public static DigitalIpDto from(DigitalIp ip, String studioName) {
         return new DigitalIpDto(
                 ip.getId(), ip.getName(),
                 lower(ip.getKind()), lower(ip.getQuality()), lower(ip.getStatus()),
@@ -64,7 +70,7 @@ public record DigitalIpDto(
                 ),
                 ip.getBio(), ip.getDomains(),
                 ip.getStatEndorsements(), ip.getStatCommercialValueCredits(),
-                ip.getStudioId(), ip.getOwnerUserId(),
+                ip.getStudioId(), studioName, ip.getOwnerUserId(),
                 ip.getIncubationParams(),
                 ip.getCreatedAt(), ip.getLastActiveAt(), ip.getUpdatedAt()
         );

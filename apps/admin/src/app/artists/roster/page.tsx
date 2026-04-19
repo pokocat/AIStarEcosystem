@@ -58,18 +58,14 @@ export default function RosterPage() {
     };
   }, []);
 
-  // 艺人档案由激活的经纪公司账户创建，ownerUserId / studioId 记录从属关系（来自后端 DigitalIpDto）。
+  // 艺人必归属一个 Studio（studioId NOT NULL）。保留 ownerUserId 兜底，避免过渡期老数据空指针。
   const studioById = React.useMemo(() => new Map(studios.map((s) => [s.id, s])), [studios]);
   const studioByOwner = React.useMemo(
     () => new Map(studios.map((s) => [s.ownerUserId, s])),
     [studios]
   );
   const resolveStudio = React.useCallback(
-    (a: Artist) => {
-      if (a.studioId) return studioById.get(a.studioId);
-      if (a.ownerUserId) return studioByOwner.get(a.ownerUserId);
-      return undefined;
-    },
+    (a: Artist) => studioById.get(a.studioId) ?? studioByOwner.get(a.ownerUserId),
     [studioById, studioByOwner]
   );
 

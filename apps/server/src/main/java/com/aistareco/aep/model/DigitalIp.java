@@ -87,7 +87,8 @@ public class DigitalIp {
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> incubationParams;
 
-    /** FK → aep_studios.id (nullable; an IP may not yet be attached to a Studio). */
+    /** FK → aep_studios.id — 每个艺人必归属一个 Studio（1:N）。 */
+    @Column(nullable = false)
     private String studioId;
 
     /** FK → aep_users.id — the owning operator account. */

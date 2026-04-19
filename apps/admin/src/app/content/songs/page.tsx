@@ -38,6 +38,7 @@ export default function SongsReviewPage() {
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<"all" | SongStatus>("all");
   const [genre, setGenre] = React.useState<string>("all");
+  const [studioFilter, setStudioFilter] = React.useState<string>("all");
   const [target, setTarget] = React.useState<Song | null>(null);
   const [action, setAction] = React.useState<ActionKind | null>(null);
 
@@ -64,9 +65,16 @@ export default function SongsReviewPage() {
   const artistById = React.useMemo(() => new Map(artists.map((a) => [a.id, a])), [artists]);
   const studioById = React.useMemo(() => new Map(studios.map((s) => [s.id, s])), [studios]);
 
+  // 解析一首歌的 studioId（优先取歌上的冗余字段；否则经艺人反查）
+  const resolveStudioId = React.useCallback(
+    (s: Song) => s.studioId ?? (s.artistId ? artistById.get(s.artistId)?.studioId : undefined),
+    [artistById]
+  );
+
   const filtered = songs.filter((s) => {
     if (status !== "all" && s.status !== status) return false;
     if (genre !== "all" && s.genre !== genre) return false;
+    if (studioFilter !== "all" && resolveStudioId(s) !== studioFilter) return false;
     if (query && !s.title.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
@@ -170,13 +178,25 @@ export default function SongsReviewPage() {
                 ))}
             </SelectContent>
           </Select>
+          <Select value={studioFilter} onValueChange={setStudioFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="工作室" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部工作室</SelectItem>
+              {studios.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[980px]">
             <TableHeader>
               <TableRow>
                 <TableHead>曲目</TableHead>
-                <TableHead>艺人 / 经纪公司</TableHead>
+                <TableHead>艺人</TableHead>
+                <TableHead>工作室</TableHead>
                 <TableHead>曲风</TableHead>
                 <TableHead>时长</TableHead>
                 <TableHead>状态</TableHead>
@@ -189,17 +209,18 @@ export default function SongsReviewPage() {
             <TableBody>
               {filtered.map((s) => {
                 const artist = s.artistId ? artistById.get(s.artistId) : undefined;
-                const studio = s.studioId ? studioById.get(s.studioId) : undefined;
+                const studioIdResolved = resolveStudioId(s);
+                const studio = studioIdResolved ? studioById.get(studioIdResolved) : undefined;
+                const artistName = artist?.name ?? s.artistName ?? "—";
+                const studioName = studio?.name ?? s.studioName ?? "—";
                 return (
                   <TableRow key={s.id}>
                     <TableCell>
                       <div className="font-medium">{s.title}</div>
                       <div className="text-xs text-muted-foreground">编号 {s.id}</div>
                     </TableCell>
-                    <TableCell className="text-sm">
-                      <div>{artist?.name ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">{studio?.name ?? "—"}</div>
-                    </TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{artistName}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{studioName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{s.genre}</TableCell>
                     <TableCell className="tabular-nums text-sm">{formatDuration(s.duration)}</TableCell>
                     <TableCell>
@@ -231,7 +252,7 @@ export default function SongsReviewPage() {
               })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
                     没有匹配的曲目
                   </TableCell>
                 </TableRow>

@@ -2,6 +2,7 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.config.JwtUtil;
 import com.aistareco.aep.dto.AepUserDto;
+import com.aistareco.aep.dto.StudioDto;
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
 import org.springframework.http.HttpStatus;
@@ -14,21 +15,23 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
 /**
  * Account registration via license key activation.
  *
- * Flow (see /product_spec.md §2.2):
+ * Flow (see /product_spec.md §2.2 — 一个账号 = 一个 Studio):
  *   1. SHA-256 hash raw code → find LicenseKey
  *   2. Validate key + batch (status, expiry windows)
- *   3. Create AepUser (kind from request body, default PERSONAL)
- *   4. Create Membership { tenantId = batch.issuerTenantId, source = LICENSE_ACTIVATION }
- *   5. Create Wallet for user
- *   6. Write LedgerEntry (LICENSE_GRANT, batch.initialCreditGrant) and update wallet balances
- *   7. Mark LicenseKey ACTIVATED, increment batch.activatedCount
- *   8. Issue JWT
+ *   3. Create AepUser (kind 固定为 STUDIO)
+ *   4. Create Studio (name 来自激活请求；一个账号必有一个 Studio)
+ *   5. Create Membership { tenantId = batch.issuerTenantId, source = LICENSE_ACTIVATION }
+ *   6. Create Wallet for user
+ *   7. Write LedgerEntry (LICENSE_GRANT, batch.initialCreditGrant) and update wallet balances
+ *   8. Mark LicenseKey ACTIVATED, increment batch.activatedCount
+ *   9. Issue JWT
  */
 @Service
 public class LicenseActivationService {
@@ -40,6 +43,7 @@ public class LicenseActivationService {
     private final MembershipRepository membershipRepo;
     private final WalletRepository walletRepo;
     private final LedgerEntryRepository ledgerRepo;
+    private final StudioRepository studioRepo;
     private final JwtUtil jwtUtil;
 
     public LicenseActivationService(LicenseKeyRepository keyRepo,
@@ -49,6 +53,7 @@ public class LicenseActivationService {
                                      MembershipRepository membershipRepo,
                                      WalletRepository walletRepo,
                                      LedgerEntryRepository ledgerRepo,
+                                     StudioRepository studioRepo,
                                      JwtUtil jwtUtil) {
         this.keyRepo = keyRepo;
         this.batchRepo = batchRepo;
@@ -57,6 +62,7 @@ public class LicenseActivationService {
         this.membershipRepo = membershipRepo;
         this.walletRepo = walletRepo;
         this.ledgerRepo = ledgerRepo;
+        this.studioRepo = studioRepo;
         this.jwtUtil = jwtUtil;
     }
 
@@ -99,7 +105,11 @@ public class LicenseActivationService {
         String phone = body.get("phone");
         validateUserIdentity(username, email, phone);
 
-        AepUser.AccountKind kind = parseKind(body.get("kind"));
+        String studioName = body.get("studioName");
+        if (studioName == null || studioName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "工作室名称不能为空");
+        }
+        Studio.StudioKind studioKind = parseStudioKind(body.get("studioKind"));
 
         AepUser user = AepUser.builder()
                 .id(UUID.randomUUID().toString())
@@ -107,7 +117,7 @@ public class LicenseActivationService {
                 .email(email)
                 .phone(phone)
                 .displayName(body.get("displayName"))
-                .kind(kind)
+                .kind(AepUser.AccountKind.STUDIO)
                 .status(AepUser.UserStatus.ACTIVE)
                 .emailVerified(false)
                 .phoneVerified(false)
@@ -115,6 +125,18 @@ public class LicenseActivationService {
                 .updatedAt(now)
                 .build();
         userRepo.save(user);
+
+        Studio studio = studioRepo.save(Studio.builder()
+                .id(UUID.randomUUID().toString())
+                .ownerUserId(user.getId())
+                .name(studioName.trim())
+                .kind(studioKind)
+                .status(Studio.StudioStatus.ACTIVE)
+                .contactEmail(email)
+                .contactPhone(phone)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
 
         membershipRepo.save(Membership.builder()
                 .id(UUID.randomUUID().toString())
@@ -170,6 +192,7 @@ public class LicenseActivationService {
         return Map.of(
                 "token", token,
                 "user", AepUserDto.from(user),
+                "studio", StudioDto.from(studio),
                 "tenantId", batch.getIssuerTenantId()
         );
     }
@@ -186,12 +209,12 @@ public class LicenseActivationService {
         }
     }
 
-    private AepUser.AccountKind parseKind(String raw) {
-        if (raw == null || raw.isBlank()) return AepUser.AccountKind.PERSONAL;
+    private Studio.StudioKind parseStudioKind(String raw) {
+        if (raw == null || raw.isBlank()) return Studio.StudioKind.PERSONAL_CREATOR;
         try {
-            return AepUser.AccountKind.valueOf(raw.trim().toUpperCase());
+            return Studio.StudioKind.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            return AepUser.AccountKind.PERSONAL;
+            return Studio.StudioKind.PERSONAL_CREATOR;
         }
     }
 

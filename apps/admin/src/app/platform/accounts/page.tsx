@@ -13,14 +13,17 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
 import { listUsers } from "@/api/users";
 import { listTenants, listMemberships } from "@/api/tenants";
-import { ACCOUNT_KIND, ACCOUNT_STATUS } from "@/constants/status";
+import { listStudios } from "@/api/studios";
+import { ACCOUNT_STATUS, STUDIO_KIND } from "@/constants/status";
 import type { AepUser, AccountKind, AccountStatus, Tenant, Membership } from "@/types/account";
+import type { AdminStudio } from "@/types/studio";
 import { formatDateCN } from "@/lib/utils";
 
 export default function AccountsPage() {
   const [users, setUsers] = React.useState<AepUser[]>([]);
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
   const [memberships, setMemberships] = React.useState<Membership[]>([]);
+  const [studios, setStudios] = React.useState<AdminStudio[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
@@ -33,14 +36,16 @@ export default function AccountsPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [u, t, m] = await Promise.all([
+      const [u, t, m, s] = await Promise.all([
         listUsers(0, 200),
         listTenants(0, 200),
         listMemberships(undefined, undefined, 0, 500),
+        listStudios(0, 200),
       ]);
       setUsers(u);
       setTenants(t);
       setMemberships(m);
+      setStudios(s);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -58,6 +63,10 @@ export default function AccountsPage() {
     for (const x of memberships) if (!m.has(x.userId)) m.set(x.userId, x);
     return m;
   }, [memberships]);
+  const studioByOwner = React.useMemo(
+    () => new Map(studios.map((s) => [s.ownerUserId, s])),
+    [studios]
+  );
 
   const filtered = users.filter((a) => {
     if (kind !== "all" && a.kind !== kind) return false;
@@ -130,7 +139,9 @@ export default function AccountsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>账号</TableHead>
-                <TableHead>身份</TableHead>
+                <TableHead>工作室</TableHead>
+                <TableHead className="text-right">艺人</TableHead>
+                <TableHead className="text-right">作品</TableHead>
                 <TableHead>归属机构</TableHead>
                 <TableHead>邮箱 / 手机</TableHead>
                 <TableHead>最近登录</TableHead>
@@ -141,17 +152,18 @@ export default function AccountsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
                 </TableRow>
               )}
               {!loading && loadError && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
+                  <TableCell colSpan={9} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
                 </TableRow>
               )}
               {!loading && !loadError && filtered.map((u) => {
                 const m = membershipByUser.get(u.id);
                 const t = m ? tenantById.get(m.tenantId) : undefined;
+                const studio = studioByOwner.get(u.id);
                 return (
                   <TableRow key={u.id}>
                     <TableCell>
@@ -160,7 +172,20 @@ export default function AccountsPage() {
                         <span className="text-xs text-muted-foreground tabular-nums">@{u.username}</span>
                       </div>
                     </TableCell>
-                    <TableCell><StatusBadge meta={ACCOUNT_KIND[u.kind]} /></TableCell>
+                    <TableCell className="text-sm">
+                      {studio ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span>{studio.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {STUDIO_KIND[studio.kind]?.label ?? studio.kind}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{studio?.artistCount ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{studio?.songCount ?? "—"}</TableCell>
                     <TableCell className="text-sm">{t?.name ?? "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {[u.email, u.phone].filter(Boolean).join(" · ") || "—"}
@@ -185,7 +210,7 @@ export default function AccountsPage() {
               })}
               {!loading && !loadError && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">没有匹配的账号</TableCell>
+                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">没有匹配的账号</TableCell>
                 </TableRow>
               )}
             </TableBody>

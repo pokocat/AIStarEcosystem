@@ -2,8 +2,10 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AdminStudioDto;
 import com.aistareco.aep.dto.StudioDto;
+import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.DigitalIp;
 import com.aistareco.aep.model.Studio;
+import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.DigitalIpRepository;
 import com.aistareco.aep.repository.StudioRepository;
 import org.springframework.data.domain.Page;
@@ -26,10 +28,13 @@ public class StudioService {
 
     private final StudioRepository studioRepo;
     private final DigitalIpRepository ipRepo;
+    private final AepUserRepository userRepo;
 
-    public StudioService(StudioRepository studioRepo, DigitalIpRepository ipRepo) {
+    public StudioService(StudioRepository studioRepo, DigitalIpRepository ipRepo,
+                          AepUserRepository userRepo) {
         this.studioRepo = studioRepo;
         this.ipRepo = ipRepo;
+        this.userRepo = userRepo;
     }
 
     public Page<AdminStudioDto> listAdmin(Pageable pageable) {
@@ -59,15 +64,14 @@ public class StudioService {
 
     private AdminStudioDto toAdminDto(Studio s) {
         List<DigitalIp> ips = ipRepo.findByStudioId(s.getId());
-        // Fallback：旧数据可能只绑定了 ownerUserId，未回填 studioId。
-        if (ips.isEmpty() && s.getOwnerUserId() != null) {
-            ips = ipRepo.findByOwnerUserId(s.getOwnerUserId());
-        }
         int artistCount = ips.size();
         int songCount = ips.stream().mapToInt(DigitalIp::getStatSongs).sum();
         long totalRevenue = ips.stream().mapToLong(DigitalIp::getStatRevenueCredits).sum();
         long monthlyRevenue = ips.stream().mapToLong(DigitalIp::getStatMonthlyRevenueCredits).sum();
-        return AdminStudioDto.from(s, artistCount, songCount, totalRevenue, monthlyRevenue);
+        String ownerUsername = userRepo.findById(s.getOwnerUserId())
+                .map(AepUser::getUsername)
+                .orElse(null);
+        return AdminStudioDto.from(s, ownerUsername, artistCount, songCount, totalRevenue, monthlyRevenue);
     }
 
     private Studio loadOrThrow(String id) {

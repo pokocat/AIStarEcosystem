@@ -119,9 +119,24 @@ public class AccountController {
 
     // ── 音乐工坊（product_spec.md §10） ──────────────────────────────────────
 
-    /** 列出当前用户名下所有 AI 艺人的歌曲（按创建倒序）。 */
+    /**
+     * 列出当前用户名下所有 AI 艺人的歌曲（按创建倒序）。
+     * 可选 {@code ?artistId=} 过滤单艺人；若该 artistId 不属于当前用户则 403。
+     */
     @GetMapping("/songs")
-    public ApiResponse<List<SongDto>> listMySongs(Principal principal) {
+    public ApiResponse<List<SongDto>> listMySongs(Principal principal,
+                                                   @RequestParam(required = false) String artistId) {
+        if (artistId != null && !artistId.isBlank()) {
+            DigitalIp artist = digitalIpRepo.findById(artistId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "艺人不存在"));
+            if (!principal.getName().equals(artist.getOwnerUserId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该艺人不属于当前用户");
+            }
+            List<SongDto> songs = songRepo.findByArtistIdOrderByCreatedAtDesc(artistId).stream()
+                    .map(SongDto::from)
+                    .toList();
+            return ApiResponse.of(songs);
+        }
         List<String> ownedArtistIds = digitalIpRepo
                 .findByOwnerUserId(principal.getName())
                 .stream()
@@ -131,8 +146,8 @@ public class AccountController {
             return ApiResponse.of(List.of());
         }
         List<SongDto> songs = ownedArtistIds.stream()
-                .flatMap(artistId -> songRepo
-                        .findByArtistIdOrderByCreatedAtDesc(artistId).stream())
+                .flatMap(id -> songRepo
+                        .findByArtistIdOrderByCreatedAtDesc(id).stream())
                 .map(SongDto::from)
                 .toList();
         return ApiResponse.of(songs);

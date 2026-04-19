@@ -37,20 +37,6 @@ export const ACCOUNTS: AepUser[] = [
     lastLoginAt: "2026-04-16T15:02:00Z",
   },
   {
-    id: "u-003",
-    username: "fan_yuki",
-    email: "yuki@mail.com",
-    displayName: "粉丝 · 雪音",
-    kind: "personal",
-    status: "active",
-    emailVerified: true,
-    phoneVerified: false,
-    langPreference: "zh",
-    createdAt: "2026-01-22T12:01:00Z",
-    updatedAt: "2026-04-15T18:44:00Z",
-    lastLoginAt: "2026-04-17T01:09:00Z",
-  },
-  {
     id: "u-004",
     username: "drama_lab",
     email: "contact@dramalab.studio",
@@ -89,7 +75,6 @@ export const TENANTS: Tenant[] = [
 export const MEMBERSHIPS: Membership[] = [
   { id: "m-1", userId: "u-001", tenantId: "t-skywave",  source: "self_register",       joinedAt: "2025-09-12T08:10:00Z" },
   { id: "m-2", userId: "u-002", tenantId: "t-nebula",   source: "admin_invite",        joinedAt: "2025-11-02T03:40:00Z" },
-  { id: "m-3", userId: "u-003", tenantId: "t-personal", source: "license_activation",  licenseKeyId: "lk-10032", joinedAt: "2026-01-22T12:01:00Z" },
   { id: "m-4", userId: "u-004", tenantId: "t-dramalab", source: "self_register",       joinedAt: "2025-07-05T02:00:00Z" },
   { id: "m-5", userId: "u-005", tenantId: "t-personal", source: "license_activation",  licenseKeyId: "lk-10088", joinedAt: "2026-02-11T09:20:00Z" },
 ];
