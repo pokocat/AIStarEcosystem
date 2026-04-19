@@ -24,3 +24,7 @@ aep:
   jwt:
     secret: ${AEP_JWT_SECRET:aep-dev-secret-key-change-in-prod-32chars}
     expiration-ms: ${AEP_JWT_EXPIRATION_MS:3600000}
+  dev-auth:
+    enabled: ${AEP_DEV_AUTH_ENABLED:false}
+  assets:
+    video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}

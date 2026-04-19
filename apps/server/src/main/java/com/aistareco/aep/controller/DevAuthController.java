@@ -7,7 +7,7 @@ import com.aistareco.aep.model.Studio;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.StudioRepository;
 import com.aistareco.common.ApiResponse;
-import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,11 +22,11 @@ import java.util.Map;
  *   <li>{@code GET  /api/auth/dev-accounts} — 返回可选账号列表（带 studio 概要），用于登录页下拉。</li>
  *   <li>{@code POST /api/auth/dev-login} — 按 username 直接签发 JWT（无密码），用于演示/联调。</li>
  * </ul>
- * 生产 profile（prod/mysql）下这个 Bean 不会被注入，端点返回 404。
+ * 默认关闭，可通过 {@code aep.dev-auth.enabled=true} 临时打开。
  */
 @RestController
 @RequestMapping("/api/auth")
-@Profile("dev")
+@ConditionalOnProperty(prefix = "aep.dev-auth", name = "enabled", havingValue = "true")
 public class DevAuthController {
 
     private final AepUserRepository userRepo;

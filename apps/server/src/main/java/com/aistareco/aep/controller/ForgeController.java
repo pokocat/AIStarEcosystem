@@ -11,6 +11,7 @@ import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.CollectionType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,12 +34,16 @@ public class ForgeController {
 
     /**
      * 未接入 AI 之前使用的 demo 视频池。保存接口从中随机挑一个与 ForgeResult 关联。
-     * 文件由前端 {@code apps/web/public/videos/*.mp4} 直接托管；后端仅记录相对 URL。
-     * 接入 AI 后改为：本 pool 只作为测试开关，真实路径由生成管线写入对象存储并回填 videoUrl。
+     * 文件上传到服务器共享静态目录（当前默认经 Nginx 暴露为 {@code /static/videos/*}）；
+     * 后端仅记录其公网相对 URL。接入 AI 后改为：本 pool 只作为测试开关，
+     * 真实路径由生成管线写入对象存储并回填 videoUrl。
      */
-    private static final List<String> DEMO_VIDEO_POOL = List.of(
-            "/videos/showreel-01.mp4",
-            "/videos/showreel-02.mp4"
+    private static final List<String> DEMO_VIDEO_FILENAMES = List.of(
+            "showreel-01.mp4",
+            "showreel-02.mp4",
+            "showreel-03.mp4",
+            "showreel-04.mp4",
+            "showreel-05.mp4"
     );
 
     private final ForgeTemplateRepository templateRepo;
@@ -46,17 +51,20 @@ public class ForgeController {
     private final ForgeBlueprintRepository blueprintRepo;
     private final PlatformConfigService configService;
     private final ObjectMapper objectMapper;
+    private final String forgeVideoBaseUrl;
 
     public ForgeController(ForgeTemplateRepository templateRepo,
                            ForgeResultRepository resultRepo,
                            ForgeBlueprintRepository blueprintRepo,
                            PlatformConfigService configService,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           @Value("${aep.assets.video-base-url:/static/videos}") String forgeVideoBaseUrl) {
         this.templateRepo = templateRepo;
         this.resultRepo = resultRepo;
         this.blueprintRepo = blueprintRepo;
         this.configService = configService;
         this.objectMapper = objectMapper;
+        this.forgeVideoBaseUrl = trimTrailingSlash(forgeVideoBaseUrl);
     }
 
     @GetMapping("/options")
@@ -117,7 +125,7 @@ public class ForgeController {
 
     /**
      * 保存一次已完成的锻造结果到艺人形象库，并为其关联一段短视频资产。
-     * 当前为 fake 实现：从 {@link #DEMO_VIDEO_POOL} 中随机挑一个 URL 写入 videoUrl；
+     * 当前为 fake 实现：从共享静态资源视频池中随机挑一个 URL 写入 videoUrl；
      * 接入真实 AI 视频生成后，此处应触发生成任务并在落盘后回写 videoUrl。
      *
      * upsert 行为：前端目前直接在本地合成 ForgeResult（未先调 /generate 落库），
@@ -160,8 +168,7 @@ public class ForgeController {
 
         boolean reassign = Boolean.TRUE.equals(body.get("reassign"));
         if (result.getVideoUrl() == null || result.getVideoUrl().isBlank() || reassign) {
-            int idx = ThreadLocalRandom.current().nextInt(DEMO_VIDEO_POOL.size());
-            result.setVideoUrl(DEMO_VIDEO_POOL.get(idx));
+            result.setVideoUrl(pickDemoVideoUrl());
         }
         resultRepo.save(result);
         return ApiResponse.of(ForgeResultDto.from(result));
@@ -222,5 +229,14 @@ public class ForgeController {
             return list.stream().map(Object::toString).toList();
         }
         return List.of();
+    }
+
+    private String pickDemoVideoUrl() {
+        int idx = ThreadLocalRandom.current().nextInt(DEMO_VIDEO_FILENAMES.size());
+        return forgeVideoBaseUrl + "/" + DEMO_VIDEO_FILENAMES.get(idx);
+    }
+
+    private String trimTrailingSlash(String value) {
+        return value == null ? "/static/videos" : value.replaceAll("/+$", "");
     }
 }

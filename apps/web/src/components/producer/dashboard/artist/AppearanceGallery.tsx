@@ -21,6 +21,7 @@ import { Badge } from "../../../ui/badge";
 import type { Artist } from "@/types/artist";
 import type { ForgeMode, ForgeResult, AppearanceStatus } from "@/types/appearance-forge";
 import { AppearanceForgeApi } from "@/api";
+import { DEMO_FORGE_VIDEO_POOL } from "@/lib/forge-video";
 import { formatCredits, formatCompactNumber } from "@/lib/format";
 
 interface Props {
@@ -230,7 +231,7 @@ function BioColumn({
 }
 
 // ── Hero card —— 形象主体 = 短视频 + 3D tilt。 ────────────────────────────────
-// 视频为本地 mock：`/videos/showreel-0X.mp4`，按 appearance.id 哈希落位。
+// 视频为共享静态资源：`/static/videos/showreel-0X.mp4`，按 appearance.id 哈希落位。
 // prompt / 状态 / 日期 / 锁定信息已上移到 BioColumn，避免重复。
 // 后端 ForgeResult.videoUrl（或 model3dUrl）上线后，在 Frame3D 内替换 src 即可。
 function HeroCard({ appearance }: { appearance: ForgeResult }) {
@@ -246,13 +247,12 @@ function HeroCard({ appearance }: { appearance: ForgeResult }) {
 // 视频资产源：优先使用保存后由后端（或 mock save 层）写入的 `appearance.videoUrl`。
 // 未保存形象（草稿 / 历史种子数据没有视频）走哈希回退池，确保预览总有画面。
 // 接入真实 AI 后，所有已保存形象都应具备 videoUrl，该回退仅为 demo 期兜底。
-const VIDEO_POOL_FALLBACK = ["/videos/showreel-01.mp4", "/videos/showreel-02.mp4"];
 function pickVideoFor(appearance: ForgeResult): string {
   if (appearance.videoUrl) return appearance.videoUrl;
   const id = appearance.id;
   let h = 0;
   for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
-  return VIDEO_POOL_FALLBACK[Math.abs(h) % VIDEO_POOL_FALLBACK.length];
+  return DEMO_FORGE_VIDEO_POOL[Math.abs(h) % DEMO_FORGE_VIDEO_POOL.length];
 }
 
 // ── 3D preview frame ─────────────────────────────────────────────────────────

@@ -12,6 +12,10 @@ import type {
   LabeledOption,
 } from "@/types/appearance-forge";
 import type { ID } from "@/types/_shared";
+import {
+  DEMO_FORGE_VIDEO_POOL,
+  pickDemoForgeVideo,
+} from "@/lib/forge-video";
 
 export const FORGE_TEMPLATES: ForgeTemplate[] = [
   { id: "t1", name: "霓虹偶像", image: "https://images.unsplash.com/photo-1587930708915-55a36837263b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjeWJlcnB1bmslMjBuZW9uJTIwcG9ydHJhaXQlMjBmdXR1cmlzdGljfGVufDF8fHx8MTc3NjQxNDc1N3ww&ixlib=rb-4.1.0&q=80&w=1080", tags: ["cyberpunk", "neon", "idol"], style: "neon" },
@@ -75,19 +79,7 @@ export const PROMPT_SUGGESTIONS: string[] = [
   "复古蒸汽",
 ];
 
-/**
- * 未接入 AI 前使用的 demo 视频池。保存 Forge 结果时，后端（或 mock 层）从中随机挑一个
- * 写入 {@link ForgeResult.videoUrl}。两段视频托管在 `apps/web/public/videos/`，
- * 前端静态资源直接命中，不经过 Next.js `/api/*` 代理。
- */
-export const DEMO_FORGE_VIDEO_POOL: string[] = [
-  "/videos/showreel-01.mp4",
-  "/videos/showreel-02.mp4",
-];
-
-export function pickDemoForgeVideo(): string {
-  return DEMO_FORGE_VIDEO_POOL[Math.floor(Math.random() * DEMO_FORGE_VIDEO_POOL.length)];
-}
+export { DEMO_FORGE_VIDEO_POOL, pickDemoForgeVideo };
 
 export const FORGE_OPTIONS: ForgeOptions = {
   templates: FORGE_TEMPLATES,
