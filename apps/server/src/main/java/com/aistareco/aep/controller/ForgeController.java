@@ -120,6 +120,11 @@ public class ForgeController {
      * 当前为 fake 实现：从 {@link #DEMO_VIDEO_POOL} 中随机挑一个 URL 写入 videoUrl；
      * 接入真实 AI 视频生成后，此处应触发生成任务并在落盘后回写 videoUrl。
      *
+     * upsert 行为：前端目前直接在本地合成 ForgeResult（未先调 /generate 落库），
+     * 因此 /save 同时承担「创建 + 关联视频」的职责。
+     * - 若 body.resultId 对应 DB 行存在：更新它；
+     * - 否则按 body 的其它字段（artistId/image/prompt/mode/locked）新建。
+     *
      * 幂等策略：若该 result 已有 videoUrl，则保持不变直接返回（避免反复保存换视频）。
      * 前端需要重新抽卡时显式传 {@code "reassign": true} 即可强制替换。
      */
@@ -127,19 +132,43 @@ public class ForgeController {
     @SuppressWarnings("unchecked")
     public ApiResponse<ForgeResultDto> saveResult(@RequestBody Map<String, Object> body) {
         String resultId = (String) body.get("resultId");
-        if (resultId == null || resultId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "resultId 必填");
+        String artistId = (String) body.get("artistId");
+
+        ForgeResult result = (resultId == null || resultId.isBlank())
+                ? null
+                : resultRepo.findById(resultId).orElse(null);
+
+        if (result == null) {
+            if (artistId == null || artistId.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "resultId 未命中现有记录时必须提供 artistId + 基础字段用于新建");
+            }
+            Object createdAtRaw = body.get("createdAt");
+            Instant createdAt = (createdAtRaw instanceof String s && !s.isBlank())
+                    ? tryParseInstant(s)
+                    : Instant.now();
+            result = ForgeResult.builder()
+                    .id((resultId == null || resultId.isBlank()) ? UUID.randomUUID().toString() : resultId)
+                    .artistId(artistId)
+                    .image((String) body.get("image"))
+                    .prompt((String) body.get("prompt"))
+                    .mode(parseMode((String) body.get("mode")))
+                    .createdAt(createdAt)
+                    .locked(castStringList(body.get("locked")))
+                    .build();
         }
-        ForgeResult result = resultRepo.findById(resultId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "锻造结果不存在"));
 
         boolean reassign = Boolean.TRUE.equals(body.get("reassign"));
         if (result.getVideoUrl() == null || result.getVideoUrl().isBlank() || reassign) {
             int idx = ThreadLocalRandom.current().nextInt(DEMO_VIDEO_POOL.size());
             result.setVideoUrl(DEMO_VIDEO_POOL.get(idx));
-            resultRepo.save(result);
         }
+        resultRepo.save(result);
         return ApiResponse.of(ForgeResultDto.from(result));
+    }
+
+    private Instant tryParseInstant(String iso) {
+        try { return Instant.parse(iso); } catch (Exception e) { return Instant.now(); }
     }
 
     @PostMapping("/blueprint")

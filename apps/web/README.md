@@ -2,7 +2,8 @@
 
 本项目是 Figma Make 原型（导出在 `../../figma/`）的 Next.js 14（App Router）重写版本，与 `apps/web` 并存，共享 `apps/server` 后端。
 
-**当前版本：v2.5.0（2026-04-19）**
+**当前版本：v2.6.0（2026-04-19）**
+v2.6 形象锻造「保存 + 关联短视频」：`POST /appearance-forge/save`（upsert）把一次锻造候选正式入库并为其分配 `videoUrl`，供艺人画廊 3D 视频预览消费；AI 视频生成未接入前，后端从 `DEMO_VIDEO_POOL` 两段本地 showreel mp4 中随机挑一个；三端 ForgeResult 契约同步补 `videoUrl?` 字段，openapi.yaml 首次落 Forge 域全部 schema + 5 个 path。
 v2.5 经纪大盘拆分：经纪大盘 ↔ 艺人视图解耦（公司视角 / 个体视角两入口），新建 `components/producer/dashboard/`（hook + charts + roster + AgencyOverview + ArtistOverview），修复饼图 hover 深色底文字不可见、切片无反馈、窄屏塌缩等交互问题；经纪大盘新增状态分布 / 收入来源 / Top Performers / 旗下艺人矩阵。
 v2.4（2026-04-19）创作工坊 LLM Playground：新建 `generation` 领域五件套；StudioPage 从 ProducerDashboard 抽离并重写，接入 `AIGenerationPanel`（阶段 stepper + typewriter 流式对话 + 结构化 draft 采纳）；作品列表改为按 `activeArtist.id` 过滤真实 Song；侧栏新增"音乐工坊"入口指向 `MusicBusiness`。
 v2.3（2026-04-19）音乐工坊 P1：新增歌曲详情抽屉（改标题/曲风/封面/歌词 + 只读扣费信息）、近 30 天播放/收入趋势折线图、已发布歌曲"分发"按钮跳转 `?tab=distribution`。v2.2（2026-04-18）打通了 P0 主动脉：Song 绑定 artistId、"开始创作"→ `MusicGenerationDialog` → `MusicApi.createSong` → 内联试听；Album 降级为"歌手歌单"，Concert 仅保留线上直播占位。见 product_spec.md §10。
@@ -131,7 +132,19 @@ import type { Song } from "@/types/music";
 
 ## 版本日志
 
-### v2.5.0 — 2026-04-19（本次）
+### v2.6.0 — 2026-04-19（本次）
+- **AI 形象锻造「保存 → 关联短视频资产」闭环**：`AppearanceForge` 生成结束后新增「保存到艺人画廊」按钮；保存成功在结果卡上变绿色「已保存」+ 底部栏提示「已为该形象关联 AI 视频资产」。
+- **新接口 `POST /api/appearance-forge/save`**（`ForgeController.saveResult`）—— upsert 行为：body.resultId 命中 DB 就更新，否则按 body 的 `artistId / image / prompt / mode / locked / createdAt` 新建。幂等：已有 `videoUrl` 不会被覆盖；传 `reassign=true` 可强制重抽。这一设计是因为 `AppearanceForge.runGenerate` 当前仅在本地构建 `ForgeResult`、从不调 `/generate` 落库，因此 `/save` 兼做首次入库。
+- **fake 视频资产池**：AI 视频生成尚未接入，`ForgeController.DEMO_VIDEO_POOL` 维护两个固定 URL：`/videos/showreel-01.mp4` / `/videos/showreel-02.mp4`（文件托管在 `apps/web/public/videos/` 下）。后端随机挑一个写入 `ForgeResult.videoUrl`。mock 模式下 `DEMO_FORGE_VIDEO_POOL` + `pickDemoForgeVideo()` 在 `mocks/appearance-forge.ts` 行为一致。接入真实 AI 后替换为触发生成任务 + 回填对象存储 URL。
+- **契约对齐**：
+  - `ForgeResult` 增 `videoUrl?: string` + `artistId?: ID`（admin 同步）。
+  - server `ForgeResult` 加 `videoUrl` 列，`ForgeResultDto` 暴露 `artistId / videoUrl`。
+  - `specs/openapi.yaml` 首次落 Forge 域：`ForgeMode / ForgeTemplate / ForgeLabeledOption / ForgeFaceSlider / ForgeColorScheme / ForgeOptions / ForgeRequest / ForgeResult / ForgeAppearanceStatus / ForgeAppearanceMarketplace / ForgeBlueprint` 共 11 个 schema + `options / history / generate / save / blueprint` 共 5 个 path。
+  - `specs/FRONTEND_CONTRACT_DIFF.md` 形象锻造附录从「OpenAPI 完全缺失」改为「已对齐」，追加 `/save` 的 fake 实现 + upsert 说明 + 接入 AI 后的替换路径。
+- **画廊渲染优先级**：`AppearanceGallery.pickVideoFor` 改为先读 `appearance.videoUrl`，未保存形象走原哈希回退池兜底；种子数据未跑 save 时渲染与之前一致。
+- **三端同步** — `apps/admin/src/types/appearance-forge.ts` 同步补 `videoUrl?: string` + `artistId?: ID` 保持契约 straight-copy。
+
+### v2.5.0 — 2026-04-19（前一版）
 - **经纪大盘拆分为"经纪大盘" + "艺人视图"两视图**（公司视角 / 个体视角解耦）；sidebar 总览分组新增 `{ id: 'artist', icon: UserCircle, label: '艺人视图' }`，`ProducerPage` 联合字面量增加 `'artist'`。`overview` 路由不再要求 `activeArtist`，0 艺人也能进入。
 - **新建 `src/components/producer/dashboard/`**
   - `hooks/use-producer-dashboard.ts` — 集中拉取 `artists / songs / monthlyRevenue` 供两个视图共用；通知/钱包仍由 `ProducerDashboard` 直接管理。
@@ -153,7 +166,7 @@ import type { Song } from "@/types/music";
 - **ProducerDashboard 瘦身**：旧 inline `OverviewPage`（230+ 行）+ 三处 useEffect + `SONG_STATUS_LABEL` / `OVERVIEW_TASKS` 常量全部迁出；本文件回归"壳 + 路由"的职责。
 - **三端同步** — 本次纯前端改动，未涉及 admin / server 契约；无新增后端端点。
 
-### v2.4.0 — 2026-04-19（前一版）
+### v2.4.0 — 2026-04-19
 - **创作工坊 LLM Playground**：StudioPage 从 `ProducerDashboard.tsx` 拆出为 `src/components/producer/StudioPage.tsx`，接入新 `AIGenerationPanel`，模拟与大模型对话逐段流式生成数字音乐草案；采纳后走 `MusicApi.createSong` 落库为新 Song。
 - **新增 generation 领域五件套**
   - `src/types/generation.ts` — `GenerationStage`、`StreamStage`、`GenerationMessage`、`GeneratedMusicDraft`、`GenerationRequest`、`GenerationResult`。

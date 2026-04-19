@@ -119,7 +119,7 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
     setSaving(true);
     setSaveNote(null);
     try {
-      const saved = await AppearanceForgeApi.saveForgeResult(result.id);
+      const saved = await AppearanceForgeApi.saveForgeResult(result);
       setResult(saved);
       setHistory(prev => prev.map(h => (h.id === saved.id ? saved : h)));
       setSaveNote("已保存 · 已为该形象关联 AI 视频资产");

@@ -2830,6 +2830,9 @@ paths:
 
         **幂等**：若目标 result 已有 videoUrl，保持不变直接返回；
         传 `reassign=true` 可强制重抽。
+
+        **upsert**：若 `resultId` 未命中 DB 现有行，则按 body 其它字段新建
+        （前端当前直接在本地合成候选、不先调 /generate 落库，因此 /save 兼做首次入库）。
       requestBody:
         required: true
         content:
@@ -2840,7 +2843,15 @@ paths:
               properties:
                 resultId:
                   type: string
-                  description: ForgeResult.id，必须由 /generate 先行产出
+                  description: ForgeResult.id；未命中现有行时作为新建记录的主键
+                artistId:
+                  type: string
+                  description: upsert 新建场景下必填
+                image:     { type: string }
+                prompt:    { type: string }
+                mode:      { $ref: '#/components/schemas/ForgeMode' }
+                createdAt: { type: string, format: date-time }
+                locked:    { type: array, items: { type: string } }
                 reassign:
                   type: boolean
                   default: false

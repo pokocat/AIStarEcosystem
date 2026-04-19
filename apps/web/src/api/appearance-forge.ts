@@ -88,22 +88,33 @@ export async function generateForge(req: ForgeRequest): Promise<ForgeResult> {
  * @param reassign 为 true 时即使已有 videoUrl 也重抽一次（默认 false，幂等）
  */
 export async function saveForgeResult(
-  resultId: ID,
+  result: ForgeResult,
   reassign = false,
 ): Promise<ForgeResult> {
   if (USE_MOCK) {
-    const existing = MOCK_APPEARANCES.find(a => a.id === resultId);
-    if (!existing) {
-      throw new Error(`锻造结果不存在：${resultId}`);
+    let stored = MOCK_APPEARANCES.find(a => a.id === result.id);
+    if (!stored) {
+      stored = { ...result };
+      MOCK_APPEARANCES.unshift(stored);
     }
-    if (!existing.videoUrl || reassign) {
-      existing.videoUrl = pickDemoForgeVideo();
+    if (!stored.videoUrl || reassign) {
+      stored.videoUrl = pickDemoForgeVideo();
     }
-    return mockDelay({ ...existing });
+    return mockDelay({ ...stored });
   }
+  // upsert：后端按 resultId 找不到则新建，因此把整个 ForgeResult 作为 body 发送。
   return apiFetch<ForgeResult>("/appearance-forge/save", {
     method: "POST",
-    body: { resultId, reassign },
+    body: {
+      resultId: result.id,
+      artistId: result.artistId,
+      image: result.image,
+      prompt: result.prompt,
+      mode: result.mode,
+      createdAt: result.createdAt,
+      locked: result.locked,
+      reassign,
+    },
   });
 }
 

@@ -31,7 +31,7 @@ function formatDuration(sec: number) {
 
 type ActionKind = "approve" | "reject";
 
-export default function SongsReviewPage() {
+function SongsReviewPageContent() {
   const searchParams = useSearchParams();
   const artistParam = searchParams?.get("artist") ?? null;
 
@@ -306,5 +306,13 @@ export default function SongsReviewPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function SongsReviewPage() {
+  return (
+    <React.Suspense fallback={<div className="mx-auto max-w-screen-2xl py-10 text-sm text-muted-foreground">正在加载歌曲列表...</div>}>
+      <SongsReviewPageContent />
+    </React.Suspense>
   );
 }

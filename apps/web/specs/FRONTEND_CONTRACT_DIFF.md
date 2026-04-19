@@ -434,7 +434,8 @@
 **`/save` 当前为 fake 实现（AI 视频未接）**：
 - 后端 `ForgeController.DEMO_VIDEO_POOL` 维护两个固定 URL：`/videos/showreel-01.mp4`、`/videos/showreel-02.mp4`（实际文件托管在前端 `apps/web/public/videos/` 下）。
 - 每次保存随机挑一个写入 `ForgeResult.videoUrl`；幂等（已有 videoUrl 不重抽，传 `reassign=true` 强制）。
-- mock 模式下 `AppearanceForgeApi.saveForgeResult` 行为一致，从 `DEMO_FORGE_VIDEO_POOL` 抽取并回写 `MOCK_APPEARANCES`。
+- **upsert**：前端 `AppearanceForge.runGenerate` 只在本地构建 `ForgeResult`、从不调 `/generate` 落库，因此 `/save` 必须承担「首次入库 + 关联视频」。若 body.resultId 命中 DB 就更新；否则按 body 的 `artistId / image / prompt / mode / locked / createdAt` 新建。调用方应发送完整 ForgeResult。
+- mock 模式下 `AppearanceForgeApi.saveForgeResult(result, reassign?)` 行为一致：若 MOCK_APPEARANCES 里没有就 unshift 进去，再从 `DEMO_FORGE_VIDEO_POOL` 抽一个 URL 写回。
 - 艺人画廊 `AppearanceGallery.pickVideoFor` 优先读 `appearance.videoUrl`；未保存形象走哈希回退池兜底。
 
 **接入真实 AI 后的替换建议**：
