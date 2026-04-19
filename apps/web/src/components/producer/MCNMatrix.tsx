@@ -44,15 +44,23 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
   ];
 
   return (
-    <motion.div key={artist.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-none" />
-      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-        transition={{ duration: 0.2 }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.15 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-none"
+      />
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.18 }}
         onClick={e => e.stopPropagation()}
-        className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+        className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/5">
           <div className="flex items-center gap-4">
@@ -79,7 +87,7 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-3 text-sm transition relative ${tab === t.id ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
               {t.label}
-              {tab === t.id && <motion.div layoutId="detail-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />}
+              {tab === t.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />}
             </button>
           ))}
         </div>
@@ -252,7 +260,7 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
           )}
         </div>
       </motion.div>
-    </motion.div>
+    </div>
   );
 };
 
@@ -519,10 +527,8 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
         </div>
       )}
 
-      {/* Detail Dialog */}
-      <AnimatePresence>
-        {selectedArtist && <ArtistDetailDialog artist={selectedArtist} lang={lang} onClose={() => setSelectedArtist(null)} />}
-      </AnimatePresence>
+      {/* Detail Dialog — 立即挂载/卸载，避免 AnimatePresence+layoutId 残留遮罩导致全页无法点击 */}
+      {selectedArtist && <ArtistDetailDialog artist={selectedArtist} lang={lang} onClose={() => setSelectedArtist(null)} />}
     </div>
   );
 };
