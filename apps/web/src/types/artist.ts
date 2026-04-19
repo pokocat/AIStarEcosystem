@@ -89,4 +89,10 @@ export interface Artist {
    * 存在于后端 JSON 列 digital_ips.incubation_params，字段可随业务演进新增。
    */
   incubationParams?: Record<string, unknown>;
+  /**
+   * 艺人当前"官方形象" = appearance-forge `ForgeResult.id`。
+   * 用于艺人详情页 Hero 主图、分发物料默认封面、商业授权主形象。
+   * 为空时详情页回落到 `avatar`。
+   */
+  officialAppearanceId?: ID;
 }

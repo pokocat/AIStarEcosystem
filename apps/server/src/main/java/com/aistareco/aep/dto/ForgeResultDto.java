@@ -8,7 +8,9 @@ import java.util.Locale;
 
 public record ForgeResultDto(
         String id,
+        String artistId,
         String image,
+        String videoUrl,
         String prompt,
         String mode,
         Instant createdAt,
@@ -17,7 +19,9 @@ public record ForgeResultDto(
     public static ForgeResultDto from(ForgeResult r) {
         return new ForgeResultDto(
                 r.getId(),
+                r.getArtistId(),
                 r.getImage(),
+                r.getVideoUrl(),
                 r.getPrompt(),
                 lower(r.getMode()),
                 r.getCreatedAt(),

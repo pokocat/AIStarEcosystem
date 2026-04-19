@@ -71,11 +71,34 @@ export interface ForgeRequest {
   colorSchemeId?: ID | null;
 }
 
+/** 形象商业化状态。draft=仅草稿; official=艺人当前官方形象; listed=已上架素材/NFT 市场; sold=已售出（授权或 NFT 流转）。 */
+export type AppearanceStatus = "draft" | "official" | "listed" | "sold";
+
+/** 上架市场信息，仅 status === 'listed' | 'sold' 时存在。 */
+export interface AppearanceMarketplace {
+  /** 售价（credits 原始整数值）。展示请用 formatCredits()。 */
+  price: number;
+  /** 上架时间。 */
+  listedAt: ISODateTime;
+  /** 累计售出数量（NFT / 授权计数）。 */
+  soldCount: number;
+}
+
 /** 生成结果。 */
 export interface ForgeResult {
   id: ID;
-  /** 产出图像 URL。 */
+  /** 归属艺人 ID — 画廊视图按此分组。 */
+  artistId: ID;
+  /** 产出图像 URL（主图）。 */
   image: string;
+  /** 可选缩略图 URL；若不提供则 image 本身即缩略图。 */
+  thumbnail?: string;
+  /**
+   * 保存后关联的短视频 URL；艺人画廊主视图用此字段渲染。
+   * 未保存（草稿）时为 undefined；保存后由后端写入。
+   * 当前未接入 AI 视频生成，后端从 demo 池随机挑一个 URL；真实接入后由生成管线回填。
+   */
+  videoUrl?: string;
   /** 等效文本提示，用于历史回显 / 再次编辑。 */
   prompt: string;
   mode: ForgeMode;
@@ -83,6 +106,12 @@ export interface ForgeResult {
   createdAt: ISODateTime;
   /** 本次生成中被锁定的字段。 */
   locked: string[];
+  /** 形象状态（草稿 / 官方 / 已上架 / 已售出）；生成接口默认 'draft'。 */
+  status?: AppearanceStatus;
+  /** 被使用于 MV / 场景 / 封面的次数。 */
+  usageCount?: number;
+  /** 上架信息；仅 status === 'listed' | 'sold' 时存在。 */
+  marketplace?: AppearanceMarketplace;
 }
 
 /** 锻造炉静态选项清单（一次下发，前端缓存到 constants/mocks）。 */

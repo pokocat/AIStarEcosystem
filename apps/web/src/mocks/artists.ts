@@ -32,6 +32,7 @@ export const MOCK_ARTISTS: Artist[] = [
     commercialValue: 1_200_000,
     studioId: "s-skywave",
     ownerUserId: "u-001",
+    officialAppearanceId: "ap-1-1",
   },
   {
     id: "2",
@@ -56,6 +57,7 @@ export const MOCK_ARTISTS: Artist[] = [
     commercialValue: 5_800_000,
     studioId: "s-skywave",
     ownerUserId: "u-001",
+    officialAppearanceId: "ap-2-1",
   },
   {
     id: "3",
@@ -80,6 +82,7 @@ export const MOCK_ARTISTS: Artist[] = [
     commercialValue: 2_100_000,
     studioId: "s-skywave",
     ownerUserId: "u-001",
+    officialAppearanceId: "ap-3-1",
   },
   {
     id: "4",
@@ -104,6 +107,7 @@ export const MOCK_ARTISTS: Artist[] = [
     commercialValue: 3_200_000,
     studioId: "s-skywave",
     ownerUserId: "u-001",
+    officialAppearanceId: "ap-4-1",
   },
   {
     id: "5",
@@ -128,6 +132,7 @@ export const MOCK_ARTISTS: Artist[] = [
     commercialValue: 480_000,
     studioId: "s-skywave",
     ownerUserId: "u-001",
+    officialAppearanceId: "ap-5-1",
   },
   {
     id: "6",
@@ -152,6 +157,7 @@ export const MOCK_ARTISTS: Artist[] = [
     commercialValue: 120_000,
     studioId: "s-skywave",
     ownerUserId: "u-001",
+    officialAppearanceId: "ap-6-1",
   },
   {
     id: "7",
@@ -176,5 +182,6 @@ export const MOCK_ARTISTS: Artist[] = [
     commercialValue: 4_500_000,
     studioId: "s-skywave",
     ownerUserId: "u-001",
+    officialAppearanceId: "ap-7-1",
   },
 ];

@@ -20,6 +20,7 @@ import {
   FACE_SLIDERS,
   COLOR_SCHEMES,
   PROMPT_SUGGESTIONS,
+  MOCK_APPEARANCES,
 } from "@/mocks/appearance-forge";
 import {
   MODE_CONFIG,
@@ -27,8 +28,10 @@ import {
   FORGE_HISTORY_MAX,
   MOCK_FORGE_DURATION_MS,
 } from "@/constants/appearance-forge-ui";
-// 真后端接入时改为 `import { AppearanceForgeApi } from "@/api";` 并调用 `AppearanceForgeApi.generateForge/saveForgeBlueprint`。
-// 当前兄弟组件统一直接消费 mocks，避免在 `NEXT_PUBLIC_USE_MOCK` 未设置时打到不存在的后端。
+import { AppearanceForgeApi } from "@/api";
+// generateForge 仍走本地合成（保持无后端场景下的快速预览），保存动作会走真正的
+// `AppearanceForgeApi.saveForgeResult`：mock 模式从本地 demo 视频池抽一个 URL
+// 写回 MOCK_APPEARANCES；真后端 `POST /api/appearance-forge/save` 行为一致。
 
 interface Props {
   // 保留 lang 形参以与兄弟组件签名一致（web_new 已收敛为中文单语，不读取此值）。
@@ -54,6 +57,8 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
   const [history, setHistory] = useState<ForgeResult[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [lockedFeatures, setLockedFeatures] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const templates = FORGE_TEMPLATES;
@@ -88,15 +93,41 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
       FORGE_TEMPLATES[Math.floor(Math.random() * FORGE_TEMPLATES.length)];
     const r: ForgeResult = {
       id: Date.now().toString(),
+      artistId: activeArtist.id,
       image: tpl.image,
       prompt: prompt || `自动生成 - ${tpl.name}`,
       mode,
       createdAt: new Date().toISOString(),
       locked: [...lockedFeatures],
+      status: "draft",
+      usageCount: 0,
     };
     setResult(r);
     setHistory(prev => [r, ...prev].slice(0, FORGE_HISTORY_MAX));
+    setSaveNote(null);
+    // 让本地 mock 列表也看到这次生成，方便保存接口按 id 查到。
+    // USE_MOCK=0 走真后端时这步是无副作用的预热（save 接口会按 id 查 DB）。
+    if (!MOCK_APPEARANCES.some(a => a.id === r.id)) {
+      MOCK_APPEARANCES.unshift(r);
+    }
     setGenerating(false);
+  };
+
+  /** 点击「保存到艺人画廊」：落库 + 分配 demo 视频资产。 */
+  const handleSave = async () => {
+    if (!result || saving) return;
+    setSaving(true);
+    setSaveNote(null);
+    try {
+      const saved = await AppearanceForgeApi.saveForgeResult(result.id);
+      setResult(saved);
+      setHistory(prev => prev.map(h => (h.id === saved.id ? saved : h)));
+      setSaveNote("已保存 · 已为该形象关联 AI 视频资产");
+    } catch (err) {
+      setSaveNote((err as Error).message ?? "保存失败");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const runRandomize = () => {
@@ -336,10 +367,13 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          className="w-8 h-8 rounded-lg bg-black/40 backdrop-blur flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition"
-                          title="保存蓝图"
+                          onClick={handleSave}
+                          disabled={saving}
+                          className={`h-8 px-3 rounded-lg bg-black/40 backdrop-blur flex items-center gap-1.5 text-xs transition ${result.videoUrl ? "text-emerald-300" : "text-gray-300 hover:text-white hover:bg-white/10"} disabled:opacity-60`}
+                          title={result.videoUrl ? "已保存（再次点击可重抽视频）" : "保存到艺人画廊"}
                         >
-                          <Save className="w-4 h-4" />
+                          {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : result.videoUrl ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                          {saving ? "保存中..." : result.videoUrl ? "已保存" : "保存"}
                         </button>
                         <button className="w-8 h-8 rounded-lg bg-black/40 backdrop-blur flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition" title="导出">
                           <Download className="w-4 h-4" />
@@ -359,6 +393,10 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
               </AnimatePresence>
             </div>
 
+            {saveNote && (
+              <div className="px-3 pt-2 text-[11px] text-emerald-300">{saveNote}</div>
+            )}
+
             <div className="p-3 border-t border-white/5 flex items-center gap-2">
               <Button
                 onClick={mode === "random" ? runRandomize : runGenerate}
@@ -375,10 +413,20 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
                 {generating ? "锻造中..." : mode === "random" ? "随机锻造" : "开始锻造"}
               </Button>
               {result && (
-                <Button variant="ghost" size="sm" onClick={mode === "random" ? runRandomize : runGenerate}
-                  className="text-gray-400 hover:text-white hover:bg-white/10" disabled={generating}>
-                  <RefreshCw className="w-4 h-4" />
-                </Button>
+                <>
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving || generating}
+                    className={`shrink-0 border-0 ${result.videoUrl ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" : "bg-white/10 text-white hover:bg-white/15"}`}
+                  >
+                    {saving ? <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> : result.videoUrl ? <Check className="w-4 h-4 mr-1.5" /> : <Save className="w-4 h-4 mr-1.5" />}
+                    {saving ? "保存中..." : result.videoUrl ? "已保存" : "保存到艺人画廊"}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={mode === "random" ? runRandomize : runGenerate}
+                    className="text-gray-400 hover:text-white hover:bg-white/10" disabled={generating}>
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                </>
               )}
             </div>
           </div>

@@ -29,7 +29,7 @@ interface AuthState {
 const AuthContext = React.createContext<AuthState | null>(null);
 
 /** 不需要登录即可访问的路径前缀。其它路径在未登录时会被推到 /login。 */
-const PUBLIC_PATH_PREFIXES = ["/login", "/portal", "/producer-intro", "/"];
+const PUBLIC_PATH_PREFIXES = ["/login", "/activate", "/portal", "/producer-intro", "/"];
 
 function isPublicPath(pathname: string | null): boolean {
   if (!pathname) return true;

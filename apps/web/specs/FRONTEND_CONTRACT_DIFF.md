@@ -407,29 +407,41 @@
 
 ---
 
-## 附录 · AI 形象锻造（`appearance-forge.ts`）— 2026-04-18 新增
+## 附录 · AI 形象锻造（`appearance-forge.ts`）— 2026-04-19 更新
+
+2026-04-19：OpenAPI 补齐 + 新增 `POST /appearance-forge/save` + `ForgeResult.videoUrl`（保存后关联短视频）。
 
 | 前端类型 | OpenAPI Schema | 状态 | 差异说明 |
 |---|---|---|---|
-| `ForgeMode` | ❌ 无 | ❌ 不存在 | 4 种模式：`template_photo` / `prompt_only` / `template_prompt` / `random` |
-| `ForgeTemplate` | ❌ 无 | ❌ 不存在 | id + name + image + tags[] + style |
-| `LabeledOption`（发型 / 瞳色 / 风格标签） | ❌ 无 | ❌ 不存在 | 下拉清单；仅部分含颜色字段 |
-| `FaceSlider` / `faceValues` | ❌ 无 | ❌ 不存在 | 6 项面部微调，值域 0-100 |
-| `ColorScheme` | ❌ 无 | ❌ 不存在 | 两色渐变主题配色 |
-| `ForgeRequest` | ❌ 无 | ❌ 不存在 | 生成调用参数；含 artistId / mode / templateId / uploadedPhoto / prompt / faceValues / lockedFeatures |
-| `ForgeResult` | ❌ 无 | ❌ 不存在 | 含 id / image / prompt / mode / createdAt / locked[] |
-| `ForgeOptions` | ❌ 无 | ❌ 不存在 | 静态选项批量下发包 |
+| `ForgeMode` | `ForgeMode` | ✅ 已对齐 | 4 种模式 |
+| `ForgeTemplate` | `ForgeTemplate` | ✅ 已对齐 | |
+| `LabeledOption` | `ForgeLabeledOption` | ✅ 已对齐 | 发型 / 瞳色 / 风格标签共用 |
+| `FaceSlider` / `faceValues` | `ForgeFaceSlider` | ✅ 已对齐 | 6 项面部微调，值域 0-100 |
+| `ColorScheme` | `ForgeColorScheme` | ✅ 已对齐 | |
+| `ForgeRequest` | `ForgeRequest` | ✅ 已对齐 | |
+| `ForgeResult` | `ForgeResult` | ✅ 已对齐 | 含 artistId / image / **videoUrl** / prompt / mode / createdAt / locked[] / status / usageCount / marketplace |
+| `ForgeOptions` | `ForgeOptions` | ✅ 已对齐 | 静态选项批量下发包 |
+| `AppearanceStatus` | `ForgeAppearanceStatus` | ✅ 已对齐 | draft / official / listed / sold |
+| `AppearanceMarketplace` | `ForgeAppearanceMarketplace` | ✅ 已对齐 | |
 
 **接口：**
 - `GET  /appearance-forge/options` — 拉取静态模版 / 选项清单
 - `GET  /appearance-forge/history?artistId=` — 该艺人历史生成记录
-- `POST /appearance-forge/generate` — 异步生成（mock 模式同步返回）
+- `POST /appearance-forge/generate` — 生成候选（mock 同步；真实建议改异步壳）
+- `POST /appearance-forge/save` — **新增**。把候选正式入库并关联短视频资产
 - `POST /appearance-forge/blueprint` — 保存为艺人形象蓝图
 
-**结论**：该域为前端全新超前领域，OpenAPI 完全缺失。后端介入时建议：
-1. 生成接口按 `AsyncJobStarted` 封装（复用 `_shared.ts` 异步壳）；
-2. 图片存储使用 `imageUrl`（与 wardrobe 一致）；
-3. `uploadedPhoto` DataURL 在后端应提前转存对象存储，请求体改为 `photoAssetId`。
+**`/save` 当前为 fake 实现（AI 视频未接）**：
+- 后端 `ForgeController.DEMO_VIDEO_POOL` 维护两个固定 URL：`/videos/showreel-01.mp4`、`/videos/showreel-02.mp4`（实际文件托管在前端 `apps/web/public/videos/` 下）。
+- 每次保存随机挑一个写入 `ForgeResult.videoUrl`；幂等（已有 videoUrl 不重抽，传 `reassign=true` 强制）。
+- mock 模式下 `AppearanceForgeApi.saveForgeResult` 行为一致，从 `DEMO_FORGE_VIDEO_POOL` 抽取并回写 `MOCK_APPEARANCES`。
+- 艺人画廊 `AppearanceGallery.pickVideoFor` 优先读 `appearance.videoUrl`；未保存形象走哈希回退池兜底。
+
+**接入真实 AI 后的替换建议**：
+1. `/generate` 改为 `AsyncJobStarted` 异步壳，返回 jobId；
+2. `/save` 行为不变，但 videoUrl 由生成管线（ComfyUI / Runway / 自研）产出后回填，存入对象存储；
+3. `uploadedPhoto` DataURL 由前端先行 presigned-upload，请求体改为 `photoAssetId`；
+4. 图片/视频 URL 全部走 CDN 或 `/api/assets/*` 代理，不直接命中前端 public/。
 
 
 ## 附录 · 音乐工坊（product_spec.md §10）

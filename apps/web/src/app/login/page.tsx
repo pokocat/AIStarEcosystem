@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Sparkles, LogIn, Loader2 } from "lucide-react";
+import { Sparkles, LogIn, Loader2, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AuthApi } from "@/api";
@@ -164,6 +165,24 @@ export default function LoginPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Link
+          href={{ pathname: "/activate", query: { redirect } }}
+          className="block"
+        >
+          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-cyan-500/30 transition">
+            <div className="flex items-center gap-2 min-w-0">
+              <KeyRound className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">新用户？秘钥激活注册</div>
+                <div className="text-[11px] text-gray-500 mt-0.5 truncate">
+                  输入邀请秘钥即可开通经纪公司账号
+                </div>
+              </div>
+            </div>
+            <span className="text-xs text-cyan-400 shrink-0">前往 →</span>
+          </div>
+        </Link>
 
         <p className="text-[11px] text-gray-600 text-center font-light">
           {"⚠️ dev-login 仅在后端 dev profile 下启用，生产环境会返回 404。"}

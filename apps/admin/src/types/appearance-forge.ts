@@ -74,8 +74,16 @@ export interface ForgeRequest {
 /** 生成结果。 */
 export interface ForgeResult {
   id: ID;
+  /** 归属艺人 ID。 */
+  artistId?: ID;
   /** 产出图像 URL。 */
   image: string;
+  /**
+   * 保存后关联的短视频 URL；艺人画廊主视图用此字段渲染。
+   * 未保存（草稿）时为 undefined；保存后由 `POST /appearance-forge/save` 写入。
+   * 当前未接入 AI 视频生成，后端从 demo 池随机挑一个 URL。
+   */
+  videoUrl?: string;
   /** 等效文本提示，用于历史回显 / 再次编辑。 */
   prompt: string;
   mode: ForgeMode;

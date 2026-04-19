@@ -13,10 +13,54 @@ import { CURRENT_USER } from "@/mocks/account";
 
 /** License 激活码注册（公开接口） */
 export async function activate(req: LicenseRedeemRequest): Promise<LicenseRedeemResult> {
-  return apiFetch<LicenseRedeemResult>("/auth/activate", {
+  if (USE_MOCK) {
+    // 任一非空 code 都视为有效；伪造 token/user/studio，方便前端走通全链路。
+    const now = new Date().toISOString();
+    const userId = `u-${Date.now()}`;
+    const studioId = `s-${req.username}`;
+    const token = `mock-activate-${Date.now()}`;
+    setAuthToken(token);
+    const studio = {
+      id: studioId,
+      ownerUserId: userId,
+      name: req.studioName,
+      kind: req.studioKind ?? "personal_creator",
+      status: "active",
+      bio: "",
+      contactEmail: req.email,
+      contactPhone: req.phone,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const user = {
+      ...CURRENT_USER,
+      id: userId,
+      username: req.username,
+      displayName: req.displayName || req.studioName,
+      email: req.email ?? CURRENT_USER.email,
+      phone: req.phone ?? CURRENT_USER.phone,
+      kind: "studio",
+      status: "active",
+      emailVerified: !!req.email,
+      phoneVerified: !!req.phone,
+      createdAt: now,
+      updatedAt: now,
+      lastLoginAt: now,
+      studio,
+    };
+    return mockDelay<LicenseRedeemResult>({
+      token,
+      user,
+      studio,
+      tenantId: `t-${studioId}`,
+    });
+  }
+  const result = await apiFetch<LicenseRedeemResult>("/auth/activate", {
     method: "POST",
     body: req,
   });
+  if (result?.token) setAuthToken(result.token);
+  return result;
 }
 
 // ── 开发期免密登录（仅 dev profile） ─────────────────────────────────────────

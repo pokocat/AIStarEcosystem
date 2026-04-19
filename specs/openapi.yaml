@@ -1021,6 +1021,133 @@ components:
         submittedAt:    { type: string, format: date-time }
         reviewedAt:     { type: string, format: date-time, nullable: true }
 
+    # ── Appearance Forge (AI 形象锻造炉) ────
+    # 前端真值源：apps/web/src/types/appearance-forge.ts。
+    # 服务端契约：ForgeResult / ForgeResultDto / ForgeController。
+
+    ForgeMode:
+      type: string
+      description: 锻造模式
+      enum: [template_photo, prompt_only, template_prompt, random]
+
+    ForgeTemplate:
+      type: object
+      required: [id, name, image, tags, style]
+      properties:
+        id:    { type: string }
+        name:  { type: string }
+        image: { type: string, description: 模版预览图 URL }
+        tags:  { type: array, items: { type: string } }
+        style: { type: string, description: 风格标识 cyberpunk/gothic/holo/... }
+
+    ForgeLabeledOption:
+      type: object
+      required: [id, label]
+      properties:
+        id:    { type: string }
+        label: { type: string }
+        color: { type: string, nullable: true, description: 仅瞳色等颜色选项使用 }
+
+    ForgeFaceSlider:
+      type: object
+      required: [id, label]
+      properties:
+        id:    { type: string, description: 滑块键名；值域 0-100 }
+        label: { type: string }
+
+    ForgeColorScheme:
+      type: object
+      required: [id, name, colors]
+      properties:
+        id:   { type: string }
+        name: { type: string }
+        colors:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: string, description: 十六进制颜色 }
+
+    ForgeOptions:
+      type: object
+      required: [templates, hairStyles, eyeColors, styleTags, faceSliders, colorSchemes, promptSuggestions]
+      properties:
+        templates:         { type: array, items: { $ref: '#/components/schemas/ForgeTemplate' } }
+        hairStyles:        { type: array, items: { $ref: '#/components/schemas/ForgeLabeledOption' } }
+        eyeColors:         { type: array, items: { $ref: '#/components/schemas/ForgeLabeledOption' } }
+        styleTags:         { type: array, items: { $ref: '#/components/schemas/ForgeLabeledOption' } }
+        faceSliders:       { type: array, items: { $ref: '#/components/schemas/ForgeFaceSlider' } }
+        colorSchemes:      { type: array, items: { $ref: '#/components/schemas/ForgeColorScheme' } }
+        promptSuggestions: { type: array, items: { type: string } }
+
+    ForgeRequest:
+      type: object
+      required: [artistId, mode, fusionRatio, prompt, styleTagIds, faceValues, lockedFeatures]
+      properties:
+        artistId:       { type: string }
+        mode:           { $ref: '#/components/schemas/ForgeMode' }
+        templateId:     { type: string, nullable: true }
+        uploadedPhoto:  { type: string, nullable: true, description: template_photo 模式下的用户照片 DataURL }
+        fusionRatio:    { type: integer, minimum: 0, maximum: 100 }
+        prompt:         { type: string }
+        hairId:         { type: string, nullable: true }
+        eyeId:          { type: string, nullable: true }
+        styleTagIds:    { type: array, items: { type: string } }
+        faceValues:
+          type: object
+          additionalProperties: { type: integer, minimum: 0, maximum: 100 }
+        lockedFeatures: { type: array, items: { type: string } }
+        colorSchemeId:  { type: string, nullable: true }
+
+    ForgeAppearanceStatus:
+      type: string
+      enum: [draft, official, listed, sold]
+      description: 形象商业化状态。前端画廊用此区分草稿 / 官方 / 上架 / 售出。
+
+    ForgeAppearanceMarketplace:
+      type: object
+      required: [price, listedAt, soldCount]
+      properties:
+        price:     { type: integer, description: 售价 credits 原始整数 }
+        listedAt:  { type: string, format: date-time }
+        soldCount: { type: integer }
+
+    ForgeResult:
+      type: object
+      required: [id, image, prompt, mode, createdAt, locked]
+      properties:
+        id:         { type: string }
+        artistId:   { type: string, description: 归属艺人 ID；history 接口按 query 过滤，响应中仍回传方便前端缓存 }
+        image:      { type: string, description: 产出图像 URL }
+        thumbnail:  { type: string, nullable: true }
+        videoUrl:
+          type: string
+          nullable: true
+          description: |
+            保存后关联的短视频 URL；艺人画廊主视图优先用此字段渲染。
+            /generate 产出的候选 videoUrl=null；调 /save 后由后端写入。
+            当前 fake 实现：后端从 demo 池随机挑一个 URL（未接入 AI 视频生成）。
+        prompt:     { type: string }
+        mode:       { $ref: '#/components/schemas/ForgeMode' }
+        createdAt:  { type: string, format: date-time }
+        locked:     { type: array, items: { type: string } }
+        status:     { $ref: '#/components/schemas/ForgeAppearanceStatus' }
+        usageCount: { type: integer, nullable: true, description: 形象被用于 MV/场景/封面的次数 }
+        marketplace:
+          $ref: '#/components/schemas/ForgeAppearanceMarketplace'
+
+    ForgeBlueprint:
+      type: object
+      required: [id, artistId, resultId, snapshot, createdAt]
+      properties:
+        id:        { type: string }
+        artistId:  { type: string }
+        resultId:  { type: string, description: 指向 ForgeResult.id 的弱引用 }
+        snapshot:
+          type: object
+          additionalProperties: true
+          description: 锁定字段 + 本次参数快照
+        createdAt: { type: string, format: date-time }
+
 # ─────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────
@@ -2613,3 +2740,154 @@ paths:
                             reason:      { type: string }
                             createdAt:   { type: string, format: date-time }
                       pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+  # ── 3.14 Appearance Forge ────────────────
+  # AI 形象锻造炉。options / history / generate / blueprint 已实装；
+  # save 为 2026-04-19 新增：把一次生成结果落库并为其关联一段短视频资产。
+  # 当前 AI 视频生成尚未接入，后端从 demo 池（两个本地 showreel mp4）中随机挑一个
+  # URL 写入 ForgeResult.videoUrl；接入后替换为真实生成管线回填。
+
+  /appearance-forge/options:
+    get:
+      tags: [appearance-forge]
+      operationId: getForgeOptions
+      summary: 拉取锻造炉静态模版与下拉选项
+      responses:
+        '200':
+          description: 模版 + 发型 / 瞳色 / 标签 / 面部滑块 / 主题配色清单
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ForgeOptions' }
+
+  /appearance-forge/history:
+    get:
+      tags: [appearance-forge]
+      operationId: listForgeHistory
+      summary: 列出指定艺人的历史生成记录
+      parameters:
+        - name: artistId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 按 createdAt 倒序排列
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ForgeResult' }
+
+  /appearance-forge/generate:
+    post:
+      tags: [appearance-forge]
+      operationId: generateForge
+      summary: 提交一次锻造生成
+      description: |
+        mock / demo 实现同步返回合成结果；真实 AI 接入后建议改为异步任务壳。
+        本接口只负责"产出候选"，真正入库固化调 /save。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgeRequest' }
+      responses:
+        '201':
+          description: 生成结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ForgeResult' }
+
+  /appearance-forge/save:
+    post:
+      tags: [appearance-forge]
+      operationId: saveForgeResult
+      summary: 保存一次锻造结果并为其关联短视频资产
+      description: |
+        把 /generate 产出的候选正式入库到艺人形象库，并分配一段可播放的短视频用于
+        艺人详情页画廊的 3D 视频预览。
+
+        **当前 fake 实现**：AI 视频生成尚未接入，后端维护一个固定的 demo 视频池
+        （`/videos/showreel-01.mp4`、`/videos/showreel-02.mp4`，两个文件托管在
+        前端 `apps/web/public/videos/` 下），每次保存随机挑一个 URL 写入
+        `ForgeResult.videoUrl`。接入真实 AI 后替换为触发生成任务 + 落盘对象存储 +
+        回填真实 URL 的完整管线。
+
+        **幂等**：若目标 result 已有 videoUrl，保持不变直接返回；
+        传 `reassign=true` 可强制重抽。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resultId]
+              properties:
+                resultId:
+                  type: string
+                  description: ForgeResult.id，必须由 /generate 先行产出
+                reassign:
+                  type: boolean
+                  default: false
+                  description: 若为 true 即使已有 videoUrl 也重抽一次
+      responses:
+        '200':
+          description: 保存后的 ForgeResult（videoUrl 已填充）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ForgeResult' }
+        '400':
+          description: resultId 缺失
+        '404':
+          description: resultId 对应记录不存在
+
+  /appearance-forge/blueprint:
+    post:
+      tags: [appearance-forge]
+      operationId: saveForgeBlueprint
+      summary: 把一次生成结果固化为艺人蓝图快照
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [artistId, resultId]
+              properties:
+                artistId: { type: string }
+                resultId: { type: string }
+                snapshot:
+                  type: object
+                  additionalProperties: true
+                  description: 锁定字段 + 本次参数快照；未传时后端会把 body 中其它字段合入
+      responses:
+        '201':
+          description: 蓝图已创建
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ForgeBlueprint' }

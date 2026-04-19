@@ -5,10 +5,11 @@
 //
 // 经纪人在这里看一位 AI 艺人的完整画像：
 //   - Hero：头像 / 姓名 / 类型 / Lv 进度 / 状态 / 稀有度 / Bio / 艺人切换下拉
+//   - AppearanceGallery：AI 形象画廊（只读，突出商业化入口；所有写操作跳转锻造炉）
 //   - 能力雷达（复用 ArtistRadarCard）
 //   - 个人 KPI（本月营收 / 粉丝 / 人气 / 代言数）
 //   - 孵化参数（bio + incubationParams + domains）
-//   - 形象 / 造型 / 音乐 三张快照卡（只读 + CTA 跳转深度页）
+//   - 造型 / 音乐 两张快照卡（只读 + CTA 跳转深度页）
 //   - 快捷工作流入口
 //   - 个人动态时间线（从 ActivityFeed mock 按 artist.name 过滤）
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,9 +30,9 @@ import {
 } from "../ArtistTypes";
 import { QUALITY_CONFIG, STATUS_CONFIG } from "@/constants/artist-config";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
-import { FORGE_TEMPLATES } from "@/mocks/appearance-forge";
 import { formatCredits, formatCompactNumber, formatDuration } from "@/lib/format";
 import { ArtistRadarCard } from "../ArtistRadarCard";
+import { AppearanceGallery } from "./artist/AppearanceGallery";
 
 interface Props {
   artist: Artist;
@@ -79,9 +80,6 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
     pick("extraPersona", "额外设定");
   }
 
-  // 形象快照：取 3 个 FORGE_TEMPLATES 作为"近期方案"缩略图占位
-  const forgeSamples = FORGE_TEMPLATES.slice(0, 3);
-
   // 衣橱快照：取 rare/epic/legendary 的前 4 件做"经典穿搭"占位
   const wardrobeSamples = CLOTHING_DATABASE
     .filter(c => c.rarity !== "common")
@@ -116,7 +114,6 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
                 {status.label}
               </Badge>
             </div>
-            <p className="text-sm text-gray-400 font-light mt-2 max-w-xl line-clamp-2">{artist.bio}</p>
             <div className="mt-3 flex items-center gap-3">
               <div className="text-xs text-gray-500">Lv.</div>
               <div className="text-sm font-bold text-cyan-300">{artist.level}</div>
@@ -147,9 +144,13 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
         </div>
       </motion.div>
 
+      {/* AI 形象画廊 —— 艺人详情页"第一商业化入口"。此视图只读，生成 / 删除 /
+          设为官方形象 / 上架均在 AI 形象锻造炉完成。 */}
+      <AppearanceGallery artist={artist} onGoToForge={() => onNavigate("appearance")} />
+
       {/* 雷达 + 个人 KPI + 孵化参数 */}
       <div className="grid lg:grid-cols-3 gap-6">
-        <ArtistRadarCard lang="zh" artist={artist} />
+        <ArtistRadarCard lang="zh" artist={artist} hideIdentity />
 
         <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>个人数据</h3>
@@ -217,33 +218,8 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
         </div>
       </div>
 
-      {/* 三张快照卡 */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* AI 形象 */}
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .1 }}
-          className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>AI 形象</h3>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => onNavigate("appearance")} className="text-cyan-400 hover:bg-cyan-500/10 text-xs">
-              进入锻造 <ChevronRight className="w-3 h-3 ml-1" />
-            </Button>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {forgeSamples.map(t => (
-              <div key={t.id} className="relative aspect-[3/4] rounded-lg overflow-hidden border border-white/5 group">
-                <img src={t.image} alt={t.name} className="w-full h-full object-cover group-hover:scale-105 transition" />
-                <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/85 to-transparent">
-                  <div className="text-[10px] text-white font-medium truncate">{t.name}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-[11px] text-gray-500 font-light mt-3">最近使用的形象模板（来自形象锻造草稿）</p>
-        </motion.div>
-
+      {/* 造型 + 音乐作品（AI 形象已上移至 AppearanceGallery） */}
+      <div className="grid lg:grid-cols-2 gap-6">
         {/* 造型 / 道具 */}
         <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .15 }}
           className="bg-gray-900/50 border border-white/5 rounded-xl p-6">

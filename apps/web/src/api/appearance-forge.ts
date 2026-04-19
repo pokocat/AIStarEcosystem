@@ -10,7 +10,13 @@ import type {
   ForgeResult,
 } from "@/types/appearance-forge";
 import type { ID } from "@/types/_shared";
-import { FORGE_OPTIONS, FORGE_TEMPLATES } from "@/mocks/appearance-forge";
+import {
+  FORGE_OPTIONS,
+  FORGE_TEMPLATES,
+  MOCK_APPEARANCES,
+  generateMockAppearancesFor,
+  pickDemoForgeVideo,
+} from "@/mocks/appearance-forge";
 import { MOCK_FORGE_DURATION_MS } from "@/constants/appearance-forge-ui";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
@@ -20,7 +26,18 @@ export async function getForgeOptions(): Promise<ForgeOptions> {
 }
 
 export async function listForgeHistory(artistId: ID): Promise<ForgeResult[]> {
-  if (USE_MOCK) return mockDelay([]);
+  if (USE_MOCK) {
+    let scoped = MOCK_APPEARANCES.filter(a => a.artistId === artistId);
+    // 新建艺人（孵化器刚产出）没有种子形象时，按 artistId 合成 3 张，
+    // 并写回 MOCK_APPEARANCES 以保证会话内后续请求幂等。
+    if (scoped.length === 0) {
+      const synth = generateMockAppearancesFor(artistId);
+      MOCK_APPEARANCES.push(...synth);
+      scoped = synth;
+    }
+    const sorted = [...scoped].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return mockDelay(sorted);
+  }
   return apiFetch<ForgeResult[]>(`/appearance-forge/history`, {
     query: { artistId },
   });
@@ -38,17 +55,55 @@ export async function generateForge(req: ForgeRequest): Promise<ForgeResult> {
       FORGE_TEMPLATES[Math.floor(Math.random() * FORGE_TEMPLATES.length)];
     const result: ForgeResult = {
       id: Date.now().toString(),
+      artistId: req.artistId,
       image: tpl.image,
       prompt: req.prompt || `自动生成 - ${tpl.name}`,
       mode: req.mode,
       createdAt: new Date().toISOString(),
       locked: [...req.lockedFeatures],
+      status: "draft",
+      usageCount: 0,
     };
+    // 回写到 mock 仓库，让"锻造 → 返回艺人详情页画廊"能看到新图。
+    MOCK_APPEARANCES.unshift(result);
     return mockDelay(result, MOCK_FORGE_DURATION_MS);
   }
   return apiFetch<ForgeResult>("/appearance-forge/generate", {
     method: "POST",
     body: req,
+  });
+}
+
+/**
+ * 保存一次锻造结果到艺人形象库，并为其关联一段短视频。
+ *
+ * 当前 AI 视频生成尚未接入：
+ * - mock 模式下从 DEMO_FORGE_VIDEO_POOL 随机挑一个 URL 写入 videoUrl，并回写
+ *   MOCK_APPEARANCES 供艺人详情画廊即时呈现。
+ * - 真实后端 `POST /api/appearance-forge/save` 行为一致，两个 URL 由 server 端
+ *   {@code ForgeController.DEMO_VIDEO_POOL} 维护。
+ * 接入真实 AI 后，后端应替换为触发生成任务并回填真实 videoUrl。
+ *
+ * @param resultId 要保存的 ForgeResult.id
+ * @param reassign 为 true 时即使已有 videoUrl 也重抽一次（默认 false，幂等）
+ */
+export async function saveForgeResult(
+  resultId: ID,
+  reassign = false,
+): Promise<ForgeResult> {
+  if (USE_MOCK) {
+    const existing = MOCK_APPEARANCES.find(a => a.id === resultId);
+    if (!existing) {
+      throw new Error(`锻造结果不存在：${resultId}`);
+    }
+    if (!existing.videoUrl || reassign) {
+      existing.videoUrl = pickDemoForgeVideo();
+    }
+    return mockDelay({ ...existing });
+  }
+  return apiFetch<ForgeResult>("/appearance-forge/save", {
+    method: "POST",
+    body: { resultId, reassign },
   });
 }
 
