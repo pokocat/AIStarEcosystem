@@ -15,7 +15,7 @@ import { STUDIO_KIND_LABEL_ZH, type StudioKind } from "@/types/account";
  * Dev 登录页 —— 免密，从后端拉取可用账号列表。
  * 每个账号对应一家经纪公司（Studio），登录后 /api/me 会返回嵌套的 studio 档案。
  */
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const search = useSearchParams();
   const redirect = search.get("redirect") || "/producer";
@@ -189,5 +189,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <React.Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-black text-sm text-gray-500">正在加载登录页...</div>}>
+      <LoginPageContent />
+    </React.Suspense>
   );
 }

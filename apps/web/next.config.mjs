@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  basePath: "/web",
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },

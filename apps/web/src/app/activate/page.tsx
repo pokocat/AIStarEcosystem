@@ -28,7 +28,7 @@ const STUDIO_KIND_OPTIONS: StudioKind[] = [
   "mcn",
 ];
 
-export default function ActivatePage() {
+function ActivatePageContent() {
   const router = useRouter();
   const search = useSearchParams();
   const redirect = search.get("redirect") || "/producer";
@@ -214,6 +214,14 @@ export default function ActivatePage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ActivatePage() {
+  return (
+    <React.Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-black text-sm text-gray-500">正在加载激活页...</div>}>
+      <ActivatePageContent />
+    </React.Suspense>
   );
 }
 
