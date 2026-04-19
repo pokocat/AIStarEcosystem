@@ -8,8 +8,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Users,
-  Building2,
-  Network,
   KeySquare,
   Sparkles,
   Music2,
@@ -33,7 +31,6 @@ import {
   Coins,
   Bell,
   History,
-  Settings2,
 } from "lucide-react";
 
 export interface NavItem {
@@ -64,11 +61,8 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "平台账户",
     items: [
-      { href: "/platform/accounts", label: "账号",              icon: Users,     badgeKey: "account_suspended", description: "登录账号与状态" },
-      { href: "/platform/studios",  label: "经纪公司 / 工作室", icon: Building2, description: "业务主体档案与聚合指标" },
-      { href: "/platform/tenants",  label: "机构",              icon: Network,   description: "秘钥发放方与归属统计" },
-      { href: "/platform/licenses", label: "秘钥批次",          icon: KeySquare, badgeKey: "license_low",       description: "批次 / 秘钥 / 核销" },
-      { href: "/platform/config",   label: "平台配置",          icon: Settings2, description: "孵化 / 锻造炉 配置" },
+      { href: "/platform/accounts", label: "账号 & 经纪公司", icon: Users,     badgeKey: "account_suspended", description: "AepUser ↔ Studio 1:1，账号/主体状态" },
+      { href: "/platform/licenses", label: "秘钥批次",        icon: KeySquare, badgeKey: "license_low",       description: "批次 / 秘钥 / 核销" },
     ],
   },
   {
@@ -111,10 +105,11 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "基础数据",
     items: [
-      { href: "/base/genres",       label: "曲风 / 领域", icon: Tags,           description: "基础分类维护" },
-      { href: "/base/wardrobe",     label: "造型库",      icon: Shirt,          description: "服装与道具" },
-      { href: "/base/pose",         label: "动作与表情",  icon: PersonStanding, description: "动作 / 表情 / 手势库" },
-      { href: "/base/credit-packs", label: "积分包",      icon: Coins,          description: "积分售卖规格（替代原订阅）" },
+      { href: "/base/genres",       label: "曲风 / 领域",       icon: Tags,           description: "基础分类维护" },
+      { href: "/base/wardrobe",     label: "造型库",            icon: Shirt,          description: "服装与道具" },
+      { href: "/base/pose",         label: "动作与表情",        icon: PersonStanding, description: "动作 / 表情 / 手势库" },
+      { href: "/base/credit-packs", label: "积分包",            icon: Coins,          description: "积分售卖规格（替代原订阅）" },
+      { href: "/base/presets",      label: "孵化 / 锻造炉 预设", icon: Sparkles,       description: "面部风格 / 发型 / 瞳色 / 推荐标签 等预设列表" },
     ],
   },
   {

@@ -192,7 +192,7 @@ export default function DashboardPage() {
       <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         {[
           { href: "/artists/lifecycle", icon: Flame, label: "练习生", count: traineeCount, tone: "primary" },
-          { href: "/platform/studios", icon: Handshake, label: "合约异常", count: expiringContracts, tone: "danger" },
+          { href: "/platform/accounts", icon: Handshake, label: "合约异常", count: expiringContracts, tone: "danger" },
           { href: "/distribution/platforms", icon: Radio, label: "渠道接入", count: pendingPlatforms, tone: "warning" },
           { href: "/content/songs", icon: Music2, label: "歌曲制作中", count: songsInProduction, tone: "info" },
           { href: "/content/dramas", icon: Film, label: "影视项目", count: inProductionFilm, tone: "info" },
@@ -283,7 +283,7 @@ export default function DashboardPage() {
               <CardDescription>按到期日升序</CardDescription>
             </div>
             <Button asChild variant="ghost" size="sm">
-              <Link href="/platform/studios">全部合约 <ArrowRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/platform/accounts">全部合约 <ArrowRight className="h-3.5 w-3.5" /></Link>
             </Button>
           </CardHeader>
           <CardContent className="divide-y divide-border -mx-2">

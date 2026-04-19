@@ -12,8 +12,12 @@ public record NotificationDto(
         String title,
         String desc,
         String time,
-        boolean read
+        boolean read,
+        Audience audience
 ) {
+    /** 推送对象。scope: all | studio | artist | account. 对齐前端 NotificationAudience 契约。 */
+    public record Audience(String scope, String targetId, String targetName) {}
+
     public static NotificationDto from(Notification n) {
         return new NotificationDto(
                 n.getId(),
@@ -21,7 +25,8 @@ public record NotificationDto(
                 n.getTitle(),
                 n.getDescription(),
                 relativeTime(n.getCreatedAt()),
-                n.isRead()
+                n.isRead(),
+                new Audience("all", null, null)
         );
     }
 

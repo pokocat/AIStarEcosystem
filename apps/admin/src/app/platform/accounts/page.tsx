@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Users, UserCheck, UserX, Search } from "lucide-react";
+import { Users, UserCheck, UserX, Search, Building2, Coins } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,17 +12,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
 import { listUsers } from "@/api/users";
-import { listTenants, listMemberships } from "@/api/tenants";
 import { listStudios } from "@/api/studios";
 import { ACCOUNT_STATUS, STUDIO_KIND } from "@/constants/status";
-import type { AepUser, AccountKind, AccountStatus, Tenant, Membership } from "@/types/account";
+import type { AepUser, AccountKind, AccountStatus } from "@/types/account";
 import type { AdminStudio } from "@/types/studio";
 import { formatDateCN } from "@/lib/utils";
+import { formatCredits } from "@/lib/format";
 
 export default function AccountsPage() {
   const [users, setUsers] = React.useState<AepUser[]>([]);
-  const [tenants, setTenants] = React.useState<Tenant[]>([]);
-  const [memberships, setMemberships] = React.useState<Membership[]>([]);
   const [studios, setStudios] = React.useState<AdminStudio[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -36,15 +34,11 @@ export default function AccountsPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [u, t, m, s] = await Promise.all([
+      const [u, s] = await Promise.all([
         listUsers(0, 200),
-        listTenants(0, 200),
-        listMemberships(undefined, undefined, 0, 500),
         listStudios(0, 200),
       ]);
       setUsers(u);
-      setTenants(t);
-      setMemberships(m);
       setStudios(s);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "加载失败");
@@ -57,12 +51,6 @@ export default function AccountsPage() {
     void reload();
   }, [reload]);
 
-  const tenantById = React.useMemo(() => new Map(tenants.map((t) => [t.id, t])), [tenants]);
-  const membershipByUser = React.useMemo(() => {
-    const m = new Map<string, Membership>();
-    for (const x of memberships) if (!m.has(x.userId)) m.set(x.userId, x);
-    return m;
-  }, [memberships]);
   const studioByOwner = React.useMemo(
     () => new Map(studios.map((s) => [s.ownerUserId, s])),
     [studios]
@@ -83,21 +71,23 @@ export default function AccountsPage() {
     active: users.filter((a) => a.status === "active").length,
     suspended: users.filter((a) => a.status === "suspended").length,
     studio: users.filter((a) => a.kind === "studio").length,
+    studioSubjects: studios.length,
+    revenueCredits: studios.reduce((s, x) => s + x.totalRevenueCredits, 0),
   };
 
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
-        title="账号"
-        description="AepUser：登录账号、身份（个人 / 工作室）与状态管理。"
-        breadcrumb={[{ label: "平台账户" }, { label: "账号" }]}
+        title="账号 & 经纪公司"
+        description="AepUser ↔ Studio 1:1 绑定：登录账号、所属经纪公司 / 工作室、聚合收益与状态。"
+        breadcrumb={[{ label: "平台账户" }, { label: "账号 & 经纪公司" }]}
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="账号总数"  value={counts.total}     icon={Users}     />
-        <StatCard label="启用中"    value={counts.active}    icon={UserCheck} tone="success" />
-        <StatCard label="工作室账号" value={counts.studio}    icon={Users}     tone="default" />
-        <StatCard label="已停用"    value={counts.suspended} icon={UserX}     tone={counts.suspended ? "warning" : "default"} />
+        <StatCard label="账号总数"        value={counts.total}                      icon={Users}     />
+        <StatCard label="启用中"          value={counts.active}                     icon={UserCheck} tone="success" />
+        <StatCard label="经纪公司主体"    value={counts.studioSubjects}             icon={Building2} />
+        <StatCard label="经纪公司累计收益" value={formatCredits(counts.revenueCredits)} icon={Coins}     tone="success" />
       </section>
 
       <Card>
@@ -135,14 +125,15 @@ export default function AccountsPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <Table className="min-w-[1200px]">
             <TableHeader>
               <TableRow>
                 <TableHead>账号</TableHead>
-                <TableHead>工作室</TableHead>
+                <TableHead>经纪公司 / 工作室</TableHead>
                 <TableHead className="text-right">艺人</TableHead>
                 <TableHead className="text-right">作品</TableHead>
-                <TableHead>归属机构</TableHead>
+                <TableHead className="text-right">月度收益</TableHead>
+                <TableHead className="text-right">累计收益</TableHead>
                 <TableHead>邮箱 / 手机</TableHead>
                 <TableHead>最近登录</TableHead>
                 <TableHead>状态</TableHead>
@@ -152,17 +143,15 @@ export default function AccountsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
                 </TableRow>
               )}
               {!loading && loadError && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
+                  <TableCell colSpan={10} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
                 </TableRow>
               )}
               {!loading && !loadError && filtered.map((u) => {
-                const m = membershipByUser.get(u.id);
-                const t = m ? tenantById.get(m.tenantId) : undefined;
                 const studio = studioByOwner.get(u.id);
                 return (
                   <TableRow key={u.id}>
@@ -186,7 +175,12 @@ export default function AccountsPage() {
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{studio?.artistCount ?? "—"}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{studio?.songCount ?? "—"}</TableCell>
-                    <TableCell className="text-sm">{t?.name ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">
+                      {studio ? formatCredits(studio.monthlyRevenueCredits) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm font-medium">
+                      {studio ? formatCredits(studio.totalRevenueCredits) : "—"}
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {[u.email, u.phone].filter(Boolean).join(" · ") || "—"}
                     </TableCell>
@@ -210,7 +204,7 @@ export default function AccountsPage() {
               })}
               {!loading && !loadError && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">没有匹配的账号</TableCell>
+                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">没有匹配的账号</TableCell>
                 </TableRow>
               )}
             </TableBody>

@@ -2,22 +2,20 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard, Users, Mic2, Music, Disc, Layers, Shield, TrendingUp,
-  Globe as GlobeIcon, Wallet, Settings, LogOut, ChevronRight, Plus,
-  Play, Pause, BarChart3, Zap, Sparkles, ArrowRight, Crown,
-  Heart, Eye, Upload, ChevronDown, Menu, X, ArrowUpRight,
-  Headphones, Star, Clock, CheckCircle2, AlertCircle, Rocket, Video,
-  Film, ShoppingBag, Tv, Mic, GraduationCap, Gamepad, Award,
-  Wand2, Shirt, Grid3X3, Building2
+  LayoutDashboard, Users, Music, Layers, Shield, TrendingUp,
+  Globe as GlobeIcon, Wallet, Settings, LogOut, ChevronRight,
+  Play, Sparkles, Crown,
+  Heart, ChevronDown, Menu, X,
+  Star, CheckCircle2, Film, Tv, Mic,
+  Wand2, Shirt, Building2,
+  Bell, Coins
 } from 'lucide-react';
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Progress } from "./ui/progress";
 import { motion, AnimatePresence } from "motion/react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { useTheme, themeConfig } from "./ThemeProvider";
-import { TRANSLATIONS, type Lang } from "../translations";
+import type { Lang } from "../translations";
 import { MCNMatrix } from "./producer/MCNMatrix";
 import { IncubationWizard } from "./producer/IncubationWizard";
 import { WardrobePage } from "./producer/WardrobePage";
@@ -32,15 +30,16 @@ import { StudioPage } from "./producer/StudioPage";
 import { NotificationPanel } from "./producer/NotificationPanel";
 import { INITIAL_NOTIFICATIONS } from "@/mocks/notifications";
 import type { Notification } from "@/types/notification";
-import { NotificationsApi, AccountApi, ArtistsApi } from "@/api";
+import { NotificationsApi, AccountApi, ArtistsApi, MusicApi, FinanceApi } from "@/api";
 import { useAuth } from "@/lib/auth-context";
-import { Bell, Coins } from 'lucide-react';
-import { formatCredits } from "@/lib/format";
+import { formatCredits, formatCompactNumber } from "@/lib/format";
 import type { Wallet as WalletSnapshot } from "@/types/wallet";
+import type { Song } from "@/types/music";
+import type { MonthlyRevenuePoint } from "@/types/finance";
 import { CommandPalette } from "./producer/CommandPalette";
 import { ArtistRadarCard } from "./producer/ArtistRadarCard";
 import {
-  MOCK_ARTISTS, ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, DOMAINS_8,
+  ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, DOMAINS_8,
   type Artist, type ArtistType
 } from './producer/ArtistTypes';
 import { ActivityFeed } from "./producer/ActivityFeed";
@@ -48,61 +47,75 @@ import { FloatingActions } from "./producer/FloatingActions";
 import { OverviewSkeleton } from "./producer/SkeletonLoader";
 import { usePageParam } from "@/lib/use-page-param";
 
-const EARNING_DATA = [
-  { name: '1月', song: 4000, nft: 2400, tips: 1200 },
-  { name: '2月', song: 3000, nft: 1398, tips: 800 },
-  { name: '3月', song: 5200, nft: 3800, tips: 2100 },
-  { name: '4月', song: 2780, nft: 3908, tips: 1500 },
-  { name: '5月', song: 6890, nft: 4800, tips: 3200 },
-  { name: '6月', song: 8390, nft: 6300, tips: 4100 },
-];
+const SONG_STATUS_LABEL: Record<Song["status"], { label: string; tone: string }> = {
+  recording: { label: '录制中', tone: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
+  mixing:    { label: '混音中', tone: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+  released:  { label: '已发行', tone: 'bg-green-500/10 text-green-400 border-green-500/20' },
+};
 
-const TRACKS = [
-  { id: 1, title: 'Neon Tears', status: 'Published', plays: '450K', date: '2024-03-10', revenue: '¥8,200' },
-  { id: 2, title: 'Cyber City Vibe', status: 'Draft', plays: '-', date: '2024-03-12', revenue: '-' },
-  { id: 3, title: 'Digital Sunset', status: 'Published', plays: '1.2M', date: '2024-02-28', revenue: '¥21,500' },
-  { id: 4, title: 'Midnight Protocol', status: 'Review', plays: '-', date: '2024-03-15', revenue: '-' },
-  { id: 5, title: 'Ghost Signal', status: 'Published', plays: '320K', date: '2024-01-20', revenue: '¥5,600' },
-];
+// ---- Sidebar Config（中文单语） ----
+type ProducerPage =
+  | 'overview' | 'artists' | 'incubator' | 'appearance' | 'wardrobe'
+  | 'studio' | 'music' | 'copyright'
+  | 'distribution' | 'community' | 'finance'
+  | 'settings';
 
-// ---- Sidebar Config ----
+interface SidebarItemDef {
+  id: ProducerPage;
+  icon: any;
+  label: string;
+  /** true 时由 activeArtist 类型动态覆盖（创作工坊随艺人类型换名） */
+  dynamicLabel?: boolean;
+}
+
 interface SidebarGroup {
-  title: { zh: string; en: string };
-  items: { id: string; icon: any; zh: string; en: string; dynamicLabel?: boolean }[];
+  title: string;
+  items: SidebarItemDef[];
 }
 
 const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
-    title: { zh: '总览', en: 'Overview' },
+    title: '总览',
     items: [
-      { id: 'overview', icon: LayoutDashboard, zh: '经纪大盘', en: 'Dashboard' },
+      { id: 'overview', icon: LayoutDashboard, label: '经纪大盘' },
     ]
   },
   {
-    title: { zh: '艺人管理', en: 'Artist Mgmt' },
+    title: '艺人管理',
     items: [
-      { id: 'artists', icon: Users, zh: 'MCN与孵化', en: 'MCN Matrix' },
-      { id: 'incubator', icon: Wand2, zh: 'AI艺人孵化', en: 'AI Incubator' },
-      { id: 'appearance', icon: Sparkles, zh: 'AI形象锻造', en: 'Appearance Forge' },
-      { id: 'wardrobe', icon: Shirt, zh: '造型与道具', en: 'Wardrobe' },
+      { id: 'artists', icon: Users, label: 'MCN与孵化' },
+      { id: 'incubator', icon: Wand2, label: 'AI艺人孵化' },
+      { id: 'appearance', icon: Sparkles, label: 'AI形象锻造' },
+      { id: 'wardrobe', icon: Shirt, label: '造型与道具' },
     ]
   },
   {
-    title: { zh: '内容创作', en: 'Creation' },
+    title: '内容创作',
     items: [
-      { id: 'studio', icon: Music, zh: '创作工坊', en: 'Workshop', dynamicLabel: true },
-      { id: 'music', icon: Music, zh: '音乐工坊', en: 'Music Workshop' },
-      { id: 'copyright', icon: Shield, zh: '版权资产', en: 'Copyright' },
+      // studio 是按 activeArtist 类型动态命名的创作工坊（音乐 / 短剧 / 综艺…）；
+      // music 是音乐业务 / 运营视图（与 StudioPage 不同层），改名「音乐商业」消歧义。
+      { id: 'studio', icon: Music, label: '创作工坊', dynamicLabel: true },
+      { id: 'music', icon: TrendingUp, label: '音乐商业' },
+      { id: 'copyright', icon: Shield, label: '版权资产' },
     ]
   },
   {
-    title: { zh: '商业运营', en: 'Business' },
+    title: '商业运营',
     items: [
-      { id: 'distribution', icon: GlobeIcon, zh: '全网分发', en: 'Distribution' },
-      { id: 'community', icon: Heart, zh: '粉丝社群', en: 'Community' },
-      { id: 'finance', icon: Wallet, zh: '商业变现', en: 'Monetization' },
+      { id: 'distribution', icon: GlobeIcon, label: '全网分发' },
+      { id: 'community', icon: Heart, label: '粉丝社群' },
+      { id: 'finance', icon: Wallet, label: '商业变现' },
     ]
   },
+];
+
+const SIDEBAR_COLLAPSED_KEY = 'aistareco.producer.sidebarCollapsed';
+
+/** OverviewPage 建议行动：沉淀为静态文案（MVP），后续接 AI 推荐接口再替换。 */
+const OVERVIEW_TASKS: Array<{ title: string; desc: string; priority: '紧急' | '重要' | '建议' }> = [
+  { title: "铸造 '夏日' 勋章", desc: '粉丝正在请求新的收藏品。', priority: '紧急' },
+  { title: '回复 Alex 教练',   desc: '关于新歌的反馈待处理。', priority: '重要' },
+  { title: '优化元数据',        desc: 'Track #03 缺少流派标签。', priority: '建议' },
 ];
 
 const SidebarItem = ({ icon: Icon, label, id, active, onClick, themeStyles }: any) => (
@@ -118,15 +131,34 @@ const SidebarItem = ({ icon: Icon, label, id, active, onClick, themeStyles }: an
 );
 
 /* ======== Enhanced Overview Page ======== */
-const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: Lang; activeSinger: Artist; onNavigate: (page: string) => void; onOpenTrack: (trackId: number) => void }) => {
-  const zh = lang === 'zh';
-  const t = TRANSLATIONS[lang].producer.overview;
+interface OverviewPageProps {
+  activeSinger: Artist;
+  artists: Artist[];
+  songs: Song[];
+  monthlyRevenue: MonthlyRevenuePoint[];
+  onNavigate: (page: string) => void;
+  onOpenTrack: (songId: string) => void;
+}
 
-  // Type distribution for pie chart
+const OverviewPage = ({ activeSinger, artists, songs, monthlyRevenue, onNavigate, onOpenTrack }: OverviewPageProps) => {
+  // ── 聚合指标：全部来自 artists / songs / monthlyRevenue，不再硬编码 ──────────
+  const ecoValue     = artists.reduce((sum, a) => sum + (a.commercialValue ?? 0), 0);
+  const totalFans    = artists.reduce((sum, a) => sum + (a.stats?.fans ?? 0), 0);
+  const totalPlays   = songs.reduce((sum, s) => sum + (s.plays ?? 0), 0);
+  const signedCount  = artists.length;
+
+  const latestMonth  = monthlyRevenue[monthlyRevenue.length - 1];
+  const prevMonth    = monthlyRevenue[monthlyRevenue.length - 2];
+  const monthRev     = latestMonth?.revenue ?? 0;
+  const monthRevMoM  = latestMonth && prevMonth && prevMonth.revenue > 0
+    ? ((latestMonth.revenue - prevMonth.revenue) / prevMonth.revenue) * 100
+    : null;
+
+  // 类型分布：按真实签约艺人聚合
   const typeDist = (() => {
     const counts: Record<string, number> = {};
-    MOCK_ARTISTS.forEach(a => {
-      const label = zh ? ARTIST_TYPE_LABELS[a.type].zh : ARTIST_TYPE_LABELS[a.type].en;
+    artists.forEach(a => {
+      const label = ARTIST_TYPE_LABELS[a.type].zh;
       counts[label] = (counts[label] || 0) + 1;
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
@@ -134,37 +166,45 @@ const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: L
 
   const PIE_COLORS = ['#06b6d4', '#a855f7', '#f59e0b', '#ec4899', '#22c55e', '#ef4444', '#6366f1'];
 
-  const statusCounts = {
-    total: MOCK_ARTISTS.length,
-    active: MOCK_ARTISTS.filter(a => a.status === 'active').length,
-    training: MOCK_ARTISTS.filter(a => ['trainee', 'debut'].includes(a.status)).length,
-    rest: MOCK_ARTISTS.filter(a => a.status === 'rest' || a.status === 'retired').length,
-  };
+  // Recent tracks：本经纪公司名下所有签约艺人的歌曲，按 createdAt 降序取前 5
+  const recentSongs = [...songs]
+    .filter(s => artists.some(a => a.id === s.artistId))
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+    .slice(0, 5);
+
+  const stats: Array<{ label: string; value: string; icon: any; color: string; bg: string; change?: string }> = [
+    { label: '生态估值', value: formatCredits(ecoValue),          icon: Crown,      color: 'text-amber-400',  bg: 'bg-amber-500/10' },
+    {
+      label: '预估版税', value: formatCredits(monthRev), icon: TrendingUp, color: 'text-cyan-400', bg: 'bg-cyan-500/10',
+      change: monthRevMoM !== null ? `${monthRevMoM >= 0 ? '+' : ''}${monthRevMoM.toFixed(1)}%` : undefined,
+    },
+    { label: '签约艺人', value: formatCompactNumber(signedCount), icon: Star,       color: 'text-purple-400', bg: 'bg-purple-500/10' },
+    { label: '总播放量', value: formatCompactNumber(totalPlays),   icon: Play,       color: 'text-pink-400',   bg: 'bg-pink-500/10' },
+    { label: '全网粉丝', value: formatCompactNumber(totalFans),    icon: Users,      color: 'text-green-400',  bg: 'bg-green-500/10' },
+  ];
 
   return (
     <div className="space-y-6">
       {/* Welcome */}
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{t.welcome}</h1>
-        <p className="text-gray-400 font-light mt-1">{t.subtitle}</p>
+        <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>你好，制作人。</h1>
+        <p className="text-gray-400 font-light mt-1">这是今天的数据概览。</p>
       </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {[
-          { label: t.eco_value, value: '¥2.4M', icon: Crown, color: 'text-amber-400', bg: 'bg-amber-500/10', change: '+18.5%' },
-          { label: t.rev, value: '¥45.2K', icon: TrendingUp, color: 'text-cyan-400', bg: 'bg-cyan-500/10', change: '+12.3%' },
-          { label: t.holders, value: '3,248', icon: Star, color: 'text-purple-400', bg: 'bg-purple-500/10', change: '+248' },
-          { label: t.streams, value: '5.8M', icon: Play, color: 'text-pink-400', bg: 'bg-pink-500/10', change: '+1.2M' },
-          { label: t.fans, value: '162K', icon: Users, color: 'text-green-400', bg: 'bg-green-500/10', change: '+8.4K' },
-        ].map((stat, i) => (
+        {stats.map((stat, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .08 }}
             className="bg-gray-900/50 border border-white/5 rounded-xl p-4 hover:border-white/10 transition group">
             <div className="flex items-center justify-between mb-3">
               <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center`}>
                 <stat.icon className={`w-4 h-4 ${stat.color}`} />
               </div>
-              <span className="text-xs text-green-400 font-medium">{stat.change}</span>
+              {stat.change && (
+                <span className={`text-xs font-medium ${stat.change.startsWith('-') ? 'text-red-400' : 'text-green-400'}`}>
+                  {stat.change}
+                </span>
+              )}
             </div>
             <div className="text-2xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{stat.value}</div>
             <div className="text-xs text-gray-500 font-light mt-1">{stat.label}</div>
@@ -175,12 +215,12 @@ const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: L
       {/* Artist Matrix Overview + Type Distribution */}
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Artist Radar Card - active artist talent overview */}
-        <ArtistRadarCard lang={lang} artist={activeSinger} />
+        <ArtistRadarCard lang="zh" artist={activeSinger} />
 
         {/* Type distribution pie */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .35 }}
           className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '类型分布' : 'Type Distribution'}</h3>
+          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>类型分布</h3>
           <div className="h-[180px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -204,12 +244,12 @@ const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: L
         {/* 8 Domains overview */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .4 }}
           className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '8大领域' : '8 Domains'}</h3>
+          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>8大领域</h3>
           <div className="grid grid-cols-2 gap-2">
             {DOMAINS_8.map((d, i) => (
               <motion.div key={d.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: .5 + i * .04 }}
-                className={`${d.bg} rounded-lg p-2.5 flex items-center gap-2 cursor-pointer hover:opacity-80 transition`}>
-                <span className={`text-xs ${d.color}`}>{zh ? d.zh : d.en}</span>
+                className={`${d.bg} rounded-lg p-2.5 flex items-center gap-2`}>
+                <span className={`text-xs ${d.color}`}>{d.zh}</span>
               </motion.div>
             ))}
           </div>
@@ -219,46 +259,48 @@ const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: L
       {/* Chart + Tasks */}
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>{t.chart_title}</h3>
+          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>收入与互动趋势</h3>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={EARNING_DATA}>
+            <AreaChart data={monthlyRevenue}>
               <defs>
-                <linearGradient id="colorSong" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35} />
                   <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="colorNft" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="name" stroke="#555" fontSize={12} />
-              <YAxis stroke="#555" fontSize={12} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }} />
-              <Area type="monotone" dataKey="song" stroke="#06b6d4" fill="url(#colorSong)" strokeWidth={2} />
-              <Area type="monotone" dataKey="nft" stroke="#a855f7" fill="url(#colorNft)" strokeWidth={2} />
+              <XAxis dataKey="month" stroke="#555" fontSize={12} />
+              <YAxis stroke="#555" fontSize={12} tickFormatter={(v) => formatCompactNumber(v)} />
+              <Tooltip
+                contentStyle={{ background: '#111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                formatter={(v: number) => [formatCredits(v), '收入']}
+              />
+              <Area type="monotone" dataKey="revenue" stroke="#06b6d4" fill="url(#colorRev)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
         <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-1" style={{ fontFamily: "var(--font-display)" }}>{t.tasks_title}</h3>
-          <p className="text-xs text-gray-500 font-light mb-4">{t.tasks_desc}</p>
+          <h3 className="text-lg font-bold tracking-tight mb-1" style={{ fontFamily: "var(--font-display)" }}>建议行动</h3>
+          <p className="text-xs text-gray-500 font-light mb-4">AI 增长建议</p>
           <div className="space-y-3">
-            {t.tasks.map((task: any, i: number) => {
-              const priorities = ['text-red-400 bg-red-500/10', 'text-amber-400 bg-amber-500/10', 'text-cyan-400 bg-cyan-500/10'];
+            {OVERVIEW_TASKS.map((task, i) => {
+              const priorityTone: Record<typeof task.priority, string> = {
+                '紧急': 'text-red-400 bg-red-500/10',
+                '重要': 'text-amber-400 bg-amber-500/10',
+                '建议': 'text-cyan-400 bg-cyan-500/10',
+              };
               return (
                 <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: .3 + i * .1 }}
                   className="bg-black/30 border border-white/5 rounded-lg p-3 hover:border-cyan-500/20 transition cursor-pointer group">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                      <span className="text-sm font-semibold text-white">{task.t}</span>
+                      <span className="text-sm font-semibold text-white">{task.title}</span>
                     </div>
-                    <Badge className={`text-[10px] border-0 ${priorities[i] || priorities[2]}`}>{zh ? ['紧急', '重要', '建议'][i] : ['Urgent', 'Important', 'Suggested'][i]}</Badge>
+                    <Badge className={`text-[10px] border-0 ${priorityTone[task.priority]}`}>{task.priority}</Badge>
                   </div>
-                  <p className="text-xs text-gray-500 font-light pl-3.5">{task.d}</p>
+                  <p className="text-xs text-gray-500 font-light pl-3.5">{task.desc}</p>
                 </motion.div>
               );
             })}
@@ -269,48 +311,60 @@ const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: L
       {/* Recent Tracks */}
       <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{zh ? '近期作品' : 'Recent Tracks'}</h3>
-          <Button variant="ghost" size="sm" onClick={() => onNavigate('studio')} className="text-cyan-400 hover:bg-cyan-500/10 text-xs">{zh ? '查看全部' : 'View All'} <ChevronRight className="w-3 h-3 ml-1" /></Button>
+          <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>近期作品</h3>
+          <Button variant="ghost" size="sm" onClick={() => onNavigate('studio')} className="text-cyan-400 hover:bg-cyan-500/10 text-xs">查看全部 <ChevronRight className="w-3 h-3 ml-1" /></Button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-white/5">
-                {[zh ? '曲名' : 'Title', zh ? '状态' : 'Status', zh ? '播放量' : 'Plays', zh ? '收入' : 'Revenue', zh ? '日期' : 'Date'].map((h, i) => (
-                  <th key={i} className="text-left text-xs text-gray-500 font-medium uppercase tracking-wider pb-3 pr-4">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {TRACKS.map((track, i) => (
-                <motion.tr key={track.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .05 }}
-                  onClick={() => onOpenTrack(track.id)}
-                  className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer">
-                  <td className="py-3 pr-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded bg-cyan-500/10 flex items-center justify-center"><Music className="w-4 h-4 text-cyan-400" /></div>
-                      <span className="text-sm font-semibold">{track.title}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <Badge className={`text-xs font-medium ${
-                      track.status === 'Published' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                      track.status === 'Draft' ? 'bg-gray-500/10 text-gray-400 border-gray-500/20' :
-                      'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                    }`}>{track.status}</Badge>
-                  </td>
-                  <td className="py-3 pr-4 text-sm text-gray-400 font-light">{track.plays}</td>
-                  <td className="py-3 pr-4 text-sm text-gray-400 font-light">{track.revenue}</td>
-                  <td className="py-3 text-sm text-gray-500 font-light">{track.date}</td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {recentSongs.length === 0 ? (
+          <div className="text-center py-10 text-sm text-gray-500 font-light">
+            暂无作品 — 去「创作工坊」生成第一首歌曲
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/5">
+                  {['曲名', '状态', '播放量', '收入', '日期'].map((h) => (
+                    <th key={h} className="text-left text-xs text-gray-500 font-medium uppercase tracking-wider pb-3 pr-4">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentSongs.map((song, i) => {
+                  const meta = SONG_STATUS_LABEL[song.status];
+                  const date = (song.releaseDate ?? song.createdAt ?? '').slice(0, 10);
+                  return (
+                    <motion.tr key={song.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .05 }}
+                      onClick={() => onOpenTrack(song.id)}
+                      className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer">
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-3">
+                          {song.coverUrl
+                            ? <img src={song.coverUrl} alt="" className="w-8 h-8 rounded object-cover" />
+                            : <div className="w-8 h-8 rounded bg-cyan-500/10 flex items-center justify-center"><Music className="w-4 h-4 text-cyan-400" /></div>}
+                          <span className="text-sm font-semibold">{song.title}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Badge className={`text-xs font-medium ${meta.tone}`}>{meta.label}</Badge>
+                      </td>
+                      <td className="py-3 pr-4 text-sm text-gray-400 font-light">
+                        {song.status === 'released' ? formatCompactNumber(song.plays) : '—'}
+                      </td>
+                      <td className="py-3 pr-4 text-sm text-gray-400 font-light">
+                        {song.status === 'released' ? formatCredits(song.revenue) : '—'}
+                      </td>
+                      <td className="py-3 text-sm text-gray-500 font-light">{date || '—'}</td>
+                    </motion.tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Activity Feed */}
-      <ActivityFeed lang={lang} />
+      <ActivityFeed lang="zh" />
     </div>
   );
 };
@@ -319,7 +373,7 @@ const OverviewPage = ({ lang, activeSinger, onNavigate, onOpenTrack }: { lang: L
 
 /* ======== Main Dashboard ======== */
 const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; lang: Lang; setLang: (l: Lang) => void }) => {
-  const zh = lang === 'zh';
+  // 本仓库已中文单语。lang/setLang 仍作为 prop 透传给尚未完成单语化的子组件（SettingsPage 等）。
   const { theme } = useTheme();
   const themeStyles = themeConfig[theme].sidebar;
   const { user, logout: authLogout } = useAuth();
@@ -328,8 +382,19 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   const [artists, setArtists] = useState<Artist[]>([]);
   const [artistsLoading, setArtistsLoading] = useState(true);
   const [activeArtist, setActiveArtist] = useState<Artist | null>(null);
-  const [activePage, setActivePage] = usePageParam<string>('overview');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenuePoint[]>([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [activePage, setActivePage] = usePageParam<ProducerPage>('overview');
+  // 侧边栏折叠状态持久化到 localStorage，和主题 key 的命名风格对齐。
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) !== '1';
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarOpen ? '0' : '1');
+  }, [sidebarOpen]);
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [showArtistSwitcher, setShowArtistSwitcher] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -338,13 +403,15 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   const unreadCount = notifications.filter(n => !n.read).length;
   const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
 
+  // 钱包快照：挂载时拉取一次；每次切换页面后重拉（尤其是从 finance 回到其它页面，
+  // 顶栏金币气泡能反映最新余额）。失败保持旧值。
   useEffect(() => {
     let cancelled = false;
     AccountApi.getMyWallet()
       .then((w) => { if (!cancelled) setWallet(w); })
       .catch(() => { /* 钱包未开通或接口失败，保持占位 */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [activePage]);
 
   // 拉取经纪公司签约艺人列表。activeArtist 初始取第一位（列表为空即 null）。
   useEffect(() => {
@@ -375,7 +442,20 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     return () => { cancelled = true; };
   }, []);
 
-  const [selectedTrackId, setSelectedTrackId] = useState<number | null>(null);
+  // 大盘数据：songs（近期作品 / 总播放） + monthlyRevenue（收入曲线 / MoM）。
+  // 与 artists 并行加载，避免 overview 首屏串行等待。
+  useEffect(() => {
+    let cancelled = false;
+    setOverviewLoading(true);
+    Promise.allSettled([MusicApi.listSongs(), FinanceApi.getMonthlyRevenue()])
+      .then(([songsRes, revRes]) => {
+        if (cancelled) return;
+        if (songsRes.status === 'fulfilled') setSongs(songsRes.value);
+        if (revRes.status === 'fulfilled') setMonthlyRevenue(revRes.value);
+      })
+      .finally(() => { if (!cancelled) setOverviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   // Cmd+K shortcut
   useEffect(() => {
@@ -391,12 +471,10 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
 
   const typeConf = activeArtist ? ARTIST_TYPE_CONFIG[activeArtist.type] : null;
 
-  // Dynamic sidebar label for workshop
-  const getSidebarLabel = (item: { id: string; zh: string; en: string; dynamicLabel?: boolean }) => {
-    if (item.dynamicLabel && typeConf) {
-      return zh ? typeConf.workshop.zh : typeConf.workshop.en;
-    }
-    return zh ? item.zh : item.en;
+  // Dynamic sidebar label for workshop（随 activeArtist 类型切换工坊名）
+  const getSidebarLabel = (item: SidebarItemDef) => {
+    if (item.dynamicLabel && typeConf) return typeConf.workshop.zh;
+    return item.label;
   };
 
   // Dynamic workshop icon
@@ -411,8 +489,12 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     return item.icon;
   };
 
-  const openTrack = (trackId: number) => {
-    setSelectedTrackId(trackId);
+  // 子组件（CommandPalette / FloatingActions / OverviewPage）用松散 string 约定；
+  // 这里统一做一次类型收窄 — 未知 page 走 default 分支。
+  const navigate = (page: string) => setActivePage(page as ProducerPage);
+
+  // 近期作品点击：跳转到 studio（工坊列表）。StudioPage 当前不消费 songId，留参数占位未来接入。
+  const openTrack = (_songId: string) => {
     setActivePage('studio');
   };
 
@@ -452,8 +534,19 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     if (!activeArtist) return noArtistState;
 
     switch (activePage) {
-      case 'overview': return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} onOpenTrack={openTrack} />;
-      case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} selectedTrackId={selectedTrackId} onClearSelection={() => setSelectedTrackId(null)} />;
+      case 'overview':
+        if (overviewLoading || artistsLoading) return <OverviewSkeleton />;
+        return (
+          <OverviewPage
+            activeSinger={activeArtist}
+            artists={artists}
+            songs={songs}
+            monthlyRevenue={monthlyRevenue}
+            onNavigate={navigate}
+            onOpenTrack={openTrack}
+          />
+        );
+      case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} />;
       case 'music': return <MusicBusiness lang={lang} artist={{ id: activeArtist.id, name: activeArtist.name, avatar: activeArtist.avatar }} onBack={() => setActivePage('overview')} />;
       case 'appearance': return <AppearanceForge lang={lang} activeArtist={activeArtist} />;
       case 'wardrobe': return <WardrobePage lang={lang} activeArtist={activeArtist} />;
@@ -461,7 +554,18 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
       case 'copyright': return <CopyrightPage lang={lang} activeArtist={activeArtist} />;
       case 'community': return <CommunityPage lang={lang} activeArtist={activeArtist} />;
       case 'finance': return <FinancePage lang={lang} activeArtist={activeArtist} />;
-      default: return <OverviewPage lang={lang} activeSinger={activeArtist} onNavigate={setActivePage} onOpenTrack={openTrack} />;
+      default:
+        if (overviewLoading || artistsLoading) return <OverviewSkeleton />;
+        return (
+          <OverviewPage
+            activeSinger={activeArtist}
+            artists={artists}
+            songs={songs}
+            monthlyRevenue={monthlyRevenue}
+            onNavigate={navigate}
+            onOpenTrack={openTrack}
+          />
+        );
     }
   };
 
@@ -501,7 +605,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
                 <div className="flex-1 min-w-0 text-left">
                   <div className="text-sm font-semibold truncate">{activeArtist.name}</div>
                   <div className="text-[10px] text-gray-500 flex items-center gap-1">
-                    {zh ? ARTIST_TYPE_LABELS[activeArtist.type].zh : ARTIST_TYPE_LABELS[activeArtist.type].en}
+                    {ARTIST_TYPE_LABELS[activeArtist.type].zh}
                     <span className="text-cyan-400">Lv.{activeArtist.level}</span>
                   </div>
                 </div>
@@ -554,7 +658,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
         {SIDEBAR_GROUPS.map((group, gi) => (
           <div key={gi} className="mb-3">
             {(sidebarOpen || isMobile) && (
-              <div className="text-[10px] text-gray-600 uppercase tracking-widest font-medium px-3 py-2">{zh ? group.title.zh : group.title.en}</div>
+              <div className="text-[10px] text-gray-600 uppercase tracking-widest font-medium px-3 py-2">{group.title}</div>
             )}
             <div className="space-y-0.5">
               {group.items.map(item => (
@@ -564,7 +668,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
                   label={(sidebarOpen || isMobile) ? getSidebarLabel(item) : ''}
                   id={item.id}
                   active={activePage}
-                  onClick={(id: string) => { setActivePage(id); if (isMobile) setMobileSidebar(false); }}
+                  onClick={(id: string) => { navigate(id); if (isMobile) setMobileSidebar(false); }}
                   themeStyles={themeStyles}
                 />
               ))}
@@ -575,10 +679,10 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
 
       {/* Bottom */}
       <div className="px-3 py-3 border-t border-white/5 space-y-1">
-        <SidebarItem icon={Settings} label={(sidebarOpen || isMobile) ? (zh ? '设置' : 'Settings') : ''} id="settings" active={activePage} onClick={setActivePage} themeStyles={themeStyles} />
+        <SidebarItem icon={Settings} label={(sidebarOpen || isMobile) ? '设置' : ''} id="settings" active={activePage} onClick={navigate} themeStyles={themeStyles} />
         <button onClick={() => { authLogout(); onLogout(); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${themeStyles.itemBase}`}>
           <LogOut size={18} />
-          {(sidebarOpen || isMobile) && <span className="font-medium">{zh ? '退出登录' : 'Log out'}</span>}
+          {(sidebarOpen || isMobile) && <span className="font-medium">退出登录</span>}
         </button>
       </div>
     </>
@@ -620,14 +724,14 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
             <div className="text-sm text-gray-500 font-light">{currentPageLabel}</div>
             <button onClick={() => setShowCommandPalette(true)}
               className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-500 hover:border-white/15 hover:text-gray-300 transition ml-2">
-              <span>{zh ? '搜索...' : 'Search...'}</span>
+              <span>搜索...</span>
               <kbd className="text-[10px] bg-white/5 rounded px-1 py-0.5 border border-white/10">⌘K</kbd>
             </button>
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setActivePage('finance')}
-              title={zh ? '点击查看账单流水' : 'View ledger'}
+              title="点击查看账单流水"
               className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-full px-3 py-1.5 transition">
               <Coins className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-xs font-semibold text-amber-300 tabular-nums">
@@ -677,13 +781,13 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
           lang={lang}
           open={showCommandPalette}
           onClose={() => setShowCommandPalette(false)}
-          onNavigate={setActivePage}
+          onNavigate={navigate}
           onSwitchArtist={setActiveArtist}
           artists={artists}
         />
 
         {/* Floating Quick Actions */}
-        <FloatingActions lang={lang} onNavigate={setActivePage} />
+        <FloatingActions lang={lang} onNavigate={navigate} />
       </div>
     </div>
   );

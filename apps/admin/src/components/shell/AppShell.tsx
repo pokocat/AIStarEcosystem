@@ -1,17 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { Sidebar, type SidebarBadges } from "./Sidebar";
+import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { useSidebarBadges } from "@/lib/useSidebarBadges";
 
 interface AppShellProps {
-  badges: SidebarBadges;
-  unread: number;
   children: React.ReactNode;
 }
 
-export function AppShell({ badges, unread, children }: AppShellProps) {
+export function AppShell({ children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const badges = useSidebarBadges();
+  const unread = Object.values(badges).reduce<number>((s, v) => s + (v ?? 0), 0);
 
   React.useEffect(() => {
     if (!mobileOpen) return;

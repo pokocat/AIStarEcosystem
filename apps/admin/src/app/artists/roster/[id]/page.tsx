@@ -92,8 +92,7 @@ export default function ArtistDetailPage() {
   const meta = ARTIST_TYPE_META[artist.type];
 
   // 从属关系下的代表作（按 artistId 过滤，前 5 首；无匹配则降级展示前 3 首最新歌曲）
-  const relatedSongs = songs.filter((s) => s.artistId === artist.id).slice(0, 5);
-  const fallbackSongs = relatedSongs.length === 0 ? songs.slice(0, 3) : relatedSongs;
+  const relatedSongs = songs.filter((s) => s.artistId === artist.id);
 
   const expPercent = Math.min(100, Math.round((artist.exp / artist.maxExp) * 100));
 
@@ -203,7 +202,7 @@ export default function ArtistDetailPage() {
                   </div>
                 </div>
                 <Button variant="outline" size="sm" className="w-full" asChild>
-                  <Link href="/platform/studios">查看经纪公司</Link>
+                  <Link href="/platform/accounts">查看经纪公司</Link>
                 </Button>
               </>
             ) : (
@@ -251,9 +250,21 @@ export default function ArtistDetailPage() {
 
       <section>
         <Card>
-          <CardHeader><CardTitle className="text-base">相关作品</CardTitle></CardHeader>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle className="text-base">歌曲作品 · {relatedSongs.length}</CardTitle>
+            {relatedSongs.length > 5 && (
+              <Button size="sm" variant="ghost" asChild>
+                <Link href={`/content/songs?artist=${encodeURIComponent(artist.id)}`}>全部歌曲</Link>
+              </Button>
+            )}
+          </CardHeader>
           <CardContent className="divide-y divide-border -mx-2">
-            {fallbackSongs.map((s) => (
+            {relatedSongs.length === 0 && (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                该艺人暂无歌曲。
+              </div>
+            )}
+            {relatedSongs.slice(0, 5).map((s) => (
               <Link
                 key={s.id}
                 href={`/content/songs/${s.id}`}

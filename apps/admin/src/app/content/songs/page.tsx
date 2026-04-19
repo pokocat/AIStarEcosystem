@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CheckCircle2, Music2, PauseCircle, Search, XCircle } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { CheckCircle2, Music2, PauseCircle, Search, XCircle, X } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +32,9 @@ function formatDuration(sec: number) {
 type ActionKind = "approve" | "reject";
 
 export default function SongsReviewPage() {
+  const searchParams = useSearchParams();
+  const artistParam = searchParams?.get("artist") ?? null;
+
   const [songs, setSongs] = React.useState<Song[]>([]);
   const [genres, setGenres] = React.useState<{ id: string; name: string; icon: string }[]>([]);
   const [artists, setArtists] = React.useState<Artist[]>([]);
@@ -39,8 +43,12 @@ export default function SongsReviewPage() {
   const [status, setStatus] = React.useState<"all" | SongStatus>("all");
   const [genre, setGenre] = React.useState<string>("all");
   const [studioFilter, setStudioFilter] = React.useState<string>("all");
+  const [artistFilter, setArtistFilter] = React.useState<string | null>(artistParam);
   const [target, setTarget] = React.useState<Song | null>(null);
   const [action, setAction] = React.useState<ActionKind | null>(null);
+
+  // URL 参数变化时同步
+  React.useEffect(() => { setArtistFilter(artistParam); }, [artistParam]);
 
   React.useEffect(() => {
     let alive = true;
@@ -75,9 +83,12 @@ export default function SongsReviewPage() {
     if (status !== "all" && s.status !== status) return false;
     if (genre !== "all" && s.genre !== genre) return false;
     if (studioFilter !== "all" && resolveStudioId(s) !== studioFilter) return false;
+    if (artistFilter && s.artistId !== artistFilter) return false;
     if (query && !s.title.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
+
+  const activeArtist = artistFilter ? artistById.get(artistFilter) : undefined;
 
   const counts = {
     recording: songs.filter((s) => s.status === "recording").length,
@@ -134,6 +145,23 @@ export default function SongsReviewPage() {
           icon={Music2}
         />
       </section>
+
+      {activeArtist && (
+        <div className="mb-3 inline-flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm text-indigo-900">
+          <span>筛选艺人：</span>
+          <Link href={`/artists/roster/${activeArtist.id}`} className="font-medium hover:underline">
+            {activeArtist.name}
+          </Link>
+          <button
+            type="button"
+            className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-indigo-100"
+            aria-label="清除艺人筛选"
+            onClick={() => setArtistFilter(null)}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       <Card>
         <CardHeader className="flex-row flex-wrap items-center gap-3">

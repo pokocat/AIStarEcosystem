@@ -166,7 +166,7 @@ export default function SongDetailPage() {
             <div className="border-t border-border pt-3">
               <div className="text-xs text-muted-foreground mb-1">所属经纪公司</div>
               {studio ? (
-                <Link href="/platform/studios" className="text-sm font-medium hover:text-primary hover:underline">
+                <Link href="/platform/accounts" className="text-sm font-medium hover:text-primary hover:underline">
                   {studio.name}
                 </Link>
               ) : (

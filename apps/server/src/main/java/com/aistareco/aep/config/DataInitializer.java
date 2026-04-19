@@ -365,6 +365,7 @@ public class DataInitializer implements CommandLineRunner {
                     .talentVariety(seed.kind() == DigitalIp.DigitalIpKind.ALL_ROUNDER ? 82 : 40)
                     .statFans(seed.popularity() * 2_000L)
                     .statPopularity(seed.popularity())
+                    .domains(defaultDomainsFor(seed.kind()))
                     .ownerUserId(ownerUserId)
                     .studioId(studioId)
                     .createdAt(when.minus(i, ChronoUnit.DAYS))
@@ -374,6 +375,19 @@ public class DataInitializer implements CommandLineRunner {
             i++;
         }
         return saved;
+    }
+
+    /** 按艺人分类推断默认领域（见 product_spec.md §4.1 八大领域）。新艺人档案在孵化向导后会覆盖本值。 */
+    private static List<String> defaultDomainsFor(DigitalIp.DigitalIpKind kind) {
+        return switch (kind) {
+            case SINGER      -> List.of("音乐", "舞台表演");
+            case ACTOR       -> List.of("影视");
+            case ENTERTAINER -> List.of("综艺", "曲艺表演");
+            case DANCER      -> List.of("舞台表演", "综艺");
+            case HOST        -> List.of("综艺", "教育培训");
+            case IDOL        -> List.of("音乐", "综艺", "商业代言");
+            case ALL_ROUNDER -> List.of("音乐", "影视", "综艺", "商业代言");
+        };
     }
 
     private void seedSongsFor(DigitalIp artist, List<SongSeed> seeds, Instant when) {

@@ -172,6 +172,7 @@ export default function RosterPage() {
                 <TableHead>粉丝</TableHead>
                 <TableHead>月收益</TableHead>
                 <TableHead className="min-w-[220px]">领域</TableHead>
+                <TableHead className="text-right min-w-[80px]">歌曲</TableHead>
                 <TableHead className="min-w-[110px]">最近活跃</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
@@ -179,14 +180,14 @@ export default function RosterPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && loadError && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-10 text-rose-600">
+                  <TableCell colSpan={12} className="text-center py-10 text-rose-600">
                     加载失败：{loadError}
                   </TableCell>
                 </TableRow>
@@ -211,7 +212,7 @@ export default function RosterPage() {
                     <TableCell className="text-sm">
                       {studio ? (
                         <Link
-                          href="/platform/studios"
+                          href="/platform/accounts"
                           className="text-foreground hover:text-primary hover:underline whitespace-nowrap"
                         >
                           {studio.name}
@@ -229,16 +230,36 @@ export default function RosterPage() {
                     <TableCell className="text-sm tabular-nums">{formatCompactNumber(a.stats.fans)}</TableCell>
                     <TableCell className="text-sm tabular-nums">{formatCredits(a.stats.monthlyRevenue)}</TableCell>
                     <TableCell className="text-xs">
-                      <div className="flex flex-wrap gap-1">
-                        {a.domains.slice(0, 3).map((d) => (
-                          <span
-                            key={d}
-                            className="inline-flex whitespace-nowrap rounded bg-surface-muted px-1.5 py-0.5 text-muted-foreground"
-                          >
-                            {d}
-                          </span>
-                        ))}
-                      </div>
+                      {(a.domains ?? []).length === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {(a.domains ?? []).slice(0, 3).map((d) => (
+                            <span
+                              key={d}
+                              className="inline-flex whitespace-nowrap rounded bg-surface-muted px-1.5 py-0.5 text-muted-foreground"
+                            >
+                              {d}
+                            </span>
+                          ))}
+                          {(a.domains ?? []).length > 3 && (
+                            <span className="text-[11px] text-muted-foreground">+{(a.domains ?? []).length - 3}</span>
+                          )}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">
+                      {a.stats.songs > 0 ? (
+                        <Link
+                          href={`/content/songs?artist=${encodeURIComponent(a.id)}`}
+                          className="text-primary hover:underline"
+                          title={`查看 ${a.name} 的 ${a.stats.songs} 首歌曲`}
+                        >
+                          {a.stats.songs}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDateCN(a.lastActive)}</TableCell>
                     <TableCell className="text-right">
@@ -251,7 +272,7 @@ export default function RosterPage() {
               })}
               {!loading && !loadError && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
                     没有匹配的艺人
                   </TableCell>
                 </TableRow>

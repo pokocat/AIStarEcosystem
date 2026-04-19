@@ -68,7 +68,7 @@ public record DigitalIpDto(
                         ip.getStatFans(), ip.getStatRevenueCredits(), ip.getStatMonthlyRevenueCredits(),
                         ip.getStatPopularity()
                 ),
-                ip.getBio(), ip.getDomains(),
+                ip.getBio(), ip.getDomains() == null ? List.of() : ip.getDomains(),
                 ip.getStatEndorsements(), ip.getStatCommercialValueCredits(),
                 ip.getStudioId(), studioName, ip.getOwnerUserId(),
                 ip.getIncubationParams(),

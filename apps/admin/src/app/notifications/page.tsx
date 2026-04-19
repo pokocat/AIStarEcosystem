@@ -44,8 +44,9 @@ const AUDIENCE_META: Record<
   account: { label: "个人账户",   icon: UserCircle, className: "bg-slate-100 text-slate-700 ring-slate-200" },
 };
 
-function AudienceBadge({ audience }: { audience: Notification["audience"] }) {
-  const meta = AUDIENCE_META[audience.scope];
+function AudienceBadge({ audience }: { audience: Notification["audience"] | undefined }) {
+  const scope: NotificationAudienceScope = audience?.scope ?? "all";
+  const meta = AUDIENCE_META[scope];
   const Icon = meta.icon;
   return (
     <span
@@ -56,7 +57,7 @@ function AudienceBadge({ audience }: { audience: Notification["audience"] }) {
     >
       <Icon className="h-3 w-3" />
       <span>{meta.label}</span>
-      {audience.targetName && audience.scope !== "all" && (
+      {audience?.targetName && scope !== "all" && (
         <span className="opacity-70">· {audience.targetName}</span>
       )}
     </span>
@@ -90,7 +91,8 @@ export default function NotificationsPage() {
   const filtered = list.filter((n) => {
     if (tab === "unread" && n.read) return false;
     if (tab !== "all" && tab !== "unread" && n.type !== tab) return false;
-    if (audienceFilter !== "all" && n.audience.scope !== audienceFilter) return false;
+    const scope = n.audience?.scope ?? "all";
+    if (audienceFilter !== "all" && scope !== audienceFilter) return false;
     return true;
   });
 
@@ -117,7 +119,7 @@ export default function NotificationsPage() {
         <StatCard label="消息总量" value={list.length} icon={Bell} />
         <StatCard label="未读" value={unread} icon={BellOff} tone={unread ? "warning" : "default"} />
         <StatCard label="系统告警" value={list.filter((n) => n.type === "system").length} icon={Settings} />
-        <StatCard label="全体推送" value={list.filter((n) => n.audience.scope === "all").length} icon={Globe2} />
+        <StatCard label="全体推送" value={list.filter((n) => (n.audience?.scope ?? "all") === "all").length} icon={Globe2} />
       </section>
 
       <Card>
