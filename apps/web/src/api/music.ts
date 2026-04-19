@@ -10,7 +10,7 @@ import type {
 import type { ID } from "@/types/_shared";
 import { SONGS, ALBUMS, CONCERTS, MUSIC_GENRES, MUSIC_TRENDS_30D } from "@/mocks/music";
 import {
-  PLACEHOLDER_AUDIO_URL,
+  previewAudioForId,
   mockCreditsFor,
 } from "@/constants/music-ui";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
@@ -59,7 +59,7 @@ export async function createSong(req: CreateSongRequest): Promise<Song> {
       revenue: 0,
       rating: 0,
       artistId: req.artistId,
-      audioUrl: PLACEHOLDER_AUDIO_URL,
+      audioUrl: previewAudioForId(id),
       lyrics: req.lyrics,
       modelVersion: req.modelVersion,
       thinkDepth: req.thinkDepth,

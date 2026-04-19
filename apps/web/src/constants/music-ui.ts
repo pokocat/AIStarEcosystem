@@ -27,8 +27,29 @@ export const CONCERT_STATUS_LABEL: Record<ConcertStatus, string> = {
   completed: "已完成",
 };
 
-/** MVP 占位音频 URL；后续接 OSS 时只需改这里。 */
-export const PLACEHOLDER_AUDIO_URL = "https://cdn.placeholder.local/mock/audio.mp3";
+/**
+ * MVP 占位音频 URL；后续接 OSS 时只需改这里。
+ * 当前指向 SoundHelix —— 一个公开可用的算法合成音乐样例库（允许免费试听 / demo 使用）。
+ */
+export const PLACEHOLDER_AUDIO_URL =
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+
+/** 免费可播放的预览音频池；按歌曲 id 循环取用，保证不同歌曲播放不同旋律。 */
+export const PREVIEW_AUDIO_POOL: readonly string[] = [
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+];
+
+/** 按 song.id 稳定取一个预览音频 URL（同一 id 永远返回同一条）。 */
+export function previewAudioForId(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  const idx = Math.abs(h) % PREVIEW_AUDIO_POOL.length;
+  return PREVIEW_AUDIO_POOL[idx];
+}
 
 /** 模型版本选项（P2 由 admin 工作流计费配置下发） */
 export const MODEL_VERSION_OPTIONS = [

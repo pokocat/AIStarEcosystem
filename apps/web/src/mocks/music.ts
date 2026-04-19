@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Song, Album, Concert, MusicGenre, MusicTrendPoint } from "@/types/music";
-import { PLACEHOLDER_AUDIO_URL } from "@/constants/music-ui";
+import { previewAudioForId } from "@/constants/music-ui";
 
 export const SONGS: Song[] = [
   {
@@ -19,7 +19,7 @@ export const SONGS: Song[] = [
     rating: 4.8,
     releaseDate: "2026-03-15T00:00:00Z",
     artistId: "1",
-    audioUrl: PLACEHOLDER_AUDIO_URL,
+    audioUrl: previewAudioForId("s-1"),
     coverUrl: "https://images.unsplash.com/photo-1614149162883-504ce7dc5b73?w=400",
     modelVersion: "suno-v3",
     thinkDepth: "standard",
@@ -37,7 +37,7 @@ export const SONGS: Song[] = [
     rating: 4.6,
     releaseDate: "2026-03-20T00:00:00Z",
     artistId: "2",
-    audioUrl: PLACEHOLDER_AUDIO_URL,
+    audioUrl: previewAudioForId("s-2"),
     coverUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400",
     modelVersion: "suno-v3",
     thinkDepth: "fast",
@@ -54,11 +54,47 @@ export const SONGS: Song[] = [
     revenue: 0,
     rating: 0,
     artistId: "1",
-    audioUrl: PLACEHOLDER_AUDIO_URL,
+    audioUrl: previewAudioForId("s-3"),
+    coverUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400",
     modelVersion: "suno-v3-deep",
     thinkDepth: "deep",
     creditsSpent: 230,
     createdAt: "2026-04-10T08:00:00Z",
+  },
+  {
+    id: "s-4",
+    title: "山海之间",
+    genre: "古风",
+    duration: 232,
+    status: "released",
+    plays: 891_000,
+    revenue: 24_300,
+    rating: 4.9,
+    releaseDate: "2026-04-02T00:00:00Z",
+    artistId: "1",
+    audioUrl: previewAudioForId("s-4"),
+    coverUrl: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400",
+    modelVersion: "suno-v3",
+    thinkDepth: "standard",
+    creditsSpent: 90,
+    createdAt: "2026-03-28T08:00:00Z",
+  },
+  {
+    id: "s-5",
+    title: "City Pop 的夏日",
+    genre: "City Pop",
+    duration: 218,
+    status: "recording",
+    plays: 0,
+    revenue: 0,
+    rating: 0,
+    artistId: "2",
+    audioUrl: previewAudioForId("s-5"),
+    coverUrl: "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=400",
+    modelVersion: "musicgen-large",
+    thinkDepth: "standard",
+    creditsSpent: 75,
+    createdAt: "2026-04-15T08:00:00Z",
   },
 ];
 

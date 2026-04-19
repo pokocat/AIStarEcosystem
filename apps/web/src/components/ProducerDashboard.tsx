@@ -8,7 +8,7 @@ import {
   Heart, Eye, Upload, ChevronDown, Menu, X, ArrowUpRight,
   Headphones, Star, Clock, CheckCircle2, AlertCircle, Rocket, Video,
   Film, ShoppingBag, Tv, Mic, GraduationCap, Gamepad, Award,
-  Wand2, Shirt, Grid3X3
+  Wand2, Shirt, Grid3X3, Building2
 } from 'lucide-react';
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -647,17 +647,19 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
                 setNotifications={setNotifications}
               />
             </div>
-            {activeArtist && typeConf ? (
-              <div className="flex items-center gap-2 bg-white/[0.03] rounded-full px-2 py-1">
-                <img src={activeArtist.avatar} alt="" className="w-6 h-6 rounded-full object-cover border border-white/10" />
-                <span className="text-xs text-gray-400 hidden sm:block">{activeArtist.name}</span>
-                <span className="text-[10px]">{typeConf.icon}</span>
+            <button
+              onClick={() => setActivePage('settings')}
+              title="进入个人设置"
+              className="flex items-center gap-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 hover:border-cyan-500/30 rounded-full pl-1 pr-3 py-1 transition group"
+            >
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-500/30 to-purple-500/30 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                <Building2 className="w-3.5 h-3.5 text-cyan-300" />
               </div>
-            ) : (
-              <div className="flex items-center gap-2 bg-white/[0.03] rounded-full px-3 py-1 text-[11px] text-gray-500">
-                <Users className="w-3 h-3" /> 无签约艺人
-              </div>
-            )}
+              <span className="text-xs font-semibold text-gray-200 group-hover:text-white hidden sm:block max-w-[160px] truncate">
+                {user?.studio?.name ?? (user?.displayName ?? '未关联经纪公司')}
+              </span>
+              <ChevronRight className="w-3 h-3 text-gray-500 group-hover:text-cyan-400 hidden sm:block" />
+            </button>
           </div>
         </div>
 

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-export type ThemeStyle = 
+export type ThemeStyle =
   | 'cyberpunk'      // 赛博朋克强化版
   | 'glassmorphism'  // 玻璃态现代风
   | 'gradient'       // 渐变流体风格
@@ -31,8 +31,37 @@ interface ThemeProviderProps {
   children: ReactNode;
 }
 
+const THEME_STORAGE_KEY = 'aistareco.ui.theme';
+const DEFAULT_THEME: ThemeStyle = 'cyberpunk';
+const VALID_THEMES: ThemeStyle[] = [
+  'cyberpunk', 'glassmorphism', 'gradient', 'neumorphism',
+  'terminal', 'minimal', 'neon', 'ocean',
+];
+
+function readStoredTheme(): ThemeStyle {
+  if (typeof window === 'undefined') return DEFAULT_THEME;
+  try {
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved && (VALID_THEMES as string[]).includes(saved)) {
+      return saved as ThemeStyle;
+    }
+  } catch { /* storage disabled */ }
+  return DEFAULT_THEME;
+}
+
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [theme, setTheme] = useState<ThemeStyle>('cyberpunk');
+  const [theme, setThemeState] = useState<ThemeStyle>(DEFAULT_THEME);
+
+  useEffect(() => {
+    setThemeState(readStoredTheme());
+  }, []);
+
+  const setTheme = (next: ThemeStyle) => {
+    setThemeState(next);
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* ignore */ }
+    }
+  };
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>

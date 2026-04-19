@@ -301,25 +301,15 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
             {/* Appearance */}
             {section === 'appearance' && (
               <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-6">
-                <h3 className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>{zh ? '外观与语言' : 'Appearance & Language'}</h3>
+                <h3 className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>外观</h3>
                 <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">{zh ? '主题' : 'Theme'}</div>
-                  <ThemeSwitcher lang={lang} />
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">主题</div>
+                  <p className="text-[11px] text-gray-500 mb-3">切换后自动保存到本地，下次打开自动应用。</p>
+                  <ThemeSwitcher lang="zh" />
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">{zh ? '语言' : 'Language'}</div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setLang('zh')} className={`px-4 py-2.5 rounded-lg border text-sm transition ${lang === 'zh' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' : 'text-gray-400 border-white/5 hover:border-white/15'}`}>
-                      中文
-                    </button>
-                    <button onClick={() => setLang('en')} className={`px-4 py-2.5 rounded-lg border text-sm transition ${lang === 'en' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' : 'text-gray-400 border-white/5 hover:border-white/15'}`}>
-                      English
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">{zh ? '字体' : 'Font'}</div>
-                  <div className="flex gap-2">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">字体</div>
+                  <div className="flex gap-2 flex-wrap">
                     {['Inter', 'Space Grotesk', 'JetBrains Mono'].map(f => (
                       <button key={f} className="px-4 py-2.5 rounded-lg border border-white/5 text-sm text-gray-400 hover:border-white/15 transition" style={{ fontFamily: f }}>
                         {f}
