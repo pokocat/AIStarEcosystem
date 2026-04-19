@@ -2,8 +2,9 @@
 
 本项目是 Figma Make 原型（导出在 `../../figma/`）的 Next.js 14（App Router）重写版本，与 `apps/web` 并存，共享 `apps/server` 后端。
 
-**当前版本：v2.4.0（2026-04-19）**
-v2.4 创作工坊 LLM Playground：新建 `generation` 领域五件套；StudioPage 从 ProducerDashboard 抽离并重写，接入 `AIGenerationPanel`（阶段 stepper + typewriter 流式对话 + 结构化 draft 采纳）；作品列表改为按 `activeArtist.id` 过滤真实 Song；侧栏新增"音乐工坊"入口指向 `MusicBusiness`。
+**当前版本：v2.5.0（2026-04-19）**
+v2.5 经纪大盘拆分：经纪大盘 ↔ 艺人视图解耦（公司视角 / 个体视角两入口），新建 `components/producer/dashboard/`（hook + charts + roster + AgencyOverview + ArtistOverview），修复饼图 hover 深色底文字不可见、切片无反馈、窄屏塌缩等交互问题；经纪大盘新增状态分布 / 收入来源 / Top Performers / 旗下艺人矩阵。
+v2.4（2026-04-19）创作工坊 LLM Playground：新建 `generation` 领域五件套；StudioPage 从 ProducerDashboard 抽离并重写，接入 `AIGenerationPanel`（阶段 stepper + typewriter 流式对话 + 结构化 draft 采纳）；作品列表改为按 `activeArtist.id` 过滤真实 Song；侧栏新增"音乐工坊"入口指向 `MusicBusiness`。
 v2.3（2026-04-19）音乐工坊 P1：新增歌曲详情抽屉（改标题/曲风/封面/歌词 + 只读扣费信息）、近 30 天播放/收入趋势折线图、已发布歌曲"分发"按钮跳转 `?tab=distribution`。v2.2（2026-04-18）打通了 P0 主动脉：Song 绑定 artistId、"开始创作"→ `MusicGenerationDialog` → `MusicApi.createSong` → 内联试听；Album 降级为"歌手歌单"，Concert 仅保留线上直播占位。见 product_spec.md §10。
 自 v2 起，前端以 `src/types/*` 为数据契约的唯一真值源。后端 `specs/openapi.yaml` 与前端的差异记录于 [`specs/FRONTEND_CONTRACT_DIFF.md`](specs/FRONTEND_CONTRACT_DIFF.md)。
 
@@ -130,7 +131,29 @@ import type { Song } from "@/types/music";
 
 ## 版本日志
 
-### v2.4.0 — 2026-04-19（本次）
+### v2.5.0 — 2026-04-19（本次）
+- **经纪大盘拆分为"经纪大盘" + "艺人视图"两视图**（公司视角 / 个体视角解耦）；sidebar 总览分组新增 `{ id: 'artist', icon: UserCircle, label: '艺人视图' }`，`ProducerPage` 联合字面量增加 `'artist'`。`overview` 路由不再要求 `activeArtist`，0 艺人也能进入。
+- **新建 `src/components/producer/dashboard/`**
+  - `hooks/use-producer-dashboard.ts` — 集中拉取 `artists / songs / monthlyRevenue` 供两个视图共用；通知/钱包仍由 `ProducerDashboard` 直接管理。
+  - `charts/TypeDistributionPie.tsx` — 通用分布饼，通过 props 复用（类型分布 / 状态分布 / 收入来源）。
+  - `charts/RevenueAreaChart.tsx` — 月度收入面积图。
+  - `charts/StatusDistribution.tsx` — 艺人状态分布；非零切片 < 3 时自动降级为横向 pill 条（避免"两块饼"视觉单调）。
+  - `charts/RevenueSourcePie.tsx` — 接入原未使用的 `FinanceApi.getRevenueSources()`。
+  - `roster/ArtistMatrixGrid.tsx` — 签约艺人小卡网格；点击即切 `activeArtist` 并跳转艺人视图。
+  - `roster/TopPerformersTable.tsx` — 本月营收 Top 3 艺人榜。
+  - `AgencyOverview.tsx` — 经纪大盘（公司视角）。
+  - `ArtistOverview.tsx` — 艺人视图（个体视角）。
+- **图表交互修复**（原内联实现的通病一次性清理）：
+  - 饼图 hover tooltip 深色底下文字不可见 → 显式 `itemStyle={{ color: '#e5e7eb' }}` / `labelStyle`。
+  - 切片无 hover 反馈 → `activeIndex` + `activeShape` 放大 4px 扇形。
+  - 密集切片（≥ 5 块）光标穿过 `paddingAngle=3` 空隙丢 hover → 自动降到 `paddingAngle=1`。
+  - `ResponsiveContainer` 窄屏塌缩 → 统一补 `minHeight`。
+  - 手搓 `flex-wrap` legend → 改为结构化图例行。
+- **艺人视图内容**：Hero（头像 / 姓名 / Lv 进度条 / 稀有度 / 状态 / Bio / 艺人切换 `<select>`）；复用 `ArtistRadarCard`；个人 KPI 四格（本月营收 / 粉丝 / 人气值 / 代言数）+ 发行/参演/综艺三计数；孵化参数卡（从 `artist.incubationParams` 挑 9 个"面向经纪人"字段：面孔风格 / 时尚风格 / 视觉年龄 / 身高 / 甜度 / 能量 / 神秘感 / 自信度 / 额外设定）；AI 形象 / 造型道具 / 音乐作品 三张快照卡（只读缩略 + CTA 跳深度页）；5 个快捷工作流入口；近期里程碑占位（等后端 `/me/digital-ips/:id/timeline`）。
+- **ProducerDashboard 瘦身**：旧 inline `OverviewPage`（230+ 行）+ 三处 useEffect + `SONG_STATUS_LABEL` / `OVERVIEW_TASKS` 常量全部迁出；本文件回归"壳 + 路由"的职责。
+- **三端同步** — 本次纯前端改动，未涉及 admin / server 契约；无新增后端端点。
+
+### v2.4.0 — 2026-04-19（前一版）
 - **创作工坊 LLM Playground**：StudioPage 从 `ProducerDashboard.tsx` 拆出为 `src/components/producer/StudioPage.tsx`，接入新 `AIGenerationPanel`，模拟与大模型对话逐段流式生成数字音乐草案；采纳后走 `MusicApi.createSong` 落库为新 Song。
 - **新增 generation 领域五件套**
   - `src/types/generation.ts` — `GenerationStage`、`StreamStage`、`GenerationMessage`、`GeneratedMusicDraft`、`GenerationRequest`、`GenerationResult`。

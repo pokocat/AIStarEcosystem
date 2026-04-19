@@ -212,6 +212,12 @@ apps/web/src/
 ├── components/      # 业务组件
 │   ├── ui/          # shadcn/ui 原子组件（勿直接修改）
 │   └── producer/    # 制作人面板组件
+│       └── dashboard/  # 经纪大盘 / 艺人视图（v2.5 拆分）
+│           ├── hooks/  # use-producer-dashboard
+│           ├── charts/ # TypeDistributionPie / RevenueAreaChart / StatusDistribution / RevenueSourcePie
+│           ├── roster/ # ArtistMatrixGrid / TopPerformersTable
+│           ├── AgencyOverview.tsx  # 经纪大盘（公司视角）
+│           └── ArtistOverview.tsx  # 艺人视图（个体视角）
 ├── lib/
 │   └── format.ts    # 统一格式化（formatCredits, formatCompactNumber, formatDuration）
 └── app/             # Next.js App Router 路由
