@@ -1,12 +1,23 @@
 "use client";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AppearanceForge.v2 — 布局优化预览版（提案 1 + 3）
+//   1. 左「素材」/ 右「约束」重新分组：
+//        左：模版 · 上传 · Prompt · 风格标签
+//        右：发型 · 瞳色 · 面部微调 · 主题配色
+//   2. 中心按钮归位：主 CTA（锻造）搬到画布顶部操作条；
+//        底部独立按钮条移除；saveNote 改为画布右上角 toast。
+// 对比：AppearanceForge.tsx 为旧版，未改动；ProducerDashboard 根据 ?forge=v2 选择版本。
+// ─────────────────────────────────────────────────────────────────────────────
+
 import React, { useState, useRef, useCallback } from "react";
 import {
-  Sparkles, Upload, Shuffle, Type, Layers, Image as ImageIcon,
+  Sparkles, Upload, Shuffle, Type, Image as ImageIcon,
   Lock, Unlock, RefreshCw, Download, Save, History,
-  Sliders, Palette, Eye, Scissors, Wand2, X, Check, Zap,
+  Sliders, Palette, Eye, Scissors, X, Check, Zap, AlertCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import type { Lang } from "../../translations";
@@ -29,17 +40,16 @@ import {
   MOCK_FORGE_DURATION_MS,
 } from "@/constants/appearance-forge-ui";
 import { AppearanceForgeApi } from "@/api";
-// generateForge 仍走本地合成（保持无后端场景下的快速预览），保存动作会走真正的
-// `AppearanceForgeApi.saveForgeResult`：mock 模式从本地 demo 视频池抽一个 URL
-// 写回 MOCK_APPEARANCES；真后端 `POST /api/appearance-forge/save` 行为一致。
 
 interface Props {
-  // 保留 lang 形参以与兄弟组件签名一致（web_new 已收敛为中文单语，不读取此值）。
+  // 与 v1 兄弟组件签名一致；web 已收敛为中文单语，不读取此值。
   lang: Lang;
   activeArtist: Artist;
 }
 
-export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
+type SaveNote = { text: string; ok: boolean };
+
+export const AppearanceForgeV2: React.FC<Props> = ({ activeArtist }) => {
   const [mode, setMode] = useState<ForgeMode>("template_photo");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
@@ -58,8 +68,12 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [lockedFeatures, setLockedFeatures] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [saveNote, setSaveNote] = useState<SaveNote | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const templates = FORGE_TEMPLATES;
   const hairs = HAIR_STYLES;
@@ -105,15 +119,12 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
     setResult(r);
     setHistory(prev => [r, ...prev].slice(0, FORGE_HISTORY_MAX));
     setSaveNote(null);
-    // 让本地 mock 列表也看到这次生成，方便保存接口按 id 查到。
-    // USE_MOCK=0 走真后端时这步是无副作用的预热（save 接口会按 id 查 DB）。
     if (!MOCK_APPEARANCES.some(a => a.id === r.id)) {
       MOCK_APPEARANCES.unshift(r);
     }
     setGenerating(false);
   };
 
-  /** 点击「保存到艺人画廊」：落库 + 分配 demo 视频资产。 */
   const handleSave = async () => {
     if (!result || saving) return;
     setSaving(true);
@@ -122,9 +133,9 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
       const saved = await AppearanceForgeApi.saveForgeResult(result);
       setResult(saved);
       setHistory(prev => prev.map(h => (h.id === saved.id ? saved : h)));
-      setSaveNote("已保存 · 已为该形象关联 AI 视频资产");
+      setSaveNote({ text: "已保存 · 已为该形象关联 AI 视频资产", ok: true });
     } catch (err) {
-      setSaveNote((err as Error).message ?? "保存失败");
+      setSaveNote({ text: (err as Error).message ?? "保存失败", ok: false });
     } finally {
       setSaving(false);
     }
@@ -155,6 +166,19 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
     runGenerate();
   };
 
+  /** 退出 v2 预览模式，清掉 `?forge=v2`。 */
+  const handleRevertToV1 = () => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.delete("forge");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : (pathname ?? "/"), { scroll: false });
+  };
+
+  const primaryCta = mode === "random" ? runRandomize : runGenerate;
+  const showLeftTemplate = mode === "template_photo" || mode === "template_prompt";
+  const showLeftUpload   = mode === "template_photo";
+  const showLeftPrompt   = mode === "prompt_only" || mode === "template_prompt";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -165,21 +189,17 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
               AI 形象锻造炉
             </span>
             <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-amber-300/80 border border-amber-400/30 rounded-full px-2 py-0.5 ml-1">v2 预览</span>
           </h1>
           <p className="text-gray-500 text-sm mt-1">为 {activeArtist.name} 设计独一无二的外貌形象</p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              if (typeof window === "undefined") return;
-              const p = new URLSearchParams(window.location.search);
-              p.set("forge", "v2");
-              window.location.search = p.toString();
-            }}
+            onClick={handleRevertToV1}
             className="text-[11px] text-gray-500 hover:text-amber-300 transition whitespace-nowrap"
-            title="预览布局优化新版（左素材 · 右约束，按钮归位）"
+            title="回到当前线上版本"
           >
-            尝鲜新版 →
+            ← 切回旧版
           </button>
           <Button variant="ghost" size="sm" onClick={() => setShowHistory(v => !v)} className="text-gray-400 hover:text-white hover:bg-white/10">
             <History className="w-4 h-4 mr-1" /> 历史
@@ -201,9 +221,8 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
               onClick={() => setMode(key)}
               className={`relative overflow-hidden rounded-xl p-4 text-left transition-all border ${active ? "border-white/20 bg-white/[0.06]" : "border-white/5 bg-gray-900/40 hover:bg-white/[0.03]"}`}
             >
-              {/* 注意：这里曾用 motion.div + layoutId 做跨按钮滑动高亮，但该共享 layout 动画
-                  会与 ProducerDashboard 的 AnimatePresence mode="wait" 冲突：切换过 mode 后点
-                  sidebar 菜单，父级 exit 动画会被 layout 计算卡住，页面不切。改为普通 div。 */}
+              {/* 共享 layout 动画（layoutId）与父级 AnimatePresence mode="wait" 冲突会卡死 sidebar
+                  切页，改用静态 div；详见 AppearanceForge.tsx 里同位置的说明。 */}
               {active && (
                 <div className={`absolute inset-0 bg-gradient-to-br ${conf.gradient} opacity-10 transition-opacity`} />
               )}
@@ -220,9 +239,14 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
 
       {/* Main Layout */}
       <div className="grid lg:grid-cols-[320px_1fr_280px] gap-4">
-        {/* Left Panel */}
+        {/* ═════════ LEFT · 素材 Inputs ═════════ */}
         <div className="space-y-4 order-2 lg:order-1">
-          {(mode === "template_photo" || mode === "template_prompt") && (
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-300/80">素材 · Inputs</span>
+            <div className="flex-1 h-px bg-gradient-to-r from-cyan-500/30 to-transparent" />
+          </div>
+
+          {showLeftTemplate && (
             <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-cyan-400" /> 风格模版
@@ -252,8 +276,8 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
             </motion.div>
           )}
 
-          {mode === "template_photo" && (
-            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
+          {showLeftUpload && (
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Upload className="w-4 h-4 text-purple-400" /> 上传照片
               </h3>
@@ -288,7 +312,7 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
             </motion.div>
           )}
 
-          {(mode === "prompt_only" || mode === "template_prompt") && (
+          {showLeftPrompt && (
             <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Type className="w-4 h-4 text-amber-400" /> 描述指令
@@ -297,7 +321,7 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 placeholder="描述你想要的外貌形象，例如：银色短发，电光蓝瞳色，赛博朋克风格纹身，穿着发光夹克..."
-                className="w-full h-32 bg-black/30 border border-white/10 rounded-lg p-3 text-sm text-white placeholder:text-gray-600 resize-none focus:outline-none focus:border-cyan-500/50 transition"
+                className={`w-full ${mode === "prompt_only" ? "h-48" : "h-32"} bg-black/30 border border-white/10 rounded-lg p-3 text-sm text-white placeholder:text-gray-600 resize-none focus:outline-none focus:border-cyan-500/50 transition`}
               />
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {suggestions.map((tag, i) => (
@@ -310,42 +334,70 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
             </motion.div>
           )}
 
-          <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <Scissors className="w-4 h-4 text-pink-400" /> 发型
-              </h3>
-              <div className="grid grid-cols-2 gap-1.5">
-                {hairs.map(h => (
-                  <button key={h.id} onClick={() => setSelectedHair(selectedHair === h.id ? null : h.id)}
-                    className={`text-[11px] px-2.5 py-1.5 rounded-lg transition ${selectedHair === h.id ? "bg-pink-500/20 text-pink-300 border border-pink-500/30" : "bg-white/[0.03] text-gray-500 hover:bg-white/[0.06] border border-transparent"}`}>
-                    {h.label}
+          {/* 风格标签 — 从右栏迁移 */}
+          <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Palette className="w-4 h-4 text-amber-400" /> 风格标签
+              {selectedTags.length > 0 && (
+                <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px]">{selectedTags.length}</Badge>
+              )}
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map(tag => {
+                const active = selectedTags.includes(tag.id);
+                return (
+                  <button key={tag.id} onClick={() => toggleTag(tag.id)}
+                    className={`text-[11px] px-2.5 py-1.5 rounded-full transition ${active ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-white/[0.03] text-gray-500 hover:bg-white/[0.06] border border-transparent"}`}>
+                    {active ? "✓ " : ""}{tag.label}
                   </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <Eye className="w-4 h-4 text-blue-400" /> 瞳色
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {eyes.map(ec => (
-                  <button key={ec.id} onClick={() => setSelectedEye(selectedEye === ec.id ? null : ec.id)}
-                    className={`relative w-8 h-8 rounded-full transition ${selectedEye === ec.id ? "ring-2 ring-offset-2 ring-offset-gray-900" : "ring-1 ring-white/10"}`}
-                    style={{ background: ec.color }}
-                    title={ec.label}
-                  >
-                    {selectedEye === ec.id && <Check className="w-4 h-4 text-white absolute inset-0 m-auto" />}
-                  </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </motion.div>
         </div>
 
-        {/* Center: Preview Canvas */}
+        {/* ═════════ CENTER · 预览 ═════════ */}
         <div className="order-1 lg:order-2">
           <div className="bg-gray-900/50 border border-white/5 rounded-xl overflow-hidden relative">
+            {/* 顶部操作条（v2 新增：主 CTA 从底部搬到此处） */}
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5 relative z-20">
+              <div className="flex items-center gap-2 min-w-0">
+                <Badge className={`bg-gradient-to-r ${MODE_CONFIG[mode].gradient} text-white border-0 text-[10px] shrink-0`}>
+                  {MODE_CONFIG[mode].label}
+                </Badge>
+                <span className="text-[11px] text-gray-500 truncate">{MODE_CONFIG[mode].desc}</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  onClick={primaryCta}
+                  disabled={generating}
+                  size="sm"
+                  className={`bg-gradient-to-r ${FORGE_BUTTON_GRADIENT} text-white border-0`}
+                >
+                  {generating ? (
+                    <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+                  ) : mode === "random" ? (
+                    <Shuffle className="w-4 h-4 mr-1.5" />
+                  ) : (
+                    <Zap className="w-4 h-4 mr-1.5" />
+                  )}
+                  {generating ? "锻造中..." : mode === "random" ? "随机锻造" : "开始锻造"}
+                </Button>
+                {result && !generating && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={primaryCta}
+                    className="text-gray-400 hover:text-white hover:bg-white/10"
+                    title="重新锻造"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* 装饰层 */}
             <div className="absolute inset-0 rounded-xl pointer-events-none z-10" style={{
               background: "linear-gradient(135deg, rgba(0,212,255,0.1) 0%, transparent 30%, transparent 70%, rgba(168,85,247,0.1) 100%)",
             }} />
@@ -406,69 +458,76 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
 
-            {saveNote && (
-              <div className="px-3 pt-2 text-[11px] text-emerald-300">{saveNote}</div>
-            )}
-
-            <div className="p-3 border-t border-white/5 flex items-center gap-2">
-              <Button
-                onClick={mode === "random" ? runRandomize : runGenerate}
-                disabled={generating}
-                className={`flex-1 bg-gradient-to-r ${FORGE_BUTTON_GRADIENT} text-white border-0`}
-              >
-                {generating ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : mode === "random" ? (
-                  <Shuffle className="w-4 h-4 mr-2" />
-                ) : (
-                  <Zap className="w-4 h-4 mr-2" />
-                )}
-                {generating ? "锻造中..." : mode === "random" ? "随机锻造" : "开始锻造"}
-              </Button>
-              {result && (
-                <>
-                  <Button
-                    onClick={handleSave}
-                    disabled={saving || generating}
-                    className={`shrink-0 border-0 ${result.videoUrl ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" : "bg-white/10 text-white hover:bg-white/15"}`}
+              {/* saveNote toast — v2 调整：悬浮在画布右上角，2 层信息（成功/失败）不同色 */}
+              <AnimatePresence>
+                {saveNote && (
+                  <motion.div
+                    key={saveNote.text}
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2 }}
+                    className={`absolute top-3 right-3 z-20 max-w-[260px] px-3 py-1.5 rounded-lg backdrop-blur text-[11px] flex items-start gap-1.5 border ${saveNote.ok ? "bg-emerald-500/20 border-emerald-400/30 text-emerald-200" : "bg-red-500/20 border-red-400/30 text-red-200"}`}
                   >
-                    {saving ? <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> : result.videoUrl ? <Check className="w-4 h-4 mr-1.5" /> : <Save className="w-4 h-4 mr-1.5" />}
-                    {saving ? "保存中..." : result.videoUrl ? "已保存" : "保存到艺人画廊"}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={mode === "random" ? runRandomize : runGenerate}
-                    className="text-gray-400 hover:text-white hover:bg-white/10" disabled={generating}>
-                    <RefreshCw className="w-4 h-4" />
-                  </Button>
-                </>
-              )}
+                    {saveNote.ok ? <Check className="w-3 h-3 mt-0.5 shrink-0" /> : <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />}
+                    <span>{saveNote.text}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
+            {/* ── v1 的底部按钮条已移除：主 CTA/重试上浮至顶部；保存/导出仍保留在画布底部浮层 ── */}
           </div>
         </div>
 
-        {/* Right Panel */}
+        {/* ═════════ RIGHT · 约束 Constraints ═════════ */}
         <div className="space-y-4 order-3">
-          <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Palette className="w-4 h-4 text-amber-400" /> 风格标签
-            </h3>
-            <div className="flex flex-wrap gap-1.5">
-              {tags.map(tag => {
-                const active = selectedTags.includes(tag.id);
-                return (
-                  <button key={tag.id} onClick={() => toggleTag(tag.id)}
-                    className={`text-[11px] px-2.5 py-1.5 rounded-full transition ${active ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-white/[0.03] text-gray-500 hover:bg-white/[0.06] border border-transparent"}`}>
-                    {active ? "✓ " : ""}{tag.label}
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-pink-300/80">约束 · Constraints</span>
+            <div className="flex-1 h-px bg-gradient-to-r from-pink-500/30 to-transparent" />
+          </div>
+
+          {/* 头部特征：发型 + 瞳色 —— 从左栏迁移 */}
+          <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Scissors className="w-4 h-4 text-pink-400" /> 发型
+              </h3>
+              <div className="grid grid-cols-2 gap-1.5">
+                {hairs.map(h => (
+                  <button key={h.id} onClick={() => setSelectedHair(selectedHair === h.id ? null : h.id)}
+                    className={`text-[11px] px-2.5 py-1.5 rounded-lg transition ${selectedHair === h.id ? "bg-pink-500/20 text-pink-300 border border-pink-500/30" : "bg-white/[0.03] text-gray-500 hover:bg-white/[0.06] border border-transparent"}`}>
+                    {h.label}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Eye className="w-4 h-4 text-blue-400" /> 瞳色
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {eyes.map(ec => (
+                  <button key={ec.id} onClick={() => setSelectedEye(selectedEye === ec.id ? null : ec.id)}
+                    className={`relative w-8 h-8 rounded-full transition ${selectedEye === ec.id ? "ring-2 ring-offset-2 ring-offset-gray-900" : "ring-1 ring-white/10"}`}
+                    style={{ background: ec.color }}
+                    title={ec.label}
+                  >
+                    {selectedEye === ec.id && <Check className="w-4 h-4 text-white absolute inset-0 m-auto" />}
+                  </button>
+                ))}
+              </div>
             </div>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
               <Sliders className="w-4 h-4 text-cyan-400" /> 面部微调
+              {lockedFeatures.length > 0 && (
+                <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px]">
+                  <Lock className="w-2.5 h-2.5 mr-0.5" />{lockedFeatures.length}
+                </Badge>
+              )}
             </h3>
             <div className="space-y-3">
               {sliders.map(s => (
@@ -544,4 +603,4 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
   );
 };
 
-export default AppearanceForge;
+export default AppearanceForgeV2;

@@ -17,6 +17,7 @@ import { MCNMatrix } from "./producer/MCNMatrix";
 import { IncubationWizard } from "./producer/IncubationWizard";
 import { WardrobePage } from "./producer/WardrobePage";
 import { AppearanceForge } from "./producer/AppearanceForge";
+import { AppearanceForgeV2 } from "./producer/AppearanceForge.v2";
 import { DistributionPage } from "./producer/DistributionPage";
 import { CopyrightPage } from "./producer/CopyrightPage";
 import { CommunityPage } from "./producer/CommunityPage";
@@ -39,6 +40,7 @@ import {
 import { FloatingActions } from "./producer/FloatingActions";
 import { OverviewSkeleton } from "./producer/SkeletonLoader";
 import { usePageParam } from "@/lib/use-page-param";
+import { useSearchParams } from "next/navigation";
 import { useProducerDashboard } from "./producer/dashboard/hooks/use-producer-dashboard";
 import { AgencyOverview } from "./producer/dashboard/AgencyOverview";
 import { ArtistOverview } from "./producer/dashboard/ArtistOverview";
@@ -138,6 +140,9 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   }, [artists]);
 
   const [activePage, setActivePage] = usePageParam<ProducerPage>('overview');
+  // v2 预览开关：URL 带 ?forge=v2 时渲染 AppearanceForgeV2；缺省保持旧版。
+  const searchParamsRaw = useSearchParams();
+  const forgeVariant = searchParamsRaw?.get('forge') === 'v2' ? 'v2' : 'v1';
   // 侧边栏折叠状态持久化到 localStorage，和主题 key 的命名风格对齐。
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -284,7 +289,10 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     switch (activePage) {
       case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} />;
       case 'music': return <MusicBusiness lang={lang} artist={{ id: activeArtist.id, name: activeArtist.name, avatar: activeArtist.avatar }} onBack={() => setActivePage('overview')} />;
-      case 'appearance': return <AppearanceForge lang={lang} activeArtist={activeArtist} />;
+      case 'appearance':
+        return forgeVariant === 'v2'
+          ? <AppearanceForgeV2 lang={lang} activeArtist={activeArtist} />
+          : <AppearanceForge lang={lang} activeArtist={activeArtist} />;
       case 'wardrobe': return <WardrobePage lang={lang} activeArtist={activeArtist} />;
       case 'distribution': return <DistributionPage lang={lang} activeArtist={activeArtist} />;
       case 'copyright': return <CopyrightPage lang={lang} activeArtist={activeArtist} />;
