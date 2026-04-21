@@ -40,6 +40,7 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
+                        .requestMatchers("/api/appearance-forge/coze/**").authenticated()
                         .requestMatchers("/api/me/**").authenticated()
                         // Admin endpoints require platform admin staff roles
                         .requestMatchers("/api/admin/**").hasAnyRole(

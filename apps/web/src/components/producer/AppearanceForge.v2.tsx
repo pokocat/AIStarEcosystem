@@ -174,6 +174,13 @@ export const AppearanceForgeV2: React.FC<Props> = ({ activeArtist }) => {
     router.replace(qs ? `${pathname}?${qs}` : (pathname ?? "/"), { scroll: false });
   };
 
+  const handleSwitchToV3 = () => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("forge", "v3");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : (pathname ?? "/"), { scroll: false });
+  };
+
   const primaryCta = mode === "random" ? runRandomize : runGenerate;
   const showLeftTemplate = mode === "template_photo" || mode === "template_prompt";
   const showLeftUpload   = mode === "template_photo";
@@ -194,6 +201,13 @@ export const AppearanceForgeV2: React.FC<Props> = ({ activeArtist }) => {
           <p className="text-gray-500 text-sm mt-1">为 {activeArtist.name} 设计独一无二的外貌形象</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleSwitchToV3}
+            className="text-[11px] text-gray-500 hover:text-cyan-300 transition whitespace-nowrap"
+            title="进入 Coze 流式锻造版"
+          >
+            切到 v3
+          </button>
           <button
             onClick={handleRevertToV1}
             className="text-[11px] text-gray-500 hover:text-amber-300 transition whitespace-nowrap"

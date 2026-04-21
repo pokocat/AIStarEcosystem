@@ -28,3 +28,10 @@ aep:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
   assets:
     video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}
+  coze:
+    enabled: ${AEP_COZE_ENABLED:true}
+    token: ${AEP_COZE_TOKEN:}
+    bot-id: ${AEP_COZE_BOT_ID:}
+    api-base: ${AEP_COZE_API_BASE:https://api.coze.cn}
+    user-id-prefix: ${AEP_COZE_USER_ID_PREFIX:aep-producer-}
+    read-timeout-ms: ${AEP_COZE_READ_TIMEOUT_MS:120000}

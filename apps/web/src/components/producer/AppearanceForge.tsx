@@ -173,13 +173,13 @@ export const AppearanceForge: React.FC<Props> = ({ activeArtist }) => {
             onClick={() => {
               if (typeof window === "undefined") return;
               const p = new URLSearchParams(window.location.search);
-              p.set("forge", "v2");
+              p.set("forge", "v3");
               window.location.search = p.toString();
             }}
             className="text-[11px] text-gray-500 hover:text-amber-300 transition whitespace-nowrap"
-            title="预览布局优化新版（左素材 · 右约束，按钮归位）"
+            title="进入 Coze 流式锻造版（提示词拼装 + SSE 回写）"
           >
-            尝鲜新版 →
+            进入 Coze v3 →
           </button>
           <Button variant="ghost" size="sm" onClick={() => setShowHistory(v => !v)} className="text-gray-400 hover:text-white hover:bg-white/10">
             <History className="w-4 h-4 mr-1" /> 历史

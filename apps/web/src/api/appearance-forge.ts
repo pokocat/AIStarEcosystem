@@ -18,7 +18,14 @@ import {
   pickDemoForgeVideo,
 } from "@/mocks/appearance-forge";
 import { MOCK_FORGE_DURATION_MS } from "@/constants/appearance-forge-ui";
-import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import {
+  API_BASE_URL,
+  apiFetch,
+  getAuthToken,
+  mockDelay,
+  setAuthToken,
+  USE_MOCK,
+} from "./_client";
 
 export async function getForgeOptions(): Promise<ForgeOptions> {
   if (USE_MOCK) return mockDelay(FORGE_OPTIONS);
@@ -152,4 +159,265 @@ export async function listBlueprints(artistId: ID): Promise<ForgeBlueprintWire[]
   return apiFetch<ForgeBlueprintWire[]>("/appearance-forge/blueprints", {
     query: { artistId },
   });
+}
+
+export interface ForgeProviderStatus {
+  configured: boolean;
+  provider: string;
+  message: string;
+}
+
+export interface ForgeConversationRequest {
+  artistId: ID;
+  prompt: string;
+}
+
+export interface ForgeStreamStatusPayload {
+  phase?: string;
+  message: string;
+  chatId?: string;
+  conversationId?: string;
+}
+
+export interface ForgeStreamDeltaPayload {
+  content: string;
+  reply: string;
+  imageUrl?: string;
+}
+
+export interface ForgeStreamMessagePayload {
+  content: string;
+  imageUrl?: string;
+}
+
+export interface ForgeStreamCompletedPayload extends ForgeStreamStatusPayload {
+  content: string;
+  imageUrl?: string;
+  tokenCount?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+export type ForgeStreamEvent =
+  | { event: "status"; data: ForgeStreamStatusPayload }
+  | { event: "delta"; data: ForgeStreamDeltaPayload }
+  | { event: "message"; data: ForgeStreamMessagePayload }
+  | { event: "completed"; data: ForgeStreamCompletedPayload }
+  | { event: "error"; data: { message: string } }
+  | { event: "done"; data: { message: string } };
+
+interface StreamOptions {
+  signal?: AbortSignal;
+  onEvent: (event: ForgeStreamEvent) => void;
+}
+
+export async function getForgeProviderStatus(): Promise<ForgeProviderStatus> {
+  if (USE_MOCK) {
+    return mockDelay({
+      configured: true,
+      provider: "mock",
+      message: "当前为 mock 模式，将使用本地流式回放",
+    });
+  }
+  return apiFetch<ForgeProviderStatus>("/appearance-forge/coze/status");
+}
+
+export async function streamForgeConversation(
+  request: ForgeConversationRequest,
+  { signal, onEvent }: StreamOptions,
+): Promise<void> {
+  if (USE_MOCK) {
+    await streamMockForgeConversation(request, { signal, onEvent });
+    return;
+  }
+
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/appearance-forge/coze/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(request),
+    signal,
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (res.status === 401) {
+    setAuthToken(null);
+    throw new Error("未登录或登录已失效");
+  }
+
+  if (!res.ok) {
+    let message = `请求失败（HTTP ${res.status}）`;
+    try {
+      const payload = await res.json();
+      message =
+        (payload as { error?: { message?: string } })?.error?.message ??
+        (payload as { message?: string })?.message ??
+        message;
+    } catch {
+      // ignore JSON parse errors and fall back to HTTP message
+    }
+    throw new Error(message);
+  }
+
+  if (!res.body) {
+    throw new Error("流式响应体为空");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    throwIfAborted(signal);
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const event = parseForgeSseEvent(part);
+      if (!event) continue;
+      onEvent(event);
+      if (event.event === "error") {
+        throw new Error(event.data.message || "Coze 流式响应失败");
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const event = parseForgeSseEvent(buffer);
+    if (event) onEvent(event);
+  }
+}
+
+async function streamMockForgeConversation(
+  request: ForgeConversationRequest,
+  { signal, onEvent }: StreamOptions,
+): Promise<void> {
+  const reply = buildMockForgeReply(request.prompt);
+  onEvent({
+    event: "status",
+    data: { phase: "validated", message: "Mock 模式已接管，本地开始回放流式锻造" },
+  });
+  await sleep(180, signal);
+  onEvent({
+    event: "status",
+    data: { phase: "in_progress", message: "Mock 正在逐字回写 Coze 响应" },
+  });
+
+  let assembled = "";
+  for (const chunk of chunkText(reply, 18)) {
+    throwIfAborted(signal);
+    assembled += chunk;
+    await sleep(45, signal);
+    onEvent({
+      event: "delta",
+      data: { content: chunk, reply: assembled },
+    });
+  }
+
+  onEvent({ event: "message", data: { content: assembled } });
+  onEvent({
+    event: "completed",
+    data: {
+      phase: "completed",
+      message: "Mock 响应完成",
+      content: assembled,
+      tokenCount: Math.max(64, Math.floor(request.prompt.length * 1.6)),
+      inputTokens: Math.max(24, request.prompt.length),
+      outputTokens: Math.max(40, Math.floor(assembled.length * 0.7)),
+    },
+  });
+  onEvent({ event: "done", data: { message: "mock stream closed" } });
+}
+
+function parseForgeSseEvent(rawChunk: string): ForgeStreamEvent | null {
+  const lines = rawChunk
+    .split(/\r?\n/)
+    .map(line => line.trimEnd())
+    .filter(Boolean);
+
+  if (lines.length === 0) return null;
+
+  let eventName = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice("event:".length).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+
+  const rawData = dataLines.join("\n");
+  if (!rawData) return null;
+
+  try {
+    return {
+      event: eventName,
+      data: JSON.parse(rawData) as ForgeStreamEvent["data"],
+    } as ForgeStreamEvent;
+  } catch {
+    return {
+      event: eventName as ForgeStreamEvent["event"],
+      data: { message: rawData },
+    } as ForgeStreamEvent;
+  }
+}
+
+function buildMockForgeReply(prompt: string): string {
+  const promptHead = prompt.split("\n").slice(0, 5).join(" ").slice(0, 120);
+  return [
+    "形象定位：这版形象适合走“高辨识度未来舞台主视觉”路线，兼顾商业代言与内容连载。",
+    "视觉关键词：冷感光泽、层次短发、通透瞳色、机能材质、舞台反光、镜头抓脸。",
+    "五官与发型建议：建议强化轮廓干净度与眼神穿透感，发型保留轻量飞线和立体层次，让近景镜头更有记忆点。",
+    "服饰与材质建议：主服装可采用高定机能风，加入少量金属件、半透明材质和可控发光点，不要堆满复杂装饰。",
+    "舞台/镜头表现：适合冷白 + 青紫边光，搭配略低机位和中近景，能把人物主控感推出来。",
+    "风险与优化：避免色彩过多、元素过满和妆面过重，否则会削弱虚拟偶像的长期运营统一性。",
+    `最终生成提示词：围绕以下需求继续细化并输出图像方案——${promptHead || "保持未来感、商业化和舞台辨识度"}`,
+  ].join("\n\n");
+}
+
+function chunkText(text: string, size: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += size) {
+    chunks.push(text.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new Error("用户已取消本次锻造"));
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new Error("用户已取消本次锻造");
+  }
 }

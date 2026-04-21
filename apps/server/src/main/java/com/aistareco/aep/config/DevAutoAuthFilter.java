@@ -24,8 +24,8 @@ import java.util.List;
 /**
  * 仅在 dev profile 生效的自动登录 filter。
  * <p>
- * 若请求未带 Authorization header 且访问 /api/me/* 或 /api/admin/*（POST/PUT/PATCH/DELETE），
- * 自动使用种子 studio 用户或 admin 用户作为 Principal。
+ * 若请求在安全链里仍未完成鉴权，则自动使用种子 studio 用户或 admin 用户作为 Principal。
+ * 这样即便浏览器里残留了无效 / 过期 JWT，也不会把本地 dev 流程卡成 403。
  * <p>
  * 让前端在开发阶段无需登录就能完成 CRUD 流转验证。
  * ⚠️ 绝不能在生产环境启用。
@@ -41,15 +41,22 @@ public class DevAutoAuthFilter extends OncePerRequestFilter {
         this.userRepo = userRepo;
     }
 
+    /**
+     * 让 dev 自动登录覆盖 async dispatch。
+     * Forge v3 的 SSE 会话在重新分发时若没有重新补 principal，会在授权层被打回 403。
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         boolean alreadyAuthed = SecurityContextHolder.getContext().getAuthentication() != null
                 && SecurityContextHolder.getContext().getAuthentication().isAuthenticated();
-        String authHeader = request.getHeader("Authorization");
-
-        if (!alreadyAuthed && (authHeader == null || !authHeader.startsWith("Bearer "))) {
+        if (!alreadyAuthed) {
             String path = request.getRequestURI();
             if (shouldAutoAuth(path)) {
                 seedAuth(path);

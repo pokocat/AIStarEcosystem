@@ -6,21 +6,31 @@ import com.aistareco.aep.model.ForgeResult;
 import com.aistareco.aep.repository.ForgeBlueprintRepository;
 import com.aistareco.aep.repository.ForgeResultRepository;
 import com.aistareco.aep.repository.ForgeTemplateRepository;
+import com.aistareco.aep.service.ForgeCozeService;
 import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.CollectionType;
+import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.security.Principal;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -31,6 +41,8 @@ import java.util.concurrent.ThreadLocalRandom;
 @RestController
 @RequestMapping("/api/appearance-forge")
 public class ForgeController {
+
+    private static final Logger log = LoggerFactory.getLogger(ForgeController.class);
 
     /**
      * 未接入 AI 之前使用的 demo 视频池。保存接口从中随机挑一个与 ForgeResult 关联。
@@ -50,6 +62,7 @@ public class ForgeController {
     private final ForgeResultRepository resultRepo;
     private final ForgeBlueprintRepository blueprintRepo;
     private final PlatformConfigService configService;
+    private final ForgeCozeService forgeCozeService;
     private final ObjectMapper objectMapper;
     private final String forgeVideoBaseUrl;
 
@@ -57,12 +70,14 @@ public class ForgeController {
                            ForgeResultRepository resultRepo,
                            ForgeBlueprintRepository blueprintRepo,
                            PlatformConfigService configService,
+                           ForgeCozeService forgeCozeService,
                            ObjectMapper objectMapper,
                            @Value("${aep.assets.video-base-url:/static/videos}") String forgeVideoBaseUrl) {
         this.templateRepo = templateRepo;
         this.resultRepo = resultRepo;
         this.blueprintRepo = blueprintRepo;
         this.configService = configService;
+        this.forgeCozeService = forgeCozeService;
         this.objectMapper = objectMapper;
         this.forgeVideoBaseUrl = trimTrailingSlash(forgeVideoBaseUrl);
     }
@@ -218,6 +233,55 @@ public class ForgeController {
                 .stream().map(ForgeBlueprintDto::from).toList());
     }
 
+    @GetMapping("/coze/status")
+    public ApiResponse<ForgeProviderStatusDto> cozeStatus() {
+        log.info("Forge Coze status endpoint hit");
+        return ApiResponse.of(forgeCozeService.status());
+    }
+
+    @PostMapping(path = "/coze/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamCozeConversation(Principal principal,
+                                             @Valid @RequestBody ForgeCozeChatRequest body) {
+        String requestId = UUID.randomUUID().toString();
+        log.info("Forge Coze stream request accepted: requestId={}, principal={}, artistId={}, promptLength={}",
+                requestId,
+                principal == null ? null : principal.getName(),
+                body.artistId(),
+                body.prompt() == null ? 0 : body.prompt().length());
+        SseEmitter emitter = new SseEmitter(300_000L);
+        emitter.onTimeout(() -> {
+            log.warn("Forge Coze stream timeout: requestId={}", requestId);
+            emitter.complete();
+        });
+        emitter.onCompletion(() -> log.info("Forge Coze stream emitter completed: requestId={}", requestId));
+        emitter.onError(ex -> log.error("Forge Coze stream emitter error: requestId={}, message={}",
+                requestId, ex == null ? null : ex.getMessage(), ex));
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                forgeCozeService.streamConversation(
+                        requestId,
+                        principal.getName(),
+                        body,
+                        (eventName, data) -> sendEvent(emitter, eventName, data)
+                );
+                log.info("Forge Coze stream request done: requestId={}", requestId);
+                sendEvent(emitter, "done", Map.of("message", "stream closed"));
+                emitter.complete();
+            } catch (Exception ex) {
+                log.error("Forge Coze stream request failed: requestId={}, message={}",
+                        requestId, ex.getMessage(), ex);
+                try {
+                    sendEvent(emitter, "error", Map.of("message", resolveStreamError(ex)));
+                } catch (Exception ignored) {
+                    // ignore secondary send failure
+                }
+                emitter.completeWithError(ex);
+            }
+        });
+        return emitter;
+    }
+
     private ForgeResult.ForgeMode parseMode(String raw) {
         if (raw == null || raw.isBlank()) return ForgeResult.ForgeMode.PROMPT_ONLY;
         return ForgeResult.ForgeMode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
@@ -234,6 +298,26 @@ public class ForgeController {
     private String pickDemoVideoUrl() {
         int idx = ThreadLocalRandom.current().nextInt(DEMO_VIDEO_FILENAMES.size());
         return forgeVideoBaseUrl + "/" + DEMO_VIDEO_FILENAMES.get(idx);
+    }
+
+    private void sendEvent(SseEmitter emitter, String eventName, Map<String, Object> data) {
+        try {
+            emitter.send(SseEmitter.event().name(eventName).data(new LinkedHashMap<>(data)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String resolveStreamError(Throwable ex) {
+        Throwable cursor = ex;
+        while (cursor != null) {
+            if (cursor instanceof ResponseStatusException rse) {
+                return rse.getReason() == null ? "请求失败" : rse.getReason();
+            }
+            cursor = cursor.getCause();
+        }
+        String msg = ex.getMessage();
+        return msg == null || msg.isBlank() ? "Coze 流式请求失败" : msg;
     }
 
     private String trimTrailingSlash(String value) {

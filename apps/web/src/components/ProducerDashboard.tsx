@@ -18,6 +18,7 @@ import { IncubationWizard } from "./producer/IncubationWizard";
 import { WardrobePage } from "./producer/WardrobePage";
 import { AppearanceForge } from "./producer/AppearanceForge";
 import { AppearanceForgeV2 } from "./producer/AppearanceForge.v2";
+import { AppearanceForgeV3 } from "./producer/AppearanceForge.v3";
 import { DistributionPage } from "./producer/DistributionPage";
 import { CopyrightPage } from "./producer/CopyrightPage";
 import { CommunityPage } from "./producer/CommunityPage";
@@ -140,9 +141,14 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
   }, [artists]);
 
   const [activePage, setActivePage] = usePageParam<ProducerPage>('overview');
-  // v2 预览开关：URL 带 ?forge=v2 时渲染 AppearanceForgeV2；缺省保持旧版。
+  // Forge 版本切换：支持 v1 / v2 / v3，缺省保持旧版。
   const searchParamsRaw = useSearchParams();
-  const forgeVariant = searchParamsRaw?.get('forge') === 'v2' ? 'v2' : 'v1';
+  const forgeVariant = (() => {
+    const raw = searchParamsRaw?.get('forge');
+    if (raw === 'v3') return 'v3';
+    if (raw === 'v2') return 'v2';
+    return 'v1';
+  })();
   // 侧边栏折叠状态持久化到 localStorage，和主题 key 的命名风格对齐。
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -290,9 +296,19 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
       case 'studio': return <StudioPage lang={lang} activeArtist={activeArtist} />;
       case 'music': return <MusicBusiness lang={lang} artist={{ id: activeArtist.id, name: activeArtist.name, avatar: activeArtist.avatar }} onBack={() => setActivePage('overview')} />;
       case 'appearance':
-        return forgeVariant === 'v2'
-          ? <AppearanceForgeV2 lang={lang} activeArtist={activeArtist} />
-          : <AppearanceForge lang={lang} activeArtist={activeArtist} />;
+        return forgeVariant === 'v3'
+          ? <AppearanceForgeV3
+              lang={lang}
+              activeArtist={activeArtist}
+              onArtistAvatarSaved={(nextAvatar) => {
+                setActiveArtist(prev => prev && prev.id === activeArtist.id
+                  ? { ...prev, avatar: nextAvatar }
+                  : prev);
+              }}
+            />
+          : forgeVariant === 'v2'
+            ? <AppearanceForgeV2 lang={lang} activeArtist={activeArtist} />
+            : <AppearanceForge lang={lang} activeArtist={activeArtist} />;
       case 'wardrobe': return <WardrobePage lang={lang} activeArtist={activeArtist} />;
       case 'distribution': return <DistributionPage lang={lang} activeArtist={activeArtist} />;
       case 'copyright': return <CopyrightPage lang={lang} activeArtist={activeArtist} />;

@@ -23,6 +23,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.jwtUtil = jwtUtil;
     }
 
+    /**
+     * SseEmitter 会触发 servlet async dispatch。
+     * 若这里跳过 async dispatch，安全链二次进入时上下文可能为空，进而在 AuthorizationFilter
+     * 处把流式接口打成 403。
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
