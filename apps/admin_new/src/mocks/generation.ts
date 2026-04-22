@@ -1,0 +1,77 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// mocks/generation.ts — admin 侧生成记录样本。
+// 展示"生成任务审计列表"的原型数据，覆盖：进行中 / 完成 / 中止 / 错误四种状态。
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { GenerationJob } from "@/types/generation";
+
+export const GENERATION_JOBS: GenerationJob[] = [
+  {
+    id: "gen-1",
+    userId: "u-1001",
+    artistId: "1",
+    artistName: "星河",
+    prompt: "夜晚城市 · 合成器 · 带一点忧伤的期待感",
+    modelVersion: "suno-v3",
+    thinkDepth: "standard",
+    creditsSpent: 80,
+    accepted: true,
+    resultSongId: "s-1",
+    startedAt: "2026-04-18T14:20:00Z",
+    completedAt: "2026-04-18T14:20:38Z",
+    status: "done",
+    draft: {
+      title: "霓虹余温",
+      genre: "Synthwave",
+      duration: 218,
+      lyrics: "[Verse 1]\n霓虹在雨里模糊 像心跳的余温",
+      coverPrompt: "cyberpunk neon alley in rain",
+      bpm: 128,
+      key: "A minor",
+      modelVersion: "suno-v3",
+      thinkDepth: "standard",
+      creditsEstimate: 80,
+    },
+  },
+  {
+    id: "gen-2",
+    userId: "u-1001",
+    artistId: "1",
+    artistName: "星河",
+    prompt: "深夜地铁 · lo-fi 氛围",
+    modelVersion: "suno-v3-deep",
+    thinkDepth: "deep",
+    creditsSpent: 0,
+    accepted: false,
+    startedAt: "2026-04-19T02:05:00Z",
+    status: "running",
+  },
+  {
+    id: "gen-3",
+    userId: "u-1002",
+    artistId: "2",
+    artistName: "Luna",
+    prompt: "春天 · 复古港乐",
+    modelVersion: "suno-v3",
+    thinkDepth: "fast",
+    creditsSpent: 60,
+    accepted: false,
+    startedAt: "2026-04-17T09:10:00Z",
+    completedAt: "2026-04-17T09:10:22Z",
+    status: "aborted",
+  },
+  {
+    id: "gen-4",
+    userId: "u-1003",
+    artistId: "3",
+    artistName: "陆行舟",
+    prompt: "",
+    modelVersion: "musicgen-large",
+    thinkDepth: "standard",
+    creditsSpent: 0,
+    accepted: false,
+    startedAt: "2026-04-19T06:40:00Z",
+    completedAt: "2026-04-19T06:40:02Z",
+    status: "error",
+  },
+];

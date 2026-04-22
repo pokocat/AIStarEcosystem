@@ -1,0 +1,73 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// mocks/audit.ts — 审计日志样本数据。
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { AuditLog } from "@/types/audit";
+
+export const AUDIT_LOGS: AuditLog[] = [
+  {
+    id: "al-001",
+    userId: "u-001",
+    tenantId: "t-default",
+    action: "LOGIN",
+    resourceType: "session",
+    resourceId: "sess-88210",
+    ipAddress: "223.104.63.12",
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    result: "success",
+    detail: "密码登录成功",
+    createdAt: "2026-04-17T08:30:00Z",
+  },
+  {
+    id: "al-002",
+    userId: "u-002",
+    tenantId: "t-default",
+    action: "CREATE_IP",
+    resourceType: "digital_ip",
+    resourceId: "ip-neon-v",
+    ipAddress: "116.228.89.44",
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    result: "success",
+    detail: "创建数字 IP: Neon V",
+    createdAt: "2026-04-16T14:22:00Z",
+  },
+  {
+    id: "al-003",
+    userId: "u-003",
+    tenantId: "t-default",
+    action: "ACTIVATE_LICENSE",
+    resourceType: "license_key",
+    resourceId: "lk-10032",
+    ipAddress: "36.110.21.77",
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4)",
+    result: "success",
+    detail: "激活秘钥：LK-10032，发放 1,000 积分",
+    createdAt: "2026-04-15T10:05:00Z",
+  },
+  {
+    id: "al-004",
+    userId: "u-001",
+    tenantId: "t-default",
+    action: "UPDATE_USER",
+    resourceType: "user",
+    resourceId: "u-005",
+    ipAddress: "223.104.63.12",
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    result: "failure",
+    detail: "修改用户状态失败：权限不足",
+    createdAt: "2026-04-14T16:40:00Z",
+  },
+  {
+    id: "al-005",
+    userId: "u-004",
+    tenantId: "t-default",
+    action: "ADJUST_CREDITS",
+    resourceType: "wallet",
+    resourceId: "w-1",
+    ipAddress: "101.87.140.55",
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    result: "success",
+    detail: "人工调账 +500 积分（客服补偿），工单 ticket-9981",
+    createdAt: "2026-04-11T14:20:00Z",
+  },
+];
