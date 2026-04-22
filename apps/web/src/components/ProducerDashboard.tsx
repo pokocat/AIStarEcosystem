@@ -38,7 +38,6 @@ import {
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS,
   type Artist, type ArtistType
 } from './producer/ArtistTypes';
-import { FloatingActions } from "./producer/FloatingActions";
 import { OverviewSkeleton } from "./producer/SkeletonLoader";
 import { usePageParam } from "@/lib/use-page-param";
 import { useSearchParams } from "next/navigation";
@@ -149,15 +148,19 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
     if (raw === 'v2') return 'v2';
     return 'v1';
   })();
-  // 侧边栏折叠状态持久化到 localStorage，和主题 key 的命名风格对齐。
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) !== '1';
-  });
+  // 侧边栏折叠状态持久化到 localStorage。
+  // SSR 统一返回 true（展开），mount 后再读实际值，避免 SSR/CSR hydration 结构不一致。
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [sidebarHydrated, setSidebarHydrated] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') setSidebarOpen(false);
+    setSidebarHydrated(true);
+  }, []);
+  useEffect(() => {
+    if (!sidebarHydrated || typeof window === 'undefined') return;
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarOpen ? '0' : '1');
-  }, [sidebarOpen]);
+  }, [sidebarOpen, sidebarHydrated]);
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [showArtistSwitcher, setShowArtistSwitcher] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -300,7 +303,7 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
           ? <AppearanceForgeV3
               lang={lang}
               activeArtist={activeArtist}
-              onArtistAvatarSaved={(nextAvatar) => {
+              onArtistAvatarSaved={(nextAvatar: string) => {
                 setActiveArtist(prev => prev && prev.id === activeArtist.id
                   ? { ...prev, avatar: nextAvatar }
                   : prev);
@@ -547,8 +550,6 @@ const ProducerDashboard = ({ onLogout, lang, setLang }: { onLogout: () => void; 
           artists={artists}
         />
 
-        {/* Floating Quick Actions */}
-        <FloatingActions lang={lang} onNavigate={navigate} />
       </div>
     </div>
   );
