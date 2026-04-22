@@ -22,9 +22,11 @@ import {
   Bot,
   Check,
   Eye,
+  History as HistoryIcon,
   Image as ImageIcon,
   Layers,
   Lock,
+  MessageSquare,
   Play,
   RefreshCw,
   Scissors,
@@ -186,6 +188,9 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
     },
   ]);
   const [tabView, setTabView] = useState<"chat" | "stream">("chat");
+  // 对话 / 历史都改为按需呼出的悬浮面板，不占版位。
+  const [conversationOverlayOpen, setConversationOverlayOpen] = useState(false);
+  const [historyOverlayOpen, setHistoryOverlayOpen] = useState(false);
   const [streamNotes, setStreamNotes] = useState<{ id: string; text: string; tone: StreamTone }[]>([]);
   const [composer, setComposer] = useState("");
   const [canvasPreview, setCanvasPreview] = useState<string | null>(null);
@@ -513,13 +518,38 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
             <Bot className="w-3 h-3 mr-1" />
             {providerLoading ? "检测中" : providerStatus?.provider === "mock" ? "Mock Stream" : "Coze Live"}
           </Badge>
+          {/* 呼出历史悬浮面板 */}
+          <button
+            onClick={() => setHistoryOverlayOpen(v => !v)}
+            className={`h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1 border transition ${
+              historyOverlayOpen
+                ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-100"
+                : "border-white/10 bg-white/[0.04] text-gray-300 hover:bg-white/[0.08]"
+            }`}
+          >
+            <HistoryIcon className="w-3 h-3" />
+            历史 · {history.length}
+          </button>
+          {/* 呼出对话悬浮面板 */}
+          <button
+            onClick={() => setConversationOverlayOpen(v => !v)}
+            className={`h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1 border transition ${
+              conversationOverlayOpen
+                ? "border-purple-400/60 bg-purple-500/15 text-purple-100"
+                : "border-white/10 bg-white/[0.04] text-gray-300 hover:bg-white/[0.08]"
+            }`}
+          >
+            <MessageSquare className="w-3 h-3" />
+            对话
+            {generating && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />}
+          </button>
           <button onClick={() => switchVariant("v2")} className="text-[11px] text-gray-500 hover:text-amber-300">切到 v2</button>
           <button onClick={() => switchVariant("v1")} className="text-[11px] text-gray-500 hover:text-gray-300">切到 v1</button>
         </div>
       </div>
 
-      {/* 三列主体 */}
-      <div className="grid grid-cols-[minmax(320px,360px)_1fr_minmax(340px,400px)] gap-3 min-h-0 flex-1">
+      {/* 主体：永远 2 列（左 · 素材，中 · canvas 焦点区）；对话 / 历史改为按需悬浮 */}
+      <div className="grid grid-cols-[minmax(280px,340px)_minmax(500px,1fr)] gap-3 min-h-0 flex-1">
         {/* ═════════ LEFT · 素材与约束 ═════════ */}
         <div className="bg-gray-900/50 border border-white/5 rounded-xl flex flex-col min-h-0 overflow-hidden">
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2 shrink-0">
@@ -850,39 +880,25 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
 
             </div>
           </div>
-
-          {/* 底部历史轨 */}
-          <div className="shrink-0 border-t border-white/5 px-4 py-3 flex items-center gap-4">
-            <div className="flex flex-col leading-tight shrink-0">
-              <span className="text-sm font-semibold text-gray-200">历史 · {history.length}</span>
-              <span className="text-[10px] text-gray-500">点击快速回到版本</span>
-            </div>
-            <div className="flex-1 flex items-center gap-3 overflow-x-auto rounded-lg bg-white/[0.04] ring-1 ring-inset ring-white/10 px-2 py-1.5">
-              {history.map(v => {
-                const active = activeHistoryId === v.id;
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => { setActiveHistoryId(v.id); setCanvasPreview(v.image); }}
-                    className={`shrink-0 flex items-center gap-2 rounded-lg border px-2 py-1.5 transition ${active ? "border-cyan-400/60 bg-cyan-500/15" : "border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"}`}
-                  >
-                    <img src={v.image} alt="" className="w-10 h-10 rounded-md object-cover border border-white/10" />
-                    <div className="flex flex-col items-start leading-tight">
-                      <span className={`text-[11px] font-semibold ${active ? "text-cyan-200" : "text-gray-200"}`}>{v.label}</span>
-                      <span className="text-[10px] text-gray-500">{v.at}{active ? " · 当前" : ""}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
 
-        {/* ═════════ RIGHT · 对话 / 生成日志 ═════════ */}
-        <div className="bg-gray-900/50 border border-white/5 rounded-xl flex flex-col min-h-0 overflow-hidden">
+        {/* ═════════ 对话悬浮面板（header · 对话 切换） ═════════ */}
+        <div
+          className={`fixed top-20 right-4 bottom-4 w-[380px] max-w-[92vw] z-40
+            bg-gray-900/95 backdrop-blur border border-white/10 rounded-xl shadow-2xl
+            flex-col min-h-0 overflow-hidden
+            ${conversationOverlayOpen ? "flex" : "hidden"}`}
+        >
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2 shrink-0">
             <span className="inline-block w-0.5 h-4 bg-purple-400/80 rounded-full" />
-            <span className="text-sm font-semibold">对话 / 生成日志</span>
+            <span className="text-sm font-semibold flex-1">对话 / 生成日志</span>
+            <button
+              onClick={() => setConversationOverlayOpen(false)}
+              className="text-gray-500 hover:text-white"
+              aria-label="关闭对话面板"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Tabs */}
@@ -979,6 +995,46 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ═════════ 历史悬浮面板（header · 历史 切换） ═════════
+          底部通栏抽屉；若对话面板已展开，自动收缩右侧留出空间避免重叠。 */}
+      <div
+        className={`fixed bottom-4 left-4 z-30
+          ${conversationOverlayOpen ? "right-[404px]" : "right-4"}
+          bg-gray-900/95 backdrop-blur border border-white/10 rounded-xl shadow-2xl
+          ${historyOverlayOpen ? "block" : "hidden"}`}
+      >
+        <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-2">
+          <HistoryIcon className="w-3.5 h-3.5 text-cyan-300" />
+          <span className="text-sm font-semibold flex-1">历史 · {history.length}</span>
+          <span className="text-[10px] text-gray-500 hidden md:inline">点击回到版本</span>
+          <button
+            onClick={() => setHistoryOverlayOpen(false)}
+            className="text-gray-500 hover:text-white ml-2"
+            aria-label="关闭历史面板"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-3 py-3 flex items-center gap-2 overflow-x-auto rounded-b-xl bg-white/[0.02]">
+          {history.map(v => {
+            const active = activeHistoryId === v.id;
+            return (
+              <button
+                key={v.id}
+                onClick={() => { setActiveHistoryId(v.id); setCanvasPreview(v.image); }}
+                className={`shrink-0 flex items-center gap-2 rounded-lg border px-2 py-1.5 transition ${active ? "border-cyan-400/60 bg-cyan-500/15" : "border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"}`}
+              >
+                <img src={v.image} alt="" className="w-10 h-10 rounded-md object-cover border border-white/10" />
+                <div className="flex flex-col items-start leading-tight pr-1">
+                  <span className={`text-[11px] font-semibold ${active ? "text-cyan-200" : "text-gray-200"}`}>{v.label}</span>
+                  <span className="text-[10px] text-gray-500">{v.at}{active ? " · 当前" : ""}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
