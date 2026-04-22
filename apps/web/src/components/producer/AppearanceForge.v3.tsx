@@ -44,7 +44,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { AppearanceForgeApi, ArtistsApi } from "@/api";
+import { AppearanceForgeApi } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,7 +63,7 @@ import {
   STYLE_TAGS,
 } from "@/mocks/appearance-forge";
 import type { Lang } from "@/translations";
-import type { ForgeMode } from "@/types/appearance-forge";
+import type { ForgeMode, ForgeResult } from "@/types/appearance-forge";
 
 import { type Artist } from "./ArtistTypes";
 
@@ -195,7 +195,7 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
   const [composer, setComposer] = useState("");
   const [canvasPreview, setCanvasPreview] = useState<string | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [savingAppearance, setSavingAppearance] = useState(false);
   const [history, setHistory] = useState<HistoryVersion[]>(() => [
     { id: "v-01", label: "版本 01", at: "--:--", image: FORGE_TEMPLATES[0].image },
     { id: "v-02", label: "版本 02", at: "--:--", image: FORGE_TEMPLATES[1].image },
@@ -339,17 +339,34 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
     appendStreamNote("已手动停止本次锻造", "error");
   };
 
-  const handleSaveAvatar = async () => {
-    if (!generatedImageUrl || savingAvatar) return;
-    setSavingAvatar(true);
+  const handleSaveAppearance = async () => {
+    // 优先保存真实生成的图；没有则兜底 canvas 当前预览（含选中模版）。
+    const imageToSave = generatedImageUrl || canvasPreview || selectedTemplateImage;
+    if (!imageToSave || savingAppearance) return;
+    setSavingAppearance(true);
     try {
-      await ArtistsApi.patchArtist(activeArtist.id, { avatar: generatedImageUrl });
-      onArtistAvatarSaved?.(generatedImageUrl);
-      appendStreamNote("已保存为当前艺人头像", "success");
+      const draft: ForgeResult = {
+        id: `fr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        artistId: activeArtist.id,
+        image: imageToSave,
+        prompt: composedPrompt || "—",
+        mode,
+        createdAt: new Date().toISOString(),
+        locked: [...lockedFeatures],
+        status: "draft",
+        usageCount: 0,
+      };
+      // 后端 / mock 会自动补 videoUrl（从 public/videos 的 demo 池中挑一个）。
+      const saved = await AppearanceForgeApi.saveForgeResult(draft);
+      onArtistAvatarSaved?.(saved.image);
+      appendStreamNote(
+        `已保存为艺人形象${saved.videoUrl ? " · 已关联 AI 短视频" : ""}`,
+        "success",
+      );
     } catch (error) {
-      appendStreamNote((error as Error).message || "保存头像失败", "error");
+      appendStreamNote((error as Error).message || "保存形象失败", "error");
     } finally {
-      setSavingAvatar(false);
+      setSavingAppearance(false);
     }
   };
 
@@ -440,6 +457,8 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
         pushAssistant("锻造完成，但没有返回可读文本。");
       }
       if (!controller.signal.aborted) {
+        // 显式兜底：即便提供方未发 completed 事件，流 await 正常结束也视为锻造完成
+        setForgingStatus("completed");
         appendStreamNote("本次锻造响应已完整回写", "success");
         const nextVersion: HistoryVersion = {
           id: `v-${Date.now()}`,
@@ -489,7 +508,8 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
     ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/30"
     : "bg-amber-500/15 text-amber-200 border-amber-400/30";
 
-  const canSaveAvatar = Boolean(generatedImageUrl) && generatedImageUrl !== activeArtist.avatar;
+  // 锻造完成 & canvas 上展示的图与当前头像不同时，允许保存为形象
+  const canSaveAppearance = forgingStatus === "completed" && canvasImage !== activeArtist.avatar;
 
   return (
     <div
@@ -518,31 +538,6 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
             <Bot className="w-3 h-3 mr-1" />
             {providerLoading ? "检测中" : providerStatus?.provider === "mock" ? "Mock Stream" : "Coze Live"}
           </Badge>
-          {/* 呼出历史悬浮面板 */}
-          <button
-            onClick={() => setHistoryOverlayOpen(v => !v)}
-            className={`h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1 border transition ${
-              historyOverlayOpen
-                ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-100"
-                : "border-white/10 bg-white/[0.04] text-gray-300 hover:bg-white/[0.08]"
-            }`}
-          >
-            <HistoryIcon className="w-3 h-3" />
-            历史 · {history.length}
-          </button>
-          {/* 呼出对话悬浮面板 */}
-          <button
-            onClick={() => setConversationOverlayOpen(v => !v)}
-            className={`h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1 border transition ${
-              conversationOverlayOpen
-                ? "border-purple-400/60 bg-purple-500/15 text-purple-100"
-                : "border-white/10 bg-white/[0.04] text-gray-300 hover:bg-white/[0.08]"
-            }`}
-          >
-            <MessageSquare className="w-3 h-3" />
-            对话
-            {generating && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />}
-          </button>
           <button onClick={() => switchVariant("v2")} className="text-[11px] text-gray-500 hover:text-amber-300">切到 v2</button>
           <button onClick={() => switchVariant("v1")} className="text-[11px] text-gray-500 hover:text-gray-300">切到 v1</button>
         </div>
@@ -801,15 +796,15 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
                   {forgingStatus === "completed" ? "再次锻造" : "开始锻造"}
                 </Button>
               )}
-              {forgingStatus === "completed" && canSaveAvatar && (
+              {canSaveAppearance && (
                 <Button
-                  onClick={handleSaveAvatar}
-                  disabled={savingAvatar}
+                  onClick={handleSaveAppearance}
+                  disabled={savingAppearance}
                   size="sm"
                   className="h-9 px-4 bg-emerald-500/20 border border-emerald-400/30 text-emerald-100 hover:bg-emerald-500/30 font-semibold"
                 >
-                  {savingAvatar ? <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />}
-                  {savingAvatar ? "保存中…" : "保存为头像"}
+                  {savingAppearance ? <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />}
+                  {savingAppearance ? "保存中…" : "保存为形象"}
                 </Button>
               )}
             </div>
@@ -882,9 +877,9 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
           </div>
         </div>
 
-        {/* ═════════ 对话悬浮面板（header · 对话 切换） ═════════ */}
+        {/* ═════════ 对话悬浮面板（右侧按钮 · 对话 切换） ═════════ */}
         <div
-          className={`fixed top-20 right-4 bottom-4 w-[380px] max-w-[92vw] z-40
+          className={`fixed top-20 right-[88px] bottom-4 w-[380px] max-w-[calc(100vw-110px)] z-40
             bg-gray-900/95 backdrop-blur border border-white/10 rounded-xl shadow-2xl
             flex-col min-h-0 overflow-hidden
             ${conversationOverlayOpen ? "flex" : "hidden"}`}
@@ -998,11 +993,49 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
         </div>
       </div>
 
-      {/* ═════════ 历史悬浮面板（header · 历史 切换） ═════════
+      {/* ═════════ 右侧竖排悬浮按钮（历史 / 对话 切换） ═════════ */}
+      <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-3">
+        <button
+          onClick={() => setHistoryOverlayOpen(v => !v)}
+          aria-label="历史记录"
+          className={`group relative w-14 h-14 rounded-2xl border flex flex-col items-center justify-center gap-0.5 backdrop-blur transition shadow-lg ${
+            historyOverlayOpen
+              ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100 shadow-cyan-500/20"
+              : "border-white/10 bg-gray-900/80 text-gray-300 hover:border-cyan-400/40 hover:text-cyan-200 hover:bg-gray-900"
+          }`}
+        >
+          <HistoryIcon className="w-5 h-5" />
+          <span className="text-[10px] font-medium leading-none">历史</span>
+          {history.length > 0 && (
+            <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center border ${
+              historyOverlayOpen ? "bg-cyan-500 text-white border-cyan-400" : "bg-gray-900 text-cyan-200 border-cyan-400/40"
+            }`}>
+              {history.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setConversationOverlayOpen(v => !v)}
+          aria-label="对话 / 生成日志"
+          className={`group relative w-14 h-14 rounded-2xl border flex flex-col items-center justify-center gap-0.5 backdrop-blur transition shadow-lg ${
+            conversationOverlayOpen
+              ? "border-purple-400/60 bg-purple-500/20 text-purple-100 shadow-purple-500/20"
+              : "border-white/10 bg-gray-900/80 text-gray-300 hover:border-purple-400/40 hover:text-purple-200 hover:bg-gray-900"
+          }`}
+        >
+          <MessageSquare className="w-5 h-5" />
+          <span className="text-[10px] font-medium leading-none">对话</span>
+          {generating && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-cyan-400 border-2 border-gray-900 animate-pulse" />
+          )}
+        </button>
+      </div>
+
+      {/* ═════════ 历史悬浮面板（右侧按钮 · 历史 切换） ═════════
           底部通栏抽屉；若对话面板已展开，自动收缩右侧留出空间避免重叠。 */}
       <div
         className={`fixed bottom-4 left-4 z-30
-          ${conversationOverlayOpen ? "right-[404px]" : "right-4"}
+          ${conversationOverlayOpen ? "right-[488px]" : "right-[88px]"}
           bg-gray-900/95 backdrop-blur border border-white/10 rounded-xl shadow-2xl
           ${historyOverlayOpen ? "block" : "hidden"}`}
       >
