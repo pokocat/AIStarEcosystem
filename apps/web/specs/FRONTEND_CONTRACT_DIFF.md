@@ -115,6 +115,14 @@
 
 **结论**：服装域**结构契合度较高**，细节上前端做了类型化增强。
 
+**2026-04-23 衣帽间 v2 — 装备搭配一键锻造**
+
+衣帽间 v2（`/producer/wardrobe?v=2`）新增"一键锻造"入口：输入当前装备槽 → 输出一张 `ForgeResult` 形象图。
+
+- 新增前端调用：`POST /wardrobe/generate-look`，请求体 `{ artistId, equipped: {slot→itemId}, costCredits }`，响应 `ForgeResult`（复用 `appearance-forge` 的类型，status='draft'）。
+- **后端状态：未实现**。USE_MOCK=1 时走 `api/wardrobe.ts` 里的 mock 伪实现；live 模式调用返回 404。保存走已有的 `POST /appearance-forge/save`，无需后端改动。
+- 待后端补齐建议：沿用 `ForgeResult` 返回壳，扣费走 `CreditService`（`spend` 类流水）。
+
 ---
 
 ### 7️⃣ 姿态 (`pose.ts`)
