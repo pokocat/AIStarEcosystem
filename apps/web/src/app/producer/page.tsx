@@ -1,21 +1,31 @@
 "use client";
 
-import * as React from "react";
-import { useRouter } from "next/navigation";
-import ProducerDashboard from "@/components/ProducerDashboard";
-import { useLang } from "@/lib/lang-context";
+// /producer — 经纪大盘（公司视角，不依赖 activeArtist）
+import { AgencyOverview } from "@/components/producer/dashboard/AgencyOverview";
+import { OverviewSkeleton } from "@/components/producer/SkeletonLoader";
+import { useProducerShell } from "@/lib/producer-shell-context";
 
-function ProducerRouteContent() {
-  const router = useRouter();
-  const { lang, setLang } = useLang();
-  // onLogout 触发时 AuthProvider 已清 token，这里只做路由跳转。
-  return <ProducerDashboard onLogout={() => router.push("/login")} lang={lang} setLang={setLang} />;
-}
+export default function ProducerOverviewPage() {
+  const {
+    artists, songs, monthlyRevenue,
+    activeArtist, setActiveArtist,
+    artistsLoading, dataLoading, navigate,
+  } = useProducerShell();
 
-export default function ProducerRoute() {
+  if (dataLoading || artistsLoading) return <OverviewSkeleton />;
+
   return (
-    <React.Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">正在加载制作人端...</div>}>
-      <ProducerRouteContent />
-    </React.Suspense>
+    <AgencyOverview
+      artists={artists}
+      songs={songs}
+      monthlyRevenue={monthlyRevenue}
+      activeArtistId={activeArtist?.id}
+      onNavigate={navigate}
+      onOpenTrack={() => navigate("studio")}
+      onSelectArtist={(a) => {
+        setActiveArtist(a);
+        navigate("artist");
+      }}
+    />
   );
 }

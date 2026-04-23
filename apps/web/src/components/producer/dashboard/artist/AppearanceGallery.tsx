@@ -28,6 +28,11 @@ interface Props {
   artist: Artist;
   /** 点击"前往锻造炉"时触发；父组件决定路由。 */
   onGoToForge: () => void;
+  /**
+   * 'full'（默认）：含左侧 BioColumn（艺人简介 + 当前形象元数据）+ 右侧 3D hero + 底部缩略条。
+   * 'compact'：隐藏 BioColumn，hero 占满主区；用于宿主页面已自带身份/简介的场景（如艺人视图双列布局）。
+   */
+  variant?: "full" | "compact";
 }
 
 const MODE_LABEL: Record<ForgeMode, string> = {
@@ -50,7 +55,8 @@ function fmtDate(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function AppearanceGallery({ artist, onGoToForge }: Props) {
+export function AppearanceGallery({ artist, onGoToForge, variant = "full" }: Props) {
+  const compact = variant === "compact";
   const [items, setItems] = useState<ForgeResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -120,15 +126,19 @@ export function AppearanceGallery({ artist, onGoToForge }: Props) {
         <EmptyState onGoToForge={onGoToForge} />
       ) : (
         <div className="p-5 space-y-4">
-          {/* 上：艺人简介（左 2/5） + 形象主视频（右 3/5） */}
-          <div className="grid lg:grid-cols-5 gap-5">
-            <div className="lg:col-span-2">
-              <BioColumn artist={artist} appearance={selected} onGoToForge={onGoToForge} />
+          {/* 上：艺人简介（左 2/5） + 形象主视频（右 3/5）；compact 模式隐藏 BioColumn */}
+          {compact ? (
+            selected ? <HeroCard appearance={selected} /> : null
+          ) : (
+            <div className="grid lg:grid-cols-5 gap-5">
+              <div className="lg:col-span-2">
+                <BioColumn artist={artist} appearance={selected} onGoToForge={onGoToForge} />
+              </div>
+              <div className="lg:col-span-3">
+                {selected ? <HeroCard appearance={selected} /> : null}
+              </div>
             </div>
-            <div className="lg:col-span-3">
-              {selected ? <HeroCard appearance={selected} /> : null}
-            </div>
-          </div>
+          )}
 
           {/* 下：历史形象缩小展示 —— 横向 strip，可溢出滚动 */}
           <div>

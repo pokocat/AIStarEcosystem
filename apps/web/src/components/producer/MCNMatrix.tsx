@@ -5,7 +5,8 @@ import {
   Users, Plus, Search, Grid3X3, List, ChevronDown, Eye, Edit, Copy,
   Star, Music, Film, ShoppingBag, Tv, Mic, GraduationCap, Gamepad,
   X, Mic2, Video, Sparkles, Headphones, Zap, Award, TrendingUp,
-  BarChart3, Heart, Crown, ArrowUpRight, Loader2, AlertCircle
+  BarChart3, Heart, Crown, ArrowUpRight, Loader2, AlertCircle,
+  Wand2, ArrowRight, Image as ImageIcon, Tag as TagIcon, Lock, Calendar
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -19,15 +20,21 @@ import {
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS,
   QUALITY_CONFIG, STATUS_CONFIG, TALENT_LABELS
 } from './ArtistTypes';
-import { ArtistsApi, ApiError } from "@/api";
+import { ArtistsApi, AppearanceForgeApi, ApiError } from "@/api";
+import type { ForgeResult, ForgeMode, AppearanceStatus } from "@/types/appearance-forge";
+import { DEMO_FORGE_VIDEO_POOL } from "@/lib/forge-video";
 
 /* ======== Artist Detail Dialog ======== */
+// 结构：左列合并身份（头像 + 名字 + 稀有度 / 状态 / 等级 + 简介 + 领域 / 日期），
+// 右列展示艺人形象（AI 形象画廊：主视频 + 缩略图矩阵）。
+// 其余深度数据（才艺 / 商业 / 工坊）以横向 Tab 呈现在底部，不抢占主区视觉。
 const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: Lang; onClose: () => void }) => {
   const zh = lang === 'zh';
-  const [tab, setTab] = useState<'basic' | 'talents' | 'stats' | 'works' | 'commercial'>('basic');
+  const [tab, setTab] = useState<'talents' | 'stats' | 'works' | 'commercial'>('talents');
   const typeConf = ARTIST_TYPE_CONFIG[artist.type];
   const qualConf = QUALITY_CONFIG[artist.quality];
   const statusConf = STATUS_CONFIG[artist.status];
+  const expPct = artist.maxExp > 0 ? Math.round((artist.exp / artist.maxExp) * 100) : 0;
 
   const radarData = Object.entries(TALENT_LABELS).map(([key, lbl]) => ({
     subject: zh ? lbl.zh : lbl.en,
@@ -36,7 +43,6 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
   }));
 
   const tabs = [
-    { id: 'basic' as const, label: zh ? '基本信息' : 'Basic' },
     { id: 'talents' as const, label: zh ? '才艺能力' : 'Talents' },
     { id: 'stats' as const, label: zh ? '数据统计' : 'Stats' },
     { id: 'works' as const, label: zh ? '专属工坊' : 'Workshop' },
@@ -59,210 +65,421 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.18 }}
         onClick={e => e.stopPropagation()}
-        className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
+        className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/5">
-          <div className="flex items-center gap-4">
-            <img src={artist.avatar} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-white/10" />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>{artist.name}</span>
-                <span className="text-lg">{typeConf.icon}</span>
-                <Badge className={`text-xs ${qualConf.color} ${qualConf.bg} ${qualConf.border}`}>{zh ? qualConf.zh : qualConf.en}</Badge>
+        {/* 关闭按钮（绝对定位，不再占主区） */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-gray-400 hover:text-white transition flex items-center justify-center"
+          aria-label="关闭"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* 主体：两列 */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6">
+            {/* ── 左列：身份 + 简介 ── */}
+            <div className="lg:col-span-2 flex flex-col gap-4">
+              {/* 头像 + 名字 + 稀有度 / 类型 / 状态 */}
+              <div className="flex items-start gap-4">
+                <div className="relative shrink-0">
+                  <img src={artist.avatar} alt="" className={`w-24 h-24 rounded-2xl object-cover border-2 ${qualConf.border}`} />
+                  <div className={`absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full ${typeConf.bgColor} flex items-center justify-center text-base border-2 border-gray-900`}>
+                    {typeConf.icon}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-2xl font-bold tracking-tight truncate" style={{ fontFamily: "var(--font-display)" }}>
+                    {artist.name}
+                  </h2>
+                  <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                    <Badge className={`text-[10px] ${qualConf.color} ${qualConf.bg} ${qualConf.border} border`}>
+                      {zh ? qualConf.zh : qualConf.en}
+                    </Badge>
+                    <span className={`text-[11px] ${typeConf.color}`}>
+                      {zh ? ARTIST_TYPE_LABELS[artist.type].zh : ARTIST_TYPE_LABELS[artist.type].en}
+                    </span>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                      <div className={`w-1.5 h-1.5 rounded-full ${statusConf.dot}`} />
+                      {zh ? statusConf.zh : statusConf.en}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-[10px] text-gray-500 shrink-0">Lv.</span>
+                    <span className="text-sm font-bold text-cyan-300 shrink-0" style={{ fontFamily: "var(--font-display)" }}>
+                      {artist.level}
+                    </span>
+                    <div className="flex-1 min-w-0"><Progress value={expPct} className="h-1.5" /></div>
+                    <span className="text-[10px] text-gray-500 tabular-nums shrink-0">{artist.exp}/{artist.maxExp}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                <span>{zh ? ARTIST_TYPE_LABELS[artist.type].zh : ARTIST_TYPE_LABELS[artist.type].en}</span>
-                <span className="flex items-center gap-1"><div className={`w-1.5 h-1.5 rounded-full ${statusConf.dot}`} />{zh ? statusConf.zh : statusConf.en}</span>
-                <span>Lv.{artist.level}</span>
+
+              {/* 简介 */}
+              <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">{zh ? '简介' : 'Bio'}</div>
+                <p className="text-sm text-gray-200 leading-relaxed">{artist.bio || (zh ? '该艺人尚未填写简介。' : 'No bio yet.')}</p>
               </div>
+
+              {/* 领域 */}
+              {artist.domains.length > 0 && (
+                <div>
+                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">{zh ? '活跃领域' : 'Active Domains'}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {artist.domains.map(d => (
+                      <Badge key={d} className="text-[10px] bg-white/[0.06] text-gray-200 border-0">{d}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 日期 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                  <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />{zh ? '创建' : 'Created'}
+                  </div>
+                  <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.createdAt}</div>
+                </div>
+                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                  <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" />{zh ? '最后活跃' : 'Last Active'}
+                  </div>
+                  <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.lastActive}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── 右列：AI 形象画廊 ── */}
+            <div className="lg:col-span-3">
+              <ArtistAppearanceShowcase artist={artist} />
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition"><X className="w-5 h-5" /></button>
-        </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-white/5 px-6">
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-4 py-3 text-sm transition relative ${tab === t.id ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-              {t.label}
-              {tab === t.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {tab === 'basic' && (
-            <div className="space-y-6">
-              <div className="bg-black/30 rounded-xl p-4 border border-white/5">
-                <p className="text-sm text-gray-300 leading-relaxed">{artist.bio}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
-                  <div className="text-xs text-gray-500 mb-1">{zh ? '创建日期' : 'Created'}</div>
-                  <div className="text-sm font-semibold">{artist.createdAt}</div>
-                </div>
-                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
-                  <div className="text-xs text-gray-500 mb-1">{zh ? '最后活跃' : 'Last Active'}</div>
-                  <div className="text-sm font-semibold">{artist.lastActive}</div>
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-2">{zh ? '活跃领域' : 'Active Domains'}</div>
-                <div className="flex flex-wrap gap-2">
-                  {artist.domains.map(d => <Badge key={d} className="text-xs bg-white/5 text-gray-300 border-white/10">{d}</Badge>)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-2">{zh ? '等级进度' : 'Level Progress'}</div>
-                <div className="flex items-center gap-3">
-                  <span className="text-cyan-400 font-bold" style={{ fontFamily: "var(--font-display)" }}>Lv.{artist.level}</span>
-                  <div className="flex-1"><Progress value={(artist.exp / artist.maxExp) * 100} className="h-2" /></div>
-                  <span className="text-xs text-gray-500">{artist.exp}/{artist.maxExp} EXP</span>
-                </div>
-              </div>
+          {/* ── 底部：深度数据 Tab ── */}
+          <div className="border-t border-white/5">
+            <div className="flex border-b border-white/5 px-6">
+              {tabs.map(t => (
+                <button key={t.id} onClick={() => setTab(t.id)}
+                  className={`px-4 py-3 text-sm transition relative ${tab === t.id ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                  {t.label}
+                  {tab === t.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />}
+                </button>
+              ))}
             </div>
-          )}
+            <div className="p-6">
+              {tab === 'talents' && (
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="h-[240px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
+                        <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#888', fontSize: 11 }} />
+                        <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
+                        <Radar name="Value" dataKey="value" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.25} strokeWidth={2} />
+                        <Radar name="Cap" dataKey="cap" stroke="#a855f7" fill="none" strokeWidth={1} strokeDasharray="4 4" />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2.5">
+                    {Object.entries(TALENT_LABELS).map(([key, lbl]) => {
+                      const val = artist.talents[key as keyof typeof artist.talents];
+                      const cap = typeConf.talentCaps[key as keyof typeof artist.talents];
+                      const isPrimary = typeConf.primaryTalents.includes(key as any);
+                      return (
+                        <div key={key}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-gray-400 flex items-center gap-1.5">
+                              {zh ? lbl.zh : lbl.en}
+                              {isPrimary && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
+                            </span>
+                            <span className="font-semibold" style={{ color: lbl.color }}>{val}<span className="text-gray-600">/{cap}</span></span>
+                          </div>
+                          <div className="h-2 bg-gray-800 rounded-full overflow-hidden relative">
+                            <div className="h-full rounded-full" style={{ width: `${val}%`, background: lbl.color }} />
+                            <div className="absolute top-0 h-full w-px bg-white/30" style={{ left: `${cap}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-          {tab === 'talents' && (
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-                    <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#888', fontSize: 11 }} />
-                    <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-                    <Radar name="Value" dataKey="value" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.25} strokeWidth={2} />
-                    <Radar name="Cap" dataKey="cap" stroke="#a855f7" fill="none" strokeWidth={1} strokeDasharray="4 4" />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-3">
-                {Object.entries(TALENT_LABELS).map(([key, lbl]) => {
-                  const val = artist.talents[key as keyof typeof artist.talents];
-                  const cap = typeConf.talentCaps[key as keyof typeof artist.talents];
-                  const isPrimary = typeConf.primaryTalents.includes(key as any);
-                  return (
-                    <div key={key}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-400 flex items-center gap-1.5">
-                          {zh ? lbl.zh : lbl.en}
-                          {isPrimary && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
-                        </span>
-                        <span className="font-semibold" style={{ color: lbl.color }}>{val}<span className="text-gray-600">/{cap}</span></span>
+              {tab === 'stats' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                    {[
+                      { label: zh ? '歌曲' : 'Songs', value: artist.stats.songs, icon: Music, color: 'text-cyan-400' },
+                      { label: zh ? '影视' : 'Dramas', value: artist.stats.dramas, icon: Film, color: 'text-purple-400' },
+                      { label: zh ? '广告' : 'Ads', value: artist.stats.ads, icon: ShoppingBag, color: 'text-pink-400' },
+                      { label: zh ? '综艺' : 'Shows', value: artist.stats.variety, icon: Tv, color: 'text-amber-400' },
+                      { label: zh ? '粉丝' : 'Fans', value: formatCompactNumber(artist.stats.fans), icon: Heart, color: 'text-red-400' },
+                      { label: zh ? '人气值' : 'Popularity', value: artist.stats.popularity, icon: TrendingUp, color: 'text-green-400' },
+                    ].map((s, i) => (
+                      <div key={i} className="bg-black/30 rounded-lg p-3 border border-white/5 text-center">
+                        <s.icon className={`w-4 h-4 mx-auto mb-1.5 ${s.color} opacity-60`} />
+                        <div className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>{s.value}</div>
+                        <div className="text-[10px] text-gray-500">{s.label}</div>
                       </div>
-                      <div className="h-2 bg-gray-800 rounded-full overflow-hidden relative">
-                        <div className="h-full rounded-full" style={{ width: `${val}%`, background: lbl.color }} />
-                        <div className="absolute top-0 h-full w-px bg-white/30" style={{ left: `${cap}%` }} />
+                    ))}
+                  </div>
+                  <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                    <div className="text-xs text-gray-500 mb-2">{zh ? '总收益' : 'Total Revenue'}</div>
+                    <div className="text-2xl font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{formatCredits(artist.stats.revenue)}</div>
+                    <div className="text-xs text-gray-500 mt-1">{zh ? '月均' : 'Monthly'}: {formatCredits(artist.stats.monthlyRevenue)}</div>
+                  </div>
+                </div>
+              )}
+
+              {tab === 'works' && (
+                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-lg">{typeConf.icon}</span>
+                    <h4 className="font-bold">{zh ? typeConf.workshop.zh : typeConf.workshop.en}</h4>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-4">{zh ? '该艺人类型的专属创作工坊和内容模板' : 'Exclusive workshop and content templates for this artist type'}</p>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">{zh ? '可用模板' : 'Templates'}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(zh ? typeConf.templates.zh : typeConf.templates.en).map(t => (
+                          <Badge key={t} className="text-[10px] bg-cyan-500/10 text-cyan-400 border-cyan-500/20">{t}</Badge>
+                        ))}
                       </div>
                     </div>
-                  );
-                })}
-                <div className="mt-4 p-3 bg-black/30 rounded-lg border border-white/5 text-xs text-gray-500">
-                  <Star className="w-3 h-3 text-amber-400 fill-amber-400 inline mr-1" />
-                  {zh ? '主属性 — 成长速度+50%，可达满值' : 'Primary — +50% growth, can reach max'}
-                  <br />
-                  <span className="inline-block w-2 h-px bg-purple-400 mr-1 align-middle" style={{ borderTop: '1px dashed #a855f7' }} />
-                  {zh ? '虚线 = 天赋上限' : 'Dashed = Talent Cap'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {tab === 'stats' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: zh ? '歌曲' : 'Songs', value: artist.stats.songs, icon: Music, color: 'text-cyan-400' },
-                  { label: zh ? '影视' : 'Dramas', value: artist.stats.dramas, icon: Film, color: 'text-purple-400' },
-                  { label: zh ? '广告' : 'Ads', value: artist.stats.ads, icon: ShoppingBag, color: 'text-pink-400' },
-                  { label: zh ? '综艺' : 'Shows', value: artist.stats.variety, icon: Tv, color: 'text-amber-400' },
-                  { label: zh ? '粉丝' : 'Fans', value: formatCompactNumber(artist.stats.fans), icon: Heart, color: 'text-red-400' },
-                  { label: zh ? '人气值' : 'Popularity', value: artist.stats.popularity, icon: TrendingUp, color: 'text-green-400' },
-                ].map((s, i) => (
-                  <div key={i} className="bg-black/30 rounded-lg p-4 border border-white/5 text-center">
-                    <s.icon className={`w-4 h-4 mx-auto mb-2 ${s.color} opacity-60`} />
-                    <div className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>{s.value}</div>
-                    <div className="text-xs text-gray-500">{s.label}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-black/30 rounded-lg p-4 border border-white/5">
-                <div className="text-xs text-gray-500 mb-2">{zh ? '总收益' : 'Total Revenue'}</div>
-                <div className="text-2xl font-bold text-cyan-400" style={{ fontFamily: "var(--font-display)" }}>{formatCredits(artist.stats.revenue)}</div>
-                <div className="text-xs text-gray-500 mt-1">{zh ? '月均' : 'Monthly'}: {formatCredits(artist.stats.monthlyRevenue)}</div>
-              </div>
-            </div>
-          )}
-
-          {tab === 'works' && (
-            <div className="space-y-4">
-              <div className="bg-black/30 rounded-lg p-4 border border-white/5">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">{typeConf.icon}</span>
-                  <h4 className="font-bold">{zh ? typeConf.workshop.zh : typeConf.workshop.en}</h4>
-                </div>
-                <p className="text-xs text-gray-500 mb-4">{zh ? '该艺人类型的专属创作工坊和内容模板' : 'Exclusive workshop and content templates for this artist type'}</p>
-                <div className="mb-4">
-                  <div className="text-xs text-gray-500 mb-2">{zh ? '可用模板' : 'Templates'}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {(zh ? typeConf.templates.zh : typeConf.templates.en).map(t => (
-                      <Badge key={t} className="text-xs bg-cyan-500/10 text-cyan-400 border-cyan-500/20">{t}</Badge>
-                    ))}
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <div className="text-xs text-gray-500 mb-2">{zh ? '内容格式' : 'Content Formats'}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {(zh ? typeConf.contentFormats.zh : typeConf.contentFormats.en).map(f => (
-                      <Badge key={f} className="text-xs bg-purple-500/10 text-purple-400 border-purple-500/20">{f}</Badge>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-2">{zh ? '主要领域' : 'Primary Domains'}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {(zh ? typeConf.primaryDomains.zh : typeConf.primaryDomains.en).map(d => (
-                      <Badge key={d} className="text-xs bg-pink-500/10 text-pink-400 border-pink-500/20">{d}</Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {tab === 'commercial' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
-                  <div className="text-xs text-gray-500 mb-1">{zh ? '商业价值' : 'Commercial Value'}</div>
-                  <div className="text-2xl font-bold text-amber-400" style={{ fontFamily: "var(--font-display)" }}>¥{formatCompactNumber(artist.commercialValue)}</div>
-                </div>
-                <div className="bg-black/30 rounded-lg p-4 border border-white/5">
-                  <div className="text-xs text-gray-500 mb-1">{zh ? '代言数' : 'Endorsements'}</div>
-                  <div className="text-2xl font-bold text-pink-400" style={{ fontFamily: "var(--font-display)" }}>{artist.endorsements}</div>
-                </div>
-              </div>
-              <div className="bg-black/30 rounded-lg p-4 border border-white/5">
-                <div className="text-xs text-gray-500 mb-3">{zh ? '变现路径' : 'Monetization Paths'}</div>
-                <div className="space-y-2">
-                  {(zh ? typeConf.monetization.zh : typeConf.monetization.en).map((m, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                      <span className="text-gray-300">{m}</span>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">{zh ? '内容格式' : 'Content Formats'}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(zh ? typeConf.contentFormats.zh : typeConf.contentFormats.en).map(f => (
+                          <Badge key={f} className="text-[10px] bg-purple-500/10 text-purple-400 border-purple-500/20">{f}</Badge>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">{zh ? '主要领域' : 'Primary Domains'}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(zh ? typeConf.primaryDomains.zh : typeConf.primaryDomains.en).map(d => (
+                          <Badge key={d} className="text-[10px] bg-pink-500/10 text-pink-400 border-pink-500/20">{d}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {tab === 'commercial' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                      <div className="text-xs text-gray-500 mb-1">{zh ? '商业价值' : 'Commercial Value'}</div>
+                      <div className="text-2xl font-bold text-amber-400" style={{ fontFamily: "var(--font-display)" }}>¥{formatCompactNumber(artist.commercialValue)}</div>
+                    </div>
+                    <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                      <div className="text-xs text-gray-500 mb-1">{zh ? '代言数' : 'Endorsements'}</div>
+                      <div className="text-2xl font-bold text-pink-400" style={{ fontFamily: "var(--font-display)" }}>{artist.endorsements}</div>
+                    </div>
+                  </div>
+                  <div className="bg-black/30 rounded-lg p-4 border border-white/5">
+                    <div className="text-xs text-gray-500 mb-3">{zh ? '变现路径' : 'Monetization Paths'}</div>
+                    <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2">
+                      {(zh ? typeConf.monetization.zh : typeConf.monetization.en).map((m, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                          <span className="text-gray-300">{m}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </motion.div>
     </div>
   );
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ArtistAppearanceShowcase — 艺人形象（只读）：主视频 + 缩略图矩阵。
+// 数据源 AppearanceForgeApi.listForgeHistory(artist.id)；mock 下回落 MOCK_APPEARANCES。
+// 艺人卡片弹窗专用的轻量版本：不含 3D 旋转 / 不含 BioColumn（身份信息在左列）。
+// ─────────────────────────────────────────────────────────────────────────────
+const APP_MODE_LABEL: Record<ForgeMode, string> = {
+  template_photo: "模版 + 照片",
+  prompt_only: "文本指令",
+  template_prompt: "模版 + 文本",
+  random: "随机",
+};
+
+const APP_STATUS_META: Record<AppearanceStatus, { label: string; cls: string }> = {
+  draft:    { label: "草稿",   cls: "bg-gray-500/15 text-gray-300 border-gray-500/25" },
+  official: { label: "官方形象", cls: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
+  listed:   { label: "已上架",  cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+  sold:     { label: "已售出",  cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+};
+
+function pickShowcaseVideo(appearance: ForgeResult): string {
+  if (appearance.videoUrl) return appearance.videoUrl;
+  const id = appearance.id;
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+  return DEMO_FORGE_VIDEO_POOL[Math.abs(h) % DEMO_FORGE_VIDEO_POOL.length];
+}
+
+function fmtAppearanceDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function ArtistAppearanceShowcase({ artist }: { artist: Artist }) {
+  const [items, setItems] = useState<ForgeResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    AppearanceForgeApi.listForgeHistory(artist.id)
+      .then(list => {
+        if (cancelled) return;
+        setItems(list);
+        const official = list.find(a => a.status === "official");
+        setSelectedId(official?.id ?? artist.officialAppearanceId ?? list[0]?.id ?? null);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [artist.id, artist.officialAppearanceId]);
+
+  const selected = useMemo(
+    () => items.find(a => a.id === selectedId) ?? items[0] ?? null,
+    [items, selectedId],
+  );
+
+  const counts = useMemo(() => {
+    const by: Record<AppearanceStatus, number> = { draft: 0, official: 0, listed: 0, sold: 0 };
+    for (const a of items) if (a.status) by[a.status]++;
+    return by;
+  }, [items]);
+
+  const meta = selected ? APP_STATUS_META[selected.status ?? "draft"] : null;
+
+  return (
+    <div className="h-full flex flex-col gap-3 bg-black/30 rounded-xl border border-white/10 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-cyan-500/15 flex items-center justify-center">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>AI 形象画廊</h3>
+            <p className="text-[10px] text-gray-500 font-light">
+              共 {items.length} 张 · 官方 {counts.official} · 草稿 {counts.draft} · 已上架 {counts.listed} · 已售出 {counts.sold}
+            </p>
+          </div>
+        </div>
+        <span className="text-[10px] text-gray-500 font-light hidden md:inline">只读 · 生成请前往锻造炉</span>
+      </div>
+
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center min-h-[320px] rounded-lg bg-white/[0.03] border border-white/5">
+          <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[320px] rounded-lg bg-white/[0.03] border border-white/5 text-center py-8">
+          <ImageIcon className="w-7 h-7 text-gray-600 mb-2" />
+          <div className="text-sm text-gray-300 mb-1">还没有生成过形象</div>
+          <div className="text-xs text-gray-500 font-light">前往 AI 形象锻造炉生成第一张形象</div>
+        </div>
+      ) : selected && meta ? (
+        <>
+          {/* 主视频 */}
+          <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-black/60 border border-white/10">
+            <video
+              key={selected.id}
+              src={pickShowcaseVideo(selected)}
+              poster={selected.image}
+              autoPlay loop muted playsInline preload="metadata"
+              className="w-full h-full object-cover bg-black"
+            />
+            {/* 左上：状态 / 模式徽章 */}
+            <div className="absolute top-2 left-2 flex gap-1.5 z-10">
+              <Badge className={`${meta.cls} text-[10px] border`}>{meta.label}</Badge>
+              <Badge className="bg-black/55 text-gray-200 border-white/10 text-[10px] border">
+                {APP_MODE_LABEL[selected.mode]}
+              </Badge>
+            </div>
+            {/* 右上：使用次数 */}
+            {(selected.usageCount ?? 0) > 0 && (
+              <div className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded-full bg-black/60 text-[10px] text-cyan-200">
+                已使用 {selected.usageCount}
+              </div>
+            )}
+            {/* 底部渐变：prompt / 锁定 / 日期 / marketplace */}
+            <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-0 space-y-1.5">
+              <p className="text-xs text-gray-200 leading-snug line-clamp-2">{selected.prompt}</p>
+              <div className="flex items-center justify-between text-[10px] text-gray-400">
+                <div className="flex items-center gap-2">
+                  <span>{fmtAppearanceDate(selected.createdAt)}</span>
+                  {selected.locked.length > 0 && (
+                    <span className="inline-flex items-center gap-1">
+                      <Lock className="w-3 h-3" />锁定 {selected.locked.length}
+                    </span>
+                  )}
+                </div>
+                {selected.marketplace && (
+                  <span className="inline-flex items-center gap-1 text-amber-300">
+                    <TagIcon className="w-3 h-3" />
+                    <span className="font-semibold tabular-nums">{formatCredits(selected.marketplace.price)}</span>
+                    <span className="text-gray-500">· 售 {formatCompactNumber(selected.marketplace.soldCount)}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 缩略图矩阵 */}
+          <div>
+            <div className="text-[10px] text-gray-500 font-light mb-1.5">历史形象（{items.length}）· 点击切换</div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1
+              [&::-webkit-scrollbar]:h-1
+              [&::-webkit-scrollbar-thumb]:bg-white/10
+              [&::-webkit-scrollbar-thumb]:rounded-full">
+              {items.map(a => {
+                const active = a.id === selected.id;
+                const s = a.status ?? "draft";
+                const sm = APP_STATUS_META[s];
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setSelectedId(a.id)}
+                    className={`group relative shrink-0 w-16 aspect-[3/4] rounded-md overflow-hidden border transition ${
+                      active
+                        ? "border-cyan-400/70 ring-2 ring-cyan-400/40"
+                        : "border-white/10 hover:border-cyan-500/40"
+                    }`}
+                    title={a.prompt}
+                  >
+                    <img src={a.thumbnail ?? a.image} alt={a.prompt} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                    {s !== "draft" && (
+                      <div className="absolute top-0.5 left-0.5">
+                        <span className={`px-1 py-px rounded text-[8px] border leading-tight ${sm.cls}`}>{sm.label}</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 /* ======== Main MCN Matrix Component ======== */
 export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist: () => void }) => {

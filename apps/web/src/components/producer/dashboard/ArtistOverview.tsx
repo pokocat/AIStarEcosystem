@@ -18,7 +18,7 @@ import React from "react";
 import { motion } from "motion/react";
 import {
   ChevronDown, TrendingUp, Users, Flame, Handshake, Music, Shirt, Sparkles,
-  Globe as GlobeIcon, Heart, Wallet, Wand2, ChevronRight,
+  Globe as GlobeIcon, Heart, Wallet, Wand2, ChevronRight, Calendar,
 } from "lucide-react";
 import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
@@ -87,66 +87,133 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-gray-900/80 via-gray-900/60 to-gray-900/80 p-6"
-      >
-        <div className={`absolute inset-0 opacity-40 pointer-events-none bg-gradient-to-br ${typeConf.bgColor}`} />
-        <div className="relative flex flex-col md:flex-row gap-6 md:items-center">
-          <div className="relative shrink-0">
-            <img src={artist.avatar} alt="" className="w-24 h-24 md:w-28 md:h-28 rounded-2xl object-cover border-2 border-white/10" />
-            <div className={`absolute -bottom-2 -right-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${typeConf.bgColor} ${typeConf.color}`}>
-              {typeConf.icon} {ARTIST_TYPE_LABELS[artist.type].zh}
+      {/* ── 顶部双列：左侧合并身份（头像 + 姓名 + 简介 + 领域 + 日期），右侧 AI 形象画廊 ── */}
+      <div className="grid lg:grid-cols-5 gap-6">
+        {/* 左：身份 + 简介 */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="lg:col-span-2 relative overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-gray-900/80 via-gray-900/60 to-gray-900/80 p-6 flex flex-col gap-4"
+        >
+          <div className={`absolute inset-0 opacity-40 pointer-events-none bg-gradient-to-br ${typeConf.bgColor}`} />
+
+          {/* 头像 + 名字 + 徽章 */}
+          <div className="relative flex items-start gap-4">
+            <div className="relative shrink-0">
+              <img src={artist.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover border-2 border-white/10" />
+              <div className={`absolute -bottom-2 -right-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${typeConf.bgColor} ${typeConf.color}`}>
+                {typeConf.icon} {ARTIST_TYPE_LABELS[artist.type].zh}
+              </div>
             </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl font-extrabold tracking-tight truncate" style={{ fontFamily: "var(--font-display)" }}>
                 {artist.name}
               </h1>
-              <Badge className={`${quality.bg} ${quality.color} border ${quality.border} text-xs`}>
-                {quality.label}
-              </Badge>
-              <Badge className={`${status.color} bg-white/[0.06] border-0 text-xs`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${status.dot} mr-1.5`} />
-                {status.label}
-              </Badge>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <div className="text-xs text-gray-500">Lv.</div>
-              <div className="text-sm font-bold text-cyan-300">{artist.level}</div>
-              <Progress value={expPct} className="flex-1 max-w-xs h-1.5" />
-              <div className="text-[10px] text-gray-500 tabular-nums">{artist.exp}/{artist.maxExp}</div>
+              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                <Badge className={`${quality.bg} ${quality.color} border ${quality.border} text-[10px]`}>
+                  {quality.label}
+                </Badge>
+                <Badge className={`${status.color} bg-white/[0.06] border-0 text-[10px]`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${status.dot} mr-1.5`} />
+                  {status.label}
+                </Badge>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-[10px] text-gray-500 shrink-0">Lv.</span>
+                <span className="text-sm font-bold text-cyan-300 shrink-0">{artist.level}</span>
+                <div className="flex-1 min-w-0"><Progress value={expPct} className="h-1.5" /></div>
+                <span className="text-[10px] text-gray-500 tabular-nums shrink-0">{artist.exp}/{artist.maxExp}</span>
+              </div>
             </div>
           </div>
 
-          {/* Artist switcher */}
-          <div className="shrink-0 md:ml-auto">
+          {/* 艺人切换器 */}
+          <div className="relative">
+            <select
+              aria-label="切换艺人"
+              value={artist.id}
+              onChange={(e) => {
+                const next = artists.find(a => a.id === e.target.value);
+                if (next) onSelectArtist(next);
+              }}
+              className="w-full appearance-none bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 rounded-lg pl-3 pr-9 py-2 text-sm text-gray-200 cursor-pointer focus:outline-none focus:ring-1 focus:ring-cyan-500/30"
+            >
+              {artists.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+          </div>
+
+          {/* 简介 */}
+          <div className="relative bg-black/30 rounded-xl p-4 border border-white/5">
+            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">简介</div>
+            <p className="text-sm text-gray-200 leading-relaxed">
+              {artist.bio || "该艺人尚未填写简介。可在「AI 艺人孵化」向导里补充。"}
+            </p>
+          </div>
+
+          {/* 领域 */}
+          {artist.domains?.length ? (
             <div className="relative">
-              <select
-                aria-label="切换艺人"
-                value={artist.id}
-                onChange={(e) => {
-                  const next = artists.find(a => a.id === e.target.value);
-                  if (next) onSelectArtist(next);
-                }}
-                className="appearance-none bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 rounded-lg pl-3 pr-9 py-2 text-sm text-gray-200 cursor-pointer focus:outline-none focus:ring-1 focus:ring-cyan-500/30"
-              >
-                {artists.map(a => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
+              <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">活跃领域</div>
+              <div className="flex flex-wrap gap-1.5">
+                {artist.domains.map(d => (
+                  <Badge key={d} className="text-[10px] bg-white/[0.06] text-gray-200 border-0">{d}</Badge>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+              </div>
+            </div>
+          ) : null}
+
+          {/* 日期 */}
+          <div className="relative grid grid-cols-2 gap-2">
+            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+              <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />创建
+              </div>
+              <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.createdAt}</div>
+            </div>
+            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+              <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" />最后活跃
+              </div>
+              <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.lastActive}</div>
             </div>
           </div>
-        </div>
-      </motion.div>
 
-      {/* AI 形象画廊 —— 艺人详情页"第一商业化入口"。此视图只读，生成 / 删除 /
-          设为官方形象 / 上架均在 AI 形象锻造炉完成。 */}
-      <AppearanceGallery artist={artist} onGoToForge={() => onNavigate("appearance")} />
+          {/* 造型 / 道具（原底部 2 列的衣橱快照上移至此） */}
+          <div className="relative">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Shirt className="w-3.5 h-3.5 text-purple-400" />
+                <h3 className="text-sm font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>造型 / 道具</h3>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => onNavigate("wardrobe")} className="h-auto p-1 text-cyan-400 hover:bg-cyan-500/10 text-[10px]">
+                前往衣橱 <ChevronRight className="w-3 h-3 ml-0.5" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {wardrobeSamples.map(w => (
+                <div key={w.id} className="relative aspect-square rounded-lg overflow-hidden border border-white/5 group">
+                  <img src={w.imageUrl} alt={w.name} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                  <div className="absolute inset-x-0 bottom-0 p-1 bg-gradient-to-t from-black/85 to-transparent">
+                    <div className="text-[9px] text-white font-medium truncate leading-tight">{w.name}</div>
+                  </div>
+                  <div className="absolute top-1 right-1 text-[8px] px-1 py-px rounded-full bg-black/60 text-amber-300 uppercase">
+                    {w.rarity}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-500 font-light mt-2">精选收藏品（按稀有度）</p>
+          </div>
+        </motion.div>
+
+        {/* 右：AI 形象画廊（compact：不重复展示简介，hero + 缩略条占主视觉） */}
+        <div className="lg:col-span-3">
+          <AppearanceGallery artist={artist} onGoToForge={() => onNavigate("appearance")} variant="compact" />
+        </div>
+      </div>
 
       {/* 雷达 + 个人 KPI + 孵化参数 */}
       <div className="grid lg:grid-cols-3 gap-6">
@@ -218,39 +285,9 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
         </div>
       </div>
 
-      {/* 造型 + 音乐作品（AI 形象已上移至 AppearanceGallery） */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* 造型 / 道具 */}
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .15 }}
-          className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Shirt className="w-4 h-4 text-purple-400" />
-              <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>造型 / 道具</h3>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => onNavigate("wardrobe")} className="text-cyan-400 hover:bg-cyan-500/10 text-xs">
-              前往衣橱 <ChevronRight className="w-3 h-3 ml-1" />
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {wardrobeSamples.map(w => (
-              <div key={w.id} className="relative aspect-square rounded-lg overflow-hidden border border-white/5 group">
-                <img src={w.imageUrl} alt={w.name} className="w-full h-full object-cover group-hover:scale-105 transition" />
-                <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/85 to-transparent">
-                  <div className="text-[10px] text-white font-medium truncate">{w.name}</div>
-                </div>
-                <div className="absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-amber-300 uppercase">
-                  {w.rarity}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-[11px] text-gray-500 font-light mt-3">精选收藏品（按稀有度）</p>
-        </motion.div>
-
-        {/* 音乐作品 */}
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .2 }}
-          className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
+      {/* 音乐作品（造型 / 道具已上移至左侧身份列） */}
+      <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .2 }}
+        className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Music className="w-4 h-4 text-amber-400" />
@@ -287,8 +324,7 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
               })}
             </div>
           )}
-        </motion.div>
-      </div>
+      </motion.div>
 
       {/* 快捷入口 */}
       <div className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
