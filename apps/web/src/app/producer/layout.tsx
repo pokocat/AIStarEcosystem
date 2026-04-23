@@ -477,19 +477,9 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Page content — 动画 key 用 activeId 而不是完整 pathname，避免 sub-route 切换时全量卸载 */}
+        {/* Page content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeId}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          <div key={activeId}>{children}</div>
         </div>
 
         <CommandPalette
