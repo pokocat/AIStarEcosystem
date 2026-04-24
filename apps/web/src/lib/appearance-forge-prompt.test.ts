@@ -58,4 +58,51 @@ describe("buildAppearanceForgePrompt", () => {
     expect(prompt).toContain("本次必须尽量保持不变的项：下颌线、眼型大小");
     expect(prompt).toContain("最终生成提示词");
   });
+
+  it("renders extended incubation dimensions with Chinese labels and joins arrays with 、", () => {
+    const prompt = buildAppearanceForgePrompt({
+      artist: {
+        name: "星澪",
+        type: "singer",
+        bio: "深夜电子声线歌手。",
+        incubationParams: {
+          mbti: "INFP",
+          personaTags: ["healing", "contrast"],
+          musicGenres: ["electronic", "rnb"],
+          vocalRange: "soprano",
+          fandomName: "星星",
+          backstory: "出身数据星海，梦想登上全球虚拟巡演。",
+          brandRestrictions: [],
+        },
+      },
+      mode: "prompt_only",
+      templateId: null,
+      uploadedPhoto: false,
+      fusionRatio: 0,
+      prompt: "",
+      hairId: null,
+      eyeId: null,
+      styleTagIds: [],
+      faceValues: {},
+      lockedFeatures: [],
+      colorSchemeId: null,
+      templates: FORGE_TEMPLATES,
+      hairStyles: HAIR_STYLES,
+      eyeColors: EYE_COLORS,
+      styleTags: STYLE_TAGS,
+      faceSliders: FACE_SLIDERS,
+      colorSchemes: COLOR_SCHEMES,
+    });
+
+    expect(prompt).toContain("MBTI 人格：INFP");
+    expect(prompt).toContain("人设标签：healing、contrast");
+    expect(prompt).toContain("主打曲风：electronic、rnb");
+    expect(prompt).toContain("音域：soprano");
+    expect(prompt).toContain("粉丝称号：星星");
+    expect(prompt).toContain("背景故事：出身数据星海，梦想登上全球虚拟巡演。");
+    // 空数组不应出现
+    expect(prompt).not.toContain("商业禁区");
+    // 数组值不应再以 JSON 形式出现
+    expect(prompt).not.toContain('["healing","contrast"]');
+  });
 });

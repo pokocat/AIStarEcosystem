@@ -65,19 +65,31 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
   const incubation: Record<string, string> = {};
   if (artist.incubationParams) {
     const p = artist.incubationParams as Record<string, unknown>;
-    const pick = (k: string, label: string) => {
+    const pick = (k: string, label: string, max?: number) => {
       const v = p[k];
-      if (v != null && v !== "") incubation[label] = String(v);
+      if (v == null || v === "") return;
+      const raw = Array.isArray(v)
+        ? v.filter(x => x !== null && x !== undefined && x !== "").map(String).join("、")
+        : String(v);
+      if (!raw) return;
+      incubation[label] = typeof max === "number" && raw.length > max ? `${raw.slice(0, max)}…` : raw;
     };
     pick("faceStyle",    "面孔风格");
     pick("fashionStyle", "时尚风格");
     pick("age",          "视觉年龄");
     pick("height",       "身高");
+    pick("generation",   "世代");
+    pick("mbti",         "MBTI");
+    pick("personaTags",  "人设标签");
     pick("sweetness",    "甜度");
     pick("energy",       "能量");
     pick("mystery",      "神秘感");
     pick("confidence",   "自信度");
-    pick("extraPersona", "额外设定");
+    pick("vocalRange",   "音域");
+    pick("musicGenres",  "主打曲风");
+    pick("danceStyles",  "主打舞种");
+    pick("fandomName",   "粉丝称号");
+    pick("backstory",    "背景故事", 40);
   }
 
   // 衣橱快照：取 rare/epic/legendary 的前 4 件做"经典穿搭"占位

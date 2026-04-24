@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Star Eco Deploy"
+  short_description: "Deploy AI Star Eco to production."
+  default_prompt: "Use $aistareco-deploy to deploy the AI Star Eco project to production and verify web, admin, API, and static video endpoints."

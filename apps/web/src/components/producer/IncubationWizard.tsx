@@ -3,79 +3,30 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Sparkles, Shuffle, Wand2, X,
-  Mic2, Video, Star, Headphones, Zap, CheckCircle2, Loader2
+  Star, CheckCircle2, Loader2
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Progress } from "../ui/progress";
 import { motion, AnimatePresence } from "motion/react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import type { Lang } from "../../translations";
 import { TRANSLATIONS } from "../../translations";
 import {
   type ArtistType, type TalentProfile,
-  ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, QUALITY_CONFIG, TALENT_LABELS
+  ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, TALENT_LABELS
 } from './ArtistTypes';
 import { ArtistsApi, ConfigApi, ApiError } from "@/api";
+import {
+  type WizardState, type WizardTemplate, type LabeledI18n, type FandomColor,
+  INITIAL_STATE, GENERATIONS, CREATOR_MODES,
+  FALLBACK_TEMPLATES, FALLBACK_FACE_STYLES, FALLBACK_FASHION_STYLES,
+  FALLBACK_MBTI_TYPES, FALLBACK_PERSONA_TAGS, FALLBACK_VOCAL_RANGES,
+  FALLBACK_MUSIC_GENRES, FALLBACK_DANCE_STYLES, FALLBACK_FANDOM_COLORS,
+  FALLBACK_BRAND_RESTRICTIONS,
+  getTypeSpecificGate, buildIncubationParams, randomizeState,
+} from './IncubationWizardShared';
 
-interface WizardState {
-  name: string;
-  type: ArtistType;
-  bio: string;
-  faceStyle: string;
-  fashionStyle: string;
-  age: number;
-  height: number;
-  sweetness: number;
-  energy: number;
-  mystery: number;
-  confidence: number;
-  extraPersona: number;
-  talents: TalentProfile;
-}
-
-const INITIAL_STATE: WizardState = {
-  name: '', type: 'singer', bio: '',
-  faceStyle: 'sweet', fashionStyle: 'modern', age: 20, height: 168,
-  sweetness: 50, energy: 60, mystery: 40, confidence: 70, extraPersona: 50,
-  talents: { ...ARTIST_TYPE_CONFIG.singer.initialTalents },
-};
-
-// 默认值仅作为后端未 seed / 离线时的 fallback。真值源在 platform_configs：
-//   - incubation.templates  (key: ArtistType 枚举 + 文案)
-//   - incubation.faceStyles / fashionStyles (LabeledOption i18n)
-// 管理端改这些 key 即可热更前端选项。
-type WizardTemplate = { id: string; type: ArtistType; zh: string; en: string; color: string };
-type LabeledI18n = { id: string; zh: string; en: string };
-
-const FALLBACK_TEMPLATES: WizardTemplate[] = [
-  { id: 'cute', type: 'idol', zh: '甜美偶像', en: 'Cute Idol', color: 'border-pink-500/30 hover:border-pink-400/60' },
-  { id: 'cool', type: 'singer', zh: '酷炫歌手', en: 'Cool Singer', color: 'border-cyan-500/30 hover:border-cyan-400/60' },
-  { id: 'elegant', type: 'actor', zh: '优雅演员', en: 'Elegant Actor', color: 'border-purple-500/30 hover:border-purple-400/60' },
-  { id: 'energetic', type: 'entertainer', zh: '活力综艺', en: 'Energetic Host', color: 'border-amber-500/30 hover:border-amber-400/60' },
-  { id: 'mysterious', type: 'dancer', zh: '神秘舞者', en: 'Mysterious Dancer', color: 'border-green-500/30 hover:border-green-400/60' },
-  { id: 'custom', type: 'singer', zh: '自定义', en: 'Custom', color: 'border-white/10 hover:border-white/30' },
-];
-
-const FALLBACK_FACE_STYLES: LabeledI18n[] = [
-  { id: 'sweet', zh: '甜美', en: 'Sweet' },
-  { id: 'cool', zh: '酷帅', en: 'Cool' },
-  { id: 'elegant', zh: '优雅', en: 'Elegant' },
-  { id: 'cute', zh: '可爱', en: 'Cute' },
-  { id: 'sharp', zh: '凌厉', en: 'Sharp' },
-  { id: 'soft', zh: '温柔', en: 'Soft' },
-];
-
-const FALLBACK_FASHION_STYLES: LabeledI18n[] = [
-  { id: 'modern', zh: '现代潮流', en: 'Modern' },
-  { id: 'retro', zh: '复古', en: 'Retro' },
-  { id: 'cyberpunk', zh: '赛博朋克', en: 'Cyberpunk' },
-  { id: 'casual', zh: '休闲', en: 'Casual' },
-  { id: 'formal', zh: '正式', en: 'Formal' },
-  { id: 'sporty', zh: '运动', en: 'Sporty' },
-];
-
-/* Slider component */
+/* Slider */
 const ParamSlider = ({ label, value, onChange, color = 'cyan' }: { label: string; value: number; onChange: (v: number) => void; color?: string }) => (
   <div className="space-y-1">
     <div className="flex justify-between text-xs">
@@ -85,6 +36,28 @@ const ParamSlider = ({ label, value, onChange, color = 'cyan' }: { label: string
     <input type="range" min={0} max={100} value={value} onChange={e => onChange(+e.target.value)}
       className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-cyan-500
         [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gray-900 [&::-webkit-slider-thumb]:shadow" />
+  </div>
+);
+
+/* 多选芯片 */
+const MultiChips = <T extends { id: string; zh: string }>(
+  { items, selected, onToggle, max }: { items: T[]; selected: string[]; onToggle: (id: string) => void; max?: number }
+) => (
+  <div className="flex flex-wrap gap-2">
+    {items.map(it => {
+      const on = selected.includes(it.id);
+      const disabled = !on && typeof max === 'number' && selected.length >= max;
+      return (
+        <button key={it.id} type="button" disabled={disabled} onClick={() => onToggle(it.id)}
+          className={`px-3 py-1.5 rounded-full text-xs border transition ${on
+            ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
+            : disabled
+              ? 'border-white/5 text-gray-600 cursor-not-allowed'
+              : 'border-white/10 text-gray-400 hover:border-white/25'}`}>
+          {it.zh}
+        </button>
+      );
+    })}
   </div>
 );
 
@@ -101,98 +74,82 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
     { label: t.step_appearance, icon: '02' },
     { label: t.step_persona, icon: '03' },
     { label: t.step_talents, icon: '04' },
-    { label: t.step_preview, icon: '05' },
+    { label: t.step_type_specific, icon: '05' },
+    { label: t.step_fandom, icon: '06' },
+    { label: t.step_worldview, icon: '07' },
   ];
 
   const typeConf = ARTIST_TYPE_CONFIG[state.type];
+  const gate = getTypeSpecificGate(state.type);
+  const LAST_STEP = steps.length - 1;
 
   const updateType = (type: ArtistType) => {
     setState(s => ({ ...s, type, talents: { ...ARTIST_TYPE_CONFIG[type].initialTalents } }));
   };
 
-  // 预制 AI 艺人样本库：每种艺人类型配 3 个中文艺名 + 贴合人设的简介
-  const RANDOM_PRESETS: Record<ArtistType, { name: string; bio: string }[]> = {
-    singer: [
-      { name: '星澪 Xingli', bio: '出身于数据星海的电子声线歌手，擅长氛围电子、未来 R&B；代表作《霓虹心跳》《星海回声》。嗓音兼具少年感和金属质感。' },
-      { name: '夜语 Yeyu', bio: '深夜系创作女伶，融合爵士和合成流行。擅长在慢歌中制造情绪钩子，被乐评称为“耳机里的告白”。' },
-      { name: '苏陌 Su Mo', bio: '来自虚拟成都的独立唱作人，偏爱复古蒸汽波；自弹自唱＋AI 编曲，擅长温柔治愈向都市民谣。' },
-    ],
-    actor: [
-      { name: '江予安 Jiang Yu\'an', bio: '虚拟影视新生代，气质沉静、镜头感极强。偏爱悬疑文艺片，被算法标记为“下一位被摄影机宠爱的数字演员”。' },
-      { name: '白见瑟 Bai Jianse', bio: '古装造型担当，五官立体、身段从容；擅长演绎权谋戏与悲情女主，定妆照登上多次站内热搜。' },
-      { name: '陆决 Lu Jue', bio: '数字硬汉系男主，体态挺拔、眼神克制。擅长刑侦、军旅、科幻动作题材，动作捕捉表现稳定。' },
-    ],
-    entertainer: [
-      { name: '叮当 Dingdang', bio: '综艺气氛担当，反应飞快、金句密集。擅长即兴游戏和户外真人秀，主持节奏稳中带皮。' },
-      { name: '米可 Miko', bio: '萌系综艺 AI，天然呆＋高情商，擅长团综和观察类节目。弹幕盛赞“被她逗笑的概率是 92%”。' },
-      { name: '阿栗 A Li', bio: '脱口秀风格综艺咖，冷幽默、善吐槽、能带节目。擅长即兴辩论和段子类 Vlog。' },
-    ],
-    dancer: [
-      { name: '霓九 Ni Jiu', bio: 'K-Pop 风格编舞天才，四肢线条利落，擅长 Urban / Jazz Funk / Girls Hip-Hop；舞台爆发力满分。' },
-      { name: '流云 Liuyun', bio: '中国风古典舞者，水袖、扇舞、长剑均游刃有余；擅长在写意场景中塑造意境感。' },
-      { name: '疾光 Jiguang', bio: '街舞 Breaking 新锐，Power Move 流畅；曾于虚拟舞者大赛拿下全国亚军。' },
-    ],
-    host: [
-      { name: '林慢 Lin Man', bio: '文艺访谈主持人，温柔不冷场、擅长深度对话；声线稳、共情强，是深夜节目的黄金搭子。' },
-      { name: '郑野 Zheng Ye', bio: '新闻资讯主持人，播报节奏干净利落；擅长解读财经与科技事件，逻辑感强。' },
-      { name: '可乐 Kele', bio: '直播带货 AI 主持，口条快、互动爆棚；能同时串场、讲解、控场，是品牌直播的稳定产出者。' },
-    ],
-    all_rounder: [
-      { name: '苏九歌 Su Jiuge', bio: '唱跳演三栖全能 AI，音色辨识度高，舞台控场稳定；粉丝称“数字化时代的流量模板”。' },
-      { name: '陈诺宁 Chen Nuoning', bio: '多栖偶像型，唱歌＋影视＋综艺三线开花；团体出身，单飞后代言数量稳步增长。' },
-      { name: '言夕 Yan Xi', bio: '风格多变的全能 AI，能驾驭古风、电子、日系 City-Pop；擅长舞台剧和短剧跨界。' },
-    ],
-    idol: [
-      { name: '小月芽 Xiaoyueya', bio: '甜系养成偶像，招牌微笑＋元气舞台。粉丝社群活跃度极高，月饼头＋JK 造型是标志性形象。' },
-      { name: '陆昭昭 Lu Zhaozhao', bio: '日系学生偶像路线，声线偏软、表情管理满分；擅长应援向单曲与粉丝互动直播。' },
-      { name: '云希 Yunxi', bio: '韩系酷飒女团风，舞台张力强、Vocal 稳；擅长 Girl Crush 概念曲和团综互动。' },
-    ],
-  };
-
-  const randomize = () => {
-    const types: ArtistType[] = ['singer', 'actor', 'entertainer', 'dancer', 'host', 'all_rounder', 'idol'];
-    const rType = types[Math.floor(Math.random() * types.length)];
-    const pool = RANDOM_PRESETS[rType];
-    const preset = pool[Math.floor(Math.random() * pool.length)];
-    setState({
-      ...state,
-      name: preset.name,
-      type: rType,
-      bio: preset.bio,
-      sweetness: Math.floor(Math.random() * 100),
-      energy: Math.floor(Math.random() * 100),
-      mystery: Math.floor(Math.random() * 100),
-      confidence: Math.floor(Math.random() * 100),
-      extraPersona: Math.floor(Math.random() * 100),
-      talents: { ...ARTIST_TYPE_CONFIG[rType].initialTalents },
-      age: 16 + Math.floor(Math.random() * 14),
-      height: 155 + Math.floor(Math.random() * 30),
+  const toggleInArray = (key: keyof WizardState, id: string, limit?: number) => {
+    setState(s => {
+      const cur = (s[key] as string[]) || [];
+      const on = cur.includes(id);
+      if (!on && typeof limit === 'number' && cur.length >= limit) return s;
+      const next = on ? cur.filter(x => x !== id) : [...cur, id];
+      return { ...s, [key]: next } as WizardState;
     });
   };
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
 
-  // 从 platform_configs 拉 incubation.* 配置；未 seed 或离线则用 FALLBACK_*
-  const [FACE_STYLES, setFaceStyles] = useState<LabeledI18n[]>(FALLBACK_FACE_STYLES);
+  // 远程可热更的选项列表（fallback 兜底）
+  const [FACE_STYLES, setFaceStyles]       = useState<LabeledI18n[]>(FALLBACK_FACE_STYLES);
   const [FASHION_STYLES, setFashionStyles] = useState<LabeledI18n[]>(FALLBACK_FASHION_STYLES);
+  const [MBTI_TYPES, setMbti]              = useState<LabeledI18n[]>(FALLBACK_MBTI_TYPES);
+  const [PERSONA_TAGS, setPersonaTags]     = useState<LabeledI18n[]>(FALLBACK_PERSONA_TAGS);
+  const [VOCAL_RANGES, setVocalRanges]     = useState<LabeledI18n[]>(FALLBACK_VOCAL_RANGES);
+  const [MUSIC_GENRES, setMusicGenres]     = useState<LabeledI18n[]>(FALLBACK_MUSIC_GENRES);
+  const [DANCE_STYLES, setDanceStyles]     = useState<LabeledI18n[]>(FALLBACK_DANCE_STYLES);
+  const [FANDOM_COLORS, setFandomColors]   = useState<FandomColor[]>(FALLBACK_FANDOM_COLORS);
+  const [BRAND_RESTRICTIONS, setBrand]     = useState<LabeledI18n[]>(FALLBACK_BRAND_RESTRICTIONS);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [TEMPLATES, setTemplates] = useState<WizardTemplate[]>(FALLBACK_TEMPLATES);
+  const [TEMPLATES, setTemplates]          = useState<WizardTemplate[]>(FALLBACK_TEMPLATES);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      ConfigApi.getConfig<LabeledI18n[]>("incubation.faceStyles", FALLBACK_FACE_STYLES),
-      ConfigApi.getConfig<LabeledI18n[]>("incubation.fashionStyles", FALLBACK_FASHION_STYLES),
-      ConfigApi.getConfig<WizardTemplate[]>("incubation.templates", FALLBACK_TEMPLATES),
-    ]).then(([face, fashion, templates]) => {
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.faceStyles",      FALLBACK_FACE_STYLES),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.fashionStyles",   FALLBACK_FASHION_STYLES),
+      ConfigApi.getConfig<WizardTemplate[]>("incubation.templates",    FALLBACK_TEMPLATES),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.mbtiTypes",       FALLBACK_MBTI_TYPES),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.personaTags",     FALLBACK_PERSONA_TAGS),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.vocalRanges",     FALLBACK_VOCAL_RANGES),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.musicGenres",     FALLBACK_MUSIC_GENRES),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.danceStyles",     FALLBACK_DANCE_STYLES),
+      ConfigApi.getConfig<FandomColor[]>("incubation.fandomColors",    FALLBACK_FANDOM_COLORS),
+      ConfigApi.getConfig<LabeledI18n[]>("incubation.brandRestrictions", FALLBACK_BRAND_RESTRICTIONS),
+    ]).then(([face, fashion, templates, mbti, tags, vocal, genres, dance, colors, brand]) => {
       if (cancelled) return;
-      if (face && face.length > 0) setFaceStyles(face);
-      if (fashion && fashion.length > 0) setFashionStyles(fashion);
-      if (templates && templates.length > 0) setTemplates(templates);
+      if (face?.length)     setFaceStyles(face);
+      if (fashion?.length)  setFashionStyles(fashion);
+      if (templates?.length) setTemplates(templates);
+      if (mbti?.length)     setMbti(mbti);
+      if (tags?.length)     setPersonaTags(tags);
+      if (vocal?.length)    setVocalRanges(vocal);
+      if (genres?.length)   setMusicGenres(genres);
+      if (dance?.length)    setDanceStyles(dance);
+      if (colors?.length)   setFandomColors(colors);
+      if (brand?.length)    setBrand(brand);
     });
     return () => { cancelled = true; };
   }, []);
+
+  const randomize = () => setState(s => randomizeState(s, {
+    mbti: MBTI_TYPES,
+    personaTags: PERSONA_TAGS,
+    vocalRanges: VOCAL_RANGES,
+    musicGenres: MUSIC_GENRES,
+    danceStyles: DANCE_STYLES,
+    fandomColors: FANDOM_COLORS,
+  }));
 
   const trimmedName = state.name.trim();
   const trimmedBio = state.bio.trim();
@@ -236,17 +193,7 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
         domains: [],
         endorsements: 0,
         commercialValue: 0,
-        incubationParams: {
-          faceStyle: state.faceStyle,
-          fashionStyle: state.fashionStyle,
-          age: state.age,
-          height: state.height,
-          sweetness: state.sweetness,
-          energy: state.energy,
-          mystery: state.mystery,
-          confidence: state.confidence,
-          extraPersona: state.extraPersona,
-        },
+        incubationParams: buildIncubationParams(state),
       });
       setCreated(true);
     } catch (err) {
@@ -265,6 +212,11 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
     value: state.talents[k],
     cap: typeConf.talentCaps[k],
   }));
+
+  const creatorModeLabel = (m: string) => (
+    m === 'lyric' ? t.music_creator_lyric :
+    m === 'full'  ? t.music_creator_full  : t.music_creator_singer
+  );
 
   if (created) {
     return (
@@ -301,15 +253,15 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
       </div>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
         {steps.map((s, i) => (
           <React.Fragment key={i}>
             <button onClick={() => setStep(i)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition ${step === i ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : step > i ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'text-gray-500 border border-white/5'}`}>
+              className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition ${step === i ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : step > i ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'text-gray-500 border border-white/5'}`}>
               <span className="font-bold">{s.icon}</span>
-              <span className="hidden sm:inline">{s.label}</span>
+              <span className="hidden md:inline">{s.label}</span>
             </button>
-            {i < steps.length - 1 && <div className={`hidden sm:block flex-1 h-px ${step > i ? 'bg-green-500/30' : 'bg-white/5'}`} />}
+            {i < steps.length - 1 && <div className={`hidden md:block flex-1 h-px min-w-[12px] ${step > i ? 'bg-green-500/30' : 'bg-white/5'}`} />}
           </React.Fragment>
         ))}
       </div>
@@ -344,6 +296,17 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
                       <p className="mt-1 text-xs text-red-400">{zh ? '请填写艺人简介' : 'Bio is required'}</p>
                     )}
                   </div>
+                  <div>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.generation_label}</label>
+                    <div className="flex gap-2">
+                      {GENERATIONS.map(g => (
+                        <button key={g} onClick={() => setState(s => ({ ...s, generation: g }))}
+                          className={`px-3 py-1.5 rounded-lg border text-xs ${state.generation === g ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300' : 'border-white/10 text-gray-400 hover:border-white/25'}`}>
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <Button variant="outline" size="sm" className="border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/10 gap-1 text-xs">
                     <Wand2 className="w-3 h-3" /> {t.ai_suggest}
                   </Button>
@@ -369,7 +332,7 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
                 </div>
                 <div className="bg-black/30 rounded-lg p-3 border border-white/5 text-xs text-gray-500">
                   <span className={typeConf.color}>{typeConf.icon}</span> {zh ? ARTIST_TYPE_LABELS[state.type].zh : ARTIST_TYPE_LABELS[state.type].en}:
-                  {' '}{zh ? `主属性 ${typeConf.primaryTalents.map(t => TALENT_LABELS[t].zh).join('/')}，专属工坊「${typeConf.workshop.zh}」` : `Primary: ${typeConf.primaryTalents.map(t => TALENT_LABELS[t].en).join('/')}, Workshop: "${typeConf.workshop.en}"`}
+                  {' '}{zh ? `主属性 ${typeConf.primaryTalents.map(k => TALENT_LABELS[k].zh).join('/')}，专属工坊「${typeConf.workshop.zh}」` : `Primary: ${typeConf.primaryTalents.map(k => TALENT_LABELS[k].en).join('/')}, Workshop: "${typeConf.workshop.en}"`}
                 </div>
               </div>
             </div>
@@ -413,6 +376,21 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
                       className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:border-cyan-500/40 focus:outline-none" />
                   </div>
                 </div>
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.signature_color}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {FANDOM_COLORS.map(c => {
+                      const on = state.signatureColor === c.id;
+                      return (
+                        <button key={c.id} onClick={() => setState(s => ({ ...s, signatureColor: c.id }))}
+                          className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border text-xs ${on ? 'border-cyan-500/50 text-cyan-300 bg-cyan-500/5' : 'border-white/10 text-gray-400 hover:border-white/25'}`}>
+                          <span className="w-5 h-5 rounded-full border border-white/10" style={{ background: c.color }} />
+                          {zh ? c.zh : c.en}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               {/* Preview placeholder */}
               <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center text-center">
@@ -430,7 +408,7 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
 
           {/* STEP 2: Persona */}
           {step === 2 && (
-            <div className="max-w-2xl mx-auto">
+            <div className="grid lg:grid-cols-2 gap-6">
               <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-5">
                 <ParamSlider label={t.persona_sweetness} value={state.sweetness} onChange={v => setState(s => ({ ...s, sweetness: v }))} />
                 <ParamSlider label={t.persona_energy} value={state.energy} onChange={v => setState(s => ({ ...s, energy: v }))} color="purple" />
@@ -442,6 +420,36 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
                     <ParamSlider label={zh ? typeConf.extraPersona.zh : typeConf.extraPersona.en} value={state.extraPersona} onChange={v => setState(s => ({ ...s, extraPersona: v }))} color="green" />
                   </div>
                 )}
+              </div>
+              <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-5">
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.persona_mbti}</label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {MBTI_TYPES.map(m => (
+                      <button key={m.id} onClick={() => setState(s => ({ ...s, mbti: s.mbti === m.id ? '' : m.id }))}
+                        title={zh ? m.zh : m.en}
+                        className={`py-2 rounded-md border text-[11px] font-mono transition ${state.mbti === m.id ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300' : 'border-white/10 text-gray-400 hover:border-white/25'}`}>
+                        {m.id}
+                      </button>
+                    ))}
+                  </div>
+                  {state.mbti && (
+                    <p className="mt-2 text-[11px] text-gray-500">{MBTI_TYPES.find(m => m.id === state.mbti) ? (zh ? MBTI_TYPES.find(m => m.id === state.mbti)!.zh : MBTI_TYPES.find(m => m.id === state.mbti)!.en) : ''}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                    {t.persona_tags} <span className="text-gray-600 normal-case">{t.persona_tags_hint}</span>
+                  </label>
+                  <MultiChips items={PERSONA_TAGS} selected={state.personaTags} max={5}
+                    onToggle={id => toggleInArray('personaTags', id, 5)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.persona_speaking_style}</label>
+                  <input value={state.speakingStyle} onChange={e => setState(s => ({ ...s, speakingStyle: e.target.value }))}
+                    placeholder={t.persona_speaking_style_placeholder}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none" />
+                </div>
               </div>
             </div>
           )}
@@ -468,8 +476,7 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
                       <input type="range" min={0} max={cap} value={Math.min(val, cap)}
                         onChange={e => setState(s => ({ ...s, talents: { ...s.talents, [key]: +e.target.value } }))}
                         className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-cyan-500
-                          [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gray-900 [&::-webkit-slider-thumb]:shadow"
-                        style={{ ['--tw-accent' as any]: lbl.color }} />
+                          [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gray-900 [&::-webkit-slider-thumb]:shadow" />
                     </div>
                   );
                 })}
@@ -491,12 +498,153 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
             </div>
           )}
 
-          {/* STEP 4: Preview */}
+          {/* STEP 4: Type-specific */}
           {step === 4 && (
+            <div className="max-w-3xl mx-auto space-y-5">
+              <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-5">
+                <div className="flex items-center gap-2">
+                  <Badge className={`text-[10px] ${typeConf.bgColor} ${typeConf.color} border-0`}>{typeConf.icon} {zh ? ARTIST_TYPE_LABELS[state.type].zh : ARTIST_TYPE_LABELS[state.type].en}</Badge>
+                  <span className="text-xs text-gray-500">{t.step_type_specific}</span>
+                </div>
+
+                {!gate.music && !gate.dance && !gate.hosting && !gate.acting && (
+                  <p className="text-sm text-gray-500">{zh ? '当前艺人类型暂无专属维度设定，可直接进入下一步。' : 'No type-specific dimensions for this artist type.'}</p>
+                )}
+
+                {gate.music && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.music_vocal_range}</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {VOCAL_RANGES.map(v => (
+                            <button key={v.id} onClick={() => setState(s => ({ ...s, vocalRange: s.vocalRange === v.id ? '' : v.id }))}
+                              className={`py-2 px-2 rounded-lg border text-xs ${state.vocalRange === v.id ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300' : 'border-white/10 text-gray-400 hover:border-white/25'}`}>
+                              {zh ? v.zh : v.en}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.music_voice_tone}</label>
+                        <input value={state.voiceTone} onChange={e => setState(s => ({ ...s, voiceTone: e.target.value }))}
+                          placeholder={t.music_voice_tone_placeholder}
+                          className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                        {t.music_genres} <span className="text-gray-600 normal-case">{t.music_genres_hint}</span>
+                      </label>
+                      <MultiChips items={MUSIC_GENRES} selected={state.musicGenres} onToggle={id => toggleInArray('musicGenres', id)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.music_creator_mode}</label>
+                      <div className="flex gap-2">
+                        {CREATOR_MODES.map(m => (
+                          <button key={m} onClick={() => setState(s => ({ ...s, creatorMode: m }))}
+                            className={`px-3 py-1.5 rounded-lg border text-xs ${state.creatorMode === m ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300' : 'border-white/10 text-gray-400 hover:border-white/25'}`}>
+                            {creatorModeLabel(m)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {gate.dance && (
+                  <div className={gate.music ? 'pt-4 border-t border-white/5' : ''}>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.dance_styles}</label>
+                    <MultiChips items={DANCE_STYLES} selected={state.danceStyles} onToggle={id => toggleInArray('danceStyles', id)} />
+                  </div>
+                )}
+
+                {gate.hosting && (
+                  <div>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.hosting_style}</label>
+                    <input value={state.hostingStyle} onChange={e => setState(s => ({ ...s, hostingStyle: e.target.value }))}
+                      placeholder={t.hosting_style_placeholder}
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none" />
+                  </div>
+                )}
+
+                {gate.acting && (
+                  <div className={gate.music || gate.dance ? 'pt-4 border-t border-white/5' : ''}>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.acting_genres}</label>
+                    <input value={state.actingGenres} onChange={e => setState(s => ({ ...s, actingGenres: e.target.value }))}
+                      placeholder={t.acting_genres_placeholder}
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none" />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 5: Fandom & Business */}
+          {step === 5 && (
             <div className="max-w-3xl mx-auto">
+              <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-5">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.fandom_audience}</label>
+                    <input value={state.targetAudience} onChange={e => setState(s => ({ ...s, targetAudience: e.target.value }))}
+                      placeholder={t.fandom_audience_placeholder}
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.fandom_name}</label>
+                    <input value={state.fandomName} onChange={e => setState(s => ({ ...s, fandomName: e.target.value }))}
+                      placeholder={t.fandom_name_placeholder}
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.fandom_color}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {FANDOM_COLORS.map(c => {
+                      const on = state.fanColor === c.id;
+                      return (
+                        <button key={c.id} onClick={() => setState(s => ({ ...s, fanColor: c.id }))}
+                          className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border text-xs ${on ? 'border-cyan-500/50 text-cyan-300 bg-cyan-500/5' : 'border-white/10 text-gray-400 hover:border-white/25'}`}>
+                          <span className="w-5 h-5 rounded-full border border-white/10" style={{ background: c.color }} />
+                          {zh ? c.zh : c.en}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                    {t.brand_restrictions} <span className="text-gray-600 normal-case">{t.brand_restrictions_hint}</span>
+                  </label>
+                  <MultiChips items={BRAND_RESTRICTIONS} selected={state.brandRestrictions}
+                    onToggle={id => toggleInArray('brandRestrictions', id)} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 6: Worldview + Preview */}
+          {step === 6 && (
+            <div className="max-w-4xl mx-auto space-y-5">
+              <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-4">
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.worldview_backstory}</label>
+                  <textarea value={state.backstory} onChange={e => setState(s => ({ ...s, backstory: e.target.value }))}
+                    placeholder={t.worldview_backstory_placeholder}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none h-24 resize-none" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">{t.worldview_group}</label>
+                  <input value={state.groupAffiliation} onChange={e => setState(s => ({ ...s, groupAffiliation: e.target.value }))}
+                    placeholder={t.worldview_group_placeholder}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none" />
+                </div>
+              </div>
+
+              {/* Summary + Radar */}
               <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Left: Summary */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-4">
                       <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500/10 to-purple-500/10 border border-white/5 flex items-center justify-center">
@@ -506,43 +654,67 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
                         <h3 className="text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>{state.name || '???'}</h3>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge className={`text-xs ${typeConf.bgColor} ${typeConf.color} border-0`}>{zh ? ARTIST_TYPE_LABELS[state.type].zh : ARTIST_TYPE_LABELS[state.type].en}</Badge>
-                          <span className="text-xs text-gray-500">Lv.1</span>
+                          <span className="text-xs text-gray-500">Lv.1 · {state.generation}</span>
                         </div>
                       </div>
                     </div>
                     <p className="text-sm text-gray-400">{state.bio || (zh ? '暂无简介' : 'No bio yet')}</p>
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div className="bg-black/30 rounded-lg p-3 border border-white/5">
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-black/30 rounded-lg p-2 border border-white/5">
                         <span className="text-gray-500">{zh ? '面部' : 'Face'}: </span>
                         <span className="text-white">{FACE_STYLES.find(f => f.id === state.faceStyle)?.[zh ? 'zh' : 'en']}</span>
                       </div>
-                      <div className="bg-black/30 rounded-lg p-3 border border-white/5">
+                      <div className="bg-black/30 rounded-lg p-2 border border-white/5">
                         <span className="text-gray-500">{zh ? '风格' : 'Style'}: </span>
                         <span className="text-white">{FASHION_STYLES.find(f => f.id === state.fashionStyle)?.[zh ? 'zh' : 'en']}</span>
                       </div>
-                      <div className="bg-black/30 rounded-lg p-3 border border-white/5">
-                        <span className="text-gray-500">{zh ? '年龄' : 'Age'}: </span><span className="text-white">{state.age}</span>
-                      </div>
-                      <div className="bg-black/30 rounded-lg p-3 border border-white/5">
-                        <span className="text-gray-500">{zh ? '身高' : 'Height'}: </span><span className="text-white">{state.height}cm</span>
-                      </div>
+                      {state.mbti && (
+                        <div className="bg-black/30 rounded-lg p-2 border border-white/5">
+                          <span className="text-gray-500">MBTI: </span><span className="text-white">{state.mbti}</span>
+                        </div>
+                      )}
+                      {state.signatureColor && (
+                        <div className="bg-black/30 rounded-lg p-2 border border-white/5 flex items-center gap-2">
+                          <span className="text-gray-500">{t.signature_color}: </span>
+                          <span className="w-3 h-3 rounded-full" style={{ background: FANDOM_COLORS.find(c => c.id === state.signatureColor)?.color }} />
+                          <span className="text-white">{FANDOM_COLORS.find(c => c.id === state.signatureColor)?.zh}</span>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <div className="text-xs text-gray-500 mb-2">{zh ? '专属工坊' : 'Workshop'}</div>
-                      <Badge className="text-xs bg-cyan-500/10 text-cyan-400 border-cyan-500/20">{zh ? typeConf.workshop.zh : typeConf.workshop.en}</Badge>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-500 mb-2">{zh ? '变现路径' : 'Monetization'}</div>
-                      <div className="flex flex-wrap gap-1">
-                        {(zh ? typeConf.monetization.zh : typeConf.monetization.en).map(m => (
-                          <Badge key={m} className="text-[10px] bg-white/5 text-gray-300 border-0">{m}</Badge>
-                        ))}
+
+                    {state.personaTags.length > 0 && (
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">{t.persona_tags}</div>
+                        <div className="flex flex-wrap gap-1">
+                          {state.personaTags.map(id => {
+                            const tag = PERSONA_TAGS.find(p => p.id === id);
+                            return tag ? <Badge key={id} className="text-[10px] bg-white/5 text-gray-300 border-0">{zh ? tag.zh : tag.en}</Badge> : null;
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {gate.music && state.musicGenres.length > 0 && (
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">{t.music_genres}</div>
+                        <div className="flex flex-wrap gap-1">
+                          {state.musicGenres.map(id => {
+                            const g = MUSIC_GENRES.find(x => x.id === id);
+                            return g ? <Badge key={id} className="text-[10px] bg-cyan-500/10 text-cyan-300 border-0">{zh ? g.zh : g.en}</Badge> : null;
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {state.fandomName && (
+                      <div className="text-xs text-gray-500">
+                        {t.fandom_name}：<span className="text-white">{state.fandomName}</span>
+                      </div>
+                    )}
                   </div>
-                  {/* Right: Radar */}
                   <div>
-                    <div className="h-[240px]">
+                    <div className="h-[220px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
                           <PolarGrid stroke="rgba(255,255,255,0.08)" />
@@ -553,6 +725,14 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
                       </ResponsiveContainer>
                     </div>
                     <div className="text-xs text-gray-500 text-center">{zh ? typeConf.previewScene.zh : typeConf.previewScene.en}</div>
+                    <div className="mt-3">
+                      <div className="text-xs text-gray-500 mb-1">{zh ? '变现路径' : 'Monetization'}</div>
+                      <div className="flex flex-wrap gap-1">
+                        {(zh ? typeConf.monetization.zh : typeConf.monetization.en).map(m => (
+                          <Badge key={m} className="text-[10px] bg-white/5 text-gray-300 border-0">{m}</Badge>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -567,7 +747,7 @@ export const IncubationWizard = ({ lang, onClose, onCreated }: { lang: Lang; onC
           className="border-white/10 text-gray-400 hover:text-white gap-1">
           <ArrowLeft className="w-3.5 h-3.5" /> {step === 0 ? t.btn_cancel : t.btn_prev}
         </Button>
-        {step < 4 ? (
+        {step < LAST_STEP ? (
           <Button size="sm" onClick={goNext} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1">
             {t.btn_next} <ArrowRight className="w-3.5 h-3.5" />
           </Button>

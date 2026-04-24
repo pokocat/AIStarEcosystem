@@ -640,6 +640,105 @@ public class DemoCatalogSeeder implements CommandLineRunner {
                   "street style candid photo"
                 ]
                 """);
+
+        // ── 孵化向导 · 扩充维度选项（LLM 人设画像输入） ─────────────────────────
+        seedJson("incubation.mbtiTypes", "孵化向导 · MBTI 人格类型",
+                """
+                [
+                  {"id":"INFP","zh":"调停者","en":"Mediator"},
+                  {"id":"ENFP","zh":"竞选者","en":"Campaigner"},
+                  {"id":"INFJ","zh":"提倡者","en":"Advocate"},
+                  {"id":"ENFJ","zh":"主人公","en":"Protagonist"},
+                  {"id":"INTJ","zh":"建筑师","en":"Architect"},
+                  {"id":"ENTP","zh":"辩论家","en":"Debater"},
+                  {"id":"ISFP","zh":"探险家","en":"Adventurer"},
+                  {"id":"ESFP","zh":"表演者","en":"Entertainer"},
+                  {"id":"ISTP","zh":"鉴赏家","en":"Virtuoso"},
+                  {"id":"ESTP","zh":"企业家","en":"Entrepreneur"}
+                ]
+                """);
+
+        seedJson("incubation.personaTags", "孵化向导 · 人设关键词（多选）",
+                """
+                [
+                  {"id":"healing","zh":"治愈系","en":"Healing"},
+                  {"id":"contrast","zh":"反差萌","en":"Contrast"},
+                  {"id":"scholar","zh":"学霸","en":"Scholar"},
+                  {"id":"foodie","zh":"吃货","en":"Foodie"},
+                  {"id":"cold","zh":"高冷","en":"Aloof"},
+                  {"id":"warm","zh":"邻家","en":"Warm"},
+                  {"id":"naive","zh":"天然呆","en":"Airheaded"},
+                  {"id":"dark","zh":"暗黑系","en":"Dark"},
+                  {"id":"royal","zh":"王者","en":"Regal"},
+                  {"id":"geek","zh":"极客","en":"Geek"}
+                ]
+                """);
+
+        seedJson("incubation.vocalRanges", "孵化向导 · 音域选项",
+                """
+                [
+                  {"id":"soprano","zh":"女高音","en":"Soprano"},
+                  {"id":"mezzo","zh":"女中音","en":"Mezzo-Soprano"},
+                  {"id":"alto","zh":"女低音","en":"Alto"},
+                  {"id":"tenor","zh":"男高音","en":"Tenor"},
+                  {"id":"baritone","zh":"男中音","en":"Baritone"},
+                  {"id":"bass","zh":"男低音","en":"Bass"}
+                ]
+                """);
+
+        seedJson("incubation.musicGenres", "孵化向导 · 主打曲风（多选）",
+                """
+                [
+                  {"id":"pop","zh":"流行","en":"Pop"},
+                  {"id":"rnb","zh":"R&B","en":"R&B"},
+                  {"id":"electronic","zh":"电子","en":"Electronic"},
+                  {"id":"rock","zh":"摇滚","en":"Rock"},
+                  {"id":"hiphop","zh":"嘻哈说唱","en":"Hip-Hop"},
+                  {"id":"cnstyle","zh":"国风","en":"Chinese Style"},
+                  {"id":"ballad","zh":"抒情慢歌","en":"Ballad"},
+                  {"id":"citypop","zh":"City-Pop","en":"City-Pop"}
+                ]
+                """);
+
+        seedJson("incubation.danceStyles", "孵化向导 · 主打舞种（多选）",
+                """
+                [
+                  {"id":"kpop","zh":"K-Pop 编舞","en":"K-Pop"},
+                  {"id":"urban","zh":"Urban","en":"Urban"},
+                  {"id":"jazz","zh":"Jazz Funk","en":"Jazz Funk"},
+                  {"id":"breaking","zh":"Breaking","en":"Breaking"},
+                  {"id":"classical","zh":"中国古典舞","en":"Chinese Classical"},
+                  {"id":"ballet","zh":"芭蕾","en":"Ballet"},
+                  {"id":"contemporary","zh":"现代舞","en":"Contemporary"}
+                ]
+                """);
+
+        seedJson("incubation.fandomColors", "孵化向导 · 应援色选项（带 hex）",
+                """
+                [
+                  {"id":"rose","zh":"玫瑰粉","en":"Rose","color":"#f472b6"},
+                  {"id":"sky","zh":"天空蓝","en":"Sky","color":"#38bdf8"},
+                  {"id":"mint","zh":"薄荷绿","en":"Mint","color":"#10b981"},
+                  {"id":"lavender","zh":"薰衣草紫","en":"Lavender","color":"#a855f7"},
+                  {"id":"sunshine","zh":"阳光黄","en":"Sunshine","color":"#fbbf24"},
+                  {"id":"coral","zh":"珊瑚橙","en":"Coral","color":"#fb923c"},
+                  {"id":"pearl","zh":"珍珠白","en":"Pearl","color":"#f8fafc"},
+                  {"id":"obsidian","zh":"曜石黑","en":"Obsidian","color":"#0f172a"}
+                ]
+                """);
+
+        seedJson("incubation.brandRestrictions", "孵化向导 · 商业禁区（多选）",
+                """
+                [
+                  {"id":"alcohol","zh":"烟酒类","en":"Alcohol & Tobacco"},
+                  {"id":"gambling","zh":"博彩赌博","en":"Gambling"},
+                  {"id":"crypto","zh":"加密货币","en":"Cryptocurrency"},
+                  {"id":"medical","zh":"医疗保健","en":"Medical"},
+                  {"id":"weightloss","zh":"减肥塑身","en":"Weight Loss"},
+                  {"id":"loan","zh":"网贷金融","en":"Online Lending"},
+                  {"id":"games","zh":"重度游戏","en":"Hardcore Games"}
+                ]
+                """);
     }
 
     private void seedJson(String key, String description, String json) {

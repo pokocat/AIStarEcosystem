@@ -30,15 +30,38 @@ export interface ForgePromptSnapshot {
 }
 
 const INCUBATION_LABELS: Record<string, string> = {
+  // 基础 & 外貌
   faceStyle: "面部风格",
   fashionStyle: "造型风格",
   age: "年龄设定",
   height: "身高设定",
+  signatureColor: "代表色",
+  generation: "世代",
+  // 人格
   sweetness: "甜美感",
   energy: "能量感",
   mystery: "神秘感",
   confidence: "自信感",
   extraPersona: "额外人设",
+  mbti: "MBTI 人格",
+  personaTags: "人设标签",
+  speakingStyle: "说话风格",
+  // 类型专属（音乐 / 舞蹈 / 主持 / 演技）
+  vocalRange: "音域",
+  voiceTone: "音色",
+  musicGenres: "主打曲风",
+  creatorMode: "创作模式",
+  danceStyles: "主打舞种",
+  hostingStyle: "主持风格",
+  actingGenres: "擅长戏路",
+  // 粉丝 & 商业
+  targetAudience: "目标受众",
+  fanColor: "应援色",
+  fandomName: "粉丝称号",
+  brandRestrictions: "商业禁区",
+  // 世界观
+  backstory: "背景故事",
+  groupAffiliation: "组合/厂牌",
 };
 
 function findLabel<T extends { id: string; label?: string; name?: string }>(
@@ -53,13 +76,29 @@ function findLabel<T extends { id: string; label?: string; name?: string }>(
 function formatIncubationParams(params: Artist["incubationParams"]): string[] {
   if (!params) return [];
   return Object.entries(params)
-    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .filter(([, value]) => {
+      if (value === null || value === undefined || value === "") return false;
+      if (Array.isArray(value) && value.length === 0) return false;
+      return true;
+    })
     .map(([key, value]) => {
       const label = INCUBATION_LABELS[key] ?? key;
-      const rendered =
-        typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-          ? String(value)
-          : JSON.stringify(value);
+      let rendered: string;
+      if (Array.isArray(value)) {
+        // 数组值以顿号分隔，对 LLM 更可读；过滤空项
+        rendered = value
+          .filter(v => v !== null && v !== undefined && v !== "")
+          .map(v => (typeof v === "object" ? JSON.stringify(v) : String(v)))
+          .join("、");
+      } else if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        rendered = String(value);
+      } else {
+        rendered = JSON.stringify(value);
+      }
       return `${label}：${rendered}`;
     });
 }
