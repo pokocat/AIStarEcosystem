@@ -83,12 +83,23 @@ FLUSH PRIVILEGES;
 ### 2.2 三端上线形态
 
 1. `server` 以 Spring Boot jar 方式运行，由 `aistareco-server.service` 托管。
-2. `web`、`admin` 以 `next start` 方式运行，由各自 systemd 服务托管。
+2. `web`、`admin` 以 Next standalone 产物方式运行，由各自 systemd 服务托管，启动命令为 `node .next/standalone/server.js`。
 3. Nginx 统一代理：
    - `/web` -> `127.0.0.1:3002`
    - `/admin` -> `127.0.0.1:3003`
    - `/api` -> `127.0.0.1:8080`
 4. 根路径 `/` 302 到 `/web`。
+
+注意：`web` 和 `admin` 都配置了 `basePath`，Nginx 转发 `/web`、`/admin` 时必须保留原始 URI。`proxy_pass` 应写成 `http://127.0.0.1:3002` / `http://127.0.0.1:3003`，不要带结尾 `/`，否则 `/web/_next/*` 会被剥成 `/_next/*`，引发 chunk 404。
+
+Next 生产部署使用 `output: "standalone"`。部署时不再上传完整 `.next` 和源码目录，只上传：
+
+- `.next/standalone/`
+- `.next/static/`，同步到远端 `.next/standalone/.next/static/`
+- `public/`，同步到远端 `.next/standalone/public/`
+- `next.config.mjs`
+
+注意：常规部署不要删除旧的 `.next/static` chunk。它们是长期缓存文件，用户浏览器如果还拿着旧 HTML，可能继续请求旧 chunk；保留旧 chunk 可以避免发布瞬间的 `ChunkLoadError`。
 
 ### 2.3 本次与视频相关的实际变更
 
@@ -162,8 +173,17 @@ WHERE video_url LIKE '/videos/%';
 cd apps/web
 npm run build
 
-rsync -avz --delete .next/ \
-  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/
+rsync -az --delete --exclude='.next/static' --exclude='public' .next/standalone/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/standalone/
+
+rsync -az .next/static/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/standalone/.next/static/
+
+rsync -az --delete public/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/standalone/public/
+
+rsync -avz next.config.mjs \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/next.config.mjs
 ```
 
 #### `admin`
@@ -174,8 +194,17 @@ rsync -avz --delete .next/ \
 cd apps/admin
 npm run build
 
-rsync -avz --delete .next/ \
-  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/
+rsync -az --delete --exclude='.next/static' --exclude='public' .next/standalone/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/standalone/
+
+rsync -az .next/static/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/standalone/.next/static/
+
+[ -d public ] && rsync -az --delete public/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/standalone/public/
+
+rsync -avz next.config.mjs \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/next.config.mjs
 ```
 
 #### `server`
@@ -216,6 +245,7 @@ ssh root@47.94.102.182 'systemctl restart aistareco-server'
 1. 避免远端 `next build` 卡住或耗时过长。
 2. 更容易控制产物一致性。
 3. 遇到问题时，本地更容易先验证 build 是否成功。
+4. Next 前端使用 standalone 产物，传输体积更小，也避免漏传 `.next/server` 等内部清单文件。
 
 ### 3.2 仅更新视频资源
 
@@ -240,11 +270,17 @@ cd apps/web
 npm install
 npm run build
 
-rsync -avz --delete .next/ \
-  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/
+rsync -az --delete --exclude='.next/static' --exclude='public' .next/standalone/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/standalone/
 
-rsync -avz src/ \
-  root@47.94.102.182:/opt/ai-star-eco/apps/web/src/
+rsync -az .next/static/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/standalone/.next/static/
+
+rsync -az --delete public/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/.next/standalone/public/
+
+rsync -avz next.config.mjs \
+  root@47.94.102.182:/opt/ai-star-eco/apps/web/next.config.mjs
 
 ssh root@47.94.102.182 'systemctl restart aistareco-web'
 ```
@@ -265,11 +301,17 @@ cd apps/admin
 npm install
 npm run build
 
-rsync -avz --delete .next/ \
-  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/
+rsync -az --delete --exclude='.next/static' --exclude='public' .next/standalone/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/standalone/
 
-rsync -avz src/ \
-  root@47.94.102.182:/opt/ai-star-eco/apps/admin/src/
+rsync -az .next/static/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/standalone/.next/static/
+
+[ -d public ] && rsync -az --delete public/ \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/.next/standalone/public/
+
+rsync -avz next.config.mjs \
+  root@47.94.102.182:/opt/ai-star-eco/apps/admin/next.config.mjs
 
 ssh root@47.94.102.182 'systemctl restart aistareco-admin'
 ```
@@ -318,7 +360,7 @@ ssh root@47.94.102.182 'systemctl status --no-pager aistareco-server | sed -n "1
 ### 3.7 已知现象
 
 1. `server` 在 MySQL 模式下启动较慢，常见耗时约 2 到 3 分钟。
-2. `web` 或 `admin` 刚重启完成时，公网第一次访问可能短暂出现 `502`，通常等待 `next start` ready 即可恢复。
+2. `web` 或 `admin` 刚重启完成时，公网第一次访问可能短暂出现 `502`，通常等待 standalone Next server ready 即可恢复。
 3. MariaDB 上 `aep_notifications.read` 字段仍会触发建表保留字告警；当前不会阻塞整个服务最终启动，但后续建议单独修复。
 
 ## 4. 本地启动与调试方式
@@ -453,4 +495,3 @@ curl -X POST http://localhost:8080/api/auth/dev-login \
 ```
 
 4. 只要 `videoUrl` 指向的是相对路径，浏览器会从当前前端站点同源请求资源；因此本地和线上可以通过环境变量切换不同的静态基路径，而无需改业务代码。
-

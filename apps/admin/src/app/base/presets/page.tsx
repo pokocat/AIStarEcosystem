@@ -18,7 +18,7 @@ import type { PlatformConfigDto } from "@/api/platform-config";
 // 简单数组（string[] / {label,value}[] / {zh,en}[]）给结构化编辑；复杂对象回退到 JSON。
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SimpleSchema = "string[]" | "labeled[]" | "labeledI18n[]" | "unknown";
+type SimpleSchema = "string[]" | "labeled[]" | "labeledI18n[]" | "number" | "unknown";
 
 interface KnownKeyMeta {
   key: string;
@@ -31,7 +31,8 @@ const GROUPS: { label: string; keys: KnownKeyMeta[] }[] = [
   {
     label: "孵化向导",
     keys: [
-      { key: "incubation.faceStyles",   label: "面部风格",   schema: "labeledI18n[]", hint: "列表项：{ zh, en }" },
+      { key: "incubation.cost",          label: "孵化费用",   schema: "number",        hint: "数字（积分）。每次孵化（创建一位 AI 艺人）扣除的积分；未配置默认 100" },
+      { key: "incubation.faceStyles",    label: "面部风格",   schema: "labeledI18n[]", hint: "列表项：{ zh, en }" },
       { key: "incubation.fashionStyles", label: "服装风格",   schema: "labeledI18n[]", hint: "列表项：{ zh, en }" },
       { key: "incubation.templates",     label: "一键模版",   schema: "unknown",       hint: "WizardTemplate[]（结构复杂，使用 JSON）" },
     ],
@@ -83,14 +84,26 @@ export default function PresetsPage() {
   const meta = active ? ALL_KNOWN[active] ?? null : null;
 
   // 激活键变化时重置 draft
+  // 后端尚未创建该 key（current 为 null）时仍按 meta.schema 给一个默认值，
+  // 否则未创建的预设右侧只会显示占位文案，用户无法首次保存。
   React.useEffect(() => {
-    if (!current) { setDraft(null); return; }
-    setDraft({
-      value: current.value ?? defaultForSchema(meta?.schema ?? "unknown"),
-      description: current.description ?? "",
-      dirty: false,
-    });
-  }, [active, current?.version]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!active) { setDraft(null); return; }
+    if (current) {
+      setDraft({
+        value: current.value ?? defaultForSchema(meta?.schema ?? "unknown"),
+        description: current.description ?? "",
+        dirty: false,
+      });
+    } else if (meta) {
+      setDraft({
+        value: defaultForSchema(meta.schema),
+        description: "",
+        dirty: true,
+      });
+    } else {
+      setDraft(null);
+    }
+  }, [active, current?.version, meta?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setField = <K extends keyof NonNullable<typeof draft>>(key: K, value: NonNullable<typeof draft>[K]) => {
     setDraft((prev) => prev ? { ...prev, [key]: value, dirty: true } : prev);
@@ -291,6 +304,7 @@ export default function PresetsPage() {
                   if (effective === "string[]")     return <StringArrayEditor value={toStringArr(draft.value)} onChange={(v) => setField("value", v)} />;
                   if (effective === "labeled[]")    return <LabeledArrayEditor value={toLabeledArr(draft.value)} onChange={(v) => setField("value", v)} fields={["label", "value"]} />;
                   if (effective === "labeledI18n[]") return <LabeledArrayEditor value={toLabeledArr(draft.value)} onChange={(v) => setField("value", v)} fields={["zh", "en"]} />;
+                  if (effective === "number")       return <NumberEditor value={toNumber(draft.value)} onChange={(v) => setField("value", v)} />;
                   return <JsonEditor value={draft.value} onChange={(v, err) => { setField("value", v); setDraft((prev) => prev ? { ...prev, jsonError: err } : prev); }} error={draft.jsonError} />;
                 })()}
               </>
@@ -398,6 +412,29 @@ function LabeledArrayEditor({
   );
 }
 
+function NumberEditor({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [text, setText] = React.useState<string>(() => String(value));
+  React.useEffect(() => { setText(String(value)); }, [value]);
+  return (
+    <div className="space-y-2">
+      <label className="text-xs text-muted-foreground">数值</label>
+      <Input
+        type="number"
+        value={text}
+        onChange={(e) => {
+          const t = e.target.value;
+          setText(t);
+          if (t === "" || t === "-") return;
+          const n = Number(t);
+          if (Number.isFinite(n)) onChange(n);
+        }}
+        className="font-mono"
+      />
+      <p className="text-xs text-muted-foreground">保存时以 JSON 数字字面量存储。</p>
+    </div>
+  );
+}
+
 function JsonEditor({ value, onChange, error }: {
   value: unknown;
   onChange: (v: unknown, err?: string) => void;
@@ -440,6 +477,7 @@ function JsonEditor({ value, onChange, error }: {
 
 function defaultForSchema(s: SimpleSchema): unknown {
   if (s === "string[]" || s === "labeled[]" || s === "labeledI18n[]") return [];
+  if (s === "number") return 0;
   return null;
 }
 
@@ -450,6 +488,15 @@ function toStringArr(v: unknown): string[] {
 function toLabeledArr(v: unknown): LabeledItem[] {
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is LabeledItem => typeof x === "object" && x !== null);
+}
+
+function toNumber(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
 }
 
 function safeStringify(v: unknown): string {

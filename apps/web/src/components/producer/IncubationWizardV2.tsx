@@ -8,15 +8,26 @@
 // 数据：继续走 IncubationWizardShared 的 WizardState；创建接口不变。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, ArrowRight, Shuffle, X, Loader2, CheckCircle2, Sparkles,
+  ArrowLeft, ArrowRight, Check, Shuffle, X, Loader2, CheckCircle2, Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
 } from "recharts";
 import type { Lang } from "../../translations";
+import { toast } from "@/lib/toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   type ArtistType,
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, TALENT_LABELS,
@@ -52,17 +63,43 @@ interface SectionMeta {
 }
 
 const SECTIONS: SectionMeta[] = [
-  { id: "origin", title: "基元", blurb: "登记艺人身份、类型与诞生宣言。" },
-  { id: "form",   title: "形体", blurb: "塑造面相、时尚坐标与主视觉签名色。" },
-  { id: "psyche", title: "精神", blurb: "情绪光谱、MBTI 与人设符号。" },
-  { id: "talent", title: "才能", blurb: "六维才艺能力的初始配分。" },
-  { id: "craft",  title: "匠艺", blurb: "按艺人类型激活的专属维度。" },
-  { id: "fandom", title: "回响", blurb: "粉丝画像、应援色与商业禁区。" },
-  { id: "lore",   title: "史志", blurb: "背景故事与组合关系定锚。" },
+  { id: "origin", title: "基础设定", blurb: "选择艺人类型，写下诞生宣言。" },
+  { id: "form",   title: "外貌设计", blurb: "设定面相、时尚风格与签名色。" },
+  { id: "psyche", title: "人格参数", blurb: "设定情绪光谱、MBTI 与人设标签。" },
+  { id: "talent", title: "才艺培养", blurb: "为六项才艺能力分配初始点数。" },
+  { id: "craft",  title: "专属特质", blurb: "按艺人类型激活的专属维度。" },
+  { id: "fandom", title: "粉丝商业", blurb: "粉丝画像、应援色与商业禁区。" },
+  { id: "lore",   title: "世界观",   blurb: "撰写背景故事与组合关系。" },
 ];
 
 const FONT_DISPLAY = "var(--font-display)";
 const FONT_SANS = "var(--font-sans)";
+
+// 判断用户是否在向导中填写过任何信息（仅检查默认值为 "" 或 [] 的字段，
+// 那些有合理默认值的字段如 type/age/height/sweetness 不计入，否则首次进入就会
+// 误报"已有用户数据"）
+function hasUserData(s: WizardState): boolean {
+  return Boolean(
+    s.name.trim() ||
+    s.bio.trim() ||
+    s.signatureColor ||
+    s.mbti ||
+    s.personaTags.length > 0 ||
+    s.speakingStyle.trim() ||
+    s.vocalRange ||
+    s.voiceTone.trim() ||
+    s.musicGenres.length > 0 ||
+    s.danceStyles.length > 0 ||
+    s.hostingStyle.trim() ||
+    s.actingGenres.trim() ||
+    s.targetAudience.trim() ||
+    s.fanColor ||
+    s.fandomName.trim() ||
+    s.brandRestrictions.length > 0 ||
+    s.backstory.trim() ||
+    s.groupAffiliation.trim()
+  );
+}
 
 // ── 辅助函数 ────────────────────────────────────────────────────────────────
 function hashSessionId(name: string): string {
@@ -273,8 +310,9 @@ const Chip: React.FC<{ on: boolean; onClick: () => void; disabled?: boolean; acc
       fontFamily: FONT_SANS,
       letterSpacing: "0.04em",
       color: disabled ? "#4A4A5A" : on ? CANVAS : INK,
-      background: on ? accent : "transparent",
+      background: on ? accent : "rgba(255,255,255,0.025)",
       border: `1px solid ${on ? accent : LINE}`,
+      boxShadow: on ? `0 0 0 2px ${accent}33, 0 0 14px ${accent}55` : "none",
       cursor: disabled ? "not-allowed" : "pointer",
     }}
   >
@@ -317,6 +355,8 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
   const [BRAND_RESTRICTIONS, setBrand]     = useState<LabeledI18n[]>(FALLBACK_BRAND_RESTRICTIONS);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [TEMPLATES, setTemplates]          = useState<WizardTemplate[]>(FALLBACK_TEMPLATES);
+  // 孵化费用（积分），admin 在 /base/presets 配置 incubation.cost
+  const [incubationCost, setIncubationCost] = useState<number>(100);
 
   useEffect(() => {
     let cancelled = false;
@@ -331,7 +371,8 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
       ConfigApi.getConfig<LabeledI18n[]>("incubation.danceStyles", FALLBACK_DANCE_STYLES),
       ConfigApi.getConfig<FandomColor[]>("incubation.fandomColors", FALLBACK_FANDOM_COLORS),
       ConfigApi.getConfig<LabeledI18n[]>("incubation.brandRestrictions", FALLBACK_BRAND_RESTRICTIONS),
-    ]).then(([face, fashion, templates, mbti, tags, vocal, genres, dance, colors, brand]) => {
+      ConfigApi.getConfig<number>("incubation.cost", 100),
+    ]).then(([face, fashion, templates, mbti, tags, vocal, genres, dance, colors, brand, cost]) => {
       if (cancelled) return;
       if (face?.length) setFaceStyles(face);
       if (fashion?.length) setFashionStyles(fashion);
@@ -343,6 +384,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
       if (dance?.length) setDanceStyles(dance);
       if (colors?.length) setFandomColors(colors);
       if (brand?.length) setBrand(brand);
+      if (typeof cost === "number" && cost >= 0) setIncubationCost(cost);
     });
     return () => { cancelled = true; };
   }, []);
@@ -377,10 +419,35 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
   const updateType = (type: ArtistType) =>
     setState(s => ({ ...s, type, talents: { ...ARTIST_TYPE_CONFIG[type].initialTalents } }));
 
-  const randomize = () => setState(s => randomizeState(s, {
-    mbti: MBTI_TYPES, personaTags: PERSONA_TAGS, vocalRanges: VOCAL_RANGES,
-    musicGenres: MUSIC_GENRES, danceStyles: DANCE_STYLES, fandomColors: FANDOM_COLORS,
-  }));
+  // 随机生成：保留上一版供撤销，命中 hasUserData 时先弹确认
+  const prevStateRef = useRef<WizardState | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const doRandomize = () => {
+    prevStateRef.current = state;
+    setState(s => randomizeState(s, {
+      mbti: MBTI_TYPES, personaTags: PERSONA_TAGS, vocalRanges: VOCAL_RANGES,
+      musicGenres: MUSIC_GENRES, danceStyles: DANCE_STYLES, fandomColors: FANDOM_COLORS,
+    }));
+    toast.info("已随机生成", {
+      description: "如不满意可点击撤销恢复上一版",
+      duration: 8000,
+      action: {
+        label: "撤销",
+        onClick: () => {
+          if (prevStateRef.current) setState(prevStateRef.current);
+        },
+      },
+    });
+  };
+
+  const randomize = () => {
+    if (hasUserData(state)) {
+      setConfirmOpen(true);
+    } else {
+      doRandomize();
+    }
+  };
 
   const goNext = () => {
     if (section === 0 && !basicValid) { setShowValidation(true); return; }
@@ -411,9 +478,14 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
       });
       setCreated(true);
     } catch (err) {
-      const msg = err instanceof ApiError
-        ? `创建失败：${err.message}（${err.code}）`
-        : `创建失败：${err instanceof Error ? err.message : String(err)}`;
+      let msg: string;
+      if (err instanceof ApiError && err.status === 402) {
+        msg = `积分余额不足：${err.message}`;
+      } else if (err instanceof ApiError) {
+        msg = `创建失败：${err.message}（${err.code}）`;
+      } else {
+        msg = `创建失败：${err instanceof Error ? err.message : String(err)}`;
+      }
       setErrorMsg(msg);
     } finally {
       setCreating(false);
@@ -498,16 +570,16 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
 
   return (
     <div
-      className="relative flex flex-col h-[calc(100vh-100px)] rounded-2xl overflow-hidden"
+      className="relative flex flex-col h-full rounded-2xl overflow-hidden"
       style={{
         fontFamily: FONT_SANS,
         color: INK,
-        background: CANVAS,
+        background: "#0B0B14",
         backgroundImage: `
-          radial-gradient(900px 500px at 85% 5%, ${artistColor}14, transparent 60%),
-          radial-gradient(700px 400px at 10% 95%, ${ACCENT_SECONDARY}10, transparent 55%)
+          radial-gradient(900px 500px at 85% 5%, ${artistColor}22, transparent 60%),
+          radial-gradient(700px 400px at 10% 95%, ${ACCENT_SECONDARY}18, transparent 55%)
         `,
-        border: `1px solid ${LINE_SOFT}`,
+        border: `1px solid ${LINE}`,
       }}
     >
       {/* 顶部状态条 */}
@@ -519,18 +591,18 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
           <div className="flex items-center gap-2">
             <motion.span
               className="w-1.5 h-1.5 rounded-full"
-              style={{ background: artistColor }}
+              style={{ background: ACCENT }}
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
             />
-            <span style={{ fontFamily: FONT_DISPLAY, color: artistColor, fontSize: 13, letterSpacing: "0.12em", fontWeight: 600 }}>
+            <span style={{ fontFamily: FONT_DISPLAY, color: ACCENT, fontSize: 13, letterSpacing: "0.12em", fontWeight: 600 }}>
               艺人合成台
             </span>
           </div>
           <div className="hidden md:flex items-center gap-4 text-[11px]" style={{ fontFamily: FONT_SANS }}>
             <span style={{ color: DIM }}>会话 <span className="ml-1 tabular-nums" style={{ color: INK }}>{sessionId}</span></span>
             <span style={{ color: DIM }}>时刻 <span className="ml-1 tabular-nums" style={{ color: MUTED }}>{clock || "--:--:--"}</span></span>
-            <span style={{ color: DIM }}>状态 <span className="ml-1" style={{ color: artistColor }}>{creating ? "合成中" : "起草中"}</span></span>
+            <span style={{ color: DIM }}>状态 <span className="ml-1" style={{ color: ACCENT }}>{creating ? "合成中" : "起草中"}</span></span>
           </div>
         </div>
 
@@ -543,7 +615,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
               color: MUTED,
               border: `1px solid ${LINE}`,
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = artistColor; e.currentTarget.style.color = INK; }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = INK; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = LINE; e.currentTarget.style.color = MUTED; }}
           >
             <Shuffle size={12} /> 随机生成
@@ -562,15 +634,13 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
       </header>
 
       {/* 三栏主区 */}
-      <div className="grid grid-cols-[72px_1fr] lg:grid-cols-[88px_1fr_340px] gap-0 flex-1 min-h-0">
+      <div className="grid grid-cols-[100px_1fr] lg:grid-cols-[128px_1fr_340px] gap-0 flex-1 min-h-0">
         {/* 左：章节轨 */}
         <aside
-          className="py-8 px-2 overflow-y-auto"
-          style={{
-            borderRight: `1px solid ${LINE}`,
-          }}
+          className="py-6 overflow-y-auto"
+          style={{ borderRight: `1px solid ${LINE}` }}
         >
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col">
             {SECTIONS.map((s, i) => {
               const active = i === section;
               const done = i < section;
@@ -578,36 +648,54 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
                 <button
                   key={s.id}
                   onClick={() => setSection(i)}
-                  className="relative flex flex-col items-center w-full py-3 transition-all group"
+                  className="relative flex items-center gap-3 w-full pl-4 pr-3 py-2.5 transition-colors group"
                   title={s.title}
                 >
+                  {/* 连接线（除最后一个） */}
                   {i < SECTIONS.length - 1 && (
                     <span
-                      className="absolute top-[66%] left-1/2 -translate-x-1/2 w-px h-5"
-                      style={{ background: done ? artistColor : LINE, opacity: done ? 0.6 : 1 }}
+                      className="absolute left-[calc(1rem+10px)] top-[calc(50%+11px)] w-px h-[20px] -translate-x-1/2"
+                      style={{ background: done ? ACCENT : LINE, opacity: done ? 0.7 : 1 }}
                     />
                   )}
+                  {/* 数字徽章 */}
                   <span
-                    className="transition-all"
+                    className="relative shrink-0 flex items-center justify-center transition-all"
                     style={{
-                      fontFamily: FONT_DISPLAY,
-                      fontSize: active ? 28 : 20,
-                      fontWeight: active ? 600 : 400,
-                      color: active ? artistColor : done ? INK : DIM,
-                      textShadow: active ? `0 0 18px ${artistColor}55` : "none",
-                      letterSpacing: "-0.04em",
+                      width: 22,
+                      height: 22,
+                      borderRadius: 9999,
+                      background: done ? ACCENT : "transparent",
+                      border: `${active ? 2 : 1}px solid ${done || active ? ACCENT : LINE}`,
+                      boxShadow: active ? `0 0 12px ${ACCENT}66` : "none",
                     }}
                   >
-                    {ROMAN[i]}
+                    {done ? (
+                      <Check size={12} strokeWidth={3} style={{ color: CANVAS }} />
+                    ) : (
+                      <span
+                        className="tabular-nums"
+                        style={{
+                          fontFamily: FONT_SANS,
+                          fontSize: 11,
+                          fontWeight: active ? 600 : 500,
+                          color: active ? ACCENT : DIM,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {i + 1}
+                      </span>
+                    )}
                   </span>
+                  {/* 章节标题 */}
                   <span
-                    className="mt-1 transition"
+                    className="transition truncate text-left"
                     style={{
                       fontFamily: FONT_SANS,
-                      fontSize: 10,
-                      letterSpacing: "0.16em",
-                      color: active ? artistColor : DIM,
-                      opacity: active ? 1 : 0.55,
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 400,
+                      color: active ? ACCENT : done ? INK : DIM,
+                      letterSpacing: "0.02em",
                     }}
                   >
                     {s.title}
@@ -619,12 +707,12 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
         </aside>
 
         {/* 中：内容区（独立滚动） */}
-        <main className="px-6 md:px-10 py-10 min-w-0 overflow-y-auto">
+        <main className="px-6 md:px-8 py-6 min-w-0 overflow-y-auto">
           {/* 章节标题头 */}
-          <div className="flex items-end justify-between gap-4 mb-10">
+          <div className="flex items-end justify-between gap-4 mb-6">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-2 text-[11px]" style={{ fontFamily: FONT_SANS, letterSpacing: "0.12em" }}>
-                <span style={{ color: artistColor }}>第 {section + 1} 章</span>
+                <span style={{ color: ACCENT }}>第 {section + 1} 章</span>
                 <span style={{ color: LINE }}>/</span>
                 <span style={{ color: MUTED }}>共 7 章</span>
               </div>
@@ -633,14 +721,14 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
                 style={{
                   fontFamily: FONT_DISPLAY,
                   fontWeight: 600,
-                  fontSize: "clamp(40px, 5.2vw, 60px)",
+                  fontSize: "clamp(28px, 3.4vw, 38px)",
                   color: INK,
                   letterSpacing: "-0.02em",
                 }}
               >
                 {currentSection.title}
               </h1>
-              <p className="mt-3 text-sm max-w-lg" style={{ color: MUTED, lineHeight: 1.7 }}>
+              <p className="mt-2 text-sm max-w-lg" style={{ color: MUTED, lineHeight: 1.7 }}>
                 {currentSection.blurb}
               </p>
             </div>
@@ -650,11 +738,11 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
               style={{
                 fontFamily: FONT_DISPLAY,
                 fontWeight: 500,
-                fontSize: "clamp(90px, 13vw, 170px)",
+                fontSize: "clamp(60px, 8vw, 110px)",
                 lineHeight: 1,
-                color: artistColor,
-                opacity: 0.1,
-                textShadow: `0 0 30px ${artistColor}44`,
+                color: ACCENT,
+                opacity: 0.12,
+                textShadow: `0 0 24px ${ACCENT}44`,
                 letterSpacing: "-0.08em",
               }}
             >
@@ -669,7 +757,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
-              className="space-y-12"
+              className="space-y-8"
             >
               {section === 0 && (
                 <SectionOrigin
@@ -765,15 +853,15 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
 
         <div className="hidden md:flex items-center gap-3 text-[11px]" style={{ fontFamily: FONT_SANS, color: MUTED, letterSpacing: "0.04em" }}>
           <span>完成度</span>
-          <div className="relative w-40 h-[2px] bg-white/5">
+          <div className="relative w-40 h-1 rounded-full bg-white/5">
             <motion.div
-              className="absolute inset-y-0 left-0"
-              style={{ background: artistColor }}
+              className="absolute inset-y-0 left-0 rounded-full"
+              style={{ background: ACCENT, boxShadow: `0 0 8px ${ACCENT}66` }}
               animate={{ width: `${completeness.pct}%` }}
               transition={{ duration: 0.4 }}
             />
           </div>
-          <span className="tabular-nums" style={{ color: artistColor }}>
+          <span className="tabular-nums" style={{ color: ACCENT }}>
             {completeness.score} / {completeness.total}
           </span>
           <span className="hidden lg:inline" style={{ color: DIM }}>·</span>
@@ -787,7 +875,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
             style={{
               fontFamily: FONT_SANS,
               color: CANVAS,
-              background: artistColor,
+              background: ACCENT,
               letterSpacing: "0.05em",
             }}
           >
@@ -801,6 +889,11 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
                 第一章艺人名称 / 简介尚未填写
               </span>
             )}
+            {incubationCost > 0 && !errorMsg && (
+              <span className="text-[11px] tabular-nums" style={{ color: MUTED, fontFamily: FONT_SANS }}>
+                本次将扣除 <span style={{ color: ACCENT, fontWeight: 600 }}>{incubationCost}</span> 积分
+              </span>
+            )}
             <button
               onClick={handleCreate}
               disabled={creating || !basicValid}
@@ -808,7 +901,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
               style={{
                 fontFamily: FONT_SANS,
                 color: basicValid && !creating ? CANVAS : "#4A4A5A",
-                background: basicValid && !creating ? artistColor : "rgba(255,255,255,0.05)",
+                background: basicValid && !creating ? ACCENT : "rgba(255,255,255,0.05)",
                 letterSpacing: "0.05em",
                 cursor: basicValid && !creating ? "pointer" : "not-allowed",
               }}
@@ -822,12 +915,27 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
           </div>
         )}
       </footer>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确定随机覆盖？</AlertDialogTitle>
+            <AlertDialogDescription>
+              当前向导已有部分字段填写，随机生成会覆盖这些内容。覆盖后可在弹出的提示中点击「撤销」恢复上一版。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={doRandomize}>确定覆盖</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section: 基元
+// Section: 基础设定
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionOrigin = ({
   state, setState, updateType, showValidation, accent,
@@ -905,7 +1013,7 @@ const SectionOrigin = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section: 形体
+// Section: 外貌设计
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionForm = ({
   state, setState, faceStyles, fashionStyles, fandomColors, accent,
@@ -992,7 +1100,7 @@ const SectionForm = ({
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section: 精神
+// Section: 人格参数
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionPsyche = ({
   state, setState, mbti, tags, typeConf, typeKey, accent, toggle,
@@ -1086,7 +1194,7 @@ const SectionPsyche = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section: 才能
+// Section: 才艺培养
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionTalent = ({
   state, setState, radarData, typeConf, accent,
@@ -1151,7 +1259,7 @@ const SectionTalent = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section: 匠艺
+// Section: 专属特质
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionCraft = ({
   state, setState, gate, typeKey, vocalRanges, genres, dances, accent, toggle,
@@ -1172,7 +1280,7 @@ const SectionCraft = ({
       </div>
       {none && (
         <p className="text-sm" style={{ color: MUTED, fontFamily: FONT_SANS }}>
-          当前艺人类型暂无专属匠艺维度，可直接进入下一章。
+          当前艺人类型暂无专属特质维度，可直接进入下一章。
         </p>
       )}
       {gate.music && (
@@ -1242,7 +1350,7 @@ const SectionCraft = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section: 回响
+// Section: 粉丝商业
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionFandom = ({
   state, setState, fandomColors, restrictions, accent, toggle,
@@ -1312,7 +1420,7 @@ const SectionFandom = ({
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section: 史志
+// Section: 世界观
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionLore = ({
   state, setState, accent,

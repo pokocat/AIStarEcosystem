@@ -45,6 +45,25 @@ public class PlatformConfigService {
     }
 
     /**
+     * 数字配置读取助手：解析 valueJson 为 long，无配置或解析失败时回落到 defaultValue。
+     * 用于 incubation.cost 等单标量配置。
+     */
+    public long getLong(String key, long defaultValue) {
+        return repo.findByConfigKey(key)
+                .map(c -> {
+                    if (c.getValueJson() == null) return defaultValue;
+                    try {
+                        JsonNode node = objectMapper.readTree(c.getValueJson());
+                        if (node != null && node.isNumber()) return node.asLong();
+                    } catch (Exception ignored) {
+                        /* fall through */
+                    }
+                    return defaultValue;
+                })
+                .orElse(defaultValue);
+    }
+
+    /**
      * 新建或覆盖 key 的 JSON 值；version 自增 1；updatedAt / updatedBy 刷新。
      * {@code description} / {@code updatedBy} 为 null 时保留原值（upsert 场景）。
      */

@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -19,16 +20,27 @@ import java.util.UUID;
 @Service
 public class DigitalIpService {
 
+    /** 孵化默认费用，admin 未配置 incubation.cost 时使用。 */
+    private static final long DEFAULT_INCUBATION_COST = 100L;
+    private static final String INCUBATION_COST_CONFIG_KEY = "incubation.cost";
+    private static final String INCUBATION_LEDGER_REFERENCE_TYPE = "INCUBATION";
+
     private final DigitalIpRepository ipRepo;
     private final AepUserRepository userRepo;
     private final StudioRepository studioRepo;
+    private final CreditService creditService;
+    private final PlatformConfigService platformConfigService;
 
     public DigitalIpService(DigitalIpRepository ipRepo,
                             AepUserRepository userRepo,
-                            StudioRepository studioRepo) {
+                            StudioRepository studioRepo,
+                            CreditService creditService,
+                            PlatformConfigService platformConfigService) {
         this.ipRepo = ipRepo;
         this.userRepo = userRepo;
         this.studioRepo = studioRepo;
+        this.creditService = creditService;
+        this.platformConfigService = platformConfigService;
     }
 
     public Page<DigitalIpDto> list(String ownerUserId, String studioId,
@@ -87,6 +99,7 @@ public class DigitalIpService {
         return DigitalIpDto.from(ip);
     }
 
+    @Transactional
     public DigitalIpDto create(Map<String, Object> body, String enforcedOwnerUserId) {
         String ownerUserId = enforcedOwnerUserId != null
                 ? enforcedOwnerUserId
@@ -133,6 +146,15 @@ public class DigitalIpService {
         applyStats(ip, asMap(body.get("stats")));
         applyDomains(ip, body.get("domains"));
         applyIncubationParams(ip, body.get("incubationParams"));
+
+        // 孵化扣积分：余额不足会抛 402 PAYMENT_REQUIRED，事务回滚不创建艺人。
+        long cost = platformConfigService.getLong(INCUBATION_COST_CONFIG_KEY, DEFAULT_INCUBATION_COST);
+        if (cost > 0) {
+            creditService.debit(ownerUserId, cost,
+                    INCUBATION_LEDGER_REFERENCE_TYPE,
+                    ip.getId(),
+                    "孵化新艺人：" + ip.getName());
+        }
 
         return DigitalIpDto.from(ipRepo.save(ip));
     }

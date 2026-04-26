@@ -110,6 +110,70 @@ public class CreditService {
     }
 
     /**
+     * 业务侧扣积分：原子地校验余额、按 gift→license→recharge 顺序扣减、写入一条 LedgerEntry。
+     * 余额不足抛 402 PAYMENT_REQUIRED；amount 必须 > 0。
+     *
+     * @param userId        要扣减的钱包用户
+     * @param amount        正数，本次扣减额度
+     * @param referenceType 业务来源标识（如 "INCUBATION" / "FORGE"），写入 ledger.referenceType
+     * @param referenceId   业务对象 ID（如新建艺人的 ID），写入 ledger.referenceId
+     * @param description   人类可读的说明，写入 ledger.description
+     */
+    @Transactional
+    public LedgerEntryDto debit(String userId, long amount, String referenceType,
+                                 String referenceId, String description) {
+        if (amount <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "扣减积分必须为正数");
+        }
+        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .totalBalance(0L)
+                .licenseBalance(0L)
+                .rechargeBalance(0L)
+                .giftBalance(0L)
+                .pendingBalance(0L)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build()));
+
+        if (wallet.getTotalBalance() < amount) {
+            throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
+                    "积分余额不足，本次操作需 " + amount + "，当前可用 " + wallet.getTotalBalance());
+        }
+
+        long deduct = amount;
+        long fromGift = Math.min(wallet.getGiftBalance(), deduct);
+        wallet.setGiftBalance(wallet.getGiftBalance() - fromGift);
+        deduct -= fromGift;
+        long fromLicense = Math.min(wallet.getLicenseBalance(), deduct);
+        wallet.setLicenseBalance(wallet.getLicenseBalance() - fromLicense);
+        deduct -= fromLicense;
+        long fromRecharge = Math.min(wallet.getRechargeBalance(), deduct);
+        wallet.setRechargeBalance(wallet.getRechargeBalance() - fromRecharge);
+
+        long newBalance = wallet.getTotalBalance() - amount;
+        wallet.setTotalBalance(newBalance);
+        wallet.setUpdatedAt(Instant.now());
+        walletRepo.save(wallet);
+
+        LedgerEntry entry = LedgerEntry.builder()
+                .id(UUID.randomUUID().toString())
+                .walletId(wallet.getId())
+                .userId(userId)
+                .entryType(LedgerEntry.LedgerEntryType.ADJUST)
+                .amount(-amount)
+                .balanceAfter(newBalance)
+                .description(description)
+                .referenceId(referenceId)
+                .referenceType(referenceType)
+                .createdAt(Instant.now())
+                .build();
+
+        return LedgerEntryDto.from(ledgerRepo.save(entry));
+    }
+
+    /**
      * Query ledger entries. Supports filtering by walletId and/or userId.
      */
     public Page<LedgerEntryDto> listLedgerEntries(String walletId, String userId, Pageable pageable) {
