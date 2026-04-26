@@ -797,14 +797,14 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
               {section === 0 && (
                 <SectionOrigin
                   state={state} setState={setState} updateType={updateType}
-                  showValidation={showValidation} accent={artistColor}
+                  showValidation={showValidation} accent={ACCENT}
                 />
               )}
               {section === 1 && (
                 <SectionForm
                   state={state} setState={setState}
                   faceStyles={FACE_STYLES} fashionStyles={FASHION_STYLES} fandomColors={FANDOM_COLORS}
-                  accent={artistColor}
+                  accent={ACCENT}
                 />
               )}
               {section === 2 && (
@@ -812,14 +812,14 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
                   state={state} setState={setState}
                   mbti={MBTI_TYPES} tags={PERSONA_TAGS}
                   typeConf={typeConf} typeKey={state.type}
-                  accent={artistColor}
+                  accent={ACCENT}
                   toggle={toggle}
                 />
               )}
               {section === 3 && (
                 <SectionTalent
                   state={state} setState={setState} radarData={radarData}
-                  typeConf={typeConf} accent={artistColor}
+                  typeConf={typeConf} accent={ACCENT}
                 />
               )}
               {section === 4 && (
@@ -827,7 +827,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
                   state={state} setState={setState}
                   gate={gate} typeKey={state.type}
                   vocalRanges={VOCAL_RANGES} genres={MUSIC_GENRES} dances={DANCE_STYLES}
-                  accent={artistColor}
+                  accent={ACCENT}
                   toggle={toggle}
                 />
               )}
@@ -835,13 +835,13 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
                 <SectionFandom
                   state={state} setState={setState}
                   fandomColors={FANDOM_COLORS} restrictions={BRAND_RESTRICTIONS}
-                  accent={artistColor}
+                  accent={ACCENT}
                   toggle={toggle}
                 />
               )}
               {section === 6 && (
                 <SectionLore
-                  state={state} setState={setState} accent={artistColor}
+                  state={state} setState={setState} accent={ACCENT}
                 />
               )}
             </motion.section>
@@ -854,8 +854,6 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
             <GenesisCapsule
               state={state} typeConf={typeConf} typeKey={state.type}
               artistColor={artistColor}
-              radarData={radarData}
-              completeness={completeness}
               faceStyles={FACE_STYLES}
               fashionStyles={FASHION_STYLES}
               mbti={MBTI_TYPES}
@@ -866,9 +864,10 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
         </aside>
       </div>
 
-      {/* 底部行动条 */}
+      {/* 底部行动条：sticky bottom-0 兜底 —— 即使父级 h-full 链失效（content 比视口还高），
+          按钮也会贴在外层滚动容器底部始终可见。z-10 防止被章节内容压住。 */}
       <footer
-        className="shrink-0 flex items-center justify-between gap-4 px-6 py-4 backdrop-blur-md"
+        className="shrink-0 sticky bottom-0 z-10 flex items-center justify-between gap-4 px-6 py-4 backdrop-blur-md"
         style={{ borderTop: `1px solid ${LINE}`, background: "rgba(0,0,0,0.7)" }}
       >
         <button
@@ -1501,13 +1500,11 @@ const SectionLore = ({
 // 合成舱 — 右侧活态预览
 // ─────────────────────────────────────────────────────────────────────────────
 const GenesisCapsule = ({
-  state, typeConf, typeKey, artistColor, radarData, completeness,
+  state, typeConf, typeKey, artistColor,
   faceStyles, fashionStyles, mbti, personaTags, fandomColors,
 }: {
   state: WizardState; typeConf: any; typeKey: ArtistType;
   artistColor: string;
-  radarData: any[];
-  completeness: { score: number; total: number; pct: number };
   faceStyles: LabeledI18n[]; fashionStyles: LabeledI18n[];
   mbti: LabeledI18n[]; personaTags: LabeledI18n[]; fandomColors: FandomColor[];
 }) => {
@@ -1530,13 +1527,13 @@ const GenesisCapsule = ({
         <SmallLabel color={artistColor}>合成舱</SmallLabel>
       </div>
 
-      {/* 形象占位 + 光晕 */}
-      <div className="relative w-full aspect-square max-w-[220px] mx-auto">
+      {/* 形象占位 + 光晕（瘦身：220→140） */}
+      <div className="relative w-full aspect-square max-w-[140px] mx-auto">
         <motion.div
           className="absolute inset-0 rounded-full"
           style={{
             border: `1px solid ${artistColor}`,
-            boxShadow: `0 0 50px ${artistColor}55, inset 0 0 30px ${artistColor}22`,
+            boxShadow: `0 0 36px ${artistColor}55, inset 0 0 22px ${artistColor}22`,
           }}
           animate={{ rotate: 360 }}
           transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
@@ -1548,7 +1545,7 @@ const GenesisCapsule = ({
             border: `1px solid ${LINE}`,
           }}
         >
-          <span style={{ fontSize: 52, filter: `drop-shadow(0 0 20px ${artistColor}88)` }}>
+          <span style={{ fontSize: 32, filter: `drop-shadow(0 0 14px ${artistColor}88)` }}>
             {typeConf.icon}
           </span>
         </div>
@@ -1595,43 +1592,10 @@ const GenesisCapsule = ({
         )}
       </div>
 
-      {/* 迷你雷达 */}
-      <div className="relative" style={{ height: 160, paddingTop: 12, borderTop: `1px dashed ${LINE}` }}>
-        <div className="absolute top-3 left-0">
-          <SmallLabel>能力雷达</SmallLabel>
-        </div>
-        <div className="absolute inset-x-0 top-6 bottom-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-              <PolarGrid stroke={LINE} />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: DIM, fontSize: 9 }} />
-              <Radar dataKey="cap" stroke={LINE} fill="none" strokeWidth={1} strokeDasharray="3 3" />
-              <Radar dataKey="value" stroke={artistColor} fill={artistColor} fillOpacity={0.2} strokeWidth={1.5} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* 完成度 */}
-      <div style={{ paddingTop: 16, borderTop: `1px dashed ${LINE}` }}>
-        <div className="flex items-baseline justify-between mb-2">
-          <SmallLabel>完成度</SmallLabel>
-          <span className="tabular-nums" style={{ fontFamily: FONT_SANS, color: artistColor, fontSize: 14 }}>
-            {String(completeness.pct).padStart(2, "0")}<span style={{ color: DIM, fontSize: 10 }}>%</span>
-          </span>
-        </div>
-        <div className="relative h-[3px] bg-white/5">
-          <motion.div
-            className="absolute inset-y-0 left-0"
-            style={{ background: artistColor }}
-            animate={{ width: `${completeness.pct}%` }}
-            transition={{ duration: 0.4 }}
-          />
-        </div>
-        <p className="text-[10px] mt-2" style={{ color: DIM, fontFamily: FONT_SANS, letterSpacing: "0.04em" }}>
-          已录入 {completeness.score} / {completeness.total} 项字段
-        </p>
-      </div>
+      {/* 雷达图与完成度已移除：
+          - 雷达：才艺培养（第 4 章）已有大图雷达，无需再复述
+          - 完成度：底部 footer 已有进度条 + 数字
+          减重 ~220px，让面板适配 13" 屏视口。 */}
     </div>
   );
 };

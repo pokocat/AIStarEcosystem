@@ -135,7 +135,7 @@ function ProducerLayoutInner({ children }: { children: React.ReactNode }) {
     const legacy = searchParams?.get("tab");
     if (!legacy) return;
     const target = legacy === "overview" ? "/producer" : `/producer/${legacy}`;
-    // 保留其它 query（如 ?forge=v3）
+    // 保留其它 query（除 tab 外原样透传）
     const other = new URLSearchParams(searchParams?.toString() ?? "");
     other.delete("tab");
     const qs = other.toString();
@@ -416,8 +416,11 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-white/5 bg-black/50 backdrop-blur-lg shrink-0">
+        {/* Top bar
+            relative z-50：backdrop-blur 创建了堆叠上下文，但默认 z-auto 与 page-content 同级，
+            源码顺序里 page-content 在后会覆盖 topbar 内的 NotificationPanel（z-[110] 仅 topbar 内部生效）。
+            显式 z-50 把整个 topbar 堆叠上下文提到 page-content 之上。 */}
+        <div className="relative z-50 flex items-center justify-between px-4 md:px-6 py-3 border-b border-white/5 bg-black/50 backdrop-blur-lg shrink-0">
           <div className="flex items-center gap-3">
             <button className="md:hidden" onClick={() => setMobileSidebar(true)}>
               <Menu className="w-5 h-5 text-gray-400" />
@@ -479,7 +482,9 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
 
         {/* Page content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
-          <div key={activeId}>{children}</div>
+          {/* h-full 让 children 里的 `flex flex-col h-full` 高度链生效（如 incubator）。
+              非 h-full 用法的子页内容自然溢出，由外层 overflow-y-auto 负责滚动，互不影响。 */}
+          <div key={activeId} className="h-full">{children}</div>
         </div>
 
         <CommandPalette

@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // appearance-forge.ts — AI 形象锻造炉领域模型。
-// 使用者：components/producer/AppearanceForge.tsx
+// 使用者：components/producer/AppearanceForge.v3.tsx（正式版）
+//        AppearanceForge.legacy.tsx / AppearanceForge.v2.legacy.tsx（备份，已下线）
 // 职责：描述"模版 / 面部参数 / 风格标签 / 生成结果"等数据结构；
 //       前端是契约真值源，后端按此定义对齐。
 // ─────────────────────────────────────────────────────────────────────────────

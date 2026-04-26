@@ -28,5 +28,5 @@ export const toast = {
   error: (title: string, opts?: ToastOpts) =>
     sonnerToast.error(title, buildOpts(opts)),
   info: (title: string, opts?: ToastOpts) =>
-    sonnerToast(title, buildOpts(opts)),
+    sonnerToast.info(title, buildOpts(opts)),
 };

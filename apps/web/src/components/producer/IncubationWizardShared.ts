@@ -9,8 +9,8 @@
 //   - randomize 辅助
 //
 // 使用：
-//   - IncubationWizard.tsx（v1 step 形式）
-//   - IncubationWizardV2.tsx（v2 Genesis Chamber 布局）
+//   - IncubationWizardV2.tsx（正式版，Genesis Chamber 布局）
+//   - IncubationWizard.legacy.tsx（v1 step 形式，已下线，仅作备份保留）
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {

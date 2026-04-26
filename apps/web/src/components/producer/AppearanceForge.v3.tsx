@@ -42,7 +42,6 @@ import {
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { AppearanceForgeApi } from "@/api";
 import { Badge } from "@/components/ui/badge";
@@ -212,10 +211,6 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
   const abortRef = useRef<AbortController | null>(null);
   const replyBufferRef = useRef("");
   const conversationScrollRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
   // Mount 后填充真实时间（避免 SSR/CSR 水合不匹配）
   useEffect(() => {
     const offsets = [-6, -5, -5];
@@ -495,14 +490,6 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
     setTimeout(() => pushAssistant(`已加入微调：${tag}。`), 260);
   };
 
-  const switchVariant = (variant: "v1" | "v2" | "v3") => {
-    const params = new URLSearchParams(searchParams?.toString() ?? "");
-    if (variant === "v1") params.delete("forge");
-    else params.set("forge", variant);
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : (pathname ?? "/"), { scroll: false });
-  };
-
   // ── 渲染 ───────────────────────────────────────────────────────────────────
   const providerBadgeCls = providerStatus?.configured
     ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/30"
@@ -527,9 +514,6 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
               AI 形象锻造炉
             </span>
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-cyan-300/80 border border-cyan-400/30 rounded-full px-2 py-0.5">
-              v3 · 顶满视口
-            </span>
           </h1>
           <span className="text-xs text-gray-500 hidden md:inline">为 {activeArtist.name} 设计形象</span>
         </div>
@@ -538,8 +522,6 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
             <Bot className="w-3 h-3 mr-1" />
             {providerLoading ? "检测中" : providerStatus?.provider === "mock" ? "Mock Stream" : "Coze Live"}
           </Badge>
-          <button onClick={() => switchVariant("v2")} className="text-[11px] text-gray-500 hover:text-amber-300">切到 v2</button>
-          <button onClick={() => switchVariant("v1")} className="text-[11px] text-gray-500 hover:text-gray-300">切到 v1</button>
         </div>
       </div>
 
