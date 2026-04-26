@@ -43,6 +43,7 @@ import {
   FALLBACK_BRAND_RESTRICTIONS,
   getTypeSpecificGate, buildIncubationParams, randomizeState,
 } from "./IncubationWizardShared";
+import { useIncubationDraft } from "./useIncubationDraft";
 
 // ── 视觉 token（与项目基调一致） ─────────────────────────────────────────────
 const ACCENT = "#22d3ee";  // cyan-400，匹配项目主色
@@ -102,10 +103,21 @@ function hasUserData(s: WizardState): boolean {
 }
 
 // ── 辅助函数 ────────────────────────────────────────────────────────────────
-function hashSessionId(name: string): string {
-  const seed = name || "未命名";
-  const n = Array.from(seed).reduce((a, c) => (a * 131 + c.charCodeAt(0)) >>> 0, 0);
-  return n.toString(16).toUpperCase().padStart(6, "0").slice(-6);
+function formatDraftTime(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// 根据背景色亮度选择可读的前景色：暗底用白字，亮底用近黑字。
+// 防止用户签名色选「曜石黑 #0f172a」时，固定 CANVAS 黑字按钮变成黑底黑字。
+function readableTextOn(bg: string): string {
+  if (!bg.startsWith("#") || bg.length !== 7) return "#fff";
+  const r = parseInt(bg.slice(1, 3), 16) / 255;
+  const g = parseInt(bg.slice(3, 5), 16) / 255;
+  const b = parseInt(bg.slice(5, 7), 16) / 255;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  return lum > 0.6 ? "#0B0B14" : "#FFFFFF";
 }
 
 function useClock(): string {
@@ -392,8 +404,26 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
   const typeConf = ARTIST_TYPE_CONFIG[state.type];
   const gate = getTypeSpecificGate(state.type);
   const clock = useClock();
-  const sessionId = useMemo(() => hashSessionId(state.name), [state.name]);
   const completeness = useMemo(() => computeCompleteness(state), [state]);
+
+  // 草稿持久化：localStorage 自动保存 + 恢复（key/version 在 hook 内部）
+  const draft = useIncubationDraft(state, setState, hasUserData);
+  const restoreToastFiredRef = useRef(false);
+  useEffect(() => {
+    if (!draft.restored || restoreToastFiredRef.current) return;
+    restoreToastFiredRef.current = true;
+    toast.info("已恢复未完成的草稿", {
+      description: draft.savedAt ? `上次保存于 ${formatDraftTime(draft.savedAt)}` : undefined,
+      duration: 8000,
+      action: {
+        label: "丢弃",
+        onClick: () => {
+          setState(INITIAL_STATE);
+          draft.clear();
+        },
+      },
+    });
+  }, [draft.restored, draft.savedAt, draft.clear]);
 
   // 艺人签名色 → 活态光晕；未选用默认青色
   const artistColor = useMemo(() => {
@@ -476,6 +506,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
         commercialValue: 0,
         incubationParams: buildIncubationParams(state),
       });
+      draft.clear();
       setCreated(true);
     } catch (err) {
       let msg: string;
@@ -540,7 +571,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
           <SmallLabel color={artistColor}>孵化完成</SmallLabel>
           <h2 className="mt-4 text-4xl" style={{ color: INK, fontFamily: FONT_DISPLAY, fontWeight: 600 }}>{trimmedName}</h2>
           <p className="mt-2 text-sm" style={{ color: MUTED, fontFamily: FONT_SANS }}>
-            {typeConf.icon} {ARTIST_TYPE_LABELS[state.type].zh} · 会话 {sessionId}
+            {typeConf.icon} {ARTIST_TYPE_LABELS[state.type].zh}
           </p>
           <div className="mt-8 h-px w-24 mx-auto" style={{ background: LINE }} />
           <p className="mt-6 text-sm leading-relaxed" style={{ color: MUTED }}>
@@ -553,7 +584,7 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
             style={{
               fontFamily: FONT_SANS,
               fontSize: 13,
-              color: CANVAS,
+              color: readableTextOn(artistColor),
               background: artistColor,
             }}
           >
@@ -600,7 +631,11 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
             </span>
           </div>
           <div className="hidden md:flex items-center gap-4 text-[11px]" style={{ fontFamily: FONT_SANS }}>
-            <span style={{ color: DIM }}>会话 <span className="ml-1 tabular-nums" style={{ color: INK }}>{sessionId}</span></span>
+            <span style={{ color: DIM }}>
+              草稿 <span className="ml-1 tabular-nums" style={{ color: draft.savedAt ? ACCENT : DIM }}>
+                {draft.saving ? "保存中…" : draft.savedAt ? `已保存 ${formatDraftTime(draft.savedAt)}` : "未保存"}
+              </span>
+            </span>
             <span style={{ color: DIM }}>时刻 <span className="ml-1 tabular-nums" style={{ color: MUTED }}>{clock || "--:--:--"}</span></span>
             <span style={{ color: DIM }}>状态 <span className="ml-1" style={{ color: ACCENT }}>{creating ? "合成中" : "起草中"}</span></span>
           </div>
