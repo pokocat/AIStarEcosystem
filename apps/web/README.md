@@ -4,7 +4,8 @@
 
 本项目是 Figma Make 原型（导出在 `../../figma/`）的 Next.js 14（App Router）重写版本，与 `apps/web` 并存，共享 `apps/server` 后端。
 
-**当前版本：v2.6.0（2026-04-19）**
+**当前版本：v2.7.0（2026-05-06）**
+v2.7 AI 明星专区（Celebrity Zone）从零搭起：8 位真人明星 × 4 态授权流转 × 五页主流程（市场 / 详情 / 工作台 / 项目 / 项目详情）+ 视频库 / 商品库 / 数据中心三个聚合 Tab；模板 + 盲盒双模式生成工作台带分阶段过渡层与结果预览；视频缩略全部走 `<video>` 真实可播放（Pexels portrait livestreaming-selling 资源池）；引擎成本改为后端可配的「✦ 积分」单价并接入钱包余额 gating；新增独立商品库领域（types/mocks/api 全套 + localStorage write-through + 视频生成自动落库）。详见 `src/components/celebrity-zone/`、`src/types/{celebrity-zone,product}.ts`、`src/api/{celebrity-zone,products}.ts`。
 v2.6 形象锻造「保存 + 关联短视频」：`POST /appearance-forge/save`（upsert）把一次锻造候选正式入库并为其分配 `videoUrl`，供艺人画廊 3D 视频预览消费；AI 视频生成未接入前，后端从 `DEMO_VIDEO_POOL` 两段本地 showreel mp4 中随机挑一个；三端 ForgeResult 契约同步补 `videoUrl?` 字段，openapi.yaml 首次落 Forge 域全部 schema + 5 个 path。
 v2.5 经纪大盘拆分：经纪大盘 ↔ 艺人视图解耦（公司视角 / 个体视角两入口），新建 `components/producer/dashboard/`（hook + charts + roster + AgencyOverview + ArtistOverview），修复饼图 hover 深色底文字不可见、切片无反馈、窄屏塌缩等交互问题；经纪大盘新增状态分布 / 收入来源 / Top Performers / 旗下艺人矩阵。
 v2.4（2026-04-19）创作工坊 LLM Playground：新建 `generation` 领域五件套；StudioPage 从 ProducerDashboard 抽离并重写，接入 `AIGenerationPanel`（阶段 stepper + typewriter 流式对话 + 结构化 draft 采纳）；作品列表改为按 `activeArtist.id` 过滤真实 Song；侧栏新增"音乐工坊"入口指向 `MusicBusiness`。
@@ -135,7 +136,112 @@ import type { Song } from "@/types/music";
 
 ## 版本日志
 
-### v2.6.0 — 2026-04-19（本次）
+### v2.7.0 — 2026-05-06（本次）
+
+#### AI 明星专区（Celebrity Zone）— 完整 B 端 SaaS 模块
+
+把 figma「AI 明星专区 - 生成工作台 v3」与「AI 明星专区 - 线框 v2」两份原型工程化为可运行的完整模块，覆盖**真人明星授权 → AI 带货视频生成 → 项目管理 → 数据归因**全链路。
+
+**信息架构**
+
+`/producer/celebrity-zone` 顶部 5 Tab + 嵌套真实路由（侧栏始终高亮明星专区）：
+
+| 路由 / Tab | 内容 |
+|---|---|
+| `?tab=market`（默认） | 顶部 Hero（累计播放/转化/活跃明星）+「我的授权明星」+「全部明星」分组网格，类目筛选 + 热度/价格排序 |
+| `/star/[starId]` | 明星详情（已授权 → 醒目 Hero CTA + 已购套餐用量；未授权/已过期/审核中 → 三档套餐对比 + 申请 CTA） |
+| `/star/[starId]/generate` | 模式选择（模板 / 盲盒）→ 配置 → 生成中冻结过渡层（5 阶段进度）→ 结果预览（采纳/重生成/再来一条/下载/分发） |
+| `/star/[starId]/apply` | 商务合作申请页：公司 / 品牌 / 场景 / 月预算表单 |
+| `?tab=projects`、`/projects/[projectId]` | 项目列表（状态 Tab + 新建 Dialog）+ 项目详情（72/28 分栏：视频网格 + 渠道接入 + 额度 + 快捷操作） |
+| `?tab=products` | 商品库：类目筛选 + 搜索 + 网格 + 快速录入 / 编辑 / 删除 |
+| `?tab=library` | 视频库：跨项目聚合，状态/明星/项目/排序 多维筛选 |
+| `?tab=data` | 数据中心：Hero 大盘 + 明星榜 + 7 日趋势柱 + 渠道占比 |
+
+**数据契约（前端真值源）**
+
+- `src/types/celebrity-zone.ts` — `CelebrityStar / CelebrityCategory / CelebrityAuthStatus（4 态）/ CelebrityPricingTier / CelebritySampleVideo / CelebrityTemplate / CelebrityProject / CelebrityProjectVideo / ChannelStatus / CelebrityShowcase / CelebrityProductInput / CelebrityGenerationRequest / EngineMeta（含 cost + creditPrice）/ CelebrityZoneOverview`。
+- `src/types/product.ts`（**新增领域**）— `Product / ProductCategory（8 类）/ ProductSource / ProductInput`。商品库后端尚未实现，server JPA 实体留待下一期对齐。
+- `src/constants/celebrity-zone-ui.ts` — `ENGINE_META`（KeLing ✦50 / HiGen ✦120 / MiniMax ✦300）/ `AUTH_STATUS_META`（4 态横幅元数据）/ `PROJECT_STATUS_BADGE` / `VIDEO_STATUS_BADGE` / `ZONE_TABS` / `CATEGORY_BADGE_CLASS`。
+
+**API 封装**
+
+- `src/api/celebrity-zone.ts` — `listStars / getStar / listProjects / getProject / listProjectVideos / listAllVideos / createProject / batchDistribute / startGeneration / listTemplates / listTemplateShowcases / listBlindboxShowcases / getZoneOverview / getEnginePricing`（后者作为后端配置接口预留）。
+- `src/api/products.ts`（**新增**）— `listProducts / getProduct / createProduct / updateProduct / deleteProduct / upsertFromGeneration / extractSellingPoints`。USE_MOCK 模式下**自带 localStorage write-through**（key `aistareco.web.products.v1`），刷新后状态保留。
+- `src/api/index.ts` 追加 `CelebrityZoneApi / ProductsApi` 命名空间导出。
+
+**4 态授权流转**
+
+`unauthorized | pending | authorized | expired` 四态各自的徽章、横幅、CTA、套餐区呈现均统一从 `AUTH_STATUS_META` 取文案，避免散落硬编码。`unauthorized` 强引导双 CTA（「申请商务合作」+「购买体验版」），`expired` 提示「立即续约」，`pending` 给出预计审核耗时；服务端 `star/[starId]/generate/page.tsx` 用 `redirect()` 拦截非 authorized 状态，避免直接拼 URL 越过授权。
+
+**生成工作台**
+
+`CelebrityGenerationWorkspace` 状态机扩展为 `mode → templateGallery / templateConfig / blindbox → 生成过渡（pendingJob）→ result 预览`。
+
+- `CelebrityGenerationProgress` —— 全屏冻结弹层；5 阶段（提交 / 脚本 / 合成 / 渲染 / 后期）+ requestAnimationFrame 平滑进度条 + 旋转环；按引擎档位推算 6/8/10s 总耗时；生成中禁止后退。
+- `CelebrityGenerationResult` —— 9:16 大预览（自定义 play/mute）+ 视频信息卡 + 主动作（采纳并保存 / 重新生成同参数）+ 次动作（立即分发 / 下载草稿 / 再来一条）。
+- `startJob` 同步 `void ProductsApi.upsertFromGeneration(...)` —— 商品名/链接匹配既有商品则 `usageCount++`，否则自动建档并标记 `source='auto-from-generation'`，**不阻塞**生成主流程。
+- 模板配置页 / 盲盒页 CTA 下方接入钱包余额 + 套餐余量双 gating：`creditPrice > walletBalance` → 黄色「立即充值」提示；`cost > remaining` → 「将使用积分扣费」提示。复用 `apps/web/src/components/producer/WardrobePageV2.tsx:152` 同款判定模板。
+
+**视频可播放化（Pexels 资源池）**
+
+新增 `CelebrityVideoPlayer`（`thumbnailMode=true`：海报 + 中央 ▶︎，点击切到 `<video controls preload="metadata" autoPlay>`，避免列表里同时加载几十路视频流）。Pexels portrait livestreaming-selling 公开样片池 `PEXELS_PORTRAIT_VIDEOS`（10 条）按 ID 哈希分配。生产替换为 AI 生成后存储的静态资源链接即可，组件无需改动。
+
+替换覆盖 6 处历史占位：`CelebrityProjectVideoCard / CelebrityStarDetail / CelebrityBlindBox / CelebrityTemplateConfig / CelebrityTemplateGallery / CelebrityModeSelect`；`CelebrityGenerationResult` 自带专属播放器保留。
+
+**真人明星头像 / 封面**
+
+8 位明星（李诞 / 伊能静 / 刘涛 / 沈腾 / 那英 / 宁泽涛 / 李宇春 / 贾玲）头像与封面来自 Wikimedia Commons 公开图（6/8 位有 wiki 公开像，刘涛 / 贾玲暂用 picsum 占位待商务团队补充）。Mocks 顶部 JSDoc 标注「内部演示用途，不对外发布、不构成商业授权关系」。
+
+**商品库（独立领域）**
+
+- `CelebrityProductLibrary` —— 类目 Tab + 搜索框 + 网格（图片缩略 + 名称 + 类目 + 引用次数 + 编辑/删除）+ 空态友好引导。
+- `ProductFormDialog` —— 快速录入弹窗：名称（必填）/ 类目下拉 / 链接 / 图片 URL 列表（按回车批量添加）/ 卖点 textarea。
+- `ProductPickerDialog` —— 在 `CelebrityProductForm` 顶部「📚 从商品库选择」按钮触发；选中后名称/链接/卖点/图片一键回填生成表单。
+- `mocks/products.ts` 12 条种子覆盖全部 8 个类目；与 `PROJECT_VIDEOS_MAP` 中提到的商品名（玻尿酸口红 / 气泡水 / 压缩长袖速干衣等）对齐。
+
+**「AI 提取卖点」按钮 gating**
+
+仅当**商品名 + 商品链接**都填写后才可点击。禁用态置灰 + tooltip + 表单下方提示行「💡 想用 AI 自动抽卖点？请先填好商品名称和商品链接 →」；点击调 `ProductsApi.extractSellingPoints(...)`（mock 800ms 延迟），抽取结果回写 textarea。
+
+**模式选择卡对齐**
+
+把模板生成 / AI 自主生成两卡抽到统一 `ModeCard`：顶部固定区（图标 + 标题 + 描述 + tags）+ 中段 `h-[176px]` 媒体区（模板卡 3 缩略视频 / 盲盒卡「?」圆环）+ 底部 `mt-auto` CTA。三段完美对齐，模板卡媒体区视频用 `h-full w-auto shrink-0` 让宽度从高度反推（避免列宽撑爆 9:16 容器溢出卡片边框，参见 commit `ef5494d`）。
+
+**徽章可读性**
+
+明星卡片封面右上的「热门 / 已授权 / 待审核 / 已过期 / 未授权」徽章改为实色背景 + 白字 + 黑色投影 + 白色 1px 描边的胶囊形，确保在亮色（云朵 / 白墙）封面上也清晰。
+
+**Tab 404 修复**
+
+`apps/web/src/app/producer/layout.tsx` 中的 legacy `?tab=` → `/producer/<id>` 重定向之前对所有嵌套页都生效，把 `/producer/celebrity-zone?tab=projects` 误改写到 `/producer/projects` 导致 404。修复为只在 `pathname === '/producer'` 根路径触发。
+
+**关键文件清单**
+
+新增 13：
+
+```
+apps/web/src/types/product.ts
+apps/web/src/mocks/products.ts
+apps/web/src/api/products.ts
+apps/web/src/components/celebrity-zone/CelebrityVideoPlayer.tsx
+apps/web/src/components/celebrity-zone/CelebrityHeroCta.tsx
+apps/web/src/components/celebrity-zone/CelebrityAuthBanner.tsx
+apps/web/src/components/celebrity-zone/CelebrityGenerationProgress.tsx
+apps/web/src/components/celebrity-zone/CelebrityGenerationResult.tsx
+apps/web/src/components/celebrity-zone/CelebrityProductLibrary.tsx
+apps/web/src/components/celebrity-zone/ProductFormDialog.tsx
+apps/web/src/components/celebrity-zone/ProductPickerDialog.tsx
+apps/web/src/components/celebrity-zone/CelebrityApplyForm.tsx
+apps/web/src/app/producer/celebrity-zone/{layout?,star/[starId]/{page,apply,generate},projects/[projectId]/page}.tsx
+```
+
+外加既有的 P1 P5 组件 `CelebrityMarket / CelebrityStarCard / CelebrityStarDetail / CelebrityMyProjects / CelebrityProjectCard / CelebrityProjectDetail / CelebrityProjectVideoCard / CelebrityVideoLibrary / CelebrityDataCenter / CelebrityZoneTabs / CelebrityMarketHero / NewProjectDialog / CelebrityPricingTierCard`。
+
+**三端同步状态**
+
+本期纯 web 前端。商品库后端 JPA 实体 + Controller、celebrity-zone 后端模型与 admin 镜像留待下一期；当前 `apps/server` 不动。
+
+### v2.6.0 — 2026-04-19（前一版）
 - **AI 形象锻造「保存 → 关联短视频资产」闭环**：`AppearanceForge` 生成结束后新增「保存到艺人画廊」按钮；保存成功在结果卡上变绿色「已保存」+ 底部栏提示「已为该形象关联 AI 视频资产」。
 - **新接口 `POST /api/appearance-forge/save`**（`ForgeController.saveResult`）—— upsert 行为：body.resultId 命中 DB 就更新，否则按 body 的 `artistId / image / prompt / mode / locked / createdAt` 新建。幂等：已有 `videoUrl` 不会被覆盖；传 `reassign=true` 可强制重抽。这一设计是因为 `AppearanceForge.runGenerate` 当前仅在本地构建 `ForgeResult`、从不调 `/generate` 落库，因此 `/save` 兼做首次入库。
 - **fake 视频资产池**：AI 视频生成尚未接入，`ForgeController.DEMO_VIDEO_POOL` 维护两个固定 URL：`/videos/showreel-01.mp4` / `/videos/showreel-02.mp4`（文件托管在 `apps/web/public/videos/` 下）。后端随机挑一个写入 `ForgeResult.videoUrl`。mock 模式下 `DEMO_FORGE_VIDEO_POOL` + `pickDemoForgeVideo()` 在 `mocks/appearance-forge.ts` 行为一致。接入真实 AI 后替换为触发生成任务 + 回填对象存储 URL。
@@ -147,7 +253,7 @@ import type { Song } from "@/types/music";
 - **画廊渲染优先级**：`AppearanceGallery.pickVideoFor` 改为先读 `appearance.videoUrl`，未保存形象走原哈希回退池兜底；种子数据未跑 save 时渲染与之前一致。
 - **三端同步** — `apps/admin/src/types/appearance-forge.ts` 同步补 `videoUrl?: string` + `artistId?: ID` 保持契约 straight-copy。
 
-### v2.5.0 — 2026-04-19（前一版）
+### v2.5.0 — 2026-04-19
 - **经纪大盘拆分为"经纪大盘" + "艺人视图"两视图**（公司视角 / 个体视角解耦）；sidebar 总览分组新增 `{ id: 'artist', icon: UserCircle, label: '艺人视图' }`，`ProducerPage` 联合字面量增加 `'artist'`。`overview` 路由不再要求 `activeArtist`，0 艺人也能进入。
 - **新建 `src/components/producer/dashboard/`**
   - `hooks/use-producer-dashboard.ts` — 集中拉取 `artists / songs / monthlyRevenue` 供两个视图共用；通知/钱包仍由 `ProducerDashboard` 直接管理。
@@ -248,6 +354,11 @@ import type { Song } from "@/types/music";
 
 ```
 npx tsc --noEmit : ✓ 0 errors
-npm run build    : ✓ 7 routes — producer 298 kB / coach 250 kB / fan 146 kB / home 162 kB
+npm run build    : ✓ 28 routes — 含 5 个新增 celebrity-zone 路由
+                   /producer/celebrity-zone                          14.5 kB / 162 kB
+                   /producer/celebrity-zone/star/[starId]              9.1 kB / 144 kB
+                   /producer/celebrity-zone/star/[starId]/generate    18.2 kB / 166 kB
+                   /producer/celebrity-zone/star/[starId]/apply        3.7 kB / 100 kB
+                   /producer/celebrity-zone/projects/[projectId]       5.8 kB / 109 kB
 vitest run       : ✓ 现有 3 个用例通过（src/lib/api.test.ts）
 ```
