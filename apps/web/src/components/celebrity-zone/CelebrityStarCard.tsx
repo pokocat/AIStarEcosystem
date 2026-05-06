@@ -3,11 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { Flame, Lock, Clock, ShieldAlert, ShieldCheck } from "lucide-react";
-import type { CelebrityStar } from "@/types/celebrity-zone";
-import {
-  AUTH_STATUS_META,
-  CATEGORY_BADGE_CLASS,
-} from "@/constants/celebrity-zone-ui";
+import type { CelebrityAuthStatus, CelebrityStar } from "@/types/celebrity-zone";
+import { AUTH_STATUS_META, CATEGORY_BADGE_CLASS } from "@/constants/celebrity-zone-ui";
 import { cn } from "@/components/ui/utils";
 
 interface Props {
@@ -20,6 +17,20 @@ const AUTH_ICONS = {
   ShieldAlert,
   Lock,
 } as const;
+
+/**
+ * 卡片封面上的徽章统一样式：实色背景 + 白字 + 投影，保证在任意亮度的封面图上
+ * 都有足够对比度。AUTH_STATUS_META.badgeClass 仍用于详情页等深色背景内嵌位置。
+ */
+const COVER_BADGE_BASE =
+  "inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-semibold tracking-wide text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ring-1 ring-white/30";
+
+const AUTH_COVER_BADGE: Record<CelebrityAuthStatus, string> = {
+  authorized: "bg-emerald-500/95",
+  pending: "bg-amber-500/95",
+  expired: "bg-rose-500/95",
+  unauthorized: "bg-zinc-700/85",
+};
 
 /** 明星卡片：3:4 公开图 + 名字 + 热门 + 类目/价格 + 授权徽章 */
 export function CelebrityStarCard({ star }: Props) {
@@ -41,17 +52,17 @@ export function CelebrityStarCard({ star }: Props) {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
 
-        {/* 顶部右：热门 / 授权徽章 */}
+        {/* 顶部右：热门 / 授权徽章（实色 + 白字 + 投影，保证亮背景下可读） */}
         <div className="absolute right-2 top-2 flex flex-col items-end gap-1.5">
           {star.isHot && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-pink-400/40 bg-pink-500/15 px-1.5 py-0.5 text-[10px] font-medium text-pink-200 backdrop-blur">
+            <span className={cn(COVER_BADGE_BASE, "bg-pink-500/95")}>
               <Flame className="h-3 w-3" /> 热门
             </span>
           )}
           <span
             className={cn(
-              "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium backdrop-blur",
-              auth.badgeClass,
+              COVER_BADGE_BASE,
+              AUTH_COVER_BADGE[star.authorization.status],
             )}
           >
             <Icon className="h-3 w-3" /> {auth.label}
@@ -59,7 +70,7 @@ export function CelebrityStarCard({ star }: Props) {
         </div>
 
         {/* 底部：起拍价 */}
-        <div className="absolute bottom-2 left-2 inline-flex items-center rounded-md border border-cyan-400/40 bg-cyan-500/20 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 backdrop-blur">
+        <div className="absolute bottom-2 left-2 inline-flex items-center rounded-full bg-black/65 px-2.5 py-[3px] text-[11px] font-semibold text-cyan-100 ring-1 ring-cyan-300/50 backdrop-blur-sm">
           {star.startingPrice}
         </div>
       </div>

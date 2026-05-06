@@ -59,8 +59,11 @@ export function CelebrityStarDetail({ star }: Props) {
               />
               <span
                 className={cn(
-                  "absolute right-2 top-2 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium backdrop-blur",
-                  auth.badgeClass,
+                  "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ring-1 ring-white/30",
+                  star.authorization.status === "authorized" && "bg-emerald-500/95",
+                  star.authorization.status === "pending" && "bg-amber-500/95",
+                  star.authorization.status === "expired" && "bg-rose-500/95",
+                  star.authorization.status === "unauthorized" && "bg-zinc-700/85",
                 )}
               >
                 {auth.label}
