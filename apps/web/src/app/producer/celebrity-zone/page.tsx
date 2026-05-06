@@ -1,6 +1,4 @@
 import * as React from "react";
-import { Sparkles } from "lucide-react";
-import { CelebrityZoneTabs } from "@/components/celebrity-zone/CelebrityZoneTabs";
 import { CelebrityMarketHero } from "@/components/celebrity-zone/CelebrityMarketHero";
 import { CelebrityMarket } from "@/components/celebrity-zone/CelebrityMarket";
 import { CelebrityMyProjects } from "@/components/celebrity-zone/CelebrityMyProjects";
@@ -37,19 +35,6 @@ export default async function ProducerCelebrityZonePage({ searchParams }: PagePr
 
   return (
     <div className="flex flex-col gap-6">
-      {/* 顶部标题区 */}
-      <div className="flex items-center gap-3">
-        <Sparkles className="h-5 w-5 text-cyan-300" />
-        <h1 className="text-xl font-semibold tracking-tight text-white/95">
-          AI 明星专区
-        </h1>
-        <span className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">
-          B 端 SaaS
-        </span>
-      </div>
-
-      <CelebrityZoneTabs active={active} />
-
       {active === "market" && (
         <div className="flex flex-col gap-6">
           <CelebrityMarketHero

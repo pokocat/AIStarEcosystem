@@ -168,11 +168,19 @@ function ModeCard({
   onClick,
 }: ModeCardProps) {
   const s = ACCENT_STYLE[accent];
+  // 用 div[role=button] 而不是 <button>：内部包含的视频缩略组件本身有 <button>，嵌套会触发 hydration error。
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`group relative flex h-full flex-col rounded-2xl border ${s.border} bg-gradient-to-br ${s.bg} p-6 text-left transition ${s.hover}`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={`group relative flex h-full cursor-pointer flex-col rounded-2xl border ${s.border} bg-gradient-to-br ${s.bg} p-6 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${s.hover}`}
     >
       {/* 顶部固定区（图标 + 标题 + 描述 + 标签） */}
       <div className="flex flex-col gap-4">
@@ -211,6 +219,6 @@ function ModeCard({
       >
         {ctaLabel} {ctaIcon}
       </div>
-    </button>
+    </div>
   );
 }
