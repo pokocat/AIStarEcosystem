@@ -28,3 +28,5 @@ export * as WardrobeApi from "./wardrobe";
 export * as StoreApi from "./store";
 export * as PlatformConfigApi from "./platform-config";
 export * as GenerationApi from "./generation";
+export * as ProductsApi from "./products";
+export * as CelebrityZoneApi from "./celebrity-zone";

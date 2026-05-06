@@ -31,6 +31,8 @@ import {
   Coins,
   Bell,
   History,
+  Package,
+  Briefcase,
 } from "lucide-react";
 
 export interface NavItem {
@@ -93,6 +95,14 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/monetization/nft",       label: "数字藏品",  icon: Gift,         description: "收藏品上架与复核" },
       { href: "/finance/ledger",         label: "结算中心",  icon: Wallet,       badgeKey: "txn_actionable",   description: "钱包 / 流水 / 复核（积分）" },
       { href: "/finance/risk",           label: "异常风控",  icon: AlertTriangle, description: "异常打赏与提现" },
+    ],
+  },
+  {
+    label: "明星带货",
+    items: [
+      { href: "/celebrity/stars",    label: "明星档案", icon: Megaphone, description: "AI 明星专区市场可见的明星" },
+      { href: "/celebrity/projects", label: "带货项目", icon: Briefcase, description: "用户在某个明星下创建的带货项目" },
+      { href: "/celebrity/products", label: "商品库",   icon: Package,   description: "用户上传 / 自动落库的商品档案" },
     ],
   },
   {

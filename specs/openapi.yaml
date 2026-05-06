@@ -4150,6 +4150,28 @@ paths:
                           sellingPoints: { type: string }
 
   # ═══════════════════════════════════════════════════════════════════════
+  # ▼ Admin 后台路径（v2.7+；apps/admin/src/api/*.ts 调用，对应 Admin*Controller）
+  # admin 端始终带 /admin/ 前缀；服务端 AepSecurityConfig 强制 SUPER_ADMIN/OPERATOR 角色。
+  # 多数 admin 端点直接复用用户端 service 层，schema 与 /celebrity/* / /products/* 一致。
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── admin · celebrity-zone（明星专区运营视图） ──────────────
+
+  /admin/celebrity/stars:           { get: { tags: [admin-celebrity], operationId: adminListCelebrityStars,    responses: { '200': { description: ok } } } }
+  /admin/celebrity/stars/{id}:      { get: { tags: [admin-celebrity], operationId: adminGetCelebrityStar,      parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /admin/celebrity/templates:       { get: { tags: [admin-celebrity], operationId: adminListCelebrityTemplates, responses: { '200': { description: ok } } } }
+  /admin/celebrity/showcases:       { get: { tags: [admin-celebrity], operationId: adminListCelebrityShowcases, responses: { '200': { description: ok } } } }
+  /admin/celebrity/projects:        { get: { tags: [admin-celebrity], operationId: adminListCelebrityProjects,  responses: { '200': { description: ok } } } }
+  /admin/celebrity/videos:          { get: { tags: [admin-celebrity], operationId: adminListCelebrityVideos,    responses: { '200': { description: ok } } } }
+  /admin/celebrity/overview:        { get: { tags: [admin-celebrity], operationId: adminGetCelebrityOverview,   responses: { '200': { description: ok } } } }
+  /admin/celebrity/engine-pricing:  { get: { tags: [admin-celebrity], operationId: adminGetCelebrityEnginePricing, responses: { '200': { description: ok } } } }
+
+  # ── admin · products（商品库管理） ───────────────────────
+
+  /admin/products:        { get: { tags: [admin-products], operationId: adminListProducts,  responses: { '200': { description: ok } } } }
+  /admin/products/{id}:   { get: { tags: [admin-products], operationId: adminGetProduct,    parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+
+  # ═══════════════════════════════════════════════════════════════════════
   # ▼ legacy 路径补齐（v1 起就在前端 api/*.ts 调用，但之前未入 openapi.yaml）
   # 这些路径没有展开 request/response schema —— 后续按领域逐步丰富即可。
   # CI 校验只关心「路径是否声明」，不要求每条都有完整 schema。
