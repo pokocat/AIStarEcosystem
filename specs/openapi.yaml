@@ -135,7 +135,29 @@ components:
 
     TrackStatus:
       type: string
+      deprecated: true
+      description: |
+        legacy 枚举，与前端 SongStatus 不一致。前端真值源是 SongStatus
+        (recording|mixing|released)；TrackStatus 仅保留作 v1 接口兼容。
       enum: [draft, processing, published]
+
+    SongStatus:
+      type: string
+      description: |
+        歌曲生命周期状态。前端 src/types/music.ts 真值源。
+        - recording: 正在生成 / 录制
+        - mixing:    待审核 / 后期
+        - released:  已发布
+      enum: [recording, mixing, released]
+
+    ConcertStatus:
+      type: string
+      enum: [upcoming, live, ended]
+
+    ThinkDepth:
+      type: string
+      description: AI 创作时的思考深度（影响积分扣费与生成耗时）
+      enum: [shallow, normal, deep]
 
     GenerationMode:
       type: string
@@ -682,6 +704,10 @@ components:
 
     Transaction:
       type: object
+      deprecated: true
+      description: |
+        legacy /finance/transactions 接口的投影。前端真值源 src/types/finance.ts:Transaction
+        实际只有 id/source/amount/date/status/type/userId 7 个字段。新代码请使用 LedgerEntry。
       required: [id, userId, type, direction, amount, currency, status,
                  description, createdAt]
       properties:
@@ -1147,6 +1173,439 @@ components:
           additionalProperties: true
           description: 锁定字段 + 本次参数快照
         createdAt: { type: string, format: date-time }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # ▼ v2.x 扩展（2026-04 ~ 2026-05）—— 与 apps/web/src/types/* 对齐
+    # 真值源：apps/web/src/types/<domain>.ts
+    # 业务规则与公式：specs/BUSINESS_RULES.md
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ── Wallet & Ledger（v2 创作工坊起的积分核心；frontend src/types/wallet.ts）
+
+    Wallet:
+      type: object
+      description: 钱包快照。total = license + recharge + gift（不含 pending）。
+      required: [id, userId, totalBalance, licenseBalance, rechargeBalance,
+                 giftBalance, pendingBalance, createdAt, updatedAt]
+      properties:
+        id:               { type: string }
+        userId:           { type: string }
+        totalBalance:     { type: integer }
+        licenseBalance:   { type: integer, description: license 核销累计入账 }
+        rechargeBalance:  { type: integer, description: 充值累计入账 }
+        giftBalance:      { type: integer, description: 平台赠送 / 活动奖励 }
+        pendingBalance:   { type: integer, description: 结算中（不计入 total）}
+        createdAt:        { type: string, format: date-time }
+        updatedAt:        { type: string, format: date-time }
+
+    LedgerEntryType:
+      type: string
+      description: 不可变流水分类。所有钱包余额变更必须走 ledger，禁止直接 UPDATE 余额列。
+      enum: [income, gift, spend, withdraw, freeze, unfreeze, adjust]
+
+    LedgerEntry:
+      type: object
+      description: 不可变流水条目。新增即追加、不可改、不可删。
+      required: [id, walletId, userId, type, amount, balanceAfter, description, createdAt]
+      properties:
+        id:            { type: string }
+        walletId:      { type: string }
+        userId:        { type: string }
+        type:          { $ref: '#/components/schemas/LedgerEntryType' }
+        amount:        { type: integer, description: 正数=入账，负数=出账 }
+        balanceAfter:  { type: integer, description: 入账后总余额（冗余便于审计） }
+        description:   { type: string }
+        referenceId:   { type: string, nullable: true, description: 关联业务实体 id }
+        referenceType: { type: string, nullable: true, description: '"song_revenue" / "nft_sale" / "license_key" 等' }
+        createdAt:     { type: string, format: date-time }
+
+    # ── Music v2.2+ 增量（src/types/music.ts:Song）
+
+    Song:
+      type: object
+      description: |
+        歌曲实体（v2.2 起替代 legacy Track）。绑定 artistId 必填。
+      required: [id, artistId, title, status, plays, revenue, createdAt]
+      properties:
+        id:            { type: string }
+        artistId:      { type: string, description: 关联艺人 id }
+        title:         { type: string }
+        genre:         { type: string }
+        status:        { $ref: '#/components/schemas/SongStatus' }
+        duration:      { type: integer, description: 秒 }
+        plays:         { type: integer }
+        revenue:       { type: integer, description: 累计收益（credits） }
+        rating:        { type: number }
+        releaseDate:   { type: string, format: date }
+        audioUrl:      { type: string, nullable: true }
+        coverUrl:      { type: string, nullable: true }
+        lyrics:        { type: string, nullable: true }
+        modelVersion:  { type: string, nullable: true }
+        thinkDepth:    { $ref: '#/components/schemas/ThinkDepth' }
+        creditsSpent:  { type: integer, description: 创作消耗积分 }
+        createdAt:     { type: string, format: date-time }
+
+    Album:
+      type: object
+      description: AI 歌手歌单（v2.2 降级，仅引用 Song）。
+      required: [id, artistId, title, trackIds]
+      properties:
+        id:        { type: string }
+        artistId:  { type: string }
+        title:     { type: string }
+        coverUrl:  { type: string, nullable: true }
+        trackIds:  { type: array, items: { type: string } }
+
+    Concert:
+      type: object
+      description: 线上直播（v2.2 简化，仅 streamUrl）。
+      required: [id, title, status, artistIds]
+      properties:
+        id:         { type: string }
+        title:      { type: string }
+        status:     { $ref: '#/components/schemas/ConcertStatus' }
+        artistIds:  { type: array, items: { type: string } }
+        streamUrl:  { type: string, nullable: true }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+
+    CreateSongRequest:
+      type: object
+      required: [artistId, title]
+      properties:
+        artistId:     { type: string }
+        title:        { type: string }
+        genre:        { type: string }
+        prompt:       { type: string, description: 用户输入的创作 prompt }
+        modelVersion: { type: string }
+        thinkDepth:   { $ref: '#/components/schemas/ThinkDepth' }
+
+    MusicTrendPoint:
+      type: object
+      description: 近 30 天趋势点（v2.3）。
+      required: [date, plays, revenue]
+      properties:
+        date:    { type: string, format: date }
+        plays:   { type: integer }
+        revenue: { type: integer }
+
+    # ── AI 明星专区（v2.7；src/types/celebrity-zone.ts）
+
+    CelebrityEngine:
+      type: string
+      enum: [KeLing, HiGen, MiniMax]
+
+    EnginePricing:
+      type: object
+      description: 单条视频生成的引擎计价（getEnginePricing 接口返回）。
+      required: [creditPrice, quotaCost]
+      properties:
+        creditPrice: { type: integer, description: 单条视频积分单价 }
+        quotaCost:   { type: integer, description: 占套餐额度的「条数」 }
+
+    CelebrityCategory:
+      type: string
+      enum: [演员, 歌手, 主持人, 运动员, 网红, 综艺]
+
+    CelebrityAuthStatus:
+      type: string
+      description: 4 态授权流转。
+      enum: [unauthorized, pending, authorized, expired]
+
+    CelebrityPricingTierName:
+      type: string
+      enum: [体验版, 标准版, 旗舰版]
+
+    CelebrityPricingTier:
+      type: object
+      required: [id, name, price, features, recommended]
+      properties:
+        id:          { type: string }
+        name:        { $ref: '#/components/schemas/CelebrityPricingTierName' }
+        price:       { type: string, description: '"¥299/条" / "¥1,999/月"' }
+        features:    { type: array, items: { type: string } }
+        recommended: { type: boolean }
+
+    CelebrityAuthorization:
+      type: object
+      required: [status, scenes, availableStyles]
+      properties:
+        status:         { $ref: '#/components/schemas/CelebrityAuthStatus' }
+        scenes:         { type: array, items: { type: string } }
+        expireDate:     { type: string, format: date, nullable: true }
+        availableStyles: { type: integer }
+        pendingNote:    { type: string, nullable: true }
+        applyUrl:       { type: string, nullable: true }
+
+    CelebritySampleVideo:
+      type: object
+      required: [id, label, category, thumb]
+      properties:
+        id:       { type: string }
+        label:    { type: string }
+        category: { type: string }
+        thumb:    { type: string }
+        videoUrl: { type: string, nullable: true }
+
+    CelebrityStar:
+      type: object
+      required: [id, name, avatar, cover, category, isHot, description,
+                 startingPrice, authorization, stats, sampleVideos, pricing]
+      properties:
+        id:             { type: string }
+        name:           { type: string }
+        avatar:         { type: string }
+        cover:          { type: string }
+        category:       { $ref: '#/components/schemas/CelebrityCategory' }
+        subCategories:
+          type: array
+          items: { $ref: '#/components/schemas/CelebrityCategory' }
+        isHot:          { type: boolean }
+        description:    { type: string }
+        startingPrice:  { type: string, description: '"¥299起"' }
+        pricingTier:    { $ref: '#/components/schemas/CelebrityPricingTierName' }
+        quotaUsed:      { type: integer }
+        quotaTotal:     { type: integer }
+        authorization:  { $ref: '#/components/schemas/CelebrityAuthorization' }
+        stats:
+          type: object
+          required: [totalGenerated, totalPlays, conversionRate, gmv]
+          properties:
+            totalGenerated:  { type: integer }
+            totalPlays:      { type: string }
+            conversionRate:  { type: string }
+            gmv:             { type: string }
+        sampleVideos:
+          type: array
+          items: { $ref: '#/components/schemas/CelebritySampleVideo' }
+        pricing:
+          type: array
+          items: { $ref: '#/components/schemas/CelebrityPricingTier' }
+
+    TemplateStyle:
+      type: string
+      enum: [种草安利, 硬核测评, 轻松开箱, 直播切片, 剧情植入]
+
+    CelebrityTemplate:
+      type: object
+      required: [id, name, style, description, recommendedEngine, recommendedPrice,
+                 isHot, plays, conversionRate]
+      properties:
+        id:                 { type: string }
+        name:               { type: string }
+        style:              { $ref: '#/components/schemas/TemplateStyle' }
+        description:        { type: string }
+        recommendedEngine:  { $ref: '#/components/schemas/CelebrityEngine' }
+        recommendedPrice:   { type: string }
+        isHot:              { type: boolean }
+        plays:              { type: string }
+        conversionRate:     { type: string }
+        fitHint:            { type: string, nullable: true }
+        previews:
+          type: array
+          items:
+            type: object
+            properties:
+              thumb:    { type: string }
+              videoUrl: { type: string, nullable: true }
+
+    CelebrityProjectStatus:
+      type: string
+      enum: [进行中, 筹备中, 已完成]
+
+    ChannelStatus:
+      type: object
+      required: [id, name, connected, publishedCount]
+      properties:
+        id:              { type: string }
+        name:            { type: string, enum: [抖音, 快手, 小红书, 视频号, B站] }
+        connected:       { type: boolean }
+        publishedCount:  { type: integer }
+
+    CelebrityProject:
+      type: object
+      required: [id, name, starId, starName, starAvatar, status, videoCount,
+                 totalPlays, totalInteractions, conversions, gmv, createdAt,
+                 pricingTier, channels, quota]
+      properties:
+        id:                { type: string }
+        name:              { type: string }
+        starId:            { type: string }
+        starName:          { type: string }
+        starAvatar:        { type: string }
+        status:            { $ref: '#/components/schemas/CelebrityProjectStatus' }
+        videoCount:        { type: integer }
+        totalPlays:        { type: string }
+        totalInteractions: { type: string }
+        conversions:       { type: integer }
+        gmv:               { type: string }
+        createdAt:         { type: string, format: date }
+        pricingTier:       { $ref: '#/components/schemas/CelebrityPricingTierName' }
+        channels:
+          type: array
+          items: { $ref: '#/components/schemas/ChannelStatus' }
+        quota:
+          type: object
+          required: [used, total]
+          properties:
+            used:  { type: integer }
+            total: { type: integer }
+
+    ProjectVideoStatus:
+      type: string
+      enum: [已发布, 待审核, 生成中, 已驳回]
+
+    CelebrityProjectVideo:
+      type: object
+      required: [id, projectId, projectName, starId, starName, productName,
+                 status, durationSec, engine, thumb, videoUrl, createdAt]
+      properties:
+        id:           { type: string }
+        projectId:    { type: string }
+        projectName:  { type: string }
+        starId:       { type: string }
+        starName:     { type: string }
+        productName:  { type: string }
+        status:       { $ref: '#/components/schemas/ProjectVideoStatus' }
+        plays:        { type: string, nullable: true }
+        durationSec:  { type: integer, enum: [15, 30, 60] }
+        engine:       { $ref: '#/components/schemas/CelebrityEngine' }
+        thumb:        { type: string }
+        videoUrl:     { type: string }
+        createdAt:    { type: string, format: date }
+
+    CelebrityProductInput:
+      type: object
+      required: [name, sellingPoints]
+      properties:
+        name:          { type: string }
+        link:          { type: string, nullable: true }
+        images:
+          type: array
+          items: { type: string }
+        sellingPoints: { type: string }
+
+    CelebrityShowcase:
+      type: object
+      required: [id, caption, engine, plays]
+      properties:
+        id:       { type: string }
+        caption:  { type: string }
+        engine:   { $ref: '#/components/schemas/CelebrityEngine' }
+        plays:    { type: string }
+        approval: { type: string, nullable: true }
+        thumb:    { type: string, nullable: true }
+        videoUrl: { type: string, nullable: true }
+
+    CelebrityGenerationRequest:
+      type: object
+      required: [starId, mode, product, engine, duration, projectId]
+      properties:
+        starId:     { type: string }
+        mode:       { type: string, enum: [template, blindbox] }
+        templateId: { type: string, nullable: true }
+        product:    { $ref: '#/components/schemas/CelebrityProductInput' }
+        engine:     { $ref: '#/components/schemas/CelebrityEngine' }
+        duration:   { type: integer, enum: [15, 30, 60] }
+        creativeTendency: { type: string, nullable: true }
+        projectId:  { type: string }
+        channels:
+          type: array
+          items: { type: string }
+
+    CelebrityZoneOverview:
+      type: object
+      description: 数据中心大盘（celebrity-zone ?tab=data）。
+      required: [hero, starLeaderboard, weeklyTrend, channelMix]
+      properties:
+        hero:
+          type: object
+          required: [totalPlays, totalConversions, activeStars]
+          properties:
+            totalPlays:       { type: string }
+            totalConversions: { type: string }
+            activeStars:      { type: integer }
+        starLeaderboard:
+          type: array
+          items:
+            type: object
+            required: [starId, name, avatar, plays, gmv, videoCount]
+            properties:
+              starId:     { type: string }
+              name:       { type: string }
+              avatar:     { type: string }
+              plays:      { type: string }
+              gmv:        { type: string }
+              videoCount: { type: integer }
+        weeklyTrend:
+          type: array
+          items:
+            type: object
+            required: [date, plays, conversions]
+            properties:
+              date:        { type: string, format: date }
+              plays:       { type: integer }
+              conversions: { type: integer }
+        channelMix:
+          type: array
+          items:
+            type: object
+            required: [channel, share]
+            properties:
+              channel: { type: string }
+              share:   { type: number, description: '0~1' }
+
+    # ── 商品库（v2.7；src/types/product.ts）
+
+    ProductCategory:
+      type: string
+      enum: [美妆, 食品饮料, 数码 3C, 服饰, 日用百货, 母婴, 运动, 其他]
+
+    ProductSource:
+      type: string
+      enum: [manual, auto-from-generation]
+
+    Product:
+      type: object
+      required: [id, name, category, images, sellingPoints, usageCount,
+                 source, createdAt, updatedAt]
+      properties:
+        id:             { type: string }
+        name:           { type: string }
+        category:       { $ref: '#/components/schemas/ProductCategory' }
+        link:           { type: string, nullable: true }
+        images:
+          type: array
+          items: { type: string }
+        sellingPoints:  { type: string }
+        usageCount:     { type: integer }
+        source:         { $ref: '#/components/schemas/ProductSource' }
+        createdAt:      { type: string, format: date }
+        updatedAt:      { type: string, format: date }
+
+    ProductInput:
+      type: object
+      required: [name, category]
+      properties:
+        name:          { type: string }
+        category:      { $ref: '#/components/schemas/ProductCategory' }
+        link:          { type: string, nullable: true }
+        images:
+          type: array
+          items: { type: string }
+        sellingPoints: { type: string, nullable: true }
+        source:        { $ref: '#/components/schemas/ProductSource' }
+
+    # ── 异步任务壳（生成 / 分发 / 抽取等的统一返回）
+
+    AsyncJobStarted:
+      type: object
+      required: [jobId, status]
+      properties:
+        jobId:             { type: string }
+        status:            { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        pollUrl:           { type: string, nullable: true }
+        pollIntervalMs:    { type: integer, nullable: true }
+        estimatedSeconds:  { type: integer, nullable: true }
 
 # ─────────────────────────────────────────
 # PATHS
@@ -2902,3 +3361,919 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/ForgeBlueprint' }
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # ▼ v2.x 扩展路径（与 apps/web/src/api/* 真值源对齐）
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── 3.x.1 Auth 增量（License 激活与 dev 调试） ─────
+
+  /auth/activate:
+    post:
+      tags: [auth]
+      operationId: activateLicense
+      security: []
+      summary: License 激活码激活
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: 激活成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/dev-accounts:
+    get:
+      tags: [auth]
+      operationId: devAccounts
+      security: []
+      summary: '[dev only] 获取测试账号列表'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/dev-login:
+    post:
+      tags: [auth]
+      operationId: devLogin
+      security: []
+      summary: '[dev only] 直接以测试账号登录'
+      responses:
+        '200':
+          description: ok
+
+  # ── 3.x.2 当前用户域 /me/** ─────────────────────────
+
+  /me:
+    get:
+      tags: [account]
+      operationId: getMe
+      summary: 获取当前用户档案
+      responses:
+        '200': { description: ok }
+
+  /me/wallet:
+    get:
+      tags: [finance]
+      operationId: getMyWallet
+      summary: 获取当前用户钱包快照
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Wallet' }
+
+  /me/ledger:
+    get:
+      tags: [finance]
+      operationId: listMyLedger
+      summary: 当前用户的不可变流水（分页）
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LedgerEntry' }
+                  pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /me/songs:
+    get:
+      tags: [music]
+      operationId: listMySongs
+      summary: 当前用户的歌曲（替代 legacy /tracks）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Song' }
+    post:
+      tags: [music]
+      operationId: createSong
+      summary: 创作新歌（v2.2 起替代 /tracks/generate）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSongRequest' }
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Song' }
+
+  /me/songs/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [music]
+      operationId: updateMySong
+      summary: 修改歌曲（title/genre/coverUrl/lyrics 等）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Song' }
+
+  /me/songs/{id}/advance:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [music]
+      operationId: advanceSongStatus
+      summary: 推进歌曲状态机 recording → mixing → released
+      responses:
+        '200':
+          description: ok
+
+  /me/albums:
+    get:
+      tags: [music]
+      operationId: listMyAlbums
+      responses:
+        '200': { description: ok }
+
+  /me/concerts:
+    get:
+      tags: [music]
+      operationId: listMyConcerts
+      responses:
+        '200': { description: ok }
+
+  /me/digital-ips:
+    get:
+      tags: [artists]
+      operationId: listMyDigitalIps
+      summary: 当前用户拥有的数字 IP（艺人）列表
+      responses:
+        '200': { description: ok }
+
+  /me/digital-ips/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [artists]
+      operationId: getMyDigitalIp
+      responses:
+        '200': { description: ok }
+
+  /me/music/trends:
+    get:
+      tags: [music]
+      operationId: getMyMusicTrends
+      summary: 近 30 天歌曲播放/收益趋势
+      parameters:
+        - in: query
+          name: range
+          schema: { type: string, enum: ['7d', '30d'], default: '30d' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/MusicTrendPoint' }
+
+  /me/generation/run:
+    post:
+      tags: [generation]
+      operationId: runGeneration
+      summary: 触发 LLM 创作工坊生成（v2.4）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: 任务已入队
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AsyncJobStarted' }
+
+  /me/inventory:
+    get:
+      tags: [store]
+      operationId: listMyInventory
+      summary: 已购库存（衣柜 / 道具 / 模板等）
+      parameters:
+        - in: query
+          name: category
+          schema: { type: string }
+      responses:
+        '200': { description: ok }
+
+  /me/tenants:
+    get:
+      tags: [account]
+      operationId: listMyTenants
+      summary: 当前用户隶属的租户/工作室列表
+      responses:
+        '200': { description: ok }
+
+  # ── 3.x.3 Music 公共字典 ─────────────────────────
+
+  /music/genres:
+    get:
+      tags: [music]
+      operationId: listMusicGenres
+      security: []
+      responses:
+        '200': { description: ok }
+
+  # ── 3.x.4 Finance 增量 ────────────────────────────
+
+  /finance/revenue/monthly:
+    get:
+      tags: [finance]
+      operationId: getMonthlyRevenue
+      summary: 月度营收曲线（producer 大盘）
+      responses:
+        '200': { description: ok }
+
+  /finance/revenue/sources:
+    get:
+      tags: [finance]
+      operationId: getRevenueSources
+      summary: 收入来源占比
+      responses:
+        '200': { description: ok }
+
+  # ── 3.x.5 AI 明星专区 /celebrity/** （v2.7） ─────
+
+  /celebrity/stars:
+    get:
+      tags: [celebrity]
+      operationId: listCelebrityStars
+      parameters:
+        - in: query
+          name: category
+          schema: { $ref: '#/components/schemas/CelebrityCategory' }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [hot, price-asc, price-desc] }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CelebrityStar' }
+
+  /celebrity/stars/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [celebrity]
+      operationId: getCelebrityStar
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CelebrityStar' }
+
+  /celebrity/active-star:
+    get:
+      tags: [celebrity]
+      deprecated: true
+      operationId: getActiveStar
+      summary: '[legacy] 用户当前主用明星；新代码用 /celebrity/stars/{id}'
+      responses:
+        '200': { description: ok }
+
+  /celebrity/templates:
+    get:
+      tags: [celebrity]
+      operationId: listCelebrityTemplates
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CelebrityTemplate' }
+
+  /celebrity/showcases:
+    get:
+      tags: [celebrity]
+      operationId: listCelebrityShowcases
+      parameters:
+        - in: query
+          name: mode
+          required: true
+          schema: { type: string, enum: [template, blindbox] }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CelebrityShowcase' }
+
+  /celebrity/projects:
+    get:
+      tags: [celebrity]
+      operationId: listCelebrityProjects
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/CelebrityProjectStatus' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CelebrityProject' }
+    post:
+      tags: [celebrity]
+      operationId: createCelebrityProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, starId]
+              properties:
+                name:   { type: string }
+                starId: { type: string }
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CelebrityProject' }
+
+  /celebrity/projects/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [celebrity]
+      operationId: getCelebrityProject
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CelebrityProject' }
+
+  /celebrity/projects/{projectId}/videos:
+    parameters:
+      - in: path
+        name: projectId
+        required: true
+        schema: { type: string }
+    get:
+      tags: [celebrity]
+      operationId: listCelebrityProjectVideos
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CelebrityProjectVideo' }
+
+  /celebrity/projects/{projectId}/distribute:
+    parameters:
+      - in: path
+        name: projectId
+        required: true
+        schema: { type: string }
+    post:
+      tags: [celebrity]
+      operationId: batchDistributeProjectVideos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [videoIds, channels]
+              properties:
+                videoIds:
+                  type: array
+                  items: { type: string }
+                channels:
+                  type: array
+                  items: { type: string }
+      responses:
+        '202':
+          description: 分发任务已入队
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AsyncJobStarted' }
+
+  /celebrity/videos:
+    get:
+      tags: [celebrity]
+      operationId: listAllCelebrityVideos
+      summary: 跨项目视频聚合（视频库 Tab）
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/ProjectVideoStatus' }
+        - in: query
+          name: starId
+          schema: { type: string }
+        - in: query
+          name: projectId
+          schema: { type: string }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [createdDesc, playsDesc] }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CelebrityProjectVideo' }
+
+  /celebrity/generate:
+    post:
+      tags: [celebrity]
+      operationId: startCelebrityGeneration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CelebrityGenerationRequest' }
+      responses:
+        '202':
+          description: 生成任务已入队
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AsyncJobStarted' }
+
+  /celebrity/overview:
+    get:
+      tags: [celebrity]
+      operationId: getCelebrityZoneOverview
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CelebrityZoneOverview' }
+
+  /celebrity/engine-pricing:
+    get:
+      tags: [celebrity]
+      operationId: getEnginePricing
+      summary: 后端配置：每个引擎的积分单价 + 套餐额度消耗
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties:
+                          $ref: '#/components/schemas/EnginePricing'
+
+  # ── 3.x.6 商品库 /products/** （v2.7） ───────────
+
+  /products:
+    get:
+      tags: [products]
+      operationId: listProducts
+      parameters:
+        - in: query
+          name: category
+          schema: { $ref: '#/components/schemas/ProductCategory' }
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Product' }
+    post:
+      tags: [products]
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+
+  /products/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [products]
+      operationId: getProduct
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+    patch:
+      tags: [products]
+      operationId: updateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+    delete:
+      tags: [products]
+      operationId: deleteProduct
+      responses:
+        '204': { description: deleted }
+
+  /products/upsert-from-generation:
+    post:
+      tags: [products]
+      operationId: upsertProductFromGeneration
+      summary: |
+        视频生成时调用：按 link/name 匹配命中则 +usageCount，
+        否则自动建档并标记 source='auto-from-generation'。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:          { type: string }
+                link:          { type: string, nullable: true }
+                sellingPoints: { type: string, nullable: true }
+                images:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+
+  /products/extract-selling-points:
+    post:
+      tags: [products]
+      operationId: extractSellingPoints
+      summary: LLM 抽取卖点（基于商品名 + 链接）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, link]
+              properties:
+                name: { type: string }
+                link: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [sellingPoints]
+                        properties:
+                          sellingPoints: { type: string }
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # ▼ legacy 路径补齐（v1 起就在前端 api/*.ts 调用，但之前未入 openapi.yaml）
+  # 这些路径没有展开 request/response schema —— 后续按领域逐步丰富即可。
+  # CI 校验只关心「路径是否声明」，不要求每条都有完整 schema。
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── coach（掌门人后台） ──────────────────────────
+
+  /coach/artists:               { get: { tags: [coach], operationId: listCoachArtists,            responses: { '200': { description: ok } } } }
+  /coach/revenue:               { get: { tags: [coach], operationId: getCoachRevenue,             responses: { '200': { description: ok } } } }
+  /coach/distribution-queue:    { get: { tags: [coach], operationId: listCoachDistributionQueue,  responses: { '200': { description: ok } } } }
+  /coach/copyright:             { get: { tags: [coach], operationId: listCoachCopyright,          responses: { '200': { description: ok } } } }
+  /coach/copyright/pending:     { get: { tags: [coach], operationId: listCoachCopyrightPending,   responses: { '200': { description: ok } } } }
+  /coach/category-distribution: { get: { tags: [coach], operationId: getCoachCategoryDistribution, responses: { '200': { description: ok } } } }
+
+  # ── community（粉丝社群） ─────────────────────────
+
+  /community/fan-tiers:    { get: { tags: [community], operationId: listFanTiers,    responses: { '200': { description: ok } } } }
+  /community/fan-growth:   { get: { tags: [community], operationId: getFanGrowth,    responses: { '200': { description: ok } } } }
+  /community/activities:   { get: { tags: [community], operationId: listActivities,  responses: { '200': { description: ok } } } }
+  /community/events:       { get: { tags: [community], operationId: listEvents,      responses: { '200': { description: ok } } } }
+
+  /community/posts:
+    get:  { tags: [community], operationId: listPosts,  responses: { '200': { description: ok } } }
+    post: { tags: [community], operationId: createPost, responses: { '201': { description: created } } }
+
+  /community/events/{eventId}/rsvp:
+    parameters:
+      - { in: path, name: eventId, required: true, schema: { type: string } }
+    post:   { tags: [community], operationId: rsvpEvent,    responses: { '204': { description: ok } } }
+    delete: { tags: [community], operationId: cancelRsvp,   responses: { '204': { description: ok } } }
+
+  # ── config（运行时配置字典） ──────────────────────
+
+  /config/{key}:
+    parameters:
+      - { in: path, name: key, required: true, schema: { type: string } }
+    get: { tags: [config], operationId: getConfigValue, responses: { '200': { description: ok } } }
+
+  # ── distribution（v2 接口；与 v1 的 /distribution/channels 等并存） ──
+
+  /distribution/platforms:        { get: { tags: [distribution], operationId: listDistributionPlatforms,    responses: { '200': { description: ok } } } }
+  /distribution/content:          { get: { tags: [distribution], operationId: listDistributionContent,      responses: { '200': { description: ok } } } }
+  /distribution/platform-views:   { get: { tags: [distribution], operationId: listDistributionPlatformViews, responses: { '200': { description: ok } } } }
+  /distribution/connections:      { get: { tags: [distribution], operationId: listDistributionConnections,  responses: { '200': { description: ok } } } }
+
+  /distribution/platforms/{platformId}/connection:
+    parameters:
+      - { in: path, name: platformId, required: true, schema: { type: string } }
+    post:   { tags: [distribution], operationId: connectPlatform,    responses: { '200': { description: connected } } }
+    delete: { tags: [distribution], operationId: disconnectPlatform, responses: { '204': { description: disconnected } } }
+
+  # ── fan（C 端） ───────────────────────────────────
+
+  /fan/trending-artists: { get: { tags: [fan], operationId: listTrendingArtists, responses: { '200': { description: ok } } } }
+  /fan/hot-tracks:       { get: { tags: [fan], operationId: listHotTracks,       responses: { '200': { description: ok } } } }
+  /fan/nft-market:       { get: { tags: [fan], operationId: listFanNftMarket,    responses: { '200': { description: ok } } } }
+  /fan/me:               { get: { tags: [fan], operationId: getFanMe,            responses: { '200': { description: ok } } } }
+  /fan/me/liked-tracks:  { get: { tags: [fan], operationId: listFanLikedTracks,  responses: { '200': { description: ok } } } }
+  /fan/me/followed-artists: { get: { tags: [fan], operationId: listFanFollowedArtists, responses: { '200': { description: ok } } } }
+
+  /fan/me/liked-tracks/{trackId}:
+    parameters:
+      - { in: path, name: trackId, required: true, schema: { type: string } }
+    post:   { tags: [fan], operationId: likeTrack,   responses: { '204': { description: ok } } }
+    delete: { tags: [fan], operationId: unlikeTrack, responses: { '204': { description: ok } } }
+
+  /fan/me/followed-artists/{artistId}:
+    parameters:
+      - { in: path, name: artistId, required: true, schema: { type: string } }
+    post:   { tags: [fan], operationId: followArtist,   responses: { '204': { description: ok } } }
+    delete: { tags: [fan], operationId: unfollowArtist, responses: { '204': { description: ok } } }
+
+  # ── film（影视类） ────────────────────────────────
+
+  /film/dramas:      { get: { tags: [film], operationId: listDramas,     responses: { '200': { description: ok } } } }
+  /film/movies:      { get: { tags: [film], operationId: listMovies,     responses: { '200': { description: ok } } } }
+  /film/ads:         { get: { tags: [film], operationId: listAds,        responses: { '200': { description: ok } } } }
+  /film/voice-works: { get: { tags: [film], operationId: listVoiceWorks, responses: { '200': { description: ok } } } }
+
+  # ── notifications ─────────────────────────────────
+
+  /notifications:
+    get: { tags: [notifications], operationId: listNotifications, responses: { '200': { description: ok } } }
+
+  /notifications/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    delete: { tags: [notifications], operationId: deleteNotification, responses: { '204': { description: ok } } }
+
+  /notifications/{id}/read:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post: { tags: [notifications], operationId: markNotificationRead, responses: { '204': { description: ok } } }
+
+  /notifications/read-all:
+    post: { tags: [notifications], operationId: markAllNotificationsRead, responses: { '204': { description: ok } } }
+
+  # ── settings（订阅 / 充值 / 积分包） ───────────────
+
+  /settings/credit-packs:      { get: { tags: [settings], operationId: listCreditPacks,      responses: { '200': { description: ok } } } }
+  /settings/recharge-history:  { get: { tags: [settings], operationId: listRechargeHistory,  responses: { '200': { description: ok } } } }
+  /settings/purchases:         { get: { tags: [settings], operationId: listPurchases,        responses: { '200': { description: ok } } } }
+
+  /settings/credit-packs/{packId}/purchase:
+    parameters:
+      - { in: path, name: packId, required: true, schema: { type: string } }
+    post: { tags: [settings], operationId: purchaseCreditPack, responses: { '200': { description: ok } } }
+
+  # ── store（商店） ─────────────────────────────────
+
+  /store/catalog: { get: { tags: [store], operationId: listStoreCatalog, responses: { '200': { description: ok } } } }
+
+  /store/items/{type}/{itemId}/redeem:
+    parameters:
+      - { in: path, name: type,   required: true, schema: { type: string } }
+      - { in: path, name: itemId, required: true, schema: { type: string } }
+    post: { tags: [store], operationId: redeemStoreItem, responses: { '200': { description: ok } } }
+
+  # ── wardrobe（衣柜额外动作） ──────────────────────
+
+  /wardrobe/generate-look: { post: { tags: [wardrobe], operationId: generateLook, responses: { '200': { description: ok } } } }
+
+  # ── appearance-forge 增量 ─────────────────────────
+
+  /appearance-forge/blueprints:  { get: { tags: [forge], operationId: listForgeBlueprints, responses: { '200': { description: ok } } } }
+  /appearance-forge/coze/status: { get: { tags: [forge], operationId: getCozeStatus,       responses: { '200': { description: ok } } } }
+

@@ -20,7 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `apps/web` — Next.js 14 (App Router) user-facing frontend, port **3002** (`npm run dev`). Talks to the server via Next rewrites of `/api/*`.
 - `apps/admin` — Next.js 14 admin console, port **3003** (`npm run dev`). Calls `/api/admin/*`.
 - `figma/` — one-shot Figma Make export; **UI reference only**, not source.
-- `specs/openapi.yaml` + `apps/web/specs/FRONTEND_CONTRACT_DIFF.md` — backend contract vs. frontend truth-source diff.
+- `specs/openapi.yaml` — backend interface contract (paths + schemas).
+- `specs/BUSINESS_RULES.md` — openapi-can't-express constraints: validation rules, calculation formulas, state-machine timing, error codes.
+- `apps/web/scripts/check-api-contract.mjs` — CI gate: every `apiFetch(...)` URL must have a matching openapi path. Run via `npm run check:api-contract` from `apps/web/`.
 
 Product spec: `product_spec.md` (root) — updated most recently; prefer it over `product.md`.
 
@@ -110,7 +112,8 @@ Dev admin credentials (seeded by `DataInitializer`): `admin / admin123` (PLATFOR
 ## Where to look for domain context
 
 - `product_spec.md` (root, ~52KB, most current) — canonical product-level spec, referenced by version logs in web/admin READMEs.
-- `specs/BACKEND_API_SPEC.md` / `specs/openapi.yaml` — backend API reference.
-- `apps/web/specs/FRONTEND_CONTRACT_DIFF.md` — the living diff between frontend types and `openapi.yaml`; update it when you change a domain.
+- `specs/openapi.yaml` — backend interface contract; 142 paths grouped by tag.
+- `specs/BUSINESS_RULES.md` — validation rules, calculation formulas, error codes, state-machine timing (the openapi-can't-express stuff).
+- When you add a new domain or endpoint, the order is: (1) `apps/web/src/types/<domain>.ts` (truth source), (2) `apps/web/src/api/<domain>.ts` (apiFetch URLs), (3) `specs/openapi.yaml` (path + schema). The `npm run check:api-contract` gate fails if step 3 is skipped — there's no separate "diff doc" to update anymore.
 - `apps/web/README.md` — version log with per-release deltas (currently at v2.4.0, 2026-04-19).
 - `.claude/skills/figma-migrate/SKILL.md` — invoked automatically when the user mentions Figma updates.
