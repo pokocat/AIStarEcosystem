@@ -76,36 +76,19 @@ Both frontends honour `NEXT_PUBLIC_USE_MOCK` in `.env.local`:
 
 2. **Credits are ledger-only.** All wallet balance changes flow through immutable `LedgerEntry` rows. Never UPDATE a balance column directly. `total_balance = license + recharge + gift` (the `pending` bucket is excluded). See `apps/server/src/.../aep/service/CreditService.java`.
 
-## Adding or changing a domain — 6-step SOP
+## Adding or changing a domain
 
-Strict ordering. Skipping any step breaks the three-end compile gate or the contract checker. Full file list in [`AGENTS.md` → 新增领域 SOP](./AGENTS.md#新增领域-sop).
+Full step-by-step file list in [`AGENTS.md` → 新增领域 SOP](./AGENTS.md#新增领域-sop). The non-negotiables that bite if skipped:
 
-```
-1. apps/web/src/types/<domain>.ts            ← truth source (TS interface)
-   apps/web/src/mocks/<domain>.ts            ← USE_MOCK fallback
-   apps/web/src/constants/<domain>-ui.ts     ← UI tokens
-
-2. apps/web/src/api/<domain>.ts              ← apiFetch<T>(...) calls
-   apps/web/src/api/index.ts                 ← namespace export
-
-3. apps/server/.../{model,repository,dto,controller}/<Entity>*.java
-                                              ← Spring mirror; DTO field
-                                                names MUST match TS exactly
-
-4. apps/admin/src/{types,mocks,api}/<domain>.ts  ← admin straight-copy of TS
-                                                  + /admin/ URL prefix
-
-5. specs/openapi.yaml                        ← path + schema (mandatory)
-   specs/BUSINESS_RULES.md                   ← only if non-trivial rules
-
-6. Verify (all four gates must pass):
-     (cd apps/web && npx tsc --noEmit)
-     (cd apps/admin && npx tsc --noEmit)
-     (cd apps/server && ./mvnw compile -q -o)
-     (cd apps/web && npm run check:api-contract)
-```
-
-The contract checker (`apps/web/scripts/check-api-contract.mjs`) extracts every `apiFetch(...)` URL from `apps/web/src/api/*.ts` and asserts each one has a matching path in `specs/openapi.yaml`. There's no separate "diff document" anymore — drift is caught at PR time, not by a stale doc.
+1. **TS types are truth source.** `apps/web/src/types/<domain>.ts` first; Spring `*Dto` field names must mirror exactly.
+2. **Touched `apps/web/src/api/*.ts`? Update `specs/openapi.yaml` in the same change** — every `apiFetch(...)` URL needs a matching path. There's no separate diff doc anymore; drift is caught at PR time by the contract checker (`apps/web/scripts/check-api-contract.mjs`).
+3. **Four gates before committing**:
+   ```bash
+   (cd apps/web   && npx tsc --noEmit)
+   (cd apps/admin && npx tsc --noEmit)
+   (cd apps/server && ./mvnw compile -q -o)
+   (cd apps/web   && npm run check:api-contract)
+   ```
 
 For Figma prototype updates, invoke the `figma-migrate` skill — it codifies the five-piece-per-domain layout (types / mocks / constants / api / component) and the web → admin → server sync.
 
