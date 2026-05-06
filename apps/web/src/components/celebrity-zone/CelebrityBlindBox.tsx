@@ -63,7 +63,9 @@ export function CelebrityBlindBox({ star, projects, showcases, onGenerate }: Pro
   const [projectId, setProjectId] = React.useState<string>(projects[0]?.id ?? "");
 
   const cost = ENGINE_META[engine].cost;
-  const remaining = star.quotaTotal - star.quotaUsed;
+  const quotaUsed = star.quotaUsed ?? 0;
+  const quotaTotal = star.quotaTotal ?? 0;
+  const remaining = quotaTotal - quotaUsed;
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">

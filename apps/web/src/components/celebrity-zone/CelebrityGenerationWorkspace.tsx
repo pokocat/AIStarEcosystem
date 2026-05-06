@@ -19,6 +19,7 @@ import {
   ACTIVE_STAR,
   CELEBRITY_TEMPLATES,
   CELEBRITY_PROJECTS,
+  STAR_DETAIL_MAP,
   TEMPLATE_SHOWCASES,
   BLINDBOX_SHOWCASES,
 } from "@/mocks/celebrity-zone";
@@ -33,13 +34,18 @@ const STEP_TITLE: Record<Step, string> = {
   blindbox: "AI 自主创作",
 };
 
-export function CelebrityGenerationWorkspace() {
+interface Props {
+  /** 关联的明星 ID。未传时回退到默认 ACTIVE_STAR（兼容旧入口）。 */
+  starId?: string;
+}
+
+export function CelebrityGenerationWorkspace({ starId }: Props = {}) {
   const router = useRouter();
   const [step, setStep] = React.useState<Step>("mode");
   const [selectedTemplate, setSelectedTemplate] =
     React.useState<CelebrityTemplate | null>(null);
 
-  const star = ACTIVE_STAR;
+  const star = (starId && STAR_DETAIL_MAP[starId]) || ACTIVE_STAR;
 
   const handleSelectMode = (mode: GenerationMode) => {
     if (mode === "template") setStep("templateGallery");
@@ -54,7 +60,7 @@ export function CelebrityGenerationWorkspace() {
   const handleBack = () => {
     if (step === "templateConfig") setStep("templateGallery");
     else if (step === "templateGallery" || step === "blindbox") setStep("mode");
-    else router.push("/producer");
+    else router.push(`/producer/celebrity-zone/star/${star.id}`);
   };
 
   return (

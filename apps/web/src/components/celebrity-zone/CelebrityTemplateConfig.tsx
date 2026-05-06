@@ -67,7 +67,9 @@ export function CelebrityTemplateConfig({
   }, [product.name, engine]);
 
   const cost = ENGINE_META[engine].cost;
-  const remaining = star.quotaTotal - star.quotaUsed;
+  const quotaUsed = star.quotaUsed ?? 0;
+  const quotaTotal = star.quotaTotal ?? 0;
+  const remaining = quotaTotal - quotaUsed;
 
   return (
     <div className="flex flex-col gap-5">
@@ -181,7 +183,7 @@ export function CelebrityTemplateConfig({
           </button>
           <div className="flex items-center justify-between text-[11px] text-white/35">
             <span>消耗 {cost} 条额度（{engine} {ENGINE_META[engine].level}）</span>
-            <span>套餐余量 {star.quotaUsed}/{star.quotaTotal}</span>
+            <span>套餐余量 {quotaUsed}/{quotaTotal}</span>
           </div>
         </div>
 
