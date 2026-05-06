@@ -78,13 +78,14 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
           ctaLabel="选择模板"
           ctaIcon={<ArrowRight className="h-4 w-4" />}
           media={
-            <div className="grid h-full w-full grid-cols-3 gap-2">
+            <div className="flex h-full items-center justify-center gap-2">
               {templatePreviews.map((p) => (
                 <CelebrityVideoPlayer
                   key={p.key}
                   src={p.videoUrl ?? ""}
                   poster={p.thumb}
                   aspect="9/16"
+                  className="h-full w-auto shrink-0"
                 />
               ))}
             </div>
