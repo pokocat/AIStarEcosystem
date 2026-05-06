@@ -12,8 +12,10 @@ export type EnginePriceLevel = "经济" | "标准" | "高级";
 export interface EngineMeta {
   name: CelebrityEngine;
   level: EnginePriceLevel;
-  /** 单条消耗额度数 */
+  /** 内部额度等级（占套餐扣减条数；与 creditPrice 解耦） */
   cost: number;
+  /** 单条视频的积分单价（来自后端 /celebrity/engine-pricing 接口） */
+  creditPrice: number;
   /** 大致耗时文案，如 "~3分钟" */
   speed: string;
   /** 画质评级（实星数，0~5） */
@@ -131,8 +133,8 @@ export interface CelebrityTemplate {
   conversionRate: string;
   /** 模板适配度提示（口型匹配度等说明文案） */
   fitHint?: string;
-  /** 预览缩略图 URL 列表（公开图床） */
-  previews?: string[];
+  /** 预览（缩略图 + 可选视频）。视频用于真实可播放的列表预览。 */
+  previews?: Array<{ thumb: string; videoUrl?: string }>;
 }
 
 // ── 项目 ─────────────────────────────────────────────────────────────────────
@@ -180,8 +182,10 @@ export interface CelebrityProjectVideo {
   plays?: string;
   durationSec: CelebrityVideoDuration;
   engine: CelebrityEngine;
-  /** 缩略图 URL */
+  /** 缩略图 URL（用作 video poster） */
   thumb: string;
+  /** 可播放视频 URL（公开样片或 AI 生成静态资源） */
+  videoUrl: string;
   createdAt: ISODate;
 }
 
@@ -194,6 +198,8 @@ export interface CelebrityShowcase {
   approval?: string;
   /** 缩略图 URL */
   thumb?: string;
+  /** 可播放视频 URL */
+  videoUrl?: string;
 }
 
 // ── 商品信息（生成请求） ──────────────────────────────────────────────────────

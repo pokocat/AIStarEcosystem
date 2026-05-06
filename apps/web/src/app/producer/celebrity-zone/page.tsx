@@ -6,6 +6,7 @@ import { CelebrityMarket } from "@/components/celebrity-zone/CelebrityMarket";
 import { CelebrityMyProjects } from "@/components/celebrity-zone/CelebrityMyProjects";
 import { CelebrityVideoLibrary } from "@/components/celebrity-zone/CelebrityVideoLibrary";
 import { CelebrityDataCenter } from "@/components/celebrity-zone/CelebrityDataCenter";
+import { CelebrityProductLibrary } from "@/components/celebrity-zone/CelebrityProductLibrary";
 import {
   MARKET_STARS,
   CELEBRITY_PROJECTS,
@@ -19,7 +20,13 @@ interface PageProps {
 }
 
 function resolveTab(raw?: string): ZoneTabId {
-  if (raw === "projects" || raw === "library" || raw === "data") return raw;
+  if (
+    raw === "projects" ||
+    raw === "library" ||
+    raw === "data" ||
+    raw === "products"
+  )
+    return raw;
   return "market";
 }
 
@@ -57,6 +64,8 @@ export default async function ProducerCelebrityZonePage({ searchParams }: PagePr
       {active === "projects" && (
         <CelebrityMyProjects initialProjects={CELEBRITY_PROJECTS} stars={MARKET_STARS} />
       )}
+
+      {active === "products" && <CelebrityProductLibrary />}
 
       {active === "library" && (
         <CelebrityVideoLibrary

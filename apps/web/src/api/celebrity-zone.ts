@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
+  CelebrityEngine,
   CelebrityProject,
   CelebrityProjectStatus,
   CelebrityProjectVideo,
@@ -27,6 +28,7 @@ import {
   ZONE_OVERVIEW,
 } from "@/mocks/celebrity-zone";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import { ENGINE_META } from "@/constants/celebrity-zone-ui";
 
 // ── 明星市场 ────────────────────────────────────────────────────────────────
 export interface StarFilter {
@@ -217,6 +219,31 @@ export async function batchDistribute(
 export async function getZoneOverview(): Promise<CelebrityZoneOverview> {
   if (USE_MOCK) return mockDelay(ZONE_OVERVIEW);
   return apiFetch<CelebrityZoneOverview>("/celebrity/overview");
+}
+
+// ── 引擎计价（后端配置） ────────────────────────────────────────────────────
+export interface EnginePricing {
+  /** 单条视频积分单价 */
+  creditPrice: number;
+  /** 占套餐额度的「条数」 */
+  quotaCost: number;
+}
+
+/** 后端配置：每个引擎单条视频的积分单价 + 套餐额度消耗。 */
+export async function getEnginePricing(): Promise<Record<CelebrityEngine, EnginePricing>> {
+  if (USE_MOCK) {
+    const out = Object.fromEntries(
+      (Object.keys(ENGINE_META) as CelebrityEngine[]).map((k) => [
+        k,
+        {
+          creditPrice: ENGINE_META[k].creditPrice,
+          quotaCost: ENGINE_META[k].cost,
+        },
+      ]),
+    ) as Record<CelebrityEngine, EnginePricing>;
+    return mockDelay(out);
+  }
+  return apiFetch<Record<CelebrityEngine, EnginePricing>>("/celebrity/engine-pricing");
 }
 
 // ── 生成 ────────────────────────────────────────────────────────────────────

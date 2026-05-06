@@ -2,10 +2,10 @@
 // mocks/celebrity-zone.ts — 明星专区：演示数据。
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// 【免责声明 / Disclaimer】
-// 以下姓名仅作前端 UI 设计展示与原型演示，所有授权状态、价格、效果数据均为
-// 虚构 mock，不代表任何真实商业授权关系。头像 / 封面 / 视频缩略图统一使用
-// pravatar / picsum / unsplash 等公开图床的中性人物图，不绑定真人肖像。
+// 内部演示用途：本文件中所有姓名、配图、视频、授权状态、价格均为前端原型
+// 展示，不对外发布、不构成商业授权关系。明星头像 / 封面采用 Wikimedia
+// Commons 公开图片热链接；视频片段来源于 Pexels 公开 portrait
+// livestreaming-selling 库。生产环境替换为 AI 生成的静态资源。
 //
 // 接入后端真实接口时，整文件仅用作 USE_MOCK=1 模式下的回退数据。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,22 +22,110 @@ import type {
 import type { ID } from "@/types/_shared";
 
 // ── 公开图床工具函数 ────────────────────────────────────────────────────────
-const avatar = (n: number) => `https://i.pravatar.cc/300?img=${n}`;
 const cover = (seed: string) => `https://picsum.photos/seed/${seed}/600/800`;
 const thumb = (seed: string) => `https://picsum.photos/seed/${seed}/360/640`;
-const sampleVideoBaseUrl =
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 
-// 生成示例视频集合
+/**
+ * Pexels 公开 portrait livestreaming-selling 视频池，用于所有明星样片 /
+ * 项目视频 / 模板预览的 mock。生产替换为 AI 生成静态资源。
+ */
+const PEXELS_PORTRAIT_VIDEOS = [
+  // 用户原型校验通过的 URL
+  "https://videos.pexels.com/video-files/7480485/7480485-uhd_2160_3840_25fps.mp4",
+  // 以下来自 Pexels portrait 搜索结果（livestreaming/talking/unboxing/haul）
+  "https://videos.pexels.com/video-files/7480844/7480844-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/8048443/8048443-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/9032398/9032398-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/8124136/8124136-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/8135877/8135877-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/7262665/7262665-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/9401763/9401763-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/8848973/8848973-hd_1080_1920_30fps.mp4",
+  "https://videos.pexels.com/video-files/4440948/4440948-hd_1080_1920_30fps.mp4",
+];
+
+/** 简单字符串 → 数字哈希，用于稳定地按 id 选视频，避免每次刷新顺序变。 */
+function hash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+const pickVideo = (seed: string): string =>
+  PEXELS_PORTRAIT_VIDEOS[hash(seed) % PEXELS_PORTRAIT_VIDEOS.length];
+
+/**
+ * 明星头像 / 封面：来自 Wikimedia Commons 公开图片热链接（内部 Demo 用）。
+ * 6/8 位有 Wikimedia 公开像，剩余 2 位（刘涛 / 贾玲）暂用 picsum 占位，
+ * 后续可替换为商务团队提供的授权图片或自建 CDN。
+ */
+const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
+  "star-li-dan": {
+    avatar:
+      "https://upload.wikimedia.org/wikipedia/commons/b/ba/Li_Dan%2C_Stand-up_comedian%2C_May_2021%2C_Shanghai.jpg",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/commons/b/ba/Li_Dan%2C_Stand-up_comedian%2C_May_2021%2C_Shanghai.jpg",
+  },
+  "star-yi-nengjing": {
+    avatar: "https://upload.wikimedia.org/wikipedia/commons/e/e1/Annie_Yi.jpg",
+    cover: "https://upload.wikimedia.org/wikipedia/commons/e/e1/Annie_Yi.jpg",
+  },
+  "star-liu-tao": {
+    avatar: cover("star-liu-tao-portrait"),
+    cover: cover("star-liu-tao-cover"),
+  },
+  "star-shen-teng": {
+    avatar:
+      "https://upload.wikimedia.org/wikipedia/commons/d/d5/Shen_Teng-20190516.jpg",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/commons/d/d5/Shen_Teng-20190516.jpg",
+  },
+  "star-na-ying": {
+    avatar:
+      "https://upload.wikimedia.org/wikipedia/commons/9/99/%E9%82%A3%E8%8B%B1_Na_Ying.jpg",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/commons/9/99/%E9%82%A3%E8%8B%B1_Na_Ying.jpg",
+  },
+  "star-ning-zetao": {
+    avatar:
+      "https://upload.wikimedia.org/wikipedia/commons/6/61/Kazan_2015_-_Ning_Zetao_after_100_metres_frestyle_M_final.JPG",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/commons/6/61/Kazan_2015_-_Ning_Zetao_after_100_metres_frestyle_M_final.JPG",
+  },
+  "star-li-yuchun": {
+    avatar:
+      "https://upload.wikimedia.org/wikipedia/commons/a/ab/Li_Yuchun_Cannes_2015.jpg",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/commons/a/ab/Li_Yuchun_Cannes_2015.jpg",
+  },
+  "star-jia-ling": {
+    avatar: cover("star-jia-ling-portrait"),
+    cover: cover("star-jia-ling-cover"),
+  },
+};
+
+// 生成示例视频集合（每条都补 videoUrl 以支持真实播放）
 function makeSampleVideos(starId: string): CelebrityStar["sampleVideos"] {
-  return [
-    { id: `${starId}-sv-1`, label: "美妆种草", category: "美妆", thumb: thumb(`${starId}-sv-1`), videoUrl: sampleVideoBaseUrl },
-    { id: `${starId}-sv-2`, label: "食品带货", category: "食品", thumb: thumb(`${starId}-sv-2`) },
-    { id: `${starId}-sv-3`, label: "数码测评", category: "数码", thumb: thumb(`${starId}-sv-3`) },
-    { id: `${starId}-sv-4`, label: "日用推荐", category: "日用", thumb: thumb(`${starId}-sv-4`) },
-    { id: `${starId}-sv-5`, label: "服饰穿搭", category: "服饰", thumb: thumb(`${starId}-sv-5`) },
-    { id: `${starId}-sv-6`, label: "旅行体验", category: "旅行", thumb: thumb(`${starId}-sv-6`) },
+  const items = [
+    { label: "美妆种草", category: "美妆" },
+    { label: "食品带货", category: "食品" },
+    { label: "数码测评", category: "数码" },
+    { label: "日用推荐", category: "日用" },
+    { label: "服饰穿搭", category: "服饰" },
+    { label: "旅行体验", category: "旅行" },
   ];
+  return items.map((it, i) => {
+    const id = `${starId}-sv-${i + 1}`;
+    return {
+      id,
+      label: it.label,
+      category: it.category,
+      thumb: thumb(id),
+      videoUrl: pickVideo(id),
+    };
+  });
 }
 
 // 标准三档套餐生成器
@@ -72,8 +160,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-li-dan",
     name: "李诞",
-    avatar: avatar(13),
-    cover: cover("star-li-dan"),
+    avatar: STAR_PORTRAITS["star-li-dan"].avatar,
+    cover: STAR_PORTRAITS["star-li-dan"].cover,
     category: "主持人",
     subCategories: ["综艺"],
     isHot: true,
@@ -101,8 +189,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-yi-nengjing",
     name: "伊能静",
-    avatar: avatar(20),
-    cover: cover("star-yi-nengjing"),
+    avatar: STAR_PORTRAITS["star-yi-nengjing"].avatar,
+    cover: STAR_PORTRAITS["star-yi-nengjing"].cover,
     category: "演员",
     subCategories: ["歌手", "综艺"],
     isHot: false,
@@ -130,8 +218,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-liu-tao",
     name: "刘涛",
-    avatar: avatar(32),
-    cover: cover("star-liu-tao"),
+    avatar: STAR_PORTRAITS["star-liu-tao"].avatar,
+    cover: STAR_PORTRAITS["star-liu-tao"].cover,
     category: "演员",
     isHot: true,
     description:
@@ -156,8 +244,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-shen-teng",
     name: "沈腾",
-    avatar: avatar(60),
-    cover: cover("star-shen-teng"),
+    avatar: STAR_PORTRAITS["star-shen-teng"].avatar,
+    cover: STAR_PORTRAITS["star-shen-teng"].cover,
     category: "演员",
     subCategories: ["综艺"],
     isHot: true,
@@ -182,8 +270,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-na-ying",
     name: "那英",
-    avatar: avatar(45),
-    cover: cover("star-na-ying"),
+    avatar: STAR_PORTRAITS["star-na-ying"].avatar,
+    cover: STAR_PORTRAITS["star-na-ying"].cover,
     category: "歌手",
     subCategories: ["综艺"],
     isHot: false,
@@ -212,8 +300,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-ning-zetao",
     name: "宁泽涛",
-    avatar: avatar(11),
-    cover: cover("star-ning-zetao"),
+    avatar: STAR_PORTRAITS["star-ning-zetao"].avatar,
+    cover: STAR_PORTRAITS["star-ning-zetao"].cover,
     category: "运动员",
     isHot: false,
     description:
@@ -240,8 +328,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-li-yuchun",
     name: "李宇春",
-    avatar: avatar(48),
-    cover: cover("star-li-yuchun"),
+    avatar: STAR_PORTRAITS["star-li-yuchun"].avatar,
+    cover: STAR_PORTRAITS["star-li-yuchun"].cover,
     category: "歌手",
     subCategories: ["演员"],
     isHot: true,
@@ -269,8 +357,8 @@ export const MARKET_STARS: CelebrityStar[] = [
   {
     id: "star-jia-ling",
     name: "贾玲",
-    avatar: avatar(49),
-    cover: cover("star-jia-ling"),
+    avatar: STAR_PORTRAITS["star-jia-ling"].avatar,
+    cover: STAR_PORTRAITS["star-jia-ling"].cover,
     category: "演员",
     subCategories: ["综艺"],
     isHot: false,
@@ -318,7 +406,10 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     plays: "12.5K",
     conversionRate: "3.8%",
     fitHint: "口型匹配度 92%",
-    previews: [thumb("tpl-bff-1"), thumb("tpl-bff-2")],
+    previews: [
+      { thumb: thumb("tpl-bff-1"), videoUrl: pickVideo("tpl-bff-1") },
+      { thumb: thumb("tpl-bff-2"), videoUrl: pickVideo("tpl-bff-2") },
+    ],
   },
   {
     id: "tpl-pro-review",
@@ -330,7 +421,10 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     isHot: false,
     plays: "8.2K",
     conversionRate: "4.1%",
-    previews: [thumb("tpl-review-1"), thumb("tpl-review-2")],
+    previews: [
+      { thumb: thumb("tpl-review-1"), videoUrl: pickVideo("tpl-review-1") },
+      { thumb: thumb("tpl-review-2"), videoUrl: pickVideo("tpl-review-2") },
+    ],
   },
   {
     id: "tpl-unbox",
@@ -342,7 +436,10 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     isHot: true,
     plays: "15.1K",
     conversionRate: "2.9%",
-    previews: [thumb("tpl-unbox-1"), thumb("tpl-unbox-2")],
+    previews: [
+      { thumb: thumb("tpl-unbox-1"), videoUrl: pickVideo("tpl-unbox-1") },
+      { thumb: thumb("tpl-unbox-2"), videoUrl: pickVideo("tpl-unbox-2") },
+    ],
   },
   {
     id: "tpl-live-clip",
@@ -354,7 +451,10 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     isHot: false,
     plays: "20.3K",
     conversionRate: "5.2%",
-    previews: [thumb("tpl-live-1"), thumb("tpl-live-2")],
+    previews: [
+      { thumb: thumb("tpl-live-1"), videoUrl: pickVideo("tpl-live-1") },
+      { thumb: thumb("tpl-live-2"), videoUrl: pickVideo("tpl-live-2") },
+    ],
   },
   {
     id: "tpl-vlog",
@@ -366,7 +466,10 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     isHot: false,
     plays: "6.8K",
     conversionRate: "2.4%",
-    previews: [thumb("tpl-vlog-1"), thumb("tpl-vlog-2")],
+    previews: [
+      { thumb: thumb("tpl-vlog-1"), videoUrl: pickVideo("tpl-vlog-1") },
+      { thumb: thumb("tpl-vlog-2"), videoUrl: pickVideo("tpl-vlog-2") },
+    ],
   },
   {
     id: "tpl-plot-twist",
@@ -378,7 +481,10 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     isHot: true,
     plays: "18.7K",
     conversionRate: "3.5%",
-    previews: [thumb("tpl-twist-1"), thumb("tpl-twist-2")],
+    previews: [
+      { thumb: thumb("tpl-twist-1"), videoUrl: pickVideo("tpl-twist-1") },
+      { thumb: thumb("tpl-twist-2"), videoUrl: pickVideo("tpl-twist-2") },
+    ],
   },
 ];
 
@@ -487,8 +593,9 @@ function makeVideos(
   return rows.map((r, i) => {
     const d = new Date(today);
     d.setDate(today.getDate() - (r.daysAgo ?? i + 1));
+    const vid = `${projectId}-v-${i + 1}`;
     return {
-      id: `${projectId}-v-${i + 1}`,
+      id: vid,
       projectId,
       projectName,
       starId,
@@ -498,7 +605,8 @@ function makeVideos(
       plays: r.plays,
       durationSec: r.durationSec ?? 30,
       engine: r.engine ?? "HiGen",
-      thumb: thumb(`${projectId}-v-${i + 1}`),
+      thumb: thumb(vid),
+      videoUrl: pickVideo(vid),
       createdAt: d.toISOString().slice(0, 10),
     };
   });
@@ -579,9 +687,9 @@ export const PROJECT_CHANNELS_MAP: Record<ID, ChannelStatus[]> =
 
 // ── 模板模式：往期生成案例 ──────────────────────────────────────────────────
 export const TEMPLATE_SHOWCASES: CelebrityShowcase[] = [
-  { id: "case-1", caption: "口红 · 樱花粉", engine: "HiGen", plays: "3.2K", thumb: thumb("case-1") },
-  { id: "case-2", caption: "面霜 · 抗皱", engine: "MiniMax", plays: "5.8K", thumb: thumb("case-2") },
-  { id: "case-3", caption: "香水 · 木质调", engine: "KeLing", plays: "1.9K", thumb: thumb("case-3") },
+  { id: "case-1", caption: "口红 · 樱花粉", engine: "HiGen", plays: "3.2K", thumb: thumb("case-1"), videoUrl: pickVideo("case-1") },
+  { id: "case-2", caption: "面霜 · 抗皱", engine: "MiniMax", plays: "5.8K", thumb: thumb("case-2"), videoUrl: pickVideo("case-2") },
+  { id: "case-3", caption: "香水 · 木质调", engine: "KeLing", plays: "1.9K", thumb: thumb("case-3"), videoUrl: pickVideo("case-3") },
 ];
 
 // ── 盲盒模式：往期作品 ──────────────────────────────────────────────────────
@@ -593,6 +701,7 @@ export const BLINDBOX_SHOWCASES: CelebrityShowcase[] = [
     plays: "2.1K",
     approval: "👍 88%好评",
     thumb: thumb("bb-1"),
+    videoUrl: pickVideo("bb-1"),
   },
   {
     id: "bb-2",
@@ -601,6 +710,7 @@ export const BLINDBOX_SHOWCASES: CelebrityShowcase[] = [
     plays: "4.6K",
     approval: "👍 95%好评",
     thumb: thumb("bb-2"),
+    videoUrl: pickVideo("bb-2"),
   },
   {
     id: "bb-3",
@@ -609,6 +719,7 @@ export const BLINDBOX_SHOWCASES: CelebrityShowcase[] = [
     plays: "1.2K",
     approval: "👍 72%好评",
     thumb: thumb("bb-3"),
+    videoUrl: pickVideo("bb-3"),
   },
 ];
 

@@ -15,11 +15,16 @@ import type {
 } from "@/types/celebrity-zone";
 
 // 引擎元数据（顺序即列表展示顺序：经济 → 标准 → 高级）
+// 引擎元数据（顺序即列表展示顺序：经济 → 标准 → 高级）
+//   cost         = 占套餐额度的「条数」（套餐扣减用，与积分单价解耦）
+//   creditPrice  = 单条视频积分单价（前端从后端 /celebrity/engine-pricing 拉取，
+//                  USE_MOCK 时直接用此处常量）
 export const ENGINE_META: Record<CelebrityEngine, EngineMeta> = {
   KeLing: {
     name: "KeLing",
     level: "经济",
     cost: 1,
+    creditPrice: 50,
     speed: "~5分钟",
     quality: 3,
     desc: "性价比高，适合日常内容批量生成。",
@@ -29,6 +34,7 @@ export const ENGINE_META: Record<CelebrityEngine, EngineMeta> = {
     name: "HiGen",
     level: "标准",
     cost: 2,
+    creditPrice: 120,
     speed: "~3分钟",
     quality: 4,
     desc: "效果稳定，口型同步好，推荐大多数场景。",
@@ -38,6 +44,7 @@ export const ENGINE_META: Record<CelebrityEngine, EngineMeta> = {
     name: "MiniMax",
     level: "高级",
     cost: 3,
+    creditPrice: 300,
     speed: "~4分钟",
     quality: 5,
     desc: "最佳画质和表现力，适合重要投放内容。",
@@ -206,10 +213,11 @@ export const VIDEO_STATUS_BADGE: Record<
   },
 };
 
-// 顶部 4 Tab key（与 ?tab= query 对应）
+// 顶部 5 Tab key（与 ?tab= query 对应）
 export const ZONE_TABS = [
   { id: "market", label: "明星市场" },
   { id: "projects", label: "我的项目" },
+  { id: "products", label: "商品库" },
   { id: "library", label: "视频库" },
   { id: "data", label: "数据中心" },
 ] as const;

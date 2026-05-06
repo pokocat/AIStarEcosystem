@@ -4,6 +4,7 @@ import * as React from "react";
 import { Star } from "lucide-react";
 import { ENGINE_META, ENGINE_ORDER } from "@/constants/celebrity-zone-ui";
 import type { CelebrityEngine } from "@/types/celebrity-zone";
+import { formatCredits } from "@/lib/format";
 import { cn } from "@/components/ui/utils";
 
 interface Props {
@@ -66,8 +67,8 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                 >
                   {meta.name}
                 </span>
-                <span className="text-[11px] text-white/40">
-                  {meta.level} · {meta.cost} 条
+                <span className="text-[11px] text-white/40 tabular-nums">
+                  {meta.level} · ✦{formatCredits(meta.creditPrice)}/条
                 </span>
               </button>
             );
@@ -128,7 +129,10 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                     {meta.level}
                   </span>
                 </div>
-                <span className="text-[11px] text-white/45">消耗 {meta.cost} 条额度</span>
+                <span className="text-[11px] tabular-nums text-white/55">
+                  消耗 <span className="text-cyan-200">✦{formatCredits(meta.creditPrice)}</span> 积分
+                  <span className="text-white/35"> · 占套餐额度 {meta.cost} 条</span>
+                </span>
               </div>
               <p className="mt-2 ml-5 text-[12px] leading-relaxed text-white/45">{meta.desc}</p>
               <div className="mt-2 ml-5 flex items-center gap-4 text-[11px] text-white/35">

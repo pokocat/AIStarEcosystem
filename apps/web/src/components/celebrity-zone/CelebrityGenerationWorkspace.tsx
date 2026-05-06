@@ -24,6 +24,7 @@ import {
   TEMPLATE_SHOWCASES,
   BLINDBOX_SHOWCASES,
 } from "@/mocks/celebrity-zone";
+import { ProductsApi } from "@/api";
 import type {
   CelebrityEngine,
   CelebrityProductInput,
@@ -101,6 +102,17 @@ export function CelebrityGenerationWorkspace({ starId }: Props = {}) {
   // ── 生成生命周期 ────────────────────────────────────────────────────────
   const startJob = (job: PendingJob) => {
     setPendingJob(job);
+    // 商品自动落库（不阻塞生成）
+    if (job.product.name.trim()) {
+      void ProductsApi.upsertFromGeneration({
+        name: job.product.name,
+        link: job.product.link,
+        sellingPoints: job.product.sellingPoints,
+        images: job.product.images,
+      }).catch(() => {
+        /* 落库失败不影响生成主流程 */
+      });
+    }
   };
 
   const handleProgressComplete = () => {

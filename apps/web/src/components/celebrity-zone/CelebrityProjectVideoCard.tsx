@@ -4,7 +4,7 @@ import * as React from "react";
 import { Eye } from "lucide-react";
 import type { CelebrityProjectVideo } from "@/types/celebrity-zone";
 import { ENGINE_META, VIDEO_STATUS_BADGE } from "@/constants/celebrity-zone-ui";
-import { CelebrityVideoThumb } from "./CelebrityVideoThumb";
+import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
 import { cn } from "@/components/ui/utils";
 
 interface Props {
@@ -19,10 +19,11 @@ export function CelebrityProjectVideoCard({ video, showProject }: Props) {
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-white/8 bg-white/[0.02] p-2.5 transition hover:border-white/15 hover:bg-white/[0.04]">
-      <CelebrityVideoThumb
-        src={video.thumb}
-        alt={video.productName}
+      <CelebrityVideoPlayer
+        src={video.videoUrl}
+        poster={video.thumb}
         durationSec={video.durationSec}
+        aspect="9/16"
         badge={
           <span
             className={cn(

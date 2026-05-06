@@ -2,25 +2,39 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Flame, Plus, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Flame, RefreshCcw } from "lucide-react";
 import type { CelebrityStar } from "@/types/celebrity-zone";
 import {
   AUTH_STATUS_META,
   CATEGORY_BADGE_CLASS,
+  ENGINE_META,
 } from "@/constants/celebrity-zone-ui";
 import { CelebrityAuthBanner } from "./CelebrityAuthBanner";
 import { CelebrityPricingTierCard } from "./CelebrityPricingTierCard";
+import { CelebrityHeroCta } from "./CelebrityHeroCta";
+import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
+import { useProducerShell } from "@/lib/producer-shell-context";
 import { cn } from "@/components/ui/utils";
 
 interface Props {
   star: CelebrityStar;
 }
 
-/** P2 明星详情：33% 资料 + 67% 示例/套餐/CTA。 */
+const CHEAPEST_CREDIT_PRICE = Math.min(
+  ...Object.values(ENGINE_META).map((m) => m.creditPrice),
+);
+
+/** P2 明星详情：左资料 + 右示例/套餐；已授权且积分够时顶部显示醒目 CTA。 */
 export function CelebrityStarDetail({ star }: Props) {
+  const { wallet } = useProducerShell();
   const auth = AUTH_STATUS_META[star.authorization.status];
   const isAuthorized = star.authorization.status === "authorized";
   const generateHref = `/producer/celebrity-zone/star/${star.id}/generate`;
+  const walletBalance = wallet?.totalBalance ?? 0;
+
+  const currentTier = isAuthorized
+    ? star.pricing.find((t) => t.name === star.pricingTier)
+    : undefined;
 
   return (
     <div className="flex flex-col gap-5">
@@ -44,6 +58,16 @@ export function CelebrityStarDetail({ star }: Props) {
 
       {/* 授权横幅（unauthorized / pending / expired 时） */}
       <CelebrityAuthBanner star={star} />
+
+      {/* 已授权 → 醒目 Hero CTA（积分不足切到充值态） */}
+      {isAuthorized && (
+        <CelebrityHeroCta
+          star={star}
+          walletBalance={walletBalance}
+          requiredCredits={CHEAPEST_CREDIT_PRICE}
+          generateHref={generateHref}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         {/* 左：资料 */}
@@ -138,101 +162,118 @@ export function CelebrityStarDetail({ star }: Props) {
           </div>
         </div>
 
-        {/* 右：示例 + 套餐 + CTA */}
+        {/* 右：示例 + 套餐 */}
         <div className="flex flex-col gap-4">
-          {/* 示例视频 */}
+          {/* 示例视频（真实可播放） */}
           <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-medium text-white/70">示例视频</span>
               <span className="text-[11px] text-white/35">
-                {star.sampleVideos.length} 个样片
+                {star.sampleVideos.length} 个样片 · 点击播放
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {star.sampleVideos.slice(0, 8).map((sv) => (
-                <div
-                  key={sv.id}
-                  className="group relative aspect-[9/16] overflow-hidden rounded-lg border border-white/8"
-                >
-                  <img
-                    src={sv.thumb}
-                    alt={sv.label}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition group-hover:scale-105"
+                <div key={sv.id} className="flex flex-col gap-1.5">
+                  <CelebrityVideoPlayer
+                    src={sv.videoUrl ?? ""}
+                    poster={sv.thumb}
+                    aspect="9/16"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                  <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                    <div className="text-[11px] font-medium text-white">
+                  <div className="px-0.5">
+                    <div className="text-[11px] font-medium text-white/85">
                       {sv.label}
                     </div>
-                    <div className="text-[10px] text-white/55">{sv.category}</div>
+                    <div className="text-[10px] text-white/40">{sv.category}</div>
                   </div>
-                  <span
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[28deg] whitespace-nowrap text-[10px] font-light text-white/15"
-                    aria-hidden
-                  >
-                    AI Star Eco · 样片
-                  </span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* 套餐 */}
-          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-white/70">授权套餐</span>
-              {!isAuthorized && (
-                <span className="text-[11px] text-white/35">
-                  授权通过后方可开通
-                </span>
-              )}
+          {/* 套餐：按授权态分支 */}
+          {isAuthorized && currentTier ? (
+            <CurrentTierBlock star={star} />
+          ) : (
+            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-white/70">授权套餐</span>
+                {!isAuthorized && (
+                  <span className="text-[11px] text-white/35">
+                    授权通过后方可开通
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {star.pricing.map((tier) => (
+                  <CelebrityPricingTierCard
+                    key={tier.id}
+                    tier={tier}
+                    authorized={isAuthorized}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {star.pricing.map((tier) => (
-                <CelebrityPricingTierCard
-                  key={tier.id}
-                  tier={tier}
-                  authorized={isAuthorized}
-                />
-              ))}
-            </div>
-          </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          {/* 主 CTA */}
-          <div className="flex flex-wrap items-center gap-3">
-            {isAuthorized ? (
-              <Link
-                href={generateHref}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-cyan-400 to-purple-500 px-5 py-3 text-base font-semibold text-black shadow-[0_0_30px_rgba(6,182,212,0.35)] transition hover:shadow-[0_0_40px_rgba(168,85,247,0.45)] sm:flex-initial"
-              >
-                <Wand2 className="h-4 w-4" /> 开始生成带货视频 <ArrowRight className="h-4 w-4" />
-              </Link>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title={auth.hint}
-                className="inline-flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-base font-semibold text-white/35 sm:flex-initial"
-              >
-                <Wand2 className="h-4 w-4" /> 开始生成带货视频
-              </button>
-            )}
-            <Link
-              href="/producer/celebrity-zone?tab=projects"
-              className={cn(
-                "inline-flex items-center gap-1 rounded-xl border px-5 py-3 text-sm font-medium transition",
-                isAuthorized
-                  ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200 hover:border-cyan-300 hover:bg-cyan-500/20"
-                  : "cursor-not-allowed border-white/10 bg-white/[0.03] text-white/35",
-              )}
-              aria-disabled={!isAuthorized}
-              onClick={(e) => {
-                if (!isAuthorized) e.preventDefault();
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" /> 加入项目
-            </Link>
+function CurrentTierBlock({ star }: { star: CelebrityStar }) {
+  const tier = star.pricing.find((t) => t.name === star.pricingTier);
+  if (!tier) return null;
+  const used = star.quotaUsed ?? 0;
+  const total = star.quotaTotal ?? 0;
+  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+  return (
+    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/[0.06] to-purple-500/[0.04] p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-white/85">您的套餐</span>
+          <span className="rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+            ✓ 当前
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/producer/celebrity-zone/star/${star.id}/apply`}
+            className="inline-flex items-center gap-1 rounded-md border border-cyan-400/40 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-200 hover:border-cyan-300 hover:bg-cyan-500/20"
+          >
+            <ArrowUpRight className="h-3 w-3" /> 升级套餐
+          </Link>
+          <Link
+            href={`/producer/celebrity-zone/star/${star.id}/apply`}
+            className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1 text-[11px] text-white/60 hover:border-white/30 hover:text-white"
+          >
+            <RefreshCcw className="h-3 w-3" /> 续费
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div>
+          <div className="text-2xl font-bold text-cyan-200 tabular-nums">{tier.price}</div>
+          <ul className="mt-2 flex flex-col gap-1 text-[11px] text-white/55">
+            {tier.features.map((f) => (
+              <li key={f}>• {f}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-xl border border-white/8 bg-white/[0.025] p-3">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-white/45">本月用量</span>
+            <span className="tabular-nums text-white/85">{used}/{total} 条</span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.05]">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-purple-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="mt-2 text-[10px] text-white/35">
+            提示：套餐余量耗尽后可继续按积分扣费生成。
           </div>
         </div>
       </div>

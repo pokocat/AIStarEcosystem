@@ -1,11 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Dice5, Pencil, RefreshCcw, Sparkles, Target } from "lucide-react";
-import { CelebrityWatermarkVideo } from "./CelebrityWatermarkVideo";
+import Link from "next/link";
+import { Dice5, Pencil, RefreshCcw, Sparkles, Target, Wallet } from "lucide-react";
+import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
 import { CelebrityProductForm } from "./CelebrityProductForm";
 import { CelebrityEngineSelect } from "./CelebrityEngineSelect";
 import { CREATIVE_TENDENCIES, ENGINE_META } from "@/constants/celebrity-zone-ui";
+import { formatCredits } from "@/lib/format";
+import { useProducerShell } from "@/lib/producer-shell-context";
 import type {
   CelebrityEngine,
   CelebrityProductInput,
@@ -62,10 +65,17 @@ export function CelebrityBlindBox({ star, projects, showcases, onGenerate }: Pro
   const [tendency, setTendency] = React.useState<CreativeTendency>("不限制");
   const [projectId, setProjectId] = React.useState<string>(projects[0]?.id ?? "");
 
-  const cost = ENGINE_META[engine].cost;
+  const meta = ENGINE_META[engine];
+  const cost = meta.cost;
+  const creditPrice = meta.creditPrice;
   const quotaUsed = star.quotaUsed ?? 0;
   const quotaTotal = star.quotaTotal ?? 0;
   const remaining = quotaTotal - quotaUsed;
+  const { wallet } = useProducerShell();
+  const walletBalance = wallet?.totalBalance ?? 0;
+  const insufficientCredits = creditPrice > walletBalance;
+  const insufficientQuota = cost > remaining && quotaTotal > 0;
+  const cannotGenerate = !product.name.trim() || !projectId || insufficientCredits;
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -132,14 +142,28 @@ export function CelebrityBlindBox({ star, projects, showcases, onGenerate }: Pro
 
         <button
           type="button"
-          disabled={!product.name || !projectId || cost > remaining}
+          disabled={cannotGenerate}
           onClick={() => onGenerate({ product, engine, creativeTendency: tendency, projectId })}
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg border-2 border-purple-400/50 bg-gradient-to-r from-purple-500/40 via-fuchsia-500/30 to-pink-500/30 px-5 py-3 text-base font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.35)] transition hover:shadow-[0_0_40px_rgba(168,85,247,0.55)] disabled:cursor-not-allowed disabled:border-white/10 disabled:from-white/10 disabled:via-white/10 disabled:to-white/10 disabled:text-white/30 disabled:shadow-none"
         >
           <Dice5 className="h-4 w-4" /> 开盲盒生成
         </button>
-        <div className="text-center text-[11px] text-white/35">
-          消耗 {cost} 条额度 · 预计 {ENGINE_META[engine].speed}
+        <div className="flex flex-col gap-1.5 text-[11px]">
+          <div className="text-center text-white/45 tabular-nums">
+            消耗 <span className="text-purple-200">✦{formatCredits(creditPrice)}</span> 积分
+            <span className="text-white/30"> · 占套餐 {cost} 条额度 · 预计 {meta.speed}</span>
+          </div>
+          {insufficientCredits && (
+            <Link
+              href="/producer/finance"
+              className="inline-flex items-center gap-1 self-center rounded-md border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-amber-200 hover:border-amber-300"
+            >
+              <Wallet className="h-3 w-3" /> 积分不足（需 ✦{formatCredits(creditPrice)}）→ 立即充值
+            </Link>
+          )}
+          {!insufficientCredits && insufficientQuota && (
+            <span className="self-center text-rose-300">⚠ 套餐额度不足，将使用积分扣费</span>
+          )}
         </div>
       </div>
 
@@ -164,11 +188,15 @@ export function CelebrityBlindBox({ star, projects, showcases, onGenerate }: Pro
         </div>
 
         <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-          <div className="mb-3 text-sm font-medium text-white/70">盲盒往期作品（带水印）</div>
+          <div className="mb-3 text-sm font-medium text-white/70">盲盒往期作品</div>
           <div className="grid grid-cols-3 gap-3">
-            {showcases.map((s, i) => (
+            {showcases.map((s) => (
               <div key={s.id}>
-                <CelebrityWatermarkVideo label={`盲盒 #${i + 1}`} />
+                <CelebrityVideoPlayer
+                  src={s.videoUrl ?? ""}
+                  poster={s.thumb}
+                  aspect="9/16"
+                />
                 <p className="mt-1.5 text-[11px] text-white/45">{s.caption}</p>
                 <p className="text-[10px] text-white/30">{s.approval}</p>
               </div>

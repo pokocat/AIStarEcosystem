@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { ChevronRight, Eye, Flame, LineChart } from "lucide-react";
-import { CelebrityWatermarkVideo } from "./CelebrityWatermarkVideo";
+import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
 import {
   TEMPLATE_STYLES,
   STYLE_BADGE_CLASS,
@@ -83,8 +83,14 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
               )}
 
               <div className="grid grid-cols-2 gap-2">
-                <CelebrityWatermarkVideo label="效果1" />
-                <CelebrityWatermarkVideo label="效果2" />
+                {(tpl.previews ?? []).slice(0, 2).map((p, i) => (
+                  <CelebrityVideoPlayer
+                    key={i}
+                    src={p.videoUrl ?? ""}
+                    poster={p.thumb}
+                    aspect="9/16"
+                  />
+                ))}
               </div>
 
               <div>

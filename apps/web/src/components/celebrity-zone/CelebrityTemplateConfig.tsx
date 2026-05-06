@@ -1,11 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeftRight, Check, Film, Lightbulb } from "lucide-react";
-import { CelebrityWatermarkVideo } from "./CelebrityWatermarkVideo";
+import Link from "next/link";
+import { ArrowLeftRight, Check, Film, Lightbulb, Wallet } from "lucide-react";
+import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
 import { CelebrityProductForm } from "./CelebrityProductForm";
 import { CelebrityEngineSelect } from "./CelebrityEngineSelect";
 import { DURATION_OPTIONS, ENGINE_META } from "@/constants/celebrity-zone-ui";
+import { formatCredits } from "@/lib/format";
+import { useProducerShell } from "@/lib/producer-shell-context";
 import type {
   CelebrityEngine,
   CelebrityProductInput,
@@ -66,10 +69,18 @@ export function CelebrityTemplateConfig({
     return "generate";
   }, [product.name, engine]);
 
-  const cost = ENGINE_META[engine].cost;
+  const meta = ENGINE_META[engine];
+  const cost = meta.cost;
+  const creditPrice = meta.creditPrice;
   const quotaUsed = star.quotaUsed ?? 0;
   const quotaTotal = star.quotaTotal ?? 0;
   const remaining = quotaTotal - quotaUsed;
+  const { wallet } = useProducerShell();
+  const walletBalance = wallet?.totalBalance ?? 0;
+  const insufficientCredits = creditPrice > walletBalance;
+  const insufficientQuota = cost > remaining && quotaTotal > 0;
+  const cannotGenerate =
+    !product.name.trim() || !projectId || insufficientCredits;
 
   return (
     <div className="flex flex-col gap-5">
@@ -104,7 +115,11 @@ export function CelebrityTemplateConfig({
           {/* 模板信息卡 */}
           <div className="flex gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.04] p-3">
             <div className="w-[64px] shrink-0">
-              <CelebrityWatermarkVideo label="预览" />
+              <CelebrityVideoPlayer
+                src={template.previews?.[0]?.videoUrl ?? ""}
+                poster={template.previews?.[0]?.thumb}
+                aspect="9/16"
+              />
             </div>
             <div className="flex flex-1 flex-col">
               <div className="text-sm font-semibold text-white/85">{template.name}模板</div>
@@ -173,7 +188,7 @@ export function CelebrityTemplateConfig({
           {/* CTA */}
           <button
             type="button"
-            disabled={!product.name || !projectId || cost > remaining}
+            disabled={cannotGenerate}
             onClick={() =>
               onGenerate({ product, engine, duration, projectId })
             }
@@ -181,9 +196,29 @@ export function CelebrityTemplateConfig({
           >
             <Film className="h-4 w-4" /> 生成视频
           </button>
-          <div className="flex items-center justify-between text-[11px] text-white/35">
-            <span>消耗 {cost} 条额度（{engine} {ENGINE_META[engine].level}）</span>
-            <span>套餐余量 {quotaUsed}/{quotaTotal}</span>
+          <div className="flex flex-col gap-1.5 text-[11px]">
+            <div className="flex flex-wrap items-center justify-between text-white/45 tabular-nums">
+              <span>
+                消耗 <span className="text-cyan-200">✦{formatCredits(creditPrice)}</span> 积分
+                <span className="text-white/30"> · 占套餐 {cost} 条额度</span>
+              </span>
+              <span className="text-white/35">
+                套餐余量 {quotaUsed}/{quotaTotal} · 钱包 ✦{formatCredits(walletBalance)}
+              </span>
+            </div>
+            {insufficientCredits && (
+              <Link
+                href="/producer/finance"
+                className="inline-flex items-center gap-1 self-start rounded-md border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-amber-200 hover:border-amber-300"
+              >
+                <Wallet className="h-3 w-3" /> 积分不足（需 ✦{formatCredits(creditPrice)}）→ 立即充值
+              </Link>
+            )}
+            {!insufficientCredits && insufficientQuota && (
+              <span className="inline-flex items-center gap-1 self-start rounded-md border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-rose-200">
+                ⚠ 套餐额度不足，将自动改用积分扣费
+              </span>
+            )}
           </div>
         </div>
 
@@ -192,20 +227,20 @@ export function CelebrityTemplateConfig({
           <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
             <div className="mb-3 text-sm font-medium text-white/70">模板效果预览</div>
             <div className="grid grid-cols-2 gap-3">
-              <CelebrityWatermarkVideo
-                label="场景 1"
-                caption="闺蜜对话开场"
-              />
-              <CelebrityWatermarkVideo
-                label="场景 2"
-                caption="产品展示特写"
-              />
+              {(template.previews ?? []).slice(0, 2).map((p, i) => (
+                <CelebrityVideoPlayer
+                  key={i}
+                  src={p.videoUrl ?? ""}
+                  poster={p.thumb}
+                  aspect="9/16"
+                />
+              ))}
             </div>
           </div>
 
           <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-white/70">往期生成案例（带水印）</span>
+              <span className="text-sm font-medium text-white/70">往期生成案例</span>
               <button className="text-xs text-cyan-300 hover:text-cyan-200">
                 查看更多 →
               </button>
@@ -213,9 +248,13 @@ export function CelebrityTemplateConfig({
             <div className="grid grid-cols-3 gap-3">
               {showcases.map((s) => (
                 <div key={s.id}>
-                  <CelebrityWatermarkVideo label={s.caption} />
+                  <CelebrityVideoPlayer
+                    src={s.videoUrl ?? ""}
+                    poster={s.thumb}
+                    aspect="9/16"
+                  />
                   <div className="mt-1.5 flex items-center justify-between text-[11px] text-white/40">
-                    <span>{s.engine}</span>
+                    <span className="line-clamp-1">{s.caption}</span>
                     <span>▶ {s.plays}</span>
                   </div>
                 </div>
