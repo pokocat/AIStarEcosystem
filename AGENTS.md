@@ -300,25 +300,60 @@ apps/admin/src/
 
 ### 新增领域 SOP
 
-当需要新增一个领域 `<domain>` 时，完整清单：
+当需要新增一个领域 `<domain>` 时，必须按以下顺序操作（顺序很重要：前端真值源先定，后端再 mirror，契约文档最后同步）。
+
+#### 第 1 步：前端真值源
 
 ```
 web/src/types/<domain>.ts          ← 类型定义（唯一事实源）
-web/src/mocks/<domain>.ts          ← 样本数据
-web/src/api/<domain>.ts            ← API 封装（USE_MOCK 开关）
-web/src/api/index.ts               ← 追加 export
-web/src/constants/<domain>-ui.ts   ← UI 配置
-
-admin/src/types/<domain>.ts        ← 与 web 一致
-admin/src/mocks/<domain>.ts        ← 管理视图样本
-admin/src/api/<domain>.ts          ← API 路径用 /admin/...
-admin/src/api/index.ts             ← 追加 export
-
-server/.../aep/model/<Entity>.java       ← JPA 实体
-server/.../aep/dto/<Entity>Dto.java      ← DTO record
-server/.../aep/repository/<Entity>Repository.java  ← 仓储
-server/.../aep/controller/Admin<Domain>Controller.java  ← REST 端点
+web/src/mocks/<domain>.ts          ← 样本数据（USE_MOCK 模式回退）
+web/src/constants/<domain>-ui.ts   ← UI 配置（图标 / 颜色 / 标签）
 ```
+
+#### 第 2 步：前端调用层
+
+```
+web/src/api/<domain>.ts            ← apiFetch + USE_MOCK 开关；返回类型 = TS 接口
+web/src/api/index.ts               ← 追加 export * as XxxApi
+```
+
+#### 第 3 步：后端 mirror（按 web/src/types/<domain>.ts 字段名严格复刻）
+
+```
+server/.../aep/model/<Entity>.java               ← JPA 实体
+server/.../aep/dto/<Entity>Dto.java              ← DTO record，字段名必须与 TS 完全一致
+server/.../aep/repository/<Entity>Repository.java  ← 仓储
+server/.../aep/controller/<Domain>Controller.java  ← REST 端点（用户域用 /me/**；管理域用 /admin/**）
+```
+
+#### 第 4 步：admin 镜像（与 web 接口完全相同的类型，路径前缀 /admin/）
+
+```
+admin/src/types/<domain>.ts        ← 与 web 同名同字段（直接复制；admin 专属字段以 AdminXxx 扩展）
+admin/src/mocks/<domain>.ts        ← 管理视图样本
+admin/src/api/<domain>.ts          ← apiFetch URL 用 /admin/...
+admin/src/api/index.ts             ← 追加 export
+```
+
+#### 第 5 步：契约文档（强制；CI 校验）
+
+```
+specs/openapi.yaml                 ← 在 components.schemas 加 schema、在 paths 加 path
+specs/BUSINESS_RULES.md            ← （可选）若有非平凡业务规则（扣费、状态机、跨字段约束）
+```
+
+> 不要再写「契约 diff 文档」—— v2.7 起这套被废弃。drift 由 CI 守护：
+
+#### 第 6 步：本地验证（必须全绿才能提交）
+
+```bash
+(cd apps/web && npx tsc --noEmit)             # web 类型门
+(cd apps/admin && npx tsc --noEmit)           # admin 类型门
+(cd apps/server && ./mvnw compile -q -o)      # server 类型门
+(cd apps/web && npm run check:api-contract)   # apiFetch URL ↔ openapi.yaml paths 漂移校验
+```
+
+> 实现细节见 `apps/web/scripts/check-api-contract.mjs`。任一前端 `apiFetch` URL 在 openapi.yaml 找不到对应 path 时，gate fail。
 
 ### 编译验证
 
