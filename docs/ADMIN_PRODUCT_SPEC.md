@@ -106,9 +106,12 @@
 - **价格档**（`pricing`：体验版 / 标准版 / 旗舰版）：价格文案、特性列表、是否推荐。
 - **可见性**：上下架、权重、置顶、定向（按角色 / 机构 / 白名单）。
 
-#### 3.2.2 模板配置 `celebrity/projects`（`CelebrityTemplate`）
+#### 3.2.2 模板基础信息（`CelebrityTemplate`）
+> 这只是模板的「卡片元信息」（用户在专区里挑选用）。**真正决定生成效果的提示词剧本见 §3.2.7**——后端运行时优先读 `TemplateScript.published`，`CelebrityTemplate` 只做展示与 1:N 关联。
+
 - **字段**：`name / style(种草/测评/开箱/直播切片/剧情植入) / description / recommendedEngine / recommendedPrice / isHot / plays / conversionRate / fitHint / previews[]`。
 - **运营动作**：模板新增 / 编辑 / 下架；按 AI 明星绑定可用模板；按"风格类目"管理。
+- **提示词剧本入口**：每行模板都有「编辑脚本」按钮 → 跳转 §3.2.7 的脚本编辑器。模板必须至少有 1 个 `published` 脚本才能在用户端可选。
 
 #### 3.2.3 引擎配置 `base/engines`（**新增**）
 当前 `apps/web/src/mocks/celebrity-zone.ts` 中的 `EngineMeta` 写死了 KeLing / HiGen / MiniMax 三档：
@@ -127,6 +130,402 @@
 
 #### 3.2.6 商品库 `celebrity/products`（`CelebrityProductInput`）
 - 商品名 / 链接 / 图片 / 卖点；运营审核违禁词、外链白名单。
+
+#### 3.2.7 模板脚本系统 · `TemplateScript`（**新增 · 视频生成核心**）
+
+> 用户重点强调：**模板要做成提示词的集合，足够详细，让模型按模板的约定输出视频**。本节定义这套"脚本"的数据模型、编辑器、运行时装配、三端契约。
+>
+> 当前现状：`CelebrityTemplate` 只持有 `description / fitHint / previews` 等营销面文案，**没有任何 prompt 字段**（`apps/web/src/mocks/celebrity-zone.ts` 397–489 行的 6 个模板可证）。后端拿到 `templateId` 后无 prompt 集合可装配，生成效果完全靠引擎默认值。本节闭环。
+
+##### 3.2.7.1 设计目标
+1. **双模可选**：
+   - **`text` 模式**——结构化文本脚本，含分镜/视角/动作/口播/Prompt 片段（详 §3.2.7.2 / §3.2.7.3）。
+   - **`video_ref` 模式**——上传一段视频素材作为模板内容，由模型按"风格 / 结构 / 节奏 / 全部"参考生成（详 §3.2.7.2.5）。
+   - 两种模式共享变量系统、引擎适配、风控、后处理、版本化能力。
+2. **结构化剧本**（text 模式）：一个模板 = 系统 Persona + 系统 Prompt + N 个 Scene（镜头/动作/口播/商品出镜/Prompt 片段） + 风格修饰 + 负向提示。
+3. **运营只填中文剧本与提示词集合 / 上传参考视频**，运行时由后端 `PromptAssemblyService` 替换变量、按引擎方言改写、过风控，再调引擎。
+4. **同一脚本兼容三引擎、三时长**：通过 `engineAdapters.{KeLing|HiGen|MiniMax}` 与 `durationVariants["15"|"30"|"60"]` 表达差异。
+5. **版本化 + 灰度 + A/B + 指标回流**：草稿 → 审核 → 发布；可回滚；可分桶；指标 30 天回看。
+
+##### 3.2.7.2 数据模型 `TemplateScript`
+
+放置：`apps/web/src/types/celebrity-zone.ts`（新增），与 `CelebrityTemplate` 1:N（同一模板可多个版本，但同时仅一个 `published`）。
+
+```ts
+TemplateScript {
+  id: ID;
+  templateId: ID;                // 关联 CelebrityTemplate
+  version: number;
+  status: "draft" | "in_review" | "published" | "archived";
+  language: "zh-CN";
+
+  /** 0. 模式选择 —— 决定下文哪些字段必填 */
+  kind: "text" | "video_ref";
+
+  /** 0a. video_ref 模式专属 —— text 模式时为 undefined（详 §3.2.7.2.5） */
+  referenceClip?: TemplateReferenceClip;
+
+  /** 1. 角色画像：明星该"演什么"（两种模式都填，video_ref 模式作"附加约束"） */
+  persona: {
+    voiceTone: string;           // "亲切、邻家女孩"
+    speakingStyle: string;       // "短句、口语化、带语气词"
+    personality: string[];       // ["温暖", "专业", "有亲和力"]
+    forbiddenTone: string[];     // 不能出现的语气
+  };
+
+  /** 2. 系统提示：顶层总体约束（text 模式 ≥ 200 字；video_ref 模式可短，作"补充指令"） */
+  systemPrompt: string;
+
+  /** 3. 场景序列：镜头-by-镜头剧本（text 模式必填；video_ref 模式可空，由参考视频天然提供分镜） */
+  scenes: Scene[];               // §3.2.7.3
+
+  /** 4. 风格修饰 */
+  visualStyle: {
+    lighting: string;            // "柔和自然光 + 侧补光"
+    colorPalette: string[];      // ["#fde7e9", "#ffd6a5"]
+    cinematography: string;      // "手持小晃动、浅景深"
+    referenceUrls?: string[];    // 风格参考图
+  };
+
+  /** 5. 负向提示 */
+  negativePrompt: string;        // "避免：低饱和、阴暗光线、AI 痕迹、口型错位、商品 logo 模糊"
+
+  /** 6. 变量插槽 */
+  variables: TemplateVariable[]; // §3.2.7.4
+
+  /** 7. 引擎适配 */
+  engineAdapters: {
+    KeLing?:  EngineAdapter;     // §3.2.7.5
+    HiGen?:   EngineAdapter;
+    MiniMax?: EngineAdapter;
+  };
+
+  /** 8. 时长适配 */
+  durationVariants: {
+    "15": { sceneIds: ID[]; cutHint: string };
+    "30": { sceneIds: ID[]; cutHint: string };
+    "60": { sceneIds: ID[]; cutHint: string };
+  };
+
+  /** 9. 后处理（剪辑/字幕/水印/BGM） */
+  postProcess: {
+    subtitleTemplate: string;             // "{{starName}} | {{productName}}"
+    watermarkPolicy: "always" | "if_unauth" | "never";
+    bgmCategory?: string;
+    transitionStyle?: string;             // "硬切" / "淡入" / "节奏卡点"
+  };
+
+  /** 10. 风控 */
+  safety: {
+    forbiddenWords: string[];
+    requiredDisclaimers: string[];        // ["广告", "效果因人而异"]
+    brandRestrictions?: string[];         // 不可对比的品牌
+  };
+
+  /** 11. A/B 实验（可选） */
+  experiment?: {
+    bucket: "A" | "B";
+    rolloutPct: number;                   // 0–100
+    siblingScriptId?: ID;
+  };
+
+  /** 12. 评估反馈（系统回填） */
+  metrics?: {
+    runs: number;
+    avgPlays: number;
+    conversionRate: number;
+    avgFitScore: number;                  // 引擎回传的口型/画面匹配度
+    rejectRate: number;                   // 人工审核驳回率
+  };
+
+  createdAt: ISODateTime;
+  publishedAt?: ISODateTime;
+  publishedBy?: ID;
+}
+```
+
+##### 3.2.7.2.5 视频参考模式 `TemplateReferenceClip`（`kind: "video_ref"` 专属）
+
+> 用户需求：**支持上传一段视频素材作为模板内容**。运营在专区里挑了"视频模板"后，模型会以这段参考视频的风格 / 结构 / 节奏作为生成依据，再叠加运营填写的口播脚本和明星 / 商品变量。
+
+**典型用法**：
+- 运营找到一条爆款短视频（自有版权或经授权），上传作为「视觉骨架」。
+- 系统自动抽取关键帧 / 分镜 / 时长 / BGM 节奏，生成 `referenceClip` 元数据。
+- 运行时把视频/帧序列传给引擎的「视频参考」通道（KeLing 的 `motion_reference`、HiGen 的 `style_clip`、MiniMax 的 `ref_video`），叠加 §3.2.7.2 的 systemPrompt / variables / safety。
+
+**数据模型**：
+
+```ts
+TemplateReferenceClip {
+  /** 上传的原始视频，公开访问 URL（CDN） */
+  videoUrl: string;
+  /** 缩略图（运营列表视图展示） */
+  thumbUrl: string;
+  /** 视频时长，秒 */
+  durationSec: number;
+  /** 帧率 / 分辨率 / 编码（系统转码后回填） */
+  meta: {
+    width: number;
+    height: number;
+    fps: number;
+    codec: string;       // "h264" | "h265" | "vp9"
+    sizeBytes: number;
+  };
+
+  /** 参考用途：决定模型如何"用"这段素材 */
+  usage: "style" | "structure" | "rhythm" | "all";
+  // - style:     仅参考画面色调 / 光线 / 镜头感
+  // - structure: 参考分镜节奏 / 镜头切换 / 景别变化（不复刻具体画面）
+  // - rhythm:    仅参考时间节奏（用于卡点视频）
+  // - all:       三者皆参考（强约束，最像参考视频）
+
+  /** 影响强度 0–1，越高越接近参考视频；引擎层会换算成各自的 weight */
+  influence: number;
+
+  /** 可选：运营手动框选的"重点参考片段"（视频内时间窗），只对这些片段做参考 */
+  segments?: Array<{ startSec: number; endSec: number; note: string }>;
+
+  /** 系统抽帧产物：用于做参考图通道、缩略图、prompt 助手分析 */
+  keyFrames?: Array<{ url: string; tSec: number; tags?: string[] }>;
+
+  /** 系统检测产物：作 prompt 助手草稿 */
+  autoAnalysis?: {
+    detectedShots: Array<{ tSec: number; shotType: string }>;  // 自动分镜
+    detectedBgmBpm?: number;                                    // 节奏检测
+    dominantColors?: string[];                                  // 主色板
+    suggestedScenes?: Scene[];                                  // 一键转 text 模式的草稿
+  };
+
+  /** 版权 / 授权 */
+  license: {
+    source: "self_owned" | "licensed" | "platform_official";
+    licenseDoc?: string;          // 授权书 URL（licensed 必填）
+    expireAt?: ISODate;
+    creditTo?: string;            // 必标注的版权方
+  };
+
+  /** 风控状态 */
+  reviewStatus: "pending" | "approved" | "rejected";
+  reviewNotes?: string;
+  reviewedBy?: ID;
+}
+```
+
+**编辑器交互（§3.2.7.6 增量）**：
+1. 「模式选择」首屏二选一：「文本脚本（结构化分镜）」/「上传视频参考」。
+2. video_ref 模式编辑器分四区：
+   - **左区 · 上传与转码**：拖拽上传，最大 200 MB / ≤ 60s；上传后系统自动转码 + 抽帧 + 检测 → 进度条 + 元数据回填。
+   - **中区 · 参考策略**：单选 `usage`（style/structure/rhythm/all）+ 滑块 `influence(0–1)` + 时间窗 `segments[]`（在播放器上拖框）。
+   - **右区 · prompt 补丁**：保留 `systemPrompt / variables / safety / postProcess`；可选「参考关键帧 + 自动 Scene 草稿」一键转入 text 模式继续微调。
+   - **底区 · 版权 + 审核**：填 source / 授权书上传 / creditTo；提交审核（先人工过版权与内容合规，后才能发布）。
+3. 试跑：与 text 模式同一 dry-run 入口，prompt 装配预览右侧多一栏「参考视频缩略 + 关键帧」，便于核对。
+
+**运行时差异**（§3.2.7.7 装配流程的补丁）：
+
+```
+PromptAssemblyService（kind === "video_ref"）：
+  1. 取 published TemplateScript
+  2. 跳过 "scenes 子集选择"（参考视频天然提供分镜）；durationVariants 改成
+     "用 referenceClip.segments 截取目标时长"
+  3. 把 product / star 等填入 systemPrompt / safety / postProcess（与 text 一致）
+  4. 装配引擎请求：除常规 positive / negative，**额外注入参考视频通道**：
+       - KeLing:  motion_reference = {url, weight: influence}
+       - HiGen:   style_clip = {url, segments, weight}
+       - MiniMax: ref_video   = {url, mode: usage, weight}
+  5. 风控：对 referenceClip.reviewStatus !== "approved" 直接拒绝执行
+  6. 调引擎；积分扣费在 EngineMeta.creditPrice 基础上 × (1 + videoRefSurcharge)
+     （视频参考通道通常更贵，加价系数在 §3.2.3 引擎配置里维护）
+```
+
+**风控加严**（在 §3.2.7.2 `safety` 之外增加）：
+- 必须有版权文件或归属为 `self_owned / platform_official`。
+- 必跑色情 / 暴力 / 政治敏感画面检测（NSFW + 人脸识别 + 违禁元素）。
+- 不允许出现明显第三方 logo / 真人明星，除非 `license.creditTo` 明确授权。
+- 同一视频被超过 N 个脚本复用时（默认 N=10）触发预警，避免"视觉趋同"。
+
+##### 3.2.7.3 场景结构 `Scene`（`kind: "text"` 必填；`video_ref` 可选叠加）
+
+```ts
+Scene {
+  id: ID;
+  order: number;                          // 顺序
+  durationSec: number;                    // 该场景秒数
+  shotType: "近景" | "中景" | "远景" | "特写" | "运镜";
+  cameraMotion?: "推" | "拉" | "摇" | "移" | "跟" | "静止";
+  composition: string;                    // "明星左 1/3 站位，商品放右下"
+
+  setting: string;                        // "暖色调家居客厅，沙发+绿植"
+  props?: string[];
+
+  // 演员动作
+  action: string;                         // "明星拿起{{productName}}转身展示给镜头"
+  expression: string;                     // "微笑 + 眼神惊喜"
+  gestureRefs?: ID[];                     // 关联 §7.2 Gesture 库
+
+  // 口播 / 字幕
+  dialogue: string;                       // "你们看，{{sellingPoints[0]}}！"
+  voiceEmotion: "calm" | "excited" | "warm" | "professional";
+  onScreenText?: string;                  // 屏幕大字："限时 ¥{{price}}"
+
+  // 商品出镜
+  productAppearance: {
+    angle: "front" | "side" | "top" | "in_use";
+    durationSec: number;
+    closeUpFraming: string;               // "充满画面 1/3，背景虚化"
+  };
+
+  // 模型 prompt 片段（最终参与拼装；可中英夹杂）
+  positivePromptFragment: string;         // 长文本，详尽到色温/材质/景深
+  negativePromptFragment?: string;
+}
+```
+
+> **关键设计**：每个 Scene 同时持有「人能读懂的中文剧本」+「给模型的结构化 prompt 片段」。运营优先填中文，prompt 片段可由 AI 助手草稿生成、人工微调。
+
+##### 3.2.7.4 变量系统 `TemplateVariable`
+
+```ts
+TemplateVariable {
+  key: string;                            // "productName"
+  label: string;                          // "商品名"
+  type: "text" | "textArray" | "number" | "image" | "enum";
+  source: "product" | "star" | "engine" | "duration" | "manual";
+  required: boolean;
+  default?: string;
+  enumValues?: string[];
+  maxLength?: number;
+  examples?: string[];
+}
+```
+
+**预置变量清单**（运营不可删，仅可改 label / 约束）：
+
+| key | source | 说明 |
+|-----|--------|------|
+| `productName` | product | 商品名 |
+| `sellingPoints` | product | 卖点数组（最多 3 条） |
+| `productImages` | product | 商品图（接引擎参考图通道） |
+| `productLink` | product | 跳转链接（出现在水印/字幕） |
+| `starName` | star | 明星名 |
+| `starPersona` | star | 明星人设标签 |
+| `engineName` | engine | 引擎名（adapter 内部用） |
+| `durationSec` | duration | 视频时长 |
+| `cta` | manual | 行动召唤文案 |
+| `price` | manual | 售价 |
+| `discount` | manual | 折扣文案 |
+
+**模板内引用语法**：
+- 简单替换：`{{productName}}`
+- 数组下标：`{{sellingPoints[0]}}`
+- 默认值：`{{cta|"立刻下单"}}`
+- 缺失校验：`required=true` 的变量缺失时装配失败；`safety.requiredDisclaimers` 未出现时装配失败。
+
+##### 3.2.7.5 引擎适配器 `EngineAdapter`
+
+```ts
+EngineAdapter {
+  enabled: boolean;
+  /** 顶层 prompt 模板，可引用 {{systemPrompt}} / {{scenes}} / 任意变量 */
+  promptTemplate: string;
+
+  /** 引擎专属参数 */
+  params: {
+    aspectRatio?: "9:16" | "16:9" | "1:1";
+    fps?: 24 | 30 | 60;
+    seed?: number;
+    cfgScale?: number;
+    // KeLing 专属：camera_control / motion_strength
+    // HiGen 专属：lipsync_strength / emotion_intensity
+    // MiniMax 专属：style_id / ref_image_weight
+    [key: string]: unknown;
+  };
+
+  /** 后端调用引擎时的请求体 schema 引用 */
+  requestSchemaRef: string;               // e.g. "schemas/keling.req.v2"
+
+  /** 引擎拒绝/超时时的兜底 */
+  fallbackEngine?: CelebrityEngine;
+}
+```
+
+> 服务端新增 `PromptAssemblyService`（§3.2.7.7），输入 `(scriptId, productInput, starId, duration, engine)`，输出引擎可消费的请求体。
+
+##### 3.2.7.6 后台编辑器（运营 UI）
+
+新增路由：`apps/admin/src/app/celebrity/templates/[templateId]/scripts/[scriptId]/`
+
+| 模块 | 关键交互 |
+|-----|---------|
+| 元信息面板 | 版本号、状态徽章、绑定的 `CelebrityTemplate`、语言；右上角「保存草稿 / 提交审核 / 发布 / 回滚」 |
+| Persona / SystemPrompt 编辑区 | 富文本 + 实时字数 + 「AI 改写」按钮（基于 LLM 给运营草稿建议） |
+| **场景时间线**（核心） | 横向时间轴（按 `order × durationSec`），每个场景一张卡片显示 shotType / 镜头运动 / 布景 / 动作 / 口播 / 商品出镜；支持拖拽改顺序；点击右侧抽屉编辑 `positivePromptFragment` 长文本（含变量自动补全） |
+| 变量管理器 | 列表视图，新增 / 编辑 / 删除（系统变量不可删），每条带「示例值预填」用于试跑 |
+| 引擎适配器 Tab | 三个 Tab（KeLing / HiGen / MiniMax），各自独立 `promptTemplate` 编辑器；侧栏实时显示「装配预览」（变量替换后的最终 prompt） |
+| 时长变体配置 | 三个 chip（15 / 30 / 60s），每个选择启用的场景子集 + `cutHint`（剪辑提示） |
+| 后处理 / 风控 Tab | 字幕模板、水印策略、BGM 类目、敏感词、必带免责声明、不可对比品牌 |
+| **预览 / 试跑**（核心） | 左侧填模拟入参（商品 + 明星 + 引擎 + 时长） → 中间高亮显示最终装配 prompt（变量替换、场景拼接、风控过滤标红） → 右侧「提交试跑作业」实际调引擎，消耗预设的运营测试积分，返回视频在线播放 |
+| 版本与发布 | 列出全部版本（draft/in_review/published/archived），支持版本 diff 对比、一键回滚到任意 published 历史版本、双人复核才能发布 |
+| 指标面板 | 跑过的 N 次作业的 plays / conversion / fitScore / rejectRate；A/B 实验对比柱图（30 天回看） |
+
+##### 3.2.7.7 运行时装配流程
+
+```
+用户在 /producer/celebrity-zone 选模板 → 填商品 → 选引擎 → 选时长 → 提交
+        │
+        ▼
+后端 CelebrityGenerationController.create
+        │
+        ▼
+PromptAssemblyService:
+  1. 取该 templateId 下 status=published 的 TemplateScript（A/B 时按 userId 哈希分桶）
+  2. 按 durationVariants[duration].sceneIds 选场景子集
+  3. 把 product / star / engine / duration / cta / price 填入 variables
+  4. 替换 systemPrompt 与每个 scene 的 {{...}}
+  5. 拼接 fullPositive  = persona + systemPrompt + scenes.map(positivePromptFragment) + visualStyle
+  6. 拼接 fullNegative = base + scenes.map(negativePromptFragment) + safety.forbiddenWords
+  7. 走 engineAdapters[engine].promptTemplate 改写为引擎方言 + 注入 engine.params
+  8. 风控校验（forbiddenWords / requiredDisclaimers / brandRestrictions）→ 失败则返回明确错误码
+        │
+        ▼
+调引擎（KeLing / HiGen / MiniMax）→ 视频 URL
+        │  失败时按 engineAdapters[engine].fallbackEngine 兜底重试
+        ▼
+回写 LedgerEntry（按 EngineMeta.creditPrice 扣积分）；同步 metrics 累计
+```
+
+##### 3.2.7.8 三端契约（按 `AGENTS.md` 「新增领域 SOP」）
+
+| 文件 | 动作 |
+|------|------|
+| `apps/web/src/types/celebrity-zone.ts` | 新增 `TemplateScript / Scene / TemplateVariable / EngineAdapter / TemplateReferenceClip` 类型，含 `kind: "text" \| "video_ref"` 判别字段 |
+| `apps/web/src/mocks/celebrity-zone.ts` | 给 6 个 `CelebrityTemplate` 各补 1 份示范 `TemplateScript` |
+| `apps/web/src/api/celebrity-zone.ts` | 新增 `getTemplateScript(templateId)`（用户端只读最新 published） |
+| `apps/admin/src/types/celebrity-zone.ts` | 镜像 + `AdminTemplateScript`（含全部 metrics、版本列表、审核流元数据） |
+| `apps/admin/src/api/celebrity-zone.ts` | 新增 `listScripts / getScript / saveDraft / submitReview / publish / rollback / dryRun` |
+| `apps/admin/src/app/celebrity/templates/[templateId]/scripts/...` | §3.2.7.6 编辑器路由 |
+| `apps/server/.../aep/model/TemplateScript.java` | 新增 JPA 实体 + Scene / Variable / Adapter 子表（或 JSON 列） |
+| `apps/server/.../aep/dto/TemplateScriptDto.java` | DTO 字段名严格对齐 TS interface |
+| `apps/server/.../aep/service/PromptAssemblyService.java` | **新增**：变量替换 + 引擎适配 + 风控校验；按 `kind` 走 text / video_ref 两条装配分支 |
+| `apps/server/.../aep/service/VideoReferenceIngestService.java` | **新增**（video_ref 模式）：视频上传转码、抽帧、自动分镜、BGM BPM、主色板检测、NSFW / 违禁检测 |
+| `apps/server/.../aep/storage/` | 视频与关键帧的对象存储桶配置（OSS / S3）+ CDN 失效 |
+| `apps/server/.../aep/controller/AdminTemplateScriptController.java` | `/admin/template-scripts/**` |
+| `apps/server/.../aep/controller/CelebrityGenerationController.java` | 改造：取 `TemplateScript.published`，调用 `PromptAssemblyService` |
+| `specs/openapi.yaml` | 新增 paths：`/admin/template-scripts`、`/admin/template-scripts/{id}`、`/admin/template-scripts/{id}/dry-run`、`/admin/template-scripts/{id}/publish`、`/admin/template-scripts/{id}/rollback`、`/admin/template-scripts/{id}/upload-clip`（multipart 上传参考视频）、`/admin/template-scripts/{id}/clip-status`（轮询转码/检测状态）、`/template-scripts/{id}` |
+| `specs/BUSINESS_RULES.md` | 新增：变量替换语法、引擎适配优先级、`{{var\|default}}` 解析规则、敏感词校验时机、双人复核门槛、A/B 桶分配函数 |
+
+##### 3.2.7.9 验收（DoD）
+
+- [ ] 内置模板脚本数 ≥ 6（覆盖 6 种 `TemplateStyle`：种草安利 / 硬核测评 / 轻松开箱 / 直播切片 / 剧情植入 / 日常 Vlog）。
+- [ ] **两种 `kind` 各至少有 2 份示例**（text 模式结构化分镜；video_ref 模式带版权审核通过的参考视频）。
+- [ ] text 模式每份脚本至少 3 个场景，每个 `positivePromptFragment` ≥ 80 字。
+- [ ] video_ref 模式参考视频 ≤ 60 秒、≤ 200 MB；上传后 5 分钟内完成转码 + 抽帧 + 检测。
+- [ ] 同一脚本可成功为 3 种引擎装配 prompt（dry-run 全绿）；prompt diff 在 admin 编辑器一屏可比。
+- [ ] 脚本变更走「草稿 → 审核 → 发布 → 归档」四态；发布后 1 分钟内前台拉到。
+- [ ] A/B 桶按 `userId` 哈希稳定（同一用户多次刷新落同一桶）；实验 30 天指标回看。
+- [ ] 风控：含 `forbiddenWords` 的脚本无法发布（前置校验 + 后端二次校验）；运行时缺 `requiredDisclaimers` 时装配失败。
+- [ ] video_ref 风控：`reviewStatus !== "approved"` 不可发布；NSFW / 违禁画面命中即拒；版权文件为必填项（除 `self_owned / platform_official`）。
+- [ ] 引擎超时 / 拒绝 → 自动按 `fallbackEngine` 兜底一次，二次失败才回报给用户并退积分。
+- [ ] 所有脚本变更进 `AuditLog`（who / version / before-after JSON diff）。
 
 ### 3.3 AI 形象工坊 `base/presets`（对齐 `apps/web/src/types/appearance-forge.ts`）
 
@@ -335,21 +734,25 @@ ConfigItem {
 
 > **P0**（强配置化痛点，本期必做）
 1. AI 明星列表 + 引擎 + 模板 + 价格档（§3.2）—— 当前 `mocks/celebrity-zone.ts` 全量后台化。
-2. AI 形象工坊参数字典（§3.3.3）—— 发型 / 瞳色 / 滑块 / 渐变 / 锁定项。
-3. 音乐生成阶段与流式参数（§4.1 → `generation-ui.ts`）。
-4. 服装 / 姿态 / 表情 / 手势库（§7.1、§7.2）—— 含价格 / 销售状态。
-5. 全站字典上移：17 个 `constants/*` 文件 → API 化（§7.5）。
-6. 配置中心实体 + 草稿/发布/审计（§10）。
+2. **模板脚本系统 `TemplateScript`（§3.2.7）** —— 让 AI 视频生成真正"按模板走"，含双模（文本脚本 / 视频参考）、变量、引擎适配、风控。
+3. **`PromptAssemblyService` + 引擎 adapter 三件套（§3.2.7.7）** —— KeLing / HiGen / MiniMax 各自请求体装配 + 兜底链。
+4. AI 形象工坊参数字典（§3.3.3）—— 发型 / 瞳色 / 滑块 / 渐变 / 锁定项。
+5. 音乐生成阶段与流式参数（§4.1 → `generation-ui.ts`）。
+6. 服装 / 姿态 / 表情 / 手势库（§7.1、§7.2）—— 含价格 / 销售状态。
+7. 全站字典上移：17 个 `constants/*` 文件 → API 化（§7.5）。
+8. 配置中心实体 + 草稿/发布/审计（§10）。
 
 > **P1**（运营效率提升）
-7. 渠道字典 + 提交队列 + 审核策略（§5）。
-8. 积分包 / 套餐 / 抽成模板（§6）。
-9. 通知模板 + NoticeBoard + 群发（§8.2）。
-10. 风控规则（敏感词 / 频次 / 黑名单）（§9）。
+9. 渠道字典 + 提交队列 + 审核策略（§5）。
+10. 积分包 / 套餐 / 抽成模板（§6）。
+11. 通知模板 + NoticeBoard + 群发（§8.2）。
+12. 风控规则（敏感词 / 频次 / 黑名单）（§9）。
+13. 模板脚本试跑工作台（§3.2.7.6 试跑模块）+ A/B 桶 + 指标回流。
 
 > **P2**（长尾）
-11. 灰度 / AB 桶（§10.4）。
-12. 配置回滚 UI、配置变更影响面分析。
+14. 灰度 / AB 桶（§10.4）。
+15. 配置回滚 UI、配置变更影响面分析。
+16. 视频参考模板的素材库 / 转码 / 帧采样自动化（§3.2.7.2 video_ref 模式产能化）。
 
 ---
 
