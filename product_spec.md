@@ -1,25 +1,55 @@
 # AI Star Eco — 数据模型对齐规范（Product Spec）
 
-> 本文档是「前端 (`apps/web_new`) ↔ 后端 (`apps/server`)」数据模型对齐的**契约文件**。
+> 本文档是「前端 (`apps/web`) ↔ 后端 (`apps/server`) ↔ 管理后台 (`apps/admin`)」数据模型对齐的**契约文件**。
 > 一切以 **前端 TypeScript 类型为准**，后端 Java/JPA + MySQL Schema 必须服从前端约束。
 > 字段格式遵循「**后端存数字、前端做格式化**」的总原则。
+>
+> **版本对齐**：本 spec 当前对齐 v2.7（2026-05-06），重新聚焦在「围绕 AI 艺人的多玩法 AI 产品」上。NFT、版权核验、演唱会售票、短剧 / 电影 / 商业广告 / 配音作品等深链路功能**本期暂不实现**（保留字段但 UI 不暴露），详见 §13 产品版图。
 
 ---
 
 ## 0. 核心产品逻辑（最高优先级）
+
+### 0.0 产品定位 — AI 艺人 × 多玩法版图
+
+平台围绕两条 **AI 艺人主线** 构建：
+
+| 主线 | 主体表 | 来源说明 | 核心玩法 |
+|------|--------|----------|----------|
+| **纯虚拟数字人** | `DigitalIp`（§4.1） | 用户在「AI 孵化 / AI 形象锻造」中从零创造的虚拟艺人 | 音乐生成发行（§10）、形象锻造、衣帽间换装、（未来）短视频 / 直播 |
+| **AI 化明星** | `CelebrityStar`（§12） | 平台采购真人明星授权 + 数字孪生形象 | 带货视频生成（模板 / 盲盒双模式）、商品库、批量分发 |
+
+两条主线**共享**同一套基础设施：钱包 / 点数（§1.3）、License（§2）、Studio 主体（§1.6）、积分计费（§0.1）、商品库（§12.4）、统一分发管道。
+
+**当前迭代聚焦的 AI 玩法**：
+
+1. **音乐工坊**（§10）— DigitalIp 唱歌曲，Album 降级为歌单
+2. **AI 形象锻造**（ForgeResult / ForgeTemplate）— 给 DigitalIp 出形象图
+3. **衣帽间 v2**（Wardrobe）— 装备搭配 + 一键锻造融合形象
+4. **AI 明星专区**（§12 ★ 本期新增）— CelebrityStar 带货视频生成与分发，含商品库
+
+**暂不实现 / 隐藏的深链路功能**：
+- NFT / 数字藏品（`NftCollection` / `/monetization/nft`）
+- 版权核验（`CopyrightRecord` / `/content/copyright`）
+- 演唱会售票（`Concert` 的 ticket / capacity / sold 字段）
+- 短剧 / 电影 / 商业广告 / 配音作品（`Drama` / `Movie` / `Advertisement` / `VoiceWork`）
+- 粉丝打赏 / 社群高级运营 / 异常风控
+
+> 这些功能的字段在数据库与 DTO 层**保留但冻结**，前端不展示对应入口；在 §13 产品版图中标记为 future scope。
+
 
 ### 0.1 计费模型 — 一切以「点数 / Credits」结算（无订阅）
 
 - **唯一计费单位**：`credits`（点数 / 积分）
   - 后端字段类型：`BIGINT`（不再使用「分 / cents」「金额」等表达）
   - 业务含义：1 credit = 平台内可消费的最小计费颗粒
-- **没有任何业务功能直接以现金结算**。即便是 NFT 售卖、内容打赏、合约抽成，最终都体现为「点数变动」。
+- **没有任何业务功能直接以现金结算**。所有业务行为（带货分润、内容播放、生成扣费等）最终都体现为「点数变动」。
   - 法币 ↔ 点数 的兑换属于「充值 / Recharge」流程，独立于业务系统。
   - 提现 = 点数 → 法币的反向兑换，挂在钱包模块外。
 - **没有订阅 / 套餐概念**。点数的来源只有三种：
   1. **License 兑换**：注册时核销 License Key 一次性入账（金额由 License 所属 Batch 决定）
   2. **充值 / Recharge**：用户付费购买点数（自助充值流程，非本规范主体）
-  3. **业务收益**：内容播放、版税、NFT 售卖等业务结算入账（type = `income`）
+  3. **业务收益**：内容播放分成、带货 GMV 抽成、版税等结算入账（type = `income`）
 - 不存在「月度配发 / 自动续费 / 套餐升级」流程。
 
 ### 0.2 License — 注册鉴权 + 初始点数发放
@@ -198,7 +228,7 @@ export type LedgerEntryType =
   | "license_grant"        // License 核销时一次性入账
   | "recharge"             // 充值入账
   | "refund"               // 退款入账
-  | "income"               // 业务收益入账（NFT 售卖/版税/打赏）
+  | "income"               // 业务收益入账（带货分润 / 内容播放分成 / 版税等）
   | "gift"                 // 平台赠送 / 活动奖励
   | "spend"                // 消费扣减
   | "withdraw"             // 提现扣减
@@ -215,7 +245,7 @@ export interface LedgerEntry {
   balanceAfter: number;      // 入账后总余额
   description: string;       // 后端写入的中性描述，前端可本地化
   referenceId?: string;      // 关联业务实体 id
-  referenceType?: string;    // "song_revenue" / "nft_sale" / "subscription" 等
+  referenceType?: string;    // "song_generation" / "celebrity_generation" / "song_revenue" / "celebrity_distribution" 等
   createdAt: ISODateTime;
 }
 ```
@@ -503,16 +533,23 @@ export interface LicenseKey {
 > - `Artist.stats.fans / revenue / monthlyRevenue / commercialValue` 由当前的 `string` 改为 `number`
 > - 新增展示派生类型 `ArtistDisplay`，由前端 `useFormat()` hook 产出
 
-### 4.2 其余内容域（Track / Pose / Wardrobe / Nft / Album / Concert）
+### 4.2 其余 AI 玩法内容域（Song / Wardrobe / Pose / Forge / Album）
 
-数值字段全部按 §3.1 转为原始数值。具体改动列表（待 §1–§2 确认后逐表展开）：
+本期聚焦在「AI 艺人服务化」相关的内容域，数值字段全部按 §3.1 转为原始数值：
 
-- `Track`：`plays / revenue` → BIGINT credits；删除 `durationLabel`，前端用 `durationSec` 格式化
+- `Song`（音乐工坊）：`plays / revenue` → BIGINT credits；删除 `durationLabel`，前端用 `durationSec` 格式化（详见 §10）
+- `Album`（歌手歌单）：`trackIds: ID[]`；不再有 `sales / revenue`（详见 §10.4）
 - `WardrobeItem`：`price` 单位明确为 credits（BIGINT）
-- `NftCollection`：`priceLabel` 字符串 → `priceCredits` BIGINT
-- `Concert`：`ticketPrice / revenue` → BIGINT credits
-- `Album`：`sales / revenue` → BIGINT
+- `ForgeTemplate / ForgeResult`：AI 形象锻造相关，`creditCost` 为 BIGINT credits
+- `Pose`：动作 / 表情 / 手势库，存元数据，不带价格
 - `SignedArtist`（`coach.ts`）：`monthlyRevenue / totalRevenue / fans` → number；`royaltyRate` 保留 INT 0–100
+
+**冻结但保留的领域（本期 UI 不暴露，详见 §13）**：
+- `NftCollection`：`priceCredits` 字段保留，路由 `/monetization/nft` 与 `/fan/nft-market` 前端入口移除
+- `CopyrightRecord`：版权核验流程冻结，`/content/copyright` 入口移除
+- `Concert / Drama / Movie / Advertisement / VoiceWork`：保留实体表，前端不展示
+
+> 这些领域的 entity / DTO 已在 server 端存在，下一阶段评估对外开放路径。
 
 ---
 
@@ -550,10 +587,14 @@ export interface LicenseKey {
 | 阶段 | 范围                                              | 关键产出                                |
 | ---- | ------------------------------------------------- | --------------------------------------- |
 | P0   | 本规范（命名、字段约定、计费/License 模型）       | `product_spec.md`（本文档）✓            |
-| P1   | Auth / Wallet / License / Tenant / Studio          | 新增 `aep_studios`；废弃 plan/subscription/entitlement/feature/product 五张表；LicenseBatch 增加 `initial_credit_grant`；前端新增 `account.ts` / `studio.ts` / `license.ts` / 修订 `settings.ts`（去掉 `SubscriptionPlan` 与 `BillingRecord`）/ `finance.ts` |
-| P2   | DigitalIp 合并 + 前端 Artist 数值字段去字符串化   | 新表 `digital_ips`；数据迁移脚本；前端 `Artist.stats` 字段类型变更；新增 `lib/format.ts` 与 `useFormat()` |
-| P3   | Track / Wardrobe / Nft / Concert / Album 等内容域 | 各表数值字段改造；前端展示派生类型     |
-| P4   | 管理后台（admin-new）UI 对齐 Studio/License 视角  | 机构发放/核销/累计点数发放看板          |
+| P1   | Auth / Wallet / License / Tenant / Studio         | 新增 `aep_studios`；废弃 plan/subscription/entitlement/feature/product 五张表；LicenseBatch 增加 `initial_credit_grant`；前端新增 `account.ts` / `studio.ts` / `license.ts` ✓ |
+| P2   | DigitalIp 合并 + 前端 Artist 数值字段去字符串化   | 新表 `digital_ips`；前端 `Artist.stats` 字段类型变更；`lib/format.ts` ✓ |
+| P3   | 内容域（Song / Wardrobe / Forge / Pose）数值字段改造 | 各表数值字段改造；前端展示派生类型 ✓ |
+| P4   | 管理后台（admin）UI 对齐 Studio/License 视角      | 机构发放/核销/累计点数发放看板 ✓        |
+| P5   | **音乐工坊** 完整闭环（详见 §10）                | Song-artistId 必填；MusicGenerationDialog；分发预填 ✓ |
+| P6   | **AI 明星专区** v1（详见 §12）                   | CelebrityStar / Project / Video / Template / Showcase / Product；模板 + 盲盒双模式；4 态授权；积分 / 套餐双计费 ✓（v2.7 已交付） |
+| P7   | AI 明星专区 v2 优化                              | 后端真实生成接入（startGeneration → pollUrl 轮询）；视频库联动 PendingJobs；admin 端运营视图深化 |
+| P8   | 跨主线协同                                       | DigitalIp 也接入「带货模板」生成；CelebrityStar 直播切片二创；统一商品库（§12.4）支持两侧引用 |
 
 ---
 
@@ -576,15 +617,19 @@ export interface LicenseKey {
 
 ### 9.1 主链路
 
-整条业务链以 Studio 为轴心：
+整条业务链以 Studio 为轴心，分两条 AI 艺人主线（详见 §0.0 与 §13）：
 
 ```
 平台账户 (AepUser / Tenant)
    └─ 经纪公司 (Studio)
-        └─ AI 艺人 (DigitalIp / Singer)
-             └─ AI 作品 (Song / Album / Concert / Drama / Movie / Ad / VoiceWork)
-                  └─ 分发 (Platform / DistributionQueue)
-                       └─ 收益 (Wallet / LedgerEntry ≡ credits)
+        ├─ 数字人主线 (DigitalIp)
+        │     └─ AI 作品 (Song / Album / 形象锻造 / 衣帽间)
+        │
+        └─ 明星带货主线 (CelebrityStar)
+              └─ 带货项目 (CelebrityProject)
+                    └─ 项目视频 (CelebrityProjectVideo) × 商品库 (Product)
+                          └─ 分发 (Platform / DistributionQueue)
+                                └─ 收益 (Wallet / LedgerEntry ≡ credits)
 ```
 
 管理后台每个分组对应链路中的一环，所有数值一律 credits，不再使用 ¥/$ 字符串。
@@ -601,18 +646,14 @@ export interface LicenseKey {
 | AI 艺人    | `/artists/lifecycle`   | `DigitalIp`          | 练习生→出道→活跃                 |
 |            | `/artists/roster`      | `DigitalIp`          | 全站艺人档案 + 属主 Studio       |
 | AI 作品    | `/content/songs`       | `Song`               | 混音/发行                        |
-|            | `/content/albums`      | `Album`              | 专辑排期                         |
-|            | `/content/concerts`    | `Concert`            | 售票中演出                       |
-|            | `/content/dramas`      | `Drama`              | 短剧审核                         |
-|            | `/content/movies`      | `Movie`              | 电影上映审核                     |
-|            | `/content/ads`         | `Advertisement`      | 品牌代言 / TVC                   |
-|            | `/content/voice`       | `VoiceWork`          | 动画/纪录片/有声书/游戏配音      |
-|            | `/content/copyright`   | `CopyrightRecord`    | 版权核验                         |
+|            | `/content/albums`      | `Album`              | 歌手歌单（§10.4）                |
+| 明星带货 ★ | `/celebrity/stars`     | `CelebrityStar`      | 明星档案 / 授权 / 套餐用量（§12）|
+|            | `/celebrity/projects`  | `CelebrityProject`   | 跨用户带货项目聚合 + 视频流      |
+|            | `/celebrity/products`  | `Product`            | 商品库（§12.4）                  |
 | 分发与变现 | `/distribution/platforms` | `Platform`        | 渠道接入审核                     |
 |            | `/distribution/queue`  | `DistributionItem`   | 发行队列复核                     |
-|            | `/monetization/nft`    | `NFTItem`            | 收藏品上架                       |
 |            | `/finance/ledger`      | `Wallet/LedgerEntry` | 钱包 + 点数流水 + 业务交易复核   |
-|            | `/finance/risk`        | 合成               | 大额流水 / 异常提现风控          |
+|            | `/finance/risk`        | 合成                 | 大额流水 / 异常提现风控          |
 | 社群       | `/community/events`    | `CommunityEvent`     | 投票/见面会/挑战赛               |
 |            | `/community/moderation`| `Activity`           | 动态与打赏审核                   |
 | 基础数据   | `/base/genres`         | `Genre`              | 曲风 / 领域                      |
@@ -621,6 +662,10 @@ export interface LicenseKey {
 |            | `/base/credit-packs`   | `CreditPack`         | 点数售卖规格（取代订阅）         |
 | 消息与日志 | `/notifications`       | `Notification`       | 运营推送                         |
 |            | `/audit`               | `AuditEntry`         | 所有人工介入审计                 |
+
+**本期冻结、admin 不再暴露的页面**（详见 §13 future scope）：
+- `/content/{concerts, dramas, movies, ads, voice, copyright}` — 短剧 / 电影 / 商业广告 / 配音 / 演唱会售票 / 版权核验
+- `/monetization/nft` — 数字藏品上架
 
 ### 9.3 admin-new ↔ web_new 类型对齐
 
@@ -642,14 +687,12 @@ export interface LicenseKey {
 - `ARTIST_STATUS.trainee` / `debut`
 - `SIGNED_ARTIST_STATUS.negotiating` / `expiring`
 - `DISTRIBUTION_QUEUE_STATUS.reviewing`
-- `COPYRIGHT_STATUS.pending`
 - `PLATFORM_STATUS.pending`
-- `DRAMA_STATUS["post-production"]` / `MOVIE_STATUS["post-production"]` / `AD_STATUS.negotiating`
-- `CONCERT_STATUS.selling`
 - `TRANSACTION_STATUS.pending` / `processing`
 - `LEDGER_ENTRY_TYPE.freeze` / `adjust`
 - `ACCOUNT_STATUS.suspended` / `STUDIO_STATUS.suspended`
 - `COMMUNITY_EVENT_STATUS.upcoming`
+- **明星带货新增**：`CELEBRITY_AUTH_STATUS.pending`（授权审核中）/ `CelebrityProjectVideo.status='待审核'` / `'已驳回'`
 
 ### 9.5 金额展示约定
 
@@ -659,14 +702,18 @@ export interface LicenseKey {
 
 ### 9.6 删除项
 
-P4 交付时下述页面与常量已从 admin-new 移除（替代路径在括号内）：
+P4 交付时下述页面与常量已从 admin 移除（替代路径在括号内）：
 
 - `/base/plans`（→ `/base/credit-packs`）
 - `/coach/contracts` / `/coach/mcn`（并入 `/platform/studios`）
-- `/fan/nft-market`（→ `/monetization/nft`）
-- `/content/film`（拆分为 `/content/{dramas,movies,ads,voice}`）
 - `/finance/settlement`（→ `/finance/ledger`，从「元」切到 credits）
 - `types/settings.ts` 中的 `SubscriptionPlan` / `BillingRecord`；`types/finance.ts` 中的 `WalletSummary`（迁至 `types/wallet.ts`）。
+
+**P6 起冻结的 admin 入口**（产品版图收缩，保留实体 / DTO 但 admin 侧栏不再展示，详见 §13）：
+
+- `/content/copyright`（版权核验）
+- `/content/concerts` / `/content/dramas` / `/content/movies` / `/content/ads` / `/content/voice`
+- `/monetization/nft` / `/fan/nft-market`
 
 ### 9.7 Admin 后端接口清单（`/api/admin/**`）
 
@@ -686,11 +733,10 @@ P4 交付时下述页面与常量已从 admin-new 移除（替代路径在括号
 | `GET /admin/finance/transactions`<br>`GET /admin/finance/revenue/monthly`<br>`GET /admin/finance/revenue/sources` | `AdminFinanceController` | `/finance/ledger` 业务交易 + 图表 / `api/finance.ts` |
 | `GET·POST /admin/music/**`            | `AdminMusicController`             | `/content/songs` / `api/music.ts`                     |
 | `GET·POST·PUT·PATCH·DELETE /admin/digital-ips/**` | `AdminDigitalIpController` | `/artists/roster` / `api/digital-ips.ts`           |
+| `GET /admin/celebrity/**`             | `AdminCelebrityController` ★       | `/celebrity/{stars,projects}` / `api/celebrity-zone.ts` |
+| `GET·POST·PATCH·DELETE /admin/products/**` | `AdminProductsController` ★   | `/celebrity/products` / `api/products.ts`             |
 | `GET·PUT /admin/community/**`         | `AdminCommunityController`         | `/community/*` / `api/community.ts`                   |
 | `GET·POST /admin/distribution/**`     | `AdminDistributionController`      | `/distribution/*` / `api/distribution.ts`             |
-| `GET·POST·DELETE /admin/store/**`     | `AdminStoreController`             | `/monetization/nft` 等 / `api/store.ts`               |
-| `GET·POST·DELETE /admin/fan/**`       | `AdminFanController`               | `/community/*` 粉丝子域 / `api/fan.ts`                |
-| `GET·POST /admin/film/**`             | `AdminFilmController`              | `/content/{dramas,movies,ads,voice}` / `api/film.ts`  |
 | `GET·POST /admin/coach/**`            | `AdminCoachController`             | 教练/培训子域 / `api/coach.ts`                        |
 | `GET·POST /admin/appearance-forge/**` | `AdminForgeController`             | 形象工坊 / `api/appearance-forge.ts`                  |
 | `GET·POST·PUT /admin/settings/**`     | `AdminSettingsController`          | `/platform/config` / `api/settings.ts`                |
@@ -698,6 +744,11 @@ P4 交付时下述页面与常量已从 admin-new 移除（替代路径在括号
 | `GET /admin/audit-logs`               | `AdminAuditController`             | `/audit` / `api/audit.ts`                             |
 | `GET /admin/notifications`            | `AdminNotificationController`      | `/notifications` / `api/notifications.ts`             |
 | `GET·POST·DELETE /admin/staff/**`     | `AdminStaffController`             | 运营团队（P2）                                        |
+
+**P6 起冻结的 admin controller**（保留代码 + DTO，前端侧栏不再调用，详见 §13）：
+- `AdminStoreController`（`/admin/store/**` — NFT 上架）
+- `AdminFanController`（`/admin/fan/**` — 粉丝打赏 / NFT 市场）
+- `AdminFilmController`（`/admin/film/**` — 短剧 / 电影 / 广告 / 配音）
 
 **Studio 聚合指标**：`GET /admin/studios` 返回 `AdminStudioDto`（`StudioDto` 外挂 `artistCount / songCount / totalRevenueCredits / monthlyRevenueCredits`），聚合由 `StudioService.toAdminDto` 以 `studioId → List<DigitalIp>` 汇总 `stat*` 字段；若 `DigitalIp.studioId` 为空则 fallback 到 `ownerUserId` 匹配（兼容旧数据）。`PUT` 返回基础 `StudioDto`，不含聚合字段。
 
@@ -958,3 +1009,252 @@ Web 端此前无任何登录入口，`ProducerDashboard` 以硬编码 `MOCK_ARTI
 - [x] **D11.3**：`/api/me/digital-ips` 改为 `ownerUserId ∪ studioId` 联合列表，**不分页**（MVP 单工作室艺人数量不大，未来按需切 Page）。
 - [x] **D11.4**：StudioPage 的采纳按钮在无 artistId 时 disabled；根本原因是空列表场景下的兜底，不再让用户踩到 `artistId 必填` 的后端错误。
 - [x] **D11.5**：Studio 档案修改入口统一走 admin 控制台。用户侧 `SettingsPage` 只读展示（修改 displayName/email/phone/bio 等个人字段仍走 `PATCH /api/me`）。
+
+---
+
+## 12. AI 明星专区 产品逻辑（Celebrity Livestream Selling，v2.7）
+
+> 对应前端模块 `apps/web/src/app/producer/celebrity-zone/`、`apps/web/src/types/celebrity-zone.ts`、`apps/web/src/types/product.ts`。
+> 对应 admin `/celebrity/{stars,projects,products}`、对应 server `CelebrityZoneController` / `ProductsController` / `AdminCelebrityController` / `AdminProductsController`。
+> v2.7 已完整交付：5 页主流程 + 4 态授权 + 模板/盲盒双模式 + 商品库 + 任务持久化 + 引擎积分计价。
+
+### 12.1 核心概念
+
+**`CelebrityStar`** ≠ `DigitalIp`。两者并行存在：
+
+| 维度 | `DigitalIp`（数字人主线） | `CelebrityStar`（明星带货主线） |
+|------|---------------------------|--------------------------------|
+| 来源 | 用户在「AI 孵化 / 形象锻造」从零创造 | 平台采购真人明星授权 + 数字孪生形象（运营录入） |
+| 归属 | `ownerUserId`（创建者） | 平台共有，按用户颗粒授权（`CelebrityAuthorization`） |
+| 玩法 | 音乐生成 / 形象锻造 / 衣帽间 | 模板 / 盲盒生成带货视频 → 分发到抖音 / 小红书等 |
+| 计价 | 每次生成扣 credits（§10.3） | 引擎积分价 + 套餐配额双计费（§12.3） |
+
+### 12.2 4 态授权状态机
+
+```
+unauthorized  ──[申请 / 购买套餐]──>  pending
+                                          │
+                                          ├──[审核通过]──>  authorized  ──[到期]──>  expired
+                                          └──[审核驳回]──>  unauthorized
+```
+
+`CelebrityAuthorization`（apps/web/src/types/celebrity-zone.ts:55）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `unauthorized \| pending \| authorized \| expired` | 4 态枚举 |
+| `scenes` | `string[]` | 已授权场景（带货 / 种草 / 测评） |
+| `expireDate` | `ISODate?` | unauthorized/pending 时为 undefined |
+| `availableStyles` | `int` | 可选风格数 |
+| `pendingNote` | `string?` | 仅 pending 状态：审核进度提示 |
+| `applyUrl` | `string?` | unauthorized/expired：申请入口路由 |
+
+**前端守卫**：`/celebrity-zone/star/[id]/generate/page.tsx` 在 `authorization.status !== 'authorized'` 时强制 `redirect()` 回详情页，避免 URL 直跳越权。
+
+### 12.3 引擎 / 计价 / 配额
+
+**`CelebrityEngine`** = `KeLing`（经济）/ `HiGen`（标准）/ `MiniMax`（高级）
+
+每条视频生成的双计费（前端 `ENGINE_META`，后端 `CelebrityZoneService.ENGINE_PRICING`）：
+
+| 引擎 | 等级 | 单条积分价（credits） | 套餐扣减条数 | 估算耗时 |
+|------|------|------------------------|--------------|----------|
+| KeLing  | 经济 | ✦50  | 1 | ~5 分钟 |
+| HiGen   | 标准 | ✦120 | 2 | ~3 分钟 |
+| MiniMax | 高级 | ✦300 | 3 | ~4 分钟 |
+
+**双门槛**：生成按钮 disabled 条件 = `钱包余额 < creditPrice` **OR** `套餐剩余 < quotaCost`。文案分别引导「立即充值」/「升级套餐」。
+
+`getEnginePricing()` 接口让 admin 后续可以热改单价（接入后端配置后前端零改动），路径 `GET /celebrity/engine-pricing`。
+
+### 12.4 商品库（Product Library）
+
+独立领域，**两侧主线共用**（明星带货生成必填、未来 DigitalIp 也可引用）。前端 `apps/web/src/types/product.ts`、后端 `Product` 实体 / `ProductService`。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `ID` | |
+| `name` | `string` | 商品名称 |
+| `category` | `ProductCategory` | 8 类：美妆 / 食品饮料 / 数码 3C / 服饰 / 日用百货 / 母婴 / 运动 / 其他 |
+| `link` | `string?` | 淘宝 / 京东 / 小红书 等外链 |
+| `images` | `string[]` | ≥1 张缩略图 |
+| `sellingPoints` | `string` | 卖点描述（可被 AI 抽取覆盖） |
+| `usageCount` | `int` | 累计被多少条视频引用 |
+| `source` | `manual \| auto-from-generation` | 创建来源 |
+| `createdAt / updatedAt` | `ISODate` | |
+
+**两个特殊接口**：
+- `POST /products/upsert-from-generation`：视频生成时调用 — 按 link/name 匹配已有 → +usageCount；找不到自动建档（source=auto-from-generation）
+- `POST /products/extract-selling-points`：mock LLM 卖点抽取（后续可换 Coze / OpenAI）
+
+### 12.5 数据模型
+
+**`CelebrityStar`** 嵌套结构密集（authorization / stats / sampleVideos / pricing），后端用 JSON 字符串列存储（`authorizationJson` / `statsJson` 等），DTO 反序列化为 `Map<String, Object>`，Jackson 直接序列化对齐 TS interface。
+
+**`CelebrityProject`**（用户在某个明星下创建的带货项目）：
+- `ownerUserId`（NOT NULL）— 业主，权限判定用
+- `starId / starName / starAvatar` — 冗余存星明信息便于列表展示
+- `status` — 进行中 / 筹备中 / 已完成
+- `channels`（JSON）/ `quota: { used, total }`
+- 聚合统计字段：`videoCount / totalPlays / totalInteractions / conversions / gmv`
+
+**`CelebrityProjectVideo`**（项目下的单条视频）：
+- `status` — 已发布 / 待审核 / 生成中 / 已驳回（`ProjectVideoStatus`）
+- `engine` / `durationSec`（15 / 30 / 60）/ `thumb` / `videoUrl`
+
+**`CelebrityTemplate`**（模板生成模式可选预制模板）：
+- `style` — 种草安利 / 硬核测评 / 轻松开箱 / 直播切片 / 剧情植入
+- `recommendedEngine` / `recommendedPrice`
+- `previews: [{ thumb, videoUrl }]`
+
+**`CelebrityShowcase`**（往期案例展示）：
+- `mode` — `template` 或 `blindbox`（仅后端归档用，不返前端）
+
+**`CelebrityZoneOverview`**（数据中心大盘）：
+- `hero: { totalPlays, totalConversions, activeStars }`
+- `starLeaderboard[]` / `weeklyTrend[]` / `channelMix[]`
+
+### 12.6 生成生命周期（前端持久化）
+
+由于真实生成是 **异步、不可取消、已扣积分**，前端不再假装可撤销：
+
+```
+用户点「开始生成」
+   → POST /celebrity/generate → 拿到 jobId（AsyncJobStarted）
+   → CelebrityJobs.enqueue() 落 localStorage（key=aistareco.web.celebrity.pendingJobs.v1）
+   → 工作台展示右下角悬浮卡（不阻断 layout，可最小化）
+   → 文案：「已扣 ✦N 积分，异步执行不可取消，可继续浏览其他页面」
+   → 顶部 PendingJobsBadge 实时显示进行中任务
+   ↓
+   ↓ （刷新 / 切 tab / 关闭浏览器都不丢任务）
+   ↓
+完成回调
+   → CelebrityJobs.markCompleted() → 任务进入 result 预览态
+   → 用户点「采纳」→ 落项目；点「重新生成」→ 重启同参数生成
+```
+
+**关键文件**：
+- `apps/web/src/lib/celebrity-jobs.ts` — localStorage write-through + `celebrityJobs:changed` 事件
+- `apps/web/src/components/celebrity-zone/PendingJobsBadge.tsx` — 顶栏徽章
+- `apps/web/src/components/celebrity-zone/CelebrityGenerationWorkspace.tsx` — mount 时按 `?jobId` 或当前明星最近 running 任务恢复进度
+
+### 12.7 接口清单（前端 → 后端）
+
+用户侧 `/api/celebrity/*`（`CelebrityZoneController`）：
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/celebrity/stars` | GET | 列出明星市场（filter: category / sort=hot\|price-asc\|price-desc） |
+| `/celebrity/stars/{id}` | GET | 明星详情 |
+| `/celebrity/active-star` | GET | 当前活跃明星（兼容旧入口） |
+| `/celebrity/templates` | GET | 模板列表 |
+| `/celebrity/showcases?mode=template\|blindbox` | GET | 案例库 |
+| `/celebrity/projects` | GET / POST | 项目列表（status filter）/ 创建项目 |
+| `/celebrity/projects/{id}` | GET | 项目详情 |
+| `/celebrity/projects/{projectId}/videos` | GET | 项目视频列表 |
+| `/celebrity/projects/{projectId}/distribute` | POST | 批量分发到渠道（异步） |
+| `/celebrity/videos` | GET | 跨项目视频库（status / starId / projectId / sort） |
+| `/celebrity/generate` | POST | 启动生成（返回 `AsyncJobStarted`） |
+| `/celebrity/overview` | GET | 数据中心大盘 |
+| `/celebrity/engine-pricing` | GET | 引擎计价表 |
+
+商品库 `/api/products/*`（`ProductsController`）：
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/products` | GET / POST | 列表（category / q）/ 创建 |
+| `/products/{id}` | GET / PATCH / DELETE | 单体 CRUD |
+| `/products/upsert-from-generation` | POST | 视频生成时按 link/name 匹配 → +usageCount 或自动建档 |
+| `/products/extract-selling-points` | POST | mock LLM 卖点抽取 |
+
+Admin 侧（`/api/admin/celebrity/*` + `/api/admin/products/*`）：聚合视图 + 跨用户读取，强制 `SUPER_ADMIN/OPERATOR` 角色。
+
+### 12.8 决策记录
+
+- [x] **D12.1**：`CelebrityStar` 与 `DigitalIp` 并行存在，各有 entity / DTO / 路由前缀，不合并。理由：归属语义不同（用户私有 vs 平台共有 + 授权）；商业模型不同（创作消费 vs 带货分润）。
+- [x] **D12.2**：嵌套结构（authorization / stats / sampleVideos / pricing / channels / previews）以 JSON 字符串列存储，避免频繁 schema 演进。Service 层 ObjectMapper 反序列化为 `Map<String, Object>` 进 DTO。
+- [x] **D12.3**：双计费 = 引擎积分价（钱包扣）+ 套餐配额（star.quotaUsed +1）。两个门槛同时校验，互不替代。
+- [x] **D12.4**：生成不可取消。前端不展示「取消」按钮；改为右下角悬浮卡 + 黄色 callout 明示「已扣积分 + 异步不可中断」。
+- [x] **D12.5**：商品库为独立领域（不挂明星 / 项目），两条主线共用。`upsertFromGeneration` 支持视频生成时自动落库。
+- [x] **D12.6**：任务找回靠前端 localStorage（`celebrity-jobs.ts`）。后端真接入后改为基于 `pollUrl` 轮询，UI 适配点是 `CelebrityGenerationProgress.startedAtMs` 锚点 + `PendingJobsBadge` 数据源切换。
+- [x] **D12.7**：明星专区共享 `layout.tsx` Shell，所有子路由（明星市场 / 我的项目 / 商品库 / 视频库 / 数据中心 / 详情 / 生成 / 项目）顶部常驻面包屑 + Tabs + 进行中任务徽章。
+
+---
+
+## 13. AI 产品版图（Roadmap Matrix，v2.7）
+
+### 13.1 现行双主线
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI Star Eco — 产品版图                       │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─ 数字人主线（DigitalIp）────────────────┐  ┌─ 明星带货主线（CelebrityStar）─────────┐
+│  孵化 / 锻造 → 多玩法生成              │  │  授权采购 → 模板化带货分发            │
+│                                          │  │                                       │
+│  • AI 孵化（incubator）                 │  │  • 明星市场（market）                │
+│  • AI 形象锻造（appearance forge）      │  │  • 我的项目（projects）              │
+│  • 衣帽间 v2（wardrobe）                │  │  • 商品库（products）★ 共用           │
+│  • 音乐工坊（music workshop）§10        │  │  • 视频库（library）                  │
+│  • —— 未来：直播切片 / 短视频           │  │  • 数据中心（data）                  │
+│  • —— 未来：带货模板复用 §12            │  │  • 模板生成 / 盲盒生成 §12.5         │
+└─────────────────────────────────────────┘  └─────────────────────────────────────┘
+                          │                                    │
+                          └──────── 共享基础设施 ──────────────┘
+                                          │
+                          ┌───────────────┴───────────────┐
+                          ▼                               ▼
+                   钱包 / 积分 / License            Studio / Tenant
+                   (§1.3, §2)                       (§1.5, §1.6)
+```
+
+### 13.2 玩法矩阵
+
+| 玩法 | 主线 | 状态 | 关键路径 | 计价方式 |
+|------|------|------|---------|---------|
+| AI 艺人孵化 | 数字人 | ✓ 已上线 | `/producer/incubator` | DigitalIp 创建一次性 / 升级扣 credits |
+| AI 形象锻造 | 数字人 | ✓ 已上线 | `/producer/appearance` | 每次锻造扣 credits |
+| 衣帽间 v2 | 数字人 | ✓ 已上线 | `/producer/wardrobe` | 装备搭配一键锻造（轻量计费） |
+| 音乐工坊 | 数字人 | ✓ 已上线（§10） | `/producer/studio?type=singer` | 工作流计费表 `(modelVersion, thinkDepth) → creditsPerCall` |
+| **AI 明星专区** | **明星带货** | ✓ **v2.7 已交付（§12）** | `/producer/celebrity-zone` | 引擎积分价 + 套餐配额双门槛 |
+| 商品库 | 共用 | ✓ v2.7 已交付（§12.4） | `/celebrity-zone?tab=products` | 创建免费 / 引用 +usageCount |
+| 数字人带货模板 | 数字人 | ⏳ P8 规划 | 复用 §12 模板能力到 DigitalIp | TBD |
+| 直播切片二创 | 明星带货 | ⏳ P8 规划 | CelebrityStar 直播流 → 自动剪辑 | TBD |
+| 跨主线统一商品库 | 共用 | ⏳ P8 规划 | DigitalIp 视频也走 `upsertFromGeneration` | 已就绪，待前端接入 |
+
+### 13.3 暂不实现的领域（保留实体，UI 不暴露）
+
+| 领域 | 原因 | 保留位置 | 重启条件 |
+|------|------|---------|----------|
+| NFT / 数字藏品 | 监管不确定 + 当前业务重心不在数字资产 | `NftCollection` 表 / `AdminStoreController` | 监管路径明确 + 跨链能力具备 |
+| 版权核验 | 缺乏核验工具链 + 数字音乐版权由分发平台代行 | `CopyrightItem` 表 / `/admin/content/copyright` | 与音乐发行 OpenAPI 集成时联动 |
+| 演唱会售票 | 售票链路重 + 当前线上首发节奏更轻 | `Concert` 字段保留（streamUrl 用于直播间链接） | 进入「线下落地」阶段 |
+| 短剧 / 电影 / 商业广告 / 配音作品 | 制作链条重，超出 v2.x 数字人 + 带货 MVP 范围 | `Drama` / `Movie` / `Advertisement` / `VoiceWork` 表 / `AdminFilmController` | 引入对应工作流 + 制作团队后 |
+| 粉丝打赏 / 社群高级 | 与本期 KPI 无关 | `AdminFanController` / `Activity` 表 | 社群运营投入加码时 |
+
+> **冻结策略**：上述领域的数据库 schema、JPA entity、DTO 均保留，admin 侧栏与 web 入口移除（详见 §9.6 / §9.7）。重启时无需迁移历史数据，只需打开对应 controller 路由 + 补 admin 页面。
+
+### 13.4 v2.7 三端交付状态
+
+| 维度 | 内容 | 状态 |
+|------|------|------|
+| `apps/web` types | `celebrity-zone.ts`（248 行）/ `product.ts`（58 行） | ✓ |
+| `apps/web` mocks | `celebrity-zone.ts`（已包含真人头像）/ `products.ts` | ✓ |
+| `apps/web` api | `celebrity-zone.ts`（13 端点）/ `products.ts`（6 端点） | ✓ |
+| `apps/web` UI | 5 页主流程 + 4 态授权 + 模板/盲盒 + 商品库 + 任务持久化 | ✓ |
+| `apps/admin` types | 复制自 web，admin 侧无字段扩展 | ✓ |
+| `apps/admin` api | `/admin/celebrity/*` + `/admin/products/*` | ✓ |
+| `apps/admin` 页面 | `/celebrity/{stars, projects, products}` 3 页 | ✓ |
+| `apps/server` model | 6 个 entity（JSON 列存嵌套对象） | ✓ |
+| `apps/server` repo / service / controller | 6 / 2 / 4 | ✓ |
+| `apps/server` DataInitializer | `CelebrityZoneDataInitializer`（@Order(2)） | ✓ |
+| `specs/openapi.yaml` | 17 个 user 端点 + 10 个 admin 端点 | ✓ |
+| 4 道契约门 | tsc(web) / tsc(admin) / contract / mvn compile | web/admin/contract ✓；mvn compile 因沙箱无 maven 缓存待 CI 兜底 |
+
+### 13.5 决策记录
+
+- [x] **D13.1**：版图收缩到「数字人 + 明星带货」双主线 + 「音乐 + 形象 + 衣帽间 + 带货 + 商品库」5 大玩法。其余领域**保留实体表 / 冻结 UI**。
+- [x] **D13.2**：商品库为跨主线共用领域，不绑定明星或项目；`upsertFromGeneration` 让数字人主线后续接入零成本。
+- [x] **D13.3**：admin 侧只保留运营核心 KPI 路径；NFT / 版权 / 短剧 / 电影 / 配音 / 演唱会售票等 controller **保留代码不删**，但侧栏入口移除（§9.6 列表）。
+- [x] **D13.4**：本期 spec 不再讨论被冻结领域的数值字段改造细节；§4.2 仅保留「Song / Album / Wardrobe / Forge / Pose」5 个活跃领域。
