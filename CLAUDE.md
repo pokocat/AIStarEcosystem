@@ -20,7 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `apps/web` — Next.js 14 (App Router) user-facing frontend, port **3002** (`npm run dev`). Talks to the server via Next rewrites of `/api/*`.
 - `apps/admin` — Next.js 14 admin console, port **3003** (`npm run dev`). Calls `/api/admin/*`.
 - `figma/` — one-shot Figma Make export; **UI reference only**, not source.
-- `specs/openapi.yaml` + `apps/web/specs/FRONTEND_CONTRACT_DIFF.md` — backend contract vs. frontend truth-source diff.
+- `specs/openapi.yaml` — backend interface contract (paths + schemas).
+- `specs/BUSINESS_RULES.md` — openapi-can't-express constraints: validation rules, calculation formulas, state-machine timing, error codes.
+- `apps/web/scripts/check-api-contract.mjs` — CI gate: every `apiFetch(...)` URL must have a matching openapi path. Run via `npm run check:api-contract` from `apps/web/`.
 
 Product spec: `product_spec.md` (root) — updated most recently; prefer it over `product.md`.
 
@@ -76,7 +78,17 @@ Both frontends honour `NEXT_PUBLIC_USE_MOCK` in `.env.local`:
 
 ## Adding or changing a domain
 
-See `AGENTS.md` → "新增领域 SOP" for the full 13-file checklist (types / mocks / api / constants on both frontends + entity / repository / dto / controller on server, plus API index re-exports). Skipping any file breaks the three-end compile gate.
+Full step-by-step file list in [`AGENTS.md` → 新增领域 SOP](./AGENTS.md#新增领域-sop). The non-negotiables that bite if skipped:
+
+1. **TS types are truth source.** `apps/web/src/types/<domain>.ts` first; Spring `*Dto` field names must mirror exactly.
+2. **Touched `apps/web/src/api/*.ts`? Update `specs/openapi.yaml` in the same change** — every `apiFetch(...)` URL needs a matching path. There's no separate diff doc anymore; drift is caught at PR time by the contract checker (`apps/web/scripts/check-api-contract.mjs`).
+3. **Four gates before committing**:
+   ```bash
+   (cd apps/web   && npx tsc --noEmit)
+   (cd apps/admin && npx tsc --noEmit)
+   (cd apps/server && ./mvnw compile -q -o)
+   (cd apps/web   && npm run check:api-contract)
+   ```
 
 For Figma prototype updates, invoke the `figma-migrate` skill — it codifies the five-piece-per-domain layout (types / mocks / constants / api / component) and the web → admin → server sync.
 
@@ -110,7 +122,8 @@ Dev admin credentials (seeded by `DataInitializer`): `admin / admin123` (PLATFOR
 ## Where to look for domain context
 
 - `product_spec.md` (root, ~52KB, most current) — canonical product-level spec, referenced by version logs in web/admin READMEs.
-- `specs/BACKEND_API_SPEC.md` / `specs/openapi.yaml` — backend API reference.
-- `apps/web/specs/FRONTEND_CONTRACT_DIFF.md` — the living diff between frontend types and `openapi.yaml`; update it when you change a domain.
+- `specs/openapi.yaml` — backend interface contract; 142 paths grouped by tag.
+- `specs/BUSINESS_RULES.md` — validation rules, calculation formulas, error codes, state-machine timing (the openapi-can't-express stuff).
+- When you add a new domain or endpoint, the order is: (1) `apps/web/src/types/<domain>.ts` (truth source), (2) `apps/web/src/api/<domain>.ts` (apiFetch URLs), (3) `specs/openapi.yaml` (path + schema). The `npm run check:api-contract` gate fails if step 3 is skipped — there's no separate "diff doc" to update anymore.
 - `apps/web/README.md` — version log with per-release deltas (currently at v2.4.0, 2026-04-19).
 - `.claude/skills/figma-migrate/SKILL.md` — invoked automatically when the user mentions Figma updates.

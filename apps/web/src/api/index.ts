@@ -21,3 +21,5 @@ export * as AppearanceForgeApi from "./appearance-forge";
 export * as ConfigApi from "./config";
 export * as StoreApi from "./store";
 export * as GenerationApi from "./generation";
+export * as CelebrityZoneApi from "./celebrity-zone";
+export * as ProductsApi from "./products";

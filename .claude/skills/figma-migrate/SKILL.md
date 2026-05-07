@@ -1,6 +1,6 @@
 ---
 name: figma-migrate
-description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web，并同步到 apps/admin（管理后台）和 apps/server（Spring Boot 后端），实现三端数据模型完整对齐。遵循 types/mocks/constants/api/component 五件套 + 中文单语约束 + 三端同步（web ↔ admin ↔ server）。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"、"数据模型对齐"。完成后必须更新 README 版本日志与 FRONTEND_CONTRACT_DIFF.md。
+description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web，并同步到 apps/admin（管理后台）和 apps/server（Spring Boot 后端），实现三端数据模型完整对齐。遵循 types/mocks/constants/api/component 五件套 + 中文单语约束 + 三端同步（web ↔ admin ↔ server）。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"、"数据模型对齐"。完成后必须更新 README 版本日志和 specs/openapi.yaml；运行 npm run check:api-contract 验证。
 ---
 
 # Figma → apps/web 迁移手册
@@ -260,10 +260,13 @@ cd apps/web
    - 顶部"当前版本"段 → 升一位小版本（v2.0 → v2.1），写一句话变更。
    - "版本日志"段倒序追加一条，逐项列清：新增哪些 types / mocks / constants / api / component / 路由 / 契约差异。
 
-2. `apps/web/specs/FRONTEND_CONTRACT_DIFF.md`
-   - 在文末追加一个"附录 · <新域名>"小节。
-   - 表格列出新增的前端类型，`OpenAPI Schema` 列写 ❌ 无、`状态` 列写 ❌ 不存在（新域）或 ⚠️ 部分一致（补充字段）。
-   - 列出新增的 REST 路径与推荐的后端实现策略。
+2. `specs/openapi.yaml`
+   - 在 schemas 区块底部追加新域的 schema（types/<domain>.ts 直译为 YAML schema）。
+   - 在 paths 区块底部追加新域的 path（与 api/<domain>.ts 中 apiFetch URL 一一对应）。
+   - 注意：以「前端 TS interface 字段名」为准，后端 DTO 必须 mirror。
+3. （可选）`specs/BUSINESS_RULES.md`
+   - 若新域引入了非平凡的业务规则（扣费、状态机、跨字段约束），在 §2 / §6 追加。
+4. 最后跑：`(cd apps/web && npm run check:api-contract)` 必须通过。
 
 ---
 
@@ -333,7 +336,8 @@ cd apps/web && ./node_modules/.bin/tsc --noEmit
 
 ### 文档 & 自更新
 - [ ] `README.md` 版本号 + 版本日志 已追加
-- [ ] `specs/FRONTEND_CONTRACT_DIFF.md` 附录已追加
+- [ ] `specs/openapi.yaml` 同步新增 path + schema（以 TS types 为准）
+- [ ] `npm run check:api-contract` 通过
 - [ ] `grep -RIn "{ zh:" apps/web/src/components/<path>` 无命中
 - [ ] **本次迭代有新复用价值的经验已沉淀回本 SKILL.md**（章节 5）
 

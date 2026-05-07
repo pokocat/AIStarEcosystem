@@ -13,6 +13,7 @@ import {
   Sparkles, Heart, ChevronDown, Menu, X,
   Star, CheckCircle2, Film, Tv, Mic,
   Wand2, Shirt, Building2, Bell, Coins, UserCircle,
+  Megaphone,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useLang } from "@/lib/lang-context";
@@ -79,6 +80,12 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "finance", icon: Wallet, label: "商业变现" },
     ],
   },
+  {
+    title: "明星带货",
+    items: [
+      { id: "celebrity-zone", icon: Megaphone, label: "AI 明星专区" },
+    ],
+  },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "aistareco.producer.sidebarCollapsed";
@@ -131,7 +138,10 @@ function ProducerLayoutInner({ children }: { children: React.ReactNode }) {
   const { logout: authLogout } = useAuth();
 
   // legacy 兼容：旧链接 /producer?tab=artist → /producer/artist（只跑一次）
+  // 仅在 /producer 根路径触发；嵌套页（如 /producer/celebrity-zone?tab=projects）
+  // 自行使用 ?tab= 作为 sub-tab，不应被这条 legacy 规则劫持。
   React.useEffect(() => {
+    if (pathname !== "/producer") return;
     const legacy = searchParams?.get("tab");
     if (!legacy) return;
     const target = legacy === "overview" ? "/producer" : `/producer/${legacy}`;
@@ -140,7 +150,7 @@ function ProducerLayoutInner({ children }: { children: React.ReactNode }) {
     other.delete("tab");
     const qs = other.toString();
     router.replace(qs ? `${target}?${qs}` : target);
-  }, [searchParams, router]);
+  }, [pathname, searchParams, router]);
 
   const onLogout = React.useCallback(() => {
     authLogout();

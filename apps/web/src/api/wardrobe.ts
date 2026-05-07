@@ -54,7 +54,7 @@ export async function deleteOutfit(id: ID): Promise<void> {
 //
 // 输入一套已装备的服饰，输出一张融合形象图（ForgeResult，status='draft'）。
 // Response 复用 appearance-forge 的 ForgeResult，保存走 saveForgeResult()。
-// 后端端点 POST /wardrobe/generate-look 暂未实现（见 FRONTEND_CONTRACT_DIFF.md）。
+// 后端端点 POST /wardrobe/generate-look 暂未实现（openapi.yaml 仅有 stub）。
 
 /** 锻造请求：slot → itemId；未装备的槽位留空。 */
 export interface WardrobeLookRequest {
