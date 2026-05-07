@@ -7,9 +7,7 @@ Page({
     messages: []
   },
 
-  onLoad() {
-    this.fetch();
-  },
+  onLoad() { this.fetch(); },
 
   onShow() {
     // 平台坑：自定义 tabBar 选中态需在 onShow 主动 setData。详见 agent.md「自定义 tabBar」
@@ -17,6 +15,8 @@ Page({
       const t = this.getTabBar();
       if (t) t.setData({ selected: 0 });
     }
+    // 从 chat 页返回时，刷新红点 / 时间
+    this.fetch();
   },
 
   async fetch() {
@@ -29,10 +29,15 @@ Page({
     }
   },
 
+  openChat(e) {
+    const botId = e.currentTarget.dataset.bot;
+    if (!botId) return;
+    wx.navigateTo({ url: "/pages/chat/index?botId=" + botId });
+  },
+
   goRoute(e) {
     const route = e.currentTarget.dataset.route;
     if (!route) return;
-    // 平台坑：tabBar 路径用 switchTab；非 tab 用 navigateTo。详见 agent.md「路由」
     const isTab = ["/pages/messages/index", "/pages/videos/index", "/pages/workbench/index", "/pages/market/index", "/pages/me/index"].some((p) => route.indexOf(p) === 0);
     if (isTab) wx.switchTab({ url: route });
     else wx.navigateTo({ url: route });

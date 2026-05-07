@@ -1,0 +1,345 @@
+.page {
+  min-height: 100vh;
+  background: #F2F2EE;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶部 */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 20rpx 24rpx;
+  background: #FAFAF7;
+  border-bottom: 2rpx solid #EAEAEA;
+  flex-shrink: 0;
+}
+.back {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  color: #0A0A0A;
+}
+.topbar-avatar {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.topbar-icon { font-size: 32rpx; font-weight: 700; }
+.topbar-meta { flex: 1; min-width: 0; }
+.topbar-name { font-size: 30rpx; font-weight: 700; }
+.topbar-sub { font-size: 22rpx; color: #1F8A5B; margin-top: 2rpx; }
+.topbar-more {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  color: #6B6B6B;
+}
+
+/* 消息流 */
+.stream {
+  flex: 1;
+  /* 平台坑：scroll-view 高度需要确定值，flex:1 在 iOS 偶现 0 高度。
+     这里用 height: 1px 配合 flex:1 强制撑开。详见 agent.md「渲染 / 长列表」 */
+  height: 1px;
+  background: #F2F2EE;
+  padding: 24rpx 0;
+}
+.msg-block { padding: 0 32rpx 28rpx; }
+.stream-bottom { height: 32rpx; }
+
+.time-chip {
+  display: inline-block;
+  margin: 16rpx auto 24rpx;
+  padding: 8rpx 24rpx;
+  background: rgba(0,0,0,.08);
+  color: #6B6B6B;
+  font-size: 22rpx;
+  border-radius: 999rpx;
+  text-align: center;
+}
+/* 平台坑：:has() 在小程序 WXSS 不可靠，用专属 class 控制对齐。详见 agent.md「CSS / WXSS」 */
+.msg-block-time { text-align: center; }
+.msg-block-user-text { display: flex; justify-content: flex-end; }
+
+.row-from-user {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+.bubble-user {
+  background: #C8FF00;
+  color: #0A0A0A;
+  border-radius: 28rpx 8rpx 28rpx 28rpx;
+  font-weight: 500;
+  box-shadow: 0 6rpx 16rpx rgba(200,255,0,.25);
+}
+
+.row-from-bot {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+.msg-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 4rpx;
+}
+.msg-avatar-icon { font-size: 28rpx; font-weight: 700; }
+
+.bubble {
+  max-width: 540rpx;
+  background: #fff;
+  border-radius: 8rpx 28rpx 28rpx 28rpx;
+  padding: 20rpx 24rpx;
+  font-size: 28rpx;
+  color: #0A0A0A;
+  line-height: 1.55;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,.04);
+}
+.bubble-text { }
+
+/* 富 CTA 卡片 */
+.card-cta {
+  flex: 1;
+  background: #fff;
+  border-radius: 8rpx 28rpx 28rpx 28rpx;
+  padding: 28rpx;
+  position: relative;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,.04);
+}
+/* 平台坑：::before 在 WXSS 内联用法稳定，但配合 border-radius 可能出现 1px 缺角。
+   用绝对定位 view 替代。这里使用 ::before 作为简化方案。详见 agent.md「CSS / WXSS」 */
+.card-cta-accent {
+  border-left: 8rpx solid #C8FF00;
+  padding-left: 28rpx;
+  border-top-left-radius: 0;
+}
+.card-title {
+  font-size: 30rpx;
+  font-weight: 800;
+  color: #0A0A0A;
+  letter-spacing: -0.5rpx;
+}
+.card-body {
+  font-size: 26rpx;
+  color: #6B6B6B;
+  line-height: 1.6;
+  margin-top: 12rpx;
+}
+.card-sub {
+  font-size: 22rpx;
+  color: #9B9B9B;
+  margin-top: 8rpx;
+}
+
+.hl {
+  background: #F8F8F4;
+  border-radius: 24rpx;
+  padding: 20rpx;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-top: 20rpx;
+}
+.hl-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 20rpx;
+  background: #0A0A0A;
+  color: #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  flex-shrink: 0;
+}
+.hl-meta { flex: 1; min-width: 0; }
+.hl-title { font-size: 26rpx; font-weight: 700; color: #0A0A0A; }
+.hl-sub { font-size: 22rpx; color: #6B6B6B; margin-top: 4rpx; }
+
+.card-cta-btn {
+  margin-top: 24rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  height: 88rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 700;
+  box-shadow: 0 8rpx 24rpx rgba(200,255,0,.35);
+}
+
+/* 表单卡片 */
+.card-form {
+  flex: 1;
+  background: #fff;
+  border-radius: 8rpx 28rpx 28rpx 28rpx;
+  padding: 28rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,.04);
+}
+.card-form-head {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+.card-form-tag {
+  font-size: 20rpx;
+  font-weight: 700;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+}
+.tag-warn { background: #FFE7D2; color: #FF7A1A; }
+.tag-info { background: #E0EBFB; color: #2A6FDB; }
+.tag-success { background: #DCF1E5; color: #1F8A5B; }
+
+.form-field {
+  background: #F8F8F4;
+  border-radius: 16rpx;
+  padding: 18rpx 20rpx;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+.form-label {
+  font-size: 26rpx;
+  color: #6B6B6B;
+  flex-shrink: 0;
+  width: 200rpx;
+}
+.form-value {
+  font-size: 26rpx;
+  color: #0A0A0A;
+  font-weight: 500;
+  flex: 1;
+  text-align: right;
+}
+
+.form-cta {
+  margin-top: 8rpx;
+  background: #fff;
+  border: 2rpx solid #0A0A0A;
+  color: #0A0A0A;
+  height: 80rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+/* 网格卡片 */
+.card-grid {
+  flex: 1;
+  background: #fff;
+  border-radius: 8rpx 28rpx 28rpx 28rpx;
+  padding: 28rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,.04);
+}
+.grid-2 {
+  margin-top: 20rpx;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+}
+.grid-cell {
+  background: #F8F8F4;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  text-align: center;
+}
+.grid-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12rpx;
+  font-size: 32rpx;
+  color: #2A6FDB;
+}
+.grid-label { font-size: 26rpx; font-weight: 700; }
+.grid-sub { font-size: 22rpx; color: #9B9B9B; margin-top: 4rpx; }
+
+.grid-cta {
+  margin-top: 20rpx;
+  background: transparent;
+  color: #0A0A0A;
+  border: 2rpx solid #EAEAEA;
+  height: 76rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+/* 输入条 */
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  background: #fff;
+  padding: 20rpx 24rpx;
+  border-top: 2rpx solid #EAEAEA;
+}
+.safe-bottom { padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); }
+.composer-icon {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 999rpx;
+  background: #F2F2EE;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  color: #0A0A0A;
+  flex-shrink: 0;
+}
+.composer-input {
+  flex: 1;
+  height: 72rpx;
+  background: #F2F2EE;
+  border-radius: 999rpx;
+  padding: 0 28rpx;
+  font-size: 26rpx;
+}
+.composer-placeholder { color: #9B9B9B; font-size: 26rpx; }
+.composer-send {
+  flex-shrink: 0;
+  padding: 0 28rpx;
+  height: 72rpx;
+  border-radius: 999rpx;
+  background: #EAEAEA;
+  color: #9B9B9B;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.composer-send-on { background: #C8FF00; color: #0A0A0A; box-shadow: 0 6rpx 16rpx rgba(200,255,0,.35); }

@@ -6,6 +6,9 @@
 
 .page-header {
   padding: 32rpx 32rpx 24rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
 }
 .title {
   font-size: 56rpx;
@@ -18,6 +21,17 @@
   letter-spacing: 4rpx;
   color: #6B6B6B;
   font-weight: 700;
+}
+.header-search {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
 }
 
 /* todo hero */
@@ -45,7 +59,6 @@
   font-weight: 700;
 }
 .chevron { color: #666; font-size: 28rpx; }
-.chevron-sm { color: #6B6B6B; font-size: 20rpx; margin-left: 4rpx; }
 
 .todo-scroll { white-space: nowrap; }
 .todo-card {
@@ -72,33 +85,43 @@
 }
 .todo-card-count { font-weight: 600; }
 
-/* msg list */
+/* conversation list */
 .msg-list {
+  margin: 0 32rpx;
   background: #fff;
-  border-radius: 48rpx 48rpx 0 0;
-  padding: 16rpx 0 32rpx;
-  margin-top: -16rpx;
+  border-radius: 40rpx;
+  border: 2rpx solid #EAEAEA;
+  overflow: hidden;
 }
-.msg-item {
-  padding: 32rpx 40rpx;
-  border-bottom: 2rpx solid #F2F2EE;
+.msg-list-head {
+  padding: 28rpx 32rpx 16rpx;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.msg-list-title { font-size: 28rpx; font-weight: 700; }
+.msg-list-sub { font-size: 22rpx; color: #9B9B9B; }
+
+.conv-row {
+  padding: 24rpx 32rpx;
+  border-top: 2rpx solid #F2F2EE;
   display: flex;
   gap: 24rpx;
+  align-items: center;
 }
-.msg-item:last-child { border-bottom: none; }
-.msg-avatar-wrap { position: relative; flex-shrink: 0; }
-.msg-avatar {
+.conv-row-hover { background: #F8F8F4; }
+
+.conv-avatar-wrap { position: relative; flex-shrink: 0; }
+.conv-avatar {
   width: 88rpx;
   height: 88rpx;
-  border-radius: 28rpx;
+  border-radius: 999rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 36rpx;
-  font-weight: 700;
 }
-.msg-dot {
+.conv-avatar-icon { font-size: 36rpx; font-weight: 700; }
+.conv-dot {
   position: absolute;
   top: -8rpx;
   right: -8rpx;
@@ -114,43 +137,35 @@
   align-items: center;
   justify-content: center;
 }
-.msg-body { flex: 1; min-width: 0; }
-.msg-head {
+
+.conv-body { flex: 1; min-width: 0; }
+.conv-head {
   display: flex;
   align-items: center;
   gap: 12rpx;
   margin-bottom: 8rpx;
 }
-.msg-name { font-weight: 700; font-size: 30rpx; }
-.msg-role {
+.conv-name { font-weight: 700; font-size: 30rpx; }
+.conv-role {
   font-size: 20rpx;
   font-weight: 600;
   padding: 4rpx 12rpx;
   border-radius: 8rpx;
 }
-.msg-time {
+.conv-time {
   margin-left: auto;
   font-size: 22rpx;
   color: #9B9B9B;
+  flex-shrink: 0;
 }
-.msg-text {
+.conv-preview {
   font-size: 26rpx;
   color: #6B6B6B;
   line-height: 1.5;
-  margin-bottom: 16rpx;
-}
-.msg-action {
-  display: inline-flex;
-  align-items: center;
-  background: #F2F2EE;
-  color: #0A0A0A;
-  padding: 12rpx 24rpx;
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-.msg-action-accent {
-  background: #C8FF00;
+  /* 单行省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dot {

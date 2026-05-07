@@ -108,12 +108,132 @@ const TODOS = [
   { title: "数据日报", sub: "昨日 GMV 已结算", count: 1, accent: false, route: "/pages/dashboard/index" }
 ];
 const BOT_MESSAGES = [
-  { name: "片片", role: "创作官", color: "#0A0A0A", roleBg: "#C8FF00", roleColor: "#0A0A0A", text: "你的「李某某 · 30s 口播」生成完成，建议加个特写镜头。", time: "09:42", action: "查看视频", route: "/pages/videos/index", dot: 3, accent: true },
-  { name: "审审", role: "合规官", color: "#FF7A1A", roleBg: "#FFE7D2", roleColor: "#FF7A1A", text: "已通过 1 项明星授权审核：王某某。请尽快开始第一条带货。", time: "09:15", action: "去授权", route: "/pages/celebrity-detail/index?id=star-wang", dot: 1 },
-  { name: "数数", role: "数据官", color: "#2A6FDB", roleBg: "#E0EBFB", roleColor: "#2A6FDB", text: "昨日 12 条视频累计曝光 28.4w，转化率较前日 +12%。", time: "08:30", action: "查看日报", route: "/pages/dashboard/index", dot: 2 },
-  { name: "Ada", role: "星探官", color: "#1F8A5B", roleBg: "#DCF1E5", roleColor: "#1F8A5B", text: "新增 3 位食品类明星可授权，与你的店铺品类相符。", time: "昨天", action: "去看看", route: "/pages/market/index", dot: 0 },
-  { name: "长长", role: "成长教练", color: "#9D5BFF", roleBg: "#EFE2FF", roleColor: "#9D5BFF", text: "本周复盘已生成：建议提升 15s 短视频的占比。", time: "昨天", action: "查看复盘", route: "/pages/dashboard/index", dot: 0 }
+  { botId: "pian", name: "片片", role: "创作官", color: "#0A0A0A", roleBg: "#C8FF00", roleColor: "#0A0A0A", avatarIcon: "✦", preview: "你的「李某某 · 30s 口播」生成完成，建议加个特写镜头。", time: "09:42", dot: 3, accent: true },
+  { botId: "shen", name: "审审", role: "合规官", color: "#FF7A1A", roleBg: "#FFE7D2", roleColor: "#FF7A1A", avatarIcon: "✓", preview: "已通过 1 项明星授权审核：王某某。请尽快开始第一条带货。", time: "09:15", dot: 1 },
+  { botId: "shu",  name: "数数", role: "数据官", color: "#2A6FDB", roleBg: "#E0EBFB", roleColor: "#2A6FDB", avatarIcon: "📊", preview: "昨日 12 条视频累计曝光 28.4w，转化率较前日 +12%。", time: "08:30", dot: 2 },
+  { botId: "ada",  name: "Ada", role: "星探官", color: "#1F8A5B", roleBg: "#DCF1E5", roleColor: "#1F8A5B", avatarIcon: "★", preview: "新增 3 位食品类明星可授权，与你的店铺品类相符。", time: "昨天", dot: 0 },
+  { botId: "zhang",name: "长长", role: "成长教练", color: "#9D5BFF", roleBg: "#EFE2FF", roleColor: "#9D5BFF", avatarIcon: "◯", preview: "本周复盘已生成：建议提升 15s 短视频的占比。", time: "昨天", dot: 0 }
 ];
+
+// 对话详情（按 botId 索引）
+// 消息块类型：
+//   - time:       居中时间分隔条
+//   - text:       纯文本（左对齐 · 卡片式）
+//   - card-cta:   富卡片（标题 + 描述 + 高亮内嵌块 + 主 CTA）
+//   - card-form:  表单卡片（标题 + 状态 chip + 字段行 + CTA）
+//   - card-grid:  2×N 权益/数据网格（标题 + 子标题 + items + CTA）
+const CONVERSATIONS = {
+  pian: {
+    bot: { id: "pian", name: "片片", subtitle: "创作官 · 在线", avatarColor: "#0A0A0A", avatarIcon: "✦", iconColor: "#C8FF00" },
+    messages: [
+      { type: "time", text: "上午 09:42" },
+      { type: "text", text: "老板早～你的「李某某 · 30s 口播」刚刚生成完成 🎬" },
+      {
+        type: "card-cta",
+        accent: true,
+        title: "生成完成 · 待发布",
+        body: "建议加个产品特写镜头会更出片，复制并改只需 30 秒。",
+        highlight: { icon: "▶", title: "T-2024-1024-02", sub: "李某某 · 每日坚果礼盒" },
+        cta: { text: "去查看 / 发布", route: "/pages/video-detail/index?id=T-2024-1024-02" }
+      },
+      { type: "text", text: "另外还有 2 条草稿待发布、1 条失败可重试，需要一起处理吗？" },
+      {
+        type: "card-cta",
+        title: "草稿管理",
+        body: "当前共 2 条草稿、1 条生成失败、4 条生成中。",
+        cta: { text: "前往视频中心", route: "/pages/videos/index" }
+      }
+    ]
+  },
+  shen: {
+    bot: { id: "shen", name: "审审", subtitle: "合规官 · 在线", avatarColor: "#FF7A1A", avatarIcon: "✓", iconColor: "#fff" },
+    messages: [
+      { type: "time", text: "上午 09:15" },
+      { type: "text", text: "王某某授权审核已通过 ✓ 但还差一些资质材料没补齐。" },
+      {
+        type: "card-form",
+        title: "资质材料",
+        tag: { text: "待完善", tone: "warn" },
+        fields: [
+          { label: "营业执照", value: "已上传" },
+          { label: "品类经营许可", value: "未上传" },
+          { label: "法人手机号", value: "138****8888" }
+        ],
+        cta: { text: "上传剩余资质", route: "/pages/celebrity-detail/index?id=star-wang" }
+      },
+      { type: "text", text: "SLA：补齐后 48h 内复核完成。如果超时我会再 ping 你一次。" }
+    ]
+  },
+  shu: {
+    bot: { id: "shu", name: "数数", subtitle: "数据官 · 在线", avatarColor: "#2A6FDB", avatarIcon: "📊", iconColor: "#fff" },
+    messages: [
+      { type: "time", text: "上午 08:30" },
+      { type: "text", text: "昨日 12 条视频累计曝光 28.4w，转化率较前日 +12% 👏" },
+      {
+        type: "card-grid",
+        title: "昨日数据快报",
+        sub: "7 日环比向好 · 数据已落账",
+        items: [
+          { icon: "👁", label: "曝光", sub: "28.4w" },
+          { icon: "🛒", label: "订单", sub: "1,284" },
+          { icon: "¥", label: "GMV", sub: "4.8w" },
+          { icon: "↑", label: "转化", sub: "+12%" }
+        ],
+        cta: { text: "查看完整看板", route: "/pages/dashboard/index" }
+      },
+      { type: "text", text: "异常提醒：陈某某的视频 ROI 跌到 1.8x，建议复盘改脚本。" }
+    ]
+  },
+  ada: {
+    bot: { id: "ada", name: "Ada", subtitle: "星探官 · 在线", avatarColor: "#1F8A5B", avatarIcon: "★", iconColor: "#C8FF00" },
+    messages: [
+      { type: "time", text: "上午 10:23" },
+      { type: "text", text: "AI 供应链助手为你匹配到一批新明星，与你的店铺品类相符。" },
+      {
+        type: "card-cta",
+        accent: true,
+        title: "明星授权邀请",
+        body: "诚邀您与「李某某 · 美食综艺」开启首条带货合作，本周通道免审核保证金、极速过审。",
+        highlight: { icon: "👑", title: "本周限时通道", sub: "免保证金 · 极速审核" },
+        cta: { text: "查看明星详情", route: "/pages/celebrity-detail/index?id=star-li" }
+      },
+      { type: "time", text: "上午 10:25" },
+      { type: "text", text: "另外还有 4 位刚开放授权的明星可以扫一眼：" },
+      {
+        type: "card-grid",
+        title: "本周明星上新",
+        sub: "成为核心带货方可解锁以下 4 位",
+        items: [
+          { icon: "★", label: "王某某", sub: "美妆 · 时尚" },
+          { icon: "★", label: "陈某某", sub: "数码 · 科技" },
+          { icon: "★", label: "刘某某", sub: "服饰 · 配饰" },
+          { icon: "★", label: "周某某", sub: "母婴 · 教育" }
+        ],
+        cta: { text: "去市场看看", route: "/pages/market/index" }
+      }
+    ]
+  },
+  zhang: {
+    bot: { id: "zhang", name: "长长", subtitle: "成长教练 · 在线", avatarColor: "#9D5BFF", avatarIcon: "◯", iconColor: "#fff" },
+    messages: [
+      { type: "time", text: "昨天 21:00" },
+      { type: "text", text: "本周复盘已生成。基于过去 7 日数据，给你 3 条最有价值的建议：" },
+      {
+        type: "card-grid",
+        title: "本周成长建议",
+        sub: "按预期收益排序",
+        items: [
+          { icon: "①", label: "提升 15s 占比", sub: "完播率高 28%" },
+          { icon: "②", label: "加大美妆品类", sub: "王某某适配度 9.4" },
+          { icon: "③", label: "调整发布时段", sub: "20:00 流量更佳" },
+          { icon: "④", label: "延长授权时长", sub: "30 天 → 60 天" }
+        ],
+        cta: { text: "查看完整复盘", route: "/pages/dashboard/index" }
+      },
+      { type: "text", text: "下周一早上 9 点我会再推一次进度对比 📈" }
+    ]
+  }
+};
 
 // 视频资产（CelebrityProjectVideo 子集）
 const VIDEO_ASSETS = [
@@ -234,6 +354,7 @@ module.exports = {
   ZONE_OVERVIEW,
   TODOS,
   BOT_MESSAGES,
+  CONVERSATIONS,
   VIDEO_ASSETS,
   VIDEO_GENERATING,
   WALLET,

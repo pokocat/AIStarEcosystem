@@ -2,6 +2,7 @@
   "pages": [
     "pages/login/index",
     "pages/messages/index",
+    "pages/chat/index",
     "pages/videos/index",
     "pages/workbench/index",
     "pages/market/index",

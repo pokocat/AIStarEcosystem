@@ -5,6 +5,7 @@
       <view class="eyebrow">MESSAGES</view>
       <view class="title">消息</view>
     </view>
+    <view class="header-search">🔍</view>
   </view>
 
   <!-- 待办中心 (深色 hero) -->
@@ -34,32 +35,33 @@
     </scroll-view>
   </view>
 
-  <!-- Bot 消息流 -->
+  <!-- 会话列表 -->
   <view class="msg-list">
+    <view class="msg-list-head">
+      <text class="msg-list-title">AI 同事</text>
+      <text class="msg-list-sub">{{messages.length}} 位 · 长按可置顶</text>
+    </view>
     <view
-      class="msg-item"
+      class="conv-row"
       wx:for="{{messages}}"
-      wx:key="name"
-      data-route="{{item.route}}"
-      bindtap="goRoute"
+      wx:key="botId"
+      data-bot="{{item.botId}}"
+      bindtap="openChat"
+      hover-class="conv-row-hover"
     >
-      <view class="msg-avatar-wrap">
-        <view class="msg-avatar" style="background:{{item.color}};">
-          <text>{{item.name[0]}}</text>
+      <view class="conv-avatar-wrap">
+        <view class="conv-avatar" style="background:{{item.color}};">
+          <text class="conv-avatar-icon" style="color:{{item.botId === 'pian' ? '#C8FF00' : '#fff'}};">{{item.avatarIcon}}</text>
         </view>
-        <view wx:if="{{item.dot > 0}}" class="msg-dot">{{item.dot}}</view>
+        <view wx:if="{{item.dot > 0}}" class="conv-dot">{{item.dot}}</view>
       </view>
-      <view class="msg-body">
-        <view class="msg-head">
-          <text class="msg-name">{{item.name}}</text>
-          <view class="msg-role" style="background:{{item.roleBg}};color:{{item.roleColor}};">{{item.role}}</view>
-          <text class="msg-time">{{item.time}}</text>
+      <view class="conv-body">
+        <view class="conv-head">
+          <text class="conv-name">{{item.name}}</text>
+          <view class="conv-role" style="background:{{item.roleBg}};color:{{item.roleColor}};">{{item.role}}</view>
+          <text class="conv-time">{{item.time}}</text>
         </view>
-        <view class="msg-text">{{item.text}}</view>
-        <view class="msg-action {{item.accent ? 'msg-action-accent' : ''}}">
-          <text>{{item.action}}</text>
-          <text class="chevron-sm">›</text>
-        </view>
+        <view class="conv-preview">{{item.preview}}</view>
       </view>
     </view>
   </view>

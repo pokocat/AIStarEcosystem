@@ -1,0 +1,138 @@
+<view class="page" style="padding-top: {{statusBarHeight}}px;">
+  <!-- 顶部条 -->
+  <view class="topbar">
+    <view class="back" bindtap="back">‹</view>
+    <view class="topbar-avatar" style="background:{{bot.avatarColor}};">
+      <text class="topbar-icon" style="color:{{bot.iconColor}};">{{bot.avatarIcon}}</text>
+    </view>
+    <view class="topbar-meta">
+      <view class="topbar-name">{{bot.name}}</view>
+      <view class="topbar-sub">{{bot.subtitle}}</view>
+    </view>
+    <view class="topbar-more">⋯</view>
+  </view>
+
+  <!-- 消息流 -->
+  <scroll-view class="stream" scroll-y enhanced show-scrollbar="{{false}}" scroll-into-view="{{anchor}}" scroll-with-animation>
+    <view wx:for="{{messages}}" wx:key="id" id="{{item.id}}" class="msg-block msg-block-{{item.type}}">
+      <!-- 时间分隔条 -->
+      <block wx:if="{{item.type === 'time'}}">
+        <view class="time-chip">{{item.text}}</view>
+      </block>
+
+      <!-- 用户发出的消息（右对齐） -->
+      <block wx:elif="{{item.type === 'user-text'}}">
+        <view class="row-from-user">
+          <view class="bubble bubble-user">{{item.text}}</view>
+        </view>
+      </block>
+
+      <!-- 普通文本 -->
+      <block wx:elif="{{item.type === 'text'}}">
+        <view class="row-from-bot">
+          <view class="msg-avatar" style="background:{{bot.avatarColor}};">
+            <text class="msg-avatar-icon" style="color:{{bot.iconColor}};">{{bot.avatarIcon}}</text>
+          </view>
+          <view class="bubble bubble-text">{{item.text}}</view>
+        </view>
+      </block>
+
+      <!-- 富 CTA 卡片 -->
+      <block wx:elif="{{item.type === 'card-cta'}}">
+        <view class="row-from-bot">
+          <view class="msg-avatar" style="background:{{bot.avatarColor}};">
+            <text class="msg-avatar-icon" style="color:{{bot.iconColor}};">{{bot.avatarIcon}}</text>
+          </view>
+          <view class="card-cta {{item.accent ? 'card-cta-accent' : ''}}">
+            <view class="card-title">{{item.title}}</view>
+            <view class="card-body">{{item.body}}</view>
+            <view wx:if="{{item.highlight}}" class="hl">
+              <view class="hl-icon">{{item.highlight.icon}}</view>
+              <view class="hl-meta">
+                <view class="hl-title">{{item.highlight.title}}</view>
+                <view class="hl-sub">{{item.highlight.sub}}</view>
+              </view>
+            </view>
+            <view
+              wx:if="{{item.cta}}"
+              class="card-cta-btn"
+              data-route="{{item.cta.route}}"
+              bindtap="goRoute"
+            >{{item.cta.text}}</view>
+          </view>
+        </view>
+      </block>
+
+      <!-- 表单卡片 -->
+      <block wx:elif="{{item.type === 'card-form'}}">
+        <view class="row-from-bot">
+          <view class="msg-avatar" style="background:{{bot.avatarColor}};">
+            <text class="msg-avatar-icon" style="color:{{bot.iconColor}};">{{bot.avatarIcon}}</text>
+          </view>
+          <view class="card-form">
+            <view class="card-form-head">
+              <text class="card-title">{{item.title}}</text>
+              <view wx:if="{{item.tag}}" class="card-form-tag tag-{{item.tag.tone}}">{{item.tag.text}}</view>
+            </view>
+            <view class="form-field" wx:for="{{item.fields}}" wx:for-item="f" wx:key="label">
+              <text class="form-label">{{f.label}}</text>
+              <text class="form-value">{{f.value}}</text>
+            </view>
+            <view
+              wx:if="{{item.cta}}"
+              class="form-cta"
+              data-route="{{item.cta.route}}"
+              bindtap="goRoute"
+            >📝 {{item.cta.text}}</view>
+          </view>
+        </view>
+      </block>
+
+      <!-- 网格卡片 -->
+      <block wx:elif="{{item.type === 'card-grid'}}">
+        <view class="row-from-bot">
+          <view class="msg-avatar" style="background:{{bot.avatarColor}};">
+            <text class="msg-avatar-icon" style="color:{{bot.iconColor}};">{{bot.avatarIcon}}</text>
+          </view>
+          <view class="card-grid">
+            <view class="card-title">{{item.title}}</view>
+            <view wx:if="{{item.sub}}" class="card-sub">{{item.sub}}</view>
+            <view class="grid-2">
+              <view class="grid-cell" wx:for="{{item.items}}" wx:for-item="g" wx:key="label">
+                <view class="grid-icon">{{g.icon}}</view>
+                <view class="grid-label">{{g.label}}</view>
+                <view class="grid-sub">{{g.sub}}</view>
+              </view>
+            </view>
+            <view
+              wx:if="{{item.cta}}"
+              class="grid-cta"
+              data-route="{{item.cta.route}}"
+              bindtap="goRoute"
+            >{{item.cta.text}} →</view>
+          </view>
+        </view>
+      </block>
+    </view>
+
+    <view class="stream-bottom"></view>
+  </scroll-view>
+
+  <!-- 底部输入条 -->
+  <view class="composer safe-bottom">
+    <view class="composer-icon">+</view>
+    <input
+      class="composer-input"
+      placeholder="对 {{bot.name}} 说点什么…"
+      placeholder-class="composer-placeholder"
+      value="{{draft}}"
+      bindinput="onDraftInput"
+      confirm-type="send"
+      bindconfirm="send"
+    />
+    <view
+      class="composer-send {{draft ? 'composer-send-on' : ''}}"
+      bindtap="send"
+    >发送</view>
+  </view>
+</view>

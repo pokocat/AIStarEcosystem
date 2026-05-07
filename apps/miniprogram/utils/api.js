@@ -144,6 +144,15 @@ const NotificationsApi = {
     const app = getApp_();
     if (app.globalData.useMock) return mockDelay({ todos: mocks.TODOS, messages: mocks.BOT_MESSAGES });
     return apiFetch("/notifications");
+  },
+  /** GET /notifications/conversations/{botId} — 单个 Bot 的多消息会话 */
+  getConversation(botId) {
+    const app = getApp_();
+    if (app.globalData.useMock) {
+      const c = mocks.CONVERSATIONS[botId] || mocks.CONVERSATIONS.pian;
+      return mockDelay(c);
+    }
+    return apiFetch("/notifications/conversations/" + encodeURIComponent(botId));
   }
 };
 
