@@ -1,0 +1,167 @@
+<view class="page">
+  <view class="page-header">
+    <view>
+      <view class="eyebrow">VIDEO ASSETS</view>
+      <view class="title">视频</view>
+    </view>
+    <view class="new-btn" bindtap="goNew">✦ 新建</view>
+  </view>
+
+  <!-- Hero · 额度 -->
+  <view class="hero">
+    <view class="hero-head">
+      <text class="quota-eyebrow">● 生成额度</text>
+      <text class="quota-reset mono">本月 {{wallet.resetAt}} 重置</text>
+    </view>
+    <view class="quota-row">
+      <text class="quota-num">{{wallet.remaining}}</text>
+      <text class="quota-total">/ {{wallet.total}} 次剩余</text>
+      <view class="quota-recharge">+ 充值</view>
+    </view>
+    <view class="quota-track">
+      <view class="quota-fill quota-fill-used" style="width: {{usedPct}}%;"></view>
+      <view class="quota-fill quota-fill-pending" style="width: {{pendingPct}}%;"></view>
+    </view>
+    <view class="quota-foot mono">
+      <text>已用 {{wallet.used}} · 生成中 {{wallet.generating}}</text>
+      <text>剩余 {{wallet.remaining}}</text>
+    </view>
+
+    <view class="hero-divider"></view>
+
+    <view class="kpi-row">
+      <view class="kpi-grid">
+        <view class="kpi-cell">
+          <view class="kpi-k">累计生成</view>
+          <view class="kpi-v">18</view>
+        </view>
+        <view class="kpi-cell">
+          <view class="kpi-k">已发布</view>
+          <view class="kpi-v">11</view>
+        </view>
+        <view class="kpi-cell">
+          <view class="kpi-k">总曝光</view>
+          <view class="kpi-v">28.4<text class="kpi-unit">w</text></view>
+        </view>
+        <view class="kpi-cell">
+          <view class="kpi-k">累计 GMV</view>
+          <view class="kpi-v kpi-v-accent">¥48k</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <block wx:if="{{empty}}">
+    <view class="empty">
+      <view class="empty-illu">
+        <view class="empty-tile empty-tile-l"></view>
+        <view class="empty-tile-c">
+          <text class="empty-c-icon">✦</text>
+        </view>
+        <view class="empty-tile empty-tile-r"></view>
+      </view>
+      <view class="eyebrow">NO VIDEO YET</view>
+      <view class="empty-title">还没有生成视频</view>
+      <view class="empty-desc">完成明星授权后，选择商品就能 60 秒内生成第一条带货视频</view>
+      <view class="empty-cta" bindtap="goNew">✦ 立即生成第一条视频</view>
+      <view class="empty-steps">
+        <view class="empty-step" wx:for="{{emptySteps}}" wx:key="n">
+          <view class="empty-step-dot empty-step-dot-{{item.state}}">
+            <text wx:if="{{item.state === 'done'}}">✓</text>
+            <text wx:else>{{item.n}}</text>
+          </view>
+          <text class="empty-step-name">{{item.title}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <!-- 生成中 -->
+    <view wx:if="{{generating.length > 0}}" class="section">
+      <view class="section-head">
+        <view class="section-title-row">
+          <view class="dot-live"></view>
+          <text class="section-title">生成中 · {{generating.length}}</text>
+        </view>
+        <text class="section-more">查看进度 ›</text>
+      </view>
+      <scroll-view class="gen-scroll" scroll-x>
+        <view class="gen-card" wx:for="{{generating}}" wx:key="id">
+          <view class="gen-thumb">
+            <text class="gen-icon">✦</text>
+          </view>
+          <view class="gen-meta">
+            <view class="gen-title">{{item.title}}</view>
+            <view class="gen-style">{{item.style}}</view>
+            <view class="gen-bar">
+              <view class="gen-fill" style="width: {{item.pct}}%;"></view>
+            </view>
+            <view class="gen-foot mono">
+              <text class="gen-pct">{{item.pct}}%</text>
+              <text>剩 {{item.etaText}}</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 筛选 -->
+    <scroll-view class="filters" scroll-x>
+      <view
+        class="filter {{currentFilter === item.id ? 'filter-on' : ''}}"
+        wx:for="{{filters}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="setFilter"
+      >
+        {{item.label}} <text class="filter-count">{{item.count}}</text>
+      </view>
+    </scroll-view>
+
+    <!-- 视频网格 -->
+    <view class="grid">
+      <view
+        class="vcell {{item.selected ? 'vcell-on' : ''}}"
+        wx:for="{{videos}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="goDetail"
+      >
+        <view class="vthumb vthumb-{{item.state}}">
+          <view class="vthumb-grid"></view>
+          <view class="vthumb-check {{item.selected ? 'vthumb-check-on' : ''}}">
+            <text wx:if="{{item.selected}}">✓</text>
+          </view>
+          <view class="vthumb-state state-{{item.state}}">{{stateText[item.state]}}</view>
+          <view wx:if="{{item.hot}}" class="vthumb-hot">🔥 HOT</view>
+          <view wx:if="{{item.state !== 'fail'}}" class="vthumb-play">▶</view>
+          <view wx:else class="vthumb-fail">
+            <view class="vthumb-fail-icon">⚠</view>
+            <text class="vthumb-fail-text">生成失败</text>
+          </view>
+          <view wx:if="{{item.duration}}" class="vthumb-dur mono">{{item.durationText}}</view>
+        </view>
+        <view class="vinfo">
+          <view class="vtitle">{{item.title}}</view>
+          <view class="vmeta">
+            <text>{{item.celeb}}</text>
+            <text>·</text>
+            <text>{{item.time}}</text>
+          </view>
+          <view wx:if="{{item.state === 'pub'}}" class="vstats">
+            <text class="vstats-views">👁 {{item.viewsText}}</text>
+            <text class="vstats-gmv">¥{{item.gmvText}}</text>
+          </view>
+          <view wx:elif="{{item.state === 'draft'}}" class="vbtn vbtn-dark">📤 发布</view>
+          <view wx:elif="{{item.state === 'fail'}}" class="vbtn vbtn-danger">↻ 重新生成</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="end-line mono">↓ END · 共 {{videos.length}} 个视频</view>
+  </block>
+
+  <view class="ai-fab">✦</view>
+</view>

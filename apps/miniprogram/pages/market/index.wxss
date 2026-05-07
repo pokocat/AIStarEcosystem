@@ -1,0 +1,141 @@
+.page { min-height: 100vh; background: #FAFAF7; padding-bottom: 280rpx; }
+
+.page-header { padding: 32rpx 32rpx 24rpx; }
+.title { font-size: 56rpx; font-weight: 800; letter-spacing: -1rpx; margin-top: 8rpx; }
+.eyebrow { font-size: 22rpx; letter-spacing: 4rpx; color: #6B6B6B; font-weight: 700; }
+
+.search {
+  margin: 0 32rpx 24rpx;
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 999rpx;
+  padding: 20rpx 28rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+.search-icon { color: #9B9B9B; }
+.search-placeholder { flex: 1; color: #9B9B9B; font-size: 26rpx; }
+.search-filter {
+  background: #0A0A0A;
+  color: #C8FF00;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.cats { white-space: nowrap; padding: 0 32rpx 28rpx; }
+.cat {
+  display: inline-block;
+  padding: 14rpx 28rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  background: #fff;
+  color: #6B6B6B;
+  border: 2rpx solid #EAEAEA;
+  margin-right: 16rpx;
+}
+.cat-on {
+  background: #0A0A0A;
+  color: #C8FF00;
+  border-color: #0A0A0A;
+}
+
+/* featured */
+.featured {
+  margin: 0 32rpx 32rpx;
+  background: #0A0A0A;
+  border-radius: 48rpx;
+  padding: 36rpx;
+  color: #fff;
+  display: flex;
+  gap: 28rpx;
+}
+.featured-img {
+  width: 184rpx;
+  height: 232rpx;
+  border-radius: 28rpx;
+  flex-shrink: 0;
+}
+.portrait-placeholder-dark {
+  background-image: repeating-linear-gradient(45deg, #1A1A1A, #1A1A1A 12rpx, #222 12rpx, #222 24rpx);
+  border: 2rpx solid #2A2A2A;
+}
+.featured-meta { flex: 1; min-width: 0; }
+.featured-tag {
+  display: inline-block;
+  background: #C8FF00;
+  color: #0A0A0A;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.featured-name { font-size: 40rpx; font-weight: 800; margin-top: 16rpx; }
+.featured-cat { font-size: 22rpx; color: #999; margin-top: 4rpx; }
+.featured-desc { font-size: 22rpx; color: #bbb; margin-top: 16rpx; line-height: 1.5; }
+.featured-foot { display: flex; align-items: center; gap: 16rpx; margin-top: 20rpx; }
+.featured-price { color: #C8FF00; font-weight: 700; font-size: 28rpx; }
+.featured-cta {
+  background: #C8FF00;
+  color: #0A0A0A;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+/* grid */
+.section { padding: 0 32rpx; }
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20rpx; }
+.section-title { font-size: 30rpx; font-weight: 700; }
+.section-count { color: #9B9B9B; font-weight: 400; font-size: 24rpx; margin-left: 8rpx; }
+.section-more { font-size: 22rpx; color: #6B6B6B; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20rpx; }
+
+.cell {
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 32rpx;
+  padding: 20rpx;
+  position: relative;
+}
+.cell-img {
+  width: 100%;
+  /* 平台坑：WXSS 不支持 aspect-ratio，用 padding-bottom 保比例。详见 agent.md「CSS / WXSS」 */
+  padding-bottom: 110%;
+  height: 0;
+  border-radius: 24rpx;
+  position: relative;
+}
+.portrait-placeholder { background-image: repeating-linear-gradient(45deg, #EEEEE8, #EEEEE8 12rpx, #F5F5EF 12rpx, #F5F5EF 24rpx); border: 2rpx solid #EAEAEA; }
+.cell-free {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  font-weight: 700;
+}
+.cell-name { font-size: 26rpx; font-weight: 700; margin-top: 16rpx; }
+.cell-cat { font-size: 20rpx; color: #9B9B9B; margin-top: 4rpx; }
+.cell-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 16rpx; }
+.cell-price { font-size: 22rpx; color: #0A0A0A; font-weight: 700; }
+.cell-hot { font-size: 20rpx; color: #9B9B9B; }
+
+.mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }
+
+.ai-fab {
+  position: fixed; right: 32rpx; bottom: 220rpx;
+  width: 96rpx; height: 96rpx; border-radius: 50%;
+  background: #0A0A0A; color: #C8FF00;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40rpx;
+  box-shadow: 0 12rpx 32rpx rgba(0,0,0,.25);
+  z-index: 100;
+}

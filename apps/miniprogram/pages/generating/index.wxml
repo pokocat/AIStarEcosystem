@@ -1,0 +1,67 @@
+<view class="page" style="padding-top: {{statusBarHeight}}px;">
+  <!-- top bar -->
+  <view class="topbar">
+    <view class="back" bindtap="back">‹</view>
+    <view class="topbar-meta">
+      <view class="eyebrow eyebrow-on-dark">AI · STUDIO</view>
+      <view class="topbar-title">生成中</view>
+    </view>
+    <view class="bg-btn">后台运行</view>
+  </view>
+
+  <!-- preview -->
+  <view class="preview">
+    <view class="preview-noise"></view>
+    <view class="preview-scan"></view>
+    <view class="preview-rec mono">● REC</view>
+    <view class="preview-frame mono">FRAME {{frame}} / 12</view>
+    <view class="preview-center">
+      <view class="preview-pulse">✦</view>
+      <view class="preview-cap mono">分镜画面生成中</view>
+    </view>
+    <view class="preview-foot mono">
+      <text>李某某 · 30s · 口播种草</text>
+      <text>SKU#A0291</text>
+    </view>
+  </view>
+
+  <!-- overall progress -->
+  <view class="overall">
+    <view class="overall-row">
+      <view class="overall-num">
+        <text class="overall-int">{{progress}}</text>
+        <text class="overall-pct">%</text>
+      </view>
+      <text class="overall-eta mono">预计剩余 {{etaText}}</text>
+    </view>
+    <view class="overall-track">
+      <view class="overall-fill" style="width: {{progress}}%;"></view>
+    </view>
+  </view>
+
+  <!-- pipeline -->
+  <view class="pipeline">
+    <view class="eyebrow eyebrow-on-dark">PIPELINE</view>
+    <view class="step" wx:for="{{steps}}" wx:key="name">
+      <view class="step-dot step-dot-{{item.state}}">
+        <text wx:if="{{item.state === 'done'}}">✓</text>
+        <view wx:elif="{{item.state === 'current'}}" class="step-pulse"></view>
+      </view>
+      <view class="step-meta">
+        <view class="step-row">
+          <text class="step-name step-name-{{item.state}}">{{item.name}}</text>
+          <text class="step-time mono step-time-{{item.state}}">{{item.time}}</text>
+        </view>
+        <view class="step-sub step-sub-{{item.state}}">{{item.sub}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tip">
+    <text>💡</text>
+    <view>
+      生成会持续 2-3 分钟，可以离开页面，完成后片片会发消息通知你。
+      所有任务在 <text class="tip-link">视频历史</text> 中可追溯。
+    </view>
+  </view>
+</view>

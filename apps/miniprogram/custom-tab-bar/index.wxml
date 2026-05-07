@@ -1,0 +1,16 @@
+<view class="tabbar safe-bottom">
+  <block wx:for="{{list}}" wx:key="path">
+    <view
+      class="tab {{item.center ? 'tab-center' : ''}} {{selected === index ? 'tab-active' : ''}}"
+      data-index="{{index}}"
+      data-path="{{item.path}}"
+      bind:tap="switchTab"
+    >
+      <view wx:if="{{item.center}}" class="center-bump">
+        <view class="center-icon">✦</view>
+      </view>
+      <view wx:else class="tab-icon">{{item.icon}}</view>
+      <view class="tab-text">{{item.text}}</view>
+    </view>
+  </block>
+</view>

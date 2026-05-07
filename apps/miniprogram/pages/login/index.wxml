@@ -1,0 +1,103 @@
+<view class="page" style="padding-top: {{statusBarHeight}}px;">
+  <!-- Brand -->
+  <view class="brand">
+    <text class="brand-en">STAR</text>
+    <view class="brand-tag">带货式</view>
+    <text class="brand-bang">!</text>
+  </view>
+
+  <!-- Hero -->
+  <view class="hero">
+    <view class="eyebrow">CELEBRITY · AI · COMMERCE</view>
+    <view class="title">AI 明星带货</view>
+    <view class="title title-row2">
+      <text class="title-black">从一个</text>
+      <text class="title-hi">激活码</text>
+      <text class="title-black">开始</text>
+    </view>
+    <view class="subtitle">激活码由销售经理发放 · 内测专享通道</view>
+  </view>
+
+  <!-- Form -->
+  <view class="form">
+    <!-- Activation code -->
+    <view class="field field-primary">
+      <view class="field-badge">激活码 · 必填</view>
+      <text class="field-icon">🎟</text>
+      <input
+        class="field-input field-input-mono"
+        type="text"
+        placeholder="XXXX-XXXX-XXXX"
+        placeholder-class="field-placeholder"
+        value="{{form.code}}"
+        bindinput="onCodeInput"
+        maxlength="14"
+      />
+    </view>
+
+    <!-- Phone -->
+    <view class="field">
+      <text class="field-prefix mono">+86</text>
+      <view class="field-divider"></view>
+      <input
+        class="field-input"
+        type="number"
+        placeholder="138 8888 8888"
+        placeholder-class="field-placeholder"
+        value="{{form.phone}}"
+        bindinput="onPhoneInput"
+        maxlength="11"
+      />
+    </view>
+
+    <!-- SMS code -->
+    <view class="field field-sms">
+      <text class="field-label">验证码</text>
+      <input
+        class="field-input field-input-mono field-sms-input"
+        type="number"
+        placeholder="6 位"
+        placeholder-class="field-placeholder"
+        value="{{form.sms}}"
+        bindinput="onSmsInput"
+        maxlength="6"
+      />
+      <view class="sms-btn {{cooldown > 0 ? 'sms-btn-disabled' : ''}}" bindtap="sendSms">
+        {{cooldown > 0 ? cooldown + 's 重发' : '获取验证码'}}
+      </view>
+    </view>
+  </view>
+
+  <!-- Agreement -->
+  <view class="agreement">
+    <view class="agree-box {{agreed ? 'agree-box-on' : ''}}" bindtap="toggleAgree">
+      <text wx:if="{{agreed}}" class="agree-check">✓</text>
+    </view>
+    <text class="agree-text">已阅读并同意</text>
+    <text class="agree-link">《用户协议》</text>
+    <text class="agree-text">·</text>
+    <text class="agree-link">《隐私政策》</text>
+  </view>
+
+  <!-- CTA -->
+  <view class="cta-wrap">
+    <button class="cta {{canSubmit ? '' : 'cta-disabled'}}" bindtap="submit" disabled="{{!canSubmit}}">
+      激活并进入 →
+    </button>
+  </view>
+
+  <!-- Salesperson card -->
+  <view class="sales-card">
+    <view class="sales-avatar"></view>
+    <view class="sales-meta">
+      <view class="sales-row">
+        <text class="sales-badge">销售经理</text>
+        <text class="sales-name">Sarah · 张敏</text>
+      </view>
+      <text class="sales-contact mono">微信 STAR_SARAH · 138 8888 1234</text>
+    </view>
+    <view class="sales-call" bindtap="callSales">
+      <text>📞 拨打</text>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,91 @@
+<view class="page">
+  <!-- Hero (深色背景 + 条纹占位) -->
+  <view class="hero" style="padding-top: {{statusBarHeight}}px;">
+    <view class="hero-stripes portrait-placeholder-dark"></view>
+    <view class="hero-nav">
+      <view class="nav-btn" bindtap="back">‹</view>
+      <view class="nav-btn">♡</view>
+    </view>
+    <view class="hero-info">
+      <view class="hero-eyebrow">CELEBRITY · 公开形象</view>
+      <view class="hero-name">{{detail.name}}</view>
+      <view class="hero-prof">{{detail.profession}}</view>
+      <view class="hero-tags">
+        <text class="hero-tag" wx:for="{{detail.tags}}" wx:key="*this">#{{item}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Body -->
+  <view class="body">
+    <!-- 价格 + CTA -->
+    <view class="price-card">
+      <view>
+        <view class="kk">授权报价</view>
+        <view class="vv">
+          <text class="vv-int">{{detail.startingPrice}}</text>
+        </view>
+      </view>
+      <view class="price-divider"></view>
+      <view>
+        <view class="kk">SLA</view>
+        <view class="vv-sm">{{detail.sla}}</view>
+      </view>
+      <view class="price-cta" bindtap="apply">申请授权 →</view>
+    </view>
+
+    <!-- 能力画像 -->
+    <view class="card">
+      <view class="card-title">能力画像</view>
+      <view class="skill" wx:for="{{detail.skills}}" wx:key="name">
+        <view class="skill-row">
+          <text>{{item.name}}</text>
+          <text class="mono skill-val">{{item.val}}</text>
+        </view>
+        <view class="bar">
+          <view class="bar-fill" style="width: {{item.val}}%;"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 适用品类 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">适用品类</text>
+        <text class="card-more">{{detail.cases.length}} 类推荐</text>
+      </view>
+      <view class="case-tags">
+        <view
+          class="case-tag {{index === 0 ? 'case-tag-on' : ''}}"
+          wx:for="{{detail.cases}}"
+          wx:key="*this"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <!-- 授权进度 -->
+    <view class="auth-card">
+      <view class="auth-head">
+        <view>
+          <view class="hero-eyebrow">AUTHORIZATION</view>
+          <view class="auth-title">授权进度</view>
+        </view>
+        <view class="auth-percent">{{detail.authProgress.percent}}%</view>
+      </view>
+      <view class="auth-step" wx:for="{{detail.authProgress.steps}}" wx:key="name">
+        <view class="auth-dot auth-dot-{{item.state}}">
+          <text wx:if="{{item.state === 'done'}}">✓</text>
+          <text wx:else>{{index + 1}}</text>
+        </view>
+        <view class="auth-step-meta">
+          <view class="auth-step-name auth-step-{{item.state}}">{{item.name}}</view>
+          <view class="auth-step-time mono">{{item.time}}</view>
+        </view>
+        <view wx:if="{{item.state === 'current'}}" class="auth-live">● LIVE</view>
+      </view>
+      <view class="auth-action">查看资质材料 ›</view>
+    </view>
+  </view>
+
+  <view class="ai-fab">✦</view>
+</view>

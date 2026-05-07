@@ -1,0 +1,55 @@
+.page { min-height: 100vh; background: #FAFAF7; padding-bottom: 240rpx; }
+.page-header { padding: 32rpx 32rpx 24rpx; }
+.title { font-size: 56rpx; font-weight: 800; letter-spacing: -1rpx; margin-top: 8rpx; }
+.eyebrow { font-size: 22rpx; letter-spacing: 4rpx; color: #6B6B6B; font-weight: 700; }
+.mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }
+
+.placeholder-card {
+  margin: 32rpx 32rpx 0;
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 48rpx;
+  padding: 56rpx 40rpx;
+  text-align: center;
+}
+.placeholder-icon {
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  background: #0A0A0A;
+  color: #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56rpx;
+  margin: 0 auto 28rpx;
+}
+.placeholder-title { font-size: 32rpx; font-weight: 800; }
+.placeholder-desc {
+  font-size: 24rpx;
+  color: #6B6B6B;
+  margin-top: 16rpx;
+  line-height: 1.6;
+}
+.placeholder-info {
+  margin: 32rpx 0;
+  padding: 20rpx;
+  background: #F2F2EE;
+  border-radius: 24rpx;
+  font-size: 20rpx;
+  color: #6B6B6B;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  text-align: left;
+  word-break: break-all;
+}
+.placeholder-cta {
+  display: inline-block;
+  background: #0A0A0A;
+  color: #C8FF00;
+  padding: 24rpx 48rpx;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+}

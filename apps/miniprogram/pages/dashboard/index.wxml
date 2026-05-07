@@ -1,0 +1,124 @@
+<view class="page">
+  <view class="page-header">
+    <view>
+      <view class="eyebrow">DASHBOARD</view>
+      <view class="title">数据看板</view>
+    </view>
+  </view>
+
+  <!-- Range tabs -->
+  <view class="range-row">
+    <view
+      class="range-pill {{currentRange === item ? 'range-pill-on' : ''}}"
+      wx:for="{{ranges}}"
+      wx:key="*this"
+      data-r="{{item}}"
+      bindtap="setRange"
+    >{{item}}</view>
+  </view>
+
+  <!-- Hero KPI -->
+  <view class="hero">
+    <view class="hero-head">
+      <text class="hero-eyebrow">● {{currentRange}} GMV</text>
+      <text class="hero-update mono">更新于 09:42</text>
+    </view>
+    <view class="hero-row">
+      <text class="hero-num">¥{{gmvText}}</text>
+      <view class="hero-chg">↑ {{chgText}}</view>
+    </view>
+    <view class="bars">
+      <view
+        class="bar {{index === highlightBar ? 'bar-hi' : ''}}"
+        wx:for="{{data.bars}}"
+        wx:key="*this"
+        style="height: {{barHeights[index]}}rpx;"
+      ></view>
+    </view>
+    <view class="bars-axis mono">
+      <text>10/12</text>
+      <text>10/18</text>
+      <text>10/24</text>
+    </view>
+  </view>
+
+  <!-- KPI grid -->
+  <view class="section">
+    <view class="kpi-grid">
+      <view
+        class="kpi {{item.accent ? 'kpi-accent' : ''}}"
+        wx:for="{{data.kpis}}"
+        wx:key="name"
+      >
+        <view class="kpi-k">{{item.name}}</view>
+        <view class="kpi-v">{{item.val}}</view>
+        <view class="kpi-chg {{item.up ? 'kpi-up' : 'kpi-down'}} {{item.accent ? 'kpi-on-accent' : ''}}">
+          {{item.up ? '↑' : '↓'}} {{item.chg}}
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 漏斗 -->
+  <view class="card">
+    <view class="card-head">
+      <text class="card-title">转化漏斗</text>
+      <text class="card-aux">占位 · 接真实数据 →</text>
+    </view>
+    <view class="funnel">
+      <view class="funnel-row" wx:for="{{data.funnel}}" wx:key="name">
+        <view class="funnel-row-head">
+          <text class="funnel-name">{{item.name}}</text>
+          <view class="funnel-meta">
+            <text class="mono funnel-val">{{item.val}}</text>
+            <text class="funnel-pct">· {{item.pct}}%</text>
+          </view>
+        </view>
+        <view class="funnel-bar">
+          <view
+            class="funnel-fill {{index === 3 ? 'funnel-fill-accent' : ''}}"
+            style="width: {{100 - index * 18}}%;"
+          ></view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- TOP -->
+  <view class="section">
+    <view class="section-head">
+      <text class="section-title">本周 TOP 视频</text>
+      <text class="section-more">查看全部 ›</text>
+    </view>
+    <view class="top-list">
+      <view
+        class="top-item"
+        wx:for="{{data.topVideos}}"
+        wx:key="rank"
+      >
+        <view class="top-rank {{item.rank === 1 ? 'top-rank-1' : ''}}">0{{item.rank}}</view>
+        <view class="top-meta">
+          <view class="top-name">{{item.name}}</view>
+          <view class="top-sub">{{item.celeb}} · GMV ¥{{item.gmvText}}</view>
+        </view>
+        <view class="tag tag-accent">{{item.roi}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- Coach -->
+  <view class="coach-card">
+    <view class="coach-head">
+      <view class="coach-avatar">长</view>
+      <view class="coach-meta">
+        <view class="coach-name">长长 · 成长教练</view>
+        <view class="coach-sub">本周复盘已生成</view>
+      </view>
+      <view class="coach-new">NEW</view>
+    </view>
+    <view class="coach-text">{{data.coachReview}}</view>
+    <view class="coach-cta">查看完整复盘 ›</view>
+  </view>
+
+  <view class="ai-fab">✦</view>
+</view>

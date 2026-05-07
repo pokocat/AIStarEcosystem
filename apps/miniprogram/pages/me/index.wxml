@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="page-header">
+    <view>
+      <view class="eyebrow">PROFILE</view>
+      <view class="title">我的</view>
+    </view>
+  </view>
+
+  <view class="placeholder-card">
+    <view class="placeholder-icon">◉</view>
+    <view class="placeholder-title">本期"我的"为占位</view>
+    <view class="placeholder-desc">
+      账号信息 · 收益结算 · 邀请关系 · 设置 等能力将在小程序后续版本上线。
+      运营/审核能力均在 admin 后台（apps/admin）。
+    </view>
+    <view class="placeholder-info mono">
+      <text>token: {{tokenMasked}}</text>
+      <text>activationCode: {{auth.activationCode}}</text>
+      <text>phone: {{auth.phone}}</text>
+    </view>
+    <view class="placeholder-cta" bindtap="logout">退出登录</view>
+  </view>
+</view>

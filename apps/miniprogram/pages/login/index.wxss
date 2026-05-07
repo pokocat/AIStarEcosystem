@@ -1,0 +1,242 @@
+.page {
+  min-height: 100vh;
+  background: #FAFAF7;
+  padding: 32rpx 56rpx 48rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  margin-top: 48rpx;
+  font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+}
+.brand-en {
+  font-size: 44rpx;
+  color: #0A0A0A;
+}
+.brand-tag {
+  background: #0A0A0A;
+  color: #C8FF00;
+  padding: 4rpx 16rpx;
+  border-radius: 12rpx;
+  font-size: 36rpx;
+  font-style: italic;
+  font-weight: 800;
+}
+.brand-bang { color: #C8FF00; font-size: 44rpx; }
+
+.hero { margin-top: 96rpx; }
+.eyebrow {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 22rpx;
+  letter-spacing: 4rpx;
+  color: #6B6B6B;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.title {
+  font-size: 64rpx;
+  font-weight: 800;
+  letter-spacing: -2rpx;
+  line-height: 1.15;
+  margin-top: 12rpx;
+}
+/* 平台坑：-webkit-background-clip:text 在 iOS 真机渲染异常（文字变全黑）
+   降级为同行内 black + 高亮底色两段 text。详见 agent.md「CSS / WXSS」 */
+.title-row2 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4rpx; }
+.title-black { color: #0A0A0A; }
+.title-hi {
+  background: #C8FF00;
+  color: #0A0A0A;
+  padding: 0 12rpx;
+}
+.subtitle {
+  color: #6B6B6B;
+  font-size: 26rpx;
+  margin-top: 16rpx;
+}
+
+.form {
+  margin-top: 64rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+.field {
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 28rpx;
+  padding: 28rpx 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  position: relative;
+  min-height: 100rpx;
+}
+.field-primary {
+  border: 3rpx solid #0A0A0A;
+}
+.field-badge {
+  position: absolute;
+  right: 24rpx;
+  top: -20rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  font-size: 20rpx;
+  font-weight: 700;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  letter-spacing: 1rpx;
+}
+.field-icon { font-size: 32rpx; }
+.field-prefix {
+  color: #9B9B9B;
+  font-size: 26rpx;
+}
+.field-divider {
+  width: 2rpx;
+  height: 32rpx;
+  background: #EAEAEA;
+}
+.field-label {
+  color: #9B9B9B;
+  font-size: 28rpx;
+}
+.field-input {
+  flex: 1;
+  font-size: 32rpx;
+  color: #0A0A0A;
+}
+.field-input-mono {
+  font-family: -apple-system-mono, "SF Mono", Menlo, monospace;
+  letter-spacing: 6rpx;
+  font-weight: 700;
+}
+.field-placeholder { color: #9B9B9B; }
+
+.field-sms { padding-right: 8rpx; }
+.field-sms-input { letter-spacing: 12rpx; }
+.sms-btn {
+  background: #0A0A0A;
+  color: #C8FF00;
+  padding: 18rpx 28rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.sms-btn-disabled {
+  background: #1A1A1A;
+  color: #B3B3B3;
+}
+
+.agreement {
+  margin-top: 32rpx;
+  display: flex;
+  align-items: center;
+  font-size: 22rpx;
+  color: #6B6B6B;
+  flex-wrap: wrap;
+}
+.agree-box {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 6rpx;
+  background: #fff;
+  border: 2rpx solid #D4D4D4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12rpx;
+}
+.agree-box-on {
+  background: #C8FF00;
+  border-color: #C8FF00;
+}
+.agree-check {
+  color: #0A0A0A;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+.agree-text { color: #6B6B6B; }
+.agree-link { color: #0A0A0A; margin: 0 6rpx; }
+
+.cta-wrap { margin-top: 32rpx; }
+.cta {
+  width: 100%;
+  height: 112rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  border-radius: 999rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 16rpx 48rpx rgba(200, 255, 0, .35);
+  border: none;
+}
+.cta::after { border: none; }
+.cta-disabled {
+  background: #EAEAEA;
+  color: #9B9B9B;
+  box-shadow: none;
+}
+
+.sales-card {
+  margin-top: auto;
+  margin-bottom: 48rpx;
+  background: #0A0A0A;
+  color: #fff;
+  border-radius: 32rpx;
+  padding: 28rpx;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+.sales-avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background-image: repeating-linear-gradient(45deg, #333, #333 8rpx, #444 8rpx, #444 16rpx);
+  border: 4rpx solid #C8FF00;
+}
+.sales-meta { flex: 1; min-width: 0; }
+.sales-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  font-size: 26rpx;
+}
+.sales-badge {
+  background: #C8FF00;
+  color: #0A0A0A;
+  padding: 2rpx 12rpx;
+  border-radius: 6rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.sales-name { font-weight: 600; }
+.sales-contact {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 8rpx;
+  display: block;
+}
+.sales-call {
+  background: #C8FF00;
+  color: #0A0A0A;
+  height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+}

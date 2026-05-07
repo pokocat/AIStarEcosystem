@@ -1,0 +1,110 @@
+<view class="page">
+  <view class="page-header">
+    <view>
+      <view class="eyebrow">WORKSPACE</view>
+      <view class="title">工作台</view>
+    </view>
+  </view>
+
+  <!-- 身份切换器 -->
+  <view class="role-switch">
+    <view class="role-pill role-pill-on">
+      <text>🎯</text>
+      <text>我是带货方</text>
+    </view>
+    <view class="role-pill">明星视角</view>
+  </view>
+
+  <!-- GMV hero -->
+  <view class="gmv-card">
+    <view class="gmv-glow"></view>
+    <view class="gmv-badge">● TODAY GMV</view>
+    <view class="gmv-amount">
+      <text class="gmv-int">{{gmvInt}}</text>
+      <text class="gmv-frac">.{{gmvFrac}}</text>
+    </view>
+    <view class="gmv-divider"></view>
+    <view class="gmv-row">
+      <view>
+        <view class="gmv-k">视频曝光</view>
+        <view class="gmv-v">{{exposureFmt}}</view>
+      </view>
+      <view>
+        <view class="gmv-k">订单数</view>
+        <view class="gmv-v">{{orderFmt}}</view>
+      </view>
+      <view>
+        <view class="gmv-k">转化率</view>
+        <view class="gmv-v gmv-v-accent">↑ {{convFmt}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 带货流程 -->
+  <view class="section">
+    <view class="section-head">
+      <text class="section-title">带货流程</text>
+      <view class="seg">
+        <text class="seg-on">标准流程</text>
+        <text class="seg-off">✦ AI流程</text>
+      </view>
+    </view>
+    <view class="pipeline">
+      <view
+        class="pipe-cell {{item.active ? 'pipe-cell-on' : ''}}"
+        wx:for="{{pipeline}}"
+        wx:key="num"
+      >
+        <view class="pipe-num">{{item.num}}</view>
+        <view class="pipe-name">{{item.name}}</view>
+        <text wx:if="{{item.active}}" class="pipe-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 快捷 -->
+  <view class="section">
+    <view class="grid-2">
+      <view
+        class="shortcut {{item.accent ? 'shortcut-accent' : ''}}"
+        wx:for="{{shortcuts}}"
+        wx:key="label"
+        data-route="{{item.route}}"
+        bindtap="goRoute"
+      >
+        <view class="shortcut-icon">{{item.icon}}</view>
+        <view class="shortcut-label">{{item.label}}</view>
+        <view class="shortcut-sub">{{item.sub}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 我的明星 -->
+  <view class="section">
+    <view class="section-head">
+      <text class="section-title">我的明星</text>
+      <text class="section-more" data-route="/pages/market/index" bindtap="goRoute">查看全部 ›</text>
+    </view>
+    <view class="my-stars">
+      <view
+        class="my-star-item"
+        wx:for="{{myStars}}"
+        wx:key="id"
+        data-route="/pages/celebrity-detail/index?id={{item.id}}"
+        bindtap="goRoute"
+      >
+        <view class="my-star-avatar portrait-placeholder"></view>
+        <view class="my-star-meta">
+          <view class="my-star-name">{{item.name}}</view>
+          <view class="my-star-cat">{{item.category}}</view>
+        </view>
+        <view class="my-star-right">
+          <view class="tag {{item.authState === '已授权' ? 'tag-success' : 'tag-warn'}}">{{item.authState}}</view>
+          <view wx:if="{{item.remainingDays}}" class="my-star-days">剩余 {{item.remainingDays}} 天</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="ai-fab">✦</view>
+</view>

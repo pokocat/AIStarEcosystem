@@ -1,0 +1,134 @@
+<view class="page">
+  <!-- Hero (faux video) -->
+  <view class="hero" style="padding-top: {{statusBarHeight}}px;">
+    <view class="hero-bg"></view>
+    <view class="hero-grid"></view>
+
+    <view class="topnav">
+      <view class="nav-btn" bindtap="back">‹</view>
+      <view class="nav-btn-row">
+        <view class="nav-btn">↓</view>
+        <view class="nav-btn">⋯</view>
+      </view>
+    </view>
+
+    <view class="play-btn">▶</view>
+
+    <view class="hero-info">
+      <view class="hero-tags">
+        <view class="hero-tag tag-pub">{{detail.tags[0]}}</view>
+        <view class="hero-tag tag-on-dark">{{detail.tags[1]}}</view>
+        <view class="hero-tag tag-on-dark">{{detail.tags[2]}}</view>
+      </view>
+      <view class="hero-title">{{detail.title}}</view>
+      <view class="hero-subtitle">{{detail.subtitle}}</view>
+      <view class="scrubber">
+        <text class="time-now mono">00:18</text>
+        <view class="track">
+          <view class="track-fill"></view>
+          <view class="track-knob"></view>
+        </view>
+        <text class="time-end mono">01:00</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Body -->
+  <view class="body">
+    <view class="meta-line mono">{{detail.meta}}</view>
+
+    <!-- Action bar -->
+    <view class="actions">
+      <view class="act-btn act-dark">📤 多平台发布</view>
+      <view class="act-btn act-accent">↻ 复制并改</view>
+      <view class="act-btn-icon">♡</view>
+    </view>
+
+    <!-- Performance -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">表现数据</text>
+        <text class="card-aux">近 6h ▾</text>
+      </view>
+      <view class="perf-row">
+        <text class="perf-en">GMV</text>
+        <text class="perf-num">¥{{gmvText}}</text>
+        <view class="perf-roi">ROI {{detail.performance.roi}}x</view>
+      </view>
+      <!-- 简易折线（用 view 拼） -->
+      <view class="trend">
+        <view
+          class="trend-bar"
+          wx:for="{{detail.performance.trend}}"
+          wx:key="*this"
+          style="height: {{item}}rpx;"
+        ></view>
+      </view>
+      <view class="metric-grid">
+        <view class="metric" wx:for="{{detail.performance.metrics}}" wx:key="name">
+          <view class="metric-k">{{item.name}}</view>
+          <view class="metric-v">{{item.val}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Channels -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">发布渠道</text>
+        <view class="ch-progress">{{pubCount}} / {{detail.channels.length}} 已发</view>
+      </view>
+      <view class="ch-grid">
+        <view
+          class="ch-item ch-item-{{item.state}}"
+          wx:for="{{detail.channels}}"
+          wx:key="name"
+        >
+          <view class="ch-icon ch-icon-{{item.state}}">{{item.name[0]}}</view>
+          <view class="ch-meta">
+            <view class="ch-name">{{item.name}}</view>
+            <view class="ch-sub ch-sub-{{item.state}}">
+              <block wx:if="{{item.views}}">👁 {{item.views}} · {{item.time}}</block>
+              <block wx:else>{{item.time}}</block>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Recipe -->
+    <view class="card">
+      <view class="card-title">生成参数</view>
+      <view class="recipe">
+        <block wx:for="{{detail.recipe}}" wx:key="k">
+          <view class="recipe-k">{{item.k}}</view>
+          <view class="recipe-v">{{item.v}}</view>
+        </block>
+      </view>
+    </view>
+
+    <!-- Script -->
+    <view class="script-card">
+      <view class="script-head">
+        <text class="eyebrow eyebrow-on-dark">SCRIPT</text>
+        <text class="script-more">查看完整脚本 ›</text>
+      </view>
+      <view class="script-line" wx:for="{{detail.script}}" wx:key="t">
+        <text class="script-time mono">{{item.t}}</text>
+        <text class="script-text">{{item.text}}</text>
+      </view>
+    </view>
+
+    <!-- Coach -->
+    <view class="coach-card">
+      <view class="coach-avatar">长</view>
+      <view class="coach-meta">
+        <view class="coach-row">
+          <text class="coach-name">长长 · 教练建议</text>
+          <view class="coach-new">NEW</view>
+        </view>
+        <view class="coach-text">{{detail.coachTip}}</view>
+      </view>
+    </view>
+  </view>
+</view>

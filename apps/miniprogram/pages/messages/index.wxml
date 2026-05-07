@@ -1,0 +1,68 @@
+<view class="page">
+  <!-- 顶部 -->
+  <view class="page-header">
+    <view>
+      <view class="eyebrow">MESSAGES</view>
+      <view class="title">消息</view>
+    </view>
+  </view>
+
+  <!-- 待办中心 (深色 hero) -->
+  <view class="todo-hero">
+    <view class="todo-head">
+      <text class="todo-title">待办中心</text>
+      <view class="todo-count-wrap">
+        <text class="todo-count">{{todoTotal}} 项</text>
+        <text class="chevron">›</text>
+      </view>
+    </view>
+    <scroll-view class="todo-scroll" scroll-x enable-flex>
+      <view
+        class="todo-card {{item.accent ? 'todo-card-accent' : ''}}"
+        wx:for="{{todos}}"
+        wx:key="title"
+        data-route="{{item.route}}"
+        bindtap="goRoute"
+      >
+        <view class="todo-card-title">{{item.title}}</view>
+        <view class="todo-card-sub">{{item.sub}}</view>
+        <view class="todo-card-foot">
+          <view class="dot {{item.accent ? '' : 'dot-live'}}" style="{{item.accent ? 'background:#0A0A0A;' : ''}}"></view>
+          <text class="todo-card-count">{{item.count}} 项待处理</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- Bot 消息流 -->
+  <view class="msg-list">
+    <view
+      class="msg-item"
+      wx:for="{{messages}}"
+      wx:key="name"
+      data-route="{{item.route}}"
+      bindtap="goRoute"
+    >
+      <view class="msg-avatar-wrap">
+        <view class="msg-avatar" style="background:{{item.color}};">
+          <text>{{item.name[0]}}</text>
+        </view>
+        <view wx:if="{{item.dot > 0}}" class="msg-dot">{{item.dot}}</view>
+      </view>
+      <view class="msg-body">
+        <view class="msg-head">
+          <text class="msg-name">{{item.name}}</text>
+          <view class="msg-role" style="background:{{item.roleBg}};color:{{item.roleColor}};">{{item.role}}</view>
+          <text class="msg-time">{{item.time}}</text>
+        </view>
+        <view class="msg-text">{{item.text}}</view>
+        <view class="msg-action {{item.accent ? 'msg-action-accent' : ''}}">
+          <text>{{item.action}}</text>
+          <text class="chevron-sm">›</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="ai-fab">✦</view>
+</view>

@@ -1,0 +1,179 @@
+/* ========= 设计令牌（来自 figma celebrity-selling/shared/tokens.css） ========= */
+/* 平台坑：WXSS 全局变量在自定义组件内继承不稳定，所有关键色同时给 class 别名兜底。详见 apps/miniprogram/agent.md「CSS / WXSS」 */
+page {
+  --bg-page: #FAFAF7;
+  --bg-card: #FFFFFF;
+  --bg-soft: #F2F2EE;
+  --bg-dark: #0A0A0A;
+  --bg-dark-2: #1A1A1A;
+  --fg-primary: #0A0A0A;
+  --fg-secondary: #6B6B6B;
+  --fg-tertiary: #9B9B9B;
+  --fg-on-dark: #FFFFFF;
+  --fg-on-dark-2: #B3B3B3;
+  --accent: #C8FF00;
+  --accent-hi: #DBFF3D;
+  --accent-glow: rgba(200, 255, 0, 0.45);
+  --warn: #FF7A1A;
+  --info: #2A6FDB;
+  --success: #1F8A5B;
+  --danger: #E84B3C;
+  --border: #EAEAEA;
+  --border-strong: #D4D4D4;
+  --border-dark: #2A2A2A;
+
+  background: #FAFAF7;
+  color: #0A0A0A;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-size: 28rpx;
+}
+
+/* ========= 通用原子类 ========= */
+view, text, scroll-view, button { box-sizing: border-box; }
+
+.eyebrow {
+  font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+  font-weight: 700;
+  font-size: 22rpx;
+  letter-spacing: 4rpx;
+  text-transform: uppercase;
+  color: #6B6B6B;
+}
+.eyebrow-on-dark { color: #C8FF00; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 44rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  background: #F2F2EE;
+  color: #0A0A0A;
+}
+.tag-accent { background: #C8FF00; color: #0A0A0A; }
+.tag-dark { background: #0A0A0A; color: #fff; }
+.tag-warn { background: #FFE7D2; color: #FF7A1A; }
+.tag-info { background: #E0EBFB; color: #2A6FDB; }
+.tag-success { background: #DCF1E5; color: #1F8A5B; }
+.tag-danger { background: #FDE2DF; color: #E84B3C; }
+
+/* CTA 按钮 — 主操作 */
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 104rpx;
+  padding: 0 48rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  border-radius: 999rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  /* 平台坑：Android 低端机 box-shadow 偶尔丢失，但 CTA 主按钮可接受。详见 agent.md「CSS / WXSS」 */
+  box-shadow: 0 16rpx 48rpx rgba(200, 255, 0, .35);
+}
+.cta-dark {
+  background: #0A0A0A;
+  color: #fff;
+  box-shadow: 0 12rpx 40rpx rgba(0, 0, 0, .18);
+}
+.cta-ghost {
+  background: transparent;
+  border: 3rpx solid #D4D4D4;
+  color: #0A0A0A;
+  box-shadow: none;
+}
+
+/* 卡片 */
+.card {
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 32rpx;
+  padding: 32rpx;
+}
+.card-dark {
+  background: #0A0A0A;
+  border-radius: 48rpx;
+  padding: 40rpx;
+  color: #fff;
+}
+
+/* 占位灰条纹（替代设计稿中"明星 portrait" 占位图） */
+.portrait-placeholder {
+  background-image: repeating-linear-gradient(45deg, #EEEEE8, #EEEEE8 12rpx, #F5F5EF 12rpx, #F5F5EF 24rpx);
+  border: 2rpx solid #EAEAEA;
+}
+.portrait-placeholder-dark {
+  background-image: repeating-linear-gradient(45deg, #1A1A1A, #1A1A1A 12rpx, #222 12rpx, #222 24rpx);
+  border: 2rpx solid #2A2A2A;
+}
+
+/* mono 数字（小程序里没有 JetBrains Mono，降级系统等宽，详见 agent.md「字体」） */
+.mono {
+  font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* 安全区域占位 */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 通用页头（深色与浅色两版） */
+.page-header {
+  padding: 24rpx 32rpx 16rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.page-header .title {
+  font-size: 56rpx;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+}
+.page-header .eyebrow {
+  margin-bottom: 8rpx;
+}
+
+/* AI 浮动助手按钮（每屏均有） */
+.ai-fab {
+  position: fixed;
+  right: 32rpx;
+  bottom: 220rpx;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #0A0A0A;
+  color: #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  box-shadow: 0 12rpx 32rpx rgba(0, 0, 0, .25);
+  z-index: 100;
+}
+
+/* 进度条 */
+.progress-track {
+  height: 12rpx;
+  border-radius: 6rpx;
+  background: #F2F2EE;
+  overflow: hidden;
+}
+.progress-track .fill {
+  height: 100%;
+  background: #0A0A0A;
+}
+.progress-track-dark { background: #1A1A1A; }
+.progress-track-dark .fill { background: #C8FF00; box-shadow: 0 0 24rpx rgba(200,255,0,.45); }
+
+/* 通用 dot */
+.dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-live { background: #C8FF00; box-shadow: 0 0 0 6rpx rgba(200,255,0,.45); }

@@ -1,0 +1,27 @@
+{
+  "miniprogramRoot": "./",
+  "projectname": "ai-star-eco-miniprogram",
+  "description": "AI 明星带货 · 带货方小程序（复用 apps/server 后端 + apps/admin 运营）",
+  "appid": "touristappid",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": true,
+    "useCompilerPlugins": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.5.0",
+  "condition": {},
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  }
+}

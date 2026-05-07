@@ -1,0 +1,190 @@
+.page {
+  min-height: 100vh;
+  background: #0A0A0A;
+  color: #fff;
+  padding-bottom: 80rpx;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx 32rpx;
+  gap: 20rpx;
+}
+.back {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+}
+.topbar-meta { flex: 1; }
+.topbar-title { font-size: 36rpx; font-weight: 800; margin-top: 4rpx; }
+.bg-btn {
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  padding: 12rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  border: 2rpx solid #2A2A2A;
+}
+.eyebrow { font-size: 22rpx; letter-spacing: 4rpx; font-weight: 700; }
+.eyebrow-on-dark { color: #C8FF00; }
+.mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }
+
+.preview {
+  margin: 0 48rpx 40rpx;
+  padding-bottom: 88%;
+  height: 0;
+  border-radius: 48rpx;
+  overflow: hidden;
+  position: relative;
+  background: linear-gradient(135deg, #1A1A1A, #0A0A0A);
+  border: 2rpx solid #2A2A2A;
+}
+.preview-noise {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(45deg, rgba(200,255,0,.04) 0rpx, rgba(200,255,0,.04) 4rpx, transparent 4rpx, transparent 12rpx);
+}
+.preview-scan {
+  position: absolute;
+  left: 0; right: 0;
+  top: 60%;
+  height: 4rpx;
+  background: linear-gradient(90deg, transparent, #C8FF00, transparent);
+  box-shadow: 0 0 40rpx #C8FF00;
+}
+.preview-rec {
+  position: absolute;
+  top: 24rpx;
+  left: 24rpx;
+  font-size: 20rpx;
+  color: #C8FF00;
+  letter-spacing: 2rpx;
+}
+.preview-frame {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  font-size: 20rpx;
+  color: #999;
+}
+.preview-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+.preview-pulse {
+  width: 152rpx;
+  height: 152rpx;
+  border-radius: 50%;
+  background: rgba(200,255,0,.12);
+  border: 4rpx solid #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  font-size: 64rpx;
+  color: #C8FF00;
+}
+.preview-cap {
+  font-size: 26rpx;
+  color: #bbb;
+  margin-top: 28rpx;
+}
+.preview-foot {
+  position: absolute;
+  bottom: 24rpx;
+  left: 24rpx;
+  right: 24rpx;
+  display: flex;
+  justify-content: space-between;
+  font-size: 20rpx;
+  color: #666;
+}
+
+.overall {
+  margin: 0 48rpx 40rpx;
+}
+.overall-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.overall-num { display: flex; align-items: baseline; gap: 4rpx; }
+.overall-int { font-size: 80rpx; font-weight: 800; letter-spacing: -2rpx; }
+.overall-pct { font-size: 36rpx; color: #666; }
+.overall-eta { font-size: 22rpx; color: #999; }
+.overall-track {
+  height: 12rpx;
+  border-radius: 6rpx;
+  background: #1A1A1A;
+  overflow: hidden;
+}
+.overall-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #C8FF00, #DBFF3D);
+  box-shadow: 0 0 24rpx rgba(200,255,0,.45);
+}
+
+.pipeline {
+  margin: 0 48rpx 32rpx;
+  background: #1A1A1A;
+  border-radius: 40rpx;
+  padding: 32rpx;
+  border: 2rpx solid #2A2A2A;
+}
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 24rpx;
+  margin-top: 28rpx;
+}
+.step-dot {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  font-weight: 800;
+  color: #0A0A0A;
+}
+.step-dot-done { background: #C8FF00; }
+.step-dot-current { background: transparent; border: 4rpx solid #C8FF00; }
+.step-dot-todo { background: #222; }
+.step-pulse { width: 16rpx; height: 16rpx; border-radius: 999rpx; background: #C8FF00; }
+
+.step-meta { flex: 1; }
+.step-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.step-name { font-size: 26rpx; font-weight: 700; color: #fff; }
+.step-name-todo { color: #555; }
+.step-time { font-size: 20rpx; color: #666; }
+.step-time-current { color: #C8FF00; }
+.step-sub { font-size: 22rpx; color: #999; margin-top: 8rpx; }
+.step-sub-todo { color: #444; }
+
+.tip {
+  margin: 0 48rpx;
+  padding: 24rpx;
+  border-radius: 28rpx;
+  background: rgba(200,255,0,.06);
+  border: 2rpx solid rgba(200,255,0,.2);
+  display: flex;
+  gap: 20rpx;
+  font-size: 22rpx;
+  color: #bbb;
+  line-height: 1.6;
+}
+.tip-link { color: #C8FF00; }

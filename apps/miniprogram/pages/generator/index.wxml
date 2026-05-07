@@ -1,0 +1,133 @@
+<view class="page">
+  <view class="page-header">
+    <view>
+      <view class="eyebrow">AI · STUDIO</view>
+      <view class="title">生成视频</view>
+    </view>
+    <view class="hist-btn">⏱ 历史</view>
+  </view>
+
+  <view class="step-indicator mono">
+    <text class="step-on">STEP 02</text>
+    <text>·</text>
+    <text>04 共 4 步配置</text>
+    <text class="step-eta">预计 2~3 分钟</text>
+  </view>
+
+  <!-- 1. 选明星 -->
+  <view class="card">
+    <view class="card-head">
+      <view class="card-title-row">
+        <view class="num-pill">1</view>
+        <text class="card-title">选择明星</text>
+      </view>
+      <text class="card-aux">已选 1 / 1</text>
+    </view>
+    <view class="row">
+      <view class="row-img portrait-placeholder"></view>
+      <view class="row-meta">
+        <view class="row-name">{{star.name}}</view>
+        <view class="row-sub">{{star.subtitle}}</view>
+      </view>
+      <view class="row-action">更换</view>
+    </view>
+  </view>
+
+  <!-- 2. 选商品 -->
+  <view class="card">
+    <view class="card-head">
+      <view class="card-title-row">
+        <view class="num-pill">2</view>
+        <text class="card-title">选择商品</text>
+      </view>
+    </view>
+    <view class="row">
+      <view class="row-img-product">🥜</view>
+      <view class="row-meta">
+        <view class="row-name">{{product.name}}</view>
+        <view class="row-sub">{{product.sku}}</view>
+      </view>
+    </view>
+    <view class="dashed-add">+ 增加商品</view>
+  </view>
+
+  <!-- 3. 脚本风格 -->
+  <view class="card">
+    <view class="card-head">
+      <view class="card-title-row">
+        <view class="num-pill">3</view>
+        <text class="card-title">脚本风格</text>
+      </view>
+    </view>
+    <view class="grid-2">
+      <view
+        class="style-cell {{currentStyle === item.id ? 'style-cell-on' : ''}}"
+        wx:for="{{styles}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="setStyle"
+      >
+        <view class="style-name">{{item.name}}</view>
+        <view class="style-desc">{{item.desc}}</view>
+        <text wx:if="{{currentStyle === item.id}}" class="style-check">✓</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 4. 时长 / 语种 -->
+  <view class="card">
+    <view class="card-head">
+      <view class="card-title-row">
+        <view class="num-pill">4</view>
+        <text class="card-title">时长 / 语种</text>
+      </view>
+    </view>
+    <view class="duration-row">
+      <view
+        class="dur-pill {{currentDuration === item ? 'dur-pill-on' : ''}}"
+        wx:for="{{durations}}"
+        wx:key="*this"
+        data-d="{{item}}"
+        bindtap="setDuration"
+      >{{item}}s</view>
+    </view>
+    <view class="lang-row">
+      <view
+        class="lang-pill {{currentLang === item ? 'lang-pill-on' : ''}}"
+        wx:for="{{languages}}"
+        wx:key="*this"
+        data-l="{{item}}"
+        bindtap="setLang"
+      >{{item}}</view>
+    </view>
+  </view>
+
+  <!-- 关键卖点 -->
+  <view class="card">
+    <view class="card-head">
+      <text class="card-title">
+        关键卖点 <text class="optional">(选填)</text>
+      </text>
+      <view class="ai-rec">✦ AI推荐</view>
+    </view>
+    <view class="key-tags">
+      <view
+        class="key-tag {{checkedKeys[index] ? 'key-tag-on' : ''}}"
+        wx:for="{{keypoints}}"
+        wx:key="*this"
+        data-i="{{index}}"
+        bindtap="toggleKey"
+      >{{checkedKeys[index] ? '✓ ' : '+ '}}{{item}}</view>
+    </view>
+  </view>
+
+  <view class="bottom-spacer"></view>
+
+  <!-- Sticky CTA -->
+  <view class="cta-fixed safe-bottom">
+    <view class="cta-btn" bindtap="startGenerate">
+      <text>✦ 开始 AI 生成</text>
+      <text class="cta-cost mono">消耗 1 次额度</text>
+    </view>
+  </view>
+</view>

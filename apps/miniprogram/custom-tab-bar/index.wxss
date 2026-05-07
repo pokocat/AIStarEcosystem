@@ -1,0 +1,67 @@
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 120rpx;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  border-top: 2rpx solid #EAEAEA;
+  /* 平台坑：transform translate 在 iOS tabBar 会被裁切；这里 fixed 容器自身不 transform。详见 agent.md「自定义 tabBar」 */
+  z-index: 200;
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #9B9B9B;
+  font-size: 22rpx;
+  height: 100%;
+}
+
+.tab-icon {
+  font-size: 36rpx;
+  margin-bottom: 4rpx;
+  font-family: -apple-system-mono, "SF Mono", Menlo, monospace;
+  font-weight: 700;
+}
+
+.tab-text { font-weight: 500; letter-spacing: 1rpx; }
+
+.tab-active { color: #0A0A0A; }
+.tab-active .tab-text { font-weight: 700; }
+
+/* 中央凸起 */
+.tab-center {
+  position: relative;
+}
+.center-bump {
+  position: absolute;
+  top: -36rpx;
+  left: 50%;
+  margin-left: -56rpx;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  background: #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12rpx 32rpx rgba(200, 255, 0, .45);
+  border: 6rpx solid #fff;
+}
+.center-icon {
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #0A0A0A;
+}
+.tab-center .tab-text {
+  margin-top: 64rpx;
+  font-weight: 700;
+  color: #0A0A0A;
+}
