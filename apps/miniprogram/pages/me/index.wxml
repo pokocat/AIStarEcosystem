@@ -27,25 +27,25 @@
       <text class="credits-mono mono">实时</text>
     </view>
     <view class="credits-amount">
-      <text class="credits-int">{{credits.total}}</text>
+      <text class="credits-int">{{credits.totalBalance}}</text>
       <text class="credits-unit">积分</text>
     </view>
     <view class="bucket-row">
       <view class="bucket">
         <view class="bucket-k">套餐</view>
-        <view class="bucket-v">{{credits.license}}</view>
+        <view class="bucket-v">{{credits.licenseBalance}}</view>
       </view>
       <view class="bucket">
         <view class="bucket-k">充值</view>
-        <view class="bucket-v">{{credits.recharge}}</view>
+        <view class="bucket-v">{{credits.rechargeBalance}}</view>
       </view>
       <view class="bucket">
         <view class="bucket-k">赠送</view>
-        <view class="bucket-v">{{credits.gift}}</view>
+        <view class="bucket-v">{{credits.giftBalance}}</view>
       </view>
       <view class="bucket">
         <view class="bucket-k">冻结</view>
-        <view class="bucket-v bucket-pending">{{credits.pending}}</view>
+        <view class="bucket-v bucket-pending">{{credits.pendingBalance}}</view>
       </view>
     </view>
     <view class="credits-actions">

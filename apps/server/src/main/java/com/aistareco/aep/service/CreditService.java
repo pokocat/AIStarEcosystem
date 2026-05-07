@@ -174,6 +174,85 @@ public class CreditService {
     }
 
     /**
+     * 业务侧"加积分"通用入口（v0.4 新增）：原子地把 amount 加入指定桶并写一条 LedgerEntry。
+     * 调用方负责选对桶：
+     *   - RECHARGE：充值落账
+     *   - GIFT：活动赠送 / 充值赠送
+     *   - INCOME：业务收益
+     *   - LICENSE_GRANT：license 核销
+     *   - REFUND：退款
+     *
+     * @param entryType   LedgerEntry 类型（同时决定加哪个桶；FREEZE/UNFREEZE/SPEND/WITHDRAW/ADJUST 不在此处理）
+     */
+    @Transactional
+    public LedgerEntryDto creditAccount(String userId, long amount,
+                                         LedgerEntry.LedgerEntryType entryType,
+                                         String referenceType, String referenceId, String description) {
+        if (amount <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "入账金额必须为正数");
+        }
+        if (entryType == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "缺少入账类型");
+        }
+        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .totalBalance(0L)
+                .licenseBalance(0L)
+                .rechargeBalance(0L)
+                .giftBalance(0L)
+                .pendingBalance(0L)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build()));
+
+        switch (entryType) {
+            case RECHARGE -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
+            case GIFT -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
+            case LICENSE_GRANT -> wallet.setLicenseBalance(wallet.getLicenseBalance() + amount);
+            case INCOME -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount); // 业务收益默认进 recharge 桶
+            case REFUND -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "creditAccount 不支持的入账类型：" + entryType);
+        }
+
+        long newBalance = wallet.getTotalBalance() + amount;
+        wallet.setTotalBalance(newBalance);
+        wallet.setUpdatedAt(Instant.now());
+        walletRepo.save(wallet);
+
+        LedgerEntry entry = LedgerEntry.builder()
+                .id(UUID.randomUUID().toString())
+                .walletId(wallet.getId())
+                .userId(userId)
+                .entryType(entryType)
+                .amount(amount)
+                .balanceAfter(newBalance)
+                .description(description)
+                .referenceId(referenceId)
+                .referenceType(referenceType)
+                .createdAt(Instant.now())
+                .build();
+
+        return LedgerEntryDto.from(ledgerRepo.save(entry));
+    }
+
+    /** 实体级 wallet 取数（recharge 等流程需要返回最新 WalletDto 时复用）。 */
+    public Wallet getOrCreateWallet(String userId) {
+        return walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .totalBalance(0L)
+                .licenseBalance(0L)
+                .rechargeBalance(0L)
+                .giftBalance(0L)
+                .pendingBalance(0L)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build()));
+    }
+
+    /**
      * Query ledger entries. Supports filtering by walletId and/or userId.
      */
     public Page<LedgerEntryDto> listLedgerEntries(String walletId, String userId, Pageable pageable) {

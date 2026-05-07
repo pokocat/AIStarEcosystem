@@ -86,6 +86,30 @@ export interface CelebritySampleVideo {
   videoUrl?: string;
 }
 
+// ── 明星资料图集与视频（v0.4：admin 后台上传 → 详情页展示） ─────────────────
+/** 明星资料图集中的单图 */
+export interface CelebrityStarPhoto {
+  id: ID;
+  /** 公开图床 URL */
+  url: string;
+  /** 图注（如"形象照·演播厅"） */
+  caption?: string;
+}
+
+/** 明星形象/代言视频 */
+export interface CelebrityStarVideo {
+  id: ID;
+  title: string;
+  /** 时长秒数 */
+  durationSec: number;
+  /** 缩略图 URL */
+  coverUrl?: string;
+  /** 可播放视频 URL */
+  playUrl?: string;
+  /** 视频标签：代言 / 综艺 / 介绍 等 */
+  tag?: string;
+}
+
 // ── 明星 ─────────────────────────────────────────────────────────────────────
 export interface CelebrityStar {
   id: ID;
@@ -118,6 +142,22 @@ export interface CelebrityStar {
   };
   sampleVideos: CelebritySampleVideo[];
   pricing: CelebrityPricingTier[];
+
+  // ── v0.4 字段：详情页扩展（带货方小程序消费） ──────────────────────────────
+  /** 一段简介，约 50-200 字 */
+  bio?: string;
+  /** 所在地，如 "上海 / 北京" */
+  location?: string;
+  /** 粉丝数（原始整数，前端用 formatCompactNumber 格式化） */
+  fans?: number;
+  /** 历史合作次数 */
+  cooperationCount?: number;
+  /** 历史平均单条 GMV（人民币元，原始整数） */
+  avgGmv?: number;
+  /** 资料图集（admin 后台上传） */
+  photos?: CelebrityStarPhoto[];
+  /** 形象/代言视频（admin 后台上传） */
+  videos?: CelebrityStarVideo[];
 }
 
 // ── 模板 ─────────────────────────────────────────────────────────────────────
@@ -135,6 +175,14 @@ export interface CelebrityTemplate {
   fitHint?: string;
   /** 预览（缩略图 + 可选视频）。视频用于真实可播放的列表预览。 */
   previews?: Array<{ thumb: string; videoUrl?: string }>;
+
+  // ── v0.4 字段：模板效果预览（admin 后台上传整段预览视频，小程序点缩略图弹层播放） ──
+  /** 缩略图 URL */
+  previewCover?: string;
+  /** 整段效果预览视频 URL */
+  previewVideoUrl?: string;
+  /** 推荐时长 */
+  durationSec?: CelebrityVideoDuration;
 }
 
 // ── 项目 ─────────────────────────────────────────────────────────────────────
@@ -221,6 +269,18 @@ export interface CelebrityGenerationRequest {
   creativeTendency?: CreativeTendency;
   projectId: ID;
   channels?: string[];
+
+  // ── v0.4 字段：模型选择 + 动态扣分（小程序生成器使用） ────────────────────
+  /** 引擎名（与 engine 字段冗余，用于 mini-program 简单 payload） */
+  engineName?: CelebrityEngine;
+  /** 时长秒数（与 duration 字段冗余） */
+  durationSec?: CelebrityVideoDuration;
+  /** 本次生成预计消耗积分（前端按 engine.creditPrice × 时长系数计算后透传） */
+  creditCost?: number;
+  /** 文案语言：普通话 / 粤语 / 英语 */
+  language?: string;
+  /** 关键卖点（选填，AI 推荐勾选项） */
+  keypoints?: string[];
 }
 
 // ── 步骤条（模板配置流程） ────────────────────────────────────────────────────

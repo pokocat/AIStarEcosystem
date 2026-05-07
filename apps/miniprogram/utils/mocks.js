@@ -470,21 +470,25 @@ const ENGINES = [
 ];
 
 // 充值套餐（与 ledger 的 recharge bucket 对应）
+// v0.4：字段名与 apps/web/src/types/wallet.ts RechargePackage 对齐（priceCents/bonusCredits/sortOrder）
 const WALLET_PACKAGES = [
-  { id: "pkg-300",   credits: 300,   priceYuan: 99,   tag: "体验包",  recommended: false },
-  { id: "pkg-1000",  credits: 1000,  priceYuan: 299,  tag: "标准包",  recommended: true,  bonus: "+ 100 赠送" },
-  { id: "pkg-3000",  credits: 3000,  priceYuan: 799,  tag: "热门包",  recommended: false, bonus: "+ 500 赠送" },
-  { id: "pkg-10000", credits: 10000, priceYuan: 2399, tag: "企业包",  recommended: false, bonus: "+ 2000 赠送" }
+  { id: "pkg-300",   credits: 300,   priceCents: 9900,   tag: "体验包",  recommended: false, bonusCredits: 0,    sortOrder: 10 },
+  { id: "pkg-1000",  credits: 1000,  priceCents: 29900,  tag: "标准包",  recommended: true,  bonusCredits: 100,  sortOrder: 20 },
+  { id: "pkg-3000",  credits: 3000,  priceCents: 79900,  tag: "热门包",  recommended: false, bonusCredits: 500,  sortOrder: 30 },
+  { id: "pkg-10000", credits: 10000, priceCents: 239900, tag: "企业包",  recommended: false, bonusCredits: 2000, sortOrder: 40 }
 ];
 
-// 钱包余额扩展（积分点数，与 license/recharge/gift 三桶对齐）
+// v0.4：字段名与 apps/web/src/types/wallet.ts Wallet 对齐（totalBalance/licenseBalance/...）
 const WALLET_CREDITS = {
-  total: 1280,        // 总余额（license + recharge + gift）
-  license: 500,       // 套餐
-  recharge: 680,      // 充值
-  gift: 100,          // 赠送
-  pending: 60,        // 进行中冻结
-  monthlyBudget: 5000 // 套餐月度配额（仅展示用）
+  id: "wallet-mock-1",
+  userId: "demo-user",
+  totalBalance: 1280,
+  licenseBalance: 500,
+  rechargeBalance: 680,
+  giftBalance: 100,
+  pendingBalance: 60,
+  createdAt: "2026-05-01T00:00:00Z",
+  updatedAt: "2026-05-07T09:00:00Z"
 };
 const DURATIONS = [15, 30, 60];
 const LANGUAGES = ["普通话", "粤语", "英语"];

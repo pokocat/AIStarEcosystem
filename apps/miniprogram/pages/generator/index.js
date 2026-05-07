@@ -24,7 +24,7 @@ Page({
     keypoints: ["每日坚果", "原料溯源", "无添加", "送礼场景", "性价比"],
     checkedKeys: [true, true, true, false, false],
 
-    credits: { total: 0 },
+    credits: { totalBalance: 0 },
     computedCost: 120,
     enoughCredits: true,
 
@@ -64,7 +64,7 @@ Page({
     const cost = Math.round((e.creditPrice || 0) * mul);
     this.setData({
       computedCost: cost,
-      enoughCredits: (this.data.credits.total || 0) >= cost
+      enoughCredits: (this.data.credits.totalBalance || 0) >= cost
     });
   },
 
@@ -147,7 +147,7 @@ Page({
     if (!this.data.enoughCredits) {
       wx.showModal({
         title: "积分余额不足",
-        content: "本次需要 " + this.data.computedCost + " 积分，当前余额 " + this.data.credits.total + " 积分。是否前往充值？",
+        content: "本次需要 " + this.data.computedCost + " 积分，当前余额 " + this.data.credits.totalBalance + " 积分。是否前往充值？",
         confirmText: "去充值",
         success: (res) => { if (res.confirm) this.goRecharge(); }
       });

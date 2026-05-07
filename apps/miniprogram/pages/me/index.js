@@ -4,7 +4,7 @@ const app = getApp();
 Page({
   data: {
     auth: { token: "", activationCode: "", phone: "—" },
-    credits: { total: 0, license: 0, recharge: 0, gift: 0, pending: 0 }
+    credits: { totalBalance: 0, licenseBalance: 0, rechargeBalance: 0, giftBalance: 0, pendingBalance: 0 }
   },
 
   onShow() {

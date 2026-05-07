@@ -192,19 +192,34 @@ const WalletApi = {
     if (app.globalData.useMock) return mockDelay(mocks.WALLET_PACKAGES);
     return apiFetch("/me/wallet/packages");
   },
-  /** POST /me/wallet/recharge — mock 直接成功；真实环境需走支付回调 */
+  /**
+   * POST /me/wallet/recharge — 充值落账。
+   * 返回 RechargeResponseDto: { wallet, ledgerEntry }，与 apps/web/src/types/wallet.ts 对齐。
+   * mock：直接落账 recharge 桶 + 可选 gift 桶（bonusCredits）。
+   */
   recharge(packageId) {
     const app = getApp_();
     if (app.globalData.useMock) {
       const pkg = mocks.WALLET_PACKAGES.find((p) => p.id === packageId);
       if (!pkg) return Promise.reject(new Error("套餐不存在"));
-      // 模拟落账：充值进 recharge bucket（不修改原 mock 对象，避免污染单测）
       const c = mocks.WALLET_CREDITS;
-      const bonus = pkg.bonus ? parseInt((pkg.bonus.match(/\d+/) || [0])[0], 10) : 0;
-      c.recharge += pkg.credits;
-      c.gift += bonus;
-      c.total = c.license + c.recharge + c.gift;
-      return mockDelay({ ok: true, package: pkg, credits: c });
+      const bonus = Number(pkg.bonusCredits || 0);
+      c.rechargeBalance += pkg.credits;
+      c.giftBalance += bonus;
+      c.totalBalance = c.licenseBalance + c.rechargeBalance + c.giftBalance;
+      const ledgerEntry = {
+        id: "le-" + Date.now(),
+        walletId: c.id,
+        userId: c.userId,
+        type: "recharge",
+        amount: pkg.credits,
+        balanceAfter: c.totalBalance,
+        description: "充值套餐 " + pkg.tag + "（" + pkg.credits + " 积分）",
+        referenceId: pkg.id,
+        referenceType: "recharge_package",
+        createdAt: new Date().toISOString()
+      };
+      return mockDelay({ wallet: c, ledgerEntry });
     }
     return apiFetch("/me/wallet/recharge", { method: "POST", data: { packageId } });
   }

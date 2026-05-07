@@ -2,7 +2,7 @@ const { WalletApi } = require("../../utils/api.js");
 
 Page({
   data: {
-    credits: { total: 0, license: 0, recharge: 0, gift: 0, pending: 0 },
+    credits: { totalBalance: 0, licenseBalance: 0, rechargeBalance: 0, giftBalance: 0, pendingBalance: 0 },
     packages: [],
     currentPkgId: "",
     currentPkg: { priceYuan: 0 }
@@ -10,12 +10,25 @@ Page({
 
   onLoad() { this.fetch(); },
 
+  /** 把 server 形态的 RechargePackage（priceCents/bonusCredits）派生为渲染态（priceYuan/bonusText） */
+  enrich(pkg) {
+    if (!pkg) return { priceYuan: 0 };
+    const cents = pkg.priceCents || 0;
+    const yuan = (cents / 100);
+    const priceYuan = Number.isInteger(yuan) ? String(yuan) : yuan.toFixed(2);
+    const bonusText = pkg.bonusCredits && pkg.bonusCredits > 0
+      ? "+ " + pkg.bonusCredits + " 赠送"
+      : "";
+    return { ...pkg, priceYuan, bonusText };
+  },
+
   async fetch() {
     try {
-      const [credits, packages] = await Promise.all([
+      const [credits, packagesRaw] = await Promise.all([
         WalletApi.getCredits(),
         WalletApi.listPackages()
       ]);
+      const packages = (packagesRaw || []).map((p) => this.enrich(p));
       // 默认选中推荐包
       const recommended = packages.find((p) => p.recommended) || packages[0];
       this.setData({
@@ -43,7 +56,8 @@ Page({
       const r = await WalletApi.recharge(this.data.currentPkgId);
       wx.hideLoading();
       wx.showToast({ icon: "success", title: "充值成功" });
-      this.setData({ credits: r.credits });
+      // RechargeResponseDto: { wallet, ledgerEntry } —— credits 用 wallet 字段更新
+      this.setData({ credits: r.wallet || r.credits || this.data.credits });
       setTimeout(() => wx.navigateBack(), 800);
     } catch (e) {
       wx.hideLoading();

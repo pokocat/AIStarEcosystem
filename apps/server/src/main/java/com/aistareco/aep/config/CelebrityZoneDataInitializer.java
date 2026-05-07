@@ -7,6 +7,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -28,29 +29,37 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
     private final CelebrityTemplateRepository templateRepo;
     private final CelebrityShowcaseRepository showcaseRepo;
     private final ProductRepository productRepo;
+    private final CelebrityStarAuthorizationRepository authRepo;
+    private final RechargePackageRepository pkgRepo;
 
     public CelebrityZoneDataInitializer(CelebrityStarRepository starRepo,
                                          CelebrityProjectRepository projectRepo,
                                          CelebrityProjectVideoRepository videoRepo,
                                          CelebrityTemplateRepository templateRepo,
                                          CelebrityShowcaseRepository showcaseRepo,
-                                         ProductRepository productRepo) {
+                                         ProductRepository productRepo,
+                                         CelebrityStarAuthorizationRepository authRepo,
+                                         RechargePackageRepository pkgRepo) {
         this.starRepo = starRepo;
         this.projectRepo = projectRepo;
         this.videoRepo = videoRepo;
         this.templateRepo = templateRepo;
         this.showcaseRepo = showcaseRepo;
         this.productRepo = productRepo;
+        this.authRepo = authRepo;
+        this.pkgRepo = pkgRepo;
     }
 
     @Override
     public void run(String... args) {
+        seedRechargePackages();
+
         if (starRepo.count() > 0) return;
 
         LocalDate today = LocalDate.now();
 
         // ── Stars (3 个 demo 明星) ────────────────────────────────────────────
-        starRepo.save(buildStar(
+        CelebrityStar s1 = buildStar(
                 "star-li-dan", "李诞", "演员", true,
                 "脱口秀厂牌创始人，善于将商品融入轻松幽默的语境。",
                 "¥299起", "标准版", 12, 50,
@@ -61,9 +70,28 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                         Map.of("id", "sv2", "label", "气泡水开箱", "category", "食品饮料", "thumb", placeholderThumb(2), "videoUrl", placeholderVideo(2))
                 ),
                 pricingTiers()
-        ));
+        );
+        attachV04(s1,
+                "脱口秀厂牌创始人，长期作为脱口秀大会评委 / 主持出现，公众形象偏理性轻松，深度参与多个食品/美妆品牌代言。粉丝以 25-40 岁城市白领为主。",
+                "上海 / 北京",
+                8_240_000L, 32, 4820L,
+                List.of(
+                        photoMap("p1", placeholderThumb(101), "形象照 · 演播厅"),
+                        photoMap("p2", placeholderThumb(102), "形象照 · 户外"),
+                        photoMap("p3", placeholderThumb(103), "活动现场"),
+                        photoMap("p4", placeholderThumb(104), "代言海报 · 坚果"),
+                        photoMap("p5", placeholderThumb(105), "代言海报 · 速食"),
+                        photoMap("p6", placeholderThumb(106), "节目剧照")
+                ),
+                List.of(
+                        videoMap("v1", "代言案例 · 每日坚果", 30, placeholderThumb(111), placeholderVideo(111), "代言"),
+                        videoMap("v2", "节目片段 · 试吃测评", 45, placeholderThumb(112), placeholderVideo(112), "综艺"),
+                        videoMap("v3", "形象介绍片", 20, placeholderThumb(113), placeholderVideo(113), "介绍")
+                )
+        );
+        starRepo.save(s1);
 
-        starRepo.save(buildStar(
+        CelebrityStar s2 = buildStar(
                 "star-yi-nengjing", "伊能静", "歌手", true,
                 "气质温婉的资深艺人，适合美妆 / 母婴品类的温情种草。",
                 "¥499起", "标准版", 8, 30,
@@ -73,9 +101,25 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                         Map.of("id", "sv1", "label", "母婴推荐", "category", "母婴", "thumb", placeholderThumb(3), "videoUrl", placeholderVideo(3))
                 ),
                 pricingTiers()
-        ));
+        );
+        attachV04(s2,
+                "气质温婉的资深艺人，演员 / 歌手 / 综艺三栖，长期活跃于美妆 / 母婴品类种草。粉丝画像以 30-45 女性为主。",
+                "台北 / 上海",
+                12_400_000L, 18, 6210L,
+                List.of(
+                        photoMap("p1", placeholderThumb(201), "形象照 · 时尚大片"),
+                        photoMap("p2", placeholderThumb(202), "代言海报 · 美妆"),
+                        photoMap("p3", placeholderThumb(203), "代言海报 · 母婴"),
+                        photoMap("p4", placeholderThumb(204), "活动现场")
+                ),
+                List.of(
+                        videoMap("v1", "代言案例 · 玻尿酸面膜", 60, placeholderThumb(211), placeholderVideo(211), "代言"),
+                        videoMap("v2", "形象介绍片", 25, placeholderThumb(212), placeholderVideo(212), "介绍")
+                )
+        );
+        starRepo.save(s2);
 
-        starRepo.save(buildStar(
+        CelebrityStar s3 = buildStar(
                 "star-shen-teng", "沈腾", "演员", false,
                 "喜剧风格突出，适合搞笑类轻量植入。当前未对您授权，可申请。",
                 "¥899起", null, null, null,
@@ -83,7 +127,35 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                 stats(0, "—", "—", "—"),
                 List.of(),
                 pricingTiers()
-        ));
+        );
+        attachV04(s3,
+                "喜剧风格突出，电影 / 综艺双栖；适合食品 / 日用 / 服饰品类的轻量植入。",
+                "北京",
+                25_300_000L, 9, 7450L,
+                List.of(
+                        photoMap("p1", placeholderThumb(301), "形象照"),
+                        photoMap("p2", placeholderThumb(302), "电影剧照"),
+                        photoMap("p3", placeholderThumb(303), "综艺片段")
+                ),
+                List.of(
+                        videoMap("v1", "形象介绍片", 30, placeholderThumb(311), placeholderVideo(311), "介绍")
+                )
+        );
+        starRepo.save(s3);
+
+        // ── 授权关系（v0.4 新增表）─────────────────────────────────────────
+        // demo-user × 李诞：authorized
+        authRepo.save(buildAuth("auth-demo-li", "demo-user", "star-li-dan",
+                CelebrityAuthStatus.AUTHORIZED, List.of("带货", "种草"),
+                today.plusMonths(6), 5, null, null));
+        // demo-user × 伊能静：authorized
+        authRepo.save(buildAuth("auth-demo-yi", "demo-user", "star-yi-nengjing",
+                CelebrityAuthStatus.AUTHORIZED, List.of("带货", "种草", "测评"),
+                today.plusMonths(3), 4, null, null));
+        // demo-user × 沈腾：pending（审核中，48h SLA）
+        authRepo.save(buildAuth("auth-demo-shen", "demo-user", "star-shen-teng",
+                CelebrityAuthStatus.PENDING, List.of(),
+                null, 0, "经纪团队复核中（48h SLA）", null));
 
         // ── Projects (李诞 名下 2 个项目) ────────────────────────────────────
         projectRepo.save(buildProject("proj-001", "Q3 新品种草季", "star-li-dan", "李诞",
@@ -113,35 +185,40 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                 placeholderThumb(13), placeholderVideo(13), today.minusDays(1)));
 
         // ── Templates (5 个) ─────────────────────────────────────────────────
-        templateRepo.save(buildTemplate("tpl-001", "种草日常 Vlog", "种草安利",
+        templateRepo.save(attachTplV04(buildTemplate("tpl-001", "种草日常 Vlog", "种草安利",
                 "轻松日常感，自然推荐商品。",
                 "HiGen", "标准", true, "120K", "8.2%",
                 "适合美妆 / 食品类",
-                List.of(Map.of("thumb", placeholderThumb(21), "videoUrl", placeholderVideo(21)))));
+                List.of(Map.of("thumb", placeholderThumb(21), "videoUrl", placeholderVideo(21)))),
+                placeholderThumb(21), placeholderVideo(21), 30));
 
-        templateRepo.save(buildTemplate("tpl-002", "硬核测评", "硬核测评",
+        templateRepo.save(attachTplV04(buildTemplate("tpl-002", "硬核测评", "硬核测评",
                 "专业拆解 + 数据对比，理性人群转化高。",
                 "MiniMax", "高级", true, "98K", "11.5%",
                 "适合数码 3C / 家电",
-                List.of(Map.of("thumb", placeholderThumb(22), "videoUrl", placeholderVideo(22)))));
+                List.of(Map.of("thumb", placeholderThumb(22), "videoUrl", placeholderVideo(22)))),
+                placeholderThumb(22), placeholderVideo(22), 60));
 
-        templateRepo.save(buildTemplate("tpl-003", "轻松开箱", "轻松开箱",
+        templateRepo.save(attachTplV04(buildTemplate("tpl-003", "轻松开箱", "轻松开箱",
                 "节奏明快，画面色彩鲜艳。",
                 "HiGen", "标准", false, "76K", "7.0%",
                 "适合服饰 / 日用百货",
-                List.of(Map.of("thumb", placeholderThumb(23), "videoUrl", placeholderVideo(23)))));
+                List.of(Map.of("thumb", placeholderThumb(23), "videoUrl", placeholderVideo(23)))),
+                placeholderThumb(23), placeholderVideo(23), 30));
 
-        templateRepo.save(buildTemplate("tpl-004", "直播切片精选", "直播切片",
+        templateRepo.save(attachTplV04(buildTemplate("tpl-004", "直播切片精选", "直播切片",
                 "模拟直播带货切片，互动感强。",
                 "KeLing", "经济", false, "55K", "5.8%",
                 "适合食品饮料 / 服饰",
-                List.of(Map.of("thumb", placeholderThumb(24), "videoUrl", placeholderVideo(24)))));
+                List.of(Map.of("thumb", placeholderThumb(24), "videoUrl", placeholderVideo(24)))),
+                placeholderThumb(24), placeholderVideo(24), 15));
 
-        templateRepo.save(buildTemplate("tpl-005", "剧情植入短片", "剧情植入",
+        templateRepo.save(attachTplV04(buildTemplate("tpl-005", "剧情植入短片", "剧情植入",
                 "轻剧情包装商品，适合品牌故事。",
                 "MiniMax", "高级", false, "42K", "9.1%",
                 "适合各品类",
-                List.of(Map.of("thumb", placeholderThumb(25), "videoUrl", placeholderVideo(25)))));
+                List.of(Map.of("thumb", placeholderThumb(25), "videoUrl", placeholderVideo(25)))),
+                placeholderThumb(25), placeholderVideo(25), 60));
 
         // ── Showcases (template + blindbox 各 3) ────────────────────────────
         for (int i = 1; i <= 3; i++) {
@@ -337,5 +414,90 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
         } catch (Exception e) {
             return "[]";
         }
+    }
+
+    // ── v0.4 helpers ────────────────────────────────────────────────────────
+
+    /** 把 v0.4 详情字段（bio/location/fans/cooperationCount/avgGmv/photos/videos）补到已 build 的 star。 */
+    private void attachV04(CelebrityStar s,
+                            String bio, String location,
+                            Long fans, Integer cooperationCount, Long avgGmv,
+                            List<Map<String, Object>> photos,
+                            List<Map<String, Object>> videos) {
+        s.setBio(bio);
+        s.setLocation(location);
+        s.setFans(fans);
+        s.setCooperationCount(cooperationCount);
+        s.setAvgGmv(avgGmv);
+        s.setPhotosJson(toJson(photos));
+        s.setVideosJson(toJson(videos));
+    }
+
+    /** 把 v0.4 模板字段（previewCover/previewVideoUrl/durationSec）补到已 build 的 template。 */
+    private CelebrityTemplate attachTplV04(CelebrityTemplate t,
+                                            String previewCover, String previewVideoUrl,
+                                            int durationSec) {
+        t.setPreviewCover(previewCover);
+        t.setPreviewVideoUrl(previewVideoUrl);
+        t.setDurationSec(durationSec);
+        return t;
+    }
+
+    private static Map<String, Object> photoMap(String id, String url, String caption) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", id);
+        m.put("url", url);
+        m.put("caption", caption);
+        return m;
+    }
+
+    private static Map<String, Object> videoMap(String id, String title, int durationSec,
+                                                 String coverUrl, String playUrl, String tag) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", id);
+        m.put("title", title);
+        m.put("durationSec", durationSec);
+        m.put("coverUrl", coverUrl);
+        m.put("playUrl", playUrl);
+        m.put("tag", tag);
+        return m;
+    }
+
+    private CelebrityStarAuthorization buildAuth(String id, String userId, String starId,
+                                                  CelebrityAuthStatus status, List<String> scenes,
+                                                  LocalDate expireDate, Integer availableStyles,
+                                                  String pendingNote, String applyUrl) {
+        Instant now = Instant.now();
+        return CelebrityStarAuthorization.builder()
+                .id(id)
+                .userId(userId)
+                .starId(starId)
+                .status(status)
+                .scenes(new ArrayList<>(scenes))
+                .expireDate(expireDate)
+                .availableStyles(availableStyles)
+                .pendingNote(pendingNote)
+                .applyUrl(applyUrl)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+    }
+
+    /** 充值套餐种子（idempotent —— 已有数据时跳过）。 */
+    private void seedRechargePackages() {
+        if (pkgRepo.count() > 0) return;
+        // 与 apps/miniprogram/utils/mocks.js WALLET_PACKAGES 完全对齐
+        pkgRepo.save(RechargePackage.builder()
+                .id("pkg-300").credits(300).priceCents(9900).tag("体验包")
+                .recommended(false).bonusCredits(0).sortOrder(10).active(true).build());
+        pkgRepo.save(RechargePackage.builder()
+                .id("pkg-1000").credits(1000).priceCents(29900).tag("标准包")
+                .recommended(true).bonusCredits(100).sortOrder(20).active(true).build());
+        pkgRepo.save(RechargePackage.builder()
+                .id("pkg-3000").credits(3000).priceCents(79900).tag("热门包")
+                .recommended(false).bonusCredits(500).sortOrder(30).active(true).build());
+        pkgRepo.save(RechargePackage.builder()
+                .id("pkg-10000").credits(10000).priceCents(239900).tag("企业包")
+                .recommended(false).bonusCredits(2000).sortOrder(40).active(true).build());
     }
 }

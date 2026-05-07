@@ -46,3 +46,34 @@ export interface LedgerEntry {
   referenceType?: string;    // "song_revenue" / "nft_sale" / "license_key" 等
   createdAt: ISODateTime;
 }
+
+// ── v0.4：充值套餐（小程序"我的"页 + 充值页消费） ─────────────────────────────
+
+export interface RechargePackage {
+  id: ID;
+  /** 套餐总积分（充进 rechargeBalance） */
+  credits: number;
+  /** 价格（人民币分） */
+  priceCents: number;
+  /** 套餐标签：体验包 / 标准包 / 热门包 / 企业包 */
+  tag: string;
+  /** 是否推荐 */
+  recommended: boolean;
+  /** 赠送积分（充进 giftBalance），可选 */
+  bonusCredits?: number;
+  /** 排序权重，越小越靠前 */
+  sortOrder?: number;
+}
+
+/** 充值请求体（前端 → 服务端） */
+export interface RechargeRequest {
+  packageId: ID;
+}
+
+/** 充值响应（服务端 → 前端） */
+export interface RechargeResponse {
+  /** 落账后的最新钱包 */
+  wallet: Wallet;
+  /** 本次落账记录（recharge 主分录；如有 bonus 仍然只返回主分录） */
+  ledgerEntry: LedgerEntry;
+}

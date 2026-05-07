@@ -35,21 +35,50 @@ public class CelebrityZoneService {
     private final CelebrityProjectVideoRepository videoRepo;
     private final CelebrityTemplateRepository templateRepo;
     private final CelebrityShowcaseRepository showcaseRepo;
+    private final CelebrityStarAuthorizationRepository authRepo;
+    private final CreditService creditService;
 
     public CelebrityZoneService(CelebrityStarRepository starRepo,
                                  CelebrityProjectRepository projectRepo,
                                  CelebrityProjectVideoRepository videoRepo,
                                  CelebrityTemplateRepository templateRepo,
-                                 CelebrityShowcaseRepository showcaseRepo) {
+                                 CelebrityShowcaseRepository showcaseRepo,
+                                 CelebrityStarAuthorizationRepository authRepo,
+                                 CreditService creditService) {
         this.starRepo = starRepo;
         this.projectRepo = projectRepo;
         this.videoRepo = videoRepo;
         this.templateRepo = templateRepo;
         this.showcaseRepo = showcaseRepo;
+        this.authRepo = authRepo;
+        this.creditService = creditService;
     }
 
     // ── Stars ───────────────────────────────────────────────────────────────
     public List<CelebrityStarDto> listStars(String category, String sort) {
+        return listStars(category, sort, null, null);
+    }
+
+    /**
+     * v0.4：增加 owner / userId 参数。
+     *   - owner == "me" && userId 非空：仅返回该用户已授权或审核中的明星，且 authorization 字段
+     *     用 CelebrityStarAuthorization 注入（覆盖 star.authorizationJson 默认值）。
+     *   - 其他情况：与 v0.3 行为一致。
+     */
+    public List<CelebrityStarDto> listStars(String category, String sort, String owner, String userId) {
+        if ("me".equals(owner) && userId != null && !userId.isBlank()) {
+            List<CelebrityStarAuthorization> auths = authRepo.findByUserIdAndStatusIn(
+                    userId, List.of(CelebrityAuthStatus.AUTHORIZED, CelebrityAuthStatus.PENDING));
+            if (auths.isEmpty()) return List.of();
+            // 按 starId 反查 + 注入 auth
+            Map<String, CelebrityStarAuthorization> byStarId = new HashMap<>();
+            for (CelebrityStarAuthorization a : auths) byStarId.put(a.getStarId(), a);
+            List<CelebrityStar> stars = starRepo.findAllById(byStarId.keySet());
+            return stars.stream()
+                    .map(s -> CelebrityStarDto.from(s, byStarId.get(s.getId())))
+                    .toList();
+        }
+
         List<CelebrityStar> rows = (category == null || category.isBlank() || "全部".equals(category))
                 ? starRepo.findAll()
                 : starRepo.findByCategory(category);
@@ -65,11 +94,34 @@ public class CelebrityZoneService {
                 return asc ? Integer.compare(pa, pb) : Integer.compare(pb, pa);
             });
         }
+        // 即使非 owner=me，也按 userId 注入（如果有）
+        if (userId != null && !userId.isBlank()) {
+            List<CelebrityStarAuthorization> auths = authRepo.findByUserId(userId);
+            Map<String, CelebrityStarAuthorization> byStarId = new HashMap<>();
+            for (CelebrityStarAuthorization a : auths) byStarId.put(a.getStarId(), a);
+            return rows.stream()
+                    .map(s -> CelebrityStarDto.from(s, byStarId.get(s.getId())))
+                    .toList();
+        }
         return rows.stream().map(CelebrityStarDto::from).toList();
     }
 
     public CelebrityStarDto getStar(String id) {
-        return starRepo.findById(id).map(CelebrityStarDto::from).orElse(null);
+        return getStar(id, null);
+    }
+
+    /**
+     * v0.4：userId 非空时，从 CelebrityStarAuthorization 表取该用户对该明星的真实授权关系，
+     * 注入 authorization 字段。
+     */
+    public CelebrityStarDto getStar(String id, String userId) {
+        CelebrityStar star = starRepo.findById(id).orElse(null);
+        if (star == null) return null;
+        if (userId != null && !userId.isBlank()) {
+            CelebrityStarAuthorization auth = authRepo.findByUserIdAndStarId(userId, id).orElse(null);
+            return CelebrityStarDto.from(star, auth);
+        }
+        return CelebrityStarDto.from(star);
     }
 
     public CelebrityStarDto getActiveStar() {
@@ -187,8 +239,39 @@ public class CelebrityZoneService {
 
     // ── Generation ──────────────────────────────────────────────────────────
     public AsyncJobStartedDto startGeneration(Map<String, Object> payload) {
-        String engine = String.valueOf(payload.getOrDefault("engine", "HiGen"));
-        EnginePricingDto pricing = ENGINE_PRICING.getOrDefault(engine, ENGINE_PRICING.get("HiGen"));
+        return startGeneration(payload, null);
+    }
+
+    /**
+     * v0.4：扣减积分 + 触发异步生成。
+     *
+     * payload 关键字段（与 apps/web/src/types/celebrity-zone.ts CelebrityGenerationRequest 对齐）：
+     *   - starId, mode, templateId, engine / engineName, duration / durationSec
+     *   - creditCost：可选，前端按 engine.creditPrice × 时长系数计算后透传。提供且 > 0 时本服务
+     *     调用 CreditService.debit 扣减；不足抛 402 PAYMENT_REQUIRED。
+     *   - language, keypoints：透传到生成管道（本期不消费）
+     */
+    public AsyncJobStartedDto startGeneration(Map<String, Object> payload, String userId) {
+        String engine = firstNonBlank(
+                String.valueOf(payload.getOrDefault("engineName", "")),
+                String.valueOf(payload.getOrDefault("engine", "HiGen")));
+        if (engine == null || engine.isBlank() || "null".equals(engine)) engine = "HiGen";
+
+        long creditCost = parseLongOrZero(payload.get("creditCost"));
+        String starId = String.valueOf(payload.getOrDefault("starId", ""));
+        String templateId = String.valueOf(payload.getOrDefault("templateId", ""));
+
+        // 扣分（仅当有 userId 且声明了 creditCost 时）
+        if (userId != null && !userId.isBlank() && creditCost > 0) {
+            creditService.debit(
+                    userId,
+                    creditCost,
+                    "celebrity_generation",
+                    starId + (templateId.isBlank() ? "" : ":" + templateId),
+                    "AI 明星视频生成 · " + engine + (templateId.isBlank() ? "" : " · " + templateId)
+            );
+        }
+
         int estimated = switch (engine) {
             case "KeLing" -> 6;
             case "MiniMax" -> 10;
@@ -201,6 +284,23 @@ public class CelebrityZoneService {
                 3000,
                 estimated
         );
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank() && !"null".equals(v)) return v;
+        }
+        return null;
+    }
+
+    private static long parseLongOrZero(Object v) {
+        if (v == null) return 0L;
+        if (v instanceof Number n) return n.longValue();
+        try {
+            return Long.parseLong(v.toString());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 
     public Map<String, EnginePricingDto> getEnginePricing() {

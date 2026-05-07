@@ -47,4 +47,17 @@ public class CelebrityTemplate {
     /** previews 数组（{thumb, videoUrl}[]） JSON。 */
     @Column(name = "previews_json", columnDefinition = "TEXT")
     private String previewsJson;
+
+    // ── v0.4 字段：模板效果预览（admin 上传整段预览视频） ─────────────────────
+
+    /** 缩略图 URL。 */
+    @Column(length = 512)
+    private String previewCover;
+
+    /** 整段效果预览视频 URL。 */
+    @Column(length = 512)
+    private String previewVideoUrl;
+
+    /** 推荐时长（15 / 30 / 60 秒）。 */
+    private Integer durationSec;
 }

@@ -1,8 +1,10 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.dto.BotConversationDto;
 import com.aistareco.aep.dto.NotificationDto;
 import com.aistareco.aep.model.Notification;
 import com.aistareco.aep.repository.NotificationRepository;
+import com.aistareco.aep.service.NotificationService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,9 +24,11 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationRepository repo;
+    private final NotificationService botService;
 
-    public NotificationController(NotificationRepository repo) {
+    public NotificationController(NotificationRepository repo, NotificationService botService) {
         this.repo = repo;
+        this.botService = botService;
     }
 
     @GetMapping
@@ -62,6 +66,12 @@ public class NotificationController {
     public void delete(Principal principal, @PathVariable String id) {
         Notification n = loadOwned(id, principal.getName());
         repo.delete(n);
+    }
+
+    /** v0.4：取单个 AI Bot 的多消息会话流（小程序 chat 页消费）。 */
+    @GetMapping("/conversations/{botId}")
+    public ApiResponse<BotConversationDto> getConversation(@PathVariable String botId) {
+        return ApiResponse.of(botService.getConversation(botId));
     }
 
     private Notification loadOwned(String id, String userId) {

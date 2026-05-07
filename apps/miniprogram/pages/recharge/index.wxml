@@ -13,25 +13,25 @@
       <view class="hero-mono mono">实时余额</view>
     </view>
     <view class="hero-amount">
-      <text class="amount-int">{{credits.total}}</text>
+      <text class="amount-int">{{credits.totalBalance}}</text>
       <text class="amount-unit">积分</text>
     </view>
     <view class="bucket-row">
       <view class="bucket">
         <view class="bucket-k">套餐</view>
-        <view class="bucket-v">{{credits.license}}</view>
+        <view class="bucket-v">{{credits.licenseBalance}}</view>
       </view>
       <view class="bucket">
         <view class="bucket-k">充值</view>
-        <view class="bucket-v">{{credits.recharge}}</view>
+        <view class="bucket-v">{{credits.rechargeBalance}}</view>
       </view>
       <view class="bucket">
         <view class="bucket-k">赠送</view>
-        <view class="bucket-v">{{credits.gift}}</view>
+        <view class="bucket-v">{{credits.giftBalance}}</view>
       </view>
       <view class="bucket">
         <view class="bucket-k">冻结</view>
-        <view class="bucket-v bucket-pending">{{credits.pending}}</view>
+        <view class="bucket-v bucket-pending">{{credits.pendingBalance}}</view>
       </view>
     </view>
   </view>
@@ -53,7 +53,7 @@
           <text class="pkg-credits-num">{{item.credits}}</text>
           <text class="pkg-credits-unit">积分</text>
         </view>
-        <view wx:if="{{item.bonus}}" class="pkg-bonus">{{item.bonus}}</view>
+        <view wx:if="{{item.bonusText}}" class="pkg-bonus">{{item.bonusText}}</view>
         <view class="pkg-price mono">¥{{item.priceYuan}}</view>
         <view wx:if="{{currentPkgId === item.id}}" class="pkg-check">✓</view>
       </view>

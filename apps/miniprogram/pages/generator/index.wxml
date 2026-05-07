@@ -87,7 +87,7 @@
         <view class="num-pill">4</view>
         <text class="card-title">选择模型</text>
       </view>
-      <text class="card-aux mono">余额 {{credits.total}} 积分</text>
+      <text class="card-aux mono">余额 {{credits.totalBalance}} 积分</text>
     </view>
     <view class="engine-list">
       <view

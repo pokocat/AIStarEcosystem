@@ -240,6 +240,97 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ## 六、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.4.0 · 2026-05-07 — Server 端落地 v0.3 全部接口（三端打通）
+
+**状态升级**：从 v0.3 的"小程序 mock 落地" → "**server + miniprogram 双端打通**"。
+小程序把 `globalData.useMock = false` 后，11 屏全部能跑真实 server，无 404、无字段缺失。
+
+**真源类型扩展**（apps/web/src/types/* 同步到 apps/admin/src/types/*）
+
+- `celebrity-zone.ts`：
+  - `CelebrityStar` 增 5 个可选字段：`bio? / location? / fans? / cooperationCount? / avgGmv?`，以及 `photos?: CelebrityStarPhoto[] / videos?: CelebrityStarVideo[]`
+  - 新增类型：`CelebrityStarPhoto { id, url, caption? }` / `CelebrityStarVideo { id, title, durationSec, coverUrl?, playUrl?, tag? }`
+  - `CelebrityTemplate` 增 `previewCover? / previewVideoUrl? / durationSec?`
+  - `CelebrityGenerationRequest` 增 `engineName? / durationSec? / creditCost? / language? / keypoints?`
+- `wallet.ts`：新增 `RechargePackage / RechargeRequest / RechargeResponse`
+- `notification.ts`：新增 `BotMeta / ChatMessageType / ChatMessage / BotConversation`（含 6 种 discriminated 块）
+
+**openapi.yaml 增量**
+
+- 扩 `CelebrityStar / CelebrityTemplate / CelebrityGenerationRequest` schema
+- 新增 schema：`CelebrityStarPhoto / CelebrityStarVideo / RechargePackage / RechargeRequest / RechargeResponse / BotMeta / ChatMessageType / ChatHighlight / ChatFormField / ChatTag / ChatGridItem / ChatCta / ChatMessage / BotConversation`
+- `GET /celebrity/stars` 增加 `owner=me` query 参数（仅返回当前用户已授权或审核中的明星）
+- 新增 path：`GET /me/wallet/credits`、`GET /me/wallet/packages`、`POST /me/wallet/recharge`、`GET /notifications/conversations/{botId}`
+
+**apps/server 实体 / 迁移**
+
+- 修改：`CelebrityStar` 新增 7 列（`bio / location / fans / cooperationCount / avgGmv / photos_json / videos_json`）；`CelebrityTemplate` 新增 3 列（`previewCover / previewVideoUrl / durationSec`）
+- 新增实体：
+  - `CelebrityAuthStatus`（enum：`UNAUTHORIZED / PENDING / AUTHORIZED / EXPIRED`，wire 用 lower-cased，`@JsonValue` + `@JsonCreator`）
+  - `CelebrityStarAuthorization`（用户 × 明星授权关系表，`@UniqueConstraint(user_id, star_id)`）
+  - `RechargePackage`（充值套餐表）
+- 新增 repository：`CelebrityStarAuthorizationRepository / RechargePackageRepository`
+
+**关键设计：授权关系独立成表**（D1）
+
+`CelebrityStar.authorizationJson` 此后**仅作匿名预览的"陈列态默认值"**，登录用户的真实授权一律走新建的 `CelebrityStarAuthorization` 表。
+- `?owner=me` 通过 `findByUserIdAndStatusIn(userId, [AUTHORIZED, PENDING])` 实现
+- 详情接口 `GET /celebrity/stars/{id}` 在 Principal 非空时调用 `findByUserIdAndStarId` 注入实际授权块
+
+**apps/server DTO 新增 / 修改**
+
+- 修改：`CelebrityStarDto`（新字段 + `from(star, authOverride)` 重载）；`CelebrityTemplateDto`（新 3 字段）。两者改为 `@JsonInclude(NON_NULL)`
+- 新增：`RechargePackageDto / RechargeRequestDto / RechargeResponseDto / BotMetaDto / ChatMessageDto / BotConversationDto`
+- `ChatMessageDto` 是 discriminated union 的"宽 record"，所有字段 `@JsonInclude(NON_NULL)`，提供工厂方法（`time / text / userText / cardCta / cardForm / cardGrid`）
+
+**apps/server 服务**
+
+- `CreditService`：新增公开方法
+  - `creditAccount(userId, amount, LedgerEntryType, refType, refId, desc)` — "加积分"通用入口，按 type 选桶（RECHARGE/GIFT/LICENSE_GRANT/INCOME/REFUND），写一条不可变 LedgerEntry
+  - `getOrCreateWallet(userId)` — 取最新 wallet 实体（recharge 流程用）
+- 新增 `RechargeService`：`listPackages()` + `recharge(userId, packageId)`（事务内：主分录 RECHARGE + 可选 GIFT bonus → 返回最新 WalletDto + 主 LedgerEntry）
+- 新增 `NotificationService`：`getConversation(botId)` 返回 5 个 Bot（pian/shen/shu/ada/zhang）的 canned 多消息会话，与小程序 mocks 完全对齐
+- `CelebrityZoneService`：
+  - `listStars(category, sort, owner, userId)` — owner=me 走授权表 join；userId 非空时为每条结果注入 user-specific authorization 覆盖
+  - `getStar(id, userId)` — userId 非空时附 user-specific authorization
+  - `startGeneration(payload, userId)` — 当 `userId 非空` 且 `creditCost > 0` 时，先调 `creditService.debit(userId, creditCost, "celebrity_generation", ...)` 扣分；不足抛 402；再触发原异步任务
+
+**apps/server 控制器**
+
+- `CelebrityZoneController` 修改：`listStars / getStar / startGeneration` 都加 `Principal` 注入
+- `AccountController` 新增 3 个 `/me/wallet/*` 端点：`/credits`（WalletDto 别名）、`/packages`、`/recharge`
+- `NotificationController` 新增 `GET /conversations/{botId}` 方法（沿用现有 `/api/notifications` 控制器）
+
+**安全**：`/api/notifications/**` 已落入 `anyRequest().permitAll()`；`/api/me/**` 仍要求 `authenticated()`（含新加的三个 wallet 端点）。
+
+**DataInitializer 种子**
+
+- 3 个明星补全 v0.4 字段（bio / location / fans / cooperationCount / avgGmv / photos[3-6 张] / videos[1-3 条]）
+- 5 个模板补全 previewCover / previewVideoUrl / durationSec（15/30/60 三档）
+- 新增 3 条 `CelebrityStarAuthorization`：`demo-user × 李诞`（authorized）、`demo-user × 伊能静`（authorized）、`demo-user × 沈腾`（pending）
+- 新增 4 条 `RechargePackage`：pkg-300 / pkg-1000 (推荐 + 100 bonus) / pkg-3000 / pkg-10000
+
+**小程序对齐**（消除字段名分叉）
+
+- `utils/mocks.js` `WALLET_CREDITS` 切换为长名（`totalBalance / licenseBalance / rechargeBalance / giftBalance / pendingBalance`），与 web 真源一致
+- `utils/mocks.js` `WALLET_PACKAGES` 切 `priceYuan` → `priceCents` + `bonus` (字符串) → `bonusCredits` (数字) + `sortOrder`
+- `utils/api.js` `WalletApi.recharge` mock 返回 `{ wallet, ledgerEntry }`（即 `RechargeResponseDto`）
+- `pages/me/index.{wxml,js}` / `pages/recharge/index.{wxml,js}` / `pages/generator/index.{wxml,js}` 全部改用长名字段；`pages/recharge` 加 `enrich(pkg)` 派生 `priceYuan / bonusText` 渲染态字段
+
+**契约门**
+
+- `apps/web/scripts/check-api-contract.mjs`：OK（apps/web 调用全部命中 openapi）
+- 16 个小程序 apiFetch URL 全部在 openapi.yaml 找到对应 path
+- `apps/server`：`mvn compile` BUILD SUCCESS（300 source files）
+
+**已知限制**
+
+- 真实微信支付未接：`POST /me/wallet/recharge` 当前为同步直落账。线上需改为先 `wx.requestPayment` 走支付，回调成功后才调用此接口
+- `BotConversation` 当前由 `NotificationService` 硬编码返回；个性化 / 未读 / 推送通道留待下一版
+- 旧字段 `CelebrityStar.sampleVideosJson` 与新字段 `videos` 暂时并存（前者标记为陈列态默认）；后续小版本可清理
+
+---
+
 ### v0.3.0 · 2026-05-07 — 与 web 版"明星专区"对齐 + 计费/钱包/资料贯通
 
 **新增**

@@ -4,6 +4,9 @@ import com.aistareco.aep.dto.DigitalIpDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.MeDto;
 import com.aistareco.aep.dto.PageEnvelope;
+import com.aistareco.aep.dto.RechargePackageDto;
+import com.aistareco.aep.dto.RechargeRequestDto;
+import com.aistareco.aep.dto.RechargeResponseDto;
 import com.aistareco.aep.dto.SongDto;
 import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.dto.WalletDto;
@@ -13,6 +16,7 @@ import com.aistareco.aep.repository.DigitalIpRepository;
 import com.aistareco.aep.repository.SongRepository;
 import com.aistareco.aep.service.AccountSelfService;
 import com.aistareco.aep.service.DigitalIpService;
+import com.aistareco.aep.service.RechargeService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -35,15 +39,18 @@ public class AccountController {
     private final DigitalIpService digitalIpService;
     private final SongRepository songRepo;
     private final DigitalIpRepository digitalIpRepo;
+    private final RechargeService rechargeService;
 
     public AccountController(AccountSelfService accountSelfService,
                              DigitalIpService digitalIpService,
                              SongRepository songRepo,
-                             DigitalIpRepository digitalIpRepo) {
+                             DigitalIpRepository digitalIpRepo,
+                             RechargeService rechargeService) {
         this.accountSelfService = accountSelfService;
         this.digitalIpService = digitalIpService;
         this.songRepo = songRepo;
         this.digitalIpRepo = digitalIpRepo;
+        this.rechargeService = rechargeService;
     }
 
     @GetMapping
@@ -64,6 +71,31 @@ public class AccountController {
     @GetMapping("/wallet")
     public ApiResponse<WalletDto> wallet(Principal principal) {
         return ApiResponse.of(accountSelfService.getWallet(principal.getName()));
+    }
+
+    /** v0.4：与 /me/wallet 同 shape 的语义别名，小程序"我的"页消费。 */
+    @GetMapping("/wallet/credits")
+    public ApiResponse<WalletDto> walletCredits(Principal principal) {
+        return ApiResponse.of(accountSelfService.getWallet(principal.getName()));
+    }
+
+    /** v0.4：充值套餐列表。 */
+    @GetMapping("/wallet/packages")
+    public ApiResponse<List<RechargePackageDto>> walletPackages() {
+        return ApiResponse.of(rechargeService.listPackages());
+    }
+
+    /**
+     * v0.4：充值落账。
+     * mock：直接落账。线上接 wx.requestPayment 回调成功后调用。
+     */
+    @PostMapping("/wallet/recharge")
+    public ApiResponse<RechargeResponseDto> walletRecharge(Principal principal,
+                                                            @RequestBody RechargeRequestDto req) {
+        if (req == null || req.packageId() == null || req.packageId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "packageId 必填");
+        }
+        return ApiResponse.of(rechargeService.recharge(principal.getName(), req.packageId()));
     }
 
     @GetMapping("/ledger")

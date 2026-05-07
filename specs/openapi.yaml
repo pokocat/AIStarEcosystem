@@ -1219,6 +1219,123 @@ components:
         referenceType: { type: string, nullable: true, description: '"song_revenue" / "nft_sale" / "license_key" 等' }
         createdAt:     { type: string, format: date-time }
 
+    # ── v0.4：充值套餐 / 充值请求/响应（小程序"我的"页 + 充值页消费） ──
+    RechargePackage:
+      type: object
+      required: [id, credits, priceCents, tag, recommended]
+      properties:
+        id:            { type: string, example: pkg-1000 }
+        credits:       { type: integer, description: 套餐总积分（充进 rechargeBalance） }
+        priceCents:    { type: integer, description: 价格（人民币分） }
+        tag:           { type: string, description: '体验包 / 标准包 / 热门包 / 企业包' }
+        recommended:   { type: boolean }
+        bonusCredits:  { type: integer, nullable: true, description: 赠送积分（充进 giftBalance） }
+        sortOrder:     { type: integer, nullable: true }
+
+    RechargeRequest:
+      type: object
+      required: [packageId]
+      properties:
+        packageId: { type: string }
+
+    RechargeResponse:
+      type: object
+      required: [wallet, ledgerEntry]
+      properties:
+        wallet:       { $ref: '#/components/schemas/Wallet' }
+        ledgerEntry:  { $ref: '#/components/schemas/LedgerEntry' }
+
+    # ── v0.4：AI Bot 同事会话（小程序 chat 页消费） ──
+    BotMeta:
+      type: object
+      required: [id, name, subtitle, avatarColor, avatarIcon, iconColor]
+      properties:
+        id:           { type: string, example: pian }
+        name:         { type: string, example: 片片 }
+        subtitle:     { type: string, example: '创作官 · 在线' }
+        avatarColor:  { type: string, example: '#0A0A0A' }
+        avatarIcon:   { type: string, example: '✦' }
+        iconColor:    { type: string, example: '#C8FF00' }
+
+    ChatMessageType:
+      type: string
+      enum: [time, text, card-cta, card-form, card-grid, user-text]
+
+    ChatHighlight:
+      type: object
+      required: [icon, title, sub]
+      properties:
+        icon:  { type: string }
+        title: { type: string }
+        sub:   { type: string }
+
+    ChatFormField:
+      type: object
+      required: [label, value]
+      properties:
+        label: { type: string }
+        value: { type: string }
+
+    ChatTag:
+      type: object
+      required: [text, tone]
+      properties:
+        text: { type: string }
+        tone: { type: string, enum: [warn, info, success, danger, default] }
+
+    ChatGridItem:
+      type: object
+      required: [icon, label, sub]
+      properties:
+        icon:  { type: string }
+        label: { type: string }
+        sub:   { type: string }
+
+    ChatCta:
+      type: object
+      required: [text]
+      properties:
+        text:  { type: string }
+        route: { type: string, nullable: true }
+
+    ChatMessage:
+      type: object
+      description: |
+        Discriminated union by `type`. 服务端用 NON_NULL 序列化，前端按 type 解构使用对应字段。
+        使用规范：
+          - time/text/user-text: { type, text }
+          - card-cta:   { type, title, body, [accent], [highlight], [cta] }
+          - card-form:  { type, title, [tag], fields, [cta] }
+          - card-grid:  { type, title, [sub], items, [cta] }
+      required: [type]
+      properties:
+        type:      { $ref: '#/components/schemas/ChatMessageType' }
+        text:      { type: string, nullable: true }
+        accent:    { type: boolean, nullable: true }
+        title:     { type: string, nullable: true }
+        body:      { type: string, nullable: true }
+        sub:       { type: string, nullable: true }
+        highlight: { $ref: '#/components/schemas/ChatHighlight', nullable: true }
+        tag:       { $ref: '#/components/schemas/ChatTag', nullable: true }
+        fields:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/ChatFormField' }
+        items:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/ChatGridItem' }
+        cta:       { $ref: '#/components/schemas/ChatCta', nullable: true }
+
+    BotConversation:
+      type: object
+      required: [bot, messages]
+      properties:
+        bot:      { $ref: '#/components/schemas/BotMeta' }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMessage' }
+
     # ── Music v2.2+ 增量（src/types/music.ts:Song）
 
     Song:
@@ -1380,6 +1497,39 @@ components:
         pricing:
           type: array
           items: { $ref: '#/components/schemas/CelebrityPricingTier' }
+        # ── v0.4：详情页扩展字段（admin 后台维护，小程序消费） ──
+        bio:               { type: string, nullable: true }
+        location:          { type: string, nullable: true }
+        fans:              { type: integer, format: int64, nullable: true }
+        cooperationCount:  { type: integer, nullable: true }
+        avgGmv:            { type: integer, format: int64, nullable: true }
+        photos:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/CelebrityStarPhoto' }
+        videos:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/CelebrityStarVideo' }
+
+    CelebrityStarPhoto:
+      type: object
+      required: [id, url]
+      properties:
+        id:       { type: string }
+        url:      { type: string }
+        caption:  { type: string, nullable: true }
+
+    CelebrityStarVideo:
+      type: object
+      required: [id, title, durationSec]
+      properties:
+        id:           { type: string }
+        title:        { type: string }
+        durationSec:  { type: integer }
+        coverUrl:     { type: string, nullable: true }
+        playUrl:      { type: string, nullable: true }
+        tag:          { type: string, nullable: true }
 
     TemplateStyle:
       type: string
@@ -1407,6 +1557,10 @@ components:
             properties:
               thumb:    { type: string }
               videoUrl: { type: string, nullable: true }
+        # ── v0.4：模板效果预览（admin 上传整段预览视频） ──
+        previewCover:     { type: string, nullable: true }
+        previewVideoUrl:  { type: string, nullable: true }
+        durationSec:      { type: integer, enum: [15, 30, 60], nullable: true }
 
     CelebrityProjectStatus:
       type: string
@@ -1510,6 +1664,15 @@ components:
         projectId:  { type: string }
         channels:
           type: array
+          items: { type: string }
+        # ── v0.4：模型选择 + 动态扣分（小程序生成器使用） ──
+        engineName: { $ref: '#/components/schemas/CelebrityEngine', nullable: true }
+        durationSec: { type: integer, enum: [15, 30, 60], nullable: true }
+        creditCost:  { type: integer, nullable: true, description: '前端按 engine.creditPrice × 时长系数计算后透传' }
+        language:    { type: string, nullable: true }
+        keypoints:
+          type: array
+          nullable: true
           items: { type: string }
 
     CelebrityZoneOverview:
@@ -3442,6 +3605,64 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/Wallet' }
 
+  /me/wallet/credits:
+    get:
+      tags: [finance]
+      operationId: getMyWalletCredits
+      summary: 获取当前用户积分（与 /me/wallet 同 shape，语义别名）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Wallet' }
+
+  /me/wallet/packages:
+    get:
+      tags: [finance]
+      operationId: listMyWalletPackages
+      summary: 充值套餐列表（运营在 admin 后台配置 / 上下架）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/RechargePackage' }
+
+  /me/wallet/recharge:
+    post:
+      tags: [finance]
+      operationId: recharge
+      summary: 充值落账（mock：直接落账；线上接 wx.requestPayment 回调后调用）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RechargeRequest' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeResponse' }
+
   /me/ledger:
     get:
       tags: [finance]
@@ -3693,6 +3914,10 @@ paths:
         - in: query
           name: sort
           schema: { type: string, enum: [hot, price-asc, price-desc] }
+        - in: query
+          name: owner
+          description: '"me" 仅返回当前用户已授权或审核中的明星（基于 CelebrityStarAuthorization 表）'
+          schema: { type: string, enum: [me] }
       responses:
         '200':
           description: ok
@@ -4268,6 +4493,28 @@ paths:
 
   /notifications/read-all:
     post: { tags: [notifications], operationId: markAllNotificationsRead, responses: { '204': { description: ok } } }
+
+  /notifications/conversations/{botId}:
+    parameters:
+      - in: path
+        name: botId
+        required: true
+        schema: { type: string, enum: [pian, shen, shu, ada, zhang] }
+    get:
+      tags: [notifications]
+      operationId: getBotConversation
+      summary: 取单个 AI Bot 的多消息会话流（小程序 chat 页消费）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/BotConversation' }
 
   # ── settings（订阅 / 充值 / 积分包） ───────────────
 

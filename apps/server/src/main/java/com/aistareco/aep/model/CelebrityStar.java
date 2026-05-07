@@ -75,4 +75,30 @@ public class CelebrityStar {
     /** 嵌套：pricing 套餐 JSON 数组。 */
     @Column(name = "pricing_json", columnDefinition = "TEXT")
     private String pricingJson;
+
+    // ── v0.4 字段：详情页扩展（admin 后台维护，小程序详情页消费） ──────────────
+
+    /** 一段简介，约 50-200 字。 */
+    @Column(columnDefinition = "TEXT")
+    private String bio;
+
+    /** 所在地，如 "上海 / 北京"。 */
+    private String location;
+
+    /** 粉丝数（原始整数；前端用 formatCompactNumber 格式化）。 */
+    private Long fans;
+
+    /** 历史合作次数。 */
+    private Integer cooperationCount;
+
+    /** 历史平均单条 GMV（人民币元，原始整数）。 */
+    private Long avgGmv;
+
+    /** 嵌套：photos JSON 数组（[{id,url,caption}]）。 */
+    @Column(name = "photos_json", columnDefinition = "TEXT")
+    private String photosJson;
+
+    /** 嵌套：videos JSON 数组（[{id,title,durationSec,coverUrl,playUrl,tag}]）。 */
+    @Column(name = "videos_json", columnDefinition = "TEXT")
+    private String videosJson;
 }

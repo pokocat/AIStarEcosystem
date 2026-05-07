@@ -25,14 +25,18 @@ public class CelebrityZoneController {
     }
 
     @GetMapping("/stars")
-    public ApiResponse<List<CelebrityStarDto>> listStars(@RequestParam(required = false) String category,
-                                                         @RequestParam(required = false) String sort) {
-        return ApiResponse.of(service.listStars(category, sort));
+    public ApiResponse<List<CelebrityStarDto>> listStars(Principal principal,
+                                                         @RequestParam(required = false) String category,
+                                                         @RequestParam(required = false) String sort,
+                                                         @RequestParam(required = false) String owner) {
+        String userId = principal != null ? principal.getName() : null;
+        return ApiResponse.of(service.listStars(category, sort, owner, userId));
     }
 
     @GetMapping("/stars/{id}")
-    public ApiResponse<CelebrityStarDto> getStar(@PathVariable String id) {
-        return ApiResponse.of(service.getStar(id));
+    public ApiResponse<CelebrityStarDto> getStar(Principal principal, @PathVariable String id) {
+        String userId = principal != null ? principal.getName() : null;
+        return ApiResponse.of(service.getStar(id, userId));
     }
 
     @GetMapping("/active-star")
@@ -99,8 +103,10 @@ public class CelebrityZoneController {
     }
 
     @PostMapping("/generate")
-    public ApiResponse<AsyncJobStartedDto> startGeneration(@RequestBody Map<String, Object> payload) {
-        return ApiResponse.of(service.startGeneration(payload));
+    public ApiResponse<AsyncJobStartedDto> startGeneration(Principal principal,
+                                                            @RequestBody Map<String, Object> payload) {
+        String userId = principal != null ? principal.getName() : null;
+        return ApiResponse.of(service.startGeneration(payload, userId));
     }
 
     @GetMapping("/overview")
