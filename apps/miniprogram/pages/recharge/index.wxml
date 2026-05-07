@@ -1,0 +1,99 @@
+<view class="page">
+  <view class="page-header">
+    <view>
+      <view class="eyebrow">RECHARGE · 积分充值</view>
+      <view class="title">充值积分</view>
+    </view>
+  </view>
+
+  <!-- 当前积分 hero -->
+  <view class="hero">
+    <view class="hero-row">
+      <view class="hero-en">CURRENT BALANCE</view>
+      <view class="hero-mono mono">实时余额</view>
+    </view>
+    <view class="hero-amount">
+      <text class="amount-int">{{credits.total}}</text>
+      <text class="amount-unit">积分</text>
+    </view>
+    <view class="bucket-row">
+      <view class="bucket">
+        <view class="bucket-k">套餐</view>
+        <view class="bucket-v">{{credits.license}}</view>
+      </view>
+      <view class="bucket">
+        <view class="bucket-k">充值</view>
+        <view class="bucket-v">{{credits.recharge}}</view>
+      </view>
+      <view class="bucket">
+        <view class="bucket-k">赠送</view>
+        <view class="bucket-v">{{credits.gift}}</view>
+      </view>
+      <view class="bucket">
+        <view class="bucket-k">冻结</view>
+        <view class="bucket-v bucket-pending">{{credits.pending}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 套餐选择 -->
+  <view class="section">
+    <view class="section-title">选择充值套餐</view>
+    <view class="pkg-grid">
+      <view
+        class="pkg {{currentPkgId === item.id ? 'pkg-on' : ''}} {{item.recommended ? 'pkg-rec' : ''}}"
+        wx:for="{{packages}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="selectPkg"
+      >
+        <view wx:if="{{item.recommended}}" class="pkg-rec-badge">推荐</view>
+        <view class="pkg-tag">{{item.tag}}</view>
+        <view class="pkg-credits">
+          <text class="pkg-credits-num">{{item.credits}}</text>
+          <text class="pkg-credits-unit">积分</text>
+        </view>
+        <view wx:if="{{item.bonus}}" class="pkg-bonus">{{item.bonus}}</view>
+        <view class="pkg-price mono">¥{{item.priceYuan}}</view>
+        <view wx:if="{{currentPkgId === item.id}}" class="pkg-check">✓</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 计算说明 -->
+  <view class="explain">
+    <view class="explain-title">积分用途</view>
+    <view class="explain-row">
+      <text>· KeLing（经济）</text>
+      <text class="mono">每条 50 积分</text>
+    </view>
+    <view class="explain-row">
+      <text>· HiGen（标准）</text>
+      <text class="mono">每条 120 积分</text>
+    </view>
+    <view class="explain-row">
+      <text>· MiniMax（高级）</text>
+      <text class="mono">每条 300 积分</text>
+    </view>
+    <view class="explain-row explain-sub">
+      时长 60s 系数 ×1.5，15s 系数 ×0.7。生成失败积分自动退回。
+    </view>
+  </view>
+
+  <view class="bottom-spacer"></view>
+
+  <!-- Sticky CTA -->
+  <view class="cta-fixed safe-bottom">
+    <view class="cta-row">
+      <view class="cta-meta">
+        <view class="cta-meta-k">需支付</view>
+        <view class="cta-meta-v mono">¥{{currentPkg.priceYuan || 0}}</view>
+      </view>
+      <view
+        class="cta-btn {{currentPkgId ? '' : 'cta-disabled'}}"
+        bindtap="submit"
+      >确认支付</view>
+    </view>
+    <view class="cta-tip">支持微信支付 · 极速到账（mock 即时模拟）</view>
+  </view>
+</view>

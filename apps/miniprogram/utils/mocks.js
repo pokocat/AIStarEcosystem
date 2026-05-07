@@ -55,24 +55,119 @@ const STAR_DETAIL_MAP = {
     name: "李某某",
     category: "综艺",
     profession: "美食综艺 · 主持人 · 1980年代",
+    bio: "国民度高，亲和力强，长期主持美食综艺；曾代言食品/快消品类多款爆品。粉丝画像偏 30+ 家庭主理人。",
+    location: "上海 / 北京",
+    fans: 8_240_000,
+    cooperationCount: 32,
+    avgGmv: 4820,
     tags: ["美食综艺", "国民度", "亲和力", "口播力", "30+ 受众"],
     startingPrice: "¥2,800/条",
     sla: "48h 内审核",
+    photos: [
+      { id: "p1", url: "", caption: "形象照 · 演播厅" },
+      { id: "p2", url: "", caption: "形象照 · 户外" },
+      { id: "p3", url: "", caption: "活动现场" },
+      { id: "p4", url: "", caption: "代言海报 · 坚果" },
+      { id: "p5", url: "", caption: "代言海报 · 速食" },
+      { id: "p6", url: "", caption: "节目剧照" }
+    ],
+    videos: [
+      { id: "v1", title: "代言案例 · 每日坚果", durationSec: 30, coverUrl: "", playUrl: "", tag: "代言" },
+      { id: "v2", title: "节目片段 · 试吃测评", durationSec: 45, coverUrl: "", playUrl: "", tag: "综艺" },
+      { id: "v3", title: "形象介绍片", durationSec: 20, coverUrl: "", playUrl: "", tag: "介绍" }
+    ],
     skills: [
       { name: "口播带货", val: 92 },
       { name: "情境演绎", val: 86 },
       { name: "多语言", val: 64 }
     ],
     cases: ["零食 · 坚果", "酱料 · 调味", "速食 · 方便", "饮品 · 茶饮"],
+    auth: { status: "authorized", scenes: ["带货", "种草"], expireDate: "2026-05-19", availableStyles: 4, remainingDays: 12 },
     authProgress: {
-      percent: 50,
+      percent: 100,
       steps: [
         { name: "提交申请", state: "done", time: "10/24 14:02" },
         { name: "资料审核", state: "done", time: "10/24 16:30" },
+        { name: "经纪团队复核", state: "done", time: "10/24 22:18" },
+        { name: "授权完成", state: "done", time: "10/25 09:00" }
+      ]
+    }
+  },
+  "star-wang": {
+    id: "star-wang",
+    name: "王某某",
+    category: "演员",
+    profession: "时尚演员 · 影视&代言",
+    bio: "时尚潮流代表，影视演员出身，活跃于美妆/服饰品类。粉丝画像偏 20-35 女性。",
+    location: "上海",
+    fans: 12_400_000,
+    cooperationCount: 18,
+    avgGmv: 6210,
+    tags: ["时尚潮流", "美妆", "服饰", "20-35 受众"],
+    startingPrice: "¥3,500/条",
+    sla: "48h 内审核",
+    photos: [
+      { id: "p1", url: "", caption: "形象照 · 时尚大片" },
+      { id: "p2", url: "", caption: "代言海报 · 美妆" },
+      { id: "p3", url: "", caption: "代言海报 · 服饰" },
+      { id: "p4", url: "", caption: "活动现场" }
+    ],
+    videos: [
+      { id: "v1", title: "代言案例 · 玻尿酸面膜", durationSec: 60, coverUrl: "", playUrl: "", tag: "代言" },
+      { id: "v2", title: "形象介绍片", durationSec: 25, coverUrl: "", playUrl: "", tag: "介绍" }
+    ],
+    skills: [
+      { name: "口播带货", val: 88 },
+      { name: "情境演绎", val: 90 },
+      { name: "多语言", val: 72 }
+    ],
+    cases: ["美妆 · 护肤", "美妆 · 彩妆", "服饰 · 女装", "配饰 · 包袋"],
+    auth: { status: "pending", scenes: [], availableStyles: 0, pendingNote: "经纪团队复核中（48h SLA）" },
+    authProgress: {
+      percent: 50,
+      steps: [
+        { name: "提交申请", state: "done", time: "10/26 11:20" },
+        { name: "资料审核", state: "done", time: "10/26 14:50" },
         { name: "经纪团队复核", state: "current", time: "进行中" },
         { name: "授权完成", state: "todo", time: "—" }
       ]
     }
+  },
+  "star-chen": {
+    id: "star-chen",
+    name: "陈某某",
+    category: "网红",
+    profession: "数码评测博主",
+    bio: "硬核数码评测博主，长期独立测评手机/电脑/耳机/智能家居，理性专业。",
+    location: "深圳",
+    fans: 3_650_000,
+    cooperationCount: 47,
+    avgGmv: 2140,
+    tags: ["数码", "硬核测评", "理性"],
+    startingPrice: "¥2,200/条",
+    sla: "48h 内审核",
+    photos: [
+      { id: "p1", url: "", caption: "工作室形象" },
+      { id: "p2", url: "", caption: "测评现场 · 耳机" },
+      { id: "p3", url: "", caption: "测评现场 · 手机" }
+    ],
+    videos: [
+      { id: "v1", title: "代言案例 · 蓝牙耳机", durationSec: 60, coverUrl: "", playUrl: "", tag: "测评" },
+      { id: "v2", title: "形象介绍片", durationSec: 22, coverUrl: "", playUrl: "", tag: "介绍" }
+    ],
+    skills: [
+      { name: "口播带货", val: 80 },
+      { name: "情境演绎", val: 70 },
+      { name: "测评深度", val: 95 }
+    ],
+    cases: ["数码 · 手机", "数码 · 耳机", "数码 · 智能家居"],
+    auth: { status: "authorized", scenes: ["测评", "种草"], expireDate: "2026-06-23", availableStyles: 3, remainingDays: 47 },
+    authProgress: { percent: 100, steps: [
+      { name: "提交申请", state: "done", time: "09/05 10:00" },
+      { name: "资料审核", state: "done", time: "09/05 12:30" },
+      { name: "经纪团队复核", state: "done", time: "09/05 18:00" },
+      { name: "授权完成", state: "done", time: "09/06 09:00" }
+    ] }
   }
 };
 
@@ -331,12 +426,66 @@ const DASHBOARD = {
 };
 
 // 生成器 — 模板 / 时长 / 语种
+// 每个模板都有运营后台上传的 previewVideoUrl，点击可预览效果。
 const TEMPLATE_STYLES = [
-  { id: "broadcast", name: "口播种草", desc: "镜头直给 · 信息密度高" },
-  { id: "scene", name: "情景剧", desc: "短剧情 · 适合食品/日用" },
-  { id: "review", name: "测评开箱", desc: "对比+实物 · 适合数码" },
-  { id: "vlog", name: "VLOG", desc: "生活化 · 适合美妆/服饰" }
+  {
+    id: "broadcast",
+    name: "口播种草",
+    desc: "镜头直给 · 信息密度高",
+    previewCover: "",
+    previewVideoUrl: "https://cdn.aistareco.example/templates/broadcast-30s.mp4",
+    durationSec: 30
+  },
+  {
+    id: "scene",
+    name: "情景剧",
+    desc: "短剧情 · 适合食品/日用",
+    previewCover: "",
+    previewVideoUrl: "https://cdn.aistareco.example/templates/scene-60s.mp4",
+    durationSec: 60
+  },
+  {
+    id: "review",
+    name: "测评开箱",
+    desc: "对比+实物 · 适合数码",
+    previewCover: "",
+    previewVideoUrl: "https://cdn.aistareco.example/templates/review-60s.mp4",
+    durationSec: 60
+  },
+  {
+    id: "vlog",
+    name: "VLOG",
+    desc: "生活化 · 适合美妆/服饰",
+    previewCover: "",
+    previewVideoUrl: "https://cdn.aistareco.example/templates/vlog-30s.mp4",
+    durationSec: 30
+  }
 ];
+
+// 模型引擎（与 apps/web/src/constants/celebrity-zone-ui.ts ENGINE_META 完全对齐）
+const ENGINES = [
+  { name: "KeLing",  level: "经济", cost: 1, creditPrice: 50,  speed: "~5分钟", quality: 3, desc: "性价比高，适合日常内容批量生成。", color: "#22c55e" },
+  { name: "HiGen",   level: "标准", cost: 2, creditPrice: 120, speed: "~3分钟", quality: 4, desc: "效果稳定，口型同步好，推荐大多数场景。", color: "#06b6d4" },
+  { name: "MiniMax", level: "高级", cost: 3, creditPrice: 300, speed: "~4分钟", quality: 5, desc: "最佳画质和表现力，适合重要投放内容。", color: "#fbbf24" }
+];
+
+// 充值套餐（与 ledger 的 recharge bucket 对应）
+const WALLET_PACKAGES = [
+  { id: "pkg-300",   credits: 300,   priceYuan: 99,   tag: "体验包",  recommended: false },
+  { id: "pkg-1000",  credits: 1000,  priceYuan: 299,  tag: "标准包",  recommended: true,  bonus: "+ 100 赠送" },
+  { id: "pkg-3000",  credits: 3000,  priceYuan: 799,  tag: "热门包",  recommended: false, bonus: "+ 500 赠送" },
+  { id: "pkg-10000", credits: 10000, priceYuan: 2399, tag: "企业包",  recommended: false, bonus: "+ 2000 赠送" }
+];
+
+// 钱包余额扩展（积分点数，与 license/recharge/gift 三桶对齐）
+const WALLET_CREDITS = {
+  total: 1280,        // 总余额（license + recharge + gift）
+  license: 500,       // 套餐
+  recharge: 680,      // 充值
+  gift: 100,          // 赠送
+  pending: 60,        // 进行中冻结
+  monthlyBudget: 5000 // 套餐月度配额（仅展示用）
+};
 const DURATIONS = [15, 30, 60];
 const LANGUAGES = ["普通话", "粤语", "英语"];
 
@@ -363,5 +512,8 @@ module.exports = {
   TEMPLATE_STYLES,
   DURATIONS,
   LANGUAGES,
-  GEN_PIPELINE_STEPS
+  GEN_PIPELINE_STEPS,
+  ENGINES,
+  WALLET_PACKAGES,
+  WALLET_CREDITS
 };

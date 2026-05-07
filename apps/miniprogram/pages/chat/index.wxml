@@ -9,7 +9,7 @@
       <view class="topbar-name">{{bot.name}}</view>
       <view class="topbar-sub">{{bot.subtitle}}</view>
     </view>
-    <view class="topbar-more">⋯</view>
+    <view class="topbar-more" bindtap="onMore">⋯</view>
   </view>
 
   <!-- 消息流 -->
@@ -120,7 +120,7 @@
 
   <!-- 底部输入条 -->
   <view class="composer safe-bottom">
-    <view class="composer-icon">+</view>
+    <view class="composer-icon" bindtap="onPlus">+</view>
     <input
       class="composer-input"
       placeholder="对 {{bot.name}} 说点什么…"

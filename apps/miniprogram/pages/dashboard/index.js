@@ -40,5 +40,27 @@ Page({
   setRange(e) {
     this.setData({ currentRange: e.currentTarget.dataset.r });
     // 真实联调时按 range 调 GET /celebrity/overview?range=...
+  },
+
+  onKpiTap(e) {
+    const name = e.currentTarget.dataset.name;
+    wx.showToast({ icon: "none", title: name + " 钻取明细开发中" });
+  },
+
+  onTopTap() {
+    // 简化：所有 top 都跳到 video-detail 的占位 ID
+    wx.navigateTo({ url: "/pages/video-detail/index?id=top-mock" });
+  },
+
+  onTopAll() {
+    wx.switchTab({ url: "/pages/videos/index" });
+  },
+
+  onCoachTap() {
+    wx.navigateTo({ url: "/pages/chat/index?botId=zhang" });
+  },
+
+  onFabTap() {
+    wx.navigateTo({ url: "/pages/chat/index?botId=shu" });
   }
 });

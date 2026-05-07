@@ -4,6 +4,104 @@
 .title { font-size: 56rpx; font-weight: 800; letter-spacing: -1rpx; margin-top: 8rpx; }
 .eyebrow { font-size: 22rpx; letter-spacing: 4rpx; color: #6B6B6B; font-weight: 700; }
 
+/* 大 Tab */
+.big-tabs {
+  margin: 0 32rpx 28rpx;
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 32rpx;
+  padding: 8rpx;
+  display: flex;
+  gap: 8rpx;
+}
+.big-tab {
+  flex: 1;
+  padding: 24rpx 20rpx;
+  border-radius: 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  color: #6B6B6B;
+}
+.big-tab-on {
+  background: #0A0A0A;
+  color: #C8FF00;
+}
+.big-tab-name { font-size: 26rpx; font-weight: 700; }
+.big-tab-count {
+  font-size: 22rpx;
+  font-family: -apple-system-mono, "SF Mono", Menlo, monospace;
+  opacity: .8;
+}
+
+/* 我的明星 列表 */
+.section { padding: 0 32rpx 28rpx; }
+.my-list { display: flex; flex-direction: column; gap: 24rpx; }
+.my-item {
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 32rpx;
+  overflow: hidden;
+}
+.my-item-row {
+  padding: 28rpx;
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+}
+.my-avatar {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 28rpx;
+  flex-shrink: 0;
+}
+.my-meta { flex: 1; min-width: 0; }
+.my-name { font-size: 32rpx; font-weight: 800; }
+.my-cat { font-size: 22rpx; color: #9B9B9B; margin-top: 4rpx; }
+.my-tags { display: flex; align-items: center; gap: 12rpx; margin-top: 12rpx; flex-wrap: wrap; }
+.my-days { font-size: 20rpx; color: #6B6B6B; }
+.my-cta {
+  background: #0A0A0A;
+  color: #C8FF00;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 700;
+  gap: 12rpx;
+}
+.my-cta-arrow { font-size: 30rpx; }
+
+/* 空态 */
+.empty { padding: 80rpx 64rpx; text-align: center; }
+.empty-icon {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background: #0A0A0A;
+  color: #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+  margin: 0 auto 28rpx;
+}
+.empty-title { font-size: 32rpx; font-weight: 800; }
+.empty-desc { font-size: 24rpx; color: #6B6B6B; margin-top: 16rpx; line-height: 1.6; }
+.empty-cta {
+  display: inline-block;
+  margin-top: 32rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  padding: 24rpx 48rpx;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+/* 搜索 */
 .search {
   margin: 0 32rpx 24rpx;
   background: #fff;
@@ -87,8 +185,6 @@
   font-weight: 700;
 }
 
-/* grid */
-.section { padding: 0 32rpx; }
 .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20rpx; }
 .section-title { font-size: 30rpx; font-weight: 700; }
 .section-count { color: #9B9B9B; font-weight: 400; font-size: 24rpx; margin-left: 8rpx; }
@@ -104,29 +200,44 @@
 }
 .cell-img {
   width: 100%;
-  /* 平台坑：WXSS 不支持 aspect-ratio，用 padding-bottom 保比例。详见 agent.md「CSS / WXSS」 */
+  /* 平台坑：WXSS 不支持 aspect-ratio，用 padding-bottom hack。详见 agent.md「CSS / WXSS」 */
   padding-bottom: 110%;
   height: 0;
   border-radius: 24rpx;
   position: relative;
 }
 .portrait-placeholder { background-image: repeating-linear-gradient(45deg, #EEEEE8, #EEEEE8 12rpx, #F5F5EF 12rpx, #F5F5EF 24rpx); border: 2rpx solid #EAEAEA; }
-.cell-free {
+
+.cell-free, .cell-owned, .cell-pending {
   position: absolute;
   top: 12rpx;
-  right: 12rpx;
-  background: #C8FF00;
-  color: #0A0A0A;
+  left: 12rpx;
   padding: 4rpx 12rpx;
   border-radius: 999rpx;
   font-size: 18rpx;
   font-weight: 700;
 }
+.cell-free { background: #C8FF00; color: #0A0A0A; left: auto; right: 12rpx; }
+.cell-owned { background: #0A0A0A; color: #C8FF00; }
+.cell-pending { background: #FFE7D2; color: #FF7A1A; }
+
 .cell-name { font-size: 26rpx; font-weight: 700; margin-top: 16rpx; }
 .cell-cat { font-size: 20rpx; color: #9B9B9B; margin-top: 4rpx; }
 .cell-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 16rpx; }
 .cell-price { font-size: 22rpx; color: #0A0A0A; font-weight: 700; }
 .cell-hot { font-size: 20rpx; color: #9B9B9B; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.tag-success { background: #DCF1E5; color: #1F8A5B; }
+.tag-warn { background: #FFE7D2; color: #FF7A1A; }
 
 .mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }
 

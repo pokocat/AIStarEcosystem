@@ -12,11 +12,11 @@
       <text>🎯</text>
       <text>我是带货方</text>
     </view>
-    <view class="role-pill">明星视角</view>
+    <view class="role-pill" bindtap="onSwitchRole">明星视角</view>
   </view>
 
   <!-- GMV hero -->
-  <view class="gmv-card">
+  <view class="gmv-card" data-route="/pages/dashboard/index" bindtap="goRoute">
     <view class="gmv-glow"></view>
     <view class="gmv-badge">● TODAY GMV</view>
     <view class="gmv-amount">
@@ -54,6 +54,8 @@
         class="pipe-cell {{item.active ? 'pipe-cell-on' : ''}}"
         wx:for="{{pipeline}}"
         wx:key="num"
+        data-num="{{item.num}}"
+        bindtap="onPipelineTap"
       >
         <view class="pipe-num">{{item.num}}</view>
         <view class="pipe-name">{{item.name}}</view>
@@ -106,5 +108,5 @@
     </view>
   </view>
 
-  <view class="ai-fab">✦</view>
+  <view class="ai-fab" bindtap="onFabTap">✦</view>
 </view>

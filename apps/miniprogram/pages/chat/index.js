@@ -68,5 +68,19 @@ Page({
     const isTab = ["/pages/messages/index", "/pages/videos/index", "/pages/workbench/index", "/pages/market/index", "/pages/me/index"].some((p) => route.indexOf(p) === 0);
     if (isTab) wx.switchTab({ url: route });
     else wx.navigateTo({ url: route });
+  },
+
+  onMore() {
+    wx.showActionSheet({
+      itemList: ["置顶会话", "标记已读", "通知设置", "举报"],
+      success: () => wx.showToast({ icon: "none", title: "开发中" })
+    });
+  },
+
+  onPlus() {
+    wx.showActionSheet({
+      itemList: ["上传图片", "拍摄视频", "发送商品 SKU"],
+      success: () => wx.showToast({ icon: "none", title: "附件开发中" })
+    });
   }
 });

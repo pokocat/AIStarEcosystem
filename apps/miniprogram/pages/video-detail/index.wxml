@@ -7,12 +7,12 @@
     <view class="topnav">
       <view class="nav-btn" bindtap="back">‹</view>
       <view class="nav-btn-row">
-        <view class="nav-btn">↓</view>
-        <view class="nav-btn">⋯</view>
+        <view class="nav-btn" bindtap="onDownload">↓</view>
+        <view class="nav-btn" bindtap="onMore">⋯</view>
       </view>
     </view>
 
-    <view class="play-btn">▶</view>
+    <view class="play-btn" bindtap="onPlay">▶</view>
 
     <view class="hero-info">
       <view class="hero-tags">
@@ -39,9 +39,9 @@
 
     <!-- Action bar -->
     <view class="actions">
-      <view class="act-btn act-dark">📤 多平台发布</view>
-      <view class="act-btn act-accent">↻ 复制并改</view>
-      <view class="act-btn-icon">♡</view>
+      <view class="act-btn act-dark" bindtap="onDistribute">📤 多平台发布</view>
+      <view class="act-btn act-accent" bindtap="onCopyAndEdit">↻ 复制并改</view>
+      <view class="act-btn-icon" bindtap="onFav">{{faved ? '♥' : '♡'}}</view>
     </view>
 
     <!-- Performance -->
@@ -83,6 +83,9 @@
           class="ch-item ch-item-{{item.state}}"
           wx:for="{{detail.channels}}"
           wx:key="name"
+          data-name="{{item.name}}"
+          data-state="{{item.state}}"
+          bindtap="onChannelTap"
         >
           <view class="ch-icon ch-icon-{{item.state}}">{{item.name[0]}}</view>
           <view class="ch-meta">
@@ -111,7 +114,7 @@
     <view class="script-card">
       <view class="script-head">
         <text class="eyebrow eyebrow-on-dark">SCRIPT</text>
-        <text class="script-more">查看完整脚本 ›</text>
+        <text class="script-more" bindtap="onFullScript">查看完整脚本 ›</text>
       </view>
       <view class="script-line" wx:for="{{detail.script}}" wx:key="t">
         <text class="script-time mono">{{item.t}}</text>
@@ -120,7 +123,7 @@
     </view>
 
     <!-- Coach -->
-    <view class="coach-card">
+    <view class="coach-card" bindtap="onCoachTap">
       <view class="coach-avatar">长</view>
       <view class="coach-meta">
         <view class="coach-row">

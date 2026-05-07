@@ -74,9 +74,9 @@
       <text wx:if="{{agreed}}" class="agree-check">✓</text>
     </view>
     <text class="agree-text">已阅读并同意</text>
-    <text class="agree-link">《用户协议》</text>
+    <text class="agree-link" catchtap="onAgreement" data-k="user">《用户协议》</text>
     <text class="agree-text">·</text>
-    <text class="agree-link">《隐私政策》</text>
+    <text class="agree-link" catchtap="onAgreement" data-k="privacy">《隐私政策》</text>
   </view>
 
   <!-- CTA -->

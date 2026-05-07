@@ -78,5 +78,27 @@ Page({
   goDetail(e) {
     const id = e.currentTarget.dataset.id;
     wx.navigateTo({ url: "/pages/video-detail/index?id=" + id });
-  }
+  },
+
+  goRecharge() { wx.navigateTo({ url: "/pages/recharge/index" }); },
+
+  onPublishDraft(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.showActionSheet({
+      itemList: ["发布到抖音", "发布到视频号", "发布到快手", "发布到小红书", "全部 4 个平台"],
+      success: () => wx.showToast({ icon: "success", title: "已提交（mock）" })
+    });
+  },
+
+  onRetry(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.showModal({
+      title: "重新生成？",
+      content: "本次任务失败，重试将再次扣减积分（失败的视频会自动退回积分）。",
+      confirmText: "去配置",
+      success: (res) => { if (res.confirm) wx.navigateTo({ url: "/pages/generator/index" }); }
+    });
+  },
+
+  onFabTap() { wx.navigateTo({ url: "/pages/chat/index?botId=pian" }); }
 });

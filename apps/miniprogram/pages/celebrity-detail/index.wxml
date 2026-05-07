@@ -4,7 +4,7 @@
     <view class="hero-stripes portrait-placeholder-dark"></view>
     <view class="hero-nav">
       <view class="nav-btn" bindtap="back">‹</view>
-      <view class="nav-btn">♡</view>
+      <view class="nav-btn" bindtap="onFav">{{faved ? '♥' : '♡'}}</view>
     </view>
     <view class="hero-info">
       <view class="hero-eyebrow">CELEBRITY · 公开形象</view>
@@ -31,7 +31,101 @@
         <view class="kk">SLA</view>
         <view class="vv-sm">{{detail.sla}}</view>
       </view>
-      <view class="price-cta" bindtap="apply">申请授权 →</view>
+      <!-- 条件 CTA：未授权→申请；审核中→灰按钮看进度；已授权→生成视频 -->
+      <view
+        wx:if="{{detail.auth.status === 'authorized'}}"
+        class="price-cta price-cta-gen"
+        bindtap="goGenerate"
+      >✦ 用 TA 生成视频 →</view>
+      <view
+        wx:elif="{{detail.auth.status === 'pending'}}"
+        class="price-cta price-cta-pending"
+        bindtap="onPendingTap"
+      >审核中 ⏱</view>
+      <view
+        wx:else
+        class="price-cta"
+        bindtap="apply"
+      >申请授权 →</view>
+    </view>
+
+    <!-- 数据快览（粉丝数 / 合作数 / 平均 GMV） -->
+    <view class="meta-row">
+      <view class="meta-cell">
+        <view class="meta-k">粉丝</view>
+        <view class="meta-v">{{fansText}}</view>
+      </view>
+      <view class="meta-cell">
+        <view class="meta-k">合作</view>
+        <view class="meta-v">{{detail.cooperationCount || 0}} 次</view>
+      </view>
+      <view class="meta-cell">
+        <view class="meta-k">平均 GMV</view>
+        <view class="meta-v">¥{{avgGmvText}}</view>
+      </view>
+      <view class="meta-cell">
+        <view class="meta-k">所在地</view>
+        <view class="meta-v meta-v-sm">{{detail.location || '—'}}</view>
+      </view>
+    </view>
+
+    <!-- 简介 -->
+    <view wx:if="{{detail.bio}}" class="card">
+      <view class="card-title">明星简介</view>
+      <view class="bio">{{detail.bio}}</view>
+    </view>
+
+    <!-- 资料图集（运营后台上传，6 张） -->
+    <view wx:if="{{detail.photos.length > 0}}" class="card">
+      <view class="card-head">
+        <text class="card-title">资料图集</text>
+        <text class="card-more">{{detail.photos.length}} 张 · 运营授权使用</text>
+      </view>
+      <view class="photos">
+        <view
+          class="photo"
+          wx:for="{{detail.photos}}"
+          wx:key="id"
+          data-i="{{index}}"
+          bindtap="previewPhoto"
+        >
+          <view class="photo-img portrait-placeholder">
+            <text class="photo-mono mono">{{item.id}}</text>
+          </view>
+          <view class="photo-cap">{{item.caption}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 形象/代言视频 -->
+    <view wx:if="{{detail.videos.length > 0}}" class="card">
+      <view class="card-head">
+        <text class="card-title">形象/代言视频</text>
+        <text class="card-more">{{detail.videos.length}} 条 · 仅参考</text>
+      </view>
+      <view class="videos">
+        <view
+          class="video-row"
+          wx:for="{{detail.videos}}"
+          wx:key="id"
+          data-id="{{item.id}}"
+          data-url="{{item.playUrl}}"
+          data-title="{{item.title}}"
+          bindtap="playVideo"
+        >
+          <view class="video-thumb">
+            <text class="video-play">▶</text>
+            <text class="video-dur mono">{{item.durationText}}</text>
+          </view>
+          <view class="video-meta">
+            <view class="video-title">{{item.title}}</view>
+            <view class="video-row-tags">
+              <view class="tag tag-soft">{{item.tag}}</view>
+            </view>
+          </view>
+          <text class="video-arrow">›</text>
+        </view>
+      </view>
     </view>
 
     <!-- 能力画像 -->
@@ -83,9 +177,36 @@
         </view>
         <view wx:if="{{item.state === 'current'}}" class="auth-live">● LIVE</view>
       </view>
-      <view class="auth-action">查看资质材料 ›</view>
+      <view class="auth-action" bindtap="viewMaterials">查看资质材料 ›</view>
     </view>
   </view>
 
-  <view class="ai-fab">✦</view>
+  <!-- 视频预览弹层 -->
+  <view wx:if="{{playerOpen}}" class="player-mask" bindtap="closePlayer">
+    <view class="player-card" catchtap="">
+      <view class="player-head">
+        <text class="player-title">{{playerTitle}}</text>
+        <text class="player-close" bindtap="closePlayer">×</text>
+      </view>
+      <view class="player-body">
+        <video
+          wx:if="{{playerUrl}}"
+          src="{{playerUrl}}"
+          autoplay
+          show-fullscreen-btn
+          show-play-btn
+          show-center-play-btn
+          object-fit="contain"
+          class="player-video"
+        ></video>
+        <view wx:else class="player-fallback">
+          <text class="player-fallback-icon">▶</text>
+          <text class="player-fallback-text">视频源未配置</text>
+          <text class="player-fallback-sub">运营在 admin 后台上传后此处自动展示</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="ai-fab" bindtap="onFabTap">✦</view>
 </view>

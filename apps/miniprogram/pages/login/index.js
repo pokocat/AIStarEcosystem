@@ -93,5 +93,10 @@ Page({
 
   callSales() {
     wx.makePhoneCall({ phoneNumber: "13888881234", fail() {} });
+  },
+
+  onAgreement(e) {
+    const k = e.currentTarget.dataset.k;
+    wx.showToast({ icon: "none", title: (k === "user" ? "用户协议" : "隐私政策") + "（开发中）" });
   }
 });

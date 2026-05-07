@@ -50,5 +50,28 @@ Page({
     const isTab = ["/pages/messages/index", "/pages/videos/index", "/pages/workbench/index", "/pages/market/index", "/pages/me/index"].some((p) => route.indexOf(p) === 0);
     if (isTab) wx.switchTab({ url: route });
     else wx.navigateTo({ url: route });
+  },
+
+  onSwitchRole() {
+    wx.showToast({ icon: "none", title: "明星视角开发中（小程序 v0.3）" });
+  },
+
+  onPipelineTap(e) {
+    const num = e.currentTarget.dataset.num;
+    const map = {
+      "01": "/pages/market/index",
+      "02": "/pages/generator/index",
+      "03": "/pages/videos/index",
+      "04": "/pages/dashboard/index"
+    };
+    const route = map[num];
+    if (!route) return;
+    const isTab = ["/pages/messages/index", "/pages/videos/index", "/pages/workbench/index", "/pages/market/index", "/pages/me/index"].some((p) => route.indexOf(p) === 0);
+    if (isTab) wx.switchTab({ url: route });
+    else wx.navigateTo({ url: route });
+  },
+
+  onFabTap() {
+    wx.navigateTo({ url: "/pages/chat/index?botId=pian" });
   }
 });

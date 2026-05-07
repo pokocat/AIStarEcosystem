@@ -41,5 +41,13 @@ Page({
     const isTab = ["/pages/messages/index", "/pages/videos/index", "/pages/workbench/index", "/pages/market/index", "/pages/me/index"].some((p) => route.indexOf(p) === 0);
     if (isTab) wx.switchTab({ url: route });
     else wx.navigateTo({ url: route });
+  },
+
+  onSearch() {
+    wx.showToast({ icon: "none", title: "搜索功能开发中" });
+  },
+
+  onFabTap() {
+    wx.navigateTo({ url: "/pages/chat/index?botId=pian" });
   }
 });

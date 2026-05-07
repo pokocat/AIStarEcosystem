@@ -6,7 +6,7 @@
       <view class="eyebrow eyebrow-on-dark">AI · STUDIO</view>
       <view class="topbar-title">生成中</view>
     </view>
-    <view class="bg-btn">后台运行</view>
+    <view class="bg-btn" bindtap="onBackground">后台运行</view>
   </view>
 
   <!-- preview -->

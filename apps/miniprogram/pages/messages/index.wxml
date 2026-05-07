@@ -5,7 +5,7 @@
       <view class="eyebrow">MESSAGES</view>
       <view class="title">消息</view>
     </view>
-    <view class="header-search">🔍</view>
+    <view class="header-search" bindtap="onSearch">🔍</view>
   </view>
 
   <!-- 待办中心 (深色 hero) -->
@@ -66,5 +66,5 @@
     </view>
   </view>
 
-  <view class="ai-fab">✦</view>
+  <view class="ai-fab" bindtap="onFabTap">✦</view>
 </view>

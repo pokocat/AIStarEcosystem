@@ -1,4 +1,4 @@
-.page { min-height: 100vh; background: #FAFAF7; padding-bottom: 240rpx; }
+.page { min-height: 100vh; background: #FAFAF7; padding-bottom: 320rpx; }
 
 .page-header {
   padding: 32rpx 32rpx 24rpx;
@@ -24,6 +24,7 @@
   gap: 8rpx;
   font-size: 22rpx;
   color: #9B9B9B;
+  flex-wrap: wrap;
 }
 .step-on { color: #0A0A0A; font-weight: 700; }
 .step-eta { margin-left: auto; color: #9B9B9B; }
@@ -109,19 +110,111 @@
   text-align: center;
 }
 
+/* 风格 + 缩略图预览 */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; }
 .style-cell {
   background: #F8F8F4;
   border: 2rpx solid #EAEAEA;
   border-radius: 24rpx;
-  padding: 20rpx;
+  padding: 12rpx;
   position: relative;
 }
-.style-cell-on { background: #0A0A0A; border: 3rpx solid #C8FF00; color: #fff; }
+.style-cell-on { background: #fff; border: 3rpx solid #0A0A0A; }
+.style-thumb {
+  width: 100%;
+  /* 平台坑：aspect-ratio 不可用，padding-bottom hack 16:9。详见 agent.md「CSS / WXSS」 */
+  padding-bottom: 56%;
+  height: 0;
+  border-radius: 16rpx;
+  position: relative;
+  background: linear-gradient(135deg, #1A1A1A, #0A0A0A);
+  overflow: hidden;
+}
+.style-thumb-bg {
+  position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(0deg, rgba(200,255,0,.04) 0rpx, rgba(200,255,0,.04) 4rpx, transparent 4rpx, transparent 12rpx);
+}
+.style-play {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,.92);
+  color: #0A0A0A;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.style-dur {
+  position: absolute;
+  bottom: 8rpx;
+  right: 8rpx;
+  background: rgba(0,0,0,.6);
+  color: #fff;
+  padding: 1rpx 8rpx;
+  border-radius: 4rpx;
+  font-size: 18rpx;
+}
+.style-info { padding: 12rpx 4rpx 4rpx; }
 .style-name { font-size: 24rpx; font-weight: 700; }
 .style-desc { font-size: 20rpx; color: #9B9B9B; margin-top: 4rpx; }
-.style-cell-on .style-desc { color: #999; }
-.style-check { position: absolute; top: 16rpx; right: 16rpx; color: #C8FF00; font-size: 24rpx; }
+.style-check { position: absolute; top: 16rpx; right: 16rpx; color: #C8FF00; font-size: 24rpx; background: #0A0A0A; width: 36rpx; height: 36rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+
+/* 引擎卡 */
+.engine-list { display: flex; flex-direction: column; gap: 16rpx; }
+.engine {
+  background: #F8F8F4;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 24rpx;
+  padding: 20rpx;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  position: relative;
+}
+.engine-on {
+  background: #fff;
+  border: 3rpx solid #0A0A0A;
+}
+.engine-color {
+  width: 8rpx;
+  height: 80rpx;
+  border-radius: 4rpx;
+  flex-shrink: 0;
+}
+.engine-meta { flex: 1; min-width: 0; }
+.engine-row { display: flex; align-items: center; gap: 12rpx; flex-wrap: wrap; }
+.engine-name { font-size: 28rpx; font-weight: 800; }
+.engine-level {
+  background: #0A0A0A;
+  color: #C8FF00;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  font-weight: 700;
+}
+.engine-stars { display: inline-flex; gap: 2rpx; }
+.engine-star { color: #EAEAEA; font-size: 20rpx; }
+.engine-star-on { color: #FFB627; }
+.engine-desc { font-size: 22rpx; color: #6B6B6B; margin-top: 6rpx; line-height: 1.4; }
+.engine-meta-row { display: flex; justify-content: space-between; margin-top: 8rpx; }
+.engine-speed { font-size: 20rpx; color: #9B9B9B; }
+.engine-price { font-size: 22rpx; font-weight: 700; color: #0A0A0A; }
+.engine-check {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 999rpx;
+  background: #0A0A0A;
+  color: #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  font-weight: 800;
+}
 
 .duration-row { display: flex; gap: 16rpx; margin-bottom: 24rpx; }
 .dur-pill {
@@ -158,16 +251,37 @@
 }
 .key-tag-on { background: #C8FF00; }
 
-.bottom-spacer { height: 200rpx; }
+.bottom-spacer { height: 240rpx; }
 
 .cta-fixed {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 24rpx 32rpx 32rpx;
-  background: linear-gradient(0deg, rgba(250,250,247,1) 60%, rgba(250,250,247,0));
+  padding: 16rpx 32rpx 32rpx;
+  background: #fff;
+  border-top: 2rpx solid #EAEAEA;
 }
+.safe-bottom { padding-bottom: calc(16rpx + env(safe-area-inset-bottom)); }
+.cta-cost-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+  padding: 0 8rpx;
+}
+.cost-meta { display: flex; align-items: baseline; gap: 12rpx; }
+.cost-k { font-size: 22rpx; color: #9B9B9B; }
+.cost-v { font-size: 32rpx; font-weight: 800; color: #0A0A0A; }
+.cost-warn {
+  background: #FDE2DF;
+  color: #E84B3C;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
 .cta-btn {
   height: 104rpx;
   background: #0A0A0A;
@@ -181,6 +295,63 @@
   gap: 16rpx;
   box-shadow: 0 16rpx 48rpx rgba(0,0,0,.18);
 }
+.cta-disabled { background: #EAEAEA; color: #9B9B9B; box-shadow: none; }
 .cta-cost { font-size: 22rpx; opacity: .7; }
 
-.safe-bottom { padding-bottom: calc(32rpx + env(safe-area-inset-bottom)); }
+/* 预览弹层 */
+.player-mask {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32rpx;
+}
+.player-card {
+  width: 100%;
+  background: #0A0A0A;
+  border-radius: 32rpx;
+  overflow: hidden;
+}
+.player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 32rpx;
+  border-bottom: 2rpx solid #2A2A2A;
+}
+.player-title { color: #fff; font-size: 28rpx; font-weight: 700; }
+.player-close { color: #999; font-size: 48rpx; line-height: 1; }
+.player-body {
+  width: 100%;
+  height: 480rpx;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.player-video { width: 100%; height: 100%; }
+.player-fallback { text-align: center; color: #999; }
+.player-fallback-icon {
+  display: block;
+  font-size: 64rpx;
+  color: #C8FF00;
+  margin-bottom: 16rpx;
+}
+.player-fallback-text { font-size: 26rpx; color: #fff; }
+.player-fallback-sub { display: block; font-size: 22rpx; color: #666; margin-top: 8rpx; }
+.player-foot {
+  padding: 20rpx 32rpx 24rpx;
+}
+.player-foot-cta {
+  background: #C8FF00;
+  color: #0A0A0A;
+  height: 88rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 700;
+}

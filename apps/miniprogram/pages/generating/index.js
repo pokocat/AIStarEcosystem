@@ -53,5 +53,10 @@ Page({
     }, 1200);
   },
 
-  back() { wx.navigateBack(); }
+  back() { wx.navigateBack(); },
+
+  onBackground() {
+    wx.showToast({ icon: "none", title: "已转后台 · 完成后片片会发消息" });
+    setTimeout(() => wx.switchTab({ url: "/pages/videos/index" }), 600);
+  }
 });

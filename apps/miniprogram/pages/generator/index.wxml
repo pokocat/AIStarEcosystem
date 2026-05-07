@@ -4,14 +4,14 @@
       <view class="eyebrow">AI · STUDIO</view>
       <view class="title">生成视频</view>
     </view>
-    <view class="hist-btn">⏱ 历史</view>
+    <view class="hist-btn" bindtap="goHistory">⏱ 历史</view>
   </view>
 
   <view class="step-indicator mono">
     <text class="step-on">STEP 02</text>
     <text>·</text>
-    <text>04 共 4 步配置</text>
-    <text class="step-eta">预计 2~3 分钟</text>
+    <text>05 共 5 步配置</text>
+    <text class="step-eta">预计 {{currentEngine.speed || '2~3 分钟'}}</text>
   </view>
 
   <!-- 1. 选明星 -->
@@ -23,7 +23,7 @@
       </view>
       <text class="card-aux">已选 1 / 1</text>
     </view>
-    <view class="row">
+    <view class="row" bindtap="changeStar">
       <view class="row-img portrait-placeholder"></view>
       <view class="row-meta">
         <view class="row-name">{{star.name}}</view>
@@ -48,39 +48,83 @@
         <view class="row-sub">{{product.sku}}</view>
       </view>
     </view>
-    <view class="dashed-add">+ 增加商品</view>
+    <view class="dashed-add" bindtap="addProduct">+ 增加商品</view>
   </view>
 
-  <!-- 3. 脚本风格 -->
+  <!-- 3. 脚本风格 + 预览 -->
   <view class="card">
     <view class="card-head">
       <view class="card-title-row">
         <view class="num-pill">3</view>
         <text class="card-title">脚本风格</text>
       </view>
+      <text class="card-aux">点缩略图预览效果</text>
     </view>
     <view class="grid-2">
       <view
         class="style-cell {{currentStyle === item.id ? 'style-cell-on' : ''}}"
         wx:for="{{styles}}"
         wx:key="id"
-        data-id="{{item.id}}"
-        bindtap="setStyle"
       >
-        <view class="style-name">{{item.name}}</view>
-        <view class="style-desc">{{item.desc}}</view>
+        <view class="style-thumb" data-id="{{item.id}}" catchtap="previewTemplate">
+          <view class="style-thumb-bg"></view>
+          <view class="style-play">▶</view>
+          <view class="style-dur mono">{{item.durationSec}}s</view>
+        </view>
+        <view class="style-info" data-id="{{item.id}}" catchtap="setStyle">
+          <view class="style-name">{{item.name}}</view>
+          <view class="style-desc">{{item.desc}}</view>
+        </view>
         <text wx:if="{{currentStyle === item.id}}" class="style-check">✓</text>
       </view>
     </view>
   </view>
 
-  <!-- 4. 时长 / 语种 -->
+  <!-- 4. 模型选择（积分点数权益） -->
   <view class="card">
     <view class="card-head">
       <view class="card-title-row">
         <view class="num-pill">4</view>
+        <text class="card-title">选择模型</text>
+      </view>
+      <text class="card-aux mono">余额 {{credits.total}} 积分</text>
+    </view>
+    <view class="engine-list">
+      <view
+        class="engine {{currentEngineName === item.name ? 'engine-on' : ''}}"
+        wx:for="{{engines}}"
+        wx:key="name"
+        data-name="{{item.name}}"
+        bindtap="setEngine"
+      >
+        <view class="engine-color" style="background:{{item.color}};"></view>
+        <view class="engine-meta">
+          <view class="engine-row">
+            <text class="engine-name">{{item.name}}</text>
+            <view class="engine-level">{{item.level}}</view>
+            <view class="engine-stars">
+              <text wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this" class="engine-star {{s <= item.quality ? 'engine-star-on' : ''}}">★</text>
+            </view>
+          </view>
+          <view class="engine-desc">{{item.desc}}</view>
+          <view class="engine-meta-row">
+            <text class="engine-speed">⏱ {{item.speed}}</text>
+            <text class="engine-price mono">{{item.creditPrice}} 积分/条</text>
+          </view>
+        </view>
+        <view wx:if="{{currentEngineName === item.name}}" class="engine-check">✓</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 5. 时长 / 语种 -->
+  <view class="card">
+    <view class="card-head">
+      <view class="card-title-row">
+        <view class="num-pill">5</view>
         <text class="card-title">时长 / 语种</text>
       </view>
+      <text class="card-aux mono">时长系数：60s ×1.5 / 15s ×0.7</text>
     </view>
     <view class="duration-row">
       <view
@@ -108,7 +152,7 @@
       <text class="card-title">
         关键卖点 <text class="optional">(选填)</text>
       </text>
-      <view class="ai-rec">✦ AI推荐</view>
+      <view class="ai-rec" bindtap="onAiRecommend">✦ AI推荐</view>
     </view>
     <view class="key-tags">
       <view
@@ -123,11 +167,48 @@
 
   <view class="bottom-spacer"></view>
 
-  <!-- Sticky CTA -->
+  <!-- Sticky CTA — 显示动态积分 -->
   <view class="cta-fixed safe-bottom">
-    <view class="cta-btn" bindtap="startGenerate">
+    <view class="cta-cost-row">
+      <view class="cost-meta">
+        <text class="cost-k">本次消耗</text>
+        <text class="cost-v mono">{{computedCost}} 积分</text>
+      </view>
+      <view wx:if="{{!enoughCredits}}" class="cost-warn" bindtap="goRecharge">余额不足 · 去充值 →</view>
+    </view>
+    <view class="cta-btn {{enoughCredits ? '' : 'cta-disabled'}}" bindtap="startGenerate">
       <text>✦ 开始 AI 生成</text>
-      <text class="cta-cost mono">消耗 1 次额度</text>
+      <text class="cta-cost mono">{{currentEngineName}} · {{currentDuration}}s</text>
+    </view>
+  </view>
+
+  <!-- 模板预览弹层 -->
+  <view wx:if="{{previewOpen}}" class="player-mask" bindtap="closePreview">
+    <view class="player-card" catchtap="">
+      <view class="player-head">
+        <text class="player-title">{{previewTitle}} · 效果预览</text>
+        <text class="player-close" bindtap="closePreview">×</text>
+      </view>
+      <view class="player-body">
+        <video
+          wx:if="{{previewUrl}}"
+          src="{{previewUrl}}"
+          autoplay
+          show-fullscreen-btn
+          show-play-btn
+          show-center-play-btn
+          object-fit="contain"
+          class="player-video"
+        ></video>
+        <view wx:else class="player-fallback">
+          <text class="player-fallback-icon">▶</text>
+          <text class="player-fallback-text">模板视频未配置</text>
+          <text class="player-fallback-sub">在 admin 后台上传 previewVideoUrl 后此处自动展示</text>
+        </view>
+      </view>
+      <view class="player-foot">
+        <view class="player-foot-cta" bindtap="useThisTemplate">使用此模板 →</view>
+      </view>
     </view>
   </view>
 </view>

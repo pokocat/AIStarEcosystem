@@ -16,7 +16,7 @@
     <view class="quota-row">
       <text class="quota-num">{{wallet.remaining}}</text>
       <text class="quota-total">/ {{wallet.total}} 次剩余</text>
-      <view class="quota-recharge">+ 充值</view>
+      <view class="quota-recharge" bindtap="goRecharge">+ 充值</view>
     </view>
     <view class="quota-track">
       <view class="quota-fill quota-fill-used" style="width: {{usedPct}}%;"></view>
@@ -154,8 +154,8 @@
             <text class="vstats-views">👁 {{item.viewsText}}</text>
             <text class="vstats-gmv">¥{{item.gmvText}}</text>
           </view>
-          <view wx:elif="{{item.state === 'draft'}}" class="vbtn vbtn-dark">📤 发布</view>
-          <view wx:elif="{{item.state === 'fail'}}" class="vbtn vbtn-danger">↻ 重新生成</view>
+          <view wx:elif="{{item.state === 'draft'}}" class="vbtn vbtn-dark" data-id="{{item.id}}" catchtap="onPublishDraft">📤 发布</view>
+          <view wx:elif="{{item.state === 'fail'}}" class="vbtn vbtn-danger" data-id="{{item.id}}" catchtap="onRetry">↻ 重新生成</view>
         </view>
       </view>
     </view>
@@ -163,5 +163,5 @@
     <view class="end-line mono">↓ END · 共 {{videos.length}} 个视频</view>
   </block>
 
-  <view class="ai-fab">✦</view>
+  <view class="ai-fab" bindtap="onFabTap">✦</view>
 </view>

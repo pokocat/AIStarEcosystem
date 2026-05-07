@@ -4,20 +4,103 @@
       <view class="eyebrow">PROFILE</view>
       <view class="title">我的</view>
     </view>
+    <view class="header-set" bindtap="onSettings">⚙</view>
   </view>
 
-  <view class="placeholder-card">
-    <view class="placeholder-icon">◉</view>
-    <view class="placeholder-title">本期"我的"为占位</view>
-    <view class="placeholder-desc">
-      账号信息 · 收益结算 · 邀请关系 · 设置 等能力将在小程序后续版本上线。
-      运营/审核能力均在 admin 后台（apps/admin）。
+  <!-- 用户卡 -->
+  <view class="user-card">
+    <view class="user-avatar">B</view>
+    <view class="user-meta">
+      <view class="user-row">
+        <text class="user-name">Boss · 带货方</text>
+        <view class="user-badge">已激活</view>
+      </view>
+      <view class="user-phone mono">{{auth.phone}}</view>
     </view>
-    <view class="placeholder-info mono">
-      <text>token: {{tokenMasked}}</text>
-      <text>activationCode: {{auth.activationCode}}</text>
-      <text>phone: {{auth.phone}}</text>
-    </view>
-    <view class="placeholder-cta" bindtap="logout">退出登录</view>
+    <view class="user-arrow" bindtap="onProfile">›</view>
   </view>
+
+  <!-- 积分余额 hero -->
+  <view class="credits-card">
+    <view class="credits-head">
+      <text class="credits-eyebrow">● 积分余额（点数权益）</text>
+      <text class="credits-mono mono">实时</text>
+    </view>
+    <view class="credits-amount">
+      <text class="credits-int">{{credits.total}}</text>
+      <text class="credits-unit">积分</text>
+    </view>
+    <view class="bucket-row">
+      <view class="bucket">
+        <view class="bucket-k">套餐</view>
+        <view class="bucket-v">{{credits.license}}</view>
+      </view>
+      <view class="bucket">
+        <view class="bucket-k">充值</view>
+        <view class="bucket-v">{{credits.recharge}}</view>
+      </view>
+      <view class="bucket">
+        <view class="bucket-k">赠送</view>
+        <view class="bucket-v">{{credits.gift}}</view>
+      </view>
+      <view class="bucket">
+        <view class="bucket-k">冻结</view>
+        <view class="bucket-v bucket-pending">{{credits.pending}}</view>
+      </view>
+    </view>
+    <view class="credits-actions">
+      <view class="credits-cta credits-cta-recharge" bindtap="goRecharge">+ 充值积分</view>
+      <view class="credits-cta credits-cta-ledger" bindtap="onLedger">交易明细</view>
+    </view>
+  </view>
+
+  <!-- 快捷入口 -->
+  <view class="cells">
+    <view class="cell" bindtap="onMyStars">
+      <view class="cell-icon">★</view>
+      <view class="cell-meta">
+        <view class="cell-name">我的明星</view>
+        <view class="cell-sub">已授权与审核中</view>
+      </view>
+      <view class="cell-arrow">›</view>
+    </view>
+    <view class="cell" bindtap="onMyVideos">
+      <view class="cell-icon">▶</view>
+      <view class="cell-meta">
+        <view class="cell-name">我的视频</view>
+        <view class="cell-sub">草稿/已发布/失败</view>
+      </view>
+      <view class="cell-arrow">›</view>
+    </view>
+    <view class="cell" bindtap="onInvite">
+      <view class="cell-icon">⊛</view>
+      <view class="cell-meta">
+        <view class="cell-name">邀请好友</view>
+        <view class="cell-sub">每邀 1 位返 200 积分</view>
+      </view>
+      <view class="cell-arrow">›</view>
+    </view>
+    <view class="cell" bindtap="onSales">
+      <view class="cell-icon">☎</view>
+      <view class="cell-meta">
+        <view class="cell-name">联系销售经理</view>
+        <view class="cell-sub">Sarah · 张敏</view>
+      </view>
+      <view class="cell-arrow">›</view>
+    </view>
+    <view class="cell" bindtap="onFeedback">
+      <view class="cell-icon">✎</view>
+      <view class="cell-meta">
+        <view class="cell-name">反馈与帮助</view>
+        <view class="cell-sub">Bug / 功能建议</view>
+      </view>
+      <view class="cell-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="logout-row">
+    <view class="logout" bindtap="logout">退出登录</view>
+  </view>
+
+  <view class="brand-foot mono">AI 明星带货 · v0.2.0</view>
 </view>

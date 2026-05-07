@@ -91,11 +91,27 @@ const CelebrityApi = {
     if (app.globalData.useMock) return mockDelay(mocks.STAR_DETAIL_MAP[id] || mocks.STAR_DETAIL_MAP["star-li"]);
     return apiFetch("/celebrity/stars/" + id);
   },
+  /** GET /celebrity/stars?owner=me — 仅当前账号已授权/审核中的明星 */
+  listMyStars() {
+    const app = getApp_();
+    if (app.globalData.useMock) {
+      // 客户端按 auth.status 过滤即可（authorized + pending）
+      const list = mocks.MARKET_STARS.filter((s) => s.auth && (s.auth.status === "authorized" || s.auth.status === "pending"));
+      return mockDelay(list);
+    }
+    return apiFetch("/celebrity/stars?owner=me");
+  },
   /** GET /celebrity/templates */
   listTemplates() {
     const app = getApp_();
     if (app.globalData.useMock) return mockDelay(mocks.TEMPLATE_STYLES);
     return apiFetch("/celebrity/templates");
+  },
+  /** GET /celebrity/engine-pricing */
+  listEngines() {
+    const app = getApp_();
+    if (app.globalData.useMock) return mockDelay(mocks.ENGINES);
+    return apiFetch("/celebrity/engine-pricing");
   },
   /** POST /celebrity/generate — 启动生成异步任务 */
   generate(req) {
@@ -163,6 +179,34 @@ const WalletApi = {
     const app = getApp_();
     if (app.globalData.useMock) return mockDelay(mocks.WALLET);
     return apiFetch("/me/wallet");
+  },
+  /** GET /me/wallet/credits — 积分点数（license + recharge + gift） */
+  getCredits() {
+    const app = getApp_();
+    if (app.globalData.useMock) return mockDelay(mocks.WALLET_CREDITS);
+    return apiFetch("/me/wallet/credits");
+  },
+  /** GET /finance/recharge-packages 或 /me/wallet/packages */
+  listPackages() {
+    const app = getApp_();
+    if (app.globalData.useMock) return mockDelay(mocks.WALLET_PACKAGES);
+    return apiFetch("/me/wallet/packages");
+  },
+  /** POST /me/wallet/recharge — mock 直接成功；真实环境需走支付回调 */
+  recharge(packageId) {
+    const app = getApp_();
+    if (app.globalData.useMock) {
+      const pkg = mocks.WALLET_PACKAGES.find((p) => p.id === packageId);
+      if (!pkg) return Promise.reject(new Error("套餐不存在"));
+      // 模拟落账：充值进 recharge bucket（不修改原 mock 对象，避免污染单测）
+      const c = mocks.WALLET_CREDITS;
+      const bonus = pkg.bonus ? parseInt((pkg.bonus.match(/\d+/) || [0])[0], 10) : 0;
+      c.recharge += pkg.credits;
+      c.gift += bonus;
+      c.total = c.license + c.recharge + c.gift;
+      return mockDelay({ ok: true, package: pkg, credits: c });
+    }
+    return apiFetch("/me/wallet/recharge", { method: "POST", data: { packageId } });
   }
 };
 

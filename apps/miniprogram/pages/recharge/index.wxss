@@ -1,0 +1,167 @@
+.page { min-height: 100vh; background: #FAFAF7; padding-bottom: 280rpx; }
+.page-header { padding: 32rpx 32rpx 24rpx; }
+.title { font-size: 56rpx; font-weight: 800; letter-spacing: -1rpx; margin-top: 8rpx; }
+.eyebrow { font-size: 22rpx; letter-spacing: 4rpx; color: #6B6B6B; font-weight: 700; }
+.mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }
+
+.hero {
+  margin: 0 32rpx 28rpx;
+  background: #0A0A0A;
+  border-radius: 48rpx;
+  padding: 40rpx;
+  color: #fff;
+}
+.hero-row { display: flex; align-items: center; justify-content: space-between; }
+.hero-en { color: #C8FF00; font-size: 22rpx; letter-spacing: 4rpx; font-weight: 700; }
+.hero-mono { font-size: 22rpx; color: #999; }
+.hero-amount { display: flex; align-items: baseline; gap: 12rpx; margin-top: 16rpx; }
+.amount-int { font-size: 80rpx; font-weight: 800; letter-spacing: -2rpx; }
+.amount-unit { font-size: 28rpx; color: #999; }
+
+.bucket-row {
+  margin-top: 32rpx;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16rpx;
+  padding-top: 28rpx;
+  border-top: 2rpx solid #222;
+}
+.bucket-k { font-size: 20rpx; color: #999; }
+.bucket-v { font-size: 32rpx; font-weight: 700; margin-top: 4rpx; }
+.bucket-pending { color: #FF7A1A; }
+
+.section { padding: 0 32rpx 28rpx; }
+.section-title { font-size: 30rpx; font-weight: 700; margin-bottom: 20rpx; }
+
+.pkg-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20rpx;
+}
+.pkg {
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 32rpx;
+  padding: 28rpx;
+  position: relative;
+}
+.pkg-rec { border: 3rpx solid #0A0A0A; }
+.pkg-on { background: #C8FF00; border-color: #0A0A0A; }
+.pkg-rec-badge {
+  position: absolute;
+  top: -16rpx;
+  right: 24rpx;
+  background: #0A0A0A;
+  color: #C8FF00;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.pkg-tag { font-size: 22rpx; color: #6B6B6B; font-weight: 600; }
+.pkg-on .pkg-tag { color: rgba(0,0,0,.7); }
+.pkg-credits { display: flex; align-items: baseline; gap: 6rpx; margin-top: 8rpx; }
+.pkg-credits-num {
+  font-size: 48rpx;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+}
+.pkg-credits-unit { font-size: 22rpx; color: #6B6B6B; }
+.pkg-on .pkg-credits-unit { color: rgba(0,0,0,.6); }
+.pkg-bonus {
+  display: inline-block;
+  background: #FFE7D2;
+  color: #FF7A1A;
+  font-size: 20rpx;
+  font-weight: 700;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  margin-top: 8rpx;
+}
+.pkg-on .pkg-bonus { background: #0A0A0A; color: #C8FF00; }
+.pkg-price {
+  margin-top: 16rpx;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+.pkg-check {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 999rpx;
+  background: #0A0A0A;
+  color: #C8FF00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.explain {
+  margin: 0 32rpx 32rpx;
+  background: #fff;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 32rpx;
+  padding: 28rpx;
+}
+.explain-title { font-size: 26rpx; font-weight: 700; margin-bottom: 16rpx; }
+.explain-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 24rpx;
+  color: #6B6B6B;
+  padding: 8rpx 0;
+}
+.explain-sub {
+  display: block;
+  font-size: 22rpx;
+  color: #9B9B9B;
+  margin-top: 8rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #F2F2EE;
+  line-height: 1.5;
+}
+
+.bottom-spacer { height: 40rpx; }
+
+.cta-fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  border-top: 2rpx solid #EAEAEA;
+  padding: 24rpx 32rpx;
+}
+.safe-bottom { padding-bottom: calc(24rpx + env(safe-area-inset-bottom)); }
+.cta-row {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+.cta-meta { flex: 1; }
+.cta-meta-k { font-size: 20rpx; color: #9B9B9B; }
+.cta-meta-v { font-size: 36rpx; font-weight: 800; margin-top: 2rpx; }
+.cta-btn {
+  background: #C8FF00;
+  color: #0A0A0A;
+  height: 96rpx;
+  padding: 0 56rpx;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12rpx 32rpx rgba(200,255,0,.4);
+}
+.cta-disabled { background: #EAEAEA; color: #9B9B9B; box-shadow: none; }
+.cta-tip {
+  margin-top: 12rpx;
+  font-size: 20rpx;
+  color: #9B9B9B;
+  text-align: center;
+}

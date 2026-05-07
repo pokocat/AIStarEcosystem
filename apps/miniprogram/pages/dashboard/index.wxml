@@ -49,6 +49,8 @@
         class="kpi {{item.accent ? 'kpi-accent' : ''}}"
         wx:for="{{data.kpis}}"
         wx:key="name"
+        data-name="{{item.name}}"
+        bindtap="onKpiTap"
       >
         <view class="kpi-k">{{item.name}}</view>
         <view class="kpi-v">{{item.val}}</view>
@@ -88,11 +90,12 @@
   <view class="section">
     <view class="section-head">
       <text class="section-title">本周 TOP 视频</text>
-      <text class="section-more">查看全部 ›</text>
+      <text class="section-more" bindtap="onTopAll">查看全部 ›</text>
     </view>
     <view class="top-list">
       <view
         class="top-item"
+        bindtap="onTopTap"
         wx:for="{{data.topVideos}}"
         wx:key="rank"
       >
@@ -117,8 +120,8 @@
       <view class="coach-new">NEW</view>
     </view>
     <view class="coach-text">{{data.coachReview}}</view>
-    <view class="coach-cta">查看完整复盘 ›</view>
+    <view class="coach-cta" bindtap="onCoachTap">查看完整复盘 ›</view>
   </view>
 
-  <view class="ai-fab">✦</view>
+  <view class="ai-fab" bindtap="onFabTap">✦</view>
 </view>
