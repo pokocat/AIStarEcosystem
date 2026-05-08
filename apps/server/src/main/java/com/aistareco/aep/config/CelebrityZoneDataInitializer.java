@@ -229,8 +229,8 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
         // ── v0.5：TemplateScript seeds（每个模板 1 份 published 草稿） ────────
         // 移到 v0.5 Initializer 子方法 seedTemplateScripts() 中保持本方法可读
         seedTemplateScripts();
-        // v0.5.1：seed 5 Bot 的 Notification（含未读 dot 数）给 demo-user
-        seedDemoUserBotNotifications();
+        // v0.5.2：Bot 消息已从"事件 + Notification 表"改为"按需查询用户业务态合成"，
+        // 不再需要 seed botId notification。dot 改由 UserBotReadState.lastReadAt + freshness 计算。
 
         // ── Showcases (template + blindbox 各 3) ────────────────────────────
         for (int i = 1; i <= 3; i++) {

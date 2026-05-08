@@ -240,6 +240,75 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ## 六、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.5.2 · 2026-05-09 — Bot 消息按需查询代替事件总线（拉模式）
+
+**Context**：v0.5.1 把消息首页和已读机制接通了，但 Bot 多消息会话仍是 `NotificationService` 里 5 段写死的 canned 内容；当时把它推后是因为以为需要"事件总线 + 推送通道"。本期换思路：**Bot 消息根本不需要推送，每次打开聊天/消息首页时由 server 即时查询用户的真实业务实体（CelebrityProjectVideo / CelebrityStarAuthorization / CelebrityStar / Wallet）合成消息流即可**。这是"拉模式"代替"推模式"，零事件总线、零消息队列、零推送通道。
+
+**架构变化**
+
+```
+之前（推模式 / event-bus 思路）：
+  业务事件 → 创建 Notification 行 → 推送通道 → 客户端
+  缺点：要建事件总线、要管推送通道、要管 Notification 持久化与去重
+
+现在（拉模式 / on-demand synthesis）：
+  客户端打开 chat → server 查 user 业务态 → 合成 ChatMessageDto[] → 返回
+  优点：零基础设施；消息内容永远反映"当前真实状态"；用户回到首页也是当下数据
+```
+
+**主要落地**
+
+1. **新建 `UserBotReadState` 实体**（per-user-per-bot lastReadAt 时间戳）+ Repo
+   - 复合主键 `{userId}|{botId}`
+   - 唯一字段 `lastReadAt`
+   - `markBotConversationRead` 更新它
+2. **`NotificationService` 完全重写**：
+   - 新增 5 个 composer 方法（每个 Bot 一个），各自查询自己关心的业务实体并合成 `BotConversationDto`：
+     - **片片（创作官）**：查 `userVideos(userId)` → 按 status 分类 → 生成「最新已发布卡片」+「视频任务概览」
+     - **审审（合规官）**：查 `authRepo.findByUserId(userId)` → PENDING 的逐条生成 cardForm + 审核中提示
+     - **数数（数据官）**：查 `userVideos` 总数/已发布/累计曝光 + `walletRepo.findByUserId` 余额 → cardGrid
+     - **Ada（星探官）**：查 `starRepo.findAll` 减去用户已授权的 → 推荐"明星上新"
+     - **长长（成长教练）**：查 `userVideos` + `auths` → 派生本周 3-4 条建议
+   - `getConversation(botId, userId)` 按 botId 分发到 composer
+   - `getMessagesOverview(userId)` 用同套 composer 合成预览，dot 由 `computeUnreadDot` 计算
+   - 移除原硬编码 5 段 canned 方法
+3. **Dot（未读数）改由 freshness 比较**：
+   - `lastReadAt` 取自 `UserBotReadState`；不存在视为 epoch
+   - 各 Bot 各定义自己的 freshness 标准：
+     - 片片：用户视频 createdAt > lastReadAt 的条数
+     - 审审：PENDING 授权 updatedAt > lastReadAt 的条数
+     - 数数：≥24h 没看视为有新日报（dot=1）
+     - Ada：还有未授权明星 + 已 ≥1h 没看（dot=1）
+     - 长长：≥7d 没看视为有新复盘（dot=1）
+   - `markBotConversationRead` 把 lastReadAt = now，下次打开 dot=0
+4. **`Notification.botId` 列保留**（与 v0.5.1 backward compat），但**不再驱动 Bot 消息**；可作其他模块的扩展点
+5. **DataInitializer 不再 seed botId Notification**（previously: 8 条）；演示数据现在完全由用户的真实业务态决定（5 个明星 / 3 个授权关系 / 8 商品 / 3 项目 / 3 视频 在 v0.4/v0.5 已 seed）
+
+**好处**
+
+- **消息内容永远是真的**：用户刚发布完一条视频，再打开片片就能看到；admin 改了授权状态，再打开审审就能看到 — 无需任何推送
+- **零基础设施**：不需要 Kafka / RabbitMQ / WebSocket / wx subscribeMessage
+- **代码简洁**：`NotificationService` 每个 composer 都是几行 stream/filter，全是 read query，没有写
+- **可独立测试**：composer 都是纯函数，给定 userId 即得 BotConversationDto
+
+**契约**
+
+- 路径不变（`GET /notifications/conversations/{botId}`、`GET /me/messages-overview`、`POST /notifications/conversations/{botId}/read-all`）；shape 也不变 — 客户端无需改动
+- `getConversation` 现在接 Principal（之前不接），匿名调用回退到 demo-user
+
+**门**
+
+- `mvn compile`: BUILD SUCCESS
+- 所有客户端接口 shape 不变，小程序无需改一行
+
+**何时再加事件总线**
+
+- 真正需要"实时推送给离线用户"（如 wx subscribeMessage 模板消息提醒）
+- 真正需要"跨 server 多实例 fan-out"
+- 这两种场景在 v0.6+ 出现时再加，现在不需要
+
+---
+
 ### v0.5.1 · 2026-05-09 — 消除小程序硬编码 + 通知系统真正接通 server
 
 **Context**：v0.5 把 11 屏 API 都映射到了 server，但内部仍有 5 处页面写死的数据（durations / languages / CATS / keypoints / star.subtitle 占位）和 4 处通知逻辑没真接（待办由 mock；Bot 预览/红点是假的；已读不上报；生成进度纯客户端 setInterval）。本期把这些全部接通：**开发模式走 mock，生产模式走 server，没有硬编码**。

@@ -68,10 +68,11 @@ public class NotificationController {
         repo.delete(n);
     }
 
-    /** v0.4：取单个 AI Bot 的多消息会话流（小程序 chat 页消费）。 */
+    /** v0.5.2：取单 Bot 多消息会话流。userId 从 Principal，server 按需合成（无事件总线/队列）。 */
     @GetMapping("/conversations/{botId}")
-    public ApiResponse<BotConversationDto> getConversation(@PathVariable String botId) {
-        return ApiResponse.of(botService.getConversation(botId));
+    public ApiResponse<BotConversationDto> getConversation(Principal principal, @PathVariable String botId) {
+        String uid = principal != null ? principal.getName() : "demo-user";
+        return ApiResponse.of(botService.getConversation(botId, uid));
     }
 
     /**
