@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sparkles, X } from "lucide-react";
-import { NAV_GROUPS, ADMIN_BRAND } from "@/constants/nav";
+import { visibleNavGroups, ADMIN_BRAND } from "@/constants/nav";
 import { cn } from "@/lib/utils";
 
 export interface SidebarBadges {
@@ -58,7 +58,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-4">
-          {NAV_GROUPS.map((group) => (
+          {visibleNavGroups().map((group) => (
             <div key={group.label} className="space-y-0.5">
               <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {group.label}

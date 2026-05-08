@@ -31,6 +31,7 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
     private final ProductRepository productRepo;
     private final CelebrityStarAuthorizationRepository authRepo;
     private final RechargePackageRepository pkgRepo;
+    private final com.aistareco.aep.repository.TemplateScriptRepository scriptRepo;
 
     public CelebrityZoneDataInitializer(CelebrityStarRepository starRepo,
                                          CelebrityProjectRepository projectRepo,
@@ -39,7 +40,8 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                                          CelebrityShowcaseRepository showcaseRepo,
                                          ProductRepository productRepo,
                                          CelebrityStarAuthorizationRepository authRepo,
-                                         RechargePackageRepository pkgRepo) {
+                                         RechargePackageRepository pkgRepo,
+                                         com.aistareco.aep.repository.TemplateScriptRepository scriptRepo) {
         this.starRepo = starRepo;
         this.projectRepo = projectRepo;
         this.videoRepo = videoRepo;
@@ -48,6 +50,7 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
         this.productRepo = productRepo;
         this.authRepo = authRepo;
         this.pkgRepo = pkgRepo;
+        this.scriptRepo = scriptRepo;
     }
 
     @Override
@@ -219,6 +222,10 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                 "适合各品类",
                 List.of(Map.of("thumb", placeholderThumb(25), "videoUrl", placeholderVideo(25)))),
                 placeholderThumb(25), placeholderVideo(25), 60));
+
+        // ── v0.5：TemplateScript seeds（每个模板 1 份 published 草稿） ────────
+        // 移到 v0.5 Initializer 子方法 seedTemplateScripts() 中保持本方法可读
+        seedTemplateScripts();
 
         // ── Showcases (template + blindbox 各 3) ────────────────────────────
         for (int i = 1; i <= 3; i++) {
@@ -499,5 +506,237 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
         pkgRepo.save(RechargePackage.builder()
                 .id("pkg-10000").credits(10000).priceCents(239900).tag("企业包")
                 .recommended(false).bonusCredits(2000).sortOrder(40).active(true).build());
+    }
+
+    /**
+     * v0.5 §3.2.7：每个 CelebrityTemplate 各 seed 一份 PUBLISHED TemplateScript。
+     * 5 个模板：4 个 text 模式（含 ≥3 scene），1 个 video_ref 模式示范。
+     * Idempotent：scriptRepo 已有数据时跳过。
+     */
+    private void seedTemplateScripts() {
+        if (scriptRepo.count() > 0) return;
+        java.time.Instant now = java.time.Instant.now();
+
+        // 共用：persona / visualStyle / postProcess / safety / engineAdapters / variables
+        Map<String, Object> persona = Map.of(
+                "voiceTone", "亲切、邻家女孩",
+                "speakingStyle", "短句、口语化、带语气词",
+                "personality", List.of("温暖", "专业", "亲和"),
+                "forbiddenTone", List.of("贵族腔"));
+        Map<String, Object> visualStyle = Map.of(
+                "lighting", "柔和自然光 + 侧补光",
+                "colorPalette", List.of("#fde7e9", "#ffd6a5"),
+                "cinematography", "手持小晃动、浅景深");
+        Map<String, Object> postProcess = Map.of(
+                "subtitleTemplate", "{{starName}} | {{productName}}",
+                "watermarkPolicy", "if_unauth",
+                "transitionStyle", "硬切");
+        Map<String, Object> safety = Map.of(
+                "forbiddenWords", List.of("最", "顶级", "国家级"),
+                "requiredDisclaimers", List.of("广告"));
+        List<Map<String, Object>> variables = List.of(
+                Map.of("key", "productName", "label", "商品名", "type", "text", "source", "product", "required", true),
+                Map.of("key", "sellingPoints", "label", "卖点", "type", "textArray", "source", "product", "required", false),
+                Map.of("key", "starName", "label", "明星名", "type", "text", "source", "star", "required", false));
+        Map<String, Object> engineAdapters = Map.of(
+                "HiGen", Map.of(
+                        "enabled", true,
+                        "promptTemplate", "{{systemPrompt}}",
+                        "params", Map.of("aspectRatio", "9:16", "fps", 30)),
+                "KeLing", Map.of(
+                        "enabled", true,
+                        "promptTemplate", "{{systemPrompt}}",
+                        "params", Map.of("aspectRatio", "9:16", "fps", 24)),
+                "MiniMax", Map.of(
+                        "enabled", true,
+                        "promptTemplate", "{{systemPrompt}}",
+                        "params", Map.of("aspectRatio", "9:16", "fps", 30)));
+
+        // 4 个 text 模式
+        seedScript("script-tpl-001", "tpl-001", "text", persona, visualStyle, postProcess, safety, variables, engineAdapters,
+                "你是「种草日常 Vlog」风格的明星，本次为商品 {{productName}} 拍 30 秒短片。语气亲切日常，让镜头像聊天。"
+                        + "确保提及关键卖点 {{sellingPoints[0]}}、{{sellingPoints[1]}} 和 {{sellingPoints[2]}}。视频中必须出现「广告」字样。",
+                buildScenesForBroadcast(), 30, now);
+        seedScript("script-tpl-002", "tpl-002", "text", persona, visualStyle, postProcess, safety, variables, engineAdapters,
+                "你是「硬核测评」风格的明星。把 {{productName}} 与同类品做客观对比，给出 3 条数据洞察。"
+                        + "镜头分四段：开场拆箱 / 实测对比 / 数据图卡 / 结论建议。视频结尾必须出现「广告」字样。",
+                buildScenesForReview(), 60, now);
+        seedScript("script-tpl-003", "tpl-003", "text", persona, visualStyle, postProcess, safety, variables, engineAdapters,
+                "你是「轻松开箱」风格的明星。30 秒内打开 {{productName}}、展示亮点、给出一个使用建议。"
+                        + "节奏明快，画面色彩鲜艳。视频中必须出现「广告」字样。",
+                buildScenesForUnboxing(), 30, now);
+        seedScript("script-tpl-004", "tpl-004", "text", persona, visualStyle, postProcess, safety, variables, engineAdapters,
+                "你是「直播切片精选」风格的明星。模拟直播带货切片：开场寒暄 / 商品上身 / 限时优惠 / 引导下单。"
+                        + "互动感强，15 秒卡点。视频中必须出现「广告」字样。",
+                buildScenesForLiveCut(), 15, now);
+
+        // 1 个 video_ref 模式（运营手填 referenceClip + URL，本期默认 reviewStatus=approved）
+        Map<String, Object> referenceClip = new java.util.LinkedHashMap<>();
+        referenceClip.put("videoUrl", placeholderVideo(99));
+        referenceClip.put("thumbUrl", placeholderThumb(99));
+        referenceClip.put("durationSec", 45);
+        referenceClip.put("meta", Map.of("width", 720, "height", 1280, "fps", 30, "codec", "h264", "sizeBytes", 4_500_000L));
+        referenceClip.put("usage", "structure");
+        referenceClip.put("influence", 0.7);
+        referenceClip.put("license", Map.of("source", "platform_official"));
+        referenceClip.put("reviewStatus", "approved");
+        seedScriptWithRef("script-tpl-005", "tpl-005", referenceClip, persona, visualStyle, postProcess, safety, variables, engineAdapters,
+                "你是「剧情植入短片」风格的明星。参考视频提供分镜节奏，本次商品为 {{productName}}，"
+                        + "把广告自然融入剧情。视频中必须出现「广告」字样。",
+                60, now);
+    }
+
+    private void seedScript(String id, String templateId, String kind,
+                             Map<String, Object> persona, Map<String, Object> visualStyle,
+                             Map<String, Object> postProcess, Map<String, Object> safety,
+                             List<Map<String, Object>> variables, Map<String, Object> engineAdapters,
+                             String systemPrompt, List<Map<String, Object>> scenes,
+                             int durationSec, java.time.Instant now) {
+        List<String> sceneIds = scenes.stream().map(s -> String.valueOf(s.get("id"))).toList();
+        Map<String, Object> durationVariants = new java.util.LinkedHashMap<>();
+        durationVariants.put(String.valueOf(durationSec),
+                Map.of("sceneIds", sceneIds, "cutHint", "硬切"));
+
+        com.aistareco.aep.model.TemplateScript s = com.aistareco.aep.model.TemplateScript.builder()
+                .id(id)
+                .templateId(templateId)
+                .version(1)
+                .status(com.aistareco.aep.model.TemplateScriptStatus.PUBLISHED)
+                .language("zh-CN")
+                .kind(com.aistareco.aep.model.TemplateScriptKind.fromWire(kind))
+                .personaJson(toJson(persona))
+                .systemPrompt(systemPrompt)
+                .scenesJson(toJson(scenes))
+                .visualStyleJson(toJson(visualStyle))
+                .negativePrompt("低饱和、阴暗光线、AI 痕迹、口型错位、商品 logo 模糊")
+                .variablesJson(toJson(variables))
+                .engineAdaptersJson(toJson(engineAdapters))
+                .durationVariantsJson(toJson(durationVariants))
+                .postProcessJson(toJson(postProcess))
+                .safetyJson(toJson(safety))
+                .createdAt(now)
+                .publishedAt(now)
+                .publishedBy("seed")
+                .build();
+        scriptRepo.save(s);
+    }
+
+    private void seedScriptWithRef(String id, String templateId,
+                                    Map<String, Object> referenceClip,
+                                    Map<String, Object> persona, Map<String, Object> visualStyle,
+                                    Map<String, Object> postProcess, Map<String, Object> safety,
+                                    List<Map<String, Object>> variables, Map<String, Object> engineAdapters,
+                                    String systemPrompt, int durationSec, java.time.Instant now) {
+        com.aistareco.aep.model.TemplateScript s = com.aistareco.aep.model.TemplateScript.builder()
+                .id(id)
+                .templateId(templateId)
+                .version(1)
+                .status(com.aistareco.aep.model.TemplateScriptStatus.PUBLISHED)
+                .language("zh-CN")
+                .kind(com.aistareco.aep.model.TemplateScriptKind.VIDEO_REF)
+                .personaJson(toJson(persona))
+                .systemPrompt(systemPrompt)
+                .scenesJson(toJson(List.of()))
+                .visualStyleJson(toJson(visualStyle))
+                .negativePrompt("低饱和、阴暗光线、AI 痕迹")
+                .variablesJson(toJson(variables))
+                .engineAdaptersJson(toJson(engineAdapters))
+                .durationVariantsJson(toJson(Map.of(String.valueOf(durationSec),
+                        Map.of("sceneIds", List.of(), "cutHint", "随参考视频"))))
+                .postProcessJson(toJson(postProcess))
+                .safetyJson(toJson(safety))
+                .referenceClipJson(toJson(referenceClip))
+                .createdAt(now)
+                .publishedAt(now)
+                .publishedBy("seed")
+                .build();
+        scriptRepo.save(s);
+    }
+
+    private static List<Map<String, Object>> buildScenesForBroadcast() {
+        return List.of(
+                buildScene("s1", 0, 8, "近景", "明星左 1/3 站位，商品放右下", "暖色家居",
+                        "明星拿起{{productName}}转身展示给镜头", "你们看，{{sellingPoints[0]}}！", "warm",
+                        "front", 3, "充满画面 1/3，背景虚化",
+                        "暖光，明星正脸近景，商品手持展示，浅景深；4K 质感，皮肤自然，镜头微微推进"),
+                buildScene("s2", 1, 14, "中景", "明星正中，商品桌面摆放", "白色简约桌面",
+                        "明星抬头看镜头说话", "{{sellingPoints[1]}} 真的是我用过最舒服的", "calm",
+                        "side", 4, "侧 45 度展示包装",
+                        "中景；明星看镜头说话；商品在桌面侧 45 度可见；色温 4000K；轻微跟焦"),
+                buildScene("s3", 2, 8, "特写", "商品满屏 3/4，明星手指点向商品", "暖色背景",
+                        "镜头推近商品标签", "限时 ¥{{price|\"99\"}}！", "excited",
+                        "in_use", 4, "商品满屏特写、字幕弹出",
+                        "特写商品；标签清晰可读；字幕「限时 ¥99」弹出；广告字样常驻右下角"));
+    }
+
+    private static List<Map<String, Object>> buildScenesForReview() {
+        return List.of(
+                buildScene("s1", 0, 12, "远景", "明星 + 桌面铺开三件商品", "评测室",
+                        "明星介绍主角商品 {{productName}}", "今天我们对比一下三款产品的实测表现", "professional",
+                        "front", 4, "全景平铺",
+                        "远景全景；冷色调；明星 + 三件商品并排；手持轻晃动"),
+                buildScene("s2", 1, 24, "中景", "数据卡叠加在商品旁", "评测室",
+                        "明星指向数据卡讲解", "可以看到，{{productName}} 在 {{sellingPoints[0]}} 上领先 30%", "professional",
+                        "side", 6, "数据卡贴边",
+                        "中景；数据卡 OSD 叠加在画面右上；明星指向数据卡；色温 4500K；浅景深"),
+                buildScene("s3", 2, 16, "特写", "明星正脸 + 商品手持展示", "评测室",
+                        "明星对镜结论", "综合来看，{{productName}} 性价比最高。广告。", "calm",
+                        "in_use", 6, "正脸+商品双特写",
+                        "特写；明星正脸；手持商品标签清晰；广告字幕固定在画面下方"));
+    }
+
+    private static List<Map<String, Object>> buildScenesForUnboxing() {
+        return List.of(
+                buildScene("s1", 0, 6, "近景", "明星打开包装", "明亮简约背景",
+                        "明星抽出{{productName}}", "拆开看看", "excited",
+                        "front", 3, "包装+商品同框",
+                        "近景；明星拆包动作；包装清晰；色彩鲜艳；2.4K 质感"),
+                buildScene("s2", 1, 14, "中景", "明星 + 商品对镜展示", "明亮简约背景",
+                        "明星说亮点", "亮点是 {{sellingPoints[0]}}，超出预期", "excited",
+                        "in_use", 5, "商品中景展示",
+                        "中景；商品手持；明星看镜头说话；自然光；轻微跟焦"),
+                buildScene("s3", 2, 10, "特写", "商品 LOGO 满屏 + 字幕", "明亮简约背景",
+                        "镜头拉到品牌名", "{{productName}} 推荐给你！广告。", "warm",
+                        "front", 5, "Logo 满屏",
+                        "特写商品 LOGO；字幕「广告」弹出；色彩饱和度提高 10%"));
+    }
+
+    private static List<Map<String, Object>> buildScenesForLiveCut() {
+        return List.of(
+                buildScene("s1", 0, 4, "中景", "直播间布景，明星左 1/3", "直播间",
+                        "明星打招呼", "宝宝们今天来看{{productName}}", "excited",
+                        "front", 2, "商品手持",
+                        "中景；直播间灯条蓝色；明星左侧；商品右侧手持；动态跟随"),
+                buildScene("s2", 1, 6, "近景", "明星持商品展示", "直播间",
+                        "明星说亮点", "{{sellingPoints[0]}}，限时优惠！", "excited",
+                        "in_use", 3, "商品近景",
+                        "近景；商品手持展示；字幕「限时」弹跳进入；卡点剪辑"),
+                buildScene("s3", 2, 5, "特写", "商品 + 价格字幕", "直播间",
+                        "明星推单引导", "现在下单！广告。", "excited",
+                        "front", 3, "价格字幕大",
+                        "特写商品；大字号价格字幕；广告字样在右下；BPM 卡点 120"));
+    }
+
+    private static Map<String, Object> buildScene(String id, int order, int durationSec,
+                                                   String shotType, String composition, String setting,
+                                                   String action, String dialogue, String voiceEmotion,
+                                                   String prodAngle, int prodDuration, String prodFraming,
+                                                   String positivePrompt) {
+        return Map.ofEntries(
+                Map.entry("id", id),
+                Map.entry("order", order),
+                Map.entry("durationSec", durationSec),
+                Map.entry("shotType", shotType),
+                Map.entry("composition", composition),
+                Map.entry("setting", setting),
+                Map.entry("action", action),
+                Map.entry("expression", "微笑 + 眼神惊喜"),
+                Map.entry("dialogue", dialogue),
+                Map.entry("voiceEmotion", voiceEmotion),
+                Map.entry("productAppearance", Map.of(
+                        "angle", prodAngle,
+                        "durationSec", prodDuration,
+                        "closeUpFraming", prodFraming)),
+                Map.entry("positivePromptFragment", positivePrompt));
     }
 }

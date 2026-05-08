@@ -60,8 +60,11 @@ export interface Membership {
 
 // ── 管理员账号（后台运营人员）────────────────────────────────────────────────
 // 对应后端 AdminUserDto / admin_users 表
+// AdminRole 与 server 的 com.aistareco.aep.model.AdminUser.AdminRole 严格大小写对齐：
+//   SUPER_ADMIN  - 超级管理员（全功能）
+//   OPERATOR     - 平台运营（CRUD 业务数据，但不能编辑账号 / 权限）
 
-export type AdminRole = "super_admin" | "operator";
+export type AdminRole = "SUPER_ADMIN" | "OPERATOR";
 export type AdminStatus = "active" | "suspended";
 
 export interface AdminUser {

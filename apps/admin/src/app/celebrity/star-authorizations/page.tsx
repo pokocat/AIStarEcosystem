@@ -1,0 +1,218 @@
+"use client";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI 明星 · 授权关系管理（v0.5 §D3 新增）
+//   - 列表 (按 userId / starId / status 过滤)
+//   - 创建 / 编辑 / 删除
+//   - 状态机推进（reason 必填，落 AuditLog）
+//   - 表格 + 行内编辑 / 弹层表单（极简实现，组件库走 ui/*）
+// ─────────────────────────────────────────────────────────────────────────────
+
+import * as React from "react";
+import { PageHeader } from "@/components/PageHeader";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CelebrityAuthorizationsApi } from "@/api";
+import type { AdminCelebrityAuthorization } from "@/api/celebrity-authorizations";
+
+const STATUS = ["unauthorized", "pending", "authorized", "expired"] as const;
+const STATUS_LABEL: Record<string, string> = {
+  unauthorized: "未授权",
+  pending: "审核中",
+  authorized: "已授权",
+  expired: "已过期",
+};
+
+export default function AdminCelebrityAuthorizationsPage() {
+  const [list, setList] = React.useState<AdminCelebrityAuthorization[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState<{ userId?: string; starId?: string; status?: string }>({});
+  const [creating, setCreating] = React.useState(false);
+  const [draft, setDraft] = React.useState<{ userId: string; starId: string; status: string }>({
+    userId: "demo-user",
+    starId: "",
+    status: "pending",
+  });
+  const [transitioning, setTransitioning] = React.useState<{ id: string; to: string } | null>(null);
+  const [transitionReason, setTransitionReason] = React.useState("");
+
+  const refresh = React.useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const f: Record<string, string> = {};
+      if (filter.userId) f.userId = filter.userId;
+      if (filter.starId) f.starId = filter.starId;
+      if (filter.status) f.status = filter.status;
+      const data = await CelebrityAuthorizationsApi.list(f as any);
+      setList(data);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [filter]);
+
+  React.useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function onCreate() {
+    if (!draft.userId || !draft.starId) {
+      alert("userId / starId 必填");
+      return;
+    }
+    try {
+      await CelebrityAuthorizationsApi.create(draft as any);
+      setCreating(false);
+      setDraft({ userId: "demo-user", starId: "", status: "pending" });
+      await refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "创建失败");
+    }
+  }
+
+  async function onDelete(id: string) {
+    if (!confirm("确认删除该授权关系？删除后用户在「我的明星」立即不可见。")) return;
+    try {
+      await CelebrityAuthorizationsApi.remove(id);
+      await refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "删除失败");
+    }
+  }
+
+  async function onTransition() {
+    if (!transitioning) return;
+    if (!transitionReason.trim()) {
+      alert("原因必填");
+      return;
+    }
+    try {
+      await CelebrityAuthorizationsApi.transition(transitioning.id, {
+        to: transitioning.to as any,
+        reason: transitionReason.trim(),
+      });
+      setTransitioning(null);
+      setTransitionReason("");
+      await refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "状态推进失败");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="明星授权关系" description="用户 × 明星 的授权关系，含状态机推进。修改即对小程序 ?owner=me 立即生效。" />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>筛选</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Input placeholder="userId" className="w-48" value={filter.userId ?? ""} onChange={(e) => setFilter({ ...filter, userId: e.target.value })} />
+          <Input placeholder="starId" className="w-48" value={filter.starId ?? ""} onChange={(e) => setFilter({ ...filter, starId: e.target.value })} />
+          <Select value={filter.status ?? "_all"} onValueChange={(v) => setFilter({ ...filter, status: v === "_all" ? undefined : v })}>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">全部状态</SelectItem>
+              {STATUS.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => void refresh()}>刷新</Button>
+          <Button onClick={() => setCreating((v) => !v)}>{creating ? "取消新增" : "新增授权"}</Button>
+        </CardContent>
+      </Card>
+
+      {creating && (
+        <Card>
+          <CardHeader><CardTitle>新增授权关系</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-3">
+            <div>
+              <div className="mb-1 text-xs text-muted-foreground">userId</div>
+              <Input className="w-48" value={draft.userId} onChange={(e) => setDraft({ ...draft, userId: e.target.value })} />
+            </div>
+            <div>
+              <div className="mb-1 text-xs text-muted-foreground">starId</div>
+              <Input className="w-48" placeholder="如 star-li-dan" value={draft.starId} onChange={(e) => setDraft({ ...draft, starId: e.target.value })} />
+            </div>
+            <div>
+              <div className="mb-1 text-xs text-muted-foreground">status</div>
+              <Select value={draft.status} onValueChange={(v) => setDraft({ ...draft, status: v })}>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={() => void onCreate()}>提交</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {transitioning && (
+        <Card>
+          <CardHeader><CardTitle>状态推进 · 输入原因</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-3">
+            <div className="text-sm text-muted-foreground">
+              授权 {transitioning.id} → 目标状态：<b>{STATUS_LABEL[transitioning.to]}</b>
+            </div>
+            <Input placeholder="原因（必填，落 AuditLog）" className="w-80" value={transitionReason} onChange={(e) => setTransitionReason(e.target.value)} />
+            <Button onClick={() => void onTransition()}>提交</Button>
+            <Button variant="outline" onClick={() => { setTransitioning(null); setTransitionReason(""); }}>取消</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader><CardTitle>授权列表（{list.length}）</CardTitle></CardHeader>
+        <CardContent>
+          {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
+          {err && <div className="text-sm text-rose-600">{err}</div>}
+          {!loading && !err && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>id</TableHead>
+                  <TableHead>userId</TableHead>
+                  <TableHead>starId</TableHead>
+                  <TableHead>status</TableHead>
+                  <TableHead>scenes</TableHead>
+                  <TableHead>expireDate</TableHead>
+                  <TableHead className="w-[280px]">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {list.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="text-xs font-mono">{a.id.slice(0, 12)}</TableCell>
+                    <TableCell>{a.userId}</TableCell>
+                    <TableCell>{a.starId}</TableCell>
+                    <TableCell>{STATUS_LABEL[a.status]}</TableCell>
+                    <TableCell className="text-xs">{(a.scenes ?? []).join(", ") || "—"}</TableCell>
+                    <TableCell>{a.expireDate ?? "—"}</TableCell>
+                    <TableCell className="space-x-1">
+                      {STATUS.filter((s) => s !== a.status).map((s) => (
+                        <Button
+                          key={s}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setTransitioning({ id: a.id, to: s })}
+                        >→ {STATUS_LABEL[s]}</Button>
+                      ))}
+                      <Button size="sm" variant="destructive" onClick={() => void onDelete(a.id)}>删</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

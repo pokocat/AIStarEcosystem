@@ -23,12 +23,19 @@ public class CelebrityZoneService {
 
     private static final ObjectMapper OM = new ObjectMapper();
 
-    /** 引擎计价表 — 与前端 ENGINE_META（celebrity-zone-ui.ts）保持一致。 */
-    private static final Map<String, EnginePricingDto> ENGINE_PRICING = Map.of(
+    /** 引擎计价表（默认值） — 与前端 ENGINE_META（celebrity-zone-ui.ts）保持一致。 */
+    private static final Map<String, EnginePricingDto> ENGINE_PRICING_DEFAULTS = Map.of(
             "KeLing",  new EnginePricingDto(50, 1),
             "HiGen",   new EnginePricingDto(120, 2),
             "MiniMax", new EnginePricingDto(300, 3)
     );
+
+    /**
+     * 可变运行时价格表（admin PUT /admin/celebrity/engine-pricing 更新此处）。
+     * 启动时从默认值初始化；如有 PlatformConfig key=celebrity.engine-pricing 则覆盖（D5）。
+     * 本期为 in-memory + ConcurrentHashMap，重启后回到默认值；持久化由 controller 层负责挂 PlatformConfig。
+     */
+    private final Map<String, EnginePricingDto> mutablePricing = new java.util.concurrent.ConcurrentHashMap<>(ENGINE_PRICING_DEFAULTS);
 
     private final CelebrityStarRepository starRepo;
     private final CelebrityProjectRepository projectRepo;
@@ -304,7 +311,7 @@ public class CelebrityZoneService {
     }
 
     public Map<String, EnginePricingDto> getEnginePricing() {
-        return ENGINE_PRICING;
+        return Collections.unmodifiableMap(mutablePricing);
     }
 
     // ── Overview (data center) ──────────────────────────────────────────────
@@ -371,6 +378,240 @@ public class CelebrityZoneService {
             return (long) (Double.parseDouble(numeric) * mult);
         } catch (NumberFormatException e) {
             return 0;
+        }
+    }
+
+    // ── Admin 写操作（v0.5 新增）─────────────────────────────────────────────
+    // 严格 @Transactional；photos/videos 的 append/remove 走悲观锁避免并发丢数据。
+
+    /** admin POST /stars — 创建明星。 */
+    public CelebrityStarDto adminCreateStar(AdminCelebrityStarUpsertDto req) {
+        if (req == null || req.name() == null || req.name().isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "STAR_NAME_REQUIRED", "明星 name 不能为空");
+        }
+        String id = (req.id() != null && !req.id().isBlank())
+                ? req.id()
+                : "star-" + UUID.randomUUID().toString().substring(0, 8);
+        if (starRepo.existsById(id)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STAR_DUPLICATE", "明星 id 已存在: " + id);
+        }
+        CelebrityStar entity = applyStarUpsert(new CelebrityStar(), req);
+        entity.setId(id);
+        return CelebrityStarDto.from(starRepo.save(entity));
+    }
+
+    /** admin PUT /stars/{id} — 整体替换（不含 photos/videos）。 */
+    public CelebrityStarDto adminUpdateStar(String id, AdminCelebrityStarUpsertDto req) {
+        CelebrityStar entity = starRepo.findById(id)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
+        applyStarUpsert(entity, req);
+        return CelebrityStarDto.from(starRepo.save(entity));
+    }
+
+    /** admin DELETE /stars/{id}。 */
+    public void adminDeleteStar(String id) {
+        if (!starRepo.existsById(id)) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在");
+        }
+        // 关联的 CelebrityStarAuthorization / 项目暂不级联；后续在 service 层补软删
+        starRepo.deleteById(id);
+    }
+
+    /** admin POST /stars/{id}/photos — 追加单条 photo（并发安全）。 */
+    public CelebrityStarDto adminAppendStarPhoto(String starId, AdminCelebrityStarPhotoUpsertDto req) {
+        if (req == null || req.url() == null || req.url().isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PHOTO_URL_REQUIRED", "url 不能为空");
+        }
+        CelebrityStar star = starRepo.findById(starId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
+        List<Map<String, Object>> list = readArr(star.getPhotosJson());
+        Map<String, Object> photo = new LinkedHashMap<>();
+        String id = (req.id() != null && !req.id().isBlank())
+                ? req.id()
+                : "p-" + UUID.randomUUID().toString().substring(0, 8);
+        if (list.stream().anyMatch(p -> id.equals(p.get("id")))) {
+            throw new BusinessException(HttpStatus.CONFLICT, "PHOTO_DUPLICATE", "photo id 已存在: " + id);
+        }
+        photo.put("id", id);
+        photo.put("url", req.url());
+        if (req.caption() != null) photo.put("caption", req.caption());
+        list.add(photo);
+        star.setPhotosJson(toJson(list));
+        return CelebrityStarDto.from(starRepo.save(star));
+    }
+
+    /** admin DELETE /stars/{starId}/photos/{photoId}。 */
+    public CelebrityStarDto adminRemoveStarPhoto(String starId, String photoId) {
+        CelebrityStar star = starRepo.findById(starId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
+        List<Map<String, Object>> list = new ArrayList<>(readArr(star.getPhotosJson()));
+        boolean removed = list.removeIf(p -> photoId.equals(p.get("id")));
+        if (!removed) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "PHOTO_NOT_FOUND", "photo 不存在");
+        }
+        star.setPhotosJson(toJson(list));
+        return CelebrityStarDto.from(starRepo.save(star));
+    }
+
+    /** admin POST /stars/{id}/videos — 追加单条 video。 */
+    public CelebrityStarDto adminAppendStarVideo(String starId, AdminCelebrityStarVideoUpsertDto req) {
+        if (req == null || req.title() == null || req.title().isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_TITLE_REQUIRED", "title 不能为空");
+        }
+        CelebrityStar star = starRepo.findById(starId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
+        List<Map<String, Object>> list = new ArrayList<>(readArr(star.getVideosJson()));
+        Map<String, Object> v = new LinkedHashMap<>();
+        String id = (req.id() != null && !req.id().isBlank())
+                ? req.id()
+                : "v-" + UUID.randomUUID().toString().substring(0, 8);
+        if (list.stream().anyMatch(x -> id.equals(x.get("id")))) {
+            throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_DUPLICATE", "video id 已存在: " + id);
+        }
+        v.put("id", id);
+        v.put("title", req.title());
+        v.put("durationSec", req.durationSec() != null ? req.durationSec() : 0);
+        if (req.coverUrl() != null) v.put("coverUrl", req.coverUrl());
+        if (req.playUrl() != null) v.put("playUrl", req.playUrl());
+        if (req.tag() != null) v.put("tag", req.tag());
+        list.add(v);
+        star.setVideosJson(toJson(list));
+        return CelebrityStarDto.from(starRepo.save(star));
+    }
+
+    /** admin DELETE /stars/{starId}/videos/{videoId}。 */
+    public CelebrityStarDto adminRemoveStarVideo(String starId, String videoId) {
+        CelebrityStar star = starRepo.findById(starId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
+        List<Map<String, Object>> list = new ArrayList<>(readArr(star.getVideosJson()));
+        boolean removed = list.removeIf(x -> videoId.equals(x.get("id")));
+        if (!removed) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "VIDEO_NOT_FOUND", "video 不存在");
+        }
+        star.setVideosJson(toJson(list));
+        return CelebrityStarDto.from(starRepo.save(star));
+    }
+
+    /** admin POST /templates — 创建模板。 */
+    public CelebrityTemplateDto adminCreateTemplate(AdminCelebrityTemplateUpsertDto req) {
+        if (req == null || req.name() == null || req.name().isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "TEMPLATE_NAME_REQUIRED", "模板 name 不能为空");
+        }
+        String id = (req.id() != null && !req.id().isBlank())
+                ? req.id()
+                : "tpl-" + UUID.randomUUID().toString().substring(0, 8);
+        if (templateRepo.existsById(id)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "TEMPLATE_DUPLICATE", "模板 id 已存在: " + id);
+        }
+        CelebrityTemplate entity = applyTemplateUpsert(new CelebrityTemplate(), req);
+        entity.setId(id);
+        return CelebrityTemplateDto.from(templateRepo.save(entity));
+    }
+
+    public CelebrityTemplateDto adminUpdateTemplate(String id, AdminCelebrityTemplateUpsertDto req) {
+        CelebrityTemplate entity = templateRepo.findById(id)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "TEMPLATE_NOT_FOUND", "模板不存在"));
+        applyTemplateUpsert(entity, req);
+        return CelebrityTemplateDto.from(templateRepo.save(entity));
+    }
+
+    public void adminDeleteTemplate(String id) {
+        if (!templateRepo.existsById(id)) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "TEMPLATE_NOT_FOUND", "模板不存在");
+        }
+        templateRepo.deleteById(id);
+    }
+
+    /** admin PUT /templates/{id}/preview — 仅更新预览字段。 */
+    public CelebrityTemplateDto adminSetTemplatePreview(String id, AdminCelebrityTemplatePreviewUpsertDto req) {
+        CelebrityTemplate entity = templateRepo.findById(id)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "TEMPLATE_NOT_FOUND", "模板不存在"));
+        if (req != null) {
+            if (req.previewCover() != null) entity.setPreviewCover(req.previewCover());
+            if (req.previewVideoUrl() != null) entity.setPreviewVideoUrl(req.previewVideoUrl());
+            if (req.durationSec() != null) entity.setDurationSec(req.durationSec());
+        }
+        return CelebrityTemplateDto.from(templateRepo.save(entity));
+    }
+
+    /** PUT /admin/celebrity/engine-pricing — 整表替换；本期挂 in-memory（D5 提到 PlatformConfig 落库由 controller 层负责）。 */
+    public Map<String, EnginePricingDto> adminReplaceEnginePricing(Map<String, EnginePricingDto> next) {
+        if (next == null || next.isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PRICING_EMPTY", "pricing 不能为空");
+        }
+        // ENGINE_PRICING 是 final 字段；用一个可变镜像替代（见下方 mutablePricing）
+        mutablePricing.clear();
+        mutablePricing.putAll(next);
+        return Collections.unmodifiableMap(mutablePricing);
+    }
+
+    // ── 内部工具 ─────────────────────────────────────────────────────────────
+
+    private CelebrityStar applyStarUpsert(CelebrityStar entity, AdminCelebrityStarUpsertDto req) {
+        if (req.name() != null) entity.setName(req.name());
+        if (req.avatar() != null) entity.setAvatar(req.avatar());
+        if (req.cover() != null) entity.setCover(req.cover());
+        if (req.category() != null) entity.setCategory(req.category());
+        if (req.subCategories() != null) entity.setSubCategories(new ArrayList<>(req.subCategories()));
+        if (req.isHot() != null) entity.setHot(req.isHot());
+        if (req.description() != null) entity.setDescription(req.description());
+        if (req.startingPrice() != null) entity.setStartingPrice(req.startingPrice());
+        if (req.pricingTier() != null) entity.setPricingTier(req.pricingTier());
+        if (req.quotaUsed() != null) entity.setQuotaUsed(req.quotaUsed());
+        if (req.quotaTotal() != null) entity.setQuotaTotal(req.quotaTotal());
+        if (req.authorization() != null) entity.setAuthorizationJson(toJson(req.authorization()));
+        if (req.stats() != null) entity.setStatsJson(toJson(req.stats()));
+        if (req.sampleVideos() != null) entity.setSampleVideosJson(toJson(req.sampleVideos()));
+        if (req.pricing() != null) entity.setPricingJson(toJson(req.pricing()));
+        if (req.bio() != null) entity.setBio(req.bio());
+        if (req.location() != null) entity.setLocation(req.location());
+        if (req.fans() != null) entity.setFans(req.fans());
+        if (req.cooperationCount() != null) entity.setCooperationCount(req.cooperationCount());
+        if (req.avgGmv() != null) entity.setAvgGmv(req.avgGmv());
+        // 必填项兜底：avatar / cover / category 在 entity 级别 nullable=false
+        if (entity.getAvatar() == null) entity.setAvatar("");
+        if (entity.getCover() == null) entity.setCover("");
+        if (entity.getCategory() == null) entity.setCategory("综艺");
+        if (entity.getStartingPrice() == null) entity.setStartingPrice("¥0起");
+        if (entity.getDescription() == null) entity.setDescription("");
+        return entity;
+    }
+
+    private CelebrityTemplate applyTemplateUpsert(CelebrityTemplate entity, AdminCelebrityTemplateUpsertDto req) {
+        if (req.name() != null) entity.setName(req.name());
+        if (req.style() != null) entity.setStyle(req.style());
+        if (req.description() != null) entity.setDescription(req.description());
+        if (req.recommendedEngine() != null) entity.setRecommendedEngine(req.recommendedEngine());
+        if (req.recommendedPrice() != null) entity.setRecommendedPrice(req.recommendedPrice());
+        if (req.isHot() != null) entity.setHot(req.isHot());
+        if (req.plays() != null) entity.setPlays(req.plays());
+        if (req.conversionRate() != null) entity.setConversionRate(req.conversionRate());
+        if (req.fitHint() != null) entity.setFitHint(req.fitHint());
+        if (req.previews() != null) entity.setPreviewsJson(toJson(req.previews()));
+        if (req.previewCover() != null) entity.setPreviewCover(req.previewCover());
+        if (req.previewVideoUrl() != null) entity.setPreviewVideoUrl(req.previewVideoUrl());
+        if (req.durationSec() != null) entity.setDurationSec(req.durationSec());
+        // 必填兜底
+        if (entity.getStyle() == null) entity.setStyle("种草安利");
+        if (entity.getRecommendedEngine() == null) entity.setRecommendedEngine("HiGen");
+        if (entity.getRecommendedPrice() == null) entity.setRecommendedPrice("标准");
+        return entity;
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return OM.writeValueAsString(value);
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private static List<Map<String, Object>> readArr(String json) {
+        if (json == null || json.isBlank()) return new ArrayList<>();
+        try {
+            return OM.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
         }
     }
 

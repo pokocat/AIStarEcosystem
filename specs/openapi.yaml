@@ -4382,14 +4382,145 @@ paths:
 
   # ── admin · celebrity-zone（明星专区运营视图） ──────────────
 
-  /admin/celebrity/stars:           { get: { tags: [admin-celebrity], operationId: adminListCelebrityStars,    responses: { '200': { description: ok } } } }
-  /admin/celebrity/stars/{id}:      { get: { tags: [admin-celebrity], operationId: adminGetCelebrityStar,      parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
-  /admin/celebrity/templates:       { get: { tags: [admin-celebrity], operationId: adminListCelebrityTemplates, responses: { '200': { description: ok } } } }
+  # ── /admin/celebrity/* （v0.5：在 GET 之外补齐 CRUD）────────────────
+  /admin/celebrity/stars:
+    get:
+      tags: [admin-celebrity]
+      operationId: adminListCelebrityStars
+      responses: { '200': { description: ok } }
+    post:
+      tags: [admin-celebrity]
+      operationId: adminCreateCelebrityStar
+      responses: { '201': { description: created } }
+  /admin/celebrity/stars/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-celebrity], operationId: adminGetCelebrityStar,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-celebrity], operationId: adminUpdateCelebrityStar, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-celebrity], operationId: adminDeleteCelebrityStar, responses: { '204': { description: ok } } }
+
+  /admin/celebrity/stars/{id}/photos:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-celebrity], operationId: adminAppendCelebrityStarPhoto, responses: { '201': { description: created } } }
+  /admin/celebrity/stars/{id}/photos/{photoId}:
+    parameters:
+      - { name: id,      in: path, required: true, schema: { type: string } }
+      - { name: photoId, in: path, required: true, schema: { type: string } }
+    delete: { tags: [admin-celebrity], operationId: adminRemoveCelebrityStarPhoto, responses: { '200': { description: ok } } }
+
+  /admin/celebrity/stars/{id}/videos:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-celebrity], operationId: adminAppendCelebrityStarVideo, responses: { '201': { description: created } } }
+  /admin/celebrity/stars/{id}/videos/{videoId}:
+    parameters:
+      - { name: id,      in: path, required: true, schema: { type: string } }
+      - { name: videoId, in: path, required: true, schema: { type: string } }
+    delete: { tags: [admin-celebrity], operationId: adminRemoveCelebrityStarVideo, responses: { '200': { description: ok } } }
+
+  /admin/celebrity/templates:
+    get:  { tags: [admin-celebrity], operationId: adminListCelebrityTemplates, responses: { '200': { description: ok } } }
+    post: { tags: [admin-celebrity], operationId: adminCreateCelebrityTemplate, responses: { '201': { description: created } } }
+  /admin/celebrity/templates/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put:    { tags: [admin-celebrity], operationId: adminUpdateCelebrityTemplate, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-celebrity], operationId: adminDeleteCelebrityTemplate, responses: { '204': { description: ok } } }
+  /admin/celebrity/templates/{id}/preview:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put: { tags: [admin-celebrity], operationId: adminSetCelebrityTemplatePreview, responses: { '200': { description: ok } } }
+
   /admin/celebrity/showcases:       { get: { tags: [admin-celebrity], operationId: adminListCelebrityShowcases, responses: { '200': { description: ok } } } }
   /admin/celebrity/projects:        { get: { tags: [admin-celebrity], operationId: adminListCelebrityProjects,  responses: { '200': { description: ok } } } }
   /admin/celebrity/videos:          { get: { tags: [admin-celebrity], operationId: adminListCelebrityVideos,    responses: { '200': { description: ok } } } }
   /admin/celebrity/overview:        { get: { tags: [admin-celebrity], operationId: adminGetCelebrityOverview,   responses: { '200': { description: ok } } } }
-  /admin/celebrity/engine-pricing:  { get: { tags: [admin-celebrity], operationId: adminGetCelebrityEnginePricing, responses: { '200': { description: ok } } } }
+  /admin/celebrity/engine-pricing:
+    get: { tags: [admin-celebrity], operationId: adminGetCelebrityEnginePricing, responses: { '200': { description: ok } } }
+    put: { tags: [admin-celebrity], operationId: adminReplaceCelebrityEnginePricing, responses: { '200': { description: ok } } }
+
+  # ── 授权关系 CRUD + 状态机（v0.5 §D3 新增） ──────────────────────────
+  /admin/celebrity/star-authorizations:
+    get:
+      tags: [admin-celebrity]
+      operationId: adminListCelebrityStarAuthorizations
+      parameters:
+        - { name: userId, in: query, schema: { type: string } }
+        - { name: starId, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [unauthorized, pending, authorized, expired] } }
+      responses: { '200': { description: ok } }
+    post:
+      tags: [admin-celebrity]
+      operationId: adminCreateCelebrityStarAuthorization
+      responses: { '201': { description: created } }
+  /admin/celebrity/star-authorizations/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-celebrity], operationId: adminGetCelebrityStarAuthorization,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-celebrity], operationId: adminUpdateCelebrityStarAuthorization, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-celebrity], operationId: adminDeleteCelebrityStarAuthorization, responses: { '204': { description: ok } } }
+  /admin/celebrity/star-authorizations/{id}/transition:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-celebrity], operationId: adminTransitionCelebrityStarAuthorization, responses: { '200': { description: ok } } }
+
+  # ── 充值套餐 CRUD（v0.5 §D4 新增） ────────────────────────────────────
+  /admin/finance/recharge-packages:
+    get:  { tags: [admin-finance], operationId: adminListRechargePackages, responses: { '200': { description: ok } } }
+    post: { tags: [admin-finance], operationId: adminCreateRechargePackage, responses: { '201': { description: created } } }
+  /admin/finance/recharge-packages/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-finance], operationId: adminGetRechargePackage,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-finance], operationId: adminUpdateRechargePackage, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-finance], operationId: adminDeleteRechargePackage, responses: { '200': { description: ok, content: { application/json: { schema: { type: object } } } } } }
+
+  # ── 模板脚本（v0.5 §3.2.7 新增） ──────────────────────────────────────
+  /template-scripts/by-template/{templateId}:
+    parameters: [{ name: templateId, in: path, required: true, schema: { type: string } }]
+    get: { tags: [template-scripts], operationId: getTemplateScriptByTemplate, responses: { '200': { description: ok } } }
+  /template-scripts/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [template-scripts], operationId: getTemplateScript, responses: { '200': { description: ok } } }
+
+  /admin/template-scripts:
+    get:
+      tags: [admin-template-scripts]
+      operationId: adminListTemplateScripts
+      parameters:
+        - { name: templateId, in: query, schema: { type: string } }
+        - { name: status,     in: query, schema: { type: string, enum: [draft, in_review, published, archived] } }
+        - { name: kind,       in: query, schema: { type: string, enum: [text, video_ref] } }
+      responses: { '200': { description: ok } }
+    post: { tags: [admin-template-scripts], operationId: adminCreateTemplateScript, responses: { '201': { description: created } } }
+  /admin/template-scripts/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [admin-template-scripts], operationId: adminGetTemplateScript, responses: { '200': { description: ok } } }
+    put: { tags: [admin-template-scripts], operationId: adminUpdateTemplateScript, responses: { '200': { description: ok } } }
+  /admin/template-scripts/{id}/submit-review:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-template-scripts], operationId: adminSubmitTemplateScriptReview, responses: { '200': { description: ok } } }
+  /admin/template-scripts/{id}/publish:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-template-scripts], operationId: adminPublishTemplateScript, responses: { '200': { description: ok } } }
+  /admin/template-scripts/{id}/rollback:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-template-scripts], operationId: adminRollbackTemplateScript, responses: { '200': { description: ok } } }
+  /admin/template-scripts/{id}/dry-run:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-template-scripts], operationId: adminDryRunTemplateScript, responses: { '200': { description: ok } } }
+  /admin/template-scripts/{id}/draft-with-ai:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-template-scripts], operationId: adminDraftTemplateScriptWithAi, responses: { '200': { description: ok } } }
+  /admin/template-scripts/{id}/upload-clip:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-template-scripts], operationId: adminUploadTemplateScriptClip, responses: { '200': { description: ok } } }
+
+  # ── 大模型配置（v0.5 §D8 新增） ──────────────────────────────────────
+  /admin/ai-models:
+    get:  { tags: [admin-ai-models], operationId: adminListAiModelProviders,  responses: { '200': { description: ok } } }
+    post: { tags: [admin-ai-models], operationId: adminCreateAiModelProvider, responses: { '201': { description: created } } }
+  /admin/ai-models/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-ai-models], operationId: adminGetAiModelProvider,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-ai-models], operationId: adminUpdateAiModelProvider, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-ai-models], operationId: adminDeleteAiModelProvider, responses: { '204': { description: ok } } }
+  /admin/ai-models/{id}/test:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-ai-models], operationId: adminTestAiModelProvider, responses: { '200': { description: ok } } }
 
   # ── admin · products（商品库管理） ───────────────────────
 

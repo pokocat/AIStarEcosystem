@@ -103,3 +103,78 @@ export async function getOverview(): Promise<CelebrityZoneOverview> {
   }
   return apiFetch<CelebrityZoneOverview>("/admin/celebrity/overview");
 }
+
+// ── v0.5：admin 写操作（CRUD + photos/videos + templates + engine pricing） ──────
+
+/** POST /admin/celebrity/stars */
+export async function createStar(body: Partial<CelebrityStar>): Promise<CelebrityStar> {
+  return apiFetch<CelebrityStar>("/admin/celebrity/stars", { method: "POST", body });
+}
+/** PUT /admin/celebrity/stars/{id} */
+export async function updateStar(id: string, body: Partial<CelebrityStar>): Promise<CelebrityStar> {
+  return apiFetch<CelebrityStar>(`/admin/celebrity/stars/${encodeURIComponent(id)}`, { method: "PUT", body });
+}
+/** DELETE /admin/celebrity/stars/{id} */
+export async function deleteStar(id: string): Promise<void> {
+  await apiFetch<void>(`/admin/celebrity/stars/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** POST /admin/celebrity/stars/{id}/photos */
+export async function appendStarPhoto(id: string, body: { id?: string; url: string; caption?: string }): Promise<CelebrityStar> {
+  return apiFetch<CelebrityStar>(`/admin/celebrity/stars/${encodeURIComponent(id)}/photos`, { method: "POST", body });
+}
+/** DELETE /admin/celebrity/stars/{id}/photos/{photoId} */
+export async function removeStarPhoto(starId: string, photoId: string): Promise<CelebrityStar> {
+  return apiFetch<CelebrityStar>(
+    `/admin/celebrity/stars/${encodeURIComponent(starId)}/photos/${encodeURIComponent(photoId)}`,
+    { method: "DELETE" },
+  );
+}
+/** POST /admin/celebrity/stars/{id}/videos */
+export async function appendStarVideo(
+  id: string,
+  body: { id?: string; title: string; durationSec: number; coverUrl?: string; playUrl?: string; tag?: string },
+): Promise<CelebrityStar> {
+  return apiFetch<CelebrityStar>(`/admin/celebrity/stars/${encodeURIComponent(id)}/videos`, { method: "POST", body });
+}
+/** DELETE /admin/celebrity/stars/{id}/videos/{videoId} */
+export async function removeStarVideo(starId: string, videoId: string): Promise<CelebrityStar> {
+  return apiFetch<CelebrityStar>(
+    `/admin/celebrity/stars/${encodeURIComponent(starId)}/videos/${encodeURIComponent(videoId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** POST /admin/celebrity/templates */
+export async function createTemplate(body: Partial<CelebrityTemplate>): Promise<CelebrityTemplate> {
+  return apiFetch<CelebrityTemplate>("/admin/celebrity/templates", { method: "POST", body });
+}
+/** PUT /admin/celebrity/templates/{id} */
+export async function updateTemplate(id: string, body: Partial<CelebrityTemplate>): Promise<CelebrityTemplate> {
+  return apiFetch<CelebrityTemplate>(`/admin/celebrity/templates/${encodeURIComponent(id)}`, { method: "PUT", body });
+}
+/** DELETE /admin/celebrity/templates/{id} */
+export async function deleteTemplate(id: string): Promise<void> {
+  await apiFetch<void>(`/admin/celebrity/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+/** PUT /admin/celebrity/templates/{id}/preview */
+export async function setTemplatePreview(
+  id: string,
+  body: { previewCover?: string; previewVideoUrl?: string; durationSec?: number },
+): Promise<CelebrityTemplate> {
+  return apiFetch<CelebrityTemplate>(
+    `/admin/celebrity/templates/${encodeURIComponent(id)}/preview`,
+    { method: "PUT", body },
+  );
+}
+
+/** GET /admin/celebrity/engine-pricing */
+export async function getEnginePricing(): Promise<Record<string, { creditPrice: number; cost: number }>> {
+  return apiFetch("/admin/celebrity/engine-pricing");
+}
+/** PUT /admin/celebrity/engine-pricing */
+export async function replaceEnginePricing(
+  body: Record<string, { creditPrice: number; cost: number }>,
+): Promise<Record<string, { creditPrice: number; cost: number }>> {
+  return apiFetch("/admin/celebrity/engine-pricing", { method: "PUT", body });
+}

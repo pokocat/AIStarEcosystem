@@ -240,6 +240,83 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ## 六、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.5.0 · 2026-05-08 — admin 重构对齐三端 + §3.2.7 模板脚本 + §D8 大模型配置
+
+**Context**：v0.4 已把 server 端用户侧接口全打通；本期把 admin 后台重构为"AI 明星带货线
+为主、其他产品线 sidebar 隐藏"的形态，并把 §3.2.7 TemplateScript 模板脚本系统纳入本期
+落地（之前规划在 v0.6+），新增 §D8 `AiModelProvider` 大模型配置允许接入 OpenAI 兼容 API。
+
+**主要落地**
+
+1. **角色命名对齐**：admin TS `AdminRole` 改为 `SUPER_ADMIN | OPERATOR`（与 server enum 一致）
+2. **Celebrity admin CRUD**（11 个新写接口）：明星 / 模板 / photos / videos / 引擎价格
+3. **CelebrityStarAuthorization** 完整 CRUD + 状态机 `POST .../transition`
+4. **RechargePackage** admin CRUD（软删 active=false）
+5. **§3.2.7 TemplateScript 系统** 全栈落地：
+   - 真源类型 12 个（Scene / TemplateVariable / EngineAdapter / TemplateReferenceClip 等）
+   - server `TemplateScript` 实体 + Repository + 6 个 DTO + `PromptAssemblyService`
+     （变量替换 + 引擎 adapter + 风控 + video_ref URL 透传）+ `TemplateScriptAdminService`
+   - 控制器：`TemplateScriptController`（用户端只读 published）+ `AdminTemplateScriptController`
+     （CRUD + saveDraft / submitReview / publish / rollback / dryRun / draftWithAi / uploadClip）
+   - 状态机：`DRAFT → IN_REVIEW → PUBLISHED → ARCHIVED`，同 templateId 仅一条 PUBLISHED
+   - 双模 `text` / `video_ref`：v0.5 video_ref 自动检测降级为运营手填 + URL 透传，
+     转码 / 抽帧 / NSFW / BGM 检测留给 v0.6
+   - DataInitializer 给 5 个模板各 seed 1 份 PUBLISHED TemplateScript（4 text + 1 video_ref）
+6. **§D8 AiModelProvider — 大模型配置**（用户新增）：
+   - 实体 `AiModelProvider`（apiKey 用 AES-GCM 加密落库，密钥从 `AEP_SECRET_KEY`）
+   - `AiModelInvocationService` 实现 OPENAI / OPENAI_COMPATIBLE 的 `/chat/completions`，
+     其他 providerType（Anthropic / Azure / 月之暗面 / 国产）保留 enum + CRUD 但 invokeChat 抛 501
+   - 通用工具：`AepCryptoUtil`（AES-GCM 对称加密 + apiKey mask）
+   - 5 个 admin 端点：`GET/POST /admin/ai-models`、`GET/PUT/DELETE /admin/ai-models/{id}`、
+     `POST /admin/ai-models/{id}/test`（调 provider `/v1/models` 探活）
+   - 用途分类：`SCRIPT_DRAFT / SAFETY_REVIEW / VIDEO_REF_ANALYSIS / TEMPLATE_REWRITE / GENERAL`
+   - DataInitializer seed 1 个禁用态 dev placeholder
+7. **openapi.yaml** 新增约 30 个 path；`npm run check:api-contract` 全绿
+8. **admin 前端**：
+   - 5 个新 API 模块（celebrity-authorizations / recharge-packages / template-scripts / ai-models）
+   - 5 个新页面（star-authorizations / engine-pricing / template-scripts / recharge-packages / ai-models）
+   - sidebar 重组：明星带货线提到顶部；数字人产品线（music / film / nft / forge / community 等）
+     整组 `enabled: false` 隐藏（源码保留）；新增 `visibleNavGroups()` 过滤函数
+
+**已知限制**
+
+- engine-pricing 写入 in-memory `Map`，重启失效（v0.6 落 PlatformConfig）
+- video_ref 模式不做服务端转码 / 抽帧 / NSFW；运营手填 URL + reviewStatus=approved
+- A/B 桶 / 多人审批 / 双人复核 留待 v0.6
+- 国产模型（百度 / 阿里 / 腾讯）admin 可 CRUD 但 invokeChat 抛 501
+- admin 模板脚本编辑器是简化版（列表 + 状态推进 + 试跑）；完整结构化编辑器留给 v0.6
+- admin 媒体表单仅接受 URL，无 OSS multipart 上传
+
+**新接口（消费侧 / admin）**
+
+```
+# admin（v0.5 新增）
+POST/PUT/DELETE /admin/celebrity/stars[/{id}]
+POST /admin/celebrity/stars/{id}/photos | DELETE .../photos/{photoId}
+POST /admin/celebrity/stars/{id}/videos | DELETE .../videos/{videoId}
+POST/PUT/DELETE /admin/celebrity/templates[/{id}]
+PUT /admin/celebrity/templates/{id}/preview
+PUT /admin/celebrity/engine-pricing
+GET/POST/PUT/DELETE /admin/celebrity/star-authorizations[/{id}]
+POST /admin/celebrity/star-authorizations/{id}/transition
+GET/POST/PUT/DELETE /admin/finance/recharge-packages[/{id}]
+GET/POST /admin/template-scripts ; GET/PUT /admin/template-scripts/{id}
+POST /admin/template-scripts/{id}/{submit-review|publish|rollback|dry-run|draft-with-ai|upload-clip}
+GET/POST /admin/ai-models ; GET/PUT/DELETE /admin/ai-models/{id} ; POST /admin/ai-models/{id}/test
+
+# 用户端
+GET /template-scripts/by-template/{templateId}（仅 published）
+GET /template-scripts/{id}（仅 published）
+```
+
+**门**
+
+- `mvn compile`: BUILD SUCCESS
+- `npm run check:api-contract`: OK
+- admin / web tsc：本沙箱无 node_modules 跳过；类型扩展为可选，不破坏现有调用方
+
+---
+
 ### v0.4.0 · 2026-05-07 — Server 端落地 v0.3 全部接口（三端打通）
 
 **状态升级**：从 v0.3 的"小程序 mock 落地" → "**server + miniprogram 双端打通**"。

@@ -3,6 +3,7 @@ package com.aistareco.aep.controller;
 import com.aistareco.aep.dto.*;
 import com.aistareco.aep.service.CelebrityZoneService;
 import com.aistareco.common.ApiResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -10,7 +11,7 @@ import java.util.Map;
 
 /**
  * Admin 侧 AI 明星专区运营：/api/admin/celebrity/*。
- * 仅暴露读取 + 跨用户聚合视图；写操作（star 上下架 / 模板维护）后续按需补充。
+ * v0.5：补齐 CRUD（明星 / 模板 / 资料图集 / 视频 / 引擎价）。
  * 由 AepSecurityConfig 强制管理员角色（SUPER_ADMIN / OPERATOR）。
  */
 @RestController
@@ -23,6 +24,7 @@ public class AdminCelebrityController {
         this.service = service;
     }
 
+    // ── Stars 读 ────────────────────────────────────────────────────────────
     @GetMapping("/stars")
     public ApiResponse<List<CelebrityStarDto>> listStars(@RequestParam(required = false) String category,
                                                           @RequestParam(required = false) String sort) {
@@ -34,11 +36,81 @@ public class AdminCelebrityController {
         return ApiResponse.of(service.getStar(id));
     }
 
+    // ── Stars 写（v0.5 新增）────────────────────────────────────────────────
+    @PostMapping("/stars")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<CelebrityStarDto> createStar(@RequestBody AdminCelebrityStarUpsertDto req) {
+        return ApiResponse.of(service.adminCreateStar(req));
+    }
+
+    @PutMapping("/stars/{id}")
+    public ApiResponse<CelebrityStarDto> updateStar(@PathVariable String id,
+                                                     @RequestBody AdminCelebrityStarUpsertDto req) {
+        return ApiResponse.of(service.adminUpdateStar(id, req));
+    }
+
+    @DeleteMapping("/stars/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteStar(@PathVariable String id) {
+        service.adminDeleteStar(id);
+    }
+
+    // ── Star photos / videos（v0.5 新增）─────────────────────────────────────
+    @PostMapping("/stars/{id}/photos")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<CelebrityStarDto> appendPhoto(@PathVariable String id,
+                                                      @RequestBody AdminCelebrityStarPhotoUpsertDto req) {
+        return ApiResponse.of(service.adminAppendStarPhoto(id, req));
+    }
+
+    @DeleteMapping("/stars/{id}/photos/{photoId}")
+    public ApiResponse<CelebrityStarDto> removePhoto(@PathVariable String id, @PathVariable String photoId) {
+        return ApiResponse.of(service.adminRemoveStarPhoto(id, photoId));
+    }
+
+    @PostMapping("/stars/{id}/videos")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<CelebrityStarDto> appendVideo(@PathVariable String id,
+                                                      @RequestBody AdminCelebrityStarVideoUpsertDto req) {
+        return ApiResponse.of(service.adminAppendStarVideo(id, req));
+    }
+
+    @DeleteMapping("/stars/{id}/videos/{videoId}")
+    public ApiResponse<CelebrityStarDto> removeVideo(@PathVariable String id, @PathVariable String videoId) {
+        return ApiResponse.of(service.adminRemoveStarVideo(id, videoId));
+    }
+
+    // ── Templates 读 + CRUD（v0.5 新增写）───────────────────────────────────
     @GetMapping("/templates")
     public ApiResponse<List<CelebrityTemplateDto>> listTemplates() {
         return ApiResponse.of(service.listTemplates());
     }
 
+    @PostMapping("/templates")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<CelebrityTemplateDto> createTemplate(@RequestBody AdminCelebrityTemplateUpsertDto req) {
+        return ApiResponse.of(service.adminCreateTemplate(req));
+    }
+
+    @PutMapping("/templates/{id}")
+    public ApiResponse<CelebrityTemplateDto> updateTemplate(@PathVariable String id,
+                                                              @RequestBody AdminCelebrityTemplateUpsertDto req) {
+        return ApiResponse.of(service.adminUpdateTemplate(id, req));
+    }
+
+    @DeleteMapping("/templates/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteTemplate(@PathVariable String id) {
+        service.adminDeleteTemplate(id);
+    }
+
+    @PutMapping("/templates/{id}/preview")
+    public ApiResponse<CelebrityTemplateDto> setTemplatePreview(@PathVariable String id,
+                                                                  @RequestBody AdminCelebrityTemplatePreviewUpsertDto req) {
+        return ApiResponse.of(service.adminSetTemplatePreview(id, req));
+    }
+
+    // ── Showcases / Projects / Videos / Overview / Engine pricing ──────────
     @GetMapping("/showcases")
     public ApiResponse<List<CelebrityShowcaseDto>> listShowcases(@RequestParam(required = false) String mode) {
         return ApiResponse.of(service.listShowcases(mode));
@@ -67,5 +139,12 @@ public class AdminCelebrityController {
     @GetMapping("/engine-pricing")
     public ApiResponse<Map<String, EnginePricingDto>> enginePricing() {
         return ApiResponse.of(service.getEnginePricing());
+    }
+
+    /** v0.5：admin 调价。本期挂 in-memory（重启失效）；落 PlatformConfig 留给 §D5 后续迭代。 */
+    @PutMapping("/engine-pricing")
+    public ApiResponse<Map<String, EnginePricingDto>> replaceEnginePricing(
+            @RequestBody Map<String, EnginePricingDto> next) {
+        return ApiResponse.of(service.adminReplaceEnginePricing(next));
     }
 }
