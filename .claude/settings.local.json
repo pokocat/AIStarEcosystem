@@ -19,7 +19,8 @@
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/repository/*.java)",
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/controller/*.java)",
       "Bash(ls *)",
-      "Bash(./mvnw -q -o compile)"
+      "Bash(./mvnw -q -o compile)",
+      "mcp__4b4d504d-9c0a-4044-8117-5e80e42287cb__use_figma"
     ],
     "defaultMode": "bypassPermissions",
     "bypassPermissions": true
