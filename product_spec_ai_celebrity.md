@@ -240,6 +240,79 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ## 六、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.5.3 · 2026-05-09 — 小程序近实时主动同步：多层轮询 + 业务关键点立即触发
+
+**Context**：v0.5.2 把 Bot 消息改成 server 按需合成，但只有用户**主动打开**页面才会刷新 — 红点不会自己变化。本期补齐"主动同步"机制，让用户在工作台/市场/视频中心等任何 tab 都能近实时看到新消息提示。
+
+**多层轮询（解决"30s 太久"问题）**
+
+| 层级 | 间隔 | 时机 | 目的 |
+|---|---|---|---|
+| App 全局后台 | **15s** | 前台时持续，`onHide` 自动停 | tabBar 红点全局更新 |
+| 消息页活跃 | **5s** | `pages/messages` `onShow` ~ `onHide` | 列表实时刷 + dot 紧跟 |
+| Chat 页活跃 | **5s** | `pages/chat` `onShow` ~ `onHide` | 会话内容实时反映新业务 |
+| 业务关键点 | **0s（立即）** | 提交生成 / 充值成功 / 视频发布等 | 用户操作完毕立刻看到红点变化 |
+
+**架构**
+
+```
+App (app.js)
+  ├─ globalData.unread { total, byBot, todos, conversations }
+  ├─ _pollTimer    (15s setInterval)
+  ├─ _unreadSubs[] (page 级订阅者)
+  ├─ pollUnread()           ← 拉一次
+  ├─ triggerUnreadRefresh() ← 业务关键点立即调
+  ├─ subscribeUnread(cb)    ← 返回 unsubscribe
+  └─ _propagateTabBar(total)← 推到所有 page 的 custom tabBar
+
+custom-tab-bar
+  ├─ data.unreadTotal        ← 由 app._propagateTabBar 通过 setData 推
+  └─ 在消息 tab 上渲染红点 / 数字（max "99+"）
+
+pages/messages
+  ├─ onShow: subscribeUnread + 5s 子轮询
+  └─ onHide: unsubscribe + 清子轮询
+
+pages/chat
+  ├─ onShow: 5s 子轮询拉自己的 conversation
+  └─ onHide: 清子轮询；fetch 时做 tail diff 避免无变化 setData
+```
+
+**业务关键点 trigger（已接两处）**
+
+- `pages/generator.startGenerate` 提交成功后调 `app.triggerUnreadRefresh()` — 生成视频立即让片片 dot 反映
+- `pages/recharge.submit` 充值落账后调 — 数数 Bot 的钱包卡立即更新
+
+**为什么是轮询而不是 WebSocket / wx.subscribeMessage？**
+
+- 当前用户在线时，15s + 5s + 关键点 0s 已经"近实时"（max 5s 延迟）
+- WebSocket 需要 server 起 `/ws` 通道、按 userId hold session、心跳重连 — 复杂度上升明显
+- wx.subscribeMessage 是模板消息（用户授权一次后服务端推一次），适合"离线提醒"而非"应用内 UI 同步"
+- v0.6+ 真实需要时（< 1s 双向 / 离线推送）再上 WebSocket，已在 `app.js` 末尾留完整实施 TODO
+
+**关键平台坑（已加注释）**
+
+- App 顶层 `require("./utils/api.js")` 会触发循环依赖（mocks → api → app → mocks）；用延迟 require 在 `pollUnread` 内拿
+- 自定义 tabBar `attached` 早于 page；初始化时从 `globalData.unread` 取一次快照避免空白闪烁
+- `setInterval` 必须在 `onHide` / `onUnload` 清掉，否则后台 `setData` 报警 + 内存泄漏
+
+**门**
+
+- 18 个 miniprogram JS 文件 `node --check` 全通过
+- server 无变更（v0.5.2 的 messagesOverview 拉模式已就位）
+- 客户端契约不变；`triggerUnreadRefresh` 只是 app 内方法，不暴露 API
+
+**WebSocket 升级路径（v0.6+，TODO 已在 app.js 末尾完整记录）**
+
+1. server: `spring-boot-starter-websocket`，按 userId hold session 表
+2. server: 业务事件触发器 → `findByUserId(uid).send({type, payload})`
+3. miniprogram: `app.onLaunch` 调 `wx.connectSocket({ url: wss://.../ws?token=... })`，
+   `onMessage` 时合并到 `globalData.unread` 并 `_notifyUnreadSubs / _propagateTabBar`；
+   `onClose / onError` 时回退到 polling（互为兜底）
+4. 心跳：30s ping，60s 没收到 pong 视为断开重连
+
+---
+
 ### v0.5.2 · 2026-05-09 — Bot 消息按需查询代替事件总线（拉模式）
 
 **Context**：v0.5.1 把消息首页和已读机制接通了，但 Bot 多消息会话仍是 `NotificationService` 里 5 段写死的 canned 内容；当时把它推后是因为以为需要"事件总线 + 推送通道"。本期换思路：**Bot 消息根本不需要推送，每次打开聊天/消息首页时由 server 即时查询用户的真实业务实体（CelebrityProjectVideo / CelebrityStarAuthorization / CelebrityStar / Wallet）合成消息流即可**。这是"拉模式"代替"推模式"，零事件总线、零消息队列、零推送通道。
