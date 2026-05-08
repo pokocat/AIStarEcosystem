@@ -2,6 +2,8 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
+> **入口提示**：完整文档地图见 [`docs/INDEX.md`](docs/INDEX.md)。AI 明星带货线产品规格的 single source of truth 是 [`product_spec_ai_celebrity.md`](product_spec_ai_celebrity.md)。
+
 ## Repository Overview
 
 **AI Star Eco** — AI 虚拟艺人孵化与发行平台。三种用户角色：Fan（粉丝）、Producer（制作人）、Coach（掌门人/MCN）。平台包含用户前端、管理后台、后端服务三端，数据模型完整对齐。
@@ -14,8 +16,9 @@ This file provides guidance to AI coding agents when working with code in this r
 Aisingerecosystem/
 ├── apps/
 │   ├── server/          # 后端: Spring Boot 3.3.5 (Java 17) — port 8080
-│   ├── web/             # 用户前端: Next.js 14 (TypeScript) — port 3000
-│   └── admin/           # 管理后台: Next.js 14 (TypeScript) — port 3001
+│   ├── web/             # 用户前端: Next.js 14 (TypeScript) — port 3002
+│   ├── admin/           # 管理后台: Next.js 14 (TypeScript) — port 3003
+│   └── miniprogram/     # AI 明星带货 · 微信小程序（带货方）— v0.5 新增
 ├── figma/               # ⚠️ Figma Make 导出的原型代码（非正式应用代码）
 └── .claude/
     └── skills/
@@ -31,14 +34,20 @@ Aisingerecosystem/
 ```
 ┌─────────────┐    rewrite /api/*    ┌──────────────────────────────┐
 │  web        │ ──────────────────→ │                              │
-│  :3000      │  proxy               │  Spring Boot server :8080   │
+│  :3002      │  proxy               │  Spring Boot server :8080   │
 │  用户前端    │                      │                              │
 └─────────────┘                      │  /api/me/*      (用户自身)   │
                                      │  /api/auth/*    (鉴权)       │
 ┌─────────────┐    rewrite /api/*    │  /api/admin/*   (管理端)     │
-│  admin      │ ──────────────────→ │  /api/singers/* (legacy)     │
-│  :3001      │  proxy               │  /api/tracks/*  (legacy)     │
-│  管理后台    │                      │                              │
+│  admin      │ ──────────────────→ │  /api/celebrity/* (明星带货)  │
+│  :3003      │  proxy               │  /api/template-scripts/*     │
+│  管理后台    │                      │  /api/notifications/*        │
+└─────────────┘                      │                              │
+                                     │                              │
+┌─────────────┐  wx.request /api/*   │                              │
+│ miniprogram │ ──────────────────→ │                              │
+│  (微信小程序) │ via apiBaseUrl      │                              │
+│  带货方       │                      │                              │
 └─────────────┘                      └──────────────────────────────┘
 ```
 
@@ -176,7 +185,7 @@ DTO record 的字段名**必须与前端 TypeScript interface 完全一致**。J
 ```bash
 cd apps/web
 npm install
-npm run dev        # 开发服务器 port 3000
+npm run dev        # 开发服务器 port 3002
 npx tsc --noEmit   # 类型检查
 npm run build      # 生产构建
 ```
@@ -241,7 +250,7 @@ apps/web/src/
 ```bash
 cd apps/admin
 npm install
-npm run dev -- -p 3001   # 开发服务器 port 3001
+npm run dev              # 开发服务器 port 3003（已在 package.json `dev` 脚本中）
 npx tsc --noEmit         # 类型检查
 ```
 
@@ -373,3 +382,106 @@ cd apps/server && ./mvnw compile -q -o # server 编译
 - **中文单语**：前端文案全部中文，删除 `{ zh: 'X', en: 'Y' }` 字典和 `lang === 'zh' ? ... : ...` 三元
 - **组件直读 mocks**：组件直接 `import { DATA } from "@/mocks/xxx"`，不在 UI 路径调 API 层（避免 USE_MOCK=0 时 404）
 - **迁移技能**：Figma 原型变更时，按 `.claude/skills/figma-migrate/SKILL.md` 执行三端同步
+
+---
+
+## v0.5 增量（2026-05-08 ~ 05-09）
+
+> 4 个版本（v0.5.0 → v0.5.3）连续落地了"AI 明星带货"线 + admin 重构 + 小程序近实时同步。本节列出**新增的实体 / 路由 / 设计决策**，避免新人 agent 再去翻 4 个 commit 拼图。明星带货线产品规格的 single source of truth 是 `product_spec_ai_celebrity.md`。
+
+### 新增 server 实体（`apps/server/.../model/`）
+
+| 实体 | 用途 | 备注 |
+|---|---|---|
+| `CelebrityStarAuthorization` | 用户 × 明星授权关系（替代 `CelebrityStar.authorizationJson` 的"陈列态默认"） | unique(user_id, star_id) + 4 态状态机 |
+| `CelebrityAuthStatus` | enum: UNAUTHORIZED/PENDING/AUTHORIZED/EXPIRED | wire lower-cased |
+| `RechargePackage` | 充值套餐（admin CRUD，软删 active=false） | `LedgerEntry` 守护积分 |
+| `TemplateScript` | 模板脚本（双模 text/video_ref + 6 类 ChatMessage 块） | 1:N 多版本，同 templateId 仅一条 PUBLISHED；JSON 列容纳大对象 |
+| `TemplateScriptStatus` / `TemplateScriptKind` | enum | wire lower-cased |
+| `AiModelProvider` | 大模型 provider 配置（OpenAI 兼容 API token 接入） | apiKey 用 AES-GCM 加密（`AepCryptoUtil`） |
+| `AiModelProviderType` / `AiModelPurpose` | enum | |
+| `UserBotReadState` | per-user-per-bot lastReadAt（驱动 Bot 消息红点） | 复合主键 `{userId}|{botId}` |
+| `Notification.botId` 列 | 关联 Bot id（pian/shen/shu/ada/zhang），未关联为 null | v0.5.2 拉模式后**不再驱动** Bot 消息（保留作其他扩展） |
+
+### 新增 server 端点（节选；详 `specs/openapi.yaml`）
+
+```
+# 用户侧（小程序消费）
+GET  /me/messages-overview                        # 待办 + Bot 会话预览（按需合成）
+GET  /celebrity/dictionaries                      # UI 字典（durations/languages/categories/keypointSuggestions）
+GET  /celebrity/jobs/{jobId}                      # 视频生成异步任务真实进度
+GET  /celebrity/stars?owner=me                    # 我的明星 join 授权表
+POST /me/wallet/recharge                          # 充值落账（走 LedgerEntry）
+GET  /template-scripts/by-template/{templateId}   # 用户端只读 published
+
+POST /notifications/conversations/{botId}/read-all   # 进 chat 标已读
+
+# admin 侧（v0.5 admin 重构）
+POST/PUT/DELETE /admin/celebrity/stars[/{id}]
+POST/DELETE /admin/celebrity/stars/{id}/photos[/{photoId}]
+POST/DELETE /admin/celebrity/stars/{id}/videos[/{videoId}]
+POST/PUT/DELETE /admin/celebrity/templates[/{id}]
+PUT /admin/celebrity/templates/{id}/preview
+PUT /admin/celebrity/engine-pricing
+GET/POST/PUT/DELETE /admin/celebrity/star-authorizations[/{id}]
+POST /admin/celebrity/star-authorizations/{id}/transition
+GET/POST/PUT/DELETE /admin/finance/recharge-packages[/{id}]
+GET/POST /admin/template-scripts ; GET/PUT /admin/template-scripts/{id}
+POST /admin/template-scripts/{id}/{submit-review|publish|rollback|dry-run|draft-with-ai|upload-clip}
+GET/POST /admin/ai-models ; GET/PUT/DELETE /admin/ai-models/{id} ; POST /admin/ai-models/{id}/test
+```
+
+### 关键设计决策
+
+- **Bot 消息走拉模式**（v0.5.2）：`NotificationService` 5 个 composer 按需查询用户业务态合成 `BotConversationDto`；零事件总线、零消息队列、零推送通道。"未读 dot" 由 `UserBotReadState.lastReadAt` + freshness 比较计算。
+- **小程序近实时同步**（v0.5.3）：app-level 15s 兜底轮询 + 消息/chat 页 5s 子轮询 + 业务关键点（生成提交 / 充值成功）立即触发 `triggerUnreadRefresh()`。WebSocket 升级路径已在 `apps/miniprogram/app.js` 末尾留 TODO。
+- **PromptAssemblyService**（v0.5.0）：text 模式按 `durationVariants` 选 scene 子集 + 变量替换 + 引擎 adapter 改写 + 风控；video_ref 模式 URL 透传到引擎参考通道（自动抽帧 / NSFW 检测留 v0.6）。
+- **AES-GCM 密钥**：`AepCryptoUtil` 从 `AEP_SECRET_KEY` 环境变量读；dev fallback `dev-aes-256-key-32bytes!!!!!!!!`。**生产必须配 `AEP_SECRET_KEY`**，否则 admin 改 apiKey 后重启无法解密。
+- **engine-pricing 当前 in-memory**：`CelebrityZoneService.mutablePricing` ConcurrentHashMap，admin PUT 立即生效但重启失效。v0.6 落 `PlatformConfig` 表持久化。
+- **JOBS 当前 in-memory**：同上，重启丢失。v0.6 落 `generation_jobs` 表。
+
+### admin sidebar 当前 enabled / 隐藏
+
+启用：Platform / Artists / **Celebrity（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）** / Distribution / Finance（含 recharge-packages） / Notifications / Audit / 平台 > AI 模型。
+
+隐藏（源码保留，URL 直访仍可用）：music / film / nft / forge / digital-ip / community / coach / fan / membership / store / monetization。
+
+切回方式：`apps/admin/src/constants/nav.ts` 改 `enabled` 字段。
+
+---
+
+## 文档同步纪律（**Strict — agent 必读**）
+
+> 文档 drift 是这个仓库历史上最容易踩的坑（参见 v0.5.4 文档审计：CLAUDE.md / apps/server/README.md 的角色名长达 2 周与代码不一致）。**每次大版本迭代必须把文档作为 commit 的一部分一起改**，禁止"代码先 merge，文档之后补"。
+
+### "大版本"的定义
+
+在 `product_spec*.md` 追加一个新版本节（如 v0.5.x → v0.6.0），或新增 / 修改 / 删除任何 server 实体 / API 路径 / 表结构，即视为大版本。
+
+### 必更新清单（同 commit）
+
+| 触发 | 必同步的文档 |
+|---|---|
+| 加 / 改 / 删 server 实体或表 | `apps/server/README.md` 新增表段；`product_spec*.md` 数据模型节；`AGENTS.md` 增量节；`docs/INDEX.md` last-reviewed |
+| 加 / 改 server 接口路径 | `specs/openapi.yaml`（CI 守门）；`product_spec*.md` 接口节；`AGENTS.md` 增量节 |
+| 加 / 删 admin 页面 | `apps/admin/README.md` 当前可用菜单段；`docs/ADMIN_PRODUCT_SPEC.md`（如属新规划） |
+| 加 / 改 / 删小程序页面 / 关键能力 | `apps/miniprogram/README.md` 版本日志；`product_spec_ai_celebrity.md` 版本节；如平台坑 / 变通方案 同步加到 `apps/miniprogram/agent.md` |
+| 加新文档 | 同时在 `docs/INDEX.md` 添加一行（含 last-reviewed 日期） |
+| 删旧文档 | 先 `git grep -n '<filename>' -- '*.md'` 检查站内引用并改指真源；再 `git rm`，依赖 git history 留底 |
+| 改环境变量 / 部署需求（如 `AEP_SECRET_KEY`） | `apps/server/README.md` 环境变量段；`DEPLOYMENT.md` v0.x 部署变更段 |
+
+### 验收
+
+每次 v 升级 commit 之前，跑：
+
+```bash
+# 1) 文档与代码一致性（角色名 / 端口 / 关键 enum）
+git grep -nE 'PLATFORM_OPERATOR|FINANCE_ADMIN' -- '*.md'   # 当前应是 0 命中（除非 v0.6+ 真做了拆分）
+git grep -nE 'port 300[01]' -- '*.md'                       # 应 0 命中
+
+# 2) 接口契约
+(cd apps/web && npm run check:api-contract)
+
+# 3) 三端编译
+(cd apps/web && npx tsc --noEmit) && (cd apps/admin && npx tsc --noEmit) && (cd apps/server && mvn compile -q -o)
+```

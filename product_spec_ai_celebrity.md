@@ -4,6 +4,8 @@
 > 三端覆盖：`apps/miniprogram`（带货方）+ `apps/server`（共用后端）+ `apps/admin`（运营/审核）。
 > 单一真源：字段形状对齐 `apps/web/src/types/celebrity-zone.ts`。
 > 维护规则：每次变更**追加**新版本节，不删除历史；"现状"小节始终反映最新一版的实际行为。
+>
+> 完整文档地图见 [`docs/INDEX.md`](docs/INDEX.md)。
 
 ---
 

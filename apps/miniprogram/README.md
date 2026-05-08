@@ -107,6 +107,11 @@ apps/miniprogram/
 
 详细业务规格见根目录 `product_spec_ai_celebrity.md`（独立 AI 明星产品文档，按版本追加）。
 
+- **v0.5.4 / 2026-05-09**：文档收敛（小程序无代码改动；`agent.md` 加「文档同步纪律」段）。
+- **v0.5.3 / 2026-05-09**：近实时同步 —— App 全局 15s + 消息/chat 页 5s 子轮询 + 业务关键点立即 trigger（`triggerUnreadRefresh`）；自定义 tabBar 加未读红点；WebSocket 升级路径在 `app.js` 末尾留 TODO。
+- **v0.5.2 / 2026-05-09**：server 侧重写为按需合成（拉模式），小程序契约不变。
+- **v0.5.1 / 2026-05-09**：消除 5 处页面硬编码（durations / languages / categories / keypoints / star 占位）；接入 `/me/messages-overview` 新 shape；`pages/generating` 改为真实轮询 `getJobProgress(jobId)`；`pages/chat` 进入立即 `markBotRead` 清红点。
+- **v0.4.0 / 2026-05-07**：通信层完整对接 server（11 屏 API + 字段长名对齐）；server-side endpoints 已落地。
 - **v0.3.0 / 2026-05-07**：与 web 版明星专区对齐。新增双 Tab（我的明星/全部市场）、明星资料图集 + 视频、生成器模型选择 + 模板效果预览 + 动态积分消耗、我的页积分钱包 + 充值流程；补完所有点击位。
 - **v0.2.0 / 2026-05-07**：消息从单条卡片改为会话流，新增 chat 详情页（6 种消息块）。
 - **v0.1.0 / 2026-05-07**：首版。11 屏静态实现 + mock 数据 + 与 server 的接口映射占位。

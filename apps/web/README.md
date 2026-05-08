@@ -149,6 +149,8 @@ import type { Song } from "@/types/music";
 
 ## 版本日志
 
+> 注：v0.5.x（2026-05-08 ~ 05-09）是 admin / miniprogram-only 的 release（明星带货线 + AI 模型配置 + 模板脚本系统 + 通知拉模式）；本 web 用户端**不在本期变更范围**，版本号仍是 v2.7.0。详情见 root `product_spec_ai_celebrity.md`。
+
 ### v2.7.0 — 2026-05-06（本次）
 
 #### AI 明星专区（Celebrity Zone）— 完整 B 端 SaaS 模块

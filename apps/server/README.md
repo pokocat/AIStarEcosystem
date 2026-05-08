@@ -27,6 +27,15 @@ mvn spring-boot:run
 
 默认激活 `dev` profile，使用 **H2 内存数据库**（`MODE=MySQL` 兼容模式）。启动即用，每次重启自动 seed 种子数据。
 
+### 环境变量
+
+| 变量 | 用途 | 必配？ |
+|---|---|---|
+| `AEP_SECRET_KEY` | AES-GCM 对称密钥（加密 `AiModelProvider.apiKey` 等敏感字段；32 字节，短/长会用 SHA-256 派生）。生产**必须**配；dev 缺省时回退到固定字符串。 | 生产**必配**；dev 可缺省 |
+| `aep.secret.key` | 同上的系统属性别名（`-Daep.secret.key=...`）；优先级低于环境变量 | 可选 |
+| `SPRING_PROFILES_ACTIVE` | `dev`（默认）或 `mysql` | 看部署环境 |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | mysql profile 时的数据源 | mysql profile 必配 |
+
 启动后可访问：
 - API: http://localhost:8080
 - H2 控制台: http://localhost:8080/h2-console（JDBC URL: `jdbc:h2:mem:aistareco`，用户名 `sa`，密码留空）
@@ -83,15 +92,17 @@ mvn spring-boot:run
 
 | 角色 | 说明 |
 |------|------|
-| `PLATFORM_OPERATOR` | 系统管理员，拥有所有数据操作权限 |
-| `FINANCE_ADMIN` | 财务管理员，拥有所有数据操作权限 |
+| `SUPER_ADMIN` | 超级管理员，拥有所有数据操作权限 |
+| `OPERATOR` | 平台运营，拥有所有数据操作权限 |
 
-开发环境默认账户：
+> v0.6+ 计划拆分为 `PLATFORM_OPERATOR / FINANCE_ADMIN`（职责分离）。当前 `AdminUser.AdminRole` enum 实际是 `{SUPER_ADMIN, OPERATOR}`。
+
+开发环境默认账户（由 `DataInitializer` seed）：
 
 | 用户名 | 密码 | 角色 |
 |--------|------|------|
-| `admin` | `admin123` | PLATFORM_OPERATOR |
-| `finance` | `finance123` | FINANCE_ADMIN |
+| `admin` | `admin123` | SUPER_ADMIN |
+| `operator` | `operator123` | OPERATOR |
 
 登录流程：`POST /api/admin/auth/login` -> 返回 JWT Token -> 前端存储并在后续请求中通过 `Authorization: Bearer <token>` 传递。
 
@@ -128,7 +139,7 @@ Content-Type: application/json
 | POST | `/api/admin/auth/login` | 管理员登录（用户名/密码 → JWT） |
 | POST | `/api/auth/activate` | 用户侧秘钥激活注册 |
 
-### 管理后台（需 Bearer Token，PLATFORM_OPERATOR / FINANCE_ADMIN）
+### 管理后台（需 Bearer Token，SUPER_ADMIN / OPERATOR）
 
 #### 平台账户 / 权益
 
@@ -231,8 +242,8 @@ src/main/java/com/aistareco/aep/
 
 | 角色 | 类型 | 说明 |
 |------|------|------|
-| `PLATFORM_OPERATOR` | 系统管理员 | 所有数据操作权限，管理后台登录 |
-| `FINANCE_ADMIN` | 系统管理员 | 所有数据操作权限，管理后台登录 |
+| `SUPER_ADMIN` | 系统管理员 | 所有数据操作权限，管理后台登录 |
+| `OPERATOR` | 系统管理员 | 平台运营，管理后台登录 |
 | `PRODUCER` | 普通用户 | 制作人，通过秘钥注册 |
 | `COACH` | 普通用户 | 掌门人，通过秘钥注册 |
 | `FAN` | 普通用户 | 粉丝，通过秘钥注册 |
@@ -254,3 +265,30 @@ src/main/java/com/aistareco/aep/
 | `aep_audit_logs` | 审计日志 |
 
 内容/IP 域相关表（`digital_ips` / `aep_songs` / `aep_albums` / `aep_concerts` / `aep_dramas` / `aep_movies` / `aep_advertisements` / `aep_voice_works` / `copyright_items` / `distribution_*` / `nft_items` / `community_*` / …）见 product_spec.md §4–§5。
+
+### v0.5 新增表（明星带货线）
+
+> 全部由 v0.5.0 ~ v0.5.3 落地。详细字段与契约见 `/product_spec_ai_celebrity.md`。
+
+| 表 | 用途 |
+|---|---|
+| `celebrity_star_authorizations` | 用户 × 明星授权关系（4 态状态机；unique(user_id, star_id)） |
+| `recharge_packages` | 充值套餐（admin CRUD；软删走 `active=false`；落账走 `LedgerEntry`） |
+| `template_scripts` | 模板脚本（双模 text / video_ref；同 templateId 仅一条 PUBLISHED；JSON 列容纳 persona/scenes/variables/engineAdapters/durationVariants/postProcess/safety/referenceClip 等） |
+| `ai_model_providers` | 大模型 provider 配置（OpenAI 兼容 API token；apiKey 列存 AES-GCM 密文，永不明文返回） |
+| `user_bot_read_state` | per-user-per-bot lastReadAt（驱动消息首页未读 dot 与 chat 已读机制） |
+| `celebrity_stars` 扩字段 | bio / location / fans / cooperation_count / avg_gmv / photos_json / videos_json |
+| `celebrity_templates` 扩字段 | preview_cover / preview_video_url / duration_sec |
+| `aep_notifications` 扩字段 | bot_id（关联 5 个 AI Bot 同事；v0.5.2 拉模式后保留作扩展点） |
+
+### v0.5 关键服务
+
+- `PromptAssemblyService` —— 按需把 TemplateScript 装配为引擎请求体（变量替换 + 引擎 adapter + 风控）
+- `NotificationService` —— Bot 消息按需查询合成（5 composer，零事件总线）
+- `AiModelInvocationService` —— OpenAI / OPENAI_COMPATIBLE 的 chat 调用 + provider 测试连通
+- `RechargeService` —— 充值落账（recharge 主分录 + 可选 gift bonus 副分录）
+- `CelebrityZoneService` —— 引擎价格 in-memory（`mutablePricing`）+ JOBS in-memory（重启失效；v0.6 落表）
+
+### 通用工具
+
+- `AepCryptoUtil`（`com.aistareco.common`）—— AES-GCM 加密/脱敏；密钥从 `AEP_SECRET_KEY` 读

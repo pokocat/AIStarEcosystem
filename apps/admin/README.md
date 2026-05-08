@@ -84,6 +84,10 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.5.4 / 2026-05-09**：文档收敛（角色名 `SUPER_ADMIN/OPERATOR` 与代码对齐；删 4 个过期总规；新建 `docs/INDEX.md`；引入「文档同步纪律」段）。
+- **v0.5.3 / 2026-05-09**：小程序近实时同步（多层轮询 + 业务关键点 trigger）；admin 无变更。
+- **v0.5.2 / 2026-05-09**：Bot 消息从硬编码改为按需查询（拉模式，零事件总线）；admin 无变更。
+- **v0.5.1 / 2026-05-09**：消除小程序硬编码 + 通知系统真正接通（`/me/messages-overview` / `/celebrity/dictionaries` / `/celebrity/jobs/{id}` / `/notifications/conversations/{botId}/read-all`）；admin 无变更。
 - **v0.5.0 / 2026-05-08**：明星 / 模板 / 授权 / 套餐 / 引擎价 / 模板脚本 / AI 模型 全栈 admin CRUD；sidebar 聚焦明星带货线。详见 `product_spec_ai_celebrity.md` v0.5 节。
 - **v0.4.0 / 2026-05-07**：server 端用户侧接口打通（小程序和 server 双端跑通）；admin 维持 GET-only。
 - 之前版本：见 `product_spec_ai_celebrity.md`。

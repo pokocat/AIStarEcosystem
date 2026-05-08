@@ -2,6 +2,26 @@
 
 本文记录 2026-04-19 这次实际部署过程、后续增量部署 SOP，以及在本次 `/web`、`/admin` 子路径部署与共享视频静态资源改造之后的本地启动调试方式。
 
+## v0.5 部署变更（2026-05-08 ~ 05-09）
+
+> 4 个版本 v0.5.0 → v0.5.3 已落地，部署侧增量如下：
+
+1. **新增必配环境变量 `AEP_SECRET_KEY`**（AES-GCM 32 字节，对称加密 `AiModelProvider.apiKey` 等敏感字段）
+   - server `systemd` 单元的 `EnvironmentFile=` 文件里加 `AEP_SECRET_KEY=<production-grade-secret>` 一行，重启 `aistareco-server`
+   - **dev fallback** 是固定字符串 `dev-aes-256-key-32bytes!!!!!!!!`，生产不能依赖
+2. **server 自动建 5 张新表**（启动时 JPA `ddl-auto: update` 自动 create）：
+   - `celebrity_star_authorizations` / `recharge_packages` / `template_scripts` / `ai_model_providers` / `user_bot_read_state`
+   - `celebrity_stars` / `celebrity_templates` / `aep_notifications` 自动加列（`bio` / `photos_json` / `videos_json` / `preview_video_url` / `bot_id` 等）
+3. **admin 新增 5 个页面路径**（确保 nginx basePath `/admin` 转发能 200）：
+   - `/admin/celebrity/template-scripts` / `/admin/celebrity/star-authorizations` / `/admin/celebrity/engine-pricing`
+   - `/admin/finance/recharge-packages` / `/admin/platform/ai-models`
+4. **小程序对外 base url** 从原 mock 切到生产 server 时，把 `apps/miniprogram/app.js` 的 `useMock = false` + `apiBaseUrl = "https://your-prod-domain/api"`；上线前要在小程序管理后台「服务器域名」配 `request 合法域名`
+5. **admin 调价立即生效但重启失效**（v0.5 临时 in-memory）：`PUT /admin/celebrity/engine-pricing` 改的引擎价 server 重启会回到默认；v0.6 会落 `PlatformConfig` 表
+
+详细产品规格见 `product_spec_ai_celebrity.md` 顶级版本日志（v0.5.0 ~ v0.5.3）。
+
+---
+
 ## 1. 当前线上部署基线
 
 ### 1.1 服务器与目录

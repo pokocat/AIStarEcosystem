@@ -195,4 +195,5 @@ echo "NEXT_PUBLIC_USE_MOCK=0" > apps/web_new/.env.local  # 连后端
 - `specs/openapi.yaml` — 后端接口契约（path + schema 真值源）
 - `specs/BUSINESS_RULES.md` — openapi 表达不了的业务约束（校验规则、扣费公式、状态机）
 - `apps/web/scripts/check-api-contract.mjs` — `npm run check:api-contract` CI 漂移校验
-- `specs/PRODUCT_SPEC_CN.md` — 产品口径说明
+- `product_spec.md` — 产品口径说明（数字人/数字 IP 主线，v2.7 canonical）
+- `product_spec_ai_celebrity.md` — AI 明星带货产品规格（独立文档，v0.5.x）

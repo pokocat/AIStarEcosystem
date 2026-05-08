@@ -24,7 +24,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `specs/BUSINESS_RULES.md` — openapi-can't-express constraints: validation rules, calculation formulas, state-machine timing, error codes.
 - `apps/web/scripts/check-api-contract.mjs` — CI gate: every `apiFetch(...)` URL must have a matching openapi path. Run via `npm run check:api-contract` from `apps/web/`.
 
-Product spec: `product_spec.md` (root) — updated most recently; prefer it over `product.md`.
+Product spec: 双源 — `product_spec.md`（数字人/数字 IP 主线，v2.7）+ `product_spec_ai_celebrity.md`（AI 明星带货线，v0.5.x，独立维护）。完整文档地图见 `docs/INDEX.md`。
 
 ## Daily commands
 
@@ -104,12 +104,14 @@ For Figma prototype updates, invoke the `figma-migrate` skill — it codifies th
 /api/auth/**               → permitAll (license activation)
 /api/admin/auth/login      → permitAll
 /api/me/**                 → authenticated (JWT; controller must check ownerUserId == principal.id)
-/api/admin/**              → hasAnyRole("PLATFORM_OPERATOR", "FINANCE_ADMIN")
+/api/admin/**              → hasAnyRole("SUPER_ADMIN", "OPERATOR")
 ```
 
-Dev admin credentials (seeded by `DataInitializer`): `admin / admin123` (PLATFORM_OPERATOR), `finance / finance123` (FINANCE_ADMIN).
+Dev admin credentials (seeded by `DataInitializer`): `admin / admin123` (SUPER_ADMIN), `operator / operator123` (OPERATOR).
 
-> Note: `AGENTS.md` uses the older role names `SUPER_ADMIN / OPERATOR`. The server code and `apps/server/README.md` are authoritative — the actual role enum values are **`PLATFORM_OPERATOR`** and **`FINANCE_ADMIN`**.
+> Source of truth: `apps/server/src/main/java/com/aistareco/aep/model/AdminUser.java` enum `AdminRole = { SUPER_ADMIN, OPERATOR }` + `apps/server/src/main/java/com/aistareco/aep/config/AepSecurityConfig.java` `.hasAnyRole("SUPER_ADMIN","OPERATOR")` + `DataInitializer.java` 76-91.
+>
+> Future plan (v0.6+): split into `PLATFORM_OPERATOR` / `FINANCE_ADMIN` for separation of duties. To do that, sync 4 places: `AdminUser.AdminRole` enum / `AepSecurityConfig.hasAnyRole` / `DataInitializer` seed / `apps/admin/src/types/account.ts`. Until then, all four match `SUPER_ADMIN/OPERATOR`.
 
 ## Conventions that bite if ignored
 
@@ -125,5 +127,23 @@ Dev admin credentials (seeded by `DataInitializer`): `admin / admin123` (PLATFOR
 - `specs/openapi.yaml` — backend interface contract; 142 paths grouped by tag.
 - `specs/BUSINESS_RULES.md` — validation rules, calculation formulas, error codes, state-machine timing (the openapi-can't-express stuff).
 - When you add a new domain or endpoint, the order is: (1) `apps/web/src/types/<domain>.ts` (truth source), (2) `apps/web/src/api/<domain>.ts` (apiFetch URLs), (3) `specs/openapi.yaml` (path + schema). The `npm run check:api-contract` gate fails if step 3 is skipped — there's no separate "diff doc" to update anymore.
-- `apps/web/README.md` — version log with per-release deltas (currently at v2.4.0, 2026-04-19).
+- `apps/web/README.md` — version log with per-release deltas (currently at v2.7, 2026-05-06; v0.5.x not affecting web).
 - `.claude/skills/figma-migrate/SKILL.md` — invoked automatically when the user mentions Figma updates.
+- **完整文档地图**：[`docs/INDEX.md`](docs/INDEX.md) — single-page map by "what you want to do".
+
+## 文档同步纪律（**Strict — agent 必读**）
+
+> 每次大版本迭代（在 `product_spec*.md` 追加一个新版本节，比如 v0.5.x → v0.6.0）必须在**同一个 commit** 里同步以下文档。文档与代码分离的 commit 是 **drift 的源头**，禁止。
+
+**大版本变更后必更新清单：**
+
+1. **`product_spec*.md` 自身** —— 顶部追加新版本节（不删历史）
+2. **受影响的 `apps/*/README.md`** —— 末尾"版本日志"段加新版条目
+3. **`AGENTS.md`** —— 如新增实体 / 服务 / 路由，更新「v0.5+ 增量」节或加新节
+4. **`docs/INDEX.md`** —— 如新增 / 删除文档，更新对应行；总是更新 `last-reviewed` 日期
+5. **`apps/server/README.md`** —— 如新增表 / 接口 / 环境变量
+6. **`specs/openapi.yaml`** —— 如新增 / 改路径，跑 `npm run check:api-contract` 确认通过
+
+**加新文档**：必须同时在 `docs/INDEX.md` 加一行。
+
+**删旧文档**：先 `git grep -n '<filename>' -- '*.md'` 检查站内引用并改指真源；然后 `git rm`，依赖 git history 留底。

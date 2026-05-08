@@ -41,7 +41,8 @@
 
 ### 2.1 账号管理 `platform/accounts`
 - **管理对象**：`AdminUser`（管理员）+ `AepUser`（前台用户：Fan / Producer / Coach）。
-- **可配置字段**：用户名、邮箱、手机、角色（`PLATFORM_OPERATOR` / `FINANCE_ADMIN` / 前台 `Fan` / `Producer` / `Coach`）、状态（active/suspended/banned）、绑定机构、绑定 License。
+- **可配置字段**：用户名、邮箱、手机、角色（截至 v0.5 实际：admin 端 `SUPER_ADMIN` / `OPERATOR`；前台 `Fan` / `Producer` / `Coach`）、状态（active/suspended/banned）、绑定机构、绑定 License。
+  - v0.6+ 计划：admin 角色拆分为 `PLATFORM_OPERATOR` / `FINANCE_ADMIN` 实现职责分离。届时同步改 `AdminUser.AdminRole` enum / `AepSecurityConfig` / `DataInitializer` / `apps/admin/src/types/account.ts`。
 - **前台联动**：禁用用户 → 立即吊销 JWT；调整角色 → 下次登录后端读取新角色生效；前台 `/portal`、`/producer/*`、`/fan`、`/coach` 入口按角色显示/隐藏。
 
 ### 2.2 机构 / 工作室 `platform/studios`
@@ -707,7 +708,7 @@ ConfigItem {
 
 ### 10.2 工作流
 1. 运营在后台编辑 → 自动存为 `draft`。
-2. 提交审核 → `FINANCE_ADMIN` / `PLATFORM_OPERATOR` 复核（高风险项必须双人复核：定价 / 抽成 / 发放）。
+2. 提交审核 → 高权限 admin 复核（v0.5 当前 `SUPER_ADMIN` / `OPERATOR` 同权；v0.6+ 拆分后由 `FINANCE_ADMIN` / `PLATFORM_OPERATOR` 双人复核：定价 / 抽成 / 发放）。
 3. 发布 → 写 `published` 版本，旧版本变 `archived`，全网生效（带 CDN 失效）。
 4. 回滚 → 一键将某历史版本重新 `published`。
 

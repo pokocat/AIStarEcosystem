@@ -2,6 +2,12 @@
 
 本文件记录已定位但暂未修复的问题，方便后续排期。动手修时请勾掉对应条目并在代码里落实。
 
+> 状态注（2026-05-09 / v0.5.4 文档审计）：本文 2026-04-21 记录的 admin auth / error-handler / logId 问题截至 v0.5.3 **未处理**；v0.5.0 ~ v0.5.3 的工作集中在 admin 页面 / 模板脚本系统 / AI 模型配置 / miniprogram 拉模式同步，没碰这条 auth 链。本节内容**仍然有效**，留待 v0.6+。
+>
+> v0.5.x 期间发现的新待办见文末「v0.6 候选」段。
+
+---
+
 ## 2026-04-21 · admin 调 server 全 403 + 缺排错手段
 
 ### 现象
@@ -84,3 +90,48 @@
    - body 是 JSON，包含 `error.code` / `error.message` / `error.logId`（没登录时是 401/403）。
 2. 开 `AEP_DEV_AUTH_ENABLED=true` 后，admin 页面刷新不再出 403。
 3. 故意构造一次 500（比如访问不存在的 admin 资源），admin 右上应弹 toast，带 logId；后端日志该行前缀能看到同一个 logId。
+
+---
+
+## v0.6 候选（2026-05-09 收集）
+
+> 来源：v0.5.0 ~ v0.5.3 commit message 与 product_spec_ai_celebrity.md 的"已知限制"段。
+
+### 持久化与基础设施
+
+- [ ] **engine-pricing 落表**：当前 `CelebrityZoneService.mutablePricing` 是 in-memory ConcurrentHashMap，admin PUT 立即生效但**重启失效**。落到 `PlatformConfig` key=`celebrity.engine-pricing`，启动时读取覆盖默认值。详 `product_spec_ai_celebrity.md` v0.5.x §D5。
+- [ ] **生成任务 JOBS 落表**：`CelebrityZoneService.JOBS` 同样 in-memory，重启丢失轮询进度。建表 `generation_jobs(id, started_at, total_sec, engine, status, created_at)`，progress 在 service 层从 `started_at + total_sec` 计算。
+- [ ] **真实微信支付**：`POST /me/wallet/recharge` 当前 mock 直接落账。线上需先 `wx.requestPayment` 走支付，回调 `notify_url` 验签后再调 server `/me/wallet/recharge`。
+
+### LLM provider 拓展
+
+- [ ] **国产 LLM provider 真实调用**：`AiModelInvocationService` 当前只支持 `OPENAI / OPENAI_COMPATIBLE` 走 `/chat/completions`。`ANTHROPIC` 用 `/v1/messages` 不同路径；`BAIDU / ALIYUN / TENCENT` 都是各自鉴权。各自加 adapter。
+
+### 配置中心 / 字典上移（spec §10）
+
+- [ ] **`ConfigItem` 配置中心**：`docs/ADMIN_PRODUCT_SPEC.md` §10 设计已写。需要落实体 + 草稿 / 审核 / 发布状态机 + 灰度（白名单 / AB 桶）。
+- [ ] **`apps/web/src/constants/*` 17 个字典上移**：详 `docs/ADMIN_PRODUCT_SPEC.md` §7.5。
+- [ ] **`/celebrity/dictionaries`** 当前 hard-coded 默认值；接 ConfigItem 后改为运营可配。
+
+### 通知 / 实时
+
+- [ ] **WebSocket 升级路径**：当前轮询 15s + 5s + 业务关键点 trigger 已"近实时"。如需 < 1s 双向 / 离线提醒，按 `apps/miniprogram/app.js` 末尾 TODO 4 步上：spring-boot-starter-websocket → 按 userId hold session → 业务事件 emit → 30s ping / 60s 重连。
+- [ ] **`wx.subscribeMessage` 模板消息**：用户离线推醒（生成完成 / 授权审核结果），需要走小程序模板 ID 申请。
+
+### 模板脚本（spec §3.2.7 video_ref 模式）
+
+- [ ] **video_ref 自动检测**：当前接 URL 并默认 `reviewStatus=approved`。v0.6 加 `VideoReferenceIngestService` 做转码 + 抽帧 + BGM BPM + NSFW + 主色板检测，结果回填到 `referenceClip.autoAnalysis`。
+- [ ] **OSS / CDN 文件上传**：当前 admin 表单只接受 URL（明星 photos/videos / 模板预览 / 参考视频）。v0.6 接 OSS multipart 上传，后端代签 STS 临时凭证。
+- [ ] **A/B 桶 + 多人审批**：当前 `experiment` / `metrics` 字段保留但不分桶；publish 单 admin 即可。v0.6 加双人复核 + AB 分桶（按 `userId` 哈希）+ 30 天指标回流。
+
+### 角色拆分
+
+- [ ] **`SUPER_ADMIN/OPERATOR` → `PLATFORM_OPERATOR/FINANCE_ADMIN`**：`docs/ADMIN_PRODUCT_SPEC.md` §2.1 / §10.2 规划中。届时同步改 4 处：`AdminUser.AdminRole` / `AepSecurityConfig.hasAnyRole` / `DataInitializer` seed / `apps/admin/src/types/account.ts`。
+
+### 基础设施收敛
+
+- [ ] **Bot 消息真实事件触发推送**（替代或补充当前拉模式）：业务事件触发器（生成完成 / 审核通过）→ 写 `Notification` → WebSocket 推。当前拉模式是"在线时近实时"，事件触发是"离线也能感知"。
+
+### dashboard 待办真实统计
+
+- [ ] **"数据日报" todo count**：`NotificationService.computeTodos` 当前回退常量 1。接 dashboard summary 后改为真实未读统计。
