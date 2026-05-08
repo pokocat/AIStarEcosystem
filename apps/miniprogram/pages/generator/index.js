@@ -197,6 +197,8 @@ Page({
       });
       app.globalData.pendingGeneration = r;
       wx.hideLoading();
+      // v0.5.3：业务关键节点立即触发一次未读拉取（让 tabBar 红点近实时变化）
+      if (typeof app.triggerUnreadRefresh === "function") app.triggerUnreadRefresh();
       wx.navigateTo({ url: "/pages/generating/index?jobId=" + (r.jobId || "") });
     } catch (e) {
       wx.hideLoading();

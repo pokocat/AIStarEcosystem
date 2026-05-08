@@ -36,6 +36,25 @@
 .tab-active { color: #0A0A0A; }
 .tab-active .tab-text { font-weight: 700; }
 
+/* v0.5.3：消息 tab 未读红点 / 数字 */
+.tab-icon { position: relative; }
+.tab-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -16rpx;
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 8rpx;
+  border-radius: 28rpx;
+  background: #E84B3C;
+  color: #fff;
+  font-size: 18rpx;
+  font-weight: 700;
+  line-height: 28rpx;
+  text-align: center;
+  box-shadow: 0 0 0 2rpx #fff;
+}
+
 /* 中央凸起 */
 .tab-center {
   position: relative;

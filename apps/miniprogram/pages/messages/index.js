@@ -1,4 +1,7 @@
 const { NotificationsApi } = require("../../utils/api.js");
+const app = getApp();
+
+let activePollTimer = null;
 
 Page({
   data: {
@@ -15,8 +18,38 @@ Page({
       const t = this.getTabBar();
       if (t) t.setData({ selected: 0 });
     }
-    // 从 chat 页返回时，刷新红点 / 时间
+    // v0.5.3：先拿一次 globalData 的最新快照（app 后台轮询填的），UI 立即可见
+    if (app.globalData && app.globalData.unread && Array.isArray(app.globalData.unread.conversations) && app.globalData.unread.conversations.length > 0) {
+      this.applyOverview(app.globalData.unread);
+    }
+    // 然后立刻拉一次最新数据（chat 返回时这一拉能立刻把 dot 清掉）
     this.fetch();
+    // 订阅 app 后台轮询：有新数据 push 时 page 自动 re-render
+    this._unsubscribe = app.subscribeUnread((unread) => this.applyOverview(unread));
+    // 页内活跃时 5s 高频轮询（用户停在消息页时实时感更强）
+    if (!activePollTimer) activePollTimer = setInterval(() => app.pollUnread(), 5 * 1000);
+  },
+
+  onHide() {
+    if (this._unsubscribe) { this._unsubscribe(); this._unsubscribe = null; }
+    if (activePollTimer) { clearInterval(activePollTimer); activePollTimer = null; }
+  },
+
+  onUnload() {
+    if (this._unsubscribe) { this._unsubscribe(); this._unsubscribe = null; }
+    if (activePollTimer) { clearInterval(activePollTimer); activePollTimer = null; }
+  },
+
+  /** 把 app.globalData.unread 渲染到 page 数据上（与 fetch 输出 shape 一致）。 */
+  applyOverview(unread) {
+    if (!unread) return;
+    const todos = unread.todos || [];
+    const total = todos.reduce((s, t) => s + (Number(t.count) || 0), 0);
+    this.setData({
+      todos,
+      messages: unread.conversations || [],
+      todoTotal: total
+    });
   },
 
   async fetch() {

@@ -58,6 +58,8 @@ Page({
       wx.showToast({ icon: "success", title: "充值成功" });
       // RechargeResponseDto: { wallet, ledgerEntry } —— credits 用 wallet 字段更新
       this.setData({ credits: r.wallet || r.credits || this.data.credits });
+      // v0.5.3：充值后立即刷新未读（数数 Bot 的钱包卡会随之更新）
+      try { const app = getApp(); if (app && app.triggerUnreadRefresh) app.triggerUnreadRefresh(); } catch (e) {}
       setTimeout(() => wx.navigateBack(), 800);
     } catch (e) {
       wx.hideLoading();

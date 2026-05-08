@@ -9,8 +9,13 @@
       <view wx:if="{{item.center}}" class="center-bump">
         <view class="center-icon">✦</view>
       </view>
-      <view wx:else class="tab-icon">{{item.icon}}</view>
+      <view wx:else class="tab-icon">
+        {{item.icon}}
+        <!-- v0.5.3：消息 tab 显示未读红点 / 数字 -->
+        <view wx:if="{{index === 0 && unreadTotal > 0}}" class="tab-badge">{{unreadTotal > 99 ? '99+' : unreadTotal}}</view>
+      </view>
       <view class="tab-text">{{item.text}}</view>
     </view>
   </block>
 </view>
+

@@ -1,4 +1,7 @@
 const { NotificationsApi } = require("../../utils/api.js");
+const app = getApp();
+
+let chatPollTimer = null;
 
 Page({
   data: {
@@ -21,20 +24,43 @@ Page({
     this.fetch(botId);
     // v0.5.1：进入 chat 立即标已读（消息首页红点会清）
     NotificationsApi.markBotRead(botId).catch(() => {});
+    // v0.5.3：进入 chat 同时让 app 后台轮询立刻刷一遍（消息首页 dot 同步）
+    if (typeof app.pollUnread === "function") app.pollUnread();
+  },
+
+  onShow() {
+    // v0.5.3：chat 活跃时 5s 高频轮询会话内容（业务态变化即时反映）
+    if (chatPollTimer) clearInterval(chatPollTimer);
+    chatPollTimer = setInterval(() => this.fetch(this.data.botId), 5 * 1000);
+  },
+
+  onHide() {
+    if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+  },
+
+  onUnload() {
+    if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
   },
 
   async fetch(botId) {
+    if (!botId) return;
     try {
       const c = await NotificationsApi.getConversation(botId);
       // 给每条消息一个稳定的 id 用于 wx:key + scroll-into-view
       const messages = (c.messages || []).map((m, i) => ({ ...m, id: "m-" + i }));
+      // 平台坑：setData 大对象耗性能；只在长度 / 关键字段变化时更新（粗略 diff）。详见 agent.md「setData」
+      const prev = this.data.messages || [];
+      const sameLen = prev.length === messages.length;
+      const sameTail = sameLen && prev.length > 0
+              && prev[prev.length - 1].text === messages[messages.length - 1].text;
+      if (sameLen && sameTail) return; // 没变化跳过
       this.setData({
         bot: c.bot || this.data.bot,
         messages,
         anchor: messages.length ? "m-" + (messages.length - 1) : ""
       });
     } catch (e) {
-      wx.showToast({ icon: "none", title: "加载失败" });
+      // 静默：用户在 chat 页时网络抖动不弹 toast
     }
   },
 
