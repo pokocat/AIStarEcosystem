@@ -3690,6 +3690,38 @@ paths:
                     items: { $ref: '#/components/schemas/LedgerEntry' }
                   pagination: { $ref: '#/components/schemas/PaginationMeta' }
 
+  /me/messages-overview:
+    get:
+      tags: [notifications]
+      operationId: getMyMessagesOverview
+      summary: '消息首页聚合（v0.5.1）：待办中心 + Bot 同事会话预览'
+      responses: { '200': { description: ok } }
+
+  /celebrity/dictionaries:
+    get:
+      tags: [celebrity]
+      operationId: getCelebrityDictionaries
+      summary: 'UI 字典（v0.5.1）：durations / languages / categories / keypointSuggestions'
+      responses: { '200': { description: ok } }
+
+  /celebrity/jobs/{jobId}:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [celebrity]
+      operationId: getCelebrityJobProgress
+      summary: '生成任务进度（v0.5.1）：替代客户端 setInterval 假动画'
+      responses: { '200': { description: ok } }
+
+  /notifications/conversations/{botId}/read-all:
+    parameters:
+      - { name: botId, in: path, required: true, schema: { type: string, enum: [pian, shen, shu, ada, zhang] } }
+    post:
+      tags: [notifications]
+      operationId: markBotConversationRead
+      summary: '把当前用户对该 Bot 的所有 Notification 标已读（chat 进入时清红点）'
+      responses: { '200': { description: ok } }
+
   /me/songs:
     get:
       tags: [music]

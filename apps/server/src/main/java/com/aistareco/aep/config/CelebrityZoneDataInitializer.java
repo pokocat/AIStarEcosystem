@@ -32,6 +32,7 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
     private final CelebrityStarAuthorizationRepository authRepo;
     private final RechargePackageRepository pkgRepo;
     private final com.aistareco.aep.repository.TemplateScriptRepository scriptRepo;
+    private final com.aistareco.aep.repository.NotificationRepository notificationRepo;
 
     public CelebrityZoneDataInitializer(CelebrityStarRepository starRepo,
                                          CelebrityProjectRepository projectRepo,
@@ -41,7 +42,8 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                                          ProductRepository productRepo,
                                          CelebrityStarAuthorizationRepository authRepo,
                                          RechargePackageRepository pkgRepo,
-                                         com.aistareco.aep.repository.TemplateScriptRepository scriptRepo) {
+                                         com.aistareco.aep.repository.TemplateScriptRepository scriptRepo,
+                                         com.aistareco.aep.repository.NotificationRepository notificationRepo) {
         this.starRepo = starRepo;
         this.projectRepo = projectRepo;
         this.videoRepo = videoRepo;
@@ -51,6 +53,7 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
         this.authRepo = authRepo;
         this.pkgRepo = pkgRepo;
         this.scriptRepo = scriptRepo;
+        this.notificationRepo = notificationRepo;
     }
 
     @Override
@@ -226,6 +229,8 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
         // ── v0.5：TemplateScript seeds（每个模板 1 份 published 草稿） ────────
         // 移到 v0.5 Initializer 子方法 seedTemplateScripts() 中保持本方法可读
         seedTemplateScripts();
+        // v0.5.1：seed 5 Bot 的 Notification（含未读 dot 数）给 demo-user
+        seedDemoUserBotNotifications();
 
         // ── Showcases (template + blindbox 各 3) ────────────────────────────
         for (int i = 1; i <= 3; i++) {
@@ -738,5 +743,40 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                         "durationSec", prodDuration,
                         "closeUpFraming", prodFraming)),
                 Map.entry("positivePromptFragment", positivePrompt));
+    }
+
+    /**
+     * v0.5.1：seed demo-user 名下 5 个 Bot 的 Notification（含 dot 未读数）。
+     * 与小程序 mocks.BOT_MESSAGES 的 dot 字段（片片 3 / 审审 1 / 数数 2 / Ada 0 / 长长 0）一致。
+     * 已有 botId notification 时跳过（idempotent）。
+     */
+    private void seedDemoUserBotNotifications() {
+        if (notificationRepo.findByUserIdAndBotIdOrderByCreatedAtDesc("demo-user", "pian").size() > 0) return;
+        java.time.Instant now = java.time.Instant.now();
+        // 片片：3 条未读
+        seedNotif("ntf-pian-1", "pian", "你的「李某某 · 30s 口播」生成完成，建议加个特写镜头", false, now.minusSeconds(120));
+        seedNotif("ntf-pian-2", "pian", "草稿管理：当前 2 条草稿待发布", false, now.minusSeconds(180));
+        seedNotif("ntf-pian-3", "pian", "1 条生成失败可重试", false, now.minusSeconds(240));
+        // 审审：1 条未读
+        seedNotif("ntf-shen-1", "shen", "已通过 1 项明星授权审核：王某某。请尽快开始第一条带货", false, now.minusSeconds(900));
+        // 数数：2 条未读
+        seedNotif("ntf-shu-1",  "shu", "昨日 12 条视频累计曝光 28.4w，转化率较前日 +12%", false, now.minusSeconds(1800));
+        seedNotif("ntf-shu-2",  "shu", "异常提醒：陈某某的视频 ROI 跌到 1.8x", false, now.minusSeconds(1900));
+        // Ada / 长长：0 未读（创建一条已读消息作为最近预览）
+        seedNotif("ntf-ada-1",   "ada",   "新增 3 位食品类明星可授权，与你的店铺品类相符", true, now.minusSeconds(3600 * 24));
+        seedNotif("ntf-zhang-1", "zhang", "本周复盘已生成：建议提升 15s 短视频的占比", true, now.minusSeconds(3600 * 24 + 60));
+    }
+
+    private void seedNotif(String id, String botId, String title, boolean read, java.time.Instant createdAt) {
+        notificationRepo.save(com.aistareco.aep.model.Notification.builder()
+                .id(id)
+                .userId("demo-user")
+                .type(com.aistareco.aep.model.Notification.NotificationType.SYSTEM)
+                .title(title)
+                .description(title)
+                .botId(botId)
+                .read(read)
+                .createdAt(createdAt)
+                .build());
     }
 }

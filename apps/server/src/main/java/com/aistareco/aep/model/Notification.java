@@ -29,6 +29,13 @@ public class Notification {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /**
+     * v0.5.1：关联的 AI Bot 同事 id（pian/shen/shu/ada/zhang），未关联时为 null。
+     * 用于消息首页按 botId 聚合"未读数"和"最新预览"。
+     */
+    @Column(name = "bot_id")
+    private String botId;
+
     @Builder.Default
     private boolean read = false;
 

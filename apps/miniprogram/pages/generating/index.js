@@ -1,3 +1,5 @@
+// v0.5.1：从客户端 setInterval 假动画改为轮询 server `GET /celebrity/jobs/{jobId}`。
+// 服务端依据 startedAt + totalSec 计算真实进度；mock 模式由 utils/mocks.buildJobProgress 派生。
 const { CelebrityApi } = require("../../utils/api.js");
 const { formatDuration } = require("../../utils/format.js");
 
@@ -10,12 +12,8 @@ Page({
     progress: 0,
     etaText: "—",
     frame: 8,
-    steps: [
-      { name: "脚本撰写", sub: "AI 正在打磨 4 个分镜的台词…", state: "done", time: "8s" },
-      { name: "分镜画面生成", sub: "渲染 12 帧关键画面 · 当前 8/12", state: "current", time: "00:42" },
-      { name: "AI 配音合成", sub: "等待中", state: "todo", time: "—" },
-      { name: "视频合成与渲染", sub: "等待中", state: "todo", time: "—" }
-    ]
+    state: "queued",
+    steps: []
   },
 
   onLoad(options) {
@@ -24,7 +22,9 @@ Page({
       this.setData({ statusBarHeight: sys.statusBarHeight || 44 });
     } catch (e) {}
     this.setData({ jobId: (options && options.jobId) || "" });
-    this.startPoll();
+    // 立即拉一次，再开启轮询
+    this.tick();
+    pollTimer = setInterval(() => this.tick(), 1200);
   },
 
   onUnload() {
@@ -32,25 +32,29 @@ Page({
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   },
 
-  startPoll() {
-    let pct = 12;
-    pollTimer = setInterval(() => {
-      pct = Math.min(100, pct + Math.floor(Math.random() * 6) + 2);
-      const etaSec = Math.max(0, Math.round((100 - pct) * 1.8));
-      const steps = this.data.steps.slice();
-      if (pct >= 35) { steps[1].state = "done"; steps[1].time = "1:08"; steps[2].state = "current"; steps[2].sub = "合成中"; steps[2].time = "00:18"; }
-      if (pct >= 65) { steps[2].state = "done"; steps[2].time = "00:42"; steps[3].state = "current"; steps[3].sub = "渲染中"; steps[3].time = "00:24"; }
-      if (pct >= 100) { steps[3].state = "done"; steps[3].time = "1:12"; clearInterval(pollTimer); pollTimer = null; }
-
-      this.setData({ progress: pct, etaText: formatDuration(etaSec), frame: 8 + Math.min(4, Math.floor(pct / 25)), steps });
-
-      if (pct >= 100) {
+  /** 单次拉取进度并 setData。 */
+  async tick() {
+    if (!this.data.jobId) return;
+    try {
+      const r = await CelebrityApi.getJobProgress(this.data.jobId);
+      const pct = Math.max(0, Math.min(100, Number(r.progress || 0)));
+      this.setData({
+        progress: pct,
+        etaText: formatDuration(Number(r.etaSec || 0)),
+        frame: 8 + Math.min(4, Math.floor(pct / 25)),
+        state: r.state || "running",
+        steps: Array.isArray(r.steps) ? r.steps : []
+      });
+      if (r.state === "done" || pct >= 100) {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         wx.showToast({ icon: "success", title: "生成完成" });
         setTimeout(() => {
-          wx.redirectTo({ url: "/pages/video-detail/index?id=mock-just-done" });
+          wx.redirectTo({ url: "/pages/video-detail/index?id=" + encodeURIComponent(this.data.jobId) });
         }, 800);
       }
-    }, 1200);
+    } catch (e) {
+      // 拉取失败不弹错（可能是网络抖动）；继续轮询。
+    }
   },
 
   back() { wx.navigateBack(); },

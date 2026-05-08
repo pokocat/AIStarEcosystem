@@ -3,6 +3,7 @@ package com.aistareco.aep.controller;
 import com.aistareco.aep.dto.DigitalIpDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.MeDto;
+import com.aistareco.aep.dto.MessagesOverviewDto;
 import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.dto.RechargePackageDto;
 import com.aistareco.aep.dto.RechargeRequestDto;
@@ -16,6 +17,7 @@ import com.aistareco.aep.repository.DigitalIpRepository;
 import com.aistareco.aep.repository.SongRepository;
 import com.aistareco.aep.service.AccountSelfService;
 import com.aistareco.aep.service.DigitalIpService;
+import com.aistareco.aep.service.NotificationService;
 import com.aistareco.aep.service.RechargeService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.data.domain.PageRequest;
@@ -40,17 +42,30 @@ public class AccountController {
     private final SongRepository songRepo;
     private final DigitalIpRepository digitalIpRepo;
     private final RechargeService rechargeService;
+    private final NotificationService notificationService;
 
     public AccountController(AccountSelfService accountSelfService,
                              DigitalIpService digitalIpService,
                              SongRepository songRepo,
                              DigitalIpRepository digitalIpRepo,
-                             RechargeService rechargeService) {
+                             RechargeService rechargeService,
+                             NotificationService notificationService) {
         this.accountSelfService = accountSelfService;
         this.digitalIpService = digitalIpService;
         this.songRepo = songRepo;
         this.digitalIpRepo = digitalIpRepo;
         this.rechargeService = rechargeService;
+        this.notificationService = notificationService;
+    }
+
+    /**
+     * v0.5.1：消息首页聚合 = 待办中心 + Bot 同事会话预览。
+     * 替代之前 GET /notifications 的 List shape，与小程序 messages 页期望一致。
+     */
+    @GetMapping("/messages-overview")
+    public ApiResponse<MessagesOverviewDto> messagesOverview(Principal principal) {
+        String uid = principal != null ? principal.getName() : "demo-user";
+        return ApiResponse.of(notificationService.getMessagesOverview(uid));
     }
 
     @GetMapping

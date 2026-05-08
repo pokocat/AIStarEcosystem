@@ -1,7 +1,6 @@
 const { CelebrityApi } = require("../../utils/api.js");
 
 const app = getApp();
-const CATS = ["全部", "美食", "美妆", "数码", "服饰", "母婴", "家居"];
 const SORTS = [
   { id: "hot", label: "热度排序" },
   { id: "price-asc", label: "价格升序" },
@@ -14,7 +13,8 @@ Page({
     myStars: [],
     myStarsCount: 0,
     marketCount: 48,
-    cats: CATS,
+    // v0.5.1：cats 从 server dictionaries 取，不再硬编码
+    cats: [],
     currentCat: "全部",
     stars: [],
     featured: null,
@@ -22,7 +22,13 @@ Page({
     sortLabel: "热度排序"
   },
 
-  onLoad() {
+  async onLoad() {
+    try {
+      const dict = await CelebrityApi.getDictionaries();
+      this.setData({ cats: (dict && dict.categories) || ["全部"] });
+    } catch (e) {
+      this.setData({ cats: ["全部"] });
+    }
     this.fetchMy();
   },
 

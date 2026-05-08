@@ -74,6 +74,16 @@ public class NotificationController {
         return ApiResponse.of(botService.getConversation(botId));
     }
 
+    /**
+     * v0.5.1：把当前用户对该 Bot 的所有 Notification 标已读。chat 页打开时调用，清掉首页红点。
+     */
+    @PostMapping("/conversations/{botId}/read-all")
+    public ApiResponse<Map<String, Object>> markBotRead(Principal principal, @PathVariable String botId) {
+        String uid = principal != null ? principal.getName() : "demo-user";
+        int updated = botService.markBotConversationRead(uid, botId);
+        return ApiResponse.of(Map.of("updated", updated, "botId", botId));
+    }
+
     private Notification loadOwned(String id, String userId) {
         Notification n = repo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "通知不存在"));

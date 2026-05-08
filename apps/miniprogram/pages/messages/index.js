@@ -20,10 +20,15 @@ Page({
   },
 
   async fetch() {
+    // v0.5.1：从 GET /me/messages-overview 取聚合数据（todos + conversations 含 dot 未读）
     try {
-      const r = await NotificationsApi.list();
-      const total = (r.todos || []).reduce((s, t) => s + t.count, 0);
-      this.setData({ todos: r.todos || [], messages: r.messages || [], todoTotal: total });
+      const r = await NotificationsApi.messagesOverview();
+      const total = (r.todos || []).reduce((s, t) => s + (Number(t.count) || 0), 0);
+      this.setData({
+        todos: r.todos || [],
+        messages: r.conversations || [],
+        todoTotal: total
+      });
     } catch (e) {
       wx.showToast({ icon: "none", title: "加载失败" });
     }

@@ -114,6 +114,18 @@ public class CelebrityZoneController {
         return ApiResponse.of(service.getOverview());
     }
 
+    /** v0.5.1：UI 字典（durations / languages / categories / 卖点建议）。 */
+    @GetMapping("/dictionaries")
+    public ApiResponse<CelebrityDictionariesDto> dictionaries() {
+        return ApiResponse.of(service.getDictionaries());
+    }
+
+    /** v0.5.1：异步生成任务进度（替代客户端 setInterval 假动画）。 */
+    @GetMapping("/jobs/{jobId}")
+    public ApiResponse<GenerationJobProgressDto> jobProgress(@PathVariable String jobId) {
+        return ApiResponse.of(service.getJobProgress(jobId));
+    }
+
     @GetMapping("/engine-pricing")
     public ApiResponse<Map<String, EnginePricingDto>> enginePricing() {
         return ApiResponse.of(service.getEnginePricing());

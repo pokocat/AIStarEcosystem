@@ -240,6 +240,54 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ## 六、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.5.1 · 2026-05-09 — 消除小程序硬编码 + 通知系统真正接通 server
+
+**Context**：v0.5 把 11 屏 API 都映射到了 server，但内部仍有 5 处页面写死的数据（durations / languages / CATS / keypoints / star.subtitle 占位）和 4 处通知逻辑没真接（待办由 mock；Bot 预览/红点是假的；已读不上报；生成进度纯客户端 setInterval）。本期把这些全部接通：**开发模式走 mock，生产模式走 server，没有硬编码**。
+
+**主要落地**
+
+1. **新增 4 个 server 端点**
+   - `GET /celebrity/dictionaries` — UI 字典（durations/languages/categories/keypointSuggestions）
+   - `GET /celebrity/jobs/{jobId}` — 视频生成异步任务真实进度（server 维护 in-memory 任务表 `{startedAt, totalSec}` 计算），替代客户端 setInterval 假动画
+   - `GET /me/messages-overview` — 消息首页聚合 `{ todos[], conversations[] }`：todos 由 server 按当前用户业务态聚合（待审视频/授权进度/数据日报）；conversations 是 5 个 Bot 的预览 + 实时未读 dot
+   - `POST /notifications/conversations/{botId}/read-all` — 进入 chat 立即标该 Bot 全部 Notification 为已读，首页红点清零
+
+2. **数据模型扩展**
+   - `Notification` 加 `botId` 列；Repo 加 `findByUserIdAndBotIdOrderByCreatedAtDesc` + `countByUserIdAndBotIdAndReadFalse`
+   - `CelebrityZoneService` 新增 `JOBS` ConcurrentHashMap + `getJobProgress(jobId)` + `getDictionaries()`，`startGeneration` 现在登记任务到 JOBS
+   - `NotificationService` 新增 `getMessagesOverview(userId)` + `markBotConversationRead(userId, botId)`
+
+3. **DataInitializer**：给 `demo-user` seed 8 条 botId Notification（片片 3 / 审审 1 / 数数 2 / Ada 0 / 长长 0 未读）
+
+4. **小程序去硬编码 + 切 server**
+   - `pages/generator`：`durations / languages / keypoints` 全部从 `getDictionaries()`；`star.subtitle/product` 占位删除，由 `getStar(starId)` 真实填充
+   - `pages/generating`：`setInterval` 假动画 → 每 1.2s 轮询 `getJobProgress(jobId)`
+   - `pages/market`：`CATS` 从 dictionaries 拉
+   - `pages/messages`：旧 `list()` shape → 新 `messagesOverview()` shape（含真实 dot）
+   - `pages/chat`：onLoad 立即调 `markBotRead(botId)` 清红点
+
+5. **mocks.js**：新增 `CELEBRITY_DICTIONARIES / MESSAGES_OVERVIEW / buildJobProgress`；开发态不依赖 server
+
+**架构契约**
+- 所有新 path 写入 `specs/openapi.yaml`；`check:api-contract` 全绿
+- `mvn compile` BUILD SUCCESS；18 个 miniprogram JS `node --check` 全通过
+
+**已知限制**
+- Bot 消息仍由 NotificationService 硬编码 5 段 canned；真事件触发推送留 v0.6
+- engine-pricing 仍 in-memory；v0.6 落 PlatformConfig
+- todos "数据日报" count 暂回退常量 1（接 dashboard 后改真实统计）
+- JOBS 是 in-memory，重启丢；v0.6 落 generation_jobs 表
+
+**新接口**
+```
+GET  /celebrity/dictionaries
+GET  /celebrity/jobs/{jobId}
+GET  /me/messages-overview
+POST /notifications/conversations/{botId}/read-all
+```
+
+---
+
 ### v0.5.0 · 2026-05-08 — admin 重构对齐三端 + §3.2.7 模板脚本 + §D8 大模型配置
 
 **Context**：v0.4 已把 server 端用户侧接口全打通；本期把 admin 后台重构为"AI 明星带货线

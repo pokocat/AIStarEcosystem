@@ -501,6 +501,57 @@ const GEN_PIPELINE_STEPS = [
   { name: "视频合成与渲染", sub: "等待中" }
 ];
 
+// ── v0.5.1：UI 字典（与 server CelebrityDictionariesDto 对齐） ─────────────
+const CELEBRITY_DICTIONARIES = {
+  durations: [15, 30, 60],
+  languages: ["普通话", "粤语", "英语"],
+  categories: ["全部", "美食", "美妆", "数码", "服饰", "母婴", "家居"],
+  keypointSuggestions: ["原料溯源", "无添加", "送礼场景", "性价比", "限时优惠", "工厂直供"]
+};
+
+// ── v0.5.1：消息首页聚合 mock ─────────────────────────────────────────────
+const MESSAGES_OVERVIEW = {
+  todos: [
+    { title: "视频待审", sub: "AI 生成视频", count: 4, accent: true,  route: "/pages/videos/index" },
+    { title: "授权进度", sub: "明星授权审核中", count: 1, accent: false, route: "/pages/celebrity-detail/index" },
+    { title: "数据日报", sub: "昨日 GMV 已结算", count: 1, accent: false, route: "/pages/dashboard/index" }
+  ],
+  conversations: [
+    { botId: "pian",  name: "片片", role: "创作官",   color: "#0A0A0A", roleBg: "#C8FF00", roleColor: "#0A0A0A", avatarIcon: "✦", preview: "你的「李某某 · 30s 口播」生成完成，建议加个特写镜头", time: "2min", dot: 3, accent: true },
+    { botId: "shen",  name: "审审", role: "合规官",   color: "#FF7A1A", roleBg: "#FFE7D2", roleColor: "#FF7A1A", avatarIcon: "✓", preview: "已通过 1 项明星授权审核：王某某", time: "15min", dot: 1, accent: true },
+    { botId: "shu",   name: "数数", role: "数据官",   color: "#2A6FDB", roleBg: "#E0EBFB", roleColor: "#2A6FDB", avatarIcon: "📊", preview: "昨日 12 条视频累计曝光 28.4w，转化率较前日 +12%", time: "30min", dot: 2, accent: true },
+    { botId: "ada",   name: "Ada",  role: "星探官",   color: "#1F8A5B", roleBg: "#DCF1E5", roleColor: "#1F8A5B", avatarIcon: "★", preview: "新增 3 位食品类明星可授权，与你的店铺品类相符", time: "1d",   dot: 0, accent: false },
+    { botId: "zhang", name: "长长", role: "成长教练", color: "#9D5BFF", roleBg: "#EFE2FF", roleColor: "#9D5BFF", avatarIcon: "◯", preview: "本周复盘已生成：建议提升 15s 短视频的占比",       time: "1d",   dot: 0, accent: false }
+  ]
+};
+
+// ── v0.5.1：生成任务进度 mock（基于 Date.now() 起算的简易递增） ─────────────
+let MOCK_JOB_STARTED_AT = null;
+function buildJobProgress(jobId) {
+  if (!MOCK_JOB_STARTED_AT) MOCK_JOB_STARTED_AT = Date.now();
+  const elapsed = Math.floor((Date.now() - MOCK_JOB_STARTED_AT) / 1000);
+  const total = 12;
+  const progress = Math.min(100, Math.max(0, Math.floor(elapsed * 100 / total)));
+  const stepCount = 4;
+  const currentStep = Math.min(stepCount - 1, Math.floor(progress * stepCount / 100));
+  const stepMeta = [
+    ["脚本撰写", "AI 正在打磨分镜的台词"],
+    ["分镜画面生成", "渲染关键画面"],
+    ["AI 配音合成", "对齐口型 / 情感"],
+    ["视频合成与渲染", "最终输出"]
+  ];
+  const steps = stepMeta.map((m, i) => {
+    let state, time;
+    if (i < currentStep || progress >= 100) { state = "done"; time = "已完成"; }
+    else if (i === currentStep && progress < 100) { state = "current"; time = "进行中"; }
+    else { state = "todo"; time = "—"; }
+    return { name: m[0], sub: m[1], state, time };
+  });
+  const etaSec = Math.max(0, total - elapsed);
+  const state = progress >= 100 ? "done" : (progress > 0 ? "running" : "queued");
+  return { jobId: jobId || "mock-job", progress, currentStep, etaSec, state, steps };
+}
+
 module.exports = {
   MARKET_STARS,
   STAR_DETAIL_MAP,
@@ -519,5 +570,8 @@ module.exports = {
   GEN_PIPELINE_STEPS,
   ENGINES,
   WALLET_PACKAGES,
-  WALLET_CREDITS
+  WALLET_CREDITS,
+  CELEBRITY_DICTIONARIES,
+  MESSAGES_OVERVIEW,
+  buildJobProgress
 };

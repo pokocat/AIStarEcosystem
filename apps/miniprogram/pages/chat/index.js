@@ -19,6 +19,8 @@ Page({
     } catch (e) {}
     this.setData({ botId });
     this.fetch(botId);
+    // v0.5.1：进入 chat 立即标已读（消息首页红点会清）
+    NotificationsApi.markBotRead(botId).catch(() => {});
   },
 
   async fetch(botId) {

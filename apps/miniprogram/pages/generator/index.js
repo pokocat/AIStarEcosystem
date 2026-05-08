@@ -7,25 +7,27 @@ const DUR_MULTIPLIER = { 15: 0.7, 30: 1.0, 60: 1.5 };
 
 Page({
   data: {
-    star: { name: "李某某", subtitle: "美食综艺 · 已授权 · 剩余 12 天" },
-    product: { name: "每日坚果礼盒装 · 750g", sku: "SKU#A0291 · 原价 ¥199 · 直播价 ¥139" },
+    // 默认空态；onLoad 时从 server / globalData 取真实数据
+    star: { name: "—", subtitle: "请先在市场选择已授权明星" },
+    product: { name: "", sku: "" },
 
     styles: [],
-    currentStyle: "broadcast",
+    currentStyle: "",
 
     engines: [],
     currentEngineName: "HiGen",
-    currentEngine: { speed: "~3分钟", creditPrice: 120 },
+    currentEngine: { speed: "", creditPrice: 0 },
 
-    durations: [15, 30, 60],
+    // v0.5.1：durations / languages / keypoints 全部从 server dictionaries 拉取
+    durations: [],
     currentDuration: 30,
-    languages: ["普通话", "粤语", "英语"],
-    currentLang: "普通话",
-    keypoints: ["每日坚果", "原料溯源", "无添加", "送礼场景", "性价比"],
-    checkedKeys: [true, true, true, false, false],
+    languages: [],
+    currentLang: "",
+    keypoints: [],
+    checkedKeys: [],
 
     credits: { totalBalance: 0 },
-    computedCost: 120,
+    computedCost: 0,
     enoughCredits: true,
 
     previewOpen: false,
@@ -36,21 +38,49 @@ Page({
 
   async onLoad(options) {
     const sid = (options && options.starId) || app.globalData.selectedStarId;
-    if (sid) this.setData({ "star.subtitle": "已选明星 · 已授权 · ID " + sid });
+    if (sid) {
+      // 取真实明星元数据填充 subtitle（不再写死"已授权 · 剩余 12 天"）
+      try {
+        const star = await CelebrityApi.getStar(sid);
+        const auth = star && star.authorization ? star.authorization : null;
+        const subtitleParts = [];
+        if (star && star.category) subtitleParts.push(star.category);
+        if (auth && auth.status) {
+          const map = { authorized: "已授权", pending: "审核中", expired: "已过期", unauthorized: "未授权" };
+          subtitleParts.push(map[auth.status] || auth.status);
+        }
+        this.setData({
+          "star.name": star ? star.name : "—",
+          "star.subtitle": subtitleParts.join(" · ") || ("ID " + sid)
+        });
+      } catch (e) { /* 忽略：保持空态 */ }
+    }
 
     try {
-      const [styles, engines, credits] = await Promise.all([
+      const [styles, engines, credits, dict] = await Promise.all([
         CelebrityApi.listTemplates(),
         CelebrityApi.listEngines(),
-        WalletApi.getCredits()
+        WalletApi.getCredits(),
+        CelebrityApi.getDictionaries()
       ]);
       const currentEngine = engines.find((e) => e.name === this.data.currentEngineName) || engines[1] || engines[0];
+      const currentStyle = (styles && styles.length > 0) ? styles[0].id : "";
+      const durations = (dict && dict.durations) || [15, 30, 60];
+      const languages = (dict && dict.languages) || ["普通话"];
+      const keypoints = (dict && dict.keypointSuggestions) || [];
       this.setData({
         styles,
+        currentStyle,
         engines,
-        currentEngineName: currentEngine.name,
-        currentEngine,
-        credits
+        currentEngineName: currentEngine ? currentEngine.name : "HiGen",
+        currentEngine: currentEngine || { creditPrice: 0 },
+        credits,
+        durations,
+        currentDuration: durations.indexOf(30) >= 0 ? 30 : durations[0],
+        languages,
+        currentLang: languages[0] || "",
+        keypoints,
+        checkedKeys: keypoints.map((_, i) => i < 3) // 默认勾选前 3 个
       }, () => this.recompute());
     } catch (e) {
       wx.showToast({ icon: "none", title: "加载失败" });
@@ -130,8 +160,9 @@ Page({
   },
 
   onAiRecommend() {
-    // 重置成 AI 推荐的 3 个
-    this.setData({ checkedKeys: [true, true, true, false, false] });
+    // v0.5.1：根据当前 keypoints 长度构造默认勾选（前 3 个），不再写死 5 长度
+    const next = this.data.keypoints.map((_, i) => i < 3);
+    this.setData({ checkedKeys: next });
     wx.showToast({ icon: "success", title: "已应用 AI 推荐" });
   },
 
@@ -156,7 +187,7 @@ Page({
     wx.showLoading({ title: "提交任务…", mask: true });
     try {
       const r = await CelebrityApi.generate({
-        starId: app.globalData.selectedStarId || "star-li",
+        starId: app.globalData.selectedStarId || "",
         templateId: this.data.currentStyle,
         engineName: this.data.currentEngineName,
         durationSec: this.data.currentDuration,

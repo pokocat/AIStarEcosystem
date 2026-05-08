@@ -279,17 +279,89 @@ public class CelebrityZoneService {
             );
         }
 
-        int estimated = switch (engine) {
+        int estimatedMinutes = switch (engine) {
             case "KeLing" -> 6;
             case "MiniMax" -> 10;
             default -> 8;
         };
+        String jobId = "gen-" + UUID.randomUUID().toString().substring(0, 8);
+        // v0.5.1：登记到 in-memory 任务表，给 GET /celebrity/jobs/{id} 用
+        long totalSec = (long) estimatedMinutes * 60L / 30L; // 把"分钟数"压成几十秒，便于演示进度
+        if (totalSec < 8) totalSec = 8;
+        JOBS.put(jobId, new JobState(jobId, java.time.Instant.now(), totalSec, engine));
         return new AsyncJobStartedDto(
-                "gen-" + UUID.randomUUID().toString().substring(0, 8),
+                jobId,
                 "queued",
-                "/api/celebrity/jobs/mock",
+                "/api/celebrity/jobs/" + jobId,
                 3000,
-                estimated
+                estimatedMinutes
+        );
+    }
+
+    // ── v0.5.1：任务进度跟踪（in-memory） ─────────────────────────────────────
+
+    /** 任务状态。startedAt + totalSec 决定进度；不依赖客户端 setInterval。 */
+    private record JobState(String jobId, java.time.Instant startedAt, long totalSec, String engine) {}
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, JobState> JOBS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final List<String[]> PIPELINE_STEPS = List.of(
+            new String[]{"脚本撰写", "AI 正在打磨分镜的台词"},
+            new String[]{"分镜画面生成", "渲染关键画面"},
+            new String[]{"AI 配音合成", "对齐口型 / 情感"},
+            new String[]{"视频合成与渲染", "最终输出"}
+    );
+
+    /**
+     * GET /celebrity/jobs/{jobId} —— 服务端计算进度。
+     * 进度 = elapsed / totalSec，按 4 步均分到 currentStep。
+     * 任务不存在时（重启或未提交）回退一个完成态，避免前端轮询失败。
+     */
+    public GenerationJobProgressDto getJobProgress(String jobId) {
+        JobState s = JOBS.get(jobId);
+        long elapsed, total;
+        boolean exists = s != null;
+        if (exists) {
+            elapsed = java.time.Duration.between(s.startedAt(), java.time.Instant.now()).toSeconds();
+            total = s.totalSec();
+        } else {
+            elapsed = 1;
+            total = 1;
+        }
+        int progress = (int) Math.min(100, Math.max(0, elapsed * 100 / Math.max(1, total)));
+        int stepCount = PIPELINE_STEPS.size();
+        int currentStep = (int) Math.min(stepCount - 1, progress * stepCount / 100);
+        long etaSec = Math.max(0, total - elapsed);
+        String state = progress >= 100 ? "done" : (progress > 0 ? "running" : "queued");
+
+        List<GenerationJobProgressDto.StepDto> steps = new java.util.ArrayList<>();
+        for (int i = 0; i < stepCount; i++) {
+            String[] meta = PIPELINE_STEPS.get(i);
+            String stepState;
+            String time;
+            if (i < currentStep || progress >= 100) {
+                stepState = "done";
+                time = "已完成";
+            } else if (i == currentStep && progress < 100) {
+                stepState = "current";
+                time = "进行中";
+            } else {
+                stepState = "todo";
+                time = "—";
+            }
+            steps.add(new GenerationJobProgressDto.StepDto(meta[0], meta[1], stepState, time));
+        }
+        return new GenerationJobProgressDto(jobId, progress, currentStep, (int) etaSec, state, steps);
+    }
+
+    /** GET /celebrity/dictionaries —— UI 字典（消除小程序硬编码）。 */
+    public CelebrityDictionariesDto getDictionaries() {
+        return new CelebrityDictionariesDto(
+                List.of(15, 30, 60),
+                List.of("普通话", "粤语", "英语"),
+                List.of("全部", "美食", "美妆", "数码", "服饰", "母婴", "家居"),
+                List.of("原料溯源", "无添加", "送礼场景", "性价比", "限时优惠", "工厂直供")
         );
     }
 

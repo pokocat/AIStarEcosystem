@@ -3,10 +3,21 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.dto.BotConversationDto;
 import com.aistareco.aep.dto.BotMetaDto;
 import com.aistareco.aep.dto.ChatMessageDto;
+import com.aistareco.aep.dto.MessagesOverviewDto;
+import com.aistareco.aep.model.CelebrityAuthStatus;
+import com.aistareco.aep.model.Notification;
+import com.aistareco.aep.repository.CelebrityProjectVideoRepository;
+import com.aistareco.aep.repository.CelebrityStarAuthorizationRepository;
+import com.aistareco.aep.repository.NotificationRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,6 +29,123 @@ import java.util.Map;
  */
 @Service
 public class NotificationService {
+
+    private final NotificationRepository notificationRepo;
+    private final CelebrityStarAuthorizationRepository authRepo;
+    private final CelebrityProjectVideoRepository videoRepo;
+
+    public NotificationService(NotificationRepository notificationRepo,
+                                CelebrityStarAuthorizationRepository authRepo,
+                                CelebrityProjectVideoRepository videoRepo) {
+        this.notificationRepo = notificationRepo;
+        this.authRepo = authRepo;
+        this.videoRepo = videoRepo;
+    }
+
+    /** 5 个 Bot 的元数据（与 chat 详情页 BotMetaDto 一致）。 */
+    private static final List<Map<String, String>> BOTS = List.of(
+            Map.of("botId", "pian",  "name", "片片", "role", "创作官", "color", "#0A0A0A", "roleBg", "#C8FF00", "roleColor", "#0A0A0A", "avatarIcon", "✦"),
+            Map.of("botId", "shen",  "name", "审审", "role", "合规官", "color", "#FF7A1A", "roleBg", "#FFE7D2", "roleColor", "#FF7A1A", "avatarIcon", "✓"),
+            Map.of("botId", "shu",   "name", "数数", "role", "数据官", "color", "#2A6FDB", "roleBg", "#E0EBFB", "roleColor", "#2A6FDB", "avatarIcon", "📊"),
+            Map.of("botId", "ada",   "name", "Ada",  "role", "星探官", "color", "#1F8A5B", "roleBg", "#DCF1E5", "roleColor", "#1F8A5B", "avatarIcon", "★"),
+            Map.of("botId", "zhang", "name", "长长", "role", "成长教练", "color", "#9D5BFF", "roleBg", "#EFE2FF", "roleColor", "#9D5BFF", "avatarIcon", "◯")
+    );
+
+    /**
+     * v0.5.1：消息首页聚合 = 待办中心（按用户真实业务态聚合）+ Bot 会话预览（每个 Bot 一行）。
+     * 替代原 GET /notifications 的 List<NotificationDto> shape（与 chat-only API 区分）。
+     */
+    public MessagesOverviewDto getMessagesOverview(String userId) {
+        List<MessagesOverviewDto.TodoItemDto> todos = computeTodos(userId);
+        List<MessagesOverviewDto.BotConversationPreviewDto> conversations = new ArrayList<>();
+        for (Map<String, String> bot : BOTS) {
+            String botId = bot.get("botId");
+            // 取该 Bot 历史最近一条 Notification 的标题作为 preview；没有则回退 canned 第一条 text。
+            List<Notification> mine = notificationRepo.findByUserIdAndBotIdOrderByCreatedAtDesc(userId, botId);
+            String preview;
+            String time;
+            if (!mine.isEmpty()) {
+                Notification latest = mine.get(0);
+                preview = latest.getTitle() == null ? "" : latest.getTitle();
+                time = relativeTime(latest.getCreatedAt());
+            } else {
+                preview = firstTextFromCanned(botId);
+                time = "—";
+            }
+            int dot = (int) notificationRepo.countByUserIdAndBotIdAndReadFalse(userId, botId);
+            conversations.add(new MessagesOverviewDto.BotConversationPreviewDto(
+                    botId,
+                    bot.get("name"),
+                    bot.get("role"),
+                    bot.get("color"),
+                    bot.get("roleBg"),
+                    bot.get("roleColor"),
+                    bot.get("avatarIcon"),
+                    preview,
+                    time,
+                    dot,
+                    dot > 0
+            ));
+        }
+        return new MessagesOverviewDto(todos, conversations);
+    }
+
+    /**
+     * v0.5.1：把当前用户对该 Bot 的所有 Notification 标已读。chat 页打开时调用，清掉首页红点。
+     * 返回受影响行数。
+     */
+    @Transactional
+    public int markBotConversationRead(String userId, String botId) {
+        List<Notification> mine = notificationRepo.findByUserIdAndBotIdOrderByCreatedAtDesc(userId, botId);
+        int updated = 0;
+        for (Notification n : mine) {
+            if (!n.isRead()) {
+                n.setRead(true);
+                updated++;
+            }
+        }
+        if (updated > 0) notificationRepo.saveAll(mine);
+        return updated;
+    }
+
+    /** 计算待办：按当前用户真实业务态聚合。 */
+    private List<MessagesOverviewDto.TodoItemDto> computeTodos(String userId) {
+        // 1) 视频待审：用户的视频里 status="待审核" 数（项目维度按 ownerUserId 过滤待 v0.6 的项目-视频 join；
+        //    本期回退到全量"待审核"或"生成中"的代理计数）
+        long pendingVideos = videoRepo.findAll().stream()
+                .filter(v -> "待审核".equals(v.getStatus()) || "生成中".equals(v.getStatus()))
+                .count();
+        // 2) 授权进度：用户的 PENDING 授权数
+        long pendingAuth = authRepo.findByUserIdAndStatusIn(userId, List.of(CelebrityAuthStatus.PENDING)).size();
+        // 3) 数据日报：未读的 system / achievement / data 类通知数（粗估为 1）
+        long dailyReports = 1L;
+
+        return List.of(
+                new MessagesOverviewDto.TodoItemDto("视频待审", "AI 生成视频", (int) pendingVideos, true, "/pages/videos/index"),
+                new MessagesOverviewDto.TodoItemDto("授权进度", "明星授权审核中", (int) pendingAuth, false, "/pages/celebrity-detail/index"),
+                new MessagesOverviewDto.TodoItemDto("数据日报", "昨日 GMV 已结算", (int) dailyReports, false, "/pages/dashboard/index")
+        );
+    }
+
+    /** Bot 历史无消息时，从 canned 会话拿第一条 text 作为预览兜底。 */
+    private String firstTextFromCanned(String botId) {
+        BotConversationDto conv = getConversation(botId);
+        for (ChatMessageDto m : conv.messages()) {
+            if ("text".equals(m.type()) && m.text() != null && !m.text().isBlank()) return m.text();
+        }
+        return "暂无消息";
+    }
+
+    private static String relativeTime(Instant t) {
+        if (t == null) return "";
+        long s = Duration.between(t, Instant.now()).getSeconds();
+        if (s < 60) return s + "s";
+        long m = s / 60;
+        if (m < 60) return m + "min";
+        long h = m / 60;
+        if (h < 24) return h + "h";
+        return (h / 24) + "d";
+    }
 
     public BotConversationDto getConversation(String botId) {
         return switch (botId) {

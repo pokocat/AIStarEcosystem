@@ -119,15 +119,26 @@ const CelebrityApi = {
     if (app.globalData.useMock) return mockDelay({ jobId: "job-" + Date.now(), projectId: "proj-mock" });
     return apiFetch("/celebrity/generate", { method: "POST", data: req });
   },
-  /** GET /celebrity/projects/{id} — 查询生成进度（前端轮询） */
+  /** GET /celebrity/projects/{id} — 查询项目详情 */
   getProject(id) {
     const app = getApp_();
     if (app.globalData.useMock) {
-      // 为了 demo，返回一个进度变化值（按 onLoad 计时模拟）
       const progress = Math.min(100, Math.floor((Date.now() / 1000) % 100));
       return mockDelay({ id, progress, currentStep: 1, etaSec: 108 });
     }
     return apiFetch("/celebrity/projects/" + id);
+  },
+  /** v0.5.1：GET /celebrity/jobs/{jobId} — 异步生成任务进度（替代客户端 setInterval） */
+  getJobProgress(jobId) {
+    const app = getApp_();
+    if (app.globalData.useMock) return mockDelay(mocks.buildJobProgress(jobId));
+    return apiFetch("/celebrity/jobs/" + encodeURIComponent(jobId || ""));
+  },
+  /** v0.5.1：GET /celebrity/dictionaries — UI 字典 */
+  getDictionaries() {
+    const app = getApp_();
+    if (app.globalData.useMock) return mockDelay(mocks.CELEBRITY_DICTIONARIES);
+    return apiFetch("/celebrity/dictionaries");
   },
   /** GET /celebrity/videos */
   listVideos(filter) {
@@ -156,10 +167,14 @@ const CelebrityApi = {
 
 // ── Notifications ───────────────────────────────────────────────────────────
 const NotificationsApi = {
-  list() {
+  /**
+   * v0.5.1：消息首页聚合 = 待办中心 + Bot 同事会话预览（含红点 dot）。
+   * 走 GET /me/messages-overview。
+   */
+  messagesOverview() {
     const app = getApp_();
-    if (app.globalData.useMock) return mockDelay({ todos: mocks.TODOS, messages: mocks.BOT_MESSAGES });
-    return apiFetch("/notifications");
+    if (app.globalData.useMock) return mockDelay(mocks.MESSAGES_OVERVIEW);
+    return apiFetch("/me/messages-overview");
   },
   /** GET /notifications/conversations/{botId} — 单个 Bot 的多消息会话 */
   getConversation(botId) {
@@ -169,6 +184,17 @@ const NotificationsApi = {
       return mockDelay(c);
     }
     return apiFetch("/notifications/conversations/" + encodeURIComponent(botId));
+  },
+  /** v0.5.1：POST /notifications/conversations/{botId}/read-all — 清掉首页红点 */
+  markBotRead(botId) {
+    const app = getApp_();
+    if (app.globalData.useMock) {
+      // mock 模式：把对应 bot 的 dot 置 0（影响下一次 messagesOverview）
+      const conv = mocks.MESSAGES_OVERVIEW.conversations.find((c) => c.botId === botId);
+      if (conv) { conv.dot = 0; conv.accent = false; }
+      return mockDelay({ updated: 1, botId });
+    }
+    return apiFetch("/notifications/conversations/" + encodeURIComponent(botId) + "/read-all", { method: "POST" });
   }
 };
 
