@@ -4,6 +4,8 @@ This file provides guidance to AI coding agents when working with code in this r
 
 > **入口提示**：完整文档地图见 [`docs/INDEX.md`](docs/INDEX.md)。AI 明星带货线产品规格的 single source of truth 是 [`product_spec_ai_celebrity.md`](product_spec_ai_celebrity.md)。
 
+> ⚠️ **monorepo 拆分进行中（Phase 0a → 6）**：仓库正在拆为「三个独立 web app（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity`）+ `packages/*` 共享层 + 共享 server（按子产品分租户）」。新代码走 **Next 16 + React 19 + Tailwind v4 + pnpm**；遗留 `apps/web`、`apps/admin`、`apps/server` 暂不动。本文档下方的「Monorepo Structure」「三端架构」「领域对齐表」反映的是**拆分前**的状态，期间会与现状不完全一致；以 [`CLAUDE.md`](./CLAUDE.md) 顶部警告块为准，plan 文件 `/Users/donis/.claude/plans/ethereal-petting-cosmos.md`。
+
 ## Repository Overview
 
 **AI Star Eco** — AI 虚拟艺人孵化与发行平台。三种用户角色：Fan（粉丝）、Producer（制作人）、Coach（掌门人/MCN）。平台包含用户前端、管理后台、后端服务三端，数据模型完整对齐。

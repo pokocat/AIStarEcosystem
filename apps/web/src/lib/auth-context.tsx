@@ -28,8 +28,20 @@ interface AuthState {
 
 const AuthContext = React.createContext<AuthState | null>(null);
 
-/** 不需要登录即可访问的路径前缀。其它路径在未登录时会被推到 /login。 */
-const PUBLIC_PATH_PREFIXES = ["/login", "/activate", "/portal", "/producer-intro", "/"];
+/** 不需要登录即可访问的路径前缀。其它路径在未登录时会被推到 /login。
+ *  注：/music /drama /celebrity 当前只承载子产品对外公开 landing 页（无后续工作台子路由），
+ *  匹配 startsWith 不会出错。一旦后续在 /<product>/console/* 下挂入工作台，
+ *  需把这里的前缀收窄为精确匹配，或下移到 middleware。 */
+const PUBLIC_PATH_PREFIXES = [
+  "/login",
+  "/activate",
+  "/portal",
+  "/producer-intro",
+  "/music",
+  "/drama",
+  "/celebrity",
+  "/",
+];
 
 function isPublicPath(pathname: string | null): boolean {
   if (!pathname) return true;

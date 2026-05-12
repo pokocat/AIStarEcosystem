@@ -1,0 +1,7 @@
+// 所有领域类型的统一出口。组件只从 "@/types" 导入，不直接引用子文件。
+export * from "./_shared";
+export * from "./account";
+export * from "./studio";
+export * from "./license";
+export * from "./wallet";
+export * from "./artist";

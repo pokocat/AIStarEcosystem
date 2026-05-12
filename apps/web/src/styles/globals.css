@@ -83,6 +83,19 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
+
+  /* 子产品强调色（音乐人 / 短剧 / 明星带货）。
+     当前 landing 页直接用 Tailwind 渐变 token；这些变量作为前置脚手架，供后续
+     工作台 (console) 的侧栏激活态、tab indicator、主 CTA 按钮统一引用。 */
+  --product-music: #c084fc;          /* fuchsia/violet */
+  --product-music-from: #8b5cf6;     /* violet-500 */
+  --product-music-to: #d946ef;       /* fuchsia-500 */
+  --product-drama: #fb923c;          /* orange-400 */
+  --product-drama-from: #f97316;     /* orange-500 */
+  --product-drama-to: #ef4444;       /* red-500 */
+  --product-celebrity: #fbbf24;      /* amber-400 */
+  --product-celebrity-from: #f59e0b; /* amber-500 */
+  --product-celebrity-to: #ec4899;   /* pink-500 */
 }
 
 @theme inline {

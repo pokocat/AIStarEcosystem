@@ -1,0 +1,23 @@
+{
+  "name": "@ai-star-eco/types",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TS 类型契约 —— 三个子产品 + admin + server DTO 的真源。",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "lucide-react": "^0.400.0"
+  },
+  "devDependencies": {
+    "lucide-react": "^0.547.0",
+    "typescript": "^5.7.2"
+  }
+}
