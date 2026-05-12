@@ -185,6 +185,15 @@ importers:
 
   packages/landing:
     devDependencies:
+      '@ai-star-eco/api-client':
+        specifier: workspace:*
+        version: link:../api-client
+      '@ai-star-eco/types':
+        specifier: workspace:*
+        version: link:../types
+      '@types/node':
+        specifier: ^20.10.0
+        version: 20.19.41
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.14
