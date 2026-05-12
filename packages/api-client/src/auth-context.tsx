@@ -1,22 +1,22 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// auth-context.tsx — 轻量鉴权上下文。
-// 启动时读 localStorage 的 token（若有）→ 调 /api/me 拉取当前用户 + studio。
+// auth-context.tsx — 轻量鉴权上下文（共享版）。
+// 启动时读 token（cookie/localStorage）→ 调 /api/me 拉取当前用户 + studio。
 // 401 时清 token 并重定向到 /login。
+// 每个 web app 通过 publicPathPrefixes prop 注入自己的公开路径白名单。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
 import { useRouter, usePathname } from "next/navigation";
-import type { AepUser } from "@/types/account";
+import type { AepUser } from "@ai-star-eco/types/account";
 import {
-  AccountApi,
-  AuthApi,
   getAuthToken,
   registerUnauthorizedHandler,
   setAuthToken,
-  USE_MOCK,
-} from "@/api";
+} from "./_client";
+import * as AuthApi from "./api/auth";
+import * as AccountApi from "./api/account";
 
 interface AuthState {
   user: AepUser | null;
@@ -28,53 +28,52 @@ interface AuthState {
 
 const AuthContext = React.createContext<AuthState | null>(null);
 
-/** 不需要登录即可访问的路径前缀。其它路径在未登录时会被推到 /login。
- *  注：/music /drama /celebrity 当前只承载子产品对外公开 landing 页（无后续工作台子路由），
- *  匹配 startsWith 不会出错。一旦后续在 /<product>/console/* 下挂入工作台，
- *  需把这里的前缀收窄为精确匹配，或下移到 middleware。 */
-const PUBLIC_PATH_PREFIXES = [
-  "/login",
-  "/activate",
-  "/portal",
-  "/producer-intro",
-  "/music",
-  "/drama",
-  "/celebrity",
-  "/",
-];
-
-function isPublicPath(pathname: string | null): boolean {
-  if (!pathname) return true;
-  if (pathname === "/") return true;
-  return PUBLIC_PATH_PREFIXES.some((p) => p !== "/" && pathname.startsWith(p));
+export interface AuthProviderProps {
+  children: React.ReactNode;
+  /** 公开路径前缀。当前路径以列表中任一项 startsWith 即视为公开（无须登录）。
+   *  默认仅含 ["/login", "/activate", "/"]，调用方应按子产品扩展（如 ["/music"]）。 */
+  publicPathPrefixes?: string[];
+  /** 未登录或 401 后跳转的路径。默认 "/login"。 */
+  loginPath?: string;
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+const DEFAULT_PUBLIC_PREFIXES = ["/login", "/activate", "/"];
+
+export function AuthProvider({
+  children,
+  publicPathPrefixes = DEFAULT_PUBLIC_PREFIXES,
+  loginPath = "/login",
+}: AuthProviderProps) {
   const [user, setUser] = React.useState<AepUser | null>(null);
   const [loading, setLoading] = React.useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
-  // 注册 401 回调：清 token + 跳 /login
+  const isPublicPath = React.useCallback(
+    (p: string | null): boolean => {
+      if (!p) return true;
+      if (p === "/") return true;
+      return publicPathPrefixes.some((prefix) => prefix !== "/" && p.startsWith(prefix));
+    },
+    [publicPathPrefixes],
+  );
+
   React.useEffect(() => {
     registerUnauthorizedHandler(() => {
       setUser(null);
       if (!isPublicPath(pathname)) {
-        router.replace("/login");
+        router.replace(loginPath);
       }
     });
     return () => registerUnauthorizedHandler(null);
-  }, [router, pathname]);
+  }, [router, pathname, loginPath, isPublicPath]);
 
   const loadMe = React.useCallback(async () => {
-    // USE_MOCK 下，token 不参与校验，直接假定已登录。
-    if (!USE_MOCK) {
-      const token = getAuthToken();
-      if (!token) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
+    const token = getAuthToken();
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
     }
     try {
       const me = await AccountApi.getMe();
@@ -90,13 +89,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadMe();
   }, [loadMe]);
 
-  // 未登录时，若当前路径需要鉴权，推到 /login
   React.useEffect(() => {
     if (loading) return;
     if (!user && !isPublicPath(pathname)) {
-      router.replace("/login");
+      router.replace(loginPath);
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, user, pathname, router, loginPath, isPublicPath]);
 
   const loginAs = React.useCallback(async (username?: string) => {
     const { user: me } = await AuthApi.devLogin(username);
@@ -107,8 +105,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = React.useCallback(() => {
     setAuthToken(null);
     setUser(null);
-    router.replace("/login");
-  }, [router]);
+    router.replace(loginPath);
+  }, [router, loginPath]);
 
   const value: AuthState = { user, loading, loginAs, logout, refresh: loadMe };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

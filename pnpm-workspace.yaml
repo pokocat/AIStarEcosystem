@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+  # 三个新 web app 建好后会被 apps/* 自动捕获；现存 apps/web 和 apps/admin 排除在 workspace 外，
+  # 沿用 npm install 直到 Phase 5（apps/web 删除）与 apps/admin 独立升级。
+  - "apps/web-music"
+  - "apps/web-drama"
+  - "apps/web-celebrity"

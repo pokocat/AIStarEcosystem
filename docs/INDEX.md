@@ -2,7 +2,9 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
-> last-reviewed：2026-05-09 / v0.5.4
+> last-reviewed：2026-05-12 / v0.5.4 + 三子产品拆分 Phase 0a-4a 中
+
+> ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web`、`apps/admin`、`apps/server` 不动。详见 [`CLAUDE.md`](../CLAUDE.md) 顶部警告块与 plan 文件 `/Users/donis/.claude/plans/ethereal-petting-cosmos.md`。
 
 ---
 
@@ -41,9 +43,18 @@
 | 文档 | 一句话 | 当前版本 |
 |---|---|---|
 | `apps/server/README.md` | Spring Boot 8080 / Profile / 角色体系 / **v0.5 新增表** / **AEP_SECRET_KEY 环境变量** | v0.5.4 同步 |
-| `apps/web/README.md` | Next.js 用户端 3002 / 完整版本日志（v1.x ~ v2.7） | v2.7（v0.5.x 不影响 web） |
+| `apps/web/README.md` | Next.js 用户端 3002 / 完整版本日志（v1.x ~ v2.7） | v2.7（v0.5.x 不影响 web）；**Phase 5 删除** |
 | `apps/admin/README.md` | Next.js 运营后台 3003 / 当前 sidebar / v0.5.x 滚动更新 | v0.5.4 |
 | `apps/miniprogram/README.md` | 微信小程序（带货方）/ 11 屏 / 启动方式 / 版本日志 | v0.5.4 |
+| `apps/web-music/` ★ | **AI 音乐人独立 web app**（Next 16，dev 3010） | Phase 2 完成；landing 就位、console 待建 |
+| `apps/web-drama/` ★ | **AI 短剧独立 web app**（Next 16，dev 3011） | Phase 3 完成；landing 就位、console 待建 |
+| `apps/web-celebrity/` ★ | **AI 明星带货独立 web app**（Next 16，dev 3012） | Phase 4a 完成；landing 就位、celebrity-zone 43 组件待搬 |
+
+**packages/**（pnpm workspace 共享层；三个新 web app 消费，apps/web 与 apps/admin 不消费）：
+- `packages/types/` — TS 类型契约
+- `packages/ui/` — shadcn + ThemeProvider + globals.css
+- `packages/api-client/` — apiFetch + AuthProvider + format
+- `packages/landing/` — ProductLanding 原语
 
 ## 5. 部署 / 运维（"上线怎么部署"）
 

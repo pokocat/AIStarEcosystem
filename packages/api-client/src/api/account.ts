@@ -1,0 +1,40 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// api/account.ts — 用户账户 / 钱包 / 流水 API（网络版本，无 mock 分支）。
+// 对应后端 AccountController: /api/me/*
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { AepUser, Tenant } from "@ai-star-eco/types/account";
+import type { Wallet, LedgerEntry } from "@ai-star-eco/types/wallet";
+import { apiFetch } from "../_client";
+
+/** 获取当前登录用户信息 */
+export async function getMe(): Promise<AepUser> {
+  return apiFetch<AepUser>("/me");
+}
+
+/** 更新当前用户的可编辑资料 */
+export async function updateProfile(
+  data: Partial<Pick<AepUser, "displayName" | "avatarUrl" | "phone" | "email" | "bio" | "langPreference">>,
+): Promise<AepUser> {
+  return apiFetch<AepUser>("/me", {
+    method: "PATCH",
+    body: data,
+  });
+}
+
+/** 获取当前用户关联的机构列表 */
+export async function getMyTenants(): Promise<Tenant[]> {
+  return apiFetch<Tenant[]>("/me/tenants");
+}
+
+/** 获取当前用户钱包 */
+export async function getMyWallet(): Promise<Wallet> {
+  return apiFetch<Wallet>("/me/wallet");
+}
+
+/** 获取当前用户点数流水（分页） */
+export async function getMyLedger(page = 0, size = 20): Promise<LedgerEntry[]> {
+  return apiFetch<LedgerEntry[]>("/me/ledger", {
+    query: { page, size },
+  });
+}

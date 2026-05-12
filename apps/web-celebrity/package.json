@@ -1,0 +1,32 @@
+{
+  "name": "@ai-star-eco/web-celebrity",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI 明星带货 — 基于真人明星授权的 AI 复刻 IP 带货平台（独立 Next 16 应用）。",
+  "scripts": {
+    "dev": "next dev -p 3012",
+    "build": "next build",
+    "start": "next start -p 3012",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ai-star-eco/api-client": "workspace:*",
+    "@ai-star-eco/landing": "workspace:*",
+    "@ai-star-eco/types": "workspace:*",
+    "@ai-star-eco/ui": "workspace:*",
+    "lucide-react": "^0.547.0",
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/node": "^20.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.1.12",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5.7.2"
+  }
+}

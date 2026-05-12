@@ -2,6 +2,43 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> ⚠️ **Monorepo refactor in progress (Phase 0a → Phase 6)**：仓库正在从「单 `apps/web` + 单 `apps/admin` + 单 `apps/server`」拆为「**三个独立 web app + 共享 packages/\* + 共享 server（按子产品分租户）**」。
+>
+> 子产品：**AI 音乐人**（`apps/web-music`，dev 3010）/ **AI 短剧**（`apps/web-drama`，dev 3011）/ **AI 明星带货**（`apps/web-celebrity`，dev 3012）。三个端口为迁移期临时分配（避免与遗留 apps/web=3002 / apps/admin=3003 冲突），Phase 5 删除 apps/web 后可考虑回归到 3002 段。
+>
+> 拆分形态：**pnpm workspaces**（根 `package.json` + `pnpm-workspace.yaml`），共享层在 `packages/`：`@ai-star-eco/types`、`@ai-star-eco/ui`、`@ai-star-eco/api-client`、`@ai-star-eco/landing`。
+>
+> **技术栈分代（重要）**：
+> - **新代码（packages/\* + 三个新 web app）**：Next 16.2.6 + React 19 + Tailwind v4 + pnpm。中间件文件名 **`proxy.ts`**（不是 `middleware.ts`，v16 改名）；`cookies()` / `headers()` / `params` / `searchParams` **必须 await**。
+> - **遗留 `apps/web`**（即将于 Phase 5 删除）：Next 14.2 + React 18 + npm，**不动**。
+> - **遗留 `apps/admin`**：Next 14.2 + React 18 + npm，独立于本次拆分；后续作为单独任务升级。
+> - **`pnpm-workspace.yaml` 仅纳入 `packages/*` + 三个新 web app**；apps/web、apps/admin、apps/server 不属 workspace，沿用各自原有依赖管理。
+>
+> Auth：同根域名 + 三子域名（music.aistar.com / drama.aistar.com / celebrity.aistar.com）+ cookie sharing（domain=.aistar.com）。
+>
+> **进展（截至本次 commit）**：
+> - ✅ **Phase 0a-b**：workspace 脚手架（根 `package.json` + `pnpm-workspace.yaml` + `.npmrc` + `packages/`），`pnpm install` 跑通，`pnpm-lock.yaml` 已生成
+> - ✅ **Phase 1**：四个共享包就位且 typecheck 全绿
+>   - `packages/types/`（22 个域 type 文件，从 apps/web 复制；未来真源在此）
+>   - `packages/ui/`（48 shadcn + ThemeProvider + globals.css；字体由消费方 next/font 注入）
+>   - `packages/api-client/`（apiFetch + AuthProvider + format + 网络专用 auth/account API；token 仍 localStorage，cookie SSO TODO 见 `_client.ts`）
+>   - `packages/landing/`（共享 ProductLanding 原语）
+> - ✅ **Phase 2-4a**：三个新 web app shell + landing 全部 dev HTTP 200
+>   - 各自 root layout 注入 Inter + Space_Grotesk via `next/font/google`
+>   - 各自 `AppProviders` 包 `ThemeProvider` + `AuthProvider`（公开路径 `["/","/login","/activate"]`，loginPath="/login"）
+>   - landing page 强制 `"use client"`（避免 Server→Client 传递 LucideIcon 函数）
+>
+> **尚未做**：
+> - ⏳ **Phase 4b**：把 `apps/web/src/components/celebrity-zone/` 43 个组件搬进 `apps/web-celebrity`，接入 `/console/*` 路由 + 鉴权 wall
+> - ⏳ **Phase 5**：删除 `apps/web`（破坏性，待三新 app 验证完整后再做）
+> - ⏳ **Phase 6**：server 按子产品分租户（DB migration 级别）
+> - ⏳ **Cookie SSO**：当前 token 仍 localStorage，不跨子域；改造点见 `packages/api-client/src/_client.ts` TODO 注释
+> - ⏳ **apps/admin**：仍 Next 14，独立于本次拆分
+>
+> **dev 启动**：根目录跑 `pnpm dev:music` / `pnpm dev:drama` / `pnpm dev:celebrity`；一次性 typecheck：`pnpm typecheck:all`。
+>
+> 详见 plan 文件 `/Users/donis/.claude/plans/ethereal-petting-cosmos.md`。
+
 > **Primary reference**: [`AGENTS.md`](./AGENTS.md) contains the full repository overview, three-end data-flow architecture, domain alignment table (20 domains × web / admin / server), and the new-domain SOP. Read it before non-trivial work. This file only captures the fast-path commands and pitfalls that don't live there.
 >
 > **Staleness check**: `AGENTS.md` has drifted before. Before trusting a fact from it, verify against the source of truth:
