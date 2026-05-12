@@ -29,7 +29,7 @@ export function CelebrityStarDetail({ star }: Props) {
   const { wallet } = useProducerShell();
   const auth = AUTH_STATUS_META[star.authorization.status];
   const isAuthorized = star.authorization.status === "authorized";
-  const generateHref = `/producer/celebrity-zone/star/${star.id}/generate`;
+  const generateHref = `/console/star/${star.id}/generate`;
   const walletBalance = wallet?.totalBalance ?? 0;
 
   const currentTier = isAuthorized
@@ -41,7 +41,7 @@ export function CelebrityStarDetail({ star }: Props) {
       {/* 顶部：返回 + 标题 */}
       <div className="flex items-center gap-3">
         <Link
-          href="/producer/celebrity-zone"
+          href="/console"
           className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/55 transition hover:border-white/30 hover:text-white"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> 返回
@@ -238,13 +238,13 @@ function CurrentTierBlock({ star }: { star: CelebrityStar }) {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href={`/producer/celebrity-zone/star/${star.id}/apply`}
+            href={`/console/star/${star.id}/apply`}
             className="inline-flex items-center gap-1 rounded-md border border-cyan-400/40 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-200 hover:border-cyan-300 hover:bg-cyan-500/20"
           >
             <ArrowUpRight className="h-3 w-3" /> 升级套餐
           </Link>
           <Link
-            href={`/producer/celebrity-zone/star/${star.id}/apply`}
+            href={`/console/star/${star.id}/apply`}
             className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1 text-[11px] text-white/60 hover:border-white/30 hover:text-white"
           >
             <RefreshCcw className="h-3 w-3" /> 续费

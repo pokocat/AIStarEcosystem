@@ -22,7 +22,7 @@ export function CelebrityZoneTabs({ active, highlight = true }: Props) {
     if (tab === "market") next.delete("tab");
     else next.set("tab", tab);
     const qs = next.toString();
-    return qs ? `/producer/celebrity-zone?${qs}` : "/producer/celebrity-zone";
+    return qs ? `/console?${qs}` : "/console";
   };
 
   return (

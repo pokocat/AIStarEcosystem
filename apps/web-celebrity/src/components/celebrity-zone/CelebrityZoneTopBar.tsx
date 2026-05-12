@@ -22,30 +22,30 @@ function resolveTabId(raw: string | null | undefined): ZoneTabId {
 }
 
 function buildCrumbs(pathname: string, sp: URLSearchParams): Crumb[] {
-  const crumbs: Crumb[] = [{ label: "明星专区", href: "/producer/celebrity-zone" }];
-  // /producer/celebrity-zone/star/[starId]
-  const starMatch = pathname.match(/^\/producer\/celebrity-zone\/star\/([^/]+)(?:\/([^/]+))?\/?$/);
+  const crumbs: Crumb[] = [{ label: "明星专区", href: "/console" }];
+  // /console/star/[starId]
+  const starMatch = pathname.match(/^\/console\/star\/([^/]+)(?:\/([^/]+))?\/?$/);
   if (starMatch) {
     const starId = starMatch[1];
     const sub = starMatch[2];
     const star = STAR_DETAIL_MAP[starId];
     crumbs.push({
       label: star?.name ?? starId,
-      href: `/producer/celebrity-zone/star/${starId}`,
+      href: `/console/star/${starId}`,
     });
     if (sub === "generate") crumbs.push({ label: "生成视频" });
     else if (sub === "apply") crumbs.push({ label: "申请合作" });
     return crumbs;
   }
-  // /producer/celebrity-zone/projects/[projectId]
-  const projMatch = pathname.match(/^\/producer\/celebrity-zone\/projects\/([^/]+)\/?$/);
+  // /console/projects/[projectId]
+  const projMatch = pathname.match(/^\/console\/projects\/([^/]+)\/?$/);
   if (projMatch) {
     const proj = CELEBRITY_PROJECTS.find((p) => p.id === projMatch[1]);
     crumbs.push({ label: `项目详情：${proj?.name ?? projMatch[1]}` });
     return crumbs;
   }
   // 主页：附加当前 tab
-  if (pathname === "/producer/celebrity-zone") {
+  if (pathname === "/console") {
     const tabId = resolveTabId(sp.get("tab"));
     const TAB_LABEL: Record<ZoneTabId, string> = {
       market: "明星市场",
@@ -60,12 +60,12 @@ function buildCrumbs(pathname: string, sp: URLSearchParams): Crumb[] {
 }
 
 function activeTabFor(pathname: string, sp: URLSearchParams): ResolvedTab {
-  if (pathname === "/producer/celebrity-zone") return resolveTabId(sp.get("tab"));
+  if (pathname === "/console") return resolveTabId(sp.get("tab"));
   return null;
 }
 
 export function CelebrityZoneTopBar() {
-  const pathname = usePathname() ?? "/producer/celebrity-zone";
+  const pathname = usePathname() ?? "/console";
   const searchParams = useSearchParams();
   const sp = React.useMemo(
     () => new URLSearchParams(searchParams?.toString() ?? ""),

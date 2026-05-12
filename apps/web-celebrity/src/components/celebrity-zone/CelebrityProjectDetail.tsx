@@ -46,14 +46,14 @@ export function CelebrityProjectDetail({ project, videos }: Props) {
     return videos.filter((v) => v.status === statusFilter);
   }, [videos, statusFilter]);
   const badge = PROJECT_STATUS_BADGE[project.status];
-  const generateHref = `/producer/celebrity-zone/star/${project.starId}/generate`;
+  const generateHref = `/console/star/${project.starId}/generate`;
 
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 border-b border-white/5 pb-4">
         <Link
-          href="/producer/celebrity-zone?tab=projects"
+          href="/console?tab=projects"
           className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/55 transition hover:border-white/30 hover:text-white"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> 返回项目列表

@@ -19,7 +19,7 @@ export default async function StarGeneratePage({ params, searchParams }: PagePro
   const star = STAR_DETAIL_MAP[starId];
   if (!star) notFound();
   if (star.authorization.status !== "authorized") {
-    redirect(`/producer/celebrity-zone/star/${starId}`);
+    redirect(`/console/star/${starId}`);
   }
   return <CelebrityGenerationWorkspace starId={starId} jobId={sp.jobId} />;
 }

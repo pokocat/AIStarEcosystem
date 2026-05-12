@@ -230,7 +230,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       scenes: [],
       availableStyles: 0,
       pendingNote: "预计 3 个工作日内完成审核",
-      applyUrl: "/producer/celebrity-zone/star/star-liu-tao/apply",
+      applyUrl: "/console/star/star-liu-tao/apply",
     },
     stats: {
       totalGenerated: 0,
@@ -256,7 +256,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       status: "unauthorized",
       scenes: [],
       availableStyles: 0,
-      applyUrl: "/producer/celebrity-zone/star/star-shen-teng/apply",
+      applyUrl: "/console/star/star-shen-teng/apply",
     },
     stats: {
       totalGenerated: 0,
@@ -286,7 +286,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       scenes: ["带货"],
       expireDate: "2026-04-30",
       availableStyles: 3,
-      applyUrl: "/producer/celebrity-zone/star/star-na-ying/apply",
+      applyUrl: "/console/star/star-na-ying/apply",
     },
     stats: {
       totalGenerated: 96,
@@ -369,7 +369,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       status: "unauthorized",
       scenes: [],
       availableStyles: 0,
-      applyUrl: "/producer/celebrity-zone/star/star-jia-ling/apply",
+      applyUrl: "/console/star/star-jia-ling/apply",
     },
     stats: {
       totalGenerated: 0,

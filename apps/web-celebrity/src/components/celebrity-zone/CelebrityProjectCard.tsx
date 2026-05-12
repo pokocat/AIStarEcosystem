@@ -13,8 +13,8 @@ interface Props {
 
 export function CelebrityProjectCard({ project }: Props) {
   const badge = PROJECT_STATUS_BADGE[project.status];
-  const detailHref = `/producer/celebrity-zone/projects/${project.id}`;
-  const generateHref = `/producer/celebrity-zone/star/${project.starId}/generate`;
+  const detailHref = `/console/projects/${project.id}`;
+  const generateHref = `/console/star/${project.starId}/generate`;
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-5 transition hover:border-cyan-500/30 hover:bg-white/[0.04]">

@@ -27,9 +27,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >   - 各自 root layout 注入 Inter + Space_Grotesk via `next/font/google`
 >   - 各自 `AppProviders` 包 `ThemeProvider` + `AuthProvider`（公开路径 `["/","/login","/activate"]`，loginPath="/login"）
 >   - landing page 强制 `"use client"`（避免 Server→Client 传递 LucideIcon 函数）
+> - ✅ **Phase 4b**：`apps/web/src/components/celebrity-zone/` 33 个组件迁入 `apps/web-celebrity/src/components/celebrity-zone/`；`/console/*` 路由就位（`/console`、`/console/star/[starId]`、`/console/star/[starId]/apply`、`/console/star/[starId]/generate`、`/console/projects/[projectId]`）；`console/layout.tsx` 提供独立 sidebar + topbar shell（`CelebrityShellProvider`，复用 `useAuth` 的 logout / wallet）；鉴权 wall 由 `app/providers.tsx` 的 `AuthProvider`（publicPrefixes 不含 `/console`）承担；landing CTA 通过 `ProductLanding.postLoginPath="/console"` 让登录后落到工作台。所有组件 / mocks 中 hard-coded 的 `/producer/celebrity-zone/...` 链接已统一替换为 `/console/...`；`pnpm typecheck:all` 七个 workspace 全绿；`pnpm dev:celebrity` 后 `/`、`/console`、`/console/star/star-liu-tao` 均 HTTP 200。
 >
 > **尚未做**：
-> - ⏳ **Phase 4b**：把 `apps/web/src/components/celebrity-zone/` 43 个组件搬进 `apps/web-celebrity`，接入 `/console/*` 路由 + 鉴权 wall
 > - ⏳ **Phase 5**：删除 `apps/web`（破坏性，待三新 app 验证完整后再做）
 > - ⏳ **Phase 6**：server 按子产品分租户（DB migration 级别）
 > - ⏳ **Cookie SSO**：当前 token 仍 localStorage，不跨子域；改造点见 `packages/api-client/src/_client.ts` TODO 注释

@@ -30,6 +30,12 @@ export interface ProductLandingProps {
   accentText: string;
   /** 三张能力卡，限 3 条。 */
   features: ProductLandingFeature[];
+  /**
+   * 登录成功后的目标路径（用于构造 `/login?from=<postLoginPath>`）。
+   * 缺省回退到 `/${product}`，便于沿用旧 apps/web 的 /celebrity 等路径；
+   * 三个独立 web app 落地时应显式传 `/console`（明星）或对应工作台路径。
+   */
+  postLoginPath?: string;
 }
 
 export function ProductLanding({
@@ -41,8 +47,9 @@ export function ProductLanding({
   accentGradient,
   accentText,
   features,
+  postLoginPath,
 }: ProductLandingProps) {
-  const loginHref = `/login?from=${encodeURIComponent(`/${product}`)}`;
+  const loginHref = `/login?from=${encodeURIComponent(postLoginPath ?? `/${product}`)}`;
   return (
     <div className="min-h-screen bg-black text-white relative overflow-hidden">
       <div

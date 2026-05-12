@@ -14,6 +14,7 @@ export default function CelebrityLandingPage() {
       icon={Megaphone}
       accentGradient="from-amber-500 via-orange-500 to-pink-500"
       accentText="text-amber-300"
+      postLoginPath="/console"
       features={[
         {
           icon: Star,

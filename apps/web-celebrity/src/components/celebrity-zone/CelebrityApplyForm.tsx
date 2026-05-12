@@ -56,13 +56,13 @@ export function CelebrityApplyForm({ star }: Props) {
         </p>
         <div className="flex gap-2">
           <Link
-            href={`/producer/celebrity-zone/star/${star.id}`}
+            href={`/console/star/${star.id}`}
             className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white/65 hover:border-white/30 hover:text-white"
           >
             返回明星详情
           </Link>
           <Link
-            href="/producer/celebrity-zone"
+            href="/console"
             className="rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white"
           >
             继续浏览明星
@@ -77,7 +77,7 @@ export function CelebrityApplyForm({ star }: Props) {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href={`/producer/celebrity-zone/star/${star.id}`}
+          href={`/console/star/${star.id}`}
           className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/55 transition hover:border-white/30 hover:text-white"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> 返回 {star.name} 详情
