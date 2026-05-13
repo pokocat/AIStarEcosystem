@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Sparkles, type LucideIcon } from "lucide-react";
+import { ArrowRight, LogOut, Sparkles, type LucideIcon } from "lucide-react";
+import { useAuth } from "@ai-star-eco/api-client";
 
 export interface ProductLandingFeature {
   icon: LucideIcon;
@@ -49,7 +50,16 @@ export function ProductLanding({
   features,
   postLoginPath,
 }: ProductLandingProps) {
-  const loginHref = `/login?from=${encodeURIComponent(postLoginPath ?? `/${product}`)}`;
+  const workspaceHref = postLoginPath ?? `/${product}`;
+  const loginHref = `/login?from=${encodeURIComponent(workspaceHref)}`;
+  const { user, logout } = useAuth();
+  // SSR 渲染时无法读 localStorage，先按未登录态渲染避免 hydration mismatch，
+  // 客户端 mount 之后再根据 user 状态切换 CTA。
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  const isLoggedIn = mounted && !!user;
   return (
     <div className="min-h-screen bg-black text-white relative overflow-hidden">
       <div
@@ -76,13 +86,32 @@ export function ProductLanding({
           >
             申请试用
           </Link>
-          <Link
-            href={loginHref}
-            className={`inline-flex items-center gap-1.5 text-sm font-semibold text-white px-4 py-2 rounded-lg bg-gradient-to-r ${accentGradient} hover:opacity-90 transition shadow-lg`}
-          >
-            立即登录
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          {isLoggedIn ? (
+            <>
+              <Link
+                href={workspaceHref}
+                className={`inline-flex items-center gap-1.5 text-sm font-semibold text-white px-4 py-2 rounded-lg bg-gradient-to-r ${accentGradient} hover:opacity-90 transition shadow-lg`}
+              >
+                进入工作台
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+              <button
+                onClick={logout}
+                title="退出登录"
+                className="p-2 rounded-lg text-gray-400 hover:bg-white/[0.06] hover:text-white transition"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <Link
+              href={loginHref}
+              className={`inline-flex items-center gap-1.5 text-sm font-semibold text-white px-4 py-2 rounded-lg bg-gradient-to-r ${accentGradient} hover:opacity-90 transition shadow-lg`}
+            >
+              立即登录
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -102,10 +131,10 @@ export function ProductLanding({
           <p className="text-sm md:text-base text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">{description}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
-              href={loginHref}
+              href={isLoggedIn ? workspaceHref : loginHref}
               className={`inline-flex items-center justify-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-lg bg-gradient-to-r ${accentGradient} hover:opacity-90 transition shadow-lg shadow-black/30`}
             >
-              立即登录
+              {isLoggedIn ? "进入工作台" : "立即登录"}
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link

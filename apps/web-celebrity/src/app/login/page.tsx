@@ -10,6 +10,7 @@ export default function LoginPage() {
       icon={Megaphone}
       accentGradient="from-amber-500 via-orange-500 to-pink-500"
       accentText="text-amber-300"
+      selectedClassName="border-amber-400/50 bg-amber-500/10"
       defaultPostLoginPath="/console"
     />
   );

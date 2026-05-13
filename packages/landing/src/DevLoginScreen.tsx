@@ -20,6 +20,12 @@ export interface DevLoginScreenProps {
   /** 渐变对应的强调文字色，例 "text-fuchsia-300"。 */
   accentText: string;
   /**
+   * 选中账号时给 button 的 className（边框 / 背景 / ring 任意 Tailwind 类）。
+   * 不传走中性白色高亮。注意：Tailwind v4 source(none) 不扫描运行时拼接的
+   * 类名，必须传完整字面量（如 "border-fuchsia-400/40 bg-fuchsia-500/10"）。
+   */
+  selectedClassName?: string;
+  /**
    * 登录成功后的 fallback 路径。若 URL 上带 `?from=`，优先使用 query。
    * 不传则回退到 "/"。
    */
@@ -31,6 +37,7 @@ function DevLoginScreenInner({
   icon: Icon,
   accentGradient,
   accentText,
+  selectedClassName = "border-white/40 bg-white/[0.06]",
   defaultPostLoginPath = "/",
 }: DevLoginScreenProps) {
   const router = useRouter();
@@ -125,7 +132,7 @@ function DevLoginScreenInner({
                     disabled={submitting}
                     className={`w-full text-left px-4 py-3 rounded-lg border transition ${
                       selected === a.username
-                        ? `${accentText.replace("text-", "border-")}/40 bg-white/[0.04]`
+                        ? selectedClassName
                         : "bg-white/[0.02] border-white/5 hover:border-white/15"
                     }`}
                   >
@@ -136,7 +143,7 @@ function DevLoginScreenInner({
                       <div className="text-[11px] text-gray-500 mt-0.5">
                         @{a.username}
                         {a.studioKind && (
-                          <span className={`ml-2 ${accentText}/70`}>
+                          <span className={`ml-2 opacity-70 ${accentText}`}>
                             ·{" "}
                             {STUDIO_KIND_LABEL_ZH[a.studioKind as StudioKind] ??
                               a.studioKind}
