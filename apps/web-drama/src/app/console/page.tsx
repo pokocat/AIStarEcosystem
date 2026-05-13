@@ -29,6 +29,7 @@ import { CastView } from "@/components/views/CastView";
 import { IncubatorView } from "@/components/views/IncubatorView";
 import { ForgeView } from "@/components/views/ForgeView";
 import { WardrobeView } from "@/components/views/WardrobeView";
+import { ScriptsView } from "@/components/views/ScriptsView";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
 
 type TabId =
@@ -225,30 +226,8 @@ function OverviewView() {
 // 全屏演员阵容视图独立到 components/views/CastView.tsx。
 const CAST_PREVIEW = MOCK_ARTISTS.slice(0, 4).map(deriveCastView);
 
-function ScriptsView() {
-  return (
-    <>
-      <ViewHeader
-        eyebrow="script forge · ai assist"
-        title={
-          <>
-            脚本{" "}
-            <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
-              工坊
-            </span>
-          </>
-        }
-        meta={`${SCRIPT_DRAFTS.length} 份草稿 · 平均完成度 67%`}
-        action={
-          <Button variant="primary" size="md">
-            <Wand2 size={14} /> 新建脚本
-          </Button>
-        }
-      />
-      <ScriptForge drafts={SCRIPT_DRAFTS} expanded />
-    </>
-  );
-}
+// 详细版脚本工坊抽到独立文件 components/views/ScriptsView.tsx；
+// 总览页脚本卡片仍使用 ScriptForge + SCRIPT_DRAFTS（保留 inline 简化版）。
 
 function ProjectsView() {
   return (
