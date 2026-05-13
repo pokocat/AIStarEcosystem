@@ -3,9 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // 内部演示用途：本文件中所有姓名、配图、视频、授权状态、价格均为前端原型
-// 展示，不对外发布、不构成商业授权关系。明星头像 / 封面采用 Wikimedia
-// Commons 公开图片热链接；视频片段来源于 Pexels 公开 portrait
-// livestreaming-selling 库。生产环境替换为 AI 生成的静态资源。
+// 展示，不对外发布、不构成商业授权关系。明星头像 / 封面采用公开可访问
+// 媒体源热链接；视频片段来源于 Pexels 公开 portrait livestreaming-selling 库。
+// 生产环境替换为商务已授权素材或 AI 生成静态资源。
 //
 // 接入后端真实接口时，整文件仅用作 USE_MOCK=1 模式下的回退数据。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,8 +22,18 @@ import type {
 import type { ID } from "@ai-star-eco/types/_shared";
 
 // ── 公开图床工具函数 ────────────────────────────────────────────────────────
-const cover = (seed: string) => `https://picsum.photos/seed/${seed}/600/800`;
-const thumb = (seed: string) => `https://picsum.photos/seed/${seed}/360/640`;
+const VIDEO_THUMB_POOL = [
+  "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=720&q=80",
+  "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=720&q=80",
+  "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=720&q=80",
+  "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=720&q=80",
+  "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=720&q=80",
+  "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=720&q=80",
+  "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=720&q=80",
+  "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=720&q=80",
+] as const;
+
+const thumb = (seed: string) => VIDEO_THUMB_POOL[hash(seed) % VIDEO_THUMB_POOL.length];
 
 /**
  * Pexels 公开 portrait livestreaming-selling 视频池，用于所有明星样片 /
@@ -57,9 +67,8 @@ const pickVideo = (seed: string): string =>
   PEXELS_PORTRAIT_VIDEOS[hash(seed) % PEXELS_PORTRAIT_VIDEOS.length];
 
 /**
- * 明星头像 / 封面：来自 Wikimedia Commons 公开图片热链接（内部 Demo 用）。
- * 6/8 位有 Wikimedia 公开像，剩余 2 位（刘涛 / 贾玲）暂用 picsum 占位，
- * 后续可替换为商务团队提供的授权图片或自建 CDN。
+ * 明星头像 / 封面：来自 Wikimedia Commons / TMDB 等公开可访问图片热链接
+ * （内部 Demo 用）。后续可替换为商务团队提供的授权图片或自建 CDN。
  */
 const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
   "star-li-dan": {
@@ -73,8 +82,10 @@ const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
     cover: "https://upload.wikimedia.org/wikipedia/commons/e/e1/Annie_Yi.jpg",
   },
   "star-liu-tao": {
-    avatar: cover("star-liu-tao-portrait"),
-    cover: cover("star-liu-tao-cover"),
+    avatar:
+      "https://upload.wikimedia.org/wikipedia/commons/2/28/%E4%B8%8A%E6%B5%B7_%E5%BE%AE%E5%8D%9A%E7%94%B5%E5%BD%B1%E4%B9%8B%E5%A4%9C_%E5%88%98%E6%B6%9B_%282%29.jpg",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/commons/2/28/%E4%B8%8A%E6%B5%B7_%E5%BE%AE%E5%8D%9A%E7%94%B5%E5%BD%B1%E4%B9%8B%E5%A4%9C_%E5%88%98%E6%B6%9B_%282%29.jpg",
   },
   "star-shen-teng": {
     avatar:
@@ -101,8 +112,8 @@ const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
       "https://upload.wikimedia.org/wikipedia/commons/a/ab/Li_Yuchun_Cannes_2015.jpg",
   },
   "star-jia-ling": {
-    avatar: cover("star-jia-ling-portrait"),
-    cover: cover("star-jia-ling-cover"),
+    avatar: "https://image.tmdb.org/t/p/original/5GUYKXsJ9gfcGR3Lx5AQhuzXj2z.jpg",
+    cover: "https://image.tmdb.org/t/p/original/5GUYKXsJ9gfcGR3Lx5AQhuzXj2z.jpg",
   },
 };
 
