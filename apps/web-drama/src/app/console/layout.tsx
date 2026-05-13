@@ -6,7 +6,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Clapperboard,
@@ -64,6 +64,8 @@ const GROUPS: NavGroup[] = [
 
 function Sidebar() {
   const pathname = usePathname();
+  const search = useSearchParams();
+  const currentTab = search?.get("tab") ?? "";
   const { user } = useAuth();
   return (
     <aside
@@ -128,11 +130,11 @@ function Sidebar() {
             </div>
             {g.items.map((it) => {
               const Icon = it.icon;
-              const [path] = it.href.split("?");
+              const [path, query] = it.href.split("?");
+              const targetTab = query?.match(/tab=([^&]+)/)?.[1] ?? "";
+              // 仅当路径相同 && tab 也对得上时高亮（含"总览"= 无 tab）
               const isActive =
-                path === "/console"
-                  ? pathname === "/console"
-                  : pathname?.startsWith(path) ?? false;
+                pathname === path && currentTab === targetTab;
               return (
                 <Link
                   key={it.href}
