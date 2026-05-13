@@ -22,6 +22,7 @@ import {
   Shirt,
   Sparkles,
   Users,
+  Wallet as WalletIcon,
   Wand2,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
@@ -62,6 +63,7 @@ const GROUPS: NavGroup[] = [
   {
     title: "System",
     items: [
+      { href: "/console?tab=finance", icon: WalletIcon, label: "财务中心" },
       { href: "/console?tab=settings", icon: Settings, label: "工作室设置" },
     ],
   },

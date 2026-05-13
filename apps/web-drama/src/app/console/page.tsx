@@ -31,7 +31,23 @@ import { ForgeView } from "@/components/views/ForgeView";
 import { WardrobeView } from "@/components/views/WardrobeView";
 import { ScriptsView } from "@/components/views/ScriptsView";
 import { DistributionView } from "@/components/views/DistributionView";
+import { FinanceView } from "@/components/views/FinanceView";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
+import { REVENUE_MONTHLY, REVENUE_SOURCES, TRANSACTIONS } from "@/mocks/finance";
+import type { Wallet } from "@ai-star-eco/types/wallet";
+
+// 财务面板用的 wallet mock；后续接 AccountApi.getMyWallet 后可替换。
+const FINANCE_WALLET: Wallet = {
+  id: "w-mock-drama-001",
+  userId: "u-mock-001",
+  totalBalance: 88_000,
+  licenseBalance: 50_000,
+  rechargeBalance: 30_000,
+  giftBalance: 8_000,
+  pendingBalance: 12_400,
+  createdAt: "2025-09-12T08:10:00Z",
+  updatedAt: "2026-05-13T09:00:00Z",
+};
 
 type TabId =
   | "overview"
@@ -44,6 +60,7 @@ type TabId =
   | "distribution"
   | "insights"
   | "trends"
+  | "finance"
   | "settings";
 
 function resolveTab(raw?: string): TabId {
@@ -57,6 +74,7 @@ function resolveTab(raw?: string): TabId {
     case "distribution":
     case "insights":
     case "trends":
+    case "finance":
     case "settings":
       return raw;
     default:
@@ -590,6 +608,7 @@ const TAB_META: Record<TabId, { icon: React.ElementType; label: string }> = {
   distribution: { icon: Share2, label: "多平台分发" },
   insights: { icon: BarChart3, label: "数据洞察" },
   trends: { icon: Compass, label: "趋势雷达" },
+  finance: { icon: BarChart3, label: "财务中心" },
   settings: { icon: Settings, label: "工作室设置" },
 };
 
@@ -629,6 +648,16 @@ export default async function DramaConsole({ searchParams }: PageProps) {
       break;
     case "trends":
       view = <TrendsView />;
+      break;
+    case "finance":
+      view = (
+        <FinanceView
+          wallet={FINANCE_WALLET}
+          monthly={REVENUE_MONTHLY}
+          sources={REVENUE_SOURCES}
+          transactions={TRANSACTIONS}
+        />
+      );
       break;
     case "settings":
       view = <SettingsView />;
