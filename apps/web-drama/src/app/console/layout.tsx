@@ -44,6 +44,7 @@ const GROUPS: NavGroup[] = [
       { href: "/console", icon: LayoutDashboard, label: "总览" },
       { href: "/console?tab=cast", icon: Users, label: "演员 IP 阵容" },
       { href: "/console?tab=incubator", icon: Wand2, label: "孵化新演员" },
+      { href: "/console?tab=forge", icon: Sparkles, label: "形象锻造炉" },
       { href: "/console?tab=scripts", icon: PenTool, label: "脚本工坊" },
       { href: "/console?tab=projects", icon: Film, label: "项目流水线" },
     ],
