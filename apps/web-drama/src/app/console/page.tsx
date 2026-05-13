@@ -24,8 +24,10 @@ import {
   Wand2,
 } from "lucide-react";
 import type { Artist } from "@ai-star-eco/types/artist";
+import type { Drama, DramaStatus } from "@ai-star-eco/types/film";
 import { Button, Card, Chip, KpiCard, Meter } from "@/components/premium";
 import { MOCK_ARTISTS } from "@/mocks/artists";
+import { DRAMAS } from "@/mocks/film";
 
 // drama 工作台 —— 按 ?tab=xxx 切多视图，sidebar 控制。
 // 数据全为 mock，待后续 Phase 接入真实 service / api。
@@ -145,53 +147,56 @@ function deriveCastView(a: Artist): CastView {
 
 const CAST: CastView[] = MOCK_ARTISTS.map(deriveCastView);
 
-const PROJECTS = [
-  {
-    title: "暮色未央",
-    genre: "都市悬疑",
-    episodes: "12 / 16",
-    cast: "苏念 + 陆烬",
-    status: "在线" as const,
-    sched: "EP08 已上线",
-    tone: "success" as const,
-  },
-  {
-    title: "盛夏来信",
-    genre: "青春治愈",
-    episodes: "8 / 14",
-    cast: "林晓",
-    status: "制作中" as const,
-    sched: "EP09 拍摄",
-    tone: "info" as const,
-  },
-  {
-    title: "摩天与月光",
-    genre: "商战 + 爱情",
-    episodes: "0 / 20",
-    cast: "苏念 + 陆烬",
-    status: "首映 T-3" as const,
-    sched: "倒计时 3 天",
-    tone: "accent" as const,
-  },
-  {
-    title: "雾隐 · 1992",
-    genre: "悬疑短剧",
-    episodes: "3 / 10",
-    cast: "Aiko (训练中)",
-    status: "脚本" as const,
-    sched: "脚本工坊 v3",
-    tone: "violet" as const,
-  },
-  {
-    title: "拾月",
-    genre: "古风言情",
-    episodes: "—",
-    cast: "陆烬",
-    status: "立项" as const,
-    sched: "等待审批",
-    tone: "neutral" as const,
-  },
-];
+// PROJECTS 派生自 mocks/film.ts 的 Drama[]，按 DramaStatus 映射状态标签 + tone。
+// Drama 类型当前没有"已上线 / 总集数"双字段，episodes 是总集数；后续在 spec
+// 加 airedEpisodes / nextEpisodeAt 真实进度后替换。
+type ProjectTone = "accent" | "success" | "warning" | "danger" | "info" | "violet" | "neutral";
+
+interface ProjectView {
+  title: string;
+  genre: string;
+  episodes: string;
+  cast: string;
+  status: string;
+  sched: string;
+  tone: ProjectTone;
+}
+
+const DRAMA_STATUS_LABEL: Record<DramaStatus, string> = {
+  released: "在线",
+  filming: "制作中",
+  "post-production": "首映 T-3",
+  casting: "选角",
+};
+
+const DRAMA_STATUS_TONE: Record<DramaStatus, ProjectTone> = {
+  released: "success",
+  filming: "info",
+  "post-production": "accent",
+  casting: "violet",
+};
+
+function deriveSched(d: Drama): string {
+  if (d.status === "released") return d.releaseDate ? `首播 ${d.releaseDate.slice(0, 10)}` : "已上线";
+  if (d.status === "filming") return "拍摄中";
+  if (d.status === "post-production") return d.releaseDate ? `首映 ${d.releaseDate.slice(0, 10)}` : "后期制作";
+  return "选角中";
+}
+
+function deriveProjectView(d: Drama): ProjectView {
+  return {
+    title: d.title,
+    genre: d.genre,
+    episodes: d.episodes > 0 ? `${d.episodes} 集` : "—",
+    cast: d.role,
+    status: DRAMA_STATUS_LABEL[d.status],
+    sched: deriveSched(d),
+    tone: DRAMA_STATUS_TONE[d.status],
+  };
+}
+
+// 只取 drama 主线（id 以 "d-" 开头的 cinematic 剧集），避免泛例剧目混入。
+const PROJECTS: ProjectView[] = DRAMAS.filter((d) => d.id.startsWith("d-")).map(deriveProjectView);
 
 const SCRIPT_DRAFTS = [
   {
