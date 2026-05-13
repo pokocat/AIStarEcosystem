@@ -19,8 +19,10 @@ import {
   Search,
   Settings,
   Share2,
+  Shirt,
   Sparkles,
   Users,
+  Wallet as WalletIcon,
   Wand2,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
@@ -45,6 +47,7 @@ const GROUPS: NavGroup[] = [
       { href: "/console?tab=cast", icon: Users, label: "演员 IP 阵容" },
       { href: "/console?tab=incubator", icon: Wand2, label: "孵化新演员" },
       { href: "/console?tab=forge", icon: Sparkles, label: "形象锻造炉" },
+      { href: "/console?tab=wardrobe", icon: Shirt, label: "戏服与道具" },
       { href: "/console?tab=scripts", icon: PenTool, label: "脚本工坊" },
       { href: "/console?tab=projects", icon: Film, label: "项目流水线" },
     ],
@@ -60,6 +63,7 @@ const GROUPS: NavGroup[] = [
   {
     title: "System",
     items: [
+      { href: "/console?tab=finance", icon: WalletIcon, label: "财务中心" },
       { href: "/console?tab=settings", icon: Settings, label: "工作室设置" },
     ],
   },

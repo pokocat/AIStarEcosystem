@@ -28,17 +28,39 @@ import {
 import { CastView } from "@/components/views/CastView";
 import { IncubatorView } from "@/components/views/IncubatorView";
 import { ForgeView } from "@/components/views/ForgeView";
+import { WardrobeView } from "@/components/views/WardrobeView";
+import { ScriptsView } from "@/components/views/ScriptsView";
+import { DistributionView } from "@/components/views/DistributionView";
+import { FinanceView } from "@/components/views/FinanceView";
+import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
+import { REVENUE_MONTHLY, REVENUE_SOURCES, TRANSACTIONS } from "@/mocks/finance";
+import type { Wallet } from "@ai-star-eco/types/wallet";
+
+// 财务面板用的 wallet mock；后续接 AccountApi.getMyWallet 后可替换。
+const FINANCE_WALLET: Wallet = {
+  id: "w-mock-drama-001",
+  userId: "u-mock-001",
+  totalBalance: 88_000,
+  licenseBalance: 50_000,
+  rechargeBalance: 30_000,
+  giftBalance: 8_000,
+  pendingBalance: 12_400,
+  createdAt: "2025-09-12T08:10:00Z",
+  updatedAt: "2026-05-13T09:00:00Z",
+};
 
 type TabId =
   | "overview"
   | "cast"
   | "incubator"
   | "forge"
+  | "wardrobe"
   | "scripts"
   | "projects"
   | "distribution"
   | "insights"
   | "trends"
+  | "finance"
   | "settings";
 
 function resolveTab(raw?: string): TabId {
@@ -46,11 +68,13 @@ function resolveTab(raw?: string): TabId {
     case "cast":
     case "incubator":
     case "forge":
+    case "wardrobe":
     case "scripts":
     case "projects":
     case "distribution":
     case "insights":
     case "trends":
+    case "finance":
     case "settings":
       return raw;
     default:
@@ -221,30 +245,8 @@ function OverviewView() {
 // 全屏演员阵容视图独立到 components/views/CastView.tsx。
 const CAST_PREVIEW = MOCK_ARTISTS.slice(0, 4).map(deriveCastView);
 
-function ScriptsView() {
-  return (
-    <>
-      <ViewHeader
-        eyebrow="script forge · ai assist"
-        title={
-          <>
-            脚本{" "}
-            <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
-              工坊
-            </span>
-          </>
-        }
-        meta={`${SCRIPT_DRAFTS.length} 份草稿 · 平均完成度 67%`}
-        action={
-          <Button variant="primary" size="md">
-            <Wand2 size={14} /> 新建脚本
-          </Button>
-        }
-      />
-      <ScriptForge drafts={SCRIPT_DRAFTS} expanded />
-    </>
-  );
-}
+// 详细版脚本工坊抽到独立文件 components/views/ScriptsView.tsx；
+// 总览页脚本卡片仍使用 ScriptForge + SCRIPT_DRAFTS（保留 inline 简化版）。
 
 function ProjectsView() {
   return (
@@ -277,62 +279,8 @@ function ProjectsView() {
   );
 }
 
-function DistributionView() {
-  return (
-    <>
-      <ViewHeader
-        eyebrow="multi-channel distribution"
-        title={
-          <>
-            多平台{" "}
-            <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
-              分发
-            </span>
-          </>
-        }
-        meta={`${DISTRIBUTION_CHANNELS.length} 条渠道 · 4 在投 · 1 预热 · 1 测试`}
-        action={
-          <Button variant="primary" size="md">
-            <Share2 size={14} /> 新增渠道
-          </Button>
-        }
-      />
-      <Card style={{ padding: "22px 24px" }}>
-        <div style={{ overflow: "hidden", borderRadius: "var(--radius-md)", border: "1px solid var(--line)" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                {["渠道", "30 日触达", "完播率", "转化率", "状态"].map((h) => (
-                  <th key={h} className="eyebrow" style={{ textAlign: "left", padding: "12px 16px", borderBottom: "1px solid var(--line)", color: "var(--fg-2)", fontWeight: 500 }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DISTRIBUTION_CHANNELS.map((c, i) => (
-                <tr key={c.name} style={{ borderBottom: i < DISTRIBUTION_CHANNELS.length - 1 ? "1px solid var(--line)" : "none" }}>
-                  <td style={{ padding: "14px 16px", fontWeight: 500, fontFamily: "var(--font-display)", color: "var(--fg-0)" }}>{c.name}</td>
-                  <td className="mono" style={{ padding: "14px 16px", color: "var(--fg-1)", fontSize: 12 }}>{c.reach}</td>
-                  <td style={{ padding: "14px 16px", color: "var(--fg-1)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ height: 4, flex: 1, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden", minWidth: 80 }}>
-                        <div style={{ width: `${c.retention}%`, height: "100%", background: "var(--accent)" }} />
-                      </div>
-                      <span className="mono" style={{ fontSize: 11, color: "var(--fg-2)", minWidth: 32 }}>{c.retention}%</span>
-                    </div>
-                  </td>
-                  <td className="mono" style={{ padding: "14px 16px", color: "var(--accent)", fontSize: 12 }}>{c.conv}</td>
-                  <td style={{ padding: "14px 16px" }}><Chip tone={c.tone}>● {c.state}</Chip></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </>
-  );
-}
+// 分发面板抽到 components/views/DistributionView.tsx，
+// inline 表格已删除（DISTRIBUTION_CHANNELS 常量也无人引用，可后续清理）。
 
 function InsightsView() {
   return (
@@ -654,11 +602,13 @@ const TAB_META: Record<TabId, { icon: React.ElementType; label: string }> = {
   cast: { icon: Users, label: "演员 IP 阵容" },
   incubator: { icon: Wand2, label: "孵化新演员" },
   forge: { icon: Sparkles, label: "形象锻造炉" },
+  wardrobe: { icon: Settings, label: "戏服与道具" },
   scripts: { icon: PenTool, label: "脚本工坊" },
   projects: { icon: Film, label: "项目流水线" },
   distribution: { icon: Share2, label: "多平台分发" },
   insights: { icon: BarChart3, label: "数据洞察" },
   trends: { icon: Compass, label: "趋势雷达" },
+  finance: { icon: BarChart3, label: "财务中心" },
   settings: { icon: Settings, label: "工作室设置" },
 };
 
@@ -681,6 +631,9 @@ export default async function DramaConsole({ searchParams }: PageProps) {
     case "forge":
       view = <ForgeView artists={MOCK_ARTISTS} />;
       break;
+    case "wardrobe":
+      view = <WardrobeView artists={MOCK_ARTISTS} database={CLOTHING_DATABASE} />;
+      break;
     case "scripts":
       view = <ScriptsView />;
       break;
@@ -688,13 +641,23 @@ export default async function DramaConsole({ searchParams }: PageProps) {
       view = <ProjectsView />;
       break;
     case "distribution":
-      view = <DistributionView />;
+      view = <DistributionView dramas={DRAMAS} />;
       break;
     case "insights":
       view = <InsightsView />;
       break;
     case "trends":
       view = <TrendsView />;
+      break;
+    case "finance":
+      view = (
+        <FinanceView
+          wallet={FINANCE_WALLET}
+          monthly={REVENUE_MONTHLY}
+          sources={REVENUE_SOURCES}
+          transactions={TRANSACTIONS}
+        />
+      );
       break;
     case "settings":
       view = <SettingsView />;
