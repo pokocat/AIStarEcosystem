@@ -28,12 +28,15 @@ import {
 import { CastView } from "@/components/views/CastView";
 import { IncubatorView } from "@/components/views/IncubatorView";
 import { ForgeView } from "@/components/views/ForgeView";
+import { WardrobeView } from "@/components/views/WardrobeView";
+import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
 
 type TabId =
   | "overview"
   | "cast"
   | "incubator"
   | "forge"
+  | "wardrobe"
   | "scripts"
   | "projects"
   | "distribution"
@@ -46,6 +49,7 @@ function resolveTab(raw?: string): TabId {
     case "cast":
     case "incubator":
     case "forge":
+    case "wardrobe":
     case "scripts":
     case "projects":
     case "distribution":
@@ -654,6 +658,7 @@ const TAB_META: Record<TabId, { icon: React.ElementType; label: string }> = {
   cast: { icon: Users, label: "演员 IP 阵容" },
   incubator: { icon: Wand2, label: "孵化新演员" },
   forge: { icon: Sparkles, label: "形象锻造炉" },
+  wardrobe: { icon: Settings, label: "戏服与道具" },
   scripts: { icon: PenTool, label: "脚本工坊" },
   projects: { icon: Film, label: "项目流水线" },
   distribution: { icon: Share2, label: "多平台分发" },
@@ -680,6 +685,9 @@ export default async function DramaConsole({ searchParams }: PageProps) {
       break;
     case "forge":
       view = <ForgeView artists={MOCK_ARTISTS} />;
+      break;
+    case "wardrobe":
+      view = <WardrobeView artists={MOCK_ARTISTS} database={CLOTHING_DATABASE} />;
       break;
     case "scripts":
       view = <ScriptsView />;
