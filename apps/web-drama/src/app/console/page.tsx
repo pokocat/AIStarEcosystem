@@ -30,6 +30,7 @@ import { IncubatorView } from "@/components/views/IncubatorView";
 import { ForgeView } from "@/components/views/ForgeView";
 import { WardrobeView } from "@/components/views/WardrobeView";
 import { ScriptsView } from "@/components/views/ScriptsView";
+import { DistributionView } from "@/components/views/DistributionView";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
 
 type TabId =
@@ -260,62 +261,8 @@ function ProjectsView() {
   );
 }
 
-function DistributionView() {
-  return (
-    <>
-      <ViewHeader
-        eyebrow="multi-channel distribution"
-        title={
-          <>
-            多平台{" "}
-            <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
-              分发
-            </span>
-          </>
-        }
-        meta={`${DISTRIBUTION_CHANNELS.length} 条渠道 · 4 在投 · 1 预热 · 1 测试`}
-        action={
-          <Button variant="primary" size="md">
-            <Share2 size={14} /> 新增渠道
-          </Button>
-        }
-      />
-      <Card style={{ padding: "22px 24px" }}>
-        <div style={{ overflow: "hidden", borderRadius: "var(--radius-md)", border: "1px solid var(--line)" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                {["渠道", "30 日触达", "完播率", "转化率", "状态"].map((h) => (
-                  <th key={h} className="eyebrow" style={{ textAlign: "left", padding: "12px 16px", borderBottom: "1px solid var(--line)", color: "var(--fg-2)", fontWeight: 500 }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DISTRIBUTION_CHANNELS.map((c, i) => (
-                <tr key={c.name} style={{ borderBottom: i < DISTRIBUTION_CHANNELS.length - 1 ? "1px solid var(--line)" : "none" }}>
-                  <td style={{ padding: "14px 16px", fontWeight: 500, fontFamily: "var(--font-display)", color: "var(--fg-0)" }}>{c.name}</td>
-                  <td className="mono" style={{ padding: "14px 16px", color: "var(--fg-1)", fontSize: 12 }}>{c.reach}</td>
-                  <td style={{ padding: "14px 16px", color: "var(--fg-1)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ height: 4, flex: 1, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden", minWidth: 80 }}>
-                        <div style={{ width: `${c.retention}%`, height: "100%", background: "var(--accent)" }} />
-                      </div>
-                      <span className="mono" style={{ fontSize: 11, color: "var(--fg-2)", minWidth: 32 }}>{c.retention}%</span>
-                    </div>
-                  </td>
-                  <td className="mono" style={{ padding: "14px 16px", color: "var(--accent)", fontSize: 12 }}>{c.conv}</td>
-                  <td style={{ padding: "14px 16px" }}><Chip tone={c.tone}>● {c.state}</Chip></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </>
-  );
-}
+// 分发面板抽到 components/views/DistributionView.tsx，
+// inline 表格已删除（DISTRIBUTION_CHANNELS 常量也无人引用，可后续清理）。
 
 function InsightsView() {
   return (
@@ -675,7 +622,7 @@ export default async function DramaConsole({ searchParams }: PageProps) {
       view = <ProjectsView />;
       break;
     case "distribution":
-      view = <DistributionView />;
+      view = <DistributionView dramas={DRAMAS} />;
       break;
     case "insights":
       view = <InsightsView />;
