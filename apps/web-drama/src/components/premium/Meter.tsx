@@ -3,7 +3,7 @@
 interface Props {
   label: string;
   value: number;
-  tone?: "accent" | "success" | "warning" | "danger" | "info";
+  tone?: "accent" | "success" | "warning" | "danger" | "info" | "violet";
   hint?: string;
 }
 
@@ -13,6 +13,7 @@ const toneVar = {
   warning: "var(--warning)",
   danger: "var(--danger)",
   info: "var(--info)",
+  violet: "var(--extra-violet)",
 };
 
 export function Meter({ label, value, tone = "accent", hint }: Props) {

@@ -1,12 +1,6 @@
-// console/page.tsx 是 Server Component（需要 await searchParams.tab）。
-// 子视图都是纯 JSX；交互组件 Button / Card / Chip / KpiCard / Meter 各自带
-// "use client"，Next 自动建 client boundary。layout.tsx 是 client（sidebar
-// 要 usePathname + useSearchParams 判 active）。
-//
-// 数据契约：演员 IP 用共享 @ai-star-eco/types/artist 的 Artist 类型，
-// mock 数据放 mocks/artists.ts（按 ArtistType 过滤到 drama 相关）。
-// 展示侧（fidelity/tone/gradient/plays/revenue 字符串）由 deriveCastView()
-// 从 Artist 实时派生，避免 UI 字段污染领域模型。
+// console/page.tsx 是 Server Component（要 await searchParams.tab）。
+// 子视图大部分是纯 JSX 服务端渲染；交互复杂的视图抽到 components/views 下、
+// 自带 "use client"。layout.tsx 是 client，侧栏判 active 用 useSearchParams。
 
 import * as React from "react";
 import {
@@ -23,15 +17,15 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
-import type { Artist } from "@ai-star-eco/types/artist";
 import type { Drama, DramaStatus } from "@ai-star-eco/types/film";
 import { Button, Card, Chip, KpiCard, Meter } from "@/components/premium";
 import { MOCK_ARTISTS } from "@/mocks/artists";
 import { DRAMAS } from "@/mocks/film";
-
-// drama 工作台 —— 按 ?tab=xxx 切多视图，sidebar 控制。
-// 数据全为 mock，待后续 Phase 接入真实 service / api。
-// Phase 4b 重点是 celebrity 业务页迁移，drama 仍是设计样板：把"工业流"具象成可点的工作台。
+import {
+  deriveCastView,
+  type CastTone,
+} from "@/lib/cast-derive";
+import { CastView } from "@/components/views/CastView";
 
 type TabId =
   | "overview"
@@ -57,95 +51,6 @@ function resolveTab(raw?: string): TabId {
       return "overview";
   }
 }
-
-// 派生 CastView 显示字段。
-// fidelity 选 max(acting, popularity)（演员主线看 acting 与人气）；
-// tone / gradient 按 quality 映射，让 6 个等级在视觉上能区分；
-// plays / revenue 用 formatCompactNumber 风格输出。
-type CastTone = "accent" | "success" | "warning" | "danger" | "info" | "violet" | "neutral";
-
-interface CastView {
-  id: string;
-  name: string;
-  role: string;
-  fidelity: number;
-  series: number;
-  plays: string;
-  revenue: string;
-  tone: CastTone;
-  gradient: string;
-}
-
-const QUALITY_TONE: Record<Artist["quality"], CastTone> = {
-  legendary: "accent",
-  epic: "violet",
-  rare: "info",
-  common: "neutral",
-};
-
-const QUALITY_GRADIENT: Record<Artist["quality"], string> = {
-  legendary: "linear-gradient(135deg, rgba(212,175,106,0.55), rgba(234,215,168,0.3))",
-  epic: "linear-gradient(135deg, rgba(164,76,255,0.5), rgba(61,224,255,0.3))",
-  rare: "linear-gradient(135deg, rgba(61,224,255,0.5), rgba(76,224,160,0.3))",
-  common: "linear-gradient(135deg, rgba(86,81,106,0.6), rgba(38,31,54,0.4))",
-};
-
-const QUALITY_LABEL: Record<Artist["quality"], string> = {
-  legendary: "S 类",
-  epic: "A 类",
-  rare: "B 类",
-  common: "C 类",
-};
-
-const STATUS_HINT: Record<Artist["status"], string> = {
-  active: "",
-  trainee: "（训练中）",
-  debut: "（出道期）",
-  rest: "（休养）",
-  retired: "（退役）",
-};
-
-function formatCompact(n: number): string {
-  if (n <= 0) return "—";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function formatCny(n: number): string {
-  if (n <= 0) return "—";
-  if (n >= 1_000_000) return `¥${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `¥${Math.round(n / 1_000)}K`;
-  return `¥${n}`;
-}
-
-// role 取 bio 第一句，如果已经含"类"字（drama 专属人物 bio 直接写了"A 类"），
-// 不再追加 QUALITY_LABEL，否则补一节作为 quality 标识。
-function deriveRole(a: Artist): string {
-  const firstClause = a.bio.split(/[，,。.;；]/)[0].trim();
-  const rawHint = STATUS_HINT[a.status] ?? "";
-  const statusHint = rawHint && !firstClause.includes(rawHint) ? rawHint : "";
-  if (/[A-Z]\s*类|S\s*类|[一二三四五六七八九十]\s*类/.test(firstClause)) {
-    return `${firstClause}${statusHint}`;
-  }
-  return `${firstClause}${statusHint} · ${QUALITY_LABEL[a.quality]}`;
-}
-
-function deriveCastView(a: Artist): CastView {
-  return {
-    id: a.id,
-    name: a.name,
-    role: deriveRole(a),
-    fidelity: Math.max(a.talents.acting, Math.min(a.stats.popularity, 95)),
-    series: a.stats.dramas,
-    plays: formatCompact(a.stats.fans * 200), // mock：粉丝 × 200 ≈ 累计播放（待真实 plays 字段）
-    revenue: formatCny(a.stats.revenue),
-    tone: QUALITY_TONE[a.quality],
-    gradient: QUALITY_GRADIENT[a.quality],
-  };
-}
-
-const CAST: CastView[] = MOCK_ARTISTS.map(deriveCastView);
 
 // PROJECTS 派生自 mocks/film.ts 的 Drama[]，按 DramaStatus 映射状态标签 + tone。
 // Drama 类型当前没有"已上线 / 总集数"双字段，episodes 是总集数；后续在 spec
@@ -265,7 +170,7 @@ function OverviewView() {
         <Card style={{ padding: "22px 24px" }}>
           <SectionHeader eyebrow="cast & roster" title="演员 IP 阵容" rightHref="/console?tab=cast" />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-            {CAST.slice(0, 4).map((c) => (
+            {CAST_PREVIEW.map((c) => (
               <CastRow key={c.id} c={c} />
             ))}
           </div>
@@ -306,71 +211,9 @@ function OverviewView() {
   );
 }
 
-function CastView() {
-  return (
-    <>
-      <ViewHeader
-        eyebrow="cast & roster"
-        title={
-          <>
-            演员 IP{" "}
-            <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
-              阵容
-            </span>
-          </>
-        }
-        meta="6 个演员 IP · 4 A 类 · 1 训练中"
-        action={
-          <Button variant="primary" size="md">
-            <Sparkles size={14} /> 训练新演员
-          </Button>
-        }
-      />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-        {CAST.map((c) => (
-          <Card key={c.id} style={{ padding: 0, overflow: "hidden" }}>
-            <div
-              style={{
-                height: 220,
-                background: c.gradient,
-                position: "relative",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.6))",
-                }}
-              />
-              <div style={{ position: "absolute", top: 14, left: 14 }}>
-                <Chip tone={c.tone}>fidelity {c.fidelity}</Chip>
-              </div>
-              <div style={{ position: "absolute", bottom: 14, left: 16, right: 16 }}>
-                <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    fontFamily: "var(--font-display)",
-                    color: "var(--fg-0)",
-                  }}
-                >
-                  {c.name}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--fg-1)", marginTop: 4 }}>{c.role}</div>
-              </div>
-            </div>
-            <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: 0.4, color: "var(--fg-2)" }}>
-              <span>{c.series} 部剧集</span>
-              <span style={{ color: "var(--fg-1)" }}>{c.plays}</span>
-              <span style={{ color: "var(--accent)" }}>{c.revenue}</span>
-            </div>
-          </Card>
-        ))}
-      </div>
-    </>
-  );
-}
+// 总览页前 4 张精简卡片仍用 deriveCastView 派生显示字段；
+// 全屏演员阵容视图独立到 components/views/CastView.tsx。
+const CAST_PREVIEW = MOCK_ARTISTS.slice(0, 4).map(deriveCastView);
 
 function ScriptsView() {
   return (
@@ -702,7 +545,7 @@ function ViewHeader({
   );
 }
 
-function CastRow({ c }: { c: typeof CAST[number] }) {
+function CastRow({ c }: { c: typeof CAST_PREVIEW[number] }) {
   return (
     <div style={{ display: "flex", gap: 14, padding: 14, borderRadius: "var(--radius-md)", background: "rgba(255,255,255,0.02)", border: "1px solid var(--line)" }}>
       <div style={{ width: 60, height: 80, borderRadius: "var(--radius-sm)", background: c.gradient, flexShrink: 0, position: "relative", overflow: "hidden" }}>
@@ -822,7 +665,7 @@ export default async function DramaConsole({ searchParams }: PageProps) {
   let view: React.ReactNode;
   switch (tab) {
     case "cast":
-      view = <CastView />;
+      view = <CastView artists={MOCK_ARTISTS} dramas={DRAMAS} />;
       break;
     case "scripts":
       view = <ScriptsView />;
