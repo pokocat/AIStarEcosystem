@@ -24,6 +24,14 @@ const nextConfig = {
       },
     ];
   },
+  // 兼容遗留链接：旧 apps/web 时代 drama landing 挂在 /drama，新 sub-app
+  // 独占子域后根路径就是 landing，把 /drama* 一律重定向回 / 避免 404。
+  async redirects() {
+    return [
+      { source: "/drama", destination: "/", permanent: false },
+      { source: "/drama/:path*", destination: "/", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;

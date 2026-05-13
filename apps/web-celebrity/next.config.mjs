@@ -24,6 +24,16 @@ const nextConfig = {
       },
     ];
   },
+  // 兼容遗留链接：
+  // - /celebrity → / （旧 apps/web 把 landing 挂在 /celebrity，新 sub-app 子域根就是 landing）
+  // - /producer/celebrity-zone/:path* → /console/:path* （Phase 4b 把工作台从 /producer/celebrity-zone 搬到 /console）
+  async redirects() {
+    return [
+      { source: "/celebrity", destination: "/", permanent: false },
+      { source: "/producer/celebrity-zone", destination: "/console", permanent: false },
+      { source: "/producer/celebrity-zone/:path*", destination: "/console/:path*", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;
