@@ -4,6 +4,8 @@
 @source '../../../../packages/landing/src/**/*.{js,ts,jsx,tsx}';
 @import 'tw-animate-css';
 @import '@ai-star-eco/ui/styles/globals.css';
+/* celebrity 专属 · Creator-Friendly 设计令牌（覆盖在 ui globals 之后） */
+@import './tokens.css';
 
 @layer base {
   html,
@@ -11,5 +13,11 @@
     min-height: 100vh;
     height: 100%;
     margin: 0;
+  }
+  /* Creator 主题画布覆盖 ui globals 的 bg-background（@apply 默认特异性低） */
+  html[data-theme="creator"] body {
+    background: var(--bg-0);
+    color: var(--fg-0);
+    font-family: var(--font-sans);
   }
 }

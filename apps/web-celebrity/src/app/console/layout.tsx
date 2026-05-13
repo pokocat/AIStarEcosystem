@@ -1,29 +1,24 @@
 "use client";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// /console/* 的工作台 shell — 独立侧栏 + 顶栏，明星带货专属。
-// 与 apps/web 的 producer/layout.tsx (510 行) 不同：
-//   - 只承载 celebrity 一条产品线，无产品切换；
-//   - 不暴露 activeArtist 切换（celebrity 用 CelebrityStar，按项目选）；
-//   - shell context 只暴露 wallet，其它（notifications/commandPalette）后续按需引入。
-// ─────────────────────────────────────────────────────────────────────────────
+// /console/* Creator-Friendly 工作台 shell。
+// 视觉来源：AI IP Design Directions 02（奶油底 + 紫罗兰 active + 大圆角 + 柔阴影）。
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Star,
-  ShoppingBag,
-  Megaphone,
-  Video,
-  Scissors,
-  PieChart,
-  Wallet as WalletIcon,
-  LogOut,
-  Menu,
-  X,
+  Bell,
   Coins,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Menu,
+  PieChart,
+  Search,
+  ShoppingBag,
+  Star,
+  Video,
+  X,
 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
@@ -49,14 +44,25 @@ function SidebarLink({ item, active }: { item: SidebarItem; active: boolean }) {
   return (
     <Link
       href={item.href}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
-        active
-          ? "bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-pink-500/15 text-amber-200 border border-amber-500/20"
-          : "text-gray-400 hover:bg-white/[0.04] hover:text-white"
-      }`}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 14px",
+        borderRadius: "var(--radius-md)",
+        textDecoration: "none",
+        background: active ? "var(--accent-soft)" : "transparent",
+        color: active ? "var(--accent)" : "var(--fg-1)",
+        fontSize: 13.5,
+        fontWeight: active ? 600 : 500,
+        fontFamily: "var(--font-sans)",
+        transition: "background 160ms, color 160ms",
+        marginBottom: 2,
+      }}
     >
-      <Icon size={18} />
-      <span className="font-medium">{item.label}</span>
+      <Icon size={16} />
+      <span>{item.label}</span>
     </Link>
   );
 }
@@ -65,36 +71,160 @@ function TopBar() {
   const { wallet } = useCelebrityShell();
   const { user, logout } = useAuth();
   return (
-    <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-white/5 bg-black/50 backdrop-blur-lg">
-      <div className="flex items-center gap-3 text-sm text-gray-500">
-        <span className="hidden md:inline">AI 明星带货 · 工作台</span>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "14px 28px",
+        borderBottom: "1px solid var(--line)",
+        background: "var(--bg-0)",
+      }}
+    >
+      <div
+        className="creator-mono"
+        style={{ fontSize: 11.5, color: "var(--fg-2)", letterSpacing: 0.3 }}
+      >
+        AI 明星带货 <span style={{ color: "var(--fg-3)" }}>/</span> 工作台
       </div>
-      <div className="flex items-center gap-3">
+
+      <div style={{ flex: 1 }} />
+
+      {/* 搜索框 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 14px",
+          background: "var(--bg-1)",
+          border: "1px solid var(--line)",
+          borderRadius: "var(--radius-pill)",
+          fontSize: 12.5,
+          color: "var(--fg-2)",
+          minWidth: 260,
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <Search size={13} />
+        <span style={{ fontFamily: "var(--font-sans)" }}>搜索明星 / 项目 / 视频…</span>
+        <span
+          className="creator-mono"
+          style={{
+            marginLeft: "auto",
+            padding: "1px 6px",
+            border: "1px solid var(--line-2)",
+            borderRadius: 4,
+            fontSize: 10,
+            color: "var(--fg-3)",
+          }}
+        >
+          ⌘K
+        </span>
+      </div>
+
+      {/* 积分徽章 */}
+      <div
+        title="积分余额"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "7px 14px",
+          background: "var(--accent-soft)",
+          border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+          borderRadius: "var(--radius-pill)",
+        }}
+      >
+        <Coins size={13} color="var(--accent)" />
+        <span
+          className="creator-mono"
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--accent-strong)",
+            letterSpacing: 0.2,
+          }}
+        >
+          {wallet ? formatCredits(wallet.totalBalance) : "—"}
+        </span>
+      </div>
+
+      {/* 通知按钮 */}
+      <button
+        title="通知"
+        style={{
+          padding: 9,
+          borderRadius: "50%",
+          background: "var(--bg-1)",
+          border: "1px solid var(--line)",
+          color: "var(--fg-2)",
+          cursor: "pointer",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <Bell size={14} />
+      </button>
+
+      {/* 用户头像 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "5px 16px 5px 5px",
+          background: "var(--bg-1)",
+          border: "1px solid var(--line)",
+          borderRadius: "var(--radius-pill)",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
         <div
-          title="积分余额"
-          className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full px-3 py-1.5"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            background: "var(--gradient-violet)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#ffffff",
+            fontSize: 11,
+            fontWeight: 700,
+          }}
         >
-          <Coins className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-xs font-semibold text-amber-300 tabular-nums">
-            {wallet ? formatCredits(wallet.totalBalance) : "—"}
-          </span>
+          {user?.displayName?.[0] ?? "?"}
         </div>
-        <div className="flex items-center gap-2 bg-white/[0.03] border border-white/5 rounded-full pl-1 pr-3 py-1">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-500/40 to-pink-500/40 border border-amber-500/30 flex items-center justify-center text-[10px] font-bold">
-            {user?.displayName?.[0] ?? "?"}
-          </div>
-          <span className="text-xs font-semibold text-gray-200 hidden sm:block max-w-[140px] truncate">
-            {user?.displayName ?? "未登录"}
-          </span>
-        </div>
-        <button
-          onClick={logout}
-          title="退出登录"
-          className="p-2 rounded-lg text-gray-400 hover:bg-white/[0.06] hover:text-white transition"
+        <span
+          style={{
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: "var(--fg-0)",
+            maxWidth: 120,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
         >
-          <LogOut className="w-4 h-4" />
-        </button>
+          {user?.displayName ?? "未登录"}
+        </span>
       </div>
+
+      <button
+        onClick={logout}
+        title="退出登录"
+        style={{
+          padding: 9,
+          borderRadius: "50%",
+          background: "var(--bg-1)",
+          border: "1px solid var(--line)",
+          color: "var(--fg-2)",
+          cursor: "pointer",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <LogOut size={14} />
+      </button>
     </div>
   );
 }
@@ -111,36 +241,100 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   const sidebar = (
     <>
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-white/5">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 via-orange-500 to-pink-500 flex items-center justify-center shadow-md">
-          <Megaphone className="w-4 h-4 text-white" />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "20px 22px",
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "var(--radius-md)",
+            background: "var(--gradient-violet)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          <Megaphone size={16} color="#ffffff" strokeWidth={2.4} />
         </div>
-        <div className="leading-tight">
-          <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+        <div style={{ lineHeight: 1.2 }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              fontFamily: "var(--font-display)",
+              color: "var(--fg-0)",
+            }}
+          >
             AI 明星带货
           </div>
-          <div className="text-[10px] text-gray-500 uppercase tracking-[0.18em]">AI Star Eco</div>
+          <div className="creator-eyebrow" style={{ fontSize: 9.5 }}>
+            v0.5 · creator
+          </div>
         </div>
       </div>
-      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
+
+      <nav style={{ padding: "14px 14px", flex: 1, overflowY: "auto" }}>
+        <div
+          className="creator-eyebrow"
+          style={{ padding: "6px 10px 8px", fontSize: 10 }}
+        >
+          Workspace
+        </div>
         {SIDEBAR_ITEMS.map((item) => (
           <SidebarLink key={item.href} item={item} active={isActive(item.href)} />
         ))}
       </nav>
-      <div className="px-3 py-3 border-t border-white/5">
+
+      <div style={{ padding: "14px 14px", borderTop: "1px solid var(--line)" }}>
         <Link
           href="/"
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs text-gray-500 hover:bg-white/[0.04] hover:text-white transition"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "9px 12px",
+            borderRadius: "var(--radius-md)",
+            fontSize: 12.5,
+            color: "var(--fg-2)",
+            textDecoration: "none",
+            fontFamily: "var(--font-sans)",
+          }}
         >
-          ← 返回 landing
+          ← 返回首页
         </Link>
       </div>
     </>
   );
 
   return (
-    <div className="h-screen flex bg-black text-white overflow-hidden">
-      <aside className="hidden md:flex flex-col w-[260px] border-r border-white/5 shrink-0">
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        background: "var(--bg-0)",
+        color: "var(--fg-0)",
+        overflow: "hidden",
+        fontFamily: "var(--font-sans)",
+      }}
+    >
+      <aside
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          width: 260,
+          flexShrink: 0,
+          background: "var(--bg-1)",
+          borderRight: "1px solid var(--line)",
+        }}
+      >
         {sidebar}
       </aside>
 
@@ -148,29 +342,59 @@ function Shell({ children }: { children: React.ReactNode }) {
         <>
           <div
             onClick={() => setMobileOpen(false)}
-            className="md:hidden fixed inset-0 bg-black/60 z-40"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(31,26,20,0.4)",
+              zIndex: 40,
+            }}
           />
-          <aside className="md:hidden fixed left-0 top-0 bottom-0 w-[260px] bg-black border-r border-white/10 z-50 flex flex-col">
+          <aside
+            style={{
+              position: "fixed",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 260,
+              background: "var(--bg-1)",
+              borderRight: "1px solid var(--line)",
+              zIndex: 50,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             <button
               onClick={() => setMobileOpen(false)}
-              className="absolute top-3 right-3 text-gray-400"
               aria-label="关闭侧栏"
+              style={{
+                position: "absolute",
+                top: 14,
+                right: 14,
+                color: "var(--fg-2)",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+              }}
             >
-              <X className="w-5 h-5" />
+              <X size={18} />
             </button>
             {sidebar}
           </aside>
         </>
       )}
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-white/5">
-          <button onClick={() => setMobileOpen(true)} className="text-gray-400">
-            <Menu className="w-5 h-5" />
-          </button>
-        </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <TopBar />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "28px 32px",
+            background: "var(--bg-0)",
+          }}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

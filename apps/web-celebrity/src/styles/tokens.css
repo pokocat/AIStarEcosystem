@@ -1,0 +1,105 @@
+/* ============================================================
+   celebrity · Creator-Friendly 设计令牌
+   来源：AI IP Design Directions 02 — Creator-Friendly
+   关键差异（与之前 amber dark 风对比）：
+     · 画布从黑色改奶油 #faf7f2（light mode）
+     · 强调色从 amber/orange/pink 换紫罗兰 #7c5cff
+     · 圆角更柔（lg 16 / xl 24）
+     · 字体 Manrope 做 display，Inter 做 sans
+   作用域：html 根带 data-theme="creator" 整页生效。
+   ============================================================ */
+
+:root,
+[data-theme="creator"] {
+  /* 画布 */
+  --bg-0: #faf7f2;
+  --bg-1: #ffffff;
+  --bg-2: #f3efe7;
+  --bg-3: #ebe5d8;
+  --line: #e8e1d3;
+  --line-2: #d8cfba;
+
+  /* 文字 */
+  --fg-0: #1f1a14;
+  --fg-1: #3a3329;
+  --fg-2: #7a6f5d;
+  --fg-3: #a89e88;
+
+  /* 强调色 */
+  --accent: #7c5cff;
+  --accent-strong: #5b3fe0;
+  --accent-soft: rgba(124, 92, 255, 0.12);
+  --info: #22b59a;
+  --success: #22b59a;
+  --warning: #f0a83a;
+  --danger: #ff5b8a;
+  --extra-lime: #c4e34a;
+  --extra-peach: #ff8a5b;
+
+  /* 字体（变量名与 next/font 注入对齐） */
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* 字距 */
+  --tracking-tight: -0.025em;
+  --tracking-wide: 0.1em;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* 阴影（柔和） */
+  --shadow-sm: 0 1px 2px rgba(31, 26, 20, 0.04);
+  --shadow-md: 0 6px 20px rgba(31, 26, 20, 0.06);
+  --shadow-lg: 0 20px 48px rgba(31, 26, 20, 0.08);
+
+  /* 渐变（紫罗兰系 + 暖色点缀） */
+  --gradient-violet: linear-gradient(135deg, #7c5cff 0%, #b4a4ff 100%);
+  --gradient-peach: linear-gradient(135deg, #ff8a5b 0%, #ffc8a4 100%);
+  --gradient-lime: linear-gradient(135deg, #c4e34a 0%, #e3f29a 100%);
+  --gradient-hero: linear-gradient(135deg, #7c5cff 0%, #ff5b8a 50%, #ff8a5b 100%);
+
+  color-scheme: light;
+}
+
+/* 全局画布 */
+[data-theme="creator"] body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 通用工具类 */
+.creator-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.creator-serif {
+  font-family: var(--font-serif);
+}
+
+.creator-mono {
+  font-family: var(--font-mono);
+}
+
+.creator-text-gradient {
+  background: var(--gradient-hero);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.creator-bg-violet {
+  background: var(--gradient-violet);
+}
+
+.creator-bg-peach {
+  background: var(--gradient-peach);
+}
