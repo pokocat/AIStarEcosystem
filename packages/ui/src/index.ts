@@ -3,6 +3,6 @@
 //   import { ThemeProvider, useTheme, themeConfig } from "@ai-star-eco/ui/theme";
 //   import { cn } from "@ai-star-eco/ui/ui/utils";
 
-export { ThemeProvider, useTheme, themeConfig } from "./ThemeProvider";
+export { ThemeProvider, useTheme, themeConfig, type ThemeStyle } from "./ThemeProvider";
 export { cn } from "./ui/utils";
 export { useIsMobile } from "./ui/use-mobile";
