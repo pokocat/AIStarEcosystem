@@ -190,7 +190,7 @@ export async function createProject(
   }
   return apiFetch<CelebrityProject>("/celebrity/projects", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: payload,
   });
 }
 
@@ -211,7 +211,7 @@ export async function batchDistribute(
   }
   return apiFetch<AsyncJobStarted>(`/celebrity/projects/${projectId}/distribute`, {
     method: "POST",
-    body: JSON.stringify({ videoIds, channels }),
+    body: { videoIds, channels },
   });
 }
 
@@ -261,6 +261,6 @@ export async function startGeneration(
   }
   return apiFetch<AsyncJobStarted>("/celebrity/generate", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: payload,
   });
 }
