@@ -2,6 +2,11 @@
 // 子视图都是纯 JSX；交互组件 Button / Card / Chip / KpiCard / Meter 各自带
 // "use client"，Next 自动建 client boundary。layout.tsx 是 client（sidebar
 // 要 usePathname + useSearchParams 判 active）。
+//
+// 数据契约：演员 IP 用共享 @ai-star-eco/types/artist 的 Artist 类型，
+// mock 数据放 mocks/artists.ts（按 ArtistType 过滤到 drama 相关）。
+// 展示侧（fidelity/tone/gradient/plays/revenue 字符串）由 deriveCastView()
+// 从 Artist 实时派生，避免 UI 字段污染领域模型。
 
 import * as React from "react";
 import {
@@ -18,7 +23,9 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
+import type { Artist } from "@ai-star-eco/types/artist";
 import { Button, Card, Chip, KpiCard, Meter } from "@/components/premium";
+import { MOCK_ARTISTS } from "@/mocks/artists";
 
 // drama 工作台 —— 按 ?tab=xxx 切多视图，sidebar 控制。
 // 数据全为 mock，待后续 Phase 接入真实 service / api。
@@ -49,74 +56,94 @@ function resolveTab(raw?: string): TabId {
   }
 }
 
-const CAST = [
-  {
-    id: "drama-act-001",
-    name: "苏念",
-    role: "都市悬疑女主 · A 类",
-    fidelity: 94,
-    series: 6,
-    plays: "32.4M",
-    revenue: "¥2.18M",
-    tone: "accent" as const,
-    gradient: "linear-gradient(135deg, rgba(212,175,106,0.5), rgba(164,76,255,0.3))",
-  },
-  {
-    id: "drama-act-002",
-    name: "陆烬",
-    role: "古风偏暗黑 · A 类",
-    fidelity: 92,
-    series: 4,
-    plays: "24.8M",
-    revenue: "¥1.62M",
-    tone: "violet" as const,
-    gradient: "linear-gradient(135deg, rgba(164,76,255,0.5), rgba(61,224,255,0.3))",
-  },
-  {
-    id: "drama-act-003",
-    name: "林晓",
-    role: "青春治愈 · B 类",
-    fidelity: 88,
-    series: 5,
-    plays: "18.2M",
-    revenue: "¥980K",
-    tone: "info" as const,
-    gradient: "linear-gradient(135deg, rgba(61,224,255,0.5), rgba(255,61,138,0.3))",
-  },
-  {
-    id: "drama-act-004",
-    name: "Aiko",
-    role: "悬疑短剧 · A 类（训练中）",
-    fidelity: 72,
-    series: 1,
-    plays: "—",
-    revenue: "—",
-    tone: "danger" as const,
-    gradient: "linear-gradient(135deg, rgba(255,61,138,0.5), rgba(212,175,106,0.3))",
-  },
-  {
-    id: "drama-act-005",
-    name: "周野",
-    role: "动作硬汉 · A 类",
-    fidelity: 90,
-    series: 3,
-    plays: "12.7M",
-    revenue: "¥742K",
-    tone: "success" as const,
-    gradient: "linear-gradient(135deg, rgba(76,224,160,0.45), rgba(212,175,106,0.3))",
-  },
-  {
-    id: "drama-act-006",
-    name: "夏沐 · v2",
-    role: "古装 + 美貌 · A 类",
-    fidelity: 87,
-    series: 2,
-    plays: "9.8M",
-    revenue: "¥528K",
-    tone: "accent" as const,
-    gradient: "linear-gradient(135deg, rgba(212,175,106,0.5), rgba(76,224,160,0.3))",
-  },
-];
+// 派生 CastView 显示字段。
+// fidelity 选 max(acting, popularity)（演员主线看 acting 与人气）；
+// tone / gradient 按 quality 映射，让 6 个等级在视觉上能区分；
+// plays / revenue 用 formatCompactNumber 风格输出。
+type CastTone = "accent" | "success" | "warning" | "danger" | "info" | "violet" | "neutral";
+
+interface CastView {
+  id: string;
+  name: string;
+  role: string;
+  fidelity: number;
+  series: number;
+  plays: string;
+  revenue: string;
+  tone: CastTone;
+  gradient: string;
+}
+
+const QUALITY_TONE: Record<Artist["quality"], CastTone> = {
+  legendary: "accent",
+  epic: "violet",
+  rare: "info",
+  common: "neutral",
+};
+
+const QUALITY_GRADIENT: Record<Artist["quality"], string> = {
+  legendary: "linear-gradient(135deg, rgba(212,175,106,0.55), rgba(234,215,168,0.3))",
+  epic: "linear-gradient(135deg, rgba(164,76,255,0.5), rgba(61,224,255,0.3))",
+  rare: "linear-gradient(135deg, rgba(61,224,255,0.5), rgba(76,224,160,0.3))",
+  common: "linear-gradient(135deg, rgba(86,81,106,0.6), rgba(38,31,54,0.4))",
+};
+
+const QUALITY_LABEL: Record<Artist["quality"], string> = {
+  legendary: "S 类",
+  epic: "A 类",
+  rare: "B 类",
+  common: "C 类",
+};
+
+const STATUS_HINT: Record<Artist["status"], string> = {
+  active: "",
+  trainee: "（训练中）",
+  debut: "（出道期）",
+  rest: "（休养）",
+  retired: "（退役）",
+};
+
+function formatCompact(n: number): string {
+  if (n <= 0) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function formatCny(n: number): string {
+  if (n <= 0) return "—";
+  if (n >= 1_000_000) return `¥${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `¥${Math.round(n / 1_000)}K`;
+  return `¥${n}`;
+}
+
+// role 取 bio 第一句，如果已经含"类"字（drama 专属人物 bio 直接写了"A 类"），
+// 不再追加 QUALITY_LABEL，否则补一节作为 quality 标识。
+function deriveRole(a: Artist): string {
+  const firstClause = a.bio.split(/[，,。.;；]/)[0].trim();
+  const rawHint = STATUS_HINT[a.status] ?? "";
+  const statusHint = rawHint && !firstClause.includes(rawHint) ? rawHint : "";
+  if (/[A-Z]\s*类|S\s*类|[一二三四五六七八九十]\s*类/.test(firstClause)) {
+    return `${firstClause}${statusHint}`;
+  }
+  return `${firstClause}${statusHint} · ${QUALITY_LABEL[a.quality]}`;
+}
+
+function deriveCastView(a: Artist): CastView {
+  return {
+    id: a.id,
+    name: a.name,
+    role: deriveRole(a),
+    fidelity: Math.max(a.talents.acting, Math.min(a.stats.popularity, 95)),
+    series: a.stats.dramas,
+    plays: formatCompact(a.stats.fans * 200), // mock：粉丝 × 200 ≈ 累计播放（待真实 plays 字段）
+    revenue: formatCny(a.stats.revenue),
+    tone: QUALITY_TONE[a.quality],
+    gradient: QUALITY_GRADIENT[a.quality],
+  };
+}
+
+const CAST: CastView[] = MOCK_ARTISTS.map(deriveCastView);
 
 const PROJECTS = [
   {
