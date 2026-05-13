@@ -11,6 +11,7 @@ export default function LoginPage() {
       accentGradient="from-orange-500 via-amber-500 to-red-500"
       accentText="text-orange-300"
       selectedClassName="border-orange-400/50 bg-orange-500/10"
+      defaultPostLoginPath="/console"
     />
   );
 }

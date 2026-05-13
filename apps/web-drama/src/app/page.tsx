@@ -14,7 +14,7 @@ export default function DramaLandingPage() {
       icon={Clapperboard}
       accentGradient="from-orange-500 via-amber-500 to-red-500"
       accentText="text-orange-300"
-      postLoginPath="/"
+      postLoginPath="/console"
       features={[
         {
           icon: Film,

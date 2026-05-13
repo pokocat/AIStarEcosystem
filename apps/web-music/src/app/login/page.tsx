@@ -11,6 +11,7 @@ export default function LoginPage() {
       accentGradient="from-violet-500 via-fuchsia-500 to-purple-600"
       accentText="text-fuchsia-300"
       selectedClassName="border-fuchsia-400/50 bg-fuchsia-500/10"
+      defaultPostLoginPath="/console"
     />
   );
 }

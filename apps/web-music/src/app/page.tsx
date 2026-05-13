@@ -14,7 +14,7 @@ export default function MusicLandingPage() {
       icon={Music}
       accentGradient="from-violet-500 via-fuchsia-500 to-purple-600"
       accentText="text-fuchsia-300"
-      postLoginPath="/"
+      postLoginPath="/console"
       features={[
         {
           icon: Mic2,
