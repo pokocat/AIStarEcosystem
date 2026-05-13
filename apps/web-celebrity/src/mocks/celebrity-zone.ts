@@ -67,15 +67,16 @@ const pickVideo = (seed: string): string =>
   PEXELS_PORTRAIT_VIDEOS[hash(seed) % PEXELS_PORTRAIT_VIDEOS.length];
 
 /**
- * 明星头像 / 封面：来自 Wikimedia Commons / TMDB 等公开可访问图片热链接
- * （内部 Demo 用）。后续可替换为商务团队提供的授权图片或自建 CDN。
+ * 明星头像 / 封面：来自 Wikimedia Commons / TMDB / World Aquatics / RADII
+ * 等公开可访问图片热链接（内部 Demo 用）。后续可替换为商务团队提供的
+ * 授权图片或自建 CDN。
  */
 const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
   "star-li-dan": {
     avatar:
-      "https://upload.wikimedia.org/wikipedia/commons/b/ba/Li_Dan%2C_Stand-up_comedian%2C_May_2021%2C_Shanghai.jpg",
+      "https://imagedelivery.net/WLUarKbmUXuuhDC7PG5_Qw/articles/da99d2b3aa8d7d5703f0906f5f1051f6.jpg/public",
     cover:
-      "https://upload.wikimedia.org/wikipedia/commons/b/ba/Li_Dan%2C_Stand-up_comedian%2C_May_2021%2C_Shanghai.jpg",
+      "https://imagedelivery.net/WLUarKbmUXuuhDC7PG5_Qw/articles/da99d2b3aa8d7d5703f0906f5f1051f6.jpg/public",
   },
   "star-yi-nengjing": {
     avatar: "https://upload.wikimedia.org/wikipedia/commons/e/e1/Annie_Yi.jpg",
@@ -88,28 +89,22 @@ const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
       "https://upload.wikimedia.org/wikipedia/commons/2/28/%E4%B8%8A%E6%B5%B7_%E5%BE%AE%E5%8D%9A%E7%94%B5%E5%BD%B1%E4%B9%8B%E5%A4%9C_%E5%88%98%E6%B6%9B_%282%29.jpg",
   },
   "star-shen-teng": {
-    avatar:
-      "https://upload.wikimedia.org/wikipedia/commons/d/d5/Shen_Teng-20190516.jpg",
-    cover:
-      "https://upload.wikimedia.org/wikipedia/commons/d/d5/Shen_Teng-20190516.jpg",
+    avatar: "https://image.tmdb.org/t/p/original/h9l1fHqty8EdCqDWNWjO5tp48xZ.jpg",
+    cover: "https://image.tmdb.org/t/p/original/h9l1fHqty8EdCqDWNWjO5tp48xZ.jpg",
   },
   "star-na-ying": {
-    avatar:
-      "https://upload.wikimedia.org/wikipedia/commons/9/99/%E9%82%A3%E8%8B%B1_Na_Ying.jpg",
-    cover:
-      "https://upload.wikimedia.org/wikipedia/commons/9/99/%E9%82%A3%E8%8B%B1_Na_Ying.jpg",
+    avatar: "https://image.tmdb.org/t/p/original/2rwowpw5Dxm2wliRCMW2fVhLtOc.jpg",
+    cover: "https://image.tmdb.org/t/p/original/2rwowpw5Dxm2wliRCMW2fVhLtOc.jpg",
   },
   "star-ning-zetao": {
     avatar:
-      "https://upload.wikimedia.org/wikipedia/commons/6/61/Kazan_2015_-_Ning_Zetao_after_100_metres_frestyle_M_final.JPG",
+      "https://resources.fina.org/photo-resources/2024/04/14/c078b77f-a020-4a0e-990c-d65d1cccdbea/ae0f08b6-84fb-4ca8-9670-617ca50316cc?width=900",
     cover:
-      "https://upload.wikimedia.org/wikipedia/commons/6/61/Kazan_2015_-_Ning_Zetao_after_100_metres_frestyle_M_final.JPG",
+      "https://resources.fina.org/photo-resources/2024/04/14/c078b77f-a020-4a0e-990c-d65d1cccdbea/ae0f08b6-84fb-4ca8-9670-617ca50316cc?width=900",
   },
   "star-li-yuchun": {
-    avatar:
-      "https://upload.wikimedia.org/wikipedia/commons/a/ab/Li_Yuchun_Cannes_2015.jpg",
-    cover:
-      "https://upload.wikimedia.org/wikipedia/commons/a/ab/Li_Yuchun_Cannes_2015.jpg",
+    avatar: "https://image.tmdb.org/t/p/original/mZGTxovKmbbKSU4jqL7k5kFHyyJ.jpg",
+    cover: "https://image.tmdb.org/t/p/original/mZGTxovKmbbKSU4jqL7k5kFHyyJ.jpg",
   },
   "star-jia-ling": {
     avatar: "https://image.tmdb.org/t/p/original/5GUYKXsJ9gfcGR3Lx5AQhuzXj2z.jpg",
