@@ -4,6 +4,8 @@
 @source '../../../../packages/landing/src/**/*.{js,ts,jsx,tsx}';
 @import 'tw-animate-css';
 @import '@ai-star-eco/ui/styles/globals.css';
+/* drama 专属 · Entertainment-Premium 设计 token（覆盖在 ui globals 之后） */
+@import './tokens.css';
 
 @layer base {
   html,
@@ -11,5 +13,12 @@
     min-height: 100vh;
     height: 100%;
     margin: 0;
+  }
+  /* Premium 主题画布 */
+  [data-theme="premium"] body {
+    background: var(--bg-0);
+    color: var(--fg-0);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
   }
 }

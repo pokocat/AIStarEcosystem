@@ -1,0 +1,109 @@
+/* ============================================================
+   drama · Premium 设计 token（来源：AI IP Design Directions 03）
+   暗紫近黑底 + 金色 accent + glass 卡片 + 大圆角 + 深阴影 + 宽 tracking。
+   作用域：本 app html 根元素带 data-theme="premium"，整页生效。
+   字体经由 next/font/google 注入：--font-sans / --font-display / --font-serif。
+   ============================================================ */
+
+:root,
+[data-theme="premium"] {
+  /* surface */
+  --bg-0: #0a0810;
+  --bg-1: #13101c;
+  --bg-2: #1c1828;
+  --bg-3: #261f36;
+  --line: rgba(255, 255, 255, 0.10);
+  --line-2: rgba(255, 255, 255, 0.18);
+
+  /* foreground */
+  --fg-0: #f5f0e6;
+  --fg-1: #c8c0b0;
+  --fg-2: #8a8294;
+  --fg-3: #56516a;
+
+  /* accent */
+  --accent: #d4af6a;
+  --accent-strong: #a8884a;
+  --accent-soft: rgba(212, 175, 106, 0.14);
+  --info: #3de0ff;
+  --success: #4ce0a0;
+  --warning: #d4af6a;
+  --danger: #ff3d8a;
+  --extra-violet: #a44cff;
+  --extra-champagne: #ead7a8;
+
+  /* type — fonts come from next/font; mono 是回退 */
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* scale */
+  --tracking-tight: -0.025em;
+  --tracking-wide: 0.18em;
+
+  /* radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* shadow */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.65);
+
+  /* glass card recipe */
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 20px;
+
+  --gradient-hero: linear-gradient(135deg, #ff3d8a 0%, #a44cff 50%, #3de0ff 100%);
+  --gradient-gold: linear-gradient(135deg, #d4af6a 0%, #ead7a8 100%);
+
+  color-scheme: dark;
+}
+
+/* universal helpers */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.serif {
+  font-family: var(--font-serif);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.text-gradient-hero {
+  background: var(--gradient-hero);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.text-gradient-gold {
+  background: var(--gradient-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-gradient-hero {
+  background: var(--gradient-hero);
+}
+
+.bg-gradient-gold {
+  background: var(--gradient-gold);
+}
