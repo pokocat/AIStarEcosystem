@@ -25,21 +25,21 @@ export function CelebrityWatermarkVideo({
     <div
       className={cn(
         "relative aspect-[9/16] flex items-center justify-center overflow-hidden",
-        "rounded-lg border border-dashed border-white/10",
+        "rounded-lg border border-dashed border-zinc-200",
         "bg-gradient-to-br from-white/[0.03] to-white/[0.01]",
         className,
       )}
     >
       <div className="text-center px-2">
         {label && (
-          <div className="text-xs font-medium text-white/35">{label}</div>
+          <div className="text-xs font-medium text-zinc-400">{label}</div>
         )}
         {caption && (
-          <div className="mt-1 text-[10px] text-white/20">{caption}</div>
+          <div className="mt-1 text-[10px] text-zinc-300">{caption}</div>
         )}
       </div>
       <span
-        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[28deg] whitespace-nowrap text-xs font-light text-white/10 tracking-wide"
+        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[28deg] whitespace-nowrap text-xs font-light text-zinc-200 tracking-wide"
         aria-hidden
       >
         {watermarkText}

@@ -46,7 +46,7 @@ export function CelebrityVideoPlayer({
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-lg border border-white/8 bg-black",
+        "group relative overflow-hidden rounded-lg border border-zinc-200 bg-white",
         aspectClass,
         className,
       )}
@@ -85,11 +85,11 @@ export function CelebrityVideoPlayer({
             <div className="h-full w-full bg-gradient-to-br from-zinc-900 to-zinc-800" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
-          <span className="absolute left-1/2 top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition group-hover:bg-black/80 group-hover:scale-110">
+          <span className="absolute left-1/2 top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/60 text-zinc-900 backdrop-blur-sm transition group-hover:bg-white/80 group-hover:scale-110">
             <Play className="ml-0.5 h-5 w-5" />
           </span>
           {durationSec ? (
-            <span className="absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1 py-0.5 text-[9px] font-medium tabular-nums text-white/85 backdrop-blur">
+            <span className="absolute bottom-1.5 right-1.5 rounded bg-white/65 px-1 py-0.5 text-[9px] font-medium tabular-nums text-zinc-700 backdrop-blur">
               {pad2(Math.floor(durationSec / 60))}:{pad2(durationSec % 60)}
             </span>
           ) : null}

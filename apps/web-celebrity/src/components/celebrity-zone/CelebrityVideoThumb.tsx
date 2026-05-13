@@ -33,7 +33,7 @@ export function CelebrityVideoThumb({
   return (
     <div
       className={cn(
-        "group relative aspect-[9/16] overflow-hidden rounded-lg border border-white/8 bg-white/[0.02]",
+        "group relative aspect-[9/16] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50",
         className,
       )}
     >
@@ -45,12 +45,12 @@ export function CelebrityVideoThumb({
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
       <div className="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 backdrop-blur">
-          <Play className="ml-0.5 h-4 w-4 text-white" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/60 backdrop-blur">
+          <Play className="ml-0.5 h-4 w-4 text-zinc-900" />
         </div>
       </div>
       {durationSec ? (
-        <div className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-medium text-white/80 tabular-nums backdrop-blur">
+        <div className="absolute bottom-1.5 right-1.5 rounded bg-white/60 px-1 py-0.5 text-[9px] font-medium text-zinc-700 tabular-nums backdrop-blur">
           {`${pad2(Math.floor(durationSec / 60))}:${pad2(durationSec % 60)}`}
         </div>
       ) : null}

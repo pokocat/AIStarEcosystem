@@ -17,7 +17,7 @@ interface Props {
 }
 
 const inputCls =
-  "w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none transition focus:border-cyan-400/60 focus:bg-white/[0.05]";
+  "w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-300 outline-none transition focus:border-violet-400/60 focus:bg-zinc-100";
 
 /** 商品信息表单（模板/盲盒共用）。 */
 export function CelebrityProductForm({
@@ -52,14 +52,14 @@ export function CelebrityProductForm({
   };
 
   return (
-    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-white/70">{title}</span>
+        <span className="text-sm font-medium text-zinc-600">{title}</span>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-[11px] text-purple-200 transition hover:border-purple-400 hover:text-white"
+            className="inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] text-violet-200 transition hover:border-violet-400 hover:text-zinc-900"
           >
             <Library className="h-3 w-3" /> 从商品库选择
           </button>
@@ -75,8 +75,8 @@ export function CelebrityProductForm({
             className={cn(
               "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] transition",
               canExtract
-                ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200 hover:border-cyan-400 hover:text-white"
-                : "cursor-not-allowed border-white/10 bg-white/[0.02] text-white/30",
+                ? "border-violet-500/30 bg-violet-500/10 text-violet-200 hover:border-violet-400 hover:text-zinc-900"
+                : "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-300",
             )}
           >
             <Sparkles className="h-3 w-3" /> {extracting ? "AI 抽取中…" : "AI 提取卖点"}
@@ -108,7 +108,7 @@ export function CelebrityProductForm({
           onChange={(e) => set({ sellingPoints: e.target.value })}
         />
         {!canExtract && !extracting && (
-          <p className="text-[11px] text-white/35">
+          <p className="text-[11px] text-zinc-400">
             💡 想用 AI 自动抽卖点？请先填好商品名称和商品链接 →
           </p>
         )}

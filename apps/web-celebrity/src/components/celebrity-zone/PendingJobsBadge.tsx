@@ -60,7 +60,7 @@ export function PendingJobsBadge() {
         className={cn(
           "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition",
           running.length > 0
-            ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200 hover:border-cyan-300"
+            ? "border-violet-400/40 bg-violet-500/10 text-violet-200 hover:border-violet-300"
             : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300",
         )}
       >
@@ -78,13 +78,13 @@ export function PendingJobsBadge() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-white/10 bg-[#0d0d18] shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
-          <div className="border-b border-white/5 px-4 py-2 text-[11px] text-white/45">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-zinc-200 bg-[#0d0d18] shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+          <div className="border-b border-zinc-100 px-4 py-2 text-[11px] text-zinc-400">
             我的进行中任务
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             {running.length === 0 && completed.length === 0 && (
-              <div className="px-4 py-6 text-center text-xs text-white/35">
+              <div className="px-4 py-6 text-center text-xs text-zinc-400">
                 暂无进行中任务
               </div>
             )}
@@ -92,7 +92,7 @@ export function PendingJobsBadge() {
               <JobRow key={job.jobId} job={job} onClose={() => setOpen(false)} />
             ))}
             {completed.length > 0 && running.length > 0 && (
-              <div className="border-t border-white/5 px-4 py-1.5 text-[10px] text-white/35">
+              <div className="border-t border-zinc-100 px-4 py-1.5 text-[10px] text-zinc-400">
                 已完成 · 待查看
               </div>
             )}
@@ -115,42 +115,42 @@ function JobRow({ job, onClose }: { job: PendingJobRecord; onClose: () => void }
     <Link
       href={href}
       onClick={onClose}
-      className="flex items-center gap-3 border-b border-white/5 px-4 py-3 last:border-b-0 transition hover:bg-white/[0.03]"
+      className="flex items-center gap-3 border-b border-zinc-100 px-4 py-3 last:border-b-0 transition hover:bg-zinc-50"
     >
       <img
         src={job.artistAvatar}
         alt={job.artistName}
-        className="h-9 w-9 shrink-0 rounded-full border border-cyan-400/30 object-cover"
+        className="h-9 w-9 shrink-0 rounded-full border border-violet-400/30 object-cover"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="truncate font-medium text-white/85">{job.artistName}</span>
-          <span className="text-white/35">·</span>
-          <span className="truncate text-white/55">{job.product.name || "新商品"}</span>
+          <span className="truncate font-medium text-zinc-700">{job.artistName}</span>
+          <span className="text-zinc-400">·</span>
+          <span className="truncate text-zinc-500">{job.product.name || "新商品"}</span>
         </div>
         <div className="mt-1 flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100">
             <div
               className={cn(
                 "h-full rounded-full transition-[width] duration-300",
                 isCompleted
                   ? "bg-emerald-400"
-                  : "bg-gradient-to-r from-cyan-400 via-cyan-300 to-purple-500",
+                  : "bg-gradient-to-r from-violet-400 via-violet-300 to-violet-500",
               )}
               style={{ width: `${isCompleted ? 100 : percent}%` }}
             />
           </div>
-          <span className="text-[10px] tabular-nums text-white/45 w-10 text-right">
+          <span className="text-[10px] tabular-nums text-zinc-400 w-10 text-right">
             {isCompleted ? "✓" : `${percent}%`}
           </span>
         </div>
-        <div className="mt-1 flex items-center gap-1 text-[10px] text-white/35">
+        <div className="mt-1 flex items-center gap-1 text-[10px] text-zinc-400">
           <Sparkles className="h-2.5 w-2.5" />
           <span>{meta.name} · {meta.level}</span>
           {isCompleted && <span className="text-emerald-300">· 已完成，点击查看</span>}
         </div>
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-white/30" />
+      <ChevronRight className="h-4 w-4 shrink-0 text-zinc-300" />
     </Link>
   );
 }

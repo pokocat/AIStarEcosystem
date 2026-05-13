@@ -23,12 +23,12 @@ const AUTH_ICONS = {
  * 都有足够对比度。AUTH_STATUS_META.badgeClass 仍用于详情页等深色背景内嵌位置。
  */
 const COVER_BADGE_BASE =
-  "inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-semibold tracking-wide text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ring-1 ring-white/30";
+  "inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-semibold tracking-wide text-zinc-900 shadow-[0_2px_8px_rgba(0,0,0,0.45)] ring-1 ring-white/30";
 
 const AUTH_COVER_BADGE: Record<CelebrityAuthStatus, string> = {
   authorized: "bg-emerald-500/95",
   pending: "bg-amber-500/95",
-  expired: "bg-rose-500/95",
+  expired: "bg-pink-500/95",
   unauthorized: "bg-zinc-700/85",
 };
 
@@ -40,7 +40,7 @@ export function CelebrityStarCard({ star }: Props) {
   return (
     <Link
       href={`/console/star/${star.id}`}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-white/[0.025] transition hover:-translate-y-0.5 hover:border-cyan-500/40 hover:bg-white/[0.04] hover:shadow-[0_8px_30px_rgba(6,182,212,0.15)]"
+      className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 transition hover:-translate-y-0.5 hover:border-violet-500/40 hover:bg-zinc-100 hover:shadow-[0_8px_30px_rgba(6,182,212,0.15)]"
     >
       {/* 3:4 cover */}
       <div className="relative aspect-[3/4] overflow-hidden">
@@ -70,7 +70,7 @@ export function CelebrityStarCard({ star }: Props) {
         </div>
 
         {/* 底部：起拍价 */}
-        <div className="absolute bottom-2 left-2 inline-flex items-center rounded-full bg-black/65 px-2.5 py-[3px] text-[11px] font-semibold text-cyan-100 ring-1 ring-cyan-300/50 backdrop-blur-sm">
+        <div className="absolute bottom-2 left-2 inline-flex items-center rounded-full bg-white/65 px-2.5 py-[3px] text-[11px] font-semibold text-violet-100 ring-1 ring-violet-300/50 backdrop-blur-sm">
           {star.startingPrice}
         </div>
       </div>
@@ -78,7 +78,7 @@ export function CelebrityStarCard({ star }: Props) {
       {/* 信息条 */}
       <div className="flex flex-col gap-2 p-3">
         <div className="flex items-center justify-between">
-          <span className="text-base font-semibold text-white/90">{star.name}</span>
+          <span className="text-base font-semibold text-zinc-800">{star.name}</span>
           <span
             className={cn(
               "rounded-md border px-1.5 py-0.5 text-[10px]",
@@ -88,7 +88,7 @@ export function CelebrityStarCard({ star }: Props) {
             {star.category}
           </span>
         </div>
-        <p className="line-clamp-2 text-[11px] leading-relaxed text-white/45">
+        <p className="line-clamp-2 text-[11px] leading-relaxed text-zinc-400">
           {star.description}
         </p>
       </div>

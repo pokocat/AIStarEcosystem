@@ -57,42 +57,33 @@ export default async function CelebrityConsolePage({ searchParams }: PageProps) 
     return <OverviewView />;
   }
 
-  // 业务组件原生深色设计 —— 用深色 surface 包裹保留原视觉
+  // 业务组件已被批量染色为 Creator-Friendly light 风（紫罗兰 + 浅色卡），
+  // 不再需要深色 surface 包裹，直接渲染。
   const allVideos = Object.values(PROJECT_VIDEOS_MAP).flat();
   return (
-    <div
-      style={{
-        background: "#0a0a0e",
-        borderRadius: 20,
-        padding: "28px 32px",
-        boxShadow: "var(--shadow-md)",
-        border: "1px solid var(--line)",
-      }}
-    >
-      <div className="flex flex-col gap-6">
-        {active === "market" && (
-          <div className="flex flex-col gap-6">
-            <CelebrityMarketHero
-              totalPlays={ZONE_OVERVIEW.hero.totalPlays}
-              totalConversions={ZONE_OVERVIEW.hero.totalConversions}
-              activeStars={ZONE_OVERVIEW.hero.activeStars}
-            />
-            <CelebrityMarket stars={MARKET_STARS} />
-          </div>
-        )}
+    <div className="flex flex-col gap-6">
+      {active === "market" && (
+        <div className="flex flex-col gap-6">
+          <CelebrityMarketHero
+            totalPlays={ZONE_OVERVIEW.hero.totalPlays}
+            totalConversions={ZONE_OVERVIEW.hero.totalConversions}
+            activeStars={ZONE_OVERVIEW.hero.activeStars}
+          />
+          <CelebrityMarket stars={MARKET_STARS} />
+        </div>
+      )}
 
-        {active === "projects" && (
-          <CelebrityMyProjects initialProjects={CELEBRITY_PROJECTS} stars={MARKET_STARS} />
-        )}
+      {active === "projects" && (
+        <CelebrityMyProjects initialProjects={CELEBRITY_PROJECTS} stars={MARKET_STARS} />
+      )}
 
-        {active === "products" && <CelebrityProductLibrary />}
+      {active === "products" && <CelebrityProductLibrary />}
 
-        {active === "library" && (
-          <CelebrityVideoLibrary videos={allVideos} stars={MARKET_STARS} projects={CELEBRITY_PROJECTS} />
-        )}
+      {active === "library" && (
+        <CelebrityVideoLibrary videos={allVideos} stars={MARKET_STARS} projects={CELEBRITY_PROJECTS} />
+      )}
 
-        {active === "data" && <CelebrityDataCenter overview={ZONE_OVERVIEW} />}
-      </div>
+      {active === "data" && <CelebrityDataCenter overview={ZONE_OVERVIEW} />}
     </div>
   );
 }

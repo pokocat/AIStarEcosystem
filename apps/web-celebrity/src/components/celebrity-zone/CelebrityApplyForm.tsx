@@ -34,7 +34,7 @@ const INITIAL: FormState = {
 };
 
 const inputCls =
-  "w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none focus:border-cyan-400/60 focus:bg-white/[0.05]";
+  "w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-300 outline-none focus:border-violet-400/60 focus:bg-zinc-100";
 
 export function CelebrityApplyForm({ star }: Props) {
   const [form, setForm] = React.useState<FormState>(INITIAL);
@@ -49,21 +49,21 @@ export function CelebrityApplyForm({ star }: Props) {
         <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-400/40 bg-emerald-500/10">
           <CheckCircle2 className="h-7 w-7 text-emerald-300" />
         </div>
-        <h2 className="text-lg font-semibold text-white/95">申请已提交</h2>
-        <p className="text-sm leading-relaxed text-white/55">
+        <h2 className="text-lg font-semibold text-zinc-900">申请已提交</h2>
+        <p className="text-sm leading-relaxed text-zinc-500">
           平台将在 3 个工作日内通过站内通知和邮件回复您。如有紧急合作需求，
           可直接联系商务团队 <a className="text-emerald-300" href="mailto:bd@aistareco.com">bd@aistareco.com</a>。
         </p>
         <div className="flex gap-2">
           <Link
             href={`/console/star/${star.id}`}
-            className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white/65 hover:border-white/30 hover:text-white"
+            className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
           >
             返回明星详情
           </Link>
           <Link
             href="/console"
-            className="rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white"
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-violet-500 px-4 py-2 text-sm font-semibold text-zinc-900"
           >
             继续浏览明星
           </Link>
@@ -78,17 +78,17 @@ export function CelebrityApplyForm({ star }: Props) {
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href={`/console/star/${star.id}`}
-          className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/55 transition hover:border-white/30 hover:text-white"
+          className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> 返回 {star.name} 详情
         </Link>
-        <h1 className="text-lg font-semibold text-white/90">
+        <h1 className="text-lg font-semibold text-zinc-800">
           申请 {star.name} 商务合作
         </h1>
       </div>
 
       {/* Hero card */}
-      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-cyan-500/[0.06] to-purple-500/[0.06] p-5">
+      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-violet-400/20 bg-gradient-to-r from-violet-500/[0.06] to-violet-500/[0.06] p-5">
         <img
           src={star.cover}
           alt={star.name}
@@ -96,13 +96,13 @@ export function CelebrityApplyForm({ star }: Props) {
         />
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-cyan-300" />
-            <span className="text-base font-semibold text-white/95">{star.name}</span>
-            <span className="rounded-md border border-purple-400/30 bg-purple-500/10 px-1.5 py-0.5 text-[10px] text-purple-200">
+            <Sparkles className="h-4 w-4 text-violet-300" />
+            <span className="text-base font-semibold text-zinc-900">{star.name}</span>
+            <span className="rounded-md border border-violet-400/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-200">
               {star.category}
             </span>
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-white/55">
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
             提交申请后，平台商务团队将与艺人/经纪团队确认授权范围（带货 / 种草 /
             测评 / 代言），并在 3 个工作日内反馈您可购买的套餐档位。
           </p>
@@ -119,7 +119,7 @@ export function CelebrityApplyForm({ star }: Props) {
           if (!canSubmit) return;
           setSubmitted(true);
         }}
-        className="grid grid-cols-1 gap-4 rounded-2xl border border-white/8 bg-white/[0.02] p-5 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 sm:grid-cols-2"
       >
         <Field label="公司名称" required>
           <input
@@ -175,17 +175,17 @@ export function CelebrityApplyForm({ star }: Props) {
           />
         </Field>
 
-        <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-4">
+        <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 pt-4">
           <a
             href="mailto:bd@aistareco.com"
-            className="inline-flex items-center gap-1 text-xs text-cyan-300 hover:text-cyan-200"
+            className="inline-flex items-center gap-1 text-xs text-violet-300 hover:text-violet-200"
           >
             <Mail className="h-3.5 w-3.5" /> 紧急合作可直接邮件 bd@aistareco.com
           </a>
           <button
             type="submit"
             disabled={!canSubmit}
-            className="rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,182,212,0.25)] transition hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-white/35 disabled:shadow-none"
+            className="rounded-lg bg-gradient-to-r from-violet-500 to-violet-500 px-5 py-2.5 text-sm font-semibold text-zinc-900 shadow-[0_0_20px_rgba(6,182,212,0.25)] transition hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-zinc-400 disabled:shadow-none"
           >
             提交申请
           </button>
@@ -208,9 +208,9 @@ function Field({
 }) {
   return (
     <label className={"flex flex-col gap-1.5 " + (className ?? "")}>
-      <span className="text-xs font-medium text-white/65">
+      <span className="text-xs font-medium text-zinc-500">
         {label}
-        {required && <span className="ml-0.5 text-rose-300">*</span>}
+        {required && <span className="ml-0.5 text-pink-300">*</span>}
       </span>
       {children}
     </label>

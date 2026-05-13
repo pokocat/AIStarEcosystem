@@ -36,12 +36,12 @@ export function CelebrityZoneTabs({ active, highlight = true }: Props) {
             scroll={false}
             className={cn(
               "relative px-4 py-2 text-sm font-medium transition",
-              isActive ? "text-cyan-300" : "text-white/45 hover:text-white/80",
+              isActive ? "text-violet-300" : "text-zinc-400 hover:text-zinc-700",
             )}
           >
             {t.label}
             {isActive && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-cyan-400 to-cyan-300" />
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-violet-400 to-violet-300" />
             )}
           </Link>
         );

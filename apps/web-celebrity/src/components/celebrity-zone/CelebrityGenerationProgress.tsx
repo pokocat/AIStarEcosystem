@@ -86,45 +86,45 @@ export function CelebrityGenerationProgress({
       <button
         type="button"
         onClick={() => setMinimized(false)}
-        className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-[#0d0d18]/95 px-4 py-2 text-xs text-cyan-200 shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur transition hover:border-cyan-300"
+        className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full border border-violet-400/40 bg-[#0d0d18]/95 px-4 py-2 text-xs text-violet-200 shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur transition hover:border-violet-300"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         <span className="tabular-nums">{pct}%</span>
-        <span className="text-white/60">·</span>
-        <span className="max-w-[120px] truncate text-white/75">{productName || "新视频"}</span>
-        <ChevronUp className="h-3.5 w-3.5 text-white/45" />
+        <span className="text-zinc-500">·</span>
+        <span className="max-w-[120px] truncate text-zinc-600">{productName || "新视频"}</span>
+        <ChevronUp className="h-3.5 w-3.5 text-zinc-400" />
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[360px] overflow-hidden rounded-2xl border border-cyan-400/30 bg-[#0d0d18]/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur">
+    <div className="fixed bottom-6 right-6 z-50 w-[360px] overflow-hidden rounded-2xl border border-violet-400/30 bg-[#0d0d18]/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur">
       {/* 顶部光效 */}
-      <div className="pointer-events-none absolute -top-10 left-1/2 h-24 w-48 -translate-x-1/2 rounded-full bg-cyan-500/15 blur-3xl" />
+      <div className="pointer-events-none absolute -top-10 left-1/2 h-24 w-48 -translate-x-1/2 rounded-full bg-violet-500/15 blur-3xl" />
 
       <div className="relative p-5">
         {/* 头条 */}
         <div className="flex items-start gap-3">
           <div className="relative shrink-0">
             <span
-              className="absolute inset-0 -m-1 rounded-full border-2 border-cyan-400/30 border-t-cyan-300"
+              className="absolute inset-0 -m-1 rounded-full border-2 border-violet-400/30 border-t-violet-300"
               style={{ animation: "spin 1.6s linear infinite" }}
               aria-hidden
             />
             <img
               src={star.avatar}
               alt={star.name}
-              className="h-10 w-10 rounded-full border border-cyan-400/40 object-cover"
+              className="h-10 w-10 rounded-full border border-violet-400/40 object-cover"
             />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1 text-[10px] text-cyan-200">
+            <div className="flex items-center gap-1 text-[10px] text-violet-200">
               <Sparkles className="h-3 w-3" /> AI 视频生成中
             </div>
-            <div className="mt-0.5 truncate text-sm font-semibold text-white/90">
+            <div className="mt-0.5 truncate text-sm font-semibold text-zinc-800">
               {star.name} · {productName || "新商品"}
             </div>
-            <div className="mt-0.5 text-[10px] text-white/45">
+            <div className="mt-0.5 text-[10px] text-zinc-400">
               {meta.name} · {meta.level} · 预计 {meta.speed}
             </div>
           </div>
@@ -132,7 +132,7 @@ export function CelebrityGenerationProgress({
             type="button"
             onClick={() => setMinimized(true)}
             title="最小化（任务后台继续运行）"
-            className="rounded-md p-1 text-white/40 transition hover:bg-white/[0.05] hover:text-white/70"
+            className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
           >
             <ChevronDown className="h-4 w-4" />
           </button>
@@ -140,13 +140,13 @@ export function CelebrityGenerationProgress({
 
         {/* 进度条 */}
         <div className="mt-4">
-          <div className="flex items-center justify-between text-[11px] text-white/45">
+          <div className="flex items-center justify-between text-[11px] text-zinc-400">
             <span className="truncate">{STAGES[stage].hint}</span>
-            <span className="tabular-nums text-cyan-200">{pct}%</span>
+            <span className="tabular-nums text-violet-200">{pct}%</span>
           </div>
-          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/[0.05]">
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-100">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-cyan-300 to-purple-500 transition-[width] duration-150"
+              className="h-full rounded-full bg-gradient-to-r from-violet-400 via-violet-300 to-violet-500 transition-[width] duration-150"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -165,8 +165,8 @@ export function CelebrityGenerationProgress({
                     done
                       ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
                       : active
-                        ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-200"
-                        : "border-white/10 bg-white/[0.03] text-white/35",
+                        ? "border-violet-400/60 bg-violet-500/15 text-violet-200"
+                        : "border-zinc-200 bg-zinc-50 text-zinc-400",
                   )}
                 >
                   {done ? "✓" : active ? <Loader2 className="h-3 w-3 animate-spin" /> : i + 1}
@@ -174,7 +174,7 @@ export function CelebrityGenerationProgress({
                 <span
                   className={cn(
                     "text-center text-[9px] leading-tight",
-                    active ? "text-cyan-200" : done ? "text-emerald-200/70" : "text-white/35",
+                    active ? "text-violet-200" : done ? "text-emerald-200/70" : "text-zinc-400",
                   )}
                 >
                   {s.label}
@@ -197,7 +197,7 @@ export function CelebrityGenerationProgress({
           <button
             type="button"
             onClick={() => setMinimized(true)}
-            className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] text-white/65 transition hover:border-white/30 hover:text-white"
+            className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[11px] text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
           >
             后台运行 · 继续浏览
           </button>

@@ -75,26 +75,26 @@ export function CelebrityZoneTopBar() {
   const activeTab = activeTabFor(pathname, sp);
 
   return (
-    <div className="flex flex-col gap-3 border-b border-white/5 pb-3">
+    <div className="flex flex-col gap-3 border-b border-zinc-100 pb-3">
       {/* 顶部一行：标题 + 面包屑 + 进行中任务徽章 */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-white/85">
-          <Sparkles className="h-4 w-4 text-cyan-300" />
+        <div className="flex items-center gap-2 text-zinc-700">
+          <Sparkles className="h-4 w-4 text-violet-300" />
           <span className="text-sm font-semibold tracking-tight">AI 明星专区</span>
-          <span className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">
+          <span className="rounded-md border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200">
             B 端 SaaS
           </span>
         </div>
-        <nav className="flex flex-wrap items-center gap-1 text-[11px] text-white/45">
+        <nav className="flex flex-wrap items-center gap-1 text-[11px] text-zinc-400">
           {crumbs.map((c, i) => (
             <React.Fragment key={`${c.label}-${i}`}>
-              {i > 0 && <ChevronRight className="h-3 w-3 text-white/25" />}
+              {i > 0 && <ChevronRight className="h-3 w-3 text-zinc-300" />}
               {c.href && i < crumbs.length - 1 ? (
-                <Link href={c.href} className="transition hover:text-white/80">
+                <Link href={c.href} className="transition hover:text-zinc-700">
                   {c.label}
                 </Link>
               ) : (
-                <span className={i === crumbs.length - 1 ? "text-white/75" : ""}>
+                <span className={i === crumbs.length - 1 ? "text-zinc-600" : ""}>
                   {c.label}
                 </span>
               )}
