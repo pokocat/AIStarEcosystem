@@ -21,6 +21,7 @@ import {
   Share2,
   Sparkles,
   Users,
+  Wand2,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import type { Wallet } from "@ai-star-eco/types/wallet";
@@ -42,6 +43,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/console", icon: LayoutDashboard, label: "总览" },
       { href: "/console?tab=cast", icon: Users, label: "演员 IP 阵容" },
+      { href: "/console?tab=incubator", icon: Wand2, label: "孵化新演员" },
       { href: "/console?tab=scripts", icon: PenTool, label: "脚本工坊" },
       { href: "/console?tab=projects", icon: Film, label: "项目流水线" },
     ],

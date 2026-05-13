@@ -26,10 +26,12 @@ import {
   type CastTone,
 } from "@/lib/cast-derive";
 import { CastView } from "@/components/views/CastView";
+import { IncubatorView } from "@/components/views/IncubatorView";
 
 type TabId =
   | "overview"
   | "cast"
+  | "incubator"
   | "scripts"
   | "projects"
   | "distribution"
@@ -40,6 +42,7 @@ type TabId =
 function resolveTab(raw?: string): TabId {
   switch (raw) {
     case "cast":
+    case "incubator":
     case "scripts":
     case "projects":
     case "distribution":
@@ -646,6 +649,7 @@ function ScriptForge({ drafts, expanded }: { drafts: typeof SCRIPT_DRAFTS; expan
 const TAB_META: Record<TabId, { icon: React.ElementType; label: string }> = {
   overview: { icon: BarChart3, label: "总览" },
   cast: { icon: Users, label: "演员 IP 阵容" },
+  incubator: { icon: Wand2, label: "孵化新演员" },
   scripts: { icon: PenTool, label: "脚本工坊" },
   projects: { icon: Film, label: "项目流水线" },
   distribution: { icon: Share2, label: "多平台分发" },
@@ -666,6 +670,9 @@ export default async function DramaConsole({ searchParams }: PageProps) {
   switch (tab) {
     case "cast":
       view = <CastView artists={MOCK_ARTISTS} dramas={DRAMAS} />;
+      break;
+    case "incubator":
+      view = <IncubatorView />;
       break;
     case "scripts":
       view = <ScriptsView />;
