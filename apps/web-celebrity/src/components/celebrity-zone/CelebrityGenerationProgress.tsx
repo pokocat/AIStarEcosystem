@@ -86,19 +86,19 @@ export function CelebrityGenerationProgress({
       <button
         type="button"
         onClick={() => setMinimized(false)}
-        className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full border border-violet-400/40 bg-[#0d0d18]/95 px-4 py-2 text-xs text-violet-200 shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur transition hover:border-violet-300"
+        className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full border border-violet-400/40 bg-white/95 px-4 py-2 text-xs text-violet-700 shadow-[var(--shadow-pop)] backdrop-blur transition hover:border-violet-500"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         <span className="tabular-nums">{pct}%</span>
-        <span className="text-zinc-500">·</span>
-        <span className="max-w-[120px] truncate text-zinc-600">{productName || "新视频"}</span>
-        <ChevronUp className="h-3.5 w-3.5 text-zinc-400" />
+        <span className="text-zinc-400">·</span>
+        <span className="max-w-[120px] truncate text-zinc-700">{productName || "新视频"}</span>
+        <ChevronUp className="h-3.5 w-3.5 text-zinc-500" />
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[360px] overflow-hidden rounded-2xl border border-violet-400/30 bg-[#0d0d18]/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur">
+    <div className="fixed bottom-6 right-6 z-50 w-[360px] overflow-hidden rounded-2xl border border-violet-400/30 bg-white/95 shadow-[var(--shadow-pop)] backdrop-blur">
       {/* 顶部光效 */}
       <div className="pointer-events-none absolute -top-10 left-1/2 h-24 w-48 -translate-x-1/2 rounded-full bg-violet-500/15 blur-3xl" />
 
@@ -118,13 +118,13 @@ export function CelebrityGenerationProgress({
             />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1 text-[10px] text-violet-200">
+            <div className="flex items-center gap-1 text-[10px] text-violet-600">
               <Sparkles className="h-3 w-3" /> AI 视频生成中
             </div>
             <div className="mt-0.5 truncate text-sm font-semibold text-zinc-800">
               {star.name} · {productName || "新商品"}
             </div>
-            <div className="mt-0.5 text-[10px] text-zinc-400">
+            <div className="mt-0.5 text-[10px] text-zinc-500">
               {meta.name} · {meta.level} · 预计 {meta.speed}
             </div>
           </div>
@@ -132,7 +132,7 @@ export function CelebrityGenerationProgress({
             type="button"
             onClick={() => setMinimized(true)}
             title="最小化（任务后台继续运行）"
-            className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
+            className="rounded-md p-1 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
           >
             <ChevronDown className="h-4 w-4" />
           </button>
@@ -140,13 +140,13 @@ export function CelebrityGenerationProgress({
 
         {/* 进度条 */}
         <div className="mt-4">
-          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+          <div className="flex items-center justify-between text-[11px] text-zinc-500">
             <span className="truncate">{STAGES[stage].hint}</span>
-            <span className="tabular-nums text-violet-200">{pct}%</span>
+            <span className="tabular-nums text-violet-600">{pct}%</span>
           </div>
           <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-100">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-violet-400 via-violet-300 to-violet-500 transition-[width] duration-150"
+              className="h-full rounded-full bg-gradient-to-r from-violet-500 via-violet-400 to-violet-300 transition-[width] duration-150"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -163,10 +163,10 @@ export function CelebrityGenerationProgress({
                   className={cn(
                     "flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold tabular-nums",
                     done
-                      ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+                      ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-600"
                       : active
-                        ? "border-violet-400/60 bg-violet-500/15 text-violet-200"
-                        : "border-zinc-200 bg-zinc-50 text-zinc-400",
+                        ? "border-violet-400/60 bg-violet-500/15 text-violet-600"
+                        : "border-zinc-200 bg-zinc-50 text-zinc-500",
                   )}
                 >
                   {done ? "✓" : active ? <Loader2 className="h-3 w-3 animate-spin" /> : i + 1}
@@ -174,7 +174,7 @@ export function CelebrityGenerationProgress({
                 <span
                   className={cn(
                     "text-center text-[9px] leading-tight",
-                    active ? "text-violet-200" : done ? "text-emerald-200/70" : "text-zinc-400",
+                    active ? "text-violet-600" : done ? "text-emerald-600/80" : "text-zinc-500",
                   )}
                 >
                   {s.label}
@@ -185,11 +185,11 @@ export function CelebrityGenerationProgress({
         </ol>
 
         {/* 不可取消 callout */}
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-100/85">
-          <X className="mt-0.5 h-3 w-3 shrink-0 text-amber-300" />
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-700">
+          <X className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
           <div className="leading-relaxed">
-            已扣除 <span className="font-semibold text-amber-200">✦{formatCredits(creditPrice)}</span> 积分，请求已发到{meta.name}队列。
-            <span className="text-amber-300/90">异步执行不可中途取消</span>，可继续浏览其他页面，完成后会在顶部「我的进行中任务」徽章提醒。
+            已扣除 <span className="font-semibold text-amber-600">✦{formatCredits(creditPrice)}</span> 积分，请求已发到{meta.name}队列。
+            <span className="text-amber-700">异步执行不可中途取消</span>，可继续浏览其他页面，完成后会在顶部「我的进行中任务」徽章提醒。
           </div>
         </div>
 
@@ -197,7 +197,7 @@ export function CelebrityGenerationProgress({
           <button
             type="button"
             onClick={() => setMinimized(true)}
-            className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[11px] text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
+            className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[11px] text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
           >
             后台运行 · 继续浏览
           </button>
