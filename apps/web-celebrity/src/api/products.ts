@@ -111,7 +111,7 @@ export async function createProduct(input: ProductInput): Promise<Product> {
   }
   return apiFetch<Product>("/products", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: input,
   });
 }
 
@@ -137,7 +137,7 @@ export async function updateProduct(
   }
   return apiFetch<Product>(`/products/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(patch),
+    body: patch,
   });
 }
 
@@ -186,7 +186,7 @@ export async function upsertFromGeneration(
   }
   return apiFetch<Product>("/products/upsert-from-generation", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: input,
   });
 }
 
@@ -206,6 +206,6 @@ export async function extractSellingPoints(input: {
   }
   return apiFetch<{ sellingPoints: string }>("/products/extract-selling-points", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: input,
   });
 }

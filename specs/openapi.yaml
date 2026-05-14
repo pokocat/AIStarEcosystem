@@ -3587,6 +3587,12 @@ paths:
       summary: 获取当前用户档案
       responses:
         '200': { description: ok }
+    patch:
+      tags: [account]
+      operationId: updateMyProfile
+      summary: 更新当前用户可编辑资料（displayName/avatarUrl/phone/email/bio/langPreference）
+      responses:
+        '200': { description: ok }
 
   /me/wallet:
     get:
@@ -3825,6 +3831,12 @@ paths:
       summary: 当前用户拥有的数字 IP（艺人）列表
       responses:
         '200': { description: ok }
+    post:
+      tags: [artists]
+      operationId: createMyDigitalIp
+      summary: 新建数字 IP
+      responses:
+        '200': { description: ok }
 
   /me/digital-ips/{id}:
     parameters:
@@ -3835,6 +3847,24 @@ paths:
     get:
       tags: [artists]
       operationId: getMyDigitalIp
+      responses:
+        '200': { description: ok }
+    put:
+      tags: [artists]
+      operationId: replaceMyDigitalIp
+      summary: 整体替换数字 IP 字段
+      responses:
+        '200': { description: ok }
+    patch:
+      tags: [artists]
+      operationId: updateMyDigitalIp
+      summary: 局部更新数字 IP 字段
+      responses:
+        '200': { description: ok }
+    delete:
+      tags: [artists]
+      operationId: deleteMyDigitalIp
+      summary: 删除数字 IP
       responses:
         '200': { description: ok }
 
