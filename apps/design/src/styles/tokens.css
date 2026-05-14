@@ -1,0 +1,205 @@
+/* ============================================================
+   Design Tokens — three themes share one variable contract.
+   Switch via <html data-theme="tech | creator | premium">.
+   ============================================================ */
+
+/* ---------- 01 · Tech-Professional (dark, enterprise) ---------- */
+:root,
+[data-theme="tech"] {
+  /* surface */
+  --bg-0: #0b0d10;
+  --bg-1: #12151a;
+  --bg-2: #181c22;
+  --bg-3: #1f242c;
+  --line: #262c35;
+  --line-2: #323a45;
+
+  /* foreground */
+  --fg-0: #e7ebf0;
+  --fg-1: #b4bcc8;
+  --fg-2: #7a8493;
+  --fg-3: #525c6b;
+
+  /* accent */
+  --accent: #5b8def;
+  --accent-strong: #3d6fd1;
+  --accent-soft: rgba(91, 141, 239, 0.14);
+  --info: #46c4d6;
+  --success: #3ec491;
+  --warning: #e2a23a;
+  --danger: #e26060;
+
+  /* type */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "Inter", serif; /* tech doesn't use serif */
+
+  /* scale */
+  --tracking-tight: -0.02em;
+  --tracking-wide: 0.12em;
+
+  /* radius */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 10px;
+  --radius-pill: 999px;
+
+  /* shadow */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+
+  /* effects */
+  --glass-bg: var(--bg-1);
+  --glass-border: var(--line);
+  --glass-blur: 0;
+
+  /* spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  color-scheme: dark;
+}
+
+/* ---------- 02 · Creator-Friendly (warm cream, expressive) ---------- */
+[data-theme="creator"] {
+  --bg-0: #faf7f2;
+  --bg-1: #ffffff;
+  --bg-2: #f3efe7;
+  --bg-3: #ebe5d8;
+  --line: #e8e1d3;
+  --line-2: #d8cfba;
+
+  --fg-0: #1f1a14;
+  --fg-1: #3a3329;
+  --fg-2: #7a6f5d;
+  --fg-3: #a89e88;
+
+  --accent: #7c5cff;
+  --accent-strong: #5b3fe0;
+  --accent-soft: rgba(124, 92, 255, 0.12);
+  --info: #22b59a;
+  --success: #22b59a;
+  --warning: #f0a83a;
+  --danger: #ff5b8a;
+  --extra-lime: #c4e34a;
+  --extra-peach: #ff8a5b;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Manrope", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "Instrument Serif", Georgia, serif;
+
+  --tracking-tight: -0.025em;
+  --tracking-wide: 0.1em;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(31, 26, 20, 0.04);
+  --shadow-md: 0 6px 20px rgba(31, 26, 20, 0.06);
+  --shadow-lg: 0 20px 48px rgba(31, 26, 20, 0.08);
+
+  --glass-bg: var(--bg-1);
+  --glass-border: var(--line);
+  --glass-blur: 0;
+
+  color-scheme: light;
+}
+
+/* ---------- 03 · Entertainment-Premium (cinematic, glass + gold) ---------- */
+[data-theme="premium"] {
+  --bg-0: #0a0810;
+  --bg-1: #13101c;
+  --bg-2: #1c1828;
+  --bg-3: #261f36;
+  --line: rgba(255, 255, 255, 0.10);
+  --line-2: rgba(255, 255, 255, 0.18);
+
+  --fg-0: #f5f0e6;
+  --fg-1: #c8c0b0;
+  --fg-2: #8a8294;
+  --fg-3: #56516a;
+
+  --accent: #d4af6a;          /* gold */
+  --accent-strong: #a8884a;
+  --accent-soft: rgba(212, 175, 106, 0.14);
+  --info: #3de0ff;            /* cyan */
+  --success: #4ce0a0;
+  --warning: #d4af6a;
+  --danger: #ff3d8a;          /* magenta */
+  --extra-violet: #a44cff;
+  --extra-champagne: #ead7a8;
+
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "Instrument Serif", Georgia, serif;
+
+  --tracking-tight: -0.025em;
+  --tracking-wide: 0.18em;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.65);
+
+  /* glass card recipe — use via .glass utility class below */
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 20px;
+
+  --gradient-hero: linear-gradient(135deg, #ff3d8a 0%, #a44cff 50%, #3de0ff 100%);
+  --gradient-gold: linear-gradient(135deg, #d4af6a 0%, #ead7a8 100%);
+
+  color-scheme: dark;
+}
+
+/* ---------- Universal helpers (work in all themes) ---------- */
+
+body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.serif {
+  font-family: var(--font-serif);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
