@@ -29,7 +29,7 @@ interface Props {
 }
 
 const inputCls =
-  "w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none focus:border-cyan-400/60 focus:bg-white/[0.05]";
+  "w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-300 outline-none focus:border-violet-400/60 focus:bg-zinc-100";
 
 export function ProductFormDialog({
   open,
@@ -98,12 +98,12 @@ export function ProductFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg border-white/8 bg-[#0f0f1a] text-white">
+      <DialogContent className="max-w-lg border-zinc-200 bg-[#0f0f1a] text-zinc-900">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">
             {initial ? "编辑商品" : "快速录入商品"}
           </DialogTitle>
-          <DialogDescription className="text-xs text-white/45">
+          <DialogDescription className="text-xs text-zinc-400">
             录入后可在生成带货视频时复用，提升二次生成效率。
           </DialogDescription>
         </DialogHeader>
@@ -160,7 +160,7 @@ export function ProductFormDialog({
                 <button
                   type="button"
                   onClick={addImage}
-                  className="shrink-0 rounded-md border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200 hover:border-cyan-300 hover:bg-cyan-500/20"
+                  className="shrink-0 rounded-md border border-violet-400/40 bg-violet-500/10 px-3 py-2 text-xs text-violet-200 hover:border-violet-300 hover:bg-violet-500/20"
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </button>
@@ -170,13 +170,13 @@ export function ProductFormDialog({
                   {images.map((url) => (
                     <div
                       key={url}
-                      className="group relative h-14 w-14 overflow-hidden rounded-md border border-white/10"
+                      className="group relative h-14 w-14 overflow-hidden rounded-md border border-zinc-200"
                     >
                       <img src={url} alt="" className="h-full w-full object-cover" />
                       <button
                         type="button"
                         onClick={() => removeImage(url)}
-                        className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center bg-black/70 text-white opacity-0 transition group-hover:opacity-100"
+                        className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center bg-white/70 text-zinc-900 opacity-0 transition group-hover:opacity-100"
                         aria-label="移除"
                       >
                         <X className="h-3 w-3" />
@@ -202,7 +202,7 @@ export function ProductFormDialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md border border-white/10 px-4 py-2 text-sm text-white/60 hover:border-white/30 hover:text-white"
+            className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
           >
             取消
           </button>
@@ -210,7 +210,7 @@ export function ProductFormDialog({
             type="button"
             disabled={!canSubmit}
             onClick={handleSubmit}
-            className="rounded-md bg-gradient-to-r from-cyan-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-white/35"
+            className="rounded-md bg-gradient-to-r from-violet-500 to-violet-500 px-4 py-2 text-sm font-semibold text-zinc-900 transition disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-zinc-400"
           >
             {submitting ? "保存中…" : initial ? "保存修改" : "保存到商品库"}
           </button>
@@ -231,9 +231,9 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-white/65">
+      <span className="text-xs font-medium text-zinc-500">
         {label}
-        {required && <span className="ml-0.5 text-rose-300">*</span>}
+        {required && <span className="ml-0.5 text-pink-300">*</span>}
       </span>
       {children}
     </label>

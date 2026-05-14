@@ -18,7 +18,7 @@ export function CelebrityProjectVideoCard({ video, showProject }: Props) {
   const engineColor = ENGINE_META[video.engine].color;
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-white/8 bg-white/[0.02] p-2.5 transition hover:border-white/15 hover:bg-white/[0.04]">
+    <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 transition hover:border-zinc-200 hover:bg-zinc-100">
       <CelebrityVideoPlayer
         src={video.videoUrl}
         poster={video.thumb}
@@ -36,11 +36,11 @@ export function CelebrityProjectVideoCard({ video, showProject }: Props) {
         }
       />
       <div className="px-0.5">
-        <div className="line-clamp-1 text-xs font-medium text-white/85">
+        <div className="line-clamp-1 text-xs font-medium text-zinc-700">
           {video.productName}
         </div>
         {showProject && (
-          <div className="mt-0.5 line-clamp-1 text-[10px] text-white/35">
+          <div className="mt-0.5 line-clamp-1 text-[10px] text-zinc-400">
             {video.projectName} · {video.starName}
           </div>
         )}
@@ -56,7 +56,7 @@ export function CelebrityProjectVideoCard({ video, showProject }: Props) {
             {video.engine}
           </span>
           {video.plays && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] text-white/40">
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-zinc-400">
               <Eye className="h-3 w-3" /> {video.plays}
             </span>
           )}

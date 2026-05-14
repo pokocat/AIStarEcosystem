@@ -29,20 +29,20 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
   return (
     <div className="flex flex-col gap-6">
       {/* 明星 mini 信息条 */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.025] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3">
         <img
           src={star.avatar}
           alt={star.name}
-          className="h-10 w-10 rounded-full object-cover border border-cyan-500/30"
+          className="h-10 w-10 rounded-full object-cover border border-violet-500/30"
         />
         <div className="flex flex-col">
           <div className="text-sm font-semibold">
             {star.name}
-            <span className="ml-2 rounded-md border border-purple-400/30 bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-300">
+            <span className="ml-2 rounded-md border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-300">
               {star.category}
             </span>
           </div>
-          <div className="text-[11px] text-white/40">
+          <div className="text-[11px] text-zinc-400">
             {star.pricingTier ?? "未购套餐"} ·
             已用 {star.quotaUsed ?? 0}/{star.quotaTotal ?? 0} 条
           </div>
@@ -51,7 +51,7 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
         {onSwitchStar && (
           <button
             onClick={onSwitchStar}
-            className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60 transition hover:border-white/30 hover:text-white"
+            className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
           >
             换明星
           </button>
@@ -59,8 +59,8 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
       </div>
 
       <div>
-        <div className="text-sm text-white/45">选择生成模式</div>
-        <div className="mt-1 text-[12px] text-white/30">
+        <div className="text-sm text-zinc-400">选择生成模式</div>
+        <div className="mt-1 text-[12px] text-zinc-300">
           模板生成确定性强、效果可控；盲盒模式由 AI 自由发挥，更省心、有惊喜。
         </div>
       </div>
@@ -69,7 +69,7 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
         {/* 模板生成 */}
         <ModeCard
           accent="cyan"
-          icon={<LayoutTemplate className="h-5 w-5 text-cyan-300" />}
+          icon={<LayoutTemplate className="h-5 w-5 text-violet-300" />}
           title="模板生成"
           tag="推荐"
           description="选择模板 → 填入商品 → 确定性输出。适合有明确带货需求的场景。"
@@ -95,7 +95,7 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
         {/* 盲盒生成 */}
         <ModeCard
           accent="purple"
-          icon={<Dice5 className="h-5 w-5 text-purple-300" />}
+          icon={<Dice5 className="h-5 w-5 text-violet-300" />}
           title="AI 自主生成"
           tag="开盲盒"
           description="只需输入商品信息，AI 自主决定脚本、风格、节奏。适合探索新玩法。"
@@ -105,9 +105,9 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
           ctaIcon={<Dice5 className="h-4 w-4" />}
           media={
             <div className="flex h-full w-full items-center justify-center">
-              <div className="relative flex h-28 w-28 items-center justify-center rounded-full border-[3px] border-dashed border-purple-400/40 bg-purple-500/5">
-                <Sparkles className="absolute right-1 top-1 h-3 w-3 text-purple-200/70" />
-                <span className="text-5xl font-light text-purple-300">?</span>
+              <div className="relative flex h-28 w-28 items-center justify-center rounded-full border-[3px] border-dashed border-violet-400/40 bg-violet-500/5">
+                <Sparkles className="absolute right-1 top-1 h-3 w-3 text-violet-200/70" />
+                <span className="text-5xl font-light text-violet-300">?</span>
               </div>
             </div>
           }
@@ -132,26 +132,26 @@ interface ModeCardProps {
 
 const ACCENT_STYLE = {
   cyan: {
-    border: "border-cyan-500/25",
-    bg: "from-cyan-500/[0.06] to-cyan-500/[0.02]",
-    hover: "hover:border-cyan-400/50 hover:shadow-[0_0_30px_rgba(6,182,212,0.18)]",
-    iconBox: "border-cyan-400/40 bg-cyan-500/10",
-    title: "text-cyan-200",
-    tagBox: "border-cyan-400/40 bg-cyan-500/10 text-cyan-200",
-    chipBox: "border-cyan-400/30 bg-cyan-500/[0.08] text-cyan-200/80",
-    cta: "bg-gradient-to-r from-cyan-500 to-cyan-400 text-black shadow-[0_0_20px_rgba(6,182,212,0.35)]",
+    border: "border-violet-500/25",
+    bg: "from-violet-500/[0.06] to-violet-500/[0.02]",
+    hover: "hover:border-violet-400/50 hover:shadow-[0_0_30px_rgba(6,182,212,0.18)]",
+    iconBox: "border-violet-400/40 bg-violet-500/10",
+    title: "text-violet-200",
+    tagBox: "border-violet-400/40 bg-violet-500/10 text-violet-200",
+    chipBox: "border-violet-400/30 bg-violet-500/[0.08] text-violet-200/80",
+    cta: "bg-gradient-to-r from-violet-500 to-violet-400 text-zinc-50 shadow-[0_0_20px_rgba(6,182,212,0.35)]",
     ctaHover: "group-hover:shadow-[0_0_30px_rgba(6,182,212,0.5)]",
   },
   purple: {
-    border: "border-purple-500/25",
-    bg: "from-purple-500/[0.07] to-pink-500/[0.03]",
-    hover: "hover:border-purple-400/50 hover:shadow-[0_0_30px_rgba(168,85,247,0.18)]",
-    iconBox: "border-purple-400/40 bg-purple-500/10",
-    title: "text-purple-200",
-    tagBox: "border-purple-400/40 bg-purple-500/10 text-purple-200",
-    chipBox: "border-purple-400/30 bg-purple-500/[0.08] text-purple-200/80",
-    cta: "border-2 border-purple-400/50 bg-gradient-to-r from-purple-500/30 to-pink-500/20 text-purple-100",
-    ctaHover: "group-hover:border-purple-300/80",
+    border: "border-violet-500/25",
+    bg: "from-violet-500/[0.07] to-pink-500/[0.03]",
+    hover: "hover:border-violet-400/50 hover:shadow-[0_0_30px_rgba(168,85,247,0.18)]",
+    iconBox: "border-violet-400/40 bg-violet-500/10",
+    title: "text-violet-200",
+    tagBox: "border-violet-400/40 bg-violet-500/10 text-violet-200",
+    chipBox: "border-violet-400/30 bg-violet-500/[0.08] text-violet-200/80",
+    cta: "border-2 border-violet-400/50 bg-gradient-to-r from-violet-500/30 to-pink-500/20 text-violet-100",
+    ctaHover: "group-hover:border-violet-300/80",
   },
 } as const;
 
@@ -180,7 +180,7 @@ function ModeCard({
           onClick();
         }
       }}
-      className={`group relative flex h-full cursor-pointer flex-col rounded-2xl border ${s.border} bg-gradient-to-br ${s.bg} p-6 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${s.hover}`}
+      className={`group relative flex h-full cursor-pointer flex-col rounded-2xl border ${s.border} bg-gradient-to-br ${s.bg} p-6 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 ${s.hover}`}
     >
       {/* 顶部固定区（图标 + 标题 + 描述 + 标签） */}
       <div className="flex flex-col gap-4">
@@ -195,7 +195,7 @@ function ModeCard({
                 {tag}
               </span>
             </div>
-            <div className="text-xs text-white/45">{description}</div>
+            <div className="text-xs text-zinc-400">{description}</div>
           </div>
         </div>
 

@@ -22,7 +22,7 @@ function QualityStars({ count }: { count: number }) {
           key={i}
           className={cn(
             "h-3 w-3",
-            i < count ? "fill-amber-300 text-amber-300" : "text-white/15",
+            i < count ? "fill-amber-300 text-amber-300" : "text-zinc-300",
           )}
         />
       ))}
@@ -34,8 +34,8 @@ function QualityStars({ count }: { count: number }) {
 export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
   if (compact) {
     return (
-      <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-        <div className="mb-3 text-sm font-medium text-white/70">生成引擎</div>
+      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <div className="mb-3 text-sm font-medium text-zinc-600">生成引擎</div>
         <div className="flex flex-col gap-2.5">
           {ENGINE_ORDER.map((id) => {
             const meta = ENGINE_META[id];
@@ -48,8 +48,8 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                 className={cn(
                   "flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
                   selected
-                    ? "border-white/15 bg-white/[0.05]"
-                    : "border-white/[0.06] bg-transparent hover:border-white/10",
+                    ? "border-zinc-200 bg-zinc-100"
+                    : "border-zinc-300/[0.06] bg-transparent hover:border-zinc-200",
                 )}
               >
                 <span
@@ -67,7 +67,7 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                 >
                   {meta.name}
                 </span>
-                <span className="text-[11px] text-white/40 tabular-nums">
+                <span className="text-[11px] text-zinc-400 tabular-nums">
                   {meta.level} · ✦{formatCredits(meta.creditPrice)}/条
                 </span>
               </button>
@@ -79,8 +79,8 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-      <div className="mb-3 text-sm font-medium text-white/70">生成引擎</div>
+    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+      <div className="mb-3 text-sm font-medium text-zinc-600">生成引擎</div>
       <div className="flex flex-col gap-2.5">
         {ENGINE_ORDER.map((id) => {
           const meta = ENGINE_META[id];
@@ -92,7 +92,7 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
               onClick={() => onChange(id)}
               className={cn(
                 "rounded-lg border-2 border-dashed px-4 py-3 text-left transition",
-                selected ? "" : "border-white/8 hover:border-white/15",
+                selected ? "" : "border-zinc-200 hover:border-zinc-200",
               )}
               style={
                 selected
@@ -129,13 +129,13 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                     {meta.level}
                   </span>
                 </div>
-                <span className="text-[11px] tabular-nums text-white/55">
-                  消耗 <span className="text-cyan-200">✦{formatCredits(meta.creditPrice)}</span> 积分
-                  <span className="text-white/35"> · 占套餐额度 {meta.cost} 条</span>
+                <span className="text-[11px] tabular-nums text-zinc-500">
+                  消耗 <span className="text-violet-200">✦{formatCredits(meta.creditPrice)}</span> 积分
+                  <span className="text-zinc-400"> · 占套餐额度 {meta.cost} 条</span>
                 </span>
               </div>
-              <p className="mt-2 ml-5 text-[12px] leading-relaxed text-white/45">{meta.desc}</p>
-              <div className="mt-2 ml-5 flex items-center gap-4 text-[11px] text-white/35">
+              <p className="mt-2 ml-5 text-[12px] leading-relaxed text-zinc-400">{meta.desc}</p>
+              <div className="mt-2 ml-5 flex items-center gap-4 text-[11px] text-zinc-400">
                 <span className="inline-flex items-center gap-1">
                   画质 <QualityStars count={meta.quality} />
                 </span>

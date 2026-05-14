@@ -34,20 +34,20 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
   return (
     <div className="flex flex-col gap-5">
       {/* 面包屑 */}
-      <div className="flex flex-wrap items-center gap-1 text-xs text-white/40">
-        <button onClick={onBack} className="text-white/55 hover:text-white">
+      <div className="flex flex-wrap items-center gap-1 text-xs text-zinc-400">
+        <button onClick={onBack} className="text-zinc-500 hover:text-zinc-900">
           {star.name}
         </button>
-        <ChevronRight className="h-3 w-3 text-white/20" />
-        <button onClick={onBack} className="text-white/55 hover:text-white">
+        <ChevronRight className="h-3 w-3 text-zinc-300" />
+        <button onClick={onBack} className="text-zinc-500 hover:text-zinc-900">
           模板生成
         </button>
-        <ChevronRight className="h-3 w-3 text-white/20" />
-        <span className="text-cyan-300">选择模板</span>
+        <ChevronRight className="h-3 w-3 text-zinc-300" />
+        <span className="text-violet-300">选择模板</span>
       </div>
 
       {/* 风格 tab */}
-      <div className="flex flex-wrap gap-1 border-b border-white/5">
+      <div className="flex flex-wrap gap-1 border-b border-zinc-100">
         {TEMPLATE_STYLES.map((style) => (
           <button
             key={style}
@@ -55,13 +55,13 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
             className={cn(
               "relative px-4 py-2 text-sm font-medium transition",
               activeStyle === style
-                ? "text-cyan-300"
-                : "text-white/45 hover:text-white/80",
+                ? "text-violet-300"
+                : "text-zinc-400 hover:text-zinc-700",
             )}
           >
             {style}
             {activeStyle === style && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-cyan-400 to-cyan-300" />
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-violet-400 to-violet-300" />
             )}
           </button>
         ))}
@@ -74,7 +74,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
           return (
             <div
               key={tpl.id}
-              className="group relative flex flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.025] p-4 transition hover:border-cyan-500/40 hover:bg-white/[0.04]"
+              className="group relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-violet-500/40 hover:bg-zinc-100"
             >
               {tpl.isHot && (
                 <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border border-pink-400/30 bg-pink-500/10 px-2 py-0.5 text-[10px] text-pink-300">
@@ -94,7 +94,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
               </div>
 
               <div>
-                <div className="text-base font-semibold text-white/85">{tpl.name}</div>
+                <div className="text-base font-semibold text-zinc-700">{tpl.name}</div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   <span
                     className={cn(
@@ -117,11 +117,11 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
                 </div>
               </div>
 
-              <p className="text-xs leading-relaxed text-white/45 min-h-[36px]">
+              <p className="text-xs leading-relaxed text-zinc-400 min-h-[36px]">
                 {tpl.description}
               </p>
 
-              <div className="flex items-center gap-4 text-[11px] text-white/35">
+              <div className="flex items-center gap-4 text-[11px] text-zinc-400">
                 <span className="inline-flex items-center gap-1">
                   <Eye className="h-3 w-3" />
                   {tpl.plays} 播放
@@ -134,7 +134,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
 
               <button
                 onClick={() => onPickTemplate(tpl)}
-                className="mt-1 w-full rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-white"
+                className="mt-1 w-full rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm font-medium text-violet-200 transition hover:border-violet-400 hover:bg-violet-500/20 hover:text-zinc-900"
               >
                 使用此模板
               </button>
@@ -144,7 +144,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
       </div>
 
       {filtered.length === 0 && (
-        <div className="rounded-xl border border-dashed border-white/10 px-6 py-12 text-center text-sm text-white/40">
+        <div className="rounded-xl border border-dashed border-zinc-200 px-6 py-12 text-center text-sm text-zinc-400">
           暂无符合该风格的模板
         </div>
       )}

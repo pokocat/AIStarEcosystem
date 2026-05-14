@@ -1,0 +1,111 @@
+/* ============================================================
+   celebrity · Creator-Friendly 设计令牌
+   来源：用户上传的"AI IP Design Directions"参考图 + scaffold/src/styles/tokens.css。
+   特征：奶油底 + 多色饱和调色板 + 黑/紫双色按钮 + serif 斜体点睛 + 圆角偏大。
+   ============================================================ */
+
+:root,
+[data-theme="creator"] {
+  /* surface（参考图 Palette · Surface） */
+  --bg-0: #faf7f2;       /* cream */
+  --bg-1: #ffffff;       /* white */
+  --bg-2: #f3efe7;       /* sand */
+  --bg-3: #ebe5d8;       /* line */
+  --line: #e8e1d3;       /* line */
+  --line-2: #d8cfba;     /* line/2 */
+  --ink: #1f1a14;        /* ink (dark button bg) */
+
+  /* foreground */
+  --fg-0: #1f1a14;
+  --fg-1: #3a3329;
+  --fg-2: #7a6f5d;
+  --fg-3: #a89e88;
+
+  /* accent palette（参考图 Palette · Accent，6 色） */
+  --accent: #7c5cff;          /* violet —— 主强调色 */
+  --accent-strong: #5b3fe0;
+  --accent-soft: rgba(124, 92, 255, 0.12);
+  --extra-lime: #c4e34a;
+  --extra-peach: #ff8a5b;
+  --extra-rose: #ff5b8a;
+  --extra-teal: #22b59a;
+  --extra-amber: #f0a83a;
+
+  /* 状态色 */
+  --info: #22b59a;
+  --success: #22b59a;
+  --warning: #f0a83a;
+  --danger: #ff5b8a;
+
+  /* 业务 tag 色（参考图 Persona 多色 tag） */
+  --tag-romance: #ff5b8a;
+  --tag-slice: #f0a83a;
+  --tag-comedy: #22b59a;
+  --tag-drama: #7c5cff;
+
+  /* 字体（next/font 注入变量名对齐） */
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* 字距 */
+  --tracking-tight: -0.025em;
+  --tracking-wide: 0.1em;
+
+  /* 圆角（参考图 sm / md / lg / pill） */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* 阴影（参考图 shadow-soft / shadow-lift / shadow-pop） */
+  --shadow-soft: 0 1px 2px rgba(31, 26, 20, 0.04);
+  --shadow-lift: 0 6px 20px rgba(31, 26, 20, 0.06);
+  --shadow-pop:  0 20px 48px rgba(31, 26, 20, 0.08);
+  --shadow-sm: var(--shadow-soft);
+  --shadow-md: var(--shadow-lift);
+  --shadow-lg: var(--shadow-pop);
+
+  /* 渐变（多色饱和，用于 KPI / 卡片头像） */
+  --gradient-violet: linear-gradient(135deg, #7c5cff 0%, #b4a4ff 100%);
+  --gradient-peach:  linear-gradient(135deg, #ff8a5b 0%, #ffc8a4 100%);
+  --gradient-rose:   linear-gradient(135deg, #ff5b8a 0%, #ffb1c8 100%);
+  --gradient-teal:   linear-gradient(135deg, #22b59a 0%, #7dddc9 100%);
+  --gradient-lime:   linear-gradient(135deg, #c4e34a 0%, #e3f29a 100%);
+  --gradient-amber:  linear-gradient(135deg, #f0a83a 0%, #f7cf86 100%);
+  --gradient-sunset: linear-gradient(135deg, #ff5b8a 0%, #ff8a5b 50%, #f0a83a 100%);
+  --gradient-aurora: linear-gradient(135deg, #7c5cff 0%, #ff5b8a 50%, #22b59a 100%);
+
+  color-scheme: light;
+}
+
+/* 全局画布 */
+[data-theme="creator"] body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 通用工具类（来自 scaffold） */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.serif {
+  font-family: var(--font-serif);
+}
+
+/* serif 斜体高亮（参考图"let's shoot something today."） */
+.serif-italic {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+}

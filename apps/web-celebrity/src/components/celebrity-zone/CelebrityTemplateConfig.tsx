@@ -98,8 +98,8 @@ export function CelebrityTemplateConfig({
                 isDone
                   ? "border-emerald-400 text-emerald-300"
                   : isActive
-                    ? "border-cyan-400 text-cyan-300"
-                    : "border-white/10 text-white/30",
+                    ? "border-violet-400 text-violet-300"
+                    : "border-zinc-200 text-zinc-300",
               )}
             >
               {isDone && <Check className="h-3 w-3" />}
@@ -113,7 +113,7 @@ export function CelebrityTemplateConfig({
         {/* 左：配置区 */}
         <div className="flex flex-col gap-4">
           {/* 模板信息卡 */}
-          <div className="flex gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.04] p-3">
+          <div className="flex gap-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-3">
             <div className="w-[64px] shrink-0">
               <CelebrityVideoPlayer
                 src={template.previews?.[0]?.videoUrl ?? ""}
@@ -122,13 +122,13 @@ export function CelebrityTemplateConfig({
               />
             </div>
             <div className="flex flex-1 flex-col">
-              <div className="text-sm font-semibold text-white/85">{template.name}模板</div>
-              <p className="mt-0.5 text-[11px] leading-snug text-white/45 line-clamp-2">
+              <div className="text-sm font-semibold text-zinc-700">{template.name}模板</div>
+              <p className="mt-0.5 text-[11px] leading-snug text-zinc-400 line-clamp-2">
                 {template.description}
               </p>
               <button
                 onClick={onBackToGallery}
-                className="mt-1.5 inline-flex w-fit items-center gap-1 rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-white/55 transition hover:border-white/30 hover:text-white"
+                className="mt-1.5 inline-flex w-fit items-center gap-1 rounded-md border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
               >
                 <ArrowLeftRight className="h-3 w-3" /> 更换模板
               </button>
@@ -140,8 +140,8 @@ export function CelebrityTemplateConfig({
           <CelebrityEngineSelect value={engine} onChange={setEngine} />
 
           {/* 视频时长 */}
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-            <div className="mb-3 text-sm font-medium text-white/70">视频时长</div>
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mb-3 text-sm font-medium text-zinc-600">视频时长</div>
             <div className="flex gap-2">
               {DURATION_OPTIONS.map((d) => (
                 <button
@@ -151,8 +151,8 @@ export function CelebrityTemplateConfig({
                   className={cn(
                     "rounded-md border px-4 py-1.5 text-sm transition",
                     duration === d
-                      ? "border-cyan-400/60 bg-cyan-500/10 text-cyan-200"
-                      : "border-white/10 text-white/40 hover:border-white/30 hover:text-white/70",
+                      ? "border-violet-400/60 bg-violet-500/10 text-violet-200"
+                      : "border-zinc-200 text-zinc-400 hover:border-zinc-300 hover:text-zinc-600",
                   )}
                 >
                   {d}秒
@@ -162,13 +162,13 @@ export function CelebrityTemplateConfig({
           </div>
 
           {/* 归属项目 */}
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-            <div className="mb-2 text-sm font-medium text-white/70">归属项目</div>
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mb-2 text-sm font-medium text-zinc-600">归属项目</div>
             <div className="flex gap-2">
               <select
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
-                className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-cyan-400/60"
+                className="flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-violet-400/60"
               >
                 {projects.map((p) => (
                   <option key={p.id} value={p.id} className="bg-[#0a0a14]">
@@ -178,7 +178,7 @@ export function CelebrityTemplateConfig({
               </select>
               <button
                 type="button"
-                className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/50 hover:border-white/30 hover:text-white"
+                className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-300 hover:text-zinc-900"
               >
                 + 新建
               </button>
@@ -192,17 +192,17 @@ export function CelebrityTemplateConfig({
             onClick={() =>
               onGenerate({ product, engine, duration, projectId })
             }
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 via-cyan-400 to-purple-500 px-5 py-3 text-base font-semibold text-black shadow-[0_0_30px_rgba(6,182,212,0.35)] transition hover:shadow-[0_0_40px_rgba(168,85,247,0.45)] disabled:cursor-not-allowed disabled:from-white/10 disabled:via-white/10 disabled:to-white/10 disabled:text-white/30 disabled:shadow-none"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 via-violet-400 to-violet-500 px-5 py-3 text-base font-semibold text-zinc-50 shadow-[0_0_30px_rgba(6,182,212,0.35)] transition hover:shadow-[0_0_40px_rgba(168,85,247,0.45)] disabled:cursor-not-allowed disabled:from-white/10 disabled:via-white/10 disabled:to-white/10 disabled:text-zinc-300 disabled:shadow-none"
           >
             <Film className="h-4 w-4" /> 生成视频
           </button>
           <div className="flex flex-col gap-1.5 text-[11px]">
-            <div className="flex flex-wrap items-center justify-between text-white/45 tabular-nums">
+            <div className="flex flex-wrap items-center justify-between text-zinc-400 tabular-nums">
               <span>
-                消耗 <span className="text-cyan-200">✦{formatCredits(creditPrice)}</span> 积分
-                <span className="text-white/30"> · 占套餐 {cost} 条额度</span>
+                消耗 <span className="text-violet-200">✦{formatCredits(creditPrice)}</span> 积分
+                <span className="text-zinc-300"> · 占套餐 {cost} 条额度</span>
               </span>
-              <span className="text-white/35">
+              <span className="text-zinc-400">
                 套餐余量 {quotaUsed}/{quotaTotal} · 钱包 ✦{formatCredits(walletBalance)}
               </span>
             </div>
@@ -215,7 +215,7 @@ export function CelebrityTemplateConfig({
               </Link>
             )}
             {!insufficientCredits && insufficientQuota && (
-              <span className="inline-flex items-center gap-1 self-start rounded-md border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-rose-200">
+              <span className="inline-flex items-center gap-1 self-start rounded-md border border-pink-400/40 bg-pink-500/10 px-2 py-1 text-pink-200">
                 ⚠ 套餐额度不足，将自动改用积分扣费
               </span>
             )}
@@ -224,8 +224,8 @@ export function CelebrityTemplateConfig({
 
         {/* 右：预览 + 案例 + 引擎对比 */}
         <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-            <div className="mb-3 text-sm font-medium text-white/70">模板效果预览</div>
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mb-3 text-sm font-medium text-zinc-600">模板效果预览</div>
             <div className="grid grid-cols-2 gap-3">
               {(template.previews ?? []).slice(0, 2).map((p, i) => (
                 <CelebrityVideoPlayer
@@ -238,10 +238,10 @@ export function CelebrityTemplateConfig({
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-white/70">往期生成案例</span>
-              <button className="text-xs text-cyan-300 hover:text-cyan-200">
+              <span className="text-sm font-medium text-zinc-600">往期生成案例</span>
+              <button className="text-xs text-violet-300 hover:text-violet-200">
                 查看更多 →
               </button>
             </div>
@@ -253,14 +253,14 @@ export function CelebrityTemplateConfig({
                     poster={s.thumb}
                     aspect="9/16"
                   />
-                  <div className="mt-1.5 flex items-center justify-between text-[11px] text-white/40">
+                  <div className="mt-1.5 flex items-center justify-between text-[11px] text-zinc-400">
                     <span className="line-clamp-1">{s.caption}</span>
                     <span>▶ {s.plays}</span>
                   </div>
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-center text-[11px] text-white/25">
+            <p className="mt-3 text-center text-[11px] text-zinc-300">
               以上案例均为 AI 生成效果，实际效果因商品不同可能有差异
             </p>
           </div>

@@ -251,49 +251,49 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
   return (
     <div className="flex h-full flex-col gap-5">
       {/* 工作台标题区（layout 已渲染顶部 tabs/面包屑，这里只放工作台子标题 + 返回） */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-4">
         <div className="flex items-center gap-3">
           <button
             onClick={handleBack}
-            className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/55 transition hover:border-white/30 hover:text-white"
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> 返回
           </button>
           <div>
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-cyan-300" />
-              <h1 className="text-lg font-semibold tracking-tight text-white/90">
+              <Sparkles className="h-4 w-4 text-violet-300" />
+              <h1 className="text-lg font-semibold tracking-tight text-zinc-800">
                 生成工作台
               </h1>
-              <span className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">
+              <span className="rounded-md border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200">
                 v3
               </span>
             </div>
-            <p className="mt-0.5 text-[12px] text-white/40">
+            <p className="mt-0.5 text-[12px] text-zinc-400">
               {STEP_TITLE[step]} · 模板/盲盒双模式 × 多引擎
             </p>
           </div>
         </div>
 
         {/* 步骤指示 */}
-        <div className="flex items-center gap-2 text-[11px] text-white/35">
-          <span className={step === "mode" ? "text-cyan-300" : ""}>① 模式</span>
+        <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+          <span className={step === "mode" ? "text-violet-300" : ""}>① 模式</span>
           <span>›</span>
           <span
             className={
               step === "templateGallery" ||
               step === "blindbox" ||
               step === "templateConfig"
-                ? "text-cyan-300"
+                ? "text-violet-300"
                 : ""
             }
           >
             ② 配置
           </span>
           <span>›</span>
-          <span className={activeJob ? "text-cyan-300" : ""}>③ 生成</span>
+          <span className={activeJob ? "text-violet-300" : ""}>③ 生成</span>
           <span>›</span>
-          <span className={step === "result" ? "text-cyan-300" : ""}>④ 预览</span>
+          <span className={step === "result" ? "text-violet-300" : ""}>④ 预览</span>
         </div>
       </div>
 
