@@ -27,7 +27,7 @@ export const CURRENT_USER: AepUser = {
     name: "星浪工作室",
     kind: "agency",
     status: "active",
-    bio: "专注 AI 虚拟艺人孵化与跨端发行。",
+    bio: "专注 AI 短剧与数字演员的工业化生产。",
     contactEmail: "ops@skywave.io",
     createdAt: "2025-09-12T08:10:00Z",
     updatedAt: "2026-04-10T11:22:00Z",
