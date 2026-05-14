@@ -9,6 +9,7 @@ import {
   GradientBlock,
   KpiCard,
 } from "@/components/creator";
+import { PipelineStep } from "@/components/console/PipelineStep";
 import { CelebrityMarketHero } from "@/components/celebrity-zone/CelebrityMarketHero";
 import { CelebrityMarket } from "@/components/celebrity-zone/CelebrityMarket";
 import { CelebrityMyProjects } from "@/components/celebrity-zone/CelebrityMyProjects";
@@ -716,96 +717,6 @@ function CastGrid({ stars }: { stars: typeof MARKET_STARS }) {
 
 // ─── 小工具 ─────────────────────────────────────────────────────────────────
 
-function PipelineStep({
-  n,
-  title,
-  desc,
-  href,
-  tone,
-  active,
-  count,
-  countLabel,
-}: {
-  n: number;
-  title: string;
-  desc: string;
-  href: string;
-  tone: "violet" | "peach" | "rose" | "teal" | "amber";
-  active?: boolean;
-  count?: number;
-  countLabel?: string;
-}) {
-  const colorMap = {
-    violet: "var(--accent)",
-    peach: "var(--extra-peach)",
-    rose: "var(--extra-rose)",
-    teal: "var(--extra-teal)",
-    amber: "var(--extra-amber)",
-  };
-  const color = colorMap[tone];
-  return (
-    <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
-      <div
-        style={{
-          padding: "14px 16px",
-          borderRadius: "var(--radius-md)",
-          background: active ? "var(--accent-soft)" : "var(--bg-2)",
-          border: active
-            ? `1px solid color-mix(in srgb, ${color} 35%, transparent)`
-            : "1px solid var(--line)",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
-          <span
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: "50%",
-              background: color,
-              color: "#ffffff",
-              fontSize: 11,
-              fontFamily: "var(--font-mono)",
-              fontWeight: 700,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {n}
-          </span>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-0)" }}>{title}</div>
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.5, flex: 1 }}>
-          {desc}
-        </div>
-        {count != null && count > 0 && (
-          <div
-            className="mono"
-            style={{
-              marginTop: 10,
-              fontSize: 10.5,
-              color,
-              letterSpacing: 0.3,
-              fontWeight: 600,
-            }}
-          >
-            {count} {countLabel ?? ""}
-          </div>
-        )}
-      </div>
-    </Link>
-  );
-}
 
 function QuotaBar({ used, total }: { used: number; total: number }) {
   const pct = Math.min(100, Math.round((used / total) * 100));

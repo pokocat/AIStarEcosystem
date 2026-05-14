@@ -1,7 +1,9 @@
 "use client";
 
-// 参考图 Sidebar：220px 白底；紫色"iP"方块品牌 mark；分组 WORKSPACE / DRAMA / SYSTEM；
-// active item bg-3 浅米底 + accent 字 + accent dot 前缀；可选 badge（红点 / 数字）。
+// 参考图 Sidebar：220px 白底；紫色"iP"方块品牌 mark；分组 WORKSPACE / PRODUCTION / INSIGHTS；
+// active item：浅紫底 + 紫字 + 紫 icon + **左侧 3px 紫色 indicator bar**；
+// hover item：sand 米色底 + 主文字色 + 平滑过渡 120ms；
+// 可选 badge（红圆数字角标，例 Scenes [4]）。
 
 import * as React from "react";
 import Link from "next/link";
@@ -108,64 +110,9 @@ export function Sidebar({ brand, groups, footer }: Props) {
             >
               {g.title}
             </div>
-            {g.items.map((it, i) => {
-              const Icon = it.icon;
-              return (
-                <Link
-                  key={i}
-                  href={it.href}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "7px 10px",
-                    borderRadius: "var(--radius-md)",
-                    background: it.selected ? "var(--accent-soft)" : "transparent",
-                    color: it.selected ? "var(--accent-strong)" : "var(--fg-1)",
-                    fontSize: 13,
-                    marginBottom: 1,
-                    textDecoration: "none",
-                    fontWeight: it.selected ? 600 : 500,
-                    transition: "background 120ms",
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 14,
-                      color: it.selected ? "var(--accent)" : "var(--fg-3)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Icon size={14} />
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0 }}>{it.label}</span>
-                  {it.badge != null && (
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        minWidth: 18,
-                        height: 18,
-                        padding: "0 6px",
-                        background: BADGE_COLOR[it.badgeTone ?? "danger"],
-                        color: "#ffffff",
-                        fontSize: 10,
-                        fontFamily: "var(--font-mono)",
-                        fontWeight: 700,
-                        borderRadius: "var(--radius-pill)",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {it.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+            {g.items.map((it, i) => (
+              <SidebarLink key={i} item={it} />
+            ))}
           </div>
         ))}
       </div>
@@ -181,5 +128,95 @@ export function Sidebar({ brand, groups, footer }: Props) {
         </div>
       )}
     </aside>
+  );
+}
+
+function SidebarLink({ item }: { item: NavItem }) {
+  const [hover, setHover] = React.useState(false);
+  const Icon = item.icon;
+  const active = !!item.selected;
+  const showAccent = active;
+
+  return (
+    <Link
+      href={item.href}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px 8px 14px",
+        borderRadius: "var(--radius-md)",
+        background: active
+          ? "var(--accent-soft)"
+          : hover
+            ? "var(--bg-2)"
+            : "transparent",
+        color: active
+          ? "var(--accent-strong)"
+          : hover
+            ? "var(--fg-0)"
+            : "var(--fg-1)",
+        fontSize: 13,
+        marginBottom: 2,
+        textDecoration: "none",
+        fontWeight: active ? 600 : 500,
+        transition: "background 140ms ease, color 140ms ease",
+      }}
+    >
+      {/* active 左侧 indicator bar */}
+      {showAccent && (
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: 4,
+            top: 6,
+            bottom: 6,
+            width: 3,
+            borderRadius: 2,
+            background: "var(--accent)",
+          }}
+        />
+      )}
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 14,
+          color: active ? "var(--accent)" : hover ? "var(--fg-1)" : "var(--fg-3)",
+          flexShrink: 0,
+          transition: "color 140ms ease",
+        }}
+      >
+        <Icon size={14} strokeWidth={active ? 2.4 : 2} />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>{item.label}</span>
+      {item.badge != null && (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: 18,
+            height: 18,
+            padding: "0 6px",
+            background: BADGE_COLOR[item.badgeTone ?? "danger"],
+            color: "#ffffff",
+            fontSize: 10,
+            fontFamily: "var(--font-mono)",
+            fontWeight: 700,
+            borderRadius: "var(--radius-pill)",
+            lineHeight: 1,
+            boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+          }}
+        >
+          {item.badge}
+        </span>
+      )}
+    </Link>
   );
 }

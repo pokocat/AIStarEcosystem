@@ -16,6 +16,8 @@ export function Card({ glass, style, className, children, ...rest }: Props) {
         background: glass ? undefined : "var(--bg-1)",
         border: glass ? undefined : "1px solid var(--line)",
         borderRadius: "var(--radius-lg)",
+        // 默认柔阴影提升与奶油底的层次对比（可被 style 覆盖）
+        boxShadow: glass ? undefined : "var(--shadow-soft)",
         ...style,
       }}
       {...rest}

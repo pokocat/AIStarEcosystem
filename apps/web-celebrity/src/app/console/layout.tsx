@@ -152,19 +152,29 @@ function CustomTopbar({ crumbs }: { crumbs: string[] }) {
         ))}
       </div>
       <div style={{ flex: 1 }} />
-      <div
+      <button
+        type="button"
         style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
           padding: "7px 14px",
           background: "var(--bg-1)",
-          border: "1px solid var(--line)",
+          border: "1px solid var(--line-2)",
           borderRadius: "var(--radius-pill)",
           fontSize: 12.5,
           color: "var(--fg-2)",
           minWidth: 300,
           boxShadow: "var(--shadow-soft)",
+          cursor: "pointer",
+          fontFamily: "var(--font-sans)",
+          transition: "border-color 120ms ease, background 120ms ease",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--line-2)";
         }}
       >
         <Search size={13} />
@@ -174,15 +184,16 @@ function CustomTopbar({ crumbs }: { crumbs: string[] }) {
           style={{
             marginLeft: "auto",
             padding: "1px 6px",
-            border: "1px solid var(--line)",
+            border: "1px solid var(--line-2)",
             borderRadius: "var(--radius-sm)",
             fontSize: 10,
-            color: "var(--fg-3)",
+            color: "var(--fg-2)",
+            background: "var(--bg-2)",
           }}
         >
           ⌘K
         </span>
-      </div>
+      </button>
       <TopbarRight />
     </header>
   );

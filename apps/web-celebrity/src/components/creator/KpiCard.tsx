@@ -1,8 +1,62 @@
 "use client";
 
-// 参考图 KPI cards：可选渐变背景（每张不同颜色），数值大 + delta meta。
+// 参考图 KPI cards 实际是"淡彩底 + 深色数字"对比清晰，不是全饱和渐变 + 白字。
+// gradient 传入时：背景用 12% alpha 的淡彩，数字用 fg-0 黑，delta 用对应深色 tone。
 
 import { Card } from "./Card";
+
+type Gradient =
+  | "violet"
+  | "peach"
+  | "rose"
+  | "teal"
+  | "lime"
+  | "amber"
+  | "sunset"
+  | "aurora";
+
+const GRADIENT_TINT: Record<Gradient, { bg: string; accent: string; delta: string }> = {
+  violet: {
+    bg: "linear-gradient(135deg, rgba(124,92,255,0.16), rgba(124,92,255,0.06))",
+    accent: "#7c5cff",
+    delta: "#5b3fe0",
+  },
+  peach: {
+    bg: "linear-gradient(135deg, rgba(255,138,91,0.18), rgba(255,138,91,0.06))",
+    accent: "#ff8a5b",
+    delta: "#c45c2e",
+  },
+  rose: {
+    bg: "linear-gradient(135deg, rgba(255,91,138,0.16), rgba(255,91,138,0.05))",
+    accent: "#ff5b8a",
+    delta: "#c43768",
+  },
+  teal: {
+    bg: "linear-gradient(135deg, rgba(34,181,154,0.16), rgba(34,181,154,0.05))",
+    accent: "#22b59a",
+    delta: "#188a76",
+  },
+  lime: {
+    bg: "linear-gradient(135deg, rgba(196,227,74,0.30), rgba(196,227,74,0.08))",
+    accent: "#88a818",
+    delta: "#5b7510",
+  },
+  amber: {
+    bg: "linear-gradient(135deg, rgba(240,168,58,0.18), rgba(240,168,58,0.05))",
+    accent: "#f0a83a",
+    delta: "#b87a18",
+  },
+  sunset: {
+    bg: "linear-gradient(135deg, rgba(255,91,138,0.15), rgba(255,138,91,0.12), rgba(240,168,58,0.10))",
+    accent: "#ff5b8a",
+    delta: "#c43768",
+  },
+  aurora: {
+    bg: "linear-gradient(135deg, rgba(124,92,255,0.16), rgba(255,91,138,0.12), rgba(34,181,154,0.10))",
+    accent: "#7c5cff",
+    delta: "#5b3fe0",
+  },
+};
 
 interface Props {
   label: string;
@@ -10,8 +64,7 @@ interface Props {
   delta?: string;
   spark?: number[];
   tone?: "accent" | "info" | "success" | "warning" | "danger";
-  /** 用渐变背景做炫色 KPI 卡（仿参考图右上角的彩色 KPI 集） */
-  gradient?: "violet" | "peach" | "rose" | "teal" | "lime" | "amber" | "sunset" | "aurora";
+  gradient?: Gradient;
 }
 
 const toneVar = {
@@ -23,67 +76,67 @@ const toneVar = {
 };
 
 export function KpiCard({ label, value, delta, spark, tone = "accent", gradient }: Props) {
-  const onLight = gradient !== undefined;
+  const tint = gradient ? GRADIENT_TINT[gradient] : null;
   return (
     <Card
       style={{
         padding: "18px 20px",
-        background: onLight ? `var(--gradient-${gradient})` : "var(--bg-1)",
-        border: onLight ? "none" : "1px solid var(--line)",
+        background: tint ? tint.bg : "var(--bg-1)",
+        border: "1px solid var(--line)",
         boxShadow: "var(--shadow-soft)",
-        color: onLight ? "#ffffff" : "var(--fg-0)",
         position: "relative",
         overflow: "hidden",
       }}
     >
-      {onLight && (
+      {/* 右上小色块 indicator（提升彩色 KPI 识别度） */}
+      {tint && (
         <div
           aria-hidden
           style={{
             position: "absolute",
-            inset: 0,
-            background: "radial-gradient(circle at 80% 0%, rgba(255,255,255,0.25), transparent 60%)",
-            pointerEvents: "none",
+            top: 14,
+            right: 14,
+            width: 8,
+            height: 8,
+            borderRadius: 2,
+            background: tint.accent,
+            boxShadow: `0 0 0 3px color-mix(in srgb, ${tint.accent} 20%, transparent)`,
           }}
         />
       )}
       <div style={{ position: "relative" }}>
-        <div
-          className="eyebrow"
-          style={{ color: onLight ? "rgba(255,255,255,0.85)" : "var(--fg-2)" }}
-        >
-          {label}
-        </div>
+        <div className="eyebrow">{label}</div>
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-end",
-            marginTop: 10,
+            marginTop: 12,
           }}
         >
           <div
             style={{
-              fontSize: 32,
+              fontSize: 30,
               fontWeight: 700,
               letterSpacing: "var(--tracking-tight)",
               fontFamily: "var(--font-display)",
-              color: onLight ? "#ffffff" : "var(--fg-0)",
+              color: "var(--fg-0)",
               lineHeight: 1,
             }}
           >
             {value}
           </div>
-          {spark && <Sparkline data={spark} color={onLight ? "rgba(255,255,255,0.85)" : toneVar[tone]} />}
+          {spark && <Sparkline data={spark} color={tint ? tint.accent : toneVar[tone]} />}
         </div>
         {delta && (
           <div
             style={{
               fontSize: 11.5,
-              color: onLight ? "rgba(255,255,255,0.85)" : "var(--fg-2)",
+              color: tint ? tint.delta : "var(--fg-2)",
               marginTop: 8,
               fontFamily: "var(--font-mono)",
               letterSpacing: 0.2,
+              fontWeight: 500,
             }}
           >
             {delta}
