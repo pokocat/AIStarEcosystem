@@ -11,7 +11,7 @@ import { Button, Card } from "@/components/premium";
 function DramaLoginInner() {
   const router = useRouter();
   const search = useSearchParams();
-  const from = search.get("from") || "/console";
+  const from = search.get("from") || "/dashboard";
   const { loginAs, user } = useAuth();
 
   const [accounts, setAccounts] = React.useState<AuthApi.DevAccount[] | null>(null);

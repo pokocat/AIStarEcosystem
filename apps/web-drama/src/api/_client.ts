@@ -12,3 +12,13 @@ export {
   buildQuery,
   mockDelay,
 } from "@ai-star-eco/api-client";
+
+import { ApiError } from "@ai-star-eco/api-client";
+
+/**
+ * 用文案 + 默认 code 快速构造 ApiError。
+ * code: 默认 "drama.client_error"；HTTP-like status 可选。
+ */
+export function clientError(message: string, status?: number, code: string = "drama.client_error"): ApiError {
+  return new ApiError({ code, message }, status);
+}
