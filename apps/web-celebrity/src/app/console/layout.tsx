@@ -8,9 +8,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Boxes,
   BarChart3,
-  Calendar,
   Coins,
   LayoutDashboard,
   LogOut,
@@ -45,21 +43,26 @@ function buildGroups(pathname: string, search: string): NavGroup[] {
       items: [
         { icon: LayoutDashboard, label: "今日", href: "/console", selected: isHref("/console") },
         { icon: Star, label: "明星市场", href: "/console?tab=market", selected: isHref("/console?tab=market") },
+        { icon: Users, label: "我的明星", href: "/console?tab=cast", selected: isHref("/console?tab=cast") },
       ],
     },
     {
-      title: "Drama",
+      title: "Production",
       items: [
-        { icon: Users, label: "明星阵容", href: "/console?tab=cast", selected: isHref("/console?tab=cast") },
+        { icon: Megaphone, label: "我的项目", href: "/console?tab=projects", selected: isHref("/console?tab=projects") },
         {
           icon: Video,
-          label: "切片队列",
+          label: "视频中心",
           href: "/console?tab=library",
           selected: isHref("/console?tab=library"),
           badge: 4,
         },
-        { icon: Megaphone, label: "项目流水线", href: "/console?tab=projects", selected: isHref("/console?tab=projects") },
-        { icon: Boxes, label: "商品库", href: "/console?tab=products", selected: isHref("/console?tab=products") },
+        { icon: ShoppingBag, label: "商品库", href: "/console?tab=products", selected: isHref("/console?tab=products") },
+      ],
+    },
+    {
+      title: "Insights",
+      items: [
         { icon: BarChart3, label: "数据中心", href: "/console?tab=data", selected: isHref("/console?tab=data") },
       ],
     },
@@ -71,15 +74,15 @@ function CrumbsFromPathname(pathname: string, search: string): string[] {
   const map: Record<string, string> = {
     "": "今日",
     market: "明星市场",
-    cast: "明星阵容",
-    library: "切片队列",
-    projects: "项目流水线",
+    cast: "我的明星",
+    projects: "我的项目",
+    library: "视频中心",
     products: "商品库",
     data: "数据中心",
   };
   if (pathname === "/console") return ["Studio", "明星带货", map[tab] ?? "今日"];
-  if (pathname.startsWith("/console/star")) return ["Studio", "明星市场", "详情"];
-  if (pathname.startsWith("/console/projects")) return ["Studio", "项目流水线", "详情"];
+  if (pathname.startsWith("/console/star")) return ["Studio", "明星市场", "明星详情"];
+  if (pathname.startsWith("/console/projects")) return ["Studio", "我的项目", "项目详情"];
   return ["Studio"];
 }
 
@@ -111,7 +114,7 @@ function TopbarRight() {
       </Button>
       <Button variant="accent" size="sm">
         <Plus size={12} />
-        New scene
+        新建项目
       </Button>
       <Avatar seed={user?.username ?? user?.displayName ?? "anon"} size={32} />
       <Button variant="icon" size="sm" onClick={logout} title="退出登录" style={{ width: 32, padding: 0 }}>
@@ -165,7 +168,7 @@ function CustomTopbar({ crumbs }: { crumbs: string[] }) {
         }}
       >
         <Search size={13} />
-        <span>Search scenes, actors, series…</span>
+        <span>搜索明星、项目、视频…</span>
         <span
           className="mono"
           style={{
@@ -209,7 +212,7 @@ function TipOfDay() {
       </div>
       <div style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
         用<span className="mono" style={{ color: "var(--accent)" }}> ⌘K </span>
-        快速切换明星与剧集，节省 80% 鼠标点击。
+        快速搜索明星 / 项目；切片审核通过后自动进入分发队列。
       </div>
     </div>
   );

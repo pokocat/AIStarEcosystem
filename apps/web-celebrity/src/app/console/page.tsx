@@ -1,6 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Plus, Sparkles, TrendingUp, Wand2 } from "lucide-react";
 import {
   Avatar,
   Button,
@@ -8,7 +8,6 @@ import {
   Chip,
   GradientBlock,
   KpiCard,
-  Tabs,
 } from "@/components/creator";
 import { CelebrityMarketHero } from "@/components/celebrity-zone/CelebrityMarketHero";
 import { CelebrityMarket } from "@/components/celebrity-zone/CelebrityMarket";
@@ -39,7 +38,7 @@ export default async function CelebrityConsolePage({ searchParams }: PageProps) 
   const active = resolveTab(sp.tab);
 
   if (active === "overview" || active === "cast") {
-    return <OverviewView highlightCast={active === "cast"} />;
+    return <OverviewView focus={active === "cast" ? "cast" : "overview"} />;
   }
 
   const allVideos = Object.values(PROJECT_VIDEOS_MAP).flat();
@@ -71,77 +70,51 @@ export default async function CelebrityConsolePage({ searchParams }: PageProps) 
   );
 }
 
-// ─── 总览页（仿参考图 Dashboard · AI Short Drama） ──────────────────────────
+// ─── 业务总览（围绕"明星市场 → 申请授权 → AI 生成 → 多平台分发 → 带货变现"主线） ──────
 
-const DATE_LINE = "WEDNESDAY · MAY 14";
+const DATE_LINE = (() => {
+  const d = new Date();
+  const weekdays = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  return `${weekdays[d.getDay()]} · ${months[d.getMonth()]} ${d.getDate()}`;
+})();
 
-const KPIS = [
-  { label: "Series in flight", value: "6", delta: "+1 this week", gradient: "violet" as const },
-  { label: "Scenes rendered · 7d", value: "142", delta: "+38% pace", gradient: "peach" as const },
-  { label: "Views · 7d", value: "12.8M", delta: "top: 暮色未央", gradient: "rose" as const },
-  { label: "Cast ready", value: "14 / 18", delta: "4 in training", gradient: "teal" as const },
-];
+const PROJECT_STATUS_TONE = {
+  "进行中": "filming",
+  "筹备中": "scripting",
+  "已完成": "published",
+} as const;
 
-interface ProjectCardData {
-  id: string;
-  title: string;
-  ep: string;
-  status: "filming" | "rendering" | "scripting" | "draft" | "editing" | "published";
-}
+const AUTH_STATUS_TONE = {
+  authorized: "published",
+  pending: "scripting",
+  unauthorized: "draft",
+  expired: "danger",
+} as const;
 
-const ACTIVE_SERIES: ProjectCardData[] = [
-  { id: "暮色未央",    title: "暮色未央",       ep: "EP 09 · today",  status: "filming" },
-  { id: "盛夏来信",    title: "盛夏来信",       ep: "EP 12 · fri",    status: "rendering" },
-  { id: "夏夜协议",    title: "夏夜协议",       ep: "EP 05 · F1",     status: "scripting" },
-  { id: "都市灰阶",    title: "都市灰阶",       ep: "EP 01 · Mon",    status: "draft" },
-  { id: "晨间合约",    title: "晨间合约",       ep: "EP 03 · Tue",    status: "filming" },
-  { id: "镜花棱镜",    title: "镜花棱镜",       ep: "EP 02 · Wed",    status: "editing" },
-];
+const AUTH_STATUS_LABEL = {
+  authorized: "已授权",
+  pending: "审核中",
+  unauthorized: "未授权",
+  expired: "已过期",
+} as const;
 
-const CAST_ROWS = [
-  { id: "Hana",  name: "Hana",  role: "Lead · Romance",  state: "ready"    as const },
-  { id: "Riku",  name: "Riku",  role: "Lead · Drama",    state: "ready"    as const },
-  { id: "Mei",   name: "Mei",   role: "Lead · Comedy",   state: "ready"    as const },
-  { id: "Sora",  name: "Sora",  role: "Support",         state: "training" as const },
-  { id: "Jun",   name: "Jun",   role: "Lead · Office",   state: "ready"    as const },
-  { id: "Aya",   name: "Aya",   role: "Lead · Slice",    state: "ready"    as const },
-];
+function OverviewView({ focus }: { focus: "overview" | "cast" }) {
+  const authorizedStars = MARKET_STARS.filter((s) => s.authorization.status === "authorized");
+  const pendingStars = MARKET_STARS.filter((s) => s.authorization.status === "pending");
+  const activeProjects = CELEBRITY_PROJECTS.filter((p) => p.status === "进行中");
+  const prepProjects = CELEBRITY_PROJECTS.filter((p) => p.status === "筹备中");
+  const allVideos = Object.values(PROJECT_VIDEOS_MAP).flat();
+  const pendingReview = allVideos.filter((v) => v.status === "待审核").slice(0, 4);
+  const generating = allVideos.filter((v) => v.status === "生成中").slice(0, 3);
 
-const QUEUE_COLUMNS = [
-  {
-    id: "scripting", label: "Scripting", tone: "scripting" as const, count: 3,
-    items: [
-      { title: "Mid-summer Pact · EP 02", meta: "Mei · Jun · cafe",  seed: "Mei" },
-      { title: "City of Ash · EP 01 sc 01", meta: "Sora · alley",     seed: "Sora" },
-      { title: "Sunday Pages · EP 03 sc 04", meta: "Aya · garden",    seed: "Aya" },
-    ],
-  },
-  {
-    id: "filming", label: "Filming", tone: "filming" as const, count: 2,
-    items: [
-      { title: "Roof of Tokyo · EP 09 sc 03", meta: "Hana · roof, dusk", seed: "Hana" },
-      { title: "Sunday Pages · EP 03 sc 02", meta: "Aya · Jun · porch", seed: "Aya" },
-    ],
-  },
-  {
-    id: "editing", label: "Editing", tone: "editing" as const, count: 2,
-    items: [
-      { title: "Glass Garden · EP 02 sc 05", meta: "Mei · greenhouse",   seed: "Mei" },
-      { title: "Roof of Tokyo · EP 08 sc 09", meta: "Hana · sun 3",      seed: "Hana" },
-    ],
-  },
-  {
-    id: "published", label: "Published", tone: "published" as const, count: 1,
-    items: [
-      { title: "Last Train Home · EP 12 sc 12", meta: "5.1M views · ↑",  seed: "Riku" },
-    ],
-  },
-];
+  if (focus === "cast") {
+    return <MyCastView />;
+  }
 
-function OverviewView({ highlightCast }: { highlightCast: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      {/* hero —— 仿参考图 mono 日期 + 大标题 + serif 斜体高亮 + 按钮 */}
+      {/* hero */}
       <div
         style={{
           display: "flex",
@@ -165,259 +138,756 @@ function OverviewView({ highlightCast }: { highlightCast: boolean }) {
           </div>
           <h1
             style={{
-              fontSize: 34,
+              fontSize: 32,
               fontWeight: 600,
               letterSpacing: "var(--tracking-tight)",
               fontFamily: "var(--font-display)",
               margin: 0,
-              lineHeight: 1.15,
+              lineHeight: 1.2,
               color: "var(--fg-0)",
             }}
           >
-            Good morning, {highlightCast ? "Cast" : "Ami"}.
-            <span
-              className="serif-italic"
-              style={{
-                color: "var(--accent)",
-                marginLeft: 10,
-                fontSize: 32,
-              }}
-            >
-              let&rsquo;s shoot something today.
+            欢迎回来，
+            <span className="serif-italic" style={{ color: "var(--accent)", marginLeft: 4, fontSize: 30 }}>
+              让明星帮你今天再卖一波。
             </span>
           </h1>
+          <div style={{ fontSize: 13.5, color: "var(--fg-2)", marginTop: 10 }}>
+            已授权 {authorizedStars.length} 位 · 在产项目 {activeProjects.length} 条 · 待审切片{" "}
+            {pendingReview.length} 条
+          </div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <Button variant="secondary" size="md">Import script</Button>
-          <Button variant="dark" size="md">▶ Open studio</Button>
+          <Link href="/console?tab=market">
+            <Button variant="secondary" size="md">浏览明星市场</Button>
+          </Link>
+          <Link href="/console?tab=projects">
+            <Button variant="dark" size="md">
+              <Plus size={13} /> 新建带货项目
+            </Button>
+          </Link>
         </div>
       </div>
 
-      {/* KPI 4 张渐变卡 */}
+      {/* KPI —— 业务核心指标 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        {KPIS.map((k) => (
-          <KpiCard
-            key={k.label}
-            label={k.label}
-            value={k.value}
-            delta={k.delta}
-            gradient={k.gradient}
-          />
-        ))}
+        <KpiCard
+          label="30 日 GMV"
+          value="¥8.42M"
+          delta="+12.4% vs 上月"
+          gradient="violet"
+        />
+        <KpiCard
+          label="累计播放 · 7d"
+          value={ZONE_OVERVIEW.hero.totalPlays}
+          delta="环比 +18%"
+          gradient="peach"
+        />
+        <KpiCard
+          label="累计转化"
+          value={ZONE_OVERVIEW.hero.totalConversions}
+          delta="转化率 1.86%"
+          gradient="rose"
+        />
+        <KpiCard
+          label="授权明星"
+          value={`${authorizedStars.length} / ${MARKET_STARS.length}`}
+          delta={`${pendingStars.length} 申请审核中`}
+          gradient="teal"
+        />
       </div>
 
-      {/* 主体两栏：左 Active series + Cast / 右 Cast list */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14 }}>
-        {/* Active drama series */}
+      {/* 业务主线 5 步指引 */}
+      <Card style={{ padding: "18px 22px" }}>
+        <div className="eyebrow" style={{ marginBottom: 14 }}>明星带货 · 五步主线</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+          <PipelineStep
+            n={1}
+            title="找明星"
+            desc="浏览市场，按分类与人气挑选"
+            href="/console?tab=market"
+            tone="violet"
+            active
+          />
+          <PipelineStep
+            n={2}
+            title="申请授权"
+            desc="选档位，签约用量配额"
+            href="/console?tab=cast"
+            tone="rose"
+            count={pendingStars.length}
+            countLabel="审核中"
+          />
+          <PipelineStep
+            n={3}
+            title="AI 生成"
+            desc="模板 / 盲盒生成切片"
+            href="/console?tab=projects"
+            tone="peach"
+            count={generating.length}
+            countLabel="生成中"
+          />
+          <PipelineStep
+            n={4}
+            title="审核分发"
+            desc="切片审核通过自动分发"
+            href="/console?tab=library"
+            tone="amber"
+            count={pendingReview.length}
+            countLabel="待审核"
+          />
+          <PipelineStep
+            n={5}
+            title="带货变现"
+            desc="商品 + 数据 + 钱包结算"
+            href="/console?tab=data"
+            tone="teal"
+          />
+        </div>
+      </Card>
+
+      {/* 两栏：我的明星 / 在产项目 */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {/* 我的明星 */}
         <Card style={{ padding: "22px 22px 18px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>
-                Active drama series
-              </div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>我的明星</div>
               <div style={{ fontSize: 11.5, color: "var(--fg-2)", marginTop: 4 }}>
-                6 in production · sorted by next deadline
+                已授权 {authorizedStars.length} 位 · 配额用量按档位计
               </div>
             </div>
-            <Link
-              href="/console?tab=projects"
-              style={{
-                fontSize: 12,
-                color: "var(--accent)",
-                fontFamily: "var(--font-mono)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                textDecoration: "none",
-              }}
-            >
-              View all <ArrowUpRight size={12} />
+            <Link href="/console?tab=cast" style={inlineLink}>
+              管理 <ArrowUpRight size={12} />
             </Link>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            {ACTIVE_SERIES.map((s) => (
-              <GradientBlock
-                key={s.id}
-                seed={s.id}
-                height={132}
-                topRight={<Chip tone={s.status} size="sm">{s.status}</Chip>}
-                bottom={
-                  <div>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-display)",
-                        fontSize: 16,
-                        fontWeight: 600,
-                        color: "#ffffff",
-                      }}
-                    >
-                      {s.title}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10.5,
-                        color: "rgba(255,255,255,0.85)",
-                        marginTop: 2,
-                        letterSpacing: 0.4,
-                      }}
-                    >
-                      {s.ep}
-                    </div>
-                  </div>
-                }
-              />
-            ))}
-          </div>
-        </Card>
-
-        {/* Your cast */}
-        <Card style={{ padding: "22px 22px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>
-                Your cast
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--fg-2)", marginTop: 4 }}>
-                14 ready · 4 training
-              </div>
-            </div>
-            <Button variant="ghost" size="sm">
-              <Plus size={12} /> Cast
-            </Button>
-          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {CAST_ROWS.map((c) => (
-              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <Avatar seed={c.id} size={32} shape="square" />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg-0)" }}>
-                    {c.name}
-                  </div>
-                  <div
-                    className="mono"
-                    style={{ fontSize: 10.5, color: "var(--fg-2)", letterSpacing: 0.3, marginTop: 2 }}
-                  >
-                    {c.role}
-                  </div>
-                </div>
-                <Chip tone={c.state === "ready" ? "published" : "filming"} size="sm">
-                  {c.state}
-                </Chip>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      {/* Today's scene queue —— kanban 4 列 */}
-      <Card style={{ padding: "22px 22px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>
-              Today&rsquo;s scene queue
-              <span className="serif-italic" style={{ color: "var(--fg-2)", marginLeft: 8, fontSize: 14 }}>
-                what we&rsquo;re shooting
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--fg-2)", marginTop: 4 }}>
-              Drag between columns to reschedule
-            </div>
-          </div>
-          <Tabs
-            items={[
-              { id: "board", label: "Board" },
-              { id: "timeline", label: "Timeline" },
-              { id: "list", label: "List" },
-            ]}
-            active="board"
-            size="sm"
-          />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-          {QUEUE_COLUMNS.map((col) => (
-            <div key={col.id}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "8px 4px 12px",
-                  borderBottom: "1px solid var(--line)",
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: `var(--${
-                        col.tone === "filming" ? "extra-amber"
-                          : col.tone === "scripting" ? "extra-peach"
-                          : col.tone === "editing" ? "extra-teal"
-                          : col.tone === "published" ? "success"
-                          : "fg-3"
-                      })`,
-                    }}
-                  />
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--fg-0)" }}>
-                    {col.label}
-                  </div>
-                </div>
-                <div
-                  className="mono"
-                  style={{ fontSize: 11, color: "var(--fg-3)" }}
+            {authorizedStars.length === 0 ? (
+              <EmptyCallout
+                title="还未授权明星"
+                desc="从明星市场选择一位，申请授权后即可开始生成。"
+                ctaHref="/console?tab=market"
+                ctaLabel="浏览市场"
+              />
+            ) : (
+              authorizedStars.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/console/star/${s.id}`}
+                  style={{ textDecoration: "none", color: "inherit" }}
                 >
-                  {col.count}
-                </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {col.items.map((it, i) => (
                   <div
-                    key={i}
                     style={{
-                      padding: "10px 12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "12px 14px",
                       background: "var(--bg-1)",
                       border: "1px solid var(--line)",
                       borderRadius: "var(--radius-md)",
-                      boxShadow: "var(--shadow-soft)",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <Avatar seed={it.seed} size={20} shape="square" />
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg-0)", flex: 1, minWidth: 0 }}>
-                        {it.title}
+                    <Avatar seed={s.id} initial={s.name[0]} size={36} shape="square" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-0)", marginBottom: 4 }}>
+                        {s.name}
+                        <span
+                          className="mono"
+                          style={{
+                            marginLeft: 8,
+                            fontSize: 10.5,
+                            color: "var(--fg-3)",
+                            letterSpacing: 0.3,
+                          }}
+                        >
+                          {s.category}
+                        </span>
                       </div>
+                      <QuotaBar used={s.quotaUsed ?? 0} total={s.quotaTotal ?? 1} />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                      <Chip tone="published" size="sm">{AUTH_STATUS_LABEL.authorized}</Chip>
+                      <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>
+                        {s.pricingTier ?? ""}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </Card>
+
+        {/* 在产项目 */}
+        <Card style={{ padding: "22px 22px 18px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>在产项目</div>
+              <div style={{ fontSize: 11.5, color: "var(--fg-2)", marginTop: 4 }}>
+                进行中 {activeProjects.length} · 筹备中 {prepProjects.length}
+              </div>
+            </div>
+            <Link href="/console?tab=projects" style={inlineLink}>
+              查看全部 <ArrowUpRight size={12} />
+            </Link>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[...activeProjects, ...prepProjects].slice(0, 4).map((p) => (
+              <Link
+                key={p.id}
+                href={`/console/projects/${p.id}`}
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "12px 14px",
+                    background: "var(--bg-1)",
+                    border: "1px solid var(--line)",
+                    borderRadius: "var(--radius-md)",
+                  }}
+                >
+                  <Avatar seed={p.starId} initial={p.starName[0]} size={36} shape="square" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-0)", marginBottom: 4 }}>
+                      {p.name}
                     </div>
                     <div
                       className="mono"
-                      style={{ fontSize: 10.5, color: "var(--fg-2)", letterSpacing: 0.3, paddingLeft: 28 }}
+                      style={{ fontSize: 10.5, color: "var(--fg-2)", letterSpacing: 0.3 }}
                     >
-                      {it.meta}
+                      {p.starName} · {p.pricingTier} · 视频 {p.videoCount}
                     </div>
                   </div>
-                ))}
-                <button
-                  style={{
-                    padding: "8px 12px",
-                    background: "transparent",
-                    border: "1px dashed var(--line-2)",
-                    borderRadius: "var(--radius-md)",
-                    color: "var(--fg-3)",
-                    fontSize: 12,
-                    fontFamily: "var(--font-sans)",
-                    cursor: "pointer",
-                  }}
-                >
-                  + Add scene
-                </button>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                    <Chip
+                      tone={PROJECT_STATUS_TONE[p.status]}
+                      size="sm"
+                    >
+                      {p.status}
+                    </Chip>
+                    <span
+                      className="mono"
+                      style={{ fontSize: 10.5, color: "var(--accent)", fontWeight: 600 }}
+                    >
+                      {p.gmv}
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* 待审切片 / 渠道分发 两栏 */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
+        {/* 待审切片 */}
+        <Card style={{ padding: "22px 22px 18px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>待审切片</div>
+              <div style={{ fontSize: 11.5, color: "var(--fg-2)", marginTop: 4 }}>
+                通过后自动进入分发队列
               </div>
             </div>
-          ))}
+            <Link href="/console?tab=library" style={inlineLink}>
+              视频中心 <ArrowUpRight size={12} />
+            </Link>
+          </div>
+          {pendingReview.length === 0 ? (
+            <EmptyCallout
+              title="无待审切片"
+              desc="新切片生成完成后会自动出现在这里。"
+              ctaHref="/console?tab=projects"
+              ctaLabel="去项目"
+            />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+              {pendingReview.map((v) => (
+                <div
+                  key={v.id}
+                  style={{
+                    padding: "10px 12px",
+                    background: "var(--bg-1)",
+                    border: "1px solid var(--line)",
+                    borderRadius: "var(--radius-md)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <Avatar seed={v.id} initial="🎬" size={24} shape="square" />
+                    <Chip tone="filming" size="sm">待审核</Chip>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      color: "var(--fg-0)",
+                      marginBottom: 4,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {v.productName}
+                  </div>
+                  <div
+                    className="mono"
+                    style={{
+                      fontSize: 10.5,
+                      color: "var(--fg-2)",
+                      letterSpacing: 0.3,
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>{v.starName} · {v.durationSec}s</span>
+                    <span>{v.engine}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* 渠道分发占比 */}
+        <Card style={{ padding: "22px 22px" }}>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>30 日分发占比</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)", marginBottom: 16 }}>
+            渠道流量
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {ZONE_OVERVIEW.channelMix.map((c, i) => {
+              const tones = ["accent", "peach", "rose", "teal", "amber"] as const;
+              const color = `var(--${
+                tones[i] === "accent" ? "accent"
+                  : tones[i] === "peach" ? "extra-peach"
+                  : tones[i] === "rose" ? "extra-rose"
+                  : tones[i] === "teal" ? "extra-teal"
+                  : "extra-amber"
+              })`;
+              return (
+                <div key={c.channel}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
+                      fontSize: 12.5,
+                      color: "var(--fg-1)",
+                    }}
+                  >
+                    <span>{c.channel}</span>
+                    <span className="mono" style={{ color, fontWeight: 600 }}>
+                      {(c.share * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      height: 6,
+                      background: "var(--bg-2)",
+                      borderRadius: 3,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${c.share * 100}%`,
+                        height: "100%",
+                        background: color,
+                        transition: "width 240ms ease",
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* 明星市场推荐 entry */}
+      <Card
+        style={{
+          padding: "26px 28px",
+          background: "var(--bg-2)",
+          border: "1px solid var(--line-2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 24,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "var(--radius-md)",
+              background: "var(--accent-soft)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Sparkles size={20} color="var(--accent)" />
+          </div>
+          <div>
+            <div className="eyebrow">本周热推</div>
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 600,
+                fontFamily: "var(--font-display)",
+                marginTop: 4,
+                color: "var(--fg-0)",
+              }}
+            >
+              {MARKET_STARS.filter((s) => s.isHot).length} 位明星上新，转化率高于均值{" "}
+              <span className="serif-italic" style={{ color: "var(--accent)" }}>
+                +32%
+              </span>
+            </div>
+          </div>
         </div>
+        <Link href="/console?tab=market">
+          <Button variant="accent" size="md">
+            浏览明星市场 <ArrowRight size={13} />
+          </Button>
+        </Link>
       </Card>
     </div>
   );
 }
+
+// ─── 我的明星专属视图（sidebar 第三项） ────────────────────────────────────
+
+function MyCastView() {
+  const authorized = MARKET_STARS.filter((s) => s.authorization.status === "authorized");
+  const pending = MARKET_STARS.filter((s) => s.authorization.status === "pending");
+  const expired = MARKET_STARS.filter((s) => s.authorization.status === "expired");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <div className="eyebrow">My Cast · 已签约明星</div>
+          <h1
+            style={{
+              fontSize: 30,
+              fontWeight: 600,
+              letterSpacing: "var(--tracking-tight)",
+              fontFamily: "var(--font-display)",
+              margin: "8px 0 6px",
+              color: "var(--fg-0)",
+            }}
+          >
+            我的{" "}
+            <span className="serif-italic" style={{ color: "var(--accent)" }}>
+              明星阵容
+            </span>
+          </h1>
+          <div style={{ fontSize: 13, color: "var(--fg-2)" }}>
+            已授权 {authorized.length} · 审核中 {pending.length} · 已过期 {expired.length}
+          </div>
+        </div>
+        <Link href="/console?tab=market">
+          <Button variant="dark" size="md">
+            <Plus size={13} /> 新增授权
+          </Button>
+        </Link>
+      </div>
+
+      <Section title="已授权" count={authorized.length}>
+        {authorized.length === 0 ? (
+          <EmptyCallout
+            title="还没有已授权的明星"
+            desc="从明星市场挑选合适的 IP，申请授权即可开始带货。"
+            ctaHref="/console?tab=market"
+            ctaLabel="浏览市场"
+          />
+        ) : (
+          <CastGrid stars={authorized} />
+        )}
+      </Section>
+
+      {pending.length > 0 && (
+        <Section title="审核中" count={pending.length}>
+          <CastGrid stars={pending} />
+        </Section>
+      )}
+
+      {expired.length > 0 && (
+        <Section title="已过期" count={expired.length}>
+          <CastGrid stars={expired} />
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-0)" }}>{title}</div>
+        <span
+          className="mono"
+          style={{
+            fontSize: 10.5,
+            color: "var(--fg-3)",
+            background: "var(--bg-2)",
+            padding: "2px 8px",
+            borderRadius: "var(--radius-pill)",
+          }}
+        >
+          {count}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function CastGrid({ stars }: { stars: typeof MARKET_STARS }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      {stars.map((s) => (
+        <Link key={s.id} href={`/console/star/${s.id}`} style={{ textDecoration: "none" }}>
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <GradientBlock
+              seed={s.id}
+              height={140}
+              topLeft={
+                <Chip tone={AUTH_STATUS_TONE[s.authorization.status]} size="sm">
+                  {AUTH_STATUS_LABEL[s.authorization.status]}
+                </Chip>
+              }
+              topRight={s.isHot ? <Chip tone="romance" size="sm">HOT</Chip> : undefined}
+              bottom={
+                <div>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "#fff" }}>
+                    {s.name}
+                  </div>
+                  <div
+                    className="mono"
+                    style={{ fontSize: 10.5, color: "rgba(255,255,255,0.85)", marginTop: 4, letterSpacing: 0.3 }}
+                  >
+                    {s.category}
+                  </div>
+                </div>
+              }
+            />
+            <div style={{ padding: "12px 14px" }}>
+              {s.quotaTotal != null ? (
+                <QuotaBar used={s.quotaUsed ?? 0} total={s.quotaTotal} />
+              ) : (
+                <div
+                  className="mono"
+                  style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: 0.3 }}
+                >
+                  起拍价 {s.startingPrice}
+                </div>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginTop: 8,
+                  fontSize: 11,
+                  color: "var(--fg-2)",
+                  fontFamily: "var(--font-mono)",
+                  letterSpacing: 0.3,
+                }}
+              >
+                <span>{s.stats.totalGenerated} 切片</span>
+                <span style={{ color: "var(--accent)" }}>{s.stats.gmv}</span>
+              </div>
+            </div>
+          </Card>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ─── 小工具 ─────────────────────────────────────────────────────────────────
+
+function PipelineStep({
+  n,
+  title,
+  desc,
+  href,
+  tone,
+  active,
+  count,
+  countLabel,
+}: {
+  n: number;
+  title: string;
+  desc: string;
+  href: string;
+  tone: "violet" | "peach" | "rose" | "teal" | "amber";
+  active?: boolean;
+  count?: number;
+  countLabel?: string;
+}) {
+  const colorMap = {
+    violet: "var(--accent)",
+    peach: "var(--extra-peach)",
+    rose: "var(--extra-rose)",
+    teal: "var(--extra-teal)",
+    amber: "var(--extra-amber)",
+  };
+  const color = colorMap[tone];
+  return (
+    <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
+      <div
+        style={{
+          padding: "14px 16px",
+          borderRadius: "var(--radius-md)",
+          background: active ? "var(--accent-soft)" : "var(--bg-2)",
+          border: active
+            ? `1px solid color-mix(in srgb, ${color} 35%, transparent)`
+            : "1px solid var(--line)",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 10,
+          }}
+        >
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              background: color,
+              color: "#ffffff",
+              fontSize: 11,
+              fontFamily: "var(--font-mono)",
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {n}
+          </span>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-0)" }}>{title}</div>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.5, flex: 1 }}>
+          {desc}
+        </div>
+        {count != null && count > 0 && (
+          <div
+            className="mono"
+            style={{
+              marginTop: 10,
+              fontSize: 10.5,
+              color,
+              letterSpacing: 0.3,
+              fontWeight: 600,
+            }}
+          >
+            {count} {countLabel ?? ""}
+          </div>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+function QuotaBar({ used, total }: { used: number; total: number }) {
+  const pct = Math.min(100, Math.round((used / total) * 100));
+  const color =
+    pct > 90 ? "var(--danger)"
+      : pct > 70 ? "var(--warning)"
+      : "var(--accent)";
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: 10.5,
+          fontFamily: "var(--font-mono)",
+          color: "var(--fg-2)",
+          marginBottom: 3,
+          letterSpacing: 0.3,
+        }}
+      >
+        <span>配额 {used} / {total}</span>
+        <span style={{ color }}>{pct}%</span>
+      </div>
+      <div
+        style={{
+          height: 3,
+          background: "var(--bg-2)",
+          borderRadius: 2,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: color,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmptyCallout({
+  title,
+  desc,
+  ctaHref,
+  ctaLabel,
+}: {
+  title: string;
+  desc: string;
+  ctaHref: string;
+  ctaLabel: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "20px 18px",
+        background: "var(--bg-2)",
+        border: "1px dashed var(--line-2)",
+        borderRadius: "var(--radius-md)",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg-0)", marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, color: "var(--fg-2)", marginBottom: 12, lineHeight: 1.5 }}>{desc}</div>
+      <Link href={ctaHref}>
+        <Button variant="secondary" size="sm">
+          {ctaLabel} <ArrowRight size={11} />
+        </Button>
+      </Link>
+    </div>
+  );
+}
+
+const inlineLink: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--accent)",
+  fontFamily: "var(--font-mono)",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  textDecoration: "none",
+  letterSpacing: 0.3,
+};

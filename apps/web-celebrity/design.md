@@ -320,9 +320,65 @@ pill 圆角分段按钮组（参考图 Board / Timeline / List）。
 
 ---
 
-## 11. 版本
+## 11. 业务主线（5 步）
 
-- **v0.2**（2026-05-14）：按用户上传参考图重做。组件库新增 Avatar / Tabs / GradientBlock；KpiCard 加 gradient 属性；Sidebar 加 badge；Button 改 pill + dark/accent 双主按钮；Chip 扩 11 种业务 tone。Landing / login / console layout / overview 全部用新组件重写。
-- v0.1（2026-05-13）：首版 Creator-Friendly，被用户判定不好看（太营销页化）。
+celebrity 子产品聚焦"明星 IP 带货"全链路。所有页面信息架构与组件用法都应围绕这 5 步组织：
 
-后续若要改主题，更新 `tokens.css` 即可；组件代码不应硬编码颜色。
+| # | 阶段 | 主路由 | 主要实体 | 状态 chip |
+|---|---|---|---|---|
+| 1 | **找明星** | `/console?tab=market` | `CelebrityStar` | `isHot` / `category` |
+| 2 | **申请授权** | `/console/star/[id]/apply` | `CelebrityAuthorization` | `unauthorized` / `pending` / `authorized` / `expired` |
+| 3 | **AI 生成** | `/console/star/[id]/generate`、`/console?tab=projects` | `CelebrityProject` / `CelebrityProjectVideo` | `生成中` / `已生成` / `已驳回` |
+| 4 | **审核分发** | `/console?tab=library` | `CelebrityProjectVideo` + `ChannelStatus` | `待审核` / `已发布` |
+| 5 | **带货变现** | `/console?tab=data`、`/console?tab=products` | `CelebrityZoneOverview`（GMV / 转化 / 渠道占比） | — |
+
+### Sidebar 信息架构（严格按业务主线）
+
+```
+WORKSPACE
+  · 今日           /console                        — 业务总览
+  · 明星市场       /console?tab=market             — 第 1 步：找明星
+  · 我的明星       /console?tab=cast               — 第 2 步：已授权管理
+
+PRODUCTION
+  · 我的项目       /console?tab=projects           — 第 3 步：AI 生成
+  · 视频中心       /console?tab=library    [4]     — 第 4 步：审核分发（badge = 待审切片数）
+  · 商品库         /console?tab=products           — 第 5 步：商品挂接
+
+INSIGHTS
+  · 数据中心       /console?tab=data               — 第 5 步：变现复盘
+```
+
+### 总览页（`/console`）严格紧扣业务主线
+
+页面顶部一行 hero（"欢迎回来，让明星帮你今天再卖一波"）+ 4 张业务 KPI（30 日 GMV / 累计播放 / 累计转化 / 授权明星）+ **5 步主线指引卡片**（每步含 # 序号 + 标题 + 描述 + 红色 count badge 显示当前阶段有几条待办）+ 两栏（我的明星 / 在产项目）+ 两栏（待审切片 / 渠道分发占比）+ 明星市场推荐 entry。
+
+### 业务实体字段速查
+
+| 实体 | 关键字段 | 来源 |
+|---|---|---|
+| `CelebrityStar` | `name / avatar / category / startingPrice / authorization.status / pricingTier / quotaUsed / quotaTotal / stats.{totalGenerated,totalPlays,gmv,conversionRate}` | mocks/celebrity-zone.ts → MARKET_STARS |
+| `CelebrityProject` | `name / starId / starName / status(进行中/筹备中/已完成) / videoCount / totalPlays / conversions / gmv / pricingTier / channels / quota` | CELEBRITY_PROJECTS |
+| `CelebrityProjectVideo` | `projectId / productName / starName / status(已发布/待审核/生成中/已驳回) / plays / durationSec / engine` | PROJECT_VIDEOS_MAP（按 projectId 索引） |
+| `CelebrityZoneOverview` | `hero{totalPlays,totalConversions,activeStars} / starLeaderboard / weeklyTrend / channelMix` | ZONE_OVERVIEW |
+
+### 新增页面 must-have（业务一致性约束）
+
+- 任何带"GMV / 转化 / 配额"指标的视图都应从上表的实体派生，**禁止**虚构字段
+- 任何明星卡片必须显示授权状态 chip（4 档之一）
+- 任何项目卡片必须显示 `status` chip（3 档之一） + `gmv` 文案
+- 视频卡片必须显示 `status` chip（4 档之一） + `productName` + `starName` + `engine`
+- 状态 chip 配色严格走 `Chip` 的业务 tone：
+  - 授权 `authorized → published`、`pending → scripting`、`unauthorized → draft`、`expired → danger`
+  - 项目 `进行中 → filming`、`筹备中 → scripting`、`已完成 → published`
+  - 视频 `已发布 → published`、`待审核 → filming`、`生成中 → rendering`、`已驳回 → danger`
+
+---
+
+## 12. 版本
+
+- **v0.3**（2026-05-14）：按业务主线重新组织。Sidebar 改为 3 分组（Workspace / Production / Insights），命名回归 celebrity 原始 tab 名（明星市场 / 我的明星 / 我的项目 / 视频中心 / 商品库 / 数据中心）；console overview 完全重写以围绕"明星市场 → 申请授权 → AI 生成 → 审核分发 → 带货变现"5 步业务主线（KPI + 5 步指引卡 + 我的明星 quota 进度 + 在产项目卡 + 待审切片 + 渠道占比 + 市场推荐 entry）；landing 加 5 步业务主线区。
+- v0.2（2026-05-14）：按用户上传参考图重做。组件库新增 Avatar / Tabs / GradientBlock；KpiCard 加 gradient；Sidebar 加 badge；Button 改 pill + dark/accent；Chip 扩 11 种业务 tone。
+- v0.1（2026-05-13）：首版 Creator-Friendly（被判定营销页化）。
+
+后续若要改主题，更新 `tokens.css` 即可；组件代码不应硬编码颜色，**业务页面不应虚构业务字段**。

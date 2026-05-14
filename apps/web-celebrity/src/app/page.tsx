@@ -5,7 +5,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, LogOut, Plus, Star, Video, ShoppingBag } from "lucide-react";
+import { ArrowRight, ArrowUpRight, KeyRound, LogOut, Search, ShoppingBag, Sparkles, Star, Video, Wand2 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { Avatar, Button, Card, Chip, GradientBlock } from "@/components/creator";
 
@@ -13,6 +13,15 @@ const FEATURES = [
   { icon: Star, title: "明星授权与复刻", body: "授权管理、形象复刻、肖像合规审计。让真人明星的 AI 表达边界清晰、可控、可审计。" },
   { icon: Video, title: "短视频与切片", body: "模板生成、分镜配音、视频中心、多平台发布一体化。工业级出片节奏。" },
   { icon: ShoppingBag, title: "带货与变现", body: "商品库、数据看板、漏斗复盘 + 钱包结算。把明星 IP 转化为可结算的 GMV。" },
+];
+
+// 业务主线 5 步
+const PIPELINE = [
+  { n: 1, icon: Search,     title: "找明星",   desc: "浏览明星市场，按分类、热度、起拍价筛选。",                      tone: "violet" as const },
+  { n: 2, icon: KeyRound,   title: "申请授权", desc: "选择套餐档位、商品方向；合规审核通常 1 个工作日内通过。",       tone: "rose"   as const },
+  { n: 3, icon: Wand2,      title: "AI 生成",  desc: "模板 / 盲盒生成短视频切片，多引擎对比，秒级出片。",            tone: "peach"  as const },
+  { n: 4, icon: Sparkles,   title: "审核分发", desc: "切片审核通过后自动多平台投放（抖音 / 快手 / 小红书 / 视频号）。", tone: "amber"  as const },
+  { n: 5, icon: ShoppingBag, title: "带货变现", desc: "商品库挂接 + 数据漏斗回流 + 钱包结算分账。",                  tone: "teal"   as const },
 ];
 
 const SHOWCASE = [
@@ -67,6 +76,7 @@ export default function CelebrityLandingPage() {
         </Link>
 
         <nav style={{ display: "flex", alignItems: "center", gap: 28 }}>
+          <Link href="#pipeline" style={navLink}>业务主线</Link>
           <Link href="#features" style={navLink}>核心能力</Link>
           <Link href="#showcase" style={navLink}>明星阵容</Link>
           <Link href="#trial" style={navLink}>申请试用</Link>
@@ -249,6 +259,74 @@ export default function CelebrityLandingPage() {
                 }
               />
             ))}
+          </div>
+        </section>
+
+        {/* 5 步业务主线 */}
+        <section id="pipeline" style={{ maxWidth: 1180, margin: "0 auto", padding: "16px 32px 48px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
+            <div>
+              <div className="eyebrow">业务主线</div>
+              <h2
+                style={{
+                  fontSize: 22,
+                  fontWeight: 600,
+                  fontFamily: "var(--font-display)",
+                  letterSpacing: "var(--tracking-tight)",
+                  margin: "6px 0 0",
+                  color: "var(--fg-0)",
+                }}
+              >
+                五步走完{" "}
+                <span className="serif-italic" style={{ color: "var(--accent)" }}>
+                  明星 IP 带货
+                </span>
+                。
+              </h2>
+            </div>
+            <Link href="#features" style={{ fontSize: 12, color: "var(--accent)", fontFamily: "var(--font-mono)", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" }}>
+              核心能力 <ArrowUpRight size={12} />
+            </Link>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+            {PIPELINE.map((p) => {
+              const Icon = p.icon;
+              const colorVar = {
+                violet: "var(--accent)",
+                rose: "var(--extra-rose)",
+                peach: "var(--extra-peach)",
+                amber: "var(--extra-amber)",
+                teal: "var(--extra-teal)",
+              }[p.tone];
+              return (
+                <Card key={p.n} style={{ padding: "22px 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                    <span
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: "50%",
+                        background: colorVar,
+                        color: "#fff",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {p.n}
+                    </span>
+                    <Icon size={16} color={colorVar} />
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-0)", marginBottom: 8, fontFamily: "var(--font-display)" }}>
+                    {p.title}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>{p.desc}</div>
+                </Card>
+              );
+            })}
           </div>
         </section>
 
