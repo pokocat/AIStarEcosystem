@@ -41,9 +41,9 @@ const FEATURES = [
 ] as const;
 
 const SHOWREEL = [
-  { title: "《暮色未央》", role: "都市悬疑", episode: "EP08 上线", tone: "accent" as const },
+  { title: "《暮色未央》", role: "都市悬疑", episode: "EP01-03 上线", tone: "accent" as const },
   { title: "《盛夏来信》", role: "青春治愈", episode: "EP12 制作中", tone: "violet" as const },
-  { title: "《摩天与月光》", role: "商战 + 爱情", episode: "首映 T-3", tone: "info" as const },
+  { title: "《摩天与月光》", role: "都市情感", episode: "5 月 17 日首映", tone: "info" as const },
 ];
 
 export default function DramaLandingPage() {

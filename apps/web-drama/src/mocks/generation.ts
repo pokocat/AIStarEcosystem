@@ -113,7 +113,7 @@ export const MOCK_DRAFTS: GeneratedMusicDraft[] = [
   },
   {
     title: "摩天与月光 · 落地窗剪影",
-    genre: "商战爱情",
+    genre: "都市情感",
     duration: 243,
     lyrics: [
       "[场景一 · 顶楼办公室]",
@@ -130,8 +130,8 @@ export const MOCK_DRAFTS: GeneratedMusicDraft[] = [
     creditsEstimate: 230,
   },
   {
-    title: "雾隐 1992 · 巷口烟火",
-    genre: "民国悬疑",
+    title: "雾隐 · 1992 · 巷口烟火",
+    genre: "年代悬疑",
     duration: 210,
     lyrics: [
       "[场景一 · 旧巷口]",

@@ -15,7 +15,7 @@ interface Props {
   defaultRole?: string;
 }
 
-const GENRES = ["都市悬疑", "青春治愈", "古风言情", "商战 + 爱情", "悬疑短剧", "科幻", "玄幻"];
+const GENRES = ["都市悬疑", "青春治愈", "都市情感", "年代悬疑", "古风轻喜", "现实题材", "轻喜短剧"];
 const STATUSES: Array<{ value: DramaStatus; label: string }> = [
   { value: "casting", label: "选角中" },
   { value: "filming", label: "制作中" },

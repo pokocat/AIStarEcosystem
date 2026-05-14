@@ -46,7 +46,7 @@ export default function InsightsPage() {
   const totalRevenue = mainline.reduce((s, d) => s + d.revenue, 0);
   const completion = 58.4;
 
-  // 假数据：按 dim 切片
+  // 按当前短剧线的模拟经营口径切片。
   const slices: Array<{ name: string; value: number; color: string }> = React.useMemo(() => {
     if (dim === "channel")
       return [
@@ -66,9 +66,9 @@ export default function InsightsPage() {
     return [
       { name: "都市悬疑", value: 32, color: "var(--accent)" },
       { name: "青春治愈", value: 22, color: "var(--extra-violet)" },
-      { name: "商战 + 爱情", value: 20, color: "var(--info)" },
-      { name: "悬疑短剧", value: 16, color: "var(--success)" },
-      { name: "古风", value: 10, color: "var(--danger)" },
+	        { name: "都市情感", value: 20, color: "var(--info)" },
+	        { name: "年代悬疑", value: 16, color: "var(--success)" },
+	        { name: "古风轻喜", value: 10, color: "var(--danger)" },
     ];
   }, [dim]);
 

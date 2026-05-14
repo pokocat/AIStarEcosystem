@@ -20,13 +20,13 @@ import { apiFetch, USE_MOCK, mockDelay, clientError } from "./_client";
 let walletState: Wallet = {
   id: "w-mock-drama-001",
   userId: "u-mock-001",
-  totalBalance: 88_000,
+  totalBalance: 126_400,
   licenseBalance: 50_000,
-  rechargeBalance: 30_000,
-  giftBalance: 8_000,
-  pendingBalance: 12_400,
+  rechargeBalance: 58_000,
+  giftBalance: 18_400,
+  pendingBalance: 16_800,
   createdAt: "2025-09-12T08:10:00Z",
-  updatedAt: "2026-05-13T09:00:00Z",
+  updatedAt: "2026-05-14T09:00:00Z",
 };
 
 const txStore: Transaction[] = TRANSACTIONS.map((t) => ({ ...t }));
