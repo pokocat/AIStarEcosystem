@@ -87,9 +87,9 @@ export default function CelebrityDashboardPage() {
 
       {/* KPI —— 业务核心指标 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="30 日 GMV" value="¥8.42M" delta="+12.4% vs 上月" gradient="violet" />
+        <KpiCard label="30 日 GMV" value="¥8.42M" delta="环比上月 +12.4%" gradient="violet" />
         <KpiCard
-          label="累计播放 · 7d"
+          label="累计播放 · 近 7 日"
           value={ZONE_OVERVIEW.hero.totalPlays}
           delta="环比 +18%"
           gradient="peach"

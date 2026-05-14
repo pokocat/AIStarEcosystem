@@ -15,7 +15,7 @@ export default function CelebrityCastPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <div className="eyebrow">My Cast · 已签约明星</div>
+          <div className="eyebrow">我的明星 · 已签约</div>
           <h1
             style={{
               fontSize: 30,

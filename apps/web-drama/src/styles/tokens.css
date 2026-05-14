@@ -86,13 +86,6 @@
   color: var(--fg-2);
 }
 
-.text-gradient-hero {
-  background: var(--gradient-hero);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
 .text-gradient-gold {
   background: var(--gradient-gold);
   -webkit-background-clip: text;

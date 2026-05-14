@@ -136,7 +136,7 @@ export default function DramaLandingPage() {
               AI 短剧
             </div>
             <div className="eyebrow" style={{ fontSize: 9.5 }}>
-              AI Star Eco · Cinematic
+              AI STAR ECO · 短剧工坊
             </div>
           </div>
         </Link>
@@ -210,7 +210,7 @@ export default function DramaLandingPage() {
           >
             <Sparkles size={14} color="var(--accent)" />
             <span className="mono" style={{ fontSize: 11, letterSpacing: "var(--tracking-wide)", color: "var(--fg-1)" }}>
-              CINEMATIC WORKBENCH · 2026
+              短剧工坊 · 2026 影视年
             </span>
           </div>
 
@@ -225,7 +225,7 @@ export default function DramaLandingPage() {
             }}
           >
             <span style={{ display: "block" }}>把短剧</span>
-            <span className="text-gradient-hero" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400, display: "inline-block", paddingBottom: 6 }}>
+            <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400, display: "inline-block", paddingBottom: 6, color: "var(--accent)" }}>
               工业流
             </span>
             <span>，</span>
@@ -352,7 +352,7 @@ export default function DramaLandingPage() {
             {FEATURES.map((f) => {
               const FIcon = f.icon;
               return (
-                <Card key={f.title} glass style={{ padding: "28px 24px" }}>
+                <Card key={f.title} style={{ padding: "28px 24px", background: "var(--bg-1)", border: "1px solid var(--line)" }}>
                   <div
                     style={{
                       width: 44,
@@ -417,7 +417,7 @@ export default function DramaLandingPage() {
                 background: "var(--gradient-gold)",
               }}
             />
-            <span className="mono" style={{ letterSpacing: 0.6 }}>AI STAR ECO · DRAMA STUDIO</span>
+            <span className="mono" style={{ letterSpacing: 0.6 }}>AI STAR ECO · 短剧工业流</span>
           </div>
           <div style={{ display: "flex", gap: 28 }}>
             <Link href="/" style={{ color: "var(--fg-2)" }}>产品矩阵</Link>

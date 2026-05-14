@@ -74,7 +74,7 @@ export default function TrendsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="content radar"
+        eyebrow="内容雷达"
         title={
           <>
             趋势{" "}
@@ -144,7 +144,7 @@ export default function TrendsPage() {
       </Card>
 
       <Card style={{ padding: "22px 24px" }}>
-        <SectionHeader eyebrow="hot topics" title={`热门话题（${filtered.length}）`} />
+        <SectionHeader eyebrow="热门话题" title={`热门话题（${filtered.length}）`} />
         {filtered.length === 0 ? (
           <EmptyState icon={<Compass size={28} />} title="没有匹配的话题" description="清除筛选条件试试。" />
         ) : (

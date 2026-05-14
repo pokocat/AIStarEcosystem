@@ -63,7 +63,7 @@ export default function FinancePage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="finance"
+        eyebrow="财务中心"
         title={
           <>
             财务{" "}
@@ -113,7 +113,7 @@ export default function FinancePage() {
 
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader
-          eyebrow="transactions"
+          eyebrow="流水"
           title="交易流水"
           right={
             <Button variant="ghost" size="sm" onClick={() => txQ.refetch()}>

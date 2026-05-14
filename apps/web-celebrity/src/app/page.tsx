@@ -5,9 +5,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, KeyRound, LogOut, Search, ShoppingBag, Sparkles, Star, Video, Wand2 } from "lucide-react";
+import { ArrowUpRight, KeyRound, LogOut, Search, ShoppingBag, Sparkles, Star, Video, Wand2 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
-import { Avatar, Button, Card, Chip, GradientBlock } from "@/components/creator";
+import { Button, Card, Chip, GradientBlock } from "@/components/creator";
+import { MARKET_STARS } from "@/mocks/celebrity-zone";
 
 const FEATURES = [
   { icon: Star, title: "明星授权与复刻", body: "授权管理、形象复刻、肖像合规审计。让真人明星的 AI 表达边界清晰、可控、可审计。" },
@@ -36,6 +37,9 @@ export default function CelebrityLandingPage() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
   const isLoggedIn = mounted && !!user;
+  // 选取「已授权」的第一位明星作为 hero persona 演示（避免虚构 demo 数据）。
+  const featuredStar =
+    MARKET_STARS.find((s) => s.authorization.status === "authorized") ?? MARKET_STARS[0];
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-0)", color: "var(--fg-0)", fontFamily: "var(--font-sans)" }}>
@@ -70,7 +74,7 @@ export default function CelebrityLandingPage() {
           <div style={{ lineHeight: 1.2 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg-0)" }}>AI 明星带货</div>
             <div className="mono" style={{ fontSize: 10, color: "var(--fg-2)", letterSpacing: 0.4 }}>
-              AI Star Eco · Celebrity
+              AI STAR ECO · 明星矩阵
             </div>
           </div>
         </Link>
@@ -119,7 +123,7 @@ export default function CelebrityLandingPage() {
           }}
         >
           <div>
-            <div className="eyebrow">Celebrity Commerce · 2026</div>
+            <div className="eyebrow">明星带货 · 2026 路演版</div>
             <h1
               style={{
                 fontSize: 56,
@@ -131,10 +135,10 @@ export default function CelebrityLandingPage() {
                 color: "var(--fg-0)",
               }}
             >
-              Make a star,
+              打造一位明星，
               <br />
               <span className="serif-italic" style={{ color: "var(--accent)", fontSize: 56 }}>
-                let it run the show.
+                让她替你把今晚卖完。
               </span>
             </h1>
             <p
@@ -146,7 +150,7 @@ export default function CelebrityLandingPage() {
                 marginBottom: 28,
               }}
             >
-              授权管理 · 形象复刻 · 短视频工坊 · 直播 + 切片分发 · 商品与结算。
+              授权管理 · 形象复刻 · 短视频工坊 · 直播切片分发 · 商品库与结算。
               一站串通授权方 / 品牌方 / MCN 的全链路营销动作，让明星价值在合规边界内被持续放大。
             </p>
             <div style={{ display: "flex", gap: 10 }}>
@@ -161,16 +165,16 @@ export default function CelebrityLandingPage() {
             </div>
           </div>
 
-          {/* 右侧：紧凑实时看板卡（参考图 Cards · Persona 形态） */}
+          {/* 右侧：当前签约明星实时看板（取一位已授权明星作演示） */}
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <GradientBlock
-              seed="hero-preview"
+              seed={featuredStar.id}
               height={140}
-              topLeft={<Chip tone="published" size="sm">● live</Chip>}
+              topLeft={<Chip tone="published" size="sm">● 在投</Chip>}
               bottom={
                 <div>
                   <div className="serif-italic" style={{ fontSize: 22, color: "#fff", lineHeight: 1.1 }}>
-                    Hana &middot; v2.4
+                    {featuredStar.name} · 标准版
                   </div>
                   <div
                     className="mono"
@@ -181,24 +185,24 @@ export default function CelebrityLandingPage() {
                       letterSpacing: 0.3,
                     }}
                   >
-                    Lead actor · Romance · ready to film
+                    {featuredStar.category} · 综艺向 · 授权中
                   </div>
                 </div>
               }
             />
             <div style={{ padding: "16px 18px" }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>Today on-screen</div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>今日在投</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <PreviewStat label="GMV" value="¥182,400" delta="+12% vs 昨日" tone="success" />
-                <PreviewStat label="Live clips" value="32" delta="抖音 · 进行中" tone="accent" />
-                <PreviewStat label="Conv" value="1.86%" delta="高于均值" tone="success" />
-                <PreviewStat label="Pending" value="3" delta="待审" tone="warning" />
+                <PreviewStat label="GMV" value="¥182,400" delta="+12% · 同比昨日" tone="success" />
+                <PreviewStat label="在投切片" value="32" delta="抖音 · 进行中" tone="accent" />
+                <PreviewStat label="转化率" value="1.86%" delta="高于行业均值" tone="success" />
+                <PreviewStat label="待审核" value="3" delta="今日合规队列" tone="warning" />
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-                <Chip tone="romance" size="sm">Romance</Chip>
-                <Chip tone="slice" size="sm">Slice-of-life</Chip>
-                <Chip tone="comedy" size="sm">Comedy</Chip>
-                <Chip tone="drama" size="sm">Drama</Chip>
+                <Chip tone="romance" size="sm">都市言情</Chip>
+                <Chip tone="slice" size="sm">生活种草</Chip>
+                <Chip tone="comedy" size="sm">喜剧综艺</Chip>
+                <Chip tone="drama" size="sm">剧情向</Chip>
               </div>
             </div>
           </Card>
@@ -404,7 +408,7 @@ export default function CelebrityLandingPage() {
             }}
           >
             <div>
-              <div className="eyebrow">Ready when you are</div>
+              <div className="eyebrow">合作准备就绪</div>
               <h3
                 style={{
                   fontSize: 22,
@@ -452,7 +456,7 @@ export default function CelebrityLandingPage() {
             alignItems: "center",
           }}
         >
-          <span style={{ letterSpacing: 0.5 }}>AI STAR ECO · CELEBRITY COMMERCE</span>
+          <span style={{ letterSpacing: 0.5 }}>AI STAR ECO · 明星带货中台</span>
           <div style={{ display: "flex", gap: 20 }}>
             <Link href="/" style={{ color: "var(--fg-3)", textDecoration: "none" }}>产品矩阵</Link>
             <Link

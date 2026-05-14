@@ -76,7 +76,7 @@ function ProjectsListInner() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="project pipeline"
+        eyebrow="项目流水线"
         title={
           <>
             项目{" "}
