@@ -46,7 +46,7 @@ interface NavGroup {
 
 const GROUPS: NavGroup[] = [
   {
-    title: "Workspace",
+    title: "工作台",
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "总览", exact: true },
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
@@ -58,7 +58,7 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "Distribution",
+    title: "分发与洞察",
     items: [
       { href: "/distribution", icon: Share2, label: "多平台分发" },
       { href: "/insights", icon: BarChart3, label: "数据洞察" },
@@ -66,7 +66,7 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "System",
+    title: "系统",
     items: [
       { href: "/finance", icon: WalletIcon, label: "财务中心" },
       { href: "/settings", icon: Settings, label: "工作室设置" },
@@ -125,7 +125,7 @@ function Sidebar() {
             AI 短剧
           </div>
           <div className="eyebrow" style={{ fontSize: 9 }}>
-            v0.6 · cinematic
+            短剧工坊 · v0.6
           </div>
         </div>
       </Link>
@@ -389,7 +389,7 @@ function Topbar() {
       }}
     >
       <div className="mono" style={{ fontSize: 11, color: "var(--fg-2)", letterSpacing: 0.4 }}>
-        AI Short Drama <span style={{ color: "var(--fg-3)" }}>/</span> Workspace
+        AI 短剧 <span style={{ color: "var(--fg-3)" }}>/</span> 工作台
       </div>
       <div style={{ flex: 1 }} />
       <GlobalSearch />

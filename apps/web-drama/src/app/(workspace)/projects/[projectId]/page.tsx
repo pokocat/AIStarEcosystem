@@ -127,7 +127,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       </button>
 
       <ViewHeader
-        eyebrow={`project · ${d.genre}`}
+        eyebrow={`项目 · ${d.genre}`}
         title={d.title}
         meta={`${d.episodes > 0 ? `${d.episodes} 集` : "集数未定"} · ${d.role}`}
         action={
@@ -224,7 +224,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
         <Card style={{ padding: "24px 26px" }}>
           <SectionHeader
-            eyebrow="cast"
+            eyebrow="演员阵容"
             title={
               <>
                 <Users size={13} style={{ marginRight: 6 }} /> 演员 / 角色
@@ -289,7 +289,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
         <Card style={{ padding: "24px 26px" }}>
           <SectionHeader
-            eyebrow="distribution"
+            eyebrow="分发"
             title={
               <>
                 <Share2 size={13} style={{ marginRight: 6 }} /> 分发任务

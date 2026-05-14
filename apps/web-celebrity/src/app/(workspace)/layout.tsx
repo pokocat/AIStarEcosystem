@@ -38,7 +38,7 @@ function buildGroups(pathname: string): NavGroup[] {
   const isExact = (href: string) => pathname === href;
   return [
     {
-      title: "Workspace",
+      title: "工作台",
       items: [
         { icon: LayoutDashboard, label: "今日", href: "/dashboard", selected: isExact("/dashboard") },
         { icon: Star, label: "明星市场", href: "/market", selected: isExact("/market") },
@@ -46,7 +46,7 @@ function buildGroups(pathname: string): NavGroup[] {
       ],
     },
     {
-      title: "Production",
+      title: "制作",
       items: [
         { icon: Megaphone, label: "我的项目", href: "/projects", selected: isExact("/projects") },
         { icon: Video, label: "视频中心", href: "/library", selected: isExact("/library"), badge: 4 },
@@ -54,7 +54,7 @@ function buildGroups(pathname: string): NavGroup[] {
       ],
     },
     {
-      title: "Insights",
+      title: "洞察",
       items: [
         { icon: BarChart3, label: "数据中心", href: "/data", selected: isExact("/data") },
       ],
@@ -72,10 +72,10 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/products": "商品库",
     "/data": "数据中心",
   };
-  if (TAB_LABEL[pathname]) return ["Studio", "明星带货", TAB_LABEL[pathname]];
-  if (pathname.startsWith("/star")) return ["Studio", "明星市场", "明星详情"];
-  if (pathname.startsWith("/projects/")) return ["Studio", "我的项目", "项目详情"];
-  return ["Studio"];
+  if (TAB_LABEL[pathname]) return ["工作台", "明星带货", TAB_LABEL[pathname]];
+  if (pathname.startsWith("/star")) return ["工作台", "明星市场", "明星详情"];
+  if (pathname.startsWith("/projects/")) return ["工作台", "我的项目", "项目详情"];
+  return ["工作台"];
 }
 
 function TopbarRight() {
@@ -102,7 +102,7 @@ function TopbarRight() {
         <Coins size={11} /> {wallet ? formatCredits(wallet.totalBalance) : "—"}
       </div>
       <Button variant="secondary" size="sm">
-        Export
+        导出
       </Button>
       <Button variant="accent" size="sm">
         <Plus size={12} />
@@ -211,7 +211,7 @@ function TipOfDay() {
           letterSpacing: -0.1,
         }}
       >
-        Tip of the day
+        今日小贴士
       </div>
       <div style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
         用<span className="mono" style={{ color: "var(--accent)" }}> ⌘K </span>
@@ -240,7 +240,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       }}
     >
       <Sidebar
-        brand={{ initials: "iP", name: "AI 明星带货", meta: "celebrity · v0.5" }}
+        brand={{ initials: "iP", name: "AI 明星带货", meta: "明星带货 · v0.5" }}
         groups={groups}
         footer={
           <>
@@ -268,7 +268,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                     letterSpacing: 0.3,
                   }}
                 >
-                  {user?.studio?.name ?? "celebrity studio"}
+                  {user?.studio?.name ?? "未绑定工作室"}
                 </div>
               </div>
               <Link

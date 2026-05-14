@@ -174,7 +174,7 @@ export default function ForgePage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="forge"
+        eyebrow="形象锻造炉"
         title={
           <>
             形象{" "}
@@ -199,7 +199,7 @@ export default function ForgePage() {
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr 280px", gap: 16 }}>
         {/* 参数 */}
         <Card style={{ padding: "22px 22px", display: "flex", flexDirection: "column", gap: 4 }}>
-          <SectionHeader eyebrow="parameters" title="生成参数" />
+          <SectionHeader eyebrow="生成参数" title="生成参数" />
           <Field label="风格">
             <Select value={style} onChange={(e) => setStyle(e.target.value as Style)}>
               {STYLES.map((s) => (

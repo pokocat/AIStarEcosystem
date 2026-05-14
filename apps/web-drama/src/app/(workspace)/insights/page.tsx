@@ -92,7 +92,7 @@ export default function InsightsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="data insights"
+        eyebrow="数据洞察"
         title={
           <>
             数据{" "}
@@ -187,7 +187,7 @@ export default function InsightsPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
         <Card style={{ padding: "26px 28px" }}>
-          <SectionHeader eyebrow={`time series · ${range}`} title="播放与营收趋势" />
+          <SectionHeader eyebrow={`时间序列 · ${range}`} title="播放与营收趋势" />
           <div style={{ height: 240, display: "flex", alignItems: "flex-end", gap: 6 }}>
             {Array.from({ length: range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 36 : 52 }).map(
               (_, i, arr) => {
@@ -238,7 +238,7 @@ export default function InsightsPage() {
         </Card>
 
         <Card style={{ padding: "26px 28px" }}>
-          <SectionHeader eyebrow="breakdown" title={DIMS.find((d) => d.value === dim)?.label ?? ""} />
+          <SectionHeader eyebrow="结构拆解" title={DIMS.find((d) => d.value === dim)?.label ?? ""} />
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {slices.map((s) => (
               <div key={s.name}>
@@ -273,7 +273,7 @@ export default function InsightsPage() {
 
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader
-          eyebrow="dramas"
+          eyebrow="主线剧集"
           title="按剧集表现"
           right={<StatusBadge tone="accent">{mainline.length} 部</StatusBadge>}
         />

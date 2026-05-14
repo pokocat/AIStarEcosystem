@@ -157,7 +157,7 @@ export default function DistributePage({ params }: PageProps) {
       </button>
 
       <ViewHeader
-        eyebrow="distribute"
+        eyebrow="多平台分发"
         title={
           <>
             发布{" "}
@@ -175,7 +175,7 @@ export default function DistributePage({ params }: PageProps) {
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
         <Card style={{ padding: "22px 24px" }}>
           <SectionHeader
-            eyebrow="platforms"
+            eyebrow="平台"
             title={`选择平台（已选 ${picked.size}）`}
             right={
               picked.size > 0 && (
@@ -247,7 +247,7 @@ export default function DistributePage({ params }: PageProps) {
 
         {/* 任务列表 */}
         <Card style={{ padding: "22px 24px" }}>
-          <SectionHeader eyebrow="recent jobs" title={`任务（${jobs.length}）`} />
+          <SectionHeader eyebrow="近期任务" title={`任务（${jobs.length}）`} />
           {jobs.length === 0 && (
             <EmptyState title="还没有发布任务" description="左侧选择平台后提交。" />
           )}

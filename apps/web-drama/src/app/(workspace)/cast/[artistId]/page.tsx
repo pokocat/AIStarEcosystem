@@ -240,7 +240,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
         <Card style={{ padding: "24px 26px" }}>
           <SectionHeader
-            eyebrow="profile"
+            eyebrow="档案"
             title="档案"
             right={
               !editing && (
@@ -284,7 +284,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
         </Card>
 
         <Card style={{ padding: "22px 24px" }}>
-          <SectionHeader eyebrow="talent matrix" title="才艺六维" />
+          <SectionHeader eyebrow="才艺矩阵" title="才艺六维" />
           {(["acting", "singing", "dancing", "hosting", "comedy", "variety"] as const).map((k) => {
             const v = a.talents[k];
             const label = {

@@ -172,7 +172,7 @@ export default function IncubatorPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="incubator"
+        eyebrow="孵化新演员"
         title={
           <>
             孵化{" "}
@@ -202,7 +202,7 @@ export default function IncubatorPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 16 }}>
         {/* 草稿列表 */}
         <Card style={{ padding: "22px 24px" }}>
-          <SectionHeader eyebrow="drafts" title="我的草稿" />
+          <SectionHeader eyebrow="草稿" title="我的草稿" />
           {drafts.length === 0 && (
             <EmptyState
               icon={<FileText size={24} />}
@@ -283,7 +283,7 @@ export default function IncubatorPage() {
           )}
           {active && (
             <>
-              <SectionHeader eyebrow="multi-step form" title={`孵化「${active.name || "未命名"}」`} />
+              <SectionHeader eyebrow="多步表单" title={`孵化「${active.name || "未命名"}」`} />
               {/* Steps */}
               <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
                 {steps.map((s) => {
