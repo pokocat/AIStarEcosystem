@@ -22,3 +22,39 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+@keyframes drama-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes drama-pulse {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes drama-shimmer {
+  0% {
+    background-position: -120% 0;
+  }
+  100% {
+    background-position: 220% 0;
+  }
+}
+
+.drama-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 220% 100%;
+  animation: drama-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}

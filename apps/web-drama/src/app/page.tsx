@@ -17,7 +17,7 @@ import { Button, Card, Chip } from "@/components/premium";
 
 // Premium cinematic landing —— drama 子产品对外公开页。
 // 视觉来源：AI IP Design Directions 03（dark + gold + glass + hero gradient）。
-// 工作台落地：登录后跳 /console。
+// 工作台落地：登录后跳 /dashboard。
 
 const FEATURES = [
   {
@@ -154,7 +154,7 @@ export default function DramaLandingPage() {
           </Link>
           {isLoggedIn ? (
             <>
-              <Link href="/console">
+              <Link href="/dashboard">
                 <Button variant="primary" size="md">
                   进入工作台
                   <ArrowRight size={14} />
@@ -176,7 +176,7 @@ export default function DramaLandingPage() {
               </button>
             </>
           ) : (
-            <Link href="/login?from=%2Fconsole">
+            <Link href="/login?from=%2Fdashboard">
               <Button variant="primary" size="md">
                 立即登录
                 <ArrowRight size={14} />
@@ -254,7 +254,7 @@ export default function DramaLandingPage() {
               marginTop: 40,
             }}
           >
-            <Link href={isLoggedIn ? "/console" : "/login?from=%2Fconsole"}>
+            <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
               <Button variant="primary" size="lg">
                 {isLoggedIn ? "进入工作台" : "立即登录"}
                 <ArrowRight size={16} />
@@ -421,7 +421,7 @@ export default function DramaLandingPage() {
           </div>
           <div style={{ display: "flex", gap: 28 }}>
             <Link href="/" style={{ color: "var(--fg-2)" }}>产品矩阵</Link>
-            <Link href={isLoggedIn ? "/console" : "/login?from=%2Fconsole"} style={{ color: "var(--fg-2)" }}>
+            <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"} style={{ color: "var(--fg-2)" }}>
               {isLoggedIn ? "工作台" : "登录"}
             </Link>
             <span style={{ color: "var(--fg-3)" }}>商务咨询：bd@aistareco.com</span>
