@@ -74,7 +74,7 @@ export default function DashboardPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <ViewHeader
-        eyebrow="AI Short Drama · Production"
+        eyebrow="AI 短剧 · 生产中台"
         title={
           <>
             今天的{" "}

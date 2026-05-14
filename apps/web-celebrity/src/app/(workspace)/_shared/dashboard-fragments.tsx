@@ -29,9 +29,8 @@ export const AUTH_STATUS_LABEL = {
 
 export const DATE_LINE = (() => {
   const d = new Date();
-  const weekdays = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  return `${weekdays[d.getDay()]} · ${months[d.getMonth()]} ${d.getDate()}`;
+  const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  return `${weekdays[d.getDay()]} · ${d.getMonth() + 1} 月 ${d.getDate()} 日`;
 })();
 
 export const inlineLink: React.CSSProperties = {
@@ -90,7 +89,7 @@ export function CastGrid({ stars }: { stars: typeof MarketStarsType }) {
                   {AUTH_STATUS_LABEL[s.authorization.status]}
                 </Chip>
               }
-              topRight={s.isHot ? <Chip tone="romance" size="sm">HOT</Chip> : undefined}
+              topRight={s.isHot ? <Chip tone="romance" size="sm">热门</Chip> : undefined}
               bottom={
                 <div>
                   <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "#fff" }}>

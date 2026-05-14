@@ -117,7 +117,7 @@ export default function ScriptsListPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="script forge"
+        eyebrow="脚本工坊"
         title={
           <>
             脚本{" "}

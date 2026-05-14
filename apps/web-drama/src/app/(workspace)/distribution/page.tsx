@@ -77,7 +77,7 @@ export default function DistributionOverviewPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="multi-channel"
+        eyebrow="多平台分发"
         title={
           <>
             多平台{" "}
@@ -101,7 +101,7 @@ export default function DistributionOverviewPage() {
 
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader
-          eyebrow="platforms"
+          eyebrow="平台"
           title="平台接入"
           right={
             <Button variant="ghost" size="sm" onClick={() => platformsQ.refetch()}>
@@ -160,7 +160,7 @@ export default function DistributionOverviewPage() {
 
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader
-          eyebrow="recent jobs"
+          eyebrow="近期任务"
           title="最近任务"
           right={
             <Button variant="ghost" size="sm" onClick={() => jobsQ.refetch()}>

@@ -93,7 +93,7 @@ export default function SettingsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="studio settings"
+        eyebrow="工作室设置"
         title={
           <>
             工作室{" "}
@@ -116,7 +116,7 @@ export default function SettingsPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
         <Card style={{ padding: "26px 28px" }}>
-          <SectionHeader eyebrow="account" title="账户与计费" />
+          <SectionHeader eyebrow="账户" title="账户与计费" />
           <Field label="工作室名称">
             <TextInput
               value={draft.studioName}
@@ -152,7 +152,7 @@ export default function SettingsPage() {
 
         <Card style={{ padding: "26px 28px" }}>
           <SectionHeader
-            eyebrow="team"
+            eyebrow="团队"
             title={`团队成员（${draft.team.length}）`}
             right={
               <Button variant="ghost" size="sm" onClick={() => setInviteOpen(true)}>

@@ -125,7 +125,7 @@ function CastListInner() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <ViewHeader
-        eyebrow="cast & roster"
+        eyebrow="演员阵容"
         title={
           <>
             演员{" "}
