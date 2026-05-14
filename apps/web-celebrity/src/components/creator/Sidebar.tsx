@@ -135,7 +135,9 @@ function SidebarLink({ item }: { item: NavItem }) {
   const [hover, setHover] = React.useState(false);
   const Icon = item.icon;
   const active = !!item.selected;
-  const showAccent = active;
+
+  // active = 紫色实心填充 + 白字 + 白 icon + 紫色光晕（确保紫底白字对比明确）
+  // hover (非 active) = sand 米底 + fg-0 主文字色，平滑过渡
 
   return (
     <Link
@@ -147,15 +149,15 @@ function SidebarLink({ item }: { item: NavItem }) {
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "8px 10px 8px 14px",
+        padding: "8px 12px",
         borderRadius: "var(--radius-md)",
         background: active
-          ? "var(--accent-soft)"
+          ? "var(--accent)"
           : hover
             ? "var(--bg-2)"
             : "transparent",
         color: active
-          ? "var(--accent-strong)"
+          ? "#ffffff"
           : hover
             ? "var(--fg-0)"
             : "var(--fg-1)",
@@ -163,31 +165,24 @@ function SidebarLink({ item }: { item: NavItem }) {
         marginBottom: 2,
         textDecoration: "none",
         fontWeight: active ? 600 : 500,
-        transition: "background 140ms ease, color 140ms ease",
+        boxShadow: active
+          ? "0 2px 10px color-mix(in srgb, var(--accent) 35%, transparent)"
+          : "none",
+        transition:
+          "background 140ms ease, color 140ms ease, box-shadow 140ms ease",
       }}
     >
-      {/* active 左侧 indicator bar */}
-      {showAccent && (
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: 4,
-            top: 6,
-            bottom: 6,
-            width: 3,
-            borderRadius: 2,
-            background: "var(--accent)",
-          }}
-        />
-      )}
       <span
         style={{
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           width: 14,
-          color: active ? "var(--accent)" : hover ? "var(--fg-1)" : "var(--fg-3)",
+          color: active
+            ? "#ffffff"
+            : hover
+              ? "var(--fg-1)"
+              : "var(--fg-3)",
           flexShrink: 0,
           transition: "color 140ms ease",
         }}
@@ -204,14 +199,16 @@ function SidebarLink({ item }: { item: NavItem }) {
             minWidth: 18,
             height: 18,
             padding: "0 6px",
-            background: BADGE_COLOR[item.badgeTone ?? "danger"],
+            background: active
+              ? "rgba(255,255,255,0.22)"
+              : BADGE_COLOR[item.badgeTone ?? "danger"],
             color: "#ffffff",
             fontSize: 10,
             fontFamily: "var(--font-mono)",
             fontWeight: 700,
             borderRadius: "var(--radius-pill)",
             lineHeight: 1,
-            boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+            boxShadow: active ? "none" : "0 1px 2px rgba(0,0,0,0.1)",
           }}
         >
           {item.badge}
