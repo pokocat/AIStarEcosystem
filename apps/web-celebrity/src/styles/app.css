@@ -7,6 +7,88 @@
 /* celebrity 专属 · Creator-Friendly 设计令牌（覆盖在 ui globals 之后） */
 @import './tokens.css';
 
+/* ============================================================
+   把 Tailwind v4 默认调色板"对接"到 Creator 主题色。
+   所有 celebrity-zone 业务组件原生用 zinc/violet/emerald/pink/amber/orange/rose 系列的
+   Tailwind utility，统一映射到主题 token，使整站视觉一致 —— 主题切换时业务组件免改色。
+
+   - zinc  → 暖米/sand 系（与 cream bg-0 协调）
+   - violet → accent 紫罗兰
+   - emerald → success 青绿
+   - amber  → warning 琥珀
+   - pink / rose → danger 粉红 (romance tag 同源)
+   - orange → extra-peach 桃
+   ============================================================ */
+@theme {
+  /* zinc 中性色 → 暖米色阶（与 cream bg-0 #faf7f2 协调） */
+  --color-zinc-50:  #faf7f2;
+  --color-zinc-100: #f3efe7;
+  --color-zinc-200: #ebe5d8;
+  --color-zinc-300: #d8cfba;
+  --color-zinc-400: #a89e88;
+  --color-zinc-500: #7a6f5d;
+  --color-zinc-600: #5a4f42;
+  --color-zinc-700: #3a3329;
+  --color-zinc-800: #2a241c;
+  --color-zinc-900: #1f1a14;
+  --color-zinc-950: #14110d;
+
+  /* violet → accent */
+  --color-violet-50:  #f4f0ff;
+  --color-violet-100: #eae3ff;
+  --color-violet-200: #d8ccff;
+  --color-violet-300: #b4a4ff;
+  --color-violet-400: #9d83ff;
+  --color-violet-500: #7c5cff;
+  --color-violet-600: #5b3fe0;
+  --color-violet-700: #4a2fc9;
+
+  /* emerald → success #22b59a */
+  --color-emerald-50:  #e6f7f3;
+  --color-emerald-100: #c5ede2;
+  --color-emerald-200: #99dec9;
+  --color-emerald-300: #4ace9f;
+  --color-emerald-400: #22b59a;
+  --color-emerald-500: #22b59a;
+  --color-emerald-600: #188a76;
+
+  /* amber → warning #f0a83a */
+  --color-amber-50:  #fef6e7;
+  --color-amber-100: #fce7bd;
+  --color-amber-200: #fad181;
+  --color-amber-300: #f0a83a;
+  --color-amber-400: #f0a83a;
+  --color-amber-500: #f0a83a;
+  --color-amber-600: #c88820;
+
+  /* pink → tag-romance / danger #ff5b8a */
+  --color-pink-50:  #fff0f4;
+  --color-pink-100: #ffd6e0;
+  --color-pink-200: #ffadc1;
+  --color-pink-300: #ff85a3;
+  --color-pink-400: #ff5b8a;
+  --color-pink-500: #ff5b8a;
+  --color-pink-600: #d63a6c;
+
+  /* rose → danger 同 pink */
+  --color-rose-50:  #fff0f4;
+  --color-rose-100: #ffd6e0;
+  --color-rose-200: #ffadc1;
+  --color-rose-300: #ff85a3;
+  --color-rose-400: #ff5b8a;
+  --color-rose-500: #ff5b8a;
+  --color-rose-600: #d63a6c;
+
+  /* orange → extra-peach #ff8a5b */
+  --color-orange-50:  #fff2eb;
+  --color-orange-100: #ffd7c1;
+  --color-orange-200: #ffb89a;
+  --color-orange-300: #ff8a5b;
+  --color-orange-400: #ff8a5b;
+  --color-orange-500: #ff8a5b;
+  --color-orange-600: #c45c2e;
+}
+
 @layer base {
   html,
   body {

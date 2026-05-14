@@ -375,10 +375,43 @@ INSIGHTS
 
 ---
 
-## 12. 版本
+## 12. Tailwind 调色板对接（@theme override）
 
-- **v0.3**（2026-05-14）：按业务主线重新组织。Sidebar 改为 3 分组（Workspace / Production / Insights），命名回归 celebrity 原始 tab 名（明星市场 / 我的明星 / 我的项目 / 视频中心 / 商品库 / 数据中心）；console overview 完全重写以围绕"明星市场 → 申请授权 → AI 生成 → 审核分发 → 带货变现"5 步业务主线（KPI + 5 步指引卡 + 我的明星 quota 进度 + 在产项目卡 + 待审切片 + 渠道占比 + 市场推荐 entry）；landing 加 5 步业务主线区。
+celebrity-zone 33 个业务组件原生用 Tailwind 颜色 utility（`bg-zinc-50` / `text-violet-300` / `bg-emerald-500/10` 等），数量超过 200 处，逐项 sed 替换为 `var(--token)` 维护成本高。
+
+为让业务组件**零改动**绑定主题，在 `src/styles/app.css` 用 Tailwind v4 `@theme` 块重定义关键调色板色阶：
+
+| Tailwind 调色板 | 对应主题角色 | 关键值 |
+|---|---|---|
+| `zinc-50…950` | 中性色 → 暖米/sand 系 | `zinc-50 = #faf7f2`（同 `--bg-0`） · `zinc-100 = #f3efe7`（同 `--bg-2`） · `zinc-900 = #1f1a14`（同 `--fg-0`） |
+| `violet-50…700` | 紫罗兰强调 | `violet-500 = #7c5cff`（同 `--accent`） · `violet-600 = #5b3fe0`（同 `--accent-strong`） |
+| `emerald-50…600` | 青绿成功 | `emerald-500 = #22b59a`（同 `--success`） |
+| `amber-50…600` | 琥珀警告 | `amber-500 = #f0a83a`（同 `--warning`） |
+| `pink-50…600` | 玫红 danger / romance | `pink-500 = #ff5b8a`（同 `--danger` / `--tag-romance`） |
+| `rose-50…600` | 同 pink | 同上 |
+| `orange-50…600` | 桃色 peach | `orange-500 = #ff8a5b`（同 `--extra-peach`） |
+
+**效果**：
+
+- 所有现存 `bg-zinc-50` 渲染成奶油色（不是冷灰 `#fafafa`）
+- 所有 `text-violet-300` 渲染成主题紫罗兰浅版
+- 所有 `bg-amber-500/10` 渲染成琥珀 10% alpha 暖底
+
+未来切到其它主题（tech / premium）时，组件代码无需改 utility 名；只需切 `data-theme` + 复写 `@theme` 调色板。
+
+**约束**：
+
+- 新增页面**优先用** `<Chip tone="...">` `<Button>` `<Card>` 等本地组件 + CSS 变量 —— 它们已经直接绑定 `var(--accent)` 等令牌
+- 历史业务组件保留 Tailwind utility，由 `@theme` 自动重映射
+- 不在新代码里硬编码 Tailwind 数值色（`bg-cyan-500`）—— cyan / sky / lime / teal 等未做 override，会保留原始冷调
+
+---
+
+## 13. 版本
+
+- **v0.4**（2026-05-14）：用 Tailwind v4 `@theme` 块重定义 zinc/violet/emerald/pink/rose/amber/orange 调色板色阶，让业务组件原生 utility 自动对接 creator 主题色，省去 200+ 处手动 sed。
+- v0.3（2026-05-14）：按业务主线重新组织。Sidebar 3 分组、console overview 围绕 5 步业务主线、landing 加 5 步业务主线区。
 - v0.2（2026-05-14）：按用户上传参考图重做。组件库新增 Avatar / Tabs / GradientBlock；KpiCard 加 gradient；Sidebar 加 badge；Button 改 pill + dark/accent；Chip 扩 11 种业务 tone。
 - v0.1（2026-05-13）：首版 Creator-Friendly（被判定营销页化）。
 
-后续若要改主题，更新 `tokens.css` 即可；组件代码不应硬编码颜色，**业务页面不应虚构业务字段**。
+后续若要改主题，更新 `tokens.css` + `app.css @theme` 即可；组件代码不应硬编码颜色，**业务页面不应虚构业务字段**。
