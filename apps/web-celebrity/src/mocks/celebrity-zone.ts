@@ -4,7 +4,7 @@
 //
 // 内部演示用途：本文件中所有姓名、配图、视频、授权状态、价格均为前端原型
 // 展示，不对外发布、不构成商业授权关系。明星头像 / 封面采用公开可访问
-// 媒体源热链接；视频片段来源于 Pexels 公开 portrait livestreaming-selling 库。
+// 媒体源热链接；视频片段来源于 Pexels / Mixkit 公开视频库。
 // 生产环境替换为商务已授权素材或 AI 生成静态资源。
 //
 // 接入后端真实接口时，整文件仅用作 USE_MOCK=1 模式下的回退数据。
@@ -65,6 +65,37 @@ function hash(s: string): number {
 
 const pickVideo = (seed: string): string =>
   PEXELS_PORTRAIT_VIDEOS[hash(seed) % PEXELS_PORTRAIT_VIDEOS.length];
+
+const VIDEO_LIBRARY_ASSETS = {
+  handmadeSoap: {
+    thumb: "https://assets.mixkit.co/videos/2812/2812-thumb-720-0.jpg",
+    videoUrl: "https://assets.mixkit.co/videos/2812/2812-1080.mp4",
+  },
+  skincareRecord: {
+    thumb: "https://assets.mixkit.co/videos/50406/50406-thumb-720-0.jpg",
+    videoUrl: "https://assets.mixkit.co/videos/50406/50406-1080.mp4",
+  },
+  moisturizerDemo: {
+    thumb: "https://assets.mixkit.co/videos/50417/50417-thumb-720-0.jpg",
+    videoUrl: "https://assets.mixkit.co/videos/50417/50417-1080.mp4",
+  },
+  lemonDrink: {
+    thumb: "https://assets.mixkit.co/uuguweyymur0brc0nxylbipq4wuv",
+    videoUrl: "https://assets.mixkit.co/hzayuj8ukiku0jdcfjgaaew5nrzu",
+  },
+  groceryShelf: {
+    thumb: "https://assets.mixkit.co/videos/6102/6102-thumb-720-0.jpg",
+    videoUrl: "https://assets.mixkit.co/videos/6102/6102-720.mp4",
+  },
+  packageUnboxing: {
+    thumb: "https://assets.mixkit.co/videos/42125/42125-thumb-720-0.jpg",
+    videoUrl: "https://assets.mixkit.co/videos/42125/42125-720.mp4",
+  },
+  portraitStream: {
+    thumb: thumb("portrait-stream-demo"),
+    videoUrl: "https://videos.pexels.com/video-files/7480485/7480485-uhd_2160_3840_25fps.mp4",
+  },
+} as const;
 
 /**
  * 明星头像 / 封面：来自 Wikimedia Commons / TMDB / 百度百科图片 CDN
@@ -514,15 +545,15 @@ export const CELEBRITY_PROJECTS: CelebrityProject[] = [
     starName: "李诞",
     starAvatar: MARKET_STARS[0].avatar,
     status: "进行中",
-    videoCount: 12,
-    totalPlays: "444K",
-    totalInteractions: "12.3K",
-    conversions: 890,
-    gmv: "¥67.8K",
+    videoCount: 3,
+    totalPlays: "49.8K",
+    totalInteractions: "1.6K",
+    conversions: 132,
+    gmv: "¥18.9K",
     createdAt: "2026-04-01",
     pricingTier: "标准版",
-    channels: makeChannels(8, 6, false),
-    quota: { used: 12, total: 50 },
+    channels: makeChannels(2, 1, false),
+    quota: { used: 3, total: 50 },
   },
   {
     id: "proj-summer-drink",
@@ -531,15 +562,15 @@ export const CELEBRITY_PROJECTS: CelebrityProject[] = [
     starName: "李宇春",
     starAvatar: MARKET_STARS[6].avatar,
     status: "进行中",
-    videoCount: 8,
-    totalPlays: "210K",
-    totalInteractions: "5.6K",
-    conversions: 312,
-    gmv: "¥32.1K",
+    videoCount: 1,
+    totalPlays: "12.4K",
+    totalInteractions: "428",
+    conversions: 38,
+    gmv: "¥6.2K",
     createdAt: "2026-04-22",
     pricingTier: "旗舰版",
-    channels: makeChannels(5, 3, true),
-    quota: { used: 8, total: 999 },
+    channels: makeChannels(1, 0, true),
+    quota: { used: 1, total: 999 },
   },
   {
     id: "proj-sport-series",
@@ -548,7 +579,7 @@ export const CELEBRITY_PROJECTS: CelebrityProject[] = [
     starName: "王小羽",
     starAvatar: MARKET_STARS[5].avatar,
     status: "筹备中",
-    videoCount: 3,
+    videoCount: 1,
     totalPlays: "—",
     totalInteractions: "—",
     conversions: 0,
@@ -556,7 +587,7 @@ export const CELEBRITY_PROJECTS: CelebrityProject[] = [
     createdAt: "2026-05-02",
     pricingTier: "标准版",
     channels: makeChannels(0, 0, false),
-    quota: { used: 3, total: 50 },
+    quota: { used: 1, total: 50 },
   },
   {
     id: "proj-spring-festival",
@@ -565,15 +596,15 @@ export const CELEBRITY_PROJECTS: CelebrityProject[] = [
     starName: "迪丽热巴",
     starAvatar: MARKET_STARS[1].avatar,
     status: "已完成",
-    videoCount: 24,
-    totalPlays: "1.2M",
-    totalInteractions: "32.4K",
-    conversions: 2415,
-    gmv: "¥180K",
+    videoCount: 2,
+    totalPlays: "128.2K",
+    totalInteractions: "4.1K",
+    conversions: 518,
+    gmv: "¥46.7K",
     createdAt: "2026-01-10",
     pricingTier: "标准版",
-    channels: makeChannels(15, 9, true),
-    quota: { used: 24, total: 50 },
+    channels: makeChannels(2, 0, true),
+    quota: { used: 2, total: 50 },
   },
 ];
 
@@ -590,9 +621,12 @@ function makeVideos(
     durationSec?: 15 | 30 | 60;
     engine?: CelebrityProjectVideo["engine"];
     daysAgo?: number;
+    createdAt?: string;
+    thumb: string;
+    videoUrl: string;
   }>,
 ): CelebrityProjectVideo[] {
-  const today = new Date("2026-05-06T00:00:00Z");
+  const today = new Date("2026-05-14T00:00:00Z");
   return rows.map((r, i) => {
     const d = new Date(today);
     d.setDate(today.getDate() - (r.daysAgo ?? i + 1));
@@ -608,9 +642,9 @@ function makeVideos(
       plays: r.plays,
       durationSec: r.durationSec ?? 30,
       engine: r.engine ?? "HiGen",
-      thumb: thumb(vid),
-      videoUrl: pickVideo(vid),
-      createdAt: d.toISOString().slice(0, 10),
+      thumb: r.thumb,
+      videoUrl: r.videoUrl,
+      createdAt: r.createdAt ?? d.toISOString().slice(0, 10),
     };
   });
 }
@@ -622,18 +656,32 @@ export const PROJECT_VIDEOS_MAP: Record<ID, CelebrityProjectVideo[]> = {
     "star-li-dan",
     "李诞",
     [
-      { product: "玻尿酸口红 · 樱花粉", status: "已发布", plays: "62K", durationSec: 30, engine: "HiGen" },
-      { product: "陶瓷烫睫毛膏", status: "已发布", plays: "48K", durationSec: 15, engine: "HiGen" },
-      { product: "氨基酸洁面慕斯", status: "已发布", plays: "35K", durationSec: 30, engine: "MiniMax" },
-      { product: "玻尿酸修护精华", status: "已发布", plays: "28K", durationSec: 60, engine: "MiniMax" },
-      { product: "雾面唇釉 4 色礼盒", status: "已发布", plays: "21K", durationSec: 30, engine: "HiGen" },
-      { product: "抗皱面霜 · 升级款", status: "已发布", plays: "18K", durationSec: 30, engine: "HiGen" },
-      { product: "卸妆水 500ml", status: "已发布", plays: "14K", durationSec: 15, engine: "KeLing" },
-      { product: "美白防晒霜 SPF50", status: "已发布", plays: "11K", durationSec: 30, engine: "HiGen" },
-      { product: "夜间修护安瓶", status: "待审核", durationSec: 30, engine: "HiGen" },
-      { product: "持妆粉饼", status: "待审核", durationSec: 30, engine: "MiniMax" },
-      { product: "深层清洁泥膜", status: "生成中", durationSec: 30, engine: "HiGen" },
-      { product: "玻尿酸面膜 8 片装", status: "已驳回", durationSec: 15, engine: "KeLing" },
+      {
+        product: "轻肌氨基酸洁面皂套装",
+        status: "已发布",
+        plays: "18.6K",
+        durationSec: 30,
+        engine: "HiGen",
+        createdAt: "2026-05-11",
+        ...VIDEO_LIBRARY_ASSETS.handmadeSoap,
+      },
+      {
+        product: "直播间保湿精华试用装",
+        status: "已发布",
+        plays: "31.2K",
+        durationSec: 60,
+        engine: "HiGen",
+        createdAt: "2026-05-09",
+        ...VIDEO_LIBRARY_ASSETS.skincareRecord,
+      },
+      {
+        product: "屏障修护保湿霜 50ml",
+        status: "待审核",
+        durationSec: 30,
+        engine: "MiniMax",
+        createdAt: "2026-05-13",
+        ...VIDEO_LIBRARY_ASSETS.moisturizerDemo,
+      },
     ],
   ),
   "proj-summer-drink": makeVideos(
@@ -642,14 +690,15 @@ export const PROJECT_VIDEOS_MAP: Record<ID, CelebrityProjectVideo[]> = {
     "star-li-yuchun",
     "李宇春",
     [
-      { product: "气泡水 · 青提白桃", status: "已发布", plays: "44K", durationSec: 15, engine: "HiGen" },
-      { product: "0 糖燕麦奶", status: "已发布", plays: "38K", durationSec: 30, engine: "MiniMax" },
-      { product: "椰子水 1L", status: "已发布", plays: "29K", durationSec: 30, engine: "HiGen" },
-      { product: "现磨拿铁 · 冷萃", status: "已发布", plays: "22K", durationSec: 15, engine: "KeLing" },
-      { product: "蓝莓益生菌饮", status: "已发布", plays: "18K", durationSec: 30, engine: "HiGen" },
-      { product: "无糖乌龙茶", status: "待审核", durationSec: 30, engine: "MiniMax" },
-      { product: "运动电解质水", status: "生成中", durationSec: 15, engine: "HiGen" },
-      { product: "葡萄气泡苏打", status: "生成中", durationSec: 30, engine: "MiniMax" },
+      {
+        product: "冷压柠檬气泡水 6 瓶装",
+        status: "已发布",
+        plays: "12.4K",
+        durationSec: 15,
+        engine: "KeLing",
+        createdAt: "2026-05-10",
+        ...VIDEO_LIBRARY_ASSETS.lemonDrink,
+      },
     ],
   ),
   "proj-sport-series": makeVideos(
@@ -658,9 +707,14 @@ export const PROJECT_VIDEOS_MAP: Record<ID, CelebrityProjectVideo[]> = {
     "star-wang-xiaoyu",
     "王小羽",
     [
-      { product: "压缩长袖速干衣", status: "生成中", durationSec: 30, engine: "MiniMax" },
-      { product: "缓震慢跑鞋", status: "生成中", durationSec: 60, engine: "HiGen" },
-      { product: "轻量羽毛球拍", status: "生成中", durationSec: 30, engine: "HiGen" },
+      {
+        product: "城市通勤跑鞋 2026 春夏款",
+        status: "生成中",
+        durationSec: 60,
+        engine: "MiniMax",
+        createdAt: "2026-05-14",
+        ...VIDEO_LIBRARY_ASSETS.portraitStream,
+      },
     ],
   ),
   "proj-spring-festival": makeVideos(
@@ -669,12 +723,24 @@ export const PROJECT_VIDEOS_MAP: Record<ID, CelebrityProjectVideo[]> = {
     "star-dilireba",
     "迪丽热巴",
     [
-      { product: "新春礼盒 · 坚果八味", status: "已发布", plays: "180K", durationSec: 30, engine: "MiniMax", daysAgo: 90 },
-      { product: "老字号牛肉干", status: "已发布", plays: "150K", durationSec: 30, engine: "HiGen", daysAgo: 92 },
-      { product: "广式腊肠组合", status: "已发布", plays: "120K", durationSec: 60, engine: "MiniMax", daysAgo: 95 },
-      { product: "茶礼 · 大红袍", status: "已发布", plays: "95K", durationSec: 30, engine: "HiGen", daysAgo: 98 },
-      { product: "糕点 · 玫瑰鲜花饼", status: "已发布", plays: "76K", durationSec: 15, engine: "KeLing", daysAgo: 100 },
-      { product: "冷链海鲜礼包", status: "已发布", plays: "61K", durationSec: 30, engine: "HiGen", daysAgo: 102 },
+      {
+        product: "新春坚果礼盒开箱口播",
+        status: "已发布",
+        plays: "86.4K",
+        durationSec: 30,
+        engine: "MiniMax",
+        createdAt: "2026-01-22",
+        ...VIDEO_LIBRARY_ASSETS.packageUnboxing,
+      },
+      {
+        product: "线下超市年货货架巡拍",
+        status: "已发布",
+        plays: "41.8K",
+        durationSec: 30,
+        engine: "HiGen",
+        createdAt: "2026-01-18",
+        ...VIDEO_LIBRARY_ASSETS.groceryShelf,
+      },
     ],
   ),
 };
