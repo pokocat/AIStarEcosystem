@@ -6,7 +6,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Coins,
@@ -30,8 +30,7 @@ import {
 } from "@/components/creator";
 import { CelebrityShellProvider, useCelebrityShell } from "@/lib/celebrity-shell-context";
 
-function buildGroups(pathname: string, search: string): NavGroup[] {
-  const tab = new URLSearchParams(search ?? "").get("tab") ?? "";
+function buildGroups(pathname: string, tab: string): NavGroup[] {
   const isHref = (href: string) => {
     const [p, q = ""] = href.split("?");
     const t = new URLSearchParams(q).get("tab") ?? "";
@@ -69,8 +68,7 @@ function buildGroups(pathname: string, search: string): NavGroup[] {
   ];
 }
 
-function CrumbsFromPathname(pathname: string, search: string): string[] {
-  const tab = new URLSearchParams(search).get("tab") ?? "";
+function CrumbsFromPathname(pathname: string, tab: string): string[] {
   const map: Record<string, string> = {
     "": "今日",
     market: "明星市场",
@@ -231,18 +229,12 @@ function TipOfDay() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/console";
+  const searchParams = useSearchParams();
+  const tab = searchParams?.get("tab") ?? "";
   const { user } = useAuth();
-  const [search, setSearch] = React.useState("");
 
-  React.useEffect(() => {
-    setSearch(window.location.search);
-    const onPop = () => setSearch(window.location.search);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, [pathname]);
-
-  const groups = buildGroups(pathname, search);
-  const crumbs = CrumbsFromPathname(pathname, search);
+  const groups = buildGroups(pathname, tab);
+  const crumbs = CrumbsFromPathname(pathname, tab);
 
   return (
     <div
