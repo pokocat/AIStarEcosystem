@@ -1,351 +1,328 @@
 # AI 明星带货 · 设计规范（Creator-Friendly）
 
-> 本文件是 `apps/web-celebrity` 子应用的视觉与组件规范，所有页面与子组件须遵循。
-> 来源：用户上传的 `AI IP Design Directions.html` 中 **02 — Creator-Friendly** 方向。
-> 实施：`html data-theme="creator"` 注入主题；令牌定义在 `src/styles/tokens.css`；本地 4 件套组件库在 `src/components/creator/`。
+> 视觉与组件规范来源：用户上传的 "AI IP Design Directions" 参考图（02 — Creator-Friendly · Tokens / Components / Dashboard · AI Short Drama 三块画板）。
+> 实施：`html data-theme="creator"`、令牌在 `src/styles/tokens.css`、本地组件在 `src/components/creator/`。
 
 ---
 
 ## 1. 设计哲学
 
-| 维度 | 说明 |
-|---|---|
-| 受众 | 内容团队 / 品牌方 / 经纪公司运营。需要快速浏览数据、找到下一步动作。 |
-| 风格关键词 | 现代、表达力强、暖色奶油底、紫罗兰强调、大圆角、柔阴影、留白慷慨 |
-| 与另外两个子应用对比 | drama = 影院级暗紫 + 金（cinematic），music = 制作人深色（cyberpunk-ish），celebrity = light mode 奶油 + 紫罗兰 |
-| 字体气质 | Manrope 做 display 标题（轻微圆润）+ Inter 做 sans 正文 + Instrument Serif 做斜体点缀（杂志感） |
+> Modern, expressive, vibrant accents · generous whitespace · content teams.
+
+- 受众：内容团队 / 经纪公司运营 / 品牌方。
+- 关键词：温暖、表达力、饱和多彩、慷慨留白、Manrope display + Instrument Serif accent。
+- 与另外两端区别：drama = 影院级暗紫金，music = 制作人深色，**celebrity = 奶油底 + 多彩调色板 + serif 点睛**。
 
 ---
 
-## 2. 设计令牌（src/styles/tokens.css）
+## 2. 设计令牌
 
-> `:root, [data-theme="creator"]` 同时定义，便于无 data-theme 时也能 fallback。
+### 2.1 表面调色板（Palette · Surface）
 
-### 2.1 颜色
-
-| 令牌 | 值 | 用途 |
+| 名 | 值 | 用途 |
 |---|---|---|
-| `--bg-0` | `#faf7f2` | 画布主底（奶油） |
-| `--bg-1` | `#ffffff` | 卡片白底 |
-| `--bg-2` | `#f3efe7` | 次级背景 / 分隔区 |
-| `--bg-3` | `#ebe5d8` | 三级背景 / hover surface |
-| `--line` | `#e8e1d3` | 默认边线 |
-| `--line-2` | `#d8cfba` | 强边线（输入框、selected） |
-| `--fg-0` | `#1f1a14` | 主文字（墨黑） |
-| `--fg-1` | `#3a3329` | 次级文字 |
-| `--fg-2` | `#7a6f5d` | meta / label |
-| `--fg-3` | `#a89e88` | hint / disabled |
-| `--accent` | `#7c5cff` | 主强调色（紫罗兰） |
-| `--accent-strong` | `#5b3fe0` | hover / 按下态 |
-| `--accent-soft` | `rgba(124, 92, 255, 0.12)` | 浅紫底 / chip 背景 |
-| `--info` | `#22b59a` | 信息态（青绿） |
-| `--success` | `#22b59a` | 成功态 |
-| `--warning` | `#f0a83a` | 警告态（琥珀） |
-| `--danger` | `#ff5b8a` | 错误态（粉红） |
-| `--extra-lime` | `#c4e34a` | 暖色点缀（青柠） |
-| `--extra-peach` | `#ff8a5b` | 暖色点缀（蜜桃） |
+| cream | `#faf7f2` | 画布主底（`--bg-0`） |
+| white | `#ffffff` | 卡片底（`--bg-1`） |
+| sand | `#f3efe7` | 次级背景（`--bg-2`，输入框 / 工具栏底） |
+| line | `#ebe5d8` → `#e8e1d3` | 边线 / 弱分隔（`--bg-3`、`--line`） |
+| line/2 | `#d8cfba` | 强边线 / 输入框 outline（`--line-2`） |
+| ink | `#1f1a14` | 主文字 / 黑色 CTA 按钮底色 |
 
-### 2.2 字体
+### 2.2 强调调色板（Palette · Accent，6 色）
+
+| 名 | 值 | 用途 |
+|---|---|---|
+| violet | `#7c5cff` | 主强调（`--accent`） |
+| lime | `#c4e34a` | 增长 / 数据点缀 |
+| peach | `#ff8a5b` | scripting 状态 / 暖色 |
+| rose | `#ff5b8a` | romance tag / danger |
+| teal | `#22b59a` | comedy / success |
+| amber | `#f0a83a` | slice / filming / warning |
+
+### 2.3 业务 tag 色（参考图 Cards · Persona 多色 chip）
+
+| Tag | tone | color |
+|---|---|---|
+| Romance | romance | rose `#ff5b8a` |
+| Slice-of-life | slice | amber `#f0a83a` |
+| Comedy | comedy | teal `#22b59a` |
+| Drama | drama | violet `#7c5cff` |
+
+### 2.4 状态 chip 色（参考图 Table · Drama series + scene queue kanban）
+
+| Status | tone | color |
+|---|---|---|
+| filming | filming | amber |
+| rendering | rendering | violet |
+| scripting | scripting | peach |
+| editing | editing | teal |
+| published | published | teal (success) |
+| draft | draft | fg-3（灰） |
+| archived | archived | fg-3（灰） |
+
+### 2.5 字体
 
 | 令牌 | 值 |
 |---|---|
 | `--font-sans` | `Inter`（next/font 注入） |
-| `--font-display` | `Manrope`（次重 5/6/7/8） |
-| `--font-serif` | `Instrument Serif`（正体 + 斜体） |
+| `--font-display` | `Manrope`（500/600/700/800） |
+| `--font-serif` | `Instrument Serif`（正体 + **italic 点睛**） |
 | `--font-mono` | `JetBrains Mono` |
 
-### 2.3 圆角
+### 2.6 圆角 / Radius
 
 | 令牌 | 值 | 用途 |
 |---|---|---|
-| `--radius-sm` | `6px` | 内嵌缩略图、小 chip |
-| `--radius-md` | `10px` | 输入框、按钮（非 pill 时）、二级卡片 |
-| `--radius-lg` | `16px` | 主卡片 |
-| `--radius-xl` | `24px` | hero 大卡、CTA 大卡 |
-| `--radius-pill` | `999px` | 按钮、chip、积分徽章 |
+| `--radius-sm` | 6px | chip 内层 / 小标签 |
+| `--radius-md` | 10px | 输入框、Avatar 方形、tag、二级卡 |
+| `--radius-lg` | 16px | 主卡 / KPI 卡 / GradientBlock |
+| `--radius-xl` | 24px | hero 大卡（少用） |
+| `--radius-pill` | 999px | **所有按钮 + chip + 搜索框 + tabs** |
 
-### 2.4 阴影
+### 2.7 阴影 / shadow
 
 | 令牌 | 值 |
 |---|---|
-| `--shadow-sm` | `0 1px 2px rgba(31, 26, 20, 0.04)` |
-| `--shadow-md` | `0 6px 20px rgba(31, 26, 20, 0.06)` |
-| `--shadow-lg` | `0 20px 48px rgba(31, 26, 20, 0.08)` |
+| `--shadow-soft` | `0 1px 2px rgba(31, 26, 20, 0.04)` |
+| `--shadow-lift` | `0 6px 20px rgba(31, 26, 20, 0.06)` |
+| `--shadow-pop` | `0 20px 48px rgba(31, 26, 20, 0.08)` |
 
-### 2.5 渐变
+### 2.8 渐变（KPI 卡 + 剧集卡 + Avatar 来源）
 
-| 令牌 | 值 | 用途 |
+| 令牌 | 配色 | 用途 |
 |---|---|---|
-| `--gradient-violet` | `linear-gradient(135deg, #7c5cff 0%, #b4a4ff 100%)` | 品牌 mark、主按钮、明星卡封面 |
-| `--gradient-peach` | `linear-gradient(135deg, #ff8a5b 0%, #ffc8a4 100%)` | 暖色 hero、综艺型明星 |
-| `--gradient-lime` | `linear-gradient(135deg, #c4e34a 0%, #e3f29a 100%)` | 增长 / 数据 KPI |
-| `--gradient-hero` | `linear-gradient(135deg, #7c5cff 0%, #ff5b8a 50%, #ff8a5b 100%)` | 标题渐变文字 / 高级 hero |
-
-### 2.6 字距
-
-| 令牌 | 值 |
-|---|---|
-| `--tracking-tight` | `-0.025em`（大标题用） |
-| `--tracking-wide` | `0.1em`（eyebrow / mono 标签用） |
+| `--gradient-violet` | 紫罗兰 → 浅紫 | 主品牌 |
+| `--gradient-peach` | 桃 → 杏 | 暖色 |
+| `--gradient-rose` | 玫红 → 粉 | 高曝光 |
+| `--gradient-teal` | 青绿 → 浅青 | 状态正常 |
+| `--gradient-lime` | 青柠 → 嫩绿 | 增长 |
+| `--gradient-amber` | 琥珀 → 杏 | 警告 |
+| `--gradient-sunset` | 玫 → 桃 → 琥珀 | 三色暖渐变 |
+| `--gradient-aurora` | 紫 → 玫 → 青 | 三色冷暖渐变 |
 
 ---
 
-## 3. 全局工具类
+## 3. 工具类
 
 | Class | 作用 |
 |---|---|
-| `.creator-eyebrow` | mono 小标签：`font-mono`、`uppercase`、间距 `0.1em`、11px、`var(--fg-2)` |
-| `.creator-serif` | 切到 Instrument Serif（斜体点缀场景） |
-| `.creator-mono` | 切到 JetBrains Mono（数据 / 时间戳） |
-| `.creator-text-gradient` | 标题渐变文字（紫→粉→桃） |
-| `.creator-bg-violet` | 紫罗兰渐变背景 |
-| `.creator-bg-peach` | 蜜桃渐变背景 |
+| `.eyebrow` | mono 上标：10px、`uppercase`、间距 `0.1em`、`var(--fg-2)` |
+| `.serif-italic` | **Instrument Serif italic 400** —— hero 标题点睛、Tip of day |
+| `.mono` | 切到 JetBrains Mono |
+| `.serif` | 切到 Instrument Serif（正体） |
 
 ---
 
-## 4. 本地组件库（src/components/creator/）
+## 4. 组件库 API（src/components/creator/）
 
-### Button
+### Button — 圆角 pill，4 种 variant
 
 ```tsx
-<Button variant="primary | secondary | ghost | outline | danger" size="sm | md | lg">
-  按钮文字
-</Button>
+<Button variant="dark | accent | secondary | ghost | icon | danger" size="sm | md | lg" />
 ```
 
-- 所有 variant 圆角都是 `--radius-pill`
-- `primary`：紫色实心 `var(--accent)` + 白字
-- `secondary`：白底 + 1px line + 主文字
-- `ghost`：透明 + meta 文字
-- `outline`：透明 + 紫色边 + 紫色字
-- `danger`：透明 + 红色边
+- `dark`：黑色实心（`var(--ink)`） + 白字 —— **主 CTA**
+- `accent`：紫色实心（`var(--accent)`） + 白字 —— **次 CTA**（如 "+ New scene"）
+- `secondary`：白底 + 1px line + 黑字
+- `ghost`：透明 + meta 字
+- `icon`：圆形 / 方形小按钮（icon-only）
+- `danger`：透明 + 红边
+- 所有 size 圆角统一 `--radius-pill`。
 
 ### Card
 
 ```tsx
-<Card elevated xl>...</Card>
+<Card />            // bg-1 + 1px line + radius-lg
+<Card glass />      // 同（creator 主题下无差别）
 ```
 
-- `elevated`：加 `--shadow-md` 突出主卡；不加时只有 `--shadow-sm` 极柔
-- `xl`：圆角换 `--radius-xl`（24px）用于 hero / CTA
-- 默认 `--radius-lg`（16px）+ `--bg-1` 白底 + 1px line
+阴影自己加（一般用 `var(--shadow-soft)`）。
 
-### Chip
+### Chip — sans 字体、pill 圆角、浅色填充
 
 ```tsx
-<Chip tone="accent | success | warning | danger | info | peach | lime | neutral" solid>
-  ...
-</Chip>
+<Chip tone="romance | slice | comedy | drama | filming | rendering | scripting | editing | published | draft | archived | accent | success | warning | danger | info | neutral" size="sm | md" />
 ```
 
-- 默认空心：浅色底（`color-mix 10%`）+ 边框（`28%`）+ 主文字色
-- `solid`：实心 + 白字（强 CTA 场景）
+填充色公式：`color-mix(in srgb, ${color} 14%, transparent)`，前景字直接用 tone color。
 
 ### KpiCard
 
 ```tsx
-<KpiCard label="..." value="..." delta="..." spark={[...]} tone="..." />
+<KpiCard
+  label="..."
+  value="..."
+  delta="..."
+  spark={[...]}
+  tone="..."
+  gradient="violet | peach | rose | teal | lime | amber | sunset | aurora"   // 可选：渐变背景
+/>
 ```
 
-- elevated 主卡，圆角 lg
-- 大值 32px Manrope，delta mono + tone 着色
-- spark 80×32 SVG 折线，颜色绑 tone
+不传 `gradient` 时是白底 + 数据；传时是渐变背景 + 白色数据（参考图右上 4 个炫色 KPI 卡）。
+
+### Avatar — 多色渐变方块/圆形
+
+```tsx
+<Avatar seed="演员名 / ID" size={32} shape="circle | square" />
+```
+
+颜色用 `hash(seed) % 8` 选 8 种渐变之一，**同一 ID 永远同色**。无图片场景下作头像 / 卡片缩略。
+
+### GradientBlock — 剧集卡 hero 装饰
+
+```tsx
+<GradientBlock seed="..." height={140} topLeft={...} topRight={...} bottom={...} />
+```
+
+渐变背景 + 高光叠层 + 4 个槽位（topLeft / topRight / bottom / children）。Active series 卡片、明星 showcase 卡都用它。
+
+### Tabs
+
+```tsx
+<Tabs items={[{ id, label, count? }]} active="..." onSelect={...} size="sm | md" />
+```
+
+pill 圆角分段按钮组（参考图 Board / Timeline / List）。
+
+### Meter / Input / DataTable / Sidebar / Topbar
+
+形态与 scaffold 一致；细节见组件文件。**Sidebar item 支持 `badge`**（红圆数字角标，参考图 Scenes [4]）。
 
 ---
 
-## 5. 页面布局规范
+## 5. 页面布局
 
 ### 5.1 Landing（`src/app/page.tsx`）
 
 ```
-+------------------------------------------------+
-| header (奶油底)                                  |
-|   [Logo + 品牌字]    [胶囊 nav]    [紫色 CTA]    |
-+------------------------------------------------+
-| hero 两栏                                        |
-|   左：Chip + 76px 大标题（斜体 serif 高亮中段）   |
-|        + 副标 + 双 CTA                           |
-|   右：3 张倾斜叠层卡（紫桃渐变明星预览）          |
-+------------------------------------------------+
-| stats 大卡：4 列数据矩阵                         |
-+------------------------------------------------+
-| features：3 张能力卡（紫 / 桃 / 青柠 icon bg）   |
-+------------------------------------------------+
-| CTA 大卡：紫色实心 + 白色按钮                    |
-+------------------------------------------------+
-| footer：mono 小品牌字 + 4 个外链                 |
-+------------------------------------------------+
++------------------------------------------+
+| header   [logo] [hash nav]  [secondary][accent]
++------------------------------------------+
+| hero 两栏                                  |
+|   左：eyebrow + 56px 大标题（serif 高亮）  |
+|        + 副标 + 双按钮（dark + secondary）  |
+|   右：实时看板 Card（GradientBlock hero +   |
+|        4 PreviewStat + 4 tag chips）       |
++------------------------------------------+
+| Showcase 4 列 GradientBlock 卡片            |
++------------------------------------------+
+| Features 3 张 Card                         |
++------------------------------------------+
+| CTA 大卡（sand bg + accent 按钮）           |
++------------------------------------------+
+| footer mono                                |
++------------------------------------------+
 ```
 
 ### 5.2 Login（`src/app/login/page.tsx`）
 
+居中 440px：
+- Brand mark + 28px 大标题（serif 高亮"经纪公司"）
+- 主 Card：账号列表（Avatar + 名 + chip）+ dark 主按钮 + 手动输入子区
+- 激活入口 Card（紫色 icon + 文字 + 箭头）
+
+### 5.3 Console layout（`src/app/console/layout.tsx`）
+
+220px sidebar + topbar 64px：
+- **Sidebar**：紫色 iP mark + WORKSPACE 分组（今日 / 明星市场）+ DRAMA 分组（明星阵容 / 切片队列[4] / 项目流水线 / 商品库 / 数据中心）+ 底部 **Tip of the day**（sand bg 小贴士）+ 用户档案
+- **Topbar**：mono breadcrumb（"Studio / 明星带货 / 今日"）+ flex spacer + pill 搜索框（含 ⌘K）+ 紫色积分 chip + Export + accent "+ New scene" + Avatar + LogOut icon
+
+### 5.4 Console Overview（`/console`，仿参考图 Dashboard · AI Short Drama）
+
 ```
-+----------------------------------+
-|  双光斑背景（紫 + 桃 radial）       |
-|                                  |
-|    Brand 头部（mark + 副标）       |
-|    32px 大标题（斜体高亮"经纪公司"）|
-|                                  |
-|    480px elevated xl 卡片：        |
-|      账号选择 list（active 紫边）  |
-|      紫色实心 pill 主按钮           |
-|      分割 + 手动输入用户名           |
-|                                  |
-|    激活入口 row 卡片                |
-|    底部 mono dev hint              |
-+----------------------------------+
++-----------------------------------------+
+| WEDNESDAY · MAY 14  (mono)                |
+| 34px Good morning, Ami. _let's shoot...   |
+|                              [import] [▶ open studio]
++-----------------------------------------+
+| 4 KPI 渐变卡（violet / peach / rose / teal）
++-----------------------------------------+
+| Active drama series (2/3)      Your cast (1/3)
+|   6 GradientBlock 剧集卡        Avatar list × 6
++-----------------------------------------+
+| Today's scene queue · what we're shooting
+|   4 列 kanban：Scripting / Filming / Editing / Published
+|   每张卡：Avatar + 标题 + meta + "+ Add scene"
++-----------------------------------------+
 ```
 
-### 5.3 Console Shell（`src/app/console/layout.tsx`）
+### 5.5 Console 子 tab（`?tab=*`）
 
-- **侧栏（260px，白底）**：品牌 mark + Workspace 分组 + 6 个 sidebar 项 + 底部"返回首页"link
-  - active 态：`var(--accent-soft)` 紫底 + `var(--accent)` 紫字 + 加粗
-  - hover 态：透明 → `var(--bg-2)`
-- **顶栏（64px，白底，1px 底边）**：mono 路径 + flex spacer + 胶囊搜索（含 ⌘K）+ 紫色积分胶囊 + 通知圆按钮 + 用户头像胶囊 + 退出圆按钮
-- **main**：奶油底 + 28/32px padding
-
-### 5.4 Console Overview（`/console`，无 tab）
-
-- hero：eyebrow + 38px 大标题（斜体逗号高亮）+ meta 行 + 双 CTA
-- 4 KPI 网格（带 sparkline）
-- 主体两列：
-  - 左 2/3：头部 4 明星卡（紫/桃渐变封面 + TOP chip + 详情链接）
-  - 右 1/3：近期项目 list + 快捷动作 list
-- 底部 4 个模块卡（明星市场 / 我的项目 / 视频中心 / 商品库）
-
-### 5.5 Console 子 tab（`/console?tab=*`）
-
-- 渲染原 celebrity-zone 业务组件（33 个）
-- 业务组件已批量染色到 Creator 风（详见 §6）
-- 主背景沿用 main 区奶油底，无额外 surface 包裹
+渲染原 celebrity-zone 业务组件（33 个）。组件已经过批量染色（cyan/purple → violet，white → zinc，black → bg-1）；继续在 light 主题下展示。
 
 ---
 
-## 6. 业务组件染色规则（celebrity-zone 33 个 Tailwind 组件）
-
-为统一全站视觉，业务组件经 sed 批量替换：
-
-### 6.1 中性色（深色 glass → light mode）
-
-| 原 | 改 |
-|---|---|
-| `text-white` | `text-zinc-900` |
-| `text-white/95` ~ `text-white/80` | `text-zinc-700` ~ `text-zinc-800` |
-| `text-white/75` ~ `text-white/50` | `text-zinc-500` ~ `text-zinc-600` |
-| `text-white/45` ~ `text-white/30` | `text-zinc-300` ~ `text-zinc-400` |
-| `text-white/25` ~ `text-white/10` | `text-zinc-200` ~ `text-zinc-300` |
-| `border-white/30` ~ `border-white/10` | `border-zinc-200` ~ `border-zinc-300` |
-| `border-white/5` | `border-zinc-100` |
-| `bg-white/[0.02..0.08]` | `bg-zinc-50` / `bg-zinc-100` / `bg-zinc-200` |
-| `bg-black` / `bg-zinc-9XX` | `bg-white` |
-| `bg-black/60..80` | `bg-white/90 backdrop-blur-md` |
-
-### 6.2 强调色映射
-
-| 原（深色霓虹） | 改（Creator 主题） |
-|---|---|
-| `cyan-XX` 全系列 | `violet-XX` |
-| `purple-XX` 全系列 | `violet-XX` |
-| `fuchsia-XX` 全系列 | `violet-XX` |
-| `rose-XX` 全系列 | `pink-XX` |
-| `amber-XX` | 保留（作 warning / hot 标识） |
-| `emerald-XX` | 保留（作 success） |
-| `pink-XX` | 保留（作 emphasis / 配 peach） |
-| `orange-XX` | 保留（作 peach 暖色） |
-
-### 6.3 阴影
-
-`shadow-black/30..50` → `shadow-zinc-200/50`（柔和浅阴影）
-
----
-
-## 7. 间距与栅格
-
-| 维度 | 推荐值 |
-|---|---|
-| 页面外 padding | desktop 32px / mobile 16px |
-| 卡片内 padding | 主卡 `20px 22px` ~ `26px 28px` ；hero / CTA 大卡 `32px 36px` ~ `48px 52px` |
-| 卡片之间 gap | 16–18px |
-| KPI 网格 gap | 16–18px |
-| 模块/feature 卡之间 gap | 18px |
-| 标题与副标之间 | 8–10px |
-| 章节之间 | 24–32px |
-
----
-
-## 8. 排版尺度
+## 6. 排版尺度
 
 | 层级 | 字号 / 字重 / 字距 | 字体 | 用途 |
 |---|---|---|---|
-| hero 巨标 | 64–88px / 800 / -0.025em | Manrope display | landing hero 标题 |
-| h1 页面标题 | 36–38px / 700 / -0.025em | Manrope display | 各页主标题（含 console overview） |
-| h2 章节 | 28–32px / 700 / -0.025em | Manrope display | CTA / section 内标题 |
-| h3 卡片标题 | 17–19px / 600 / -0.2em | Manrope display | KPI、模块卡 |
-| 段落 | 14–17px / 400 / 默认 | Inter | description / 段落 |
-| eyebrow | 11px / 500 / 0.1em | JetBrains Mono | 小标签 / kicker，uppercase |
-| meta / hint | 11–12.5px / 400 / 0.3em | JetBrains Mono | 时间戳、ID、状态文字 |
-| 标题斜体点缀 | 与上下文同号 / 400 / italic | Instrument Serif | landing 标题强调段、登录大字"经纪公司" |
+| Display | 40+px / 700 / -0.025em | Manrope | landing hero 大标 |
+| H1 | 28-34px / 600 / -0.025em | Manrope | 页面主标题（含 console hero） |
+| H2 | 22px / 600 | Manrope | 章节标题 / 卡片标题 |
+| H3 | 16px / 600 | Manrope | 子卡片 |
+| Body | 14px / 400 | Inter | 段落 / 描述 |
+| Meta | 11-12.5px / 500 / 0.3em | JetBrains Mono | 时间戳、ID、状态、breadcrumb |
+| Eyebrow | 10px / 500 / 0.1em | JetBrains Mono | uppercase 小标签 / kicker |
+| Italic accent | 与上下文同号 / 400 | Instrument Serif | **hero 标题强调段（"let's shoot something today."）** |
 
 ---
 
-## 9. 交互态
+## 7. 交互态
 
 | 状态 | 视觉规则 |
 |---|---|
-| hover | 加深 1 档（如 `bg-zinc-50` → `bg-zinc-100`）；按钮加 `opacity 0.9` |
-| active / selected | `border` 换 `var(--accent)`；`bg` 换 `var(--accent-soft)`；文字换 `var(--accent)`，字重 +100 |
-| focus | 加 2px outline `color-mix(in srgb, var(--accent) 30%, transparent)`，offset 2px |
-| disabled | `opacity 0.5` + `cursor: not-allowed` |
+| hover (按钮) | `opacity: 0.92` |
+| hover (卡片可点) | `boxShadow: var(--shadow-lift)` |
+| active / selected (sidebar) | bg `var(--accent-soft)` + 字 `var(--accent-strong)` + icon `var(--accent)` |
+| active (chip 选中) | 同上 |
+| focus | 2px outline `color-mix(in srgb, var(--accent) 30%, transparent)` |
+| disabled | `opacity: 0.5` + `cursor: not-allowed` |
 
 ---
 
-## 10. 主题切换流程
-
-1. 在 `apps/web-celebrity/src/app/layout.tsx` 中：
-   - 字体：用 `next/font/google` 注入 Inter / Manrope / Instrument Serif / JetBrains Mono → 4 个 CSS 变量绑 `--font-*`
-   - html 标签上挂 `data-theme="creator"`
-2. `src/styles/app.css` 末尾 `@import './tokens.css'`，让 `:root, [data-theme="creator"]` 内的 CSS 变量被注入；并在 `@layer base` 内用 `html[data-theme="creator"] body` 覆盖 `@ai-star-eco/ui/styles/globals.css` 的 `bg-background`
-3. 所有页面 / 组件 **优先用 CSS 变量** 而非硬编码颜色；Tailwind 类只用于 layout / spacing
-4. 切换主题（未来）只需改 `data-theme` 值并提供对应令牌段，无需改组件代码
-
----
-
-## 11. 三 sub-app 视觉风格对照
+## 8. 三 sub-app 视觉风格对照
 
 | sub-app | 风格方向 | 主色 | 主底 | 字体 | data-theme |
 |---|---|---|---|---|---|
-| web-music | 制作人深色（cyberpunk-ish） | 紫罗兰 / 粉 | 黑 | Inter + Space Grotesk | （无 / 默认 dark） |
-| web-drama | cinematic premium | 金色 `#d4af6a` | 暗紫近黑 `#0a0810` | Plus Jakarta Sans + Instrument Serif + JetBrains Mono | `premium` |
-| **web-celebrity** | **Creator-Friendly** | **紫罗兰 `#7c5cff`** | **奶油 `#faf7f2`** | **Inter + Manrope + Instrument Serif + JetBrains Mono** | **`creator`** |
+| web-music | 制作人深色 | 紫罗兰 / 粉 | 黑 | Inter + Space Grotesk | （默认） |
+| web-drama | cinematic premium | 金 `#d4af6a` | 暗紫近黑 `#0a0810` | Plus Jakarta + Instrument Serif + JetBrains Mono | `premium` |
+| **web-celebrity** | **Creator-Friendly · 参考图风** | **violet `#7c5cff` + 6 色调色板** | **奶油 `#faf7f2`** | **Inter + Manrope + Instrument Serif + JetBrains Mono** | **`creator`** |
 
 ---
 
-## 12. 添加新页面的清单
+## 9. 添加新页面 checklist
 
-1. 路由文件放 `src/app/console/<name>/page.tsx`（或子 tab 用 `?tab=<name>`）
-2. 引入：`import { Button, Card, Chip, KpiCard } from "@/components/creator";`
-3. 标题用 Manrope `var(--font-display)`，meta 用 `creator-eyebrow`
-4. 颜色一律走 CSS 变量（`var(--accent)` / `var(--fg-0)` 等），禁止硬编码颜色
-5. 主要内容卡用 `<Card elevated>`，hero 用 `<Card xl elevated>`
-6. 按钮一律用本地 `<Button>`，**不要**用 `@ai-star-eco/ui/ui/button`（那是 shadcn dark 风）
+1. 路由放 `src/app/console/<name>/page.tsx`（或 `?tab=`）
+2. import `@/components/creator` 的组件 —— **不要**用 shadcn 或 `@ai-star-eco/ui` 的 dark 版组件
+3. 标题用 Manrope（`var(--font-display)`），眉标用 `.eyebrow`，斜体高亮用 `.serif-italic`
+4. 主按钮 `<Button variant="dark">`，紫色 CTA `<Button variant="accent">`
+5. 状态 chip 走 `<Chip tone="filming | scripting | published | ..." />`
+6. 头像 / 缩略图用 `<Avatar seed={id} />`（不要硬编码渐变）
+7. 颜色一律 `var(--...)` 变量，禁止硬编码 hex
+8. 圆角用 `var(--radius-*)`；按钮全部 `pill`，卡片 `lg`，chip `pill`
+9. 数据类 KPI 用 `<KpiCard gradient="violet | peach | rose | teal">` 上色
 
 ---
 
-## 13. 不规范的常见 anti-pattern
+## 10. anti-pattern + 改法
 
 | 反例 | 改 |
 |---|---|
-| `<div className="bg-black text-white">` | `<div style={{ background: 'var(--bg-1)', color: 'var(--fg-0)' }}>` |
-| 硬编码 `#7c5cff` | 用 `var(--accent)` |
-| 直接 import shadcn `<Button>` 在新页面 | 用 `@/components/creator` 的 `<Button>` |
-| 用 `text-white/45` 一类深色透明 | 用 `text-zinc-400` 或 `var(--fg-2)` |
-| 用 `bg-amber-500/[0.08]` 做强调底 | 用 `var(--accent-soft)` |
-| `<h1 className="text-4xl font-bold">` | `<h1 style={{ fontSize: 36, fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>` |
+| `<button style={{ background: '#000' }}>` | `<Button variant="dark">` |
+| 用 shadcn `<Button>` | 改用 `@/components/creator` 的 |
+| `<h1 className="text-4xl font-bold">` | `<h1 style={{ fontSize: 34, fontWeight: 600, fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>` |
+| 硬编码 `#7c5cff` | `var(--accent)` |
+| Chip 用 `bg-amber-500/[0.1] text-amber-700` | `<Chip tone="filming">` |
+| Hero 标题全部用一个字体 | 用 Manrope，部分用 `.serif-italic` 点睛 |
+| 头像用单一灰色方块 | `<Avatar seed={id} />` 多色渐变 |
+| sidebar 选中用浅灰 | 选中用 `var(--accent-soft)` 紫底 |
 
 ---
 
-## 14. 版本
+## 11. 版本
 
-- **v0.1**（2026-05-13）：初版。重构 landing / login / console shell / console overview 全部到 Creator-Friendly；批量染色 celebrity-zone 33 个业务组件（cyan/purple → violet，white → zinc，black → cream）。
+- **v0.2**（2026-05-14）：按用户上传参考图重做。组件库新增 Avatar / Tabs / GradientBlock；KpiCard 加 gradient 属性；Sidebar 加 badge；Button 改 pill + dark/accent 双主按钮；Chip 扩 11 种业务 tone。Landing / login / console layout / overview 全部用新组件重写。
+- v0.1（2026-05-13）：首版 Creator-Friendly，被用户判定不好看（太营销页化）。
 
 后续若要改主题，更新 `tokens.css` 即可；组件代码不应硬编码颜色。

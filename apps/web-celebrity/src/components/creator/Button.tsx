@@ -1,8 +1,11 @@
 "use client";
 
+// 参考图 Buttons 区：dark（黑实心）/ accent（紫实心）/ secondary（白底+边）/ ghost（透明+灰字）
+// 圆角全部 pill；中等留白；mono 反而较少用，主要用 sans。
+
 import { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 
-type Variant = "primary" | "secondary" | "ghost" | "outline" | "danger";
+type Variant = "dark" | "accent" | "secondary" | "ghost" | "icon" | "danger";
 type Size = "sm" | "md" | "lg";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,7 +15,12 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyle: Record<Variant, CSSProperties> = {
-  primary: {
+  dark: {
+    background: "var(--ink)",
+    color: "#ffffff",
+    border: "1px solid var(--ink)",
+  },
+  accent: {
     background: "var(--accent)",
     color: "#ffffff",
     border: "1px solid var(--accent-strong)",
@@ -27,10 +35,10 @@ const variantStyle: Record<Variant, CSSProperties> = {
     color: "var(--fg-1)",
     border: "1px solid transparent",
   },
-  outline: {
-    background: "transparent",
-    color: "var(--accent)",
-    border: "1px solid var(--accent)",
+  icon: {
+    background: "var(--bg-1)",
+    color: "var(--fg-1)",
+    border: "1px solid var(--line)",
   },
   danger: {
     background: "transparent",
@@ -40,13 +48,13 @@ const variantStyle: Record<Variant, CSSProperties> = {
 };
 
 const sizeStyle: Record<Size, CSSProperties> = {
-  sm: { padding: "7px 14px", fontSize: 12.5, borderRadius: "var(--radius-pill)" },
-  md: { padding: "10px 20px", fontSize: 13.5, borderRadius: "var(--radius-pill)" },
-  lg: { padding: "13px 28px", fontSize: 14.5, borderRadius: "var(--radius-pill)" },
+  sm: { padding: "6px 14px", fontSize: 12.5, height: 30 },
+  md: { padding: "9px 18px", fontSize: 13.5, height: 36 },
+  lg: { padding: "11px 22px", fontSize: 14.5, height: 42 },
 };
 
 export function Button({
-  variant = "primary",
+  variant = "dark",
   size = "md",
   style,
   children,
@@ -60,10 +68,12 @@ export function Button({
         justifyContent: "center",
         gap: 8,
         fontFamily: "var(--font-sans)",
-        fontWeight: 600,
+        fontWeight: 500,
+        borderRadius: "var(--radius-pill)",
         cursor: "pointer",
-        transition: "background 160ms ease, border-color 160ms ease, transform 160ms ease, opacity 160ms ease",
+        transition: "background 120ms ease, border-color 120ms ease, opacity 120ms ease",
         whiteSpace: "nowrap",
+        boxSizing: "border-box",
         ...variantStyle[variant],
         ...sizeStyle[size],
         ...style,

@@ -1,120 +1,178 @@
 "use client";
 
-// /console/* Creator-Friendly 工作台 shell。
-// 视觉来源：AI IP Design Directions 02（奶油底 + 紫罗兰 active + 大圆角 + 柔阴影）。
+// /console/* shell —— 严格按参考图 Dashboard 实现。
+// Sidebar 220px：紫色 iP mark + WORKSPACE 分组 + DRAMA 分组 + 底部"今日提示"小贴士
+// Topbar：breadcrumb + 搜索 + Export + accent "+ New" + 圆头像
 
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell,
+  Boxes,
+  BarChart3,
+  Calendar,
   Coins,
   LayoutDashboard,
   LogOut,
   Megaphone,
-  Menu,
-  PieChart,
+  Plus,
   Search,
   ShoppingBag,
   Star,
+  Users,
   Video,
-  X,
 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
+import {
+  Avatar,
+  Button,
+  Sidebar,
+  type NavGroup,
+} from "@/components/creator";
 import { CelebrityShellProvider, useCelebrityShell } from "@/lib/celebrity-shell-context";
 
-interface SidebarItem {
-  href: string;
-  icon: React.ElementType;
-  label: string;
+function buildGroups(pathname: string, search: string): NavGroup[] {
+  const tab = new URLSearchParams(search ?? "").get("tab") ?? "";
+  const isHref = (href: string) => {
+    const [p, q = ""] = href.split("?");
+    const t = new URLSearchParams(q).get("tab") ?? "";
+    return pathname === p && tab === t;
+  };
+  return [
+    {
+      title: "Workspace",
+      items: [
+        { icon: LayoutDashboard, label: "今日", href: "/console", selected: isHref("/console") },
+        { icon: Star, label: "明星市场", href: "/console?tab=market", selected: isHref("/console?tab=market") },
+      ],
+    },
+    {
+      title: "Drama",
+      items: [
+        { icon: Users, label: "明星阵容", href: "/console?tab=cast", selected: isHref("/console?tab=cast") },
+        {
+          icon: Video,
+          label: "切片队列",
+          href: "/console?tab=library",
+          selected: isHref("/console?tab=library"),
+          badge: 4,
+        },
+        { icon: Megaphone, label: "项目流水线", href: "/console?tab=projects", selected: isHref("/console?tab=projects") },
+        { icon: Boxes, label: "商品库", href: "/console?tab=products", selected: isHref("/console?tab=products") },
+        { icon: BarChart3, label: "数据中心", href: "/console?tab=data", selected: isHref("/console?tab=data") },
+      ],
+    },
+  ];
 }
 
-const SIDEBAR_ITEMS: SidebarItem[] = [
-  { href: "/console", icon: LayoutDashboard, label: "总览" },
-  { href: "/console?tab=market", icon: Star, label: "明星市场" },
-  { href: "/console?tab=projects", icon: Megaphone, label: "我的项目" },
-  { href: "/console?tab=library", icon: Video, label: "视频中心" },
-  { href: "/console?tab=products", icon: ShoppingBag, label: "商品库" },
-  { href: "/console?tab=data", icon: PieChart, label: "数据中心" },
-];
-
-function SidebarLink({ item, active }: { item: SidebarItem; active: boolean }) {
-  const Icon = item.icon;
-  return (
-    <Link
-      href={item.href}
-      style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "10px 14px",
-        borderRadius: "var(--radius-md)",
-        textDecoration: "none",
-        background: active ? "var(--accent-soft)" : "transparent",
-        color: active ? "var(--accent)" : "var(--fg-1)",
-        fontSize: 13.5,
-        fontWeight: active ? 600 : 500,
-        fontFamily: "var(--font-sans)",
-        transition: "background 160ms, color 160ms",
-        marginBottom: 2,
-      }}
-    >
-      <Icon size={16} />
-      <span>{item.label}</span>
-    </Link>
-  );
+function CrumbsFromPathname(pathname: string, search: string): string[] {
+  const tab = new URLSearchParams(search).get("tab") ?? "";
+  const map: Record<string, string> = {
+    "": "今日",
+    market: "明星市场",
+    cast: "明星阵容",
+    library: "切片队列",
+    projects: "项目流水线",
+    products: "商品库",
+    data: "数据中心",
+  };
+  if (pathname === "/console") return ["Studio", "明星带货", map[tab] ?? "今日"];
+  if (pathname.startsWith("/console/star")) return ["Studio", "明星市场", "详情"];
+  if (pathname.startsWith("/console/projects")) return ["Studio", "项目流水线", "详情"];
+  return ["Studio"];
 }
 
-function TopBar() {
+function TopbarRight() {
   const { wallet } = useCelebrityShell();
   const { user, logout } = useAuth();
   return (
-    <div
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div
+        title="积分余额"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 12px",
+          background: "var(--accent-soft)",
+          border: "1px solid color-mix(in srgb, var(--accent) 22%, transparent)",
+          borderRadius: "var(--radius-pill)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+          color: "var(--accent-strong)",
+          fontWeight: 600,
+        }}
+      >
+        <Coins size={11} /> {wallet ? formatCredits(wallet.totalBalance) : "—"}
+      </div>
+      <Button variant="secondary" size="sm">
+        Export
+      </Button>
+      <Button variant="accent" size="sm">
+        <Plus size={12} />
+        New scene
+      </Button>
+      <Avatar seed={user?.username ?? user?.displayName ?? "anon"} size={32} />
+      <Button variant="icon" size="sm" onClick={logout} title="退出登录" style={{ width: 32, padding: 0 }}>
+        <LogOut size={12} />
+      </Button>
+    </div>
+  );
+}
+
+function CustomTopbar({ crumbs }: { crumbs: string[] }) {
+  return (
+    <header
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 16,
         padding: "14px 28px",
         borderBottom: "1px solid var(--line)",
+        gap: 16,
         background: "var(--bg-0)",
       }}
     >
       <div
-        className="creator-mono"
-        style={{ fontSize: 11.5, color: "var(--fg-2)", letterSpacing: 0.3 }}
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          color: "var(--fg-2)",
+          letterSpacing: 0.3,
+        }}
       >
-        AI 明星带货 <span style={{ color: "var(--fg-3)" }}>/</span> 工作台
+        {crumbs.map((c, i) => (
+          <span key={i}>
+            {c}
+            {i < crumbs.length - 1 && <span style={{ color: "var(--fg-3)" }}> / </span>}
+          </span>
+        ))}
       </div>
-
       <div style={{ flex: 1 }} />
-
-      {/* 搜索框 */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
-          padding: "8px 14px",
+          padding: "7px 14px",
           background: "var(--bg-1)",
           border: "1px solid var(--line)",
           borderRadius: "var(--radius-pill)",
           fontSize: 12.5,
           color: "var(--fg-2)",
-          minWidth: 260,
-          boxShadow: "var(--shadow-sm)",
+          minWidth: 300,
+          boxShadow: "var(--shadow-soft)",
         }}
       >
         <Search size={13} />
-        <span style={{ fontFamily: "var(--font-sans)" }}>搜索明星 / 项目 / 视频…</span>
+        <span>Search scenes, actors, series…</span>
         <span
-          className="creator-mono"
+          className="mono"
           style={{
             marginLeft: "auto",
             padding: "1px 6px",
-            border: "1px solid var(--line-2)",
-            borderRadius: 4,
+            border: "1px solid var(--line)",
+            borderRadius: "var(--radius-sm)",
             fontSize: 10,
             color: "var(--fg-3)",
           }}
@@ -122,280 +180,128 @@ function TopBar() {
           ⌘K
         </span>
       </div>
+      <TopbarRight />
+    </header>
+  );
+}
 
-      {/* 积分徽章 */}
+function TipOfDay() {
+  return (
+    <div
+      style={{
+        padding: "14px 16px",
+        background: "var(--bg-2)",
+        border: "1px solid var(--line)",
+        borderRadius: "var(--radius-md)",
+        marginBottom: 12,
+      }}
+    >
       <div
-        title="积分余额"
+        className="serif-italic"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "7px 14px",
-          background: "var(--accent-soft)",
-          border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
-          borderRadius: "var(--radius-pill)",
+          fontSize: 15,
+          color: "var(--fg-0)",
+          marginBottom: 4,
+          letterSpacing: -0.1,
         }}
       >
-        <Coins size={13} color="var(--accent)" />
-        <span
-          className="creator-mono"
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: "var(--accent-strong)",
-            letterSpacing: 0.2,
-          }}
-        >
-          {wallet ? formatCredits(wallet.totalBalance) : "—"}
-        </span>
+        Tip of the day
       </div>
-
-      {/* 通知按钮 */}
-      <button
-        title="通知"
-        style={{
-          padding: 9,
-          borderRadius: "50%",
-          background: "var(--bg-1)",
-          border: "1px solid var(--line)",
-          color: "var(--fg-2)",
-          cursor: "pointer",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <Bell size={14} />
-      </button>
-
-      {/* 用户头像 */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "5px 16px 5px 5px",
-          background: "var(--bg-1)",
-          border: "1px solid var(--line)",
-          borderRadius: "var(--radius-pill)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: "50%",
-            background: "var(--gradient-violet)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#ffffff",
-            fontSize: 11,
-            fontWeight: 700,
-          }}
-        >
-          {user?.displayName?.[0] ?? "?"}
-        </div>
-        <span
-          style={{
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: "var(--fg-0)",
-            maxWidth: 120,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {user?.displayName ?? "未登录"}
-        </span>
+      <div style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
+        用<span className="mono" style={{ color: "var(--accent)" }}> ⌘K </span>
+        快速切换明星与剧集，节省 80% 鼠标点击。
       </div>
-
-      <button
-        onClick={logout}
-        title="退出登录"
-        style={{
-          padding: 9,
-          borderRadius: "50%",
-          background: "var(--bg-1)",
-          border: "1px solid var(--line)",
-          color: "var(--fg-2)",
-          cursor: "pointer",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <LogOut size={14} />
-      </button>
     </div>
   );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const pathname = usePathname() ?? "/console";
+  const { user } = useAuth();
+  const [search, setSearch] = React.useState("");
 
-  const isActive = (href: string) => {
-    const [path] = href.split("?");
-    if (path === "/console") return pathname === "/console";
-    return pathname?.startsWith(path) ?? false;
-  };
+  React.useEffect(() => {
+    setSearch(window.location.search);
+    const onPop = () => setSearch(window.location.search);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [pathname]);
 
-  const sidebar = (
-    <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "20px 22px",
-          borderBottom: "1px solid var(--line)",
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "var(--radius-md)",
-            background: "var(--gradient-violet)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <Megaphone size={16} color="#ffffff" strokeWidth={2.4} />
-        </div>
-        <div style={{ lineHeight: 1.2 }}>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              fontFamily: "var(--font-display)",
-              color: "var(--fg-0)",
-            }}
-          >
-            AI 明星带货
-          </div>
-          <div className="creator-eyebrow" style={{ fontSize: 9.5 }}>
-            v0.5 · creator
-          </div>
-        </div>
-      </div>
-
-      <nav style={{ padding: "14px 14px", flex: 1, overflowY: "auto" }}>
-        <div
-          className="creator-eyebrow"
-          style={{ padding: "6px 10px 8px", fontSize: 10 }}
-        >
-          Workspace
-        </div>
-        {SIDEBAR_ITEMS.map((item) => (
-          <SidebarLink key={item.href} item={item} active={isActive(item.href)} />
-        ))}
-      </nav>
-
-      <div style={{ padding: "14px 14px", borderTop: "1px solid var(--line)" }}>
-        <Link
-          href="/"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "9px 12px",
-            borderRadius: "var(--radius-md)",
-            fontSize: 12.5,
-            color: "var(--fg-2)",
-            textDecoration: "none",
-            fontFamily: "var(--font-sans)",
-          }}
-        >
-          ← 返回首页
-        </Link>
-      </div>
-    </>
-  );
+  const groups = buildGroups(pathname, search);
+  const crumbs = CrumbsFromPathname(pathname, search);
 
   return (
     <div
       style={{
+        display: "grid",
+        gridTemplateColumns: "220px 1fr",
         height: "100vh",
-        display: "flex",
         background: "var(--bg-0)",
         color: "var(--fg-0)",
-        overflow: "hidden",
         fontFamily: "var(--font-sans)",
       }}
     >
-      <aside
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          width: 260,
-          flexShrink: 0,
-          background: "var(--bg-1)",
-          borderRight: "1px solid var(--line)",
-        }}
-      >
-        {sidebar}
-      </aside>
-
-      {mobileOpen && (
-        <>
-          <div
-            onClick={() => setMobileOpen(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(31,26,20,0.4)",
-              zIndex: 40,
-            }}
-          />
-          <aside
-            style={{
-              position: "fixed",
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: 260,
-              background: "var(--bg-1)",
-              borderRight: "1px solid var(--line)",
-              zIndex: 50,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <button
-              onClick={() => setMobileOpen(false)}
-              aria-label="关闭侧栏"
-              style={{
-                position: "absolute",
-                top: 14,
-                right: 14,
-                color: "var(--fg-2)",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              <X size={18} />
-            </button>
-            {sidebar}
-          </aside>
-        </>
-      )}
-
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <TopBar />
-        <main
+      <Sidebar
+        brand={{ initials: "iP", name: "AI 明星带货", meta: "celebrity · v0.5" }}
+        groups={groups}
+        footer={
+          <>
+            <TipOfDay />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Avatar seed={user?.username ?? user?.displayName ?? "anon"} size={28} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "var(--fg-0)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {user?.displayName ?? "未登录"}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--fg-2)",
+                    fontFamily: "var(--font-mono)",
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  {user?.studio?.name ?? "celebrity studio"}
+                </div>
+              </div>
+              <Link
+                href="/"
+                title="返回首页"
+                style={{
+                  color: "var(--fg-3)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 13,
+                  textDecoration: "none",
+                }}
+              >
+                ↩
+              </Link>
+            </div>
+          </>
+        }
+      />
+      <main style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <CustomTopbar crumbs={crumbs} />
+        <div
           style={{
             flex: 1,
-            overflowY: "auto",
-            padding: "28px 32px",
+            overflow: "auto",
+            padding: "24px 28px 32px",
             background: "var(--bg-0)",
           }}
         >
           {children}
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

@@ -1,16 +1,28 @@
 "use client";
 
+// 参考图 Persona tag + Table status chip：sans 字体、pill 圆角、浅色填充、彩色字。
+// 8 类业务色 + 4 类状态色。
+
 import { ReactNode } from "react";
 
 type Tone =
-  | "accent"
-  | "success"
-  | "warning"
-  | "danger"
-  | "info"
-  | "peach"
-  | "lime"
-  | "neutral";
+  | "accent"           // 紫罗兰
+  | "success"          // 青绿
+  | "warning"          // 琥珀
+  | "danger"           // 玫红
+  | "info"             // 青绿（同 success）
+  | "neutral"          // 灰
+  | "romance"          // 粉
+  | "slice"            // 琥珀
+  | "comedy"           // 青
+  | "drama"            // 紫
+  | "filming"          // 琥珀
+  | "rendering"        // 紫
+  | "scripting"        // 桃
+  | "editing"          // 青
+  | "published"        // 绿
+  | "draft"            // 灰
+  | "archived";        // 灰
 
 const toneVar: Record<Tone, string> = {
   accent: "var(--accent)",
@@ -18,59 +30,46 @@ const toneVar: Record<Tone, string> = {
   warning: "var(--warning)",
   danger: "var(--danger)",
   info: "var(--info)",
-  peach: "var(--extra-peach)",
-  lime: "var(--extra-lime)",
   neutral: "var(--fg-2)",
+  romance: "var(--tag-romance)",
+  slice: "var(--tag-slice)",
+  comedy: "var(--tag-comedy)",
+  drama: "var(--tag-drama)",
+  filming: "var(--extra-amber)",
+  rendering: "var(--accent)",
+  scripting: "var(--extra-peach)",
+  editing: "var(--extra-teal)",
+  published: "var(--success)",
+  draft: "var(--fg-3)",
+  archived: "var(--fg-3)",
 };
 
 export function Chip({
   tone = "accent",
   children,
-  solid,
+  size = "md",
 }: {
   tone?: Tone;
   children: ReactNode;
-  /** 实心紫色按钮风（用于强 CTA chip） */
-  solid?: boolean;
+  size?: "sm" | "md";
 }) {
   const color = toneVar[tone];
-  if (solid) {
-    return (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "4px 12px",
-          borderRadius: "var(--radius-pill)",
-          fontSize: 11,
-          fontFamily: "var(--font-sans)",
-          fontWeight: 600,
-          letterSpacing: 0.2,
-          color: "#ffffff",
-          background: color,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {children}
-      </span>
-    );
-  }
+  const pad = size === "sm" ? "2px 9px" : "3px 11px";
+  const fs = size === "sm" ? 10.5 : 11.5;
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 6,
-        padding: "3px 11px",
+        gap: 5,
+        padding: pad,
         borderRadius: "var(--radius-pill)",
-        fontSize: 11,
+        fontSize: fs,
         fontFamily: "var(--font-sans)",
         fontWeight: 500,
-        letterSpacing: 0.2,
+        letterSpacing: 0.1,
         color,
-        border: `1px solid color-mix(in srgb, ${color} 28%, transparent)`,
-        background: `color-mix(in srgb, ${color} 10%, transparent)`,
+        background: `color-mix(in srgb, ${color} 14%, transparent)`,
         whiteSpace: "nowrap",
       }}
     >
