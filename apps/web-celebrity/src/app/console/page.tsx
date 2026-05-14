@@ -278,6 +278,7 @@ function OverviewView({ focus }: { focus: "overview" | "cast" }) {
                   style={{ textDecoration: "none", color: "inherit" }}
                 >
                   <div
+                    className="hover:bg-[var(--bg-2)] hover:border-[var(--line-2)] transition-colors duration-150"
                     style={{
                       display: "flex",
                       alignItems: "center",

@@ -5,7 +5,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, KeyRound, Loader2, LogIn } from "lucide-react";
+import { ArrowRight, Check, KeyRound, Loader2, LogIn } from "lucide-react";
 import { AuthApi, useAuth } from "@ai-star-eco/api-client";
 import { STUDIO_KIND_LABEL_ZH, type StudioKind } from "@ai-star-eco/types/account";
 import { Avatar, Button, Card, Chip } from "@/components/creator";
@@ -181,10 +181,13 @@ function CelebrityLoginInner() {
                         borderRadius: "var(--radius-md)",
                         background: active ? "var(--accent-soft)" : "var(--bg-1)",
                         border: active
-                          ? "1px solid var(--accent)"
+                          ? "2px solid var(--accent)"
                           : "1px solid var(--line)",
+                        boxShadow: active
+                          ? "0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent)"
+                          : "none",
                         cursor: submitting ? "not-allowed" : "pointer",
-                        transition: "background 120ms, border-color 120ms",
+                        transition: "background 120ms, border-color 120ms, box-shadow 120ms",
                         opacity: submitting ? 0.7 : 1,
                         fontFamily: "var(--font-sans)",
                         display: "flex",
@@ -208,6 +211,24 @@ function CelebrityLoginInner() {
                         <Chip tone={active ? "accent" : "neutral"} size="sm">
                           {STUDIO_KIND_LABEL_ZH[a.studioKind as StudioKind] ?? a.studioKind}
                         </Chip>
+                      )}
+                      {active && (
+                        <span
+                          aria-hidden
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            background: "var(--accent)",
+                            color: "#ffffff",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Check size={13} strokeWidth={3} />
+                        </span>
                       )}
                     </button>
                   );

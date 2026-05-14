@@ -49,15 +49,23 @@ export function PipelineStep({
           position: "relative",
           padding: "16px 16px 14px",
           borderRadius: "var(--radius-md)",
-          background: active || hover ? "var(--bg-1)" : "var(--bg-2)",
+          background: active
+            ? `color-mix(in srgb, ${color} 8%, var(--bg-1))`
+            : hover
+              ? "var(--bg-1)"
+              : "var(--bg-2)",
           border: active
-            ? `1px solid color-mix(in srgb, ${color} 50%, transparent)`
+            ? `1px solid color-mix(in srgb, ${color} 55%, transparent)`
             : `1px solid var(--line)`,
           height: "100%",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          boxShadow: hover || active ? "var(--shadow-soft)" : "none",
+          boxShadow: active
+            ? `0 4px 14px color-mix(in srgb, ${color} 18%, transparent)`
+            : hover
+              ? "var(--shadow-soft)"
+              : "none",
           transform: hover ? "translateY(-1px)" : "translateY(0)",
           transition:
             "background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease",
