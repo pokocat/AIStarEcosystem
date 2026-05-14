@@ -22,12 +22,12 @@ export const MOVIES: Movie[] = [
 ];
 
 export const ADS: Advertisement[] = [
-  { id: "1", brand: "NeuroTech",   product: "智能手环", type: "TVC",     duration: 30, status: "completed", payment: 85000,  views: 2800000 },
-  { id: "2", brand: "Cyber Cola",  product: "能量饮料", type: "digital", duration: 15, status: "completed", payment: 65000,  views: 4200000 },
-  { id: "3", brand: "Luna Fashion",product: "时尚服饰", type: "social",  duration: 60, status: "shooting",  payment: 120000, views: 0 },
+  { id: "1", brand: "蕉下防晒",   product: "全周期防晒衣", type: "TVC",     duration: 30, status: "completed", payment: 85_000,  views: 2_800_000 },
+  { id: "2", brand: "奈雪的茶",   product: "夏日鲜果茶",   type: "digital", duration: 15, status: "completed", payment: 65_000,  views: 4_200_000 },
+  { id: "3", brand: "安踏儿童",   product: "运动跑鞋",     type: "social",  duration: 60, status: "shooting",  payment: 120_000, views: 0 },
 ];
 
 export const VOICE_WORKS: VoiceWork[] = [
-  { id: "1", project: "星际冒险",       type: "animation",   duration: 120, status: "delivered", payment: 45000 },
-  { id: "2", project: "未来世界纪录片", type: "documentary", duration: 60,  status: "recording", payment: 32000 },
+  { id: "1", project: "动画大电影《长安少年行》", type: "animation",   duration: 120, status: "delivered", payment: 45_000 },
+  { id: "2", project: "纪录片《下一站，烟火人间》", type: "documentary", duration: 60,  status: "recording", payment: 32_000 },
 ];
