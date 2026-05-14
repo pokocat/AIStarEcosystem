@@ -26,14 +26,9 @@ const nextConfig = {
       },
     ];
   },
-  // 兼容遗留链接：旧 apps/web 时代 music landing 挂在 /music，新 sub-app
-  // 独占子域后根路径就是 landing，把 /music* 一律重定向回 / 避免 404。
-  async redirects() {
-    return [
-      { source: "/music", destination: "/", permanent: false },
-      { source: "/music/:path*", destination: "/", permanent: false },
-    ];
-  },
+  // 注意：旧 apps/web 时代曾把 music landing 挂在 /music，但子域独立后根 / 就是
+  // landing，且新工作台第二组 "音乐商业" tab 占用了 `/music` 顶层路径，因此该
+  // redirect 已删除（保留会导致 /music → /，把工作台 tab 顶掉）。
 };
 
 export default nextConfig;

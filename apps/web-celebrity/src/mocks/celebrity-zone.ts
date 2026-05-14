@@ -67,20 +67,18 @@ const pickVideo = (seed: string): string =>
   PEXELS_PORTRAIT_VIDEOS[hash(seed) % PEXELS_PORTRAIT_VIDEOS.length];
 
 /**
- * 明星头像 / 封面：来自 Wikimedia Commons / TMDB / World Aquatics / RADII
- * 等公开可访问图片热链接（内部 Demo 用）。后续可替换为商务团队提供的
- * 授权图片或自建 CDN。
+ * 明星头像 / 封面：来自 Wikimedia Commons / TMDB / 百度百科图片 CDN
+ * 等公开可访问图片源，部分已缓存到 public 静态目录（内部 Demo 用）。
+ * 后续可替换为商务团队提供的授权图片或自建 CDN。
  */
 const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
   "star-li-dan": {
-    avatar:
-      "https://imagedelivery.net/WLUarKbmUXuuhDC7PG5_Qw/articles/da99d2b3aa8d7d5703f0906f5f1051f6.jpg/public",
-    cover:
-      "https://imagedelivery.net/WLUarKbmUXuuhDC7PG5_Qw/articles/da99d2b3aa8d7d5703f0906f5f1051f6.jpg/public",
+    avatar: "/celebrities/li-dan-baike.png",
+    cover: "/celebrities/li-dan-baike.png",
   },
-  "star-yi-nengjing": {
-    avatar: "https://upload.wikimedia.org/wikipedia/commons/e/e1/Annie_Yi.jpg",
-    cover: "https://upload.wikimedia.org/wikipedia/commons/e/e1/Annie_Yi.jpg",
+  "star-dilireba": {
+    avatar: "/celebrities/dilireba-wikimedia.jpg",
+    cover: "/celebrities/dilireba-wikimedia.jpg",
   },
   "star-liu-tao": {
     avatar:
@@ -96,11 +94,9 @@ const STAR_PORTRAITS: Record<string, { avatar: string; cover: string }> = {
     avatar: "https://image.tmdb.org/t/p/original/2rwowpw5Dxm2wliRCMW2fVhLtOc.jpg",
     cover: "https://image.tmdb.org/t/p/original/2rwowpw5Dxm2wliRCMW2fVhLtOc.jpg",
   },
-  "star-ning-zetao": {
-    avatar:
-      "https://resources.fina.org/photo-resources/2024/04/14/c078b77f-a020-4a0e-990c-d65d1cccdbea/ae0f08b6-84fb-4ca8-9670-617ca50316cc?width=900",
-    cover:
-      "https://resources.fina.org/photo-resources/2024/04/14/c078b77f-a020-4a0e-990c-d65d1cccdbea/ae0f08b6-84fb-4ca8-9670-617ca50316cc?width=900",
+  "star-wang-xiaoyu": {
+    avatar: "/celebrities/wang-xiaoyu-baike.jpg",
+    cover: "/celebrities/wang-xiaoyu-baike.jpg",
   },
   "star-li-yuchun": {
     avatar: "https://image.tmdb.org/t/p/original/mZGTxovKmbbKSU4jqL7k5kFHyyJ.jpg",
@@ -193,16 +189,16 @@ export const MARKET_STARS: CelebrityStar[] = [
     pricing: makePricingTiers(),
   },
   {
-    id: "star-yi-nengjing",
-    name: "伊能静",
-    avatar: STAR_PORTRAITS["star-yi-nengjing"].avatar,
-    cover: STAR_PORTRAITS["star-yi-nengjing"].cover,
+    id: "star-dilireba",
+    name: "迪丽热巴",
+    avatar: STAR_PORTRAITS["star-dilireba"].avatar,
+    cover: STAR_PORTRAITS["star-dilireba"].cover,
     category: "演员",
-    subCategories: ["歌手", "综艺"],
+    subCategories: ["综艺"],
     isHot: false,
     description:
-      "知名影视演员 · 综艺嘉宾。亲和力强，擅长温馨家庭、女性向商品种草内容。",
-    startingPrice: "¥499起",
+      "知名影视演员 · 综艺嘉宾。时尚表现力强，适合美妆、服饰、轻奢和年轻女性向商品种草内容。",
+    startingPrice: "¥699起",
     pricingTier: "体验版",
     quotaUsed: 3,
     quotaTotal: 10,
@@ -218,7 +214,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       conversionRate: "2.8%",
       gmv: "¥34K",
     },
-    sampleVideos: makeSampleVideos("star-yi-nengjing"),
+    sampleVideos: makeSampleVideos("star-dilireba"),
     pricing: makePricingTiers(),
   },
   {
@@ -236,7 +232,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       scenes: [],
       availableStyles: 0,
       pendingNote: "预计 3 个工作日内完成审核",
-      applyUrl: "/console/star/star-liu-tao/apply",
+      applyUrl: "/star/star-liu-tao/apply",
     },
     stats: {
       totalGenerated: 0,
@@ -262,7 +258,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       status: "unauthorized",
       scenes: [],
       availableStyles: 0,
-      applyUrl: "/console/star/star-shen-teng/apply",
+      applyUrl: "/star/star-shen-teng/apply",
     },
     stats: {
       totalGenerated: 0,
@@ -292,7 +288,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       scenes: ["带货"],
       expireDate: "2026-04-30",
       availableStyles: 3,
-      applyUrl: "/console/star/star-na-ying/apply",
+      applyUrl: "/star/star-na-ying/apply",
     },
     stats: {
       totalGenerated: 96,
@@ -304,14 +300,15 @@ export const MARKET_STARS: CelebrityStar[] = [
     pricing: makePricingTiers(),
   },
   {
-    id: "star-ning-zetao",
-    name: "宁泽涛",
-    avatar: STAR_PORTRAITS["star-ning-zetao"].avatar,
-    cover: STAR_PORTRAITS["star-ning-zetao"].cover,
-    category: "运动员",
+    id: "star-wang-xiaoyu",
+    name: "王小羽",
+    avatar: STAR_PORTRAITS["star-wang-xiaoyu"].avatar,
+    cover: STAR_PORTRAITS["star-wang-xiaoyu"].cover,
+    category: "网红",
+    subCategories: ["运动员"],
     isHot: false,
     description:
-      "前国家队游泳运动员。健康阳光形象，适合运动用品、男士护理、保健品类目。",
+      "羽毛球运动内容创作者。镜头表现自然，适合运动户外、生活方式和年轻消费品类种草。",
     startingPrice: "¥399起",
     pricingTier: "标准版",
     quotaUsed: 8,
@@ -328,7 +325,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       conversionRate: "3.4%",
       gmv: "¥18K",
     },
-    sampleVideos: makeSampleVideos("star-ning-zetao"),
+    sampleVideos: makeSampleVideos("star-wang-xiaoyu"),
     pricing: makePricingTiers(),
   },
   {
@@ -375,7 +372,7 @@ export const MARKET_STARS: CelebrityStar[] = [
       status: "unauthorized",
       scenes: [],
       availableStyles: 0,
-      applyUrl: "/console/star/star-jia-ling/apply",
+      applyUrl: "/star/star-jia-ling/apply",
     },
     stats: {
       totalGenerated: 0,
@@ -547,8 +544,8 @@ export const CELEBRITY_PROJECTS: CelebrityProject[] = [
   {
     id: "proj-sport-series",
     name: "品牌联名 · 运动系列",
-    starId: "star-ning-zetao",
-    starName: "宁泽涛",
+    starId: "star-wang-xiaoyu",
+    starName: "王小羽",
     starAvatar: MARKET_STARS[5].avatar,
     status: "筹备中",
     videoCount: 3,
@@ -564,8 +561,8 @@ export const CELEBRITY_PROJECTS: CelebrityProject[] = [
   {
     id: "proj-spring-festival",
     name: "春节年货 · 食品带货",
-    starId: "star-yi-nengjing",
-    starName: "伊能静",
+    starId: "star-dilireba",
+    starName: "迪丽热巴",
     starAvatar: MARKET_STARS[1].avatar,
     status: "已完成",
     videoCount: 24,
@@ -658,19 +655,19 @@ export const PROJECT_VIDEOS_MAP: Record<ID, CelebrityProjectVideo[]> = {
   "proj-sport-series": makeVideos(
     "proj-sport-series",
     "品牌联名 · 运动系列",
-    "star-ning-zetao",
-    "宁泽涛",
+    "star-wang-xiaoyu",
+    "王小羽",
     [
       { product: "压缩长袖速干衣", status: "生成中", durationSec: 30, engine: "MiniMax" },
       { product: "缓震慢跑鞋", status: "生成中", durationSec: 60, engine: "HiGen" },
-      { product: "轻量泳镜套装", status: "生成中", durationSec: 30, engine: "HiGen" },
+      { product: "轻量羽毛球拍", status: "生成中", durationSec: 30, engine: "HiGen" },
     ],
   ),
   "proj-spring-festival": makeVideos(
     "proj-spring-festival",
     "春节年货 · 食品带货",
-    "star-yi-nengjing",
-    "伊能静",
+    "star-dilireba",
+    "迪丽热巴",
     [
       { product: "新春礼盒 · 坚果八味", status: "已发布", plays: "180K", durationSec: 30, engine: "MiniMax", daysAgo: 90 },
       { product: "老字号牛肉干", status: "已发布", plays: "150K", durationSec: 30, engine: "HiGen", daysAgo: 92 },

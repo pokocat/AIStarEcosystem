@@ -110,7 +110,7 @@ function JobRow({ job, onClose }: { job: PendingJobRecord; onClose: () => void }
   const meta = ENGINE_META[job.engine];
   const { percent } = CelebrityJobs.computeProgress(job);
   const isCompleted = job.status === "completed";
-  const href = `/console/star/${job.artistId}/generate?jobId=${encodeURIComponent(job.jobId)}`;
+  const href = `/star/${job.artistId}/generate?jobId=${encodeURIComponent(job.jobId)}`;
   return (
     <Link
       href={href}

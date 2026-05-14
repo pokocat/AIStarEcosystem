@@ -13,7 +13,7 @@ import { Avatar, Button, Card, Chip } from "@/components/creator";
 function CelebrityLoginInner() {
   const router = useRouter();
   const search = useSearchParams();
-  const from = search.get("from") || "/console";
+  const from = search.get("from") || "/dashboard";
   const { loginAs, user } = useAuth();
 
   const [accounts, setAccounts] = React.useState<AuthApi.DevAccount[] | null>(null);

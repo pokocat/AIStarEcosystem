@@ -6,12 +6,18 @@
 // 只展示公司层面的信息，不依赖 activeArtist。艺人个体的雷达 / 形象 / 衣橱
 // 等迁移到 ArtistOverview（艺人视图，sidebar 'artist'）。
 // 图表 hover / 空态 / minHeight 问题统一由 charts/* 处理。
+//
+// IA 设计（v2，2026-05）：从 9 段卡片堆叠改为「行动优先」结构：
+//   1) 待办建议 —— 一上来就告诉用户「现在最该做什么」
+//   2) 状态条 —— 三个最有决策价值的数（版税/签约/播放量）
+//   3) 艺人矩阵 + Top 营收 —— 谁在赚钱、谁需要关注
+//   4) 走势图 —— 一张主图，下面挂类型/收入来源细分
+//   5) 近期作品 + 公司动态 —— 滚动可达的次要信息
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from "react";
-import { motion } from "motion/react";
 import {
-  Crown, TrendingUp, Star, Play, Users, ChevronRight, Music, Trophy,
+  TrendingUp, Star, Play, ChevronRight, Music, Trophy, ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@ai-star-eco/ui/ui/button";
 import { Badge } from "@ai-star-eco/ui/ui/badge";
@@ -21,31 +27,32 @@ import type { MonthlyRevenuePoint, RevenueSource } from "@ai-star-eco/types/fina
 import { FinanceApi } from "@/api";
 import { formatCredits, formatCompactNumber } from "@/lib/format";
 import { ActivityFeed } from "../ActivityFeed";
-import { ARTIST_TYPE_LABELS, DOMAINS_8 } from "../ArtistTypes";
+import { ARTIST_TYPE_LABELS } from "../ArtistTypes";
 import { TypeDistributionPie } from "./charts/TypeDistributionPie";
 import { RevenueAreaChart } from "./charts/RevenueAreaChart";
-import { StatusDistribution } from "./charts/StatusDistribution";
 import { RevenueSourcePie } from "./charts/RevenueSourcePie";
 import { ArtistMatrixGrid } from "./roster/ArtistMatrixGrid";
 import { TopPerformersTable } from "./roster/TopPerformersTable";
 
 const SONG_STATUS_LABEL: Record<Song["status"], { label: string; tone: string }> = {
-  recording: { label: "录制中", tone: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
+  recording: { label: "录制中", tone: "bg-muted text-muted-foreground border-border" },
   mixing:    { label: "混音中", tone: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  released:  { label: "已发行", tone: "bg-green-500/10 text-green-400 border-green-500/20" },
+  released:  { label: "已发行", tone: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
 };
 
-/** AI 建议行动：MVP 静态数据，后续接 /api/me/producer/suggestions。 */
-const OVERVIEW_TASKS: Array<{ title: string; desc: string; priority: "紧急" | "重要" | "建议" }> = [
-  { title: "铸造 '夏日' 勋章", desc: "粉丝正在请求新的收藏品。", priority: "紧急" },
-  { title: "回复 Alex 教练",   desc: "关于新歌的反馈待处理。", priority: "重要" },
-  { title: "优化元数据",        desc: "Track #03 缺少流派标签。", priority: "建议" },
+/** AI 建议行动：MVP 静态数据，后续接 /api/me/producer/suggestions。
+    Priority 用文本权重 + 中性 badge 表达，不再用 hue（红/橙/青三色与系统状态色冲突）。 */
+type TaskPriority = "紧急" | "重要" | "建议";
+const OVERVIEW_TASKS: Array<{ title: string; desc: string; priority: TaskPriority; action: string }> = [
+  { title: "审批待发版税 ¥38,420", desc: "本周到期，涉及 4 位艺人。", priority: "紧急", action: "去财务" },
+  { title: "回复 Alex 教练的新歌反馈", desc: "等待 2 天。",            priority: "重要", action: "查看" },
+  { title: "为 Track #03 补齐流派标签", desc: "缺失元数据影响分发匹配。", priority: "建议", action: "去修复" },
 ];
 
-const PRIORITY_TONE: Record<typeof OVERVIEW_TASKS[number]["priority"], string> = {
-  "紧急": "text-red-400 bg-red-500/10",
-  "重要": "text-amber-400 bg-amber-500/10",
-  "建议": "text-cyan-400 bg-cyan-500/10",
+const PRIORITY_STYLE: Record<TaskPriority, string> = {
+  "紧急": "bg-destructive/15 text-destructive border-destructive/25",
+  "重要": "bg-amber-500/12 text-amber-400 border-amber-500/25",
+  "建议": "bg-secondary text-muted-foreground border-border",
 };
 
 export interface AgencyOverviewProps {
@@ -74,8 +81,6 @@ export function AgencyOverview({
   }, []);
 
   // ── 聚合指标 ────────────────────────────────────────────────────────────────
-  const ecoValue    = artists.reduce((sum, a) => sum + (a.commercialValue ?? 0), 0);
-  const totalFans   = artists.reduce((sum, a) => sum + (a.stats?.fans ?? 0), 0);
   const totalPlays  = songs.reduce((sum, s) => sum + (s.plays ?? 0), 0);
   const signedCount = artists.length;
 
@@ -100,189 +105,181 @@ export function AgencyOverview({
     .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
     .slice(0, 5);
 
-  const stats: Array<{ label: string; value: string; icon: any; color: string; bg: string; change?: string }> = [
-    { label: "生态估值", value: formatCredits(ecoValue),          icon: Crown,      color: "text-amber-400",  bg: "bg-amber-500/10" },
+  /** 三个最有决策价值的数。颜色统一用 muted icon，不为每张卡指派不同 hue。 */
+  const stats: Array<{ label: string; value: string; icon: any; change?: string }> = [
     {
-      label: "预估版税", value: formatCredits(monthRev),           icon: TrendingUp, color: "text-cyan-400",   bg: "bg-cyan-500/10",
+      label: "预估版税（本月）",
+      value: formatCredits(monthRev),
+      icon: TrendingUp,
       change: monthRevMoM !== null ? `${monthRevMoM >= 0 ? "+" : ""}${monthRevMoM.toFixed(1)}%` : undefined,
     },
-    { label: "签约艺人", value: formatCompactNumber(signedCount), icon: Star,       color: "text-purple-400", bg: "bg-purple-500/10" },
-    { label: "总播放量", value: formatCompactNumber(totalPlays),  icon: Play,       color: "text-pink-400",   bg: "bg-pink-500/10" },
-    { label: "全网粉丝", value: formatCompactNumber(totalFans),   icon: Users,      color: "text-green-400",  bg: "bg-green-500/10" },
+    { label: "签约艺人", value: formatCompactNumber(signedCount), icon: Star },
+    { label: "总播放量", value: formatCompactNumber(totalPlays),  icon: Play },
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>你好，制作人。</h1>
-        <p className="text-gray-400 font-light mt-1">这是今天的数据概览。</p>
-      </div>
+    <div className="space-y-8">
+      {/* Header */}
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">经纪大盘</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          今天有 <span className="text-foreground font-medium">{OVERVIEW_TASKS.length}</span> 项建议处理 · 本月营收同比{" "}
+          <span className={monthRevMoM !== null && monthRevMoM >= 0 ? "text-emerald-400" : "text-destructive"}>
+            {monthRevMoM !== null ? `${monthRevMoM >= 0 ? "+" : ""}${monthRevMoM.toFixed(1)}%` : "—"}
+          </span>
+        </p>
+      </header>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {stats.map((stat, i) => (
-          <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .08 }}
-            className="bg-gray-900/50 border border-white/5 rounded-xl p-4 hover:border-white/10 transition group">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center`}>
-                <stat.icon className={`w-4 h-4 ${stat.color}`} />
+      {/* 1) 建议行动 —— 提到首屏第一位 */}
+      <section className="rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">需要我处理</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">AI 推荐与系统提醒（{OVERVIEW_TASKS.length}）</p>
+          </div>
+        </div>
+        <ul className="divide-y divide-border">
+          {OVERVIEW_TASKS.map((task) => (
+            <li key={task.title} className="flex items-center gap-4 px-5 py-3.5 hover:bg-secondary/60 transition">
+              <Badge className={`text-[10px] font-medium border ${PRIORITY_STYLE[task.priority]}`}>
+                {task.priority}
+              </Badge>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">{task.title}</div>
+                <div className="text-xs text-muted-foreground truncate mt-0.5">{task.desc}</div>
               </div>
+              <Button variant="ghost" size="sm" className="text-xs text-foreground/80 hover:text-foreground">
+                {task.action}
+                <ArrowUpRight className="w-3 h-3 ml-1" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* 2) 状态条 —— 3 个数，单一色调 */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <stat.icon className="w-4 h-4 text-muted-foreground" strokeWidth={2} />
               {stat.change && (
-                <span className={`text-xs font-medium ${stat.change.startsWith("-") ? "text-red-400" : "text-green-400"}`}>
+                <span className={`text-xs font-medium ${stat.change.startsWith("-") ? "text-destructive" : "text-emerald-400"}`}>
                   {stat.change}
                 </span>
               )}
             </div>
-            <div className="text-2xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{stat.value}</div>
-            <div className="text-xs text-gray-500 font-light mt-1">{stat.label}</div>
-          </motion.div>
+            <div className="text-3xl font-semibold tracking-tight tabular-nums">{stat.value}</div>
+            <div className="text-xs text-muted-foreground mt-1">{stat.label}</div>
+          </div>
         ))}
       </div>
 
-      {/* 运营健康三图：类型分布 / 状态分布 / 收入来源 */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .2 }}
-          className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>类型分布</h3>
-          <TypeDistributionPie data={typeDist} emptyHint="暂无签约艺人" />
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .25 }}
-          className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>状态分布</h3>
-          <StatusDistribution artists={artists} />
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .3 }}
-          className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>收入来源</h3>
-          <RevenueSourcePie data={revenueSources} />
-        </motion.div>
-      </div>
-
-      {/* 旗下艺人矩阵 */}
-      <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
+      {/* 3) 旗下艺人 + Top 表现 —— 一行内合并，去掉单独 "Top 表现" 卡 */}
+      <section className="rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>旗下艺人</h3>
-            <p className="text-xs text-gray-500 font-light mt-0.5">点击卡片切换聚焦艺人，进入"艺人视图"查看详情</p>
+            <h2 className="text-sm font-semibold tracking-tight">旗下艺人</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">点击卡片切换聚焦艺人，进入"艺人视图"查看详情</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => onNavigate("artists")} className="text-cyan-400 hover:bg-cyan-500/10 text-xs">
+          <Button variant="ghost" size="sm" onClick={() => onNavigate("artists")} className="text-xs">
             管理艺人 <ChevronRight className="w-3 h-3 ml-1" />
           </Button>
         </div>
-        <ArtistMatrixGrid artists={artists} activeArtistId={activeArtistId} onSelect={onSelectArtist} />
-      </div>
+        <div className="p-5 grid lg:grid-cols-[1fr_280px] gap-6">
+          <ArtistMatrixGrid artists={artists} activeArtistId={activeArtistId} onSelect={onSelectArtist} />
+          <aside className="lg:border-l lg:border-border lg:pl-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy className="w-4 h-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold tracking-tight">本月营收榜</h3>
+            </div>
+            <TopPerformersTable artists={artists} topN={3} onSelect={onSelectArtist} />
+          </aside>
+        </div>
+      </section>
 
-      {/* 收入趋势 + Top Performers */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>收入与互动趋势</h3>
+      {/* 4) 走势 + 类型/来源细分 */}
+      <section className="rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-sm font-semibold tracking-tight">收入与互动趋势</h2>
+        </div>
+        <div className="p-5">
           <RevenueAreaChart data={monthlyRevenue} />
         </div>
-
-        <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Trophy className="w-4 h-4 text-amber-300" />
-            <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Top 表现</h3>
+        <div className="grid md:grid-cols-2 gap-0 border-t border-border">
+          <div className="p-5 md:border-r md:border-border">
+            <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">艺人类型分布</h3>
+            <TypeDistributionPie data={typeDist} emptyHint="暂无签约艺人" />
           </div>
-          <p className="text-xs text-gray-500 font-light mb-4">本月营收榜</p>
-          <TopPerformersTable artists={artists} topN={3} onSelect={onSelectArtist} />
-        </div>
-      </div>
-
-      {/* 8 大领域 + 建议行动 */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>8 大领域</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {DOMAINS_8.map((d, i) => (
-              <motion.div key={d.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .04 }}
-                className={`${d.bg} rounded-lg p-2.5 flex items-center gap-2`}>
-                <span className={`text-xs ${d.color}`}>{d.zh}</span>
-              </motion.div>
-            ))}
+          <div className="p-5">
+            <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">收入来源</h3>
+            <RevenueSourcePie data={revenueSources} />
           </div>
         </div>
+      </section>
 
-        <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-1" style={{ fontFamily: "var(--font-display)" }}>建议行动</h3>
-          <p className="text-xs text-gray-500 font-light mb-4">AI 增长建议</p>
-          <div className="space-y-3">
-            {OVERVIEW_TASKS.map((task, i) => (
-              <motion.div key={task.title} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: .3 + i * .1 }}
-                className="bg-black/30 border border-white/5 rounded-lg p-3 hover:border-cyan-500/20 transition cursor-pointer group">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                    <span className="text-sm font-semibold text-white">{task.title}</span>
-                  </div>
-                  <Badge className={`text-[10px] border-0 ${PRIORITY_TONE[task.priority]}`}>{task.priority}</Badge>
-                </div>
-                <p className="text-xs text-gray-500 font-light pl-3.5">{task.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 近期作品 */}
-      <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>近期作品</h3>
-          <Button variant="ghost" size="sm" onClick={() => onNavigate("studio")} className="text-cyan-400 hover:bg-cyan-500/10 text-xs">查看全部 <ChevronRight className="w-3 h-3 ml-1" /></Button>
+      {/* 5) 近期作品 */}
+      <section className="rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-sm font-semibold tracking-tight">近期作品</h2>
+          <Button variant="ghost" size="sm" onClick={() => onNavigate("studio")} className="text-xs">
+            查看全部 <ChevronRight className="w-3 h-3 ml-1" />
+          </Button>
         </div>
         {recentSongs.length === 0 ? (
-          <div className="text-center py-10 text-sm text-gray-500 font-light">
+          <div className="text-center py-10 px-5 text-sm text-muted-foreground">
             暂无作品 — 去「创作工坊」生成第一首歌曲
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-white/5">
+                <tr className="border-b border-border">
                   {["曲名", "状态", "播放量", "收入", "日期"].map((h) => (
-                    <th key={h} className="text-left text-xs text-gray-500 font-medium uppercase tracking-wider pb-3 pr-4">{h}</th>
+                    <th key={h} className="text-left text-[11px] text-muted-foreground font-medium uppercase tracking-wider px-5 py-3">
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {recentSongs.map((song, i) => {
+                {recentSongs.map((song) => {
                   const meta = SONG_STATUS_LABEL[song.status];
                   const date = (song.releaseDate ?? song.createdAt ?? "").slice(0, 10);
                   return (
-                    <motion.tr key={song.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .05 }}
+                    <tr
+                      key={song.id}
                       onClick={() => onOpenTrack(song.id)}
-                      className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer">
-                      <td className="py-3 pr-4">
+                      className="border-b border-border last:border-b-0 hover:bg-secondary/60 transition cursor-pointer"
+                    >
+                      <td className="py-3 px-5">
                         <div className="flex items-center gap-3">
                           {song.coverUrl
                             ? <img src={song.coverUrl} alt="" className="w-8 h-8 rounded object-cover" />
-                            : <div className="w-8 h-8 rounded bg-cyan-500/10 flex items-center justify-center"><Music className="w-4 h-4 text-cyan-400" /></div>}
-                          <span className="text-sm font-semibold">{song.title}</span>
+                            : <div className="w-8 h-8 rounded bg-muted flex items-center justify-center"><Music className="w-4 h-4 text-muted-foreground" /></div>}
+                          <span className="text-sm font-medium">{song.title}</span>
                         </div>
                       </td>
-                      <td className="py-3 pr-4">
-                        <Badge className={`text-xs font-medium ${meta.tone}`}>{meta.label}</Badge>
+                      <td className="py-3 px-5">
+                        <Badge className={`text-[11px] font-medium border ${meta.tone}`}>{meta.label}</Badge>
                       </td>
-                      <td className="py-3 pr-4 text-sm text-gray-400 font-light">
+                      <td className="py-3 px-5 text-sm text-muted-foreground tabular-nums">
                         {song.status === "released" ? formatCompactNumber(song.plays) : "—"}
                       </td>
-                      <td className="py-3 pr-4 text-sm text-gray-400 font-light">
+                      <td className="py-3 px-5 text-sm text-muted-foreground tabular-nums">
                         {song.status === "released" ? formatCredits(song.revenue) : "—"}
                       </td>
-                      <td className="py-3 text-sm text-gray-500 font-light">{date || "—"}</td>
-                    </motion.tr>
+                      <td className="py-3 px-5 text-sm text-muted-foreground tabular-nums">{date || "—"}</td>
+                    </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* 公司动态 */}
+      {/* 6) 公司动态 */}
       <ActivityFeed lang="zh" />
     </div>
   );

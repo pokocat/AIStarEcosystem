@@ -55,7 +55,7 @@ export function CelebrityHeroCta({
               <Wallet className="h-4 w-4" /> 立即充值
             </Link>
             <Link
-              href="/console?tab=projects"
+              href="/projects"
               className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
             >
               <Plus className="h-3.5 w-3.5" /> 加入项目
@@ -98,7 +98,7 @@ export function CelebrityHeroCta({
             <Wand2 className="h-4 w-4" /> 开始生成带货视频 <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
-            href="/console?tab=projects"
+            href="/projects"
             className="inline-flex items-center gap-1 rounded-xl border border-violet-400/40 bg-violet-500/10 px-4 py-3 text-sm font-medium text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20"
           >
             <Plus className="h-3.5 w-3.5" /> 加入项目

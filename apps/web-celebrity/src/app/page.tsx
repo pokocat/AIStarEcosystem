@@ -85,7 +85,7 @@ export default function CelebrityLandingPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {isLoggedIn ? (
             <>
-              <Link href="/console">
+              <Link href="/dashboard">
                 <Button variant="dark" size="sm">进入工作台 →</Button>
               </Link>
               <Button variant="icon" size="sm" onClick={logout} title="退出登录" style={{ width: 32, padding: 0 }}>
@@ -94,10 +94,10 @@ export default function CelebrityLandingPage() {
             </>
           ) : (
             <>
-              <Link href="/login?from=%2Fconsole">
+              <Link href="/login?from=%2Fdashboard">
                 <Button variant="secondary" size="sm">登录</Button>
               </Link>
-              <Link href="/login?from=%2Fconsole">
+              <Link href="/login?from=%2Fdashboard">
                 <Button variant="accent" size="sm">立即开始 →</Button>
               </Link>
             </>
@@ -150,7 +150,7 @@ export default function CelebrityLandingPage() {
               一站串通授权方 / 品牌方 / MCN 的全链路营销动作，让明星价值在合规边界内被持续放大。
             </p>
             <div style={{ display: "flex", gap: 10 }}>
-              <Link href={isLoggedIn ? "/console" : "/login?from=%2Fconsole"}>
+              <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
                 <Button variant="dark" size="lg">
                   {isLoggedIn ? "进入工作台 →" : "立即开始 →"}
                 </Button>
@@ -226,7 +226,7 @@ export default function CelebrityLandingPage() {
               </h2>
             </div>
             <Link
-              href="/login?from=%2Fconsole%3Ftab%3Dmarket"
+              href="/login?from=%2Fmarket"
               style={{
                 fontSize: 12,
                 color: "var(--accent)",
@@ -424,7 +424,7 @@ export default function CelebrityLandingPage() {
                 联系商务团队开通授权方专属工作台，预计 1 个工作日内完成对接。
               </p>
             </div>
-            <Link href={isLoggedIn ? "/console" : "/login?from=%2Fconsole"}>
+            <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
               <Button variant="accent" size="lg">
                 {isLoggedIn ? "进入工作台 →" : "立即开始 →"}
               </Button>
@@ -456,7 +456,7 @@ export default function CelebrityLandingPage() {
           <div style={{ display: "flex", gap: 20 }}>
             <Link href="/" style={{ color: "var(--fg-3)", textDecoration: "none" }}>产品矩阵</Link>
             <Link
-              href={isLoggedIn ? "/console" : "/login?from=%2Fconsole"}
+              href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}
               style={{ color: "var(--fg-3)", textDecoration: "none" }}
             >
               {isLoggedIn ? "工作台" : "登录"}

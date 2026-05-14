@@ -70,13 +70,13 @@ export function CelebrityAuthBanner({ star }: Props) {
           {status === "unauthorized" && (
             <>
               <Link
-                href={applyUrl ?? `/console/star/${star.id}/apply`}
+                href={applyUrl ?? `/star/${star.id}/apply`}
                 className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-violet-500 to-violet-500 px-4 py-2 text-sm font-semibold text-zinc-900 shadow-[0_0_20px_rgba(6,182,212,0.25)] transition hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]"
               >
                 申请商务合作 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
               <Link
-                href={`/console/star/${star.id}?tier=trial`}
+                href={`/star/${star.id}?tier=trial`}
                 className="inline-flex items-center gap-1 rounded-lg border border-violet-400/40 bg-violet-500/10 px-4 py-2 text-sm font-medium text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20"
               >
                 购买体验版
@@ -85,7 +85,7 @@ export function CelebrityAuthBanner({ star }: Props) {
           )}
           {status === "expired" && (
             <Link
-              href={applyUrl ?? `/console/star/${star.id}/apply`}
+              href={applyUrl ?? `/star/${star.id}/apply`}
               className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-pink-500 to-pink-500 px-4 py-2 text-sm font-semibold text-zinc-900 shadow-[0_0_20px_rgba(244,63,94,0.25)] transition hover:shadow-[0_0_30px_rgba(244,63,94,0.45)]"
             >
               立即续约 <ArrowRight className="h-3.5 w-3.5" />

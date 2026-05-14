@@ -39,7 +39,7 @@ export function CelebrityStarCard({ star }: Props) {
 
   return (
     <Link
-      href={`/console/star/${star.id}`}
+      href={`/star/${star.id}`}
       className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 transition hover:-translate-y-0.5 hover:border-violet-500/40 hover:bg-zinc-100 hover:shadow-[0_8px_30px_rgba(6,182,212,0.15)]"
     >
       {/* 3:4 cover */}

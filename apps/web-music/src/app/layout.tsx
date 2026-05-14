@@ -1,20 +1,13 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Inter } from "next/font/google";
 import "../styles/app.css";
 import { AppProviders } from "./providers";
 
 const inter = Inter({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
-  variable: "--font-sans",
-  display: "swap",
-});
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-display",
+  variable: "--font-sans",
   display: "swap",
 });
 
@@ -27,7 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="zh"
-      className={`dark ${inter.variable} ${spaceGrotesk.variable}`}
+      className={`dark ${inter.variable}`}
       suppressHydrationWarning
     >
       <body className="bg-background text-foreground min-h-screen">

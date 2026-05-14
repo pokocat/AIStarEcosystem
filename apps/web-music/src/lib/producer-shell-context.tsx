@@ -4,7 +4,7 @@
 // producer-shell-context.tsx — 制作人控制台的共享状态。
 // 原本 ProducerDashboard.tsx 单组件里持有的 activeArtist / artists / songs / wallet /
 // notifications / lang 迁移到这里，供 app/producer/layout.tsx 与各子页 page.tsx 共用。
-// navigate(page) 用 next/navigation 的 router.push('/console/' + page) 做真实路由跳转。
+// navigate(page) 用 next/navigation 的 router.push 做真实路由跳转，id → 顶层路径映射。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -124,14 +124,15 @@ export function ProducerShellProvider({
     [notifications],
   );
 
+  // sidebar 内部 id → 顶层路径。overview 是历史别名，对应 /dashboard。
+  // 其余 id 与新顶层路径同名（artist → /artist，studio → /studio …）。
   const navigate = React.useCallback(
     (page: string) => {
-      // 为空或 '/' → 回到 overview（/producer）
       if (!page || page === "overview") {
-        router.push("/console");
+        router.push("/dashboard");
         return;
       }
-      router.push(`/console/${page}`);
+      router.push(`/${page}`);
     },
     [router],
   );

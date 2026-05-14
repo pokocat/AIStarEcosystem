@@ -144,7 +144,7 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
     }
     if (step === "templateConfig") setStep("templateGallery");
     else if (step === "templateGallery" || step === "blindbox") setStep("mode");
-    else router.push(`/console/star/${star.id}`);
+    else router.push(`/star/${star.id}`);
   };
 
   // ── 生成生命周期 ────────────────────────────────────────────────────────
@@ -356,7 +356,7 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
             onStartOver={handleStartOver}
             onDistribute={() =>
               router.push(
-                `/console/projects/${completedJob.projectId}?action=distribute`,
+                `/projects/${completedJob.projectId}?action=distribute`,
               )
             }
           />

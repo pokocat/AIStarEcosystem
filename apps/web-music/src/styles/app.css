@@ -5,11 +5,78 @@
 @import 'tw-animate-css';
 @import '@ai-star-eco/ui/styles/globals.css';
 
+/* ── 音乐人产品 token 局部覆盖 ─────────────────────────────────────────────────
+   PRODUCT.md 明令禁止"霓虹噱头、科幻陈词"。packages/ui 的 dark token 仍是
+   cyberpunk 残留（neon cyan primary + 纯黑底 + 玻璃 card + 渐变滚动条）。
+   这里在 web-music 本地覆盖一套 Restrained 策略：
+     - tinted neutral 近黑（不是 #000000）
+     - 一个低饱和度的紫色 primary，呼应 music 的 fuchsia 但不发光
+     - 实底 card 替代玻璃
+     - 中性滚动条
+   drama / celebrity 暂不受影响。 */
+.dark {
+  /* Surfaces —— 带极弱 violet tint 的近黑，不是 #000 */
+  --background: oklch(0.135 0.008 285);
+  --foreground: oklch(0.96 0.003 285);
+
+  /* Card 改成实底 tinted neutral，告别 bg-gray-900/50 玻璃 */
+  --card: oklch(0.195 0.006 285);
+  --card-foreground: oklch(0.96 0.003 285);
+
+  --popover: oklch(0.17 0.006 285);
+  --popover-foreground: oklch(0.96 0.003 285);
+
+  /* Primary —— 克制的紫，不发光 */
+  --primary: oklch(0.66 0.13 285);
+  --primary-foreground: oklch(0.99 0 0);
+
+  /* Secondary / muted / accent —— 同色系低饱和 */
+  --secondary: oklch(0.245 0.008 285);
+  --secondary-foreground: oklch(0.96 0.003 285);
+  --muted: oklch(0.225 0.005 285);
+  --muted-foreground: oklch(0.68 0.01 285);
+  --accent: oklch(0.32 0.045 285);
+  --accent-foreground: oklch(0.92 0.05 285);
+
+  --destructive: oklch(0.62 0.21 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(1 0 0 / 0.08);
+  --input: oklch(1 0 0 / 0.1);
+  --input-background: oklch(0.225 0.005 285);
+  --ring: oklch(0.66 0.13 285 / 0.55);
+
+  /* sidebar —— 与主区微差，不发光 */
+  --sidebar: oklch(0.165 0.006 285);
+  --sidebar-foreground: oklch(0.96 0.003 285);
+  --sidebar-primary: oklch(0.66 0.13 285);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.27 0.012 285);
+  --sidebar-accent-foreground: oklch(0.96 0.003 285);
+  --sidebar-border: oklch(1 0 0 / 0.06);
+  --sidebar-ring: oklch(0.66 0.13 285 / 0.55);
+}
+
+/* Display font 退场：所有 `var(--font-display)` 静默回落到 Inter。
+   product register 明令禁止 display 字体进 UI label/button/data。 */
+html {
+  --font-display: var(--font-sans, 'Inter', ui-sans-serif, system-ui, sans-serif) !important;
+}
+
 @layer base {
   html,
   body {
     min-height: 100vh;
     height: 100%;
     margin: 0;
+  }
+
+  /* 覆盖 packages/ui 的 "Cyberpunk" 渐变滚动条 */
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 0.12);
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: oklch(1 0 0 / 0.2);
   }
 }
