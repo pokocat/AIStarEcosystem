@@ -59,6 +59,8 @@ export interface RechargePackage {
   tag: string;
   /** 是否推荐 */
   recommended: boolean;
+  /** 是否启用；软删时设为 false */
+  active?: boolean;
   /** 赠送积分（充进 giftBalance），可选 */
   bonusCredits?: number;
   /** 排序权重，越小越靠前 */

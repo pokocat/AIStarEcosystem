@@ -65,7 +65,7 @@ export default function AdminRechargePackagesPage() {
         recommended: p.recommended,
         bonusCredits: p.bonusCredits,
         sortOrder: p.sortOrder,
-        active: !((p as any).active),
+        active: !(p.active ?? true),
       });
       await refresh();
     } catch (e) {
@@ -132,7 +132,7 @@ export default function AdminRechargePackagesPage() {
                     <TableCell>¥{(p.priceCents / 100).toFixed(2)}</TableCell>
                     <TableCell>{p.bonusCredits ?? 0}</TableCell>
                     <TableCell>{p.recommended ? "★" : "—"}</TableCell>
-                    <TableCell>{(p as any).active === false ? "✗" : "✓"}</TableCell>
+                    <TableCell>{p.active === false ? "✗" : "✓"}</TableCell>
                     <TableCell>{p.sortOrder ?? 0}</TableCell>
                     <TableCell className="space-x-1">
                       <Button size="sm" variant="outline" onClick={() => void onToggleActive(p)}>切启停</Button>

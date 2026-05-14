@@ -16,7 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CelebrityAuthorizationsApi } from "@/api";
-import type { AdminCelebrityAuthorization } from "@/api/celebrity-authorizations";
+import type {
+  AdminCelebrityAuthorization,
+  AdminCelebrityAuthorizationTransition,
+  AdminCelebrityAuthorizationUpsert,
+  AuthFilter,
+} from "@/api/celebrity-authorizations";
 
 const STATUS = ["unauthorized", "pending", "authorized", "expired"] as const;
 const STATUS_LABEL: Record<string, string> = {
@@ -30,25 +35,24 @@ export default function AdminCelebrityAuthorizationsPage() {
   const [list, setList] = React.useState<AdminCelebrityAuthorization[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
-  const [filter, setFilter] = React.useState<{ userId?: string; starId?: string; status?: string }>({});
+  const [filter, setFilter] = React.useState<AuthFilter>({});
   const [creating, setCreating] = React.useState(false);
-  const [draft, setDraft] = React.useState<{ userId: string; starId: string; status: string }>({
+  const [draft, setDraft] = React.useState<AdminCelebrityAuthorizationUpsert>({
     userId: "demo-user",
     starId: "",
     status: "pending",
   });
-  const [transitioning, setTransitioning] = React.useState<{ id: string; to: string } | null>(null);
+  const [transitioning, setTransitioning] = React.useState<{
+    id: string;
+    to: AdminCelebrityAuthorizationTransition["to"];
+  } | null>(null);
   const [transitionReason, setTransitionReason] = React.useState("");
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
-      const f: Record<string, string> = {};
-      if (filter.userId) f.userId = filter.userId;
-      if (filter.starId) f.starId = filter.starId;
-      if (filter.status) f.status = filter.status;
-      const data = await CelebrityAuthorizationsApi.list(f as any);
+      const data = await CelebrityAuthorizationsApi.list(filter);
       setList(data);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "加载失败");
@@ -67,7 +71,7 @@ export default function AdminCelebrityAuthorizationsPage() {
       return;
     }
     try {
-      await CelebrityAuthorizationsApi.create(draft as any);
+      await CelebrityAuthorizationsApi.create(draft);
       setCreating(false);
       setDraft({ userId: "demo-user", starId: "", status: "pending" });
       await refresh();
@@ -94,7 +98,7 @@ export default function AdminCelebrityAuthorizationsPage() {
     }
     try {
       await CelebrityAuthorizationsApi.transition(transitioning.id, {
-        to: transitioning.to as any,
+        to: transitioning.to,
         reason: transitionReason.trim(),
       });
       setTransitioning(null);
@@ -116,7 +120,7 @@ export default function AdminCelebrityAuthorizationsPage() {
         <CardContent className="flex flex-wrap gap-3">
           <Input placeholder="userId" className="w-48" value={filter.userId ?? ""} onChange={(e) => setFilter({ ...filter, userId: e.target.value })} />
           <Input placeholder="starId" className="w-48" value={filter.starId ?? ""} onChange={(e) => setFilter({ ...filter, starId: e.target.value })} />
-          <Select value={filter.status ?? "_all"} onValueChange={(v) => setFilter({ ...filter, status: v === "_all" ? undefined : v })}>
+          <Select value={filter.status ?? "_all"} onValueChange={(v) => setFilter({ ...filter, status: v === "_all" ? undefined : v as AdminCelebrityAuthorization["status"] })}>
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="_all">全部状态</SelectItem>
@@ -142,7 +146,7 @@ export default function AdminCelebrityAuthorizationsPage() {
             </div>
             <div>
               <div className="mb-1 text-xs text-muted-foreground">status</div>
-              <Select value={draft.status} onValueChange={(v) => setDraft({ ...draft, status: v })}>
+              <Select value={draft.status} onValueChange={(v) => setDraft({ ...draft, status: v as AdminCelebrityAuthorization["status"] })}>
                 <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {STATUS.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}

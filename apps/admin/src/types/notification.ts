@@ -11,6 +11,14 @@ export type NotificationType =
   | "system"        // 系统维护 / 公告
   | "achievement";  // 成就 / 里程碑
 
+export type NotificationAudienceScope = "all" | "studio" | "artist" | "account";
+
+export interface NotificationAudience {
+  scope: NotificationAudienceScope;
+  targetId?: ID;
+  targetName?: string;
+}
+
 export interface Notification {
   id: ID;
   type: NotificationType;
@@ -19,6 +27,7 @@ export interface Notification {
   /** 相对时间文案，如 "2min" / "1h" / "1d" */
   time: string;
   read: boolean;
+  audience?: NotificationAudience;
 }
 
 // ── v0.4：AI Bot 同事会话（小程序 chat 页消费） ──────────────────────────────

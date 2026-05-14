@@ -26,7 +26,11 @@ export type AdminTemplateScriptUpsert = Partial<Omit<TemplateScript, "id" | "ver
 const BASE = "/admin/template-scripts";
 
 export async function list(filter?: ScriptFilter): Promise<TemplateScript[]> {
-  return apiFetch<TemplateScript[]>(`${BASE}${buildQuery(filter ?? {})}`);
+  const query: Record<string, unknown> = {};
+  if (filter?.templateId?.trim()) query.templateId = filter.templateId.trim();
+  if (filter?.status) query.status = filter.status;
+  if (filter?.kind) query.kind = filter.kind;
+  return apiFetch<TemplateScript[]>(`${BASE}${buildQuery(query)}`);
 }
 export async function get(id: string): Promise<TemplateScript> {
   return apiFetch<TemplateScript>(`${BASE}/${encodeURIComponent(id)}`);

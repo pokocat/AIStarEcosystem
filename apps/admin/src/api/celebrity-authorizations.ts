@@ -45,7 +45,11 @@ export interface AuthFilter {
 const BASE = "/admin/celebrity/star-authorizations";
 
 export async function list(filter?: AuthFilter): Promise<AdminCelebrityAuthorization[]> {
-  return apiFetch<AdminCelebrityAuthorization[]>(`${BASE}${buildQuery(filter ?? {})}`);
+  const query: Record<string, unknown> = {};
+  if (filter?.userId?.trim()) query.userId = filter.userId.trim();
+  if (filter?.starId?.trim()) query.starId = filter.starId.trim();
+  if (filter?.status) query.status = filter.status;
+  return apiFetch<AdminCelebrityAuthorization[]>(`${BASE}${buildQuery(query)}`);
 }
 export async function get(id: string): Promise<AdminCelebrityAuthorization> {
   return apiFetch<AdminCelebrityAuthorization>(`${BASE}/${encodeURIComponent(id)}`);
