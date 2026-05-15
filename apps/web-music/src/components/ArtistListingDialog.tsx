@@ -10,6 +10,7 @@ import { Textarea } from '@ai-star-eco/ui/ui/textarea';
 import { Switch } from '@ai-star-eco/ui/ui/switch';
 import { Globe2, TrendingUp, CheckCircle2, Sparkles, DollarSign, Users, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ArtistAvatar } from './producer/_shared/ArtistAvatar';
 
 interface Artist {
   id: number;
@@ -150,7 +151,7 @@ export default function ArtistListingDialog({ artist, isOpen, onClose, onSuccess
               <div className="space-y-6">
                 {/* Artist Info */}
                 <div className="p-4 rounded-xl border border-white/10 bg-gradient-to-br from-purple-500/5 to-cyan-500/5 flex items-center gap-4">
-                  <img src={artist.avatar} alt={artist.name} className="w-20 h-20 rounded-xl object-cover" />
+                  <ArtistAvatar artist={artist} size={80} className="rounded-xl" />
                   <div>
                     <h4 className="text-xl font-bold text-white mb-1">{artist.name}</h4>
                     <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">{artist.style}</Badge>
@@ -264,7 +265,7 @@ export default function ArtistListingDialog({ artist, isOpen, onClose, onSuccess
                   {/* Preview Card */}
                   <div className="relative rounded-xl overflow-hidden border border-white/10 bg-[#0c0c0e]">
                     <div className="relative h-48">
-                      <img src={artist.avatar} alt={artist.name} className="w-full h-full object-cover" />
+                      <ArtistAvatar artist={artist} size="full" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
                       <Badge className="absolute top-3 right-3 bg-cyan-500/80 text-white border-0 shadow-lg">
                         {lang === 'zh' ? '可签约' : 'Available'}
@@ -373,7 +374,7 @@ export default function ArtistListingDialog({ artist, isOpen, onClose, onSuccess
 
                 {/* Artist Summary */}
                 <div className="inline-flex items-center gap-4 px-6 py-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 mb-8">
-                  <img src={artist.avatar} alt={artist.name} className="w-16 h-16 rounded-xl object-cover" />
+                  <ArtistAvatar artist={artist} size={64} className="rounded-xl" />
                   <div className="text-left">
                     <h4 className="text-lg font-bold text-white">{artist.name}</h4>
                     <p className="text-sm text-cyan-400">¥ {parseInt(price).toLocaleString()}</p>

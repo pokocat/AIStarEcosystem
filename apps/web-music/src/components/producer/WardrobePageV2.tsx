@@ -52,6 +52,7 @@ import {
 import {
   WARDROBE_FORGE_COST, EQUIP_SLOT_ORDER, BRAND_OVERLAY,
 } from "@/constants/wardrobe-v2-ui";
+import { ArtistAvatar } from "./_shared/ArtistAvatar";
 
 // ── 工具 ───────────────────────────────────────────────────────────────────
 
@@ -664,10 +665,10 @@ function AvatarStage({
           >
             <div className="relative">
               <div className="absolute -inset-4 rounded-full bg-cyan-500/10 blur-2xl" />
-              <img
-                src={artist.avatar}
-                alt={artist.name}
-                className="relative h-48 w-48 rounded-full border-4 border-white/10 object-cover shadow-2xl"
+              <ArtistAvatar
+                artist={artist}
+                size={192}
+                className="relative rounded-full border-4 border-white/10 shadow-2xl"
               />
             </div>
             <div className="text-center">

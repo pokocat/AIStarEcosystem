@@ -33,6 +33,7 @@ import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
 import { formatCredits, formatCompactNumber, formatDuration } from "@/lib/format";
 import { ArtistRadarCard } from "../ArtistRadarCard";
 import { AppearanceGallery } from "./artist/AppearanceGallery";
+import { ArtistAvatar } from "../_shared/ArtistAvatar";
 
 interface Props {
   artist: Artist;
@@ -112,7 +113,7 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
           {/* 头像 + 名字 + 徽章 */}
           <div className="relative flex items-start gap-4">
             <div className="relative shrink-0">
-              <img src={artist.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover border-2 border-white/10" />
+              <ArtistAvatar artist={artist} size={96} className="rounded-2xl border-2 border-white/10" />
               <div className={`absolute -bottom-2 -right-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${typeConf.bgColor} ${typeConf.color}`}>
                 {typeConf.icon} {ARTIST_TYPE_LABELS[artist.type].zh}
               </div>

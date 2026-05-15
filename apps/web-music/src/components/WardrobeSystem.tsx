@@ -12,6 +12,7 @@ import {
   ShoppingBag, Heart, Shuffle, Save, X, Check, Lock,
   Star, TrendingUp, ArrowLeft, Eye, Download
 } from 'lucide-react';
+import { ArtistAvatar } from "./producer/_shared/ArtistAvatar";
 import type { ClothingItem, EquippedSlots, EquipSlot, SavedOutfit } from "@ai-star-eco/types/wardrobe";
 import type { Artist } from "@ai-star-eco/types/artist";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
@@ -355,7 +356,7 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
                 <div className="absolute inset-0 bg-gradient-to-tr from-pink-500 to-purple-500 rounded-full blur-3xl opacity-20" />
                 <div className="relative w-64 h-64 rounded-full p-2 bg-gradient-to-tr from-pink-400 via-purple-500 to-cyan-500" style={{ animation: 'spin 20s linear infinite' }}>
                   <div className="w-full h-full rounded-full border-8 border-[#0c0c0e] overflow-hidden" style={{ animation: 'spin 20s linear infinite reverse' }}>
-                    <img src={activeSinger.avatar} alt={activeSinger.name} className="w-full h-full object-cover" />
+                    <ArtistAvatar artist={activeSinger} size="full" />
                   </div>
                 </div>
               </div>

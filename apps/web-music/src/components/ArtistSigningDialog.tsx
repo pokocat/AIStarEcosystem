@@ -9,6 +9,7 @@ import { Label } from '@ai-star-eco/ui/ui/label';
 import { Progress } from '@ai-star-eco/ui/ui/progress';
 import { CheckCircle2, ShoppingBag, FileText, CreditCard, Sparkles, ArrowRight, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ArtistAvatar } from './producer/_shared/ArtistAvatar';
 
 interface Artist {
   id: number;
@@ -206,7 +207,7 @@ export default function ArtistSigningDialog({ artist, isOpen, onClose, onSuccess
                 <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-gradient-to-br from-cyan-500/10 to-blue-500/10">
                   <div className="flex gap-6 p-6">
                     <div className="relative w-32 h-32 rounded-xl overflow-hidden shrink-0">
-                      <img src={artist.avatar} alt={artist.name} className="w-full h-full object-cover" />
+                      <ArtistAvatar artist={artist} size="full" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     </div>
                     <div className="flex-1">
@@ -400,7 +401,7 @@ export default function ArtistSigningDialog({ artist, isOpen, onClose, onSuccess
 
                 {/* Artist Summary */}
                 <div className="inline-flex items-center gap-4 px-6 py-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20">
-                  <img src={artist.avatar} alt={artist.name} className="w-16 h-16 rounded-xl object-cover" />
+                  <ArtistAvatar artist={artist} size={64} className="rounded-xl" />
                   <div className="text-left">
                     <h4 className="text-lg font-bold text-white">{artist.name}</h4>
                     <p className="text-sm text-cyan-400">{artist.style}</p>

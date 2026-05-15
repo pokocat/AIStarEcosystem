@@ -11,6 +11,7 @@ import { motion } from "motion/react";
 import { Badge } from "@ai-star-eco/ui/ui/badge";
 import type { Artist } from "@ai-star-eco/types/artist";
 import { ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS } from "../../ArtistTypes";
+import { ArtistAvatar } from "../../_shared/ArtistAvatar";
 import { STATUS_CONFIG } from "@/constants/artist-config";
 import { formatCompactNumber, formatCredits } from "@/lib/format";
 
@@ -48,7 +49,7 @@ export function ArtistMatrixGrid({ artists, activeArtistId, onSelect }: Props) {
           >
             <div className="flex items-center gap-3">
               <div className="relative">
-                <img src={a.avatar} alt="" className="w-10 h-10 rounded-full object-cover border border-white/10" />
+                <ArtistAvatar artist={a} size={40} className="rounded-full border border-white/10" />
                 <span
                   className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[8px]`}
                   aria-hidden

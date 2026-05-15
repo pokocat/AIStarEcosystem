@@ -22,6 +22,7 @@ import { useAuth } from "@ai-star-eco/api-client";
 import { useTheme, themeConfig } from "@ai-star-eco/ui";
 import { CommandPalette } from "@/components/producer/CommandPalette";
 import { NotificationPanel } from "@/components/producer/NotificationPanel";
+import { ArtistAvatar } from "@/components/producer/_shared/ArtistAvatar";
 import {
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS,
   type ArtistType,
@@ -261,7 +262,7 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
             {activeArtist && typeConf ? (
               <>
                 <div className="relative">
-                  <img src={activeArtist.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-border" />
+                  <ArtistAvatar artist={activeArtist} size={32} className="rounded-full border border-border" />
                   <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[8px]`}>
                     {typeConf.icon}
                   </div>
@@ -314,7 +315,7 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
                           artist.id === activeArtist.id ? "bg-secondary/70" : ""
                         }`}
                       >
-                        <img src={artist.avatar} alt="" className="w-7 h-7 rounded-full object-cover border border-border" />
+                        <ArtistAvatar artist={artist} size={28} className="rounded-full border border-border" />
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-semibold truncate">{artist.name}</div>
                           <div className="text-[10px] text-muted-foreground">{tc.icon} Lv.{artist.level}</div>
