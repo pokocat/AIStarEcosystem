@@ -1,6 +1,6 @@
-// types/publish-job.ts — 分发发布任务（drama 本地，尚未上推 packages/types）。
+// publish-job.ts — 分发发布任务（drama 端发起，server DTO 待落地）。
 
-import type { ID, ISODateTime } from "@ai-star-eco/types/_shared";
+import type { ID, ISODateTime } from "./_shared";
 
 export type PublishJobStatus =
   | "queued"

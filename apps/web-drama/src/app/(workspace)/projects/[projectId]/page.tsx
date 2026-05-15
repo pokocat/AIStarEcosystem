@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { Drama, DramaStatus } from "@ai-star-eco/types/film";
 import type { Artist } from "@ai-star-eco/types/artist";
-import type { PublishJob } from "@/types/publish-job";
+import type { PublishJob } from "@ai-star-eco/types/publish-job";
 import { Button, Card, Chip, KpiCard } from "@/components/premium";
 import {
   ConfirmDialog,

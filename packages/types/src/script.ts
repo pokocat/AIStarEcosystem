@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// types/script.ts — 脚本工坊本地类型。
-// TODO: 后端落地后上推到 packages/types。
+// script.ts — 脚本工坊（drama 端发起，server DTO 待落地）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ID, ISODateTime } from "@ai-star-eco/types/_shared";
+import type { ID, ISODateTime } from "./_shared";
 
 export type ScriptKind = "drama" | "ad" | "trailer" | "voice";
 export type ScriptStatus = "draft" | "review" | "approved" | "archived";

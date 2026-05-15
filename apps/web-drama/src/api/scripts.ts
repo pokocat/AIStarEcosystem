@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID } from "@ai-star-eco/types/_shared";
-import type { Script, ScriptVersion, ScriptKind, ScriptStatus } from "@/types/script";
+import type { Script, ScriptVersion, ScriptKind, ScriptStatus } from "@ai-star-eco/types/script";
 import { SCRIPTS, SCRIPT_VERSIONS } from "@/mocks/scripts";
 import { apiFetch, USE_MOCK, mockDelay, clientError } from "./_client";
 

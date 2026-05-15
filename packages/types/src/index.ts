@@ -17,6 +17,8 @@ export * from "./navigation";
 export * from "./notification";
 export * from "./pose";
 export * from "./product";
+export * from "./publish-job";
+export * from "./script";
 export * from "./settings";
 export * from "./studio";
 export * from "./wallet";

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plug, RefreshCw, Share2, X as XIcon } from "lucide-react";
 import type { Platform } from "@ai-star-eco/types/distribution";
-import type { PublishJob } from "@/types/publish-job";
+import type { PublishJob } from "@ai-star-eco/types/publish-job";
 import { Button, Card, Chip, KpiCard } from "@/components/premium";
 import {
   EmptyState,
