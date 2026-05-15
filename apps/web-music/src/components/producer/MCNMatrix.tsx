@@ -24,6 +24,36 @@ import { ArtistsApi, AppearanceForgeApi, ApiError } from "@/api";
 import type { ForgeResult, ForgeMode, AppearanceStatus } from "@ai-star-eco/types/appearance-forge";
 import { DEMO_FORGE_VIDEO_POOL } from "@/lib/forge-video";
 
+/* ======== ArtistAvatar ========
+   新创建的艺人 avatar 字段为空字符串，<img src=""> 会触发浏览器重新拉取整页
+   并打印 Next dev warning。统一在缺图时回落为带姓名首字的占位块。 */
+function ArtistAvatar({
+  artist, size, className = "",
+}: { artist: Pick<Artist, "avatar" | "name">; size: number; className?: string }) {
+  const sizeStyle = { width: size, height: size };
+  if (artist.avatar) {
+    return (
+      <img
+        src={artist.avatar}
+        alt={artist.name}
+        style={sizeStyle}
+        className={`object-cover ${className}`}
+      />
+    );
+  }
+  const glyph = artist.name?.slice(0, 1) || "?";
+  const fontSize = Math.max(11, Math.round(size * 0.4));
+  return (
+    <div
+      style={{ ...sizeStyle, fontSize }}
+      className={`flex items-center justify-center bg-secondary text-muted-foreground font-medium select-none ${className}`}
+      aria-label={artist.name}
+    >
+      {glyph}
+    </div>
+  );
+}
+
 /* ======== Artist Detail Dialog ======== */
 // 结构：左列合并身份（头像 + 名字 + 稀有度 / 状态 / 等级 + 简介 + 领域 / 日期），
 // 右列展示艺人形象（AI 形象画廊：主视频 + 缩略图矩阵）。
@@ -84,7 +114,7 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
               {/* 头像 + 名字 + 稀有度 / 类型 / 状态 */}
               <div className="flex items-start gap-4">
                 <div className="relative shrink-0">
-                  <img src={artist.avatar} alt="" className={`w-24 h-24 rounded-2xl object-cover border-2 ${qualConf.border}`} />
+                  <ArtistAvatar artist={artist} size={96} className={`rounded-2xl border-2 ${qualConf.border}`} />
                   <div className={`absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full ${typeConf.bgColor} flex items-center justify-center text-base border-2 border-gray-900`}>
                     {typeConf.icon}
                   </div>
@@ -629,7 +659,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
                 {/* Header */}
                 <div className="flex items-center gap-3 mb-4">
                   <div className="relative">
-                    <img src={artist.avatar} alt="" className={`w-12 h-12 rounded-full object-cover border-2 ${qualConf.border}`} />
+                    <ArtistAvatar artist={artist} size={48} className={`rounded-full border-2 ${qualConf.border}`} />
                     <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[10px]`}>{typeConf.icon}</div>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -717,7 +747,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
                     className="border-b border-white/5 hover:bg-white/[0.02] transition cursor-pointer">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <img src={artist.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-white/10" />
+                        <ArtistAvatar artist={artist} size={32} className="rounded-full border border-white/10" />
                         <span className="text-sm font-semibold">{artist.name}</span>
                       </div>
                     </td>
