@@ -84,14 +84,6 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 - 三个新 web app shell + landing 全部 dev HTTP 200；root layout 注入 Inter + Space_Grotesk；`AppProviders` 包 `ThemeProvider` + `AuthProvider`；landing page 强制 `"use client"`。
 
-## 待办（下一轮）
+## 待办
 
-- ⏳ **M-1 真 TODO 3 处**（依赖后端 / 大重构）：
-  - `translations.ts:2` —— 中文单语化兜底清理（清除所有组件的 `lang: Lang` prop 透传 + `TRANSLATIONS[lang]` 访问，工作量大，需要逐文件验证）
-  - `api/community.ts:3` —— OpenAPI 尚未覆盖本域，等真后端落地
-  - `api/appearance-forge.ts:87` —— AI 视频生成尚未接入，等真后端落地
-- ⏳ **M-2 剩余 5 处**：见上方 v0.6 节，需 mock track shape 与 Song schema 对齐 / recharts 类型对齐。
-- ⏳ **M-3**：约 193 处 `style={{}}` 渐进迁移到 Tailwind v4 token；高 ROI 集中点是 `AppearanceForge.v3.tsx` / `IncubationWizardV2.tsx` / `MCNMatrix.tsx`。颜色 / 间距优先；动态计算值（百分比、translate）保留 inline。
-- ⏳ **M-4**：约 52 处 `<img>` 未确认 alt，跑 `pnpm lint` 借 `jsx-a11y/alt-text` 自动审。
-- ⏳ **CG-3 types 上推**：本工程暂无 drama 那样的本地待上推 types，但 community / appearance-forge 域接入 OpenAPI 时同步上推到 `packages/types`。
-- ⏳ **CG-4 proxy.ts /console 兼容**：观察期后删除（无旧书签来源后）。
+完整待办（含历史 M-1 ~ M-4 + 跨工程 CG-* 状态）见仓库根 [`TODO.md`](../../TODO.md) §「三子产品 web app 待办」。本 README 不再独立维护待办，避免与根 TODO 漂移。

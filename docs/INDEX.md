@@ -76,7 +76,7 @@
 
 | 文档 | 用途 |
 |---|---|
-| `TODO.md` | 已定位但未修的问题清单 + **v0.6 候选**（engine-pricing 落表 / WebSocket / OSS 上传 / 配置中心 / 角色拆分 等） |
+| `TODO.md` | 已定位但未修的问题清单 + **v0.6 候选**（engine-pricing 落表 / WebSocket / OSS 上传 / 配置中心 / 角色拆分 等）+ **三子产品 web app 待办**（CG-* / M-* / D-* / C-*，2026-05-15 起合并自各 README） |
 
 ---
 
