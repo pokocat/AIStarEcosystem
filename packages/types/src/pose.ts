@@ -3,11 +3,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID } from "./_shared";
+import type { SaleStatus } from "./wardrobe";
+
+export type { SaleStatus };
 
 export type PoseCategory = "standing" | "sitting" | "dancing" | "singing" | "action";
 export type PoseDifficulty = "easy" | "medium" | "hard";
-
-export type SaleStatus = "FREE" | "PAID" | "LOCKED";
 
 export interface Pose {
   id: ID;
