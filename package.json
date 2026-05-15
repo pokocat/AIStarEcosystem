@@ -15,6 +15,8 @@
     "typecheck:all": "pnpm -r --parallel run typecheck",
     "dev:music": "pnpm --filter @ai-star-eco/web-music run dev",
     "dev:drama": "pnpm --filter @ai-star-eco/web-drama run dev",
-    "dev:celebrity": "pnpm --filter @ai-star-eco/web-celebrity run dev"
+    "dev:celebrity": "pnpm --filter @ai-star-eco/web-celebrity run dev",
+    "check:api-contract": "node scripts/check-api-contract.mjs --warn",
+    "check:api-contract:strict": "node scripts/check-api-contract.mjs"
   }
 }
