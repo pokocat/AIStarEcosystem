@@ -34,20 +34,20 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
   return (
     <div className="flex flex-col gap-5">
       {/* 面包屑 */}
-      <div className="flex flex-wrap items-center gap-1 text-xs text-zinc-400">
-        <button onClick={onBack} className="text-zinc-500 hover:text-zinc-900">
+      <div className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
+        <button onClick={onBack} className="text-zinc-600 hover:text-zinc-900">
           {star.name}
         </button>
-        <ChevronRight className="h-3 w-3 text-zinc-300" />
-        <button onClick={onBack} className="text-zinc-500 hover:text-zinc-900">
+        <ChevronRight className="h-3 w-3 text-zinc-400" />
+        <button onClick={onBack} className="text-zinc-600 hover:text-zinc-900">
           模板生成
         </button>
-        <ChevronRight className="h-3 w-3 text-zinc-300" />
-        <span className="text-violet-300">选择模板</span>
+        <ChevronRight className="h-3 w-3 text-zinc-400" />
+        <span className="text-violet-600 font-medium">选择模板</span>
       </div>
 
       {/* 风格 tab */}
-      <div className="flex flex-wrap gap-1 border-b border-zinc-100">
+      <div className="flex flex-wrap gap-1 border-b border-zinc-200">
         {TEMPLATE_STYLES.map((style) => (
           <button
             key={style}
@@ -55,13 +55,13 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
             className={cn(
               "relative px-4 py-2 text-sm font-medium transition",
               activeStyle === style
-                ? "text-violet-300"
-                : "text-zinc-400 hover:text-zinc-700",
+                ? "text-violet-600"
+                : "text-zinc-500 hover:text-zinc-800",
             )}
           >
             {style}
             {activeStyle === style && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-violet-400 to-violet-300" />
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-violet-500 to-violet-400" />
             )}
           </button>
         ))}
@@ -74,10 +74,10 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
           return (
             <div
               key={tpl.id}
-              className="group relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-violet-500/40 hover:bg-zinc-100"
+              className="group relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)] transition hover:-translate-y-0.5 hover:border-violet-400/60 hover:shadow-[var(--shadow-lift)]"
             >
               {tpl.isHot && (
-                <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border border-pink-400/30 bg-pink-500/10 px-2 py-0.5 text-[10px] text-pink-300">
+                <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border border-pink-400/30 bg-pink-500/10 px-2 py-0.5 text-[10px] text-pink-600">
                   <Flame className="h-3 w-3" /> 热门
                 </span>
               )}
@@ -94,7 +94,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
               </div>
 
               <div>
-                <div className="text-base font-semibold text-zinc-700">{tpl.name}</div>
+                <div className="text-base font-semibold text-zinc-800">{tpl.name}</div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   <span
                     className={cn(
@@ -117,11 +117,11 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
                 </div>
               </div>
 
-              <p className="text-xs leading-relaxed text-zinc-400 min-h-[36px]">
+              <p className="text-xs leading-relaxed text-zinc-600 min-h-[36px]">
                 {tpl.description}
               </p>
 
-              <div className="flex items-center gap-4 text-[11px] text-zinc-400">
+              <div className="flex items-center gap-4 text-[11px] text-zinc-500">
                 <span className="inline-flex items-center gap-1">
                   <Eye className="h-3 w-3" />
                   {tpl.plays} 播放
@@ -134,7 +134,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
 
               <button
                 onClick={() => onPickTemplate(tpl)}
-                className="mt-1 w-full rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm font-medium text-violet-200 transition hover:border-violet-400 hover:bg-violet-500/20 hover:text-zinc-900"
+                className="mt-1 w-full rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm font-medium text-violet-600 transition hover:border-violet-500 hover:bg-[var(--accent)] hover:text-white"
               >
                 使用此模板
               </button>
@@ -144,7 +144,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
       </div>
 
       {filtered.length === 0 && (
-        <div className="rounded-xl border border-dashed border-zinc-200 px-6 py-12 text-center text-sm text-zinc-400">
+        <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-6 py-12 text-center text-sm text-zinc-500">
           暂无符合该风格的模板
         </div>
       )}

@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@ai-star-eco/ui/ui/dialog";
 import type { CelebrityProject, CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
+import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 
 interface Props {
   open: boolean;
@@ -54,17 +55,17 @@ export function NewProjectDialog({ open, onOpenChange, stars, onCreated, onSubmi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md border-zinc-200 bg-[#0f0f1a] text-zinc-900">
+      <DialogContent className="max-w-md border-zinc-200 bg-white text-zinc-900 shadow-[var(--shadow-pop)]">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">新建项目</DialogTitle>
-          <DialogDescription className="text-xs text-zinc-400">
+          <DialogDescription className="text-xs text-zinc-500">
             将多条带货视频归入同一个项目，便于统一分发和数据追踪。
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-500">
+            <label className="mb-1.5 block text-xs font-medium text-zinc-600">
               项目名称
             </label>
             <input
@@ -72,31 +73,31 @@ export function NewProjectDialog({ open, onOpenChange, stars, onCreated, onSubmi
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="例如：618大促 · 美妆专场"
-              className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-300 outline-none focus:border-violet-400/60 focus:bg-zinc-100"
+              className="w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500 focus:bg-white"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-500">
+            <label className="mb-1.5 block text-xs font-medium text-zinc-600">
               关联明星
             </label>
             <select
               value={starId}
               onChange={(e) => setStarId(e.target.value)}
-              className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-violet-400/60"
+              className="w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-violet-500 focus:bg-white"
             >
               {authorizedStars.length === 0 && (
-                <option value="" className="bg-[#0a0a14]">
+                <option value="">
                   暂无可选明星（需先获得授权）
                 </option>
               )}
               {authorizedStars.map((s) => (
-                <option key={s.id} value={s.id} className="bg-[#0a0a14]">
+                <option key={s.id} value={s.id}>
                   {s.name} · {s.category}
                 </option>
               ))}
             </select>
-            <p className="mt-1.5 text-[11px] text-zinc-400">
+            <p className="mt-1.5 text-[11px] text-zinc-500">
               仅显示「已授权」的明星；如需新增明星，请先在市场页申请商务合作。
             </p>
           </div>
@@ -106,7 +107,7 @@ export function NewProjectDialog({ open, onOpenChange, stars, onCreated, onSubmi
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
+            className={CTA_SECONDARY}
           >
             取消
           </button>
@@ -114,7 +115,7 @@ export function NewProjectDialog({ open, onOpenChange, stars, onCreated, onSubmi
             type="button"
             disabled={!canSubmit}
             onClick={handleSubmit}
-            className="rounded-md bg-gradient-to-r from-violet-500 to-violet-500 px-4 py-2 text-sm font-semibold text-zinc-900 transition disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-zinc-400"
+            className={CTA_PRIMARY}
           >
             {submitting ? "创建中…" : "创建项目"}
           </button>

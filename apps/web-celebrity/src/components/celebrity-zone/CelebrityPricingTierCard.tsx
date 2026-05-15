@@ -17,14 +17,14 @@ export function CelebrityPricingTierCard({ tier, authorized, onSelect }: Props) 
   return (
     <div
       className={cn(
-        "relative flex flex-col rounded-2xl border bg-zinc-50 p-5 transition",
+        "relative flex flex-col rounded-2xl border p-5 transition",
         recommended
-          ? "border-violet-400/40 bg-gradient-to-br from-violet-500/[0.07] to-violet-500/[0.04] shadow-[0_0_24px_rgba(6,182,212,0.15)]"
-          : "border-zinc-200 hover:border-zinc-200",
+          ? "border-violet-400/50 bg-gradient-to-br from-violet-500/[0.10] to-violet-500/[0.04] shadow-[var(--shadow-lift)]"
+          : "border-zinc-200 bg-white shadow-[var(--shadow-soft)] hover:border-zinc-300 hover:shadow-[var(--shadow-lift)]",
       )}
     >
       {recommended && (
-        <span className="absolute -top-2 right-4 rounded-md bg-gradient-to-r from-violet-500 to-violet-500 px-2 py-0.5 text-[10px] font-semibold text-zinc-900 shadow">
+        <span className="absolute -top-2 right-4 rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold text-white shadow-[var(--shadow-soft)]">
           推荐
         </span>
       )}
@@ -32,7 +32,7 @@ export function CelebrityPricingTierCard({ tier, authorized, onSelect }: Props) 
       <div
         className={cn(
           "mt-2 text-2xl font-bold tabular-nums",
-          recommended ? "text-violet-200" : "text-zinc-700",
+          recommended ? "text-violet-600" : "text-zinc-800",
         )}
       >
         {tier.price}
@@ -42,9 +42,9 @@ export function CelebrityPricingTierCard({ tier, authorized, onSelect }: Props) 
         {tier.features.map((f) => (
           <li
             key={f}
-            className="flex items-start gap-2 text-xs leading-relaxed text-zinc-500"
+            className="flex items-start gap-2 text-xs leading-relaxed text-zinc-600"
           >
-            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" />
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
             <span>{f}</span>
           </li>
         ))}
@@ -55,12 +55,12 @@ export function CelebrityPricingTierCard({ tier, authorized, onSelect }: Props) 
         disabled={!authorized}
         onClick={() => authorized && onSelect?.(tier)}
         className={cn(
-          "mt-5 inline-flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition",
+          "mt-5 inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold transition",
           !authorized
-            ? "cursor-not-allowed border border-zinc-200 bg-zinc-50 text-zinc-400"
+            ? "cursor-not-allowed border border-zinc-200 bg-zinc-100 text-zinc-400"
             : recommended
-              ? "bg-gradient-to-r from-violet-500 to-violet-500 text-zinc-900 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]"
-              : "border border-violet-400/40 bg-violet-500/10 text-violet-200 hover:border-violet-300 hover:bg-violet-500/20",
+              ? "bg-[var(--accent)] text-white shadow-[var(--shadow-soft)] hover:bg-[var(--accent-strong)]"
+              : "border border-violet-400/40 bg-violet-500/10 text-violet-600 hover:border-violet-500 hover:bg-violet-500/20",
         )}
       >
         {!authorized

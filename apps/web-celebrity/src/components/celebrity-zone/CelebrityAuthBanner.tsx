@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, Clock, Lock, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
-import { AUTH_STATUS_META } from "@/constants/celebrity-zone-ui";
+import { AUTH_STATUS_META, CTA_PRIMARY, CTA_SECONDARY, CTA_DANGER } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
@@ -48,18 +48,18 @@ export function CelebrityAuthBanner({ star }: Props) {
           </div>
           <div className="flex-1">
             <div className="text-base font-semibold text-zinc-800">{meta.title}</div>
-            <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+            <p className="mt-1 text-sm leading-relaxed text-zinc-600">
               {meta.description}
               {status === "expired" && expireDate && (
                 <>
                   {" "}
-                  授权已于 <span className="text-pink-300">{expireDate}</span> 到期。
+                  授权已于 <span className="text-pink-600">{expireDate}</span> 到期。
                 </>
               )}
               {status === "pending" && pendingNote && (
                 <>
                   {" "}
-                  <span className="text-amber-300">{pendingNote}</span>
+                  <span className="text-amber-600">{pendingNote}</span>
                 </>
               )}
             </p>
@@ -69,30 +69,21 @@ export function CelebrityAuthBanner({ star }: Props) {
         <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:shrink-0">
           {status === "unauthorized" && (
             <>
-              <Link
-                href={applyUrl ?? `/star/${star.id}/apply`}
-                className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-violet-500 to-violet-500 px-4 py-2 text-sm font-semibold text-zinc-900 shadow-[0_0_20px_rgba(6,182,212,0.25)] transition hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]"
-              >
+              <Link href={applyUrl ?? `/star/${star.id}/apply`} className={CTA_PRIMARY}>
                 申请商务合作 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
-              <Link
-                href={`/star/${star.id}?tier=trial`}
-                className="inline-flex items-center gap-1 rounded-lg border border-violet-400/40 bg-violet-500/10 px-4 py-2 text-sm font-medium text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20"
-              >
+              <Link href={`/star/${star.id}?tier=trial`} className={CTA_SECONDARY}>
                 购买体验版
               </Link>
             </>
           )}
           {status === "expired" && (
-            <Link
-              href={applyUrl ?? `/star/${star.id}/apply`}
-              className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-pink-500 to-pink-500 px-4 py-2 text-sm font-semibold text-zinc-900 shadow-[0_0_20px_rgba(244,63,94,0.25)] transition hover:shadow-[0_0_30px_rgba(244,63,94,0.45)]"
-            >
+            <Link href={applyUrl ?? `/star/${star.id}/apply`} className={CTA_DANGER}>
               立即续约 <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           )}
           {status === "pending" && (
-            <span className="inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200">
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-600">
               审核中…
             </span>
           )}

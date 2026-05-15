@@ -62,22 +62,22 @@ export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
   return (
     <div className="flex flex-col gap-5">
       {/* Header summary */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-[var(--shadow-soft)]">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/10">
-          <Film className="h-5 w-5 text-violet-300" />
+          <Film className="h-5 w-5 text-violet-600" />
         </div>
         <div className="flex-1">
           <div className="text-base font-semibold text-zinc-800">
             视频库 · {videos.length} 条
           </div>
-          <div className="text-xs text-zinc-400">
+          <div className="text-xs text-zinc-500">
             跨项目聚合所有 AI 生成视频，支持按状态 / 明星 / 项目 / 时间筛选与排序。
           </div>
         </div>
       </div>
 
       {/* Status tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-zinc-100">
+      <div className="flex flex-wrap gap-1 border-b border-zinc-200">
         {STATUS_TABS.map((s) => (
           <button
             key={s}
@@ -85,13 +85,13 @@ export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
             onClick={() => setStatus(s)}
             className={cn(
               "relative px-4 py-2 text-sm font-medium transition",
-              status === s ? "text-violet-300" : "text-zinc-400 hover:text-zinc-700",
+              status === s ? "text-violet-600" : "text-zinc-500 hover:text-zinc-800",
             )}
           >
             {s}
-            <span className="ml-1 text-[10px] text-zinc-300">({counters[s] ?? 0})</span>
+            <span className="ml-1 text-[10px] text-zinc-400">({counters[s] ?? 0})</span>
             {status === s && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-violet-400 to-violet-300" />
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-violet-500 to-violet-400" />
             )}
           </button>
         ))}
@@ -129,7 +129,7 @@ export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-200 px-6 py-16 text-center text-sm text-zinc-400">
+        <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-6 py-16 text-center text-sm text-zinc-500">
           暂无符合筛选条件的视频
         </div>
       ) : (
@@ -155,15 +155,15 @@ function FilterSelect<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <label className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-500">
-      <span className="text-zinc-400">{label}</span>
+    <label className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600">
+      <span className="text-zinc-500">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="bg-transparent text-xs text-zinc-700 outline-none"
+        className="bg-transparent text-xs text-zinc-800 outline-none"
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value} className="bg-[#0a0a14]">
+          <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}

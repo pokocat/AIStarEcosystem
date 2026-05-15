@@ -19,17 +19,17 @@ const AUTH_ICONS = {
 } as const;
 
 /**
- * 卡片封面上的徽章统一样式：实色背景 + 白字 + 投影，保证在任意亮度的封面图上
- * 都有足够对比度。AUTH_STATUS_META.badgeClass 仍用于详情页等深色背景内嵌位置。
+ * 卡片封面上的徽章统一样式：实色背景 + 白字 + 柔投影，覆盖在明星封面图片上
+ * 需要对抗任意亮度的图像背景，故保留 ring + 阴影（但 ring 改 white/40 更轻盈）。
  */
 const COVER_BADGE_BASE =
-  "inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-semibold tracking-wide text-zinc-900 shadow-[0_2px_8px_rgba(0,0,0,0.45)] ring-1 ring-white/30";
+  "inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-semibold tracking-wide text-white shadow-[var(--shadow-lift)] ring-1 ring-white/40";
 
 const AUTH_COVER_BADGE: Record<CelebrityAuthStatus, string> = {
-  authorized: "bg-emerald-500/95",
-  pending: "bg-amber-500/95",
-  expired: "bg-pink-500/95",
-  unauthorized: "bg-zinc-700/85",
+  authorized: "bg-emerald-500",
+  pending: "bg-amber-500",
+  expired: "bg-pink-500",
+  unauthorized: "bg-zinc-700",
 };
 
 /** 明星卡片：3:4 公开图 + 名字 + 热门 + 类目/价格 + 授权徽章 */
@@ -40,7 +40,7 @@ export function CelebrityStarCard({ star }: Props) {
   return (
     <Link
       href={`/star/${star.id}`}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 transition hover:-translate-y-0.5 hover:border-violet-500/40 hover:bg-zinc-100 hover:shadow-[0_8px_30px_rgba(6,182,212,0.15)]"
+      className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[var(--shadow-soft)] transition hover:-translate-y-0.5 hover:border-violet-400/60 hover:shadow-[var(--shadow-lift)]"
     >
       {/* 3:4 cover */}
       <div className="relative aspect-[3/4] overflow-hidden">
@@ -52,10 +52,10 @@ export function CelebrityStarCard({ star }: Props) {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
 
-        {/* 顶部右：热门 / 授权徽章（实色 + 白字 + 投影，保证亮背景下可读） */}
+        {/* 顶部右：热门 / 授权徽章（实色 + 白字 + 柔阴影，对抗封面图像） */}
         <div className="absolute right-2 top-2 flex flex-col items-end gap-1.5">
           {star.isHot && (
-            <span className={cn(COVER_BADGE_BASE, "bg-pink-500/95")}>
+            <span className={cn(COVER_BADGE_BASE, "bg-pink-500")}>
               <Flame className="h-3 w-3" /> 热门
             </span>
           )}
@@ -69,8 +69,8 @@ export function CelebrityStarCard({ star }: Props) {
           </span>
         </div>
 
-        {/* 底部：起拍价 */}
-        <div className="absolute bottom-2 left-2 inline-flex items-center rounded-full bg-white/65 px-2.5 py-[3px] text-[11px] font-semibold text-violet-100 ring-1 ring-violet-300/50 backdrop-blur-sm">
+        {/* 底部：起拍价（覆盖在图像上，半透明白底 + 紫罗兰深字） */}
+        <div className="absolute bottom-2 left-2 inline-flex items-center rounded-full bg-white/90 px-2.5 py-[3px] text-[11px] font-semibold text-violet-700 ring-1 ring-white/60 backdrop-blur-sm">
           {star.startingPrice}
         </div>
       </div>
@@ -88,7 +88,7 @@ export function CelebrityStarCard({ star }: Props) {
             {star.category}
           </span>
         </div>
-        <p className="line-clamp-2 text-[11px] leading-relaxed text-zinc-400">
+        <p className="line-clamp-2 text-[11px] leading-relaxed text-zinc-600">
           {star.description}
         </p>
       </div>

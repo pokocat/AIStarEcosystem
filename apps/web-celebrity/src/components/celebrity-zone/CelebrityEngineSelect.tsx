@@ -22,7 +22,7 @@ function QualityStars({ count }: { count: number }) {
           key={i}
           className={cn(
             "h-3 w-3",
-            i < count ? "fill-amber-300 text-amber-300" : "text-zinc-300",
+            i < count ? "fill-amber-500 text-amber-500" : "text-zinc-300",
           )}
         />
       ))}
@@ -34,8 +34,8 @@ function QualityStars({ count }: { count: number }) {
 export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
   if (compact) {
     return (
-      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-        <div className="mb-3 text-sm font-medium text-zinc-600">生成引擎</div>
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
+        <div className="mb-3 text-sm font-medium text-zinc-700">生成引擎</div>
         <div className="flex flex-col gap-2.5">
           {ENGINE_ORDER.map((id) => {
             const meta = ENGINE_META[id];
@@ -48,8 +48,8 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                 className={cn(
                   "flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
                   selected
-                    ? "border-zinc-200 bg-zinc-100"
-                    : "border-zinc-300/[0.06] bg-transparent hover:border-zinc-200",
+                    ? "border-zinc-300 bg-zinc-50"
+                    : "border-zinc-200 bg-white hover:border-zinc-300",
                 )}
               >
                 <span
@@ -57,17 +57,17 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                     "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2",
                   )}
                   style={{
-                    borderColor: selected ? meta.color : "rgba(255,255,255,0.18)",
+                    borderColor: selected ? meta.color : "var(--line-2)",
                     background: selected ? meta.color : "transparent",
                   }}
                 />
                 <span
                   className="text-sm font-semibold"
-                  style={{ color: selected ? meta.color : "rgba(255,255,255,0.7)" }}
+                  style={{ color: selected ? meta.color : "var(--fg-1)" }}
                 >
                   {meta.name}
                 </span>
-                <span className="text-[11px] text-zinc-400 tabular-nums">
+                <span className="text-[11px] text-zinc-500 tabular-nums">
                   {meta.level} · ✦{formatCredits(meta.creditPrice)}/条
                 </span>
               </button>
@@ -79,8 +79,8 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-      <div className="mb-3 text-sm font-medium text-zinc-600">生成引擎</div>
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
+      <div className="mb-3 text-sm font-medium text-zinc-700">生成引擎</div>
       <div className="flex flex-col gap-2.5">
         {ENGINE_ORDER.map((id) => {
           const meta = ENGINE_META[id];
@@ -92,7 +92,7 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
               onClick={() => onChange(id)}
               className={cn(
                 "rounded-lg border-2 border-dashed px-4 py-3 text-left transition",
-                selected ? "" : "border-zinc-200 hover:border-zinc-200",
+                selected ? "" : "border-zinc-200 hover:border-zinc-300",
               )}
               style={
                 selected
@@ -108,13 +108,13 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                   <span
                     className="flex h-3.5 w-3.5 items-center justify-center rounded-full border-2"
                     style={{
-                      borderColor: selected ? meta.color : "rgba(255,255,255,0.2)",
+                      borderColor: selected ? meta.color : "var(--line-2)",
                       background: selected ? meta.color : "transparent",
                     }}
                   />
                   <span
                     className="text-sm font-semibold"
-                    style={{ color: selected ? meta.color : "rgba(255,255,255,0.75)" }}
+                    style={{ color: selected ? meta.color : "var(--fg-0)" }}
                   >
                     {meta.name}
                   </span>
@@ -129,13 +129,13 @@ export function CelebrityEngineSelect({ value, onChange, compact }: Props) {
                     {meta.level}
                   </span>
                 </div>
-                <span className="text-[11px] tabular-nums text-zinc-500">
-                  消耗 <span className="text-violet-200">✦{formatCredits(meta.creditPrice)}</span> 积分
-                  <span className="text-zinc-400"> · 占套餐额度 {meta.cost} 条</span>
+                <span className="text-[11px] tabular-nums text-zinc-600">
+                  消耗 <span className="text-violet-600 font-medium">✦{formatCredits(meta.creditPrice)}</span> 积分
+                  <span className="text-zinc-500"> · 占套餐额度 {meta.cost} 条</span>
                 </span>
               </div>
-              <p className="mt-2 ml-5 text-[12px] leading-relaxed text-zinc-400">{meta.desc}</p>
-              <div className="mt-2 ml-5 flex items-center gap-4 text-[11px] text-zinc-400">
+              <p className="mt-2 ml-5 text-[12px] leading-relaxed text-zinc-600">{meta.desc}</p>
+              <div className="mt-2 ml-5 flex items-center gap-4 text-[11px] text-zinc-500">
                 <span className="inline-flex items-center gap-1">
                   画质 <QualityStars count={meta.quality} />
                 </span>

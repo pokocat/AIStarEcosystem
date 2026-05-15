@@ -42,7 +42,7 @@ export function CelebrityStarDetail({ star }: Props) {
       <div className="flex items-center gap-3">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
+          className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> 返回
         </Link>
@@ -50,7 +50,7 @@ export function CelebrityStarDetail({ star }: Props) {
           {star.name} · 明星详情
         </h1>
         {star.isHot && (
-          <span className="inline-flex items-center gap-1 rounded-md border border-pink-400/40 bg-pink-500/15 px-1.5 py-0.5 text-[11px] font-medium text-pink-200">
+          <span className="inline-flex items-center gap-1 rounded-md border border-pink-400/40 bg-pink-500/15 px-1.5 py-0.5 text-[11px] font-medium text-pink-600">
             <Flame className="h-3 w-3" /> 热门
           </span>
         )}
@@ -73,7 +73,7 @@ export function CelebrityStarDetail({ star }: Props) {
         {/* 左：资料 */}
         <div className="flex flex-col gap-4">
           {/* 个人信息 */}
-          <div className="flex flex-col items-center gap-3 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="flex flex-col items-center gap-3 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
             <div className="relative w-full">
               <img
                 src={star.cover}
@@ -83,11 +83,11 @@ export function CelebrityStarDetail({ star }: Props) {
               />
               <span
                 className={cn(
-                  "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide text-zinc-900 shadow-[0_2px_8px_rgba(0,0,0,0.45)] ring-1 ring-white/30",
-                  star.authorization.status === "authorized" && "bg-emerald-500/95",
-                  star.authorization.status === "pending" && "bg-amber-500/95",
-                  star.authorization.status === "expired" && "bg-pink-500/95",
-                  star.authorization.status === "unauthorized" && "bg-zinc-700/85",
+                  "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white shadow-[var(--shadow-lift)] ring-1 ring-white/40",
+                  star.authorization.status === "authorized" && "bg-emerald-500",
+                  star.authorization.status === "pending" && "bg-amber-500",
+                  star.authorization.status === "expired" && "bg-pink-500",
+                  star.authorization.status === "unauthorized" && "bg-zinc-700",
                 )}
               >
                 {auth.label}
@@ -118,15 +118,15 @@ export function CelebrityStarDetail({ star }: Props) {
                   </span>
                 ))}
               </div>
-              <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+              <p className="mt-3 text-xs leading-relaxed text-zinc-600">
                 {star.description}
               </p>
             </div>
           </div>
 
           {/* 授权信息 */}
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="mb-3 text-sm font-medium text-zinc-600">授权信息</div>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
+            <div className="mb-3 text-sm font-medium text-zinc-700">授权信息</div>
             <dl className="space-y-2 text-xs">
               <Row k="状态" v={<span className={authToneClass(auth.tone)}>{auth.label}</span>} />
               {star.authorization.scenes.length > 0 && (
@@ -151,13 +151,13 @@ export function CelebrityStarDetail({ star }: Props) {
           </div>
 
           {/* 效果数据 */}
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="mb-3 text-sm font-medium text-zinc-600">效果数据</div>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
+            <div className="mb-3 text-sm font-medium text-zinc-700">效果数据</div>
             <div className="grid grid-cols-2 gap-3">
-              <Metric label="已生成" value={star.stats.totalGenerated.toString()} accent="text-violet-300" />
-              <Metric label="总播放" value={star.stats.totalPlays} accent="text-violet-300" />
-              <Metric label="转化率" value={star.stats.conversionRate} accent="text-emerald-300" />
-              <Metric label="GMV" value={star.stats.gmv} accent="text-pink-300" />
+              <Metric label="已生成" value={star.stats.totalGenerated.toString()} accent="text-violet-600" />
+              <Metric label="总播放" value={star.stats.totalPlays} accent="text-violet-600" />
+              <Metric label="转化率" value={star.stats.conversionRate} accent="text-emerald-600" />
+              <Metric label="GMV" value={star.stats.gmv} accent="text-pink-600" />
             </div>
           </div>
         </div>
@@ -165,10 +165,10 @@ export function CelebrityStarDetail({ star }: Props) {
         {/* 右：示例 + 套餐 */}
         <div className="flex flex-col gap-4">
           {/* 示例视频（真实可播放） */}
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-600">示例视频</span>
-              <span className="text-[11px] text-zinc-400">
+              <span className="text-sm font-medium text-zinc-700">示例视频</span>
+              <span className="text-[11px] text-zinc-500">
                 {star.sampleVideos.length} 个样片 · 点击播放
               </span>
             </div>
@@ -184,7 +184,7 @@ export function CelebrityStarDetail({ star }: Props) {
                     <div className="text-[11px] font-medium text-zinc-700">
                       {sv.label}
                     </div>
-                    <div className="text-[10px] text-zinc-400">{sv.category}</div>
+                    <div className="text-[10px] text-zinc-500">{sv.category}</div>
                   </div>
                 </div>
               ))}
@@ -195,11 +195,11 @@ export function CelebrityStarDetail({ star }: Props) {
           {isAuthorized && currentTier ? (
             <CurrentTierBlock star={star} />
           ) : (
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-medium text-zinc-600">授权套餐</span>
+                <span className="text-sm font-medium text-zinc-700">授权套餐</span>
                 {!isAuthorized && (
-                  <span className="text-[11px] text-zinc-400">
+                  <span className="text-[11px] text-zinc-500">
                     授权通过后方可开通
                   </span>
                 )}
@@ -228,24 +228,24 @@ function CurrentTierBlock({ star }: { star: CelebrityStar }) {
   const total = star.quotaTotal ?? 0;
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   return (
-    <div className="rounded-2xl border border-violet-400/30 bg-gradient-to-br from-violet-500/[0.06] to-violet-500/[0.04] p-5">
+    <div className="rounded-2xl border border-violet-400/40 bg-gradient-to-br from-violet-500/[0.10] to-violet-500/[0.04] p-5 shadow-[var(--shadow-lift)]">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-zinc-700">您的套餐</span>
-          <span className="rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+          <span className="rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
             ✓ 当前
           </span>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href={`/star/${star.id}/apply`}
-            className="inline-flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/10 px-2.5 py-1 text-[11px] text-violet-200 hover:border-violet-300 hover:bg-violet-500/20"
+            className="inline-flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/10 px-2.5 py-1 text-[11px] text-violet-600 transition hover:border-violet-500 hover:bg-violet-500/20"
           >
             <ArrowUpRight className="h-3 w-3" /> 升级套餐
           </Link>
           <Link
             href={`/star/${star.id}/apply`}
-            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
           >
             <RefreshCcw className="h-3 w-3" /> 续费
           </Link>
@@ -254,25 +254,25 @@ function CurrentTierBlock({ star }: { star: CelebrityStar }) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div>
-          <div className="text-2xl font-bold text-violet-200 tabular-nums">{tier.price}</div>
-          <ul className="mt-2 flex flex-col gap-1 text-[11px] text-zinc-500">
+          <div className="text-2xl font-bold text-violet-600 tabular-nums">{tier.price}</div>
+          <ul className="mt-2 flex flex-col gap-1 text-[11px] text-zinc-600">
             {tier.features.map((f) => (
               <li key={f}>• {f}</li>
             ))}
           </ul>
         </div>
-        <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+        <div className="rounded-xl border border-zinc-200 bg-white p-3">
           <div className="flex items-center justify-between text-[11px]">
-            <span className="text-zinc-400">本月用量</span>
-            <span className="tabular-nums text-zinc-700">{used}/{total} 条</span>
+            <span className="text-zinc-500">本月用量</span>
+            <span className="tabular-nums text-zinc-800">{used}/{total} 条</span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-violet-400 to-violet-500"
+              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-400"
               style={{ width: `${pct}%` }}
             />
           </div>
-          <div className="mt-2 text-[10px] text-zinc-400">
+          <div className="mt-2 text-[10px] text-zinc-500">
             提示：套餐余量耗尽后可继续按积分扣费生成。
           </div>
         </div>
@@ -284,8 +284,8 @@ function CurrentTierBlock({ star }: { star: CelebrityStar }) {
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <dt className="text-zinc-400">{k}</dt>
-      <dd className="text-zinc-600 text-right">{v}</dd>
+      <dt className="text-zinc-500">{k}</dt>
+      <dd className="text-zinc-700 text-right">{v}</dd>
     </div>
   );
 }
@@ -300,9 +300,9 @@ function Metric({
   accent: string;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-zinc-100 bg-zinc-50 py-3">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 py-3">
       <span className={cn("text-xl font-bold tabular-nums", accent)}>{value}</span>
-      <span className="mt-1 text-[11px] text-zinc-400">{label}</span>
+      <span className="mt-1 text-[11px] text-zinc-500">{label}</span>
     </div>
   );
 }
@@ -310,11 +310,11 @@ function Metric({
 function authToneClass(tone: "success" | "warning" | "danger" | "muted") {
   switch (tone) {
     case "success":
-      return "text-emerald-300";
+      return "text-emerald-600";
     case "warning":
-      return "text-amber-300";
+      return "text-amber-600";
     case "danger":
-      return "text-pink-300";
+      return "text-pink-600";
     default:
       return "text-zinc-500";
   }

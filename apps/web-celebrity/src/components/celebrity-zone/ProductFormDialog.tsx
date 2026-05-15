@@ -16,6 +16,7 @@ import {
   type ProductCategory,
   type ProductInput,
 } from "@ai-star-eco/types/product";
+import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 
 interface Props {
   open: boolean;
@@ -29,7 +30,7 @@ interface Props {
 }
 
 const inputCls =
-  "w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-300 outline-none focus:border-violet-400/60 focus:bg-zinc-100";
+  "w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500 focus:bg-white";
 
 export function ProductFormDialog({
   open,
@@ -98,12 +99,12 @@ export function ProductFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg border-zinc-200 bg-[#0f0f1a] text-zinc-900">
+      <DialogContent className="max-w-lg border-zinc-200 bg-white text-zinc-900 shadow-[var(--shadow-pop)]">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">
             {initial ? "编辑商品" : "快速录入商品"}
           </DialogTitle>
-          <DialogDescription className="text-xs text-zinc-400">
+          <DialogDescription className="text-xs text-zinc-500">
             录入后可在生成带货视频时复用，提升二次生成效率。
           </DialogDescription>
         </DialogHeader>
@@ -126,7 +127,7 @@ export function ProductFormDialog({
                 onChange={(e) => setCategory(e.target.value as ProductCategory)}
               >
                 {PRODUCT_CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="bg-[#0a0a14]">
+                  <option key={c} value={c}>
                     {c}
                   </option>
                 ))}
@@ -160,7 +161,7 @@ export function ProductFormDialog({
                 <button
                   type="button"
                   onClick={addImage}
-                  className="shrink-0 rounded-md border border-violet-400/40 bg-violet-500/10 px-3 py-2 text-xs text-violet-200 hover:border-violet-300 hover:bg-violet-500/20"
+                  className="shrink-0 rounded-md border border-violet-400/40 bg-violet-500/10 px-3 py-2 text-xs text-violet-600 hover:border-violet-500 hover:bg-violet-500/20"
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </button>
@@ -176,7 +177,7 @@ export function ProductFormDialog({
                       <button
                         type="button"
                         onClick={() => removeImage(url)}
-                        className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center bg-white/70 text-zinc-900 opacity-0 transition group-hover:opacity-100"
+                        className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center bg-white/85 text-zinc-900 opacity-0 transition group-hover:opacity-100"
                         aria-label="移除"
                       >
                         <X className="h-3 w-3" />
@@ -202,7 +203,7 @@ export function ProductFormDialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
+            className={CTA_SECONDARY}
           >
             取消
           </button>
@@ -210,7 +211,7 @@ export function ProductFormDialog({
             type="button"
             disabled={!canSubmit}
             onClick={handleSubmit}
-            className="rounded-md bg-gradient-to-r from-violet-500 to-violet-500 px-4 py-2 text-sm font-semibold text-zinc-900 transition disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-zinc-400"
+            className={CTA_PRIMARY}
           >
             {submitting ? "保存中…" : initial ? "保存修改" : "保存到商品库"}
           </button>
@@ -231,9 +232,9 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-zinc-500">
+      <span className="text-xs font-medium text-zinc-600">
         {label}
-        {required && <span className="ml-0.5 text-pink-300">*</span>}
+        {required && <span className="ml-0.5 text-pink-600">*</span>}
       </span>
       {children}
     </label>

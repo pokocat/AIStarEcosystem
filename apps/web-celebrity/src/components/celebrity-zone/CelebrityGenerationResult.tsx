@@ -17,7 +17,7 @@ import type {
   CelebrityProductInput,
   CelebrityStar,
 } from "@ai-star-eco/types/celebrity-zone";
-import { ENGINE_META } from "@/constants/celebrity-zone-ui";
+import { ENGINE_META, CTA_PRIMARY_LG, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
@@ -75,19 +75,19 @@ export function CelebrityGenerationResult({
   return (
     <div className="flex flex-col gap-4">
       {/* 顶部状态条 */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.06] px-5 py-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.06] px-5 py-3 shadow-[var(--shadow-soft)]">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-400/40 bg-emerald-500/15">
-          <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
         </div>
         <div className="flex-1">
           <div className="text-sm font-semibold text-zinc-800">
             视频已生成完成
           </div>
-          <div className="text-xs text-zinc-400">
+          <div className="text-xs text-zinc-500">
             预览满意可一键采纳保存到项目；不满意可调整参数后重新生成。
           </div>
         </div>
-        <div className="hidden items-center gap-1 rounded-md border border-violet-400/30 bg-violet-500/10 px-2 py-1 text-[11px] text-violet-200 md:inline-flex">
+        <div className="hidden items-center gap-1 rounded-md border border-violet-400/30 bg-violet-500/10 px-2 py-1 text-[11px] text-violet-600 md:inline-flex">
           <Sparkles className="h-3 w-3" /> {meta.name} · {meta.level}
         </div>
       </div>
@@ -95,7 +95,7 @@ export function CelebrityGenerationResult({
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         {/* 左：9:16 预览 */}
         <div>
-          <div className="relative mx-auto aspect-[9/16] w-full max-w-[360px] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_0_40px_rgba(6,182,212,0.18)]">
+          <div className="relative mx-auto aspect-[9/16] w-full max-w-[360px] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[var(--shadow-pop)]">
             <video
               ref={videoRef}
               src={SAMPLE_VIDEO_URL}
@@ -132,12 +132,12 @@ export function CelebrityGenerationResult({
                   )}
                 </button>
               </div>
-              <span className="pointer-events-auto rounded-md bg-white/50 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-zinc-700 backdrop-blur">
+              <span className="pointer-events-auto rounded-md bg-white/85 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-zinc-800 backdrop-blur">
                 {pad2(Math.floor(durationSec / 60))}:{pad2(durationSec % 60)}
               </span>
             </div>
             {/* 角标 */}
-            <span className="absolute left-2 top-2 rounded-md border border-violet-400/40 bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-violet-100 backdrop-blur">
+            <span className="absolute left-2 top-2 rounded-md border border-violet-400/40 bg-violet-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-[var(--shadow-soft)]">
               预览
             </span>
           </div>
@@ -145,20 +145,20 @@ export function CelebrityGenerationResult({
 
         {/* 右：元数据 + 动作 */}
         <div className="flex flex-col gap-4">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
-            <div className="mb-3 text-sm font-medium text-zinc-600">视频信息</div>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[var(--shadow-soft)]">
+            <div className="mb-3 text-sm font-medium text-zinc-700">视频信息</div>
             <dl className="grid grid-cols-2 gap-3 text-xs">
               <Cell k="明星" v={star.name} />
               <Cell k="商品" v={product.name || "未命名"} />
               <Cell k="时长" v={`${durationSec} 秒`} />
               <Cell k="引擎" v={`${meta.name} · ${meta.level}`} accent={meta.color} />
               <Cell k="额度消耗" v={`${meta.cost} 条`} />
-              <Cell k="状态" v={<span className="text-emerald-300">已生成 · 待采纳</span>} />
+              <Cell k="状态" v={<span className="text-emerald-600">已生成 · 待采纳</span>} />
             </dl>
             {product.sellingPoints && (
-              <div className="mt-4 rounded-lg border border-zinc-100 bg-zinc-50 p-3">
-                <div className="text-[11px] text-zinc-400">商品卖点</div>
-                <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-zinc-500">
+              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                <div className="text-[11px] text-zinc-500">商品卖点</div>
+                <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-zinc-600">
                   {product.sellingPoints}
                 </p>
               </div>
@@ -167,17 +167,13 @@ export function CelebrityGenerationResult({
 
           {/* 主动作 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={onAdopt}
-              className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-violet-500 via-violet-400 to-violet-500 px-4 py-3 text-sm font-semibold text-zinc-50 shadow-[0_0_20px_rgba(6,182,212,0.3)] transition hover:shadow-[0_0_30px_rgba(168,85,247,0.45)]"
-            >
+            <button type="button" onClick={onAdopt} className={CTA_PRIMARY_LG}>
               <CheckCircle2 className="h-4 w-4" /> 采纳并保存到项目
             </button>
             <button
               type="button"
               onClick={onRegenerate}
-              className="inline-flex items-center justify-center gap-1 rounded-xl border border-violet-400/40 bg-violet-500/10 px-4 py-3 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20"
+              className="inline-flex items-center justify-center gap-1 rounded-full border border-violet-400/40 bg-violet-500/10 px-4 py-3 text-sm font-semibold text-violet-600 transition hover:border-violet-500 hover:bg-violet-500/20"
             >
               <RotateCcw className="h-4 w-4" /> 重新生成（同参数）
             </button>
@@ -186,17 +182,13 @@ export function CelebrityGenerationResult({
           {/* 次动作 */}
           <div className="flex flex-wrap gap-2">
             {onDistribute && (
-              <button
-                type="button"
-                onClick={onDistribute}
-                className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-3 py-2 text-xs text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
-              >
+              <button type="button" onClick={onDistribute} className={CTA_SECONDARY}>
                 <Globe className="h-3.5 w-3.5" /> 立即分发
               </button>
             )}
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-3 py-2 text-xs text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900"
+              className={CTA_SECONDARY}
               onClick={() => {
                 const a = document.createElement("a");
                 a.href = SAMPLE_VIDEO_URL;
@@ -209,9 +201,7 @@ export function CelebrityGenerationResult({
             <button
               type="button"
               onClick={onStartOver}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md border border-zinc-200 px-3 py-2 text-xs text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900",
-              )}
+              className={cn(CTA_SECONDARY)}
             >
               再来一条（换模式 / 模板）
             </button>
@@ -233,9 +223,9 @@ function Cell({
 }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wider text-zinc-400">{k}</dt>
+      <dt className="text-[10px] uppercase tracking-wider text-zinc-500">{k}</dt>
       <dd
-        className="text-sm font-medium text-zinc-700"
+        className="text-sm font-medium text-zinc-800"
         style={accent ? { color: accent } : undefined}
       >
         {v}

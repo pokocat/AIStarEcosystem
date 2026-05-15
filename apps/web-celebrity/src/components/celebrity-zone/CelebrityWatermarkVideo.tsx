@@ -32,14 +32,14 @@ export function CelebrityWatermarkVideo({
     >
       <div className="text-center px-2">
         {label && (
-          <div className="text-xs font-medium text-zinc-400">{label}</div>
+          <div className="text-xs font-medium text-zinc-500">{label}</div>
         )}
         {caption && (
-          <div className="mt-1 text-[10px] text-zinc-300">{caption}</div>
+          <div className="mt-1 text-[10px] text-zinc-400">{caption}</div>
         )}
       </div>
       <span
-        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[28deg] whitespace-nowrap text-xs font-light text-zinc-200 tracking-wide"
+        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[28deg] whitespace-nowrap text-xs font-light text-zinc-300 tracking-wide"
         aria-hidden
       >
         {watermarkText}
