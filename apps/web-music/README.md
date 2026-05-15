@@ -1,0 +1,89 @@
+# AI 音乐人 · Music Studio
+
+面向 MCN 的歌手类 AI 数字人 IP + 音乐工作台。Next 16.2.6 + React 19 + Tailwind v4 + pnpm workspace。
+
+## 启动
+
+```bash
+# 在仓库根目录
+pnpm install
+pnpm dev:music       # http://localhost:3010
+pnpm --filter @ai-star-eco/web-music typecheck
+pnpm --filter @ai-star-eco/web-music build
+```
+
+USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT_PUBLIC_USE_MOCK`，无 `.env.local` 时按 mock 走）。所有 `src/api/*.ts` 在 mock 模式下命中本地数据；real 模式走 `apiFetch` → Next rewrites → `apps/server:8080`。
+
+## 路由结构
+
+不带 `/console` 前缀，公开页与工作区共存：
+
+```
+/                    ← 公开 landing（ProductLanding 原语 + postLoginPath="/dashboard"）
+/login               ← 公开
+/dashboard           ← 工作区总览（AgencyOverview + ActivityFeed）
+/artist              ← 单艺人聚焦视图（默认选中 IP）
+/artists             ← 艺人矩阵（MCNMatrix）
+/incubator           ← 新艺人孵化向导（IncubationWizardV2 多步表单 + draft 持久化）
+/appearance          ← 形象锻造（AppearanceForge.v3，Coze event stream 占位）
+/wardrobe            ← 戏服 / 道具（WardrobeSystem，上传 + 分配）
+/studio              ← 音乐工坊（MusicLibrary + 生成 dialog）
+/music               ← 单曲详情入口（SongDetailDrawer）
+/copyright           ← 版权 / NFT（NFTMintingDialog）
+/distribution        ← 多平台分发
+/community           ← 粉丝社区（mock-only，OpenAPI 未覆盖）
+/finance             ← 财务中心（充值 / 提现 / 流水）
+/settings            ← 工作室设置
+```
+
+`/console`、`/console?tab=xxx`、`/console/*` 通过 `src/proxy.ts` 308 重定向到对应新路径。`TAB_MAP` 覆盖 13 个旧 tab id；下一版本（无残留旧书签时）删除。
+
+## 共享组件
+
+- `src/components/producer/` — 工作台主组件（22 个 + `dashboard/` 子目录）：`AppearanceForge.v3` / `IncubationWizardV2` / `MCNMatrix` / `MusicLibrary` / `WardrobePageV2` / `StudioPage` / `CopyrightPage` / `DistributionPage` / `CommunityPage` / `FinancePage` / `SettingsPage` / `CommandPalette` / `NotificationPanel` / `SkeletonLoader` 等。
+- `src/components/landing/` — landing page 模块（强制 `"use client"`，避免 Server→Client 传递 LucideIcon 函数）。
+- `src/components/` 根目录 — 跨页面 dialog / drawer：`MusicGenerationDialog` / `NFTMintingDialog` / `ArtistSigningDialog` / `ArtistListingDialog` / `GlobalAudioPlayer` / `OnboardingGuide` / `ThemeSwitcher` / `ToastNotification` / `PoseLibrary`。
+- `@ai-star-eco/ui`（共享包）— 48 个 shadcn 原语 + `ThemeProvider` + Tailwind v4 globals.css。字体由 root layout 通过 `next/font/google` 注入（Inter + Space_Grotesk）。
+- `@ai-star-eco/api-client`（共享包）— `apiFetch` / `AuthProvider` / `USE_MOCK` / `mockDelay`，token 仍 localStorage（cookie SSO TODO 见 `packages/api-client/src/_client.ts`）。
+
+`(workspace)/layout.tsx` 提供独立 sidebar + topbar shell（`producer-shell-context.tsx` 的 `navigate(page)` 实现 id→href 映射：`overview → /dashboard`，其余 `/${id}`）；登录态由 `app/providers.tsx` 的 `AuthProvider` 承担（`publicPrefixes=["/","/login","/activate"]`，`loginPath="/login"`，`"/"` exact-match）。
+
+## Mock 数据写入层
+
+- `src/api/_client.ts` 重导出 `USE_MOCK` / `mockDelay`，业务 api/*.ts 顶部分支：`if (USE_MOCK) { ... } else { return apiFetch(...) }`。
+- `community.ts` / `appearance-forge.ts` 标注「OpenAPI 尚未覆盖」/「AI 视频生成尚未接入」—— 全 mock，`USE_MOCK=0` 时仍走 `DEMO_VIDEO_POOL` 等本地池。
+- `music.ts` / `artists.ts` / `wardrobe.ts` / `distribution.ts` / `finance.ts` / `copyright.ts`（store / products / pose / generation / notifications / settings 同节奏）—— 真后端落地后切实数据源，mock 分支保留。
+
+## 版本日志
+
+### v0.6 · 2026-05-15 · README 落地 + tsconfig 收尾 + any 大清扫
+
+- ✅ **CG-1**：`tsconfig.json` 加 `"ignoreDeprecations": "6.0"`，消除 TS 7.0 baseUrl 弃用警告。
+- ✅ **CG-5**：补本 README，对齐 drama README 的版本日志纪律。
+- ✅ **M-2 部分**：23 处 `any` → 5 处（清扫 18 处，约 78%）：
+  - 7 处 `icon: any` → `LucideIcon`：`OnboardingGuide` / `ActivityFeed` / `AgencyOverview` / `layout.tsx`（SidebarItemDef + getIcon item + iconMap Record）
+  - 5 处 `activeSinger/artist: any` → `Artist`（已验证字段：name / avatar / level / talents）：`WardrobeSystem` / `PoseLibrary` / `NoticeBoard`
+  - 3 处 `catch (e: any)` → `catch (e: unknown)` + `e instanceof Error ? e.message : 默认值`：`WardrobeSystem` / `PoseLibrary` / `SettingsPage`
+  - 3 处 `typeConf: any` → `TypeConfig`（已验证 talentCaps / icon / extraPersona / primaryTalents 字段访问全兼容）+ `radarData: any[]` → 具体形状：`IncubationWizardV2` 全部 4 处
+  - 2 处 cast 窄化：`MCNMatrix` `key as any` → `keyof typeof TALENT_LABELS`，`sortBy as any` → `'name' \| 'level' \| 'revenue'`
+  - 1 处 `(slots as any)[k]` → `slots[k as EquipSlot]`：`WardrobeSystem`
+- ⏳ **M-2 剩余 5 处**（保留理由明确）：
+  - `NFTMintingDialog:25` `track?: any` / `MusicGenerationDialog:21+39` / `MusicBusiness:126 generated: any` —— 这 4 处的 mock track shape 用 `style` 字段而 `Song` 类型用 `genre`，且 `duration` 字符串/数字混用。要清需先 schema 对齐（或在 dialog 内部定义独立的 `GeneratedTrack` interface），属下一轮独立工作。
+  - `TypeDistributionPie:41` `ActiveSliceShape(props: any)` —— recharts ActiveShape 形参类型由内部 sector 数据 + 用户配置 prop 混合，业内多保留 any，留作单独减债。
+- ⏳ **M-1 评估**：原 backlog 6 处中只有 3 处是真 TODO（`translations.ts` 中文单语化清理 / `api/community.ts` OpenAPI 覆盖 / `api/appearance-forge.ts` AI 视频生成接入），且都是有依赖的后端任务；另 3 处（`AgencyOverview.tsx:11` 是 IA 设计注释、`IncubationWizardV2.tsx:923` 与 `AppearanceForge.v3.tsx:925` 是运行时 UI 文案）**不是代码 TODO，本次仅做 backlog 描述修正**。真 TODO 不动。
+- ⏳ 仍未做：M-3（193 处 inline style）、M-4（52 处 img alt 审）。
+
+### v0.5 · 2026-05-13 · Music 路由生产级化
+
+- ✅ **路由重构**：`apps/web-music/src/app/console/*` → `(workspace)/*`，去 `/console` 前缀；overview 路径 `/console` → `/dashboard`。
+- ✅ **shell context**：`producer-shell-context.tsx` 的 `navigate(page)` 改为 id→href 映射；layout legacy `?tab=` redirect 块删除，统一交给 `src/proxy.ts` 308 重定向兼容旧链接。
+- ✅ **登录跳转**：`postLoginPath` / `defaultPostLoginPath` 改为 `/dashboard`。
+- ✅ **三个子 app 统一**：music / drama / celebrity 现已全部统一为「`(workspace)` route group + 顶层语义化路径 + 旧 `/console` 由 `proxy.ts` 兼容」形态。
+
+### v0.4 · 2026-05-09 · Phase 4a shell
+
+- 三个新 web app shell + landing 全部 dev HTTP 200；root layout 注入 Inter + Space_Grotesk；`AppProviders` 包 `ThemeProvider` + `AuthProvider`；landing page 强制 `"use client"`。
+
+## 待办
+
+完整待办（含历史 M-1 ~ M-4 + 跨工程 CG-* 状态）见仓库根 [`TODO.md`](../../TODO.md) §「三子产品 web app 待办」。本 README 不再独立维护待办，避免与根 TODO 漂移。

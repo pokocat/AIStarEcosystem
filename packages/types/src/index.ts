@@ -5,3 +5,5 @@ export * from "./studio";
 export * from "./license";
 export * from "./wallet";
 export * from "./artist";
+export * from "./script";
+export * from "./publish-job";

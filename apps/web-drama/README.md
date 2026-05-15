@@ -81,11 +81,6 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 - 240px sidebar + topbar + 钱包异步拉取；登录 → console；premium cinematic 设计 token。
 - 11 个 view 组件（CastView / IncubatorView / …）— 已在 v0.6 重写为 page.tsx + 删除原 view 文件。
 
-## 待办（下一轮）
+## 待办
 
-- ⏳ apps/server 落地后端 CRUD（Drama / Script / ScriptVersion / DistributionJob / Transaction 实体 + REST）。
-- ⏳ `specs/openapi.yaml` 同步：drama / script / distribution / finance paths。
-- ⏳ types 上推：本地 `src/types/script.ts` `src/types/publish-job.ts` → `packages/types`。
-- ⏳ admin 端镜像：apps/admin 加 drama 管理视图。
-- ⏳ 单元测试：`drama-query.ts` cache 失效、表单 schema、状态机过渡。
-- ⏳ a11y：focus trap 已交 Radix 实现的 Dialog；后续把所有自建 Dialog 替换为 `@ai-star-eco/ui/ui/dialog`。
+完整待办（含 D-1 ~ D-7 + 跨工程 CG-* 状态）见仓库根 [`TODO.md`](../../TODO.md) §「三子产品 web app 待办」。本 README 不再独立维护待办，避免与根 TODO 漂移。

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from "motion/react";
 import { Music, Heart, Gem, Users, TrendingUp, Zap, Award, Upload, Star, Eye, ChevronDown } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { Lang } from "../../translations";
 
 interface ActivityItem {
@@ -30,7 +31,7 @@ const ACTIVITY_DATA: ActivityItem[] = [
   { id: 8, type: 'award', artist: 'Neon V', artistIcon: '🎤', title_zh: '获得成就', title_en: 'Achievement Unlocked', desc_zh: '解锁「百万播放」成就徽章', desc_en: 'Unlocked "Million Plays" achievement badge', time_zh: '昨天', time_en: 'Yesterday' },
 ];
 
-const TYPE_CONFIG: Record<ActivityItem['type'], { icon: any; color: string; bg: string }> = {
+const TYPE_CONFIG: Record<ActivityItem['type'], { icon: LucideIcon; color: string; bg: string }> = {
   release: { icon: Music, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
   milestone: { icon: TrendingUp, color: 'text-pink-400', bg: 'bg-pink-500/10' },
   nft: { icon: Gem, color: 'text-purple-400', bg: 'bg-purple-500/10' },

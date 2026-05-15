@@ -32,6 +32,7 @@ import {
   type ArtistType,
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, TALENT_LABELS,
   type TalentProfile,
+  type TypeConfig,
 } from "./ArtistTypes";
 import { ArtistsApi, ConfigApi, ApiError } from "@/api";
 import {
@@ -1140,7 +1141,7 @@ const SectionPsyche = ({
   state, setState, mbti, tags, typeConf, typeKey, accent, toggle,
 }: {
   state: WizardState; setState: React.Dispatch<React.SetStateAction<WizardState>>;
-  mbti: LabeledI18n[]; tags: LabeledI18n[]; typeConf: any; typeKey: ArtistType; accent: string;
+  mbti: LabeledI18n[]; tags: LabeledI18n[]; typeConf: TypeConfig; typeKey: ArtistType; accent: string;
   toggle: (k: keyof WizardState, id: string, limit?: number) => void;
 }) => {
   const selectedMbti = mbti.find(m => m.id === state.mbti);
@@ -1234,7 +1235,7 @@ const SectionTalent = ({
   state, setState, radarData, typeConf, accent,
 }: {
   state: WizardState; setState: React.Dispatch<React.SetStateAction<WizardState>>;
-  radarData: any[]; typeConf: any; accent: string;
+  radarData: Array<{ subject: string; value: number; cap: number }>; typeConf: TypeConfig; accent: string;
 }) => {
   const talentKeys = Object.keys(TALENT_LABELS) as (keyof TalentProfile)[];
   return (
@@ -1503,7 +1504,7 @@ const GenesisCapsule = ({
   state, typeConf, typeKey, artistColor,
   faceStyles, fashionStyles, mbti, personaTags, fandomColors,
 }: {
-  state: WizardState; typeConf: any; typeKey: ArtistType;
+  state: WizardState; typeConf: TypeConfig; typeKey: ArtistType;
   artistColor: string;
   faceStyles: LabeledI18n[]; fashionStyles: LabeledI18n[];
   mbti: LabeledI18n[]; personaTags: LabeledI18n[]; fandomColors: FandomColor[];

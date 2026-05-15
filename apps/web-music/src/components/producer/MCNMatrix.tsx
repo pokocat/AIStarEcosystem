@@ -186,7 +186,7 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
                     {Object.entries(TALENT_LABELS).map(([key, lbl]) => {
                       const val = artist.talents[key as keyof typeof artist.talents];
                       const cap = typeConf.talentCaps[key as keyof typeof artist.talents];
-                      const isPrimary = typeConf.primaryTalents.includes(key as any);
+                      const isPrimary = typeConf.primaryTalents.includes(key as keyof typeof TALENT_LABELS);
                       return (
                         <div key={key}>
                           <div className="flex justify-between text-xs mb-1">
@@ -576,7 +576,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
             placeholder={zh ? '搜索艺人...' : 'Search artists...'} />
         </div>
         <div className="flex gap-2">
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as 'name' | 'level' | 'revenue')}
             className="bg-gray-900/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-400 focus:outline-none">
             <option value="level">{zh ? '按等级' : 'By Level'}</option>
             <option value="name">{zh ? '按名称' : 'By Name'}</option>

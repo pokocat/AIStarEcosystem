@@ -2,7 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
-> last-reviewed：2026-05-12 / v0.5.4 + 三子产品拆分 Phase 0a-4a 中
+> last-reviewed：2026-05-15 / v0.5.4 + 三子产品拆分 Phase 4b 完成（music / drama / celebrity 全部路由生产级化）
 
 > ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web`、`apps/admin`、`apps/server` 不动。详见 [`CLAUDE.md`](../CLAUDE.md) 顶部警告块与 plan 文件 `/Users/donis/.claude/plans/ethereal-petting-cosmos.md`。
 
@@ -46,9 +46,9 @@
 | `apps/web/README.md` | Next.js 用户端 3002 / 完整版本日志（v1.x ~ v2.7） | v2.7（v0.5.x 不影响 web）；**Phase 5 删除** |
 | `apps/admin/README.md` | Next.js 运营后台 3003 / 当前 sidebar / v0.5.x 滚动更新 | v0.5.4 |
 | `apps/miniprogram/README.md` | 微信小程序（带货方）/ 11 屏 / 启动方式 / 版本日志 | v0.5.4 |
-| `apps/web-music/` ★ | **AI 音乐人独立 web app**（Next 16，dev 3010） | Phase 2 完成；landing 就位、console 待建 |
-| `apps/web-drama/` ★ | **AI 短剧独立 web app**（Next 16，dev 3011） | Phase 3 完成；landing 就位、console 待建 |
-| `apps/web-celebrity/` ★ | **AI 明星带货独立 web app**（Next 16，dev 3012） | Phase 4a 完成；landing 就位、celebrity-zone 43 组件待搬 |
+| `apps/web-music/README.md` ★ | **AI 音乐人独立 web app**（Next 16，dev 3010） | Phase 4b 完成；路由生产级化 + README 落地（v0.6 · 2026-05-15）|
+| `apps/web-drama/README.md` ★ | **AI 短剧独立 web app**（Next 16，dev 3011） | Phase 4b 完成；17 个 page 全交互化（v0.6 · 2026-05-14）|
+| `apps/web-celebrity/README.md` ★ | **AI 明星带货独立 web app**（Next 16，dev 3012） | Phase 4b 完成；celebrity-zone 33 组件迁入 + README 落地（v0.6 · 2026-05-15）|
 
 **packages/**（pnpm workspace 共享层；三个新 web app 消费，apps/web 与 apps/admin 不消费）：
 - `packages/types/` — TS 类型契约
@@ -76,7 +76,7 @@
 
 | 文档 | 用途 |
 |---|---|
-| `TODO.md` | 已定位但未修的问题清单 + **v0.6 候选**（engine-pricing 落表 / WebSocket / OSS 上传 / 配置中心 / 角色拆分 等） |
+| `TODO.md` | 已定位但未修的问题清单 + **v0.6 候选**（engine-pricing 落表 / WebSocket / OSS 上传 / 配置中心 / 角色拆分 等）+ **三子产品 web app 待办**（CG-* / M-* / D-* / C-*，2026-05-15 起合并自各 README） |
 
 ---
 

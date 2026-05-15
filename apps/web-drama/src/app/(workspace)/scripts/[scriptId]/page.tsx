@@ -16,7 +16,7 @@ import {
   Send,
   Wand2,
 } from "lucide-react";
-import type { Script, ScriptVersion } from "@/types/script";
+import type { Script, ScriptVersion } from "@ai-star-eco/types";
 import { Button, Card, Chip } from "@/components/premium";
 import {
   ConfirmDialog,

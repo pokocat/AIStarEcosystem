@@ -1,6 +1,6 @@
 // mocks/publish-jobs.ts — 分发任务种子数据。
 
-import type { PublishJob } from "@/types/publish-job";
+import type { PublishJob } from "@ai-star-eco/types";
 
 export const PUBLISH_JOBS: PublishJob[] = [
   {

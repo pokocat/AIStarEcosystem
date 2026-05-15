@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { FormDialog, Field, TextInput, Select, TextArea } from "@/components/common";
 import { ScriptsApi } from "@/api";
 import { ApiError } from "@ai-star-eco/api-client";
-import type { Script, ScriptKind } from "@/types/script";
+import type { Script, ScriptKind } from "@ai-star-eco/types";
 
 interface Props {
   open: boolean;

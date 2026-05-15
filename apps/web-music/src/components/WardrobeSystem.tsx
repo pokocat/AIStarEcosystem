@@ -13,6 +13,7 @@ import {
   Star, TrendingUp, ArrowLeft, Eye, Download
 } from 'lucide-react';
 import type { ClothingItem, EquippedSlots, EquipSlot, SavedOutfit } from "@ai-star-eco/types/wardrobe";
+import type { Artist } from "@ai-star-eco/types/artist";
 import { CLOTHING_DATABASE } from "@/mocks/wardrobe";
 import { WardrobeApi, StoreApi } from "@/api";
 import {
@@ -23,7 +24,7 @@ import {
 interface WardrobeSystemProps {
   lang: 'zh' | 'en';
   onBack: () => void;
-  activeSinger: any;
+  activeSinger: Artist;
 }
 
 export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemProps) {
@@ -51,7 +52,7 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
           const slots: EquippedSlots = { top: null, bottom: null, accessory: null, shoes: null, hair: null };
           for (const [k, itemId] of Object.entries(o.slots)) {
             const item = (clothingDatabase.find(c => c.id === itemId)) || null;
-            (slots as any)[k] = item;
+            slots[k as EquipSlot] = item;
           }
           return { id: o.id, name: o.name, items: slots, createdAt: o.createdAt };
         });
@@ -84,8 +85,8 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
         c.id === item.id ? { ...c, owned: true } : c
       ));
       setToast({ type: "ok", msg: `已购买：${item.name}` });
-    } catch (e: any) {
-      const msg = typeof e?.message === "string" ? e.message : "购买失败";
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "购买失败";
       setToast({ type: "err", msg });
     } finally {
       setPendingPurchase(null);

@@ -19,6 +19,7 @@ import React, { useEffect, useState } from "react";
 import {
   TrendingUp, Star, Play, ChevronRight, Music, Trophy, ArrowUpRight,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@ai-star-eco/ui/ui/button";
 import { Badge } from "@ai-star-eco/ui/ui/badge";
 import type { Artist } from "@ai-star-eco/types/artist";
@@ -106,7 +107,7 @@ export function AgencyOverview({
     .slice(0, 5);
 
   /** 三个最有决策价值的数。颜色统一用 muted icon，不为每张卡指派不同 hue。 */
-  const stats: Array<{ label: string; value: string; icon: any; change?: string }> = [
+  const stats: Array<{ label: string; value: string; icon: LucideIcon; change?: string }> = [
     {
       label: "预估版税（本月）",
       value: formatCredits(monthRev),
