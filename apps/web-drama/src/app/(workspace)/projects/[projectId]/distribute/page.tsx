@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Send, X as XIcon } from "lucide-react";
 import type { Drama } from "@ai-star-eco/types/film";
 import type { Platform } from "@ai-star-eco/types/distribution";
-import type { PublishJob } from "@ai-star-eco/types";
+import type { PublishJob } from "@ai-star-eco/types/publish-job";
 import { Button, Card, Chip } from "@/components/premium";
 import {
   EmptyState,

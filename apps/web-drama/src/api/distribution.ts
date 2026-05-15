@@ -8,7 +8,7 @@ import type {
   PlatformViewPoint,
 } from "@ai-star-eco/types/distribution";
 import type { ID } from "@ai-star-eco/types/_shared";
-import type { PublishJob, PublishJobStatus } from "@ai-star-eco/types";
+import type { PublishJob, PublishJobStatus } from "@ai-star-eco/types/publish-job";
 import { PLATFORMS, CONTENT_ITEMS, PLATFORM_DATA } from "@/mocks/distribution";
 import { PUBLISH_JOBS } from "@/mocks/publish-jobs";
 import { apiFetch, USE_MOCK, mockDelay, clientError } from "./_client";

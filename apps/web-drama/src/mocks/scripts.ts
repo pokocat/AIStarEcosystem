@@ -1,6 +1,6 @@
 // mocks/scripts.ts — 脚本工坊样本数据（drama 主线）。
 
-import type { Script, ScriptVersion } from "@ai-star-eco/types";
+import type { Script, ScriptVersion } from "@ai-star-eco/types/script";
 
 const NOW = "2026-05-14T09:20:00Z";
 
