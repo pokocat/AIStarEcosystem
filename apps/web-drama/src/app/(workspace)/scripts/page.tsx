@@ -6,7 +6,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Archive, Copy, Download, Filter, PenTool, Plus, Search, Sparkles } from "lucide-react";
-import type { Script, ScriptKind, ScriptStatus } from "@/types/script";
+import type { Script, ScriptKind, ScriptStatus } from "@ai-star-eco/types";
 import { Button, Card, Chip, KpiCard } from "@/components/premium";
 import {
   ConfirmDialog,

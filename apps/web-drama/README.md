@@ -85,7 +85,7 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 - ⏳ apps/server 落地后端 CRUD（Drama / Script / ScriptVersion / DistributionJob / Transaction 实体 + REST）。
 - ⏳ `specs/openapi.yaml` 同步：drama / script / distribution / finance paths。
-- ⏳ types 上推：本地 `src/types/script.ts` `src/types/publish-job.ts` → `packages/types`。
+- ✅ ~~types 上推：本地 `src/types/script.ts` `src/types/publish-job.ts` → `packages/types`。~~（2026-05-15 完成，已切换为 `@ai-star-eco/types` barrel 引用）
 - ⏳ admin 端镜像：apps/admin 加 drama 管理视图。
 - ⏳ 单元测试：`drama-query.ts` cache 失效、表单 schema、状态机过渡。
 - ⏳ a11y：focus trap 已交 Radix 实现的 Dialog；后续把所有自建 Dialog 替换为 `@ai-star-eco/ui/ui/dialog`。
