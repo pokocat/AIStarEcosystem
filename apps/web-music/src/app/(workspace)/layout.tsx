@@ -15,6 +15,7 @@ import {
   Wand2, Shirt, Building2, Bell, Coins, UserCircle,
   Megaphone,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useLang } from "@/lib/lang-context";
 import { useAuth } from "@ai-star-eco/api-client";
@@ -36,7 +37,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 interface SidebarItemDef {
   id: string;
-  icon: any;
+  icon: LucideIcon;
   label: string;
   /** true 时由 activeArtist 类型动态覆盖（创作工坊随艺人类型换名） */
   dynamicLabel?: boolean;
@@ -203,9 +204,9 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
     return item.label;
   };
 
-  const getIcon = (item: { id: string; icon: any }) => {
+  const getIcon = (item: { id: string; icon: LucideIcon }) => {
     if (item.id === "studio" && activeArtist) {
-      const iconMap: Record<ArtistType, any> = {
+      const iconMap: Record<ArtistType, LucideIcon> = {
         singer: Music, actor: Film, entertainer: Tv, dancer: Star,
         host: Mic, all_rounder: Layers, idol: Heart,
       };

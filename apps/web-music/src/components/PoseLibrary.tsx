@@ -11,6 +11,7 @@ import {
   Play, Save, Share2, Eye, Wand2, Download
 } from 'lucide-react';
 import type { Pose, Expression, Gesture } from "@ai-star-eco/types/pose";
+import type { Artist } from "@ai-star-eco/types/artist";
 import { POSE_DATABASE, EXPRESSION_DATABASE, GESTURE_DATABASE } from "@/mocks/pose";
 import { PoseApi, StoreApi } from "@/api";
 import type { StoreItemType } from "@/api/store";
@@ -19,7 +20,7 @@ import { POSE_DIFFICULTY_COLORS, POSE_CATEGORY_OPTIONS } from "@/constants/pose-
 interface PoseLibraryProps {
   lang: 'zh' | 'en';
   onBack: () => void;
-  activeSinger: any;
+  activeSinger: Artist;
 }
 
 export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
@@ -54,8 +55,8 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
       setList(prev => prev.map(p => (p.id === item.id ? { ...p, owned: true } : p)));
       setToast({ type: "ok", msg: `已购买：${item.name}` });
       return true;
-    } catch (e: any) {
-      setToast({ type: "err", msg: typeof e?.message === "string" ? e.message : "购买失败" });
+    } catch (e: unknown) {
+      setToast({ type: "err", msg: e instanceof Error ? e.message : "购买失败" });
       return false;
     } finally {
       setPurchasing(null);

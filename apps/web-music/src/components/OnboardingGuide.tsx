@@ -8,13 +8,14 @@ import {
   Sparkles, ArrowRight, CheckCircle2, Rocket, Music, Users, 
   Zap, X, ChevronLeft, ChevronRight, Target
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface OnboardingStep {
   id: string;
   title: { zh: string; en: string };
   description: { zh: string; en: string };
-  icon: any;
+  icon: LucideIcon;
   iconColor: string;
   action?: { zh: string; en: string };
   highlight?: string; // CSS selector for highlighting

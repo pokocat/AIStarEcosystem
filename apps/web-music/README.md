@@ -56,11 +56,22 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
-### v0.6 · 2026-05-15 · README 落地 + tsconfig 收尾
+### v0.6 · 2026-05-15 · README 落地 + tsconfig 收尾 + any 大清扫
 
 - ✅ **CG-1**：`tsconfig.json` 加 `"ignoreDeprecations": "6.0"`，消除 TS 7.0 baseUrl 弃用警告。
 - ✅ **CG-5**：补本 README，对齐 drama README 的版本日志纪律。
-- ⏳ 仍未做：M-1（6 处显式 TODO）/ M-2（26 处 `as any` 收敛）/ M-3（193 处 inline style 渐进迁移 Tailwind v4 token）。
+- ✅ **M-2 部分**：23 处 `any` → 5 处（清扫 18 处，约 78%）：
+  - 7 处 `icon: any` → `LucideIcon`：`OnboardingGuide` / `ActivityFeed` / `AgencyOverview` / `layout.tsx`（SidebarItemDef + getIcon item + iconMap Record）
+  - 5 处 `activeSinger/artist: any` → `Artist`（已验证字段：name / avatar / level / talents）：`WardrobeSystem` / `PoseLibrary` / `NoticeBoard`
+  - 3 处 `catch (e: any)` → `catch (e: unknown)` + `e instanceof Error ? e.message : 默认值`：`WardrobeSystem` / `PoseLibrary` / `SettingsPage`
+  - 3 处 `typeConf: any` → `TypeConfig`（已验证 talentCaps / icon / extraPersona / primaryTalents 字段访问全兼容）+ `radarData: any[]` → 具体形状：`IncubationWizardV2` 全部 4 处
+  - 2 处 cast 窄化：`MCNMatrix` `key as any` → `keyof typeof TALENT_LABELS`，`sortBy as any` → `'name' \| 'level' \| 'revenue'`
+  - 1 处 `(slots as any)[k]` → `slots[k as EquipSlot]`：`WardrobeSystem`
+- ⏳ **M-2 剩余 5 处**（保留理由明确）：
+  - `NFTMintingDialog:25` `track?: any` / `MusicGenerationDialog:21+39` / `MusicBusiness:126 generated: any` —— 这 4 处的 mock track shape 用 `style` 字段而 `Song` 类型用 `genre`，且 `duration` 字符串/数字混用。要清需先 schema 对齐（或在 dialog 内部定义独立的 `GeneratedTrack` interface），属下一轮独立工作。
+  - `TypeDistributionPie:41` `ActiveSliceShape(props: any)` —— recharts ActiveShape 形参类型由内部 sector 数据 + 用户配置 prop 混合，业内多保留 any，留作单独减债。
+- ⏳ **M-1 评估**：原 backlog 6 处中只有 3 处是真 TODO（`translations.ts` 中文单语化清理 / `api/community.ts` OpenAPI 覆盖 / `api/appearance-forge.ts` AI 视频生成接入），且都是有依赖的后端任务；另 3 处（`AgencyOverview.tsx:11` 是 IA 设计注释、`IncubationWizardV2.tsx:923` 与 `AppearanceForge.v3.tsx:925` 是运行时 UI 文案）**不是代码 TODO，本次仅做 backlog 描述修正**。真 TODO 不动。
+- ⏳ 仍未做：M-3（193 处 inline style）、M-4（52 处 img alt 审）。
 
 ### v0.5 · 2026-05-13 · Music 路由生产级化
 
@@ -75,8 +86,11 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 待办（下一轮）
 
-- ⏳ **M-1**：6 处显式 TODO 收尾 —— `translations.ts:2`（中文单语化兜底清理）、`api/community.ts:3` + `api/appearance-forge.ts:87`（OpenAPI 覆盖 / AI 视频生成接入）、`components/producer/dashboard/AgencyOverview.tsx:11`（待办建议数据源）、`IncubationWizardV2.tsx:923`（第一章校验）、`AppearanceForge.v3.tsx:925`（Coze event stream 实现）。
-- ⏳ **M-2**：26 处 `: any` 集中清理，主要在 `IncubationWizardV2.tsx` / `MCNMatrix.tsx` / `WardrobeSystem.tsx` / `NFTMintingDialog.tsx` / `MusicGenerationDialog.tsx` / `OnboardingGuide.tsx`。先补 type 定义文件（`mbti.ts` / `radar.ts` / `track.ts`），逐文件替换。
+- ⏳ **M-1 真 TODO 3 处**（依赖后端 / 大重构）：
+  - `translations.ts:2` —— 中文单语化兜底清理（清除所有组件的 `lang: Lang` prop 透传 + `TRANSLATIONS[lang]` 访问，工作量大，需要逐文件验证）
+  - `api/community.ts:3` —— OpenAPI 尚未覆盖本域，等真后端落地
+  - `api/appearance-forge.ts:87` —— AI 视频生成尚未接入，等真后端落地
+- ⏳ **M-2 剩余 5 处**：见上方 v0.6 节，需 mock track shape 与 Song schema 对齐 / recharts 类型对齐。
 - ⏳ **M-3**：约 193 处 `style={{}}` 渐进迁移到 Tailwind v4 token；高 ROI 集中点是 `AppearanceForge.v3.tsx` / `IncubationWizardV2.tsx` / `MCNMatrix.tsx`。颜色 / 间距优先；动态计算值（百分比、translate）保留 inline。
 - ⏳ **M-4**：约 52 处 `<img>` 未确认 alt，跑 `pnpm lint` 借 `jsx-a11y/alt-text` 自动审。
 - ⏳ **CG-3 types 上推**：本工程暂无 drama 那样的本地待上推 types，但 community / appearance-forge 域接入 OpenAPI 时同步上推到 `packages/types`。

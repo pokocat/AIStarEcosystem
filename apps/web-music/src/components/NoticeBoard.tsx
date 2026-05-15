@@ -17,6 +17,7 @@ import {
   Users, Eye, Heart, MessageSquare, Share2, Play, Briefcase, Gift,
   Rocket, BarChart3, Timer, MapPin, Tag, ArrowRight, RefreshCw
 } from 'lucide-react';
+import type { Artist } from "@ai-star-eco/types/artist";
 
 interface Notice {
   id: string;
@@ -43,7 +44,7 @@ interface Notice {
 
 interface NoticeBoardProps {
   lang: 'zh' | 'en';
-  artist: any;
+  artist: Artist;
   onBack: () => void;
 }
 

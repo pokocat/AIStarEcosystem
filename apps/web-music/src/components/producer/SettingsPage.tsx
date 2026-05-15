@@ -91,8 +91,8 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch (err: any) {
-      setSaveError(err?.message ?? (zh ? '保存失败' : 'Save failed'));
+    } catch (err: unknown) {
+      setSaveError((err instanceof Error ? err.message : null) ?? (zh ? '保存失败' : 'Save failed'));
     } finally {
       setSaving(false);
     }
