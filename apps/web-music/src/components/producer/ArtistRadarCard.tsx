@@ -6,6 +6,7 @@ import { Badge } from "@ai-star-eco/ui/ui/badge";
 import { Progress } from "@ai-star-eco/ui/ui/progress";
 import { Zap, TrendingUp, Star } from 'lucide-react';
 import { ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, type Artist } from './ArtistTypes';
+import { ArtistAvatar } from './_shared/ArtistAvatar';
 import type { Lang } from "../../translations";
 
 const SKILL_LABELS: Record<string, { zh: string; en: string }> = {
@@ -169,7 +170,7 @@ export const ArtistRadarCard = ({ lang, artist, hideIdentity = false }: ArtistRa
         {!hideIdentity && (
           <div className="flex items-center gap-3 w-full min-w-0">
             <div className="relative shrink-0">
-              <img src={artist.avatar} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-cyan-500/20" />
+              <ArtistAvatar artist={artist} size={56} className="rounded-full border-2 border-cyan-500/20" />
               <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${typeConf.bgColor} flex items-center justify-center text-[10px]`}>{typeConf.icon}</div>
             </div>
             <div className="min-w-0">

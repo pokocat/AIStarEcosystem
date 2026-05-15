@@ -23,36 +23,7 @@ import {
 import { ArtistsApi, AppearanceForgeApi, ApiError } from "@/api";
 import type { ForgeResult, ForgeMode, AppearanceStatus } from "@ai-star-eco/types/appearance-forge";
 import { DEMO_FORGE_VIDEO_POOL } from "@/lib/forge-video";
-
-/* ======== ArtistAvatar ========
-   新创建的艺人 avatar 字段为空字符串，<img src=""> 会触发浏览器重新拉取整页
-   并打印 Next dev warning。统一在缺图时回落为带姓名首字的占位块。 */
-function ArtistAvatar({
-  artist, size, className = "",
-}: { artist: Pick<Artist, "avatar" | "name">; size: number; className?: string }) {
-  const sizeStyle = { width: size, height: size };
-  if (artist.avatar) {
-    return (
-      <img
-        src={artist.avatar}
-        alt={artist.name}
-        style={sizeStyle}
-        className={`object-cover ${className}`}
-      />
-    );
-  }
-  const glyph = artist.name?.slice(0, 1) || "?";
-  const fontSize = Math.max(11, Math.round(size * 0.4));
-  return (
-    <div
-      style={{ ...sizeStyle, fontSize }}
-      className={`flex items-center justify-center bg-secondary text-muted-foreground font-medium select-none ${className}`}
-      aria-label={artist.name}
-    >
-      {glyph}
-    </div>
-  );
-}
+import { ArtistAvatar } from "./_shared/ArtistAvatar";
 
 /* ======== Artist Detail Dialog ======== */
 // 结构：左列合并身份（头像 + 名字 + 稀有度 / 状态 / 等级 + 简介 + 领域 / 日期），

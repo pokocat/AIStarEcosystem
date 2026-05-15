@@ -10,6 +10,7 @@ import { motion } from "motion/react";
 import type { Artist } from "@ai-star-eco/types/artist";
 import { formatCredits, formatCompactNumber } from "@/lib/format";
 import { ARTIST_TYPE_LABELS } from "../../ArtistTypes";
+import { ArtistAvatar } from "../../_shared/ArtistAvatar";
 
 interface Props {
   artists: Artist[];
@@ -51,7 +52,7 @@ export function TopPerformersTable({ artists, topN = 3, onSelect }: Props) {
           }`}>
             {i + 1}
           </span>
-          <img src={a.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-white/10" />
+          <ArtistAvatar artist={a} size={32} className="rounded-full border border-white/10" />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold truncate">{a.name}</div>
             <div className="text-[10px] text-gray-500">
