@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start -p 3012",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "echo 'No unit tests for web-celebrity yet (decision 2026-05-15: mock-driven UI app, type-safety guarded by typecheck). Add vitest when real backend lands.' && exit 0"
   },
   "dependencies": {
     "@ai-star-eco/api-client": "workspace:*",

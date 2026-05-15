@@ -83,7 +83,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 ## 待办（下一轮）
 
 - ⏳ **C-3 inline style 收敛**：约 28 文件 `style={{}}`，集中在 `creator/Button.tsx`（微调 fontSize / padding 12.5/13.5/14.5）和 `creator/GradientBlock.tsx`（多层 gradient 叠加，动态值难替）。可缓做。
-- ⏳ **CG-2 test 脚本**：与 music / drama 共同决策是否引入 vitest。
+- ✅ **CG-2 test 脚本**：已决策（2026-05-15）—— 三个新 web app 暂不引入 vitest（mock-driven UI 工作台，单测 ROI 低；真后端落地后再补）。`package.json` 加 placeholder `test` 脚本明确该信号，根 `pnpm test:all` 不再因缺脚本而失败。
 - ⏳ **CG-3 types 上推**：本工程暂无 drama 那样的本地待上推 types，但 `celebrity-zone` 域接入 OpenAPI 时同步上推到 `packages/types`，并同步 admin / server 字段对齐（CLAUDE.md 硬规则 1）。
 - ⏳ **CG-4 proxy.ts /console 兼容**：观察期后删除（无旧书签来源后）。
 - ⏳ **真后端落地**：13 个 celebrity-zone 函数 + products CRUD 等需 apps/server 配套 Spring 实体 + REST + DTO（field 命名严格 mirror TS interface）。

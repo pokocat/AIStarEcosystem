@@ -13,6 +13,7 @@
     "typecheck:web-drama": "pnpm --filter @ai-star-eco/web-drama run typecheck",
     "typecheck:web-celebrity": "pnpm --filter @ai-star-eco/web-celebrity run typecheck",
     "typecheck:all": "pnpm -r --parallel run typecheck",
+    "test:all": "pnpm -r --parallel run test",
     "dev:music": "pnpm --filter @ai-star-eco/web-music run dev",
     "dev:drama": "pnpm --filter @ai-star-eco/web-drama run dev",
     "dev:celebrity": "pnpm --filter @ai-star-eco/web-celebrity run dev"
