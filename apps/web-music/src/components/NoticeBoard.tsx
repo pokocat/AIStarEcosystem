@@ -17,7 +17,7 @@ import {
   Users, Eye, Heart, MessageSquare, Share2, Play, Briefcase, Gift,
   Rocket, BarChart3, Timer, MapPin, Tag, ArrowRight, RefreshCw
 } from 'lucide-react';
-import type { Artist } from "@ai-star-eco/types/artist";
+import type { Artist, TalentKey } from "@ai-star-eco/types/artist";
 
 interface Notice {
   id: string;
@@ -258,8 +258,8 @@ export function NoticeBoard({ lang, artist, onBack }: NoticeBoardProps) {
       talents: Object.entries(notice.requirements.talents || {}).map(([key, value]) => ({
         key,
         required: value,
-        current: artist.talents[key] || 0,
-        passed: (artist.talents[key] || 0) >= value
+        current: artist.talents[key as TalentKey] || 0,
+        passed: (artist.talents[key as TalentKey] || 0) >= value
       }))
     };
     const allPassed = results.level && results.talents.every(t => t.passed);

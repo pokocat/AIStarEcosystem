@@ -523,9 +523,7 @@ export function MusicBusiness({ lang: _lang, artist, onBack: _onBack }: MusicBus
                                       variant="outline"
                                       className="border-white/10 hover:bg-white/5"
                                       onClick={() => {
-                                        // 切到分发 Tab 并携带 songId 供预填用；如果当前在 ArtistEditor
-                                        // 之内，用户需手动关闭编辑器 —— MVP 先不拦截。
-                                        router.push(`?tab=distribution&songId=${encodeURIComponent(song.id)}`);
+                                        router.push(`/distribution?songId=${encodeURIComponent(song.id)}`);
                                       }}
                                     >
                                       <Share2 className="w-3 h-3 mr-1" />

@@ -13,7 +13,6 @@ import {
   Sparkles, AudioLines, Heart, ChevronDown, Menu, X,
   Star, CheckCircle2, Film, Tv, Mic,
   Wand2, Shirt, Building2, Bell, Coins, UserCircle,
-  Megaphone,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -80,12 +79,6 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "distribution", icon: GlobeIcon, label: "全网分发" },
       { id: "community", icon: Heart, label: "粉丝社群" },
       { id: "finance", icon: Wallet, label: "商业变现" },
-    ],
-  },
-  {
-    title: "明星带货",
-    items: [
-      { id: "celebrity-zone", icon: Megaphone, label: "AI 明星专区" },
     ],
   },
 ];
