@@ -7,7 +7,7 @@ import { Button } from '@ai-star-eco/ui/ui/button';
 import { Badge } from '@ai-star-eco/ui/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ai-star-eco/ui/ui/tabs';
 import {
-  Sparkles, Smile, Music, Hand, ArrowLeft,
+  Sparkles, Smile, Music, Hand,
   Play, Save, Share2, Eye, Wand2, Download
 } from 'lucide-react';
 import type { Pose, Expression, Gesture } from "@ai-star-eco/types/pose";
@@ -18,12 +18,10 @@ import type { StoreItemType } from "@/api/store";
 import { POSE_DIFFICULTY_COLORS, POSE_CATEGORY_OPTIONS } from "@/constants/pose-ui";
 
 interface PoseLibraryProps {
-  lang: 'zh' | 'en';
-  onBack: () => void;
-  activeSinger: Artist;
+  artist: Artist;
 }
 
-export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
+export function PoseLibrary(_: PoseLibraryProps) {
   const [selectedPose, setSelectedPose] = useState<Pose | null>(null);
   const [selectedExpression, setSelectedExpression] = useState<Expression | null>(null);
   const [selectedGesture, setSelectedGesture] = useState<string | null>(null);
@@ -97,15 +95,10 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/10 pb-6 mb-6">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-bold mb-4 uppercase tracking-widest">
-            <Sparkles className="w-3 h-3"/> {lang === 'zh' ? '动作捕捉系统' : 'Motion Capture'}
+            <Sparkles className="w-3 h-3"/> {'动作捕捉系统'}
           </div>
-          <h2 className="text-3xl font-black mb-2 tracking-tight">{lang === 'zh' ? '姿态动作库' : 'Pose & Motion Library'}</h2>
-          <p className="text-gray-400 text-sm">{lang === 'zh' ? '30+预设姿态，自定义表情和手势' : '30+ preset poses, custom expressions and gestures'}</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} className="border-white/10 hover:bg-white/5 h-10 px-4">
-            <ArrowLeft className="w-4 h-4 mr-2" /> {lang === 'zh' ? '返回' : 'Back'}
-          </Button>
+          <h2 className="text-3xl font-black mb-2 tracking-tight">{'姿态动作库'}</h2>
+          <p className="text-gray-400 text-sm">{'30+预设姿态，自定义表情和手势'}</p>
         </div>
       </div>
 
@@ -116,19 +109,19 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
           <TabsList className="bg-black/60 border border-white/5 w-full rounded-xl p-1.5 gap-1.5 mb-6 flex-wrap justify-start h-auto">
             <TabsTrigger value="poses" className="rounded-lg data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-300 flex items-center gap-2 px-4 py-2">
               <Music className="w-4 h-4" />
-              {lang === 'zh' ? '姿态库' : 'Poses'}
+              {'姿态库'}
             </TabsTrigger>
             <TabsTrigger value="expressions" className="rounded-lg data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-300 flex items-center gap-2 px-4 py-2">
               <Smile className="w-4 h-4" />
-              {lang === 'zh' ? '表情' : 'Expressions'}
+              {'表情'}
             </TabsTrigger>
             <TabsTrigger value="gestures" className="rounded-lg data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300 flex items-center gap-2 px-4 py-2">
               <Hand className="w-4 h-4" />
-              {lang === 'zh' ? '手势' : 'Gestures'}
+              {'手势'}
             </TabsTrigger>
             <TabsTrigger value="custom" className="rounded-lg data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-300 flex items-center gap-2 px-4 py-2">
               <Wand2 className="w-4 h-4" />
-              {lang === 'zh' ? '自定义' : 'Custom'}
+              {'自定义'}
             </TabsTrigger>
           </TabsList>
 
@@ -208,11 +201,11 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                               <h4 className="font-bold text-sm text-white line-clamp-1">{pose.name}</h4>
                               <span className="text-xs font-mono">
                                 {pose.owned ? (
-                                  <span className="text-green-400">{lang === 'zh' ? '已拥有' : 'Owned'}</span>
+                                  <span className="text-green-400">{'已拥有'}</span>
                                 ) : (pose.saleStatus ?? 'FREE') === 'PAID' && (pose.priceCredits ?? 0) > 0 ? (
                                   <span className="text-yellow-400">{pose.priceCredits}⭐</span>
                                 ) : (
-                                  <span className="text-cyan-300">{lang === 'zh' ? '免费' : 'Free'}</span>
+                                  <span className="text-cyan-300">{'免费'}</span>
                                 )}
                               </span>
                             </div>
@@ -245,16 +238,16 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                   <div className="w-full space-y-3">
                     <Button className="w-full h-12 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold">
                       <Play className="w-4 h-4 mr-2" />
-                      {lang === 'zh' ? '应用姿态' : 'Apply Pose'}
+                      {'应用姿态'}
                     </Button>
                     <div className="grid grid-cols-2 gap-3">
                       <Button variant="outline" className="border-white/10 hover:bg-white/5">
                         <Save className="w-4 h-4 mr-2" />
-                        {lang === 'zh' ? '收藏' : 'Save'}
+                        {'收藏'}
                       </Button>
                       <Button variant="outline" className="border-white/10 hover:bg-white/5">
                         <Share2 className="w-4 h-4 mr-2" />
-                        {lang === 'zh' ? '分享' : 'Share'}
+                        {'分享'}
                       </Button>
                     </div>
                   </div>
@@ -264,8 +257,8 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                   <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/20 flex items-center justify-center mx-auto mb-6">
                     <Eye className="w-12 h-12 text-cyan-400/50" />
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">{lang === 'zh' ? '选择姿态' : 'Select a Pose'}</h3>
-                  <p className="text-sm text-gray-400">{lang === 'zh' ? '点击左侧姿态查看详情' : 'Click a pose on the left to preview'}</p>
+                  <h3 className="text-xl font-bold text-white mb-2">{'选择姿态'}</h3>
+                  <p className="text-sm text-gray-400">{'点击左侧姿态查看详情'}</p>
                 </div>
               )}
             </div>
@@ -276,7 +269,7 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
             <div className="max-w-5xl mx-auto space-y-6">
               <Card className="bg-[#0c0c0e]/90 backdrop-blur-xl border-white/10">
                 <CardHeader>
-                  <CardTitle>{lang === 'zh' ? '表情选择器' : 'Expression Selector'}</CardTitle>
+                  <CardTitle>{'表情选择器'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -299,7 +292,7 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                         <div className="text-5xl mb-2">{expr.emoji}</div>
                         <div className="text-xs font-bold text-white">{expr.name}</div>
                         {expr.owned ? (
-                          <div className="text-[10px] text-green-400 mt-1">{lang === 'zh' ? '已拥有' : 'Owned'}</div>
+                          <div className="text-[10px] text-green-400 mt-1">{'已拥有'}</div>
                         ) : (expr.saleStatus ?? 'FREE') === 'PAID' && (expr.priceCredits ?? 0) > 0 ? (
                           <div className="text-[10px] text-yellow-400 mt-1">{expr.priceCredits}⭐</div>
                         ) : null}
@@ -312,7 +305,7 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                       <div className="flex items-center justify-between mb-6">
                         <div>
                           <h4 className="text-lg font-bold text-white mb-1">{selectedExpression.name}</h4>
-                          <p className="text-sm text-gray-400">{lang === 'zh' ? '强度调节' : 'Intensity'}: {customIntensity}%</p>
+                          <p className="text-sm text-gray-400">{'强度调节'}: {customIntensity}%</p>
                         </div>
                         <div className="text-6xl">{selectedExpression.emoji}</div>
                       </div>
@@ -328,7 +321,7 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                         />
                         <Button className="w-full h-12 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold">
                           <Sparkles className="w-4 h-4 mr-2" />
-                          {lang === 'zh' ? '应用表情' : 'Apply Expression'}
+                          {'应用表情'}
                         </Button>
                       </div>
                     </div>
@@ -343,7 +336,7 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
             <div className="max-w-4xl mx-auto">
               <Card className="bg-[#0c0c0e]/90 backdrop-blur-xl border-white/10">
                 <CardHeader>
-                  <CardTitle>{lang === 'zh' ? '手势库' : 'Gesture Library'}</CardTitle>
+                  <CardTitle>{'手势库'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -367,7 +360,7 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                         <div className="text-sm font-bold text-white text-center">{gesture.name}</div>
                         <Badge variant="outline" className="mt-2 text-xs border-white/20">{gesture.category}</Badge>
                         {gesture.owned ? (
-                          <div className="text-[10px] text-green-400 mt-1">{lang === 'zh' ? '已拥有' : 'Owned'}</div>
+                          <div className="text-[10px] text-green-400 mt-1">{'已拥有'}</div>
                         ) : (gesture.saleStatus ?? 'FREE') === 'PAID' && (gesture.priceCredits ?? 0) > 0 ? (
                           <div className="text-[10px] text-yellow-400 mt-1">{gesture.priceCredits}⭐</div>
                         ) : null}
@@ -378,7 +371,7 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                   {selectedGesture && (
                     <Button className="w-full mt-6 h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold">
                       <Hand className="w-4 h-4 mr-2" />
-                      {lang === 'zh' ? '应用手势' : 'Apply Gesture'}
+                      {'应用手势'}
                     </Button>
                   )}
                 </CardContent>
@@ -393,18 +386,18 @@ export function PoseLibrary({ lang, onBack, activeSinger }: PoseLibraryProps) {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Wand2 className="w-5 h-5 text-yellow-400" />
-                    {lang === 'zh' ? '高级自定义编辑器' : 'Advanced Custom Editor'}
+                    {'高级自定义编辑器'}
                   </CardTitle>
-                  <p className="text-sm text-gray-400 mt-2">{lang === 'zh' ? '精确控制每个关节点，创造独特姿态' : 'Fine-tune every joint to create unique poses'}</p>
+                  <p className="text-sm text-gray-400 mt-2">{'精确控制每个关节点，创造独特姿态'}</p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="text-center py-20 text-gray-500">
                     <Wand2 className="w-16 h-16 mx-auto mb-4 text-gray-600" />
-                    <p className="text-lg font-bold">{lang === 'zh' ? '关键帧编辑器' : 'Keyframe Editor'}</p>
-                    <p className="text-sm">{lang === 'zh' ? '此功能正在开发中...' : 'Coming soon...'}</p>
+                    <p className="text-lg font-bold">{'关键帧编辑器'}</p>
+                    <p className="text-sm">{'此功能正在开发中...'}</p>
                     <Button className="mt-6" variant="outline">
                       <Download className="w-4 h-4 mr-2" />
-                      {lang === 'zh' ? '导入BVH文件' : 'Import BVH File'}
+                      {'导入BVH文件'}
                     </Button>
                   </div>
                 </CardContent>

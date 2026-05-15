@@ -13,6 +13,7 @@ import {
   Sparkles, AudioLines, Heart, ChevronDown, Menu, X,
   Star, CheckCircle2, Film, Tv, Mic,
   Wand2, Shirt, Building2, Bell, Coins, UserCircle,
+  Megaphone, PersonStanding,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -21,6 +22,7 @@ import { useAuth } from "@ai-star-eco/api-client";
 import { useTheme, themeConfig } from "@ai-star-eco/ui";
 import { CommandPalette } from "@/components/producer/CommandPalette";
 import { NotificationPanel } from "@/components/producer/NotificationPanel";
+import OnboardingGuide, { ONBOARDING_STORAGE_KEY } from "@/components/OnboardingGuide";
 import { ArtistAvatar } from "@/components/producer/_shared/ArtistAvatar";
 import {
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS,
@@ -63,6 +65,7 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "incubator", icon: Wand2, label: "AI艺人孵化" },
       { id: "appearance", icon: Sparkles, label: "AI形象锻造" },
       { id: "wardrobe", icon: Shirt, label: "造型与道具" },
+      { id: "poses", icon: PersonStanding, label: "动作姿态" },
     ],
   },
   {
@@ -76,6 +79,7 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     title: "商业运营",
     items: [
+      { id: "notices", icon: Megaphone, label: "商业邀约" },
       { id: "distribution", icon: GlobeIcon, label: "全网分发" },
       { id: "community", icon: Heart, label: "粉丝社群" },
       { id: "finance", icon: Wallet, label: "商业变现" },
@@ -178,6 +182,12 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
   const [showArtistSwitcher, setShowArtistSwitcher] = React.useState(false);
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showCommandPalette, setShowCommandPalette] = React.useState(false);
+  const [showOnboarding, setShowOnboarding] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.localStorage.getItem(ONBOARDING_STORAGE_KEY)) setShowOnboarding(true);
+  }, []);
 
   // Cmd+K
   React.useEffect(() => {
@@ -489,6 +499,12 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
           onNavigate={(p: string) => handleNav(p)}
           onSwitchArtist={setActiveArtist}
           artists={artists}
+        />
+
+        <OnboardingGuide
+          isOpen={showOnboarding}
+          onComplete={() => setShowOnboarding(false)}
+          onNavigate={(navigateId) => handleNav(navigateId)}
         />
       </div>
     </div>

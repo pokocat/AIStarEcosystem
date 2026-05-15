@@ -14,6 +14,7 @@ export * from "./generation";
 export * from "./license";
 export * from "./music";
 export * from "./navigation";
+export * from "./notice";
 export * from "./notification";
 export * from "./pose";
 export * from "./product";
