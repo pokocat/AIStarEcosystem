@@ -1,20 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/settings.ts — 设置（积分包 / 充值历史）API 封装。
+// api/settings.ts — 积分包 / 充值历史 API（network-only）。
+// USE_MOCK 模式由 src/mocks/_handlers/settings.ts 拦截。
 // 已废弃订阅相关接口，改为积分包售卖。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CreditPack, RechargeRecord } from "@ai-star-eco/types/settings";
 import type { ID } from "@ai-star-eco/types/_shared";
-import { CREDIT_PACKS, RECHARGE_HISTORY } from "@/mocks/settings";
-import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import { apiFetch } from "./_client";
 
 export async function listCreditPacks(): Promise<CreditPack[]> {
-  if (USE_MOCK) return mockDelay(CREDIT_PACKS);
   return apiFetch<CreditPack[]>("/settings/credit-packs");
 }
 
 export async function listRechargeHistory(): Promise<RechargeRecord[]> {
-  if (USE_MOCK) return mockDelay(RECHARGE_HISTORY);
   return apiFetch<RechargeRecord[]>("/settings/recharge-history");
 }
 
@@ -32,14 +30,6 @@ export async function purchaseCreditPack(
   packId: ID,
   paymentMeta?: Record<string, unknown>,
 ): Promise<CreditPurchaseWire> {
-  if (USE_MOCK) {
-    return mockDelay({
-      id: `mock-${Date.now()}`,
-      userId: "mock-user",
-      packId, priceCents: 9_900, creditsAdded: 1_000,
-      createdAt: new Date().toISOString(),
-    });
-  }
   return apiFetch<CreditPurchaseWire>(
     `/settings/credit-packs/${encodeURIComponent(packId)}/purchase`,
     { method: "POST", body: paymentMeta ?? {} },
@@ -47,6 +37,5 @@ export async function purchaseCreditPack(
 }
 
 export async function listCreditPurchases(): Promise<CreditPurchaseWire[]> {
-  if (USE_MOCK) return mockDelay([]);
   return apiFetch<CreditPurchaseWire[]>("/settings/purchases");
 }

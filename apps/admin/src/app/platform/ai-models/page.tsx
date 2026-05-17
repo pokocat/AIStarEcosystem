@@ -19,7 +19,7 @@ import type { AiModelProvider, AiModelProviderType, AiModelPurpose } from "@/api
 
 const PROVIDER_TYPES: AiModelProviderType[] = [
   "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "AZURE_OPENAI",
-  "MOONSHOT", "DEEPSEEK", "BAIDU", "ALIYUN", "TENCENT", "CUSTOM",
+  "MOONSHOT", "DEEPSEEK", "BAIDU", "ALIYUN", "TENCENT", "VOLCENGINE", "CUSTOM",
 ];
 const PURPOSES: AiModelPurpose[] = [
   "SCRIPT_DRAFT", "SAFETY_REVIEW", "VIDEO_REF_ANALYSIS", "TEMPLATE_REWRITE", "GENERAL",

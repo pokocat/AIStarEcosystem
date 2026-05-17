@@ -14,6 +14,7 @@ export type AiModelProviderType =
   | "BAIDU"
   | "ALIYUN"
   | "TENCENT"
+  | "VOLCENGINE"
   | "OPENAI_COMPATIBLE"
   | "CUSTOM";
 

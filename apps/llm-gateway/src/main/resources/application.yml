@@ -1,0 +1,49 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: ai-star-eco-llm-gateway
+  codec:
+    max-in-memory-size: 4MB
+
+# 网关 upstreams。本期写死火山 + 千问；后续 TODO(admin-sync) 改为拉 apps/server 的 ai-models 表。
+# apiKey 走环境变量注入：
+#   - LLM_GATEWAY_VOLCENGINE_KEY  （火山方舟 API Key，见官方文档：
+#     https://www.volcengine.com/docs/82379/1099475）
+#   - LLM_GATEWAY_DASHSCOPE_KEY   （阿里 DashScope API Key，见官方文档：
+#     https://help.aliyun.com/zh/model-studio/developer-reference/compatibility-of-openai-with-dashscope）
+llm-gateway:
+  upstreams:
+    - id: volcengine-doubao
+      providerType: VOLCENGINE
+      baseUrl: https://ark.cn-beijing.volces.com/api/v3
+      apiKey: ${LLM_GATEWAY_VOLCENGINE_KEY:REPLACE_WITH_ARK_API_KEY}
+      modelPrefixes:
+        - doubao-
+        - ep-       # 火山的 endpoint id（自建 endpoint 时使用）
+      enabled: true
+
+    - id: aliyun-qwen
+      providerType: ALIYUN
+      baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+      apiKey: ${LLM_GATEWAY_DASHSCOPE_KEY:REPLACE_WITH_DASHSCOPE_API_KEY}
+      modelPrefixes:
+        - qwen-
+        - qwq-
+        - qvq-
+      enabled: true
+
+  admin-sync:
+    enabled: ${LLM_GATEWAY_ADMIN_SYNC_ENABLED:false}
+    server-base-url: ${LLM_GATEWAY_SERVER_BASE_URL:http://127.0.0.1:8080}
+    secret: ${LLM_GATEWAY_INTERNAL_SECRET:aep-dev-internal-secret-change-in-prod}
+    poll-seconds: ${LLM_GATEWAY_ADMIN_SYNC_POLL_SECONDS:30}
+
+  business-auth:
+    enabled: ${LLM_GATEWAY_BUSINESS_AUTH_ENABLED:false}
+    cache-ttl-seconds: ${LLM_GATEWAY_BUSINESS_AUTH_TTL:60}
+
+logging:
+  level:
+    com.aistareco.llmgateway: INFO

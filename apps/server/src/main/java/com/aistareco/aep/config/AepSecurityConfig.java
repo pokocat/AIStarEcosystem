@@ -20,13 +20,16 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class AepSecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
+    private final InternalAuthFilter internalFilter;
 
     /** dev profile 专用。非 dev 环境不会注入。 */
     @Autowired(required = false)
     private DevAutoAuthFilter devAutoAuthFilter;
 
-    public AepSecurityConfig(JwtAuthenticationFilter jwtFilter) {
+    public AepSecurityConfig(JwtAuthenticationFilter jwtFilter,
+                              InternalAuthFilter internalFilter) {
         this.jwtFilter = jwtFilter;
+        this.internalFilter = internalFilter;
     }
 
     @Bean
@@ -42,6 +45,8 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
                         .requestMatchers("/api/me/**").authenticated()
+                        // Internal service-to-service endpoints — InternalAuthFilter 已校验 X-Internal-Secret
+                        .requestMatchers("/api/internal/**").hasRole("INTERNAL")
                         // Admin endpoints require platform admin staff roles
                         .requestMatchers("/api/admin/**").hasAnyRole(
                                 "SUPER_ADMIN",
@@ -51,6 +56,7 @@ public class AepSecurityConfig {
                         .anyRequest().permitAll()
                 )
                 .headers(headers -> headers.frameOptions(fo -> fo.sameOrigin()))
+                .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         // dev 环境：在 JWT filter 之后兜底自动登录
@@ -58,6 +64,13 @@ public class AepSecurityConfig {
             http.addFilterAfter(devAutoAuthFilter, JwtAuthenticationFilter.class);
         }
         return http.build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<InternalAuthFilter> internalFilterRegistration(InternalAuthFilter filter) {
+        FilterRegistrationBean<InternalAuthFilter> reg = new FilterRegistrationBean<>(filter);
+        reg.setEnabled(false);
+        return reg;
     }
 
     @Bean

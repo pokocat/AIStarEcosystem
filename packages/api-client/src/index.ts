@@ -22,6 +22,21 @@ export {
 
 export { AuthProvider, useAuth, type AuthProviderProps } from "./auth-context";
 
+export {
+  registerMock,
+  registerMocks,
+  clearMocks,
+  listMocks,
+  findMockHandler,
+  type MockMethod,
+  type MockHandler,
+  type MockHandlerCtx,
+} from "./_mock-registry";
+
+// auth + account 的兜底 mock：USE_MOCK=1 时让 dev-login / /me / /me/wallet 可用。
+// 业务 mock 在各 web app 自行注册并可覆盖这些 handler。
+import "./_bootstrap-mocks";
+
 export * from "./format";
 
 import * as AccountApi from "./api/account";

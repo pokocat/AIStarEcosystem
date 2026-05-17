@@ -4,6 +4,9 @@
 // 业务用法：getConfig<FaceStyle[]>("incubation.faceStyles", FALLBACK_FACE_STYLES)。
 // 后端返回形如 { key, value, version, description, updatedAt, updatedBy }，
 // 本模块只吐出 value；在内存里按 key 缓存一份（LRU 不需要，key 是有限枚举）。
+//
+// 注：本模块刻意 *不* 走 mock registry。USE_MOCK=1 时直接返回调用方传入的 fallback，
+// 因为「平台配置」语义是"远端没设就用代码内置默认"，没必要为每个 key 注册 handler。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { apiFetch, USE_MOCK } from "./_client";

@@ -24,6 +24,14 @@ aep:
   jwt:
     secret: ${AEP_JWT_SECRET:aep-dev-secret-key-change-in-prod-32chars}
     expiration-ms: ${AEP_JWT_EXPIRATION_MS:3600000}
+  internal:
+    # 内部服务（如 apps/llm-gateway）→ apps/server 调用的共享密钥
+    # 生产环境 **必须** 用 env 注入；任何写到 git 的 default 都视同泄漏
+    secret: ${AEP_INTERNAL_SECRET:aep-dev-internal-secret-change-in-prod}
+  llm:
+    # llm-gateway 上报 usage 时的 credit 计费率（每 100 tokens 扣 1 credit）
+    # 简化模型；后续按 model 维度拆分
+    credits-per-100-tokens: ${AEP_LLM_CREDITS_PER_100_TOKENS:1}
   dev-auth:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
   assets:

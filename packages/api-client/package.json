@@ -11,6 +11,7 @@
     "./auth-context": "./src/auth-context.tsx",
     "./format": "./src/format.ts",
     "./client": "./src/_client.ts",
+    "./mock-registry": "./src/_mock-registry.ts",
     "./api/auth": "./src/api/auth.ts",
     "./api/account": "./src/api/account.ts"
   },

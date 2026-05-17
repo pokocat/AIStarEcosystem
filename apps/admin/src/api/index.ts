@@ -34,3 +34,4 @@ export * as CelebrityAuthorizationsApi from "./celebrity-authorizations";
 export * as RechargePackagesApi from "./recharge-packages";
 export * as TemplateScriptsApi from "./template-scripts";
 export * as AiModelsApi from "./ai-models";
+export * as LlmKeysApi from "./llm-keys";

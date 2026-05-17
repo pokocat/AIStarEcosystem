@@ -37,17 +37,48 @@ public class AiModelProviderDataInitializer implements CommandLineRunner {
                 AiModelPurpose.TEMPLATE_REWRITE.name(),
                 AiModelPurpose.GENERAL.name()
         ));
-        AiModelProvider placeholder = AiModelProvider.builder()
+
+        AiModelProvider gatewayPlaceholder = AiModelProvider.builder()
                 .id("ai-dev-placeholder")
-                .name("DEV / OpenAI 占位")
+                .name("DEV / llm-gateway 占位")
                 .providerType(AiModelProviderType.OPENAI_COMPATIBLE)
                 .baseUrl("http://127.0.0.1:8081/v1")
                 .apiKeyEncrypted(AepCryptoUtil.encrypt("sk-dev-placeholder-replace-me"))
-                .defaultModel("gpt-4o")
+                .defaultModel("doubao-1-5-pro-32k")
                 .purposes(purposes)
+                .priority(50)
+                .enabled(false)
+                .build();
+        repo.save(gatewayPlaceholder);
+
+        // 火山方舟（Ark）—— OpenAI 兼容；defaultModel 填 endpoint id 或 Doubao 公共模型名
+        // 官方文档：https://www.volcengine.com/docs/82379/1099475
+        AiModelProvider volcengine = AiModelProvider.builder()
+                .id("ai-volcengine-placeholder")
+                .name("火山方舟 / Doubao 占位")
+                .providerType(AiModelProviderType.VOLCENGINE)
+                .baseUrl("https://ark.cn-beijing.volces.com/api/v3")
+                .apiKeyEncrypted(AepCryptoUtil.encrypt("REPLACE_WITH_ARK_API_KEY"))
+                .defaultModel("doubao-1-5-pro-32k")
+                .purposes(new ArrayList<>(purposes))
                 .priority(100)
                 .enabled(false)
                 .build();
-        repo.save(placeholder);
+        repo.save(volcengine);
+
+        // 阿里云百炼 DashScope —— OpenAI 兼容模式
+        // 官方文档：https://help.aliyun.com/zh/model-studio/developer-reference/compatibility-of-openai-with-dashscope
+        AiModelProvider qwen = AiModelProvider.builder()
+                .id("ai-qwen-placeholder")
+                .name("阿里千问 / DashScope 占位")
+                .providerType(AiModelProviderType.ALIYUN)
+                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
+                .apiKeyEncrypted(AepCryptoUtil.encrypt("REPLACE_WITH_DASHSCOPE_API_KEY"))
+                .defaultModel("qwen-plus")
+                .purposes(new ArrayList<>(purposes))
+                .priority(110)
+                .enabled(false)
+                .build();
+        repo.save(qwen);
     }
 }

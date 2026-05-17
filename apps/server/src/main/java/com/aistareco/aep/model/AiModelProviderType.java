@@ -18,6 +18,7 @@ public enum AiModelProviderType {
     BAIDU("BAIDU"),
     ALIYUN("ALIYUN"),
     TENCENT("TENCENT"),
+    VOLCENGINE("VOLCENGINE"),
     OPENAI_COMPATIBLE("OPENAI_COMPATIBLE"),
     CUSTOM("CUSTOM");
 

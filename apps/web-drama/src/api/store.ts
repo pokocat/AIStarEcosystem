@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/store.ts — 统一商店与用户库存 API。
-// 覆盖跨品类商品目录（wardrobe/pose/expression/gesture）+ 积分兑换 + 我的库存。
+// api/store.ts — 统一商店与用户库存 API（network-only）。
+// USE_MOCK 模式由 src/mocks/_handlers/store.ts 拦截。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID, ISODateTime } from "@ai-star-eco/types/_shared";
 import type { SaleStatus } from "@ai-star-eco/types/wardrobe";
-import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import { apiFetch } from "./_client";
 
 export type StoreItemType = "WARDROBE" | "POSE" | "EXPRESSION" | "GESTURE" | "NFT" | "FORGE_BLUEPRINT";
 export type AcquireSource = "PURCHASE" | "GRANT" | "DEFAULT";
@@ -34,31 +34,20 @@ export interface UserInventoryWire {
 }
 
 export async function getCatalog(type?: StoreItemType): Promise<StoreItemWire[]> {
-  if (USE_MOCK) return mockDelay([]);
-  const qs = type ? `?type=${encodeURIComponent(type)}` : "";
-  return apiFetch<StoreItemWire[]>(`/store/catalog${qs}`);
+  return apiFetch<StoreItemWire[]>("/store/catalog", {
+    query: type ? { type } : undefined,
+  });
 }
 
 export async function redeem(type: StoreItemType, itemId: ID): Promise<UserInventoryWire> {
-  if (USE_MOCK) {
-    return mockDelay({
-      id: `mock-inv-${Date.now()}`,
-      userId: "mock-user",
-      itemType: type, itemId,
-      source: "PURCHASE",
-      creditsSpent: 0,
-      ledgerEntryId: null,
-      acquiredAt: new Date().toISOString(),
-    });
-  }
   return apiFetch<UserInventoryWire>(
     `/store/items/${encodeURIComponent(type)}/${encodeURIComponent(itemId)}/redeem`,
-    { method: "POST" }
+    { method: "POST" },
   );
 }
 
 export async function getInventory(type?: StoreItemType): Promise<UserInventoryWire[]> {
-  if (USE_MOCK) return mockDelay([]);
-  const qs = type ? `?type=${encodeURIComponent(type)}` : "";
-  return apiFetch<UserInventoryWire[]>(`/me/inventory${qs}`);
+  return apiFetch<UserInventoryWire[]>("/me/inventory", {
+    query: type ? { type } : undefined,
+  });
 }

@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ApiResponse, ApiErrorShape } from "@ai-star-eco/types/_shared";
+import { findMockHandler, type MockMethod } from "./_mock-registry";
 
 // TODO(cross-subdomain SSO)：当前 token 写 localStorage，仅本子域可见。
 // 三个新 web app 部署到 music/drama/celebrity.aistar.com 后需改写入 cookie
@@ -93,6 +94,16 @@ export async function apiFetch<T>(
   opts: RequestOptions = {}
 ): Promise<T> {
   const { method = "GET", body, query, headers, signal } = opts;
+
+  // USE_MOCK：在网络层拦截，命中 registry 直接返回 handler 结果（已是 unwrapped T）。
+  // handler 抛 ApiError 即可模拟错误。未注册路径会落到下方网络分支（dev 期可见 404，便于发现缺口）。
+  if (USE_MOCK) {
+    const match = findMockHandler(method as MockMethod, path);
+    if (match) {
+      return (await match.handler({ params: match.params, query, body })) as T;
+    }
+  }
+
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
 
   const token = getAuthToken();
