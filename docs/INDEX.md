@@ -36,8 +36,14 @@
 | [`CLAUDE.md`](../CLAUDE.md) | Claude Code（自动注入） | **symlink → AGENTS.md**（单点维护，内容等同 AGENTS.md） |
 | [`apps/miniprogram/agent.md`](../apps/miniprogram/agent.md) | 任何在小程序目录工作的 agent | 微信平台坑（iOS/Android 差异、custom-tab-bar、CSS、setData、轮询清理） |
 | [`.claude/skills/figma-migrate/SKILL.md`](../.claude/skills/figma-migrate/SKILL.md) | 触发 figma-migrate skill 时 | 五件套 + 三端同步 SOP |
+| [`apps/design.md`](../apps/design.md) + [`apps/design/`](../apps/design/) | 前端设计 token 契约 + 设计稿 reference app（"AI IP Design Directions"，三套主题：tech/creator/premium） | 视觉规范真源；新增 UI 时必读 |
 
 新人 agent 顺序：**AGENTS.md** → 对应的 `apps/<sub-app>/PRODUCT.md` → `apps/<sub-app>/README.md`（启动 + 版本日志）。
+
+> **关于"PRODUCT.md"命名**：
+> - 仓库**根** `./PRODUCT.md`（44 行）—— 是 [`/impeccable`](../.claude/skills/impeccable/SKILL.md) skill 的强制上下文（Users / Brand / Tone / Design Principles）。用于驱动设计决策的 personality 文档，**不是**业务规格
+> - 各子应用 `apps/<sub-app>/PRODUCT.md` —— 各子产品的功能 + 路由 + 视觉系统 + 模块清单，**是**产品 + 设计约束真源
+> - 业务功能规格在仓库根 `product_spec*.md`
 
 ## 3. 接口契约（"前后端怎么对齐"）
 
