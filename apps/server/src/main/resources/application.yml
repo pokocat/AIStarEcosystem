@@ -36,6 +36,24 @@ aep:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
   assets:
     video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}
+  mixcut:
+    # 渲染产出目录（绝对或相对工作目录）；下面映射到 publicUrlBase
+    output-dir: ${AEP_MIXCUT_OUTPUT_DIR:./mixcut-output}
+    # 工作目录（下载素材的临时区）
+    work-dir: ${AEP_MIXCUT_WORK_DIR:./mixcut-work}
+    # ffmpeg / ffprobe 可执行文件名或绝对路径
+    ffmpeg-bin: ${AEP_FFMPEG_BIN:ffmpeg}
+    ffprobe-bin: ${AEP_FFPROBE_BIN:ffprobe}
+    # 产出 URL 前缀（前端拉到的 file_url）
+    public-url-base: ${AEP_MIXCUT_PUBLIC_URL_BASE:/static/mixcut}
+    # 并发渲染数（@Async 线程池大小）
+    max-concurrent: ${AEP_MIXCUT_MAX_CONCURRENT:2}
+    # 单个变体最长时长（秒），超过截断
+    max-output-duration-sec: ${AEP_MIXCUT_MAX_OUTPUT_DURATION_SEC:15}
+    # 每个素材最大下载体积（字节）
+    max-asset-bytes: ${AEP_MIXCUT_MAX_ASSET_BYTES:104857600}
+    # ffmpeg 单次执行超时（毫秒）
+    ffmpeg-timeout-ms: ${AEP_MIXCUT_FFMPEG_TIMEOUT_MS:120000}
   coze:
     enabled: ${AEP_COZE_ENABLED:true}
     token: ${AEP_COZE_TOKEN:}

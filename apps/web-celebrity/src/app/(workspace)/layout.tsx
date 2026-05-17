@@ -15,6 +15,7 @@ import {
   LogOut,
   Megaphone,
   Plus,
+  Scissors,
   Search,
   ShoppingBag,
   Star,
@@ -36,6 +37,7 @@ import { CelebrityShellProvider, useCelebrityShell } from "@/lib/celebrity-shell
 // 明星详情可由市场/我的两个 list 进入，归到任一都不对称，独立段最干净。
 function buildGroups(pathname: string): NavGroup[] {
   const isExact = (href: string) => pathname === href;
+  const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
   return [
     {
       title: "工作台",
@@ -51,6 +53,7 @@ function buildGroups(pathname: string): NavGroup[] {
         { icon: Megaphone, label: "我的项目", href: "/projects", selected: isExact("/projects") },
         { icon: Video, label: "视频中心", href: "/library", selected: isExact("/library"), badge: 4 },
         { icon: ShoppingBag, label: "商品库", href: "/products", selected: isExact("/products") },
+        { icon: Scissors, label: "混剪专区", href: "/mixcut", selected: isMixcut },
       ],
     },
     {
@@ -71,10 +74,24 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/library": "视频中心",
     "/products": "商品库",
     "/data": "数据中心",
+    "/mixcut": "混剪首页",
   };
-  if (TAB_LABEL[pathname]) return ["工作台", "明星带货", TAB_LABEL[pathname]];
+  if (TAB_LABEL[pathname]) {
+    return pathname === "/mixcut"
+      ? ["工作台", "混剪专区", TAB_LABEL[pathname]]
+      : ["工作台", "明星带货", TAB_LABEL[pathname]];
+  }
   if (pathname.startsWith("/star")) return ["工作台", "明星市场", "明星详情"];
   if (pathname.startsWith("/projects/")) return ["工作台", "我的项目", "项目详情"];
+
+  // 混剪专区子路径
+  if (pathname === "/mixcut/templates") return ["工作台", "混剪专区", "模板库"];
+  if (pathname.startsWith("/mixcut/templates/")) return ["工作台", "混剪专区", "模板库", "模板详情"];
+  if (pathname.startsWith("/mixcut/create/")) return ["工作台", "混剪专区", "新建任务"];
+  if (pathname === "/mixcut/jobs") return ["工作台", "混剪专区", "渲染任务"];
+  if (pathname.startsWith("/mixcut/jobs/")) return ["工作台", "混剪专区", "渲染任务", "任务详情"];
+  if (pathname === "/mixcut/library") return ["工作台", "混剪专区", "素材库"];
+
   return ["工作台"];
 }
 
