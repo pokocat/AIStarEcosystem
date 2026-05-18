@@ -4,7 +4,7 @@
 // 强制走 apps/server 的真后端（ffmpeg 渲染），不影响其他模块的 USE_MOCK 行为。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { RenderJob, MixcutAsset, MixcutAssetKind, Template } from "@/components/mixcut-zone/types";
+import type { RenderJob, RenderOutput, MixcutAsset, MixcutAssetKind, Template } from "@/components/mixcut-zone/types";
 import { mockJobs, mockActivationCode, mockTemplates } from "@/mocks/mixcut";
 import { migrateLegacyTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 import { apiFetch, API_BASE_URL, getAuthToken, USE_MOCK, mockDelay } from "./_client";
@@ -100,6 +100,26 @@ export async function updateJobProgress(
   });
 }
 
+/**
+ * 仅 mock 模式：把模拟生成完成后的 outputs 一次性写回 job。
+ * 真后端模式下 outputs 由 ffmpeg worker 写入 DB,由 GET /mixcut/jobs/{id} 自动返回,
+ * 此函数 no-op。
+ */
+export function completeJobInMock(jobId: string, outputs: RenderOutput[]): void {
+  if (!USE_LOCAL) return;
+  const list = loadJobs();
+  const idx = list.findIndex((j) => j.id === jobId);
+  if (idx < 0) return;
+  list[idx] = {
+    ...list[idx],
+    status: "success",
+    progress: 100,
+    outputs,
+    completed_at: list[idx].completed_at ?? new Date().toISOString(),
+  };
+  saveJobs();
+}
+
 // ── 引导态（hasSeenIntro / setSeenIntro 同步读写 localStorage） ──────────────
 
 export function hasSeenIntro(): boolean {
@@ -189,16 +209,18 @@ export async function deleteAsset(id: string): Promise<boolean> {
   return apiFetch<boolean>(`/mixcut/assets/${id}`, { method: "DELETE" });
 }
 
-// ── 模板编辑 / 另存为(localStorage-backed) ──────────────────────────────────
+// ── 模板编辑 / 另存为 ───────────────────────────────────────────────────────
 //
 // 数据层模型:
-//   - 工厂模板:mockTemplates(只读,id 前缀 tpl_xxx)
-//   - 用户保存:localStorage[TEMPLATES_KEY] = Record<template_id, Template>
-//   - 列表语义:用户模板覆盖同 ID 工厂模板;不重复的用户模板追加显示
-//   - 删除用户模板 ⇒ 同 ID 工厂模板恢复显示(若存在)
+//   - 工厂模板:mockTemplates(写死前端) ∪ server seed(MixcutTemplateSeeder 落 mixcut_template
+//     表;当前 seed 为空,前端 mocks 是 fallback 真值源)
+//   - 用户保存:server mixcut_template 表中 ownerScope=<userId> 的行;
+//     REAL_BACKEND 关闭时回落到 localStorage(隐私模式 / 离线开发体验)
+//   - 列表语义:用户模板覆盖同 templateId 工厂模板;不重复的追加显示
+//   - 删除用户模板 ⇒ 同 templateId 工厂模板恢复显示(若存在)
 //
-// 暂不走 server —— 模板编辑器是设计师工具,不必触及后端 templates 表。
-// 真后端版本(v0.11+):新增 /api/mixcut/templates CRUD,统一从 server 读取。
+// USE_LOCAL(USE_MOCK && !REAL_BACKEND):localStorage 兜底,与原版行为完全一致
+// REAL_BACKEND: 走 /api/mixcut/templates CRUD,mocks 作为 fallback 补齐 server 未 seed 的工厂模板
 
 let memoryTemplates: Record<string, Template> | null = null;
 
@@ -238,32 +260,60 @@ function saveUserTemplates() {
   }
 }
 
-/** 列出所有模板(用户 ∪ 工厂)。用户模板覆盖同 ID 工厂模板。 */
-export async function listTemplates(): Promise<Template[]> {
-  const user = loadUserTemplates();
+/**
+ * 合并 server 返回与 mock fallback:按 template_id 去重,server 优先。
+ * 用于 REAL_BACKEND 模式下补齐尚未 seed 到 server 的 factory 模板。
+ */
+function mergeWithMockFallback(serverList: Template[]): Template[] {
   const merged: Template[] = [];
   const seen = new Set<string>();
-  // 用户模板优先(包含 override 与纯新模板)
-  for (const t of Object.values(user)) {
+  for (const t of serverList) {
     merged.push(t);
     seen.add(t.template_id);
   }
-  // 未被 override 的工厂模板
   for (const t of mockTemplates) {
     if (!seen.has(t.template_id)) merged.push(t);
   }
-  return mockDelay(merged);
+  return merged;
 }
 
-/** 取单个模板:用户模板优先,fallback 工厂。 */
+/** 列出所有模板。USE_LOCAL: localStorage ∪ mocks。REAL_BACKEND: server ∪ mock fallback。 */
+export async function listTemplates(): Promise<Template[]> {
+  if (USE_LOCAL) {
+    const user = loadUserTemplates();
+    const merged: Template[] = [];
+    const seen = new Set<string>();
+    for (const t of Object.values(user)) {
+      merged.push(t);
+      seen.add(t.template_id);
+    }
+    for (const t of mockTemplates) {
+      if (!seen.has(t.template_id)) merged.push(t);
+    }
+    return mockDelay(merged);
+  }
+  const serverList = await apiFetch<Template[]>("/mixcut/templates");
+  return mergeWithMockFallback(Array.isArray(serverList) ? serverList : []);
+}
+
+/** 取单个模板:USE_LOCAL → localStorage > mock; REAL_BACKEND → server > mock fallback。 */
 export async function getTemplate(id: string): Promise<Template | null> {
-  const user = loadUserTemplates();
-  if (user[id]) return mockDelay(user[id]);
-  const factory = mockTemplates.find((t) => t.template_id === id);
-  return mockDelay(factory ?? null);
+  if (USE_LOCAL) {
+    const user = loadUserTemplates();
+    if (user[id]) return mockDelay(user[id]);
+    const factory = mockTemplates.find((t) => t.template_id === id);
+    return mockDelay(factory ?? null);
+  }
+  try {
+    const server = await apiFetch<Template | null>(`/mixcut/templates/${id}`);
+    if (server) return server;
+  } catch {
+    /* server 404 / 网络故障 → 走 mock fallback */
+  }
+  return mockTemplates.find((t) => t.template_id === id) ?? null;
 }
 
-/** 同步版本:供 server-component 与 useState 初始化使用(不需要 await)。 */
+/** 同步版本:供 useState 初始化与 server component 使用(不需要 await)。仅查 mocks,不查 localStorage。 */
 export function getTemplateSync(id: string): Template | null {
   const user = loadUserTemplates();
   if (user[id]) return user[id];
@@ -272,22 +322,35 @@ export function getTemplateSync(id: string): Template | null {
 
 /** 写入/覆盖一个用户模板。 */
 export async function saveTemplate(t: Template): Promise<Template> {
-  const store = loadUserTemplates();
-  store[t.template_id] = t;
-  saveUserTemplates();
-  return mockDelay(t);
+  if (USE_LOCAL) {
+    const store = loadUserTemplates();
+    store[t.template_id] = t;
+    saveUserTemplates();
+    return mockDelay(t);
+  }
+  return apiFetch<Template>(`/mixcut/templates/${t.template_id}`, {
+    method: "PUT",
+    body: t,
+  });
 }
 
 /** 删除用户模板(工厂模板会自动恢复显示)。 */
 export async function deleteTemplate(id: string): Promise<boolean> {
-  const store = loadUserTemplates();
-  if (!store[id]) return mockDelay(false);
-  delete store[id];
-  saveUserTemplates();
-  return mockDelay(true);
+  if (USE_LOCAL) {
+    const store = loadUserTemplates();
+    if (!store[id]) return mockDelay(false);
+    delete store[id];
+    saveUserTemplates();
+    return mockDelay(true);
+  }
+  return apiFetch<boolean>(`/mixcut/templates/${id}`, { method: "DELETE" });
 }
 
-/** 判断 ID 是否存在用户保存版本(纯新模板或覆盖工厂模板的“我的版本”)。 */
+/**
+ * 判断 ID 是否存在用户保存版本。USE_LOCAL 模式精确;REAL_BACKEND 模式
+ * 仅基于 localStorage 启发(server 端 is_factory 字段在 DTO 里,但本函数同步签名,
+ * 调用方若需要权威结果应 await getTemplate 后看 is_factory)。
+ */
 export function hasUserTemplate(id: string): boolean {
   const store = loadUserTemplates();
   return !!store[id];

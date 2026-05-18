@@ -31,7 +31,10 @@ public record MixcutRenderJobDto(
         @JsonProperty("error_message") String errorMessage,
         @JsonProperty("created_at") String createdAt,
         @JsonProperty("completed_at") String completedAt,
-        @JsonProperty("outputs") List<MixcutRenderOutputDto> outputs
+        @JsonProperty("outputs") List<MixcutRenderOutputDto> outputs,
+        @JsonProperty("canvas_snapshot") JsonNode canvasSnapshot,
+        @JsonProperty("slots_snapshot") JsonNode slotsSnapshot,
+        @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides
 ) {
 
     public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper) {
@@ -43,6 +46,9 @@ public record MixcutRenderJobDto(
         } catch (Exception e) {
             bindings = mapper.valueToTree(Map.of());
         }
+        JsonNode canvasSnap = parseOrNull(job.getCanvasSnapshotJson(), mapper);
+        JsonNode slotsSnap = parseOrNull(job.getSlotsSnapshotJson(), mapper);
+        JsonNode pertOverrides = parseOrNull(job.getPerturbationOverridesJson(), mapper);
         List<MixcutRenderOutputDto> outs = (job.getOutputs() == null || job.getOutputs().isEmpty())
                 ? null
                 : job.getOutputs().stream().map(o -> MixcutRenderOutputDto.from(o, mapper)).toList();
@@ -60,8 +66,20 @@ public record MixcutRenderJobDto(
                 job.getErrorMessage(),
                 job.getCreatedAt() == null ? null : job.getCreatedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 job.getCompletedAt() == null ? null : job.getCompletedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                outs
+                outs,
+                canvasSnap,
+                slotsSnap,
+                pertOverrides
         );
+    }
+
+    private static JsonNode parseOrNull(String json, ObjectMapper mapper) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return mapper.readTree(json);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

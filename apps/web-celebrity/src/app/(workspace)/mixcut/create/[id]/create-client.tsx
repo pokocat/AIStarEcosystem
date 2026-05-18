@@ -30,6 +30,7 @@ import type {
   SlotBinding,
   PerturbationProfile,
   RenderJob,
+  RenderOutput,
   PerturbationOverrides,
   SlotSnapshot,
   SlotPerturbationPolicy,
@@ -187,17 +188,38 @@ export function CreateClient({ id }: { id: string }) {
     await new Promise((r) => setTimeout(r, 600));
     setSubmitting(false);
 
-    if (MixcutApi.isLocalJobMode()) {
-      // 仅本地 mock 模式模拟渲染进度。真后端模式由 server worker 写入进度和 outputs。
-      let p = 0;
-      const stepName = (pct: number): RenderJob["status"] =>
-        pct < 25 ? "running" : pct < 100 ? "running" : "success";
-      const timer = setInterval(() => {
-        p = Math.min(100, p + Math.floor(Math.random() * 12 + 6));
-        MixcutApi.updateJobProgress(jobId, p, stepName(p));
-        if (p >= 100) clearInterval(timer);
-      }, 700);
-    }
+    // 模拟渲染进度（持续写入 localStorage；其他页面读到的是最新进度）
+    // 完成时合成 mock outputs（file_url 留空,详情页会自动回退到 TemplatePreview canvas 渲染）
+    let p = 0;
+    const timer = setInterval(() => {
+      p = Math.min(100, p + Math.floor(Math.random() * 12 + 6));
+      if (p < 100) {
+        MixcutApi.updateJobProgress(jobId, p, "running");
+      } else {
+        clearInterval(timer);
+        const outputs: RenderOutput[] = Array.from({ length: variants }).map((_, i) => ({
+          id: `out_${jobId}_${i}`,
+          job_id: jobId,
+          variant_index: i,
+          file_url: "",
+          thumbnail_url: "",
+          file_size: 1_400_000 + i * 87_000,
+          duration: template.canvas.duration,
+          phash_signature: `mock_${i}`,
+          phash_distance_to_source: 10 + Math.floor(Math.random() * 8),
+          applied_transforms: {
+            mirror: i % 2 === 1,
+            speed: 1 + ((i % 3) - 1) * 0.05,
+            brightness: ((i % 3) - 1) * 0.04,
+            saturation: 1 + ((i % 3) - 1) * 0.06,
+            variant: i + 1,
+          },
+          watermark_token: `wm_${jobId}_${i}`,
+          created_at: new Date().toISOString(),
+        }));
+        MixcutApi.completeJobInMock(jobId, outputs);
+      }
+    }, 700);
 
     router.push(`/mixcut/jobs/${jobId}`);
   };
