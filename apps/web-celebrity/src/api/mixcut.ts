@@ -4,7 +4,7 @@
 // 强制走 apps/server 的真后端（ffmpeg 渲染），不影响其他模块的 USE_MOCK 行为。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { RenderJob, MixcutAsset, MixcutAssetKind, Template } from "@/components/mixcut-zone/types";
+import type { RenderJob, RenderOutput, MixcutAsset, MixcutAssetKind, Template } from "@/components/mixcut-zone/types";
 import { mockJobs, mockActivationCode, mockTemplates } from "@/mocks/mixcut";
 import { migrateLegacyTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 import { apiFetch, API_BASE_URL, getAuthToken, USE_MOCK, mockDelay } from "./_client";
@@ -94,6 +94,26 @@ export async function updateJobProgress(
     method: "PATCH",
     body: { progress, status },
   });
+}
+
+/**
+ * 仅 mock 模式：把模拟生成完成后的 outputs 一次性写回 job。
+ * 真后端模式下 outputs 由 ffmpeg worker 写入 DB,由 GET /mixcut/jobs/{id} 自动返回,
+ * 此函数 no-op。
+ */
+export function completeJobInMock(jobId: string, outputs: RenderOutput[]): void {
+  if (!USE_LOCAL) return;
+  const list = loadJobs();
+  const idx = list.findIndex((j) => j.id === jobId);
+  if (idx < 0) return;
+  list[idx] = {
+    ...list[idx],
+    status: "success",
+    progress: 100,
+    outputs,
+    completed_at: list[idx].completed_at ?? new Date().toISOString(),
+  };
+  saveJobs();
 }
 
 // ── 引导态（hasSeenIntro / setSeenIntro 同步读写 localStorage） ──────────────

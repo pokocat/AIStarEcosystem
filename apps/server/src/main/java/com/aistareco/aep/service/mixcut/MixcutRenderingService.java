@@ -639,11 +639,17 @@ public class MixcutRenderingService {
                 rx = fallback[0]; ry = fallback[1]; rw = fallback[2]; rh = fallback[3];
             }
 
+            // 防御性 scale → pad(max) → crop:
+            //   scale=decrease 在某些边界情况下（输入极端长宽比、奇数像素）会输出
+            //   略大于 rw/rh 的帧（rounding 或 chroma 对齐），后续 pad=rw:rh 会报
+            //   "Padded dimensions cannot be smaller than input dimensions"。
+            //   用 max(iw, rw) / max(ih, rh) 作 pad 目标兜底，再用 crop 截到精确 rw x rh。
             fc.append("[").append(inputIdx).append(":v]")
               .append("format=yuva420p,scale=").append(rw).append(":").append(rh)
               .append(":force_original_aspect_ratio=decrease,")
-              .append("pad=").append(rw).append(":").append(rh)
-              .append(":(ow-iw)/2:(oh-ih)/2:color=0x00000000")
+              .append("pad=max(iw\\,").append(rw).append("):max(ih\\,").append(rh).append(")")
+              .append(":(ow-iw)/2:(oh-ih)/2:color=0x00000000,")
+              .append("crop=").append(rw).append(":").append(rh)
               .append("[").append(tag).append("s];");
             fc.append("[").append(prev).append("][").append(tag).append("s]")
               .append("overlay=x=").append(rx).append(":y=").append(ry)
