@@ -188,38 +188,41 @@ export function CreateClient({ id }: { id: string }) {
     await new Promise((r) => setTimeout(r, 600));
     setSubmitting(false);
 
-    // 模拟渲染进度（持续写入 localStorage；其他页面读到的是最新进度）
-    // 完成时合成 mock outputs（file_url 留空,详情页会自动回退到 TemplatePreview canvas 渲染）
-    let p = 0;
-    const timer = setInterval(() => {
-      p = Math.min(100, p + Math.floor(Math.random() * 12 + 6));
-      if (p < 100) {
-        MixcutApi.updateJobProgress(jobId, p, "running");
-      } else {
-        clearInterval(timer);
-        const outputs: RenderOutput[] = Array.from({ length: variants }).map((_, i) => ({
-          id: `out_${jobId}_${i}`,
-          job_id: jobId,
-          variant_index: i,
-          file_url: "",
-          thumbnail_url: "",
-          file_size: 1_400_000 + i * 87_000,
-          duration: template.canvas.duration,
-          phash_signature: `mock_${i}`,
-          phash_distance_to_source: 10 + Math.floor(Math.random() * 8),
-          applied_transforms: {
-            mirror: i % 2 === 1,
-            speed: 1 + ((i % 3) - 1) * 0.05,
-            brightness: ((i % 3) - 1) * 0.04,
-            saturation: 1 + ((i % 3) - 1) * 0.06,
-            variant: i + 1,
-          },
-          watermark_token: `wm_${jobId}_${i}`,
-          created_at: new Date().toISOString(),
-        }));
-        MixcutApi.completeJobInMock(jobId, outputs);
-      }
-    }, 700);
+    // mock 模式才跑前端模拟器；REAL_BACKEND 下进度由真后端 ffmpeg worker 写库，
+    // 详情页轮询拿到真实状态。若两边同时跑，前端 PATCH 会覆盖真后端进度，
+    // 导致「卡在 90%」+ 真后端已 failed 但前端仍显示 running。
+    if (MixcutApi.isMockMode()) {
+      let p = 0;
+      const timer = setInterval(() => {
+        p = Math.min(100, p + Math.floor(Math.random() * 12 + 6));
+        if (p < 100) {
+          MixcutApi.updateJobProgress(jobId, p, "running");
+        } else {
+          clearInterval(timer);
+          const outputs: RenderOutput[] = Array.from({ length: variants }).map((_, i) => ({
+            id: `out_${jobId}_${i}`,
+            job_id: jobId,
+            variant_index: i,
+            file_url: "",
+            thumbnail_url: "",
+            file_size: 1_400_000 + i * 87_000,
+            duration: template.canvas.duration,
+            phash_signature: `mock_${i}`,
+            phash_distance_to_source: 10 + Math.floor(Math.random() * 8),
+            applied_transforms: {
+              mirror: i % 2 === 1,
+              speed: 1 + ((i % 3) - 1) * 0.05,
+              brightness: ((i % 3) - 1) * 0.04,
+              saturation: 1 + ((i % 3) - 1) * 0.06,
+              variant: i + 1,
+            },
+            watermark_token: `wm_${jobId}_${i}`,
+            created_at: new Date().toISOString(),
+          }));
+          MixcutApi.completeJobInMock(jobId, outputs);
+        }
+      }, 700);
+    }
 
     router.push(`/mixcut/jobs/${jobId}`);
   };

@@ -20,6 +20,11 @@ const REAL_BACKEND: boolean =
 
 const USE_LOCAL = USE_MOCK && !REAL_BACKEND;
 
+/** 判断当前 mixcut 是否在纯 mock 模式（用于决定是否跑前端模拟器）。 */
+export function isMockMode(): boolean {
+  return USE_LOCAL;
+}
+
 let memoryJobs: RenderJob[] | null = null;
 
 function loadJobs(): RenderJob[] {
