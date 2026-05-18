@@ -91,13 +91,15 @@ interface Props {
   onChangeSlotRect?: (slotId: string, next: Rect) => void;
 }
 
+// 中性化 layer 描边/底色:统一灰阶 + brand 高亮选中态。icon 仍按 layer 区分。
+// 不再用饱和彩虹色;选中态(border-brand-500 由调用方加 ring) 是唯一强调。
 const LAYER_STYLES: Record<string, { bg: string; border: string; text: string; icon: any; label: string }> = {
-  video: { bg: "bg-blue-500/15", border: "border-blue-500/60", text: "text-blue-300", icon: Video, label: "视频" },
-  image: { bg: "bg-emerald-500/15", border: "border-emerald-500/60", text: "text-emerald-300", icon: ImageIcon, label: "图片" },
-  sticker: { bg: "bg-amber-500/15", border: "border-amber-500/60", text: "text-amber-200", icon: Sticker, label: "贴图" },
-  text: { bg: "bg-fuchsia-500/15", border: "border-fuchsia-500/60", text: "text-fuchsia-200", icon: Type, label: "文字" },
-  audio: { bg: "bg-violet-500/15", border: "border-violet-500/60", text: "text-violet-300", icon: Music, label: "音频" },
-  digital_human: { bg: "bg-cyan-500/15", border: "border-cyan-500/60", text: "text-cyan-200", icon: Sparkles, label: "数字人" },
+  video: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Video, label: "视频" },
+  image: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: ImageIcon, label: "图片" },
+  sticker: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Sticker, label: "贴图" },
+  text: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Type, label: "文字" },
+  audio: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Music, label: "音频" },
+  digital_human: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Sparkles, label: "数字人" },
 };
 
 function jitter(seed: number, slotId: string, max: number): number {
@@ -106,6 +108,34 @@ function jitter(seed: number, slotId: string, max: number): number {
   for (let i = 0; i < slotId.length; i++) h = (h * 31 + slotId.charCodeAt(i)) | 0;
   const t = ((h % 1000) / 1000) * 2 - 1;
   return t * max;
+}
+
+// 贴图槽位的预览文本 —— 让 sticker 与 text 槽位保持「都显示实际/语义内容」的一致语义,
+// 不把 "顶部品类标题贴图" 这种内部命名直接吐到画面上。
+// 优先级: 用户填的 binding text > 槽位 default_value > library_filter.category 友好名 > 清洗后的 label。
+const STICKER_CATEGORY_LABEL: Record<string, string> = {
+  category_title: "品类标题",
+  promo_label: "促销标签",
+  brand_bar: "品牌条",
+  price_tag: "价格标签",
+  sub_title: "副标题",
+  cta_button: "行动按钮",
+  badge: "角标",
+  watermark: "水印",
+};
+
+function stickerDisplayText(slot: TemplateSlot, binding?: SlotBinding): string {
+  if (binding?.source === "input" && binding.text) return binding.text;
+  if (slot.default_value) return slot.default_value;
+  const cat = slot.library_filter?.category as string | undefined;
+  if (cat && STICKER_CATEGORY_LABEL[cat]) return STICKER_CATEGORY_LABEL[cat];
+  // 兜底:把 label / slot_id 里的「贴图 / 贴纸 / 条 / 栏」等冗余技术后缀剥掉,顶部 / 底部前缀也去掉
+  const raw = slot.label || slot.slot_id;
+  return raw
+    .replace(/^顶部|^底部|^左侧|^右侧/, "")
+    .replace(/贴图$|贴纸$|条$|栏$/, "")
+    .trim()
+    .slice(0, 8);
 }
 
 export function TemplatePreview({
@@ -178,11 +208,6 @@ export function TemplatePreview({
         {showSlotChrome && variantSeed != null && (
           <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-brand-500/30 backdrop-blur text-[10px] text-brand-100 font-medium border border-brand-500/40">
             变体 #{variantSeed + 1}
-          </div>
-        )}
-        {editable && !variantSeed && (
-          <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-brand-500/30 backdrop-blur text-[10px] text-brand-100 font-medium border border-brand-500/40">
-            编辑模式 · 拖动槽位调整位置 / 拐角拖拽缩放
           </div>
         )}
       </div>
@@ -316,7 +341,7 @@ function SlotBox({
                 "text-center font-bold text-white truncate leading-tight",
                 slot.style_preset?.includes("80px") ? "text-2xl" : slot.style_preset?.includes("60px") ? "text-lg" : "text-base"
               )}
-              style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8), 0 0 8px rgba(251,44,89,0.4)" }}
+              style={{ textShadow: "0 1px 2px rgba(0,0,0,0.85)" }}
             >
               {binding && binding.source === "input" ? binding.text : slot.default_value || "(主标题文案)"}
             </span>
@@ -394,21 +419,11 @@ function SlotBox({
                 className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               />
             ) : (
-              <div
-                className={cn(
-                  "px-3 py-1 rounded text-white text-xs font-bold flex items-center gap-1",
-                  slot.slot_id.includes("title") && "bg-gradient-to-r from-red-500 to-orange-500",
-                  slot.slot_id.includes("promo") && "bg-gradient-to-r from-yellow-400 to-amber-500 text-amber-950",
-                  slot.slot_id.includes("brand") && "bg-gradient-to-r from-slate-800 to-slate-700 w-full justify-center",
-                  slot.slot_id.includes("price") && "bg-red-600",
-                  !slot.slot_id.includes("title") &&
-                    !slot.slot_id.includes("promo") &&
-                    !slot.slot_id.includes("brand") &&
-                    !slot.slot_id.includes("price") && "bg-purple-500"
-                )}
-              >
-                <Sticker className="size-3" />
-                {slot.label?.slice(0, 12) || slot.slot_id}
+              // 中性白底胶囊 + 细描边 + 轻阴影:
+              // 不论 canvas 是黑/黄/红/cream 哪种背景色,都能拉出对比、字读得出来;
+              // 同一卡里多个 sticker 颜色一致,扫视时不会被花花绿绿干扰。
+              <div className="px-2.5 py-1 rounded-md bg-white text-slate-900 text-[11px] font-medium max-w-full truncate shadow-sm ring-1 ring-black/10">
+                {stickerDisplayText(slot, binding)}
               </div>
             )}
           </div>
@@ -442,14 +457,9 @@ function SlotBox({
           </div>
         )}
 
-        {/* 像素坐标角标(右上角)— selected 或 editable 时显示 */}
-        {(selected || editable) && showChrome && (
-          <div
-            className={cn(
-              "absolute -top-px -right-px px-1.5 py-0.5 text-[9px] font-mono rounded-bl-md rounded-tr-md backdrop-blur bg-black/70 text-white/90 border-l border-b border-white/20",
-              "opacity-90 group-hover:opacity-100 transition-opacity"
-            )}
-          >
+        {/* 像素坐标角标 — 仅当前选中槽位显示。位置在槽内右上,避免堆在画布外造成混乱。 */}
+        {selected && showChrome && (
+          <div className="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-mono rounded-md bg-foreground/85 text-background backdrop-blur">
             {pxW}×{pxH} @ ({pxX},{pxY})
           </div>
         )}

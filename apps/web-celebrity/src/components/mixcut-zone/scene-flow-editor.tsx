@@ -1,21 +1,12 @@
 "use client";
 
-// 场景流编辑器 —— 横向节点流 + 拖拽重排 + 节点间插入。
-// 用法:
-//   <SceneFlowEditor
-//     scenes={template.scenes}
-//     canvas={template.canvas}
-//     currentIdx={selectedSceneIdx}
-//     editing={true}
-//     onSelect / onAddAt / onRemove / onChange / onMoveTo / onMove
-//   />
+// 场景流编辑器 —— 紧凑横向节点条 + 拖拽重排 + 节点间插入。
+// v2: 去掉每节点的 mini 缩略图(过小看不清),改用更密集的文字节点。
 
 import { useState } from "react";
-import { GripVertical, Plus, Trash2, X } from "lucide-react";
+import { GripVertical, Plus, X } from "lucide-react";
 import type { Template, TemplateScene } from "./types";
-import { TemplatePreview } from "./template-preview";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { cn } from "./lib/utils";
@@ -54,15 +45,13 @@ export function SceneFlowEditor({
 
   return (
     <Card>
-      <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">
-          场景流程 · {scenes.length} 段 · 总 {totalSec}s
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-baseline gap-2 min-w-0">
+          <span className="shrink-0">场景流程</span>
+          <span className="text-[11px] font-normal text-muted-foreground font-mono">
+            {scenes.length} 段 · 共 {totalSec}s
+          </span>
         </CardTitle>
-        {editing && (
-          <div className="text-[10px] text-muted-foreground">
-            拖动节点重排 · 点击 + 在任意位置插入
-          </div>
-        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {/* 节点流(横向滚动,适合 5+ 场景) */}
@@ -132,33 +121,29 @@ export function SceneFlowEditor({
 
         {/* 当前选中场景的元信息编辑 (编辑模式专用) */}
         {editing && current && (
-          <div className="pt-3 border-t border-border space-y-2">
-            <div className="text-[10px] text-muted-foreground">
-              当前选中 · <span className="font-mono">{current.id}</span>
+          <div className="pt-3 border-t border-border grid grid-cols-[1fr_88px] gap-2 items-end">
+            <div>
+              <Label className="text-[10px] text-muted-foreground">第 {currentIdx + 1} 段 · 名称</Label>
+              <Input
+                value={current.label}
+                onChange={(e) => onChange(currentIdx, { label: e.target.value })}
+                className="h-8 text-sm mt-0.5"
+                placeholder="给这一段起个名字"
+              />
             </div>
-            <div className="grid grid-cols-[1fr_120px] gap-2">
-              <div>
-                <Label className="text-[10px] text-muted-foreground">场景名</Label>
-                <Input
-                  value={current.label}
-                  onChange={(e) => onChange(currentIdx, { label: e.target.value })}
-                  className="h-8 text-sm mt-0.5"
-                />
-              </div>
-              <div>
-                <Label className="text-[10px] text-muted-foreground">时长 (秒)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={120}
-                  value={current.duration}
-                  onChange={(e) => {
-                    const v = Math.max(1, Math.min(120, parseInt(e.target.value, 10) || 1));
-                    onChange(currentIdx, { duration: v });
-                  }}
-                  className="h-8 text-sm mt-0.5"
-                />
-              </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">时长 (秒)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={120}
+                value={current.duration}
+                onChange={(e) => {
+                  const v = Math.max(1, Math.min(120, parseInt(e.target.value, 10) || 1));
+                  onChange(currentIdx, { duration: v });
+                }}
+                className="h-8 text-sm mt-0.5"
+              />
             </div>
           </div>
         )}
@@ -174,7 +159,6 @@ function SceneNode({
   index,
   active,
   editing,
-  canvas,
   dragSrc,
   onSelect,
   onRemove,
@@ -192,19 +176,6 @@ function SceneNode({
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
-  // 为缩略图构造一个单场景模板 (canvas.duration 设为本场景的)
-  const sceneTemplate: Template = {
-    template_id: "_preview",
-    name: scene.label,
-    version: "0",
-    canvas: { ...canvas, duration: scene.duration },
-    scenes: [scene],
-    perturbation_profile: "moderate",
-    output_variants_default: 1,
-    quality_gate: { min_phash_distance: 0, max_retries: 0 },
-    metadata: { category: "", tags: [], required_tier: "trial" },
-  };
-
   const dragging = dragSrc === index;
 
   return (
@@ -219,53 +190,39 @@ function SceneNode({
       onClick={onSelect}
       role="button"
       className={cn(
-        "group relative shrink-0 w-28 rounded-lg border-2 transition-all cursor-pointer",
-        active ? "border-brand-500 bg-brand-500/[0.04] shadow-md shadow-brand-500/10" : "border-border hover:border-foreground/30",
+        "group relative shrink-0 rounded-md border transition-all cursor-pointer px-3 py-2",
+        "flex items-center gap-2 min-w-[10rem]",
+        active
+          ? "border-brand-500 bg-brand-500/[0.06] shadow-sm shadow-brand-500/10"
+          : "border-border hover:border-foreground/30 bg-card",
         editing && "select-none",
         dragging && "opacity-40"
       )}
     >
-      {/* 拖把手 + 删除 (编辑模式 hover 显示) */}
       {editing && (
-        <>
-          <div className="absolute top-1 left-1 z-10 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-            <GripVertical className="size-3.5" />
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="absolute top-1 right-1 z-10 size-5 grid place-items-center rounded-full bg-black/40 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all"
-            title="删除场景"
-          >
-            <X className="size-3" />
-          </button>
-        </>
+        <div className="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors shrink-0">
+          <GripVertical className="size-3.5" />
+        </div>
       )}
-
-      {/* 缩略图(mini TemplatePreview) */}
-      <div className="px-2 pt-2">
-        <TemplatePreview
-          template={sceneTemplate}
-          showSlotChrome={false}
-        />
-      </div>
-
-      {/* 标签 + 元信息 */}
-      <div className="px-2 py-1.5 space-y-0.5">
-        <div className="flex items-center justify-between gap-1">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5">
           <span className="text-[10px] font-mono text-muted-foreground tabular-nums">#{index + 1}</span>
-          <span className="text-[10px] font-mono text-muted-foreground">{scene.duration}s</span>
+          <span className="text-xs font-medium truncate" title={scene.label}>
+            {scene.label}
+          </span>
         </div>
-        <div className="text-xs font-medium truncate" title={scene.label}>
-          {scene.label}
-        </div>
-        <div className="text-[10px] text-muted-foreground">
-          {scene.slots.length} 内容位
+        <div className="text-[10px] text-muted-foreground font-mono">
+          {scene.duration}s · {scene.slots.length} 内容位
         </div>
       </div>
-
-      {/* 当前激活指示 */}
-      {active && (
-        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 size-3 rotate-45 bg-brand-500 border-2 border-background" />
+      {editing && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="shrink-0 size-5 grid place-items-center rounded-full text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+          title="删除场景"
+        >
+          <X className="size-3" />
+        </button>
       )}
     </div>
   );
@@ -310,21 +267,25 @@ function InsertGap({
       onDragLeave={onDragLeave}
       onDrop={(e) => { e.preventDefault(); onDrop(); }}
       className={cn(
-        "shrink-0 self-stretch flex items-center justify-center transition-all",
-        isHover ? "w-12" : dragActive ? "w-8" : isFirst ? "w-3" : "w-6"
+        "shrink-0 self-stretch flex items-center justify-center transition-all relative",
+        isHover ? "w-12" : dragActive ? "w-10" : isFirst ? "w-6" : "w-8"
       )}
     >
+      {/* 静态 hairline divider — 提示这里是间隔 */}
+      {!isHover && !dragActive && (
+        <div className="absolute left-1/2 top-2 bottom-2 w-px bg-border" />
+      )}
       <button
         onClick={onClickInsert}
         className={cn(
-          "w-full h-full grid place-items-center rounded-md text-muted-foreground transition-colors",
+          "relative z-10 w-full h-full grid place-items-center rounded-md text-muted-foreground/70 transition-colors",
           isHover && "bg-brand-500/20 text-brand-500 ring-2 ring-brand-500/40",
-          !isHover && dragActive && "bg-secondary/50",
+          !isHover && dragActive && "bg-secondary/50 text-foreground",
           !dragActive && "hover:bg-secondary/60 hover:text-foreground"
         )}
         title="在此插入新场景"
       >
-        <Plus className={cn("transition-all", isHover ? "size-5" : "size-3")} />
+        <Plus className={cn("transition-all", isHover ? "size-5" : "size-3.5")} />
       </button>
     </div>
   );

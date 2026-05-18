@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Sparkles,
@@ -53,9 +53,17 @@ import type {
   FillStrategy,
   SlotPerturbationPolicy,
 } from "@/components/mixcut-zone/types";
-import { resolvePolicy } from "@/components/mixcut-zone/lib/perturbation-defaults";
 import { flatSlotsOf, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
+import { SlotPolicyEditor } from "@/components/mixcut-zone/slot-policy-editor";
+
+// SlotPolicyEditor 在模板编辑里不存在"任务级算子总开关",传 4 个全开占位
+const POLICY_NO_KILL: Required<import("@/components/mixcut-zone/types").PerturbationOverrides> = {
+  allow_mirror: true,
+  allow_speed: true,
+  allow_brightness: true,
+  allow_saturation: true,
+};
 
 const LAYER_OPTIONS: ReadonlyArray<{ value: LayerType; label: string }> = [
   { value: "video", label: "视频" },
@@ -92,22 +100,38 @@ const CANVAS_PRESETS: { label: string; w: number; h: number; sub: string; group:
   { label: "标清竖版",          w: 720,  h: 1280, sub: "720×1280 · 9:16",    group: "其他" },
 ];
 
-export function TemplateDetailClient({ id }: { id: string }) {
+export function TemplateDetailClient({
+  id,
+  initialEdit = false,
+}: {
+  id: string;
+  /** /edit 路由传 true 自动进入编辑态。?edit=1 旧 query 也兼容。 */
+  initialEdit?: boolean;
+}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // /edit 路由或 ?edit=1 旧 query 都触发自动进编辑
+  const wantEdit = initialEdit || searchParams?.get("edit") === "1";
   // SSR 时只能看工厂模板,client hydration 再 upgrade 到用户保存的覆盖版本
   const [template, setTemplate] = useState<Template | null>(
     () => mockTemplates.find((t) => t.template_id === id) ?? null
   );
   const [resolved, setResolved] = useState(false);
+  const [autoEditApplied, setAutoEditApplied] = useState(false); // 防 ?edit=1 重复触发
   const [working, setWorking] = useState<Template | null>(null); // edit-mode working copy
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
   const [previewVariant, setPreviewVariant] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  // 画布与时长在编辑时折叠(低频改动),开关由用户控制
+  const [canvasMetaOpen, setCanvasMetaOpen] = useState(false);
+  // 确认对话框:replace native confirm() (P3 polish)
+  const [confirmModal, setConfirmModal] = useState<{ title: string; body: string; onConfirm: () => void } | null>(null);
 
   useEffect(() => {
     MixcutApi.getTemplate(id).then((t) => {
@@ -116,9 +140,41 @@ export function TemplateDetailClient({ id }: { id: string }) {
     });
   }, [id]);
 
+  // ?edit=1 落地:模板取到后立刻进入编辑态,并把 URL 上的 query 清掉(避免刷新再次触发)
+  useEffect(() => {
+    if (!wantEdit || autoEditApplied || !template) return;
+    setWorking(structuredClone(template));
+    setEditing(true);
+    setAutoEditApplied(true);
+    // 旧 ?edit=1 query 才清掉(避免刷新重复触发)。/edit 路由保持 URL 不动,刷新就是编辑态。
+    if (!initialEdit && searchParams?.get("edit") === "1") {
+      router.replace(`/mixcut/templates/${id}`, { scroll: false });
+    }
+  }, [wantEdit, autoEditApplied, template, id, router, initialEdit, searchParams]);
+
   // useMemo 必须在所有 early-return 之前 —— 避免 Rules of Hooks 违规
   const display: Template | null = editing && working ? working : template;
   const flatSlots = useMemo(() => (display ? flatSlotsOf(display) : []), [display]);
+  // 脏检查:working 与 template 的 JSON 是否一致。便宜可靠,适合模板这种小对象。
+  const dirty = useMemo(() => {
+    if (!editing || !working || !template) return false;
+    return JSON.stringify(working) !== JSON.stringify(template);
+  }, [editing, working, template]);
+
+  // 内容位 drag-reorder 状态(仅当前场景内有效)
+  const [slotDragSrc, setSlotDragSrc] = useState<number | null>(null);
+  const [slotDragOverGap, setSlotDragOverGap] = useState<number | null>(null);
+
+  // 退出编辑前(刷新 / 关页 / 返回)若有未保存改动,浏览器原生确认拦截
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
 
   if (resolved && template === null) notFound();
   if (template === null || display === null) {
@@ -144,24 +200,52 @@ export function TemplateDetailClient({ id }: { id: string }) {
   };
 
   const cancelEdit = () => {
-    setWorking(null);
-    setEditing(false);
-    setSelectedSlot(null);
+    const reallyExit = () => {
+      setWorking(null);
+      setEditing(false);
+      setSelectedSlot(null);
+      setSaveError(null);
+      // /edit 路由进来的,退出时回到浏览态路由
+      if (initialEdit) {
+        router.push(`/mixcut/templates/${id}`);
+      }
+    };
+    const isDirty =
+      editing && working && template
+        ? JSON.stringify(working) !== JSON.stringify(template)
+        : false;
+    if (isDirty) {
+      setConfirmModal({
+        title: "退出编辑?",
+        body: "你有未保存的修改,退出后会丢失。",
+        onConfirm: reallyExit,
+      });
+    } else {
+      reallyExit();
+    }
   };
 
   const resetWorking = () => {
-    if (!confirm("放弃当前修改,恢复为已保存版本?")) return;
-    setWorking(structuredClone(template));
+    setConfirmModal({
+      title: "放弃当前修改?",
+      body: "未保存的改动会丢失,恢复为已保存版本。",
+      onConfirm: () => {
+        if (template) setWorking(structuredClone(template));
+      },
+    });
   };
 
   const handleSave = async () => {
     if (!working) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const updated = await MixcutApi.saveTemplate(working);
       setTemplate(updated);
       setWorking(structuredClone(updated));
       setSavedAt(Date.now());
+    } catch (e: any) {
+      setSaveError(e?.message ?? "保存失败,请检查网络或重试");
     } finally {
       setSaving(false);
     }
@@ -217,10 +301,14 @@ export function TemplateDetailClient({ id }: { id: string }) {
         : s
     );
   };
-  const updateSlotPolicy = (slotId: string, patch: Partial<SlotPerturbationPolicy>) => {
+  /** SlotPolicyEditor 发"完整 override 对象",我们整段替换;空对象 → 删字段回到 layer 默认。 */
+  const updateSlotPolicy = (slotId: string, fullOverride: Partial<SlotPerturbationPolicy>) => {
     mapCurrentScene((s) =>
       s.slot_id === slotId
-        ? { ...s, perturbation_policy: { ...(s.perturbation_policy ?? {}), ...patch } }
+        ? {
+            ...s,
+            perturbation_policy: Object.keys(fullOverride).length === 0 ? undefined : fullOverride,
+          }
         : s
     );
   };
@@ -249,18 +337,23 @@ export function TemplateDetailClient({ id }: { id: string }) {
     setSelectedSlot(nextId);
   };
   const removeSlot = (slotId: string) => {
-    if (!confirm(`确定删除此内容位?`)) return;
-    setWorking((w) =>
-      w
-        ? {
-            ...w,
-            scenes: w.scenes.map((sc, i) =>
-              i === sceneIdx ? { ...sc, slots: sc.slots.filter((s) => s.slot_id !== slotId) } : sc
-            ),
-          }
-        : w
-    );
-    if (selectedSlot === slotId) setSelectedSlot(null);
+    setConfirmModal({
+      title: "删除此内容位?",
+      body: "删除后无法恢复,需要重新添加。",
+      onConfirm: () => {
+        setWorking((w) =>
+          w
+            ? {
+                ...w,
+                scenes: w.scenes.map((sc, i) =>
+                  i === sceneIdx ? { ...sc, slots: sc.slots.filter((s) => s.slot_id !== slotId) } : sc
+                ),
+              }
+            : w
+        );
+        if (selectedSlot === slotId) setSelectedSlot(null);
+      },
+    });
   };
 
   // 场景级 mutator
@@ -287,13 +380,20 @@ export function TemplateDetailClient({ id }: { id: string }) {
   const removeScene = (idx: number) => {
     if (!working) return;
     if (working.scenes.length <= 1) {
-      alert("至少保留 1 个场景");
+      setSaveError("至少保留 1 个场景");
+      setTimeout(() => setSaveError(null), 2500);
       return;
     }
-    if (!confirm(`删除场景"${working.scenes[idx]?.label}"及其全部内容位?`)) return;
-    setWorking((w) => (w ? { ...w, scenes: w.scenes.filter((_, i) => i !== idx) } : w));
-    if (sceneIdx >= idx) setSelectedSceneIdx(Math.max(0, sceneIdx - 1));
-    setSelectedSlot(null);
+    const label = working.scenes[idx]?.label;
+    setConfirmModal({
+      title: `删除场景"${label}"?`,
+      body: `本场景的 ${working.scenes[idx]?.slots.length ?? 0} 个内容位也会一并删除。`,
+      onConfirm: () => {
+        setWorking((w) => (w ? { ...w, scenes: w.scenes.filter((_, i) => i !== idx) } : w));
+        if (sceneIdx >= idx) setSelectedSceneIdx(Math.max(0, sceneIdx - 1));
+        setSelectedSlot(null);
+      },
+    });
   };
   const updateScene = (idx: number, patch: Partial<TemplateScene>) => {
     setWorking((w) => (w ? { ...w, scenes: w.scenes.map((sc, i) => (i === idx ? { ...sc, ...patch } : sc)) } : w));
@@ -308,6 +408,23 @@ export function TemplateDetailClient({ id }: { id: string }) {
       return { ...w, scenes: next };
     });
     setSelectedSceneIdx((cur) => (cur === idx ? idx + dir : cur));
+  };
+  /** 把当前场景里第 from 个 slot 移到 to 位置(gap 语义)。 */
+  const moveSlotTo = (from: number, to: number) => {
+    setWorking((w) => {
+      if (!w) return w;
+      if (from === to || from === to - 1) return w;
+      const sc = w.scenes[sceneIdx];
+      if (!sc) return w;
+      const next = sc.slots.slice();
+      const [item] = next.splice(from, 1);
+      const adj = from < to ? to - 1 : to;
+      next.splice(adj, 0, item);
+      return {
+        ...w,
+        scenes: w.scenes.map((s, i) => (i === sceneIdx ? { ...s, slots: next } : s)),
+      };
+    });
   };
   /** 把 from 位置的场景移动到 to 位置(targetGap 语义:to=0 表示移到最前,to=N 表示移到末尾)。 */
   const moveSceneTo = (from: number, to: number) => {
@@ -326,6 +443,7 @@ export function TemplateDetailClient({ id }: { id: string }) {
 
   return (
     <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
+      <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal(null)} />
       <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href="/mixcut/templates">
@@ -333,13 +451,21 @@ export function TemplateDetailClient({ id }: { id: string }) {
           </Link>
         </Button>
         {editing ? (
-          <div className="flex items-center gap-2">
-            {savedAt && (
-              <span className="text-[10px] text-emerald-600">
+          <div className="flex items-center gap-2 flex-wrap">
+            {saveError ? (
+              <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium">
+                <AlertCircle className="size-3" /> {saveError}
+              </span>
+            ) : dirty ? (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
+                <span className="size-1.5 rounded-full bg-amber-500" /> 未保存修改
+              </span>
+            ) : savedAt ? (
+              <span className="text-xs text-emerald-600">
                 已保存 · {new Date(savedAt).toLocaleTimeString("zh-CN", { hour12: false })}
               </span>
-            )}
-            <Button variant="ghost" size="sm" onClick={resetWorking}>
+            ) : null}
+            <Button variant="ghost" size="sm" onClick={resetWorking} disabled={!dirty}>
               <RotateCcw className="size-3.5" /> 撤销修改
             </Button>
             <Button variant="ghost" size="sm" onClick={cancelEdit}>
@@ -348,13 +474,15 @@ export function TemplateDetailClient({ id }: { id: string }) {
             <Button variant="outline" size="sm" onClick={() => setSaveAsOpen(true)}>
               <Copy className="size-3.5" /> 另存为新模板
             </Button>
-            <Button variant="gradient" size="sm" onClick={handleSave} disabled={saving}>
+            <Button variant="default" size="sm" onClick={handleSave} disabled={saving || !dirty}>
               <Save className="size-3.5" /> {isFactory ? "保存为我的版本" : "保存"}
             </Button>
           </div>
         ) : (
-          <Button variant="outline" size="sm" onClick={enterEdit}>
-            <Pencil className="size-3.5" /> 编辑模板
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/mixcut/templates/${id}/edit`}>
+              <Pencil className="size-3.5" /> 编辑模板
+            </Link>
           </Button>
         )}
       </div>
@@ -383,7 +511,7 @@ export function TemplateDetailClient({ id }: { id: string }) {
               placeholder="例如:玻璃水带货 · 节庆款"
               className="flex-1 min-w-[200px]"
             />
-            <Button variant="gradient" size="sm" onClick={handleSaveAs} disabled={!newName.trim() || saving}>
+            <Button variant="default" size="sm" onClick={handleSaveAs} disabled={!newName.trim() || saving}>
               <Save className="size-3.5" /> 创建
             </Button>
             <Button variant="ghost" size="sm" onClick={() => { setSaveAsOpen(false); setNewName(""); }}>
@@ -393,7 +521,35 @@ export function TemplateDetailClient({ id }: { id: string }) {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8">
+      <section
+        className={cn(
+          "transition-colors rounded-lg",
+          editing && "bg-foreground/[0.02] ring-1 ring-foreground/10 -mx-3 lg:-mx-4 px-3 lg:px-4 py-4"
+        )}
+      >
+        {editing && (
+          <div className="mb-4 flex justify-end">
+            <EditingTipsBar />
+          </div>
+        )}
+
+        {/* 场景流程独占一行,贯穿 section 宽度。编辑态横向时间轴需要尽可能宽,
+            原来塞在左栏 340px 子列里又挤又难拖。view 态也保留同一位置,信息层级一致。*/}
+        <div className="mb-6">
+          <SceneFlowEditor
+            scenes={display.scenes}
+            canvas={display.canvas}
+            currentIdx={sceneIdx}
+            editing={editing}
+            onSelect={(i) => { setSelectedSceneIdx(i); setSelectedSlot(null); }}
+            onAddAt={addSceneAt}
+            onRemove={removeScene}
+            onChange={updateScene}
+            onMoveTo={moveSceneTo}
+          />
+        </div>
+
+      <div className={cn("grid grid-cols-1 gap-8", !editing && "lg:grid-cols-[1fr_400px]")}>
         <div>
           <div className="flex items-start justify-between gap-4 mb-4">
             <div className="flex-1 min-w-0">
@@ -408,19 +564,20 @@ export function TemplateDetailClient({ id }: { id: string }) {
                 <Input
                   value={working.name}
                   onChange={(e) => updateWorking({ name: e.target.value })}
-                  className="text-2xl font-semibold h-12 max-w-xl"
+                  className="text-xl font-semibold h-10 max-w-md"
+                  placeholder="模板名"
                 />
               ) : (
                 <h1 className="text-2xl font-semibold tracking-tight">{display.name}</h1>
               )}
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground font-mono">
                 v{display.version} · {display.canvas.width}×{display.canvas.height} · {totalDuration(display)}秒 · {display.scenes.length} 场景
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6">
-            <div>
+          <div className={cn("grid grid-cols-1 gap-6", editing ? "md:grid-cols-[340px_1fr]" : "md:grid-cols-[300px_1fr]")}>
+            <div className={cn(editing && "md:sticky md:top-20 md:self-start space-y-3")}>
               <TemplatePreview
                 template={{
                   ...display,
@@ -433,7 +590,7 @@ export function TemplateDetailClient({ id }: { id: string }) {
                 editable={editing}
                 onChangeSlotRect={(slotId, next) => updateSlotRect(slotId, next)}
               />
-              <div className="mt-3">
+              <div className={editing ? "" : "mt-3"}>
                 <div className="text-xs text-muted-foreground mb-2">效果预览:每条版本的内容位置会有小幅变化</div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
@@ -462,26 +619,25 @@ export function TemplateDetailClient({ id }: { id: string }) {
                     </button>
                   ))}
                 </div>
+                <p className="text-[10px] text-muted-foreground leading-relaxed mt-2">
+                  {previewVariant == null
+                    ? "原版无扰动应用。"
+                    : `本预览只演示位置抖动;实际渲染时还会按扰动强度随机叠加镜像、变速、亮度、饱和度。`}
+                </p>
               </div>
+
+              {/* 编辑态:画布折叠仍留左栏(场景流程已上移到 section 顶部) */}
+              {editing && working && (
+                <CollapsibleCanvasMeta
+                  canvas={working.canvas}
+                  open={canvasMetaOpen}
+                  onToggle={() => setCanvasMetaOpen((o) => !o)}
+                  onChange={updateCanvas}
+                />
+              )}
             </div>
 
-            <div className="space-y-4">
-              {editing && working && (
-                <CanvasEditor canvas={working.canvas} onChange={updateCanvas} />
-              )}
-
-              <SceneFlowEditor
-                scenes={display.scenes}
-                canvas={display.canvas}
-                currentIdx={sceneIdx}
-                editing={editing}
-                onSelect={(i) => { setSelectedSceneIdx(i); setSelectedSlot(null); }}
-                onAddAt={addSceneAt}
-                onRemove={removeScene}
-                onChange={updateScene}
-                onMoveTo={moveSceneTo}
-              />
-
+            <div className="space-y-4 min-w-0">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -494,28 +650,76 @@ export function TemplateDetailClient({ id }: { id: string }) {
                     </Button>
                   )}
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {currentSceneSlots.length === 0 && (
-                    <div className="text-center py-6 text-xs text-muted-foreground">
-                      本场景还没有内容位{editing ? ',点上方"+ 添加一个"来加' : ''}
-                    </div>
+                <CardContent className="space-y-0">
+                  {currentSceneSlots.length === 0 ? (
+                    <SlotEmptyState editing={editing} onAdd={addSlot} />
+                  ) : (
+                    <>
+                      {currentSceneSlots.map((s, idx) => {
+                        const isSelected = selectedSlot === s.slot_id;
+                        return (
+                          <Fragment key={s.slot_id}>
+                            {editing && (
+                              <SlotDropZone
+                                gapIdx={idx}
+                                active={slotDragOverGap === idx}
+                                dragActive={slotDragSrc != null}
+                                onDragOver={() => setSlotDragOverGap(idx)}
+                                onDragLeave={() => setSlotDragOverGap((g) => (g === idx ? null : g))}
+                                onDrop={() => {
+                                  if (slotDragSrc != null) moveSlotTo(slotDragSrc, idx);
+                                  setSlotDragSrc(null);
+                                  setSlotDragOverGap(null);
+                                }}
+                              />
+                            )}
+                            <div
+                              draggable={editing}
+                              onDragStart={(e) => {
+                                if (!editing) return;
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", String(idx));
+                                setSlotDragSrc(idx);
+                              }}
+                              onDragEnd={() => {
+                                setSlotDragSrc(null);
+                                setSlotDragOverGap(null);
+                              }}
+                              className={cn(
+                                editing && "cursor-move",
+                                slotDragSrc === idx && "opacity-40"
+                              )}
+                            >
+                              <SlotCard
+                                slot={s}
+                                selected={isSelected}
+                                editing={editing}
+                                onSelect={() => setSelectedSlot(isSelected ? null : s.slot_id)}
+                                onChange={(patch) => updateSlot(s.slot_id, patch)}
+                                onChangeRect={(patch) => updateSlotRect(s.slot_id, patch)}
+                                onChangePolicy={(patch) => updateSlotPolicy(s.slot_id, patch)}
+                                onRemove={() => removeSlot(s.slot_id)}
+                              />
+                            </div>
+                          </Fragment>
+                        );
+                      })}
+                      {editing && (
+                        <SlotDropZone
+                          gapIdx={currentSceneSlots.length}
+                          active={slotDragOverGap === currentSceneSlots.length}
+                          dragActive={slotDragSrc != null}
+                          onDragOver={() => setSlotDragOverGap(currentSceneSlots.length)}
+                          onDragLeave={() => setSlotDragOverGap((g) => (g === currentSceneSlots.length ? null : g))}
+                          onDrop={() => {
+                            if (slotDragSrc != null) moveSlotTo(slotDragSrc, currentSceneSlots.length);
+                            setSlotDragSrc(null);
+                            setSlotDragOverGap(null);
+                          }}
+                        />
+                      )}
+                    </>
                   )}
-                  {currentSceneSlots.map((s) => {
-                    const isSelected = selectedSlot === s.slot_id;
-                    return (
-                      <SlotCard
-                        key={s.slot_id}
-                        slot={s}
-                        selected={isSelected}
-                        editing={editing}
-                        onSelect={() => setSelectedSlot(isSelected ? null : s.slot_id)}
-                        onChange={(patch) => updateSlot(s.slot_id, patch)}
-                        onChangeRect={(patch) => updateSlotRect(s.slot_id, patch)}
-                        onChangePolicy={(patch) => updateSlotPolicy(s.slot_id, patch)}
-                        onRemove={() => removeSlot(s.slot_id)}
-                      />
-                    );
-                  })}
                 </CardContent>
               </Card>
 
@@ -523,6 +727,7 @@ export function TemplateDetailClient({ id }: { id: string }) {
           </div>
         </div>
 
+        {!editing && (
         <aside className="space-y-4 lg:sticky lg:top-20 self-start">
           <Card>
             <CardHeader>
@@ -598,26 +803,44 @@ export function TemplateDetailClient({ id }: { id: string }) {
 
           {!editing && (
             <>
-              <Button variant="gradient" size="xl" className="w-full" asChild>
-                <Link href={`/mixcut/create/${display.template_id}`}>
-                  <Sparkles className="size-4" />
-                  使用此模板创建
-                  <ChevronRight className="size-4" />
-                </Link>
-              </Button>
-              <div className="text-[10px] text-center text-muted-foreground">
-                创建后系统将自动嵌入追溯水印
-              </div>
+              {editableSlots.length === 0 ? (
+                <>
+                  <Button variant="gradient" size="xl" className="w-full" disabled>
+                    <Sparkles className="size-4" />
+                    模板还没有内容位
+                    <ChevronRight className="size-4" />
+                  </Button>
+                  <div className="text-[10px] text-center text-muted-foreground">
+                    先点上方「编辑」加几个内容位,才能用这个模板创建视频
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Button variant="gradient" size="xl" className="w-full" asChild>
+                    <Link href={`/mixcut/create/${display.template_id}`}>
+                      <Sparkles className="size-4" />
+                      使用此模板创建
+                      <ChevronRight className="size-4" />
+                    </Link>
+                  </Button>
+                  <div className="text-[10px] text-center text-muted-foreground">
+                    创建后系统将自动嵌入追溯水印
+                  </div>
+                </>
+              )}
             </>
           )}
         </aside>
+        )}
       </div>
+      </section>
     </div>
   );
 }
 
 // ── Canvas 编辑器 ───────────────────────────────────────────────────────────
 
+// 注:本组件返回 bare content (不带 Card 外壳);外层由 CollapsibleCanvasMeta 包裹
 function CanvasEditor({
   canvas,
   onChange,
@@ -626,68 +849,63 @@ function CanvasEditor({
   onChange: (patch: Partial<Template["canvas"]>) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">画布与时长</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {(["短视频", "手机原生", "其他"] as const).map((group) => {
-          const items = CANVAS_PRESETS.filter((p) => p.group === group);
-          return (
-            <div key={group} className="space-y-1.5">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                {group}
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {items.map((p) => {
-                  const on = canvas.width === p.w && canvas.height === p.h;
-                  return (
-                    <button
-                      key={p.label + p.w + p.h}
-                      onClick={() => onChange({ width: p.w, height: p.h })}
-                      className={cn(
-                        "px-2 py-1.5 rounded-md border text-left transition-colors leading-tight",
-                        on
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                      )}
-                    >
-                      <div className="text-xs font-medium">{p.label}</div>
-                      <div className={cn("text-[10px] font-mono mt-0.5", on ? "opacity-80" : "opacity-60")}>
-                        {p.sub}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+    <div className="space-y-3">
+      {(["短视频", "手机原生", "其他"] as const).map((group) => {
+        const items = CANVAS_PRESETS.filter((p) => p.group === group);
+        return (
+          <div key={group} className="space-y-1.5">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+              {group}
             </div>
-          );
-        })}
-        <div className="grid grid-cols-2 gap-3">
-          <NumField
-            label="宽度 (px)"
-            value={canvas.width}
-            min={120} max={3840}
-            onChange={(v) => onChange({ width: v })}
-          />
-          <NumField
-            label="高度 (px)"
-            value={canvas.height}
-            min={120} max={3840}
-            onChange={(v) => onChange({ height: v })}
-          />
-          <NumField
-            label="帧率 (fps)"
-            value={canvas.fps}
-            min={15} max={60}
-            onChange={(v) => onChange({ fps: v })}
-          />
-        </div>
-        <p className="text-[10px] text-muted-foreground leading-relaxed">
-          这是成片的画面尺寸,所有内容位的位置和大小都按这个画面比例自动缩放。总时长由下方场景时长累加而来。
-        </p>
-      </CardContent>
-    </Card>
+            <div className="grid grid-cols-2 gap-1.5">
+              {items.map((p) => {
+                const on = canvas.width === p.w && canvas.height === p.h;
+                return (
+                  <button
+                    key={p.label + p.w + p.h}
+                    onClick={() => onChange({ width: p.w, height: p.h })}
+                    className={cn(
+                      "px-2 py-1.5 rounded-md border text-left transition-colors leading-tight",
+                      on
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                    )}
+                  >
+                    <div className="text-xs font-medium">{p.label}</div>
+                    <div className={cn("text-[10px] font-mono mt-0.5", on ? "opacity-80" : "opacity-60")}>
+                      {p.sub}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <div className="grid grid-cols-2 gap-3">
+        <NumField
+          label="宽度 (px)"
+          value={canvas.width}
+          min={120} max={3840}
+          onChange={(v) => onChange({ width: v })}
+        />
+        <NumField
+          label="高度 (px)"
+          value={canvas.height}
+          min={120} max={3840}
+          onChange={(v) => onChange({ height: v })}
+        />
+        <NumField
+          label="帧率 (fps)"
+          value={canvas.fps}
+          min={15} max={60}
+          onChange={(v) => onChange({ fps: v })}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground leading-relaxed">
+        画布尺寸控制成片画面比例,所有内容位按此自动缩放。总时长由场景累加而来。
+      </p>
+    </div>
   );
 }
 
@@ -712,12 +930,7 @@ function SlotCard({
   onChangePolicy: (patch: Partial<SlotPerturbationPolicy>) => void;
   onRemove: () => void;
 }) {
-  const resolvedPolicy = useMemo(
-    () => resolvePolicy(slot.layer_type, slot.perturbation_policy),
-    [slot.layer_type, slot.perturbation_policy]
-  );
-
-  if (!editing) {
+  if (!editing || !selected) {
     // 只读视图:所有英文 / 工程话术翻译成运营能读的中文
     return (
       <button
@@ -865,39 +1078,12 @@ function SlotCard({
         />
       </div>
 
-      <div>
-        <div className="text-[10px] font-medium text-muted-foreground mb-1.5">
-          差异化处理(默认按「{LAYER_LABELS[slot.layer_type]}」类型走)
-        </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          <PolicyToggle
-            label="左右翻转"
-            current={slot.perturbation_policy?.allow_mirror}
-            fallback={resolvedPolicy.allow_mirror}
-            onChange={(v) => onChangePolicy({ allow_mirror: v })}
-          />
-          <PolicyToggle
-            label="位置微移"
-            current={slot.perturbation_policy?.allow_position_jitter}
-            fallback={resolvedPolicy.allow_position_jitter}
-            onChange={(v) => onChangePolicy({ allow_position_jitter: v })}
-          />
-          <PolicyToggle
-            label="缩放抖动"
-            current={slot.perturbation_policy?.allow_scale_jitter}
-            fallback={resolvedPolicy.allow_scale_jitter}
-            onChange={(v) => onChangePolicy({ allow_scale_jitter: v })}
-          />
-          <PolicyToggle
-            label="速度微调"
-            current={slot.perturbation_policy?.allow_speed_jitter}
-            fallback={resolvedPolicy.allow_speed_jitter}
-            onChange={(v) => onChangePolicy({ allow_speed_jitter: v })}
-          />
-        </div>
-      </div>
-
-      <div className="text-[10px] text-muted-foreground">编号:{slot.slot_id}</div>
+      <SlotPolicyEditor
+        slot={{ ...slot, perturbation_policy: undefined }}
+        override={slot.perturbation_policy}
+        onChange={onChangePolicy}
+        globalOverrides={POLICY_NO_KILL}
+      />
     </div>
   );
 }
@@ -977,48 +1163,6 @@ function Toggle({
   );
 }
 
-/**
- * 三态 toggle:override (true / false) vs fallback (来自 layer 默认)。
- * - undefined: 沿用 layer 默认值
- * - true / false: 显式覆盖
- * 点击循环:default → true → false → default
- */
-function PolicyToggle({
-  label, current, fallback, onChange,
-}: {
-  label: string;
-  current: boolean | undefined;
-  fallback: boolean;
-  onChange: (v: boolean | undefined) => void;
-}) {
-  const effective = current ?? fallback;
-  const isOverride = current !== undefined;
-  const cycle = () => {
-    if (current === undefined) onChange(true);
-    else if (current === true) onChange(false);
-    else onChange(undefined);
-  };
-  return (
-    <button
-      onClick={cycle}
-      title={isOverride ? "显式覆盖,再点恢复默认" : "沿用 layer 默认"}
-      className={cn(
-        "px-2 py-1.5 rounded-md text-xs border transition-colors text-left",
-        effective
-          ? "bg-foreground text-background border-foreground"
-          : "bg-secondary/40 border-border text-muted-foreground",
-        isOverride && "ring-2 ring-brand-500/40"
-      )}
-    >
-      <div className="font-medium flex items-center justify-between">
-        <span>{label}</span>
-        <span className="text-[10px]">
-          {effective ? "✓" : "—"}{isOverride ? "*" : ""}
-        </span>
-      </div>
-    </button>
-  );
-}
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -1039,4 +1183,180 @@ function orientationLabel(w: number, h: number): string {
   if (h > w * 1.1) return "竖屏 · 适合抖音/小红书";
   if (w > h * 1.1) return "横屏 · 适合 B 站/视频号";
   return "方形 · 适合 Feed 流";
+}
+
+// ── 内容位空状态(本场景一个 slot 都没有) ──────────────────────────────────
+
+function SlotEmptyState({ editing, onAdd }: { editing: boolean; onAdd: () => void }) {
+  return (
+    <div className="py-8 text-center space-y-2">
+      <Layers className="size-8 mx-auto text-muted-foreground/40" />
+      <div className="text-sm text-muted-foreground">本场景还没有内容位</div>
+      {editing && (
+        <Button variant="outline" size="sm" onClick={onAdd}>
+          <Plus className="size-3.5" /> 添加第一个内容位
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ── 内容位之间的拖拽 drop zone(细长 hover/拖动时撑高) ──────────────────────
+
+function SlotDropZone({
+  active,
+  dragActive,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  gapIdx: number;
+  active: boolean;
+  dragActive: boolean;
+  onDragOver: () => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+}) {
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); onDragOver(); }}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => { e.preventDefault(); onDrop(); }}
+      className={cn(
+        "transition-all rounded",
+        active ? "h-10 my-1 bg-brand-500/15 ring-1 ring-brand-500/40" : dragActive ? "h-3 my-0.5" : "h-1"
+      )}
+    />
+  );
+}
+
+// ── 编辑模式 hint bar:四条核心操作,localStorage 记住 dismiss ─────────────────
+// 显示位置:页面顶部"编辑中" badge 右侧,平铺 4 个手势提示,点 ✕ 永久隐藏。
+// 不抢主视觉,首次进入编辑就能看到该怎么操作。
+
+const TIPS_DISMISS_KEY = "mixcut.template-editor.tips-dismissed.v1";
+
+function EditingTipsBar() {
+  const [dismissed, setDismissed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      setDismissed(window.localStorage.getItem(TIPS_DISMISS_KEY) === "1");
+    } catch {
+      setDismissed(false);
+    }
+  }, []);
+
+  if (dismissed !== false) return null;
+
+  const dismiss = () => {
+    try { window.localStorage.setItem(TIPS_DISMISS_KEY, "1"); } catch {}
+    setDismissed(true);
+  };
+
+  return (
+    <div className="inline-flex items-center gap-3 px-3 py-1.5 rounded-md bg-foreground/[0.04] border border-border text-[11px] text-muted-foreground">
+      <span className="flex items-center gap-1.5">
+        <span className="size-1 rounded-full bg-foreground/40" />
+        点节点切换场景
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="size-1 rounded-full bg-foreground/40" />
+        拖动节点重排
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="size-1 rounded-full bg-foreground/40" />
+        点 + 插入新场景
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="size-1 rounded-full bg-foreground/40" />
+        选中槽位后画布上拖拽改位置
+      </span>
+      <button
+        onClick={dismiss}
+        className="size-4 grid place-items-center rounded-full text-muted-foreground/60 hover:text-foreground hover:bg-secondary transition-colors"
+        title="不再提示"
+        aria-label="不再提示"
+      >
+        <X className="size-3" />
+      </button>
+    </div>
+  );
+}
+
+// ── 编辑模式:画布与时长(低频改动,默认折叠) ────────────────────────────────
+
+function CollapsibleCanvasMeta({
+  canvas,
+  open,
+  onToggle,
+  onChange,
+}: {
+  canvas: Template["canvas"];
+  open: boolean;
+  onToggle: () => void;
+  onChange: (patch: Partial<Template["canvas"]>) => void;
+}) {
+  return (
+    <Card>
+      <button
+        onClick={onToggle}
+        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-secondary/30 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium">画布与时长</span>
+          <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+            {canvas.width}×{canvas.height} · {canvas.fps}fps
+          </span>
+        </div>
+        <ChevronRight className={cn("size-4 text-muted-foreground transition-transform shrink-0", open && "rotate-90")} />
+      </button>
+      {open && (
+        <CardContent className="pt-0">
+          <CanvasEditor canvas={canvas} onChange={onChange} />
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+// ── 自写 AlertDialog(避免引 radix dialog 依赖) ─────────────────────────────
+
+function ConfirmModal({
+  modal,
+  onClose,
+}: {
+  modal: { title: string; body: string; onConfirm: () => void } | null;
+  onClose: () => void;
+}) {
+  if (!modal) return null;
+  const handleConfirm = () => {
+    modal.onConfirm();
+    onClose();
+  };
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-background border border-border rounded-lg shadow-xl max-w-md mx-4 w-full"
+      >
+        <div className="p-5">
+          <h3 className="text-base font-semibold">{modal.title}</h3>
+          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{modal.body}</p>
+        </div>
+        <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2 bg-secondary/30 rounded-b-lg">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            取消
+          </Button>
+          <Button variant="default" size="sm" onClick={handleConfirm}>
+            确定
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }

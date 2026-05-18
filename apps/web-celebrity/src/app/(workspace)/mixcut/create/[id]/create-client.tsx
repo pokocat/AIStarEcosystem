@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, notFound } from "next/navigation";
 import Link from "next/link";
 import {
@@ -48,22 +48,9 @@ export function CreateClient({ id }: { id: string }) {
   );
   const [resolved, setResolved] = useState(false);
 
-  useEffect(() => {
-    const local = MixcutApi.getTemplateSync(id);
-    if (local) setTemplate(local);
-    setResolved(true);
-  }, [id]);
-
-  if (resolved && !template) notFound();
-  if (!template) {
-    return (
-      <div className="px-6 lg:px-8 py-12 max-w-[1600px] mx-auto text-center text-muted-foreground text-sm">
-        加载中…
-      </div>
-    );
-  }
-
+  // 所有 hook 必须在 early-return 之前(Rules of Hooks)
   const [bindings, setBindings] = useState<Record<string, SlotBinding>>(() => {
+    if (!template) return {};
     const initial: Record<string, SlotBinding> = {};
     flatSlotsOf(template).forEach((s) => {
       if (s.fill_strategy === "user_input" && s.default_value) {
@@ -75,8 +62,10 @@ export function CreateClient({ id }: { id: string }) {
     return initial;
   });
   const [focusedSlot, setFocusedSlot] = useState<string | null>(null);
-  const [profile, setProfile] = useState<PerturbationProfile>(template.perturbation_profile);
-  const [variants, setVariants] = useState(template.output_variants_default);
+  const [profile, setProfile] = useState<PerturbationProfile>(
+    () => template?.perturbation_profile ?? "moderate"
+  );
+  const [variants, setVariants] = useState(() => template?.output_variants_default ?? 5);
   const [previewVariant, setPreviewVariant] = useState<number | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [overrides, setOverrides] = useState<Required<PerturbationOverrides>>({
@@ -86,6 +75,40 @@ export function CreateClient({ id }: { id: string }) {
     allow_saturation: true,
   });
   const [slotPolicies, setSlotPolicies] = useState<Record<string, Partial<SlotPerturbationPolicy>>>({});
+  const initFromTemplateRef = useRef(false);
+
+  useEffect(() => {
+    const local = MixcutApi.getTemplateSync(id);
+    if (local) setTemplate(local);
+    setResolved(true);
+  }, [id]);
+
+  // 当 template 首次变为非空(localStorage 覆盖加载到)时,把 bindings / profile / variants
+  // 重新用模板里的默认值 seed 一次。只跑一次,之后用户改了的就不再覆盖。
+  useEffect(() => {
+    if (!template || initFromTemplateRef.current) return;
+    initFromTemplateRef.current = true;
+    const initial: Record<string, SlotBinding> = {};
+    flatSlotsOf(template).forEach((s) => {
+      if (s.fill_strategy === "user_input" && s.default_value) {
+        initial[s.slot_id] = { source: "input", text: s.default_value };
+      } else if (s.fill_strategy === "fixed") {
+        initial[s.slot_id] = { source: "fixed" };
+      }
+    });
+    setBindings(initial);
+    setProfile(template.perturbation_profile);
+    setVariants(template.output_variants_default);
+  }, [template]);
+
+  if (resolved && !template) notFound();
+  if (!template) {
+    return (
+      <div className="px-6 lg:px-8 py-12 max-w-[1600px] mx-auto text-center text-muted-foreground text-sm">
+        加载中…
+      </div>
+    );
+  }
 
   const handlePolicyChange = (slotId: string, next: Partial<SlotPerturbationPolicy>) => {
     setSlotPolicies((prev) => {

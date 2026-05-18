@@ -2,7 +2,9 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { Search, Flame, Crown, Star, TrendingUp, ArrowUpRight, Filter } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { nanoid } from "nanoid";
+import { Search, Crown, ShieldCheck, TrendingUp, Plus, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
@@ -33,15 +35,56 @@ const TIERS: { value: "all" | Tier; label: string }[] = [
 ];
 
 export default function MixcutTemplatesPage() {
+  const router = useRouter();
   const [category, setCategory] = useState("全部");
   const [tier, setTier] = useState<"all" | Tier>("all");
   const [search, setSearch] = useState("");
   // 包含用户「另存为」/「保存为我的版本」生成的模板
   const [templates, setTemplates] = useState<Template[]>(mockTemplates);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     MixcutApi.listTemplates().then(setTemplates);
   }, []);
+
+  // 默认空模板:1080×1920 竖屏 / 15 秒 / 1 个空场景 / 无槽位。
+  // 用户落地详情页后,通过编辑模式增加槽位、调整画布。
+  const handleCreate = async () => {
+    if (creating) return;
+    setCreating(true);
+    const id = `tpl_${nanoid(8)}`;
+    const fresh: Template = {
+      template_id: id,
+      name: "未命名模板",
+      version: "0.1",
+      canvas: {
+        width: 1080,
+        height: 1920,
+        duration: 15,
+        fps: 30,
+        background_color: "#000000",
+      },
+      scenes: [
+        { id: `scene_${nanoid(6)}`, label: "全片", duration: 15, slots: [] },
+      ],
+      perturbation_profile: "moderate",
+      output_variants_default: 5,
+      quality_gate: { min_phash_distance: 10, max_retries: 3 },
+      metadata: {
+        category: "未分类",
+        tags: [],
+        required_tier: "basic",
+      },
+    };
+    try {
+      await MixcutApi.saveTemplate(fresh);
+      // ?edit=1 → 详情页落地后自动进入编辑态(由 template-detail-client 的 useEffect 处理,
+      // 并在进入后把 query 从 URL 上清掉,避免刷新重复触发)
+      router.push(`/mixcut/templates/${id}?edit=1`);
+    } catch {
+      setCreating(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return templates.filter((t) => {
@@ -52,43 +95,33 @@ export default function MixcutTemplatesPage() {
     });
   }, [templates, category, tier, search]);
 
+  const isFiltering = search !== "" || category !== "全部" || tier !== "all";
+
   return (
     <div className="px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">模板库</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            分区式模板 · 选个模板填入素材,5 分钟出 N 个抗去重版本
+            选个模板,填进素材,一次生成多条差异化短视频
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="muted" className="gap-1">
-            <Flame className="size-3 text-orange-500" />
-            {templates.length} 个可用
-          </Badge>
-          <Badge variant="muted" className="gap-1">
-            <Crown className="size-3 text-amber-500" />
-            数字人专区
-          </Badge>
-        </div>
+        <Button onClick={handleCreate} disabled={creating}>
+          {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          新建模板
+        </Button>
       </div>
 
       <Card>
         <CardContent className="p-4 space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索模板名称、标签、品类…"
-                className="pl-9"
-              />
-            </div>
-            <Button variant="outline" size="default">
-              <Filter className="size-4" />
-              高级筛选
-            </Button>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索模板名称、标签、品类…"
+              className="pl-9"
+            />
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -112,7 +145,7 @@ export default function MixcutTemplatesPage() {
           <Separator />
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground shrink-0">套餐 tier</span>
+            <span className="text-xs text-muted-foreground shrink-0">套餐档位</span>
             {TIERS.map((t) => (
               <button
                 key={t.value}
@@ -131,12 +164,24 @@ export default function MixcutTemplatesPage() {
         </CardContent>
       </Card>
 
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          {isFiltering
+            ? `匹配 ${filtered.length} / 共 ${templates.length} 个模板`
+            : `共 ${templates.length} 个模板`}
+        </span>
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
         {filtered.map((t) => (
-          <Link key={t.template_id} href={`/mixcut/templates/${t.template_id}`} className="group">
+          <Link
+            key={t.template_id}
+            href={`/mixcut/templates/${t.template_id}`}
+            className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
             <div className="relative">
               <TemplatePreview template={t} showSlotChrome={false} />
-              {/* z-20 必须 > 模板内最高 z_index (mocks 里到 20),否则贴图 / 底部品牌条会盖住 badge 和 CTA */}
+              {/* z-30 必须 > 模板内最高 z_index (mocks 里到 20),否则贴图 / 底部品牌条会盖住 badge */}
               <div className="absolute top-2 left-2 z-30 flex flex-col gap-1">
                 {t.metadata.required_tier === "professional" && (
                   <Badge variant="brand" className="gap-1 text-[10px] backdrop-blur">
@@ -145,19 +190,16 @@ export default function MixcutTemplatesPage() {
                 )}
                 {(t.metadata.hit_rate ?? 0) > 90 && (
                   <Badge variant="success" className="gap-1 text-[10px] backdrop-blur">
-                    <Star className="size-2.5" /> 高存活率
+                    <ShieldCheck className="size-2.5" /> 不易判重
                   </Badge>
                 )}
-              </div>
-              <div className="absolute inset-x-0 bottom-0 z-30 p-3 bg-gradient-to-t from-black via-black/70 to-transparent rounded-b-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button variant="gradient" size="sm" className="w-full">
-                  立即使用 <ArrowUpRight className="size-3" />
-                </Button>
               </div>
             </div>
             <div className="mt-3 space-y-1.5">
               <div className="flex items-start justify-between gap-2">
-                <div className="font-medium text-sm leading-tight line-clamp-1">{t.name}</div>
+                <div className="font-medium text-sm leading-tight line-clamp-1 group-hover:underline underline-offset-2">
+                  {t.name}
+                </div>
                 <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{t.canvas.duration}s</span>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -166,12 +208,9 @@ export default function MixcutTemplatesPage() {
                   <span key={tag} className="text-[10px] text-muted-foreground">#{tag}</span>
                 ))}
               </div>
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <TrendingUp className="size-2.5" />
-                  日产 {formatNumber(t.metadata.daily_creation_count ?? 0)}
-                </span>
-                <span>· 命中率 {t.metadata.hit_rate}%</span>
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <TrendingUp className="size-2.5" />
+                今日 {formatNumber(t.metadata.daily_creation_count ?? 0)} 条生成
               </div>
             </div>
           </Link>
@@ -179,11 +218,9 @@ export default function MixcutTemplatesPage() {
       </div>
 
       {filtered.length === 0 && (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <div className="text-muted-foreground">没有匹配的模板,试试调整筛选条件</div>
-          </CardContent>
-        </Card>
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          没有匹配的模板,试试调整筛选条件
+        </div>
       )}
     </div>
   );
