@@ -19,6 +19,8 @@ public class MixcutProperties {
     private int maxOutputDurationSec = 15;
     private long maxAssetBytes = 104_857_600L;
     private long ffmpegTimeoutMs = 120_000L;
+    private String assetDir = "./mixcut-assets";
+    private String assetPublicUrlBase = "/static/mixcut-assets";
 
     public String getOutputDir() { return outputDir; }
     public void setOutputDir(String outputDir) { this.outputDir = outputDir; }
@@ -46,4 +48,10 @@ public class MixcutProperties {
 
     public long getFfmpegTimeoutMs() { return ffmpegTimeoutMs; }
     public void setFfmpegTimeoutMs(long ffmpegTimeoutMs) { this.ffmpegTimeoutMs = ffmpegTimeoutMs; }
+
+    public String getAssetDir() { return assetDir; }
+    public void setAssetDir(String assetDir) { this.assetDir = assetDir; }
+
+    public String getAssetPublicUrlBase() { return assetPublicUrlBase; }
+    public void setAssetPublicUrlBase(String assetPublicUrlBase) { this.assetPublicUrlBase = assetPublicUrlBase; }
 }

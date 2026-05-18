@@ -39,11 +39,18 @@ public class MixcutAsyncConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // 渲染产出：file:///.../mixcut-output/ → /static/mixcut/**
         File outDir = new File(props.getOutputDir());
-        String absolute = outDir.getAbsolutePath();
-        if (!absolute.endsWith(File.separator)) absolute = absolute + File.separator;
-        // file:///.../mixcut-output/ → /static/mixcut/**
+        String outAbs = outDir.getAbsolutePath();
+        if (!outAbs.endsWith(File.separator)) outAbs = outAbs + File.separator;
         registry.addResourceHandler(props.getPublicUrlBase() + "/**")
-                .addResourceLocations("file:" + absolute);
+                .addResourceLocations("file:" + outAbs);
+
+        // 用户上传素材：file:///.../mixcut-assets/ → /static/mixcut-assets/**
+        File assetDir = new File(props.getAssetDir());
+        String assetAbs = assetDir.getAbsolutePath();
+        if (!assetAbs.endsWith(File.separator)) assetAbs = assetAbs + File.separator;
+        registry.addResourceHandler(props.getAssetPublicUrlBase() + "/**")
+                .addResourceLocations("file:" + assetAbs);
     }
 }

@@ -1,15 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Image as ImageIcon, Video, Type, Music, Sparkles, Upload, X, Search, Check, Wand2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Image as ImageIcon, Video, Type, Music, Sparkles, Upload, X, Search, Check, Wand2, Loader2 } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { Label } from "./ui/label";
-import type { TemplateSlot, SlotBinding, StarClip, Asset, ProductClip } from "./types";
-import { mockStarClips, mockAssets, mockProductClips } from "@/mocks/mixcut";
+import type { TemplateSlot, SlotBinding, MixcutAsset, MixcutAssetKind } from "./types";
+import { MixcutApi } from "@/api";
 import { cn } from "./lib/utils";
 
 interface Props {
@@ -174,35 +174,92 @@ function TextSlotInput({ slot, binding, onChange }: Props) {
 
 // ============== 用户上传 ==============
 
+/** 根据 slot.layer_type / accepts_mime 推断要 POST 到 server 的 kind。 */
+function pickAssetKind(slot: TemplateSlot): MixcutAssetKind {
+  if (slot.layer_type === "video" || slot.layer_type === "digital_human") return "video";
+  if (slot.layer_type === "audio") return "bgm";
+  if (slot.layer_type === "sticker") return "sticker";
+  // image / text / 其他 → image
+  return "image";
+}
+
+function isImageUrl(url: string): boolean {
+  return /\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(url);
+}
+
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(url);
+}
+
 function UploadSlotInput({ slot, binding, onChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [picking, setPicking] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [myAssets, setMyAssets] = useState<MixcutAsset[] | null>(null);
+  const kind = pickAssetKind(slot);
 
-  const uploaded = binding?.source === "upload";
+  const uploaded = binding?.source === "upload" || (binding?.source === "library" && !!binding.asset_id);
 
-  const handleFile = (file: File) => {
-    const url = URL.createObjectURL(file);
-    onChange({ source: "upload", file_url: url, preview_url: url });
+  const handleFile = async (file: File) => {
+    setError(null);
+    setUploading(true);
+    try {
+      const asset = await MixcutApi.uploadAsset({ file, kind, name: file.name });
+      // 上传后用 library 引用方式（带 asset_id 后端解析最稳）；同时附 file_url 便于前端预览
+      onChange({ source: "upload", file_url: asset.file_url, preview_url: asset.file_url });
+    } catch (e: any) {
+      setError(e?.message ?? "上传失败");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const togglePick = async () => {
+    setPicking((prev) => {
+      const next = !prev;
+      if (next && myAssets === null) {
+        // 异步拉一次
+        MixcutApi.listAssets({ kind }).then(setMyAssets).catch(() => setMyAssets([]));
+      }
+      return next;
+    });
   };
 
   return (
     <div className="space-y-2">
       {uploaded ? (
         <div className="relative rounded-lg overflow-hidden border border-border bg-secondary/50">
-          {(binding as any).preview_url && (binding as any).preview_url.match(/\.(jpg|jpeg|png|webp|gif)$/i) ? (
-            <img src={(binding as any).preview_url} className="w-full aspect-video object-contain" alt="" />
-          ) : (
-            <div className="w-full aspect-video grid place-items-center text-xs text-muted-foreground">
-              <div className="flex flex-col items-center gap-1">
-                <ImageIcon className="size-6" />
-                {((binding as any).file_url as string).split("/").pop()}
+          {(binding as any).preview_url || (binding as any).file_url ? (
+            (isImageUrl((binding as any).preview_url ?? (binding as any).file_url) ? (
+              <img
+                src={(binding as any).preview_url ?? (binding as any).file_url}
+                className="w-full aspect-video object-contain"
+                alt=""
+              />
+            ) : isVideoUrl((binding as any).file_url) ? (
+              <video
+                src={(binding as any).file_url}
+                className="w-full aspect-video object-contain bg-black"
+                muted
+                loop
+                playsInline
+                preload="metadata"
+              />
+            ) : (
+              <div className="w-full aspect-video grid place-items-center text-xs text-muted-foreground">
+                <div className="flex flex-col items-center gap-1">
+                  <ImageIcon className="size-6" />
+                  {((binding as any).file_url as string)?.split("/").pop()}
+                </div>
               </div>
-            </div>
-          )}
+            ))
+          ) : null}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onChange(undefined);
+              setError(null);
             }}
             className="absolute top-2 right-2 size-6 rounded-full bg-black/60 grid place-items-center text-white hover:bg-black/80"
           >
@@ -212,18 +269,37 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
       ) : (
         <button
           type="button"
+          disabled={uploading}
           onClick={(e) => {
             e.stopPropagation();
             inputRef.current?.click();
           }}
-          className="w-full rounded-lg border-2 border-dashed border-border hover:border-brand-500/60 hover:bg-brand-500/[0.02] transition-colors p-6 flex flex-col items-center justify-center gap-2"
+          className={cn(
+            "w-full rounded-lg border-2 border-dashed border-border transition-colors p-6 flex flex-col items-center justify-center gap-2",
+            uploading
+              ? "opacity-60 cursor-wait"
+              : "hover:border-brand-500/60 hover:bg-brand-500/[0.02]"
+          )}
         >
-          <Upload className="size-6 text-muted-foreground" />
-          <div className="text-xs text-foreground">点击上传或拖放</div>
-          <div className="text-[10px] text-muted-foreground">
-            {slot.accepts_mime?.join(" / ") || "图片或视频"} · 单文件 ≤ 50MB
-          </div>
+          {uploading ? (
+            <>
+              <Loader2 className="size-6 text-brand-500 animate-spin" />
+              <div className="text-xs text-foreground">上传中…</div>
+            </>
+          ) : (
+            <>
+              <Upload className="size-6 text-muted-foreground" />
+              <div className="text-xs text-foreground">点击上传或拖放</div>
+              <div className="text-[10px] text-muted-foreground">
+                {slot.accepts_mime?.join(" / ") || (kind === "video" ? "视频" : kind === "bgm" ? "音频" : "图片")} · 单文件 ≤ 200MB
+              </div>
+            </>
+          )}
         </button>
+      )}
+
+      {error && (
+        <div className="text-xs text-red-500 px-1">⚠ {error}</div>
       )}
 
       <input
@@ -234,6 +310,8 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) handleFile(f);
+          // reset so same file can be re-selected
+          e.target.value = "";
         }}
       />
 
@@ -244,7 +322,7 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
           className="h-6 text-xs"
           onClick={(e) => {
             e.stopPropagation();
-            setPicking((v) => !v);
+            togglePick();
           }}
         >
           <Search className="size-3" /> 从我的素材选
@@ -252,21 +330,37 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
       </div>
 
       {picking && (
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
-          {mockProductClips.map((p) => (
+        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border max-h-64 overflow-y-auto scrollbar-thin">
+          {myAssets === null && (
+            <div className="col-span-3 text-center text-xs text-muted-foreground py-4">加载中…</div>
+          )}
+          {myAssets && myAssets.length === 0 && (
+            <div className="col-span-3 text-center text-xs text-muted-foreground py-4">
+              还没有上传过 {kind} 类型素材
+            </div>
+          )}
+          {myAssets?.map((a) => (
             <button
-              key={p.id}
+              key={a.id}
               onClick={(e) => {
                 e.stopPropagation();
-                onChange({ source: "upload", file_url: p.file_url, preview_url: p.thumbnail_url });
+                onChange({ source: "library", asset_id: a.id });
                 setPicking(false);
               }}
               className="text-left group"
             >
-              <div className="aspect-square rounded bg-gradient-to-br from-orange-200 to-pink-200 grid place-items-center group-hover:ring-2 group-hover:ring-brand-500 transition-all">
-                <ImageIcon className="size-5 text-white/70" />
+              <div className="aspect-square rounded overflow-hidden bg-gradient-to-br from-orange-200 to-pink-200 grid place-items-center group-hover:ring-2 group-hover:ring-brand-500 transition-all">
+                {a.thumbnail_url ? (
+                  <img src={a.thumbnail_url} className="w-full h-full object-cover" alt={a.name} />
+                ) : a.kind === "video" ? (
+                  <Video className="size-5 text-white/80" />
+                ) : a.kind === "bgm" ? (
+                  <Music className="size-5 text-white/80" />
+                ) : (
+                  <ImageIcon className="size-5 text-white/80" />
+                )}
               </div>
-              <div className="text-[10px] mt-1 line-clamp-1">{p.product_name}</div>
+              <div className="text-[10px] mt-1 line-clamp-1">{a.name}</div>
             </button>
           ))}
         </div>
@@ -275,7 +369,7 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
   );
 }
 
-// ============== 素材库选择 ==============
+// ============== 素材库选择（真后端） ==============
 
 function LibrarySlotInput({
   slot,
@@ -285,48 +379,65 @@ function LibrarySlotInput({
 }: Props & { library: "star_clips" | "bgm" | "sticker" }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [items, setItems] = useState<MixcutAsset[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const items: any[] =
-    library === "star_clips"
-      ? mockStarClips.filter((s) => s.authorization_status === "authorized")
-      : mockAssets.filter((a) =>
-          library === "bgm" ? a.asset_type === "bgm" : a.asset_type === "sticker" || a.asset_type === "title" || a.asset_type === "promo_label"
-        );
+  // library → MixcutAssetKind
+  const kind: MixcutAssetKind =
+    library === "star_clips" ? "video" : library === "bgm" ? "bgm" : "sticker";
 
-  const filtered = items.filter((i) => {
+  useEffect(() => {
+    if (open && items === null) {
+      MixcutApi.listAssets({ kind }).then(setItems).catch(() => setItems([]));
+    }
+  }, [open, items, kind]);
+
+  const filtered = (items ?? []).filter((i) => {
     if (!search) return true;
-    const text = library === "star_clips" ? `${i.star_name} ${i.script_text} ${i.tags?.join(" ")}` : `${i.name} ${i.category}`;
-    return text.includes(search);
+    return `${i.name} ${i.tags ?? ""} ${i.original_name ?? ""}`.includes(search);
   });
 
-  const selected = binding?.source === "library" ? items.find((i) => i.id === binding.asset_id) : null;
+  const selected = binding?.source === "library"
+    ? (items ?? []).find((i) => i.id === binding.asset_id)
+    : null;
+
+  const handleUpload = async (file: File) => {
+    setError(null);
+    setUploading(true);
+    try {
+      const created = await MixcutApi.uploadAsset({ file, kind, name: file.name });
+      setItems((prev) => (prev ? [created, ...prev] : [created]));
+      onChange({ source: "library", asset_id: created.id });
+      setOpen(false);
+    } catch (e: any) {
+      setError(e?.message ?? "上传失败");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <div className="space-y-2">
       {selected ? (
         <div className="flex items-center gap-3 p-2 rounded-lg border border-border bg-secondary/30">
-          <div
-            className={cn(
-              "w-12 h-12 rounded shrink-0 grid place-items-center",
-              library === "star_clips"
-                ? "bg-gradient-to-br from-blue-500 to-purple-500"
-                : library === "bgm"
-                ? "bg-gradient-to-br from-violet-500 to-fuchsia-500"
-                : "bg-gradient-to-br from-amber-500 to-orange-500"
+          <div className="w-12 h-12 rounded shrink-0 grid place-items-center overflow-hidden bg-gradient-to-br from-blue-500 to-purple-500">
+            {selected.thumbnail_url ? (
+              <img src={selected.thumbnail_url} className="w-full h-full object-cover" alt={selected.name} />
+            ) : library === "star_clips" ? (
+              <Video className="size-5 text-white" />
+            ) : library === "bgm" ? (
+              <Music className="size-5 text-white" />
+            ) : (
+              <ImageIcon className="size-5 text-white" />
             )}
-          >
-            {library === "star_clips" && <Video className="size-5 text-white" />}
-            {library === "bgm" && <Music className="size-5 text-white" />}
-            {library === "sticker" && <ImageIcon className="size-5 text-white" />}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">
-              {library === "star_clips" ? (selected as StarClip).star_name : (selected as Asset).name}
-            </div>
+            <div className="text-sm font-medium truncate">{selected.name}</div>
             <div className="text-[10px] text-muted-foreground truncate">
-              {library === "star_clips"
-                ? `${(selected as StarClip).duration}s · ${(selected as StarClip).script_text}`
-                : (selected as Asset).category}
+              {selected.duration > 0 ? `${selected.duration.toFixed(1)}s · ` : ""}
+              {selected.tags || selected.kind}
             </div>
           </div>
           <Button
@@ -353,19 +464,63 @@ function LibrarySlotInput({
         }}
       >
         <Search className="size-3" />
-        {selected ? "更换素材" : library === "star_clips" ? "从明星素材库选择" : library === "bgm" ? "选择 BGM" : "从素材库选择"}
+        {selected
+          ? "更换素材"
+          : library === "star_clips"
+            ? "从素材库选择视频"
+            : library === "bgm"
+              ? "选择 BGM"
+              : "选择贴图"}
       </Button>
 
       {open && (
         <div className="space-y-2 pt-2 border-t border-border">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={library === "star_clips" ? "搜索明星 / 品类 / 关键词…" : "搜索素材名称…"}
-            className="h-8 text-xs"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索名称 / 标签…"
+              className="h-8 text-xs flex-1"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs shrink-0"
+              disabled={uploading}
+              onClick={(e) => {
+                e.stopPropagation();
+                inputRef.current?.click();
+              }}
+            >
+              {uploading ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
+              上传
+            </Button>
+            <input
+              ref={inputRef}
+              type="file"
+              accept={
+                kind === "video" ? "video/*" : kind === "bgm" ? "audio/*" : "image/*"
+              }
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUpload(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+          {error && <div className="text-xs text-red-500 px-1">⚠ {error}</div>}
+
           <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto scrollbar-thin">
+            {items === null && (
+              <div className="col-span-2 text-center text-xs text-muted-foreground py-6">加载中…</div>
+            )}
+            {items && filtered.length === 0 && (
+              <div className="col-span-2 text-center text-xs text-muted-foreground py-6">
+                {items.length === 0 ? "还没有 " + kind + " 素材，点上传添加" : "没有匹配的素材"}
+              </div>
+            )}
             {filtered.map((item) => (
               <button
                 key={item.id}
@@ -376,23 +531,21 @@ function LibrarySlotInput({
                 }}
                 className="text-left p-2 rounded-lg border border-border hover:border-foreground/30 hover:bg-secondary/40 transition-colors"
               >
-                <div
-                  className={cn(
-                    "aspect-square rounded mb-1.5 grid place-items-center",
-                    library === "star_clips" && "bg-gradient-to-br from-blue-500 to-purple-600",
-                    library === "bgm" && "bg-gradient-to-br from-violet-500 to-fuchsia-500",
-                    library === "sticker" && "bg-gradient-to-br from-amber-500 to-orange-500"
+                <div className="aspect-square rounded mb-1.5 grid place-items-center overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600">
+                  {item.thumbnail_url ? (
+                    <img src={item.thumbnail_url} className="w-full h-full object-cover" alt={item.name} />
+                  ) : library === "star_clips" ? (
+                    <Video className="size-5 text-white" />
+                  ) : library === "bgm" ? (
+                    <Music className="size-5 text-white" />
+                  ) : (
+                    <ImageIcon className="size-5 text-white" />
                   )}
-                >
-                  {library === "star_clips" && <Video className="size-5 text-white" />}
-                  {library === "bgm" && <Music className="size-5 text-white" />}
-                  {library === "sticker" && <ImageIcon className="size-5 text-white" />}
                 </div>
-                <div className="text-xs font-medium line-clamp-1">
-                  {library === "star_clips" ? (item as StarClip).star_name : (item as Asset).name}
-                </div>
+                <div className="text-xs font-medium line-clamp-1">{item.name}</div>
                 <div className="text-[10px] text-muted-foreground line-clamp-2">
-                  {library === "star_clips" ? (item as StarClip).script_text : (item as Asset).category}
+                  {item.duration > 0 ? `${item.duration.toFixed(1)}s` : ""}
+                  {item.tags ? ` · ${item.tags}` : ""}
                 </div>
               </button>
             ))}

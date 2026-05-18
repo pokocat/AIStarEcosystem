@@ -14,6 +14,12 @@ spring:
     open-in-view: false
   jackson:
     default-property-inclusion: non_null
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: ${AEP_UPLOAD_MAX_FILE_SIZE:200MB}
+      max-request-size: ${AEP_UPLOAD_MAX_REQUEST_SIZE:200MB}
+      file-size-threshold: 4MB
 
 logging:
   level:
@@ -54,6 +60,10 @@ aep:
     max-asset-bytes: ${AEP_MIXCUT_MAX_ASSET_BYTES:104857600}
     # ffmpeg 单次执行超时（毫秒）
     ffmpeg-timeout-ms: ${AEP_MIXCUT_FFMPEG_TIMEOUT_MS:120000}
+    # 用户上传素材目录（绝对或相对工作目录）
+    asset-dir: ${AEP_MIXCUT_ASSET_DIR:./mixcut-assets}
+    # 用户上传素材公开 URL 前缀
+    asset-public-url-base: ${AEP_MIXCUT_ASSET_URL_BASE:/static/mixcut-assets}
   coze:
     enabled: ${AEP_COZE_ENABLED:true}
     token: ${AEP_COZE_TOKEN:}

@@ -125,6 +125,28 @@ export interface Asset {
   category: string;
 }
 
+/**
+ * 用户上传的混剪素材（v0.9 真后端）。
+ * 与前端 mock 的 `Asset` 不同：MixcutAsset 是用户实际上传到 server 的资源，
+ * file_url 指向 /static/mixcut-assets/<userId>/<id>.<ext>，可直接 `<video src>` / `<img src>` 引用。
+ */
+export type MixcutAssetKind = "video" | "image" | "sticker" | "bgm";
+
+export interface MixcutAsset {
+  id: string;
+  user_id: string;
+  kind: MixcutAssetKind;
+  name: string;
+  original_name?: string;
+  file_url: string;
+  thumbnail_url?: string;
+  mime_type?: string;
+  file_size: number;
+  duration: number;
+  tags?: string;
+  uploaded_at: string;
+}
+
 export type SlotBinding =
   | { source: "library"; asset_id: string }
   | { source: "upload"; file_url: string; preview_url?: string }

@@ -377,6 +377,34 @@ GET/POST/PUT/DELETE /admin/ai-models[/{id}]
 
 把独立项目 `/Users/donis/dev/mixcut/frontend`（Next 14 + Tailwind 3 + Zustand + 13 页）裁到核心 7 页，作为 `(workspace)/mixcut/*` 子树挂入 web-celebrity。详见 [`apps/web-celebrity/PRODUCT.md`](apps/web-celebrity/PRODUCT.md) 「混剪专区」一节。
 
+### v0.9（2026-05-17）— 混剪用户素材上传 + 真实素材消费
+
+`apps/server` 新增完整的用户上传素材管线 + 渲染 worker 真消费这些素材。
+
+**新增**：
+
+```
+server  : MixcutAsset entity + MixcutAssetRepository（表：mixcut_asset）
+        : MixcutAssetService（multipart 上传 + 本地 fs + ffprobe 探时长）
+        : MixcutAssetController (/api/mixcut/assets POST/GET/GET[id]/DELETE)
+        : MixcutAsyncConfig 加 /static/mixcut-assets/** 资源映射
+        : MixcutRenderingService.resolveBindings() — 真实解析 binding.asset_id / file_url
+        : MixcutRenderingService.renderOneVariant() — 真叠加用户上传的 image/sticker
+        : application.yml 加 spring.servlet.multipart.* + aep.mixcut.asset-dir / asset-public-url-base
+
+web-celebrity:
+        : api/mixcut.ts 增 listAssets / uploadAsset / deleteAsset
+        : components/mixcut-zone/types.ts 增 MixcutAsset / MixcutAssetKind
+        : SlotInput 重写 user_upload + library_select 走真后端
+        : /mixcut/library 重写为真后端 CRUD（4 tab + 上传 dialog + 删除 confirm）
+```
+
+**注意**：
+
+- 上传 wire 例外：multipart 表单 + snake_case 字段（`user_id` / `kind` / `file` / `name` / `tags`）
+- 安全模型仍 permitAll —— 生产化必须 `.authenticated()` + 校验 `ownerUserId == principal.id`
+- 详见 [`apps/web-celebrity/PRODUCT.md` §5.7](apps/web-celebrity/PRODUCT.md)
+
 ### v0.8（2026-05-17）— 混剪专区真后端（ffmpeg 渲染）
 
 `apps/server` 新增完整 mixcut 渲染管线（不再 mock）。每个任务变体真做三件事：

@@ -69,6 +69,42 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.9 · 2026-05-17 · 混剪用户素材上传 + 真实素材渲染
+
+- ✅ **真后端素材表**：`MixcutAsset` entity（id / userId / kind ∈ {video / image / sticker / bgm} / name / fileUrl / localPath / mimeType / fileSize / duration / tags / uploadedAt）+ JpaRepository。
+- ✅ **上传 API**：`POST /api/mixcut/assets`（multipart），`GET /api/mixcut/assets?kind=&user_id=`，`GET /api/mixcut/assets/{id}`，`DELETE /api/mixcut/assets/{id}`。
+- ✅ **AssetUploadService**：multipart → 落本地 `./mixcut-assets/<userId>/<id>.<ext>`，含 mime / size / kind 校验、文件名 sanitize、ffprobe 探测时长。
+- ✅ **静态资源**：`MixcutAsyncConfig` 加 `/static/mixcut-assets/**` 映射到本地目录。`web-celebrity` 的 `next.config.mjs` 的 `/static/:path*` rewrite 自动覆盖。
+- ✅ **multipart 限额**：`application.yml` 加 `spring.servlet.multipart.max-file-size=200MB`、`file-size-threshold=4MB`，环境变量 `AEP_UPLOAD_MAX_FILE_SIZE` 可覆盖。
+- ✅ **render worker 改造**：`MixcutRenderingService.resolveBindings()` 把 slot_binding 真实解析为本地文件：
+  - `binding.asset_id` → 查 `MixcutAsset` 表拿 `localPath`
+  - `binding.file_url` → 若是本 server `/static/mixcut-assets/...` 直接 resolve；否则 HTTP 下载
+  - 都找不到才 fallback 到 demo showreel
+- ✅ **真实贴图叠加**：`renderOneVariant` 把用户上传的 image/sticker 真实 `overlay` 到底层视频上（不再是固定半透明色卡）。最多 3 张，按「单张 → 底部中」「两张 → 顶 + 底」「三张 → 左上 / 右上 / 底中」分布；ffmpeg 自动 scale 到不超过 60% 画面宽。
+- ✅ **前端 API 层**：`api/mixcut.ts` 增 `MixcutAssetsApi`（`listAssets / uploadAsset / deleteAsset`）；`uploadAsset` 直接用 `fetch + FormData`（不能走 apiFetch 默认 JSON）；`deleteAsset / listAssets` 走 apiFetch。
+- ✅ **前端类型**：`components/mixcut-zone/types.ts` 加 `MixcutAssetKind` + `MixcutAsset`。
+- ✅ **SlotInput 真上传**：`user_upload` 策略真实调 `uploadAsset` → 拿到 file_url；"从我的素材选" 调 `listAssets({ kind })` 拉真后端列表（不再 import mock）。
+- ✅ **SlotInput 真素材库**：`library_select` 策略 `star_clips` / `bgm` / `sticker` 全部走 `listAssets({ kind: 映射 })`；面板里内置上传按钮（即上即用）。
+- ✅ **`/mixcut/library` 真 CRUD**：4 tab（video / image / sticker / bgm）懒加载、上传 dialog、删除 confirm、视频 hover 自动播放、图片缩略图、BGM audio 控件。
+- ⚠️ **生产化未做**：OSS（仍本地 fs）；`/api/mixcut/assets/**` permitAll → 应改 `.authenticated()` + `ownerUserId` 校验；视频自动抽帧缩略图；分片上传 / 断点续传。
+
+**新增配置**（默认值即可，按需通过 env 覆盖）：
+
+```yaml
+spring.servlet.multipart:
+  max-file-size: 200MB        # AEP_UPLOAD_MAX_FILE_SIZE
+  max-request-size: 200MB     # AEP_UPLOAD_MAX_REQUEST_SIZE
+
+aep.mixcut:
+  asset-dir: ./mixcut-assets               # AEP_MIXCUT_ASSET_DIR
+  asset-public-url-base: /static/mixcut-assets  # AEP_MIXCUT_ASSET_URL_BASE
+```
+
+**E2E 验证**：
+- 前端 `/mixcut/library` 上传贴图 → 真落 `./mixcut-assets/<userId>/<id>.png` + DB 入库
+- `/mixcut/create/<id>` 中 user_upload slot 上传视频 → 拿到 asset_id 写入 binding
+- 提交任务 → worker 用真实视频 + 真实贴图 ffmpeg 渲染 → `applied_transforms.overlay_source = "user-upload"` + `overlays_detail` 写明实际叠加文件名
+
 ### v0.8 · 2026-05-17 · 混剪专区真后端（ffmpeg 渲染）
 
 - ✅ **后端实施**：`apps/server` 新增完整 mixcut 渲染管线（不再 mock）：

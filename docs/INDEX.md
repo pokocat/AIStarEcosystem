@@ -2,7 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
-> last-reviewed：2026-05-17 / v0.8 + 文档结构重构（CLAUDE.md ↔ AGENTS.md 单点 + 三子应用 PRODUCT.md 落地 + mixcut 真后端沉淀）
+> last-reviewed：2026-05-17 / v0.9 mixcut 用户素材上传 + 真实素材消费（multipart + asset 表 + render worker 解析 asset_id / file_url）
 
 > ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web`、`apps/admin`、`apps/server` 不动。详见 [`AGENTS.md`](../AGENTS.md) §1 顶部进度表。
 
@@ -108,13 +108,15 @@ sudo yum install -y ffmpeg ffmpeg-devel
 |---|---|
 | [`TODO.md`](../TODO.md) | 已定位但未修的问题清单 + **v0.6 候选**（engine-pricing 落表 / WebSocket / OSS 上传 / 配置中心 / 角色拆分 等）+ **三子产品 web app 待办**（CG-* / M-* / D-* / C-*） |
 
-**v0.9 候选**（mixcut 真后端的下一步）：
+**v0.10 候选**（mixcut 真素材化后的下一步）：
 
 - OSS（Aliyun）存储替代本地 fs
 - `/api/mixcut/**` 改 `.authenticated()`（当前 MVP permitAll）
+- 视频自动缩略图（ffmpeg 抽帧首帧）
 - drawtext + 中文字体（libfreetype + Source Han Sans）
 - 像素水印 + SHA-256 文件哈希
 - multi-worker 并发（Redis queue）
+- 分片上传 / 断点续传（tus.io）
 
 ---
 

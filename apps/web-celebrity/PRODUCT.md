@@ -302,16 +302,73 @@ const USE_LOCAL = USE_MOCK && !REAL_BACKEND;
 
 理由：mixcut 是独立项目内嵌（v0.7），代码大批量沿用原命名 —— 全改 camelCase 工作量过大且不必要。新模块**不要**学这个，仍走 `camelCase`。
 
-### 5.7 已知限制
+### 5.7 用户素材库（v0.9 新增）
 
-| 限制 | 影响 | v0.9+ 计划 |
+**数据模型**（[`MixcutAsset.java`](../../apps/server/src/main/java/com/aistareco/aep/model/MixcutAsset.java)）：
+
+```
+id           : asset_<16 hex>
+user_id      : sanitize 过的用户 ID（暂未接 JWT principal，由 form 字段传）
+kind         : video / image / sticker / bgm
+name         : 用户填或文件名
+file_url     : /static/mixcut-assets/<user>/<id>.<ext>
+local_path   : 服务器本地绝对路径（worker 用）
+mime_type    : 原 Content-Type
+file_size    : 字节数
+duration     : 视频/音频时长（ffprobe 探测）；图片为 0
+tags         : 逗号分隔（可选）
+uploaded_at  : ISO-8601 OffsetDateTime
+```
+
+**REST API**：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `POST` | `/api/mixcut/assets`（multipart） | 上传：字段 `file` `kind` `user_id?` `name?` `tags?` |
+| `GET` | `/api/mixcut/assets?kind=&user_id=` | 列表，可按 kind / userId 筛选 |
+| `GET` | `/api/mixcut/assets/{id}` | 详情 |
+| `DELETE` | `/api/mixcut/assets/{id}` | 删除（含本地文件） |
+
+**MIME 白名单**：
+
+| kind | 接受 mime |
+|---|---|
+| video | mp4 / mov / webm / mkv |
+| image, sticker | png / jpeg / webp / gif |
+| bgm | mp3 / wav / aac / m4a / ogg |
+
+超过 `aep.mixcut.max-asset-bytes`（默认 100 MB）拒收；Spring multipart 整体上限 `spring.servlet.multipart.max-file-size`（默认 200 MB）。
+
+**渲染管线消费方式**（[`MixcutRenderingService.resolveBindings`](../../apps/server/src/main/java/com/aistareco/aep/service/mixcut/MixcutRenderingService.java)）：
+
+```
+binding.asset_id → MixcutAsset.local_path  （首选，最稳）
+binding.file_url → 若是本 server 的 /static/mixcut-assets/<u>/<f> 直接 resolve
+                 → 否则 HTTP 下载（AssetDownloader）
+找不到 → fallback 到 apps/web/public/videos/showreel-*.mp4
+```
+
+按后缀分类：`.mp4/.mov/.webm/.mkv` 进底层视频拼接；`.png/.jpg/.jpeg/.webp/.gif` 进 overlay 链。最多 3 张 overlay，分布策略：
+
+| overlay 数 | 位置 |
+|---|---|
+| 1 张 | 底部居中 |
+| 2 张 | 顶部中 + 底部中 |
+| 3 张 | 左上 + 右上 + 底中 |
+
+每张 scale 到不超过画面 60% 宽。
+
+### 5.8 已知限制
+
+| 限制 | 影响 | v0.10+ 计划 |
 |---|---|---|
 | `drawtext` filter 不可用 | 当前用 drawbox 色条替代文字水印 | brew 装 `ffmpeg --with-freetype` 或换 build；加中文字体 |
 | 仅本地 fs 存储 | 部署到生产需要本地磁盘 | OSS（Aliyun）集成 |
 | `/api/mixcut/**` permitAll | MVP 安全模型；任何人能 POST | 改 `.authenticated()` + `ownerUserId` 校验 |
-| 素材源回退 demo | 前端 mock 的 `asset_id` 后端不查库，使用本地 showreel | 真接素材库 + OSS 上传 |
+| 视频无自动缩略图 | 列表里 video tile 用 `<video preload="metadata">` hover-play 兜底 | ffmpeg 抽帧首帧 → static 服务 |
 | 单线程并发 = 2 | 高并发场景排队 | 升 Redis queue + 多 worker |
 | watermark 仅 metadata token | 没真在像素里嵌水印 | 像素水印 + SHA-256 文件哈希 |
+| 无分片上传 / 断点续传 | 大文件失败要从头来 | tus.io / 分片协议 |
 
 ---
 

@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -55,6 +56,7 @@ public class MixcutRenderingService {
     private final FfmpegRunner ffmpeg;
     private final AssetDownloader downloader;
     private final ObjectMapper mapper;
+    private final MixcutAssetService assetService;
 
     public MixcutRenderingService(
             MixcutProperties props,
@@ -62,7 +64,8 @@ public class MixcutRenderingService {
             MixcutRenderOutputRepository outputRepo,
             FfmpegRunner ffmpeg,
             AssetDownloader downloader,
-            ObjectMapper mapper
+            ObjectMapper mapper,
+            MixcutAssetService assetService
     ) {
         this.props = props;
         this.jobRepo = jobRepo;
@@ -70,6 +73,7 @@ public class MixcutRenderingService {
         this.ffmpeg = ffmpeg;
         this.downloader = downloader;
         this.mapper = mapper;
+        this.assetService = assetService;
     }
 
     /**
@@ -142,10 +146,11 @@ public class MixcutRenderingService {
             throw new IOException("Cannot create output dir: " + outDir);
         }
 
-        // 2) 收集源视频候选（slot_bindings 中 library/upload + demo fallback）
-        List<File> sourceVideos = collectSourceVideos(job);
-        log.info("[mixcut] job {} sources={}", jobId, sourceVideos.size());
-        if (sourceVideos.isEmpty()) {
+        // 2) 收集 binding → 真实本地文件，按 kind 分类
+        ResolvedBindings resolved = resolveBindings(job);
+        log.info("[mixcut] job {} videos={} overlays={}",
+                jobId, resolved.videos.size(), resolved.overlays.size());
+        if (resolved.videos.isEmpty()) {
             throw new IllegalStateException("no usable source videos");
         }
 
@@ -161,7 +166,7 @@ public class MixcutRenderingService {
             File outFile = new File(outDir, "v" + (i + 1) + ".mp4");
             ObjectNode transforms = mapper.createObjectNode();
 
-            renderOneVariant(job, sourceVideos, variantIndex, outFile, transforms, profile, rnd);
+            renderOneVariant(job, resolved.videos, resolved.overlays, variantIndex, outFile, transforms, profile, rnd);
 
             // 写一条 output
             MixcutRenderOutput o = new MixcutRenderOutput();
@@ -189,46 +194,94 @@ public class MixcutRenderingService {
 
     // ── 素材准备 ───────────────────────────────────────────────────────────────
 
-    private List<File> collectSourceVideos(MixcutRenderJob job) {
-        List<File> result = new ArrayList<>();
-        // 从 slot_bindings 提取 library / upload 的 URL
+    /** binding 解析结果：底层视频 + 叠加图层（image/sticker）。 */
+    private record ResolvedBindings(List<File> videos, List<File> overlays) {}
+
+    private static final Set<String> VIDEO_EXTS = Set.of(".mp4", ".mov", ".m4v", ".webm", ".mkv");
+    private static final Set<String> IMAGE_EXTS = Set.of(".png", ".jpg", ".jpeg", ".webp", ".gif");
+
+    /**
+     * 把 slot_bindings 的每条记录解析为本地文件，按"视频"和"叠加图"分类。
+     * 解析优先级：
+     *   1. binding.asset_id  → MixcutAsset.localPath
+     *   2. binding.file_url  → 如果是 /static/mixcut-assets/... 直接 resolve；否则 downloader.ensureLocal
+     *   3. 都没找到 → 跳过该 binding（最终若 videos 为空，走 demo fallback）
+     */
+    private ResolvedBindings resolveBindings(MixcutRenderJob job) {
+        List<File> videos = new ArrayList<>();
+        List<File> overlays = new ArrayList<>();
+
         try {
-            JsonNode bindings = mapper.readTree(job.getSlotBindingsJson() == null ? "{}" : job.getSlotBindingsJson());
+            JsonNode bindings = mapper.readTree(
+                    job.getSlotBindingsJson() == null ? "{}" : job.getSlotBindingsJson());
             Iterator<JsonNode> it = bindings.elements();
             while (it.hasNext()) {
                 JsonNode b = it.next();
                 String src = b.path("source").asText("");
-                String url = null;
-                if ("upload".equals(src)) {
-                    url = b.path("file_url").asText(null);
-                } else if ("library".equals(src)) {
-                    // asset_id 我们暂无办法解析为真实 URL（前端 mock）
-                    // → 走 demo fallback
-                    url = null;
-                }
-                if (url != null && (url.startsWith("http") || url.startsWith("/"))) {
-                    try {
-                        result.add(downloader.ensureLocal(url));
-                    } catch (Exception e) {
-                        log.warn("[mixcut] failed to fetch asset {}: {}", url, e.getMessage());
-                    }
-                }
+                if ("fixed".equals(src) || "input".equals(src)) continue;
+
+                File local = resolveOne(b);
+                if (local == null) continue;
+
+                String lower = local.getName().toLowerCase(Locale.ROOT);
+                int dot = lower.lastIndexOf('.');
+                String ext = dot >= 0 ? lower.substring(dot) : "";
+                if (VIDEO_EXTS.contains(ext)) videos.add(local);
+                else if (IMAGE_EXTS.contains(ext)) overlays.add(local);
+                // 音频/其他 → 暂不处理
             }
         } catch (Exception e) {
             log.warn("[mixcut] slot_bindings parse error: {}", e.getMessage());
         }
 
-        if (result.isEmpty()) {
-            // demo fallback：apps/web/public/videos/showreel-0[1-5].mp4
+        // 底层视频为空 → demo fallback
+        if (videos.isEmpty()) {
             File demoDir = locateDemoVideosDir();
             if (demoDir != null && demoDir.isDirectory()) {
-                File[] files = demoDir.listFiles((d, name) -> name.startsWith("showreel-") && name.endsWith(".mp4"));
-                if (files != null) {
-                    for (File f : files) result.add(f);
-                }
+                File[] files = demoDir.listFiles(
+                        (d, name) -> name.startsWith("showreel-") && name.endsWith(".mp4"));
+                if (files != null) for (File f : files) videos.add(f);
             }
         }
-        return result;
+        return new ResolvedBindings(videos, overlays);
+    }
+
+    /** 把单个 binding 解析为本地 File（找不到返回 null）。 */
+    private File resolveOne(JsonNode b) {
+        // 1) asset_id → DB → localPath
+        String assetId = b.path("asset_id").asText(null);
+        if (assetId != null && !assetId.isBlank()) {
+            var asset = assetService.get(assetId).orElse(null);
+            if (asset != null && asset.getLocalPath() != null) {
+                File f = new File(asset.getLocalPath());
+                if (f.exists()) return f;
+            }
+        }
+        // 2) file_url
+        String fileUrl = b.path("file_url").asText(null);
+        if (fileUrl != null && !fileUrl.isBlank()) {
+            // 2a) 我们自己 server 上的 /static/mixcut-assets/<user>/<file> → 直接 resolve
+            String assetBase = props.getAssetPublicUrlBase();
+            if (fileUrl.startsWith(assetBase + "/")) {
+                String rel = fileUrl.substring(assetBase.length() + 1);
+                File f = new File(props.getAssetDir(), rel);
+                if (f.exists()) return f;
+            }
+            // 2b) 我们 server 的 /static/mixcut/<job>/<file> （较罕见：跨 job 复用产出）→ 直接 resolve
+            String outBase = props.getPublicUrlBase();
+            if (fileUrl.startsWith(outBase + "/")) {
+                String rel = fileUrl.substring(outBase.length() + 1);
+                File f = new File(props.getOutputDir(), rel);
+                if (f.exists()) return f;
+            }
+            // 2c) HTTP(S) URL 或外部 → downloader.ensureLocal
+            try {
+                return downloader.ensureLocal(fileUrl);
+            } catch (Exception e) {
+                log.warn("[mixcut] failed to resolve file_url {}: {}", fileUrl, e.getMessage());
+            }
+        }
+        return null;
     }
 
     /**
@@ -249,15 +302,16 @@ public class MixcutRenderingService {
     private void renderOneVariant(
             MixcutRenderJob job,
             List<File> sources,
+            List<File> overlays,
             int variantIndex,
             File outFile,
             ObjectNode transforms,
             String profile,
             Random rnd
     ) {
-        // 拼两段视频（如果有 2+ 来源）；只有 1 个时也跑通整条 pipeline
         int segCount = Math.min(2, sources.size());
         double segDuration = Math.max(2.0, (double) props.getMaxOutputDurationSec() / Math.max(1, segCount));
+        int totalDuration = props.getMaxOutputDurationSec();
 
         // perturbation 参数
         double speed = randomSpeed(profile, rnd);
@@ -272,13 +326,13 @@ public class MixcutRenderingService {
         transforms.put("mirror", mirror);
         transforms.put("segments", segCount);
 
-        // 累计 ffmpeg args
+        // ffmpeg args 累积
         List<String> args = new ArrayList<>();
         args.add("-y");
         args.add("-hide_banner");
         args.add("-loglevel"); args.add("warning");
 
-        // 每个片段：随机 offset，trim 给定长度
+        // 视频输入：每段随机 offset + trim
         ObjectNode segDetail = transforms.putObject("segments_detail");
         for (int i = 0; i < segCount; i++) {
             File src = sources.get((variantIndex + i) % sources.size());
@@ -294,28 +348,43 @@ public class MixcutRenderingService {
             segDetail.set("seg_" + i, seg);
         }
 
-        // 半透明色块（贴图） + 文字（slot overlay 的演示）
-        args.add("-f"); args.add("lavfi");
-        String stickerColor = "0x7c5cff";   // 紫罗兰，匹配 celebrity accent
-        int stickerWidth = 480;
-        int stickerHeight = 120;
-        args.add("-i");
-        args.add("color=c=" + stickerColor + "@0.55:s=" + stickerWidth + "x" + stickerHeight
-                + ":d=" + format((double) props.getMaxOutputDurationSec()));
+        // 叠加图层输入
+        //  - 用户上传 image / sticker → 真实图，最多 3 张（防 filter graph 过大）
+        //  - 没有上传 → 退化为半透明色卡（与之前一致）
+        boolean useRealOverlay = !overlays.isEmpty();
+        int overlayCount = useRealOverlay ? Math.min(3, overlays.size()) : 1;
+        transforms.put("overlay_count", overlayCount);
+        transforms.put("overlay_source", useRealOverlay ? "user-upload" : "fallback-color-card");
+
+        if (useRealOverlay) {
+            ObjectNode overlayDetail = transforms.putObject("overlays_detail");
+            for (int i = 0; i < overlayCount; i++) {
+                File img = overlays.get(i);
+                args.add("-loop"); args.add("1");
+                args.add("-t"); args.add(format((double) totalDuration));
+                args.add("-i"); args.add(img.getAbsolutePath());
+                overlayDetail.put("o_" + i, img.getName());
+            }
+        } else {
+            // 单张色卡 fallback
+            args.add("-f"); args.add("lavfi");
+            args.add("-i");
+            args.add("color=c=0x7c5cff@0.55:s=480x120:d=" + format((double) totalDuration));
+        }
 
         // filter_complex 拼装
         StringBuilder fc = new StringBuilder();
+        // 视频段 scale + concat
         for (int i = 0; i < segCount; i++) {
             fc.append("[").append(i).append(":v]")
               .append("scale=720:1280:force_original_aspect_ratio=increase,")
-              .append("crop=720:1280,")
-              .append("setsar=1,fps=30")
+              .append("crop=720:1280,setsar=1,fps=30")
               .append("[s").append(i).append("];");
         }
         for (int i = 0; i < segCount; i++) fc.append("[s").append(i).append("]");
         fc.append("concat=n=").append(segCount).append(":v=1:a=0[concat];");
 
-        // perturbation: eq + 可选 hflip + setpts (speed)
+        // perturbation
         fc.append("[concat]eq=brightness=").append(format(brightness))
           .append(":saturation=").append(format(saturation));
         if (mirror) fc.append(",hflip");
@@ -324,19 +393,32 @@ public class MixcutRenderingService {
         }
         fc.append("[fx];");
 
-        // overlay 贴图（底部色卡）+ drawbox 装饰条带模拟"标题贴片"
-        // 不用 drawtext —— brew 默认 ffmpeg 不带 libfreetype。
-        int stickerIdx = segCount;  // 第 N 个 input 是贴图源
-        fc.append("[").append(stickerIdx).append(":v]format=yuva420p[stk];")
-          .append("[fx][stk]overlay=x=(W-w)/2:y=H-220:enable='between(t,1,").append(props.getMaxOutputDurationSec() - 1).append(")'[ovl];");
+        // overlay 链：把每张图按位置叠到底层视频
+        // 位置规则：3 张以下时按「顶 / 中下 / 底」分布；fallback 色卡时贴底
+        String prev = "fx";
+        for (int i = 0; i < overlayCount; i++) {
+            int inputIdx = segCount + i;
+            String tag = "ov" + i;
+            // 缩放：保证不超过画面 60% 宽
+            fc.append("[").append(inputIdx).append(":v]")
+              .append("format=yuva420p,scale='if(gt(iw,ih),iw*min(1,432/iw),iw*min(1,432/ih))':-1")
+              .append("[").append(tag).append("s];");
+            String pos = overlayPosition(i, overlayCount, useRealOverlay);
+            fc.append("[").append(prev).append("][").append(tag).append("s]")
+              .append("overlay=").append(pos)
+              .append(":enable='between(t,").append(i == 0 ? "0.5" : Integer.toString(i)).append(",")
+              .append(totalDuration - 1).append(")'");
+            String outTag = "ovl" + i;
+            fc.append("[").append(outTag).append("];");
+            prev = outTag;
+        }
 
-        // 两条 drawbox 作为视觉「贴片」（顶部和底部）+ 一个变体颜色识别条
-        int variantHue = (variantIndex * 67) % 360;  // 不同变体 hue 不同
+        // 变体识别条
+        int variantHue = (variantIndex * 67) % 360;
         String variantColor = String.format(Locale.ROOT, "0x%06x", hslToRgb(variantHue, 0.65, 0.55));
-        fc.append("[ovl]")
+        fc.append("[").append(prev).append("]")
           .append("drawbox=x=0:y=0:w=iw:h=8:color=").append(variantColor).append("@0.9:t=fill,")
-          .append("drawbox=x=0:y=ih-8:w=iw:h=8:color=").append(variantColor).append("@0.9:t=fill,")
-          .append("drawbox=x=(iw-iw*0.6)/2:y=ih-200:w=iw*0.6:h=4:color=white@0.85:t=fill")
+          .append("drawbox=x=0:y=ih-8:w=iw:h=8:color=").append(variantColor).append("@0.9:t=fill")
           .append("[out]");
 
         args.add("-filter_complex");
@@ -344,7 +426,7 @@ public class MixcutRenderingService {
         args.add("-map"); args.add("[out]");
 
         // 编码
-        args.add("-t"); args.add(format((double) props.getMaxOutputDurationSec()));
+        args.add("-t"); args.add(format((double) totalDuration));
         args.add("-c:v"); args.add("libx264");
         args.add("-preset"); args.add("ultrafast");
         args.add("-crf"); args.add("24");
@@ -352,10 +434,28 @@ public class MixcutRenderingService {
         args.add("-movflags"); args.add("+faststart");
         args.add(outFile.getAbsolutePath());
 
-        log.info("[mixcut] ffmpeg variant={} segs={} speed={} brightness={} mirror={}",
-                variantIndex, segCount, speed, brightness, mirror);
+        log.info("[mixcut] ffmpeg variant={} segs={} overlays={} ({}) speed={} brightness={} mirror={}",
+                variantIndex, segCount, overlayCount, useRealOverlay ? "user" : "fallback",
+                speed, brightness, mirror);
         String out = ffmpeg.runFfmpeg(args);
-        log.debug("[mixcut] ffmpeg stderr tail: {}", out.length() > 500 ? out.substring(out.length() - 500) : out);
+        log.debug("[mixcut] ffmpeg stderr tail: {}",
+                out.length() > 500 ? out.substring(out.length() - 500) : out);
+    }
+
+    /** overlay 位置策略（基于序号与总数）。 */
+    private static String overlayPosition(int idx, int total, boolean useRealOverlay) {
+        if (!useRealOverlay) return "x=(W-w)/2:y=H-220";
+        return switch (total) {
+            case 1 -> "x=(W-w)/2:y=H-h-120";  // 单张：底部居中
+            case 2 -> idx == 0
+                    ? "x=(W-w)/2:y=180"            // 第 1：顶部中
+                    : "x=(W-w)/2:y=H-h-120";       // 第 2：底部中
+            default -> switch (idx) {
+                case 0 -> "x=40:y=180";              // 左上
+                case 1 -> "x=W-w-40:y=180";          // 右上
+                default -> "x=(W-w)/2:y=H-h-120";    // 底部中
+            };
+        };
     }
 
     // ── perturbation 参数采样 ──────────────────────────────────────────────────

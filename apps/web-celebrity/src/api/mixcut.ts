@@ -4,9 +4,9 @@
 // 强制走 apps/server 的真后端（ffmpeg 渲染），不影响其他模块的 USE_MOCK 行为。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { RenderJob } from "@/components/mixcut-zone/types";
+import type { RenderJob, MixcutAsset, MixcutAssetKind } from "@/components/mixcut-zone/types";
 import { mockJobs, mockActivationCode } from "@/mocks/mixcut";
-import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import { apiFetch, API_BASE_URL, getAuthToken, USE_MOCK, mockDelay } from "./_client";
 
 const JOBS_KEY = "aistareco.web.mixcut.jobs.v1";
 const INTRO_KEY = "aistareco.web.mixcut.has-seen-intro.v1";
@@ -116,3 +116,69 @@ export function setSeenIntro() {
 
 // ── 配额 / 激活码（mock 演示态；后续接 AccountApi.getMyQuota 之类） ──────────
 export { mockActivationCode };
+
+// ── 用户上传素材（v0.9 真后端） ─────────────────────────────────────────────
+
+export interface AssetFilter {
+  kind?: MixcutAssetKind;
+  userId?: string;
+}
+
+/** 列素材；可按 kind 与 user_id 筛选。 */
+export async function listAssets(filter?: AssetFilter): Promise<MixcutAsset[]> {
+  if (USE_LOCAL) {
+    // 本地模式：没有上传能力，返回空列表（前端兜底用 mockAssets 等）
+    return mockDelay([]);
+  }
+  const qs = new URLSearchParams();
+  if (filter?.kind) qs.set("kind", filter.kind);
+  if (filter?.userId) qs.set("user_id", filter.userId);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return apiFetch<MixcutAsset[]>(`/mixcut/assets${suffix}`);
+}
+
+/**
+ * 上传素材（multipart）。
+ *  - file：MultipartFile（必填）
+ *  - kind：video / image / sticker / bgm（必填）
+ *  - userId / name / tags：可选
+ *
+ * 不走 apiFetch（它默认 JSON Content-Type），直接 fetch + FormData。
+ * 但仍要带 Bearer token，路径走 Next rewrites（/api/mixcut/assets → server 8080）。
+ */
+export async function uploadAsset(params: {
+  file: File;
+  kind: MixcutAssetKind;
+  userId?: string;
+  name?: string;
+  tags?: string;
+}): Promise<MixcutAsset> {
+  if (USE_LOCAL) {
+    throw new Error("本地 mock 模式不支持真上传；设 NEXT_PUBLIC_MIXCUT_USE_REAL=1 或 NEXT_PUBLIC_USE_MOCK=0");
+  }
+  const fd = new FormData();
+  fd.append("file", params.file, params.file.name);
+  fd.append("kind", params.kind);
+  if (params.userId) fd.append("user_id", params.userId);
+  if (params.name) fd.append("name", params.name);
+  if (params.tags) fd.append("tags", params.tags);
+
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/mixcut/assets`, {
+    method: "POST",
+    body: fd,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  const json = (await res.json()) as { success: boolean; data?: MixcutAsset; message?: string; error?: { message?: string } };
+  if (!res.ok || !json.success || !json.data) {
+    const msg = json.message || json.error?.message || `上传失败 (HTTP ${res.status})`;
+    throw new Error(msg);
+  }
+  return json.data;
+}
+
+export async function deleteAsset(id: string): Promise<boolean> {
+  if (USE_LOCAL) return mockDelay(true);
+  return apiFetch<boolean>(`/mixcut/assets/${id}`, { method: "DELETE" });
+}
