@@ -8,7 +8,6 @@ import {
   Sparkles,
   Layers,
   Tag,
-  Flame,
   CheckCircle2,
   Lock,
   ChevronRight,
@@ -41,7 +40,6 @@ import {
 } from "@/constants/mixcut-ui";
 import {
   cn,
-  formatNumber,
   describeRect,
   describeTimeRange,
 } from "@/components/mixcut-zone/lib/utils";
@@ -139,6 +137,8 @@ export function TemplateDetailClient({
   const [hasUserTemplate, setHasUserTemplate] = useState(false);
   // 画布与时长在编辑时折叠(低频改动),开关由用户控制
   const [canvasMetaOpen, setCanvasMetaOpen] = useState(false);
+  // 模板属性(品类/档位/标签/扰动/变体/质量门槛)同样默认折叠
+  const [templateMetaOpen, setTemplateMetaOpen] = useState(false);
   // 确认对话框:replace native confirm() (P3 polish)
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
 
@@ -716,12 +716,20 @@ export function TemplateDetailClient({
 
               {/* 编辑态:画布折叠仍留左栏(场景流程已上移到 section 顶部) */}
               {editing && working && (
-                <CollapsibleCanvasMeta
-                  canvas={working.canvas}
-                  open={canvasMetaOpen}
-                  onToggle={() => setCanvasMetaOpen((o) => !o)}
-                  onChange={updateCanvas}
-                />
+                <>
+                  <CollapsibleCanvasMeta
+                    canvas={working.canvas}
+                    open={canvasMetaOpen}
+                    onToggle={() => setCanvasMetaOpen((o) => !o)}
+                    onChange={updateCanvas}
+                  />
+                  <CollapsibleTemplateMeta
+                    template={working}
+                    open={templateMetaOpen}
+                    onToggle={() => setTemplateMetaOpen((o) => !o)}
+                    onChange={updateWorking}
+                  />
+                </>
               )}
             </div>
 
@@ -823,12 +831,21 @@ export function TemplateDetailClient({
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
+                <Stat label="品类" value={display.metadata.category || "未分类"} />
+                <Stat label="适用档位" value={TIER_LABELS[display.metadata.required_tier]} />
+                <Stat label="版本" value={`v${display.version}`} />
                 <Stat
                   label="成片尺寸"
                   value={`${display.canvas.width}×${display.canvas.height}`}
                   hint={orientationLabel(display.canvas.width, display.canvas.height)}
                 />
                 <Stat label="成片时长" value={`${display.canvas.duration} 秒`} />
+                <Stat label="帧率" value={`${display.canvas.fps} fps`} />
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <Stat label="可编辑内容位" value={`${flatSlots.length} 个`} />
                 <Stat label="其中必填" value={`${requiredSlots.length} 项`} />
               </div>
@@ -837,7 +854,7 @@ export function TemplateDetailClient({
 
               <div className="space-y-2">
                 <div className="text-xs text-muted-foreground">差异化策略</div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="brand" className="capitalize">
                     {PROFILE_LABELS[display.perturbation_profile]}
                   </Badge>
@@ -862,30 +879,24 @@ export function TemplateDetailClient({
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">使用数据</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1"><Flame className="size-3 text-orange-500" /> 日生产量</span>
-                <span className="text-sm font-semibold">{formatNumber(display.metadata.daily_creation_count ?? 0)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle2 className="size-3 text-emerald-500" /> 平台存活率</span>
-                <span className="text-sm font-semibold">{display.metadata.hit_rate}%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1"><Tag className="size-3" /> 标签</span>
-                <div className="flex gap-1">
-                  {display.metadata.tags.slice(0, 3).map((tag) => (
-                    <span key={tag} className="text-[10px] text-muted-foreground">#{tag}</span>
-                  ))}
-                </div>
-              </div>
+              {display.metadata.tags.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Tag className="size-3" /> 标签
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {display.metadata.tags.map((tag) => (
+                        <Badge key={tag} variant="muted" className="text-[10px]">
+                          #{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -1376,6 +1387,164 @@ function CollapsibleCanvasMeta({
       {open && (
         <CardContent className="pt-0">
           <CanvasEditor canvas={canvas} onChange={onChange} />
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+// ── 模板属性编辑器:品类/档位/标签/扰动/变体/质量门槛 ────────────────────────────
+
+const TIER_EDIT_OPTIONS: Template["metadata"]["required_tier"][] = [
+  "basic",
+  "standard",
+  "professional",
+];
+
+const PROFILE_EDIT_OPTIONS: Template["perturbation_profile"][] = [
+  "light",
+  "moderate",
+  "aggressive",
+];
+
+function CollapsibleTemplateMeta({
+  template,
+  open,
+  onToggle,
+  onChange,
+}: {
+  template: Template;
+  open: boolean;
+  onToggle: () => void;
+  onChange: (patch: Partial<Template>) => void;
+}) {
+  const updateMeta = (patch: Partial<Template["metadata"]>) =>
+    onChange({ metadata: { ...template.metadata, ...patch } });
+  const updateQg = (patch: Partial<Template["quality_gate"]>) =>
+    onChange({ quality_gate: { ...template.quality_gate, ...patch } });
+
+  return (
+    <Card>
+      <button
+        onClick={onToggle}
+        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-secondary/30 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium">模板属性</span>
+          <span className="text-[10px] text-muted-foreground font-mono shrink-0 truncate">
+            {template.metadata.category || "未分类"} · {TIER_LABELS[template.metadata.required_tier]}
+          </span>
+        </div>
+        <ChevronRight className={cn("size-4 text-muted-foreground transition-transform shrink-0", open && "rotate-90")} />
+      </button>
+      {open && (
+        <CardContent className="pt-0 space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">品类</Label>
+            <Input
+              value={template.metadata.category}
+              onChange={(e) => updateMeta({ category: e.target.value })}
+              placeholder="例如:汽车用品、美妆个护"
+              className="h-8 text-sm"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">适用档位</Label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {TIER_EDIT_OPTIONS.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => updateMeta({ required_tier: t })}
+                  className={cn(
+                    "px-2 py-1.5 rounded-md border text-xs transition-colors",
+                    template.metadata.required_tier === t
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                  )}
+                >
+                  {TIER_LABELS[t]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">标签（逗号分隔）</Label>
+            <Input
+              value={template.metadata.tags.join(", ")}
+              onChange={(e) =>
+                updateMeta({
+                  tags: e.target.value
+                    .split(/[,，]/)
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                })
+              }
+              placeholder="例如:新品、促销、夏季"
+              className="h-8 text-sm"
+            />
+          </div>
+
+          <Separator className="my-1" />
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">差异化策略</Label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {PROFILE_EDIT_OPTIONS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => onChange({ perturbation_profile: p })}
+                  className={cn(
+                    "px-2 py-1.5 rounded-md border text-xs transition-colors",
+                    template.perturbation_profile === p
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                  )}
+                >
+                  {PROFILE_LABELS[p]}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              {PROFILE_DESCRIPTIONS[template.perturbation_profile]}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <NumField
+              label="默认变体数"
+              value={template.output_variants_default}
+              min={1}
+              max={20}
+              onChange={(v) => onChange({ output_variants_default: v })}
+            />
+          </div>
+
+          <Separator className="my-1" />
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">去重保护</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <NumField
+                label="最小差异度"
+                value={template.quality_gate.min_phash_distance}
+                min={0}
+                max={64}
+                onChange={(v) => updateQg({ min_phash_distance: v })}
+              />
+              <NumField
+                label="最大重试次数"
+                value={template.quality_gate.max_retries}
+                min={0}
+                max={10}
+                onChange={(v) => updateQg({ max_retries: v })}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              生成时若与原片相似度过高（差异度低于阈值）将自动重试，确保平台不会判定为重复视频。
+            </p>
+          </div>
         </CardContent>
       )}
     </Card>
