@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type CSSProperties } from "react";
 import { Video, Image as ImageIcon, Type, Music, Sticker, Sparkles } from "lucide-react";
 import type { Template, TemplateSlot, SlotBinding, Rect } from "./types";
 import { cn } from "./lib/utils";
-import { flatSlotsOf } from "./lib/scene-helpers";
+import { flatSlotsOf, resolveFit } from "./lib/scene-helpers";
+
+const FIT_BLUR_BG_STYLE: CSSProperties = {
+  filter: "blur(14px) brightness(0.72)",
+  transform: "scale(1.15)",
+};
 
 /** 从 binding 抽出可渲染的媒体 URL（library/upload 都有 preview_url 或 file_url）。 */
 function bindingMediaUrl(b?: SlotBinding): string | null {
@@ -434,23 +439,56 @@ function SlotBox({
           </div>
         )}
 
-        {slot.layer_type === "video" && (
+        {slot.layer_type === "video" && (() => {
+          const fit = resolveFit(slot);
+          const blurBg = fit === "contain";
+          return (
           <div className="absolute inset-0">
             {mediaUrl ? (
               isVideoUrl(mediaUrl) ? (
-                <video
-                  src={mediaUrl}
-                  preload="metadata"
-                  muted
-                  playsInline
-                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-                />
+                <>
+                  {blurBg && (
+                    <video
+                      src={mediaUrl}
+                      aria-hidden
+                      preload="metadata"
+                      muted
+                      playsInline
+                      className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                      style={FIT_BLUR_BG_STYLE}
+                    />
+                  )}
+                  <video
+                    src={mediaUrl}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    className={cn(
+                      "absolute inset-0 w-full h-full pointer-events-none",
+                      fit === "cover" ? "object-cover" : "object-contain"
+                    )}
+                  />
+                </>
               ) : (
-                <img
-                  src={mediaUrl}
-                  alt={slot.label || slot.slot_id}
-                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-                />
+                <>
+                  {blurBg && (
+                    <img
+                      src={mediaUrl}
+                      alt=""
+                      aria-hidden
+                      className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                      style={FIT_BLUR_BG_STYLE}
+                    />
+                  )}
+                  <img
+                    src={mediaUrl}
+                    alt={slot.label || slot.slot_id}
+                    className={cn(
+                      "absolute inset-0 w-full h-full pointer-events-none",
+                      fit === "cover" ? "object-cover" : "object-contain"
+                    )}
+                  />
+                </>
               )
             ) : filled ? (
               <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900 grid place-items-center">
@@ -468,16 +506,34 @@ function SlotBox({
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
-        {slot.layer_type === "image" && (
+        {slot.layer_type === "image" && (() => {
+          const fit = resolveFit(slot);
+          const blurBg = fit === "contain";
+          return (
           <div className="absolute inset-0">
             {mediaUrl ? (
-              <img
-                src={mediaUrl}
-                alt={slot.label || slot.slot_id}
-                className="absolute inset-0 w-full h-full object-contain pointer-events-none bg-white/95"
-              />
+              <>
+                {blurBg && (
+                  <img
+                    src={mediaUrl}
+                    alt=""
+                    aria-hidden
+                    className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                    style={FIT_BLUR_BG_STYLE}
+                  />
+                )}
+                <img
+                  src={mediaUrl}
+                  alt={slot.label || slot.slot_id}
+                  className={cn(
+                    "absolute inset-0 w-full h-full pointer-events-none",
+                    fit === "cover" ? "object-cover" : "object-contain"
+                  )}
+                />
+              </>
             ) : filled ? (
               <div className="absolute inset-2 bg-white/95 rounded grid place-items-center">
                 <div className="text-center min-w-0 max-w-full px-1">
@@ -494,7 +550,8 @@ function SlotBox({
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {slot.layer_type === "sticker" && (
           <div className="absolute inset-0 grid place-items-center">

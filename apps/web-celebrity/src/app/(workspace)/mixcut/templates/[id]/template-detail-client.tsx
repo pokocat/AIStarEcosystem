@@ -1109,6 +1109,48 @@ function SlotCard({
         </div>
       )}
 
+      {(slot.layer_type === "video" ||
+        slot.layer_type === "image" ||
+        slot.layer_type === "sticker" ||
+        slot.layer_type === "digital_human") && (
+        <div>
+          <div className="text-[10px] font-medium text-muted-foreground mb-1.5">
+            填充方式
+            <span className="ml-1 text-muted-foreground/70">
+              · 素材尺寸与画面位置不一致时怎么处理
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(
+              [
+                { v: "cover", label: "填满", hint: "边缘自动裁切" },
+                { v: "contain", label: "完整显示", hint: "边缘模糊背景填充" },
+              ] as const
+            ).map((opt) => {
+              const current = slot.fit ?? "cover";
+              const active = current === opt.v;
+              return (
+                <button
+                  key={opt.v}
+                  onClick={() => onChange({ fit: opt.v })}
+                  className={cn(
+                    "px-2 py-1.5 rounded-md border text-left transition-colors leading-tight",
+                    active
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                  )}
+                >
+                  <div className="text-xs font-medium">{opt.label}</div>
+                  <div className={cn("text-[10px] mt-0.5", active ? "opacity-80" : "opacity-60")}>
+                    {opt.hint}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <NumField
           label="开始 (秒)"

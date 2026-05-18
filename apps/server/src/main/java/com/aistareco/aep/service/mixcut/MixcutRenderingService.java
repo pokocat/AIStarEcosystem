@@ -232,13 +232,17 @@ public class MixcutRenderingService {
     private record ResolvedBindings(List<File> videos, List<OverlaySpec> overlays, File bgm) {}
 
     /** 单张 overlay 的渲染参数 —— 文件 + 槽位定位信息。 */
-    private record OverlaySpec(File file, String slotId, NormRect rect, int zIndex, String layerType) {}
+    /**
+     * Overlay 元数据。fit = "cover"（默认）= 填满裁切；"contain" = 完整居中，
+     * letterbox 用原图高斯模糊作为背景。
+     */
+    private record OverlaySpec(File file, String slotId, NormRect rect, int zIndex, String layerType, String fit) {}
 
     /** 归一化矩形 (0..1) ；x,y=左上角。 */
     private record NormRect(double x, double y, double w, double h) {}
 
     /** 槽位元信息（从 slots_snapshot 派生）。 */
-    private record SlotInfo(String slotId, String layerType, NormRect rect, int zIndex) {}
+    private record SlotInfo(String slotId, String layerType, NormRect rect, int zIndex, String fit) {}
 
     /** 渲染上下文：从模板快照与 overrides 计算出的、贯穿整个 job 的不变量。 */
     private record RenderContext(
@@ -300,7 +304,9 @@ public class MixcutRenderingService {
                                     r.path("w").asDouble(0),
                                     r.path("h").asDouble(0));
                         }
-                        slotMap.put(slotId, new SlotInfo(slotId, layerType, rect, zIndex));
+                        String fit = s.path("fit").asText("cover");
+                        if (!"cover".equals(fit) && !"contain".equals(fit)) fit = "cover";
+                        slotMap.put(slotId, new SlotInfo(slotId, layerType, rect, zIndex, fit));
                     }
                 }
             }
@@ -359,7 +365,8 @@ public class MixcutRenderingService {
                 } else if (OVERLAY_LAYERS.contains(layerType)) {
                     int z = slot != null ? slot.zIndex : 0;
                     NormRect rect = slot != null ? slot.rect : null;
-                    overlays.add(new OverlaySpec(local, slotId, rect, z, layerType));
+                    String fit = slot != null && slot.fit != null ? slot.fit : "cover";
+                    overlays.add(new OverlaySpec(local, slotId, rect, z, layerType, fit));
                 } else if ("audio".equals(layerType)) {
                     if (bgm == null) bgm = local; // 仅取第一条 BGM
                 }
@@ -536,6 +543,7 @@ public class MixcutRenderingService {
                 od.put("slot_id", spec.slotId);
                 od.put("layer_type", spec.layerType);
                 od.put("z_index", spec.zIndex);
+                od.put("fit", spec.fit);
                 if (spec.rect != null) {
                     ObjectNode r = od.putObject("rect");
                     r.put("x", round3(spec.rect.x));
@@ -639,18 +647,42 @@ public class MixcutRenderingService {
                 rx = fallback[0]; ry = fallback[1]; rw = fallback[2]; rh = fallback[3];
             }
 
-            // 防御性 scale → pad(max) → crop:
-            //   scale=decrease 在某些边界情况下（输入极端长宽比、奇数像素）会输出
-            //   略大于 rw/rh 的帧（rounding 或 chroma 对齐），后续 pad=rw:rh 会报
+            // 填充方式分支（v0.13+ 模板字段 slot.fit）
+            //   cover  = 填满裁切：force_original_aspect_ratio=increase + crop=rw:rh
+            //   contain = 完整居中：split → 一路 cover+boxblur 作为 letterbox 背景，
+            //                       另一路 fit-inside 作为主体，再 overlay 居中
+            // 都用 crop 截到精确 rw x rh，避免旧版 scale-decrease+pad 在边界 rounding 时报
             //   "Padded dimensions cannot be smaller than input dimensions"。
-            //   用 max(iw, rw) / max(ih, rh) 作 pad 目标兜底，再用 crop 截到精确 rw x rh。
-            fc.append("[").append(inputIdx).append(":v]")
-              .append("format=yuva420p,scale=").append(rw).append(":").append(rh)
-              .append(":force_original_aspect_ratio=decrease,")
-              .append("pad=max(iw\\,").append(rw).append("):max(ih\\,").append(rh).append(")")
-              .append(":(ow-iw)/2:(oh-ih)/2:color=0x00000000,")
-              .append("crop=").append(rw).append(":").append(rh)
-              .append("[").append(tag).append("s];");
+            String fit = useRealOverlay && overlays.get(i).fit != null
+                    ? overlays.get(i).fit
+                    : "cover";
+            if ("contain".equals(fit)) {
+                // 模糊背景填充：[i:v] split → [bg] cover+blur，[fg] fit，[bg][fg] overlay center
+                String bgTag = tag + "bg";
+                String fgTag = tag + "fg";
+                fc.append("[").append(inputIdx).append(":v]")
+                  .append("format=yuva420p,split=2[").append(bgTag).append("0][").append(fgTag).append("0];");
+                fc.append("[").append(bgTag).append("0]")
+                  .append("scale=").append(rw).append(":").append(rh)
+                  .append(":force_original_aspect_ratio=increase,")
+                  .append("crop=").append(rw).append(":").append(rh).append(",")
+                  .append("boxblur=14:1,eq=brightness=-0.05")
+                  .append("[").append(bgTag).append("];");
+                fc.append("[").append(fgTag).append("0]")
+                  .append("scale=").append(rw).append(":").append(rh)
+                  .append(":force_original_aspect_ratio=decrease")
+                  .append("[").append(fgTag).append("];");
+                fc.append("[").append(bgTag).append("][").append(fgTag).append("]")
+                  .append("overlay=(W-w)/2:(H-h)/2:format=auto")
+                  .append("[").append(tag).append("s];");
+            } else {
+                // 填满裁切（默认）：scale-increase + crop
+                fc.append("[").append(inputIdx).append(":v]")
+                  .append("format=yuva420p,scale=").append(rw).append(":").append(rh)
+                  .append(":force_original_aspect_ratio=increase,")
+                  .append("crop=").append(rw).append(":").append(rh)
+                  .append("[").append(tag).append("s];");
+            }
             fc.append("[").append(prev).append("][").append(tag).append("s]")
               .append("overlay=x=").append(rx).append(":y=").append(ry)
               .append(":enable='between(t,").append(i == 0 ? "0.0" : "0.0").append(",")
