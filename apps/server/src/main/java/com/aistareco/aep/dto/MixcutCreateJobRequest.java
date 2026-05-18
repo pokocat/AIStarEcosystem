@@ -19,6 +19,10 @@ public record MixcutCreateJobRequest(
         @JsonProperty("output_variants") Integer outputVariants,
         @JsonProperty("status") String status,
         @JsonProperty("progress") Integer progress,
-        @JsonProperty("created_at") String createdAt
+        @JsonProperty("created_at") String createdAt,
+        // v0.10: 模板快照与扰动总开关
+        @JsonProperty("canvas_snapshot") JsonNode canvasSnapshot,
+        @JsonProperty("slots_snapshot") JsonNode slotsSnapshot,
+        @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides
 ) {
 }

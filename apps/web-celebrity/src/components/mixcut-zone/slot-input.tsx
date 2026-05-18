@@ -8,9 +8,18 @@ import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { Label } from "./ui/label";
-import type { TemplateSlot, SlotBinding, MixcutAsset, MixcutAssetKind } from "./types";
+import type {
+  TemplateSlot,
+  SlotBinding,
+  MixcutAsset,
+  MixcutAssetKind,
+  SlotPerturbationPolicy,
+  PerturbationOverrides,
+} from "./types";
 import { MixcutApi } from "@/api";
 import { cn } from "./lib/utils";
+import { LAYER_LABELS, FILL_STRATEGY_LABELS } from "@/constants/mixcut-ui";
+import { SlotPolicyEditor } from "./slot-policy-editor";
 
 interface Props {
   slot: TemplateSlot;
@@ -18,6 +27,11 @@ interface Props {
   onChange: (binding: SlotBinding | undefined) => void;
   focused?: boolean;
   onFocus?: () => void;
+  /** 用户对本 slot 的扰动准入覆盖 (可选；不传则不显示编辑器)。 */
+  policyOverride?: Partial<SlotPerturbationPolicy>;
+  onPolicyChange?: (next: Partial<SlotPerturbationPolicy>) => void;
+  /** 任务级算子总开关，用于在 editor 里禁用对应行。 */
+  globalOverrides?: Required<PerturbationOverrides>;
 }
 
 const LAYER_ICON = {
@@ -29,7 +43,16 @@ const LAYER_ICON = {
   digital_human: Sparkles,
 };
 
-export function SlotInput({ slot, binding, onChange, focused, onFocus }: Props) {
+export function SlotInput({
+  slot,
+  binding,
+  onChange,
+  focused,
+  onFocus,
+  policyOverride,
+  onPolicyChange,
+  globalOverrides,
+}: Props) {
   const Icon = LAYER_ICON[slot.layer_type] || ImageIcon;
   const filled =
     !!binding &&
@@ -59,10 +82,10 @@ export function SlotInput({ slot, binding, onChange, focused, onFocus }: Props) 
           <div className="flex items-center gap-2 flex-wrap">
             <div className="font-medium text-sm">{slot.label || slot.slot_id}</div>
             {slot.required && <Badge variant="danger" className="text-[10px]">必填</Badge>}
-            <Badge variant="muted" className="text-[10px] font-mono">{slot.layer_type}</Badge>
+            <Badge variant="muted" className="text-[10px]">{LAYER_LABELS[slot.layer_type]}</Badge>
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5 font-mono">
-            {slot.slot_id} · {slot.fill_strategy}
+          <div className="text-xs text-muted-foreground mt-0.5">
+            {FILL_STRATEGY_LABELS[slot.fill_strategy]}
           </div>
 
           <div className="mt-3">
@@ -100,11 +123,20 @@ export function SlotInput({ slot, binding, onChange, focused, onFocus }: Props) 
               <ApiGeneratedSlotInput slot={slot} binding={binding} onChange={onChange} />
             )}
             {slot.fill_strategy === "fixed" && (
-              <div className="text-xs text-muted-foreground bg-secondary/50 rounded-md p-2 font-mono">
-                固定素材 · {slot.asset_id}
+              <div className="text-xs text-muted-foreground bg-secondary/50 rounded-md p-2">
+                由系统自动填充,无需操作
               </div>
             )}
           </div>
+
+          {onPolicyChange && globalOverrides && slot.fill_strategy !== "fixed" && (
+            <SlotPolicyEditor
+              slot={slot}
+              override={policyOverride}
+              onChange={onPolicyChange}
+              globalOverrides={globalOverrides}
+            />
+          )}
         </div>
       </div>
     </Card>
@@ -344,7 +376,7 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
               key={a.id}
               onClick={(e) => {
                 e.stopPropagation();
-                onChange({ source: "library", asset_id: a.id });
+                onChange({ source: "library", asset_id: a.id, preview_url: a.file_url });
                 setPicking(false);
               }}
               className="text-left group"
@@ -409,7 +441,7 @@ function LibrarySlotInput({
     try {
       const created = await MixcutApi.uploadAsset({ file, kind, name: file.name });
       setItems((prev) => (prev ? [created, ...prev] : [created]));
-      onChange({ source: "library", asset_id: created.id });
+      onChange({ source: "library", asset_id: created.id, preview_url: created.file_url });
       setOpen(false);
     } catch (e: any) {
       setError(e?.message ?? "上传失败");
@@ -526,7 +558,7 @@ function LibrarySlotInput({
                 key={item.id}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onChange({ source: "library", asset_id: item.id });
+                  onChange({ source: "library", asset_id: item.id, preview_url: item.file_url });
                   setOpen(false);
                 }}
                 className="text-left p-2 rounded-lg border border-border hover:border-foreground/30 hover:bg-secondary/40 transition-colors"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -26,7 +26,7 @@ import { cn, relativeTime } from "@/components/mixcut-zone/lib/utils";
 
 const STATUS_FILTERS: { value: "all" | JobStatus; label: string }[] = [
   { value: "all", label: "全部" },
-  { value: "running", label: "渲染中" },
+  { value: "running", label: "生成中" },
   { value: "queued", label: "排队中" },
   { value: "success", label: "已完成" },
   { value: "failed", label: "失败" },
@@ -36,10 +36,41 @@ export default function MixcutJobsPage() {
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [filter, setFilter] = useState<"all" | JobStatus>("all");
   const [search, setSearch] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [autoRefreshing, setAutoRefreshing] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
+  const inflightRef = useRef(false);
+
+  const refresh = useCallback(async (kind: "manual" | "auto") => {
+    if (inflightRef.current) return;
+    inflightRef.current = true;
+    if (kind === "manual") setRefreshing(true);
+    else setAutoRefreshing(true);
+    try {
+      const next = await MixcutApi.listJobs();
+      setJobs(next);
+      setLastRefreshAt(Date.now());
+    } finally {
+      inflightRef.current = false;
+      setRefreshing(false);
+      setAutoRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    MixcutApi.listJobs().then(setJobs);
-  }, []);
+    refresh("manual");
+  }, [refresh]);
+
+  const hasActive = useMemo(
+    () => jobs.some((j) => j.status === "running" || j.status === "queued" || j.status === "pending"),
+    [jobs]
+  );
+
+  useEffect(() => {
+    if (!hasActive) return;
+    const timer = setInterval(() => refresh("auto"), 2500);
+    return () => clearInterval(timer);
+  }, [hasActive, refresh]);
 
   const filtered = useMemo(() => {
     return jobs.filter((j) => {
@@ -61,14 +92,35 @@ export default function MixcutJobsPage() {
     <div className="px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">渲染任务</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">生成任务</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            管理您的渲染历史 · 查看进度 · 下载产出 · 一键重渲
+            管理您的生成历史 · 查看进度 · 下载成片 · 一键再生成
           </p>
         </div>
-        <Button variant="gradient" asChild>
-          <Link href="/mixcut/templates">+ 新建任务</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => refresh("manual")}
+            disabled={refreshing}
+            aria-label="刷新任务列表"
+            title={
+              hasActive
+                ? "有任务在生成中,列表每 2.5 秒自动刷新"
+                : lastRefreshAt
+                  ? `上次刷新 ${new Date(lastRefreshAt).toLocaleTimeString("zh-CN", { hour12: false })}`
+                  : "刷新"
+            }
+          >
+            <RefreshCw className={cn("size-4", (refreshing || autoRefreshing) && "animate-spin")} />
+            <span className="hidden md:inline">刷新</span>
+            {hasActive && (
+              <span className="text-[10px] text-muted-foreground ml-1">自动</span>
+            )}
+          </Button>
+          <Button variant="gradient" asChild>
+            <Link href="/mixcut/templates">+ 新建任务</Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -151,7 +203,7 @@ function JobRow({ job }: { job: RenderJob }) {
               <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5">
                 <span className="font-mono">{job.id.slice(0, 12)}…</span>
                 <span>·</span>
-                <span>{job.output_variants} 个变体</span>
+                <span>{job.output_variants} 条</span>
                 <span>·</span>
                 <span>{relativeTime(job.created_at)}</span>
                 {job.completed_at && (
@@ -230,7 +282,7 @@ function JobRow({ job }: { job: RenderJob }) {
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { variant: any; label: string; icon: any }> = {
     success: { variant: "success", label: "已完成", icon: CheckCircle2 },
-    running: { variant: "default", label: "渲染中", icon: Clock },
+    running: { variant: "default", label: "生成中", icon: Clock },
     queued: { variant: "muted", label: "排队中", icon: Clock },
     failed: { variant: "danger", label: "失败", icon: AlertCircle },
     pending: { variant: "muted", label: "待处理", icon: Clock },

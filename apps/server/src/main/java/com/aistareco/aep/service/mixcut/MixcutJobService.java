@@ -71,6 +71,10 @@ public class MixcutJobService {
         }
         job.setSlotBindingsJson(bindingsJson);
 
+        job.setCanvasSnapshotJson(serializeJson(req.canvasSnapshot()));
+        job.setSlotsSnapshotJson(serializeJson(req.slotsSnapshot()));
+        job.setPerturbationOverridesJson(serializeJson(req.perturbationOverrides()));
+
         job.setPerturbationProfile(safe(req.perturbationProfile(), "moderate"));
         job.setOutputVariants(req.outputVariants() != null && req.outputVariants() > 0 ? req.outputVariants() : 1);
         job.setStatus("queued");
@@ -113,5 +117,15 @@ public class MixcutJobService {
 
     private static String safe(String value, String fallback) {
         return (value == null || value.isBlank()) ? fallback : value;
+    }
+
+    private String serializeJson(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || node.isNull()) return null;
+        try {
+            return mapper.writeValueAsString(node);
+        } catch (Exception e) {
+            log.warn("[mixcut] serialize snapshot failed: {}", e.getMessage());
+            return null;
+        }
     }
 }

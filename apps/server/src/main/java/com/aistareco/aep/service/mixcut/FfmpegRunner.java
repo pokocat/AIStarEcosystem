@@ -108,6 +108,22 @@ public class FfmpegRunner {
         }
     }
 
+    /** 文件是否至少有一路音轨。失败/无音 → false。 */
+    public boolean hasAudioStream(File file) {
+        try {
+            String out = runFfprobe(List.of(
+                    "-v", "error",
+                    "-select_streams", "a",
+                    "-show_entries", "stream=codec_type",
+                    "-of", "csv=p=0",
+                    file.getAbsolutePath()
+            ));
+            return out != null && out.contains("audio");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static String tail(String s, int n) {
         if (s == null) return "";
         return s.length() <= n ? s : s.substring(s.length() - n);

@@ -29,15 +29,39 @@ import {
   Button,
   Sidebar,
   type NavGroup,
+  type NavSubItem,
 } from "@/components/creator";
 import { CelebrityShellProvider, useCelebrityShell } from "@/lib/celebrity-shell-context";
+import { MixcutApi } from "@/api";
 
 // 侧栏入口都是顶层路径；选中判定：仅在该 tab 的「根 list 路径」高亮。
 // 详情页（/star/<id>、/projects/<id>）不归属任何 list 父级，故均不高亮 —— 设计上
 // 明星详情可由市场/我的两个 list 进入，归到任一都不对称，独立段最干净。
-function buildGroups(pathname: string): NavGroup[] {
+function buildGroups(pathname: string, activeJobs: number): NavGroup[] {
   const isExact = (href: string) => pathname === href;
   const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
+
+  // 混剪二级菜单:仅在用户处于 /mixcut/* 时展开,避免常态污染侧栏。
+  // 创建任务页 (/mixcut/create/<id>) 不高亮任一子项 —— 它是一次性流程,不属于任何长存的子区。
+  const mixcutChildren: NavSubItem[] | undefined = isMixcut
+    ? [
+        { label: "工作台", href: "/mixcut", selected: pathname === "/mixcut" },
+        {
+          label: "模板库",
+          href: "/mixcut/templates",
+          selected: pathname === "/mixcut/templates" || pathname.startsWith("/mixcut/templates/"),
+        },
+        {
+          label: "生成任务",
+          href: "/mixcut/jobs",
+          selected: pathname === "/mixcut/jobs" || pathname.startsWith("/mixcut/jobs/"),
+          badge: activeJobs > 0 ? activeJobs : undefined,
+          badgeTone: "accent",
+        },
+        { label: "素材库", href: "/mixcut/library", selected: pathname === "/mixcut/library" },
+      ]
+    : undefined;
+
   return [
     {
       title: "工作台",
@@ -53,7 +77,13 @@ function buildGroups(pathname: string): NavGroup[] {
         { icon: Megaphone, label: "我的项目", href: "/projects", selected: isExact("/projects") },
         { icon: Video, label: "视频中心", href: "/library", selected: isExact("/library"), badge: 4 },
         { icon: ShoppingBag, label: "商品库", href: "/products", selected: isExact("/products") },
-        { icon: Scissors, label: "混剪专区", href: "/mixcut", selected: isMixcut },
+        {
+          icon: Scissors,
+          label: "混剪专区",
+          href: "/mixcut",
+          selected: isMixcut,
+          children: mixcutChildren,
+        },
       ],
     },
     {
@@ -74,7 +104,7 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/library": "视频中心",
     "/products": "商品库",
     "/data": "数据中心",
-    "/mixcut": "混剪首页",
+    "/mixcut": "混剪工作台",
   };
   if (TAB_LABEL[pathname]) {
     return pathname === "/mixcut"
@@ -88,8 +118,8 @@ function CrumbsFromPathname(pathname: string): string[] {
   if (pathname === "/mixcut/templates") return ["工作台", "混剪专区", "模板库"];
   if (pathname.startsWith("/mixcut/templates/")) return ["工作台", "混剪专区", "模板库", "模板详情"];
   if (pathname.startsWith("/mixcut/create/")) return ["工作台", "混剪专区", "新建任务"];
-  if (pathname === "/mixcut/jobs") return ["工作台", "混剪专区", "渲染任务"];
-  if (pathname.startsWith("/mixcut/jobs/")) return ["工作台", "混剪专区", "渲染任务", "任务详情"];
+  if (pathname === "/mixcut/jobs") return ["工作台", "混剪专区", "生成任务"];
+  if (pathname.startsWith("/mixcut/jobs/")) return ["工作台", "混剪专区", "生成任务", "任务详情"];
   if (pathname === "/mixcut/library") return ["工作台", "混剪专区", "素材库"];
 
   return ["工作台"];
@@ -241,8 +271,39 @@ function TipOfDay() {
 function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/dashboard";
   const { user } = useAuth();
+  const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
+  const [activeJobs, setActiveJobs] = React.useState(0);
 
-  const groups = buildGroups(pathname);
+  // 「生成任务」子项上的活跃数 badge。
+  // 仅在用户处于 /mixcut/* 时拉,避免在其他子产品页面无谓请求。
+  // 进入混剪时立即拉一次,有活跃任务时每 4s 轻量轮询。
+  React.useEffect(() => {
+    if (!isMixcut) {
+      setActiveJobs(0);
+      return;
+    }
+    let cancelled = false;
+    const tick = () => {
+      MixcutApi.listJobs()
+        .then((jobs) => {
+          if (cancelled) return;
+          setActiveJobs(
+            jobs.filter((j) => j.status === "running" || j.status === "queued" || j.status === "pending").length,
+          );
+        })
+        .catch(() => {
+          /* 网络抖动忽略,下次再试 */
+        });
+    };
+    tick();
+    const timer = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [isMixcut, pathname]);
+
+  const groups = buildGroups(pathname, activeJobs);
   const crumbs = CrumbsFromPathname(pathname);
 
   return (

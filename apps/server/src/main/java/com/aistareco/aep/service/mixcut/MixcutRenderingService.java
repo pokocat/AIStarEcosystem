@@ -21,9 +21,12 @@ import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -146,8 +149,15 @@ public class MixcutRenderingService {
             throw new IOException("Cannot create output dir: " + outDir);
         }
 
-        // 2) 收集 binding → 真实本地文件，按 kind 分类
-        ResolvedBindings resolved = resolveBindings(job);
+        // 2) 读取模板快照（v0.10）：画布尺寸、槽位 rect / layer_type / policy、扰动总开关
+        RenderContext ctx = buildContext(job);
+        log.info("[mixcut] job {} canvas={}x{} slots_in_snapshot={} overrides=mirror:{} speed:{} bright:{} sat:{}",
+                jobId, ctx.outputWidth, ctx.outputHeight, ctx.slotMap.size(),
+                ctx.overrides.allowMirror, ctx.overrides.allowSpeed,
+                ctx.overrides.allowBrightness, ctx.overrides.allowSaturation);
+
+        // 3) 收集 binding → 真实本地文件，按 layer_type / 后缀分类
+        ResolvedBindings resolved = resolveBindings(job, ctx);
         log.info("[mixcut] job {} videos={} overlays={}",
                 jobId, resolved.videos.size(), resolved.overlays.size());
         if (resolved.videos.isEmpty()) {
@@ -156,7 +166,7 @@ public class MixcutRenderingService {
 
         updateProgress(jobId, 15, "running");
 
-        // 3) 逐个变体渲染
+        // 4) 逐个变体渲染
         int variantCount = job.getOutputVariants();
         Random rnd = new Random(jobId.hashCode());
         String profile = job.getPerturbationProfile();
@@ -166,14 +176,35 @@ public class MixcutRenderingService {
             File outFile = new File(outDir, "v" + (i + 1) + ".mp4");
             ObjectNode transforms = mapper.createObjectNode();
 
-            renderOneVariant(job, resolved.videos, resolved.overlays, variantIndex, outFile, transforms, profile, rnd);
+            renderOneVariant(job, ctx, resolved.videos, resolved.overlays, resolved.bgm, variantIndex, outFile, transforms, profile, rnd);
+
+            // 抽 1s 处的一帧作为该变体的 poster (失败不致命,占位 null)
+            File thumbFile = new File(outDir, "v" + (i + 1) + ".jpg");
+            String thumbUrl = null;
+            try {
+                ffmpeg.runFfmpeg(List.of(
+                        "-y",
+                        "-ss", "1",
+                        "-i", outFile.getAbsolutePath(),
+                        "-frames:v", "1",
+                        "-update", "1",
+                        "-vf", "scale=480:-2",
+                        "-q:v", "4",
+                        thumbFile.getAbsolutePath()
+                ));
+                if (thumbFile.exists() && thumbFile.length() > 0) {
+                    thumbUrl = joinUrl(props.getPublicUrlBase(), jobId, thumbFile.getName());
+                }
+            } catch (Exception e) {
+                log.warn("[mixcut] job {} variant {} thumbnail extract failed: {}", jobId, i + 1, e.getMessage());
+            }
 
             // 写一条 output
             MixcutRenderOutput o = new MixcutRenderOutput();
             o.setId("out_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
             o.setVariantIndex(variantIndex);
             o.setFileUrl(joinUrl(props.getPublicUrlBase(), jobId, outFile.getName()));
-            o.setThumbnailUrl(null);
+            o.setThumbnailUrl(thumbUrl);
             o.setFileSize(outFile.length());
             o.setDuration(ffmpeg.probeDurationSec(outFile));
             o.setPhashSignature(sha256Hex(outFile));
@@ -194,45 +225,150 @@ public class MixcutRenderingService {
 
     // ── 素材准备 ───────────────────────────────────────────────────────────────
 
-    /** binding 解析结果：底层视频 + 叠加图层（image/sticker）。 */
-    private record ResolvedBindings(List<File> videos, List<File> overlays) {}
+    /**
+     * binding 解析结果：底层视频 + 叠加图层（image/sticker） + BGM 音轨（可空）。
+     * overlay 已按 z_index 升序排好。bgm 只取第一条（多条 BGM 暂不支持）。
+     */
+    private record ResolvedBindings(List<File> videos, List<OverlaySpec> overlays, File bgm) {}
+
+    /** 单张 overlay 的渲染参数 —— 文件 + 槽位定位信息。 */
+    private record OverlaySpec(File file, String slotId, NormRect rect, int zIndex, String layerType) {}
+
+    /** 归一化矩形 (0..1) ；x,y=左上角。 */
+    private record NormRect(double x, double y, double w, double h) {}
+
+    /** 槽位元信息（从 slots_snapshot 派生）。 */
+    private record SlotInfo(String slotId, String layerType, NormRect rect, int zIndex) {}
+
+    /** 渲染上下文：从模板快照与 overrides 计算出的、贯穿整个 job 的不变量。 */
+    private record RenderContext(
+            int outputWidth,
+            int outputHeight,
+            Map<String, SlotInfo> slotMap,
+            Overrides overrides
+    ) {}
+
+    /** 任务级扰动总开关。任一项 false ⇒ 全局短路该算子。 */
+    private record Overrides(boolean allowMirror, boolean allowSpeed, boolean allowBrightness, boolean allowSaturation) {
+        static Overrides defaults() { return new Overrides(true, true, true, true); }
+    }
 
     private static final Set<String> VIDEO_EXTS = Set.of(".mp4", ".mov", ".m4v", ".webm", ".mkv");
     private static final Set<String> IMAGE_EXTS = Set.of(".png", ".jpg", ".jpeg", ".webp", ".gif");
+    private static final Set<String> AUDIO_EXTS = Set.of(".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac");
+    private static final Set<String> VIDEO_LAYERS = Set.of("video", "digital_human");
+    private static final Set<String> OVERLAY_LAYERS = Set.of("image", "sticker", "text");
+
+    /** 从 job 的 snapshot JSON 派生 RenderContext。任何缺省字段都退回安全默认。 */
+    private RenderContext buildContext(MixcutRenderJob job) {
+        int width = 720;
+        int height = 1280;
+        try {
+            String cs = job.getCanvasSnapshotJson();
+            if (cs != null && !cs.isBlank()) {
+                JsonNode node = mapper.readTree(cs);
+                int w = node.path("width").asInt(0);
+                int h = node.path("height").asInt(0);
+                if (w > 0 && h > 0) {
+                    // 限制到 1080×1920 以内（性能 + 编码器友好）；保持比例
+                    double scale = Math.min(1.0, Math.min(1080.0 / w, 1920.0 / h));
+                    width = (int) Math.round(w * scale) / 2 * 2;   // 必须偶数
+                    height = (int) Math.round(h * scale) / 2 * 2;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[mixcut] canvas snapshot parse error: {}", e.getMessage());
+        }
+
+        Map<String, SlotInfo> slotMap = new HashMap<>();
+        try {
+            String ss = job.getSlotsSnapshotJson();
+            if (ss != null && !ss.isBlank()) {
+                JsonNode arr = mapper.readTree(ss);
+                if (arr.isArray()) {
+                    for (JsonNode s : arr) {
+                        String slotId = s.path("slot_id").asText(null);
+                        if (slotId == null) continue;
+                        String layerType = s.path("layer_type").asText("");
+                        int zIndex = s.path("z_index").asInt(0);
+                        NormRect rect = null;
+                        JsonNode r = s.path("rect");
+                        if (r.isObject()) {
+                            rect = new NormRect(
+                                    r.path("x").asDouble(0),
+                                    r.path("y").asDouble(0),
+                                    r.path("w").asDouble(0),
+                                    r.path("h").asDouble(0));
+                        }
+                        slotMap.put(slotId, new SlotInfo(slotId, layerType, rect, zIndex));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[mixcut] slots snapshot parse error: {}", e.getMessage());
+        }
+
+        Overrides overrides = Overrides.defaults();
+        try {
+            String po = job.getPerturbationOverridesJson();
+            if (po != null && !po.isBlank()) {
+                JsonNode n = mapper.readTree(po);
+                overrides = new Overrides(
+                        n.path("allow_mirror").asBoolean(true),
+                        n.path("allow_speed").asBoolean(true),
+                        n.path("allow_brightness").asBoolean(true),
+                        n.path("allow_saturation").asBoolean(true));
+            }
+        } catch (Exception e) {
+            log.warn("[mixcut] perturbation overrides parse error: {}", e.getMessage());
+        }
+
+        return new RenderContext(width, height, slotMap, overrides);
+    }
 
     /**
      * 把 slot_bindings 的每条记录解析为本地文件，按"视频"和"叠加图"分类。
-     * 解析优先级：
-     *   1. binding.asset_id  → MixcutAsset.localPath
-     *   2. binding.file_url  → 如果是 /static/mixcut-assets/... 直接 resolve；否则 downloader.ensureLocal
-     *   3. 都没找到 → 跳过该 binding（最终若 videos 为空，走 demo fallback）
+     * 路由优先级：
+     *   1. snapshot.slotMap[slot_id].layer_type → video/digital_human=底层；image/sticker/text=overlay
+     *   2. snapshot 缺失时，回退到按文件后缀分类
+     * overlay 列表按 z_index 升序排好（小 z 先合成，大 z 在上）。
      */
-    private ResolvedBindings resolveBindings(MixcutRenderJob job) {
+    private ResolvedBindings resolveBindings(MixcutRenderJob job, RenderContext ctx) {
         List<File> videos = new ArrayList<>();
-        List<File> overlays = new ArrayList<>();
+        List<OverlaySpec> overlays = new ArrayList<>();
+        File bgm = null;
 
         try {
             JsonNode bindings = mapper.readTree(
                     job.getSlotBindingsJson() == null ? "{}" : job.getSlotBindingsJson());
-            Iterator<JsonNode> it = bindings.elements();
+            Iterator<Map.Entry<String, JsonNode>> it = bindings.fields();
             while (it.hasNext()) {
-                JsonNode b = it.next();
+                Map.Entry<String, JsonNode> entry = it.next();
+                String slotId = entry.getKey();
+                JsonNode b = entry.getValue();
                 String src = b.path("source").asText("");
                 if ("fixed".equals(src) || "input".equals(src)) continue;
 
                 File local = resolveOne(b);
                 if (local == null) continue;
 
-                String lower = local.getName().toLowerCase(Locale.ROOT);
-                int dot = lower.lastIndexOf('.');
-                String ext = dot >= 0 ? lower.substring(dot) : "";
-                if (VIDEO_EXTS.contains(ext)) videos.add(local);
-                else if (IMAGE_EXTS.contains(ext)) overlays.add(local);
-                // 音频/其他 → 暂不处理
+                SlotInfo slot = ctx.slotMap.get(slotId);
+                String layerType = slot != null ? slot.layerType : inferLayerFromExt(local);
+                if (VIDEO_LAYERS.contains(layerType)) {
+                    videos.add(local);
+                } else if (OVERLAY_LAYERS.contains(layerType)) {
+                    int z = slot != null ? slot.zIndex : 0;
+                    NormRect rect = slot != null ? slot.rect : null;
+                    overlays.add(new OverlaySpec(local, slotId, rect, z, layerType));
+                } else if ("audio".equals(layerType)) {
+                    if (bgm == null) bgm = local; // 仅取第一条 BGM
+                }
             }
         } catch (Exception e) {
             log.warn("[mixcut] slot_bindings parse error: {}", e.getMessage());
         }
+
+        overlays.sort(Comparator.comparingInt(OverlaySpec::zIndex));
 
         // 底层视频为空 → demo fallback
         if (videos.isEmpty()) {
@@ -243,7 +379,18 @@ public class MixcutRenderingService {
                 if (files != null) for (File f : files) videos.add(f);
             }
         }
-        return new ResolvedBindings(videos, overlays);
+        return new ResolvedBindings(videos, overlays, bgm);
+    }
+
+    /** 无 snapshot 时按后缀回退判断 layer 类别。 */
+    private static String inferLayerFromExt(File f) {
+        String lower = f.getName().toLowerCase(Locale.ROOT);
+        int dot = lower.lastIndexOf('.');
+        String ext = dot >= 0 ? lower.substring(dot) : "";
+        if (VIDEO_EXTS.contains(ext)) return "video";
+        if (IMAGE_EXTS.contains(ext)) return "image";
+        if (AUDIO_EXTS.contains(ext)) return "audio";
+        return "";
     }
 
     /** 把单个 binding 解析为本地 File（找不到返回 null）。 */
@@ -301,8 +448,10 @@ public class MixcutRenderingService {
 
     private void renderOneVariant(
             MixcutRenderJob job,
+            RenderContext ctx,
             List<File> sources,
-            List<File> overlays,
+            List<OverlaySpec> overlays,
+            File bgm,
             int variantIndex,
             File outFile,
             ObjectNode transforms,
@@ -312,12 +461,14 @@ public class MixcutRenderingService {
         int segCount = Math.min(2, sources.size());
         double segDuration = Math.max(2.0, (double) props.getMaxOutputDurationSec() / Math.max(1, segCount));
         int totalDuration = props.getMaxOutputDurationSec();
+        int W = ctx.outputWidth;
+        int H = ctx.outputHeight;
 
-        // perturbation 参数
-        double speed = randomSpeed(profile, rnd);
-        double brightness = randomBrightness(profile, rnd);
-        double saturation = randomSaturation(profile, rnd);
-        boolean mirror = randomMirror(profile, rnd);
+        // perturbation 参数（按 overrides 短路；被关掉的算子用恒等值，不进入 filter）
+        double speed       = ctx.overrides.allowSpeed       ? randomSpeed(profile, rnd)       : 1.0;
+        double brightness  = ctx.overrides.allowBrightness  ? randomBrightness(profile, rnd)  : 0.0;
+        double saturation  = ctx.overrides.allowSaturation  ? randomSaturation(profile, rnd)  : 1.0;
+        boolean mirror     = ctx.overrides.allowMirror      && randomMirror(profile, rnd);
 
         transforms.put("variant", variantIndex);
         transforms.put("speed", round2(speed));
@@ -325,6 +476,13 @@ public class MixcutRenderingService {
         transforms.put("saturation", round3(saturation));
         transforms.put("mirror", mirror);
         transforms.put("segments", segCount);
+        transforms.put("canvas_w", W);
+        transforms.put("canvas_h", H);
+        ObjectNode overridesNode = transforms.putObject("overrides");
+        overridesNode.put("allow_mirror", ctx.overrides.allowMirror);
+        overridesNode.put("allow_speed", ctx.overrides.allowSpeed);
+        overridesNode.put("allow_brightness", ctx.overrides.allowBrightness);
+        overridesNode.put("allow_saturation", ctx.overrides.allowSaturation);
 
         // ffmpeg args 累积
         List<String> args = new ArrayList<>();
@@ -332,8 +490,9 @@ public class MixcutRenderingService {
         args.add("-hide_banner");
         args.add("-loglevel"); args.add("warning");
 
-        // 视频输入：每段随机 offset + trim
+        // 视频输入：每段随机 offset + trim；同时探测音轨存在性,决定是否走 concat 音频路径
         ObjectNode segDetail = transforms.putObject("segments_detail");
+        boolean allHaveAudio = true;
         for (int i = 0; i < segCount; i++) {
             File src = sources.get((variantIndex + i) % sources.size());
             double maxStart = Math.max(0, ffmpeg.probeDurationSec(src) - segDuration - 0.5);
@@ -341,51 +500,93 @@ public class MixcutRenderingService {
             args.add("-ss"); args.add(format(offset));
             args.add("-t"); args.add(format(segDuration));
             args.add("-i"); args.add(src.getAbsolutePath());
+            boolean srcHasAudio = ffmpeg.hasAudioStream(src);
+            if (!srcHasAudio) allHaveAudio = false;
             ObjectNode seg = segDetail.objectNode();
             seg.put("src", src.getName());
             seg.put("start", round2(offset));
             seg.put("duration", round2(segDuration));
+            seg.put("has_audio", srcHasAudio);
             segDetail.set("seg_" + i, seg);
         }
+        boolean useSourceAudio = allHaveAudio;
+        boolean useBgm = bgm != null && bgm.exists();
+        boolean hasAudio = useSourceAudio || useBgm;
+        transforms.put("audio_source", useBgm
+                ? (useSourceAudio ? "source+bgm" : "bgm")
+                : (useSourceAudio ? "source" : "silent"));
 
         // 叠加图层输入
-        //  - 用户上传 image / sticker → 真实图，最多 3 张（防 filter graph 过大）
-        //  - 没有上传 → 退化为半透明色卡（与之前一致）
+        //  - snapshot 解析出的 overlay（已按 z_index 排序）→ 真实图
+        //  - 没有可用 overlay → 退化为半透明色卡兜底
         boolean useRealOverlay = !overlays.isEmpty();
-        int overlayCount = useRealOverlay ? Math.min(3, overlays.size()) : 1;
+        int overlayCount = useRealOverlay ? Math.min(4, overlays.size()) : 1;
         transforms.put("overlay_count", overlayCount);
         transforms.put("overlay_source", useRealOverlay ? "user-upload" : "fallback-color-card");
 
         if (useRealOverlay) {
             ObjectNode overlayDetail = transforms.putObject("overlays_detail");
             for (int i = 0; i < overlayCount; i++) {
-                File img = overlays.get(i);
+                OverlaySpec spec = overlays.get(i);
                 args.add("-loop"); args.add("1");
                 args.add("-t"); args.add(format((double) totalDuration));
-                args.add("-i"); args.add(img.getAbsolutePath());
-                overlayDetail.put("o_" + i, img.getName());
+                args.add("-i"); args.add(spec.file.getAbsolutePath());
+                ObjectNode od = overlayDetail.objectNode();
+                od.put("file", spec.file.getName());
+                od.put("slot_id", spec.slotId);
+                od.put("layer_type", spec.layerType);
+                od.put("z_index", spec.zIndex);
+                if (spec.rect != null) {
+                    ObjectNode r = od.putObject("rect");
+                    r.put("x", round3(spec.rect.x));
+                    r.put("y", round3(spec.rect.y));
+                    r.put("w", round3(spec.rect.w));
+                    r.put("h", round3(spec.rect.h));
+                }
+                overlayDetail.set("o_" + i, od);
             }
         } else {
-            // 单张色卡 fallback
             args.add("-f"); args.add("lavfi");
             args.add("-i");
-            args.add("color=c=0x7c5cff@0.55:s=480x120:d=" + format((double) totalDuration));
+            args.add("color=c=0x7c5cff@0.55:s=" + (W / 2) + "x" + Math.max(80, H / 16) + ":d=" + format((double) totalDuration));
+        }
+
+        // BGM 输入（如果有）—— 循环到 totalDuration
+        int bgmInputIdx = -1;
+        if (useBgm) {
+            bgmInputIdx = segCount + (useRealOverlay ? overlayCount : 1);
+            args.add("-stream_loop"); args.add("-1");
+            args.add("-t"); args.add(format((double) totalDuration));
+            args.add("-i"); args.add(bgm.getAbsolutePath());
         }
 
         // filter_complex 拼装
         StringBuilder fc = new StringBuilder();
-        // 视频段 scale + concat
+        // 视频段 scale + concat → 严格按 ctx 画布；音频归一化到 stereo 44.1kHz 再 concat
         for (int i = 0; i < segCount; i++) {
             fc.append("[").append(i).append(":v]")
-              .append("scale=720:1280:force_original_aspect_ratio=increase,")
-              .append("crop=720:1280,setsar=1,fps=30")
+              .append("scale=").append(W).append(":").append(H).append(":force_original_aspect_ratio=increase,")
+              .append("crop=").append(W).append(":").append(H).append(",setsar=1,fps=30")
               .append("[s").append(i).append("];");
+            if (useSourceAudio) {
+                fc.append("[").append(i).append(":a]")
+                  .append("aresample=44100,aformat=channel_layouts=stereo")
+                  .append("[as").append(i).append("];");
+            }
         }
-        for (int i = 0; i < segCount; i++) fc.append("[s").append(i).append("]");
-        fc.append("concat=n=").append(segCount).append(":v=1:a=0[concat];");
+        // concat 输入交错:[s0][as0][s1][as1]... 当含音频时;否则只 [s0][s1]
+        if (useSourceAudio) {
+            for (int i = 0; i < segCount; i++) {
+                fc.append("[s").append(i).append("]").append("[as").append(i).append("]");
+            }
+            fc.append("concat=n=").append(segCount).append(":v=1:a=1[concat_v][concat_a];");
+        } else {
+            for (int i = 0; i < segCount; i++) fc.append("[s").append(i).append("]");
+            fc.append("concat=n=").append(segCount).append(":v=1:a=0[concat_v];");
+        }
 
-        // perturbation
-        fc.append("[concat]eq=brightness=").append(format(brightness))
+        // perturbation 视频链（eq 总是写一次以保持链条完整；恒等值无视觉影响）
+        fc.append("[concat_v]eq=brightness=").append(format(brightness))
           .append(":saturation=").append(format(saturation));
         if (mirror) fc.append(",hflip");
         if (Math.abs(speed - 1.0) > 0.001) {
@@ -393,20 +594,60 @@ public class MixcutRenderingService {
         }
         fc.append("[fx];");
 
-        // overlay 链：把每张图按位置叠到底层视频
-        // 位置规则：3 张以下时按「顶 / 中下 / 底」分布；fallback 色卡时贴底
+        // perturbation 音频链:speed≠1 时同步 atempo;再决定是否 amix BGM
+        String audioOutTag = null;
+        if (useSourceAudio) {
+            if (Math.abs(speed - 1.0) > 0.001) {
+                fc.append("[concat_a]atempo=").append(format(speed)).append("[fx_a];");
+                audioOutTag = "fx_a";
+            } else {
+                audioOutTag = "concat_a";
+            }
+        }
+        if (useBgm) {
+            // BGM 单路归一化
+            fc.append("[").append(bgmInputIdx).append(":a]")
+              .append("aresample=44100,aformat=channel_layouts=stereo,volume=0.6")
+              .append("[bgm_a];");
+            if (audioOutTag != null) {
+                // 源音 + BGM 混合(源音权重高,BGM 0.6 已降过)
+                fc.append("[").append(audioOutTag).append("][bgm_a]")
+                  .append("amix=inputs=2:duration=longest:dropout_transition=0")
+                  .append("[mix_a];");
+                audioOutTag = "mix_a";
+            } else {
+                audioOutTag = "bgm_a";
+            }
+        }
+
+        // overlay 链：每张图按 slot.rect 精确定位 + 缩放（force_original_aspect_ratio=decrease 防止失真）
         String prev = "fx";
         for (int i = 0; i < overlayCount; i++) {
             int inputIdx = segCount + i;
             String tag = "ov" + i;
-            // 缩放：保证不超过画面 60% 宽
+
+            int rx, ry, rw, rh;
+            if (useRealOverlay && overlays.get(i).rect != null) {
+                NormRect r = overlays.get(i).rect;
+                rx = (int) Math.round(r.x * W);
+                ry = (int) Math.round(r.y * H);
+                rw = Math.max(2, (int) Math.round(r.w * W));
+                rh = Math.max(2, (int) Math.round(r.h * H));
+            } else {
+                // 无 rect → 按位置序号兜底（保留旧逻辑）
+                int[] fallback = overlayFallback(i, overlayCount, W, H, useRealOverlay);
+                rx = fallback[0]; ry = fallback[1]; rw = fallback[2]; rh = fallback[3];
+            }
+
             fc.append("[").append(inputIdx).append(":v]")
-              .append("format=yuva420p,scale='if(gt(iw,ih),iw*min(1,432/iw),iw*min(1,432/ih))':-1")
+              .append("format=yuva420p,scale=").append(rw).append(":").append(rh)
+              .append(":force_original_aspect_ratio=decrease,")
+              .append("pad=").append(rw).append(":").append(rh)
+              .append(":(ow-iw)/2:(oh-ih)/2:color=0x00000000")
               .append("[").append(tag).append("s];");
-            String pos = overlayPosition(i, overlayCount, useRealOverlay);
             fc.append("[").append(prev).append("][").append(tag).append("s]")
-              .append("overlay=").append(pos)
-              .append(":enable='between(t,").append(i == 0 ? "0.5" : Integer.toString(i)).append(",")
+              .append("overlay=x=").append(rx).append(":y=").append(ry)
+              .append(":enable='between(t,").append(i == 0 ? "0.0" : "0.0").append(",")
               .append(totalDuration - 1).append(")'");
             String outTag = "ovl" + i;
             fc.append("[").append(outTag).append("];");
@@ -424,6 +665,9 @@ public class MixcutRenderingService {
         args.add("-filter_complex");
         args.add(fc.toString());
         args.add("-map"); args.add("[out]");
+        if (hasAudio && audioOutTag != null) {
+            args.add("-map"); args.add("[" + audioOutTag + "]");
+        }
 
         // 编码
         args.add("-t"); args.add(format((double) totalDuration));
@@ -431,29 +675,42 @@ public class MixcutRenderingService {
         args.add("-preset"); args.add("ultrafast");
         args.add("-crf"); args.add("24");
         args.add("-pix_fmt"); args.add("yuv420p");
+        if (hasAudio && audioOutTag != null) {
+            args.add("-c:a"); args.add("aac");
+            args.add("-b:a"); args.add("128k");
+            args.add("-ar"); args.add("44100");
+            args.add("-ac"); args.add("2");
+        } else {
+            args.add("-an"); // 显式无音轨,避免某些播放器报错
+        }
         args.add("-movflags"); args.add("+faststart");
         args.add(outFile.getAbsolutePath());
 
-        log.info("[mixcut] ffmpeg variant={} segs={} overlays={} ({}) speed={} brightness={} mirror={}",
-                variantIndex, segCount, overlayCount, useRealOverlay ? "user" : "fallback",
+        log.info("[mixcut] ffmpeg variant={} canvas={}x{} segs={} overlays={} ({}) audio={} speed={} brightness={} mirror={}",
+                variantIndex, W, H, segCount, overlayCount, useRealOverlay ? "user" : "fallback",
+                hasAudio ? (useBgm ? (useSourceAudio ? "source+bgm" : "bgm") : "source") : "none",
                 speed, brightness, mirror);
         String out = ffmpeg.runFfmpeg(args);
         log.debug("[mixcut] ffmpeg stderr tail: {}",
                 out.length() > 500 ? out.substring(out.length() - 500) : out);
     }
 
-    /** overlay 位置策略（基于序号与总数）。 */
-    private static String overlayPosition(int idx, int total, boolean useRealOverlay) {
-        if (!useRealOverlay) return "x=(W-w)/2:y=H-220";
+    /** 无 slot.rect 时按序号兜底定位。返回 [x, y, w, h] 像素值。 */
+    private static int[] overlayFallback(int idx, int total, int W, int H, boolean useRealOverlay) {
+        int defaultW = (int) (W * 0.6);
+        int defaultH = (int) (H * 0.08);
+        if (!useRealOverlay) {
+            return new int[]{ (W - defaultW) / 2, H - 220, defaultW, defaultH };
+        }
         return switch (total) {
-            case 1 -> "x=(W-w)/2:y=H-h-120";  // 单张：底部居中
+            case 1 -> new int[]{ (W - defaultW) / 2, H - defaultH - 120, defaultW, defaultH };
             case 2 -> idx == 0
-                    ? "x=(W-w)/2:y=180"            // 第 1：顶部中
-                    : "x=(W-w)/2:y=H-h-120";       // 第 2：底部中
+                    ? new int[]{ (W - defaultW) / 2, 180, defaultW, defaultH }
+                    : new int[]{ (W - defaultW) / 2, H - defaultH - 120, defaultW, defaultH };
             default -> switch (idx) {
-                case 0 -> "x=40:y=180";              // 左上
-                case 1 -> "x=W-w-40:y=180";          // 右上
-                default -> "x=(W-w)/2:y=H-h-120";    // 底部中
+                case 0 -> new int[]{ 40, 180, defaultW / 2, defaultH };
+                case 1 -> new int[]{ W - defaultW / 2 - 40, 180, defaultW / 2, defaultH };
+                default -> new int[]{ (W - defaultW) / 2, H - defaultH - 120, defaultW, defaultH };
             };
         };
     }

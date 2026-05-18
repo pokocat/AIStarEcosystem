@@ -36,6 +36,17 @@ export interface SlotPerturbation {
   pitch_range?: [number, number];
 }
 
+/**
+ * 每个 slot 的扰动准入。所有字段省略时按 layer_type 取默认（见 perturbation-defaults.ts）。
+ * 用户/模板设计师可在此覆盖，比如把"文字"slot 的 allow_mirror 显式置 false。
+ */
+export interface SlotPerturbationPolicy {
+  allow_mirror?: boolean;
+  allow_position_jitter?: boolean;
+  allow_scale_jitter?: boolean;
+  allow_speed_jitter?: boolean;
+}
+
 export interface TemplateSlot {
   slot_id: string;
   layer_type: LayerType;
@@ -55,6 +66,8 @@ export interface TemplateSlot {
   user_editable: boolean;
   required: boolean;
   perturbation?: SlotPerturbation;
+  /** 槽位级扰动准入。省略时按 layer_type 默认。 */
+  perturbation_policy?: SlotPerturbationPolicy;
   label?: string;
 }
 
@@ -76,12 +89,25 @@ export interface TemplateMetadata {
   hit_rate?: number;
 }
 
+/**
+ * v0.11: 流程模板 —— 每个 TemplateScene 是一段连续画面,串行拼接成最终视频。
+ * 场景内的 slot.time_range 是相对本场景的 0..scene.duration。
+ * 总片长 canvas.duration 必须 = sum(scenes[].duration)。
+ */
+export interface TemplateScene {
+  id: string;
+  label: string;
+  duration: number;
+  slots: TemplateSlot[];
+}
+
 export interface Template {
   template_id: string;
   name: string;
   version: string;
   canvas: TemplateCanvas;
-  slots: TemplateSlot[];
+  /** 场景串行,每个场景独立组合。一定至少 1 个场景。 */
+  scenes: TemplateScene[];
   perturbation_profile: PerturbationProfile;
   output_variants_default: number;
   quality_gate: { min_phash_distance: number; max_retries: number };
@@ -148,12 +174,40 @@ export interface MixcutAsset {
 }
 
 export type SlotBinding =
-  | { source: "library"; asset_id: string }
+  | { source: "library"; asset_id: string; preview_url?: string }
   | { source: "upload"; file_url: string; preview_url?: string }
   | { source: "input"; text: string }
   | { source: "fixed" };
 
 export type JobStatus = "pending" | "queued" | "running" | "success" | "failed" | "partial";
+
+/**
+ * 任务级扰动总开关。前端 create 页面用户勾选；服务端渲染时短路对应算子。
+ * 与 SlotPerturbationPolicy 的关系：
+ *  - 任务级 false → 所有 slot 的该项一律跳过（最强短路）
+ *  - 任务级 true  → 再按 slot policy 决定是否对该 slot 生效
+ */
+export interface PerturbationOverrides {
+  allow_mirror?: boolean;
+  allow_speed?: boolean;
+  allow_brightness?: boolean;
+  allow_saturation?: boolean;
+}
+
+/** 任务提交时随 binding 一并下发的模板快照，避免后端依赖模板表。 */
+export interface CanvasSnapshot {
+  width: number;
+  height: number;
+  fps?: number;
+}
+
+export interface SlotSnapshot {
+  slot_id: string;
+  layer_type: LayerType;
+  rect?: Rect;
+  z_index: number;
+  perturbation_policy?: SlotPerturbationPolicy;
+}
 
 export interface RenderOutput {
   id: string;
@@ -193,6 +247,11 @@ export interface RenderJob {
   created_at: string;
   completed_at?: string;
   outputs?: RenderOutput[];
+  /** v0.10: 模板快照,服务端按此严格定位。缺省时退回旧逻辑（720×1280 + 序号位置）。 */
+  canvas_snapshot?: CanvasSnapshot;
+  slots_snapshot?: SlotSnapshot[];
+  /** v0.10: 任务级扰动总开关。 */
+  perturbation_overrides?: PerturbationOverrides;
 }
 
 export interface ActivationCode {

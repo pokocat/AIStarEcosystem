@@ -12,6 +12,7 @@ import {
   Plus,
   Loader2,
   AlertCircle,
+  Play,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
@@ -28,7 +29,7 @@ const TAB_LABEL: Record<TabKind, string> = {
   video: "明星片段 / 视频",
   image: "商品图",
   sticker: "贴图",
-  bgm: "BGM",
+  bgm: "背景音乐",
 };
 
 const ACCEPT_MIME: Record<TabKind, string> = {
@@ -101,7 +102,7 @@ export default function MixcutLibraryPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">素材库</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            管理上传的视频、商品图、贴图与 BGM；混剪任务从这里挑素材
+            管理上传的视频、商品图、贴图与背景音乐；生成任务时从这里挑素材
           </p>
         </div>
         <Button
@@ -159,7 +160,7 @@ export default function MixcutLibraryPage() {
             </TabsTrigger>
             <TabsTrigger value="bgm" className="gap-1">
               <Music className="size-3" />
-              BGM
+              背景音乐
               <Badge variant="muted" className="ml-1 text-[10px]">
                 {assets.bgm?.length ?? "…"}
               </Badge>
@@ -246,7 +247,7 @@ function AssetGrid({
       <Card className="border-dashed">
         <CardContent className="p-12 text-center text-muted-foreground text-sm">
           <Upload className="size-8 mx-auto mb-3" />
-          <div className="mb-3">还没有 {kind} 类型素材</div>
+          <div className="mb-3">还没有「{TAB_LABEL[kind]}」素材</div>
           <Button variant="outline" size="sm" onClick={onUploadClick}>
             <Plus className="size-3" /> 上传第一个
           </Button>
@@ -281,25 +282,7 @@ function AssetGrid({
     >
       {filtered.map((a) => (
         <Card key={a.id} className="overflow-hidden group hover:border-foreground/30 transition-colors">
-          {isMedia && (
-            <div className="aspect-video bg-black grid place-items-center relative">
-              <video
-                src={a.file_url}
-                className="w-full h-full object-contain"
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
-                onMouseLeave={(e) => (e.target as HTMLVideoElement).pause()}
-              />
-              {a.duration > 0 && (
-                <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-mono">
-                  {formatDuration(a.duration)}
-                </div>
-              )}
-            </div>
-          )}
+          {isMedia && <VideoThumb asset={a} />}
           {isImage && (
             <div className="aspect-square bg-secondary/30 grid place-items-center overflow-hidden">
               <img src={a.file_url} alt={a.name} className="w-full h-full object-cover" />
@@ -341,7 +324,7 @@ function AssetGrid({
                 </button>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <Badge variant="muted" className="text-[10px]">{a.kind}</Badge>
+                <Badge variant="muted" className="text-[10px]">{TAB_LABEL[a.kind as TabKind] ?? a.kind}</Badge>
                 {a.tags && <span className="text-[10px] text-muted-foreground">#{a.tags}</span>}
               </div>
               <div className="text-[10px] text-muted-foreground">
@@ -351,6 +334,59 @@ function AssetGrid({
           )}
         </Card>
       ))}
+    </div>
+  );
+}
+
+// 视频缩略图:
+//  - 默认状态:16:9 容器 + object-cover 中心裁切(无黑边、视觉像图片画廊),叠 play 按钮 + 时长徽标
+//  - 点击激活:切到 object-contain 显示完整画面 + 原生 controls(含进度条)
+// 改造点:
+//  ① 去掉 hover 自动播放(扫视列表不会被打扰)
+//  ② 进度条 / 暂停 / 音量 / 全屏走浏览器原生 controls,免造轮子
+//  ③ 容器保持 aspect-video 不变高,避免「太长」;但用 object-cover 化掉竖屏黑边
+function VideoThumb({ asset }: { asset: MixcutAsset }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [activated, setActivated] = useState(false);
+
+  const handleActivate = () => {
+    setActivated(true);
+    // controls 切到 visible 后,下一 tick 调 play 避免被叠层吞掉
+    requestAnimationFrame(() => {
+      videoRef.current?.play().catch(() => {});
+    });
+  };
+
+  return (
+    <div className="aspect-video bg-black relative overflow-hidden">
+      <video
+        ref={videoRef}
+        src={asset.file_url}
+        className={`w-full h-full transition-[object-fit] ${activated ? "object-contain" : "object-cover"}`}
+        playsInline
+        preload="metadata"
+        controls={activated}
+        onPlay={() => setActivated(true)}
+      />
+      {!activated && (
+        <>
+          <button
+            type="button"
+            onClick={handleActivate}
+            className="absolute inset-0 grid place-items-center bg-gradient-to-t from-black/40 via-transparent to-black/10 hover:from-black/60 hover:to-black/20 transition-colors"
+            aria-label="播放预览"
+          >
+            <span className="size-11 rounded-full bg-white/95 grid place-items-center shadow-lg transition-transform group-hover:scale-105">
+              <Play className="size-4 text-black translate-x-0.5" fill="currentColor" />
+            </span>
+          </button>
+          {asset.duration > 0 && (
+            <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-white font-mono pointer-events-none">
+              {formatDuration(asset.duration)}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

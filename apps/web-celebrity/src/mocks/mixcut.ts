@@ -9,6 +9,7 @@ import type {
   ActivationCode,
   DeviceInfo,
 } from "@/components/mixcut-zone/types";
+import { migrateLegacyTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 
 // ============== 激活码 / 设备 ==============
 
@@ -37,7 +38,8 @@ export const mockDevice: DeviceInfo = {
 
 // ============== 模板库 ==============
 
-export const mockTemplates: Template[] = [
+// 旧版 flat-slots 写法,经 migrateLegacyTemplate 一次性升级为 scenes[] 模板
+const _rawMockTemplates: any[] = [
   {
     template_id: "tpl_glasswater_v1",
     name: "玻璃水带货 · 经典款",
@@ -387,6 +389,8 @@ export const mockTemplates: Template[] = [
     slots: [],
   },
 ];
+
+export const mockTemplates: Template[] = _rawMockTemplates.map(migrateLegacyTemplate);
 
 // ============== 明星素材库 ==============
 

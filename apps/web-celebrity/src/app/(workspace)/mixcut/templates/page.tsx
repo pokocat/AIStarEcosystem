@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { Search, Flame, Crown, Star, TrendingUp, ArrowUpRight, Filter } from "lucide-react";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
@@ -10,7 +10,8 @@ import { Input } from "@/components/mixcut-zone/ui/input";
 import { Separator } from "@/components/mixcut-zone/ui/separator";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { mockTemplates } from "@/mocks/mixcut";
-import type { Tier } from "@/components/mixcut-zone/types";
+import { MixcutApi } from "@/api";
+import type { Tier, Template } from "@/components/mixcut-zone/types";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
 
 const CATEGORIES = [
@@ -35,15 +36,21 @@ export default function MixcutTemplatesPage() {
   const [category, setCategory] = useState("全部");
   const [tier, setTier] = useState<"all" | Tier>("all");
   const [search, setSearch] = useState("");
+  // 包含用户「另存为」/「保存为我的版本」生成的模板
+  const [templates, setTemplates] = useState<Template[]>(mockTemplates);
+
+  useEffect(() => {
+    MixcutApi.listTemplates().then(setTemplates);
+  }, []);
 
   const filtered = useMemo(() => {
-    return mockTemplates.filter((t) => {
+    return templates.filter((t) => {
       if (category !== "全部" && t.metadata.category !== category) return false;
       if (tier !== "all" && t.metadata.required_tier !== tier) return false;
       if (search && !t.name.includes(search) && !t.metadata.tags.some((tag) => tag.includes(search))) return false;
       return true;
     });
-  }, [category, tier, search]);
+  }, [templates, category, tier, search]);
 
   return (
     <div className="px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto">
@@ -57,7 +64,7 @@ export default function MixcutTemplatesPage() {
         <div className="flex items-center gap-2">
           <Badge variant="muted" className="gap-1">
             <Flame className="size-3 text-orange-500" />
-            {mockTemplates.length} 个上架
+            {templates.length} 个可用
           </Badge>
           <Badge variant="muted" className="gap-1">
             <Crown className="size-3 text-amber-500" />
@@ -129,7 +136,8 @@ export default function MixcutTemplatesPage() {
           <Link key={t.template_id} href={`/mixcut/templates/${t.template_id}`} className="group">
             <div className="relative">
               <TemplatePreview template={t} showSlotChrome={false} />
-              <div className="absolute top-2 left-2 flex flex-col gap-1">
+              {/* z-20 必须 > 模板内最高 z_index (mocks 里到 20),否则贴图 / 底部品牌条会盖住 badge 和 CTA */}
+              <div className="absolute top-2 left-2 z-30 flex flex-col gap-1">
                 {t.metadata.required_tier === "professional" && (
                   <Badge variant="brand" className="gap-1 text-[10px] backdrop-blur">
                     <Crown className="size-2.5" /> 专业版
@@ -141,7 +149,7 @@ export default function MixcutTemplatesPage() {
                   </Badge>
                 )}
               </div>
-              <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black via-black/60 to-transparent rounded-b-xl opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute inset-x-0 bottom-0 z-30 p-3 bg-gradient-to-t from-black via-black/70 to-transparent rounded-b-xl opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button variant="gradient" size="sm" className="w-full">
                   立即使用 <ArrowUpRight className="size-3" />
                 </Button>

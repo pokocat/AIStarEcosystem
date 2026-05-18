@@ -36,6 +36,19 @@ public class MixcutRenderJob {
     @Column(name = "slot_bindings_json", columnDefinition = "TEXT")
     private String slotBindingsJson;
 
+    /** v0.10: 画布快照（{width,height,fps}），缺省回退 720x1280。 */
+    @Column(name = "canvas_snapshot_json", columnDefinition = "TEXT")
+    private String canvasSnapshotJson;
+
+    /** v0.10: 槽位快照数组（[{slot_id, layer_type, rect, z_index, perturbation_policy}]）。 */
+    @Lob
+    @Column(name = "slots_snapshot_json", columnDefinition = "TEXT")
+    private String slotsSnapshotJson;
+
+    /** v0.10: 任务级扰动总开关 {allow_mirror, allow_speed, allow_brightness, allow_saturation}。 */
+    @Column(name = "perturbation_overrides_json", columnDefinition = "TEXT")
+    private String perturbationOverridesJson;
+
     /** light / moderate / aggressive */
     @Column(length = 16, nullable = false)
     private String perturbationProfile;
@@ -104,4 +117,13 @@ public class MixcutRenderJob {
 
     public List<MixcutRenderOutput> getOutputs() { return outputs; }
     public void setOutputs(List<MixcutRenderOutput> outputs) { this.outputs = outputs; }
+
+    public String getCanvasSnapshotJson() { return canvasSnapshotJson; }
+    public void setCanvasSnapshotJson(String canvasSnapshotJson) { this.canvasSnapshotJson = canvasSnapshotJson; }
+
+    public String getSlotsSnapshotJson() { return slotsSnapshotJson; }
+    public void setSlotsSnapshotJson(String slotsSnapshotJson) { this.slotsSnapshotJson = slotsSnapshotJson; }
+
+    public String getPerturbationOverridesJson() { return perturbationOverridesJson; }
+    public void setPerturbationOverridesJson(String perturbationOverridesJson) { this.perturbationOverridesJson = perturbationOverridesJson; }
 }
