@@ -45,6 +45,7 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
                         .requestMatchers("/api/me/**").authenticated()
+                        .requestMatchers("/api/mixcut/**").authenticated()
                         // Internal service-to-service endpoints — InternalAuthFilter 已校验 X-Internal-Secret
                         .requestMatchers("/api/internal/**").hasRole("INTERNAL")
                         // Admin endpoints require platform admin staff roles

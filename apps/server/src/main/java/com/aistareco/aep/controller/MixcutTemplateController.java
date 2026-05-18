@@ -7,6 +7,7 @@ import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 
 /**
@@ -33,11 +34,8 @@ public class MixcutTemplateController {
     }
 
     @GetMapping
-    public ApiResponse<List<MixcutTemplateDto>> list(
-            @RequestParam(value = "user_id", required = false) String userIdParam,
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader
-    ) {
-        var userId = firstNonBlank(userIdParam, userIdHeader);
+    public ApiResponse<List<MixcutTemplateDto>> list(Principal principal) {
+        var userId = currentUserId(principal);
         var rows = service.listForUser(userId).stream()
                 .map(t -> MixcutTemplateDto.from(t, mapper))
                 .toList();
@@ -45,12 +43,8 @@ public class MixcutTemplateController {
     }
 
     @GetMapping("/{templateId}")
-    public ApiResponse<MixcutTemplateDto> get(
-            @PathVariable String templateId,
-            @RequestParam(value = "user_id", required = false) String userIdParam,
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader
-    ) {
-        var userId = firstNonBlank(userIdParam, userIdHeader);
+    public ApiResponse<MixcutTemplateDto> get(@PathVariable String templateId, Principal principal) {
+        var userId = currentUserId(principal);
         return ApiResponse.of(
                 service.getForUser(templateId, userId)
                         .map(t -> MixcutTemplateDto.from(t, mapper))
@@ -62,8 +56,7 @@ public class MixcutTemplateController {
     public ApiResponse<MixcutTemplateDto> upsert(
             @PathVariable String templateId,
             @RequestBody MixcutTemplateUpsertRequest req,
-            @RequestParam(value = "user_id", required = false) String userIdParam,
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader
+            Principal principal
     ) {
         // path 与 body 中 templateId 不一致时以 path 为准
         if (req.templateId() == null || !templateId.equals(req.templateId())) {
@@ -79,24 +72,18 @@ public class MixcutTemplateController {
                     req.metadata()
             );
         }
-        var userId = firstNonBlank(userIdParam, userIdHeader);
+        var userId = currentUserId(principal);
         var saved = service.upsertForUser(req, userId);
         return ApiResponse.of(MixcutTemplateDto.from(saved, mapper));
     }
 
     @DeleteMapping("/{templateId}")
-    public ApiResponse<Boolean> delete(
-            @PathVariable String templateId,
-            @RequestParam(value = "user_id", required = false) String userIdParam,
-            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader
-    ) {
-        var userId = firstNonBlank(userIdParam, userIdHeader);
+    public ApiResponse<Boolean> delete(@PathVariable String templateId, Principal principal) {
+        var userId = currentUserId(principal);
         return ApiResponse.of(service.deleteUserCopy(templateId, userId));
     }
 
-    private static String firstNonBlank(String a, String b) {
-        if (a != null && !a.isBlank()) return a;
-        if (b != null && !b.isBlank()) return b;
-        return null;
+    private static String currentUserId(Principal principal) {
+        return principal == null ? null : principal.getName();
     }
 }
