@@ -160,6 +160,7 @@ export function CreateClient({ id }: { id: string }) {
         rect: s.rect,
         z_index: s.z_index,
         perturbation_policy: resolvePolicy(s.layer_type, merged),
+        fit: s.fit ?? "cover",
       };
     });
 

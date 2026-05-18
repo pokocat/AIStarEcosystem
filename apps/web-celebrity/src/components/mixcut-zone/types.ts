@@ -207,6 +207,11 @@ export interface SlotSnapshot {
   rect?: Rect;
   z_index: number;
   perturbation_policy?: SlotPerturbationPolicy;
+  /**
+   * 填充方式（v0.13+）：cover = 填满裁切，contain = 完整居中（背景用原图高斯模糊）。
+   * 缺省退回 "cover"。
+   */
+  fit?: "cover" | "contain";
 }
 
 export interface RenderOutput {

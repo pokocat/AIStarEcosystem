@@ -55,3 +55,11 @@ export function flatSlotsAbsolute(template: Template): TemplateSlot[] {
 export function totalDuration(template: Template): number {
   return template.scenes.reduce((acc, s) => acc + s.duration, 0);
 }
+
+/**
+ * 解析 slot 的填充方式。默认 "cover"（带货场景下填满优先）。
+ * cover = 填满裁切；contain = 完整显示，模糊背景填充 letterbox。
+ */
+export function resolveFit(slot: TemplateSlot): "cover" | "contain" {
+  return slot.fit ?? "cover";
+}
