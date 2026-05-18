@@ -48,9 +48,17 @@ export function JobDetailClient({ id }: { id: string }) {
       });
     };
     tick();
-    // 渲染中持续刷新；完成后停止
+    // 渲染中持续刷新；success 但 outputs 未同步完整时继续短轮询。
     const timer = setInterval(() => {
-      if (job?.status === "running" || job?.status === "queued" || job?.status === "pending") {
+      const outputCount = job?.outputs?.length ?? 0;
+      const outputsIncomplete =
+        job?.status === "success" && !job.error_message && outputCount < Math.max(1, job.output_variants);
+      if (
+        job?.status === "running" ||
+        job?.status === "queued" ||
+        job?.status === "pending" ||
+        outputsIncomplete
+      ) {
         tick();
       }
     }, 800);
@@ -58,7 +66,7 @@ export function JobDetailClient({ id }: { id: string }) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [id, job?.status]);
+  }, [id, job?.status, job?.outputs?.length, job?.output_variants]);
 
   // 切换变体时,把当前 video 暂停并回到第 0 秒(下一帧渲染时换 src,但要保证状态干净)
   useEffect(() => {
@@ -67,6 +75,13 @@ export function JobDetailClient({ id }: { id: string }) {
     v.pause();
     setIsPlaying(false);
   }, [selectedVariant]);
+
+  useEffect(() => {
+    const outputCount = job?.outputs?.length ?? 0;
+    if (outputCount > 0 && selectedVariant >= outputCount) {
+      setSelectedVariant(outputCount - 1);
+    }
+  }, [job?.outputs?.length, selectedVariant]);
 
   if (job === undefined) {
     return (
@@ -77,9 +92,16 @@ export function JobDetailClient({ id }: { id: string }) {
   }
   if (job === null) notFound();
 
+  const outputs = job.outputs ?? [];
+  const hasOutputs = outputs.length > 0;
+  const renderFailed =
+    job.status === "failed" ||
+    (job.status === "success" && !hasOutputs && Boolean(job.error_message));
   const template = mockTemplates.find((t) => t.template_id === job.template_id);
-  const isProcessing = job.status === "running" || job.status === "queued" || job.status === "pending";
-  const completed = job.status === "success";
+  const isProcessing = !renderFailed && (job.status === "running" || job.status === "queued" || job.status === "pending");
+  const completed = job.status === "success" && !renderFailed;
+  const outputsPending = completed && !hasOutputs;
+  const displayStatus = renderFailed ? "failed" : job.status;
 
   return (
     <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
@@ -94,7 +116,7 @@ export function JobDetailClient({ id }: { id: string }) {
       <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <StatusBadge status={job.status} />
+            <StatusBadge status={displayStatus} />
             <Badge variant="muted" className="text-[10px]">{PROFILE_LABELS[job.perturbation_profile]}</Badge>
             <Badge variant="muted" className="text-[10px]">{job.output_variants} 条</Badge>
           </div>
@@ -109,7 +131,7 @@ export function JobDetailClient({ id }: { id: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {completed && (
+          {completed && hasOutputs && (
             <>
               <Button variant="outline">
                 <Download className="size-4" /> 全部打包下载
@@ -119,7 +141,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </Button>
             </>
           )}
-          {job.status === "failed" && (
+          {renderFailed && (
             <Button variant="gradient">
               <RefreshCw className="size-4" /> 重渲
             </Button>
@@ -184,7 +206,7 @@ export function JobDetailClient({ id }: { id: string }) {
         </Card>
       )}
 
-      {job.status === "failed" && (
+      {renderFailed && (
         <Card className="mb-6 border-red-500/30 bg-red-500/[0.03]">
           <CardContent className="p-5 flex items-start gap-3">
             <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
@@ -207,21 +229,21 @@ export function JobDetailClient({ id }: { id: string }) {
         <div>
           <Tabs defaultValue="outputs">
             <TabsList>
-              <TabsTrigger value="outputs">成片 ({job.outputs?.length ?? 0})</TabsTrigger>
+              <TabsTrigger value="outputs">成片 ({outputs.length})</TabsTrigger>
               <TabsTrigger value="bindings">内容明细</TabsTrigger>
               <TabsTrigger value="perturbations">每条对照表</TabsTrigger>
               <TabsTrigger value="watermark">版权水印</TabsTrigger>
             </TabsList>
 
             <TabsContent value="outputs">
-              {completed && job.outputs ? (
+              {completed && hasOutputs ? (
                 <div className="space-y-4">
                   <Card>
                     <CardContent className="p-5">
                       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-5">
                         <div>
                           {(() => {
-                            const o = job.outputs![selectedVariant];
+                            const o = outputs[selectedVariant];
                             return (
                               <VariantVideoPreview
                                 key={o.id}
@@ -252,7 +274,7 @@ export function JobDetailClient({ id }: { id: string }) {
                             <div className="text-lg font-semibold mt-0.5">第 {selectedVariant + 1} 条</div>
                           </div>
                           {(() => {
-                            const o = job.outputs![selectedVariant];
+                            const o = outputs[selectedVariant];
                             return (
                               <>
                                 <div className="grid grid-cols-2 gap-2">
@@ -317,7 +339,7 @@ export function JobDetailClient({ id }: { id: string }) {
                   </Card>
 
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                    {job.outputs.map((o, idx) => (
+                    {outputs.map((o, idx) => (
                       <button
                         key={o.id}
                         onClick={() => setSelectedVariant(idx)}
@@ -345,7 +367,11 @@ export function JobDetailClient({ id }: { id: string }) {
               ) : (
                 <Card>
                   <CardContent className="p-12 text-center text-muted-foreground text-sm">
-                    {isProcessing ? "生成完成后,成片会自动出现在这里" : "暂无成片"}
+                    {outputsPending
+                      ? "渲染已完成,正在同步成片文件…"
+                      : isProcessing
+                        ? "生成完成后,成片会自动出现在这里"
+                        : "暂无成片"}
                   </CardContent>
                 </Card>
               )}
@@ -386,7 +412,7 @@ export function JobDetailClient({ id }: { id: string }) {
                   <CardTitle className="text-base">每条做了什么处理</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {job.outputs ? (
+                  {hasOutputs ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
@@ -401,7 +427,7 @@ export function JobDetailClient({ id }: { id: string }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {job.outputs.map((o, i) => (
+                          {outputs.map((o, i) => (
                             <tr key={o.id} className="border-b border-border/50">
                               <td className="py-2 px-2">第 {i + 1} 条</td>
                               <td className="py-2 px-2">{o.applied_transforms.crop || "—"}</td>
@@ -420,7 +446,9 @@ export function JobDetailClient({ id }: { id: string }) {
                       </table>
                     </div>
                   ) : (
-                    <div className="text-center text-muted-foreground text-sm py-6">等待生成完成…</div>
+                    <div className="text-center text-muted-foreground text-sm py-6">
+                      {outputsPending ? "渲染已完成,正在同步成片文件…" : "等待生成完成…"}
+                    </div>
                   )}
                 </CardContent>
               </Card>

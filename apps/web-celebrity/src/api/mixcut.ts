@@ -22,6 +22,10 @@ const USE_LOCAL = USE_MOCK && !REAL_BACKEND;
 
 let memoryJobs: RenderJob[] | null = null;
 
+export function isLocalJobMode(): boolean {
+  return USE_LOCAL;
+}
+
 function loadJobs(): RenderJob[] {
   if (memoryJobs) return memoryJobs;
   if (typeof window === "undefined") {

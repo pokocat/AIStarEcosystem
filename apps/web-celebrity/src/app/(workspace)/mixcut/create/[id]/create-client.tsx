@@ -187,15 +187,17 @@ export function CreateClient({ id }: { id: string }) {
     await new Promise((r) => setTimeout(r, 600));
     setSubmitting(false);
 
-    // 模拟渲染进度（持续写入 localStorage；其他页面读到的是最新进度）
-    let p = 0;
-    const stepName = (pct: number): RenderJob["status"] =>
-      pct < 25 ? "running" : pct < 100 ? "running" : "success";
-    const timer = setInterval(() => {
-      p = Math.min(100, p + Math.floor(Math.random() * 12 + 6));
-      MixcutApi.updateJobProgress(jobId, p, stepName(p));
-      if (p >= 100) clearInterval(timer);
-    }, 700);
+    if (MixcutApi.isLocalJobMode()) {
+      // 仅本地 mock 模式模拟渲染进度。真后端模式由 server worker 写入进度和 outputs。
+      let p = 0;
+      const stepName = (pct: number): RenderJob["status"] =>
+        pct < 25 ? "running" : pct < 100 ? "running" : "success";
+      const timer = setInterval(() => {
+        p = Math.min(100, p + Math.floor(Math.random() * 12 + 6));
+        MixcutApi.updateJobProgress(jobId, p, stepName(p));
+        if (p >= 100) clearInterval(timer);
+      }, 700);
+    }
 
     router.push(`/mixcut/jobs/${jobId}`);
   };

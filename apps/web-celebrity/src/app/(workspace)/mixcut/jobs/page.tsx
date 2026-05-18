@@ -62,7 +62,10 @@ export default function MixcutJobsPage() {
   }, [refresh]);
 
   const hasActive = useMemo(
-    () => jobs.some((j) => j.status === "running" || j.status === "queued" || j.status === "pending"),
+    () => jobs.some((j) => {
+      const status = effectiveJobStatus(j);
+      return status === "running" || status === "queued" || status === "pending";
+    }),
     [jobs]
   );
 
@@ -74,7 +77,8 @@ export default function MixcutJobsPage() {
 
   const filtered = useMemo(() => {
     return jobs.filter((j) => {
-      if (filter !== "all" && j.status !== filter) return false;
+      const status = effectiveJobStatus(j);
+      if (filter !== "all" && status !== filter) return false;
       if (search && !j.template_name?.includes(search) && !j.id.includes(search)) return false;
       return true;
     });
@@ -82,10 +86,10 @@ export default function MixcutJobsPage() {
 
   const counts = {
     all: jobs.length,
-    running: jobs.filter((j) => j.status === "running").length,
-    queued: jobs.filter((j) => j.status === "queued").length,
-    success: jobs.filter((j) => j.status === "success").length,
-    failed: jobs.filter((j) => j.status === "failed").length,
+    running: jobs.filter((j) => effectiveJobStatus(j) === "running").length,
+    queued: jobs.filter((j) => effectiveJobStatus(j) === "queued").length,
+    success: jobs.filter((j) => effectiveJobStatus(j) === "success").length,
+    failed: jobs.filter((j) => effectiveJobStatus(j) === "failed").length,
   };
 
   return (
@@ -179,6 +183,8 @@ export default function MixcutJobsPage() {
 }
 
 function JobRow({ job }: { job: RenderJob }) {
+  const status = effectiveJobStatus(job);
+
   return (
     <Card className="overflow-hidden hover:border-foreground/30 transition-colors">
       <Link href={`/mixcut/jobs/${job.id}`} className="block">
@@ -186,7 +192,7 @@ function JobRow({ job }: { job: RenderJob }) {
           <div className="flex items-center gap-4">
             <div className="w-16 aspect-[9/16] rounded-md bg-gradient-to-br from-slate-700 to-slate-900 shrink-0 grid place-items-center relative overflow-hidden">
               <Video className="size-5 text-white/40" />
-              {job.status === "success" && (
+              {status === "success" && (
                 <div className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
                   <PlayCircle className="size-5 text-white" />
                 </div>
@@ -196,7 +202,7 @@ function JobRow({ job }: { job: RenderJob }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="font-medium truncate">{job.template_name}</div>
-                <StatusBadge status={job.status} />
+                <StatusBadge status={status} />
                 <Badge variant="muted" className="text-[10px]">{PROFILE_LABELS[job.perturbation_profile]}</Badge>
               </div>
 
@@ -214,7 +220,7 @@ function JobRow({ job }: { job: RenderJob }) {
                 )}
               </div>
 
-              {(job.status === "running" || job.status === "queued") && (
+              {(status === "running" || status === "queued") && (
                 <div className="mt-2 flex items-center gap-2">
                   <Progress
                     value={job.progress}
@@ -225,7 +231,7 @@ function JobRow({ job }: { job: RenderJob }) {
                 </div>
               )}
 
-              {job.status === "failed" && job.error_message && (
+              {status === "failed" && job.error_message && (
                 <div className="mt-2 text-xs text-red-400 flex items-center gap-1.5">
                   <AlertCircle className="size-3" />
                   {job.error_message}
@@ -234,7 +240,7 @@ function JobRow({ job }: { job: RenderJob }) {
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
-              {job.status === "success" && (
+              {status === "success" && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -247,7 +253,7 @@ function JobRow({ job }: { job: RenderJob }) {
                   <span className="hidden md:inline">下载</span>
                 </Button>
               )}
-              {(job.status === "failed" || job.status === "success") && (
+              {(status === "failed" || status === "success") && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -277,6 +283,13 @@ function JobRow({ job }: { job: RenderJob }) {
       </Link>
     </Card>
   );
+}
+
+function effectiveJobStatus(job: RenderJob): JobStatus {
+  if (job.status === "success" && !(job.outputs?.length) && job.error_message) {
+    return "failed";
+  }
+  return job.status;
 }
 
 function StatusBadge({ status }: { status: string }) {
