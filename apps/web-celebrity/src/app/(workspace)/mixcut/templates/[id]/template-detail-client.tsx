@@ -547,11 +547,30 @@ export function TemplateDetailClient({
             </Button>
           </div>
         ) : (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/mixcut/templates/${id}/edit`}>
-              <Pencil className="size-3.5" /> 编辑模板
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/mixcut/templates/${id}/edit`}>
+                <Pencil className="size-3.5" /> 编辑模板
+              </Link>
+            </Button>
+            {editableSlots.length === 0 ? (
+              <Button
+                variant="gradient"
+                size="sm"
+                disabled
+                title="该模板暂无内容位，请先点「编辑模板」添加"
+              >
+                <Sparkles className="size-3.5" /> 使用此模板
+              </Button>
+            ) : (
+              <Button variant="gradient" size="sm" asChild>
+                <Link href={`/mixcut/create/${display.template_id}`}>
+                  <Sparkles className="size-3.5" /> 使用此模板
+                  <ChevronRight className="size-3.5" />
+                </Link>
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -870,35 +889,6 @@ export function TemplateDetailClient({
             </CardContent>
           </Card>
 
-          {!editing && (
-            <>
-              {editableSlots.length === 0 ? (
-                <>
-                  <Button variant="gradient" size="xl" className="w-full" disabled>
-                    <Sparkles className="size-4" />
-                    模板还没有内容位
-                    <ChevronRight className="size-4" />
-                  </Button>
-                  <div className="text-[10px] text-center text-muted-foreground">
-                    先点上方「编辑」加几个内容位,才能用这个模板创建视频
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Button variant="gradient" size="xl" className="w-full" asChild>
-                    <Link href={`/mixcut/create/${display.template_id}`}>
-                      <Sparkles className="size-4" />
-                      使用此模板创建
-                      <ChevronRight className="size-4" />
-                    </Link>
-                  </Button>
-                  <div className="text-[10px] text-center text-muted-foreground">
-                    创建后系统将自动嵌入追溯水印
-                  </div>
-                </>
-              )}
-            </>
-          )}
         </aside>
         )}
       </div>
