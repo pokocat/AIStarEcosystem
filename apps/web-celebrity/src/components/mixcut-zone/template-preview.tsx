@@ -81,6 +81,8 @@ interface Props {
   bindings?: Record<string, SlotBinding>;
   selectedSlotId?: string | null;
   onSelectSlot?: (slotId: string | null) => void;
+  mode?: "preview" | "blueprint";
+  frameStyle?: "default" | "blueprint";
   showSlotChrome?: boolean;
   className?: string;
   /** for output preview - pseudo-random variant offset to visualize perturbation */
@@ -100,6 +102,15 @@ const LAYER_STYLES: Record<string, { bg: string; border: string; text: string; i
   text: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Type, label: "文字" },
   audio: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Music, label: "音频" },
   digital_human: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Sparkles, label: "数字人" },
+};
+
+const BLUEPRINT_LAYER_STYLES: Record<string, { bg: string; border: string; text: string; icon: any; label: string }> = {
+  video: { bg: "bg-sky-950/60", border: "border-sky-300/70", text: "text-sky-50", icon: Video, label: "视频" },
+  image: { bg: "bg-emerald-950/60", border: "border-emerald-300/70", text: "text-emerald-50", icon: ImageIcon, label: "商品图" },
+  sticker: { bg: "bg-amber-950/60", border: "border-amber-300/70", text: "text-amber-50", icon: Sticker, label: "贴图" },
+  text: { bg: "bg-rose-950/60", border: "border-rose-300/70", text: "text-rose-50", icon: Type, label: "字幕" },
+  audio: { bg: "bg-violet-950/60", border: "border-violet-300/70", text: "text-violet-50", icon: Music, label: "音频" },
+  digital_human: { bg: "bg-cyan-950/60", border: "border-cyan-300/70", text: "text-cyan-50", icon: Sparkles, label: "数字人" },
 };
 
 function jitter(seed: number, slotId: string, max: number): number {
@@ -138,17 +149,40 @@ function stickerDisplayText(slot: TemplateSlot, binding?: SlotBinding): string {
     .slice(0, 8);
 }
 
+function cleanBlueprintLabel(raw: string): string {
+  const cleaned = raw
+    .replace(/_/g, " ")
+    .trim();
+  return cleaned || raw;
+}
+
+function slotDisplayName(slot: TemplateSlot, binding?: SlotBinding): string {
+  if (binding?.source === "input" && binding.text) return binding.text;
+  if (slot.label) return slot.label;
+  if (slot.default_value) return slot.default_value;
+  if (slot.layer_type === "sticker") return stickerDisplayText(slot, binding);
+  return slot.slot_id;
+}
+
+function blueprintSlotLabel(slot: TemplateSlot, binding?: SlotBinding): string {
+  return cleanBlueprintLabel(slotDisplayName(slot, binding));
+}
+
 export function TemplatePreview({
   template,
   bindings,
   selectedSlotId,
   onSelectSlot,
+  mode = "preview",
+  frameStyle = "default",
   showSlotChrome = true,
   className,
   variantSeed,
   editable,
   onChangeSlotRect,
 }: Props) {
+  const isBlueprint = mode === "blueprint";
+  const showChrome = showSlotChrome && !isBlueprint;
   // 把音频 slot 单独拎出来,放在底部 chip 显示。flat 化 scenes → 渲染逐 slot。
   const allSlots = useMemo(() => flatSlotsOf(template), [template]);
   const visualSlots = useMemo(
@@ -162,7 +196,10 @@ export function TemplatePreview({
     <div className={cn("relative", className)}>
       <div
         ref={canvasRef}
-        className="relative w-full rounded-xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10"
+        className={cn(
+          "relative w-full rounded-xl overflow-hidden bg-black ring-1",
+          isBlueprint ? "shadow-sm ring-border/70" : "shadow-2xl ring-white/10"
+        )}
         style={{
           aspectRatio: `${template.canvas.width} / ${template.canvas.height}`,
           backgroundColor: template.canvas.background_color,
@@ -188,7 +225,9 @@ export function TemplatePreview({
               canvas={template.canvas}
               binding={bindings?.[slot.slot_id]}
               selected={selectedSlotId === slot.slot_id}
-              showChrome={showSlotChrome}
+              showChrome={showChrome}
+              blueprint={isBlueprint}
+              blueprintFrame={frameStyle === "blueprint"}
               onClick={() => onSelectSlot?.(slot.slot_id === selectedSlotId ? null : slot.slot_id)}
               extraDx={dx}
               extraDy={dy}
@@ -199,20 +238,26 @@ export function TemplatePreview({
           );
         })}
 
+        {isBlueprint && visualSlots.length === 0 && (
+          <div className="absolute inset-0 grid place-items-center text-xs text-white/60">
+            空模板
+          </div>
+        )}
+
         {/* 画布信息 */}
-        {showSlotChrome && (
+        {showChrome && (
           <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur text-[10px] text-white/80 font-mono">
             {template.canvas.width}×{template.canvas.height} · {template.canvas.duration}s · {template.canvas.fps}fps
           </div>
         )}
-        {showSlotChrome && variantSeed != null && (
+        {showChrome && variantSeed != null && (
           <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-brand-500/30 backdrop-blur text-[10px] text-brand-100 font-medium border border-brand-500/40">
             变体 #{variantSeed + 1}
           </div>
         )}
       </div>
 
-      {audioSlots.length > 0 && showSlotChrome && (
+      {audioSlots.length > 0 && showChrome && (
         <div className="mt-3 flex flex-wrap gap-2">
           {audioSlots.map((s) => {
             const Icon = LAYER_STYLES.audio.icon;
@@ -244,6 +289,8 @@ function SlotBox({
   binding,
   selected,
   showChrome,
+  blueprint,
+  blueprintFrame,
   onClick,
   extraDx,
   extraDy,
@@ -256,6 +303,8 @@ function SlotBox({
   binding?: SlotBinding;
   selected: boolean;
   showChrome: boolean;
+  blueprint: boolean;
+  blueprintFrame: boolean;
   onClick: () => void;
   extraDx: number;
   extraDy: number;
@@ -307,9 +356,46 @@ function SlotBox({
     document.addEventListener("pointercancel", onUp);
   };
   const meta = LAYER_STYLES[slot.layer_type] || LAYER_STYLES.image;
+  const blueprintFrameMeta = BLUEPRINT_LAYER_STYLES[slot.layer_type] || BLUEPRINT_LAYER_STYLES.image;
+  const usesBlueprintFrame = editable || blueprintFrame;
+  const frameMeta = usesBlueprintFrame ? blueprintFrameMeta : meta;
   const Icon = meta.icon;
   const filled = !!binding && binding.source !== "fixed";
   const mediaUrl = bindingMediaUrl(binding);
+  const displayName = slotDisplayName(slot, binding);
+
+  if (blueprint) {
+    const blueprintMeta = BLUEPRINT_LAYER_STYLES[slot.layer_type] || BLUEPRINT_LAYER_STYLES.image;
+    const BlueprintIcon = blueprintMeta.icon;
+    const iconOnly = r.w < 0.18 || r.h < 0.045;
+    const compact = r.w < 0.32 || r.h < 0.08;
+
+    return (
+      <div style={style} className="absolute pointer-events-none">
+        <div
+          className={cn(
+            "absolute inset-0 rounded-md border border-dashed shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]",
+            "flex items-center justify-center overflow-hidden backdrop-blur-[1px]",
+            blueprintMeta.bg,
+            blueprintMeta.border,
+            blueprintMeta.text
+          )}
+        >
+          <div className={cn("flex min-w-0 max-w-full items-center justify-center gap-1 px-1.5", compact && "px-1")}>
+            <BlueprintIcon className={cn("shrink-0", compact ? "size-3" : "size-3.5")} />
+            {!iconOnly && (
+              <span className={cn("min-w-0 truncate text-center font-medium leading-none", compact ? "text-[9px]" : "text-[10px]")}>
+                {blueprintSlotLabel(slot, binding)}
+              </span>
+            )}
+            {slot.required && (
+              <span className={cn("shrink-0 font-semibold leading-none", compact ? "text-[10px]" : "text-xs")}>*</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -326,11 +412,11 @@ function SlotBox({
       <div
         className={cn(
           "absolute inset-0 rounded-md border-2 transition-all overflow-hidden",
-          showChrome ? meta.border : "border-transparent",
-          showChrome && !selected && "border-dashed opacity-60 group-hover:opacity-100",
+          showChrome ? frameMeta.border : "border-transparent",
+          showChrome && !selected && (usesBlueprintFrame ? "border-dashed opacity-100" : "border-dashed opacity-60 group-hover:opacity-100"),
           selected && "border-solid ring-2 ring-brand-500/60 ring-offset-2 ring-offset-black",
           // 已绑定真实媒体的 slot 不再用类型色背景,避免遮挡真实内容
-          showChrome && !mediaUrl && meta.bg
+          showChrome && !mediaUrl && (usesBlueprintFrame ? blueprintFrameMeta.bg : meta.bg)
         )}
       >
         {/* 填充预览 */}
@@ -343,7 +429,7 @@ function SlotBox({
               )}
               style={{ textShadow: "0 1px 2px rgba(0,0,0,0.85)" }}
             >
-              {binding && binding.source === "input" ? binding.text : slot.default_value || "(主标题文案)"}
+              {binding && binding.source === "input" ? binding.text : displayName}
             </span>
           </div>
         )}
@@ -370,14 +456,14 @@ function SlotBox({
               <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900 grid place-items-center">
                 <div className="text-center text-white/80">
                   <Video className="size-8 mx-auto mb-1" />
-                  <div className="text-[10px] font-mono">明星片段已绑定</div>
+                  <div className="text-[10px] font-mono truncate max-w-[90%] mx-auto">{displayName}</div>
                 </div>
               </div>
             ) : (
               <div className="absolute inset-0 grid place-items-center text-center text-white/40">
                 <div>
                   <Video className="size-8 mx-auto mb-1" />
-                  <div className="text-[10px]">从素材库选择明星片段</div>
+                  <div className="text-[10px] truncate max-w-[90%] mx-auto">{displayName}</div>
                 </div>
               </div>
             )}
@@ -394,16 +480,16 @@ function SlotBox({
               />
             ) : filled ? (
               <div className="absolute inset-2 bg-white/95 rounded grid place-items-center">
-                <div className="text-center">
+                <div className="text-center min-w-0 max-w-full px-1">
                   <ImageIcon className="size-7 mx-auto text-slate-400" />
-                  <div className="text-[9px] mt-1 font-mono text-slate-500">商品主图</div>
+                  <div className="text-[9px] mt-1 font-mono text-slate-500 truncate">{displayName}</div>
                 </div>
               </div>
             ) : (
               <div className="absolute inset-0 grid place-items-center text-center text-white/40">
-                <div>
+                <div className="min-w-0 max-w-full px-1">
                   <ImageIcon className="size-7 mx-auto mb-1" />
-                  <div className="text-[10px]">上传商品图</div>
+                  <div className="text-[10px] truncate">{displayName}</div>
                 </div>
               </div>
             )}
@@ -423,7 +509,7 @@ function SlotBox({
               // 不论 canvas 是黑/黄/红/cream 哪种背景色,都能拉出对比、字读得出来;
               // 同一卡里多个 sticker 颜色一致,扫视时不会被花花绿绿干扰。
               <div className="px-2.5 py-1 rounded-md bg-white text-slate-900 text-[11px] font-medium max-w-full truncate shadow-sm ring-1 ring-black/10">
-                {stickerDisplayText(slot, binding)}
+                {displayName}
               </div>
             )}
           </div>
@@ -431,9 +517,9 @@ function SlotBox({
 
         {slot.layer_type === "digital_human" && (
           <div className="absolute inset-0 bg-gradient-to-br from-cyan-900/40 to-blue-900/40 grid place-items-center">
-            <div className="text-center text-cyan-200">
+            <div className="text-center text-cyan-200 min-w-0 max-w-full px-1">
               <Sparkles className="size-8 mx-auto mb-1" />
-              <div className="text-[10px] font-mono">AI 数字人</div>
+              <div className="text-[10px] font-mono truncate">{displayName}</div>
             </div>
           </div>
         )}

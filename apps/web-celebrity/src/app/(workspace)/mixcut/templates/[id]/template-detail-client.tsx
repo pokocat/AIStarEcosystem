@@ -82,6 +82,14 @@ const FILL_OPTIONS: ReadonlyArray<{ value: FillStrategy; label: string }> = [
   { value: "variable_binding", label: "跟随变量" },
 ];
 
+type ConfirmModalState = {
+  title: string;
+  body: string;
+  confirmText?: string;
+  confirmVariant?: "default" | "destructive";
+  onConfirm: () => void;
+};
+
 // 画布尺寸预设。每条带平台 / 机型语义,方便创作者按发布平台选。
 // 数值是真实输出像素 (ffmpeg 编码分辨率,非 CSS 逻辑像素)。
 const CANVAS_PRESETS: { label: string; w: number; h: number; sub: string; group: "短视频" | "手机原生" | "其他" }[] = [
@@ -128,14 +136,16 @@ export function TemplateDetailClient({
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [hasUserTemplate, setHasUserTemplate] = useState(false);
   // 画布与时长在编辑时折叠(低频改动),开关由用户控制
   const [canvasMetaOpen, setCanvasMetaOpen] = useState(false);
   // 确认对话框:replace native confirm() (P3 polish)
-  const [confirmModal, setConfirmModal] = useState<{ title: string; body: string; onConfirm: () => void } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
 
   useEffect(() => {
     MixcutApi.getTemplate(id).then((t) => {
       setTemplate(t);
+      setHasUserTemplate(MixcutApi.hasUserTemplate(id));
       setResolved(true);
     });
   }, [id]);
@@ -193,6 +203,7 @@ export function TemplateDetailClient({
   const editableSlots = flatSlots.filter((s) => s.user_editable);
   const requiredSlots = editableSlots.filter((s) => s.required);
   const isFactory = MixcutApi.isFactoryTemplate(template.template_id);
+  const canDeleteTemplate = hasUserTemplate;
 
   const enterEdit = () => {
     setWorking(structuredClone(template));
@@ -243,6 +254,7 @@ export function TemplateDetailClient({
       const updated = await MixcutApi.saveTemplate(working);
       setTemplate(updated);
       setWorking(structuredClone(updated));
+      setHasUserTemplate(true);
       setSavedAt(Date.now());
     } catch (e: any) {
       setSaveError(e?.message ?? "保存失败,请检查网络或重试");
@@ -272,6 +284,57 @@ export function TemplateDetailClient({
       setSaveAsOpen(false);
       setNewName("");
     }
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!template || !canDeleteTemplate) return;
+    const targetId = template.template_id;
+    const targetIsFactory = MixcutApi.isFactoryTemplate(targetId);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const deleted = await MixcutApi.deleteTemplate(targetId);
+      if (!deleted) {
+        setHasUserTemplate(MixcutApi.hasUserTemplate(targetId));
+        setSaveError(targetIsFactory ? "当前没有可删除的我的版本" : "删除失败,模板可能已被删除");
+        return;
+      }
+
+      if (targetIsFactory) {
+        const restored = await MixcutApi.getTemplate(targetId);
+        if (restored) {
+          setTemplate(restored);
+        }
+        setHasUserTemplate(false);
+        setWorking(null);
+        setEditing(false);
+        setSelectedSlot(null);
+        setSavedAt(null);
+        if (initialEdit) router.push(`/mixcut/templates/${targetId}`);
+        return;
+      }
+
+      router.push("/mixcut/templates");
+    } catch (e: any) {
+      setSaveError(e?.message ?? "删除失败,请稍后重试");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const requestDeleteTemplate = () => {
+    if (!template || !canDeleteTemplate) return;
+    setConfirmModal({
+      title: isFactory ? "删除我的版本?" : "删除此模板?",
+      body: isFactory
+        ? "只会删除你保存的本地版本,之后恢复显示工厂模板原版。当前未保存修改也会丢失。"
+        : "删除后无法恢复。历史生成任务不会被删除,但之后不能再用这个模板创建新任务。",
+      confirmText: "删除",
+      confirmVariant: "destructive",
+      onConfirm: () => {
+        void handleDeleteTemplate();
+      },
+    });
   };
 
   // ── 编辑器内的 mutator 工具 ────────────────────────────────────────────────
@@ -471,6 +534,11 @@ export function TemplateDetailClient({
             <Button variant="ghost" size="sm" onClick={cancelEdit}>
               <X className="size-3.5" /> 退出编辑
             </Button>
+            {canDeleteTemplate && (
+              <Button variant="destructive" size="sm" onClick={requestDeleteTemplate} disabled={saving}>
+                <Trash2 className="size-3.5" /> {isFactory ? "删除我的版本" : "删除模板"}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setSaveAsOpen(true)}>
               <Copy className="size-3.5" /> 另存为新模板
             </Button>
@@ -586,6 +654,7 @@ export function TemplateDetailClient({
                 }}
                 selectedSlotId={selectedSlot}
                 onSelectSlot={setSelectedSlot}
+                frameStyle="blueprint"
                 variantSeed={previewVariant}
                 editable={editing}
                 onChangeSlotRect={(slotId, next) => updateSlotRect(slotId, next)}
@@ -692,11 +761,11 @@ export function TemplateDetailClient({
                             >
                               <SlotCard
                                 slot={s}
+                                canvas={display.canvas}
                                 selected={isSelected}
                                 editing={editing}
                                 onSelect={() => setSelectedSlot(isSelected ? null : s.slot_id)}
                                 onChange={(patch) => updateSlot(s.slot_id, patch)}
-                                onChangeRect={(patch) => updateSlotRect(s.slot_id, patch)}
                                 onChangePolicy={(patch) => updateSlotPolicy(s.slot_id, patch)}
                                 onRemove={() => removeSlot(s.slot_id)}
                               />
@@ -913,23 +982,25 @@ function CanvasEditor({
 
 function SlotCard({
   slot,
+  canvas,
   selected,
   editing,
   onSelect,
   onChange,
-  onChangeRect,
   onChangePolicy,
   onRemove,
 }: {
   slot: TemplateSlot;
+  canvas: Template["canvas"];
   selected: boolean;
   editing: boolean;
   onSelect: () => void;
   onChange: (patch: Partial<TemplateSlot>) => void;
-  onChangeRect: (patch: Partial<NonNullable<TemplateSlot["rect"]>>) => void;
   onChangePolicy: (patch: Partial<SlotPerturbationPolicy>) => void;
   onRemove: () => void;
 }) {
+  const pixelRect = slot.rect ? rectToPixels(slot.rect, canvas) : null;
+
   if (!editing || !selected) {
     // 只读视图:所有英文 / 工程话术翻译成运营能读的中文
     return (
@@ -1018,37 +1089,24 @@ function SlotCard({
         />
       </div>
 
-      <div>
-        <div className="text-[10px] font-medium text-muted-foreground mb-1.5">
-          画面位置与大小 · <span className="text-foreground">{describeRect(slot.rect)}</span>
+      {slot.layer_type !== "audio" && (
+        <div>
+          <div className="text-[10px] font-medium text-muted-foreground mb-1.5">
+            画面位置与大小
+            {slot.rect && <span className="text-foreground"> · {describeRect(slot.rect)}</span>}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <PixelStat
+              label="素材尺寸"
+              value={pixelRect ? `${pixelRect.w} × ${pixelRect.h} px` : `${canvas.width} × ${canvas.height} px`}
+            />
+            <PixelStat
+              label="左上角坐标"
+              value={pixelRect ? `(${pixelRect.x}, ${pixelRect.y})` : "(0, 0)"}
+            />
+          </div>
         </div>
-        <div className="grid grid-cols-4 gap-2">
-          <NumField
-            label="左 (0~1)"
-            value={slot.rect?.x ?? 0}
-            min={0} max={1} step={0.01}
-            onChange={(v) => onChangeRect({ x: clamp01(v) })}
-          />
-          <NumField
-            label="上 (0~1)"
-            value={slot.rect?.y ?? 0}
-            min={0} max={1} step={0.01}
-            onChange={(v) => onChangeRect({ y: clamp01(v) })}
-          />
-          <NumField
-            label="宽 (0~1)"
-            value={slot.rect?.w ?? 1}
-            min={0.01} max={1} step={0.01}
-            onChange={(v) => onChangeRect({ w: clamp01(v) })}
-          />
-          <NumField
-            label="高 (0~1)"
-            value={slot.rect?.h ?? 1}
-            min={0.01} max={1} step={0.01}
-            onChange={(v) => onChangeRect({ h: clamp01(v) })}
-          />
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <NumField
@@ -1164,6 +1222,24 @@ function Toggle({
 }
 
 
+function rectToPixels(rect: NonNullable<TemplateSlot["rect"]>, canvas: Template["canvas"]) {
+  return {
+    x: Math.round(rect.x * canvas.width),
+    y: Math.round(rect.y * canvas.height),
+    w: Math.round(rect.w * canvas.width),
+    h: Math.round(rect.h * canvas.height),
+  };
+}
+
+function PixelStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-background/70 px-3 py-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 font-mono text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-lg bg-secondary/50 p-3">
@@ -1172,11 +1248,6 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
     </div>
   );
-}
-
-function clamp01(v: number): number {
-  if (Number.isNaN(v)) return 0;
-  return Math.max(0, Math.min(1, v));
 }
 
 function orientationLabel(w: number, h: number): string {
@@ -1327,7 +1398,7 @@ function ConfirmModal({
   modal,
   onClose,
 }: {
-  modal: { title: string; body: string; onConfirm: () => void } | null;
+  modal: ConfirmModalState | null;
   onClose: () => void;
 }) {
   if (!modal) return null;
@@ -1352,8 +1423,8 @@ function ConfirmModal({
           <Button variant="ghost" size="sm" onClick={onClose}>
             取消
           </Button>
-          <Button variant="default" size="sm" onClick={handleConfirm}>
-            确定
+          <Button variant={modal.confirmVariant ?? "default"} size="sm" onClick={handleConfirm}>
+            {modal.confirmText ?? "确定"}
           </Button>
         </div>
       </div>

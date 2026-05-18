@@ -15,6 +15,7 @@ import { mockTemplates } from "@/mocks/mixcut";
 import { MixcutApi } from "@/api";
 import type { Tier, Template } from "@/components/mixcut-zone/types";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
+import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
 
 const CATEGORIES = [
   "全部",
@@ -33,6 +34,41 @@ const TIERS: { value: "all" | Tier; label: string }[] = [
   { value: "standard", label: "标准" },
   { value: "professional", label: "专业" },
 ];
+
+const SLOT_SUMMARY_LABELS = {
+  video: "视频",
+  image: "商品图",
+  text: "字幕",
+  sticker: "贴图",
+  digital_human: "数字人",
+  audio: "音频",
+} as const;
+
+const SLOT_SUMMARY_ORDER = ["video", "image", "text", "sticker", "digital_human", "audio"] as const;
+
+function templateStructureSummary(template: Template): string {
+  const counts = flatSlotsOf(template).reduce<Record<string, number>>((acc, slot) => {
+    acc[slot.layer_type] = (acc[slot.layer_type] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const summary = SLOT_SUMMARY_ORDER
+    .filter((layerType) => counts[layerType])
+    .map((layerType) => `${counts[layerType]} ${SLOT_SUMMARY_LABELS[layerType]}`)
+    .join(" · ");
+
+  return summary || "空模板";
+}
+
+function firstScenePreviewTemplate(template: Template): Template {
+  const firstScene = template.scenes[0];
+  if (!firstScene) return template;
+  return {
+    ...template,
+    canvas: { ...template.canvas, duration: firstScene.duration },
+    scenes: [firstScene],
+  };
+}
 
 export default function MixcutTemplatesPage() {
   const router = useRouter();
@@ -180,20 +216,7 @@ export default function MixcutTemplatesPage() {
             className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <div className="relative">
-              <TemplatePreview template={t} showSlotChrome={false} />
-              {/* z-30 必须 > 模板内最高 z_index (mocks 里到 20),否则贴图 / 底部品牌条会盖住 badge */}
-              <div className="absolute top-2 left-2 z-30 flex flex-col gap-1">
-                {t.metadata.required_tier === "professional" && (
-                  <Badge variant="brand" className="gap-1 text-[10px] backdrop-blur">
-                    <Crown className="size-2.5" /> 专业版
-                  </Badge>
-                )}
-                {(t.metadata.hit_rate ?? 0) > 90 && (
-                  <Badge variant="success" className="gap-1 text-[10px] backdrop-blur">
-                    <ShieldCheck className="size-2.5" /> 不易判重
-                  </Badge>
-                )}
-              </div>
+              <TemplatePreview template={firstScenePreviewTemplate(t)} mode="blueprint" />
             </div>
             <div className="mt-3 space-y-1.5">
               <div className="flex items-start justify-between gap-2">
@@ -204,9 +227,22 @@ export default function MixcutTemplatesPage() {
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <Badge variant="muted" className="text-[10px]">{t.metadata.category}</Badge>
+                {t.metadata.required_tier === "professional" && (
+                  <Badge variant="brand" className="gap-1 text-[10px]">
+                    <Crown className="size-2.5" /> 专业版
+                  </Badge>
+                )}
+                {(t.metadata.hit_rate ?? 0) > 90 && (
+                  <Badge variant="success" className="gap-1 text-[10px]">
+                    <ShieldCheck className="size-2.5" /> 不易判重
+                  </Badge>
+                )}
                 {t.metadata.tags.slice(0, 2).map((tag) => (
                   <span key={tag} className="text-[10px] text-muted-foreground">#{tag}</span>
                 ))}
+              </div>
+              <div className="line-clamp-1 text-[10px] text-muted-foreground">
+                {templateStructureSummary(t)}
               </div>
               <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <TrendingUp className="size-2.5" />

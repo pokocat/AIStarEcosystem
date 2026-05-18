@@ -283,6 +283,12 @@ export async function deleteTemplate(id: string): Promise<boolean> {
   return mockDelay(true);
 }
 
+/** 判断 ID 是否存在用户保存版本(纯新模板或覆盖工厂模板的“我的版本”)。 */
+export function hasUserTemplate(id: string): boolean {
+  const store = loadUserTemplates();
+  return !!store[id];
+}
+
 /** 判断 ID 是否对应一条工厂模板(即不可硬删除,只能 override)。 */
 export function isFactoryTemplate(id: string): boolean {
   return mockTemplates.some((t) => t.template_id === id);
