@@ -19,6 +19,7 @@ import {
   Cpu,
   Layers,
   Wand2,
+  Fingerprint,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
@@ -232,6 +233,7 @@ export function JobDetailClient({ id }: { id: string }) {
               <TabsTrigger value="outputs">成片 ({outputs.length})</TabsTrigger>
               <TabsTrigger value="bindings">内容明细</TabsTrigger>
               <TabsTrigger value="perturbations">每条对照表</TabsTrigger>
+              <TabsTrigger value="phash">指纹对比</TabsTrigger>
               <TabsTrigger value="watermark">版权水印</TabsTrigger>
             </TabsList>
 
@@ -454,6 +456,10 @@ export function JobDetailClient({ id }: { id: string }) {
               </Card>
             </TabsContent>
 
+            <TabsContent value="phash">
+              <PhashCompareCard job={job} />
+            </TabsContent>
+
             <TabsContent value="watermark">
               <Card>
                 <CardHeader>
@@ -651,6 +657,232 @@ const VariantVideoPreview = forwardRef(function VariantVideoPreview(
     </div>
   );
 });
+
+// ── phash 指纹对比卡 ──────────────────────────────────────────────────────────
+// 把后端 aHash 64bit 指纹可视化成 8×8 比特格子:深 = 高于均值的画面区,浅 = 低于均值。
+// 变体格子上,与原片不同的比特高亮成红色,直观证明扰动确实改了画面指纹。
+// 变体多时取距离最低 / 中位 / 最高 3 条展示;少时全部展示。
+
+function PhashCompareCard({ job }: { job: RenderJob }) {
+  const outputs = job.outputs ?? [];
+  const source = job.source_phash;
+
+  if (outputs.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-12 text-center text-muted-foreground text-sm">
+          等待渲染完成后才能比对指纹。
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!source || !isValidHash(source)) {
+    return (
+      <Card>
+        <CardContent className="p-12 text-center text-muted-foreground text-sm">
+          原片指纹未生成（早期任务或后端跳过了 phash 计算）。重新生成一批即可看到对比。
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 选 3 条做对比:距离最低 / 中位 / 最高。少于 3 条全展示。
+  const sorted = outputs
+    .map((o, i) => ({ o, originalIndex: i }))
+    .sort((a, b) => a.o.phash_distance_to_source - b.o.phash_distance_to_source);
+  const picks: typeof sorted = (() => {
+    if (sorted.length <= 3) return sorted;
+    const mid = Math.floor(sorted.length / 2);
+    return [sorted[0], sorted[mid], sorted[sorted.length - 1]];
+  })();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Fingerprint className="size-4 text-brand-500" />
+          原片 vs 成片视觉指纹
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          每张视频经过 <span className="font-mono">aHash</span> 算法压成 <strong>8×8 = 64 位</strong>{" "}
+          的画面亮度指纹。深格 = 这块区域亮度高于全图平均,浅格 = 低于平均。
+          下面每条成片的 <span className="text-red-500 font-medium">红色高亮</span>{" "}
+          表示与原片不同的比特,数量越多说明画面差异越大。
+        </p>
+
+        {/* 原片 */}
+        <div className="rounded-lg border border-border bg-secondary/30 p-4">
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <div className="text-sm font-medium">原片指纹</div>
+            <code className="text-[10px] font-mono text-muted-foreground select-all">{source}</code>
+          </div>
+          <PhashGrid bits={hexToBits(source)} />
+        </div>
+
+        {/* 选中的几条变体 */}
+        <div className="space-y-3">
+          <div className="text-xs font-medium text-muted-foreground">
+            {outputs.length <= 3
+              ? `全部 ${outputs.length} 条对比`
+              : `展示差异最低 / 中位 / 最高三条（共 ${outputs.length} 条）`}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {picks.map(({ o, originalIndex }) => {
+              const variantHex = isValidHash(o.phash_signature) ? o.phash_signature : null;
+              const variantBits = variantHex ? hexToBits(variantHex) : null;
+              const sourceBits = hexToBits(source);
+              const distance = o.phash_distance_to_source;
+              const tone = distanceTone(distance);
+              return (
+                <div
+                  key={o.id}
+                  className={cn(
+                    "rounded-lg border p-3 space-y-2",
+                    tone === "high"
+                      ? "border-emerald-500/30 bg-emerald-500/[0.04]"
+                      : tone === "mid"
+                        ? "border-amber-500/30 bg-amber-500/[0.04]"
+                        : "border-red-500/30 bg-red-500/[0.04]"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-medium">第 {originalIndex + 1} 条</div>
+                    <Badge
+                      variant={tone === "high" ? "success" : tone === "mid" ? "warning" : "danger"}
+                      className="text-[10px]"
+                    >
+                      差异 {distance}/64
+                    </Badge>
+                  </div>
+                  {variantBits ? (
+                    <>
+                      <PhashGrid bits={variantBits} diffWith={sourceBits} />
+                      <DistanceBar distance={distance} />
+                      <code className="block text-[10px] font-mono text-muted-foreground truncate select-all">
+                        {variantHex}
+                      </code>
+                    </>
+                  ) : (
+                    <div className="aspect-square grid place-items-center text-[10px] text-muted-foreground">
+                      指纹不可用
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 整批指纹距离分布 —— 直方图风格的小窄条 */}
+        {outputs.length > 3 && (
+          <div className="rounded-lg border border-border p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium">{outputs.length} 条整体差异分布</div>
+              <div className="text-[10px] text-muted-foreground font-mono">
+                min {Math.min(...outputs.map((o) => o.phash_distance_to_source))} ·
+                {" "}avg {Math.round(outputs.reduce((s, o) => s + o.phash_distance_to_source, 0) / outputs.length)} ·
+                {" "}max {Math.max(...outputs.map((o) => o.phash_distance_to_source))}
+              </div>
+            </div>
+            <div className="flex items-end gap-0.5 h-12">
+              {outputs.map((o, i) => {
+                const pct = Math.min(100, (o.phash_distance_to_source / 32) * 100);
+                const tone = distanceTone(o.phash_distance_to_source);
+                return (
+                  <div
+                    key={o.id}
+                    title={`第 ${i + 1} 条 · 差异 ${o.phash_distance_to_source}/64`}
+                    className={cn(
+                      "flex-1 rounded-t transition-all",
+                      tone === "high" ? "bg-emerald-500" : tone === "mid" ? "bg-amber-500" : "bg-red-500"
+                    )}
+                    style={{ height: `${Math.max(8, pct)}%` }}
+                  />
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              一般距离 ≥ {job && (job as any).quality_gate_min ? (job as any).quality_gate_min : 10}{" "}
+              视为有效扰动;低于此值后端会自动重试。
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PhashGrid({ bits, diffWith }: { bits: number[]; diffWith?: number[] }) {
+  return (
+    <div className="grid grid-cols-8 gap-[2px] aspect-square w-full max-w-[180px] mx-auto">
+      {bits.map((b, i) => {
+        const isDiff = diffWith ? diffWith[i] !== b : false;
+        return (
+          <div
+            key={i}
+            className={cn(
+              "rounded-[1px] transition-colors",
+              isDiff
+                ? "bg-red-500 ring-1 ring-red-300"
+                : b
+                  ? "bg-foreground"
+                  : "bg-foreground/15"
+            )}
+            title={isDiff ? "与原片不同的比特" : b ? "高于均值" : "低于均值"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function DistanceBar({ distance }: { distance: number }) {
+  // 64 bit 满格;实际可用区间 0..32 已是非常显著差异。条长按 /32 算,>32 充满。
+  const pct = Math.min(100, (distance / 32) * 100);
+  const tone = distanceTone(distance);
+  return (
+    <div className="space-y-1">
+      <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all",
+            tone === "high" ? "bg-emerald-500" : tone === "mid" ? "bg-amber-500" : "bg-red-500"
+          )}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="text-[10px] text-muted-foreground">
+        汉明距离 {distance} / 64{" "}
+        {tone === "high" && "· 充分扰动"}
+        {tone === "mid" && "· 中等扰动"}
+        {tone === "low" && "· 扰动偏弱"}
+      </div>
+    </div>
+  );
+}
+
+function isValidHash(s?: string | null): s is string {
+  return !!s && s.length === 16 && /^[0-9a-fA-F]+$/.test(s);
+}
+
+function hexToBits(hex: string): number[] {
+  const bits: number[] = [];
+  for (let i = 0; i < hex.length; i++) {
+    const nibble = parseInt(hex[i], 16);
+    for (let b = 3; b >= 0; b--) {
+      bits.push((nibble >> b) & 1);
+    }
+  }
+  return bits;
+}
+
+function distanceTone(d: number): "high" | "mid" | "low" {
+  if (d >= 12) return "high";
+  if (d >= 6) return "mid";
+  return "low";
+}
 
 // 缩略图卡(底部 5 个变体网格):用 video 元素 + preload="metadata" 拿第一帧。
 // 不放 controls,避免和外层 <button> click 冲突;点击外层切换 selectedVariant。

@@ -37,14 +37,13 @@ export interface SlotPerturbation {
 }
 
 /**
- * 每个 slot 的扰动准入。所有字段省略时按 layer_type 取默认（见 perturbation-defaults.ts）。
- * 用户/模板设计师可在此覆盖，比如把"文字"slot 的 allow_mirror 显式置 false。
+ * 每个 slot 的扰动准入 —— 只覆盖"逐素材抖动"算子（位置 / 缩放）。
+ * 整段画面级算子（镜像 / 速度 / 亮度 / 饱和度）只在任务级 PerturbationOverrides 上开关,
+ * slot 上没有意义。
  */
 export interface SlotPerturbationPolicy {
-  allow_mirror?: boolean;
   allow_position_jitter?: boolean;
   allow_scale_jitter?: boolean;
-  allow_speed_jitter?: boolean;
 }
 
 export interface TemplateSlot {
@@ -182,16 +181,18 @@ export type SlotBinding =
 export type JobStatus = "pending" | "queued" | "running" | "success" | "failed" | "partial";
 
 /**
- * 任务级扰动总开关。前端 create 页面用户勾选；服务端渲染时短路对应算子。
- * 与 SlotPerturbationPolicy 的关系：
- *  - 任务级 false → 所有 slot 的该项一律跳过（最强短路）
- *  - 任务级 true  → 再按 slot policy 决定是否对该 slot 生效
+ * 任务级扰动总开关 —— 分两类：
+ *  · 整段画面（对全片生效）: allow_mirror / allow_speed / allow_brightness / allow_saturation
+ *  · 逐素材抖动（与 slot 级 SlotPerturbationPolicy 双层 AND）: allow_position_jitter / allow_scale_jitter
+ * 任一项任务级 false → 对应算子直接短路；true → 再按 slot policy 决定单个 slot 是否参与。
  */
 export interface PerturbationOverrides {
   allow_mirror?: boolean;
   allow_speed?: boolean;
   allow_brightness?: boolean;
   allow_saturation?: boolean;
+  allow_position_jitter?: boolean;
+  allow_scale_jitter?: boolean;
 }
 
 /** 任务提交时随 binding 一并下发的模板快照，避免后端依赖模板表。 */
@@ -257,6 +258,8 @@ export interface RenderJob {
   slots_snapshot?: SlotSnapshot[];
   /** v0.10: 任务级扰动总开关。 */
   perturbation_overrides?: PerturbationOverrides;
+  /** v0.x: 原片视觉指纹（aHash 64bit hex,16 字符）。用于和每条变体的 phash_signature 做汉明距离对比。 */
+  source_phash?: string;
 }
 
 export interface ActivationCode {

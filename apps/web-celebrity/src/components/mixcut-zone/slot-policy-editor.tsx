@@ -1,10 +1,10 @@
 "use client";
 
-// Per-slot 扰动准入控件。
-//  - 默认收起：一行 chip 显示当前锁定状态
-//  - 点 chip 展开：4 个 checkbox，按 layer_type 决定哪些可见
-//  - 全局算子被关 → 对应行 disabled 灰显（无论 slot 是否勾选都不会生效）
-//  - "恢复默认"清空用户覆盖，回到 layer_type 默认
+// Per-slot "逐素材抖动"准入控件。v0.x 重构：
+//  - 只保留位置 / 缩放两项（整段画面级算子搬去任务页"画面处理方式"）
+//  - 默认收起,chip 显示当前锁定状态;点开 → 2 个 checkbox
+//  - 任务级 allow_position_jitter / allow_scale_jitter 被关 → 对应行 disabled 灰显
+//  - "恢复默认"清空用户覆盖,回到 layer_type 默认
 
 import { useState } from "react";
 import { ChevronDown, RotateCcw, Lock, Info } from "lucide-react";
@@ -25,67 +25,32 @@ interface Props {
   globalOverrides: Required<PerturbationOverrides>;
 }
 
-type OpKey = "allow_mirror" | "allow_position_jitter" | "allow_scale_jitter" | "allow_speed_jitter";
+type OpKey = "allow_position_jitter" | "allow_scale_jitter";
 
 const OP_LABEL: Record<OpKey, { name: string; hint: string }> = {
-  allow_mirror: { name: "镜像", hint: "整段左右翻转" },
   allow_position_jitter: { name: "位置抖动", hint: "本槽位坐标小幅漂移" },
   allow_scale_jitter: { name: "缩放抖动", hint: "本槽位尺寸 ±5%" },
-  allow_speed_jitter: { name: "速度抖动", hint: "本槽位时长 0.9x–1.1x" },
 };
 
 const GLOBAL_KEY: Record<OpKey, keyof PerturbationOverrides> = {
-  allow_mirror: "allow_mirror",
-  allow_position_jitter: "allow_speed",        // 位置/缩放没有对应全局开关,占位
-  allow_scale_jitter: "allow_speed",            // 同上(无全局短路)
-  allow_speed_jitter: "allow_speed",
+  allow_position_jitter: "allow_position_jitter",
+  allow_scale_jitter: "allow_scale_jitter",
 };
 
-// 没有全局开关的算子（位置/缩放）不受全局影响 → 这里标记一下
-const HAS_GLOBAL_KILL: Record<OpKey, boolean> = {
-  allow_mirror: true,
-  allow_position_jitter: false,
-  allow_scale_jitter: false,
-  allow_speed_jitter: true,
-};
-
-/** 当前 layer 适用哪些算子。 */
+/** 当前 layer 适用哪些算子。音频不参与位置/缩放抖动。 */
 function applicableOps(layerType: TemplateSlot["layer_type"]): OpKey[] {
-  switch (layerType) {
-    case "video":
-    case "digital_human":
-      return ["allow_mirror", "allow_position_jitter", "allow_scale_jitter", "allow_speed_jitter"];
-    case "image":
-    case "sticker":
-    case "text":
-      return ["allow_mirror", "allow_position_jitter", "allow_scale_jitter"];
-    case "audio":
-      return ["allow_speed_jitter"];
-    default:
-      return [];
-  }
+  if (layerType === "audio") return [];
+  return ["allow_position_jitter", "allow_scale_jitter"];
 }
 
 /** chip 描述当前锁定状态。 */
 function chipText(layerType: TemplateSlot["layer_type"], resolved: Required<SlotPerturbationPolicy>): { text: string; tone: "locked" | "info" | "open" } {
-  const lockedCount = Object.values(resolved).filter((v) => v === false).length;
-  if (layerType === "text" || layerType === "sticker") {
-    return lockedCount >= 3
-      ? { text: "默认锁定方向 / 位置 / 尺寸", tone: "locked" }
-      : { text: `${4 - lockedCount}/4 算子启用`, tone: "info" };
-  }
-  if (layerType === "image") {
-    return resolved.allow_mirror && resolved.allow_scale_jitter
-      ? { text: "扰动全开", tone: "open" }
-      : { text: "商品图默认不镜像 / 不缩放抖动", tone: "info" };
-  }
-  if (layerType === "audio") {
-    return resolved.allow_speed_jitter ? { text: "音频参与变速", tone: "info" } : { text: "音频锁定原速", tone: "locked" };
-  }
-  // video / digital_human
-  return lockedCount === 0
-    ? { text: "扰动全开", tone: "open" }
-    : { text: `${4 - lockedCount}/4 算子启用`, tone: "info" };
+  const ops = applicableOps(layerType);
+  if (ops.length === 0) return { text: "不参与抖动", tone: "locked" };
+  const enabledCount = ops.filter((k) => resolved[k]).length;
+  if (enabledCount === 0) return { text: "本槽位锁位置 / 尺寸", tone: "locked" };
+  if (enabledCount === ops.length) return { text: "本槽位抖动全开", tone: "open" };
+  return { text: `${enabledCount}/${ops.length} 项启用`, tone: "info" };
 }
 
 export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: Props) {
@@ -94,10 +59,8 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
   // 模板可能在 slot.perturbation_policy 上有显式覆盖；这里合并：layer默认 ∪ 模板 ∪ 用户
   const templateOverride = slot.perturbation_policy ?? {};
   const resolved: Required<SlotPerturbationPolicy> = {
-    allow_mirror: override?.allow_mirror ?? templateOverride.allow_mirror ?? layerDefault.allow_mirror,
     allow_position_jitter: override?.allow_position_jitter ?? templateOverride.allow_position_jitter ?? layerDefault.allow_position_jitter,
     allow_scale_jitter: override?.allow_scale_jitter ?? templateOverride.allow_scale_jitter ?? layerDefault.allow_scale_jitter,
-    allow_speed_jitter: override?.allow_speed_jitter ?? templateOverride.allow_speed_jitter ?? layerDefault.allow_speed_jitter,
   };
 
   const ops = applicableOps(slot.layer_type);
@@ -120,7 +83,7 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
           tone === "info" && "border-border bg-secondary/40 text-muted-foreground hover:bg-secondary",
           tone === "open" && "border-border bg-transparent text-muted-foreground hover:bg-secondary/50",
         )}
-        title="点击展开调整本槽位扰动准入"
+        title="点击展开调整本槽位的位置 / 缩放抖动准入"
       >
         {tone === "locked" && <Lock className="size-3" />}
         {tone === "info" && <Info className="size-3" />}
@@ -135,11 +98,11 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
           onClick={(e) => e.stopPropagation()}
         >
           <div className="text-[11px] text-muted-foreground mb-1">
-            勾选 = 该算子可作用于本槽位。文字/贴图默认全锁,商品图默认锁镜像。
+            勾选 = 该抖动可作用于本槽位。整段画面的镜像 / 速度 / 亮度 / 色彩在右侧"画面处理方式"统一控制。
           </div>
           {ops.map((k) => {
             const checked = resolved[k];
-            const globalKilled = HAS_GLOBAL_KILL[k] && !globalOverrides[GLOBAL_KEY[k]];
+            const globalKilled = !globalOverrides[GLOBAL_KEY[k]];
             const layerDef = layerDefault[k];
             return (
               <label
@@ -148,7 +111,7 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
                   "flex items-start gap-2 text-xs cursor-pointer select-none",
                   globalKilled && "opacity-50 cursor-not-allowed"
                 )}
-                title={globalKilled ? "已在右侧扰动算子里关闭,此处设置不会生效" : undefined}
+                title={globalKilled ? "已在右侧'画面处理方式'里关闭,此处设置不会生效" : undefined}
               >
                 <input
                   type="checkbox"

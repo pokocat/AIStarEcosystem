@@ -34,7 +34,8 @@ public record MixcutRenderJobDto(
         @JsonProperty("outputs") List<MixcutRenderOutputDto> outputs,
         @JsonProperty("canvas_snapshot") JsonNode canvasSnapshot,
         @JsonProperty("slots_snapshot") JsonNode slotsSnapshot,
-        @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides
+        @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides,
+        @JsonProperty("source_phash") String sourcePhash
 ) {
 
     public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper) {
@@ -69,7 +70,8 @@ public record MixcutRenderJobDto(
                 outs,
                 canvasSnap,
                 slotsSnap,
-                pertOverrides
+                pertOverrides,
+                job.getSourcePhash()
         );
     }
 

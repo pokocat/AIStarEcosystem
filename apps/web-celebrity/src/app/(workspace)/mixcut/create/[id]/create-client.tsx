@@ -74,6 +74,8 @@ export function CreateClient({ id }: { id: string }) {
     allow_speed: true,
     allow_brightness: true,
     allow_saturation: true,
+    allow_position_jitter: true,
+    allow_scale_jitter: true,
   });
   const [slotPolicies, setSlotPolicies] = useState<Record<string, Partial<SlotPerturbationPolicy>>>({});
   const initFromTemplateRef = useRef(false);
@@ -370,43 +372,84 @@ export function CreateClient({ id }: { id: string }) {
 
               <Separator />
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium">画面处理方式</label>
                   <span className="text-[10px] text-muted-foreground">
-                    {Object.values(overrides).filter(Boolean).length}/4 启用
+                    {Object.values(overrides).filter(Boolean).length}/6 启用
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {([
-                    { key: "allow_mirror", label: "左右翻转", hint: "整段画面镜像翻转,提升差异度" },
-                    { key: "allow_speed", label: "微调速度", hint: "随机加速/减速 ±20%,听感几乎察觉不到" },
-                    { key: "allow_brightness", label: "亮度微调", hint: "轻微变亮/变暗,视觉无感" },
-                    { key: "allow_saturation", label: "色彩微调", hint: "颜色饱和度小幅起伏" },
-                  ] as const).map((it) => {
-                    const on = overrides[it.key];
-                    return (
-                      <button
-                        key={it.key}
-                        onClick={() => setOverrides((p) => ({ ...p, [it.key]: !p[it.key] }))}
-                        title={it.hint}
-                        className={cn(
-                          "px-2.5 py-1.5 rounded-md text-xs border transition-colors text-left",
-                          on
-                            ? "bg-foreground text-background border-foreground"
-                            : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                        )}
-                      >
-                        <div className="font-medium flex items-center justify-between">
-                          <span>{it.label}</span>
-                          <span className="text-[10px]">{on ? "✓" : "—"}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
+
+                {/* —— 整段画面（对全片生效）—— */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    整段画面 · 对全片生效
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { key: "allow_mirror", label: "左右翻转", hint: "整段画面镜像翻转,提升差异度" },
+                      { key: "allow_speed", label: "微调速度", hint: "随机加速/减速 ±20%,听感几乎察觉不到" },
+                      { key: "allow_brightness", label: "亮度微调", hint: "轻微变亮/变暗,视觉无感" },
+                      { key: "allow_saturation", label: "色彩微调", hint: "颜色饱和度小幅起伏" },
+                    ] as const).map((it) => {
+                      const on = overrides[it.key];
+                      return (
+                        <button
+                          key={it.key}
+                          onClick={() => setOverrides((p) => ({ ...p, [it.key]: !p[it.key] }))}
+                          title={it.hint}
+                          className={cn(
+                            "px-2.5 py-1.5 rounded-md text-xs border transition-colors text-left",
+                            on
+                              ? "bg-foreground text-background border-foreground"
+                              : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                          )}
+                        >
+                          <div className="font-medium flex items-center justify-between">
+                            <span>{it.label}</span>
+                            <span className="text-[10px]">{on ? "✓" : "—"}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+
+                {/* —— 逐素材抖动（叠加每个槽位的准入策略）—— */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    逐素材抖动 · 每个素材独立微动
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { key: "allow_position_jitter", label: "位置抖动", hint: "每个素材在画面里位置小幅漂移" },
+                      { key: "allow_scale_jitter", label: "缩放抖动", hint: "每个素材尺寸 ±5% 起伏" },
+                    ] as const).map((it) => {
+                      const on = overrides[it.key];
+                      return (
+                        <button
+                          key={it.key}
+                          onClick={() => setOverrides((p) => ({ ...p, [it.key]: !p[it.key] }))}
+                          title={it.hint}
+                          className={cn(
+                            "px-2.5 py-1.5 rounded-md text-xs border transition-colors text-left",
+                            on
+                              ? "bg-foreground text-background border-foreground"
+                              : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                          )}
+                        >
+                          <div className="font-medium flex items-center justify-between">
+                            <span>{it.label}</span>
+                            <span className="text-[10px]">{on ? "✓" : "—"}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  关闭后这一批不会做对应处理。文字与贴图按模板规则始终保持正向,不会被翻转。
+                  关闭后这一批不会做对应处理。文字 / 贴图 / 商品图按模板规则保留正向与原尺寸,不会被翻转或抖动。
                 </p>
               </div>
 

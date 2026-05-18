@@ -71,6 +71,14 @@ public class MixcutRenderJob {
 
     private OffsetDateTime completedAt;
 
+    /**
+     * v0.x: 原片视觉指纹（aHash 64bit hex, 16 字符）。
+     * 渲染开始时对第一段底层视频抽帧后算一次,后续每个变体的 phashDistanceToSource 都是
+     * 与此值的汉明距离,而不再是伪随机数。
+     */
+    @Column(name = "source_phash", length = 16)
+    private String sourcePhash;
+
     @OneToMany(mappedBy = "job", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @OrderBy("variantIndex ASC")
     private List<MixcutRenderOutput> outputs = new ArrayList<>();
@@ -126,4 +134,7 @@ public class MixcutRenderJob {
 
     public String getPerturbationOverridesJson() { return perturbationOverridesJson; }
     public void setPerturbationOverridesJson(String perturbationOverridesJson) { this.perturbationOverridesJson = perturbationOverridesJson; }
+
+    public String getSourcePhash() { return sourcePhash; }
+    public void setSourcePhash(String sourcePhash) { this.sourcePhash = sourcePhash; }
 }

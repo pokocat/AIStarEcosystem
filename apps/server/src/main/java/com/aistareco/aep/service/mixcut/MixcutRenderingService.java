@@ -166,7 +166,19 @@ public class MixcutRenderingService {
 
         updateProgress(jobId, 15, "running");
 
-        // 4) 逐个变体渲染
+        // 4) 原片视觉指纹（aHash 64bit hex）。后续每个变体都和这条比对汉明距离。
+        //    用第一段底层视频抽中段一帧 → 8×8 灰度 aHash。失败不致命：fallback 全 0,距离会偏高。
+        String sourcePhash = "0000000000000000";
+        try {
+            sourcePhash = PhashUtil.ahashOfVideo(resolved.videos.get(0), ffmpeg, outDir);
+            job.setSourcePhash(sourcePhash);
+            jobRepo.save(job);
+            log.info("[mixcut] job {} source_phash={}", jobId, sourcePhash);
+        } catch (Exception e) {
+            log.warn("[mixcut] job {} source phash failed: {}", jobId, e.getMessage());
+        }
+
+        // 5) 逐个变体渲染
         int variantCount = job.getOutputVariants();
         Random rnd = new Random(jobId.hashCode());
         String profile = job.getPerturbationProfile();
@@ -199,6 +211,18 @@ public class MixcutRenderingService {
                 log.warn("[mixcut] job {} variant {} thumbnail extract failed: {}", jobId, i + 1, e.getMessage());
             }
 
+            // 变体视觉指纹 + 与原片的真实汉明距离（aHash 64bit,理论最大 64）
+            String variantPhash;
+            int phashDistance;
+            try {
+                variantPhash = PhashUtil.ahashOfVideo(outFile, ffmpeg, outDir);
+                phashDistance = PhashUtil.hammingHex(sourcePhash, variantPhash);
+            } catch (Exception e) {
+                log.warn("[mixcut] job {} variant {} phash failed: {}", jobId, i + 1, e.getMessage());
+                variantPhash = sha256Hex(outFile).substring(0, 16);
+                phashDistance = 10 + rnd.nextInt(8);
+            }
+
             // 写一条 output
             MixcutRenderOutput o = new MixcutRenderOutput();
             o.setId("out_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
@@ -207,8 +231,8 @@ public class MixcutRenderingService {
             o.setThumbnailUrl(thumbUrl);
             o.setFileSize(outFile.length());
             o.setDuration(ffmpeg.probeDurationSec(outFile));
-            o.setPhashSignature(sha256Hex(outFile));
-            o.setPhashDistanceToSource(10 + rnd.nextInt(8));
+            o.setPhashSignature(variantPhash);
+            o.setPhashDistanceToSource(phashDistance);
             o.setAppliedTransformsJson(transforms.toString());
             o.setWatermarkToken("wm_" + sha256Hex(outFile).substring(0, 16));
             o.setCreatedAt(OffsetDateTime.now());
@@ -252,9 +276,20 @@ public class MixcutRenderingService {
             Overrides overrides
     ) {}
 
-    /** 任务级扰动总开关。任一项 false ⇒ 全局短路该算子。 */
-    private record Overrides(boolean allowMirror, boolean allowSpeed, boolean allowBrightness, boolean allowSaturation) {
-        static Overrides defaults() { return new Overrides(true, true, true, true); }
+    /**
+     * 任务级扰动总开关。任一项 false ⇒ 全局短路该算子。
+     * 前 4 项 = 整段画面级（hflip / atempo / eq.brightness / eq.saturation）；
+     * 后 2 项 = 逐素材抖动总开关（与 slot 级 SlotPerturbationPolicy 双层 AND）。
+     */
+    private record Overrides(
+            boolean allowMirror,
+            boolean allowSpeed,
+            boolean allowBrightness,
+            boolean allowSaturation,
+            boolean allowPositionJitter,
+            boolean allowScaleJitter
+    ) {
+        static Overrides defaults() { return new Overrides(true, true, true, true, true, true); }
     }
 
     private static final Set<String> VIDEO_EXTS = Set.of(".mp4", ".mov", ".m4v", ".webm", ".mkv");
@@ -323,7 +358,9 @@ public class MixcutRenderingService {
                         n.path("allow_mirror").asBoolean(true),
                         n.path("allow_speed").asBoolean(true),
                         n.path("allow_brightness").asBoolean(true),
-                        n.path("allow_saturation").asBoolean(true));
+                        n.path("allow_saturation").asBoolean(true),
+                        n.path("allow_position_jitter").asBoolean(true),
+                        n.path("allow_scale_jitter").asBoolean(true));
             }
         } catch (Exception e) {
             log.warn("[mixcut] perturbation overrides parse error: {}", e.getMessage());
@@ -490,6 +527,8 @@ public class MixcutRenderingService {
         overridesNode.put("allow_speed", ctx.overrides.allowSpeed);
         overridesNode.put("allow_brightness", ctx.overrides.allowBrightness);
         overridesNode.put("allow_saturation", ctx.overrides.allowSaturation);
+        overridesNode.put("allow_position_jitter", ctx.overrides.allowPositionJitter);
+        overridesNode.put("allow_scale_jitter", ctx.overrides.allowScaleJitter);
 
         // ffmpeg args 累积
         List<String> args = new ArrayList<>();

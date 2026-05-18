@@ -55,12 +55,14 @@ import { flatSlotsOf, totalDuration } from "@/components/mixcut-zone/lib/scene-h
 import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
 import { SlotPolicyEditor } from "@/components/mixcut-zone/slot-policy-editor";
 
-// SlotPolicyEditor 在模板编辑里不存在"任务级算子总开关",传 4 个全开占位
+// SlotPolicyEditor 在模板编辑里不存在"任务级算子总开关",传 6 个全开占位
 const POLICY_NO_KILL: Required<import("@/components/mixcut-zone/types").PerturbationOverrides> = {
   allow_mirror: true,
   allow_speed: true,
   allow_brightness: true,
   allow_saturation: true,
+  allow_position_jitter: true,
+  allow_scale_jitter: true,
 };
 
 const LAYER_OPTIONS: ReadonlyArray<{ value: LayerType; label: string }> = [
