@@ -43,3 +43,15 @@ aep:
     api-base: ${AEP_COZE_API_BASE:https://api.coze.cn}
     user-id-prefix: ${AEP_COZE_USER_ID_PREFIX:aep-producer-}
     read-timeout-ms: ${AEP_COZE_READ_TIMEOUT_MS:120000}
+
+# sau-service (Python + Playwright，独立 FastAPI 进程) 集成配置
+# dev: docker-compose 启 apps/sau-service:8090; prod: k8s 同 namespace
+# 共享密钥沿用 aep.internal.secret (X-Internal-Secret header)
+sau:
+  base-url: ${SAU_SERVICE_URL:http://localhost:8090}
+  shared-secret: ${AEP_INTERNAL_SECRET:aep-dev-internal-secret-change-in-prod}
+  request-timeout-ms: ${SAU_REQUEST_TIMEOUT_MS:30000}
+  # sau-service callback 回 server 的 base URL (含 /api/internal/sau 路径)
+  callback-base-url: ${SAU_CALLBACK_BASE_URL:http://localhost:8080/api/internal/sau}
+  # 默认上传扣费，单位：积分；后续可按 platform 拆 PlatformConfig
+  default-upload-cost: ${SAU_DEFAULT_UPLOAD_COST:20}
