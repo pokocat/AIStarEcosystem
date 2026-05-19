@@ -91,6 +91,24 @@ def test_verify_returns_valid_for_nonempty_state(client: TestClient) -> None:
     assert r.json()["valid"] is True
 
 
+def test_verify_real_mode_unsupported_platform_returns_invalid(monkeypatch) -> None:
+    """Real mode + a platform we haven't wired (kuaishou) must return
+    valid=False *without* importing patchright. The slim mock-mode CI doesn't
+    have the [real] extra installed, so an unguarded import would 500.
+    Also asserts we never up-flip a cookie we can't actually probe."""
+    monkeypatch.setenv("SAU_INTERNAL_SECRET", SECRET)
+    monkeypatch.setenv("SAU_MOCK_MODE", "0")
+
+    with TestClient(main.app) as client:
+        r = client.post(
+            "/accounts/verify",
+            headers=_h(),
+            json={"platform": "kuaishou", "storageState": {"cookies": [{"name": "x", "value": "y"}]}},
+        )
+        assert r.status_code == 200
+        assert r.json() == {"valid": False, "refreshedStorageState": None, "profile": None}
+
+
 def test_upload_lifecycle_pushes_callbacks(client: TestClient, tmp_path, monkeypatch) -> None:
     """Submit an upload, capture the callbacks, assert we reach status=live."""
     received: deque[dict] = deque()
