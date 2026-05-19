@@ -222,3 +222,21 @@ export const CREDIT_PACK_STATUS: Record<string, StatusMeta> = {
   active:   { label: "上架", tone: "success" },
   archived: { label: "下架", tone: "neutral" },
 };
+
+// ── 社交账号 / 发布任务（sau 集成） ───────────────────────────────────────────
+export const SOCIAL_ACCOUNT_STATUS: Record<string, StatusMeta> = {
+  active:  { label: "有效",     tone: "success" },
+  expired: { label: "登录过期", tone: "warning", actionable: true },
+  banned:  { label: "已封禁",   tone: "danger" },
+  pending: { label: "待扫码",   tone: "neutral", actionable: true },
+};
+
+export const PUBLISH_JOB_STATUS: Record<string, StatusMeta> = {
+  queued:       { label: "排队中",   tone: "neutral" },
+  uploading:    { label: "上传中",   tone: "info" },
+  transcoding:  { label: "转码中",   tone: "info" },
+  publishing:   { label: "发布中",   tone: "primary" },
+  live:         { label: "已上线",   tone: "success" },
+  failed:       { label: "失败",     tone: "danger", actionable: true },
+  cancelled:    { label: "已取消",   tone: "neutral" },
+};

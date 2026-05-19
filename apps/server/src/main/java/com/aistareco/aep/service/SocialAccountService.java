@@ -51,6 +51,20 @@ public class SocialAccountService {
                 .toList();
     }
 
+    /** Admin 视图：列出全部用户的社交账号（不带 userId 过滤）。供 AdminSocialAccountController 使用。 */
+    public List<SocialAccountDto> listAll() {
+        return repo.findAll().stream()
+                .sorted((a, b) -> {
+                    Instant ba = a.getBoundAt(), bb = b.getBoundAt();
+                    if (ba == null && bb == null) return 0;
+                    if (ba == null) return 1;
+                    if (bb == null) return -1;
+                    return bb.compareTo(ba);
+                })
+                .map(SocialAccountDto::from)
+                .toList();
+    }
+
     /**
      * 启动扫码绑定。
      *

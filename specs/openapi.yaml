@@ -1890,6 +1890,20 @@ components:
         sau-service → server 的进度推送 payload (POST /internal/sau/job-callback)。
         以 externalTaskId 幂等；状态只允许单调推进。
 
+    PublishJobEvent:
+      type: object
+      required: [id, jobId, kind, at]
+      description: 发布任务不可变事件流（admin 审计视图）；mirror packages/types PublishJobEvent。
+      properties:
+        id:          { type: string }
+        jobId:       { type: string }
+        kind:        { type: string, description: "transition / progress / callback / error / system" }
+        fromStatus:  { $ref: '#/components/schemas/PublishJobStatus', nullable: true }
+        toStatus:    { $ref: '#/components/schemas/PublishJobStatus', nullable: true }
+        progress:    { type: integer, minimum: 0, maximum: 100, nullable: true }
+        note:        { type: string, nullable: true }
+        at:          { type: string, format: date-time }
+
 # ─────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────
@@ -4988,6 +5002,69 @@ paths:
       responses:
         '200': { description: ok }
         '401': { description: invalid internal secret }
+
+  # ── admin social-distribution（admin 跨用户审计视图） ──────────────────────
+  # 仅读：写操作（禁用 / 取消等）走用户自身路径或 v0.6 单独审批接口。
+  /admin/social-accounts:
+    get:
+      tags: [admin-social-distribution]
+      operationId: adminListSocialAccounts
+      summary: 跨用户社交账号列表（admin 审计视图）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SocialAccount' }
+
+  /admin/publish-jobs:
+    get:
+      tags: [admin-social-distribution]
+      operationId: adminListPublishJobs
+      summary: 跨用户发布任务列表（admin 审计视图）
+      parameters:
+        - { in: query, name: status, required: false, schema: { $ref: '#/components/schemas/PublishJobStatus' } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishJob' }
+
+  /admin/publish-jobs/{id}/events:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    get:
+      tags: [admin-social-distribution]
+      operationId: adminListPublishJobEvents
+      summary: 取任务事件流（admin 审计）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishJobEvent' }
 
   # ── fan（C 端） ───────────────────────────────────
 
