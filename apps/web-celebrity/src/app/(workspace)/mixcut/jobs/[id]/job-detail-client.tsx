@@ -157,7 +157,7 @@ export function JobDetailClient({ id }: { id: string }) {
         <Card className="mb-6 overflow-hidden">
           <div className="relative h-1 bg-secondary">
             <div
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-brand-500 to-fuchsia-500 transition-all"
+              className="absolute inset-y-0 left-0 bg-violet-500 transition-all"
               style={{ width: `${job.progress}%` }}
             />
             <div
@@ -167,8 +167,8 @@ export function JobDetailClient({ id }: { id: string }) {
           </div>
           <CardContent className="p-5">
             <div className="flex items-center gap-3">
-              <div className="size-10 rounded-lg bg-brand-500/10 grid place-items-center">
-                <Wand2 className="size-5 text-brand-500 animate-pulse" />
+              <div className="size-10 rounded-lg bg-violet-500/10 grid place-items-center">
+                <Wand2 className="size-5 text-violet-500 animate-pulse" />
               </div>
               <div className="flex-1">
                 <div className="font-medium text-sm">
@@ -190,8 +190,8 @@ export function JobDetailClient({ id }: { id: string }) {
                     key={s.label}
                     className={cn(
                       "rounded-md border p-2",
-                      active ? "border-brand-500/40 bg-brand-500/5" : "border-border",
-                      current && "ring-1 ring-brand-500/40"
+                      active ? "border-violet-500/40 bg-violet-500/5" : "border-border",
+                      current && "ring-1 ring-violet-500/40"
                     )}
                   >
                     <div className="flex items-center gap-1 text-[10px] font-medium">
@@ -348,7 +348,7 @@ export function JobDetailClient({ id }: { id: string }) {
                         className={cn(
                           "group relative rounded-lg overflow-hidden transition-all aspect-[9/16] bg-secondary/60",
                           selectedVariant === idx
-                            ? "ring-2 ring-brand-500 ring-offset-2 ring-offset-background"
+                            ? "ring-2 ring-violet-500 ring-offset-2 ring-offset-background"
                             : "hover:ring-2 hover:ring-white/30"
                         )}
                       >
@@ -700,7 +700,7 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <Fingerprint className="size-4 text-brand-500" />
+          <Fingerprint className="size-4 text-violet-500" />
           原片 vs 成片视觉指纹
         </CardTitle>
       </CardHeader>

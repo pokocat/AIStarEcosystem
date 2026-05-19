@@ -63,7 +63,7 @@ export function SlotInput({
       onClick={onFocus}
       className={cn(
         "p-4 transition-all cursor-pointer",
-        focused ? "ring-2 ring-brand-500/60 border-brand-500/60" : "hover:border-foreground/30",
+        focused ? "ring-2 ring-violet-500/60 border-violet-500/60" : "hover:border-foreground/30",
         filled && "border-emerald-500/30 bg-emerald-500/[0.02]"
       )}
     >
@@ -312,12 +312,12 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
             "w-full rounded-lg border-2 border-dashed border-border transition-colors p-6 flex flex-col items-center justify-center gap-2",
             uploading
               ? "opacity-60 cursor-wait"
-              : "hover:border-brand-500/60 hover:bg-brand-500/[0.02]"
+              : "hover:border-violet-500/60 hover:bg-violet-500/[0.02]"
           )}
         >
           {uploading ? (
             <>
-              <Loader2 className="size-6 text-brand-500 animate-spin" />
+              <Loader2 className="size-6 text-violet-500 animate-spin" />
               <div className="text-xs text-foreground">上传中…</div>
             </>
           ) : (
@@ -383,7 +383,7 @@ function UploadSlotInput({ slot, binding, onChange }: Props) {
               }}
               className="text-left group"
             >
-              <div className="aspect-square rounded overflow-hidden bg-gradient-to-br from-orange-200 to-pink-200 grid place-items-center group-hover:ring-2 group-hover:ring-brand-500 transition-all">
+              <div className="aspect-square rounded overflow-hidden bg-gradient-to-br from-orange-200 to-pink-200 grid place-items-center group-hover:ring-2 group-hover:ring-violet-500 transition-all">
                 {a.thumbnail_url ? (
                   <img src={a.thumbnail_url} className="w-full h-full object-cover" alt={a.name} />
                 ) : a.kind === "video" ? (

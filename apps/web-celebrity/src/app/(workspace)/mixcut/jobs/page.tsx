@@ -225,7 +225,7 @@ function JobRow({ job }: { job: RenderJob }) {
                   <Progress
                     value={job.progress}
                     className="h-1.5 flex-1"
-                    indicatorClassName="bg-gradient-to-r from-brand-500 to-fuchsia-500"
+                    indicatorClassName="bg-violet-500"
                   />
                   <span className="text-xs font-mono text-muted-foreground w-10 text-right">{job.progress}%</span>
                 </div>

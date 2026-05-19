@@ -588,7 +588,7 @@ export function TemplateDetailClient({
       )}
 
       {saveAsOpen && (
-        <Card className="mb-4 border-brand-500/40">
+        <Card className="mb-4 border-violet-500/40">
           <CardContent className="p-4 flex items-center gap-3 flex-wrap">
             <Label htmlFor="newname" className="text-sm shrink-0">新模板名</Label>
             <Input
@@ -737,7 +737,7 @@ export function TemplateDetailClient({
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Layers className="size-4 text-brand-500" />
+                    <Layers className="size-4 text-violet-500" />
                     {currentScene?.label || "场景"} · 内容位 ({currentSceneSlots.length})
                   </CardTitle>
                   {editing && (
@@ -1010,7 +1010,7 @@ function SlotCard({
         className={cn(
           "w-full text-left p-3 rounded-lg border transition-colors",
           selected
-            ? "border-brand-500/60 bg-brand-500/5"
+            ? "border-violet-500/60 bg-violet-500/5"
             : "border-border hover:bg-secondary/50"
         )}
       >
@@ -1040,7 +1040,7 @@ function SlotCard({
     <div
       className={cn(
         "rounded-lg border p-3 space-y-3",
-        selected ? "border-brand-500/60 bg-brand-500/5" : "border-border"
+        selected ? "border-violet-500/60 bg-violet-500/5" : "border-border"
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -1335,7 +1335,7 @@ function SlotDropZone({
       onDrop={(e) => { e.preventDefault(); onDrop(); }}
       className={cn(
         "transition-all rounded",
-        active ? "h-10 my-1 bg-brand-500/15 ring-1 ring-brand-500/40" : dragActive ? "h-3 my-0.5" : "h-1"
+        active ? "h-10 my-1 bg-violet-500/15 ring-1 ring-violet-500/40" : dragActive ? "h-3 my-0.5" : "h-1"
       )}
     />
   );

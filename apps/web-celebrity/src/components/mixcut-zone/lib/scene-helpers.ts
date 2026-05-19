@@ -86,3 +86,14 @@ export function totalDuration(template: Template): number {
 export function resolveFit(slot: TemplateSlot): "cover" | "contain" {
   return slot.fit ?? "cover";
 }
+
+/** 把模板裁到「仅第一场景」用于卡片缩略图。canvas.duration 同步收紧。 */
+export function firstScenePreviewTemplate(template: Template): Template {
+  const firstScene = template.scenes[0];
+  if (!firstScene) return template;
+  return {
+    ...template,
+    canvas: { ...template.canvas, duration: firstScene.duration },
+    scenes: [firstScene],
+  };
+}

@@ -99,7 +99,7 @@ interface Props {
 }
 
 // 中性化 layer 描边/底色:统一灰阶 + brand 高亮选中态。icon 仍按 layer 区分。
-// 不再用饱和彩虹色;选中态(border-brand-500 由调用方加 ring) 是唯一强调。
+// 不再用饱和彩虹色;选中态(border-violet-500 由调用方加 ring) 是唯一强调。
 const LAYER_STYLES: Record<string, { bg: string; border: string; text: string; icon: any; label: string }> = {
   video: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Video, label: "视频" },
   image: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: ImageIcon, label: "图片" },
@@ -258,7 +258,7 @@ export function TemplatePreview({
           </div>
         )}
         {showChrome && variantSeed != null && (
-          <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-brand-500/30 backdrop-blur text-[10px] text-brand-100 font-medium border border-brand-500/40">
+          <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-violet-500/30 backdrop-blur text-[10px] text-violet-100 font-medium border border-violet-500/40">
             变体 #{variantSeed + 1}
           </div>
         )}
@@ -421,7 +421,7 @@ function SlotBox({
           "absolute inset-0 rounded-md border-2 transition-all overflow-hidden",
           showChrome ? frameMeta.border : "border-transparent",
           showChrome && !selected && (usesBlueprintFrame ? "border-dashed opacity-100" : "border-dashed opacity-60 group-hover:opacity-100"),
-          selected && "border-solid ring-2 ring-brand-500/60 ring-offset-2 ring-offset-black",
+          selected && "border-solid ring-2 ring-violet-500/60 ring-offset-2 ring-offset-black",
           // 已绑定真实媒体的 slot 不再用类型色背景,避免遮挡真实内容
           showChrome && !mediaUrl && (usesBlueprintFrame ? blueprintFrameMeta.bg : meta.bg)
         )}
@@ -589,7 +589,7 @@ function SlotBox({
           >
             <Icon className="size-2.5 inline mr-1" />
             {slot.slot_id}
-            {slot.required && <span className="ml-1 text-brand-400">*</span>}
+            {slot.required && <span className="ml-1 text-violet-400">*</span>}
           </div>
         )}
 
@@ -609,7 +609,7 @@ function SlotBox({
               key={h}
               onPointerDown={startDrag(h)}
               className={cn(
-                "absolute size-3 rounded-full bg-brand-500 border-2 border-white shadow-md z-10 touch-none",
+                "absolute size-3 rounded-full bg-violet-500 border-2 border-white shadow-md z-10 touch-none",
                 h === "nw" && "-top-1.5 -left-1.5 cursor-nwse-resize",
                 h === "ne" && "-top-1.5 -right-1.5 cursor-nesw-resize",
                 h === "sw" && "-bottom-1.5 -left-1.5 cursor-nesw-resize",
@@ -622,7 +622,7 @@ function SlotBox({
               key={h}
               onPointerDown={startDrag(h)}
               className={cn(
-                "absolute bg-brand-500 border-2 border-white shadow z-10 touch-none",
+                "absolute bg-violet-500 border-2 border-white shadow z-10 touch-none",
                 h === "n" && "-top-1 left-1/2 -translate-x-1/2 w-4 h-2 rounded-sm cursor-ns-resize",
                 h === "s" && "-bottom-1 left-1/2 -translate-x-1/2 w-4 h-2 rounded-sm cursor-ns-resize",
                 h === "w" && "-left-1 top-1/2 -translate-y-1/2 h-4 w-2 rounded-sm cursor-ew-resize",

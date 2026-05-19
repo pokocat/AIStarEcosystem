@@ -235,7 +235,7 @@ function AssetGrid({
     return (
       <Card>
         <CardContent className="p-12 text-center text-muted-foreground text-sm">
-          <Loader2 className="size-6 animate-spin mx-auto mb-2 text-brand-500" />
+          <Loader2 className="size-6 animate-spin mx-auto mb-2 text-violet-500" />
           加载中…
         </CardContent>
       </Card>
@@ -290,7 +290,7 @@ function AssetGrid({
           )}
           {isAudio && (
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="size-12 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 grid place-items-center shrink-0">
+              <div className="size-12 rounded-lg bg-violet-500 grid place-items-center shrink-0">
                 <Music className="size-5 text-white" />
               </div>
               <div className="flex-1 min-w-0">

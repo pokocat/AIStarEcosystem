@@ -88,7 +88,7 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
         {tone === "locked" && <Lock className="size-3" />}
         {tone === "info" && <Info className="size-3" />}
         <span>{text}</span>
-        {hasOverride && <span className="text-[9px] text-brand-500 font-medium">· 已自定义</span>}
+        {hasOverride && <span className="text-[9px] text-violet-500 font-medium">· 已自定义</span>}
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
       </button>
 
@@ -127,7 +127,7 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
                     }
                     onChange(next);
                   }}
-                  className="mt-0.5 accent-brand-500"
+                  className="mt-0.5 accent-violet-500"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">

@@ -193,7 +193,7 @@ function SceneNode({
         "group relative shrink-0 rounded-md border transition-all cursor-pointer px-3 py-2",
         "flex items-center gap-2 min-w-[10rem]",
         active
-          ? "border-brand-500 bg-brand-500/[0.06] shadow-sm shadow-brand-500/10"
+          ? "border-violet-500 bg-violet-500/[0.06] shadow-sm shadow-violet-500/10"
           : "border-border hover:border-foreground/30 bg-card",
         editing && "select-none",
         dragging && "opacity-40"
@@ -279,7 +279,7 @@ function InsertGap({
         onClick={onClickInsert}
         className={cn(
           "relative z-10 w-full h-full grid place-items-center rounded-md text-muted-foreground/70 transition-colors",
-          isHover && "bg-brand-500/20 text-brand-500 ring-2 ring-brand-500/40",
+          isHover && "bg-violet-500/20 text-violet-500 ring-2 ring-violet-500/40",
           !isHover && dragActive && "bg-secondary/50 text-foreground",
           !dragActive && "hover:bg-secondary/60 hover:text-foreground"
         )}

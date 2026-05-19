@@ -254,6 +254,7 @@ export function CreateClient({ id }: { id: string }) {
             bindings={bindings}
             selectedSlotId={focusedSlot}
             onSelectSlot={setFocusedSlot}
+            frameStyle="blueprint"
             variantSeed={previewVariant}
           />
           <Card>
@@ -340,7 +341,7 @@ export function CreateClient({ id }: { id: string }) {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Wand2 className="size-4 text-brand-500" />
+                <Wand2 className="size-4 text-violet-500" />
                 批量生成参数
               </CardTitle>
             </CardHeader>

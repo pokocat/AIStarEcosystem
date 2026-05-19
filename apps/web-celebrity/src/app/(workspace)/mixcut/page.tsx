@@ -19,6 +19,7 @@ import { MixcutApi } from "@/api";
 import { mockHotTemplates } from "@/mocks/mixcut";
 import { PROFILE_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatNumber, relativeTime } from "@/components/mixcut-zone/lib/utils";
+import { firstScenePreviewTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 import type { RenderJob } from "@/components/mixcut-zone/types";
 
 export default function MixcutHomePage() {
@@ -94,7 +95,7 @@ export default function MixcutHomePage() {
                     <Progress
                       value={j.progress}
                       className="mt-2 h-1"
-                      indicatorClassName="bg-gradient-to-r from-brand-500 to-fuchsia-500"
+                      indicatorClassName="bg-violet-500"
                     />
                   )}
                 </div>
@@ -135,7 +136,7 @@ export default function MixcutHomePage() {
                 href={`/mixcut/templates/${t.template_id}`}
                 className="group block"
               >
-                <TemplatePreview template={t} showSlotChrome={false} />
+                <TemplatePreview template={firstScenePreviewTemplate(t)} mode="blueprint" />
                 <div className="mt-2.5">
                   <div className="text-sm font-medium truncate group-hover:underline underline-offset-2">
                     {t.name}
@@ -167,7 +168,7 @@ function QuotaIndicator({
   total: number;
   percent: number;
 }) {
-  const tone = percent >= 90 ? "bg-red-500" : percent >= 70 ? "bg-amber-500" : "bg-brand-500";
+  const tone = percent >= 90 ? "bg-red-500" : percent >= 70 ? "bg-amber-500" : "bg-violet-500";
   return (
     <div className="flex flex-col gap-1 min-w-[160px] px-3 py-1.5 rounded-md border border-border bg-card">
       <div className="flex items-baseline justify-between gap-2">

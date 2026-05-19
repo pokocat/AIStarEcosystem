@@ -15,7 +15,7 @@ import { mockTemplates } from "@/mocks/mixcut";
 import { MixcutApi } from "@/api";
 import type { Tier, Template } from "@/components/mixcut-zone/types";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
-import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
+import { flatSlotsOf, firstScenePreviewTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 
 const CATEGORIES = [
   "全部",
@@ -56,16 +56,6 @@ function templateStructureSummary(template: Template): string {
     .join(" · ");
 
   return summary || "空模板";
-}
-
-function firstScenePreviewTemplate(template: Template): Template {
-  const firstScene = template.scenes[0];
-  if (!firstScene) return template;
-  return {
-    ...template,
-    canvas: { ...template.canvas, duration: firstScene.duration },
-    scenes: [firstScene],
-  };
 }
 
 export default function MixcutTemplatesPage() {
@@ -211,7 +201,7 @@ export default function MixcutTemplatesPage() {
           <Link
             key={t.template_id}
             href={`/mixcut/templates/${t.template_id}`}
-            className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <div className="relative">
               <TemplatePreview template={firstScenePreviewTemplate(t)} mode="blueprint" />
