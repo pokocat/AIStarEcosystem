@@ -15,13 +15,23 @@ dependencies = [
     "pydantic==2.10.3",
     "httpx==0.28.1",
     "python-multipart==0.0.20",
-    # Playwright is installed but driven only via forked-sau in production;
-    # v1 of sau-service ships a mock uploader (uploader.py) so the service
-    # can boot and integrate with apps/server before Slice 5 wires the fork.
-    "playwright==1.49.1",
 ]
 
 [project.optional-dependencies]
+# Real Playwright mode — pulled in by docker image when SAU_MOCK_MODE=0.
+# Mirrors the upstream pokocat/social-auto-upload pyproject (patchright is
+# its hardened Playwright fork; the rest are the upstream's runtime needs).
+real = [
+    "patchright==1.58.2",
+    "loguru==0.7.3",
+    "opencv-python>=4.13.0",
+    "qrcode==8.2",
+    "requests==2.32.3",
+    "segno>=1.6.6",
+    # The upstream library itself, pinned by commit SHA. Switch SHA when
+    # you re-base the patch branch.
+    "social-auto-upload @ git+https://github.com/pokocat/social-auto-upload@721476f7b49c2c8c4625ea9b053745b89138d5d8",
+]
 dev = [
     "pytest==8.3.4",
     "pytest-asyncio==0.25.0",

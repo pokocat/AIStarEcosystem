@@ -173,11 +173,86 @@ class UploadManager:
 
     # ── real upload (Slice 5) ─────────────────────────────────────────
     async def _run_real_upload(self, rec: TaskRecord) -> None:  # pragma: no cover
-        # Slice 5 will replace this with calls into the patched
-        # social-auto-upload uploader.* modules:
-        #   from uploader.douyin_uploader import upload_video
-        #   await asyncio.to_thread(upload_video, video_path=..., storage_state_path=rec.state_path, ...)
-        rec.status = "failed"
-        rec.error_code = "REAL_UPLOAD_NOT_WIRED"
-        rec.error_message = "Slice 5 hasn't wired the forked-sau uploader yet"
+        """Call into the forked pokocat/social-auto-upload uploaders.
+
+        Imports are function-local so that mock-mode containers (without the
+        [real] extra) don't fail at module import.
+
+        v1 implements 抖音 end-to-end; other v1-enabled platforms (kuaishou /
+        xiaohongshu / shipinhao) wire when their respective upload selectors
+        are validated against a real account. Until then they return a clear
+        NOT_IMPLEMENTED error.
+        """
+        platform = rec.request.platform.lower()
+        rec.status = "uploading"
+        rec.progress = 5
         await self._push(rec)
+
+        # Pre-fetch the video to tmpfs so the upstream uploader has a real path.
+        video_path = await self._fetch_video_tmpfs(rec)
+        rec.video_path = video_path
+
+        # Bridge: upstream code is async-Playwright + reads storage_state from disk.
+        # rec.state_path already contains the JSON; pass it through verbatim.
+        if platform == "douyin":
+            await self._upload_douyin(rec)
+        elif platform in ("kuaishou", "xiaohongshu", "shipinhao"):
+            rec.status = "failed"
+            rec.error_code = "PLATFORM_REAL_NOT_WIRED"
+            rec.error_message = f"real-mode for {platform} pending; flip to mock or wait for next slice"
+            await self._push(rec)
+        else:
+            rec.status = "failed"
+            rec.error_code = "PLATFORM_NOT_SUPPORTED"
+            rec.error_message = f"platform {platform} is not v1-enabled"
+            await self._push(rec)
+
+    async def _fetch_video_tmpfs(self, rec: TaskRecord) -> str:
+        """Stream the source video into /dev/shm/{task_id}.mp4."""
+        import httpx
+
+        out = os.path.join(self._tmpfs, f"{rec.task_id}.mp4")
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream("GET", rec.request.video_url) as resp:
+                resp.raise_for_status()
+                with open(out, "wb") as fh:
+                    async for chunk in resp.aiter_bytes(chunk_size=1 << 16):
+                        fh.write(chunk)
+        return out
+
+    async def _upload_douyin(self, rec: TaskRecord) -> None:
+        """Invoke pokocat/social-auto-upload's DouYinVideo end-to-end."""
+        from patchright.async_api import async_playwright  # type: ignore[import-not-found]
+        from uploader.douyin_uploader.main import DouYinVideo  # type: ignore[import-not-found]
+
+        rec.status = "uploading"
+        rec.progress = 20
+        await self._push(rec)
+
+        publish_date = 0  # 0 = publish immediately in DouYinVideo's convention
+        try:
+            async with async_playwright() as playwright:
+                if rec.cancel_event.is_set():
+                    await self._terminate(rec, "cancelled")
+                    return
+                video = DouYinVideo(
+                    title=rec.request.title,
+                    file_path=rec.video_path,
+                    tags=rec.request.tags,
+                    publish_date=publish_date,
+                    account_file=rec.state_path,
+                    thumbnail_path=None,
+                )
+                rec.progress = 40
+                await self._push(rec)
+                await video.upload(playwright)
+            rec.status = "live"
+            rec.progress = 100
+            rec.external_url = None  # upstream doesn't return URL — keep null
+            await self._push(rec)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("douyin upload failed task_id=%s", rec.task_id)
+            rec.status = "failed"
+            rec.error_code = "UPLOADER_RAISED"
+            rec.error_message = repr(exc)
+            await self._push(rec)
