@@ -152,6 +152,34 @@ async def _wait_until_finished(client: TestClient, task_id: str, *, timeout_s: f
     raise AssertionError(f"task {task_id} didn't finish in {timeout_s}s")
 
 
+def test_real_login_platform_tables_are_consistent() -> None:
+    """Every platform wired into LOGIN_PAGE_URLS must also have a logged-in
+    URL fragment list + a QR selector list. Catches half-wired platforms
+    (where /login/start would succeed but /login/poll never recognises the
+    redirect, or vice versa)."""
+    from sau_service.login_pool import (
+        LOGIN_PAGE_URLS,
+        LOGGED_IN_URL_FRAGMENTS,
+        QR_SELECTORS,
+    )
+
+    for platform in LOGIN_PAGE_URLS:
+        assert platform in LOGGED_IN_URL_FRAGMENTS, (
+            f"{platform} has a login URL but no logged-in URL fragments — "
+            f"/login/poll would never flip to success"
+        )
+        assert LOGGED_IN_URL_FRAGMENTS[platform], (
+            f"{platform} has empty LOGGED_IN_URL_FRAGMENTS tuple"
+        )
+        assert platform in QR_SELECTORS, (
+            f"{platform} has no QR selectors; /login/start would fall back to "
+            f"a full viewport screenshot"
+        )
+
+    # The two currently-wired platforms.
+    assert set(LOGIN_PAGE_URLS) >= {"douyin", "shipinhao"}
+
+
 def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:
     """Real-mode + unknown platform must return 501 *before* touching patchright.
 
