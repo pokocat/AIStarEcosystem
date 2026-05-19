@@ -1,0 +1,30 @@
+# dev-only compose for sau-service.
+# Production deploys via k8s with the same image + replicas:1 (sticky login pool).
+
+services:
+  sau-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aistareco/sau-service:dev
+    container_name: aistareco-sau-service
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      # Shared secret with apps/server's InternalAuthFilter.
+      # Server side reads the same env (AEP_INTERNAL_SECRET).
+      SAU_INTERNAL_SECRET: ${AEP_INTERNAL_SECRET:-aep-dev-internal-secret-change-in-prod}
+      # Where to push job-callback events. From inside docker we hit the host
+      # via host.docker.internal; dev's apps/server runs on 8080.
+      SAU_DEFAULT_CALLBACK_BASE: ${SAU_DEFAULT_CALLBACK_BASE:-http://host.docker.internal:8080/api/internal/sau}
+      SAU_MOCK_MODE: ${SAU_MOCK_MODE:-1}
+      SAU_MAX_CONCURRENCY: ${SAU_MAX_CONCURRENCY:-2}
+      SAU_LOGIN_TICKET_TTL_S: ${SAU_LOGIN_TICKET_TTL_S:-300}
+    # Cookie / storage_state and pulled videos live ONLY in tmpfs.
+    # No PVC; restart wipes everything (by design).
+    tmpfs:
+      - /dev/shm:size=2g
+    # On Linux dev hosts, expose the host as host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

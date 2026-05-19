@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sau-service"
+version = "0.1.0"
+description = "AI Star Eco sau-service — Playwright wrapper for social media auto-upload (sau integration)."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "AI Star Eco team" }]
+dependencies = [
+    "fastapi==0.115.5",
+    "uvicorn[standard]==0.32.1",
+    "pydantic==2.10.3",
+    "httpx==0.28.1",
+    "python-multipart==0.0.20",
+    # Playwright is installed but driven only via forked-sau in production;
+    # v1 of sau-service ships a mock uploader (uploader.py) so the service
+    # can boot and integrate with apps/server before Slice 5 wires the fork.
+    "playwright==1.49.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.0",
+    "httpx==0.28.1",
+]
+
+[project.scripts]
+sau-service = "sau_service.main:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
