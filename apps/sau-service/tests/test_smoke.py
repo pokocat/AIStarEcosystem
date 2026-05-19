@@ -150,3 +150,28 @@ async def _wait_until_finished(client: TestClient, task_id: str, *, timeout_s: f
             return
         await asyncio.sleep(0.2)
     raise AssertionError(f"task {task_id} didn't finish in {timeout_s}s")
+
+
+def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:
+    """Real-mode + unknown platform must return 501 *before* touching patchright.
+
+    The slim mock-mode CI doesn't install the `[real]` extra, so we exercise
+    the early-reject branch via the only platform not in LOGIN_PAGE_URLS yet
+    (kuaishou). Ensures operators flipping SAU_MOCK_MODE=0 get a clear
+    PLATFORM_REAL_LOGIN_NOT_WIRED rather than an ImportError surfacing as
+    500.
+    """
+    monkeypatch.setenv("SAU_INTERNAL_SECRET", SECRET)
+    monkeypatch.setenv("SAU_MOCK_MODE", "0")
+    monkeypatch.setenv("SAU_LOGIN_TICKET_TTL_S", "60")
+
+    with TestClient(main.app) as client:
+        r = client.post(
+            "/login/start",
+            headers=_h(),
+            json={"ticket": "real-1", "platform": "kuaishou", "accountName": "ks-test"},
+        )
+        assert r.status_code == 501
+        detail = r.json()["detail"]
+        assert detail["code"] == "PLATFORM_REAL_LOGIN_NOT_WIRED"
+        assert "kuaishou" in detail["message"]

@@ -55,14 +55,44 @@ curl -fsS -H "X-Internal-Secret: $AEP_INTERNAL_SECRET" \
 
 ---
 
-## 3. Get a real `storage_state.json` for a Douyin account
+## 3. Bind a Douyin account via the in-browser QR flow (recommended)
 
-v1 does **not** implement in-browser QR login through sau-service yet (that's
-a Phase B item). For now the operator runs the upstream's helper script once
-per account on a workstation, then transfers the resulting JSON to the
-server's encrypted `aep_social_accounts` table.
+sau-service now drives the QR login itself: the user clicks "绑定账号" in
+`/distribution`, the server calls `POST /login/start` on sau-service, sau-service
+launches a headless patchright chromium against `https://creator.douyin.com/`,
+screenshots the on-page QR, and returns it as a `data:image/png` URL. The
+frontend renders the image; the user scans with the Douyin app; sau-service's
+`/login/poll` watches `page.url` and — once it switches to a logged-in
+fragment (`creator-micro`, `/creator/home`, `/creator-center`) — dumps
+`context.storage_state()` and tears the browser down.
 
-On the operator's machine:
+End-to-end, no operator step required:
+
+1. UI: `/distribution` → 绑定账号 → 抖音 → 输入别名 → 确认
+2. UI shows the QR image (which is a live screenshot of creator.douyin.com)
+3. User scans with the Douyin app
+4. Server polls `/me/social-accounts/bind-poll` every ~1.5s; on success the
+   account flips to `active` with `storage_state_encrypted` populated
+5. Account appears in `/distribution` `已绑定账号` list
+
+Operator tunables (env vars on the sau-service container):
+
+| var | default | meaning |
+| --- | --- | --- |
+| `SAU_LOGIN_TICKET_TTL_S` | `300` | per-QR session lifetime; chromium gets torn down after this |
+| `SAU_REAL_LOGIN_HEADLESS` | `1` | set `0` on a workstation to watch the browser while debugging |
+
+The QR is captured once at `/login/start`. If the user takes too long to
+scan and the page-side QR expires, the user re-clicks "绑定账号" to mint a
+fresh session.
+
+### 3a. Manual import fallback (for v1-enabled platforms that aren't wired yet)
+
+`kuaishou` / `xiaohongshu` / `shipinhao` still come back from
+`/login/start` with `PLATFORM_REAL_LOGIN_NOT_WIRED` until their selectors
+are validated against a real account. For those, run the upstream's helper
+script once per account on a workstation and import the result into
+`aep_social_accounts` (see §4 below):
 
 ```bash
 git clone https://github.com/pokocat/social-auto-upload.git sau-upstream
@@ -70,13 +100,11 @@ cd sau-upstream
 pip install -e .
 patchright install chromium
 
-# Drops into chromium, you scan with the Douyin app, the script saves
-# cookies/<accountName>.json. (Path/filename may vary across uploader
-# subdirs; see examples/get_douyin_cookie.py for the canonical flow.)
-python examples/get_douyin_cookie.py --account_name producer-team-1
+# Drops into chromium, you scan with the app, the script saves
+# cookies/<accountName>.json. Path/filename varies; see
+# examples/get_<platform>_cookie.py for each canonical flow.
+python examples/get_kuaishou_cookie.py --account_name producer-team-1
 ```
-
-That produces a JSON file. Copy it somewhere reachable, then …
 
 ---
 
@@ -181,10 +209,9 @@ In the web-celebrity UI:
 
 ## 6. What still needs work (Phase B)
 
-- In-browser QR login through sau-service (replace `/login/poll`'s mock
-  branch with patchright screenshot + scan-state polling).
-- `kuaishou`, `xiaohongshu`, `shipinhao` upstream wrappers (mirror the
-  `_upload_douyin` helper in `uploader.py`).
+- `kuaishou`, `xiaohongshu`, `shipinhao` upstream wrappers — both upload
+  (`_upload_<platform>` in `uploader.py`) and login (`LOGIN_PAGE_URLS` +
+  `LOGGED_IN_URL_FRAGMENTS` entries in `login_pool.py`).
 - Admin endpoint to import a storage_state without raw SQL.
 - Per-platform pricing via `PlatformConfig`; v1 hardcodes 20 credits per
   upload in `apps/server/src/main/resources/application.yml` (`sau.default-upload-cost`).
