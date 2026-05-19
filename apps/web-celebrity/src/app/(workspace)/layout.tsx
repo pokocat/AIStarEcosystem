@@ -16,6 +16,7 @@ import {
   Megaphone,
   Plus,
   Search,
+  Send,
   ShoppingBag,
   Star,
   Users,
@@ -51,6 +52,7 @@ function buildGroups(pathname: string): NavGroup[] {
         { icon: Megaphone, label: "我的项目", href: "/projects", selected: isExact("/projects") },
         { icon: Video, label: "视频中心", href: "/library", selected: isExact("/library"), badge: 4 },
         { icon: ShoppingBag, label: "商品库", href: "/products", selected: isExact("/products") },
+        { icon: Send, label: "分发中心", href: "/distribution", selected: isExact("/distribution") },
       ],
     },
     {
@@ -71,6 +73,7 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/library": "视频中心",
     "/products": "商品库",
     "/data": "数据中心",
+    "/distribution": "分发中心",
   };
   if (TAB_LABEL[pathname]) return ["工作台", "明星带货", TAB_LABEL[pathname]];
   if (pathname.startsWith("/star")) return ["工作台", "明星市场", "明星详情"];
