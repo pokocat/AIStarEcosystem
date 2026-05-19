@@ -11,6 +11,8 @@ export * as CoachApi from "./coach";
 export * as CommunityApi from "./community";
 export * as DigitalIpsApi from "./digital-ips";
 export * as DistributionApi from "./distribution";
+export * as SocialAccountApi from "./social-account";
+export * as PublishJobApi from "./publish-job";
 export * as FanApi from "./fan";
 export * as FilmApi from "./film";
 export * as FinanceApi from "./finance";

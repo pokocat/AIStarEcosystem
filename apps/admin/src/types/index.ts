@@ -11,6 +11,8 @@ export * from "./finance";
 export * from "./music";
 export * from "./film";
 export * from "./distribution";
+export * from "./social-account";
+export * from "./publish-job";
 export * from "./community";
 export * from "./fan";
 export * from "./coach";

@@ -1,28 +1,20 @@
 """POST /login/start + GET /login/poll — QR-code login for a social account.
 
-Mock-mode semantics (Slice 3):
-  - /login/start mints a synthetic QR PNG; the synthetic storage_state is
-    stashed inside the LoginSession.
-  - /login/poll returns "pending" once, then "success" with the synthetic
-    storage_state (and removes the session). This is enough for apps/server
-    to exercise the full bind flow in tests.
-
-Real-mode (Slice 5) will:
-  - Open a Playwright context, navigate to the platform's login page, take a
-    screenshot of the QR box, and stash {browser, context} on the session.
-  - On poll, check whether the login redirected; if so, dump
-    context.storage_state() to JSON and return it.
+Both endpoints share a single pool object (`app.state.login_pool`) that hides
+mock vs. real-mode behind one `start` / `poll` surface. The route layer only
+decides what `mock` flag to pass; everything else (Playwright lifecycle, QR
+screenshot, storage_state extraction) lives in `login_pool.py`.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..auth import require_internal_secret
-from ..login_pool import LoginPool
+from ..login_pool import LoginPool, RealLoginUnsupported
 
 router = APIRouter(prefix="/login", tags=["login"], dependencies=[Depends(require_internal_secret)])
 
@@ -50,7 +42,25 @@ class LoginPollResponse(BaseModel):
 async def login_start(req: LoginStartRequest, request: Request) -> LoginStartResponse:
     pool: LoginPool = request.app.state.login_pool
     settings = request.app.state.settings
-    session = await pool.start(req.ticket, req.platform, req.accountName, mock=settings.mock_mode)
+    try:
+        session = await pool.start(
+            req.ticket,
+            req.platform,
+            req.accountName,
+            mock=settings.mock_mode,
+            headless=settings.real_login_headless,
+        )
+    except RealLoginUnsupported as exc:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "PLATFORM_REAL_LOGIN_NOT_WIRED",
+                "message": (
+                    f"real-mode login for {exc.platform} is not wired; "
+                    "flip to SAU_MOCK_MODE=1 or wait for a follow-up slice"
+                ),
+            },
+        )
     return LoginStartResponse(
         qrImageDataUrl=session.qr_image_data_url,
         expiresAt=datetime.fromtimestamp(session.expires_at, tz=timezone.utc).isoformat(),
@@ -61,28 +71,9 @@ async def login_start(req: LoginStartRequest, request: Request) -> LoginStartRes
 async def login_poll(ticket: str, request: Request) -> LoginPollResponse:
     pool: LoginPool = request.app.state.login_pool
     settings = request.app.state.settings
-    session = await pool.get(ticket)
-    if session is None:
-        # never started, or already expired/dropped
-        return LoginPollResponse(status="expired")
-    if datetime.now(tz=timezone.utc).timestamp() > session.expires_at:
-        await pool.drop(ticket)
-        return LoginPollResponse(status="expired")
-
-    if settings.mock_mode:
-        session.polls_seen += 1
-        if session.polls_seen < session.polls_until_success:
-            return LoginPollResponse(status="pending")
-        # consume the session; cookie returned exactly once
-        await pool.mark_success_and_drop(ticket)
-        return LoginPollResponse(
-            status="success",
-            storageStatePlain=session.storage_state_plain,
-            profile=session.profile,
-        )
-
-    # real-mode (Slice 5) — not yet implemented
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={"code": "REAL_LOGIN_NOT_WIRED", "message": "Slice 5 hasn't wired Playwright login yet"},
+    result = await pool.poll(ticket, mock=settings.mock_mode)
+    return LoginPollResponse(
+        status=result["status"],
+        storageStatePlain=result.get("storage_state"),
+        profile=result.get("profile"),
     )

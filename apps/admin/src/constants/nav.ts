@@ -118,8 +118,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "分发",
     items: [
-      { href: "/distribution/platforms", label: "分发渠道", icon: Radio, badgeKey: "platform_pending", description: "平台接入审核" },
-      { href: "/distribution/queue",     label: "发行队列", icon: Send,  badgeKey: "dist_reviewing",   description: "待审核内容分发" },
+      { href: "/distribution/platforms",       label: "分发渠道", icon: Radio, badgeKey: "platform_pending", description: "平台接入审核" },
+      { href: "/distribution/queue",           label: "发行队列", icon: Send,  badgeKey: "dist_reviewing",   description: "待审核内容分发" },
+      { href: "/distribution/social-accounts", label: "社交账号", icon: Radio, description: "sau 绑定的第三方账号" },
+      { href: "/distribution/jobs",            label: "发布任务", icon: Send,  description: "sau 发布任务与事件流" },
     ],
   },
   // v0.5：本期隐藏 NFT / 社群（产品线分叉）

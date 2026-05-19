@@ -35,6 +35,10 @@ class Settings:
     login_ticket_ttl_s: int
     tmpfs_dir: str
     default_callback_base: str | None
+    # Real-mode debug knob: when SAU_REAL_LOGIN_HEADLESS=0 we launch chromium
+    # in headed mode so an operator on a workstation can watch what the QR
+    # capture looks like. Production stays headless=True.
+    real_login_headless: bool
 
 
 def load_settings() -> Settings:
@@ -48,4 +52,5 @@ def load_settings() -> Settings:
         login_ticket_ttl_s=_env_int("SAU_LOGIN_TICKET_TTL_S", 300),
         tmpfs_dir=os.environ.get("SAU_TMPFS_DIR", "/dev/shm"),
         default_callback_base=os.environ.get("SAU_DEFAULT_CALLBACK_BASE") or None,
+        real_login_headless=_env_bool("SAU_REAL_LOGIN_HEADLESS", True),
     )

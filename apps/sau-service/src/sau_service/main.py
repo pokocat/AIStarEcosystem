@@ -46,6 +46,12 @@ async def lifespan(app: FastAPI):
             await sweeper
         except asyncio.CancelledError:
             pass
+        # Close any patchright browsers still attached to live tickets so the
+        # container shuts down cleanly (chromium processes otherwise linger).
+        try:
+            await app.state.login_pool.shutdown_all()
+        except Exception:  # noqa: BLE001
+            log.exception("login_pool shutdown_all failed during lifespan exit")
 
 
 async def _sweep_loop(app: FastAPI) -> None:

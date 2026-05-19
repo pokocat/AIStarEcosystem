@@ -96,6 +96,38 @@ public class PublishJobService {
                 .orElseThrow(() -> BusinessException.notFound("PUBLISH_JOB_NOT_FOUND", "发布任务不存在")));
     }
 
+    /** Admin 视图：跨用户列出发布任务，可选 status 过滤。 */
+    public List<PublishJobDto> listAll(String statusWire) {
+        List<PublishJob> rows;
+        if (statusWire != null && !statusWire.isBlank()) {
+            PublishJobStatus st = PublishJobStatus.fromWire(statusWire);
+            if (st == null) throw BusinessException.badRequest("STATUS_INVALID", "未知 status=" + statusWire);
+            rows = jobRepo.findAll().stream().filter(j -> j.getStatus() == st).toList();
+        } else {
+            rows = jobRepo.findAll();
+        }
+        return rows.stream()
+                .sorted((a, b) -> {
+                    Instant ca = a.getCreatedAt(), cb = b.getCreatedAt();
+                    if (ca == null && cb == null) return 0;
+                    if (ca == null) return 1;
+                    if (cb == null) return -1;
+                    return cb.compareTo(ca);
+                })
+                .map(PublishJobDto::from)
+                .toList();
+    }
+
+    /** Admin 视图：取任务事件流（PublishJobEvent 已按 at 升序）。 */
+    public List<com.aistareco.aep.dto.PublishJobEventDto> listEvents(String jobId) {
+        if (!jobRepo.findById(jobId).isPresent()) {
+            throw BusinessException.notFound("PUBLISH_JOB_NOT_FOUND", "发布任务不存在");
+        }
+        return eventRepo.findByJobIdOrderByAtAsc(jobId).stream()
+                .map(com.aistareco.aep.dto.PublishJobEventDto::from)
+                .toList();
+    }
+
     // ── create batch (queued only, no charge) ───────────────────────────
 
     @Transactional
