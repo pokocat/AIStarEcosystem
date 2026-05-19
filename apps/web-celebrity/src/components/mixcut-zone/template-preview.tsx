@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, type CSSProperties } from "react";
-import { Video, Image as ImageIcon, Type, Music, Sticker, Sparkles } from "lucide-react";
+import { Video, Image as ImageIcon, Type, Music } from "lucide-react";
 import type { Template, TemplateSlot, SlotBinding, Rect } from "./types";
 import { cn } from "./lib/utils";
 import { flatSlotsOf, resolveFit } from "./lib/scene-helpers";
@@ -103,19 +103,15 @@ interface Props {
 const LAYER_STYLES: Record<string, { bg: string; border: string; text: string; icon: any; label: string }> = {
   video: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Video, label: "视频" },
   image: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: ImageIcon, label: "图片" },
-  sticker: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Sticker, label: "贴图" },
   text: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Type, label: "文字" },
   audio: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Music, label: "音频" },
-  digital_human: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Sparkles, label: "数字人" },
 };
 
 const BLUEPRINT_LAYER_STYLES: Record<string, { bg: string; border: string; text: string; icon: any; label: string }> = {
   video: { bg: "bg-sky-950/60", border: "border-sky-300/70", text: "text-sky-50", icon: Video, label: "视频" },
-  image: { bg: "bg-emerald-950/60", border: "border-emerald-300/70", text: "text-emerald-50", icon: ImageIcon, label: "商品图" },
-  sticker: { bg: "bg-amber-950/60", border: "border-amber-300/70", text: "text-amber-50", icon: Sticker, label: "贴图" },
+  image: { bg: "bg-emerald-950/60", border: "border-emerald-300/70", text: "text-emerald-50", icon: ImageIcon, label: "图片" },
   text: { bg: "bg-rose-950/60", border: "border-rose-300/70", text: "text-rose-50", icon: Type, label: "字幕" },
   audio: { bg: "bg-violet-950/60", border: "border-violet-300/70", text: "text-violet-50", icon: Music, label: "音频" },
-  digital_human: { bg: "bg-cyan-950/60", border: "border-cyan-300/70", text: "text-cyan-50", icon: Sparkles, label: "数字人" },
 };
 
 function jitter(seed: number, slotId: string, max: number): number {
@@ -165,8 +161,14 @@ function slotDisplayName(slot: TemplateSlot, binding?: SlotBinding): string {
   if (binding?.source === "input" && binding.text) return binding.text;
   if (slot.label) return slot.label;
   if (slot.default_value) return slot.default_value;
-  if (slot.layer_type === "sticker") return stickerDisplayText(slot, binding);
+  // 原 sticker layer 合并到 image 后,凭 library_filter.asset_type 兜底贴图友好文案
+  if (isStickerSlot(slot)) return stickerDisplayText(slot, binding);
   return slot.slot_id;
+}
+
+/** 该 image slot 是否承载贴图(透明 PNG / 品牌条 / 标题装饰)语义。 */
+function isStickerSlot(slot: TemplateSlot): boolean {
+  return slot.layer_type === "image" && slot.library_filter?.asset_type === "sticker";
 }
 
 function blueprintSlotLabel(slot: TemplateSlot, binding?: SlotBinding): string {
@@ -553,7 +555,7 @@ function SlotBox({
           );
         })()}
 
-        {slot.layer_type === "sticker" && (
+        {isStickerSlot(slot) && (
           <div className="absolute inset-0 grid place-items-center">
             {mediaUrl ? (
               <img
@@ -569,15 +571,6 @@ function SlotBox({
                 {displayName}
               </div>
             )}
-          </div>
-        )}
-
-        {slot.layer_type === "digital_human" && (
-          <div className="absolute inset-0 bg-gradient-to-br from-cyan-900/40 to-blue-900/40 grid place-items-center">
-            <div className="text-center text-cyan-200 min-w-0 max-w-full px-1">
-              <Sparkles className="size-8 mx-auto mb-1" />
-              <div className="text-[10px] font-mono truncate">{displayName}</div>
-            </div>
           </div>
         )}
 

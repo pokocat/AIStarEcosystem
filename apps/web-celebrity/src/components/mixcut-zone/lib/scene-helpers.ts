@@ -8,25 +8,48 @@
 //   - 旧模板自动迁移为「单场景 = 整片」
 //   - flat 视图按 scene 顺序拼接,time_range 加上各场景累计偏移
 
-import type { Template, TemplateScene, TemplateSlot } from "../types";
+import type { LayerType, Template, TemplateScene, TemplateSlot } from "../types";
 
-/** 把旧版 flat-slots 模板兜底升级为单场景模板。新模板原样返回。 */
+/** 把可能出现的旧 layer_type 字符串归一化到当前 4 类(video / image / text / audio)。
+ *  数字人 → 视频;贴图 → 图片。其他原值不动。 */
+export function normalizeLayerType(raw: string | undefined): LayerType {
+  if (raw === "digital_human") return "video";
+  if (raw === "sticker") return "image";
+  return (raw as LayerType) ?? "image";
+}
+
+function normalizeSlotsLayerType<T extends { layer_type?: string }>(slots: T[]): T[] {
+  return slots.map((s) => ({ ...s, layer_type: normalizeLayerType(s.layer_type) }));
+}
+
+/** 把旧版 flat-slots 模板兜底升级为单场景模板;同时把 layer_type 归一化到 4 类。
+ *  新模板格式 + 已归一化的层类型则原样返回。 */
 export function migrateLegacyTemplate(t: any): Template {
   if (!t) return t;
-  if (Array.isArray(t.scenes) && t.scenes.length > 0) return t as Template;
 
-  const slots: TemplateSlot[] = Array.isArray(t.slots) ? t.slots : [];
-  const duration = t.canvas?.duration ?? Math.max(1, ...slots.map((s) => s.time_range?.[1] ?? 1));
-  const scene: TemplateScene = {
-    id: "scene_main",
-    label: "全片",
-    duration,
-    slots,
-  };
-  const out: Template = { ...t, scenes: [scene] };
-  // 清掉遗留字段,避免误读
-  delete (out as any).slots;
-  return out;
+  // 1) flat-slots 旧结构 → 单场景包装
+  if (!Array.isArray(t.scenes) || t.scenes.length === 0) {
+    const slots: TemplateSlot[] = Array.isArray(t.slots) ? t.slots : [];
+    const duration = t.canvas?.duration ?? Math.max(1, ...slots.map((s) => s.time_range?.[1] ?? 1));
+    const scene: TemplateScene = {
+      id: "scene_main",
+      label: "全片",
+      duration,
+      slots: normalizeSlotsLayerType(slots),
+    };
+    const out: Template = { ...t, scenes: [scene] };
+    delete (out as any).slots;
+    return out;
+  }
+
+  // 2) 新结构:遍历 scenes.slots 做 layer_type 归一化(幂等)
+  return {
+    ...t,
+    scenes: t.scenes.map((sc: TemplateScene) => ({
+      ...sc,
+      slots: normalizeSlotsLayerType(sc.slots ?? []),
+    })),
+  } as Template;
 }
 
 /** 取出 flat slot 列表(time_range 还是相对场景的)。预览/创建页用。 */

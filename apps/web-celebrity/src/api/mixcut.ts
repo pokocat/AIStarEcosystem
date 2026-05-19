@@ -311,7 +311,7 @@ export async function getTemplate(id: string): Promise<Template | null> {
   }
   try {
     const server = await apiFetch<Template | null>(`/mixcut/templates/${id}`);
-    if (server) return server;
+    if (server) return migrateLegacyTemplate(server);
   } catch {
     /* server 404 / 网络故障 → 走 mock fallback */
   }

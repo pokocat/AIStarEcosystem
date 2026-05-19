@@ -59,7 +59,8 @@ const _rawMockTemplates: any[] = [
     slots: [
       {
         slot_id: "top_title",
-        layer_type: "sticker",
+        layer_type: "image",
+        perturbation_policy: { allow_position_jitter: false, allow_scale_jitter: false },
         z_index: 10,
         rect: { x: 0.0, y: 0.0, w: 1.0, h: 0.15 },
         time_range: [0, 15],
@@ -72,7 +73,8 @@ const _rawMockTemplates: any[] = [
       },
       {
         slot_id: "promo_label",
-        layer_type: "sticker",
+        layer_type: "image",
+        perturbation_policy: { allow_position_jitter: false, allow_scale_jitter: false },
         z_index: 11,
         rect: { x: 0.0, y: 0.15, w: 1.0, h: 0.1 },
         time_range: [0, 15],
@@ -132,7 +134,8 @@ const _rawMockTemplates: any[] = [
       },
       {
         slot_id: "bottom_brand_bar",
-        layer_type: "sticker",
+        layer_type: "image",
+        perturbation_policy: { allow_position_jitter: false, allow_scale_jitter: false },
         z_index: 15,
         rect: { x: 0.0, y: 0.92, w: 1.0, h: 0.08 },
         time_range: [0, 15],
@@ -175,7 +178,8 @@ const _rawMockTemplates: any[] = [
     slots: [
       {
         slot_id: "top_title",
-        layer_type: "sticker",
+        layer_type: "image",
+        perturbation_policy: { allow_position_jitter: false, allow_scale_jitter: false },
         z_index: 10,
         rect: { x: 0.05, y: 0.04, w: 0.9, h: 0.08 },
         time_range: [0, 18],
@@ -226,7 +230,8 @@ const _rawMockTemplates: any[] = [
       },
       {
         slot_id: "price_tag",
-        layer_type: "sticker",
+        layer_type: "image",
+        perturbation_policy: { allow_position_jitter: false, allow_scale_jitter: false },
         z_index: 12,
         rect: { x: 0.04, y: 0.62, w: 0.5, h: 0.18 },
         time_range: [2, 18],
@@ -315,7 +320,7 @@ const _rawMockTemplates: any[] = [
     slots: [
       {
         slot_id: "digital_human_video",
-        layer_type: "digital_human",
+        layer_type: "video",
         z_index: 1,
         rect: { x: 0.0, y: 0.0, w: 1.0, h: 0.55 },
         time_range: [0, 20],

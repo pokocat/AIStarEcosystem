@@ -68,10 +68,8 @@ const POLICY_NO_KILL: Required<import("@/components/mixcut-zone/types").Perturba
 const LAYER_OPTIONS: ReadonlyArray<{ value: LayerType; label: string }> = [
   { value: "video", label: "视频" },
   { value: "image", label: "图片" },
-  { value: "sticker", label: "贴图" },
   { value: "text", label: "文字" },
-  { value: "audio", label: "音乐" },
-  { value: "digital_human", label: "数字人" },
+  { value: "audio", label: "音频" },
 ];
 const FILL_OPTIONS: ReadonlyArray<{ value: FillStrategy; label: string }> = [
   { value: "fixed", label: "系统固定" },
@@ -1111,10 +1109,7 @@ function SlotCard({
         </div>
       )}
 
-      {(slot.layer_type === "video" ||
-        slot.layer_type === "image" ||
-        slot.layer_type === "sticker" ||
-        slot.layer_type === "digital_human") && (
+      {(slot.layer_type === "video" || slot.layer_type === "image") && (
         <div>
           <div className="text-[10px] font-medium text-muted-foreground mb-1.5">
             填充方式

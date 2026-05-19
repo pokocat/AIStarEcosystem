@@ -37,14 +37,12 @@ const TIERS: { value: "all" | Tier; label: string }[] = [
 
 const SLOT_SUMMARY_LABELS = {
   video: "视频",
-  image: "商品图",
-  text: "字幕",
-  sticker: "贴图",
-  digital_human: "数字人",
+  image: "图片",
+  text: "文字",
   audio: "音频",
 } as const;
 
-const SLOT_SUMMARY_ORDER = ["video", "image", "text", "sticker", "digital_human", "audio"] as const;
+const SLOT_SUMMARY_ORDER = ["video", "image", "text", "audio"] as const;
 
 function templateStructureSummary(template: Template): string {
   const counts = flatSlotsOf(template).reduce<Record<string, number>>((acc, slot) => {

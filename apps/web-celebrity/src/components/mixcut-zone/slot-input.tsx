@@ -38,9 +38,7 @@ const LAYER_ICON = {
   video: Video,
   image: ImageIcon,
   text: Type,
-  sticker: ImageIcon,
   audio: Music,
-  digital_human: Sparkles,
 };
 
 export function SlotInput({
@@ -111,14 +109,16 @@ export function SlotInput({
                 library="bgm"
               />
             )}
-            {slot.fill_strategy === "library_select" && slot.layer_type === "sticker" && (
-              <LibrarySlotInput
-                slot={slot}
-                binding={binding}
-                onChange={onChange}
-                library="sticker"
-              />
-            )}
+            {slot.fill_strategy === "library_select" &&
+              slot.layer_type === "image" &&
+              slot.library_filter?.asset_type === "sticker" && (
+                <LibrarySlotInput
+                  slot={slot}
+                  binding={binding}
+                  onChange={onChange}
+                  library="sticker"
+                />
+              )}
             {slot.fill_strategy === "api_generated" && (
               <ApiGeneratedSlotInput slot={slot} binding={binding} onChange={onChange} />
             )}
@@ -206,11 +206,13 @@ function TextSlotInput({ slot, binding, onChange }: Props) {
 
 // ============== 用户上传 ==============
 
-/** 根据 slot.layer_type / accepts_mime 推断要 POST 到 server 的 kind。 */
+/** 根据 slot.layer_type / library_filter / accepts_mime 推断要 POST 到 server 的 kind。
+ *  layer_type 收缩到 4 类后,贴图(透明 PNG)走 image layer 但 library_filter.asset_type === "sticker"
+ *  的 slot 仍上传为 sticker kind,保留素材库分类。 */
 function pickAssetKind(slot: TemplateSlot): MixcutAssetKind {
-  if (slot.layer_type === "video" || slot.layer_type === "digital_human") return "video";
+  if (slot.layer_type === "video") return "video";
   if (slot.layer_type === "audio") return "bgm";
-  if (slot.layer_type === "sticker") return "sticker";
+  if (slot.library_filter?.asset_type === "sticker") return "sticker";
   // image / text / 其他 → image
   return "image";
 }

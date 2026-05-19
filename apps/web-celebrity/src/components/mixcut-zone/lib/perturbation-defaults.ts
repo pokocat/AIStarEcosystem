@@ -1,8 +1,8 @@
 // 按 layer_type 的默认"逐素材抖动"准入；与 server MixcutRenderingService 中的常量保持同步。
-// 设计原则（v0.x 重构后）：
-//   - 视频/数字人 → 位置 + 缩放都开
-//   - 图片 → 位置开,缩放关（商品图缩放会破坏 logo 比例）
-//   - 文字/贴图 → 全关（中文文字抖动会移出版心）
+// 设计原则（v0.x 重构后,layer_type 收缩到 4 类）：
+//   - 视频 → 位置 + 缩放都开（含原 digital_human）
+//   - 图片 → 位置开,缩放关（含原 sticker;品牌 LOGO / 贴图需禁抖动的由模板 slot.perturbation_policy 显式覆盖）
+//   - 文字 → 全关（中文文字抖动会移出版心）
 //   - 音频 → 不适用
 //
 // "镜像 / 速度 / 亮度 / 饱和度"是整段画面级算子,只在任务级 PerturbationOverrides 上开关,
@@ -11,12 +11,10 @@
 import type { LayerType, SlotPerturbationPolicy } from "../types";
 
 const DEFAULTS: Record<LayerType, Required<SlotPerturbationPolicy>> = {
-  video:         { allow_position_jitter: true,  allow_scale_jitter: true  },
-  digital_human: { allow_position_jitter: true,  allow_scale_jitter: true  },
-  image:         { allow_position_jitter: true,  allow_scale_jitter: false },
-  text:          { allow_position_jitter: false, allow_scale_jitter: false },
-  sticker:       { allow_position_jitter: false, allow_scale_jitter: false },
-  audio:         { allow_position_jitter: false, allow_scale_jitter: false },
+  video: { allow_position_jitter: true,  allow_scale_jitter: true  },
+  image: { allow_position_jitter: true,  allow_scale_jitter: false },
+  text:  { allow_position_jitter: false, allow_scale_jitter: false },
+  audio: { allow_position_jitter: false, allow_scale_jitter: false },
 };
 
 export function defaultPolicyForLayer(layerType: LayerType): Required<SlotPerturbationPolicy> {

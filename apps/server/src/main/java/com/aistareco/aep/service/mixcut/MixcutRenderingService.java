@@ -250,7 +250,7 @@ public class MixcutRenderingService {
     // ── 素材准备 ───────────────────────────────────────────────────────────────
 
     /**
-     * binding 解析结果：底层视频 + 叠加图层（image/sticker） + BGM 音轨（可空）。
+     * binding 解析结果：底层视频 + 叠加图层（image / text） + BGM 音轨（可空）。
      * overlay 已按 z_index 升序排好。bgm 只取第一条（多条 BGM 暂不支持）。
      */
     private record ResolvedBindings(List<File> videos, List<OverlaySpec> overlays, File bgm) {}
@@ -295,8 +295,20 @@ public class MixcutRenderingService {
     private static final Set<String> VIDEO_EXTS = Set.of(".mp4", ".mov", ".m4v", ".webm", ".mkv");
     private static final Set<String> IMAGE_EXTS = Set.of(".png", ".jpg", ".jpeg", ".webp", ".gif");
     private static final Set<String> AUDIO_EXTS = Set.of(".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac");
-    private static final Set<String> VIDEO_LAYERS = Set.of("video", "digital_human");
-    private static final Set<String> OVERLAY_LAYERS = Set.of("image", "sticker", "text");
+    // v0.x: layer_type 收缩到 4 类(video / image / text / audio)。
+    // 旧 job 的 slots_snapshot 仍可能含 digital_human / sticker,buildContext 在解析时归一化。
+    private static final Set<String> VIDEO_LAYERS = Set.of("video");
+    private static final Set<String> OVERLAY_LAYERS = Set.of("image", "text");
+
+    /** 把可能出现的旧 layer_type 字符串归一化到当前 4 类。 */
+    private static String normalizeLayerType(String raw) {
+        if (raw == null) return "";
+        return switch (raw) {
+            case "digital_human" -> "video";
+            case "sticker" -> "image";
+            default -> raw;
+        };
+    }
 
     /** 从 job 的 snapshot JSON 派生 RenderContext。任何缺省字段都退回安全默认。 */
     private RenderContext buildContext(MixcutRenderJob job) {
@@ -328,7 +340,7 @@ public class MixcutRenderingService {
                     for (JsonNode s : arr) {
                         String slotId = s.path("slot_id").asText(null);
                         if (slotId == null) continue;
-                        String layerType = s.path("layer_type").asText("");
+                        String layerType = normalizeLayerType(s.path("layer_type").asText(""));
                         int zIndex = s.path("z_index").asInt(0);
                         NormRect rect = null;
                         JsonNode r = s.path("rect");
@@ -372,7 +384,7 @@ public class MixcutRenderingService {
     /**
      * 把 slot_bindings 的每条记录解析为本地文件，按"视频"和"叠加图"分类。
      * 路由优先级：
-     *   1. snapshot.slotMap[slot_id].layer_type → video/digital_human=底层；image/sticker/text=overlay
+     *   1. snapshot.slotMap[slot_id].layer_type → video=底层；image/text=overlay；audio=BGM
      *   2. snapshot 缺失时，回退到按文件后缀分类
      * overlay 列表按 z_index 升序排好（小 z 先合成，大 z 在上）。
      */

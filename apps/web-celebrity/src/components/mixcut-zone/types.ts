@@ -5,7 +5,7 @@ export type Tier = "trial" | "basic" | "standard" | "professional" | "annual_pro
 
 export type PerturbationProfile = "light" | "moderate" | "aggressive";
 
-export type LayerType = "video" | "image" | "sticker" | "text" | "audio" | "digital_human";
+export type LayerType = "video" | "image" | "text" | "audio";
 
 export type FillStrategy =
   | "fixed"

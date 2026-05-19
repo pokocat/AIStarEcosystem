@@ -44,10 +44,8 @@ export const PROFILE_DESCRIPTIONS: Record<PerturbationProfile, string> = {
 export const LAYER_LABELS: Record<LayerType, string> = {
   video: "视频",
   image: "图片",
-  sticker: "贴图",
   text: "文字",
-  audio: "音乐",
-  digital_human: "数字人",
+  audio: "音频",
 };
 
 export const FILL_STRATEGY_LABELS: Record<FillStrategy, string> = {
