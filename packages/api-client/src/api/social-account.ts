@@ -1,0 +1,54 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// api/social-account.ts — 用户的第三方社交账号绑定 API（network-only）。
+// 对应后端 SocialAccountController：/api/me/social-accounts/*
+//
+// 绑定流程：
+//   1. POST /bind-init      → 后端调 sau-service 启 Playwright 拿 QR，返回 ticket+QR
+//   2. GET  /bind-poll?ticket=… → 前端轮询，sau 检测扫码 → storage_state 加密落库
+//   3. status=success 后，账号即可用于 PublishJob
+//
+// storage_state（cookie）永远不流向前端；本模块所有 DTO 都不含该字段。
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type {
+  SocialAccount,
+  SocialAccountBindInit,
+  SocialAccountBindInput,
+  SocialAccountBindPollResult,
+} from "@ai-star-eco/types/social-account";
+import type { ID } from "@ai-star-eco/types/_shared";
+import { apiFetch } from "../_client";
+
+/** 列出当前用户已绑定的所有社交账号 */
+export async function listSocialAccounts(): Promise<SocialAccount[]> {
+  return apiFetch<SocialAccount[]>("/me/social-accounts");
+}
+
+/** 初始化绑定：要求后端调 sau-service 启动 Playwright，返回 QR + ticket */
+export async function initBind(input: SocialAccountBindInput): Promise<SocialAccountBindInit> {
+  return apiFetch<SocialAccountBindInit>("/me/social-accounts/bind-init", {
+    method: "POST",
+    body: input,
+  });
+}
+
+/** 轮询扫码状态；成功时 result.account 是新绑定账号 */
+export async function pollBind(ticket: string): Promise<SocialAccountBindPollResult> {
+  return apiFetch<SocialAccountBindPollResult>("/me/social-accounts/bind-poll", {
+    query: { ticket },
+  });
+}
+
+/** 让 sau-service 用现有 storage_state 跑一次 verify，刷新 lastVerifiedAt 或翻 expired */
+export async function verifySocialAccount(id: ID): Promise<SocialAccount> {
+  return apiFetch<SocialAccount>(`/me/social-accounts/${encodeURIComponent(id)}/verify`, {
+    method: "POST",
+  });
+}
+
+/** 解绑：DB 行连同密文 storage_state 一并删除 */
+export async function unbindSocialAccount(id: ID): Promise<void> {
+  await apiFetch<void>(`/me/social-accounts/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}

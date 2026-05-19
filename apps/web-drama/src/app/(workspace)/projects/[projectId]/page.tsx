@@ -362,6 +362,7 @@ function PublishJobRow({ job }: { job: PublishJob }) {
       publishing: "发布中",
       live: "已上线",
       failed: "失败",
+      cancelled: "已取消",
     }[job.status] ?? job.status;
   return (
     <div

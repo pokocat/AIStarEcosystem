@@ -17,6 +17,7 @@ import {
   Plus,
   Scissors,
   Search,
+  Send,
   ShoppingBag,
   Star,
   Users,
@@ -45,21 +46,21 @@ function buildGroups(pathname: string, activeJobs: number): NavGroup[] {
   // 创建任务页 (/mixcut/create/<id>) 不高亮任一子项 —— 它是一次性流程,不属于任何长存的子区。
   const mixcutChildren: NavSubItem[] | undefined = isMixcut
     ? [
-        { label: "工作台", href: "/mixcut", selected: pathname === "/mixcut" },
-        {
-          label: "模板库",
-          href: "/mixcut/templates",
-          selected: pathname === "/mixcut/templates" || pathname.startsWith("/mixcut/templates/"),
-        },
-        {
-          label: "生成任务",
-          href: "/mixcut/jobs",
-          selected: pathname === "/mixcut/jobs" || pathname.startsWith("/mixcut/jobs/"),
-          badge: activeJobs > 0 ? activeJobs : undefined,
-          badgeTone: "accent",
-        },
-        { label: "素材库", href: "/mixcut/library", selected: pathname === "/mixcut/library" },
-      ]
+      { label: "工作台", href: "/mixcut", selected: pathname === "/mixcut" },
+      {
+        label: "模板库",
+        href: "/mixcut/templates",
+        selected: pathname === "/mixcut/templates" || pathname.startsWith("/mixcut/templates/"),
+      },
+      {
+        label: "生成任务",
+        href: "/mixcut/jobs",
+        selected: pathname === "/mixcut/jobs" || pathname.startsWith("/mixcut/jobs/"),
+        badge: activeJobs > 0 ? activeJobs : undefined,
+        badgeTone: "accent",
+      },
+      { label: "素材库", href: "/mixcut/library", selected: pathname === "/mixcut/library" },
+    ]
     : undefined;
 
   return [
@@ -84,6 +85,7 @@ function buildGroups(pathname: string, activeJobs: number): NavGroup[] {
           selected: isMixcut,
           children: mixcutChildren,
         },
+        { icon: Send, label: "分发中心", href: "/distribution", selected: isExact("/distribution") },
       ],
     },
     {
@@ -104,6 +106,7 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/library": "视频中心",
     "/products": "商品库",
     "/data": "数据中心",
+    "/distribution": "分发中心",
     "/mixcut": "混剪工作台",
   };
   if (TAB_LABEL[pathname]) {
