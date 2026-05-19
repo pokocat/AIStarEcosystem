@@ -61,6 +61,9 @@ Aisingerecosystem/
 | **4b** | ✅ | celebrity-zone 33 组件从 apps/web 迁入 web-celebrity；music / drama / celebrity 三端统一 `(workspace)` route group + 顶层语义化路径 |
 | **v0.7** | ✅ | mixcut 内嵌为 web-celebrity 的「混剪专区」子功能（7 页 / 12 个 UI 原语 / Tailwind v4 brand-* 映射） |
 | **v0.8** | ✅ | mixcut 真后端落地（Spring Boot @Async + ffmpeg 实拼接 / 实贴图 / 实剪切；不再 mock） |
+| **v0.13** | ✅ | 扰动贴图池（preset GIF + DataInitializer 自动 seed + ffmpeg -stream_loop -1 overlay）+ MixcutController 安全前置（Principal 校验） |
+| **v0.14** | ✅ | CdnUploader 抽象 + LocalFakeCdnUploader（./cdn-mock → /cdn）+ MixcutRenderOutput.cdnUrl 列 + 渲染后串行上传 |
+| **v0.15** | ✅ | 混剪 → 发布桥接（/api/me/mixcut/publish-batch）+ @Scheduled 定时发布 + 三入口（jobs 详情按钮 / distribution 跳转 / /mixcut/publish 工作台） |
 | **5** | ⏳ | 删除 `apps/web`（待三新 app 验证完整） |
 | **6** | ⏳ | server 按子产品分租户（DB migration 级别） |
 | **Cookie SSO** | ⏳ | 当前 token 仍 localStorage，不跨子域；改造点见 [`packages/api-client/src/_client.ts`](packages/api-client/src/_client.ts) TODO |
@@ -337,7 +340,7 @@ specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束
 
 ---
 
-## 7. v0.5 → v0.8 增量
+## 7. v0.5 → v0.15 增量
 
 > 4 个连续版本：明星带货线 + 混剪专区。新人 agent 不必翻 commit history，本节列出新实体 / 路由 / 决策。
 
@@ -434,6 +437,74 @@ web-celebrity: api/mixcut.ts 加 NEXT_PUBLIC_MIXCUT_USE_REAL=1 独立开关
 - 生产环境 `/api/mixcut/**` 应改为 `.authenticated()`，当前 MVP 是 permitAll
 
 详见 [`apps/web-celebrity/PRODUCT.md`](apps/web-celebrity/PRODUCT.md) 「混剪专区」一节。
+
+### v0.13（2026-05-19）— 扰动贴图池 + 安全前置
+
+`apps/server` + `apps/web-celebrity` 在 mixcut 链路上加扰动贴图池。每变体按 (jobId+variantIndex) 随机抽样 GIF overlay，叠在已有 image overlay 之上。
+
+**新增 / 修改**：
+
+```
+server  : MixcutAsset +isPreset/+presetGroup/+previewUrl 列；MixcutAssetRepository 加 findByIsPreset* 查询
+        : MixcutAssetService listVisibleTo / getVisibleTo / deleteOwned (preset 公共可见，user 私有受 principal 校验)
+        : MixcutAssetService uploadPreset + registerPresetRow (admin / DataInitializer 路径)
+        : MixcutPresetSeeder (@Order(10))：扫 classpath:preset-stickers/*.gif → fs+DB；空池时 ffmpeg lavfi 程序化生成 5 张 demo
+        : MixcutRenderJob +stickerPoolJson TEXT 列（结构 Map<slotId, {pool_ids, coverage, opacity, scale_pct, pick_count}>）
+        : MixcutRenderingService.buildVariantStickers + renderOneVariant 整合 GIF overlay (-stream_loop -1, format=yuva420p, colorchannelmixer=aa)
+        : MixcutController + MixcutAssetController 全部方法接 Principal（v0.13.0 安全前置：之前裸调 service，无 ownerUserId 校验）
+
+web-celebrity: types.ts +StickerPoolBinding，MixcutAsset +is_preset/+preset_group/+preview_url
+             : sticker-pool-picker.tsx 新组件（4 group tab，多选 + 时间覆盖/不透明度/大小/抽样数）
+             : api/mixcut.ts +listPresetStickers，AssetFilter 加 preset/presetGroup
+             : create/[id]/create-client.tsx 加扰动贴图池 Card（写到 sticker_pool["_global"]）
+```
+
+### v0.14（2026-05-19）— CDN 上传抽象
+
+新增 CDN 抽象层。dev 用 `LocalFakeCdnUploader`（复制到 `./cdn-mock`，公开为 `/cdn/<key>`），生产换 `AliyunOssCdnUploader`（stub，v0.16 候选）。Render 完每个变体串行上传 mp4 + jpg。
+
+**新增 / 修改**：
+
+```
+server  : service/cdn/CdnUploader 接口 + CdnUploadResult record
+        : LocalFakeCdnUploader @ConditionalOnProperty(aep.cdn.driver=local 默认)：路径穿越校验 + publicUrlFor
+        : AliyunOssCdnUploader stub（v0.16+）
+        : config/CdnWebConfig @ConditionalOnBean(LocalFakeCdnUploader)：注册 /cdn/** → ./cdn-mock
+        : MixcutRenderOutput +cdnUrl/+cdnKey/+cdnThumbnailUrl/+cdnUploadedAt 列
+        : MixcutRenderingService 注入 CdnUploader（required=false），renderOneVariant 末尾 uploadWithRetry
+        : markFailed 增 CDN 孤儿清理（按 cdnKey 调 uploader.delete）
+        : application.yml 加 aep.cdn.driver/local-root/public-base-url + oss.*
+```
+
+### v0.15（2026-05-19）— 混剪 → 发布 桥接 + 定时
+
+`AiStarEcoApplication` 加 `@EnableScheduling`。新调度器 `PublishJobScheduler` 每 60s 扫 `status=QUEUED AND scheduledAt<=now` 自动 startJob。新增 `/api/me/mixcut/publish-batch` 一次性把 N 变体 × M 账号派单。前端三入口 + 定时 UI。
+
+**新增**：
+
+```
+server  : @EnableScheduling on AiStarEcoApplication
+        : PublishJobScheduler (@Scheduled fixedDelay=60_000, initialDelay=30_000)
+        : PublishJobRepository.findByStatusAndScheduledAtLessThanEqual
+        : MixcutPublishService.batchPublish (逐 output 独立 try/catch，部分成功)
+        : MixcutPublishController POST /api/me/mixcut/publish-batch
+        : DTO MixcutPublishBatchRequest / MixcutPublishBatchResultDto
+        : 复用现有 QUEUED 状态（不新增 SCHEDULED）
+
+web-celebrity: api/mixcut.ts +publishBatch
+             : mixcut-zone/BatchPublishDrawer.tsx（变体多选 + 账号多选 + 文案 + datetime-local 定时）
+             : mixcut/jobs/[id] 加「批量发布」按钮 → 开 drawer
+             : /mixcut/publish 新页：跨任务挑选所有 cdn 变体 → 同一 drawer
+             : distribution 顶部加「从混剪库选视频发布 →」入口 → /mixcut/publish
+             : datetime-local 提交时 new Date(local).toISOString() 显式转 UTC
+```
+
+**注意事项**：
+
+- 定时调度 @Scheduled 默认串行同 bean；多实例部署需 ShedLock（v0.16 候选）
+- BatchPublishDrawer 双模：`job` prop（单任务）或 `items[]` prop（跨任务），后者优先级高
+- 部分成功语义：响应 200 + `failed_items[]` 数组，按 `MISSING_CDN_URL` / `BUSINESS_ERROR` / `INTERNAL_ERROR` 三类原因
+- v0.13.0 安全前置发现 MixcutController 之前根本没接 Principal —— 同 commit 顺手补上，service 全加 userId 过滤
 
 ### admin sidebar 启用状态
 

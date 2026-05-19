@@ -49,6 +49,19 @@ public class MixcutRenderJob {
     @Column(name = "perturbation_overrides_json", columnDefinition = "TEXT")
     private String perturbationOverridesJson;
 
+    /**
+     * v0.13+: 任务级扰动贴图池配置。结构（slot 级 Map）：
+     *   {
+     *     "<slotId>": { "pool_ids": ["preset_..."], "coverage": "intro"|"outro"|"loop"|"random_3s",
+     *                   "opacity": 0.75, "scale_pct": 18, "pick_count": 1 },
+     *     "_global": {...}    // 可选：不绑定具体 slot，整片随机位置
+     *   }
+     * 渲染器按 jobId+variantIndex 作为 seed 从 pool_ids 抽样，叠加 GIF overlay。
+     */
+    @Lob
+    @Column(name = "sticker_pool_json", columnDefinition = "TEXT")
+    private String stickerPoolJson;
+
     /** light / moderate / aggressive */
     @Column(length = 16, nullable = false)
     private String perturbationProfile;
@@ -137,4 +150,7 @@ public class MixcutRenderJob {
 
     public String getSourcePhash() { return sourcePhash; }
     public void setSourcePhash(String sourcePhash) { this.sourcePhash = sourcePhash; }
+
+    public String getStickerPoolJson() { return stickerPoolJson; }
+    public void setStickerPoolJson(String stickerPoolJson) { this.stickerPoolJson = stickerPoolJson; }
 }

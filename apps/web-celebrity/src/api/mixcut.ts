@@ -152,10 +152,18 @@ export { mockActivationCode };
 
 export interface AssetFilter {
   kind?: MixcutAssetKind;
-  userId?: string;
+  /** v0.13+: 仅列预置素材（is_preset=true）。 */
+  preset?: boolean;
+  /** v0.13+: 预置分组过滤（sparkle / ribbon / emoji_burst 等）。 */
+  presetGroup?: string;
 }
 
-/** 列素材；可按 kind 与 user_id 筛选。 */
+/**
+ * 列素材；默认返回当前用户上传的 + 全部预置素材。
+ *  - filter.preset=true   → 仅返回预置池
+ *  - filter.presetGroup   → 仅返回该分组的预置（隐含 preset=true 语义）
+ *  - filter.kind=sticker  → 通常配合 preset=true 用，取扰动贴图池
+ */
 export async function listAssets(filter?: AssetFilter): Promise<MixcutAsset[]> {
   if (USE_LOCAL) {
     // 本地模式：没有上传能力，返回空列表（前端兜底用 mockAssets 等）
@@ -163,9 +171,16 @@ export async function listAssets(filter?: AssetFilter): Promise<MixcutAsset[]> {
   }
   const qs = new URLSearchParams();
   if (filter?.kind) qs.set("kind", filter.kind);
-  if (filter?.userId) qs.set("user_id", filter.userId);
+  if (filter?.preset === true) qs.set("preset", "true");
+  if (filter?.presetGroup) qs.set("group", filter.presetGroup);
   const suffix = qs.toString() ? `?${qs}` : "";
   return apiFetch<MixcutAsset[]>(`/mixcut/assets${suffix}`);
+}
+
+/** 便捷：列出预置扰动贴图池（kind=sticker, is_preset=true），按 group 分组返回。 */
+export async function listPresetStickers(group?: string): Promise<MixcutAsset[]> {
+  if (USE_LOCAL) return mockDelay([]);
+  return listAssets({ kind: "sticker", preset: true, presetGroup: group });
 }
 
 /**
@@ -364,4 +379,56 @@ export function hasUserTemplate(id: string): boolean {
 /** 判断 ID 是否对应一条工厂模板(即不可硬删除,只能 override)。 */
 export function isFactoryTemplate(id: string): boolean {
   return mockTemplates.some((t) => t.template_id === id);
+}
+
+// ── v0.15+ 发布桥接 ─────────────────────────────────────────────────────────
+
+/** 单个混剪变体的发布载荷（含 CDN URL）。 */
+export interface MixcutPublishOutput {
+  output_id: string;
+  cdn_url: string;
+  thumbnail_url?: string;
+}
+
+/** 单个发布目标（平台 + 账号 + 可选定时）。 */
+export interface MixcutPublishTarget {
+  platform: string;
+  social_account_id: string;
+  /** ISO 8601 字符串；省略 = 立即提交（仍走 QUEUED → 调度器/手动 start） */
+  scheduled_at?: string;
+}
+
+/** publish-batch 请求。outputs × targets 笛卡尔积 = 实际派单数。 */
+export interface MixcutPublishBatchRequest {
+  source_mixcut_job_id?: string;
+  outputs: MixcutPublishOutput[];
+  title: string;
+  description?: string;
+  tags?: string[];
+  cover_url?: string;
+  targets: MixcutPublishTarget[];
+  project_id?: string;
+}
+
+/** publish-batch 响应：部分成功语义。 */
+export interface MixcutPublishBatchResult {
+  success_jobs: unknown[];
+  failed_items: { output_id?: string; reason: string; detail?: string }[];
+  total_requested: number;
+}
+
+/**
+ * 调 /api/me/mixcut/publish-batch 一次性派 outputs × targets 条 PublishJob。
+ *
+ * 注意：所有 outputs[].cdn_url 必须非空，否则后端会把该 output 计入 failedItems
+ * （MISSING_CDN_URL）。前端在显示「批量发布」按钮前应过滤无 cdn_url 的变体。
+ */
+export async function publishBatch(req: MixcutPublishBatchRequest): Promise<MixcutPublishBatchResult> {
+  if (USE_LOCAL) {
+    throw new Error("本地 mock 模式不支持真发布；设 NEXT_PUBLIC_USE_MOCK=0 或 NEXT_PUBLIC_MIXCUT_USE_REAL=1");
+  }
+  return apiFetch<MixcutPublishBatchResult>("/me/mixcut/publish-batch", {
+    method: "POST",
+    body: req,
+  });
 }

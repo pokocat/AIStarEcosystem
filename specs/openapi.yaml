@@ -5202,3 +5202,11 @@ paths:
     put:    { tags: [mixcut], operationId: upsertMixcutTemplate, responses: { '200': { description: ok } } }
     delete: { tags: [mixcut], operationId: deleteMixcutTemplate, responses: { '200': { description: ok } } }
 
+  # v0.15+: 混剪 → 发布 桥接
+  /me/mixcut/publish-batch:
+    post:
+      tags: [mixcut]
+      operationId: publishMixcutBatch
+      description: 一次性将多个混剪变体（必须有 cdn_url）派单到多个社交账号；可选定时。
+      responses: { '200': { description: ok } }
+

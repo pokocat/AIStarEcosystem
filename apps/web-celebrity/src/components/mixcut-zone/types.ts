@@ -67,6 +67,8 @@ export interface TemplateSlot {
   perturbation?: SlotPerturbation;
   /** 槽位级扰动准入。省略时按 layer_type 默认。 */
   perturbation_policy?: SlotPerturbationPolicy;
+  /** v0.13+: 扰动贴图池绑定（slot 级；可选）。从平台预置 GIF 池随机抽样叠加 overlay。 */
+  perturbation_sticker_pool?: StickerPoolBinding;
   label?: string;
 }
 
@@ -159,7 +161,7 @@ export type MixcutAssetKind = "video" | "image" | "sticker" | "bgm";
 
 export interface MixcutAsset {
   id: string;
-  user_id: string;
+  user_id?: string;          // 预置素材为 undefined / null
   kind: MixcutAssetKind;
   name: string;
   original_name?: string;
@@ -170,6 +172,28 @@ export interface MixcutAsset {
   duration: number;
   tags?: string;
   uploaded_at: string;
+  /** v0.13+: 是否为平台预置素材（全用户可见，不可删除）。 */
+  is_preset?: boolean;
+  /** v0.13+: 预置分组（sparkle / ribbon / emoji_burst 等），仅预置素材有值。 */
+  preset_group?: string;
+  /** v0.13+: 缩略图 URL（GIF 抽第一帧），优先于 thumbnail_url。 */
+  preview_url?: string;
+}
+
+/**
+ * v0.13+ 扰动贴图池绑定。挂在 TemplateSlot 上（slot 级），渲染器为每变体从 pool_ids 随机抽 pick_count 张 GIF。
+ * pool_ids 中存的是 MixcutAsset.id（is_preset=true 的）。
+ */
+export interface StickerPoolBinding {
+  pool_ids: string[];
+  /** 时间覆盖：intro=前 3s / outro=后 3s / loop=全片 / random_3s=随机 3s 窗口 */
+  coverage: "intro" | "outro" | "loop" | "random_3s";
+  /** 整体不透明度 0..1（GIF binary alpha 上仅"降不透明像素"，等于贴图整体变薄） */
+  opacity: number;
+  /** 相对画布宽度的目标尺寸百分比 (5..50) */
+  scale_pct: number;
+  /** 每变体抽样数量 1..2，默认 1 */
+  pick_count?: number;
 }
 
 export type SlotBinding =
@@ -236,6 +260,11 @@ export interface RenderOutput {
   };
   watermark_token: string;
   created_at: string;
+  /** v0.14+: CDN 公开 URL（发布链路真值源；缺失时回落 file_url）。 */
+  cdn_url?: string;
+  cdn_key?: string;
+  cdn_thumbnail_url?: string;
+  cdn_uploaded_at?: string;
 }
 
 export interface RenderJob {
@@ -260,6 +289,12 @@ export interface RenderJob {
   perturbation_overrides?: PerturbationOverrides;
   /** v0.x: 原片视觉指纹（aHash 64bit hex,16 字符）。用于和每条变体的 phash_signature 做汉明距离对比。 */
   source_phash?: string;
+  /**
+   * v0.13+: 任务级扰动贴图池配置。结构（slot 级 Map）：
+   *   { "<slotId>": StickerPoolBinding, "_global": StickerPoolBinding }
+   * 模板编辑时挂在 slot 上；create job 时整理成 Map 提交给后端。
+   */
+  sticker_pool?: Record<string, StickerPoolBinding>;
 }
 
 export interface ActivationCode {

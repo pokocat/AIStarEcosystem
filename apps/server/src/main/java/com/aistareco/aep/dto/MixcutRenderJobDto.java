@@ -35,7 +35,8 @@ public record MixcutRenderJobDto(
         @JsonProperty("canvas_snapshot") JsonNode canvasSnapshot,
         @JsonProperty("slots_snapshot") JsonNode slotsSnapshot,
         @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides,
-        @JsonProperty("source_phash") String sourcePhash
+        @JsonProperty("source_phash") String sourcePhash,
+        @JsonProperty("sticker_pool") JsonNode stickerPool
 ) {
 
     public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper) {
@@ -50,6 +51,7 @@ public record MixcutRenderJobDto(
         JsonNode canvasSnap = parseOrNull(job.getCanvasSnapshotJson(), mapper);
         JsonNode slotsSnap = parseOrNull(job.getSlotsSnapshotJson(), mapper);
         JsonNode pertOverrides = parseOrNull(job.getPerturbationOverridesJson(), mapper);
+        JsonNode stickerPool = parseOrNull(job.getStickerPoolJson(), mapper);
         List<MixcutRenderOutputDto> outs = (job.getOutputs() == null || job.getOutputs().isEmpty())
                 ? null
                 : job.getOutputs().stream().map(o -> MixcutRenderOutputDto.from(o, mapper)).toList();
@@ -71,7 +73,8 @@ public record MixcutRenderJobDto(
                 canvasSnap,
                 slotsSnap,
                 pertOverrides,
-                job.getSourcePhash()
+                job.getSourcePhash(),
+                stickerPool
         );
     }
 
@@ -97,7 +100,12 @@ public record MixcutRenderJobDto(
             @JsonProperty("phash_distance_to_source") int phashDistanceToSource,
             @JsonProperty("applied_transforms") JsonNode appliedTransforms,
             @JsonProperty("watermark_token") String watermarkToken,
-            @JsonProperty("created_at") String createdAt
+            @JsonProperty("created_at") String createdAt,
+            // v0.14+: CDN URL（发布链路真值源；缺失时回落 file_url）
+            @JsonProperty("cdn_url") String cdnUrl,
+            @JsonProperty("cdn_key") String cdnKey,
+            @JsonProperty("cdn_thumbnail_url") String cdnThumbnailUrl,
+            @JsonProperty("cdn_uploaded_at") String cdnUploadedAt
     ) {
         public static MixcutRenderOutputDto from(MixcutRenderOutput o, ObjectMapper mapper) {
             JsonNode transforms;
@@ -120,7 +128,11 @@ public record MixcutRenderJobDto(
                     o.getPhashDistanceToSource(),
                     transforms,
                     o.getWatermarkToken(),
-                    o.getCreatedAt() == null ? null : o.getCreatedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    o.getCreatedAt() == null ? null : o.getCreatedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                    o.getCdnUrl(),
+                    o.getCdnKey(),
+                    o.getCdnThumbnailUrl(),
+                    o.getCdnUploadedAt() == null ? null : o.getCdnUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             );
         }
     }

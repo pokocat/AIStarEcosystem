@@ -5,7 +5,6 @@ import com.aistareco.aep.dto.MixcutRenderJobDto;
 import com.aistareco.aep.model.MixcutRenderJob;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.NullNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,26 +36,39 @@ public class MixcutJobService {
         this.rendering = rendering;
     }
 
+    /** v0.13.0+: 取当前用户名下的任务列表（admin 跨用户列表见 AdminMixcutController）。 */
     @Transactional(readOnly = true)
-    public List<MixcutRenderJobDto> listAll() {
-        return jobRepo.findAllByOrderByCreatedAtDesc().stream()
+    public List<MixcutRenderJobDto> listForUser(String userId) {
+        if (userId == null || userId.isBlank()) return List.of();
+        return jobRepo.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(j -> MixcutRenderJobDto.from(j, mapper))
                 .toList();
     }
 
+    /** v0.13.0+: 取当前用户自有任务；他人 jobId 直接返回 empty（视同不存在）。 */
     @Transactional(readOnly = true)
-    public Optional<MixcutRenderJobDto> get(String id) {
-        return jobRepo.findById(id).map(j -> MixcutRenderJobDto.from(j, mapper));
+    public Optional<MixcutRenderJobDto> getForUser(String id, String userId) {
+        if (userId == null || userId.isBlank()) return Optional.empty();
+        return jobRepo.findById(id)
+                .filter(j -> userId.equals(j.getUserId()))
+                .map(j -> MixcutRenderJobDto.from(j, mapper));
     }
 
     /**
      * 创建任务并 dispatch 异步 worker。返回的 DTO 状态固定为 "queued"。
+     * v0.13.0+: principalUserId 优先于 req.userId（避免越权创建别人名下 job）。
      */
     @Transactional
-    public MixcutRenderJobDto create(MixcutCreateJobRequest req) {
+    public MixcutRenderJobDto create(MixcutCreateJobRequest req, String principalUserId) {
         MixcutRenderJob job = new MixcutRenderJob();
         job.setId(req.id() != null && !req.id().isBlank() ? req.id() : ("job_" + shortUuid()));
-        job.setUserId(req.userId() != null ? req.userId() : "anonymous");
+
+        // userId 真值：principal > req.userId > "anonymous"（兼容老 dev 环境）
+        String effectiveUserId = (principalUserId != null && !principalUserId.isBlank())
+                ? principalUserId
+                : (req.userId() != null && !req.userId().isBlank() ? req.userId() : "anonymous");
+        job.setUserId(effectiveUserId);
+
         job.setTemplateId(req.templateId());
         job.setTemplateName(req.templateName());
         job.setTemplateThumbnail(req.templateThumbnail());
@@ -74,6 +86,7 @@ public class MixcutJobService {
         job.setCanvasSnapshotJson(serializeJson(req.canvasSnapshot()));
         job.setSlotsSnapshotJson(serializeJson(req.slotsSnapshot()));
         job.setPerturbationOverridesJson(serializeJson(req.perturbationOverrides()));
+        job.setStickerPoolJson(serializeJson(req.stickerPool()));
 
         job.setPerturbationProfile(safe(req.perturbationProfile(), "moderate"));
         job.setOutputVariants(req.outputVariants() != null && req.outputVariants() > 0 ? req.outputVariants() : 1);
@@ -82,8 +95,8 @@ public class MixcutJobService {
         job.setCreatedAt(OffsetDateTime.now());
 
         jobRepo.save(job);
-        log.info("[mixcut] queued job {} template={} variants={} profile={}",
-                job.getId(), job.getTemplateId(), job.getOutputVariants(), job.getPerturbationProfile());
+        log.info("[mixcut] queued job {} user={} template={} variants={} profile={}",
+                job.getId(), job.getUserId(), job.getTemplateId(), job.getOutputVariants(), job.getPerturbationProfile());
 
         // 异步 dispatch 必须在事务 commit 之后；否则 worker 新事务里 SELECT 看不到这条 job。
         final String jobId = job.getId();
@@ -101,14 +114,21 @@ public class MixcutJobService {
         return MixcutRenderJobDto.from(job, mapper);
     }
 
+    /**
+     * v0.13.0+: 仅当任务属于 principalUserId 时允许更新进度。
+     * （worker 内部从 RenderingService 直接走 repo 不走本方法，所以不会被这层挡住。）
+     */
     @Transactional
-    public Optional<MixcutRenderJobDto> updateProgress(String id, Integer progress, String status) {
-        return jobRepo.findById(id).map(job -> {
-            if (progress != null) job.setProgress(Math.max(0, Math.min(100, progress)));
-            if (status != null && !status.isBlank()) job.setStatus(status);
-            jobRepo.save(job);
-            return MixcutRenderJobDto.from(job, mapper);
-        });
+    public Optional<MixcutRenderJobDto> updateProgressForUser(String id, Integer progress, String status, String userId) {
+        if (userId == null || userId.isBlank()) return Optional.empty();
+        return jobRepo.findById(id)
+                .filter(j -> userId.equals(j.getUserId()))
+                .map(job -> {
+                    if (progress != null) job.setProgress(Math.max(0, Math.min(100, progress)));
+                    if (status != null && !status.isBlank()) job.setStatus(status);
+                    jobRepo.save(job);
+                    return MixcutRenderJobDto.from(job, mapper);
+                });
     }
 
     private static String shortUuid() {

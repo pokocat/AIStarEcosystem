@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode;
  * 前端 POST /api/mixcut/jobs 的请求体。
  * 对齐 apps/web-celebrity/.../mixcut-zone/types.ts RenderJob 提交字段；
  * 后端 id 可由前端预生成，亦可由后端补齐。
+ *
+ * v0.13+: 加 sticker_pool 字段（扰动贴图池），结构见 MixcutRenderJob.stickerPoolJson 注释。
  */
 public record MixcutCreateJobRequest(
         @JsonProperty("id") String id,
@@ -23,6 +25,8 @@ public record MixcutCreateJobRequest(
         // v0.10: 模板快照与扰动总开关
         @JsonProperty("canvas_snapshot") JsonNode canvasSnapshot,
         @JsonProperty("slots_snapshot") JsonNode slotsSnapshot,
-        @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides
+        @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides,
+        // v0.13+: 扰动贴图池
+        @JsonProperty("sticker_pool") JsonNode stickerPool
 ) {
 }

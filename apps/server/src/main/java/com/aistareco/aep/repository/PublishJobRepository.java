@@ -5,6 +5,7 @@ import com.aistareco.aep.model.PublishJobStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -23,4 +24,7 @@ public interface PublishJobRepository extends JpaRepository<PublishJob, String> 
     Optional<PublishJob> findByExternalTaskId(String externalTaskId);
 
     List<PublishJob> findByStatusIn(Collection<PublishJobStatus> statuses);
+
+    /** v0.15+: PublishJobScheduler 扫到点未启动的定时任务（status=QUEUED 且 scheduledAt<=now）。 */
+    List<PublishJob> findByStatusAndScheduledAtLessThanEqual(PublishJobStatus status, Instant cutoff);
 }

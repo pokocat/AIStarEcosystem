@@ -9,6 +9,8 @@ import java.time.format.DateTimeFormatter;
 /**
  * 前端镜像：apps/web-celebrity/src/components/mixcut-zone/types.ts 加 MixcutAsset 类型。
  * 字段 snake_case 沿用 mixcut 原型；用 @JsonProperty 显式映射。
+ *
+ * v0.13+: 增加 is_preset / preset_group / preview_url 三个字段，用于扰动贴图池。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record MixcutAssetDto(
@@ -23,9 +25,17 @@ public record MixcutAssetDto(
         @JsonProperty("file_size") long fileSize,
         @JsonProperty("duration") double duration,
         @JsonProperty("tags") String tags,
-        @JsonProperty("uploaded_at") String uploadedAt
+        @JsonProperty("uploaded_at") String uploadedAt,
+        @JsonProperty("is_preset") boolean isPreset,
+        @JsonProperty("preset_group") String presetGroup,
+        @JsonProperty("preview_url") String previewUrl
 ) {
     public static MixcutAssetDto from(MixcutAsset a) {
+        // thumbnail 优先级：明确的 previewUrl > image/sticker 自身 fileUrl > null
+        String thumb = a.getPreviewUrl();
+        if (thumb == null && ("image".equals(a.getKind()) || "sticker".equals(a.getKind()))) {
+            thumb = a.getFileUrl();
+        }
         return new MixcutAssetDto(
                 a.getId(),
                 a.getUserId(),
@@ -33,14 +43,16 @@ public record MixcutAssetDto(
                 a.getName(),
                 a.getOriginalName(),
                 a.getFileUrl(),
-                // MVP 阶段：image / sticker 自身可作缩略图；video / bgm 暂无（v0.10 用 ffmpeg 抽帧）
-                ("image".equals(a.getKind()) || "sticker".equals(a.getKind())) ? a.getFileUrl() : null,
+                thumb,
                 a.getMimeType(),
                 a.getFileSize(),
                 a.getDuration(),
                 a.getTags(),
                 a.getUploadedAt() == null ? null
-                        : a.getUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                        : a.getUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                a.isPreset(),
+                a.getPresetGroup(),
+                a.getPreviewUrl()
         );
     }
 }

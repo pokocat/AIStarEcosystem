@@ -358,17 +358,65 @@ binding.file_url → 若是本 server 的 /static/mixcut-assets/<u>/<f> 直接 r
 
 每张 scale 到不超过画面 60% 宽。
 
-### 5.8 已知限制
+### 5.8 v0.13 扰动贴图池
 
-| 限制 | 影响 | v0.10+ 计划 |
+每变体在已有 image overlay 之上**再叠一层动效 GIF**，按 (jobId+variantIndex) 作 seed 从 preset 池随机抽样。提升「同模板生成的若干变体」之间的视觉差异度，绕开平台同质化判定。
+
+**数据**：
+
+- `MixcutAsset` 加 `isPreset / presetGroup / previewUrl` 列。预置素材 `ownerUserId=null`，所有用户可见。
+- `MixcutRenderJob.stickerPoolJson` 结构：`Map<slotId, { pool_ids[], coverage, opacity, scale_pct, pick_count }>`。`_global` 键表示不绑定具体 slot（整片随机位置）。
+
+**预置 GIF 来源**（双轨）：
+
+1. `apps/server/src/main/resources/preset-stickers/<group>__<name>.gif` —— `MixcutPresetSeeder` 启动时复制到 fs + 入库
+2. **空池兜底**：DB 中 preset 为 0 时，ffmpeg lavfi 程序化生成 5 张 demo（黄色星星 / 粉色脉冲 / 蓝色色带 / 紫色脉冲 / 彩虹角标），保证 dev 环境零依赖跑通
+
+**ffmpeg 渲染**：`-stream_loop -1` 让 GIF demuxer 循环到 totalDuration → filter `format=yuva420p,scale=W:-2,colorchannelmixer=aa=opacity` → `overlay=x=...:y=...:enable='between(t,start,end)':format=auto`。
+
+**已知限制**：GIF 二值 alpha → `colorchannelmixer=aa=0.7` 只把"已不透明像素"调成 70% 透明（透明像素保持透明），等于"贴图整体调薄"，不是边缘羽化。生产需要 alpha 渐隐时升级到 .mov ProRes4444 或 .webm vp9-alpha。
+
+### 5.9 v0.14 CDN 抽象
+
+渲染产物先落本地 `mixcut-output/<jobId>/v<N>.mp4`，再串行上传到 `CdnUploader`。dev 用 `LocalFakeCdnUploader`（复制到 `./cdn-mock/<key>`，URL `/cdn/<key>`，server 自带静态 handler，nginx / Next rewrite 走 same-origin）；生产换 `AliyunOssCdnUploader`（v0.16+ 实现）。
+
+- `MixcutRenderOutput` 加 `cdnUrl / cdnKey / cdnThumbnailUrl / cdnUploadedAt` 列。
+- 上传失败 1 次重试；再失败保留 `fileUrl` 仅 WARN（不阻塞 job 状态推进）。
+- job 失败时按 `cdnKey` 调 `uploader.delete` 清理孤儿。
+- 配置：`aep.cdn.driver=local|oss`、`aep.cdn.local-root`、`aep.cdn.public-base-url`（默认 `/cdn`，相对路径走 same-origin；绝对 URL 由外部 OSS 直供）。
+
+### 5.10 v0.15 混剪 → 发布桥接 + 定时
+
+**Server**：
+- `POST /api/me/mixcut/publish-batch` —— body `{ outputs: [{output_id, cdn_url, thumbnail_url}], title, description?, tags?, cover_url?, targets: [{platform, social_account_id, scheduled_at?}], source_mixcut_job_id? }`。outputs[].cdn_url 必填，缺失计入 `failed_items[].reason="MISSING_CDN_URL"`。
+- 部分成功语义：每 output 独立 try/catch + 调 `PublishJobService.createBatch`；单条失败不影响其他 output。
+- **定时调度**：`AiStarEcoApplication` 加 `@EnableScheduling`；`PublishJobScheduler @Scheduled(fixedDelay=60s, initialDelay=30s)` 扫 `status=QUEUED AND scheduledAt<=now()` 自动调 `startJob`。复用 QUEUED，不新增 SCHEDULED 状态。
+
+**前端三入口**：
+| 入口 | 位置 | 适用场景 |
+|---|---|---|
+| 单任务发布 | `/mixcut/jobs/[id]` 完成态加「批量发布」按钮 | 渲染完即发 |
+| 跨任务工作台 | 新建 `/mixcut/publish` | 攒一批后批量发 |
+| Distribution 跳转 | `/distribution` 顶部「从混剪库选视频发布 →」 | 从分发中心反向触发 |
+
+三个入口共用 `BatchPublishDrawer`（双模 props：`job` 单任务 / `items[]` 跨任务）。
+
+**定时 UI**：`<input type="datetime-local">` + 提交时 `new Date(local).toISOString()` 显式转 UTC。提示文本注明本地时区 + 60s 调度延迟。
+
+### 5.11 已知限制
+
+| 限制 | 影响 | v0.16+ 计划 |
 |---|---|---|
 | `drawtext` filter 不可用 | 当前用 drawbox 色条替代文字水印 | brew 装 `ffmpeg --with-freetype` 或换 build；加中文字体 |
-| 仅本地 fs 存储 | 部署到生产需要本地磁盘 | OSS（Aliyun）集成 |
-| `/api/mixcut/**` permitAll | MVP 安全模型；任何人能 POST | 改 `.authenticated()` + `ownerUserId` 校验 |
-| 视频无自动缩略图 | 列表里 video tile 用 `<video preload="metadata">` hover-play 兜底 | ffmpeg 抽帧首帧 → static 服务 |
+| `AliyunOssCdnUploader` stub | 生产 CDN 切换需实现 | 接入 aliyun-oss-sdk + bucket public-read 配置（v0.16 候选） |
+| `@Scheduled` 单实例约束 | 多实例部署会重复触发定时发布 | ShedLock 加分布式锁（v0.16 候选） |
+| 视频无自动缩略图 | 列表里 video tile 用 `<video preload="metadata">` hover-play 兜底 | ffmpeg 抽帧首帧 → static 服务（已在 cdn 路径上传） |
 | 单线程并发 = 2 | 高并发场景排队 | 升 Redis queue + 多 worker |
 | watermark 仅 metadata token | 没真在像素里嵌水印 | 像素水印 + SHA-256 文件哈希 |
 | 无分片上传 / 断点续传 | 大文件失败要从头来 | tus.io / 分片协议 |
+| GIF 二值 alpha | 半透明 = 整体调薄，不是边缘羽化 | 升级到 .mov ProRes4444 / .webm vp9-alpha |
+| 模板编辑页未集成扰动贴图池 | 仅 create 页可配置（写到 `_global`） | 模板 slot 级 picker（已留 `perturbation_sticker_pool` 字段） |
+| Admin 预置贴图管理 UI 缺失 | 仅 DataInitializer 自动生成 / classpath 文件入库 | `apps/admin` 新页 + `/api/admin/mixcut/preset-stickers` CRUD（v0.16 候选） |
 
 ---
 

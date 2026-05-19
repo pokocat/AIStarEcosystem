@@ -14,8 +14,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -25,8 +28,12 @@ import java.util.regex.Pattern;
  * 用户上传素材的 CRUD + 落 fs。
  *
  *  - upload(file, kind, userId, name)：保存到 ./mixcut-assets/<userId>/<id><ext>，写 DB
- *  - list / listByKind / listByUser / get / delete
- *  - 文件名安全 sanitize，size/mime/kind 校验
+ *  - uploadPreset(file, kind, group, name)：admin / DataInitializer 路径，标 is_preset=true，ownerUserId=null
+ *  - listVisibleTo / getVisibleTo / deleteOwned：v0.13+ 安全前置后的对外 API
+ *
+ *  v0.13.0+ 安全模型：
+ *   - 普通用户上传 → ownerUserId=自己；列表只看到自己 + preset
+ *   - preset 素材 ownerUserId=null，is_preset=true，全用户可见，**不可被普通用户删除**
  */
 @Service
 public class MixcutAssetService {
@@ -54,6 +61,98 @@ public class MixcutAssetService {
         this.ffmpeg = ffmpeg;
     }
 
+    // ─── v0.13.0+ 安全感知列表 ─────────────────────────────────────────────────────
+
+    /**
+     * 列出当前用户可见的素材：自己上传的 + 所有 preset。
+     *
+     * @param userId         当前 principal 用户 id（必传；null/blank 时仅返回 preset）
+     * @param kind           可选过滤（video/image/sticker/bgm）
+     * @param presetOnly     true=仅返回 preset 池；false/null=返回 user-owned + preset
+     * @param presetGroup    可选 preset 分组过滤（仅在 presetOnly=true 或 kind=sticker 时生效）
+     */
+    public List<MixcutAsset> listVisibleTo(String userId, String kind, Boolean presetOnly, String presetGroup) {
+        boolean hasUser = userId != null && !userId.isBlank();
+        boolean hasKind = kind != null && !kind.isBlank();
+        boolean hasGroup = presetGroup != null && !presetGroup.isBlank();
+        boolean onlyPreset = Boolean.TRUE.equals(presetOnly);
+
+        List<MixcutAsset> presets;
+        if (hasKind && hasGroup) {
+            presets = repo.findByIsPresetTrueAndKindAndPresetGroupOrderByNameAsc(kind, presetGroup);
+        } else if (hasKind) {
+            presets = repo.findByIsPresetTrueAndKindOrderByPresetGroupAscNameAsc(kind);
+        } else if (hasGroup) {
+            presets = repo.findByIsPresetTrueAndPresetGroupOrderByNameAsc(presetGroup);
+        } else {
+            presets = repo.findByIsPresetTrueOrderByPresetGroupAscNameAsc();
+        }
+
+        if (onlyPreset || !hasUser) {
+            return presets;
+        }
+
+        List<MixcutAsset> ownByUser = hasKind
+                ? repo.findByUserIdAndKindOrderByUploadedAtDesc(userId, kind)
+                : repo.findByUserIdOrderByUploadedAtDesc(userId);
+
+        // user 私有的先 + preset 后（用户更可能想看自己刚传的）
+        Map<String, MixcutAsset> merged = new LinkedHashMap<>();
+        for (MixcutAsset a : ownByUser) merged.put(a.getId(), a);
+        for (MixcutAsset a : presets) merged.putIfAbsent(a.getId(), a);
+        return new ArrayList<>(merged.values());
+    }
+
+    /** 当前用户可见 = 自己拥有 OR 是 preset。否则 empty。 */
+    public Optional<MixcutAsset> getVisibleTo(String id, String userId) {
+        return repo.findById(id).filter(a -> {
+            if (a.isPreset()) return true;
+            return userId != null && !userId.isBlank() && userId.equals(a.getUserId());
+        });
+    }
+
+    /** 仅当资产属于 userId 时删除。preset 直接拒绝（用户端不可删 preset；admin 走 /api/admin/mixcut/preset-stickers）。 */
+    @Transactional
+    public boolean deleteOwned(String id, String userId) {
+        if (userId == null || userId.isBlank()) return false;
+        Optional<MixcutAsset> opt = repo.findById(id);
+        if (opt.isEmpty()) return false;
+        MixcutAsset a = opt.get();
+        if (a.isPreset()) return false;
+        if (!userId.equals(a.getUserId())) return false;
+        return deleteInternal(a);
+    }
+
+    /** Admin / DataInitializer：删除指定 preset（不校验 ownerUserId）。 */
+    @Transactional
+    public boolean deletePreset(String id) {
+        Optional<MixcutAsset> opt = repo.findById(id);
+        if (opt.isEmpty()) return false;
+        MixcutAsset a = opt.get();
+        if (!a.isPreset()) return false;
+        return deleteInternal(a);
+    }
+
+    private boolean deleteInternal(MixcutAsset a) {
+        if (a.getLocalPath() != null) {
+            File f = new File(a.getLocalPath());
+            if (f.exists() && !f.delete()) {
+                log.warn("[mixcut] failed to delete asset file {} (continuing with DB delete)",
+                        f.getAbsolutePath());
+            }
+        }
+        if (a.getPreviewUrl() != null && a.getPreviewUrl().startsWith(props.getAssetPublicUrlBase())) {
+            String rel = a.getPreviewUrl().substring(props.getAssetPublicUrlBase().length());
+            File pf = new File(props.getAssetDir(), rel);
+            if (pf.exists()) pf.delete();
+        }
+        repo.delete(a);
+        log.info("[mixcut] asset deleted id={} kind={} preset={}", a.getId(), a.getKind(), a.isPreset());
+        return true;
+    }
+
+    // ── 兼容性：旧 list API（无 principal 校验，仅 admin / 内部使用）─────────────
+
     public List<MixcutAsset> listAll(String kind, String userId) {
         if (kind != null && !kind.isBlank() && userId != null && !userId.isBlank()) {
             return repo.findByUserIdAndKindOrderByUploadedAtDesc(userId, kind);
@@ -63,16 +162,17 @@ public class MixcutAssetService {
         return repo.findAllByOrderByUploadedAtDesc();
     }
 
+    /** 内部用：从 jobId binding 解析 asset_id 时使用。无 ownership 校验（worker 已是受信路径）。 */
     public Optional<MixcutAsset> get(String id) {
         return repo.findById(id);
     }
 
     /**
-     * 上传单个素材。
+     * 上传单个素材（用户路径）。
      *
      * @param file        MultipartFile（必填）
      * @param kind        video / image / sticker / bgm（必填）
-     * @param userId      上传者 ID（可空，将存为 "anonymous"）
+     * @param userId      上传者 ID（必填；controller 已从 principal 取）
      * @param displayName 用户填写的展示名（可空，将用 originalFilename）
      * @param tags        逗号分隔标签（可空）
      */
@@ -126,25 +226,125 @@ public class MixcutAssetService {
         asset.setLocalPath(target.getAbsolutePath());
         asset.setFileUrl(props.getAssetPublicUrlBase() + "/" + safeUserId + "/" + storedName);
         asset.setUploadedAt(OffsetDateTime.now());
+        asset.setPreset(false);
+        asset.setPresetGroup(null);
 
         return repo.save(asset);
+    }
+
+    /**
+     * 上传预置素材（admin / DataInitializer 路径）。
+     * - ownerUserId 固定 null
+     * - isPreset = true
+     * - presetGroup 必填（用于 UI 分组展示）
+     * - 文件落 ./mixcut-assets/preset/<group>/<storedName>
+     * - GIF / image 自动用 ffmpeg 抽第一帧落 preview_url
+     */
+    @Transactional
+    public MixcutAsset uploadPreset(MultipartFile file, String kind, String presetGroup,
+                                    String displayName, String tags) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("文件不能为空");
+        }
+        if (presetGroup == null || presetGroup.isBlank()) {
+            throw new IllegalArgumentException("preset_group 必填");
+        }
+        String safeKind = validateKind(kind);
+        validateMime(safeKind, file.getContentType());
+        if (file.getSize() > props.getMaxAssetBytes()) {
+            throw new IllegalArgumentException("文件超过最大限制 " + props.getMaxAssetBytes() + " 字节");
+        }
+        String safeGroup = sanitize(presetGroup).toLowerCase(Locale.ROOT);
+        String id = "preset_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String ext = guessExt(file.getOriginalFilename(), file.getContentType());
+        String storedName = id + ext;
+
+        File groupDir = new File(new File(props.getAssetDir(), "preset"), safeGroup);
+        if (!groupDir.exists() && !groupDir.mkdirs()) {
+            throw new IOException("Cannot create preset dir: " + groupDir.getAbsolutePath());
+        }
+        File target = new File(groupDir, storedName);
+        try (var in = file.getInputStream()) {
+            Files.copy(in, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        String publicUrl = props.getAssetPublicUrlBase() + "/preset/" + safeGroup + "/" + storedName;
+        String previewUrl = generatePreview(target, groupDir, id, safeGroup);
+
+        MixcutAsset asset = new MixcutAsset();
+        asset.setId(id);
+        asset.setUserId(null);
+        asset.setKind(safeKind);
+        asset.setName((displayName != null && !displayName.isBlank())
+                ? displayName.trim()
+                : (file.getOriginalFilename() != null ? file.getOriginalFilename() : storedName));
+        asset.setOriginalName(file.getOriginalFilename());
+        asset.setMimeType(file.getContentType());
+        asset.setFileSize(file.getSize());
+        asset.setDuration(0);
+        asset.setTags(tags == null ? null : tags.trim());
+        asset.setLocalPath(target.getAbsolutePath());
+        asset.setFileUrl(publicUrl);
+        asset.setPreviewUrl(previewUrl);
+        asset.setUploadedAt(OffsetDateTime.now());
+        asset.setPreset(true);
+        asset.setPresetGroup(safeGroup);
+
+        log.info("[mixcut] preset uploaded id={} group={} kind={} → {}",
+                id, safeGroup, safeKind, target.getAbsolutePath());
+        return repo.save(asset);
+    }
+
+    /** 内部：注册一条 preset 行（DataInitializer 路径，文件已落在 fs 上）。 */
+    @Transactional
+    public MixcutAsset registerPresetRow(String id, String kind, String presetGroup, String name,
+                                         File localFile, String publicUrl, String previewUrl) {
+        MixcutAsset asset = new MixcutAsset();
+        asset.setId(id);
+        asset.setUserId(null);
+        asset.setKind(validateKind(kind));
+        asset.setName(name);
+        asset.setOriginalName(name);
+        asset.setMimeType(kind.equals("sticker") || kind.equals("image") ? "image/gif" : null);
+        asset.setFileSize(localFile.length());
+        asset.setDuration(0);
+        asset.setTags(null);
+        asset.setLocalPath(localFile.getAbsolutePath());
+        asset.setFileUrl(publicUrl);
+        asset.setPreviewUrl(previewUrl);
+        asset.setUploadedAt(OffsetDateTime.now());
+        asset.setPreset(true);
+        asset.setPresetGroup(presetGroup);
+        return repo.save(asset);
+    }
+
+    /** GIF / image 抽第一帧落 preview jpg；失败返回 null。 */
+    private String generatePreview(File source, File groupDir, String id, String group) {
+        File preview = new File(groupDir, id + "_preview.jpg");
+        try {
+            ffmpeg.runFfmpeg(List.of(
+                    "-y",
+                    "-i", source.getAbsolutePath(),
+                    "-frames:v", "1",
+                    "-update", "1",
+                    "-vf", "scale=200:-2",
+                    "-q:v", "5",
+                    preview.getAbsolutePath()
+            ));
+            if (preview.exists() && preview.length() > 0) {
+                return props.getAssetPublicUrlBase() + "/preset/" + group + "/" + preview.getName();
+            }
+        } catch (Exception e) {
+            log.warn("[mixcut] preset preview generation failed id={} err={}", id, e.getMessage());
+        }
+        return null;
     }
 
     @Transactional
     public boolean delete(String id) {
         Optional<MixcutAsset> opt = repo.findById(id);
         if (opt.isEmpty()) return false;
-        MixcutAsset a = opt.get();
-        if (a.getLocalPath() != null) {
-            File f = new File(a.getLocalPath());
-            if (f.exists() && !f.delete()) {
-                log.warn("[mixcut] failed to delete asset file {} (continuing with DB delete)",
-                        f.getAbsolutePath());
-            }
-        }
-        repo.delete(a);
-        log.info("[mixcut] asset deleted id={} kind={}", id, a.getKind());
-        return true;
+        return deleteInternal(opt.get());
     }
 
     // ── 内部 ───────────────────────────────────────────────────────────────────

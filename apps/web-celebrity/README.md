@@ -69,6 +69,34 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.15 · 2026-05-19 · 混剪 → 发布桥接 + 定时
+
+- ✅ **publish-batch 接口**：`POST /api/me/mixcut/publish-batch` 一次性把 N 变体 × M 账号派单 N×M 条 PublishJob。outputs[].cdn_url 必填；缺失计入 `failed_items[].reason="MISSING_CDN_URL"`。
+- ✅ **后端调度器**：`PublishJobScheduler @Scheduled(fixedDelay=60s, initialDelay=30s)` 扫 status=QUEUED 且 scheduledAt≤now 的任务，自动调 startJob。`AiStarEcoApplication` 加 `@EnableScheduling`。复用 QUEUED 状态，不新增 SCHEDULED。
+- ✅ **前端三入口**：
+  - `/mixcut/jobs/[id]` 成功态加「批量发布」按钮 → `BatchPublishDrawer`
+  - `/mixcut/publish` 新工作台：跨任务挑 cdn 变体 → 同 drawer（items 模式）
+  - `/distribution` 顶部加「从混剪库选视频发布 →」紫色按钮 → 跳 `/mixcut/publish`
+- ✅ **BatchPublishDrawer**：变体多选 grid + 社交账号多选 + title/description/tags + datetime-local 定时（显式 toISOString 转 UTC）+ 部分成功结果展示。
+- ✅ **类型**：`types.ts` 的 `RenderOutput` 增 `cdn_url/cdn_key/cdn_thumbnail_url/cdn_uploaded_at` 字段。
+
+### v0.14 · 2026-05-19 · CDN 抽象 + 渲染产物自动上传
+
+- ✅ **CdnUploader 接口**：`apps/server/.../service/cdn/CdnUploader.java` + `LocalFakeCdnUploader`（@ConditionalOnProperty `aep.cdn.driver=local` 默认）+ `AliyunOssCdnUploader` stub。
+- ✅ **本地 fake-CDN**：复制到 `./cdn-mock/<key>`，对外 `/cdn/<key>`（默认相对路径，nginx / Next rewrite same-origin）。`CdnWebConfig` 注册静态资源 handler。路径穿越校验。
+- ✅ **MixcutRenderOutput**：加 `cdnUrl / cdnKey / cdnThumbnailUrl / cdnUploadedAt` 列。`MixcutRenderingService.renderOneVariant` 末尾串行 `uploadWithRetry(mp4)` + `uploadWithRetry(jpg)`，失败 1 次重试后仅 WARN 不阻塞。
+- ✅ **失败清理**：`markFailed` 增 CDN 孤儿删除（按 cdnKey 调 uploader.delete）。
+- ✅ **配置**：`application.yml` 加 `aep.cdn.driver/local-root/public-base-url + oss.{endpoint,bucket,base-url}`。
+
+### v0.13 · 2026-05-19 · 扰动贴图池 + 安全前置
+
+- ✅ **预置素材**：`MixcutAsset` 加 `isPreset / presetGroup / previewUrl` 列。Repository 加 `findByIsPresetTrue*` 查询。Service `listVisibleTo(userId, kind, preset, group)` 合并用户私有 + 预置池。
+- ✅ **DataInitializer seed**：`MixcutPresetSeeder @Order(10)` —— ① 扫 `classpath:preset-stickers/<group>__<name>.gif` 复制到 fs + 注册 DB；② 若 DB 中预置为空，ffmpeg lavfi 程序化生成 5 张 demo（sparkle x2 / ribbon x2 / emoji_burst）作兜底，零依赖跑通。
+- ✅ **GIF overlay**：`MixcutRenderingService.buildVariantStickers` 按 (jobId+variantIndex) seed 随机抽样 + `renderOneVariant` 用 `-stream_loop -1` 让 GIF demuxer 循环 + filter `format=yuva420p,scale=W:-2,colorchannelmixer=aa=opacity` → `overlay enable=between(t,start,end)`。GIF 二值 alpha 限制（半透明 = 整体调薄）已在 UI 提示。
+- ✅ **模板 sticker_pool**：`MixcutRenderJob` 加 `stickerPoolJson TEXT` 列；结构 Map<slotId, {pool_ids, coverage∈{intro,outro,loop,random_3s}, opacity, scale_pct, pick_count}>。DTO 同步。
+- ✅ **前端 picker**：`sticker-pool-picker.tsx` —— 4 group tab + 多选 grid + 时间覆盖 4 段 + 不透明度/大小 slider + 抽样数 1/2。集成在 `/mixcut/create/[id]` 工作台右侧（写到 `sticker_pool["_global"]`）。
+- ✅ **安全前置（v0.13.0）**：探查发现 `MixcutController` 全部方法之前未接 `Principal` —— 任何登录用户可越权访问他人 job。同 commit 修：所有方法加 Principal + service 层 userId 过滤 + 上传 / 删除 ownership 校验。
+
 ### v0.9 · 2026-05-17 · 混剪用户素材上传 + 真实素材渲染
 
 - ✅ **真后端素材表**：`MixcutAsset` entity（id / userId / kind ∈ {video / image / sticker / bgm} / name / fileUrl / localPath / mimeType / fileSize / duration / tags / uploadedAt）+ JpaRepository。

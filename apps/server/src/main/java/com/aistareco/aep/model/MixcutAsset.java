@@ -1,6 +1,8 @@
 package com.aistareco.aep.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
+
 import java.time.OffsetDateTime;
 
 /**
@@ -10,7 +12,8 @@ import java.time.OffsetDateTime;
 @Entity
 @Table(name = "mixcut_asset", indexes = {
         @Index(name = "idx_mixcut_asset_user_kind", columnList = "userId,kind"),
-        @Index(name = "idx_mixcut_asset_kind", columnList = "kind")
+        @Index(name = "idx_mixcut_asset_kind", columnList = "kind"),
+        @Index(name = "idx_mixcut_asset_preset_group", columnList = "isPreset,presetGroup")
 })
 public class MixcutAsset {
 
@@ -18,6 +21,7 @@ public class MixcutAsset {
     @Column(length = 64)
     private String id;
 
+    /** 上传者用户 id；预置贴图为 null。 */
     @Column(length = 64)
     private String userId;
 
@@ -55,6 +59,19 @@ public class MixcutAsset {
     @Column(nullable = false)
     private OffsetDateTime uploadedAt;
 
+    /** v0.13+: 是否为平台预置素材（全用户可见，无 ownerUserId）。 */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private boolean isPreset = false;
+
+    /** v0.13+: 预置素材分组（如 sparkle / ribbon / emoji_burst），非预置为 null。 */
+    @Column(length = 32)
+    private String presetGroup;
+
+    /** v0.13+: 预览缩略图 URL（GIF 抽第一帧）。仅预置贴图必填，用户上传可空。 */
+    @Column(length = 512)
+    private String previewUrl;
+
     // ── getters / setters ─────────────────────────────────────────────────────
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -91,4 +108,13 @@ public class MixcutAsset {
 
     public OffsetDateTime getUploadedAt() { return uploadedAt; }
     public void setUploadedAt(OffsetDateTime uploadedAt) { this.uploadedAt = uploadedAt; }
+
+    public boolean isPreset() { return isPreset; }
+    public void setPreset(boolean preset) { isPreset = preset; }
+
+    public String getPresetGroup() { return presetGroup; }
+    public void setPresetGroup(String presetGroup) { this.presetGroup = presetGroup; }
+
+    public String getPreviewUrl() { return previewUrl; }
+    public void setPreviewUrl(String previewUrl) { this.previewUrl = previewUrl; }
 }

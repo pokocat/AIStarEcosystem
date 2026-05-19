@@ -24,6 +24,7 @@ import { Separator } from "@/components/mixcut-zone/ui/separator";
 import { Slider } from "@/components/mixcut-zone/ui/slider";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { SlotInput } from "@/components/mixcut-zone/slot-input";
+import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker";
 import { mockTemplates } from "@/mocks/mixcut";
 import { MixcutApi } from "@/api";
 import type {
@@ -34,6 +35,7 @@ import type {
   PerturbationOverrides,
   SlotSnapshot,
   SlotPerturbationPolicy,
+  StickerPoolBinding,
 } from "@/components/mixcut-zone/types";
 import { PROFILE_LABELS, PROFILE_DESCRIPTIONS } from "@/constants/mixcut-ui";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
@@ -78,6 +80,8 @@ export function CreateClient({ id }: { id: string }) {
     allow_scale_jitter: true,
   });
   const [slotPolicies, setSlotPolicies] = useState<Record<string, Partial<SlotPerturbationPolicy>>>({});
+  /** v0.13+: 全局扰动贴图池绑定（写到 sticker_pool["_global"]）。MVP 不做 slot 级 UI。 */
+  const [stickerPool, setStickerPool] = useState<StickerPoolBinding | undefined>(undefined);
   const initFromTemplateRef = useRef(false);
 
   useEffect(() => {
@@ -185,6 +189,7 @@ export function CreateClient({ id }: { id: string }) {
       },
       slots_snapshot: slotsSnapshot,
       perturbation_overrides: overrides,
+      sticker_pool: stickerPool ? { _global: stickerPool } : undefined,
     };
     await MixcutApi.createJob(job);
 
@@ -335,6 +340,26 @@ export function CreateClient({ id }: { id: string }) {
               </CardContent>
             </Card>
           )}
+
+          {/* v0.13+: 扰动贴图池 —— 全局绑定，渲染时叠在所有 overlay 上 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="size-4 text-violet-500" />
+                扰动贴图池
+                <span className="text-[10px] font-normal text-muted-foreground ml-1">
+                  · 每变体随机抽样叠加 GIF，增强视觉差异
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <StickerPoolPicker
+                value={stickerPool}
+                onChange={setStickerPool}
+                label="选择贴图"
+              />
+            </CardContent>
+          </Card>
         </div>
 
         <aside className="lg:sticky lg:top-20 self-start space-y-4">

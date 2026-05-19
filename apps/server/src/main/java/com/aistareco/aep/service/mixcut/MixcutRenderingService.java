@@ -5,11 +5,13 @@ import com.aistareco.aep.model.MixcutRenderJob;
 import com.aistareco.aep.model.MixcutRenderOutput;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.aistareco.aep.repository.MixcutRenderOutputRepository;
+import com.aistareco.aep.service.cdn.CdnUploader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -60,6 +62,8 @@ public class MixcutRenderingService {
     private final AssetDownloader downloader;
     private final ObjectMapper mapper;
     private final MixcutAssetService assetService;
+    /** v0.14+: 可选注入；缺省（无 CdnUploader bean）时跳过上传，仅留 fileUrl。 */
+    private final CdnUploader cdnUploader;
 
     public MixcutRenderingService(
             MixcutProperties props,
@@ -68,7 +72,8 @@ public class MixcutRenderingService {
             FfmpegRunner ffmpeg,
             AssetDownloader downloader,
             ObjectMapper mapper,
-            MixcutAssetService assetService
+            MixcutAssetService assetService,
+            @Autowired(required = false) CdnUploader cdnUploader
     ) {
         this.props = props;
         this.jobRepo = jobRepo;
@@ -77,6 +82,12 @@ public class MixcutRenderingService {
         this.downloader = downloader;
         this.mapper = mapper;
         this.assetService = assetService;
+        this.cdnUploader = cdnUploader;
+        if (cdnUploader != null) {
+            log.info("[mixcut] CDN uploader injected: {}", cdnUploader.driverName());
+        } else {
+            log.warn("[mixcut] no CdnUploader bean → render outputs will only have local file_url");
+        }
     }
 
     /**
@@ -105,6 +116,35 @@ public class MixcutRenderingService {
             j.setCompletedAt(OffsetDateTime.now());
             jobRepo.save(j);
         });
+        // v0.14+: 失败时清理已上传到 CDN 的部分变体，避免孤儿文件
+        if (cdnUploader != null) {
+            try {
+                outputRepo.findAll().stream()
+                        .filter(o -> o.getJob() != null && jobId.equals(o.getJob().getId()))
+                        .filter(o -> o.getCdnKey() != null && !o.getCdnKey().isBlank())
+                        .forEach(o -> {
+                            try { cdnUploader.delete(o.getCdnKey()); }
+                            catch (Exception e) { log.warn("[mixcut] cdn cleanup failed key={}: {}", o.getCdnKey(), e.getMessage()); }
+                        });
+            } catch (Exception ignored) {
+                // 清理本身不致命；主流程已 mark failed
+            }
+        }
+    }
+
+    /** 上传到 CDN，最多重试 1 次（共 2 次尝试）。失败抛 IOException。 */
+    private CdnUploader.CdnUploadResult uploadWithRetry(java.nio.file.Path src, String key, String contentType) throws IOException {
+        try {
+            return cdnUploader.upload(src, key, contentType);
+        } catch (Exception e1) {
+            log.warn("[mixcut] cdn upload attempt 1 failed key={}: {} — retrying", key, e1.getMessage());
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+            return cdnUploader.upload(src, key, contentType);
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -223,6 +263,34 @@ public class MixcutRenderingService {
                 phashDistance = 10 + rnd.nextInt(8);
             }
 
+            // v0.14+: 上传到 CDN（best-effort，失败保留本地 fileUrl）
+            String cdnVideoUrl = null;
+            String cdnVideoKey = null;
+            String cdnThumbUrl = null;
+            OffsetDateTime cdnUploadedAt = null;
+            if (cdnUploader != null) {
+                String videoKey = "mixcut/" + jobId + "/v" + (i + 1) + ".mp4";
+                try {
+                    var res = uploadWithRetry(outFile.toPath(), videoKey, "video/mp4");
+                    cdnVideoUrl = res.cdnUrl();
+                    cdnVideoKey = res.key();
+                    cdnUploadedAt = OffsetDateTime.now();
+                } catch (Exception e) {
+                    log.warn("[mixcut] job {} variant {} CDN upload failed (keeping fileUrl): {}",
+                            jobId, i + 1, e.getMessage());
+                }
+                if (thumbFile.exists() && thumbFile.length() > 0) {
+                    String thumbKey = "mixcut/" + jobId + "/v" + (i + 1) + ".jpg";
+                    try {
+                        var res = uploadWithRetry(thumbFile.toPath(), thumbKey, "image/jpeg");
+                        cdnThumbUrl = res.cdnUrl();
+                    } catch (Exception e) {
+                        log.warn("[mixcut] job {} variant {} CDN thumbnail upload failed: {}",
+                                jobId, i + 1, e.getMessage());
+                    }
+                }
+            }
+
             // 写一条 output
             MixcutRenderOutput o = new MixcutRenderOutput();
             o.setId("out_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
@@ -236,6 +304,10 @@ public class MixcutRenderingService {
             o.setAppliedTransformsJson(transforms.toString());
             o.setWatermarkToken("wm_" + sha256Hex(outFile).substring(0, 16));
             o.setCreatedAt(OffsetDateTime.now());
+            o.setCdnUrl(cdnVideoUrl);
+            o.setCdnKey(cdnVideoKey);
+            o.setCdnThumbnailUrl(cdnThumbUrl);
+            o.setCdnUploadedAt(cdnUploadedAt);
             saveOutput(jobId, o);
 
             int pct = 15 + (int) ((double) (i + 1) / variantCount * 80);
@@ -267,6 +339,31 @@ public class MixcutRenderingService {
 
     /** 槽位元信息（从 slots_snapshot 派生）。 */
     private record SlotInfo(String slotId, String layerType, NormRect rect, int zIndex, String fit) {}
+
+    /**
+     * v0.13+ 扰动贴图池条目：从 job.stickerPoolJson 派生。
+     * 渲染器按 jobId+variantIndex 做 seed，从 poolIds 随机抽 pickCount 张 GIF overlay。
+     */
+    private record StickerPoolEntry(
+            String slotKey,           // slot id 或 "_global"
+            List<String> poolIds,     // 候选 MixcutAsset.id
+            String coverage,          // intro / outro / loop / random_3s
+            double opacity,           // 0..1
+            double scalePct,          // 5..50 (相对画布宽度的百分比)
+            int pickCount             // 1..2，每变体从 pool 抽几张
+    ) {}
+
+    /** v0.13+ 单个 sticker overlay 的最终渲染参数（ffmpeg 用）。 */
+    private record StickerOverlay(
+            File file,
+            String slotKey,
+            int x,
+            int y,
+            int targetWidth,
+            double opacity,
+            double startT,
+            double endT
+    ) {}
 
     /** 渲染上下文：从模板快照与 overrides 计算出的、贯穿整个 job 的不变量。 */
     private record RenderContext(
@@ -619,6 +716,18 @@ public class MixcutRenderingService {
             args.add("-i"); args.add(bgm.getAbsolutePath());
         }
 
+        // v0.13+: 扰动贴图池 —— 每变体按 (jobId + variantIndex) seed 从 pool_ids 随机抽 GIF。
+        //   每张 GIF 用 -stream_loop -1 让 demuxer 级循环到 totalDuration。
+        //   filter 链：format=yuva420p,scale=W:-2,colorchannelmixer=aa=opacity → overlay enable=between(t,...)
+        List<StickerOverlay> stickers = buildVariantStickers(job, ctx, variantIndex, totalDuration, transforms);
+        int stickerInputStart = segCount + (useRealOverlay ? overlayCount : 1) + (useBgm ? 1 : 0);
+        for (StickerOverlay so : stickers) {
+            args.add("-stream_loop"); args.add("-1");
+            args.add("-t"); args.add(format((double) totalDuration));
+            args.add("-i"); args.add(so.file.getAbsolutePath());
+        }
+        transforms.put("sticker_overlay_count", stickers.size());
+
         // filter_complex 拼装
         StringBuilder fc = new StringBuilder();
         // 视频段 scale + concat → 严格按 ctx 画布；音频归一化到 stereo 44.1kHz 再 concat
@@ -741,6 +850,24 @@ public class MixcutRenderingService {
             String outTag = "ovl" + i;
             fc.append("[").append(outTag).append("];");
             prev = outTag;
+        }
+
+        // v0.13+: 扰动贴图 overlay 链。每张 GIF：format=yuva420p,scale=W:-2,colorchannelmixer=aa=opacity → overlay
+        //   GIF binary alpha 上叠 colorchannelmixer 只对 "已不透明像素" 生效（透明像素仍透明），等价于"贴图整体调薄"。
+        for (int i = 0; i < stickers.size(); i++) {
+            StickerOverlay s = stickers.get(i);
+            int inputIdx = stickerInputStart + i;
+            String stickerTag = "sk" + i;
+            fc.append("[").append(inputIdx).append(":v]")
+              .append("format=yuva420p,scale=").append(s.targetWidth).append(":-2")
+              .append(",colorchannelmixer=aa=").append(format(s.opacity))
+              .append("[").append(stickerTag).append("s];");
+            String nextOut = "skl" + i;
+            fc.append("[").append(prev).append("][").append(stickerTag).append("s]")
+              .append("overlay=x=").append(s.x).append(":y=").append(s.y)
+              .append(":enable='between(t,").append(format(s.startT)).append(",").append(format(s.endT)).append(")':format=auto")
+              .append("[").append(nextOut).append("];");
+            prev = nextOut;
         }
 
         // 变体识别条
@@ -911,6 +1038,136 @@ public class MixcutRenderingService {
         int gi = (int) Math.round(g * 255);
         int bi = (int) Math.round(b * 255);
         return (ri << 16) | (gi << 8) | bi;
+    }
+
+    // ── v0.13+ 扰动贴图池 helpers ─────────────────────────────────────────────
+
+    /**
+     * 解析 job.stickerPoolJson + 用 (jobId+variantIndex) seed 抽样，返回该变体的 sticker overlay 列表。
+     *
+     * stickerPoolJson 结构（slot 级 Map）：
+     *   {
+     *     "<slotId>": { "pool_ids": ["preset_..."], "coverage": "intro"|"outro"|"loop"|"random_3s",
+     *                   "opacity": 0.85, "scale_pct": 18, "pick_count": 1 },
+     *     "_global": {...}    // 不绑定 slot，整片随机位置
+     *   }
+     */
+    private List<StickerOverlay> buildVariantStickers(
+            MixcutRenderJob job, RenderContext ctx, int variantIndex, int totalDuration, ObjectNode transformsOut
+    ) {
+        List<StickerOverlay> result = new ArrayList<>();
+        String poolJson = job.getStickerPoolJson();
+        if (poolJson == null || poolJson.isBlank()) return result;
+
+        long seed = ((long) job.getId().hashCode() * 1_000_003L) ^ (long) variantIndex;
+        Random rnd = new Random(seed);
+        int W = ctx.outputWidth;
+        int H = ctx.outputHeight;
+        ObjectNode stickerDetail = transformsOut.putObject("stickers_detail");
+
+        try {
+            JsonNode root = mapper.readTree(poolJson);
+            if (!root.isObject()) return result;
+
+            Iterator<Map.Entry<String, JsonNode>> it = root.fields();
+            while (it.hasNext()) {
+                Map.Entry<String, JsonNode> entry = it.next();
+                String slotKey = entry.getKey();
+                JsonNode cfg = entry.getValue();
+                if (!cfg.isObject()) continue;
+
+                JsonNode poolIdsNode = cfg.path("pool_ids");
+                if (!poolIdsNode.isArray() || poolIdsNode.size() == 0) continue;
+                List<String> poolIds = new ArrayList<>();
+                for (JsonNode id : poolIdsNode) {
+                    String s = id.asText("");
+                    if (!s.isBlank()) poolIds.add(s);
+                }
+                if (poolIds.isEmpty()) continue;
+
+                String coverage = cfg.path("coverage").asText("loop");
+                double opacity = Math.max(0.05, Math.min(1.0, cfg.path("opacity").asDouble(0.85)));
+                double scalePct = Math.max(5.0, Math.min(50.0, cfg.path("scale_pct").asDouble(18.0)));
+                int pickCount = Math.max(1, Math.min(2, cfg.path("pick_count").asInt(1)));
+
+                // 不放回随机抽样 (Fisher–Yates 前 pickCount 个)
+                List<String> shuffled = new ArrayList<>(poolIds);
+                for (int i = shuffled.size() - 1; i > 0; i--) {
+                    int j = rnd.nextInt(i + 1);
+                    String tmp = shuffled.get(i);
+                    shuffled.set(i, shuffled.get(j));
+                    shuffled.set(j, tmp);
+                }
+                List<String> picked = shuffled.subList(0, Math.min(pickCount, shuffled.size()));
+
+                // coverage → 时间窗
+                double startT;
+                double endT;
+                switch (coverage) {
+                    case "intro" -> { startT = 0.0; endT = Math.min(3.0, totalDuration); }
+                    case "outro" -> { startT = Math.max(0.0, totalDuration - 3.0); endT = totalDuration; }
+                    case "random_3s" -> {
+                        startT = rnd.nextDouble() * Math.max(0.5, totalDuration - 3.0);
+                        endT = Math.min(startT + 3.0, totalDuration);
+                    }
+                    default -> { startT = 0.0; endT = totalDuration; }
+                }
+
+                int targetWidth = Math.max(40, (int) Math.round(W * scalePct / 100.0));
+                if (targetWidth % 2 != 0) targetWidth -= 1;  // 偶数（scale=-2 要求）
+                SlotInfo slot = ctx.slotMap.get(slotKey);
+
+                int detailIdx = 0;
+                for (String assetId : picked) {
+                    var assetOpt = assetService.get(assetId);
+                    if (assetOpt.isEmpty()) continue;
+                    var asset = assetOpt.get();
+                    if (asset.getLocalPath() == null) continue;
+                    File f = new File(asset.getLocalPath());
+                    if (!f.exists()) continue;
+
+                    // 仅 sticker / image 类型有意义
+                    if (!"sticker".equals(asset.getKind()) && !"image".equals(asset.getKind())) continue;
+
+                    int posX;
+                    int posY;
+                    if (slot != null && slot.rect != null) {
+                        // slot 中心 + 5% 抖动
+                        double cx = slot.rect.x + slot.rect.w / 2;
+                        double cy = slot.rect.y + slot.rect.h / 2;
+                        int jitterX = (int) ((rnd.nextDouble() - 0.5) * 0.05 * W);
+                        int jitterY = (int) ((rnd.nextDouble() - 0.5) * 0.05 * H);
+                        posX = (int) Math.round(cx * W) - targetWidth / 2 + jitterX;
+                        posY = (int) Math.round(cy * H) - targetWidth / 2 + jitterY;
+                    } else {
+                        // 全画布安全区 [10%..80%] 随机
+                        posX = (int) Math.round(rnd.nextDouble() * (W - targetWidth) * 0.8 + W * 0.1);
+                        posY = (int) Math.round(rnd.nextDouble() * (H - targetWidth) * 0.8 + H * 0.1);
+                    }
+                    // 钳制
+                    posX = Math.max(0, Math.min(W - targetWidth, posX));
+                    posY = Math.max(0, Math.min(H - targetWidth, posY));
+
+                    result.add(new StickerOverlay(f, slotKey, posX, posY, targetWidth, opacity, startT, endT));
+
+                    ObjectNode d = stickerDetail.objectNode();
+                    d.put("asset_id", assetId);
+                    d.put("file", f.getName());
+                    d.put("x", posX);
+                    d.put("y", posY);
+                    d.put("w", targetWidth);
+                    d.put("opacity", round3(opacity));
+                    d.put("start_t", round2(startT));
+                    d.put("end_t", round2(endT));
+                    d.put("coverage", coverage);
+                    stickerDetail.set(slotKey + "_" + detailIdx, d);
+                    detailIdx++;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[mixcut] sticker pool parse error: {}", e.getMessage());
+        }
+        return result;
     }
 
     private static double hue2rgb(double p, double q, double t) {

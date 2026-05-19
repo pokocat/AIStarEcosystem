@@ -20,7 +20,9 @@ import {
   Layers,
   Wand2,
   Fingerprint,
+  Send,
 } from "lucide-react";
+import { BatchPublishDrawer } from "@/components/mixcut-zone/BatchPublishDrawer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
@@ -39,6 +41,8 @@ export function JobDetailClient({ id }: { id: string }) {
   const [selectedVariant, setSelectedVariant] = useState(0);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  /** v0.15+: 批量发布抽屉开关 */
+  const [publishOpen, setPublishOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +138,9 @@ export function JobDetailClient({ id }: { id: string }) {
         <div className="flex items-center gap-2">
           {completed && hasOutputs && (
             <>
+              <Button variant="gradient" onClick={() => setPublishOpen(true)}>
+                <Send className="size-4" /> 批量发布
+              </Button>
               <Button variant="outline">
                 <Download className="size-4" /> 全部打包下载
               </Button>
@@ -522,6 +529,15 @@ export function JobDetailClient({ id }: { id: string }) {
           </Card>
         </aside>
       </div>
+
+      {/* v0.15+: 批量发布抽屉 */}
+      {job && (
+        <BatchPublishDrawer
+          job={job}
+          open={publishOpen}
+          onClose={() => setPublishOpen(false)}
+        />
+      )}
     </div>
   );
 }

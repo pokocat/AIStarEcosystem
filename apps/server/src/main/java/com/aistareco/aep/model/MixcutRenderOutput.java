@@ -47,6 +47,21 @@ public class MixcutRenderOutput {
     @Column(nullable = false)
     private OffsetDateTime createdAt;
 
+    /** v0.14+: CDN 公开 URL（如 /cdn/mixcut/<jobId>/v<N>.mp4）。本地 fake-CDN 或 OSS。 */
+    @Column(length = 512)
+    private String cdnUrl;
+
+    /** v0.14+: CDN object key（用于 delete / 重命名）。 */
+    @Column(length = 256)
+    private String cdnKey;
+
+    /** v0.14+: CDN 缩略图 URL（与 cdnUrl 一致结构，jpg 后缀）。 */
+    @Column(length = 512)
+    private String cdnThumbnailUrl;
+
+    /** v0.14+: 上传到 CDN 完成的时间。 */
+    private OffsetDateTime cdnUploadedAt;
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
@@ -82,4 +97,16 @@ public class MixcutRenderOutput {
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getCdnUrl() { return cdnUrl; }
+    public void setCdnUrl(String cdnUrl) { this.cdnUrl = cdnUrl; }
+
+    public String getCdnKey() { return cdnKey; }
+    public void setCdnKey(String cdnKey) { this.cdnKey = cdnKey; }
+
+    public String getCdnThumbnailUrl() { return cdnThumbnailUrl; }
+    public void setCdnThumbnailUrl(String cdnThumbnailUrl) { this.cdnThumbnailUrl = cdnThumbnailUrl; }
+
+    public OffsetDateTime getCdnUploadedAt() { return cdnUploadedAt; }
+    public void setCdnUploadedAt(OffsetDateTime cdnUploadedAt) { this.cdnUploadedAt = cdnUploadedAt; }
 }
