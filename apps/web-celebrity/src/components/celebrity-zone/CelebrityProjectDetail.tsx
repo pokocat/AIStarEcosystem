@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowDownAZ,
   ArrowLeft,
@@ -15,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { CelebrityProjectVideoCard } from "./CelebrityProjectVideoCard";
+import { DistributeDialog } from "@/components/distribution/DistributeDialog";
 import { PROJECT_STATUS_BADGE, CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import type {
   CelebrityProject,
@@ -47,6 +49,34 @@ export function CelebrityProjectDetail({ project, videos }: Props) {
   }, [videos, statusFilter]);
   const badge = PROJECT_STATUS_BADGE[project.status];
   const generateHref = `/star/${project.starId}/generate`;
+
+  // 分发入口：CTA「批量分发」开 dialog；同时支持 ?action=distribute 直接打开
+  // （CelebrityProjectCard / CelebrityGenerationWorkspace 那两条 deep link 用）。
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [distributeOpen, setDistributeOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (searchParams.get("action") === "distribute") {
+      setDistributeOpen(true);
+    }
+  }, [searchParams]);
+  const closeDistribute = React.useCallback(() => {
+    setDistributeOpen(false);
+    // 清掉 ?action 避免刷新后又弹一次；保留其它 query
+    if (searchParams.get("action") === "distribute") {
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("action");
+      const qs = next.toString();
+      router.replace(qs ? `?${qs}` : "?");
+    }
+  }, [router, searchParams]);
+  const handleDistributed = React.useCallback(
+    (_jobIds: string[]) => {
+      // 创建完跳到 /distribution，让用户去 ▶ 启动（启动时才扣费）
+      router.push("/distribution");
+    },
+    [router],
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -87,7 +117,11 @@ export function CelebrityProjectDetail({ project, videos }: Props) {
             <Link href={generateHref} className={CTA_PRIMARY}>
               <Plus className="h-3.5 w-3.5" /> 生成新视频
             </Link>
-            <button type="button" className={CTA_SECONDARY}>
+            <button
+              type="button"
+              onClick={() => setDistributeOpen(true)}
+              className={CTA_SECONDARY}
+            >
               <Globe className="h-3.5 w-3.5" /> 批量分发
             </button>
           </div>
@@ -227,6 +261,14 @@ export function CelebrityProjectDetail({ project, videos }: Props) {
           </div>
         </div>
       </div>
+
+      <DistributeDialog
+        open={distributeOpen}
+        onClose={closeDistribute}
+        project={project}
+        videos={videos}
+        onCreated={handleDistributed}
+      />
     </div>
   );
 }

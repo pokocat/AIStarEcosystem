@@ -91,6 +91,24 @@ def test_verify_returns_valid_for_nonempty_state(client: TestClient) -> None:
     assert r.json()["valid"] is True
 
 
+def test_verify_real_mode_unsupported_platform_returns_invalid(monkeypatch) -> None:
+    """Real mode + a platform we haven't wired (kuaishou) must return
+    valid=False *without* importing patchright. The slim mock-mode CI doesn't
+    have the [real] extra installed, so an unguarded import would 500.
+    Also asserts we never up-flip a cookie we can't actually probe."""
+    monkeypatch.setenv("SAU_INTERNAL_SECRET", SECRET)
+    monkeypatch.setenv("SAU_MOCK_MODE", "0")
+
+    with TestClient(main.app) as client:
+        r = client.post(
+            "/accounts/verify",
+            headers=_h(),
+            json={"platform": "kuaishou", "storageState": {"cookies": [{"name": "x", "value": "y"}]}},
+        )
+        assert r.status_code == 200
+        assert r.json() == {"valid": False, "refreshedStorageState": None, "profile": None}
+
+
 def test_upload_lifecycle_pushes_callbacks(client: TestClient, tmp_path, monkeypatch) -> None:
     """Submit an upload, capture the callbacks, assert we reach status=live."""
     received: deque[dict] = deque()
@@ -150,6 +168,34 @@ async def _wait_until_finished(client: TestClient, task_id: str, *, timeout_s: f
             return
         await asyncio.sleep(0.2)
     raise AssertionError(f"task {task_id} didn't finish in {timeout_s}s")
+
+
+def test_real_login_platform_tables_are_consistent() -> None:
+    """Every platform wired into LOGIN_PAGE_URLS must also have a logged-in
+    URL fragment list + a QR selector list. Catches half-wired platforms
+    (where /login/start would succeed but /login/poll never recognises the
+    redirect, or vice versa)."""
+    from sau_service.login_pool import (
+        LOGIN_PAGE_URLS,
+        LOGGED_IN_URL_FRAGMENTS,
+        QR_SELECTORS,
+    )
+
+    for platform in LOGIN_PAGE_URLS:
+        assert platform in LOGGED_IN_URL_FRAGMENTS, (
+            f"{platform} has a login URL but no logged-in URL fragments — "
+            f"/login/poll would never flip to success"
+        )
+        assert LOGGED_IN_URL_FRAGMENTS[platform], (
+            f"{platform} has empty LOGGED_IN_URL_FRAGMENTS tuple"
+        )
+        assert platform in QR_SELECTORS, (
+            f"{platform} has no QR selectors; /login/start would fall back to "
+            f"a full viewport screenshot"
+        )
+
+    # The two currently-wired platforms.
+    assert set(LOGIN_PAGE_URLS) >= {"douyin", "shipinhao"}
 
 
 def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:

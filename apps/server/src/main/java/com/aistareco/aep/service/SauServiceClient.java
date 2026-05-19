@@ -38,7 +38,14 @@ import java.util.Map;
 public class SauServiceClient {
 
     private static final ObjectMapper OM = new ObjectMapper();
+    // Force HTTP/1.1: Java's default HttpClient negotiates HTTP/2 with an h2c
+    // upgrade header on plain http://, which uvicorn (the FastAPI server used by
+    // sau-service) doesn't speak — it logs "Unsupported upgrade request" and
+    // drops the body, yielding spurious 422s on every POST. HTTPS/prod won't
+    // hit this (h2 negotiates over ALPN), but pinning HTTP/1.1 here keeps dev
+    // + container-to-container traffic simple and works the same everywhere.
     private static final HttpClient HTTP = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(8))
             .build();
     private static final String INTERNAL_SECRET_HEADER = "X-Internal-Secret";

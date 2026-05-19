@@ -38,11 +38,40 @@ log = logging.getLogger(__name__)
 # match what creator.<platform>.com redirects to post-scan.
 LOGIN_PAGE_URLS: dict[str, str] = {
     "douyin": "https://creator.douyin.com/",
+    # 视频号 (channels) — 微信生态的创作者中心，登录走标准的微信开放平台扫码
+    # widget（嵌在 iframe 里，内部由 open.weixin.qq.com 渲染）。打开根路径
+    # 即触发 redirect 到 /login 显示 QR。
+    "shipinhao": "https://channels.weixin.qq.com/",
 }
 LOGGED_IN_URL_FRAGMENTS: dict[str, tuple[str, ...]] = {
     # Once the operator scans the QR, douyin's creator hub redirects into
     # `/creator-micro/home` (or sometimes `/creator/home` on legacy builds).
     "douyin": ("creator-micro", "/creator/home", "/creator-center"),
+    # 视频号扫码 → 跳到 /platform/post-create 或 /platform/post-list /
+    # /platform/home / /platform/profile。所有已登录页都包含 `/platform`，
+    # 用它做 catch-all；登录页本身路径是 `/login`，不会误中。
+    "shipinhao": ("/platform/post-create", "/platform/post-list", "/platform/home", "/platform/profile", "/platform/account"),
+}
+
+# Per-platform QR locator hints, tried in order before falling back to a
+# viewport screenshot. iframe-aware: if the strategy starts with `iframe::`
+# we'll dive into the frame first.
+QR_SELECTORS: dict[str, tuple[str, ...]] = {
+    "douyin": (
+        "div.web-login-scan-code__content canvas",
+        "div.web-login-scan-code__content",
+        "div.qrcode-wrapper",
+        "canvas.qrcode",
+    ),
+    # 视频号: QR 通常在 iframe[src*="open.weixin.qq.com/connect/qrconnect"]
+    # 里。我们先尝试 iframe 内部 img.qrcode，再 fallback 到 iframe 元素
+    # 整体截图，最后才是 viewport。
+    "shipinhao": (
+        "iframe::img.qrcode",
+        "iframe[src*='qrconnect']",
+        "img.qrcode",
+        "div.qrcode_login_main",
+    ),
 }
 
 
@@ -203,9 +232,10 @@ class LoginPool:
             page = await context.new_page()
             await page.goto(LOGIN_PAGE_URLS[platform], wait_until="domcontentloaded")
             # Allow the SPA + QR widget time to render before screenshot.
-            # 2.5s balances snappy /login/start with a stable QR capture.
-            await page.wait_for_timeout(2500)
-            qr_data_url = await _screenshot_qr(page)
+            # 视频号 the QR sits inside an open.weixin.qq.com iframe, so it
+            # needs a touch longer than douyin's pure-canvas widget.
+            await page.wait_for_timeout(3500 if platform == "shipinhao" else 2500)
+            qr_data_url = await _screenshot_qr(page, platform)
         except Exception:
             # Tear partial handles back down so we don't leak browsers on bad start.
             await _safe_close(context, "context")
@@ -294,22 +324,27 @@ class RealLoginUnsupported(Exception):
 # ── helpers ──────────────────────────────────────────────────────────
 
 
-async def _screenshot_qr(page: Any) -> str:
+async def _screenshot_qr(page: Any, platform: str) -> str:
     """Capture a base64-encoded PNG of the login page so the operator can scan.
 
-    Tries to crop to the QR element first (smaller payload + clearer image);
-    falls back to a viewport screenshot when the selector doesn't resolve —
-    Douyin occasionally swaps which canvas hosts the QR, so a fallback keeps
-    `/login/start` from 500'ing.
+    Tries platform-specific QR locators first (smaller payload + clearer image),
+    falls back to a viewport screenshot when nothing resolves — login pages
+    occasionally swap which canvas/img/iframe hosts the QR, and a fallback
+    keeps `/login/start` from 500'ing instead of just showing the operator a
+    slightly-bigger picture.
+
+    Supports an `iframe::<inner-selector>` strategy for platforms whose QR is
+    rendered inside a cross-origin frame (视频号 uses open.weixin.qq.com).
     """
-    selectors = (
-        "div.web-login-scan-code__content canvas",
-        "div.web-login-scan-code__content",
-        "div.qrcode-wrapper",
-        "canvas.qrcode",
-    )
+    selectors = QR_SELECTORS.get(platform, ())
     for sel in selectors:
         try:
+            if sel.startswith("iframe::"):
+                inner = sel.removeprefix("iframe::")
+                png = await _shot_in_iframe(page, inner)
+                if png is not None:
+                    return _png_to_data_url(png)
+                continue
             element = await page.query_selector(sel)
             if element is None:
                 continue
@@ -321,14 +356,42 @@ async def _screenshot_qr(page: Any) -> str:
     return _png_to_data_url(png_bytes)
 
 
+async def _shot_in_iframe(page: Any, inner_selector: str) -> bytes | None:
+    """Walk every frame on the page, return the first matching element's PNG."""
+    for frame in page.frames:
+        try:
+            element = await frame.query_selector(inner_selector)
+            if element is None:
+                continue
+            return await element.screenshot(type="png")
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
 async def _extract_profile_safely(page: Any, platform: str, account_name: str) -> dict[str, Any]:
     """Best-effort post-login profile pull. Never raises — we already have the cookie."""
     fallback = {"displayName": account_name, "avatarUrl": None}
-    if platform != "douyin":
+    # Per-platform best-effort selectors. Order = [displayName, avatarUrl].
+    # If any platform's site changes its DOM we silently drop to fallback;
+    # storage_state was already collected so the bind succeeded either way.
+    selectors: dict[str, tuple[str, str]] = {
+        "douyin": (
+            "div.name, div.creator-name, span.username",
+            "img.avatar, div.avatar img, img.user-avatar",
+        ),
+        "shipinhao": (
+            "div.finder-nickname, span.finder-nickname, div.account-name, div.user-name",
+            "img.finder-avatar, div.avatar img, img.user-avatar",
+        ),
+    }
+    pair = selectors.get(platform)
+    if pair is None:
         return fallback
+    name_sel, avatar_sel = pair
     try:
-        name_el = await page.query_selector('div.name, div.creator-name, span.username')
-        avatar_el = await page.query_selector('img.avatar, div.avatar img, img.user-avatar')
+        name_el = await page.query_selector(name_sel)
+        avatar_el = await page.query_selector(avatar_sel)
         display = (await name_el.inner_text()).strip() if name_el else account_name
         avatar = await avatar_el.get_attribute("src") if avatar_el else None
         return {"displayName": display or account_name, "avatarUrl": avatar}

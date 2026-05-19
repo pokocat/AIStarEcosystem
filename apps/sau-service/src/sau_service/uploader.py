@@ -178,10 +178,10 @@ class UploadManager:
         Imports are function-local so that mock-mode containers (without the
         [real] extra) don't fail at module import.
 
-        v1 implements 抖音 end-to-end; other v1-enabled platforms (kuaishou /
-        xiaohongshu / shipinhao) wire when their respective upload selectors
-        are validated against a real account. Until then they return a clear
-        NOT_IMPLEMENTED error.
+        v1 implements 抖音 + 视频号 end-to-end; the remaining two v1-enabled
+        platforms (kuaishou / xiaohongshu) wire when their respective upload
+        selectors are validated against a real account. Until then they
+        return a clear NOT_IMPLEMENTED error.
         """
         platform = rec.request.platform.lower()
         rec.status = "uploading"
@@ -196,7 +196,9 @@ class UploadManager:
         # rec.state_path already contains the JSON; pass it through verbatim.
         if platform == "douyin":
             await self._upload_douyin(rec)
-        elif platform in ("kuaishou", "xiaohongshu", "shipinhao"):
+        elif platform == "shipinhao":
+            await self._upload_shipinhao(rec)
+        elif platform in ("kuaishou", "xiaohongshu"):
             rec.status = "failed"
             rec.error_code = "PLATFORM_REAL_NOT_WIRED"
             rec.error_message = f"real-mode for {platform} pending; flip to mock or wait for next slice"
@@ -252,6 +254,78 @@ class UploadManager:
             await self._push(rec)
         except Exception as exc:  # noqa: BLE001
             log.exception("douyin upload failed task_id=%s", rec.task_id)
+            rec.status = "failed"
+            rec.error_code = "UPLOADER_RAISED"
+            rec.error_message = repr(exc)
+            await self._push(rec)
+
+    async def _upload_shipinhao(self, rec: TaskRecord) -> None:
+        """Invoke pokocat/social-auto-upload's TencentVideo (视频号) uploader.
+
+        Upstream class lives at `uploader.tencent_uploader.main.TencentVideo`
+        — the historical name in social-auto-upload because 视频号 ships as
+        part of WeChat / Tencent. If the operator's pinned upstream SHA
+        renamed it (`ChannelsVideo`, `WechatChannelsVideo`, …) the import
+        below will need to follow.
+
+        视频号 has a "作品分类" (category) field that's required for some
+        accounts and optional for others. v1 leaves it unset — the upstream
+        uploader defaults to "其他" / no-category, which works for accounts
+        that haven't been enrolled in 商品橱窗 / 知识付费 categories. If
+        operator reports CATEGORY_REQUIRED we'll plumb `tags[0]` → category
+        or add an explicit field on UploadRequest.
+        """
+        from patchright.async_api import async_playwright  # type: ignore[import-not-found]
+        try:
+            from uploader.tencent_uploader.main import TencentVideo  # type: ignore[import-not-found]
+        except ImportError as exc:
+            rec.status = "failed"
+            rec.error_code = "UPSTREAM_MODULE_MISSING"
+            rec.error_message = (
+                f"shipinhao upstream class not found ({exc}); "
+                "check uploader.tencent_uploader.main path against the pinned SHA"
+            )
+            await self._push(rec)
+            return
+
+        rec.status = "uploading"
+        rec.progress = 20
+        await self._push(rec)
+
+        publish_date = 0  # 0 = publish immediately, matches DouYinVideo convention
+        try:
+            async with async_playwright() as playwright:
+                if rec.cancel_event.is_set():
+                    await self._terminate(rec, "cancelled")
+                    return
+                video = TencentVideo(
+                    title=rec.request.title,
+                    file_path=rec.video_path,
+                    tags=rec.request.tags,
+                    publish_date=publish_date,
+                    account_file=rec.state_path,
+                    category=None,
+                )
+                rec.progress = 40
+                await self._push(rec)
+                await video.upload(playwright)
+            rec.status = "live"
+            rec.progress = 100
+            rec.external_url = None  # upstream doesn't return final URL
+            await self._push(rec)
+        except TypeError as exc:
+            # 多半是 TencentVideo 构造参数签名漂了 (例如 category 变必填或重命名)。
+            # 单独 catch 一下，给 operator 一个能定位的提示。
+            log.exception("shipinhao upload failed (constructor mismatch) task_id=%s", rec.task_id)
+            rec.status = "failed"
+            rec.error_code = "UPSTREAM_SIGNATURE_MISMATCH"
+            rec.error_message = (
+                f"TencentVideo signature mismatch ({exc}); "
+                "the pinned upstream may require a different constructor"
+            )
+            await self._push(rec)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("shipinhao upload failed task_id=%s", rec.task_id)
             rec.status = "failed"
             rec.error_code = "UPLOADER_RAISED"
             rec.error_message = repr(exc)

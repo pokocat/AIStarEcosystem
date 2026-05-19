@@ -5,10 +5,17 @@ is what apps/server's automated integration tests rely on. This document walks
 through enabling the real Playwright path on top of the patched
 [pokocat/social-auto-upload](https://github.com/pokocat/social-auto-upload) fork.
 
-v1 ships real-mode for **抖音 (douyin)** only. The other v1-enabled platforms
-(`kuaishou`, `xiaohongshu`, `shipinhao`) return `PLATFORM_REAL_NOT_WIRED` —
-they'll come online in follow-up commits as their selectors are validated
-against real accounts.
+v1 ships real-mode for **抖音 (douyin)** and **视频号 (shipinhao)**. The other
+v1-enabled platforms (`kuaishou`, `xiaohongshu`) return `PLATFORM_REAL_NOT_WIRED`
+on `/login/start` and `/upload` until their selectors are validated against
+real accounts.
+
+| 平台 | 真实登录 (QR) | 真实上传 | 备注 |
+| --- | --- | --- | --- |
+| douyin | ✅ | ✅ | creator.douyin.com；进入 `/creator-micro` 视为登录成功 |
+| shipinhao | ✅ | ✅ | channels.weixin.qq.com；QR 在 open.weixin.qq.com iframe；进入 `/platform` 视为登录成功；上传走 `uploader.tencent_uploader.main.TencentVideo` |
+| kuaishou | ⏳ | ⏳ | 待 selectors 验证 |
+| xiaohongshu | ⏳ | ⏳ | 待 selectors 验证 |
 
 ---
 
@@ -209,9 +216,14 @@ In the web-celebrity UI:
 
 ## 6. What still needs work (Phase B)
 
-- `kuaishou`, `xiaohongshu`, `shipinhao` upstream wrappers — both upload
+- `kuaishou`, `xiaohongshu` upstream wrappers — both upload
   (`_upload_<platform>` in `uploader.py`) and login (`LOGIN_PAGE_URLS` +
-  `LOGGED_IN_URL_FRAGMENTS` entries in `login_pool.py`).
+  `LOGGED_IN_URL_FRAGMENTS` + `QR_SELECTORS` entries in `login_pool.py`).
+- 视频号 "作品分类" (category) field: `_upload_shipinhao` currently passes
+  `category=None`, which works for general accounts but accounts enrolled
+  in 商品橱窗 / 知识付费 require an explicit category. If we see
+  `CATEGORY_REQUIRED` in upstream errors, add a field on `UploadRequest`
+  and pipe it through.
 - Admin endpoint to import a storage_state without raw SQL.
 - Per-platform pricing via `PlatformConfig`; v1 hardcodes 20 credits per
   upload in `apps/server/src/main/resources/application.yml` (`sau.default-upload-cost`).
