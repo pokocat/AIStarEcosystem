@@ -1770,6 +1770,126 @@ components:
         pollIntervalMs:    { type: integer, nullable: true }
         estimatedSeconds:  { type: integer, nullable: true }
 
+    # ── 2.22 Social Distribution (sau 集成) ────
+    # 短视频分发：用户绑定平台账号 (扫码) → 创建发布任务 → server 通过 sau-service
+    # (Python+Playwright) 自动上传。storage_state (cookie) 在 server DB 加密存储，
+    # 永不出口到前端 DTO。
+
+    SocialPlatform:
+      type: string
+      enum: [douyin, kuaishou, xiaohongshu, shipinhao, bilibili, tiktok, youtube, baijiahao]
+      description: |
+        v1 仅启用前 4 个 (抖音 / 快手 / 小红书 / 视频号)；
+        bilibili / tiktok / youtube / baijiahao 在 enum 占位但 service 抛 NOT_IMPLEMENTED。
+
+    SocialAccountStatus:
+      type: string
+      enum: [active, expired, banned, pending]
+      description: pending=绑定中尚未完成扫码；active=cookie 有效；expired=cookie 失效需重绑；banned=平台封禁
+
+    SocialAccount:
+      type: object
+      required: [id, userId, platform, accountName, status, boundAt]
+      properties:
+        id:               { type: string }
+        userId:           { type: string }
+        platform:         { $ref: '#/components/schemas/SocialPlatform' }
+        accountName:      { type: string, description: 用户自取的别名 }
+        status:           { $ref: '#/components/schemas/SocialAccountStatus' }
+        displayName:      { type: string, nullable: true }
+        avatarUrl:        { type: string, nullable: true }
+        boundAt:          { type: string, format: date-time }
+        lastVerifiedAt:   { type: string, format: date-time, nullable: true }
+      description: |
+        响应 DTO **不含 storage_state**；cookie 仅在 server DB 加密存储。
+
+    SocialAccountBindInput:
+      type: object
+      required: [platform, accountName]
+      properties:
+        platform:    { $ref: '#/components/schemas/SocialPlatform' }
+        accountName: { type: string }
+
+    SocialAccountBindInit:
+      type: object
+      required: [sessionTicket, expiresAt]
+      properties:
+        sessionTicket:    { type: string, description: 用于 /bind-poll 的 ticket }
+        qrImageDataUrl:   { type: string, nullable: true, description: "data:image/png;base64,..." }
+        qrUrl:            { type: string, nullable: true, description: 部分平台是 deeplink 而非图片 }
+        expiresAt:        { type: string, format: date-time }
+
+    SocialAccountBindPollResult:
+      type: object
+      required: [status]
+      properties:
+        status:  { type: string, enum: [pending, success, expired] }
+        account: { $ref: '#/components/schemas/SocialAccount' }
+
+    PublishJobStatus:
+      type: string
+      enum: [queued, uploading, transcoding, publishing, live, failed, cancelled]
+
+    PublishJob:
+      type: object
+      required: [id, projectId, platformId, platformName, status, progress, createdAt, updatedAt]
+      properties:
+        id:                { type: string }
+        userId:            { type: string, nullable: true, description: sau 流程必填；drama legacy mock 可空 }
+        projectId:         { type: string }
+        socialAccountId:   { type: string, nullable: true }
+        platformId:        { type: string }
+        platformName:      { type: string }
+        status:            { $ref: '#/components/schemas/PublishJobStatus' }
+        progress:          { type: integer, minimum: 0, maximum: 100 }
+        videoUrl:          { type: string, nullable: true, description: sau-service 拉取的源视频 URL }
+        title:             { type: string, nullable: true }
+        description:       { type: string, nullable: true }
+        tags:              { type: array, items: { type: string }, nullable: true }
+        coverUrl:          { type: string, nullable: true }
+        externalTaskId:    { type: string, nullable: true, description: sau-service 远端任务 id (idempotent callback key) }
+        externalUrl:       { type: string, nullable: true, description: 平台发布后的可访问 URL }
+        errorMessage:      { type: string, nullable: true }
+        creditsSpent:      { type: integer, nullable: true, description: 任务扣的积分；失败不退 }
+        createdAt:         { type: string, format: date-time }
+        updatedAt:         { type: string, format: date-time }
+        scheduledAt:       { type: string, format: date-time, nullable: true }
+
+    CreatePublishJobInput:
+      type: object
+      required: [projectId, videoUrl, title, description, tags, targets]
+      properties:
+        projectId:    { type: string }
+        videoUrl:     { type: string, description: sau-service 拉取的源视频 URL (公网可访问) }
+        title:        { type: string }
+        description:  { type: string }
+        tags:         { type: array, items: { type: string } }
+        coverUrl:     { type: string, nullable: true }
+        targets:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [platform, socialAccountId]
+            properties:
+              platform:         { $ref: '#/components/schemas/SocialPlatform' }
+              socialAccountId:  { type: string }
+              scheduledAt:      { type: string, format: date-time, nullable: true }
+
+    PublishJobCallback:
+      type: object
+      required: [externalTaskId, status]
+      properties:
+        externalTaskId:  { type: string }
+        status:          { $ref: '#/components/schemas/PublishJobStatus' }
+        progress:        { type: integer, minimum: 0, maximum: 100, nullable: true }
+        externalUrl:     { type: string, nullable: true }
+        errorCode:       { type: string, nullable: true }
+        errorMessage:    { type: string, nullable: true }
+      description: |
+        sau-service → server 的进度推送 payload (POST /internal/sau/job-callback)。
+        以 externalTaskId 幂等；状态只允许单调推进。
+
 # ─────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────
@@ -4640,6 +4760,234 @@ paths:
       - { in: path, name: platformId, required: true, schema: { type: string } }
     post:   { tags: [distribution], operationId: connectPlatform,    responses: { '200': { description: connected } } }
     delete: { tags: [distribution], operationId: disconnectPlatform, responses: { '204': { description: disconnected } } }
+
+  # ── social-distribution（sau 集成：短视频分发） ─────────────────────────────
+  # 用户绑定的社交账号 + 一键分发任务。详见 components/schemas 中 2.22 节。
+  # storage_state (cookie) 在 server DB 加密，永不暴露到此处任何 DTO。
+
+  /me/social-accounts:
+    get:
+      tags: [social-distribution]
+      operationId: listMySocialAccounts
+      summary: 当前用户的已绑定社交账号列表
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SocialAccount' }
+
+  /me/social-accounts/bind-init:
+    post:
+      tags: [social-distribution]
+      operationId: initSocialAccountBind
+      summary: 启动扫码绑定流程；后端调 sau-service 启 Playwright 取 QR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SocialAccountBindInput' }
+      responses:
+        '200':
+          description: 绑定会话已建立
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SocialAccountBindInit' }
+
+  /me/social-accounts/bind-poll:
+    get:
+      tags: [social-distribution]
+      operationId: pollSocialAccountBind
+      summary: 轮询扫码状态；status==success 后落库 + 返回清洁版 SocialAccount
+      parameters:
+        - { in: query, name: ticket, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SocialAccountBindPollResult' }
+
+  /me/social-accounts/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    delete:
+      tags: [social-distribution]
+      operationId: unbindSocialAccount
+      summary: 解绑账号；DB 行连同密文 storage_state 一并删除
+      responses:
+        '204': { description: deleted }
+
+  /me/social-accounts/{id}/verify:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: verifySocialAccount
+      summary: 用现有 cookie 跑一次验证；可能刷新或翻 expired
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SocialAccount' }
+
+  /me/publish-jobs:
+    get:
+      tags: [social-distribution]
+      operationId: listMyPublishJobs
+      summary: 当前用户的分发任务列表
+      parameters:
+        - { in: query, name: projectId, required: false, schema: { type: string } }
+        - { in: query, name: status,    required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishJob' }
+    post:
+      tags: [social-distribution]
+      operationId: createPublishJobs
+      summary: 批量创建发布任务（status=queued，不扣费；每个 targets[] 元素产生一条 PublishJob）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePublishJobInput' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishJob' }
+
+  /me/publish-jobs/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    get:
+      tags: [social-distribution]
+      operationId: getPublishJob
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublishJob' }
+
+  /me/publish-jobs/{id}/start:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: startPublishJob
+      summary: queued → uploading；本接口扣费（失败不退）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublishJob' }
+
+  /me/publish-jobs/{id}/cancel:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: cancelPublishJob
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublishJob' }
+
+  /me/publish-jobs/{id}/retry:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: retryPublishJob
+      summary: 失败任务重试；产生新一轮扣费
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublishJob' }
+
+  /internal/sau/job-callback:
+    post:
+      tags: [social-distribution]
+      operationId: sauJobCallback
+      summary: sau-service → server 的任务进度回调（受 X-Internal-Secret 保护）
+      description: |
+        内部 endpoint：仅 sau-service 在 k8s 同 namespace 内可访问，
+        受 InternalAuthFilter (`X-Internal-Secret`) 校验。以 externalTaskId 幂等。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublishJobCallback' }
+      responses:
+        '200': { description: ok }
+        '401': { description: invalid internal secret }
 
   # ── fan（C 端） ───────────────────────────────────
 

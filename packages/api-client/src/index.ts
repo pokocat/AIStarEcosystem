@@ -41,9 +41,13 @@ export * from "./format";
 
 import * as AccountApi from "./api/account";
 import * as AuthApi from "./api/auth";
+import * as PublishJobApi from "./api/publish-job";
+import * as SocialAccountApi from "./api/social-account";
 
-export { AccountApi, AuthApi };
+export { AccountApi, AuthApi, PublishJobApi, SocialAccountApi };
 
 // 子路径 alt 入口（按域细粒度引入）：
 //   import { getMe } from "@ai-star-eco/api-client/api/account";
 //   import { devLogin } from "@ai-star-eco/api-client/api/auth";
+//   import { listPublishJobs } from "@ai-star-eco/api-client/api/publish-job";
+//   import { initBind } from "@ai-star-eco/api-client/api/social-account";

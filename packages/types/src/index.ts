@@ -21,6 +21,7 @@ export * from "./product";
 export * from "./publish-job";
 export * from "./script";
 export * from "./settings";
+export * from "./social-account";
 export * from "./studio";
 export * from "./wallet";
 export * from "./wardrobe";

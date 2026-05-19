@@ -269,6 +269,7 @@ export default function DistributePage({ params }: PageProps) {
                   publishing: "发布",
                   live: "已上线",
                   failed: "失败",
+                  cancelled: "已取消",
                 }[j.status] ?? j.status;
               return (
                 <div
