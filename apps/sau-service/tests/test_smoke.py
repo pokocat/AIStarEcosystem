@@ -170,32 +170,28 @@ async def _wait_until_finished(client: TestClient, task_id: str, *, timeout_s: f
     raise AssertionError(f"task {task_id} didn't finish in {timeout_s}s")
 
 
-def test_real_login_platform_tables_are_consistent() -> None:
-    """Every platform wired into LOGIN_PAGE_URLS must also have a logged-in
-    URL fragment list + a QR selector list. Catches half-wired platforms
-    (where /login/start would succeed but /login/poll never recognises the
-    redirect, or vice versa)."""
-    from sau_service.login_pool import (
-        LOGIN_PAGE_URLS,
-        LOGGED_IN_URL_FRAGMENTS,
-        QR_SELECTORS,
-    )
+def test_real_login_drivers_implement_full_surface() -> None:
+    """Every PlatformDriver subclass registered in DRIVERS must override the
+    three abstract methods (extract_qr_data_url / is_logged_in /
+    extract_profile) and have a non-empty LOGIN_URL. Catches a "I added
+    the driver to DRIVERS but forgot extract_qr_data_url" half-wire that
+    would 500 the first time anyone tried real-mode bind."""
+    from sau_service.login_pool import DRIVERS, PlatformDriver
 
-    for platform in LOGIN_PAGE_URLS:
-        assert platform in LOGGED_IN_URL_FRAGMENTS, (
-            f"{platform} has a login URL but no logged-in URL fragments — "
-            f"/login/poll would never flip to success"
-        )
-        assert LOGGED_IN_URL_FRAGMENTS[platform], (
-            f"{platform} has empty LOGGED_IN_URL_FRAGMENTS tuple"
-        )
-        assert platform in QR_SELECTORS, (
-            f"{platform} has no QR selectors; /login/start would fall back to "
-            f"a full viewport screenshot"
-        )
+    for name, cls in DRIVERS.items():
+        assert issubclass(cls, PlatformDriver), f"{name} driver doesn't subclass PlatformDriver"
+        assert cls.LOGIN_URL, f"{name} driver has empty LOGIN_URL"
+        for method in ("extract_qr_data_url", "is_logged_in", "extract_profile"):
+            # Each subclass must override; the base method raises
+            # NotImplementedError (or returns the trivial profile fallback).
+            base_fn = getattr(PlatformDriver, method)
+            sub_fn = getattr(cls, method)
+            assert sub_fn is not base_fn or method == "extract_profile", (
+                f"{name} driver doesn't override {method}"
+            )
 
     # The two currently-wired platforms.
-    assert set(LOGIN_PAGE_URLS) >= {"douyin", "shipinhao"}
+    assert set(DRIVERS) >= {"douyin", "shipinhao"}
 
 
 def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:

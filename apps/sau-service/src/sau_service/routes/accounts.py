@@ -27,12 +27,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from ..auth import require_internal_secret
-from ..login_pool import (
-    LOGGED_IN_URL_FRAGMENTS,
-    LOGIN_PAGE_URLS,
-    _extract_profile_safely,
-    _safe_close,
-)
+from ..login_pool import DRIVERS, LOGIN_PAGE_URLS, _safe_close
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +57,8 @@ async def verify(req: VerifyRequest, request: Request) -> VerifyResponse:
         )
 
     platform = (req.platform or "").lower()
-    if platform not in LOGIN_PAGE_URLS:
+    driver_cls = DRIVERS.get(platform)
+    if driver_cls is None:
         # Platform not wired in real mode (kuaishou / xhs / unknown). We
         # can't prove the cookie works, so report invalid — this nudges the
         # user / operator to re-bind via whatever flow does exist for that
@@ -71,16 +67,17 @@ async def verify(req: VerifyRequest, request: Request) -> VerifyResponse:
         log.warning("verify: platform=%s not wired in real-mode; returning valid=false", platform)
         return VerifyResponse(valid=False)
 
-    return await _verify_real(platform, req.storageState, headless=settings.real_login_headless)
+    return await _verify_real(driver_cls, req.storageState, headless=settings.real_login_headless)
 
 
-async def _verify_real(platform: str, storage_state: dict, *, headless: bool) -> VerifyResponse:
-    """Spawn a fresh chromium, preload storage_state, check page URL.
+async def _verify_real(driver_cls, storage_state: dict, *, headless: bool) -> VerifyResponse:
+    """Spawn a fresh chromium, preload storage_state, ask the driver if logged in.
 
     On success we return a `refreshedStorageState` so the server can rotate
-    its encrypted blob. On any exception we return valid=False — false
-    positives would let users start jobs against a dead cookie and burn
-    credits, which is much worse than the rare false-negative.
+    its encrypted blob (most platforms refresh session/csrf cookies on every
+    visit — effective auto-renewal). On any exception we return valid=False
+    — false positives would let users start jobs against a dead cookie and
+    burn credits, which is much worse than the rare false-negative.
     """
     from patchright.async_api import async_playwright  # type: ignore[import-not-found]
 
@@ -95,23 +92,18 @@ async def _verify_real(platform: str, storage_state: dict, *, headless: bool) ->
             storage_state=storage_state,
         )
         page = await context.new_page()
-        await page.goto(LOGIN_PAGE_URLS[platform], wait_until="domcontentloaded")
-        # Same 2.5s settle as _start_real — gives the SPA time to redirect
-        # post-cookie-load before we sample the URL.
+        await page.goto(driver_cls.LOGIN_URL, wait_until="domcontentloaded")
+        # Settle for SPA redirect post-cookie-load before the driver samples
+        # URL + login markers. 2.5s is what the bind path uses; matches.
         await page.wait_for_timeout(2500)
 
-        fragments = LOGGED_IN_URL_FRAGMENTS.get(platform, ())
-        current_url = page.url
-        valid = any(frag in current_url for frag in fragments)
-        if not valid:
-            log.info(
-                "verify: cookie rejected platform=%s landed_on=%s (no logged-in fragment match)",
-                platform, current_url,
-            )
+        if not await driver_cls.is_logged_in(page):
+            log.info("verify: cookie rejected platform=%s landed_on=%s",
+                     driver_cls.__name__, page.url)
             return VerifyResponse(valid=False)
 
         refreshed = await context.storage_state()
-        profile = await _extract_profile_safely(page, platform, "")
+        profile = await driver_cls.extract_profile(page, "")
         return VerifyResponse(
             valid=True,
             refreshedStorageState=refreshed,
