@@ -19,9 +19,11 @@ import java.util.concurrent.Executor;
 public class MixcutAsyncConfig implements WebMvcConfigurer {
 
     private final MixcutProperties props;
+    private final PicgenProperties picgen;
 
-    public MixcutAsyncConfig(MixcutProperties props) {
+    public MixcutAsyncConfig(MixcutProperties props, PicgenProperties picgen) {
         this.props = props;
+        this.picgen = picgen;
     }
 
     @Bean(name = "mixcutExecutor")
@@ -52,5 +54,12 @@ public class MixcutAsyncConfig implements WebMvcConfigurer {
         if (!assetAbs.endsWith(File.separator)) assetAbs = assetAbs + File.separator;
         registry.addResourceHandler(props.getAssetPublicUrlBase() + "/**")
                 .addResourceLocations("file:" + assetAbs);
+
+        // v0.16+: pic-gen 预览图 → /static/picgen-preview/**
+        File previewDir = new File(picgen.getPreviewDir());
+        String previewAbs = previewDir.getAbsolutePath();
+        if (!previewAbs.endsWith(File.separator)) previewAbs = previewAbs + File.separator;
+        registry.addResourceHandler(picgen.getPreviewPublicUrlBase() + "/**")
+                .addResourceLocations("file:" + previewAbs);
     }
 }

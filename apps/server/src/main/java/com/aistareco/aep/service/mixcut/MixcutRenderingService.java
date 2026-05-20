@@ -1,11 +1,13 @@
 package com.aistareco.aep.service.mixcut;
 
 import com.aistareco.aep.config.MixcutProperties;
+import com.aistareco.aep.config.PicgenProperties;
 import com.aistareco.aep.model.MixcutRenderJob;
 import com.aistareco.aep.model.MixcutRenderOutput;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.aistareco.aep.repository.MixcutRenderOutputRepository;
 import com.aistareco.aep.service.cdn.CdnUploader;
+import com.aistareco.aep.service.picgen.PicgenClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -56,6 +58,7 @@ public class MixcutRenderingService {
     private static final Logger log = LoggerFactory.getLogger(MixcutRenderingService.class);
 
     private final MixcutProperties props;
+    private final PicgenProperties picgenProps;
     private final MixcutRenderJobRepository jobRepo;
     private final MixcutRenderOutputRepository outputRepo;
     private final FfmpegRunner ffmpeg;
@@ -64,18 +67,23 @@ public class MixcutRenderingService {
     private final MixcutAssetService assetService;
     /** v0.14+: 可选注入；缺省（无 CdnUploader bean）时跳过上传，仅留 fileUrl。 */
     private final CdnUploader cdnUploader;
+    /** v0.16+: 文字转图客户端，调独立 pic-gen 服务。 */
+    private final PicgenClient picgen;
 
     public MixcutRenderingService(
             MixcutProperties props,
+            PicgenProperties picgenProps,
             MixcutRenderJobRepository jobRepo,
             MixcutRenderOutputRepository outputRepo,
             FfmpegRunner ffmpeg,
             AssetDownloader downloader,
             ObjectMapper mapper,
             MixcutAssetService assetService,
-            @Autowired(required = false) CdnUploader cdnUploader
+            @Autowired(required = false) CdnUploader cdnUploader,
+            PicgenClient picgen
     ) {
         this.props = props;
+        this.picgenProps = picgenProps;
         this.jobRepo = jobRepo;
         this.outputRepo = outputRepo;
         this.ffmpeg = ffmpeg;
@@ -83,6 +91,7 @@ public class MixcutRenderingService {
         this.mapper = mapper;
         this.assetService = assetService;
         this.cdnUploader = cdnUploader;
+        this.picgen = picgen;
         if (cdnUploader != null) {
             log.info("[mixcut] CDN uploader injected: {}", cdnUploader.driverName());
         } else {
@@ -244,7 +253,20 @@ public class MixcutRenderingService {
             File outFile = new File(outDir, "v" + (i + 1) + ".mp4");
             ObjectNode transforms = mapper.createObjectNode();
 
-            renderOneVariant(job, ctx, resolved.videos, resolved.overlays, resolved.bgm, variantIndex, outFile, transforms, profile, rnd);
+            // v0.16+: 为本变体出 picgen 图，合入 overlays（base overlays 不可变，复制后追加再排）
+            List<OverlaySpec> variantOverlays = resolved.overlays;
+            if (!resolved.picgenSlots.isEmpty()) {
+                List<OverlaySpec> picgenOverlays = renderPicgenForVariant(
+                        jobId, variantIndex, resolved.picgenSlots, ctx, outDir);
+                if (!picgenOverlays.isEmpty()) {
+                    variantOverlays = new ArrayList<>(resolved.overlays);
+                    variantOverlays.addAll(picgenOverlays);
+                    variantOverlays.sort(Comparator.comparingInt(OverlaySpec::zIndex));
+                    transforms.put("picgen_count", picgenOverlays.size());
+                }
+            }
+
+            renderOneVariant(job, ctx, resolved.videos, variantOverlays, resolved.bgm, variantIndex, outFile, transforms, profile, rnd);
 
             // 抽 1s 处的一帧作为该变体的 poster (失败不致命,占位 null)
             File thumbFile = new File(outDir, "v" + (i + 1) + ".jpg");
@@ -338,10 +360,30 @@ public class MixcutRenderingService {
     // ── 素材准备 ───────────────────────────────────────────────────────────────
 
     /**
-     * binding 解析结果：底层视频 + 叠加图层（image / text） + BGM 音轨（可空）。
+     * binding 解析结果：底层视频 + 叠加图层（image / text） + BGM 音轨（可空） + picgen 待出图槽位。
      * overlay 已按 z_index 升序排好。bgm 只取第一条（多条 BGM 暂不支持）。
+     * picgenSlots 在变体循环内被消费 —— 每变体一张图，按 (jobId, variantIndex, slotId) 做 seed。
      */
-    private record ResolvedBindings(List<File> videos, List<OverlaySpec> overlays, File bgm) {}
+    private record ResolvedBindings(
+            List<File> videos,
+            List<OverlaySpec> overlays,
+            File bgm,
+            List<PicgenSlotSpec> picgenSlots
+    ) {}
+
+    /**
+     * v0.16+: picgen 槽位规格 —— 从 binding 拿 title/subtitle/tag，从 slot snapshot 拿 rect/z_index/fit。
+     * 每变体调一次 PicgenClient.renderPng 出图，结果作为 OverlaySpec 合入变体 overlays。
+     */
+    private record PicgenSlotSpec(
+            String slotId,
+            String title,
+            String subtitle,
+            String tag,
+            NormRect rect,
+            int zIndex,
+            String fit
+    ) {}
 
     /** 单张 overlay 的渲染参数 —— 文件 + 槽位定位信息。 */
     /**
@@ -522,6 +564,7 @@ public class MixcutRenderingService {
     private ResolvedBindings resolveBindings(MixcutRenderJob job, RenderContext ctx) {
         List<File> videos = new ArrayList<>();
         List<OverlaySpec> overlays = new ArrayList<>();
+        List<PicgenSlotSpec> picgenSlots = new ArrayList<>();
         File bgm = null;
 
         try {
@@ -534,6 +577,27 @@ public class MixcutRenderingService {
                 JsonNode b = entry.getValue();
                 String src = b.path("source").asText("");
                 if ("fixed".equals(src) || "input".equals(src)) continue;
+
+                // v0.16+: picgen 走单独通道，按变体落地
+                if ("picgen".equals(src)) {
+                    String title = b.path("title").asText("");
+                    if (title.isBlank()) {
+                        log.warn("[mixcut] picgen slot {} 缺 title，跳过", slotId);
+                        continue;
+                    }
+                    SlotInfo slot = ctx.slotMap.get(slotId);
+                    int z = slot != null ? slot.zIndex : 0;
+                    NormRect rect = slot != null ? slot.rect : null;
+                    String fit = slot != null && slot.fit != null ? slot.fit : "cover";
+                    picgenSlots.add(new PicgenSlotSpec(
+                            slotId,
+                            title.trim(),
+                            blankToNull(b.path("subtitle").asText("")),
+                            blankToNull(b.path("tag").asText("")),
+                            rect, z, fit
+                    ));
+                    continue;
+                }
 
                 File local = resolveOne(b);
                 if (local == null) continue;
@@ -566,7 +630,75 @@ public class MixcutRenderingService {
                 if (files != null) for (File f : files) videos.add(f);
             }
         }
-        return new ResolvedBindings(videos, overlays, bgm);
+        return new ResolvedBindings(videos, overlays, bgm, picgenSlots);
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /**
+     * v0.16+: 在变体循环内为每个 picgen 槽位调一次 pic-gen，把出图作为 overlay 合入。
+     * 失败兜底 —— 单张图出错只是 log + 跳过，不让任务 fail。
+     */
+    private List<OverlaySpec> renderPicgenForVariant(
+            String jobId,
+            int variantIndex,
+            List<PicgenSlotSpec> specs,
+            RenderContext ctx,
+            File outDir
+    ) {
+        List<OverlaySpec> out = new ArrayList<>();
+        if (specs == null || specs.isEmpty()) return out;
+        if (picgen == null || !picgen.isEnabled()) return out;
+
+        File picgenDir = new File(outDir, "picgen");
+        if (!picgenDir.exists() && !picgenDir.mkdirs()) {
+            log.warn("[mixcut] picgen dir mkdir failed: {}", picgenDir);
+            return out;
+        }
+
+        for (PicgenSlotSpec s : specs) {
+            try {
+                int width = picgenPixelWidth(s, ctx);
+                int height = picgenPixelHeight(s, ctx);
+                long seed = picgenSeed(jobId, variantIndex, s.slotId);
+                var params = new PicgenClient.PicgenParams(
+                        s.title, s.subtitle, s.tag,
+                        width, height, seed,
+                        null, null, null
+                );
+                byte[] png = picgen.renderPng(params);
+                File png_file = new File(picgenDir, "v" + (variantIndex + 1) + "-" + s.slotId + ".png");
+                Files.write(png_file.toPath(), png);
+                out.add(new OverlaySpec(png_file, s.slotId, s.rect, s.zIndex, "image", s.fit));
+            } catch (Exception e) {
+                log.warn("[mixcut] picgen slot {} variant {} 失败: {}", s.slotId, variantIndex + 1, e.getMessage());
+                // fall-through: 缺这张图，但任务不 fail
+            }
+        }
+        return out;
+    }
+
+    private static int picgenPixelWidth(PicgenSlotSpec s, RenderContext ctx) {
+        double w = s.rect != null ? s.rect.w : 0.9;
+        int px = (int) Math.round(ctx.outputWidth * w);
+        return Math.max(200, Math.min(1920, px));
+    }
+
+    private static int picgenPixelHeight(PicgenSlotSpec s, RenderContext ctx) {
+        double h = s.rect != null ? s.rect.h : 0.2;
+        int px = (int) Math.round(ctx.outputHeight * h);
+        return Math.max(120, Math.min(1080, px));
+    }
+
+    /** 64-bit deterministic seed → 让 pic-gen 选模板/配色/字体每变体不同但可复现。 */
+    private static long picgenSeed(String jobId, int variantIndex, String slotId) {
+        long s = (jobId == null ? 0L : jobId.hashCode());
+        s = s * 31 + variantIndex;
+        s = s * 31 + (slotId == null ? 0 : slotId.hashCode());
+        // 折成正数 32-bit，与 server.js 端 seededPick 的 (Number(seed) || 0) ^ ... 兼容
+        return Math.abs(s) & 0x7fffffffL;
     }
 
     /** 无 snapshot 时按后缀回退判断 layer 类别。 */
