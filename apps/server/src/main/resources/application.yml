@@ -14,6 +14,12 @@ spring:
     open-in-view: false
   jackson:
     default-property-inclusion: non_null
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: ${AEP_UPLOAD_MAX_FILE_SIZE:200MB}
+      max-request-size: ${AEP_UPLOAD_MAX_REQUEST_SIZE:200MB}
+      file-size-threshold: 4MB
 
 logging:
   level:
@@ -36,6 +42,41 @@ aep:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
   assets:
     video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}
+  mixcut:
+    # 渲染产出目录（绝对或相对工作目录）；下面映射到 publicUrlBase
+    output-dir: ${AEP_MIXCUT_OUTPUT_DIR:./mixcut-output}
+    # 工作目录（下载素材的临时区）
+    work-dir: ${AEP_MIXCUT_WORK_DIR:./mixcut-work}
+    # ffmpeg / ffprobe 可执行文件名或绝对路径
+    ffmpeg-bin: ${AEP_FFMPEG_BIN:ffmpeg}
+    ffprobe-bin: ${AEP_FFPROBE_BIN:ffprobe}
+    # 产出 URL 前缀（前端拉到的 file_url）
+    public-url-base: ${AEP_MIXCUT_PUBLIC_URL_BASE:/static/mixcut}
+    # 并发渲染数（@Async 线程池大小）
+    max-concurrent: ${AEP_MIXCUT_MAX_CONCURRENT:2}
+    # 单个变体最长时长（秒），超过截断
+    max-output-duration-sec: ${AEP_MIXCUT_MAX_OUTPUT_DURATION_SEC:15}
+    # 每个素材最大下载体积（字节）
+    max-asset-bytes: ${AEP_MIXCUT_MAX_ASSET_BYTES:104857600}
+    # ffmpeg 单次执行超时（毫秒）
+    ffmpeg-timeout-ms: ${AEP_MIXCUT_FFMPEG_TIMEOUT_MS:120000}
+    # 用户上传素材目录（绝对或相对工作目录）
+    asset-dir: ${AEP_MIXCUT_ASSET_DIR:./mixcut-assets}
+    # 用户上传素材公开 URL 前缀
+    asset-public-url-base: ${AEP_MIXCUT_ASSET_URL_BASE:/static/mixcut-assets}
+  # v0.14+: CDN 抽象层 —— dev 用 local fake-CDN, prod 切 oss
+  cdn:
+    driver: ${AEP_CDN_DRIVER:local}
+    local-root: ${AEP_CDN_LOCAL_ROOT:./cdn-mock}
+    # 相对路径走 same-origin；绝对 URL（http://cdn.example.com）由外部 OSS / CDN 域名直供
+    public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:/cdn}
+    # 阿里云 OSS（仅 driver=oss 时生效，v0.16+ 实现）
+    oss:
+      endpoint: ${AEP_CDN_OSS_ENDPOINT:}
+      bucket: ${AEP_CDN_OSS_BUCKET:}
+      access-key-id: ${AEP_CDN_OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${AEP_CDN_OSS_ACCESS_KEY_SECRET:}
+      base-url: ${AEP_CDN_OSS_BASE_URL:}
   coze:
     enabled: ${AEP_COZE_ENABLED:true}
     token: ${AEP_COZE_TOKEN:}

@@ -22,6 +22,11 @@ const nextConfig = {
         source: "/api/:path*",
         destination: `${apiBase}/api/:path*`,
       },
+      // 后端把 ffmpeg 渲染产出挂在 /static/mixcut/<jobId>/v<N>.mp4 —— 代理到 server。
+      {
+        source: "/static/:path*",
+        destination: `${apiBase}/static/:path*`,
+      },
     ];
   },
   // 兼容遗留链接：

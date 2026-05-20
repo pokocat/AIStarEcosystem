@@ -19,5 +19,6 @@ export {
 
 import * as CelebrityZoneApi from "./celebrity-zone";
 import * as ProductsApi from "./products";
+import * as MixcutApi from "./mixcut";
 
-export { CelebrityZoneApi, ProductsApi };
+export { CelebrityZoneApi, ProductsApi, MixcutApi };

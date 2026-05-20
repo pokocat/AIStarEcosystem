@@ -1,0 +1,15 @@
+# Preset stickers directory — files placed here will be auto-seeded as preset stickers
+#
+# 文件名约定：<group>__<name>.gif，例如：
+#   sparkle__golden-star.gif
+#   sparkle__pink-burst.gif
+#   ribbon__blue-stripe.gif
+#   emoji_burst__rainbow.gif
+#
+# `MixcutPresetSeeder` 启动时扫描本目录把 GIF 复制到 ./mixcut-assets/preset/<group>/，
+# 同时在 mixcut_asset 表写 is_preset=true / preset_group / preview_url 行。
+#
+# 若本目录为空：MixcutPresetSeeder 用 ffmpeg lavfi 程序化合成 5 张 demo 动效贴图作兜底，
+# 保证 dev 环境零依赖跑通扰动贴图池流程。
+#
+# Admin 后台亦可上传：POST /api/admin/mixcut/preset-stickers (multipart)

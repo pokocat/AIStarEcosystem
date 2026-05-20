@@ -5164,3 +5164,49 @@ paths:
   /appearance-forge/blueprints:  { get: { tags: [forge], operationId: listForgeBlueprints, responses: { '200': { description: ok } } } }
   /appearance-forge/coze/status: { get: { tags: [forge], operationId: getCozeStatus,       responses: { '200': { description: ok } } } }
 
+  # ── mixcut（混剪专区 · web-celebrity 子模块） ─────
+  # 完整 schema 见 apps/web-celebrity/src/components/mixcut-zone/types.ts。
+  # 鉴权：/api/mixcut/** 全部 .authenticated()；dev profile 走 DevAutoAuthFilter 兜底。
+
+  /mixcut/jobs:
+    get:  { tags: [mixcut], operationId: listMixcutJobs,  responses: { '200': { description: ok } } }
+    post: { tags: [mixcut], operationId: createMixcutJob, responses: { '200': { description: ok } } }
+
+  /mixcut/jobs/{jobId}:
+    parameters:
+      - { in: path, name: jobId, required: true, schema: { type: string } }
+    get: { tags: [mixcut], operationId: getMixcutJob, responses: { '200': { description: ok } } }
+
+  /mixcut/jobs/{jobId}/progress:
+    parameters:
+      - { in: path, name: jobId, required: true, schema: { type: string } }
+    patch: { tags: [mixcut], operationId: updateMixcutJobProgress, responses: { '200': { description: ok } } }
+
+  /mixcut/assets:
+    get:  { tags: [mixcut], operationId: listMixcutAssets,  responses: { '200': { description: ok } } }
+    post: { tags: [mixcut], operationId: uploadMixcutAsset, responses: { '200': { description: ok } } }
+
+  /mixcut/assets/{assetId}:
+    parameters:
+      - { in: path, name: assetId, required: true, schema: { type: string } }
+    get:    { tags: [mixcut], operationId: getMixcutAsset,    responses: { '200': { description: ok } } }
+    delete: { tags: [mixcut], operationId: deleteMixcutAsset, responses: { '200': { description: ok } } }
+
+  /mixcut/templates:
+    get: { tags: [mixcut], operationId: listMixcutTemplates, responses: { '200': { description: ok } } }
+
+  /mixcut/templates/{templateId}:
+    parameters:
+      - { in: path, name: templateId, required: true, schema: { type: string } }
+    get:    { tags: [mixcut], operationId: getMixcutTemplate,    responses: { '200': { description: ok } } }
+    put:    { tags: [mixcut], operationId: upsertMixcutTemplate, responses: { '200': { description: ok } } }
+    delete: { tags: [mixcut], operationId: deleteMixcutTemplate, responses: { '200': { description: ok } } }
+
+  # v0.15+: 混剪 → 发布 桥接
+  /me/mixcut/publish-batch:
+    post:
+      tags: [mixcut]
+      operationId: publishMixcutBatch
+      description: 一次性将多个混剪变体（必须有 cdn_url）派单到多个社交账号；可选定时。
+      responses: { '200': { description: ok } }
+

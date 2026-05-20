@@ -87,6 +87,62 @@
   --color-orange-400: #ff8a5b;
   --color-orange-500: #ff8a5b;
   --color-orange-600: #c45c2e;
+
+  /* mixcut brand 兼容：源自 mixcut 原型（粉红 #fb2c59）的 brand-{50..950} 色阶
+     全部映射到 Creator 紫罗兰 accent 色阶（与 --color-violet-* 同源；500 = #7c5cff）。
+     mixcut 业务页面里的 bg-brand-500、from-brand-500 to-fuchsia-500 等字面量自动落到紫罗兰。 */
+  --color-brand-50:  #f4f0ff;
+  --color-brand-100: #eae3ff;
+  --color-brand-200: #d8ccff;
+  --color-brand-300: #b4a4ff;
+  --color-brand-400: #9d83ff;
+  --color-brand-500: #7c5cff;
+  --color-brand-600: #6a48ee;
+  --color-brand-700: #5b3fe0;
+  --color-brand-800: #4a2fc9;
+  --color-brand-900: #3a23a8;
+  --color-brand-950: #221363;
+
+  /* fuchsia → 紫罗兰深档（mixcut gradient 终点） */
+  --color-fuchsia-300: #b4a4ff;
+  --color-fuchsia-400: #9d83ff;
+  --color-fuchsia-500: #7c5cff;
+  --color-fuchsia-600: #5b3fe0;
+}
+
+/* mixcut 兼容 utility（来自 mixcut/frontend/app/globals.css 第 75-103 行；v4 用 @utility） */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+@utility text-balance {
+  text-wrap: balance;
+}
+@utility grid-pattern {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-border) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-border) 40%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+@utility gradient-radial {
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--color-brand-500) 12%, transparent), transparent 60%),
+    radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--color-fuchsia-500) 10%, transparent), transparent 50%);
+}
+
+/* mixcut 自定义 keyframes（fade-in / shimmer；accordion 由 tw-animate-css 提供，pulse-glow 实际未用） */
+@keyframes mixcut-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes mixcut-shimmer {
+  100% { transform: translateX(100%); }
+}
+@utility animate-fade-in {
+  animation: mixcut-fade-in 0.3s ease-out;
+}
+@utility animate-shimmer {
+  animation: mixcut-shimmer 2s infinite;
 }
 
 @layer base {

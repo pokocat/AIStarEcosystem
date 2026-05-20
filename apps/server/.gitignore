@@ -1,0 +1,11 @@
+# Mixcut runtime artifacts —— 本地 ffmpeg 渲染产出 / 用户上传素材 / 下载 cache
+# 配置 default：
+#   aep.mixcut.output-dir: ./mixcut-output
+#   aep.mixcut.asset-dir:  ./mixcut-assets
+#   aep.mixcut.work-dir:   ./mixcut-work
+#   aep.cdn.local-root:    ./cdn-mock          (v0.14+ LocalFakeCdnUploader)
+# 生产部署用环境变量 AEP_MIXCUT_OUTPUT_DIR / AEP_MIXCUT_ASSET_DIR / AEP_MIXCUT_WORK_DIR / AEP_CDN_LOCAL_ROOT 指向其他位置。
+mixcut-output/
+mixcut-assets/
+mixcut-work/
+cdn-mock/
