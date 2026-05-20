@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Search,
   Video,
@@ -184,6 +185,14 @@ export default function MixcutJobsPage() {
 
 function JobRow({ job }: { job: RenderJob }) {
   const status = effectiveJobStatus(job);
+  const router = useRouter();
+  // 「重新生成」：用相同模板回到新建页，让用户检查素材后再次提交。
+  // 当前没有 server 端「retry 同 jobId」API，复用 create 流程是最稳的回路。
+  const handleRegenerate = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/mixcut/create/${encodeURIComponent(job.template_id)}`);
+  };
 
   return (
     <Card className="overflow-hidden hover:border-foreground/30 transition-colors">
@@ -257,13 +266,11 @@ function JobRow({ job }: { job: RenderJob }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
+                  onClick={handleRegenerate}
+                  title="用相同模板重新生成一批"
                 >
                   <RefreshCw className="size-3.5" />
-                  <span className="hidden md:inline">重渲</span>
+                  <span className="hidden md:inline">重新生成</span>
                 </Button>
               )}
               <Button

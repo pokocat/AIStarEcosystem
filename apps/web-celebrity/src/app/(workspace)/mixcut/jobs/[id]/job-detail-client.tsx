@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useRef, useState, type ForwardedRef, type ReactNode } from "react";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -37,6 +37,7 @@ import { cn, formatBytes, relativeTime, shortHash } from "@/components/mixcut-zo
 import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
 
 export function JobDetailClient({ id }: { id: string }) {
+  const router = useRouter();
   const [job, setJob] = useState<RenderJob | null | undefined>(undefined); // undefined = loading
   const [selectedVariant, setSelectedVariant] = useState(0);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -164,8 +165,12 @@ export function JobDetailClient({ id }: { id: string }) {
             </>
           )}
           {renderFailed && (
-            <Button variant="gradient">
-              <RefreshCw className="size-4" /> 重渲
+            <Button
+              variant="gradient"
+              onClick={() => router.push(`/mixcut/create/${encodeURIComponent(job.template_id)}`)}
+              title="用相同模板重新生成一批"
+            >
+              <RefreshCw className="size-4" /> 重新生成
             </Button>
           )}
           <Button variant="ghost" size="icon">
@@ -240,8 +245,13 @@ export function JobDetailClient({ id }: { id: string }) {
                 <br />· 您可以更换素材后重试,或联系客服
               </div>
             </div>
-            <Button variant="gradient" size="sm">
-              <RefreshCw className="size-3" /> 重渲
+            <Button
+              variant="gradient"
+              size="sm"
+              onClick={() => router.push(`/mixcut/create/${encodeURIComponent(job.template_id)}`)}
+              title="用相同模板重新生成一批"
+            >
+              <RefreshCw className="size-3" /> 重新生成
             </Button>
           </CardContent>
         </Card>
