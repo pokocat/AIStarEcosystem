@@ -20,6 +20,10 @@ public record CreatePublishJobInputDto(
         String description,
         List<String> tags,
         String coverUrl,
+        /** 抖音商品挂载链接（蓝V / 橱窗带货）；仅抖音消费，留空 = 非带货视频。 */
+        String productLink,
+        /** 抖音商品挂载文案（"立即购买"挂件上的商品名）。 */
+        String productTitle,
         List<Target> targets
 ) {
     public record Target(

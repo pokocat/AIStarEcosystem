@@ -84,6 +84,17 @@ public class PublishJob {
     @Column(name = "cover_url", length = 1024)
     private String coverUrl;
 
+    // ── 抖音商品挂载（蓝V / 橱窗带货）─────────────────────────────────────
+    // 仅抖音消费这两个字段；nullable —— 非带货视频或非抖音平台留空。
+    // sau-service 在 _upload_douyin 里透传给 DouYinVideo(productLink=..,
+    // productTitle=..)，触发视频画面下方"立即购买"挂件。
+
+    @Column(name = "product_link", length = 1024)
+    private String productLink;
+
+    @Column(name = "product_title", length = 256)
+    private String productTitle;
+
     /** sau-service 返回的远端任务 id；callback 用此 key 做幂等 */
     @Column(name = "external_task_id", length = 128)
     private String externalTaskId;

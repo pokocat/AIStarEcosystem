@@ -44,6 +44,9 @@ class UploadRequest:
     storage_state: dict[str, Any]
     callback_url: str
     callback_secret: str
+    # 抖音商品挂载（蓝V / 橱窗带货）；非 douyin 平台填了也无效。
+    product_link: str | None = None
+    product_title: str | None = None
 
 
 @dataclass
@@ -237,14 +240,27 @@ class UploadManager:
                 if rec.cancel_event.is_set():
                     await self._terminate(rec, "cancelled")
                     return
-                video = DouYinVideo(
-                    title=rec.request.title,
-                    file_path=rec.video_path,
-                    tags=rec.request.tags,
-                    publish_date=publish_date,
-                    account_file=rec.state_path,
-                    thumbnail_path=None,
-                )
+                # Upstream DouYinVideo kwargs (pinned SHA 721476f7):
+                #   title, file_path, tags, publish_date, account_file,
+                #   thumbnail_landscape_path=None, productLink="",
+                #   productTitle="", desc=None
+                # NB: `thumbnail_path` is NOT a valid kwarg; previous code that
+                # passed it would TypeError. Cover thumbnail plumbing needs us
+                # to fetch the URL to /dev/shm first — TODO once needed.
+                ctor_kwargs: dict[str, Any] = {
+                    "title": rec.request.title,
+                    "file_path": rec.video_path,
+                    "tags": rec.request.tags,
+                    "publish_date": publish_date,
+                    "account_file": rec.state_path,
+                }
+                if rec.request.description:
+                    ctor_kwargs["desc"] = rec.request.description
+                if rec.request.product_link:
+                    ctor_kwargs["productLink"] = rec.request.product_link
+                if rec.request.product_title:
+                    ctor_kwargs["productTitle"] = rec.request.product_title
+                video = DouYinVideo(**ctor_kwargs)
                 rec.progress = 40
                 await self._push(rec)
                 await video.upload(playwright)
@@ -298,14 +314,20 @@ class UploadManager:
                 if rec.cancel_event.is_set():
                     await self._terminate(rec, "cancelled")
                     return
-                video = TencentVideo(
-                    title=rec.request.title,
-                    file_path=rec.video_path,
-                    tags=rec.request.tags,
-                    publish_date=publish_date,
-                    account_file=rec.state_path,
-                    category=None,
-                )
+                # Upstream TencentVideo accepts category / is_draft / desc /
+                # thumbnail_path / short_title — productLink doesn't exist on
+                # 视频号 (橱窗走小程序跳转，是另一条链路)。Only `desc` is
+                # plumbed here; category/short_title/is_draft is a future slice.
+                ctor_kwargs: dict[str, Any] = {
+                    "title": rec.request.title,
+                    "file_path": rec.video_path,
+                    "tags": rec.request.tags,
+                    "publish_date": publish_date,
+                    "account_file": rec.state_path,
+                }
+                if rec.request.description:
+                    ctor_kwargs["desc"] = rec.request.description
+                video = TencentVideo(**ctor_kwargs)
                 rec.progress = 40
                 await self._push(rec)
                 await video.upload(playwright)

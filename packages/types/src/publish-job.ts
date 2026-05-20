@@ -34,6 +34,10 @@ export interface PublishJob {
   description?: string;
   tags?: string[];
   coverUrl?: string;
+  /** 抖音商品挂载链接（蓝V / 橱窗带货）；仅 douyin 消费，非带货视频留空。 */
+  productLink?: string;
+  /** 抖音商品挂载文案（"立即购买"挂件商品名）。 */
+  productTitle?: string;
   /** sau-service 返回的远端任务 id，用于 idempotent callback / 状态查询 */
   externalTaskId?: string;
   externalUrl?: string;
@@ -58,6 +62,13 @@ export interface CreatePublishJobInput {
   description: string;
   tags: string[];
   coverUrl?: string;
+  /**
+   * 抖音商品挂载链接 — sau-service 透传给 DouYinVideo(productLink=...)；
+   * 仅抖音 target 消费，其它平台静默忽略。留空 = 非带货视频。
+   */
+  productLink?: string;
+  /** 抖音商品挂载文案 — DouYinVideo(productTitle=...)。 */
+  productTitle?: string;
   /** 一次提交多个平台目标；每条产生独立的 PublishJob 行 */
   targets: Array<{
     platform: SocialPlatform;

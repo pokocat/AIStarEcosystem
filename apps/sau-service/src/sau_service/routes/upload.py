@@ -20,6 +20,9 @@ class UploadInput(BaseModel):
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
     coverUrl: str | None = None
+    # 抖音商品挂载 — 仅 douyin 平台消费；其它平台 sau-service 静默忽略。
+    productLink: str | None = None
+    productTitle: str | None = None
     storageState: dict
     callbackUrl: str
     callbackSecret: str
@@ -49,6 +52,8 @@ async def submit_upload(payload: UploadInput, request: Request) -> UploadRespons
         description=payload.description,
         tags=payload.tags,
         cover_url=payload.coverUrl,
+        product_link=payload.productLink,
+        product_title=payload.productTitle,
         storage_state=payload.storageState,
         callback_url=payload.callbackUrl,
         callback_secret=payload.callbackSecret,

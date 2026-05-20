@@ -14,11 +14,13 @@
 //   - coverUrl  ← thumbnail_path / thumbnail_landscape_path
 //   - scheduledAt ← publish_date（不填 = 立即发布）
 //
-// 平台特定字段（商品链接 / 作品分类 / shortTitle / isDraft）暂未在 UI 暴露 —
-// 需先扩 PublishJob entity 加列，列入后续 slice。
+// 平台特定字段：
+//   - 抖音 productLink + productTitle —— 商品挂载（蓝V/橱窗带货），本 slice 已接
+//   - 视频号 category / shortTitle / isDraft —— 后续 slice
+// 商品挂载 section 只在 douyin target 被选中时显示；非带货视频留空即可。
 
 import * as React from "react";
-import { X, Loader2, AlertCircle, Link2 } from "lucide-react";
+import { X, Loader2, AlertCircle, Link2, ShoppingBag } from "lucide-react";
 import { SocialAccountApi, PublishJobApi } from "@ai-star-eco/api-client";
 import type { SocialAccount, SocialPlatform } from "@ai-star-eco/types/social-account";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
@@ -47,6 +49,8 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [tagsInput, setTagsInput] = React.useState("");
+  const [productLink, setProductLink] = React.useState("");
+  const [productTitle, setProductTitle] = React.useState("");
   const [scheduledLocal, setScheduledLocal] = React.useState("");
   const [accounts, setAccounts] = React.useState<SocialAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = React.useState(false);
@@ -63,6 +67,8 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
     setTitle("");
     setDescription("");
     setTagsInput("");
+    setProductLink("");
+    setProductTitle("");
     setScheduledLocal("");
     setSelectedAccount({} as Record<SocialPlatform, string>);
     setErrorMsg(null);
@@ -117,6 +123,9 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
     [selectedAccount, scheduledAtIso],
   );
 
+  // 商品挂载仅对抖音 target 生效；其它平台展示该 section 是误导，隐起来。
+  const douyinSelected = Boolean(selectedAccount.douyin);
+
   const videoUrlValid = /^https?:\/\//i.test(videoUrl.trim());
   const canSubmit =
     !submitting && videoUrlValid && title.trim().length > 0 && targets.length > 0;
@@ -133,6 +142,10 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
         description: description.trim(),
         tags,
         coverUrl: coverUrl.trim() || undefined,
+        // 商品挂载仅在选了抖音 target 时有意义；其它平台填了也忽略，
+        // 但我们仍然透传给后端 — 后端落库 + 列任务时能回显。
+        productLink: productLink.trim() || undefined,
+        productTitle: productTitle.trim() || undefined,
         targets,
       });
       onCreated(jobs.map((j) => j.id));
@@ -313,6 +326,36 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
               </div>
             )}
           </Section>
+
+          {/* 5. 商品挂载（仅抖音） */}
+          {douyinSelected ? (
+            <Section
+              title="抖音商品挂载"
+              sub="蓝V / 橱窗带货；视频画面下方挂「立即购买」卡片"
+            >
+              <div className="flex items-start gap-2">
+                <ShoppingBag className="mt-2 h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                <input
+                  type="url"
+                  value={productLink}
+                  onChange={(e) => setProductLink(e.target.value)}
+                  placeholder="商品链接（抖店商品详情页 URL）"
+                  className={INPUT_CLS}
+                />
+              </div>
+              <input
+                type="text"
+                value={productTitle}
+                onChange={(e) => setProductTitle(e.target.value)}
+                placeholder="商品名称（挂件上展示的文案）"
+                maxLength={50}
+                className={INPUT_CLS}
+              />
+              <p className="text-[11px] text-zinc-400">
+                两项都填才会触发挂件；非带货视频留空即可。
+              </p>
+            </Section>
+          ) : null}
 
           {errorMsg ? (
             <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">

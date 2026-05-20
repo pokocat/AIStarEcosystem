@@ -174,6 +174,8 @@ public class PublishJobService {
                     .description(input.description())
                     .tags(input.tags() != null ? input.tags() : List.of())
                     .coverUrl(input.coverUrl())
+                    .productLink(input.productLink())
+                    .productTitle(input.productTitle())
                     .scheduledAt(t.scheduledAt())
                     .build();
             jobRepo.save(job);
@@ -226,6 +228,9 @@ public class PublishJobService {
         body.put("description", job.getDescription());
         body.put("tags", job.getTags() != null ? job.getTags() : List.of());
         if (job.getCoverUrl() != null) body.put("coverUrl", job.getCoverUrl());
+        // 抖音商品挂载 — 仅 douyin 平台消费这俩字段；其它平台 sau-service 忽略。
+        if (job.getProductLink() != null) body.put("productLink", job.getProductLink());
+        if (job.getProductTitle() != null) body.put("productTitle", job.getProductTitle());
         body.put("storageState", storageState);
         body.put("callbackUrl", selfBaseUrl + "/job-callback");
         body.put("callbackSecret", internalSecret);

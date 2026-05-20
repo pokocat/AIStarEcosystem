@@ -27,6 +27,10 @@ public record PublishJobDto(
         String description,
         List<String> tags,
         String coverUrl,
+        /** 抖音商品挂载链接；非抖音 / 非带货视频留空。 */
+        String productLink,
+        /** 抖音商品挂载文案。 */
+        String productTitle,
         String externalTaskId,
         String externalUrl,
         String errorMessage,
@@ -50,6 +54,8 @@ public record PublishJobDto(
                 j.getDescription(),
                 j.getTags() != null ? j.getTags() : List.of(),
                 j.getCoverUrl(),
+                j.getProductLink(),
+                j.getProductTitle(),
                 j.getExternalTaskId(),
                 j.getExternalUrl(),
                 j.getErrorMessage(),

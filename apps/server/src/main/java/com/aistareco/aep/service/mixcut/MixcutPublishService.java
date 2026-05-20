@@ -81,6 +81,10 @@ public class MixcutPublishService {
                         req.description(),
                         req.tags() != null ? req.tags() : List.of(),
                         output.thumbnailUrl() != null ? output.thumbnailUrl() : req.coverUrl(),
+                        // 混剪批量发布暂不携带商品挂载；操作员后续手工编辑 (v0.16+) 或
+                        // 走分发中心「手动分发」补登。
+                        null,
+                        null,
                         sharedTargets
                 );
                 List<PublishJobDto> created = publishJobService.createBatch(userId, input);
