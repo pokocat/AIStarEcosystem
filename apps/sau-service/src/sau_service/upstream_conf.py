@@ -94,8 +94,6 @@ def _seed_stealth_js(base_dir: Path) -> None:
     dest_dir = base_dir / "utils"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "stealth.min.js"
-    if dest.exists():
-        return
 
     spec = importlib.util.find_spec("utils")
     if spec is None or not spec.submodule_search_locations:
@@ -106,6 +104,16 @@ def _seed_stealth_js(base_dir: Path) -> None:
     src = Path(spec.submodule_search_locations[0]) / "stealth.min.js"
     if not src.exists():
         return
+
+    # If a valid (non-dangling) destination already exists, nothing to do.
+    if dest.exists():
+        return
+    # Dangling symlink left over from a previous venv → remove before re-seeding.
+    if dest.is_symlink():
+        try:
+            dest.unlink()
+        except OSError:
+            return
 
     try:
         os.symlink(src, dest)
