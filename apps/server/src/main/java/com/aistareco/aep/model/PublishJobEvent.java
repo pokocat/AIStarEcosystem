@@ -37,11 +37,11 @@ public class PublishJobEvent {
     private String kind;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "from_status")
+    @Column(name = "from_status", columnDefinition = "varchar(32)")
     private PublishJobStatus fromStatus;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "to_status")
+    @Column(name = "to_status", columnDefinition = "varchar(32)")
     private PublishJobStatus toStatus;
 
     @Column(name = "progress")

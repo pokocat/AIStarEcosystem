@@ -303,6 +303,7 @@ class UploadManager:
             "externalUrl": rec.external_url,
             "errorCode": rec.error_code,
             "errorMessage": rec.error_message,
+            "interactionRequired": rec.interaction_required,
         }
         await post_callback(rec.request.callback_url, rec.request.callback_secret, payload)
 

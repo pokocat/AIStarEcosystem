@@ -1,5 +1,6 @@
 package com.aistareco.aep.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.Map;
@@ -25,5 +26,6 @@ public record PublishJobCallbackDto(
          * 进入 awaiting_user 时由 sau-service 推；离开 awaiting_user 时显式置 null。
          * 其它 status 必须留空。结构 mirror InteractionRequired in packages/types。
          */
+        @JsonAlias("interaction_required")
         Map<String, Object> interactionRequired
 ) {}

@@ -58,7 +58,7 @@ public class PublishJob {
     private String platformName;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(32)")
     private PublishJobStatus status;
 
     @Builder.Default

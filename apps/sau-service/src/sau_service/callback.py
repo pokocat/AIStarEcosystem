@@ -51,6 +51,10 @@ async def post_callback(
                 max_attempts,
                 resp.text[:200],
             )
+            if 500 <= resp.status_code < 600 and attempt < max_attempts:
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
             return False
         except Exception as exc:  # noqa: BLE001 — log and retry network errors
             last_err = exc
