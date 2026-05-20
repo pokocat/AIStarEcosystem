@@ -53,7 +53,11 @@ async def verify(req: VerifyRequest, request: Request) -> VerifyResponse:
         valid = bool(req.storageState)
         return VerifyResponse(
             valid=valid,
-            profile={"displayName": "mock", "avatarUrl": None} if valid else None,
+            profile={
+                "displayName": "mock",
+                "platformAccountId": f"mock-{req.platform}",
+                "avatarUrl": None,
+            } if valid else None,
         )
 
     platform = (req.platform or "").lower()

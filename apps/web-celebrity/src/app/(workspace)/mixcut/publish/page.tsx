@@ -1,12 +1,12 @@
-import { PublishWorkbenchClient } from "./publish-workbench-client";
+import { redirect } from "next/navigation";
 
 /**
- * /mixcut/publish — 混剪发布工作台。
+ * /mixcut/publish — v0.16 迁入分发中心；v0.18 路由化为 /distribution。
  *
- * 列出所有 status=success 的混剪任务，跨任务多选已上传到 CDN 的变体，
- * 一次性配文案 / 账号 / 定时 → 派单。与 mixcut/jobs/[id] 详情页里的「批量发布」按钮
- * 共享 BatchPublishDrawer 组件，区别仅在 items 来自跨任务汇总。
+ * 历史路径保留为 server-side redirect，避免外链 / 收藏夹 / 旧 README 死链。
+ * 真正的分发工作台代码在：
+ *   apps/web-celebrity/src/components/distribution/DistributeWorkbench.tsx
  */
-export default function MixcutPublishPage() {
-  return <PublishWorkbenchClient />;
+export default function MixcutPublishRedirect() {
+  redirect("/distribution");
 }

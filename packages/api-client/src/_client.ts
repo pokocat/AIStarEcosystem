@@ -125,9 +125,26 @@ export async function apiFetch<T>(
     throw new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401);
   }
 
+  const raw = await res.text();
+  if (!raw) {
+    if (!res.ok) {
+      throw new ApiError(
+        { code: "HTTP_ERROR", message: `HTTP ${res.status}` },
+        res.status
+      );
+    }
+    if (res.status !== 204 && res.status !== 205) {
+      throw new ApiError(
+        { code: "BAD_ENVELOPE", message: "Response envelope missing success:true" },
+        res.status
+      );
+    }
+    return undefined as T;
+  }
+
   let parsed: unknown;
   try {
-    parsed = await res.json();
+    parsed = JSON.parse(raw);
   } catch {
     throw new ApiError(
       { code: "PARSE_ERROR", message: `Invalid JSON from ${path}` },

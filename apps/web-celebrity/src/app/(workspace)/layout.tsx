@@ -23,7 +23,7 @@ import {
   Users,
   Video,
 } from "lucide-react";
-import { useAuth } from "@ai-star-eco/api-client";
+import { useAuth, PublishJobApi } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
 import {
   Avatar,
@@ -38,12 +38,14 @@ import { MixcutApi } from "@/api";
 // 侧栏入口都是顶层路径；选中判定：仅在该 tab 的「根 list 路径」高亮。
 // 详情页（/star/<id>、/projects/<id>）不归属任何 list 父级，故均不高亮 —— 设计上
 // 明星详情可由市场/我的两个 list 进入，归到任一都不对称，独立段最干净。
-function buildGroups(pathname: string, activeJobs: number): NavGroup[] {
+function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: number): NavGroup[] {
   const isExact = (href: string) => pathname === href;
   const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
+  const isDistribution = pathname === "/distribution" || pathname.startsWith("/distribution/");
 
   // 混剪二级菜单:仅在用户处于 /mixcut/* 时展开,避免常态污染侧栏。
   // 创建任务页 (/mixcut/create/<id>) 不高亮任一子项 —— 它是一次性流程,不属于任何长存的子区。
+  // v0.16: 「发布工作台」迁入分发中心，从混剪侧栏移除；混剪只负责制作。
   const mixcutChildren: NavSubItem[] | undefined = isMixcut
     ? [
       { label: "工作台", href: "/mixcut", selected: pathname === "/mixcut" },
@@ -59,12 +61,27 @@ function buildGroups(pathname: string, activeJobs: number): NavGroup[] {
         badge: activeJobs > 0 ? activeJobs : undefined,
         badgeTone: "accent",
       },
-      {
-        label: "发布工作台",
-        href: "/mixcut/publish",
-        selected: pathname === "/mixcut/publish",
-      },
       { label: "素材库", href: "/mixcut/library", selected: pathname === "/mixcut/library" },
+    ]
+    : undefined;
+
+  // 分发中心二级菜单：仅在用户处于 /distribution/* 时展开。
+  // v0.18: 路由化为 /distribution（工作台）/ /distribution/accounts / /distribution/jobs；不再用 tabs。
+  const distributionChildren: NavSubItem[] | undefined = isDistribution
+    ? [
+      { label: "分发工作台", href: "/distribution", selected: pathname === "/distribution" },
+      {
+        label: "账号管理",
+        href: "/distribution/accounts",
+        selected: pathname === "/distribution/accounts",
+      },
+      {
+        label: "任务追踪",
+        href: "/distribution/jobs",
+        selected: pathname === "/distribution/jobs",
+        badge: inflightPublishJobs > 0 ? inflightPublishJobs : undefined,
+        badgeTone: "accent",
+      },
     ]
     : undefined;
 
@@ -90,7 +107,13 @@ function buildGroups(pathname: string, activeJobs: number): NavGroup[] {
           selected: isMixcut,
           children: mixcutChildren,
         },
-        { icon: Send, label: "分发中心", href: "/distribution", selected: isExact("/distribution") },
+        {
+          icon: Send,
+          label: "分发中心",
+          href: "/distribution",
+          selected: isDistribution,
+          children: distributionChildren,
+        },
       ],
     },
     {
@@ -111,9 +134,10 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/library": "视频中心",
     "/products": "商品库",
     "/data": "数据中心",
-    "/distribution": "分发中心",
     "/mixcut": "混剪工作台",
   };
+  // /distribution 默认 = 分发工作台，单独分支以保证子菜单层级正确
+  if (pathname === "/distribution") return ["工作台", "分发中心", "分发工作台"];
   if (TAB_LABEL[pathname]) {
     return pathname === "/mixcut"
       ? ["工作台", "混剪专区", TAB_LABEL[pathname]]
@@ -128,10 +152,11 @@ function CrumbsFromPathname(pathname: string): string[] {
   if (pathname.startsWith("/mixcut/create/")) return ["工作台", "混剪专区", "新建任务"];
   if (pathname === "/mixcut/jobs") return ["工作台", "混剪专区", "生成任务"];
   if (pathname.startsWith("/mixcut/jobs/")) return ["工作台", "混剪专区", "生成任务", "任务详情"];
-  if (pathname === "/mixcut/publish") return ["工作台", "混剪专区", "发布工作台"];
   if (pathname === "/mixcut/library") return ["工作台", "混剪专区", "素材库"];
 
-  // 分发中心子路径(后续 PR 扩展)
+  // 分发中心子路径（v0.18 路由化）
+  if (pathname === "/distribution/accounts") return ["工作台", "分发中心", "账号管理"];
+  if (pathname === "/distribution/jobs") return ["工作台", "分发中心", "任务追踪"];
   if (pathname.startsWith("/distribution/")) return ["工作台", "分发中心"];
 
   return ["工作台"];
@@ -284,7 +309,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/dashboard";
   const { user } = useAuth();
   const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
+  const isDistribution =
+    pathname === "/distribution" || pathname.startsWith("/distribution/");
   const [activeJobs, setActiveJobs] = React.useState(0);
+  const [inflightPublishJobs, setInflightPublishJobs] = React.useState(0);
 
   // 「生成任务」子项上的活跃数 badge。
   // 仅在用户处于 /mixcut/* 时拉,避免在其他子产品页面无谓请求。
@@ -315,7 +343,37 @@ function Shell({ children }: { children: React.ReactNode }) {
     };
   }, [isMixcut, pathname]);
 
-  const groups = buildGroups(pathname, activeJobs);
+  // 「任务追踪」子项 badge：分发中心 inflight 数。仅在 /distribution/* 拉。
+  React.useEffect(() => {
+    if (!isDistribution) {
+      setInflightPublishJobs(0);
+      return;
+    }
+    let cancelled = false;
+    const tick = () => {
+      PublishJobApi.listPublishJobs({})
+        .then((list) => {
+          if (cancelled) return;
+          setInflightPublishJobs(
+            list.filter(
+              (j) =>
+                j.status !== "live" && j.status !== "failed" && j.status !== "cancelled",
+            ).length,
+          );
+        })
+        .catch(() => {
+          /* 静默 */
+        });
+    };
+    tick();
+    const timer = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [isDistribution, pathname]);
+
+  const groups = buildGroups(pathname, activeJobs, inflightPublishJobs);
   const crumbs = CrumbsFromPathname(pathname);
 
   return (

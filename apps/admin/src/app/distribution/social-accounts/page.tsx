@@ -86,6 +86,7 @@ export default function SocialAccountsPage() {
                     <TableHead>平台</TableHead>
                     <TableHead>账号别名</TableHead>
                     <TableHead>显示昵称</TableHead>
+                    <TableHead>平台账号号</TableHead>
                     <TableHead>归属用户</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>绑定时间</TableHead>
@@ -94,13 +95,13 @@ export default function SocialAccountsPage() {
                 </TableHeader>
                 <TableBody>
                   {loading && (
-                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
                   )}
                   {!loading && loadError && (
-                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
                   )}
                   {!loading && !loadError && list.length === 0 && (
-                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无账号</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">暂无账号</TableCell></TableRow>
                   )}
                   {!loading && !loadError && list.map((r) => (
                     <TableRow key={r.id}>
@@ -112,6 +113,7 @@ export default function SocialAccountsPage() {
                       </TableCell>
                       <TableCell className="text-sm">{r.accountName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{r.displayName ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{r.platformAccountId ?? "—"}</TableCell>
                       <TableCell className="text-xs font-mono text-muted-foreground">{r.userId}</TableCell>
                       <TableCell><StatusBadge meta={SOCIAL_ACCOUNT_STATUS[r.status]} /></TableCell>
                       <TableCell className="text-sm">{formatDateCN(r.boundAt)}</TableCell>

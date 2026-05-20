@@ -12,6 +12,7 @@ import { Button } from "@/components/mixcut-zone/ui/button";
 import { cn } from "@/components/mixcut-zone/lib/utils";
 import { SocialAccountApi } from "@ai-star-eco/api-client";
 import type { SocialAccount } from "@ai-star-eco/types/social-account";
+import { platformAccountLabel, platformDisplayName } from "@/components/distribution/social-account-labels";
 
 /** 可发布的变体 —— job-detail 与多任务工作台都按此结构传给抽屉。 */
 export interface BatchPublishItem {
@@ -72,7 +73,14 @@ export function BatchPublishDrawer({
     defaultTitle ?? (job?.template_name ? `${job.template_name} 混剪` : "混剪发布");
 
   const [selectedOutputs, setSelectedOutputs] = useState<string[]>(publishable.map((p) => p.output_id));
-  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [allAccounts, setAllAccounts] = useState<SocialAccount[]>([]);
+  // 仅 active 的能选；其他状态（expired / banned / pending）在 UI 上隐藏，
+  // 通过下方提示让用户去账号管理处理 —— 派单时选错了状态没意义，反而干扰。
+  const accounts = useMemo(
+    () => allAccounts.filter((a) => a.status === "active"),
+    [allAccounts]
+  );
+  const unavailableCount = allAccounts.length - accounts.length;
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -91,12 +99,17 @@ export function BatchPublishDrawer({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<MixcutApi.MixcutPublishBatchResult | null>(null);
 
+  // 只在 drawer 打开瞬间初始化一次。
+  // 故意不依赖 publishable —— 否则父组件在 onPublished 回调里清空上游 selection 会导致
+  // items → publishable 变 []，再触发本 effect 把刚 setResult 的成功结果擦掉，
+  // ResultSummary 闪过后立刻退回到 "publishable.length===0 → 视频还在合成中" 空态分支。
   useEffect(() => {
     if (!open) return;
     setSelectedOutputs(publishable.map((p) => p.output_id));
     setResult(null);
     setSubmitError(null);
-  }, [open, publishable]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +117,7 @@ export function BatchPublishDrawer({
     setAccountsError(null);
     SocialAccountApi.listSocialAccounts()
       .then((list) => {
-        setAccounts(list ?? []);
+        setAllAccounts(list ?? []);
       })
       .catch((e: unknown) => {
         setAccountsError(e instanceof Error ? e.message : "加载失败");
@@ -218,52 +231,49 @@ export function BatchPublishDrawer({
                   </div>
                 </header>
                 {publishable.length === 0 ? (
-                  <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-md p-3 flex items-start gap-2">
+                  <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 flex items-start gap-2">
                     <AlertCircle className="size-4 shrink-0 mt-0.5" />
                     <div>
-                      此任务的变体尚未上传到 CDN。请确认 server 启用了 CdnUploader（aep.cdn.driver=local 默认开），等待渲染完成后重试。
+                      视频还在合成中，请稍候再试。可以回到任务详情页看看渲染进度。
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 gap-2">
+                  // 紧凑列表：左侧已经能看到缩略图，这里专注于「核对要发哪些 + 一键开关」
+                  <ul className="rounded-md border border-border divide-y divide-border max-h-[200px] overflow-y-auto">
                     {publishable.map((p) => {
                       const sel = selectedOutputs.includes(p.output_id);
                       return (
-                        <button
-                          key={p.output_id}
-                          type="button"
-                          onClick={() => toggleOutput(p.output_id)}
-                          className={cn(
-                            "aspect-[9/16] rounded-md border-2 overflow-hidden relative bg-secondary/50 transition-colors",
-                            sel
-                              ? "border-violet-500 ring-2 ring-violet-500/30"
-                              : "border-transparent hover:border-border"
-                          )}
-                        >
-                          {p.thumbnail_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={p.thumbnail_url} alt={p.label} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                        <li key={p.output_id}>
+                          <button
+                            type="button"
+                            onClick={() => toggleOutput(p.output_id)}
+                            className={cn(
+                              "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                              sel ? "bg-violet-500/5" : "hover:bg-secondary/50"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "size-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                                sel
+                                  ? "bg-violet-500 border-violet-500 text-white"
+                                  : "border-zinc-300 bg-white"
+                              )}
+                            >
+                              {sel && <span className="text-[10px] font-bold">✓</span>}
+                            </span>
+                            <span className="font-mono text-[12px] text-foreground truncate">
                               {p.label}
-                            </div>
-                          )}
-                          <div className="absolute bottom-1 left-1 right-1 text-[10px] font-mono bg-black/60 text-white px-1 rounded truncate">
-                            {p.label}
-                          </div>
-                          {sel && (
-                            <div className="absolute top-1 right-1 size-5 rounded-full bg-violet-500 text-white text-xs flex items-center justify-center font-bold">
-                              ✓
-                            </div>
-                          )}
-                        </button>
+                            </span>
+                          </button>
+                        </li>
                       );
                     })}
-                  </div>
+                  </ul>
                 )}
                 {skippedCount > 0 && (
                   <p className="text-[11px] text-muted-foreground mt-1.5">
-                    {skippedCount} 条变体未上传 CDN，已跳过
+                    另有 {skippedCount} 条还没合成完成，已跳过
                   </p>
                 )}
               </section>
@@ -271,7 +281,7 @@ export function BatchPublishDrawer({
               {/* Accounts */}
               <section>
                 <header className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium">账号 ({accounts.length} 已绑定)</h3>
+                  <h3 className="text-sm font-medium">账号 ({accounts.length} 可用)</h3>
                   {accounts.length > 0 && (
                     <div className="flex gap-1">
                       <button
@@ -300,44 +310,80 @@ export function BatchPublishDrawer({
                 ) : accountsError ? (
                   <div className="text-xs text-rose-500">加载失败：{accountsError}</div>
                 ) : accounts.length === 0 ? (
-                  <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-md p-3">
-                    尚未绑定任何社交账号。请先到{" "}
-                    <a href="/distribution" className="underline">
-                      分发中心
-                    </a>{" "}
-                    绑定。
+                  <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3">
+                    {allAccounts.length === 0 ? (
+                      <>
+                        还没有绑定任何账号。先到{" "}
+                        <a href="/distribution/accounts" className="underline">
+                          账号管理
+                        </a>{" "}
+                        绑定一个。
+                      </>
+                    ) : (
+                      <>
+                        当前 {allAccounts.length} 个账号都不可用（已失效 / 绑定中 / 被封禁）。请到{" "}
+                        <a href="/distribution/accounts" className="underline">
+                          账号管理
+                        </a>{" "}
+                        重新验证。
+                      </>
+                    )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-1.5">
-                    {accounts.map((a) => {
-                      const sel = selectedAccountIds.includes(a.id);
-                      return (
-                        <button
-                          key={a.id}
-                          type="button"
-                          onClick={() => toggleAccount(a.id)}
-                          className={cn(
-                            "flex items-center gap-3 p-2 rounded-md border text-left transition-colors",
-                            sel
-                              ? "border-violet-500 bg-violet-500/5"
-                              : "border-border hover:bg-secondary/50"
-                          )}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{a.accountName}</div>
-                            <div className="text-[11px] text-muted-foreground">
-                              {a.platform} · {a.status}
-                            </div>
-                          </div>
-                          {sel && (
-                            <div className="size-5 rounded-full bg-violet-500 text-white text-xs flex items-center justify-center font-bold">
-                              ✓
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <ul className="rounded-md border border-border divide-y divide-border max-h-[220px] overflow-y-auto">
+                      {accounts.map((a) => {
+                        const sel = selectedAccountIds.includes(a.id);
+                        const subtitle = [
+                          platformDisplayName(a.platform),
+                          a.displayName,
+                          a.platformAccountId
+                            ? `${platformAccountLabel(a.platform)} ${a.platformAccountId}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ");
+                        return (
+                          <li key={a.id}>
+                            <button
+                              type="button"
+                              onClick={() => toggleAccount(a.id)}
+                              className={cn(
+                                "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                                sel ? "bg-violet-500/5" : "hover:bg-secondary/50"
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "size-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                                  sel
+                                    ? "bg-violet-500 border-violet-500 text-white"
+                                    : "border-zinc-300 bg-white"
+                                )}
+                              >
+                                {sel && <span className="text-[10px] font-bold">✓</span>}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium truncate">{a.accountName}</div>
+                                <div className="text-[11px] text-muted-foreground truncate">
+                                  {subtitle}
+                                </div>
+                              </div>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {unavailableCount > 0 && (
+                      <p className="text-[11px] text-muted-foreground mt-1.5">
+                        另有 {unavailableCount} 个账号当前不可用（已失效 / 绑定中），可到{" "}
+                        <a href="/distribution/accounts" className="underline">
+                          账号管理
+                        </a>{" "}
+                        重新验证
+                      </p>
+                    )}
+                  </>
                 )}
               </section>
 
@@ -457,7 +503,7 @@ function ResultSummary({ result }: { result: MixcutApi.MixcutPublishBatchResult 
           已成功派单 {successCount} 条
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          可到 <a href="/distribution" className="underline">分发中心</a> 查看进度。
+          可到 <a href="/distribution/jobs" className="underline">任务追踪</a> 查看进度。
         </p>
       </div>
       {failedCount > 0 && (

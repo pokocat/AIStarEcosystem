@@ -84,6 +84,8 @@ export function JobDetailClient({ id }: { id: string }) {
   useEffect(() => {
     const outputCount = job?.outputs?.length ?? 0;
     if (outputCount > 0 && selectedVariant >= outputCount) {
+      // 选中的变体超出已生成范围（例如用户在 skeleton 上点过，或之前显示的变体被重渲了），
+      // 回退到最后一条已完成的（按 variant_index 排序）
       setSelectedVariant(outputCount - 1);
     }
   }, [job?.outputs?.length, selectedVariant]);
@@ -99,6 +101,11 @@ export function JobDetailClient({ id }: { id: string }) {
 
   const outputs = job.outputs ?? [];
   const hasOutputs = outputs.length > 0;
+  // 后端渲染 worker 是并发的（@Async + 多线程），outputs 可能不是按 variant_index 顺序入库。
+  // 网格 / 占位 / 主预览全部按 variant_index 排序，让"第 N 条"语义稳定。
+  const sortedOutputs = [...outputs].sort((a, b) => a.variant_index - b.variant_index);
+  const totalExpected = Math.max(job.output_variants || 0, outputs.length);
+  const pendingCount = Math.max(0, totalExpected - outputs.length);
   const renderFailed =
     job.status === "failed" ||
     (job.status === "success" && !hasOutputs && Boolean(job.error_message));
@@ -106,6 +113,7 @@ export function JobDetailClient({ id }: { id: string }) {
   const isProcessing = !renderFailed && (job.status === "running" || job.status === "queued" || job.status === "pending");
   const completed = job.status === "success" && !renderFailed;
   const outputsPending = completed && !hasOutputs;
+  const stillRendering = isProcessing && pendingCount > 0;
   const displayStatus = renderFailed ? "failed" : job.status;
 
   return (
@@ -140,6 +148,12 @@ export function JobDetailClient({ id }: { id: string }) {
             <>
               <Button variant="gradient" onClick={() => setPublishOpen(true)}>
                 <Send className="size-4" /> 批量发布
+              </Button>
+              {/* v0.16: 引导用户认识统一出口 — 分发中心。 */}
+              <Button variant="ghost" asChild>
+                <Link href={`/distribution?from_job=${encodeURIComponent(job.id)}`}>
+                  去分发中心 →
+                </Link>
               </Button>
               <Button variant="outline">
                 <Download className="size-4" /> 全部打包下载
@@ -237,7 +251,24 @@ export function JobDetailClient({ id }: { id: string }) {
         <div>
           <Tabs defaultValue="outputs">
             <TabsList>
-              <TabsTrigger value="outputs">成片 ({outputs.length})</TabsTrigger>
+              <TabsTrigger value="outputs">
+                <span className="inline-flex items-center gap-1.5">
+                  成片
+                  <span className="text-[10px] font-mono opacity-70">
+                    {outputs.length}/{totalExpected}
+                  </span>
+                  {stillRendering && (
+                    <span
+                      className="relative inline-flex h-1.5 w-1.5"
+                      aria-label="渲染中"
+                      title="还有变体在渲染中"
+                    >
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-500 opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-500" />
+                    </span>
+                  )}
+                </span>
+              </TabsTrigger>
               <TabsTrigger value="bindings">内容明细</TabsTrigger>
               <TabsTrigger value="perturbations">每条对照表</TabsTrigger>
               <TabsTrigger value="phash">指纹对比</TabsTrigger>
@@ -245,14 +276,40 @@ export function JobDetailClient({ id }: { id: string }) {
             </TabsList>
 
             <TabsContent value="outputs">
-              {completed && hasOutputs ? (
+              {hasOutputs ? (
                 <div className="space-y-4">
+                  {/* 增量进度摘要：仅在还在渲染中时显示，引导用户知道还会有新条目出现 */}
+                  {stillRendering && (
+                    <Card className="border-violet-500/20 bg-violet-500/[0.03]">
+                      <CardContent className="p-3 flex items-center gap-3">
+                        <div className="size-8 rounded-full bg-violet-500/10 grid place-items-center shrink-0">
+                          <Wand2 className="size-4 text-violet-500 animate-pulse" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium">
+                            已完成 {outputs.length} / {totalExpected} 条，剩余 {pendingCount} 条渲染中…
+                          </div>
+                          <div className="mt-1.5 h-1 rounded-full bg-secondary overflow-hidden">
+                            <div
+                              className="h-full bg-violet-500 transition-all"
+                              style={{ width: `${(outputs.length / totalExpected) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground shrink-0 hidden sm:block">
+                          每条完成自动入列，无需刷新
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <Card>
                     <CardContent className="p-5">
                       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-5">
                         <div>
                           {(() => {
-                            const o = outputs[selectedVariant];
+                            const safeIdx = Math.min(selectedVariant, sortedOutputs.length - 1);
+                            const o = sortedOutputs[safeIdx];
                             return (
                               <VariantVideoPreview
                                 key={o.id}
@@ -269,7 +326,7 @@ export function JobDetailClient({ id }: { id: string }) {
                                       template={template}
                                       bindings={job.slot_bindings}
                                       showSlotChrome={false}
-                                      variantSeed={selectedVariant}
+                                      variantSeed={o.variant_index}
                                     />
                                   ) : null
                                 }
@@ -278,14 +335,16 @@ export function JobDetailClient({ id }: { id: string }) {
                           })()}
                         </div>
                         <div className="space-y-3">
-                          <div>
-                            <div className="text-xs text-muted-foreground">当前预览</div>
-                            <div className="text-lg font-semibold mt-0.5">第 {selectedVariant + 1} 条</div>
-                          </div>
                           {(() => {
-                            const o = outputs[selectedVariant];
+                            const safeIdx = Math.min(selectedVariant, sortedOutputs.length - 1);
+                            const o = sortedOutputs[safeIdx];
+                            const variantLabel = o.variant_index + 1;
                             return (
                               <>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">当前预览</div>
+                                  <div className="text-lg font-semibold mt-0.5">第 {variantLabel} 条</div>
+                                </div>
                                 <div className="grid grid-cols-2 gap-2">
                                   <Stat label="与原片差异度" value={`${o.phash_distance_to_source} 分`} highlight={o.phash_distance_to_source >= 10} />
                                   <Stat label="文件大小" value={formatBytes(o.file_size)} />
@@ -311,7 +370,7 @@ export function JobDetailClient({ id }: { id: string }) {
                                   <Button variant="gradient" className="flex-1" asChild>
                                     <a
                                       href={o.file_url}
-                                      download={`${job.template_name || "mixcut"}-v${selectedVariant + 1}.mp4`}
+                                      download={`${job.template_name || "mixcut"}-v${variantLabel}.mp4`}
                                     >
                                       <Download className="size-4" /> 下载这条
                                     </a>
@@ -347,8 +406,9 @@ export function JobDetailClient({ id }: { id: string }) {
                     </CardContent>
                   </Card>
 
+                  {/* 缩略图网格：已完成 + 待生成 skeleton 占位 */}
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                    {outputs.map((o, idx) => (
+                    {sortedOutputs.map((o, idx) => (
                       <button
                         key={o.id}
                         onClick={() => setSelectedVariant(idx)}
@@ -364,23 +424,50 @@ export function JobDetailClient({ id }: { id: string }) {
                           <PlayCircle className="size-7 text-white/90" />
                         </div>
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent p-2 flex items-center justify-between">
-                          <span className="text-[10px] text-white">第 {idx + 1} 条</span>
+                          <span className="text-[10px] text-white">第 {o.variant_index + 1} 条</span>
                           <Badge variant="success" className="text-[9px]">
                             差异 {o.phash_distance_to_source}
                           </Badge>
                         </div>
                       </button>
                     ))}
+                    {pendingCount > 0 &&
+                      Array.from({ length: pendingCount }).map((_, i) => (
+                        <PendingVariantTile
+                          key={`pending-${i}`}
+                          label={`第 ${outputs.length + i + 1} 条`}
+                        />
+                      ))}
                   </div>
                 </div>
               ) : (
+                // 完全没有 outputs 时的过渡态：等待第一条出来
                 <Card>
-                  <CardContent className="p-12 text-center text-muted-foreground text-sm">
-                    {outputsPending
-                      ? "渲染已完成,正在同步成片文件…"
-                      : isProcessing
-                        ? "生成完成后,成片会自动出现在这里"
-                        : "暂无成片"}
+                  <CardContent className="p-8">
+                    {outputsPending || isProcessing ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="size-10 rounded-lg bg-violet-500/10 grid place-items-center shrink-0">
+                            <Wand2 className="size-5 text-violet-500 animate-pulse" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">
+                              {outputsPending ? "渲染已完成，正在同步成片文件…" : "正在生成第一条，稍后自动出现"}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              共 {totalExpected} 条，每条完成会立即入列，无需刷新
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                          {Array.from({ length: Math.min(totalExpected, 10) }).map((_, i) => (
+                            <PendingVariantTile key={`empty-${i}`} label={`第 ${i + 1} 条`} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center text-muted-foreground text-sm">暂无成片</div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -418,10 +505,21 @@ export function JobDetailClient({ id }: { id: string }) {
             <TabsContent value="perturbations">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">每条做了什么处理</CardTitle>
+                  <CardTitle className="text-base flex items-center justify-between">
+                    <span>每条做了什么处理</span>
+                    {stillRendering && (
+                      <span className="text-[11px] font-normal text-muted-foreground inline-flex items-center gap-1.5">
+                        <span className="relative inline-flex h-1.5 w-1.5">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-500 opacity-75" />
+                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-500" />
+                        </span>
+                        渲染中 {outputs.length}/{totalExpected}
+                      </span>
+                    )}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {hasOutputs ? (
+                  {hasOutputs || stillRendering ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
@@ -436,9 +534,9 @@ export function JobDetailClient({ id }: { id: string }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {outputs.map((o, i) => (
+                          {sortedOutputs.map((o) => (
                             <tr key={o.id} className="border-b border-border/50">
-                              <td className="py-2 px-2">第 {i + 1} 条</td>
+                              <td className="py-2 px-2">第 {o.variant_index + 1} 条</td>
                               <td className="py-2 px-2">{o.applied_transforms.crop || "—"}</td>
                               <td className="py-2 px-2">{o.applied_transforms.mirror ? "已翻转" : "—"}</td>
                               <td className="py-2 px-2 font-mono">{o.applied_transforms.speed?.toFixed(2)}×</td>
@@ -451,6 +549,25 @@ export function JobDetailClient({ id }: { id: string }) {
                               </td>
                             </tr>
                           ))}
+                          {/* 待生成行：5 列 dim placeholder，让用户预感整张表的尺寸 */}
+                          {pendingCount > 0 &&
+                            Array.from({ length: pendingCount }).map((_, i) => (
+                              <tr
+                                key={`pending-row-${i}`}
+                                className="border-b border-border/50 text-muted-foreground/70"
+                              >
+                                <td className="py-2 px-2">第 {outputs.length + i + 1} 条</td>
+                                <td className="py-2 px-2" colSpan={5}>
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <Wand2 className="size-3 animate-pulse" />
+                                    渲染中…
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2">
+                                  <span className="inline-block h-3 w-10 rounded bg-secondary/70 animate-pulse" />
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -898,6 +1015,26 @@ function distanceTone(d: number): "high" | "mid" | "low" {
   if (d >= 12) return "high";
   if (d >= 6) return "mid";
   return "low";
+}
+
+// 待生成变体的占位 tile。视觉与已完成 tile 同尺寸（aspect-[9/16]），但是 dim + pulse + 不可点击。
+// 让用户能预感"还有 N 条"，看着进度条慢慢填满有期待感。
+function PendingVariantTile({ label }: { label: string }) {
+  return (
+    <div
+      className="relative rounded-lg overflow-hidden aspect-[9/16] bg-secondary/40 border border-dashed border-border/60 grid place-items-center"
+      aria-label={`${label} 渲染中`}
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/[0.04] to-transparent animate-pulse" />
+      <div className="relative flex flex-col items-center gap-1.5 text-muted-foreground">
+        <Wand2 className="size-4 text-violet-500/70 animate-pulse" />
+        <span className="text-[10px]">渲染中</span>
+      </div>
+      <div className="absolute inset-x-0 bottom-0 p-2">
+        <span className="text-[10px] text-muted-foreground/80">{label}</span>
+      </div>
+    </div>
+  );
 }
 
 // 缩略图卡(底部 5 个变体网格):用 video 元素 + preload="metadata" 拿第一帧。

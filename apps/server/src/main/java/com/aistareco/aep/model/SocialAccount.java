@@ -55,6 +55,10 @@ public class SocialAccount {
     @Column(name = "display_name", length = 128)
     private String displayName;
 
+    /** 平台侧账号号 / handle，例如抖音号。抓不到时为空。 */
+    @Column(name = "platform_account_id", length = 128)
+    private String platformAccountId;
+
     @Column(name = "avatar_url", length = 1024)
     private String avatarUrl;
 

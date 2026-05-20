@@ -392,16 +392,69 @@ binding.file_url → 若是本 server 的 /static/mixcut-assets/<u>/<f> 直接 r
 - 部分成功语义：每 output 独立 try/catch + 调 `PublishJobService.createBatch`；单条失败不影响其他 output。
 - **定时调度**：`AiStarEcoApplication` 加 `@EnableScheduling`；`PublishJobScheduler @Scheduled(fixedDelay=60s, initialDelay=30s)` 扫 `status=QUEUED AND scheduledAt<=now()` 自动调 `startJob`。复用 QUEUED，不新增 SCHEDULED 状态。
 
-**前端三入口**：
-| 入口 | 位置 | 适用场景 |
-|---|---|---|
-| 单任务发布 | `/mixcut/jobs/[id]` 完成态加「批量发布」按钮 | 渲染完即发 |
-| 跨任务工作台 | 新建 `/mixcut/publish` | 攒一批后批量发 |
-| Distribution 跳转 | `/distribution` 顶部「从混剪库选视频发布 →」 | 从分发中心反向触发 |
-
-三个入口共用 `BatchPublishDrawer`（双模 props：`job` 单任务 / `items[]` 跨任务）。
+**前端入口（v0.15 初版）**：单任务详情 / `/mixcut/publish` 跨任务 / `/distribution` 反向跳。
+**v0.16 调整**：见 §5.12 — 跨任务工作台迁入分发中心，混剪只负责制作。
 
 **定时 UI**：`<input type="datetime-local">` + 提交时 `new Date(local).toISOString()` 显式转 UTC。提示文本注明本地时区 + 60s 调度延迟。
+
+### 5.12 v0.16 分发工作台迁入分发中心
+
+把 v0.15 的跨任务工作台 `/mixcut/publish` 迁入 `/distribution`，让用户行为路径「批量制作 → 绑账号 → 派单」线性闭环在分发中心收口；混剪只负责制作。
+
+**新 IA**（`components/distribution/DistributionPage.tsx`）：
+
+| 区域 | 内容 |
+|---|---|
+| Header | 标题 + 「手动分发」常驻按钮（右上） |
+| 状态条 | 已绑账号 / 可发变体 / 进行中任务 三个 StatChip（点击切对应 tab） |
+| Tabs | 分发工作台（默认）· 账号管理 · 任务追踪 |
+
+URL：`?tab=workbench|accounts|tracking`；workbench 是默认 tab，URL 省略。
+
+**核心：分发工作台**（`components/distribution/DistributeWorkbench.tsx`）
+
+主区双视图切换：
+- `grid`（默认）：所有任务的可发变体平铺成统一网格（按 `created_at` 倒序），缩略图顶贴任务名 chip + 底贴 v 编号。像「选照片」一样勾视频，混任务对比体验最好。
+- `group`：按任务卡片（同 v0.15 行为），任务名 / created_at / 可发数 / 已选数 + 「全选本任务」+ 展开变体；任务多于 5 条变体时折叠收起。
+
+工具条：搜索框（模板名 / 任务 ID）· 视图切换 · 「含已发布」过滤开关 · 刷新。
+统计条：`X 条可发布变体（Y/Z 任务）` + 「全选当前 X 条」。
+
+Sticky right rail：
+- 已选缩略图九宫格（>8 折叠为 `+N`）+ 清空选择
+- 「继续配置发布 (N)」CTA → 弹出现有 `BatchPublishDrawer`（items[] 模式）配账号 + 文案 + 定时 → 派单
+- 帮助提示 + 「账号管理」深链
+
+**深链：从混剪深链进入**
+
+`/distribution?from_job=<mixcutJobId>` 触发：
+- 强制 `workbench` tab + `group` 视图
+- 自动展开目标任务、勾选其全部可发变体
+- smooth scroll 到该任务卡片
+- 卡片紫边 ring + 「来自混剪」chip 高亮
+
+入口位置：`/mixcut/jobs/[id]` 详情页保留单任务「批量发布」drawer（行为不变），同时新增 ghost 按钮「去分发中心 →」深链。
+
+**已派发记忆**
+
+派单成功后该 output_id 写入 localStorage（key `aep:distribute:published-output-ids`），下次进入工作台默认隐藏，可通过工具条「含已发布」开关找回。这是纯前端去重；server 端不维护该索引，跨浏览器 / 清缓存后会失效，但够 MVP 场景。后续如需稳态去重，server 加 `mixcut_output.last_published_at` 列即可。
+
+**路由收口**
+
+- `/mixcut/publish` → `redirect("/distribution?tab=workbench")`（保留作为旧链兼容）
+- `app/(workspace)/layout.tsx` 移除 mixcut 二级菜单的「发布工作台」+ 面包屑映射
+- `apps/web-celebrity/src/components/distribution/DistributeWorkbench.tsx` —— 工作台真源
+- `apps/web-celebrity/src/components/distribution/DistributionPage.tsx` —— IA 容器
+
+### 5.13 v0.17 社交账号 profile 增强
+
+账号绑定成功后，分发中心不再只显示用户自填别名。`SocialAccount` 增加 `platformAccountId`，并继续使用已有 `displayName` / `avatarUrl`：
+
+- 账号管理列表：显示平台、昵称、平台账号号（如「抖音号 1794189054」）、头像、状态和上次验证时间。
+- 项目分发 / 手动分发 select：选项用「昵称（平台账号号 xxx）」增强辨识度。
+- 混剪批量发布抽屉：账号卡片显示平台、昵称、平台账号号和状态。
+
+字段为空时保持可用，不阻断绑定 / 发布；平台差异由 sau-service 各平台 driver 处理，前端只消费统一 `SocialAccount` DTO。
 
 ### 5.11 已知限制
 

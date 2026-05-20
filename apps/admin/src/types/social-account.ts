@@ -27,6 +27,8 @@ export interface SocialAccount {
   status: SocialAccountStatus;
   /** 扫码登录后从平台获取的昵称 */
   displayName?: string;
+  /** 平台侧账号号 / handle，例如抖音号；抓不到时为空 */
+  platformAccountId?: string;
   avatarUrl?: string;
   boundAt: ISODateTime;
   /** 上次成功 verify 的时间（cookie 仍有效） */

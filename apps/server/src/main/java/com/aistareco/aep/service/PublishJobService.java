@@ -159,6 +159,12 @@ public class PublishJobService {
                                 + "，与 targets[].platform=" + platform.wire() + " 不一致");
             }
 
+            // scheduledAt 语义：null = 立即派单。但 PublishJobScheduler 用 SQL
+            //   findByStatusAndScheduledAtLessThanEqual(QUEUED, now)
+            // 来挑可启动的任务，`NULL <= now` 在 SQL 里返回 unknown 不匹配 — 历史 bug：
+            // "立即派单"创建的任务因为 scheduledAt=null 永远不会被自动启动，用户必须手动点开始。
+            // 修复：null 入库前替换为 Instant.now()，让 scheduler 下一轮 tick 立刻拿到。
+            Instant effectiveScheduledAt = t.scheduledAt() != null ? t.scheduledAt() : Instant.now();
             PublishJob job = PublishJob.builder()
                     .id(UUID.randomUUID().toString())
                     .userId(userId)
@@ -176,7 +182,7 @@ public class PublishJobService {
                     .coverUrl(input.coverUrl())
                     .productLink(input.productLink())
                     .productTitle(input.productTitle())
-                    .scheduledAt(t.scheduledAt())
+                    .scheduledAt(effectiveScheduledAt)
                     .build();
             jobRepo.save(job);
             writeEvent(job.getId(), "transition", null, PublishJobStatus.QUEUED, 0, "queued");
@@ -220,10 +226,15 @@ public class PublishJobService {
         jobRepo.save(job);
         writeEvent(job.getId(), "transition", from, PublishJobStatus.UPLOADING, 0, "credit:-" + cost);
 
+        // 把 videoUrl 标准化为绝对 URL —— sau-service 是独立进程，httpx 拒绝相对路径。
+        // 历史脏数据（v0.15-v0.17 间用 publicBase=/cdn 落的 publish_job.video_url）也能跑通。
+        // 优先级：已是绝对（http/https）→ 直接用；以 / 开头 → 拼当前 server origin。
+        String absoluteVideoUrl = toAbsoluteUrl(job.getVideoUrl());
+
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("platform", account.getPlatform().wire());
         body.put("accountName", account.getAccountName());
-        body.put("videoUrl", job.getVideoUrl());
+        body.put("videoUrl", absoluteVideoUrl);
         body.put("title", job.getTitle());
         body.put("description", job.getDescription());
         body.put("tags", job.getTags() != null ? job.getTags() : List.of());
@@ -427,6 +438,37 @@ public class PublishJobService {
         if (o == null) return null;
         String s = o.toString();
         return s.isBlank() ? null : s;
+    }
+
+    /**
+     * 把可能为相对路径的 cdn url 标准化为绝对 URL。
+     *
+     * sau-service 是独立进程，只接受 absolute URL（http:// 或 https://）。Server 端有些
+     * 历史 PublishJob.videoUrl 落库时 AEP_CDN_PUBLIC_BASE_URL 还是默认相对路径 `/cdn`，
+     * 这里在派单给 sau 前实时补全成 `<selfHost>/cdn/...`，避免历史脏数据走不通。
+     *
+     * 推导规则：
+     *   "http://..." / "https://..."  → 原样返回
+     *   "/<anything>"                  → selfHost (从 selfBaseUrl 取 origin) + url
+     *   其它                            → 抛 IllegalArgumentException（不可恢复）
+     */
+    private String toAbsoluteUrl(String url) {
+        if (url == null || url.isBlank()) {
+            throw new IllegalArgumentException("videoUrl is null/blank");
+        }
+        if (url.startsWith("http://") || url.startsWith("https://")) return url;
+        if (!url.startsWith("/")) {
+            throw new IllegalArgumentException("videoUrl is neither absolute nor leading-slash: " + url);
+        }
+        // selfBaseUrl 形如 "http://localhost:8080/api/internal/sau"；取 origin
+        String origin = selfBaseUrl;
+        try {
+            java.net.URI u = java.net.URI.create(selfBaseUrl);
+            origin = u.getScheme() + "://" + u.getAuthority();
+        } catch (Exception ignored) {
+            // 退化到 selfBaseUrl 不 parse 也比拼坏字符串好
+        }
+        return origin + url;
     }
 
     private static Integer intOrNull(Object o) {

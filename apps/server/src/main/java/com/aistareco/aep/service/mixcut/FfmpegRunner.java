@@ -1,6 +1,7 @@
 package com.aistareco.aep.service.mixcut;
 
 import com.aistareco.aep.config.MixcutProperties;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,28 @@ public class FfmpegRunner {
     }
 
     /**
+     * 启动时探测 ffmpeg / ffprobe 是否可执行。失败 log warning（不阻塞 boot）—— 但任何
+     * 后续渲染任务最终会失败。
+     *
+     * 历史问题：用户从 IDE 启动 server 时 PATH 不含 /opt/homebrew/bin，渲染 worker 抛
+     * "Cannot run program 'ffmpeg'" 时已经过了 status=running 5%，迷惑性大。这里启动时
+     * 一次性打印版本号，让 boot log 一眼可见。
+     */
+    @PostConstruct
+    void probeOnStartup() {
+        for (String bin : new String[] {props.getFfmpegBin(), props.getFfprobeBin()}) {
+            try {
+                String out = run(bin, List.of("-version"));
+                String firstLine = out.split("\\R", 2)[0];
+                log.info("[mixcut] ✅ {} ready: {}", bin, firstLine);
+            } catch (Exception e) {
+                log.warn("[mixcut] ⚠️ {} NOT runnable — 渲染任务会失败. 安装: brew install ffmpeg. 错误: {}",
+                        bin, e.getMessage());
+            }
+        }
+    }
+
+    /**
      * 执行 ffmpeg，args 不需要包含 "ffmpeg" 本身。返回完整 stderr（ffmpeg 把进度/日志都写 stderr）。
      * 异常抛出 RuntimeException 带 exit code + tail of stderr。
      */
@@ -46,6 +69,7 @@ public class FfmpegRunner {
         cmd.add(bin);
         cmd.addAll(args);
         log.debug("[mixcut] exec: {}", String.join(" ", cmd));
+        long t0 = System.nanoTime();
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
@@ -71,6 +95,7 @@ public class FfmpegRunner {
         reader.setDaemon(true);
         reader.start();
 
+        long startNs = System.nanoTime();
         boolean finished;
         try {
             finished = p.waitFor(props.getFfmpegTimeoutMs(), TimeUnit.MILLISECONDS);
@@ -81,7 +106,16 @@ public class FfmpegRunner {
         }
         if (!finished) {
             p.destroyForcibly();
-            throw new RuntimeException("ffmpeg timed out after " + props.getFfmpegTimeoutMs() + "ms");
+            // 让 reader 多读一会，把 destroyForcibly 触发的最后输出收上来
+            try { reader.join(1500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
+            String tail = tail(output.toString(), 4_000);
+            // 超时时带上 stderr 尾巴 —— 否则用户只看到 "timed out" 完全不知道
+            // ffmpeg 卡在哪一步（demuxing? filter chain init? encoding?）。
+            // 历史上这条错只有时长，每次都得手动加 -loglevel verbose 重跑。
+            throw new RuntimeException(
+                    "ffmpeg timed out after " + elapsedMs + "ms (limit=" + props.getFfmpegTimeoutMs()
+                            + "ms). 调大 aep.mixcut.ffmpeg-timeout-ms 或减小 variants / source 尺寸. tail=" + tail);
         }
         try { reader.join(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
 
@@ -94,6 +128,14 @@ public class FfmpegRunner {
             // filter chain + framing。
             String tail = tail(output.toString(), 8_000);
             throw new RuntimeException("ffmpeg exit=" + code + " bin=" + bin + " tail=" + tail);
+        }
+        long elapsedMs = (System.nanoTime() - t0) / 1_000_000L;
+        // 单次 ffmpeg 调用耗时 — 视频拼接 / 编码慢时能在 log 里直观看到，便于
+        // 决定调大 aep.mixcut.ffmpeg-timeout-ms 或减小 variants。
+        if (elapsedMs > 20_000L) {
+            log.info("[mixcut] {} took {}ms (slow)", bin, elapsedMs);
+        } else {
+            log.debug("[mixcut] {} took {}ms", bin, elapsedMs);
         }
         return output.toString();
     }

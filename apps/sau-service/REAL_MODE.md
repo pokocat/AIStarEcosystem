@@ -89,12 +89,12 @@ curl -fsS http://localhost:8080/api/auth/dev-accounts | head -c 200
 
 ## 2. 用 UI 走全链路
 
-sau-service 接管 QR 登录：用户在 `/distribution` 点 "绑定账号" → server 调 sau `/login/start` → sau 起 patchright chromium 加载 `creator.douyin.com` → 截 QR PNG 返回 → 前端展示 → 用户扫码 → sau `/login/poll` 监测 `page.url` 跳到 `/creator-micro` 等 fragment → 收 `context.storage_state()`，关 chromium。
+sau-service 接管 QR 登录：用户在 `/distribution` 点 "绑定账号" → server 调 sau `/login/start` → sau 起 patchright chromium 加载 `creator.douyin.com` → 截 QR PNG 返回 → 前端展示 → 用户扫码 → sau `/login/poll` 监测 `page.url` 跳到 `/creator-micro` 等 fragment → 收 `context.storage_state()` + 清洁 `profile`（昵称 / 抖音号 / 头像），关 chromium。
 
 | 步骤 | UI 操作 | 预期 |
 |---|---|---|
 | 1 | 登录 `/distribution` → 点 "绑定账号" → 抖音 → 输入别名 → 确认 | 弹出 QR 图（chromium 截图） |
-| 2 | 手机抖音 App 扫码确认 | UI 轮询 2-3 次 → status `active` → 账号出现在 `已绑定账号` |
+| 2 | 手机抖音 App 扫码确认 | UI 轮询 2-3 次 → status `active` → 账号出现在 `已绑定账号`，并显示能抓到的昵称 / 抖音号 / 头像 |
 | 3 | 进任意项目 → 点 "批量分发" → 选视频 / 平台 / 账号 → 创建任务 | 跳到 `/distribution`，看到 queued 行 |
 | 4 | 点 ▶ 开始 | 扣 20 积分；状态 queued → uploading → publishing → live；如果开了 headless=0 能看到 chromium 在真实抖音上传页操作 |
 | 5（可选）| 点账号行的 "验证" 按钮 | 调 `/me/social-accounts/{id}/verify`；cookie 还在则 status 留 active + lastVerifiedAt 更新；失效则翻 expired |

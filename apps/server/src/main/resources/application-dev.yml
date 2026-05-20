@@ -1,7 +1,20 @@
-# H2 内存数据库 — 本地开发用，启动即用，无需安装任何数据库
+# H2 文件数据库 — 本地开发用，启动即用，无需安装任何数据库。
+#
+# 数据落地到 ./data/aistareco.mv.db（相对 server 工作目录，已在 .gitignore 排除）。
+# 重启 server 数据保留；想清空跑：rm -rf apps/server/data
+#
+# 历史：之前用 jdbc:h2:mem:... 是内存模式，每次重启都得重 seed + 重新建明星/绑账号 / 充值。
+# 切到文件模式后所有 seeder（DataInitializer / CelebrityZoneDataInitializer / 等）依旧幂等，
+# 已经存在的不会重写。
+#
+# 参数说明：
+#   file:./data/aistareco  — 数据文件路径（不带 .mv.db 后缀，H2 自动加）
+#   MODE=MySQL             — 保持 MySQL 方言兼容，跟生产 application-mysql.yml 一致
+#   AUTO_SERVER=TRUE       — 允许多进程并发连接（IDE H2 console + spring-boot:run 可同开）
+#   DB_CLOSE_DELAY=-1      — JVM 退出再关库
 spring:
   datasource:
-    url: jdbc:h2:mem:aistareco;DB_CLOSE_DELAY=-1;MODE=MySQL
+    url: jdbc:h2:file:./data/aistareco;MODE=MySQL;AUTO_SERVER=TRUE;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -13,3 +26,9 @@ spring:
 aep:
   dev-auth:
     enabled: true
+  # CDN 公开 URL 必须是绝对地址 — sau-service 是独立进程（端口 8090），
+  # 拿到相对路径 `/cdn/...` 时 httpx 会抛 UnsupportedProtocol（缺 http://）。
+  # 前端浏览器同样可以直接打开这个绝对 URL，因为 server 在 8080 暴露 /cdn/** 静态 handler。
+  # 生产把这个值设为 OSS CDN 域名（如 https://cdn.aistar.com）。
+  cdn:
+    public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:http://localhost:8080/cdn}

@@ -76,6 +76,8 @@ def test_login_poll_progresses_to_success(client: TestClient) -> None:
     second = client.get("/login/poll", headers=_h(), params={"ticket": "t2"}).json()
     assert second["status"] == "success"
     assert "cookies" in second["storageStatePlain"]
+    assert second["profile"]["displayName"] == "mock-bob"
+    assert second["profile"]["platformAccountId"] == "mock-douyin-bob"
     # cookie consumed; another poll is now 'expired'
     third = client.get("/login/poll", headers=_h(), params={"ticket": "t2"}).json()
     assert third["status"] == "expired"
@@ -88,6 +90,7 @@ def test_verify_returns_valid_for_nonempty_state(client: TestClient) -> None:
         json={"platform": "douyin", "storageState": {"cookies": [{"name": "x", "value": "y"}]}},
     )
     assert r.status_code == 200
+    assert r.json()["profile"]["platformAccountId"] == "mock-douyin"
     assert r.json()["valid"] is True
 
 
@@ -192,6 +195,21 @@ def test_real_login_drivers_implement_full_surface() -> None:
 
     # The two currently-wired platforms.
     assert set(DRIVERS) >= {"douyin", "shipinhao"}
+
+
+def test_douyin_profile_text_helpers_parse_creator_header() -> None:
+    from sau_service.login_pool import (
+        _extract_labeled_account_id,
+        _extract_text_before_label,
+        _is_placeholder_profile_text,
+    )
+
+    text = "用户7030315623774 | 抖音号：1794189054 | 这个人很懒，没有留下任何签名"
+    assert _extract_labeled_account_id(text, ("抖音号",)) == "1794189054"
+    assert _extract_text_before_label(text, "抖音号") == "用户7030315623774"
+    assert _extract_text_before_label("用户7030315623774 抖音号：1794189054", "抖音号") == "用户7030315623774"
+    assert _extract_text_before_label("加载中，请稍候...", "抖音号") is None
+    assert _is_placeholder_profile_text("加载中，请稍候...")
 
 
 def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:

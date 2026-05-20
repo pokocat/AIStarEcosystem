@@ -21,6 +21,7 @@ public record SocialAccountDto(
         String accountName,
         String status,
         String displayName,
+        String platformAccountId,
         String avatarUrl,
         Instant boundAt,
         Instant lastVerifiedAt
@@ -33,6 +34,7 @@ public record SocialAccountDto(
                 a.getAccountName(),
                 a.getStatus() != null ? a.getStatus().wire() : null,
                 a.getDisplayName(),
+                a.getPlatformAccountId(),
                 a.getAvatarUrl(),
                 a.getBoundAt(),
                 a.getLastVerifiedAt()

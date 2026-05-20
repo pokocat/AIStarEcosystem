@@ -104,10 +104,15 @@ public class MixcutJobService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
+                    // log 让用户能确认 tx 真的 commit 了 + worker 已 enqueue 到 mixcutExecutor。
+                    // 后续如果看不到 "[mixcut] worker picked up job=..."，说明池满 / 注解未生效。
+                    log.info("[mixcut] dispatching renderAsync for {} (tx committed)", jobId);
                     rendering.renderAsync(jobId);
                 }
             });
         } else {
+            // dev/test 路径：没事务时直接派单（H2 lite scenarios）。
+            log.info("[mixcut] dispatching renderAsync for {} (no active tx)", jobId);
             rendering.renderAsync(jobId);
         }
 

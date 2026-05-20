@@ -19,6 +19,7 @@ import type { SocialAccount, SocialPlatform } from "@ai-star-eco/types/social-ac
 import type { CelebrityProject, CelebrityProjectVideo } from "@ai-star-eco/types/celebrity-zone";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import { socialAccountOptionLabel } from "./social-account-labels";
 
 const ENABLED_PLATFORMS: Array<{ id: SocialPlatform; label: string }> = [
   { id: "douyin", label: "抖音" },
@@ -268,7 +269,7 @@ export function DistributeDialog({ open, onClose, project, videos, onCreated }: 
                           <option value="">不分发到此平台</option>
                           {platformAccounts.map((a) => (
                             <option key={a.id} value={a.id}>
-                              {a.displayName || a.accountName}
+                              {socialAccountOptionLabel(a)}
                             </option>
                           ))}
                         </select>

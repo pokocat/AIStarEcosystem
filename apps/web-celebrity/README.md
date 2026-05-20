@@ -69,6 +69,34 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.17 · 2026-05-20 · 社交账号 profile 增强
+
+- ✅ **账号辨识度**：`SocialAccount` 增 `platformAccountId`，与已有 `displayName` / `avatarUrl` 一起展示。
+- ✅ **分发中心 UI**：账号管理列表显示平台账号号；项目分发 / 手动分发 / 混剪批量发布的选账号 UI 均展示昵称 + 平台账号号。
+- ✅ **契约来源**：字段来自 server 清洁 DTO，不包含 storage_state；平台差异由 sau-service 各平台 driver 提取。
+
+### v0.16 · 2026-05-19 · 分发工作台迁入分发中心 + 分发中心 IA 升级
+
+把 v0.15 落在 `/mixcut/publish` 的「分发工作台」迁入分发中心 `/distribution`，让混剪只负责制作、分发中心统一收口「批量制作 → 绑账号 → 派单」的用户路径。
+
+- ✅ **新核心组件**：`components/distribution/DistributeWorkbench.tsx`
+  - 双视图：`grid`（默认，所有可发变体平铺；缩略图顶贴任务名 chip + 底贴 v 编号）/ `group`（按任务卡片，可展开变体；同 v0.15 行为）
+  - 跨任务搜索 + 已发布过滤（基于 localStorage `aep:distribute:published-output-ids`，派单成功后该 output_id 默认隐藏，可通过「含已发布」开关找回）
+  - Sticky right rail：已选缩略图九宫格（>8 折叠为 +N）+ 清空 + 「继续配置发布 (N)」CTA
+  - 派单复用现有 `BatchPublishDrawer`（items[] 模式），不重复造选账号 / 文案 / 定时 UI
+- ✅ **DistributionPage IA 升级**：`components/distribution/DistributionPage.tsx`
+  - 顶部状态条：已绑账号 / 可发变体 / 进行中任务 三个 StatChip（点击切对应 tab）
+  - Tabs：分发工作台（默认）/ 账号管理 / 任务追踪；URL 同步 `?tab=workbench|accounts|tracking`
+  - 「手动分发」按钮上移到 header 右上，跨 tab 常驻；创建成功后自动切到「任务追踪」tab 触发刷新
+  - 用 `<Suspense>` 包 `useSearchParams` 避免 Next 16 build 警告
+- ✅ **深链支持**：`/distribution?from_job=<mixcutJobId>` 进入时自动 `workbench` tab + `group` 视图 + 展开该任务 + 勾选其全部可发变体 + smooth scroll 到目标卡片（卡片紫边高亮 + 「来自混剪」chip）
+- ✅ **mixcut 路由收口**：
+  - `app/(workspace)/mixcut/publish/page.tsx` 改为 `redirect("/distribution?tab=workbench")`；删除 `publish-workbench-client.tsx`
+  - `app/(workspace)/layout.tsx` 移除 mixcut 二级菜单的「发布工作台」+ 面包屑映射
+  - `app/(workspace)/mixcut/jobs/[id]` 详情页保留单任务批量发布 drawer（行为不变），新增 ghost 按钮「去分发中心 →」深链 `/distribution?from_job=<id>`，引导用户认识统一出口
+- ✅ **行为路径**：制作（`/mixcut/*`）→ 绑账号（`/distribution?tab=accounts`）→ 分发（`/distribution`）线性闭环，三个状态条数同时可见
+- ➖ **不做**：手动 URL 输入 inline 合并进工作台（保留独立 `ManualDistributeDialog`，因为字段差异大 — 封面 / 商品挂载 / 视频号 category 等专属字段塞进通用工作台会复杂）
+
 ### v0.15 · 2026-05-19 · 混剪 → 发布桥接 + 定时
 
 - ✅ **publish-batch 接口**：`POST /api/me/mixcut/publish-batch` 一次性把 N 变体 × M 账号派单 N×M 条 PublishJob。outputs[].cdn_url 必填；缺失计入 `failed_items[].reason="MISSING_CDN_URL"`。

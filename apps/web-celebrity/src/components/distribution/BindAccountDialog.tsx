@@ -8,7 +8,7 @@
 // storage_state 全程不出现在前端代码 —— 这里的所有交互只看 SocialAccount DTO。
 
 import * as React from "react";
-import { X, RefreshCw } from "lucide-react";
+import { X, RefreshCw, Loader2 } from "lucide-react";
 import { SocialAccountApi } from "@ai-star-eco/api-client";
 import type {
   SocialAccount,
@@ -37,6 +37,9 @@ export function BindAccountDialog({ open, onClose, onBound }: Props) {
   const [init, setInit] = React.useState<SocialAccountBindInit | null>(null);
   const [pollStatus, setPollStatus] = React.useState<"idle" | "pending" | "expired" | "error">("idle");
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  // submitting：「开始扫码」按钮按下到 /bind-init 返回的中间态。
+  // 没有该 flag 时按钮看起来"没反应"——sau-service 调 playwright 抓 QR 可能耗 3-8s。
+  const [submitting, setSubmitting] = React.useState(false);
 
   // reset all state when modal toggles
   React.useEffect(() => {
@@ -46,6 +49,7 @@ export function BindAccountDialog({ open, onClose, onBound }: Props) {
       setInit(null);
       setPollStatus("idle");
       setErrorMsg(null);
+      setSubmitting(false);
     }
   }, [open]);
 
@@ -81,16 +85,20 @@ export function BindAccountDialog({ open, onClose, onBound }: Props) {
   }, [init, onBound, onClose]);
 
   const startBind = async () => {
+    if (submitting) return;
     if (!accountName.trim()) {
       setErrorMsg("请填写账号别名");
       return;
     }
     setErrorMsg(null);
+    setSubmitting(true);
     try {
       const res = await SocialAccountApi.initBind({ platform, accountName: accountName.trim() });
       setInit(res);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -124,7 +132,8 @@ export function BindAccountDialog({ open, onClose, onBound }: Props) {
               <select
                 value={platform}
                 onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-[var(--accent)] focus:outline-none"
+                disabled={submitting}
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
               >
                 {ENABLED_PLATFORMS.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -140,16 +149,40 @@ export function BindAccountDialog({ open, onClose, onBound }: Props) {
                 onChange={(e) => setAccountName(e.target.value)}
                 placeholder="例如：公司主号-抖音"
                 maxLength={64}
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-[var(--accent)] focus:outline-none"
+                disabled={submitting}
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
               />
             </label>
             {errorMsg && <p className="text-xs text-rose-600">{errorMsg}</p>}
+            {submitting && (
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                正在拉起浏览器抓 QR 码，首次启动通常需要 3-8 秒…
+              </p>
+            )}
             <div className="mt-2 flex justify-end gap-2">
-              <button type="button" className={CTA_SECONDARY} onClick={onClose}>
+              <button
+                type="button"
+                className={CTA_SECONDARY}
+                onClick={onClose}
+                disabled={submitting}
+              >
                 取消
               </button>
-              <button type="button" className={CTA_PRIMARY} onClick={startBind}>
-                开始扫码
+              <button
+                type="button"
+                className={cn(CTA_PRIMARY, submitting && "cursor-wait")}
+                onClick={startBind}
+                disabled={submitting}
+                aria-busy={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    获取 QR 中…
+                  </>
+                ) : (
+                  "开始扫码"
+                )}
               </button>
             </div>
           </div>

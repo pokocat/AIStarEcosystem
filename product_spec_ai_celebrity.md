@@ -242,6 +242,31 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ## 六、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.17.0 · 2026-05-20 — 社交账号绑定 profile 落库
+
+**Context**：分发中心开始承载多平台账号绑定后，仅靠用户自填 `accountName` 不足以区分多个同平台账号。本期把扫码登录后创作者中心页面可见的清洁 profile 信息落库，提升账号辨识度，不暴露 cookie / storage_state。
+
+**新增字段**
+
+| 字段 | 位置 | 说明 |
+|---|---|---|
+| `SocialAccount.displayName` | 已有字段，继续使用 | 平台侧昵称；抓不到时为空 |
+| `SocialAccount.platformAccountId` | 新增 | 平台侧账号号 / handle，例如抖音号；抓不到时为空 |
+| `SocialAccount.avatarUrl` | 已有字段，继续使用 | 平台侧头像 URL；抓不到时为空 |
+
+**链路**
+
+1. `sau-service` 各平台 `PlatformDriver.extract_profile()` 在扫码成功或 verify 成功后 best-effort 抓页面信息。
+2. `/login/poll` / `/accounts/verify` 返回 `profile={displayName, platformAccountId, avatarUrl}`。
+3. `apps/server` 加密 `storageStatePlain` 后，仅把上述清洁字段落到 `aep_social_accounts`。
+4. `web-celebrity` 账号管理 / 发布选账号 UI 展示昵称、平台账号号、头像；`admin` 社交账号审计页展示 `platformAccountId`。
+
+**平台差异**
+
+- 抖音：从创作者中心 header 解析昵称、`抖音号：...`、头像；DOM class 失效时用 body 文本兜底解析。
+- 视频号 / 小红书 / 快手：后续按各自创作者中心 DOM 在对应 driver 内补选择器，仍统一写入 `platformAccountId`。
+- profile 是增强信息，不参与鉴权和发布；字段为空不影响绑定成功。
+
 ### v0.5.3 · 2026-05-09 — 小程序近实时主动同步：多层轮询 + 业务关键点立即触发
 
 **Context**：v0.5.2 把 Bot 消息改成 server 按需合成，但只有用户**主动打开**页面才会刷新 — 红点不会自己变化。本期补齐"主动同步"机制，让用户在工作台/市场/视频中心等任何 tab 都能近实时看到新消息提示。

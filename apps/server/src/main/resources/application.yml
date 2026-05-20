@@ -56,10 +56,18 @@ aep:
     max-concurrent: ${AEP_MIXCUT_MAX_CONCURRENT:2}
     # 单个变体最长时长（秒），超过截断
     max-output-duration-sec: ${AEP_MIXCUT_MAX_OUTPUT_DURATION_SEC:15}
+    # 输出分辨率上限：模板 canvas 大于此值时按比例缩到 fit。
+    # 1080p 软编 CPU 跑不动多 overlay 场景；默认 720p 让 macOS / Linux 容器都 ~1x realtime。
+    # 想 1080p 输出请改 max-output-width=1080 + video-codec=h264_videotoolbox（macOS）。
+    max-output-width: ${AEP_MIXCUT_MAX_OUTPUT_WIDTH:720}
+    max-output-height: ${AEP_MIXCUT_MAX_OUTPUT_HEIGHT:1280}
+    # 视频编码器。libx264 = CPU 软编（兼容）；macOS 可改 h264_videotoolbox 走 GPU。
+    video-codec: ${AEP_MIXCUT_VIDEO_CODEC:libx264}
     # 每个素材最大下载体积（字节）
     max-asset-bytes: ${AEP_MIXCUT_MAX_ASSET_BYTES:104857600}
-    # ffmpeg 单次执行超时（毫秒）
-    ffmpeg-timeout-ms: ${AEP_MIXCUT_FFMPEG_TIMEOUT_MS:120000}
+    # ffmpeg 单次执行超时（毫秒）。本机 CPU 编码 1080p 多变体场景 120s 不够，
+    # 默认调到 5 分钟。生产 / GPU 编码可调小。
+    ffmpeg-timeout-ms: ${AEP_MIXCUT_FFMPEG_TIMEOUT_MS:300000}
     # 用户上传素材目录（绝对或相对工作目录）
     asset-dir: ${AEP_MIXCUT_ASSET_DIR:./mixcut-assets}
     # 用户上传素材公开 URL 前缀

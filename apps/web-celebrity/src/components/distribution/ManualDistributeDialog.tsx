@@ -25,6 +25,7 @@ import { SocialAccountApi, PublishJobApi } from "@ai-star-eco/api-client";
 import type { SocialAccount, SocialPlatform } from "@ai-star-eco/types/social-account";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import { socialAccountOptionLabel } from "./social-account-labels";
 
 // projectId 用 "manual" 哨兵 — server 不做项目存在性校验，所以这字符串
 // 仅作"这条任务没有项目归属"的标识。列任务时按 userId 过滤即可拿到。
@@ -315,7 +316,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
                           <option value="">不分发到此平台</option>
                           {platformAccounts.map((a) => (
                             <option key={a.id} value={a.id}>
-                              {a.displayName || a.accountName}
+                              {socialAccountOptionLabel(a)}
                             </option>
                           ))}
                         </select>

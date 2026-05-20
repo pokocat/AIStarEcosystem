@@ -93,17 +93,28 @@ public class MixcutRenderingService {
     /**
      * 异步入口；由 MixcutJobService.create() 调用。
      * 不在事务里 —— 长任务 + 多次 commit。
+     *
+     * 入口仅 log，不写 DB —— 历史上加 updateProgress(1) 作为 "我接走了" 信号时，
+     * 因为 self-invocation 让 @Transactional REQUIRES_NEW 不生效，与 renderInternal
+     * 第一次 updateProgress(5) 形成 Hibernate session 竞争，progress 被锁在 1% 不再推进。
+     *
+     * 现行方案：worker 唯一信号 = server log `[mixcut] worker picked up ...`；
+     * progress 推进交给 renderInternal 内的 updateProgress（同样 self-invocation，
+     * 但只跑一次写入，不会和别的 @Transactional 内部方法竞争 session）。
      */
     @Async("mixcutExecutor")
     public void renderAsync(String jobId) {
+        log.info("[mixcut] worker picked up job={} thread={}", jobId, Thread.currentThread().getName());
         try {
             renderInternal(jobId);
         } catch (Throwable t) {
-            log.error("[mixcut] job {} failed", jobId, t);
+            log.error("[mixcut] job {} failed in renderInternal", jobId, t);
             try {
                 markFailed(jobId, t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
-            } catch (Exception ignored) {
-                // last-resort logging
+                log.info("[mixcut] job {} marked failed", jobId);
+            } catch (Exception inner) {
+                // markFailed 也失败 → 这是 H2 锁 / 连接池耗尽等极端场景，至少要 log
+                log.error("[mixcut] job {} markFailed ALSO threw (status will stay running)", jobId, inner);
             }
         }
     }
@@ -176,12 +187,14 @@ public class MixcutRenderingService {
     // ── 主流程 ─────────────────────────────────────────────────────────────────
 
     private void renderInternal(String jobId) throws Exception {
+        log.info("[mixcut] step=enter job={}", jobId);
         MixcutRenderJob job = jobRepo.findById(jobId)
                 .orElseThrow(() -> new IllegalStateException("job not found: " + jobId));
-        log.info("[mixcut] start render {} template={} variants={}",
+        log.info("[mixcut] step=loaded job={} template={} variants={}",
                 jobId, job.getTemplateId(), job.getOutputVariants());
 
         updateProgress(jobId, 5, "running");
+        log.info("[mixcut] step=progress=5 job={}", jobId);
 
         // 1) 准备输出目录
         File outDir = new File(props.getOutputDir(), jobId);
@@ -191,31 +204,34 @@ public class MixcutRenderingService {
 
         // 2) 读取模板快照（v0.10）：画布尺寸、槽位 rect / layer_type / policy、扰动总开关
         RenderContext ctx = buildContext(job);
-        log.info("[mixcut] job {} canvas={}x{} slots_in_snapshot={} overrides=mirror:{} speed:{} bright:{} sat:{}",
+        log.info("[mixcut] step=ctx job={} canvas={}x{} slots_in_snapshot={} overrides=mirror:{} speed:{} bright:{} sat:{}",
                 jobId, ctx.outputWidth, ctx.outputHeight, ctx.slotMap.size(),
                 ctx.overrides.allowMirror, ctx.overrides.allowSpeed,
                 ctx.overrides.allowBrightness, ctx.overrides.allowSaturation);
 
         // 3) 收集 binding → 真实本地文件，按 layer_type / 后缀分类
+        log.info("[mixcut] step=resolving job={}", jobId);
         ResolvedBindings resolved = resolveBindings(job, ctx);
-        log.info("[mixcut] job {} videos={} overlays={}",
+        log.info("[mixcut] step=resolved job={} videos={} overlays={}",
                 jobId, resolved.videos.size(), resolved.overlays.size());
         if (resolved.videos.isEmpty()) {
             throw new IllegalStateException("no usable source videos");
         }
 
         updateProgress(jobId, 15, "running");
+        log.info("[mixcut] step=progress=15 job={}", jobId);
 
         // 4) 原片视觉指纹（aHash 64bit hex）。后续每个变体都和这条比对汉明距离。
         //    用第一段底层视频抽中段一帧 → 8×8 灰度 aHash。失败不致命：fallback 全 0,距离会偏高。
+        log.info("[mixcut] step=phashing job={}", jobId);
         String sourcePhash = "0000000000000000";
         try {
             sourcePhash = PhashUtil.ahashOfVideo(resolved.videos.get(0), ffmpeg, outDir);
             job.setSourcePhash(sourcePhash);
             jobRepo.save(job);
-            log.info("[mixcut] job {} source_phash={}", jobId, sourcePhash);
+            log.info("[mixcut] step=phashed job={} source_phash={}", jobId, sourcePhash);
         } catch (Exception e) {
-            log.warn("[mixcut] job {} source phash failed: {}", jobId, e.getMessage());
+            log.warn("[mixcut] step=phash_failed job={} {}", jobId, e.getMessage());
         }
 
         // 5) 逐个变体渲染
@@ -391,7 +407,21 @@ public class MixcutRenderingService {
 
     private static final Set<String> VIDEO_EXTS = Set.of(".mp4", ".mov", ".m4v", ".webm", ".mkv");
     private static final Set<String> IMAGE_EXTS = Set.of(".png", ".jpg", ".jpeg", ".webp", ".gif");
+    /** 真正的「单帧静态图」：image2 demuxer 只产 1 帧后立刻 EOF，
+     *  必须用 `-loop 1 -framerate 30` 让它循环 demux 出连续帧。
+     *  注意 .gif 不在此集合 —— GIF 是动图，走 gif demuxer + -stream_loop -1。
+     *  根因：`-stream_loop -1` 依赖 demuxer 支持 seek-back；image2 不支持，于是
+     *  input 永远只有 1 帧，filter graph 等不到匹配的时间戳 → frame=0 死锁。 */
+    private static final Set<String> STATIC_IMAGE_EXTS = Set.of(".png", ".jpg", ".jpeg", ".webp");
     private static final Set<String> AUDIO_EXTS = Set.of(".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac");
+
+    /** 判断文件是不是单帧静态图（jpg/png/webp，不包括 gif）。 */
+    private static boolean isStaticImage(File f) {
+        String n = f.getName().toLowerCase(Locale.ROOT);
+        int dot = n.lastIndexOf('.');
+        if (dot < 0) return false;
+        return STATIC_IMAGE_EXTS.contains(n.substring(dot));
+    }
     // v0.x: layer_type 收缩到 4 类(video / image / text / audio)。
     // 旧 job 的 slots_snapshot 仍可能含 digital_human / sticker,buildContext 在解析时归一化。
     private static final Set<String> VIDEO_LAYERS = Set.of("video");
@@ -409,8 +439,10 @@ public class MixcutRenderingService {
 
     /** 从 job 的 snapshot JSON 派生 RenderContext。任何缺省字段都退回安全默认。 */
     private RenderContext buildContext(MixcutRenderJob job) {
-        int width = 720;
-        int height = 1280;
+        int capW = Math.max(160, props.getMaxOutputWidth());
+        int capH = Math.max(160, props.getMaxOutputHeight());
+        int width = capW;
+        int height = capH;
         try {
             String cs = job.getCanvasSnapshotJson();
             if (cs != null && !cs.isBlank()) {
@@ -418,8 +450,10 @@ public class MixcutRenderingService {
                 int w = node.path("width").asInt(0);
                 int h = node.path("height").asInt(0);
                 if (w > 0 && h > 0) {
-                    // 限制到 1080×1920 以内（性能 + 编码器友好）；保持比例
-                    double scale = Math.min(1.0, Math.min(1080.0 / w, 1920.0 / h));
+                    // 限制到配置的 max-output-width/height 以内（性能 + 编码器友好）；保持比例。
+                    // 默认 720x1280，软编 CPU 在 macOS 上能跑接近 realtime；通过 max-output-width=1080
+                    // + video-codec=h264_videotoolbox 切到 1080p GPU 编码。
+                    double scale = Math.min(1.0, Math.min((double) capW / w, (double) capH / h));
                     width = (int) Math.round(w * scale) / 2 * 2;   // 必须偶数
                     height = (int) Math.round(h * scale) / 2 * 2;
                 }
@@ -644,6 +678,10 @@ public class MixcutRenderingService {
         args.add("-y");
         args.add("-hide_banner");
         args.add("-loglevel"); args.add("warning");
+        // -stats: 强制周期打印 `frame= ... fps= ... time= ... bitrate= ...`。
+        // 即使 -loglevel warning 也会输出，所以超时被 forceKill 时 stderr tail 能反映
+        // ffmpeg 实际推进到了哪一帧 / 哪个时间戳，区分「卡 demux」/「编码慢」/「filter 异常」。
+        args.add("-stats");
 
         // 视频输入：每段随机 offset + trim；同时探测音轨存在性,决定是否走 concat 音频路径
         ObjectNode segDetail = transforms.putObject("segments_detail");
@@ -683,12 +721,19 @@ public class MixcutRenderingService {
             ObjectNode overlayDetail = transforms.putObject("overlays_detail");
             for (int i = 0; i < overlayCount; i++) {
                 OverlaySpec spec = overlays.get(i);
-                // `-stream_loop -1` 替代旧的 `-loop 1`：后者是 image2 demuxer
-                // 专有 input 选项，被部分 stripped/精简 ffmpeg build 干掉了
-                // (exit=8 "Unrecognized option 'loop'")。前者是 demuxer-agnostic
-                // 的通用 input 选项，自 ffmpeg 2.8 (2015) 起稳定可用，对图片 /
-                // 视频 / GIF 都能正确循环，与本文件下方 BGM / 贴图池的用法一致。
-                args.add("-stream_loop"); args.add("-1");
+                // Loop 输入到 totalDuration —— 按文件类型选 demuxer-friendly 选项：
+                //   静态图（jpg/png/webp）→ `-loop 1 -framerate 30`：image2 demuxer 不支持
+                //     seek-back，stream_loop 在它上面失效；用 `-loop 1` 让 demuxer 自己
+                //     循环输出帧，`-framerate` 强制每秒 30 帧。历史踩过的坑：
+                //     给 JPG overlay 加 `-stream_loop -1` 让 filter graph 死锁在 frame=0。
+                //   GIF / 视频 / 音频 → `-stream_loop -1`：demuxer 支持 seek-back，
+                //     stream_loop 是 demuxer-agnostic 的通用选项（ffmpeg 2.8+）。
+                if (isStaticImage(spec.file)) {
+                    args.add("-loop"); args.add("1");
+                    args.add("-framerate"); args.add("30");
+                } else {
+                    args.add("-stream_loop"); args.add("-1");
+                }
                 args.add("-t"); args.add(format((double) totalDuration));
                 args.add("-i"); args.add(spec.file.getAbsolutePath());
                 ObjectNode od = overlayDetail.objectNode();
@@ -721,13 +766,19 @@ public class MixcutRenderingService {
             args.add("-i"); args.add(bgm.getAbsolutePath());
         }
 
-        // v0.13+: 扰动贴图池 —— 每变体按 (jobId + variantIndex) seed 从 pool_ids 随机抽 GIF。
-        //   每张 GIF 用 -stream_loop -1 让 demuxer 级循环到 totalDuration。
-        //   filter 链：format=yuva420p,scale=W:-2,colorchannelmixer=aa=opacity → overlay enable=between(t,...)
+        // v0.13+: 扰动贴图池 —— 每变体按 (jobId + variantIndex) seed 从 pool_ids 随机抽。
+        //   pool 里通常是 GIF（gif demuxer 支持 seek-back → -stream_loop OK），
+        //   但 admin 也可能上传 PNG/JPG 静态贴图，那走 -loop 1 -framerate 30，
+        //   否则 image2 demuxer 不 seek-back 会 frame=0 死锁（与 overlay input 同理）。
         List<StickerOverlay> stickers = buildVariantStickers(job, ctx, variantIndex, totalDuration, transforms);
         int stickerInputStart = segCount + (useRealOverlay ? overlayCount : 1) + (useBgm ? 1 : 0);
         for (StickerOverlay so : stickers) {
-            args.add("-stream_loop"); args.add("-1");
+            if (isStaticImage(so.file)) {
+                args.add("-loop"); args.add("1");
+                args.add("-framerate"); args.add("30");
+            } else {
+                args.add("-stream_loop"); args.add("-1");
+            }
             args.add("-t"); args.add(format((double) totalDuration));
             args.add("-i"); args.add(so.file.getAbsolutePath());
         }
@@ -915,9 +966,18 @@ public class MixcutRenderingService {
         // 强制 30fps 输出。原本走 `fps=30` filter 内嵌；改成 CLI 输出选项后
         // 不依赖 libavfilter 注册 fps，能在精简 build 上跑通。
         args.add("-r"); args.add("30");
-        args.add("-c:v"); args.add("libx264");
-        args.add("-preset"); args.add("ultrafast");
-        args.add("-crf"); args.add("24");
+        // 编码器：默认 libx264 软编；macOS 可切 h264_videotoolbox 走 GPU。
+        // 参数集差异：libx264 用 -preset/-crf；videotoolbox 用 -realtime/-q:v（quality 0-100）。
+        String codec = props.getVideoCodec() == null || props.getVideoCodec().isBlank()
+                ? "libx264" : props.getVideoCodec();
+        args.add("-c:v"); args.add(codec);
+        if ("h264_videotoolbox".equals(codec)) {
+            args.add("-realtime"); args.add("1");      // 不阻塞等待最优编码
+            args.add("-q:v"); args.add("60");          // quality 0-100，越低越好；60 ≈ x264 crf 23
+        } else {
+            args.add("-preset"); args.add("ultrafast");
+            args.add("-crf"); args.add("24");
+        }
         args.add("-pix_fmt"); args.add("yuv420p");
         if (hasAudio && audioOutTag != null) {
             args.add("-c:a"); args.add("aac");
@@ -934,6 +994,33 @@ public class MixcutRenderingService {
                 variantIndex, W, H, segCount, overlayCount, useRealOverlay ? "user" : "fallback",
                 hasAudio ? (useBgm ? (useSourceAudio ? "source+bgm" : "bgm") : "source") : "none",
                 speed, brightness, mirror);
+
+        // Fail-fast: 扫所有 -i 的 input 文件，size=0 或不存在直接抛错，不让 ffmpeg 卡 5 分钟才超时。
+        // 历史 bug：H2 file 模式持久化后，DB 里 binding 还指向旧 file_url，
+        // 但本地缓存被清掉了 → ffmpeg 接到 empty path stuck demux，frame=0 持续到超时。
+        for (int i = 0; i < args.size() - 1; i++) {
+            if ("-i".equals(args.get(i))) {
+                String path = args.get(i + 1);
+                // skip lavfi 虚拟输入（"color=c=...:s=...:d=..."）
+                if (path.startsWith("color=") || path.startsWith("anullsrc")) continue;
+                File f = new File(path);
+                if (!f.exists()) {
+                    throw new RuntimeException("ffmpeg input missing: " + path
+                            + " (job=" + job.getId() + " variant=" + variantIndex
+                            + " — DB 里 binding 指向了已不存在的本地文件，建议清掉 apps/server/data + mixcut-work 重 seed)");
+                }
+                if (f.length() == 0) {
+                    throw new RuntimeException("ffmpeg input 0 bytes: " + path
+                            + " (job=" + job.getId() + " variant=" + variantIndex
+                            + " — 文件存在但是空，可能下载被截断)");
+                }
+                log.debug("[mixcut] input ok: {} ({} bytes)", path, f.length());
+            }
+        }
+
+        // 打印完整 ffmpeg 命令到 INFO，方便用户复制到 shell 单独跑诊断（不依赖 -loglevel debug）
+        log.info("[mixcut] ffmpeg cmd: ffmpeg {}", String.join(" ", args));
+
         String out = ffmpeg.runFfmpeg(args);
         log.debug("[mixcut] ffmpeg stderr tail: {}",
                 out.length() > 500 ? out.substring(out.length() - 500) : out);

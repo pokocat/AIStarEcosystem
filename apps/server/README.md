@@ -177,6 +177,7 @@ Content-Type: application/json
 | GET | `/api/admin/music/albums` · `/concerts` · `/genres` | 专辑 / 演唱会 / 曲风 |
 | GET · POST · PUT | `/api/admin/film/**` | 短剧 / 电影 / 广告 / 配音 |
 | GET · POST · PUT | `/api/admin/distribution/**` | 渠道接入与发行队列 |
+| GET | `/api/admin/social-accounts` | sau 绑定的社交账号审计（含昵称 / 平台账号号 / 头像；不含 storage_state） |
 | GET · POST · DELETE | `/api/admin/store/**` | NFT / 点数包 / 商品 |
 | GET · POST · PUT | `/api/admin/community/**` | 动态 / 活动审核 |
 | GET · POST | `/api/admin/fan/**` | 粉丝域（档案/等级/活动） |
@@ -280,6 +281,7 @@ src/main/java/com/aistareco/aep/
 | `celebrity_stars` 扩字段 | bio / location / fans / cooperation_count / avg_gmv / photos_json / videos_json |
 | `celebrity_templates` 扩字段 | preview_cover / preview_video_url / duration_sec |
 | `aep_notifications` 扩字段 | bot_id（关联 5 个 AI Bot 同事；v0.5.2 拉模式后保留作扩展点） |
+| `aep_social_accounts` | sau 绑定账号，存 `display_name` / `platform_account_id` / `avatar_url` 清洁 profile；`storage_state_encrypted` 为 AES-GCM 密文且不出 DTO |
 
 ### v0.5 关键服务
 

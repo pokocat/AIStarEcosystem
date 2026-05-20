@@ -1797,6 +1797,7 @@ components:
         accountName:      { type: string, description: 用户自取的别名 }
         status:           { $ref: '#/components/schemas/SocialAccountStatus' }
         displayName:      { type: string, nullable: true }
+        platformAccountId: { type: string, nullable: true, description: 平台侧账号号 / handle，例如抖音号 }
         avatarUrl:        { type: string, nullable: true }
         boundAt:          { type: string, format: date-time }
         lastVerifiedAt:   { type: string, format: date-time, nullable: true }
@@ -5209,4 +5210,3 @@ paths:
       operationId: publishMixcutBatch
       description: 一次性将多个混剪变体（必须有 cdn_url）派单到多个社交账号；可选定时。
       responses: { '200': { description: ok } }
-

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,9 +22,37 @@ log = logging.getLogger("sau_service")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
+def _ensure_tmpfs_writable(tmpfs_dir: str) -> None:
+    """Fail-fast at startup if tmpfs_dir is not usable.
+
+    Previously every upload task crashed on `os.makedirs("/dev/shm")` on macOS
+    (which has no /dev/shm). That bubbled up to the server as `WORKER_CRASHED`
+    with a cryptic `PermissionError(1, 'Operation not permitted')` *per job*,
+    instead of one obvious startup error. By probing here we either succeed
+    silently or print a single actionable error in the boot log.
+    """
+    try:
+        os.makedirs(tmpfs_dir, exist_ok=True)
+        probe = os.path.join(tmpfs_dir, ".sau-probe")
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("ok")
+        os.remove(probe)
+        log.info("tmpfs ready dir=%s", tmpfs_dir)
+    except OSError as exc:
+        log.error(
+            "FATAL: tmpfs_dir=%s is not writable (%s). "
+            "Set SAU_TMPFS_DIR to a writable path in .env.dev — "
+            "macOS hosts cannot use /dev/shm.",
+            tmpfs_dir,
+            exc,
+        )
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = load_settings()
+    _ensure_tmpfs_writable(settings.tmpfs_dir)
     app.state.settings = settings
     app.state.login_pool = LoginPool(ttl_seconds=settings.login_ticket_ttl_s)
     app.state.upload_manager = UploadManager(
@@ -33,10 +62,11 @@ async def lifespan(app: FastAPI):
     )
     sweeper = asyncio.create_task(_sweep_loop(app))
     log.info(
-        "sau-service ready (mock_mode=%s, concurrency=%d, login_ttl=%ds)",
+        "sau-service ready (mock_mode=%s, concurrency=%d, login_ttl=%ds, tmpfs=%s)",
         settings.mock_mode,
         settings.max_concurrency,
         settings.login_ticket_ttl_s,
+        settings.tmpfs_dir,
     )
     try:
         yield

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -49,6 +50,81 @@ log = logging.getLogger(__name__)
 # (`uploader.<platform>_uploader.main._extract_*_qrcode_src` +
 # `_is_*_login_completed`). If a platform redesigns its login page the fix
 # is here, in one file, in one class — no cross-cutting dict updates.
+
+
+def _empty_profile() -> dict[str, Any]:
+    return {"displayName": None, "platformAccountId": None, "avatarUrl": None}
+
+
+def _clean_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(value.split())
+    return text or None
+
+
+async def _first_text(page: Any, selectors: tuple[str, ...]) -> str | None:
+    for selector in selectors:
+        try:
+            el = await page.query_selector(selector)
+            if not el:
+                continue
+            text = _clean_text(await el.inner_text())
+            if text:
+                return text
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+async def _first_attr(page: Any, selectors: tuple[str, ...], attr: str) -> str | None:
+    for selector in selectors:
+        try:
+            el = await page.query_selector(selector)
+            if not el:
+                continue
+            value = _clean_text(await el.get_attribute(attr))
+            if value:
+                return value
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+async def _body_text(page: Any) -> str:
+    try:
+        text = await page.locator("body").inner_text(timeout=1500)
+        return text or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _extract_labeled_account_id(text: str, labels: tuple[str, ...]) -> str | None:
+    for label in labels:
+        pattern = rf"{re.escape(label)}\s*[:：]?\s*([A-Za-z0-9_.-]{{2,80}})"
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _extract_text_before_label(text: str, label: str) -> str | None:
+    pattern = rf"([^\n|｜]{{1,80}}?)\s*[|｜]\s*{re.escape(label)}"
+    match = re.search(pattern, text)
+    if match:
+        return _clean_text(match.group(1))
+    if label not in text:
+        return None
+    before = text.split(label, 1)[0]
+    parts = before.split()
+    return _clean_text(parts[-1] if parts else None)
+
+
+def _is_placeholder_profile_text(text: str | None) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    return "加载中" in text or "请稍候" in text or lowered in {"loading", "loading..."}
 
 
 class PlatformDriver:
@@ -80,8 +156,8 @@ class PlatformDriver:
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
         """Best-effort profile pull post-login. Never raises — falls back to
-        `{displayName: account_name, avatarUrl: None}` if probing fails."""
-        return {"displayName": account_name, "avatarUrl": None}
+        nullable fields when probing fails."""
+        return _empty_profile()
 
 
 class DouyinDriver(PlatformDriver):
@@ -93,6 +169,33 @@ class DouyinDriver(PlatformDriver):
 
     LOGIN_URL = "https://creator.douyin.com/"
     LOGGED_IN_URL_PREFIX = "https://creator.douyin.com/creator-micro/home"
+    PROFILE_READY_TIMEOUT_S = 10.0
+    PROFILE_POLL_INTERVAL_MS = 500
+
+    DISPLAY_SELECTORS = (
+        "[class*='header-']:has([class*='unique_id']) [class*='left-']",
+        "[class*='header-']:has([class*='unique-id']) [class*='left-']",
+        "div.name",
+        "div.creator-name",
+        "span.username",
+        "[class*='creator-name']",
+        "[class*='nickname']",
+        "[class*='Nickname']",
+    )
+    ACCOUNT_ID_SELECTORS = (
+        "[class*='unique_id']",
+        "[class*='douyin-id']",
+        "[class*='douyinId']",
+        "[class*='unique-id']",
+        "[class*='uniqueId']",
+    )
+    AVATAR_SELECTORS = (
+        "img.avatar",
+        "div.avatar img",
+        "img.user-avatar",
+        "[class*='avatar'] img",
+        "img[class*='avatar']",
+    )
 
     @classmethod
     async def extract_qr_data_url(cls, page: Any) -> str:
@@ -138,15 +241,43 @@ class DouyinDriver(PlatformDriver):
 
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
-        fallback = {"displayName": account_name, "avatarUrl": None}
         try:
-            name_el = await page.query_selector("div.name, div.creator-name, span.username")
-            avatar_el = await page.query_selector("img.avatar, div.avatar img, img.user-avatar")
-            display = (await name_el.inner_text()).strip() if name_el else account_name
-            avatar = await avatar_el.get_attribute("src") if avatar_el else None
-            return {"displayName": display or account_name, "avatarUrl": avatar}
+            deadline = time.monotonic() + cls.PROFILE_READY_TIMEOUT_S
+            profile = _empty_profile()
+            while True:
+                profile = await cls._read_profile_fields(page)
+                if profile["displayName"] or profile["platformAccountId"]:
+                    return profile
+                if time.monotonic() >= deadline:
+                    return profile
+                await page.wait_for_timeout(cls.PROFILE_POLL_INTERVAL_MS)
         except Exception:  # noqa: BLE001
-            return fallback
+            return _empty_profile()
+
+    @classmethod
+    async def _read_profile_fields(cls, page: Any) -> dict[str, Any]:
+        display = await _first_text(page, cls.DISPLAY_SELECTORS)
+        avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+        account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+        body = await _body_text(page)
+        if account_id and ("抖音号" in account_id or "DOUYIN ID" in account_id.upper()):
+            account_id = _extract_labeled_account_id(account_id, ("抖音号", "抖音ID", "Douyin ID"))
+        if not account_id:
+            account_id = _extract_labeled_account_id(
+                body,
+                ("抖音号", "抖音ID", "Douyin ID"),
+            )
+        if _is_placeholder_profile_text(display):
+            display = None
+        if not display:
+            display = _extract_text_before_label(body, "抖音号")
+        if _is_placeholder_profile_text(display):
+            display = None
+        return {
+            "displayName": display,
+            "platformAccountId": account_id,
+            "avatarUrl": avatar,
+        }
 
 
 class ShipinhaoDriver(PlatformDriver):
@@ -226,19 +357,26 @@ class ShipinhaoDriver(PlatformDriver):
 
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
-        fallback = {"displayName": account_name, "avatarUrl": None}
         try:
-            name_el = await page.query_selector(
-                "div.finder-nickname, span.finder-nickname, div.account-name, div.user-name"
-            )
-            avatar_el = await page.query_selector(
-                "img.finder-avatar, div.avatar img, img.user-avatar"
-            )
-            display = (await name_el.inner_text()).strip() if name_el else account_name
-            avatar = await avatar_el.get_attribute("src") if avatar_el else None
-            return {"displayName": display or account_name, "avatarUrl": avatar}
+            display = await _first_text(page, (
+                "div.finder-nickname",
+                "span.finder-nickname",
+                "div.account-name",
+                "div.user-name",
+            ))
+            avatar = await _first_attr(page, (
+                "img.finder-avatar",
+                "div.avatar img",
+                "img.user-avatar",
+            ), "src")
+            account_id = _extract_labeled_account_id(await _body_text(page), ("视频号", "Channels ID"))
+            return {
+                "displayName": display,
+                "platformAccountId": account_id,
+                "avatarUrl": avatar,
+            }
         except Exception:  # noqa: BLE001
-            return fallback
+            return _empty_profile()
 
 
 DRIVERS: dict[str, type[PlatformDriver]] = {
@@ -371,6 +509,7 @@ class LoginPool:
                 storage_state_plain=_mock_storage_state(platform, account_name),
                 profile={
                     "displayName": f"mock-{account_name}",
+                    "platformAccountId": f"mock-{platform}-{account_name}",
                     "avatarUrl": f"https://picsum.photos/seed/{account_name}/64",
                 },
             )

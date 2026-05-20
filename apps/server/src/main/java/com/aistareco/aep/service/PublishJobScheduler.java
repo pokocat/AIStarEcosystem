@@ -35,10 +35,14 @@ public class PublishJobScheduler {
         this.publishService = publishService;
     }
 
-    @Scheduled(fixedDelay = 60_000L, initialDelay = 30_000L)
+    // 频率选择：
+    //   initialDelay 5s 避开 server 启动期 resumeInflight 竞态，但够快让"立即派单"短等
+    //   fixedDelay 10s 让"立即派单"最多 10s 内启动；定时发布的精度 10s 也够用
+    // 旧值 60s+30s 在 dev 环境太慢：用户立即派单 → 等 30s+ 才看到状态变化，会以为卡了
+    @Scheduled(fixedDelay = 10_000L, initialDelay = 5_000L)
     public void dispatchDueJobs() {
         Instant now = Instant.now();
-        List<PublishJob> due = jobRepo.findByStatusAndScheduledAtLessThanEqual(PublishJobStatus.QUEUED, now);
+        List<PublishJob> due = jobRepo.findDueQueuedJobs(PublishJobStatus.QUEUED, now);
         if (due.isEmpty()) return;
         log.info("[publish-scheduler] {} due jobs at {}", due.size(), now);
         for (PublishJob job : due) {

@@ -9,3 +9,10 @@ mixcut-output/
 mixcut-assets/
 mixcut-work/
 cdn-mock/
+
+# H2 file-mode 数据库（dev profile，application-dev.yml）— 本地持久化，不入 git。
+# 想清空跑：rm -rf apps/server/data
+data/
+*.mv.db
+*.trace.db
+*.lock.db

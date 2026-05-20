@@ -106,6 +106,9 @@ public class SocialAccountService {
         } else {
             entity.setStatus(SocialAccountStatus.PENDING);
             entity.setStorageStateEncrypted(null);
+            entity.setDisplayName(null);
+            entity.setPlatformAccountId(null);
+            entity.setAvatarUrl(null);
         }
         repo.save(entity);
 
@@ -128,6 +131,7 @@ public class SocialAccountService {
      *   - "pending"  → 透传
      *   - "expired"  → 透传 (entity 行留 PENDING；下次 init 复用)
      *   - "success"  → 取 storageStatePlain (明文 JSON Map) → 加密 → 落库 → 翻 ACTIVE
+     *                  profile 只含 displayName/platformAccountId/avatarUrl 等清洁字段
      */
     @Transactional
     public SocialAccountBindPollResultDto pollBind(String userId, String ticket) {
@@ -160,10 +164,7 @@ public class SocialAccountService {
                 entity.setStatus(SocialAccountStatus.ACTIVE);
                 entity.setBoundAt(Instant.now());
                 entity.setLastVerifiedAt(Instant.now());
-                if (profile != null) {
-                    entity.setDisplayName(stringOrNull(profile.get("displayName")));
-                    entity.setAvatarUrl(stringOrNull(profile.get("avatarUrl")));
-                }
+                applyProfile(entity, profile, true);
                 repo.save(entity);
                 return SocialAccountBindPollResultDto.success(SocialAccountDto.from(entity));
             default:
@@ -195,6 +196,9 @@ public class SocialAccountService {
             if (refreshed != null && !refreshed.isEmpty()) {
                 entity.setStorageStateEncrypted(secret.encryptStorageState(refreshed));
             }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> profile = (Map<String, Object>) sauResp.get("profile");
+            applyProfile(entity, profile, false);
         } else {
             entity.setStatus(SocialAccountStatus.EXPIRED);
         }
@@ -211,6 +215,21 @@ public class SocialAccountService {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────
+
+    private static void applyProfile(SocialAccount entity, Map<String, Object> profile, boolean clearMissing) {
+        if (profile == null || profile.isEmpty()) return;
+        applyProfileField(profile, "displayName", clearMissing, entity::setDisplayName);
+        applyProfileField(profile, "platformAccountId", clearMissing, entity::setPlatformAccountId);
+        applyProfileField(profile, "avatarUrl", clearMissing, entity::setAvatarUrl);
+    }
+
+    private static void applyProfileField(Map<String, Object> profile,
+                                          String key,
+                                          boolean clearMissing,
+                                          java.util.function.Consumer<String> setter) {
+        String value = stringOrNull(profile.get(key));
+        if (value != null || clearMissing) setter.accept(value);
+    }
 
     private static String stringOrNull(Object o) {
         if (o == null) return null;

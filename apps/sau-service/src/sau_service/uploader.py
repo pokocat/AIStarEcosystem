@@ -213,20 +213,57 @@ class UploadManager:
             await self._push(rec)
 
     async def _fetch_video_tmpfs(self, rec: TaskRecord) -> str:
-        """Stream the source video into /dev/shm/{task_id}.mp4."""
+        """Stream the source video into tmpfs_dir/{task_id}.mp4.
+
+        Server passes `video_url` from `PublishJob.videoUrl` which is set by
+        MixcutPublishService from frontend's `cdn_url`. CDN driver decides
+        whether that's absolute or relative:
+          - LocalFakeCdnUploader (dev): set `aep.cdn.public-base-url=http://host:port/cdn`
+          - prod OSS / aliyun CDN: always absolute (`https://cdn.example.com/...`)
+
+        Reject relative URLs explicitly — httpx would raise
+        `httpcore.UnsupportedProtocol: Request URL is missing an 'http://' ...`
+        which used to crash the worker mid-upload.
+        """
         import httpx
+
+        url = rec.request.video_url
+        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+            raise RuntimeError(
+                "video_url is not absolute (got %r). "
+                "Set AEP_CDN_PUBLIC_BASE_URL=http://localhost:8080/cdn on apps/server, "
+                "or run prod with an OSS / CDN domain." % url
+            )
 
         out = os.path.join(self._tmpfs, f"{rec.task_id}.mp4")
         async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream("GET", rec.request.video_url) as resp:
+            async with client.stream("GET", url) as resp:
                 resp.raise_for_status()
                 with open(out, "wb") as fh:
                     async for chunk in resp.aiter_bytes(chunk_size=1 << 16):
                         fh.write(chunk)
         return out
 
+    def _ensure_upstream_conf(self) -> None:
+        """Lazy-stub the upstream `conf` module before any uploader import.
+
+        Reads SAU_REAL_LOGIN_HEADLESS from env so headless toggles via .env.dev /
+        --headed flag flow through to upstream's chrome launch params.
+        BASE_DIR sits inside our tmpfs root so upstream cookie scratch goes
+        through the same wipe-on-restart guarantee.
+        """
+        import os
+        from .upstream_conf import ensure_upstream_conf
+        headless = os.environ.get("SAU_REAL_LOGIN_HEADLESS", "1").strip().lower() in {"1", "true", "yes", "on"}
+        base_dir = os.path.join(self._tmpfs, "sau-upstream")
+        ensure_upstream_conf(headless=headless, base_dir=base_dir)
+
     async def _upload_douyin(self, rec: TaskRecord) -> None:
         """Invoke pokocat/social-auto-upload's DouYinVideo end-to-end."""
+        # Upstream `uploader/__init__.py` requires a top-level `conf` module
+        # (BASE_DIR + chrome flags). pip-installed wheel doesn't ship conf.py,
+        # so we synthesize one before the first upstream import.
+        self._ensure_upstream_conf()
         from patchright.async_api import async_playwright  # type: ignore[import-not-found]
         from uploader.douyin_uploader.main import DouYinVideo  # type: ignore[import-not-found]
 
@@ -291,6 +328,7 @@ class UploadManager:
         operator reports CATEGORY_REQUIRED we'll plumb `tags[0]` → category
         or add an explicit field on UploadRequest.
         """
+        self._ensure_upstream_conf()
         from patchright.async_api import async_playwright  # type: ignore[import-not-found]
         try:
             from uploader.tencent_uploader.main import TencentVideo  # type: ignore[import-not-found]

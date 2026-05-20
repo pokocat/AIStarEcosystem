@@ -64,6 +64,7 @@ Aisingerecosystem/
 | **v0.13** | ✅ | 扰动贴图池（preset GIF + DataInitializer 自动 seed + ffmpeg -stream_loop -1 overlay）+ MixcutController 安全前置（Principal 校验） |
 | **v0.14** | ✅ | CdnUploader 抽象 + LocalFakeCdnUploader（./cdn-mock → /cdn）+ MixcutRenderOutput.cdnUrl 列 + 渲染后串行上传 |
 | **v0.15** | ✅ | 混剪 → 发布桥接（/api/me/mixcut/publish-batch）+ @Scheduled 定时发布 + 三入口（jobs 详情按钮 / distribution 跳转 / /mixcut/publish 工作台） |
+| **v0.17** | ✅ | 社交账号绑定 profile 落库（昵称 / 平台账号号 / 头像），sau-service 各平台 driver 独立提取 |
 | **5** | ⏳ | 删除 `apps/web`（待三新 app 验证完整） |
 | **6** | ⏳ | server 按子产品分租户（DB migration 级别） |
 | **Cookie SSO** | ⏳ | 当前 token 仍 localStorage，不跨子域；改造点见 [`packages/api-client/src/_client.ts`](packages/api-client/src/_client.ts) TODO |
@@ -340,9 +341,9 @@ specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束
 
 ---
 
-## 7. v0.5 → v0.15 增量
+## 7. v0.5 → v0.16 增量
 
-> 4 个连续版本：明星带货线 + 混剪专区。新人 agent 不必翻 commit history，本节列出新实体 / 路由 / 决策。
+> 连续多版本：明星带货线 + 混剪专区。新人 agent 不必翻 commit history，本节列出新实体 / 路由 / 决策。
 
 ### v0.5（2026-05-08 ~ 05-09）— AI 明星带货线落地
 
@@ -501,10 +502,69 @@ web-celebrity: api/mixcut.ts +publishBatch
 
 **注意事项**：
 
-- 定时调度 @Scheduled 默认串行同 bean；多实例部署需 ShedLock（v0.16 候选）
+- 定时调度 @Scheduled 默认串行同 bean；多实例部署需 ShedLock（v0.17 候选）
 - BatchPublishDrawer 双模：`job` prop（单任务）或 `items[]` prop（跨任务），后者优先级高
 - 部分成功语义：响应 200 + `failed_items[]` 数组，按 `MISSING_CDN_URL` / `BUSINESS_ERROR` / `INTERNAL_ERROR` 三类原因
 - v0.13.0 安全前置发现 MixcutController 之前根本没接 Principal —— 同 commit 顺手补上，service 全加 userId 过滤
+
+### v0.16（2026-05-19）— 分发工作台迁入分发中心
+
+把 v0.15 落在 `/mixcut/publish` 的「分发工作台」迁入 `/distribution`。混剪只负责制作；分发中心统一收口「批量制作 → 绑账号 → 派单」的用户路径。**仅 web-celebrity 改动，server / api 契约零变化**。
+
+**新增 / 修改（web-celebrity）**：
+
+```
+components/distribution/DistributeWorkbench.tsx  (新)
+  · 双视图 grid / group；跨任务搜索 + 已发布过滤（localStorage 去重）
+  · Sticky right rail：已选缩略图九宫格 + 「继续配置发布 (N)」
+  · 复用 BatchPublishDrawer (items[] 模式) 完成账号 / 文案 / 定时 / 派单
+  · 深链入参 fromJobId — 预选 + 滚动定位
+
+components/distribution/DistributionPage.tsx     (重写 IA)
+  · header 状态条 StatChip ×3：已绑账号 / 可发变体 / 进行中任务（点切 tab）
+  · Tabs：分发工作台（默认）/ 账号管理 / 任务追踪
+  · 「手动分发」上移 header 右上，跨 tab 常驻
+  · useSearchParams 包 <Suspense> （Next 16 build 警告）
+  · URL 同步 ?tab=workbench|accounts|tracking + ?from_job=<id>
+
+app/(workspace)/mixcut/publish/page.tsx          (改 redirect)
+  · 删除 publish-workbench-client.tsx
+  · 改为 redirect("/distribution?tab=workbench") 兼容旧链
+
+app/(workspace)/layout.tsx
+  · 移除 mixcut 二级菜单的「发布工作台」+ 面包屑映射
+
+app/(workspace)/mixcut/jobs/[id]/job-detail-client.tsx
+  · 保留单任务「批量发布」drawer（行为不变）
+  · 新增 ghost 按钮「去分发中心 →」深链 /distribution?from_job=<id>
+```
+
+**注意事项**：
+
+- 已派发去重是纯前端 localStorage（key `aep:distribute:published-output-ids`），跨浏览器 / 清缓存失效。稳态去重需 server 加 `mixcut_output.last_published_at` 列
+- 手动 URL 输入暂未 inline 合并进工作台（保留 `ManualDistributeDialog` 独立弹窗）—— 手动场景字段差异大（封面 / 商品挂载 / 视频号 category 等专属字段），强行合并会复杂
+- 三个新 web app 中只 celebrity 做了改动；drama / music 暂未涉及发布流程
+
+### v0.17（2026-05-20）— 社交账号 profile 增强
+
+绑定社交账号成功后，sau-service 从已登录的创作者中心页面 best-effort 提取账号辨识信息并随 `/login/poll` 的 `profile` 返回；server 加密 storage_state 的同时落库这些清洁字段，前端在账号管理 / 发布选账号 UI 中展示。
+
+**新增 / 修改**：
+
+```
+packages/types: SocialAccount +platformAccountId
+server        : SocialAccount +platformAccountId 列；SocialAccountDto / SocialAccountService 同步
+sau-service   : PlatformDriver.extract_profile 统一返回 {displayName, platformAccountId, avatarUrl}
+              : DouyinDriver 从创作者中心 header 抓昵称 / 抖音号 / 头像，body 文本兜底解析「抖音号：...」
+web-celebrity : 账号列表、手动分发、项目分发、BatchPublishDrawer 展示平台账号号
+admin         : 社交账号审计页展示 platformAccountId
+openapi       : SocialAccount schema 增 platformAccountId
+```
+
+**注意事项**：
+
+- 这是 best-effort profile：平台 DOM 或权限不同会导致字段为空；禁止用 `accountName` 伪装平台昵称。
+- 各平台 driver 各自实现选择器和文本解析。抖音字段叫「抖音号」，小红书 / 视频号等平台可继续映射到统一 `platformAccountId`。
 
 ### admin sidebar 启用状态
 

@@ -21,6 +21,8 @@ services:
       SAU_MOCK_MODE: ${SAU_MOCK_MODE:-1}
       SAU_MAX_CONCURRENCY: ${SAU_MAX_CONCURRENCY:-2}
       SAU_LOGIN_TICKET_TTL_S: ${SAU_LOGIN_TICKET_TTL_S:-300}
+      # 1 = headless（默认，dev 不弹浏览器）；0 = headed（看 QR 抓取过程）
+      SAU_REAL_LOGIN_HEADLESS: ${SAU_REAL_LOGIN_HEADLESS:-1}
     # Cookie / storage_state and pulled videos live ONLY in tmpfs.
     # No PVC; restart wipes everything (by design).
     tmpfs:

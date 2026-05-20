@@ -2,7 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
-> last-reviewed：2026-05-19 / v0.13~v0.15 mixcut 全链路增强（扰动贴图池 + CDN 抽象 + 混剪→发布桥接 + 定时调度 + MixcutController 安全前置）
+> last-reviewed：2026-05-20 / v0.17 社交账号绑定 profile 增强（昵称 / 平台账号号 / 头像）
 
 > ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web`、`apps/admin`、`apps/server` 不动。详见 [`AGENTS.md`](../AGENTS.md) §1 顶部进度表。
 
@@ -15,7 +15,7 @@
 | 文档 | 范围 | 当前状态 |
 |---|---|---|
 | [`product_spec.md`](../product_spec.md) | **数字人 / 数字 IP 主线** —— 数字艺人孵化、音乐工坊、内容（影视/综艺/广告/配音）、社群、版权、分发、变现 | v2.7 canonical（2026-05-06） |
-| [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线** —— 明星市场、授权、模板/脚本、AI 模型、生成器、积分钱包、消息中心 | v0.5.x rolling（2026-05-08 起按版本日志追加） |
+| [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线** —— 明星市场、授权、模板/脚本、AI 模型、生成器、积分钱包、消息中心、社交账号绑定 profile | v0.17 rolling（2026-05-20） |
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划** —— 全配置化终态（ConfigItem / 灰度 / AB 桶 / 17 个字典上移） | 大目标稿；当前 admin 是其 P0 子集 |
 
 ### 1.2 子应用产品 + 设计约束（每 app 一份）
@@ -59,13 +59,13 @@
 
 | 文档 | 一句话 | 当前版本 |
 |---|---|---|
-| [`apps/server/README.md`](../apps/server/README.md) | Spring Boot 8080 / Profile / 角色体系 / **v0.5 新增表** / **AEP_SECRET_KEY 环境变量** | v0.5.4 同步 |
+| [`apps/server/README.md`](../apps/server/README.md) | Spring Boot 8080 / Profile / 角色体系 / **v0.5 新增表** / **AEP_SECRET_KEY 环境变量** / 社交账号 profile 字段 | v0.17 同步 |
 | [`apps/web/README.md`](../apps/web/README.md) | Next.js 用户端 3002 / 完整版本日志（v1.x ~ v2.7） | v2.7（v0.5.x 不影响 web）；**Phase 5 删除** |
 | [`apps/admin/README.md`](../apps/admin/README.md) | Next.js 运营后台 3003 / 当前 sidebar / v0.5.x 滚动更新 | v0.5.4 |
 | [`apps/miniprogram/README.md`](../apps/miniprogram/README.md) | 微信小程序（带货方）/ 11 屏 / 启动方式 / 版本日志 | v0.5.4 |
 | [`apps/web-music/README.md`](../apps/web-music/README.md) | **AI 音乐人**（Next 16，dev 3010）启动 / 技术栈 / 版本日志 | Phase 4b（v0.6 · 2026-05-15）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-music/PRODUCT.md) |
 | [`apps/web-drama/README.md`](../apps/web-drama/README.md) | **AI 短剧**（Next 16，dev 3011）启动 / 技术栈 / 版本日志 | Phase 4b（v0.6 · 2026-05-14）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-drama/PRODUCT.md) |
-| [`apps/web-celebrity/README.md`](../apps/web-celebrity/README.md) | **AI 明星带货**（Next 16，dev 3012）启动 / 技术栈 / 版本日志（含 mixcut v0.7-0.8） | v0.8（2026-05-17）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) |
+| [`apps/web-celebrity/README.md`](../apps/web-celebrity/README.md) | **AI 明星带货**（Next 16，dev 3012）启动 / 技术栈 / 版本日志（含 mixcut 与分发中心） | v0.17（2026-05-20）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) |
 
 **packages/**（pnpm workspace 共享层；三个新 web app 消费，apps/web 与 apps/admin 不消费）：
 - `packages/types/` — TS 类型契约
