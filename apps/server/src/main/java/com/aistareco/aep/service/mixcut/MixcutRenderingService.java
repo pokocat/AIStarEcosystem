@@ -737,9 +737,15 @@ public class MixcutRenderingService {
         StringBuilder fc = new StringBuilder();
         // 视频段 scale + concat → 严格按 ctx 画布；音频归一化到 stereo 44.1kHz 再 concat
         for (int i = 0; i < segCount; i++) {
+            // `setsar=1` 和 `fps=30` 之前内嵌在 filter 链里——某些精简 ffmpeg
+            // build 的 libavfilter 没注册这两个滤镜，整链 parse 失败 (exit=234
+            // "Error parsing filterchain ... around: ,setsar=1,fps=30")。
+            // 改用：framerate 走最外层 `-r 30` 输出选项 (CLI 主程序自带，
+            // 不依赖 libavfilter)；SAR 不强设，让源 SAR 透传——99% 的现代
+            // mp4 / mov / webm 都是 SAR=1:1，不强设也没差别。
             fc.append("[").append(i).append(":v]")
               .append("scale=").append(W).append(":").append(H).append(":force_original_aspect_ratio=increase,")
-              .append("crop=").append(W).append(":").append(H).append(",setsar=1,fps=30")
+              .append("crop=").append(W).append(":").append(H)
               .append("[s").append(i).append("];");
             if (useSourceAudio) {
                 fc.append("[").append(i).append(":a]")
@@ -892,6 +898,9 @@ public class MixcutRenderingService {
 
         // 编码
         args.add("-t"); args.add(format((double) totalDuration));
+        // 强制 30fps 输出。原本走 `fps=30` filter 内嵌；改成 CLI 输出选项后
+        // 不依赖 libavfilter 注册 fps，能在精简 build 上跑通。
+        args.add("-r"); args.add("30");
         args.add("-c:v"); args.add("libx264");
         args.add("-preset"); args.add("ultrafast");
         args.add("-crf"); args.add("24");
