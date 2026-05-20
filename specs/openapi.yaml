@@ -5211,9 +5211,16 @@ paths:
       responses: { '200': { description: ok } }
 
   # v0.15+: 混剪 → 发布 桥接
+  # v0.20+: 顶层 schedule: ScheduleSpec 决定每条 output 的 scheduledAt。
+  #   strategy=immediate          所有派单 now 起飞
+  #   strategy=single             所有派单同一时刻起飞（兼容 v0.15 行为）
+  #   strategy=daily_recurring    按 start_date / time_slots / timezone 把 outputs 错峰铺开
+  #                               可选 max_days（容量上限）、jitter_minutes (0..30) 抖动
+  # TargetItem.scheduled_at 字段移除（时间由 schedule 决定）。
+  # outputs[] 顺序即铺开顺序（i → 第 ⌊i/K⌋ 天的第 i%K 槽）。
   /me/mixcut/publish-batch:
     post:
       tags: [mixcut]
       operationId: publishMixcutBatch
-      description: 一次性将多个混剪变体（必须有 cdn_url）派单到多个社交账号；可选定时。
+      description: 一次性将多个混剪变体（必须有 cdn_url）派单到多个社交账号；schedule 字段决定 cadence。
       responses: { '200': { description: ok } }

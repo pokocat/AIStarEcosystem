@@ -2,6 +2,8 @@ package com.aistareco.aep.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.time.Instant;
 import java.util.List;
@@ -15,6 +17,8 @@ import java.util.List;
  * 任一 output 缺 cdnUrl → 该项进 failedItems，不影响其他 output。
  *
  * 字段命名沿 mixcut snake_case 风格（JsonProperty 显式映射）。
+ *
+ * v0.20+: 引入 ScheduleSpec 多态字段；TargetItem.scheduledAt 移除（时间由 schedule 决定）。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record MixcutPublishBatchRequest(
@@ -25,7 +29,12 @@ public record MixcutPublishBatchRequest(
         @JsonProperty("tags") List<String> tags,
         @JsonProperty("cover_url") String coverUrl,
         @JsonProperty("targets") List<TargetItem> targets,
-        /** 可选 projectId；缺省时 service 端兜底为 "mixcut-batch-<sourceMixcutJobId>" */
+        /**
+         * v0.20+: 调度策略。缺省视为 { strategy: "immediate" }。
+         * outputs[].顺序 = 铺开顺序（daily_recurring 时按 i/K 折成日 + i%K 折成时段）。
+         */
+        @JsonProperty("schedule") ScheduleSpec schedule,
+        /** 可选 projectId；缺省时 service 端兜底为 "mixcut-batch-<sourceMixcutJobId>-<yyyyMMddHHmmss>" */
         @JsonProperty("project_id") String projectId
 ) {
 
@@ -37,11 +46,51 @@ public record MixcutPublishBatchRequest(
             @JsonProperty("thumbnail_url") String thumbnailUrl
     ) {}
 
-    /** 与 CreatePublishJobInputDto.Target 同构，复用 platform / socialAccountId / scheduledAt 三字段。 */
+    /** v0.20+: 仅账号信息；时间由顶层 ScheduleSpec 决定（不再每个 target 自己带 scheduled_at）。 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TargetItem(
             @JsonProperty("platform") String platform,
-            @JsonProperty("social_account_id") String socialAccountId,
-            @JsonProperty("scheduled_at") Instant scheduledAt
+            @JsonProperty("social_account_id") String socialAccountId
     ) {}
+
+    /**
+     * v0.20+: 调度策略。Jackson 用 strategy 字段做 discriminator。
+     *  - immediate         立即派单（scheduledAt = now）
+     *  - single            全部 N×M 条派单同一时间起飞（兼容 v0.15 行为）
+     *  - daily_recurring   按时段 / 天数把 outputs 铺开成错峰 scheduledAt
+     */
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "strategy")
+    @JsonSubTypes({
+            @JsonSubTypes.Type(value = ScheduleSpec.Immediate.class, name = "immediate"),
+            @JsonSubTypes.Type(value = ScheduleSpec.Single.class, name = "single"),
+            @JsonSubTypes.Type(value = ScheduleSpec.DailyRecurring.class, name = "daily_recurring")
+    })
+    public sealed interface ScheduleSpec
+            permits ScheduleSpec.Immediate, ScheduleSpec.Single, ScheduleSpec.DailyRecurring {
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        record Immediate() implements ScheduleSpec {}
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        record Single(
+                @JsonProperty("at") Instant at
+        ) implements ScheduleSpec {}
+
+        /**
+         * 每天定时铺开。
+         *  - startDate    "YYYY-MM-DD"（timezone 解释下的日历日）
+         *  - timeSlots    ["09:00","12:00","18:00"]，HH:MM 24h；service 端排序去重
+         *  - timezone     IANA, 例 "Asia/Shanghai"
+         *  - maxDays      null = 直到 outputs 用完；非 null 时要 outputs.size <= maxDays * timeSlots.size
+         *  - jitterMinutes null/0 = 无抖动；否则每条 slot 加 [-N, +N] 分钟随机偏移（最大 30）
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        record DailyRecurring(
+                @JsonProperty("start_date") String startDate,
+                @JsonProperty("time_slots") List<String> timeSlots,
+                @JsonProperty("timezone") String timezone,
+                @JsonProperty("max_days") Integer maxDays,
+                @JsonProperty("jitter_minutes") Integer jitterMinutes
+        ) implements ScheduleSpec {}
+    }
 }

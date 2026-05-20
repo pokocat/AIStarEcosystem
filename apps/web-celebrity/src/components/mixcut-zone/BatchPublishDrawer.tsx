@@ -4,9 +4,10 @@
 // 弹出抽屉：变体多选 + 社交账号多选 + 文案 + 可选定时发布。
 // 调用 MixcutApi.publishBatch 把 outputs × targets 派单成 N×M 条 PublishJob。
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Send, X, Clock, AlertCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Send, X, Clock, AlertCircle, Calendar, Sparkles, Plus } from "lucide-react";
 import { MixcutApi } from "@/api";
+import type { ScheduleSpec } from "@/api/mixcut";
 import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { cn } from "@/components/mixcut-zone/lib/utils";
@@ -89,11 +90,21 @@ export function BatchPublishDrawer({
   const [description, setDescription] = useState("");
   const [tagsRaw, setTagsRaw] = useState("");
 
-  const [scheduledEnabled, setScheduledEnabled] = useState(false);
-  const [scheduledLocal, setScheduledLocal] = useState<string>(() => {
+  // v0.20: 调度策略 ——「立即 / 单次定时 / 每日定时铺开」三选一。
+  // 旧 scheduledEnabled + scheduledLocal 退役；single 分支保留 datetime-local 体验。
+  const [strategy, setStrategy] = useState<StrategyKind>("immediate");
+  const [singleAt, setSingleAt] = useState<string>(() => {
     const d = new Date(Date.now() + 60 * 60 * 1000);
     return toLocalDateTimeInput(d);
   });
+  const [startDate, setStartDate] = useState<string>(() => toLocalDateInput(new Date()));
+  const [timeSlots, setTimeSlots] = useState<string[]>(["09:00", "12:00", "18:00"]);
+  const [capMode, setCapMode] = useState<"exhaust" | "days">("exhaust");
+  const [maxDays, setMaxDays] = useState<number>(7);
+  // 用户主动改过 maxDays 后就停止 auto-suggest，避免覆盖用户选择
+  const maxDaysDirtyRef = useRef(false);
+  const [jitterEnabled, setJitterEnabled] = useState(false);
+  const [jitterMinutes, setJitterMinutes] = useState(15);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -140,20 +151,20 @@ export function BatchPublishDrawer({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const scheduledAt = scheduledEnabled ? new Date(scheduledLocal).toISOString() : undefined;
       const outputs = publishable.filter((p) => selectedOutputs.includes(p.output_id));
       const targets = accounts
         .filter((a) => selectedAccountIds.includes(a.id))
         .map((a) => ({
           platform: a.platform,
           social_account_id: a.id,
-          scheduled_at: scheduledAt,
         }));
 
       const tags = tagsRaw
         .split(/[,，#]/)
         .map((s) => s.trim())
         .filter(Boolean);
+
+      const schedule = buildScheduleSpec();
 
       const res = await MixcutApi.publishBatch({
         source_mixcut_job_id: effectiveSourceJobId,
@@ -166,6 +177,7 @@ export function BatchPublishDrawer({
         description: description.trim() || undefined,
         tags: tags.length ? tags : undefined,
         targets,
+        schedule,
         project_id: undefined,
       });
       setResult(res);
@@ -177,12 +189,69 @@ export function BatchPublishDrawer({
     }
   };
 
+  /** 把当前 UI 状态打包成 ScheduleSpec（与后端 MixcutPublishService.expandSchedule 1:1 对齐）。 */
+  const buildScheduleSpec = (): ScheduleSpec => {
+    if (strategy === "immediate") return { strategy: "immediate" };
+    if (strategy === "single") return { strategy: "single", at: new Date(singleAt).toISOString() };
+    const slots = sortDedupSlots(timeSlots);
+    const spec: ScheduleSpec = {
+      strategy: "daily_recurring",
+      start_date: startDate,
+      time_slots: slots,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+    if (capMode === "days") spec.max_days = maxDays;
+    if (jitterEnabled && jitterMinutes > 0) spec.jitter_minutes = jitterMinutes;
+    return spec;
+  };
+
+  // ─── v0.20: 每日定时铺开 - 自动建议天数 + 预览 + 容量校验 ──────────────
+  const slotCount = sortDedupSlots(timeSlots).length;
+
+  // 若用户没手改过 maxDays，根据选中数量自动建议
+  useEffect(() => {
+    if (strategy !== "daily_recurring" || capMode !== "days") return;
+    if (maxDaysDirtyRef.current) return;
+    if (slotCount === 0 || selectedOutputs.length === 0) return;
+    const suggested = Math.min(30, Math.max(1, Math.ceil(selectedOutputs.length / slotCount)));
+    setMaxDays((cur) => (cur === suggested ? cur : suggested));
+  }, [strategy, capMode, slotCount, selectedOutputs.length]);
+
+  const dailyPreview = useMemo(() => {
+    if (strategy !== "daily_recurring") return null;
+    return expandDailyRecurringPreview(
+      selectedOutputs.length,
+      timeSlots,
+      startDate,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
+  }, [strategy, selectedOutputs.length, timeSlots, startDate]);
+
+  // 容量超限：仅在「持续 N 天」模式生效
+  const capacityShortfall = (() => {
+    if (strategy !== "daily_recurring" || capMode !== "days") return null;
+    if (slotCount === 0) return null;
+    const cap = maxDays * slotCount;
+    if (selectedOutputs.length <= cap) return null;
+    return { selected: selectedOutputs.length, cap, maxDays, slotCount };
+  })();
+
   const canSubmit =
     !submitting &&
     !result &&
     title.trim().length > 0 &&
     selectedOutputs.length > 0 &&
-    selectedAccountIds.length > 0;
+    selectedAccountIds.length > 0 &&
+    !capacityShortfall &&
+    (strategy !== "daily_recurring" || slotCount > 0);
+
+  // 顶部副标题描述当前策略
+  const strategyChip =
+    strategy === "immediate"
+      ? null
+      : strategy === "single"
+        ? "单次定时"
+        : `每日铺开 · 每天 ${slotCount} 次`;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -195,7 +264,7 @@ export function BatchPublishDrawer({
             <h2 className="text-lg font-semibold tracking-tight">批量发布</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               选择变体 × 账号 = {totalJobs} 条发布任务
-              {scheduledEnabled && totalJobs > 0 && " · 定时"}
+              {strategyChip && totalJobs > 0 && ` · ${strategyChip}`}
             </p>
           </div>
           <button onClick={onClose} disabled={submitting} className="text-muted-foreground hover:text-foreground">
@@ -422,33 +491,31 @@ export function BatchPublishDrawer({
                 </div>
               </section>
 
-              {/* Scheduling */}
-              <section className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={scheduledEnabled}
-                    onChange={(e) => setScheduledEnabled(e.target.checked)}
-                    className="accent-violet-500"
-                  />
-                  <Clock className="size-3.5" />
-                  定时发布
-                </label>
-                {scheduledEnabled && (
-                  <div className="pl-6 space-y-1">
-                    <input
-                      type="datetime-local"
-                      value={scheduledLocal}
-                      onChange={(e) => setScheduledLocal(e.target.value)}
-                      className="px-3 py-1.5 text-sm rounded-md border border-border bg-background"
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      使用本地时区 ({Intl.DateTimeFormat().resolvedOptions().timeZone}
-                      )，提交时转 UTC。后台 60s 扫描器到点自动启动。
-                    </p>
-                  </div>
-                )}
-              </section>
+              {/* v0.20: 调度策略 */}
+              <ScheduleEditor
+                strategy={strategy}
+                onStrategyChange={setStrategy}
+                singleAt={singleAt}
+                onSingleAtChange={setSingleAt}
+                startDate={startDate}
+                onStartDateChange={setStartDate}
+                timeSlots={timeSlots}
+                onTimeSlotsChange={setTimeSlots}
+                capMode={capMode}
+                onCapModeChange={setCapMode}
+                maxDays={maxDays}
+                onMaxDaysChange={(n) => {
+                  maxDaysDirtyRef.current = true;
+                  setMaxDays(n);
+                }}
+                jitterEnabled={jitterEnabled}
+                onJitterEnabledChange={setJitterEnabled}
+                jitterMinutes={jitterMinutes}
+                onJitterMinutesChange={setJitterMinutes}
+                preview={dailyPreview}
+                capacityShortfall={capacityShortfall}
+                selectedOutputCount={selectedOutputs.length}
+              />
 
               {submitError && (
                 <div className="text-xs text-rose-500 bg-rose-500/10 border border-rose-500/30 rounded-md p-3">
@@ -480,7 +547,8 @@ export function BatchPublishDrawer({
                     </>
                   ) : (
                     <>
-                      <Send className="size-4" /> {scheduledEnabled ? "定时派单" : "立即派单"}
+                      <Send className="size-4" />{" "}
+                      {strategy === "immediate" ? "立即派单" : strategy === "single" ? "定时派单" : "铺开派单"}
                     </>
                   )}
                 </Button>
@@ -528,6 +596,331 @@ function ResultSummary({ result }: { result: MixcutApi.MixcutPublishBatchResult 
   );
 }
 
+// ─── v0.20: 调度策略编辑器 ───────────────────────────────────────────────
+
+interface ScheduleEditorProps {
+  strategy: StrategyKind;
+  onStrategyChange: (s: StrategyKind) => void;
+  singleAt: string;
+  onSingleAtChange: (s: string) => void;
+  startDate: string;
+  onStartDateChange: (s: string) => void;
+  timeSlots: string[];
+  onTimeSlotsChange: (slots: string[]) => void;
+  capMode: "exhaust" | "days";
+  onCapModeChange: (m: "exhaust" | "days") => void;
+  maxDays: number;
+  onMaxDaysChange: (n: number) => void;
+  jitterEnabled: boolean;
+  onJitterEnabledChange: (b: boolean) => void;
+  jitterMinutes: number;
+  onJitterMinutesChange: (n: number) => void;
+  preview: DailyRecurringPreview | null;
+  capacityShortfall: { selected: number; cap: number; maxDays: number; slotCount: number } | null;
+  selectedOutputCount: number;
+}
+
+function ScheduleEditor(props: ScheduleEditorProps) {
+  const {
+    strategy, onStrategyChange,
+    singleAt, onSingleAtChange,
+    startDate, onStartDateChange,
+    timeSlots, onTimeSlotsChange,
+    capMode, onCapModeChange,
+    maxDays, onMaxDaysChange,
+    jitterEnabled, onJitterEnabledChange,
+    jitterMinutes, onJitterMinutesChange,
+    preview, capacityShortfall,
+    selectedOutputCount,
+  } = props;
+
+  const [showAddSlot, setShowAddSlot] = useState(false);
+  const [newSlot, setNewSlot] = useState("09:00");
+
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const slotCount = sortDedupSlots(timeSlots).length;
+
+  const applyPreset = (slots: string[]) => onTimeSlotsChange(slots);
+  const removeSlot = (s: string) => onTimeSlotsChange(timeSlots.filter((x) => x !== s));
+  const addSlot = () => {
+    onTimeSlotsChange(sortDedupSlots([...timeSlots, newSlot]));
+    setShowAddSlot(false);
+  };
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Clock className="size-3.5" />
+        发布时机
+      </div>
+
+      {/* 三选一 radio pill */}
+      <div className="grid grid-cols-3 gap-1.5">
+        <StrategyPill
+          active={strategy === "immediate"}
+          label="立即发布"
+          desc="马上派单起飞"
+          onClick={() => onStrategyChange("immediate")}
+        />
+        <StrategyPill
+          active={strategy === "single"}
+          label="单次定时"
+          desc="所有任务同一时刻"
+          onClick={() => onStrategyChange("single")}
+        />
+        <StrategyPill
+          active={strategy === "daily_recurring"}
+          label="每日铺开"
+          desc="按节奏跨天派单"
+          onClick={() => onStrategyChange("daily_recurring")}
+        />
+      </div>
+
+      {/* 单次定时分支 */}
+      {strategy === "single" && (
+        <div className="space-y-1 pl-1">
+          <input
+            type="datetime-local"
+            value={singleAt}
+            onChange={(e) => onSingleAtChange(e.target.value)}
+            className="px-3 py-1.5 text-sm rounded-md border border-border bg-background"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            使用本地时区（{tz}），提交时转 UTC；后台扫描器到点自动起飞。
+          </p>
+        </div>
+      )}
+
+      {/* 每日铺开分支 */}
+      {strategy === "daily_recurring" && (
+        <div className="space-y-3 pl-1">
+          {/* 起始日期 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Calendar className="size-3.5 text-muted-foreground" />
+            <label className="text-xs text-muted-foreground">起始日期</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => onStartDateChange(e.target.value)}
+              className="px-2 py-1 text-sm rounded-md border border-border bg-background"
+            />
+            <span className="text-[10px] text-muted-foreground">
+              过去日期会立即起飞
+            </span>
+          </div>
+
+          {/* 预设 chip 行 */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">一键预设</label>
+            <div className="flex flex-wrap gap-1.5">
+              {SLOT_PRESETS.map((p) => {
+                const active = arraysEqual(sortDedupSlots(p.slots), sortDedupSlots(timeSlots));
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => applyPreset(p.slots)}
+                    className={cn(
+                      "px-2.5 py-1 text-[11px] rounded-full border transition-colors",
+                      active
+                        ? "bg-violet-500 border-violet-500 text-white"
+                        : "bg-background border-border text-foreground hover:border-violet-300",
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 自定义时段编辑 */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">
+              时段（{slotCount} 个）
+            </label>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {sortDedupSlots(timeSlots).map((s) => (
+                <span
+                  key={s}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-mono rounded-md bg-violet-50 border border-violet-200 text-violet-700"
+                >
+                  {s}
+                  <button
+                    type="button"
+                    onClick={() => removeSlot(s)}
+                    aria-label={`移除 ${s}`}
+                    className="text-violet-400 hover:text-rose-500"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+              {showAddSlot ? (
+                <span className="inline-flex items-center gap-1">
+                  <input
+                    type="time"
+                    value={newSlot}
+                    onChange={(e) => setNewSlot(e.target.value)}
+                    className="px-2 py-0.5 text-[11px] rounded border border-border bg-background"
+                  />
+                  <button
+                    type="button"
+                    onClick={addSlot}
+                    className="text-[11px] text-violet-600 hover:underline"
+                  >
+                    添加
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSlot(false)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    取消
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowAddSlot(true)}
+                  className="inline-flex items-center gap-0.5 px-2 py-1 text-[11px] rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-violet-300"
+                >
+                  <Plus className="size-3" />
+                  自定义
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 容量 radio */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">持续</label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  checked={capMode === "exhaust"}
+                  onChange={() => onCapModeChange("exhaust")}
+                  className="accent-violet-500"
+                />
+                直到视频用完
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  checked={capMode === "days"}
+                  onChange={() => onCapModeChange("days")}
+                  className="accent-violet-500"
+                />
+                持续
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={maxDays}
+                  onChange={(e) => onMaxDaysChange(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                  onFocus={() => onCapModeChange("days")}
+                  className="w-14 px-1.5 py-0.5 text-sm rounded border border-border bg-background"
+                />
+                天
+              </label>
+            </div>
+          </div>
+
+          {/* 随机抖动 */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={jitterEnabled}
+                onChange={(e) => onJitterEnabledChange(e.target.checked)}
+                className="accent-violet-500"
+              />
+              <Sparkles className="size-3.5" />
+              让发帖时间更像人工
+            </label>
+            {jitterEnabled && (
+              <div className="pl-6 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>±</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={jitterMinutes}
+                  onChange={(e) => onJitterMinutesChange(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                  className="w-14 px-1.5 py-0.5 text-sm rounded border border-border bg-background"
+                />
+                <span>分钟随机偏移（最大 30 分钟）</span>
+              </div>
+            )}
+          </div>
+
+          {/* 预览 / 容量超限警告 */}
+          {capacityShortfall ? (
+            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-md p-2.5 flex items-start gap-2">
+              <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
+              <div>
+                视频超过容量：{capacityShortfall.selected} 条 &gt;{" "}
+                {capacityShortfall.maxDays} 天 × {capacityShortfall.slotCount} 槽 ={" "}
+                {capacityShortfall.cap} 容量。
+                <br />
+                请增加天数 / 时段，或减少选中变体。
+              </div>
+            </div>
+          ) : preview && selectedOutputCount > 0 ? (
+            <div className="text-[11px] text-violet-700 bg-violet-50 border border-violet-200 rounded-md p-2.5 space-y-0.5">
+              <div>
+                共 <b>{preview.totalJobs}</b> 条变体 · 跨{" "}
+                <b>{preview.totalDays}</b> 天
+              </div>
+              <div>
+                首条 {formatPreviewSlot(preview.firstSlotAt, preview.firstSlotInPast)} · 末条{" "}
+                {formatPreviewSlot(preview.lastSlotAt, false)}
+                {jitterEnabled && jitterMinutes > 0 && (
+                  <span className="text-violet-500"> · ±{jitterMinutes} 分钟抖动</span>
+                )}
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                按勾选顺序铺开 · 时区 {tz}
+              </div>
+            </div>
+          ) : slotCount === 0 ? (
+            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-2.5">
+              至少留 1 个时段；点上面预设或「+ 自定义」补一条。
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StrategyPill({
+  active, label, desc, onClick,
+}: { active: boolean; label: string; desc: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "px-3 py-2 rounded-md border text-left transition-colors",
+        active
+          ? "bg-violet-500/10 border-violet-500 text-violet-700"
+          : "bg-background border-border text-foreground hover:border-violet-300",
+      )}
+    >
+      <div className="text-sm font-medium">{label}</div>
+      <div className="text-[10px] text-muted-foreground">{desc}</div>
+    </button>
+  );
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /** Date → "YYYY-MM-DDTHH:mm" 本地时区字符串（datetime-local 用）。 */
 function toLocalDateTimeInput(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -542,4 +935,109 @@ function toLocalDateTimeInput(d: Date): string {
     ":" +
     pad(d.getMinutes())
   );
+}
+
+/** Date → "YYYY-MM-DD"（date input 用）。 */
+function toLocalDateInput(d: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+// ─── v0.20: 调度策略类型与工具 ───────────────────────────────────────────
+type StrategyKind = "immediate" | "single" | "daily_recurring";
+
+/** 时段排序去重，丢弃格式不合法的。后端 MixcutPublishService 会做同样的 normalize。 */
+function sortDedupSlots(slots: string[]): string[] {
+  const re = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const set = new Set<string>();
+  for (const s of slots) if (re.test(s)) set.add(s);
+  return Array.from(set).sort();
+}
+
+/** 一键预设：「每天 N 次」chip。点击直接覆盖 timeSlots。 */
+const SLOT_PRESETS: { label: string; slots: string[] }[] = [
+  { label: "每天 3 次 · 09/12/18", slots: ["09:00", "12:00", "18:00"] },
+  { label: "每天 2 次 · 12/19", slots: ["12:00", "19:00"] },
+  { label: "每天 1 次 · 19:00", slots: ["19:00"] },
+  { label: "晚间高峰 · 19/21/22:30", slots: ["19:00", "21:00", "22:30"] },
+];
+
+interface DailyRecurringPreview {
+  totalJobs: number;
+  totalDays: number;
+  firstSlotAt: Date;
+  lastSlotAt: Date;
+  /** 若起始日期 + 前几个 slot 已过去，标 true —— 这些会 clamp 到 now。 */
+  firstSlotInPast: boolean;
+}
+
+/**
+ * 计算 daily_recurring 的预览信息。前后端算法必须 1:1 对齐：
+ *   apps/server/.../mixcut/MixcutPublishService.java#expandDailyRecurring
+ * 这里只算 first/last 的「理论 slot」（不应用抖动；抖动只是 ±N 分钟显示提示）。
+ */
+function expandDailyRecurringPreview(
+  outputs: number,
+  slots: string[],
+  startDate: string,
+  tz: string,
+): DailyRecurringPreview | null {
+  if (outputs <= 0 || slots.length === 0 || !startDate) return null;
+  const sortedSlots = sortDedupSlots(slots);
+  if (sortedSlots.length === 0) return null;
+  const k = sortedSlots.length;
+  const totalDays = Math.ceil(outputs / k);
+  const firstSlotAt = slotToDate(startDate, sortedSlots[0], tz);
+  const lastIdx = outputs - 1;
+  const lastDayOffset = Math.floor(lastIdx / k);
+  const lastSlot = sortedSlots[lastIdx % k];
+  const lastDate = addDays(startDate, lastDayOffset);
+  const lastSlotAt = slotToDate(lastDate, lastSlot, tz);
+  return {
+    totalJobs: outputs,
+    totalDays,
+    firstSlotAt,
+    lastSlotAt,
+    firstSlotInPast: firstSlotAt.getTime() < Date.now(),
+  };
+}
+
+/** "YYYY-MM-DD" + "HH:MM" 在指定 IANA 时区下解释为绝对时间 Date。 */
+function slotToDate(date: string, slot: string, tz: string): Date {
+  // 浏览器没法直接「在某 IANA 时区下解释 wall-clock」。tricks：构造 UTC Date 然后用
+  // Intl 的反向偏移修正。对本仓库主要场景 Asia/Shanghai 无 DST，结果稳定；
+  // 跨 DST 边界时差 1 小时，前端预览可以接受 —— 服务端是真值源。
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = slot.split(":").map(Number);
+  // 用本机 tz 构造一个候选；如果用户的本机 tz 与 schedule 的 tz 一致（最常见情况），
+  // 这就是正确答案。否则做一次偏移补偿。
+  const candidate = new Date(y, m - 1, d, hh, mm, 0, 0);
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (tz === localTz) return candidate;
+  // 用 toLocaleString 计算 tz 下的「真实 wall clock」与候选的偏差，反向修正。
+  const asString = candidate.toLocaleString("en-US", { timeZone: tz });
+  const reinterpreted = new Date(asString);
+  const diffMs = candidate.getTime() - reinterpreted.getTime();
+  return new Date(candidate.getTime() + diffMs);
+}
+
+function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const next = new Date(y, m - 1, d + days);
+  return toLocalDateInput(next);
+}
+
+/** 用户友好的预览时间文本：「今 09:00」「明 12:00」「5月23日 18:00」「立即」。 */
+function formatPreviewSlot(at: Date, isPast: boolean): string {
+  if (isPast) return "立即";
+  const now = new Date();
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const hm = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  const today = now;
+  const tomorrow = new Date(now.getTime() + 86400000);
+  if (sameDay(at, today)) return `今 ${hm}`;
+  if (sameDay(at, tomorrow)) return `明 ${hm}`;
+  return `${at.getMonth() + 1}月${at.getDate()}日 ${hm}`;
 }

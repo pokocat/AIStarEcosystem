@@ -395,7 +395,8 @@ binding.file_url → 若是本 server 的 /static/mixcut-assets/<u>/<f> 直接 r
 **前端入口（v0.15 初版）**：单任务详情 / `/mixcut/publish` 跨任务 / `/distribution` 反向跳。
 **v0.16 调整**：见 §5.12 — 跨任务工作台迁入分发中心，混剪只负责制作。
 
-**定时 UI**：`<input type="datetime-local">` + 提交时 `new Date(local).toISOString()` 显式转 UTC。提示文本注明本地时区 + 60s 调度延迟。
+**定时 UI（v0.15 初版）**：`<input type="datetime-local">` + 提交时 `new Date(local).toISOString()` 显式转 UTC。提示文本注明本地时区 + 60s 调度延迟。
+**v0.20 升级**：见 §5.13 — 「定时」checkbox 退役，换三选一策略（立即 / 单次定时 / 每日铺开），支持时段池 + 容量模式 + 随机抖动。
 
 ### 5.12 v0.16 分发工作台迁入分发中心
 
@@ -463,6 +464,55 @@ Sticky right rail：
 - 混剪批量发布抽屉：账号卡片显示平台、昵称、平台账号号和状态。
 
 字段为空时保持可用，不阻断绑定 / 发布；平台差异由 sau-service 各平台 driver 处理，前端只消费统一 `SocialAccount` DTO。
+
+### 5.14 v0.20 定时策略升级（每日铺开 + 随机抖动）
+
+v0.15 的「定时发布」checkbox 只能一次性 —— N×M 派单同一时刻起飞。v0.20 引入完整 cadence 策略，让 N 条 mixcut 变体按节奏铺到未来若干天。
+
+**API 契约（破坏性，无线上外部消费方）**：
+
+`MixcutPublishBatchRequest` 顶层增 `schedule: ScheduleSpec`（必填，默认 `{strategy:"immediate"}`）；`TargetItem` 删掉 `scheduled_at` 字段（时间不再 per-account）。
+
+```ts
+type ScheduleSpec =
+  | { strategy: "immediate" }
+  | { strategy: "single"; at: string /* ISO 8601 */ }
+  | {
+      strategy: "daily_recurring";
+      start_date: string;       // "YYYY-MM-DD" in timezone
+      time_slots: string[];     // HH:MM 24h，后端排序去重
+      timezone: string;         // IANA, default = 浏览器时区
+      max_days?: number;        // 缺省 = 直到 outputs 用完
+      jitter_minutes?: number;  // 0..30；缺省 / 0 = 无抖动
+    };
+```
+
+Java 端：`ScheduleSpec` 是 `sealed interface`，Jackson `@JsonTypeInfo` discriminator `strategy`，三个 record（`Immediate / Single / DailyRecurring`）。
+
+**铺开算法**（`MixcutPublishService.expandSchedule`）：
+
+`outputs[i]` 在 `timeSlots[i % K]` 时段、`startDate + ⌊i/K⌋` 天起飞（K=时段数）。可选 `jitter_minutes` 给每条 slot 加 [-N, +N] 分钟随机偏移。过去 slot clamp 到 `now()`（调度器下一个 10s tick 即起飞）。`PublishJobScheduler` / `PublishJob` 实体零改动。
+
+**校验（DB 写入前一次性返回 400）**：
+
+- `time_slots` 非空、每条匹配 `^([01]\d|2[0-3]):[0-5]\d$`、排序去重。
+- `timezone` 用 `ZoneId.of(...)` 解析。
+- `start_date` 用 `LocalDate.parse(...)`（过去日期允许）。
+- `jitter_minutes` 在 `[0, 30]`。
+- `max_days != null && outputs.size > max_days * K` → `OUTPUTS_EXCEED_CAPACITY`。
+
+**前端 UI**（`BatchPublishDrawer.tsx#ScheduleEditor`）：
+
+- 三选一 pill：立即发布 / 单次定时 / 每日铺开。
+- `single`：保留 `datetime-local`（v0.15 体验）。
+- `daily_recurring`：起始日期 + 时段池（4 套预设 chip + 自定义 HH:MM 编辑） + 容量模式（直到视频用完 / 持续 N 天）+ 可选随机抖动。
+- 自动建议 `maxDays = ⌈N / K⌉`（cap 30），用户手改后停止 auto-suggest（`maxDaysDirtyRef`）。
+- 实时预览：`共 X 条 · 跨 Y 天 · 首条 今 09:00 · 末条 5月23日 18:00 · ±15 分钟抖动`。
+- 容量超限：红字阻拦提交 + 明确数学解释。
+
+**projectId 防撞**：调用方未指定时拼 `mixcut-batch-<source>-<yyyyMMddHHmmss>`，避免同源混剪任务多次铺开撞同一 project_id（影响 `/distribution?tab=tracking` 的 campaign 视角）。
+
+**显式 out-of-scope**：campaign 级别取消（单条 cancel 仍可用）、ShedLock 多实例调度、跨账号错峰、interval / random_window / weekly 等策略（`strategy` discriminator 预留扩展位）。
 
 ### 5.11 已知限制
 

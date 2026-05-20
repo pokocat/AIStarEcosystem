@@ -291,6 +291,7 @@ src/main/java/com/aistareco/aep/
 - `AiModelInvocationService` —— OpenAI / OPENAI_COMPATIBLE 的 chat 调用 + provider 测试连通
 - `RechargeService` —— 充值落账（recharge 主分录 + 可选 gift bonus 副分录）
 - `CelebrityZoneService` —— 引擎价格 in-memory（`mutablePricing`）+ JOBS in-memory（重启失效；v0.6 落表）
+- `MixcutPublishService` (v0.15 / v0.19 / v0.20) —— 混剪批量派单。v0.20 新加 `expandSchedule(spec, n) → Instant[]`：把顶层 `ScheduleSpec`（`immediate / single / daily_recurring`）算成 outputs.size 长的 `scheduledAt` 数组，daily_recurring 按 `outputs[i] → slots[i%K]` 在 `startDate + ⌊i/K⌋` 天起飞，过去 slot clamp 到 `now()`，可选 `jitter_minutes` 加 [-N, +N] 分钟随机偏移。`PublishJob` / `PublishJobScheduler` 零改动 —— 错峰 `scheduledAt` 直接走现有 10s tick。
 
 ### 通用工具
 
