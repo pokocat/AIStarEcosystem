@@ -5,20 +5,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-
 /**
- * v0.16+: 调独立的 pic-gen 服务（默认 http://localhost:5173）的 /render-png 端点，
- * 返回一张 PNG 字节流。该服务由独立 Node 进程承载 puppeteer 浏览器实例，复用启动开销。
+ * v0.16+: 文字转图客户端 —— 现已 100% in-process 实现，调用 {@link BannerRenderer}（Java2D）
+ * 直接出 PNG。不再依赖任何外部 Node 服务 / Puppeteer / Chromium，进程内零网络。
  * <p>
- * 失败语义：网络错误 / 4xx / 5xx 都抛 {@link PicgenException}，调用方自行决定 fall-through
- * （比如 mixcut 渲染时把这个变体的图跳过、不让整任务 failed）。
+ * 保留 PicgenClient 这个类名是为了让上游 ({@code MixcutPicgenController}, {@code MixcutRenderingService})
+ * 的引用无感切换 —— 调用方代码 0 改动。
+ * <p>
+ * 失败语义：参数错抛 {@link PicgenException}（运行期），调用方决定是 4xx 返回前端还是 fall-through 跳过。
  */
 @Service
 public class PicgenClient {
@@ -26,29 +20,22 @@ public class PicgenClient {
     private static final Logger log = LoggerFactory.getLogger(PicgenClient.class);
 
     private final boolean enabled;
-    private final String baseUrl;
-    private final Duration timeout;
-    private final HttpClient http;
+    private final BannerRenderer renderer;
 
     public PicgenClient(
             @Value("${aep.picgen.enabled:true}") boolean enabled,
-            @Value("${aep.picgen.base-url:http://localhost:5173}") String baseUrl,
-            @Value("${aep.picgen.timeout-ms:15000}") int timeoutMs
+            BannerRenderer renderer
     ) {
         this.enabled = enabled;
-        // 去尾 /
-        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        this.timeout = Duration.ofMillis(Math.max(2000, timeoutMs));
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(3))
-                .build();
+        this.renderer = renderer;
+        log.info("[picgen] initialized (in-process Java2D renderer, enabled={})", enabled);
     }
 
     public boolean isEnabled() {
         return enabled;
     }
 
-    /** 调 /render-png 返回 PNG 字节流。 */
+    /** 渲染一张 banner PNG。失败抛 {@link PicgenException}。 */
     public byte[] renderPng(PicgenParams p) {
         if (!enabled) {
             throw new PicgenException("pic-gen 已通过 aep.picgen.enabled=false 关闭");
@@ -56,42 +43,30 @@ public class PicgenClient {
         if (p == null || p.title() == null || p.title().isBlank()) {
             throw new PicgenException("title 不能为空");
         }
-        String url = baseUrl + "/render-png?" + p.toQueryString();
-        var req = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(timeout)
-                .GET()
-                .build();
         try {
-            HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
-            int code = res.statusCode();
-            if (code != 200) {
-                String body = new String(res.body(), StandardCharsets.UTF_8);
-                log.warn("pic-gen /render-png HTTP {} ({} chars body)", code, body.length());
-                throw new PicgenException("pic-gen 返回 HTTP " + code + ": " + truncate(body, 200));
-            }
-            byte[] data = res.body();
-            if (data == null || data.length < 32) {
-                throw new PicgenException("pic-gen 返回空 PNG");
-            }
-            return data;
-        } catch (PicgenException pe) {
-            throw pe;
+            var req = new BannerRenderer.BannerRequest(
+                    p.title(),
+                    p.subtitle(),
+                    p.tag(),
+                    p.width() == null ? 1080 : p.width(),
+                    p.height() == null ? 380 : p.height(),
+                    p.seed() == null ? 0L : p.seed(),
+                    p.scheme()  // null → renderer 按 seed 抽
+            );
+            return renderer.render(req);
+        } catch (IllegalArgumentException iae) {
+            throw new PicgenException(iae.getMessage(), iae);
         } catch (Exception e) {
-            log.warn("pic-gen 调用失败: {}", e.toString());
-            throw new PicgenException("pic-gen 调用失败: " + e.getMessage(), e);
+            log.warn("[picgen] render failed: {}", e.toString());
+            throw new PicgenException("banner 渲染失败: " + e.getMessage(), e);
         }
     }
 
-    private static String truncate(String s, int max) {
-        if (s == null) return "";
-        return s.length() <= max ? s : s.substring(0, max) + "…";
-    }
-
     /**
-     * 调用参数。title 必填，其他都可选。
-     * 当 template / scheme / font 留空时，pic-gen 服务会按 seed 在内置池里抽 —— 相同 seed 抽相同组合，
-     * 用于 mixcut 多变体下游的确定性差异化。
+     * 调用参数 record。title 必填，其他都可选。
+     * <p>
+     * template / font 字段保留是为了与旧 server 时代的 API 兼容（前端仍可传，
+     * 但当前 Java 渲染器只用 scheme + seed 控制差异，template/font 暂被忽略）。
      */
     public record PicgenParams(
             String title,
@@ -103,27 +78,7 @@ public class PicgenClient {
             String template,
             String scheme,
             String font
-    ) {
-        public String toQueryString() {
-            StringBuilder sb = new StringBuilder();
-            appendParam(sb, "title", title);
-            appendParam(sb, "subtitle", subtitle);
-            appendParam(sb, "tag", tag);
-            if (width != null) appendParam(sb, "width", String.valueOf(width));
-            if (height != null) appendParam(sb, "height", String.valueOf(height));
-            if (seed != null) appendParam(sb, "seed", String.valueOf(seed));
-            appendParam(sb, "template", template);
-            appendParam(sb, "scheme", scheme);
-            appendParam(sb, "font", font);
-            return sb.toString();
-        }
-
-        private static void appendParam(StringBuilder sb, String k, String v) {
-            if (v == null || v.isBlank()) return;
-            if (sb.length() > 0) sb.append('&');
-            sb.append(k).append('=').append(URLEncoder.encode(v, StandardCharsets.UTF_8));
-        }
-    }
+    ) {}
 
     /** pic-gen 调用异常（运行期）。 */
     public static class PicgenException extends RuntimeException {
