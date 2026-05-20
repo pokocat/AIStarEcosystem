@@ -77,11 +77,9 @@ aep:
       access-key-id: ${AEP_CDN_OSS_ACCESS_KEY_ID:}
       access-key-secret: ${AEP_CDN_OSS_ACCESS_KEY_SECRET:}
       base-url: ${AEP_CDN_OSS_BASE_URL:}
-  # v0.16+: 文字转图（pic-gen 独立 Node 服务，puppeteer 渲染 banner PNG）
+  # v0.16+: 文字转图 —— 纯 Java2D 内部渲染，无外部进程依赖
   picgen:
     enabled: ${AEP_PICGEN_ENABLED:true}
-    base-url: ${AEP_PICGEN_BASE_URL:http://localhost:5173}
-    timeout-ms: ${AEP_PICGEN_TIMEOUT_MS:15000}
     # 渲染产出（每变体一张）落盘目录，挂到 mixcut.output-dir/picgen
     output-dir: ${AEP_PICGEN_OUTPUT_DIR:./mixcut-output/picgen}
     # 预览图落盘目录（24h 后由 cleanup 任务清掉；MVP 不做）
