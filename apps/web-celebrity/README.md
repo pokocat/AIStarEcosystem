@@ -76,6 +76,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - ✅ **DTO + 前端类型对齐**：`MixcutRenderOutputDto` 新增 `publish_count` / `last_published_at`；`mixcut-zone/types.ts#RenderOutput` 同步两个可选字段。
 - ✅ **DistributeWorkbench UI 翻新**：缩略图徽标由「已发」→「已发 ×N」（hover tooltip 显示「已派单 N 次 · 最近：xx前」相对时间）；工具条按钮翻为「显示全部 / 仅未发布」二态切换（默认 OFF = 显示全部）；派单成功后立刻 `load()` 重新拉 jobs 列表，徽标实时升级。
 - ✅ **空态文案**：仅在「仅未发布」过滤下且全部已发时，提示用户回到「显示全部」即可再次分发。
+- ✅ **失败任务重试按钮修复**：混剪任务列表 `/mixcut/jobs` 与详情 `/mixcut/jobs/[id]` 的「重渲」按钮（共 3 处）改名为「重新生成」（自然中文），并接上 onClick——`router.push("/mixcut/create/<template_id>")` 跳到新建页用相同模板重做一批。之前点击无反应（onClick 仅 `e.preventDefault() / stopPropagation()`，无业务行为）。
 
 ### v0.18 · 2026-05-20 · 社交账号 profile 增强
 
