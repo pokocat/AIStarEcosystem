@@ -14,6 +14,13 @@ import type {
   PerturbationOverrides,
 } from "./types";
 import { cn } from "./lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 import { LAYER_LABELS, FILL_STRATEGY_LABELS } from "@/constants/mixcut-ui";
 import { SlotPolicyEditor } from "./slot-policy-editor";
 import { MediaSlotInput } from "./media-slot-input";
@@ -238,19 +245,29 @@ function ApiGeneratedSlotInput({
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label className="text-xs">形象选择</Label>
-          <select className="mt-1 w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
-            <option>白领女青年</option>
-            <option>电商主播男</option>
-            <option>知识博主</option>
-          </select>
+          <Select defaultValue="白领女青年">
+            <SelectTrigger className="mt-1 h-8 w-full rounded-md border border-zinc-300 bg-white text-xs focus:ring-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="白领女青年">白领女青年</SelectItem>
+              <SelectItem value="电商主播男">电商主播男</SelectItem>
+              <SelectItem value="知识博主">知识博主</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <Label className="text-xs">音色</Label>
-          <select className="mt-1 w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
-            <option>明亮女声</option>
-            <option>沉稳男声</option>
-            <option>东北豪爽</option>
-          </select>
+          <Select defaultValue="明亮女声">
+            <SelectTrigger className="mt-1 h-8 w-full rounded-md border border-zinc-300 bg-white text-xs focus:ring-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="明亮女声">明亮女声</SelectItem>
+              <SelectItem value="沉稳男声">沉稳男声</SelectItem>
+              <SelectItem value="东北豪爽">东北豪爽</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
     </div>

@@ -17,6 +17,13 @@ import {
   type ProductCategory,
 } from "@ai-star-eco/types/product";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 import { CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 
 interface Props {
@@ -73,18 +80,22 @@ export function ProductPickerDialog({ open, onOpenChange, onPick }: Props) {
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
-            <select
-              className={inputCls + " w-auto"}
+            <Select
               value={category}
-              onChange={(e) => setCategory(e.target.value as "全部" | ProductCategory)}
+              onValueChange={(v) => setCategory(v as "全部" | ProductCategory)}
             >
-              <option value="全部">全部类目</option>
-              {PRODUCT_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-9 w-auto min-w-[120px] rounded-md border-zinc-200 bg-white text-sm focus:ring-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="全部">全部类目</SelectItem>
+                {PRODUCT_CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* List */}

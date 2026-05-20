@@ -17,6 +17,13 @@ import {
   type ProductInput,
 } from "@ai-star-eco/types/product";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 
 interface Props {
   open: boolean;
@@ -121,17 +128,18 @@ export function ProductFormDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="类目">
-              <select
-                className={inputCls}
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ProductCategory)}
-              >
-                {PRODUCT_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              <Select value={category} onValueChange={(v) => setCategory(v as ProductCategory)}>
+                <SelectTrigger className="h-9 w-full rounded-md border-zinc-200 bg-white text-sm focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRODUCT_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="商品链接">
               <input

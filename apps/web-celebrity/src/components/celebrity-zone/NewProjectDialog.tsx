@@ -11,6 +11,13 @@ import {
 } from "@ai-star-eco/ui/ui/dialog";
 import type { CelebrityProject, CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 
 interface Props {
   open: boolean;
@@ -81,22 +88,30 @@ export function NewProjectDialog({ open, onOpenChange, stars, onCreated, onSubmi
             <label className="mb-1.5 block text-xs font-medium text-zinc-600">
               关联明星
             </label>
-            <select
-              value={starId}
-              onChange={(e) => setStarId(e.target.value)}
-              className="w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-violet-500 focus:bg-white"
+            {/* authorizedStars 为空时禁用并显示占位文案；非空时正常用 starId 作 value。
+                Radix Select 不允许 value=""，所以空态用 disabled trigger 表达。 */}
+            <Select
+              value={starId || undefined}
+              onValueChange={setStarId}
+              disabled={authorizedStars.length === 0}
             >
-              {authorizedStars.length === 0 && (
-                <option value="">
-                  暂无可选明星（需先获得授权）
-                </option>
-              )}
-              {authorizedStars.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} · {s.category}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-9 w-full rounded-md border-zinc-200 bg-zinc-100 text-sm text-zinc-900 focus:border-violet-500 focus:bg-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60">
+                <SelectValue
+                  placeholder={
+                    authorizedStars.length === 0
+                      ? "暂无可选明星（需先获得授权）"
+                      : "选择明星"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {authorizedStars.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} · {s.category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="mt-1.5 text-[11px] text-zinc-500">
               仅显示「已授权」的明星；如需新增明星，请先在市场页申请商务合作。
             </p>

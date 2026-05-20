@@ -27,6 +27,13 @@ import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
 import { Input } from "@/components/mixcut-zone/ui/input";
 import { Label } from "@/components/mixcut-zone/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 import { Separator } from "@/components/mixcut-zone/ui/separator";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
@@ -1257,7 +1264,10 @@ function SelectField({
     <div>
       <Label className="text-[10px] text-muted-foreground">{label}</Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full h-8 rounded-md border-input bg-transparent text-sm focus:ring-0">
+        {/* `--input` token 在共享 ui 主题里是 transparent（shadcn 用 fill 而非
+            stroke 暗示输入区）。这里给个明确的 zinc-300 边框 + 白底，跟模板编辑
+            器其它 Input / NumField 视觉一致。 */}
+        <SelectTrigger className="w-full h-8 rounded-md border border-zinc-300 bg-white text-sm focus:ring-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

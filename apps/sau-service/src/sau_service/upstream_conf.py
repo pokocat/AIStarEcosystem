@@ -57,13 +57,61 @@ def ensure_upstream_conf(*, headless: bool, base_dir: str) -> None:
 
     sys.modules["conf"] = mod
 
-    # Ensure BASE_DIR / cookies exists; upstream uploader/__init__ does:
+    # Ensure BASE_DIR / cookies / utils exist; upstream uploader/__init__ does:
     #   Path(BASE_DIR / "cookies").mkdir(exist_ok=True)
-    # which fails if BASE_DIR itself doesn't exist.
+    # and utils/base_social_media.set_init_script reads:
+    #   Path(BASE_DIR / "utils/stealth.min.js")
+    # both must already be on disk before the first DouYinVideo.upload() runs.
     try:
         mod.BASE_DIR.mkdir(parents=True, exist_ok=True)
         (mod.BASE_DIR / "cookies").mkdir(exist_ok=True)
         (mod.BASE_DIR / "videoFile").mkdir(exist_ok=True)
+        _seed_stealth_js(mod.BASE_DIR)
     except OSError:
         # Permission issue — let upstream surface the real error itself.
         pass
+
+
+def _seed_stealth_js(base_dir: Path) -> None:
+    """Mirror upstream's utils/stealth.min.js into BASE_DIR/utils/.
+
+    The wheel ships the file at <site-packages>/utils/stealth.min.js, but the
+    upstream's `utils/base_social_media.set_init_script` and
+    `uploader/xhs_uploader/main.py` both read it via `BASE_DIR / utils/stealth.min.js`.
+    Our BASE_DIR is a scratch tmpdir, so the file isn't there → FileNotFoundError.
+
+    Strategy: locate the upstream `utils` package on disk via `importlib.util`
+    (avoids triggering `utils.__init__` import side-effects), then symlink the
+    file into our BASE_DIR. Fall back to a regular copy if symlinking fails
+    (Windows without dev-mode, read-only mounts, etc.).
+
+    Idempotent: skips if the destination already exists.
+    """
+    import importlib.util
+    import os
+    import shutil
+
+    dest_dir = base_dir / "utils"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "stealth.min.js"
+    if dest.exists():
+        return
+
+    spec = importlib.util.find_spec("utils")
+    if spec is None or not spec.submodule_search_locations:
+        # Upstream not installed (likely [real] extra missing) — let the upload
+        # surface a clearer error than us trying to symlink a non-existent file.
+        return
+
+    src = Path(spec.submodule_search_locations[0]) / "stealth.min.js"
+    if not src.exists():
+        return
+
+    try:
+        os.symlink(src, dest)
+    except (OSError, NotImplementedError):
+        # Symlink unsupported (Windows non-admin, FS doesn't allow) — fall back to copy.
+        try:
+            shutil.copy2(src, dest)
+        except OSError:
+            pass

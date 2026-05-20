@@ -20,6 +20,13 @@ import type {
   TemplateConfigStep,
 } from "@ai-star-eco/types/celebrity-zone";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 
 interface Props {
   star: CelebrityStar;
@@ -165,17 +172,18 @@ export function CelebrityTemplateConfig({
           <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
             <div className="mb-2 text-sm font-medium text-zinc-700">归属项目</div>
             <div className="flex gap-2">
-              <select
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-violet-500"
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} · {p.status}
-                  </option>
-                ))}
-              </select>
+              <Select value={projectId} onValueChange={setProjectId}>
+                <SelectTrigger className="h-9 flex-1 rounded-md border-zinc-200 bg-zinc-50 text-sm text-zinc-900 focus:border-violet-500 focus:ring-0">
+                  <SelectValue placeholder="选择项目" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} · {p.status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <button
                 type="button"
                 className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"

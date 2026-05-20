@@ -10,6 +10,13 @@ import type {
   ProjectVideoStatus,
 } from "@ai-star-eco/types/celebrity-zone";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 
 interface Props {
   videos: CelebrityProjectVideo[];
@@ -155,20 +162,21 @@ function FilterSelect<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <label className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600">
+    <div className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600">
       <span className="text-zinc-500">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="bg-transparent text-xs text-zinc-800 outline-none"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
+      <Select value={value} onValueChange={(v) => onChange(v as T)}>
+        <SelectTrigger className="h-6 border-0 bg-transparent px-1 text-xs text-zinc-800 shadow-none focus:ring-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 

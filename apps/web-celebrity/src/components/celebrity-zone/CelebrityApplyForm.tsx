@@ -11,6 +11,13 @@ import {
 } from "lucide-react";
 import type { CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 
 interface Props {
   star: CelebrityStar;
@@ -138,17 +145,22 @@ export function CelebrityApplyForm({ star }: Props) {
           />
         </Field>
         <Field label="月预算">
-          <select
-            className={inputCls}
-            value={form.budget}
-            onChange={(e) => set({ budget: e.target.value })}
+          {/* Radix Select 不允许 value="" — 用 sentinel 表示"未选" */}
+          <Select
+            value={form.budget || "__none"}
+            onValueChange={(v) => set({ budget: v === "__none" ? "" : v })}
           >
-            <option value="">请选择…</option>
-            <option value="lt-5k">5,000 元以内</option>
-            <option value="5k-2w">5,000 - 20,000 元</option>
-            <option value="2w-10w">20,000 - 100,000 元</option>
-            <option value="gt-10w">100,000 元以上</option>
-          </select>
+            <SelectTrigger className="h-9 w-full rounded-md border-zinc-200 bg-white text-sm focus:ring-0">
+              <SelectValue placeholder="请选择…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">请选择…</SelectItem>
+              <SelectItem value="lt-5k">5,000 元以内</SelectItem>
+              <SelectItem value="5k-2w">5,000 - 20,000 元</SelectItem>
+              <SelectItem value="2w-10w">20,000 - 100,000 元</SelectItem>
+              <SelectItem value="gt-10w">100,000 元以上</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="联系方式" required className="sm:col-span-2">
           <input
