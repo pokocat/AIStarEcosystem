@@ -81,6 +81,25 @@ const FILL_OPTIONS: ReadonlyArray<{ value: FillStrategy; label: string }> = [
   { value: "variable_binding", label: "跟随变量" },
 ];
 
+// 每种内容类型可以走哪些填充方式 —— UI 用来过滤、自动联动 fill_strategy。
+// text 不能走 user_upload / library_select，否则渲染层会出现 "文字"chip + 上传按钮的矛盾 UI。
+const FILL_BY_LAYER: Record<LayerType, FillStrategy[]> = {
+  video: ["user_upload", "library_select", "api_generated", "fixed"],
+  image: ["user_upload", "library_select", "picgen_text", "api_generated", "fixed"],
+  text: ["user_input", "picgen_text", "variable_binding", "fixed"],
+  audio: ["user_upload", "library_select", "fixed"],
+};
+
+function allowedFillsFor(layer: LayerType): FillStrategy[] {
+  return FILL_BY_LAYER[layer] ?? FILL_BY_LAYER.image;
+}
+
+/** layer 变化时给个合理的默认 fill。已有的 fill 还合法就保留，否则取首选。 */
+function reconcileFill(currentFill: FillStrategy, nextLayer: LayerType): FillStrategy {
+  const allowed = allowedFillsFor(nextLayer);
+  return allowed.includes(currentFill) ? currentFill : allowed[0];
+}
+
 type ConfirmModalState = {
   title: string;
   body: string;
@@ -1074,12 +1093,23 @@ function SlotCard({
           label="内容类型"
           value={slot.layer_type}
           options={LAYER_OPTIONS}
-          onChange={(v) => onChange({ layer_type: v as LayerType })}
+          onChange={(v) => {
+            const nextLayer = v as LayerType;
+            // 联动：切类型时把 fill_strategy 也 reconcile，避免出现 "文字 + 自己上传" 这种
+            // UI 与渲染层冲突的状态。已有 fill 仍合法就保留。
+            const nextFill = reconcileFill(slot.fill_strategy, nextLayer);
+            onChange(
+              nextFill === slot.fill_strategy
+                ? { layer_type: nextLayer }
+                : { layer_type: nextLayer, fill_strategy: nextFill }
+            );
+          }}
         />
         <SelectField
           label="谁来填"
           value={slot.fill_strategy}
-          options={FILL_OPTIONS}
+          // 仅显示与当前 layer 兼容的策略；与上面联动一起防止脏数据
+          options={FILL_OPTIONS.filter((o) => allowedFillsFor(slot.layer_type).includes(o.value))}
           onChange={(v) => onChange({ fill_strategy: v as FillStrategy })}
         />
         <NumField
@@ -1226,19 +1256,20 @@ function SelectField({
   return (
     <div>
       <Label className="text-[10px] text-muted-foreground">{label}</Label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-sm"
-      >
-        {options.map((o) => {
-          const v = typeof o === "string" ? o : o.value;
-          const l = typeof o === "string" ? o : o.label;
-          return (
-            <option key={v} value={v}>{l}</option>
-          );
-        })}
-      </select>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-full h-8 rounded-md border-input bg-transparent text-sm focus:ring-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => {
+            const v = typeof o === "string" ? o : o.value;
+            const l = typeof o === "string" ? o : o.label;
+            return (
+              <SelectItem key={v} value={v}>{l}</SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

@@ -17,6 +17,13 @@ import type {
 } from "@ai-star-eco/types/social-account";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 
 const ENABLED_PLATFORMS: Array<{ id: SocialPlatform; label: string }> = [
   { id: "douyin", label: "抖音" },
@@ -127,21 +134,25 @@ export function BindAccountDialog({ open, onClose, onBound }: Props) {
 
         {!init ? (
           <div className="mt-4 flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-xs text-zinc-600">
-              平台
-              <select
+            <div className="flex flex-col gap-1 text-xs text-zinc-600">
+              <span>平台</span>
+              <Select
                 value={platform}
-                onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
+                onValueChange={(v) => setPlatform(v as SocialPlatform)}
                 disabled={submitting}
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
               >
-                {ENABLED_PLATFORMS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <SelectTrigger className="h-9 rounded-lg border-zinc-200 bg-white text-sm text-zinc-800 focus:border-[var(--accent)] focus:ring-0 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400">
+                  <SelectValue placeholder="选择平台" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ENABLED_PLATFORMS.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <label className="flex flex-col gap-1 text-xs text-zinc-600">
               账号别名
               <input

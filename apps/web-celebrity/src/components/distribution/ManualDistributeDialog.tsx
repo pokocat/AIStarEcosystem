@@ -25,11 +25,21 @@ import { SocialAccountApi, PublishJobApi } from "@ai-star-eco/api-client";
 import type { SocialAccount, SocialPlatform } from "@ai-star-eco/types/social-account";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ai-star-eco/ui/ui/select";
 import { socialAccountOptionLabel } from "./social-account-labels";
 
 // projectId 用 "manual" 哨兵 — server 不做项目存在性校验，所以这字符串
 // 仅作"这条任务没有项目归属"的标识。列任务时按 userId 过滤即可拿到。
 const MANUAL_PROJECT_SENTINEL = "manual";
+
+/** Radix Select 不允许 value=""，用 sentinel 表示"不分发到此平台"。 */
+const NO_ACCOUNT = "__none";
 
 const ENABLED_PLATFORMS: Array<{ id: SocialPlatform; label: string }> = [
   { id: "douyin", label: "抖音" },
@@ -303,23 +313,27 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
                       {platformAccounts.length === 0 ? (
                         <span className="text-[11px] text-zinc-400">未绑定 active 账号</span>
                       ) : (
-                        <select
-                          value={selected}
-                          onChange={(e) =>
+                        <Select
+                          value={selected || NO_ACCOUNT}
+                          onValueChange={(v) =>
                             setSelectedAccount((prev) => ({
                               ...prev,
-                              [id]: e.target.value,
+                              [id]: v === NO_ACCOUNT ? "" : v,
                             }))
                           }
-                          className="flex-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700"
                         >
-                          <option value="">不分发到此平台</option>
-                          {platformAccounts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {socialAccountOptionLabel(a)}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger className="h-8 flex-1 rounded-md border-zinc-200 bg-white text-xs text-zinc-700 focus:border-[var(--accent)] focus:ring-0">
+                            <SelectValue placeholder="选择账号" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_ACCOUNT}>不分发到此平台</SelectItem>
+                            {platformAccounts.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {socialAccountOptionLabel(a)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                     </div>
                   );

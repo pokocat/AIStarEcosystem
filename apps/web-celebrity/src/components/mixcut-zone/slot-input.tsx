@@ -55,6 +55,16 @@ export function SlotInput({
   canvasHeight,
 }: Props) {
   const Icon = LAYER_ICON[slot.layer_type] || ImageIcon;
+  // 兜底：DB 里可能有"文字 + 自己上传"这种历史脏数据（编辑器之前没做联动）。
+  // 渲染时按 layer_type 强制纠正 fill_strategy，避免出现"文字 chip + 上传按钮"
+  // 这种交互错乱的 UI。新数据由模板编辑器的 reconcileFill 联动保证不再产生脏组合。
+  const effectiveFill: typeof slot.fill_strategy =
+    slot.layer_type === "text" &&
+    (slot.fill_strategy === "user_upload" || slot.fill_strategy === "library_select")
+      ? "user_input"
+      : slot.layer_type !== "text" && slot.fill_strategy === "user_input"
+        ? "user_upload"
+        : slot.fill_strategy;
   const filled =
     !!binding &&
     ((binding.source === "input" && binding.text.trim().length > 0) ||
@@ -87,20 +97,20 @@ export function SlotInput({
             <Badge variant="muted" className="text-[10px]">{LAYER_LABELS[slot.layer_type]}</Badge>
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {FILL_STRATEGY_LABELS[slot.fill_strategy]}
+            {FILL_STRATEGY_LABELS[effectiveFill]}
           </div>
 
           <div className="mt-3">
-            {slot.fill_strategy === "user_input" && (
+            {effectiveFill === "user_input" && (
               <TextSlotInput slot={slot} binding={binding} onChange={onChange} />
             )}
-            {slot.fill_strategy === "user_upload" && (
+            {effectiveFill === "user_upload" && (
               <MediaSlotInput slot={slot} binding={binding} onChange={onChange} mode="both" />
             )}
-            {slot.fill_strategy === "library_select" && (
+            {effectiveFill === "library_select" && (
               <MediaSlotInput slot={slot} binding={binding} onChange={onChange} mode="library" />
             )}
-            {slot.fill_strategy === "picgen_text" && (
+            {effectiveFill === "picgen_text" && (
               <PicgenSlotInput
                 slot={slot}
                 binding={binding}
@@ -109,10 +119,10 @@ export function SlotInput({
                 canvasHeight={canvasHeight}
               />
             )}
-            {slot.fill_strategy === "api_generated" && (
+            {effectiveFill === "api_generated" && (
               <ApiGeneratedSlotInput slot={slot} binding={binding} onChange={onChange} />
             )}
-            {slot.fill_strategy === "fixed" && (
+            {effectiveFill === "fixed" && (
               <div className="text-xs text-muted-foreground bg-secondary/50 rounded-md p-2">
                 由系统自动填充,无需操作
               </div>
