@@ -1,6 +1,8 @@
 package com.aistareco.aep.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
+
 import java.time.OffsetDateTime;
 
 @Entity
@@ -62,6 +64,18 @@ public class MixcutRenderOutput {
     /** v0.14+: 上传到 CDN 完成的时间。 */
     private OffsetDateTime cdnUploadedAt;
 
+    /**
+     * v0.19+: 该变体被派发的累计次数（每个 output × target = +1）。
+     * 视频库不再隐藏已发布变体；UI 用此字段展示「已发 ×N」徽标，允许再次分发。
+     * 现存行通过 @ColumnDefault("0") 自动落 0。
+     */
+    @Column(nullable = false)
+    @ColumnDefault("0")
+    private int publishCount;
+
+    /** v0.19+: 最近一次成功派发的时间；从未派发则为 null。 */
+    private OffsetDateTime lastPublishedAt;
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
@@ -109,4 +123,10 @@ public class MixcutRenderOutput {
 
     public OffsetDateTime getCdnUploadedAt() { return cdnUploadedAt; }
     public void setCdnUploadedAt(OffsetDateTime cdnUploadedAt) { this.cdnUploadedAt = cdnUploadedAt; }
+
+    public int getPublishCount() { return publishCount; }
+    public void setPublishCount(int publishCount) { this.publishCount = publishCount; }
+
+    public OffsetDateTime getLastPublishedAt() { return lastPublishedAt; }
+    public void setLastPublishedAt(OffsetDateTime lastPublishedAt) { this.lastPublishedAt = lastPublishedAt; }
 }

@@ -566,6 +566,32 @@ openapi       : SocialAccount schema 增 platformAccountId
 - 这是 best-effort profile：平台 DOM 或权限不同会导致字段为空；禁止用 `accountName` 伪装平台昵称。
 - 各平台 driver 各自实现选择器和文本解析。抖音字段叫「抖音号」，小红书 / 视频号等平台可继续映射到统一 `platformAccountId`。
 
+### v0.19（2026-05-20）— 视频库允许再次分发 · 派发计数落库
+
+废止 v0.16 的 localStorage 去重（`aep:distribute:published-output-ids` 已彻底删除）。视频库默认显示全部可发变体（含已派发过的），同一变体可再次分发到新账号 / 新时间窗。派发记忆改走 server。
+
+**新增 / 修改**：
+
+```
+server        : MixcutRenderOutput +publishCount (@ColumnDefault("0")) / +lastPublishedAt 列
+              : MixcutRenderOutputDto 同步 publish_count / last_published_at
+              : MixcutPublishService 注入 MixcutRenderOutputRepository
+              :   每条 output 派单成功后按 target 数累加 publishCount + setLastPublishedAt(now)
+              :   tracker 写库失败只 log（不阻塞派单结果）
+web-celebrity : mixcut-zone/types.ts#RenderOutput +publish_count? / +last_published_at?
+              : distribution/DistributeWorkbench.tsx 删除 PUBLISHED_KEY / publishedIds / loadPublished / persistPublished
+              :   工具条按钮翻为「显示全部 / 仅未发布」二态（默认 OFF = 显示全部）
+              :   GridView / GroupView 用 output.publish_count 渲染「已发 ×N」徽标 + hover tooltip 相对时间
+              :   handlePublished 改为 load() 重新拉 jobs，徽标实时升级
+```
+
+**注意事项**：
+
+- 入库默认值靠 Hibernate `@ColumnDefault("0")`；ddl-auto=update 时 H2/MySQL 都能为现存行补 0。
+- `bumpPublishTracker` 单条 try/catch；output 不存在或保存失败只 log，业务结果不回滚。
+- BatchPublishDrawer 接口不变；唯一行为变化是它的 onPublished 回调里上游会 refetch jobs。
+- 「显示全部」是默认 / 推荐状态。「仅未发布」仅在用户主动收窄时启用，按 `publish_count === 0` 过滤。
+
 ### admin sidebar 启用状态
 
 启用：Platform / Artists / **Celebrity**（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）/ Distribution / Finance（含 recharge-packages）/ Notifications / Audit / 平台 > AI 模型。

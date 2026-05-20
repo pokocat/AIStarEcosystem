@@ -267,6 +267,14 @@ export interface RenderOutput {
   cdn_key?: string;
   cdn_thumbnail_url?: string;
   cdn_uploaded_at?: string;
+  /**
+   * v0.19+: 累计派发次数；每条 (output × target) 派单成功 +1。
+   * 视频库不再隐藏已发布变体，用此字段渲染「已发 ×N」徽标。
+   * server 缺省 0；mock 数据可省略。
+   */
+  publish_count?: number;
+  /** v0.19+: 最近一次派发时间（ISO 8601）；从未派发为 undefined。 */
+  last_published_at?: string;
 }
 
 export interface RenderJob {

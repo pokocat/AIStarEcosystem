@@ -4,12 +4,15 @@ import com.aistareco.aep.dto.CreatePublishJobInputDto;
 import com.aistareco.aep.dto.MixcutPublishBatchRequest;
 import com.aistareco.aep.dto.MixcutPublishBatchResultDto;
 import com.aistareco.aep.dto.PublishJobDto;
+import com.aistareco.aep.model.MixcutRenderOutput;
+import com.aistareco.aep.repository.MixcutRenderOutputRepository;
 import com.aistareco.aep.service.PublishJobService;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,9 +29,14 @@ public class MixcutPublishService {
     private static final Logger log = LoggerFactory.getLogger(MixcutPublishService.class);
 
     private final PublishJobService publishJobService;
+    private final MixcutRenderOutputRepository outputRepository;
 
-    public MixcutPublishService(PublishJobService publishJobService) {
+    public MixcutPublishService(
+            PublishJobService publishJobService,
+            MixcutRenderOutputRepository outputRepository
+    ) {
         this.publishJobService = publishJobService;
+        this.outputRepository = outputRepository;
     }
 
     public MixcutPublishBatchResultDto batchPublish(String userId, MixcutPublishBatchRequest req) {
@@ -90,6 +98,9 @@ public class MixcutPublishService {
                 List<PublishJobDto> created = publishJobService.createBatch(userId, input);
                 successJobs.addAll(created);
                 log.info("[mixcut-publish] output {} → {} jobs queued", output.outputId(), created.size());
+                // v0.19: 落 publish_count / last_published_at；视频库 UI 用此显示「已发 ×N」。
+                // tracker 失败不应影响业务结果 —— 派单本身已成功。
+                bumpPublishTracker(output.outputId(), created.size());
             } catch (BusinessException be) {
                 failed.add(new MixcutPublishBatchResultDto.FailedItem(
                         output.outputId(),
@@ -108,5 +119,22 @@ public class MixcutPublishService {
         }
 
         return new MixcutPublishBatchResultDto(successJobs, failed, totalRequested);
+    }
+
+    /** 累加 output 的 publish_count，并把 last_published_at 推到 now。outputId 不存在或无效时静默跳过。 */
+    private void bumpPublishTracker(String outputId, int delta) {
+        if (outputId == null || outputId.isBlank() || delta <= 0) return;
+        try {
+            MixcutRenderOutput o = outputRepository.findById(outputId).orElse(null);
+            if (o == null) {
+                log.warn("[mixcut-publish] tracker skip: output {} not found", outputId);
+                return;
+            }
+            o.setPublishCount(o.getPublishCount() + delta);
+            o.setLastPublishedAt(OffsetDateTime.now());
+            outputRepository.save(o);
+        } catch (Exception e) {
+            log.warn("[mixcut-publish] tracker update failed for {}: {}", outputId, e.getMessage());
+        }
     }
 }

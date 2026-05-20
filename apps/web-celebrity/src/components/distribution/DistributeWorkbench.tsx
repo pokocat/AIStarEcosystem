@@ -39,8 +39,14 @@ import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 
 type ViewMode = "grid" | "group";
 
-/** 已发布过的变体：避免用户重复派单。基于本地存储，server 暂未追加该索引。 */
-const PUBLISHED_KEY = "aep:distribute:published-output-ids";
+// v0.19+：视频库不再隐藏已发布变体。
+//
+// 历史背景：v0.16 用 localStorage (`aep:distribute:published-output-ids`) 默认隐去
+// 「派过单的变体」，避免用户重复派单。但实际产品需求是允许同一变体多次分发到不同账号
+// 或不同时间窗，旧策略反而挡了用户。v0.19 切到 server 端 `publish_count` /
+// `last_published_at` 字段——已发布的变体始终可见，UI 用「已发 ×N」徽标提示。
+//
+// 「仅未发布」过滤开关保留为可选项（默认 OFF），方便用户主动收窄视野。
 
 interface Props {
   /** 深链预选某任务（来自 /mixcut/jobs/[id] 的「去分发中心」入口） */
@@ -50,6 +56,8 @@ interface Props {
 type EligibleOutput = RenderOutput & {
   cdn_url?: string;
   cdn_thumbnail_url?: string;
+  publish_count?: number;
+  last_published_at?: string;
 };
 
 interface FlatItem {
@@ -68,9 +76,9 @@ export function DistributeWorkbench({ fromJobId }: Props) {
   const [expandedJobs, setExpandedJobs] = React.useState<Set<string>>(() => new Set());
   const [search, setSearch] = React.useState("");
   const [viewMode, setViewMode] = React.useState<ViewMode>("grid");
-  const [showPublished, setShowPublished] = React.useState(false);
+  // v0.19: 默认显示全部（含已发布）；用户主动开启过滤才隐藏。
+  const [onlyUnpublished, setOnlyUnpublished] = React.useState(false);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [publishedIds, setPublishedIds] = React.useState<Set<string>>(() => loadPublished());
   const fromJobAnchorRef = React.useRef<HTMLDivElement | null>(null);
 
   const load = React.useCallback(async () => {
@@ -124,14 +132,14 @@ export function DistributeWorkbench({ fromJobId }: Props) {
   const filteredFlat = React.useMemo(() => {
     const ql = search.trim().toLowerCase();
     return allFlat.filter((f) => {
-      if (!showPublished && publishedIds.has(f.output.id)) return false;
+      if (onlyUnpublished && (f.output.publish_count ?? 0) > 0) return false;
       if (!ql) return true;
       return (
         f.jobTemplateName.toLowerCase().includes(ql) ||
         f.jobId.toLowerCase().includes(ql)
       );
     });
-  }, [allFlat, search, showPublished, publishedIds]);
+  }, [allFlat, search, onlyUnpublished]);
 
   const filteredJobIds = React.useMemo(() => {
     const set = new Set<string>();
@@ -246,14 +254,10 @@ export function DistributeWorkbench({ fromJobId }: Props) {
   }, [allFlat, selectedOutputIds]);
 
   const handlePublished = () => {
-    // 派单成功：把这批 output_id 标为已发布，UI 默认隐起来
-    setPublishedIds((cur) => {
-      const next = new Set(cur);
-      for (const id of selectedOutputIds) next.add(id);
-      persistPublished(next);
-      return next;
-    });
+    // v0.19: 派单成功后从 server 重新拉取，让 publish_count / last_published_at 实时刷新。
+    // 不再用 localStorage 隐藏 —— 已发布变体保持可见，徽标即时升级到「已发 ×N」。
     setSelectedOutputIds(new Set());
+    void load();
   };
 
   // ─── 主体 ──────────────────────────────────────────────────────────────────
@@ -276,17 +280,17 @@ export function DistributeWorkbench({ fromJobId }: Props) {
           <ViewToggle value={viewMode} onChange={setViewMode} />
           <button
             type="button"
-            onClick={() => setShowPublished((v) => !v)}
+            onClick={() => setOnlyUnpublished((v) => !v)}
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-full border",
-              showPublished
+              onlyUnpublished
                 ? "bg-violet-50 border-violet-300 text-violet-700"
                 : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300",
             )}
-            title="显示/隐藏已经派过单的变体"
+            title="开启后仅显示尚未派单过的变体；默认显示全部（含已发布）"
           >
             <Filter className="h-3.5 w-3.5" />
-            {showPublished ? "含已发布" : "隐已发布"}
+            {onlyUnpublished ? "仅未发布" : "显示全部"}
           </button>
           <button
             type="button"
@@ -332,7 +336,7 @@ export function DistributeWorkbench({ fromJobId }: Props) {
         {jobs !== null && filteredFlat.length === 0 && !error && (
           <EmptyState
             hasAnyJobs={eligibleJobs.length > 0}
-            showingPublished={showPublished}
+            onlyUnpublished={onlyUnpublished}
             hasSearch={search.trim().length > 0}
           />
         )}
@@ -343,7 +347,6 @@ export function DistributeWorkbench({ fromJobId }: Props) {
               <GridView
                 items={filteredFlat}
                 selectedIds={selectedOutputIds}
-                publishedIds={publishedIds}
                 onToggle={toggleOutput}
               />
             ) : (
@@ -351,7 +354,6 @@ export function DistributeWorkbench({ fromJobId }: Props) {
                 jobs={filteredJobs}
                 flatByJob={groupFlatByJob(filteredFlat)}
                 selectedIds={selectedOutputIds}
-                publishedIds={publishedIds}
                 expanded={expandedJobs}
                 onToggleExpand={toggleExpand}
                 onToggleOutput={toggleOutput}
@@ -428,7 +430,8 @@ export function DistributeWorkbench({ fromJobId }: Props) {
             下一步将选择社交账号、配文案、设定时（可选）。变体 × 账号 = 总派单数。
           </p>
           <p>· 仅显示已上传到 CDN 的变体；未上传需回到任务详情等渲染完毕。</p>
-          <p>· 已派过单的变体默认隐藏，可用「含已发布」开关找回。</p>
+          <p>· 已派过单的变体保持可见，徽标显示「已发 ×N」；同一变体可再次分发到新账号 / 新时间窗。</p>
+          <p>· 想只看未派过的，点工具条「显示全部 → 仅未发布」收窄视野。</p>
           <p>
             · 没绑过账号？先到 <Link href="/distribution/accounts" className="text-violet-600 underline">账号管理</Link> 绑定。
           </p>
@@ -450,12 +453,10 @@ export function DistributeWorkbench({ fromJobId }: Props) {
 function GridView({
   items,
   selectedIds,
-  publishedIds,
   onToggle,
 }: {
   items: FlatItem[];
   selectedIds: Set<string>;
-  publishedIds: Set<string>;
   onToggle: (id: string) => void;
 }) {
   return (
@@ -463,7 +464,8 @@ function GridView({
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2.5">
         {items.map((f) => {
           const sel = selectedIds.has(f.output.id);
-          const published = publishedIds.has(f.output.id);
+          const publishCount = f.output.publish_count ?? 0;
+          const lastTip = publishedBadgeTitle(publishCount, f.output.last_published_at);
           const thumb = f.output.cdn_thumbnail_url || f.output.thumbnail_url;
           return (
             <button
@@ -476,12 +478,9 @@ function GridView({
                   ? "border-violet-500 ring-2 ring-violet-200"
                   : "border-transparent hover:border-zinc-300",
               )}
+              title={lastTip}
             >
               <Thumb src={thumb} label={`v${f.output.variant_index + 1}`} />
-              {/* 已派单淡叠层 */}
-              {published && !sel && (
-                <span className="absolute inset-0 bg-white/40" aria-hidden />
-              )}
 
               {/* 顶部任务名 chip */}
               <div className="absolute inset-x-0 top-0 px-1.5 py-1 bg-gradient-to-b from-black/55 to-transparent">
@@ -490,18 +489,18 @@ function GridView({
                 </div>
               </div>
 
-              {/* 底部 v 编号 */}
+              {/* 底部 v 编号 + 已发 ×N 计数 */}
               <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between gap-1">
                 <span className="text-[10px] font-mono bg-black/65 text-white px-1.5 py-0.5 rounded">
                   v{f.output.variant_index + 1}
                 </span>
-                {published && !sel && (
+                {publishCount > 0 && (
                   <span
                     className="text-[10px] bg-emerald-500/85 text-white px-1.5 py-0.5 rounded inline-flex items-center gap-0.5"
-                    title="已派单过"
+                    title={lastTip}
                   >
                     <CheckCircle2 className="h-2.5 w-2.5" />
-                    已发
+                    已发 ×{publishCount}
                   </span>
                 )}
               </div>
@@ -524,7 +523,6 @@ function GroupView({
   jobs,
   flatByJob,
   selectedIds,
-  publishedIds,
   expanded,
   onToggleExpand,
   onToggleOutput,
@@ -536,7 +534,6 @@ function GroupView({
   jobs: RenderJob[];
   flatByJob: Map<string, FlatItem[]>;
   selectedIds: Set<string>;
-  publishedIds: Set<string>;
   expanded: Set<string>;
   onToggleExpand: (id: string) => void;
   onToggleOutput: (id: string) => void;
@@ -617,7 +614,8 @@ function GroupView({
               <div className="grid grid-cols-3 md:grid-cols-5 xl:grid-cols-6 gap-2">
                 {items.map((f) => {
                   const sel = selectedIds.has(f.output.id);
-                  const published = publishedIds.has(f.output.id);
+                  const publishCount = f.output.publish_count ?? 0;
+                  const lastTip = publishedBadgeTitle(publishCount, f.output.last_published_at);
                   const thumb = f.output.cdn_thumbnail_url || f.output.thumbnail_url;
                   return (
                     <button
@@ -630,15 +628,19 @@ function GroupView({
                           ? "border-violet-500 ring-2 ring-violet-200"
                           : "border-transparent hover:border-zinc-300",
                       )}
+                      title={lastTip}
                     >
                       <Thumb src={thumb} label={`v${f.output.variant_index + 1}`} />
                       <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between gap-1">
                         <span className="text-[10px] font-mono bg-black/65 text-white px-1.5 py-0.5 rounded">
                           v{f.output.variant_index + 1}
                         </span>
-                        {published && !sel && (
-                          <span className="text-[10px] bg-emerald-500/85 text-white px-1 rounded">
-                            已发
+                        {publishCount > 0 && (
+                          <span
+                            className="text-[10px] bg-emerald-500/85 text-white px-1 rounded"
+                            title={lastTip}
+                          >
+                            已发 ×{publishCount}
                           </span>
                         )}
                       </div>
@@ -697,11 +699,11 @@ function Thumb({ src, label }: { src?: string | null; label?: string }) {
 // ─── 空态 ────────────────────────────────────────────────────────────────
 function EmptyState({
   hasAnyJobs,
-  showingPublished,
+  onlyUnpublished,
   hasSearch,
 }: {
   hasAnyJobs: boolean;
-  showingPublished: boolean;
+  onlyUnpublished: boolean;
   hasSearch: boolean;
 }) {
   return (
@@ -723,11 +725,11 @@ function EmptyState({
           <p className="text-sm text-zinc-700">没有匹配的视频</p>
           <p className="text-[12px] text-zinc-500 mt-1">换个关键词试试，或清空搜索。</p>
         </>
-      ) : !showingPublished ? (
+      ) : onlyUnpublished ? (
         <>
-          <p className="text-sm text-zinc-700">没有未派发的新视频</p>
+          <p className="text-sm text-zinc-700">所有可发变体都已派过单</p>
           <p className="text-[12px] text-zinc-500 mt-1">
-            点击「含已发布」可以重新看到所有可发变体。
+            关掉「仅未发布」回到「显示全部」就能再次分发，徽标会标明历史派发次数。
           </p>
         </>
       ) : (
@@ -801,23 +803,27 @@ function deriveDefaultTitle(items: BatchPublishItem[]): string {
   return `混剪批量发布 · ${items.length} 条`;
 }
 
-function loadPublished(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = window.localStorage.getItem(PUBLISHED_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as string[];
-    return new Set(arr);
-  } catch {
-    return new Set();
-  }
+/**
+ * 「已发 ×N」徽标的 hover tooltip 文案。
+ * 0 次：返回 undefined（不渲染 title）；有次数则附上相对时间。
+ */
+function publishedBadgeTitle(count: number, lastPublishedAt?: string): string | undefined {
+  if (count <= 0) return undefined;
+  if (!lastPublishedAt) return `已派单 ${count} 次`;
+  return `已派单 ${count} 次 · 最近：${formatRelativeTime(lastPublishedAt)}`;
 }
 
-function persistPublished(s: Set<string>): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify([...s]));
-  } catch {
-    /* 静默 */
-  }
+function formatRelativeTime(iso: string): string {
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return iso;
+  const diffSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (diffSec < 60) return `${diffSec} 秒前`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} 小时前`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 30) return `${diffDay} 天前`;
+  // 大于一个月直接给日期串
+  return new Date(iso).toLocaleDateString("zh-CN");
 }

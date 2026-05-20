@@ -105,7 +105,10 @@ public record MixcutRenderJobDto(
             @JsonProperty("cdn_url") String cdnUrl,
             @JsonProperty("cdn_key") String cdnKey,
             @JsonProperty("cdn_thumbnail_url") String cdnThumbnailUrl,
-            @JsonProperty("cdn_uploaded_at") String cdnUploadedAt
+            @JsonProperty("cdn_uploaded_at") String cdnUploadedAt,
+            // v0.19+: 派发计数 + 最近派发时间（视频库不再隐藏已发布；以此字段提示）
+            @JsonProperty("publish_count") int publishCount,
+            @JsonProperty("last_published_at") String lastPublishedAt
     ) {
         public static MixcutRenderOutputDto from(MixcutRenderOutput o, ObjectMapper mapper) {
             JsonNode transforms;
@@ -132,7 +135,9 @@ public record MixcutRenderJobDto(
                     o.getCdnUrl(),
                     o.getCdnKey(),
                     o.getCdnThumbnailUrl(),
-                    o.getCdnUploadedAt() == null ? null : o.getCdnUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    o.getCdnUploadedAt() == null ? null : o.getCdnUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                    o.getPublishCount(),
+                    o.getLastPublishedAt() == null ? null : o.getLastPublishedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             );
         }
     }

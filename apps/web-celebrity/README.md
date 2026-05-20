@@ -69,6 +69,14 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.19 · 2026-05-20 · 视频库允许再次分发 · 派发计数落库
+
+- ✅ **去掉「已发布默认隐藏」**：v0.16 引入的 localStorage 去重（`aep:distribute:published-output-ids`）已删除。视频库默认显示全部可发变体，包括已经派过单的；同一变体可再次分发到新账号 / 新时间窗。
+- ✅ **派发计数 + 最近时间落库**：`MixcutRenderOutput` 增 `publishCount` (`@ColumnDefault("0")`，现存行自动落 0) 与 `lastPublishedAt` 两列；`MixcutPublishService.batchPublish` 每条 output 派单成功后按 target 数累加并刷新时间。tracker 写库失败只 log，不影响派单结果。
+- ✅ **DTO + 前端类型对齐**：`MixcutRenderOutputDto` 新增 `publish_count` / `last_published_at`；`mixcut-zone/types.ts#RenderOutput` 同步两个可选字段。
+- ✅ **DistributeWorkbench UI 翻新**：缩略图徽标由「已发」→「已发 ×N」（hover tooltip 显示「已派单 N 次 · 最近：xx前」相对时间）；工具条按钮翻为「显示全部 / 仅未发布」二态切换（默认 OFF = 显示全部）；派单成功后立刻 `load()` 重新拉 jobs 列表，徽标实时升级。
+- ✅ **空态文案**：仅在「仅未发布」过滤下且全部已发时，提示用户回到「显示全部」即可再次分发。
+
 ### v0.18 · 2026-05-20 · 社交账号 profile 增强
 
 - ✅ **账号辨识度**：`SocialAccount` 增 `platformAccountId`，与已有 `displayName` / `avatarUrl` 一起展示。
@@ -95,7 +103,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 - ✅ **新核心组件**：`components/distribution/DistributeWorkbench.tsx`
   - 双视图：`grid`（默认，所有可发变体平铺；缩略图顶贴任务名 chip + 底贴 v 编号）/ `group`（按任务卡片，可展开变体；同 v0.15 行为）
-  - 跨任务搜索 + 已发布过滤（基于 localStorage `aep:distribute:published-output-ids`，派单成功后该 output_id 默认隐藏，可通过「含已发布」开关找回）
+  - 跨任务搜索 + 已发布过滤 *（v0.16 行为；v0.19 起视频库不再默认隐藏已发布变体，开关改为「显示全部 / 仅未发布」二态，详见 v0.19 节）*
   - Sticky right rail：已选缩略图九宫格（>8 折叠为 +N）+ 清空 + 「继续配置发布 (N)」CTA
   - 派单复用现有 `BatchPublishDrawer`（items[] 模式），不重复造选账号 / 文案 / 定时 UI
 - ✅ **DistributionPage IA 升级**：`components/distribution/DistributionPage.tsx`
