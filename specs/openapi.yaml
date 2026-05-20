@@ -1829,7 +1829,40 @@ components:
 
     PublishJobStatus:
       type: string
-      enum: [queued, uploading, transcoding, publishing, live, failed, cancelled]
+      description: |
+        发布任务状态机。主线 QUEUED → UPLOADING → TRANSCODING → PUBLISHING → LIVE。
+        AWAITING_USER 是「暂停」状态：平台弹出人机交互（短信验证码等）时进入；
+        用户提交响应后回到 UPLOADING / PUBLISHING；用户超时（默认 5 分钟未输入）则
+        转 FAILED with errorCode=AWAIT_USER_TIMEOUT。
+      enum: [queued, uploading, transcoding, publishing, live, awaiting_user, failed, cancelled]
+
+    InteractionRequired:
+      type: object
+      required: [kind, prompt, createdAt]
+      description: |
+        平台弹出的需要用户输入才能继续的人机交互上下文。仅当 PublishJob.status=awaiting_user
+        时存在；mirror packages/types/src/publish-job.ts InteractionRequired。
+      properties:
+        kind:
+          type: string
+          enum: [sms]
+          description: 交互类型；MVP 仅 sms（短信验证码），后续可加 captcha / slider
+        prompt:
+          type: string
+          description: 给用户看的提示文案（中文）
+        phoneMasked:
+          type: string
+          nullable: true
+          description: 已脱敏的手机号，例如 "138****5678"
+        canResendAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 下次允许重发短信的时间戳；未到点前 UI 应灰掉「重新发送」按钮
+        createdAt:
+          type: string
+          format: date-time
+          description: 进入 awaiting_user 的时间；前端用来算等待时长 + 5 分钟超时倒计时
 
     PublishJob:
       type: object
@@ -1852,6 +1885,11 @@ components:
         externalUrl:       { type: string, nullable: true, description: 平台发布后的可访问 URL }
         errorMessage:      { type: string, nullable: true }
         creditsSpent:      { type: integer, nullable: true, description: 任务扣的积分；失败不退 }
+        interactionRequired:
+          allOf:
+            - $ref: '#/components/schemas/InteractionRequired'
+          nullable: true
+          description: status=awaiting_user 时存在；其他状态为 null
         createdAt:         { type: string, format: date-time }
         updatedAt:         { type: string, format: date-time }
         scheduledAt:       { type: string, format: date-time, nullable: true }
@@ -1887,9 +1925,17 @@ components:
         externalUrl:     { type: string, nullable: true }
         errorCode:       { type: string, nullable: true }
         errorMessage:    { type: string, nullable: true }
+        interactionRequired:
+          allOf:
+            - $ref: '#/components/schemas/InteractionRequired'
+          nullable: true
+          description: |
+            进入 awaiting_user 时由 sau-service 推；离开 awaiting_user 时显式置 null。
+            其它 status 必须留空。
       description: |
         sau-service → server 的进度推送 payload (POST /internal/sau/job-callback)。
-        以 externalTaskId 幂等；状态只允许单调推进。
+        以 externalTaskId 幂等；状态推进遵循 PublishJobStatus 状态机
+        （AWAITING_USER 双向：可从 UPLOADING/TRANSCODING/PUBLISHING 进入，回到 UPLOADING/PUBLISHING/LIVE）。
 
     PublishJobEvent:
       type: object
@@ -4978,6 +5024,48 @@ paths:
       responses:
         '200':
           description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublishJob' }
+
+  /me/publish-jobs/{id}/interact:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: submitPublishJobInteraction
+      summary: 提交人机交互响应（短信验证码等）；仅在 awaiting_user 状态有效
+      description: |
+        当 PublishJob.status=awaiting_user 时，前端展示 interactionRequired 上下文
+        让用户输入验证码；提交后 server 转发到 sau-service POST /tasks/{id}/interaction，
+        sau-service 把 code 填入平台弹窗 → 弹窗关闭 → 上游 upload() 继续。
+        本接口本身不改 status；后续 callback 推 status 回到 publishing/uploading。
+
+        错误码：
+          409 INTERACTION_NOT_PENDING — 任务当前不在 awaiting_user
+          409 JOB_NOT_DISPATCHED      — 任务还没派到 sau-service（externalTaskId 为空）
+          400 INTERACTION_CODE_BLANK  — code 为空
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  minLength: 1
+                  maxLength: 32
+                  description: 用户输入的内容；sms 类型时为 4-8 位数字
+      responses:
+        '200':
+          description: 提交成功（PublishJob 仍为 awaiting_user，前端继续轮询）
           content:
             application/json:
               schema:

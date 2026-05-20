@@ -12,8 +12,28 @@ export type PublishJobStatus =
   | "transcoding"
   | "publishing"
   | "live"
+  | "awaiting_user"
   | "failed"
   | "cancelled";
+
+/**
+ * 平台弹出的需要用户输入才能继续的人机交互（短信验证码 / 滑块验证码 / ...）。
+ * sau-service watcher 检测到 page 上出现对应弹窗时通过 callback 推到 server，
+ * 前端展示输入 UI；用户提交后 POST /me/publish-jobs/{id}/interact 转回 sau-service
+ * 填入页面、点确认，上游 upload() 的发布按钮 retry 循环自然继续。
+ */
+export interface InteractionRequired {
+  /** 交互类型；MVP 仅 sms，后续可加 captcha / slider 等 */
+  kind: "sms";
+  /** 给用户看的提示文案（中文，单语） */
+  prompt: string;
+  /** 已脱敏的手机号尾号，例如 "138****5678"；可能为 null（平台未暴露） */
+  phoneMasked?: string;
+  /** 下次允许重发短信的时间戳（ISO）；未到点前 UI 应灰掉「重新发送」按钮 */
+  canResendAt?: ISODateTime;
+  /** 进入 awaiting_user 状态的时间戳；前端用来算等待时长 + 超时倒计时 */
+  createdAt: ISODateTime;
+}
 
 export interface PublishJob {
   id: ID;
@@ -44,6 +64,11 @@ export interface PublishJob {
   errorMessage?: string;
   /** 本任务实际扣的积分；失败也不退（人工调账走 admin） */
   creditsSpent?: number;
+  /**
+   * 当 status=awaiting_user 时存在；其他状态置 null。
+   * status 离开 awaiting_user（用户已提交或超时）后由 server 清空。
+   */
+  interactionRequired?: InteractionRequired | null;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
   scheduledAt?: ISODateTime;
@@ -88,4 +113,15 @@ export interface PublishJobCallback {
   externalUrl?: string;
   errorCode?: string;
   errorMessage?: string;
+  /** 进入 / 离开 awaiting_user 时由 sau-service 透传；其它 status 必须留空 */
+  interactionRequired?: InteractionRequired | null;
+}
+
+/**
+ * 用户在前端提交的交互响应（短信验证码等）。
+ * POST /api/me/publish-jobs/{id}/interact 入参。
+ */
+export interface SubmitPublishJobInteractionInput {
+  /** 用户输入的内容 — sms 为 6 位数字字符串 */
+  code: string;
 }

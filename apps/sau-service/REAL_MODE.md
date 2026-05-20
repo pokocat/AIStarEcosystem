@@ -107,8 +107,10 @@ sau-service 接管 QR 登录：用户在 `/distribution` 点 "绑定账号" → 
 | `SAU_REAL_LOGIN_HEADLESS` | `1` | 本地调试翻 `0` 看 chromium |
 | `SAU_MAX_CONCURRENCY` | `2` | 同时上传任务数；chromium 内存 ~600MB / 实例，按机器算 |
 | `SAU_DEFAULT_UPLOAD_COST` | `20` | server 侧每个 publish-job 扣多少积分 |
-| `SAU_UPLOAD_TIMEOUT_S` | `180` | 单条 `DouYinVideo.upload()` / `TencentVideo.upload()` 总超时（秒）。上游发布按钮循环是 `while True`，没有保护，平台 selector 失效会卡死整个任务 — 这个超时强制 cancel + 标 FAILED。 |
+| `SAU_UPLOAD_TIMEOUT_S` | `180` | 单条 `DouYinVideo.upload()` / `TencentVideo.upload()` 总超时（秒）。上游发布按钮循环是 `while True`，没有保护，平台 selector 失效会卡死整个任务 — 这个超时强制 cancel + 标 FAILED。`awaiting_user` 期间暂停计时。 |
 | `SAU_UPLOAD_PUBLISHING_AFTER_S` | `60` | upload 持续这么久还没返回 → 推 `status=publishing progress=80`，让 UI 区分"传字节"与"等平台审核/发布"。 |
+| `SAU_INTERACTION_USER_TIMEOUT_S` | `300` | SMS / 人机交互弹窗出现后，等用户提交验证码的最长时长（秒）。超时标 FAILED with `AWAIT_USER_TIMEOUT`。 |
+| `SAU_INTERACTION_POLL_INTERVAL_S` | `2.0` | watcher 轮询 page 检查 SMS 弹窗的间隔（秒）。 |
 
 QR 只在 `/login/start` 截一次。用户扫太慢 → 页面侧 QR 过期 → 重新点 "绑定账号" 拿新 session。
 

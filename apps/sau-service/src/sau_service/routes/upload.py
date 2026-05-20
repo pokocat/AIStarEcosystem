@@ -1,6 +1,9 @@
-"""POST /upload + GET /tasks/{id} + POST /tasks/{id}/cancel — sau task management."""
+"""POST /upload + GET /tasks/{id} + POST /tasks/{id}/cancel + POST /tasks/{id}/interaction
+— sau task management."""
 
 from __future__ import annotations
+
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -38,6 +41,12 @@ class TaskStatusResponse(BaseModel):
     externalUrl: str | None = None
     errorCode: str | None = None
     errorMessage: str | None = None
+    interactionRequired: dict[str, Any] | None = None
+
+
+class InteractionInput(BaseModel):
+    """User-submitted interaction response (SMS code for now)."""
+    code: str = Field(..., min_length=1, max_length=32)
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -77,6 +86,7 @@ async def get_task(task_id: str, request: Request) -> TaskStatusResponse:
         externalUrl=rec.external_url,
         errorCode=rec.error_code,
         errorMessage=rec.error_message,
+        interactionRequired=rec.interaction_required,
     )
 
 
@@ -88,5 +98,34 @@ async def cancel_task(task_id: str, request: Request) -> Response:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "TASK_NOT_FOUND", "message": f"task {task_id} not found"},
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/tasks/{task_id}/interaction")
+async def submit_interaction(task_id: str, payload: InteractionInput, request: Request) -> Response:
+    """Submit a user response (e.g. SMS code) to an awaiting_user task.
+
+    Returns 204 on accepted; 404 task missing; 409 task not in awaiting_user
+    (out of order — e.g. already submitted, or status moved past it).
+    """
+    manager: UploadManager = request.app.state.upload_manager
+    accepted = await manager.submit_interaction(task_id, {"code": payload.code})
+    if not accepted:
+        rec = await manager.get(task_id)
+        if rec is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "TASK_NOT_FOUND", "message": f"task {task_id} not found"},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "INTERACTION_NOT_PENDING",
+                "message": (
+                    f"task {task_id} is not currently awaiting user input "
+                    f"(status={rec.status}); response dropped"
+                ),
+            },
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

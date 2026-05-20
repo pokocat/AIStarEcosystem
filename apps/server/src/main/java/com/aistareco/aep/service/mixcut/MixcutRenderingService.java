@@ -447,13 +447,85 @@ public class MixcutRenderingService {
         static Overrides defaults() { return new Overrides(true, true, true, true, true, true); }
     }
 
+    private record FilterCaps(
+            boolean scale,
+            boolean overlay,
+            boolean concat,
+            boolean crop,
+            boolean eq,
+            boolean hflip,
+            boolean setpts,
+            boolean aresample,
+            boolean aformat,
+            boolean atempo,
+            boolean amix,
+            boolean format,
+            boolean split,
+            boolean boxblur,
+            boolean drawbox,
+            boolean color,
+            boolean colorchannelmixer,
+            boolean volume
+    ) {
+        static FilterCaps from(Set<String> filters) {
+            return new FilterCaps(
+                    filters.contains("scale"),
+                    filters.contains("overlay"),
+                    filters.contains("concat"),
+                    filters.contains("crop"),
+                    filters.contains("eq"),
+                    filters.contains("hflip"),
+                    filters.contains("setpts"),
+                    filters.contains("aresample"),
+                    filters.contains("aformat"),
+                    filters.contains("atempo"),
+                    filters.contains("amix"),
+                    filters.contains("format"),
+                    filters.contains("split"),
+                    filters.contains("boxblur"),
+                    filters.contains("drawbox"),
+                    filters.contains("color"),
+                    filters.contains("colorchannelmixer"),
+                    filters.contains("volume")
+            );
+        }
+
+        boolean canNormalizeAudio() {
+            return aresample && aformat;
+        }
+
+        List<String> missingEnhancements() {
+            List<String> missing = new ArrayList<>();
+            if (!crop) missing.add("crop");
+            if (!eq) missing.add("eq");
+            if (!hflip) missing.add("hflip");
+            if (!setpts) missing.add("setpts");
+            if (!atempo) missing.add("atempo");
+            if (!boxblur) missing.add("boxblur");
+            if (!drawbox) missing.add("drawbox");
+            if (!colorchannelmixer) missing.add("colorchannelmixer");
+            return missing;
+        }
+    }
+
+    private FilterCaps filterCaps() {
+        Set<String> filters = ffmpeg.availableFilters();
+        if (filters.isEmpty()) {
+            throw new IllegalStateException("ffmpeg returned no filters from `-filters`; cannot build a safe filtergraph");
+        }
+        FilterCaps caps = FilterCaps.from(filters);
+        if (!caps.scale) {
+            throw new IllegalStateException("ffmpeg missing required filter `scale`; install a full ffmpeg build or set AEP_FFMPEG_BIN");
+        }
+        return caps;
+    }
+
     private static final Set<String> VIDEO_EXTS = Set.of(".mp4", ".mov", ".m4v", ".webm", ".mkv");
     private static final Set<String> IMAGE_EXTS = Set.of(".png", ".jpg", ".jpeg", ".webp", ".gif");
-    /** 真正的「单帧静态图」：image2 demuxer 只产 1 帧后立刻 EOF，
-     *  必须用 `-loop 1 -framerate 30` 让它循环 demux 出连续帧。
-     *  注意 .gif 不在此集合 —— GIF 是动图，走 gif demuxer + -stream_loop -1。
-     *  根因：`-stream_loop -1` 依赖 demuxer 支持 seek-back；image2 不支持，于是
-     *  input 永远只有 1 帧，filter graph 等不到匹配的时间戳 → frame=0 死锁。 */
+    /** 真正的「单帧静态图」：image2 demuxer 只产 1 帧后 EOF。
+     *  这里不再使用 `-loop 1`：部分精简 ffmpeg build 不识别该 input option。
+     *  静态图改为单帧输入，由 overlay filter 的 repeatlast 保持到整段结束。
+     *  注意 .gif 不在此集合 —— GIF 是动图，仍走 gif demuxer + -stream_loop -1。 */
     private static final Set<String> STATIC_IMAGE_EXTS = Set.of(".png", ".jpg", ".jpeg", ".webp");
     private static final Set<String> AUDIO_EXTS = Set.of(".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac");
 
@@ -464,6 +536,51 @@ public class MixcutRenderingService {
         if (dot < 0) return false;
         return STATIC_IMAGE_EXTS.contains(n.substring(dot));
     }
+
+    private static void addRepeatingOverlayInput(List<String> args, File file, int totalDuration) {
+        if (!isStaticImage(file)) {
+            args.add("-stream_loop"); args.add("-1");
+            args.add("-t"); args.add(format((double) totalDuration));
+        }
+        args.add("-i"); args.add(file.getAbsolutePath());
+    }
+
+    private static void appendScaledVideo(
+            StringBuilder fc,
+            int width,
+            int height,
+            boolean cover,
+            boolean canCrop,
+            String outTag
+    ) {
+        appendScaledVideo(fc, width, height, cover, canCrop, outTag, false);
+    }
+
+    private static void appendScaledVideo(
+            StringBuilder fc,
+            int width,
+            int height,
+            boolean cover,
+            boolean canCrop,
+            String outTag,
+            boolean chainContinues
+    ) {
+        fc.append("scale=w=").append(width).append(":h=").append(height);
+        if (canCrop) {
+            fc.append(":force_original_aspect_ratio=").append(cover ? "increase" : "decrease");
+            if (cover) {
+                fc.append(",crop=w=").append(width).append(":h=").append(height);
+            }
+        } else if (!cover) {
+            fc.append(":force_original_aspect_ratio=decrease");
+        }
+        if (chainContinues) {
+            fc.append(",");
+        } else {
+            fc.append("[").append(outTag).append("];");
+        }
+    }
+
     // v0.x: layer_type 收缩到 4 类(video / image / text / audio)。
     // 旧 job 的 slots_snapshot 仍可能含 digital_human / sticker,buildContext 在解析时归一化。
     private static final Set<String> VIDEO_LAYERS = Set.of("video");
@@ -777,7 +894,14 @@ public class MixcutRenderingService {
             String profile,
             Random rnd
     ) {
-        int segCount = Math.min(2, sources.size());
+        FilterCaps caps = filterCaps();
+        List<String> missingEnhancements = caps.missingEnhancements();
+        if (!missingEnhancements.isEmpty()) {
+            log.warn("[mixcut] ffmpeg lacks optional filters {}; rendering degraded variant={} job={}",
+                    missingEnhancements, variantIndex, job.getId());
+        }
+
+        int segCount = caps.concat ? Math.min(2, sources.size()) : 1;
         double segDuration = Math.max(2.0, (double) props.getMaxOutputDurationSec() / Math.max(1, segCount));
         int totalDuration = props.getMaxOutputDurationSec();
         int W = ctx.outputWidth;
@@ -789,14 +913,6 @@ public class MixcutRenderingService {
         double saturation  = ctx.overrides.allowSaturation  ? randomSaturation(profile, rnd)  : 1.0;
         boolean mirror     = ctx.overrides.allowMirror      && randomMirror(profile, rnd);
 
-        transforms.put("variant", variantIndex);
-        transforms.put("speed", round2(speed));
-        transforms.put("brightness", round3(brightness));
-        transforms.put("saturation", round3(saturation));
-        transforms.put("mirror", mirror);
-        transforms.put("segments", segCount);
-        transforms.put("canvas_w", W);
-        transforms.put("canvas_h", H);
         ObjectNode overridesNode = transforms.putObject("overrides");
         overridesNode.put("allow_mirror", ctx.overrides.allowMirror);
         overridesNode.put("allow_speed", ctx.overrides.allowSpeed);
@@ -804,6 +920,12 @@ public class MixcutRenderingService {
         overridesNode.put("allow_saturation", ctx.overrides.allowSaturation);
         overridesNode.put("allow_position_jitter", ctx.overrides.allowPositionJitter);
         overridesNode.put("allow_scale_jitter", ctx.overrides.allowScaleJitter);
+        if (!caps.eq) {
+            brightness = 0.0;
+            saturation = 1.0;
+        }
+        if (!caps.hflip) mirror = false;
+        if (!caps.setpts) speed = 1.0;
 
         // ffmpeg args 累积
         List<String> args = new ArrayList<>();
@@ -835,8 +957,27 @@ public class MixcutRenderingService {
             segDetail.set("seg_" + i, seg);
         }
         boolean useSourceAudio = allHaveAudio;
-        boolean useBgm = bgm != null && bgm.exists();
+        if (useSourceAudio && !caps.canNormalizeAudio()) {
+            useSourceAudio = false;
+        }
+        if (useSourceAudio && Math.abs(speed - 1.0) > 0.001 && !caps.atempo) {
+            speed = 1.0;
+        }
+        boolean useBgm = bgm != null && bgm.exists() && caps.canNormalizeAudio();
+        if (useBgm && useSourceAudio && !caps.amix) {
+            useBgm = false;
+        }
         boolean hasAudio = useSourceAudio || useBgm;
+
+        transforms.put("variant", variantIndex);
+        transforms.put("speed", round2(speed));
+        transforms.put("brightness", round3(brightness));
+        transforms.put("saturation", round3(saturation));
+        transforms.put("mirror", mirror);
+        transforms.put("segments", segCount);
+        transforms.put("canvas_w", W);
+        transforms.put("canvas_h", H);
+        transforms.put("ffmpeg_degraded", !missingEnhancements.isEmpty());
         transforms.put("audio_source", useBgm
                 ? (useSourceAudio ? "source+bgm" : "bgm")
                 : (useSourceAudio ? "source" : "silent"));
@@ -844,30 +985,17 @@ public class MixcutRenderingService {
         // 叠加图层输入
         //  - snapshot 解析出的 overlay（已按 z_index 排序）→ 真实图
         //  - 没有可用 overlay → 退化为半透明色卡兜底
-        boolean useRealOverlay = !overlays.isEmpty();
-        int overlayCount = useRealOverlay ? Math.min(4, overlays.size()) : 1;
+        boolean useRealOverlay = caps.overlay && !overlays.isEmpty();
+        int overlayCount = useRealOverlay ? Math.min(4, overlays.size()) : (caps.overlay && caps.color ? 1 : 0);
         transforms.put("overlay_count", overlayCount);
-        transforms.put("overlay_source", useRealOverlay ? "user-upload" : "fallback-color-card");
+        transforms.put("overlay_source", useRealOverlay ? "user-upload"
+                : (overlayCount == 1 ? "fallback-color-card" : "disabled-missing-filter"));
 
         if (useRealOverlay) {
             ObjectNode overlayDetail = transforms.putObject("overlays_detail");
             for (int i = 0; i < overlayCount; i++) {
                 OverlaySpec spec = overlays.get(i);
-                // Loop 输入到 totalDuration —— 按文件类型选 demuxer-friendly 选项：
-                //   静态图（jpg/png/webp）→ `-loop 1 -framerate 30`：image2 demuxer 不支持
-                //     seek-back，stream_loop 在它上面失效；用 `-loop 1` 让 demuxer 自己
-                //     循环输出帧，`-framerate` 强制每秒 30 帧。历史踩过的坑：
-                //     给 JPG overlay 加 `-stream_loop -1` 让 filter graph 死锁在 frame=0。
-                //   GIF / 视频 / 音频 → `-stream_loop -1`：demuxer 支持 seek-back，
-                //     stream_loop 是 demuxer-agnostic 的通用选项（ffmpeg 2.8+）。
-                if (isStaticImage(spec.file)) {
-                    args.add("-loop"); args.add("1");
-                    args.add("-framerate"); args.add("30");
-                } else {
-                    args.add("-stream_loop"); args.add("-1");
-                }
-                args.add("-t"); args.add(format((double) totalDuration));
-                args.add("-i"); args.add(spec.file.getAbsolutePath());
+                addRepeatingOverlayInput(args, spec.file, totalDuration);
                 ObjectNode od = overlayDetail.objectNode();
                 od.put("file", spec.file.getName());
                 od.put("slot_id", spec.slotId);
@@ -883,7 +1011,7 @@ public class MixcutRenderingService {
                 }
                 overlayDetail.set("o_" + i, od);
             }
-        } else {
+        } else if (overlayCount == 1) {
             args.add("-f"); args.add("lavfi");
             args.add("-i");
             args.add("color=c=0x7c5cff@0.55:s=" + (W / 2) + "x" + Math.max(80, H / 16) + ":d=" + format((double) totalDuration));
@@ -892,7 +1020,7 @@ public class MixcutRenderingService {
         // BGM 输入（如果有）—— 循环到 totalDuration
         int bgmInputIdx = -1;
         if (useBgm) {
-            bgmInputIdx = segCount + (useRealOverlay ? overlayCount : 1);
+            bgmInputIdx = segCount + overlayCount;
             args.add("-stream_loop"); args.add("-1");
             args.add("-t"); args.add(format((double) totalDuration));
             args.add("-i"); args.add(bgm.getAbsolutePath());
@@ -900,19 +1028,13 @@ public class MixcutRenderingService {
 
         // v0.13+: 扰动贴图池 —— 每变体按 (jobId + variantIndex) seed 从 pool_ids 随机抽。
         //   pool 里通常是 GIF（gif demuxer 支持 seek-back → -stream_loop OK），
-        //   但 admin 也可能上传 PNG/JPG 静态贴图，那走 -loop 1 -framerate 30，
-        //   否则 image2 demuxer 不 seek-back 会 frame=0 死锁（与 overlay input 同理）。
-        List<StickerOverlay> stickers = buildVariantStickers(job, ctx, variantIndex, totalDuration, transforms);
-        int stickerInputStart = segCount + (useRealOverlay ? overlayCount : 1) + (useBgm ? 1 : 0);
+        //   但 admin 也可能上传 PNG/JPG 静态贴图，那作为单帧输入交给 overlay repeatlast。
+        List<StickerOverlay> stickers = caps.overlay
+                ? buildVariantStickers(job, ctx, variantIndex, totalDuration, transforms)
+                : List.of();
+        int stickerInputStart = segCount + overlayCount + (useBgm ? 1 : 0);
         for (StickerOverlay so : stickers) {
-            if (isStaticImage(so.file)) {
-                args.add("-loop"); args.add("1");
-                args.add("-framerate"); args.add("30");
-            } else {
-                args.add("-stream_loop"); args.add("-1");
-            }
-            args.add("-t"); args.add(format((double) totalDuration));
-            args.add("-i"); args.add(so.file.getAbsolutePath());
+            addRepeatingOverlayInput(args, so.file, totalDuration);
         }
         transforms.put("sticker_overlay_count", stickers.size());
 
@@ -937,10 +1059,8 @@ public class MixcutRenderingService {
             // ffmpeg 版本上都可用,且对可读性也更好。
             String vOut = skipConcat ? "concat_v" : ("s" + i);
             String aOut = skipConcat ? "concat_a" : ("as" + i);
-            fc.append("[").append(i).append(":v]")
-              .append("scale=w=").append(W).append(":h=").append(H).append(":force_original_aspect_ratio=increase,")
-              .append("crop=w=").append(W).append(":h=").append(H)
-              .append("[").append(vOut).append("];");
+            fc.append("[").append(i).append(":v]");
+            appendScaledVideo(fc, W, H, true, caps.crop, vOut);
             if (useSourceAudio) {
                 fc.append("[").append(i).append(":a]")
                   .append("aresample=sample_rate=44100,aformat=channel_layouts=stereo")
@@ -960,15 +1080,21 @@ public class MixcutRenderingService {
             }
         }
 
-        // perturbation 视频链（eq 总是写一次以保持链条完整；恒等值无视觉影响）
-        fc.append("[concat_v]eq=brightness=").append(format(brightness))
-          .append(":saturation=").append(format(saturation));
-        if (mirror) fc.append(",hflip");
-        if (Math.abs(speed - 1.0) > 0.001) {
-            // setpts=expr=X*PTS (显式 expr 参数名,避免依赖 shorthand)
-            fc.append(",setpts=expr=").append(format(1.0 / speed)).append("*PTS");
+        // perturbation 视频链：只使用当前 ffmpeg 已注册的 filters。
+        List<String> videoFx = new ArrayList<>();
+        if (caps.eq) {
+            videoFx.add("eq=brightness=" + format(brightness) + ":saturation=" + format(saturation));
         }
-        fc.append("[fx];");
+        if (mirror && caps.hflip) videoFx.add("hflip");
+        if (Math.abs(speed - 1.0) > 0.001 && caps.setpts) {
+            videoFx.add("setpts=expr=" + format(1.0 / speed) + "*PTS");
+        }
+        String videoBaseTag = "concat_v";
+        String videoFxTag = videoBaseTag;
+        if (!videoFx.isEmpty()) {
+            fc.append("[concat_v]").append(String.join(",", videoFx)).append("[fx];");
+            videoFxTag = "fx";
+        }
 
         // perturbation 音频链:speed≠1 时同步 atempo;再决定是否 amix BGM
         String audioOutTag = null;
@@ -983,8 +1109,9 @@ public class MixcutRenderingService {
         if (useBgm) {
             // BGM 单路归一化
             fc.append("[").append(bgmInputIdx).append(":a]")
-              .append("aresample=sample_rate=44100,aformat=channel_layouts=stereo,volume=0.6")
-              .append("[bgm_a];");
+              .append("aresample=sample_rate=44100,aformat=channel_layouts=stereo");
+            if (caps.volume) fc.append(",volume=0.6");
+            fc.append("[bgm_a];");
             if (audioOutTag != null) {
                 // 源音 + BGM 混合(源音权重高,BGM 0.6 已降过)
                 fc.append("[").append(audioOutTag).append("][bgm_a]")
@@ -997,7 +1124,7 @@ public class MixcutRenderingService {
         }
 
         // overlay 链：每张图按 slot.rect 精确定位 + 缩放（force_original_aspect_ratio=decrease 防止失真）
-        String prev = "fx";
+        String prev = videoFxTag;
         for (int i = 0; i < overlayCount; i++) {
             int inputIdx = segCount + i;
             String tag = "ov" + i;
@@ -1015,46 +1142,38 @@ public class MixcutRenderingService {
                 rx = fallback[0]; ry = fallback[1]; rw = fallback[2]; rh = fallback[3];
             }
 
-            // 填充方式分支（v0.13+ 模板字段 slot.fit）
-            //   cover  = 填满裁切：force_original_aspect_ratio=increase + crop=rw:rh
-            //   contain = 完整居中：split → 一路 cover+boxblur 作为 letterbox 背景，
-            //                       另一路 fit-inside 作为主体，再 overlay 居中
-            // 都用 crop 截到精确 rw x rh，避免旧版 scale-decrease+pad 在边界 rounding 时报
-            //   "Padded dimensions cannot be smaller than input dimensions"。
+            // 填充方式分支（v0.13+ 模板字段 slot.fit）。完整 ffmpeg build 走
+            // contain 的模糊背景；精简 build 缺 crop/split/boxblur 时降级为单路缩放。
             String fit = useRealOverlay && overlays.get(i).fit != null
                     ? overlays.get(i).fit
                     : "cover";
-            if ("contain".equals(fit)) {
+            if ("contain".equals(fit) && useRealOverlay && caps.split && caps.crop) {
                 // 模糊背景填充：[i:v] split → [bg] cover+blur，[fg] fit，[bg][fg] overlay center
                 String bgTag = tag + "bg";
                 String fgTag = tag + "fg";
-                fc.append("[").append(inputIdx).append(":v]")
-                  .append("format=pix_fmts=yuva420p,split=outputs=2[").append(bgTag).append("0][").append(fgTag).append("0];");
-                fc.append("[").append(bgTag).append("0]")
-                  .append("scale=w=").append(rw).append(":h=").append(rh)
-                  .append(":force_original_aspect_ratio=increase,")
-                  .append("crop=w=").append(rw).append(":h=").append(rh).append(",")
-                  .append("boxblur=luma_radius=14:luma_power=1,eq=brightness=-0.05")
-                  .append("[").append(bgTag).append("];");
-                fc.append("[").append(fgTag).append("0]")
-                  .append("scale=w=").append(rw).append(":h=").append(rh)
-                  .append(":force_original_aspect_ratio=decrease")
-                  .append("[").append(fgTag).append("];");
+                fc.append("[").append(inputIdx).append(":v]");
+                if (caps.format) fc.append("format=pix_fmts=yuva420p,");
+                fc.append("split=outputs=2[").append(bgTag).append("0][").append(fgTag).append("0];");
+                fc.append("[").append(bgTag).append("0]");
+                appendScaledVideo(fc, rw, rh, true, true, bgTag, caps.boxblur || caps.eq);
+                if (caps.boxblur || caps.eq) {
+                    List<String> bgFx = new ArrayList<>();
+                    if (caps.boxblur) bgFx.add("boxblur=luma_radius=14:luma_power=1");
+                    if (caps.eq) bgFx.add("eq=brightness=-0.05");
+                    fc.append(String.join(",", bgFx)).append("[").append(bgTag).append("];");
+                }
+                fc.append("[").append(fgTag).append("0]");
+                appendScaledVideo(fc, rw, rh, false, true, fgTag);
                 fc.append("[").append(bgTag).append("][").append(fgTag).append("]")
-                  .append("overlay=x=(W-w)/2:y=(H-h)/2:format=auto")
+                  .append("overlay=x=(W-w)/2:y=(H-h)/2")
                   .append("[").append(tag).append("s];");
             } else {
-                // 填满裁切（默认）：scale-increase + crop
-                fc.append("[").append(inputIdx).append(":v]")
-                  .append("format=pix_fmts=yuva420p,scale=w=").append(rw).append(":h=").append(rh)
-                  .append(":force_original_aspect_ratio=increase,")
-                  .append("crop=w=").append(rw).append(":h=").append(rh)
-                  .append("[").append(tag).append("s];");
+                fc.append("[").append(inputIdx).append(":v]");
+                if (caps.format) fc.append("format=pix_fmts=yuva420p,");
+                appendScaledVideo(fc, rw, rh, !"contain".equals(fit), caps.crop, tag + "s");
             }
             fc.append("[").append(prev).append("][").append(tag).append("s]")
-              .append("overlay=x=").append(rx).append(":y=").append(ry)
-              .append(":enable='between(t,").append(i == 0 ? "0.0" : "0.0").append(",")
-              .append(totalDuration - 1).append(")'");
+              .append("overlay=x=").append(rx).append(":y=").append(ry);
             String outTag = "ovl" + i;
             fc.append("[").append(outTag).append("];");
             prev = outTag;
@@ -1066,29 +1185,35 @@ public class MixcutRenderingService {
             StickerOverlay s = stickers.get(i);
             int inputIdx = stickerInputStart + i;
             String stickerTag = "sk" + i;
-            fc.append("[").append(inputIdx).append(":v]")
-              .append("format=pix_fmts=yuva420p,scale=w=").append(s.targetWidth).append(":h=-2")
-              .append(",colorchannelmixer=aa=").append(format(s.opacity))
-              .append("[").append(stickerTag).append("s];");
+            fc.append("[").append(inputIdx).append(":v]");
+            if (caps.format) fc.append("format=pix_fmts=yuva420p,");
+            fc.append("scale=w=").append(s.targetWidth).append(":h=-2");
+            if (caps.colorchannelmixer) {
+                fc.append(",colorchannelmixer=aa=").append(format(s.opacity));
+            }
+            fc.append("[").append(stickerTag).append("s];");
             String nextOut = "skl" + i;
             fc.append("[").append(prev).append("][").append(stickerTag).append("s]")
               .append("overlay=x=").append(s.x).append(":y=").append(s.y)
-              .append(":enable='between(t,").append(format(s.startT)).append(",").append(format(s.endT)).append(")':format=auto")
               .append("[").append(nextOut).append("];");
             prev = nextOut;
         }
 
-        // 变体识别条
-        int variantHue = (variantIndex * 67) % 360;
-        String variantColor = String.format(Locale.ROOT, "0x%06x", hslToRgb(variantHue, 0.65, 0.55));
-        fc.append("[").append(prev).append("]")
-          .append("drawbox=x=0:y=0:w=iw:h=8:color=").append(variantColor).append("@0.9:t=fill,")
-          .append("drawbox=x=0:y=ih-8:w=iw:h=8:color=").append(variantColor).append("@0.9:t=fill")
-          .append("[out]");
+        String videoMapTag = prev;
+        if (caps.drawbox) {
+            // 变体识别条
+            int variantHue = (variantIndex * 67) % 360;
+            String variantColor = String.format(Locale.ROOT, "0x%06x", hslToRgb(variantHue, 0.65, 0.55));
+            fc.append("[").append(prev).append("]")
+              .append("drawbox=x=0:y=0:w=iw:h=8:color=").append(variantColor).append("@0.9:t=fill,")
+              .append("drawbox=x=0:y=ih-8:w=iw:h=8:color=").append(variantColor).append("@0.9:t=fill")
+              .append("[out]");
+            videoMapTag = "out";
+        }
 
         args.add("-filter_complex");
         args.add(fc.toString());
-        args.add("-map"); args.add("[out]");
+        args.add("-map"); args.add("[" + videoMapTag + "]");
         if (hasAudio && audioOutTag != null) {
             args.add("-map"); args.add("[" + audioOutTag + "]");
         }

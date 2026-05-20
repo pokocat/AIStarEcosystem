@@ -232,11 +232,12 @@ export const SOCIAL_ACCOUNT_STATUS: Record<string, StatusMeta> = {
 };
 
 export const PUBLISH_JOB_STATUS: Record<string, StatusMeta> = {
-  queued:       { label: "排队中",   tone: "neutral" },
-  uploading:    { label: "上传中",   tone: "info" },
-  transcoding:  { label: "转码中",   tone: "info" },
-  publishing:   { label: "发布中",   tone: "primary" },
-  live:         { label: "已上线",   tone: "success" },
-  failed:       { label: "失败",     tone: "danger", actionable: true },
-  cancelled:    { label: "已取消",   tone: "neutral" },
+  queued:        { label: "排队中",     tone: "neutral" },
+  uploading:     { label: "上传中",     tone: "info" },
+  transcoding:   { label: "转码中",     tone: "info" },
+  publishing:    { label: "发布中",     tone: "primary" },
+  awaiting_user: { label: "待输入验证码", tone: "warning", actionable: true },
+  live:          { label: "已上线",     tone: "success" },
+  failed:        { label: "失败",       tone: "danger", actionable: true },
+  cancelled:     { label: "已取消",     tone: "neutral" },
 };

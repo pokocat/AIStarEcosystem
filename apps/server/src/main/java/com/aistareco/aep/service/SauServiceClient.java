@@ -101,6 +101,18 @@ public class SauServiceClient {
                 Map.of());
     }
 
+    /** POST /tasks/{id}/interaction { code } — 提交用户输入的短信验证码。
+     *
+     *  sau-service 返回 204 (No Content) on success；409 表示任务当前不在
+     *  awaiting_user 状态（前端这边乱序提交，例如反复点了两次）；404 表示
+     *  任务不存在（sau-service 重启 in-memory task 丢了）。本方法把这些异常
+     *  统一包成 BusinessException 让 controller 处理。
+     */
+    public void submitInteraction(String taskId, String code) {
+        postJson("/tasks/" + URLEncoder.encode(taskId, StandardCharsets.UTF_8) + "/interaction",
+                Map.of("code", code));
+    }
+
     // ── 内部 ──────────────────────────────────────────────────────────────
 
     private Map<String, Object> postJson(String path, Map<String, Object> body) {

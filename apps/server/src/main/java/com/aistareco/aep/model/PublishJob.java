@@ -113,6 +113,20 @@ public class PublishJob {
     @Column(name = "credits_spent")
     private Long creditsSpent;
 
+    /**
+     * 当 status=AWAITING_USER 时，sau-service 透传的人机交互上下文 JSON。
+     * 其它状态期间为 null。
+     *
+     * JSON 结构 mirror packages/types/src/publish-job.ts InteractionRequired：
+     *   { kind, prompt, phone_masked?, can_resend_at?, created_at }
+     *
+     * 进/出 awaiting_user 由 callback 同时变更 status + interactionRequiredJson；
+     * 用户在 /me/publish-jobs/{id}/interact 提交后，sau-service 在 page 上
+     * 填完验证码 → 再发 callback 推 status=PUBLISHING + interactionRequired=null。
+     */
+    @Column(name = "interaction_required", columnDefinition = "TEXT")
+    private String interactionRequiredJson;
+
     @Column(name = "scheduled_at")
     private Instant scheduledAt;
 

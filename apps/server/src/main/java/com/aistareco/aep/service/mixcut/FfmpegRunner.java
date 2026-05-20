@@ -12,8 +12,13 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 极薄的 ffmpeg / ffprobe ProcessBuilder 包装。
@@ -23,8 +28,10 @@ import java.util.concurrent.TimeUnit;
 public class FfmpegRunner {
 
     private static final Logger log = LoggerFactory.getLogger(FfmpegRunner.class);
+    private static final Pattern FILTER_LINE = Pattern.compile("^\\s*[.A-Z|]{3,}\\s+([A-Za-z0-9_]+)\\s+.*$");
 
     private final MixcutProperties props;
+    private volatile Set<String> availableFilters;
 
     public FfmpegRunner(MixcutProperties props) {
         this.props = props;
@@ -50,6 +57,21 @@ public class FfmpegRunner {
                         bin, e.getMessage());
             }
         }
+        try {
+            Set<String> filters = availableFilters();
+            List<String> missing = List.of("scale", "overlay", "concat", "crop", "eq", "hflip", "drawbox", "boxblur")
+                    .stream()
+                    .filter(name -> !filters.contains(name))
+                    .toList();
+            if (missing.isEmpty()) {
+                log.info("[mixcut] ffmpeg filter capability check OK ({} filters)", filters.size());
+            } else {
+                log.warn("[mixcut] ffmpeg filter capability degraded: missing {}. Render worker will fallback where possible.",
+                        missing);
+            }
+        } catch (Exception e) {
+            log.warn("[mixcut] cannot inspect ffmpeg filters via `{} -filters`: {}", props.getFfmpegBin(), e.getMessage());
+        }
     }
 
     /**
@@ -65,6 +87,10 @@ public class FfmpegRunner {
     }
 
     private String run(String bin, List<String> args) {
+        return run(bin, args, 32_000);
+    }
+
+    private String run(String bin, List<String> args, int maxOutputChars) {
         List<String> cmd = new ArrayList<>(args.size() + 1);
         cmd.add(bin);
         cmd.addAll(args);
@@ -86,7 +112,7 @@ public class FfmpegRunner {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = r.readLine()) != null) {
-                    if (output.length() < 32_000) output.append(line).append('\n');
+                    if (output.length() < maxOutputChars) output.append(line).append('\n');
                 }
             } catch (IOException ignored) {
                 // process killed mid-read
@@ -138,6 +164,31 @@ public class FfmpegRunner {
             log.debug("[mixcut] {} took {}ms", bin, elapsedMs);
         }
         return output.toString();
+    }
+
+    /**
+     * 当前 ffmpeg binary 实际注册的 filters。FFmpeg 官方文档明确建议用
+     * `ffmpeg -filters` 查看可用 filter；构建时也可以 `--disable-filters`
+     * 或裁掉单个 filter，所以渲染器不能假设 full build。
+     */
+    public Set<String> availableFilters() {
+        Set<String> cached = availableFilters;
+        if (cached != null) return cached;
+        synchronized (this) {
+            if (availableFilters != null) return availableFilters;
+            String out = run(props.getFfmpegBin(), List.of("-hide_banner", "-filters"), 512_000);
+            Set<String> parsed = new HashSet<>();
+            for (String line : out.split("\\R")) {
+                Matcher m = FILTER_LINE.matcher(line);
+                if (m.matches()) parsed.add(m.group(1));
+            }
+            availableFilters = Collections.unmodifiableSet(parsed);
+            return availableFilters;
+        }
+    }
+
+    public boolean hasFilter(String name) {
+        return availableFilters().contains(name);
     }
 
     /** ffprobe 拿视频/图片时长（秒）；失败返回 0。 */

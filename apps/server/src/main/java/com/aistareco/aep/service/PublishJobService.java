@@ -286,11 +286,20 @@ public class PublishJobService {
             throw BusinessException.badRequest("STATUS_INVALID", "未知 status=" + cb.status());
         }
         if (from == to) {
-            // 同状态可能只是进度更新
+            // 同状态可能只是进度 / interactionRequired 内容更新（例如重发 SMS 后
+            // can_resend_at 变化）。
+            boolean changed = false;
             if (cb.progress() != null && cb.progress() > job.getProgress()) {
                 job.setProgress(cb.progress());
+                changed = true;
+            }
+            if (from == PublishJobStatus.AWAITING_USER && cb.interactionRequired() != null) {
+                job.setInteractionRequiredJson(serializeInteraction(cb.interactionRequired()));
+                changed = true;
+            }
+            if (changed) {
                 jobRepo.save(job);
-                writeEvent(job.getId(), "progress", from, to, cb.progress(), null);
+                writeEvent(job.getId(), "progress", from, to, job.getProgress(), null);
             }
             return;
         }
@@ -305,14 +314,78 @@ public class PublishJobService {
         if (to == PublishJobStatus.LIVE) {
             if (cb.externalUrl() != null) job.setExternalUrl(cb.externalUrl());
             job.setProgress(100);
+            job.setInteractionRequiredJson(null);
         }
         if (to == PublishJobStatus.FAILED) {
             if (cb.errorCode() != null) job.setErrorCode(cb.errorCode());
             if (cb.errorMessage() != null) job.setErrorMessage(cb.errorMessage());
+            job.setInteractionRequiredJson(null);
+        }
+        if (to == PublishJobStatus.AWAITING_USER) {
+            // 进入 awaiting_user：sau-service 必须随 callback 透传 interactionRequired
+            // payload。空 payload 视为契约破坏，但不阻塞回调流（仍接受状态切换，
+            // 前端会看到 awaiting_user 但无 prompt，做兜底提示）。
+            if (cb.interactionRequired() != null) {
+                job.setInteractionRequiredJson(serializeInteraction(cb.interactionRequired()));
+            } else {
+                log.warn("callback to AWAITING_USER without interactionRequired payload (job {})",
+                        job.getId());
+            }
+        } else if (from == PublishJobStatus.AWAITING_USER) {
+            // 离开 awaiting_user：清空 interaction，进度由 sau-service 推
+            job.setInteractionRequiredJson(null);
         }
         jobRepo.save(job);
         writeEvent(job.getId(), "callback", from, to, job.getProgress(),
                 cb.errorMessage() != null ? cb.errorMessage() : cb.externalUrl());
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper INTERACTION_OM =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private static String serializeInteraction(java.util.Map<String, Object> payload) {
+        try {
+            return INTERACTION_OM.writeValueAsString(payload);
+        } catch (Exception e) {
+            // Falling through to null-store is better than throwing — the
+            // user will see awaiting_user with no prompt rather than an
+            // exploded callback.
+            log.warn("serializeInteraction failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 用户在前端提交人机交互响应（短信验证码等）。
+     * 转发到 sau-service POST /tasks/{externalTaskId}/interaction。
+     *
+     * 校验：
+     *   - job 必须 status=AWAITING_USER（不然 sau-service 那边也会 409 拒绝）
+     *   - job 必须有 externalTaskId（否则任务还没派到 sau）
+     *   - 当前用户必须是 job 所有人
+     *
+     * 不会同步更新 status — sau-service 处理完会通过 callback 翻回原 status。
+     * 前端轮询会看到状态变化。
+     */
+    @Transactional
+    public PublishJobDto submitInteraction(String userId, String jobId, String code) {
+        PublishJob job = jobRepo.findByIdAndUserId(jobId, userId)
+                .orElseThrow(() -> BusinessException.notFound("PUBLISH_JOB_NOT_FOUND", "发布任务不存在"));
+        if (job.getStatus() != PublishJobStatus.AWAITING_USER) {
+            throw new BusinessException(HttpStatus.CONFLICT, "INTERACTION_NOT_PENDING",
+                    "任务当前未在等待用户输入 (status=" + job.getStatus().wire() + ")");
+        }
+        if (job.getExternalTaskId() == null) {
+            throw new BusinessException(HttpStatus.CONFLICT, "JOB_NOT_DISPATCHED",
+                    "任务尚未派单到 sau-service，无法提交交互响应");
+        }
+        if (code == null || code.isBlank()) {
+            throw BusinessException.badRequest("INTERACTION_CODE_BLANK", "验证码不能为空");
+        }
+        sau.submitInteraction(job.getExternalTaskId(), code.trim());
+        // sau-service 接受后会异步：fill page → callback 回 PUBLISHING/UPLOADING
+        // 这里返回当前 DTO（仍是 AWAITING_USER），前端会轮询拿到更新。
+        return PublishJobDto.from(job);
     }
 
     // ── cancel / retry ──────────────────────────────────────────────────
@@ -391,13 +464,18 @@ public class PublishJobService {
                     resumeFail(job, "RESUME_UNKNOWN_STATUS", "sau 返回未知 status=" + status);
                     continue;
                 }
+                Object interactionRaw = resp.get("interactionRequired");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> interaction = interactionRaw instanceof Map
+                        ? (Map<String, Object>) interactionRaw : null;
                 PublishJobCallbackDto cb = new PublishJobCallbackDto(
                         job.getExternalTaskId(),
                         status,
                         intOrNull(resp.get("progress")),
                         stringOrNull(resp.get("externalUrl")),
                         stringOrNull(resp.get("errorCode")),
-                        stringOrNull(resp.get("errorMessage"))
+                        stringOrNull(resp.get("errorMessage")),
+                        interaction
                 );
                 applyCallback(cb);
             } catch (Exception e) {

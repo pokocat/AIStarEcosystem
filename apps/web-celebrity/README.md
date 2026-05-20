@@ -89,6 +89,20 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - ✅ **空态文案**：仅在「仅未发布」过滤下且全部已发时，提示用户回到「显示全部」即可再次分发。
 - ✅ **失败任务重试按钮修复**：混剪任务列表 `/mixcut/jobs` 与详情 `/mixcut/jobs/[id]` 的「重渲」按钮（共 3 处）改名为「重新生成」（自然中文），并接上 onClick——`router.push("/mixcut/create/<template_id>")` 跳到新建页用相同模板重做一批。之前点击无反应（onClick 仅 `e.preventDefault() / stopPropagation()`，无业务行为）。
 
+- 分发短信验证码交互
+
+抖音 / 视频号上传过程中触发的「请输入短信验证码」弹窗，现在能在前端弹起输入框让用户提交，而不再让任务静默卡死在 publishing。
+
+- ✅ **新状态 `awaiting_user`**：PublishJobStatus 加入；server / sau-service / packages/types / web 各 layer 同步。状态机：UPLOADING/TRANSCODING/PUBLISHING ↔ AWAITING_USER ↔ UPLOADING/PUBLISHING/LIVE；超时 → FAILED with `AWAIT_USER_TIMEOUT`。
+- ✅ **SmsInteractionDialog**（`components/distribution/SmsInteractionDialog.tsx`）：
+  - 默认 `awaiting_user` 出现时自动弹出（用户关闭后不再自动弹）
+  - 显示平台 + 脱敏手机号尾号 + 5 分钟倒计时
+  - 6 位数字输入（auto-complete one-time-code），Enter 直接提交
+  - 提交后立即刷新 PublishJobList
+- ✅ **新接口 `POST /me/publish-jobs/{id}/interact { code }`**：仅在 awaiting_user 状态有效；server 转发到 sau-service `POST /tasks/{id}/interaction`，由 sau-service 把 code 填进 page 关闭弹窗，上游 upload retry 循环自然继续。
+- ✅ **PublishJobList 行扩展**：awaiting_user 行显示「输入验证码」按钮 + interaction prompt + 手机号；任务列表的「取消」也接受 awaiting_user 状态。
+- ⚠️ **MVP selector 占位**：sau-service `interaction.py` 的 `_PlaceholderSmsDriver` 永远返回"无 SMS 检测"。需要在抖音 / 视频号真实触发风控 → 抓取弹窗 DOM 后填入实际 selector。整个 stack 已通，selector 一接上立即可用。
+
 ### v0.18 · 2026-05-20 · 社交账号 profile 增强
 
 - ✅ **账号辨识度**：`SocialAccount` 增 `platformAccountId`，与已有 `displayName` / `avatarUrl` 一起展示。
