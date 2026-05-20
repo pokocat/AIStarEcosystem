@@ -55,6 +55,7 @@ export const FILL_STRATEGY_LABELS: Record<FillStrategy, string> = {
   user_input: "手动填写",
   api_generated: "AI 生成",
   variable_binding: "跟随变量",
+  picgen_text: "AI 文字图",
 };
 
 // 后端 applied_transforms 返回的算子键 → 中文标签 + 单位/格式化
@@ -79,4 +80,5 @@ export const BINDING_SOURCE_LABELS: Record<string, string> = {
   library: "素材库",
   upload: "自己上传",
   fixed: "系统固定",
+  picgen: "AI 文字图",
 };

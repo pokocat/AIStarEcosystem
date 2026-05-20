@@ -13,7 +13,8 @@ export type FillStrategy =
   | "user_upload"
   | "user_input"
   | "api_generated"
-  | "variable_binding";
+  | "variable_binding"
+  | "picgen_text";
 
 export interface Rect {
   x: number;
@@ -200,7 +201,8 @@ export type SlotBinding =
   | { source: "library"; asset_id: string; preview_url?: string }
   | { source: "upload"; file_url: string; preview_url?: string }
   | { source: "input"; text: string }
-  | { source: "fixed" };
+  | { source: "fixed" }
+  | { source: "picgen"; title: string; subtitle?: string; tag?: string; preview_url?: string };
 
 export type JobStatus = "pending" | "queued" | "running" | "success" | "failed" | "partial";
 

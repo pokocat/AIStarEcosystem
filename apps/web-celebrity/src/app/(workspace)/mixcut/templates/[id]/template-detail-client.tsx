@@ -76,7 +76,8 @@ const FILL_OPTIONS: ReadonlyArray<{ value: FillStrategy; label: string }> = [
   { value: "library_select", label: "从素材库选" },
   { value: "user_upload", label: "自己上传" },
   { value: "user_input", label: "手动填写" },
-  { value: "api_generated", label: "AI 生成" },
+  { value: "api_generated", label: "AI 数字人" },
+  { value: "picgen_text", label: "AI 文字图（picgen）" },
   { value: "variable_binding", label: "跟随变量" },
 ];
 

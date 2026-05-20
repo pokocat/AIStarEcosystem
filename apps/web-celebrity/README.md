@@ -69,6 +69,18 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.16 · 2026-05-20 · 混剪三项优化
+
+- ✅ **新建模板 404 修复**：`mixcut/create/[id]` 之前用 `MixcutApi.getTemplateSync()`（只查 localStorage + mocks），USE_MOCK=0 模式下找不到 server 刚 PUT 的新模板。改为 await `getTemplate()` 后与 `template-detail-client` 对齐。
+- ✅ **素材选择 UI 统一**：新建 `media-slot-input.tsx` 替代 `UploadSlotInput` + `LibrarySlotInput`。image / video / audio / sticker 槽位全部走同一组件，三种模式 `upload | library | both` 由 `fill_strategy` 推导。顺手修复 `image + library_select`（非 sticker）当前不渲染的 bug。
+- ✅ **picgen 文字转图集成**：
+  - `pic-gen/server.js` 加 `/render-png` 端点：puppeteer browser singleton + 内置 seededPick 让模板/配色/字体可被 seed 控制；
+  - 新增 `aep.picgen.*` 配置 + `PicgenClient` + `MixcutPicgenController(POST /api/mixcut/picgen/preview)`；
+  - 模板编辑器加 `picgen_text` strategy；`PicgenSlotInput` 让用户填主标题/副标题/标签 + 一键生成预览图，UI 明确提示"正式渲染时每条会再换版式"；
+  - `MixcutRenderingService.resolveBindings` 增 picgen 通道；变体循环前为每个 picgen slot 用 seed=hash(jobId, variantIndex, slotId) 调一次 pic-gen，得到的 PNG 合入 overlays（按 z_index 重排）；
+  - 失败兜底：picgen 不可用时变体只是少一张图，不让任务整体 fail。
+- ⚠️ **生产依赖**：pic-gen 是独立 Node 进程，本地开发须手动 `cd /Users/donis/dev/pic-gen && node server.js`（或 `npm run serve`）。生产部署需把 pic-gen 同机 systemd unit 起来（v0.17 候选：Dockerize）；Linux 需安装 `fonts-noto-cjk fonts-wqy-zenhei` 等中文字体。
+
 ### v0.15 · 2026-05-19 · 混剪 → 发布桥接 + 定时
 
 - ✅ **publish-batch 接口**：`POST /api/me/mixcut/publish-batch` 一次性把 N 变体 × M 账号派单 N×M 条 PublishJob。outputs[].cdn_url 必填；缺失计入 `failed_items[].reason="MISSING_CDN_URL"`。

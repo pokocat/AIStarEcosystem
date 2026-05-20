@@ -85,9 +85,10 @@ export function CreateClient({ id }: { id: string }) {
   const initFromTemplateRef = useRef(false);
 
   useEffect(() => {
-    const local = MixcutApi.getTemplateSync(id);
-    if (local) setTemplate(local);
-    setResolved(true);
+    MixcutApi.getTemplate(id).then((t) => {
+      if (t) setTemplate(t);
+      setResolved(true);
+    });
   }, [id]);
 
   // 当 template 首次变为非空(localStorage 覆盖加载到)时,把 bindings / profile / variants
@@ -324,6 +325,8 @@ export function CreateClient({ id }: { id: string }) {
                 policyOverride={slotPolicies[s.slot_id]}
                 onPolicyChange={(next) => handlePolicyChange(s.slot_id, next)}
                 globalOverrides={overrides}
+                canvasWidth={template.canvas.width}
+                canvasHeight={template.canvas.height}
               />
             </div>
           ))}

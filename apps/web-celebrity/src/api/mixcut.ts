@@ -432,3 +432,39 @@ export async function publishBatch(req: MixcutPublishBatchRequest): Promise<Mixc
     body: req,
   });
 }
+
+// ── v0.16+ picgen 文字转图 ──────────────────────────────────────────────────
+
+/** picgen 预览请求体。width/height 按 slot.rect × canvas 折算实际像素后传给后端。 */
+export interface PicgenPreviewRequest {
+  title: string;
+  subtitle?: string;
+  tag?: string;
+  width: number;
+  height: number;
+  /** 可选；省略时后端按 seed 随机抽。 */
+  template?: string;
+  scheme?: string;
+  font?: string;
+  /** 可选确定性 seed；预览页可以不传（后端会生成随机一张）。 */
+  seed?: number;
+}
+
+export interface PicgenPreviewResult {
+  preview_url: string;
+}
+
+/**
+ * 调 POST /api/mixcut/picgen/preview 生成一张 PNG 并返回访问 URL。
+ * 后端会反代到独立的 pic-gen 服务（默认 http://localhost:5173）。
+ * 预览图非确定性：模板/配色/字体如果留空，每次点击都会换一组。
+ */
+export async function picgenPreview(req: PicgenPreviewRequest): Promise<PicgenPreviewResult> {
+  if (USE_LOCAL) {
+    throw new Error("本地 mock 模式不支持 picgen；设 NEXT_PUBLIC_USE_MOCK=0 或 NEXT_PUBLIC_MIXCUT_USE_REAL=1");
+  }
+  return apiFetch<PicgenPreviewResult>("/mixcut/picgen/preview", {
+    method: "POST",
+    body: req,
+  });
+}
