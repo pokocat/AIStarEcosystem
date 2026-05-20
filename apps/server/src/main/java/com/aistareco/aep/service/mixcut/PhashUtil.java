@@ -38,7 +38,7 @@ final class PhashUtil {
                     "-i", video.getAbsolutePath(),
                     "-frames:v", "1",
                     "-update", "1",
-                    "-vf", "scale=8:8,format=gray",
+                    "-vf", "scale=w=8:h=8,format=pix_fmts=gray",
                     frame.getAbsolutePath()
             ));
             return ahashOfPng(frame);

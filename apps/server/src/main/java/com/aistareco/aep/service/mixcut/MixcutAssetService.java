@@ -327,7 +327,7 @@ public class MixcutAssetService {
                     "-i", source.getAbsolutePath(),
                     "-frames:v", "1",
                     "-update", "1",
-                    "-vf", "scale=200:-2",
+                    "-vf", "scale=w=200:h=-2",
                     "-q:v", "5",
                     preview.getAbsolutePath()
             ));

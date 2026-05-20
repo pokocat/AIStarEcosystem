@@ -131,27 +131,27 @@ public class MixcutPresetSeeder implements CommandLineRunner {
     private static final List<DemoSpec> DEMO_SPECS = List.of(
             // 飘动的黄色方块 (类似星星)
             new DemoSpec("sparkle", "yellow-star", 200, 200, 12,
-                    "format=yuva420p,"
+                    "format=pix_fmts=yuva420p,"
                             + "drawbox=x='mod(t*120\\,200)':y='mod(t*80\\,200)':w=24:h=24:color=#fff200@0.95:t=fill,"
                             + "drawbox=x='mod(t*120+100\\,200)':y='mod(t*80+60\\,200)':w=14:h=14:color=#fff200@0.7:t=fill"),
             // 飘动的粉色方块
             new DemoSpec("sparkle", "pink-burst", 200, 200, 12,
-                    "format=yuva420p,"
+                    "format=pix_fmts=yuva420p,"
                             + "drawbox=x='mod(t*90\\,200)':y='100-50*sin(t*3)':w=20:h=20:color=#ff66cc@0.9:t=fill,"
                             + "drawbox=x='200-mod(t*90\\,200)':y='100+50*sin(t*3)':w=20:h=20:color=#ff99dd@0.7:t=fill"),
             // 飘动的蓝色横条
             new DemoSpec("ribbon", "blue-stripe", 240, 60, 12,
-                    "format=yuva420p,"
+                    "format=pix_fmts=yuva420p,"
                             + "drawbox=x='mod(t*150-60\\,300)':y=20:w=60:h=20:color=#4f8eff@0.85:t=fill,"
                             + "drawbox=x='mod(t*150+30\\,300)':y=25:w=30:h=10:color=#82b1ff@0.7:t=fill"),
             // 紫色脉冲方块
             new DemoSpec("ribbon", "violet-pulse", 240, 60, 12,
-                    "format=yuva420p,"
+                    "format=pix_fmts=yuva420p,"
                             + "drawbox=x=10:y=15:w='30+20*sin(t*4)':h=30:color=#a78bfa@0.85:t=fill,"
                             + "drawbox=x=120:y=15:w='30+20*sin(t*4+1.5)':h=30:color=#c4b5fd@0.7:t=fill"),
             // 彩虹角标
             new DemoSpec("emoji_burst", "rainbow-corner", 160, 160, 12,
-                    "format=yuva420p,"
+                    "format=pix_fmts=yuva420p,"
                             + "drawbox=x='60+20*sin(t*5)':y='40+20*cos(t*5)':w=30:h=30:color=#ff3b30@0.9:t=fill,"
                             + "drawbox=x='90+20*sin(t*5+1)':y='70+20*cos(t*5+1)':w=30:h=30:color=#ffcc00@0.85:t=fill,"
                             + "drawbox=x='60+20*sin(t*5+2)':y='100+20*cos(t*5+2)':w=30:h=30:color=#34c759@0.8:t=fill")
@@ -221,7 +221,7 @@ public class MixcutPresetSeeder implements CommandLineRunner {
                     "-i", gif.getAbsolutePath(),
                     "-frames:v", "1",
                     "-update", "1",
-                    "-vf", "scale=160:-2",
+                    "-vf", "scale=w=160:h=-2",
                     "-q:v", "5",
                     preview.getAbsolutePath()
             ));

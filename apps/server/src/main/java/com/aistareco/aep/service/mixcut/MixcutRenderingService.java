@@ -747,15 +747,20 @@ public class MixcutRenderingService {
             // 改用:framerate 走最外层 `-r 30` 输出选项 (CLI 主程序自带,
             // 不依赖 libavfilter);SAR 不强设,让源 SAR 透传——99% 的现代
             // mp4 / mov / webm 都是 SAR=1:1,不强设也没差别。
+            // 全程使用「显式 key=value」形式 (e.g. `scale=w=W:h=H` 而非
+            // `scale=W:H`)。原因:某些 ffmpeg build 没注册 scale/crop/aresample
+            // 等 filter 的 `shorthand` 数组,positional 参数会触发
+            // exit=234 "No option name near '1080:1920'"。named 形式在所有
+            // ffmpeg 版本上都可用,且对可读性也更好。
             String vOut = skipConcat ? "concat_v" : ("s" + i);
             String aOut = skipConcat ? "concat_a" : ("as" + i);
             fc.append("[").append(i).append(":v]")
-              .append("scale=").append(W).append(":").append(H).append(":force_original_aspect_ratio=increase,")
-              .append("crop=").append(W).append(":").append(H)
+              .append("scale=w=").append(W).append(":h=").append(H).append(":force_original_aspect_ratio=increase,")
+              .append("crop=w=").append(W).append(":h=").append(H)
               .append("[").append(vOut).append("];");
             if (useSourceAudio) {
                 fc.append("[").append(i).append(":a]")
-                  .append("aresample=44100,aformat=channel_layouts=stereo")
+                  .append("aresample=sample_rate=44100,aformat=channel_layouts=stereo")
                   .append("[").append(aOut).append("];");
             }
         }
@@ -777,7 +782,8 @@ public class MixcutRenderingService {
           .append(":saturation=").append(format(saturation));
         if (mirror) fc.append(",hflip");
         if (Math.abs(speed - 1.0) > 0.001) {
-            fc.append(",setpts=").append(format(1.0 / speed)).append("*PTS");
+            // setpts=expr=X*PTS (显式 expr 参数名,避免依赖 shorthand)
+            fc.append(",setpts=expr=").append(format(1.0 / speed)).append("*PTS");
         }
         fc.append("[fx];");
 
@@ -785,7 +791,7 @@ public class MixcutRenderingService {
         String audioOutTag = null;
         if (useSourceAudio) {
             if (Math.abs(speed - 1.0) > 0.001) {
-                fc.append("[concat_a]atempo=").append(format(speed)).append("[fx_a];");
+                fc.append("[concat_a]atempo=tempo=").append(format(speed)).append("[fx_a];");
                 audioOutTag = "fx_a";
             } else {
                 audioOutTag = "concat_a";
@@ -794,7 +800,7 @@ public class MixcutRenderingService {
         if (useBgm) {
             // BGM 单路归一化
             fc.append("[").append(bgmInputIdx).append(":a]")
-              .append("aresample=44100,aformat=channel_layouts=stereo,volume=0.6")
+              .append("aresample=sample_rate=44100,aformat=channel_layouts=stereo,volume=0.6")
               .append("[bgm_a];");
             if (audioOutTag != null) {
                 // 源音 + BGM 混合(源音权重高,BGM 0.6 已降过)
@@ -840,26 +846,26 @@ public class MixcutRenderingService {
                 String bgTag = tag + "bg";
                 String fgTag = tag + "fg";
                 fc.append("[").append(inputIdx).append(":v]")
-                  .append("format=yuva420p,split=2[").append(bgTag).append("0][").append(fgTag).append("0];");
+                  .append("format=pix_fmts=yuva420p,split=outputs=2[").append(bgTag).append("0][").append(fgTag).append("0];");
                 fc.append("[").append(bgTag).append("0]")
-                  .append("scale=").append(rw).append(":").append(rh)
+                  .append("scale=w=").append(rw).append(":h=").append(rh)
                   .append(":force_original_aspect_ratio=increase,")
-                  .append("crop=").append(rw).append(":").append(rh).append(",")
-                  .append("boxblur=14:1,eq=brightness=-0.05")
+                  .append("crop=w=").append(rw).append(":h=").append(rh).append(",")
+                  .append("boxblur=luma_radius=14:luma_power=1,eq=brightness=-0.05")
                   .append("[").append(bgTag).append("];");
                 fc.append("[").append(fgTag).append("0]")
-                  .append("scale=").append(rw).append(":").append(rh)
+                  .append("scale=w=").append(rw).append(":h=").append(rh)
                   .append(":force_original_aspect_ratio=decrease")
                   .append("[").append(fgTag).append("];");
                 fc.append("[").append(bgTag).append("][").append(fgTag).append("]")
-                  .append("overlay=(W-w)/2:(H-h)/2:format=auto")
+                  .append("overlay=x=(W-w)/2:y=(H-h)/2:format=auto")
                   .append("[").append(tag).append("s];");
             } else {
                 // 填满裁切（默认）：scale-increase + crop
                 fc.append("[").append(inputIdx).append(":v]")
-                  .append("format=yuva420p,scale=").append(rw).append(":").append(rh)
+                  .append("format=pix_fmts=yuva420p,scale=w=").append(rw).append(":h=").append(rh)
                   .append(":force_original_aspect_ratio=increase,")
-                  .append("crop=").append(rw).append(":").append(rh)
+                  .append("crop=w=").append(rw).append(":h=").append(rh)
                   .append("[").append(tag).append("s];");
             }
             fc.append("[").append(prev).append("][").append(tag).append("s]")
@@ -878,7 +884,7 @@ public class MixcutRenderingService {
             int inputIdx = stickerInputStart + i;
             String stickerTag = "sk" + i;
             fc.append("[").append(inputIdx).append(":v]")
-              .append("format=yuva420p,scale=").append(s.targetWidth).append(":-2")
+              .append("format=pix_fmts=yuva420p,scale=w=").append(s.targetWidth).append(":h=-2")
               .append(",colorchannelmixer=aa=").append(format(s.opacity))
               .append("[").append(stickerTag).append("s];");
             String nextOut = "skl" + i;
