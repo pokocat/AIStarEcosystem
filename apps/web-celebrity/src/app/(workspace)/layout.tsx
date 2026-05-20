@@ -59,6 +59,11 @@ function buildGroups(pathname: string, activeJobs: number): NavGroup[] {
         badge: activeJobs > 0 ? activeJobs : undefined,
         badgeTone: "accent",
       },
+      {
+        label: "发布工作台",
+        href: "/mixcut/publish",
+        selected: pathname === "/mixcut/publish",
+      },
       { label: "素材库", href: "/mixcut/library", selected: pathname === "/mixcut/library" },
     ]
     : undefined;
@@ -123,7 +128,11 @@ function CrumbsFromPathname(pathname: string): string[] {
   if (pathname.startsWith("/mixcut/create/")) return ["工作台", "混剪专区", "新建任务"];
   if (pathname === "/mixcut/jobs") return ["工作台", "混剪专区", "生成任务"];
   if (pathname.startsWith("/mixcut/jobs/")) return ["工作台", "混剪专区", "生成任务", "任务详情"];
+  if (pathname === "/mixcut/publish") return ["工作台", "混剪专区", "发布工作台"];
   if (pathname === "/mixcut/library") return ["工作台", "混剪专区", "素材库"];
+
+  // 分发中心子路径(后续 PR 扩展)
+  if (pathname.startsWith("/distribution/")) return ["工作台", "分发中心"];
 
   return ["工作台"];
 }
