@@ -735,33 +735,41 @@ public class MixcutRenderingService {
 
         // filter_complex 拼装
         StringBuilder fc = new StringBuilder();
-        // 视频段 scale + concat → 严格按 ctx 画布；音频归一化到 stereo 44.1kHz 再 concat
+        // 单段时跳过 concat 滤镜 —— concat=n=1 是个 no-op 但有些 ffmpeg build
+        // 对 n=1 处理有 bug (用户实测 exit=234 "Error parsing filterchain ...
+        // around: [s0];[0:a]aresample=...")。让段输出直接命名为 concat_v /
+        // concat_a 接到下游 fx 链,跳过没必要的 passthrough.
+        boolean skipConcat = (segCount == 1);
         for (int i = 0; i < segCount; i++) {
             // `setsar=1` 和 `fps=30` 之前内嵌在 filter 链里——某些精简 ffmpeg
-            // build 的 libavfilter 没注册这两个滤镜，整链 parse 失败 (exit=234
+            // build 的 libavfilter 没注册这两个滤镜,整链 parse 失败 (exit=234
             // "Error parsing filterchain ... around: ,setsar=1,fps=30")。
-            // 改用：framerate 走最外层 `-r 30` 输出选项 (CLI 主程序自带，
-            // 不依赖 libavfilter)；SAR 不强设，让源 SAR 透传——99% 的现代
-            // mp4 / mov / webm 都是 SAR=1:1，不强设也没差别。
+            // 改用:framerate 走最外层 `-r 30` 输出选项 (CLI 主程序自带,
+            // 不依赖 libavfilter);SAR 不强设,让源 SAR 透传——99% 的现代
+            // mp4 / mov / webm 都是 SAR=1:1,不强设也没差别。
+            String vOut = skipConcat ? "concat_v" : ("s" + i);
+            String aOut = skipConcat ? "concat_a" : ("as" + i);
             fc.append("[").append(i).append(":v]")
               .append("scale=").append(W).append(":").append(H).append(":force_original_aspect_ratio=increase,")
               .append("crop=").append(W).append(":").append(H)
-              .append("[s").append(i).append("];");
+              .append("[").append(vOut).append("];");
             if (useSourceAudio) {
                 fc.append("[").append(i).append(":a]")
                   .append("aresample=44100,aformat=channel_layouts=stereo")
-                  .append("[as").append(i).append("];");
+                  .append("[").append(aOut).append("];");
             }
         }
-        // concat 输入交错:[s0][as0][s1][as1]... 当含音频时;否则只 [s0][s1]
-        if (useSourceAudio) {
-            for (int i = 0; i < segCount; i++) {
-                fc.append("[s").append(i).append("]").append("[as").append(i).append("]");
+        if (!skipConcat) {
+            // concat 输入交错:[s0][as0][s1][as1]... 当含音频时;否则只 [s0][s1]
+            if (useSourceAudio) {
+                for (int i = 0; i < segCount; i++) {
+                    fc.append("[s").append(i).append("]").append("[as").append(i).append("]");
+                }
+                fc.append("concat=n=").append(segCount).append(":v=1:a=1[concat_v][concat_a];");
+            } else {
+                for (int i = 0; i < segCount; i++) fc.append("[s").append(i).append("]");
+                fc.append("concat=n=").append(segCount).append(":v=1:a=0[concat_v];");
             }
-            fc.append("concat=n=").append(segCount).append(":v=1:a=1[concat_v][concat_a];");
-        } else {
-            for (int i = 0; i < segCount; i++) fc.append("[s").append(i).append("]");
-            fc.append("concat=n=").append(segCount).append(":v=1:a=0[concat_v];");
         }
 
         // perturbation 视频链（eq 总是写一次以保持链条完整；恒等值无视觉影响）

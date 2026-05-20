@@ -87,7 +87,12 @@ public class FfmpegRunner {
 
         int code = p.exitValue();
         if (code != 0) {
-            String tail = tail(output.toString(), 2_000);
+            // 8KB 的 tail：ffmpeg 失败时的错误消息里通常含完整 filter_complex
+            // 字符串 + parser 位置指针。之前 2KB 截到了字符串的尾段，看不见
+            // 失败位置，反而误导诊断（用户反复看到 around: 指向同一个 [s0]
+            // 标签，但实际错误在更前面的 filter）。8KB 能容下 4K 多字符的
+            // filter chain + framing。
+            String tail = tail(output.toString(), 8_000);
             throw new RuntimeException("ffmpeg exit=" + code + " bin=" + bin + " tail=" + tail);
         }
         return output.toString();
