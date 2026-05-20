@@ -7,7 +7,11 @@
 // 待 drama 接 sau 后，旧路径会被这套替换。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { PublishJob, CreatePublishJobInput } from "@ai-star-eco/types/publish-job";
+import type {
+  PublishJob,
+  CreatePublishJobInput,
+  SubmitPublishJobInteractionInput,
+} from "@ai-star-eco/types/publish-job";
 import type { ID } from "@ai-star-eco/types/_shared";
 import { apiFetch } from "../_client";
 
@@ -50,5 +54,20 @@ export async function cancelPublishJob(id: ID): Promise<PublishJob> {
 export async function retryPublishJob(id: ID): Promise<PublishJob> {
   return apiFetch<PublishJob>(`/me/publish-jobs/${encodeURIComponent(id)}/retry`, {
     method: "POST",
+  });
+}
+
+/**
+ * 提交人机交互响应（短信验证码等）。
+ * 仅在 task.status=awaiting_user 时有效；其它状态 server 返回 409。
+ * 提交成功后 server 立即把响应转给 sau-service；前端继续轮询拿状态变化。
+ */
+export async function submitPublishJobInteraction(
+  id: ID,
+  input: SubmitPublishJobInteractionInput,
+): Promise<PublishJob> {
+  return apiFetch<PublishJob>(`/me/publish-jobs/${encodeURIComponent(id)}/interact`, {
+    method: "POST",
+    body: input,
   });
 }

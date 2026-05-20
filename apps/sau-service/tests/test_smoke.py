@@ -244,7 +244,9 @@ def _make_manager_for_guard():
     """Spin up a UploadManager without going through FastAPI lifespan.
 
     We exercise `_run_upstream_upload` directly with synthetic upload
-    coroutines so we don't need patchright installed.
+    coroutines so we don't need patchright installed. The TaskRecord is
+    pre-registered on `mgr._tasks` so `submit_interaction(task_id)` can
+    find it during SMS watcher tests.
     """
     from sau_service.uploader import TaskRecord, UploadManager, UploadRequest
 
@@ -263,6 +265,7 @@ def _make_manager_for_guard():
         callback_secret="x",
     )
     rec = TaskRecord(task_id="task-guard", request=req)
+    mgr._tasks[rec.task_id] = rec
     return mgr, rec
 
 
@@ -387,3 +390,230 @@ def test_run_upstream_upload_honours_cancel_event(monkeypatch) -> None:
     assert ok is False
     # _terminate pushes the cancelled status
     assert any(p["status"] == "cancelled" for p in pushed), f"expected cancelled, got: {pushed}"
+
+
+# ── SMS interaction watcher (awaiting_user end-to-end) ──────────────────────
+
+
+class _FakeSmsDriver:
+    """In-memory driver used by SMS watcher tests.
+
+    Behaviour is scripted via instance attributes — first detect() returns
+    `phone_masked` payload, then after submit_code succeeds is_cleared
+    flips True so the modal is "gone".
+    """
+    PLATFORM_NAME = "fake"
+
+    def __init__(self):
+        self.detect_calls = 0
+        self.detected_payload = {"phone_masked": "138****5678", "can_resend_at": None}
+        self.request_sms_calls = 0
+        self.submit_code_calls: list[str] = []
+        self.modal_cleared = False  # flipped True by submit_code on the right code
+        self.correct_code = "888888"
+
+    async def detect(self, page):
+        self.detect_calls += 1
+        if self.modal_cleared:
+            return None
+        return self.detected_payload
+
+    async def request_sms(self, page):
+        self.request_sms_calls += 1
+        return True
+
+    async def submit_code(self, page, code):
+        self.submit_code_calls.append(code)
+        if code == self.correct_code:
+            self.modal_cleared = True
+            return True
+        return False
+
+    async def is_cleared(self, page):
+        return self.modal_cleared
+
+
+def _install_fake_driver(monkeypatch, platform: str = "douyin"):
+    driver = _FakeSmsDriver()
+    from sau_service import interaction
+    monkeypatch.setitem(interaction.SMS_DRIVERS, platform, driver)
+    return driver
+
+
+def test_sms_watcher_pushes_awaiting_user_and_resumes_on_correct_code(monkeypatch) -> None:
+    """End-to-end: detect SMS → push awaiting_user → user submits → resume."""
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 10.0)
+    monkeypatch.setattr("sau_service.uploader.PUBLISHING_AFTER_S", 10.0)
+    monkeypatch.setattr("sau_service.uploader.INTERACTION_POLL_INTERVAL_S", 0.1)
+    monkeypatch.setattr("sau_service.uploader.INTERACTION_USER_TIMEOUT_S", 5.0)
+    pushed: list[dict] = []
+
+    async def fake_push(rec):
+        pushed.append(
+            {
+                "status": rec.status,
+                "progress": rec.progress,
+                "interaction_required": rec.interaction_required,
+            }
+        )
+
+    mgr, rec = _make_manager_for_guard()
+    monkeypatch.setattr(type(mgr), "_push", lambda self, r: fake_push(r))
+    driver = _install_fake_driver(monkeypatch, "douyin")
+
+    async def upload_that_waits_for_sms():
+        # Mimic upstream stuck in retry loop until SMS modal clears.
+        while not driver.modal_cleared:
+            await asyncio.sleep(0.05)
+        # Once modal cleared, upload finishes quickly.
+        await asyncio.sleep(0.05)
+
+    sentinel_page = object()  # driver ignores it
+
+    async def run():
+        async def fire_submit():
+            # Wait until watcher has pushed awaiting_user, then submit.
+            for _ in range(50):  # 50 * 0.1s = 5s max
+                await asyncio.sleep(0.1)
+                if rec.status == "awaiting_user":
+                    break
+            assert await mgr.submit_interaction(rec.task_id, {"code": "888888"}), (
+                "submit_interaction should be accepted in awaiting_user state"
+            )
+
+        submitter = asyncio.create_task(fire_submit())
+        try:
+            return await mgr._run_upstream_upload(
+                rec,
+                upload_that_waits_for_sms,
+                platform_label="douyin",
+                page_provider=lambda: sentinel_page,
+            )
+        finally:
+            submitter.cancel()
+            try:
+                await submitter
+            except asyncio.CancelledError:
+                pass
+
+    ok = asyncio.run(run())
+    assert ok is True, f"expected upload to succeed, got pushes: {pushed}"
+    assert driver.request_sms_calls == 1, "watcher should auto-trigger SMS once"
+    assert driver.submit_code_calls == ["888888"]
+    awaiting = [p for p in pushed if p["status"] == "awaiting_user"]
+    assert awaiting, f"expected awaiting_user push, got: {pushed}"
+    assert awaiting[0]["interaction_required"] is not None
+    assert awaiting[0]["interaction_required"]["kind"] == "sms"
+    assert awaiting[0]["interaction_required"]["phone_masked"] == "138****5678"
+
+
+def test_sms_watcher_times_out_when_user_silent(monkeypatch) -> None:
+    """User who never submits a code → AWAIT_USER_TIMEOUT failure."""
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 10.0)
+    monkeypatch.setattr("sau_service.uploader.PUBLISHING_AFTER_S", 10.0)
+    monkeypatch.setattr("sau_service.uploader.INTERACTION_POLL_INTERVAL_S", 0.05)
+    monkeypatch.setattr("sau_service.uploader.INTERACTION_USER_TIMEOUT_S", 0.3)
+    pushed: list[dict] = []
+
+    async def fake_push(rec):
+        pushed.append(
+            {
+                "status": rec.status,
+                "error_code": rec.error_code,
+                "error_message": rec.error_message,
+            }
+        )
+
+    mgr, rec = _make_manager_for_guard()
+    monkeypatch.setattr(type(mgr), "_push", lambda self, r: fake_push(r))
+    _install_fake_driver(monkeypatch, "douyin")
+
+    async def hung_upload():
+        # Never finishes — caller will be cancelled by AWAIT_USER_TIMEOUT.
+        while True:
+            await asyncio.sleep(0.05)
+
+    sentinel_page = object()
+
+    async def run():
+        return await mgr._run_upstream_upload(
+            rec,
+            hung_upload,
+            platform_label="douyin",
+            page_provider=lambda: sentinel_page,
+        )
+
+    ok = asyncio.run(run())
+    assert ok is False
+    # Watcher pushed AWAIT_USER_TIMEOUT; main loop saw cancel_event set and
+    # bailed (without overwriting the AWAIT_USER_TIMEOUT error).
+    codes = [p["error_code"] for p in pushed if p["error_code"]]
+    assert "AWAIT_USER_TIMEOUT" in codes, f"expected AWAIT_USER_TIMEOUT, got: {pushed}"
+
+
+def test_submit_interaction_rejected_when_not_awaiting(monkeypatch) -> None:
+    """submit_interaction must return False when task isn't in awaiting_user."""
+    mgr, rec = _make_manager_for_guard()  # already registered on mgr._tasks
+    rec.status = "uploading"
+    ok = asyncio.run(mgr.submit_interaction(rec.task_id, {"code": "123456"}))
+    assert ok is False, "should reject submission when not awaiting_user"
+
+    rec.status = "awaiting_user"
+    rec.interaction_required = {"kind": "sms", "prompt": "x", "created_at": "2026-05-20T00:00:00+00:00"}
+    ok = asyncio.run(mgr.submit_interaction(rec.task_id, {"code": "123456"}))
+    assert ok is True, "should accept submission when awaiting_user with pending interaction"
+
+    # Second submission while first is still pending → reject (no double-fill).
+    ok = asyncio.run(mgr.submit_interaction(rec.task_id, {"code": "654321"}))
+    assert ok is False, "should reject double-submit while response still pending"
+
+
+def test_hook_chromium_for_page_capture_restores_launch() -> None:
+    """The context manager must put the original chromium.launch back, even
+    if upstream raises. We assert by counting real-launch calls before/after
+    the hook context, since bound-method identity (`is`) isn't stable across
+    accesses in Python.
+    """
+    from sau_service.uploader import _hook_chromium_for_page_capture
+
+    class _FakeBrowser:
+        contexts: list = []
+
+    class _FakeChromium:
+        original_called = 0
+
+        async def launch(self, **kwargs):
+            type(self).original_called += 1
+            return _FakeBrowser()
+
+    class _FakePlaywright:
+        chromium = _FakeChromium()
+
+    pw = _FakePlaywright()
+
+    # Inside hook: wrapped launch also calls original (transparent capture)
+    with _hook_chromium_for_page_capture(pw) as page_provider:
+        asyncio.run(pw.chromium.launch())
+        assert _FakeChromium.original_called == 1, "wrapped should call original"
+        # Browser has no contexts → no pages
+        assert page_provider() is None
+
+    # After hook: launch directly hits original (no wrapping side-effects)
+    asyncio.run(pw.chromium.launch())
+    assert _FakeChromium.original_called == 2
+
+    # Re-entering the hook works (idempotent restore)
+    with _hook_chromium_for_page_capture(pw) as _:
+        asyncio.run(pw.chromium.launch())
+        assert _FakeChromium.original_called == 3
+    asyncio.run(pw.chromium.launch())
+    assert _FakeChromium.original_called == 4
+
+    # Restores even when caller raises inside the with
+    try:
+        with _hook_chromium_for_page_capture(pw) as _:
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    asyncio.run(pw.chromium.launch())
+    assert _FakeChromium.original_called == 5

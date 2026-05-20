@@ -12,6 +12,7 @@ export type PublishJobStatus =
   | "transcoding"
   | "publishing"
   | "live"
+  | "awaiting_user"
   | "failed"
   | "cancelled";
 

@@ -1,25 +1,32 @@
 "use client";
 
-// 当前用户分发任务列表 + 行操作（开始 / 取消 / 重试）。
+// 当前用户分发任务列表 + 行操作（开始 / 取消 / 重试 / 输入验证码）。
 //
 // 进度展示：依赖 PublishJob.progress（0-100）和 status；server 接到 sau-service
 // 回调即更新 DB，前端轮询 GET /me/publish-jobs 拉最新。
+//
+// awaiting_user 状态：平台弹出短信验证码弹窗时，server 收到 sau-service callback
+// 把 status 翻到 awaiting_user 并塞 interactionRequired 上下文。本组件渲染
+// 「输入验证码」按钮，点开 SmsInteractionDialog 让用户输入；提交后 server 转给
+// sau-service 填进 page，弹窗关闭后 status 自动回到 publishing/uploading。
 
 import * as React from "react";
-import { Play, X, RotateCw, ExternalLink, RefreshCw } from "lucide-react";
+import { Play, X, RotateCw, ExternalLink, RefreshCw, KeyRound } from "lucide-react";
 import { PublishJobApi } from "@ai-star-eco/api-client";
 import type { PublishJob, PublishJobStatus } from "@ai-star-eco/types/publish-job";
 import { CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import { SmsInteractionDialog } from "./SmsInteractionDialog";
 
 const STATUS_META: Record<PublishJobStatus, { label: string; cls: string; bar: string }> = {
-  queued:      { label: "排队中",   cls: "bg-zinc-50 text-zinc-600 border-zinc-200",       bar: "bg-zinc-300" },
-  uploading:   { label: "上传中",   cls: "bg-violet-50 text-violet-700 border-violet-200", bar: "bg-violet-400" },
-  transcoding: { label: "转码中",   cls: "bg-indigo-50 text-indigo-700 border-indigo-200", bar: "bg-indigo-400" },
-  publishing:  { label: "发布中",   cls: "bg-sky-50 text-sky-700 border-sky-200",          bar: "bg-sky-400" },
-  live:        { label: "已上线",   cls: "bg-emerald-50 text-emerald-700 border-emerald-200", bar: "bg-emerald-400" },
-  failed:      { label: "失败",     cls: "bg-rose-50 text-rose-700 border-rose-200",       bar: "bg-rose-400" },
-  cancelled:   { label: "已取消",   cls: "bg-zinc-50 text-zinc-500 border-zinc-200",       bar: "bg-zinc-300" },
+  queued:        { label: "排队中",     cls: "bg-zinc-50 text-zinc-600 border-zinc-200",       bar: "bg-zinc-300" },
+  uploading:     { label: "上传中",     cls: "bg-violet-50 text-violet-700 border-violet-200", bar: "bg-violet-400" },
+  transcoding:   { label: "转码中",     cls: "bg-indigo-50 text-indigo-700 border-indigo-200", bar: "bg-indigo-400" },
+  publishing:    { label: "发布中",     cls: "bg-sky-50 text-sky-700 border-sky-200",          bar: "bg-sky-400" },
+  awaiting_user: { label: "待输入验证码", cls: "bg-amber-50 text-amber-700 border-amber-200",   bar: "bg-amber-400" },
+  live:          { label: "已上线",     cls: "bg-emerald-50 text-emerald-700 border-emerald-200", bar: "bg-emerald-400" },
+  failed:        { label: "失败",       cls: "bg-rose-50 text-rose-700 border-rose-200",       bar: "bg-rose-400" },
+  cancelled:     { label: "已取消",     cls: "bg-zinc-50 text-zinc-500 border-zinc-200",       bar: "bg-zinc-300" },
 };
 
 const PLATFORM_LABEL: Record<string, string> = {
@@ -40,6 +47,8 @@ export function PublishJobList({ projectId }: Props) {
   const [jobs, setJobs] = React.useState<PublishJob[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  // 哪个 job 的 SMS 输入弹窗当前打开
+  const [smsJobId, setSmsJobId] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     try {
@@ -66,6 +75,19 @@ export function PublishJobList({ projectId }: Props) {
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [jobs, refresh]);
+
+  // awaiting_user 出现 → 默认弹起输入框。用户关掉后不再自动弹（避免轮询每次都重弹）。
+  const autoOpenedRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    if (smsJobId) return;
+    const awaiting = jobs.find((j) => j.status === "awaiting_user");
+    if (awaiting && !autoOpenedRef.current.has(awaiting.id)) {
+      autoOpenedRef.current.add(awaiting.id);
+      setSmsJobId(awaiting.id);
+    }
+  }, [jobs, smsJobId]);
+
+  const smsJob = smsJobId ? jobs.find((j) => j.id === smsJobId) ?? null : null;
 
   const handleStart = async (id: string) => {
     setBusyId(id);
@@ -161,10 +183,24 @@ export function PublishJobList({ projectId }: Props) {
                         <Play className="h-3 w-3" /> 开始
                       </button>
                     )}
+                    {j.status === "awaiting_user" && (
+                      <button
+                        type="button"
+                        className={cn(
+                          CTA_SECONDARY,
+                          "px-2 py-1 text-xs border-amber-300 text-amber-700 hover:border-amber-400",
+                        )}
+                        disabled={busyId === j.id}
+                        onClick={() => setSmsJobId(j.id)}
+                      >
+                        <KeyRound className="h-3 w-3" /> 输入验证码
+                      </button>
+                    )}
                     {(j.status === "queued" ||
                       j.status === "uploading" ||
                       j.status === "transcoding" ||
-                      j.status === "publishing") && (
+                      j.status === "publishing" ||
+                      j.status === "awaiting_user") && (
                       <button
                         type="button"
                         className={cn(CTA_SECONDARY, "px-2 py-1 text-xs hover:border-rose-300 hover:text-rose-600")}
@@ -202,6 +238,18 @@ export function PublishJobList({ projectId }: Props) {
                     style={{ width: `${Math.max(0, Math.min(100, j.progress))}%` }}
                   />
                 </div>
+                {j.status === "awaiting_user" && j.interactionRequired && (
+                  <p className="text-xs text-amber-700">
+                    {j.interactionRequired.prompt}
+                    {j.interactionRequired.phoneMasked && (
+                      <>
+                        {" "}
+                        手机号：
+                        <span className="font-mono">{j.interactionRequired.phoneMasked}</span>
+                      </>
+                    )}
+                  </p>
+                )}
                 {j.errorMessage && (
                   <p className="text-xs text-rose-600">{j.errorMessage}</p>
                 )}
@@ -209,6 +257,17 @@ export function PublishJobList({ projectId }: Props) {
             );
           })}
         </ul>
+      )}
+      {smsJob && smsJob.status === "awaiting_user" && (
+        <SmsInteractionDialog
+          job={smsJob}
+          onClose={() => setSmsJobId(null)}
+          onSubmitted={() => {
+            setSmsJobId(null);
+            // 立即刷新以加快状态变化反馈（轮询也会跟上）。
+            void refresh();
+          }}
+        />
       )}
     </section>
   );

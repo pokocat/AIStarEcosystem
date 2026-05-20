@@ -59,4 +59,18 @@ public class PublishJobController {
     public ApiResponse<PublishJobDto> retry(Principal principal, @PathVariable("id") String id) {
         return ApiResponse.of(service.retry(principal.getName(), id));
     }
+
+    /**
+     * 提交人机交互响应（短信验证码等）。
+     * 仅在 task.status=awaiting_user 时有效；其它状态返回 409。
+     */
+    @PostMapping("/{id}/interact")
+    public ApiResponse<PublishJobDto> interact(Principal principal,
+                                                @PathVariable("id") String id,
+                                                @RequestBody SubmitInteractionRequest body) {
+        return ApiResponse.of(service.submitInteraction(principal.getName(), id, body.code()));
+    }
+
+    /** /interact 请求体 mirror packages/types SubmitPublishJobInteractionInput */
+    public record SubmitInteractionRequest(String code) {}
 }

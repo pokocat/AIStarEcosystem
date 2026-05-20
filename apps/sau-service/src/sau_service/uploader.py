@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from .callback import post_callback
+from .interaction import SmsInteractionDriver, get_sms_driver, now_unix
 
 log = logging.getLogger(__name__)
 
@@ -41,12 +42,84 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _unix_to_iso(ts: float) -> str:
+    """Convert unix timestamp to ISO-8601 with explicit UTC offset."""
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+
+from contextlib import contextmanager  # noqa: E402 — keep near _hook_chromium_for_page_capture
+
+
+@contextmanager
+def _hook_chromium_for_page_capture(playwright: Any):
+    """Yield a `page_provider()` callable that returns the most recent Page
+    created by upstream uploader, by monkey-patching playwright.chromium.launch.
+
+    Upstream `DouYinVideo.upload(playwright)` / `TencentVideo.upload(playwright)`
+    are atomic — they call `playwright.chromium.launch()`, build a context +
+    page locally, and never expose any of them to the caller. We need the
+    Page to drive the SMS watcher (detect modal, fill code, click confirm).
+
+    Strategy: wrap chromium.launch so each returned Browser is captured in
+    a list. page_provider() walks captured_browsers → contexts → pages and
+    returns the first page found. Lazy — returns None until upstream
+    actually launches + opens a page.
+
+    Per-task scope: the context manager restores chromium.launch on exit,
+    so concurrent uploads each wrap independently without leaking the
+    monkey-patch globally.
+
+    Limitation: this is a fragile coupling to upstream's launch pattern.
+    If upstream switches to `launch_persistent_context` we miss it. The
+    long-term fix is to fork upstream and have `upload()` accept an
+    `on_page` callback. See module docstring in interaction.py.
+    """
+    captured_browsers: list[Any] = []
+    chromium = playwright.chromium
+    original_launch = chromium.launch
+
+    async def wrapped_launch(*args: Any, **kwargs: Any) -> Any:
+        browser = await original_launch(*args, **kwargs)
+        captured_browsers.append(browser)
+        return browser
+
+    chromium.launch = wrapped_launch  # type: ignore[method-assign]
+
+    def page_provider() -> Any:
+        # Newest page wins — accounts for upstream opening a new tab after
+        # the initial blank one (common pattern on creator pages).
+        for browser in reversed(captured_browsers):
+            try:
+                contexts = browser.contexts
+            except Exception:  # noqa: BLE001 — browser may already be closed
+                continue
+            for ctx in reversed(list(contexts)):
+                try:
+                    pages = ctx.pages
+                except Exception:  # noqa: BLE001
+                    continue
+                for page in reversed(list(pages)):
+                    if page is not None:
+                        return page
+        return None
+
+    try:
+        yield page_provider
+    finally:
+        chromium.launch = original_launch  # type: ignore[method-assign]
+
+
 # Total wall-clock budget for one upstream upload() call (real-mode douyin /
 # shipinhao). Upstream's publish-button loop is `while True` with no max
 # attempts — if the selector breaks or the platform stalls, it would
 # otherwise hang forever, leaving the PublishJob stuck at "uploading" /
 # "publishing" on the server side. Capping it forces a clean FAILED so the
 # user sees an actionable status.
+#
+# Total budget *excludes* awaiting_user time (we pause the timeout while
+# waiting on the user to enter an SMS code). Otherwise a slow user would
+# eat into the platform-interaction budget.
 UPLOAD_TIMEOUT_S: float = _env_float("SAU_UPLOAD_TIMEOUT_S", 180.0)
 
 # After this many seconds without upload() returning, assume we've moved
@@ -54,6 +127,17 @@ UPLOAD_TIMEOUT_S: float = _env_float("SAU_UPLOAD_TIMEOUT_S", 180.0)
 # and push status=publishing/progress=80 so the UI reflects the longer wait.
 # Upstream is an atomic call so this is best-effort time-based heuristic.
 PUBLISHING_AFTER_S: float = _env_float("SAU_UPLOAD_PUBLISHING_AFTER_S", 60.0)
+
+# How long to wait for the user to submit an SMS code (or any
+# interaction_response) once we've pushed status=awaiting_user. Exceeded
+# → status=failed errorCode=AWAIT_USER_TIMEOUT; the upload coroutine is
+# cancelled so no further charges accumulate.
+INTERACTION_USER_TIMEOUT_S: float = _env_float("SAU_INTERACTION_USER_TIMEOUT_S", 300.0)
+
+# How often the SMS watcher polls the Playwright Page for a fresh modal.
+# Tighter = faster surface to the user; looser = less competition with the
+# upstream upload's own page operations. 2s is a comfortable middle.
+INTERACTION_POLL_INTERVAL_S: float = _env_float("SAU_INTERACTION_POLL_INTERVAL_S", 2.0)
 
 
 @dataclass
@@ -89,6 +173,17 @@ class TaskRecord:
     runner_task: asyncio.Task[Any] | None = None
     state_path: str | None = None
     video_path: str | None = None
+    # Current pending interaction (None when not awaiting). Populated by
+    # the SMS watcher when it sees the modal; cleared on submit + verified
+    # close. Shape mirrors InteractionRequired in packages/types.
+    interaction_required: dict[str, Any] | None = None
+    # User-submitted response, picked up by the watcher. Set by
+    # UploadManager.submit_interaction(); read once and cleared by the
+    # watcher after it fills the page.
+    interaction_response: dict[str, Any] | None = None
+    # Wakes the watcher when interaction_response is set; reset after the
+    # watcher consumes it.
+    interaction_event: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class UploadManager:
@@ -117,6 +212,41 @@ class UploadManager:
         if rec is None:
             return False
         rec.cancel_event.set()
+        # Wake the SMS watcher too — otherwise a task pausing on awaiting_user
+        # would only unblock on INTERACTION_USER_TIMEOUT_S (5min default).
+        rec.interaction_event.set()
+        return True
+
+    async def submit_interaction(self, task_id: str, response: dict[str, Any]) -> bool:
+        """Hand a user-submitted interaction response (e.g. SMS code) to the
+        watcher coroutine inside `_run_upstream_upload`.
+
+        Returns False when:
+          - task_id unknown
+          - task is not currently in awaiting_user state (out of order)
+          - task already has a pending response (double-submit)
+
+        The watcher consumes `interaction_response` once and clears it
+        before looping back to detect the modal again, so a slow second
+        submit overlapping our DOM fill is rejected here rather than
+        racing the page.
+        """
+        async with self._lock:
+            rec = self._tasks.get(task_id)
+        if rec is None:
+            return False
+        if rec.interaction_required is None or rec.status != "awaiting_user":
+            log.warning(
+                "submit_interaction: task_id=%s rejected — not awaiting_user "
+                "(status=%s interaction_required=%s)",
+                task_id, rec.status, rec.interaction_required is not None,
+            )
+            return False
+        if rec.interaction_response is not None:
+            log.warning("submit_interaction: task_id=%s already has pending response", task_id)
+            return False
+        rec.interaction_response = response
+        rec.interaction_event.set()
         return True
 
     # ── runner ────────────────────────────────────────────────────────
@@ -289,9 +419,10 @@ class UploadManager:
         upload_factory: Callable[[], Awaitable[Any]],
         *,
         platform_label: str,
+        page_provider: Callable[[], Any] | None = None,
     ) -> bool:
         """Drive an upstream `video.upload(playwright)` call with timeout +
-        cancel-aware race + publishing-phase watchdog.
+        cancel-aware race + publishing-phase watchdog + SMS interaction watcher.
 
         Upstream's publish-button loop in `DouYinVideo.upload()` /
         `TencentVideo.upload()` is `while True` with no max attempts. If the
@@ -308,13 +439,24 @@ class UploadManager:
         two long phases. Upstream is an atomic call so this is a
         time-based heuristic, not an event from the platform.
 
+        page_provider: optional sync callable returning the current
+        Playwright Page driven by upload_task (or None when upstream
+        hasn't created it yet). Wiring this enables the SMS interaction
+        watcher; without it the SMS branch is silently skipped.
+
+        The total budget pauses while rec.status == 'awaiting_user' so a
+        slow user typing in the SMS code doesn't eat into the platform
+        operation budget. SMS user-wait has its own INTERACTION_USER_TIMEOUT_S.
+
         Returns True on a clean upstream success; False if we already
         pushed a terminal status (cancelled / failed). On False the caller
         must NOT proceed to push status=live.
         """
         log.info(
-            "[upload %s] task_id=%s starting upstream upload(); timeout=%.0fs publishing_after=%.0fs",
+            "[upload %s] task_id=%s starting upstream upload(); "
+            "timeout=%.0fs publishing_after=%.0fs sms_watcher=%s",
             platform_label, rec.task_id, UPLOAD_TIMEOUT_S, PUBLISHING_AFTER_S,
+            "yes" if page_provider else "no",
         )
 
         upload_task = asyncio.create_task(upload_factory())
@@ -327,6 +469,8 @@ class UploadManager:
                 return
             if upload_task.done():
                 return
+            if rec.status == "awaiting_user":
+                return  # SMS in progress — don't clobber the awaiting_user state
             log.info(
                 "[upload %s] task_id=%s still running after %.0fs — pushing status=publishing/80",
                 platform_label, rec.task_id, PUBLISHING_AFTER_S,
@@ -340,9 +484,16 @@ class UploadManager:
 
         watchdog_task = asyncio.create_task(_publishing_watchdog())
 
-        async def _drain_pending(*tasks: asyncio.Task[Any]) -> None:
+        sms_task: asyncio.Task[Any] | None = None
+        sms_driver = get_sms_driver(platform_label) if page_provider else None
+        if sms_driver is not None and page_provider is not None:
+            sms_task = asyncio.create_task(
+                self._sms_watcher_loop(rec, page_provider, sms_driver, upload_task, platform_label)
+            )
+
+        async def _drain_pending(*tasks: asyncio.Task[Any] | None) -> None:
             for t in tasks:
-                if t.done():
+                if t is None or t.done():
                     continue
                 t.cancel()
                 try:
@@ -350,28 +501,51 @@ class UploadManager:
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
 
+        # Sliced wait loop — gives us a chance to pause the deadline when
+        # the SMS watcher has switched status to awaiting_user. Plain
+        # asyncio.wait(timeout=UPLOAD_TIMEOUT_S) would burn budget even
+        # while we're blocked on the user typing 6 digits.
+        SLICE_S = 0.5
+        deadline = time.monotonic() + UPLOAD_TIMEOUT_S
+        timed_out = False
         try:
-            done, _ = await asyncio.wait(
-                {upload_task, cancel_task},
-                timeout=UPLOAD_TIMEOUT_S,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            while True:
+                if upload_task.done() or cancel_task.done():
+                    break
+                await asyncio.wait(
+                    {upload_task, cancel_task},
+                    timeout=SLICE_S,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if upload_task.done() or cancel_task.done():
+                    break
+                if rec.status == "awaiting_user":
+                    # Pause the budget — push deadline forward by the slice
+                    # we just consumed, leaving net time-spent-uploading
+                    # unchanged.
+                    deadline += SLICE_S
+                elif time.monotonic() >= deadline:
+                    timed_out = True
+                    break
 
-            if cancel_task in done:
+            if cancel_task.done():
                 log.info(
                     "[upload %s] task_id=%s cancel_event received; aborting upstream upload",
                     platform_label, rec.task_id,
                 )
-                await _drain_pending(upload_task, watchdog_task)
-                await self._terminate(rec, "cancelled")
+                await _drain_pending(upload_task, watchdog_task, sms_task)
+                # If SMS watcher already pushed failed/AWAIT_USER_TIMEOUT,
+                # don't overwrite with cancelled.
+                if rec.error_code != "AWAIT_USER_TIMEOUT":
+                    await self._terminate(rec, "cancelled")
                 return False
 
-            if not upload_task.done():
+            if timed_out:
                 log.warning(
                     "[upload %s] task_id=%s exceeded total budget %.0fs; aborting upstream upload",
                     platform_label, rec.task_id, UPLOAD_TIMEOUT_S,
                 )
-                await _drain_pending(upload_task, cancel_task, watchdog_task)
+                await _drain_pending(upload_task, cancel_task, watchdog_task, sms_task)
                 rec.status = "failed"
                 rec.error_code = "UPLOAD_TIMEOUT"
                 rec.error_message = (
@@ -379,16 +553,179 @@ class UploadManager:
                     "多见于平台 selector 失效或视频审核长时间未通过。"
                     "请到对应平台后台确认是否已落草稿，再人工决定是否重新派单。"
                 )
+                rec.interaction_required = None
                 await self._push(rec)
                 return False
 
             # upload_task completed within budget — surface any exception.
-            await _drain_pending(cancel_task, watchdog_task)
+            await _drain_pending(cancel_task, watchdog_task, sms_task)
             await upload_task  # re-raises if upstream threw
             log.info("[upload %s] task_id=%s upstream upload() returned cleanly", platform_label, rec.task_id)
             return True
         finally:
-            await _drain_pending(upload_task, cancel_task, watchdog_task)
+            await _drain_pending(upload_task, cancel_task, watchdog_task, sms_task)
+
+    async def _sms_watcher_loop(
+        self,
+        rec: TaskRecord,
+        page_provider: Callable[[], Any],
+        driver: SmsInteractionDriver,
+        upload_task: asyncio.Task[Any],
+        platform_label: str,
+    ) -> None:
+        """Poll page for SMS modal; shepherd through user submission.
+
+        Lifecycle per detection:
+          1. driver.detect() returns a payload → enter awaiting_user, push
+             interaction_required to server.
+          2. driver.request_sms() auto-clicks the platform's '获取验证码'
+             button (best-effort — failure logged but doesn't abort).
+          3. asyncio.wait_for(rec.interaction_event, INTERACTION_USER_TIMEOUT_S):
+               - on submit: fill code → verify cleared → restore prior status
+               - on timeout: set cancel_event + push failed/AWAIT_USER_TIMEOUT
+               - on cancel: bail out, main loop handles cancelled
+        Continues polling — a single upload may trigger multiple SMS prompts
+        (rare but happens with 风控 retry).
+
+        Page is fetched lazily via page_provider() — upstream creates it
+        somewhere inside its launch chain so we may not have it on the
+        first poll tick.
+        """
+        prior_status = rec.status
+        while not upload_task.done():
+            try:
+                await asyncio.sleep(INTERACTION_POLL_INTERVAL_S)
+            except asyncio.CancelledError:
+                return
+
+            if upload_task.done() or rec.cancel_event.is_set():
+                return
+
+            page = page_provider()
+            if page is None:
+                continue  # upstream hasn't surfaced a page yet
+
+            try:
+                detected = await driver.detect(page)
+            except Exception:  # noqa: BLE001
+                log.exception("[interaction %s] task_id=%s detect failed", platform_label, rec.task_id)
+                continue
+            if not detected:
+                # Track the most recent non-awaiting status so we can restore
+                # it after the user submits.
+                if rec.status != "awaiting_user":
+                    prior_status = rec.status
+                continue
+
+            log.info(
+                "[interaction %s] task_id=%s SMS modal detected phone=%s",
+                platform_label, rec.task_id, detected.get("phone_masked"),
+            )
+            prior_status = rec.status if rec.status != "awaiting_user" else prior_status
+            rec.status = "awaiting_user"
+            can_resend_at_unix = detected.get("can_resend_at")
+            rec.interaction_required = {
+                "kind": "sms",
+                "prompt": "平台要求输入短信验证码以继续发布。",
+                "phone_masked": detected.get("phone_masked"),
+                "can_resend_at": _unix_to_iso(can_resend_at_unix) if can_resend_at_unix else None,
+                "created_at": _unix_to_iso(now_unix()),
+            }
+            await self._push(rec)
+
+            # Auto-trigger SMS send (per user decision: watcher fires the
+            # '获取验证码' button). Failure is best-effort — user can still
+            # manually trigger via platform if our click missed.
+            try:
+                requested = await driver.request_sms(page)
+                log.info(
+                    "[interaction %s] task_id=%s auto request_sms returned %s",
+                    platform_label, rec.task_id, requested,
+                )
+            except Exception:  # noqa: BLE001
+                log.exception("[interaction %s] task_id=%s request_sms raised", platform_label, rec.task_id)
+
+            # Wait for user submission or timeout
+            try:
+                await asyncio.wait_for(
+                    rec.interaction_event.wait(),
+                    timeout=INTERACTION_USER_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                log.warning(
+                    "[interaction %s] task_id=%s user did not respond within %.0fs",
+                    platform_label, rec.task_id, INTERACTION_USER_TIMEOUT_S,
+                )
+                rec.cancel_event.set()
+                rec.status = "failed"
+                rec.error_code = "AWAIT_USER_TIMEOUT"
+                rec.error_message = (
+                    f"等待用户输入短信验证码超过 {INTERACTION_USER_TIMEOUT_S:.0f} 秒；"
+                    "任务已自动取消，请重新派单。"
+                )
+                rec.interaction_required = None
+                await self._push(rec)
+                return
+            except asyncio.CancelledError:
+                return
+
+            response = rec.interaction_response
+            rec.interaction_response = None
+            rec.interaction_event.clear()
+
+            if rec.cancel_event.is_set():
+                return  # main loop will push cancelled
+
+            code = (response or {}).get("code", "").strip() if response else ""
+            if not code:
+                log.warning(
+                    "[interaction %s] task_id=%s empty/missing code in response — re-detecting",
+                    platform_label, rec.task_id,
+                )
+                continue  # loop back; detect will find modal still up
+
+            log.info("[interaction %s] task_id=%s submitting user code", platform_label, rec.task_id)
+            try:
+                ok = await driver.submit_code(page, code)
+            except Exception:  # noqa: BLE001
+                log.exception("[interaction %s] task_id=%s submit_code raised", platform_label, rec.task_id)
+                ok = False
+            if not ok:
+                log.warning(
+                    "[interaction %s] task_id=%s submit_code returned False — re-detecting",
+                    platform_label, rec.task_id,
+                )
+                continue
+
+            # Verify the modal actually closed; if not, the code was wrong
+            # and the platform left the modal up. Loop will re-detect and
+            # surface awaiting_user again so user can retry.
+            try:
+                cleared = await driver.is_cleared(page)
+            except Exception:  # noqa: BLE001
+                log.exception(
+                    "[interaction %s] task_id=%s is_cleared raised — assuming not cleared",
+                    platform_label, rec.task_id,
+                )
+                cleared = False
+            if not cleared:
+                log.warning(
+                    "[interaction %s] task_id=%s modal still up after submit; "
+                    "code may have been wrong",
+                    platform_label, rec.task_id,
+                )
+                continue
+
+            log.info(
+                "[interaction %s] task_id=%s SMS satisfied, resuming as %s",
+                platform_label, rec.task_id, prior_status,
+            )
+            rec.interaction_required = None
+            # Restore the most recent non-awaiting status so progress UI
+            # snaps back to what upload was doing.
+            rec.status = prior_status if prior_status in ("uploading", "publishing", "transcoding") else "publishing"
+            await self._push(rec)
+            # Loop continues — another SMS may follow (rare).
 
     async def _upload_douyin(self, rec: TaskRecord) -> None:
         """Invoke pokocat/social-auto-upload's DouYinVideo end-to-end."""
@@ -433,11 +770,13 @@ class UploadManager:
                 video = DouYinVideo(**ctor_kwargs)
                 rec.progress = 40
                 await self._push(rec)
-                ok = await self._run_upstream_upload(
-                    rec,
-                    lambda: video.upload(playwright),
-                    platform_label="douyin",
-                )
+                with _hook_chromium_for_page_capture(playwright) as page_provider:
+                    ok = await self._run_upstream_upload(
+                        rec,
+                        lambda: video.upload(playwright),
+                        platform_label="douyin",
+                        page_provider=page_provider,
+                    )
                 if not ok:
                     return  # _run_upstream_upload already pushed terminal status
             rec.status = "live"
@@ -508,11 +847,13 @@ class UploadManager:
                 video = TencentVideo(**ctor_kwargs)
                 rec.progress = 40
                 await self._push(rec)
-                ok = await self._run_upstream_upload(
-                    rec,
-                    lambda: video.upload(playwright),
-                    platform_label="shipinhao",
-                )
+                with _hook_chromium_for_page_capture(playwright) as page_provider:
+                    ok = await self._run_upstream_upload(
+                        rec,
+                        lambda: video.upload(playwright),
+                        platform_label="shipinhao",
+                        page_provider=page_provider,
+                    )
                 if not ok:
                     return  # _run_upstream_upload already pushed terminal status
             rec.status = "live"

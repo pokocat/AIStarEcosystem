@@ -16,13 +16,14 @@ import type { PublishJob, PublishJobEvent, PublishJobStatus } from "@/types/publ
 import { formatDateCN } from "@/lib/utils";
 
 const STATUS_TABS: { value: PublishJobStatus | "all"; label: string }[] = [
-  { value: "all",         label: "全部" },
-  { value: "queued",      label: "排队中" },
-  { value: "uploading",   label: "上传中" },
-  { value: "publishing",  label: "发布中" },
-  { value: "live",        label: "已上线" },
-  { value: "failed",      label: "失败" },
-  { value: "cancelled",   label: "已取消" },
+  { value: "all",            label: "全部" },
+  { value: "queued",         label: "排队中" },
+  { value: "uploading",      label: "上传中" },
+  { value: "publishing",     label: "发布中" },
+  { value: "awaiting_user",  label: "待验证码" },
+  { value: "live",           label: "已上线" },
+  { value: "failed",         label: "失败" },
+  { value: "cancelled",      label: "已取消" },
 ];
 
 export default function PublishJobsPage() {
@@ -62,7 +63,7 @@ export default function PublishJobsPage() {
   }, [eventsFor]);
 
   const counts = {
-    inflight: rows.filter((r) => r.status === "queued" || r.status === "uploading" || r.status === "transcoding" || r.status === "publishing").length,
+    inflight: rows.filter((r) => r.status === "queued" || r.status === "uploading" || r.status === "transcoding" || r.status === "publishing" || r.status === "awaiting_user").length,
     live:     rows.filter((r) => r.status === "live").length,
     failed:   rows.filter((r) => r.status === "failed").length,
   };

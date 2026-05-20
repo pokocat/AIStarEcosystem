@@ -360,6 +360,7 @@ function PublishJobRow({ job }: { job: PublishJob }) {
       uploading: "上传中",
       transcoding: "转码中",
       publishing: "发布中",
+      awaiting_user: "待输入验证码",
       live: "已上线",
       failed: "失败",
       cancelled: "已取消",
