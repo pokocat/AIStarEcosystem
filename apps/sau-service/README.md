@@ -119,6 +119,8 @@ curl -H 'X-Internal-Secret: aep-dev-internal-secret-change-in-prod' \
 | `SAU_REAL_LOGIN_HEADLESS` | `1` | `1` = headless（不弹浏览器，dev 默认）；`0` = headed（看 QR 抓取过程） |
 | `SAU_TMPFS_DIR` | auto | 视频 / cookie 中转目录。未设时：Linux 用 `/dev/shm`（POSIX 共享内存）；macOS / Windows 回退到 `<tempdir>/sau-service`。生产可显式指定挂载点。 |
 | `SAU_DEFAULT_CALLBACK_BASE` | unset | optional default for the callback URL if server omits it |
+| `SAU_UPLOAD_TIMEOUT_S` | `180` | 单条 upstream `DouYinVideo.upload()` / `TencentVideo.upload()` 的总超时（秒）。超时强制 cancel + 推 `status=failed errorCode=UPLOAD_TIMEOUT`。防止上游 `while True` 发布按钮循环卡死。 |
+| `SAU_UPLOAD_PUBLISHING_AFTER_S` | `60` | 上传持续这么久还没返回时，推送 `status=publishing progress=80` 让 UI 区分"传字节"与"等平台发布"。纯时间启发，upstream 是 atomic 调用没法精确感知阶段切换。 |
 
 **dev 配置入口**：`.env.dev`（入仓默认值）。`start.sh` 启动前自动 `source` 这个文件；想改默认就改这里，不要硬编码到 `start.sh`。
 

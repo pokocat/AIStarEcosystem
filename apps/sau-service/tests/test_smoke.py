@@ -235,3 +235,155 @@ def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:
         detail = r.json()["detail"]
         assert detail["code"] == "PLATFORM_REAL_LOGIN_NOT_WIRED"
         assert "kuaishou" in detail["message"]
+
+
+# ── _run_upstream_upload guard (timeout / cancel / publishing watchdog) ─────
+
+
+def _make_manager_for_guard():
+    """Spin up a UploadManager without going through FastAPI lifespan.
+
+    We exercise `_run_upstream_upload` directly with synthetic upload
+    coroutines so we don't need patchright installed.
+    """
+    from sau_service.uploader import TaskRecord, UploadManager, UploadRequest
+
+    mgr = UploadManager(max_concurrency=1, mock_mode=True, tmpfs_dir="/tmp/sau-guard-test")
+    req = UploadRequest(
+        job_id="job-guard",
+        platform="douyin",
+        account_name="alice",
+        video_url="https://example.test/video.mp4",
+        title="t",
+        description=None,
+        tags=[],
+        cover_url=None,
+        storage_state={},
+        callback_url="http://test/callback",
+        callback_secret="x",
+    )
+    rec = TaskRecord(task_id="task-guard", request=req)
+    return mgr, rec
+
+
+def test_run_upstream_upload_returns_true_on_success(monkeypatch) -> None:
+    """Happy path: upstream returns cleanly, watchdog never fires, ok=True."""
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 5.0)
+    monkeypatch.setattr("sau_service.uploader.PUBLISHING_AFTER_S", 5.0)
+    pushed: list[dict] = []
+
+    async def fake_push(rec):
+        pushed.append({"status": rec.status, "progress": rec.progress})
+
+    mgr, rec = _make_manager_for_guard()
+    monkeypatch.setattr(type(mgr), "_push", lambda self, r: fake_push(r))
+
+    async def quick_upload():
+        await asyncio.sleep(0.05)
+
+    async def run():
+        return await mgr._run_upstream_upload(rec, quick_upload, platform_label="douyin")
+
+    ok = asyncio.run(run())
+    assert ok is True
+    # publishing watchdog did NOT fire (5s > 0.05s upload)
+    assert all(p["status"] != "publishing" for p in pushed)
+
+
+def test_run_upstream_upload_publishes_watchdog_status(monkeypatch) -> None:
+    """After PUBLISHING_AFTER_S the task should be pushed as publishing/80."""
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 5.0)
+    monkeypatch.setattr("sau_service.uploader.PUBLISHING_AFTER_S", 0.2)
+    pushed: list[dict] = []
+
+    async def fake_push(rec):
+        pushed.append({"status": rec.status, "progress": rec.progress})
+
+    mgr, rec = _make_manager_for_guard()
+    monkeypatch.setattr(type(mgr), "_push", lambda self, r: fake_push(r))
+
+    async def slow_upload():
+        await asyncio.sleep(0.6)  # > 0.2s watchdog, < 5s timeout
+
+    async def run():
+        return await mgr._run_upstream_upload(rec, slow_upload, platform_label="douyin")
+
+    ok = asyncio.run(run())
+    assert ok is True
+    # Watchdog fired in the middle
+    assert any(p["status"] == "publishing" and p["progress"] == 80 for p in pushed), (
+        f"watchdog should have pushed publishing/80, got: {pushed}"
+    )
+
+
+def test_run_upstream_upload_times_out(monkeypatch) -> None:
+    """Upstream that never returns must be force-cancelled with UPLOAD_TIMEOUT."""
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 0.3)
+    monkeypatch.setattr("sau_service.uploader.PUBLISHING_AFTER_S", 5.0)
+    pushed: list[dict] = []
+
+    async def fake_push(rec):
+        pushed.append(
+            {
+                "status": rec.status,
+                "progress": rec.progress,
+                "error_code": rec.error_code,
+                "error_message": rec.error_message,
+            }
+        )
+
+    mgr, rec = _make_manager_for_guard()
+    monkeypatch.setattr(type(mgr), "_push", lambda self, r: fake_push(r))
+
+    async def hung_upload():
+        # Mimic upstream's `while True` publish-button loop with no exit.
+        while True:
+            await asyncio.sleep(0.05)
+
+    async def run():
+        return await mgr._run_upstream_upload(rec, hung_upload, platform_label="douyin")
+
+    ok = asyncio.run(run())
+    assert ok is False
+    # Final push reflects timeout failure
+    last = pushed[-1]
+    assert last["status"] == "failed"
+    assert last["error_code"] == "UPLOAD_TIMEOUT"
+    assert "180" in last["error_message"] or "0" in last["error_message"]  # contains the timeout figure
+
+
+def test_run_upstream_upload_honours_cancel_event(monkeypatch) -> None:
+    """rec.cancel_event must abort an in-flight upstream upload promptly."""
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 5.0)
+    monkeypatch.setattr("sau_service.uploader.PUBLISHING_AFTER_S", 5.0)
+    pushed: list[dict] = []
+
+    async def fake_push(rec):
+        pushed.append({"status": rec.status, "progress": rec.progress})
+
+    mgr, rec = _make_manager_for_guard()
+    monkeypatch.setattr(type(mgr), "_push", lambda self, r: fake_push(r))
+
+    async def hung_upload():
+        while True:
+            await asyncio.sleep(0.05)
+
+    async def run():
+        async def fire_cancel():
+            await asyncio.sleep(0.1)
+            rec.cancel_event.set()
+
+        cancel_setter = asyncio.create_task(fire_cancel())
+        try:
+            return await mgr._run_upstream_upload(rec, hung_upload, platform_label="douyin")
+        finally:
+            cancel_setter.cancel()
+            try:
+                await cancel_setter
+            except asyncio.CancelledError:
+                pass
+
+    ok = asyncio.run(run())
+    assert ok is False
+    # _terminate pushes the cancelled status
+    assert any(p["status"] == "cancelled" for p in pushed), f"expected cancelled, got: {pushed}"

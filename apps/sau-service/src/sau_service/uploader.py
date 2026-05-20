@@ -24,11 +24,36 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from .callback import post_callback
 
 log = logging.getLogger(__name__)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+# Total wall-clock budget for one upstream upload() call (real-mode douyin /
+# shipinhao). Upstream's publish-button loop is `while True` with no max
+# attempts — if the selector breaks or the platform stalls, it would
+# otherwise hang forever, leaving the PublishJob stuck at "uploading" /
+# "publishing" on the server side. Capping it forces a clean FAILED so the
+# user sees an actionable status.
+UPLOAD_TIMEOUT_S: float = _env_float("SAU_UPLOAD_TIMEOUT_S", 180.0)
+
+# After this many seconds without upload() returning, assume we've moved
+# from "uploading file bytes" to "waiting for the platform's publish button"
+# and push status=publishing/progress=80 so the UI reflects the longer wait.
+# Upstream is an atomic call so this is best-effort time-based heuristic.
+PUBLISHING_AFTER_S: float = _env_float("SAU_UPLOAD_PUBLISHING_AFTER_S", 60.0)
 
 
 @dataclass
@@ -258,6 +283,113 @@ class UploadManager:
         base_dir = os.path.join(self._tmpfs, "sau-upstream")
         ensure_upstream_conf(headless=headless, base_dir=base_dir)
 
+    async def _run_upstream_upload(
+        self,
+        rec: TaskRecord,
+        upload_factory: Callable[[], Awaitable[Any]],
+        *,
+        platform_label: str,
+    ) -> bool:
+        """Drive an upstream `video.upload(playwright)` call with timeout +
+        cancel-aware race + publishing-phase watchdog.
+
+        Upstream's publish-button loop in `DouYinVideo.upload()` /
+        `TencentVideo.upload()` is `while True` with no max attempts. If the
+        platform selector breaks or the publish URL never matches, it loops
+        forever spamming "🏃 小人正在冲刺发布视频" — the PublishJob would
+        otherwise stay stuck at uploading/publishing on the server side. We
+        cap the total wall-clock budget at UPLOAD_TIMEOUT_S; on timeout the
+        task is marked FAILED with code=UPLOAD_TIMEOUT.
+
+        We also start a watchdog: after PUBLISHING_AFTER_S the task is
+        almost certainly past the "bytes being uploaded" phase and into
+        "waiting for the platform to surface the publish button", so we
+        push status=publishing/progress=80 to make the UI distinguish the
+        two long phases. Upstream is an atomic call so this is a
+        time-based heuristic, not an event from the platform.
+
+        Returns True on a clean upstream success; False if we already
+        pushed a terminal status (cancelled / failed). On False the caller
+        must NOT proceed to push status=live.
+        """
+        log.info(
+            "[upload %s] task_id=%s starting upstream upload(); timeout=%.0fs publishing_after=%.0fs",
+            platform_label, rec.task_id, UPLOAD_TIMEOUT_S, PUBLISHING_AFTER_S,
+        )
+
+        upload_task = asyncio.create_task(upload_factory())
+        cancel_task = asyncio.create_task(rec.cancel_event.wait())
+
+        async def _publishing_watchdog() -> None:
+            try:
+                await asyncio.sleep(PUBLISHING_AFTER_S)
+            except asyncio.CancelledError:
+                return
+            if upload_task.done():
+                return
+            log.info(
+                "[upload %s] task_id=%s still running after %.0fs — pushing status=publishing/80",
+                platform_label, rec.task_id, PUBLISHING_AFTER_S,
+            )
+            rec.status = "publishing"
+            rec.progress = 80
+            try:
+                await self._push(rec)
+            except Exception:  # noqa: BLE001 — callback failure must not kill upload
+                log.exception("[upload %s] task_id=%s watchdog push failed", platform_label, rec.task_id)
+
+        watchdog_task = asyncio.create_task(_publishing_watchdog())
+
+        async def _drain_pending(*tasks: asyncio.Task[Any]) -> None:
+            for t in tasks:
+                if t.done():
+                    continue
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+
+        try:
+            done, _ = await asyncio.wait(
+                {upload_task, cancel_task},
+                timeout=UPLOAD_TIMEOUT_S,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if cancel_task in done:
+                log.info(
+                    "[upload %s] task_id=%s cancel_event received; aborting upstream upload",
+                    platform_label, rec.task_id,
+                )
+                await _drain_pending(upload_task, watchdog_task)
+                await self._terminate(rec, "cancelled")
+                return False
+
+            if not upload_task.done():
+                log.warning(
+                    "[upload %s] task_id=%s exceeded total budget %.0fs; aborting upstream upload",
+                    platform_label, rec.task_id, UPLOAD_TIMEOUT_S,
+                )
+                await _drain_pending(upload_task, cancel_task, watchdog_task)
+                rec.status = "failed"
+                rec.error_code = "UPLOAD_TIMEOUT"
+                rec.error_message = (
+                    f"上游{platform_label}上传/发布超过 {UPLOAD_TIMEOUT_S:.0f} 秒未完成；"
+                    "多见于平台 selector 失效或视频审核长时间未通过。"
+                    "请到对应平台后台确认是否已落草稿，再人工决定是否重新派单。"
+                )
+                await self._push(rec)
+                return False
+
+            # upload_task completed within budget — surface any exception.
+            await _drain_pending(cancel_task, watchdog_task)
+            await upload_task  # re-raises if upstream threw
+            log.info("[upload %s] task_id=%s upstream upload() returned cleanly", platform_label, rec.task_id)
+            return True
+        finally:
+            await _drain_pending(upload_task, cancel_task, watchdog_task)
+
     async def _upload_douyin(self, rec: TaskRecord) -> None:
         """Invoke pokocat/social-auto-upload's DouYinVideo end-to-end."""
         # Upstream `uploader/__init__.py` requires a top-level `conf` module
@@ -297,10 +429,17 @@ class UploadManager:
                     ctor_kwargs["productLink"] = rec.request.product_link
                 if rec.request.product_title:
                     ctor_kwargs["productTitle"] = rec.request.product_title
+                log.info("[upload douyin] task_id=%s constructing DouYinVideo", rec.task_id)
                 video = DouYinVideo(**ctor_kwargs)
                 rec.progress = 40
                 await self._push(rec)
-                await video.upload(playwright)
+                ok = await self._run_upstream_upload(
+                    rec,
+                    lambda: video.upload(playwright),
+                    platform_label="douyin",
+                )
+                if not ok:
+                    return  # _run_upstream_upload already pushed terminal status
             rec.status = "live"
             rec.progress = 100
             rec.external_url = None  # upstream doesn't return URL — keep null
@@ -365,10 +504,17 @@ class UploadManager:
                 }
                 if rec.request.description:
                     ctor_kwargs["desc"] = rec.request.description
+                log.info("[upload shipinhao] task_id=%s constructing TencentVideo", rec.task_id)
                 video = TencentVideo(**ctor_kwargs)
                 rec.progress = 40
                 await self._push(rec)
-                await video.upload(playwright)
+                ok = await self._run_upstream_upload(
+                    rec,
+                    lambda: video.upload(playwright),
+                    platform_label="shipinhao",
+                )
+                if not ok:
+                    return  # _run_upstream_upload already pushed terminal status
             rec.status = "live"
             rec.progress = 100
             rec.external_url = None  # upstream doesn't return final URL
