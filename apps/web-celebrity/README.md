@@ -69,6 +69,17 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.20 · 2026-05-20 · 分发定时策略升级（每日铺开 + 随机抖动）
+
+- ✅ **三选一调度策略**：批量发布抽屉的「定时发布」checkbox 退役，换成「立即发布 / 单次定时 / 每日定时铺开」三选一 pill。`single` 分支保留 v0.15 的 `datetime-local`。
+- ✅ **「每日定时铺开」核心新功能**：起始日期 + 时段池（支持「每天 3 次 09/12/18」「每天 2 次 12/19」「每天 1 次 19」「晚间高峰 19/21/22:30」四套预设 + 自定义 HH:MM chip 编辑）+「直到视频用完 / 持续 N 天」容量模式 + 可选「±N 分钟随机抖动」。
+- ✅ **自动建议天数**：当切到「持续 N 天」模式且用户未手改过 maxDays 时，根据 `ceil(选中变体数 / 时段数)` 自动建议（cap 30 天）。用户一旦手改即停止覆盖。
+- ✅ **实时预览**：`共 X 条 · 跨 Y 天 · 首条 今 09:00 · 末条 5月23日 18:00 · ±15 分钟抖动` 实时跟随选中变体 + 时段变化。过去 slot 标「立即」。
+- ✅ **容量超限校验**：「持续 N 天」模式下若选中变体 > maxDays × 时段数，红字阻拦提交并解释 `N > D×K = M`。
+- ✅ **服务端铺开（新 ScheduleSpec API）**：`MixcutPublishBatchRequest` 顶层增 `schedule: ScheduleSpec` 多态字段（Jackson `@JsonTypeInfo` discriminator `strategy`，sealed `Immediate / Single / DailyRecurring`）；`TargetItem` 移除 `scheduled_at`（时间不再 per-account）。`MixcutPublishService.expandSchedule` 把 spec 算成 outputs.size 长的 Instant[] 数组，校验失败 400 拒绝在任何 DB 写入前。`PublishJobScheduler` / `PublishJob` 零改动 —— 错峰 `scheduledAt` 直接生效。
+- ✅ **projectId 防撞**：调用方未指定 projectId 时，服务端拼 `mixcut-batch-<source>-<yyyyMMddHHmmss>`，避免同源混剪任务多次铺开撞同一 project_id。
+- ✅ **过去 slot clamp**：起始日期填昨天，前几个 slot 已过时间 → 自动 clamp 到 `now()`，调度器下个 tick 立刻起飞，避免 UI 显示「-3 天 09:00」。
+
 ### v0.19 · 2026-05-20 · 视频库允许再次分发 · 派发计数落库
 
 - ✅ **去掉「已发布默认隐藏」**：v0.16 引入的 localStorage 去重（`aep:distribute:published-output-ids`）已删除。视频库默认显示全部可发变体，包括已经派过单的；同一变体可再次分发到新账号 / 新时间窗。

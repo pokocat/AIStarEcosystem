@@ -390,15 +390,43 @@ export interface MixcutPublishOutput {
   thumbnail_url?: string;
 }
 
-/** 单个发布目标（平台 + 账号 + 可选定时）。 */
+/**
+ * 单个发布目标（平台 + 账号）。
+ * v0.20+ 移除 scheduled_at —— 时间由顶层 schedule 决定（不再每个 target 自己带）。
+ */
 export interface MixcutPublishTarget {
   platform: string;
   social_account_id: string;
-  /** ISO 8601 字符串；省略 = 立即提交（仍走 QUEUED → 调度器/手动 start） */
-  scheduled_at?: string;
 }
 
-/** publish-batch 请求。outputs × targets 笛卡尔积 = 实际派单数。 */
+/**
+ * v0.20+: 调度策略 discriminator union。
+ * 后端 ScheduleSpec sealed interface 1:1 对齐（apps/server/.../dto/MixcutPublishBatchRequest.java）。
+ *  - immediate         立即派单（scheduledAt = now）
+ *  - single            全部 N×M 条派单同一时间起飞（兼容 v0.15 行为）
+ *  - daily_recurring   按时段 / 天数把 outputs 错峰铺开；可选 jitter_minutes 抖动
+ */
+export type ScheduleSpec =
+  | { strategy: "immediate" }
+  | { strategy: "single"; at: string /* ISO 8601 UTC */ }
+  | {
+      strategy: "daily_recurring";
+      /** "YYYY-MM-DD" 在 timezone 下的日历日 */
+      start_date: string;
+      /** ["09:00","12:00","18:00"]，HH:MM 24h；后端会排序去重 */
+      time_slots: string[];
+      /** IANA, 例 "Asia/Shanghai" */
+      timezone: string;
+      /** null = 直到 outputs 用完；非 null 时要 outputs.length <= max_days * time_slots.length */
+      max_days?: number;
+      /** [0, 30]；null/0 = 无抖动。每条 slot 加 [-N, +N] 分钟随机偏移 */
+      jitter_minutes?: number;
+    };
+
+/**
+ * publish-batch 请求。outputs[] 顺序即 daily_recurring 的铺开顺序（第 i 条 → 第 (i/K) 天的第 (i%K) 槽）。
+ * outputs × targets 笛卡尔积 = 实际派单数。
+ */
 export interface MixcutPublishBatchRequest {
   source_mixcut_job_id?: string;
   outputs: MixcutPublishOutput[];
@@ -407,6 +435,8 @@ export interface MixcutPublishBatchRequest {
   tags?: string[];
   cover_url?: string;
   targets: MixcutPublishTarget[];
+  /** v0.20+: 必填；默认 { strategy: "immediate" } */
+  schedule: ScheduleSpec;
   project_id?: string;
 }
 

@@ -432,6 +432,7 @@ export function DistributeWorkbench({ fromJobId }: Props) {
           <p>· 仅显示已上传到 CDN 的变体；未上传需回到任务详情等渲染完毕。</p>
           <p>· 已派过单的变体保持可见，徽标显示「已发 ×N」；同一变体可再次分发到新账号 / 新时间窗。</p>
           <p>· 想只看未派过的，点工具条「显示全部 → 仅未发布」收窄视野。</p>
+          <p>· 想按节奏铺开？批量发布支持「每日定时」（每天 N 次，可选随机抖动），服务端会拆成多条派单。</p>
           <p>
             · 没绑过账号？先到 <Link href="/distribution/accounts" className="text-violet-600 underline">账号管理</Link> 绑定。
           </p>
