@@ -683,7 +683,12 @@ public class MixcutRenderingService {
             ObjectNode overlayDetail = transforms.putObject("overlays_detail");
             for (int i = 0; i < overlayCount; i++) {
                 OverlaySpec spec = overlays.get(i);
-                args.add("-loop"); args.add("1");
+                // `-stream_loop -1` 替代旧的 `-loop 1`：后者是 image2 demuxer
+                // 专有 input 选项，被部分 stripped/精简 ffmpeg build 干掉了
+                // (exit=8 "Unrecognized option 'loop'")。前者是 demuxer-agnostic
+                // 的通用 input 选项，自 ffmpeg 2.8 (2015) 起稳定可用，对图片 /
+                // 视频 / GIF 都能正确循环，与本文件下方 BGM / 贴图池的用法一致。
+                args.add("-stream_loop"); args.add("-1");
                 args.add("-t"); args.add(format((double) totalDuration));
                 args.add("-i"); args.add(spec.file.getAbsolutePath());
                 ObjectNode od = overlayDetail.objectNode();

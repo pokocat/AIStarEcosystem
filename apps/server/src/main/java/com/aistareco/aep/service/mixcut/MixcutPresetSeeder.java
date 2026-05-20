@@ -195,7 +195,11 @@ public class MixcutPresetSeeder implements CommandLineRunner {
         args.add("-f"); args.add("lavfi");
         args.add("-i"); args.add("color=c=black@0.0:s=" + spec.width + "x" + spec.height + ":d=2:r=" + spec.fps);
         args.add("-vf"); args.add(spec.vf);
-        args.add("-loop"); args.add("0");
+        // 不写 `-loop 0` (GIF 内嵌 NETSCAPE loop chunk) —— 部分 stripped ffmpeg
+        // build 不识别这个 muxer 选项 (exit=8 "Unrecognized option 'loop'")，
+        // 导致整个 seed 静默失败一片 demo 都种不进去。渲染管线对每张 sticker
+        // 都用 `-stream_loop -1` 在 input 端循环，文件本身是否带 loop chunk
+        // 对最终结果完全没影响。
         args.add(out.getAbsolutePath());
         try {
             ffmpeg.runFfmpeg(args);
