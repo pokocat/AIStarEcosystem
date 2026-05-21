@@ -54,7 +54,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - `src/components/mixcut-zone/` — 混剪专区（v0.7 从独立项目 `mixcut/frontend/` 内嵌）：`template-preview.tsx` / `slot-input.tsx` 两个业务组件 + `ui/` 下 12 个 shadcn 原语 + `lib/utils.ts` + `types.ts`。独立一份 UI，避免与 celebrity-zone 共用 `@ai-star-eco/ui` 时的样式漂移。
 - `src/components/creator/` — 设计原语：`Button` / `GradientBlock` 等（系统化 inline style，多层 gradient 叠加）。
 - `src/components/console/` — `(workspace)/layout.tsx` 引用的 sidebar + topbar shell（`CelebrityShellProvider`，复用 `useAuth` 的 logout / wallet）。
-- `@ai-star-eco/ui`（共享包）— 48 个 shadcn 原语 + `ThemeProvider` + Tailwind v4 globals.css。字体由 root layout 通过 `next/font/google` 注入（Inter + Space_Grotesk）。
+- `@ai-star-eco/ui`（共享包）— 48 个 shadcn 原语 + `ThemeProvider` + Tailwind v4 globals.css。字体使用 `public/fonts` 下的自托管 woff2，避免依赖 Google Fonts。
 - `@ai-star-eco/api-client`（共享包）— `apiFetch` / `AuthProvider` / `USE_MOCK` / `mockDelay`，token 仍 localStorage（cookie SSO TODO 见 `packages/api-client/src/_client.ts`）。
 
 `(workspace)/layout.tsx` 提供独立 shell（`CelebrityShellProvider`）；登录态由 `app/providers.tsx` 的 `AuthProvider` 承担（`publicPrefixes=["/","/login","/activate"]`，`loginPath="/login"`，`"/"` exact-match）；landing CTA 通过 `ProductLanding.postLoginPath="/dashboard"` 让登录后落到工作台。
@@ -68,6 +68,22 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - 真后端尚未上线，USE_MOCK=0 分支保留 `apiFetch` 占位（507/501 后端原因）。
 
 ## 版本日志
+
+### v0.24 · 2026-05-21 · 混剪 / 分发融合商品库（showcase MVP）
+
+把已有 **商品库**（[`Product`](../../packages/types/src/product.ts) 实体 + admin CRUD + `ProductsApi`）接到混剪创建页与分发流程上。**纯前端拼装，零后端 / openapi / schema 改动**。
+
+- ✅ **混剪创建页加「关联商品」Card**（[`create-client.tsx`](src/app/(workspace)/mixcut/create/%5Bid%5D/create-client.tsx) 中段，扰动贴图池上方）：点「从商品库选择」打开复用的 [`ProductPickerDialog`](src/components/celebrity-zone/ProductPickerDialog.tsx)；选中后显示商品卡片（图 / 名 / 类目 badge / 卖点 line-clamp / 链接）作为填槽时的参考资料。**当前不自动填充任何 slot，不绑定到 RenderJob**，提交后 state 丢弃。
+- ✅ **抖音商品挂载支持从商品库选择**：[`BatchPublishDrawer`](src/components/mixcut-zone/BatchPublishDrawer.tsx)（混剪任务详情 + 分发工作台）与 [`ManualDistributeDialog`](src/components/distribution/ManualDistributeDialog.tsx)（上传链接分发）的「抖音商品挂载」section 都新增「从商品库选择」按钮，选完 `productLink ← product.link`、`productTitle ← product.name`（截断至 50 字）。任一字段为空时 sau-service 静默忽略挂件（v0.22 既有行为不变）。
+- ✅ **零新组件**：全程复用既有的 `ProductPickerDialog`（原仅给 `CelebrityProductForm` 用）+ `ProductsApi.listProducts`。
+
+**MVP 定位与未来改进**：
+
+- 当前实现是**展示性的最小可用版本**：把库已经备好的商品资料接入到两个高频入口，先把交互链路跑通，验证「先选商品，再生成视频 / 派单」的工作流。
+- 未来若要把绑定关系真正落库，需要：MixcutRenderJob 加 `productId` 列 + DTO + openapi schema + admin 反查；同步 `Product.usageCount` 在分发成功时自增（可调既有 `ProductsApi.upsertFromGeneration`）。
+- 自动填充素材槽（按 slot label 关键词或 slot 层显式「绑定字段」下拉）也是未来改进项，本次刻意留给运营人工敲。
+- picker 后续可考虑「最近使用」「热度排序」「多商品挂件」等增强。
+- 若 drama / music 子应用未来也接带货，把 `ProductPickerDialog` 上提到 `packages/ui` 共享。
 
 ### v0.23 · 2026-05-21 · 任务追踪按批次聚合 + 批量操作
 

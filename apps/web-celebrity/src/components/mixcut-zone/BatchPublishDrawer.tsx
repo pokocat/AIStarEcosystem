@@ -5,7 +5,7 @@
 // 调用 MixcutApi.publishBatch 把 outputs × targets 派单成 N×M 条 PublishJob。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Send, X, AlertCircle, ShoppingBag } from "lucide-react";
+import { Loader2, Send, X, AlertCircle, ShoppingBag, Package } from "lucide-react";
 import { MixcutApi } from "@/api";
 import type { ScheduleSpec } from "@/api/mixcut";
 import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
@@ -14,6 +14,7 @@ import { cn } from "@/components/mixcut-zone/lib/utils";
 import { SocialAccountApi } from "@ai-star-eco/api-client";
 import type { SocialAccount } from "@ai-star-eco/types/social-account";
 import { SocialAccountIdentity } from "@/components/distribution/SocialAccountIdentity";
+import { ProductPickerDialog } from "@/components/celebrity-zone/ProductPickerDialog";
 import {
   ScheduleEditor,
   type StrategyKind,
@@ -122,6 +123,7 @@ export function BatchPublishDrawer({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<MixcutApi.MixcutPublishBatchResult | null>(null);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
 
   // 只在 drawer 打开瞬间初始化一次。
   // 故意不依赖 publishable —— 否则父组件在 onPublished 回调里清空上游 selection 会导致
@@ -134,6 +136,7 @@ export function BatchPublishDrawer({
     setSubmitError(null);
     setProductLink("");
     setProductTitle("");
+    setProductPickerOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -518,10 +521,20 @@ export function BatchPublishDrawer({
                   非带货视频留空即可；任一字段为空时整组忽略，避免半残挂件。 */}
               {douyinSelected ? (
                 <section className="space-y-3">
-                  <h3 className="text-sm font-medium flex items-center gap-1.5">
-                    <ShoppingBag className="size-3.5 text-muted-foreground" />
-                    抖音商品挂载
-                  </h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-medium flex items-center gap-1.5">
+                      <ShoppingBag className="size-3.5 text-muted-foreground" />
+                      抖音商品挂载
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setProductPickerOpen(true)}
+                      className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[11px] font-medium text-violet-600 transition hover:border-violet-500/50 hover:bg-violet-500/15"
+                    >
+                      <Package className="size-3" />
+                      从商品库选择
+                    </button>
+                  </div>
                   <p className="text-[11px] text-muted-foreground -mt-1">
                     蓝V / 橱窗带货；视频画面下方挂「立即购买」卡片。两项都填才会触发挂件；
                     非抖音平台账号 sau-service 会自动忽略。
@@ -546,9 +559,15 @@ export function BatchPublishDrawer({
                       maxLength={50}
                       className="w-full mt-1 px-3 py-2 text-sm rounded-md border border-border bg-background"
                     />
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      最长 50 字；将作为视频底部「立即购买」按钮上方的商品标题展示。
-                    </p>
+                    {productTitle && !productLink ? (
+                      <p className="mt-1 text-[11px] text-amber-600">
+                        该商品未填链接，挂件不会触发；到商品库补一下链接再来。
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        最长 50 字；将作为视频底部「立即购买」按钮上方的商品标题展示。
+                      </p>
+                    )}
                   </div>
                 </section>
               ) : null}
@@ -619,6 +638,15 @@ export function BatchPublishDrawer({
           )}
         </div>
       </div>
+
+      <ProductPickerDialog
+        open={productPickerOpen}
+        onOpenChange={setProductPickerOpen}
+        onPick={(p) => {
+          setProductLink(p.link ?? "");
+          setProductTitle(p.name.slice(0, 50));
+        }}
+      />
     </div>
   );
 }

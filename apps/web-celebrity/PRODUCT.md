@@ -514,6 +514,46 @@ Java 端：`ScheduleSpec` 是 `sealed interface`，Jackson `@JsonTypeInfo` discr
 
 **显式 out-of-scope**：campaign 级别取消（单条 cancel 仍可用）、ShedLock 多实例调度、跨账号错峰、interval / random_window / weekly 等策略（`strategy` discriminator 预留扩展位）。
 
+### 5.15 v0.24 商品库联动（showcase MVP）
+
+把已有 **商品库**（`Product` 实体 + admin CRUD + 既有 `ProductsApi`）接到混剪创建页与分发流程，免去重复敲商品资料的工作。**纯前端拼装，零后端 / openapi / schema 改动**；定位为展示性的最小可用版本，先把工作流跑通。
+
+**新增 / 修改**：
+
+```
+web-celebrity:
+  app/(workspace)/mixcut/create/[id]/create-client.tsx
+    +关联商品 Card（扰动贴图池上方）
+    +linkedProduct / productPickerOpen state；提交时不读，纯展示
+    +挂载 <ProductPickerDialog />（复用既有组件）
+  components/mixcut-zone/BatchPublishDrawer.tsx
+    抖音商品挂载 section 加「从商品库选择」按钮
+    onPick → setProductLink(p.link ?? "") + setProductTitle(p.name.slice(0,50))
+  components/distribution/ManualDistributeDialog.tsx
+    抖音商品挂载 section 加「从商品库选择」按钮
+    同上 onPick 行为
+```
+
+**用户旅程**：
+
+1. **混剪创建页**：进入 `/mixcut/create/{templateId}` → 主区中段看到「关联商品」Card → 点「从商品库选择」→ Picker 弹窗（搜索 + 类目过滤 + 商品卡 grid，全部来自 [`ProductsApi.listProducts`](../../apps/web-celebrity/src/api/products.ts)）→ 选中后 Card 切换为商品详情视图（缩略图 / 名 / 类目 badge / 卖点 / 「查看商品页」外链 / 「更换」「清除」按钮）。
+2. **批量发布抽屉**：勾抖音账号 → 抖音商品挂载 section 出现 → 「从商品库选择」一键填入 `商品链接` / `商品名`；商品无链接时给 amber 提示「该商品未填链接，挂件不会触发」。
+3. **上传链接分发**：行为镜像 BatchPublishDrawer，douyin 平台选账号后浮现商品挂载 section 与「从商品库选择」按钮。
+
+**显式边界**（当前 MVP）：
+
+- 混剪侧的关联商品**不绑定到 RenderJob**：state 仅前端生命周期，提交后丢弃。任务详情、分发抽屉都不知道这个商品。
+- 混剪侧**不自动填充任何 slot**：商品资料仅作为视觉参考，标题 / 描述等素材槽仍由用户手工敲。
+- 分发侧虽然把 `productLink` / `productTitle` 自动填入两个 input，但用户可继续手改；提交逻辑沿用 v0.22 既有路径，sau-service 仍只挂抖音。
+
+**未来改进**（按从小到大列）：
+
+1. **picker 增强**：按「最近使用」/ 引用次数热度排序；支持多商品挂件（抖音允许多链接挂件）。
+2. **分发成功自动累计**：派单成功时调 [`ProductsApi.upsertFromGeneration`](../../apps/web-celebrity/src/api/products.ts) 让 `Product.usageCount` 真累计起来，picker 排序更有意义。
+3. **自动填充素材槽**：按 slot label 关键词（"标题/品名" → `product.name`、"卖点/描述" → `sellingPoints`、"链接" → `link`），或在 slot 层加显式「绑定到商品字段」下拉。
+4. **任务侧落库**：[`MixcutRenderJob.java`](../../apps/server/src/main/java/com/aistareco/aep/model/MixcutRenderJob.java) 加 `productId` 列 + DTO + openapi schema 同步；分发抽屉打开时读 `job.product_id` 自动预选，省一步操作。
+5. **跨子应用复用**：若 drama / music 也接带货分发，把 [`ProductPickerDialog`](../../apps/web-celebrity/src/components/celebrity-zone/ProductPickerDialog.tsx) 上提到 `packages/ui`。
+
 ### 5.11 已知限制
 
 | 限制 | 影响 | v0.16+ 计划 |

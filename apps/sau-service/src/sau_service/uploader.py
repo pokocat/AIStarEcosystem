@@ -29,6 +29,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+from .browser_runtime import chromium_launch_kwargs
 from .callback import post_callback
 from .interaction import SmsInteractionDriver, get_sms_driver, now_unix
 
@@ -85,6 +86,7 @@ def _hook_chromium_for_page_capture(playwright: Any):
     original_launch = chromium.launch
 
     async def wrapped_launch(*args: Any, **kwargs: Any) -> Any:
+        kwargs = chromium_launch_kwargs(**kwargs)
         browser = await original_launch(*args, **kwargs)
         captured_browsers.append(browser)
         return browser

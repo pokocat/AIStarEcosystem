@@ -20,7 +20,7 @@
 // 商品挂载 section 只在 douyin target 被选中时显示；非带货视频留空即可。
 
 import * as React from "react";
-import { X, Loader2, AlertCircle, Link2, ShoppingBag } from "lucide-react";
+import { X, Loader2, AlertCircle, Link2, ShoppingBag, Package } from "lucide-react";
 import { SocialAccountApi, PublishJobApi } from "@ai-star-eco/api-client";
 import type { SocialAccount, SocialPlatform } from "@ai-star-eco/types/social-account";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
@@ -35,6 +35,7 @@ import {
 import { SocialAccountIdentity } from "./SocialAccountIdentity";
 import { SocialPlatformLogo } from "./SocialPlatformLogo";
 import { socialAccountOptionLabel } from "./social-account-labels";
+import { ProductPickerDialog } from "@/components/celebrity-zone/ProductPickerDialog";
 
 // v0.22: 不再前端硬编 projectId="manual"。POST body 留空 projectId，
 // 后端 PublishJobService.createBatch 自动生成 "manual-batch-<userId>-<yyyyMMddHHmmss>"
@@ -72,6 +73,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [productPickerOpen, setProductPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -85,6 +87,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
     setScheduledLocal("");
     setSelectedAccount({} as Record<SocialPlatform, string>);
     setErrorMsg(null);
+    setProductPickerOpen(false);
 
     let cancelled = false;
     setLoadingAccounts(true);
@@ -353,6 +356,19 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
               title="抖音商品挂载"
               sub="蓝V / 橱窗带货；视频画面下方挂「立即购买」卡片"
             >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-zinc-400">
+                  也可一键引用商品库中的现有商品
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setProductPickerOpen(true)}
+                  className="flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-700 transition hover:border-violet-400 hover:bg-violet-100"
+                >
+                  <Package className="h-3 w-3" />
+                  从商品库选择
+                </button>
+              </div>
               <div className="flex items-start gap-2">
                 <ShoppingBag className="mt-2 h-3.5 w-3.5 shrink-0 text-zinc-400" />
                 <input
@@ -371,9 +387,15 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
                 maxLength={50}
                 className={INPUT_CLS}
               />
-              <p className="text-[11px] text-zinc-400">
-                两项都填才会触发挂件；非带货视频留空即可。
-              </p>
+              {productTitle && !productLink ? (
+                <p className="text-[11px] text-amber-600">
+                  该商品未填链接，挂件不会触发；可到商品库补一下链接。
+                </p>
+              ) : (
+                <p className="text-[11px] text-zinc-400">
+                  两项都填才会触发挂件；非带货视频留空即可。
+                </p>
+              )}
             </Section>
           ) : null}
 
@@ -411,6 +433,15 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
           </div>
         </div>
       </div>
+
+      <ProductPickerDialog
+        open={productPickerOpen}
+        onOpenChange={setProductPickerOpen}
+        onPick={(p) => {
+          setProductLink(p.link ?? "");
+          setProductTitle(p.name.slice(0, 50));
+        }}
+      />
     </div>
   );
 }

@@ -29,6 +29,8 @@ import sys
 import types
 from pathlib import Path
 
+from .browser_runtime import chrome_executable_path
+
 
 def ensure_upstream_conf(*, headless: bool, base_dir: str) -> None:
     """Install a stub `conf` module if not already present in sys.modules.
@@ -50,7 +52,7 @@ def ensure_upstream_conf(*, headless: bool, base_dir: str) -> None:
     mod.BASE_DIR = Path(base_dir).resolve()
     mod.DEBUG_MODE = False
     mod.LOCAL_CHROME_HEADLESS = headless
-    mod.LOCAL_CHROME_PATH = None  # let patchright pick the bundled chromium
+    mod.LOCAL_CHROME_PATH = chrome_executable_path()
     mod.XHS_SERVER = "http://localhost:8000"  # xhs-server URL; v1 不走 xhs，占位即可
     # Some upstream files may also reference these — default to safe values.
     mod.LOG_LEVEL = "INFO"

@@ -16,6 +16,10 @@ import {
   Minus,
   ChevronRight,
   Film,
+  ShoppingBag,
+  Package,
+  ExternalLink,
+  X as XIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
@@ -28,6 +32,8 @@ import { Checkbox } from "@ai-star-eco/ui/ui/checkbox";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { SlotInput } from "@/components/mixcut-zone/slot-input";
 import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker";
+import { ProductPickerDialog } from "@/components/celebrity-zone/ProductPickerDialog";
+import type { Product } from "@ai-star-eco/types/product";
 import { mockTemplates } from "@/mocks/mixcut";
 import { MixcutApi } from "@/api";
 import type {
@@ -86,6 +92,13 @@ export function CreateClient({ id }: { id: string }) {
   const [slotPolicies, setSlotPolicies] = useState<Record<string, Partial<SlotPerturbationPolicy>>>({});
   /** v0.13+: 全局扰动贴图池绑定（写到 sticker_pool["_global"]）。MVP 不做 slot 级 UI。 */
   const [stickerPool, setStickerPool] = useState<StickerPoolBinding | undefined>(undefined);
+  /**
+   * v0.24+: 关联商品（showcase MVP）—— 纯展示，不绑定到 RenderJob，不自动填充任何 slot。
+   * 用户挑一条商品作为本次混剪的参考资料，方便照着填到标题/描述等素材槽里。
+   * 提交后 state 自然丢弃。未来若要绑定到任务侧落库，需要在 RenderJob / MixcutRenderJob 加 productId 列。
+   */
+  const [linkedProduct, setLinkedProduct] = useState<Product | null>(null);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
   const initFromTemplateRef = useRef(false);
   const { confirm, ConfirmHost } = useConfirm();
 
@@ -446,6 +459,107 @@ export function CreateClient({ id }: { id: string }) {
             </Card>
           )}
 
+          {/* v0.24+: 关联商品（showcase MVP）—— 纯展示，不绑定到 RenderJob，不自动填充任何 slot。
+              用户挑一条商品作为本次混剪的参考资料，方便照着填到标题/描述等素材槽里。 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <ShoppingBag className="size-4 text-violet-500" />
+                  关联商品
+                  <span className="text-[10px] font-normal text-muted-foreground ml-1">
+                    · 选填，仅用作填槽参考；不会自动填充任何素材
+                  </span>
+                </span>
+                {linkedProduct && (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setProductPickerOpen(true)}
+                    >
+                      更换
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-muted-foreground"
+                      onClick={() => setLinkedProduct(null)}
+                    >
+                      <XIcon className="size-3" />
+                      清除
+                    </Button>
+                  </div>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {linkedProduct ? (
+                <div className="flex gap-3">
+                  <div className="size-20 shrink-0 overflow-hidden rounded-md border border-border bg-secondary/30">
+                    {linkedProduct.images[0] ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={linkedProduct.images[0]}
+                        alt={linkedProduct.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                        {linkedProduct.category}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-medium truncate">{linkedProduct.name}</span>
+                      <Badge variant="muted" className="text-[10px]">{linkedProduct.category}</Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        已引用 {linkedProduct.usageCount} 次
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                      {linkedProduct.sellingPoints || "（暂无卖点描述）"}
+                    </p>
+                    {linkedProduct.link ? (
+                      <a
+                        href={linkedProduct.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] text-violet-600 hover:underline"
+                      >
+                        <ExternalLink className="size-3" />
+                        查看商品页
+                      </a>
+                    ) : (
+                      <p className="text-[11px] text-amber-600">该商品未填链接</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setProductPickerOpen(true)}
+                  className="w-full rounded-md border border-dashed border-border bg-secondary/30 px-4 py-5 text-left transition-colors hover:border-violet-400 hover:bg-violet-500/5"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-md bg-violet-500/10 text-violet-500 grid place-items-center shrink-0">
+                      <Package className="size-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">从商品库选择</div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        挑一个商品作为参考，名称 / 卖点 / 链接会展示在这里，方便照着填到标题、描述里
+                      </p>
+                    </div>
+                    <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+                  </div>
+                </button>
+              )}
+            </CardContent>
+          </Card>
+
           {/* v0.13+: 扰动贴图池 —— 全局绑定，渲染时叠在所有 overlay 上 */}
           <Card>
             <CardHeader>
@@ -709,6 +823,11 @@ export function CreateClient({ id }: { id: string }) {
         </aside>
       </div>
       <ConfirmHost />
+      <ProductPickerDialog
+        open={productPickerOpen}
+        onOpenChange={setProductPickerOpen}
+        onPick={(p) => setLinkedProduct(p)}
+      />
     </div>
   );
 }

@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from ..auth import require_internal_secret
+from ..browser_runtime import chromium_launch_kwargs
 from ..login_pool import DRIVERS, LOGIN_PAGE_URLS, _safe_close
 
 log = logging.getLogger(__name__)
@@ -89,7 +90,7 @@ async def _verify_real(driver_cls, storage_state: dict, *, headless: bool) -> Ve
     browser = None
     context = None
     try:
-        browser = await playwright.chromium.launch(headless=headless)
+        browser = await playwright.chromium.launch(**chromium_launch_kwargs(headless=headless))
         # storage_state arrives as plain dict — patchright accepts it directly.
         context = await browser.new_context(
             viewport={"width": 1280, "height": 800},

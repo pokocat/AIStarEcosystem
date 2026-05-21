@@ -43,6 +43,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .browser_runtime import chromium_launch_kwargs
 from .qr import build_mock_qr
 
 log = logging.getLogger(__name__)
@@ -2109,7 +2110,7 @@ class LoginPool:
         context = None
         page = None
         try:
-            browser = await playwright.chromium.launch(headless=headless)
+            browser = await playwright.chromium.launch(**chromium_launch_kwargs(headless=headless))
             context = await browser.new_context(viewport={"width": 1280, "height": 800})
             page = await context.new_page()
             await page.goto(driver_cls.LOGIN_URL, wait_until="domcontentloaded")
