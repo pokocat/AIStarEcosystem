@@ -34,9 +34,9 @@ import {
 } from "@ai-star-eco/ui/ui/select";
 import { socialAccountOptionLabel } from "./social-account-labels";
 
-// projectId 用 "manual" 哨兵 — server 不做项目存在性校验，所以这字符串
-// 仅作"这条任务没有项目归属"的标识。列任务时按 userId 过滤即可拿到。
-const MANUAL_PROJECT_SENTINEL = "manual";
+// v0.22: 不再前端硬编 projectId="manual"。POST body 留空 projectId，
+// 后端 PublishJobService.createBatch 自动生成 "manual-batch-<userId>-<yyyyMMddHHmmss>"
+// —— 让分发中心「任务追踪」按 projectId 聚合时，每次手动分发自成一批。
 
 /** Radix Select 不允许 value=""，用 sentinel 表示"不分发到此平台"。 */
 const NO_ACCOUNT = "__none";
@@ -147,7 +147,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
     setErrorMsg(null);
     try {
       const jobs = await PublishJobApi.createPublishJobs({
-        projectId: MANUAL_PROJECT_SENTINEL,
+        // v0.22: 不传 projectId —— 服务端按 "manual-batch-<userId>-<ts>" 自动生成
         videoUrl: videoUrl.trim(),
         title: title.trim(),
         description: description.trim(),

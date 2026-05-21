@@ -114,6 +114,11 @@ export interface Template {
   output_variants_default: number;
   quality_gate: { min_phash_distance: number; max_retries: number };
   metadata: TemplateMetadata;
+  /** v0.12+: server 模板行归属。factory 不可删；user copy 可删。 */
+  is_factory?: boolean;
+  owner_user_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface StarClip {

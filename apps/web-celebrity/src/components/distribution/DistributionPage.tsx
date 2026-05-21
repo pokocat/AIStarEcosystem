@@ -22,7 +22,7 @@ import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { SocialAccountList } from "./SocialAccountList";
-import { PublishJobList } from "./PublishJobList";
+import { BatchTrackingTab } from "./BatchTrackingTab";
 import { ManualDistributeDialog } from "./ManualDistributeDialog";
 import { DistributeWorkbench } from "./DistributeWorkbench";
 
@@ -141,10 +141,10 @@ export function DistributionShell({ subpage, fromJobId }: Props) {
         </div>
       </header>
 
-      {/* 主区：按 subpage 渲染 */}
+      {/* 主区：按 subpage 渲染。v0.22 起 jobs tab 用 BatchTrackingTab（按 projectId 聚合 + 分页）。 */}
       {subpage === "workbench" && <DistributeWorkbench fromJobId={fromJobId} />}
       {subpage === "accounts" && <SocialAccountList onAccountsChange={setAccounts} />}
-      {subpage === "jobs" && <PublishJobList key={refreshNonce} />}
+      {subpage === "jobs" && <BatchTrackingTab key={refreshNonce} />}
 
       <ManualDistributeDialog
         open={manualOpen}

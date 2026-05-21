@@ -234,6 +234,6 @@ export const CTA_PRIMARY =
 export const CTA_PRIMARY_LG =
   "inline-flex items-center justify-center gap-2 rounded-full bg-[var(--accent)] px-5 py-3 text-base font-semibold text-white shadow-[var(--shadow-soft)] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none";
 export const CTA_SECONDARY =
-  "inline-flex items-center justify-center gap-2 rounded-full border border-[var(--line-2)] bg-white px-4 py-2 text-sm font-medium text-[var(--fg-0)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]";
+  "inline-flex items-center justify-center gap-2 rounded-full border border-[var(--line-2)] bg-white px-4 py-2 text-sm font-medium text-[var(--fg-0)] transition hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400 disabled:hover:border-zinc-200 disabled:hover:text-zinc-400";
 export const CTA_DANGER =
   "inline-flex items-center justify-center gap-2 rounded-full bg-[var(--danger)] px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-soft)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";

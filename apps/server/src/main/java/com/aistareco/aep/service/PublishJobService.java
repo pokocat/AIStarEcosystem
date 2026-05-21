@@ -22,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +46,15 @@ import java.util.UUID;
 public class PublishJobService {
 
     private static final Logger log = LoggerFactory.getLogger(PublishJobService.class);
+
+    /**
+     * v0.22 起，createBatch 接到 null/blank/旧 "manual" 占位 projectId 时自动兜底。
+     * 格式与 MixcutPublishService 对齐：`manual-batch-<userId>-<yyyyMMddHHmmss>`（Asia/Shanghai）。
+     * 让分发中心「任务追踪」按 projectId 聚合时，手动分发的每次提交各成一批，
+     * 不会全挤进唯一的 "manual" 桶里。
+     */
+    private static final DateTimeFormatter MANUAL_PROJECT_SUFFIX_FORMAT =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneId.of("Asia/Shanghai"));
 
     private final PublishJobRepository jobRepo;
     private final PublishJobEventRepository eventRepo;
@@ -135,10 +146,18 @@ public class PublishJobService {
         if (userId == null || userId.isBlank()) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "未登录");
         }
-        if (input == null || input.projectId() == null || input.videoUrl() == null
+        if (input == null || input.videoUrl() == null
                 || input.title() == null || input.targets() == null || input.targets().isEmpty()) {
             throw BusinessException.badRequest("INPUT_INCOMPLETE",
-                    "缺少必要字段 (projectId / videoUrl / title / targets)");
+                    "缺少必要字段 (videoUrl / title / targets)");
+        }
+        // v0.22: projectId 兜底。null / blank / 旧 "manual" 占位 → 自动 stamp 一个唯一 batch id。
+        // 这是手动分发场景：ManualDistributeDialog 现在不送 projectId，靠这里生成；
+        // 历史代码硬编 "manual" 也走这条路径自动迁移到唯一桶。
+        String projectId = input.projectId();
+        if (projectId == null || projectId.isBlank() || "manual".equals(projectId)) {
+            projectId = "manual-batch-" + userId + "-"
+                    + MANUAL_PROJECT_SUFFIX_FORMAT.format(Instant.now());
         }
         List<PublishJob> created = new ArrayList<>();
         for (CreatePublishJobInputDto.Target t : input.targets()) {
@@ -168,7 +187,7 @@ public class PublishJobService {
             PublishJob job = PublishJob.builder()
                     .id(UUID.randomUUID().toString())
                     .userId(userId)
-                    .projectId(input.projectId())
+                    .projectId(projectId)
                     .socialAccountId(account.getId())
                     .platform(platform)
                     .platformId(platform.wire())

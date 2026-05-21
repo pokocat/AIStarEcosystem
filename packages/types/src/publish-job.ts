@@ -78,9 +78,13 @@ export interface PublishJob {
  * 创建批量发布任务的入参（celebrity sau 流程）。
  * 同名 type 在 apps/web-drama/src/api/distribution.ts 里有 legacy 版本，
  * drama 后续接 sau 时将迁到这个共享版本。
+ *
+ * v0.22 起 projectId 改为可选 —— 缺省时后端自动生成
+ * "manual-batch-<userId>-<yyyyMMddHHmmss>"，让分发中心「任务追踪」按批次聚合。
+ * 调用方明确传 projectId（如 mixcut 批量场景）继续按传入值落库。
  */
 export interface CreatePublishJobInput {
-  projectId: ID;
+  projectId?: ID;
   /** sau-service 要拉取的源视频 URL（公开可访问） */
   videoUrl: string;
   title: string;
@@ -124,4 +128,66 @@ export interface PublishJobCallback {
 export interface SubmitPublishJobInteractionInput {
   /** 用户输入的内容 — sms 为 6 位数字字符串 */
   code: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v0.20: 调度策略 discriminator union（mixcut 批量发布 + v0.22 任务追踪 reschedule 共享）
+// 后端 ScheduleSpec sealed interface 1:1 对齐（apps/server/.../dto/MixcutPublishBatchRequest.java）。
+//   - immediate         立即派单（scheduledAt = now）
+//   - single            全部条目派单同一时间起飞（兼容 v0.15 行为）
+//   - daily_recurring   按时段 / 天数把 N 条铺开成错峰 scheduledAt
+// 注意：wire key 是 snake_case（mixcut DTO 用 @JsonProperty 映射），与一般 camelCase
+// 字段约定的例外 —— 后端契约真值在 MixcutPublishBatchRequest.ScheduleSpec。
+// ─────────────────────────────────────────────────────────────────────────────
+export type ScheduleSpec =
+  | { strategy: "immediate" }
+  | { strategy: "single"; at: string /* ISO 8601 UTC */ }
+  | {
+      strategy: "daily_recurring";
+      /** "YYYY-MM-DD" 在 timezone 下的日历日 */
+      start_date: string;
+      /** ["09:00","12:00","18:00"]，HH:MM 24h；后端会排序去重 */
+      time_slots: string[];
+      /** IANA, 例 "Asia/Shanghai" */
+      timezone: string;
+      /** null = 直到 outputs 用完；非 null 时要 N <= max_days * time_slots.length */
+      max_days?: number;
+      /** [0, 30]；null/0 = 无抖动。每条 slot 加 [-N, +N] 分钟随机偏移 */
+      jitter_minutes?: number;
+    };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v0.22: 任务追踪「按 projectId 聚合」的 summary 卡片
+// 服务端 GET /api/me/publish-jobs/batches 返回 PageEnvelope<PublishBatchSummary>
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** projectId 前缀派生的来源标签，给前端选 icon / badge 用 */
+export type PublishBatchSource = "mixcut" | "manual" | "other";
+
+export interface PublishBatchSummary {
+  projectId: string;
+  source: PublishBatchSource;
+  /** "<title> ×N"；title 取批次内首条 non-blank，缺则 "未命名" */
+  displayTitle: string;
+  totalJobs: number;
+  /** 8 个 wire key → count；0 也保留方便前端对齐渲染 */
+  statusCounts: Partial<Record<PublishJobStatus, number>>;
+  /** (live + failed + cancelled) / total * 100，floor */
+  progressPct: number;
+  firstCreatedAt: ISODateTime;
+  lastCreatedAt: ISODateTime;
+  firstScheduledAt: ISODateTime | null;
+  lastScheduledAt: ISODateTime | null;
+  /** distinct platform wire 名，稳定顺序（首次出现序） */
+  platforms: string[];
+  /** queued / uploading / transcoding / publishing / awaiting_user 任一非零 */
+  hasInflight: boolean;
+}
+
+/**
+ * POST /api/me/publish-jobs/batches/{projectId}/reschedule 请求体。
+ * 仅对 status=queued 的子集生效；其他状态原样保留。
+ */
+export interface RescheduleBatchInput {
+  schedule: ScheduleSpec;
 }

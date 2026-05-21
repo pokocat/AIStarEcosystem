@@ -9,6 +9,7 @@
 
 export {
   apiFetch,
+  apiFetchPaginated,
   ApiError,
   USE_MOCK,
   AUTH_TOKEN_KEY,

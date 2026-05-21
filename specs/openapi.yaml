@@ -1896,9 +1896,14 @@ components:
 
     CreatePublishJobInput:
       type: object
-      required: [projectId, videoUrl, title, description, tags, targets]
+      required: [videoUrl, title, description, tags, targets]
       properties:
-        projectId:    { type: string }
+        projectId:
+          type: string
+          nullable: true
+          description: |
+            可选。缺省 / 空串 / 字面 "manual" 时服务端自动生成 "manual-batch-<userId>-<yyyyMMddHHmmss>"。
+            混剪批量发布显式传 "mixcut-batch-<source>-<ts>"。两套前缀让任务追踪能区分 source 标签。
         videoUrl:     { type: string, description: sau-service 拉取的源视频 URL (公网可访问) }
         title:        { type: string }
         description:  { type: string }
@@ -1950,6 +1955,90 @@ components:
         progress:    { type: integer, minimum: 0, maximum: 100, nullable: true }
         note:        { type: string, nullable: true }
         at:          { type: string, format: date-time }
+
+    # ── v0.20: 调度策略 sealed union（mixcut publish + v0.22 任务追踪 reschedule 共享） ──
+    # 注意 wire key 是 snake_case（@JsonProperty 显式映射），与一般 camelCase 字段约定的例外。
+    # 后端真值见 apps/server/.../dto/MixcutPublishBatchRequest.java#ScheduleSpec
+    ScheduleSpec:
+      oneOf:
+        - $ref: '#/components/schemas/ScheduleSpecImmediate'
+        - $ref: '#/components/schemas/ScheduleSpecSingle'
+        - $ref: '#/components/schemas/ScheduleSpecDailyRecurring'
+      discriminator:
+        propertyName: strategy
+        mapping:
+          immediate: '#/components/schemas/ScheduleSpecImmediate'
+          single: '#/components/schemas/ScheduleSpecSingle'
+          daily_recurring: '#/components/schemas/ScheduleSpecDailyRecurring'
+
+    ScheduleSpecImmediate:
+      type: object
+      required: [strategy]
+      properties:
+        strategy: { type: string, enum: [immediate] }
+
+    ScheduleSpecSingle:
+      type: object
+      required: [strategy, at]
+      properties:
+        strategy: { type: string, enum: [single] }
+        at:       { type: string, format: date-time, description: ISO 8601 UTC 时刻 }
+
+    ScheduleSpecDailyRecurring:
+      type: object
+      required: [strategy, start_date, time_slots, timezone]
+      properties:
+        strategy:        { type: string, enum: [daily_recurring] }
+        start_date:      { type: string, description: '"YYYY-MM-DD" 在 timezone 下的日历日' }
+        time_slots:
+          type: array
+          minItems: 1
+          items: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+          description: ["09:00","12:00","18:00"]，HH:MM 24h；后端会排序去重
+        timezone:        { type: string, description: 'IANA, 例 "Asia/Shanghai"' }
+        max_days:        { type: integer, nullable: true, description: 'null = 直到 outputs 用完；非 null 时要 N <= max_days * time_slots.length' }
+        jitter_minutes:  { type: integer, nullable: true, minimum: 0, maximum: 30, description: '[0, 30]；null/0 = 无抖动' }
+
+    # ── v0.22: 任务追踪 ──
+    PublishBatchSource:
+      type: string
+      enum: [mixcut, manual, other]
+      description: 据 projectId 前缀派生的来源标签（mixcut-batch- / manual-batch- / 其他）
+
+    PublishBatchSummary:
+      type: object
+      required: [projectId, source, displayTitle, totalJobs, statusCounts, progressPct, firstCreatedAt, lastCreatedAt, platforms, hasInflight]
+      description: |
+        某 projectId 下所有 PublishJob 的聚合卡片。mirror packages/types PublishBatchSummary。
+        服务端按 GROUP BY project_id 拉，Java 层 fold 后返回；不在 DB 落实体表。
+      properties:
+        projectId:    { type: string }
+        source:       { $ref: '#/components/schemas/PublishBatchSource' }
+        displayTitle: { type: string, description: "<title> ×N；title 取批次内首条 non-blank" }
+        totalJobs:    { type: integer, minimum: 0 }
+        statusCounts:
+          type: object
+          additionalProperties: { type: integer, minimum: 0 }
+          description: 8 个 wire key（queued/uploading/transcoding/publishing/awaiting_user/live/failed/cancelled）→ count；0 也保留
+        progressPct:        { type: integer, minimum: 0, maximum: 100, description: (live + failed + cancelled) / total * 100，floor }
+        firstCreatedAt:     { type: string, format: date-time }
+        lastCreatedAt:      { type: string, format: date-time }
+        firstScheduledAt:   { type: string, format: date-time, nullable: true }
+        lastScheduledAt:    { type: string, format: date-time, nullable: true }
+        platforms:
+          type: array
+          items: { type: string }
+          description: distinct platform wire 名（按首次出现顺序）
+        hasInflight: { type: boolean, description: queued/uploading/transcoding/publishing/awaiting_user 任一非零 }
+
+    RescheduleBatchInput:
+      type: object
+      required: [schedule]
+      properties:
+        schedule: { $ref: '#/components/schemas/ScheduleSpec' }
+      description: |
+        POST /me/publish-jobs/batches/{projectId}/reschedule 请求体。
+        仅对 status=queued 的子集生效；其他状态原样保留。
 
 # ─────────────────────────────────────────
 # PATHS
@@ -5108,6 +5197,137 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/PublishJob' }
+
+  # v0.22: 分发中心「任务追踪」按 projectId 聚合 + 批量操作。
+  # `mixcut-batch-...` 和 `manual-batch-...` 这两类自动生成的 projectId 都走这里。
+  /me/publish-jobs/batches:
+    get:
+      tags: [social-distribution]
+      operationId: listMyPublishJobBatches
+      summary: 列出当前用户的发布批次摘要（按 projectId 聚合 + 服务端分页 + 最近活跃排序）
+      description: |
+        与 GET /me/publish-jobs 互补：那个返回扁平的 PublishJob 列表；
+        本接口对 user 的所有 PublishJob 按 project_id 聚合，每页返回 N 个 batch summary
+        + 每批 8 状态计数 + 调度时间区间 + 平台列表。
+        前端「分发中心 → 任务追踪」用此渲染卡片网格。
+      parameters:
+        - { in: query, name: page, schema: { type: integer, default: 0 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200':
+          description: paginated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishBatchSummary' }
+                      pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /me/publish-jobs/batches/{projectId}:
+    parameters:
+      - { in: path, name: projectId, required: true, schema: { type: string } }
+    get:
+      tags: [social-distribution]
+      operationId: getMyPublishJobBatch
+      summary: 取单个批次的最新汇总（drawer 头部用）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublishBatchSummary' }
+        '404': { description: batch not found or not owned }
+
+  /me/publish-jobs/batches/{projectId}/cancel:
+    parameters:
+      - { in: path, name: projectId, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: cancelMyPublishJobBatch
+      summary: 取消整批：所有非终止态行 → cancelled
+      description: |
+        循环调用 PublishJobService.cancel() —— 保留每条的 best-effort sau.cancelTask
+        + 事件流。已是 live/failed/cancelled 的不动。返回受影响 job 的最新 DTO 列表。
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishJob' }
+
+  /me/publish-jobs/batches/{projectId}/retry-failed:
+    parameters:
+      - { in: path, name: projectId, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: retryFailedMyPublishJobBatch
+      summary: 重试整批失败任务（每条扣费一次，与单条 retry 等价）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishJob' }
+
+  /me/publish-jobs/batches/{projectId}/reschedule:
+    parameters:
+      - { in: path, name: projectId, required: true, schema: { type: string } }
+    post:
+      tags: [social-distribution]
+      operationId: rescheduleMyPublishJobBatch
+      summary: 重新调度未开始（status=queued）的子集，应用新的 ScheduleSpec
+      description: |
+        仅对 status=queued 的子集生效；已开始 / 终态行原样保留。
+        ScheduleSpec 共用 mixcut 批量发布的同一 sealed union（immediate/single/daily_recurring）。
+        服务端 ScheduleExpander 把 spec 展开成 N=queuedCount 长的 Instant[]，按 createdAt asc
+        顺序把 scheduledAt 注入每条 queued job；PublishJobScheduler 下个 tick 自然拾起。
+
+        错误码：
+          409 NO_QUEUED_JOBS    — 该批次没有待派单任务可重新调度
+          400 SCHEDULE_REQUIRED — body 缺 schedule
+          400 SCHEDULE_INVALID  — 未知 strategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RescheduleBatchInput' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PublishJob' }
 
   /internal/sau/job-callback:
     post:

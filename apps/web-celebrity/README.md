@@ -69,6 +69,25 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.23 · 2026-05-21 · 任务追踪按批次聚合 + 批量操作
+
+分发中心「任务追踪」从平铺 `PublishJob` 列表升级为按 `project_id` 聚合的批次卡片，配合服务端分页 + 批次级批量操作，避免 N×M 派单后列表爆炸。
+
+- ✅ **批次卡片列表**（`BatchTrackingTab` + `BatchSummaryCard`）：每张卡 = 一个 projectId 下所有 PublishJob 的汇总（progress / statusCounts / 调度区间 / 平台列表 / 来源徽章）。源徽章按 projectId 前缀派生：`mixcut-batch-*` → 混剪批次；`manual-batch-*` → 手动分发；其他 → 历史散件。
+- ✅ **批次级批量操作**：取消整批（非终止态 → cancelled，保留每条 best-effort `sau.cancelTask`）/ 重试失败（FAILED → QUEUED，每条扣费一次）/ 重新调度未开始（QUEUED 子集换新 ScheduleSpec）。前端调 `POST /me/publish-jobs/batches/{projectId}/{cancel|retry-failed|reschedule}`。
+- ✅ **详情 Drawer**（`BatchDetailDrawer`）：右侧滑出嵌套现有 `PublishJobList projectId={...}` —— 复用 2.5s 轮询 + 行级 start/cancel/retry/interact，无需重写。
+- ✅ **重新调度对话框**（`RescheduleBatchDialog`）：复用从 `BatchPublishDrawer` 抽出的 `ScheduleEditor` 共享组件；只允许 single / daily_recurring 两种 strategy（重新调度场景里"立即"等价于让调度器下个 tick 起飞）。
+- ✅ **服务端分页**（默认 limit=20）：新 `apiFetchPaginated<T>` helper 返回 `PaginatedResponse<T>`，保留 PageEnvelope 的 `pagination` 元数据（page/limit/total/totalPages/hasNext/hasPrev）。
+- ✅ **手动分发批次化**：`ManualDistributeDialog` 不再硬编 `projectId="manual"`；server `PublishJobService.createBatch` 收到 null/blank/旧 "manual" 占位时自动生成 `manual-batch-<userId>-<yyyyMMddHHmmss>`，每次手动分发提交自成一批。
+- ✅ **ScheduleEditor 共享**：抽自 `BatchPublishDrawer.tsx`（行为零变化），放到 `src/components/distribution/ScheduleEditor.tsx`；混剪批量发布 + 任务追踪重新调度共用同一份 UI + 前后端 expandSchedule 算法对齐。
+
+**注意事项**：
+
+- 历史数据 `project_id="manual"` 行会聚合成一张「历史散件」徽章的卡片。不做回填迁移；新数据自然分流到不同 `manual-batch-*` 桶。
+- 服务端 `PublishJobBatchService.listBatches` 走两步查询：先 GROUP BY projectId 拿本页 projectId（分页），再 IN 查这些 projectId 下所有 row 在 Java 层 fold 成 `PublishBatchSummaryDto`。比单查 8 个 `SUM(CASE)` 列更可维护，rows 上限可控（一页 20 × 单批典型 30 行）。
+- 轮询策略：列表里任一 batch `hasInflight=true` → 5s 重拉；Drawer 打开 + 内部 PublishJobList 仍跑 2.5s（行级粒度）。全部 batch 终止则停。
+- v0.20 `MixcutPublishService.expandSchedule` 私有方法迁出到 `service/publish/ScheduleExpander.java` 公共 util；混剪批量发布 + 任务追踪 reschedule 都注入它，避免前后端 / 不同入口实现漂移。
+
 ### v0.22 · 2026-05-21 · 混剪 / 分发用户视角文案 + 视频库 + 官方明星片段
 
 把混剪与分发模块从「工程师视角」整改为「运营 / 用户视角」，并补两个新模块（视频库 + 官方明星片段）。详见根 [`AGENTS.md`](../../AGENTS.md) v0.21 章节。

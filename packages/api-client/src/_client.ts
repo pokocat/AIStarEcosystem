@@ -193,3 +193,84 @@ export async function apiFetch<T>(
 export function mockDelay<T>(data: T, ms = 120): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(data), ms));
 }
+
+/**
+ * v0.22: 与 `apiFetch` 同形，但保留 PageEnvelope 的 `pagination` 元数据。
+ *
+ * 后端 `PageEnvelope<T>` 形状 `{ success, data: T[], pagination, message? }` —
+ * `apiFetch` 只剥出 `data` 数组，丢掉 pagination；分页 UI 需要 `total / hasNext`
+ * 这类元数据，所以这里单开一个 helper 把整张信封返回。
+ *
+ * 与 `apiFetch` 共用同一套 mock / 401 / parse 错误处理。
+ */
+import type { PaginatedResponse } from "@ai-star-eco/types/_shared";
+
+export async function apiFetchPaginated<T>(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<PaginatedResponse<T>> {
+  const { method = "GET", body, query, headers, signal } = opts;
+
+  if (USE_MOCK) {
+    const match = findMockHandler(method as MockMethod, path);
+    if (match) {
+      return (await match.handler({ params: match.params, query, body })) as PaginatedResponse<T>;
+    }
+  }
+
+  const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
+  const token = getAuthToken();
+  const res = await fetch(url, {
+    method,
+    credentials: "same-origin",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(headers ?? {}),
+    },
+    body: body == null ? undefined : JSON.stringify(body),
+    signal,
+  });
+
+  if (res.status === 401) {
+    setAuthToken(null);
+    unauthorizedHandler?.();
+    throw new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401);
+  }
+
+  const raw = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const snippet = raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
+    const contentType = res.headers.get("content-type") ?? "<missing>";
+    throw new ApiError(
+      {
+        code: "PARSE_ERROR",
+        message:
+          `Invalid JSON from ${path} (status=${res.status}, content-type=${contentType}). ` +
+          `Body starts with: ${snippet || "<empty>"}`,
+      },
+      res.status,
+    );
+  }
+
+  if (!res.ok) {
+    const err = (parsed as { error?: ApiErrorShape })?.error ?? {
+      code: "HTTP_ERROR",
+      message: `HTTP ${res.status}`,
+    };
+    throw new ApiError(err, res.status);
+  }
+
+  const envelope = parsed as PaginatedResponse<T>;
+  if (!envelope || envelope.success !== true || !envelope.pagination) {
+    const err = (parsed as { error?: ApiErrorShape })?.error ?? {
+      code: "BAD_ENVELOPE",
+      message: "Response envelope missing pagination metadata",
+    };
+    throw new ApiError(err, res.status);
+  }
+  return envelope;
+}

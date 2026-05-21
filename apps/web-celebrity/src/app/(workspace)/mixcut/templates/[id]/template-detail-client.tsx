@@ -19,6 +19,9 @@ import {
   Trash2,
   AlertCircle,
   RotateCcw,
+  MoreHorizontal,
+  Sliders,
+  Info,
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { nanoid } from "nanoid";
@@ -35,6 +38,13 @@ import {
   SelectValue,
 } from "@ai-star-eco/ui/ui/select";
 import { Separator } from "@/components/mixcut-zone/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@ai-star-eco/ui/ui/dropdown-menu";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
 import { mockTemplates } from "@/mocks/mixcut";
@@ -107,6 +117,34 @@ function reconcileFill(currentFill: FillStrategy, nextLayer: LayerType): FillStr
   return allowed.includes(currentFill) ? currentFill : allowed[0];
 }
 
+/**
+ * 校验整个模板的 slot.time_range：
+ *   - start ≥ 0
+ *   - end > start
+ *   - end ≤ 所在 scene 的 duration
+ * 返回错误数组（每条带 scene 标签 + slot 名），数组为空即合法。
+ * 在保存前 gating 用；按场景遍历，避免某个被改过的 scene duration 把别的场景里的 stale slot 也漏掉。
+ */
+function validateTimeRanges(tpl: Template): string[] {
+  const errors: string[] = [];
+  tpl.scenes.forEach((scene) => {
+    scene.slots.forEach((s) => {
+      const [a, b] = s.time_range;
+      const slotName = s.label || s.slot_id;
+      if (!(b > a)) {
+        errors.push(`场景「${scene.label}」· ${slotName}：结束时间必须大于开始时间`);
+      } else if (b > scene.duration + 1e-6) {
+        errors.push(
+          `场景「${scene.label}」· ${slotName}：结束时间 ${b}s 超过本场景时长 ${scene.duration}s`
+        );
+      } else if (a < 0) {
+        errors.push(`场景「${scene.label}」· ${slotName}：开始时间不能小于 0`);
+      }
+    });
+  });
+  return errors;
+}
+
 type ConfirmModalState = {
   title: string;
   body: string;
@@ -115,22 +153,20 @@ type ConfirmModalState = {
   onConfirm: () => void;
 };
 
-// 画布尺寸预设。每条带平台 / 机型语义,方便创作者按发布平台选。
-// 数值是真实输出像素 (ffmpeg 编码分辨率,非 CSS 逻辑像素)。
-const CANVAS_PRESETS: { label: string; w: number; h: number; sub: string; group: "短视频" | "手机原生" | "其他" }[] = [
-  // —— 短视频平台 ——
-  { label: "抖音 / 快手",      w: 1080, h: 1920, sub: "1080×1920 · 9:16",   group: "短视频" },
-  { label: "抖音长竖版",       w: 1080, h: 2400, sub: "1080×2400 · 9:20",   group: "短视频" },
-  { label: "小红书竖版",       w: 1080, h: 1350, sub: "1080×1350 · 4:5",    group: "短视频" },
-  { label: "视频号 / B 站",    w: 1080, h: 1920, sub: "1080×1920 · 9:16",   group: "短视频" },
-  // —— 手机原生分辨率 ——
-  { label: "iPhone 15/14 Pro", w: 1179, h: 2556, sub: "1179×2556 · ~9:19.5", group: "手机原生" },
-  { label: "iPhone Pro Max",   w: 1290, h: 2796, sub: "1290×2796 · ~9:21.6", group: "手机原生" },
-  { label: "Android 主流",      w: 1080, h: 2400, sub: "1080×2400 · 9:20",    group: "手机原生" },
-  // —— 其他 ——
-  { label: "方形",             w: 1080, h: 1080, sub: "1080×1080 · 1:1",    group: "其他" },
-  { label: "横屏",             w: 1920, h: 1080, sub: "1920×1080 · 16:9",   group: "其他" },
-  { label: "标清竖版",          w: 720,  h: 1280, sub: "720×1280 · 9:16",    group: "其他" },
+// 画布尺寸预设。按"成片画面比例"分类，不按发布平台 —— 因为 9:16 在抖音 / 快手 /
+// 视频号 / B 站全部通吃，没必要重复列 4 张同尺寸卡。
+// 数值是真实输出像素（ffmpeg 编码分辨率，非 CSS 逻辑像素）。
+// 设计删减历史（v0.23）：
+//   - drop "iPhone 15/14 Pro" / "iPhone Pro Max" —— 那是设备视口分辨率，无平台接收
+//   - drop "Android 主流 1080×2400" —— 与"长竖版"完全同尺寸
+//   - drop "标清竖版 720×1280" —— 1080p 是当前事实最低，要降清晰度可用下方自定义
+//   - merge "抖音/快手" + "视频号/B站"（都是 1080×1920）成"竖版 9:16"
+const CANVAS_PRESETS: { label: string; w: number; h: number; sub: string }[] = [
+  { label: "竖版",   w: 1080, h: 1920, sub: "1080×1920 · 9:16  (抖音 / 快手 / 视频号 / B 站)" },
+  { label: "长竖版", w: 1080, h: 2400, sub: "1080×2400 · 9:20  (抖音长视频 / Android 全面屏)" },
+  { label: "小红书", w: 1080, h: 1350, sub: "1080×1350 · 4:5" },
+  { label: "方形",   w: 1080, h: 1080, sub: "1080×1080 · 1:1" },
+  { label: "横屏",   w: 1920, h: 1080, sub: "1920×1080 · 16:9" },
 ];
 
 export function TemplateDetailClient({
@@ -192,9 +228,7 @@ export function TemplateDetailClient({
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [hasUserTemplate, setHasUserTemplate] = useState(false);
-  // 画布与时长在编辑时折叠(低频改动),开关由用户控制
-  const [canvasMetaOpen, setCanvasMetaOpen] = useState(false);
-  // 模板属性(品类/档位/标签/扰动/变体/质量门槛)同样默认折叠
+  // 模板配置面板（画布 + 属性，inline 展开），默认收起
   const [templateMetaOpen, setTemplateMetaOpen] = useState(false);
   // 确认对话框:replace native confirm() (P3 polish)
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
@@ -204,7 +238,7 @@ export function TemplateDetailClient({
     if (isNewMode) return;
     MixcutApi.getTemplate(id).then((t) => {
       setTemplate(t);
-      setHasUserTemplate(MixcutApi.hasUserTemplate(id));
+      setHasUserTemplate(t?.is_factory === false || MixcutApi.hasUserTemplate(id));
       setResolved(true);
     });
   }, [id, isNewMode]);
@@ -229,6 +263,12 @@ export function TemplateDetailClient({
     if (!editing || !working || !template) return false;
     return JSON.stringify(working) !== JSON.stringify(template);
   }, [editing, working, template]);
+  // 时间范围校验：编辑中实时算，保存前 gating 用。
+  const timeRangeErrors = useMemo(
+    () => (editing && working ? validateTimeRanges(working) : []),
+    [editing, working],
+  );
+  const hasValidationError = timeRangeErrors.length > 0;
 
   // 内容位 drag-reorder 状态(仅当前场景内有效)
   const [slotDragSrc, setSlotDragSrc] = useState<number | null>(null);
@@ -261,8 +301,10 @@ export function TemplateDetailClient({
   const slot = flatSlots.find((s) => s.slot_id === selectedSlot);
   const editableSlots = flatSlots.filter((s) => s.user_editable);
   const requiredSlots = editableSlots.filter((s) => s.required);
-  const isFactory = MixcutApi.isFactoryTemplate(template.template_id);
-  const canDeleteTemplate = hasUserTemplate;
+  const hasFactoryBase = MixcutApi.isFactoryTemplate(template.template_id);
+  const isFactory = template.is_factory ?? hasFactoryBase;
+  const canDeleteTemplate = !isFactory || hasUserTemplate;
+  const deleteRestoresFactoryBase = hasFactoryBase && !isFactory;
 
   const enterEdit = () => {
     setWorking(structuredClone(template));
@@ -313,6 +355,10 @@ export function TemplateDetailClient({
 
   const handleSave = async () => {
     if (!working) return;
+    if (hasValidationError) {
+      setSaveError(timeRangeErrors[0]);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -358,18 +404,18 @@ export function TemplateDetailClient({
   const handleDeleteTemplate = async () => {
     if (!template || !canDeleteTemplate) return;
     const targetId = template.template_id;
-    const targetIsFactory = MixcutApi.isFactoryTemplate(targetId);
+    const targetRestoresFactoryBase = MixcutApi.isFactoryTemplate(targetId);
     setSaving(true);
     setSaveError(null);
     try {
       const deleted = await MixcutApi.deleteTemplate(targetId);
       if (!deleted) {
         setHasUserTemplate(MixcutApi.hasUserTemplate(targetId));
-        setSaveError(targetIsFactory ? "当前没有可删除的我的版本" : "删除失败,模板可能已被删除");
+        setSaveError(targetRestoresFactoryBase ? "当前没有可删除的我的版本" : "删除失败,模板可能已被删除");
         return;
       }
 
-      if (targetIsFactory) {
+      if (targetRestoresFactoryBase) {
         const restored = await MixcutApi.getTemplate(targetId);
         if (restored) {
           setTemplate(restored);
@@ -394,8 +440,8 @@ export function TemplateDetailClient({
   const requestDeleteTemplate = () => {
     if (!template || !canDeleteTemplate) return;
     setConfirmModal({
-      title: isFactory ? "删除我的版本?" : "删除此模板?",
-      body: isFactory
+      title: deleteRestoresFactoryBase ? "删除我的版本?" : "删除此模板?",
+      body: deleteRestoresFactoryBase
         ? "只会删除你保存的本地版本,之后恢复显示工厂模板原版。当前未保存修改也会丢失。"
         : "删除后无法恢复。历史生成任务不会被删除,但之后不能再用这个模板创建新任务。",
       confirmText: "删除",
@@ -583,44 +629,76 @@ export function TemplateDetailClient({
           </Link>
         </Button>
         {editing ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            {saveError ? (
-              <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium">
-                <AlertCircle className="size-3" /> {saveError}
-              </span>
-            ) : dirty ? (
-              <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
-                <span className="size-1.5 rounded-full bg-amber-500" /> 未保存修改
-              </span>
-            ) : savedAt ? (
-              <span className="text-xs text-emerald-600">
-                已保存 · {new Date(savedAt).toLocaleTimeString("zh-CN", { hour12: false })}
-              </span>
-            ) : null}
-            <Button variant="ghost" size="sm" onClick={resetWorking} disabled={!dirty}>
-              <RotateCcw className="size-3.5" /> 撤销修改
-            </Button>
-            <Button variant="ghost" size="sm" onClick={cancelEdit}>
-              <X className="size-3.5" /> {isNewMode ? "放弃新建" : "退出编辑"}
-            </Button>
-            {canDeleteTemplate && !isNewMode && (
-              <Button variant="destructive" size="sm" onClick={requestDeleteTemplate} disabled={saving}>
-                <Trash2 className="size-3.5" /> {isFactory ? "删除我的版本" : "删除模板"}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* 次群 1：状态徽 */}
+            <div className="flex items-center min-h-[1.5rem]">
+              {hasValidationError ? (
+                <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium">
+                  <AlertCircle className="size-3" /> 有 {timeRangeErrors.length} 处时间问题待修
+                </span>
+              ) : saveError ? (
+                <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium">
+                  <AlertCircle className="size-3" /> {saveError}
+                </span>
+              ) : dirty ? (
+                <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
+                  <span className="size-1.5 rounded-full bg-amber-500" /> 未保存修改
+                </span>
+              ) : savedAt ? (
+                <span className="text-xs text-emerald-600">
+                  已保存 · {new Date(savedAt).toLocaleTimeString("zh-CN", { hour12: false })}
+                </span>
+              ) : null}
+            </div>
+
+            {/* 次群 2：撤销 + 退出 —— ghost 按钮，视觉退到背景 */}
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={resetWorking} disabled={!dirty}>
+                <RotateCcw className="size-3.5" /> 撤销修改
               </Button>
-            )}
-            {!isNewMode && (
-              <Button variant="outline" size="sm" onClick={() => setSaveAsOpen(true)}>
-                <Copy className="size-3.5" /> 另存为新模板
+              <Button variant="ghost" size="sm" onClick={cancelEdit}>
+                <X className="size-3.5" /> {isNewMode ? "放弃新建" : "退出编辑"}
               </Button>
-            )}
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleSave}
-              disabled={saving || (!isNewMode && !dirty)}
-            >
-              <Save className="size-3.5" /> {isNewMode ? "保存新模板" : isFactory ? "保存为我的版本" : "保存"}
-            </Button>
+            </div>
+
+            {/* 主群：overflow（删除 / 另存）+ 保存。中间留一道竖线视觉分隔。 */}
+            <div className="flex items-center gap-2 pl-3 border-l border-border">
+              {!isNewMode && (canDeleteTemplate || true) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8" title="更多操作">
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[180px]">
+                    <DropdownMenuItem onClick={() => setSaveAsOpen(true)}>
+                      <Copy className="size-3.5" /> 另存为新模板
+                    </DropdownMenuItem>
+                    {canDeleteTemplate && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={requestDeleteTemplate}
+                          disabled={saving}
+                          className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                        >
+                          <Trash2 className="size-3.5" /> {deleteRestoresFactoryBase ? "删除我的版本" : "删除模板"}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleSave}
+                disabled={saving || hasValidationError || (!isNewMode && !dirty)}
+                title={hasValidationError ? timeRangeErrors[0] : undefined}
+              >
+                <Save className="size-3.5" /> {isNewMode ? "保存新模板" : isFactory ? "保存为我的版本" : "保存"}
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-2">
@@ -631,17 +709,17 @@ export function TemplateDetailClient({
             </Button>
             {editableSlots.length === 0 ? (
               <Button
-                variant="gradient"
+                variant="default"
                 size="sm"
                 disabled
                 title="该模板暂无内容位，请先点「编辑模板」添加"
               >
-                <Sparkles className="size-3.5" /> 使用此模板
+                使用此模板
               </Button>
             ) : (
-              <Button variant="gradient" size="sm" asChild>
+              <Button variant="default" size="sm" asChild>
                 <Link href={`/mixcut/create/${display.template_id}`}>
-                  <Sparkles className="size-3.5" /> 使用此模板
+                  使用此模板
                   <ChevronRight className="size-3.5" />
                 </Link>
               </Button>
@@ -650,67 +728,38 @@ export function TemplateDetailClient({
         )}
       </div>
 
-      {isNewMode && (
-        <Card className="mb-4 border-violet-500/30 bg-violet-500/[0.04]">
-          <CardContent className="p-3 flex items-start gap-2">
-            <Sparkles className="size-4 text-violet-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-muted-foreground">
-              草稿状态：填写名称、添加场景与内容位，点
-              <span className="text-foreground"> 「保存新模板」</span>
-              后才会出现在模板库；直接关闭则不会保存。
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {!isNewMode && isFactory && editing && (
-        <Card className="mb-4 border-amber-500/30 bg-amber-500/[0.04]">
-          <CardContent className="p-3 flex items-start gap-2">
-            <AlertCircle className="size-4 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-muted-foreground">
-              这是工厂模板,保存会在本地生成一份「我的版本」覆盖显示;
-              <span className="text-foreground"> 在「我的模板」列表中可单独管理 </span>。
-              想保留原版的同时新增一份,请用「另存为新模板」。
-            </div>
-          </CardContent>
-        </Card>
+      {/* 模式提示：draft / factory 互斥，最多展示一条；单行无 Card chrome */}
+      {(isNewMode || (isFactory && editing)) && (
+        <ModeNotice
+          tone={isNewMode ? "draft" : "factory"}
+          deleteRestores={deleteRestoresFactoryBase}
+          className="mb-5"
+        />
       )}
 
       {saveAsOpen && (
-        <Card className="mb-4 border-violet-500/40">
-          <CardContent className="p-4 flex items-center gap-3 flex-wrap">
-            <Label htmlFor="newname" className="text-sm shrink-0">新模板名</Label>
-            <Input
-              id="newname"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="例如:玻璃水带货 · 节庆款"
-              className="flex-1 min-w-[200px]"
-            />
-            <Button variant="default" size="sm" onClick={handleSaveAs} disabled={!newName.trim() || saving}>
-              <Save className="size-3.5" /> 创建
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setSaveAsOpen(false); setNewName(""); }}>
-              取消
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="mb-5 rounded-md border border-violet-500/40 bg-violet-500/[0.03] px-3 py-2 flex items-center gap-3 flex-wrap">
+          <Label htmlFor="newname" className="text-xs text-muted-foreground shrink-0">新模板名</Label>
+          <Input
+            id="newname"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="例如：玻璃水带货 · 节庆款"
+            className="flex-1 min-w-[200px] h-8"
+          />
+          <Button variant="default" size="sm" onClick={handleSaveAs} disabled={!newName.trim() || saving}>
+            <Save className="size-3.5" /> 创建
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { setSaveAsOpen(false); setNewName(""); }}>
+            取消
+          </Button>
+        </div>
       )}
 
-      <section
-        className={cn(
-          "transition-colors rounded-lg",
-          editing && "bg-foreground/[0.02] ring-1 ring-foreground/10 -mx-3 lg:-mx-4 px-3 lg:px-4 py-4"
-        )}
-      >
-        {editing && (
-          <div className="mb-4 flex justify-end">
-            <EditingTipsBar />
-          </div>
-        )}
-
+      <section>
         {/* 场景流程独占一行,贯穿 section 宽度。编辑态横向时间轴需要尽可能宽,
             原来塞在左栏 340px 子列里又挤又难拖。view 态也保留同一位置,信息层级一致。*/}
-        <div className="mb-6">
+        <div className="mb-3">
           <SceneFlowEditor
             scenes={display.scenes}
             canvas={display.canvas}
@@ -723,6 +772,22 @@ export function TemplateDetailClient({
             onMoveTo={moveSceneTo}
           />
         </div>
+
+        {/* 编辑提示条：紧贴在场景流之后，作为操作提示的延伸 */}
+        {editing && <EditingTipsBar className="mb-3" />}
+
+        {/* 模板配置条：策略摘要 chip（默认）+ inline 展开完整配置面板（点击 chip 后）。
+            画布与模板属性都在 same 面板内,告别"按钮按了没反应/找不到目标"的旧版症状。
+            与下方主区段间留更大间距（mb-8）以分隔"模板顶层信息"与"在编辑的内容"。*/}
+        <TemplateConfigBar
+          template={display}
+          editing={editing}
+          open={templateMetaOpen}
+          onToggle={() => setTemplateMetaOpen((o) => !o)}
+          onChangeCanvas={updateCanvas}
+          onChangeTemplate={updateWorking}
+          className="mb-8"
+        />
 
       <div className={cn("grid grid-cols-1 gap-8", !editing && "lg:grid-cols-[1fr_400px]")}>
         <div>
@@ -802,39 +867,27 @@ export function TemplateDetailClient({
                 </p>
               </div>
 
-              {/* 编辑态:画布折叠仍留左栏(场景流程已上移到 section 顶部) */}
-              {editing && working && (
-                <>
-                  <CollapsibleCanvasMeta
-                    canvas={working.canvas}
-                    open={canvasMetaOpen}
-                    onToggle={() => setCanvasMetaOpen((o) => !o)}
-                    onChange={updateCanvas}
-                  />
-                  <CollapsibleTemplateMeta
-                    template={working}
-                    open={templateMetaOpen}
-                    onToggle={() => setTemplateMetaOpen((o) => !o)}
-                    onChange={updateWorking}
-                  />
-                </>
-              )}
+              {/* "高级"块已并入顶部 TemplateConfigBar 的 inline 展开面板;左栏只保留 Preview + 变体快速预览 */}
             </div>
 
-            <div className="space-y-4 min-w-0">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Layers className="size-4 text-violet-500" />
-                    {currentScene?.label || "场景"} · 内容位 ({currentSceneSlots.length})
-                  </CardTitle>
-                  {editing && (
-                    <Button variant="ghost" size="sm" onClick={addSlot}>
-                      <Plus className="size-3.5" /> 添加一个
-                    </Button>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-0">
+            <div className="min-w-0">
+              {/* 主舞台：slot 列表是 edit 模式的工作核心，不再嵌入 Card chrome。
+                  view 模式同样去 Card，让信息密度服务于"看清此场景在干什么"。*/}
+              <div className="mb-3 flex items-center justify-between gap-3 pb-2 border-b border-border/60">
+                <h2 className="text-sm font-semibold flex items-center gap-2">
+                  <Layers className="size-4 text-violet-500" />
+                  <span>{currentScene?.label || "场景"}</span>
+                  <span className="text-muted-foreground font-normal">
+                    · 内容位 {currentSceneSlots.length}
+                  </span>
+                </h2>
+                {editing && (
+                  <Button variant="ghost" size="sm" onClick={addSlot}>
+                    <Plus className="size-3.5" /> 添加一个
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-0">
                   {currentSceneSlots.length === 0 ? (
                     <SlotEmptyState editing={editing} onAdd={addSlot} />
                   ) : (
@@ -877,6 +930,7 @@ export function TemplateDetailClient({
                               <SlotCard
                                 slot={s}
                                 canvas={display.canvas}
+                                sceneDuration={currentScene?.duration ?? display.canvas.duration}
                                 selected={isSelected}
                                 editing={editing}
                                 onSelect={() => setSelectedSlot(isSelected ? null : s.slot_id)}
@@ -904,9 +958,7 @@ export function TemplateDetailClient({
                       )}
                     </>
                   )}
-                </CardContent>
-              </Card>
-
+              </div>
             </div>
           </div>
         </div>
@@ -998,7 +1050,7 @@ export function TemplateDetailClient({
 
 // ── Canvas 编辑器 ───────────────────────────────────────────────────────────
 
-// 注:本组件返回 bare content (不带 Card 外壳);外层由 CollapsibleCanvasMeta 包裹
+// 注:本组件返回 bare content (不带 Card 外壳);由 TemplateConfigBar 展开面板内嵌使用
 function CanvasEditor({
   canvas,
   onChange,
@@ -1006,41 +1058,39 @@ function CanvasEditor({
   canvas: Template["canvas"];
   onChange: (patch: Partial<Template["canvas"]>) => void;
 }) {
+  // 当前画布是否匹配某个预设；匹配则高亮，否则视作自定义（仅下方数值生效）
+  const matched = CANVAS_PRESETS.find((p) => p.w === canvas.width && p.h === canvas.height);
+
   return (
     <div className="space-y-3">
-      {(["短视频", "手机原生", "其他"] as const).map((group) => {
-        const items = CANVAS_PRESETS.filter((p) => p.group === group);
-        return (
-          <div key={group} className="space-y-1.5">
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-              {group}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {items.map((p) => {
-                const on = canvas.width === p.w && canvas.height === p.h;
-                return (
-                  <button
-                    key={p.label + p.w + p.h}
-                    onClick={() => onChange({ width: p.w, height: p.h })}
-                    className={cn(
-                      "px-2 py-1.5 rounded-md border text-left transition-colors leading-tight",
-                      on
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                    )}
-                  >
-                    <div className="text-xs font-medium">{p.label}</div>
-                    <div className={cn("text-[10px] font-mono mt-0.5", on ? "opacity-80" : "opacity-60")}>
-                      {p.sub}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1.5">
+        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+          常用尺寸
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {CANVAS_PRESETS.map((p) => {
+            const on = matched?.label === p.label;
+            return (
+              <button
+                key={p.label}
+                onClick={() => onChange({ width: p.w, height: p.h })}
+                className={cn(
+                  "px-2 py-1.5 rounded-md border text-left transition-colors leading-tight",
+                  on
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                )}
+              >
+                <div className="text-xs font-medium">{p.label}</div>
+                <div className={cn("text-[10px] font-mono mt-0.5", on ? "opacity-80" : "opacity-60")}>
+                  {p.sub}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
         <NumField
           label="宽度 (px)"
           value={canvas.width}
@@ -1061,7 +1111,9 @@ function CanvasEditor({
         />
       </div>
       <p className="text-[10px] text-muted-foreground leading-relaxed">
-        画布尺寸控制成片画面比例,所有内容位按此自动缩放。总时长由场景累加而来。
+        {matched
+          ? "选好预设后总时长由场景累加而来；如需非常规尺寸，直接改下方宽高。"
+          : "当前为自定义尺寸；所有内容位按此自动缩放。"}
       </p>
     </div>
   );
@@ -1072,6 +1124,7 @@ function CanvasEditor({
 function SlotCard({
   slot,
   canvas,
+  sceneDuration,
   selected,
   editing,
   onSelect,
@@ -1081,6 +1134,8 @@ function SlotCard({
 }: {
   slot: TemplateSlot;
   canvas: Template["canvas"];
+  /** 所在场景的总时长。time_range 的 clamp 上限。 */
+  sceneDuration: number;
   selected: boolean;
   editing: boolean;
   onSelect: () => void;
@@ -1089,6 +1144,16 @@ function SlotCard({
   onRemove: () => void;
 }) {
   const pixelRect = slot.rect ? rectToPixels(slot.rect, canvas) : null;
+  const [tStart, tEnd] = slot.time_range;
+  // 单 slot 自己的校验（用于在 NumField 边上画 inline 提示）
+  const localTimeError =
+    !(tEnd > tStart)
+      ? "结束必须大于开始"
+      : tEnd > sceneDuration + 1e-6
+      ? `超过本场景 ${sceneDuration}s`
+      : tStart < 0
+      ? "开始不能小于 0"
+      : null;
 
   if (!editing || !selected) {
     // 只读视图:所有英文 / 工程话术翻译成运营能读的中文
@@ -1247,19 +1312,45 @@ function SlotCard({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <NumField
-          label="开始 (秒)"
-          value={slot.time_range[0]}
-          min={0} max={120} step={0.5}
-          onChange={(v) => onChange({ time_range: [v, slot.time_range[1]] })}
-        />
-        <NumField
-          label="结束 (秒)"
-          value={slot.time_range[1]}
-          min={0} max={120} step={0.5}
-          onChange={(v) => onChange({ time_range: [slot.time_range[0], v] })}
-        />
+      <div>
+        <div className="grid grid-cols-2 gap-2">
+          <NumField
+            label="开始 (秒)"
+            value={tStart}
+            min={0}
+            max={Math.max(0, sceneDuration - 0.5)}
+            step={0.5}
+            onChange={(v) => {
+              // clamp 到 [0, sceneDuration - 0.5]，且不得 ≥ 当前 end
+              const clamped = Math.max(0, Math.min(v, sceneDuration - 0.5, tEnd - 0.5));
+              onChange({ time_range: [clamped, tEnd] });
+            }}
+          />
+          <NumField
+            label="结束 (秒)"
+            value={tEnd}
+            min={Math.min(sceneDuration, tStart + 0.5)}
+            max={sceneDuration}
+            step={0.5}
+            onChange={(v) => {
+              // clamp 到 [start + 0.5, sceneDuration]
+              const clamped = Math.max(tStart + 0.5, Math.min(v, sceneDuration));
+              onChange({ time_range: [tStart, clamped] });
+            }}
+          />
+        </div>
+        <div className="mt-1 flex items-center justify-between text-[10px] leading-tight">
+          {localTimeError ? (
+            <span className="inline-flex items-center gap-1 text-red-600">
+              <AlertCircle className="size-3" />
+              {localTimeError}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              本场景 0 – {sceneDuration}s
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -1444,13 +1535,174 @@ function SlotDropZone({
   );
 }
 
+// ── 模式提示:draft / factory 互斥,单行,无 Card chrome ────────────────────────
+
+function ModeNotice({
+  tone,
+  deleteRestores: _deleteRestores,
+  className,
+}: {
+  tone: "draft" | "factory";
+  /** 暂留未用：factory 态描述会因是否已有"我的版本"而稍异；当前文案统一处理 */
+  deleteRestores?: boolean;
+  className?: string;
+}) {
+  const isDraft = tone === "draft";
+  const Icon = isDraft ? Sparkles : AlertCircle;
+  return (
+    <div
+      className={cn(
+        "rounded-md px-3 py-2 flex items-start gap-2 border text-xs leading-relaxed",
+        isDraft
+          ? "border-violet-500/30 bg-violet-500/[0.04] text-muted-foreground"
+          : "border-amber-500/30 bg-amber-500/[0.04] text-muted-foreground",
+        className,
+      )}
+    >
+      <Icon
+        className={cn(
+          "size-3.5 shrink-0 mt-0.5",
+          isDraft ? "text-violet-600" : "text-amber-600",
+        )}
+      />
+      {isDraft ? (
+        <span>
+          草稿状态：填写名称、添加场景与内容位，点
+          <span className="font-medium text-foreground"> 保存新模板 </span>
+          后才会出现在模板库；直接关闭则不会保存。
+        </span>
+      ) : (
+        <span>
+          工厂模板：保存会在本地生成
+          <span className="font-medium text-foreground"> 我的版本 </span>
+          覆盖显示，可在「我的模板」列表中单独管理。想保留原版同时新增一份请用「另存为新模板」。
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── 模板配置条:策略摘要 (折叠) + 画布 / 模板属性 (展开,inline 同位) ────────
+// view 态：只读摘要 chip。
+// edit 态：点击 chip 直接 inline 展开"画布 + 模板属性"完整编辑面板,不再跳转左栏。
+// pHash 用"差异阈值"并加 Info hover 解释,避免术语外漏。
+
+function TemplateConfigBar({
+  template,
+  editing,
+  open,
+  onToggle,
+  onChangeCanvas,
+  onChangeTemplate,
+  className,
+}: {
+  template: Template;
+  editing: boolean;
+  /** 展开状态。view 态 ignored。 */
+  open: boolean;
+  onToggle: () => void;
+  onChangeCanvas: (patch: Partial<Template["canvas"]>) => void;
+  onChangeTemplate: (patch: Partial<Template>) => void;
+  className?: string;
+}) {
+  const profileLabel = PROFILE_LABELS[template.perturbation_profile];
+  const variants = template.output_variants_default;
+  const threshold = template.quality_gate.min_phash_distance;
+  const expanded = editing && open;
+
+  const summary = (
+    <div className="flex items-center gap-2 flex-wrap text-xs">
+      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+        <Sliders className="size-3.5" />
+        <span>差异化策略</span>
+      </span>
+      <Badge variant="brand" className="capitalize">{profileLabel}</Badge>
+      <Separator orientation="vertical" className="h-3" />
+      <span className="text-muted-foreground">默认</span>
+      <span className="font-medium text-foreground">{variants} 条</span>
+      <span className="text-muted-foreground">/ 次</span>
+      <Separator orientation="vertical" className="h-3" />
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <span>差异阈值</span>
+        <span
+          className="cursor-help inline-flex"
+          title="与原片越像分越低，越不像分越高。低于此阈值会自动重试以避免平台判重。"
+        >
+          <Info className="size-3 opacity-60" />
+        </span>
+      </span>
+      <span className="font-medium text-foreground">{threshold}</span>
+      <Separator orientation="vertical" className="h-3" />
+      <span className="text-muted-foreground">画布</span>
+      <span className="font-mono font-medium text-foreground">
+        {template.canvas.width}×{template.canvas.height}
+      </span>
+      <span className="text-muted-foreground/70 font-mono">· {template.canvas.fps}fps</span>
+    </div>
+  );
+
+  if (!editing) {
+    return (
+      <div className={cn("rounded-md border border-border bg-background/60 px-3 py-2", className)}>
+        {summary}
+      </div>
+    );
+  }
+
+  return (
+    <div className={className}>
+      <button
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className={cn(
+          "w-full text-left border border-border bg-background/60 px-3 py-2 transition-colors flex items-center justify-between gap-3",
+          expanded
+            ? "rounded-t-md border-b-foreground/15"
+            : "rounded-md hover:border-foreground/30 hover:bg-secondary/40",
+        )}
+      >
+        {/* v0.23: 展开时下面的表单已经把所有字段亮出来了；header 不再重复列数据，仅保留"模板配置"标签
+           + 收起 hint。收起态下 summary 仍是关键索引信息 → 保留完整一行。 */}
+        {expanded ? (
+          <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+            <Sliders className="size-3.5" />
+            <span className="font-medium text-foreground">模板配置</span>
+            <span className="text-muted-foreground/70">画布与时长 · 模板属性</span>
+          </span>
+        ) : (
+          summary
+        )}
+        <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1 shrink-0">
+          {expanded ? "收起" : "修改"}
+          <ChevronRight
+            className={cn("size-3 transition-transform", expanded && "rotate-90")}
+          />
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="rounded-b-md border border-t-0 border-border bg-background/50 p-4 md:p-5 grid gap-6 md:gap-8 md:grid-cols-2">
+          <section>
+            <h3 className="text-sm font-medium mb-3">画布与时长</h3>
+            <CanvasEditor canvas={template.canvas} onChange={onChangeCanvas} />
+          </section>
+          <section>
+            <h3 className="text-sm font-medium mb-3">模板属性</h3>
+            <TemplateMetaFields template={template} onChange={onChangeTemplate} />
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 编辑模式 hint bar:四条核心操作,localStorage 记住 dismiss ─────────────────
 // 显示位置:页面顶部"编辑中" badge 右侧,平铺 4 个手势提示,点 ✕ 永久隐藏。
 // 不抢主视觉,首次进入编辑就能看到该怎么操作。
 
 const TIPS_DISMISS_KEY = "mixcut.template-editor.tips-dismissed.v1";
 
-function EditingTipsBar() {
+function EditingTipsBar({ className }: { className?: string }) {
   const [dismissed, setDismissed] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -1470,7 +1722,12 @@ function EditingTipsBar() {
   };
 
   return (
-    <div className="inline-flex items-center gap-3 px-3 py-1.5 rounded-md bg-foreground/[0.04] border border-border text-[11px] text-muted-foreground">
+    <div
+      className={cn(
+        "inline-flex items-center gap-x-4 gap-y-1 flex-wrap px-3 py-1.5 rounded-md bg-foreground/[0.04] border border-border text-[11px] text-muted-foreground",
+        className,
+      )}
+    >
       <span className="flex items-center gap-1.5">
         <span className="size-1 rounded-full bg-foreground/40" />
         点节点切换场景
@@ -1499,43 +1756,8 @@ function EditingTipsBar() {
   );
 }
 
-// ── 编辑模式:画布与时长(低频改动,默认折叠) ────────────────────────────────
-
-function CollapsibleCanvasMeta({
-  canvas,
-  open,
-  onToggle,
-  onChange,
-}: {
-  canvas: Template["canvas"];
-  open: boolean;
-  onToggle: () => void;
-  onChange: (patch: Partial<Template["canvas"]>) => void;
-}) {
-  return (
-    <Card>
-      <button
-        onClick={onToggle}
-        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-secondary/30 transition-colors"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium">画布与时长</span>
-          <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-            {canvas.width}×{canvas.height} · {canvas.fps}fps
-          </span>
-        </div>
-        <ChevronRight className={cn("size-4 text-muted-foreground transition-transform shrink-0", open && "rotate-90")} />
-      </button>
-      {open && (
-        <CardContent className="pt-0">
-          <CanvasEditor canvas={canvas} onChange={onChange} />
-        </CardContent>
-      )}
-    </Card>
-  );
-}
-
-// ── 模板属性编辑器:品类/档位/标签/扰动/变体/质量门槛 ────────────────────────────
+// ── 模板属性表单 body:品类 / 档位 / 标签 / 差异化策略 / 默认变体 / 去重保护 ───
+// 不带外壳,由 TemplateConfigBar 展开面板内嵌使用。
 
 const TIER_EDIT_OPTIONS: Template["metadata"]["required_tier"][] = [
   "basic",
@@ -1549,15 +1771,11 @@ const PROFILE_EDIT_OPTIONS: Template["perturbation_profile"][] = [
   "aggressive",
 ];
 
-function CollapsibleTemplateMeta({
+function TemplateMetaFields({
   template,
-  open,
-  onToggle,
   onChange,
 }: {
   template: Template;
-  open: boolean;
-  onToggle: () => void;
   onChange: (patch: Partial<Template>) => void;
 }) {
   const updateMeta = (patch: Partial<Template["metadata"]>) =>
@@ -1565,108 +1783,109 @@ function CollapsibleTemplateMeta({
   const updateQg = (patch: Partial<Template["quality_gate"]>) =>
     onChange({ quality_gate: { ...template.quality_gate, ...patch } });
 
+  // v0.23: 去重保护折到"高级"。差异化策略选好后，min_phash / max_retries 沿用合理默认；
+  // 只在用户主动展开时显示这两个数值微调，避免把内部算法参数推到首屏。
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   return (
-    <Card>
-      <button
-        onClick={onToggle}
-        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-secondary/30 transition-colors"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium">模板属性</span>
-          <span className="text-[10px] text-muted-foreground font-mono shrink-0 truncate">
-            {template.metadata.category || "未分类"} · {TIER_LABELS[template.metadata.required_tier]}
-          </span>
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs">品类</Label>
+        <Input
+          value={template.metadata.category}
+          onChange={(e) => updateMeta({ category: e.target.value })}
+          placeholder="（可选）汽车用品 / 美妆个护 / 食饮…"
+          className="h-8 text-sm"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">标签（可选，逗号分隔）</Label>
+        <Input
+          value={template.metadata.tags.join(", ")}
+          onChange={(e) =>
+            updateMeta({
+              tags: e.target.value
+                .split(/[,，]/)
+                .map((t) => t.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="新品、促销、夏季…"
+          className="h-8 text-sm"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">适用档位</Label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {TIER_EDIT_OPTIONS.map((t) => (
+            <button
+              key={t}
+              onClick={() => updateMeta({ required_tier: t })}
+              className={cn(
+                "px-2 py-1.5 rounded-md border text-xs transition-colors",
+                template.metadata.required_tier === t
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+              )}
+            >
+              {TIER_LABELS[t]}
+            </button>
+          ))}
         </div>
-        <ChevronRight className={cn("size-4 text-muted-foreground transition-transform shrink-0", open && "rotate-90")} />
-      </button>
-      {open && (
-        <CardContent className="pt-0 space-y-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">品类</Label>
-            <Input
-              value={template.metadata.category}
-              onChange={(e) => updateMeta({ category: e.target.value })}
-              placeholder="例如:汽车用品、美妆个护"
-              className="h-8 text-sm"
-            />
-          </div>
+      </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">适用档位</Label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {TIER_EDIT_OPTIONS.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => updateMeta({ required_tier: t })}
-                  className={cn(
-                    "px-2 py-1.5 rounded-md border text-xs transition-colors",
-                    template.metadata.required_tier === t
-                      ? "bg-foreground text-background border-foreground"
-                      : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                  )}
-                >
-                  {TIER_LABELS[t]}
-                </button>
-              ))}
-            </div>
-          </div>
+      <Separator className="my-1" />
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">标签（逗号分隔）</Label>
-            <Input
-              value={template.metadata.tags.join(", ")}
-              onChange={(e) =>
-                updateMeta({
-                  tags: e.target.value
-                    .split(/[,，]/)
-                    .map((t) => t.trim())
-                    .filter(Boolean),
-                })
-              }
-              placeholder="例如:新品、促销、夏季"
-              className="h-8 text-sm"
-            />
-          </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">差异化策略</Label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {PROFILE_EDIT_OPTIONS.map((p) => (
+            <button
+              key={p}
+              onClick={() => onChange({ perturbation_profile: p })}
+              className={cn(
+                "px-2 py-1.5 rounded-md border text-xs transition-colors",
+                template.perturbation_profile === p
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+              )}
+            >
+              {PROFILE_LABELS[p]}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          {PROFILE_DESCRIPTIONS[template.perturbation_profile]}
+        </p>
+      </div>
 
-          <Separator className="my-1" />
+      <div className="grid grid-cols-2 gap-3">
+        <NumField
+          label="默认变体数"
+          value={template.output_variants_default}
+          min={1}
+          max={20}
+          onChange={(v) => onChange({ output_variants_default: v })}
+        />
+      </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">差异化策略</Label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {PROFILE_EDIT_OPTIONS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => onChange({ perturbation_profile: p })}
-                  className={cn(
-                    "px-2 py-1.5 rounded-md border text-xs transition-colors",
-                    template.perturbation_profile === p
-                      ? "bg-foreground text-background border-foreground"
-                      : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                  )}
-                >
-                  {PROFILE_LABELS[p]}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground leading-relaxed">
-              {PROFILE_DESCRIPTIONS[template.perturbation_profile]}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <NumField
-              label="默认变体数"
-              value={template.output_variants_default}
-              min={1}
-              max={20}
-              onChange={(v) => onChange({ output_variants_default: v })}
-            />
-          </div>
-
-          <Separator className="my-1" />
-
-          <div className="space-y-1.5">
-            <Label className="text-xs">去重保护</Label>
+      {/* 高级：去重保护的两个数值微调。默认沿用差异化策略隐含的合理阈值；运营不点开就看不见。 */}
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          aria-expanded={showAdvanced}
+          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight
+            className={cn("size-3 transition-transform", showAdvanced && "rotate-90")}
+          />
+          高级：去重阈值微调
+        </button>
+        {showAdvanced && (
+          <div className="mt-2 space-y-1.5 rounded-md border border-dashed border-border bg-secondary/30 p-3">
             <div className="grid grid-cols-2 gap-3">
               <NumField
                 label="最小差异度"
@@ -1684,12 +1903,13 @@ function CollapsibleTemplateMeta({
               />
             </div>
             <p className="text-[10px] text-muted-foreground leading-relaxed">
-              生成时若与原片相似度过高（差异度低于阈值）将自动重试，确保平台不会判定为重复视频。
+              生成时若与原片相似度过高（差异度低于阈值）将自动重试，避免平台判定为重复视频。
+              一般保持差异化策略的默认值即可；除非有特殊画风诉求再调。
             </p>
           </div>
-        </CardContent>
-      )}
-    </Card>
+        )}
+      </div>
+    </div>
   );
 }
 
