@@ -5,14 +5,17 @@ Public surface:
     UploadManager.get(task_id) -> TaskRecord | None
     UploadManager.cancel(task_id) -> bool
 
-In Slice 3 (this commit) the actual upload is faked by MockUploader, which
-walks a synthetic progress curve and posts progress callbacks back to
-apps/server. The cookie / storage_state passed in by the server is written to
-tmpfs and then unlinked when the task finishes — that matches the real
-behaviour we'll get once Slice 5 wires the forked sau uploader.
+Mock mode (SAU_MOCK_MODE=1, default in dev) walks a synthetic progress
+curve and posts callbacks back to apps/server — no Playwright launch,
+no real upload. The cookie / storage_state passed in by the server is
+written to tmpfs and unlinked when the task finishes; mock mode mirrors
+that path so the dev/prod plumbing matches.
 
-When Slice 5 lands the only file that changes is the body of
-`_run_real_upload` — the manager / queue / tmpfs cleanup stays.
+Real mode (SAU_MOCK_MODE=0) dispatches to per-platform `_upload_<plat>`
+methods that wrap the upstream `pokocat/social-auto-upload` uploader
+classes (DouYinVideo / TencentVideo / KSVideo / XiaoHongShuVideo) with
+shared timeout / SMS-interaction / cancel-aware scaffolding from
+`_run_upstream_upload`.
 """
 
 from __future__ import annotations
@@ -56,10 +59,12 @@ def _hook_chromium_for_page_capture(playwright: Any):
     """Yield a `page_provider()` callable that returns the most recent Page
     created by upstream uploader, by monkey-patching playwright.chromium.launch.
 
-    Upstream `DouYinVideo.upload(playwright)` / `TencentVideo.upload(playwright)`
-    are atomic — they call `playwright.chromium.launch()`, build a context +
-    page locally, and never expose any of them to the caller. We need the
-    Page to drive the SMS watcher (detect modal, fill code, click confirm).
+    Upstream uploaders (`DouYinVideo.upload(playwright)`,
+    `TencentVideo.upload(playwright)`, `KSVideo.upload(playwright)`,
+    `XiaoHongShuVideo.upload(playwright)`) are atomic — they call
+    `playwright.chromium.launch()`, build a context + page locally, and never
+    expose any of them to the caller. We need the Page to drive the SMS
+    watcher (detect modal, fill code, click confirm).
 
     Strategy: wrap chromium.launch so each returned Browser is captured in
     a list. page_provider() walks captured_browsers → contexts → pages and
@@ -111,11 +116,11 @@ def _hook_chromium_for_page_capture(playwright: Any):
 
 
 # Total wall-clock budget for one upstream upload() call (real-mode douyin /
-# shipinhao). Upstream's publish-button loop is `while True` with no max
-# attempts — if the selector breaks or the platform stalls, it would
-# otherwise hang forever, leaving the PublishJob stuck at "uploading" /
-# "publishing" on the server side. Capping it forces a clean FAILED so the
-# user sees an actionable status.
+# shipinhao / kuaishou / xiaohongshu). Each upstream publish-button loop is
+# `while True` with no max attempts — if the selector breaks or the platform
+# stalls, it would otherwise hang forever, leaving the PublishJob stuck at
+# "uploading" / "publishing" on the server side. Capping it forces a clean
+# FAILED so the user sees an actionable status.
 #
 # Total budget *excludes* awaiting_user time (we pause the timeout while
 # waiting on the user to enter an SMS code). Otherwise a slow user would
@@ -337,10 +342,10 @@ class UploadManager:
         Imports are function-local so that mock-mode containers (without the
         [real] extra) don't fail at module import.
 
-        v1 implements 抖音 + 视频号 end-to-end; the remaining two v1-enabled
-        platforms (kuaishou / xiaohongshu) wire when their respective upload
-        selectors are validated against a real account. Until then they
-        return a clear NOT_IMPLEMENTED error.
+        v1 wires all four enabled platforms end-to-end: 抖音 / 视频号 /
+        快手 / 小红书. Each `_upload_<platform>` wraps the upstream class
+        with the same timeout / SMS / cancel scaffolding (see
+        `_run_upstream_upload`).
         """
         platform = rec.request.platform.lower()
         rec.status = "uploading"
@@ -357,11 +362,10 @@ class UploadManager:
             await self._upload_douyin(rec)
         elif platform == "shipinhao":
             await self._upload_shipinhao(rec)
-        elif platform in ("kuaishou", "xiaohongshu"):
-            rec.status = "failed"
-            rec.error_code = "PLATFORM_REAL_NOT_WIRED"
-            rec.error_message = f"real-mode for {platform} pending; flip to mock or wait for next slice"
-            await self._push(rec)
+        elif platform == "kuaishou":
+            await self._upload_kuaishou(rec)
+        elif platform == "xiaohongshu":
+            await self._upload_xiaohongshu(rec)
         else:
             rec.status = "failed"
             rec.error_code = "PLATFORM_NOT_SUPPORTED"
@@ -425,13 +429,14 @@ class UploadManager:
         """Drive an upstream `video.upload(playwright)` call with timeout +
         cancel-aware race + publishing-phase watchdog + SMS interaction watcher.
 
-        Upstream's publish-button loop in `DouYinVideo.upload()` /
-        `TencentVideo.upload()` is `while True` with no max attempts. If the
-        platform selector breaks or the publish URL never matches, it loops
-        forever spamming "🏃 小人正在冲刺发布视频" — the PublishJob would
-        otherwise stay stuck at uploading/publishing on the server side. We
-        cap the total wall-clock budget at UPLOAD_TIMEOUT_S; on timeout the
-        task is marked FAILED with code=UPLOAD_TIMEOUT.
+        Each upstream uploader (`DouYinVideo.upload()`, `TencentVideo.upload()`,
+        `KSVideo.upload()`, `XiaoHongShuVideo.upload()`) has a publish-button
+        loop of the form `while True` with no max attempts. If the platform
+        selector breaks or the publish URL never matches, it loops forever
+        spamming "🏃 小人正在冲刺发布视频" — the PublishJob would otherwise
+        stay stuck at uploading/publishing on the server side. We cap the
+        total wall-clock budget at UPLOAD_TIMEOUT_S; on timeout the task is
+        marked FAILED with code=UPLOAD_TIMEOUT.
 
         We also start a watchdog: after PUBLISHING_AFTER_S the task is
         almost certainly past the "bytes being uploaded" phase and into
@@ -874,6 +879,160 @@ class UploadManager:
             await self._push(rec)
         except Exception as exc:  # noqa: BLE001
             log.exception("shipinhao upload failed task_id=%s", rec.task_id)
+            rec.status = "failed"
+            rec.error_code = "UPLOADER_RAISED"
+            rec.error_message = repr(exc)
+            await self._push(rec)
+
+    async def _upload_kuaishou(self, rec: TaskRecord) -> None:
+        """Invoke pokocat/social-auto-upload's KSVideo (快手) uploader.
+
+        Upstream class lives at `uploader.ks_uploader.main.KSVideo`. Constructor
+        accepts `title / file_path / tags / publish_date / account_file` as
+        required positional/keyword args, plus optional `desc`, `thumbnail_path`,
+        and `publish_strategy`. v1 plumbs only `desc`; thumbnail_path and
+        publish_strategy are future slices (商品挂载 / 定时发布等).
+
+        Kuaishou has no productLink concept like Douyin — 橱窗带货 there
+        goes through 磁力金牛 SaaS, which is a separate API surface (not the
+        creator-center upload flow).
+        """
+        self._ensure_upstream_conf()
+        from patchright.async_api import async_playwright  # type: ignore[import-not-found]
+        try:
+            from uploader.ks_uploader.main import KSVideo  # type: ignore[import-not-found]
+        except ImportError as exc:
+            rec.status = "failed"
+            rec.error_code = "UPSTREAM_MODULE_MISSING"
+            rec.error_message = (
+                f"kuaishou upstream class not found ({exc}); "
+                "check uploader.ks_uploader.main path against the pinned SHA"
+            )
+            await self._push(rec)
+            return
+
+        rec.status = "uploading"
+        rec.progress = 20
+        await self._push(rec)
+
+        publish_date = 0  # 0 = publish immediately, matches DouYinVideo convention
+        try:
+            async with async_playwright() as playwright:
+                if rec.cancel_event.is_set():
+                    await self._terminate(rec, "cancelled")
+                    return
+                ctor_kwargs: dict[str, Any] = {
+                    "title": rec.request.title,
+                    "file_path": rec.video_path,
+                    "tags": rec.request.tags,
+                    "publish_date": publish_date,
+                    "account_file": rec.state_path,
+                }
+                if rec.request.description:
+                    ctor_kwargs["desc"] = rec.request.description
+                log.info("[upload kuaishou] task_id=%s constructing KSVideo", rec.task_id)
+                video = KSVideo(**ctor_kwargs)
+                rec.progress = 40
+                await self._push(rec)
+                with _hook_chromium_for_page_capture(playwright) as page_provider:
+                    ok = await self._run_upstream_upload(
+                        rec,
+                        lambda: video.upload(playwright),
+                        platform_label="kuaishou",
+                        page_provider=page_provider,
+                    )
+                if not ok:
+                    return  # _run_upstream_upload already pushed terminal status
+            rec.status = "live"
+            rec.progress = 100
+            rec.external_url = None  # upstream doesn't return final URL
+            await self._push(rec)
+        except TypeError as exc:
+            log.exception("kuaishou upload failed (constructor mismatch) task_id=%s", rec.task_id)
+            rec.status = "failed"
+            rec.error_code = "UPSTREAM_SIGNATURE_MISMATCH"
+            rec.error_message = (
+                f"KSVideo signature mismatch ({exc}); "
+                "the pinned upstream may require a different constructor"
+            )
+            await self._push(rec)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("kuaishou upload failed task_id=%s", rec.task_id)
+            rec.status = "failed"
+            rec.error_code = "UPLOADER_RAISED"
+            rec.error_message = repr(exc)
+            await self._push(rec)
+
+    async def _upload_xiaohongshu(self, rec: TaskRecord) -> None:
+        """Invoke pokocat/social-auto-upload's XiaoHongShuVideo (小红书) uploader.
+
+        Upstream class lives at `uploader.xiaohongshu_uploader.main.XiaoHongShuVideo`.
+        Constructor accepts `title / file_path / tags / publish_date / account_file`
+        plus optional `thumbnail_path`, `desc`, `publish_strategy` (default
+        "immediate"). v1 plumbs only `desc`; thumbnail_path and timed publish
+        are future slices.
+        """
+        self._ensure_upstream_conf()
+        from patchright.async_api import async_playwright  # type: ignore[import-not-found]
+        try:
+            from uploader.xiaohongshu_uploader.main import XiaoHongShuVideo  # type: ignore[import-not-found]
+        except ImportError as exc:
+            rec.status = "failed"
+            rec.error_code = "UPSTREAM_MODULE_MISSING"
+            rec.error_message = (
+                f"xiaohongshu upstream class not found ({exc}); "
+                "check uploader.xiaohongshu_uploader.main path against the pinned SHA"
+            )
+            await self._push(rec)
+            return
+
+        rec.status = "uploading"
+        rec.progress = 20
+        await self._push(rec)
+
+        publish_date = 0  # 0 = publish immediately, matches DouYinVideo convention
+        try:
+            async with async_playwright() as playwright:
+                if rec.cancel_event.is_set():
+                    await self._terminate(rec, "cancelled")
+                    return
+                ctor_kwargs: dict[str, Any] = {
+                    "title": rec.request.title,
+                    "file_path": rec.video_path,
+                    "tags": rec.request.tags,
+                    "publish_date": publish_date,
+                    "account_file": rec.state_path,
+                }
+                if rec.request.description:
+                    ctor_kwargs["desc"] = rec.request.description
+                log.info("[upload xiaohongshu] task_id=%s constructing XiaoHongShuVideo", rec.task_id)
+                video = XiaoHongShuVideo(**ctor_kwargs)
+                rec.progress = 40
+                await self._push(rec)
+                with _hook_chromium_for_page_capture(playwright) as page_provider:
+                    ok = await self._run_upstream_upload(
+                        rec,
+                        lambda: video.upload(playwright),
+                        platform_label="xiaohongshu",
+                        page_provider=page_provider,
+                    )
+                if not ok:
+                    return  # _run_upstream_upload already pushed terminal status
+            rec.status = "live"
+            rec.progress = 100
+            rec.external_url = None  # upstream doesn't return final URL
+            await self._push(rec)
+        except TypeError as exc:
+            log.exception("xiaohongshu upload failed (constructor mismatch) task_id=%s", rec.task_id)
+            rec.status = "failed"
+            rec.error_code = "UPSTREAM_SIGNATURE_MISMATCH"
+            rec.error_message = (
+                f"XiaoHongShuVideo signature mismatch ({exc}); "
+                "the pinned upstream may require a different constructor"
+            )
+            await self._push(rec)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("xiaohongshu upload failed task_id=%s", rec.task_id)
             rec.status = "failed"
             rec.error_code = "UPLOADER_RAISED"
             rec.error_message = repr(exc)
