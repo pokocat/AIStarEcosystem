@@ -12,8 +12,7 @@ import type { SocialAccount, SocialAccountStatus, SocialPlatform } from "@ai-sta
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { BindAccountDialog } from "./BindAccountDialog";
-import { SocialPlatformLogo } from "./SocialPlatformLogo";
-import { platformAccountLabel, platformDisplayName } from "./social-account-labels";
+import { SocialAccountIdentity } from "./SocialAccountIdentity";
 import { useConfirm } from "@/components/common/confirm-dialog";
 
 const STATUS_META: Record<SocialAccountStatus, { label: string; cls: string }> = {
@@ -342,52 +341,26 @@ export function SocialAccountList({ onAccountsChange }: Props) {
         <ul className="divide-y divide-zinc-100">
           {accounts.map((a) => {
             const meta = STATUS_META[a.status] ?? STATUS_META.pending;
-            const platform = platformDisplayName(a.platform);
-            const identityParts = [
-              platform,
-              a.displayName || null,
-              a.platformAccountId
-                ? `${platformAccountLabel(a.platform)} ${a.platformAccountId}`
-                : null,
-            ].filter(Boolean);
             return (
               <li key={a.id} className="flex items-center gap-3 py-3">
-                <div className="relative h-9 w-9 shrink-0">
-                  {a.avatarUrl ? (
-                    <img
-                      src={a.avatarUrl}
-                      alt={a.accountName}
-                      className="h-9 w-9 rounded-full border border-zinc-200 object-cover"
-                    />
-                  ) : (
-                    <div className="grid h-9 w-9 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-xs text-zinc-500">
-                      {platform.slice(0, 1)}
-                    </div>
-                  )}
-                  <SocialPlatformLogo
-                    platform={a.platform}
-                    size="xs"
-                    className="absolute -bottom-0.5 -right-0.5 ring-2 ring-white"
-                  />
-                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 text-sm text-zinc-800">
-                    <span className="truncate font-medium">{a.accountName}</span>
+                    <SocialAccountIdentity
+                      account={a}
+                      className="min-w-0 flex-1"
+                      meta={a.lastVerifiedAt
+                        ? `上次验证 ${new Date(a.lastVerifiedAt).toLocaleString()}`
+                        : undefined}
+                    />
                     <span
                       className={cn(
-                        "rounded-md border px-1.5 py-0.5 text-[10px] font-medium",
+                        "shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-medium",
                         meta.cls,
                       )}
                     >
                       {meta.label}
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-500">
-                    {identityParts.join(" · ")}
-                    {a.lastVerifiedAt
-                      ? ` · 上次验证 ${new Date(a.lastVerifiedAt).toLocaleString()}`
-                      : ""}
-                  </p>
                 </div>
                 <div className="flex gap-1">
                   {a.status === "active" ? (

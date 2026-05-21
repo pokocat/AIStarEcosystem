@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@ai-star-eco/ui/ui/select";
+import { SocialAccountIdentity } from "./SocialAccountIdentity";
 import { SocialPlatformLogo } from "./SocialPlatformLogo";
 import { socialAccountOptionLabel } from "./social-account-labels";
 
@@ -286,10 +287,7 @@ export function DistributeDialog({ open, onClose, project, videos, onCreated }: 
                             <SelectItem value={NO_ACCOUNT}>不分发到此平台</SelectItem>
                             {platformAccounts.map((a) => (
                               <SelectItem key={a.id} value={a.id} textValue={socialAccountOptionLabel(a)}>
-                                <span className="inline-flex min-w-0 items-center gap-2">
-                                  <SocialPlatformLogo platform={a.platform} size="xs" />
-                                  <span className="truncate">{socialAccountOptionLabel(a)}</span>
-                                </span>
+                                <SocialAccountIdentity account={a} size="sm" className="w-full" />
                               </SelectItem>
                             ))}
                           </SelectContent>

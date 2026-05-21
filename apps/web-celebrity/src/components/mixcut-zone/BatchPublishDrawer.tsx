@@ -13,8 +13,7 @@ import { Button } from "@/components/mixcut-zone/ui/button";
 import { cn } from "@/components/mixcut-zone/lib/utils";
 import { SocialAccountApi } from "@ai-star-eco/api-client";
 import type { SocialAccount } from "@ai-star-eco/types/social-account";
-import { SocialPlatformLogo } from "@/components/distribution/SocialPlatformLogo";
-import { platformAccountLabel, platformDisplayName } from "@/components/distribution/social-account-labels";
+import { SocialAccountIdentity } from "@/components/distribution/SocialAccountIdentity";
 import {
   ScheduleEditor,
   type StrategyKind,
@@ -440,15 +439,6 @@ export function BatchPublishDrawer({
                     <ul className="rounded-md border border-border divide-y divide-border max-h-[220px] overflow-y-auto">
                       {accounts.map((a) => {
                         const sel = selectedAccountIds.includes(a.id);
-                        const subtitle = [
-                          platformDisplayName(a.platform),
-                          a.displayName,
-                          a.platformAccountId
-                            ? `${platformAccountLabel(a.platform)} ${a.platformAccountId}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ");
                         return (
                           <li key={a.id}>
                             <button
@@ -469,13 +459,7 @@ export function BatchPublishDrawer({
                               >
                                 {sel && <span className="text-[10px] font-bold">✓</span>}
                               </span>
-                              <SocialPlatformLogo platform={a.platform} size="sm" />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium truncate">{a.accountName}</div>
-                                <div className="text-[11px] text-muted-foreground truncate">
-                                  {subtitle}
-                                </div>
-                              </div>
+                              <SocialAccountIdentity account={a} size="sm" className="flex-1" />
                             </button>
                           </li>
                         );
