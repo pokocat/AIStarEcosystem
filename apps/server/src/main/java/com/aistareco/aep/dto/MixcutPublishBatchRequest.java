@@ -35,7 +35,18 @@ public record MixcutPublishBatchRequest(
          */
         @JsonProperty("schedule") ScheduleSpec schedule,
         /** 可选 projectId；缺省时 service 端兜底为 "mixcut-batch-<sourceMixcutJobId>-<yyyyMMddHHmmss>" */
-        @JsonProperty("project_id") String projectId
+        @JsonProperty("project_id") String projectId,
+        /**
+         * v0.22+: 抖音商品挂载（蓝V / 橱窗带货）。仅 douyin 目标账号消费这俩字段；
+         * 其它平台 sau-service 静默忽略。批量发布是「同一商品挂到 N 条视频上」的典型
+         * 场景 —— 字段放在顶层，N×M 派单的每条 PublishJob 都拿到同一份。
+         *
+         * 行为对齐 PublishJobService.createBatch 单条路径 + sau-service _upload_douyin
+         * 透传 DouYinVideo(productLink=..., productTitle=...)。两项都填才会触发挂件；
+         * 任一为空则忽略整组（避免半残挂件）。
+         */
+        @JsonProperty("product_link") String productLink,
+        @JsonProperty("product_title") String productTitle
 ) {
 
     /** 一个 mixcut 变体。outputId 用于失败回传定位；cdnUrl 是真值（必填）。 */

@@ -83,11 +83,18 @@ export function SlotInput({
     <Card
       onClick={onFocus}
       className={cn(
-        "p-4 transition-all cursor-pointer",
-        focused ? "ring-2 ring-violet-500/60 border-violet-500/60" : "hover:border-foreground/30",
-        filled && "border-emerald-500/30 bg-emerald-500/[0.02]"
+        "relative p-4 transition-shadow cursor-pointer",
+        focused
+          ? "border-transparent ring-2 ring-violet-500/60"
+          : "hover:border-foreground/30",
+        filled && !focused && "border-emerald-500/30 bg-emerald-500/[0.02]"
       )}
     >
+      {focused && (
+        <span className="absolute -top-2 left-3 px-1.5 py-0.5 rounded bg-violet-500 text-white text-[10px] font-medium leading-none shadow-sm">
+          正在编辑
+        </span>
+      )}
       <div className="flex items-start gap-3">
         <div
           className={cn(

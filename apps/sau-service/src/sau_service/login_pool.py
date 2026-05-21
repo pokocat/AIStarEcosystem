@@ -36,6 +36,7 @@ import asyncio
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -127,6 +128,196 @@ def _is_placeholder_profile_text(text: str | None) -> bool:
     return "加载中" in text or "请稍候" in text or lowered in {"loading", "loading..."}
 
 
+async def _poll_extract_profile(
+    page: Any,
+    reader: Callable[[Any], Awaitable[dict[str, Any]]],
+    *,
+    timeout_s: float = 10.0,
+    interval_ms: int = 500,
+    label_hints: tuple[str, ...] = (),
+    diagnostic_tag: str = "",
+) -> dict[str, Any]:
+    """Poll `reader(page)` until BOTH identifying fields land or `timeout_s`
+    elapses. Mirrors DouyinDriver's pattern so every platform waits for SPA
+    paint instead of single-shot reading an empty header.
+
+    v0.17.2: 完整 success = displayName AND platformAccountId 都非空。
+    历史行为是任一非空即 return，导致「displayName 命中但 platformAccountId
+    selector 写错」的场景永远不触发诊断 dump（只 dump 全空）。改成 AND 后，
+    selector 部分错的平台也会吃满 deadline → dump 真 DOM；selector 全对的
+    平台还是 fast-bail（两项一起出现）。
+
+    若到 deadline 时仍有缺字段且 `label_hints` 非空，按 label 在 DOM 里反向
+    搜节点 + 头部 chrome outerHTML 一并 dump，方便回填 selector。
+
+    Never raises — falls back to _empty_profile on any exception."""
+    try:
+        deadline = time.monotonic() + timeout_s
+        profile = _empty_profile()
+        while True:
+            profile = await reader(page)
+            has_display = bool(profile.get("displayName"))
+            has_account_id = bool(profile.get("platformAccountId"))
+            if has_display and has_account_id:
+                return profile
+            if time.monotonic() >= deadline:
+                missing = []
+                if not has_display:
+                    missing.append("displayName")
+                if not has_account_id:
+                    missing.append("platformAccountId")
+                if label_hints and missing:
+                    await _dump_profile_dom_hints(
+                        page, label_hints, diagnostic_tag, missing_fields=tuple(missing),
+                    )
+                return profile
+            await page.wait_for_timeout(interval_ms)
+    except Exception:  # noqa: BLE001
+        return _empty_profile()
+
+
+async def _dump_profile_dom_hints(
+    page: Any,
+    label_hints: tuple[str, ...],
+    diagnostic_tag: str,
+    *,
+    missing_fields: tuple[str, ...] = (),
+) -> None:
+    """Log WARNING with DOM nodes whose text contains any `label_hints` token,
+    plus the head/avatar chrome's outerHTML.
+
+    Triggered when `_poll_extract_profile` exhausts its retry budget with one
+    or both identifying fields still empty. The dump is what an operator
+    pastes back to refine the driver's `*_SELECTORS` / body-text label list —
+    avoids needing to repeat the manual QR bind just to inspect the page.
+
+    Best-effort. Never raises. Capped node count + outerHTML length to
+    keep logs human-readable."""
+    try:
+        url = getattr(page, "url", None)
+        body = await _body_text(page)
+        body_snippet = (body or "")[:800]
+
+        # Pass 1: 含 label_hints 文本的节点（最佳 selector 候选；带 label = 平台
+        # 在 DOM 里明示了这是 "小红书号 / 快手号 / 视频号 ID"）
+        candidates_js = """
+        (labels) => {
+          const out = [];
+          const walker = document.createTreeWalker(
+            document.body, NodeFilter.SHOW_TEXT, null
+          );
+          let node;
+          while ((node = walker.nextNode())) {
+            const t = (node.textContent || '').trim();
+            if (!t) continue;
+            if (!labels.some(l => t.includes(l))) continue;
+            const el = node.parentElement;
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            out.push({
+              tag: el.tagName,
+              cls: typeof el.className === 'string' ? el.className : '',
+              text: t.slice(0, 160),
+              parentTag: el.parentElement ? el.parentElement.tagName : null,
+              parentCls: el.parentElement && typeof el.parentElement.className === 'string'
+                ? el.parentElement.className : '',
+              outerHTML: (el.outerHTML || '').slice(0, 800),
+            });
+            if (out.length >= 6) break;
+          }
+          return out;
+        }
+        """
+        try:
+            hits = await page.evaluate(candidates_js, list(label_hints))
+        except Exception:  # noqa: BLE001
+            hits = []
+
+        # Pass 2: 头部 / 用户菜单 chrome —— XHS / 视频号 / 快手 上 platform_account_id
+        # 经常藏在 header 或下拉菜单里，label 在 DOM 里又不在 body innerText 顶层
+        # 触手可及（被 transform / visibility 遮挡）。把头部 chrome 拍一份照让运维
+        # 一眼看到 nickname / id 的容器 class。
+        header_js = """
+        () => {
+          const heads = [];
+          const sels = [
+            'header', '[class*="Header"]', '[class*="header"]',
+            '[class*="userInfo"]', '[class*="user-info"]',
+            '[class*="avatar"]', '[class*="Avatar"]',
+            '[class*="account-info"]', '[class*="UserPanel"]',
+          ];
+          const seen = new Set();
+          for (const s of sels) {
+            const nodes = document.querySelectorAll(s);
+            for (const el of nodes) {
+              if (seen.has(el)) continue;
+              const r = el.getBoundingClientRect();
+              if (r.width === 0 || r.height === 0) continue;
+              // 顶部 200px 内 + 不是巨大容器（避免 dump 整个 layout）
+              if (r.top > 200 || r.width > 800 || r.height > 400) continue;
+              seen.add(el);
+              heads.push({
+                sel: s,
+                tag: el.tagName,
+                cls: typeof el.className === 'string' ? el.className : '',
+                rect: {x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height)},
+                text: (el.innerText || '').slice(0, 200),
+                outerHTML: (el.outerHTML || '').slice(0, 1200),
+              });
+              if (heads.length >= 6) break;
+            }
+            if (heads.length >= 6) break;
+          }
+          return heads;
+        }
+        """
+        try:
+            heads = await page.evaluate(header_js)
+        except Exception:  # noqa: BLE001
+            heads = []
+
+        missing_summary = ",".join(missing_fields) if missing_fields else "<all>"
+        log.warning(
+            "[%s] extract_profile incomplete after retry budget; missing=%s url=%s "
+            "body[:800]=%r label_hits=%d header_hits=%d",
+            diagnostic_tag or "profile",
+            missing_summary,
+            url,
+            body_snippet,
+            len(hits) if isinstance(hits, list) else 0,
+            len(heads) if isinstance(heads, list) else 0,
+        )
+        if isinstance(hits, list):
+            for i, h in enumerate(hits):
+                log.warning(
+                    "  [%s][label#%d] tag=%s cls=%r text=%r parentTag=%s parentCls=%r outerHTML=%r",
+                    diagnostic_tag or "profile",
+                    i,
+                    h.get("tag"),
+                    (h.get("cls") or "")[:160],
+                    h.get("text"),
+                    h.get("parentTag"),
+                    (h.get("parentCls") or "")[:160],
+                    h.get("outerHTML"),
+                )
+        if isinstance(heads, list):
+            for i, h in enumerate(heads):
+                log.warning(
+                    "  [%s][head#%d] sel=%s tag=%s cls=%r rect=%s text=%r outerHTML=%r",
+                    diagnostic_tag or "profile",
+                    i,
+                    h.get("sel"),
+                    h.get("tag"),
+                    (h.get("cls") or "")[:160],
+                    h.get("rect"),
+                    h.get("text"),
+                    h.get("outerHTML"),
+                )
+    except Exception:  # noqa: BLE001
+        log.exception("[%s] _dump_profile_dom_hints crashed", diagnostic_tag or "profile")
+
+
 class PlatformDriver:
     """Abstract driver — one subclass per v1-enabled platform."""
 
@@ -152,6 +343,23 @@ class PlatformDriver:
         storage_state still work when preloaded into a fresh context?).
         """
         raise NotImplementedError
+
+    @classmethod
+    async def prepare_profile_view(cls, page: Any) -> None:
+        """Optional hook: navigate / interact with the page so the profile
+        fields become visible before extract_profile runs. Default = noop.
+
+        Drivers can override to e.g. navigate to a settings page where
+        nickname + platform_account_id are guaranteed to render. Used by
+        platforms (notably 小红书) whose post-login landing page renders
+        only the avatar — no nickname / 小红书号 visible until you go to
+        /setting/profile or similar.
+
+        Best-effort: must NEVER raise; failure falls through to whatever
+        the post-login landing page exposes. Storage_state is captured
+        AFTER this runs so any cookies refreshed during navigation are
+        baked into the persisted blob."""
+        return None
 
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
@@ -241,18 +449,14 @@ class DouyinDriver(PlatformDriver):
 
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
-        try:
-            deadline = time.monotonic() + cls.PROFILE_READY_TIMEOUT_S
-            profile = _empty_profile()
-            while True:
-                profile = await cls._read_profile_fields(page)
-                if profile["displayName"] or profile["platformAccountId"]:
-                    return profile
-                if time.monotonic() >= deadline:
-                    return profile
-                await page.wait_for_timeout(cls.PROFILE_POLL_INTERVAL_MS)
-        except Exception:  # noqa: BLE001
-            return _empty_profile()
+        return await _poll_extract_profile(
+            page,
+            cls._read_profile_fields,
+            timeout_s=cls.PROFILE_READY_TIMEOUT_S,
+            interval_ms=cls.PROFILE_POLL_INTERVAL_MS,
+            label_hints=("抖音号", "Douyin ID"),
+            diagnostic_tag="douyin",
+        )
 
     @classmethod
     async def _read_profile_fields(cls, page: Any) -> dict[str, Any]:
@@ -299,6 +503,42 @@ class ShipinhaoDriver(PlatformDriver):
     LOGIN_URL = "https://channels.weixin.qq.com/platform/post/create"
     UPLOAD_URL = "https://channels.weixin.qq.com/platform/post/create"
     MANAGE_URL = "https://channels.weixin.qq.com/platform/post/list"
+    PROFILE_READY_TIMEOUT_S = 10.0
+    PROFILE_POLL_INTERVAL_MS = 500
+
+    # 视频号助手 (channels.weixin.qq.com/platform) 创作者中心左上角：
+    #   头像 + 视频号昵称 + 一行 "视频号 ID: <id>" / "原始 ID: <id>"。
+    # 当前 build 用 emotion / module-css 哈希 class（finder-nickname-* 之类），
+    # 历史上也见过裸 `.finder-nickname`。多套模糊兜底 + body 文本兜底。
+    DISPLAY_SELECTORS = (
+        "[class*='finder-nickname']",
+        "[class*='FinderNickname']",
+        "[class*='channel-nickname']",
+        "[class*='nickname-text']",
+        "[class*='nickname']",
+        "[class*='userName']",
+        "[class*='user-name']",
+        "div.account-name",
+        "div.user-name",
+        "div.name",
+    )
+    ACCOUNT_ID_SELECTORS = (
+        "[class*='finder-uniq-id']",
+        "[class*='finder-id']",
+        "[class*='finderId']",
+        "[class*='channel-id']",
+        "[class*='channelId']",
+        "[class*='uniq-id']",
+        "[class*='uniqId']",
+        "[class*='account-info-uin']",
+    )
+    AVATAR_SELECTORS = (
+        "img.finder-avatar",
+        "img[class*='finder-avatar']",
+        "img[class*='avatar']",
+        "div.avatar img",
+        "[class*='avatar'] img",
+    )
 
     @classmethod
     async def extract_qr_data_url(cls, page: Any) -> str:
@@ -368,26 +608,45 @@ class ShipinhaoDriver(PlatformDriver):
 
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
-        try:
-            display = await _first_text(page, (
-                "div.finder-nickname",
-                "span.finder-nickname",
-                "div.account-name",
-                "div.user-name",
-            ))
-            avatar = await _first_attr(page, (
-                "img.finder-avatar",
-                "div.avatar img",
-                "img.user-avatar",
-            ), "src")
-            account_id = _extract_labeled_account_id(await _body_text(page), ("视频号", "Channels ID"))
-            return {
-                "displayName": display,
-                "platformAccountId": account_id,
-                "avatarUrl": avatar,
-            }
-        except Exception:  # noqa: BLE001
-            return _empty_profile()
+        return await _poll_extract_profile(
+            page,
+            cls._read_profile_fields,
+            timeout_s=cls.PROFILE_READY_TIMEOUT_S,
+            interval_ms=cls.PROFILE_POLL_INTERVAL_MS,
+            label_hints=("视频号 ID", "视频号ID", "视频号", "原始 ID", "原始ID"),
+            diagnostic_tag="shipinhao",
+        )
+
+    @classmethod
+    async def _read_profile_fields(cls, page: Any) -> dict[str, Any]:
+        display = await _first_text(page, cls.DISPLAY_SELECTORS)
+        avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+        account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+        body = await _body_text(page)
+        # 视频号有时把 "视频号 ID：<id>" 整段塞进同一个 div —— 反向再抽一次。
+        if account_id and ("视频号" in account_id or "ID" in account_id.upper()):
+            extracted = _extract_labeled_account_id(
+                account_id, ("视频号 ID", "视频号ID", "视频号", "原始 ID", "原始ID", "Channels ID"),
+            )
+            if extracted:
+                account_id = extracted
+        if not account_id:
+            account_id = _extract_labeled_account_id(
+                body,
+                ("视频号 ID", "视频号ID", "视频号", "原始 ID", "原始ID", "Channels ID"),
+            )
+        if _is_placeholder_profile_text(display):
+            display = None
+        if not display:
+            display = _extract_text_before_label(body, "视频号 ID") \
+                or _extract_text_before_label(body, "视频号")
+        if _is_placeholder_profile_text(display):
+            display = None
+        return {
+            "displayName": display,
+            "platformAccountId": account_id,
+            "avatarUrl": avatar,
+        }
 
 
 class KuaishouDriver(PlatformDriver):
@@ -423,6 +682,8 @@ class KuaishouDriver(PlatformDriver):
         "%252Farticle%252Fpublish%252Fvideo%26setRootDomain%3Dtrue"
     )
     LOGGED_IN_URL_PREFIX = "https://cp.kuaishou.com/"
+    PROFILE_READY_TIMEOUT_S = 10.0
+    PROFILE_POLL_INTERVAL_MS = 500
 
     DISPLAY_SELECTORS = (
         "div.names div.container div.name",
@@ -432,11 +693,15 @@ class KuaishouDriver(PlatformDriver):
         "[class*='user-name']",
         "[class*='nickname']",
         "[class*='userName']",
+        "[class*='userInfo'] [class*='name']",
     )
     ACCOUNT_ID_SELECTORS = (
         "[class*='kwai-id']",
         "[class*='kuaishou-id']",
+        "[class*='kwaiId']",
+        "[class*='kuaishouId']",
         "span.kwai-id",
+        "[class*='userInfo'] [class*='id']",
     )
     AVATAR_SELECTORS = (
         "img.avatar",
@@ -498,29 +763,44 @@ class KuaishouDriver(PlatformDriver):
 
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
-        try:
-            display = await _first_text(page, cls.DISPLAY_SELECTORS)
-            avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
-            account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
-            body = await _body_text(page)
-            if not account_id:
-                account_id = _extract_labeled_account_id(
-                    body,
-                    ("快手号", "快手 ID", "Kwai ID", "Kuaishou ID"),
-                )
-            if _is_placeholder_profile_text(display):
-                display = None
-            if not display:
-                display = _extract_text_before_label(body, "快手号")
-            if _is_placeholder_profile_text(display):
-                display = None
-            return {
-                "displayName": display,
-                "platformAccountId": account_id,
-                "avatarUrl": avatar,
-            }
-        except Exception:  # noqa: BLE001
-            return _empty_profile()
+        return await _poll_extract_profile(
+            page,
+            cls._read_profile_fields,
+            timeout_s=cls.PROFILE_READY_TIMEOUT_S,
+            interval_ms=cls.PROFILE_POLL_INTERVAL_MS,
+            label_hints=("快手号", "快手 ID", "快手ID", "Kwai ID", "Kuaishou ID"),
+            diagnostic_tag="kuaishou",
+        )
+
+    @classmethod
+    async def _read_profile_fields(cls, page: Any) -> dict[str, Any]:
+        display = await _first_text(page, cls.DISPLAY_SELECTORS)
+        avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+        account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+        body = await _body_text(page)
+        # 命中 "快手号：xxx" 整段时反向再抽一次。
+        if account_id and ("快手号" in account_id or "ID" in account_id.upper()):
+            extracted = _extract_labeled_account_id(
+                account_id, ("快手号", "快手 ID", "快手ID", "Kwai ID", "Kuaishou ID"),
+            )
+            if extracted:
+                account_id = extracted
+        if not account_id:
+            account_id = _extract_labeled_account_id(
+                body,
+                ("快手号", "快手 ID", "快手ID", "Kwai ID", "Kuaishou ID"),
+            )
+        if _is_placeholder_profile_text(display):
+            display = None
+        if not display:
+            display = _extract_text_before_label(body, "快手号")
+        if _is_placeholder_profile_text(display):
+            display = None
+        return {
+            "displayName": display,
+            "platformAccountId": account_id,
+            "avatarUrl": avatar,
+        }
 
 
 class XiaohongshuDriver(PlatformDriver):
@@ -534,18 +814,28 @@ class XiaohongshuDriver(PlatformDriver):
 
     LOGIN_URL = "https://creator.xiaohongshu.com/login"
     LOGGED_IN_URL_PREFIX = "https://creator.xiaohongshu.com/"
+    PROFILE_READY_TIMEOUT_S = 10.0
+    PROFILE_POLL_INTERVAL_MS = 500
 
     DISPLAY_SELECTORS = (
         "div.user-info div.nickname",
+        "[class*='user-info'] [class*='nickname']",
+        "[class*='userInfo'] [class*='nickname']",
         "[class*='nickname']",
+        "[class*='Nickname']",
         "[class*='user-name']",
+        "[class*='userName']",
         "span.user-name",
         "div.name",
     )
     ACCOUNT_ID_SELECTORS = (
         "[class*='red-id']",
-        "[class*='xhs-id']",
         "[class*='redId']",
+        "[class*='xhs-id']",
+        "[class*='xhsId']",
+        "[class*='red-book-id']",
+        "[class*='redBookId']",
+        "[class*='user-info'] [class*='id']",
     )
     AVATAR_SELECTORS = (
         "img.avatar",
@@ -900,31 +1190,100 @@ class XiaohongshuDriver(PlatformDriver):
             pass
         return True
 
+    # XHS 创作者中心 post-login 落 /creator-center/post-creation 这类页面，
+    # 顶部 chrome 仅有 avatar，没有 nickname / 小红书号 在 DOM 触手可及。
+    # 必须主动导到「账号信息」/「个人主页」页才能稳定抓到。
+    # 按经验顺序探这几条 URL；命中即停。失败 fall-through 保留原 landing 页。
+    PROFILE_VIEW_URL_CANDIDATES = (
+        "https://creator.xiaohongshu.com/creator/home",
+        "https://creator.xiaohongshu.com/setting/profile",
+        "https://creator.xiaohongshu.com/account/personal-data",
+        "https://creator.xiaohongshu.com/creator-center/profile",
+    )
+    PROFILE_VIEW_NAVIGATE_TIMEOUT_MS = 10_000
+    PROFILE_VIEW_PAINT_DELAY_MS = 1_200
+
+    @classmethod
+    async def prepare_profile_view(cls, page: Any) -> None:
+        """逐个 URL 尝试导航；命中 = body 含「小红书号」且未被反弹回 /login。
+
+        失败时不抛 —— 留在最后一次尝试的 URL（或原 landing 页）。storage_state
+        在外层 _poll_real 里被本方法之后捕获，所以即使最终页是 dashboard 也能
+        拿到最新一次 navigation 刷新的 csrf/session cookies。"""
+        for url in cls.PROFILE_VIEW_URL_CANDIDATES:
+            try:
+                await page.goto(
+                    url,
+                    wait_until="domcontentloaded",
+                    timeout=cls.PROFILE_VIEW_NAVIGATE_TIMEOUT_MS,
+                )
+                # 给 SPA 一点 paint 时间（XHS 异步加载用户信息）
+                await page.wait_for_timeout(cls.PROFILE_VIEW_PAINT_DELAY_MS)
+                landed_url = getattr(page, "url", "") or ""
+                if "/login" in landed_url:
+                    log.warning(
+                        "[xiaohongshu] prepare_profile_view: %s redirected to %s; trying next",
+                        url, landed_url,
+                    )
+                    continue
+                body = await _body_text(page)
+                if "小红书号" in (body or ""):
+                    log.info("[xiaohongshu] prepare_profile_view ok via %s", url)
+                    return
+                log.info(
+                    "[xiaohongshu] prepare_profile_view: %s loaded but 小红书号 not in body; trying next",
+                    url,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "[xiaohongshu] prepare_profile_view navigate failed url=%s err=%s",
+                    url, exc,
+                )
+                continue
+        log.warning(
+            "[xiaohongshu] prepare_profile_view: all candidates failed; "
+            "extract_profile will run against post-login landing page"
+        )
+
     @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
-        try:
-            display = await _first_text(page, cls.DISPLAY_SELECTORS)
-            avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
-            account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
-            body = await _body_text(page)
-            if not account_id:
-                account_id = _extract_labeled_account_id(
-                    body,
-                    ("小红书号", "小红书 ID", "Red ID", "XHS ID"),
-                )
-            if _is_placeholder_profile_text(display):
-                display = None
-            if not display:
-                display = _extract_text_before_label(body, "小红书号")
-            if _is_placeholder_profile_text(display):
-                display = None
-            return {
-                "displayName": display,
-                "platformAccountId": account_id,
-                "avatarUrl": avatar,
-            }
-        except Exception:  # noqa: BLE001
-            return _empty_profile()
+        return await _poll_extract_profile(
+            page,
+            cls._read_profile_fields,
+            timeout_s=cls.PROFILE_READY_TIMEOUT_S,
+            interval_ms=cls.PROFILE_POLL_INTERVAL_MS,
+            label_hints=("小红书号", "小红书 ID", "小红书ID", "Red ID", "XHS ID"),
+            diagnostic_tag="xiaohongshu",
+        )
+
+    @classmethod
+    async def _read_profile_fields(cls, page: Any) -> dict[str, Any]:
+        display = await _first_text(page, cls.DISPLAY_SELECTORS)
+        avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+        account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+        body = await _body_text(page)
+        if account_id and ("小红书号" in account_id or "ID" in account_id.upper()):
+            extracted = _extract_labeled_account_id(
+                account_id, ("小红书号", "小红书 ID", "小红书ID", "Red ID", "XHS ID"),
+            )
+            if extracted:
+                account_id = extracted
+        if not account_id:
+            account_id = _extract_labeled_account_id(
+                body,
+                ("小红书号", "小红书 ID", "小红书ID", "Red ID", "XHS ID"),
+            )
+        if _is_placeholder_profile_text(display):
+            display = None
+        if not display:
+            display = _extract_text_before_label(body, "小红书号")
+        if _is_placeholder_profile_text(display):
+            display = None
+        return {
+            "displayName": display,
+            "platformAccountId": account_id,
+            "avatarUrl": avatar,
+        }
 
 
 DRIVERS: dict[str, type[PlatformDriver]] = {
@@ -1141,6 +1500,18 @@ class LoginPool:
 
         if not logged_in:
             return {"status": "pending"}
+
+        # v0.17.2: 给 driver 一次 navigate / interact 的机会，把 profile 字段
+        # 顶到可读位置（XHS 必须导到 /setting/profile 才有 小红书号）。
+        # storage_state 在这之后捕获 —— 多吃一次 cookie 刷新，session 更长。
+        # 失败一概不抛 —— extract_profile 自身有 best-effort fallback。
+        try:
+            await driver_cls.prepare_profile_view(page)
+        except Exception:  # noqa: BLE001
+            log.exception(
+                "login_pool: prepare_profile_view crashed ticket=%s platform=%s",
+                session.ticket, session.platform,
+            )
 
         try:
             storage_state = await context.storage_state()

@@ -11,11 +11,13 @@ const FIT_BLUR_BG_STYLE: CSSProperties = {
   transform: "scale(1.15)",
 };
 
-/** 从 binding 抽出可渲染的媒体 URL（library/upload 都有 preview_url 或 file_url）。 */
+/** 从 binding 抽出可渲染的媒体 URL（library/upload/picgen 都可能带 preview_url）。 */
 function bindingMediaUrl(b?: SlotBinding): string | null {
   if (!b) return null;
   if (b.source === "upload") return b.preview_url ?? b.file_url ?? null;
   if (b.source === "library") return b.preview_url ?? null;
+  // picgen 出图后 preview_url 写入 binding；把它回流到左侧画布,让用户在原位看到图。
+  if (b.source === "picgen") return b.preview_url ?? null;
   return null;
 }
 

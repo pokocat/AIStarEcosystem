@@ -13,6 +13,7 @@ import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { BindAccountDialog } from "./BindAccountDialog";
 import { platformAccountLabel } from "./social-account-labels";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 const PLATFORM_LABEL: Record<string, string> = {
   douyin: "抖音",
@@ -37,9 +38,13 @@ interface Props {
   onAccountsChange?: (accounts: SocialAccount[]) => void;
 }
 
-/** 自动轮询间隔：账号被异步验证 / 失效的状态可能在 server 端被后台扫描器更新，
- *  前端 30s 拉一次足够新但不密集；与 mixcut 侧栏的 4s 轮询定位不同（那里靠近实时）。 */
-const AUTO_REFRESH_MS = 30_000;
+/** 自动轮询间隔：只拉 DB 快照（不调 /verify），90s 一次即可。
+ *  状态翻转主要靠用户主动点「重新验证」或 server 后台 sweep。 */
+const AUTO_REFRESH_MS = 90_000;
+
+/** 手动「重新验证」时，距上次 verify 不足这个时间的账号会被跳过，
+ *  避免重复 burn 一次 playwright；用户想强制重验单个账号可点行内 ShieldCheck 按钮。 */
+const VERIFY_TTL_MS = 10 * 60_000;
 
 export function SocialAccountList({ onAccountsChange }: Props) {
   const [accounts, setAccounts] = React.useState<SocialAccount[]>([]);
@@ -48,7 +53,16 @@ export function SocialAccountList({ onAccountsChange }: Props) {
   /** 当前是否正在拉网络 — 主动点刷新或自动轮询都置 true，但仅主动点会显式停按钮 */
   const [refreshing, setRefreshing] = React.useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = React.useState<number | null>(null);
+  const [lastListedAt, setLastListedAt] = React.useState<number | null>(null);
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
+  /** 串行 verify 进度：null = 没在跑；非 null = 「正在验证 current/total: name」 */
+  const [verifyProgress, setVerifyProgress] = React.useState<{
+    current: number;
+    total: number;
+    accountName: string;
+  } | null>(null);
+  /** 用户切走 / unmount 时打断 in-flight 的串行 verify 循环。 */
+  const cancelledRef = React.useRef(false);
   /** 同时只允许一个 fetch 在飞；避免点按钮的瞬间撞上自动 tick 导致两次同时拉。 */
   const inFlightRef = React.useRef(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -59,48 +73,104 @@ export function SocialAccountList({ onAccountsChange }: Props) {
     accountName: string;
   } | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const { confirm, ConfirmHost } = useConfirm();
 
   /**
-   * silent=true → 自动轮询走的路径：不闪按钮 spinner、错误吞掉（避免页面飘红）。
-   * silent=false → 用户主动点刷新：按钮转图标 + 失败提示。
+   * 静默列表拉取：只 listSocialAccounts，拿 DB 当前快照（不触发 sau-service / playwright）。
+   * 首次挂载 + 自动轮询 + 后台→前台都走这条。
    */
-  const refresh = React.useCallback(
+  const refreshList = React.useCallback(
     async (opts: { silent?: boolean } = {}) => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
-      if (!opts.silent) setRefreshing(true);
       try {
         const list = await SocialAccountApi.listSocialAccounts();
         setAccounts(list);
         onAccountsChange?.(list);
-        setLastRefreshedAt(Date.now());
-        setRefreshError(null);
+        setLastListedAt(Date.now());
+        if (!opts.silent) setRefreshError(null);
       } catch (e) {
-        if (!opts.silent) {
-          setRefreshError(e instanceof Error ? e.message : "刷新失败");
-        }
-        // silent 模式下吞错；下一个 tick 会再试，不打扰用户
+        if (!opts.silent) setRefreshError(e instanceof Error ? e.message : "刷新失败");
       } finally {
         inFlightRef.current = false;
-        if (!opts.silent) setRefreshing(false);
         setInitialLoading(false);
       }
     },
     [onAccountsChange],
   );
 
-  // 首次挂载拉一次
-  React.useEffect(() => {
-    void refresh({ silent: false });
-  }, [refresh]);
+  /**
+   * 用户主动点「重新验证」：**串行**逐个 active 账号调 /verify。
+   * 每个 verify 在 server 端会 spawn 一次 playwright（详见 sau-service /accounts/verify），
+   * 所以一次只跑一个 chromium，避免并发压垮宿主机。
+   * 已在 TTL 内（10min）验证过的账号自动跳过；想强制重验单个账号点行内 ShieldCheck 按钮。
+   */
+  const runVerifySerial = React.useCallback(async () => {
+    if (refreshing) return;
+    cancelledRef.current = false;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      // 先拉最新列表，再决定要验哪些
+      const list = await SocialAccountApi.listSocialAccounts();
+      setAccounts(list);
+      onAccountsChange?.(list);
+      setLastListedAt(Date.now());
 
-  // 自动轮询 30s；切到后台 tab 时暂停，回到前台时立即拉一次再续
+      const now = Date.now();
+      const todo = list.filter((a) => {
+        if (a.status !== "active") return false;
+        if (!a.lastVerifiedAt) return true;
+        const last = new Date(a.lastVerifiedAt).getTime();
+        return Number.isFinite(last) && now - last >= VERIFY_TTL_MS;
+      });
+
+      if (todo.length === 0) {
+        setRefreshError(null);
+        setLastRefreshedAt(Date.now());
+        return;
+      }
+
+      let accumulated = list;
+      for (let i = 0; i < todo.length; i++) {
+        if (cancelledRef.current) break;
+        const acc = todo[i];
+        setVerifyProgress({ current: i + 1, total: todo.length, accountName: acc.accountName });
+        try {
+          const updated = await SocialAccountApi.verifySocialAccount(acc.id);
+          accumulated = accumulated.map((a) => (a.id === updated.id ? updated : a));
+          setAccounts(accumulated);
+          onAccountsChange?.(accumulated);
+        } catch (e) {
+          // 单条失败不阻塞其他；记下最后一个错让用户知道，但继续跑下一个
+          if (e instanceof ApiError) {
+            setRefreshError(`${acc.accountName}：${e.message}`);
+          } else if (e instanceof Error) {
+            setRefreshError(`${acc.accountName}：${e.message}`);
+          }
+        }
+      }
+      setLastRefreshedAt(Date.now());
+    } catch (e) {
+      setRefreshError(e instanceof Error ? e.message : "刷新失败");
+    } finally {
+      setVerifyProgress(null);
+      setRefreshing(false);
+    }
+  }, [refreshing, onAccountsChange]);
+
+  // 首次挂载：只拉列表，不 auto-verify。验证由用户主动触发或后台 sweep 完成。
+  React.useEffect(() => {
+    void refreshList({ silent: false });
+  }, [refreshList]);
+
+  // 自动轮询 90s（只 list，不 verify）；切到后台 tab 时暂停，回到前台时立即拉一次再续
   React.useEffect(() => {
     let intervalId: number | undefined;
     const start = () => {
       if (intervalId != null) return;
       intervalId = window.setInterval(() => {
-        void refresh({ silent: true });
+        void refreshList({ silent: true });
       }, AUTO_REFRESH_MS);
     };
     const stop = () => {
@@ -111,7 +181,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        void refresh({ silent: true });
+        void refreshList({ silent: true });
         start();
       } else {
         stop();
@@ -125,11 +195,12 @@ export function SocialAccountList({ onAccountsChange }: Props) {
     }
     return () => {
       stop();
+      cancelledRef.current = true;
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", onVisibility);
       }
     };
-  }, [refresh]);
+  }, [refreshList]);
 
   const handleBound = (account: SocialAccount) => {
     const next = [account, ...accounts.filter((a) => a.id !== account.id)];
@@ -175,7 +246,15 @@ export function SocialAccountList({ onAccountsChange }: Props) {
   };
 
   const unbind = async (id: string) => {
-    if (!window.confirm("解绑后将无法用此账号继续发布，确定继续？")) return;
+    const target = accounts.find((a) => a.id === id);
+    const accLabel = target ? target.accountName : "该账号";
+    const ok = await confirm({
+      title: `解绑${accLabel}？`,
+      description: "解绑后将无法用此账号继续发布；已发布的视频不受影响。",
+      confirmText: "解绑",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusyId(id);
     try {
       await SocialAccountApi.unbindSocialAccount(id);
@@ -193,38 +272,46 @@ export function SocialAccountList({ onAccountsChange }: Props) {
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base font-semibold text-zinc-800">已绑定账号</h2>
-            <span className="text-[10px] font-mono text-zinc-400" title={lastRefreshedAt ? new Date(lastRefreshedAt).toLocaleString() : undefined}>
-              {lastRefreshedAt
-                ? `· 刚刷新于 ${formatRelativeSeconds(lastRefreshedAt)}`
-                : ""}
+            <span
+              className="text-[10px] font-mono text-zinc-400"
+              title={lastListedAt ? new Date(lastListedAt).toLocaleString() : undefined}
+            >
+              {lastListedAt ? `· 列表 ${formatRelativeSeconds(lastListedAt)}更新` : ""}
             </span>
+            {lastRefreshedAt && (
+              <span
+                className="text-[10px] font-mono text-zinc-400"
+                title={new Date(lastRefreshedAt).toLocaleString()}
+              >
+                · 上次验证 {formatRelativeSeconds(lastRefreshedAt)}
+              </span>
+            )}
           </div>
           <p className="text-xs text-zinc-500 mt-0.5">
-            仅绑定本人持有的账号；账号凭据已加密存储，平台密码全程不接触。状态自动同步。
+            仅绑定本人持有的账号；账号凭据已加密存储，平台密码全程不接触。
+            重新验证一次一个账号串行进行，不会并发压宿主机。
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => void refresh({ silent: false })}
+            onClick={() => void runVerifySerial()}
             disabled={refreshing}
-            aria-label="刷新账号列表"
+            aria-label="串行重新验证所有 active 账号"
             aria-busy={refreshing}
-            title={
-              lastRefreshedAt
-                ? `上次刷新：${new Date(lastRefreshedAt).toLocaleString()}`
-                : "刷新列表"
-            }
+            title="对每个活跃账号串行跑一次平台请求验证 cookie。10 分钟内已验证过的会自动跳过；想强制重验单个账号请点该行的图标。"
             className={cn(
               CTA_SECONDARY,
               "px-3 py-1.5 text-xs",
               refreshing && "cursor-wait opacity-80",
             )}
           >
-            <RefreshCw
-              className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
-            />
-            {refreshing ? "刷新中…" : "刷新"}
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+            {verifyProgress
+              ? `验证中 ${verifyProgress.current}/${verifyProgress.total}…`
+              : refreshing
+              ? "验证中…"
+              : "重新验证"}
           </button>
           <button
             type="button"
@@ -238,6 +325,16 @@ export function SocialAccountList({ onAccountsChange }: Props) {
           </button>
         </div>
       </header>
+
+      {verifyProgress && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
+          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          <span>
+            正在验证 {verifyProgress.current}/{verifyProgress.total}：
+            <span className="font-medium">{verifyProgress.accountName}</span>
+          </span>
+        </div>
+      )}
 
       {refreshError && (
         <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
@@ -349,6 +446,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
         onBound={handleBound}
         prefill={dialogPrefill}
       />
+      <ConfirmHost />
     </section>
   );
 }

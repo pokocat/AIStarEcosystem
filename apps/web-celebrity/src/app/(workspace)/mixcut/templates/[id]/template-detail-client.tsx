@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   Lock,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Pencil,
   Save,
   Copy,
@@ -45,6 +47,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@ai-star-eco/ui/ui/dropdown-menu";
+import { RadioGroup, RadioGroupItem } from "@ai-star-eco/ui/ui/radio-group";
+import { Switch } from "@ai-star-eco/ui/ui/switch";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
 import { mockTemplates } from "@/mocks/mixcut";
@@ -71,6 +75,55 @@ import type {
 import { flatSlotsOf, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
 import { SlotPolicyEditor } from "@/components/mixcut-zone/slot-policy-editor";
+
+// 段控 (RadioGroup) 内每个 item 的 card-shaped 样式。
+// 内部 RadioGroupItem 用 sr-only 隐藏只贡献 a11y / 焦点 / data-state；
+// has-[[data-state=checked]] 让外层 label 跟随状态变色。
+const SEGMENTED_ITEM_CLS = cn(
+  "relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-md border text-sm cursor-pointer transition-colors text-center select-none",
+  "border-border text-muted-foreground hover:border-foreground/40",
+  "has-[[data-state=checked]]:bg-foreground has-[[data-state=checked]]:text-background has-[[data-state=checked]]:border-foreground",
+  "has-[[data-state=checked]]:font-medium",
+  "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
+);
+
+/** 段控辅助：给一组 {value,label} 渲染一行 segmented RadioGroup。 */
+function SegmentedRadio<T extends string>({
+  value,
+  onChange,
+  options,
+  className,
+  itemClassName,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  className?: string;
+  itemClassName?: string;
+}) {
+  return (
+    <RadioGroup
+      value={value}
+      onValueChange={(v) => onChange(v as T)}
+      className={cn(
+        `grid gap-1.5`,
+        // 自动按 options 数量铺列
+        options.length === 2 && "grid-cols-2",
+        options.length === 3 && "grid-cols-3",
+        options.length === 4 && "grid-cols-4",
+        options.length >= 5 && "grid-cols-3 sm:grid-cols-6",
+        className,
+      )}
+    >
+      {options.map((opt) => (
+        <label key={opt.value} className={cn(SEGMENTED_ITEM_CLS, itemClassName)}>
+          <RadioGroupItem value={opt.value} className="sr-only" />
+          {opt.label}
+        </label>
+      ))}
+    </RadioGroup>
+  );
+}
 
 // SlotPolicyEditor 在模板编辑里不存在"任务级算子总开关",传 6 个全开占位
 const POLICY_NO_KILL: Required<import("@/components/mixcut-zone/types").PerturbationOverrides> = {
@@ -297,7 +350,11 @@ export function TemplateDetailClient({
   // 当前激活场景 (clamp 到合法范围,防止越界)
   const sceneIdx = Math.min(selectedSceneIdx, Math.max(0, display.scenes.length - 1));
   const currentScene: TemplateScene | undefined = display.scenes[sceneIdx];
-  const currentSceneSlots = currentScene?.slots ?? [];
+  // 列表展示按 z_index DESC 排序：list top = render top（与 Figma / Premiere 一致）。
+  // 拖拽 / ↑↓ 操作的索引都基于这个排序后的视图。
+  const currentSceneSlots = (currentScene?.slots ?? [])
+    .slice()
+    .sort((a, b) => b.z_index - a.z_index);
   const slot = flatSlots.find((s) => s.slot_id === selectedSlot);
   const editableSlots = flatSlots.filter((s) => s.user_editable);
   const requiredSlots = editableSlots.filter((s) => s.required);
@@ -587,20 +644,70 @@ export function TemplateDetailClient({
     });
     setSelectedSceneIdx((cur) => (cur === idx ? idx + dir : cur));
   };
-  /** 把当前场景里第 from 个 slot 移到 to 位置(gap 语义)。 */
-  const moveSlotTo = (from: number, to: number) => {
+  /**
+   * 列表展示按 z_index DESC 排序（top of list = renders on top）。
+   * drag-reorder 操作的是这个"显示顺序"，落点后整组重新编号 z_index：
+   * 显示位置 0 → 最大 z，显示位置 N-1 → 最小 z = 1。
+   */
+  const moveSlotTo = (fromSortedIdx: number, toSortedIdx: number) => {
     setWorking((w) => {
       if (!w) return w;
-      if (from === to || from === to - 1) return w;
+      if (fromSortedIdx === toSortedIdx || fromSortedIdx === toSortedIdx - 1) return w;
       const sc = w.scenes[sceneIdx];
       if (!sc) return w;
-      const next = sc.slots.slice();
-      const [item] = next.splice(from, 1);
-      const adj = from < to ? to - 1 : to;
-      next.splice(adj, 0, item);
+      const sorted = sc.slots
+        .slice()
+        .sort((a, b) => b.z_index - a.z_index);
+      if (fromSortedIdx < 0 || fromSortedIdx >= sorted.length) return w;
+      const [moved] = sorted.splice(fromSortedIdx, 1);
+      const adj = fromSortedIdx < toSortedIdx ? toSortedIdx - 1 : toSortedIdx;
+      sorted.splice(adj, 0, moved);
+      const idToZ = new Map<string, number>();
+      sorted.forEach((s, i) => idToZ.set(s.slot_id, sorted.length - i));
       return {
         ...w,
-        scenes: w.scenes.map((s, i) => (i === sceneIdx ? { ...s, slots: next } : s)),
+        scenes: w.scenes.map((s, i) =>
+          i === sceneIdx
+            ? {
+                ...s,
+                slots: s.slots.map((slot) => ({
+                  ...slot,
+                  z_index: idToZ.get(slot.slot_id) ?? slot.z_index,
+                })),
+              }
+            : s,
+        ),
+      };
+    });
+  };
+
+  /** ↑/↓ 按钮：把指定 slot 在 z 顺序里上移 / 下移 1 位。dir=-1 上移（z 增大），dir=+1 下移。 */
+  const moveSlotZBy = (slotId: string, dir: -1 | 1) => {
+    setWorking((w) => {
+      if (!w) return w;
+      const sc = w.scenes[sceneIdx];
+      if (!sc) return w;
+      const sorted = sc.slots.slice().sort((a, b) => b.z_index - a.z_index);
+      const idx = sorted.findIndex((s) => s.slot_id === slotId);
+      if (idx === -1) return w;
+      const target = idx + dir;
+      if (target < 0 || target >= sorted.length) return w;
+      [sorted[idx], sorted[target]] = [sorted[target], sorted[idx]];
+      const idToZ = new Map<string, number>();
+      sorted.forEach((s, i) => idToZ.set(s.slot_id, sorted.length - i));
+      return {
+        ...w,
+        scenes: w.scenes.map((s, i) =>
+          i === sceneIdx
+            ? {
+                ...s,
+                slots: s.slots.map((slot) => ({
+                  ...slot,
+                  z_index: idToZ.get(slot.slot_id) ?? slot.z_index,
+                })),
+              }
+            : s,
+        ),
       };
     });
   };
@@ -832,34 +939,19 @@ export function TemplateDetailClient({
                 onChangeSlotRect={(slotId, next) => updateSlotRect(slotId, next)}
               />
               <div className={editing ? "" : "mt-3"}>
-                <div className="text-xs text-muted-foreground mb-2">效果预览:每条版本的内容位置会有小幅变化</div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    onClick={() => setPreviewVariant(undefined)}
-                    className={cn(
-                      "px-2.5 py-1 rounded text-xs border transition-colors",
-                      previewVariant == null
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                    )}
-                  >
-                    原版
-                  </button>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setPreviewVariant(i)}
-                      className={cn(
-                        "px-2.5 py-1 rounded text-xs border transition-colors",
-                        previewVariant === i
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                      )}
-                    >
-                      第 {i + 1} 条
-                    </button>
-                  ))}
-                </div>
+                <div className="text-xs text-muted-foreground mb-2">效果预览：每条版本的内容位置会有小幅变化</div>
+                <SegmentedRadio<string>
+                  value={previewVariant == null ? "__base__" : String(previewVariant)}
+                  onChange={(v) => setPreviewVariant(v === "__base__" ? undefined : Number(v))}
+                  options={[
+                    { value: "__base__", label: "原版" },
+                    ...Array.from({ length: 5 }).map((_, i) => ({
+                      value: String(i),
+                      label: `第 ${i + 1} 条`,
+                    })),
+                  ]}
+                  itemClassName="px-2 py-1.5 text-xs"
+                />
                 <p className="text-[10px] text-muted-foreground leading-relaxed mt-2">
                   {previewVariant == null
                     ? "原版无扰动应用。"
@@ -933,6 +1025,18 @@ export function TemplateDetailClient({
                                 sceneDuration={currentScene?.duration ?? display.canvas.duration}
                                 selected={isSelected}
                                 editing={editing}
+                                layerRank={idx + 1}
+                                layerCount={currentSceneSlots.length}
+                                onMoveUp={
+                                  editing && idx > 0
+                                    ? () => moveSlotZBy(s.slot_id, -1)
+                                    : undefined
+                                }
+                                onMoveDown={
+                                  editing && idx < currentSceneSlots.length - 1
+                                    ? () => moveSlotZBy(s.slot_id, 1)
+                                    : undefined
+                                }
                                 onSelect={() => setSelectedSlot(isSelected ? null : s.slot_id)}
                                 onChange={(patch) => updateSlot(s.slot_id, patch)}
                                 onChangePolicy={(patch) => updateSlotPolicy(s.slot_id, patch)}
@@ -1127,6 +1231,10 @@ function SlotCard({
   sceneDuration,
   selected,
   editing,
+  layerRank,
+  layerCount,
+  onMoveUp,
+  onMoveDown,
   onSelect,
   onChange,
   onChangePolicy,
@@ -1138,6 +1246,13 @@ function SlotCard({
   sceneDuration: number;
   selected: boolean;
   editing: boolean;
+  /** 1-based 在 z-stack 里的位置（1 = 最顶层）。用来在卡片上显示「图层 N/M」。 */
+  layerRank: number;
+  layerCount: number;
+  /** ↑ 上移一层（提高 z_index）。在 z 顺序最顶层时传 undefined 让按钮 disabled。 */
+  onMoveUp?: () => void;
+  /** ↓ 下移一层（降低 z_index）。在 z 顺序最底层时传 undefined。 */
+  onMoveDown?: () => void;
   onSelect: () => void;
   onChange: (patch: Partial<TemplateSlot>) => void;
   onChangePolicy: (patch: Partial<SlotPerturbationPolicy>) => void;
@@ -1155,36 +1270,97 @@ function SlotCard({
       ? "开始不能小于 0"
       : null;
 
+  // 层级徽：「图层 1/4」并附"顶/底"标注以辅助理解
+  const layerHint =
+    layerCount > 1
+      ? layerRank === 1
+        ? "顶层"
+        : layerRank === layerCount
+        ? "底层"
+        : null
+      : null;
+  const layerBadge = (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-mono shrink-0"
+      title={`图层 ${layerRank} / ${layerCount}（数字越小越靠上层；可拖拽或用 ↑↓ 调整）`}
+    >
+      <Layers className="size-3" />
+      {layerRank}/{layerCount}
+      {layerHint && <span className="text-foreground/70">· {layerHint}</span>}
+    </span>
+  );
+
   if (!editing || !selected) {
     // 只读视图:所有英文 / 工程话术翻译成运营能读的中文
     return (
-      <button
-        onClick={onSelect}
+      <div
         className={cn(
-          "w-full text-left p-3 rounded-lg border transition-colors",
+          "group relative rounded-lg border transition-shadow",
           selected
-            ? "border-violet-500/60 bg-violet-500/5"
-            : "border-border hover:bg-secondary/50"
+            ? "border-transparent ring-2 ring-violet-500/60"
+            : "border-border hover:border-foreground/30",
         )}
       >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Badge variant="muted" className="text-[10px] shrink-0">
-              {LAYER_LABELS[slot.layer_type]}
-            </Badge>
-            <span className="text-sm font-medium truncate">{slot.label || slot.slot_id}</span>
+        {selected && (
+          <span className="absolute -top-2 left-3 px-1.5 py-0.5 rounded bg-violet-500 text-white text-[10px] font-medium leading-none shadow-sm">
+            正在编辑
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onSelect}
+          className="w-full text-left p-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Badge variant="muted" className="text-[10px] shrink-0">
+                {LAYER_LABELS[slot.layer_type]}
+              </Badge>
+              <span className="text-sm font-medium truncate">{slot.label || slot.slot_id}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {layerBadge}
+              {slot.required && <Badge variant="danger" className="text-[10px]">必填</Badge>}
+              {!slot.user_editable && <Badge variant="muted" className="text-[10px]">系统填</Badge>}
+            </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {slot.required && <Badge variant="danger" className="text-[10px]">必填</Badge>}
-            {!slot.user_editable && <Badge variant="muted" className="text-[10px]">系统填</Badge>}
+          <div className="mt-1 text-[10px] text-muted-foreground flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+            {slot.layer_type !== "audio" && <span>{describeRect(slot.rect)}</span>}
+            <span>{describeTimeRange(slot.time_range)}</span>
+            <span>· {FILL_STRATEGY_LABELS[slot.fill_strategy]}</span>
           </div>
-        </div>
-        <div className="mt-1 text-[10px] text-muted-foreground flex items-center gap-x-3 gap-y-0.5 flex-wrap">
-          {slot.layer_type !== "audio" && <span>{describeRect(slot.rect)}</span>}
-          <span>{describeTimeRange(slot.time_range)}</span>
-          <span>· {FILL_STRATEGY_LABELS[slot.fill_strategy]}</span>
-        </div>
-      </button>
+        </button>
+        {editing && (onMoveUp || onMoveDown) && (
+          <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveUp?.();
+              }}
+              disabled={!onMoveUp}
+              title="上移一层（更靠前）"
+              aria-label="上移一层"
+              className="size-6 grid place-items-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+            >
+              <ChevronUp className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveDown?.();
+              }}
+              disabled={!onMoveDown}
+              title="下移一层（更靠后）"
+              aria-label="下移一层"
+              className="size-6 grid place-items-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+            >
+              <ChevronDown className="size-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -1192,36 +1368,72 @@ function SlotCard({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3 space-y-3",
-        selected ? "border-violet-500/60 bg-violet-500/5" : "border-border"
+        "relative rounded-lg border p-3 space-y-3 transition-shadow",
+        selected ? "border-transparent ring-2 ring-violet-500/60" : "border-border"
       )}
     >
+      {selected && (
+        <span className="absolute -top-2 left-3 px-1.5 py-0.5 rounded bg-violet-500 text-white text-[10px] font-medium leading-none shadow-sm">
+          正在编辑
+        </span>
+      )}
       <div className="flex items-center justify-between gap-2">
-        <button
-          onClick={onSelect}
-          className="flex items-center gap-2 text-left flex-1 min-w-0"
-        >
-          <Badge variant="muted" className="text-[10px] shrink-0">{LAYER_LABELS[slot.layer_type]}</Badge>
+        {/* Badge 单独做"折叠"点击区；Input 与它平级,避免 IME Space 上冒触发外层 button。
+            历史 bug：button 包裹 input 是无效 HTML,中文输入法按空格确认候选时会触发外层 onClick。 */}
+        <div className="flex items-center gap-2 text-left flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={onSelect}
+            className="shrink-0 hover:opacity-70 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 rounded"
+            title="点击折叠此内容位"
+            aria-label="折叠此内容位"
+          >
+            <Badge variant="muted" className="text-[10px]">{LAYER_LABELS[slot.layer_type]}</Badge>
+          </button>
           <Input
             value={slot.label ?? ""}
             onChange={(e) => onChange({ label: e.target.value })}
             placeholder="给这个位置起个名字"
             className="h-7 text-sm"
-            onClick={(e) => e.stopPropagation()}
           />
-        </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0"
-          onClick={onRemove}
-          title="删除此位"
-        >
-          <Trash2 className="size-3.5 text-red-500" />
-        </Button>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {layerBadge}
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={!onMoveUp}
+              title="上移一层（更靠前）"
+              aria-label="上移一层"
+              className="size-7 grid place-items-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+            >
+              <ChevronUp className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={!onMoveDown}
+              title="下移一层（更靠后）"
+              aria-label="下移一层"
+              className="size-7 grid place-items-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+            >
+              <ChevronDown className="size-4" />
+            </button>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={onRemove}
+            title="删除此位"
+          >
+            <Trash2 className="size-3.5 text-red-500" />
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <SelectField
           label="内容类型"
           value={slot.layer_type}
@@ -1245,13 +1457,7 @@ function SlotCard({
           options={FILL_OPTIONS.filter((o) => allowedFillsFor(slot.layer_type).includes(o.value))}
           onChange={(v) => onChange({ fill_strategy: v as FillStrategy })}
         />
-        <NumField
-          label="叠加层级"
-          value={slot.z_index}
-          min={0}
-          max={100}
-          onChange={(v) => onChange({ z_index: v })}
-        />
+        {/* 叠加层级（z_index）由列表拖拽与右上 ↑↓ 控制；不再以数字输入暴露。 */}
       </div>
 
       {slot.layer_type !== "audio" && (
@@ -1281,34 +1487,34 @@ function SlotCard({
               · 素材尺寸与画面位置不一致时怎么处理
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
+          <RadioGroup
+            value={slot.fit ?? "cover"}
+            onValueChange={(v) => onChange({ fit: v as "cover" | "contain" })}
+            className="grid grid-cols-2 gap-1.5"
+          >
             {(
               [
                 { v: "cover", label: "填满", hint: "边缘自动裁切" },
                 { v: "contain", label: "完整显示", hint: "边缘模糊背景填充" },
               ] as const
-            ).map((opt) => {
-              const current = slot.fit ?? "cover";
-              const active = current === opt.v;
-              return (
-                <button
-                  key={opt.v}
-                  onClick={() => onChange({ fit: opt.v })}
-                  className={cn(
-                    "px-2 py-1.5 rounded-md border text-left transition-colors leading-tight",
-                    active
-                      ? "bg-foreground text-background border-foreground"
-                      : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                  )}
-                >
-                  <div className="text-xs font-medium">{opt.label}</div>
-                  <div className={cn("text-[10px] mt-0.5", active ? "opacity-80" : "opacity-60")}>
-                    {opt.hint}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+            ).map((opt) => (
+              <label
+                key={opt.v}
+                className={cn(
+                  "relative flex flex-col px-2.5 py-2 rounded-md border cursor-pointer transition-colors leading-tight select-none",
+                  "border-border text-muted-foreground hover:border-foreground/40",
+                  "has-[[data-state=checked]]:bg-foreground has-[[data-state=checked]]:text-background has-[[data-state=checked]]:border-foreground",
+                  "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2",
+                )}
+              >
+                <RadioGroupItem value={opt.v} className="sr-only" />
+                <span className="text-xs font-medium">{opt.label}</span>
+                <span className="text-[10px] mt-0.5 opacity-70 group-has-[[data-state=checked]]:opacity-80">
+                  {opt.hint}
+                </span>
+              </label>
+            ))}
+          </RadioGroup>
         </div>
       )}
 
@@ -1353,17 +1559,21 @@ function SlotCard({
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <Toggle
-          label="必填项"
-          checked={slot.required}
-          onChange={(v) => onChange({ required: v })}
-        />
-        <Toggle
-          label="允许用户改"
-          checked={slot.user_editable}
-          onChange={(v) => onChange({ user_editable: v })}
-        />
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex items-center justify-between gap-3 px-2.5 py-2 rounded-md border border-border cursor-pointer hover:border-foreground/30 transition-colors">
+          <span className="text-xs">必填项</span>
+          <Switch
+            checked={slot.required}
+            onCheckedChange={(v) => onChange({ required: v })}
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 px-2.5 py-2 rounded-md border border-border cursor-pointer hover:border-foreground/30 transition-colors">
+          <span className="text-xs">允许用户改</span>
+          <Switch
+            checked={slot.user_editable}
+            onCheckedChange={(v) => onChange({ user_editable: v })}
+          />
+        </label>
       </div>
 
       <SlotPolicyEditor
@@ -1397,7 +1607,7 @@ function NumField({
           const v = parseFloat(e.target.value);
           if (!Number.isNaN(v)) onChange(v);
         }}
-        className="h-8 text-sm"
+        className="h-9 text-sm"
       />
     </div>
   );
@@ -1416,10 +1626,7 @@ function SelectField({
     <div>
       <Label className="text-[10px] text-muted-foreground">{label}</Label>
       <Select value={value} onValueChange={onChange}>
-        {/* `--input` token 在共享 ui 主题里是 transparent（shadcn 用 fill 而非
-            stroke 暗示输入区）。这里给个明确的 zinc-300 边框 + 白底，跟模板编辑
-            器其它 Input / NumField 视觉一致。 */}
-        <SelectTrigger className="w-full h-8 rounded-md border border-zinc-300 bg-white text-sm focus:ring-0">
+        <SelectTrigger className="w-full h-9 text-sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -1433,25 +1640,6 @@ function SelectField({
         </SelectContent>
       </Select>
     </div>
-  );
-}
-
-function Toggle({
-  label, checked, onChange,
-}: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "px-2.5 py-1 rounded-md text-xs border transition-colors flex items-center gap-1.5",
-        checked
-          ? "bg-foreground text-background border-foreground"
-          : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-      )}
-    >
-      <span>{checked ? "✓" : "—"}</span>
-      {label}
-    </button>
   );
 }
 
@@ -1818,44 +2006,22 @@ function TemplateMetaFields({
 
       <div className="space-y-1.5">
         <Label className="text-xs">适用档位</Label>
-        <div className="grid grid-cols-3 gap-1.5">
-          {TIER_EDIT_OPTIONS.map((t) => (
-            <button
-              key={t}
-              onClick={() => updateMeta({ required_tier: t })}
-              className={cn(
-                "px-2 py-1.5 rounded-md border text-xs transition-colors",
-                template.metadata.required_tier === t
-                  ? "bg-foreground text-background border-foreground"
-                  : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-              )}
-            >
-              {TIER_LABELS[t]}
-            </button>
-          ))}
-        </div>
+        <SegmentedRadio
+          value={template.metadata.required_tier}
+          onChange={(v) => updateMeta({ required_tier: v })}
+          options={TIER_EDIT_OPTIONS.map((t) => ({ value: t, label: TIER_LABELS[t] }))}
+        />
       </div>
 
       <Separator className="my-1" />
 
       <div className="space-y-1.5">
         <Label className="text-xs">差异化策略</Label>
-        <div className="grid grid-cols-3 gap-1.5">
-          {PROFILE_EDIT_OPTIONS.map((p) => (
-            <button
-              key={p}
-              onClick={() => onChange({ perturbation_profile: p })}
-              className={cn(
-                "px-2 py-1.5 rounded-md border text-xs transition-colors",
-                template.perturbation_profile === p
-                  ? "bg-foreground text-background border-foreground"
-                  : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-              )}
-            >
-              {PROFILE_LABELS[p]}
-            </button>
-          ))}
-        </div>
+        <SegmentedRadio
+          value={template.perturbation_profile}
+          onChange={(v) => onChange({ perturbation_profile: v })}
+          options={PROFILE_EDIT_OPTIONS.map((p) => ({ value: p, label: PROFILE_LABELS[p] }))}
+        />
         <p className="text-[10px] text-muted-foreground leading-relaxed">
           {PROFILE_DESCRIPTIONS[template.perturbation_profile]}
         </p>

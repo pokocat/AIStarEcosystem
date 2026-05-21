@@ -566,6 +566,69 @@ openapi       : SocialAccount schema 增 platformAccountId
 - 这是 best-effort profile：平台 DOM 或权限不同会导致字段为空；禁止用 `accountName` 伪装平台昵称。
 - 各平台 driver 各自实现选择器和文本解析。抖音字段叫「抖音号」，小红书 / 视频号等平台可继续映射到统一 `platformAccountId`。
 
+### v0.17.1（2026-05-21）— sau-service 视频号 / 快手 / 小红书 profile 拉齐 + 诊断回填
+
+v0.17 落地时只有 DouyinDriver 走完了「retry-poll + selector 多兜底 + body 文本反向抽 ID」全链路；ShipinhaoDriver / KuaishouDriver / XiaohongshuDriver 还是单次 read，遇到 SPA 慢挂或哈希 class 漂移就拿不到 `platformAccountId`。本次把 Douyin 的 pattern 抽成模块级共享 helper，并加 selector miss 时的 DOM 诊断 dump，避免靠人肉重做 QR 绑定才能拿到现网 class：
+
+```
+sau-service : login_pool.py +_poll_extract_profile（time-bounded 重试，任意标识字段非空即返回）
+            : login_pool.py +_dump_profile_dom_hints —— 重试耗尽仍空时，按 label_hints
+            :   ("视频号 ID" / "快手号" / "小红书号" / "抖音号") 在 body DOM 里反向搜
+            :   text 包含该 label 的节点，WARNING 吐 URL + body[:500] + 命中节点的
+            :   tag / class / outerHTML[:800]。运维拿到这条日志即可在不重做绑定的前
+            :   提下把真实 class / 真 label 回填到 driver 的 *_SELECTORS / body label。
+            : DouyinDriver.extract_profile 改用共享 helper（无行为变化）+ 接 label_hints
+            : ShipinhaoDriver 加 PROFILE_READY_TIMEOUT_S / DISPLAY/ACCOUNT_ID/AVATAR_SELECTORS
+            :   selectors 覆盖 [class*='finder-nickname'] / [class*='finder-uniq-id']
+            :   body 兜底解析「视频号 ID: …」/「原始 ID: …」
+            : KuaishouDriver 扩 selectors（[class*='kwaiId'] / [class*='userInfo']…）+ body 兜底 "快手号"
+            : XiaohongshuDriver 扩 selectors（[class*='redId'] / [class*='red-book-id']…）+ body 兜底 "小红书号"
+tests       : test_smoke.py +test_non_douyin_profile_text_helpers_parse_creator_headers
+```
+
+**注意事项**：
+
+- 当前 selectors 是基于上游 sau / 常见 emotion class 命名套路猜的，**首次真实绑定后必须按诊断 WARNING 回填一次**。日志样式：
+  ```
+  [shipinhao] extract_profile empty after retry budget; url=https://channels... body[:500]='...' label_hits=3
+    [shipinhao][0] tag=SPAN cls='nickname-xxx' text='视频号 ID: shipinhao_demo_001' parentTag=DIV parentCls='header-yyy' outerHTML='<span class="nickname-xxx">视频号 ID: shipinhao_demo_001</span>'
+  ```
+  操作员/agent 取 cls 改 driver 的 `ACCOUNT_ID_SELECTORS`，取 parentCls / text 形态改 body 兜底 label。
+- 重试上限 10s + 0.5s 间隔 = 最多 20 次 poll；不会卡住 `/login/poll` 整体超时（外层 30s+）。
+- 诊断 dump 不读 cookie / storage_state；仅 DOM。封顶 5 个 hit + 单节点 outerHTML 800 字，日志总量可控。
+- 没有 schema 变更：server / openapi / 前端契约不动；仅 driver 内部成功率提升 + 自诊断。
+
+### v0.17.2（2026-05-21）— sau-service 小红书 profile 主动导航 + 部分命中诊断
+
+v0.17.1 给 XHS 加了 selector + label 兜底，但实际 QR 绑定后发现 platform_account_id 仍然空：原因是 创作者中心 post-login landing（`/creator-center/post-creation` 之类）顶部 chrome 只有 avatar，没有 nickname / 小红书号 在 DOM 触手可及 —— selector 再多也没用。
+
+引入 `PlatformDriver.prepare_profile_view(page)` 钩子：在 `_poll_real` 拿 storage_state 之前给 driver 一次主动 navigate / 点 UI 的机会。`XiaohongshuDriver` 实现按 `[/creator/home, /setting/profile, /account/personal-data, /creator-center/profile]` 顺序探，命中标志是 body 含「小红书号」且未被反弹回 /login。
+
+同时升级 `_poll_extract_profile` 的成功判定 + 诊断 dump：
+
+```
+sau-service : login_pool.py +PlatformDriver.prepare_profile_view (默认 noop)
+            : login_pool.py XiaohongshuDriver +PROFILE_VIEW_URL_CANDIDATES (4 条) +prepare_profile_view
+            : login_pool._poll_real 在 storage_state() 之前调 prepare_profile_view(page)
+            :   —— 多吃一次 cookie 刷新；XHS 必须导航否则 小红书号 不在 DOM
+            : routes/accounts.py verify path 同步加 prepare_profile_view 调用
+            : login_pool._poll_extract_profile 成功判定从「displayName OR platformAccountId」
+            :   收紧为「displayName AND platformAccountId」—— 部分命中也会跑满 deadline
+            :   → 触发诊断 dump（之前 displayName 命中后立刻 return，platformAccountId 永远空也不报）
+            : login_pool._dump_profile_dom_hints +missing_fields=(...) 入参 + header chrome 第二 pass
+            :   pass-1: 含 label 文本的节点；pass-2: header / userInfo / avatar 容器 outerHTML
+            :   日志 line 改 "incomplete after retry budget; missing=displayName,platformAccountId"
+tests       : test_smoke.py +test_xiaohongshu_overrides_prepare_profile_view
+            :   断言 XHS 重写了 hook、其它 driver 仍为 noop（避免无谓导航开销）
+```
+
+**注意事项**：
+
+- 候选 URL 是基于公开经验猜的；首次真实绑定后看日志「[xiaohongshu] prepare_profile_view ok via <url>」就知道哪条命中。若全部失败 → log "all candidates failed" + extract 仍跑（fallback 是 landing 页 best-effort）。
+- 收紧成功判定后，**已知 selector 错的平台首次绑定会跑满 10s** 才退（之前 displayName 一命中就 return）。这是诊断 dump 的必要前提；selector 修对后两项一起来 → fast-bail。
+- `prepare_profile_view` 失败一律不抛（外层有 try/except wrapping），不影响 storage_state 捕获 + 业务返回 success。
+- verify path 同步加了 prepare_profile_view 调用，老 cookie 再 verify 时也会刷新 profile —— 用户重新点「验证账号」按钮即可让 profile 字段回填，不用重新扫码。
+
 ### v0.18（2026-05-20）— sau-service 上传超时保护
 
 `pokocat/social-auto-upload` 上游的 `DouYinVideo.upload()` / `TencentVideo.upload()` 内部"点击发布按钮"是 `while True` 无限循环，平台 selector 失效或视频审核久挂时会一直输出 `🏃 小人正在冲刺发布视频` 卡死。sau-service 包一层 timeout + cancel-aware race + publishing watchdog。
@@ -775,6 +838,37 @@ Celebrity 子产品的混剪与分发交互整改一次性合并：术语全面 
 - 官方明星片段与 v0.13 的 `isPreset`（扰动贴图池）是两套互斥标记：`isPreset=true` → GIF overlay；`isOfficial=true` → 用户可用作混剪源的明星视频片段。
 - 模板新建走 `/mixcut/templates/new` 路由，详情页 `mode="new"` 时 template_id 是前端 nanoid 生成的，第一次 saveTemplate 时 server 以该 id upsert。取消则前端 state 丢弃，**完全不落库**。
 
+### v0.22（2026-05-21）— 混剪批量发布支持抖音商品挂载
+
+v0.15 起 `/api/me/mixcut/publish-batch` 派单时硬编 `productLink=null, productTitle=null`（v0.16 注释明示「暂不携带商品挂载；操作员后续手工编辑或走手动分发补登」）。这次把两字段拉到 `MixcutPublishBatchRequest` 顶层，沿着既有单条 PublishJob path 透传给 sau-service → `DouYinVideo(productLink=..., productTitle=...)`，触发抖音视频画面下方「立即购买」挂件。
+
+批量场景的本质是「同一商品挂到 N 条混剪变体上」，所以字段是顶层 string 而非 per-output。非 douyin 平台目标 sau-service 静默忽略。
+
+**新增 / 修改**：
+
+```
+server  : MixcutPublishBatchRequest +productLink / +productTitle 两顶层字段
+        : MixcutPublishService.batchPublish 改透传（删 "暂不携带商品挂载" hardcode null,null）
+        :   CreatePublishJobInputDto 第 7/8 参拿 req.productLink() / req.productTitle()
+        :   PublishJob 落库 → PublishJobService.startJob 已有的 sau-service 透传逻辑生效
+
+web-celebrity:
+        : api/mixcut.ts MixcutPublishBatchRequest +product_link? / +product_title? 可选
+        : BatchPublishDrawer.tsx
+        :   + productLink / productTitle state（drawer open 时复位为空）
+        :   + douyinSelected memo（accounts × selectedAccountIds 任一 douyin 即真）
+        :   + 「抖音商品挂载」<section> 仅当 douyinSelected 时渲染（mirror ManualDistributeDialog）
+        :   + submit 时 carryProduct = douyinSelected && link && title; 半残则整组 undefined
+```
+
+**注意事项**：
+
+- 字段语义对齐单条 path：两项都非空才透传，半残（只有 link 没有 title 或反之）整组丢弃 —— 上游 sau 挂件需要两项齐全。
+- `MixcutPublishBatchRequest` 是破坏性扩展但向后兼容：旧客户端不传两字段 → record 字段为 null → service 透传 null → 行为与 v0.21 相同。
+- openapi.yaml `/me/mixcut/publish-batch` 当前只声明了 path 骨架（无 request schema）；contract gate 只校验 path 存在，所以这次不需要改 openapi。后续 schema 化时再补 `product_link / product_title` 字段。
+- 非 douyin 平台填了也无效但不报错（sau-service _upload_shipinhao/_upload_kuaishou 不消费这两字段）。
+- UI 隐藏逻辑只看 `accounts.platform === "douyin"`；若未来扩 tiktok 也有商品挂载，要重做这个 visibility predicate。
+
 ### admin sidebar 启用状态
 
 启用：Platform / Artists / **Celebrity**（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）/ Distribution / Finance（含 recharge-packages）/ Notifications / Audit / 平台 > AI 模型。
@@ -794,6 +888,14 @@ Celebrity 子产品的混剪与分发交互整改一次性合并：术语全面 
 - **新代码 API 形态**：`async function xxx(): Promise<T>`，聚合为 namespace 导出（`MusicApi`, `CelebrityZoneApi`, `MixcutApi`, …）
 - **mock 与 api 分工**：组件默认渲染 import mocks，用户动作走 api
 - **OffsetDateTime / ISO 8601**：所有时间字段在 wire 上是 ISO 字符串，DB 是 OffsetDateTime（H2 / MySQL 都支持）
+- **禁止用浏览器原生 `confirm()` / `alert()` / `prompt()`** ⚠️（v0.23 起强制）。
+  - 原因：(1) 浏览器原生样式割裂 + 移动端 H5 上观感极差；(2) 按钮文案不可本地化（Chrome 显示英文 "OK / Cancel"）；(3) 同步阻塞 React render；(4) 缺 ARIA / focus trap / Enter-Esc 默认绑定。
+  - 替代方案：
+    - 二次确认弹窗 → `apps/web-celebrity/src/components/common/confirm-dialog.tsx` 的 `useConfirm()`（基于 shadcn `AlertDialog`）。Promise-based、可声明 `tone: "danger"`、可注入 ReactNode 描述。
+    - 错误提示 → 组件内 inline error / toast（**禁止** `alert(e.message)`）。
+    - 输入采集 → 弹一个真正的 `<Dialog>` 带 `<Input>` 表单，不要 `prompt()`。
+  - PR review reject 规则：任意 `apps/**/*` 文件出现 `window.confirm` / 裸 `confirm(` / `window.alert` / 裸 `alert(` / `window.prompt` / 裸 `prompt(` 必须改成上述对应组件后才能 merge。
+  - 历史欠债：`apps/admin/**` 还有数处 `confirm()` / `alert()` 调用未迁移（v0.23 单独成 backlog item），新代码不能再增加。
 
 ### 新代码（packages + web-{music,drama,celebrity}）特有
 

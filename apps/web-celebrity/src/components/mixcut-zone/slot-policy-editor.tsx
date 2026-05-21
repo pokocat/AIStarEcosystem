@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { ChevronDown, RotateCcw, Lock, Info } from "lucide-react";
+import { Checkbox } from "@ai-star-eco/ui/ui/checkbox";
 import type {
   TemplateSlot,
   SlotPerturbationPolicy,
@@ -104,34 +105,30 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
             const checked = resolved[k];
             const globalKilled = !globalOverrides[GLOBAL_KEY[k]];
             const layerDef = layerDefault[k];
+            const handleChange = (next: boolean) => {
+              const nextOverride = { ...(override ?? {}) };
+              if (next === layerDef && templateOverride[k] === undefined) {
+                // 回到默认 → 移除该键(保持 override 最小化)
+                delete nextOverride[k];
+              } else {
+                nextOverride[k] = next;
+              }
+              onChange(nextOverride);
+            };
             return (
               <label
                 key={k}
                 className={cn(
-                  "flex items-start gap-2 text-xs cursor-pointer select-none",
-                  globalKilled && "opacity-50 cursor-not-allowed"
+                  "flex items-start gap-3 px-2.5 py-2 rounded-md border cursor-pointer select-none transition-colors",
+                  "border-border bg-background/40 hover:border-foreground/30",
+                  "has-[[data-state=checked]]:border-foreground/40 has-[[data-state=checked]]:bg-secondary/40",
+                  globalKilled && "opacity-50 cursor-not-allowed pointer-events-none",
                 )}
                 title={globalKilled ? "已在右侧'画面处理方式'里关闭,此处设置不会生效" : undefined}
               >
-                <input
-                  type="checkbox"
-                  checked={checked && !globalKilled}
-                  disabled={globalKilled}
-                  onChange={(e) => {
-                    const next = { ...(override ?? {}) };
-                    if (e.target.checked === layerDef && templateOverride[k] === undefined) {
-                      // 回到默认 → 移除该键(保持 override 最小化)
-                      delete next[k];
-                    } else {
-                      next[k] = e.target.checked;
-                    }
-                    onChange(next);
-                  }}
-                  className="mt-0.5 accent-violet-500"
-                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-medium">{OP_LABEL[k].name}</span>
+                    <span className="text-xs font-medium">{OP_LABEL[k].name}</span>
                     <span className="text-[10px] text-muted-foreground font-mono">
                       默认 {layerDef ? "✓" : "✗"}
                     </span>
@@ -143,6 +140,12 @@ export function SlotPolicyEditor({ slot, override, onChange, globalOverrides }: 
                     {OP_LABEL[k].hint}
                   </div>
                 </div>
+                <Checkbox
+                  checked={checked && !globalKilled}
+                  disabled={globalKilled}
+                  onCheckedChange={(v) => handleChange(v === true)}
+                  className="mt-0.5"
+                />
               </label>
             );
           })}

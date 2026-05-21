@@ -17,6 +17,7 @@ import type { PublishJob, PublishJobStatus } from "@ai-star-eco/types/publish-jo
 import { CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { SmsInteractionDialog } from "./SmsInteractionDialog";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 const STATUS_META: Record<PublishJobStatus, { label: string; cls: string; bar: string }> = {
   queued:        { label: "排队中",     cls: "bg-zinc-50 text-zinc-600 border-zinc-200",       bar: "bg-zinc-300" },
@@ -49,6 +50,7 @@ export function PublishJobList({ projectId }: Props) {
   const [busyId, setBusyId] = React.useState<string | null>(null);
   // 哪个 job 的 SMS 输入弹窗当前打开
   const [smsJobId, setSmsJobId] = React.useState<string | null>(null);
+  const { confirm, ConfirmHost } = useConfirm();
 
   const refresh = React.useCallback(async () => {
     try {
@@ -100,7 +102,13 @@ export function PublishJobList({ projectId }: Props) {
   };
 
   const handleCancel = async (id: string) => {
-    if (!window.confirm("取消任务后将不退还已扣的积分，确定？")) return;
+    const ok = await confirm({
+      title: "取消该任务？",
+      description: "取消后将不退还已扣的积分。",
+      confirmText: "确认取消",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusyId(id);
     try {
       const updated = await PublishJobApi.cancelPublishJob(id);
@@ -269,6 +277,7 @@ export function PublishJobList({ projectId }: Props) {
           }}
         />
       )}
+      <ConfirmHost />
     </section>
   );
 }

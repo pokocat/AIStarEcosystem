@@ -460,6 +460,13 @@ export interface MixcutPublishBatchRequest {
   /** v0.20+: 必填；默认 { strategy: "immediate" } */
   schedule: ScheduleSpec;
   project_id?: string;
+  /**
+   * v0.22+: 抖音商品挂载链接 —— sau-service 透传给 DouYinVideo(productLink=...)。
+   * 仅当 targets 含 douyin 账号时生效；其它平台静默忽略。两项都填才会触发挂件。
+   */
+  product_link?: string;
+  /** v0.22+: 商品名（挂件文案，最长 50 字） */
+  product_title?: string;
 }
 
 /** publish-batch 响应：部分成功语义。 */

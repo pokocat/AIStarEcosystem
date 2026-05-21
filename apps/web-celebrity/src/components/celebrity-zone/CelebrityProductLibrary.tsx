@@ -13,6 +13,7 @@ import { ProductFormDialog } from "./ProductFormDialog";
 import { ProductBatchImportDialog } from "./ProductBatchImportDialog";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 const inputCls =
   "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500 focus:bg-white";
@@ -31,6 +32,7 @@ export function CelebrityProductLibrary() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<ViewMode>("list");
+  const { confirm, ConfirmHost } = useConfirm();
 
   // localStorage 持久化视图偏好（SSR 安全：useEffect 内读）
   React.useEffect(() => {
@@ -70,7 +72,13 @@ export function CelebrityProductLibrary() {
   };
 
   const handleDelete = async (p: Product) => {
-    if (!window.confirm(`确认删除「${p.name}」？该操作不可撤销。`)) return;
+    const ok = await confirm({
+      title: `删除商品：${p.name}`,
+      description: "该操作不可撤销。",
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
     await ProductsApi.deleteProduct(p.id);
     reload();
   };
@@ -218,6 +226,7 @@ export function CelebrityProductLibrary() {
         onSubmit={handleBatchSubmit}
         onSaved={() => reload()}
       />
+      <ConfirmHost />
     </div>
   );
 }

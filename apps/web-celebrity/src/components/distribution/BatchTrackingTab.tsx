@@ -22,6 +22,7 @@ import { cn } from "@ai-star-eco/ui/ui/utils";
 import { BatchSummaryCard } from "./BatchSummaryCard";
 import { BatchDetailDrawer } from "./BatchDetailDrawer";
 import { RescheduleBatchDialog } from "./RescheduleBatchDialog";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 const PAGE_LIMIT = 20;
 const POLL_INTERVAL_MS = 5_000;
@@ -44,6 +45,8 @@ export function BatchTrackingTab() {
   const [selectedDetail, setSelectedDetail] = React.useState<PublishBatchSummary | null>(null);
   // 重新调度 Dialog 选中的 batch
   const [rescheduleTarget, setRescheduleTarget] = React.useState<PublishBatchSummary | null>(null);
+
+  const { confirm, ConfirmHost } = useConfirm();
 
   const refresh = React.useCallback(
     async (opts: { silent?: boolean; nextPage?: number } = {}) => {
@@ -110,17 +113,28 @@ export function BatchTrackingTab() {
     }
   };
 
-  const handleCancel = (batch: PublishBatchSummary) => {
-    if (!window.confirm(`确认取消「${batch.displayTitle}」批次里所有未完成的任务？\n已上线 / 已失败的任务不受影响。`)) {
-      return;
-    }
+  const handleCancel = async (batch: PublishBatchSummary) => {
+    const ok = await confirm({
+      title: `取消整批：${batch.displayTitle}`,
+      description: "批次里所有未完成的任务会被取消。已上线 / 已失败的任务不受影响。",
+      confirmText: "取消整批",
+      tone: "danger",
+    });
+    if (!ok) return;
     void runBatchAction(batch, "cancel", () => PublishJobApi.cancelBatch(batch.projectId));
   };
-  const handleRetry = (batch: PublishBatchSummary) => {
+  const handleRetry = async (batch: PublishBatchSummary) => {
     const failed = batch.statusCounts.failed ?? 0;
-    if (!window.confirm(`重试「${batch.displayTitle}」批次里 ${failed} 个失败任务？\n每条会重新走扣费流程。`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: `重试失败：${batch.displayTitle}`,
+      description: (
+        <>
+          将重试该批次里的 <b>{failed}</b> 个失败任务。每条会重新走扣费流程。
+        </>
+      ),
+      confirmText: "确认重试",
+    });
+    if (!ok) return;
     void runBatchAction(batch, "retry", () => PublishJobApi.retryFailedBatch(batch.projectId));
   };
   const handleReschedule = (batch: PublishBatchSummary) => {
@@ -236,6 +250,7 @@ export function BatchTrackingTab() {
           void refresh({ silent: true });
         }}
       />
+      <ConfirmHost />
     </section>
   );
 }

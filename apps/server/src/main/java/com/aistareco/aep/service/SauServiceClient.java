@@ -17,6 +17,8 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * sau-service (Python + Playwright，独立 FastAPI 进程) HTTP 调用门面。
@@ -54,6 +56,15 @@ public class SauServiceClient {
     private final String sharedSecret;
     private final int requestTimeoutMs;
 
+    /**
+     * 单 flight 锁：sau-service /accounts/verify 每次都会 spawn 一个 chromium，
+     * 多个 verify 并发会把宿主机 CPU / 内存打爆。前端已经做串行约束，但 server
+     * 这里再加一道保险（多用户、多 tab、运维脚本都吃这把锁）。
+     * tryAcquire 上限 60s，超时返回 SAU_VERIFY_BUSY 让前端弹"请稍后重试"。
+     */
+    private final Semaphore verifyMutex = new Semaphore(1);
+    private static final long VERIFY_QUEUE_WAIT_SECONDS = 60L;
+
     public SauServiceClient(@Value("${sau.base-url:http://localhost:8090}") String baseUrl,
                              @Value("${sau.shared-secret:dev-sau-secret}") String sharedSecret,
                              @Value("${sau.request-timeout-ms:30000}") int requestTimeoutMs) {
@@ -84,12 +95,32 @@ public class SauServiceClient {
         postJson("/login/cancel" + q, Map.of());
     }
 
-    /** POST /accounts/verify { platform, storageState } 返回 {valid, refreshedStorageState?, profile?} */
+    /**
+     * POST /accounts/verify { platform, storageState } 返回 {valid, refreshedStorageState?, profile?}。
+     * 走 {@link #verifyMutex} 单 flight 串行：playwright 启动开销大,server 全局只允许一个在跑;
+     * 拥塞时最多排队 60 秒,超时抛 {@code SAU_VERIFY_BUSY}。
+     */
     public Map<String, Object> verifyAccount(String platformWire, Map<String, Object> storageState) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("platform", platformWire);
-        body.put("storageState", storageState);
-        return postJson("/accounts/verify", body);
+        boolean acquired;
+        try {
+            acquired = verifyMutex.tryAcquire(VERIFY_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "SAU_VERIFY_INTERRUPTED",
+                    "等待 sau-service 验证队列时被打断");
+        }
+        if (!acquired) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "SAU_VERIFY_BUSY",
+                    "验证队列繁忙，前面还有任务在跑，请稍后再试");
+        }
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("platform", platformWire);
+            body.put("storageState", storageState);
+            return postJson("/accounts/verify", body);
+        } finally {
+            verifyMutex.release();
+        }
     }
 
     /** POST /upload — 返回 {taskId} */

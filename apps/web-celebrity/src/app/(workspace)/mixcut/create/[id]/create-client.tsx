@@ -23,6 +23,8 @@ import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
 import { Separator } from "@/components/mixcut-zone/ui/separator";
 import { Slider } from "@/components/mixcut-zone/ui/slider";
+import { RadioGroup, RadioGroupItem } from "@ai-star-eco/ui/ui/radio-group";
+import { Checkbox } from "@ai-star-eco/ui/ui/checkbox";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { SlotInput } from "@/components/mixcut-zone/slot-input";
 import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker";
@@ -42,6 +44,7 @@ import { PROFILE_LABELS, PROFILE_DESCRIPTIONS } from "@/constants/mixcut-ui";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
 import { resolvePolicy } from "@/components/mixcut-zone/lib/perturbation-defaults";
 import { flatSlotsOf, flatSlotsAbsolute, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 export function CreateClient({ id }: { id: string }) {
   const router = useRouter();
@@ -84,6 +87,7 @@ export function CreateClient({ id }: { id: string }) {
   /** v0.13+: 全局扰动贴图池绑定（写到 sticker_pool["_global"]）。MVP 不做 slot 级 UI。 */
   const [stickerPool, setStickerPool] = useState<StickerPoolBinding | undefined>(undefined);
   const initFromTemplateRef = useRef(false);
+  const { confirm, ConfirmHost } = useConfirm();
 
   useEffect(() => {
     MixcutApi.getTemplate(id).then((t) => {
@@ -131,11 +135,19 @@ export function CreateClient({ id }: { id: string }) {
   const allSlots = flatSlotsOf(template);
   const editableSlots = allSlots.filter((s) => s.user_editable);
   const requiredSlots = editableSlots.filter((s) => s.required);
-  const filledRequired = requiredSlots.filter((s) => {
-    const b = bindings[s.slot_id];
+  const isBound = (slotId: string) => {
+    const b = bindings[slotId];
     return b && ((b.source === "input" && b.text.trim()) || b.source === "library" || b.source === "upload");
-  });
+  };
+  const filledRequired = requiredSlots.filter((s) => isBound(s.slot_id));
   const allRequiredFilled = filledRequired.length === requiredSlots.length;
+
+  // v0.23: 没绑视频会触发后端 demo-fallback（用 showreel-*.mp4 兜底），用户会以为
+  // "没用我的视频"。在提交前明确给一次确认，模板里所有 layer_type=video 的 user_editable
+  // 槽位（不管 required 标）只要为空就提醒。
+  const unboundVideoSlots = allSlots.filter(
+    (s) => s.layer_type === "video" && s.user_editable && !isBound(s.slot_id),
+  );
 
   const handleSlotChange = (slotId: string, b: SlotBinding | undefined) => {
     setBindings((prev) => {
@@ -151,6 +163,26 @@ export function CreateClient({ id }: { id: string }) {
 
   const handleSubmit = async () => {
     if (!allRequiredFilled || overQuota) return;
+
+    // v0.23: 视频位空 → 后端会用 demo 兜底；给一次明确确认避免"为啥用的不是我的视频"。
+    if (unboundVideoSlots.length > 0) {
+      const names = unboundVideoSlots.map((s) => s.label || s.slot_id).join("、");
+      const ok = await confirm({
+        title: `还有 ${unboundVideoSlots.length} 个视频位未上传`,
+        description: (
+          <>
+            <p>未上传素材的视频位：<b>{names}</b>。</p>
+            <p className="mt-1 text-rose-600">
+              继续生成会用演示视频替代这些位置，最终成片不是你自己的视频。
+            </p>
+          </>
+        ),
+        confirmText: "仍然生成",
+        cancelText: "回去补上传",
+      });
+      if (!ok) return;
+    }
+
     setSubmitting(true);
     const jobId = `job_${nanoid(8)}`;
 
@@ -448,22 +480,26 @@ export function CreateClient({ id }: { id: string }) {
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium">差异化强度</label>
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <RadioGroup
+                  value={profile}
+                  onValueChange={(v) => setProfile(v as PerturbationProfile)}
+                  className="grid grid-cols-3 gap-1.5"
+                >
                   {(["light", "moderate", "aggressive"] as PerturbationProfile[]).map((p) => (
-                    <button
+                    <label
                       key={p}
-                      onClick={() => setProfile(p)}
                       className={cn(
-                        "px-2 py-2 rounded-md text-xs border transition-colors",
-                        profile === p
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                        "flex items-center justify-center px-3 py-2 rounded-md border text-xs cursor-pointer transition-colors select-none",
+                        "border-border text-muted-foreground hover:border-foreground/40",
+                        "has-[[data-state=checked]]:bg-foreground has-[[data-state=checked]]:text-background has-[[data-state=checked]]:border-foreground has-[[data-state=checked]]:font-medium",
+                        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2",
                       )}
                     >
-                      <div className="font-medium">{PROFILE_LABELS[p]}</div>
-                    </button>
+                      <RadioGroupItem value={p} className="sr-only" />
+                      {PROFILE_LABELS[p]}
+                    </label>
                   ))}
-                </div>
+                </RadioGroup>
                 <p className="text-[10px] text-muted-foreground leading-relaxed mt-1">
                   {PROFILE_DESCRIPTIONS[profile]}
                 </p>
@@ -490,27 +526,25 @@ export function CreateClient({ id }: { id: string }) {
                       { key: "allow_speed", label: "微调速度", hint: "随机加速/减速 ±20%,听感几乎察觉不到" },
                       { key: "allow_brightness", label: "亮度微调", hint: "轻微变亮/变暗,视觉无感" },
                       { key: "allow_saturation", label: "色彩微调", hint: "颜色饱和度小幅起伏" },
-                    ] as const).map((it) => {
-                      const on = overrides[it.key];
-                      return (
-                        <button
-                          key={it.key}
-                          onClick={() => setOverrides((p) => ({ ...p, [it.key]: !p[it.key] }))}
-                          title={it.hint}
-                          className={cn(
-                            "px-2.5 py-1.5 rounded-md text-xs border transition-colors text-left",
-                            on
-                              ? "bg-foreground text-background border-foreground"
-                              : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                          )}
-                        >
-                          <div className="font-medium flex items-center justify-between">
-                            <span>{it.label}</span>
-                            <span className="text-[10px]">{on ? "✓" : "—"}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    ] as const).map((it) => (
+                      <label
+                        key={it.key}
+                        title={it.hint}
+                        className={cn(
+                          "flex items-center justify-between gap-2 px-2.5 py-2 rounded-md border cursor-pointer select-none transition-colors",
+                          "border-border bg-background/40 text-foreground hover:border-foreground/30",
+                          "has-[[data-state=checked]]:border-foreground/40 has-[[data-state=checked]]:bg-secondary/40",
+                        )}
+                      >
+                        <span className="text-xs font-medium">{it.label}</span>
+                        <Checkbox
+                          checked={overrides[it.key]}
+                          onCheckedChange={(v) =>
+                            setOverrides((p) => ({ ...p, [it.key]: v === true }))
+                          }
+                        />
+                      </label>
+                    ))}
                   </div>
                 </div>
 
@@ -523,27 +557,25 @@ export function CreateClient({ id }: { id: string }) {
                     {([
                       { key: "allow_position_jitter", label: "位置抖动", hint: "每个素材在画面里位置小幅漂移" },
                       { key: "allow_scale_jitter", label: "缩放抖动", hint: "每个素材尺寸 ±5% 起伏" },
-                    ] as const).map((it) => {
-                      const on = overrides[it.key];
-                      return (
-                        <button
-                          key={it.key}
-                          onClick={() => setOverrides((p) => ({ ...p, [it.key]: !p[it.key] }))}
-                          title={it.hint}
-                          className={cn(
-                            "px-2.5 py-1.5 rounded-md text-xs border transition-colors text-left",
-                            on
-                              ? "bg-foreground text-background border-foreground"
-                              : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                          )}
-                        >
-                          <div className="font-medium flex items-center justify-between">
-                            <span>{it.label}</span>
-                            <span className="text-[10px]">{on ? "✓" : "—"}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    ] as const).map((it) => (
+                      <label
+                        key={it.key}
+                        title={it.hint}
+                        className={cn(
+                          "flex items-center justify-between gap-2 px-2.5 py-2 rounded-md border cursor-pointer select-none transition-colors",
+                          "border-border bg-background/40 text-foreground hover:border-foreground/30",
+                          "has-[[data-state=checked]]:border-foreground/40 has-[[data-state=checked]]:bg-secondary/40",
+                        )}
+                      >
+                        <span className="text-xs font-medium">{it.label}</span>
+                        <Checkbox
+                          checked={overrides[it.key]}
+                          onCheckedChange={(v) =>
+                            setOverrides((p) => ({ ...p, [it.key]: v === true }))
+                          }
+                        />
+                      </label>
+                    ))}
                   </div>
                 </div>
 
@@ -584,22 +616,26 @@ export function CreateClient({ id }: { id: string }) {
                     <Plus className="size-3" />
                   </Button>
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <RadioGroup
+                  value={String(variants)}
+                  onValueChange={(v) => setVariants(Number(v))}
+                  className="grid grid-cols-4 gap-1.5"
+                >
                   {[3, 5, 10, 20].map((v) => (
-                    <button
+                    <label
                       key={v}
-                      onClick={() => setVariants(v)}
                       className={cn(
-                        "px-2 py-0.5 rounded text-[10px] border transition-colors",
-                        variants === v
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                        "flex items-center justify-center px-2 py-1.5 rounded-md border text-xs cursor-pointer transition-colors select-none",
+                        "border-border text-muted-foreground hover:border-foreground/40",
+                        "has-[[data-state=checked]]:bg-foreground has-[[data-state=checked]]:text-background has-[[data-state=checked]]:border-foreground has-[[data-state=checked]]:font-medium",
+                        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2",
                       )}
                     >
+                      <RadioGroupItem value={String(v)} className="sr-only" />
                       {v} 条
-                    </button>
+                    </label>
                   ))}
-                </div>
+                </RadioGroup>
               </div>
 
               <Separator />
@@ -672,6 +708,7 @@ export function CreateClient({ id }: { id: string }) {
           )}
         </aside>
       </div>
+      <ConfirmHost />
     </div>
   );
 }

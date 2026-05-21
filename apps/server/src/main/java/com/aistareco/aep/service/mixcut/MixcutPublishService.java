@@ -112,10 +112,10 @@ public class MixcutPublishService {
                         req.description(),
                         req.tags() != null ? req.tags() : List.of(),
                         output.thumbnailUrl() != null ? output.thumbnailUrl() : req.coverUrl(),
-                        // 混剪批量发布暂不携带商品挂载；操作员后续手工编辑 (v0.16+) 或
-                        // 走分发中心「手动分发」补登。
-                        null,
-                        null,
+                        // v0.22: 商品挂载顶层透传 —— 同一商品挂到 N 条混剪变体上，
+                        // 非 douyin 目标 sau-service 会静默忽略。两项都为空 = 非带货视频。
+                        req.productLink(),
+                        req.productTitle(),
                         outputTargets
                 );
                 List<PublishJobDto> created = publishJobService.createBatch(userId, input);

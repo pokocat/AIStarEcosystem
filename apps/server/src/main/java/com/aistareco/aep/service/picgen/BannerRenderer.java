@@ -2,6 +2,7 @@ package com.aistareco.aep.service.picgen;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
@@ -14,49 +15,74 @@ import java.awt.Graphics2D;
 import java.awt.LinearGradientPaint;
 import java.awt.MultipleGradientPaint.CycleMethod;
 import java.awt.Paint;
+import java.awt.Polygon;
+import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.font.FontRenderContext;
 import java.awt.font.GlyphVector;
+import java.awt.font.TextAttribute;
 import java.awt.font.TextLayout;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
+import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 /**
- * v0.16+: 纯 Java2D 实现的促销 banner 渲染器。
+ * 纯 Java2D 实现的促销 banner 渲染器（picgen）。
  *
- * 没有任何外部进程依赖（无 Node / Puppeteer / Chromium）。从原 pic-gen 项目移植的元素：
- *   - 16 套色彩 SCHEMES（背景渐变 / 主标题填充渐变 / 内描边 / 外描边 / accent / shadow 等）
- *   - 主标题描边双层（外深色 + 内白色），底色渐变
- *   - 副标题 + 标签胶囊（小色块圆角矩形）
+ * <p>多维 seeded 随机化（v0.25）：
+ * <ul>
+ *   <li>颜色方案（16 套）</li>
+ *   <li>背景方向（DIAGONAL / HORIZONTAL / VERTICAL / RADIAL）</li>
+ *   <li>背景纹理（NONE / STRIPES / GRID / NOISE）</li>
+ *   <li>主标题布局（7 套位置 + 旋转）</li>
+ *   <li>字体 profile（按 kind + tracking + posture + weight）</li>
+ *   <li>描边样式（CLASSIC / DOUBLE_LINE / SHADOW_HEAVY / SHADOW_ONLY）</li>
+ *   <li>副标题样式（RIBBON / BAR / UNDERLINE）</li>
+ *   <li>贴图挂件（NONE / STAR_BURST / CIRCLE_SEAL / SPARKLES / CHEVRONS）</li>
+ * </ul>
  *
- * 中文字体走 JVM 逻辑字 SansSerif Bold，靠 OS 字体回退机制（macOS PingFang SC、
- * Linux Noto Sans CJK、Windows Microsoft YaHei）渲染。生产 Linux 部署需安装
- * fonts-noto-cjk 或同等 CJK 字体包。
+ * <p>组合空间 ≈ 16 × 4 × 4 × 7 × 11 × 4 × 3 × 5 ≈ <b>120 万</b>，
+ * 5 条变体在视觉上几乎不可能撞同款。
  *
- * 渲染输入：title 必填，subtitle / tag 可选；width / height 任意（建议 ≥ 200×120）。
- * 用 seed 控制 scheme / 字体 / 装饰随机性 —— 同 seed 出同图，便于排查。
+ * <p>遮罩规避：
+ * <ul>
+ *   <li>tag 角由 layout 派生（远离 title）</li>
+ *   <li>sticker 角与 tag / title 都互斥</li>
+ *   <li>subtitle 位置基于 title 实际 bbox 计算（上下二选一）</li>
+ *   <li>SHIFT 布局的标题最大宽度按 cx 与画布边距求 min，防溢出</li>
+ * </ul>
+ *
+ * <p>主次硬保证：
+ * <ul>
+ *   <li>subtitle ≤ title × 0.42</li>
+ *   <li>tag ≤ subtitle × 0.85 （无副标题时 ≤ title × 0.22）</li>
+ *   <li>sticker 字 ≤ title × 0.20</li>
+ *   <li>主标题不参与花式描边的最弱形式（保证一定有描边或重阴影）</li>
+ * </ul>
  */
 @Service
 public class BannerRenderer {
 
     private static final Logger log = LoggerFactory.getLogger(BannerRenderer.class);
 
-    /**
-     * 色彩方案 —— 与 pic-gen/lib.js SCHEMES 严格对齐。
-     * 字段含义：
-     *   bgFrom / bgTo       背景线性渐变（左上 → 右下）
-     *   fillFrom / fillTo   主标题填充渐变（垂直）
-     *   strokeInner         主标题内描边（通常白色）
-     *   strokeOuter         主标题外描边（最厚的深色轮廓）
-     *   accent              副标题 / 装饰高亮色
-     *   shadow              主标题文字阴影
-     *   tag                 标签胶囊背景色
-     */
+    private final FontRegistry fonts;
+
+    @Autowired
+    public BannerRenderer(FontRegistry fonts) {
+        this.fonts = fonts;
+    }
+
+    /** 色彩方案 —— 与 pic-gen/lib.js SCHEMES 对齐。 */
     public record ColorScheme(
             String name,
             Color bgFrom, Color bgTo,
@@ -87,11 +113,58 @@ public class BannerRenderer {
             scheme("mocha-gold",   "#78350f","#3f1f06", "#fde68a","#f59e0b", "#fff7ed","#1c1917", "#fbbf24","#1c1917", "#b45309")
     );
 
-    /**
-     * 主入口。
-     * @param req 渲染参数
-     * @return PNG 字节流
-     */
+    // ── hierarchy 硬保证常量 ────────────────────────────────────────────────
+    private static final float SUB_MAX_RATIO = 0.42f;
+    private static final float TAG_MAX_RATIO = 0.85f;
+    private static final float TITLE_MIN_SIZE_RATIO = 0.30f;
+
+    // ── 随机维度 ─────────────────────────────────────────────────────────────
+
+    private enum BgStyle { DIAGONAL, HORIZONTAL, VERTICAL, RADIAL }
+    private enum TextureStyle { NONE, DIAGONAL_STRIPES, GRID, NOISE }
+
+    private enum LayoutStyle {
+        CENTER_MID  (0.50f, 0.50f,  0f, 0.44f),
+        TITLE_HIGH  (0.50f, 0.35f,  0f, 0.42f),
+        TITLE_LOW   (0.50f, 0.65f,  0f, 0.42f),
+        TILT_LEFT   (0.50f, 0.50f, -3f, 0.42f),
+        TILT_RIGHT  (0.50f, 0.50f,  3f, 0.42f),
+        SHIFT_LEFT  (0.40f, 0.50f,  0f, 0.40f),
+        SHIFT_RIGHT (0.60f, 0.50f,  0f, 0.40f);
+
+        final float cxRatio, cyRatio, rotateDeg, sizeRatio;
+        LayoutStyle(float cx, float cy, float rot, float sz) {
+            this.cxRatio = cx; this.cyRatio = cy; this.rotateDeg = rot; this.sizeRatio = sz;
+        }
+    }
+
+    private record FontProfile(FontRegistry.Kind kind, int awtStyle, float tracking, float posture, Float weight) {}
+
+    private static final List<FontProfile> FONT_PROFILES = List.of(
+            new FontProfile(FontRegistry.Kind.DISPLAY, Font.BOLD, -0.02f, 0f,    null),
+            new FontProfile(FontRegistry.Kind.DISPLAY, Font.BOLD,  0.06f, 0f,    null),
+            new FontProfile(FontRegistry.Kind.DISPLAY, Font.BOLD,  0f,    0.16f, null),
+            new FontProfile(FontRegistry.Kind.DISPLAY, Font.BOLD,  0.02f, 0f,    TextAttribute.WEIGHT_HEAVY),
+            new FontProfile(FontRegistry.Kind.SANS,    Font.BOLD, -0.04f, 0f,    null),
+            new FontProfile(FontRegistry.Kind.SANS,    Font.BOLD,  0.08f, 0f,    null),
+            new FontProfile(FontRegistry.Kind.SANS,    Font.BOLD,  0f,    0.18f, null),
+            new FontProfile(FontRegistry.Kind.SERIF,   Font.BOLD,  0.02f, 0f,    null),
+            new FontProfile(FontRegistry.Kind.SERIF,   Font.BOLD | Font.ITALIC, 0f, 0f, null),
+            new FontProfile(FontRegistry.Kind.BRUSH,   Font.BOLD,  0f,    0f,    null),
+            new FontProfile(FontRegistry.Kind.BRUSH,   Font.BOLD,  0.04f, 0f,    null)
+    );
+
+    /** 主标题描边样式池。 */
+    private enum StrokeStyle { CLASSIC, DOUBLE_LINE, SHADOW_HEAVY, SHADOW_ONLY }
+
+    private enum SubStyle { RIBBON, BAR, UNDERLINE }
+    private enum TagCorner { TOP_RIGHT, TOP_LEFT, BOTTOM_RIGHT, BOTTOM_LEFT }
+
+    /** 贴图挂件样式池。NONE 占两份提高"无贴图"概率，避免画面过满。 */
+    private enum StickerStyle { NONE_A, NONE_B, STAR_BURST, CIRCLE_SEAL, SPARKLES, CHEVRONS }
+
+    // ── 渲染入口 ─────────────────────────────────────────────────────────────
+
     public byte[] render(BannerRequest req) throws IOException {
         if (req == null || req.title() == null || req.title().isBlank()) {
             throw new IllegalArgumentException("title 不能为空");
@@ -100,62 +173,112 @@ public class BannerRenderer {
         int h = clamp(req.height(), 120, 1080);
         long seed = req.seed();
 
-        // 1) Scheme & font pick（seed 控制；override 优先）
+        // 各维度独立 salt 抽样
         ColorScheme scheme = req.schemeName() != null
                 ? findScheme(req.schemeName())
-                : SCHEMES.get(Math.floorMod(mix32(seed, 1), SCHEMES.size()));
+                : pickFrom(seed, 1, SCHEMES);
+        BgStyle bg = pickEnum(seed, 2, BgStyle.values());
+        LayoutStyle layout = pickEnum(seed, 3, LayoutStyle.values());
+        FontProfile titleFp = pickFrom(seed, 4, FONT_PROFILES);
+        SubStyle subStyle = pickEnum(seed, 5, SubStyle.values());
+        TagCorner tagCorner = deriveTagCorner(layout, mix32(seed, 6));
+        TextureStyle texture = pickEnum(seed, 9, TextureStyle.values());
+        StrokeStyle strokeStyle = pickEnum(seed, 10, StrokeStyle.values());
+        StickerStyle sticker = pickEnum(seed, 11, StickerStyle.values());
+        FontProfile subFp = pickSubtitleProfile(seed, titleFp);
 
-        // 2) BufferedImage + Graphics2D
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         try {
             applyHints(g);
 
-            // 2a) 背景渐变
-            drawBackgroundGradient(g, w, h, scheme);
+            // 1) 背景 + 纹理 + 装饰
+            drawBackgroundGradient(g, w, h, scheme, bg);
+            drawTexture(g, w, h, scheme, texture, mix32(seed, 12));
+            drawCornerDecoration(g, w, h, scheme, mix32(seed, 7));
 
-            // 2b) 装饰：左上斜向色条（subtle，与 picgen 'ribbon' template 致敬）
-            drawCornerStripe(g, w, h, scheme, mix32(seed, 5));
-
-            // 3) 主标题
             String title = req.title().trim();
             String subtitle = req.subtitle() == null ? "" : req.subtitle().trim();
             String tag = req.tag() == null ? "" : req.tag().trim();
 
-            // 计算主标题字号：先按高度的 40% 试，超宽则按 maxTextWidth 缩
-            double maxTextWidth = w * 0.84;
-            double titleFontSize = h * 0.42;
-            Font baseTitleFont = pickFont(seed, Font.BOLD);
-            Font titleFont = autoFitFont(g, title, baseTitleFont, titleFontSize, maxTextWidth);
+            // 2) Title 位置与字号
+            float baseTitleSize = h * Math.max(TITLE_MIN_SIZE_RATIO, layout.sizeRatio);
+            float cx = w * layout.cxRatio;
+            float cy = h * layout.cyRatio;
+            float maxTextWidth = Math.min(
+                    w * 0.86f,
+                    Math.min(cx - w * 0.04f, w - cx - w * 0.04f) * 2f
+            );
 
-            // 主标题水平居中、垂直略偏上（给副标题留位）
-            float titleY = (float) (h * (subtitle.isEmpty() ? 0.62 : 0.50));
-            drawOutlinedText(g, title, titleFont, w / 2f, titleY, scheme);
+            Font titleBase = buildFont(titleFp, baseTitleSize, mix32(seed, 15));
+            Font titleFont = autoFitFont(g, title, titleBase, baseTitleSize, maxTextWidth);
+            float titleW = (float) titleFont.getStringBounds(title, g.getFontRenderContext()).getWidth();
+            float titleH = (float) titleFont.getStringBounds(title, g.getFontRenderContext()).getHeight();
 
-            // 4) 副标题（可选）
-            if (!subtitle.isEmpty()) {
-                Font subFont = pickFont(seed, Font.BOLD).deriveFont((float) (titleFont.getSize2D() * 0.32f));
-                drawSubtitleRibbon(g, subtitle, subFont, w / 2f, (float) (h * 0.78), scheme);
+            float titleCyAdjusted = cy;
+            if (!subtitle.isEmpty() && layout.cyRatio > 0.40f && layout.cyRatio < 0.60f) {
+                titleCyAdjusted = cy - h * 0.08f;
             }
 
-            // 5) 标签（可选）—— 右上角圆角矩形 + 略倾斜
+            drawOutlinedTitle(g, title, titleFont, cx, titleCyAdjusted, layout.rotateDeg, scheme, strokeStyle);
+
+            // 3) Subtitle
+            Rectangle2D titleBox = new Rectangle2D.Float(
+                    cx - titleW / 2f,
+                    titleCyAdjusted - titleH / 2f,
+                    titleW, titleH);
+            float subSize = titleFont.getSize2D() * SUB_MAX_RATIO;
+
+            float subY = 0f;
+            boolean hasSubtitle = !subtitle.isEmpty();
+            if (hasSubtitle) {
+                int subFontSeed = mix32(seed, 16);
+                Font subFont = buildFont(subFp, subSize, subFontSeed);
+                float subHGuess = (float) subFont.getStringBounds(subtitle, g.getFontRenderContext()).getHeight();
+                float belowY = (float) (titleBox.getMaxY() + h * 0.05f + subHGuess / 2f);
+                float aboveY = (float) (titleBox.getMinY() - h * 0.05f - subHGuess / 2f);
+                if (belowY + subHGuess / 2f <= h * 0.92f) {
+                    subY = belowY;
+                } else if (aboveY - subHGuess / 2f >= h * 0.08f) {
+                    subY = aboveY;
+                } else {
+                    subSize = subSize * 0.7f;
+                    subFont = buildFont(subFp, subSize, subFontSeed);
+                    subY = (float) (titleBox.getMaxY() + h * 0.03f + subFont.getSize2D() / 2f);
+                }
+                drawSubtitle(g, subtitle, subFont, cx, subY, scheme, subStyle);
+            }
+
+            // 4) Tag
             if (!tag.isEmpty()) {
-                drawTagPill(g, tag, pickFont(seed, Font.BOLD), w, h, scheme, mix32(seed, 7));
+                float tagSize = hasSubtitle
+                        ? subSize * TAG_MAX_RATIO
+                        : titleFont.getSize2D() * 0.22f;
+                FontProfile tagFp = new FontProfile(FontRegistry.Kind.SANS, Font.BOLD, 0f, 0f, null);
+                Font tagFont = buildFont(tagFp, tagSize, mix32(seed, 17));
+                drawTagPill(g, tag, tagFont, w, h, scheme, tagCorner, mix32(seed, 8));
             }
 
-            log.debug("[picgen] render title='{}' size={}×{} scheme={}",
-                    truncate(title, 20), w, h, scheme.name());
+            // 5) Sticker 挂件：放在不冲突的角；hierarchy 上比 tag 还次要，所以更小
+            if (sticker != StickerStyle.NONE_A && sticker != StickerStyle.NONE_B) {
+                TagCorner stickerCorner = deriveStickerCorner(layout, tagCorner, mix32(seed, 13));
+                float stickerSize = titleFont.getSize2D() * 0.40f;  // sticker 外径 ≈ 40% 主标题字号
+                drawSticker(g, w, h, scheme, sticker, stickerCorner, stickerSize, mix32(seed, 14));
+            }
+
+            log.debug(
+                    "[picgen] render title='{}' size={}×{} scheme={} bg={} tex={} layout={} font={}({}) stroke={} sub={} tagCorner={} sticker={}",
+                    truncate(title, 20), w, h, scheme.name(),
+                    bg, texture, layout, titleFp.kind, titleFp.tracking, strokeStyle, subStyle, tagCorner, sticker);
         } finally {
             g.dispose();
         }
 
-        // 6) 编码 PNG
         ByteArrayOutputStream baos = new ByteArrayOutputStream(64 * 1024);
         ImageIO.write(img, "png", baos);
         return baos.toByteArray();
     }
 
-    /** 渲染请求。title 必填；seed 缺省为 0（出同一张图）。 */
     public record BannerRequest(
             String title,
             String subtitle,
@@ -163,11 +286,81 @@ public class BannerRenderer {
             int width,
             int height,
             long seed,
-            /** 可选：强制选某个 scheme（按 name）；null 则按 seed 抽。 */
             String schemeName
     ) {}
 
-    // ── 绘制子例程 ───────────────────────────────────────────────────────────
+    // ── 派生规则 ─────────────────────────────────────────────────────────────
+
+    private static TagCorner deriveTagCorner(LayoutStyle layout, int seedMix) {
+        boolean bit = (seedMix & 1) == 0;
+        switch (layout) {
+            case TITLE_HIGH:
+                return bit ? TagCorner.BOTTOM_LEFT : TagCorner.BOTTOM_RIGHT;
+            case TITLE_LOW:
+                return bit ? TagCorner.TOP_LEFT : TagCorner.TOP_RIGHT;
+            case SHIFT_LEFT:
+                return bit ? TagCorner.TOP_RIGHT : TagCorner.BOTTOM_RIGHT;
+            case SHIFT_RIGHT:
+                return bit ? TagCorner.TOP_LEFT : TagCorner.BOTTOM_LEFT;
+            case CENTER_MID:
+            case TILT_LEFT:
+            case TILT_RIGHT:
+            default:
+                int q = seedMix & 3;
+                return switch (q) {
+                    case 0 -> TagCorner.TOP_LEFT;
+                    case 1 -> TagCorner.TOP_RIGHT;
+                    case 2 -> TagCorner.BOTTOM_LEFT;
+                    default -> TagCorner.BOTTOM_RIGHT;
+                };
+        }
+    }
+
+    /** Sticker 选 tag 之外的、远离 title 区域的角。 */
+    private static TagCorner deriveStickerCorner(LayoutStyle layout, TagCorner tag, int seedMix) {
+        // 候选 = 远离 title 的所有角 - tag 已占的角
+        TagCorner[] avoid = avoidCornersForTitle(layout);
+        TagCorner pick = null;
+        for (TagCorner c : avoid) {
+            if (c != tag) { pick = c; break; }
+        }
+        if (pick != null) return pick;
+        // fallback: 选 tag 的对角
+        return diagonalOf(tag);
+    }
+
+    private static TagCorner[] avoidCornersForTitle(LayoutStyle layout) {
+        switch (layout) {
+            case TITLE_HIGH:
+                return new TagCorner[]{TagCorner.BOTTOM_LEFT, TagCorner.BOTTOM_RIGHT, TagCorner.TOP_LEFT, TagCorner.TOP_RIGHT};
+            case TITLE_LOW:
+                return new TagCorner[]{TagCorner.TOP_LEFT, TagCorner.TOP_RIGHT, TagCorner.BOTTOM_LEFT, TagCorner.BOTTOM_RIGHT};
+            case SHIFT_LEFT:
+                return new TagCorner[]{TagCorner.TOP_RIGHT, TagCorner.BOTTOM_RIGHT, TagCorner.TOP_LEFT, TagCorner.BOTTOM_LEFT};
+            case SHIFT_RIGHT:
+                return new TagCorner[]{TagCorner.TOP_LEFT, TagCorner.BOTTOM_LEFT, TagCorner.TOP_RIGHT, TagCorner.BOTTOM_RIGHT};
+            default:
+                return new TagCorner[]{TagCorner.TOP_LEFT, TagCorner.TOP_RIGHT, TagCorner.BOTTOM_LEFT, TagCorner.BOTTOM_RIGHT};
+        }
+    }
+
+    private static TagCorner diagonalOf(TagCorner c) {
+        return switch (c) {
+            case TOP_LEFT     -> TagCorner.BOTTOM_RIGHT;
+            case TOP_RIGHT    -> TagCorner.BOTTOM_LEFT;
+            case BOTTOM_LEFT  -> TagCorner.TOP_RIGHT;
+            case BOTTOM_RIGHT -> TagCorner.TOP_LEFT;
+        };
+    }
+
+    private static FontProfile pickSubtitleProfile(long seed, FontProfile title) {
+        boolean preferSerif = title.kind == FontRegistry.Kind.SANS
+                || title.kind == FontRegistry.Kind.DISPLAY;
+        FontRegistry.Kind subKind = preferSerif ? FontRegistry.Kind.SERIF : FontRegistry.Kind.SANS;
+        return new FontProfile(subKind, Font.BOLD, 0f, 0f, null);
+    }
+
+    // ── 绘制：背景 / 纹理 / 装饰 ───────────────────────────────────────────
 
     private static void applyHints(Graphics2D g) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -178,41 +371,120 @@ public class BannerRenderer {
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
     }
 
-    private static void drawBackgroundGradient(Graphics2D g, int w, int h, ColorScheme s) {
+    private static void drawBackgroundGradient(Graphics2D g, int w, int h, ColorScheme s, BgStyle style) {
         Paint old = g.getPaint();
-        g.setPaint(new GradientPaint(0, 0, s.bgFrom, w, h, s.bgTo));
+        switch (style) {
+            case DIAGONAL:
+                g.setPaint(new GradientPaint(0, 0, s.bgFrom, w, h, s.bgTo));
+                break;
+            case HORIZONTAL:
+                g.setPaint(new GradientPaint(0, 0, s.bgFrom, w, 0, s.bgTo));
+                break;
+            case VERTICAL:
+                g.setPaint(new GradientPaint(0, 0, s.bgFrom, 0, h, s.bgTo));
+                break;
+            case RADIAL:
+                float r = Math.max(w, h) / 1.3f;
+                g.setPaint(new RadialGradientPaint(
+                        w / 2f, h / 2f, r,
+                        new float[]{0f, 1f},
+                        new Color[]{s.bgFrom, s.bgTo}));
+                break;
+        }
         g.fillRect(0, 0, w, h);
         g.setPaint(old);
     }
 
-    private static void drawCornerStripe(Graphics2D g, int w, int h, ColorScheme s, int seedMix) {
-        Paint old = g.getPaint();
-        AffineTransform oldAt = g.getTransform();
+    /** 在背景之上叠一层低不透明度的纹理。alpha 永远 ≤ 0.10，不抢主视觉。 */
+    private static void drawTexture(Graphics2D g, int w, int h, ColorScheme s, TextureStyle t, int seedMix) {
+        if (t == TextureStyle.NONE) return;
+        Paint oldP = g.getPaint();
+        var oldComp = g.getComposite();
+        var oldStroke = g.getStroke();
         try {
-            // 一条横向暗色细带，靠下；位置抖动
+            g.setPaint(s.strokeOuter);
+            switch (t) {
+                case DIAGONAL_STRIPES: {
+                    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.08f));
+                    float spacing = Math.max(20f, h * 0.10f);
+                    float lineW = Math.max(2f, h * 0.012f);
+                    g.setStroke(new BasicStroke(lineW));
+                    // 45° 斜线，从画面左下到右上方向覆盖
+                    for (float x = -h; x < w + h; x += spacing) {
+                        g.drawLine((int) x, h, (int) (x + h), 0);
+                    }
+                    break;
+                }
+                case GRID: {
+                    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.07f));
+                    float spacing = Math.max(20f, h * 0.10f);
+                    float lineW = Math.max(1.5f, h * 0.008f);
+                    g.setStroke(new BasicStroke(lineW));
+                    for (float x = 0; x < w; x += spacing) g.drawLine((int) x, 0, (int) x, h);
+                    for (float y = 0; y < h; y += spacing) g.drawLine(0, (int) y, w, (int) y);
+                    break;
+                }
+                case NOISE: {
+                    // 颗粒：用确定性随机种子撒密度 ~ 0.6% 的小亮 / 暗点
+                    Random r = new Random(seedMix);
+                    int count = (int) (w * h * 0.006);
+                    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.18f));
+                    for (int i = 0; i < count; i++) {
+                        int x = r.nextInt(w);
+                        int y = r.nextInt(h);
+                        g.setPaint(r.nextBoolean() ? Color.WHITE : s.strokeOuter);
+                        int size = 1 + r.nextInt(2);
+                        g.fillRect(x, y, size, size);
+                    }
+                    break;
+                }
+                case NONE:
+                default:
+                    break;
+            }
+        } finally {
+            g.setStroke(oldStroke);
+            g.setComposite(oldComp);
+            g.setPaint(oldP);
+        }
+    }
+
+    private static void drawCornerDecoration(Graphics2D g, int w, int h, ColorScheme s, int seedMix) {
+        Paint old = g.getPaint();
+        try {
             float stripeH = Math.max(6, h * 0.04f);
-            float y = h - stripeH - (h * 0.02f);
+            int stripePos = seedMix & 3;
+            float y;
+            switch (stripePos) {
+                case 0:  y = h - stripeH - h * 0.02f; break;
+                case 1:  y = h * 0.02f;               break;
+                case 2:  y = h - stripeH * 2f;         break;
+                default: y = h * 0.10f;               break;
+            }
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.18f));
             g.setPaint(s.strokeOuter);
             g.fillRect(0, (int) y, w, (int) stripeH);
 
-            // 左上一个圆点装饰（随 seed 决定显示）
             if ((seedMix & 1) == 0) {
+                int corner = (seedMix >>> 2) & 3;
                 g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.22f));
                 g.setPaint(s.accent);
-                int r = (int) (h * 0.20);
-                g.fillOval(-r / 2, -r / 2, r, r);
+                int r = (int) (h * 0.22);
+                int cx = (corner == 0 || corner == 2) ? -r / 2 : w - r / 2;
+                int cy = (corner == 0 || corner == 1) ? -r / 2 : h - r / 2;
+                g.fillOval(cx, cy, r, r);
             }
         } finally {
             g.setComposite(AlphaComposite.SrcOver);
             g.setPaint(old);
-            g.setTransform(oldAt);
         }
     }
 
-    /** 用 GlyphVector 拿到字符轮廓 → 外描边 → 内描边 → 渐变填充。 */
-    private static void drawOutlinedText(
-            Graphics2D g, String text, Font font, float cx, float cy, ColorScheme s
+    // ── 绘制：主标题（4 种描边样式） ────────────────────────────────────────
+
+    private static void drawOutlinedTitle(
+            Graphics2D g, String text, Font font, float cx, float cy, float rotateDeg,
+            ColorScheme s, StrokeStyle strokeStyle
     ) {
         FontRenderContext frc = g.getFontRenderContext();
         GlyphVector gv = font.createGlyphVector(frc, text);
@@ -223,51 +495,143 @@ public class BannerRenderer {
 
         AffineTransform old = g.getTransform();
         Paint oldPaint = g.getPaint();
+        var oldStroke = g.getStroke();
         try {
+            if (rotateDeg != 0f) {
+                g.rotate(Math.toRadians(rotateDeg), cx, cy);
+            }
             g.translate(tx, ty);
 
             float fontSize = font.getSize2D();
-            float outerStrokeW = Math.max(4f, fontSize * 0.22f);
-            float innerStrokeW = Math.max(2f, fontSize * 0.10f);
 
-            // 文字阴影（向右下偏移）
-            float shadowDx = Math.max(2f, fontSize * 0.04f);
-            float shadowDy = shadowDx;
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.55f));
-            g.setPaint(s.shadow);
-            AffineTransform shAt = AffineTransform.getTranslateInstance(shadowDx, shadowDy);
-            g.fill(shAt.createTransformedShape(outline));
-            g.setComposite(AlphaComposite.SrcOver);
-
-            // 外描边
-            g.setStroke(new BasicStroke(outerStrokeW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.setPaint(s.strokeOuter);
-            g.draw(outline);
-
-            // 内描边
-            g.setStroke(new BasicStroke(innerStrokeW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.setPaint(s.strokeInner);
-            g.draw(outline);
-
-            // 渐变填充
-            float gradY1 = (float) bounds.getMinY();
-            float gradY2 = (float) bounds.getMaxY();
-            g.setPaint(new LinearGradientPaint(
-                    0, gradY1, 0, gradY2,
-                    new float[]{0f, 1f},
-                    new Color[]{s.fillFrom, s.fillTo},
-                    CycleMethod.NO_CYCLE
-            ));
-            g.fill(outline);
+            switch (strokeStyle) {
+                case CLASSIC:
+                    drawTitleClassic(g, outline, bounds, fontSize, s);
+                    break;
+                case DOUBLE_LINE:
+                    drawTitleDoubleLine(g, outline, bounds, fontSize, s);
+                    break;
+                case SHADOW_HEAVY:
+                    drawTitleShadowHeavy(g, outline, bounds, fontSize, s);
+                    break;
+                case SHADOW_ONLY:
+                    drawTitleShadowOnly(g, outline, bounds, fontSize, s);
+                    break;
+            }
         } finally {
+            g.setStroke(oldStroke);
             g.setTransform(old);
             g.setPaint(oldPaint);
         }
     }
 
-    /** 副标题：圆角矩形 ribbon 背景 + 居中文字。 */
-    private static void drawSubtitleRibbon(
-            Graphics2D g, String text, Font font, float cx, float cy, ColorScheme s
+    /** 经典：外粗描边（深色）+ 内细描边（白）+ 渐变填充 + 轻阴影。 */
+    private static void drawTitleClassic(Graphics2D g, Shape outline, Rectangle2D bounds, float fontSize, ColorScheme s) {
+        float outerStrokeW = Math.max(4f, fontSize * 0.22f);
+        float innerStrokeW = Math.max(2f, fontSize * 0.10f);
+        float shadowOff = Math.max(2f, fontSize * 0.04f);
+        softShadow(g, outline, shadowOff, shadowOff, 0.55f, s.shadow);
+
+        g.setStroke(new BasicStroke(outerStrokeW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setPaint(s.strokeOuter);
+        g.draw(outline);
+
+        g.setStroke(new BasicStroke(innerStrokeW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setPaint(s.strokeInner);
+        g.draw(outline);
+
+        fillGradient(g, outline, bounds, s);
+    }
+
+    /** 双重：外描边深 + 中描边亮（accent）+ 内描边白 + 渐变填充。比 classic 多一层 accent 描边。 */
+    private static void drawTitleDoubleLine(Graphics2D g, Shape outline, Rectangle2D bounds, float fontSize, ColorScheme s) {
+        float outerW = Math.max(5f, fontSize * 0.26f);
+        float midW = Math.max(3f, fontSize * 0.16f);
+        float innerW = Math.max(2f, fontSize * 0.07f);
+        float shadowOff = Math.max(2f, fontSize * 0.05f);
+        softShadow(g, outline, shadowOff, shadowOff, 0.50f, s.shadow);
+
+        g.setStroke(new BasicStroke(outerW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setPaint(s.strokeOuter);
+        g.draw(outline);
+
+        g.setStroke(new BasicStroke(midW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setPaint(s.accent);
+        g.draw(outline);
+
+        g.setStroke(new BasicStroke(innerW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setPaint(s.strokeInner);
+        g.draw(outline);
+
+        fillGradient(g, outline, bounds, s);
+    }
+
+    /** 阴影偏移：大偏移阴影（漫画感）+ 单层外描边 + 渐变填充，没有内描边。 */
+    private static void drawTitleShadowHeavy(Graphics2D g, Shape outline, Rectangle2D bounds, float fontSize, ColorScheme s) {
+        float shadowDx = Math.max(6f, fontSize * 0.14f);
+        float shadowDy = Math.max(6f, fontSize * 0.14f);
+        // 硬阴影（高 alpha 实色，不模糊）
+        Paint oldPaint = g.getPaint();
+        var oldComp = g.getComposite();
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.90f));
+        g.setPaint(s.shadow);
+        AffineTransform shAt = AffineTransform.getTranslateInstance(shadowDx, shadowDy);
+        g.fill(shAt.createTransformedShape(outline));
+        g.setComposite(oldComp);
+        g.setPaint(oldPaint);
+
+        float outerW = Math.max(4f, fontSize * 0.20f);
+        g.setStroke(new BasicStroke(outerW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setPaint(s.strokeOuter);
+        g.draw(outline);
+
+        fillGradient(g, outline, bounds, s);
+    }
+
+    /** 只有阴影：多向软阴影叠出"光晕" + 实色填充（取 fillTo），无描边。文学海报感。 */
+    private static void drawTitleShadowOnly(Graphics2D g, Shape outline, Rectangle2D bounds, float fontSize, ColorScheme s) {
+        // 多向偏移叠 6 个低 alpha 阴影，模拟 glow
+        float r = Math.max(3f, fontSize * 0.06f);
+        Color glow = s.shadow;
+        for (int i = 0; i < 8; i++) {
+            double a = i * Math.PI / 4;
+            float dx = (float) (Math.cos(a) * r);
+            float dy = (float) (Math.sin(a) * r);
+            softShadow(g, outline, dx, dy, 0.22f, glow);
+        }
+        // 实色填充：直接 fillTo 单色，保留可读
+        Paint oldP = g.getPaint();
+        g.setPaint(s.fillTo);
+        g.fill(outline);
+        g.setPaint(oldP);
+    }
+
+    private static void softShadow(Graphics2D g, Shape outline, float dx, float dy, float alpha, Color color) {
+        Paint oldP = g.getPaint();
+        var oldComp = g.getComposite();
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+        g.setPaint(color);
+        AffineTransform at = AffineTransform.getTranslateInstance(dx, dy);
+        g.fill(at.createTransformedShape(outline));
+        g.setComposite(oldComp);
+        g.setPaint(oldP);
+    }
+
+    private static void fillGradient(Graphics2D g, Shape outline, Rectangle2D bounds, ColorScheme s) {
+        float gradY1 = (float) bounds.getMinY();
+        float gradY2 = (float) bounds.getMaxY();
+        g.setPaint(new LinearGradientPaint(
+                0, gradY1, 0, gradY2,
+                new float[]{0f, 1f},
+                new Color[]{s.fillFrom, s.fillTo},
+                CycleMethod.NO_CYCLE));
+        g.fill(outline);
+    }
+
+    // ── 绘制：副标题 / Tag ──────────────────────────────────────────────────
+
+    private static void drawSubtitle(
+            Graphics2D g, String text, Font font, float cx, float cy, ColorScheme s, SubStyle style
     ) {
         FontRenderContext frc = g.getFontRenderContext();
         TextLayout tl = new TextLayout(text, font, frc);
@@ -281,31 +645,52 @@ public class BannerRenderer {
 
         Paint oldPaint = g.getPaint();
         try {
-            // ribbon 背景：accent 色
-            g.setPaint(s.accent);
-            RoundRectangle2D ribbon = new RoundRectangle2D.Float(rectX, rectY, rectW, rectH, rectH * 0.5f, rectH * 0.5f);
-            g.fill(ribbon);
-
-            // ribbon 描边
-            g.setStroke(new BasicStroke(Math.max(2f, font.getSize2D() * 0.10f)));
-            g.setPaint(s.strokeOuter);
-            g.draw(ribbon);
-
-            // 文字
-            g.setPaint(contrastForeground(s.accent));
-            float textX = (float) (cx - b.getCenterX());
-            float textY = (float) (cy - b.getCenterY());
-            tl.draw(g, textX, textY);
+            switch (style) {
+                case RIBBON: {
+                    g.setPaint(s.accent);
+                    RoundRectangle2D ribbon = new RoundRectangle2D.Float(rectX, rectY, rectW, rectH, rectH * 0.5f, rectH * 0.5f);
+                    g.fill(ribbon);
+                    g.setStroke(new BasicStroke(Math.max(2f, font.getSize2D() * 0.10f)));
+                    g.setPaint(s.strokeOuter);
+                    g.draw(ribbon);
+                    g.setPaint(contrastForeground(s.accent));
+                    tl.draw(g, (float) (cx - b.getCenterX()), (float) (cy - b.getCenterY()));
+                    break;
+                }
+                case BAR: {
+                    g.setPaint(s.accent);
+                    RoundRectangle2D bar = new RoundRectangle2D.Float(rectX, rectY, rectW, rectH, rectH * 0.15f, rectH * 0.15f);
+                    g.fill(bar);
+                    g.setPaint(contrastForeground(s.accent));
+                    tl.draw(g, (float) (cx - b.getCenterX()), (float) (cy - b.getCenterY()));
+                    break;
+                }
+                case UNDERLINE: {
+                    g.setPaint(s.strokeOuter);
+                    tl.draw(g, (float) (cx - b.getCenterX()), (float) (cy - b.getCenterY()));
+                    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.85f));
+                    g.setPaint(s.accent);
+                    float underlineH = Math.max(3f, font.getSize2D() * 0.16f);
+                    float underlineY = cy + (float) b.getHeight() / 2f + font.getSize2D() * 0.10f;
+                    g.fillRoundRect(
+                            (int) (cx - b.getWidth() / 2 - padX * 0.3f),
+                            (int) underlineY,
+                            (int) (b.getWidth() + padX * 0.6f),
+                            (int) underlineH,
+                            6, 6);
+                    g.setComposite(AlphaComposite.SrcOver);
+                    break;
+                }
+            }
         } finally {
             g.setPaint(oldPaint);
         }
     }
 
-    /** 右上角小标签：圆角矩形 + 倾斜约 8 度。 */
     private static void drawTagPill(
-            Graphics2D g, String text, Font baseFont, int w, int h, ColorScheme s, int seedMix
+            Graphics2D g, String text, Font font, int w, int h,
+            ColorScheme s, TagCorner corner, int seedMix
     ) {
-        Font font = baseFont.deriveFont((float) (h * 0.10f));
         FontRenderContext frc = g.getFontRenderContext();
         TextLayout tl = new TextLayout(text, font, frc);
         var b = tl.getBounds();
@@ -314,10 +699,20 @@ public class BannerRenderer {
         float rectW = (float) b.getWidth() + padX * 2;
         float rectH = (float) b.getHeight() + padY * 2;
 
-        // 右上角，距边缘 4% 的留白
-        float anchorX = w - rectW / 2 - w * 0.04f;
-        float anchorY = rectH / 2 + h * 0.06f;
-        // seed 决定倾斜方向（左偏 or 右偏 4~10 度）
+        float margin = w * 0.04f;
+        float anchorX, anchorY;
+        switch (corner) {
+            case TOP_LEFT:
+                anchorX = rectW / 2 + margin; anchorY = rectH / 2 + h * 0.06f; break;
+            case TOP_RIGHT:
+                anchorX = w - rectW / 2 - margin; anchorY = rectH / 2 + h * 0.06f; break;
+            case BOTTOM_LEFT:
+                anchorX = rectW / 2 + margin; anchorY = h - rectH / 2 - h * 0.06f; break;
+            case BOTTOM_RIGHT:
+            default:
+                anchorX = w - rectW / 2 - margin; anchorY = h - rectH / 2 - h * 0.06f; break;
+        }
+
         double angle = Math.toRadians(((seedMix & 1) == 0 ? -1 : 1) * (4 + (Math.abs(seedMix) % 7)));
 
         AffineTransform old = g.getTransform();
@@ -345,20 +740,172 @@ public class BannerRenderer {
         }
     }
 
-    // ── 字体 / 工具 ─────────────────────────────────────────────────────────
+    // ── 绘制：贴图挂件 ──────────────────────────────────────────────────────
 
-    /**
-     * 用 Java 逻辑字"SansSerif"或"Serif"，靠 JVM 自动 fallback 到 OS 安装的 CJK 字体
-     * （macOS=PingFang SC、Linux=Noto Sans CJK、Windows=Microsoft YaHei）。
-     * seed 决定选 SansSerif 还是 Serif，权重 5:1（serif 偶尔出现）。
-     */
-    private static Font pickFont(long seed, int style) {
-        int family = Math.floorMod(mix32(seed, 3), 6);
-        String name = family == 0 ? Font.SERIF : Font.SANS_SERIF;
-        return new Font(name, style, 64);  // size 占位，调用方会 deriveFont
+    private static void drawSticker(
+            Graphics2D g, int w, int h, ColorScheme s, StickerStyle style,
+            TagCorner corner, float size, int seedMix
+    ) {
+        float margin = w * 0.04f;
+        float anchorX, anchorY;
+        switch (corner) {
+            case TOP_LEFT:
+                anchorX = size / 2 + margin; anchorY = size / 2 + h * 0.06f; break;
+            case TOP_RIGHT:
+                anchorX = w - size / 2 - margin; anchorY = size / 2 + h * 0.06f; break;
+            case BOTTOM_LEFT:
+                anchorX = size / 2 + margin; anchorY = h - size / 2 - h * 0.06f; break;
+            case BOTTOM_RIGHT:
+            default:
+                anchorX = w - size / 2 - margin; anchorY = h - size / 2 - h * 0.06f; break;
+        }
+
+        AffineTransform old = g.getTransform();
+        Paint oldPaint = g.getPaint();
+        var oldStroke = g.getStroke();
+        try {
+            g.translate(anchorX, anchorY);
+            switch (style) {
+                case STAR_BURST:  drawStarBurst(g, size, s, seedMix); break;
+                case CIRCLE_SEAL: drawCircleSeal(g, size, s, seedMix); break;
+                case SPARKLES:    drawSparkles(g, size, s, seedMix); break;
+                case CHEVRONS:    drawChevrons(g, size, s, seedMix); break;
+                default: break;
+            }
+        } finally {
+            g.setStroke(oldStroke);
+            g.setTransform(old);
+            g.setPaint(oldPaint);
+        }
     }
 
-    /** 把 font 缩到 text 宽度 ≤ maxWidth，且 size ≤ targetSize。 */
+    /** 多角星 + 内圈圆点 + 微旋转，似促销爆炸星章。 */
+    private static void drawStarBurst(Graphics2D g, float size, ColorScheme s, int seedMix) {
+        double rot = Math.toRadians(((seedMix & 1) == 0 ? -1 : 1) * (3 + (Math.abs(seedMix) % 5)));
+        g.rotate(rot);
+        int points = 10;
+        float outerR = size / 2f;
+        float innerR = outerR * 0.55f;
+        Polygon star = new Polygon();
+        for (int i = 0; i < points * 2; i++) {
+            double a = i * Math.PI / points - Math.PI / 2;
+            float r = (i % 2 == 0) ? outerR : innerR;
+            star.addPoint((int) (Math.cos(a) * r), (int) (Math.sin(a) * r));
+        }
+        g.setPaint(s.tag);
+        g.fill(star);
+        g.setStroke(new BasicStroke(Math.max(2f, size * 0.04f)));
+        g.setPaint(s.strokeOuter);
+        g.draw(star);
+        g.setPaint(s.accent);
+        float innerDotR = outerR * 0.28f;
+        g.fill(new Ellipse2D.Float(-innerDotR, -innerDotR, innerDotR * 2, innerDotR * 2));
+    }
+
+    /** 圆形章：双圈，微旋转。 */
+    private static void drawCircleSeal(Graphics2D g, float size, ColorScheme s, int seedMix) {
+        double rot = Math.toRadians(((seedMix & 1) == 0 ? -1 : 1) * (4 + (Math.abs(seedMix) % 6)));
+        g.rotate(rot);
+        float r = size / 2f;
+        g.setPaint(s.tag);
+        g.fill(new Ellipse2D.Float(-r, -r, r * 2, r * 2));
+        g.setStroke(new BasicStroke(Math.max(2f, size * 0.05f)));
+        g.setPaint(s.strokeOuter);
+        g.draw(new Ellipse2D.Float(-r, -r, r * 2, r * 2));
+        float innerR = r * 0.74f;
+        g.setStroke(new BasicStroke(Math.max(2f, size * 0.04f)));
+        g.draw(new Ellipse2D.Float(-innerR, -innerR, innerR * 2, innerR * 2));
+        // 中心一个小方块强调（不放文字避免与 title 文字撞）
+        g.setPaint(s.accent);
+        float c = r * 0.25f;
+        g.fillRoundRect((int) -c, (int) -c, (int) (c * 2), (int) (c * 2), 4, 4);
+    }
+
+    /** 3 颗小星星散落，纯装饰。 */
+    private static void drawSparkles(Graphics2D g, float size, ColorScheme s, int seedMix) {
+        Random r = new Random(seedMix);
+        for (int i = 0; i < 3; i++) {
+            float scale = 0.4f + r.nextFloat() * 0.5f;
+            float dx = (r.nextFloat() - 0.5f) * size * 0.8f;
+            float dy = (r.nextFloat() - 0.5f) * size * 0.8f;
+            AffineTransform tx = AffineTransform.getTranslateInstance(dx, dy);
+            tx.scale(scale, scale);
+            tx.rotate(r.nextDouble() * Math.PI / 2);
+            Shape star = tx.createTransformedShape(makeFourPointStar(size * 0.5f));
+            g.setPaint(s.accent);
+            g.fill(star);
+            g.setStroke(new BasicStroke(Math.max(1.5f, size * 0.025f)));
+            g.setPaint(s.strokeOuter);
+            g.draw(star);
+        }
+    }
+
+    /** ">>" 双箭头簇，朝指定方向（seed 决定）。 */
+    private static void drawChevrons(Graphics2D g, float size, ColorScheme s, int seedMix) {
+        boolean flip = (seedMix & 1) == 0;
+        g.rotate(flip ? 0 : Math.PI);
+        g.setStroke(new BasicStroke(Math.max(3f, size * 0.10f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setPaint(s.strokeOuter);
+        float r = size * 0.40f;
+        // 第一个 chevron
+        Path2D p1 = new Path2D.Float();
+        p1.moveTo(-r * 0.5f, -r);
+        p1.lineTo(r * 0.3f, 0);
+        p1.lineTo(-r * 0.5f, r);
+        g.draw(p1);
+        // 第二个 chevron 偏右
+        Path2D p2 = new Path2D.Float();
+        p2.moveTo(r * 0.0f, -r);
+        p2.lineTo(r * 0.8f, 0);
+        p2.lineTo(r * 0.0f, r);
+        g.setPaint(s.accent);
+        g.draw(p2);
+    }
+
+    /** 简单 4 角小星形（位置 = 0,0 中心）。 */
+    private static Shape makeFourPointStar(float size) {
+        Path2D p = new Path2D.Float();
+        float outer = size;
+        float inner = size * 0.35f;
+        p.moveTo(0, -outer);
+        p.lineTo(inner, -inner);
+        p.lineTo(outer, 0);
+        p.lineTo(inner, inner);
+        p.lineTo(0, outer);
+        p.lineTo(-inner, inner);
+        p.lineTo(-outer, 0);
+        p.lineTo(-inner, -inner);
+        p.closePath();
+        return p;
+    }
+
+    // ── 字体构建 ─────────────────────────────────────────────────────────────
+
+    /**
+     * 按 FontProfile 派生字体。同 kind 池里如果有多个字体，按 {@code seedMix} 选具体一个 ——
+     * 这样 title / subtitle / tag 各自从 seed 抽，且不同请求能选到不同字体。
+     */
+    private Font buildFont(FontProfile p, float size, int seedMix) {
+        Font base;
+        List<FontRegistry.RegisteredFont> pool = fonts.byKind(p.kind);
+        if (!pool.isEmpty()) {
+            int idx = Math.floorMod(seedMix, pool.size());
+            base = pool.get(idx).font();
+        } else {
+            String family = (p.kind == FontRegistry.Kind.SERIF) ? Font.SERIF : Font.SANS_SERIF;
+            base = new Font(family, p.awtStyle, 64);
+        }
+        Font f = base.deriveFont(p.awtStyle, size);
+        if (p.tracking != 0f || p.posture != 0f || p.weight != null) {
+            Map<TextAttribute, Object> attrs = new HashMap<>();
+            if (p.tracking != 0f) attrs.put(TextAttribute.TRACKING, p.tracking);
+            if (p.posture != 0f)  attrs.put(TextAttribute.POSTURE, p.posture);
+            if (p.weight != null) attrs.put(TextAttribute.WEIGHT, p.weight);
+            f = f.deriveFont(attrs);
+        }
+        return f;
+    }
+
     private static Font autoFitFont(Graphics2D g, String text, Font base, double targetSize, double maxWidth) {
         Font f = base.deriveFont((float) targetSize);
         FontRenderContext frc = g.getFontRenderContext();
@@ -368,7 +915,8 @@ public class BannerRenderer {
         return f.deriveFont((float) (targetSize * scale));
     }
 
-    /** 简单亮度判定，给文字配反差色。 */
+    // ── 工具 ────────────────────────────────────────────────────────────────
+
     private static Color contrastForeground(Color bg) {
         double l = 0.2126 * bg.getRed() + 0.7152 * bg.getGreen() + 0.0722 * bg.getBlue();
         return l > 160 ? new Color(40, 20, 10) : Color.WHITE;
@@ -378,13 +926,20 @@ public class BannerRenderer {
         return Math.min(hi, Math.max(lo, v));
     }
 
-    /** 把任意 long seed 折成 32-bit 正数；salt 让同 seed 在不同点位上散开。 */
     private static int mix32(long seed, int salt) {
         long x = seed ^ ((long) salt * 0x9e3779b97f4a7c15L);
         x ^= (x >>> 33);
         x *= 0xff51afd7ed558ccdL;
         x ^= (x >>> 33);
         return (int) (x & 0x7fffffffL);
+    }
+
+    private static <T> T pickEnum(long seed, int salt, T[] values) {
+        return values[Math.floorMod(mix32(seed, salt), values.length)];
+    }
+
+    private static <T> T pickFrom(long seed, int salt, List<T> list) {
+        return list.get(Math.floorMod(mix32(seed, salt), list.size()));
     }
 
     private static ColorScheme scheme(
@@ -406,7 +961,6 @@ public class BannerRenderer {
         for (ColorScheme s : SCHEMES) {
             if (s.name().equalsIgnoreCase(name)) return s;
         }
-        // 找不到 → 按 hashCode 兜底
         return SCHEMES.get(Math.floorMod(name.hashCode(), SCHEMES.size()));
     }
 

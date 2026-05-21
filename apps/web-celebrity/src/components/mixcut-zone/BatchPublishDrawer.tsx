@@ -5,7 +5,7 @@
 // 调用 MixcutApi.publishBatch 把 outputs × targets 派单成 N×M 条 PublishJob。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Send, X, AlertCircle } from "lucide-react";
+import { Loader2, Send, X, AlertCircle, ShoppingBag } from "lucide-react";
 import { MixcutApi } from "@/api";
 import type { ScheduleSpec } from "@/api/mixcut";
 import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
@@ -97,6 +97,11 @@ export function BatchPublishDrawer({
   const [title, setTitle] = useState(effectiveDefaultTitle);
   const [description, setDescription] = useState("");
   const [tagsRaw, setTagsRaw] = useState("");
+  // v0.22: 抖音商品挂载（蓝V/橱窗带货）。仅当 selectedAccountIds 含至少一个 douyin
+  // 账号时显示；非带货视频留空即可。批量场景 = 同一商品挂到 N 条变体，所以这俩
+  // 字段是顶层 string 而非 per-output。
+  const [productLink, setProductLink] = useState("");
+  const [productTitle, setProductTitle] = useState("");
 
   // v0.20: 调度策略 ——「立即 / 单次定时 / 每日定时铺开」三选一。
   // 旧 scheduledEnabled + scheduledLocal 退役；single 分支保留 datetime-local 体验。
@@ -127,8 +132,19 @@ export function BatchPublishDrawer({
     setSelectedOutputs(publishable.map((p) => p.output_id));
     setResult(null);
     setSubmitError(null);
+    setProductLink("");
+    setProductTitle("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /** v0.22: 选中账号里是否至少一个抖音 —— 决定是否显示「抖音商品挂载」section。 */
+  const douyinSelected = useMemo(
+    () =>
+      accounts.some(
+        (a) => a.platform === "douyin" && selectedAccountIds.includes(a.id),
+      ),
+    [accounts, selectedAccountIds],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -199,6 +215,12 @@ export function BatchPublishDrawer({
 
       const schedule = buildScheduleSpec();
 
+      // v0.22: 抖音商品挂载顶层透传。非 douyin 平台 sau-service 会忽略，安全。
+      // 只在两项都非空时携带（半残挂件没有意义；上游单条 path 同样按 AND 触发）。
+      const productLinkTrimmed = productLink.trim();
+      const productTitleTrimmed = productTitle.trim();
+      const carryProduct = douyinSelected && productLinkTrimmed && productTitleTrimmed;
+
       const res = await MixcutApi.publishBatch({
         source_mixcut_job_id: effectiveSourceJobId,
         outputs: outputs.map((p) => ({
@@ -212,6 +234,8 @@ export function BatchPublishDrawer({
         targets,
         schedule,
         project_id: undefined,
+        product_link: carryProduct ? productLinkTrimmed : undefined,
+        product_title: carryProduct ? productTitleTrimmed : undefined,
       });
       setResult(res);
       onPublished?.(res);
@@ -502,6 +526,46 @@ export function BatchPublishDrawer({
                   />
                 </div>
               </section>
+
+              {/* v0.22: 抖音商品挂载 —— 仅当选中账号里至少一个 douyin 才出现。
+                  批量场景：同一商品挂到 N 条变体上，所以是顶层字段不是 per-output。
+                  非带货视频留空即可；任一字段为空时整组忽略，避免半残挂件。 */}
+              {douyinSelected ? (
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium flex items-center gap-1.5">
+                    <ShoppingBag className="size-3.5 text-muted-foreground" />
+                    抖音商品挂载
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground -mt-1">
+                    蓝V / 橱窗带货；视频画面下方挂「立即购买」卡片。两项都填才会触发挂件；
+                    非抖音平台账号 sau-service 会自动忽略。
+                  </p>
+                  <div>
+                    <label className="text-xs text-muted-foreground">商品链接</label>
+                    <input
+                      type="url"
+                      value={productLink}
+                      onChange={(e) => setProductLink(e.target.value)}
+                      placeholder="抖店商品详情页 URL，例 https://haohuo.jinritemai.com/..."
+                      className="w-full mt-1 px-3 py-2 text-sm rounded-md border border-border bg-background"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">商品名</label>
+                    <input
+                      type="text"
+                      value={productTitle}
+                      onChange={(e) => setProductTitle(e.target.value)}
+                      placeholder="挂件文案，例：限时 5 折 · 立即抢购"
+                      maxLength={50}
+                      className="w-full mt-1 px-3 py-2 text-sm rounded-md border border-border bg-background"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      最长 50 字；将作为视频底部「立即购买」按钮上方的商品标题展示。
+                    </p>
+                  </div>
+                </section>
+              ) : null}
 
               {/* v0.20: 调度策略 */}
               <ScheduleEditor

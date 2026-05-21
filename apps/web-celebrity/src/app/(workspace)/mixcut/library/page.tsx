@@ -29,6 +29,7 @@ import type {
   RenderOutput,
 } from "@/components/mixcut-zone/types";
 import { formatDuration, relativeTime, formatBytes } from "@/components/mixcut-zone/lib/utils";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 type TopTab = "assets" | "videos" | "official";
 
@@ -127,6 +128,7 @@ function AssetsTab() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { confirm, ConfirmHost } = useConfirm();
 
   useEffect(() => {
     if (assets[sub] === null) {
@@ -154,7 +156,13 @@ function AssetsTab() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("确定删除该素材？已使用此素材的历史任务不受影响（仅影响新任务）。")) return;
+    const ok = await confirm({
+      title: "删除该素材？",
+      description: "已使用此素材的历史任务不受影响，仅影响后续新任务。",
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await MixcutApi.deleteAsset(id);
       setAssets((s) => ({ ...s, [sub]: (s[sub] ?? []).filter((a) => a.id !== id) }));
@@ -258,6 +266,7 @@ function AssetsTab() {
           </TabsContent>
         ))}
       </Tabs>
+      <ConfirmHost />
     </div>
   );
 }
@@ -447,6 +456,7 @@ function MyVideosTab() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { confirm, ConfirmHost } = useConfirm();
 
   const load = async () => {
     try {
@@ -497,13 +507,18 @@ function MyVideosTab() {
 
   const handleDelete = async (outputId: string) => {
     if (deletingId) return;
-    if (
-      !confirm(
-        "删除这条视频？删除后 30 天内可联系客服恢复，30 天后将自动清理。\n\n注：已分发的历史任务不受影响。",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "删除这条视频？",
+      description: (
+        <>
+          <p>删除后 30 天内可联系客服恢复，30 天后将自动清理。</p>
+          <p className="text-muted-foreground/80 mt-1">已分发的历史任务不受影响。</p>
+        </>
+      ),
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
     setDeletingId(outputId);
     try {
       await MixcutApi.deleteOutput(outputId);
@@ -570,6 +585,7 @@ function MyVideosTab() {
           ))}
         </div>
       )}
+      <ConfirmHost />
     </div>
   );
 }

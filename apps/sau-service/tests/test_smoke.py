@@ -222,6 +222,41 @@ def test_real_login_drivers_implement_full_surface() -> None:
     assert set(DRIVERS) >= {"douyin", "shipinhao"}
 
 
+def test_xiaohongshu_overrides_prepare_profile_view() -> None:
+    """XHS 是目前唯一已知 post-login landing 不展示 小红书号 的平台，必须重写
+    `prepare_profile_view` 主动导航到 /setting/profile 之类的账号信息页。
+    其它平台默认 noop 没问题（头部已自带 nickname + id）。"""
+    from sau_service.login_pool import (
+        DRIVERS,
+        PlatformDriver,
+        XiaohongshuDriver,
+    )
+
+    # classmethod 描述符在不同 class 上是不同的 bound 对象 —— 用 __func__
+    # 比较底层函数本体。
+    base_fn = PlatformDriver.prepare_profile_view.__func__
+    xhs_fn = XiaohongshuDriver.prepare_profile_view.__func__
+    assert xhs_fn is not base_fn, (
+        "XiaohongshuDriver must override prepare_profile_view "
+        "(post-login landing page does not render 小红书号)"
+    )
+    # 候选 URL 列表至少含一个 /creator 或 /setting 路径
+    candidates = XiaohongshuDriver.PROFILE_VIEW_URL_CANDIDATES
+    assert candidates, "PROFILE_VIEW_URL_CANDIDATES must not be empty"
+    assert all(c.startswith("https://creator.xiaohongshu.com/") for c in candidates), (
+        f"All candidate URLs must be on creator.xiaohongshu.com: {candidates}"
+    )
+
+    # 其它非 XHS driver 默认 noop —— 不要无脑给所有 driver 都加导航。
+    for name, cls in DRIVERS.items():
+        if name == "xiaohongshu":
+            continue
+        assert cls.prepare_profile_view.__func__ is base_fn, (
+            f"{name} driver unexpectedly overrides prepare_profile_view; "
+            "header chrome 已经自带 nickname + id，不需要额外导航"
+        )
+
+
 def test_douyin_profile_text_helpers_parse_creator_header() -> None:
     from sau_service.login_pool import (
         _extract_labeled_account_id,
@@ -235,6 +270,31 @@ def test_douyin_profile_text_helpers_parse_creator_header() -> None:
     assert _extract_text_before_label("用户7030315623774 抖音号：1794189054", "抖音号") == "用户7030315623774"
     assert _extract_text_before_label("加载中，请稍候...", "抖音号") is None
     assert _is_placeholder_profile_text("加载中，请稍候...")
+
+
+def test_non_douyin_profile_text_helpers_parse_creator_headers() -> None:
+    """视频号 / 快手 / 小红书 创作者中心都把 显示名 + 平台编号 排成
+    "<昵称> | <编号label>：<编号>" 的样式（或浮窗 tooltip 里同样的格式）。
+    复用 Douyin 的 _extract_* helpers，只换 label 列表即可。"""
+    from sau_service.login_pool import (
+        _extract_labeled_account_id,
+        _extract_text_before_label,
+    )
+
+    # 视频号 - "<昵称> | 视频号 ID: <id>"
+    text = "AI明星实验室 | 视频号 ID: shipinhao_demo_001 | 简介"
+    assert _extract_labeled_account_id(text, ("视频号 ID", "视频号ID", "视频号")) == "shipinhao_demo_001"
+    assert _extract_text_before_label(text, "视频号 ID") == "AI明星实验室"
+
+    # 快手 - "<昵称> | 快手号: <id>"
+    text = "酷酷的小李 | 快手号：kuaishou_demo_001"
+    assert _extract_labeled_account_id(text, ("快手号", "快手 ID")) == "kuaishou_demo_001"
+    assert _extract_text_before_label(text, "快手号") == "酷酷的小李"
+
+    # 小红书 - "<昵称> | 小红书号: <id>"
+    text = "种草达人 | 小红书号：xhs_demo_001"
+    assert _extract_labeled_account_id(text, ("小红书号", "小红书 ID", "Red ID")) == "xhs_demo_001"
+    assert _extract_text_before_label(text, "小红书号") == "种草达人"
 
 
 def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:

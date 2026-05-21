@@ -252,6 +252,8 @@ public class MixcutRenderingService {
             int variantIndex = i;
             File outFile = new File(outDir, "v" + (i + 1) + ".mp4");
             ObjectNode transforms = mapper.createObjectNode();
+            // v0.23: 让前端 / 调试时一眼看见是不是用了 demo 兜底（没绑视频导致）。
+            transforms.put("base_video_source", resolved.usedDemoFallback ? "demo_fallback" : "user_upload");
 
             // v0.16+: 为本变体出 picgen 图，合入 overlays（base overlays 不可变，复制后追加再排）
             List<OverlaySpec> variantOverlays = resolved.overlays;
@@ -368,7 +370,10 @@ public class MixcutRenderingService {
             List<File> videos,
             List<OverlaySpec> overlays,
             File bgm,
-            List<PicgenSlotSpec> picgenSlots
+            List<PicgenSlotSpec> picgenSlots,
+            /** v0.23: true 表示 videos 用了 demo fallback（用户没绑定任何 layer_type=video 的素材）。
+             *  落到 applied_transforms.base_video_source 让前端能区分「真的用户视频」vs「demo 兜底」。 */
+            boolean usedDemoFallback
     ) {}
 
     /**
@@ -738,8 +743,17 @@ public class MixcutRenderingService {
 
         overlays.sort(Comparator.comparingInt(OverlaySpec::zIndex));
 
-        // 底层视频为空 → demo fallback
+        // 底层视频为空 → demo fallback。这是一个明显的「内容兜底」事件：
+        // 用户的 slot_bindings 里没有 layer_type=video 的条目（要么模板没有 video slot，
+        // 要么有但 required=false 且用户没绑）。WARN 一下 + 在 applied_transforms 里
+        // 留 base_video_source=demo_fallback，前端能据此提示用户"看到的是演示视频"。
+        boolean usedDemoFallback = false;
         if (videos.isEmpty()) {
+            usedDemoFallback = true;
+            log.warn(
+                    "[mixcut] job={} 没有用户绑定的视频素材（视频位为空或未填），回退到 demo showreel。"
+                            + " 检查模板 layer_type=video 的 slot 是否 required + 用户是否已绑定。",
+                    job.getId());
             File demoDir = locateDemoVideosDir();
             if (demoDir != null && demoDir.isDirectory()) {
                 File[] files = demoDir.listFiles(
@@ -747,7 +761,7 @@ public class MixcutRenderingService {
                 if (files != null) for (File f : files) videos.add(f);
             }
         }
-        return new ResolvedBindings(videos, overlays, bgm, picgenSlots);
+        return new ResolvedBindings(videos, overlays, bgm, picgenSlots, usedDemoFallback);
     }
 
     private static String blankToNull(String s) {
