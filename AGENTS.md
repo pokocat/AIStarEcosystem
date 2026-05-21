@@ -566,20 +566,80 @@ openapi       : SocialAccount schema 增 platformAccountId
 - 这是 best-effort profile：平台 DOM 或权限不同会导致字段为空；禁止用 `accountName` 伪装平台昵称。
 - 各平台 driver 各自实现选择器和文本解析。抖音字段叫「抖音号」，小红书 / 视频号等平台可继续映射到统一 `platformAccountId`。
 
-<<<<<<< HEAD
-### v0.20（2026-05-20）— 分发定时策略升级（每日铺开 + 随机抖动）
-
-v0.15 的「定时发布」只支持一个 `datetime-local` —— N×M 派单同一时刻起飞。v0.20 引入完整 cadence 策略：把 N 条 mixcut 变体按「每天 K 次 × D 天」铺到未来时间槽，可选随机抖动。`PublishJob` / `PublishJobScheduler` 零改动，错峰 `scheduledAt` 直接走现有调度。
-=======
 ### v0.18（2026-05-20）— sau-service 上传超时保护
 
 `pokocat/social-auto-upload` 上游的 `DouYinVideo.upload()` / `TencentVideo.upload()` 内部"点击发布按钮"是 `while True` 无限循环，平台 selector 失效或视频审核久挂时会一直输出 `🏃 小人正在冲刺发布视频` 卡死。sau-service 包一层 timeout + cancel-aware race + publishing watchdog。
->>>>>>> 63aa57de97474cf61df6811cdfcbce8ae24402aa
 
 **新增 / 修改**：
 
 ```
-<<<<<<< HEAD
+sau-service : uploader.py +_run_upstream_upload helper (asyncio.wait race + sliced loop)
+            : publishing watchdog（60s 后 push status=publishing/80）
+            : cancel_event race（用户取消能真打断进行中的 upstream upload）
+            : SAU_UPLOAD_TIMEOUT_S / SAU_UPLOAD_PUBLISHING_AFTER_S 两 env
+```
+
+### v0.19（2026-05-20）— 视频库允许再次分发 + 发布短信验证码人机交互
+
+两块独立子改动归到同一 v 节（README.md / 部署日志已经合并）：
+
+**A. 视频库允许再次分发 · 派发计数落库**
+
+废止 v0.16 的 localStorage 去重（`aep:distribute:published-output-ids` 已彻底删除）。视频库默认显示全部可发变体（含已派发过的），同一变体可再次分发到新账号 / 新时间窗。派发记忆改走 server。
+
+```
+server        : MixcutRenderOutput +publishCount (@ColumnDefault("0")) / +lastPublishedAt 列
+              : MixcutRenderOutputDto 同步 publish_count / last_published_at
+              : MixcutPublishService 注入 MixcutRenderOutputRepository
+              :   每条 output 派单成功后按 target 数累加 publishCount + setLastPublishedAt(now)
+              :   tracker 写库失败只 log（不阻塞派单结果）
+web-celebrity : mixcut-zone/types.ts#RenderOutput +publish_count? / +last_published_at?
+              : distribution/DistributeWorkbench.tsx 删除 PUBLISHED_KEY / publishedIds / loadPublished / persistPublished
+              :   工具条按钮翻为「显示全部 / 仅未发布」二态（默认 OFF = 显示全部）
+              :   GridView / GroupView 用 output.publish_count 渲染「已发 ×N」徽标 + hover tooltip 相对时间
+              :   handlePublished 改为 load() 重新拉 jobs，徽标实时升级
+```
+
+**B. 发布短信验证码人机交互**
+
+平台风控触发"输入短信验证码"弹窗时，sau-service 检测后推 `awaiting_user` 状态到 server，前端弹起输入框让用户提交；提交回 sau-service 把 code 填进 page、关闭弹窗，上游 upload retry 循环自然继续。MVP 整 stack 通；selector 占位待真实 DOM 抓取后接入。
+
+```
+packages/types : PublishJobStatus +awaiting_user；InteractionRequired；SubmitPublishJobInteractionInput
+                : PublishJob.interactionRequired?，PublishJobCallback.interactionRequired?
+server          : PublishJobStatus +AWAITING_USER（状态机双向：UPLOADING/TRANSCODING/PUBLISHING ↔ AWAITING_USER ↔ UPLOADING/PUBLISHING/LIVE）
+                : PublishJob +interaction_required（TEXT JSON 列）
+                : POST /api/me/publish-jobs/{id}/interact { code }
+                : SauServiceClient.submitInteraction
+sau-service     : interaction.py（SmsInteractionDriver Protocol + _PlaceholderSmsDriver）
+                : uploader.py 加 SMS watcher coroutine（detect → request_sms → await user code → submit_code → is_cleared）
+                : _hook_chromium_for_page_capture context manager（monkey-patch playwright.chromium.launch 抓取上游 page）
+                : POST /tasks/{id}/interaction { code }
+                : SAU_INTERACTION_USER_TIMEOUT_S / SAU_INTERACTION_POLL_INTERVAL_S 两 env
+                : awaiting_user 期间 UPLOAD_TIMEOUT_S 暂停计时
+web-celebrity   : SmsInteractionDialog 弹窗（脱敏手机号、6 位输入、5min 倒计时、Enter 提交、auto-complete one-time-code）
+                : PublishJobList awaiting_user STATUS_META、行内「输入验证码」按钮、自动弹窗
+admin           : PublishJobStatus +awaiting_user、PUBLISH_JOB_STATUS 表加 "待输入验证码"、tab + inflight 计数同步
+openapi         : PublishJobStatus enum 加 awaiting_user；InteractionRequired schema；/me/publish-jobs/{id}/interact path
+```
+
+**注意事项**：
+
+- 入库默认值靠 Hibernate `@ColumnDefault("0")`；ddl-auto=update 时 H2/MySQL 都能为现存行补 0。
+- `bumpPublishTracker` 单条 try/catch；output 不存在或保存失败只 log，业务结果不回滚。
+- BatchPublishDrawer 接口不变；唯一行为变化是它的 onPublished 回调里上游会 refetch jobs。
+- 「显示全部」是默认 / 推荐状态。「仅未发布」仅在用户主动收窄时启用，按 `publish_count === 0` 过滤。
+- **MVP selector 占位**：`_PlaceholderSmsDriver.detect()` 永远返回 None，所以 awaiting_user 路径在生产**还不会触发**。整 stack 已联通；要真启用需要在抖音/视频号触发风控、抓 SMS 弹窗 DOM、替换 placeholder 为真实 selector driver。
+- **upstream 不暴露 page**：`DouYinVideo.upload(playwright)` 把 browser/context/page 全留在局部变量。我们靠 `_hook_chromium_for_page_capture` monkey-patch `chromium.launch` 捕获 Browser 引用，poll `browser.contexts → pages` 拿 page。per-task scope（finally 复原），不影响并发，但耦合 upstream 当前用 `launch()` 而非 `launch_persistent_context()`。如果上游改了，需要更新 helper。长期方案是 fork upstream patch `upload()` 接受 `on_page` callback。
+- **超时倒计时双源**：前端 `SmsInteractionDialog.USER_INPUT_TIMEOUT_S=300` 必须与 sau-service `SAU_INTERACTION_USER_TIMEOUT_S=300` 同步；否则会出现一端认为已超时而另一端还在等待的撕裂。
+
+### v0.20（2026-05-20）— 分发定时策略升级（每日铺开 + 随机抖动）
+
+v0.15 的「定时发布」只支持一个 `datetime-local` —— N×M 派单同一时刻起飞。v0.20 引入完整 cadence 策略：把 N 条 mixcut 变体按「每天 K 次 × D 天」铺到未来时间槽，可选随机抖动。`PublishJob` / `PublishJobScheduler` 零改动，错峰 `scheduledAt` 直接走现有调度。
+
+**新增 / 修改**：
+
+```
 server  : MixcutPublishBatchRequest +schedule: ScheduleSpec 顶层字段（sealed interface +
         :   Immediate / Single(at) / DailyRecurring(startDate, timeSlots, timezone, maxDays, jitterMinutes)）
         : MixcutPublishBatchRequest.TargetItem -scheduledAt （时间不再 per-account）
@@ -604,68 +664,6 @@ web-celebrity:
 - `outputs[]` 顺序变成业务语义：i 决定 day_offset 与 slot 索引。前端勾选顺序即铺开顺序，PRODUCT.md / 抽屉提示均说明「按勾选顺序铺开」。
 - jitter 用 `ThreadLocalRandom`：不可重放。未来若要可复算，引 `seed = hash(projectId, i)`。
 - 显式 out-of-scope：campaign 级别取消（`/distribution?tab=tracking` 单条 cancel 仍可用）、ShedLock、跨账号错峰、interval / random_window / weekly 等扩展策略（discriminator 预留扩展位）。
-
-### v0.19（2026-05-20）— 视频库允许再次分发 · 派发计数落库
-
-废止 v0.16 的 localStorage 去重（`aep:distribute:published-output-ids` 已彻底删除）。视频库默认显示全部可发变体（含已派发过的），同一变体可再次分发到新账号 / 新时间窗。派发记忆改走 server。
-=======
-sau-service : uploader.py +_run_upstream_upload helper (asyncio.wait race + sliced loop)
-            : publishing watchdog（60s 后 push status=publishing/80）
-            : cancel_event race（用户取消能真打断进行中的 upstream upload）
-            : SAU_UPLOAD_TIMEOUT_S / SAU_UPLOAD_PUBLISHING_AFTER_S 两 env
-```
-
-### v0.19（2026-05-20）— 发布短信验证码人机交互
-
-平台风控触发"输入短信验证码"弹窗时，sau-service 检测后推 `awaiting_user` 状态到 server，前端弹起输入框让用户提交；提交回 sau-service 把 code 填进 page、关闭弹窗，上游 upload retry 循环自然继续。MVP 整 stack 通；selector 占位待真实 DOM 抓取后接入。
->>>>>>> 63aa57de97474cf61df6811cdfcbce8ae24402aa
-
-**新增 / 修改**：
-
-```
-<<<<<<< HEAD
-server        : MixcutRenderOutput +publishCount (@ColumnDefault("0")) / +lastPublishedAt 列
-              : MixcutRenderOutputDto 同步 publish_count / last_published_at
-              : MixcutPublishService 注入 MixcutRenderOutputRepository
-              :   每条 output 派单成功后按 target 数累加 publishCount + setLastPublishedAt(now)
-              :   tracker 写库失败只 log（不阻塞派单结果）
-web-celebrity : mixcut-zone/types.ts#RenderOutput +publish_count? / +last_published_at?
-              : distribution/DistributeWorkbench.tsx 删除 PUBLISHED_KEY / publishedIds / loadPublished / persistPublished
-              :   工具条按钮翻为「显示全部 / 仅未发布」二态（默认 OFF = 显示全部）
-              :   GridView / GroupView 用 output.publish_count 渲染「已发 ×N」徽标 + hover tooltip 相对时间
-              :   handlePublished 改为 load() 重新拉 jobs，徽标实时升级
-=======
-packages/types : PublishJobStatus +awaiting_user；InteractionRequired；SubmitPublishJobInteractionInput
-                : PublishJob.interactionRequired?，PublishJobCallback.interactionRequired?
-server          : PublishJobStatus +AWAITING_USER（状态机双向：UPLOADING/TRANSCODING/PUBLISHING ↔ AWAITING_USER ↔ UPLOADING/PUBLISHING/LIVE）
-                : PublishJob +interaction_required（TEXT JSON 列）
-                : POST /api/me/publish-jobs/{id}/interact { code }
-                : SauServiceClient.submitInteraction
-sau-service     : interaction.py（SmsInteractionDriver Protocol + _PlaceholderSmsDriver）
-                : uploader.py 加 SMS watcher coroutine（detect → request_sms → await user code → submit_code → is_cleared）
-                : _hook_chromium_for_page_capture context manager（monkey-patch playwright.chromium.launch 抓取上游 page）
-                : POST /tasks/{id}/interaction { code }
-                : SAU_INTERACTION_USER_TIMEOUT_S / SAU_INTERACTION_POLL_INTERVAL_S 两 env
-                : awaiting_user 期间 UPLOAD_TIMEOUT_S 暂停计时
-web-celebrity   : SmsInteractionDialog 弹窗（脱敏手机号、6 位输入、5min 倒计时、Enter 提交、auto-complete one-time-code）
-                : PublishJobList awaiting_user STATUS_META、行内「输入验证码」按钮、自动弹窗
-admin           : PublishJobStatus +awaiting_user、PUBLISH_JOB_STATUS 表加 "待输入验证码"、tab + inflight 计数同步
-openapi         : PublishJobStatus enum 加 awaiting_user；InteractionRequired schema；/me/publish-jobs/{id}/interact path
->>>>>>> 63aa57de97474cf61df6811cdfcbce8ae24402aa
-```
-
-**注意事项**：
-
-<<<<<<< HEAD
-- 入库默认值靠 Hibernate `@ColumnDefault("0")`；ddl-auto=update 时 H2/MySQL 都能为现存行补 0。
-- `bumpPublishTracker` 单条 try/catch；output 不存在或保存失败只 log，业务结果不回滚。
-- BatchPublishDrawer 接口不变；唯一行为变化是它的 onPublished 回调里上游会 refetch jobs。
-- 「显示全部」是默认 / 推荐状态。「仅未发布」仅在用户主动收窄时启用，按 `publish_count === 0` 过滤。
-=======
-- **MVP selector 占位**：`_PlaceholderSmsDriver.detect()` 永远返回 None，所以 awaiting_user 路径在生产**还不会触发**。整 stack 已联通；要真启用需要在抖音/视频号触发风控、抓 SMS 弹窗 DOM、替换 placeholder 为真实 selector driver。
-- **upstream 不暴露 page**：`DouYinVideo.upload(playwright)` 把 browser/context/page 全留在局部变量。我们靠 `_hook_chromium_for_page_capture` monkey-patch `chromium.launch` 捕获 Browser 引用，poll `browser.contexts → pages` 拿 page。per-task scope（finally 复原），不影响并发，但耦合 upstream 当前用 `launch()` 而非 `launch_persistent_context()`。如果上游改了，需要更新 helper。长期方案是 fork upstream patch `upload()` 接受 `on_page` callback。
-- **超时倒计时双源**：前端 `SmsInteractionDialog.USER_INPUT_TIMEOUT_S=300` 必须与 sau-service `SAU_INTERACTION_USER_TIMEOUT_S=300` 同步；否则会出现一端认为已超时而另一端还在等待的撕裂。
->>>>>>> 63aa57de97474cf61df6811cdfcbce8ae24402aa
 
 ### admin sidebar 启用状态
 
