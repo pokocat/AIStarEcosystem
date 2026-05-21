@@ -136,6 +136,31 @@ export function BatchPublishDrawer({
       .finally(() => setLoadingAccounts(false));
   }, [open]);
 
+  // ─── v0.20: 每日定时铺开 - 自动建议天数 + 预览 ──────────────
+  // 注意：这两个 hook（useEffect + useMemo）必须留在 `if (!open) return null` 之前，
+  // 否则 drawer 关闭/打开切换时 hook 数量变化 → React 报 "change in the order of Hooks"。
+  // 历史 bug：v0.20 把它们放在了 early-return 之后（紧贴使用点），打开抽屉就崩。
+  const slotCount = sortDedupSlots(timeSlots).length;
+
+  // 若用户没手改过 maxDays，根据选中数量自动建议
+  useEffect(() => {
+    if (strategy !== "daily_recurring" || capMode !== "days") return;
+    if (maxDaysDirtyRef.current) return;
+    if (slotCount === 0 || selectedOutputs.length === 0) return;
+    const suggested = Math.min(30, Math.max(1, Math.ceil(selectedOutputs.length / slotCount)));
+    setMaxDays((cur) => (cur === suggested ? cur : suggested));
+  }, [strategy, capMode, slotCount, selectedOutputs.length]);
+
+  const dailyPreview = useMemo(() => {
+    if (strategy !== "daily_recurring") return null;
+    return expandDailyRecurringPreview(
+      selectedOutputs.length,
+      timeSlots,
+      startDate,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
+  }, [strategy, selectedOutputs.length, timeSlots, startDate]);
+
   if (!open) return null;
 
   const toggleOutput = (id: string) => {
@@ -205,28 +230,7 @@ export function BatchPublishDrawer({
     return spec;
   };
 
-  // ─── v0.20: 每日定时铺开 - 自动建议天数 + 预览 + 容量校验 ──────────────
-  const slotCount = sortDedupSlots(timeSlots).length;
-
-  // 若用户没手改过 maxDays，根据选中数量自动建议
-  useEffect(() => {
-    if (strategy !== "daily_recurring" || capMode !== "days") return;
-    if (maxDaysDirtyRef.current) return;
-    if (slotCount === 0 || selectedOutputs.length === 0) return;
-    const suggested = Math.min(30, Math.max(1, Math.ceil(selectedOutputs.length / slotCount)));
-    setMaxDays((cur) => (cur === suggested ? cur : suggested));
-  }, [strategy, capMode, slotCount, selectedOutputs.length]);
-
-  const dailyPreview = useMemo(() => {
-    if (strategy !== "daily_recurring") return null;
-    return expandDailyRecurringPreview(
-      selectedOutputs.length,
-      timeSlots,
-      startDate,
-      Intl.DateTimeFormat().resolvedOptions().timeZone,
-    );
-  }, [strategy, selectedOutputs.length, timeSlots, startDate]);
-
+  // ─── v0.20: 每日定时铺开 - 容量校验（slotCount / 自动建议 / 预览 hook 已上移到 early-return 之前） ─
   // 容量超限：仅在「持续 N 天」模式生效
   const capacityShortfall = (() => {
     if (strategy !== "daily_recurring" || capMode !== "days") return null;
