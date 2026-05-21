@@ -347,6 +347,120 @@ public class MixcutAssetService {
         return deleteInternal(opt.get());
     }
 
+    // ─── v0.21+ 官方明星片段（运营上传，用户只读消费） ─────────────────────────
+
+    /** 公开列表：所有 isOfficial=true 的素材，可按 category / starId 过滤。 */
+    public List<MixcutAsset> listOfficial(String category, String relatedStarId) {
+        boolean hasCat = category != null && !category.isBlank();
+        boolean hasStar = relatedStarId != null && !relatedStarId.isBlank();
+        if (hasCat && hasStar) {
+            return repo.findByIsOfficialTrueAndOfficialCategoryAndRelatedStarIdOrderByUploadedAtDesc(category, relatedStarId);
+        }
+        if (hasCat) {
+            return repo.findByIsOfficialTrueAndOfficialCategoryOrderByUploadedAtDesc(category);
+        }
+        if (hasStar) {
+            return repo.findByIsOfficialTrueAndRelatedStarIdOrderByUploadedAtDesc(relatedStarId);
+        }
+        return repo.findByIsOfficialTrueOrderByUploadedAtDesc();
+    }
+
+    /**
+     * 运营上传官方明星片段。文件落到 ./mixcut-assets/official/<category>/<storedName>。
+     * kind 默认 "video"（也允许 image/sticker，但当前主要是直播切片 mp4）。
+     */
+    @Transactional
+    public MixcutAsset uploadOfficial(MultipartFile file, String kind, String category,
+                                      String relatedStarId, String displayName, String tags) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("文件不能为空");
+        }
+        if (category == null || category.isBlank()) {
+            throw new IllegalArgumentException("official_category 必填");
+        }
+        String safeKind = validateKind(kind == null || kind.isBlank() ? "video" : kind);
+        validateMime(safeKind, file.getContentType());
+        if (file.getSize() > props.getMaxAssetBytes()) {
+            throw new IllegalArgumentException("文件超过最大限制 " + props.getMaxAssetBytes() + " 字节");
+        }
+        String safeCategory = sanitize(category).toLowerCase(Locale.ROOT);
+        String id = "official_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String ext = guessExt(file.getOriginalFilename(), file.getContentType());
+        String storedName = id + ext;
+
+        File catDir = new File(new File(props.getAssetDir(), "official"), safeCategory);
+        if (!catDir.exists() && !catDir.mkdirs()) {
+            throw new IOException("Cannot create official dir: " + catDir.getAbsolutePath());
+        }
+        File target = new File(catDir, storedName);
+        try (var in = file.getInputStream()) {
+            Files.copy(in, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        // 视频用 ffprobe 探时长；同时抽第一帧做预览图
+        double duration = 0;
+        if ("video".equals(safeKind) || "bgm".equals(safeKind)) {
+            duration = ffmpeg.probeDurationSec(target);
+        }
+        String publicUrl = props.getAssetPublicUrlBase() + "/official/" + safeCategory + "/" + storedName;
+        String previewUrl = generatePreview(target, catDir, id, "official_" + safeCategory);
+
+        MixcutAsset asset = new MixcutAsset();
+        asset.setId(id);
+        asset.setUserId(null);
+        asset.setKind(safeKind);
+        asset.setName((displayName != null && !displayName.isBlank())
+                ? displayName.trim()
+                : (file.getOriginalFilename() != null ? file.getOriginalFilename() : storedName));
+        asset.setOriginalName(file.getOriginalFilename());
+        asset.setMimeType(file.getContentType());
+        asset.setFileSize(file.getSize());
+        asset.setDuration(duration);
+        asset.setTags(tags == null ? null : tags.trim());
+        asset.setLocalPath(target.getAbsolutePath());
+        asset.setFileUrl(publicUrl);
+        asset.setPreviewUrl(previewUrl);
+        asset.setUploadedAt(OffsetDateTime.now());
+        asset.setPreset(false);
+        asset.setPresetGroup(null);
+        asset.setOfficial(true);
+        asset.setOfficialCategory(safeCategory);
+        asset.setRelatedStarId(relatedStarId == null || relatedStarId.isBlank() ? null : relatedStarId.trim());
+
+        log.info("[mixcut] official clip uploaded id={} cat={} star={} kind={} → {}",
+                id, safeCategory, relatedStarId, safeKind, target.getAbsolutePath());
+        return repo.save(asset);
+    }
+
+    /** 运营更新官方片段 metadata（不改文件）。 */
+    @Transactional
+    public Optional<MixcutAsset> updateOfficialMeta(String id, String name, String category,
+                                                   String relatedStarId, String tags) {
+        return repo.findById(id)
+                .filter(MixcutAsset::isOfficial)
+                .map(a -> {
+                    if (name != null && !name.isBlank()) a.setName(name.trim());
+                    if (category != null && !category.isBlank()) {
+                        a.setOfficialCategory(sanitize(category).toLowerCase(Locale.ROOT));
+                    }
+                    if (relatedStarId != null) {
+                        a.setRelatedStarId(relatedStarId.isBlank() ? null : relatedStarId.trim());
+                    }
+                    if (tags != null) a.setTags(tags.isBlank() ? null : tags.trim());
+                    return repo.save(a);
+                });
+    }
+
+    /** 运营删除官方片段（admin only）。 */
+    @Transactional
+    public boolean deleteOfficial(String id) {
+        Optional<MixcutAsset> opt = repo.findById(id);
+        if (opt.isEmpty()) return false;
+        MixcutAsset a = opt.get();
+        if (!a.isOfficial()) return false;
+        return deleteInternal(a);
+    }
+
     // ── 内部 ───────────────────────────────────────────────────────────────────
 
     private String validateKind(String kind) {

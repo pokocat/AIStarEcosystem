@@ -254,8 +254,8 @@ export function BatchPublishDrawer({
     strategy === "immediate"
       ? null
       : strategy === "single"
-        ? "单次定时"
-        : `每日铺开 · 每天 ${slotCount} 次`;
+        ? "定时分发"
+        : `分期分发 · 每天 ${slotCount} 次`;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -265,9 +265,9 @@ export function BatchPublishDrawer({
       <div className="relative ml-auto h-full w-[560px] max-w-[95vw] bg-background border-l border-border shadow-2xl flex flex-col overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">批量发布</h2>
+            <h2 className="text-lg font-semibold tracking-tight">分发视频</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              选择变体 × 账号 = {totalJobs} 条发布任务
+              视频 × 账号 = {totalJobs} 条分发任务
               {strategyChip && totalJobs > 0 && ` · ${strategyChip}`}
             </p>
           </div>
@@ -284,7 +284,7 @@ export function BatchPublishDrawer({
               {/* Variants */}
               <section>
                 <header className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium">变体 ({publishable.length} 可发)</h3>
+                  <h3 className="text-sm font-medium">视频 ({publishable.length} 条可分发)</h3>
                   <div className="flex gap-1">
                     <button
                       type="button"
@@ -307,7 +307,7 @@ export function BatchPublishDrawer({
                   <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 flex items-start gap-2">
                     <AlertCircle className="size-4 shrink-0 mt-0.5" />
                     <div>
-                      视频还在合成中，请稍候再试。可以回到任务详情页看看渲染进度。
+                      视频还在生成，请稍后再来。可以回到任务详情看进度。
                     </div>
                   </div>
                 ) : (
@@ -346,7 +346,7 @@ export function BatchPublishDrawer({
                 )}
                 {skippedCount > 0 && (
                   <p className="text-[11px] text-muted-foreground mt-1.5">
-                    另有 {skippedCount} 条还没合成完成，已跳过
+                    另有 {skippedCount} 条还没生成完成，已跳过
                   </p>
                 )}
               </section>
@@ -538,7 +538,7 @@ export function BatchPublishDrawer({
           ) : (
             <>
               <div className="text-xs text-muted-foreground">
-                共 <span className="font-mono font-semibold text-foreground">{totalJobs}</span> 条发布任务
+                共 <span className="font-mono font-semibold text-foreground">{totalJobs}</span> 条分发任务
               </div>
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={onClose} disabled={submitting}>
@@ -552,7 +552,7 @@ export function BatchPublishDrawer({
                   ) : (
                     <>
                       <Send className="size-4" />{" "}
-                      {strategy === "immediate" ? "立即派单" : strategy === "single" ? "定时派单" : "铺开派单"}
+                      {strategy === "immediate" ? "立即分发" : strategy === "single" ? "定时分发" : "分期分发"}
                     </>
                   )}
                 </Button>
@@ -572,10 +572,10 @@ function ResultSummary({ result }: { result: MixcutApi.MixcutPublishBatchResult 
     <div className="space-y-3">
       <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3">
         <div className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-          已成功派单 {successCount} 条
+          已成功提交 {successCount} 条分发
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          可到 <a href="/distribution/jobs" className="underline">任务追踪</a> 查看进度。
+          可到 <a href="/distribution/jobs" className="underline">分发进度</a> 查看实时状态。
         </p>
       </div>
       {failedCount > 0 && (
@@ -655,27 +655,27 @@ function ScheduleEditor(props: ScheduleEditorProps) {
     <section className="space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium">
         <Clock className="size-3.5" />
-        发布时机
+        分发节奏
       </div>
 
       {/* 三选一 radio pill */}
       <div className="grid grid-cols-3 gap-1.5">
         <StrategyPill
           active={strategy === "immediate"}
-          label="立即发布"
-          desc="马上派单起飞"
+          label="立即分发"
+          desc="马上开始发布"
           onClick={() => onStrategyChange("immediate")}
         />
         <StrategyPill
           active={strategy === "single"}
-          label="单次定时"
+          label="定时分发"
           desc="所有任务同一时刻"
           onClick={() => onStrategyChange("single")}
         />
         <StrategyPill
           active={strategy === "daily_recurring"}
-          label="每日铺开"
-          desc="按节奏跨天派单"
+          label="分期分发"
+          desc="按节奏跨天发"
           onClick={() => onStrategyChange("daily_recurring")}
         />
       </div>
@@ -690,7 +690,7 @@ function ScheduleEditor(props: ScheduleEditorProps) {
             className="px-3 py-1.5 text-sm rounded-md border border-border bg-background"
           />
           <p className="text-[11px] text-muted-foreground">
-            使用本地时区（{tz}），提交时转 UTC；后台扫描器到点自动起飞。
+            按你的本地时间（{tz}）执行；到点后系统会自动开始分发。
           </p>
         </div>
       )}
@@ -865,23 +865,23 @@ function ScheduleEditor(props: ScheduleEditorProps) {
               <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
               <div>
                 视频超过容量：{capacityShortfall.selected} 条 &gt;{" "}
-                {capacityShortfall.maxDays} 天 × {capacityShortfall.slotCount} 槽 ={" "}
-                {capacityShortfall.cap} 容量。
+                {capacityShortfall.maxDays} 天 × {capacityShortfall.slotCount} 时段 ={" "}
+                {capacityShortfall.cap} 条容量。
                 <br />
-                请增加天数 / 时段，或减少选中变体。
+                请增加天数 / 时段，或减少所选视频。
               </div>
             </div>
           ) : preview && selectedOutputCount > 0 ? (
             <div className="text-[11px] text-violet-700 bg-violet-50 border border-violet-200 rounded-md p-2.5 space-y-0.5">
               <div>
-                共 <b>{preview.totalJobs}</b> 条变体 · 跨{" "}
+                共 <b>{preview.totalJobs}</b> 条视频 · 跨{" "}
                 <b>{preview.totalDays}</b> 天
               </div>
               <div>
                 首条 {formatPreviewSlot(preview.firstSlotAt, preview.firstSlotInPast)} · 末条{" "}
                 {formatPreviewSlot(preview.lastSlotAt, false)}
                 {jitterEnabled && jitterMinutes > 0 && (
-                  <span className="text-violet-500"> · ±{jitterMinutes} 分钟抖动</span>
+                  <span className="text-violet-500"> · ±{jitterMinutes} 分钟内随机</span>
                 )}
               </div>
               <div className="text-[10px] text-muted-foreground">

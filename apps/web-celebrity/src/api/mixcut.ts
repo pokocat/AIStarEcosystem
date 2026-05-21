@@ -184,6 +184,22 @@ export async function listPresetStickers(group?: string): Promise<MixcutAsset[]>
 }
 
 /**
+ * v0.21+: 列出官方明星片段（is_official=true 的 MixcutAsset，运营后台上传）。
+ * 用户端只读消费；按 category（直播切片 / 综艺 / 访谈等）/ starId 过滤。
+ */
+export async function listOfficialClips(filter?: {
+  category?: string;
+  starId?: string;
+}): Promise<MixcutAsset[]> {
+  if (USE_LOCAL) return mockDelay([]);
+  const qs = new URLSearchParams();
+  if (filter?.category) qs.set("category", filter.category);
+  if (filter?.starId) qs.set("star_id", filter.starId);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return apiFetch<MixcutAsset[]>(`/mixcut/assets/official-clips${suffix}`);
+}
+
+/**
  * 上传素材（multipart）。
  *  - file：MultipartFile（必填）
  *  - kind：video / image / sticker / bgm（必填）
@@ -227,6 +243,28 @@ export async function uploadAsset(params: {
 export async function deleteAsset(id: string): Promise<boolean> {
   if (USE_LOCAL) return mockDelay(true);
   return apiFetch<boolean>(`/mixcut/assets/${id}`, { method: "DELETE" });
+}
+
+/**
+ * v0.21+: 软删一条已生成视频（render output）。
+ * 删除后该 output 立即从「视频库」列表消失；server 端 30 天后由清理调度器物理清理
+ * （删本地 mp4 + CDN + DB 行）。中间 30 天可联系客服恢复。
+ */
+export async function deleteOutput(outputId: string): Promise<boolean> {
+  if (USE_LOCAL) {
+    // local 模式：直接从内存 jobs 中过滤掉该 output
+    const jobs = loadJobs();
+    let mutated = false;
+    for (const j of jobs) {
+      if (!j.outputs) continue;
+      const before = j.outputs.length;
+      j.outputs = j.outputs.filter((o) => o.id !== outputId);
+      if (j.outputs.length !== before) mutated = true;
+    }
+    if (mutated) saveJobs();
+    return mockDelay(true);
+  }
+  return apiFetch<boolean>(`/mixcut/outputs/${outputId}`, { method: "DELETE" });
 }
 
 // ── 模板编辑 / 另存为 ───────────────────────────────────────────────────────

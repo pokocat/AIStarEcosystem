@@ -72,6 +72,25 @@ public class MixcutAsset {
     @Column(length = 512)
     private String previewUrl;
 
+    /**
+     * v0.21+: 是否为「官方明星片段」。
+     * 由运营后台 (admin) 上传，平台所有用户可见消费但不可删 / 改。kind 通常为 video。
+     * 与 isPreset（v0.13 贴图池）是两套互斥的「平台公共素材」：
+     *   isPreset=true  → 扰动贴图池（GIF overlay）
+     *   isOfficial=true → 官方明星视频片段（用户做混剪时的可选素材源）
+     */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private boolean isOfficial = false;
+
+    /** v0.21+: 官方片段分类，例如「直播切片」「综艺」「访谈」「短视频」等。 */
+    @Column(length = 32)
+    private String officialCategory;
+
+    /** v0.21+: 关联的明星 id（CelebrityStar.id）；可空（混合 / 不绑定明星）。 */
+    @Column(length = 64)
+    private String relatedStarId;
+
     // ── getters / setters ─────────────────────────────────────────────────────
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -117,4 +136,13 @@ public class MixcutAsset {
 
     public String getPreviewUrl() { return previewUrl; }
     public void setPreviewUrl(String previewUrl) { this.previewUrl = previewUrl; }
+
+    public boolean isOfficial() { return isOfficial; }
+    public void setOfficial(boolean official) { isOfficial = official; }
+
+    public String getOfficialCategory() { return officialCategory; }
+    public void setOfficialCategory(String officialCategory) { this.officialCategory = officialCategory; }
+
+    public String getRelatedStarId() { return relatedStarId; }
+    public void setRelatedStarId(String relatedStarId) { this.relatedStarId = relatedStarId; }
 }

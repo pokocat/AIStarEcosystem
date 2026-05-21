@@ -76,6 +76,12 @@ public class MixcutRenderOutput {
     /** v0.19+: 最近一次成功派发的时间；从未派发则为 null。 */
     private OffsetDateTime lastPublishedAt;
 
+    /**
+     * v0.21+: 软删时间。用户在视频库点删除后置非空；30 天后由清理调度器
+     * 物理删除（删本地文件 + CDN + DB 行）。所有列表 / dto 查询默认过滤 deletedAt IS NULL。
+     */
+    private OffsetDateTime deletedAt;
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
@@ -129,4 +135,7 @@ public class MixcutRenderOutput {
 
     public OffsetDateTime getLastPublishedAt() { return lastPublishedAt; }
     public void setLastPublishedAt(OffsetDateTime lastPublishedAt) { this.lastPublishedAt = lastPublishedAt; }
+
+    public OffsetDateTime getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(OffsetDateTime deletedAt) { this.deletedAt = deletedAt; }
 }

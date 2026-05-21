@@ -37,13 +37,13 @@ interface Props {
 const SUBPAGE_LABEL: Record<DistributionSubpage, string> = {
   workbench: "分发工作台",
   accounts: "账号管理",
-  jobs: "任务追踪",
+  jobs: "分发进度",
 };
 
 const SUBPAGE_DESC: Record<DistributionSubpage, string> = {
-  workbench: "跨任务挑选已渲染的混剪变体，配文案 / 选账号 / 定时一键派单。",
-  accounts: "管理已绑定的社交账号，验证 cookie / 解绑 / 新增绑定。",
-  jobs: "看每条分发任务的实时进度，按状态过滤，必要时重试或取消。",
+  workbench: "挑选已生成的视频，绑账号、配文案，一次分发到多个平台。",
+  accounts: "管理已绑定的社交账号，新增绑定 / 解绑 / 重新验证。",
+  jobs: "查看每条分发任务的实时进度，按状态过滤，可重试或取消。",
 };
 
 export function DistributionShell({ subpage, fromJobId }: Props) {
@@ -104,10 +104,10 @@ export function DistributionShell({ subpage, fromJobId }: Props) {
             type="button"
             onClick={() => setManualOpen(true)}
             className={cn(CTA_SECONDARY, "shrink-0")}
-            title="不依赖混剪 / 项目，直接粘贴视频 URL 派单"
+            title="不走视频库，直接粘贴外部视频链接分发"
           >
             <Plus className="h-3.5 w-3.5" />
-            手动分发
+            上传链接分发
           </button>
         </div>
 
@@ -123,10 +123,10 @@ export function DistributionShell({ subpage, fromJobId }: Props) {
             onClick={() => router.push("/distribution/accounts")}
           />
           <StatChip
-            label="可发变体"
+            label="可分发视频"
             value={eligibleVariants}
             tone="sky"
-            hint="CDN 已就绪 · 可立即派单"
+            hint="已生成 · 可立即分发"
             active={subpage === "workbench"}
             onClick={() => router.push("/distribution")}
           />
@@ -134,7 +134,7 @@ export function DistributionShell({ subpage, fromJobId }: Props) {
             label="进行中任务"
             value={inflightCount}
             tone={inflightCount > 0 ? "amber" : "zinc"}
-            hint="排队 / 上传 / 发布中"
+            hint="正在分发到各平台"
             active={subpage === "jobs"}
             onClick={() => router.push("/distribution/jobs")}
           />

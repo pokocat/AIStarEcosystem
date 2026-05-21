@@ -6,9 +6,9 @@
 // onBound 回调插入头部，避免再次拉网络。
 
 import * as React from "react";
-import { Trash2, ShieldCheck, Plus, RefreshCw } from "lucide-react";
-import { SocialAccountApi } from "@ai-star-eco/api-client";
-import type { SocialAccount, SocialAccountStatus } from "@ai-star-eco/types/social-account";
+import { Trash2, ShieldCheck, Plus, RefreshCw, QrCode } from "lucide-react";
+import { SocialAccountApi, ApiError } from "@ai-star-eco/api-client";
+import type { SocialAccount, SocialAccountStatus, SocialPlatform } from "@ai-star-eco/types/social-account";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { BindAccountDialog } from "./BindAccountDialog";
@@ -52,6 +52,12 @@ export function SocialAccountList({ onAccountsChange }: Props) {
   /** 同时只允许一个 fetch 在飞；避免点按钮的瞬间撞上自动 tick 导致两次同时拉。 */
   const inFlightRef = React.useRef(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  /** 续绑模式：从 PENDING 行点验证 → 带原 platform/accountName 重开 dialog。
+   *  null 即新建绑定。dialog 关闭时清空，下次新建从空表单开始。 */
+  const [dialogPrefill, setDialogPrefill] = React.useState<{
+    platform: SocialPlatform;
+    accountName: string;
+  } | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
   /**
@@ -131,13 +137,38 @@ export function SocialAccountList({ onAccountsChange }: Props) {
     onAccountsChange?.(next);
   };
 
-  const verify = async (id: string) => {
-    setBusyId(id);
+  /** 打开续绑 dialog：把原 platform + accountName 带过去。 */
+  const openResumeBind = React.useCallback((acc: SocialAccount) => {
+    setDialogPrefill({ platform: acc.platform, accountName: acc.accountName });
+    setDialogOpen(true);
+  }, []);
+
+  /**
+   * 处理"账号操作"按钮：
+   *   - active   → 调 /verify 刷新 lastVerifiedAt（或翻 expired）
+   *   - pending  → 直接重开 BindAccountDialog（之前的 PENDING 行无 cookie，验证只会报错）
+   *   - expired / banned → 同样重开 BindAccountDialog 引导重新扫码
+   *
+   * Server 仍可能因为竞态返回 ACCOUNT_NOT_BOUND (409)；defensively 兜底也走重绑。
+   */
+  const handleAccountAction = async (acc: SocialAccount) => {
+    if (acc.status !== "active") {
+      openResumeBind(acc);
+      return;
+    }
+    setBusyId(acc.id);
     try {
-      const updated = await SocialAccountApi.verifySocialAccount(id);
-      const next = accounts.map((a) => (a.id === id ? updated : a));
+      const updated = await SocialAccountApi.verifySocialAccount(acc.id);
+      const next = accounts.map((a) => (a.id === acc.id ? updated : a));
       setAccounts(next);
       onAccountsChange?.(next);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "ACCOUNT_NOT_BOUND") {
+        // 列表上看着是 active 但后端已经清了 cookie —— 引导用户重绑。
+        openResumeBind(acc);
+      } else {
+        throw e;
+      }
     } finally {
       setBusyId(null);
     }
@@ -169,7 +200,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
             </span>
           </div>
           <p className="text-xs text-zinc-500 mt-0.5">
-            仅绑定本人持有的账号；cookie 在服务端加密存储，前端永远不接触明文。每 30 秒自动同步一次。
+            仅绑定本人持有的账号；账号凭据已加密存储，平台密码全程不接触。状态自动同步。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -195,7 +226,14 @@ export function SocialAccountList({ onAccountsChange }: Props) {
             />
             {refreshing ? "刷新中…" : "刷新"}
           </button>
-          <button type="button" className={CTA_PRIMARY} onClick={() => setDialogOpen(true)}>
+          <button
+            type="button"
+            className={CTA_PRIMARY}
+            onClick={() => {
+              setDialogPrefill(null);
+              setDialogOpen(true);
+            }}
+          >
             <Plus className="h-3.5 w-3.5" /> 新增绑定
           </button>
         </div>
@@ -258,24 +296,37 @@ export function SocialAccountList({ onAccountsChange }: Props) {
                   </p>
                 </div>
                 <div className="flex gap-1">
-                  <button
-                    type="button"
-                    aria-label="验证"
-                    title="验证 cookie 是否仍有效"
-                    disabled={busyId === a.id}
-                    className={cn(CTA_SECONDARY, "px-2.5 py-1.5 text-xs")}
-                    onClick={() => verify(a.id)}
-                  >
-                    {busyId === a.id ? (
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                    )}
-                  </button>
+                  {a.status === "active" ? (
+                    <button
+                      type="button"
+                      aria-label="验证"
+                      title="重新验证账号登录是否仍然有效"
+                      disabled={busyId === a.id}
+                      className={cn(CTA_SECONDARY, "px-2.5 py-1.5 text-xs")}
+                      onClick={() => void handleAccountAction(a)}
+                    >
+                      {busyId === a.id ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label="重新扫码绑定"
+                      title="该账号尚未完成绑定 / 已失效；点此重新扫码"
+                      disabled={busyId === a.id}
+                      className={cn(CTA_SECONDARY, "px-2.5 py-1.5 text-xs")}
+                      onClick={() => openResumeBind(a)}
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-label="解绑"
-                    title="解绑账号 (密文 cookie 一并删除)"
+                    title="解绑账号（凭据将一并清除）"
                     disabled={busyId === a.id}
                     className={cn(CTA_SECONDARY, "px-2.5 py-1.5 text-xs hover:border-rose-300 hover:text-rose-600")}
                     onClick={() => unbind(a.id)}
@@ -289,7 +340,15 @@ export function SocialAccountList({ onAccountsChange }: Props) {
         </ul>
       )}
 
-      <BindAccountDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onBound={handleBound} />
+      <BindAccountDialog
+        open={dialogOpen}
+        onClose={() => {
+          setDialogOpen(false);
+          setDialogPrefill(null);
+        }}
+        onBound={handleBound}
+        prefill={dialogPrefill}
+      />
     </section>
   );
 }

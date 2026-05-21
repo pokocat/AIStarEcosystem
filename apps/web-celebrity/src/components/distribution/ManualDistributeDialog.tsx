@@ -176,9 +176,9 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3.5">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-800">手动分发</h2>
+            <h2 className="text-sm font-semibold text-zinc-800">上传链接分发</h2>
             <p className="text-xs text-zinc-500">
-              不依赖项目 / 混剪库，直接粘视频 URL + 选账号一键派单
+              不走视频库，直接粘外部视频链接 + 选账号一键分发
             </p>
           </div>
           <button
@@ -194,7 +194,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
         {/* Body */}
         <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
           {/* 1. 视频源 */}
-          <Section title="视频源" sub="sau worker 会拉到 /dev/shm 后上传">
+          <Section title="视频源" sub="系统会下载该视频后转发到所选平台">
             <div className="flex items-start gap-2">
               <Link2 className="mt-2 h-3.5 w-3.5 shrink-0 text-zinc-400" />
               <input
@@ -383,7 +383,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 border-t border-zinc-200 bg-zinc-50/60 px-5 py-3">
           <div className="text-[11px] text-zinc-500">
-            将创建 {targets.length} 条任务；启动时按平台单价扣费。
+            将创建 {targets.length} 条分发任务；启动时按平台单价扣积分。
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className={CTA_SECONDARY}>
@@ -400,7 +400,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> 创建中…
                 </>
               ) : (
-                "创建任务"
+                "开始分发"
               )}
             </button>
           </div>

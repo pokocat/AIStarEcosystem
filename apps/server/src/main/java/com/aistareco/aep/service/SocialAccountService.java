@@ -173,6 +173,33 @@ public class SocialAccountService {
         }
     }
 
+    /**
+     * 取消正在进行的扫码绑定。
+     *
+     * 用户在前端关闭/取消扫码弹窗时调用：
+     *   1. 先调 sau-service /login/cancel 把对应 playwright 进程 (chromium + context) 杀掉
+     *   2. 若对应 entity 仍是 PENDING 且尚无密文 cookie，删行避免脏数据
+     *      （已经 success 翻 ACTIVE 的不动 —— 那是用户已经成功的账号）
+     *
+     * 完全幂等：ticket 已过期 / 不属于当前用户 / 行已不存在，均静默成功。
+     * sau-service 调用失败也只 warn 不抛 —— 用户感知是 dialog 关上了。
+     */
+    @Transactional
+    public void cancelBind(String userId, String ticket) {
+        if (userId == null || userId.isBlank() || ticket == null || ticket.isBlank()) return;
+        try {
+            sau.loginCancel(ticket);
+        } catch (Exception e) {
+            // 不阻塞用户：playwright 这边即便没杀掉，sweep_expired 也会 TTL 后兜底
+        }
+        repo.findByIdAndUserId(ticket, userId).ifPresent(entity -> {
+            if (entity.getStatus() == SocialAccountStatus.PENDING
+                    && entity.getStorageStateEncrypted() == null) {
+                repo.delete(entity);
+            }
+        });
+    }
+
     @Transactional
     public SocialAccountDto verify(String userId, String accountId) {
         SocialAccount entity = repo.findByIdAndUserId(accountId, userId)

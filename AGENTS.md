@@ -665,6 +665,79 @@ web-celebrity:
 - jitter 用 `ThreadLocalRandom`：不可重放。未来若要可复算，引 `seed = hash(projectId, i)`。
 - 显式 out-of-scope：campaign 级别取消（`/distribution?tab=tracking` 单条 cancel 仍可用）、ShedLock、跨账号错峰、interval / random_window / weekly 等扩展策略（discriminator 预留扩展位）。
 
+### v0.21（2026-05-21）— 混剪 / 分发用户视角文案 + 视频库 + 官方明星片段
+
+Celebrity 子产品的混剪与分发交互整改一次性合并：术语全面 review、清理无效按钮、引入「视频库 + 软删」与「官方明星片段」两个新模块、配额条下线、模板新建不再有副作用。
+
+**A. 文案与术语全面 review（仅 web-celebrity）**
+
+| 旧术语 | 新术语 |
+|---|---|
+| 变体 / variant / output | 视频 / 第 N 条 |
+| 派单 / 发布 / 分发 | 统一对外「分发」；后台执行说「发布到 XX 平台」 |
+| 任务 / job | 「生成任务」（混剪侧）/「分发任务」（分发侧） |
+| 手动分发 | 上传链接分发 |
+| CDN 已就绪 | 已生成 · 可立即分发 |
+| cookie 加密存储 | 账号凭据已加密存储 |
+| 立即派单 / 定时派单 / 铺开派单 | 立即分发 / 定时分发 / 分期分发 |
+| 渲染节点 / sau-service / 轮询 2.5 秒 | 不暴露 |
+
+涉及文件：`DistributionPage` / `DistributeWorkbench` / `BatchPublishDrawer` / `PublishJobList` / `SocialAccountList` / `ManualDistributeDialog` / `BindAccountDialog` / `mixcut/jobs/[id]/job-detail-client`。
+
+**B. 混剪本月配额下线**
+
+- 删 `MixcutHomePage` 的 `QuotaIndicator`，换为纯统计 `MonthlyStats`（本月已生成 N 条视频 + 累计 M 个任务）。
+- 积分余额由 app 顶部钱包入口统一承载，不再混进混剪工作台。
+
+**C. 混剪视频库 + 已生成视频软删（30 天硬删）**
+
+- server: `MixcutRenderOutput` +`deletedAt`；新 `DELETE /api/me/mixcut/outputs/{outputId}`；DTO 转换层过滤 `deletedAt != null` 的 output。
+- 新文件 `apps/server/.../service/mixcut/MixcutOutputCleanupScheduler.java`：`@Scheduled(cron="0 30 3 * * *")` 每日 03:30 扫 30 天前软删行 → 删本地 mp4 / 缩略图 → 调 `CdnUploader.delete(cdnKey)` → 删 DB 行（best-effort）。
+- web-celebrity: `/mixcut/library` 改造顶层 tab「我的素材 / 我的视频 / 官方明星片段」；新 `MyVideosTab` 列已生成视频卡片网格 + 单条删除（confirm 文案明示「30 天可恢复」）。
+- `DistributeWorkbench` 右栏 help 加超链 `/mixcut/library?tab=videos`。
+
+**D. 官方明星片段专区（运营上传 / 用户只读）**
+
+- server: 复用 `MixcutAsset` +`isOfficial` / `officialCategory` / `relatedStarId`。新 admin endpoints `/api/admin/mixcut/official-clips`（POST multipart / GET / PUT / DELETE）+ 公开 `GET /api/mixcut/assets/official-clips?category=&star_id=`。文件落 `./mixcut-assets/official/<category>/`。
+- admin: 新页 `apps/admin/src/app/celebrity/mixcut-official-clips/page.tsx`（列表 + 上传 dialog + 行级编辑 + 删除）；`apps/admin/src/constants/nav.ts` 在「明星带货」组追加菜单。
+- web-celebrity: `OfficialClipsTab` 真后端拉取 + 分类 chip 筛选 + 只读卡片网格。
+
+**E. 新建模板不再自动落库**
+
+- 模板列表「新建」按钮改为 `router.push("/mixcut/templates/new")`，不再调 `saveTemplate`。
+- 新文件 `apps/web-celebrity/src/app/(workspace)/mixcut/templates/new/page.tsx` 渲染 `<TemplateDetailClient mode="new" />`。
+- `template-detail-client.tsx` 加 `mode?: "view" | "new"` prop：new 模式用 `useMemo` 生成内存默认模板、跳过 server fetch、自动进编辑态、顶部草稿横幅、保存按钮 → `router.replace("/mixcut/templates/{id}/edit")`、取消按钮 → 返回列表无残留。
+- 隐藏「另存为」「删除」按钮（草稿不适用）。
+
+**F. 任务详情页清理无效按钮**
+
+`apps/web-celebrity/src/app/(workspace)/mixcut/jobs/[id]/job-detail-client.tsx`：
+- 删「全部打包下载」/「再生成一批」/顶部 Trash2 三个空 onClick 按钮。
+- 复制按钮 onClick 接 `navigator.clipboard.writeText(job.id)`。
+- 「渲染节点」row 删除（内部信息），「本次消耗 X 条额度」改「X 积分」。
+
+**G. 分发工作台默认按任务视图**
+
+`DistributeWorkbench.tsx` L78：`useState<ViewMode>("grid")` → `"group"`。
+
+**H. 分发工作台 → 视频库超链入口** （已在 C 中覆盖）
+
+**API 契约同步**：
+
+- `DELETE /me/mixcut/outputs/{outputId}` — 已生成视频软删
+- `GET /mixcut/assets/official-clips?category=&star_id=` — 公开列表
+- `GET/POST /admin/mixcut/official-clips` + `PUT/DELETE /admin/mixcut/official-clips/{id}` — 运营管理
+- `MixcutAsset` schema 加 `is_official / official_category / related_star_id`
+- `MixcutRenderOutput` schema 加 `deleted_at`
+
+**注意事项**：
+
+- 软删 30 天保留期靠 `@Scheduled` cron。多实例部署需 ShedLock（沿用 PublishJobScheduler 同样的待办）。
+- `MixcutOutputCleanupScheduler` 单条 IO 失败 log + 继续，DB 行保留下次重试。
+- 「我的视频」tab 直接 `MixcutApi.listJobs()` 拍平所有 outputs（DTO 已过滤软删），不新增专门 endpoint。
+- 官方明星片段与 v0.13 的 `isPreset`（扰动贴图池）是两套互斥标记：`isPreset=true` → GIF overlay；`isOfficial=true` → 用户可用作混剪源的明星视频片段。
+- 模板新建走 `/mixcut/templates/new` 路由，详情页 `mode="new"` 时 template_id 是前端 nanoid 生成的，第一次 saveTemplate 时 server 以该 id upsert。取消则前端 state 丢弃，**完全不落库**。
+
 ### admin sidebar 启用状态
 
 启用：Platform / Artists / **Celebrity**（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）/ Distribution / Finance（含 recharge-packages）/ Notifications / Audit / 平台 > AI 模型。

@@ -60,6 +60,19 @@ public class MixcutController {
                 id, req.progress(), req.status(), currentUserId(principal)).orElse(null));
     }
 
+    /**
+     * v0.21+: 软删一条已生成视频（render output）。
+     * 调用后立即从前端「视频库」列表消失，30 天内可联系客服恢复，30 天后由调度器物理清理。
+     */
+    @DeleteMapping("/outputs/{outputId}")
+    public ApiResponse<Boolean> softDeleteOutput(
+            @PathVariable String outputId,
+            Principal principal
+    ) {
+        boolean ok = service.softDeleteOutput(outputId, currentUserId(principal));
+        return ApiResponse.of(ok);
+    }
+
     private static String currentUserId(Principal principal) {
         return principal == null ? null : principal.getName();
     }

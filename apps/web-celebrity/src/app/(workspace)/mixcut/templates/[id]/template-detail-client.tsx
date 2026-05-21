@@ -136,20 +136,49 @@ const CANVAS_PRESETS: { label: string; w: number; h: number; sub: string; group:
 export function TemplateDetailClient({
   id,
   initialEdit = false,
+  mode = "view",
 }: {
   id: string;
   /** /edit 路由传 true 自动进入编辑态。?edit=1 旧 query 也兼容。 */
   initialEdit?: boolean;
+  /**
+   * v0.21+：mode="new" 时使用内存默认模板，**不调 server**；
+   * 第一次保存才会真正落库（避免空模板残留在列表里）。
+   */
+  mode?: "view" | "new";
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // /edit 路由或 ?edit=1 旧 query 都触发自动进编辑
-  const wantEdit = initialEdit || searchParams?.get("edit") === "1";
-  // SSR 时只能看工厂模板,client hydration 再 upgrade 到用户保存的覆盖版本
+  const isNewMode = mode === "new";
+  // new 模式自动进编辑；view 模式沿用 /edit 路由 / ?edit=1 query
+  const wantEdit = isNewMode || initialEdit || searchParams?.get("edit") === "1";
+  // new 模式：用内存默认模板（不落库）
+  // view 模式：SSR 看工厂模板，client hydration 升级到用户覆盖版本
+  const freshTemplate = useMemo<Template | null>(() => {
+    if (!isNewMode) return null;
+    const newId = `tpl_${nanoid(8)}`;
+    return {
+      template_id: newId,
+      name: "未命名模板",
+      version: "0.1",
+      canvas: {
+        width: 1080,
+        height: 1920,
+        duration: 15,
+        fps: 30,
+        background_color: "#000000",
+      },
+      scenes: [{ id: `scene_${nanoid(6)}`, label: "全片", duration: 15, slots: [] }],
+      perturbation_profile: "moderate",
+      output_variants_default: 5,
+      quality_gate: { min_phash_distance: 10, max_retries: 3 },
+      metadata: { category: "未分类", tags: [], required_tier: "basic" },
+    };
+  }, [isNewMode]);
   const [template, setTemplate] = useState<Template | null>(
-    () => mockTemplates.find((t) => t.template_id === id) ?? null
+    () => freshTemplate ?? mockTemplates.find((t) => t.template_id === id) ?? null,
   );
-  const [resolved, setResolved] = useState(false);
+  const [resolved, setResolved] = useState(isNewMode);
   const [autoEditApplied, setAutoEditApplied] = useState(false); // 防 ?edit=1 重复触发
   const [working, setWorking] = useState<Template | null>(null); // edit-mode working copy
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -170,12 +199,14 @@ export function TemplateDetailClient({
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
 
   useEffect(() => {
+    // new 模式跳过 server 取数：直接使用内存默认模板，避免落库
+    if (isNewMode) return;
     MixcutApi.getTemplate(id).then((t) => {
       setTemplate(t);
       setHasUserTemplate(MixcutApi.hasUserTemplate(id));
       setResolved(true);
     });
-  }, [id]);
+  }, [id, isNewMode]);
 
   // ?edit=1 落地:模板取到后立刻进入编辑态,并把 URL 上的 query 清掉(避免刷新再次触发)
   useEffect(() => {
@@ -243,19 +274,25 @@ export function TemplateDetailClient({
       setEditing(false);
       setSelectedSlot(null);
       setSaveError(null);
-      // /edit 路由进来的,退出时回到浏览态路由
-      if (initialEdit) {
+      // new 模式或 /edit 路由都走「返回模板列表」；草稿不保留任何痕迹
+      if (isNewMode) {
+        router.push("/mixcut/templates");
+      } else if (initialEdit) {
         router.push(`/mixcut/templates/${id}`);
       }
     };
+    // new 模式从空白起：working 与 template 完全相同（structuredClone 的），
+    // 但只要场景/槽位/名字被改过就视为脏
     const isDirty =
       editing && working && template
         ? JSON.stringify(working) !== JSON.stringify(template)
         : false;
     if (isDirty) {
       setConfirmModal({
-        title: "退出编辑?",
-        body: "你有未保存的修改,退出后会丢失。",
+        title: isNewMode ? "放弃新建?" : "退出编辑?",
+        body: isNewMode
+          ? "当前还没保存，离开后输入会丢失。"
+          : "你有未保存的修改,退出后会丢失。",
         onConfirm: reallyExit,
       });
     } else {
@@ -283,6 +320,10 @@ export function TemplateDetailClient({
       setWorking(structuredClone(updated));
       setHasUserTemplate(true);
       setSavedAt(Date.now());
+      // new 模式：保存成功后跳到真实详情页（沿用编辑态，让用户能继续完善）
+      if (isNewMode) {
+        router.replace(`/mixcut/templates/${updated.template_id}/edit`);
+      }
     } catch (e: any) {
       setSaveError(e?.message ?? "保存失败,请检查网络或重试");
     } finally {
@@ -559,18 +600,25 @@ export function TemplateDetailClient({
               <RotateCcw className="size-3.5" /> 撤销修改
             </Button>
             <Button variant="ghost" size="sm" onClick={cancelEdit}>
-              <X className="size-3.5" /> 退出编辑
+              <X className="size-3.5" /> {isNewMode ? "放弃新建" : "退出编辑"}
             </Button>
-            {canDeleteTemplate && (
+            {canDeleteTemplate && !isNewMode && (
               <Button variant="destructive" size="sm" onClick={requestDeleteTemplate} disabled={saving}>
                 <Trash2 className="size-3.5" /> {isFactory ? "删除我的版本" : "删除模板"}
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => setSaveAsOpen(true)}>
-              <Copy className="size-3.5" /> 另存为新模板
-            </Button>
-            <Button variant="default" size="sm" onClick={handleSave} disabled={saving || !dirty}>
-              <Save className="size-3.5" /> {isFactory ? "保存为我的版本" : "保存"}
+            {!isNewMode && (
+              <Button variant="outline" size="sm" onClick={() => setSaveAsOpen(true)}>
+                <Copy className="size-3.5" /> 另存为新模板
+              </Button>
+            )}
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleSave}
+              disabled={saving || (!isNewMode && !dirty)}
+            >
+              <Save className="size-3.5" /> {isNewMode ? "保存新模板" : isFactory ? "保存为我的版本" : "保存"}
             </Button>
           </div>
         ) : (
@@ -601,7 +649,19 @@ export function TemplateDetailClient({
         )}
       </div>
 
-      {isFactory && editing && (
+      {isNewMode && (
+        <Card className="mb-4 border-violet-500/30 bg-violet-500/[0.04]">
+          <CardContent className="p-3 flex items-start gap-2">
+            <Sparkles className="size-4 text-violet-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-muted-foreground">
+              草稿状态：填写名称、添加场景与内容位，点
+              <span className="text-foreground"> 「保存新模板」</span>
+              后才会出现在模板库；直接关闭则不会保存。
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {!isNewMode && isFactory && editing && (
         <Card className="mb-4 border-amber-500/30 bg-amber-500/[0.04]">
           <CardContent className="p-3 flex items-start gap-2">
             <AlertCircle className="size-4 text-amber-600 shrink-0 mt-0.5" />

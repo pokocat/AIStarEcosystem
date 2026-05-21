@@ -3,7 +3,9 @@ package com.aistareco.aep.service.mixcut;
 import com.aistareco.aep.dto.MixcutCreateJobRequest;
 import com.aistareco.aep.dto.MixcutRenderJobDto;
 import com.aistareco.aep.model.MixcutRenderJob;
+import com.aistareco.aep.model.MixcutRenderOutput;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
+import com.aistareco.aep.repository.MixcutRenderOutputRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,17 +25,43 @@ public class MixcutJobService {
     private static final Logger log = LoggerFactory.getLogger(MixcutJobService.class);
 
     private final MixcutRenderJobRepository jobRepo;
+    private final MixcutRenderOutputRepository outputRepo;
     private final ObjectMapper mapper;
     private final MixcutRenderingService rendering;
 
     public MixcutJobService(
             MixcutRenderJobRepository jobRepo,
+            MixcutRenderOutputRepository outputRepo,
             ObjectMapper mapper,
             MixcutRenderingService rendering
     ) {
         this.jobRepo = jobRepo;
+        this.outputRepo = outputRepo;
         this.mapper = mapper;
         this.rendering = rendering;
+    }
+
+    /**
+     * v0.21+: 软删指定 output。Principal 校验通过 + output 属于该用户任务。
+     * 不删本地文件 / CDN —— 30 天后由 MixcutOutputCleanupScheduler 物理清理，期间可联系客服恢复。
+     * 返回 true = 已置 deletedAt，false = 找不到或越权。
+     */
+    @Transactional
+    public boolean softDeleteOutput(String outputId, String userId) {
+        if (outputId == null || outputId.isBlank() || userId == null || userId.isBlank()) {
+            return false;
+        }
+        return outputRepo.findById(outputId)
+                .filter(o -> o.getJob() != null && userId.equals(o.getJob().getUserId()))
+                .filter(o -> o.getDeletedAt() == null)
+                .map(o -> {
+                    o.setDeletedAt(OffsetDateTime.now());
+                    outputRepo.save(o);
+                    log.info("[mixcut] soft-deleted output {} (user={}, job={})",
+                            outputId, userId, o.getJob().getId());
+                    return true;
+                })
+                .orElse(false);
     }
 
     /** v0.13.0+: 取当前用户名下的任务列表（admin 跨用户列表见 AdminMixcutController）。 */

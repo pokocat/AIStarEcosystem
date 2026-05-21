@@ -556,22 +556,24 @@ class XiaohongshuDriver(PlatformDriver):
 
     @classmethod
     async def extract_qr_data_url(cls, page: Any) -> str:
-        # The /login page can default to either "密码登录" or "扫码登录" tab.
-        # If we're on password tab, the QR img isn't on screen — click the
-        # `img.css-wemwzq` switcher to flip to QR (mirrors upstream's
-        # `_open_xhs_qrcode_panel`).
+        # The /login page can default to either "密码登录" / "短信登录" 或
+        # "扫码登录"。如果当前 tab 不是扫码登录，QR img 不在 DOM 里 —— 必须
+        # 先点 tab 切换器。_ensure_qr_panel 内部既 best-effort 又 retry，
+        # 切换失败时下面的 QR 提取会抛错，sweep_expired 会清掉 playwright。
         await cls._ensure_qr_panel(page)
 
         # Primary: upstream's chain — locate `.login-box-container` whose
         # text starts with "APP扫一扫登录", then take the QR img from the
         # following sibling div.
+        # 注意：_ensure_qr_panel 已经把 QR 面板拉起来了（_wait_qr_visible 通过），
+        # 不需要再 20s 慢等；6s 足够覆盖 React 二次 paint。
         try:
             scan_section = page.locator(".login-box-container").filter(
                 has_text="APP扫一扫登录"
             ).first
-            await scan_section.wait_for(state="visible", timeout=20000)
+            await scan_section.wait_for(state="visible", timeout=6000)
             qr_img = scan_section.locator("xpath=following-sibling::div//img").first
-            await qr_img.wait_for(state="visible", timeout=20000)
+            await qr_img.wait_for(state="visible", timeout=6000)
             src = await qr_img.get_attribute("src")
             if src and src.startswith("data:image/"):
                 return src
@@ -580,6 +582,9 @@ class XiaohongshuDriver(PlatformDriver):
 
         # Fallback selectors covering legacy page builds + tab-already-on-QR
         # flights where the upstream xpath misses.
+        # 关键：每个 candidate 都要过 _QR_MIN_DIMENSION_PX 尺寸闸 —— 否则会把右
+        # 上角的 64×64 css-wemwzq switcher icon（其 src 也是 data:image/...）
+        # 错误当成 QR 返回。
         for selector in (
             ".login-box-container img[src^='data:image/']",
             ".login-box-container img",
@@ -588,76 +593,296 @@ class XiaohongshuDriver(PlatformDriver):
             'canvas[class*="qrcode"]',
             'img[src^="data:image/"]',
         ):
-            qr = page.locator(selector).first
             try:
-                if not await qr.count() or not await qr.is_visible():
-                    continue
-                src = await qr.get_attribute("src")
-                if src and src.startswith("data:image/"):
-                    return src
+                count = await page.locator(selector).count()
             except Exception:  # noqa: BLE001
                 continue
+            for i in range(min(count, 6)):
+                qr = page.locator(selector).nth(i)
+                try:
+                    if not await qr.is_visible():
+                        continue
+                    bb = await qr.bounding_box()
+                    if not bb:
+                        continue
+                    if (bb["width"] < cls._QR_MIN_DIMENSION_PX
+                            or bb["height"] < cls._QR_MIN_DIMENSION_PX):
+                        continue
+                    src = await qr.get_attribute("src")
+                    if src and src.startswith("data:image/"):
+                        return src
+                except Exception:  # noqa: BLE001
+                    continue
         raise RuntimeError(
             "xiaohongshu: QR src not found — tab switch may have failed or "
             "the login-box DOM drifted from upstream selectors"
         )
 
+    # Click candidates for switching to the QR-login tab. 多套兜底：
+    #   1. 文字 locator — 最稳，覆盖 XHS 把 tab 名做成 button / div / a 的情况
+    #   2. role=tab — 极少数页面把 tab 标记为正经 ARIA tab
+    #   3. 历史 hashed class img.css-wemwzq — 上游 social-auto-upload 还在用
+    #   4. login-box 里任意 img / [class*="switch"] — 最 loose 的兜底
+    _QR_TAB_TEXT_CANDIDATES: tuple[str, ...] = (
+        "扫码登录",
+        "二维码登录",
+        "扫一扫登录",
+    )
+    _QR_TAB_FALLBACK_SELECTORS: tuple[str, ...] = (
+        "img.css-wemwzq",
+        'div[class*="login-box"] img[class*="css-"]',
+        'div[class*="login-box"] [class*="switch"]',
+        'div[class*="login-box"] [class*="qrcode-icon"]',
+        'div[class*="login-container"] img[class*="qrcode"]',
+    )
+
+    # 真正的 QR 二维码尺寸 ≥ 这个值。小红书短信登录态下右上角的 QR-switcher
+    # 图标本身也是 `<img src="data:image/...">`、64×64 css-wemwzq —— 如果只看
+    # src 前缀，会把 switcher 错认成 QR 而直接 short-circuit，整张切换流程不跑。
+    _QR_MIN_DIMENSION_PX = 120
+
     @classmethod
-    async def _ensure_qr_panel(cls, page: Any) -> None:
-        """Switch from 密码登录 tab to 扫码登录 tab if needed.
+    async def _qr_panel_visible(cls, page: Any) -> bool:
+        """True 当且仅当 QR 面板已经亮（不是 switcher 图标）。
 
-        Upstream `_open_xhs_qrcode_panel` clicks `img.css-wemwzq` to flip
-        tabs and then waits for "APP扫一扫登录" / "扫一扫" text. We mirror
-        that, but no-op when the QR is already on screen so we don't flip
-        away from it on flights where 扫码登录 is the default tab.
-
-        Best-effort: failures only log; extract_qr_data_url will try to
-        find the QR anyway and surface its own error if it can't.
+        判定双条件，任一满足即可：
+          a) login-box 里有个 `<img src="data:image/...">` 且宽高 ≥ _QR_MIN_DIMENSION_PX
+             —— 真 QR 一般是 180-220px，明显大于 64×64 的 switcher icon。
+          b) 页面上有 "APP扫一扫登录" 文字（XHS QR 面板的标题）。
         """
-        # If QR is already showing, do nothing.
         try:
-            existing_qr = page.locator(
-                ".login-box-container img[src^='data:image/']"
-            ).first
-            if await existing_qr.count() and await existing_qr.is_visible():
-                return
+            big_qr_size_js = """
+            (minSize) => {
+              const card = document.querySelector(
+                'div[class*="login-box"], .login-box-container'
+              );
+              if (!card) return false;
+              const imgs = card.querySelectorAll('img[src^="data:image/"]');
+              for (const img of imgs) {
+                const r = img.getBoundingClientRect();
+                if (r.width >= minSize && r.height >= minSize) return true;
+              }
+              return false;
+            }
+            """
+            if await page.evaluate(big_qr_size_js, cls._QR_MIN_DIMENSION_PX):
+                return True
         except Exception:  # noqa: BLE001
             pass
         try:
             scan_text = page.get_by_text("APP扫一扫登录").first
             if await scan_text.count() and await scan_text.is_visible():
-                return
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+    @classmethod
+    async def _ensure_qr_panel(cls, page: Any) -> None:
+        """Switch to 扫码登录 tab if needed.
+
+        Real 小红书 /login 当前布局（2026-05 抓到的）：
+          - 默认进的可能是 "短信登录" 卡，没有 tab 文字「扫码登录」
+          - 卡片右上角有一个小 QR 图标（彩色三角 + 点阵），点它整张卡片切到
+            扫码模式。该图标是个 `<img>`，class 是 emotion 哈希 (如 `css-wemwzq`)。
+            哈希会随构建变 —— 不能硬靠 class。
+
+        Strategy 五级兜底，逐级降级：
+          0. 如果 QR 面板已经可见 → no-op
+          1. 文字 locator 点 "扫码登录"/"二维码登录"/"扫一扫登录"（极少数
+             flight 真有这个 tab 文字）
+          2. ARIA role=tab 同名
+          3. 历史 emotion 哈希 class + 通用 class 模糊匹配
+          4. **几何**：找登录卡片右上角 ~90×90px 区域里的任意 <img>/<svg>/
+             [role=button] 当 switcher 候选，逐一点 + 验证 QR 是否亮
+          5. 失败只 log；extract_qr_data_url 会拿不到 QR 并明确抛错
+
+        每点完一个候选都 _wait_qr_visible 验证；只要 QR 面板亮就立刻返回。
+        """
+        # 提前给 SPA 一点时间挂 login-box（domcontentloaded 不代表 React 已 mount）。
+        try:
+            await page.locator('div[class*="login-box"], .login-box-container').first.wait_for(
+                state="visible", timeout=15000
+            )
         except Exception:  # noqa: BLE001
             pass
 
-        # QR tab not active — try clicking the switcher icon.
-        switch_selectors = (
-            "img.css-wemwzq",
-            'div[class*="login-box"] img[class*="css-"]',
-            'div[class*="login-box"] [class*="switch"]',
-        )
-        for selector in switch_selectors:
+        if await cls._qr_panel_visible(page):
+            return
+
+        tried_summary: list[str] = []
+
+        # 1. 文字 locator —— 找 tab 上的 "扫码登录" 字样并点。
+        for text in cls._QR_TAB_TEXT_CANDIDATES:
+            try:
+                candidate = page.get_by_text(text).first
+                if not await candidate.count() or not await candidate.is_visible():
+                    continue
+                await candidate.click(timeout=3000)
+                tried_summary.append(f"text:{text}")
+                if await cls._wait_qr_visible(page, timeout_ms=8000):
+                    return
+            except Exception:  # noqa: BLE001
+                continue
+
+        # 2. ARIA role=tab 兜底（极少数页面把 tab 标记成正经 ARIA tab）。
+        for text in cls._QR_TAB_TEXT_CANDIDATES:
+            try:
+                tab = page.get_by_role("tab", name=text).first
+                if not await tab.count() or not await tab.is_visible():
+                    continue
+                await tab.click(timeout=3000)
+                tried_summary.append(f"tab:{text}")
+                if await cls._wait_qr_visible(page, timeout_ms=8000):
+                    return
+            except Exception:  # noqa: BLE001
+                continue
+
+        # 3. 历史 hashed class / 模糊 class 兜底。
+        for selector in cls._QR_TAB_FALLBACK_SELECTORS:
             try:
                 switcher = page.locator(selector).first
                 if not await switcher.count() or not await switcher.is_visible():
                     continue
                 await switcher.click(timeout=3000)
-                # Wait for QR label to appear; if it doesn't, fall back to
-                # the next switcher candidate.
-                try:
-                    await page.get_by_text("APP扫一扫登录").first.wait_for(
-                        state="visible", timeout=8000
-                    )
+                tried_summary.append(f"sel:{selector}")
+                if await cls._wait_qr_visible(page, timeout_ms=8000):
                     return
-                except Exception:  # noqa: BLE001
-                    # Maybe the click didn't switch — try next selector.
-                    continue
             except Exception:  # noqa: BLE001
                 continue
+
+        # 4. 几何兜底：登录卡片右上角的"corner switcher"。XHS 默认进 短信登录 时，
+        #    页面上没有"扫码登录"四个字 —— 必须找右上角那个小 QR 图标点。
+        if await cls._click_corner_switcher(page):
+            tried_summary.append("corner-icon")
+            if await cls._wait_qr_visible(page, timeout_ms=8000):
+                return
+
         log.warning(
-            "xiaohongshu: could not confirm QR tab is active after trying "
-            "switch selectors; QR extraction will attempt fallbacks"
+            "xiaohongshu: QR tab switch failed; tried=%s. "
+            "Run with SAU_REAL_LOGIN_HEADLESS=0 and inspect the login card's "
+            "top-right icon to identify the current switcher selector.",
+            tried_summary or "<nothing visible>",
         )
+
+    @classmethod
+    async def _click_corner_switcher(cls, page: Any) -> bool:
+        """XHS 短信登录默认态下，QR 切换器是登录卡右上角的小图标。
+
+        实现：用一次 page.evaluate 在浏览器里扫描登录卡内所有 element，按
+        几何 + 可点性筛出 corner-zone 候选；然后回到 Python 用 mouse.click()
+        按坐标依次点，每次都让 _wait_qr_visible 验证。
+
+        相比枚举 Locator + DOM-order 抽样，这条路：
+          - 不会被「页面里上千个 nested div」拖慢
+          - 不依赖 emotion 哈希 class（class 改名不影响）
+          - 能命中用 CSS background-image 画 QR 图标的纯 <div>
+        """
+        candidates_js = """
+        () => {
+          const card = document.querySelector(
+            'div[class*="login-box"], .login-box-container'
+          );
+          if (!card) return { error: 'no-login-box', candidates: [] };
+          const cr = card.getBoundingClientRect();
+          const zoneRight = cr.right;
+          const zoneTop = cr.top;
+          const zoneLeft = cr.right - 160;
+          const zoneBottom = cr.top + 160;
+
+          const out = [];
+          const all = card.querySelectorAll('*');
+          for (const el of all) {
+            if (!(el instanceof HTMLElement) && !(el instanceof SVGElement)) continue;
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            if (r.width > 80 || r.height > 80) continue;
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            if (cx < zoneLeft || cx > zoneRight) continue;
+            if (cy < zoneTop || cy > zoneBottom) continue;
+            const style = window.getComputedStyle(el);
+            const clickable =
+              el.tagName === 'IMG' ||
+              el.tagName === 'SVG' ||
+              el.getAttribute('role') === 'button' ||
+              style.cursor === 'pointer' ||
+              style.backgroundImage !== 'none';
+            if (!clickable) continue;
+            out.push({
+              cx, cy,
+              x: r.left, y: r.top, w: r.width, h: r.height,
+              tag: el.tagName,
+              cls: typeof el.className === 'string' ? el.className : '',
+              src: el.getAttribute('src') || '',
+              aria: el.getAttribute('aria-label') || '',
+              cursor: style.cursor,
+              hasBg: style.backgroundImage !== 'none',
+            });
+          }
+          // 离右上角越近排越前
+          out.sort((a, b) =>
+            (zoneRight - (a.x + a.w)) + (a.y - zoneTop)
+            - ((zoneRight - (b.x + b.w)) + (b.y - zoneTop))
+          );
+          return {
+            error: null,
+            cardRect: { x: cr.left, y: cr.top, w: cr.width, h: cr.height },
+            zone: { left: zoneLeft, right: zoneRight, top: zoneTop, bottom: zoneBottom },
+            candidates: out.slice(0, 8),
+          };
+        }
+        """
+        try:
+            result = await page.evaluate(candidates_js)
+        except Exception:  # noqa: BLE001
+            log.exception("xiaohongshu corner-switcher evaluate failed")
+            return False
+
+        if not result or result.get("error"):
+            log.info(
+                "xiaohongshu corner-switcher: evaluate returned error=%s",
+                result.get("error") if result else "<null>",
+            )
+            return False
+
+        candidates = result.get("candidates", [])
+        log.info(
+            "xiaohongshu corner-switcher: %d candidate(s) in zone %s",
+            len(candidates),
+            result.get("zone"),
+        )
+        for i, c in enumerate(candidates):
+            log.info(
+                "  [%d] tag=%s cursor=%s hasBg=%s rect=(%.0f,%.0f %.0fx%.0f) cls=%r src=%r",
+                i,
+                c.get("tag"),
+                c.get("cursor"),
+                c.get("hasBg"),
+                c.get("x"),
+                c.get("y"),
+                c.get("w"),
+                c.get("h"),
+                c.get("cls")[:60] if c.get("cls") else "",
+                (c.get("src") or "")[:60],
+            )
+            try:
+                await page.mouse.click(c["cx"], c["cy"])
+                if await cls._wait_qr_visible(page, timeout_ms=4000):
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
+    @classmethod
+    async def _wait_qr_visible(cls, page: Any, *, timeout_ms: int) -> bool:
+        """点完 tab 切换器后等待 QR 面板出现。返回是否切换成功。"""
+        deadline = time.monotonic() + timeout_ms / 1000.0
+        while time.monotonic() < deadline:
+            if await cls._qr_panel_visible(page):
+                return True
+            await page.wait_for_timeout(300)
+        return False
 
     @classmethod
     async def is_logged_in(cls, page: Any) -> bool:

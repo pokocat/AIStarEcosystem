@@ -20,4 +20,10 @@ public interface MixcutAssetRepository extends JpaRepository<MixcutAsset, String
 
     /** preset 全用户可见 + 用户私有，合并为一个列表（控制器调用层用 distinct + sort）。 */
     Optional<MixcutAsset> findFirstByIsPresetTrueAndPresetGroupAndNameOrderByUploadedAtAsc(String presetGroup, String name);
+
+    // v0.21+: 官方明星片段（运营上传，用户只读消费）
+    List<MixcutAsset> findByIsOfficialTrueOrderByUploadedAtDesc();
+    List<MixcutAsset> findByIsOfficialTrueAndOfficialCategoryOrderByUploadedAtDesc(String officialCategory);
+    List<MixcutAsset> findByIsOfficialTrueAndRelatedStarIdOrderByUploadedAtDesc(String relatedStarId);
+    List<MixcutAsset> findByIsOfficialTrueAndOfficialCategoryAndRelatedStarIdOrderByUploadedAtDesc(String officialCategory, String relatedStarId);
 }

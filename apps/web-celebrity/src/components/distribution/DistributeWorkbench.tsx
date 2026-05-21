@@ -75,7 +75,7 @@ export function DistributeWorkbench({ fromJobId }: Props) {
   );
   const [expandedJobs, setExpandedJobs] = React.useState<Set<string>>(() => new Set());
   const [search, setSearch] = React.useState("");
-  const [viewMode, setViewMode] = React.useState<ViewMode>("grid");
+  const [viewMode, setViewMode] = React.useState<ViewMode>("group");
   // v0.19: 默认显示全部（含已发布）；用户主动开启过滤才隐藏。
   const [onlyUnpublished, setOnlyUnpublished] = React.useState(false);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -273,7 +273,7 @@ export function DistributeWorkbench({ fromJobId }: Props) {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索模板名或任务 ID…"
+              placeholder="搜索模板或任务名…"
               className="w-full pl-9 pr-3 py-2 text-sm rounded-full border border-zinc-200 bg-white outline-none focus:border-violet-400"
             />
           </div>
@@ -287,10 +287,10 @@ export function DistributeWorkbench({ fromJobId }: Props) {
                 ? "bg-violet-50 border-violet-300 text-violet-700"
                 : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300",
             )}
-            title="开启后仅显示尚未派单过的变体；默认显示全部（含已发布）"
+            title="只看从未分发过的视频（默认显示全部）"
           >
             <Filter className="h-3.5 w-3.5" />
-            {onlyUnpublished ? "仅未发布" : "显示全部"}
+            {onlyUnpublished ? "只看未分发" : "显示全部"}
           </button>
           <button
             type="button"
@@ -305,8 +305,8 @@ export function DistributeWorkbench({ fromJobId }: Props) {
         {/* 统计提示 */}
         <div className="flex items-center justify-between text-[11px] text-zinc-500 flex-wrap gap-2">
           <span>
-            共 <span className="font-mono text-zinc-700">{filteredFlat.length}</span> 条可发布变体（
-            {filteredJobs.length} / {eligibleJobs.length} 个任务）
+            共 <span className="font-mono text-zinc-700">{filteredFlat.length}</span> 条已生成视频 · 来自{" "}
+            {filteredJobs.length} / {eligibleJobs.length} 个任务
           </span>
           {filteredFlat.length > 0 && (
             <button
@@ -377,7 +377,7 @@ export function DistributeWorkbench({ fromJobId }: Props) {
 
           {selectedOutputIds.size === 0 ? (
             <p className="text-[12px] text-zinc-500 leading-relaxed">
-              从左侧勾选要分发的混剪变体。建议同一批选择「同一明星 / 同一商品」相关变体，便于配统一文案。
+              从左侧挑视频。建议同一批挑「同一明星 / 同一商品」相关的视频，方便配统一文案。
             </p>
           ) : (
             <div className="space-y-2">
@@ -420,19 +420,24 @@ export function DistributeWorkbench({ fromJobId }: Props) {
             className={cn(CTA_PRIMARY, "w-full mt-3")}
           >
             <Send className="h-3.5 w-3.5" />
-            继续配置发布 ({selectedOutputIds.size})
+            下一步：选账号 ({selectedOutputIds.size})
           </button>
         </section>
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 space-y-2 text-[11px] text-zinc-500 leading-relaxed">
           <p>
             <Sparkles className="inline h-3 w-3 mr-1 text-violet-500" />
-            下一步将选择社交账号、配文案、设定时（可选）。变体 × 账号 = 总派单数。
+            下一步会让你选社交账号、写文案、可选定时。
           </p>
-          <p>· 仅显示已上传到 CDN 的变体；未上传需回到任务详情等渲染完毕。</p>
-          <p>· 已派过单的变体保持可见，徽标显示「已发 ×N」；同一变体可再次分发到新账号 / 新时间窗。</p>
-          <p>· 想只看未派过的，点工具条「显示全部 → 仅未发布」收窄视野。</p>
-          <p>· 想按节奏铺开？批量发布支持「每日定时」（每天 N 次，可选随机抖动），服务端会拆成多条派单。</p>
+          <p>· 总分发数 = 视频数 × 账号数。</p>
+          <p>· 仅展示已生成完成的视频；还在生成中的请到生成任务页等渲染完毕。</p>
+          <p>· 同一条视频可多次分发到不同账号 / 时段，已分发的会标「已分发 ×N」。</p>
+          <p>· 想分期铺开？分发抽屉支持「每天分 N 次发」。</p>
+          <p>
+            · 想管理已生成的视频？去
+            <Link href="/mixcut/library?tab=videos" className="text-violet-600 underline mx-1">视频库</Link>
+            可以批量删除。
+          </p>
           <p>
             · 没绑过账号？先到 <Link href="/distribution/accounts" className="text-violet-600 underline">账号管理</Link> 绑定。
           </p>
@@ -501,7 +506,7 @@ function GridView({
                     title={lastTip}
                   >
                     <CheckCircle2 className="h-2.5 w-2.5" />
-                    已发 ×{publishCount}
+                    已分发 ×{publishCount}
                   </span>
                 )}
               </div>
@@ -569,14 +574,14 @@ function GroupView({
                   </h3>
                   {isHighlighted && (
                     <span className="text-[10px] font-medium text-violet-700 bg-violet-100 rounded-full px-2 py-0.5">
-                      来自混剪
+                      来自任务页
                     </span>
                   )}
                 </div>
                 <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-2 flex-wrap font-mono">
                   <span>{shortJobId(j.id)}</span>
                   <span>·</span>
-                  <span>{items.length} 条可发</span>
+                  <span>{items.length} 条已生成</span>
                   {inJobSel > 0 && (
                     <>
                       <span>·</span>
@@ -641,7 +646,7 @@ function GroupView({
                             className="text-[10px] bg-emerald-500/85 text-white px-1 rounded"
                             title={lastTip}
                           >
-                            已发 ×{publishCount}
+                            已分发 ×{publishCount}
                           </span>
                         )}
                       </div>
@@ -712,13 +717,13 @@ function EmptyState({
       <Sparkles className="h-5 w-5 text-zinc-400 mx-auto mb-2" />
       {!hasAnyJobs ? (
         <>
-          <p className="text-sm text-zinc-700">还没有可分发的混剪变体</p>
+          <p className="text-sm text-zinc-700">还没有可分发的视频</p>
           <p className="text-[12px] text-zinc-500 mt-1">
             到{" "}
             <Link href="/mixcut/templates" className="text-violet-600 underline">
               混剪模板库
             </Link>{" "}
-            生成第一批视频，渲染完成后会自动出现在这里。
+            生成第一批视频，完成后会自动出现在这里。
           </p>
         </>
       ) : hasSearch ? (
@@ -728,13 +733,13 @@ function EmptyState({
         </>
       ) : onlyUnpublished ? (
         <>
-          <p className="text-sm text-zinc-700">所有可发变体都已派过单</p>
+          <p className="text-sm text-zinc-700">这批视频都已经分发过</p>
           <p className="text-[12px] text-zinc-500 mt-1">
-            关掉「仅未发布」回到「显示全部」就能再次分发，徽标会标明历史派发次数。
+            关掉「只看未分发」就能看到全部，已分发过的也能再发一次。
           </p>
         </>
       ) : (
-        <p className="text-sm text-zinc-700">暂无可发布的变体</p>
+        <p className="text-sm text-zinc-700">暂无可分发的视频</p>
       )}
     </div>
   );
@@ -810,8 +815,8 @@ function deriveDefaultTitle(items: BatchPublishItem[]): string {
  */
 function publishedBadgeTitle(count: number, lastPublishedAt?: string): string | undefined {
   if (count <= 0) return undefined;
-  if (!lastPublishedAt) return `已派单 ${count} 次`;
-  return `已派单 ${count} 次 · 最近：${formatRelativeTime(lastPublishedAt)}`;
+  if (!lastPublishedAt) return `已分发 ${count} 次`;
+  return `已分发 ${count} 次 · 最近：${formatRelativeTime(lastPublishedAt)}`;
 }
 
 function formatRelativeTime(iso: string): string {

@@ -179,6 +179,12 @@ export interface MixcutAsset {
   preset_group?: string;
   /** v0.13+: 缩略图 URL（GIF 抽第一帧），优先于 thumbnail_url。 */
   preview_url?: string;
+  /** v0.21+: 官方明星片段标记（运营后台上传，用户只读消费）。 */
+  is_official?: boolean;
+  /** v0.21+: 官方片段分类（直播切片 / 综艺 / 访谈等）。 */
+  official_category?: string;
+  /** v0.21+: 关联明星 id（CelebrityStar.id），可空。 */
+  related_star_id?: string;
 }
 
 /**

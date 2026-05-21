@@ -126,7 +126,7 @@ export function PublishJobList({ projectId }: Props) {
         <div>
           <h2 className="text-base font-semibold text-zinc-800">分发任务</h2>
           <p className="text-xs text-zinc-500">
-            任务状态由 sau-service 自动推进，前端每 2.5 秒轮询同步进度。失败不退积分。
+            分发进度自动同步，无需刷新；失败可在下方点「重试」，不重复扣积分。
           </p>
         </div>
         <button
@@ -180,7 +180,7 @@ export function PublishJobList({ projectId }: Props) {
                         disabled={busyId === j.id}
                         onClick={() => handleStart(j.id)}
                       >
-                        <Play className="h-3 w-3" /> 开始
+                        <Play className="h-3 w-3" /> 立即开始
                       </button>
                     )}
                     {j.status === "awaiting_user" && (

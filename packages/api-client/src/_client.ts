@@ -146,9 +146,27 @@ export async function apiFetch<T>(
   try {
     parsed = JSON.parse(raw);
   } catch {
+    // 把 body 前 240 字符贴出来，方便排查 —— 否则只看到 "Invalid JSON" 一句
+    // 啥也定位不了（HTML 错误页 / Next 代理 504 / sau timeout / 空体 等都会
+    // 触发同一句）。
+    const snippet = raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
+    const contentType = res.headers.get("content-type") ?? "<missing>";
+    if (typeof console !== "undefined") {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[apiFetch] non-JSON body from ${path}  status=${res.status}  ` +
+          `content-type=${contentType}\n` +
+          snippet,
+      );
+    }
     throw new ApiError(
-      { code: "PARSE_ERROR", message: `Invalid JSON from ${path}` },
-      res.status
+      {
+        code: "PARSE_ERROR",
+        message:
+          `Invalid JSON from ${path} (status=${res.status}, content-type=${contentType}). ` +
+          `Body starts with: ${snippet || "<empty>"}`,
+      },
+      res.status,
     );
   }
 

@@ -83,6 +83,31 @@ def test_login_poll_progresses_to_success(client: TestClient) -> None:
     assert third["status"] == "expired"
 
 
+def test_login_cancel_drops_session_and_is_idempotent(client: TestClient) -> None:
+    # 1) start a session, then cancel it before any successful poll
+    client.post(
+        "/login/start",
+        headers=_h(),
+        json={"ticket": "t-cancel", "platform": "douyin", "accountName": "carol"},
+    )
+    r = client.post("/login/cancel", headers=_h(), params={"ticket": "t-cancel"})
+    assert r.status_code == 204
+    # 2) subsequent poll must say expired (session is gone)
+    poll = client.get("/login/poll", headers=_h(), params={"ticket": "t-cancel"}).json()
+    assert poll["status"] == "expired"
+    # 3) calling cancel again on the same (now-missing) ticket must still 204 (idempotent)
+    r2 = client.post("/login/cancel", headers=_h(), params={"ticket": "t-cancel"})
+    assert r2.status_code == 204
+    # 4) calling cancel on a ticket that never existed must also 204
+    r3 = client.post("/login/cancel", headers=_h(), params={"ticket": "never-issued"})
+    assert r3.status_code == 204
+
+
+def test_login_cancel_requires_internal_secret(client: TestClient) -> None:
+    r = client.post("/login/cancel", params={"ticket": "anything"})
+    assert r.status_code == 401
+
+
 def test_verify_returns_valid_for_nonempty_state(client: TestClient) -> None:
     r = client.post(
         "/accounts/verify",

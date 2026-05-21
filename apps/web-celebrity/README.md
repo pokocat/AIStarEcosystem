@@ -69,6 +69,24 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.22 · 2026-05-21 · 混剪 / 分发用户视角文案 + 视频库 + 官方明星片段
+
+把混剪与分发模块从「工程师视角」整改为「运营 / 用户视角」，并补两个新模块（视频库 + 官方明星片段）。详见根 [`AGENTS.md`](../../AGENTS.md) v0.21 章节。
+
+- ✅ **文案术语全面 review**：「变体 → 视频」「派单 → 分发」「立即派单/定时派单/铺开派单 → 立即分发/定时分发/分期分发」「手动分发 → 上传链接分发」；删 CDN / sau / cookie / 渲染节点等技术词；详见 [`AGENTS.md`](../../AGENTS.md) v0.21A
+- ✅ **混剪本月配额下线**：`MixcutHomePage` 删 `QuotaIndicator`，换为「本月已生成 N 条视频 + 累计 M 个任务」纯统计；积分余额走 app 顶部钱包入口
+- ✅ **混剪视频库**（`/mixcut/library` 改造）：顶层 tab「我的素材 / 我的视频 / 官方明星片段」；「我的视频」展示已生成的渲染产出，支持单条软删 → server 30 天后物理清理
+- ✅ **官方明星片段专区**：admin 后台上传，web-celebrity 用户只读消费；分类筛选（直播切片 / 综艺 / 访谈等）
+- ✅ **新建模板不再自动落库**：新增 `/mixcut/templates/new` 路由 + `TemplateDetailClient` 加 `mode="new"` 内存模式；第一次保存才创建，取消则直接返回列表无残留
+- ✅ **任务详情页清理**：删「全部打包下载 / 再生成一批 / 顶部 Trash2」三个空 onClick 按钮；Copy 按钮接 `navigator.clipboard.writeText(job.id)`；删「渲染节点」row；「本次消耗 X 条额度」→「X 积分」
+- ✅ **分发工作台默认按任务视图**：`DistributeWorkbench.tsx` ViewMode 初值改为 `"group"`；右栏 help 加超链 `/mixcut/library?tab=videos`
+
+**注意事项**：
+
+- 软删 30 天物理清理靠 `MixcutOutputCleanupScheduler`（`@Scheduled(cron="0 30 3 * * *")`）。多实例部署需 ShedLock（与 PublishJobScheduler 同样的待办）。
+- 模板新建 `mode="new"` 下 template_id 是前端 nanoid 生成的；第一次 saveTemplate 后 `router.replace(/mixcut/templates/{id}/edit)`，从此沿用 mode="view" + initialEdit 路径。
+- 官方明星片段与 v0.13 扰动贴图池（`isPreset`）是两套互斥标记。
+
 ### v0.21 · 2026-05-21 · 混剪文字生图 overlay 不被丢弃 · 修复
 
 混剪渲染管线的 ffmpeg filter 能力探测在某些 vendor 定制 build 上漏检 `overlay` filter，导致用户在 create 页填了「文字生图（picgen）」槽位、后端 `picgen_count` 计数器证明 PNG 已生成，但最终视频里什么都没贴 —— 24KB 空视频 + `贴图来源: disabled-missing-filter`。

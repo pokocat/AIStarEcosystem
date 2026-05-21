@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from ..auth import require_internal_secret
@@ -77,3 +77,14 @@ async def login_poll(ticket: str, request: Request) -> LoginPollResponse:
         storageStatePlain=result.get("storage_state"),
         profile=result.get("profile"),
     )
+
+
+@router.post("/cancel", response_class=Response)
+async def login_cancel(ticket: str, request: Request) -> Response:
+    # 用户在前端关掉/取消扫码弹窗时调用。pool.drop() 会触发
+    # _teardown_handles → 关 context / browser / playwright，
+    # 进而杀掉 patchright 拉起的 chromium 进程。
+    # 幂等：ticket 不存在（已 expire / 已 success）时静默成功。
+    pool: LoginPool = request.app.state.login_pool
+    await pool.drop(ticket)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

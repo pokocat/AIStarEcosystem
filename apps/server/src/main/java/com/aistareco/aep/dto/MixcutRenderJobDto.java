@@ -52,9 +52,14 @@ public record MixcutRenderJobDto(
         JsonNode slotsSnap = parseOrNull(job.getSlotsSnapshotJson(), mapper);
         JsonNode pertOverrides = parseOrNull(job.getPerturbationOverridesJson(), mapper);
         JsonNode stickerPool = parseOrNull(job.getStickerPoolJson(), mapper);
+        // v0.21+: 软删的 output 不进 DTO；前端「视频库」用户点删除后立即从列表消失。
+        // 30 天后由 MixcutOutputCleanupScheduler 物理清理。
         List<MixcutRenderOutputDto> outs = (job.getOutputs() == null || job.getOutputs().isEmpty())
                 ? null
-                : job.getOutputs().stream().map(o -> MixcutRenderOutputDto.from(o, mapper)).toList();
+                : job.getOutputs().stream()
+                        .filter(o -> o.getDeletedAt() == null)
+                        .map(o -> MixcutRenderOutputDto.from(o, mapper))
+                        .toList();
         return new MixcutRenderJobDto(
                 job.getId(),
                 job.getUserId(),

@@ -3,8 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { nanoid } from "nanoid";
-import { Search, Crown, ShieldCheck, TrendingUp, Plus, Loader2 } from "lucide-react";
+import { Search, Crown, ShieldCheck, TrendingUp, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
@@ -65,49 +64,15 @@ export default function MixcutTemplatesPage() {
   const [search, setSearch] = useState("");
   // 包含用户「另存为」/「保存为我的版本」生成的模板
   const [templates, setTemplates] = useState<Template[]>(mockTemplates);
-  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     MixcutApi.listTemplates().then(setTemplates);
   }, []);
 
-  // 默认空模板:1080×1920 竖屏 / 15 秒 / 1 个空场景 / 无槽位。
-  // 用户落地详情页后,通过编辑模式增加槽位、调整画布。
-  const handleCreate = async () => {
-    if (creating) return;
-    setCreating(true);
-    const id = `tpl_${nanoid(8)}`;
-    const fresh: Template = {
-      template_id: id,
-      name: "未命名模板",
-      version: "0.1",
-      canvas: {
-        width: 1080,
-        height: 1920,
-        duration: 15,
-        fps: 30,
-        background_color: "#000000",
-      },
-      scenes: [
-        { id: `scene_${nanoid(6)}`, label: "全片", duration: 15, slots: [] },
-      ],
-      perturbation_profile: "moderate",
-      output_variants_default: 5,
-      quality_gate: { min_phash_distance: 10, max_retries: 3 },
-      metadata: {
-        category: "未分类",
-        tags: [],
-        required_tier: "basic",
-      },
-    };
-    try {
-      await MixcutApi.saveTemplate(fresh);
-      // ?edit=1 → 详情页落地后自动进入编辑态(由 template-detail-client 的 useEffect 处理,
-      // 并在进入后把 query 从 URL 上清掉,避免刷新重复触发)
-      router.push(`/mixcut/templates/${id}?edit=1`);
-    } catch {
-      setCreating(false);
-    }
+  // 新建走 /new 路由：进入编辑器后**不立即落库**，用户点保存才会真正创建模板。
+  // 这样取消 / 关页不会在「我的模板」里留下空模板（v0.21+ 修复）。
+  const handleCreate = () => {
+    router.push("/mixcut/templates/new");
   };
 
   const filtered = useMemo(() => {
@@ -130,8 +95,8 @@ export default function MixcutTemplatesPage() {
             选个模板,填进素材,一次生成多条差异化短视频
           </p>
         </div>
-        <Button onClick={handleCreate} disabled={creating}>
-          {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+        <Button onClick={handleCreate}>
+          <Plus className="size-4" />
           新建模板
         </Button>
       </div>

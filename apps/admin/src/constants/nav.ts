@@ -89,6 +89,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/celebrity/engine-pricing",       label: "引擎价格",     icon: Coins,     description: "KeLing / HiGen / MiniMax 计价" },
       { href: "/celebrity/projects",             label: "带货项目",     icon: Briefcase, description: "用户在某个明星下创建的带货项目" },
       { href: "/celebrity/products",             label: "商品库",       icon: Package,   description: "用户上传 / 自动落库的商品档案" },
+      { href: "/celebrity/mixcut-official-clips", label: "官方明星片段", icon: Sparkles, description: "v0.21：直播切片 / 综艺片段，用户在「我的混剪库」可消费" },
     ],
   },
   // v0.5：财务（钱包 + 套餐）保留启用

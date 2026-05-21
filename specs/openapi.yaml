@@ -4670,6 +4670,24 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     put: { tags: [admin-celebrity], operationId: adminSetCelebrityTemplatePreview, responses: { '200': { description: ok } } }
 
+  # v0.21+: 运营管理「官方明星片段」（mixcut 素材的 is_official=true 子集）
+  /admin/mixcut/official-clips:
+    get:
+      tags: [admin-mixcut]
+      operationId: adminListMixcutOfficialClips
+      parameters:
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: star_id,  schema: { type: string } }
+      responses: { '200': { description: ok } }
+    post:
+      tags: [admin-mixcut]
+      operationId: adminUploadMixcutOfficialClip
+      responses: { '200': { description: ok } }
+  /admin/mixcut/official-clips/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put:    { tags: [admin-mixcut], operationId: adminUpdateMixcutOfficialClip, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-mixcut], operationId: adminDeleteMixcutOfficialClip, responses: { '200': { description: ok } } }
+
   /admin/celebrity/showcases:       { get: { tags: [admin-celebrity], operationId: adminListCelebrityShowcases, responses: { '200': { description: ok } } } }
   /admin/celebrity/projects:        { get: { tags: [admin-celebrity], operationId: adminListCelebrityProjects,  responses: { '200': { description: ok } } } }
   /admin/celebrity/videos:          { get: { tags: [admin-celebrity], operationId: adminListCelebrityVideos,    responses: { '200': { description: ok } } } }
@@ -4885,6 +4903,22 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/SocialAccountBindPollResult' }
+
+  /me/social-accounts/bind-cancel:
+    post:
+      tags: [social-distribution]
+      operationId: cancelSocialAccountBind
+      summary: 用户取消扫码绑定；杀 sau-service 进行中的 playwright，并清掉 PENDING 行
+      description: |
+        前端在用户关闭/取消扫码弹窗时调用。后端会：
+          1. 调 sau-service /login/cancel 关掉 playwright（chromium 进程立即退出）
+          2. 若 ticket 对应的 SocialAccount 仍为 PENDING 且尚无密文 cookie，删行避免脏数据
+              （已经翻 ACTIVE 的不动 —— 那是用户已经成功的账号）
+        幂等：ticket 已过期/不存在/不属于当前用户均 204。
+      parameters:
+        - { in: query, name: ticket, required: true, schema: { type: string } }
+      responses:
+        '204': { description: ack（无 body） }
 
   /me/social-accounts/{id}:
     parameters:
@@ -5280,6 +5314,25 @@ paths:
       - { in: path, name: assetId, required: true, schema: { type: string } }
     get:    { tags: [mixcut], operationId: getMixcutAsset,    responses: { '200': { description: ok } } }
     delete: { tags: [mixcut], operationId: deleteMixcutAsset, responses: { '200': { description: ok } } }
+
+  # v0.21+: 已生成视频（render output）软删
+  # 用户在「我的视频库」点删除会调此端点；server 把 MixcutRenderOutput.deleted_at 置非空，
+  # 列表 dto 立即过滤掉该 output；30 天后由 MixcutOutputCleanupScheduler 物理清理。
+  /mixcut/outputs/{outputId}:
+    parameters:
+      - { in: path, name: outputId, required: true, schema: { type: string } }
+    delete: { tags: [mixcut], operationId: deleteMixcutOutput, responses: { '200': { description: ok } } }
+
+  # v0.21+: 官方明星片段（运营后台上传，用户只读消费）
+  # is_official=true 的 MixcutAsset；按 category（直播切片/综艺/访谈等）/ star_id 过滤。
+  /mixcut/assets/official-clips:
+    get:
+      tags: [mixcut]
+      operationId: listOfficialClips
+      parameters:
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: star_id,  schema: { type: string } }
+      responses: { '200': { description: ok } }
 
   /mixcut/templates:
     get: { tags: [mixcut], operationId: listMixcutTemplates, responses: { '200': { description: ok } } }

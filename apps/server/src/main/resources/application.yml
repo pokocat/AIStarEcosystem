@@ -107,7 +107,10 @@ aep:
 sau:
   base-url: ${SAU_SERVICE_URL:http://localhost:8090}
   shared-secret: ${AEP_INTERNAL_SECRET:aep-dev-internal-secret-change-in-prod}
-  request-timeout-ms: ${SAU_REQUEST_TIMEOUT_MS:30000}
+  # /login/start 在真模式下要 cold-start patchright + 拉远端登录页 + 切 tab + 抓 QR；
+  # 首次启动综合 30-60s 是常态（chromium 进程冷启 + XHS SPA hydrate）。
+  # 30s 偏紧，命中后 Spring 抛 SAU_HTTP_ERROR，用户看到「Invalid JSON / 502」错。
+  request-timeout-ms: ${SAU_REQUEST_TIMEOUT_MS:90000}
   # sau-service callback 回 server 的 base URL (含 /api/internal/sau 路径)
   callback-base-url: ${SAU_CALLBACK_BASE_URL:http://localhost:8080/api/internal/sau}
   # 默认上传扣费，单位：积分；后续可按 platform 拆 PlatformConfig

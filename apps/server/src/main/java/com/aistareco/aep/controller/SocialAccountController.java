@@ -51,6 +51,14 @@ public class SocialAccountController {
         return ApiResponse.of(service.pollBind(principal.getName(), ticket));
     }
 
+    /** 用户在前端关掉/取消扫码弹窗时调用，杀掉 sau-service 进行中的 playwright，并清掉 PENDING 行。 */
+    @PostMapping("/bind-cancel")
+    public ResponseEntity<Void> bindCancel(Principal principal,
+                                            @RequestParam("ticket") String ticket) {
+        service.cancelBind(principal.getName(), ticket);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/verify")
     public ApiResponse<SocialAccountDto> verify(Principal principal, @PathVariable("id") String id) {
         return ApiResponse.of(service.verify(principal.getName(), id));

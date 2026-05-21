@@ -78,6 +78,19 @@ public class MixcutAssetController {
         return ApiResponse.of(service.deleteOwned(id, userId));
     }
 
+    /**
+     * v0.21+: 官方明星片段公开列表（所有登录用户可见，只读）。
+     * URL: GET /api/mixcut/assets/official-clips?category=&star_id=
+     */
+    @GetMapping("/official-clips")
+    public ApiResponse<List<MixcutAssetDto>> listOfficialClips(
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "star_id", required = false) String starId
+    ) {
+        var list = service.listOfficial(category, starId).stream().map(MixcutAssetDto::from).toList();
+        return ApiResponse.of(list);
+    }
+
     private static String currentUserId(Principal principal) {
         return principal == null ? null : principal.getName();
     }

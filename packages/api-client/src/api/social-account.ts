@@ -39,6 +39,22 @@ export async function pollBind(ticket: string): Promise<SocialAccountBindPollRes
   });
 }
 
+/**
+ * 取消正在进行的扫码绑定。
+ *
+ * 用户关掉弹窗 / 点取消时调用。后端会：
+ *   1. 调 sau-service /login/cancel 关掉 playwright (chromium 进程立即退出)
+ *   2. 把 PENDING 状态、还没拿到 cookie 的 SocialAccount 行删掉，避免脏数据
+ *
+ * 幂等：ticket 已过期/不存在时静默成功；前端只 fire-and-forget，不阻塞关弹窗。
+ */
+export async function cancelBind(ticket: string): Promise<void> {
+  await apiFetch<void>("/me/social-accounts/bind-cancel", {
+    method: "POST",
+    query: { ticket },
+  });
+}
+
 /** 让 sau-service 用现有 storage_state 跑一次 verify，刷新 lastVerifiedAt 或翻 expired */
 export async function verifySocialAccount(id: ID): Promise<SocialAccount> {
   return apiFetch<SocialAccount>(`/me/social-accounts/${encodeURIComponent(id)}/verify`, {

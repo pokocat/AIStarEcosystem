@@ -18,19 +18,29 @@ import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
 import { mockHotTemplates } from "@/mocks/mixcut";
 import { PROFILE_LABELS } from "@/constants/mixcut-ui";
-import { cn, formatNumber, relativeTime } from "@/components/mixcut-zone/lib/utils";
+import { formatNumber, relativeTime } from "@/components/mixcut-zone/lib/utils";
 import { firstScenePreviewTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 import type { RenderJob } from "@/components/mixcut-zone/types";
 
 export default function MixcutHomePage() {
-  const code = MixcutApi.mockActivationCode;
   const [jobs, setJobs] = useState<RenderJob[]>([]);
 
   useEffect(() => {
     MixcutApi.listJobs().then(setJobs);
   }, []);
 
-  const usedPercent = (code.quota_used_this_period / code.monthly_quota) * 100;
+  // 本月生成的视频条数 = 本月 status=success 任务 output_variants 之和
+  const monthlyStats = (() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    let videosThisMonth = 0;
+    for (const j of jobs) {
+      if (j.status !== "success") continue;
+      if (new Date(j.created_at).getTime() < monthStart) continue;
+      videosThisMonth += j.output_variants ?? 0;
+    }
+    return { videosThisMonth, totalJobs: jobs.length };
+  })();
   const recentJobs = jobs.slice(0, 4);
 
   return (
@@ -44,10 +54,9 @@ export default function MixcutHomePage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <QuotaIndicator
-            used={code.quota_used_this_period}
-            total={code.monthly_quota}
-            percent={usedPercent}
+          <MonthlyStats
+            videosThisMonth={monthlyStats.videosThisMonth}
+            totalJobs={monthlyStats.totalJobs}
           />
           <Button variant="gradient" asChild>
             <Link href="/mixcut/templates">
@@ -159,29 +168,37 @@ export default function MixcutHomePage() {
   );
 }
 
-function QuotaIndicator({
-  used,
-  total,
-  percent,
+// 纯统计指标 — 不挂配额限制；积分余额由 app 顶部统一钱包入口承载。
+function MonthlyStats({
+  videosThisMonth,
+  totalJobs,
 }: {
-  used: number;
-  total: number;
-  percent: number;
+  videosThisMonth: number;
+  totalJobs: number;
 }) {
-  const tone = percent >= 90 ? "bg-red-500" : percent >= 70 ? "bg-amber-500" : "bg-violet-500";
   return (
-    <div className="flex flex-col gap-1 min-w-[160px] px-3 py-1.5 rounded-md border border-border bg-card">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] text-muted-foreground">本月配额</span>
-        <span className="text-[11px] font-mono">
-          {formatNumber(used)} / {formatNumber(total)}
-        </span>
-      </div>
-      <div className="h-1 rounded-full bg-secondary overflow-hidden">
-        <div
-          className={cn("h-full transition-all", tone)}
-          style={{ width: `${Math.min(100, percent)}%` }}
-        />
+    <div className="flex items-stretch gap-2">
+      <StatBlock label="本月已生成" value={videosThisMonth} suffix="条视频" />
+      <StatBlock label="累计任务" value={totalJobs} suffix="个" />
+    </div>
+  );
+}
+
+function StatBlock({
+  label,
+  value,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  suffix: string;
+}) {
+  return (
+    <div className="px-3 py-1.5 rounded-md border border-border bg-card min-w-[110px]">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-semibold tabular-nums leading-tight">
+        {formatNumber(value)}
+        <span className="ml-1 text-[10px] text-muted-foreground font-normal">{suffix}</span>
       </div>
     </div>
   );

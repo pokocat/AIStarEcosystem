@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Download,
   RefreshCw,
-  Trash2,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -16,7 +15,6 @@ import {
   Copy,
   Sparkles,
   ShieldCheck,
-  Cpu,
   Layers,
   Wand2,
   Fingerprint,
@@ -137,7 +135,15 @@ export function JobDetailClient({ id }: { id: string }) {
           <h1 className="text-2xl font-semibold tracking-tight">{job.template_name}</h1>
           <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
             <span className="font-mono">{job.id}</span>
-            <Button variant="ghost" size="icon" className="size-5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-5"
+              onClick={() => {
+                void navigator.clipboard?.writeText(job.id);
+              }}
+              title="复制任务 ID"
+            >
               <Copy className="size-3" />
             </Button>
             <span>·</span>
@@ -156,12 +162,6 @@ export function JobDetailClient({ id }: { id: string }) {
                   去分发中心 →
                 </Link>
               </Button>
-              <Button variant="outline">
-                <Download className="size-4" /> 全部打包下载
-              </Button>
-              <Button variant="outline">
-                <RefreshCw className="size-4" /> 再生成一批
-              </Button>
             </>
           )}
           {renderFailed && (
@@ -173,9 +173,6 @@ export function JobDetailClient({ id }: { id: string }) {
               <RefreshCw className="size-4" /> 重新生成
             </Button>
           )}
-          <Button variant="ghost" size="icon">
-            <Trash2 className="size-4 text-muted-foreground" />
-          </Button>
         </div>
       </div>
 
@@ -198,7 +195,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </div>
               <div className="flex-1">
                 <div className="font-medium text-sm">
-                  {job.status === "queued" ? "排队中,等待空闲机器…" : "生成中…"}
+                  {job.status === "queued" ? "排队中，稍候即可开始生成…" : "生成中…"}
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {progressStage(job.progress)} · 预计还需 {Math.max(1, Math.ceil((100 - job.progress) * 0.4))} 秒
@@ -241,7 +238,7 @@ export function JobDetailClient({ id }: { id: string }) {
               <div className="font-medium text-sm text-red-400">生成失败</div>
               <div className="text-xs text-muted-foreground mt-1">{job.error_message}</div>
               <div className="text-xs text-muted-foreground mt-2">
-                · 本次消耗的 {job.output_variants} 条额度已退回
+                · 本次消耗的积分已自动退还
                 <br />· 您可以更换素材后重试,或联系客服
               </div>
             </div>
@@ -650,8 +647,7 @@ export function JobDetailClient({ id }: { id: string }) {
                 </Row>
               )}
               <Separator />
-              <Row icon={Cpu} label="渲染节点">华南 4 号机</Row>
-              <Row label="本次消耗">{job.output_variants} 条额度</Row>
+              <Row label="本次消耗">{job.output_variants} 积分</Row>
             </CardContent>
           </Card>
         </aside>

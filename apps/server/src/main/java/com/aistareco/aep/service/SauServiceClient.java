@@ -77,6 +77,13 @@ public class SauServiceClient {
         return getJson("/login/poll" + q);
     }
 
+    /** POST /login/cancel?ticket=… — 关掉远端 sau-service 的扫码会话，触发 playwright teardown。
+     *  幂等：sau-service 返回 204，不存在的 ticket 静默成功。 */
+    public void loginCancel(String ticket) {
+        String q = "?ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8);
+        postJson("/login/cancel" + q, Map.of());
+    }
+
     /** POST /accounts/verify { platform, storageState } 返回 {valid, refreshedStorageState?, profile?} */
     public Map<String, Object> verifyAccount(String platformWire, Map<String, Object> storageState) {
         Map<String, Object> body = new LinkedHashMap<>();

@@ -28,7 +28,11 @@ public record MixcutAssetDto(
         @JsonProperty("uploaded_at") String uploadedAt,
         @JsonProperty("is_preset") boolean isPreset,
         @JsonProperty("preset_group") String presetGroup,
-        @JsonProperty("preview_url") String previewUrl
+        @JsonProperty("preview_url") String previewUrl,
+        // v0.21+ 官方明星片段（运营上传，用户只读）
+        @JsonProperty("is_official") boolean isOfficial,
+        @JsonProperty("official_category") String officialCategory,
+        @JsonProperty("related_star_id") String relatedStarId
 ) {
     public static MixcutAssetDto from(MixcutAsset a) {
         // thumbnail 优先级：明确的 previewUrl > image/sticker 自身 fileUrl > null
@@ -52,7 +56,10 @@ public record MixcutAssetDto(
                         : a.getUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 a.isPreset(),
                 a.getPresetGroup(),
-                a.getPreviewUrl()
+                a.getPreviewUrl(),
+                a.isOfficial(),
+                a.getOfficialCategory(),
+                a.getRelatedStarId()
         );
     }
 }
