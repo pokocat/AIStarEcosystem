@@ -63,11 +63,11 @@ async def verify(req: VerifyRequest, request: Request) -> VerifyResponse:
     platform = (req.platform or "").lower()
     driver_cls = DRIVERS.get(platform)
     if driver_cls is None:
-        # Platform not wired in real mode (kuaishou / xhs / unknown). We
-        # can't prove the cookie works, so report invalid — this nudges the
-        # user / operator to re-bind via whatever flow does exist for that
-        # platform (currently: manual import for kuaishou/xhs), which is
-        # the safer side to err on.
+        # Platform not in DRIVERS (e.g. bilibili / tiktok / baijiahao / youtube
+        # — not yet wired). We can't prove the cookie works, so report invalid
+        # to nudge the user/operator to re-bind via whatever flow does exist.
+        # Erring on the safe side: a false positive would let jobs start
+        # against a dead cookie and burn credits.
         log.warning("verify: platform=%s not wired in real-mode; returning valid=false", platform)
         return VerifyResponse(valid=False)
 

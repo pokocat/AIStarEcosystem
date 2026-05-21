@@ -379,9 +379,221 @@ class ShipinhaoDriver(PlatformDriver):
             return _empty_profile()
 
 
+class KuaishouDriver(PlatformDriver):
+    """快手 cp.kuaishou.com creator center.
+
+    Login flow: passport.kuaishou.com hosts the QR widget; on scan the page
+    redirects to cp.kuaishou.com (creator console). The QR `<img>` lives
+    inside `main#login-form` as `div.qr-login img[alt="qrcode"]` — mirroring
+    upstream `_extract_ks_qrcode_src`. Logged-in signal: `main#login-form`
+    is gone and URL is under cp.kuaishou.com (mirrors `_is_ks_login_page_gone`).
+    """
+
+    LOGIN_URL = "https://cp.kuaishou.com/profile"
+    LOGGED_IN_URL_PREFIX = "https://cp.kuaishou.com/"
+
+    DISPLAY_SELECTORS = (
+        "div.user-info div.name",
+        "div.user-name",
+        "span.user-name",
+        "[class*='user-name']",
+        "[class*='nickname']",
+        "[class*='userName']",
+    )
+    ACCOUNT_ID_SELECTORS = (
+        "[class*='kwai-id']",
+        "[class*='kuaishou-id']",
+        "span.kwai-id",
+    )
+    AVATAR_SELECTORS = (
+        "img.avatar",
+        "div.user-info img",
+        "div.avatar img",
+        "[class*='avatar'] img",
+        "img[class*='avatar']",
+    )
+
+    @classmethod
+    async def extract_qr_data_url(cls, page: Any) -> str:
+        # Primary: upstream's main#login-form → div.qr-login img[alt="qrcode"].
+        try:
+            form = page.locator("main#login-form").first
+            await form.wait_for(state="visible", timeout=30000)
+            qr_img = form.locator('div.qr-login img[alt="qrcode"]').first
+            await qr_img.wait_for(state="visible", timeout=30000)
+            src = await qr_img.get_attribute("src")
+            if src and src.startswith("data:image/"):
+                return src
+        except Exception:  # noqa: BLE001
+            pass
+        # Fallback: any visible data: image in the login box.
+        for selector in (
+            'main#login-form img[src^="data:image/"]',
+            'div.qr-login img',
+            'img[alt="qrcode"]',
+            'img[src^="data:image/"]',
+        ):
+            qr = page.locator(selector).first
+            try:
+                if not await qr.count() or not await qr.is_visible():
+                    continue
+                src = await qr.get_attribute("src")
+                if src and src.startswith("data:image/"):
+                    return src
+            except Exception:  # noqa: BLE001
+                continue
+        raise RuntimeError("kuaishou: QR src not found in #login-form or fallback selectors")
+
+    @classmethod
+    async def is_logged_in(cls, page: Any) -> bool:
+        if not page.url.startswith(cls.LOGGED_IN_URL_PREFIX):
+            return False
+        # If login form is still present, we're not logged in yet.
+        try:
+            form = page.locator("main#login-form").first
+            if await form.count() and await form.is_visible():
+                return False
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+    @classmethod
+    async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
+        try:
+            display = await _first_text(page, cls.DISPLAY_SELECTORS)
+            avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+            account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+            body = await _body_text(page)
+            if not account_id:
+                account_id = _extract_labeled_account_id(
+                    body,
+                    ("快手号", "快手 ID", "Kwai ID", "Kuaishou ID"),
+                )
+            if _is_placeholder_profile_text(display):
+                display = None
+            if not display:
+                display = _extract_text_before_label(body, "快手号")
+            if _is_placeholder_profile_text(display):
+                display = None
+            return {
+                "displayName": display,
+                "platformAccountId": account_id,
+                "avatarUrl": avatar,
+            }
+        except Exception:  # noqa: BLE001
+            return _empty_profile()
+
+
+class XiaohongshuDriver(PlatformDriver):
+    """小红书 creator.xiaohongshu.com creator center.
+
+    Login flow: `/login` shows `div[class*='login-box']` with the QR inside.
+    On scan the page navigates away from `/login` (typically into
+    `/publish/publish` or the home dashboard). Profile fields are not exposed
+    consistently in the upstream we mirror — best-effort selectors only.
+    """
+
+    LOGIN_URL = "https://creator.xiaohongshu.com/login"
+    LOGGED_IN_URL_PREFIX = "https://creator.xiaohongshu.com/"
+
+    DISPLAY_SELECTORS = (
+        "div.user-info div.nickname",
+        "[class*='nickname']",
+        "[class*='user-name']",
+        "span.user-name",
+        "div.name",
+    )
+    ACCOUNT_ID_SELECTORS = (
+        "[class*='red-id']",
+        "[class*='xhs-id']",
+        "[class*='redId']",
+    )
+    AVATAR_SELECTORS = (
+        "img.avatar",
+        "div.user-info img",
+        "[class*='avatar'] img",
+        "img[class*='avatar']",
+    )
+
+    @classmethod
+    async def extract_qr_data_url(cls, page: Any) -> str:
+        # Primary: upstream's `div[class*='login-box']` wrapper hosts the QR.
+        try:
+            box = page.locator("div[class*='login-box']").first
+            await box.wait_for(state="visible", timeout=30000)
+            qr_img = box.locator('img[src^="data:image/"]').first
+            await qr_img.wait_for(state="visible", timeout=30000)
+            src = await qr_img.get_attribute("src")
+            if src and src.startswith("data:image/"):
+                return src
+        except Exception:  # noqa: BLE001
+            pass
+        # Fallback selectors covering legacy page builds.
+        for selector in (
+            ".login-box-container img",
+            'div[class*="qrcode"] img',
+            'canvas[class*="qrcode"]',
+            'img[src^="data:image/"]',
+        ):
+            qr = page.locator(selector).first
+            try:
+                if not await qr.count() or not await qr.is_visible():
+                    continue
+                src = await qr.get_attribute("src")
+                if src and src.startswith("data:image/"):
+                    return src
+            except Exception:  # noqa: BLE001
+                continue
+        raise RuntimeError("xiaohongshu: QR src not found in login-box or fallback selectors")
+
+    @classmethod
+    async def is_logged_in(cls, page: Any) -> bool:
+        if not page.url.startswith(cls.LOGGED_IN_URL_PREFIX):
+            return False
+        # Still on /login means QR hasn't been scanned yet.
+        if page.url.rstrip("/").endswith("/login"):
+            return False
+        # If login-box is still on screen we're not logged in either.
+        try:
+            box = page.locator("div[class*='login-box']").first
+            if await box.count() and await box.is_visible():
+                return False
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+    @classmethod
+    async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
+        try:
+            display = await _first_text(page, cls.DISPLAY_SELECTORS)
+            avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+            account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+            body = await _body_text(page)
+            if not account_id:
+                account_id = _extract_labeled_account_id(
+                    body,
+                    ("小红书号", "小红书 ID", "Red ID", "XHS ID"),
+                )
+            if _is_placeholder_profile_text(display):
+                display = None
+            if not display:
+                display = _extract_text_before_label(body, "小红书号")
+            if _is_placeholder_profile_text(display):
+                display = None
+            return {
+                "displayName": display,
+                "platformAccountId": account_id,
+                "avatarUrl": avatar,
+            }
+        except Exception:  # noqa: BLE001
+            return _empty_profile()
+
+
 DRIVERS: dict[str, type[PlatformDriver]] = {
     "douyin": DouyinDriver,
     "shipinhao": ShipinhaoDriver,
+    "kuaishou": KuaishouDriver,
+    "xiaohongshu": XiaohongshuDriver,
 }
 
 

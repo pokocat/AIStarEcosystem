@@ -22,8 +22,9 @@ Current status
 ==============
 
 The DOM selectors for douyin have been captured from creator.douyin.com
-second verification (`#uc-second-verify`). Shipinhao is still using
-`_PlaceholderSmsDriver` until we trigger and capture a real prompt there.
+second verification (`#uc-second-verify`). Shipinhao, kuaishou, and
+xiaohongshu still use `_PlaceholderSmsDriver` until we trigger and capture
+a real prompt on each platform.
 
 To wire a real driver:
   1. Open the platform's upload page in headed chromium.
@@ -474,6 +475,8 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
 SMS_DRIVERS: dict[str, SmsInteractionDriver] = {
     "douyin": _DouyinSmsDriver(),
     "shipinhao": _PlaceholderSmsDriver("shipinhao"),
+    "kuaishou": _PlaceholderSmsDriver("kuaishou"),
+    "xiaohongshu": _PlaceholderSmsDriver("xiaohongshu"),
 }
 
 
@@ -482,7 +485,10 @@ def get_sms_driver(platform: str) -> SmsInteractionDriver | None:
 
     Caller must skip the watcher path entirely when None — the placeholder
     drivers are themselves listed in SMS_DRIVERS, so a None return means
-    "platform not even known to this module" (e.g. kuaishou / xiaohongshu).
+    "platform not even known to this module". Currently all four v1-enabled
+    platforms (douyin / shipinhao / kuaishou / xiaohongshu) are in the
+    dictionary; only douyin has live selectors, the rest are placeholders
+    until operator captures their SMS modal via SAU_SMS_CAPTURE=1.
     """
     return SMS_DRIVERS.get(platform.lower())
 

@@ -95,7 +95,7 @@ def test_verify_returns_valid_for_nonempty_state(client: TestClient) -> None:
 
 
 def test_verify_real_mode_unsupported_platform_returns_invalid(monkeypatch) -> None:
-    """Real mode + a platform we haven't wired (kuaishou) must return
+    """Real mode + a platform we haven't wired (bilibili) must return
     valid=False *without* importing patchright. The slim mock-mode CI doesn't
     have the [real] extra installed, so an unguarded import would 500.
     Also asserts we never up-flip a cookie we can't actually probe."""
@@ -106,7 +106,7 @@ def test_verify_real_mode_unsupported_platform_returns_invalid(monkeypatch) -> N
         r = client.post(
             "/accounts/verify",
             headers=_h(),
-            json={"platform": "kuaishou", "storageState": {"cookies": [{"name": "x", "value": "y"}]}},
+            json={"platform": "bilibili", "storageState": {"cookies": [{"name": "x", "value": "y"}]}},
         )
         assert r.status_code == 200
         assert r.json() == {"valid": False, "refreshedStorageState": None, "profile": None}
@@ -216,8 +216,8 @@ def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:
     """Real-mode + unknown platform must return 501 *before* touching patchright.
 
     The slim mock-mode CI doesn't install the `[real]` extra, so we exercise
-    the early-reject branch via the only platform not in LOGIN_PAGE_URLS yet
-    (kuaishou). Ensures operators flipping SAU_MOCK_MODE=0 get a clear
+    the early-reject branch via a platform not in LOGIN_PAGE_URLS (bilibili).
+    Ensures operators flipping SAU_MOCK_MODE=0 get a clear
     PLATFORM_REAL_LOGIN_NOT_WIRED rather than an ImportError surfacing as
     500.
     """
@@ -229,12 +229,12 @@ def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:
         r = client.post(
             "/login/start",
             headers=_h(),
-            json={"ticket": "real-1", "platform": "kuaishou", "accountName": "ks-test"},
+            json={"ticket": "real-1", "platform": "bilibili", "accountName": "b-test"},
         )
         assert r.status_code == 501
         detail = r.json()["detail"]
         assert detail["code"] == "PLATFORM_REAL_LOGIN_NOT_WIRED"
-        assert "kuaishou" in detail["message"]
+        assert "bilibili" in detail["message"]
 
 
 # ── _run_upstream_upload guard (timeout / cancel / publishing watchdog) ─────
