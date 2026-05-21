@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -88,6 +89,17 @@ public class FfmpegRunner {
             } else {
                 log.warn("[mixcut] ffmpeg filter capability degraded: missing {}. Render worker will fallback where possible.",
                         missing);
+                // overlay 是 picgen / 用户图层上必需的；缺它就把诊断快照打全，
+                // 用户不用提 issue 我也能从 log 一眼看出是 PATH 问题 / vendor build / 还是真缺。
+                if (missing.contains("overlay")) {
+                    log.warn("[mixcut] CRITICAL: overlay filter not detected. Diagnostic snapshot follows ↓");
+                    try {
+                        diagnosticSnapshot().forEach((k, v) ->
+                                log.warn("[mixcut]   ffmpeg-diag.{} = {}", k, v));
+                    } catch (Exception diagErr) {
+                        log.warn("[mixcut] diagnosticSnapshot threw: {}", diagErr.getMessage());
+                    }
+                }
             }
         } catch (Exception e) {
             log.warn("[mixcut] cannot inspect ffmpeg filters via `{} -filters`: {}", props.getFfmpegBin(), e.getMessage());
@@ -259,21 +271,86 @@ public class FfmpegRunner {
      * 存在：ffmpeg exit=0 且输出含 "Filter <name>" header。
      * 不存在：ffmpeg exit=1 + "Unknown filter '<name>'." (run() 抛 RuntimeException)，或者
      *         个别版本 exit=0 但输出仅含 "Unknown filter" 字样。
+     *
+     * 每次 probe 都在 INFO 级别留一行诊断（成功 + 失败 + 异常）—— 用户上报"overlay 不被识别"
+     * 时不用打 DEBUG 日志重跑，直接 grep `[mixcut] probe filter=` 就能定位。
      */
     private boolean probeFilter(String name) {
         try {
             String out = run(props.getFfmpegBin(),
                     List.of("-hide_banner", "-h", "filter=" + name), 16_000);
-            if (out == null) return false;
+            if (out == null) {
+                log.warn("[mixcut] probe filter={}: ffmpeg returned null output", name);
+                return false;
+            }
             String lower = out.toLowerCase();
-            if (lower.contains("unknown filter")) return false;
-            return out.contains("Filter " + name)
+            if (lower.contains("unknown filter")) {
+                log.info("[mixcut] probe filter={} → NOT PRESENT (ffmpeg said 'Unknown filter')", name);
+                return false;
+            }
+            boolean ok = out.contains("Filter " + name)
                     || out.contains("filter '" + name + "'")
                     || lower.contains("filter " + name.toLowerCase());
+            if (!ok) {
+                log.warn("[mixcut] probe filter={} ran (exit=0) but output 不含预期 'Filter {}' header；first 200 chars: {}",
+                        name, name, snip(out, 200));
+            } else {
+                log.info("[mixcut] probe filter={} → PRESENT (recovered)", name);
+            }
+            return ok;
         } catch (Exception e) {
-            log.debug("[mixcut] probe filter={} failed: {}", name, e.getMessage());
+            log.warn("[mixcut] probe filter={} threw: {}", name, e.getMessage());
             return false;
         }
+    }
+
+    private static String snip(String s, int n) {
+        if (s == null) return "(null)";
+        return s.length() <= n ? s.replaceAll("\\s+", " ") : s.substring(0, n).replaceAll("\\s+", " ") + " ...";
+    }
+
+    /**
+     * 诊断信息字典，用于在渲染失败时 attach 到 error_message，避免用户回头翻 server log。
+     * Returns:
+     *  - bin: 配置里的 ffmpeg 路径（可能是相对名）
+     *  - version: ffmpeg -version 第一行
+     *  - filters_total: 已识别的 filter 总数
+     *  - overlay_present / scale_present / crop_present: 关键 filter 状态
+     *  - filters_head: -filters 输出前 300 字（折成单行）
+     */
+    public Map<String, String> diagnosticSnapshot() {
+        Map<String, String> diag = new java.util.LinkedHashMap<>();
+        diag.put("bin", props.getFfmpegBin());
+        try {
+            String ver = run(props.getFfmpegBin(), List.of("-version"), 4_000);
+            diag.put("version", ver.split("\\R", 2)[0]);
+        } catch (Exception e) {
+            diag.put("version", "(failed: " + e.getMessage() + ")");
+        }
+        Set<String> filters;
+        try {
+            filters = availableFilters();
+            diag.put("filters_total", String.valueOf(filters.size()));
+            diag.put("overlay_present", String.valueOf(filters.contains("overlay")));
+            diag.put("scale_present", String.valueOf(filters.contains("scale")));
+            diag.put("crop_present", String.valueOf(filters.contains("crop")));
+        } catch (Exception e) {
+            diag.put("filters_total", "(failed: " + e.getMessage() + ")");
+        }
+        try {
+            String head = run(props.getFfmpegBin(), List.of("-hide_banner", "-filters"), 8_000);
+            diag.put("filters_head", snip(head, 300));
+        } catch (Exception e) {
+            diag.put("filters_head", "(failed: " + e.getMessage() + ")");
+        }
+        try {
+            String overlayProbe = run(props.getFfmpegBin(),
+                    List.of("-hide_banner", "-h", "filter=overlay"), 8_000);
+            diag.put("overlay_probe_head", snip(overlayProbe, 200));
+        } catch (Exception e) {
+            diag.put("overlay_probe_head", "(threw: " + e.getMessage() + ")");
+        }
+        return diag;
     }
 
     public boolean hasFilter(String name) {

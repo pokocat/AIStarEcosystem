@@ -992,11 +992,23 @@ public class MixcutRenderingService {
         // 知道发生了什么。FfmpegRunner 已经做了 -filters 解析 + -h filter=<name> 兜底 probe，
         // 走到这里 caps.overlay 仍 false 说明 ffmpeg binary 真的没有 overlay filter。
         if (!caps.overlay && !overlays.isEmpty()) {
+            // 把 ffmpeg 诊断快照拼进 error_message —— 用户不用回头翻 server log。
+            // 历史踩坑：用户报 "overlay 不识别" 时，最常见的真因是 JVM PATH 里没有 brew 装的 ffmpeg
+            // (/opt/homebrew/bin 不在 IDE/systemd 默认 PATH 里)，捎带把 `bin` 和 `version` 暴露出来一眼看穿。
+            StringBuilder diagText = new StringBuilder();
+            try {
+                ffmpeg.diagnosticSnapshot().forEach((k, v) ->
+                        diagText.append("\n  - ").append(k).append(": ").append(v));
+            } catch (Exception diagErr) {
+                diagText.append("\n  - (diagnosticSnapshot 失败: ").append(diagErr.getMessage()).append(")");
+            }
             throw new RuntimeException(
                     "ffmpeg binary 缺少必需的 `overlay` filter，无法把图片/文字生图叠加到视频上。"
                     + " 当前用户绑定了 " + overlays.size() + " 个 overlay（含 picgen 文字生图）。"
-                    + " 请安装完整的 ffmpeg build（brew install ffmpeg / apt install ffmpeg）"
-                    + " 或设置 AEP_FFMPEG_BIN 指向有 overlay filter 的二进制。");
+                    + " 排查：先看 `bin` 是否指向你 brew 装的那个 ffmpeg（macOS Apple Silicon 默认 /opt/homebrew/bin/ffmpeg；"
+                    + " 如果 JVM 是 IDE / systemd 启动，PATH 可能不含 brew 路径 → 在 server.env 或 IDE Run Configuration"
+                    + " 加 AEP_FFMPEG_BIN=/opt/homebrew/bin/ffmpeg）。"
+                    + " 诊断:" + diagText);
         }
         boolean useRealOverlay = caps.overlay && !overlays.isEmpty();
         int overlayCount = useRealOverlay ? Math.min(4, overlays.size()) : (caps.overlay && caps.color ? 1 : 0);
