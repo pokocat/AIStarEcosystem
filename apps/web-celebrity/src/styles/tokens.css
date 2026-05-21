@@ -4,6 +4,46 @@
    特征：奶油底 + 多色饱和调色板 + 黑/紫双色按钮 + serif 斜体点睛 + 圆角偏大。
    ============================================================ */
 
+@font-face {
+  font-family: "AEP Inter";
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "AEP Manrope";
+  src: url("/fonts/manrope-latin.woff2") format("woff2");
+  font-weight: 500 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "AEP Instrument Serif";
+  src: url("/fonts/instrument-serif-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "AEP Instrument Serif";
+  src: url("/fonts/instrument-serif-italic-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "AEP JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root,
 [data-theme="creator"] {
   /* surface（参考图 Palette · Surface） */
@@ -43,8 +83,11 @@
   --tag-comedy: #22b59a;
   --tag-drama: #7c5cff;
 
-  /* 字体（next/font 注入变量名对齐） */
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* 字体：Latin 自托管，中文走系统中文字体兜底；生产不访问 Google Fonts。 */
+  --font-sans: "AEP Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "AEP Manrope", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "AEP Instrument Serif", "Times New Roman", "Songti SC", ui-serif, serif;
+  --font-mono: "AEP JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* 字距 */
   --tracking-tight: -0.025em;
