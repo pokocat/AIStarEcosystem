@@ -222,13 +222,13 @@ def test_real_login_drivers_implement_full_surface() -> None:
     assert set(DRIVERS) >= {"douyin", "shipinhao"}
 
 
-def test_xiaohongshu_overrides_prepare_profile_view() -> None:
-    """XHS 是目前唯一已知 post-login landing 不展示 小红书号 的平台，必须重写
-    `prepare_profile_view` 主动导航到 /setting/profile 之类的账号信息页。
-    其它平台默认 noop 没问题（头部已自带 nickname + id）。"""
+def test_profile_view_overrides_stay_platform_specific() -> None:
+    """小红书 / 视频号 的 profile 字段不一定在登录落点首屏稳定出现，
+    必须各自重写 `prepare_profile_view` 停到可读位置。"""
     from sau_service.login_pool import (
         DRIVERS,
         PlatformDriver,
+        ShipinhaoDriver,
         XiaohongshuDriver,
     )
 
@@ -236,20 +236,31 @@ def test_xiaohongshu_overrides_prepare_profile_view() -> None:
     # 比较底层函数本体。
     base_fn = PlatformDriver.prepare_profile_view.__func__
     xhs_fn = XiaohongshuDriver.prepare_profile_view.__func__
+    shipinhao_fn = ShipinhaoDriver.prepare_profile_view.__func__
     assert xhs_fn is not base_fn, (
         "XiaohongshuDriver must override prepare_profile_view "
-        "(post-login landing page does not render 小红书号)"
+        "(post-login profile card lives on /new/home)"
     )
-    # 候选 URL 列表至少含一个 /creator 或 /setting 路径
     candidates = XiaohongshuDriver.PROFILE_VIEW_URL_CANDIDATES
-    assert candidates, "PROFILE_VIEW_URL_CANDIDATES must not be empty"
+    assert candidates == ("https://creator.xiaohongshu.com/new/home",)
     assert all(c.startswith("https://creator.xiaohongshu.com/") for c in candidates), (
         f"All candidate URLs must be on creator.xiaohongshu.com: {candidates}"
     )
+    assert not any("/setting/profile" in c for c in candidates)
 
-    # 其它非 XHS driver 默认 noop —— 不要无脑给所有 driver 都加导航。
+    assert shipinhao_fn is not base_fn, (
+        "ShipinhaoDriver must override prepare_profile_view "
+        "(post-login editor shell may not expose 视频号 ID immediately)"
+    )
+    assert all(c.startswith("https://channels.weixin.qq.com/platform") for c in (
+        ShipinhaoDriver.PROFILE_VIEW_URL_CANDIDATES
+    ))
+    assert "视频号 ID" in ShipinhaoDriver.ACCOUNT_ID_LABELS
+    assert "原始 ID" in ShipinhaoDriver.ACCOUNT_ID_LABELS
+
+    # 其它 driver 默认 noop —— 不要无脑给所有 driver 都加导航。
     for name, cls in DRIVERS.items():
-        if name == "xiaohongshu":
+        if name in {"xiaohongshu", "shipinhao"}:
             continue
         assert cls.prepare_profile_view.__func__ is base_fn, (
             f"{name} driver unexpectedly overrides prepare_profile_view; "
@@ -277,6 +288,7 @@ def test_non_douyin_profile_text_helpers_parse_creator_headers() -> None:
     "<昵称> | <编号label>：<编号>" 的样式（或浮窗 tooltip 里同样的格式）。
     复用 Douyin 的 _extract_* helpers，只换 label 列表即可。"""
     from sau_service.login_pool import (
+        ShipinhaoDriver,
         _extract_labeled_account_id,
         _extract_text_before_label,
     )
@@ -285,16 +297,17 @@ def test_non_douyin_profile_text_helpers_parse_creator_headers() -> None:
     text = "AI明星实验室 | 视频号 ID: shipinhao_demo_001 | 简介"
     assert _extract_labeled_account_id(text, ("视频号 ID", "视频号ID", "视频号")) == "shipinhao_demo_001"
     assert _extract_text_before_label(text, "视频号 ID") == "AI明星实验室"
+    assert ShipinhaoDriver._clean_display_name("阿哐6299 申请认证") == "阿哐6299"
 
     # 快手 - "<昵称> | 快手号: <id>"
     text = "酷酷的小李 | 快手号：kuaishou_demo_001"
     assert _extract_labeled_account_id(text, ("快手号", "快手 ID")) == "kuaishou_demo_001"
     assert _extract_text_before_label(text, "快手号") == "酷酷的小李"
 
-    # 小红书 - "<昵称> | 小红书号: <id>"
-    text = "种草达人 | 小红书号：xhs_demo_001"
-    assert _extract_labeled_account_id(text, ("小红书号", "小红书 ID", "Red ID")) == "xhs_demo_001"
-    assert _extract_text_before_label(text, "小红书号") == "种草达人"
+    # 小红书新版首页 - "<昵称> ... 小红书账号: <id>"
+    text = "种草达人 | 小红书账号：603697345 | 账号状态正常"
+    assert _extract_labeled_account_id(text, ("小红书账号", "小红书号", "小红书 ID", "Red ID")) == "603697345"
+    assert _extract_text_before_label(text, "小红书账号") == "种草达人"
 
 
 def test_real_login_start_rejects_unsupported_platform(monkeypatch) -> None:

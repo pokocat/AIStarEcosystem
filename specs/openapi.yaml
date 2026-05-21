@@ -1818,6 +1818,7 @@ components:
         sessionTicket:    { type: string, description: 用于 /bind-poll 的 ticket }
         qrImageDataUrl:   { type: string, nullable: true, description: "data:image/png;base64,..." }
         qrUrl:            { type: string, nullable: true, description: 部分平台是 deeplink 而非图片 }
+        alreadyLoggedIn:  { type: boolean, description: sau-service 发现已有登录态，无需展示 QR }
         expiresAt:        { type: string, format: date-time }
 
     SocialAccountBindPollResult:

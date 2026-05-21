@@ -118,10 +118,11 @@ public class SocialAccountService {
 
         String qrImageDataUrl = stringOrNull(sauResp.get("qrImageDataUrl"));
         String qrUrl = stringOrNull(sauResp.get("qrUrl"));
+        Boolean alreadyLoggedIn = Boolean.TRUE.equals(sauResp.get("alreadyLoggedIn"));
         Instant expiresAt = parseInstantOrNull(sauResp.get("expiresAt"));
         if (expiresAt == null) expiresAt = Instant.now().plusSeconds(300);
 
-        return new SocialAccountBindInitDto(ticket, qrImageDataUrl, qrUrl, expiresAt);
+        return new SocialAccountBindInitDto(ticket, qrImageDataUrl, qrUrl, alreadyLoggedIn, expiresAt);
     }
 
     /**

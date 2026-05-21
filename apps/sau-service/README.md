@@ -3,6 +3,10 @@
 Stateless Python + Playwright worker that bridges `apps/server` (Spring Boot) and the
 [social-auto-upload (sau)](https://github.com/dreammis/social-auto-upload) library.
 
+> **Scaling roadmap**: `/accounts/verify` 每次都 spawn 一个 chromium，并发起来会压宿主机。
+> v0.5.x 已加 **前端串行 + 10min TTL skip + server Semaphore(1)** 短期保护。
+> 中期（浏览器进程复用 worker）+ 长期（HTTP-only 探测）方案详见 [TODO.md](../../TODO.md) 的 `### 基础设施收敛` 段。
+
 ## Why a separate service
 
 Java cannot drive Playwright directly. `apps/server` owns the source of truth (DB,

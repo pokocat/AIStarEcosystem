@@ -29,6 +29,7 @@ class LoginStartResponse(BaseModel):
     qrImagePngBase64: str | None = None
     qrImageDataUrl: str | None = None
     qrUrl: str | None = None
+    alreadyLoggedIn: bool = False
     expiresAt: str
 
 
@@ -63,6 +64,7 @@ async def login_start(req: LoginStartRequest, request: Request) -> LoginStartRes
         )
     return LoginStartResponse(
         qrImageDataUrl=session.qr_image_data_url,
+        alreadyLoggedIn=session.already_logged_in,
         expiresAt=datetime.fromtimestamp(session.expires_at, tz=timezone.utc).isoformat(),
     )
 

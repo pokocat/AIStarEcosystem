@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@ai-star-eco/ui/ui/select";
+import { SocialPlatformLogo } from "./SocialPlatformLogo";
 
 const ENABLED_PLATFORMS: Array<{ id: SocialPlatform; label: string }> = [
   { id: "douyin", label: "抖音" },
@@ -221,8 +222,11 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
                 </SelectTrigger>
                 <SelectContent>
                   {ENABLED_PLATFORMS.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.label}
+                    <SelectItem key={p.id} value={p.id} textValue={p.label}>
+                      <span className="inline-flex items-center gap-2">
+                        <SocialPlatformLogo platform={p.id} size="xs" />
+                        <span>{p.label}</span>
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -274,7 +278,15 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
           </div>
         ) : (
           <div className="mt-4 flex flex-col items-center gap-3">
-            {init.qrImageDataUrl ? (
+            {init.alreadyLoggedIn ? (
+              <div className="flex h-48 w-48 flex-col items-center justify-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-center">
+                <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
+                <p className="text-sm font-medium text-zinc-700">已检测到平台登录态</p>
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  正在同步账号昵称、账号号和头像
+                </p>
+              </div>
+            ) : init.qrImageDataUrl ? (
               <img
                 src={init.qrImageDataUrl}
                 alt="扫码登录"
@@ -299,7 +311,9 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
                 pollStatus === "expired" ? "text-amber-600" : "text-zinc-500",
               )}
             >
-              {pollStatus === "pending" && "等待扫码……"}
+              {pollStatus === "pending" && (
+                init.alreadyLoggedIn ? "正在读取账号信息……" : "等待扫码……"
+              )}
               {pollStatus === "expired" && "扫码已超时，可以重试"}
               {pollStatus === "error" && (errorMsg ?? "网络异常，重试一下")}
             </p>
@@ -307,9 +321,11 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
               <button type="button" className={CTA_SECONDARY} onClick={handleClose}>
                 取消
               </button>
-              <button type="button" className={CTA_PRIMARY} onClick={retry}>
-                <RefreshCw className="h-3.5 w-3.5" /> 重新生成 QR
-              </button>
+              {(!init.alreadyLoggedIn || pollStatus !== "pending") && (
+                <button type="button" className={CTA_PRIMARY} onClick={retry}>
+                  <RefreshCw className="h-3.5 w-3.5" /> 重新生成 QR
+                </button>
+              )}
             </div>
           </div>
         )}

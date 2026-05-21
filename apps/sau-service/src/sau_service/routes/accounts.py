@@ -106,9 +106,8 @@ async def _verify_real(driver_cls, storage_state: dict, *, headless: bool) -> Ve
                      driver_cls.__name__, page.url)
             return VerifyResponse(valid=False)
 
-        # v0.17.2: mirror login_pool._poll_real — let the driver navigate to a
-        # profile-rich URL (XHS needs /setting/profile to expose 小红书号) before
-        # we snapshot storage_state + extract.
+        # Mirror login_pool._poll_real — let the driver navigate / interact to
+        # expose profile fields before we snapshot storage_state + extract.
         try:
             await driver_cls.prepare_profile_view(page)
         except Exception:  # noqa: BLE001

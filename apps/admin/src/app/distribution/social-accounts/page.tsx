@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Link2, ShieldAlert, ShieldCheck, Hourglass } from "lucide-react";
+import { ShieldAlert, ShieldCheck, Hourglass } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { listSocialAccounts } from "@/api/social-account";
 import { SOCIAL_ACCOUNT_STATUS } from "@/constants/status";
 import { PUBLISH_PLATFORM_LABEL } from "@/types/publish-job";
 import type { SocialAccount, SocialAccountStatus } from "@/types/social-account";
+import { SocialPlatformLogo } from "@/components/SocialPlatformLogo";
 import { formatDateCN } from "@/lib/utils";
 
 const STATUS_TABS: { value: SocialAccountStatus | "all"; label: string }[] = [
@@ -107,7 +108,7 @@ export default function SocialAccountsPage() {
                     <TableRow key={r.id}>
                       <TableCell className="font-medium">
                         <span className="inline-flex items-center gap-1.5">
-                          <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <SocialPlatformLogo platform={r.platform} />
                           {PUBLISH_PLATFORM_LABEL[r.platform] ?? r.platform}
                         </span>
                       </TableCell>

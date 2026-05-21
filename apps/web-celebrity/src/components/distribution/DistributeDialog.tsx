@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@ai-star-eco/ui/ui/select";
+import { SocialPlatformLogo } from "./SocialPlatformLogo";
 import { socialAccountOptionLabel } from "./social-account-labels";
 
 /** Radix Select 不允许 value=""，用 sentinel 表示"不分发到此平台"。 */
@@ -262,7 +263,10 @@ export function DistributeDialog({ open, onClose, project, videos, onCreated }: 
                       key={id}
                       className="flex items-center gap-3 rounded-md border border-zinc-200 px-3 py-2"
                     >
-                      <span className="w-14 text-xs font-medium text-zinc-700">{label}</span>
+                      <span className="flex w-20 shrink-0 items-center gap-1.5 text-xs font-medium text-zinc-700">
+                        <SocialPlatformLogo platform={id} size="xs" />
+                        <span>{label}</span>
+                      </span>
                       {platformAccounts.length === 0 ? (
                         <span className="text-[11px] text-zinc-400">未绑定 active 账号</span>
                       ) : (
@@ -281,8 +285,11 @@ export function DistributeDialog({ open, onClose, project, videos, onCreated }: 
                           <SelectContent>
                             <SelectItem value={NO_ACCOUNT}>不分发到此平台</SelectItem>
                             {platformAccounts.map((a) => (
-                              <SelectItem key={a.id} value={a.id}>
-                                {socialAccountOptionLabel(a)}
+                              <SelectItem key={a.id} value={a.id} textValue={socialAccountOptionLabel(a)}>
+                                <span className="inline-flex min-w-0 items-center gap-2">
+                                  <SocialPlatformLogo platform={a.platform} size="xs" />
+                                  <span className="truncate">{socialAccountOptionLabel(a)}</span>
+                                </span>
                               </SelectItem>
                             ))}
                           </SelectContent>

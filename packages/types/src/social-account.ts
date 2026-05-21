@@ -50,6 +50,8 @@ export interface SocialAccountBindInit {
   qrImageDataUrl?: string;
   /** 部分平台是 deeplink 而非图片（备用） */
   qrUrl?: string;
+  /** sau-service 发现已有登录态，无需展示 QR，继续 poll 即可完成绑定。 */
+  alreadyLoggedIn?: boolean;
   expiresAt: ISODateTime;
 }
 

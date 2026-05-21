@@ -13,6 +13,7 @@ import { Button } from "@/components/mixcut-zone/ui/button";
 import { cn } from "@/components/mixcut-zone/lib/utils";
 import { SocialAccountApi } from "@ai-star-eco/api-client";
 import type { SocialAccount } from "@ai-star-eco/types/social-account";
+import { SocialPlatformLogo } from "@/components/distribution/SocialPlatformLogo";
 import { platformAccountLabel, platformDisplayName } from "@/components/distribution/social-account-labels";
 import {
   ScheduleEditor,
@@ -468,6 +469,7 @@ export function BatchPublishDrawer({
                               >
                                 {sel && <span className="text-[10px] font-bold">✓</span>}
                               </span>
+                              <SocialPlatformLogo platform={a.platform} size="sm" />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium truncate">{a.accountName}</div>
                                 <div className="text-[11px] text-muted-foreground truncate">
@@ -674,4 +676,3 @@ function ResultSummary({ result }: { result: MixcutApi.MixcutPublishBatchResult 
 
 // v0.22: ScheduleEditor + 工具函数已迁到 components/distribution/ScheduleEditor.tsx 共享。
 // 本文件只保留 BatchPublishDrawer 自身的渲染 + 提交逻辑。
-

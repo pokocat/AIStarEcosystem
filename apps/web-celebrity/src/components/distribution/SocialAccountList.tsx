@@ -12,19 +12,9 @@ import type { SocialAccount, SocialAccountStatus, SocialPlatform } from "@ai-sta
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { BindAccountDialog } from "./BindAccountDialog";
-import { platformAccountLabel } from "./social-account-labels";
+import { SocialPlatformLogo } from "./SocialPlatformLogo";
+import { platformAccountLabel, platformDisplayName } from "./social-account-labels";
 import { useConfirm } from "@/components/common/confirm-dialog";
-
-const PLATFORM_LABEL: Record<string, string> = {
-  douyin: "抖音",
-  kuaishou: "快手",
-  xiaohongshu: "小红书",
-  shipinhao: "视频号",
-  bilibili: "B站",
-  tiktok: "TikTok",
-  youtube: "YouTube",
-  baijiahao: "百家号",
-};
 
 const STATUS_META: Record<SocialAccountStatus, { label: string; cls: string }> = {
   active: { label: "可用", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -352,7 +342,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
         <ul className="divide-y divide-zinc-100">
           {accounts.map((a) => {
             const meta = STATUS_META[a.status] ?? STATUS_META.pending;
-            const platform = PLATFORM_LABEL[a.platform] ?? a.platform;
+            const platform = platformDisplayName(a.platform);
             const identityParts = [
               platform,
               a.displayName || null,
@@ -362,17 +352,24 @@ export function SocialAccountList({ onAccountsChange }: Props) {
             ].filter(Boolean);
             return (
               <li key={a.id} className="flex items-center gap-3 py-3">
-                {a.avatarUrl ? (
-                  <img
-                    src={a.avatarUrl}
-                    alt={a.accountName}
-                    className="h-9 w-9 rounded-full border border-zinc-200 object-cover"
+                <div className="relative h-9 w-9 shrink-0">
+                  {a.avatarUrl ? (
+                    <img
+                      src={a.avatarUrl}
+                      alt={a.accountName}
+                      className="h-9 w-9 rounded-full border border-zinc-200 object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-9 w-9 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-xs text-zinc-500">
+                      {platform.slice(0, 1)}
+                    </div>
+                  )}
+                  <SocialPlatformLogo
+                    platform={a.platform}
+                    size="xs"
+                    className="absolute -bottom-0.5 -right-0.5 ring-2 ring-white"
                   />
-                ) : (
-                  <div className="grid h-9 w-9 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-xs text-zinc-500">
-                    {platform.slice(0, 1)}
-                  </div>
-                )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 text-sm text-zinc-800">
                     <span className="truncate font-medium">{a.accountName}</span>

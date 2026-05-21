@@ -16,5 +16,6 @@ public record SocialAccountBindInitDto(
         String sessionTicket,
         String qrImageDataUrl,
         String qrUrl,
+        Boolean alreadyLoggedIn,
         Instant expiresAt
 ) {}

@@ -34,10 +34,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from .qr import build_mock_qr
@@ -318,6 +321,131 @@ async def _dump_profile_dom_hints(
         log.exception("[%s] _dump_profile_dom_hints crashed", diagnostic_tag or "profile")
 
 
+# ─── QR-extraction failure diagnostic ────────────────────────────────────
+
+
+def _snapshot_dir() -> Path:
+    """Where QR-failure snapshots get written. Configurable via env so
+    operator can point it at a mounted volume in docker."""
+    return Path(os.environ.get("SAU_DEBUG_SNAPSHOT_DIR", "./sau-debug-snapshots"))
+
+
+async def _dump_qr_extraction_failure(
+    page: Any,
+    platform: str,
+    error_msg: str,
+) -> dict[str, Any]:
+    """Snapshot + DOM dump when a driver's `extract_qr_data_url` raises.
+
+    XHS / 视频号 / 快手 这些站时不时改 /login 页 DOM —— class hash 漂、tab
+    布局换、整页改成 modal 之类的。出错时一张 screenshot + 一份 HTML 比
+    任何 selector 猜测都管用。
+
+    输出：
+      - ./sau-debug-snapshots/<platform>-<yyyyMMdd-HHmmss>.png     页面截图
+      - ./sau-debug-snapshots/<platform>-<yyyyMMdd-HHmmss>.html    HTML outerHTML
+      - WARNING log 含上述路径 + URL + body[:500] + 所有 data:image/<img> 的 size/class
+
+    Best-effort：本身不抛；返回 {screenshot_path, html_path, url} 让 caller
+    把路径塞到 raise 的 message 里。"""
+    result: dict[str, Any] = {"screenshot_path": None, "html_path": None, "url": None}
+    try:
+        url = getattr(page, "url", None)
+        result["url"] = url
+
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        base_dir = _snapshot_dir()
+        try:
+            base_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:  # noqa: BLE001
+            log.exception("[%s] snapshot dir create failed: %s", platform, base_dir)
+            return result
+
+        png_path = base_dir / f"{platform}-{ts}.png"
+        html_path = base_dir / f"{platform}-{ts}.html"
+
+        # 1. Screenshot
+        try:
+            await page.screenshot(path=str(png_path), full_page=True)
+            result["screenshot_path"] = str(png_path)
+        except Exception:  # noqa: BLE001
+            log.exception("[%s] screenshot failed", platform)
+
+        # 2. HTML
+        try:
+            html = await page.content()
+            html_path.write_text(html or "", encoding="utf-8", errors="replace")
+            result["html_path"] = str(html_path)
+        except Exception:  # noqa: BLE001
+            log.exception("[%s] page.content() failed", platform)
+
+        # 3. DOM inventory of data: image elements (typical QR carriers)
+        # —— sizes + class. Helps spot which `<img src="data:image/...">` is
+        # the actual QR even if the upstream selector misses.
+        img_inventory_js = """
+        () => {
+          const out = [];
+          for (const img of document.querySelectorAll('img')) {
+            const src = img.getAttribute('src') || '';
+            if (!src.startsWith('data:image/')) continue;
+            const r = img.getBoundingClientRect();
+            out.push({
+              w: Math.round(r.width),
+              h: Math.round(r.height),
+              top: Math.round(r.top),
+              left: Math.round(r.left),
+              cls: typeof img.className === 'string' ? img.className : '',
+              alt: img.getAttribute('alt') || '',
+              ariaLabel: img.getAttribute('aria-label') || '',
+              parentTag: img.parentElement ? img.parentElement.tagName : null,
+              parentCls: img.parentElement && typeof img.parentElement.className === 'string'
+                ? img.parentElement.className : '',
+            });
+            if (out.length >= 20) break;
+          }
+          return out;
+        }
+        """
+        try:
+            imgs = await page.evaluate(img_inventory_js)
+        except Exception:  # noqa: BLE001
+            imgs = []
+
+        body = await _body_text(page)
+        body_snippet = (body or "")[:500]
+
+        log.warning(
+            "[%s] extract_qr_data_url FAILED url=%s error=%r\n"
+            "  screenshot=%s\n  html=%s\n  body[:500]=%r\n"
+            "  data:image candidates=%d",
+            platform,
+            url,
+            error_msg,
+            result["screenshot_path"] or "<not-saved>",
+            result["html_path"] or "<not-saved>",
+            body_snippet,
+            len(imgs) if isinstance(imgs, list) else 0,
+        )
+        if isinstance(imgs, list):
+            for i, img in enumerate(imgs):
+                log.warning(
+                    "  [%s][img#%d] size=%sx%s pos=(%s,%s) cls=%r alt=%r parentTag=%s parentCls=%r",
+                    platform,
+                    i,
+                    img.get("w"),
+                    img.get("h"),
+                    img.get("left"),
+                    img.get("top"),
+                    (img.get("cls") or "")[:120],
+                    img.get("alt"),
+                    img.get("parentTag"),
+                    (img.get("parentCls") or "")[:120],
+                )
+    except Exception:  # noqa: BLE001
+        log.exception("[%s] _dump_qr_extraction_failure crashed", platform)
+    return result
+
+
 class PlatformDriver:
     """Abstract driver — one subclass per v1-enabled platform."""
 
@@ -349,11 +477,8 @@ class PlatformDriver:
         """Optional hook: navigate / interact with the page so the profile
         fields become visible before extract_profile runs. Default = noop.
 
-        Drivers can override to e.g. navigate to a settings page where
-        nickname + platform_account_id are guaranteed to render. Used by
-        platforms (notably 小红书) whose post-login landing page renders
-        only the avatar — no nickname / 小红书号 visible until you go to
-        /setting/profile or similar.
+        Drivers can override to e.g. navigate to the creator homepage or open a
+        menu where nickname + platform_account_id are guaranteed to render.
 
         Best-effort: must NEVER raise; failure falls through to whatever
         the post-login landing page exposes. Storage_state is captured
@@ -366,6 +491,31 @@ class PlatformDriver:
         """Best-effort profile pull post-login. Never raises — falls back to
         nullable fields when probing fails."""
         return _empty_profile()
+
+
+class _AlreadyLoggedInForBind(Exception):
+    """Internal signal: login/start reached an authenticated creator page."""
+
+    def __init__(self, platform: str) -> None:
+        super().__init__(platform)
+        self.platform = platform
+
+
+async def _is_logged_in_safely(
+    driver_cls: type[PlatformDriver],
+    page: Any,
+    *,
+    ticket: str | None = None,
+) -> bool:
+    try:
+        return bool(await driver_cls.is_logged_in(page))
+    except Exception:  # noqa: BLE001
+        log.exception(
+            "login_pool: is_logged_in precheck failed ticket=%s platform=%s",
+            ticket,
+            driver_cls.__name__,
+        )
+        return False
 
 
 class DouyinDriver(PlatformDriver):
@@ -505,6 +655,13 @@ class ShipinhaoDriver(PlatformDriver):
     MANAGE_URL = "https://channels.weixin.qq.com/platform/post/list"
     PROFILE_READY_TIMEOUT_S = 10.0
     PROFILE_POLL_INTERVAL_MS = 500
+    PROFILE_VIEW_URL_CANDIDATES = (
+        MANAGE_URL,
+        "https://channels.weixin.qq.com/platform",
+    )
+    PROFILE_VIEW_NAVIGATE_TIMEOUT_MS = 10_000
+    PROFILE_VIEW_READY_TIMEOUT_S = 12.0
+    PROFILE_VIEW_READY_POLL_MS = 500
 
     # 视频号助手 (channels.weixin.qq.com/platform) 创作者中心左上角：
     #   头像 + 视频号昵称 + 一行 "视频号 ID: <id>" / "原始 ID: <id>"。
@@ -538,6 +695,16 @@ class ShipinhaoDriver(PlatformDriver):
         "img[class*='avatar']",
         "div.avatar img",
         "[class*='avatar'] img",
+    )
+    ACCOUNT_ID_LABELS = (
+        "视频号 ID",
+        "视频号ID",
+        "视频号账号",
+        "视频号",
+        "原始 ID",
+        "原始ID",
+        "Channels ID",
+        "Channel ID",
     )
 
     @classmethod
@@ -607,39 +774,191 @@ class ShipinhaoDriver(PlatformDriver):
         return True
 
     @classmethod
+    async def prepare_profile_view(cls, page: Any) -> None:
+        """Hold the browser on a page where 视频号助手 renders account chrome.
+
+        The post-create page is a reliable QR entry, but after login its first
+        paint can show only the editor shell. The account identity usually
+        appears in the persistent sidebar/header or avatar popover. We first
+        wait on the current page, then try the post list and platform home.
+        """
+        if await cls._wait_profile_surface_ready(page):
+            log.info(
+                "[shipinhao] prepare_profile_view ok on current page url=%s",
+                getattr(page, "url", None),
+            )
+            return
+        if await cls._open_profile_popover(page) and await cls._wait_profile_surface_ready(page):
+            log.info(
+                "[shipinhao] prepare_profile_view ok after opening profile popover url=%s",
+                getattr(page, "url", None),
+            )
+            return
+
+        for url in cls.PROFILE_VIEW_URL_CANDIDATES:
+            try:
+                await page.goto(
+                    url,
+                    wait_until="domcontentloaded",
+                    timeout=cls.PROFILE_VIEW_NAVIGATE_TIMEOUT_MS,
+                )
+                if not await cls.is_logged_in(page):
+                    log.warning(
+                        "[shipinhao] prepare_profile_view: %s did not stay logged in; landed=%s",
+                        url,
+                        getattr(page, "url", None),
+                    )
+                    continue
+                if await cls._wait_profile_surface_ready(page):
+                    log.info("[shipinhao] prepare_profile_view ok via %s", url)
+                    return
+                if await cls._open_profile_popover(page) and await cls._wait_profile_surface_ready(page):
+                    log.info("[shipinhao] prepare_profile_view ok via %s after profile popover", url)
+                    return
+                log.info(
+                    "[shipinhao] prepare_profile_view: %s loaded but profile surface not ready; trying next",
+                    url,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "[shipinhao] prepare_profile_view navigate failed url=%s err=%s",
+                    url,
+                    exc,
+                )
+        log.warning(
+            "[shipinhao] prepare_profile_view: all candidates failed; "
+            "extract_profile will run against current page"
+        )
+
+    @classmethod
+    async def _wait_profile_surface_ready(cls, page: Any) -> bool:
+        deadline = time.monotonic() + cls.PROFILE_VIEW_READY_TIMEOUT_S
+        while time.monotonic() < deadline:
+            try:
+                fields = await cls._read_profile_surface_fields(page)
+                if fields.get("displayName") and fields.get("platformAccountId"):
+                    return True
+                body = await _body_text(page)
+                if _extract_labeled_account_id(body, cls.ACCOUNT_ID_LABELS):
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+            await page.wait_for_timeout(cls.PROFILE_VIEW_READY_POLL_MS)
+        return False
+
+    @classmethod
+    async def _open_profile_popover(cls, page: Any) -> bool:
+        """Best-effort click on the account/avatar chrome.
+
+        Some 视频号 builds keep the platform id in the user popover instead of
+        the always-visible sidebar. Restrict candidates to top/left account-like
+        elements so this does not touch publish-form controls.
+        """
+        candidates_js = """
+        () => {
+          const selectors = [
+            '[class*="finder"]',
+            '[class*="account"]',
+            '[class*="Account"]',
+            '[class*="user"]',
+            '[class*="User"]',
+            '[class*="avatar"]',
+            '[class*="Avatar"]',
+            'img'
+          ];
+          const seen = new Set();
+          const out = [];
+          for (const selector of selectors) {
+            for (const el of document.querySelectorAll(selector)) {
+              if (seen.has(el)) continue;
+              seen.add(el);
+              if (!(el instanceof HTMLElement)) continue;
+              const rect = el.getBoundingClientRect();
+              if (!rect.width || !rect.height) continue;
+              if (rect.width > 320 || rect.height > 160) continue;
+              const inLikelyChrome = rect.top <= 220 || rect.left <= 320;
+              if (!inLikelyChrome) continue;
+              const style = window.getComputedStyle(el);
+              const text = (el.innerText || el.textContent || '').trim();
+              const clickable =
+                style.cursor === 'pointer' ||
+                el.tagName === 'IMG' ||
+                el.getAttribute('role') === 'button' ||
+                typeof el.onclick === 'function';
+              const accountLike = /视频号|原始 ID|ID|账号|nickname|avatar|user|account|finder/i
+                .test(`${selector} ${el.className || ''} ${text}`);
+              if (!clickable && !accountLike) continue;
+              out.push({
+                cx: rect.left + rect.width / 2,
+                cy: rect.top + rect.height / 2,
+                x: rect.left,
+                y: rect.top,
+                w: rect.width,
+                h: rect.height,
+                tag: el.tagName,
+                cls: typeof el.className === 'string' ? el.className : '',
+                text: text.slice(0, 120),
+              });
+            }
+          }
+          out.sort((a, b) => a.y - b.y || a.x - b.x);
+          return out.slice(0, 8);
+        }
+        """
+        try:
+            candidates = await page.evaluate(candidates_js)
+        except Exception:  # noqa: BLE001
+            return False
+        if not isinstance(candidates, list):
+            return False
+        for candidate in candidates:
+            try:
+                await page.mouse.click(candidate["cx"], candidate["cy"])
+                await page.wait_for_timeout(800)
+                fields = await cls._read_profile_surface_fields(page)
+                if fields.get("displayName") or fields.get("platformAccountId"):
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
+    @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
         return await _poll_extract_profile(
             page,
             cls._read_profile_fields,
             timeout_s=cls.PROFILE_READY_TIMEOUT_S,
             interval_ms=cls.PROFILE_POLL_INTERVAL_MS,
-            label_hints=("视频号 ID", "视频号ID", "视频号", "原始 ID", "原始ID"),
+            label_hints=cls.ACCOUNT_ID_LABELS,
             diagnostic_tag="shipinhao",
         )
 
     @classmethod
     async def _read_profile_fields(cls, page: Any) -> dict[str, Any]:
-        display = await _first_text(page, cls.DISPLAY_SELECTORS)
-        avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
-        account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+        surface_fields = await cls._read_profile_surface_fields(page)
+        display = cls._clean_display_name(
+            surface_fields.get("displayName") or await _first_text(page, cls.DISPLAY_SELECTORS)
+        )
+        avatar = surface_fields.get("avatarUrl") or await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+        account_id = surface_fields.get("platformAccountId") or await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
         body = await _body_text(page)
         # 视频号有时把 "视频号 ID：<id>" 整段塞进同一个 div —— 反向再抽一次。
         if account_id and ("视频号" in account_id or "ID" in account_id.upper()):
             extracted = _extract_labeled_account_id(
-                account_id, ("视频号 ID", "视频号ID", "视频号", "原始 ID", "原始ID", "Channels ID"),
+                account_id, cls.ACCOUNT_ID_LABELS,
             )
             if extracted:
                 account_id = extracted
         if not account_id:
-            account_id = _extract_labeled_account_id(
-                body,
-                ("视频号 ID", "视频号ID", "视频号", "原始 ID", "原始ID", "Channels ID"),
-            )
+            account_id = _extract_labeled_account_id(body, cls.ACCOUNT_ID_LABELS)
         if _is_placeholder_profile_text(display):
             display = None
         if not display:
-            display = _extract_text_before_label(body, "视频号 ID") \
+            display = cls._clean_display_name(
+                _extract_text_before_label(body, "视频号 ID")
+                or _extract_text_before_label(body, "原始 ID")
                 or _extract_text_before_label(body, "视频号")
+            )
         if _is_placeholder_profile_text(display):
             display = None
         return {
@@ -647,6 +966,184 @@ class ShipinhaoDriver(PlatformDriver):
             "platformAccountId": account_id,
             "avatarUrl": avatar,
         }
+
+    @staticmethod
+    def _clean_display_name(value: str | None) -> str | None:
+        text = _clean_text(value)
+        if not text:
+            return None
+        # 视频号账号卡可能把昵称、认证入口按钮合在同一个 DOM 容器里：
+        #   "阿哐6299 申请认证"
+        # 这些是平台操作文案，不属于账号昵称。
+        text = re.sub(r"\s+(申请认证|去认证|立即认证|认证)$", "", text).strip()
+        return text or None
+
+    @classmethod
+    async def _read_profile_surface_fields(cls, page: Any) -> dict[str, Any]:
+        """Read 视频号 identity from sidebar/header/profile popover DOM.
+
+        The flattened body text usually contains many generic "视频号助手"
+        labels before the actual account row. Anchoring on a node that contains
+        "视频号 ID" / "原始 ID" keeps displayName extraction scoped to the
+        surrounding profile row/card.
+        """
+        try:
+            result = await page.evaluate(
+                """
+                (labels) => {
+                  const empty = { displayName: null, platformAccountId: null, avatarUrl: null };
+                  const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim() || null;
+                  const visible = (el) => {
+                    if (!el || !(el instanceof Element)) return false;
+                    const rect = el.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return false;
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                  };
+                  const escapeRe = (text) => text.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+                  const anchorLabels = labels.filter((label) => label !== '视频号');
+                  const rejectDisplay = (text) => {
+                    if (!text) return true;
+                    if (text.length > 64) return true;
+                    if (/^\\d+$/.test(text)) return true;
+                    if (/[：:]/.test(text) && /视频号|原始|ID|账号/.test(text)) return true;
+                    return /视频号助手|微信扫码|扫码登录|发表视频|发表|发布|作品管理|数据中心|通知|设置|退出|登录|账号状态/.test(text);
+                  };
+                  const idFrom = (text) => {
+                    const src = clean(text) || '';
+                    for (const label of labels) {
+                      const m = src.match(new RegExp(escapeRe(label) + '\\\\s*[:：]?\\\\s*([A-Za-z0-9_.-]{2,80})'));
+                      if (m) return m[1];
+                    }
+                    return null;
+                  };
+                  const displayBeforeLabel = (text) => {
+                    const src = clean(text) || '';
+                    let bestIndex = -1;
+                    for (const label of anchorLabels) {
+                      const idx = src.indexOf(label);
+                      if (idx >= 0 && (bestIndex < 0 || idx < bestIndex)) bestIndex = idx;
+                    }
+                    if (bestIndex <= 0) return null;
+                    const before = src.slice(0, bestIndex).split(/[|｜\\n]/).pop();
+                    const cleaned = clean(before);
+                    return rejectDisplay(cleaned) ? null : cleaned;
+                  };
+                  const scoreCard = (card, labelEl) => {
+                    const text = clean(card.innerText || card.textContent || '') || '';
+                    const rect = card.getBoundingClientRect();
+                    if (!idFrom(text) && !anchorLabels.some((label) => text.includes(label))) return null;
+                    if (rect.width < 120 || rect.height < 24 || rect.width > 980 || rect.height > 520) return null;
+                    const hasImg = !!card.querySelector('img');
+                    let score = 0;
+                    if (idFrom(text)) score += 10;
+                    if (hasImg) score += 3;
+                    if (rect.top <= 220 || rect.left <= 360) score += 3;
+                    if (text.includes('原始 ID') || text.includes('视频号 ID')) score += 2;
+                    if (labelEl) {
+                      const lr = labelEl.getBoundingClientRect();
+                      score -= Math.abs(rect.top - lr.top) / 200;
+                    }
+                    return { card, score };
+                  };
+
+                  const labelElements = [];
+                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                  let node;
+                  while ((node = walker.nextNode())) {
+                    const text = clean(node.textContent);
+                    if (!text || (!idFrom(text) && !anchorLabels.some((label) => text.includes(label)))) continue;
+                    if (!node.parentElement || !visible(node.parentElement)) continue;
+                    labelElements.push(node.parentElement);
+                    if (labelElements.length >= 12) break;
+                  }
+
+                  const scored = [];
+                  for (const labelEl of labelElements) {
+                    let card = labelEl;
+                    for (let depth = 0; depth < 9 && card; depth += 1) {
+                      const item = scoreCard(card, labelEl);
+                      if (item) scored.push(item);
+                      card = card.parentElement;
+                    }
+                  }
+                  if (!scored.length) {
+                    const fallbackSelectors = [
+                      '[class*="finder"]',
+                      '[class*="account"]',
+                      '[class*="Account"]',
+                      '[class*="profile"]',
+                      '[class*="Profile"]',
+                      '[class*="user"]',
+                      '[class*="User"]',
+                    ];
+                    const seen = new Set();
+                    for (const selector of fallbackSelectors) {
+                      for (const el of document.querySelectorAll(selector)) {
+                        if (seen.has(el) || !visible(el)) continue;
+                        seen.add(el);
+                        const item = scoreCard(el, null);
+                        if (item) scored.push(item);
+                      }
+                    }
+                  }
+                  scored.sort((a, b) => b.score - a.score);
+                  const best = scored.length ? scored[0].card : null;
+                  if (!best) return empty;
+
+                  const cardText = clean(best.innerText || best.textContent || '') || '';
+                  const platformAccountId = idFrom(cardText);
+                  const displayFromText = displayBeforeLabel(cardText);
+                  const labelTop = labelElements.length ? labelElements[0].getBoundingClientRect().top : null;
+                  const candidates = [];
+                  for (const el of best.querySelectorAll('span,div,p,strong,b,a')) {
+                    if (!visible(el)) continue;
+                    const text = clean(el.innerText || el.textContent || '');
+                    if (rejectDisplay(text)) continue;
+                    if (idFrom(text)) continue;
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    const fontSize = parseFloat(style.fontSize || '0');
+                    const fontWeight = parseInt(style.fontWeight || '400', 10) || 400;
+                    let score = 0;
+                    if (labelTop === null || rect.top <= labelTop + 10) score += 4;
+                    if (fontSize >= 16) score += 3;
+                    if (fontWeight >= 500) score += 2;
+                    if (rect.left <= best.getBoundingClientRect().left + 220) score += 1;
+                    candidates.push({ text, score, top: rect.top, left: rect.left });
+                  }
+                  candidates.sort((a, b) => b.score - a.score || a.top - b.top || a.left - b.left);
+
+                  let avatarUrl = null;
+                  for (const img of best.querySelectorAll('img')) {
+                    if (!visible(img)) continue;
+                    const rect = img.getBoundingClientRect();
+                    if (rect.width < 24 || rect.height < 24) continue;
+                    avatarUrl = img.getAttribute('src') || null;
+                    if (avatarUrl) break;
+                  }
+                  if (!avatarUrl) {
+                    for (const img of document.querySelectorAll('img[class*="avatar"], [class*="avatar"] img, img[class*="finder"]')) {
+                      if (!visible(img)) continue;
+                      const rect = img.getBoundingClientRect();
+                      if (rect.width < 24 || rect.height < 24 || rect.width > 160 || rect.height > 160) continue;
+                      avatarUrl = img.getAttribute('src') || null;
+                      if (avatarUrl) break;
+                    }
+                  }
+
+                  return {
+                    displayName: displayFromText || (candidates.length ? candidates[0].text : null),
+                    platformAccountId,
+                    avatarUrl,
+                  };
+                }
+                """,
+                list(cls.ACCOUNT_ID_LABELS),
+            )
+            return result if isinstance(result, dict) else _empty_profile()
+        except Exception:  # noqa: BLE001
+            return _empty_profile()
 
 
 class KuaishouDriver(PlatformDriver):
@@ -807,9 +1304,9 @@ class XiaohongshuDriver(PlatformDriver):
     """小红书 creator.xiaohongshu.com creator center.
 
     Login flow: `/login` shows `div[class*='login-box']` with the QR inside.
-    On scan the page navigates away from `/login` (typically into
-    `/publish/publish` or the home dashboard). Profile fields are not exposed
-    consistently in the upstream we mirror — best-effort selectors only.
+    On scan the page navigates to the creator homepage. Current creator home
+    (`/new/home`) exposes the avatar, display name and "小红书账号：<id>" in
+    the top profile card, so profile extraction should stay on that page.
     """
 
     LOGIN_URL = "https://creator.xiaohongshu.com/login"
@@ -842,6 +1339,14 @@ class XiaohongshuDriver(PlatformDriver):
         "div.user-info img",
         "[class*='avatar'] img",
         "img[class*='avatar']",
+    )
+    ACCOUNT_ID_LABELS = (
+        "小红书账号",
+        "小红书号",
+        "小红书 ID",
+        "小红书ID",
+        "Red ID",
+        "XHS ID",
     )
 
     @classmethod
@@ -903,10 +1408,22 @@ class XiaohongshuDriver(PlatformDriver):
                         return src
                 except Exception:  # noqa: BLE001
                     continue
-        raise RuntimeError(
+        # 走到这就是 QR 没找到 —— 落盘截图 + HTML，让运维直接看现网 /login 页
+        # 长啥样，比再加 selector 猜测靠谱。
+        msg = (
             "xiaohongshu: QR src not found — tab switch may have failed or "
             "the login-box DOM drifted from upstream selectors"
         )
+        if await _is_logged_in_safely(cls, page):
+            raise _AlreadyLoggedInForBind("xiaohongshu")
+        snapshot = await _dump_qr_extraction_failure(page, "xiaohongshu", msg)
+        snapshot_hint = ""
+        if snapshot.get("screenshot_path") or snapshot.get("html_path"):
+            snapshot_hint = (
+                f" (snapshot: png={snapshot.get('screenshot_path') or 'n/a'} "
+                f"html={snapshot.get('html_path') or 'n/a'})"
+            )
+        raise RuntimeError(msg + snapshot_hint)
 
     # Click candidates for switching to the QR-login tab. 多套兜底：
     #   1. 文字 locator — 最稳，覆盖 XHS 把 tab 名做成 button / div / a 的情况
@@ -1190,22 +1707,20 @@ class XiaohongshuDriver(PlatformDriver):
             pass
         return True
 
-    # XHS 创作者中心 post-login 落 /creator-center/post-creation 这类页面，
-    # 顶部 chrome 仅有 avatar，没有 nickname / 小红书号 在 DOM 触手可及。
-    # 必须主动导到「账号信息」/「个人主页」页才能稳定抓到。
-    # 按经验顺序探这几条 URL；命中即停。失败 fall-through 保留原 landing 页。
+    # XHS 新版创作者中心首页就展示 profile 卡片：
+    #   https://creator.xiaohongshu.com/new/home
+    #   <昵称> / 小红书账号：<id> / avatar
+    # 不再跳 /setting/profile，那里不是当前绑定流程需要的页面。
     PROFILE_VIEW_URL_CANDIDATES = (
-        "https://creator.xiaohongshu.com/creator/home",
-        "https://creator.xiaohongshu.com/setting/profile",
-        "https://creator.xiaohongshu.com/account/personal-data",
-        "https://creator.xiaohongshu.com/creator-center/profile",
+        "https://creator.xiaohongshu.com/new/home",
     )
     PROFILE_VIEW_NAVIGATE_TIMEOUT_MS = 10_000
-    PROFILE_VIEW_PAINT_DELAY_MS = 1_200
+    PROFILE_VIEW_READY_TIMEOUT_S = 15.0
+    PROFILE_VIEW_READY_POLL_MS = 500
 
     @classmethod
     async def prepare_profile_view(cls, page: Any) -> None:
-        """逐个 URL 尝试导航；命中 = body 含「小红书号」且未被反弹回 /login。
+        """确保停在新版首页；命中 = body 含「小红书账号」且未被反弹回 /login。
 
         失败时不抛 —— 留在最后一次尝试的 URL（或原 landing 页）。storage_state
         在外层 _poll_real 里被本方法之后捕获，所以即使最终页是 dashboard 也能
@@ -1217,8 +1732,6 @@ class XiaohongshuDriver(PlatformDriver):
                     wait_until="domcontentloaded",
                     timeout=cls.PROFILE_VIEW_NAVIGATE_TIMEOUT_MS,
                 )
-                # 给 SPA 一点 paint 时间（XHS 异步加载用户信息）
-                await page.wait_for_timeout(cls.PROFILE_VIEW_PAINT_DELAY_MS)
                 landed_url = getattr(page, "url", "") or ""
                 if "/login" in landed_url:
                     log.warning(
@@ -1226,12 +1739,11 @@ class XiaohongshuDriver(PlatformDriver):
                         url, landed_url,
                     )
                     continue
-                body = await _body_text(page)
-                if "小红书号" in (body or ""):
+                if await cls._wait_home_profile_card_ready(page):
                     log.info("[xiaohongshu] prepare_profile_view ok via %s", url)
                     return
                 log.info(
-                    "[xiaohongshu] prepare_profile_view: %s loaded but 小红书号 not in body; trying next",
+                    "[xiaohongshu] prepare_profile_view: %s loaded but profile card not ready; trying next",
                     url,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -1246,37 +1758,61 @@ class XiaohongshuDriver(PlatformDriver):
         )
 
     @classmethod
+    async def _wait_home_profile_card_ready(cls, page: Any) -> bool:
+        """Wait until `/new/home` has actually painted the profile card.
+
+        XHS can flip out of `/login` before the creator-home SPA has mounted.
+        If we close the browser immediately after that first logged-in signal,
+        the operator sees "page closed too fast" and the extractor may only see
+        skeleton text. Gate success on the account label plus a parseable id.
+        """
+        deadline = time.monotonic() + cls.PROFILE_VIEW_READY_TIMEOUT_S
+        while time.monotonic() < deadline:
+            try:
+                if "/login" in ((getattr(page, "url", "") or "")):
+                    return False
+                home_fields = await cls._read_home_card_fields(page)
+                if home_fields.get("platformAccountId") and home_fields.get("displayName"):
+                    return True
+                body = await _body_text(page)
+                if _extract_labeled_account_id(body, cls.ACCOUNT_ID_LABELS):
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+            await page.wait_for_timeout(cls.PROFILE_VIEW_READY_POLL_MS)
+        return False
+
+    @classmethod
     async def extract_profile(cls, page: Any, account_name: str) -> dict[str, Any]:
         return await _poll_extract_profile(
             page,
             cls._read_profile_fields,
             timeout_s=cls.PROFILE_READY_TIMEOUT_S,
             interval_ms=cls.PROFILE_POLL_INTERVAL_MS,
-            label_hints=("小红书号", "小红书 ID", "小红书ID", "Red ID", "XHS ID"),
+            label_hints=cls.ACCOUNT_ID_LABELS,
             diagnostic_tag="xiaohongshu",
         )
 
     @classmethod
     async def _read_profile_fields(cls, page: Any) -> dict[str, Any]:
-        display = await _first_text(page, cls.DISPLAY_SELECTORS)
-        avatar = await _first_attr(page, cls.AVATAR_SELECTORS, "src")
-        account_id = await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
+        home_fields = await cls._read_home_card_fields(page)
+        display = home_fields.get("displayName") or await _first_text(page, cls.DISPLAY_SELECTORS)
+        avatar = home_fields.get("avatarUrl") or await _first_attr(page, cls.AVATAR_SELECTORS, "src")
+        account_id = home_fields.get("platformAccountId") or await _first_text(page, cls.ACCOUNT_ID_SELECTORS)
         body = await _body_text(page)
-        if account_id and ("小红书号" in account_id or "ID" in account_id.upper()):
+        if account_id and ("小红书" in account_id or "ID" in account_id.upper()):
             extracted = _extract_labeled_account_id(
-                account_id, ("小红书号", "小红书 ID", "小红书ID", "Red ID", "XHS ID"),
+                account_id, cls.ACCOUNT_ID_LABELS,
             )
             if extracted:
                 account_id = extracted
         if not account_id:
-            account_id = _extract_labeled_account_id(
-                body,
-                ("小红书号", "小红书 ID", "小红书ID", "Red ID", "XHS ID"),
-            )
+            account_id = _extract_labeled_account_id(body, cls.ACCOUNT_ID_LABELS)
         if _is_placeholder_profile_text(display):
             display = None
         if not display:
-            display = _extract_text_before_label(body, "小红书号")
+            display = _extract_text_before_label(body, "小红书账号") \
+                or _extract_text_before_label(body, "小红书号")
         if _is_placeholder_profile_text(display):
             display = None
         return {
@@ -1284,6 +1820,119 @@ class XiaohongshuDriver(PlatformDriver):
             "platformAccountId": account_id,
             "avatarUrl": avatar,
         }
+
+    @classmethod
+    async def _read_home_card_fields(cls, page: Any) -> dict[str, Any]:
+        """Read XHS `/new/home` profile card by anchoring on "小红书账号".
+
+        Body-level fallback is risky on this page because stats like "获赞与收藏"
+        appear immediately before the account label in flattened text. This DOM
+        pass climbs from the label node to the surrounding card and picks the
+        prominent text above the label as the display name.
+        """
+        try:
+            result = await page.evaluate(
+                """
+                (labels) => {
+                  const empty = { displayName: null, platformAccountId: null, avatarUrl: null };
+                  const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim() || null;
+                  const visible = (el) => {
+                    if (!el || !(el instanceof Element)) return false;
+                    const rect = el.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return false;
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden';
+                  };
+                  const rejectDisplay = (text) => {
+                    if (!text) return true;
+                    if (text.length > 48) return true;
+                    if (/^\\d+$/.test(text)) return true;
+                    return /小红书|账号|状态|正常|关注|粉丝|获赞|收藏|成长|发布|笔记|数据|首页|买手|合作/.test(text);
+                  };
+                  const idFrom = (text) => {
+                    const src = clean(text) || '';
+                    for (const label of labels) {
+                      const m = src.match(new RegExp(label.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '\\\\s*[:：]\\\\s*([A-Za-z0-9_.-]{2,80})'));
+                      if (m) return m[1];
+                    }
+                    return null;
+                  };
+
+                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                  const labelTexts = [];
+                  let node;
+                  while ((node = walker.nextNode())) {
+                    const text = clean(node.textContent);
+                    if (!text || !labels.some((label) => text.includes(label))) continue;
+                    if (!node.parentElement || !visible(node.parentElement)) continue;
+                    labelTexts.push(node.parentElement);
+                    if (labelTexts.length >= 8) break;
+                  }
+
+                  for (const labelEl of labelTexts) {
+                    let card = labelEl;
+                    let best = null;
+                    for (let depth = 0; depth < 8 && card; depth += 1) {
+                      const text = clean(card.innerText || card.textContent || '');
+                      const rect = card.getBoundingClientRect();
+                      if (
+                        text &&
+                        labels.some((label) => text.includes(label)) &&
+                        rect.width >= 280 &&
+                        rect.height >= 80 &&
+                        rect.height <= 420
+                      ) {
+                        best = card;
+                        if (text.includes('账号状态') || text.includes('关注数') || text.includes('粉丝数')) break;
+                      }
+                      card = card.parentElement;
+                    }
+                    if (!best) continue;
+
+                    const cardText = clean(best.innerText || best.textContent || '') || '';
+                    const platformAccountId = idFrom(cardText);
+                    const labelTop = labelEl.getBoundingClientRect().top;
+                    const candidates = [];
+                    for (const el of best.querySelectorAll('span,div,p,strong,b')) {
+                      if (!visible(el)) continue;
+                      const text = clean(el.innerText || el.textContent || '');
+                      if (rejectDisplay(text)) continue;
+                      const rect = el.getBoundingClientRect();
+                      const style = window.getComputedStyle(el);
+                      const fontSize = parseFloat(style.fontSize || '0');
+                      const fontWeight = parseInt(style.fontWeight || '400', 10) || 400;
+                      let score = 0;
+                      if (rect.top < labelTop) score += 4;
+                      if (fontSize >= 18) score += 3;
+                      if (fontWeight >= 500) score += 2;
+                      if (rect.left > best.getBoundingClientRect().left + 80) score += 1;
+                      candidates.push({ text, score, top: rect.top, left: rect.left });
+                    }
+                    candidates.sort((a, b) => b.score - a.score || a.top - b.top || a.left - b.left);
+
+                    let avatarUrl = null;
+                    for (const img of best.querySelectorAll('img')) {
+                      if (!visible(img)) continue;
+                      const rect = img.getBoundingClientRect();
+                      if (rect.width < 32 || rect.height < 32) continue;
+                      avatarUrl = img.getAttribute('src') || null;
+                      if (avatarUrl) break;
+                    }
+
+                    return {
+                      displayName: candidates.length ? candidates[0].text : null,
+                      platformAccountId,
+                      avatarUrl,
+                    };
+                  }
+                  return empty;
+                }
+                """,
+                list(cls.ACCOUNT_ID_LABELS),
+            )
+            return result if isinstance(result, dict) else _empty_profile()
+        except Exception:  # noqa: BLE001
+            return _empty_profile()
 
 
 DRIVERS: dict[str, type[PlatformDriver]] = {
@@ -1314,6 +1963,9 @@ class LoginSession:
     storage_state_plain: dict[str, Any] | None = None
     profile: dict[str, Any] | None = None
     qr_image_data_url: str | None = None
+    # real-mode: true when login/start found a valid existing creator session,
+    # so the frontend should poll for storage_state/profile instead of showing a QR.
+    already_logged_in: bool = False
     # mock-only: number of polls before flipping to success
     polls_until_success: int = 2
     polls_seen: int = 0
@@ -1461,9 +2113,51 @@ class LoginPool:
             context = await browser.new_context(viewport={"width": 1280, "height": 800})
             page = await context.new_page()
             await page.goto(driver_cls.LOGIN_URL, wait_until="domcontentloaded")
-            # The driver's wait_for() calls inside extract_qr_data_url() are
-            # the real timing gate (up to 30s); we don't need a hard sleep.
-            qr_data_url = await driver_cls.extract_qr_data_url(page)
+            qr_data_url: str | None = None
+            already_logged_in = False
+            if await _is_logged_in_safely(driver_cls, page, ticket=ticket):
+                already_logged_in = True
+                log.info(
+                    "login_pool: login/start detected existing login ticket=%s platform=%s "
+                    "url=%s; continuing without QR",
+                    ticket,
+                    platform,
+                    getattr(page, "url", None),
+                )
+            else:
+                # The driver's wait_for() calls inside extract_qr_data_url() are
+                # the real timing gate (up to 30s); we don't need a hard sleep.
+                try:
+                    qr_data_url = await driver_cls.extract_qr_data_url(page)
+                except _AlreadyLoggedInForBind:
+                    already_logged_in = True
+                    log.info(
+                        "login_pool: login/start reached logged-in page while extracting QR "
+                        "ticket=%s platform=%s url=%s; continuing without QR",
+                        ticket,
+                        platform,
+                        getattr(page, "url", None),
+                    )
+                except Exception as qr_exc:
+                    if await _is_logged_in_safely(driver_cls, page, ticket=ticket):
+                        already_logged_in = True
+                        log.info(
+                            "login_pool: login/start QR extraction failed after logged-in "
+                            "navigation ticket=%s platform=%s url=%s error=%s; continuing without QR",
+                            ticket,
+                            platform,
+                            getattr(page, "url", None),
+                            qr_exc,
+                        )
+                    else:
+                        # v0.17.3: 任何 driver 的 QR 提取失败都先抓 snapshot 再抛。
+                        # XHS / 视频号 / 快手 的 /login 页 DOM 都不稳定；一张 PNG +
+                        # HTML 比任何盲猜 selector 都管用。XiaohongshuDriver 自己已经
+                        # 在内部 raise 前调过本 helper（带 snapshot 路径塞进 msg）；这里
+                        # 是兜其它 driver 的底（万一 ShipinhaoDriver 也开始飘）。
+                        if "snapshot:" not in str(qr_exc):
+                            await _dump_qr_extraction_failure(page, platform, str(qr_exc))
+                        raise
         except Exception:
             await _safe_close(context, "context")
             await _safe_close(browser, "browser")
@@ -1477,6 +2171,7 @@ class LoginPool:
             expires_at=time.time() + self._ttl,
             real_mode=True,
             qr_image_data_url=qr_data_url,
+            already_logged_in=already_logged_in,
             handles={"playwright": playwright, "browser": browser, "context": context, "page": page},
         )
         async with self._lock:
@@ -1501,8 +2196,8 @@ class LoginPool:
         if not logged_in:
             return {"status": "pending"}
 
-        # v0.17.2: 给 driver 一次 navigate / interact 的机会，把 profile 字段
-        # 顶到可读位置（XHS 必须导到 /setting/profile 才有 小红书号）。
+        # v0.17.2+: 给 driver 一次 navigate / interact 的机会，把 profile 字段
+        # 顶到可读位置（例如 XHS 新版首页 /new/home 的资料卡）。
         # storage_state 在这之后捕获 —— 多吃一次 cookie 刷新，session 更长。
         # 失败一概不抛 —— extract_profile 自身有 best-effort fallback。
         try:
@@ -1521,6 +2216,15 @@ class LoginPool:
             return {"status": "expired"}
 
         profile = await driver_cls.extract_profile(page, session.account_name)
+        log.info(
+            "login_pool: profile extracted ticket=%s platform=%s display=%r platform_id=%r avatar=%s url=%s",
+            session.ticket,
+            session.platform,
+            profile.get("displayName") if profile else None,
+            profile.get("platformAccountId") if profile else None,
+            "yes" if profile and profile.get("avatarUrl") else "no",
+            getattr(page, "url", None),
+        )
         await self.drop(session.ticket)
         return {
             "status": "success",

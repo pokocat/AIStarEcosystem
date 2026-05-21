@@ -18,3 +18,6 @@
 .impeccable/live/
 .impeccable/critique/*.md
 !.impeccable/critique/ignore.md
+*.ttf
+*.otf
+*.woff
