@@ -283,13 +283,20 @@ class DouyinDriver(PlatformDriver):
 class ShipinhaoDriver(PlatformDriver):
     """视频号 (WeChat Channels) creator center.
 
-    QR widget: lives inside `iframe[src*=login-for-iframe]` as `div#app
-    img.qrcode`. Logged-in URLs: `/platform/post/create`, `/platform/post/
-    list` (we also accept the broader `/platform/*` since post-scan landing
-    can be the dashboard or any inner page).
+    Entry URL: the platform's own post-create page. Visiting it while
+    unauthenticated triggers the WeChat QR login overlay (QR widget lives
+    inside `iframe[src*=login-for-iframe]` as `div#app img.qrcode`). After
+    a successful scan, the platform keeps us on the same `/platform/...`
+    URL and the publish-page chrome (`发表视频` / `发表` buttons) becomes
+    visible — that's our strong logged-in signal.
+
+    Why /platform/post/create instead of the root domain: the root URL is
+    a marketing/landing page on some flights and doesn't reliably expose
+    the QR overlay. Upstream `tencent_uploader.cookie_auth` navigates to
+    /platform/post/create as well — we mirror that to stay aligned.
     """
 
-    LOGIN_URL = "https://channels.weixin.qq.com"
+    LOGIN_URL = "https://channels.weixin.qq.com/platform/post/create"
     UPLOAD_URL = "https://channels.weixin.qq.com/platform/post/create"
     MANAGE_URL = "https://channels.weixin.qq.com/platform/post/list"
 
@@ -326,26 +333,15 @@ class ShipinhaoDriver(PlatformDriver):
 
     @classmethod
     async def is_logged_in(cls, page: Any) -> bool:
-        # Strong signal: publish-page chrome is visible.
-        publish_markers = [
-            page.locator('div:has-text("发表视频")').first,
-            page.locator('button:has-text("发表")').first,
-            page.locator('button:has-text("保存草稿")').first,
-        ]
-        for marker in publish_markers:
-            try:
-                if await marker.count() and await marker.is_visible():
-                    return True
-            except Exception:  # noqa: BLE001
-                continue
-        # Weaker signal: URL is inside /platform/* AND no login UI showing.
-        if not page.url.startswith("https://channels.weixin.qq.com/platform"):
-            return False
+        # First: is the login QR overlay still visible? If yes, not logged in.
+        # The login modal title contains "发表视频" itself, so we can't use that
+        # text as a positive signal — we'd false-positive while QR is still up.
         login_markers = [
+            page.locator('iframe[src*="login-for-iframe"]').first,
             page.locator("div.login-qrcode-wrap").first,
             page.locator("div.qrcode-wrap").first,
-            page.locator("img.qrcode").first,
             page.locator('span:has-text("微信扫码登录 视频号助手")').first,
+            page.locator('span:has-text("微信扫码登录")').first,
         ]
         for marker in login_markers:
             try:
@@ -353,6 +349,21 @@ class ShipinhaoDriver(PlatformDriver):
                     return False
             except Exception:  # noqa: BLE001
                 continue
+        # If we're on the QR overlay's iframe, its img.qrcode is inside it.
+        # Detect that too — the iframe itself satisfies the check above, but
+        # add an explicit fallback in case some flights expose the img with
+        # the iframe stripped.
+        try:
+            iframe_qr = page.frame_locator('[src*="login-for-iframe"]').locator("img.qrcode").first
+            if await iframe_qr.count() and await iframe_qr.is_visible():
+                return False
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Then: must be on a /platform/* URL. If unauthenticated navigation
+        # redirected us off /platform/*, we're not logged in either.
+        if not page.url.startswith("https://channels.weixin.qq.com/platform"):
+            return False
         return True
 
     @classmethod
@@ -380,19 +391,41 @@ class ShipinhaoDriver(PlatformDriver):
 
 
 class KuaishouDriver(PlatformDriver):
-    """快手 cp.kuaishou.com creator center.
+    """快手 creator center (cp.kuaishou.com).
 
-    Login flow: passport.kuaishou.com hosts the QR widget; on scan the page
-    redirects to cp.kuaishou.com (creator console). The QR `<img>` lives
-    inside `main#login-form` as `div.qr-login img[alt="qrcode"]` — mirroring
-    upstream `_extract_ks_qrcode_src`. Logged-in signal: `main#login-form`
-    is gone and URL is under cp.kuaishou.com (mirrors `_is_ks_login_page_gone`).
+    Login flow mirrors upstream `ks_uploader.get_ks_cookie`:
+      1. Navigate to passport.kuaishou.com's PC login page with a `callback`
+         param pointing to cp.kuaishou.com's STS handler — that's where the
+         QR widget lives at the TOP level DOM (no iframe).
+      2. The login form is `main#login-form`; inside it `div.qr-login
+         img[alt="qrcode"]` carries the QR data URL. If the default tab is
+         not QR, click `div.platform-switch` to flip — same pattern as
+         小红书's tab switcher.
+      3. After scan, passport.kuaishou.com hits the callback which sets
+         root-domain cookies and redirects to cp.kuaishou.com (publish
+         page). We treat any cp.kuaishou.com URL with no `main#login-form`
+         visible as logged-in.
+
+    Visiting cp.kuaishou.com directly while unauthenticated wraps the
+    passport login in an iframe, which is harder to drive — staying on
+    passport.kuaishou.com for the QR flow keeps everything top-level.
     """
 
-    LOGIN_URL = "https://cp.kuaishou.com/profile"
+    # Upstream KUAISHOU_LOGIN_URL — opens passport.kuaishou.com PC login with a
+    # callback that ultimately lands on cp.kuaishou.com/article/publish/video
+    # post-scan. URL-encoded chain — `callback=cp.kuaishou.com/rest/infra/sts
+    # ?followUrl=cp.kuaishou.com/article/publish/video&setRootDomain=true`.
+    LOGIN_URL = (
+        "https://passport.kuaishou.com/pc/account/login/"
+        "?sid=kuaishou.web.cp.api"
+        "&callback=https%3A%2F%2Fcp.kuaishou.com%2Frest%2Finfra%2Fsts"
+        "%3FfollowUrl%3Dhttps%253A%252F%252Fcp.kuaishou.com"
+        "%252Farticle%252Fpublish%252Fvideo%26setRootDomain%3Dtrue"
+    )
     LOGGED_IN_URL_PREFIX = "https://cp.kuaishou.com/"
 
     DISPLAY_SELECTORS = (
+        "div.names div.container div.name",
         "div.user-info div.name",
         "div.user-name",
         "span.user-name",
@@ -415,40 +448,46 @@ class KuaishouDriver(PlatformDriver):
 
     @classmethod
     async def extract_qr_data_url(cls, page: Any) -> str:
-        # Primary: upstream's main#login-form → div.qr-login img[alt="qrcode"].
+        # Mirror upstream `_extract_ks_qrcode_src`. main#login-form is on the
+        # top-level DOM at passport.kuaishou.com — no iframe traversal needed.
+        login_form = page.locator("main#login-form").first
+        await login_form.wait_for(state="visible", timeout=30000)
+        qr_img = login_form.locator('div.qr-login img[alt="qrcode"]').first
+
+        # Default tab may be 账号登录; if the QR isn't visible click the
+        # platform-switch button to flip into QR mode.
         try:
-            form = page.locator("main#login-form").first
-            await form.wait_for(state="visible", timeout=30000)
-            qr_img = form.locator('div.qr-login img[alt="qrcode"]').first
-            await qr_img.wait_for(state="visible", timeout=30000)
-            src = await qr_img.get_attribute("src")
-            if src and src.startswith("data:image/"):
-                return src
+            qr_present = await qr_img.count() and await qr_img.is_visible()
         except Exception:  # noqa: BLE001
-            pass
-        # Fallback: any visible data: image in the login box.
-        for selector in (
-            'main#login-form img[src^="data:image/"]',
-            'div.qr-login img',
-            'img[alt="qrcode"]',
-            'img[src^="data:image/"]',
-        ):
-            qr = page.locator(selector).first
+            qr_present = False
+        if not qr_present:
+            switcher = login_form.locator("div.platform-switch").first
             try:
-                if not await qr.count() or not await qr.is_visible():
-                    continue
-                src = await qr.get_attribute("src")
-                if src and src.startswith("data:image/"):
-                    return src
+                await switcher.wait_for(state="visible", timeout=10000)
+                await switcher.click(timeout=3000)
+                await page.wait_for_timeout(1000)
             except Exception:  # noqa: BLE001
-                continue
-        raise RuntimeError("kuaishou: QR src not found in #login-form or fallback selectors")
+                # Switcher missing or click failed; the QR wait below will
+                # surface a clearer error if we still don't see one.
+                pass
+
+        await qr_img.wait_for(state="visible", timeout=15000)
+        src = await qr_img.get_attribute("src")
+        if not src or not src.startswith("data:image/"):
+            raise RuntimeError("kuaishou: QR src missing or not a data: URL")
+        return src
 
     @classmethod
     async def is_logged_in(cls, page: Any) -> bool:
+        # Still on passport.kuaishou.com → not yet logged in.
+        if page.url.startswith("https://passport.kuaishou.com"):
+            return False
+        # The callback chain lands us on cp.kuaishou.com — if we're not
+        # there, we're either still mid-redirect or got bounced.
         if not page.url.startswith(cls.LOGGED_IN_URL_PREFIX):
             return False
-        # If login form is still present, we're not logged in yet.
+        # Extra safety: if main#login-form is somehow still visible (e.g. an
+        # error mid-callback re-rendered the form), we're not logged in.
         try:
             form = page.locator("main#login-form").first
             if await form.count() and await form.is_visible():
@@ -517,20 +556,34 @@ class XiaohongshuDriver(PlatformDriver):
 
     @classmethod
     async def extract_qr_data_url(cls, page: Any) -> str:
-        # Primary: upstream's `div[class*='login-box']` wrapper hosts the QR.
+        # The /login page can default to either "密码登录" or "扫码登录" tab.
+        # If we're on password tab, the QR img isn't on screen — click the
+        # `img.css-wemwzq` switcher to flip to QR (mirrors upstream's
+        # `_open_xhs_qrcode_panel`).
+        await cls._ensure_qr_panel(page)
+
+        # Primary: upstream's chain — locate `.login-box-container` whose
+        # text starts with "APP扫一扫登录", then take the QR img from the
+        # following sibling div.
         try:
-            box = page.locator("div[class*='login-box']").first
-            await box.wait_for(state="visible", timeout=30000)
-            qr_img = box.locator('img[src^="data:image/"]').first
-            await qr_img.wait_for(state="visible", timeout=30000)
+            scan_section = page.locator(".login-box-container").filter(
+                has_text="APP扫一扫登录"
+            ).first
+            await scan_section.wait_for(state="visible", timeout=20000)
+            qr_img = scan_section.locator("xpath=following-sibling::div//img").first
+            await qr_img.wait_for(state="visible", timeout=20000)
             src = await qr_img.get_attribute("src")
             if src and src.startswith("data:image/"):
                 return src
         except Exception:  # noqa: BLE001
             pass
-        # Fallback selectors covering legacy page builds.
+
+        # Fallback selectors covering legacy page builds + tab-already-on-QR
+        # flights where the upstream xpath misses.
         for selector in (
+            ".login-box-container img[src^='data:image/']",
             ".login-box-container img",
+            'div[class*="login-box"] img[src^="data:image/"]',
             'div[class*="qrcode"] img',
             'canvas[class*="qrcode"]',
             'img[src^="data:image/"]',
@@ -544,7 +597,67 @@ class XiaohongshuDriver(PlatformDriver):
                     return src
             except Exception:  # noqa: BLE001
                 continue
-        raise RuntimeError("xiaohongshu: QR src not found in login-box or fallback selectors")
+        raise RuntimeError(
+            "xiaohongshu: QR src not found — tab switch may have failed or "
+            "the login-box DOM drifted from upstream selectors"
+        )
+
+    @classmethod
+    async def _ensure_qr_panel(cls, page: Any) -> None:
+        """Switch from 密码登录 tab to 扫码登录 tab if needed.
+
+        Upstream `_open_xhs_qrcode_panel` clicks `img.css-wemwzq` to flip
+        tabs and then waits for "APP扫一扫登录" / "扫一扫" text. We mirror
+        that, but no-op when the QR is already on screen so we don't flip
+        away from it on flights where 扫码登录 is the default tab.
+
+        Best-effort: failures only log; extract_qr_data_url will try to
+        find the QR anyway and surface its own error if it can't.
+        """
+        # If QR is already showing, do nothing.
+        try:
+            existing_qr = page.locator(
+                ".login-box-container img[src^='data:image/']"
+            ).first
+            if await existing_qr.count() and await existing_qr.is_visible():
+                return
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            scan_text = page.get_by_text("APP扫一扫登录").first
+            if await scan_text.count() and await scan_text.is_visible():
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
+        # QR tab not active — try clicking the switcher icon.
+        switch_selectors = (
+            "img.css-wemwzq",
+            'div[class*="login-box"] img[class*="css-"]',
+            'div[class*="login-box"] [class*="switch"]',
+        )
+        for selector in switch_selectors:
+            try:
+                switcher = page.locator(selector).first
+                if not await switcher.count() or not await switcher.is_visible():
+                    continue
+                await switcher.click(timeout=3000)
+                # Wait for QR label to appear; if it doesn't, fall back to
+                # the next switcher candidate.
+                try:
+                    await page.get_by_text("APP扫一扫登录").first.wait_for(
+                        state="visible", timeout=8000
+                    )
+                    return
+                except Exception:  # noqa: BLE001
+                    # Maybe the click didn't switch — try next selector.
+                    continue
+            except Exception:  # noqa: BLE001
+                continue
+        log.warning(
+            "xiaohongshu: could not confirm QR tab is active after trying "
+            "switch selectors; QR extraction will attempt fallbacks"
+        )
 
     @classmethod
     async def is_logged_in(cls, page: Any) -> bool:
