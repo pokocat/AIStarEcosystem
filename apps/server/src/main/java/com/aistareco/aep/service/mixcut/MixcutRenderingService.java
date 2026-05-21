@@ -985,6 +985,19 @@ public class MixcutRenderingService {
         // 叠加图层输入
         //  - snapshot 解析出的 overlay（已按 z_index 排序）→ 真实图
         //  - 没有可用 overlay → 退化为半透明色卡兜底
+        //
+        // v0.21+: 当用户绑定了 overlay（包括 picgen 文字生图）但 caps.overlay=false 时，
+        // 直接 fail-fast 而不是静默丢弃。历史 bug：用户填了文字生图素材，最后渲染出的
+        // 视频里什么都没有（picgen PNG 生成成功但被 overlay 阶段跳过），用户没有任何线索
+        // 知道发生了什么。FfmpegRunner 已经做了 -filters 解析 + -h filter=<name> 兜底 probe，
+        // 走到这里 caps.overlay 仍 false 说明 ffmpeg binary 真的没有 overlay filter。
+        if (!caps.overlay && !overlays.isEmpty()) {
+            throw new RuntimeException(
+                    "ffmpeg binary 缺少必需的 `overlay` filter，无法把图片/文字生图叠加到视频上。"
+                    + " 当前用户绑定了 " + overlays.size() + " 个 overlay（含 picgen 文字生图）。"
+                    + " 请安装完整的 ffmpeg build（brew install ffmpeg / apt install ffmpeg）"
+                    + " 或设置 AEP_FFMPEG_BIN 指向有 overlay filter 的二进制。");
+        }
         boolean useRealOverlay = caps.overlay && !overlays.isEmpty();
         int overlayCount = useRealOverlay ? Math.min(4, overlays.size()) : (caps.overlay && caps.color ? 1 : 0);
         transforms.put("overlay_count", overlayCount);

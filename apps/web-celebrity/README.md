@@ -69,6 +69,17 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.21 · 2026-05-21 · 混剪文字生图 overlay 不被丢弃 · 修复
+
+混剪渲染管线的 ffmpeg filter 能力探测在某些 vendor 定制 build 上漏检 `overlay` filter，导致用户在 create 页填了「文字生图（picgen）」槽位、后端 `picgen_count` 计数器证明 PNG 已生成，但最终视频里什么都没贴 —— 24KB 空视频 + `贴图来源: disabled-missing-filter`。
+
+- ✅ **三阶段 filter 探测**（`apps/server/.../FfmpegRunner.java`）：
+  1. 严格正则 `FILTER_LINE` 解析 `ffmpeg -filters` 输出（既有逻辑）
+  2. 宽松正则 `FILTER_LINE_LOOSE` 在同一输出上补一遍 —— 仍强制要求 ffmpeg signature 列（`A->A` / `VV->V` / `|->A` 等），避免随便一行 3 token 都被误当 filter
+  3. 对仍未命中的 18 个关键 filter（`CRITICAL_FILTERS` = overlay / scale / crop / eq / hflip / setpts / aresample / ...）走 `ffmpeg -h filter=<name>` 单条权威 probe；每次 probe ~30-80ms，首次 boot 多花 ≤1s
+- ✅ **picgen overlay fail-fast**（`MixcutRenderingService.renderOneVariant`）：当用户绑定了 overlay（包括 picgen）但探测后 `caps.overlay` 仍 false，直接抛 RuntimeException 让任务失败并提示安装完整 ffmpeg —— 不再静默丢弃产出空视频
+- ✅ **诊断日志增强**：filter 集合最终化时打印 `strict=X, loose+=Y, probe+=Z` 三阶段数量；任何关键 filter 通过 probe 兜底恢复都会 WARN 一行点出 vendor build 偏离上游格式
+
 ### v0.20 · 2026-05-20 · 分发定时策略升级（每日铺开 + 随机抖动）
 
 - ✅ **三选一调度策略**：批量发布抽屉的「定时发布」checkbox 退役，换成「立即发布 / 单次定时 / 每日定时铺开」三选一 pill。`single` 分支保留 v0.15 的 `datetime-local`。

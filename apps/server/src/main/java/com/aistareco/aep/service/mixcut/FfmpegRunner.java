@@ -29,6 +29,26 @@ public class FfmpegRunner {
 
     private static final Logger log = LoggerFactory.getLogger(FfmpegRunner.class);
     private static final Pattern FILTER_LINE = Pattern.compile("^\\s*[.A-Z|]{3,}\\s+([A-Za-z0-9_]+)\\s+.*$");
+    /**
+     * 宽松回退正则 —— 当严格 FILTER_LINE 漏掉关键 filter 时尝试。
+     * 适配 vendor 定制 build 偏离上游格式的情况（4 位 flag 列 / 含字母 flag 如 `TS.` / 多空格分隔）。
+     * 关键约束：要求行尾出现 ffmpeg signature 列（`A->A` / `VV->V` / `|->A` / `N->N` 等），
+     * 这是 -filters 输出独有的结构，可避免随便一行三个 token 都被当成 filter。
+     */
+    private static final Pattern FILTER_LINE_LOOSE = Pattern.compile(
+            "^\\s*\\S{1,4}\\s+([a-z][A-Za-z0-9_]*)\\s+[AVN|]+->[AVN|]+(\\s+.*)?$");
+    /**
+     * v0.21+: 渲染期必检的关键 filter 集合。任一缺失会让 MixcutRenderingService 直接降级
+     * （overlay → 丢弃用户 overlay；crop → 输出尺寸失真；eq → 亮度/饱和度静默退回）。
+     * `-filters` 文本解析在 vendor build 上偶发漏掉条目，这里在解析后用 `-h filter=<name>`
+     * 兜底单条 probe。每个 probe ~30-80ms；首次 boot 多花 0.5s 左右，换来用户能真看到效果。
+     */
+    private static final List<String> CRITICAL_FILTERS = List.of(
+            "scale", "overlay", "concat", "crop", "eq", "hflip",
+            "setpts", "aresample", "aformat", "atempo", "amix",
+            "format", "split", "boxblur", "drawbox", "color",
+            "colorchannelmixer", "volume"
+    );
 
     private final MixcutProperties props;
     private volatile Set<String> availableFilters;
@@ -170,20 +190,89 @@ public class FfmpegRunner {
      * 当前 ffmpeg binary 实际注册的 filters。FFmpeg 官方文档明确建议用
      * `ffmpeg -filters` 查看可用 filter；构建时也可以 `--disable-filters`
      * 或裁掉单个 filter，所以渲染器不能假设 full build。
+     *
+     * 三阶段探测（v0.21+，修复 vendor 定制 build 上 overlay/crop/eq 等关键 filter
+     * 被严格正则漏掉、导致用户 picgen overlay 被静默丢弃的问题）：
+     *  1. 严格正则 FILTER_LINE 解析 `-filters` 输出
+     *  2. 宽松正则 FILTER_LINE_LOOSE 在同一输出上补一遍
+     *  3. 对仍未命中的关键 filter (CRITICAL_FILTERS) 单条 `ffmpeg -h filter=<name>` 兜底
      */
     public Set<String> availableFilters() {
         Set<String> cached = availableFilters;
         if (cached != null) return cached;
         synchronized (this) {
             if (availableFilters != null) return availableFilters;
-            String out = run(props.getFfmpegBin(), List.of("-hide_banner", "-filters"), 512_000);
+
+            String out;
+            try {
+                out = run(props.getFfmpegBin(), List.of("-hide_banner", "-filters"), 512_000);
+            } catch (Exception e) {
+                log.warn("[mixcut] `{} -filters` failed: {} — will fall back to per-filter probe",
+                        props.getFfmpegBin(), e.getMessage());
+                out = "";
+            }
+
             Set<String> parsed = new HashSet<>();
             for (String line : out.split("\\R")) {
                 Matcher m = FILTER_LINE.matcher(line);
-                if (m.matches()) parsed.add(m.group(1));
+                if (m.matches()) {
+                    parsed.add(m.group(1));
+                }
             }
+            int strictCount = parsed.size();
+
+            for (String line : out.split("\\R")) {
+                Matcher m = FILTER_LINE_LOOSE.matcher(line);
+                if (m.matches()) {
+                    parsed.add(m.group(1));
+                }
+            }
+            int looseAdded = parsed.size() - strictCount;
+            if (looseAdded > 0) {
+                log.info("[mixcut] loose regex recovered {} additional filter names (strict missed format)", looseAdded);
+            }
+
+            Set<String> probedRecovered = new HashSet<>();
+            for (String name : CRITICAL_FILTERS) {
+                if (parsed.contains(name)) continue;
+                if (probeFilter(name)) {
+                    parsed.add(name);
+                    probedRecovered.add(name);
+                }
+            }
+            if (!probedRecovered.isEmpty()) {
+                log.warn("[mixcut] `-filters` parser missed critical filters; recovered via `-h filter=<name>` probe: {}",
+                        probedRecovered);
+            }
+
             availableFilters = Collections.unmodifiableSet(parsed);
+            log.info("[mixcut] ffmpeg filter set finalized: {} total (strict={}, loose+={}, probe+={})",
+                    parsed.size(), strictCount, looseAdded, probedRecovered.size());
             return availableFilters;
+        }
+    }
+
+    /**
+     * 用 `ffmpeg -h filter=<name>` 单条权威探测 filter 是否真实存在。
+     * 比 `-filters` 文本解析可靠：直接询问 libavfilter 注册表，无需正则匹配输出格式。
+     *
+     * 存在：ffmpeg exit=0 且输出含 "Filter <name>" header。
+     * 不存在：ffmpeg exit=1 + "Unknown filter '<name>'." (run() 抛 RuntimeException)，或者
+     *         个别版本 exit=0 但输出仅含 "Unknown filter" 字样。
+     */
+    private boolean probeFilter(String name) {
+        try {
+            String out = run(props.getFfmpegBin(),
+                    List.of("-hide_banner", "-h", "filter=" + name), 16_000);
+            if (out == null) return false;
+            String lower = out.toLowerCase();
+            if (lower.contains("unknown filter")) return false;
+            return out.contains("Filter " + name)
+                    || out.contains("filter '" + name + "'")
+                    || lower.contains("filter " + name.toLowerCase());
+        } catch (Exception e) {
+            log.debug("[mixcut] probe filter={} failed: {}", name, e.getMessage());
+            return false;
         }
     }
 
