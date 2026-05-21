@@ -15,6 +15,7 @@ import {
   Plus,
   Minus,
   ChevronRight,
+  Film,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
@@ -314,24 +315,93 @@ export function CreateClient({ id }: { id: string }) {
             <Badge variant="muted" className="text-[10px]">{editableSlots.length} 个可编辑位</Badge>
           </div>
 
-          {editableSlots.map((s) => (
-            <div key={s.slot_id} id={`slot-${s.slot_id}`}>
-              <SlotInput
-                slot={s}
-                binding={bindings[s.slot_id]}
-                onChange={(b) => handleSlotChange(s.slot_id, b)}
-                focused={focusedSlot === s.slot_id}
-                onFocus={() => setFocusedSlot(s.slot_id)}
-                policyOverride={slotPolicies[s.slot_id]}
-                onPolicyChange={(next) => handlePolicyChange(s.slot_id, next)}
-                globalOverrides={overrides}
-                canvasWidth={template.canvas.width}
-                canvasHeight={template.canvas.height}
-              />
-            </div>
-          ))}
+          {/*
+            v0.22+: 多场景模板按 scene 分组渲染。
+            旧实现 `editableSlots.map(...)` 把所有场景的 slot 平铺成一个列表，用户无法分辨
+            "第 1 段标题" vs "第 2 段标题"（尤其当 slot.label 相同时），是致命的 UX bug。
+            修复：遍历 template.scenes，每个 scene 出一个 header（label / 时长 / 偏移 / 编号），
+            scene 内才铺它自己的 editable slots。
+            React key 用 `${scene.id}::${slot_id}` 避免 slot_id 在场景间撞 key 时 React 复用错节点。
+          */}
+          {(() => {
+            let offset = 0;
+            const blocks: React.ReactNode[] = [];
+            const multiScene = template.scenes.length > 1;
+            template.scenes.forEach((scene, sceneIdx) => {
+              const sceneEditable = scene.slots.filter((s) => s.user_editable);
+              const sceneFixedCount = scene.slots.length - sceneEditable.length;
+              const startOffset = offset;
+              offset += scene.duration;
+              if (sceneEditable.length === 0 && sceneFixedCount === 0) return;
+              blocks.push(
+                <div key={scene.id} className="space-y-3">
+                  {multiScene && (
+                    <div className="flex items-center gap-2 pt-2 first:pt-0">
+                      <div className="size-7 rounded-md bg-violet-500/10 text-violet-500 grid place-items-center shrink-0">
+                        <Film className="size-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold tracking-tight truncate">
+                          第 {sceneIdx + 1} 段 · {scene.label}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {startOffset.toFixed(0)}s ~ {offset.toFixed(0)}s · 时长 {scene.duration}s
+                          {sceneEditable.length > 0 && ` · ${sceneEditable.length} 个素材位`}
+                          {sceneFixedCount > 0 && ` · ${sceneFixedCount} 处固定内容`}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {sceneEditable.map((s) => (
+                    <div key={`${scene.id}::${s.slot_id}`} id={`slot-${s.slot_id}`}>
+                      <SlotInput
+                        slot={s}
+                        binding={bindings[s.slot_id]}
+                        onChange={(b) => handleSlotChange(s.slot_id, b)}
+                        focused={focusedSlot === s.slot_id}
+                        onFocus={() => setFocusedSlot(s.slot_id)}
+                        policyOverride={slotPolicies[s.slot_id]}
+                        onPolicyChange={(next) => handlePolicyChange(s.slot_id, next)}
+                        globalOverrides={overrides}
+                        canvasWidth={template.canvas.width}
+                        canvasHeight={template.canvas.height}
+                      />
+                    </div>
+                  ))}
+                  {sceneEditable.length === 0 && multiScene && sceneFixedCount > 0 && (
+                    <div className="text-xs text-muted-foreground bg-secondary/30 rounded-md px-3 py-2 border border-dashed border-border">
+                      本段全部为固定内容（如品牌条），系统自动填，你不用管。
+                    </div>
+                  )}
+                </div>
+              );
+            });
+            return blocks;
+          })()}
 
-          {allSlots.some((s) => !s.user_editable) && (
+          {/* slot_id 在多场景间唯一性自检：撞 id 会导致 bindings 共用同一 key，
+              用户填 A 段标题就把 B 段标题也覆盖掉。模板编辑器用 nanoid 生成新 slot_id，
+              但老模板 / 复制场景 / 手编 JSON 可能出现重复，这里给个显式 warning。 */}
+          {(() => {
+            const ids = allSlots.map((s) => s.slot_id);
+            const dups = ids.filter((id, i) => ids.indexOf(id) !== i);
+            if (dups.length === 0) return null;
+            const unique = Array.from(new Set(dups));
+            return (
+              <Card className="border-amber-500/30 bg-amber-500/5">
+                <CardContent className="p-3 flex items-start gap-2">
+                  <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-700 leading-relaxed">
+                    检测到 {unique.length} 个 slot_id 在多个场景里重复（{unique.slice(0, 3).join(" / ")}
+                    {unique.length > 3 ? ` 等` : ""}），同名 slot 的素材会互相覆盖。
+                    请回到模板编辑页改成唯一 id。
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {template.scenes.length === 1 && allSlots.some((s) => !s.user_editable) && (
             <Card className="bg-secondary/30 border-dashed">
               <CardContent className="p-4">
                 <div className="flex items-start gap-2">
