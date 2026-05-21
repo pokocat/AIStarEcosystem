@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Sparkles,
@@ -136,11 +136,13 @@ const CANVAS_PRESETS: { label: string; w: number; h: number; sub: string; group:
 export function TemplateDetailClient({
   id,
   initialEdit = false,
+  legacyEditQuery = false,
   mode = "view",
 }: {
   id: string;
   /** /edit 路由传 true 自动进入编辑态。?edit=1 旧 query 也兼容。 */
   initialEdit?: boolean;
+  legacyEditQuery?: boolean;
   /**
    * v0.21+：mode="new" 时使用内存默认模板，**不调 server**；
    * 第一次保存才会真正落库（避免空模板残留在列表里）。
@@ -148,10 +150,9 @@ export function TemplateDetailClient({
   mode?: "view" | "new";
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const isNewMode = mode === "new";
   // new 模式自动进编辑；view 模式沿用 /edit 路由 / ?edit=1 query
-  const wantEdit = isNewMode || initialEdit || searchParams?.get("edit") === "1";
+  const wantEdit = isNewMode || initialEdit || legacyEditQuery;
   // new 模式：用内存默认模板（不落库）
   // view 模式：SSR 看工厂模板，client hydration 升级到用户覆盖版本
   const freshTemplate = useMemo<Template | null>(() => {
@@ -215,10 +216,10 @@ export function TemplateDetailClient({
     setEditing(true);
     setAutoEditApplied(true);
     // 旧 ?edit=1 query 才清掉(避免刷新重复触发)。/edit 路由保持 URL 不动,刷新就是编辑态。
-    if (!initialEdit && searchParams?.get("edit") === "1") {
+    if (!initialEdit && legacyEditQuery) {
       router.replace(`/mixcut/templates/${id}`, { scroll: false });
     }
-  }, [wantEdit, autoEditApplied, template, id, router, initialEdit, searchParams]);
+  }, [wantEdit, autoEditApplied, template, id, router, initialEdit, legacyEditQuery]);
 
   // useMemo 必须在所有 early-return 之前 —— 避免 Rules of Hooks 违规
   const display: Template | null = editing && working ? working : template;

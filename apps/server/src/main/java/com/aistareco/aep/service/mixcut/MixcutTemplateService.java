@@ -35,9 +35,8 @@ public class MixcutTemplateService {
 
     /** 列出某用户视角下的全部模板：user override + 未被 override 的 factory。 */
     public List<MixcutTemplate> listForUser(String ownerUserId) {
-        var userList = (ownerUserId == null || ownerUserId.isBlank())
-                ? List.<MixcutTemplate>of()
-                : repo.findByOwnerUserIdOrderByUpdatedAtDesc(ownerUserId);
+        var scope = userScopeOf(ownerUserId);
+        var userList = repo.findByOwnerUserIdOrderByUpdatedAtDesc(scope);
         var factoryList = repo.findByIsFactoryTrueOrderByUpdatedAtDesc();
 
         Map<String, MixcutTemplate> dedup = new LinkedHashMap<>();
@@ -48,10 +47,8 @@ public class MixcutTemplateService {
 
     /** 取单个模板：优先 user 版本，回退 factory。 */
     public Optional<MixcutTemplate> getForUser(String templateId, String ownerUserId) {
-        if (ownerUserId != null && !ownerUserId.isBlank()) {
-            var user = repo.findByTemplateIdAndOwnerScope(templateId, ownerUserId);
-            if (user.isPresent()) return user;
-        }
+        var user = repo.findByTemplateIdAndOwnerScope(templateId, userScopeOf(ownerUserId));
+        if (user.isPresent()) return user;
         return repo.findByTemplateIdAndOwnerScope(templateId, FACTORY_SCOPE);
     }
 
@@ -60,11 +57,7 @@ public class MixcutTemplateService {
         if (req.templateId() == null || req.templateId().isBlank()) {
             throw new IllegalArgumentException("template_id 不能为空");
         }
-        if (ownerUserId == null || ownerUserId.isBlank()) {
-            // 兼容未登录 dev 模式：仍然落库，挂在 demo 用户名下
-            ownerUserId = "demo";
-        }
-        var scope = ownerUserId;
+        var scope = userScopeOf(ownerUserId);
         var now = OffsetDateTime.now();
         var existing = repo.findByTemplateIdAndOwnerScope(req.templateId(), scope);
         var t = existing.orElseGet(() -> {
@@ -84,8 +77,7 @@ public class MixcutTemplateService {
 
     /** 删除用户的模板版本（factory 永不删）。 */
     public boolean deleteUserCopy(String templateId, String ownerUserId) {
-        if (ownerUserId == null || ownerUserId.isBlank()) ownerUserId = "demo";
-        var existing = repo.findByTemplateIdAndOwnerScope(templateId, ownerUserId);
+        var existing = repo.findByTemplateIdAndOwnerScope(templateId, userScopeOf(ownerUserId));
         if (existing.isEmpty()) return false;
         repo.delete(existing.get());
         return true;
@@ -115,6 +107,11 @@ public class MixcutTemplateService {
 
     public boolean hasAnyFactory() {
         return !repo.findByIsFactoryTrueOrderByUpdatedAtDesc().isEmpty();
+    }
+
+    private static String userScopeOf(String ownerUserId) {
+        // 兼容未登录 dev 模式：保存、读取、列表、删除都落在同一个 demo scope。
+        return (ownerUserId == null || ownerUserId.isBlank()) ? "demo" : ownerUserId;
     }
 
     private void applyRequest(MixcutTemplate t, MixcutTemplateUpsertRequest req) {
