@@ -313,7 +313,7 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl border-zinc-200 bg-white text-zinc-900 shadow-[var(--shadow-pop)]">
+      <DialogContent className="w-[95vw] max-w-[1280px] sm:max-w-[1280px] max-h-[92vh] overflow-y-auto border-zinc-200 bg-white text-zinc-900 shadow-[var(--shadow-pop)]">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">批量录入商品</DialogTitle>
           <DialogDescription className="text-xs text-zinc-500">
@@ -432,16 +432,25 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
             </div>
           </div>
           <div className="overflow-x-auto rounded-md border border-zinc-200">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs" style={{ minWidth: 960 }}>
+              <colgroup>
+                <col style={{ width: 36 }} />
+                <col style={{ width: "20%" }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "30%" }} />
+                <col style={{ width: "30%" }} />
+                <col style={{ width: 40 }} />
+              </colgroup>
               <thead className="bg-zinc-50 text-zinc-600">
                 <tr>
                   <th className="px-2 py-1.5 text-left font-medium">#</th>
                   <th className="px-2 py-1.5 text-left font-medium">商品名称 *</th>
-                  <th className="px-2 py-1.5 text-left font-medium w-28">类目</th>
+                  <th className="px-2 py-1.5 text-left font-medium">类目</th>
                   <th className="px-2 py-1.5 text-left font-medium">链接</th>
                   <th className="px-2 py-1.5 text-left font-medium">卖点 / 描述</th>
                   <th className="px-2 py-1.5 text-left font-medium">图片 URL（多行）</th>
-                  <th className="px-2 py-1.5 w-8"></th>
+                  <th className="px-2 py-1.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 max-h-[300px]">
