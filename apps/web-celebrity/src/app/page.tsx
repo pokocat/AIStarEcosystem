@@ -11,25 +11,37 @@ import { Button, Card, Chip, GradientBlock } from "@/components/creator";
 import { MARKET_STARS } from "@/mocks/celebrity-zone";
 
 const FEATURES = [
-  { icon: Star, title: "明星授权与复刻", body: "授权管理、形象复刻、肖像合规审计。让真人明星的 AI 表达边界清晰、可控、可审计。" },
-  { icon: Video, title: "短视频与切片", body: "模板生成、分镜配音、视频中心、多平台发布一体化。工业级出片节奏。" },
-  { icon: ShoppingBag, title: "带货与变现", body: "商品库、数据看板、漏斗复盘 + 钱包结算。把明星 IP 转化为可结算的 GMV。" },
+  {
+    icon: Star,
+    title: "明星授权 · AI 复刻",
+    body: "授权流程、数字分身建模、肖像合规审计一体闭环，让真人明星的 AI 形象使用边界清晰、可控、全程留痕。",
+  },
+  {
+    icon: Video,
+    title: "短视频 · 智能生产",
+    body: "模板化生成、分镜配音、视频管理与多平台分发一体化，从脚本到成片仅需几分钟，稳定输出爆款素材。",
+  },
+  {
+    icon: ShoppingBag,
+    title: "商品挂载 · 数据闭环",
+    body: "商品库、实时数据看板、转化漏斗复盘联动钱包结算，把明星 IP 的每一次曝光都沉淀为可量化的 GMV。",
+  },
 ];
 
 // 业务主线 5 步
 const PIPELINE = [
-  { n: 1, icon: Search,     title: "找明星",   desc: "浏览明星市场，按分类、热度、起拍价筛选。",                      tone: "violet" as const },
-  { n: 2, icon: KeyRound,   title: "申请授权", desc: "选择套餐档位、商品方向；合规审核通常 1 个工作日内通过。",       tone: "rose"   as const },
-  { n: 3, icon: Wand2,      title: "AI 生成",  desc: "模板 / 盲盒生成短视频切片，多引擎对比，秒级出片。",            tone: "peach"  as const },
-  { n: 4, icon: Sparkles,   title: "审核分发", desc: "切片审核通过后自动多平台投放（抖音 / 快手 / 小红书 / 视频号）。", tone: "amber"  as const },
-  { n: 5, icon: ShoppingBag, title: "带货变现", desc: "商品库挂接 + 数据漏斗回流 + 钱包结算分账。",                  tone: "teal"   as const },
+  { n: 1, icon: Search,      title: "选明星",   desc: "浏览明星市场，按品类、热度、授权价快速锁定合作对象。",                  tone: "violet" as const },
+  { n: 2, icon: KeyRound,    title: "签授权",   desc: "在线选定套餐档位与商品方向，合规审核一般 1 个工作日内出结果。",         tone: "rose"   as const },
+  { n: 3, icon: Wand2,       title: "AI 出片",  desc: "模板化与一键生成两种模式并行，多引擎对比，秒级产出可用素材。",          tone: "peach"  as const },
+  { n: 4, icon: Sparkles,    title: "审核分发", desc: "内容审核通过后，自动分发至抖音、快手、小红书、视频号等主流渠道。",      tone: "amber"  as const },
+  { n: 5, icon: ShoppingBag, title: "带货结算", desc: "关联商品库、实时回流转化数据，自动完成分账并打款至钱包。",              tone: "teal"   as const },
 ];
 
 const SHOWCASE = [
-  { id: "liu-tao",   title: "刘涛 · 都市精英", chip: { tone: "drama"   as const, label: "drama"   }, meta: "本周 GMV ¥1.82M" },
-  { id: "shen-teng", title: "沈腾 · 综艺向",   chip: { tone: "comedy"  as const, label: "comedy"  }, meta: "32 条切片在投" },
-  { id: "na-ying",   title: "那英 · 音乐向",   chip: { tone: "slice"   as const, label: "slice"   }, meta: "新单曲预热" },
-  { id: "jia-ling",  title: "贾玲 · 喜剧向",   chip: { tone: "romance" as const, label: "romance" }, meta: "周播 5 期" },
+  { id: "liu-tao",   title: "刘涛 · 都市精英", chip: { tone: "drama"   as const, label: "剧情" }, meta: "本周 GMV ¥1.82M" },
+  { id: "shen-teng", title: "沈腾 · 综艺向",   chip: { tone: "comedy"  as const, label: "喜剧" }, meta: "32 条视频投放中" },
+  { id: "na-ying",   title: "那英 · 音乐向",   chip: { tone: "slice"   as const, label: "音乐" }, meta: "新歌预热中" },
+  { id: "jia-ling",  title: "贾玲 · 喜剧向",   chip: { tone: "romance" as const, label: "情感" }, meta: "每周稳定更新 5 期" },
 ];
 
 export default function CelebrityLandingPage() {
@@ -83,7 +95,7 @@ export default function CelebrityLandingPage() {
           <Link href="#pipeline" style={navLink}>业务主线</Link>
           <Link href="#features" style={navLink}>核心能力</Link>
           <Link href="#showcase" style={navLink}>明星阵容</Link>
-          <Link href="#trial" style={navLink}>申请试用</Link>
+          <Link href="#trial" style={navLink}>开始合作</Link>
         </nav>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -102,7 +114,7 @@ export default function CelebrityLandingPage() {
                 <Button variant="secondary" size="sm">登录</Button>
               </Link>
               <Link href="/login?from=%2Fdashboard">
-                <Button variant="accent" size="sm">立即开始 →</Button>
+                <Button variant="accent" size="sm">免费试用 →</Button>
               </Link>
             </>
           )}
@@ -123,7 +135,7 @@ export default function CelebrityLandingPage() {
           }}
         >
           <div>
-            <div className="eyebrow">明星带货 · 2026 路演版</div>
+            <div className="eyebrow">AI 明星带货 · 2026 全新升级</div>
             <h1
               style={{
                 fontSize: 56,
@@ -135,10 +147,10 @@ export default function CelebrityLandingPage() {
                 color: "var(--fg-0)",
               }}
             >
-              打造一位明星，
+              复刻一位 AI 明星，
               <br />
               <span className="serif-italic" style={{ color: "var(--accent)", fontSize: 56 }}>
-                让她替你把今晚卖完。
+                让顶流 7×24 小时帮你带货。
               </span>
             </h1>
             <p
@@ -150,17 +162,16 @@ export default function CelebrityLandingPage() {
                 marginBottom: 28,
               }}
             >
-              授权管理 · 形象复刻 · 短视频工坊 · 直播切片分发 · 商品库与结算。
-              一站串通授权方 / 品牌方 / MCN 的全链路营销动作，让明星价值在合规边界内被持续放大。
+              从明星授权、AI 形象复刻、短视频生产到全网分发与商品结算，一站式打通授权方、品牌方与 MCN 的合作链路，让明星 IP 在合规前提下持续放大商业价值。
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
                 <Button variant="dark" size="lg">
-                  {isLoggedIn ? "进入工作台 →" : "立即开始 →"}
+                  {isLoggedIn ? "进入工作台 →" : "免费试用 →"}
                 </Button>
               </Link>
               <Link href="#showcase">
-                <Button variant="secondary" size="lg">看一眼现作</Button>
+                <Button variant="secondary" size="lg">查看案例</Button>
               </Link>
             </div>
           </div>
@@ -185,18 +196,18 @@ export default function CelebrityLandingPage() {
                       letterSpacing: 0.3,
                     }}
                   >
-                    {featuredStar.category} · 综艺向 · 授权中
+                    {featuredStar.category} · 综艺向 · 已签约
                   </div>
                 </div>
               }
             />
             <div style={{ padding: "16px 18px" }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>今日在投</div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>今日实时数据</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <PreviewStat label="GMV" value="¥182,400" delta="+12% · 同比昨日" tone="success" />
-                <PreviewStat label="在投切片" value="32" delta="抖音 · 进行中" tone="accent" />
-                <PreviewStat label="转化率" value="1.86%" delta="高于行业均值" tone="success" />
-                <PreviewStat label="待审核" value="3" delta="今日合规队列" tone="warning" />
+                <PreviewStat label="今日 GMV" value="¥182,400" delta="环比昨日 +12%" tone="success" />
+                <PreviewStat label="投放中视频" value="32" delta="抖音渠道 · 持续上量" tone="accent" />
+                <PreviewStat label="转化率" value="1.86%" delta="高于行业平均水平" tone="success" />
+                <PreviewStat label="待审核" value="3" delta="今日合规审核队列" tone="warning" />
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
                 <Chip tone="romance" size="sm">都市言情</Chip>
@@ -223,7 +234,7 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                现已上线的{" "}
+                已上线的{" "}
                 <span className="serif-italic" style={{ color: "var(--accent)" }}>
                   签约明星
                 </span>
@@ -281,9 +292,9 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                五步走完{" "}
+                五步跑通{" "}
                 <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                  明星 IP 带货
+                  明星 IP 带货闭环
                 </span>
                 。
               </h2>
@@ -349,9 +360,9 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                三个动作，跑通整个{" "}
+                三大核心能力，打通{" "}
                 <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                  IP 生意
+                  明星 IP 全链路
                 </span>
                 。
               </h2>
@@ -408,7 +419,7 @@ export default function CelebrityLandingPage() {
             }}
           >
             <div>
-              <div className="eyebrow">合作准备就绪</div>
+              <div className="eyebrow">现在就开始</div>
               <h3
                 style={{
                   fontSize: 22,
@@ -419,18 +430,18 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                把明星 IP 接入{" "}
+                让明星 IP 接入{" "}
                 <span className="serif-italic" style={{ color: "var(--accent)" }}>
                   AI Star Eco
                 </span>
               </h3>
               <p style={{ fontSize: 13.5, color: "var(--fg-2)", margin: 0, maxWidth: 520, lineHeight: 1.6 }}>
-                联系商务团队开通授权方专属工作台，预计 1 个工作日内完成对接。
+                联系商务团队开通授权方专属工作台，1 个工作日内完成对接上线。
               </p>
             </div>
             <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
               <Button variant="accent" size="lg">
-                {isLoggedIn ? "进入工作台 →" : "立即开始 →"}
+                {isLoggedIn ? "进入工作台 →" : "免费试用 →"}
               </Button>
             </Link>
           </Card>
