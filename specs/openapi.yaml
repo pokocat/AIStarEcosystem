@@ -4768,6 +4768,34 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/Product' }
 
+  /me/products/{id}/refresh-images:
+    post:
+      tags: [products]
+      operationId: refreshProductImages
+      summary: |
+        给已存在商品「刷新图片」—— 重新解析链接 + 回填 Product.images 快照 + 追加 MixcutAsset(subkind=product-photo)。
+        seeder 启动时若异步抓图失败 / 抖音 CDN URL 失效后切换素材时使用。不会清掉旧 MixcutAsset 行。
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [registered]
+                        properties:
+                          registered: { type: integer, description: "新登记的 MixcutAsset 行数（0 = 解析失败 / 无图）" }
+
   /products/extract-selling-points:
     post:
       tags: [products]

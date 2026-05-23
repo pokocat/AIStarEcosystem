@@ -7,6 +7,7 @@ import com.aistareco.aep.model.Product;
 import com.aistareco.aep.repository.MixcutAssetRepository;
 import com.aistareco.aep.repository.PlatformConfigRepository;
 import com.aistareco.aep.repository.ProductRepository;
+import com.aistareco.aep.service.ProductLinkPersistService;
 import com.aistareco.aep.service.ProductService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * v0.28+ 选品表格初始数据 seed —— 用「版本号守门 + 一次性 reset」实现。
@@ -52,15 +57,18 @@ public class CelebrityProductSeeder implements CommandLineRunner {
     private final ProductService productService;
     private final MixcutAssetRepository mixcutAssetRepository;
     private final PlatformConfigRepository platformConfigRepository;
+    private final ProductLinkPersistService productLinkPersistService;
 
     public CelebrityProductSeeder(ProductRepository productRepository,
                                   ProductService productService,
                                   MixcutAssetRepository mixcutAssetRepository,
-                                  PlatformConfigRepository platformConfigRepository) {
+                                  PlatformConfigRepository platformConfigRepository,
+                                  ProductLinkPersistService productLinkPersistService) {
         this.productRepository = productRepository;
         this.productService = productService;
         this.mixcutAssetRepository = mixcutAssetRepository;
         this.platformConfigRepository = platformConfigRepository;
+        this.productLinkPersistService = productLinkPersistService;
     }
 
     /** 一条 seed 记录：商品ID / 名称 / 链接 / 价格（分）/ 佣金率（整数百分比）。 */
@@ -106,8 +114,25 @@ public class CelebrityProductSeeder implements CommandLineRunner {
     );
 
     @Override
-    @Transactional
     public void run(String... args) {
+        // 主流程：guard 检查 + reset / seed + 版本号 upsert 都跑在 seed() 里的统一事务里；
+        // 异步抓图在 commit 之后才启动，避免在事务里 sleep / 等外网 I/O。
+        boolean shouldEnrich = seed();
+        if (shouldEnrich) {
+            enrichImagesInBackground();
+        }
+    }
+
+    /**
+     * 同步 seed 步骤。每个底层 repo / service 调用自带 @Transactional（Spring Data 默认 +
+     * ProductService 类级 @Transactional），单独提交。本方法**不**加 @Transactional 是有意为之：
+     *  1. 避免在 run() 调 seed() 时遇到 Spring 自调用绕过 AOP 的坑；
+     *  2. 让 deleteAll / save / version-marker 一组组短事务依次提交，整体大概 50-100ms 顺利完成；
+     *  3. 任何中途失败下次启动版本号仍不匹配 → 触发 reset 重跑（deleteAll 幂等，所以安全）。
+     *
+     * 返回 true 表示「我刚刚 seed 了，需要异步抓图」；false 表示「跳过」。
+     */
+    public boolean seed() {
         var existingConfig = platformConfigRepository.findByConfigKey(CONFIG_KEY);
         String currentVersion = existingConfig
                 .map(PlatformConfig::getValueJson)
@@ -115,7 +140,7 @@ public class CelebrityProductSeeder implements CommandLineRunner {
 
         if (SEED_VERSION.equals(currentVersion)) {
             log.debug("CelebrityProductSeeder: version {} already seeded, skip.", SEED_VERSION);
-            return;
+            return false;
         }
 
         long existingProducts = productRepository.count();
@@ -131,10 +156,11 @@ public class CelebrityProductSeeder implements CommandLineRunner {
         upsertSeedVersion(existingConfig.orElse(null));
         log.info("CelebrityProductSeeder: seeded {} products at version {}.",
                 INITIAL_PRODUCTS.size(), SEED_VERSION);
+        return true;
     }
 
     /**
-     * 清空老数据：
+     * 清空老数据（私有 helper，走 seed() 的 ambient 事务）：
      *  1. 先清掉所有 product 关联的 MixcutAsset 行（按 relatedProductId 命中）—— 避免商品被删后
      *     素材表里留下指向不存在 productId 的孤儿行；
      *  2. 再 deleteAll() product 表；
@@ -142,8 +168,6 @@ public class CelebrityProductSeeder implements CommandLineRunner {
      *     下游 BatchPublishDrawer fetch product null 时优雅降级。
      */
     private void clearExistingData() {
-        // 收集所有 relatedProductId 非空的 MixcutAsset，逐条删除
-        // 因为无现成「按 productId 任意删」的 service 方法，直接用 repo
         for (Product p : productRepository.findAll()) {
             List<MixcutAsset> assets = mixcutAssetRepository.findByRelatedProductIdOrderByUploadedAtDesc(p.getId());
             if (!assets.isEmpty()) {
@@ -162,7 +186,7 @@ public class CelebrityProductSeeder implements CommandLineRunner {
                         s.name(),
                         "日用百货",
                         s.link(),
-                        List.of(),               // images 留空；运营首次点「从链接解析」回填
+                        List.of(),
                         "",
                         "manual",
                         s.priceCents(),
@@ -189,5 +213,54 @@ public class CelebrityProductSeeder implements CommandLineRunner {
         cfg.setUpdatedAt(Instant.now());
         cfg.setUpdatedBy("system:CelebrityProductSeeder");
         platformConfigRepository.save(cfg);
+    }
+
+    /**
+     * 异步并行抓图：
+     *  - 每个 enrich 走 ProductLinkPersistService（独立事务），失败 log + 继续
+     *  - 6 个 future 并行，固定线程池避免占满 common ForkJoinPool
+     *  - 总超时 60s（最坏 6 × 8s HttpClient timeout = 48s，留出余量）
+     *  - 整体异步，启动主线程不阻塞；CLI runner 返回后图片在后台逐个补到 MixcutAsset
+     */
+    private void enrichImagesInBackground() {
+        ExecutorService pool = Executors.newFixedThreadPool(
+                Math.min(INITIAL_PRODUCTS.size(), 6),
+                r -> {
+                    Thread t = new Thread(r, "celebrity-seed-enrich");
+                    t.setDaemon(true);
+                    return t;
+                });
+        // 整段 future 单独跑一个守护线程，让 CLI runner 立即返回
+        Thread monitor = new Thread(() -> {
+            long started = System.currentTimeMillis();
+            log.info("CelebrityProductSeeder: enrich images in background for {} products …",
+                    INITIAL_PRODUCTS.size());
+            try {
+                CompletableFuture<?>[] futures = INITIAL_PRODUCTS.stream()
+                        .map(s -> CompletableFuture.runAsync(() -> {
+                            try {
+                                int n = productLinkPersistService.enrichProductImages(s.id(), null);
+                                if (n > 0) {
+                                    log.info("CelebrityProductSeeder: enriched product {} +{} images", s.id(), n);
+                                } else {
+                                    log.warn("CelebrityProductSeeder: product {} got 0 images (link DOM may have changed)", s.id());
+                                }
+                            } catch (Exception e) {
+                                log.warn("CelebrityProductSeeder: enrich {} failed err={}", s.id(), e.getMessage());
+                            }
+                        }, pool))
+                        .toArray(CompletableFuture[]::new);
+                CompletableFuture.allOf(futures).get(60, TimeUnit.SECONDS);
+                log.info("CelebrityProductSeeder: enrich done in {} ms",
+                        System.currentTimeMillis() - started);
+            } catch (Exception e) {
+                log.warn("CelebrityProductSeeder: enrich timed out or interrupted: {}",
+                        e.getMessage());
+            } finally {
+                pool.shutdown();
+            }
+        }, "celebrity-seed-enrich-monitor");
+        monitor.setDaemon(true);
+        monitor.start();
     }
 }

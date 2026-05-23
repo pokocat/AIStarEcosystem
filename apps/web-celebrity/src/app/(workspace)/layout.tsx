@@ -145,6 +145,7 @@ function CrumbsFromPathname(pathname: string): string[] {
   }
   if (pathname.startsWith("/star")) return ["工作台", "明星市场", "明星详情"];
   if (pathname.startsWith("/projects/")) return ["工作台", "我的项目", "项目详情"];
+  if (pathname.startsWith("/products/")) return ["工作台", "明星带货", "商品库", "商品详情"];
 
   // 混剪专区子路径
   if (pathname === "/mixcut/templates") return ["工作台", "混剪专区", "模板库"];

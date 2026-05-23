@@ -32,6 +32,13 @@ interface Props {
   binding?: SlotBinding;
   onChange: (binding: SlotBinding | undefined) => void;
   mode: "upload" | "library" | "both";
+  /**
+   * v0.28+: 关联商品 id（来自 create 页 URL ?product_id=X）。
+   * 非空时 library 面板顶部出现「📌 本商品」过滤 chip，默认开启 → listAssets 带
+   * relatedProductId=X，只列该商品的素材（subkind=product-photo/video 等）。
+   * 用户点 chip 取消时切回「我的全部素材」。
+   */
+  productId?: string;
 }
 
 function pickAssetKind(slot: TemplateSlot): MixcutAssetKind {
@@ -79,7 +86,7 @@ const KIND_ACCEPT: Record<MixcutAssetKind, string> = {
   bgm: "audio/*",
 };
 
-export function MediaSlotInput({ slot, binding, onChange, mode }: Props) {
+export function MediaSlotInput({ slot, binding, onChange, mode, productId }: Props) {
   const kind = pickAssetKind(slot);
   const accept = slot.accepts_mime?.join(",") || KIND_ACCEPT[kind];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +96,12 @@ export function MediaSlotInput({ slot, binding, onChange, mode }: Props) {
   const [items, setItems] = useState<MixcutAsset[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * v0.28+: 「📌 本商品」过滤 chip 是否启用。
+   * productId 非空时默认 true（最常见路径：用户从商品库点「生成视频」进来，期望直接看到该商品素材）；
+   * 用户点 chip 切到 false → 列出我的所有素材，方便混用其它库存。
+   */
+  const [productFilter, setProductFilter] = useState<boolean>(!!productId);
 
   // 已选状态
   const previewUrl = bindingPreviewUrl(binding);
@@ -98,10 +111,14 @@ export function MediaSlotInput({ slot, binding, onChange, mode }: Props) {
     (binding?.source === "library" && !!binding.asset_id);
 
   useEffect(() => {
-    if (picking && items === null) {
-      MixcutApi.listAssets({ kind }).then(setItems).catch(() => setItems([]));
+    if (!picking) return;
+    // chip 切换时重新拉
+    const filter: Parameters<typeof MixcutApi.listAssets>[0] = { kind };
+    if (productId && productFilter) {
+      filter.relatedProductId = productId;
     }
-  }, [picking, items, kind]);
+    MixcutApi.listAssets(filter).then(setItems).catch(() => setItems([]));
+  }, [picking, kind, productId, productFilter]);
 
   const filtered = (items ?? []).filter((i) => {
     if (!search) return true;
@@ -245,6 +262,32 @@ export function MediaSlotInput({ slot, binding, onChange, mode }: Props) {
 
     return (
       <div className="space-y-2 pt-2 border-t border-border">
+        {/* v0.28+: 本商品过滤 chip —— 仅在 productId 非空时显示 */}
+        {productId && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setProductFilter((v) => !v);
+                setItems(null); // 强制重拉
+              }}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition",
+                productFilter
+                  ? "border-violet-400 bg-violet-500/15 text-violet-700"
+                  : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300",
+              )}
+              title={productFilter ? "当前只列本商品素材，点击切到全部素材" : "切到只列本商品素材"}
+            >
+              📌 本商品{productFilter ? "（已开启）" : ""}
+            </button>
+            {!productFilter && (
+              <span className="text-[10px] text-zinc-400">点上方 chip 仅看本商品素材</span>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <Input
             value={search}

@@ -1,16 +1,19 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Edit3,
   ExternalLink,
   FileSpreadsheet,
+  Images,
   LayoutGrid,
   Link2,
   List,
   Loader2,
   Package,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -50,6 +53,8 @@ export function CelebrityProductLibrary() {
   const [viewMode, setViewMode] = React.useState<ViewMode>("list");
   const [quickLinkOpen, setQuickLinkOpen] = React.useState(false);
   const [generatingFor, setGeneratingFor] = React.useState<Product | null>(null);
+  /** v0.28+ 行内「刷新图片」按钮当前正在抓图的 productId 集合，用于显示 loading spinner */
+  const [refreshing, setRefreshing] = React.useState<Set<string>>(new Set());
   const { confirm, ConfirmHost } = useConfirm();
 
   React.useEffect(() => {
@@ -102,6 +107,35 @@ export function CelebrityProductLibrary() {
 
   const handleGenerate = (p: Product) => {
     setGeneratingFor(p);
+  };
+
+  const handleRefreshImages = async (p: Product) => {
+    if (!p.link) return;
+    setRefreshing((s) => new Set(s).add(p.id));
+    try {
+      const n = await ProductsApi.refreshProductImages(p.id);
+      // 解析成功（不论是否有新图）都 reload 让 UI 拿到 server 端最新 images snapshot
+      reload();
+      if (n === 0) {
+        await confirm({
+          title: "未抓到新图片",
+          description: "链接可能已失效，或抖音页面 DOM 结构变化。你可以打开链接核对，或手动粘贴图片 URL。",
+          confirmText: "知道了",
+        });
+      }
+    } catch (e) {
+      await confirm({
+        title: "刷新图片失败",
+        description: e instanceof Error ? e.message : "未知错误",
+        confirmText: "知道了",
+      });
+    } finally {
+      setRefreshing((s) => {
+        const next = new Set(s);
+        next.delete(p.id);
+        return next;
+      });
+    }
   };
 
   /** 批量提交：逐条 createProduct，单条失败不影响其他；返回 created + failed 明细。 */
@@ -224,11 +258,20 @@ export function CelebrityProductLibrary() {
               onEdit={() => handleEdit(p)}
               onDelete={() => handleDelete(p)}
               onGenerate={() => handleGenerate(p)}
+              onRefreshImages={() => handleRefreshImages(p)}
+              isRefreshing={refreshing.has(p.id)}
             />
           ))}
         </div>
       ) : (
-        <ProductTable list={list} onEdit={handleEdit} onDelete={handleDelete} onGenerate={handleGenerate} />
+        <ProductTable
+          list={list}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onGenerate={handleGenerate}
+          onRefreshImages={handleRefreshImages}
+          refreshingIds={refreshing}
+        />
       )}
 
       <ProductFormDialog
@@ -276,11 +319,15 @@ function ProductTable({
   onEdit,
   onDelete,
   onGenerate,
+  onRefreshImages,
+  refreshingIds,
 }: {
   list: Product[];
   onEdit: (p: Product) => void;
   onDelete: (p: Product) => void;
   onGenerate: (p: Product) => void;
+  onRefreshImages: (p: Product) => void;
+  refreshingIds: Set<string>;
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
@@ -294,23 +341,32 @@ function ProductTable({
             <th className="px-3 py-2 text-left font-medium w-16">佣金</th>
             <th className="px-3 py-2 text-left font-medium">卖点描述</th>
             <th className="px-3 py-2 text-left font-medium w-16">引用</th>
-            <th className="px-3 py-2 text-left font-medium w-48">操作</th>
+            <th className="px-3 py-2 text-right font-medium whitespace-nowrap">操作</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-100">
           {list.map((p) => (
             <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
               <td className="px-3 py-2">
-                <div className="h-12 w-12 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100 shrink-0">
+                <Link
+                  href={`/products/${p.id}`}
+                  className="block h-12 w-12 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100 shrink-0 transition hover:border-violet-400/60"
+                  title="查看商品详情"
+                >
                   {p.images[0] ? (
                     <img src={p.images[0]} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-[10px] text-zinc-400">无图</div>
                   )}
-                </div>
+                </Link>
               </td>
               <td className="px-3 py-2">
-                <div className="font-medium text-zinc-800 line-clamp-1">{p.name}</div>
+                <Link
+                  href={`/products/${p.id}`}
+                  className="font-medium text-zinc-800 line-clamp-1 transition hover:text-violet-600"
+                >
+                  {p.name}
+                </Link>
                 {p.link && (
                   <a href={p.link} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-violet-600">
                     <ExternalLink className="h-3 w-3" /> 商品链接
@@ -338,27 +394,53 @@ function ProductTable({
                   <Wand2 className="h-3 w-3 text-zinc-400" /> {p.usageCount}
                 </span>
               </td>
-              <td className="px-3 py-2">
-                <div className="flex flex-wrap items-center gap-1.5">
+              <td className="px-3 py-2 whitespace-nowrap">
+                <div className="flex items-center justify-end gap-1.5">
                   <button
                     type="button"
                     onClick={() => onGenerate(p)}
-                    className="inline-flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/10 px-2 py-1 text-[11px] text-violet-700 hover:border-violet-500 hover:bg-violet-500/20"
+                    className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-violet-400/40 bg-violet-500/10 px-2 py-1 text-[11px] text-violet-700 hover:border-violet-500 hover:bg-violet-500/20"
                     title="为本商品生成视频"
                   >
                     <Sparkles className="h-3 w-3" /> 生成视频
                   </button>
+                  <Link
+                    href={`/products/${p.id}#assets`}
+                    className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-violet-400/60 hover:text-violet-700"
+                    title="查看本商品详情 + 关联素材（图片 / 视频 / AI 生成）"
+                  >
+                    <Images className="h-3 w-3" /> 素材
+                    <span className="rounded bg-zinc-100 px-1 text-[10px] tabular-nums text-zinc-700">
+                      {p.images.length}
+                    </span>
+                  </Link>
+                  {p.link && (
+                    <button
+                      type="button"
+                      onClick={() => onRefreshImages(p)}
+                      disabled={refreshingIds.has(p.id)}
+                      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="从链接重新抓取商品图（不会删除旧图，只追加）"
+                    >
+                      {refreshingIds.has(p.id) ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                      刷新图片
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onEdit(p)}
-                    className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+                    className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
                   >
                     <Edit3 className="h-3 w-3" /> 编辑
                   </button>
                   <button
                     type="button"
                     onClick={() => onDelete(p)}
-                    className="inline-flex items-center gap-1 rounded-md border border-pink-400/30 bg-pink-500/[0.06] px-2 py-1 text-[11px] text-pink-600 hover:border-pink-500 hover:bg-pink-500/15"
+                    className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-pink-400/30 bg-pink-500/[0.06] px-2 py-1 text-[11px] text-pink-600 hover:border-pink-500 hover:bg-pink-500/15"
                   >
                     <Trash2 className="h-3 w-3" /> 删除
                   </button>
@@ -377,15 +459,23 @@ function ProductCard({
   onEdit,
   onDelete,
   onGenerate,
+  onRefreshImages,
+  isRefreshing,
 }: {
   product: Product;
   onEdit: () => void;
   onDelete: () => void;
   onGenerate: () => void;
+  onRefreshImages: () => void;
+  isRefreshing: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-violet-400/60 hover:shadow-[var(--shadow-lift)]">
-      <div className="relative aspect-square overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
+      <Link
+        href={`/products/${product.id}`}
+        className="relative block aspect-square overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
+        title="查看商品详情"
+      >
         {product.images[0] ? (
           <img
             src={product.images[0]}
@@ -403,12 +493,15 @@ function ProductCard({
             {formatYuan(product.priceCents)}
           </span>
         )}
-      </div>
+      </Link>
       <div>
         <div className="flex items-start gap-1.5">
-          <span className="line-clamp-1 flex-1 text-sm font-semibold text-zinc-800">
+          <Link
+            href={`/products/${product.id}`}
+            className="line-clamp-1 flex-1 text-sm font-semibold text-zinc-800 transition hover:text-violet-600"
+          >
             {product.name}
-          </span>
+          </Link>
           <span className="rounded border border-violet-400/30 bg-violet-500/10 px-1 py-0.5 text-[10px] text-violet-600">
             {product.category}
           </span>
@@ -433,6 +526,28 @@ function ProductCard({
         >
           <Sparkles className="h-3 w-3" /> 生成视频
         </button>
+        <Link
+          href={`/products/${product.id}#assets`}
+          className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-violet-400/60 hover:text-violet-700"
+          title="查看本商品详情 + 关联素材"
+        >
+          <Images className="h-3 w-3" /> 素材
+          <span className="rounded bg-zinc-100 px-1 text-[10px] tabular-nums text-zinc-700">
+            {product.images.length}
+          </span>
+        </Link>
+        {product.link && (
+          <button
+            type="button"
+            onClick={onRefreshImages}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="从链接重新抓取商品图"
+          >
+            {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            刷新图片
+          </button>
+        )}
         <button
           type="button"
           onClick={onEdit}

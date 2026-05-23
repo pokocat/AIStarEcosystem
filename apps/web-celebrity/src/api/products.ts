@@ -233,6 +233,32 @@ export async function parseProductLink(url: string): Promise<ProductLinkInfo | n
  * Mock 模式：复用 parseProductLinkInBrowser → 走 createProduct（不模拟 MixcutAsset 端，
  * 这条只是 happy-path 占位；真演示需 REAL_BACKEND）。
  */
+/**
+ * 给已存在的商品「刷新图片」：调 server enrichProductImages，重新解析链接 + 追加 MixcutAsset。
+ * Mock 模式：复用 parseProductLinkInBrowser 模拟一次抓图，直接覆盖 product.images。
+ *
+ * @returns 新增的 MixcutAsset 数量（mock 模式下用 product.images 长度近似）
+ */
+export async function refreshProductImages(productId: string): Promise<number> {
+  if (USE_MOCK) {
+    const store = loadStore();
+    const idx = store.findIndex((p) => p.id === productId);
+    if (idx < 0) return mockDelay(0);
+    const p = store[idx];
+    if (!p.link) return mockDelay(0);
+    const info = parseProductLinkInBrowser(p.link);
+    if (!info || info.imageUrls.length === 0) return mockDelay(0);
+    store[idx] = { ...p, images: info.imageUrls, updatedAt: today() };
+    saveStore();
+    return mockDelay(info.imageUrls.length);
+  }
+  const res = await apiFetch<{ registered: number }>(
+    `/me/products/${encodeURIComponent(productId)}/refresh-images`,
+    { method: "POST", body: {} },
+  );
+  return res.registered;
+}
+
 export async function parseAndCreateProduct(url: string): Promise<Product> {
   if (USE_MOCK) {
     const info = parseProductLinkInBrowser(url);

@@ -830,6 +830,7 @@ export function CreateClient({ id }: { id: string }) {
                         globalOverrides={overrides}
                         canvasWidth={template.canvas.width}
                         canvasHeight={template.canvas.height}
+                        productId={productIdFromUrl ?? undefined}
                       />
                     </div>
                   ))}

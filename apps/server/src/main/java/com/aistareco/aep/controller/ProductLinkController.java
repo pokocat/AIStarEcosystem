@@ -51,4 +51,23 @@ public class ProductLinkController {
         String userId = principal == null ? null : principal.getName();
         return ApiResponse.of(persistService.parseAndPersist(req == null ? null : req.url(), userId));
     }
+
+    /**
+     * v0.28+ 给已存在商品「刷新图片」—— 重新走链接解析，回填 Product.images 快照 +
+     * 登记新图片到 MixcutAsset(subkind=product-photo)。运营手动重试通道：
+     *  - seeder 启动时异步抓图失败 / 部分失败
+     *  - 抖音商品图 CDN URL 失效后想换一批
+     *  - 用户手动建档时漏抓图
+     *
+     * 返回新增的 MixcutAsset 数量；解析失败 / 商品无 link / 商品不存在 → 0。
+     * 注意：不会清掉旧的 MixcutAsset 行（避免同时被混剪任务引用时悬挂）；新图追加。
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/{id}/refresh-images")
+    public ApiResponse<java.util.Map<String, Integer>> refreshImages(
+            @org.springframework.web.bind.annotation.PathVariable String id,
+            Principal principal) {
+        String userId = principal == null ? null : principal.getName();
+        int registered = persistService.enrichProductImages(id, userId);
+        return ApiResponse.of(java.util.Map.of("registered", registered));
+    }
 }

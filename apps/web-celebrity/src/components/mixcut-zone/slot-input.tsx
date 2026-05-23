@@ -40,6 +40,11 @@ interface Props {
   /** 画布尺寸（picgen 出图按 slot.rect × canvas 折算实际像素）。 */
   canvasWidth?: number;
   canvasHeight?: number;
+  /**
+   * v0.28+: 关联商品 id（来自 create 页 URL ?product_id=X）。
+   * 透传到 MediaSlotInput，library mode 会显示「📌 本商品」过滤 chip。
+   */
+  productId?: string;
 }
 
 const LAYER_ICON = {
@@ -60,6 +65,7 @@ export function SlotInput({
   globalOverrides,
   canvasWidth,
   canvasHeight,
+  productId,
 }: Props) {
   const Icon = LAYER_ICON[slot.layer_type] || ImageIcon;
   // 兜底：DB 里可能有"文字 + 自己上传"这种历史脏数据（编辑器之前没做联动）。
@@ -119,10 +125,10 @@ export function SlotInput({
               <TextSlotInput slot={slot} binding={binding} onChange={onChange} />
             )}
             {effectiveFill === "user_upload" && (
-              <MediaSlotInput slot={slot} binding={binding} onChange={onChange} mode="both" />
+              <MediaSlotInput slot={slot} binding={binding} onChange={onChange} mode="both" productId={productId} />
             )}
             {effectiveFill === "library_select" && (
-              <MediaSlotInput slot={slot} binding={binding} onChange={onChange} mode="library" />
+              <MediaSlotInput slot={slot} binding={binding} onChange={onChange} mode="library" productId={productId} />
             )}
             {effectiveFill === "picgen_text" && (
               <PicgenSlotInput

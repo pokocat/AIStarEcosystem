@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   Search,
   Video,
@@ -15,28 +16,32 @@ import {
   AlertCircle,
   Play,
   Sparkles,
+  Package,
+  ExternalLink,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
 import { Input } from "@/components/mixcut-zone/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/mixcut-zone/ui/tabs";
-import { MixcutApi } from "@/api";
+import { MixcutApi, ProductsApi } from "@/api";
 import type {
   MixcutAsset,
   MixcutAssetKind,
   RenderJob,
   RenderOutput,
 } from "@/components/mixcut-zone/types";
+import type { Product } from "@ai-star-eco/types/product";
 import { formatDuration, relativeTime, formatBytes } from "@/components/mixcut-zone/lib/utils";
 import { useConfirm } from "@/components/common/confirm-dialog";
 
-type TopTab = "assets" | "videos" | "official";
+type TopTab = "assets" | "products" | "videos" | "official";
 
 // v0.21+: 顶层三分区
 //   - assets   我的素材  ← 自己上传的视频 / 商品图 / 贴图 / 背景音乐
 //   - videos   我的视频  ← 已生成的混剪成片（可软删 30 天）
 //   - official 官方明星片段  ← 后台运营上传的直播切片等（只读消费）
+// v0.28+: 加 products  商品素材  ← 按商品分组列 relatedProductId 非空的 MixcutAsset
 export default function MixcutLibraryPage() {
   return (
     <Suspense
@@ -56,7 +61,9 @@ function LibraryShell() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams?.get("tab") as TopTab) ?? "assets";
   const [topTab, setTopTab] = useState<TopTab>(
-    initialTab === "videos" || initialTab === "official" ? initialTab : "assets",
+    initialTab === "videos" || initialTab === "official" || initialTab === "products"
+      ? initialTab
+      : "assets",
   );
 
   const handleTabChange = (v: TopTab) => {
@@ -80,12 +87,16 @@ function LibraryShell() {
       <Tabs value={topTab} onValueChange={(v) => handleTabChange(v as TopTab)}>
         <TabsList>
           <TabsTrigger value="assets">我的素材</TabsTrigger>
+          <TabsTrigger value="products">商品素材</TabsTrigger>
           <TabsTrigger value="videos">我的视频</TabsTrigger>
           <TabsTrigger value="official">官方明星片段</TabsTrigger>
         </TabsList>
 
         <TabsContent value="assets">
           <AssetsTab />
+        </TabsContent>
+        <TabsContent value="products">
+          <ProductAssetsTab />
         </TabsContent>
         <TabsContent value="videos">
           <MyVideosTab />
@@ -645,6 +656,241 @@ function VideoCard({
         </div>
         <div className="text-[10px] text-muted-foreground">
           {relativeTime(item.output.created_at)}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── 商品素材 tab：按 product 分组列 relatedProductId 非空的 MixcutAsset ──────
+
+function ProductAssetsTab() {
+  const [products, setProducts] = useState<Product[] | null>(null);
+  const [assetsByProduct, setAssetsByProduct] = useState<Record<string, MixcutAsset[]>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await ProductsApi.listProducts({});
+        if (cancelled) return;
+        setProducts(list);
+        // 并行拉每个商品的素材（10s 之内对 6-30 商品规模没问题；规模上去再换 batch endpoint）
+        const map: Record<string, MixcutAsset[]> = {};
+        await Promise.all(
+          list.map(async (p) => {
+            try {
+              const assets = await MixcutApi.listAssets({ relatedProductId: p.id });
+              map[p.id] = assets ?? [];
+            } catch {
+              map[p.id] = [];
+            }
+          }),
+        );
+        if (!cancelled) setAssetsByProduct(map);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message ?? "加载失败");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (products === null && !error) {
+    return (
+      <Card className="mt-4">
+        <CardContent className="p-12 text-center text-muted-foreground text-sm">
+          <Loader2 className="size-6 animate-spin mx-auto mb-2 text-violet-500" />
+          加载商品 + 素材中…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="mt-4 border-red-500/30 bg-red-500/[0.04]">
+        <CardContent className="p-3 flex items-center gap-2 text-sm text-red-500">
+          <AlertCircle className="size-4 shrink-0" /> {error}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 只展示有关联素材的商品；空商品列在底部小字提示
+  const productsWithAssets = (products ?? []).filter(
+    (p) => (assetsByProduct[p.id] ?? []).length > 0,
+  );
+  const productsEmpty = (products ?? []).filter(
+    (p) => (assetsByProduct[p.id] ?? []).length === 0,
+  );
+
+  const totalAssets = productsWithAssets.reduce(
+    (sum, p) => sum + (assetsByProduct[p.id]?.length ?? 0),
+    0,
+  );
+
+  const ql = search.trim().toLowerCase();
+  const filtered = !ql
+    ? productsWithAssets
+    : productsWithAssets.filter(
+        (p) =>
+          p.name.toLowerCase().includes(ql) ||
+          (assetsByProduct[p.id] ?? []).some((a) =>
+            `${a.name} ${a.tags ?? ""}`.toLowerCase().includes(ql),
+          ),
+      );
+
+  return (
+    <div className="space-y-4 mt-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs text-muted-foreground">
+          按商品分组的关联素材（来源：抖音链接解析 / 用户上传 / 未来 AI 生成）。
+          共 <span className="font-mono text-foreground">{productsWithAssets.length}</span> 个商品 ·
+          <span className="font-mono text-foreground">{totalAssets}</span> 项素材。
+        </div>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索商品名 / 素材名…"
+            className="pl-9 h-9"
+          />
+        </div>
+      </div>
+
+      {productsWithAssets.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="p-12 text-center text-muted-foreground text-sm space-y-2">
+            <Package className="size-6 mx-auto text-zinc-400" />
+            <p>还没有商品关联素材。</p>
+            <p className="text-[11px]">
+              到{" "}
+              <Link href="/products" className="text-violet-600 hover:underline">
+                商品库
+              </Link>{" "}
+              粘贴抖音商城链接快速建档，server 会自动抓图并按商品归档。
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {filtered.map((p) => (
+            <ProductAssetSection key={p.id} product={p} assets={assetsByProduct[p.id] ?? []} />
+          ))}
+          {filtered.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center text-muted-foreground text-sm">
+                没有匹配的商品或素材。
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {productsEmpty.length > 0 && (
+        <Card className="border-dashed">
+          <CardContent className="p-4 text-xs text-muted-foreground">
+            还有 <span className="font-mono text-foreground">{productsEmpty.length}</span> 个商品暂无关联素材，
+            到商品库逐条点击「刷新图片」可自动抓取抖音商品图。
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+const PRODUCT_SUBKIND_LABEL: Record<string, string> = {
+  "product-photo": "商品图",
+  "product-video": "商品视频",
+  "ai-marketing-video": "AI 带货视频",
+  "user-upload": "手动上传",
+};
+
+function ProductAssetSection({ product, assets }: { product: Product; assets: MixcutAsset[] }) {
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        {/* 商品头 */}
+        <div className="flex items-center gap-3 border-b border-border p-3">
+          <Link
+            href={`/products/${product.id}`}
+            className="size-12 shrink-0 overflow-hidden rounded-md border border-border bg-secondary/30"
+          >
+            {product.images[0] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={product.images[0]} alt={product.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-zinc-400">
+                <Package className="size-4" />
+              </div>
+            )}
+          </Link>
+          <div className="min-w-0 flex-1">
+            <Link
+              href={`/products/${product.id}`}
+              className="line-clamp-1 text-sm font-medium text-foreground hover:text-violet-600"
+            >
+              {product.name}
+            </Link>
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+              <Badge variant="muted" className="text-[10px]">{product.category}</Badge>
+              {product.priceCents != null && (
+                <span className="tabular-nums">
+                  ¥{(product.priceCents / 100).toFixed(2).replace(/\.00$/, "")}
+                </span>
+              )}
+              <span>· {assets.length} 项素材</span>
+            </div>
+          </div>
+          <Link
+            href={`/products/${product.id}#assets`}
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-violet-400/60 hover:text-violet-700"
+            title="去商品详情页"
+          >
+            <ExternalLink className="size-3" /> 详情
+          </Link>
+        </div>
+        {/* 素材网格 */}
+        <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+          {assets.map((a) => {
+            const subkind = a.subkind ?? "user-upload";
+            const label = PRODUCT_SUBKIND_LABEL[subkind] ?? subkind;
+            const thumb = a.preview_url || a.thumbnail_url || a.file_url;
+            return (
+              <div
+                key={a.id}
+                className="group overflow-hidden rounded-md border border-border bg-secondary/20"
+                title={a.name}
+              >
+                <div className="aspect-square overflow-hidden bg-secondary/30">
+                  {a.kind === "video" ? (
+                    <video
+                      src={a.file_url}
+                      poster={thumb ?? undefined}
+                      muted
+                      preload="metadata"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumb} alt={a.name} className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-zinc-400">
+                      <ImageIcon className="size-4" />
+                    </div>
+                  )}
+                </div>
+                <div className="p-1.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-violet-500/10 px-1 text-violet-600">{label}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>
