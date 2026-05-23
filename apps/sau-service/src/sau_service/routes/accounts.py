@@ -176,7 +176,26 @@ async def _verify_douyin_lite(storage_state: dict) -> VerifyLiteResponse:
 def _classify_douyin_lite_response(url: str, status_code: int, body: str) -> tuple[str, str | None, str | None]:
     lowered_url = (url or "").lower()
     text = (body or "")[:120_000]
-    login_markers = ("扫码登录", "手机号登录", "二维码失效", "登录后可使用", "请登录")
+    login_markers = (
+        "扫码登录",
+        "手机号登录",
+        "二维码失效",
+        "登录后可使用",
+        "请登录",
+        "passport.douyin.com",
+    )
+    # Do not treat the creator SPA shell as proof of login. We have seen stale
+    # cookies receive HTTP 200 for /creator-micro/home, then fail immediately in
+    # upstream DouYinVideo.validate_base_args(). Only strong account-specific
+    # markers may return valid; otherwise fall back to Patchright verification.
+    authenticated_markers = (
+        "platform_account_id",
+        "platformAccountId",
+        "douyin_id",
+        "douyinId",
+        "creator_user_id",
+        "creatorUserId",
+    )
 
     if status_code in {401}:
         return "invalid", "COOKIE_REJECTED", "抖音轻量校验返回未登录"
@@ -190,10 +209,10 @@ def _classify_douyin_lite_response(url: str, status_code: int, body: str) -> tup
         return "unknown", "VERIFY_LITE_PLATFORM_5XX", "抖音轻量校验返回平台错误"
     if status_code >= 400:
         return "unknown", "VERIFY_LITE_HTTP_ERROR", f"抖音轻量校验返回 HTTP {status_code}"
-    if "creator.douyin.com/creator-micro" in lowered_url:
+    if any(marker in text for marker in authenticated_markers):
         return "valid", None, None
-    if "__ac_nonce" in text or "creator-micro" in text:
-        return "valid", None, None
+    if "creator.douyin.com/creator-micro" in lowered_url or "creator-micro" in text:
+        return "unknown", "VERIFY_LITE_SPA_SHELL", "抖音轻量校验仅拿到创作者中心页面外壳，需回退浏览器确认"
     return "unknown", "VERIFY_LITE_UNRECOGNIZED", "抖音轻量校验无法识别页面登录态"
 
 

@@ -220,6 +220,14 @@ public class SauServiceClient {
             }
         }
         // 4xx / 5xx
+        ParsedSauError parsed = parseSauError(body);
+        if (parsed != null) {
+            throw new BusinessException(
+                    code >= 500 ? HttpStatus.BAD_GATEWAY : HttpStatus.BAD_REQUEST,
+                    parsed.code(),
+                    friendlySauMessage(parsed.code(), parsed.message())
+            );
+        }
         String snippet = body.length() > 200 ? body.substring(0, 200) : body;
         throw new BusinessException(
                 code >= 500 ? HttpStatus.BAD_GATEWAY : HttpStatus.BAD_REQUEST,
@@ -227,6 +235,33 @@ public class SauServiceClient {
                 "sau-service 返回 " + code + " (" + path + "): " + snippet
         );
     }
+
+    @SuppressWarnings("unchecked")
+    private ParsedSauError parseSauError(String body) {
+        if (body == null || body.isBlank()) return null;
+        try {
+            Map<String, Object> root = OM.readValue(body, new TypeReference<>() {});
+            Object detail = root.get("detail");
+            if (!(detail instanceof Map<?, ?> detailMap)) return null;
+            Object code = detailMap.get("code");
+            Object message = detailMap.get("message");
+            if (!(code instanceof String codeStr) || codeStr.isBlank()) return null;
+            String messageStr = message instanceof String s ? s : codeStr;
+            return new ParsedSauError(codeStr, messageStr);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String friendlySauMessage(String code, String message) {
+        if ("LOGIN_START_FAILED".equals(code) &&
+                (message.contains("ERR_CONNECTION_CLOSED") || message.contains("SSL_ERROR_SYSCALL"))) {
+            return "扫码服务无法访问平台创作者中心，请检查本机网络或代理后重试。";
+        }
+        return message;
+    }
+
+    private record ParsedSauError(String code, String message) {}
 
     private static String stripTrailingSlash(String s) {
         if (s == null) return null;

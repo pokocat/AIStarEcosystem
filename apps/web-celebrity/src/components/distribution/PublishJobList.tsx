@@ -300,6 +300,8 @@ function isAccountStateError(job: PublishJob): boolean {
     job.status === "failed" &&
     (job.errorCode === "ACCOUNT_EXPIRED" ||
       job.errorCode === "ACCOUNT_NOT_ACTIVE" ||
-      /账号登录已失效|社交账号不可用/.test(job.errorMessage ?? ""))
+      job.errorCode === "SOCIAL_ACCOUNT_NOT_FOUND" ||
+      job.errorCode === "ACCOUNT_STATE_DECRYPT_FAILED" ||
+      /账号登录已失效|社交账号不可用|社交账号不存在|账号凭据解密失败/.test(job.errorMessage ?? ""))
   );
 }

@@ -19,4 +19,7 @@ def chromium_launch_kwargs(**kwargs):
     path = chrome_executable_path()
     if path and not kwargs.get("executable_path"):
         kwargs["executable_path"] = path
+    proxy_server = os.environ.get("SAU_PROXY_SERVER", "").strip()
+    if proxy_server and not kwargs.get("proxy"):
+        kwargs["proxy"] = {"server": proxy_server}
     return kwargs

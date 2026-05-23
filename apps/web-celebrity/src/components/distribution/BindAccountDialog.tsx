@@ -43,12 +43,13 @@ interface Props {
    * 续绑模式：用户对一条 PENDING 行点了"验证"按钮 → 我们带着原平台 + 别名
    * 重开 dialog，让他直接点"开始扫码"补完流程，不用手动重选。
    *
-   * 行为：dialog 打开时 platform + accountName 用 prefill 初始化（用户仍可改）。
+   * 行为：dialog 打开时 platform + accountName 用 prefill 初始化，账号别名只读。
    */
   prefill?: { platform: SocialPlatform; accountName: string } | null;
 }
 
 export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
+  const isRebinding = Boolean(prefill);
   const [platform, setPlatform] = React.useState<SocialPlatform>("douyin");
   const [accountName, setAccountName] = React.useState("");
   const [init, setInit] = React.useState<SocialAccountBindInit | null>(null);
@@ -290,9 +291,20 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
                 placeholder="例如：公司主号-抖音"
                 maxLength={64}
                 disabled={submitting}
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
+                readOnly={isRebinding}
+                aria-readonly={isRebinding}
+                title={isRebinding ? "重新绑定时账号别名不可修改" : undefined}
+                className={cn(
+                  "rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400",
+                  isRebinding && "cursor-not-allowed bg-zinc-50 text-zinc-500",
+                )}
               />
             </label>
+            {isRebinding && (
+              <p className="text-xs leading-relaxed text-zinc-500">
+                重新绑定会沿用原账号别名；如需改名，请解绑后重新新增绑定。
+              </p>
+            )}
             {errorMsg && <p className="text-xs text-rose-600">{errorMsg}</p>}
             {submitting && (
               <p className="text-xs text-zinc-500 leading-relaxed">

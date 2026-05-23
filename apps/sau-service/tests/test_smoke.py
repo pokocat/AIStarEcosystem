@@ -142,6 +142,9 @@ def test_douyin_verify_lite_classifier() -> None:
 
     assert _classify_douyin_lite_response(
         "https://creator.douyin.com/creator-micro/home", 200, "<html></html>",
+    )[0] == "unknown"
+    assert _classify_douyin_lite_response(
+        "https://creator.douyin.com/creator-micro/home", 200, "creator_user_id",
     )[0] == "valid"
     assert _classify_douyin_lite_response(
         "https://passport.douyin.com/login", 200, "<html></html>",

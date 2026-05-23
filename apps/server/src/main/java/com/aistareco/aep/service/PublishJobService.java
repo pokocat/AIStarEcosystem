@@ -6,6 +6,7 @@ import com.aistareco.aep.dto.PublishJobDto;
 import com.aistareco.aep.model.PublishJob;
 import com.aistareco.aep.model.PublishJobEvent;
 import com.aistareco.aep.model.PublishJobStatus;
+import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.model.SocialAccount;
 import com.aistareco.aep.model.SocialAccountStatus;
 import com.aistareco.aep.model.SocialPlatform;
@@ -451,8 +452,14 @@ public class PublishJobService {
             job.setInteractionRequiredJson(null);
         }
         if (to == PublishJobStatus.FAILED) {
-            if (cb.errorCode() != null) job.setErrorCode(cb.errorCode());
-            if (cb.errorMessage() != null) job.setErrorMessage(cb.errorMessage());
+            if (isCookieInvalidUploadError(cb)) {
+                expireAccountAfterUploadCookieFailure(job);
+                job.setErrorCode("ACCOUNT_EXPIRED");
+                job.setErrorMessage("账号登录已失效，请重新绑定后重试");
+            } else {
+                if (cb.errorCode() != null) job.setErrorCode(cb.errorCode());
+                if (cb.errorMessage() != null) job.setErrorMessage(cb.errorMessage());
+            }
             job.setInteractionRequiredJson(null);
         }
         if (to == PublishJobStatus.AWAITING_USER) {
@@ -472,6 +479,38 @@ public class PublishJobService {
         jobRepo.save(job);
         writeEvent(job.getId(), "callback", from, to, job.getProgress(),
                 cb.errorMessage() != null ? cb.errorMessage() : cb.externalUrl());
+    }
+
+    private boolean isCookieInvalidUploadError(PublishJobCallbackDto cb) {
+        String code = cb.errorCode() == null ? "" : cb.errorCode();
+        String message = cb.errorMessage() == null ? "" : cb.errorMessage();
+        return ("UPLOADER_RAISED".equals(code) || "UPLOAD_FAILED".equals(code))
+                && (message.contains("cookie文件已失效")
+                || message.contains("cookie invalid")
+                || message.contains("Cookie invalid")
+                || message.contains("请先完成抖音登录")
+                || message.contains("请先完成登录"));
+    }
+
+    private void expireAccountAfterUploadCookieFailure(PublishJob job) {
+        accountRepo.findById(job.getSocialAccountId()).ifPresent(account -> {
+            account.setStatus(SocialAccountStatus.EXPIRED);
+            account.setUpdatedAt(Instant.now());
+            accountRepo.save(account);
+        });
+        Long spent = job.getCreditsSpent();
+        if (spent != null && spent > 0) {
+            try {
+                creditService.creditAccount(job.getUserId(), spent, LedgerEntry.LedgerEntryType.REFUND,
+                        "publish_job_upload_refund", job.getId(),
+                        "发布前账号校验漏判，上传阶段发现账号登录失效，自动退回积分");
+                job.setCreditsSpent(null);
+                writeEvent(job.getId(), "refund", job.getStatus(), job.getStatus(), job.getProgress(),
+                        "credit:+" + spent + " account_expired_after_upload_check");
+            } catch (Exception e) {
+                log.warn("refund failed for cookie-invalid publish job {}: {}", job.getId(), e.getMessage());
+            }
+        }
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper INTERACTION_OM =

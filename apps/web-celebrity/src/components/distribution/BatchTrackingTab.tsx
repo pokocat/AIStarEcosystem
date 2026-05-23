@@ -13,9 +13,10 @@
 //   - 用户点 [重新调度] → 打开 RescheduleBatchDialog；提交后 refetch
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, AlertCircle, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { ApiError, PublishJobApi } from "@ai-star-eco/api-client";
-import type { PublishBatchSummary } from "@ai-star-eco/types/publish-job";
+import type { PublishBatchSummary, PublishJob } from "@ai-star-eco/types/publish-job";
 import type { PaginatedResponse } from "@ai-star-eco/types/_shared";
 import { CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
@@ -28,8 +29,14 @@ const PAGE_LIMIT = 20;
 const POLL_INTERVAL_MS = 5_000;
 
 type BusyAction = "cancel" | "retry" | "reschedule";
+type ActionNotice = {
+  tone: "success" | "warning";
+  message: string;
+  action?: "accounts";
+};
 
 export function BatchTrackingTab() {
+  const router = useRouter();
   const [page, setPage] = React.useState(0);
   const [resp, setResp] = React.useState<PaginatedResponse<PublishBatchSummary> | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -40,6 +47,7 @@ export function BatchTrackingTab() {
   const [busy, setBusy] = React.useState<{ projectId: string; action: BusyAction } | null>(null);
   // 单点 mutation 报错（取消整批 / 重试失败的 inline error）
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [actionNotice, setActionNotice] = React.useState<ActionNotice | null>(null);
 
   // 详情 Drawer 选中的 batch
   const [selectedDetail, setSelectedDetail] = React.useState<PublishBatchSummary | null>(null);
@@ -56,6 +64,7 @@ export function BatchTrackingTab() {
         const r = await PublishJobApi.listBatches({ page: targetPage, limit: PAGE_LIMIT });
         setResp(r);
         setError(null);
+        if (!opts.silent) setActionNotice(null);
       } catch (e) {
         if (!opts.silent) {
           setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e));
@@ -89,12 +98,15 @@ export function BatchTrackingTab() {
     batch: PublishBatchSummary,
     action: BusyAction,
     impl: () => Promise<unknown>,
+    onSuccess?: (result: unknown) => void,
   ) => {
     if (busy !== null) return;
     setBusy({ projectId: batch.projectId, action });
     setActionError(null);
+    setActionNotice(null);
     try {
-      await impl();
+      const result = await impl();
+      onSuccess?.(result);
       // 成功后立即重拉列表
       await refresh({ silent: true });
       // 如果当前详情 drawer 是这个 batch，更新它的最新 summary
@@ -108,6 +120,7 @@ export function BatchTrackingTab() {
       }
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e));
+      setActionNotice(null);
     } finally {
       setBusy(null);
     }
@@ -135,7 +148,14 @@ export function BatchTrackingTab() {
       confirmText: "确认重试",
     });
     if (!ok) return;
-    void runBatchAction(batch, "retry", () => PublishJobApi.retryFailedBatch(batch.projectId));
+    void runBatchAction(
+      batch,
+      "retry",
+      () => PublishJobApi.retryFailedBatch(batch.projectId),
+      (result) => {
+        setActionNotice(buildRetryNotice(batch, Array.isArray(result) ? result as PublishJob[] : []));
+      },
+    );
   };
   const handleReschedule = (batch: PublishBatchSummary) => {
     setRescheduleTarget(batch);
@@ -178,6 +198,30 @@ export function BatchTrackingTab() {
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
           <AlertCircle className="size-4 mt-0.5 shrink-0" />
           <span>{actionError}</span>
+        </div>
+      )}
+      {actionNotice && (
+        <div
+          className={cn(
+            "flex items-start justify-between gap-3 rounded-md border p-3 text-xs",
+            actionNotice.tone === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-amber-200 bg-amber-50 text-amber-700",
+          )}
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle className="size-4 mt-0.5 shrink-0" />
+            <span>{actionNotice.message}</span>
+          </div>
+          {actionNotice.action === "accounts" && (
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-amber-700 transition hover:border-amber-300"
+              onClick={() => router.push("/distribution/accounts")}
+            >
+              去账号管理
+            </button>
+          )}
         </div>
       )}
 
@@ -252,5 +296,53 @@ export function BatchTrackingTab() {
       />
       <ConfirmHost />
     </section>
+  );
+}
+
+function buildRetryNotice(batch: PublishBatchSummary, jobs: PublishJob[]): ActionNotice {
+  const requested = batch.statusCounts.failed ?? 0;
+  if (jobs.length === 0) {
+    return {
+      tone: "warning",
+      message: requested > 0
+        ? `已请求重试 ${requested} 个失败任务，但后端没有返回可更新任务；请刷新后查看详情。`
+        : "当前批次没有可重试的失败任务。",
+    };
+  }
+  const accountBlocked = jobs.filter(isAccountStateBlocked);
+  const stillFailed = jobs.filter((j) => j.status === "failed");
+  if (accountBlocked.length === jobs.length) {
+    return {
+      tone: "warning",
+      message: `已尝试重试 ${jobs.length} 个失败任务，但账号仍不可用或已解绑；请先重新绑定账号后再重试。`,
+      action: "accounts",
+    };
+  }
+  if (accountBlocked.length > 0) {
+    return {
+      tone: "warning",
+      message: `已尝试重试 ${jobs.length} 个失败任务，其中 ${accountBlocked.length} 个因账号不可用未发起；其余任务已重新进入分发流程。`,
+      action: "accounts",
+    };
+  }
+  if (stillFailed.length === jobs.length) {
+    return {
+      tone: "warning",
+      message: `已尝试重试 ${jobs.length} 个失败任务，但任务仍然失败；请打开详情查看具体错误。`,
+    };
+  }
+  return {
+    tone: "success",
+    message: `已发起重试 ${jobs.length} 个失败任务，页面会继续同步分发进度。`,
+  };
+}
+
+function isAccountStateBlocked(job: PublishJob): boolean {
+  return (
+    job.errorCode === "ACCOUNT_EXPIRED" ||
+    job.errorCode === "ACCOUNT_NOT_ACTIVE" ||
+    job.errorCode === "SOCIAL_ACCOUNT_NOT_FOUND" ||
+    job.errorCode === "ACCOUNT_STATE_DECRYPT_FAILED" ||
+    /账号登录已失效|社交账号不可用|社交账号不存在|账号凭据解密失败/.test(job.errorMessage ?? "")
   );
 }
