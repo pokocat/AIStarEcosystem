@@ -9,6 +9,7 @@ screenshot, storage_state extraction) lives in `login_pool.py`.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -17,6 +18,7 @@ from ..auth import require_internal_secret
 from ..login_pool import LoginPool, RealLoginUnsupported
 
 router = APIRouter(prefix="/login", tags=["login"], dependencies=[Depends(require_internal_secret)])
+log = logging.getLogger(__name__)
 
 
 class LoginStartRequest(BaseModel):
@@ -62,6 +64,15 @@ async def login_start(req: LoginStartRequest, request: Request) -> LoginStartRes
                 ),
             },
         )
+    except Exception as exc:
+        log.exception("login/start failed ticket=%s platform=%s", req.ticket, req.platform)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "LOGIN_START_FAILED",
+                "message": f"启动{req.platform}扫码登录失败：{exc}",
+            },
+        ) from exc
     return LoginStartResponse(
         qrImageDataUrl=session.qr_image_data_url,
         alreadyLoggedIn=session.already_logged_in,

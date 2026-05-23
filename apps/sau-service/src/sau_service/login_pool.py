@@ -49,6 +49,20 @@ from .qr import build_mock_qr
 log = logging.getLogger(__name__)
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("Invalid integer env %s=%r; using default %s", name, raw, default)
+        return default
+
+
+LOGIN_NAV_TIMEOUT_MS = _env_int("SAU_LOGIN_NAV_TIMEOUT_MS", 90_000)
+
+
 # ─── Platform drivers ────────────────────────────────────────────────────
 #
 # Selectors mirror the pinned upstream `pokocat/social-auto-upload`
@@ -2113,7 +2127,11 @@ class LoginPool:
             browser = await playwright.chromium.launch(**chromium_launch_kwargs(headless=headless))
             context = await browser.new_context(viewport={"width": 1280, "height": 800})
             page = await context.new_page()
-            await page.goto(driver_cls.LOGIN_URL, wait_until="domcontentloaded")
+            await page.goto(
+                driver_cls.LOGIN_URL,
+                wait_until="domcontentloaded",
+                timeout=LOGIN_NAV_TIMEOUT_MS,
+            )
             qr_data_url: str | None = None
             already_logged_in = False
             if await _is_logged_in_safely(driver_cls, page, ticket=ticket):

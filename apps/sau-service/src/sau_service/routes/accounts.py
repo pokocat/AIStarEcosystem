@@ -22,6 +22,7 @@ paths automatically).
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -33,6 +34,20 @@ from ..login_pool import DRIVERS, LOGIN_PAGE_URLS, _safe_close
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/accounts", tags=["accounts"], dependencies=[Depends(require_internal_secret)])
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("Invalid integer env %s=%r; using default %s", name, raw, default)
+        return default
+
+
+LOGIN_NAV_TIMEOUT_MS = _env_int("SAU_LOGIN_NAV_TIMEOUT_MS", 90_000)
 
 
 class VerifyRequest(BaseModel):
@@ -97,7 +112,11 @@ async def _verify_real(driver_cls, storage_state: dict, *, headless: bool) -> Ve
             storage_state=storage_state,
         )
         page = await context.new_page()
-        await page.goto(driver_cls.LOGIN_URL, wait_until="domcontentloaded")
+        await page.goto(
+            driver_cls.LOGIN_URL,
+            wait_until="domcontentloaded",
+            timeout=LOGIN_NAV_TIMEOUT_MS,
+        )
         # Settle for SPA redirect post-cookie-load before the driver samples
         # URL + login markers. 2.5s is what the bind path uses; matches.
         await page.wait_for_timeout(2500)
