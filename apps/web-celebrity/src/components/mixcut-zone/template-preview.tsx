@@ -98,6 +98,12 @@ interface Props {
   editable?: boolean;
   /** editable=true 时,槽位 rect 变化的回调(归一化坐标 0..1)。 */
   onChangeSlotRect?: (slotId: string, next: Rect) => void;
+  /**
+   * v0.27+: focus-mode 强化。开启后当 selectedSlotId 非空时，未选中的 slot 整体降透明度到 0.3，
+   * 已选中 slot 显示一个浮动「正在编辑 · label」小 pill。让"我在改哪个"在画布上一眼可见。
+   * 默认关闭以保持其它消费方（模板编辑器、变体预览）的现有视觉。
+   */
+  focusDim?: boolean;
 }
 
 // 中性化 layer 描边/底色:统一灰阶 + brand 高亮选中态。icon 仍按 layer 区分。
@@ -189,6 +195,7 @@ export function TemplatePreview({
   variantSeed,
   editable,
   onChangeSlotRect,
+  focusDim,
 }: Props) {
   const isBlueprint = mode === "blueprint";
   const showChrome = showSlotChrome && !isBlueprint;
@@ -227,13 +234,16 @@ export function TemplatePreview({
           if (!slot.rect) return null;
           const dx = variantSeed != null ? jitter(variantSeed, slot.slot_id + "x", (slot.perturbation?.position_jitter ?? 0) * 100) : 0;
           const dy = variantSeed != null ? jitter(variantSeed, slot.slot_id + "y", (slot.perturbation?.position_jitter ?? 0) * 100) : 0;
+          const isSelected = selectedSlotId === slot.slot_id;
+          // v0.27+: focusDim 模式下，非选中 slot 整体半透明，让选中那个跳出来
+          const dimmed = focusDim && !!selectedSlotId && !isSelected;
           return (
             <SlotBox
               key={slot.slot_id}
               slot={slot}
               canvas={template.canvas}
               binding={bindings?.[slot.slot_id]}
-              selected={selectedSlotId === slot.slot_id}
+              selected={isSelected}
               showChrome={showChrome}
               blueprint={isBlueprint}
               blueprintFrame={frameStyle === "blueprint"}
@@ -243,9 +253,35 @@ export function TemplatePreview({
               editable={!!editable && !variantSeed}
               canvasRef={canvasRef}
               onChangeRect={(next) => onChangeSlotRect?.(slot.slot_id, next)}
+              dimmed={dimmed}
             />
           );
         })}
+
+        {/* v0.27+: 浮动"正在编辑"小 pill —— 让用户在画布上不用找鼠标也能确认改的是哪个 slot */}
+        {focusDim && selectedSlotId && (() => {
+          const selected = visualSlots.find((s) => s.slot_id === selectedSlotId);
+          if (!selected?.rect) return null;
+          const label = selected.label || selected.slot_id;
+          // 默认 pill 放在 slot 顶部上方；若 slot 顶部太靠近画布顶，转到下方
+          const above = selected.rect.y > 0.08;
+          return (
+            <div
+              className="absolute pointer-events-none z-50"
+              style={{
+                left: `${(selected.rect.x + selected.rect.w / 2) * 100}%`,
+                top: above
+                  ? `${selected.rect.y * 100}%`
+                  : `${(selected.rect.y + selected.rect.h) * 100}%`,
+                transform: above ? "translate(-50%, -130%)" : "translate(-50%, 30%)",
+              }}
+            >
+              <div className="px-2 py-1 rounded-md bg-violet-600 text-white text-[10px] font-medium shadow-lg shadow-violet-500/30 whitespace-nowrap ring-1 ring-white/20">
+                正在编辑 · <span className="font-normal opacity-90">{label}</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {isBlueprint && visualSlots.length === 0 && (
           <div className="absolute inset-0 grid place-items-center text-xs text-white/60">
@@ -306,6 +342,7 @@ function SlotBox({
   editable,
   canvasRef,
   onChangeRect,
+  dimmed,
 }: {
   slot: TemplateSlot;
   canvas: Template["canvas"];
@@ -320,6 +357,7 @@ function SlotBox({
   editable: boolean;
   canvasRef: React.RefObject<HTMLDivElement | null>;
   onChangeRect: (next: Rect) => void;
+  dimmed?: boolean;
 }) {
   if (!slot.rect) return null;
   const r = slot.rect;
@@ -413,9 +451,11 @@ function SlotBox({
       onPointerDown={editable ? startDrag("move") : undefined}
       style={style}
       className={cn(
-        "absolute group transition-all duration-150",
+        "absolute group transition-all duration-200",
         showChrome ? "cursor-pointer" : "pointer-events-none",
-        editable && "cursor-move touch-none"
+        editable && "cursor-move touch-none",
+        // v0.27+: focus-dim mode 下非选中 slot 半透明 + 微缩，给选中那个让位
+        dimmed && "opacity-30 hover:opacity-60 scale-[0.985]"
       )}
     >
       <div

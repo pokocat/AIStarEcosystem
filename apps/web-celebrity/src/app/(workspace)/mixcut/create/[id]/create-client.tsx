@@ -15,12 +15,15 @@ import {
   Plus,
   Minus,
   ChevronRight,
+  ChevronDown,
   Film,
   ShoppingBag,
   Package,
   ExternalLink,
+  CheckCircle2,
   X as XIcon,
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-star-eco/ui/ui/collapsible";
 import { nanoid } from "nanoid";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
@@ -199,6 +202,25 @@ export function CreateClient({ id }: { id: string }) {
   const filledRequired = requiredSlots.filter((s) => isBound(s.slot_id));
   const allRequiredFilled = filledRequired.length === requiredSlots.length;
 
+  // v0.27+: 每个场景的必填进度 —— 给场景 tab 显示 dot（done / partial / empty / none）。
+  // 仅按必填项计算；optional 没填不影响"该段已就绪"语义。
+  const sceneProgress = template.scenes.map((sc) => {
+    const sceneRequired = sc.slots.filter((s) => s.user_editable && s.required);
+    const sceneFilled = sceneRequired.filter((s) => isBound(s.slot_id));
+    return {
+      total: sceneRequired.length,
+      filled: sceneFilled.length,
+      state:
+        sceneRequired.length === 0
+          ? ("none" as const)
+          : sceneFilled.length === sceneRequired.length
+            ? ("done" as const)
+            : sceneFilled.length > 0
+              ? ("partial" as const)
+              : ("empty" as const),
+    };
+  });
+
   // v0.23: 没绑视频会触发后端 demo-fallback（用 showreel-*.mp4 兜底），用户会以为
   // "没用我的视频"。在提交前明确给一次确认，模板里所有 layer_type=video 的 user_editable
   // 槽位（不管 required 标）只要为空就提醒。
@@ -354,42 +376,99 @@ export function CreateClient({ id }: { id: string }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_360px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr_340px] gap-6">
         <div className="lg:sticky lg:top-20 self-start space-y-3">
           {/* v0.26+: 多场景时在画布上方插入场景 tab。点 tab 同时滚动中列到对应场景块。
-              单场景模板（最常见）不渲染，UI 与旧版一致。 */}
+              单场景模板（最常见）不渲染，UI 与旧版一致。
+              v0.27+: 加进度 dot（done/partial/empty）+ 当前段的语境信息（"x/y 已填"）。 */}
           {template.scenes.length > 1 && (
-            <div className="rounded-lg border bg-card p-2 space-y-2">
-              <div className="text-[11px] text-muted-foreground px-1 flex items-center justify-between">
-                <span>场景流程 · 共 {template.scenes.length} 段</span>
-                <span className="font-mono">
-                  第 {safeSceneIdx + 1} 段 · {sceneStartOffset.toFixed(0)}s ~ {(sceneStartOffset + (activeScene?.duration ?? 0)).toFixed(0)}s
+            <div className="rounded-lg border bg-card overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b bg-secondary/30">
+                <span className="text-[11px] font-medium tracking-wide text-foreground/70">
+                  场景流程
+                </span>
+                <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                  {sceneProgress.filter((p) => p.state === "done" || p.state === "none").length}/{template.scenes.length} 段已就绪
                 </span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex overflow-x-auto scrollbar-thin">
                 {template.scenes.map((sc, i) => {
                   const isActive = i === safeSceneIdx;
+                  const prog = sceneProgress[i];
+                  const dotClass =
+                    prog.state === "done"
+                      ? "bg-emerald-500"
+                      : prog.state === "partial"
+                        ? "bg-amber-400"
+                        : prog.state === "empty"
+                          ? "bg-rose-400/80"
+                          : "bg-muted-foreground/40";
                   return (
                     <button
                       key={sc.id}
                       type="button"
                       onClick={() => handleSelectScene(i)}
                       className={cn(
-                        "px-2 py-1 rounded-md text-[11px] border transition-colors flex items-center gap-1.5",
+                        "relative flex-1 min-w-[68px] px-2.5 py-2 text-left transition-colors group",
+                        "border-r last:border-r-0",
                         isActive
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-transparent border-border text-muted-foreground hover:border-foreground/60 hover:text-foreground",
+                          ? "bg-violet-500/[0.06]"
+                          : "hover:bg-secondary/40",
                       )}
                     >
-                      <span className="font-mono">{i + 1}</span>
-                      <span className="truncate max-w-[80px]">{sc.label}</span>
-                      <span className={cn("font-mono", isActive ? "text-background/70" : "text-muted-foreground/60")}>
-                        {sc.duration}s
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "size-1.5 rounded-full shrink-0",
+                            dotClass,
+                            prog.state === "partial" && "animate-pulse",
+                          )}
+                          aria-hidden
+                        />
+                        <span className={cn(
+                          "text-[11px] font-mono",
+                          isActive ? "text-foreground" : "text-muted-foreground",
+                        )}>
+                          {i + 1}
+                        </span>
+                        <span className="text-[10px] font-mono text-muted-foreground/70 tabular-nums">
+                          {sc.duration}s
+                        </span>
+                      </div>
+                      <div className={cn(
+                        "text-[11px] mt-0.5 truncate",
+                        isActive ? "text-foreground font-medium" : "text-muted-foreground",
+                      )}>
+                        {sc.label}
+                      </div>
+                      {/* active 段底部的强调线，比单纯换背景更明确"我在这" */}
+                      {isActive && (
+                        <span className="absolute inset-x-0 bottom-0 h-[2px] bg-violet-500" aria-hidden />
+                      )}
                     </button>
                   );
                 })}
               </div>
+              {activeScene && (
+                <div className="px-3 py-2 border-t bg-background flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-muted-foreground tabular-nums">
+                    第 {safeSceneIdx + 1} 段 · {sceneStartOffset.toFixed(0)}s ~ {(sceneStartOffset + activeScene.duration).toFixed(0)}s
+                  </div>
+                  <div className="text-[10px] font-mono">
+                    {sceneProgress[safeSceneIdx].total > 0 ? (
+                      <span className={cn(
+                        sceneProgress[safeSceneIdx].state === "done" ? "text-emerald-600" :
+                        sceneProgress[safeSceneIdx].state === "partial" ? "text-amber-600" :
+                        "text-rose-600"
+                      )}>
+                        必填 {sceneProgress[safeSceneIdx].filled}/{sceneProgress[safeSceneIdx].total}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">无必填项</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -400,6 +479,7 @@ export function CreateClient({ id }: { id: string }) {
             onSelectSlot={setFocusedSlot}
             frameStyle="blueprint"
             variantSeed={previewVariant}
+            focusDim
           />
           <Card>
             <CardContent className="p-3 space-y-2">
@@ -441,15 +521,43 @@ export function CreateClient({ id }: { id: string }) {
         </div>
 
         <div className="space-y-4 min-w-0">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">填入素材</h1>
-              <p className="text-xs text-muted-foreground mt-1">
-                必填 {requiredSlots.length} 项 · 已填 <span className="text-emerald-500">{filledRequired.length}</span>
-                {requiredSlots.length > 0 && ` / ${requiredSlots.length}`}
-              </p>
+          {/* v0.27+: 中列 header 改为带 step 编号 ①，给整页两步流程一个明确的视觉锚点
+              （② 在右侧 aside header）。同时把"必填进度"做成更显眼的状态徽章。 */}
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="size-8 rounded-full bg-foreground text-background grid place-items-center text-sm font-semibold shrink-0 tabular-nums">
+                1
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl font-semibold tracking-tight leading-tight">填入素材</h1>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {editableSlots.length} 个可编辑位
+                  {template.scenes.length > 1 && ` · ${template.scenes.length} 个场景串行播放`}
+                </p>
+              </div>
             </div>
-            <Badge variant="muted" className="text-[10px]">{editableSlots.length} 个可编辑位</Badge>
+            {requiredSlots.length > 0 && (
+              <div
+                className={cn(
+                  "px-2.5 py-1.5 rounded-full text-[11px] font-medium tabular-nums flex items-center gap-1.5 border",
+                  allRequiredFilled
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700"
+                    : "bg-amber-500/10 border-amber-500/30 text-amber-700",
+                )}
+              >
+                {allRequiredFilled ? (
+                  <>
+                    <CheckCircle2 className="size-3" />
+                    必填都填完了
+                  </>
+                ) : (
+                  <>
+                    <span className="size-1.5 rounded-full bg-amber-500" />
+                    还差 {requiredSlots.length - filledRequired.length} 项必填
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/*
@@ -573,251 +681,44 @@ export function CreateClient({ id }: { id: string }) {
             </Card>
           )}
 
-          {/* v0.24+: 关联商品（showcase MVP）—— 纯展示，不绑定到 RenderJob，不自动填充任何 slot。
-              用户挑一条商品作为本次混剪的参考资料，方便照着填到标题/描述等素材槽里。 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2">
-                  <ShoppingBag className="size-4 text-violet-500" />
-                  关联商品
-                  <span className="text-[10px] font-normal text-muted-foreground ml-1">
-                    · 选填，仅用作填槽参考；不会自动填充任何素材
-                  </span>
-                </span>
-                {linkedProduct && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setProductPickerOpen(true)}
-                    >
-                      更换
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs text-muted-foreground"
-                      onClick={() => setLinkedProduct(null)}
-                    >
-                      <XIcon className="size-3" />
-                      清除
-                    </Button>
-                  </div>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {linkedProduct ? (
-                <div className="flex gap-3">
-                  <div className="size-20 shrink-0 overflow-hidden rounded-md border border-border bg-secondary/30">
-                    {linkedProduct.images[0] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={linkedProduct.images[0]}
-                        alt={linkedProduct.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
-                        {linkedProduct.category}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-medium truncate">{linkedProduct.name}</span>
-                      <Badge variant="muted" className="text-[10px]">{linkedProduct.category}</Badge>
-                      <span className="text-[10px] text-muted-foreground">
-                        已引用 {linkedProduct.usageCount} 次
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                      {linkedProduct.sellingPoints || "（暂无卖点描述）"}
-                    </p>
-                    {linkedProduct.link ? (
-                      <a
-                        href={linkedProduct.link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] text-violet-600 hover:underline"
-                      >
-                        <ExternalLink className="size-3" />
-                        查看商品页
-                      </a>
-                    ) : (
-                      <p className="text-[11px] text-amber-600">该商品未填链接</p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setProductPickerOpen(true)}
-                  className="w-full rounded-md border border-dashed border-border bg-secondary/30 px-4 py-5 text-left transition-colors hover:border-violet-400 hover:bg-violet-500/5"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="size-9 rounded-md bg-violet-500/10 text-violet-500 grid place-items-center shrink-0">
-                      <Package className="size-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">从商品库选择</div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        挑一个商品作为参考，名称 / 卖点 / 链接会展示在这里，方便照着填到标题、描述里
-                      </p>
-                    </div>
-                    <ChevronRight className="size-4 text-muted-foreground shrink-0" />
-                  </div>
-                </button>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* v0.13+: 扰动贴图池 —— 全局绑定，渲染时叠在所有 overlay 上 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Sparkles className="size-4 text-violet-500" />
-                扰动贴图池
-                <span className="text-[10px] font-normal text-muted-foreground ml-1">
-                  · 每变体随机抽样叠加 GIF，增强视觉差异
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <StickerPoolPicker
-                value={stickerPool}
-                onChange={setStickerPool}
-                label="选择贴图"
-              />
-            </CardContent>
-          </Card>
+          {/* v0.27+: 关联商品 / 扰动贴图池 都迁出中列，合并到右侧的「高级处理 / 关联商品」可折叠区。
+              这样中列只剩"填素材"一件事，认知负担降低；高级用户仍可一键展开调参。 */}
         </div>
 
-        <aside className="lg:sticky lg:top-20 self-start space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Wand2 className="size-4 text-violet-500" />
-                批量生成参数
-              </CardTitle>
+        {/*
+          v0.27+: 右侧 aside 重构 —— 把"批量生成参数"大卡片（约 200 行 / 25 个控件）压缩为：
+            · 主卡 "② 设置并生成"：仅显示用户每次都要看 / 调的字段（数量 + 差异化 + 消耗摘要 + CTA）
+            · 折叠卡 "高级处理"：6 个画面处理 checkbox + 扰动贴图池（迁自中列）
+            · 折叠卡 "关联商品（选填）"：选商品参考（迁自中列）
+            · Pro 速度卡 保留在底部（最低优先级）
+          目标：默认状态下右栏视觉重量从"满屏控件"降到"3 张卡 + 1 个主 CTA"，回头老用户一眼能看见
+          重要数字（条数 / 消耗），新用户也不会被一堆参数吓到。
+        */}
+        <aside className="lg:sticky lg:top-20 self-start space-y-3">
+          {/* ─── 主卡 ② 设置并生成 ─── */}
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="size-8 rounded-full bg-foreground text-background grid place-items-center text-sm font-semibold tabular-nums shrink-0">
+                  2
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-base leading-tight">设置并生成</CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    选条数 · 选差异度 · 一键生成
+                  </p>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-5">
+            <CardContent className="space-y-4">
+              {/* —— 数量（用户每次必调的字段，放第一）—— */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium">差异化强度</label>
-                </div>
-                <RadioGroup
-                  value={profile}
-                  onValueChange={(v) => setProfile(v as PerturbationProfile)}
-                  className="grid grid-cols-3 gap-1.5"
-                >
-                  {(["light", "moderate", "aggressive"] as PerturbationProfile[]).map((p) => (
-                    <label
-                      key={p}
-                      className={cn(
-                        "flex items-center justify-center px-3 py-2 rounded-md border text-xs cursor-pointer transition-colors select-none",
-                        "border-border text-muted-foreground hover:border-foreground/40",
-                        "has-[[data-state=checked]]:bg-foreground has-[[data-state=checked]]:text-background has-[[data-state=checked]]:border-foreground has-[[data-state=checked]]:font-medium",
-                        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2",
-                      )}
-                    >
-                      <RadioGroupItem value={p} className="sr-only" />
-                      {PROFILE_LABELS[p]}
-                    </label>
-                  ))}
-                </RadioGroup>
-                <p className="text-[10px] text-muted-foreground leading-relaxed mt-1">
-                  {PROFILE_DESCRIPTIONS[profile]}
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium">画面处理方式</label>
-                  <span className="text-[10px] text-muted-foreground">
-                    {Object.values(overrides).filter(Boolean).length}/6 启用
+                <div className="flex items-baseline justify-between">
+                  <label className="text-xs font-medium text-foreground/80">生成几条</label>
+                  <span className="text-2xl font-semibold tabular-nums leading-none">
+                    {variants}
+                    <span className="text-xs font-normal text-muted-foreground ml-1">条</span>
                   </span>
-                </div>
-
-                {/* —— 整段画面（对全片生效）—— */}
-                <div className="space-y-1.5">
-                  <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                    整段画面 · 对全片生效
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {([
-                      { key: "allow_mirror", label: "左右翻转", hint: "整段画面镜像翻转,提升差异度" },
-                      { key: "allow_speed", label: "微调速度", hint: "随机加速/减速 ±20%,听感几乎察觉不到" },
-                      { key: "allow_brightness", label: "亮度微调", hint: "轻微变亮/变暗,视觉无感" },
-                      { key: "allow_saturation", label: "色彩微调", hint: "颜色饱和度小幅起伏" },
-                    ] as const).map((it) => (
-                      <label
-                        key={it.key}
-                        title={it.hint}
-                        className={cn(
-                          "flex items-center justify-between gap-2 px-2.5 py-2 rounded-md border cursor-pointer select-none transition-colors",
-                          "border-border bg-background/40 text-foreground hover:border-foreground/30",
-                          "has-[[data-state=checked]]:border-foreground/40 has-[[data-state=checked]]:bg-secondary/40",
-                        )}
-                      >
-                        <span className="text-xs font-medium">{it.label}</span>
-                        <Checkbox
-                          checked={overrides[it.key]}
-                          onCheckedChange={(v) =>
-                            setOverrides((p) => ({ ...p, [it.key]: v === true }))
-                          }
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* —— 逐素材抖动（叠加每个槽位的准入策略）—— */}
-                <div className="space-y-1.5">
-                  <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                    逐素材抖动 · 每个素材独立微动
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {([
-                      { key: "allow_position_jitter", label: "位置抖动", hint: "每个素材在画面里位置小幅漂移" },
-                      { key: "allow_scale_jitter", label: "缩放抖动", hint: "每个素材尺寸 ±5% 起伏" },
-                    ] as const).map((it) => (
-                      <label
-                        key={it.key}
-                        title={it.hint}
-                        className={cn(
-                          "flex items-center justify-between gap-2 px-2.5 py-2 rounded-md border cursor-pointer select-none transition-colors",
-                          "border-border bg-background/40 text-foreground hover:border-foreground/30",
-                          "has-[[data-state=checked]]:border-foreground/40 has-[[data-state=checked]]:bg-secondary/40",
-                        )}
-                      >
-                        <span className="text-xs font-medium">{it.label}</span>
-                        <Checkbox
-                          checked={overrides[it.key]}
-                          onCheckedChange={(v) =>
-                            setOverrides((p) => ({ ...p, [it.key]: v === true }))
-                          }
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  关闭后这一批不会做对应处理。文字 / 贴图 / 商品图按模板规则保留正向与原尺寸,不会被翻转或抖动。
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium">一次生成几条</label>
-                  <span className="text-sm font-mono font-semibold">{variants} 条</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -844,96 +745,328 @@ export function CreateClient({ id }: { id: string }) {
                     <Plus className="size-3" />
                   </Button>
                 </div>
-                <RadioGroup
-                  value={String(variants)}
-                  onValueChange={(v) => setVariants(Number(v))}
-                  className="grid grid-cols-4 gap-1.5"
-                >
+                <div className="flex gap-1">
                   {[3, 5, 10, 20].map((v) => (
-                    <label
+                    <button
                       key={v}
+                      type="button"
+                      onClick={() => setVariants(v)}
                       className={cn(
-                        "flex items-center justify-center px-2 py-1.5 rounded-md border text-xs cursor-pointer transition-colors select-none",
-                        "border-border text-muted-foreground hover:border-foreground/40",
-                        "has-[[data-state=checked]]:bg-foreground has-[[data-state=checked]]:text-background has-[[data-state=checked]]:border-foreground has-[[data-state=checked]]:font-medium",
-                        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2",
+                        "flex-1 py-1 rounded text-[11px] transition-colors tabular-nums",
+                        variants === v
+                          ? "bg-secondary text-foreground font-medium"
+                          : "text-muted-foreground hover:bg-secondary/50",
                       )}
                     >
-                      <RadioGroupItem value={String(v)} className="sr-only" />
-                      {v} 条
-                    </label>
+                      {v}
+                    </button>
                   ))}
-                </RadioGroup>
+                </div>
               </div>
 
-              <Separator />
+              {/* —— 差异化（3 pills，无 description，hover 时 tooltip）—— */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground/80">差异化强度</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {(["light", "moderate", "aggressive"] as PerturbationProfile[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setProfile(p)}
+                      title={PROFILE_DESCRIPTIONS[p]}
+                      className={cn(
+                        "px-2 py-1.5 rounded text-[11px] transition-colors",
+                        profile === p
+                          ? "bg-foreground text-background font-medium"
+                          : "bg-secondary/50 text-muted-foreground hover:bg-secondary",
+                      )}
+                    >
+                      {PROFILE_LABELS[p]}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">本次消耗额度</span>
-                  <span className="font-mono font-medium">{variants} 条</span>
+              {/* —— 消耗摘要：紧凑 grid，单行可扫读 —— */}
+              <div className="grid grid-cols-3 gap-2 py-2 border-y border-border/60">
+                <div>
+                  <div className="text-[10px] text-muted-foreground">消耗</div>
+                  <div className="text-xs font-mono font-medium tabular-nums">
+                    {variants} <span className="text-muted-foreground">积分</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">本月剩余</span>
-                  <span className={cn("font-mono", overQuota ? "text-red-500" : "text-foreground")}>
-                    {formatNumber(quotaRemaining)} 条
-                  </span>
+                <div>
+                  <div className="text-[10px] text-muted-foreground">月余</div>
+                  <div className={cn("text-xs font-mono tabular-nums", overQuota ? "text-rose-600 font-semibold" : "")}>
+                    {formatNumber(quotaRemaining)}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">预计出片时间</span>
-                  <span className="font-mono">约 {Math.ceil((variants * 25) / 60)} 分钟</span>
+                <div>
+                  <div className="text-[10px] text-muted-foreground">出片</div>
+                  <div className="text-xs font-mono tabular-nums">
+                    ≈{Math.ceil((variants * 25) / 60)} 分钟
+                  </div>
                 </div>
               </div>
 
               {overQuota && (
-                <div className="rounded-md bg-red-500/10 border border-red-500/30 p-3 flex items-start gap-2">
-                  <AlertTriangle className="size-4 text-red-500 shrink-0 mt-0.5" />
-                  <div className="text-xs text-red-400">
-                    本月剩余额度不够,请减少生成数量或升级套餐。
+                <div className="rounded-md bg-rose-500/10 border border-rose-500/30 p-2.5 flex items-start gap-2">
+                  <AlertTriangle className="size-3.5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-rose-700 leading-relaxed">
+                    本月剩余额度不够，请减少生成数量或升级套餐。
                   </div>
                 </div>
+              )}
+
+              {/* —— 主 CTA —— */}
+              <Button
+                variant="gradient"
+                size="xl"
+                className="w-full"
+                disabled={!allRequiredFilled || overQuota || submitting}
+                onClick={handleSubmit}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    提交中…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-4" />
+                    生成 {variants} 条视频
+                  </>
+                )}
+              </Button>
+
+              {!allRequiredFilled && (
+                <p className="text-[11px] text-amber-700 text-center -mt-1">
+                  还差 {requiredSlots.length - filledRequired.length} 项必填才能生成
+                </p>
               )}
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-center gap-2 text-xs">
-                <Zap className="size-4 text-amber-500" />
-                <span className="font-medium">渲染加速</span>
-                <Badge variant="brand" className="text-[10px] ml-auto"><Crown className="size-2.5" /> Pro</Badge>
-              </div>
-              <p className="text-[10px] text-muted-foreground leading-relaxed">
-                专业版享受优先队列,渲染等待时间缩短至少 60%。
-              </p>
-            </CardContent>
-          </Card>
+          {/* ─── 折叠卡：高级处理（默认收起；变更时摘要里反映状态）─── */}
+          <Collapsible>
+            <div className="rounded-lg border bg-card overflow-hidden">
+              <CollapsibleTrigger className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-secondary/30 transition-colors group">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Wand2 className="size-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium">高级处理</span>
+                  <span className="text-[10px] text-muted-foreground tabular-nums truncate">
+                    画面 {Object.values(overrides).filter(Boolean).length}/6
+                    {stickerPool && " · 贴图池已启用"}
+                  </span>
+                </div>
+                <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 shrink-0" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
+                <div className="px-3.5 pb-3.5 pt-1 space-y-3 border-t">
+                  {/* —— 整段画面 —— */}
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                      整段画面 · 对全片生效
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {([
+                        { key: "allow_mirror", label: "左右翻转", hint: "整段画面镜像翻转，提升差异度" },
+                        { key: "allow_speed", label: "微调速度", hint: "随机加速/减速 ±20%，听感几乎察觉不到" },
+                        { key: "allow_brightness", label: "亮度微调", hint: "轻微变亮/变暗，视觉无感" },
+                        { key: "allow_saturation", label: "色彩微调", hint: "颜色饱和度小幅起伏" },
+                      ] as const).map((it) => (
+                        <label
+                          key={it.key}
+                          title={it.hint}
+                          className={cn(
+                            "flex items-center justify-between gap-2 px-2 py-1.5 rounded border cursor-pointer select-none transition-colors text-xs",
+                            "border-transparent text-foreground hover:bg-secondary/40",
+                            "has-[[data-state=checked]]:border-border has-[[data-state=checked]]:bg-secondary/30",
+                          )}
+                        >
+                          <span>{it.label}</span>
+                          <Checkbox
+                            checked={overrides[it.key]}
+                            onCheckedChange={(v) =>
+                              setOverrides((p) => ({ ...p, [it.key]: v === true }))
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
 
-          <Button
-            variant="gradient"
-            size="xl"
-            className="w-full"
-            disabled={!allRequiredFilled || overQuota || submitting}
-            onClick={handleSubmit}
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                提交中…
-              </>
-            ) : (
-              <>
-                <Sparkles className="size-4" />
-                开始生成 · {variants} 条
-              </>
-            )}
-          </Button>
+                  {/* —— 逐素材抖动 —— */}
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                      逐素材抖动 · 每个素材独立微动
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {([
+                        { key: "allow_position_jitter", label: "位置抖动", hint: "每个素材在画面里位置小幅漂移" },
+                        { key: "allow_scale_jitter", label: "缩放抖动", hint: "每个素材尺寸 ±5% 起伏" },
+                      ] as const).map((it) => (
+                        <label
+                          key={it.key}
+                          title={it.hint}
+                          className={cn(
+                            "flex items-center justify-between gap-2 px-2 py-1.5 rounded border cursor-pointer select-none transition-colors text-xs",
+                            "border-transparent text-foreground hover:bg-secondary/40",
+                            "has-[[data-state=checked]]:border-border has-[[data-state=checked]]:bg-secondary/30",
+                          )}
+                        >
+                          <span>{it.label}</span>
+                          <Checkbox
+                            checked={overrides[it.key]}
+                            onCheckedChange={(v) =>
+                              setOverrides((p) => ({ ...p, [it.key]: v === true }))
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
 
-          {!allRequiredFilled && (
-            <div className="text-xs text-amber-500 text-center">
-              还有 {requiredSlots.length - filledRequired.length} 个必填槽位待填充
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    关闭后这一批不会做对应处理。文字 / 贴图 / 商品图按模板规则保留正向与原尺寸，不会被翻转或抖动。
+                  </p>
+
+                  <Separator />
+
+                  {/* —— 扰动贴图池（迁自中列）—— */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                        扰动贴图池
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        每变体随机抽样
+                      </span>
+                    </div>
+                    <StickerPoolPicker
+                      value={stickerPool}
+                      onChange={setStickerPool}
+                      label="选择贴图"
+                    />
+                  </div>
+                </div>
+              </CollapsibleContent>
             </div>
-          )}
+          </Collapsible>
+
+          {/* ─── 折叠卡：关联商品（选填，迁自中列）─── */}
+          <Collapsible defaultOpen={!!linkedProduct}>
+            <div className="rounded-lg border bg-card overflow-hidden">
+              <CollapsibleTrigger className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-secondary/30 transition-colors group">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ShoppingBag className="size-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium">关联商品</span>
+                  <span className="text-[10px] text-muted-foreground truncate">
+                    {linkedProduct ? linkedProduct.name : "选填 · 仅做参考"}
+                  </span>
+                </div>
+                <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 shrink-0" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
+                <div className="px-3.5 pb-3.5 pt-2 border-t">
+                  {linkedProduct ? (
+                    <div className="space-y-2">
+                      <div className="flex gap-2.5">
+                        <div className="size-16 shrink-0 overflow-hidden rounded-md border border-border bg-secondary/30">
+                          {linkedProduct.images[0] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={linkedProduct.images[0]}
+                              alt={linkedProduct.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                              {linkedProduct.category}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <div className="text-xs font-medium truncate">{linkedProduct.name}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="muted" className="text-[9px] h-4 px-1.5">
+                              {linkedProduct.category}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              已引用 {linkedProduct.usageCount} 次
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
+                            {linkedProduct.sellingPoints || "（暂无卖点描述）"}
+                          </p>
+                          {linkedProduct.link ? (
+                            <a
+                              href={linkedProduct.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] text-violet-600 hover:underline"
+                            >
+                              <ExternalLink className="size-2.5" />
+                              查看商品页
+                            </a>
+                          ) : (
+                            <p className="text-[10px] text-amber-600">该商品未填链接</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] flex-1"
+                          onClick={() => setProductPickerOpen(true)}
+                        >
+                          更换
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] text-muted-foreground"
+                          onClick={() => setLinkedProduct(null)}
+                        >
+                          <XIcon className="size-3" />
+                          清除
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setProductPickerOpen(true)}
+                      className="w-full rounded-md border border-dashed border-border bg-secondary/20 px-3 py-3 text-left transition-colors hover:border-violet-400 hover:bg-violet-500/5"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-8 rounded-md bg-violet-500/10 text-violet-500 grid place-items-center shrink-0">
+                          <Package className="size-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium">从商品库选择</div>
+                          <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                            挑一个商品作为参考，名称 / 卖点会显示在这里，方便填到标题、描述里
+                          </p>
+                        </div>
+                        <ChevronRight className="size-3.5 text-muted-foreground shrink-0" />
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+
+          {/* ─── Pro 速度（最低优先级）─── */}
+          <div className="rounded-lg border border-amber-500/20 bg-amber-50/30 px-3 py-2 flex items-center gap-2 text-[11px]">
+            <Zap className="size-3.5 text-amber-600 shrink-0" />
+            <span className="text-foreground/80">渲染加速 · 队列优先 ≥60%</span>
+            <Badge variant="brand" className="text-[9px] h-4 px-1.5 ml-auto shrink-0">
+              <Crown className="size-2.5" /> Pro
+            </Badge>
+          </div>
         </aside>
       </div>
       <ConfirmHost />
