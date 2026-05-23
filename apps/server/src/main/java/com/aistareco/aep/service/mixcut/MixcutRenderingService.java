@@ -213,8 +213,8 @@ public class MixcutRenderingService {
 
         // 2) 读取模板快照（v0.10）：画布尺寸、槽位 rect / layer_type / policy、扰动总开关
         RenderContext ctx = buildContext(job);
-        log.info("[mixcut] step=ctx job={} canvas={}x{} slots_in_snapshot={} overrides=mirror:{} speed:{} bright:{} sat:{}",
-                jobId, ctx.outputWidth, ctx.outputHeight, ctx.slotMap.size(),
+        log.info("[mixcut] step=ctx job={} canvas={}x{} slots_in_snapshot={} scenes={} overrides=mirror:{} speed:{} bright:{} sat:{}",
+                jobId, ctx.outputWidth, ctx.outputHeight, ctx.slotMap.size(), ctx.scenes.size(),
                 ctx.overrides.allowMirror, ctx.overrides.allowSpeed,
                 ctx.overrides.allowBrightness, ctx.overrides.allowSaturation);
 
@@ -433,7 +433,23 @@ public class MixcutRenderingService {
             int outputWidth,
             int outputHeight,
             Map<String, SlotInfo> slotMap,
-            Overrides overrides
+            Overrides overrides,
+            /**
+             * v0.25+: 场景列表（按顺序）。空 → 渲染器走 v0.24 回退路径（最多 2 段）。
+             * 非空 → 按场景串行拼接，每段长度由 SceneSpec.durationSec 决定，overlay 据
+             * SceneSpec.slotIds 限制可见时段。
+             */
+            List<SceneSpec> scenes
+    ) {}
+
+    /**
+     * v0.25+: 单个场景规格。durationSec 是该场景的目标渲染秒数（已 clamp 到 [1, maxOutputDurationSec]）；
+     * slotIds 用来反查 overlay 归属到本场景的时段。
+     */
+    private record SceneSpec(
+            String id,
+            double durationSec,
+            Set<String> slotIds
     ) {}
 
     /**
@@ -673,7 +689,38 @@ public class MixcutRenderingService {
             log.warn("[mixcut] perturbation overrides parse error: {}", e.getMessage());
         }
 
-        return new RenderContext(width, height, slotMap, overrides);
+        // v0.25+: 场景快照。空 / parse 失败 → 退回 v0.24 行为（renderOneVariant 内部分支）。
+        List<SceneSpec> scenes = new ArrayList<>();
+        try {
+            String ss = job.getScenesSnapshotJson();
+            if (ss != null && !ss.isBlank()) {
+                JsonNode arr = mapper.readTree(ss);
+                if (arr.isArray()) {
+                    int maxDur = Math.max(1, props.getMaxOutputDurationSec());
+                    for (JsonNode s : arr) {
+                        String id = s.path("id").asText(null);
+                        if (id == null) continue;
+                        double dur = s.path("duration_sec").asDouble(0);
+                        if (dur <= 0) continue;
+                        // 单场景长度 clamp 到 [1, max]；总和超出 max 时下游再按比例缩放
+                        dur = Math.max(1.0, Math.min((double) maxDur, dur));
+                        Set<String> slotIds = new java.util.HashSet<>();
+                        JsonNode ids = s.path("slot_ids");
+                        if (ids.isArray()) {
+                            for (JsonNode idNode : ids) {
+                                String sid = idNode.asText(null);
+                                if (sid != null && !sid.isBlank()) slotIds.add(sid);
+                            }
+                        }
+                        scenes.add(new SceneSpec(id, dur, slotIds));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[mixcut] scenes snapshot parse error: {}", e.getMessage());
+        }
+
+        return new RenderContext(width, height, slotMap, overrides, scenes);
     }
 
     /**
@@ -915,9 +962,43 @@ public class MixcutRenderingService {
                     missingEnhancements, variantIndex, job.getId());
         }
 
-        int segCount = caps.concat ? Math.min(2, sources.size()) : 1;
-        double segDuration = Math.max(2.0, (double) props.getMaxOutputDurationSec() / Math.max(1, segCount));
-        int totalDuration = props.getMaxOutputDurationSec();
+        // v0.25+: 按场景拼接。scenes 非空 → segCount = scenes.size()；空 → 回退 v0.24（最多 2 段）。
+        //   每段长度：scenes 非空时取 scene.durationSec；空时仍按旧公式 max/segCount 平均切。
+        //   总长 = 各段长度之和；若 > maxOutputDurationSec 按比例缩放后再用作 -t / -ss 计算。
+        final int maxOutputSec = Math.max(1, props.getMaxOutputDurationSec());
+        final boolean useSceneSchedule = !ctx.scenes.isEmpty() && caps.concat;
+        final int segCount;
+        final double[] segDurations;
+        if (useSceneSchedule) {
+            segCount = ctx.scenes.size();
+            segDurations = new double[segCount];
+            double sum = 0.0;
+            for (int i = 0; i < segCount; i++) {
+                segDurations[i] = Math.max(1.0, ctx.scenes.get(i).durationSec);
+                sum += segDurations[i];
+            }
+            // 总和超出平台硬上限 → 按比例缩到 maxOutputSec
+            if (sum > maxOutputSec) {
+                double scale = maxOutputSec / sum;
+                for (int i = 0; i < segCount; i++) segDurations[i] *= scale;
+                sum = maxOutputSec;
+            }
+        } else {
+            segCount = caps.concat ? Math.min(2, sources.size()) : 1;
+            double per = Math.max(2.0, (double) maxOutputSec / Math.max(1, segCount));
+            segDurations = new double[segCount];
+            for (int i = 0; i < segCount; i++) segDurations[i] = per;
+        }
+        // 每段在最终输出里的 [start, end] 时间窗（秒）。给 overlay 的 enable=between(t,..) 用。
+        double[] segStart = new double[segCount];
+        double[] segEnd = new double[segCount];
+        double acc = 0.0;
+        for (int i = 0; i < segCount; i++) {
+            segStart[i] = acc;
+            acc += segDurations[i];
+            segEnd[i] = acc;
+        }
+        final int totalDuration = (int) Math.max(1, Math.ceil(acc));
         int W = ctx.outputWidth;
         int H = ctx.outputHeight;
 
@@ -956,18 +1037,24 @@ public class MixcutRenderingService {
         boolean allHaveAudio = true;
         for (int i = 0; i < segCount; i++) {
             File src = sources.get((variantIndex + i) % sources.size());
-            double maxStart = Math.max(0, ffmpeg.probeDurationSec(src) - segDuration - 0.5);
+            double segDur = segDurations[i];
+            double maxStart = Math.max(0, ffmpeg.probeDurationSec(src) - segDur - 0.5);
             double offset = maxStart > 0 ? rnd.nextDouble() * maxStart : 0;
             args.add("-ss"); args.add(format(offset));
-            args.add("-t"); args.add(format(segDuration));
+            args.add("-t"); args.add(format(segDur));
             args.add("-i"); args.add(src.getAbsolutePath());
             boolean srcHasAudio = ffmpeg.hasAudioStream(src);
             if (!srcHasAudio) allHaveAudio = false;
             ObjectNode seg = segDetail.objectNode();
             seg.put("src", src.getName());
             seg.put("start", round2(offset));
-            seg.put("duration", round2(segDuration));
+            seg.put("duration", round2(segDur));
             seg.put("has_audio", srcHasAudio);
+            if (useSceneSchedule) {
+                seg.put("scene_id", ctx.scenes.get(i).id);
+                seg.put("output_start", round2(segStart[i]));
+                seg.put("output_end", round2(segEnd[i]));
+            }
             segDetail.set("seg_" + i, seg);
         }
         boolean useSourceAudio = allHaveAudio;
@@ -989,6 +1076,8 @@ public class MixcutRenderingService {
         transforms.put("saturation", round3(saturation));
         transforms.put("mirror", mirror);
         transforms.put("segments", segCount);
+        transforms.put("scene_schedule", useSceneSchedule ? "per_scene" : "legacy_2seg");
+        transforms.put("total_duration_sec", totalDuration);
         transforms.put("canvas_w", W);
         transforms.put("canvas_h", H);
         transforms.put("ffmpeg_degraded", !missingEnhancements.isEmpty());
@@ -1162,6 +1251,20 @@ public class MixcutRenderingService {
             }
         }
 
+        // v0.25+: slot_id → [sceneStart, sceneEnd]。用来给 overlay 加 enable=between(t,a,b)。
+        // useSceneSchedule=false 或 slot 不在任何场景里 → null（overlay 整片可见，与旧行为一致）。
+        Map<String, double[]> slotToWindow = new HashMap<>();
+        if (useSceneSchedule) {
+            for (int sIdx = 0; sIdx < segCount; sIdx++) {
+                SceneSpec sc = ctx.scenes.get(sIdx);
+                double s0 = segStart[sIdx];
+                double s1 = Math.min(segEnd[sIdx], totalDuration);
+                for (String sid : sc.slotIds) {
+                    slotToWindow.put(sid, new double[]{s0, s1});
+                }
+            }
+        }
+
         // overlay 链：每张图按 slot.rect 精确定位 + 缩放（force_original_aspect_ratio=decrease 防止失真）
         String prev = videoFxTag;
         for (int i = 0; i < overlayCount; i++) {
@@ -1213,6 +1316,15 @@ public class MixcutRenderingService {
             }
             fc.append("[").append(prev).append("][").append(tag).append("s]")
               .append("overlay=x=").append(rx).append(":y=").append(ry);
+            // v0.25+: 把 overlay 限制在所属场景时段。用单引号包 between(...) 让 ffmpeg
+            // 不把表达式里的逗号当成 filter-chain 分隔符。
+            if (useRealOverlay) {
+                double[] win = slotToWindow.get(overlays.get(i).slotId);
+                if (win != null) {
+                    fc.append(":enable='between(t,")
+                      .append(format(win[0])).append(",").append(format(win[1])).append(")'");
+                }
+            }
             String outTag = "ovl" + i;
             fc.append("[").append(outTag).append("];");
             prev = outTag;
@@ -1286,8 +1398,10 @@ public class MixcutRenderingService {
         args.add("-movflags"); args.add("+faststart");
         args.add(outFile.getAbsolutePath());
 
-        log.info("[mixcut] ffmpeg variant={} canvas={}x{} segs={} overlays={} ({}) audio={} speed={} brightness={} mirror={}",
-                variantIndex, W, H, segCount, overlayCount, useRealOverlay ? "user" : "fallback",
+        log.info("[mixcut] ffmpeg variant={} canvas={}x{} segs={} schedule={} total={}s overlays={} ({}) audio={} speed={} brightness={} mirror={}",
+                variantIndex, W, H, segCount,
+                useSceneSchedule ? "per_scene" : "legacy_2seg", totalDuration,
+                overlayCount, useRealOverlay ? "user" : "fallback",
                 hasAudio ? (useBgm ? (useSourceAudio ? "source+bgm" : "bgm") : "source") : "none",
                 speed, brightness, mirror);
 

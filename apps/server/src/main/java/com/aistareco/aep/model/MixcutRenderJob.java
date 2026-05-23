@@ -45,6 +45,16 @@ public class MixcutRenderJob {
     @Column(name = "slots_snapshot_json", columnDefinition = "TEXT")
     private String slotsSnapshotJson;
 
+    /**
+     * v0.25+: 场景快照数组（[{id, label?, duration_sec, slot_ids[]}]，按场景顺序）。
+     * 渲染器据此按场景串行拼接 ffmpeg concat 链 —— 每个场景 = 一个 segment，长度由
+     * duration_sec 决定。slot_ids 让 overlay 知道自己归属哪个场景的时段。
+     * 缺省 → 渲染器回退到 v0.24 行为（硬编 segCount=Math.min(2, sources.size())）。
+     */
+    @Lob
+    @Column(name = "scenes_snapshot_json", columnDefinition = "TEXT")
+    private String scenesSnapshotJson;
+
     /** v0.10: 任务级扰动总开关 {allow_mirror, allow_speed, allow_brightness, allow_saturation}。 */
     @Column(name = "perturbation_overrides_json", columnDefinition = "TEXT")
     private String perturbationOverridesJson;
@@ -144,6 +154,9 @@ public class MixcutRenderJob {
 
     public String getSlotsSnapshotJson() { return slotsSnapshotJson; }
     public void setSlotsSnapshotJson(String slotsSnapshotJson) { this.slotsSnapshotJson = slotsSnapshotJson; }
+
+    public String getScenesSnapshotJson() { return scenesSnapshotJson; }
+    public void setScenesSnapshotJson(String scenesSnapshotJson) { this.scenesSnapshotJson = scenesSnapshotJson; }
 
     public String getPerturbationOverridesJson() { return perturbationOverridesJson; }
     public void setPerturbationOverridesJson(String perturbationOverridesJson) { this.perturbationOverridesJson = perturbationOverridesJson; }

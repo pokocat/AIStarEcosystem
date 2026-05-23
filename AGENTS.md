@@ -750,6 +750,40 @@ web-celebrity:
 - jitter 用 `ThreadLocalRandom`：不可重放。未来若要可复算，引 `seed = hash(projectId, i)`。
 - 显式 out-of-scope：campaign 级别取消（`/distribution?tab=tracking` 单条 cancel 仍可用）、ShedLock、跨账号错峰、interval / random_window / weekly 等扩展策略（discriminator 预留扩展位）。
 
+### v0.25（2026-05-22）— 混剪按场景渲染（多段落 bug 修复）
+
+模板里 `scenes[]` 数据完整（每场景独立 duration + slots[]），但渲染器无视场景结构，硬编 `segCount = Math.min(2, sources.size())` + `segDuration = maxOutputDurationSec / segCount`，导致**无论模板配几个场景，最终视频永远只有 2 段**（每段 7.5s）。前端 `flatSlotsAbsolute()` 把场景拍平时丢了边界信息，渲染器收到的 `slots_snapshot` 完全没有场景概念。本次把"场景"作为一等公民贯穿整链路。
+
+**新增 / 修改**：
+
+```
+types.ts          : +SceneSnapshot {id, label?, duration_sec, slot_ids[]}
+                  : RenderJob +scenes_snapshot?: SceneSnapshot[]
+                  : SlotSnapshot +time_range?: [number, number]（之前漏掉 → 这是 bug 根因之一）
+create-client.tsx : 提交 job 时直接从 template.scenes 构造 scenes_snapshot（按顺序）
+server model      : MixcutRenderJob +scenesSnapshotJson TEXT 列（@Lob）
+server dto        : MixcutCreateJobRequest +scenes_snapshot；MixcutRenderJobDto +scenes_snapshot 回包
+server service    : MixcutJobService.create 透传 scenes_snapshot
+MixcutRenderingService :
+  - RenderContext +scenes: List<SceneSpec>; SceneSpec { id, durationSec, slotIds }
+  - buildContext 解 scenesSnapshotJson；单场景 clamp [1, maxOutputDurationSec]，总和 > max 按比例缩放
+  - renderOneVariant +useSceneSchedule 分支：segCount = scenes.size()（不再硬编 2），
+    segDurations[i] = scene.durationSec，每段独立 -ss/-t，totalDuration = 段长之和
+  - +slotToWindow: Map<slotId, [start,end]>，给 overlay filter 追加 :enable='between(t,a,b)'
+    把 overlay 限制在所属场景时段（v0.24 之前 overlay 整片可见）
+  - applied_transforms +scene_schedule + total_duration_sec；每段 detail +scene_id/output_start/output_end
+  - 缺省（scenes_snapshot 空 / 旧任务）→ 回退 v0.24 路径（最多 2 段）
+```
+
+**注意事项**：
+
+- 字段全部加性兼容：scenes_snapshot 为空时渲染器行为与 v0.24 完全一致，历史任务不受影响。
+- 总和超出 `aep.mixcut.max-output-duration-sec`（默认 15s）按比例缩放后再渲染；想要更长视频需调高上限。
+- 源视频 round-robin：scene[i] → `sources[(variantIndex + i) % sources.size()]`；5 场景 + 2 视频会循环复用，5 视频 + 2 场景每变体只用 2 个。
+- overlay enable 用单引号包 `between(...)`，防止表达式里的逗号被 ffmpeg 当成 filter-chain 分隔符。
+- 一个 slot_id 不属于任何场景的 `slot_ids[]`（前端漏发？模板异常？）→ 该 overlay 整片可见（旧行为），不会丢失内容。
+- openapi.yaml `/mixcut/jobs` 当前只有 path 骨架（无 request/response schema），contract gate 只校验 path 存在 → 不需要改 openapi。
+
 ### v0.23（2026-05-21）— 任务追踪按批次聚合 + 批量操作
 
 celebrity 子产品的「分发中心 → 任务追踪」从平铺 PublishJob 列表升级为按 `project_id` 聚合的批次卡片 + 服务端分页 + 批次级批量操作（取消整批 / 重试失败 / 重新调度未开始）。N×M 派单后列表不再爆炸，运营一键搞定整批。

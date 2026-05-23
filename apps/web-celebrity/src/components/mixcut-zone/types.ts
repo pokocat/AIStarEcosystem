@@ -250,6 +250,26 @@ export interface SlotSnapshot {
    * 缺省退回 "cover"。
    */
   fit?: "cover" | "contain";
+  /**
+   * v0.25+: 该 slot 绝对时间窗（秒，相对整片 0），由 flatSlotsAbsolute 计算。
+   * 渲染器据此把 overlay 限制在所属场景时段内显示（enable=between(t,start,end)）。
+   * 缺省（旧任务）→ overlay 整片可见，与 v0.24 及之前行为一致。
+   */
+  time_range?: [number, number];
+}
+
+/**
+ * v0.25+: 场景快照。RenderJob.scenes_snapshot 携带，让渲染器按场景串行拼接：
+ *   - segCount = scenes.length（不再硬编 2 段）
+ *   - 每段长度 = scene.duration_sec
+ *   - overlay 按 slot_ids 归属到对应场景的时段
+ * scenes_snapshot 缺省 → 退回 v0.24 行为（最多 2 段，segDuration = maxOutputDurationSec/segCount）。
+ */
+export interface SceneSnapshot {
+  id: string;
+  label?: string;
+  duration_sec: number;
+  slot_ids: string[];
 }
 
 export interface RenderOutput {
@@ -306,6 +326,11 @@ export interface RenderJob {
   /** v0.10: 模板快照,服务端按此严格定位。缺省时退回旧逻辑（720×1280 + 序号位置）。 */
   canvas_snapshot?: CanvasSnapshot;
   slots_snapshot?: SlotSnapshot[];
+  /**
+   * v0.25+: 场景快照（按场景顺序排列）。让渲染器按场景串行拼接而不是硬编 2 段。
+   * 缺省（旧任务 / 单场景模板）→ 渲染器回退到旧行为。
+   */
+  scenes_snapshot?: SceneSnapshot[];
   /** v0.10: 任务级扰动总开关。 */
   perturbation_overrides?: PerturbationOverrides;
   /** v0.x: 原片视觉指纹（aHash 64bit hex,16 字符）。用于和每条变体的 phash_signature 做汉明距离对比。 */

@@ -69,6 +69,39 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.25 · 2026-05-22 · 混剪按场景渲染（多段落 bug 修复）
+
+修复模板里配了多个场景但最终视频永远只有 2 段的根因。从模板编辑到 ffmpeg 拼接的整链路把"场景"作为一等公民贯穿。
+
+**bug 现象**：
+
+- 用户在模板编辑器里配 5 个场景（如开场 3s + 主体 8s + 卖点 3s + CTA 2s + 结尾 2s），混剪生成的视频里**永远**只用 2 段视频拼，每段 7.5s，与模板里配的 `scene.duration` 完全无关。
+- 模板里把同一 slot 放在不同场景给不同时段播也无效 —— overlay 整片可见。
+
+**根因**：
+
+- `MixcutRenderingService.renderOneVariant` 第 918 行（v0.24 及之前）硬编 `segCount = Math.min(2, sources.size())`，`segDuration = maxOutputDurationSec / segCount`。
+- 前端 `SlotSnapshot` 没有 `time_range` 字段、`RenderJob` 没有 `scenes_snapshot` 字段；模板里 `scenes[]` 的场景边界在序列化为 `slot_bindings` + `slots_snapshot` 时被 `flatSlotsAbsolute()` 拍平成无场景结构的扁平 slot 列表，渲染器收到时已经不知道场景在哪。
+
+**修复（v0.25）**：
+
+- `types.ts` 新增 `SceneSnapshot { id, label?, duration_sec, slot_ids[] }`；`RenderJob.scenes_snapshot?: SceneSnapshot[]`；`SlotSnapshot.time_range?: [number, number]` 也补回。
+- `create-client.tsx` 提交 job 时直接从 `template.scenes` 构造 `scenes_snapshot`（按顺序）；`slots_snapshot` 同时带上绝对 `time_range`。
+- server `MixcutRenderJob.scenesSnapshotJson` 新 TEXT 列；DTO 双向透传（`MixcutCreateJobRequest` + `MixcutRenderJobDto.from`）。
+- `MixcutRenderingService`：
+  - `RenderContext` 加 `scenes: List<SceneSpec>`；`buildContext` 解 `scenesSnapshotJson`，单场景长度 clamp 到 `[1, maxOutputDurationSec]`，总和超出 max 时按比例缩放。
+  - `renderOneVariant` 引入 `useSceneSchedule` 分支：`segCount = scenes.size()`（不再硬编 2）、`segDurations[i] = scene.durationSec`、每段独立 `-ss`/`-t`；`totalDuration` 改成段长之和。
+  - 构建 `slotToWindow: Map<slotId, [start,end]>`，给 overlay filter 末尾追加 `:enable='between(t,start,end)'`，把 overlay 限制在所属场景时段内显示。
+  - 缺省（旧任务 / 空 scenes_snapshot）→ 走 v0.24 回退路径（`Math.min(2, sources.size())`），完全向后兼容。
+- `applied_transforms` 新增 `scene_schedule: "per_scene" | "legacy_2seg"` + `total_duration_sec`，每段 detail 追加 `scene_id` / `output_start` / `output_end`，前端可观测。
+
+**注意事项**：
+
+- 字段是**加性兼容**：scenes_snapshot 为空时渲染器行为与 v0.24 完全一致，不影响历史任务。
+- 总和超出 `aep.mixcut.max-output-duration-sec`（默认 15s）时按比例缩放后再渲染；想要更长片需要调高这个上限。
+- 源视频 round-robin：scene[i] 对应 `sources[(variantIndex + i) % sources.size()]`，5 场景 + 2 视频会循环复用，5 视频 + 2 场景每变体只用 2 个。
+- 当一个 slot_id 不属于任何场景的 `slot_ids[]`（前端漏发？模板异常？）→ 该 overlay 整片可见（旧行为），不会丢失内容。
+
 ### v0.24 · 2026-05-21 · 混剪 / 分发融合商品库（showcase MVP）
 
 把已有 **商品库**（[`Product`](../../packages/types/src/product.ts) 实体 + admin CRUD + `ProductsApi`）接到混剪创建页与分发流程上。**纯前端拼装，零后端 / openapi / schema 改动**。

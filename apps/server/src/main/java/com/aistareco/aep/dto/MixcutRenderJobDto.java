@@ -36,7 +36,9 @@ public record MixcutRenderJobDto(
         @JsonProperty("slots_snapshot") JsonNode slotsSnapshot,
         @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides,
         @JsonProperty("source_phash") String sourcePhash,
-        @JsonProperty("sticker_pool") JsonNode stickerPool
+        @JsonProperty("sticker_pool") JsonNode stickerPool,
+        // v0.25+: 场景快照（按顺序）；让前端任务详情页能回放当时的场景结构，渲染器据此分段拼接
+        @JsonProperty("scenes_snapshot") JsonNode scenesSnapshot
 ) {
 
     public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper) {
@@ -52,6 +54,7 @@ public record MixcutRenderJobDto(
         JsonNode slotsSnap = parseOrNull(job.getSlotsSnapshotJson(), mapper);
         JsonNode pertOverrides = parseOrNull(job.getPerturbationOverridesJson(), mapper);
         JsonNode stickerPool = parseOrNull(job.getStickerPoolJson(), mapper);
+        JsonNode scenesSnap = parseOrNull(job.getScenesSnapshotJson(), mapper);
         // v0.21+: 软删的 output 不进 DTO；前端「视频库」用户点删除后立即从列表消失。
         // 30 天后由 MixcutOutputCleanupScheduler 物理清理。
         List<MixcutRenderOutputDto> outs = (job.getOutputs() == null || job.getOutputs().isEmpty())
@@ -79,7 +82,8 @@ public record MixcutRenderJobDto(
                 slotsSnap,
                 pertOverrides,
                 job.getSourcePhash(),
-                stickerPool
+                stickerPool,
+                scenesSnap
         );
     }
 

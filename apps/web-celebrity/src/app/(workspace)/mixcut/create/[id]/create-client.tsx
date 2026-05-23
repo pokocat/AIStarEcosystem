@@ -43,6 +43,7 @@ import type {
   RenderOutput,
   PerturbationOverrides,
   SlotSnapshot,
+  SceneSnapshot,
   SlotPerturbationPolicy,
   StickerPoolBinding,
 } from "@/components/mixcut-zone/types";
@@ -214,8 +215,18 @@ export function CreateClient({ id }: { id: string }) {
         z_index: s.z_index,
         perturbation_policy: resolvePolicy(s.layer_type, merged),
         fit: s.fit ?? "cover",
+        // v0.25+: 携带绝对 time_range，让渲染器把 overlay 限制在对应场景时段
+        time_range: s.time_range,
       };
     });
+
+    // v0.25+: 场景快照（按顺序）。渲染器据此按 scenes.length 拼接、按 scene.duration_sec 切段。
+    const scenesSnapshot: SceneSnapshot[] = template.scenes.map((sc) => ({
+      id: sc.id,
+      label: sc.label,
+      duration_sec: sc.duration,
+      slot_ids: sc.slots.map((s) => s.slot_id),
+    }));
 
     const job: RenderJob = {
       id: jobId,
@@ -235,6 +246,7 @@ export function CreateClient({ id }: { id: string }) {
         fps: template.canvas.fps,
       },
       slots_snapshot: slotsSnapshot,
+      scenes_snapshot: scenesSnapshot,
       perturbation_overrides: overrides,
       sticker_pool: stickerPool ? { _global: stickerPool } : undefined,
     };

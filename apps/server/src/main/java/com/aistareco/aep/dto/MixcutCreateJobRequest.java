@@ -27,6 +27,8 @@ public record MixcutCreateJobRequest(
         @JsonProperty("slots_snapshot") JsonNode slotsSnapshot,
         @JsonProperty("perturbation_overrides") JsonNode perturbationOverrides,
         // v0.13+: 扰动贴图池
-        @JsonProperty("sticker_pool") JsonNode stickerPool
+        @JsonProperty("sticker_pool") JsonNode stickerPool,
+        // v0.25+: 场景快照（按顺序）。让渲染器按场景串行拼接而不是硬编 2 段。
+        @JsonProperty("scenes_snapshot") JsonNode scenesSnapshot
 ) {
 }
