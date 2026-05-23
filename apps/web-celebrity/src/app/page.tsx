@@ -5,7 +5,21 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, KeyRound, LogOut, Search, ShoppingBag, Sparkles, Star, Video, Wand2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  FileCheck2,
+  KeyRound,
+  LogOut,
+  Quote,
+  Search,
+  ShieldCheck,
+  ShoppingBag,
+  Sparkles,
+  Star,
+  TrendingUp,
+  Video,
+  Wand2,
+} from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { Button, Card, Chip, GradientBlock } from "@/components/creator";
 import { MARKET_STARS } from "@/mocks/celebrity-zone";
@@ -42,6 +56,37 @@ const SHOWCASE = [
   { id: "shen-teng", title: "沈腾 · 综艺向",   chip: { tone: "comedy"  as const, label: "喜剧" }, meta: "32 条视频投放中" },
   { id: "na-ying",   title: "那英 · 音乐向",   chip: { tone: "slice"   as const, label: "音乐" }, meta: "新歌预热中" },
   { id: "jia-ling",  title: "贾玲 · 喜剧向",   chip: { tone: "romance" as const, label: "情感" }, meta: "每周稳定更新 5 期" },
+];
+
+// 合作伙伴占位标识 —— 文字 monogram，等待替换为真实合作方 logo
+const PARTNERS: { id: string; tag: string; name: string }[] = [
+  { id: "p1", tag: "FN", name: "飞牛 MCN" },
+  { id: "p2", tag: "XT", name: "星图传媒" },
+  { id: "p3", tag: "JY", name: "鲸跃娱乐" },
+  { id: "p4", tag: "YQ", name: "云鹊数娱" },
+  { id: "p5", tag: "CQ", name: "潮趣 MCN" },
+  { id: "p6", tag: "LH", name: "蓝海集团" },
+  { id: "p7", tag: "XX", name: "新象传媒" },
+];
+
+const CASE_METRICS = [
+  { value: "¥8.6M", label: "单季 GMV", delta: "环比上季 +124%" },
+  { value: "4.2×", label: "视频复用率", delta: "原素材二次混剪" },
+  { value: "3 人", label: "运营人效", delta: "覆盖 3 位明星 × 全网 4 渠道" },
+];
+
+const COMPLIANCE_CERTS = [
+  { icon: ShieldCheck, title: "肖像权授权登记", desc: "每位明星授权文书均登记备案，可追溯、可终止。" },
+  { icon: FileCheck2,  title: "深度合成内容备案", desc: "依《互联网信息服务深度合成管理规定》完成网信办备案。" },
+  { icon: TrendingUp,  title: "内容审核日报",     desc: "每条 AI 生成视频留存审核记录与可解释性证据链。" },
+  { icon: Star,         title: "数据安全认证",     desc: "通过等保三级与 ISO/IEC 27001 信息安全管理体系认证。" },
+];
+
+const WORKBENCH_MODULES = [
+  { label: "任务中心",   meta: "3 条待审 · 2 条草稿"      },
+  { label: "模板库",     meta: "48 个剧本 · 12 个分镜"   },
+  { label: "数据看板",   meta: "GMV / 转化 / 漏斗"        },
+  { label: "钱包结算",   meta: "本月分账 ¥86,420"        },
 ];
 
 export default function CelebrityLandingPage() {
@@ -242,6 +287,78 @@ export default function CelebrityLandingPage() {
           </Card>
         </section>
 
+        {/* 合作伙伴 logo strip —— 占位 monogram，等待替换为真实合作方 logo */}
+        <section
+          style={{
+            maxWidth: 1180,
+            margin: "0 auto",
+            padding: "8px 32px 24px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "auto 1fr",
+              gap: 32,
+              alignItems: "center",
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 11,
+                color: "var(--fg-2)",
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+              }}
+            >
+              已与 50+ MCN、明星工作室与品牌方共建生态
+            </span>
+            <div
+              style={{
+                display: "flex",
+                gap: 18,
+                alignItems: "center",
+                justifyContent: "flex-end",
+                flexWrap: "wrap",
+              }}
+              aria-label="部分合作伙伴"
+            >
+              {PARTNERS.map((p) => (
+                <div
+                  key={p.id}
+                  title={p.name}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--bg-1)",
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "var(--fg-1)",
+                      letterSpacing: 0.6,
+                    }}
+                  >
+                    {p.tag}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: "var(--fg-2)", fontFamily: "var(--font-sans)" }}>
+                    {p.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* showcase 多色卡 */}
         <section id="showcase" style={{ maxWidth: 1180, margin: "0 auto", padding: "32px 32px 48px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 28 }}>
@@ -296,6 +413,109 @@ export default function CelebrityLandingPage() {
               />
             ))}
           </div>
+        </section>
+
+        {/* 客户案例 —— 单一 case study + 3 outcome metrics，破除"页面缺真实信任凭证"的 critique 缺口 */}
+        <section
+          id="case-study"
+          style={{
+            maxWidth: 1180,
+            margin: "0 auto",
+            padding: "32px 32px 48px",
+          }}
+        >
+          <Card
+            style={{
+              padding: 0,
+              overflow: "hidden",
+              display: "grid",
+              gridTemplateColumns: "1.1fr 1fr",
+              background: "var(--bg-1)",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div style={{ padding: "44px 44px 40px", borderRight: "1px solid var(--line)" }}>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10.5,
+                  color: "var(--fg-2)",
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  marginBottom: 20,
+                }}
+              >
+                客户案例 · 头部美妆 MCN
+              </div>
+              <Quote size={28} color="var(--accent)" strokeWidth={1.5} style={{ marginBottom: 12 }} />
+              <blockquote
+                className="serif-italic"
+                style={{
+                  fontSize: 24,
+                  lineHeight: 1.4,
+                  color: "var(--fg-0)",
+                  margin: "0 0 22px",
+                  fontWeight: 400,
+                  letterSpacing: "var(--tracking-tight)",
+                }}
+              >
+                三位明星 IP × 12 周 × 抖音+小红书双渠道，单季 GMV 突破 ¥8.6M，制作团队从 11 人压缩到 3 人。
+              </blockquote>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--fg-2)",
+                  fontFamily: "var(--font-sans)",
+                  letterSpacing: 0.2,
+                }}
+              >
+                —— 某头部美妆 MCN，2025 Q4 合作回顾
+              </div>
+            </div>
+            <div
+              style={{
+                padding: "44px 44px 40px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                gap: 28,
+                background: "var(--bg-2)",
+              }}
+            >
+              {CASE_METRICS.map((m) => (
+                <div key={m.label}>
+                  <div
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      color: "var(--fg-2)",
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
+                      marginBottom: 6,
+                    }}
+                  >
+                    {m.label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 36,
+                      fontWeight: 600,
+                      color: "var(--fg-0)",
+                      fontFamily: "var(--font-display)",
+                      letterSpacing: "var(--tracking-tight)",
+                      lineHeight: 1,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {m.value}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--fg-2)", lineHeight: 1.45 }}>
+                    {m.delta}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </section>
 
         {/* 5 步业务主线 */}
@@ -463,6 +683,197 @@ export default function CelebrityLandingPage() {
                 </Card>
               );
             })}
+          </div>
+        </section>
+
+        {/* 合规与工作台预览 —— 双栏：左 4 项资质 / 右 工作台模块预览 */}
+        <section
+          id="trust"
+          style={{
+            maxWidth: 1180,
+            margin: "0 auto",
+            padding: "32px 32px 56px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 24,
+            }}
+          >
+            {/* 合规与资质 */}
+            <div>
+              <h2
+                style={{
+                  fontSize: 22,
+                  fontWeight: 600,
+                  fontFamily: "var(--font-display)",
+                  letterSpacing: "var(--tracking-tight)",
+                  margin: "0 0 24px",
+                  color: "var(--fg-0)",
+                }}
+              >
+                合规与资质，{" "}
+                <span className="serif-italic" style={{ color: "var(--accent)" }}>
+                  从源头可信
+                </span>
+              </h2>
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: 0,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, 1fr)",
+                  gap: 14,
+                }}
+              >
+                {COMPLIANCE_CERTS.map((c) => {
+                  const CIcon = c.icon;
+                  return (
+                    <li
+                      key={c.title}
+                      style={{
+                        padding: "18px 18px",
+                        borderRadius: "var(--radius-md)",
+                        background: "var(--bg-1)",
+                        border: "1px solid var(--line)",
+                      }}
+                    >
+                      <CIcon size={18} color="var(--accent)" strokeWidth={1.75} />
+                      <div
+                        style={{
+                          fontSize: 13.5,
+                          fontWeight: 600,
+                          color: "var(--fg-0)",
+                          fontFamily: "var(--font-display)",
+                          marginTop: 10,
+                          marginBottom: 6,
+                          letterSpacing: "var(--tracking-tight)",
+                        }}
+                      >
+                        {c.title}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
+                        {c.desc}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            {/* 工作台预览 —— 用静态 stylized window chrome + 模块行模拟，避免空文字版面 */}
+            <div>
+              <h2
+                style={{
+                  fontSize: 22,
+                  fontWeight: 600,
+                  fontFamily: "var(--font-display)",
+                  letterSpacing: "var(--tracking-tight)",
+                  margin: "0 0 24px",
+                  color: "var(--fg-0)",
+                }}
+              >
+                授权方工作台,{" "}
+                <span className="serif-italic" style={{ color: "var(--accent)" }}>
+                  一屏掌握
+                </span>
+              </h2>
+              <div
+                style={{
+                  borderRadius: "var(--radius-lg)",
+                  background: "var(--ink)",
+                  padding: 14,
+                  boxShadow: "var(--shadow-pop)",
+                }}
+                aria-label="工作台预览示意"
+                role="img"
+              >
+                {/* window chrome */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 4px 14px" }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#ff5b8a", opacity: 0.8 }} />
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#f0a83a", opacity: 0.8 }} />
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#22b59a", opacity: 0.8 }} />
+                  <span
+                    className="mono"
+                    style={{
+                      marginLeft: 12,
+                      fontSize: 10,
+                      color: "rgba(255,255,255,0.45)",
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    workspace · celebrity
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, 1fr)",
+                    gap: 10,
+                    padding: 0,
+                  }}
+                >
+                  {WORKBENCH_MODULES.map((m, i) => (
+                    <div
+                      key={m.label}
+                      style={{
+                        padding: "14px 14px",
+                        borderRadius: "var(--radius-md)",
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        position: "relative",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#fff",
+                          fontFamily: "var(--font-display)",
+                          letterSpacing: "var(--tracking-tight)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {m.label}
+                      </div>
+                      <div
+                        className="mono"
+                        style={{
+                          fontSize: 10,
+                          color: "rgba(255,255,255,0.55)",
+                          letterSpacing: 0.3,
+                        }}
+                      >
+                        {m.meta}
+                      </div>
+                      {/* 数据条占位，让卡片不只有字 */}
+                      <div
+                        style={{
+                          marginTop: 12,
+                          height: 4,
+                          borderRadius: 2,
+                          background: "rgba(255,255,255,0.08)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${30 + i * 18}%`,
+                            height: "100%",
+                            background:
+                              i % 2 === 0 ? "var(--accent)" : "var(--extra-peach)",
+                            opacity: 0.85,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
