@@ -31,7 +31,7 @@ const FEATURES = [
 // 业务主线 5 步
 const PIPELINE = [
   { n: 1, icon: Search,      title: "选明星",   desc: "浏览明星市场，按品类、热度、授权价快速锁定合作对象。",                  tone: "violet" as const },
-  { n: 2, icon: KeyRound,    title: "签授权",   desc: "在线选定套餐档位与商品方向，合规审核一般 1 个工作日内出结果。",         tone: "rose"   as const },
+  { n: 2, icon: KeyRound,    title: "签授权",   desc: "在线选定套餐档位与商品方向，合规审核 1 个工作日内出结果。",            tone: "rose"   as const },
   { n: 3, icon: Wand2,       title: "AI 出片",  desc: "模板化与一键生成两种模式并行，多引擎对比，秒级产出可用素材。",          tone: "peach"  as const },
   { n: 4, icon: Sparkles,    title: "审核分发", desc: "内容审核通过后，自动分发至抖音、快手、小红书、视频号等主流渠道。",      tone: "amber"  as const },
   { n: 5, icon: ShoppingBag, title: "带货结算", desc: "关联商品库、实时回流转化数据，自动完成分账并打款至钱包。",              tone: "teal"   as const },
@@ -114,7 +114,7 @@ export default function CelebrityLandingPage() {
                 <Button variant="secondary" size="sm">登录</Button>
               </Link>
               <Link href="/login?from=%2Fdashboard">
-                <Button variant="accent" size="sm">免费试用 →</Button>
+                <Button variant="accent" size="sm">预约咨询 →</Button>
               </Link>
             </>
           )}
@@ -167,11 +167,11 @@ export default function CelebrityLandingPage() {
             <div style={{ display: "flex", gap: 10 }}>
               <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
                 <Button variant="dark" size="lg">
-                  {isLoggedIn ? "进入工作台 →" : "免费试用 →"}
+                  {isLoggedIn ? "进入工作台 →" : "预约咨询 →"}
                 </Button>
               </Link>
               <Link href="#showcase">
-                <Button variant="secondary" size="lg">查看案例</Button>
+                <Button variant="secondary" size="lg">查看明星阵容</Button>
               </Link>
             </div>
           </div>
@@ -213,12 +213,12 @@ export default function CelebrityLandingPage() {
                       letterSpacing: 0.4,
                     }}
                   >
-                    {featuredStar.category} · 已签约 · 32 条视频今日在投
+                    {featuredStar.category} · 已签约
                   </div>
                 </div>
               }
             />
-            <div style={{ padding: "20px 22px 22px" }}>
+            <div style={{ padding: "22px 22px" }}>
               <p
                 style={{
                   fontSize: 13.5,
@@ -228,9 +228,9 @@ export default function CelebrityLandingPage() {
                   marginBottom: 14,
                 }}
               >
-                本周累计带货 <strong style={{ color: "var(--fg-0)" }}>¥1.82M</strong>,转化率
-                <strong style={{ color: "var(--fg-0)" }}> 1.86% </strong>
-                稳定高于行业均值,授权状态、视频审核与分账明细全部可在工作台一屏掌握。
+                今日 <strong style={{ color: "var(--fg-0)" }}>32 条视频</strong>在投，本周累计带货
+                <strong style={{ color: "var(--fg-0)" }}> ¥1.82M</strong>、转化率
+                <strong style={{ color: "var(--fg-0)" }}> 1.86%</strong>，授权状态、视频审核与分账明细全部可在工作台一屏掌握。
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <Chip tone="romance" size="sm">都市言情</Chip>
@@ -510,7 +510,7 @@ export default function CelebrityLandingPage() {
             </div>
             <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
               <Button variant="accent" size="lg">
-                {isLoggedIn ? "进入工作台 →" : "免费试用 →"}
+                {isLoggedIn ? "进入工作台 →" : "预约咨询 →"}
               </Button>
             </Link>
           </Card>
