@@ -147,10 +147,10 @@ export default function CelebrityLandingPage() {
                 color: "var(--fg-0)",
               }}
             >
-              复刻一位 AI 明星，
+              复刻一位 AI 明星,
               <br />
               <span className="serif-italic" style={{ color: "var(--accent)", fontSize: 56 }}>
-                让顶流 7×24 小时帮你带货。
+                让顶流 7×24 帮你带货。
               </span>
             </h1>
             <p
@@ -176,40 +176,63 @@ export default function CelebrityLandingPage() {
             </div>
           </div>
 
-          {/* 右侧：当前签约明星实时看板（取一位已授权明星作演示） */}
+          {/* 右侧:当前签约明星形象卡(取一位已授权明星作演示) */}
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <GradientBlock
               seed={featuredStar.id}
-              height={140}
+              height={280}
               topLeft={<Chip tone="published" size="sm">● 在投</Chip>}
+              topRight={
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 10,
+                    color: "rgba(255,255,255,0.9)",
+                    letterSpacing: 0.4,
+                    background: "rgba(0,0,0,0.18)",
+                    padding: "3px 9px",
+                    borderRadius: "var(--radius-pill)",
+                  }}
+                >
+                  标准版授权
+                </span>
+              }
               bottom={
                 <div>
-                  <div className="serif-italic" style={{ fontSize: 22, color: "#fff", lineHeight: 1.1 }}>
-                    {featuredStar.name} · 标准版
+                  <div
+                    className="serif-italic"
+                    style={{ fontSize: 34, color: "#fff", lineHeight: 1.05, marginBottom: 8 }}
+                  >
+                    {featuredStar.name}
                   </div>
                   <div
                     className="mono"
                     style={{
                       fontSize: 10.5,
-                      color: "rgba(255,255,255,0.85)",
-                      marginTop: 4,
-                      letterSpacing: 0.3,
+                      color: "rgba(255,255,255,0.82)",
+                      letterSpacing: 0.4,
                     }}
                   >
-                    {featuredStar.category} · 综艺向 · 已签约
+                    {featuredStar.category} · 已签约 · 32 条视频今日在投
                   </div>
                 </div>
               }
             />
-            <div style={{ padding: "16px 18px" }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>今日实时数据</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <PreviewStat label="今日 GMV" value="¥182,400" delta="环比昨日 +12%" tone="success" />
-                <PreviewStat label="投放中视频" value="32" delta="抖音渠道 · 持续上量" tone="accent" />
-                <PreviewStat label="转化率" value="1.86%" delta="高于行业平均水平" tone="success" />
-                <PreviewStat label="待审核" value="3" delta="今日合规审核队列" tone="warning" />
-              </div>
-              <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
+            <div style={{ padding: "20px 22px 22px" }}>
+              <p
+                style={{
+                  fontSize: 13.5,
+                  color: "var(--fg-1)",
+                  lineHeight: 1.65,
+                  margin: 0,
+                  marginBottom: 14,
+                }}
+              >
+                本周累计带货 <strong style={{ color: "var(--fg-0)" }}>¥1.82M</strong>,转化率
+                <strong style={{ color: "var(--fg-0)" }}> 1.86% </strong>
+                稳定高于行业均值,授权状态、视频审核与分账明细全部可在工作台一屏掌握。
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <Chip tone="romance" size="sm">都市言情</Chip>
                 <Chip tone="slice" size="sm">生活种草</Chip>
                 <Chip tone="comedy" size="sm">喜剧综艺</Chip>
@@ -220,26 +243,23 @@ export default function CelebrityLandingPage() {
         </section>
 
         {/* showcase 多色卡 */}
-        <section id="showcase" style={{ maxWidth: 1180, margin: "0 auto", padding: "16px 32px 48px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
-            <div>
-              <div className="eyebrow">明星阵容</div>
-              <h2
-                style={{
-                  fontSize: 22,
-                  fontWeight: 600,
-                  fontFamily: "var(--font-display)",
-                  letterSpacing: "var(--tracking-tight)",
-                  margin: "6px 0 0",
-                  color: "var(--fg-0)",
-                }}
-              >
-                已上线的{" "}
-                <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                  签约明星
-                </span>
-              </h2>
-            </div>
+        <section id="showcase" style={{ maxWidth: 1180, margin: "0 auto", padding: "32px 32px 48px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 28 }}>
+            <h2
+              style={{
+                fontSize: 28,
+                fontWeight: 600,
+                fontFamily: "var(--font-display)",
+                letterSpacing: "var(--tracking-tight)",
+                margin: 0,
+                color: "var(--fg-0)",
+              }}
+            >
+              已上线的{" "}
+              <span className="serif-italic" style={{ color: "var(--accent)" }}>
+                签约明星
+              </span>
+            </h2>
             <Link
               href="/login?from=%2Fmarket"
               style={{
@@ -250,6 +270,7 @@ export default function CelebrityLandingPage() {
                 alignItems: "center",
                 gap: 4,
                 textDecoration: "none",
+                letterSpacing: 0.4,
               }}
             >
               查看全部 <ArrowUpRight size={12} />
@@ -278,33 +299,53 @@ export default function CelebrityLandingPage() {
         </section>
 
         {/* 5 步业务主线 */}
-        <section id="pipeline" style={{ maxWidth: 1180, margin: "0 auto", padding: "16px 32px 48px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
-            <div>
-              <div className="eyebrow">业务主线</div>
-              <h2
-                style={{
-                  fontSize: 22,
-                  fontWeight: 600,
-                  fontFamily: "var(--font-display)",
-                  letterSpacing: "var(--tracking-tight)",
-                  margin: "6px 0 0",
-                  color: "var(--fg-0)",
-                }}
-              >
-                五步跑通{" "}
-                <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                  明星 IP 带货闭环
-                </span>
-                。
-              </h2>
-            </div>
-            <Link href="#features" style={{ fontSize: 12, color: "var(--accent)", fontFamily: "var(--font-mono)", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" }}>
+        <section id="pipeline" style={{ maxWidth: 1180, margin: "0 auto", padding: "32px 32px 64px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 32 }}>
+            <h2
+              style={{
+                fontSize: 28,
+                fontWeight: 600,
+                fontFamily: "var(--font-display)",
+                letterSpacing: "var(--tracking-tight)",
+                margin: 0,
+                color: "var(--fg-0)",
+                maxWidth: 640,
+              }}
+            >
+              五步跑通{" "}
+              <span className="serif-italic" style={{ color: "var(--accent)" }}>
+                明星 IP 带货闭环
+              </span>
+              。
+            </h2>
+            <Link
+              href="#features"
+              style={{
+                fontSize: 12,
+                color: "var(--accent)",
+                fontFamily: "var(--font-mono)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                textDecoration: "none",
+                letterSpacing: 0.4,
+              }}
+            >
               核心能力 <ArrowUpRight size={12} />
             </Link>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
-            {PIPELINE.map((p) => {
+          <ol
+            style={{
+              listStyle: "none",
+              padding: 0,
+              margin: 0,
+              display: "grid",
+              gridTemplateColumns: "repeat(5, 1fr)",
+              borderTop: "1px solid var(--line)",
+              borderBottom: "1px solid var(--line)",
+            }}
+          >
+            {PIPELINE.map((p, idx) => {
               const Icon = p.icon;
               const colorVar = {
                 violet: "var(--accent)",
@@ -314,91 +355,111 @@ export default function CelebrityLandingPage() {
                 teal: "var(--extra-teal)",
               }[p.tone];
               return (
-                <Card key={p.n} style={{ padding: "22px 20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                    <span
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: "50%",
-                        background: colorVar,
-                        color: "#fff",
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {p.n}
-                    </span>
-                    <Icon size={16} color={colorVar} />
+                <li
+                  key={p.n}
+                  style={{
+                    padding: "26px 20px 28px",
+                    borderRight: idx < PIPELINE.length - 1 ? "1px solid var(--line)" : "none",
+                    position: "relative",
+                  }}
+                >
+                  <div
+                    className="serif-italic"
+                    aria-hidden
+                    style={{
+                      fontSize: 44,
+                      lineHeight: 1,
+                      color: colorVar,
+                      marginBottom: 18,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    {String(p.n).padStart(2, "0")}
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-0)", marginBottom: 8, fontFamily: "var(--font-display)" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: "var(--fg-0)",
+                      fontFamily: "var(--font-display)",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Icon size={15} color={colorVar} strokeWidth={2} />
                     {p.title}
                   </div>
-                  <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>{p.desc}</div>
-                </Card>
+                  <p style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6, margin: 0 }}>{p.desc}</p>
+                </li>
               );
             })}
-          </div>
+          </ol>
         </section>
 
         {/* features */}
-        <section id="features" style={{ maxWidth: 1180, margin: "0 auto", padding: "16px 32px 48px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
-            <div>
-              <div className="eyebrow">核心能力</div>
-              <h2
-                style={{
-                  fontSize: 22,
-                  fontWeight: 600,
-                  fontFamily: "var(--font-display)",
-                  letterSpacing: "var(--tracking-tight)",
-                  margin: "6px 0 0",
-                  color: "var(--fg-0)",
-                }}
-              >
-                三大核心能力，打通{" "}
-                <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                  明星 IP 全链路
-                </span>
-                。
-              </h2>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            {FEATURES.map((f) => {
+        <section id="features" style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 32px 56px" }}>
+          <h2
+            style={{
+              fontSize: 28,
+              fontWeight: 600,
+              fontFamily: "var(--font-display)",
+              letterSpacing: "var(--tracking-tight)",
+              margin: "0 0 32px",
+              color: "var(--fg-0)",
+              maxWidth: 640,
+            }}
+          >
+            三大核心能力,打通{" "}
+            <span className="serif-italic" style={{ color: "var(--accent)" }}>
+              明星 IP 全链路
+            </span>
+            。
+          </h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 16 }}>
+            {FEATURES.map((f, idx) => {
               const Icon = f.icon;
+              const isHero = idx === 0;
               return (
-                <Card key={f.title} style={{ padding: "22px 22px" }}>
+                <Card
+                  key={f.title}
+                  style={{
+                    padding: isHero ? "32px 28px" : "26px 22px",
+                    background: isHero ? "var(--bg-1)" : "var(--bg-2)",
+                    border: isHero ? "1px solid var(--line-2)" : "1px solid var(--line)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <Icon
+                    size={isHero ? 22 : 18}
+                    color="var(--accent)"
+                    strokeWidth={isHero ? 1.75 : 2}
+                  />
                   <div
                     style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: "var(--radius-md)",
-                      background: "var(--accent-soft)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginBottom: 14,
-                    }}
-                  >
-                    <Icon size={18} color="var(--accent)" />
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 15.5,
+                      fontSize: isHero ? 19 : 15.5,
                       fontWeight: 600,
                       color: "var(--fg-0)",
-                      marginBottom: 8,
                       fontFamily: "var(--font-display)",
+                      letterSpacing: "var(--tracking-tight)",
+                      lineHeight: 1.25,
                     }}
                   >
                     {f.title}
                   </div>
-                  <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.65 }}>{f.body}</div>
+                  <div
+                    style={{
+                      fontSize: isHero ? 14 : 13,
+                      color: "var(--fg-2)",
+                      lineHeight: 1.7,
+                      marginTop: "auto",
+                    }}
+                  >
+                    {f.body}
+                  </div>
                 </Card>
               );
             })}
@@ -406,37 +467,45 @@ export default function CelebrityLandingPage() {
         </section>
 
         {/* CTA */}
-        <section id="trial" style={{ maxWidth: 1180, margin: "0 auto", padding: "16px 32px 56px" }}>
+        <section id="trial" style={{ maxWidth: 1180, margin: "0 auto", padding: "16px 32px 80px" }}>
           <Card
             style={{
-              padding: "28px 32px",
+              padding: "44px 44px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: 24,
-              background: "var(--bg-2)",
-              border: "1px solid var(--line-2)",
+              gap: 32,
+              background: "var(--ink)",
+              border: "1px solid var(--ink)",
+              color: "#fff",
             }}
           >
-            <div>
-              <div className="eyebrow">现在就开始</div>
+            <div style={{ maxWidth: 560 }}>
               <h3
                 style={{
-                  fontSize: 22,
+                  fontSize: 30,
                   fontWeight: 600,
                   fontFamily: "var(--font-display)",
                   letterSpacing: "var(--tracking-tight)",
-                  margin: "8px 0 6px",
-                  color: "var(--fg-0)",
+                  margin: "0 0 12px",
+                  color: "#fff",
+                  lineHeight: 1.15,
                 }}
               >
                 让明星 IP 接入{" "}
-                <span className="serif-italic" style={{ color: "var(--accent)" }}>
+                <span className="serif-italic" style={{ color: "#b4a4ff" }}>
                   AI Star Eco
                 </span>
               </h3>
-              <p style={{ fontSize: 13.5, color: "var(--fg-2)", margin: 0, maxWidth: 520, lineHeight: 1.6 }}>
-                联系商务团队开通授权方专属工作台，1 个工作日内完成对接上线。
+              <p
+                style={{
+                  fontSize: 14,
+                  color: "rgba(255,255,255,0.72)",
+                  margin: 0,
+                  lineHeight: 1.65,
+                }}
+              >
+                联系商务团队开通授权方专属工作台,1 个工作日内完成对接上线。
               </p>
             </div>
             <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
@@ -480,41 +549,6 @@ export default function CelebrityLandingPage() {
           </div>
         </div>
       </footer>
-    </div>
-  );
-}
-
-function PreviewStat({
-  label,
-  value,
-  delta,
-  tone,
-}: {
-  label: string;
-  value: string;
-  delta: string;
-  tone: "accent" | "success" | "warning";
-}) {
-  const color = `var(--${tone === "accent" ? "accent" : tone})`;
-  return (
-    <div>
-      <div className="eyebrow">{label}</div>
-      <div
-        style={{
-          fontSize: 20,
-          fontWeight: 700,
-          fontFamily: "var(--font-display)",
-          letterSpacing: "var(--tracking-tight)",
-          color: "var(--fg-0)",
-          marginTop: 6,
-          lineHeight: 1,
-        }}
-      >
-        {value}
-      </div>
-      <div className="mono" style={{ fontSize: 10.5, color, marginTop: 4 }}>
-        {delta}
-      </div>
     </div>
   );
 }
