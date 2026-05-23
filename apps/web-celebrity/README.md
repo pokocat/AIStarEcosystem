@@ -107,9 +107,11 @@ tests          : DouyinQueryEmbeddedHandlerTest（4 测）+ ProductLinkServiceTe
 - DouyinHtmlScrapeHandler 走 HttpClient GET（UA=desktop Chrome, timeout=8s），host 必须命中 `*.jinritemai.com|*.douyin.com` 白名单防 SSRF。
 - ProductLinkPersistService 整体单事务；图片登记失败 log + 不回滚（图片不全比完全失败要好）。
 - ProductLinkController 挂在 `/api/me/products/*`，受 `/api/me/**` 已有 `.authenticated()` 规则保护。
-- CelebrityProductSeeder 守卫是 `productRepository.count() == 0`，运营首次自行录入后表非空 → 跳过；不会覆盖。**仅** Product 行，不抓图片（避免启动打外网；用户首次访问可手动触发解析回填）。
+- **CelebrityProductSeeder 改用「版本号守门 + 一次性 reset」**：启动时读 `aep_platform_configs.aep.celebrity.products.seed-version`，与代码内 `SEED_VERSION = "v0.28-2026-05-23"` 不匹配则 **清空 product 表 + 所有 relatedProductId 关联的 MixcutAsset 行** + 重新种 6 行 + 写回新版本号；匹配则跳过。升级 seed 数据只需 bump `SEED_VERSION`，下次启动自动 reset。这是用户「初始化系统数据，把以前老的都删掉」的语义实现 —— 注意此 reset 会清掉运营手动录入的商品，生产化需用 source 字段区分 seed vs manual。**仅** Product + 关联 MixcutAsset 行，不抓图片（避免启动打外网；用户首次访问可手动触发解析回填）。
+- 前端 `STORAGE_KEY` 同步 bump 到 `aistareco.web.products.v2`，老 v1 缓存在 `loadStore()` 启动时被 `removeItem("aistareco.web.products.v1")` 清理，mock 模式下自动回退到 `SEED_PRODUCTS` 6 行。
 - 启发式 slot 绑定按 slot_id / label / fill_strategy 子串匹配，模板命名规范越好命中率越高；不命中保留空让用户手填。
 - 「商品ID」列在批量导入时被识别但**不持久化**（server 自己生成 id）；运营手粘表格时 ID 仅作 link URL 的参考。
+- MixcutRenderJob.productId 是软引用字符串（无 FK 约束），reset 时残留指向被删商品的 job 不清理 —— 下游 BatchPublishDrawer fetch product null 时优雅降级（不 prefill），不会崩。
 
 **契约状态**：`(cd apps/web && npm run check:api-contract)` ✅ OK · `pnpm typecheck:all` ✅ 七 workspace 全绿 · `./mvnw compile` + `./mvnw test -Dtest='DouyinQueryEmbeddedHandlerTest,ProductLinkServiceTest'` ✅ 11 测全绿。
 

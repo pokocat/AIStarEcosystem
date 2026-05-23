@@ -9,7 +9,11 @@ import type { ID } from "@ai-star-eco/types/_shared";
 import { SEED_PRODUCTS } from "@/mocks/products";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
-const STORAGE_KEY = "aistareco.web.products.v1";
+// v0.28+: bump 到 v2 以触发一次性 mock localStorage 迁移：
+// 老的 v1 缓存（含 picsum demo 商品 / 用户在 v0.27 之前录入的数据）会被跳过，
+// 重新从 SEED_PRODUCTS 加载 6 行抖音选品样例。下次升级 seed 数据时再 bump 到 v3。
+const STORAGE_KEY = "aistareco.web.products.v2";
+const LEGACY_STORAGE_KEYS = ["aistareco.web.products.v1"] as const;
 
 // ── 内存缓存 + 持久化 ───────────────────────────────────────────────────────
 let memoryStore: Product[] | null = null;
@@ -19,6 +23,14 @@ function loadStore(): Product[] {
   if (typeof window === "undefined") {
     memoryStore = [...SEED_PRODUCTS];
     return memoryStore;
+  }
+  // 一次性清理老版本 key 的残留缓存，避免占用 localStorage 配额
+  try {
+    for (const legacy of LEGACY_STORAGE_KEYS) {
+      window.localStorage.removeItem(legacy);
+    }
+  } catch {
+    /* 隐私模式静默 */
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
