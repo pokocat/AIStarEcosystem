@@ -100,6 +100,12 @@ export function CreateClient({ id }: { id: string }) {
    */
   const [linkedProduct, setLinkedProduct] = useState<Product | null>(null);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
+  /**
+   * v0.26+: 当前正在画布上预览的场景索引。
+   * - 用户点上方场景 tab 直接切；点中列某个 slot input 时也会自动跳到该 slot 所属场景。
+   * - 单场景模板（scenes.length === 1）下永远是 0，tab 条不渲染，行为与旧版一致。
+   */
+  const [activeSceneIdx, setActiveSceneIdx] = useState(0);
   const initFromTemplateRef = useRef(false);
   const { confirm, ConfirmHost } = useConfirm();
 
@@ -128,6 +134,20 @@ export function CreateClient({ id }: { id: string }) {
     setVariants(template.output_variants_default);
   }, [template]);
 
+  // v0.26+: 用户在中列点开某个 slot 的 input → 画布自动跳到该 slot 所在场景。
+  // 让"我在填的内容"和"画布上正在显示的画面"始终对齐，避免用户编辑 scene 3 的标题
+  // 但画布锁在 scene 1 看不到效果。
+  useEffect(() => {
+    if (!focusedSlot || !template) return;
+    const idx = template.scenes.findIndex((sc) =>
+      sc.slots.some((s) => s.slot_id === focusedSlot),
+    );
+    if (idx >= 0 && idx !== activeSceneIdx) setActiveSceneIdx(idx);
+    // activeSceneIdx 不进依赖 —— 我们只在 focusedSlot 改变时主动跳；
+    // 用户点 tab 主动切场景时不应被这个 effect 反推回去。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedSlot, template]);
+
   if (resolved && !template) notFound();
   if (!template) {
     return (
@@ -149,6 +169,29 @@ export function CreateClient({ id }: { id: string }) {
   const allSlots = flatSlotsOf(template);
   const editableSlots = allSlots.filter((s) => s.user_editable);
   const requiredSlots = editableSlots.filter((s) => s.required);
+
+  // v0.26+: 画布预览专用 —— 把模板收窄到「仅当前选中场景」，避免多场景 slot rect 全部叠加在
+  // 同一画框里。clamp activeSceneIdx 防止模板异步加载完后越界。
+  const safeSceneIdx = Math.min(activeSceneIdx, Math.max(0, template.scenes.length - 1));
+  const activeScene = template.scenes[safeSceneIdx];
+  const sceneStartOffset = template.scenes.slice(0, safeSceneIdx).reduce((acc, s) => acc + s.duration, 0);
+  const previewTemplate = activeScene
+    ? {
+        ...template,
+        canvas: { ...template.canvas, duration: activeScene.duration },
+        scenes: [activeScene],
+      }
+    : template;
+  const handleSelectScene = (idx: number) => {
+    setActiveSceneIdx(idx);
+    setFocusedSlot(null);
+    // 同步把中列对应场景块滚到视口顶部，方便用户在 input 区直接看到对应场景的素材位
+    const target = template.scenes[idx];
+    if (target && typeof document !== "undefined") {
+      const el = document.getElementById(`scene-block-${target.id}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
   const isBound = (slotId: string) => {
     const b = bindings[slotId];
     return b && ((b.source === "input" && b.text.trim()) || b.source === "library" || b.source === "upload");
@@ -313,8 +356,45 @@ export function CreateClient({ id }: { id: string }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_360px] gap-6">
         <div className="lg:sticky lg:top-20 self-start space-y-3">
+          {/* v0.26+: 多场景时在画布上方插入场景 tab。点 tab 同时滚动中列到对应场景块。
+              单场景模板（最常见）不渲染，UI 与旧版一致。 */}
+          {template.scenes.length > 1 && (
+            <div className="rounded-lg border bg-card p-2 space-y-2">
+              <div className="text-[11px] text-muted-foreground px-1 flex items-center justify-between">
+                <span>场景流程 · 共 {template.scenes.length} 段</span>
+                <span className="font-mono">
+                  第 {safeSceneIdx + 1} 段 · {sceneStartOffset.toFixed(0)}s ~ {(sceneStartOffset + (activeScene?.duration ?? 0)).toFixed(0)}s
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {template.scenes.map((sc, i) => {
+                  const isActive = i === safeSceneIdx;
+                  return (
+                    <button
+                      key={sc.id}
+                      type="button"
+                      onClick={() => handleSelectScene(i)}
+                      className={cn(
+                        "px-2 py-1 rounded-md text-[11px] border transition-colors flex items-center gap-1.5",
+                        isActive
+                          ? "bg-foreground text-background border-foreground"
+                          : "bg-transparent border-border text-muted-foreground hover:border-foreground/60 hover:text-foreground",
+                      )}
+                    >
+                      <span className="font-mono">{i + 1}</span>
+                      <span className="truncate max-w-[80px]">{sc.label}</span>
+                      <span className={cn("font-mono", isActive ? "text-background/70" : "text-muted-foreground/60")}>
+                        {sc.duration}s
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <TemplatePreview
-            template={template}
+            template={previewTemplate}
             bindings={bindings}
             selectedSlotId={focusedSlot}
             onSelectSlot={setFocusedSlot}
@@ -390,16 +470,38 @@ export function CreateClient({ id }: { id: string }) {
               const startOffset = offset;
               offset += scene.duration;
               if (sceneEditable.length === 0 && sceneFixedCount === 0) return;
+              const isActiveScene = multiScene && sceneIdx === safeSceneIdx;
               blocks.push(
-                <div key={scene.id} className="space-y-3">
+                <div
+                  key={scene.id}
+                  id={`scene-block-${scene.id}`}
+                  className={cn(
+                    "space-y-3 scroll-mt-24",
+                    // v0.26+: 当前正在画布上预览的场景在中列加一道紫色描边 + 浅色底，
+                    // 让"我在填的内容"和"画布显示的内容"视觉上对齐
+                    isActiveScene && "rounded-lg ring-1 ring-violet-500/40 bg-violet-500/[0.03] p-3 -mx-3",
+                  )}
+                >
                   {multiScene && (
-                    <div className="flex items-center gap-2 pt-2 first:pt-0">
-                      <div className="size-7 rounded-md bg-violet-500/10 text-violet-500 grid place-items-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectScene(sceneIdx)}
+                      className="flex items-center gap-2 pt-2 first:pt-0 w-full text-left hover:opacity-80 transition-opacity"
+                    >
+                      <div
+                        className={cn(
+                          "size-7 rounded-md grid place-items-center shrink-0",
+                          isActiveScene ? "bg-violet-500 text-white" : "bg-violet-500/10 text-violet-500",
+                        )}
+                      >
                         <Film className="size-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold tracking-tight truncate">
                           第 {sceneIdx + 1} 段 · {scene.label}
+                          {isActiveScene && (
+                            <span className="ml-2 text-[10px] font-normal text-violet-500">画布正在显示</span>
+                          )}
                         </div>
                         <div className="text-[11px] text-muted-foreground mt-0.5">
                           {startOffset.toFixed(0)}s ~ {offset.toFixed(0)}s · 时长 {scene.duration}s
@@ -407,7 +509,7 @@ export function CreateClient({ id }: { id: string }) {
                           {sceneFixedCount > 0 && ` · ${sceneFixedCount} 处固定内容`}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   )}
                   {sceneEditable.map((s) => (
                     <div key={`${scene.id}::${s.slot_id}`} id={`slot-${s.slot_id}`}>

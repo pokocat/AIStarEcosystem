@@ -119,6 +119,38 @@ def test_verify_returns_valid_for_nonempty_state(client: TestClient) -> None:
     assert r.json()["valid"] is True
 
 
+def test_verify_lite_mock_surface(client: TestClient) -> None:
+    r = client.post(
+        "/accounts/verify-lite",
+        headers=_h(),
+        json={"platform": "douyin", "storageState": {"cookies": [{"name": "x", "value": "y"}]}},
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "valid"
+
+    r2 = client.post(
+        "/accounts/verify-lite",
+        headers=_h(),
+        json={"platform": "douyin", "storageState": {}},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "invalid"
+
+
+def test_douyin_verify_lite_classifier() -> None:
+    from sau_service.routes.accounts import _classify_douyin_lite_response
+
+    assert _classify_douyin_lite_response(
+        "https://creator.douyin.com/creator-micro/home", 200, "<html></html>",
+    )[0] == "valid"
+    assert _classify_douyin_lite_response(
+        "https://passport.douyin.com/login", 200, "<html></html>",
+    )[0] == "invalid"
+    assert _classify_douyin_lite_response(
+        "https://creator.douyin.com/creator-micro/home", 403, "forbidden",
+    )[0] == "unknown"
+
+
 def test_verify_real_mode_unsupported_platform_returns_invalid(monkeypatch) -> None:
     """Real mode + a platform we haven't wired (bilibili) must return
     valid=False *without* importing patchright. The slim mock-mode CI doesn't
@@ -536,6 +568,33 @@ def _install_fake_driver(monkeypatch, platform: str = "douyin"):
     from sau_service import interaction
     monkeypatch.setitem(interaction.SMS_DRIVERS, platform, driver)
     return driver
+
+
+def test_login_pool_submit_interaction_clears_binding_sms(monkeypatch) -> None:
+    from sau_service.login_pool import LoginPool, LoginSession
+
+    driver = _install_fake_driver(monkeypatch, "douyin")
+    pool = LoginPool(ttl_seconds=60)
+    session = LoginSession(
+        ticket="bind-sms",
+        platform="douyin",
+        account_name="alice",
+        expires_at=9999999999,
+        real_mode=True,
+        handles={"page": object()},
+        interaction_required={
+            "kind": "sms",
+            "prompt": "平台要求输入短信验证码以完成账号绑定。",
+            "createdAt": "2026-05-20T00:00:00+00:00",
+        },
+    )
+    pool._sessions[session.ticket] = session  # direct fixture setup
+
+    result = asyncio.run(pool.submit_interaction("bind-sms", {"code": "888888"}, mock=False))
+
+    assert result == "accepted"
+    assert driver.submit_code_calls == ["888888"]
+    assert session.interaction_required is None
 
 
 def test_sms_watcher_pushes_awaiting_user_and_resumes_on_correct_code(monkeypatch) -> None:

@@ -386,6 +386,32 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
     def _panel(self, page: Any) -> Any:
         return page.locator(self.PANEL_SELECTOR).filter(has_text="接收短信验证码").first
 
+    async def _advance_choice_panel(self, page: Any) -> bool:
+        """Click through Douyin's identity-verification method picker.
+
+        The login/bind flow can first show a large "身份验证" panel with rows
+        like "接收短信验证码" or "发送短信验证". That is not the code input panel
+        yet; clicking the SMS row lands on the panel handled by the existing
+        selectors below.
+        """
+        try:
+            title = page.get_by_text("身份验证", exact=True).first
+            if not await title.count() or not await title.is_visible(timeout=500):
+                return False
+        except Exception:  # noqa: BLE001
+            return False
+
+        for label in ("接收短信验证码", "发送短信验证", "短信验证码"):
+            try:
+                target = page.get_by_text(label, exact=True).first
+                if await target.count() and await target.is_visible(timeout=500):
+                    await target.click(timeout=1_500)
+                    await page.wait_for_timeout(600)
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
     async def _is_modal_visible(self, page: Any) -> bool:
         panel = self._panel(page)
         try:
@@ -408,6 +434,8 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
 
     async def detect(self, page: Any) -> dict[str, Any] | None:
         await self._capture_sms_dom_if_enabled(page)
+        if not await self._is_modal_visible(page):
+            await self._advance_choice_panel(page)
         if not await self._is_modal_visible(page):
             return None
 

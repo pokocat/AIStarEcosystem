@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID, ISODateTime } from "./_shared";
+import type { InteractionRequired } from "./publish-job";
 
 /** v1 启用 4 平台：抖音 / 快手 / 视频号 / 小红书；其余 enum 占位但 service 抛 501。 */
 export type SocialPlatform =
@@ -57,7 +58,16 @@ export interface SocialAccountBindInit {
 
 /** /me/social-accounts/bind-poll 的返回：扫码状态。 */
 export interface SocialAccountBindPollResult {
-  status: "pending" | "success" | "expired";
+  status: "pending" | "awaiting_user" | "success" | "expired" | "failed";
   /** 仅 status==="success" 时返回，已是清洁版（不含 storage_state） */
   account?: SocialAccount;
+  /** status==="awaiting_user" 时返回，提示前端输入验证码等 */
+  interactionRequired?: InteractionRequired | null;
+  errorCode?: string;
+  message?: string;
+  diagnosticId?: string;
+}
+
+export interface SubmitBindInteractionInput {
+  code: string;
 }

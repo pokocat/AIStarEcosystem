@@ -15,6 +15,7 @@ import type {
   SocialAccountBindInit,
   SocialAccountBindInput,
   SocialAccountBindPollResult,
+  SubmitBindInteractionInput,
 } from "@ai-star-eco/types/social-account";
 import type { ID } from "@ai-star-eco/types/_shared";
 import { apiFetch } from "../_client";
@@ -52,6 +53,18 @@ export async function cancelBind(ticket: string): Promise<void> {
   await apiFetch<void>("/me/social-accounts/bind-cancel", {
     method: "POST",
     query: { ticket },
+  });
+}
+
+/** 提交绑定过程中的短信验证码；成功后继续 pollBind 等待最终绑定结果。 */
+export async function submitBindInteraction(
+  ticket: string,
+  input: SubmitBindInteractionInput,
+): Promise<void> {
+  await apiFetch<void>("/me/social-accounts/bind-interaction", {
+    method: "POST",
+    query: { ticket },
+    body: input,
   });
 }
 

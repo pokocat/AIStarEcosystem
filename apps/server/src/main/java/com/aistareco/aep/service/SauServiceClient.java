@@ -88,6 +88,12 @@ public class SauServiceClient {
         return getJson("/login/poll" + q);
     }
 
+    /** POST /login/interaction?ticket=… { code } — 提交绑定过程中的验证码。 */
+    public void loginInteraction(String ticket, String code) {
+        String q = "?ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8);
+        postJson("/login/interaction" + q, Map.of("code", code));
+    }
+
     /** POST /login/cancel?ticket=… — 关掉远端 sau-service 的扫码会话，触发 playwright teardown。
      *  幂等：sau-service 返回 204，不存在的 ticket 静默成功。 */
     public void loginCancel(String ticket) {
@@ -121,6 +127,18 @@ public class SauServiceClient {
         } finally {
             verifyMutex.release();
         }
+    }
+
+    /**
+     * POST /accounts/verify-lite { platform, storageState }
+     * 返回 {status: valid|invalid|unknown, errorCode?, message?, diagnosticId?}。
+     * 轻量校验不占用 verifyMutex；unknown 由调用方决定是否回退重验证。
+     */
+    public Map<String, Object> verifyAccountLite(String platformWire, Map<String, Object> storageState) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("platform", platformWire);
+        body.put("storageState", storageState);
+        return postJson("/accounts/verify-lite", body);
     }
 
     /** POST /upload — 返回 {taskId} */

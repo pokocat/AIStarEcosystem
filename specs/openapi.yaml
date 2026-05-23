@@ -1825,8 +1825,16 @@ components:
       type: object
       required: [status]
       properties:
-        status:  { type: string, enum: [pending, success, expired] }
+        status:  { type: string, enum: [pending, awaiting_user, success, expired, failed] }
         account: { $ref: '#/components/schemas/SocialAccount' }
+        interactionRequired:
+          allOf:
+            - $ref: '#/components/schemas/InteractionRequired'
+          nullable: true
+          description: status=awaiting_user 时存在；账号绑定阶段的短信验证码等交互上下文
+        errorCode:    { type: string, nullable: true }
+        message:      { type: string, nullable: true }
+        diagnosticId: { type: string, nullable: true }
 
     PublishJobStatus:
       type: string
@@ -1884,6 +1892,7 @@ components:
         coverUrl:          { type: string, nullable: true }
         externalTaskId:    { type: string, nullable: true, description: sau-service 远端任务 id (idempotent callback key) }
         externalUrl:       { type: string, nullable: true, description: 平台发布后的可访问 URL }
+        errorCode:         { type: string, nullable: true }
         errorMessage:      { type: string, nullable: true }
         creditsSpent:      { type: integer, nullable: true, description: 任务扣的积分；失败不退 }
         interactionRequired:
@@ -4993,6 +5002,28 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/SocialAccountBindPollResult' }
+
+  /me/social-accounts/bind-interaction:
+    post:
+      tags: [social-distribution]
+      operationId: submitSocialAccountBindInteraction
+      summary: 提交账号绑定过程中的人机交互响应（短信验证码等）
+      parameters:
+        - { in: query, name: ticket, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  minLength: 1
+                  maxLength: 32
+      responses:
+        '204': { description: sau-service 已接受验证码，前端继续 poll 绑定状态 }
 
   /me/social-accounts/bind-cancel:
     post:

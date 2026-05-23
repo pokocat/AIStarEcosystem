@@ -51,6 +51,14 @@ public class SocialAccountController {
         return ApiResponse.of(service.pollBind(principal.getName(), ticket));
     }
 
+    @PostMapping("/bind-interaction")
+    public ResponseEntity<Void> bindInteraction(Principal principal,
+                                                 @RequestParam("ticket") String ticket,
+                                                 @RequestBody SubmitBindInteractionRequest body) {
+        service.submitBindInteraction(principal.getName(), ticket, body != null ? body.code() : null);
+        return ResponseEntity.noContent().build();
+    }
+
     /** 用户在前端关掉/取消扫码弹窗时调用，杀掉 sau-service 进行中的 playwright，并清掉 PENDING 行。 */
     @PostMapping("/bind-cancel")
     public ResponseEntity<Void> bindCancel(Principal principal,
@@ -69,4 +77,6 @@ public class SocialAccountController {
         service.unbind(principal.getName(), id);
         return ResponseEntity.noContent().build();
     }
+
+    public record SubmitBindInteractionRequest(String code) {}
 }

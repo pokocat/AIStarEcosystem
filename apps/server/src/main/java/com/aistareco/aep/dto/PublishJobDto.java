@@ -36,6 +36,7 @@ public record PublishJobDto(
         String productTitle,
         String externalTaskId,
         String externalUrl,
+        String errorCode,
         String errorMessage,
         Long creditsSpent,
         /**
@@ -68,6 +69,7 @@ public record PublishJobDto(
                 j.getProductTitle(),
                 j.getExternalTaskId(),
                 j.getExternalUrl(),
+                j.getErrorCode(),
                 j.getErrorMessage(),
                 j.getCreditsSpent(),
                 parseInteraction(j.getInteractionRequiredJson()),

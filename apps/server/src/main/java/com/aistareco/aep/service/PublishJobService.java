@@ -35,7 +35,7 @@ import java.util.UUID;
  *
  * 关键事务：
  *   - createBatch     : 仅插入 queued 行，**不扣费**
- *   - startJob        : queued → uploading；**此时扣费 (失败不退)**；调 sau-service /upload
+ *   - startJob        : 先校验账号 cookie；通过后 queued → uploading 并扣费；调 sau-service /upload
  *   - applyCallback   : sau-service → server 进度推送；幂等 (按 externalTaskId)
  *   - cancel / retry  : 终态约束 + 不退款
  *   - resumeInflight  : @PostConstruct 启动时扫所有 in-progress 状态，逐条调 sau /tasks/{id}
@@ -220,13 +220,30 @@ public class PublishJobService {
             throw new BusinessException(HttpStatus.CONFLICT, "JOB_NOT_QUEUED",
                     "仅 queued 任务可启动，当前 status=" + job.getStatus().wire());
         }
-        SocialAccount account = accountRepo.findByIdAndUserId(job.getSocialAccountId(), userId)
-                .orElseThrow(() -> BusinessException.notFound("SOCIAL_ACCOUNT_NOT_FOUND",
-                        "社交账号不存在 (可能已解绑)"));
+        SocialAccount account = accountRepo.findByIdAndUserId(job.getSocialAccountId(), userId).orElse(null);
+        if (account == null) {
+            failBeforeDispatch(job, null, "SOCIAL_ACCOUNT_NOT_FOUND", "社交账号不存在 (可能已解绑)");
+            return PublishJobDto.from(job);
+        }
         if (account.getStatus() != SocialAccountStatus.ACTIVE
                 || account.getStorageStateEncrypted() == null) {
-            throw new BusinessException(HttpStatus.CONFLICT, "ACCOUNT_NOT_ACTIVE",
+            failBeforeDispatch(job, account, "ACCOUNT_NOT_ACTIVE",
                     "社交账号不可用 (status=" + account.getStatus().wire() + ")");
+            return PublishJobDto.from(job);
+        }
+
+        Map<String, Object> storageState;
+        try {
+            // 解密 storage_state — 仅本方法局部变量持有明文
+            storageState = secret.decryptStorageState(account.getStorageStateEncrypted());
+        } catch (Exception e) {
+            failBeforeDispatch(job, account, "ACCOUNT_STATE_DECRYPT_FAILED",
+                    "账号凭据解密失败，请重新绑定账号");
+            return PublishJobDto.from(job);
+        }
+
+        if (!verifyAccountBeforeCharge(job, account, storageState)) {
+            return PublishJobDto.from(job);
         }
 
         long cost = defaultUploadCost; // 后续可按 platform 读 PlatformConfig
@@ -234,9 +251,6 @@ public class PublishJobService {
         creditService.debit(userId, cost, "publish_job_upload", job.getId(),
                 "发布任务上传 - " + account.getPlatform().wire() + " - " + job.getTitle());
         job.setCreditsSpent(cost);
-
-        // 解密 storage_state — 仅本方法局部变量持有明文
-        Map<String, Object> storageState = secret.decryptStorageState(account.getStorageStateEncrypted());
 
         // 翻 UPLOADING 先落库 (拿 externalTaskId 后再保存一次)
         PublishJobStatus from = job.getStatus();
@@ -285,6 +299,107 @@ public class PublishJobService {
             // 不重抛 — 让调用方拿到 PublishJobDto 看到 FAILED 状态
         }
         return PublishJobDto.from(job);
+    }
+
+    private boolean verifyAccountBeforeCharge(PublishJob job,
+                                              SocialAccount account,
+                                              Map<String, Object> storageState) {
+        String platformWire = account.getPlatform().wire();
+        try {
+            Map<String, Object> lite = sau.verifyAccountLite(platformWire, storageState);
+            String liteStatus = stringOrNull(lite.get("status"));
+            if ("valid".equals(liteStatus)) {
+                account.setStatus(SocialAccountStatus.ACTIVE);
+                account.setLastVerifiedAt(Instant.now());
+                accountRepo.save(account);
+                log.info("publish preflight lite valid jobId={} accountId={} platform={}",
+                        job.getId(), account.getId(), platformWire);
+                return true;
+            }
+            if ("invalid".equals(liteStatus)) {
+                expireAccountAndFail(job, account, "ACCOUNT_EXPIRED",
+                        firstNonBlank(stringOrNull(lite.get("message")), "账号登录已失效，请重新绑定后重试"));
+                log.info("publish preflight lite invalid jobId={} accountId={} platform={} code={}",
+                        job.getId(), account.getId(), platformWire, stringOrNull(lite.get("errorCode")));
+                return false;
+            }
+            log.info("publish preflight lite unknown jobId={} accountId={} platform={} code={} diagnosticId={}",
+                    job.getId(), account.getId(), platformWire,
+                    stringOrNull(lite.get("errorCode")), stringOrNull(lite.get("diagnosticId")));
+        } catch (BusinessException e) {
+            log.warn("publish preflight lite failed jobId={} accountId={} platform={} err={}",
+                    job.getId(), account.getId(), platformWire, e.getMessage());
+        }
+
+        try {
+            Map<String, Object> heavy = sau.verifyAccount(platformWire, storageState);
+            boolean valid = Boolean.TRUE.equals(heavy.get("valid"));
+            if (!valid) {
+                expireAccountAndFail(job, account, "ACCOUNT_EXPIRED",
+                        "账号登录已失效，请重新绑定后重试");
+                log.info("publish preflight patchright invalid jobId={} accountId={} platform={}",
+                        job.getId(), account.getId(), platformWire);
+                return false;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> refreshed = (Map<String, Object>) heavy.get("refreshedStorageState");
+            if (refreshed != null && !refreshed.isEmpty()) {
+                account.setStorageStateEncrypted(secret.encryptStorageState(refreshed));
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> profile = (Map<String, Object>) heavy.get("profile");
+            applyAccountProfile(account, profile, false);
+            account.setStatus(SocialAccountStatus.ACTIVE);
+            account.setLastVerifiedAt(Instant.now());
+            accountRepo.save(account);
+            log.info("publish preflight patchright valid jobId={} accountId={} platform={}",
+                    job.getId(), account.getId(), platformWire);
+            return true;
+        } catch (BusinessException e) {
+            failBeforeDispatch(job, account, "ACCOUNT_VERIFY_FAILED",
+                    "账号状态校验失败，暂未派单扣费：" + e.getMessage());
+            log.warn("publish preflight patchright failed jobId={} accountId={} platform={} err={}",
+                    job.getId(), account.getId(), platformWire, e.getMessage());
+            return false;
+        }
+    }
+
+    private void expireAccountAndFail(PublishJob job, SocialAccount account, String code, String message) {
+        account.setStatus(SocialAccountStatus.EXPIRED);
+        accountRepo.save(account);
+        failBeforeDispatch(job, account, code, message);
+    }
+
+    private void failBeforeDispatch(PublishJob job, SocialAccount account, String code, String message) {
+        PublishJobStatus from = job.getStatus();
+        job.setStatus(PublishJobStatus.FAILED);
+        job.setProgress(0);
+        job.setErrorCode(code);
+        job.setErrorMessage(message);
+        job.setExternalTaskId(null);
+        jobRepo.save(job);
+        writeEvent(job.getId(), "error", from, PublishJobStatus.FAILED, 0, code + ": " + message);
+        log.info("publish preflight blocked jobId={} accountId={} code={}",
+                job.getId(), account != null ? account.getId() : null, code);
+    }
+
+    private static void applyAccountProfile(SocialAccount account, Map<String, Object> profile, boolean clearMissing) {
+        if (profile == null || profile.isEmpty()) return;
+        applyAccountProfileField(profile, "displayName", clearMissing, account::setDisplayName);
+        applyAccountProfileField(profile, "platformAccountId", clearMissing, account::setPlatformAccountId);
+        applyAccountProfileField(profile, "avatarUrl", clearMissing, account::setAvatarUrl);
+    }
+
+    private static void applyAccountProfileField(Map<String, Object> profile,
+                                                 String key,
+                                                 boolean clearMissing,
+                                                 java.util.function.Consumer<String> setter) {
+        String value = stringOrNull(profile.get(key));
+        if (value != null || clearMissing) setter.accept(value);
+    }
+
+    private static String firstNonBlank(String first, String fallback) {
+        return first != null && !first.isBlank() ? first : fallback;
     }
 
     // ── callback (idempotent by externalTaskId) ─────────────────────────

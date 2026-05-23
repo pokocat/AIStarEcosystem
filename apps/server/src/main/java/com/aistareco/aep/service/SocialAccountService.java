@@ -147,8 +147,20 @@ public class SocialAccountService {
         switch (status) {
             case "pending":
                 return SocialAccountBindPollResultDto.pending();
+            case "awaiting_user":
+                @SuppressWarnings("unchecked")
+                Map<String, Object> interaction = (Map<String, Object>) sauResp.get("interactionRequired");
+                return SocialAccountBindPollResultDto.awaitingUser(interaction);
             case "expired":
                 return SocialAccountBindPollResultDto.expired();
+            case "failed":
+                entity.setStatus(SocialAccountStatus.EXPIRED);
+                repo.save(entity);
+                return SocialAccountBindPollResultDto.failed(
+                        stringOrNull(sauResp.get("errorCode")),
+                        stringOrNull(sauResp.get("message")),
+                        stringOrNull(sauResp.get("diagnosticId"))
+                );
             case "success":
                 // 取明文 storage_state — 仅本方法局部变量存活
                 @SuppressWarnings("unchecked")
@@ -172,6 +184,17 @@ public class SocialAccountService {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "SAU_UNKNOWN_STATUS",
                         "sau-service 返回未知 status=" + status);
         }
+    }
+
+    @Transactional
+    public void submitBindInteraction(String userId, String ticket, String code) {
+        repo.findByIdAndUserId(ticket, userId)
+                .orElseThrow(() -> BusinessException.notFound("BIND_TICKET_NOT_FOUND",
+                        "ticket 无效或不属于当前用户"));
+        if (code == null || code.isBlank()) {
+            throw BusinessException.badRequest("INTERACTION_CODE_BLANK", "验证码不能为空");
+        }
+        sau.loginInteraction(ticket, code.trim());
     }
 
     /**

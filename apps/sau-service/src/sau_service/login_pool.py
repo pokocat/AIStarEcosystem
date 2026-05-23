@@ -39,11 +39,12 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .browser_runtime import chromium_launch_kwargs
+from .interaction import get_sms_driver, now_unix
 from .qr import build_mock_qr
 
 log = logging.getLogger(__name__)
@@ -61,6 +62,13 @@ def _env_int(name: str, default: int) -> int:
 
 
 LOGIN_NAV_TIMEOUT_MS = _env_int("SAU_LOGIN_NAV_TIMEOUT_MS", 90_000)
+
+
+def string_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 # ─── Platform drivers ────────────────────────────────────────────────────
@@ -363,12 +371,18 @@ async def _dump_qr_extraction_failure(
 
     Best-effort：本身不抛；返回 {screenshot_path, html_path, url} 让 caller
     把路径塞到 raise 的 message 里。"""
-    result: dict[str, Any] = {"screenshot_path": None, "html_path": None, "url": None}
+    result: dict[str, Any] = {
+        "diagnostic_id": None,
+        "screenshot_path": None,
+        "html_path": None,
+        "url": None,
+    }
     try:
         url = getattr(page, "url", None)
         result["url"] = url
 
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        result["diagnostic_id"] = f"{platform}-{ts}"
         base_dir = _snapshot_dir()
         try:
             base_dir.mkdir(parents=True, exist_ok=True)
@@ -1987,6 +2001,12 @@ class LoginSession:
     # real-mode handles: {playwright, browser, context, page}.
     # Kept open between /login/start and /login/poll; closed on success/expire/drop.
     handles: dict[str, Any] = field(default_factory=dict)
+    # real-mode: current platform interaction needed to finish login
+    # (SMS verification for v1). Shape mirrors frontend InteractionRequired.
+    interaction_required: dict[str, Any] | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    diagnostic_id: str | None = None
 
 
 class LoginPool:
@@ -2030,6 +2050,60 @@ class LoginPool:
         if mock:
             return await self._poll_mock(session)
         return await self._poll_real(session)
+
+    async def submit_interaction(self, ticket: str, response: dict[str, Any], *, mock: bool) -> str:
+        """Submit a user answer for a login-time interaction.
+
+        Return values are route-friendly: accepted | not_found | not_pending.
+        Mock mode accepts immediately so frontend flows can be tested without a
+        browser. Real mode drives the same Playwright page kept by LoginSession.
+        """
+        async with self._lock:
+            self._sweep_locked()
+            session = self._sessions.get(ticket)
+        if session is None:
+            return "not_found"
+        if mock:
+            return "accepted"
+        if session.interaction_required is None:
+            return "not_pending"
+
+        page = session.handles.get("page")
+        if page is None:
+            return "not_found"
+        driver = get_sms_driver(session.platform)
+        if driver is None:
+            return "not_pending"
+
+        code = str((response or {}).get("code") or "").strip()
+        if not code:
+            return "not_pending"
+
+        try:
+            ok = await driver.submit_code(page, code)
+        except Exception:  # noqa: BLE001
+            log.exception("login_pool: submit_interaction crashed ticket=%s platform=%s", ticket, session.platform)
+            ok = False
+        if not ok:
+            session.interaction_required = {
+                **session.interaction_required,
+                "prompt": "验证码提交失败，请检查后重试。",
+            }
+            return "accepted"
+
+        try:
+            cleared = await driver.is_cleared(page)
+        except Exception:  # noqa: BLE001
+            log.exception("login_pool: interaction is_cleared crashed ticket=%s platform=%s", ticket, session.platform)
+            cleared = False
+        if cleared:
+            session.interaction_required = None
+        else:
+            session.interaction_required = {
+                **session.interaction_required,
+                "prompt": "平台仍在等待验证码，可能输入有误，请重新提交。",
+            }
+        return "accepted"
 
     # Legacy accessor still used by a couple of inline tests; keep it cheap.
     async def get(self, ticket: str) -> LoginSession | None:
@@ -2204,15 +2278,36 @@ class LoginPool:
         if driver_cls is None or page is None or context is None:
             await self.drop(session.ticket)
             return {"status": "expired"}
+        if session.error_code:
+            return {
+                "status": "failed",
+                "error_code": session.error_code,
+                "message": session.error_message,
+                "diagnostic_id": session.diagnostic_id,
+            }
 
         try:
             logged_in = await driver_cls.is_logged_in(page)
         except Exception:  # noqa: BLE001
             log.exception("login_pool: is_logged_in failed ticket=%s", session.ticket)
-            await self.drop(session.ticket)
-            return {"status": "expired"}
+            diag = await _dump_qr_extraction_failure(page, session.platform, "is_logged_in failed during poll")
+            session.error_code = "LOGIN_UNEXPECTED_PAGE"
+            session.error_message = "平台登录页面进入未知状态，请重新扫码或联系运营处理。"
+            session.diagnostic_id = string_or_none(diag.get("diagnostic_id")) or session.platform
+            return {
+                "status": "failed",
+                "error_code": session.error_code,
+                "message": session.error_message,
+                "diagnostic_id": session.diagnostic_id,
+            }
 
         if not logged_in:
+            interaction = await self._detect_login_interaction(session, page)
+            if interaction is not None:
+                return {
+                    "status": "awaiting_user",
+                    "interaction_required": interaction,
+                }
             return {"status": "pending"}
 
         # v0.17.2+: 给 driver 一次 navigate / interact 的机会，把 profile 字段
@@ -2250,6 +2345,35 @@ class LoginPool:
             "storage_state": storage_state,
             "profile": profile,
         }
+
+    async def _detect_login_interaction(self, session: LoginSession, page: Any) -> dict[str, Any] | None:
+        driver = get_sms_driver(session.platform)
+        if driver is None:
+            return None
+        try:
+            detected = await driver.detect(page)
+        except Exception:  # noqa: BLE001
+            log.exception("login_pool: interaction detect failed ticket=%s platform=%s", session.ticket, session.platform)
+            return None
+        if not detected:
+            return session.interaction_required
+
+        if session.interaction_required is None:
+            created_at = datetime.fromtimestamp(now_unix(), tz=timezone.utc).isoformat()
+            can_resend_at = detected.get("can_resend_at")
+            session.interaction_required = {
+                "kind": "sms",
+                "prompt": "平台要求输入短信验证码以完成账号绑定。",
+                "phoneMasked": detected.get("phone_masked"),
+                "canResendAt": datetime.fromtimestamp(can_resend_at, tz=timezone.utc).isoformat()
+                if can_resend_at else None,
+                "createdAt": created_at,
+            }
+            try:
+                await driver.request_sms(page)
+            except Exception:  # noqa: BLE001
+                log.exception("login_pool: request_sms failed ticket=%s platform=%s", session.ticket, session.platform)
+        return session.interaction_required
 
     # ── internal: shared ─────────────────────────────────────────────
 

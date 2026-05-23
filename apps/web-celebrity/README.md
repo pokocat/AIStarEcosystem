@@ -69,6 +69,24 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.26 · 2026-05-22 · 混剪创建页加场景导航
+
+接着 v0.25 把后端按场景渲染补齐后，前端创建任务页（`/mixcut/create/[id]`）还有遗留 UX 问题 —— `TemplatePreview` 用 `flatSlotsOf(template)` 把所有场景的 slot rect 全部叠加到同一画框上，五个场景的标题 / 商品位会糊成一团；中列素材输入虽然 v0.22 起按场景分组，但缺一个「切到下一段」的明确动作。
+
+**改动**：
+
+- `create-client.tsx` 加 `activeSceneIdx` state；多场景模板在画布上方渲染一条紧凑场景 tab 栏（pill 形式，展示 "第N段 · label · Ns"），点 tab 同时切画布 + 滚动中列对应场景块进视口。
+- `TemplatePreview` 接收的不再是原 template，而是用 `previewTemplate = { ...template, scenes: [activeScene], canvas.duration: activeScene.duration }` 收窄过的。`flatSlotsOf` 现在只返回当前场景的 slot，画布不再叠加。
+- 用户在中列点开某个 slot 输入控件（`focusedSlot` 变化）→ effect 反查所属场景 → 自动 `setActiveSceneIdx`。"我在填的内容"和"画布显示的画面"始终对齐。
+- 中列每个场景块加 `id={\`scene-block-${scene.id}\`}` + `scroll-mt-24`（sticky topbar 偏移）；当前激活场景块加紫色描边 + 浅紫底 + 「画布正在显示」徽标；标题行整体变 button，点也能切到该场景。
+- 单场景模板（最常见的工厂模板）→ tab 栏不渲染，行为与旧版完全一致。
+
+**注意事项**：
+
+- `useEffect` 监听 `focusedSlot` 同步 active scene；`activeSceneIdx` 没进依赖（用户主动点 tab 切场景时不应被 focusedSlot 又反推回去），刻意 eslint-disable react-hooks/exhaustive-deps。
+- 音频 slot 渲染在画布下方的 chip 区，现在也只显示当前场景的 audio slot；这是预期行为 —— audio 槽位通常单场景才出现，多场景模板里 BGM 一般跨场景共享时应放在第一个场景的 audio slot。
+- 与 v0.25 后端按场景渲染配套：前端预览的"分段视觉"和最终 ffmpeg 输出的"分段视频"一一对应，用户在哪段填的素材就在哪段出。
+
 ### v0.25 · 2026-05-22 · 混剪按场景渲染（多段落 bug 修复）
 
 修复模板里配了多个场景但最终视频永远只有 2 段的根因。从模板编辑到 ffmpeg 拼接的整链路把"场景"作为一等公民贯穿。

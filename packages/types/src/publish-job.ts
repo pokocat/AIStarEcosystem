@@ -61,6 +61,7 @@ export interface PublishJob {
   /** sau-service 返回的远端任务 id，用于 idempotent callback / 状态查询 */
   externalTaskId?: string;
   externalUrl?: string;
+  errorCode?: string;
   errorMessage?: string;
   /** 本任务实际扣的积分；失败也不退（人工调账走 admin） */
   creditsSpent?: number;

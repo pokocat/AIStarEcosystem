@@ -8,13 +8,15 @@
 // storage_state 全程不出现在前端代码 —— 这里的所有交互只看 SocialAccount DTO。
 
 import * as React from "react";
-import { X, RefreshCw, Loader2 } from "lucide-react";
+import { X, RefreshCw, Loader2, KeyRound, AlertCircle } from "lucide-react";
 import { SocialAccountApi, ApiError } from "@ai-star-eco/api-client";
 import type {
   SocialAccount,
   SocialAccountBindInit,
+  SocialAccountBindPollResult,
   SocialPlatform,
 } from "@ai-star-eco/types/social-account";
+import type { InteractionRequired } from "@ai-star-eco/types/publish-job";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import {
@@ -50,8 +52,15 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
   const [platform, setPlatform] = React.useState<SocialPlatform>("douyin");
   const [accountName, setAccountName] = React.useState("");
   const [init, setInit] = React.useState<SocialAccountBindInit | null>(null);
-  const [pollStatus, setPollStatus] = React.useState<"idle" | "pending" | "expired" | "error">("idle");
+  const [pollStatus, setPollStatus] = React.useState<
+    "idle" | "pending" | "awaiting_user" | "expired" | "failed" | "error"
+  >("idle");
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [diagnosticId, setDiagnosticId] = React.useState<string | null>(null);
+  const [interactionRequired, setInteractionRequired] =
+    React.useState<InteractionRequired | null>(null);
+  const [interactionCode, setInteractionCode] = React.useState("");
+  const [interactionSubmitting, setInteractionSubmitting] = React.useState(false);
   // submitting：「开始扫码」按钮按下到 /bind-init 返回的中间态。
   // 没有该 flag 时按钮看起来"没反应"——sau-service 调 playwright 抓 QR 可能耗 3-8s。
   const [submitting, setSubmitting] = React.useState(false);
@@ -77,6 +86,10 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
       setInit(null);
       setPollStatus("idle");
       setErrorMsg(null);
+      setDiagnosticId(null);
+      setInteractionRequired(null);
+      setInteractionCode("");
+      setInteractionSubmitting(false);
       setSubmitting(false);
       succeededRef.current = false;
     } else {
@@ -85,6 +98,10 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
       setInit(null);
       setPollStatus("idle");
       setErrorMsg(null);
+      setDiagnosticId(null);
+      setInteractionRequired(null);
+      setInteractionCode("");
+      setInteractionSubmitting(false);
       setSubmitting(false);
       succeededRef.current = false;
     }
@@ -103,8 +120,17 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
           succeededRef.current = true;
           onBound(res.account);
           onClose();
+        } else if (res.status === "awaiting_user") {
+          setPollStatus("awaiting_user");
+          setInteractionRequired(res.interactionRequired ?? null);
+          setErrorMsg(null);
+          setDiagnosticId(null);
         } else if (res.status === "expired") {
           setPollStatus("expired");
+        } else if (res.status === "failed") {
+          setPollStatus("failed");
+          setErrorMsg(formatBindFailure(res));
+          setDiagnosticId(res.diagnosticId ?? null);
         } else {
           setPollStatus("pending");
         }
@@ -183,6 +209,30 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
     setInit(null);
     setPollStatus("idle");
     setErrorMsg(null);
+    setDiagnosticId(null);
+    setInteractionRequired(null);
+    setInteractionCode("");
+  };
+
+  const submitInteraction = async () => {
+    if (!init || interactionSubmitting) return;
+    const code = interactionCode.trim();
+    if (!code) {
+      setErrorMsg("请输入验证码");
+      return;
+    }
+    setInteractionSubmitting(true);
+    setErrorMsg(null);
+    try {
+      await SocialAccountApi.submitBindInteraction(init.sessionTicket, { code });
+      setInteractionCode("");
+      setPollStatus("pending");
+      setInteractionRequired(null);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "验证码提交失败，请重试");
+    } finally {
+      setInteractionSubmitting(false);
+    }
   };
 
   // 关闭路径：用户主动关 dialog 时，如果有未完成的 ticket，先杀 playwright + 清 PENDING 行再关。
@@ -278,7 +328,53 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
           </div>
         ) : (
           <div className="mt-4 flex flex-col items-center gap-3">
-            {init.alreadyLoggedIn ? (
+            {pollStatus === "awaiting_user" ? (
+              <div className="flex w-full flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="flex items-start gap-2">
+                  <span className="rounded-full bg-white p-2 text-amber-700">
+                    <KeyRound className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">需要完成平台身份验证</p>
+                    <p className="text-xs leading-relaxed text-amber-700">
+                      {interactionRequired?.prompt ?? "平台要求输入短信验证码后才能完成绑定。"}
+                    </p>
+                    {interactionRequired?.phoneMasked && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        手机号：<span className="font-mono">{interactionRequired.phoneMasked}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <input
+                  value={interactionCode}
+                  onChange={(e) => setInteractionCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 8))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitInteraction();
+                  }}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="输入短信验证码"
+                  disabled={interactionSubmitting}
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-center font-mono text-base tracking-widest text-zinc-800 focus:border-amber-400 focus:outline-none"
+                />
+                {errorMsg && <p className="text-xs text-rose-600">{errorMsg}</p>}
+                <button
+                  type="button"
+                  className={cn(CTA_PRIMARY, "justify-center")}
+                  disabled={interactionSubmitting || interactionCode.trim().length === 0}
+                  onClick={() => void submitInteraction()}
+                >
+                  {interactionSubmitting ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> 提交中
+                    </>
+                  ) : (
+                    "提交验证码"
+                  )}
+                </button>
+              </div>
+            ) : init.alreadyLoggedIn ? (
               <div className="flex h-48 w-48 flex-col items-center justify-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-center">
                 <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
                 <p className="text-sm font-medium text-zinc-700">已检测到平台登录态</p>
@@ -314,9 +410,16 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
               {pollStatus === "pending" && (
                 init.alreadyLoggedIn ? "正在读取账号信息……" : "等待扫码……"
               )}
+              {pollStatus === "failed" && (errorMsg ?? "绑定失败，请重新生成 QR 后再试")}
               {pollStatus === "expired" && "扫码已超时，可以重试"}
               {pollStatus === "error" && (errorMsg ?? "网络异常，重试一下")}
             </p>
+            {pollStatus === "failed" && diagnosticId && (
+              <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>诊断编号：{diagnosticId}</span>
+              </div>
+            )}
             <div className="flex gap-2">
               <button type="button" className={CTA_SECONDARY} onClick={handleClose}>
                 取消
@@ -332,4 +435,9 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
       </div>
     </div>
   );
+}
+
+function formatBindFailure(res: SocialAccountBindPollResult): string {
+  const base = res.message || "绑定过程出现异常，请重新生成 QR 后再试。";
+  return res.diagnosticId ? `${base}（诊断编号：${res.diagnosticId}）` : base;
 }

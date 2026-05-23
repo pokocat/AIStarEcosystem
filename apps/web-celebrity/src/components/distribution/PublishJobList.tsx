@@ -11,6 +11,7 @@
 // sau-service 填进 page，弹窗关闭后 status 自动回到 publishing/uploading。
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Play, X, RotateCw, ExternalLink, RefreshCw, KeyRound } from "lucide-react";
 import { PublishJobApi } from "@ai-star-eco/api-client";
 import type { PublishJob, PublishJobStatus } from "@ai-star-eco/types/publish-job";
@@ -45,6 +46,7 @@ interface Props {
 }
 
 export function PublishJobList({ projectId }: Props) {
+  const router = useRouter();
   const [jobs, setJobs] = React.useState<PublishJob[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
@@ -259,7 +261,18 @@ export function PublishJobList({ projectId }: Props) {
                   </p>
                 )}
                 {j.errorMessage && (
-                  <p className="text-xs text-rose-600">{j.errorMessage}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-rose-600">
+                    <span>{j.errorMessage}</span>
+                    {isAccountStateError(j) && (
+                      <button
+                        type="button"
+                        className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 transition hover:border-amber-300"
+                        onClick={() => router.push("/distribution/accounts")}
+                      >
+                        重新绑定账号
+                      </button>
+                    )}
+                  </div>
                 )}
               </li>
             );
@@ -279,5 +292,14 @@ export function PublishJobList({ projectId }: Props) {
       )}
       <ConfirmHost />
     </section>
+  );
+}
+
+function isAccountStateError(job: PublishJob): boolean {
+  return (
+    job.status === "failed" &&
+    (job.errorCode === "ACCOUNT_EXPIRED" ||
+      job.errorCode === "ACCOUNT_NOT_ACTIVE" ||
+      /账号登录已失效|社交账号不可用/.test(job.errorMessage ?? ""))
   );
 }
