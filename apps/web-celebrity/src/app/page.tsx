@@ -149,7 +149,14 @@ export default function CelebrityLandingPage() {
               <Link href="/dashboard">
                 <Button variant="dark" size="sm">进入工作台 →</Button>
               </Link>
-              <Button variant="icon" size="sm" onClick={logout} title="退出登录" style={{ width: 32, padding: 0 }}>
+              <Button
+                variant="icon"
+                size="sm"
+                onClick={logout}
+                aria-label="退出登录"
+                title="退出登录"
+                style={{ width: 32, padding: 0 }}
+              >
                 <LogOut size={12} />
               </Button>
             </>
@@ -608,7 +615,7 @@ export default function CelebrityLandingPage() {
                       marginBottom: 10,
                     }}
                   >
-                    <Icon size={15} color={colorVar} strokeWidth={2} />
+                    <Icon size={15} color={colorVar} strokeWidth={1.75} />
                     {p.title}
                   </div>
                   <p style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6, margin: 0 }}>{p.desc}</p>
@@ -656,7 +663,7 @@ export default function CelebrityLandingPage() {
                   <Icon
                     size={isHero ? 22 : 18}
                     color="var(--accent)"
-                    strokeWidth={isHero ? 1.75 : 2}
+                    strokeWidth={1.75}
                   />
                   <div
                     style={{
@@ -714,10 +721,8 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                合规与资质，{" "}
-                <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                  从源头可信
-                </span>
+                合规与资质,
+                <span style={{ color: "var(--accent)" }}> 从源头可信</span>
               </h2>
               <ul
                 style={{
@@ -776,10 +781,8 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                授权方工作台,{" "}
-                <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                  一屏掌握
-                </span>
+                授权方工作台,
+                <span style={{ color: "var(--accent)" }}> 一屏掌握</span>
               </h2>
               <div
                 style={{
@@ -956,7 +959,12 @@ export default function CelebrityLandingPage() {
             >
               {isLoggedIn ? "工作台" : "登录"}
             </Link>
-            <span>bd@aistareco.com</span>
+            <a
+              href="mailto:bd@aistareco.com"
+              style={{ color: "var(--fg-3)", textDecoration: "none" }}
+            >
+              bd@aistareco.com
+            </a>
           </div>
         </div>
       </footer>
