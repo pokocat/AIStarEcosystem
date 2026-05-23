@@ -29,6 +29,8 @@ public record MixcutCreateJobRequest(
         // v0.13+: 扰动贴图池
         @JsonProperty("sticker_pool") JsonNode stickerPool,
         // v0.25+: 场景快照（按顺序）。让渲染器按场景串行拼接而不是硬编 2 段。
-        @JsonProperty("scenes_snapshot") JsonNode scenesSnapshot
+        @JsonProperty("scenes_snapshot") JsonNode scenesSnapshot,
+        // v0.26+: 关联商品 id（来自 create 页 ?product_id=X）；分发抽屉用它反查 Product
+        @JsonProperty("product_id") String productId
 ) {
 }

@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Product, ProductCategory, ProductInput } from "@ai-star-eco/types/product";
+import type { ProductLinkInfo } from "@ai-star-eco/types/product-link";
 import type { ID } from "@ai-star-eco/types/_shared";
 import { SEED_PRODUCTS } from "@/mocks/products";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
@@ -101,6 +102,8 @@ export async function createProduct(input: ProductInput): Promise<Product> {
       sellingPoints: (input.sellingPoints ?? "").trim(),
       usageCount: 0,
       source: input.source ?? "manual",
+      priceCents: input.priceCents,
+      commissionRate: input.commissionRate,
       createdAt: now,
       updatedAt: now,
     };
@@ -188,6 +191,113 @@ export async function upsertFromGeneration(
     method: "POST",
     body: input,
   });
+}
+
+// ── v0.26+ 商品链接解析 ─────────────────────────────────────────────────────
+
+/**
+ * 仅解析，不写库。用于 ProductFormDialog 的「📋 从抖音链接解析」按钮预览。
+ * Mock 模式：纯前端 URL parse（仅支持形态 A 长链 query 内嵌 goods_detail）。
+ * 真后端：POST /api/me/products/parse-link，命中策略链 handler 之一。
+ *
+ * 解析失败统一返回 null（前端 toast「未能从链接解析」），不抛错。
+ */
+export async function parseProductLink(url: string): Promise<ProductLinkInfo | null> {
+  if (USE_MOCK) {
+    return mockDelay(parseProductLinkInBrowser(url));
+  }
+  try {
+    return await apiFetch<ProductLinkInfo>("/me/products/parse-link", {
+      method: "POST",
+      body: { url },
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析 + 落 Product + 登记图片为 MixcutAsset(subkind=product-photo)。
+ * Mock 模式：复用 parseProductLinkInBrowser → 走 createProduct（不模拟 MixcutAsset 端，
+ * 这条只是 happy-path 占位；真演示需 REAL_BACKEND）。
+ */
+export async function parseAndCreateProduct(url: string): Promise<Product> {
+  if (USE_MOCK) {
+    const info = parseProductLinkInBrowser(url);
+    if (!info) throw new Error("未能从链接解析，请改用「快速录入」手动填");
+    return createProduct({
+      name: info.title || "未命名商品",
+      category: "日用百货",
+      link: url,
+      images: info.imageUrls,
+      sellingPoints: info.inferredSellingPoints,
+      source: "manual",
+      priceCents: info.minPriceCents,
+    });
+  }
+  return apiFetch<Product>("/me/products/from-link", {
+    method: "POST",
+    body: { url },
+  });
+}
+
+/**
+ * 纯前端兜底：仅处理「分享长链含 goods_detail JSON」的形态。Mock 模式才走。
+ * 真后端模式由 server handler 统一处理（含 PC 选品库短链）。
+ */
+function parseProductLinkInBrowser(rawUrl: string): ProductLinkInfo | null {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.host;
+    if (!host.endsWith("jinritemai.com") && !host.endsWith("douyin.com")) return null;
+    const goodsDetailRaw = url.searchParams.get("goods_detail");
+    if (!goodsDetailRaw) return null;
+    const decoded = JSON.parse(goodsDetailRaw) as {
+      title?: string;
+      sales?: number;
+      img?: { url_list?: string[] };
+      min_price?: number;
+      max_price?: number;
+    };
+    const urlList = (decoded.img?.url_list ?? []).filter(Boolean);
+    const p3 = urlList.filter((u) => u.includes("//p3-"));
+    const others = urlList.filter((u) => !u.includes("//p3-"));
+    const imageUrls = Array.from(new Set([...p3, ...others]));
+    const minPriceCents = typeof decoded.min_price === "number" ? decoded.min_price : undefined;
+    const maxPriceCents = typeof decoded.max_price === "number" ? decoded.max_price : undefined;
+    const sales = typeof decoded.sales === "number" ? decoded.sales : undefined;
+    return {
+      title: decoded.title,
+      imageUrls,
+      minPriceCents,
+      maxPriceCents,
+      sales,
+      inferredSellingPoints: composeInferredSellingPoints(minPriceCents, maxPriceCents, sales),
+      source: "douyin-query-embedded",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function composeInferredSellingPoints(min?: number, max?: number, sales?: number): string | undefined {
+  const parts: string[] = [];
+  if (min != null && max != null) {
+    parts.push(min === max ? `价格 ${formatYuan(min)}` : `价格 ${formatYuan(min)}-${formatYuan(max)}`);
+  } else if (min != null) {
+    parts.push(`价格 ${formatYuan(min)}`);
+  }
+  if (sales != null && sales > 0) {
+    parts.push(sales >= 10000 ? `销量 ${(sales / 10000).toFixed(1)}w+` : `销量 ${sales}`);
+  }
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
+function formatYuan(cents: number): string {
+  const yuan = Math.floor(cents / 100);
+  const cs = cents % 100;
+  if (cs === 0) return `¥${yuan}`;
+  return `¥${yuan}.${String(cs).padStart(2, "0")}`;
 }
 
 /** mock LLM 卖点抽取：根据商品名 + 链接产出一段固定模板的卖点。 */

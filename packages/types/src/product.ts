@@ -35,13 +35,20 @@ export interface Product {
   category: ProductCategory;
   /** 商品外部链接（淘宝/京东/天猫/小红书等），可选 */
   link?: string;
-  /** 商品图片 URL 列表（至少 1 张占位） */
+  /**
+   * 商品图片快照 URL 列表。v0.26 起渐进废止：新代码读取走 MixcutAssetApi.listAssets({ relatedProductId })，
+   * 这里仍保留作向后兼容（旧 UI 直接 src 用，且 ProductLinkPersistService 解析时也会回填一份）。
+   */
   images: string[];
   /** 卖点描述（可被 AI 自动抽取覆盖） */
   sellingPoints: string;
   /** 累计被多少条带货视频引用 */
   usageCount: number;
   source: ProductSource;
+  /** v0.26+: 商品售价（分）。空表示未知。展示走 formatCurrency。 */
+  priceCents?: number;
+  /** v0.26+: 佣金率（0-100 整数百分比）。空表示未知。 */
+  commissionRate?: number;
   createdAt: ISODate;
   updatedAt: ISODate;
 }
@@ -55,4 +62,8 @@ export interface ProductInput {
   sellingPoints?: string;
   /** 默认 manual；自动落库时由后端置为 auto-from-generation */
   source?: ProductSource;
+  /** v0.26+: 商品售价（分） */
+  priceCents?: number;
+  /** v0.26+: 佣金率（0-100 整数百分比） */
+  commissionRate?: number;
 }

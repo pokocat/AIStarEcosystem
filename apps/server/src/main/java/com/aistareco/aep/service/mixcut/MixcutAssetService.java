@@ -168,6 +168,24 @@ public class MixcutAssetService {
     }
 
     /**
+     * v0.26+: 列出归属指定 productId 的素材（混剪 create 页「本商品素材」chip 用）。
+     * 安全语义：素材的 ownerUserId 可空（外网 URL 登记时是 anonymous / null），
+     * 且任一用户都可看到 relatedProductId 命中的素材 —— 商品的图片在公网本就是公开的。
+     * 若调用方传了 userId 且素材有 userId，会先按 userId 优先过滤；否则全返回。
+     *
+     * @param relatedProductId 必填
+     * @param userId 可选，传则优先返回用户私有 + 商品公共素材；不传则按 productId 全返回
+     * @param kind 可选过滤
+     */
+    public List<MixcutAsset> listByProduct(String relatedProductId, String userId, String kind) {
+        if (relatedProductId == null || relatedProductId.isBlank()) return List.of();
+        if (kind != null && !kind.isBlank()) {
+            return repo.findByRelatedProductIdAndKindOrderByUploadedAtDesc(relatedProductId, kind);
+        }
+        return repo.findByRelatedProductIdOrderByUploadedAtDesc(relatedProductId);
+    }
+
+    /**
      * 上传单个素材（用户路径）。
      *
      * @param file        MultipartFile（必填）
@@ -293,6 +311,72 @@ public class MixcutAssetService {
         log.info("[mixcut] preset uploaded id={} group={} kind={} → {}",
                 id, safeGroup, safeKind, target.getAbsolutePath());
         return repo.save(asset);
+    }
+
+    /**
+     * v0.26+: 把外网 CDN URL 直接登记为 MixcutAsset 行（不下载文件）。
+     * 由商品链接解析使用：抖音商品图本身就在公网稳定 CDN（p3-item.ecombdimg.com 等），
+     * 不需要本地化备份。渲染时 AssetDownloader 会按需下载。
+     *
+     * - localPath = null（没有本地文件）
+     * - fileUrl = previewUrl = externalUrl
+     * - subkind 用于区分用途（"product-photo" 等）
+     * - relatedProductId 关联到 Product
+     *
+     * 安全：调用方必须确保 externalUrl 来自受信解析 handler（已过 host 白名单）。
+     */
+    @Transactional
+    public MixcutAsset registerExternalUrl(String userId, String kind, String subkind,
+                                           String externalUrl, String relatedProductId) {
+        if (externalUrl == null || externalUrl.isBlank()) {
+            throw new IllegalArgumentException("externalUrl 不能为空");
+        }
+        String safeKind = validateKind(kind);
+
+        MixcutAsset asset = new MixcutAsset();
+        asset.setId("ext_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16));
+        asset.setUserId(userId == null || userId.isBlank() ? null : userId);
+        asset.setKind(safeKind);
+        // 名字按 URL 末段截一截
+        String inferredName = externalUrl;
+        int slash = inferredName.lastIndexOf('/');
+        if (slash >= 0 && slash < inferredName.length() - 1) {
+            inferredName = inferredName.substring(slash + 1);
+        }
+        int question = inferredName.indexOf('?');
+        if (question > 0) inferredName = inferredName.substring(0, question);
+        if (inferredName.length() > 64) inferredName = inferredName.substring(0, 64);
+        asset.setName(inferredName);
+        asset.setOriginalName(inferredName);
+        asset.setMimeType(guessMimeFromUrl(externalUrl));
+        asset.setFileSize(0);
+        asset.setDuration(0);
+        asset.setTags(null);
+        asset.setLocalPath(null);
+        asset.setFileUrl(externalUrl);
+        asset.setPreviewUrl(externalUrl);
+        asset.setUploadedAt(OffsetDateTime.now());
+        asset.setPreset(false);
+        asset.setOfficial(false);
+        asset.setRelatedProductId(relatedProductId == null || relatedProductId.isBlank()
+                ? null : relatedProductId);
+        asset.setSubkind(subkind == null || subkind.isBlank() ? null : subkind);
+        log.info("[mixcut] registered external url id={} subkind={} product={} url={}",
+                asset.getId(), subkind, relatedProductId, externalUrl);
+        return repo.save(asset);
+    }
+
+    private static String guessMimeFromUrl(String url) {
+        String lower = url.toLowerCase(Locale.ROOT);
+        // 截断 query 后再判后缀
+        int q = lower.indexOf('?');
+        String pathOnly = q > 0 ? lower.substring(0, q) : lower;
+        if (pathOnly.endsWith(".png")) return "image/png";
+        if (pathOnly.endsWith(".jpg") || pathOnly.endsWith(".jpeg")) return "image/jpeg";
+        if (pathOnly.endsWith(".webp")) return "image/webp";
+        if (pathOnly.endsWith(".gif")) return "image/gif";
+        if (pathOnly.endsWith(".mp4")) return "video/mp4";
+        return null;
     }
 
     /** 内部：注册一条 preset 行（DataInitializer 路径，文件已落在 fs 上）。 */

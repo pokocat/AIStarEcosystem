@@ -12,6 +12,9 @@
 //   link / 链接 / 商品链接 / URL   → link
 //   sellingPoints / 卖点 / 描述    → sellingPoints
 //   images / 图片 / 图片链接       → images（逗号 / 分号 / 换行分隔的多 URL）
+//   price / 商品价格 / 价格 / 售价 → priceYuan（输入元，存 cents）
+//   commission / 佣金 / 佣金率     → commissionRate（输入百分比整数）
+//   商品ID / id                    → 忽略（server 自己生成；保留是为了兼容抖音选品表格列）
 //
 // xlsx 是 ~600KB 的库，仅在 Tab 切到「文件」时 dynamic import；不影响首屏。
 
@@ -51,6 +54,8 @@ interface DraftRow {
   link: string;
   sellingPoints: string;
   images: string; // 多 URL 用换行分隔在编辑框里
+  priceYuan: string;       // v0.26+ 输入元，转 cents 时 *100
+  commissionRate: string;  // v0.26+ 输入百分比整数（"50%" 自动 strip %）
 }
 
 interface Props {
@@ -78,6 +83,8 @@ function emptyRow(): DraftRow {
     link: "",
     sellingPoints: "",
     images: "",
+    priceYuan: "",
+    commissionRate: "",
   };
 }
 
@@ -96,6 +103,9 @@ function mapHeaderToField(header: string): keyof DraftRow | null {
   if (["link", "url", "链接", "商品链接", "网址"].includes(h)) return "link";
   if (["sellingpoints", "卖点", "描述", "卖点描述"].includes(h)) return "sellingPoints";
   if (["images", "image", "图片", "图片链接", "图"].includes(h)) return "images";
+  // v0.26+ 抖音选品表格列识别
+  if (["price", "商品价格", "价格", "售价"].includes(h)) return "priceYuan";
+  if (["commission", "佣金", "佣金率", "commissionrate"].includes(h)) return "commissionRate";
   return null;
 }
 
@@ -189,6 +199,10 @@ function draftRowToInput(d: DraftRow): ProductInput {
     .split(/\r?\n/)
     .map((s) => s.trim())
     .filter(Boolean);
+  const priceCentsRaw = d.priceYuan.trim();
+  const commissionRaw = d.commissionRate.trim().replace(/%/g, "");
+  const priceCents = priceCentsRaw ? Math.round(parseFloat(priceCentsRaw) * 100) : undefined;
+  const commissionInt = commissionRaw ? parseInt(commissionRaw, 10) : undefined;
   return {
     name: d.name.trim(),
     category: d.category,
@@ -196,6 +210,8 @@ function draftRowToInput(d: DraftRow): ProductInput {
     sellingPoints: d.sellingPoints.trim() || undefined,
     images: images.length ? images : undefined,
     source: "manual",
+    priceCents: Number.isFinite(priceCents) ? priceCents : undefined,
+    commissionRate: Number.isFinite(commissionInt) ? commissionInt : undefined,
   };
 }
 
@@ -347,14 +363,17 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
                   <code className="px-1 text-violet-600">name/商品名称</code>{" "}
                   <code className="px-1 text-violet-600">category/类目</code>{" "}
                   <code className="px-1 text-violet-600">link/链接</code>{" "}
+                  <code className="px-1 text-violet-600">price/商品价格</code>{" "}
+                  <code className="px-1 text-violet-600">commission/佣金</code>{" "}
                   <code className="px-1 text-violet-600">sellingPoints/卖点</code>{" "}
                   <code className="px-1 text-violet-600">images/图片</code>。
+                  支持抖音商城选品库表格直接粘贴（自动忽略「商品ID」列）。
                 </div>
               </div>
               <textarea
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
-                placeholder={"商品名称\t类目\t链接\t卖点\n樱花口红\t美妆\thttps://...\t上脸自然显色"}
+                placeholder={"商品ID\t商品名称\t商品链接\t商品价格\t佣金\n3485332505048038713\t一次性水槽过滤网\thttps://haohuo...\t9.9\t50%"}
                 className="w-full min-h-[120px] rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-mono outline-none focus:border-violet-500"
               />
               <div className="flex justify-end">
@@ -432,14 +451,16 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
             </div>
           </div>
           <div className="overflow-x-auto rounded-md border border-zinc-200">
-            <table className="w-full text-xs" style={{ minWidth: 960 }}>
+            <table className="w-full text-xs" style={{ minWidth: 1100 }}>
               <colgroup>
                 <col style={{ width: 36 }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: 120 }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "30%" }} />
-                <col style={{ width: "30%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: 80 }} />
+                <col style={{ width: 64 }} />
+                <col style={{ width: "22%" }} />
+                <col style={{ width: "22%" }} />
                 <col style={{ width: 40 }} />
               </colgroup>
               <thead className="bg-zinc-50 text-zinc-600">
@@ -448,6 +469,8 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
                   <th className="px-2 py-1.5 text-left font-medium">商品名称 *</th>
                   <th className="px-2 py-1.5 text-left font-medium">类目</th>
                   <th className="px-2 py-1.5 text-left font-medium">链接</th>
+                  <th className="px-2 py-1.5 text-left font-medium">价格 ¥</th>
+                  <th className="px-2 py-1.5 text-left font-medium">佣金 %</th>
                   <th className="px-2 py-1.5 text-left font-medium">卖点 / 描述</th>
                   <th className="px-2 py-1.5 text-left font-medium">图片 URL（多行）</th>
                   <th className="px-2 py-1.5"></th>
@@ -483,6 +506,29 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
                         value={r.link}
                         onChange={(e) => setRow(r.rowId, { link: e.target.value })}
                         placeholder="https://..."
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className={inputCls + " tabular-nums"}
+                        value={r.priceYuan}
+                        onChange={(e) => setRow(r.rowId, { priceYuan: e.target.value })}
+                        placeholder="9.90"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="100"
+                        className={inputCls + " tabular-nums"}
+                        value={r.commissionRate}
+                        onChange={(e) => setRow(r.rowId, { commissionRate: e.target.value })}
+                        placeholder="50"
                       />
                     </td>
                     <td className="px-2 py-1.5">

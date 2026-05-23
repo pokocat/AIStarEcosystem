@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, X } from "lucide-react";
+import { Loader2, Plus, Sparkles, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import {
   type ProductCategory,
   type ProductInput,
 } from "@ai-star-eco/types/product";
+import { ProductsApi } from "@/api";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import {
   Select,
@@ -39,6 +40,12 @@ interface Props {
 const inputCls =
   "w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500 focus:bg-white";
 
+type ParseStatus =
+  | { kind: "idle" }
+  | { kind: "parsing" }
+  | { kind: "success"; imagesFilled: number; titleFilled: boolean }
+  | { kind: "fail"; reason: string };
+
 export function ProductFormDialog({
   open,
   onOpenChange,
@@ -52,7 +59,10 @@ export function ProductFormDialog({
   const [imageInput, setImageInput] = React.useState("");
   const [images, setImages] = React.useState<string[]>([]);
   const [sellingPoints, setSellingPoints] = React.useState("");
+  const [priceYuan, setPriceYuan] = React.useState("");
+  const [commissionRate, setCommissionRate] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [parseStatus, setParseStatus] = React.useState<ParseStatus>({ kind: "idle" });
 
   React.useEffect(() => {
     if (!open) return;
@@ -62,15 +72,20 @@ export function ProductFormDialog({
       setLink(initial.link ?? "");
       setImages(initial.images ?? []);
       setSellingPoints(initial.sellingPoints ?? "");
+      setPriceYuan(initial.priceCents != null ? (initial.priceCents / 100).toFixed(2).replace(/\.00$/, "") : "");
+      setCommissionRate(initial.commissionRate != null ? String(initial.commissionRate) : "");
     } else {
       setName("");
       setCategory("其他");
       setLink("");
       setImages([]);
       setSellingPoints("");
+      setPriceYuan("");
+      setCommissionRate("");
     }
     setImageInput("");
     setSubmitting(false);
+    setParseStatus({ kind: "idle" });
   }, [open, initial]);
 
   const canSubmit = name.trim().length > 0 && !submitting;
@@ -85,10 +100,57 @@ export function ProductFormDialog({
   const removeImage = (url: string) =>
     setImages((prev) => prev.filter((x) => x !== url));
 
+  /**
+   * 抖音链接智能解析：仅覆盖空字段（已填的不动）。
+   * Mock 模式由前端 parseProductLinkInBrowser 处理形态 A；
+   * 真后端模式由 server handler 链路统一处理（含形态 A + 短链 B）。
+   */
+  const handleParseFromLink = async () => {
+    const url = link.trim();
+    if (!url) return;
+    setParseStatus({ kind: "parsing" });
+    try {
+      const info = await ProductsApi.parseProductLink(url);
+      if (!info) {
+        setParseStatus({ kind: "fail", reason: "未识别为已支持的商品链接" });
+        return;
+      }
+      let imagesFilled = 0;
+      let titleFilled = false;
+      // 仅覆盖空字段
+      if (!name.trim() && info.title) {
+        setName(info.title);
+        titleFilled = true;
+      }
+      if (images.length === 0 && info.imageUrls.length > 0) {
+        setImages(info.imageUrls);
+        imagesFilled = info.imageUrls.length;
+      }
+      if (!sellingPoints.trim() && info.inferredSellingPoints) {
+        setSellingPoints(info.inferredSellingPoints);
+      }
+      if (!priceYuan.trim() && info.minPriceCents != null) {
+        setPriceYuan((info.minPriceCents / 100).toFixed(2).replace(/\.00$/, ""));
+      }
+      setParseStatus({ kind: "success", imagesFilled, titleFilled });
+    } catch (e) {
+      setParseStatus({
+        kind: "fail",
+        reason: e instanceof Error ? e.message : "解析失败",
+      });
+    }
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
+      const priceCents = priceYuan.trim()
+        ? Math.round(parseFloat(priceYuan.trim()) * 100)
+        : undefined;
+      const commissionInt = commissionRate.trim()
+        ? parseInt(commissionRate.trim().replace(/%/g, ""), 10)
+        : undefined;
       const saved = await onSubmit({
         name: name.trim(),
         category,
@@ -96,6 +158,8 @@ export function ProductFormDialog({
         images,
         sellingPoints: sellingPoints.trim(),
         source: initial?.source ?? "manual",
+        priceCents: Number.isFinite(priceCents) ? priceCents : undefined,
+        commissionRate: Number.isFinite(commissionInt) ? commissionInt : undefined,
       });
       onSaved(saved);
       onOpenChange(false);
@@ -112,7 +176,7 @@ export function ProductFormDialog({
             {initial ? "编辑商品" : "快速录入商品"}
           </DialogTitle>
           <DialogDescription className="text-xs text-zinc-500">
-            录入后可在生成带货视频时复用，提升二次生成效率。
+            录入后可在生成带货视频时复用，提升二次生成效率。粘贴抖音商城链接可一键回填。
           </DialogDescription>
         </DialogHeader>
 
@@ -146,7 +210,64 @@ export function ProductFormDialog({
                 className={inputCls}
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
-                placeholder="https://…（淘宝 / 抖店 / 小红书）"
+                placeholder="https://…（抖店 / 淘宝 / 小红书）"
+              />
+            </Field>
+          </div>
+
+          {/* v0.26+ 从抖音商城链接智能解析 */}
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={handleParseFromLink}
+              disabled={!link.trim() || parseStatus.kind === "parsing"}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-violet-400/40 bg-violet-500/10 px-3 py-2 text-xs text-violet-700 hover:border-violet-500 hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {parseStatus.kind === "parsing" ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> 解析中…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5" /> 📋 从抖音链接解析（仅覆盖空字段）
+                </>
+              )}
+            </button>
+            {parseStatus.kind === "success" && (
+              <div className="text-[11px] text-emerald-600">
+                ✓ 已解析：
+                {parseStatus.titleFilled && "回填商品名 · "}
+                {parseStatus.imagesFilled > 0 && `${parseStatus.imagesFilled} 张图片 · `}
+                {!parseStatus.titleFilled && parseStatus.imagesFilled === 0 && "信息已是最新（未覆盖已填字段）"}
+              </div>
+            )}
+            {parseStatus.kind === "fail" && (
+              <div className="text-[11px] text-pink-600">✗ {parseStatus.reason}</div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="价格（元，可空）">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className={inputCls}
+                value={priceYuan}
+                onChange={(e) => setPriceYuan(e.target.value)}
+                placeholder="9.90"
+              />
+            </Field>
+            <Field label="佣金率（%，可空）">
+              <input
+                type="number"
+                step="1"
+                min="0"
+                max="100"
+                className={inputCls}
+                value={commissionRate}
+                onChange={(e) => setCommissionRate(e.target.value)}
+                placeholder="50"
               />
             </Field>
           </div>

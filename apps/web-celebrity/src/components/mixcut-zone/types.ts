@@ -190,6 +190,20 @@ export interface MixcutAsset {
   official_category?: string;
   /** v0.21+: 关联明星 id（CelebrityStar.id），可空。 */
   related_star_id?: string;
+  /**
+   * v0.26+: 关联商品 id（Product.id），可空。
+   * 商品链接解析时落的图片素材（subkind=product-photo）会带此字段；
+   * 未来 AI 生成的带货视频（subkind=ai-marketing-video）也会带此字段。
+   */
+  related_product_id?: string;
+  /**
+   * v0.26+: 素材子类。
+   *   "user-upload"            — 用户手动上传（默认）
+   *   "product-photo"          — 从商品链接解析落的图片（外网 CDN URL 直接登记）
+   *   "product-video"          — 商品相关视频（用户上传或解析视频帧）
+   *   "ai-marketing-video"     — AI 生成的带货视频（future scope，结构预留）
+   */
+  subkind?: string;
 }
 
 /**
@@ -341,6 +355,13 @@ export interface RenderJob {
    * 模板编辑时挂在 slot 上；create job 时整理成 Map 提交给后端。
    */
   sticker_pool?: Record<string, StickerPoolBinding>;
+  /**
+   * v0.26+: 关联商品 id（Product.id）。
+   * 当用户从商品库点「生成视频」进入 create 页（URL ?product_id=X）时，
+   * 提交 RenderJob 时把这个 id 透传给 server，落到 MixcutRenderJob.productId 列。
+   * 分发阶段 BatchPublishDrawer 用它反查 Product 并自动 prefill 抖音商品挂载字段。
+   */
+  product_id?: string;
 }
 
 export interface ActivationCode {

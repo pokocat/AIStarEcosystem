@@ -32,7 +32,10 @@ public record MixcutAssetDto(
         // v0.21+ 官方明星片段（运营上传，用户只读）
         @JsonProperty("is_official") boolean isOfficial,
         @JsonProperty("official_category") String officialCategory,
-        @JsonProperty("related_star_id") String relatedStarId
+        @JsonProperty("related_star_id") String relatedStarId,
+        // v0.26+ 商品主线
+        @JsonProperty("related_product_id") String relatedProductId,
+        @JsonProperty("subkind") String subkind
 ) {
     public static MixcutAssetDto from(MixcutAsset a) {
         // thumbnail 优先级：明确的 previewUrl > image/sticker 自身 fileUrl > null
@@ -59,7 +62,9 @@ public record MixcutAssetDto(
                 a.getPreviewUrl(),
                 a.isOfficial(),
                 a.getOfficialCategory(),
-                a.getRelatedStarId()
+                a.getRelatedStarId(),
+                a.getRelatedProductId(),
+                a.getSubkind()
         );
     }
 }

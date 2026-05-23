@@ -38,7 +38,9 @@ public record MixcutRenderJobDto(
         @JsonProperty("source_phash") String sourcePhash,
         @JsonProperty("sticker_pool") JsonNode stickerPool,
         // v0.25+: 场景快照（按顺序）；让前端任务详情页能回放当时的场景结构，渲染器据此分段拼接
-        @JsonProperty("scenes_snapshot") JsonNode scenesSnapshot
+        @JsonProperty("scenes_snapshot") JsonNode scenesSnapshot,
+        // v0.26+: 关联商品 id（来自 create 页 ?product_id=X）；分发抽屉用它反查商品自动填挂载
+        @JsonProperty("product_id") String productId
 ) {
 
     public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper) {
@@ -83,7 +85,8 @@ public record MixcutRenderJobDto(
                 pertOverrides,
                 job.getSourcePhash(),
                 stickerPool,
-                scenesSnap
+                scenesSnap,
+                job.getProductId()
         );
     }
 

@@ -91,6 +91,24 @@ public class MixcutAsset {
     @Column(length = 64)
     private String relatedStarId;
 
+    /**
+     * v0.26+: 关联商品 id（Product.id）；可空。
+     * 商品链接解析时落的图片素材（subkind=product-photo）会带此字段；
+     * create 页 `?product_id=X` 进入时按此字段筛出「本商品素材」。
+     */
+    @Column(length = 64)
+    private String relatedProductId;
+
+    /**
+     * v0.26+: 素材子类（可空），用于区分同一 kind 下的不同来源：
+     *   "user-upload"            — 用户手动上传
+     *   "product-photo"          — 从商品链接解析落的图片（外网 CDN 直登记）
+     *   "product-video"          — 商品相关视频
+     *   "ai-marketing-video"     — AI 生成的带货视频（future）
+     */
+    @Column(length = 32)
+    private String subkind;
+
     // ── getters / setters ─────────────────────────────────────────────────────
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -145,4 +163,10 @@ public class MixcutAsset {
 
     public String getRelatedStarId() { return relatedStarId; }
     public void setRelatedStarId(String relatedStarId) { this.relatedStarId = relatedStarId; }
+
+    public String getRelatedProductId() { return relatedProductId; }
+    public void setRelatedProductId(String relatedProductId) { this.relatedProductId = relatedProductId; }
+
+    public String getSubkind() { return subkind; }
+    public void setSubkind(String subkind) { this.subkind = subkind; }
 }

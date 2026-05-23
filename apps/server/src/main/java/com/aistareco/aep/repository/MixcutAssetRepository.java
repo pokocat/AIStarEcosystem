@@ -26,4 +26,9 @@ public interface MixcutAssetRepository extends JpaRepository<MixcutAsset, String
     List<MixcutAsset> findByIsOfficialTrueAndOfficialCategoryOrderByUploadedAtDesc(String officialCategory);
     List<MixcutAsset> findByIsOfficialTrueAndRelatedStarIdOrderByUploadedAtDesc(String relatedStarId);
     List<MixcutAsset> findByIsOfficialTrueAndOfficialCategoryAndRelatedStarIdOrderByUploadedAtDesc(String officialCategory, String relatedStarId);
+
+    // v0.26+: 商品关联素材（按 product 过滤；混剪 create 页「本商品素材」chip 用）
+    List<MixcutAsset> findByRelatedProductIdOrderByUploadedAtDesc(String relatedProductId);
+    List<MixcutAsset> findByRelatedProductIdAndKindOrderByUploadedAtDesc(String relatedProductId, String kind);
+    List<MixcutAsset> findByUserIdAndRelatedProductIdOrderByUploadedAtDesc(String userId, String relatedProductId);
 }

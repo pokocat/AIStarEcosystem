@@ -156,6 +156,11 @@ export interface AssetFilter {
   preset?: boolean;
   /** v0.13+: 预置分组过滤（sparkle / ribbon / emoji_burst 等）。 */
   presetGroup?: string;
+  /**
+   * v0.26+: 仅列归属此 productId 的素材（subkind=product-photo 等，由商品链接解析落进）。
+   * mixcut create 页 `?product_id=X` 进入时按此字段筛出「本商品素材」。
+   */
+  relatedProductId?: string;
 }
 
 /**
@@ -173,6 +178,7 @@ export async function listAssets(filter?: AssetFilter): Promise<MixcutAsset[]> {
   if (filter?.kind) qs.set("kind", filter.kind);
   if (filter?.preset === true) qs.set("preset", "true");
   if (filter?.presetGroup) qs.set("group", filter.presetGroup);
+  if (filter?.relatedProductId) qs.set("related_product_id", filter.relatedProductId);
   const suffix = qs.toString() ? `?${qs}` : "";
   return apiFetch<MixcutAsset[]>(`/mixcut/assets${suffix}`);
 }

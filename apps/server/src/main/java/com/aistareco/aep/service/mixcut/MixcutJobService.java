@@ -116,6 +116,10 @@ public class MixcutJobService {
         job.setPerturbationOverridesJson(serializeJson(req.perturbationOverrides()));
         job.setStickerPoolJson(serializeJson(req.stickerPool()));
         job.setScenesSnapshotJson(serializeJson(req.scenesSnapshot()));
+        // v0.26+: 关联商品 id（可空）
+        if (req.productId() != null && !req.productId().isBlank()) {
+            job.setProductId(req.productId().trim());
+        }
 
         job.setPerturbationProfile(safe(req.perturbationProfile(), "moderate"));
         job.setOutputVariants(req.outputVariants() != null && req.outputVariants() > 0 ? req.outputVariants() : 1);

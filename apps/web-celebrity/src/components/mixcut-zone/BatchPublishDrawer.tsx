@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Send, X, AlertCircle, ShoppingBag, Package } from "lucide-react";
-import { MixcutApi } from "@/api";
+import { MixcutApi, ProductsApi } from "@/api";
 import type { ScheduleSpec } from "@/api/mixcut";
 import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
 import { Button } from "@/components/mixcut-zone/ui/button";
@@ -124,6 +124,13 @@ export function BatchPublishDrawer({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<MixcutApi.MixcutPublishBatchResult | null>(null);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
+  /**
+   * v0.26+: 商品挂载是否从「商品库」自动带入。
+   * 当抽屉打开 + sourceJob 携带 product_id 时自动 fetch 并填 productLink/productTitle，
+   * 同时把商品名落到本 state 用于 chip 提示。用户手动改链接/标题不影响此 state，
+   * 只显示「带入来源」，不限制覆盖。
+   */
+  const [productFromLibrary, setProductFromLibrary] = useState<{ id: string; name: string } | null>(null);
 
   // 只在 drawer 打开瞬间初始化一次。
   // 故意不依赖 publishable —— 否则父组件在 onPublished 回调里清空上游 selection 会导致
@@ -136,9 +143,31 @@ export function BatchPublishDrawer({
     setSubmitError(null);
     setProductLink("");
     setProductTitle("");
+    setProductFromLibrary(null);
     setProductPickerOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /**
+   * v0.26+: 商品挂载自动带入。
+   * 当 source job 携带 product_id（来自商品库「生成视频」入口）时，并发拉 product，
+   * 用 product.link / product.name prefill 抖音商品挂载字段。用户仍可覆盖。
+   */
+  useEffect(() => {
+    if (!open) return;
+    const productId = job?.product_id;
+    if (!productId) return;
+    ProductsApi.getProduct(productId)
+      .then((p) => {
+        if (!p) return;
+        if (p.link && p.link.trim()) setProductLink(p.link.trim());
+        setProductTitle(p.name);
+        setProductFromLibrary({ id: p.id, name: p.name });
+      })
+      .catch(() => {
+        // 商品不存在 / 网络故障：静默，用户仍可手动填
+      });
+  }, [open, job?.product_id]);
 
   /** v0.22: 选中账号里是否至少一个抖音 —— 决定是否显示「抖音商品挂载」section。 */
   const douyinSelected = useMemo(
@@ -535,6 +564,26 @@ export function BatchPublishDrawer({
                       从商品库选择
                     </button>
                   </div>
+                  {/* v0.26+: 来自商品库的「生成视频」入口 → 自动填好链接 + 商品名时显示带入 chip */}
+                  {productFromLibrary && (
+                    <div className="flex items-center gap-2 rounded-md border border-violet-400/30 bg-violet-500/[0.06] px-2 py-1.5 text-[11px] text-violet-700">
+                      <Package className="size-3 shrink-0" />
+                      <span>📌 已从商品库带入：</span>
+                      <span className="font-medium truncate">{productFromLibrary.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProductLink("");
+                          setProductTitle("");
+                          setProductFromLibrary(null);
+                        }}
+                        className="ml-auto text-zinc-500 hover:text-pink-600"
+                        title="清空商品挂载字段"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  )}
                   <p className="text-[11px] text-muted-foreground -mt-1">
                     蓝V / 橱窗带货；视频画面下方挂「立即购买」卡片。两项都填才会触发挂件；
                     非抖音平台账号 sau-service 会自动忽略。

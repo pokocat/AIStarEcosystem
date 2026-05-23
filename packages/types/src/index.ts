@@ -18,6 +18,7 @@ export * from "./notice";
 export * from "./notification";
 export * from "./pose";
 export * from "./product";
+export * from "./product-link";
 export * from "./publish-job";
 export * from "./script";
 export * from "./settings";

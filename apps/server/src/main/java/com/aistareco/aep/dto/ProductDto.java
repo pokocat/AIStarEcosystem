@@ -6,8 +6,10 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Frontend mirror: apps/web/src/types/product.ts {@code Product}.
+ * Frontend mirror: packages/types/src/product.ts {@code Product}.
  * 字段名严格一致；前端 apiFetch 直接消费此 DTO 序列化结果。
+ *
+ * v0.26+: 加 priceCents / commissionRate（可空整数）。
  */
 public record ProductDto(
         String id,
@@ -18,6 +20,8 @@ public record ProductDto(
         String sellingPoints,
         int usageCount,
         String source,
+        Integer priceCents,
+        Integer commissionRate,
         LocalDate createdAt,
         LocalDate updatedAt
 ) {
@@ -31,6 +35,8 @@ public record ProductDto(
                 p.getSellingPoints() == null ? "" : p.getSellingPoints(),
                 p.getUsageCount(),
                 p.getSource(),
+                p.getPriceCents(),
+                p.getCommissionRate(),
                 p.getCreatedAt(),
                 p.getUpdatedAt()
         );

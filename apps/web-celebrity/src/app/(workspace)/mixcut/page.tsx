@@ -53,12 +53,12 @@ export default function MixcutHomePage() {
             选模板 · 填素材 · 一次生成多条差异化短视频
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="grid grid-cols-[auto_auto] items-stretch gap-3">
           <MonthlyStats
             videosThisMonth={monthlyStats.videosThisMonth}
             totalJobs={monthlyStats.totalJobs}
           />
-          <Button variant="gradient" asChild>
+          <Button variant="gradient" className="h-full min-h-[46px] rounded-2xl px-4" asChild>
             <Link href="/mixcut/templates">
               <Sparkles className="size-4" /> 去模板库
             </Link>
@@ -177,28 +177,58 @@ function MonthlyStats({
   totalJobs: number;
 }) {
   return (
-    <div className="flex items-stretch gap-2">
-      <StatBlock label="本月已生成" value={videosThisMonth} suffix="条视频" />
-      <StatBlock label="累计任务" value={totalJobs} suffix="个" />
+    <div
+      className="flex min-h-[46px] items-center gap-1 rounded-2xl p-1.5"
+      style={{
+        border: "1px solid color-mix(in srgb, var(--line-2) 55%, var(--line))",
+        background: "color-mix(in srgb, var(--bg-2) 54%, var(--bg-1))",
+        boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--bg-1) 72%, transparent)",
+      }}
+      aria-label="本月混剪统计"
+    >
+      <StatSegment label="本月已生成" value={videosThisMonth} suffix="条视频" highlight />
+      <StatSegment label="累计任务" value={totalJobs} suffix="个" />
     </div>
   );
 }
 
-function StatBlock({
+function StatSegment({
   label,
   value,
   suffix,
+  highlight = false,
 }: {
   label: string;
   value: number;
   suffix: string;
+  highlight?: boolean;
 }) {
   return (
-    <div className="px-3 py-1.5 rounded-md border border-border bg-card min-w-[110px]">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className="text-sm font-semibold tabular-nums leading-tight">
-        {formatNumber(value)}
-        <span className="ml-1 text-[10px] text-muted-foreground font-normal">{suffix}</span>
+    <div
+      className="relative min-w-[104px] overflow-hidden rounded-[11px] px-2.5 py-1.5"
+      style={
+        highlight
+          ? {
+              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-1))",
+              boxShadow: "0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent)",
+            }
+          : undefined
+      }
+    >
+      {highlight && (
+        <span
+          className="pointer-events-none absolute inset-0 bg-[var(--accent)] opacity-[0.02]"
+          aria-hidden="true"
+        />
+      )}
+      <div className="relative z-[1] text-[10px] leading-none text-muted-foreground">
+        {label}
+      </div>
+      <div className="relative z-[1] mt-1 flex items-baseline gap-1">
+        <span className="font-mono text-sm font-medium leading-none text-foreground tabular-nums">
+          {formatNumber(value)}
+        </span>
+        <span className="text-[10px] leading-none text-muted-foreground">{suffix}</span>
       </div>
     </div>
   );

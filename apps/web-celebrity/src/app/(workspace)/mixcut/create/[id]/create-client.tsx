@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, notFound } from "next/navigation";
+import { useRouter, notFound, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -38,7 +38,7 @@ import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker"
 import { ProductPickerDialog } from "@/components/celebrity-zone/ProductPickerDialog";
 import type { Product } from "@ai-star-eco/types/product";
 import { mockTemplates } from "@/mocks/mixcut";
-import { MixcutApi } from "@/api";
+import { MixcutApi, ProductsApi } from "@/api";
 import type {
   SlotBinding,
   PerturbationProfile,
@@ -49,12 +49,123 @@ import type {
   SceneSnapshot,
   SlotPerturbationPolicy,
   StickerPoolBinding,
+  Template,
+  MixcutAsset,
+  TemplateSlot,
 } from "@/components/mixcut-zone/types";
 import { PROFILE_LABELS, PROFILE_DESCRIPTIONS } from "@/constants/mixcut-ui";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
 import { resolvePolicy } from "@/components/mixcut-zone/lib/perturbation-defaults";
 import { flatSlotsOf, flatSlotsAbsolute, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { useConfirm } from "@/components/common/confirm-dialog";
+
+// ─── v0.26+ 商品启发式 slot 绑定 ──────────────────────────────────────────────
+//
+// 当用户从商品库点「生成视频」进入 create 页（URL ?product_id=X）时，
+// 按以下规则自动填 slot bindings（**仅覆盖** prev 中未绑或绑 fixed 的 slot，
+// 用户已经改过的 user_input default / library / upload 一律不动）：
+//
+//   layer_type=image + slot 标签命中 product|商品|图|cover|poster
+//     → { source: "upload", file_url: assets[0]?.file_url }（无素材则跳过）
+//   fill_strategy=picgen_text
+//     → { source: "picgen", title: product.name, subtitle: shorten(sellingPoints), tag: category }
+//   layer_type=text + fill_strategy=user_input + 命中 title|标题|name
+//     → { source: "input", text: product.name }
+//   layer_type=text + fill_strategy=user_input + 命中 point|卖点|desc|描述|subtitle
+//     → { source: "input", text: product.sellingPoints || product.name }
+//
+// 启发式命中纯靠 slot_id / label 的子串匹配；模板命名规范越好，命中率越高。
+// 不命中的 slot 保持空，用户照常手动填。
+
+function shortenText(s: string | undefined, max: number): string | undefined {
+  if (!s) return undefined;
+  const trimmed = s.trim();
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, max);
+}
+
+function isProductImageSlot(s: TemplateSlot): boolean {
+  if (s.layer_type !== "image") return false;
+  const haystack = `${s.slot_id} ${s.label ?? ""}`.toLowerCase();
+  return /product|商品|图|cover|poster|main|hero/.test(haystack);
+}
+
+function isTitleSlot(s: TemplateSlot): boolean {
+  const haystack = `${s.slot_id} ${s.label ?? ""}`.toLowerCase();
+  return /title|标题|name|名称/.test(haystack);
+}
+
+function isSellingPointsSlot(s: TemplateSlot): boolean {
+  const haystack = `${s.slot_id} ${s.label ?? ""}`.toLowerCase();
+  return /point|卖点|desc|描述|subtitle|副标题|文案/.test(haystack);
+}
+
+function applyProductHeuristics(
+  prev: Record<string, SlotBinding>,
+  template: Template,
+  product: Product,
+  assets: MixcutAsset[],
+): Record<string, SlotBinding> {
+  const next: Record<string, SlotBinding> = { ...prev };
+  const flatSlots: TemplateSlot[] = template.scenes.flatMap((sc) => sc.slots);
+
+  // 收集产品图素材（subkind=product-photo 或 kind=image 且 related_product_id 命中）
+  const productImages = assets.filter((a) => a.kind === "image");
+
+  for (const slot of flatSlots) {
+    const existing = next[slot.slot_id];
+    // 只覆盖未绑或绑 fixed 的 slot
+    if (existing && existing.source !== "fixed") continue;
+
+    // 1) 商品图槽位
+    if (isProductImageSlot(slot)) {
+      const asset = productImages[0];
+      if (asset) {
+        next[slot.slot_id] = {
+          source: "library",
+          asset_id: asset.id,
+          preview_url: asset.file_url,
+        };
+        continue;
+      }
+      // 没素材时回退到 product.images[0]（外网 URL 直接作 file_url）
+      if (product.images.length > 0) {
+        next[slot.slot_id] = {
+          source: "upload",
+          file_url: product.images[0],
+        };
+      }
+      continue;
+    }
+
+    // 2) picgen 文字转图 slot —— 强类型语义：title + subtitle + tag 一起塞
+    if (slot.fill_strategy === "picgen_text") {
+      next[slot.slot_id] = {
+        source: "picgen",
+        title: product.name,
+        subtitle: shortenText(product.sellingPoints, 30),
+        tag: product.category,
+      };
+      continue;
+    }
+
+    // 3) user_input 文本 slot：按 label 启发命中标题 / 卖点
+    if (slot.layer_type === "text" && slot.fill_strategy === "user_input") {
+      if (isTitleSlot(slot)) {
+        next[slot.slot_id] = { source: "input", text: product.name };
+        continue;
+      }
+      if (isSellingPointsSlot(slot)) {
+        next[slot.slot_id] = {
+          source: "input",
+          text: product.sellingPoints || product.name,
+        };
+        continue;
+      }
+    }
+  }
+  return next;
+}
 
 export function CreateClient({ id }: { id: string }) {
   const router = useRouter();
@@ -104,13 +215,24 @@ export function CreateClient({ id }: { id: string }) {
   const [linkedProduct, setLinkedProduct] = useState<Product | null>(null);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   /**
+   * v0.26+: 从商品库点「生成视频」进入时（URL ?product_id=X），异步拉取的关联素材列表。
+   * 用于自动 slot 绑定（applyProductHeuristics）+ 顶部 chip 展示「素材 N 张」+
+   * SlotInput library mode 顶部「本商品」过滤 chip（未来）。
+   */
+  const [productAssets, setProductAssets] = useState<MixcutAsset[]>([]);
+  /**
    * v0.26+: 当前正在画布上预览的场景索引。
    * - 用户点上方场景 tab 直接切；点中列某个 slot input 时也会自动跳到该 slot 所属场景。
    * - 单场景模板（scenes.length === 1）下永远是 0，tab 条不渲染，行为与旧版一致。
    */
   const [activeSceneIdx, setActiveSceneIdx] = useState(0);
   const initFromTemplateRef = useRef(false);
+  const productAutoFillRef = useRef(false);
   const { confirm, ConfirmHost } = useConfirm();
+
+  // v0.26+: 从商品库「生成视频」入口带过来的 product_id（可空）
+  const searchParams = useSearchParams();
+  const productIdFromUrl = searchParams?.get("product_id") ?? null;
 
   useEffect(() => {
     MixcutApi.getTemplate(id).then((t) => {
@@ -118,6 +240,31 @@ export function CreateClient({ id }: { id: string }) {
       setResolved(true);
     });
   }, [id]);
+
+  /**
+   * v0.26+: 当 product_id 在 URL 中 + 模板已加载 + 模板默认绑定也已就位时，
+   * 并发拉取 product + 关联素材，按启发式规则把 slot bindings 自动填上。
+   * 仅运行一次（productAutoFillRef 守卫），用户清除后不重跑。
+   */
+  useEffect(() => {
+    if (!productIdFromUrl || !template || productAutoFillRef.current) return;
+    // 等 initFromTemplateRef 跑过（拿到模板默认 bindings 后再覆盖）
+    if (!initFromTemplateRef.current) return;
+    productAutoFillRef.current = true;
+    Promise.all([
+      ProductsApi.getProduct(productIdFromUrl),
+      MixcutApi.listAssets({ relatedProductId: productIdFromUrl }),
+    ])
+      .then(([p, assets]) => {
+        if (!p) return;
+        setLinkedProduct(p);
+        setProductAssets(assets ?? []);
+        setBindings((prev) => applyProductHeuristics(prev, template, p, assets ?? []));
+      })
+      .catch(() => {
+        // 失败静默，用户仍可手动填
+      });
+  }, [productIdFromUrl, template]);
 
   // 当 template 首次变为非空(localStorage 覆盖加载到)时,把 bindings / profile / variants
   // 重新用模板里的默认值 seed 一次。只跑一次,之后用户改了的就不再覆盖。
@@ -314,6 +461,8 @@ export function CreateClient({ id }: { id: string }) {
       scenes_snapshot: scenesSnapshot,
       perturbation_overrides: overrides,
       sticker_pool: stickerPool ? { _global: stickerPool } : undefined,
+      // v0.26+: 把商品关联透传到 RenderJob，让分发抽屉能反查 product 自动填挂载字段
+      product_id: linkedProduct?.id,
     };
     await MixcutApi.createJob(job);
 
@@ -359,6 +508,26 @@ export function CreateClient({ id }: { id: string }) {
     router.push(`/mixcut/jobs/${jobId}`);
   };
 
+  /** v0.26+: 清除商品关联，重置 bindings 到模板默认。 */
+  const clearLinkedProduct = () => {
+    setLinkedProduct(null);
+    setProductAssets([]);
+    // 重置 bindings 到模板默认（与 init effect 同逻辑）
+    if (template) {
+      const initial: Record<string, SlotBinding> = {};
+      flatSlotsOf(template).forEach((s) => {
+        if (s.fill_strategy === "user_input" && s.default_value) {
+          initial[s.slot_id] = { source: "input", text: s.default_value };
+        } else if (s.fill_strategy === "fixed") {
+          initial[s.slot_id] = { source: "fixed" };
+        }
+      });
+      setBindings(initial);
+    }
+    // 允许下次重新带入（用户主动清除后，按钮可再次工作）
+    productAutoFillRef.current = false;
+  };
+
   return (
     <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
       <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
@@ -375,6 +544,35 @@ export function CreateClient({ id }: { id: string }) {
           <span className="text-foreground">创建任务</span>
         </div>
       </div>
+
+      {/* v0.26+: 从商品库带入时顶部 chip 给可见反馈 + 一键清除 */}
+      {linkedProduct && productIdFromUrl && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-violet-400/30 bg-violet-500/[0.04] px-3 py-2 text-xs">
+          <Package className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+          <span className="text-zinc-700">已从商品库带入：</span>
+          <span className="font-medium text-zinc-900">{linkedProduct.name}</span>
+          {linkedProduct.priceCents != null && (
+            <span className="rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] text-zinc-600 tabular-nums">
+              ¥{(linkedProduct.priceCents / 100).toFixed(2).replace(/\.00$/, "")}
+            </span>
+          )}
+          {linkedProduct.commissionRate != null && (
+            <span className="rounded border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700">
+              佣金 {linkedProduct.commissionRate}%
+            </span>
+          )}
+          {productAssets.length > 0 && (
+            <span className="text-[11px] text-zinc-500">· 关联素材 {productAssets.length} 张</span>
+          )}
+          <button
+            type="button"
+            onClick={clearLinkedProduct}
+            className="ml-auto inline-flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-600 hover:border-pink-400/40 hover:text-pink-600"
+          >
+            <XIcon className="h-3 w-3" /> 清除并重置
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr_340px] gap-6">
         <div className="lg:sticky lg:top-20 self-start space-y-3">

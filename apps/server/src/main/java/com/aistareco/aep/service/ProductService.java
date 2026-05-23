@@ -63,6 +63,40 @@ public class ProductService {
                 .sellingPoints(input.sellingPoints() == null ? "" : input.sellingPoints().trim())
                 .usageCount(0)
                 .source(input.source() != null && !input.source().isBlank() ? input.source() : "manual")
+                .priceCents(input.priceCents())
+                .commissionRate(input.commissionRate())
+                .createdAt(today)
+                .updatedAt(today)
+                .build();
+        return ProductDto.from(repo.save(p));
+    }
+
+    /**
+     * 同 create，但允许调用方指定 id（用于商品库链接解析时把抖音商品ID直接作为主键，
+     * 以及 DataInitializer seed 时保留可读 id）。
+     */
+    public ProductDto createWithId(String forcedId, ProductInputDto input) {
+        if (forcedId == null || forcedId.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PRODUCT_ID_REQUIRED", "商品 id 不能为空");
+        }
+        if (input == null || input.name() == null || input.name().isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PRODUCT_NAME_REQUIRED", "商品名称不能为空");
+        }
+        if (input.category() == null || input.category().isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PRODUCT_CATEGORY_REQUIRED", "商品类目不能为空");
+        }
+        LocalDate today = LocalDate.now();
+        Product p = Product.builder()
+                .id(forcedId)
+                .name(input.name().trim())
+                .category(input.category())
+                .link(blank(input.link()) ? null : input.link().trim())
+                .images(input.images() == null ? new ArrayList<>() : new ArrayList<>(input.images()))
+                .sellingPoints(input.sellingPoints() == null ? "" : input.sellingPoints().trim())
+                .usageCount(0)
+                .source(input.source() != null && !input.source().isBlank() ? input.source() : "manual")
+                .priceCents(input.priceCents())
+                .commissionRate(input.commissionRate())
                 .createdAt(today)
                 .updatedAt(today)
                 .build();
@@ -78,6 +112,8 @@ public class ProductService {
         if (patch.images() != null) p.setImages(new ArrayList<>(patch.images()));
         if (patch.sellingPoints() != null) p.setSellingPoints(patch.sellingPoints().trim());
         if (patch.source() != null && !patch.source().isBlank()) p.setSource(patch.source());
+        if (patch.priceCents() != null) p.setPriceCents(patch.priceCents());
+        if (patch.commissionRate() != null) p.setCommissionRate(patch.commissionRate());
         p.setUpdatedAt(LocalDate.now());
         return ProductDto.from(repo.save(p));
     }
@@ -118,7 +154,9 @@ public class ProductService {
                 link,
                 input.images(),
                 input.sellingPoints(),
-                "auto-from-generation"
+                "auto-from-generation",
+                input.priceCents(),
+                input.commissionRate()
         );
         return create(created);
     }

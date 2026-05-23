@@ -750,6 +750,54 @@ web-celebrity:
 - jitter 用 `ThreadLocalRandom`：不可重放。未来若要可复算，引 `seed = hash(projectId, i)`。
 - 显式 out-of-scope：campaign 级别取消（`/distribution?tab=tracking` 单条 cancel 仍可用）、ShedLock、跨账号错峰、interval / random_window / weekly 等扩展策略（discriminator 预留扩展位）。
 
+### v0.28（2026-05-23）— 商品主线贯穿（素材统一 + 链接解析 + 生成-分发桥接）
+
+把过去四块独立的「商品库 / 素材库 / 混剪 / 分发」按「商品」为主线连起来：从抖音商城链接解析 → 落 Product + 关联素材到 MixcutAsset → 混剪以商品为入口自动填 slot → 抖音分发自动带商品链接。仅 celebrity 子产品改动。
+
+**核心设计原则**：
+
+- **MixcutAsset 是唯一素材表**：用 `relatedProductId` 标记商品归属（沿用 v0.21 `relatedStarId` 同模式，不发明新表）。`Product.images` 字段渐进废止，新代码读取走 `listAssets({ relatedProductId })`。
+- **productId 是生成-分发的贯穿键**：MixcutRenderJob 加 `productId`；BatchPublishDrawer 打开时反查 Product 自动 prefill 抖音商品挂载字段。PublishJob 不加冗余列。
+- **前端不区分 URL 形态**：单一调用 `POST /api/me/products/parse-link`；server 内部 handler chain 按 `@Order` 决定路径，新平台只加 handler。
+- **外网 CDN URL 直接登记**：抖音商品图直接作为 MixcutAsset.fileUrl，不下载本地。
+
+**新增 / 修改**：
+
+```
+types          : Product +priceCents +commissionRate; +product-link.ts(ProductLinkInfo);
+                 MixcutAsset +related_product_id +subkind; RenderJob +product_id
+server         : Product / MixcutAsset / MixcutRenderJob 三张表加新列
+               : aep/service/productlink/* —— Handler 接口 + DouyinQueryEmbeddedHandler(@Order(10),
+                 query 内嵌 goods_detail) + DouyinHtmlScrapeHandler(@Order(20), HTML 抓 og tags +
+                 window.__INITIAL_STATE__；host 白名单防 SSRF)
+               : ProductLinkService 编排 chain; ProductLinkPersistService 衔接 ProductService +
+                 MixcutAssetService.registerExternalUrl(...)
+               : POST /api/me/products/parse-link（仅解析）+ /api/me/products/from-link（解析+落库）
+               : MixcutAssetController list 加 related_product_id 过滤
+               : CelebrityProductSeeder @Order(30) —— 首次启动 product 表为空时种 6 行抖音选品样例
+web-celebrity  : ProductFormDialog +「📋 从抖音链接解析」+ 价格 / 佣金 输入
+               : CelebrityProductLibrary +「从抖音链接快速建档」入口 + 行「生成视频」按钮 + 价格 / 佣金 列
+               : ProductGenerateDialog（新）—— 选模板跳 /mixcut/create/{tplId}?product_id=X
+               : ProductBatchImportDialog 识别 商品价格 / 佣金 列；占位符改抖音选品库 TSV 格式
+               : create-client.tsx 读 useSearchParams.product_id；并发拉 product + listAssets;
+                 applyProductHeuristics 自动绑 image/picgen_text/text slot; 顶部 chip + 提交透传 product_id
+               : BatchPublishDrawer 自动 prefill productLink/productTitle，显示「已从商品库带入」chip
+               : mocks/products.ts 替换为 6 行抖音选品样例（与 server seed 同源）
+openapi        : Product/ProductInput +priceCents/commissionRate; 新 ProductLinkInfo schema;
+                 新 /me/products/parse-link + /me/products/from-link path
+tests          : DouyinQueryEmbeddedHandlerTest + ProductLinkServiceTest — 11 测全绿
+```
+
+**注意事项**：
+
+- 启发式 slot 绑定按 `slot_id / label / fill_strategy` 子串命中（product|商品|图 → 商品图槽，title|标题 → 标题槽，point|卖点|desc → 卖点槽）；只覆盖 prev 中未绑或绑 `fixed` 的 slot，用户已改不动。模板命名越规范命中率越高。
+- DouyinHtmlScrapeHandler 在 host 白名单外直接返回 empty（防 SSRF）；URL scheme 仅允许 http/https。
+- CelebrityProductSeeder 仅 Product 行，**不**触发外网图片抓取；运营首次访问 UI 后手动点「📋 从抖音链接解析」回填。
+- ProductLinkPersistService 单事务，图片登记单条失败 log + 继续，整体不回滚。
+- BatchPublishDrawer prefill 仅在 `sourceJob.productId` 非空时触发；用户清空 chip 后可手动覆盖，不影响业务。
+- 「商品ID」列在批量导入时识别但**不持久化**（server 自己生成 id）；保留是为兼容抖音表格直接粘贴。
+- **未实现**：AI 生成带货视频（仅在 MixcutAsset.subkind 预留 `"ai-marketing-video"` 占位）；抖音以外平台的 handler；商品图本地化备份；PublishJob.productId 冗余列。
+
 ### v0.25（2026-05-22）— 混剪按场景渲染（多段落 bug 修复）
 
 模板里 `scenes[]` 数据完整（每场景独立 duration + slots[]），但渲染器无视场景结构，硬编 `segCount = Math.min(2, sources.size())` + `segDuration = maxOutputDurationSec / segCount`，导致**无论模板配几个场景，最终视频永远只有 2 段**（每段 7.5s）。前端 `flatSlotsAbsolute()` 把场景拍平时丢了边界信息，渲染器收到的 `slots_snapshot` 完全没有场景概念。本次把"场景"作为一等公民贯穿整链路。

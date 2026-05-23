@@ -102,6 +102,14 @@ public class MixcutRenderJob {
     @Column(name = "source_phash", length = 16)
     private String sourcePhash;
 
+    /**
+     * v0.26+: 关联商品 id（Product.id），可空。
+     * 当用户从商品库点「生成视频」进入 create 页（URL ?product_id=X）时携带，
+     * 让后续分发（BatchPublishDrawer）能反查商品并自动填抖音商品挂载字段。
+     */
+    @Column(length = 64)
+    private String productId;
+
     @OneToMany(mappedBy = "job", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @OrderBy("variantIndex ASC")
     private List<MixcutRenderOutput> outputs = new ArrayList<>();
@@ -166,4 +174,7 @@ public class MixcutRenderJob {
 
     public String getStickerPoolJson() { return stickerPoolJson; }
     public void setStickerPoolJson(String stickerPoolJson) { this.stickerPoolJson = stickerPoolJson; }
+
+    public String getProductId() { return productId; }
+    public void setProductId(String productId) { this.productId = productId; }
 }

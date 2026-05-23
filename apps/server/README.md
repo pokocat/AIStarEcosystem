@@ -285,6 +285,23 @@ src/main/java/com/aistareco/aep/
 | `mixcut_render_output` 扩字段 (v0.19) | `publish_count`（INT NOT NULL DEFAULT 0）/ `last_published_at`（OffsetDateTime nullable）—— `MixcutPublishService` 每次派单成功后按 target 数累加；视频库 UI 用此显示「已发 ×N」徽标，允许同一变体再次分发 |
 | `mixcut_render_output` 扩字段 (v0.21) | `deleted_at`（OffsetDateTime nullable）—— 用户在「视频库」点删除后置非空；DTO 转换过滤 `deletedAt != null` 的 output；`MixcutOutputCleanupScheduler @Scheduled(cron="0 30 3 * * *")` 每日凌晨清理 30 天前软删行（本地 mp4 / CDN / DB 全删） |
 | `mixcut_asset` 扩字段 (v0.21) | `is_official`（BOOLEAN NOT NULL DEFAULT false）/ `official_category`（直播切片 / 综艺 / 访谈…）/ `related_star_id`（关联 `celebrity_stars.id`，可空）—— 运营后台上传的「官方明星片段」，端点 `POST /api/admin/mixcut/official-clips`；用户端只读 `GET /api/mixcut/assets/official-clips` |
+| `products` 扩字段 (v0.28) | `price_cents`（INT nullable）/ `commission_rate`（INT nullable, 0-100 整数百分比）—— 选品表格导入 + 抖音链接解析的价格 / 佣金信息 |
+| `mixcut_asset` 扩字段 (v0.28) | `related_product_id`（VARCHAR(64), 关联 `products.id`，可空）/ `subkind`（VARCHAR(32), 区分 `"user-upload"` / `"product-photo"` / `"product-video"` / `"ai-marketing-video"`）—— 商品链接解析时把外网 CDN 图片直接登记为 MixcutAsset 行，create 页 `?product_id=X` 按此过滤「本商品素材」 |
+| `mixcut_render_job` 扩字段 (v0.28) | `product_id`（VARCHAR(64), 关联 `products.id`，可空）—— 从商品库「生成视频」入口透传，分发抽屉用它反查 Product 自动 prefill 抖音商品挂载字段（productLink / productTitle） |
+
+**v0.28 新增端点**：
+
+```
+POST /api/me/products/parse-link    仅解析（preview，不写库）
+POST /api/me/products/from-link     解析 + 落 Product + 登记图片为 MixcutAsset(subkind=product-photo)
+GET  /api/mixcut/assets?related_product_id=X    按商品过滤素材（自动短路 listVisibleTo）
+```
+
+server 内部 `aep/service/productlink/ProductLinkHandler` 是策略链接口，Spring 按 `@Order` 注入有序列表：
+- `DouyinQueryEmbeddedHandler` @Order(10) — query 内嵌 `goods_detail` JSON 时直接 URLDecode + parse
+- `DouyinHtmlScrapeHandler` @Order(20) — host 白名单 `*.jinritemai.com|*.douyin.com`（防 SSRF），HttpClient GET（UA=desktop Chrome, timeout=8s），正则抓 og tags + `window.__INITIAL_STATE__`
+
+新平台扩展只加 handler；不动 `ProductLinkController` / 前端。`ProductLinkPersistService` 串起 ProductService.createWithId + `MixcutAssetService.registerExternalUrl(userId, kind, subkind, externalUrl, productId)`，单事务，图片登记单条失败 log + 继续。
 
 ### v0.5 关键服务
 

@@ -69,6 +69,50 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.28 · 2026-05-23 · 商品主线贯穿（素材统一 + 链接解析 + 生成-分发桥接）
+
+把过去四块独立的「商品库 / 素材库 / 混剪 / 分发」按"商品"为主线连起来，新增双向桥接 + 抖音商品链接解析能力。
+
+**新增**：
+
+```
+packages/types : Product +priceCents +commissionRate；新增 product-link.ts (ProductLinkInfo)；MixcutAsset +related_product_id +subkind；RenderJob +product_id
+server         : Product +priceCents +commissionRate 列；MixcutAsset +relatedProductId +subkind 列；MixcutRenderJob +productId 列
+               : aep/service/productlink/* —— ProductLinkHandler 接口 + DouyinQueryEmbeddedHandler(@Order(10), query 内嵌 goods_detail) + DouyinHtmlScrapeHandler(@Order(20), HTML 抓 og tags + window.__INITIAL_STATE__；host 白名单 *.jinritemai.com|*.douyin.com 防 SSRF)
+               : ProductLinkService 编排 chain；ProductLinkPersistService 解析 → 落 Product + 把图片登记为 MixcutAsset(subkind=product-photo) 统一素材体系
+               : POST /api/me/products/parse-link（仅解析）+ POST /api/me/products/from-link（解析+落库）
+               : MixcutAssetService +registerExternalUrl(userId, kind, subkind, externalUrl, productId) —— 外网 CDN URL 直接登记，不本地化
+               : MixcutAssetController list 加 related_product_id query 过滤
+               : CelebrityProductSeeder @Order(30) —— 首次启动 product 表为空时种 6 行抖音选品样例
+web-celebrity  : ProductFormDialog +「📋 从抖音链接解析」按钮（覆盖空字段）+ 价格 / 佣金 数字输入
+               : CelebrityProductLibrary 顶部 +「从抖音链接快速建档」入口；行 +「生成视频」按钮；表格 + 网格视图加 价格 / 佣金 / CTA 列
+               : ProductGenerateDialog（新）—— 选模板 + 跳 /mixcut/create/{tplId}?product_id=X
+               : ProductBatchImportDialog mapHeaderToField 识别 商品价格 / 佣金 列；表格 UI 加两列；TSV 占位符改为抖音选品库格式
+               : create-client.tsx 读 useSearchParams.product_id；并发拉 product + listAssets(relatedProductId)；applyProductHeuristics 按 slot_id/label/fill_strategy 自动绑 image/picgen_text/text slot；顶部 chip「已从商品库带入 + 价格佣金 + 关联素材 N 张 + 一键清除」；提交 RenderJob 透传 product_id
+               : BatchPublishDrawer 自动 prefill 抖音商品挂载（productLink / productTitle），UI 显示「📌 已从商品库带入」chip
+               : mocks/products.ts 替换为 6 行抖音选品样例（与 server seed 同源）
+openapi        : Product / ProductInput schema 加 priceCents / commissionRate；ProductLinkInfo + ProductLinkParseRequest 新 schema；/me/products/parse-link + /me/products/from-link 两个新 path
+tests          : DouyinQueryEmbeddedHandlerTest（4 测）+ ProductLinkServiceTest（7 测）—— 全绿
+```
+
+**整体设计原则**：
+
+- **MixcutAsset 是唯一素材表**：商品的图片 / 视频 / 未来 AI 生成片段统一作为 MixcutAsset 行存储，用 relatedProductId 标记归属（沿用 v0.21 relatedStarId 同模式，不发明新表）。`Product.images` 保留作向后兼容快照；新代码读取走 listAssets({ relatedProductId }) 查询。
+- **productId 是生成-分发的贯穿键**：MixcutRenderJob.productId 透传商品上下文，BatchPublishDrawer 打开时反查 Product 自动填挂载字段（用户仍可覆盖）。PublishJob 暂**不**加 productId 列，按 sourceMixcutJobId 反查即可。
+- **前端不区分 URL 形态**：单一调用点 `POST /me/products/parse-link`；server 内部 handler chain 按 @Order 决定路径。新平台只加 handler，不动 controller / 前端。
+- **外网 CDN URL 直接登记**：解析出的图片 URL 直接落到 MixcutAsset.fileUrl，不下载本地。渲染时 AssetDownloader 按需拉。生产化备份是 future 范围。
+
+**注意事项**：
+
+- DouyinHtmlScrapeHandler 走 HttpClient GET（UA=desktop Chrome, timeout=8s），host 必须命中 `*.jinritemai.com|*.douyin.com` 白名单防 SSRF。
+- ProductLinkPersistService 整体单事务；图片登记失败 log + 不回滚（图片不全比完全失败要好）。
+- ProductLinkController 挂在 `/api/me/products/*`，受 `/api/me/**` 已有 `.authenticated()` 规则保护。
+- CelebrityProductSeeder 守卫是 `productRepository.count() == 0`，运营首次自行录入后表非空 → 跳过；不会覆盖。**仅** Product 行，不抓图片（避免启动打外网；用户首次访问可手动触发解析回填）。
+- 启发式 slot 绑定按 slot_id / label / fill_strategy 子串匹配，模板命名规范越好命中率越高；不命中保留空让用户手填。
+- 「商品ID」列在批量导入时被识别但**不持久化**（server 自己生成 id）；运营手粘表格时 ID 仅作 link URL 的参考。
+
+**契约状态**：`(cd apps/web && npm run check:api-contract)` ✅ OK · `pnpm typecheck:all` ✅ 七 workspace 全绿 · `./mvnw compile` + `./mvnw test -Dtest='DouyinQueryEmbeddedHandlerTest,ProductLinkServiceTest'` ✅ 11 测全绿。
+
 ### v0.27 · 2026-05-22 · 混剪创建页 UX 重构（分步导引 / 渐进披露 / 焦点强化）
 
 用户反馈三个问题：① 分段步骤引导不够；② 右侧参数过早全部暴露，认知负担高；③ 操作时焦点区域提示弱。本次围绕"create page 是个明确的两步工作流（① 填素材 → ② 设置并生成）"做信息架构重构，无任何契约 / server 改动。

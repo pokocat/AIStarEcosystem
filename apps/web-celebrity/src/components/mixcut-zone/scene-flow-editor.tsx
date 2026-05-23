@@ -44,18 +44,24 @@ export function SceneFlowEditor({
   const current = scenes[currentIdx];
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-baseline gap-2 min-w-0">
+    <Card
+      className="shadow-none"
+      style={{
+        borderColor: "color-mix(in srgb, var(--line-2) 52%, var(--line))",
+        background: "color-mix(in srgb, var(--bg-1) 82%, var(--bg-0))",
+      }}
+    >
+      <CardHeader className="pb-1.5">
+        <CardTitle className="text-sm flex items-baseline gap-2 min-w-0 tracking-normal">
           <span className="shrink-0">场景流程</span>
           <span className="text-[11px] font-normal text-muted-foreground font-mono">
             {scenes.length} 段 · 共 {totalSec}s
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2.5">
         {/* 节点流(横向滚动,适合 5+ 场景) */}
-        <div className="overflow-x-auto -mx-1 px-1 pb-2 scrollbar-thin">
+        <div className="overflow-x-auto -mx-1 px-1 pb-1 scrollbar-thin">
           <div className="flex items-stretch gap-0 min-w-fit">
             {/* 前置 gap */}
             <InsertGap
@@ -107,7 +113,7 @@ export function SceneFlowEditor({
             {editing && (
               <button
                 onClick={() => onAddAt(scenes.length)}
-                className="shrink-0 w-24 self-stretch rounded-lg border-2 border-dashed border-border hover:border-foreground/40 hover:bg-secondary/40 transition-colors grid place-items-center text-muted-foreground hover:text-foreground"
+                className="shrink-0 w-24 self-stretch rounded-lg border-2 border-dashed border-border/80 text-muted-foreground hover:border-foreground/30 hover:bg-secondary/30 hover:text-foreground transition-colors grid place-items-center"
                 title="追加新场景"
               >
                 <div className="text-center">
@@ -190,11 +196,11 @@ function SceneNode({
       onClick={onSelect}
       role="button"
       className={cn(
-        "group relative shrink-0 rounded-md border transition-all cursor-pointer px-3 py-2",
+        "group relative shrink-0 rounded-md border px-3 py-2 transition-all cursor-pointer",
         "flex items-center gap-2 min-w-[10rem]",
         active
-          ? "border-violet-500 bg-violet-500/[0.06] shadow-sm shadow-violet-500/10"
-          : "border-border hover:border-foreground/30 bg-card",
+          ? "border-violet-300/70 bg-violet-50/70 shadow-none"
+          : "border-border bg-transparent hover:border-foreground/25 hover:bg-secondary/35",
         editing && "select-none",
         dragging && "opacity-40"
       )}
@@ -254,7 +260,7 @@ function InsertGap({
     // 非编辑态:首节点前不要箭头,其余节点之间显示一个简单的 →
     if (isFirst) return <div className="w-2 shrink-0" />;
     return (
-      <div className="shrink-0 w-6 self-center text-muted-foreground/60 grid place-items-center">
+      <div className="shrink-0 w-5 self-center text-muted-foreground/40 grid place-items-center">
         →
       </div>
     );

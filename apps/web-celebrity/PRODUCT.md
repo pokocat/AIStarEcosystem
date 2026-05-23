@@ -68,7 +68,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/star/[starId]/generate` | 详情 | 生成工作流（模板 / 盲盒选择 → AI 生成视频） |
 | `/projects` | 制作 | 我的项目（多项目管理） |
 | `/projects/[projectId]` | 制作 | 项目详情（视频管理 / 状态推进） |
-| `/products` | 制作 | 商品库（CRUD + 卖点抽取） |
+| `/products` | 制作 | 商品库（CRUD + 卖点抽取 + 抖音链接智能解析 + 一键生成视频，v0.28+） |
 | `/library` | 制作 | 视频中心（跨项目聚合产出） |
 | `/data` | 洞察 | 数据中心（分发占比 / 转化率） |
 
@@ -619,6 +619,64 @@ celebrity 工作台是「制作方」视角；小程序 [`apps/miniprogram`](../
 - mixcut OSS 化（v0.9）
 - engine-pricing / JOBS 落表持久化
 - 真实视频生成引擎接入（当前 mixcut 用 ffmpeg 真做但素材是固定 demo；celebrity-zone 的 `/star/<id>/generate` 仍是 mock）
+
+---
+
+## 8.5 商品主线（v0.28+）
+
+celebrity 子产品按「商品」为主线把「商品库 / 素材库 / 混剪 / 分发」连成一条流：
+
+```
+            ┌──────────────── Product ────────────────┐
+            │ id / name / link / priceCents / commission│
+            │ images[] (snapshot) / sellingPoints       │
+            └────────────────┬──────────────────────────┘
+                             │
+              ┌──────────────┼──────────────────┐
+              ▼              ▼                  ▼
+        MixcutAsset       MixcutRenderJob   PublishJob
+        relatedProductId  productId         (无冗余列)
+        subkind=          (来自 ?product_id  反查
+        product-photo     URL 参数)         sourceJob.productId
+```
+
+**录入入口**：
+
+- **商品库顶部「📋 从抖音链接快速建档」** → 弹粘贴框 → 调 `POST /api/me/products/from-link` → 解析 + 落 Product + 把图片登记为 MixcutAsset(subkind=product-photo)
+- **快速录入 / 编辑弹窗里「📋 从抖音链接解析」** → 调 `POST /api/me/products/parse-link` → **仅覆盖空字段**（用户已填的不动）
+- **批量录入「粘贴 Excel」** tab → 识别抖音选品库 TSV 表头：`商品ID / 商品名称 / 商品链接 / 商品价格 / 佣金`
+
+**URL 解析（server 策略链）**：
+
+| handler | @Order | 触发 | 实现 |
+|---|---|---|---|
+| DouyinQueryEmbeddedHandler | 10 | URL query 含 `goods_detail` | URLDecode → JSON parse → 抽 title/img.url_list/min_price/max_price/sales |
+| DouyinHtmlScrapeHandler | 20 | host 命中 `*.jinritemai.com\|*.douyin.com` 白名单 | HttpClient GET（UA=desktop Chrome, timeout=8s）→ 正则抓 og:image/og:title + window.__INITIAL_STATE__ |
+
+**生成视频入口**：
+
+- 商品库行 / 卡片「生成视频」按钮 → `<ProductGenerateDialog>` 选模板 → `router.push(/mixcut/create/{tplId}?product_id=X)`
+- create-client.tsx 自动：
+  - 并发 fetch product + `MixcutApi.listAssets({ relatedProductId: X })`
+  - `applyProductHeuristics(prev, template, product, assets)` 按 slot_id/label/fill_strategy 自动绑：
+    - layer_type=image 命中 `product|商品|图|cover|poster|main|hero` → 用 product 关联 MixcutAsset.id（fallback `product.images[0]`）
+    - fill_strategy=picgen_text → picgen { title=name, subtitle=sellingPoints[:30], tag=category }
+    - layer_type=text + user_input 命中 `title|标题|name` → input { text: name }
+    - 命中 `point|卖点|desc|描述|subtitle` → input { text: sellingPoints || name }
+  - 只覆盖未绑 / 绑 fixed 的 slot；用户改过的不动
+  - 顶部 chip「已从商品库带入：xxx · 价格 · 佣金 · 关联素材 N 张 · 清除」
+- 提交 RenderJob 时透传 `product_id` 到 MixcutRenderJob.productId
+
+**分发自动 prefill**：
+
+BatchPublishDrawer 打开时若 `sourceJob.productId` 非空，反查 Product → 用 `product.link / product.name` 自动填 productLink/productTitle，UI 显示「📌 已从商品库带入」chip。用户仍可手动覆盖；非抖音平台 sau-service 静默忽略两字段。
+
+**未实现 / 显式 out-of-scope**：
+
+- AI 生成带货视频（MixcutAsset.subkind 预留 `"ai-marketing-video"` 占位，无实现）
+- 抖音以外平台（淘宝 / 京东 / 拼多多）的解析 handler
+- 商品图本地化备份（外网 CDN URL 直接登记，未来「同步备份」按钮可补）
+- PublishJob.productId 冗余列（按 sourceMixcutJobId 反查即可）
 
 ---
 

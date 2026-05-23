@@ -1742,6 +1742,9 @@ components:
         sellingPoints:  { type: string }
         usageCount:     { type: integer }
         source:         { $ref: '#/components/schemas/ProductSource' }
+        # v0.26+: 售价（分）+ 佣金率（0-100 整数百分比）
+        priceCents:     { type: integer, nullable: true }
+        commissionRate: { type: integer, nullable: true, minimum: 0, maximum: 100 }
         createdAt:      { type: string, format: date }
         updatedAt:      { type: string, format: date }
 
@@ -1757,6 +1760,30 @@ components:
           items: { type: string }
         sellingPoints: { type: string, nullable: true }
         source:        { $ref: '#/components/schemas/ProductSource' }
+        # v0.26+: 售价 + 佣金率
+        priceCents:     { type: integer, nullable: true }
+        commissionRate: { type: integer, nullable: true, minimum: 0, maximum: 100 }
+
+    # v0.26+ 商品链接解析（抖音商城）—— server 端策略链返回
+    ProductLinkInfo:
+      type: object
+      required: [imageUrls, source]
+      properties:
+        title:                 { type: string, nullable: true }
+        imageUrls:
+          type: array
+          items: { type: string }
+        minPriceCents:         { type: integer, nullable: true }
+        maxPriceCents:         { type: integer, nullable: true }
+        sales:                 { type: integer, nullable: true }
+        inferredSellingPoints: { type: string, nullable: true }
+        source:                { type: string, description: "命中的 handler 名（douyin-query-embedded / douyin-html-scrape）" }
+
+    ProductLinkParseRequest:
+      type: object
+      required: [url]
+      properties:
+        url:  { type: string, description: "抖音商城分享长链 或 PC 选品库短链" }
 
     # ── 异步任务壳（生成 / 分发 / 抽取等的统一返回）
 
@@ -4673,6 +4700,62 @@ paths:
                 images:
                   type: array
                   items: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+
+  # v0.26+: 抖音商品链接解析 / 一键建档
+  /me/products/parse-link:
+    post:
+      tags: [products]
+      operationId: parseProductLink
+      summary: |
+        从抖音商城链接解析商品信息（仅解析，不写库）。
+        server 内部按 @Order 注入 ProductLinkHandler chain：
+        DouyinQueryEmbeddedHandler（query 内嵌 goods_detail）/
+        DouyinHtmlScrapeHandler（HTML 抓 og tags + window.__INITIAL_STATE__）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductLinkParseRequest' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ProductLinkInfo' }
+        '422':
+          description: 未能从该链接解析出商品信息（不支持的平台 / 页面格式变更）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /me/products/from-link:
+    post:
+      tags: [products]
+      operationId: createProductFromLink
+      summary: |
+        从链接解析 + 落 Product + 把图片登记为 MixcutAsset(subkind=product-photo, related_product_id=...)。
+        前端商品库顶部「📋 从抖音链接快速建档」入口调用。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductLinkParseRequest' }
       responses:
         '200':
           description: ok

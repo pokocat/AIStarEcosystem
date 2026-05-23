@@ -51,6 +51,14 @@ public class Product {
     @Builder.Default
     private String source = "manual";
 
+    /** v0.26+: 商品售价（分）。可空——抖音商城短链需要解析才能拿到，老数据没有。 */
+    @Column
+    private Integer priceCents;
+
+    /** v0.26+: 佣金率（0-100 整数百分比）。可空——选品表格才有此字段，URL 解析拿不到。 */
+    @Column
+    private Integer commissionRate;
+
     @Column(nullable = false)
     private LocalDate createdAt;
 

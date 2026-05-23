@@ -37,9 +37,16 @@ public class MixcutAssetController {
             @RequestParam(value = "kind", required = false) String kind,
             @RequestParam(value = "preset", required = false) Boolean preset,
             @RequestParam(value = "group", required = false) String presetGroup,
+            @RequestParam(value = "related_product_id", required = false) String relatedProductId,
             Principal principal
     ) {
         String userId = currentUserId(principal);
+        // v0.26+: 商品关联素材过滤优先（短路 listVisibleTo），避免和 preset 池混合
+        if (relatedProductId != null && !relatedProductId.isBlank()) {
+            var byProduct = service.listByProduct(relatedProductId, userId, kind)
+                    .stream().map(MixcutAssetDto::from).toList();
+            return ApiResponse.of(byProduct);
+        }
         var assets = service.listVisibleTo(userId, kind, preset, presetGroup)
                 .stream().map(MixcutAssetDto::from).toList();
         return ApiResponse.of(assets);
