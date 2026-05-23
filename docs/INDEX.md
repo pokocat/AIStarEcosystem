@@ -80,7 +80,8 @@
 | 文档 | 用途 |
 |---|---|
 | [`DEPLOYMENT.md`](../DEPLOYMENT.md) | 47.94.102.182 当前线上部署基线 + 增量部署 SOP + **v0.5 部署变更（AEP_SECRET_KEY、新 admin 路径）** |
-| [`.claude/skills/aistareco-deploy/SKILL.md`](../.claude/skills/aistareco-deploy/SKILL.md) | 触发 deploy skill 时使用；当前是 v0.4 期版本，v0.6 真生产部署时再大改 |
+| [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | 触发 deploy skill 时使用；覆盖 `web` / `admin` / `server` / `web-celebrity` / `sau-service` 部署与账号绑定 QR smoke test |
+| [`.claude/skills/aliyun-deploy/references/production.md`](../.claude/skills/aliyun-deploy/references/production.md) | 47.94.102.182 生产拓扑、systemd / Docker / Nginx 超时、CORS、sau-service real 模式与验证脚本 |
 
 **v0.8 新增部署需求**：mixcut 真后端要求生产环境装 ffmpeg：
 
@@ -130,7 +131,7 @@ sudo yum install -y ffmpeg ffmpeg-devel
 | 加新接口 | 前端 `types/*` 改字段（真源）→ server `*Dto` → `specs/openapi.yaml` → 跑 `check:api-contract`；详见 [`AGENTS.md` §5](../AGENTS.md) |
 | 看 AI 明星带货某功能怎么实现 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md)（找对应版本节）→ `apps/server/src/main/java/com/aistareco/aep/service/`（具体 service） |
 | 看混剪专区怎么实现 | [`apps/web-celebrity/PRODUCT.md` §5](../apps/web-celebrity/PRODUCT.md) → `apps/server/src/main/java/com/aistareco/aep/service/mixcut/` |
-| 部署到生产 | [`DEPLOYMENT.md`](../DEPLOYMENT.md) → 注意 `AEP_SECRET_KEY` 必配；**v0.8 起注意 ffmpeg + AEP_MIXCUT_*** |
+| 部署到生产 | [`DEPLOYMENT.md`](../DEPLOYMENT.md) → [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md)；注意 `AEP_SECRET_KEY`、ffmpeg、`web-celebrity` 3012、`sau-service` real 模式和 `/api` 长超时 |
 | 修 admin auth/403 问题 | [`TODO.md`](../TODO.md) 第一节 |
 | 加新 LLM provider | `apps/server/.../service/AiModelInvocationService.java`（v0.5 仅 OPENAI/OPENAI_COMPATIBLE） |
 | 配置 / 上下架 / 调价 | 进 admin（端口 3003），见 [`apps/admin/README.md`](../apps/admin/README.md) 当前可用菜单段 |

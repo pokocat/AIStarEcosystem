@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aliyun Deploy"
+  short_description: "Deploy AI Star Eco production services."
+  default_prompt: "Use $aliyun-deploy to deploy AI Star Eco production changes and verify web, admin, API, web-celebrity, sau-service, static video, and account binding QR endpoints."
