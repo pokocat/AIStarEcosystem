@@ -213,6 +213,51 @@ def test_upload_lifecycle_pushes_callbacks(client: TestClient, tmp_path, monkeyp
     assert last["externalUrl"] is not None
 
 
+def test_upload_manager_serializes_same_platform_account(tmp_path, monkeypatch) -> None:
+    from sau_service.uploader import UploadManager, UploadRequest
+
+    mgr = UploadManager(max_concurrency=2, mock_mode=True, tmpfs_dir=str(tmp_path))
+    active = 0
+    max_active = 0
+
+    async def fake_materialise(self, rec):  # type: ignore[no-untyped-def]
+        rec.state_path = str(tmp_path / f"{rec.task_id}-state.json")
+        rec.video_path = None
+
+    async def fake_mock_upload(self, rec):  # type: ignore[no-untyped-def]
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.05)
+        rec.status = "live"
+        active -= 1
+
+    monkeypatch.setattr(type(mgr), "_materialise_tmpfs", fake_materialise)
+    monkeypatch.setattr(type(mgr), "_run_mock_upload", fake_mock_upload)
+
+    def req() -> UploadRequest:
+        return UploadRequest(
+            job_id=None,
+            platform="douyin",
+            account_name="alice",
+            video_url="https://example.test/video.mp4",
+            title="hello",
+            description=None,
+            tags=[],
+            cover_url=None,
+            storage_state={},
+            callback_url="http://test/callback",
+            callback_secret="x",
+        )
+
+    async def run() -> None:
+        ids = await asyncio.gather(mgr.submit(req()), mgr.submit(req()))
+        await asyncio.gather(*(mgr._tasks[task_id].runner_task for task_id in ids))
+
+    asyncio.run(run())
+    assert max_active == 1
+
+
 def _materialise_into_tmp(tmp_path):
     async def _impl(self, rec):  # type: ignore[no-untyped-def]
         rec.state_path = str(tmp_path / f"{rec.task_id}-state.json")
@@ -488,6 +533,48 @@ def test_run_upstream_upload_times_out(monkeypatch) -> None:
     assert "180" in last["error_message"] or "0" in last["error_message"]  # contains the timeout figure
 
 
+def test_run_upstream_upload_treats_douyin_manage_url_as_success(monkeypatch) -> None:
+    """Douyin may publish successfully, then hang during browser teardown.
+
+    Once the page is on creator-micro/content/manage, that is the same success
+    signal upstream uses. We should return ok=True after a short grace period
+    instead of timing out and marking an already-published video failed.
+    """
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 5.0)
+    monkeypatch.setattr("sau_service.uploader.PUBLISHING_AFTER_S", 5.0)
+    monkeypatch.setattr("sau_service.uploader.UPLOAD_SUCCESS_GRACE_S", 0.1)
+    pushed: list[dict] = []
+
+    async def fake_push(rec):
+        pushed.append({"status": rec.status, "error_code": rec.error_code})
+
+    mgr, rec = _make_manager_for_guard()
+    monkeypatch.setattr(type(mgr), "_push", lambda self, r: fake_push(r))
+
+    class _Page:
+        url = "https://creator.douyin.com/creator-micro/content/upload"
+
+    page = _Page()
+
+    async def hung_after_success_page():
+        await asyncio.sleep(0.05)
+        page.url = "https://creator.douyin.com/creator-micro/content/manage"
+        while True:
+            await asyncio.sleep(0.05)
+
+    async def run():
+        return await mgr._run_upstream_upload(
+            rec,
+            hung_after_success_page,
+            platform_label="douyin",
+            page_provider=lambda: page,
+        )
+
+    ok = asyncio.run(run())
+    assert ok is True
+    assert not any(p["status"] == "failed" for p in pushed), f"should not fail after success URL: {pushed}"
+
+
 def test_run_upstream_upload_honours_cancel_event(monkeypatch) -> None:
     """rec.cancel_event must abort an in-flight upstream upload promptly."""
     monkeypatch.setattr("sau_service.uploader.UPLOAD_TIMEOUT_S", 5.0)
@@ -526,6 +613,24 @@ def test_run_upstream_upload_honours_cancel_event(monkeypatch) -> None:
 
 
 # ── SMS interaction watcher (awaiting_user end-to-end) ──────────────────────
+
+
+def test_mask_phone_preserves_platform_provided_mask() -> None:
+    from sau_service.interaction import mask_phone
+
+    assert mask_phone("短信已发送至 131*******83") == "131*******83"
+    assert mask_phone("13112345678") == "131****5678"
+
+
+def test_non_douyin_sms_driver_is_capture_only() -> None:
+    from sau_service.interaction import get_sms_driver
+
+    driver = get_sms_driver("xiaohongshu")
+
+    assert driver is not None
+    assert asyncio.run(driver.detect(object())) is None
+    assert asyncio.run(driver.request_sms(object())) is False
+    assert asyncio.run(driver.submit_code(object(), "123456")) is False
 
 
 class _FakeSmsDriver:
@@ -598,6 +703,215 @@ def test_login_pool_submit_interaction_clears_binding_sms(monkeypatch) -> None:
     assert result == "accepted"
     assert driver.submit_code_calls == ["888888"]
     assert session.interaction_required is None
+
+
+def test_login_pool_submit_interaction_reports_driver_failure(monkeypatch) -> None:
+    from sau_service.login_pool import LoginPool, LoginSession
+
+    driver = _install_fake_driver(monkeypatch, "douyin")
+    pool = LoginPool(ttl_seconds=60)
+    session = LoginSession(
+        ticket="bind-sms-fail",
+        platform="douyin",
+        account_name="alice",
+        expires_at=9999999999,
+        real_mode=True,
+        handles={"page": object()},
+        interaction_required={
+            "kind": "sms",
+            "prompt": "平台要求输入短信验证码以完成账号绑定。",
+            "createdAt": "2026-05-20T00:00:00+00:00",
+        },
+    )
+    pool._sessions[session.ticket] = session  # direct fixture setup
+
+    result = asyncio.run(pool.submit_interaction("bind-sms-fail", {"code": "000000"}, mock=False))
+
+    assert result == "submit_failed"
+    assert driver.submit_code_calls == ["000000"]
+    assert session.interaction_required is not None
+    assert session.interaction_required["prompt"] == "验证码提交失败，请检查后重试。"
+
+
+def test_login_pool_submit_interaction_reports_uncleared_modal(monkeypatch) -> None:
+    from sau_service.login_pool import LoginPool, LoginSession
+
+    class _UnclearedDriver(_FakeSmsDriver):
+        async def submit_code(self, page, code):
+            self.submit_code_calls.append(code)
+            return True
+
+        async def is_cleared(self, page):
+            return False
+
+    from sau_service import interaction
+
+    driver = _UnclearedDriver()
+    monkeypatch.setitem(interaction.SMS_DRIVERS, "douyin", driver)
+    pool = LoginPool(ttl_seconds=60)
+    session = LoginSession(
+        ticket="bind-sms-uncleared",
+        platform="douyin",
+        account_name="alice",
+        expires_at=9999999999,
+        real_mode=True,
+        handles={"page": object()},
+        interaction_required={
+            "kind": "sms",
+            "prompt": "平台要求输入短信验证码以完成账号绑定。",
+            "createdAt": "2026-05-20T00:00:00+00:00",
+        },
+    )
+    pool._sessions[session.ticket] = session
+    monkeypatch.setattr(
+        pool,
+        "_wait_login_interaction_cleared",
+        lambda *args, **kwargs: asyncio.sleep(0, result=False),
+    )
+
+    result = asyncio.run(pool.submit_interaction("bind-sms-uncleared", {"code": "888888"}, mock=False))
+
+    assert result == "submit_failed"
+    assert driver.submit_code_calls == ["888888"]
+    assert session.interaction_required is not None
+    assert session.interaction_required["prompt"] == "平台仍在等待验证码，可能输入有误，请重新提交。"
+
+
+def test_login_poll_clears_stale_sms_after_platform_logged_in(monkeypatch) -> None:
+    """If Douyin has entered creator home, stale interaction state must not trap polling."""
+    from sau_service import interaction
+    from sau_service.login_pool import DRIVERS, LoginPool, LoginSession, PlatformDriver
+
+    class _ClearedSmsDriver(_FakeSmsDriver):
+        async def detect(self, page):
+            return None
+
+        async def is_cleared(self, page):
+            return True
+
+    class _LoggedInDriver(PlatformDriver):
+        LOGIN_URL = "https://example.test/login"
+
+        @classmethod
+        async def extract_qr_data_url(cls, page):
+            return "data:image/png;base64,abc"
+
+        @classmethod
+        async def is_logged_in(cls, page):
+            return True
+
+        @classmethod
+        async def extract_profile(cls, page, account_name):
+            return {"displayName": account_name, "platformAccountId": "dy_001", "avatarUrl": None}
+
+    class _Context:
+        async def storage_state(self):
+            return {"cookies": [{"name": "sid", "value": "ok"}]}
+
+        async def close(self):
+            return None
+
+    monkeypatch.setitem(DRIVERS, "douyin", _LoggedInDriver)
+    monkeypatch.setitem(interaction.SMS_DRIVERS, "douyin", _ClearedSmsDriver())
+
+    pool = LoginPool(ttl_seconds=60)
+    session = LoginSession(
+        ticket="bind-sms-stale",
+        platform="douyin",
+        account_name="alice",
+        expires_at=9999999999,
+        real_mode=True,
+        handles={"page": object(), "context": _Context()},
+        interaction_required={
+            "kind": "sms",
+            "prompt": "平台仍在等待验证码，可能输入有误，请重新提交。",
+            "createdAt": "2026-05-20T00:00:00+00:00",
+        },
+    )
+    pool._sessions[session.ticket] = session
+
+    result = asyncio.run(pool._poll_real(session))
+
+    assert result["status"] == "success"
+    assert result["storage_state"]["cookies"][0]["name"] == "sid"
+    assert result["profile"]["platformAccountId"] == "dy_001"
+    assert session.ticket not in pool._sessions
+
+
+def test_douyin_submit_code_tries_child_frames(monkeypatch) -> None:
+    from sau_service.interaction import _DouyinSmsDriver
+
+    class _Scope:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.frames: list[_Scope] = []
+
+        async def wait_for_timeout(self, ms: int) -> None:
+            return None
+
+    page = _Scope("page")
+    frame = _Scope("frame")
+    page.frames = [frame]
+    calls: list[tuple[str, str, str]] = []
+    driver = _DouyinSmsDriver()
+
+    async def no_specific(_page):
+        return False
+
+    async def fake_submit(scope, code, *, keyboard_page=None):
+        calls.append((scope.name, code, keyboard_page.name if keyboard_page else ""))
+        return scope.name == "frame"
+
+    monkeypatch.setattr(driver, "_is_modal_visible", no_specific)
+    monkeypatch.setattr(driver, "_submit_generic_code_in_surface", fake_submit)
+
+    assert asyncio.run(driver.submit_code(page, "123456")) is True
+    assert calls == [("page", "123456", "page"), ("frame", "123456", "page")]
+
+
+def test_login_poll_reports_sms_before_logged_in_success(monkeypatch) -> None:
+    """Binding poll must not treat creator-center URL as success while SMS is visible."""
+    from sau_service import interaction
+    from sau_service.login_pool import DRIVERS, LoginPool, LoginSession, PlatformDriver
+
+    class _LoggedInDriver(PlatformDriver):
+        LOGIN_URL = "https://example.test/login"
+        is_logged_in_calls = 0
+
+        @classmethod
+        async def extract_qr_data_url(cls, page):
+            return "data:image/png;base64,abc"
+
+        @classmethod
+        async def is_logged_in(cls, page):
+            cls.is_logged_in_calls += 1
+            return True
+
+        @classmethod
+        async def extract_profile(cls, page, account_name):
+            raise AssertionError("profile extraction should wait until SMS is cleared")
+
+    sms_driver = _FakeSmsDriver()
+    monkeypatch.setitem(DRIVERS, "douyin", _LoggedInDriver)
+    monkeypatch.setitem(interaction.SMS_DRIVERS, "douyin", sms_driver)
+
+    pool = LoginPool(ttl_seconds=60)
+    session = LoginSession(
+        ticket="bind-sms-before-success",
+        platform="douyin",
+        account_name="alice",
+        expires_at=9999999999,
+        real_mode=True,
+        handles={"page": object(), "context": object()},
+    )
+
+    result = asyncio.run(pool._poll_real(session))
+
+    assert result["status"] == "awaiting_user"
+    assert result["interaction_required"]["kind"] == "sms"
+    assert result["interaction_required"]["phoneMasked"] == "138****5678"
+    assert sms_driver.request_sms_calls == 1
+    assert _LoggedInDriver.is_logged_in_calls == 0
 
 
 def test_sms_watcher_pushes_awaiting_user_and_resumes_on_correct_code(monkeypatch) -> None:

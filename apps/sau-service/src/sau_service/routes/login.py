@@ -120,6 +120,14 @@ async def login_interaction(ticket: str, payload: LoginInteractionRequest, reque
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "LOGIN_SESSION_NOT_FOUND", "message": f"ticket {ticket} not found"},
         )
+    if result == "submit_failed":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "INTERACTION_SUBMIT_FAILED",
+                "message": "验证码没有填入平台页面，请重新提交或重新生成 QR。",
+            },
+        )
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={

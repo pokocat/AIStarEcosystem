@@ -93,6 +93,7 @@ aep:
       access-key-id: ${AEP_CDN_OSS_ACCESS_KEY_ID:}
       access-key-secret: ${AEP_CDN_OSS_ACCESS_KEY_SECRET:}
       base-url: ${AEP_CDN_OSS_BASE_URL:}
+      key-prefix: ${AEP_CDN_OSS_KEY_PREFIX:}
   # v0.16+: 文字转图 —— 纯 Java2D 内部渲染，无外部进程依赖
   picgen:
     enabled: ${AEP_PICGEN_ENABLED:true}

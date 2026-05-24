@@ -111,6 +111,15 @@ def _hook_chromium_for_page_capture(playwright: Any):
                         return page
         return None
 
+    async def close_all(timeout_s: float = 2.0) -> None:
+        for browser in reversed(captured_browsers):
+            try:
+                await asyncio.wait_for(browser.close(), timeout=timeout_s)
+            except Exception:  # noqa: BLE001 — close is best-effort cleanup only
+                log.warning("best-effort browser.close() failed or timed out", exc_info=True)
+
+    setattr(page_provider, "close_all", close_all)
+
     try:
         yield page_provider
     finally:
@@ -145,6 +154,14 @@ INTERACTION_USER_TIMEOUT_S: float = _env_float("SAU_INTERACTION_USER_TIMEOUT_S",
 # Tighter = faster surface to the user; looser = less competition with the
 # upstream upload's own page operations. 2s is a comfortable middle.
 INTERACTION_POLL_INTERVAL_S: float = _env_float("SAU_INTERACTION_POLL_INTERVAL_S", 2.0)
+
+# Upstream uploaders decide success by observing the platform's final page,
+# then still run cookie persistence + browser teardown. On macOS/patchright
+# that teardown can hang indefinitely, leaving an already-published Douyin
+# video marked failed by our outer timeout. Once we have observed the same
+# success URL as upstream, give it a short grace period to return naturally;
+# after that, treat the publish as successful and clean up best-effort.
+UPLOAD_SUCCESS_GRACE_S: float = _env_float("SAU_UPLOAD_SUCCESS_GRACE_S", 8.0)
 
 
 @dataclass
@@ -200,6 +217,7 @@ class UploadManager:
         self._mock = mock_mode
         self._tmpfs = tmpfs_dir
         self._lock = asyncio.Lock()
+        self._account_locks: dict[str, asyncio.Lock] = {}
 
     async def submit(self, req: UploadRequest) -> str:
         task_id = uuid.uuid4().hex
@@ -256,19 +274,41 @@ class UploadManager:
         rec.interaction_event.set()
         return True
 
+    async def _account_lock_for(self, rec: TaskRecord) -> asyncio.Lock:
+        """Serialize uploads for the same platform account.
+
+        A batch publish can enqueue multiple videos to the same Douyin account.
+        The upstream creator-center automation is not account-concurrent: two
+        browsers using the same storage_state can race redirects, captcha/SMS
+        state, and post-publish teardown. Serializing at the sau-service layer
+        keeps different accounts/platforms concurrent while protecting the
+        fragile platform session.
+        """
+        platform = (rec.request.platform or "").strip().lower()
+        account = (rec.request.account_name or "").strip().lower()
+        key = f"{platform}:{account}"
+        async with self._lock:
+            lock = self._account_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._account_locks[key] = lock
+            return lock
+
     # ── runner ────────────────────────────────────────────────────────
     async def _run(self, rec: TaskRecord) -> None:
         try:
             # Persist cookie + (later) video to tmpfs — these are deleted in finally.
             await self._materialise_tmpfs(rec)
-            async with self._sema:
-                if rec.cancel_event.is_set():
-                    await self._terminate(rec, "cancelled")
-                    return
-                if self._mock:
-                    await self._run_mock_upload(rec)
-                else:
-                    await self._run_real_upload(rec)
+            account_lock = await self._account_lock_for(rec)
+            async with account_lock:
+                async with self._sema:
+                    if rec.cancel_event.is_set():
+                        await self._terminate(rec, "cancelled")
+                        return
+                    if self._mock:
+                        await self._run_mock_upload(rec)
+                    else:
+                        await self._run_real_upload(rec)
         except asyncio.CancelledError:  # pragma: no cover - shutdown path
             raise
         except Exception as exc:  # noqa: BLE001
@@ -505,9 +545,33 @@ class UploadManager:
                     continue
                 t.cancel()
                 try:
-                    await t
+                    await asyncio.wait_for(t, timeout=2.0)
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
+
+        def _success_page_observed() -> bool:
+            if platform_label != "douyin" or page_provider is None:
+                return False
+            try:
+                page = page_provider()
+                url = getattr(page, "url", "") if page is not None else ""
+            except Exception:  # noqa: BLE001
+                return False
+            return "creator.douyin.com/creator-micro/content/manage" in str(url)
+
+        async def _close_captured_browsers() -> None:
+            if page_provider is None:
+                return
+            close_all = getattr(page_provider, "close_all", None)
+            if close_all is None:
+                return
+            try:
+                await close_all()
+            except Exception:  # noqa: BLE001
+                log.warning(
+                    "[upload %s] task_id=%s close_all failed",
+                    platform_label, rec.task_id, exc_info=True,
+                )
 
         # Sliced wait loop — gives us a chance to pause the deadline when
         # the SMS watcher has switched status to awaiting_user. Plain
@@ -516,6 +580,7 @@ class UploadManager:
         SLICE_S = 0.5
         deadline = time.monotonic() + UPLOAD_TIMEOUT_S
         timed_out = False
+        success_observed_at: float | None = None
         try:
             while True:
                 if upload_task.done() or cancel_task.done():
@@ -527,6 +592,25 @@ class UploadManager:
                 )
                 if upload_task.done() or cancel_task.done():
                     break
+                if success_observed_at is None and _success_page_observed():
+                    success_observed_at = time.monotonic()
+                    log.info(
+                        "[upload %s] task_id=%s observed platform success page; "
+                        "waiting %.1fs for upstream cleanup",
+                        platform_label, rec.task_id, UPLOAD_SUCCESS_GRACE_S,
+                    )
+                if (
+                    success_observed_at is not None
+                    and time.monotonic() - success_observed_at >= UPLOAD_SUCCESS_GRACE_S
+                ):
+                    log.warning(
+                        "[upload %s] task_id=%s upstream still running %.1fs after success page; "
+                        "treating publish as successful and cleaning up best-effort",
+                        platform_label, rec.task_id, UPLOAD_SUCCESS_GRACE_S,
+                    )
+                    await _drain_pending(upload_task, cancel_task, watchdog_task, sms_task)
+                    await _close_captured_browsers()
+                    return True
                 if rec.status == "awaiting_user":
                     # Pause the budget — push deadline forward by the slice
                     # we just consumed, leaving net time-spent-uploading
@@ -554,6 +638,7 @@ class UploadManager:
                     platform_label, rec.task_id, UPLOAD_TIMEOUT_S,
                 )
                 await _drain_pending(upload_task, cancel_task, watchdog_task, sms_task)
+                await _close_captured_browsers()
                 rec.status = "failed"
                 rec.error_code = "UPLOAD_TIMEOUT"
                 rec.error_message = (

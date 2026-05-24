@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from .browser_runtime import chromium_launch_kwargs
-from .interaction import get_sms_driver, now_unix
+from .interaction import SmsInteractionDriver, get_sms_driver, now_unix
 from .qr import build_mock_qr
 
 log = logging.getLogger(__name__)
@@ -2074,36 +2074,52 @@ class LoginPool:
         driver = get_sms_driver(session.platform)
         if driver is None:
             return "not_pending"
+        driver_cls = DRIVERS.get(session.platform)
 
         code = str((response or {}).get("code") or "").strip()
         if not code:
             return "not_pending"
 
+        log.info(
+            "login_pool: received login interaction ticket=%s platform=%s code_len=%d",
+            ticket,
+            session.platform,
+            len(code),
+        )
         try:
             ok = await driver.submit_code(page, code)
         except Exception:  # noqa: BLE001
             log.exception("login_pool: submit_interaction crashed ticket=%s platform=%s", ticket, session.platform)
             ok = False
+        log.info(
+            "login_pool: submit_interaction driver result ticket=%s platform=%s ok=%s",
+            ticket,
+            session.platform,
+            ok,
+        )
         if not ok:
             session.interaction_required = {
                 **session.interaction_required,
                 "prompt": "验证码提交失败，请检查后重试。",
             }
-            return "accepted"
+            return "submit_failed"
 
-        try:
-            cleared = await driver.is_cleared(page)
-        except Exception:  # noqa: BLE001
-            log.exception("login_pool: interaction is_cleared crashed ticket=%s platform=%s", ticket, session.platform)
-            cleared = False
+        cleared = await self._wait_login_interaction_cleared(
+            session,
+            driver,
+            page,
+            driver_cls,
+            max_seconds=8.0,
+        )
         if cleared:
             session.interaction_required = None
+            return "accepted"
         else:
             session.interaction_required = {
                 **session.interaction_required,
                 "prompt": "平台仍在等待验证码，可能输入有误，请重新提交。",
             }
-        return "accepted"
+            return "submit_failed"
 
     # Legacy accessor still used by a couple of inline tests; keep it cheap.
     async def get(self, ticket: str) -> LoginSession | None:
@@ -2286,6 +2302,17 @@ class LoginPool:
                 "diagnostic_id": session.diagnostic_id,
             }
 
+        # Scan-login can land on the creator-center URL before the platform
+        # finishes its second verification. If we classify the page as logged
+        # in first, the frontend keeps showing the QR while the headed browser
+        # is blocked on an SMS modal. Interaction detection must win.
+        interaction = await self._detect_login_interaction(session, page, driver_cls)
+        if interaction is not None:
+            return {
+                "status": "awaiting_user",
+                "interaction_required": interaction,
+            }
+
         try:
             logged_in = await driver_cls.is_logged_in(page)
         except Exception:  # noqa: BLE001
@@ -2302,12 +2329,6 @@ class LoginPool:
             }
 
         if not logged_in:
-            interaction = await self._detect_login_interaction(session, page)
-            if interaction is not None:
-                return {
-                    "status": "awaiting_user",
-                    "interaction_required": interaction,
-                }
             return {"status": "pending"}
 
         # v0.17.2+: 给 driver 一次 navigate / interact 的机会，把 profile 字段
@@ -2346,7 +2367,12 @@ class LoginPool:
             "profile": profile,
         }
 
-    async def _detect_login_interaction(self, session: LoginSession, page: Any) -> dict[str, Any] | None:
+    async def _detect_login_interaction(
+        self,
+        session: LoginSession,
+        page: Any,
+        driver_cls: type[PlatformDriver] | None,
+    ) -> dict[str, Any] | None:
         driver = get_sms_driver(session.platform)
         if driver is None:
             return None
@@ -2356,6 +2382,15 @@ class LoginPool:
             log.exception("login_pool: interaction detect failed ticket=%s platform=%s", session.ticket, session.platform)
             return None
         if not detected:
+            if session.interaction_required is not None and await self._wait_login_interaction_cleared(
+                session,
+                driver,
+                page,
+                driver_cls,
+                max_seconds=0,
+            ):
+                session.interaction_required = None
+                return None
             return session.interaction_required
 
         if session.interaction_required is None:
@@ -2374,6 +2409,55 @@ class LoginPool:
             except Exception:  # noqa: BLE001
                 log.exception("login_pool: request_sms failed ticket=%s platform=%s", session.ticket, session.platform)
         return session.interaction_required
+
+    async def _wait_login_interaction_cleared(
+        self,
+        session: LoginSession,
+        driver: SmsInteractionDriver,
+        page: Any,
+        driver_cls: type[PlatformDriver] | None,
+        *,
+        max_seconds: float,
+    ) -> bool:
+        """Return true once the SMS challenge disappears or login completes."""
+        deadline = time.monotonic() + max(0.0, max_seconds)
+        first = True
+        while first or time.monotonic() < deadline:
+            first = False
+            try:
+                if await driver.is_cleared(page):
+                    log.info(
+                        "login_pool: interaction cleared ticket=%s platform=%s via=modal_hidden",
+                        session.ticket,
+                        session.platform,
+                    )
+                    return True
+            except Exception:  # noqa: BLE001
+                log.exception(
+                    "login_pool: interaction is_cleared crashed ticket=%s platform=%s",
+                    session.ticket,
+                    session.platform,
+                )
+            if driver_cls is not None:
+                try:
+                    if await driver_cls.is_logged_in(page):
+                        log.info(
+                            "login_pool: interaction cleared ticket=%s platform=%s via=logged_in url=%s",
+                            session.ticket,
+                            session.platform,
+                            getattr(page, "url", None),
+                        )
+                        return True
+                except Exception:  # noqa: BLE001
+                    log.exception(
+                        "login_pool: interaction logged-in check crashed ticket=%s platform=%s",
+                        session.ticket,
+                        session.platform,
+                    )
+            if time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(0.5)
+        return False
 
     # ── internal: shared ─────────────────────────────────────────────
 
