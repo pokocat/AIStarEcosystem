@@ -495,7 +495,8 @@ public class MixcutRenderingService {
             boolean drawbox,
             boolean color,
             boolean colorchannelmixer,
-            boolean volume
+            boolean volume,
+            boolean setsar
     ) {
         static FilterCaps from(Set<String> filters) {
             return new FilterCaps(
@@ -516,7 +517,8 @@ public class MixcutRenderingService {
                     filters.contains("drawbox"),
                     filters.contains("color"),
                     filters.contains("colorchannelmixer"),
-                    filters.contains("volume")
+                    filters.contains("volume"),
+                    filters.contains("setsar")
             );
         }
 
@@ -534,6 +536,9 @@ public class MixcutRenderingService {
             if (!boxblur) missing.add("boxblur");
             if (!drawbox) missing.add("drawbox");
             if (!colorchannelmixer) missing.add("colorchannelmixer");
+            // setsar 在 99%+ 的 ffmpeg build 上都存在；列在 missingEnhancements 里
+            // 仅用于诊断 —— 它缺失会让 concat 在源 SAR 差异时失败（见下方注释）。
+            if (!setsar) missing.add("setsar");
             return missing;
         }
     }
@@ -1239,21 +1244,32 @@ public class MixcutRenderingService {
         // concat_a 接到下游 fx 链,跳过没必要的 passthrough.
         boolean skipConcat = (segCount == 1);
         for (int i = 0; i < segCount; i++) {
-            // `setsar=1` 和 `fps=30` 之前内嵌在 filter 链里——某些精简 ffmpeg
-            // build 的 libavfilter 没注册这两个滤镜,整链 parse 失败 (exit=234
-            // "Error parsing filterchain ... around: ,setsar=1,fps=30")。
-            // 改用:framerate 走最外层 `-r 30` 输出选项 (CLI 主程序自带,
-            // 不依赖 libavfilter);SAR 不强设,让源 SAR 透传——99% 的现代
-            // mp4 / mov / webm 都是 SAR=1:1,不强设也没差别。
+            // framerate 走最外层 `-r 30` 输出选项 (CLI 主程序自带,不依赖 libavfilter);
             // 全程使用「显式 key=value」形式 (e.g. `scale=w=W:h=H` 而非
             // `scale=W:H`)。原因:某些 ffmpeg build 没注册 scale/crop/aresample
             // 等 filter 的 `shorthand` 数组,positional 参数会触发
             // exit=234 "No option name near '1080:1920'"。named 形式在所有
             // ffmpeg 版本上都可用,且对可读性也更好。
+            //
+            // v0.30+: SAR 必须强设为 1:1（caps.setsar 时）。
+            // 历史踩坑：原注释认为"99% 的现代 mp4 都是 SAR=1:1，不强设也没差别"，
+            // 但 `scale=w=W:h=H` 在源 DAR 与目标不完全匹配时会合成分数 SAR
+            // (e.g. 19199:19200) 以保留源 DAR。concat 要求所有输入 SAR 必须严格
+            // 一致，于是 seg0 SAR=1:1 + seg1 SAR=19199:19200 直接 fail：
+            //   "Input link parameters (size 720x1280, SAR 1:1) do not match the
+            //    corresponding output link parameters (720x1280, SAR 19199:19200)"
+            // 所以在 scale 之后追加 setsar=1，把所有段强制对齐到 SAR=1:1。
+            // `setsar` 是 libavfilter 核心 filter，所有现代 ffmpeg build 都有；
+            // caps.setsar 缺失时退回原行为，会在「源 SAR 不一」时复现该 bug。
             String vOut = skipConcat ? "concat_v" : ("s" + i);
             String aOut = skipConcat ? "concat_a" : ("as" + i);
             fc.append("[").append(i).append(":v]");
-            appendScaledVideo(fc, W, H, true, caps.crop, vOut);
+            if (caps.setsar) {
+                appendScaledVideo(fc, W, H, true, caps.crop, vOut, /* chainContinues */ true);
+                fc.append("setsar=1[").append(vOut).append("];");
+            } else {
+                appendScaledVideo(fc, W, H, true, caps.crop, vOut);
+            }
             if (useSourceAudio) {
                 fc.append("[").append(i).append(":a]")
                   .append("aresample=sample_rate=44100,aformat=channel_layouts=stereo")

@@ -25,15 +25,18 @@ public class AepSecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
     private final InternalAuthFilter internalFilter;
+    private final TraceFilter traceFilter;
 
     /** dev profile 专用。非 dev 环境不会注入。 */
     @Autowired(required = false)
     private DevAutoAuthFilter devAutoAuthFilter;
 
     public AepSecurityConfig(JwtAuthenticationFilter jwtFilter,
-                              InternalAuthFilter internalFilter) {
+                              InternalAuthFilter internalFilter,
+                              TraceFilter traceFilter) {
         this.jwtFilter = jwtFilter;
         this.internalFilter = internalFilter;
+        this.traceFilter = traceFilter;
     }
 
     @Bean
@@ -70,6 +73,8 @@ public class AepSecurityConfig {
                         .anyRequest().permitAll()
                 )
                 .headers(headers -> headers.frameOptions(fo -> fo.sameOrigin()))
+                // traceFilter 最先跑：所有后续 filter / controller / exception handler 共享同一个 traceId
+                .addFilterBefore(traceFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
