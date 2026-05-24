@@ -43,6 +43,13 @@ export interface NavItem {
   description?: string;
   /** v0.5：sidebar 过滤；false 时不在导航中展示（URL 直访仍可用）。默认 true。 */
   enabled?: boolean;
+  /**
+   * v0.30：限定可见角色（不传 = 所有 admin 角色可见）。
+   * SUPER_ADMIN 默认能看所有项，无论 roles 怎么列。
+   * 仅当 currentRole 已知且不满足时才隐藏；currentRole=null（加载中 / 未登录）
+   * 也隐藏 role-gated 项以避免菜单闪烁后才消失。
+   */
+  roles?: ("SUPER_ADMIN" | "OPERATOR")[];
 }
 
 export interface NavGroup {
@@ -158,17 +165,35 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/notifications", label: "消息中心", icon: Bell,    description: "运营推送与告警" },
       { href: "/audit",         label: "审计日志", icon: History, description: "所有人工介入记录" },
+      {
+        href: "/platform/error-logs",
+        label: "错误日志",
+        icon: AlertTriangle,
+        description: "用户操作异常 + 堆栈 + 追查号（仅超管可见）",
+        roles: ["SUPER_ADMIN"],
+      },
     ],
   },
 ];
 
-/** v0.5：取启用的 NavGroups（filter group.enabled !== false 且至少有一个 enabled !== false 的 item）。 */
-export function visibleNavGroups(): NavGroup[] {
+/**
+ * v0.5：取启用的 NavGroups（filter group.enabled !== false 且至少有一个 enabled !== false 的 item）。
+ * v0.30：可选传入当前 admin 角色，过滤掉 roles 不满足的项。currentRole=undefined / null
+ *        时按"未知角色"处理 —— role-gated 项隐藏（避免登录中或 mock 不齐时菜单闪烁）。
+ *        SUPER_ADMIN 总能看到全部 role-gated 项，不再单独检查 roles 列表。
+ */
+export function visibleNavGroups(currentRole?: string | null): NavGroup[] {
   return NAV_GROUPS
     .filter((g) => g.enabled !== false)
     .map((g) => ({
       ...g,
-      items: g.items.filter((it) => it.enabled !== false),
+      items: g.items.filter((it) => {
+        if (it.enabled === false) return false;
+        if (!it.roles || it.roles.length === 0) return true;
+        if (!currentRole) return false;
+        if (currentRole === "SUPER_ADMIN") return true;
+        return (it.roles as readonly string[]).includes(currentRole);
+      }),
     }))
     .filter((g) => g.items.length > 0);
 }

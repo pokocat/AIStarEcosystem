@@ -58,6 +58,9 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/mixcut/**").authenticated()
                         // Internal service-to-service endpoints — InternalAuthFilter 已校验 X-Internal-Secret
                         .requestMatchers("/api/internal/**").hasRole("INTERNAL")
+                        // 错误日志含 stacktrace + 用户身份等敏感信息，只给 SUPER_ADMIN。
+                        // 顺序敏感：必须在通用 /api/admin/** 之前注册，否则被宽松规则吃掉。
+                        .requestMatchers("/api/admin/error-logs/**").hasRole("SUPER_ADMIN")
                         // Admin endpoints require platform admin staff roles
                         .requestMatchers("/api/admin/**").hasAnyRole(
                                 "SUPER_ADMIN",

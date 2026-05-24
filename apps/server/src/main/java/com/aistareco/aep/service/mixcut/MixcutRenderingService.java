@@ -268,7 +268,8 @@ public class MixcutRenderingService {
                 }
             }
 
-            renderOneVariant(job, ctx, resolved.videos, variantOverlays, resolved.bgm, variantIndex, outFile, transforms, profile, rnd);
+            renderOneVariant(job, ctx, resolved.videos, resolved.videoBySlotId, resolved.demoPool,
+                    variantOverlays, resolved.bgm, variantIndex, outFile, transforms, profile, rnd);
 
             // 抽 1s 处的一帧作为该变体的 poster (失败不致命,占位 null)
             File thumbFile = new File(outDir, "v" + (i + 1) + ".jpg");
@@ -373,7 +374,15 @@ public class MixcutRenderingService {
             List<PicgenSlotSpec> picgenSlots,
             /** v0.23: true 表示 videos 用了 demo fallback（用户没绑定任何 layer_type=video 的素材）。
              *  落到 applied_transforms.base_video_source 让前端能区分「真的用户视频」vs「demo 兜底」。 */
-            boolean usedDemoFallback
+            boolean usedDemoFallback,
+            /** v0.26+: slot_id → 用户在该 video slot 绑的本地文件。保留 slot 归属，
+             *  让按场景拼接时严格"该 scene 的 video slot 绑啥就用啥"，修复 v0.25 主拼接
+             *  用 sources round-robin 导致用户绑给 scene 1 的视频跨段串到 scene 2 的 bug。 */
+            Map<String, File> videoBySlotId,
+            /** v0.26+: demo showreel 池（始终预填）。useSceneSchedule 时，某 scene 没有
+             *  user-bound video 不能再回退到其它 user video（会串色）→ 走这个 demo pool。
+             *  pool 为空时退回 sources round-robin 兜底。 */
+            List<File> demoPool
     ) {}
 
     /**
@@ -732,6 +741,7 @@ public class MixcutRenderingService {
      */
     private ResolvedBindings resolveBindings(MixcutRenderJob job, RenderContext ctx) {
         List<File> videos = new ArrayList<>();
+        Map<String, File> videoBySlotId = new HashMap<>();
         List<OverlaySpec> overlays = new ArrayList<>();
         List<PicgenSlotSpec> picgenSlots = new ArrayList<>();
         File bgm = null;
@@ -775,6 +785,7 @@ public class MixcutRenderingService {
                 String layerType = slot != null ? slot.layerType : inferLayerFromExt(local);
                 if (VIDEO_LAYERS.contains(layerType)) {
                     videos.add(local);
+                    videoBySlotId.put(slotId, local);
                 } else if (OVERLAY_LAYERS.contains(layerType)) {
                     int z = slot != null ? slot.zIndex : 0;
                     NormRect rect = slot != null ? slot.rect : null;
@@ -794,6 +805,17 @@ public class MixcutRenderingService {
         // 用户的 slot_bindings 里没有 layer_type=video 的条目（要么模板没有 video slot，
         // 要么有但 required=false 且用户没绑）。WARN 一下 + 在 applied_transforms 里
         // 留 base_video_source=demo_fallback，前端能据此提示用户"看到的是演示视频"。
+        // v0.26+: demo pool 始终预填（不只是 videos.isEmpty 时）—— useSceneSchedule 时
+        // 某 scene 没绑 video，不能再回退到用户其它 scene 的视频（会跨段串色，正是 v0.25 的 bug），
+        // 改走 demo pool 兜底。
+        List<File> demoPool = new ArrayList<>();
+        File demoDir = locateDemoVideosDir();
+        if (demoDir != null && demoDir.isDirectory()) {
+            File[] files = demoDir.listFiles(
+                    (d, name) -> name.startsWith("showreel-") && name.endsWith(".mp4"));
+            if (files != null) for (File f : files) demoPool.add(f);
+        }
+
         boolean usedDemoFallback = false;
         if (videos.isEmpty()) {
             usedDemoFallback = true;
@@ -801,14 +823,9 @@ public class MixcutRenderingService {
                     "[mixcut] job={} 没有用户绑定的视频素材（视频位为空或未填），回退到 demo showreel。"
                             + " 检查模板 layer_type=video 的 slot 是否 required + 用户是否已绑定。",
                     job.getId());
-            File demoDir = locateDemoVideosDir();
-            if (demoDir != null && demoDir.isDirectory()) {
-                File[] files = demoDir.listFiles(
-                        (d, name) -> name.startsWith("showreel-") && name.endsWith(".mp4"));
-                if (files != null) for (File f : files) videos.add(f);
-            }
+            videos.addAll(demoPool);
         }
-        return new ResolvedBindings(videos, overlays, bgm, picgenSlots, usedDemoFallback);
+        return new ResolvedBindings(videos, overlays, bgm, picgenSlots, usedDemoFallback, videoBySlotId, demoPool);
     }
 
     private static String blankToNull(String s) {
@@ -947,6 +964,10 @@ public class MixcutRenderingService {
             MixcutRenderJob job,
             RenderContext ctx,
             List<File> sources,
+            /** v0.26+: slot_id → 用户在该 video slot 绑的本地文件；空 map 表示用户没绑任何 video。 */
+            Map<String, File> videoBySlotId,
+            /** v0.26+: demo showreel 池，useSceneSchedule 时 scene 没绑 video 的兜底。 */
+            List<File> demoPool,
             List<OverlaySpec> overlays,
             File bgm,
             int variantIndex,
@@ -1032,11 +1053,54 @@ public class MixcutRenderingService {
         // ffmpeg 实际推进到了哪一帧 / 哪个时间戳，区分「卡 demux」/「编码慢」/「filter 异常」。
         args.add("-stats");
 
+        // v0.26+: 按场景严格匹配主视频，修复 v0.25 的 round-robin bug。
+        // 规则：
+        //   useSceneSchedule=true → 每 scene 内查 video layer 的 slot id，从 videoBySlotId 取文件。
+        //     未命中 → demoPool round-robin 兜底（**不再** 回填到其它 user video 上，避免跨段串色）。
+        //     demoPool 也空（罕见，apps/web/public/videos 缺失）→ 最最兜底退回 sources round-robin。
+        //   useSceneSchedule=false → 沿用旧 sources round-robin（legacy 2-seg）。
+        File[] perSegSrc = new File[segCount];
+        String[] perSegMatch = new String[segCount]; // 诊断：user_slot / demo_fallback / legacy_roundrobin
+        if (useSceneSchedule) {
+            for (int i = 0; i < segCount; i++) {
+                SceneSpec sc = ctx.scenes.get(i);
+                File matched = null;
+                for (String sid : sc.slotIds) {
+                    SlotInfo info = ctx.slotMap.get(sid);
+                    if (info != null && VIDEO_LAYERS.contains(info.layerType)) {
+                        File f = videoBySlotId == null ? null : videoBySlotId.get(sid);
+                        if (f != null) { matched = f; break; }
+                    }
+                }
+                if (matched != null) {
+                    perSegSrc[i] = matched;
+                    perSegMatch[i] = "user_slot";
+                }
+            }
+            int demoIdx = 0;
+            for (int i = 0; i < segCount; i++) {
+                if (perSegSrc[i] != null) continue;
+                if (demoPool != null && !demoPool.isEmpty()) {
+                    perSegSrc[i] = demoPool.get((variantIndex + demoIdx) % demoPool.size());
+                    perSegMatch[i] = "demo_fallback";
+                    demoIdx++;
+                } else {
+                    perSegSrc[i] = sources.get((variantIndex + i) % sources.size());
+                    perSegMatch[i] = "legacy_roundrobin";
+                }
+            }
+        } else {
+            for (int i = 0; i < segCount; i++) {
+                perSegSrc[i] = sources.get((variantIndex + i) % sources.size());
+                perSegMatch[i] = "legacy_roundrobin";
+            }
+        }
+
         // 视频输入：每段随机 offset + trim；同时探测音轨存在性,决定是否走 concat 音频路径
         ObjectNode segDetail = transforms.putObject("segments_detail");
         boolean allHaveAudio = true;
         for (int i = 0; i < segCount; i++) {
-            File src = sources.get((variantIndex + i) % sources.size());
+            File src = perSegSrc[i];
             double segDur = segDurations[i];
             double maxStart = Math.max(0, ffmpeg.probeDurationSec(src) - segDur - 0.5);
             double offset = maxStart > 0 ? rnd.nextDouble() * maxStart : 0;
@@ -1050,6 +1114,7 @@ public class MixcutRenderingService {
             seg.put("start", round2(offset));
             seg.put("duration", round2(segDur));
             seg.put("has_audio", srcHasAudio);
+            seg.put("video_match", perSegMatch[i]);
             if (useSceneSchedule) {
                 seg.put("scene_id", ctx.scenes.get(i).id);
                 seg.put("output_start", round2(segStart[i]));

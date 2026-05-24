@@ -87,6 +87,16 @@ export function resolveFit(slot: TemplateSlot): "cover" | "contain" {
   return slot.fit ?? "cover";
 }
 
+/**
+ * 把画布尺寸翻成「人话」的方向 + 推荐发布场景，给标题块的 meta 行用。
+ * 横竖判定带 10% 容差，避免 1080×1100 这种「准方形」被错判。
+ */
+export function orientationLabel(w: number, h: number): string {
+  if (h > w * 1.1) return "竖屏 · 适合抖音/小红书";
+  if (w > h * 1.1) return "横屏 · 适合 B 站/视频号";
+  return "方形 · 适合 Feed 流";
+}
+
 /** 把模板裁到「仅第一场景」用于卡片缩略图。canvas.duration 同步收紧。 */
 export function firstScenePreviewTemplate(template: Template): Template {
   const firstScene = template.scenes[0];

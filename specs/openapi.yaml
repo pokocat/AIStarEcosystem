@@ -2077,6 +2077,30 @@ components:
         POST /me/publish-jobs/batches/{projectId}/reschedule 请求体。
         仅对 status=queued 的子集生效；其他状态原样保留。
 
+    ErrorLog:
+      type: object
+      description: |
+        v0.30：错误日志记录。所有被 GlobalExceptionHandler 兜底的异常（业务 + 系统）入库。
+        仅 SUPER_ADMIN 可访问 /admin/error-logs；OPERATOR 调用返回 403。
+      required: [id, logId, occurredAt]
+      properties:
+        id:            { type: string, description: 'UUID 内部主键' }
+        logId:         { type: string, description: '短追查号（12 字符），用户报错时复述' }
+        occurredAt:    { type: string, format: date-time }
+        hostname:      { type: string, nullable: true, description: '发生异常的机器（容器/Pod hostname）' }
+        userId:        { type: string, nullable: true }
+        username:      { type: string, nullable: true }
+        httpMethod:    { type: string, nullable: true }
+        endpoint:      { type: string, nullable: true, description: '请求 path（不含 host/query）' }
+        httpStatus:    { type: integer, nullable: true }
+        errorType:     { type: string, nullable: true, description: '异常类简名' }
+        errorCode:     { type: string, nullable: true, description: '业务码（BusinessException 才有）' }
+        message:       { type: string, nullable: true }
+        stacktrace:    { type: string, nullable: true, description: '已截到 8KB 内的完整堆栈' }
+        requestParams: { type: string, nullable: true, description: '脱敏后的请求参数 JSON 文本' }
+        userAgent:     { type: string, nullable: true }
+        clientIp:      { type: string, nullable: true }
+
 # ─────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────
@@ -5552,6 +5576,57 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/PublishJobEvent' }
 
+  # ── admin/error-logs（v0.30：错误日志，仅 SUPER_ADMIN） ───────────────
+  /admin/error-logs:
+    get:
+      tags: [admin-error-logs]
+      operationId: adminListErrorLogs
+      summary: 列出错误日志（仅 SUPER_ADMIN）
+      parameters:
+        - { in: query, name: userId,     schema: { type: string } }
+        - { in: query, name: endpoint,   schema: { type: string }, description: '接口 path 子串过滤' }
+        - { in: query, name: httpStatus, schema: { type: integer } }
+        - { in: query, name: hostname,   schema: { type: string } }
+        - { in: query, name: since,      schema: { type: string, format: date-time } }
+        - { in: query, name: until,      schema: { type: string, format: date-time } }
+        - { in: query, name: page,       schema: { type: integer, default: 0 } }
+        - { in: query, name: size,       schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ErrorLog' }
+        '403': { description: '当前账号非 SUPER_ADMIN' }
+
+  /admin/error-logs/by-log-id/{logId}:
+    parameters:
+      - { in: path, name: logId, required: true, schema: { type: string } }
+    get:
+      tags: [admin-error-logs]
+      operationId: adminGetErrorLogByLogId
+      summary: 凭追查号查单条（用户报错时直接复述 logId 给运维）
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ErrorLog' }
+        '403': { description: '当前账号非 SUPER_ADMIN' }
+        '404': { description: '追查号不存在' }
+
   # ── fan（C 端） ───────────────────────────────────
 
   /fan/trending-artists: { get: { tags: [fan], operationId: listTrendingArtists, responses: { '200': { description: ok } } } }
@@ -5667,6 +5742,13 @@ paths:
     parameters:
       - { in: path, name: jobId, required: true, schema: { type: string } }
     patch: { tags: [mixcut], operationId: updateMixcutJobProgress, responses: { '200': { description: ok } } }
+
+  # v0.30+: 基于原 job 完整快照 fork 出新 job。仅可覆盖 output_variants / perturbation_profile。
+  # 409 MISSING_ASSETS → error.details.missing_assets[] 列出已删素材；前端切错误态。
+  /mixcut/jobs/{jobId}/rerun:
+    parameters:
+      - { in: path, name: jobId, required: true, schema: { type: string } }
+    post: { tags: [mixcut], operationId: rerunMixcutJob, responses: { '200': { description: ok } } }
 
   /mixcut/assets:
     get:  { tags: [mixcut], operationId: listMixcutAssets,  responses: { '200': { description: ok } } }

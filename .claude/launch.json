@@ -7,6 +7,14 @@
       "runtimeArgs": ["--filter", "@ai-star-eco/web-celebrity", "exec", "next", "dev"],
       "port": 3012,
       "autoPort": true
+    },
+    {
+      "name": "admin",
+      "cwd": "apps/admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3003,
+      "autoPort": true
     }
   ]
 }

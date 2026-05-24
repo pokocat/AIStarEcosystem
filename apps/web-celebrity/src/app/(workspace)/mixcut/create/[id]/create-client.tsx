@@ -21,6 +21,7 @@ import {
   Package,
   ExternalLink,
   CheckCircle2,
+  Lock,
   X as XIcon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-star-eco/ui/ui/collapsible";
@@ -33,6 +34,7 @@ import { Slider } from "@/components/mixcut-zone/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@ai-star-eco/ui/ui/radio-group";
 import { Checkbox } from "@ai-star-eco/ui/ui/checkbox";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
+import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
 import { SlotInput } from "@/components/mixcut-zone/slot-input";
 import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker";
 import { ProductPickerDialog } from "@/components/celebrity-zone/ProductPickerDialog";
@@ -53,10 +55,10 @@ import type {
   MixcutAsset,
   TemplateSlot,
 } from "@/components/mixcut-zone/types";
-import { PROFILE_LABELS, PROFILE_DESCRIPTIONS } from "@/constants/mixcut-ui";
+import { PROFILE_LABELS, PROFILE_DESCRIPTIONS, TIER_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
 import { resolvePolicy } from "@/components/mixcut-zone/lib/perturbation-defaults";
-import { flatSlotsOf, flatSlotsAbsolute, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
+import { flatSlotsOf, flatSlotsAbsolute, orientationLabel, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { useConfirm } from "@/components/common/confirm-dialog";
 
 // ─── v0.26+ 商品启发式 slot 绑定 ──────────────────────────────────────────────
@@ -530,20 +532,60 @@ export function CreateClient({ id }: { id: string }) {
 
   return (
     <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
-      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href={`/mixcut/templates/${template.template_id}`}>
             <ArrowLeft className="size-4" /> 返回模板详情
           </Link>
         </Button>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Link href="/mixcut/templates" className="hover:text-foreground">模板库</Link>
-          <ChevronRight className="size-3" />
-          <Link href={`/mixcut/templates/${template.template_id}`} className="hover:text-foreground">{template.name}</Link>
-          <ChevronRight className="size-3" />
-          <span className="text-foreground">创建任务</span>
-        </div>
       </div>
+
+      {/*
+        v0.30+ polish: 页面 hero —— 任务名称 / 描述 / 模板规格 chips 全部抬到顶部，
+        符合「正常任务页」结构。原本它落在右栏顶部，与中列 slot 编辑区视觉上分离，
+        scroll 时立刻被推走；放到顶部、sticky toolbar 之上后变成长存的"我在做什么"上下文。
+      */}
+      <header className="mb-5">
+        <div className="flex items-center gap-1.5 mb-2 flex-wrap text-[11px] uppercase tracking-wider text-muted-foreground">
+          <span>新建生成任务</span>
+          <span className="text-muted-foreground/40">·</span>
+          <span>{template.metadata.category}</span>
+          <span className="text-muted-foreground/40">·</span>
+          <span className="inline-flex items-center gap-0.5 normal-case tracking-normal">
+            <Lock className="size-3" />
+            {TIER_LABELS[template.metadata.required_tier]}
+          </span>
+        </div>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-[26px] font-semibold tracking-tight leading-tight">
+              {template.name}
+            </h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              按提示填好各段素材，一次出 {variants} 条差异化视频
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px] tabular-nums">
+            <span className="rounded-md border border-border bg-card px-2 py-1 text-muted-foreground">
+              {orientationLabel(template.canvas.width, template.canvas.height).split(" · ")[0]}
+            </span>
+            <span className="rounded-md border border-border bg-card px-2 py-1 text-muted-foreground">
+              {template.canvas.width}×{template.canvas.height}
+            </span>
+            <span className="rounded-md border border-border bg-card px-2 py-1 text-muted-foreground">
+              {totalDuration(template)} 秒
+            </span>
+            {template.scenes.length > 1 && (
+              <span className="rounded-md border border-border bg-card px-2 py-1 text-muted-foreground">
+                {template.scenes.length} 段
+              </span>
+            )}
+            <span className="rounded-md border border-violet-400/40 bg-violet-500/[0.07] px-2 py-1 text-violet-700">
+              <span className="font-semibold">{editableSlots.length}</span> 处可填
+            </span>
+          </div>
+        </div>
+      </header>
 
       {/*
         v0.28+ polish C: 整页顶部 sticky toolbar —— 把原右栏 ②「设置并生成」整张卡片
@@ -730,61 +772,37 @@ export function CreateClient({ id }: { id: string }) {
         </div>
       )}
 
+      {/*
+        v0.30+ polish: 场景流程独占一行，贯穿全宽（不再塞在画布上方 440px 子列里被挤成一半）。
+        这条与 templates/[id] 详情页一致 —— 场景流程是横向时间轴，宽度越大越能读出"哪段占多长"。
+        canvas 仍按竖屏占左栏 440px，与场景流程上下解耦，互不挤压。
+      */}
+      {template.scenes.length > 1 && (
+        <div className="mb-5">
+          <SceneFlowEditor
+            scenes={template.scenes}
+            canvas={template.canvas}
+            currentIdx={safeSceneIdx}
+            editing={false}
+            progress={sceneProgress}
+            onSelect={handleSelectScene}
+            onAddAt={() => {}}
+            onRemove={() => {}}
+            onChange={() => {}}
+            onMoveTo={() => {}}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-6">
         {/*
           v0.28+ polish C 左栏：画布焦点化
-          - 场景流程从「侧边竖排卡片」改成画布**上方水平 timeline pills**，与画布一体
+          - 场景流程已上移到全宽行（见上方），左栏只剩画布主视觉
           - TemplatePreview 加重外框（ring-2 violet/20 + 阴影），强化主视觉
-          - 删除变体预览 Card（用户决策不依赖于它，提交后任务详情页能看）
           - 底部 meta bar 显示当前段时间窗 + 必填进度
-          - sticky top 改 32 给顶部 toolbar 让位
+          - sticky top 改 68 给顶部 toolbar 让位
         */}
         <div className="lg:sticky lg:top-[68px] self-start space-y-3">
-          {/* 场景水平 timeline（仅多场景） */}
-          {template.scenes.length > 1 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1">
-              {template.scenes.map((sc, i) => {
-                const isActive = i === safeSceneIdx;
-                const prog = sceneProgress[i];
-                const dotClass =
-                  prog.state === "done"
-                    ? "bg-emerald-500"
-                    : prog.state === "partial"
-                      ? "bg-amber-400"
-                      : prog.state === "empty"
-                        ? "bg-rose-400/80"
-                        : "bg-muted-foreground/40";
-                return (
-                  <button
-                    key={sc.id}
-                    type="button"
-                    onClick={() => handleSelectScene(i)}
-                    className={cn(
-                      "shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border transition-colors min-w-0",
-                      isActive
-                        ? "border-violet-500 bg-violet-500/10 text-foreground shadow-sm"
-                        : "border-border bg-card text-muted-foreground hover:border-foreground/30",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "size-1.5 rounded-full shrink-0",
-                        dotClass,
-                        prog.state === "partial" && "animate-pulse",
-                      )}
-                      aria-hidden
-                    />
-                    <span className="text-[11px] font-mono tabular-nums">{i + 1}</span>
-                    <span className="text-[11px] truncate max-w-[90px]">{sc.label}</span>
-                    <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
-                      {sc.duration}s
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           {/* 画布主视觉：加重外框 + 底部 meta bar 一体 */}
           <div className="rounded-xl border-2 border-violet-500/20 overflow-hidden bg-card shadow-md">
             <TemplatePreview
@@ -841,22 +859,7 @@ export function CreateClient({ id }: { id: string }) {
         </div>
 
         <div className="space-y-4 min-w-0">
-          {/*
-            v0.28+ polish C: 中列 header 极简化。原来的 ① 圆形 step badge + 大标题已经
-            被顶部 sticky toolbar 的「必填进度 chip」承担。这里只剩简洁的 section title。
-          */}
-          <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold tracking-tight leading-tight">填入素材</h1>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                共 {editableSlots.length} 处可编辑
-                {template.scenes.length > 1 && ` · ${template.scenes.length} 个场景串行播放`}
-              </p>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              填完所有必填项后，顶部 CTA 即可点击
-            </p>
-          </div>
+          {/* slim header 已上移到页面顶层（hero 区域）— v0.30 起作为页面长存的"我在做什么"上下文。*/}
 
           {/*
             v0.22+: 多场景模板按 scene 分组渲染。

@@ -981,6 +981,133 @@ web-celebrity:
 
 切换：[`apps/admin/src/constants/nav.ts`](apps/admin/src/constants/nav.ts) 改 `enabled` 字段。
 
+### v0.30（2026-05-23）— 混剪任务「重跑」入口（fork 新 job + 缺素材严格阻拦）
+
+用户反馈「生成任务重跑时应该可以用当时的元素和配置重新生成」。诊断：任务态实际**已基本快照化**（v0.25+ 累积），缺的是「重跑入口」+「缺素材保护」。前端原「重新生成」按钮只跳 `/mixcut/create/<template_id>`，丢弃所有 binding 等于从零做。
+
+**设计决策**（用户已确认）：
+- 重跑 → **fork 新 job**（带 `forked_from_job_id` 指回原任务，保留 lineage）
+- 缺素材 → **严格阻拦**（409 + missing_assets，不让 demo 沉默串进用户预期）
+- 可调字段 → **仅 variants + profile**（其它快照原样复用；要换素材请走 create 页）
+
+```
+server : MixcutRenderJob +forked_from_job_id (length=64, nullable, 无外键约束)
+       : MixcutRenderJobDto +forked_from_job_id
+       : 新 MixcutRerunJobRequest(outputVariants?, perturbationProfile?) record
+       : 新 MissingAssetItem(slotId, assetId, source, kind) record
+       : 新 MissingAssetsException extends RuntimeException, carries List<MissingAssetItem>
+       : MixcutJobService 注入 MixcutAssetRepository；create() 抽出 createInternal/createForked
+       : 新 MixcutJobService.rerun(originalJobId, principalUserId, overrides):
+           - findById + owner 校验（不属于则 404 MIXCUT_JOB_NOT_FOUND，不暴露存在性）
+           - collectMissingAssets(slotBindingsJson): 遍历 binding，source∈{upload,library} 且
+             带 asset_id 的条目 → assetRepo.findAllById 比对 → 缺失 throw MissingAssetsException
+           - 通过 → 构造 MixcutCreateJobRequest（所有快照原样，仅 variants/profile 用 overrides）→ createForked
+       : MixcutController +POST /api/mixcut/jobs/{jobId}/rerun（body 可空）
+       : GlobalExceptionHandler +@ExceptionHandler(MissingAssetsException.class) → 409，
+         body = { error: { code: "MISSING_ASSETS", message, details: { missing_assets: [...] } } }
+
+specs  : openapi.yaml /mixcut/jobs/{jobId}/rerun (POST, tag mixcut, operationId rerunMixcutJob)
+
+web-celebrity:
+       : types.ts RenderJob +forked_from_job_id?: string；
+         +MixcutRerunJobRequest / +MissingAssetItem 类型
+       : api/mixcut.ts +rerunJob(jobId, overrides?): Promise<RenderJob>（USE_LOCAL 克隆 mock job）
+       : 新组件 components/mixcut-zone/RerunJobDialog.tsx
+           - shadcn Dialog + RadioGroup（来自 @ai-star-eco/ui/ui/*）
+           - 两表单字段：output_variants (1-10) + perturbation_profile (light/moderate/aggressive)
+           - 提交成功 → router.push(/mixcut/jobs/<new-id>)
+           - 错误 409 MISSING_ASSETS → 切错误态视图，列出缺失 slot/asset，
+             给「去素材库重传」(/mixcut/library?tab=assets) / 「用模板从头做」
+             (/mixcut/create/<templateId>) 两按钮
+       : jobs/[id]/job-detail-client.tsx:
+           - 顶部 action 区加「重跑」按钮（completed/failed 都显示）
+           - 现有「重新生成」按钮改名「换素材重做」→ 跳 create 页（与重跑互补）
+           - 头部 status chip 区加「由 #xxxxxx 重跑」徽章（仅当 forked_from_job_id 非空）
+```
+
+**注意事项**：
+
+- **不重算** `source_phash`：fork 新 job → 渲染流水线自然算（首段视频 aHash）。
+- **不允许覆盖**其它快照字段：rerun 只接 variants + profile；要改 binding 请走 create 页。
+- 缺素材检测**只覆盖 source ∈ {upload, library} 且 asset_id 非空**的条目；picgen/input/fixed 不涉及素材表，跳过。
+- ApiError.details 字段是 unknown：前端 `(e.details as { missing_assets?: MissingAssetItem[] })?.missing_assets ?? []` 解结构。
+- USE_LOCAL（mock）路径**跳过缺素材校验** —— mock 模式没真实 asset 表，直接克隆 mock job + 改 id + 标 forked_from_job_id 返回。要测缺素材态需 NEXT_PUBLIC_MIXCUT_USE_REAL=1。
+- 老任务 fork：原 job 的 `slotBindingsJson` 缺 `asset_id`（v0.16 之前 binding 结构）→ collectMissingAssets 跳过 → 不阻拦。会用 file_url / picgen 等 fallback 路径继续渲。
+- JPA `ddl-auto=update` 自动加列；H2 dev / MySQL prod 双兼容；不写 flyway/liquibase migration（与 v0.19 加 publishCount / v0.21 加 deletedAt 同惯例）。
+
+**显式 out-of-scope**：sticker_pool 可视化重编、基于 job 预填 create 页 deep link、追加同 job 语义、多实例 ShedLock（rerun 是同步派单，不涉及 @Scheduled）。
+
+### v0.29（2026-05-23）— 混剪主视频按 scene 严格匹配（fix v0.25 盲点）+ 模板预览中性化 + 段时长联动素材
+
+三块独立小改动合并到一节，全部仅 web-celebrity + server，无契约 / DB schema 变更。
+
+**A. 致命 bug 修复：混剪主视频跨段串色（v0.25 漏修）**
+
+v0.25 把场景切分（segCount = scenes.size + per-scene durationSec）和 overlay 时段限制（enable=between(t,a,b)）做了，但 `MixcutRenderingService.renderOneVariant` 的主视频取源仍是平铺 round-robin：
+
+```java
+File src = sources.get((variantIndex + i) % sources.size()); // ❌ 跨段串色
+```
+
+`resolveBindings` 把所有 user-bound video slot 文件拍平进 `List<File> videos`，丢失了「哪条视频绑给哪个 scene」的归属。结果：
+
+- 用户给 scene 1 绑 A，scene 2 没绑 → `videos=[A]` → 两段都拿 A 不同随机片段 → 视觉上 A 贯穿全片
+- 用户 scene 1 绑 A、scene 2 绑 B → variantIndex=1 时取序变成 `[B, A]`
+
+**修复（server 内部重构，无 API 变化）**：
+
+```
+server : ResolvedBindings +videoBySlotId: Map<String, File> +demoPool: List<File>
+       : resolveBindings 在 VIDEO_LAYERS 分支同时写入 videoBySlotId.put(slotId, local)
+       : resolveBindings 始终预填 demoPool（不只是 videos.isEmpty 时），useSceneSchedule
+         scene 没绑 video 不能再回退到用户其它 video（会串色），改走 demoPool
+       : renderOneVariant 签名 +Map<String, File> videoBySlotId / +List<File> demoPool
+       : renderOneVariant 在 segment loop 之前算 perSegSrc[segCount] —— 按 scene.slotIds
+         反查 video layer slot → videoBySlotId 取文件；未命中 → demoPool round-robin；
+         demoPool 也空 → 最最兜底退回旧 sources round-robin
+       : segments_detail 加 video_match 诊断字段：user_slot / demo_fallback / legacy_roundrobin
+```
+
+**注意事项**：
+
+- 兜底链严格：未命中的 scene 走 demoPool（与用户视频隔离），永远不回填到用户其它 scene 的 video。这是修复的核心 —— scene 隔离不再被破坏。
+- legacy 路径（useSceneSchedule=false，老任务 scenes_snapshot 为空）保持原 round-robin 行为，零回归风险。
+- `apps/web/public/videos/showreel-*.mp4` 缺失（极少）→ demoPool 为空 → 退回 sources round-robin（与 v0.25 行为相同，不会比 v0.25 更糟）。
+- 无 schema / API / openapi 改动；纯 server 内部逻辑修复。
+
+**B. 模板预览统一中性配色（去除工厂 mock 色噪声）**
+
+模板缩略图（列表 / 首页推荐）+ 模板详情/编辑器 + 创建页四处的 `TemplatePreview`，原本都吃 `template.canvas.background_color`（mock seed 各色不同 → 黄/绿/蓝灰拼盘）+ `BLUEPRINT_LAYER_STYLES` 按 layer_type 上色（sky/emerald/rose/violet），视觉极杂乱。用户无法在创建模板时指定 canvas 色 → 这套染色既无产品意义又拉低视觉一致性。
+
+```
+web-celebrity:
+  template-preview.tsx
+    - 删 canvas style 的 backgroundColor: template.canvas.background_color
+      (className 已有 bg-black 兜底；数据真值保留，server ffmpeg 渲 mp4 仍按各模板自身 background_color 走)
+    - BLUEPRINT_LAYER_STYLES 抽出 NEUTRAL_BLUEPRINT_FRAME = { bg: white/4%, border: white/30%,
+      text: white/80% }，4 个 layer_type 共用同一套描线，仅 icon 字段按类型区分
+```
+
+效果：所有预览统一黑底 + 灰白虚线框 + 类型 icon；编辑器内 violet ring 选中态成为唯一彩色高亮，注意力不被无产品语义的颜色干扰。
+
+**C. 模板编辑器：场景时长改动联动 slot.time_range**
+
+`updateScene` 原本是机械合 patch，改场景时长（SceneFlowEditor 输入框 → onChange(idx, { duration: v })）后 slot.time_range 不动，导致：
+1. 视觉脱钩（slot 还在老时间格上）
+2. 触发 validateTimeRanges 的「结束时间超本场景时长」保存校验失败
+
+```
+web-celebrity:
+  template-detail-client.tsx
+    + rescaleSceneSlots(scene, newDuration) helper —— ratio = new/old 等比例缩放
+      所有 slot.time_range，clamp 到 [0, newDuration]；旧时长 ≤ 0 兜底拍平到 [0, new]
+    : updateScene 检测 patch.duration !== sc.duration 时先 rescale 再合 patch
+  scene-flow-editor.tsx
+    + 时长输入框下加一行 hint「改时长后，本段内的素材时长会按比例同步缩放」
+```
+
+策略选择：**等比例缩放**而非仅 clamp —— 用户改时长一般是整体节奏调整（"这段做短"），而非"保留前 N 秒砍后面"。要精修单 slot 端点可单独编辑 time_range。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

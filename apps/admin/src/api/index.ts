@@ -38,3 +38,4 @@ export * as TemplateScriptsApi from "./template-scripts";
 export * as AiModelsApi from "./ai-models";
 export * as LlmKeysApi from "./llm-keys";
 export * as MixcutOfficialClipsApi from "./mixcut-official-clips";
+export * as ErrorLogApi from "./error-log";

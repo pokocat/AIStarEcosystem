@@ -4,7 +4,7 @@
 // 强制走 apps/server 的真后端（ffmpeg 渲染），不影响其他模块的 USE_MOCK 行为。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { RenderJob, RenderOutput, MixcutAsset, MixcutAssetKind, Template } from "@/components/mixcut-zone/types";
+import type { RenderJob, RenderOutput, MixcutAsset, MixcutAssetKind, Template, MixcutRerunJobRequest } from "@/components/mixcut-zone/types";
 import { mockJobs, mockActivationCode, mockTemplates } from "@/mocks/mixcut";
 import { migrateLegacyTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 import { apiFetch, API_BASE_URL, getAuthToken, USE_MOCK, mockDelay } from "./_client";
@@ -83,6 +83,48 @@ export async function createJob(job: RenderJob): Promise<RenderJob> {
     return mockDelay(job);
   }
   return apiFetch<RenderJob>("/mixcut/jobs", { method: "POST", body: job });
+}
+
+/**
+ * v0.30+: 基于原 job 完整快照重跑，fork 出新 job。
+ *
+ * USE_LOCAL 模式：克隆 mock job 改 id + 标 forked_from_job_id，跳过缺素材校验。
+ * 真后端：POST /mixcut/jobs/{id}/rerun；body 全可空。
+ *
+ * 错误：
+ * - 404 MIXCUT_JOB_NOT_FOUND → 原 job 不存在或不属于当前用户
+ * - 409 MISSING_ASSETS → ApiError.details = { missing_assets: MissingAssetItem[] }；
+ *   调用方应 catch 并切到错误态 dialog。
+ */
+export async function rerunJob(
+  jobId: string,
+  overrides?: MixcutRerunJobRequest,
+): Promise<RenderJob> {
+  if (USE_LOCAL) {
+    const list = loadJobs();
+    const original = list.find((j) => j.id === jobId);
+    if (!original) throw new Error("找不到要重跑的任务");
+    const newId = "job_" + Math.random().toString(36).slice(2, 14);
+    const forked: RenderJob = {
+      ...original,
+      id: newId,
+      status: "queued",
+      progress: 0,
+      created_at: new Date().toISOString(),
+      completed_at: undefined,
+      outputs: [],
+      forked_from_job_id: original.id,
+      output_variants: overrides?.output_variants ?? original.output_variants,
+      perturbation_profile: overrides?.perturbation_profile ?? original.perturbation_profile,
+    };
+    list.unshift(forked);
+    saveJobs();
+    return mockDelay(forked);
+  }
+  return apiFetch<RenderJob>(`/mixcut/jobs/${jobId}/rerun`, {
+    method: "POST",
+    body: overrides ?? {},
+  });
 }
 
 export async function updateJobProgress(

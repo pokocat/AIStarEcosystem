@@ -69,7 +69,7 @@ import type {
   FillStrategy,
   SlotPerturbationPolicy,
 } from "@/components/mixcut-zone/types";
-import { flatSlotsOf, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
+import { flatSlotsOf, orientationLabel, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
 import { SlotPolicyEditor } from "@/components/mixcut-zone/slot-policy-editor";
 
@@ -1694,12 +1694,6 @@ function PixelStat({ label, value }: { label: string; value: string }) {
       <div className="mt-0.5 font-mono text-sm text-foreground">{value}</div>
     </div>
   );
-}
-
-function orientationLabel(w: number, h: number): string {
-  if (h > w * 1.1) return "竖屏 · 适合抖音/小红书";
-  if (w > h * 1.1) return "横屏 · 适合 B 站/视频号";
-  return "方形 · 适合 Feed 流";
 }
 
 function sceneReviewTitle(scene: TemplateScene, index: number): string {

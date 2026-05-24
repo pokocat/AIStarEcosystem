@@ -21,6 +21,7 @@ import {
   Send,
 } from "lucide-react";
 import { BatchPublishDrawer } from "@/components/mixcut-zone/BatchPublishDrawer";
+import { RerunJobDialog } from "@/components/mixcut-zone/RerunJobDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
@@ -42,6 +43,8 @@ export function JobDetailClient({ id }: { id: string }) {
   const [isPlaying, setIsPlaying] = useState(false);
   /** v0.15+: 批量发布抽屉开关 */
   const [publishOpen, setPublishOpen] = useState(false);
+  /** v0.30+: 重跑 dialog 开关 */
+  const [rerunOpen, setRerunOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +134,17 @@ export function JobDetailClient({ id }: { id: string }) {
             <StatusBadge status={displayStatus} />
             <Badge variant="muted" className="text-[10px]">{PROFILE_LABELS[job.perturbation_profile]}</Badge>
             <Badge variant="muted" className="text-[10px]">{job.output_variants} 条</Badge>
+            {/* v0.30+: 任务血缘 —— 由「重跑」入口 fork 出来的任务，标出原任务来源 */}
+            {job.forked_from_job_id && (
+              <Link
+                href={`/mixcut/jobs/${encodeURIComponent(job.forked_from_job_id)}`}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary/50 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                title="点击查看原任务"
+              >
+                <RefreshCw className="size-2.5" />
+                由 #{job.forked_from_job_id.slice(-6)} 重跑
+              </Link>
+            )}
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{job.template_name}</h1>
           <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
@@ -164,13 +178,27 @@ export function JobDetailClient({ id }: { id: string }) {
               </Button>
             </>
           )}
+          {/*
+            v0.30+: 重跑入口 —— completed 与 failed 任务都显示。
+            语义：用当前任务的全部快照（slot_bindings/canvas/scenes/sticker_pool/...）fork 出新 job，
+            仅允许调 variants/profile。与下面「换素材重做」（跳 create 页从头）互补。
+          */}
+          {(completed || renderFailed) && (
+            <Button
+              variant={renderFailed ? "gradient" : "outline"}
+              onClick={() => setRerunOpen(true)}
+              title="用同样的素材与配置再跑一次"
+            >
+              <RefreshCw className="size-4" /> 重跑
+            </Button>
+          )}
           {renderFailed && (
             <Button
-              variant="gradient"
+              variant="ghost"
               onClick={() => router.push(`/mixcut/create/${encodeURIComponent(job.template_id)}`)}
-              title="用相同模板重新生成一批"
+              title="跳到 create 页，从模板默认值开始换一组素材重做"
             >
-              <RefreshCw className="size-4" /> 重新生成
+              换素材重做 →
             </Button>
           )}
         </div>
@@ -659,6 +687,14 @@ export function JobDetailClient({ id }: { id: string }) {
           job={job}
           open={publishOpen}
           onClose={() => setPublishOpen(false)}
+        />
+      )}
+      {/* v0.30+: 重跑 dialog */}
+      {job && (
+        <RerunJobDialog
+          job={job}
+          open={rerunOpen}
+          onOpenChange={setRerunOpen}
         />
       )}
     </div>

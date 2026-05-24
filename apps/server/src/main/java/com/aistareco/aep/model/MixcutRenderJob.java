@@ -110,6 +110,15 @@ public class MixcutRenderJob {
     @Column(length = 64)
     private String productId;
 
+    /**
+     * v0.30+: 任务血缘 —— 由「重跑」入口从原 job fork 时填入原 jobId。
+     * 默认 null（直接 create 出来的任务）；非空表示「这是基于 {forkedFromJobId} 的快照重跑出来的」。
+     * 前端任务详情页据此显示「来自任务 #xxx」徽章；运营也能在 admin 追溯重跑链。
+     * 不做外键约束（原 job 被物理删后不应级联，保留字符串引用足够审计）。
+     */
+    @Column(name = "forked_from_job_id", length = 64)
+    private String forkedFromJobId;
+
     @OneToMany(mappedBy = "job", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @OrderBy("variantIndex ASC")
     private List<MixcutRenderOutput> outputs = new ArrayList<>();
@@ -177,4 +186,7 @@ public class MixcutRenderJob {
 
     public String getProductId() { return productId; }
     public void setProductId(String productId) { this.productId = productId; }
+
+    public String getForkedFromJobId() { return forkedFromJobId; }
+    public void setForkedFromJobId(String forkedFromJobId) { this.forkedFromJobId = forkedFromJobId; }
 }

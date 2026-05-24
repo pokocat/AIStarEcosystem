@@ -1,22 +1,35 @@
 package com.aistareco.aep.service.mixcut;
 
+import com.aistareco.aep.dto.MissingAssetItem;
 import com.aistareco.aep.dto.MixcutCreateJobRequest;
 import com.aistareco.aep.dto.MixcutRenderJobDto;
+import com.aistareco.aep.dto.MixcutRerunJobRequest;
+import com.aistareco.aep.model.MixcutAsset;
 import com.aistareco.aep.model.MixcutRenderJob;
 import com.aistareco.aep.model.MixcutRenderOutput;
+import com.aistareco.aep.repository.MixcutAssetRepository;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.aistareco.aep.repository.MixcutRenderOutputRepository;
+import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.io.IOException;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -26,17 +39,20 @@ public class MixcutJobService {
 
     private final MixcutRenderJobRepository jobRepo;
     private final MixcutRenderOutputRepository outputRepo;
+    private final MixcutAssetRepository assetRepo;
     private final ObjectMapper mapper;
     private final MixcutRenderingService rendering;
 
     public MixcutJobService(
             MixcutRenderJobRepository jobRepo,
             MixcutRenderOutputRepository outputRepo,
+            MixcutAssetRepository assetRepo,
             ObjectMapper mapper,
             MixcutRenderingService rendering
     ) {
         this.jobRepo = jobRepo;
         this.outputRepo = outputRepo;
+        this.assetRepo = assetRepo;
         this.mapper = mapper;
         this.rendering = rendering;
     }
@@ -88,6 +104,18 @@ public class MixcutJobService {
      */
     @Transactional
     public MixcutRenderJobDto create(MixcutCreateJobRequest req, String principalUserId) {
+        return createInternal(req, principalUserId, null);
+    }
+
+    /**
+     * v0.30+: 由「重跑」入口调用，标记血缘指回原 jobId。其它行为与 create() 完全一致。
+     */
+    @Transactional
+    public MixcutRenderJobDto createForked(MixcutCreateJobRequest req, String principalUserId, String forkedFromJobId) {
+        return createInternal(req, principalUserId, forkedFromJobId);
+    }
+
+    private MixcutRenderJobDto createInternal(MixcutCreateJobRequest req, String principalUserId, String forkedFromJobId) {
         MixcutRenderJob job = new MixcutRenderJob();
         job.setId(req.id() != null && !req.id().isBlank() ? req.id() : ("job_" + shortUuid()));
 
@@ -126,6 +154,10 @@ public class MixcutJobService {
         job.setStatus("queued");
         job.setProgress(0);
         job.setCreatedAt(OffsetDateTime.now());
+        // v0.30+: 血缘字段。null = 普通 create；非空 = 从原任务 rerun fork 出来的
+        if (forkedFromJobId != null && !forkedFromJobId.isBlank()) {
+            job.setForkedFromJobId(forkedFromJobId);
+        }
 
         jobRepo.save(job);
         log.info("[mixcut] queued job {} user={} template={} variants={} profile={}",
@@ -150,6 +182,134 @@ public class MixcutJobService {
         }
 
         return MixcutRenderJobDto.from(job, mapper);
+    }
+
+    /**
+     * v0.30+: 基于原 job 的完整快照重跑，fork 出新 job。
+     *
+     * - 严格 owner 校验（404 不暴露他人 jobId 是否存在）
+     * - 解析 slotBindingsJson，收集所有 asset_id 引用 → 比对 MixcutAsset 表存在性
+     * - 缺素材 → throw MissingAssetsException（409 + missing_assets 详情）
+     * - 通过 → 构造 MixcutCreateJobRequest（所有快照原样复用，仅 variants/profile 可被 overrides 覆盖）→ createForked()
+     *
+     * 不重算 source_phash（fork 出新 job → 渲染流水线自然算）；不改原 job 状态。
+     */
+    @Transactional
+    public MixcutRenderJobDto rerun(String originalJobId, String principalUserId, MixcutRerunJobRequest overrides) {
+        if (originalJobId == null || originalJobId.isBlank() || principalUserId == null || principalUserId.isBlank()) {
+            throw BusinessException.notFound("MIXCUT_JOB_NOT_FOUND", "找不到要重跑的任务");
+        }
+        MixcutRenderJob original = jobRepo.findById(originalJobId)
+                .filter(j -> principalUserId.equals(j.getUserId()))
+                .orElseThrow(() -> BusinessException.notFound("MIXCUT_JOB_NOT_FOUND", "找不到要重跑的任务"));
+
+        // 1) 解析 binding，收集所有 asset_id 引用 → 校验
+        List<MissingAssetItem> missing = collectMissingAssets(original.getSlotBindingsJson());
+        if (!missing.isEmpty()) {
+            log.warn("[mixcut] rerun blocked job={} user={} missing_assets={}",
+                    originalJobId, principalUserId, missing.size());
+            throw new MissingAssetsException(missing);
+        }
+
+        // 2) 构造 create request：所有快照原样复用，仅可覆盖 variants / profile
+        JsonNode bindings = parseJsonOrNull(original.getSlotBindingsJson());
+        JsonNode canvasSnap = parseJsonOrNull(original.getCanvasSnapshotJson());
+        JsonNode slotsSnap = parseJsonOrNull(original.getSlotsSnapshotJson());
+        JsonNode pertOverrides = parseJsonOrNull(original.getPerturbationOverridesJson());
+        JsonNode stickerPool = parseJsonOrNull(original.getStickerPoolJson());
+        JsonNode scenesSnap = parseJsonOrNull(original.getScenesSnapshotJson());
+
+        Integer effectiveVariants = (overrides != null && overrides.outputVariants() != null && overrides.outputVariants() > 0)
+                ? overrides.outputVariants()
+                : original.getOutputVariants();
+        String effectiveProfile = (overrides != null && overrides.perturbationProfile() != null && !overrides.perturbationProfile().isBlank())
+                ? overrides.perturbationProfile()
+                : original.getPerturbationProfile();
+
+        MixcutCreateJobRequest req = new MixcutCreateJobRequest(
+                null,                                  // 新 jobId 由 createInternal 自动生成
+                principalUserId,                       // userId 真值已被 createInternal 覆盖为 principal
+                original.getTemplateId(),
+                original.getTemplateName(),
+                original.getTemplateThumbnail(),
+                bindings,
+                effectiveProfile,
+                effectiveVariants,
+                "queued",
+                0,
+                null,                                  // createdAt 在 createInternal 内重置
+                canvasSnap,
+                slotsSnap,
+                pertOverrides,
+                stickerPool,
+                scenesSnap,
+                original.getProductId()
+        );
+
+        log.info("[mixcut] rerun fork job={} variants={} profile={} forkedFrom={}",
+                "<auto>", effectiveVariants, effectiveProfile, originalJobId);
+        return createForked(req, principalUserId, originalJobId);
+    }
+
+    /**
+     * 遍历 slot_bindings，对 source ∈ {upload, library} 且带 asset_id 的条目做存在性校验。
+     * 仅 user-uploaded / library 引用走 asset 表；picgen / input / fixed 不涉及 asset，跳过。
+     */
+    private List<MissingAssetItem> collectMissingAssets(String slotBindingsJson) {
+        if (slotBindingsJson == null || slotBindingsJson.isBlank()) return List.of();
+        JsonNode root;
+        try {
+            root = mapper.readTree(slotBindingsJson);
+        } catch (IOException e) {
+            log.warn("[mixcut] rerun bindings parse failed: {}", e.getMessage());
+            return List.of();
+        }
+        if (root == null || !root.isObject()) return List.of();
+
+        // assetId → (slotId, source, kind) 反向索引；同一 asset 被多 slot 引用时只校验一次
+        Map<String, MissingAssetItem> assetRefs = new java.util.LinkedHashMap<>();
+        Iterator<Map.Entry<String, JsonNode>> it = root.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> e = it.next();
+            String slotId = e.getKey();
+            JsonNode b = e.getValue();
+            if (b == null || !b.isObject()) continue;
+            String source = b.path("source").asText("");
+            if (!"upload".equals(source) && !"library".equals(source)) continue;
+            String assetId = b.path("asset_id").asText("");
+            if (assetId.isBlank()) continue;
+            assetRefs.putIfAbsent(assetId, new MissingAssetItem(
+                    slotId,
+                    assetId,
+                    source,
+                    blankToNull(b.path("kind").asText(""))
+            ));
+        }
+        if (assetRefs.isEmpty()) return List.of();
+
+        Set<String> requestedIds = new HashSet<>(assetRefs.keySet());
+        List<MixcutAsset> found = assetRepo.findAllById(requestedIds);
+        Set<String> foundIds = new HashSet<>();
+        for (MixcutAsset a : found) foundIds.add(a.getId());
+
+        List<MissingAssetItem> missing = new ArrayList<>();
+        for (Map.Entry<String, MissingAssetItem> e : assetRefs.entrySet()) {
+            if (!foundIds.contains(e.getKey())) missing.add(e.getValue());
+        }
+        return missing;
+    }
+
+    private JsonNode parseJsonOrNull(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return mapper.readTree(json);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 
     /**

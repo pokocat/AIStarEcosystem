@@ -2,6 +2,7 @@ package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.MixcutCreateJobRequest;
 import com.aistareco.aep.dto.MixcutRenderJobDto;
+import com.aistareco.aep.dto.MixcutRerunJobRequest;
 import com.aistareco.aep.dto.MixcutUpdateProgressRequest;
 import com.aistareco.aep.service.mixcut.MixcutJobService;
 import com.aistareco.common.ApiResponse;
@@ -48,6 +49,26 @@ public class MixcutController {
             Principal principal
     ) {
         return ApiResponse.of(service.create(req, currentUserId(principal)));
+    }
+
+    /**
+     * v0.30+: 基于原 job 快照「重跑」，fork 出新 job。
+     *
+     * - 200 → ApiResponse<MixcutRenderJob>（新 job，含 forked_from_job_id = 原 id）
+     * - 404 MIXCUT_JOB_NOT_FOUND → 原 job 不存在或不属于当前用户
+     * - 409 MISSING_ASSETS → 原 binding 引用的素材已被硬删，error.details.missing_assets[] 列出
+     *
+     * Body 全可空：缺省则沿用原 job 的 outputVariants / perturbationProfile。
+     * 其它快照字段（slot_bindings/canvas/slots/scenes/sticker_pool/perturbation_overrides/product_id）
+     * 一律不允许覆盖 —— 那是 create 页的事。
+     */
+    @PostMapping("/jobs/{jobId}/rerun")
+    public ApiResponse<MixcutRenderJobDto> rerunJob(
+            @PathVariable String jobId,
+            @RequestBody(required = false) MixcutRerunJobRequest body,
+            Principal principal
+    ) {
+        return ApiResponse.of(service.rerun(jobId, currentUserId(principal), body));
     }
 
     @PatchMapping("/jobs/{id}/progress")

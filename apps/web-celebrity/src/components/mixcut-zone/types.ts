@@ -356,12 +356,38 @@ export interface RenderJob {
    */
   sticker_pool?: Record<string, StickerPoolBinding>;
   /**
+   * v0.30+: 任务血缘 —— 由「重跑」入口 fork 时填入原 jobId；直接创建的任务为 undefined。
+   * 详情页头部展示「来自任务 #xxx」徽章。后端字段名 forked_from_job_id。
+   */
+  forked_from_job_id?: string;
+  /**
    * v0.26+: 关联商品 id（Product.id）。
    * 当用户从商品库点「生成视频」进入 create 页（URL ?product_id=X）时，
    * 提交 RenderJob 时把这个 id 透传给 server，落到 MixcutRenderJob.productId 列。
    * 分发阶段 BatchPublishDrawer 用它反查 Product 并自动 prefill 抖音商品挂载字段。
    */
   product_id?: string;
+}
+
+/**
+ * v0.30+: 「重跑」入口的可覆盖参数。两字段均可空 —— 缺省沿用原 job 的对应值。
+ * 其它快照（slot_bindings/canvas/slots/scenes/sticker_pool/perturbation_overrides/product_id）
+ * 严格使用原 job 的版本，不允许从 dialog 覆盖。
+ */
+export interface MixcutRerunJobRequest {
+  output_variants?: number;
+  perturbation_profile?: PerturbationProfile;
+}
+
+/**
+ * v0.30+: 重跑被阻挡时的缺失素材条目。来自 server 409 MISSING_ASSETS 的
+ * error.details.missing_assets[]，用于前端列出"哪个槽位的哪个素材已删"。
+ */
+export interface MissingAssetItem {
+  slot_id: string;
+  asset_id: string;
+  source: "upload" | "library" | string;
+  kind?: string;
 }
 
 export interface ActivationCode {
