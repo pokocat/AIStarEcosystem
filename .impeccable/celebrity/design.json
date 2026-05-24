@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-23T20:30:00Z",
+  "title": "Design System: AI 明星带货 · Celebrity",
+  "scope": [
+    "apps/web-celebrity/**"
+  ],
+  "extensions": {
+    "colorMeta": {
+      "cream":        { "role": "neutral", "displayName": "Studio Cream",       "canonical": "oklch(96.7% 0.008 80)",  "tonalRamp": ["oklch(20% 0.01 60)", "oklch(32% 0.012 65)", "oklch(48% 0.014 70)", "oklch(62% 0.012 75)", "oklch(75% 0.01 78)", "oklch(86% 0.008 80)", "oklch(92% 0.008 80)", "oklch(96.7% 0.008 80)"] },
+      "surface":      { "role": "neutral", "displayName": "Clean Surface",      "canonical": "oklch(100% 0 0)",        "tonalRamp": ["oklch(20% 0 0)", "oklch(35% 0 0)", "oklch(50% 0 0)", "oklch(65% 0 0)", "oklch(78% 0 0)", "oklch(88% 0 0)", "oklch(95% 0 0)", "oklch(100% 0 0)"] },
+      "sand":         { "role": "neutral", "displayName": "Soft Sand",          "canonical": "oklch(95% 0.012 75)",    "tonalRamp": ["oklch(22% 0.012 75)", "oklch(36% 0.014 75)", "oklch(52% 0.014 75)", "oklch(66% 0.014 75)", "oklch(78% 0.013 75)", "oklch(87% 0.012 75)", "oklch(92% 0.012 75)", "oklch(95% 0.012 75)"] },
+      "line":         { "role": "neutral", "displayName": "Hairline Beige",     "canonical": "oklch(90% 0.015 75)" },
+      "line-strong":  { "role": "neutral", "displayName": "Idle Stroke",        "canonical": "oklch(85% 0.020 75)" },
+      "ink":          { "role": "neutral", "displayName": "Notebook Ink",       "canonical": "oklch(20% 0.014 60)" },
+      "ink-1":        { "role": "neutral", "displayName": "Ink Charcoal",       "canonical": "oklch(28% 0.014 60)" },
+      "ink-2":        { "role": "neutral", "displayName": "Ink Tea",            "canonical": "oklch(52% 0.016 70)" },
+      "ink-3":        { "role": "neutral", "displayName": "Ink Sand",           "canonical": "oklch(70% 0.018 75)" },
+      "violet":       { "role": "primary", "displayName": "Studio Violet",      "canonical": "oklch(61% 0.22 290)",    "tonalRamp": ["oklch(20% 0.12 290)", "oklch(30% 0.18 290)", "oklch(40% 0.22 290)", "oklch(48% 0.24 285)", "oklch(55% 0.23 288)", "oklch(61% 0.22 290)", "oklch(72% 0.18 290)", "oklch(88% 0.10 290)"] },
+      "violet-deep":  { "role": "primary", "displayName": "Violet Deep",        "canonical": "oklch(48% 0.24 285)" },
+      "lime":         { "role": "tertiary", "displayName": "Lime Sketch",       "canonical": "oklch(87% 0.18 115)" },
+      "peach":        { "role": "tertiary", "displayName": "Peach Glow",        "canonical": "oklch(73% 0.16 40)" },
+      "rose":         { "role": "tertiary", "displayName": "Rose Heart",        "canonical": "oklch(68% 0.20 5)" },
+      "teal":         { "role": "tertiary", "displayName": "Teal Forest",       "canonical": "oklch(66% 0.12 175)" },
+      "amber":        { "role": "tertiary", "displayName": "Amber Pause",       "canonical": "oklch(76% 0.14 70)" }
+    },
+    "typographyMeta": {
+      "display":      { "displayName": "Display · Manrope 700",        "purpose": "Dashboard 欢迎语；一页仅一次。中文 fallback PingFang SC。" },
+      "headline":     { "displayName": "Headline · Manrope 700",       "purpose": "分区标题（Active drama series / 今日明星精选）。" },
+      "title":        { "displayName": "Title · Manrope 700",          "purpose": "卡片头、modal 标题。" },
+      "body":         { "displayName": "Body · Inter 400",             "purpose": "正文。长段最大宽度 36em。" },
+      "label":        { "displayName": "Label · Inter 700 ALL CAPS",   "purpose": "eyebrow / KPI 描述 / 表头；letter-spacing 0.12em；中文不强制大写。" },
+      "serif-accent": { "displayName": "Accent · Instrument Serif",    "purpose": "英文短句的'软话'重音；版本号衔接；tip-of-the-day；≤8 词；中文不用。" },
+      "mono":         { "displayName": "Mono · JetBrains Mono",        "purpose": "id / 版本号 / 积分单价 / 订单号。" }
+    },
+    "shadows": [
+      { "name": "soft", "value": "0 1px 2px rgba(40,30,20,.06), 0 4px 14px rgba(40,30,20,.05)", "purpose": "卡片 hover、表格行 hover、KPI 卡 idle。" },
+      { "name": "lift", "value": "0 6px 16px rgba(40,30,20,.08), 0 16px 40px rgba(40,30,20,.06)", "purpose": "modal、popover、悬浮 menu。" },
+      { "name": "pop",  "value": "0 12px 36px rgba(124,92,255,.18), 0 4px 12px rgba(40,30,20,.05)", "purpose": "主 CTA hover；带 violet 光晕；一屏仅一次。" }
+    ],
+    "motion": [
+      { "name": "ease-out-quart",  "value": "cubic-bezier(0.25, 1, 0.5, 1)",       "purpose": "默认状态过渡（描边、文字色、徽章 fade）。" },
+      { "name": "duration-fast",   "value": "120ms",                                "purpose": "hover / focus 状态切换。" },
+      { "name": "duration-medium", "value": "240ms",                                "purpose": "卡片状态变化、tab 切换。" },
+      { "name": "duration-slow",   "value": "480ms",                                "purpose": "modal / popover entry。" }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1440px" }
+    ],
+    "gradientDictionary": {
+      "actor":      "linear-gradient(135deg, #7c5cff, #ff8a5b)",
+      "singer":     "linear-gradient(135deg, #22b59a, #c4e34a)",
+      "host":       "linear-gradient(135deg, #f0a83a, #ff8a5b)",
+      "athlete":    "linear-gradient(135deg, #22b59a, #c4e34a)",
+      "influencer": "linear-gradient(135deg, #ff5b8a, #7c5cff)",
+      "default":    "linear-gradient(135deg, #1f1a14, #ff5b8a)"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button (ink)",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "全局 / 不可逆动作（保存、提交、打开工作室）。最高优先级但不是 accent。",
+      "html": "<button class=\"ds-btn-primary\">▶ 打开工作室</button>",
+      "css": ".ds-btn-primary { font-family: 'Inter', system-ui, sans-serif; font-size: 14px; font-weight: 600; color: #ffffff; background: #1f1a14; border: 1.5px solid #1f1a14; border-radius: 14px; padding: 11px 18px; cursor: pointer; box-shadow: 0 2px 6px rgba(40,30,20,.18); transition: background 240ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-btn-primary:hover { background: #0f0c08; } .ds-btn-primary:focus-visible { outline: 2px solid #7c5cff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Accent Button (violet · the One Voice)",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "当前页主转化点；一屏仅一个；hover 时 shadow-pop 紫光晕。",
+      "html": "<button class=\"ds-btn-accent\">✦ 生成视频</button>",
+      "css": ".ds-btn-accent { font-family: 'Inter', system-ui, sans-serif; font-size: 14px; font-weight: 600; color: #ffffff; background: #7c5cff; border: 1.5px solid #7c5cff; border-radius: 14px; padding: 11px 18px; cursor: pointer; box-shadow: 0 6px 18px rgba(124,92,255,.32); transition: box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-btn-accent:hover { box-shadow: 0 12px 36px rgba(124,92,255,.18), 0 4px 12px rgba(40,30,20,.05); } .ds-btn-accent:focus-visible { outline: 2px solid #5b3fe0; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "次要动作：预览 / 导出 / 取消。",
+      "html": "<button class=\"ds-btn-secondary\">预览</button>",
+      "css": ".ds-btn-secondary { font-family: 'Inter', system-ui, sans-serif; font-size: 14px; font-weight: 600; color: #1f1a14; background: #ffffff; border: 1.5px solid #d8cfba; border-radius: 14px; padding: 11px 18px; cursor: pointer; box-shadow: 0 1px 2px rgba(40,30,20,.04); transition: border-color 120ms ease, background 120ms ease; } .ds-btn-secondary:hover { border-color: #3a3329; background: #f3efe7; } .ds-btn-secondary:focus-visible { outline: 2px solid #7c5cff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Pill (tinted-on-tinted)",
+      "kind": "chip",
+      "refersTo": "chip-tag",
+      "description": "状态徽章：底色是强调色 18% alpha、字色是强调色实色。",
+      "html": "<span class=\"ds-pill-ready\">● ready</span> <span class=\"ds-pill-filming\">filming</span> <span class=\"ds-pill-amber\">scripting</span>",
+      "css": ".ds-pill-ready, .ds-pill-filming, .ds-pill-amber { display: inline-block; padding: 4px 10px; border-radius: 999px; font-family: 'Inter', system-ui, sans-serif; font-size: 11px; font-weight: 700; margin-right: 6px; } .ds-pill-ready { background: rgba(34,181,154,0.18); color: #22b59a; } .ds-pill-filming { background: rgba(124,92,255,0.18); color: #5b3fe0; } .ds-pill-amber { background: rgba(240,168,58,0.18); color: #f0a83a; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "label-above 输入框；focus 时描边变 violet，不加阴影。",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">明星名</span><input class=\"ds-input\" value=\"陈奕迅 · v1.2\" /></label>",
+      "css": ".ds-field { display: block; font-family: 'Inter', system-ui, sans-serif; } .ds-field-label { display: block; font-size: 11.5px; color: #7a6f5d; margin-bottom: 6px; font-weight: 600; } .ds-input { width: 100%; padding: 12px 14px; background: #ffffff; color: #1f1a14; border: 1.5px solid #d8cfba; border-radius: 14px; font-size: 14px; font-family: inherit; outline: none; transition: border-color 120ms ease; } .ds-input:focus { border-color: #7c5cff; } .ds-input::placeholder { color: #a89e88; }"
+    },
+    {
+      "name": "Persona Card (signature)",
+      "kind": "card",
+      "refersTo": "card-surface",
+      "description": "明星卡 —— 双色渐变方块头像 + Manrope 名 + Instrument Serif 版本号 + 两个状态 chip。",
+      "html": "<div class=\"ds-persona\"><div class=\"ds-avatar\"></div><div class=\"ds-persona-body\"><div class=\"ds-persona-name\">Hana <em>· v2.4</em></div><div class=\"ds-persona-tag\">主演 · 浪漫 · 已授权</div><div class=\"ds-persona-pills\"><span class=\"ds-pill-ready\">● ready</span><span class=\"ds-pill-filming\">3 series</span></div></div></div>",
+      "css": ".ds-persona { display: flex; gap: 14px; align-items: flex-start; background: #ffffff; border: 1px solid #e8e1d3; border-radius: 16px; padding: 18px; box-shadow: 0 6px 16px rgba(40,30,20,.05); font-family: 'Inter', system-ui, sans-serif; } .ds-avatar { width: 64px; height: 64px; border-radius: 16px; flex-shrink: 0; position: relative; overflow: hidden; background: linear-gradient(135deg, #7c5cff, #ff8a5b); } .ds-avatar::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 30% 25%, rgba(196,227,74,0.5), transparent 55%); } .ds-persona-body { flex: 1; } .ds-persona-name { font-family: 'Manrope', system-ui, sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: #1f1a14; } .ds-persona-name em { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: #7a6f5d; } .ds-persona-tag { font-size: 12px; color: #7a6f5d; margin-top: 2px; } .ds-persona-pills { display: flex; gap: 6px; margin-top: 10px; } .ds-persona-pills span { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; } .ds-persona-pills .ds-pill-ready { background: rgba(34,181,154,0.18); color: #22b59a; } .ds-persona-pills .ds-pill-filming { background: rgba(124,92,255,0.12); color: #5b3fe0; }"
+    },
+    {
+      "name": "KPI Card with Halo",
+      "kind": "card",
+      "refersTo": "card-kpi",
+      "description": "KPI 卡 + 右上角 radial-gradient 装饰圆 —— Creator-Friendly 的标志性装饰，仅用于 KPI 卡。",
+      "html": "<div class=\"ds-kpi\"><div class=\"ds-kpi-halo\"></div><div class=\"ds-kpi-label\">明星合作 · 本月</div><div class=\"ds-kpi-value\">142</div><div class=\"ds-kpi-sub\">+38% 同比</div></div>",
+      "css": ".ds-kpi { position: relative; overflow: hidden; background: #ffffff; border: 1px solid #e8e1d3; border-radius: 14px; padding: 18px 20px; font-family: 'Inter', system-ui, sans-serif; } .ds-kpi-halo { position: absolute; top: -20px; right: -20px; width: 80px; height: 80px; border-radius: 50%; background: radial-gradient(circle, rgba(124,92,255,0.15), transparent 65%); pointer-events: none; } .ds-kpi-label { font-size: 12px; color: #7a6f5d; font-weight: 600; } .ds-kpi-value { font-family: 'Manrope', system-ui, sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -0.8px; color: #1f1a14; margin-top: 6px; font-variant-numeric: tabular-nums; } .ds-kpi-sub { font-size: 12px; color: #7a6f5d; margin-top: 4px; }"
+    },
+    {
+      "name": "Nav Item (full-tint selected)",
+      "kind": "nav",
+      "refersTo": "nav-item-selected",
+      "description": "选中态整项染色，不用左侧色条；右侧可选 violet 数字徽章。",
+      "html": "<div class=\"ds-nav-track\"><a class=\"ds-nav-item\"><span class=\"ds-nav-ic\">◐</span><span>市场首页</span></a><a class=\"ds-nav-item ds-nav-sel\"><span class=\"ds-nav-ic\">✦</span><span>明星精选</span><span class=\"ds-nav-badge\">3</span></a><a class=\"ds-nav-item\"><span class=\"ds-nav-ic\">$</span><span>积分钱包</span></a></div>",
+      "css": ".ds-nav-track { display: flex; flex-direction: column; gap: 2px; background: #faf7f2; padding: 16px 12px; font-family: 'Inter', system-ui, sans-serif; border-right: 1px solid #e8e1d3; min-width: 240px; } .ds-nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; color: #3a3329; font-size: 13.5px; font-weight: 500; cursor: pointer; text-decoration: none; transition: background 120ms ease; } .ds-nav-item:hover { background: #f3efe7; } .ds-nav-sel { background: rgba(124,92,255,0.12); color: #5b3fe0; font-weight: 600; } .ds-nav-ic { width: 18px; font-size: 14px; } .ds-nav-badge { margin-left: auto; font-size: 10px; padding: 1px 7px; background: #7c5cff; color: #ffffff; border-radius: 6px; font-weight: 700; }"
+    },
+    {
+      "name": "Engine Picker (BigRadioCard)",
+      "kind": "custom",
+      "description": "Celebrity 业务签名组件：KeLing / HiGen / MiniMax 三档大单选卡。",
+      "html": "<div class=\"ds-engines\"><label class=\"ds-engine\"><div class=\"ds-engine-icon ds-engine-keling\"></div><div class=\"ds-engine-body\"><div class=\"ds-engine-level\">经济 · KeLing</div><div class=\"ds-engine-desc\">性价比高，适合日常内容批量生成</div><div class=\"ds-engine-quality\">★★★☆☆ · ~5分钟</div></div><div class=\"ds-engine-price\">50<span>积分/条</span></div></label><label class=\"ds-engine ds-engine-sel\"><div class=\"ds-engine-mark\">✓</div><div class=\"ds-engine-icon ds-engine-higen\"></div><div class=\"ds-engine-body\"><div class=\"ds-engine-level\">标准 · HiGen</div><div class=\"ds-engine-desc\">效果稳定，口型同步好，推荐大多数场景</div><div class=\"ds-engine-quality\">★★★★☆ · ~3分钟</div></div><div class=\"ds-engine-price\">120<span>积分/条</span></div></label><label class=\"ds-engine\"><div class=\"ds-engine-icon ds-engine-minimax\"></div><div class=\"ds-engine-body\"><div class=\"ds-engine-level\">高级 · MiniMax</div><div class=\"ds-engine-desc\">最佳画质和表现力，适合重要投放内容</div><div class=\"ds-engine-quality\">★★★★★ · ~4分钟</div></div><div class=\"ds-engine-price\">300<span>积分/条</span></div></label></div>",
+      "css": ".ds-engines { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-family: 'Inter', system-ui, sans-serif; } .ds-engine { position: relative; display: flex; align-items: flex-start; gap: 12px; background: #ffffff; border: 1.5px solid #d8cfba; border-radius: 20px; padding: 18px 20px; cursor: pointer; transition: border-color 120ms ease, box-shadow 120ms ease; } .ds-engine:hover { border-color: #3a3329; box-shadow: 0 1px 2px rgba(40,30,20,.06), 0 4px 14px rgba(40,30,20,.05); } .ds-engine-sel { border-color: #7c5cff; } .ds-engine-mark { position: absolute; bottom: 12px; right: 12px; width: 24px; height: 24px; border-radius: 50%; background: #7c5cff; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 12px; } .ds-engine-icon { width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; } .ds-engine-keling  { background: linear-gradient(135deg, #22b59a, #c4e34a); } .ds-engine-higen   { background: linear-gradient(135deg, #7c5cff, #ff8a5b); } .ds-engine-minimax { background: linear-gradient(135deg, #f0a83a, #ff8a5b); } .ds-engine-body { flex: 1; } .ds-engine-level { font-family: 'Manrope', system-ui, sans-serif; font-size: 16px; font-weight: 700; color: #1f1a14; letter-spacing: -0.2px; } .ds-engine-desc { font-size: 12px; color: #7a6f5d; margin-top: 4px; line-height: 1.5; } .ds-engine-quality { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #f0a83a; margin-top: 6px; } .ds-engine-price { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 18px; font-weight: 600; color: #1f1a14; text-align: right; font-variant-numeric: tabular-nums; } .ds-engine-price span { display: block; font-size: 10px; color: #7a6f5d; font-weight: 500; margin-top: 2px; }"
+    },
+    {
+      "name": "Progress Bar (identity gradient)",
+      "kind": "custom",
+      "description": "进度条 —— fill 用对象身份双色渐变，禁用纯 violet。",
+      "html": "<div class=\"ds-progress-row\"><div class=\"ds-progress-head\"><span>授权进度</span><span>68%</span></div><div class=\"ds-progress-track\"><div class=\"ds-progress-fill\"></div></div></div>",
+      "css": ".ds-progress-row { font-family: 'Inter', system-ui, sans-serif; } .ds-progress-head { display: flex; justify-content: space-between; font-size: 12px; color: #7a6f5d; margin-bottom: 6px; font-weight: 600; } .ds-progress-head span:last-child { color: #1f1a14; font-variant-numeric: tabular-nums; } .ds-progress-track { height: 8px; background: #f3efe7; border-radius: 4px; overflow: hidden; } .ds-progress-fill { width: 68%; height: 100%; background: linear-gradient(90deg, #7c5cff, #ff8a5b); border-radius: 4px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Studio Notebook · 一本能让明星合作变温柔的工作手册",
+    "overview": "Celebrity 业务线是带货方（CRM 客户）的高客单价、低频次决策动作 —— 选明星、谈授权、上预算、做内容。它不是仪表盘，也不是促销页，而是一台让普通运营也敢决定一条 ¥2,800/条投放的工具。所以视觉语言走 Creator-Friendly 暖奶油 + 紫罗兰路线：界面像翻开的工作室笔记本而不是 SaaS 后台，KPI 数字大、装饰圆角光晕轻，关键决策点（明星卡、引擎选择、生成按钮）由紫罗兰承担情感重音，而衬线斜体（Instrument Serif）专门用于'软话' —— 提示语、问候、tip-of-the-day —— 像在表格旁边随手写的注释。这套系统显式拒绝：① MCN 那种深色 + 数据墙的'指挥中心'美学（属于 Tech-Professional，给 musician 线用）；② 名人 / 奢侈品那种暗金 + 玻璃渐变的'红毯'美学（属于 Entertainment-Premium，不是本项目当前定位）；③ 通用 SaaS 模板的纯白 + 蓝色 CTA + 圆角 8px。Celebrity 是'工作室'，不是'指挥室'也不是'礼宾台'。",
+    "keyCharacteristics": [
+      "表面色是奶油（cream #faf7f2），不是纯白；纯白只用在卡片堆叠里",
+      "主强调色是紫罗兰 #7c5cff（One Voice，覆盖 ≤10% 屏幕面积）",
+      "字体三件套：Manrope display + Inter body + Instrument Serif italic（仅英文软话）",
+      "圆角节奏：sm 8 / md 14 / lg 20 / pill 999",
+      "阴影克制：默认无阴影，hover/active 才出现 soft / lift / pop 三档",
+      "明星头像、KPI 装饰圆、品类 chip 用双色 linear-gradient 135° 承担身份，不用真人照片",
+      "中文单语；技术 token 名保留英文（呼应 CLAUDE.md Chinese monolingual 铁律）"
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "Studio Violet 是唯一'强调'色，一屏可见 violet 总面积 ≤ 10%。两个紫色按钮同屏出现是错的。", "section": "colors" },
+      { "name": "The Identity-Through-Gradient Rule", "body": "明星头像、KPI 装饰圆、品类 chip 不用单色，用双色 linear-gradient 135° 承担身份。按品类的配色字典见 gradientDictionary。", "section": "colors" },
+      { "name": "The Warm-White Rule", "body": "禁止 #fff 做页面背景或 #000 做正文色。所有中性色按 cream / surface / ink-* 取词。", "section": "colors" },
+      { "name": "The Italic-Serif Whisper Rule", "body": "Instrument Serif italic 只用于英文短句或符号衔接，最长 8 个单词。中文不用 Instrument Serif，代之以 PingFang 400 + 紫色文字。", "section": "typography" },
+      { "name": "The Numeric Stability Rule", "body": "所有数字字段必须用 font-variant-numeric: tabular-nums。源数据永远是 raw integer，格式化在 apps/web/src/lib/format.ts。", "section": "typography" },
+      { "name": "The Eyebrow Above Headline Rule", "body": "每个 dashboard 大区头部都是 label eyebrow → 24px 间距 → display / headline 三层结构。", "section": "typography" },
+      { "name": "The Flat-At-Rest Rule", "body": "静止态卡片不要有阴影，靠 1px solid line 和色温差表达层级。只有 hover / active / focus 时才用 soft。", "section": "elevation" },
+      { "name": "The Single-Pop Rule", "body": "一屏只允许一个 shadow-pop（紫光晕阴影），就是当前最主要的转化按钮。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 用 cream #faf7f2 做所有 page 背景；卡片才用 surface 白。",
+      "Do 把 violet 限制在主 CTA 和选中态导航，一屏 violet 总面积 ≤ 10%。",
+      "Do 让明星头像、KPI 装饰圆、品类 chip 用双色 linear-gradient 135°（参 Identity-Through-Gradient Rule 字典）。",
+      "Do 给 KPI 卡右上加 radial-gradient 80×80 负偏移装饰圆，承担'工作室'手感。",
+      "Do 用 Instrument Serif italic 衔接版本号、tip-of-the-day、welcome 句尾的英文短句（≤8 词）。",
+      "Do 主 CTA hover 用 shadow-pop（紫光晕），一屏只许出现一次。",
+      "Do 所有按钮 focus-visible 显示 2px solid violet outline + 2px offset。",
+      "Do 中文数据字段在源数据里保留 raw integer（如 fans: 128000），格式化在 apps/web/src/lib/format.ts。",
+      "Do 把所有 status pill 做成 tinted-on-tinted（强调色 12–18% 底 + 强调色实色字）。",
+      "Do 静止态用 1px solid line 表达卡片层级，默认无阴影。",
+      "Do 中文 fallback 用 PingFang SC / Hiragino Sans GB；不用 Microsoft YaHei。"
+    ],
+    "donts": [
+      "Don't 用纯 #fff 做页面背景；也别用 #000 做正文。",
+      "Don't 在 nav item 上加左侧色条（border-left 3px solid violet）—— 整项染色才是对的。",
+      "Don't 把 violet 当 fill 色用在状态徽章背景、进度条主色、品类标签底色 —— 那是 One Voice 的滥用。",
+      "Don't 同一屏同时出现两个 button-accent（紫罗兰填充按钮）。",
+      "Don't 用真人照片做明星头像（隐私 + 授权稳定性）；用 Identity-Through-Gradient 渐变方块替代。",
+      "Don't 给 Instrument Serif italic 喂中文段落（字形不匹配，会变成楷体回退）。",
+      "Don't 给静止态卡片加阴影；阴影是状态语言。",
+      "Don't 在卡片里嵌带描边的卡片。表格在卡片里只用 border-bottom 分隔行。",
+      "Don't 用 floating-label 输入框；label-above-input 才符合工作笔记本气质。",
+      "Don't 用 Material-style ripple / elevation lift 过渡。",
+      "Don't 把 KPI 数字格式化进源数据（如 '128K'）—— 源永远 raw integer。",
+      "Don't 引入 Microsoft YaHei；中文回退用 PingFang SC / Hiragino Sans GB。",
+      "Don't 沿用 Tech-Professional 的深色 / 数据墙美学（属于 musician 线）；也别用 Entertainment-Premium 的暗金 / 玻璃渐变。"
+    ]
+  }
+}

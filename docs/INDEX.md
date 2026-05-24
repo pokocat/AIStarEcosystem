@@ -2,6 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
+> last-reviewed：2026-05-23 / v0.5.4
 > last-reviewed：2026-05-21 / v0.21 混剪 / 分发用户视角文案 + 视频库（软删 30 天）+ 官方明星片段
 
 > ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web`、`apps/admin`、`apps/server` 不动。详见 [`AGENTS.md`](../AGENTS.md) §1 顶部进度表。
@@ -95,13 +96,15 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 并配置环境变量：`AEP_MIXCUT_OUTPUT_DIR` / `AEP_MIXCUT_WORK_DIR`（生产应指向有足够磁盘配额的卷）。
 
-## 6. Figma 原型迁移（"设计稿怎么落"）
+## 6. Figma 原型迁移 & 设计系统（"设计稿怎么落 / 长什么样"）
 
 | 文档 | 用途 |
 |---|---|
 | [`apps/web/FIGMA_MIGRATION_GUIDE.md`](../apps/web/FIGMA_MIGRATION_GUIDE.md) | figma → web 的迁移手册 |
 | [`apps/web/specs/DESIGN_CONSTRAINTS.md`](../apps/web/specs/DESIGN_CONSTRAINTS.md) | 设计约束（视觉/交互） |
 | [`.claude/skills/figma-migrate/SKILL.md`](../.claude/skills/figma-migrate/SKILL.md) | skill 入口：自动按"五件套 + 三端同步"模式落 |
+| [`docs/design/celebrity/DESIGN.md`](../docs/design/celebrity/DESIGN.md) | **`apps/web-celebrity/` 子应用全域视觉系统真源** —— Creator-Friendly codify（tokens + 6 节 spec + 签名组件），对 apps/web-celebrity 整个子应用生效 |
+| [`.impeccable/celebrity/design.json`](../.impeccable/celebrity/design.json) | 上文的机器可读 sidecar（tonal ramps / shadows / motion / 完整组件 HTML+CSS 片段） |
 
 ## 7. 待办 / 已知问题
 
