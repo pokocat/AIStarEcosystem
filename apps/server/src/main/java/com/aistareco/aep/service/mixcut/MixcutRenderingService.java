@@ -252,8 +252,10 @@ public class MixcutRenderingService {
             int variantIndex = i;
             File outFile = new File(outDir, "v" + (i + 1) + ".mp4");
             ObjectNode transforms = mapper.createObjectNode();
-            // v0.23: 让前端 / 调试时一眼看见是不是用了 demo 兜底（没绑视频导致）。
-            transforms.put("base_video_source", resolved.usedDemoFallback ? "demo_fallback" : "user_upload");
+            // v0.30+: no_user_video 表示用户没绑任何视频，渲染走全黑底（仅 overlay/picgen 可见）。
+            // 历史值 "demo_fallback" 已废止 —— v0.23~v0.29 时该路径会塞 demo showreel 当背景，
+            // 现已严格按用户输入渲染，不再有 demo 兜底。
+            transforms.put("base_video_source", resolved.noUserVideos ? "no_user_video" : "user_upload");
 
             // v0.16+: 为本变体出 picgen 图，合入 overlays（base overlays 不可变，复制后追加再排）
             List<OverlaySpec> variantOverlays = resolved.overlays;
@@ -268,7 +270,7 @@ public class MixcutRenderingService {
                 }
             }
 
-            renderOneVariant(job, ctx, resolved.videos, resolved.videoBySlotId, resolved.demoPool,
+            renderOneVariant(job, ctx, resolved.videos, resolved.videoBySlotId,
                     variantOverlays, resolved.bgm, variantIndex, outFile, transforms, profile, rnd);
 
             // 抽 1s 处的一帧作为该变体的 poster (失败不致命,占位 null)
@@ -372,17 +374,15 @@ public class MixcutRenderingService {
             List<OverlaySpec> overlays,
             File bgm,
             List<PicgenSlotSpec> picgenSlots,
-            /** v0.23: true 表示 videos 用了 demo fallback（用户没绑定任何 layer_type=video 的素材）。
-             *  落到 applied_transforms.base_video_source 让前端能区分「真的用户视频」vs「demo 兜底」。 */
-            boolean usedDemoFallback,
+            /** v0.30+: true 表示用户没绑任何 layer_type=video 的素材；渲染器据此把
+             *  base_video_source 上报为 "no_user_video"（输出会是全黑底 + 用户 overlay/picgen）。
+             *  v0.23 ~ v0.29 曾叫 usedDemoFallback —— 当时该路径会把 demoPool 填进 videos 当背景。
+             *  v0.30 起严格按用户输入渲染，不再回退 demo showreel，字段重命名以反映新语义。 */
+            boolean noUserVideos,
             /** v0.26+: slot_id → 用户在该 video slot 绑的本地文件。保留 slot 归属，
              *  让按场景拼接时严格"该 scene 的 video slot 绑啥就用啥"，修复 v0.25 主拼接
              *  用 sources round-robin 导致用户绑给 scene 1 的视频跨段串到 scene 2 的 bug。 */
-            Map<String, File> videoBySlotId,
-            /** v0.26+: demo showreel 池（始终预填）。useSceneSchedule 时，某 scene 没有
-             *  user-bound video 不能再回退到其它 user video（会串色）→ 走这个 demo pool。
-             *  pool 为空时退回 sources round-robin 兜底。 */
-            List<File> demoPool
+            Map<String, File> videoBySlotId
     ) {}
 
     /**
@@ -806,35 +806,18 @@ public class MixcutRenderingService {
 
         overlays.sort(Comparator.comparingInt(OverlaySpec::zIndex));
 
-        // 底层视频为空时的处理（用户的 slot_bindings 里没有 layer_type=video 的条目）。
-        // v0.30+: 新（useSceneSchedule）路径下每段没绑视频 → 黑底渲染，不再用 demo。
-        // 旧（legacy 2-seg，没有 scenes_snapshot）路径仍走 demo showreel 兜底——
-        // 老任务快照下，黑底会让所有变体看起来都一样，没有视觉差异度，体验更差。
-        // demoPool 始终预填，留给 legacy / 兜底场景；useSceneSchedule 模式下渲染器
-        // 自己不会再触达它（perSegSrc[i]=null 走 lavfi 合成路径）。
-        List<File> demoPool = new ArrayList<>();
-        File demoDir = locateDemoVideosDir();
-        if (demoDir != null && demoDir.isDirectory()) {
-            File[] files = demoDir.listFiles(
-                    (d, name) -> name.startsWith("showreel-") && name.endsWith(".mp4"));
-            if (files != null) for (File f : files) demoPool.add(f);
-        }
-
-        boolean usedDemoFallback = false;
-        if (videos.isEmpty()) {
-            // 注意：useSceneSchedule 模式下 sources（=videos）实际上不会被消费，
-            // 真正背景画面由 perSegSrc[i]==null 的 lavfi color=black 段决定；
-            // 这里 addAll demoPool 仅用于 legacy 2-seg 路径的兜底。
-            usedDemoFallback = true;
+        // v0.30+: 用户没绑视频时，严格按用户输入渲染 —— 全黑底 + 仅显示 overlay/picgen。
+        // 不再回退到 demo showreel pool；不论 useSceneSchedule 还是 legacy 2-seg 路径，都走 lavfi color=black。
+        // 历史踩坑：v0.23 引入的 demoPool 兜底曾让用户困惑（"我只设了 picgen，背景却出现了陌生女歌手"），
+        // v0.30 起整条 demoPool 链路（locateDemoVideosDir / showreel-*.mp4）被废止。
+        boolean noUserVideos = videos.isEmpty();
+        if (noUserVideos) {
             log.warn(
-                    "[mixcut] job={} 没有用户绑定的视频素材。新模板（带 scenes_snapshot）下"
-                            + " 缺视频的场景将以黑底渲染（仅显示 overlay/picgen 内容）；"
-                            + " 老模板（legacy 2-seg）会回退到 demo showreel。"
+                    "[mixcut] job={} 没有用户绑定的视频素材，渲染将以全黑底进行（仅 overlay/picgen 可见）。"
                             + " 如非预期，请确认模板 layer_type=video 的 slot 是否已绑定素材。",
                     job.getId());
-            videos.addAll(demoPool);
         }
-        return new ResolvedBindings(videos, overlays, bgm, picgenSlots, usedDemoFallback, videoBySlotId, demoPool);
+        return new ResolvedBindings(videos, overlays, bgm, picgenSlots, noUserVideos, videoBySlotId);
     }
 
     private static String blankToNull(String s) {
@@ -954,29 +937,21 @@ public class MixcutRenderingService {
         return null;
     }
 
-    /**
-     * 找 apps/web/public/videos/。从 server 工作目录向上找。
-     */
-    private File locateDemoVideosDir() {
-        File cwd = new File(".").getAbsoluteFile();
-        for (int i = 0; i < 6 && cwd != null; i++) {
-            File candidate = new File(cwd, "apps/web/public/videos");
-            if (candidate.isDirectory()) return candidate;
-            cwd = cwd.getParentFile();
-        }
-        return null;
-    }
+    // v0.30+: locateDemoVideosDir() 已删除。v0.23~v0.29 时用来定位
+    // apps/web/public/videos/showreel-*.mp4 作为没绑视频时的兜底背景；
+    // v0.30 起严格按用户输入渲染，不再有 demo 兜底，整个查找函数随之废止。
 
     // ── 单个变体的 ffmpeg 调用 ─────────────────────────────────────────────────
 
     private void renderOneVariant(
             MixcutRenderJob job,
             RenderContext ctx,
+            /** v0.30+: 用户绑定的所有 video layer 文件（不再含 demoPool 兜底）。
+             *  仅 legacy 2-seg 路径直接消费；useSceneSchedule 路径走 videoBySlotId。
+             *  空列表 = 用户没绑任何 video → 渲染为全黑底。 */
             List<File> sources,
             /** v0.26+: slot_id → 用户在该 video slot 绑的本地文件；空 map 表示用户没绑任何 video。 */
             Map<String, File> videoBySlotId,
-            /** v0.26+: demo showreel 池，useSceneSchedule 时 scene 没绑 video 的兜底。 */
-            List<File> demoPool,
             List<OverlaySpec> overlays,
             File bgm,
             int variantIndex,
@@ -1014,7 +989,11 @@ public class MixcutRenderingService {
                 sum = maxOutputSec;
             }
         } else {
-            segCount = caps.concat ? Math.min(2, sources.size()) : 1;
+            // legacy 2-seg：基于 sources 数量切 1~2 段。
+            // v0.30+: sources 可能为空（用户没绑任何 video，且不再 demo 兜底）→
+            // clamp 到 1 段，下方 perSegSrc[0]=null 走 lavfi color=black。
+            int srcCount = Math.max(1, sources.size());
+            segCount = caps.concat ? Math.min(2, srcCount) : 1;
             double per = Math.max(2.0, (double) maxOutputSec / Math.max(1, segCount));
             segDurations = new double[segCount];
             for (int i = 0; i < segCount; i++) segDurations[i] = per;
@@ -1095,9 +1074,16 @@ public class MixcutRenderingService {
                 }
             }
         } else {
+            // v0.30+: sources 为空（用户没绑任何 video） → 该变体全黑底（perSegSrc[i]=null）。
+            // 之前会从 demoPool round-robin 取 showreel 当背景，现已废止。
             for (int i = 0; i < segCount; i++) {
-                perSegSrc[i] = sources.get((variantIndex + i) % sources.size());
-                perSegMatch[i] = "legacy_roundrobin";
+                if (sources.isEmpty()) {
+                    perSegSrc[i] = null;
+                    perSegMatch[i] = "black_canvas";
+                } else {
+                    perSegSrc[i] = sources.get((variantIndex + i) % sources.size());
+                    perSegMatch[i] = "legacy_roundrobin";
+                }
             }
         }
 
@@ -1195,11 +1181,19 @@ public class MixcutRenderingService {
                     + " 加 AEP_FFMPEG_BIN=/opt/homebrew/bin/ffmpeg）。"
                     + " 诊断:" + diagText);
         }
+        // v0.30+: 严格按用户输入渲染。
+        //   - useRealOverlay → 用户绑了至少 1 个 overlay/picgen → 全部输入并叠加
+        //   - !useRealOverlay → 不再叠加任何"占位色卡"装饰；画面就是主视频（或黑底），无装饰
+        // 历史踩坑：v0.23~v0.29 当 caps.overlay+caps.color 都在但用户没绑 overlay 时，
+        //   会自动叠加一块半透明紫色色卡（W/2 × H/16）作为"占位装饰"——用户根本没要求过。
+        //   v0.30 起完全删除该路径。
         boolean useRealOverlay = caps.overlay && !overlays.isEmpty();
-        int overlayCount = useRealOverlay ? Math.min(4, overlays.size()) : (caps.overlay && caps.color ? 1 : 0);
+        int overlayCount = useRealOverlay ? Math.min(4, overlays.size()) : 0;
         transforms.put("overlay_count", overlayCount);
-        transforms.put("overlay_source", useRealOverlay ? "user-upload"
-                : (overlayCount == 1 ? "fallback-color-card" : "disabled-missing-filter"));
+        transforms.put("overlay_source",
+                useRealOverlay ? "user-upload"
+                : (overlays.isEmpty() ? "none-user-bound-zero"
+                : "disabled-missing-filter"));
 
         if (useRealOverlay) {
             ObjectNode overlayDetail = transforms.putObject("overlays_detail");
@@ -1221,10 +1215,6 @@ public class MixcutRenderingService {
                 }
                 overlayDetail.set("o_" + i, od);
             }
-        } else if (overlayCount == 1) {
-            args.add("-f"); args.add("lavfi");
-            args.add("-i");
-            args.add("color=c=0x7c5cff@0.55:s=" + (W / 2) + "x" + Math.max(80, H / 16) + ":d=" + format((double) totalDuration));
         }
 
         // BGM 输入（如果有）—— 循环到 totalDuration
