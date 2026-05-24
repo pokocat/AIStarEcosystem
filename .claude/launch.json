@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "celebrity",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@ai-star-eco/web-celebrity", "exec", "next", "dev"],
+      "port": 3012,
+      "autoPort": true
+    }
+  ]
+}

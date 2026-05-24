@@ -115,11 +115,20 @@ const LAYER_STYLES: Record<string, { bg: string; border: string; text: string; i
   audio: { bg: "bg-foreground/[0.04]", border: "border-foreground/30", text: "text-foreground/70", icon: Music, label: "音频" },
 };
 
+// blueprint 工程图框：统一中性描线，不按 layer_type 染色。
+// 原因：用户无法在创建模板时指定 canvas 颜色，sticker / video / text 多类型彩色框
+// 叠加各模板自带的 canvas.background_color 之后，缩略图列表会非常凌乱。
+// 槽位类型靠 icon + label 表达已足够；选中态由调用方加 violet ring 高亮。
+const NEUTRAL_BLUEPRINT_FRAME = {
+  bg: "bg-white/[0.04]",
+  border: "border-white/30",
+  text: "text-white/80",
+};
 const BLUEPRINT_LAYER_STYLES: Record<string, { bg: string; border: string; text: string; icon: any; label: string }> = {
-  video: { bg: "bg-sky-950/60", border: "border-sky-300/70", text: "text-sky-50", icon: Video, label: "视频" },
-  image: { bg: "bg-emerald-950/60", border: "border-emerald-300/70", text: "text-emerald-50", icon: ImageIcon, label: "图片" },
-  text: { bg: "bg-rose-950/60", border: "border-rose-300/70", text: "text-rose-50", icon: Type, label: "字幕" },
-  audio: { bg: "bg-violet-950/60", border: "border-violet-300/70", text: "text-violet-50", icon: Music, label: "音频" },
+  video: { ...NEUTRAL_BLUEPRINT_FRAME, icon: Video, label: "视频" },
+  image: { ...NEUTRAL_BLUEPRINT_FRAME, icon: ImageIcon, label: "图片" },
+  text: { ...NEUTRAL_BLUEPRINT_FRAME, icon: Type, label: "字幕" },
+  audio: { ...NEUTRAL_BLUEPRINT_FRAME, icon: Music, label: "音频" },
 };
 
 function jitter(seed: number, slotId: string, max: number): number {
@@ -149,8 +158,8 @@ function stickerDisplayText(slot: TemplateSlot, binding?: SlotBinding): string {
   if (slot.default_value) return slot.default_value;
   const cat = slot.library_filter?.category as string | undefined;
   if (cat && STICKER_CATEGORY_LABEL[cat]) return STICKER_CATEGORY_LABEL[cat];
-  // 兜底:把 label / slot_id 里的「贴图 / 贴纸 / 条 / 栏」等冗余技术后缀剥掉,顶部 / 底部前缀也去掉
-  const raw = slot.label || slot.slot_id;
+  // 兜底:把 label 里的「贴图 / 贴纸 / 条 / 栏」等冗余技术后缀剥掉,顶部 / 底部前缀也去掉
+  const raw = slot.label || fallbackSlotDisplayName(slot);
   return raw
     .replace(/^顶部|^底部|^左侧|^右侧/, "")
     .replace(/贴图$|贴纸$|条$|栏$/, "")
@@ -165,13 +174,28 @@ function cleanBlueprintLabel(raw: string): string {
   return cleaned || raw;
 }
 
+function fallbackSlotDisplayName(slot: TemplateSlot): string {
+  switch (slot.layer_type) {
+    case "video":
+      return "视频素材";
+    case "image":
+      return isStickerSlot(slot) ? "贴图" : "图片素材";
+    case "text":
+      return "文案";
+    case "audio":
+      return "音频素材";
+    default:
+      return "内容位";
+  }
+}
+
 function slotDisplayName(slot: TemplateSlot, binding?: SlotBinding): string {
   if (binding?.source === "input" && binding.text) return binding.text;
   if (slot.label) return slot.label;
   if (slot.default_value) return slot.default_value;
   // 原 sticker layer 合并到 image 后,凭 library_filter.asset_type 兜底贴图友好文案
   if (isStickerSlot(slot)) return stickerDisplayText(slot, binding);
-  return slot.slot_id;
+  return fallbackSlotDisplayName(slot);
 }
 
 /** 该 image slot 是否承载贴图(透明 PNG / 品牌条 / 标题装饰)语义。 */
@@ -218,7 +242,9 @@ export function TemplatePreview({
         )}
         style={{
           aspectRatio: `${template.canvas.width} / ${template.canvas.height}`,
-          backgroundColor: template.canvas.background_color,
+          // 不读 template.canvas.background_color —— 各模板自带的画布色（黄/绿/蓝灰…）
+          // 在列表 / 详情/ 创建页同框出现时视觉割裂；统一用 className 的 bg-black 兜底。
+          // 数据真值保留，server 端 ffmpeg 渲 mp4 仍按各模板自身 background_color 走。
         }}
       >
         {/* 静态网格底纹 */}
@@ -262,7 +288,7 @@ export function TemplatePreview({
         {focusDim && selectedSlotId && (() => {
           const selected = visualSlots.find((s) => s.slot_id === selectedSlotId);
           if (!selected?.rect) return null;
-          const label = selected.label || selected.slot_id;
+          const label = slotDisplayName(selected);
           // 默认 pill 放在 slot 顶部上方；若 slot 顶部太靠近画布顶，转到下方
           const above = selected.rect.y > 0.08;
           return (
@@ -318,7 +344,7 @@ export function TemplatePreview({
                 )}
               >
                 <Icon className="size-3" />
-                {s.label || s.slot_id}
+                {slotDisplayName(s)}
               </button>
             );
           })}
@@ -526,7 +552,7 @@ function SlotBox({
                   )}
                   <img
                     src={mediaUrl}
-                    alt={slot.label || slot.slot_id}
+                    alt={slotDisplayName(slot, binding)}
                     className={cn(
                       "absolute inset-0 w-full h-full pointer-events-none",
                       fit === "cover" ? "object-cover" : "object-contain"
@@ -571,7 +597,7 @@ function SlotBox({
                 )}
                 <img
                   src={mediaUrl}
-                  alt={slot.label || slot.slot_id}
+                  alt={slotDisplayName(slot, binding)}
                   className={cn(
                     "absolute inset-0 w-full h-full pointer-events-none",
                     fit === "cover" ? "object-cover" : "object-contain"
@@ -602,7 +628,7 @@ function SlotBox({
             {mediaUrl ? (
               <img
                 src={mediaUrl}
-                alt={slot.label || slot.slot_id}
+                alt={slotDisplayName(slot, binding)}
                 className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               />
             ) : (
@@ -630,7 +656,7 @@ function SlotBox({
             )}
           >
             <Icon className="size-2.5 inline mr-1" />
-            {slot.slot_id}
+            {slotDisplayName(slot, binding)}
             {slot.required && <span className="ml-1 text-violet-400">*</span>}
           </div>
         )}

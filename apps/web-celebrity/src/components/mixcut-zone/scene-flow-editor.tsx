@@ -183,6 +183,7 @@ function SceneNode({
   onDragEnd: () => void;
 }) {
   const dragging = dragSrc === index;
+  const sceneLabel = /^\d+\s*s$/i.test(scene.label.trim()) ? `第 ${index + 1} 段` : scene.label;
 
   return (
     <div
@@ -194,10 +195,17 @@ function SceneNode({
       }}
       onDragEnd={onDragEnd}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onSelect();
+      }}
       role="button"
+      tabIndex={0}
+      aria-pressed={active}
       className={cn(
         "group relative shrink-0 rounded-md border px-3 py-2 transition-all cursor-pointer",
-        "flex items-center gap-2 min-w-[10rem]",
+        "flex items-center gap-2 min-w-[10rem] text-left",
         active
           ? "border-violet-300/70 bg-violet-50/70 shadow-none"
           : "border-border bg-transparent hover:border-foreground/25 hover:bg-secondary/35",
@@ -213,8 +221,8 @@ function SceneNode({
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-1.5">
           <span className="text-[10px] font-mono text-muted-foreground tabular-nums">#{index + 1}</span>
-          <span className="text-xs font-medium truncate" title={scene.label}>
-            {scene.label}
+          <span className="text-xs font-medium truncate" title={sceneLabel}>
+            {sceneLabel}
           </span>
         </div>
         <div className="text-[10px] text-muted-foreground font-mono">

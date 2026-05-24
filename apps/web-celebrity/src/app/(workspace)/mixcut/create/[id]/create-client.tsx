@@ -194,7 +194,7 @@ export function CreateClient({ id }: { id: string }) {
     () => template?.perturbation_profile ?? "moderate"
   );
   const [variants, setVariants] = useState(() => template?.output_variants_default ?? 5);
-  const [previewVariant, setPreviewVariant] = useState<number | undefined>(undefined);
+  // v0.28+ polish C: 变体预览 Card 已移除（左栏画布已经是主视觉，不再单独叠 v1/v2/v3 缩略行）
   const [submitting, setSubmitting] = useState(false);
   const [overrides, setOverrides] = useState<Required<PerturbationOverrides>>({
     allow_mirror: true,
@@ -530,7 +530,7 @@ export function CreateClient({ id }: { id: string }) {
 
   return (
     <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
-      <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href={`/mixcut/templates/${template.template_id}`}>
             <ArrowLeft className="size-4" /> 返回模板详情
@@ -543,6 +543,162 @@ export function CreateClient({ id }: { id: string }) {
           <ChevronRight className="size-3" />
           <span className="text-foreground">创建任务</span>
         </div>
+      </div>
+
+      {/*
+        v0.28+ polish C: 整页顶部 sticky toolbar —— 把原右栏 ②「设置并生成」整张卡片
+        ((数量 / 差异度 / 消耗 / CTA) 压平到一条横向工具栏，永远可见。释放右栏 340px，
+        中列「填素材」操作区域因此扩到 1fr。
+        - 进度 chip / 数量 stepper + presets / 差异度 / 消耗 / CTA：单行扫读
+        - overQuota 时下方挂一条 amber 警告条
+      */}
+      <div className="sticky top-0 z-20 -mx-6 lg:-mx-8 mb-5 border-y border-border bg-background/92 backdrop-blur-md">
+        <div className="px-6 lg:px-8 py-2.5 flex items-center gap-3 flex-wrap">
+          {requiredSlots.length > 0 && (
+            <div
+              className={cn(
+                "px-2.5 py-1 rounded-full text-[11px] font-medium tabular-nums flex items-center gap-1.5 border shrink-0",
+                allRequiredFilled
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700"
+                  : "bg-amber-500/10 border-amber-500/30 text-amber-700",
+              )}
+            >
+              {allRequiredFilled ? (
+                <>
+                  <CheckCircle2 className="size-3" />
+                  必填都填完
+                </>
+              ) : (
+                <>
+                  <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  还差 {requiredSlots.length - filledRequired.length} 项必填
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="h-5 w-px bg-border/60 hidden md:block" />
+
+          {/* 数量 stepper（紧凑横向）*/}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-muted-foreground hidden sm:inline">生成</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-7 shrink-0"
+              onClick={() => setVariants((v) => Math.max(1, v - 1))}
+            >
+              <Minus className="size-3" />
+            </Button>
+            <span className="text-base font-semibold tabular-nums w-7 text-center">{variants}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-7 shrink-0"
+              onClick={() => setVariants((v) => Math.min(20, v + 1))}
+            >
+              <Plus className="size-3" />
+            </Button>
+            <span className="text-[11px] text-muted-foreground">条</span>
+            {/* preset 快捷选 */}
+            <div className="hidden md:flex items-center gap-0.5 ml-1.5">
+              {[3, 5, 10, 20].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVariants(v)}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded text-[10px] tabular-nums transition-colors",
+                    variants === v
+                      ? "bg-secondary text-foreground font-medium"
+                      : "text-muted-foreground hover:bg-secondary/60",
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-5 w-px bg-border/60 hidden md:block" />
+
+          {/* 差异度 segmented control */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground hidden sm:inline">差异度</span>
+            <div className="flex items-center rounded-md border border-border bg-card p-0.5">
+              {(["light", "moderate", "aggressive"] as PerturbationProfile[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setProfile(p)}
+                  title={PROFILE_DESCRIPTIONS[p]}
+                  className={cn(
+                    "px-2 py-0.5 rounded text-[11px] transition-colors whitespace-nowrap",
+                    profile === p
+                      ? "bg-foreground text-background font-medium"
+                      : "text-muted-foreground hover:bg-secondary/60",
+                  )}
+                >
+                  {PROFILE_LABELS[p]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 消耗 / 出片预估 —— 中宽度起显示 */}
+          <div className="hidden xl:flex items-center gap-3 text-[11px] tabular-nums ml-1">
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground">消耗</span>
+              <span
+                className={cn(
+                  "font-mono font-medium",
+                  overQuota ? "text-rose-600" : "text-foreground",
+                )}
+              >
+                {variants}
+              </span>
+              <span className="text-muted-foreground">积分</span>
+            </div>
+            <span className="text-muted-foreground/60">·</span>
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <span>出片 ≈</span>
+              <span className="font-mono">{Math.ceil((variants * 25) / 60)}</span>
+              <span>分钟</span>
+            </div>
+            <span className="text-muted-foreground/60">·</span>
+            <div className={cn("font-mono", overQuota && "text-rose-600 font-semibold")}>
+              月余 {formatNumber(quotaRemaining)}
+            </div>
+          </div>
+
+          {/* 主 CTA：贴最右 */}
+          <Button
+            variant="gradient"
+            size="default"
+            className="ml-auto h-9 px-5 shrink-0"
+            disabled={!allRequiredFilled || overQuota || submitting}
+            onClick={handleSubmit}
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                提交中…
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4" />
+                生成 {variants} 条视频
+              </>
+            )}
+          </Button>
+        </div>
+
+        {overQuota && (
+          <div className="px-6 lg:px-8 py-1.5 bg-rose-500/10 border-t border-rose-500/20 flex items-center gap-2 text-[11px] text-rose-700">
+            <AlertTriangle className="size-3 shrink-0" />
+            本月剩余额度 {formatNumber(quotaRemaining)} 不够生成 {variants} 条，请减少数量或升级套餐
+          </div>
+        )}
       </div>
 
       {/* v0.26+: 从商品库带入时顶部 chip 给可见反馈 + 一键清除 */}
@@ -574,188 +730,132 @@ export function CreateClient({ id }: { id: string }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr_340px] gap-6">
-        <div className="lg:sticky lg:top-20 self-start space-y-3">
-          {/* v0.26+: 多场景时在画布上方插入场景 tab。点 tab 同时滚动中列到对应场景块。
-              单场景模板（最常见）不渲染，UI 与旧版一致。
-              v0.27+: 加进度 dot（done/partial/empty）+ 当前段的语境信息（"x/y 已填"）。 */}
+      <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-6">
+        {/*
+          v0.28+ polish C 左栏：画布焦点化
+          - 场景流程从「侧边竖排卡片」改成画布**上方水平 timeline pills**，与画布一体
+          - TemplatePreview 加重外框（ring-2 violet/20 + 阴影），强化主视觉
+          - 删除变体预览 Card（用户决策不依赖于它，提交后任务详情页能看）
+          - 底部 meta bar 显示当前段时间窗 + 必填进度
+          - sticky top 改 32 给顶部 toolbar 让位
+        */}
+        <div className="lg:sticky lg:top-[68px] self-start space-y-3">
+          {/* 场景水平 timeline（仅多场景） */}
           {template.scenes.length > 1 && (
-            <div className="rounded-lg border bg-card overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 border-b bg-secondary/30">
-                <span className="text-[11px] font-medium tracking-wide text-foreground/70">
-                  场景流程
-                </span>
-                <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
-                  {sceneProgress.filter((p) => p.state === "done" || p.state === "none").length}/{template.scenes.length} 段已就绪
-                </span>
-              </div>
-              <div className="flex overflow-x-auto scrollbar-thin">
-                {template.scenes.map((sc, i) => {
-                  const isActive = i === safeSceneIdx;
-                  const prog = sceneProgress[i];
-                  const dotClass =
-                    prog.state === "done"
-                      ? "bg-emerald-500"
-                      : prog.state === "partial"
-                        ? "bg-amber-400"
-                        : prog.state === "empty"
-                          ? "bg-rose-400/80"
-                          : "bg-muted-foreground/40";
-                  return (
-                    <button
-                      key={sc.id}
-                      type="button"
-                      onClick={() => handleSelectScene(i)}
-                      className={cn(
-                        "relative flex-1 min-w-[68px] px-2.5 py-2 text-left transition-colors group",
-                        "border-r last:border-r-0",
-                        isActive
-                          ? "bg-violet-500/[0.06]"
-                          : "hover:bg-secondary/40",
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={cn(
-                            "size-1.5 rounded-full shrink-0",
-                            dotClass,
-                            prog.state === "partial" && "animate-pulse",
-                          )}
-                          aria-hidden
-                        />
-                        <span className={cn(
-                          "text-[11px] font-mono",
-                          isActive ? "text-foreground" : "text-muted-foreground",
-                        )}>
-                          {i + 1}
-                        </span>
-                        <span className="text-[10px] font-mono text-muted-foreground/70 tabular-nums">
-                          {sc.duration}s
-                        </span>
-                      </div>
-                      <div className={cn(
-                        "text-[11px] mt-0.5 truncate",
-                        isActive ? "text-foreground font-medium" : "text-muted-foreground",
-                      )}>
-                        {sc.label}
-                      </div>
-                      {/* active 段底部的强调线，比单纯换背景更明确"我在这" */}
-                      {isActive && (
-                        <span className="absolute inset-x-0 bottom-0 h-[2px] bg-violet-500" aria-hidden />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              {activeScene && (
-                <div className="px-3 py-2 border-t bg-background flex items-center justify-between gap-2">
-                  <div className="text-[11px] text-muted-foreground tabular-nums">
-                    第 {safeSceneIdx + 1} 段 · {sceneStartOffset.toFixed(0)}s ~ {(sceneStartOffset + activeScene.duration).toFixed(0)}s
-                  </div>
-                  <div className="text-[10px] font-mono">
-                    {sceneProgress[safeSceneIdx].total > 0 ? (
-                      <span className={cn(
-                        sceneProgress[safeSceneIdx].state === "done" ? "text-emerald-600" :
-                        sceneProgress[safeSceneIdx].state === "partial" ? "text-amber-600" :
-                        "text-rose-600"
-                      )}>
-                        必填 {sceneProgress[safeSceneIdx].filled}/{sceneProgress[safeSceneIdx].total}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">无必填项</span>
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1">
+              {template.scenes.map((sc, i) => {
+                const isActive = i === safeSceneIdx;
+                const prog = sceneProgress[i];
+                const dotClass =
+                  prog.state === "done"
+                    ? "bg-emerald-500"
+                    : prog.state === "partial"
+                      ? "bg-amber-400"
+                      : prog.state === "empty"
+                        ? "bg-rose-400/80"
+                        : "bg-muted-foreground/40";
+                return (
+                  <button
+                    key={sc.id}
+                    type="button"
+                    onClick={() => handleSelectScene(i)}
+                    className={cn(
+                      "shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border transition-colors min-w-0",
+                      isActive
+                        ? "border-violet-500 bg-violet-500/10 text-foreground shadow-sm"
+                        : "border-border bg-card text-muted-foreground hover:border-foreground/30",
                     )}
-                  </div>
-                </div>
-              )}
+                  >
+                    <span
+                      className={cn(
+                        "size-1.5 rounded-full shrink-0",
+                        dotClass,
+                        prog.state === "partial" && "animate-pulse",
+                      )}
+                      aria-hidden
+                    />
+                    <span className="text-[11px] font-mono tabular-nums">{i + 1}</span>
+                    <span className="text-[11px] truncate max-w-[90px]">{sc.label}</span>
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
+                      {sc.duration}s
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          <TemplatePreview
-            template={previewTemplate}
-            bindings={bindings}
-            selectedSlotId={focusedSlot}
-            onSelectSlot={setFocusedSlot}
-            frameStyle="blueprint"
-            variantSeed={previewVariant}
-            focusDim
-          />
-          <Card>
-            <CardContent className="p-3 space-y-2">
-              <div className="text-xs text-muted-foreground">变体预览(模拟扰动效果)</div>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setPreviewVariant(undefined)}
-                  className={cn(
-                    "px-2 py-1 rounded text-[11px] border transition-colors",
-                    previewVariant == null
-                      ? "bg-foreground text-background border-foreground"
-                      : "bg-transparent border-border text-muted-foreground hover:border-foreground"
-                  )}
-                >
-                  原版
-                </button>
-                {Array.from({ length: Math.min(variants, 8) }).map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setPreviewVariant(i)}
+          {/* 画布主视觉：加重外框 + 底部 meta bar 一体 */}
+          <div className="rounded-xl border-2 border-violet-500/20 overflow-hidden bg-card shadow-md">
+            <TemplatePreview
+              template={previewTemplate}
+              bindings={bindings}
+              selectedSlotId={focusedSlot}
+              onSelectSlot={setFocusedSlot}
+              frameStyle="blueprint"
+              focusDim
+            />
+            {activeScene && (
+              <div className="px-3.5 py-2 border-t bg-secondary/20 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
                     className={cn(
-                      "px-2 py-1 rounded text-[11px] border font-mono transition-colors",
-                      previewVariant === i
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-transparent border-border text-muted-foreground hover:border-foreground"
+                      "size-1.5 rounded-full shrink-0",
+                      sceneProgress[safeSceneIdx].state === "done"
+                        ? "bg-emerald-500"
+                        : sceneProgress[safeSceneIdx].state === "partial"
+                          ? "bg-amber-400 animate-pulse"
+                          : sceneProgress[safeSceneIdx].state === "empty"
+                            ? "bg-rose-400/80"
+                            : "bg-muted-foreground/40",
                     )}
-                  >
-                    v{i + 1}
-                  </button>
-                ))}
+                  />
+                  <span className="text-[11px] text-foreground/80 truncate">
+                    {template.scenes.length > 1 ? `第 ${safeSceneIdx + 1} 段 · ${activeScene.label}` : activeScene.label}
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-muted-foreground tabular-nums shrink-0">
+                  {sceneStartOffset.toFixed(0)}s ~ {(sceneStartOffset + activeScene.duration).toFixed(0)}s
+                  {sceneProgress[safeSceneIdx].total > 0 && (
+                    <span
+                      className={cn(
+                        "ml-2",
+                        sceneProgress[safeSceneIdx].state === "done"
+                          ? "text-emerald-600"
+                          : sceneProgress[safeSceneIdx].state === "partial"
+                            ? "text-amber-600"
+                            : "text-rose-600",
+                      )}
+                    >
+                      · 必填 {sceneProgress[safeSceneIdx].filled}/{sceneProgress[safeSceneIdx].total}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="text-[10px] text-muted-foreground leading-relaxed pt-1">
-                每个变体应用不同的 slot 位置/尺寸抖动 + 色彩/速度扰动,
-                <br />
-                确保汉明距离 ≥ {template.quality_gate.min_phash_distance} 才入库。
-              </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
+
+          <p className="text-[10px] text-muted-foreground leading-relaxed px-1">
+            点击画布上的素材位 → 中列对应输入框聚焦；切换场景 → 画布同步显示该段
+          </p>
         </div>
 
         <div className="space-y-4 min-w-0">
-          {/* v0.27+: 中列 header 改为带 step 编号 ①，给整页两步流程一个明确的视觉锚点
-              （② 在右侧 aside header）。同时把"必填进度"做成更显眼的状态徽章。 */}
-          <div className="flex items-start justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="size-8 rounded-full bg-foreground text-background grid place-items-center text-sm font-semibold shrink-0 tabular-nums">
-                1
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-xl font-semibold tracking-tight leading-tight">填入素材</h1>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {editableSlots.length} 个可编辑位
-                  {template.scenes.length > 1 && ` · ${template.scenes.length} 个场景串行播放`}
-                </p>
-              </div>
+          {/*
+            v0.28+ polish C: 中列 header 极简化。原来的 ① 圆形 step badge + 大标题已经
+            被顶部 sticky toolbar 的「必填进度 chip」承担。这里只剩简洁的 section title。
+          */}
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold tracking-tight leading-tight">填入素材</h1>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                共 {editableSlots.length} 处可编辑
+                {template.scenes.length > 1 && ` · ${template.scenes.length} 个场景串行播放`}
+              </p>
             </div>
-            {requiredSlots.length > 0 && (
-              <div
-                className={cn(
-                  "px-2.5 py-1.5 rounded-full text-[11px] font-medium tabular-nums flex items-center gap-1.5 border",
-                  allRequiredFilled
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700"
-                    : "bg-amber-500/10 border-amber-500/30 text-amber-700",
-                )}
-              >
-                {allRequiredFilled ? (
-                  <>
-                    <CheckCircle2 className="size-3" />
-                    必填都填完了
-                  </>
-                ) : (
-                  <>
-                    <span className="size-1.5 rounded-full bg-amber-500" />
-                    还差 {requiredSlots.length - filledRequired.length} 项必填
-                  </>
-                )}
-              </div>
-            )}
+            <p className="text-[11px] text-muted-foreground">
+              填完所有必填项后，顶部 CTA 即可点击
+            </p>
           </div>
 
           {/*
@@ -880,173 +980,21 @@ export function CreateClient({ id }: { id: string }) {
             </Card>
           )}
 
-          {/* v0.27+: 关联商品 / 扰动贴图池 都迁出中列，合并到右侧的「高级处理 / 关联商品」可折叠区。
-              这样中列只剩"填素材"一件事，认知负担降低；高级用户仍可一键展开调参。 */}
-        </div>
-
-        {/*
-          v0.27+: 右侧 aside 重构 —— 把"批量生成参数"大卡片（约 200 行 / 25 个控件）压缩为：
-            · 主卡 "② 设置并生成"：仅显示用户每次都要看 / 调的字段（数量 + 差异化 + 消耗摘要 + CTA）
-            · 折叠卡 "高级处理"：6 个画面处理 checkbox + 扰动贴图池（迁自中列）
-            · 折叠卡 "关联商品（选填）"：选商品参考（迁自中列）
-            · Pro 速度卡 保留在底部（最低优先级）
-          目标：默认状态下右栏视觉重量从"满屏控件"降到"3 张卡 + 1 个主 CTA"，回头老用户一眼能看见
-          重要数字（条数 / 消耗），新用户也不会被一堆参数吓到。
-        */}
-        <aside className="lg:sticky lg:top-20 self-start space-y-3">
-          {/* ─── 主卡 ② 设置并生成 ─── */}
-          <Card className="overflow-hidden">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-3">
-                <div className="size-8 rounded-full bg-foreground text-background grid place-items-center text-sm font-semibold tabular-nums shrink-0">
-                  2
-                </div>
-                <div className="min-w-0">
-                  <CardTitle className="text-base leading-tight">设置并生成</CardTitle>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    选条数 · 选差异度 · 一键生成
-                  </p>
-                </div>
+          {/*
+            v0.28+ polish C: 右栏整段移除，「高级处理 / 关联商品 / Pro 加速」迁回中列底部
+            （3 张 collapsible/banner，整体收起时仅占 ~150px 高，展开时不挤压必填编辑区）。
+            数量 / 差异度 / CTA / 消耗 全部进入顶部 sticky toolbar，不再有 ② 大卡。
+          */}
+          <div className="pt-5 mt-3 border-t border-border/50 space-y-2.5">
+            <div className="flex items-center gap-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-medium">
+                进阶配置
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* —— 数量（用户每次必调的字段，放第一）—— */}
-              <div className="space-y-2">
-                <div className="flex items-baseline justify-between">
-                  <label className="text-xs font-medium text-foreground/80">生成几条</label>
-                  <span className="text-2xl font-semibold tabular-nums leading-none">
-                    {variants}
-                    <span className="text-xs font-normal text-muted-foreground ml-1">条</span>
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-8 shrink-0"
-                    onClick={() => setVariants((v) => Math.max(1, v - 1))}
-                  >
-                    <Minus className="size-3" />
-                  </Button>
-                  <Slider
-                    min={1}
-                    max={20}
-                    step={1}
-                    value={[variants]}
-                    onValueChange={(v) => setVariants(v[0])}
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-8 shrink-0"
-                    onClick={() => setVariants((v) => Math.min(20, v + 1))}
-                  >
-                    <Plus className="size-3" />
-                  </Button>
-                </div>
-                <div className="flex gap-1">
-                  {[3, 5, 10, 20].map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setVariants(v)}
-                      className={cn(
-                        "flex-1 py-1 rounded text-[11px] transition-colors tabular-nums",
-                        variants === v
-                          ? "bg-secondary text-foreground font-medium"
-                          : "text-muted-foreground hover:bg-secondary/50",
-                      )}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <div className="h-px flex-1 bg-border/40" />
+              <span className="text-[10px] text-muted-foreground/60">可选 · 默认收起</span>
+            </div>
 
-              {/* —— 差异化（3 pills，无 description，hover 时 tooltip）—— */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground/80">差异化强度</label>
-                <div className="grid grid-cols-3 gap-1">
-                  {(["light", "moderate", "aggressive"] as PerturbationProfile[]).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setProfile(p)}
-                      title={PROFILE_DESCRIPTIONS[p]}
-                      className={cn(
-                        "px-2 py-1.5 rounded text-[11px] transition-colors",
-                        profile === p
-                          ? "bg-foreground text-background font-medium"
-                          : "bg-secondary/50 text-muted-foreground hover:bg-secondary",
-                      )}
-                    >
-                      {PROFILE_LABELS[p]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* —— 消耗摘要：紧凑 grid，单行可扫读 —— */}
-              <div className="grid grid-cols-3 gap-2 py-2 border-y border-border/60">
-                <div>
-                  <div className="text-[10px] text-muted-foreground">消耗</div>
-                  <div className="text-xs font-mono font-medium tabular-nums">
-                    {variants} <span className="text-muted-foreground">积分</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground">月余</div>
-                  <div className={cn("text-xs font-mono tabular-nums", overQuota ? "text-rose-600 font-semibold" : "")}>
-                    {formatNumber(quotaRemaining)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground">出片</div>
-                  <div className="text-xs font-mono tabular-nums">
-                    ≈{Math.ceil((variants * 25) / 60)} 分钟
-                  </div>
-                </div>
-              </div>
-
-              {overQuota && (
-                <div className="rounded-md bg-rose-500/10 border border-rose-500/30 p-2.5 flex items-start gap-2">
-                  <AlertTriangle className="size-3.5 text-rose-600 shrink-0 mt-0.5" />
-                  <div className="text-[11px] text-rose-700 leading-relaxed">
-                    本月剩余额度不够，请减少生成数量或升级套餐。
-                  </div>
-                </div>
-              )}
-
-              {/* —— 主 CTA —— */}
-              <Button
-                variant="gradient"
-                size="xl"
-                className="w-full"
-                disabled={!allRequiredFilled || overQuota || submitting}
-                onClick={handleSubmit}
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    提交中…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="size-4" />
-                    生成 {variants} 条视频
-                  </>
-                )}
-              </Button>
-
-              {!allRequiredFilled && (
-                <p className="text-[11px] text-amber-700 text-center -mt-1">
-                  还差 {requiredSlots.length - filledRequired.length} 项必填才能生成
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ─── 折叠卡：高级处理（默认收起；变更时摘要里反映状态）─── */}
+            {/* ─── 折叠卡：高级处理（默认收起；变更时摘要里反映状态）─── */}
           <Collapsible>
             <div className="rounded-lg border bg-card overflow-hidden">
               <CollapsibleTrigger className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-secondary/30 transition-colors group">
@@ -1258,15 +1206,16 @@ export function CreateClient({ id }: { id: string }) {
             </div>
           </Collapsible>
 
-          {/* ─── Pro 速度（最低优先级）─── */}
-          <div className="rounded-lg border border-amber-500/20 bg-amber-50/30 px-3 py-2 flex items-center gap-2 text-[11px]">
-            <Zap className="size-3.5 text-amber-600 shrink-0" />
-            <span className="text-foreground/80">渲染加速 · 队列优先 ≥60%</span>
-            <Badge variant="brand" className="text-[9px] h-4 px-1.5 ml-auto shrink-0">
-              <Crown className="size-2.5" /> Pro
-            </Badge>
+            {/* ─── Pro 速度（最低优先级，仍保留作为升级提示）─── */}
+            <div className="rounded-lg border border-amber-500/20 bg-amber-50/30 px-3 py-2 flex items-center gap-2 text-[11px]">
+              <Zap className="size-3.5 text-amber-600 shrink-0" />
+              <span className="text-foreground/80">渲染加速 · 队列优先 ≥60%</span>
+              <Badge variant="brand" className="text-[9px] h-4 px-1.5 ml-auto shrink-0">
+                <Crown className="size-2.5" /> Pro
+              </Badge>
+            </div>
           </div>
-        </aside>
+        </div>
       </div>
       <ConfirmHost />
       <ProductPickerDialog
