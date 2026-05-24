@@ -1,18 +1,23 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.ProductDto;
-import com.aistareco.aep.dto.ProductInputDto;
 import com.aistareco.aep.service.ProductService;
 import com.aistareco.common.ApiResponse;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 /**
- * 用户侧商品库：/api/products/*。
- * 字段与方法语义对齐前端 apps/web/src/api/products.ts。
+ * 商品库只读端点（v0.31 起）：
+ *   GET /api/products            — 列出全部 / 按类目 / 关键词搜索
+ *   GET /api/products/{id}       — 查单条
+ *
+ * 写操作（create / update / delete / from-link / refresh-images /
+ * extract-selling-points）一律落在 {@link AdminProductsController}（/api/admin/products/**）
+ * 下，仅 SUPER_ADMIN / OPERATOR 可调。
+ *
+ * v0.31 之前曾匿名暴露 CRUD，现 AepSecurityConfig 已将 /api/products/** 收口到
+ * authenticated()：任意普通登录用户均可读，匿名访问会被 401 拦截。
  */
 @RestController
 @RequestMapping("/api/products")
@@ -30,40 +35,8 @@ public class ProductsController {
         return ApiResponse.of(service.list(category, q));
     }
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<ProductDto> create(@RequestBody ProductInputDto input) {
-        return ApiResponse.of(service.create(input));
-    }
-
     @GetMapping("/{id}")
     public ApiResponse<ProductDto> get(@PathVariable String id) {
         return ApiResponse.of(service.get(id));
-    }
-
-    @PatchMapping("/{id}")
-    public ApiResponse<ProductDto> update(@PathVariable String id, @RequestBody ProductInputDto patch) {
-        return ApiResponse.of(service.update(id, patch));
-    }
-
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String id) {
-        service.delete(id);
-    }
-
-    /** 视频生成时调用，按 link/name 匹配已有商品 → +usageCount；找不到自动建档。 */
-    @PostMapping("/upsert-from-generation")
-    public ApiResponse<ProductDto> upsertFromGeneration(@RequestBody ProductInputDto input) {
-        return ApiResponse.of(service.upsertFromGeneration(input));
-    }
-
-    /** Mock LLM 卖点抽取。 */
-    @PostMapping("/extract-selling-points")
-    public ApiResponse<Map<String, String>> extractSellingPoints(@RequestBody Map<String, String> body) {
-        String name = body.getOrDefault("name", "");
-        String link = body.getOrDefault("link", "");
-        String sellingPoints = service.extractSellingPoints(name, link);
-        return ApiResponse.of(Map.of("sellingPoints", sellingPoints));
     }
 }

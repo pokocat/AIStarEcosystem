@@ -20,6 +20,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { ProductsApi } from "@/api";
+import { useAuth } from "@ai-star-eco/api-client";
 import {
   PRODUCT_CATEGORIES,
   type Product,
@@ -40,9 +41,14 @@ type ViewMode = "list" | "grid";
 const VIEW_STORAGE_KEY = "aistareco.web.products.view-mode.v1";
 
 /** 商品库主页（celebrity-zone 商品库 Tab）。
- *  v0.22+: 视图切换（列表 / 网格） + 批量录入（手动 / 粘贴 / 文件）。
- *  v0.26+: 顶部「📋 从抖音链接快速建档」+ 行「生成视频」按钮 + 价格 / 佣金 列。 */
+ *  v0.31+：公共商品池。普通用户只读；当前登录账号 `operatorRole` ∈
+ *  {operator, super_admin} 时启用「新建 / 编辑 / 删除 / 批量录入 / 抖音链接建档
+ *  / 刷新图片」全套写入入口（写操作直接调 /api/admin/products/**；
+ *  server 端 hasAnyRole 兜底）。 */
 export function CelebrityProductLibrary() {
+  const { user } = useAuth();
+  const canManage = !!user?.operatorRole;
+
   const [list, setList] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [category, setCategory] = React.useState<"全部" | ProductCategory>("全部");
@@ -53,7 +59,6 @@ export function CelebrityProductLibrary() {
   const [viewMode, setViewMode] = React.useState<ViewMode>("list");
   const [quickLinkOpen, setQuickLinkOpen] = React.useState(false);
   const [generatingFor, setGeneratingFor] = React.useState<Product | null>(null);
-  /** v0.28+ 行内「刷新图片」按钮当前正在抓图的 productId 集合，用于显示 loading spinner */
   const [refreshing, setRefreshing] = React.useState<Set<string>>(new Set());
   const { confirm, ConfirmHost } = useConfirm();
 
@@ -114,12 +119,11 @@ export function CelebrityProductLibrary() {
     setRefreshing((s) => new Set(s).add(p.id));
     try {
       const n = await ProductsApi.refreshProductImages(p.id);
-      // 解析成功（不论是否有新图）都 reload 让 UI 拿到 server 端最新 images snapshot
       reload();
       if (n === 0) {
         await confirm({
           title: "未抓到新图片",
-          description: "链接可能已失效，或抖音页面 DOM 结构变化。你可以打开链接核对，或手动粘贴图片 URL。",
+          description: "链接可能已失效，或商品页 DOM 结构变化。",
           confirmText: "知道了",
         });
       }
@@ -138,7 +142,6 @@ export function CelebrityProductLibrary() {
     }
   };
 
-  /** 批量提交：逐条 createProduct，单条失败不影响其他；返回 created + failed 明细。 */
   const handleBatchSubmit = async (
     rows: ProductInput[],
   ): Promise<{ created: Product[]; failed: { row: number; reason: string }[] }> => {
@@ -168,20 +171,24 @@ export function CelebrityProductLibrary() {
             商品库 · {list.length} 个
           </div>
           <div className="text-xs text-zinc-500">
-            录入后可在生成视频时一键复用；视频生成时自动落库新商品。
+            {canManage
+              ? "你以运营身份登录，可录入 / 编辑 / 删除公共商品池条目。生成视频后将自动累计引用次数。"
+              : "公共商品池由运营维护；如需补充新品请联系运营。生成视频后将自动累计引用次数。"}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setQuickLinkOpen(true)} className={CTA_SECONDARY}>
-            <Link2 className="h-3.5 w-3.5" /> 从抖音链接快速建档
-          </button>
-          <button type="button" onClick={() => setBatchOpen(true)} className={CTA_SECONDARY}>
-            <FileSpreadsheet className="h-3.5 w-3.5" /> 批量录入
-          </button>
-          <button type="button" onClick={handleNew} className={CTA_PRIMARY}>
-            <Plus className="h-3.5 w-3.5" /> 快速录入
-          </button>
-        </div>
+        {canManage && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setQuickLinkOpen(true)} className={CTA_SECONDARY}>
+              <Link2 className="h-3.5 w-3.5" /> 从抖音链接快速建档
+            </button>
+            <button type="button" onClick={() => setBatchOpen(true)} className={CTA_SECONDARY}>
+              <FileSpreadsheet className="h-3.5 w-3.5" /> 批量录入
+            </button>
+            <button type="button" onClick={handleNew} className={CTA_PRIMARY}>
+              <Plus className="h-3.5 w-3.5" /> 快速录入
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filter + View toggle */}
@@ -248,13 +255,19 @@ export function CelebrityProductLibrary() {
       {loading ? (
         <div className="py-16 text-center text-sm text-zinc-500">加载中…</div>
       ) : list.length === 0 ? (
-        <EmptyState onCreate={handleNew} onBatch={() => setBatchOpen(true)} onQuickLink={() => setQuickLinkOpen(true)} />
+        <EmptyState
+          canManage={canManage}
+          onCreate={handleNew}
+          onBatch={() => setBatchOpen(true)}
+          onQuickLink={() => setQuickLinkOpen(true)}
+        />
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {list.map((p) => (
             <ProductCard
               key={p.id}
               product={p}
+              canManage={canManage}
               onEdit={() => handleEdit(p)}
               onDelete={() => handleDelete(p)}
               onGenerate={() => handleGenerate(p)}
@@ -266,6 +279,7 @@ export function CelebrityProductLibrary() {
       ) : (
         <ProductTable
           list={list}
+          canManage={canManage}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onGenerate={handleGenerate}
@@ -274,33 +288,37 @@ export function CelebrityProductLibrary() {
         />
       )}
 
-      <ProductFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        initial={editing}
-        onSubmit={(input) =>
-          editing
-            ? ProductsApi.updateProduct(editing.id, input)
-            : ProductsApi.createProduct(input)
-        }
-        onSaved={() => reload()}
-      />
+      {canManage && (
+        <>
+          <ProductFormDialog
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            initial={editing}
+            onSubmit={(input) =>
+              editing
+                ? ProductsApi.updateProduct(editing.id, input)
+                : ProductsApi.createProduct(input)
+            }
+            onSaved={() => reload()}
+          />
 
-      <ProductBatchImportDialog
-        open={batchOpen}
-        onOpenChange={setBatchOpen}
-        onSubmit={handleBatchSubmit}
-        onSaved={() => reload()}
-      />
+          <ProductBatchImportDialog
+            open={batchOpen}
+            onOpenChange={setBatchOpen}
+            onSubmit={handleBatchSubmit}
+            onSaved={() => reload()}
+          />
 
-      <QuickLinkDialog
-        open={quickLinkOpen}
-        onOpenChange={setQuickLinkOpen}
-        onCreated={() => {
-          setQuickLinkOpen(false);
-          reload();
-        }}
-      />
+          <QuickLinkDialog
+            open={quickLinkOpen}
+            onOpenChange={setQuickLinkOpen}
+            onCreated={() => {
+              setQuickLinkOpen(false);
+              reload();
+            }}
+          />
+        </>
+      )}
 
       <ProductGenerateDialog
         open={!!generatingFor}
@@ -316,6 +334,7 @@ export function CelebrityProductLibrary() {
 // ── 列表视图（默认） ────────────────────────────────────────────────────────
 function ProductTable({
   list,
+  canManage,
   onEdit,
   onDelete,
   onGenerate,
@@ -323,6 +342,7 @@ function ProductTable({
   refreshingIds,
 }: {
   list: Product[];
+  canManage: boolean;
   onEdit: (p: Product) => void;
   onDelete: (p: Product) => void;
   onGenerate: (p: Product) => void;
@@ -414,7 +434,7 @@ function ProductTable({
                       {p.images.length}
                     </span>
                   </Link>
-                  {p.link && (
+                  {canManage && p.link && (
                     <button
                       type="button"
                       onClick={() => onRefreshImages(p)}
@@ -430,20 +450,24 @@ function ProductTable({
                       刷新图片
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => onEdit(p)}
-                    className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-                  >
-                    <Edit3 className="h-3 w-3" /> 编辑
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(p)}
-                    className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-pink-400/30 bg-pink-500/[0.06] px-2 py-1 text-[11px] text-pink-600 hover:border-pink-500 hover:bg-pink-500/15"
-                  >
-                    <Trash2 className="h-3 w-3" /> 删除
-                  </button>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => onEdit(p)}
+                      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+                    >
+                      <Edit3 className="h-3 w-3" /> 编辑
+                    </button>
+                  )}
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(p)}
+                      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-pink-400/30 bg-pink-500/[0.06] px-2 py-1 text-[11px] text-pink-600 hover:border-pink-500 hover:bg-pink-500/15"
+                    >
+                      <Trash2 className="h-3 w-3" /> 删除
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>
@@ -456,6 +480,7 @@ function ProductTable({
 
 function ProductCard({
   product,
+  canManage,
   onEdit,
   onDelete,
   onGenerate,
@@ -463,6 +488,7 @@ function ProductCard({
   isRefreshing,
 }: {
   product: Product;
+  canManage: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onGenerate: () => void;
@@ -536,7 +562,7 @@ function ProductCard({
             {product.images.length}
           </span>
         </Link>
-        {product.link && (
+        {canManage && product.link && (
           <button
             type="button"
             onClick={onRefreshImages}
@@ -548,51 +574,71 @@ function ProductCard({
             刷新图片
           </button>
         )}
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-        >
-          <Edit3 className="h-3 w-3" /> 编辑
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="inline-flex items-center gap-1 rounded-md border border-pink-400/30 bg-pink-500/[0.06] px-2 py-1 text-[11px] text-pink-600 hover:border-pink-500 hover:bg-pink-500/15"
-        >
-          <Trash2 className="h-3 w-3" /> 删除
-        </button>
+        {canManage && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+          >
+            <Edit3 className="h-3 w-3" /> 编辑
+          </button>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex items-center gap-1 rounded-md border border-pink-400/30 bg-pink-500/[0.06] px-2 py-1 text-[11px] text-pink-600 hover:border-pink-500 hover:bg-pink-500/15"
+          >
+            <Trash2 className="h-3 w-3" /> 删除
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function EmptyState({ onCreate, onBatch, onQuickLink }: { onCreate: () => void; onBatch: () => void; onQuickLink: () => void }) {
+function EmptyState({
+  canManage,
+  onCreate,
+  onBatch,
+  onQuickLink,
+}: {
+  canManage: boolean;
+  onCreate: () => void;
+  onBatch: () => void;
+  onQuickLink: () => void;
+}) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-white px-6 py-16 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border-2 border-violet-500/30 bg-gradient-to-br from-violet-500/15 to-violet-500/[0.04]">
         <Package className="h-6 w-6 text-violet-600" />
       </div>
-      <h3 className="text-base font-semibold text-zinc-800">还没有商品</h3>
+      <h3 className="text-base font-semibold text-zinc-800">
+        {canManage ? "还没有商品" : "公共商品池暂未上架商品"}
+      </h3>
       <p className="mt-1 max-w-md text-sm text-zinc-500">
-        粘贴抖音商城链接一键建档，或快速录入常带商品。下次生成视频可直接选择，无需重复填写。
+        {canManage
+          ? "粘贴抖音商城链接一键建档，或快速录入常带商品。"
+          : "商品库由运营在管理后台统一维护；如需补充新品，请联系运营。"}
       </p>
-      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-        <button type="button" onClick={onQuickLink} className={CTA_PRIMARY}>
-          <Link2 className="h-3.5 w-3.5" /> 从抖音链接建档
-        </button>
-        <button type="button" onClick={onCreate} className={CTA_SECONDARY}>
-          <Plus className="h-3.5 w-3.5" /> 手动录入
-        </button>
-        <button type="button" onClick={onBatch} className={CTA_SECONDARY}>
-          <FileSpreadsheet className="h-3.5 w-3.5" /> 批量 / 文件导入
-        </button>
-      </div>
+      {canManage && (
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <button type="button" onClick={onQuickLink} className={CTA_PRIMARY}>
+            <Link2 className="h-3.5 w-3.5" /> 从抖音链接建档
+          </button>
+          <button type="button" onClick={onCreate} className={CTA_SECONDARY}>
+            <Plus className="h-3.5 w-3.5" /> 手动录入
+          </button>
+          <button type="button" onClick={onBatch} className={CTA_SECONDARY}>
+            <FileSpreadsheet className="h-3.5 w-3.5" /> 批量 / 文件导入
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── 顶部快捷入口：粘贴链接即建档 ───────────────────────────────────────────
+// ── 顶部快捷入口：粘贴链接即建档（运营专用，仅 canManage 时渲染父级） ──
 function QuickLinkDialog({
   open,
   onOpenChange,

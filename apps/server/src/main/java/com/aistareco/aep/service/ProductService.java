@@ -126,8 +126,51 @@ public class ProductService {
     }
 
     /**
+     * v0.31：视频生成时按 productId 直接 +usageCount。MixcutJobService.createInternal
+     * 在事务内调用 —— 用户混剪带商品时直接拿到 id 引用，无需 link/name 模糊匹配。
+     * 找不到返回 null，调用方应包 try/catch（业务路径不阻断）。
+     */
+    public ProductDto bumpUsageCountByProductId(String productId) {
+        if (blank(productId)) return null;
+        Product existing = repo.findById(productId).orElse(null);
+        if (existing == null) return null;
+        existing.setUsageCount(existing.getUsageCount() + 1);
+        existing.setUpdatedAt(LocalDate.now());
+        return ProductDto.from(repo.save(existing));
+    }
+
+    /**
+     * v0.31：视频生成时由 MixcutJobService 内部调用 —— 仅按 link/name 匹配已存在
+     * 商品并 +usageCount，找不到不创建。商品库自 v0.31 起改为「公共池 + admin 写」，
+     * 普通用户不可往池中灌入名字。返回匹配到的 ProductDto；未匹配返回 null。
+     */
+    public ProductDto bumpUsageCountByLinkOrName(String link, String name) {
+        String trimmedLink = blank(link) ? null : link.trim();
+        String trimmedName = blank(name) ? null : name.trim();
+        if (trimmedLink == null && trimmedName == null) {
+            return null;
+        }
+        Product existing = null;
+        if (trimmedLink != null) {
+            existing = repo.findFirstByLink(trimmedLink).orElse(null);
+        }
+        if (existing == null && trimmedName != null) {
+            existing = repo.findFirstByNameIgnoreCase(trimmedName).orElse(null);
+        }
+        if (existing == null) {
+            return null;
+        }
+        existing.setUsageCount(existing.getUsageCount() + 1);
+        existing.setUpdatedAt(LocalDate.now());
+        return ProductDto.from(repo.save(existing));
+    }
+
+    /**
      * 视频生成时调用：按 link/name 匹配已有商品 → +usageCount；找不到则自动建档（source=auto-from-generation）。
      * 与 apps/web/src/api/products.ts:upsertFromGeneration 行为一致。
+     *
+     * v0.31 起前端不再直接调用此入口（普通用户不可往公共池里灌名字），仅 admin 流程
+     * 内部复用「找不到则建档」语义。普通用户生成视频走 {@link #bumpUsageCountByLinkOrName}。
      */
     public ProductDto upsertFromGeneration(ProductInputDto input) {
         if (input == null || input.name() == null || input.name().isBlank()) {

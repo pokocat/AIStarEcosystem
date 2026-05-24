@@ -101,6 +101,44 @@ public class LicenseService {
         return page.map(LicenseKeyDto::from);
     }
 
+    /**
+     * v0.31+: 在指定 batch 下新铸 N 把 key，**一次性返回 raw codes**（仅本次响应；DB 只存 sha256）。
+     * 用途：admin 给具体用户发码（与 createBatch 不同的是不另建 batch；与 listKeys 不同的是
+     * 此处暴露明文供线下/线上分发）。
+     * 注意：raw codes 是敏感信息，调用方有责任安全传递；server 不留存。
+     */
+    public java.util.List<String> mintKeysAndReturnRawCodes(String batchId, int count) {
+        if (count <= 0 || count > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "count 必须在 1..100");
+        }
+        LicenseBatch batch = batchRepo.findById(batchId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "批次不存在"));
+        if (batch.getStatus() != LicenseBatch.LicenseBatchStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "批次状态非 ACTIVE，无法铸码");
+        }
+        java.util.List<String> raws = new java.util.ArrayList<>(count);
+        Instant now = Instant.now();
+        for (int i = 0; i < count; i++) {
+            String rawCode = UUID.randomUUID().toString().replace("-", "").toUpperCase();
+            String codeHash = sha256(rawCode);
+            String maskedCode = "AISTAR-" + rawCode.substring(0, 4) + "-****-****-" + rawCode.substring(rawCode.length() - 4);
+            LicenseKey key = LicenseKey.builder()
+                    .id(UUID.randomUUID().toString())
+                    .batchId(batchId)
+                    .codeHash(codeHash)
+                    .maskedCode(maskedCode)
+                    .status(LicenseKey.LicenseKeyStatus.CREATED)
+                    .createdAt(now)
+                    .build();
+            keyRepo.save(key);
+            raws.add(rawCode);
+        }
+        // 同步 totalCount
+        batch.setTotalCount(batch.getTotalCount() + count);
+        batchRepo.save(batch);
+        return raws;
+    }
+
     public LicenseKeyDto revokeKey(String id) {
         LicenseKey key = keyRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "License key not found: " + id));

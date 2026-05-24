@@ -1,9 +1,7 @@
 package com.aistareco.aep.controller;
 
-import com.aistareco.aep.dto.ProductDto;
 import com.aistareco.aep.dto.ProductLinkInfoDto;
 import com.aistareco.aep.dto.ProductLinkParseRequest;
-import com.aistareco.aep.service.ProductLinkPersistService;
 import com.aistareco.aep.service.ProductLinkService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,60 +12,33 @@ import org.springframework.web.bind.annotation.RestController;
 import java.security.Principal;
 
 /**
- * 商品链接解析端点（v0.26+）。
+ * 商品链接「仅解析」端点（v0.31 起）。
  *
- * 挂在 /api/me/products/* 是因为：
- *   1. 受 AepSecurityConfig 的 /api/me/** authenticated 规则保护（防 SSRF 滥用）
- *   2. 解析结果 / Product 落库都是「当前用户名下」语义
+ * 仅保留 POST /api/me/products/parse-link，**不落库** —— 任何已登录用户都可用于
+ * 链接预览（admin 端 ProductFormDialog 也用此端点做实时回填）。
  *
- * 两个端点：
- *   POST /api/me/products/parse-link {url}   → 仅解析，不写库（preview）
- *   POST /api/me/products/from-link {url}    → 解析 + 落 Product + 登记 MixcutAsset 图片
+ * v0.31 之前同时承载了 from-link / refresh-images 两个写端点：因「商品库公共池 +
+ * admin 写」决策，这两个写动作已迁移至 {@link AdminProductsController}，路径分别
+ * 为 /api/admin/products/from-link 与 /api/admin/products/{id}/refresh-images，
+ * 只允许 SUPER_ADMIN / OPERATOR 调用。
+ *
+ * 挂在 /api/me/** 是因为 AepSecurityConfig 的 .requestMatchers("/api/me/**").authenticated()
+ * 强制登录，防 SSRF 滥用（参数 url 会被服务端发起 HTTP 抓取）。
  */
 @RestController
 @RequestMapping("/api/me/products")
 public class ProductLinkController {
 
     private final ProductLinkService productLinkService;
-    private final ProductLinkPersistService persistService;
 
-    public ProductLinkController(ProductLinkService productLinkService,
-                                 ProductLinkPersistService persistService) {
+    public ProductLinkController(ProductLinkService productLinkService) {
         this.productLinkService = productLinkService;
-        this.persistService = persistService;
     }
 
-    /** 仅解析，不落库。前端 ProductFormDialog 的「📋 从抖音链接解析」用此端点。 */
+    /** 仅解析，不落库；前端 admin 商品建档 dialog 用此端点回填字段。 */
     @PostMapping("/parse-link")
     public ApiResponse<ProductLinkInfoDto> parseLink(@RequestBody ProductLinkParseRequest req,
                                                      Principal principal) {
         return ApiResponse.of(productLinkService.parse(req == null ? null : req.url()));
-    }
-
-    /** 解析 + 落 Product + 登记图片为 MixcutAsset(subkind=product-photo)。 */
-    @PostMapping("/from-link")
-    public ApiResponse<ProductDto> fromLink(@RequestBody ProductLinkParseRequest req,
-                                            Principal principal) {
-        String userId = principal == null ? null : principal.getName();
-        return ApiResponse.of(persistService.parseAndPersist(req == null ? null : req.url(), userId));
-    }
-
-    /**
-     * v0.28+ 给已存在商品「刷新图片」—— 重新走链接解析，回填 Product.images 快照 +
-     * 登记新图片到 MixcutAsset(subkind=product-photo)。运营手动重试通道：
-     *  - seeder 启动时异步抓图失败 / 部分失败
-     *  - 抖音商品图 CDN URL 失效后想换一批
-     *  - 用户手动建档时漏抓图
-     *
-     * 返回新增的 MixcutAsset 数量；解析失败 / 商品无 link / 商品不存在 → 0。
-     * 注意：不会清掉旧的 MixcutAsset 行（避免同时被混剪任务引用时悬挂）；新图追加。
-     */
-    @org.springframework.web.bind.annotation.PostMapping("/{id}/refresh-images")
-    public ApiResponse<java.util.Map<String, Integer>> refreshImages(
-            @org.springframework.web.bind.annotation.PathVariable String id,
-            Principal principal) {
-        String userId = principal == null ? null : principal.getName();
-        int registered = persistService.enrichProductImages(id, userId);
-        return ApiResponse.of(java.util.Map.of("registered", registered));
     }
 }

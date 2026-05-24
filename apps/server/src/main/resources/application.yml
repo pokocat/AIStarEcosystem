@@ -108,6 +108,27 @@ aep:
     api-base: ${AEP_COZE_API_BASE:https://api.coze.cn}
     user-id-prefix: ${AEP_COZE_USER_ID_PREFIX:aep-producer-}
     read-timeout-ms: ${AEP_COZE_READ_TIMEOUT_MS:120000}
+  # v0.31+ 手机号 + SMS 验证码登录 / 注册（celebrity 子产品入口）。
+  # driver=log：默认；验证码打到 server log，dev / 联调 / 阿里云模板未备案前的占位
+  # driver=aliyun：调阿里云 SMS REST API，需配齐 aep.sms.aliyun.*
+  sms:
+    driver: ${AEP_SMS_DRIVER:log}
+    code:
+      length: 6
+      ttl-seconds: 300            # 验证码有效期 5 分钟
+      rate-limit-seconds: 60      # 同一手机号 60s 内不能重发
+      max-failures: 5             # 单手机号连错 5 次 → 锁定
+      lock-seconds: 1800          # 锁定 30 分钟
+      # v0.31+ dev 联调专用：设非空时所有手机号都收同一个码（如 123456），
+      # 省去每次去 server log grep 真随机码的麻烦。
+      # **严格双门禁**：必须 driver=log + dev-fixed 非空才生效；driver=aliyun
+      # 时即使配了 dev-fixed 也会被忽略（防 prod 误启用）。
+      dev-fixed: ${AEP_SMS_DEV_FIXED_CODE:}
+    aliyun:
+      access-key-id: ${ALIYUN_SMS_ACCESS_KEY_ID:}
+      access-key-secret: ${ALIYUN_SMS_ACCESS_KEY_SECRET:}
+      sign-name: ${ALIYUN_SMS_SIGN_NAME:}
+      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:}
 
 # sau-service (Python + Playwright，独立 FastAPI 进程) 集成配置
 # dev: docker-compose 启 apps/sau-service:8090; prod: k8s 同 namespace

@@ -25,7 +25,6 @@ import {
   TEMPLATE_SHOWCASES,
   BLINDBOX_SHOWCASES,
 } from "@/mocks/celebrity-zone";
-import { ProductsApi } from "@/api";
 import { startGeneration } from "@/api/celebrity-zone";
 import { CelebrityJobs, type PendingJobRecord } from "@/lib/celebrity-jobs";
 import { ENGINE_META } from "@/constants/celebrity-zone-ui";
@@ -189,18 +188,9 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
     };
     CelebrityJobs.enqueue(record);
     setActiveJob(record);
-
-    // 商品自动落库（不阻塞）
-    if (input.product.name.trim()) {
-      void ProductsApi.upsertFromGeneration({
-        name: input.product.name,
-        link: input.product.link,
-        sellingPoints: input.product.sellingPoints,
-        images: input.product.images,
-      }).catch(() => {
-        /* ignore */
-      });
-    }
+    // v0.31：商品库公共池化后，普通用户不再向池子里灌名字。usageCount
+    // bump 由 server 在 MixcutJobService.create 内按 productId 自动累加；
+    // celebrity 旧生成路径不带 productId 时不再有 +usage 副作用。
   };
 
   const handleProgressComplete = () => {

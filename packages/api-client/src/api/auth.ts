@@ -53,3 +53,65 @@ export async function devLogin(username?: string): Promise<DevLoginResult> {
 export function logout() {
   setAuthToken(null);
 }
+
+// ── v0.31+ 手机号 + SMS 验证码 登录 / 注册 ────────────────────────────────
+
+/**
+ * 请求一个新的短信验证码。失败抛 ApiError（429 速率限制 / 锁定；400 手机号格式）。
+ * 成功无显式返回（resolve 即可），码默认 5 分钟有效。
+ */
+export async function smsRequestCode(phone: string): Promise<void> {
+  await apiFetch<{ sent: boolean }>("/auth/sms/request-code", {
+    method: "POST",
+    body: { phone },
+  });
+}
+
+export interface SmsLoginResult {
+  token: string;
+  user: AepUser;
+}
+
+/**
+ * 手机号 + 验证码 登录。
+ * - 200 + token：找到 user → 自动 setAuthToken
+ * - 404 USER_NOT_FOUND：phone 未注册 → 引导用户去 /sms/register
+ *   注意：验证码已被消费（防爆破）
+ * - 400 SMS_CODE_INVALID / 429 SMS_CODE_LOCKED 等
+ */
+export async function smsLogin(phone: string, code: string): Promise<SmsLoginResult> {
+  const result = await apiFetch<SmsLoginResult>("/auth/sms/verify", {
+    method: "POST",
+    body: { phone, code },
+  });
+  if (result?.token) setAuthToken(result.token);
+  return result;
+}
+
+export interface SmsRegisterPayload {
+  phone: string;
+  code: string;
+  licenseKey: string;
+  studioName: string;
+  displayName?: string;
+}
+
+export interface SmsRegisterResult {
+  token: string;
+  user: AepUser;
+  studio?: unknown;
+  tenantId?: string;
+}
+
+/**
+ * 手机号 + 激活码 双因素注册。
+ * 创建 STUDIO 账号 + 工作室 + 钱包；成功自动 setAuthToken。
+ */
+export async function smsRegister(payload: SmsRegisterPayload): Promise<SmsRegisterResult> {
+  const result = await apiFetch<SmsRegisterResult>("/auth/sms/register", {
+    method: "POST",
+    body: payload,
+  });
+  if (result?.token) setAuthToken(result.token);
+  return result;
+}

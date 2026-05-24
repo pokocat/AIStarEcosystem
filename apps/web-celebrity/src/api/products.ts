@@ -1,6 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/products.ts — 商品库领域：增删改查 + 自动落库 + 卖点抽取。
-// USE_MOCK 模式下使用模块级数组 + localStorage write-through，刷新后仍可见。
+// api/products.ts — 商品库（v0.31 起：所有人可读；写操作仅运营角色可调）。
+//
+// 读路径（任意已登录用户）：
+//   - listProducts / getProduct → GET /api/products(/{id})
+//   - parseProductLink          → POST /api/me/products/parse-link（不写库）
+//
+// 写路径（仅 operatorRole ∈ {operator, super_admin} 的账号可调；server 端
+// /api/admin/** 的 hasAnyRole 门禁会兜底，前端再做角色条件渲染避免误点）：
+//   - createProduct / updateProduct / deleteProduct
+//   - parseAndCreateProduct   → POST /api/admin/products/from-link
+//   - refreshProductImages    → POST /api/admin/products/{id}/refresh-images
+//   - extractSellingPoints    → POST /api/admin/products/extract-selling-points
+//
+// USE_MOCK 模式下走模块级数组（仅本地无 server 演示）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Product, ProductCategory, ProductInput } from "@ai-star-eco/types/product";
@@ -9,13 +21,9 @@ import type { ID } from "@ai-star-eco/types/_shared";
 import { SEED_PRODUCTS } from "@/mocks/products";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
-// v0.28+: bump 到 v2 以触发一次性 mock localStorage 迁移：
-// 老的 v1 缓存（含 picsum demo 商品 / 用户在 v0.27 之前录入的数据）会被跳过，
-// 重新从 SEED_PRODUCTS 加载 6 行抖音选品样例。下次升级 seed 数据时再 bump 到 v3。
 const STORAGE_KEY = "aistareco.web.products.v2";
 const LEGACY_STORAGE_KEYS = ["aistareco.web.products.v1"] as const;
 
-// ── 内存缓存 + 持久化 ───────────────────────────────────────────────────────
 let memoryStore: Product[] | null = null;
 
 function loadStore(): Product[] {
@@ -24,7 +32,6 @@ function loadStore(): Product[] {
     memoryStore = [...SEED_PRODUCTS];
     return memoryStore;
   }
-  // 一次性清理老版本 key 的残留缓存，避免占用 localStorage 配额
   try {
     for (const legacy of LEGACY_STORAGE_KEYS) {
       window.localStorage.removeItem(legacy);
@@ -42,7 +49,7 @@ function loadStore(): Product[] {
       }
     }
   } catch {
-    /* 隐私模式 / parse 失败 → 走 seed */
+    /* 解析失败 → 走 seed */
   }
   memoryStore = [...SEED_PRODUCTS];
   saveStore();
@@ -54,7 +61,7 @@ function saveStore() {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryStore));
   } catch {
-    /* storage 满，静默失败；下次启动恢复 seed */
+    /* storage 满，静默失败 */
   }
 }
 
@@ -66,7 +73,7 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// ── 公共 API ────────────────────────────────────────────────────────────────
+// ── 公共读 API ─────────────────────────────────────────────────────────────
 export interface ProductFilter {
   category?: ProductCategory | "全部";
   q?: string;
@@ -102,6 +109,7 @@ export async function getProduct(id: ID): Promise<Product | null> {
   return apiFetch<Product | null>(`/products/${id}`);
 }
 
+// ── 运营写 API（调 /admin/products/**；前端再做角色条件渲染） ───────────
 export async function createProduct(input: ProductInput): Promise<Product> {
   if (USE_MOCK) {
     const now = today();
@@ -124,10 +132,7 @@ export async function createProduct(input: ProductInput): Promise<Product> {
     saveStore();
     return mockDelay(created);
   }
-  return apiFetch<Product>("/products", {
-    method: "POST",
-    body: input,
-  });
+  return apiFetch<Product>("/admin/products", { method: "POST", body: input });
 }
 
 export async function updateProduct(
@@ -150,7 +155,7 @@ export async function updateProduct(
     saveStore();
     return mockDelay(merged);
   }
-  return apiFetch<Product>(`/products/${id}`, {
+  return apiFetch<Product>(`/admin/products/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: patch,
   });
@@ -164,55 +169,12 @@ export async function deleteProduct(id: ID): Promise<void> {
     saveStore();
     return mockDelay(undefined);
   }
-  await apiFetch<void>(`/products/${id}`, { method: "DELETE" });
+  await apiFetch<void>(`/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 /**
- * 视频生成时调用：按 link/name 匹配已有商品 → +usageCount；找不到则自动建档。
- */
-export async function upsertFromGeneration(
-  input: { name: string; link?: string; sellingPoints?: string; images?: string[] },
-): Promise<Product> {
-  if (USE_MOCK) {
-    const store = loadStore();
-    const trimmedName = input.name.trim();
-    const trimmedLink = input.link?.trim();
-    if (!trimmedName) throw new Error("商品名称不能为空");
-
-    const existing = store.find(
-      (p) =>
-        (trimmedLink && p.link && p.link.trim() === trimmedLink) ||
-        p.name.trim().toLowerCase() === trimmedName.toLowerCase(),
-    );
-    if (existing) {
-      existing.usageCount += 1;
-      existing.updatedAt = today();
-      saveStore();
-      return mockDelay(existing);
-    }
-    return createProduct({
-      name: trimmedName,
-      category: "其他",
-      link: trimmedLink,
-      sellingPoints: input.sellingPoints,
-      images: input.images,
-      source: "auto-from-generation",
-    });
-  }
-  return apiFetch<Product>("/products/upsert-from-generation", {
-    method: "POST",
-    body: input,
-  });
-}
-
-// ── v0.26+ 商品链接解析 ─────────────────────────────────────────────────────
-
-/**
- * 仅解析，不写库。用于 ProductFormDialog 的「📋 从抖音链接解析」按钮预览。
- * Mock 模式：纯前端 URL parse（仅支持形态 A 长链 query 内嵌 goods_detail）。
- * 真后端：POST /api/me/products/parse-link，命中策略链 handler 之一。
- *
- * 解析失败统一返回 null（前端 toast「未能从链接解析」），不抛错。
+ * 仅解析，不写库。任意已登录用户均可调（dialog 预览用）；server 端 /api/me/**
+ * authenticated 守门，防 SSRF。
  */
 export async function parseProductLink(url: string): Promise<ProductLinkInfo | null> {
   if (USE_MOCK) {
@@ -230,14 +192,31 @@ export async function parseProductLink(url: string): Promise<ProductLinkInfo | n
 
 /**
  * 解析 + 落 Product + 登记图片为 MixcutAsset(subkind=product-photo)。
- * Mock 模式：复用 parseProductLinkInBrowser → 走 createProduct（不模拟 MixcutAsset 端，
- * 这条只是 happy-path 占位；真演示需 REAL_BACKEND）。
+ * 仅运营角色可调（server 端 /api/admin/** hasAnyRole 门禁）。
  */
+export async function parseAndCreateProduct(url: string): Promise<Product> {
+  if (USE_MOCK) {
+    const info = parseProductLinkInBrowser(url);
+    if (!info) throw new Error("未能从链接解析，请改用「快速录入」手动填");
+    return createProduct({
+      name: info.title || "未命名商品",
+      category: "日用百货",
+      link: url,
+      images: info.imageUrls,
+      sellingPoints: info.inferredSellingPoints,
+      source: "manual",
+      priceCents: info.minPriceCents,
+    });
+  }
+  return apiFetch<Product>("/admin/products/from-link", {
+    method: "POST",
+    body: { url },
+  });
+}
+
 /**
- * 给已存在的商品「刷新图片」：调 server enrichProductImages，重新解析链接 + 追加 MixcutAsset。
- * Mock 模式：复用 parseProductLinkInBrowser 模拟一次抓图，直接覆盖 product.images。
- *
- * @returns 新增的 MixcutAsset 数量（mock 模式下用 product.images 长度近似）
+ * 给已存在的商品「刷新图片」。仅运营角色可调。
+ * @returns 新登记的 MixcutAsset 数量（0 = 解析失败 / 无图）
  */
 export async function refreshProductImages(productId: string): Promise<number> {
   if (USE_MOCK) {
@@ -253,31 +232,33 @@ export async function refreshProductImages(productId: string): Promise<number> {
     return mockDelay(info.imageUrls.length);
   }
   const res = await apiFetch<{ registered: number }>(
-    `/me/products/${encodeURIComponent(productId)}/refresh-images`,
+    `/admin/products/${encodeURIComponent(productId)}/refresh-images`,
     { method: "POST", body: {} },
   );
   return res.registered;
 }
 
-export async function parseAndCreateProduct(url: string): Promise<Product> {
+/** Mock LLM 卖点抽取。仅运营角色可调（建档辅助）。 */
+export async function extractSellingPoints(input: {
+  name: string;
+  link: string;
+}): Promise<{ sellingPoints: string }> {
   if (USE_MOCK) {
-    const info = parseProductLinkInBrowser(url);
-    if (!info) throw new Error("未能从链接解析，请改用「快速录入」手动填");
-    return createProduct({
-      name: info.title || "未命名商品",
-      category: "日用百货",
-      link: url,
-      images: info.imageUrls,
-      sellingPoints: info.inferredSellingPoints,
-      source: "manual",
-      priceCents: info.minPriceCents,
-    });
+    await new Promise((r) => setTimeout(r, 800));
+    const trimmed = input.name.trim();
+    return {
+      sellingPoints:
+        `${trimmed}：精选优质原料，工艺细节考究；上身/上脸效果显著，` +
+        `用户好评 95%+。日常通勤 / 节日送礼 / 自用囤货皆宜，下单立享平台保障。`,
+    };
   }
-  return apiFetch<Product>("/me/products/from-link", {
+  return apiFetch<{ sellingPoints: string }>("/admin/products/extract-selling-points", {
     method: "POST",
-    body: { url },
+    body: input,
   });
 }
+
+// ── 内部 helpers ───────────────────────────────────────────────────────────
 
 /**
  * 纯前端兜底：仅处理「分享长链含 goods_detail JSON」的形态。Mock 模式才走。
@@ -336,24 +317,4 @@ function formatYuan(cents: number): string {
   const cs = cents % 100;
   if (cs === 0) return `¥${yuan}`;
   return `¥${yuan}.${String(cs).padStart(2, "0")}`;
-}
-
-/** mock LLM 卖点抽取：根据商品名 + 链接产出一段固定模板的卖点。 */
-export async function extractSellingPoints(input: {
-  name: string;
-  link: string;
-}): Promise<{ sellingPoints: string }> {
-  if (USE_MOCK) {
-    await new Promise((r) => setTimeout(r, 800));
-    const trimmed = input.name.trim();
-    return {
-      sellingPoints:
-        `${trimmed}：精选优质原料，工艺细节考究；上身/上脸效果显著，` +
-        `用户好评 95%+。日常通勤 / 节日送礼 / 自用囤货皆宜，下单立享平台保障。`,
-    };
-  }
-  return apiFetch<{ sellingPoints: string }>("/products/extract-selling-points", {
-    method: "POST",
-    body: input,
-  });
 }

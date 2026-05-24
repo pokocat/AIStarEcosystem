@@ -10,6 +10,7 @@ import com.aistareco.aep.model.MixcutRenderOutput;
 import com.aistareco.aep.repository.MixcutAssetRepository;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.aistareco.aep.repository.MixcutRenderOutputRepository;
+import com.aistareco.aep.service.ProductService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,19 +43,22 @@ public class MixcutJobService {
     private final MixcutAssetRepository assetRepo;
     private final ObjectMapper mapper;
     private final MixcutRenderingService rendering;
+    private final ProductService productService;
 
     public MixcutJobService(
             MixcutRenderJobRepository jobRepo,
             MixcutRenderOutputRepository outputRepo,
             MixcutAssetRepository assetRepo,
             ObjectMapper mapper,
-            MixcutRenderingService rendering
+            MixcutRenderingService rendering,
+            ProductService productService
     ) {
         this.jobRepo = jobRepo;
         this.outputRepo = outputRepo;
         this.assetRepo = assetRepo;
         this.mapper = mapper;
         this.rendering = rendering;
+        this.productService = productService;
     }
 
     /**
@@ -162,6 +166,18 @@ public class MixcutJobService {
         jobRepo.save(job);
         log.info("[mixcut] queued job {} user={} template={} variants={} profile={}",
                 job.getId(), job.getUserId(), job.getTemplateId(), job.getOutputVariants(), job.getPerturbationProfile());
+
+        // v0.31：商品 +usageCount。商品库已收归 admin 写，普通用户不能往池里灌名字 →
+        // 仅当任务带 productId 时 server 自己 bump；失败仅 log，不阻断任务创建。
+        // 替代 v0.28 的前端 fire-and-forget /api/products/upsert-from-generation 调用。
+        if (job.getProductId() != null && !job.getProductId().isBlank()) {
+            try {
+                productService.bumpUsageCountByProductId(job.getProductId());
+            } catch (Exception e) {
+                log.warn("[mixcut] bump product usageCount failed jobId={} productId={} err={}",
+                        job.getId(), job.getProductId(), e.getMessage());
+            }
+        }
 
         // 异步 dispatch 必须在事务 commit 之后；否则 worker 新事务里 SELECT 看不到这条 job。
         final String jobId = job.getId();

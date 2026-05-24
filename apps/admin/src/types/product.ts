@@ -42,6 +42,10 @@ export interface Product {
   /** 累计被多少条带货视频引用 */
   usageCount: number;
   source: ProductSource;
+  /** v0.28+: 售价（人民币分）。空值表示价格未抓到或不展示。 */
+  priceCents?: number;
+  /** v0.28+: 佣金率（百分比整数，如 18 表示 18%）。 */
+  commissionRate?: number;
   createdAt: ISODate;
   updatedAt: ISODate;
 }
@@ -55,4 +59,17 @@ export interface ProductInput {
   sellingPoints?: string;
   /** 默认 manual；自动落库时由后端置为 auto-from-generation */
   source?: ProductSource;
+  priceCents?: number;
+  commissionRate?: number;
+}
+
+/** v0.31+ /admin/products/from-link 解析端的响应 schema（与 /me/products/parse-link 一致）。 */
+export interface ProductLinkInfo {
+  title?: string;
+  imageUrls: string[];
+  minPriceCents?: number;
+  maxPriceCents?: number;
+  sales?: number;
+  inferredSellingPoints?: string;
+  source: string;
 }

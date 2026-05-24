@@ -84,6 +84,10 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.31 / 2026-05-24**：商品库 CRUD + 抖音链接建档 + 刷新图片全部收归 admin（`/celebrity/products`）。
+  顶部新增「从抖音链接建档」/「新建商品」；行内新增「编辑」/「刷新图片」；server 端
+  `/api/products/**` 收紧为「已登录用户只读」，写动作走 `/api/admin/products/**`
+  （hasAnyRole SUPER_ADMIN/OPERATOR）。详见根目录 [`AGENTS.md`](../../AGENTS.md) §v0.31。
 - **v0.5.4 / 2026-05-09**：文档收敛（角色名 `SUPER_ADMIN/OPERATOR` 与代码对齐；删 4 个过期总规；新建 `docs/INDEX.md`；引入「文档同步纪律」段）。
 - **v0.5.3 / 2026-05-09**：小程序近实时同步（多层轮询 + 业务关键点 trigger）；admin 无变更。
 - **v0.5.2 / 2026-05-09**：Bot 消息从硬编码改为按需查询（拉模式，零事件总线）；admin 无变更。

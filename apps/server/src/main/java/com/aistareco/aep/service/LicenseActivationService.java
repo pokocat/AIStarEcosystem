@@ -187,7 +187,11 @@ public class LicenseActivationService {
         }
         batchRepo.save(batch);
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getKind().name());
+        // v0.31+: operatorRole 优先；新激活用户默认无 operatorRole，落到 kind。
+        String role = user.getOperatorRole() != null
+                ? user.getOperatorRole().name()
+                : user.getKind().name();
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), role);
 
         return Map.of(
                 "token", token,

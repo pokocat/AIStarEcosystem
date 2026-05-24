@@ -981,6 +981,204 @@ web-celebrity:
 
 切换：[`apps/admin/src/constants/nav.ts`](apps/admin/src/constants/nav.ts) 改 `enabled` 字段。
 
+### v0.31（2026-05-24）— celebrity 账户隔离收口：商品库公共池 + admin 写
+
+审计 celebrity 子产品的「个人数据 vs 公共数据」隔离。**已正确隔离**：社交账号 /
+混剪任务 / 混剪输出软删 / 发布任务 / 批次管理 / 钱包 / DigitalIp / messages-overview /
+私有素材删除 — 全部按 `Principal` userId 严格校验；官方明星片段 / preset 贴图 /
+公共模板 / 字典 — 合理共享。
+
+**修复的隔离漏洞**：
+
+1. `/api/products/**` 落在 `AepSecurityConfig:73` 的 `anyRequest().permitAll()`
+   兜底规则下，匿名用户即可 CRUD 全部商品；
+2. `Product` 表无 `ownerUserId` 列，任意用户能改 / 删他人引用的商品；
+3. `/api/me/products/from-link` / `/api/me/products/{id}/refresh-images` 虽已认证，
+   但任意登录用户均可往公共商品池写入；
+4. 商品库前端写入入口（「新建商品」/「📋 从抖音链接快速建档」/「编辑」/「删除」/
+   「刷新图片」）让普通用户自由 CRUD 公共池。
+
+**决策**：商品库保持「公共商品池」语义；写动作（CRUD + from-link + refresh-images +
+extract-selling-points）全部收归 admin，**仅 SUPER_ADMIN / OPERATOR 可调**。
+普通用户只读 + 调 `/me/products/parse-link` 预览（不写库）。
+
+**改动**：
+
+```
+server  : ProductsController 精简为只读（GET /api/products + GET /api/products/{id}）
+        : AdminProductsController 新增 POST/PATCH/DELETE + extract-selling-points +
+          from-link + refresh-images（路径 /api/admin/products/**，自动继承
+          AepSecurityConfig 的 hasAnyRole(SUPER_ADMIN, OPERATOR) 门禁）
+        : ProductLinkController 精简为仅 POST /api/me/products/parse-link
+        : AepSecurityConfig 新增 .requestMatchers("/api/products/**").authenticated()，
+          匿名读也被 401 拦截
+        : ProductService.bumpUsageCountByProductId(productId) — 新增；找不到返回 null
+        : ProductService.bumpUsageCountByLinkOrName(link, name) — 新增；找不到返回 null
+        : ProductService.upsertFromGeneration 方法保留（admin 复用），HTTP 端点已撤
+        : MixcutJobService.createInternal 创建任务后按 productId 内部 bump usageCount，
+          失败仅 log 不阻断；取代 v0.28 的前端 fire-and-forget upsertFromGeneration
+
+web-celebrity:
+        : api/products.ts 仅保留 listProducts / getProduct / parseProductLink
+        : CelebrityProductLibrary 重写为只读视图（保留筛选 / 视图切换 /
+          「生成视频」/「素材」入口；删除「新建」「编辑」「删除」「批量导入」
+          「从抖音链接快速建档」「刷新图片」按钮 + EmptyState 改为
+          「公共商品池由运营维护」提示）
+        : CelebrityProductDetail 删除编辑 / 删除按钮（保留生成视频 + 外链 + 关联素材）
+        : 删除 ProductFormDialog.tsx / ProductBatchImportDialog.tsx 两组件
+        : CelebrityProductForm.tsx 删除 AI 卖点抽取按钮（端点已 admin-only）
+        : CelebrityGenerationWorkspace 删除 fire-and-forget upsertFromGeneration
+
+admin   : api/products.ts URL 已是 /admin/products；新增 parseLink / fromLink /
+          refreshImages / extractSellingPoints 四个调用
+        : types/product.ts 补 priceCents / commissionRate 字段 + ProductLinkInfo schema
+        : celebrity/products/page.tsx 顶部增「从抖音链接建档」+「新建商品」按钮，
+          行内补「编辑」+「刷新图片」按钮；两个 dialog 走 Admin*Controller
+
+openapi : /products POST / /products/{id} PATCH / DELETE / /products/upsert-from-generation
+        :   / /products/extract-selling-points / /me/products/from-link /
+        :   /me/products/{id}/refresh-images 全部删除
+        : /admin/products 扩展为完整 schema；新增 /admin/products/from-link /
+        :   /admin/products/{id}/refresh-images / /admin/products/extract-selling-points
+        : /products GET 与 /products/{id} GET 加 v0.31 注释（已登录用户读，admin 写）
+```
+
+**注意事项**：
+
+- **行为变化**：以前用户在生成视频时随手填的商品名会自动沉淀到公共库；v0.31 起
+  不会再发生。新商品必须 admin 在管理后台显式创建。usageCount 仍会 +1，但
+  只覆盖**已存在**的商品（按 productId 精确匹配）。
+- **`from-link` 在 admin 路径下的 userId 语义**：`parseAndPersist(url, userId)` 内部
+  把 userId 用于 `mixcutAssetService.registerExternalUrl(userId, ...)`，给抖音商品图
+  作为 MixcutAsset 注册时打 owner 标记。admin 调用时，这些图片素材会归到 admin 自己
+  的 user 名下；用户从混剪里消费走 isOfficial / public 路径，不按 owner 过滤。
+- **CelebrityProductSeeder 保持现状**：seed 6 行商品到公共池无 owner，合理。
+- 不动其他端点；本节范围仅商品库 / 链接解析。
+
+**v0.31 增量 2（2026-05-24）— admin 操作员管理页 + 手机号 / SMS 验证码登录**：
+
+承接 v0.31 patch 1（operatorRole 字段）的后续两件事：
+
+1. **admin 后台「平台运营」管理页**：
+   - 新 server endpoint `GET/PATCH /api/admin/aep-users(/...)` — 列出 AepUser + 改 operatorRole（OPERATOR / SUPER_ADMIN / null）
+   - admin 新页面 `/admin/celebrity/operators`：list + 切换按钮（运营 / 超管 / 移除）
+   - sidebar「明星带货」组新增「平台运营」入口
+   - 不再需要手写 SQL 或重启 server 来管理内嵌运营角色
+
+2. **手机号 + SMS 验证码 登录 / 注册（celebrity 主入口）**：
+   - `aep_users` 已有 phone / phoneVerified 字段 + findByPhone repo 方法，无 DB schema 改动
+   - server SMS 抽象层（不引 com.aliyun:dysmsapi SDK，因当前环境的 maven mirror 拉不到）：
+     - `service/sms/SmsSender` 接口
+     - `LogSmsSender`（默认，验证码打到 server log，dev / 联调 / 阿里云未备案时占位）
+     - `AliyunSmsSender`（手撸 POP RPC 签名 + JDK HttpClient 调阿里云 SMS REST API；
+       零 SDK 依赖；切到 `aep.sms.driver=aliyun` 时由 @ConditionalOnProperty 注入）
+     - `SmsCodeService`（ConcurrentHashMap in-memory 存验证码 + 60s 速率限制 + 5 次错锁 30 分钟 +
+       @Scheduled 60s 清理过期）
+   - 三个新端点（所有 permitAll）：
+     - `POST /api/auth/sms/request-code { phone }` — 发码
+     - `POST /api/auth/sms/verify { phone, code }` — 登录（user 必须已注册；404 USER_NOT_FOUND 引导走 register）
+     - `POST /api/auth/sms/register { phone, code, licenseKey, studioName, displayName? }` —
+       **双因素注册**（SMS 验证码 + License 激活码同时通过才能落 user）；
+       复用 LicenseActivationService.activate；自动 username=phone_<手机号>；phoneVerified=true
+   - web-celebrity `/login` 重写为三个 tab：
+     - 「手机号登录」：phone + 验证码 + 60s 倒计时发码按钮 + 失败 USER_NOT_FOUND 自动切到注册
+     - 「注册」：phone + 验证码 + 激活码 + studioName + displayName?
+     - 「dev」：保留原有 dev-login 下拉（dev profile only）
+   - 共享 `packages/api-client/src/api/auth.ts` 新增 `smsRequestCode` / `smsLogin` / `smsRegister`
+   - openapi.yaml 加 /auth/sms/* 与 /admin/aep-users/* 路径
+
+**配置**：
+
+```yaml
+aep:
+  sms:
+    driver: ${AEP_SMS_DRIVER:log}        # log（默认）或 aliyun
+    code:
+      length: 6
+      ttl-seconds: 300
+      rate-limit-seconds: 60
+      max-failures: 5
+      lock-seconds: 1800
+      # v0.31+ dev 联调专用固定测试码（双门禁：driver=log + 非空 才生效）
+      dev-fixed: ${AEP_SMS_DEV_FIXED_CODE:}
+    aliyun:
+      access-key-id: ${ALIYUN_SMS_ACCESS_KEY_ID:}
+      access-key-secret: ${ALIYUN_SMS_ACCESS_KEY_SECRET:}
+      sign-name: ${ALIYUN_SMS_SIGN_NAME:}
+      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:}
+```
+
+**Dev 联调小技巧**：导出 `AEP_SMS_DEV_FIXED_CODE=123456` 重启 server，所有手机
+号收到的码都固定为 123456，省去每次去 server log grep 真随机码。启动 banner 会
+WARN 「DEV-FIXED CODE ENABLED」。**严格双门禁**：driver=aliyun 时 dev-fixed 字段
+会被忽略并 WARN，防止 prod 误配。生效时也会校验「纯数字 + 长度等于 code.length」，
+配错（如长度不一致）直接 fail-fast 启动失败。
+
+**生产切换路径**：阿里云 SMS 模板备案完成 + RAM 创建访问 key →
+`export AEP_SMS_DRIVER=aliyun ALIYUN_SMS_*=...` → 重启 server 即可。`LogSmsSender`
+和 `AliyunSmsSender` 互斥（@ConditionalOnProperty），切换 driver 时另一个 bean
+不会被注入。
+
+**注意事项**：
+
+- SMS 验证码用 in-memory ConcurrentHashMap，单实例 ok；多实例 prod 部署前必须换 Redis。
+- 验证码校验**成功后立即从 store 删除**（防重放）；失败 / 已锁定 / 已过期 也会在合适时机 GC。
+- `/auth/sms/verify` 返回 404 USER_NOT_FOUND 时验证码已被消费（防爆破），用户切到注册需要重新发码。
+- `/auth/sms/register` 用户 `username` 自动生成 `phone_<phone>` 格式；用户**不能**自选 username。
+- AliyunSmsSender 用 `javax.crypto.Mac.HmacSHA1` + `URLEncoder` + `java.net.http.HttpClient` 手撸签名，
+  零外部 SDK 依赖；如果后续 maven 网络通了，要切回 com.aliyun:dysmsapi20170525 SDK 也只需替换这一个文件。
+- admin 操作员管理页**允许 OPERATOR 自己改自己 / 改其它人**的 operatorRole（hasAnyRole 门禁）；
+  如果产品上要求「只有 SUPER_ADMIN 才能授权」，需要在 PATCH 端点加 @PreAuthorize("hasRole('SUPER_ADMIN')")。
+
+**v0.31 增量（2026-05-24，同日补丁）— celebrity 端「内嵌运营角色」**：
+
+商品库初版收口后用户反馈：希望在 web-celebrity 里也保留商品录入入口，但只对
+**运营账号**开放。在 AepUser 表加 `operatorRole` 字段（独立于 AdminUser），让
+celebrity 体系内部能识别「我是个运营」的登录身份；UI 按角色条件渲染写入按钮。
+
+**改动**：
+
+```
+server  : AepUser +operatorRole 列（enum OPERATOR/SUPER_ADMIN，nullable）
+        : AepUserDto / MeDto 新增 operatorRole 字段（snake_case "operator" / "super_admin"）
+        : DevAuthController.dev-login + LicenseActivationService.signupWithKey
+          —— operatorRole 非空时优先用它作 JWT.role claim，覆盖 kind 派生值
+        : DataInitializer seed 一个 `celebrity_operator` 账号（kind=studio,
+          operatorRole=OPERATOR，dev-login 下拉里出现）
+
+shared  : packages/types/src/account.ts AepUser +operatorRole?: OperatorRole | null
+
+web-celebrity:
+        : api/products.ts 恢复 createProduct / updateProduct / deleteProduct /
+          parseAndCreateProduct / refreshProductImages / extractSellingPoints；
+          URL 全部走 /admin/products/**（server hasAnyRole 兜底）
+        : 恢复 ProductFormDialog.tsx / ProductBatchImportDialog.tsx
+        : CelebrityProductLibrary 用 useAuth().user.operatorRole 条件渲染：
+          顶部「从抖音链接快速建档 / 批量录入 / 快速录入」+ 行级「编辑 / 删除 /
+          刷新图片」+ EmptyState 文案双态切换
+        : CelebrityProductDetail 加 编辑 / 删除 按钮，仅 canManage 时渲染 +
+          ProductFormDialog 也仅运营态挂载
+        : CelebrityProductForm（per-generation 表单）的 AI 卖点抽取按钮也用同样
+          的 canManage 门控
+```
+
+**注意事项**：
+
+- **AepUser.operatorRole 与 AdminUser 是独立体系**：admin 后台账号在 admin_users 表，
+  celebrity 内嵌运营在 aep_users.operatorRole。两者命名故意对齐 (OPERATOR /
+  SUPER_ADMIN) → 同一 role claim 字符串能复用 AepSecurityConfig 的 hasAnyRole。
+- **现有 6 个公共商品仍是 v0.31 初版 seed 的全平台共享池**；operatorRole 决定的是
+  「谁能改它」，不是「谁能看它」。普通用户读 /api/products 不需要 operatorRole。
+- **前端角色门只是 UX 防御**：用户绕过 UI 直接 curl /api/admin/products → server
+  端 hasAnyRole 仍会 403。
+- **dev seed `celebrity_operator/<免密>` 账号是 dev-login 专用**；prod 启动时
+  DataInitializer 不跑，需 admin 端 SQL/console 配置真实运营账号（v0.32 候选：
+  在 admin 后台加「内嵌运营管理」页）。
+- **现存账号默认 operatorRole=null** → 行为与 v0.30 之前一致；只有 `celebrity_operator`
+  能在 web-celebrity 看到写入入口。
+- 不动 admin 后台 /celebrity/products 页面（v0.31 初版那条入口保持，作为运营的
+  「跨子产品集中管理」入口；新加的「在 celebrity 里直接管」是补充而非替代）。
+
 ### v0.30（2026-05-23）— 混剪任务「重跑」入口（fork 新 job + 缺素材严格阻拦）
 
 用户反馈「生成任务重跑时应该可以用当时的元素和配置重新生成」。诊断：任务态实际**已基本快照化**（v0.25+ 累积），缺的是「重跑入口」+「缺素材保护」。前端原「重新生成」按钮只跳 `/mixcut/create/<template_id>`，丢弃所有 binding 等于从零做。

@@ -1,9 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/products.ts — Admin 商品库 API。对应 AdminProductsController。
-// 路径前缀走 /admin/products/*；与用户端 ProductsController 复用同一 ProductService。
+// api/products.ts — Admin 商品库 API。对应 AdminProductsController（/api/admin/products/**）。
+//
+// v0.31 起新增三条写入辅助：
+//   - parseLink             — 仅解析，不写库（用于 fromLink dialog 的预览）
+//   - fromLink              — 抖音链接解析 + 落 Product + 登记 MixcutAsset
+//   - refreshImages         — 已存在商品重新抓图
+//   - extractSellingPoints  — Mock LLM 卖点建议
+//
+// 所有端点仅 SUPER_ADMIN / OPERATOR 可调（server 端 /api/admin/** 强制 hasAnyRole）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Product, ProductCategory, ProductInput } from "@/types/product";
+import type { Product, ProductCategory, ProductInput, ProductLinkInfo } from "@/types/product";
 import { apiFetch, USE_MOCK, mockDelay, buildQuery } from "./_client";
 import { ADMIN_PRODUCTS } from "@/mocks/products";
 
@@ -49,6 +56,8 @@ export async function createProduct(input: ProductInput): Promise<Product> {
       sellingPoints: input.sellingPoints ?? "",
       usageCount: 0,
       source: input.source ?? "manual",
+      priceCents: input.priceCents,
+      commissionRate: input.commissionRate,
       createdAt: today,
       updatedAt: today,
     };
@@ -72,4 +81,68 @@ export async function updateProduct(id: string, patch: Partial<ProductInput>): P
 export async function deleteProduct(id: string): Promise<void> {
   if (USE_MOCK) { await mockDelay(undefined); return; }
   await apiFetch<void>(`/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// ── v0.31+ 链接解析 + 落库 + 补图 ──────────────────────────────────────────
+
+/** 仅解析，不写库；与 /api/me/products/parse-link 同。Mock 模式返回 null。 */
+export async function parseLink(url: string): Promise<ProductLinkInfo | null> {
+  if (USE_MOCK) return mockDelay(null);
+  try {
+    return await apiFetch<ProductLinkInfo>("/me/products/parse-link", {
+      method: "POST",
+      body: { url },
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** 解析 + 落 Product + 登记图片为 MixcutAsset(subkind=product-photo)。 */
+export async function fromLink(url: string): Promise<Product> {
+  if (USE_MOCK) {
+    const today = new Date().toISOString().slice(0, 10);
+    return mockDelay<Product>({
+      id: `prod-${Date.now().toString(36)}`,
+      name: "（mock）抖音链接解析占位",
+      category: "日用百货",
+      link: url,
+      images: [],
+      sellingPoints: "",
+      usageCount: 0,
+      source: "manual",
+      createdAt: today,
+      updatedAt: today,
+    });
+  }
+  return apiFetch<Product>("/admin/products/from-link", {
+    method: "POST",
+    body: { url },
+  });
+}
+
+/** 已存在商品的补图通道，返回新增 MixcutAsset 数量。 */
+export async function refreshImages(productId: string): Promise<number> {
+  if (USE_MOCK) return mockDelay(0);
+  const res = await apiFetch<{ registered: number }>(
+    `/admin/products/${encodeURIComponent(productId)}/refresh-images`,
+    { method: "POST", body: {} },
+  );
+  return res.registered;
+}
+
+/** Mock LLM 卖点抽取（建档辅助）。 */
+export async function extractSellingPoints(input: {
+  name: string;
+  link: string;
+}): Promise<{ sellingPoints: string }> {
+  if (USE_MOCK) {
+    return mockDelay({
+      sellingPoints: `${input.name.trim()}：精选优质原料，工艺细节考究；上身/上脸效果显著，用户好评 95%+。`,
+    });
+  }
+  return apiFetch<{ sellingPoints: string }>("/admin/products/extract-selling-points", {
+    method: "POST",
+    body: input,
+  });
 }

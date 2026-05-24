@@ -82,7 +82,11 @@ public class DevAuthController {
         user.setLastLoginAt(Instant.now());
         userRepo.save(user);
 
-        String role = user.getKind() == AepUser.AccountKind.STUDIO ? "STUDIO" : "USER";
+        // v0.31+: operatorRole 非空时优先用它（OPERATOR / SUPER_ADMIN），让该账号
+        // 通过 /api/admin/** 门禁；否则回退到 kind 派生的 USER / STUDIO。
+        String role = user.getOperatorRole() != null
+                ? user.getOperatorRole().name()
+                : (user.getKind() == AepUser.AccountKind.STUDIO ? "STUDIO" : "USER");
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), role);
         Studio studio = studioRepo.findByOwnerUserId(user.getId()).orElse(null);
 

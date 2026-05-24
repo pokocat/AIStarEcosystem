@@ -242,6 +242,41 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ## 六、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.31 · 2026-05-24 — 商品库公共池化 + 写收归 admin
+
+**Context**：审计发现 `/api/products/**` 写端点（POST/PATCH/DELETE/upsert-from-generation/extract-selling-points）落在 Security `anyRequest().permitAll()` 兜底规则下，匿名用户即可 CRUD 全部商品；同时 `Product` 表无 `ownerUserId` 列，任意登录用户都能改 / 删他人引用的商品。`/api/me/products/from-link` 和 `/api/me/products/{id}/refresh-images` 虽已认证，但任意普通用户都能往公共商品池写入。
+
+**决策**：商品库保持「公共商品池」语义不变；写动作（CRUD + from-link + refresh-images + extract-selling-points）全部收归 admin，仅 SUPER_ADMIN / OPERATOR 可调。普通用户只读 + 可调 `/me/products/parse-link` 预览（不写库）。
+
+**端点变化**
+
+| 旧路径 | 新路径 | 权限 |
+|---|---|---|
+| POST `/api/products` | POST `/api/admin/products` | admin only |
+| PATCH/DELETE `/api/products/{id}` | PATCH/DELETE `/api/admin/products/{id}` | admin only |
+| POST `/api/products/upsert-from-generation` | （删除，server 内部按 productId 自动 bump） | — |
+| POST `/api/products/extract-selling-points` | POST `/api/admin/products/extract-selling-points` | admin only |
+| POST `/api/me/products/from-link` | POST `/api/admin/products/from-link` | admin only |
+| POST `/api/me/products/{id}/refresh-images` | POST `/api/admin/products/{id}/refresh-images` | admin only |
+| GET `/api/products`，`/api/products/{id}`，POST `/api/me/products/parse-link` | 保持不变 | 已登录用户即可 |
+
+`AepSecurityConfig` 同时加 `.requestMatchers("/api/products/**").authenticated()`，匿名访问被 401 拦截。
+
+**前端**：web-celebrity `/products` 列表 / 详情页删除「新建 / 编辑 / 删除 / 批量录入 / 抖音解析 / 刷新图片 / AI 卖点抽取」等写入入口；apps/admin `/celebrity/products` 顶部新增「从抖音链接建档」+「新建商品」按钮，行内新增「编辑」+「刷新图片」按钮 + 两个完整 dialog。详见根目录 [`AGENTS.md`](AGENTS.md) §v0.31。
+
+**行为变化**：以前用户在生成视频时随手填的商品名会自动沉淀到公共池；v0.31 起不会。新商品必须运营显式创建，usageCount 仅对**已存在**的商品按 productId 精确 +1。
+
+**v0.31 同日补丁 — 内嵌运营角色（在 celebrity 端也开写入入口）**：
+初版收口后，把「能否在 web-celebrity 里管理公共商品池」由账号角色决定。AepUser
+新增 `operatorRole` 字段（独立于 AdminUser，命名对齐 OPERATOR / SUPER_ADMIN），
+JWT 在 operatorRole 非空时优先用它作 role claim → 通过 /api/admin/** hasAnyRole
+门禁。web-celebrity 用 `useAuth().user.operatorRole` 做按钮条件渲染：
+- 普通用户登录 → 商品库只读
+- 运营账号（dev seed `celebrity_operator`）登录 → 「新建 / 编辑 / 删除 / 批量录入 /
+  抖音链接快速建档 / 刷新图片 / AI 卖点抽取」全套写按钮 + 详情页编辑/删除
+- 写操作直接调 /api/admin/products/**；server 端 hasAnyRole 做最终兜底
+详细改动清单见 [`AGENTS.md`](AGENTS.md) §v0.31 增量节。
+
 ### v0.17.0 · 2026-05-20 — 社交账号绑定 profile 落库
 
 **Context**：分发中心开始承载多平台账号绑定后，仅靠用户自填 `accountName` 不足以区分多个同平台账号。本期把扫码登录后创作者中心页面可见的清洁 profile 信息落库，提升账号辨识度，不暴露 cookie / storage_state。

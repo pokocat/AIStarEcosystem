@@ -10,6 +10,14 @@ import type { Studio } from "./studio";
 
 export type AccountKind = "personal" | "studio";
 export type AccountStatus = "active" | "suspended" | "deleted";
+/**
+ * v0.31+: 内嵌运营角色（celebrity 等用户子产品内的「平台运营人员」标记）。
+ * 与 admin 后台的 AdminUser 体系**独立**；这里只用于让运营在用户视角下也能做
+ * 部分管理动作（例：在 web-celebrity 界面管理公共商品池）。
+ * 非空时 server 在签发 JWT 时会用此值作为 role claim，从而通过 /api/admin/**
+ * 的 hasAnyRole 门禁。
+ */
+export type OperatorRole = "operator" | "super_admin";
 
 export interface AepUser {
   id: ID;
@@ -22,6 +30,8 @@ export interface AepUser {
   bio?: string;                 // 用户自填简介
   kind: AccountKind;            // personal=粉丝/普通用户; studio=工作室运营者
   status: AccountStatus;
+  /** v0.31+: 内嵌运营角色；null/undefined = 非运营。详见 OperatorRole 注释。 */
+  operatorRole?: OperatorRole | null;
   emailVerified: boolean;
   phoneVerified: boolean;
   langPreference: "zh" | "en";

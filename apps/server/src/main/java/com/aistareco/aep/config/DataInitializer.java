@@ -63,6 +63,11 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        // v0.31+: 即使已 seed 过，仍要确保 celebrity_operator 存在（用 username 幂等）。
+        // 老 H2 文件落库的环境第一次启动 v0.31 代码时，没有这条记录会让运营登 celebrity
+        // 无法验角色 → 这里增量补一次。
+        ensureCelebrityOperatorSeed(Instant.now());
+
         if (adminUserRepo.count() > 0) {
             return;
         }
@@ -115,7 +120,6 @@ public class DataInitializer implements CommandLineRunner {
                 .updatedAt(now)
                 .build());
 
-        // ─── Demo platform users + wallets ──────────────────────────────────────
         // 所有账号 = Studio。独立创作者账号（原 fan_luna）也挂一个 PERSONAL_CREATOR 工作室。
         AepUser lunaUser = AepUser.builder()
                 .id(UUID.randomUUID().toString())
@@ -434,6 +438,30 @@ public class DataInitializer implements CommandLineRunner {
             long plays,
             long revenue
     ) {}
+
+    /**
+     * v0.31+: 单独的增量 seed —— celebrity 端内嵌运营账号。
+     * 按 username 幂等：已存在则不重写，能在「老 H2 文件落库的环境第一次启动 v0.31 代码」
+     * 时给 celebrity 端添加这条运营账号（用于 web-celebrity 商品库写入入口 E2E）。
+     */
+    private void ensureCelebrityOperatorSeed(Instant now) {
+        if (userRepo.findByUsername("celebrity_operator").isPresent()) {
+            return;
+        }
+        AepUser u = AepUser.builder()
+                .id(UUID.randomUUID().toString())
+                .username("celebrity_operator")
+                .email("celebrity-operator@aistareco.com")
+                .displayName("平台运营 · 商品库")
+                .kind(AepUser.AccountKind.STUDIO)
+                .operatorRole(AepUser.OperatorRole.OPERATOR)
+                .status(AepUser.UserStatus.ACTIVE)
+                .emailVerified(true)
+                .createdAt(now.minus(7, ChronoUnit.DAYS))
+                .updatedAt(now)
+                .build();
+        userRepo.save(u);
+    }
 
     private String sha256Hex(String input) {
         try {

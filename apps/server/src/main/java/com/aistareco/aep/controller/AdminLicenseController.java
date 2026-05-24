@@ -59,6 +59,18 @@ public class AdminLicenseController {
         return ApiResponse.of(licenseService.createBatch(body));
     }
 
+    /**
+     * v0.31+: 在已有 batch 下新铸 N 把 key，**一次性返回 raw codes**（仅本响应；DB 只存 sha256）。
+     * 用于 admin 直接生成激活码线下/线上分发给用户（区别于 createBatch：不再额外建批次）。
+     * raw 是敏感信息，调用方有责任安全传递。
+     */
+    @PostMapping("/license-batches/{id}/mint-keys")
+    public ApiResponse<Map<String, Object>> mintKeys(@PathVariable String id,
+                                                     @RequestParam(defaultValue = "1") int count) {
+        java.util.List<String> raws = licenseService.mintKeysAndReturnRawCodes(id, count);
+        return ApiResponse.of(Map.of("batchId", id, "count", raws.size(), "rawCodes", raws));
+    }
+
     // --- License Keys ---
 
     @GetMapping("/license-keys")

@@ -68,7 +68,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/star/[starId]/generate` | 详情 | 生成工作流（模板 / 盲盒选择 → AI 生成视频） |
 | `/projects` | 制作 | 我的项目（多项目管理） |
 | `/projects/[projectId]` | 制作 | 项目详情（视频管理 / 状态推进） |
-| `/products` | 制作 | 商品库（CRUD + 卖点抽取 + 抖音链接智能解析 + 一键生成视频，v0.28+） |
+| `/products` | 制作 | 商品库（v0.31 起公共池只读：浏览 / 筛选 / 「生成视频」入口；CRUD / 抖音链接建档 / 刷新图片由运营在 admin 管理） |
 | `/library` | 制作 | 视频中心（跨项目聚合产出） |
 | `/data` | 洞察 | 数据中心（分发占比 / 转化率） |
 

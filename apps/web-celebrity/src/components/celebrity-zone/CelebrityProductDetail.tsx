@@ -28,6 +28,7 @@ import {
 import type { Product } from "@ai-star-eco/types/product";
 import type { MixcutAsset } from "@/components/mixcut-zone/types";
 import { MixcutApi, ProductsApi } from "@/api";
+import { useAuth } from "@ai-star-eco/api-client";
 import { ProductFormDialog } from "./ProductFormDialog";
 import { ProductGenerateDialog } from "./ProductGenerateDialog";
 import { useConfirm } from "@/components/common/confirm-dialog";
@@ -50,12 +51,14 @@ const SOURCE_META: Record<Product["source"], { label: string; tone: string }> = 
 
 export function CelebrityProductDetail({ productId }: Props) {
   const router = useRouter();
+  const { user } = useAuth();
+  const canManage = !!user?.operatorRole;
   const [product, setProduct] = React.useState<Product | null>(null);
   const [assets, setAssets] = React.useState<MixcutAsset[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [activeImage, setActiveImage] = React.useState(0);
-  const [editOpen, setEditOpen] = React.useState(false);
   const [generateOpen, setGenerateOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
   const { confirm, ConfirmHost } = useConfirm();
 
   const reload = React.useCallback(() => {
@@ -231,7 +234,7 @@ export function CelebrityProductDetail({ productId }: Props) {
             </MetaRow>
           </dl>
 
-          {/* 操作条：单行（删除靠右） */}
+          {/* 操作条：v0.31+ 运营角色额外显示 编辑/删除（删除靠右）。 */}
           <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pt-1">
             <button
               type="button"
@@ -240,13 +243,15 @@ export function CelebrityProductDetail({ productId }: Props) {
             >
               <Sparkles className="h-3.5 w-3.5" /> 生成视频
             </button>
-            <button
-              type="button"
-              onClick={() => setEditOpen(true)}
-              className={`${CTA_SECONDARY} whitespace-nowrap`}
-            >
-              <Edit3 className="h-3.5 w-3.5" /> 编辑商品
-            </button>
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => setEditOpen(true)}
+                className={`${CTA_SECONDARY} whitespace-nowrap`}
+              >
+                <Edit3 className="h-3.5 w-3.5" /> 编辑商品
+              </button>
+            )}
             {product.link && (
               <a
                 href={product.link}
@@ -257,13 +262,15 @@ export function CelebrityProductDetail({ productId }: Props) {
                 <ExternalLink className="h-3.5 w-3.5" /> 打开外链
               </a>
             )}
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="ml-auto inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-pink-400/40 bg-pink-500/[0.06] px-4 py-2 text-sm font-medium text-pink-600 transition hover:border-pink-500 hover:bg-pink-500/15"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> 删除
-            </button>
+            {canManage && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="ml-auto inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-pink-400/40 bg-pink-500/[0.06] px-4 py-2 text-sm font-medium text-pink-600 transition hover:border-pink-500 hover:bg-pink-500/15"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> 删除
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -271,13 +278,15 @@ export function CelebrityProductDetail({ productId }: Props) {
       {/* 关联素材（有则显示；mock 模式下 listAssets 为 [] → 整段隐藏） */}
       {assets.length > 0 && <RelatedAssets assets={assets} />}
 
-      <ProductFormDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        initial={product}
-        onSubmit={(input) => ProductsApi.updateProduct(product.id, input)}
-        onSaved={() => reload()}
-      />
+      {canManage && (
+        <ProductFormDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          initial={product}
+          onSubmit={(input) => ProductsApi.updateProduct(product.id, input)}
+          onSaved={() => reload()}
+        />
+      )}
 
       <ProductGenerateDialog
         open={generateOpen}

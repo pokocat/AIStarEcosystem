@@ -3910,6 +3910,128 @@ paths:
         '200':
           description: ok
 
+  # v0.31+ 手机号 + SMS 验证码 登录 / 注册（celebrity 子产品主入口）
+  /auth/sms/request-code:
+    post:
+      tags: [auth]
+      operationId: smsRequestCode
+      security: []
+      summary: 请求短信验证码（速率限制 60s/次；连错 5 次锁定 30 分钟）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, description: 11 位国内手机号 }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          sent: { type: boolean }
+        '400': { description: 手机号格式错误 }
+        '429': { description: 速率限制 / 已锁定 }
+
+  /auth/sms/verify:
+    post:
+      tags: [auth]
+      operationId: smsLogin
+      security: []
+      summary: 手机号 + 验证码 登录（用户必须已注册）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string, description: 6 位数字 }
+      responses:
+        '200':
+          description: 登录成功，返回 token + user
+        '400': { description: 验证码错误 / 过期 }
+        '404': { description: USER_NOT_FOUND — 手机号未注册，需走 /auth/sms/register }
+        '429': { description: 已锁定 }
+
+  /auth/sms/register:
+    post:
+      tags: [auth]
+      operationId: smsRegister
+      security: []
+      summary: 手机号 + 激活码 双因素注册（同时创建 STUDIO 账号 + 工作室 + 钱包）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code, licenseKey, studioName]
+              properties:
+                phone: { type: string }
+                code: { type: string, description: 短信验证码 }
+                licenseKey: { type: string, description: License 激活码 }
+                studioName: { type: string }
+                displayName: { type: string }
+      responses:
+        '200':
+          description: 注册并登录成功
+        '400': { description: 参数缺失 / 验证码 / 激活码错误 }
+        '409': { description: 该手机号已注册 / 激活码已使用 }
+
+  # v0.31+ admin 端：管理 AepUser.operatorRole 字段（内嵌运营角色）
+  /admin/aep-users:
+    get:
+      tags: [admin-account]
+      operationId: adminListAepUsers
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, description: 模糊匹配 username/displayName/phone/email }
+        - in: query
+          name: hasOperator
+          schema: { type: boolean, description: true=仅运营 false=仅普通 null=全部 }
+      responses:
+        '200':
+          description: ok
+
+  /admin/aep-users/{id}/operator-role:
+    patch:
+      tags: [admin-account]
+      operationId: adminUpdateAepUserOperatorRole
+      summary: 改某账号的 operatorRole（OPERATOR / SUPER_ADMIN / null）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operatorRole:
+                  type: string
+                  nullable: true
+                  enum: [operator, super_admin, null]
+      responses:
+        '200': { description: ok }
+        '404': { description: USER_NOT_FOUND }
+
   # ── 3.x.2 当前用户域 /me/** ─────────────────────────
 
   /me:
@@ -4611,12 +4733,16 @@ paths:
                         additionalProperties:
                           $ref: '#/components/schemas/EnginePricing'
 
-  # ── 3.x.6 商品库 /products/** （v2.7） ───────────
+  # ── 3.x.6 商品库 /products/** （v0.31 起：用户侧只读；写收归 /admin/products/**） ──
 
   /products:
     get:
       tags: [products]
       operationId: listProducts
+      summary: |
+        商品库列表。v0.31+: 任意已登录用户可读；匿名访问被 AepSecurityConfig 401。
+        写操作（POST/PATCH/DELETE/from-link/refresh-images/extract-selling-points）
+        已收归 /admin/products/**，仅 SUPER_ADMIN / OPERATOR 可调。
       parameters:
         - in: query
           name: category
@@ -4637,25 +4763,6 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Product' }
-    post:
-      tags: [products]
-      operationId: createProduct
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ProductInput' }
-      responses:
-        '201':
-          description: created
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data: { $ref: '#/components/schemas/Product' }
 
   /products/{id}:
     parameters:
@@ -4677,67 +4784,9 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/Product' }
-    patch:
-      tags: [products]
-      operationId: updateProduct
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: ok
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data: { $ref: '#/components/schemas/Product' }
-    delete:
-      tags: [products]
-      operationId: deleteProduct
-      responses:
-        '204': { description: deleted }
 
-  /products/upsert-from-generation:
-    post:
-      tags: [products]
-      operationId: upsertProductFromGeneration
-      summary: |
-        视频生成时调用：按 link/name 匹配命中则 +usageCount，
-        否则自动建档并标记 source='auto-from-generation'。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name]
-              properties:
-                name:          { type: string }
-                link:          { type: string, nullable: true }
-                sellingPoints: { type: string, nullable: true }
-                images:
-                  type: array
-                  items: { type: string }
-      responses:
-        '200':
-          description: ok
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data: { $ref: '#/components/schemas/Product' }
-
-  # v0.26+: 抖音商品链接解析 / 一键建档
+  # v0.26+: 抖音商品链接解析（仅解析，不写库）。任意已登录用户可调。
+  # 写动作（from-link / refresh-images）已迁至 /admin/products/**。
   /me/products/parse-link:
     post:
       tags: [products]
@@ -4769,88 +4818,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /me/products/from-link:
-    post:
-      tags: [products]
-      operationId: createProductFromLink
-      summary: |
-        从链接解析 + 落 Product + 把图片登记为 MixcutAsset(subkind=product-photo, related_product_id=...)。
-        前端商品库顶部「📋 从抖音链接快速建档」入口调用。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ProductLinkParseRequest' }
-      responses:
-        '200':
-          description: ok
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data: { $ref: '#/components/schemas/Product' }
-
-  /me/products/{id}/refresh-images:
-    post:
-      tags: [products]
-      operationId: refreshProductImages
-      summary: |
-        给已存在商品「刷新图片」—— 重新解析链接 + 回填 Product.images 快照 + 追加 MixcutAsset(subkind=product-photo)。
-        seeder 启动时若异步抓图失败 / 抖音 CDN URL 失效后切换素材时使用。不会清掉旧 MixcutAsset 行。
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: ok
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [registered]
-                        properties:
-                          registered: { type: integer, description: "新登记的 MixcutAsset 行数（0 = 解析失败 / 无图）" }
-
-  /products/extract-selling-points:
-    post:
-      tags: [products]
-      operationId: extractSellingPoints
-      summary: LLM 抽取卖点（基于商品名 + 链接）
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, link]
-              properties:
-                name: { type: string }
-                link: { type: string }
-      responses:
-        '200':
-          description: ok
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [sellingPoints]
-                        properties:
-                          sellingPoints: { type: string }
+  # v0.31: from-link / refresh-images / extract-selling-points 已迁至 /admin/products/**。
+  # 旧 path（/me/products/from-link, /me/products/{id}/refresh-images,
+  # /products/extract-selling-points, POST /products, PATCH/DELETE /products/{id},
+  # /products/upsert-from-generation）已删除，仅 admin 可写。
 
   # ═══════════════════════════════════════════════════════════════════════
   # ▼ Admin 后台路径（v2.7+；apps/admin/src/api/*.ts 调用，对应 Admin*Controller）
@@ -5018,10 +4989,183 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-ai-models], operationId: adminTestAiModelProvider, responses: { '200': { description: ok } } }
 
-  # ── admin · products（商品库管理） ───────────────────────
+  # ── admin · products（商品库管理；v0.31 起承载所有写动作） ───────────────────────
 
-  /admin/products:        { get: { tags: [admin-products], operationId: adminListProducts,  responses: { '200': { description: ok } } } }
-  /admin/products/{id}:   { get: { tags: [admin-products], operationId: adminGetProduct,    parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /admin/products:
+    get:
+      tags: [admin-products]
+      operationId: adminListProducts
+      parameters:
+        - in: query
+          name: category
+          schema: { $ref: '#/components/schemas/ProductCategory' }
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Product' }
+    post:
+      tags: [admin-products]
+      operationId: adminCreateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+
+  /admin/products/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [admin-products]
+      operationId: adminGetProduct
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+    patch:
+      tags: [admin-products]
+      operationId: adminUpdateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+    delete:
+      tags: [admin-products]
+      operationId: adminDeleteProduct
+      responses:
+        '204': { description: deleted }
+
+  /admin/products/from-link:
+    post:
+      tags: [admin-products]
+      operationId: adminCreateProductFromLink
+      summary: |
+        v0.31+: 从抖音链接解析 + 落 Product + 把图片登记为
+        MixcutAsset(subkind=product-photo, related_product_id=...)。
+        admin 「📋 从抖音链接建档」入口调用；普通用户无此接口。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductLinkParseRequest' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Product' }
+
+  /admin/products/{id}/refresh-images:
+    post:
+      tags: [admin-products]
+      operationId: adminRefreshProductImages
+      summary: |
+        v0.31+: 给已存在商品「刷新图片」—— 重新解析链接 + 回填 Product.images 快照 +
+        追加 MixcutAsset(subkind=product-photo)。不会清掉旧 MixcutAsset 行。
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [registered]
+                        properties:
+                          registered: { type: integer, description: "新登记的 MixcutAsset 行数（0 = 解析失败 / 无图）" }
+
+  /admin/products/extract-selling-points:
+    post:
+      tags: [admin-products]
+      operationId: adminExtractSellingPoints
+      summary: |
+        v0.31+: LLM 卖点抽取（建档辅助）。仅 admin。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, link]
+              properties:
+                name: { type: string }
+                link: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [sellingPoints]
+                        properties:
+                          sellingPoints: { type: string }
 
   # ═══════════════════════════════════════════════════════════════════════
   # ▼ legacy 路径补齐（v1 起就在前端 api/*.ts 调用，但之前未入 openapi.yaml）

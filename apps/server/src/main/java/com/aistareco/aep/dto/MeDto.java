@@ -22,6 +22,8 @@ public record MeDto(
         String bio,
         String kind,
         String status,
+        /** v0.31+: 内嵌运营角色（"operator" / "super_admin" / null）。详见 AepUser.operatorRole。 */
+        String operatorRole,
         boolean emailVerified,
         boolean phoneVerified,
         String langPreference,
@@ -36,6 +38,7 @@ public record MeDto(
                 u.getDisplayName(), u.getAvatarUrl(), u.getWalletAddress(),
                 u.getBio(),
                 lower(u.getKind()), lower(u.getStatus()),
+                lower(u.getOperatorRole()),
                 u.isEmailVerified(), u.isPhoneVerified(), u.getLangPreference(),
                 u.getCreatedAt(), u.getUpdatedAt(), u.getLastLoginAt(),
                 studio == null ? null : StudioDto.from(studio)

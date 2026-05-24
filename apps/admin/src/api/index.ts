@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export * from "./_client";
+export * as AepUsersApi from "./aep-users";
 export * as AppearanceForgeApi from "./appearance-forge";
 export * as AuditApi from "./audit";
 export * as AuthApi from "./auth";

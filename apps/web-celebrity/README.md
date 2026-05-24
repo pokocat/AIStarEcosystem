@@ -69,6 +69,29 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.31 · 2026-05-24 · 账户隔离收口：商品库公共池只读 + 写收归 admin
+
+商品库前端不再暴露写入入口。`/products` 列表 / 详情页保留浏览 + 「生成视频」入口，
+删除：
+
+- 顶部「📋 从抖音链接快速建档」/「批量录入」/「快速录入」按钮
+- 行级 / 详情页「编辑」/「删除」/「刷新图片」按钮
+- 删除 `ProductFormDialog.tsx` / `ProductBatchImportDialog.tsx`
+- `CelebrityProductForm.tsx`（per-generation 字段收集器）删除 AI 卖点抽取按钮
+- `CelebrityGenerationWorkspace` 不再 fire-and-forget 调
+  `/products/upsert-from-generation`；商品 +usageCount 由 server 端在 `MixcutJobService.create`
+  内部按 productId 自动累加（详见根目录 [`AGENTS.md`](../../AGENTS.md) §v0.31）。
+- `api/products.ts` 仅保留 `listProducts` / `getProduct` / `parseProductLink`。
+
+所有写动作迁至 `apps/admin/src/app/celebrity/products/page.tsx`。
+
+**v0.31 同日补丁**：保留 web-celebrity 端的商品录入入口，但**用账号角色门控**：
+当前登录账号 `operatorRole` 非空（运营身份）时，列表 + 详情页都显示「新建 / 编辑 /
+删除 / 批量录入 / 抖音链接建档 / 刷新图片 / AI 卖点抽取」全套写按钮；普通用户只读。
+写按钮点击直接调 `/api/admin/products/**`，server 端 hasAnyRole 兜底。dev 环境 seed
+账号 `celebrity_operator`（kind=studio + operatorRole=OPERATOR）可在 dev-login 下拉里
+选择。详见 [`AGENTS.md`](../../AGENTS.md) §v0.31 增量节。
+
 ### v0.28 · 2026-05-23 · 商品主线贯穿（素材统一 + 链接解析 + 生成-分发桥接）
 
 把过去四块独立的「商品库 / 素材库 / 混剪 / 分发」按"商品"为主线连起来，新增双向桥接 + 抖音商品链接解析能力。

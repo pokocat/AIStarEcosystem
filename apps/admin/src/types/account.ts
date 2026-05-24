@@ -10,6 +10,12 @@ import type { ID, ISODateTime } from "./_shared";
 
 export type AccountKind = "personal" | "studio";
 export type AccountStatus = "active" | "suspended" | "deleted";
+/**
+ * v0.31+: 内嵌运营角色（celebrity 等用户子产品的「平台运营人员」标记）。
+ * 与 admin 后台的 AdminUser 体系**独立**；这里只用于让运营在用户视角下也能做
+ * 部分管理动作（如在 web-celebrity 界面内管理公共商品池）。
+ */
+export type OperatorRole = "operator" | "super_admin";
 
 export interface AepUser {
   id: ID;
@@ -22,6 +28,8 @@ export interface AepUser {
   bio?: string;
   kind: AccountKind;
   status: AccountStatus;
+  /** v0.31+: 内嵌运营角色；null = 普通账号。 */
+  operatorRole?: OperatorRole | null;
   emailVerified: boolean;
   phoneVerified: boolean;
   langPreference: "zh" | "en";
