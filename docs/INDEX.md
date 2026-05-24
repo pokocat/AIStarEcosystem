@@ -2,7 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
-> last-reviewed：2026-05-09 / v0.5.4
+> last-reviewed：2026-05-23 / v0.5.4
 
 ---
 
@@ -53,13 +53,15 @@
 | `.claude/skills/aistareco-deploy/SKILL.md` | 触发 deploy skill 时使用；当前是 v0.4 期版本，v0.6 真生产部署时再大改 |
 | `.claude/skills/aistareco-deploy/references/production.md` | 同上的引用 |
 
-## 6. Figma 原型迁移（"设计稿怎么落"）
+## 6. Figma 原型迁移 & 设计系统（"设计稿怎么落 / 长什么样"）
 
 | 文档 | 用途 |
 |---|---|
 | `apps/web/FIGMA_MIGRATION_GUIDE.md` | figma → web 的迁移手册 |
 | `apps/web/specs/DESIGN_CONSTRAINTS.md` | 设计约束（视觉/交互） |
 | `.claude/skills/figma-migrate/SKILL.md` | skill 入口：自动按"五件套 + 三端同步"模式落 |
+| `docs/design/celebrity/DESIGN.md` | **`apps/web-celebrity/` 子应用全域视觉系统真源** —— Creator-Friendly codify（tokens + 6 节 spec + 签名组件），对 apps/web-celebrity 整个子应用生效 |
+| `.impeccable/celebrity/design.json` | 上文的机器可读 sidecar（tonal ramps / shadows / motion / 完整组件 HTML+CSS 片段） |
 
 ## 7. 待办 / 已知问题
 
