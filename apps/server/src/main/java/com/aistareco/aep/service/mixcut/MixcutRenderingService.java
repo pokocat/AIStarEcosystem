@@ -806,13 +806,12 @@ public class MixcutRenderingService {
 
         overlays.sort(Comparator.comparingInt(OverlaySpec::zIndex));
 
-        // 底层视频为空 → demo fallback。这是一个明显的「内容兜底」事件：
-        // 用户的 slot_bindings 里没有 layer_type=video 的条目（要么模板没有 video slot，
-        // 要么有但 required=false 且用户没绑）。WARN 一下 + 在 applied_transforms 里
-        // 留 base_video_source=demo_fallback，前端能据此提示用户"看到的是演示视频"。
-        // v0.26+: demo pool 始终预填（不只是 videos.isEmpty 时）—— useSceneSchedule 时
-        // 某 scene 没绑 video，不能再回退到用户其它 scene 的视频（会跨段串色，正是 v0.25 的 bug），
-        // 改走 demo pool 兜底。
+        // 底层视频为空时的处理（用户的 slot_bindings 里没有 layer_type=video 的条目）。
+        // v0.30+: 新（useSceneSchedule）路径下每段没绑视频 → 黑底渲染，不再用 demo。
+        // 旧（legacy 2-seg，没有 scenes_snapshot）路径仍走 demo showreel 兜底——
+        // 老任务快照下，黑底会让所有变体看起来都一样，没有视觉差异度，体验更差。
+        // demoPool 始终预填，留给 legacy / 兜底场景；useSceneSchedule 模式下渲染器
+        // 自己不会再触达它（perSegSrc[i]=null 走 lavfi 合成路径）。
         List<File> demoPool = new ArrayList<>();
         File demoDir = locateDemoVideosDir();
         if (demoDir != null && demoDir.isDirectory()) {
@@ -823,10 +822,15 @@ public class MixcutRenderingService {
 
         boolean usedDemoFallback = false;
         if (videos.isEmpty()) {
+            // 注意：useSceneSchedule 模式下 sources（=videos）实际上不会被消费，
+            // 真正背景画面由 perSegSrc[i]==null 的 lavfi color=black 段决定；
+            // 这里 addAll demoPool 仅用于 legacy 2-seg 路径的兜底。
             usedDemoFallback = true;
             log.warn(
-                    "[mixcut] job={} 没有用户绑定的视频素材（视频位为空或未填），回退到 demo showreel。"
-                            + " 检查模板 layer_type=video 的 slot 是否 required + 用户是否已绑定。",
+                    "[mixcut] job={} 没有用户绑定的视频素材。新模板（带 scenes_snapshot）下"
+                            + " 缺视频的场景将以黑底渲染（仅显示 overlay/picgen 内容）；"
+                            + " 老模板（legacy 2-seg）会回退到 demo showreel。"
+                            + " 如非预期，请确认模板 layer_type=video 的 slot 是否已绑定素材。",
                     job.getId());
             videos.addAll(demoPool);
         }
@@ -1059,13 +1063,17 @@ public class MixcutRenderingService {
         args.add("-stats");
 
         // v0.26+: 按场景严格匹配主视频，修复 v0.25 的 round-robin bug。
-        // 规则：
-        //   useSceneSchedule=true → 每 scene 内查 video layer 的 slot id，从 videoBySlotId 取文件。
-        //     未命中 → demoPool round-robin 兜底（**不再** 回填到其它 user video 上，避免跨段串色）。
-        //     demoPool 也空（罕见，apps/web/public/videos 缺失）→ 最最兜底退回 sources round-robin。
-        //   useSceneSchedule=false → 沿用旧 sources round-robin（legacy 2-seg）。
+        // v0.30+: 取消 demo showreel 兜底。规则严格化为：
+        //   useSceneSchedule=true → 每 scene 内查 video layer slot id，从 videoBySlotId 取文件：
+        //     · 命中 → user_slot
+        //     · 未命中 → **黑底渲染**（perSegSrc[i]=null 作哨兵），仍叠加该 scene 的 overlay/picgen。
+        //       不再回退到 demoPool（用户反馈："只设置了 picgen，背景却给我加了 demo 视频"——
+        //       严格遵循用户输入：没绑视频就是黑底，画布上仅显示用户设置的 overlay。
+        //   useSceneSchedule=false → 旧 sources round-robin（legacy 2-seg）。
+        //     这条路径仍保留 demoPool 兜底（resolveBindings 在 videos 空时 addAll demoPool），
+        //     因为老任务的快照里没有 scenes_snapshot，黑底会让所有变体看起来都一样。
         File[] perSegSrc = new File[segCount];
-        String[] perSegMatch = new String[segCount]; // 诊断：user_slot / demo_fallback / legacy_roundrobin
+        String[] perSegMatch = new String[segCount]; // 诊断：user_slot / black_canvas / legacy_roundrobin
         if (useSceneSchedule) {
             for (int i = 0; i < segCount; i++) {
                 SceneSpec sc = ctx.scenes.get(i);
@@ -1080,18 +1088,10 @@ public class MixcutRenderingService {
                 if (matched != null) {
                     perSegSrc[i] = matched;
                     perSegMatch[i] = "user_slot";
-                }
-            }
-            int demoIdx = 0;
-            for (int i = 0; i < segCount; i++) {
-                if (perSegSrc[i] != null) continue;
-                if (demoPool != null && !demoPool.isEmpty()) {
-                    perSegSrc[i] = demoPool.get((variantIndex + demoIdx) % demoPool.size());
-                    perSegMatch[i] = "demo_fallback";
-                    demoIdx++;
                 } else {
-                    perSegSrc[i] = sources.get((variantIndex + i) % sources.size());
-                    perSegMatch[i] = "legacy_roundrobin";
+                    // null = 哨兵，下方 args 装配阶段会插入 lavfi color=black 合成输入
+                    perSegSrc[i] = null;
+                    perSegMatch[i] = "black_canvas";
                 }
             }
         } else {
@@ -1101,21 +1101,33 @@ public class MixcutRenderingService {
             }
         }
 
-        // 视频输入：每段随机 offset + trim；同时探测音轨存在性,决定是否走 concat 音频路径
+        // 视频输入：每段随机 offset + trim；同时探测音轨存在性,决定是否走 concat 音频路径。
+        // v0.30+: black_canvas 段走 lavfi 合成 → 无音轨；offset 固定为 0。
         ObjectNode segDetail = transforms.putObject("segments_detail");
         boolean allHaveAudio = true;
         for (int i = 0; i < segCount; i++) {
             File src = perSegSrc[i];
             double segDur = segDurations[i];
-            double maxStart = Math.max(0, ffmpeg.probeDurationSec(src) - segDur - 0.5);
-            double offset = maxStart > 0 ? rnd.nextDouble() * maxStart : 0;
-            args.add("-ss"); args.add(format(offset));
-            args.add("-t"); args.add(format(segDur));
-            args.add("-i"); args.add(src.getAbsolutePath());
-            boolean srcHasAudio = ffmpeg.hasAudioStream(src);
+            double offset = 0;
+            boolean srcHasAudio;
+            if (src == null) {
+                // 黑底合成输入：lavfi color。不带 -ss（合成源无时间轴）；
+                // 强制带 :r=30 与外层 -r 30 对齐，避免 framerate mismatch 导致 concat 异常。
+                args.add("-f"); args.add("lavfi");
+                args.add("-t"); args.add(format(segDur));
+                args.add("-i"); args.add("color=c=black:s=" + W + "x" + H + ":r=30");
+                srcHasAudio = false;
+            } else {
+                double maxStart = Math.max(0, ffmpeg.probeDurationSec(src) - segDur - 0.5);
+                offset = maxStart > 0 ? rnd.nextDouble() * maxStart : 0;
+                args.add("-ss"); args.add(format(offset));
+                args.add("-t"); args.add(format(segDur));
+                args.add("-i"); args.add(src.getAbsolutePath());
+                srcHasAudio = ffmpeg.hasAudioStream(src);
+            }
             if (!srcHasAudio) allHaveAudio = false;
             ObjectNode seg = segDetail.objectNode();
-            seg.put("src", src.getName());
+            seg.put("src", src == null ? "(black-canvas)" : src.getName());
             seg.put("start", round2(offset));
             seg.put("duration", round2(segDur));
             seg.put("has_audio", srcHasAudio);

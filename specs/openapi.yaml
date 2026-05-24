@@ -2086,6 +2086,7 @@ components:
       properties:
         id:            { type: string, description: 'UUID 内部主键' }
         logId:         { type: string, description: '短追查号（12 字符），用户报错时复述' }
+        traceId:       { type: string, nullable: true, description: 'v0.30+：请求级 trace ID（X-Trace-Id），跨进程串联日志用（server / sau-service / @Async worker 共享）' }
         occurredAt:    { type: string, format: date-time }
         hostname:      { type: string, nullable: true, description: '发生异常的机器（容器/Pod hostname）' }
         userId:        { type: string, nullable: true }
@@ -5587,6 +5588,7 @@ paths:
         - { in: query, name: endpoint,   schema: { type: string }, description: '接口 path 子串过滤' }
         - { in: query, name: httpStatus, schema: { type: integer } }
         - { in: query, name: hostname,   schema: { type: string } }
+        - { in: query, name: traceId,    schema: { type: string }, description: 'v0.30+：trace ID 精确匹配；用于看「同一请求触发了哪些错误」' }
         - { in: query, name: since,      schema: { type: string, format: date-time } }
         - { in: query, name: until,      schema: { type: string, format: date-time } }
         - { in: query, name: page,       schema: { type: integer, default: 0 } }

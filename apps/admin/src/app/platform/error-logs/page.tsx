@@ -39,9 +39,10 @@ export default function ErrorLogsPage() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<ErrorLog | null>(null);
 
-  // 过滤条件（client-side 过滤 logId/message 自由搜索 + server-side 过滤接口子串、状态码）
+  // 过滤条件（client-side 过滤 logId/message 自由搜索 + server-side 过滤接口子串、状态码、traceId）
   const [query, setQuery] = React.useState("");
   const [endpointFilter, setEndpointFilter] = React.useState("");
+  const [traceIdFilter, setTraceIdFilter] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<"" | "4xx" | "5xx">("");
 
   const fetchLogs = React.useCallback(async () => {
@@ -50,6 +51,7 @@ export default function ErrorLogsPage() {
     try {
       const data = await ErrorLogApi.listErrorLogs({
         endpoint: endpointFilter.trim() || undefined,
+        traceId: traceIdFilter.trim() || undefined,
         size: 50,
       });
       setLogs(data);
@@ -58,7 +60,7 @@ export default function ErrorLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [endpointFilter]);
+  }, [endpointFilter, traceIdFilter]);
 
   React.useEffect(() => {
     void fetchLogs();
@@ -72,6 +74,7 @@ export default function ErrorLogsPage() {
         const q = query.toLowerCase();
         const hay = [
           log.logId,
+          log.traceId,
           log.message,
           log.username,
           log.userId,
@@ -156,6 +159,26 @@ export default function ErrorLogsPage() {
               }}
               className="w-64"
             />
+            <Input
+              value={traceIdFilter}
+              onChange={(e) => setTraceIdFilter(e.target.value)}
+              placeholder="traceId 精确匹配 (回车)"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void fetchLogs();
+              }}
+              className="w-56 font-mono text-xs"
+              title="拿到一条 traceId 后填这里：同一请求触发的所有错误一起列出来"
+            />
+            {traceIdFilter && (
+              <button
+                type="button"
+                onClick={() => { setTraceIdFilter(""); void fetchLogs(); }}
+                className="inline-flex h-8 items-center rounded-md border border-border bg-background px-2 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                title="清除 traceId 过滤"
+              >
+                清除 trace
+              </button>
+            )}
           </div>
 
           <Table>
@@ -163,11 +186,12 @@ export default function ErrorLogsPage() {
               <TableRow>
                 <TableHead className="w-[140px]">时间</TableHead>
                 <TableHead className="w-[140px]">追查号</TableHead>
+                <TableHead className="w-[140px]">trace</TableHead>
                 <TableHead className="w-[80px]">状态</TableHead>
                 <TableHead className="w-[80px]">方法</TableHead>
                 <TableHead>接口</TableHead>
-                <TableHead className="w-[140px]">用户</TableHead>
-                <TableHead className="w-[200px]">异常类型</TableHead>
+                <TableHead className="w-[120px]">用户</TableHead>
+                <TableHead className="w-[180px]">异常类型</TableHead>
                 <TableHead>消息</TableHead>
                 <TableHead className="w-[160px]">主机</TableHead>
               </TableRow>
@@ -175,21 +199,21 @@ export default function ErrorLogsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && loadError && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-rose-600">
+                  <TableCell colSpan={10} className="py-10 text-center text-rose-600">
                     加载失败：{loadError}
                   </TableCell>
                 </TableRow>
               )}
               {!loading && !loadError && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
                     暂无匹配的错误日志
                   </TableCell>
                 </TableRow>
@@ -206,6 +230,25 @@ export default function ErrorLogsPage() {
                       <code className="rounded bg-secondary px-1.5 py-0.5 text-xs font-mono tabular-nums">
                         {log.logId}
                       </code>
+                    </TableCell>
+                    <TableCell>
+                      {log.traceId ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // 点 trace 缩略号 = 一键过滤同 trace 全部行（无须打开详情再回头）
+                            setTraceIdFilter(log.traceId!);
+                            void fetchLogs();
+                          }}
+                          title={`点筛同 trace · ${log.traceId}`}
+                          className="rounded bg-secondary px-1.5 py-0.5 text-xs font-mono tabular-nums text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
+                        >
+                          {log.traceId.slice(0, 8)}…
+                        </button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge tone={statusTone(log.httpStatus)} className="font-mono tabular-nums">
@@ -231,12 +274,28 @@ export default function ErrorLogsPage() {
         </CardContent>
       </Card>
 
-      <ErrorLogDetailDialog log={selected} onClose={() => setSelected(null)} />
+      <ErrorLogDetailDialog
+        log={selected}
+        onClose={() => setSelected(null)}
+        onSearchSameTrace={(traceId) => {
+          setSelected(null);
+          setTraceIdFilter(traceId);
+          // fetchLogs 会在下一个 effect tick 因 traceIdFilter 改变而触发
+        }}
+      />
     </div>
   );
 }
 
-function ErrorLogDetailDialog({ log, onClose }: { log: ErrorLog | null; onClose: () => void }) {
+function ErrorLogDetailDialog({
+  log,
+  onClose,
+  onSearchSameTrace,
+}: {
+  log: ErrorLog | null;
+  onClose: () => void;
+  onSearchSameTrace: (traceId: string) => void;
+}) {
   return (
     <Dialog open={log !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
@@ -287,6 +346,30 @@ function ErrorLogDetailDialog({ log, onClose }: { log: ErrorLog | null; onClose:
                   {log.httpMethod ?? "?"} {log.endpoint ?? "—"}
                 </code>
               </Field>
+              <Field label={
+                <span className="inline-flex items-center gap-1">
+                  trace ID
+                  <span className="text-muted-foreground/70 normal-case tracking-normal">链路追踪标识，跨进程 grep 用</span>
+                </span>
+              } wide>
+                {log.traceId ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="rounded bg-secondary px-1.5 py-0.5 text-xs font-mono">{log.traceId}</code>
+                    <CopyButton text={log.traceId} label="复制" />
+                    <button
+                      type="button"
+                      onClick={() => onSearchSameTrace(log.traceId!)}
+                      className="inline-flex items-center gap-1 rounded border border-violet-400/50 bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-500/20 transition-colors"
+                      title="筛选所有同一 traceId 的错误（用于看「同一次请求触发了几条错误」）"
+                    >
+                      <Search className="h-3 w-3" />
+                      查同 trace 全部错误
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">（无 · 旧记录或 trace filter 失效）</span>
+                )}
+              </Field>
               <Field label="User-Agent" wide>
                 <span className="break-all text-muted-foreground">{log.userAgent ?? "—"}</span>
               </Field>
@@ -313,7 +396,7 @@ function ErrorLogDetailDialog({ log, onClose }: { log: ErrorLog | null; onClose:
   );
 }
 
-function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+function Field({ label, wide, children }: { label: React.ReactNode; wide?: boolean; children: React.ReactNode }) {
   return (
     <div className={wide ? "col-span-2" : "col-span-1"}>
       <dt className="mb-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>

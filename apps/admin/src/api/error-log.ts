@@ -13,6 +13,11 @@ export interface ErrorLogListParams {
   endpoint?: string;
   httpStatus?: number;
   hostname?: string;
+  /**
+   * 精确匹配 traceId：拿到一条 ErrorLog 后想看「同一请求触发的所有错误」时用。
+   * 与 endpoint / userId 等模糊过滤不同，traceId 是精确等值。
+   */
+  traceId?: string;
   /** ISO-8601 起始时间（含）。 */
   since?: string;
   /** ISO-8601 结束时间（含）。 */
@@ -45,6 +50,7 @@ function filterMock(logs: ErrorLog[], p: ErrorLogListParams): ErrorLog[] {
     if (p.endpoint && !(log.endpoint ?? "").includes(p.endpoint)) return false;
     if (p.httpStatus != null && log.httpStatus !== p.httpStatus) return false;
     if (p.hostname && log.hostname !== p.hostname) return false;
+    if (p.traceId && log.traceId !== p.traceId) return false;
     if (p.since && log.occurredAt < p.since) return false;
     if (p.until && log.occurredAt > p.until) return false;
     return true;

@@ -9,6 +9,7 @@ export const ERROR_LOGS: ErrorLog[] = [
   {
     id: "el-001",
     logId: "K7QN3T9XB4F2",
+    traceId: "kP3xR9aBcD4eF7hJ",
     occurredAt: "2026-05-23T09:42:11Z",
     hostname: "aep-prod-pod-7c4d8b9",
     userId: "u_42",
@@ -32,6 +33,7 @@ export const ERROR_LOGS: ErrorLog[] = [
   {
     id: "el-002",
     logId: "M9PD2QF7HJK5",
+    traceId: "mN5yT8bDfE2gH6jK",
     occurredAt: "2026-05-23T08:15:34Z",
     hostname: "aep-prod-pod-7c4d8b9",
     userId: "u_19",
@@ -53,6 +55,7 @@ export const ERROR_LOGS: ErrorLog[] = [
   {
     id: "el-003",
     logId: "T4XR8MJN2QC6",
+    traceId: "qS7uV2cEgH4mN8pR",
     occurredAt: "2026-05-22T22:01:09Z",
     hostname: "aep-prod-pod-9f2a1c0",
     userId: null,

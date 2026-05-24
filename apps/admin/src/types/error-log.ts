@@ -8,6 +8,12 @@ export interface ErrorLog {
   id: string;
   /** 短追查号（12 字符，A-Z 去易混淆 + 2-9），用户报错时复述。 */
   logId: string;
+  /**
+   * 请求级 trace ID（server TraceContext 写入），跨进程关联用。
+   * 一次请求可能产生多条 ErrorLog，但它们共享同一个 traceId；
+   * 拿 traceId 去 grep server / sau-service 日志即可拼出整条链路。
+   */
+  traceId?: string | null;
   /** ISO-8601 时间字符串。 */
   occurredAt: string;
   /** 发生异常的机器（容器/Pod hostname）。 */
