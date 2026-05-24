@@ -240,42 +240,193 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 
 ---
 
-## 六、版本日志（按时间倒序追加，**不删除历史**）
+## 六、账户体系（v0.31 稳态）
 
-### v0.31 · 2026-05-24 — 商品库公共池化 + 写收归 admin
+celebrity 子产品的登录注册、运营授权、SMS 集成完整说明。**两套用户体系完全独立**
+但 JWT.role 字符串语义对齐。
 
-**Context**：审计发现 `/api/products/**` 写端点（POST/PATCH/DELETE/upsert-from-generation/extract-selling-points）落在 Security `anyRequest().permitAll()` 兜底规则下，匿名用户即可 CRUD 全部商品；同时 `Product` 表无 `ownerUserId` 列，任意登录用户都能改 / 删他人引用的商品。`/api/me/products/from-link` 和 `/api/me/products/{id}/refresh-images` 虽已认证，但任意普通用户都能往公共商品池写入。
+### 6.1 两套用户体系对照
 
-**决策**：商品库保持「公共商品池」语义不变；写动作（CRUD + from-link + refresh-images + extract-selling-points）全部收归 admin，仅 SUPER_ADMIN / OPERATOR 可调。普通用户只读 + 可调 `/me/products/parse-link` 预览（不写库）。
-
-**端点变化**
-
-| 旧路径 | 新路径 | 权限 |
+| 维度 | admin 后台 | celebrity / 用户子产品 |
 |---|---|---|
-| POST `/api/products` | POST `/api/admin/products` | admin only |
-| PATCH/DELETE `/api/products/{id}` | PATCH/DELETE `/api/admin/products/{id}` | admin only |
-| POST `/api/products/upsert-from-generation` | （删除，server 内部按 productId 自动 bump） | — |
-| POST `/api/products/extract-selling-points` | POST `/api/admin/products/extract-selling-points` | admin only |
-| POST `/api/me/products/from-link` | POST `/api/admin/products/from-link` | admin only |
-| POST `/api/me/products/{id}/refresh-images` | POST `/api/admin/products/{id}/refresh-images` | admin only |
-| GET `/api/products`，`/api/products/{id}`，POST `/api/me/products/parse-link` | 保持不变 | 已登录用户即可 |
+| 用户表 | `admin_users` | `aep_users` |
+| 接入前端 | apps/admin | apps/web-celebrity（及历史 apps/web） |
+| 登录端点 | `POST /api/admin/auth/login`（用户名 + 密码） | SMS（手机号 + 验证码）/ License 激活 / dev-login |
+| 角色字段 | `AdminUser.role` enum | `AepUser.kind` + `AepUser.operatorRole` |
+| JWT.role claim | `admin.role.name()` | `operatorRole.name()` 非空时优先，否则 `STUDIO`/`USER` |
+| 是否可改对方表 | ❌ 不能 | ❌ 不能 |
+| 是否可调对方端点 | role=OPERATOR/SUPER_ADMIN 时可调 `/api/admin/**`（包括看 celebrity 数据） | role=OPERATOR/SUPER_ADMIN 时也可调 `/api/admin/**`（同上） |
 
-`AepSecurityConfig` 同时加 `.requestMatchers("/api/products/**").authenticated()`，匿名访问被 401 拦截。
+两套表互不引用，但 JWT.role 字符串命名故意对齐（OPERATOR / SUPER_ADMIN）→ 同一
+role claim 走相同的 server 端 hasAnyRole 门禁。
 
-**前端**：web-celebrity `/products` 列表 / 详情页删除「新建 / 编辑 / 删除 / 批量录入 / 抖音解析 / 刷新图片 / AI 卖点抽取」等写入入口；apps/admin `/celebrity/products` 顶部新增「从抖音链接建档」+「新建商品」按钮，行内新增「编辑」+「刷新图片」按钮 + 两个完整 dialog。详见根目录 [`AGENTS.md`](AGENTS.md) §v0.31。
+### 6.2 注册流程（手机号 + License 双因素）
 
-**行为变化**：以前用户在生成视频时随手填的商品名会自动沉淀到公共池；v0.31 起不会。新商品必须运营显式创建，usageCount 仅对**已存在**的商品按 productId 精确 +1。
+prod 环境的唯一注册路径：
 
-**v0.31 同日补丁 — 内嵌运营角色（在 celebrity 端也开写入入口）**：
-初版收口后，把「能否在 web-celebrity 里管理公共商品池」由账号角色决定。AepUser
-新增 `operatorRole` 字段（独立于 AdminUser，命名对齐 OPERATOR / SUPER_ADMIN），
-JWT 在 operatorRole 非空时优先用它作 role claim → 通过 /api/admin/** hasAnyRole
-门禁。web-celebrity 用 `useAuth().user.operatorRole` 做按钮条件渲染：
-- 普通用户登录 → 商品库只读
-- 运营账号（dev seed `celebrity_operator`）登录 → 「新建 / 编辑 / 删除 / 批量录入 /
-  抖音链接快速建档 / 刷新图片 / AI 卖点抽取」全套写按钮 + 详情页编辑/删除
-- 写操作直接调 /api/admin/products/**；server 端 hasAnyRole 做最终兜底
-详细改动清单见 [`AGENTS.md`](AGENTS.md) §v0.31 增量节。
+```
+1. 用户拿到 License 激活码（admin 通过 POST /api/admin/license-batches/{id}/mint-keys
+   ?count=N 生成；接口一次性返回 raw codes 供分发，DB 只存 sha256）
+2. 用户进 web-celebrity /login → 「注册」tab
+3. 输手机号 → 点「发送验证码」（60s 倒计时）
+4. 收码（aliyun driver 走真短信；log driver 在 server log）
+5. 输验证码 + 激活码 + 工作室名（必填）+ 显示名（选填）
+6. 提交 → server 校验 SMS code + 校验 License key → 创建 AepUser + Studio + Wallet +
+   发 JWT → 跳 /dashboard
+```
+
+落库的 user 形态：
+- `username` = `phone_<手机号>`（自动生成，不可自选）
+- `kind` = STUDIO
+- `phone` / `phoneVerified=true`
+- `operatorRole` = null（默认普通用户）
+
+注册端点：`POST /api/auth/sms/register { phone, code, licenseKey, studioName, displayName? }`
+
+### 6.3 登录流程
+
+**主流程：手机号 + SMS 验证码**
+
+```
+POST /api/auth/sms/request-code { phone }  → 200 { sent: true }
+POST /api/auth/sms/verify { phone, code }  → 200 { token, user } 或 404 USER_NOT_FOUND
+```
+
+- `404 USER_NOT_FOUND`：手机号未注册。验证码**已被消费**（防爆破），用户切到注册
+  tab 需要重新发码。
+- 错码：`400 SMS_CODE_INVALID` + 剩余次数。错 5 次 → 锁 30 分钟。
+- 速率限制：同 phone 60s 内不能重发（`429 SMS_CODE_RATE_LIMITED`）
+
+**辅助流程：dev-login（仅 dev profile）**
+
+```
+POST /api/auth/dev-login { username }  → 200 { token, user }
+```
+
+无需密码 / 验证码，用 username 直接签 JWT。生产环境通过
+`@ConditionalOnProperty aep.dev-auth.enabled=false` 关闭。
+
+**辅助流程：License 激活直登（保留以兼容老前端）**
+
+```
+POST /api/auth/activate { code, username, email?, phone?, studioName }  → 200 { token, ... }
+```
+
+不验 SMS，仅 License + 用户信息直接落库。前端老路径 `/activate` 仍走这个；
+新前端走 `/login → 注册` tab（SMS 双因素更安全）。
+
+### 6.4 运营角色（operatorRole）
+
+普通用户 `operatorRole=null`，登 celebrity 看商品库只读、看其他模块全权。
+
+**升级为运营**：admin 在 `/admin/celebrity/operators` 页面，点用户行的「运营」/
+「超管」/「移除」按钮。底层 endpoint：
+
+```
+PATCH /api/admin/aep-users/{id}/operator-role { operatorRole: "operator" | "super_admin" | null }
+```
+
+升级后：
+
+| 影响 | 描述 |
+|---|---|
+| **下次登录** | 新签的 JWT.role 用 operatorRole，能通过 `/api/admin/**` hasAnyRole 门禁 |
+| **web-celebrity UI** | `useAuth().user.operatorRole` 非空 → 商品库等模块自动渲染写按钮（「新建」/「编辑」/「删除」/「抖音建档」/「刷新图片」/「AI 卖点」） |
+| **admin 后台** | 这个用户**没有** admin 后台访问权（admin_users 表里没有他的记录） |
+| **旧 JWT** | 不会主动 invalidate；旧 JWT 里 role 仍是 STUDIO，要等 JWT 过期（1h）或重新登录才生效。当前是「告知用户重登」 |
+
+**升级粒度**：operatorRole 是**全局角色**，不分租户。一个 operator 能管所有公共
+商品池条目，不能限定「只能管 X 租户的货」。`Tenant` / `Membership` 表只做 License
+核销归属统计，不做运行时权限切片。
+
+### 6.5 SMS 集成（driver 矩阵）
+
+| Driver | 配置 | 行为 | 用途 |
+|---|---|---|---|
+| **log**（默认） | `aep.sms.driver=log` | 验证码打到 server log `[sms-log] phone=xxx code=xxxxxx` | dev / 联调 / 阿里云未备案时占位 |
+| **aliyun** | `aep.sms.driver=aliyun` + `ALIYUN_SMS_*` 四个 env | 调阿里云 SMS REST API（手撸 POP RPC + HMAC-SHA1，零 SDK 依赖） | prod 真发短信 |
+
+**dev-fixed 测试码**（联调小技巧）：
+
+```bash
+export AEP_SMS_DEV_FIXED_CODE=123456
+```
+
+启动 server 后所有手机号收到的码都固定为 123456，省去每次 grep server log。
+**严格双门禁**：必须 `driver=log` + 非空才生效；driver=aliyun 时即使配了也会被
+忽略并 WARN（防 prod 误开）；启动 banner 会 WARN「DEV-FIXED CODE ENABLED」。
+
+**速率与锁定（默认）**：
+- 验证码长度 6 位、TTL 5 分钟
+- 同手机号 60s 内不能重发
+- 错 5 次锁 30 分钟
+- 验证成功后 entry **立即删除**（防重放）
+- @Scheduled 60s 清理过期 entry
+- in-memory ConcurrentHashMap 存储；多实例 prod 部署前必须换 Redis
+
+### 6.6 dev seed 账号
+
+| 账号 | 表 | 登录方式 | JWT.role |
+|---|---|---|---|
+| `admin` / `admin123` | admin_users | `/api/admin/auth/login` | SUPER_ADMIN |
+| `operator` / `operator123` | admin_users | `/api/admin/auth/login` | OPERATOR |
+| `celebrity_operator` | aep_users | dev-login 免密 | **OPERATOR** |
+| `creator_luna` | aep_users | dev-login | STUDIO |
+| `studio_starlight` | aep_users | dev-login | STUDIO |
+| `agency_moonrise` | aep_users | dev-login | STUDIO |
+
+[`DataInitializer.ensureCelebrityOperatorSeed`](apps/server/src/main/java/com/aistareco/aep/config/DataInitializer.java)
+按 username 幂等，**老 H2 文件落库环境**第一次启动 v0.31 代码会自动补
+`celebrity_operator` 这条记录。
+
+prod 启动时 DataInitializer 不跑，真实账号通过 SMS register 流程创建。
+
+### 6.7 数据隔离矩阵
+
+**用户私有数据**（按 user.id 严格隔离；不按 tenant）：
+- 钱包 / LedgerEntry / 个人混剪任务 / 发布任务 / 社交账号 / DigitalIp /
+  messages-overview / 私有 MixcutAsset
+
+**公共数据**（全平台共享）：
+- 商品库 (Product) / 公共模板 / 官方明星片段 (MixcutAsset.isOfficial=true) /
+  preset 贴图 (MixcutAsset.isPreset=true) / 字典 / 充值套餐
+
+**operatorRole 角色门**控制的是「谁能改公共数据」，不是「谁能看公共数据」。
+普通用户读 `/api/products` 等公共接口仍 200。
+
+---
+
+## 七、版本日志（按时间倒序追加，**不删除历史**）
+
+### v0.31 · 2026-05-24 — celebrity 账户体系收口（商品库 + 内嵌运营 + SMS 登录）
+
+一次性补齐 celebrity 子产品的「数据隔离 + 登录注册 + 运营管理」三件事。完整产品
+规格已沉淀到 [§六、账户体系](#六账户体系v031-稳态)（**稳态文档**），本节仅记录变更要点。
+
+**四块改动**：
+
+1. **商品库公共池化**：`/api/products/**` 写动作全部收归 `/api/admin/products/**`
+   （hasAnyRole(SUPER_ADMIN, OPERATOR) 门禁）；普通用户只读 + 预览。
+   修复匿名 CRUD 漏洞 + Product 表无 ownerUserId 导致的越权风险。
+2. **内嵌运营角色**：`AepUser.operatorRole` 字段（独立于 AdminUser）；JWT 在
+   operatorRole 非空时优先用它作 role claim → 通过 hasAnyRole 门禁。
+3. **admin 操作员管理页** `/admin/celebrity/operators`：list aep_users + 切角色
+   按钮（运营 / 超管 / 移除）。配套端点 `GET/PATCH /api/admin/aep-users/...`。
+4. **手机号 + SMS 登录 / 注册**：log（默认）/ aliyun（手撸 REST，零 SDK 依赖）双
+   driver；双因素注册（SMS 验证码 + License 激活码）；dev 联调可设
+   `AEP_SMS_DEV_FIXED_CODE` 固定测试码（严格双门禁防 prod 误开）。
+
+**配套**：
+- 新 admin 端点 `POST /api/admin/license-batches/{id}/mint-keys?count=N` 一次性铸 N
+  把 key 并返回 raw codes（write-once；DB 只存 sha256）
+- web-celebrity `/login` 重写为三 tab：手机号登录 / 注册 / dev
+- `packages/api-client` 新增 SmsAuth API；`packages/types` AepUser +operatorRole
+- 详细改动清单 / 文件级 diff 见 [`AGENTS.md`](AGENTS.md) §v0.31
+
+**行为变化**（用户可见）：
+- 生成视频时随手填的商品名不再自动沉淀公共池；新商品必须运营显式创建
+- prod 注册需要「手机号 + 短信验证码 + License 激活码」三件齐全
+- 升级 operatorRole 后旧 JWT 不会立即生效，用户需重登或等 JWT 自然过期
 
 ### v0.17.0 · 2026-05-20 — 社交账号绑定 profile 落库
 
@@ -703,7 +854,7 @@ GET /template-scripts/{id}（仅 published）
 
 ---
 
-## 七、未来变更追加规则（给后续 agent）
+## 八、未来变更追加规则（给后续 agent）
 
 1. 任何新需求都**追加版本节**到「版本日志」最上方，不要修改既有节。
 2. 如果改动了字段形状：**先改 `apps/web/src/types/celebrity-zone.ts`（真源），再同步 server `*Dto`，再同步小程序 `mocks.js`**。
