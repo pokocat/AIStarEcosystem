@@ -43,6 +43,7 @@ public class AdminErrorLogController {
             @RequestParam(required = false) String endpoint,
             @RequestParam(required = false) Integer httpStatus,
             @RequestParam(required = false) String hostname,
+            @RequestParam(required = false) String traceId,
             @RequestParam(required = false) String since,
             @RequestParam(required = false) String until
     ) {
@@ -57,6 +58,7 @@ public class AdminErrorLogController {
                 blankToNull(endpoint),
                 httpStatus,
                 blankToNull(hostname),
+                blankToNull(traceId),
                 sinceInstant,
                 untilInstant,
                 pageable

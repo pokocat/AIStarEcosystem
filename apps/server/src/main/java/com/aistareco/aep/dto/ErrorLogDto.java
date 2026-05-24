@@ -13,6 +13,8 @@ import java.time.Instant;
 public record ErrorLogDto(
         String id,
         String logId,
+        /** 请求级 trace ID（{@code TraceContext}），用于跨日志文件 grep。 */
+        String traceId,
         Instant occurredAt,
         String hostname,
         String userId,
@@ -32,6 +34,7 @@ public record ErrorLogDto(
         return new ErrorLogDto(
                 e.getId(),
                 e.getLogId(),
+                e.getTraceId(),
                 e.getOccurredAt(),
                 e.getHostname(),
                 e.getUserId(),

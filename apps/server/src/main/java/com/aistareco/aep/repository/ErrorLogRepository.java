@@ -26,6 +26,7 @@ public interface ErrorLogRepository extends JpaRepository<ErrorLog, String> {
                     "and (:endpoint is null or e.endpoint like concat('%', :endpoint, '%')) " +
                     "and (:httpStatus is null or e.httpStatus = :httpStatus) " +
                     "and (:hostname is null or e.hostname = :hostname) " +
+                    "and (:traceId is null or e.traceId = :traceId) " +
                     "and (:since is null or e.occurredAt >= :since) " +
                     "and (:until is null or e.occurredAt <= :until)"
     )
@@ -34,6 +35,7 @@ public interface ErrorLogRepository extends JpaRepository<ErrorLog, String> {
             @Param("endpoint") String endpoint,
             @Param("httpStatus") Integer httpStatus,
             @Param("hostname") String hostname,
+            @Param("traceId") String traceId,
             @Param("since") Instant since,
             @Param("until") Instant until,
             Pageable pageable

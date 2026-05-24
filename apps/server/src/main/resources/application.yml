@@ -25,6 +25,14 @@ logging:
   level:
     com.aistareco: INFO
     org.hibernate.SQL: WARN
+  # v0.30+ trace 串联：MDC 里的 traceId 加进 console / file pattern。
+  # `%X{traceId:-}` 表示当 MDC.traceId 为空时输出空串（不是字面 "-"）。TraceFilter 几乎总会设值，
+  # 但 servlet 容器自身在 dispatch 前的几行启动日志 / shutdown 日志没 traceId，留空更整洁。
+  # Spring Boot 默认 pattern 见 DefaultLogbackConfiguration；这里只覆盖 pattern.console / pattern.file
+  # 把 [traceId] 字段插在日志级别和 logger 名之间，便于眼扫 + grep。
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%X{traceId:-}]){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"
+    file:    "%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } --- [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"
 
 aep:
   jwt:

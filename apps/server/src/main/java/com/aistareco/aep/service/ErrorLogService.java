@@ -2,6 +2,7 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.model.ErrorLog;
 import com.aistareco.aep.repository.ErrorLogRepository;
+import com.aistareco.common.TraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +71,7 @@ public class ErrorLogService {
             ErrorLog entry = ErrorLog.builder()
                     .id(UUID.randomUUID().toString())
                     .logId(logId)
+                    .traceId(TraceContext.current())
                     .occurredAt(Instant.now())
                     .hostname(HOSTNAME)
                     .userId(currentUserId())

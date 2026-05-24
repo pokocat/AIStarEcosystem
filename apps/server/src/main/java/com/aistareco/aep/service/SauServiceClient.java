@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.common.BusinessException;
+import com.aistareco.common.TraceContext;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -202,9 +203,17 @@ public class SauServiceClient {
     }
 
     private HttpRequest.Builder baseBuilder(String path) {
-        return HttpRequest.newBuilder(URI.create(baseUrl + path))
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(Duration.ofMillis(requestTimeoutMs))
                 .header(INTERNAL_SECRET_HEADER, sharedSecret);
+        // 把当前请求的 traceId 透传到 sau-service。
+        // sau-service 收到后应该把 trace ID 注入到自己的 Python logging（X-Trace-Id 头读 + structlog
+        // contextvar 之类），这样运维 grep 同一 traceId 即可拼出"server 收请求 → 调 sau → playwright
+        // 上传 → 回调"的整条链路日志。
+        // sau-service 暂未实现也无害：它会原样忽略未知 header。
+        String traceId = TraceContext.current();
+        if (traceId != null) b.header(TraceContext.HEADER, traceId);
+        return b;
     }
 
     private Map<String, Object> parseResponse(String path, HttpResponse<String> resp) {

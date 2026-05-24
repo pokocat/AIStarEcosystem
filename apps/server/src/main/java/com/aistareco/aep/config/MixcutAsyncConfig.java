@@ -35,6 +35,8 @@ public class MixcutAsyncConfig implements WebMvcConfigurer {
         exec.setThreadNamePrefix("mixcut-");
         exec.setWaitForTasksToCompleteOnShutdown(true);
         exec.setAwaitTerminationSeconds(30);
+        // 透传父线程 MDC（含 traceId）到渲染 worker，使 mixcut-* 线程 log 行可与入站请求 grep 串联
+        exec.setTaskDecorator(new MdcTaskDecorator());
         exec.initialize();
         return exec;
     }

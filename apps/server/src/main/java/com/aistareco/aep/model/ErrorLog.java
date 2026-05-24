@@ -23,6 +23,7 @@ import java.time.Instant;
         indexes = {
                 @Index(name = "idx_error_logs_occurred", columnList = "occurredAt"),
                 @Index(name = "idx_error_logs_logid", columnList = "logId"),
+                @Index(name = "idx_error_logs_trace", columnList = "traceId"),
                 @Index(name = "idx_error_logs_user", columnList = "userId"),
                 @Index(name = "idx_error_logs_status", columnList = "httpStatus")
         }
@@ -36,6 +37,14 @@ public class ErrorLog {
     /** 给用户/运维报错时引用的短追查号（nanoid，14 字符），全局唯一。 */
     @Column(nullable = false, unique = true, length = 32)
     private String logId;
+
+    /**
+     * 请求级 trace ID（{@link com.aistareco.common.TraceContext}）。一次请求可能产生多条 ErrorLog
+     * （retry / partial-fail / 多步操作），但它们的 traceId 都相同。
+     * 拿 traceId 去 grep server / sau-service / future workers 的 log 文件即可还原整条链路。
+     */
+    @Column(length = 64)
+    private String traceId;
 
     @Column(nullable = false)
     private Instant occurredAt;
