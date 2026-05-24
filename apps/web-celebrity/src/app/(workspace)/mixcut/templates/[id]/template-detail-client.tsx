@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Sparkles,
   Layers,
-  Tag,
   Lock,
   ChevronRight,
   ChevronUp,
@@ -26,7 +25,6 @@ import {
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { nanoid } from "nanoid";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
 import { Input } from "@/components/mixcut-zone/ui/input";
@@ -195,6 +193,34 @@ function validateTimeRanges(tpl: Template): string[] {
     });
   });
   return errors;
+}
+
+/**
+ * 按场景新时长等比例缩放 slot.time_range。
+ * 用户改场景时长时配合 updateScene 调用：保留素材在场景内的相对位置（节奏感），
+ * 同时确保 slot 不会超出新时长。
+ * 旧时长 ≤ 0 是脏数据兜底：直接把所有 slot 拍平到 [0, new]。
+ */
+function rescaleSceneSlots(scene: TemplateScene, newDuration: number): TemplateScene {
+  const oldDuration = scene.duration;
+  if (oldDuration <= 0) {
+    return {
+      ...scene,
+      duration: newDuration,
+      slots: scene.slots.map((s) => ({ ...s, time_range: [0, newDuration] })),
+    };
+  }
+  const ratio = newDuration / oldDuration;
+  return {
+    ...scene,
+    duration: newDuration,
+    slots: scene.slots.map((s) => {
+      const [a, b] = s.time_range;
+      const na = Math.max(0, Math.min(newDuration, a * ratio));
+      const nb = Math.max(na, Math.min(newDuration, b * ratio));
+      return { ...s, time_range: [na, nb] };
+    }),
+  };
 }
 
 type ConfirmModalState = {
@@ -645,7 +671,22 @@ export function TemplateDetailClient({
     });
   };
   const updateScene = (idx: number, patch: Partial<TemplateScene>) => {
-    setWorking((w) => (w ? { ...w, scenes: w.scenes.map((sc, i) => (i === idx ? { ...sc, ...patch } : sc)) } : w));
+    setWorking((w) => {
+      if (!w) return w;
+      return {
+        ...w,
+        scenes: w.scenes.map((sc, i) => {
+          if (i !== idx) return sc;
+          // 时长被改：按 ratio = new/old 等比例缩放本场景所有 slot.time_range，
+          // 保留节奏感同时避免 slot 超出新时长触发保存校验失败。
+          if (patch.duration !== undefined && patch.duration !== sc.duration) {
+            const rescaled = rescaleSceneSlots(sc, patch.duration);
+            return { ...rescaled, ...patch };
+          }
+          return { ...sc, ...patch };
+        }),
+      };
+    });
   };
   const moveScene = (idx: number, dir: -1 | 1) => {
     setWorking((w) => {
@@ -749,6 +790,27 @@ export function TemplateDetailClient({
             <ArrowLeft className="size-4" /> 返回模板库
           </Link>
         </Button>
+        {!editing && (
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/mixcut/templates/${template.template_id}/edit`}>
+                <Pencil className="size-3.5" /> 编辑模板
+              </Link>
+            </Button>
+            {editableSlots.length > 0 ? (
+              <Button variant="gradient" size="default" asChild className="h-10 px-5">
+                <Link href={`/mixcut/create/${template.template_id}`}>
+                  使用此模板
+                  <ChevronRight className="size-4" />
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="default" size="default" disabled className="h-10 px-5" title="该模板暂无可填内容位，请先编辑添加">
+                使用此模板
+              </Button>
+            )}
+          </div>
+        )}
         {editing ? (
           <div className="flex items-center gap-3 flex-wrap">
             {/* 次群 1：状态徽 */}
@@ -853,11 +915,44 @@ export function TemplateDetailClient({
       )}
 
       <section>
+        {/* view 模式：极简标题块。仅 chip + name + 一行硬事实，避免 hero card 抢戏；
+            页面焦点是下方的 preview + slot 列表（"内容结构 + 预期效果"）。*/}
+        {!editing && (
+          <header className="mb-6">
+            <div className="flex items-center gap-1.5 mb-2 flex-wrap text-xs text-muted-foreground">
+              <span>{display.metadata.category}</span>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="inline-flex items-center gap-0.5">
+                <Lock className="size-3" />
+                {TIER_LABELS[display.metadata.required_tier]}
+              </span>
+              {!isFactory && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="text-emerald-600 font-medium">我的版本</span>
+                </>
+              )}
+            </div>
+            <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight leading-tight">
+              {display.name}
+            </h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {orientationLabel(display.canvas.width, display.canvas.height).split(" · ")[0]}
+              <span className="text-muted-foreground/40 mx-2">·</span>
+              {display.canvas.width}×{display.canvas.height}
+              <span className="text-muted-foreground/40 mx-2">·</span>
+              {totalDuration(display)} 秒
+              <span className="text-muted-foreground/40 mx-2">·</span>
+              一次出 <span className="text-foreground font-medium">{display.output_variants_default} 条</span>不同版本
+            </p>
+          </header>
+        )}
+
         {/* 场景流程独占一行,贯穿 section 宽度。编辑态横向时间轴需要尽可能宽,
             原来塞在左栏 340px 子列里又挤又难拖。
             view 态仅在多场景时展示——单场景模板没有"流程"可言，露一颗孤零零的节点反而干扰。*/}
         {(editing || display.scenes.length > 1) && (
-          <div className="mb-3">
+          <div className="mb-6">
             <SceneFlowEditor
               scenes={display.scenes}
               canvas={display.canvas}
@@ -875,7 +970,7 @@ export function TemplateDetailClient({
         {/* 编辑提示条：紧贴在场景流之后，作为操作提示的延伸 */}
         {editing && <EditingTipsBar className="mb-3" />}
 
-        {editing ? (
+        {editing && (
           <TemplateConfigBar
             template={display}
             editing={editing}
@@ -885,19 +980,10 @@ export function TemplateDetailClient({
             onChangeTemplate={updateWorking}
             className="mb-8"
           />
-        ) : (
-          <TemplateReviewPanel
-            template={display}
-            editableSlots={editableSlots}
-            requiredSlots={requiredSlots}
-            isFactory={isFactory}
-            className="mb-8"
-          />
         )}
 
-      <div className={cn("grid grid-cols-1 gap-8", !editing && "lg:grid-cols-[minmax(0,1fr)_340px]")}>
         <div>
-          {/* 名称+元信息：仅编辑态显示（view 态已在顶部 hero 充分呈现，避免重复）。*/}
+          {/* 名称+元信息：仅编辑态显示（view 态标题已在 section 顶部呈现）。*/}
           {editing && working && (
             <div className="flex items-start justify-between gap-4 mb-4">
               <div className="flex-1 min-w-0">
@@ -921,8 +1007,8 @@ export function TemplateDetailClient({
             </div>
           )}
 
-          <div className={cn("grid grid-cols-1 gap-6", editing ? "md:grid-cols-[340px_1fr]" : "md:grid-cols-[300px_1fr]")}>
-            <div className={cn(editing && "md:sticky md:top-20 md:self-start space-y-3")}>
+          <div className={cn("grid grid-cols-1 gap-8", editing ? "md:grid-cols-[340px_1fr]" : "md:grid-cols-[380px_1fr]")}>
+            <div className={cn(!editing && "md:sticky md:top-20 md:self-start", editing && "md:sticky md:top-20 md:self-start space-y-3")}>
               <TemplatePreview
                 template={{
                   ...display,
@@ -981,20 +1067,20 @@ export function TemplateDetailClient({
               {/* 主舞台：slot 列表是 edit 模式的工作核心，不再嵌入 Card chrome。
                   view 模式同样去 Card，让信息密度服务于"看清这个模板要填什么"。*/}
               <div className="mb-3 flex items-center justify-between gap-3 pb-2 border-b border-border/60">
-                <h2 className="text-sm font-semibold flex items-center gap-2">
+                <h2 className="text-base font-semibold flex items-center gap-2">
                   <Layers className="size-4 text-violet-500" />
                   {editing ? (
                     <>
                       <span>{currentSceneLabel}</span>
-                      <span className="text-muted-foreground font-normal">
+                      <span className="text-muted-foreground font-normal text-sm">
                         · 内容位 {currentSceneSlots.length}
                       </span>
                     </>
                   ) : (
                     <>
-                      <span>这个模板要填的内容</span>
-                      <span className="text-muted-foreground font-normal">
-                        · 共 {currentSceneSlots.length} 项
+                      <span>内容结构</span>
+                      <span className="text-muted-foreground font-normal text-sm">
+                        {display.scenes.length > 1 ? `· ${currentSceneLabel} · ${currentSceneSlots.length} 项` : `· 共 ${currentSceneSlots.length} 项`}
                       </span>
                     </>
                   )}
@@ -1092,192 +1178,8 @@ export function TemplateDetailClient({
             </div>
           </div>
         </div>
-
-        {!editing && (
-        <aside className="space-y-4 lg:sticky lg:top-20 self-start">
-          <TemplateReviewAside
-            template={display}
-            editableSlots={editableSlots}
-            requiredSlots={requiredSlots}
-          />
-
-        </aside>
-        )}
-      </div>
       </section>
     </div>
-  );
-}
-
-// ── view 态 hero & 准备清单 ──────────────────────────────────────────────────
-// view 模式的首屏由两块构成：
-//   1. TemplateReviewPanel —— 名称 / 类目 / 一句话讲明白 / 三个关键事实 / 主 CTA
-//   2. TemplateReviewAside —— 你需要准备哪些素材（必填 → 选填），最后是标签
-// 抛弃了原"模板审查 + 审查要点"双卡片重复结构；电商运营 / 新手只需要知道
-// "这是什么 / 我要准备什么 / 怎么开始"。
-
-function TemplateReviewPanel({
-  template,
-  editableSlots,
-  requiredSlots,
-  isFactory,
-  className,
-}: {
-  template: Template;
-  editableSlots: TemplateSlot[];
-  requiredSlots: TemplateSlot[];
-  isFactory: boolean;
-  className?: string;
-}) {
-  const canUse = editableSlots.length > 0;
-  const sceneSeconds = totalDuration(template);
-  const variants = template.output_variants_default;
-  const orientation = orientationLabel(template.canvas.width, template.canvas.height);
-
-  return (
-    <Card className={cn("border-violet-500/15 bg-violet-50/35 shadow-none", className)}>
-      <CardContent className="p-5 md:p-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <div className="min-w-0 space-y-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="muted" className="text-[10px]">{template.metadata.category}</Badge>
-              <Badge variant="brand" className="text-[10px]">
-                <Lock className="size-2.5" /> {TIER_LABELS[template.metadata.required_tier]}
-              </Badge>
-              {!isFactory && <Badge variant="success" className="text-[10px]">我的模板</Badge>}
-              {!canUse && <Badge variant="danger" className="text-[10px]">缺素材位，暂不可用</Badge>}
-            </div>
-
-            <div>
-              <h1 className="text-2xl md:text-[28px] font-semibold tracking-tight leading-tight">
-                {template.name}
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground leading-relaxed max-w-2xl">
-                上传素材后，
-                <span className="font-medium text-foreground">一次生成 {variants} 条</span>
-                各不相同的{orientation.split(" · ")[0]}短视频，每条
-                <span className="font-medium text-foreground"> {sceneSeconds} 秒</span>
-                。系统自动错开画面、亮度、镜像，避免平台判重。
-              </p>
-            </div>
-
-            <div className="flex items-center gap-x-7 gap-y-2 flex-wrap">
-              <HeroFact label="成片尺寸" value={`${template.canvas.width}×${template.canvas.height}`} sub={orientation} />
-              <HeroFact label="单条时长" value={`${sceneSeconds} 秒`} />
-              <HeroFact label="一次出几条" value={`${variants} 条不同版本`} />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 lg:min-w-[12rem]">
-            {canUse ? (
-              <Button variant="gradient" size="default" asChild className="h-11 px-5 text-sm">
-                <Link href={`/mixcut/create/${template.template_id}`}>
-                  使用此模板
-                  <ChevronRight className="size-4" />
-                </Link>
-              </Button>
-            ) : (
-              <Button variant="default" size="default" disabled className="h-11 px-5" title="该模板暂无可填内容位，请先编辑模板添加">
-                使用此模板
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
-              <Link href={`/mixcut/templates/${template.template_id}/edit`}>
-                <Pencil className="size-3.5" /> 编辑模板
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function HeroFact({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold text-foreground">{value}</span>
-      {sub && <span className="text-[10px] text-muted-foreground/80">{sub}</span>}
-    </div>
-  );
-}
-
-function TemplateReviewAside({
-  template,
-  editableSlots,
-  requiredSlots,
-}: {
-  template: Template;
-  editableSlots: TemplateSlot[];
-  requiredSlots: TemplateSlot[];
-}) {
-  const optionalCount = editableSlots.length - requiredSlots.length;
-
-  return (
-    <Card className="shadow-none">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          使用前准备
-          <span className="text-xs font-normal text-muted-foreground">
-            {requiredSlots.length > 0 ? `必填 ${requiredSlots.length} 项` : "暂无必填"}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {requiredSlots.length === 0 ? (
-          <div className="flex items-start gap-2 rounded-md bg-amber-500/[0.06] border border-amber-500/30 px-3 py-2.5">
-            <AlertCircle className="size-3.5 shrink-0 mt-0.5 text-amber-600" />
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              此模板还没标注必填素材位，建议先点
-              <span className="text-foreground font-medium"> 编辑模板 </span>
-              补齐再投入使用。
-            </p>
-          </div>
-        ) : (
-          <ol className="space-y-2.5">
-            {requiredSlots.map((slot, i) => (
-              <li key={slot.slot_id} className="flex gap-3">
-                <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-violet-500/10 text-violet-700 text-[10px] font-semibold">
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium leading-snug">{slotReviewTitle(slot)}</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
-                    {slotReviewDetail(slot)} · {LAYER_LABELS[slot.layer_type]}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-
-        {optionalCount > 0 && (
-          <p className="text-[11px] text-muted-foreground pt-1 border-t border-border">
-            另有 <span className="text-foreground font-medium">{optionalCount} 项选填</span>
-            ，创建任务时可按需补充。
-          </p>
-        )}
-
-        {template.metadata.tags.length > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <Tag className="size-3" /> 适用场景
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {template.metadata.tags.map((tag) => (
-                  <Badge key={tag} variant="muted" className="text-[10px]">
-                    #{tag}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

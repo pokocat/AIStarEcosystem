@@ -150,6 +150,9 @@ export function SceneFlowEditor({
                 }}
                 className="h-8 text-sm mt-0.5"
               />
+              <p className="mt-1 text-[10px] text-muted-foreground leading-snug">
+                改时长后，本段内的素材时长会按比例同步缩放。
+              </p>
             </div>
           </div>
         )}
