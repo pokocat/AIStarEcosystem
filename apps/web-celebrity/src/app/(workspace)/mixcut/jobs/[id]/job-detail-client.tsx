@@ -526,7 +526,7 @@ export function JobDetailClient({ id }: { id: string }) {
                               const s = mockStarClips.find((x) => x.id === b.asset_id);
                               return s ? s.star_name : "已选素材";
                             })()}`}
-                            {b.source === "upload" && `自己上传:${b.file_url.split("/").pop()}`}
+                            {b.source === "upload" && `自己上传:${uploadBindingLabel(b)}`}
                             {b.source === "fixed" && "系统自动填充"}
                           </div>
                         </div>
@@ -832,6 +832,14 @@ const VariantVideoPreview = forwardRef(function VariantVideoPreview(
     </div>
   );
 });
+
+function uploadBindingLabel(binding: RenderJob["slot_bindings"][string]): string {
+  const raw =
+    ("file_url" in binding ? binding.file_url : undefined) ||
+    ("asset_id" in binding ? binding.asset_id : undefined) ||
+    "已上传素材";
+  return raw.split("/").pop() || raw;
+}
 
 // ── phash 指纹对比卡 ──────────────────────────────────────────────────────────
 // 把后端 aHash 64bit 指纹可视化成 8×8 比特格子:深 = 高于均值的画面区,浅 = 低于均值。
