@@ -38,7 +38,10 @@ export function useAdminRole(): string | null {
     if (!cachePromise) {
       cachePromise = getMe().then(
         (u) => {
-          cachedRole = u.role;
+          // server 的 AdminUserDto.from() 把 role 转成小写（"super_admin"/"operator"），
+          // 但本仓库管理端约定的 AdminRole 字面量是大写（"SUPER_ADMIN"/"OPERATOR"），
+          // 与 nav role-gate / 角色判断保持一致 → 在此处归一化为大写。
+          cachedRole = u.role ? u.role.toUpperCase() : null;
           return cachedRole;
         },
         // 未登录 / 网络挂 → null，role-gated 菜单按"未知角色"处理（隐藏）。

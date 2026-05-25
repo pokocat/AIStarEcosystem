@@ -68,6 +68,9 @@ public class AepSecurityConfig {
                         // 错误日志含 stacktrace + 用户身份等敏感信息，只给 SUPER_ADMIN。
                         // 顺序敏感：必须在通用 /api/admin/** 之前注册，否则被宽松规则吃掉。
                         .requestMatchers("/api/admin/error-logs/**").hasRole("SUPER_ADMIN")
+                        // 管理员账号 CRUD 仅 SUPER_ADMIN —— 不允许运营创建/提权他人。
+                        // 同样需要排在通用 /api/admin/** 之前。
+                        .requestMatchers("/api/admin/staff/**").hasRole("SUPER_ADMIN")
                         // Admin endpoints require platform admin staff roles
                         .requestMatchers("/api/admin/**").hasAnyRole(
                                 "SUPER_ADMIN",

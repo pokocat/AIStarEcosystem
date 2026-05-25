@@ -76,6 +76,13 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/platform/accounts", label: "账号 & 经纪公司", icon: Users,     badgeKey: "account_suspended", description: "AepUser ↔ Studio 1:1，账号/主体状态" },
       { href: "/platform/licenses", label: "秘钥批次",        icon: KeySquare, badgeKey: "license_low",       description: "批次 / 秘钥 / 核销" },
+      {
+        href: "/platform/staff",
+        label: "后台管理员",
+        icon: ShieldCheck,
+        description: "admin_users CRUD（仅超级管理员可见）",
+        roles: ["SUPER_ADMIN"],
+      },
     ],
   },
   {
