@@ -555,7 +555,7 @@ class DouyinDriver(PlatformDriver):
     """
 
     LOGIN_URL = "https://creator.douyin.com/"
-    LOGGED_IN_URL_PREFIX = "https://creator.douyin.com/"
+    LOGGED_IN_URL_PREFIX = "https://creator.douyin.com/creator-micro/home"
     PROFILE_READY_TIMEOUT_S = 10.0
     PROFILE_POLL_INTERVAL_MS = 500
 
