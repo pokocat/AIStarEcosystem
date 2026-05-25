@@ -18,6 +18,7 @@ export * as FanApi from "./fan";
 export * as FilmApi from "./film";
 export * as FinanceApi from "./finance";
 export * as LicensesApi from "./licenses";
+export * as StaffApi from "./staff";
 export * as MusicApi from "./music";
 export * as NotificationsApi from "./notifications";
 export * as PoseApi from "./pose";

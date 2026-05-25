@@ -49,7 +49,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 当前可用菜单（v0.5 sidebar enabled = true）
 
-- **平台账户**：账号 / 经纪公司、秘钥批次
+- **平台账户**：账号 / 经纪公司、秘钥批次、**后台管理员**（v0.32 新增，仅 SUPER_ADMIN）
 - **AI 艺人**：生命周期、艺人档案
 - **明星带货** ★（重点）：明星档案、模板、**模板脚本**、**授权关系**、**引擎价格**、带货项目、商品库
 - **财务**：结算中心、**充值套餐**、异常风控
@@ -84,6 +84,12 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.32 / 2026-05-25**：
+  - `/platform/licenses`「新建批次」按钮接入弹窗（名称 / 发证方 / 等级 / 数量 / 有效期）；批次行追加「铸码」按钮 → `/api/admin/license-batches/{id}/mint-keys` 一次性返回明文激活码 + 复制/保存弹窗。
+  - 新页 `/platform/staff` — admin_users CRUD（列表 + 搜索 + 角色筛选 + 新建 + 编辑 + 重置密码 + 停用 + 删除）。
+  - server `/api/admin/staff/**` 收紧为 `hasRole("SUPER_ADMIN")`（之前与其他 admin 端点同样 hasAnyRole）；sidebar nav 同步 `roles: ["SUPER_ADMIN"]` 门控。
+  - 顺手修复 `useAdminRole` 角色大小写归一化（server `AdminUserDto.role` 是小写 `super_admin`，admin 前端约定 `SUPER_ADMIN`；之前 role-gated 菜单对真实超管也是隐藏的，所以 v0.30 的 error-logs gate 实际只在 USE_MOCK=1 时生效）。
+  - server `DataInitializer.seedSampleKeys` 在 dev 首启时把明文激活码用 WARN level 打印到日志（含「⚠️ DEV-SEED LICENSE CODES」横幅 + 批次名 + 单包点数）；不再「有码但拿不到明文」。
 - **v0.31 / 2026-05-24**：商品库 CRUD + 抖音链接建档 + 刷新图片全部收归 admin（`/celebrity/products`）。
   顶部新增「从抖音链接建档」/「新建商品」；行内新增「编辑」/「刷新图片」；server 端
   `/api/products/**` 收紧为「已登录用户只读」，写动作走 `/api/admin/products/**`

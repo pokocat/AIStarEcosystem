@@ -53,12 +53,47 @@ export async function listKeys(
   });
 }
 
-export async function createBatch(data: Partial<LicenseBatch>): Promise<LicenseBatch> {
+export interface CreateBatchInput {
+  /** 批次名（必填） */
+  name: string;
+  /** 发证方 tenantId（必填） */
+  issuerTenantId: string;
+  /** 单包初始点数（兑换后一次性入账） */
+  initialCreditGrant: number;
+  /** 一次铸多少把 key（与 batch 同建；之后还能通过 mintKeys 追加） */
+  totalCount: number;
+  /** 批次生效起点（ISO 8601；可选） */
+  validFrom?: string;
+  /** 批次截止时间（ISO 8601；可选） */
+  validTo?: string;
+}
+
+export async function createBatch(data: CreateBatchInput): Promise<LicenseBatch> {
   const row = await apiFetch<Omit<LicenseBatch, "tier">>("/admin/license-batches", {
     method: "POST",
     body: data,
   });
   return normalizeBatch(row);
+}
+
+/**
+ * v0.31+: 在已有 batch 下追加新铸 N 把 key。**响应一次性返回 raw codes**
+ * （server 落库只存 sha256，丢失后不可恢复）。调用方负责安全分发。
+ */
+export interface MintKeysResult {
+  batchId: string;
+  count: number;
+  rawCodes: string[];
+}
+
+export async function mintKeys(batchId: string, count: number): Promise<MintKeysResult> {
+  return apiFetch<MintKeysResult>(
+    `/admin/license-batches/${encodeURIComponent(batchId)}/mint-keys`,
+    {
+      method: "POST",
+      query: { count },
+    },
+  );
 }
 
 export async function revokeKey(id: string): Promise<void> {

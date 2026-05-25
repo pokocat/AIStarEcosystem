@@ -2,6 +2,8 @@ package com.aistareco.aep.config;
 
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -21,6 +23,8 @@ import java.util.UUID;
 @Component
 @Order(1)
 public class DataInitializer implements CommandLineRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
 
     private final AdminUserRepository adminUserRepo;
     private final AepUserRepository userRepo;
@@ -275,7 +279,8 @@ public class DataInitializer implements CommandLineRunner {
                 .createdAt(now.minus(30, ChronoUnit.DAYS))
                 .build();
         licenseBatchRepo.save(agencyBatch);
-        seedSampleKeys(agencyBatch.getId(), 5, now.minus(30, ChronoUnit.DAYS));
+        List<String> agencyRawCodes = seedSampleKeys(agencyBatch.getId(), 5, now.minus(30, ChronoUnit.DAYS));
+        logSeedRawCodes(agencyBatch, agencyRawCodes);
 
         LicenseBatch platformBatch = LicenseBatch.builder()
                 .id(UUID.randomUUID().toString())
@@ -291,7 +296,8 @@ public class DataInitializer implements CommandLineRunner {
                 .createdAt(now)
                 .build();
         licenseBatchRepo.save(platformBatch);
-        seedSampleKeys(platformBatch.getId(), 5, now);
+        List<String> platformRawCodes = seedSampleKeys(platformBatch.getId(), 5, now);
+        logSeedRawCodes(platformBatch, platformRawCodes);
     }
 
     private void seedMembershipAndWallet(String userId, String tenantId, long initialCredit, Instant when) {
@@ -331,7 +337,8 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private void seedSampleKeys(String batchId, int count, Instant when) {
+    private List<String> seedSampleKeys(String batchId, int count, Instant when) {
+        List<String> raws = new java.util.ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             String raw = UUID.randomUUID().toString().replace("-", "").toUpperCase();
             licenseKeyRepo.save(LicenseKey.builder()
@@ -342,7 +349,28 @@ public class DataInitializer implements CommandLineRunner {
                     .status(LicenseKey.LicenseKeyStatus.CREATED)
                     .createdAt(when)
                     .build());
+            raws.add(raw);
         }
+        return raws;
+    }
+
+    /**
+     * v0.32+: dev seed 时把明文激活码打到日志。DB 只存 sha256，所以 seed 之后再
+     * 想拿到明文必须重置 H2 → 重新种码；这里在 seed 时机一次性吐出来。
+     *
+     * 用 WARN level + 大横幅显式提示「DEV-SEED CODES」—— 如果生产环境意外触发
+     * (admin_users 表空 → 误以为是首启) 也能从日志里立刻发现并应急处置。
+     */
+    private void logSeedRawCodes(LicenseBatch batch, List<String> rawCodes) {
+        log.warn("================================================================");
+        log.warn("⚠️  DEV-SEED LICENSE CODES — DO NOT USE IN PRODUCTION");
+        log.warn("    批次：{} ({})", batch.getName(), batch.getBatchNo());
+        log.warn("    单包点数：{} credits  /  发证方 tenantId：{}",
+                batch.getInitialCreditGrant(), batch.getIssuerTenantId());
+        for (int i = 0; i < rawCodes.size(); i++) {
+            log.warn("    [{}/{}]  {}", i + 1, rawCodes.size(), rawCodes.get(i));
+        }
+        log.warn("================================================================");
     }
 
     /** Seed DigitalIp rows for a studio (both ownerUserId and studioId pointed at the studio). */

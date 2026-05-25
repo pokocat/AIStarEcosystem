@@ -981,6 +981,52 @@ web-celebrity:
 
 切换：[`apps/admin/src/constants/nav.ts`](apps/admin/src/constants/nav.ts) 改 `enabled` 字段。
 
+### v0.32（2026-05-25）— admin 后台「秘钥铸码 UI」+「管理员账号 CRUD UI」补全 + DataInitializer 明文激活码日志
+
+之前 server 端 `/api/admin/license-batches/{id}/mint-keys`（v0.31 落地）和 `/api/admin/staff/**`
+endpoints 都可用，但前端没接入：批次新建按钮无 onClick；铸码只能 curl；管理员账号管理无入口。
+DataInitializer.seedSampleKeys 在 dev 首启时生成 10 把测试激活码但未打印明文，DB 只存 sha256
+→ 想拿明文必须重置 H2 重新种码。
+
+```
+server : DataInitializer.seedSampleKeys 改返回 List<String> rawCodes（之前 void）；
+       :   两处调用点收集后调 logSeedRawCodes(batch, rawCodes) 用 WARN level 横幅打印
+       :   ("⚠️  DEV-SEED LICENSE CODES — DO NOT USE IN PRODUCTION" + 批次名 + 单包点数 + 每码)
+       : AepSecurityConfig 新增 .requestMatchers("/api/admin/staff/**").hasRole("SUPER_ADMIN")
+       :   排在通用 /api/admin/** hasAnyRole 之前；之前 OPERATOR 也能 CRUD admin 账号（漏洞）
+
+admin  : api/licenses.ts +mintKeys(batchId, count): MintKeysResult；createBatch 入参收紧为
+       :   CreateBatchInput record（name / issuerTenantId / initialCreditGrant / totalCount /
+       :   validFrom? / validTo?）
+       : app/platform/licenses/page.tsx 新建批次按钮接入 CreateBatchDialog（4 字段 + 等级 →
+       :   单包点数派生）；批次行追加「铸码」按钮 → MintKeysDialog → 提交后弹 RawCodesDialog
+       :   一次性展示明文 + 「复制全部」按钮（用户点「我已保存」关闭后不可恢复）
+       :   撤回按钮的 onConfirm 真正接通 revokeKey（之前只弹框无落库）
+       : api/staff.ts 新文件 — listStaff / createStaff / updateStaff / deleteStaff；
+       :   API 边界把 server 返回的小写 role ("super_admin"/"operator") 归一化为前端约定
+       :   大写 ("SUPER_ADMIN"/"OPERATOR")
+       : api/index.ts +export * as StaffApi
+       : mocks/staff.ts 新文件 — 2 条样本（与 DataInitializer 种子账号对齐）
+       : app/platform/staff/page.tsx 新页 — admin_users 列表（搜索 + 角色筛选）+ 新建 +
+       :   编辑（含重置密码 / 角色切换 / 状态切换）+ 删除（ActionDialog requireReason）
+       : constants/nav.ts 「平台账户」组追加「后台管理员」入口（roles: ["SUPER_ADMIN"]）
+       : lib/useAdminRole.ts 顺手修复 — cachedRole = u.role.toUpperCase()（之前 AdminUserDto
+       :   返回小写 / 前端约定大写 → role-gated 菜单对真实超管也是隐藏的；v0.30 的
+       :   /platform/error-logs gate 之前只在 USE_MOCK=1 时生效）
+
+apps/admin/README.md  : 版本日志 + sidebar 段同步
+```
+
+**注意事项**：
+
+- 「明文一次性返回」是核心安全约定：server 只存 sha256_hex；调用方拿到 raw 后负责安全分发（线下 / IM / 邮件 / 工单等）。`RawCodesDialog` 关闭即丢；用户必须主动「复制全部」才能保存。
+- `CreateBatchDialog` 提交时**不**自动调 mint-keys —— 批次本身创建时 server 已经预铸 `totalCount` 把 key（沿用 LicenseService.createBatch 既有行为）但这批 key 的明文没暴露。如果新建后想拿明文，要单独点行内「铸码」按钮再多铸 N 把（这是 v0.31 mint-keys endpoint 的设计意图）。
+- 单批一次最多 100 把：server `mintKeysAndReturnRawCodes` 已有 1..100 校验；前端 dialog 也加了同样上界，避免请求被 400。
+- `/api/admin/staff/**` 安全收紧是破坏性变更：之前 OPERATOR 能调（hasAnyRole），现在只 SUPER_ADMIN（hasRole）。线上没有外部消费方，干净切换。
+- DataInitializer 用 WARN level + 横幅故意「在生产意外触发时也极其显眼」：admin_users 表为空 → 误以为是首启 → 跑 seed → 日志里 5 行 WARN「DEV-SEED」立刻让运维发现。
+- AdminUserDto.from() 把 role / status enum 转小写 —— 这是当前仓库的 wire 约定（AGENTS.md §4.1「enum 出 wire 时全小写」）。admin 前端约定的 AdminRole = "SUPER_ADMIN" | "OPERATOR" 是历史遗留，v0.32 不动 TS 类型，而是在 API 边界 normalize（`useAdminRole` + `staff.ts.normalize()`）。后续可以 v0.33+ 把 admin TS 类型也改成小写跟其它 enum 一致。
+- 当前 admin 自己也能删/降级**自己**的账号（server 无 self-protect 校验）。前端 `handleEdit` 用了 loose `isSelf` 判断禁用删除按钮，但 username == role 这种 hack 判断仅当 username 字段碰巧等于角色名时触发 —— 等同于「无防护」。真正的 self-protect 在 server `AdminStaffController` 里加 `if (id.equals(principal.getName())) throw ...` 才合适，v0.33+ 候选。
+
 ### v0.31（2026-05-24）— celebrity 账户体系收口：商品库公共池 / 内嵌运营角色 / 手机号 SMS 登录
 
 一次性把 celebrity 子产品的「数据隔离 + 登录注册 + 运营管理」三件事补齐。背景：审计
