@@ -1127,23 +1127,56 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
         like "接收短信验证码" or "发送短信验证". That is not the code input panel
         yet; clicking the SMS row lands on the panel handled by the existing
         selectors below.
+
+        Also handles the ato_web MFA template which may use different button
+        text variants (e.g. "短信验证码验证"). Uses exact=False substring match
+        plus a JS fallback for any SMS-related clickable row.
         """
         try:
-            title = page.get_by_text("身份验证", exact=True).first
+            # exact=False: handles "身份验证" embedded in longer titles
+            title = page.get_by_text("身份验证", exact=False).first
             if not await title.count() or not await title.is_visible(timeout=500):
                 return False
         except Exception:  # noqa: BLE001
             return False
 
-        for label in ("接收短信验证码", "发送短信验证", "短信验证码"):
+        # Try known label substrings (exact=False catches "短信验证码验证" etc.)
+        for label in ("接收短信验证码", "发送短信验证", "短信验证码", "短信验证", "手机短信"):
             try:
-                target = page.get_by_text(label, exact=True).first
+                target = page.get_by_text(label, exact=False).first
                 if await target.count() and await target.is_visible(timeout=500):
                     await target.click(timeout=1_500)
                     await page.wait_for_timeout(600)
                     return True
             except Exception:  # noqa: BLE001
                 continue
+
+        # JS fallback: click any visible clickable element containing "短信"
+        try:
+            clicked = await page.evaluate("""() => {
+                const SMS_RE = /短信|sms/i;
+                const candidates = document.querySelectorAll(
+                    '[role="button"],[role="option"],li,a,button,div[class*="item"],div[class*="option"]'
+                );
+                for (const el of candidates) {
+                    const style = window.getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 40 || r.height < 20) continue;
+                    if (SMS_RE.test(el.textContent || '')) {
+                        el.click();
+                        return true;
+                    }
+                }
+                return false;
+            }""")
+            if clicked:
+                await page.wait_for_timeout(600)
+                log.info("[interaction douyin] _advance_choice_panel: JS fallback clicked SMS row")
+                return True
+        except Exception:  # noqa: BLE001
+            log.exception("[interaction douyin] _advance_choice_panel JS fallback failed")
+
         return False
 
     async def _is_modal_visible(self, page: Any) -> bool:
