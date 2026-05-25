@@ -2217,6 +2217,29 @@ class LoginPool:
             browser = await playwright.chromium.launch(**chromium_launch_kwargs(headless=headless))
             context = await browser.new_context(viewport={"width": 1280, "height": 800})
             page = await context.new_page()
+
+            # 监听 check_qrconnect 响应，把 QR 扫码状态变化记入日志
+            _last_qr_status: dict[str, str | None] = {"v": None}
+
+            async def _on_qr_response(resp):
+                if "check_qrconnect" not in resp.url:
+                    return
+                try:
+                    import json as _json
+                    body = await resp.text()
+                    data = _json.loads(body).get("data", {})
+                    status = data.get("status") or data.get("account_flow") or "unknown"
+                    if status != _last_qr_status["v"]:
+                        log.info(
+                            "login_pool: [QR-listener] ticket=%s status=%r → %r data_keys=%s",
+                            ticket, _last_qr_status["v"], status, list(data.keys()),
+                        )
+                        _last_qr_status["v"] = status
+                except Exception:  # noqa: BLE001
+                    pass
+
+            page.on("response", _on_qr_response)
+
             await page.goto(
                 driver_cls.LOGIN_URL,
                 wait_until="domcontentloaded",
