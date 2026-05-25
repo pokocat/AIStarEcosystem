@@ -18,6 +18,7 @@
 .impeccable/live/
 .impeccable/critique/*.md
 !.impeccable/critique/ignore.md
+figma/
 *.ttf
 *.otf
 *.woff
