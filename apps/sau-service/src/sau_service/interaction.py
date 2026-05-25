@@ -1131,32 +1131,55 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
         Also handles the ato_web MFA template which may use different button
         text variants (e.g. "短信验证码验证"). Uses exact=False substring match
         plus a JS fallback for any SMS-related clickable row.
+
+        Searches both main frame and child frames (passport iframes).
         """
+        # Check both the main page and all frames
+        scopes = self._scopes_for_page(page)
+        for scope in scopes:
+            result = await self._try_advance_choice_in_scope(scope)
+            if result:
+                return True
+        return False
+
+    async def _try_advance_choice_in_scope(self, scope: Any) -> bool:
+        """Try to detect and click SMS verification option in given scope."""
         try:
-            # exact=False: handles "身份验证" embedded in longer titles
-            title = page.get_by_text("身份验证", exact=False).first
-            if not await title.count() or not await title.is_visible(timeout=500):
+            title = scope.get_by_text("身份验证", exact=False).first
+            title_count = await title.count()
+            if not title_count:
+                return False
+            title_visible = await title.is_visible(timeout=500)
+            if not title_visible:
+                log.info("[interaction douyin] _advance_choice_panel: '身份验证' found (count=%d) but not visible in scope=%s", title_count, self._scope_label(scope))
                 return False
         except Exception:  # noqa: BLE001
             return False
 
+        log.info("[interaction douyin] _advance_choice_panel: 身份验证 detected in scope=%s", self._scope_label(scope))
+
         # Try known label substrings (exact=False catches "短信验证码验证" etc.)
         for label in ("接收短信验证码", "发送短信验证", "短信验证码", "短信验证", "手机短信"):
             try:
-                target = page.get_by_text(label, exact=False).first
+                target = scope.get_by_text(label, exact=False).first
                 if await target.count() and await target.is_visible(timeout=500):
                     await target.click(timeout=1_500)
-                    await page.wait_for_timeout(600)
+                    try:
+                        await scope.wait_for_timeout(600)
+                    except (AttributeError, TypeError):
+                        import asyncio
+                        await asyncio.sleep(0.6)
+                    log.info("[interaction douyin] _advance_choice_panel: clicked label=%r", label)
                     return True
             except Exception:  # noqa: BLE001
                 continue
 
         # JS fallback: click any visible clickable element containing "短信"
         try:
-            clicked = await page.evaluate("""() => {
+            clicked = await scope.evaluate("""() => {
                 const SMS_RE = /短信|sms/i;
                 const candidates = document.querySelectorAll(
-                    '[role="button"],[role="option"],li,a,button,div[class*="item"],div[class*="option"]'
+                    '[role="button"],[role="option"],li,a,button,div[class*="item"],div[class*="option"],div[class*="row"],div[class*="card"],div[class*="list"]'
                 );
                 for (const el of candidates) {
                     const style = window.getComputedStyle(el);
@@ -1171,7 +1194,11 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
                 return false;
             }""")
             if clicked:
-                await page.wait_for_timeout(600)
+                try:
+                    await scope.wait_for_timeout(600)
+                except (AttributeError, TypeError):
+                    import asyncio
+                    await asyncio.sleep(0.6)
                 log.info("[interaction douyin] _advance_choice_panel: JS fallback clicked SMS row")
                 return True
         except Exception:  # noqa: BLE001
@@ -1206,11 +1233,20 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
     async def detect(self, page: Any) -> dict[str, Any] | None:
         await self._capture_sms_dom_if_enabled(page)
         if not await self._is_modal_visible(page):
-            await self._advance_choice_panel(page)
+            advanced = await self._advance_choice_panel(page)
+            if advanced:
+                # SMS 输入框渲染需要时间，多等几轮
+                for _ in range(10):
+                    await page.wait_for_timeout(500)
+                    if await self._is_modal_visible(page):
+                        break
+                    if await self._detect_generic_sms(page):
+                        break
         specific_visible = await self._is_modal_visible(page)
         if not specific_visible:
             detected = await self._detect_generic_sms_anywhere(page)
             if not detected:
+                log.debug("[interaction douyin] detect: no SMS panel found (modal_visible=False, generic=None, url=%s)", getattr(page, "url", None))
                 return None
             can_resend_at = None
             request_text = str(detected.get("request_text") or "")
