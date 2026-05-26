@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { useSidebarBadges } from "@/lib/useSidebarBadges";
@@ -10,8 +11,10 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const badges = useSidebarBadges();
+  const isLoginPage = pathname === "/login" || pathname === "/admin/login";
+  const badges = useSidebarBadges(!isLoginPage);
   const unread = Object.values(badges).reduce<number>((s, v) => s + (v ?? 0), 0);
 
   React.useEffect(() => {
@@ -23,7 +26,9 @@ export function AppShell({ children }: AppShellProps) {
     };
   }, [mobileOpen]);
 
-  return (
+  return isLoginPage ? (
+    <>{children}</>
+  ) : (
     <div className="flex min-h-screen bg-background">
       <Sidebar
         badges={badges}

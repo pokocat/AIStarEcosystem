@@ -9,9 +9,12 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -136,6 +139,23 @@ public class DouyinHtmlScrapeHandler implements ProductLinkHandler {
                 }
             }
 
+            boolean promotionDetailHit = false;
+            if (extractPromotionId(url).isPresent()) {
+                Optional<ProductLinkInfoDto> detailInfo = fetchPromotionDetail(url);
+                if (detailInfo.isPresent()) {
+                    ProductLinkInfoDto detail = detailInfo.get();
+                    if ((title == null || title.isBlank()) && detail.title() != null) title = detail.title();
+                    if ((inferred == null || inferred.isBlank()) && detail.inferredSellingPoints() != null) {
+                        inferred = detail.inferredSellingPoints();
+                    }
+                    if (minPrice == null) minPrice = detail.minPriceCents();
+                    if (maxPrice == null) maxPrice = detail.maxPriceCents();
+                    if (sales == null) sales = detail.sales();
+                    imageUrls.addAll(detail.imageUrls());
+                    promotionDetailHit = true;
+                }
+            }
+
             // 去重保留前 6 张
             List<String> trimmedImages = new ArrayList<>(new LinkedHashSet<>(imageUrls));
             if (trimmedImages.size() > 6) trimmedImages = trimmedImages.subList(0, 6);
@@ -161,12 +181,106 @@ public class DouyinHtmlScrapeHandler implements ProductLinkHandler {
                     maxPrice,
                     sales,
                     inferred,
-                    "douyin-html-scrape"
+                    promotionDetailHit ? "douyin-promotion-detail" : "douyin-html-scrape"
             ));
         } catch (Exception e) {
             log.warn("[product-link] douyin scrape failed url={} err={}", url, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    private Optional<ProductLinkInfoDto> fetchPromotionDetail(URI originalUrl) {
+        Optional<String> promotionId = extractPromotionId(originalUrl);
+        if (promotionId.isEmpty()) return Optional.empty();
+
+        try {
+            String encodedId = URLEncoder.encode(promotionId.get(), StandardCharsets.UTF_8);
+            URI apiUrl = URI.create("https://haohuo.jinritemai.com/aweme/v2/shop/promotion/pack/detail/"
+                    + "?is_h5=1&promotion_id=" + encodedId);
+            HttpRequest req = HttpRequest.newBuilder(apiUrl)
+                    .timeout(Duration.ofSeconds(8))
+                    .GET()
+                    .header("User-Agent", UA)
+                    .header("Accept", "application/json,text/plain,*/*")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                    .header("Referer", originalUrl.toString())
+                    .build();
+            HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() < 200 || res.statusCode() >= 300) {
+                log.warn("[product-link] douyin promotion detail non-2xx status={} url={}", res.statusCode(), apiUrl);
+                return Optional.empty();
+            }
+            return parsePromotionDetailResponse(res.body());
+        } catch (Exception e) {
+            log.warn("[product-link] douyin promotion detail failed url={} err={}", originalUrl, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    static Optional<ProductLinkInfoDto> parsePromotionDetailResponse(String body) {
+        if (body == null || body.isBlank()) return Optional.empty();
+
+        try {
+            ObjectMapper localMapper = new ObjectMapper();
+            JsonNode root = localMapper.readTree(body);
+            JsonNode statusCode = root.get("status_code");
+            if (statusCode != null && statusCode.isNumber() && statusCode.asInt() != 0) {
+                return Optional.empty();
+            }
+
+            JsonNode detailInfo = root.path("detail_info");
+            JsonNode scanRoot = detailInfo.isMissingNode() || detailInfo.isNull() ? root : detailInfo;
+            List<String> imageUrls = new ArrayList<>(new LinkedHashSet<>(collectImageUrls(scanRoot)));
+            if (imageUrls.size() > 6) imageUrls = imageUrls.subList(0, 6);
+
+            String title = findFirstText(scanRoot, Set.of("title", "name", "productName", "itemName"));
+            Integer minPrice = findFirstInt(scanRoot, Set.of("min_price", "minPrice", "price", "lowPrice"));
+            Integer maxPrice = findFirstInt(scanRoot, Set.of("max_price", "maxPrice", "highPrice"));
+            Integer sales = findFirstInt(scanRoot, Set.of("sales", "sold", "soldCount"));
+            boolean hasContent = (title != null && !title.isBlank())
+                    || !imageUrls.isEmpty()
+                    || minPrice != null
+                    || sales != null;
+            if (!hasContent) return Optional.empty();
+
+            return Optional.of(new ProductLinkInfoDto(
+                    title,
+                    imageUrls,
+                    minPrice,
+                    maxPrice,
+                    sales,
+                    composeSellingPoints(minPrice, maxPrice, sales),
+                    "douyin-promotion-detail"
+            ));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    static Optional<String> extractPromotionId(URI url) {
+        if (url == null) return Optional.empty();
+        String rawQuery = url.getRawQuery();
+        if (rawQuery != null) {
+            for (String part : rawQuery.split("&")) {
+                int idx = part.indexOf('=');
+                if (idx <= 0) continue;
+                String key = decodeQueryComponent(part.substring(0, idx));
+                if (!"id".equals(key) && !"promotion_id".equals(key)) continue;
+                String value = decodeQueryComponent(part.substring(idx + 1));
+                if (value != null && value.matches("\\d{6,}")) return Optional.of(value);
+            }
+        }
+
+        String path = url.getPath();
+        if (path != null) {
+            Matcher matcher = Pattern.compile("(\\d{6,})").matcher(path);
+            if (matcher.find()) return Optional.of(matcher.group(1));
+        }
+        return Optional.empty();
+    }
+
+    private static String decodeQueryComponent(String value) {
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
     }
 
     /** 递归在 JsonNode 树中找第一个 key 命中的文本字段（不区分大小写）。 */

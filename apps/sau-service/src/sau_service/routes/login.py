@@ -49,6 +49,12 @@ class LoginInteractionRequest(BaseModel):
     code: str = Field(min_length=1, max_length=32)
 
 
+class LoginDebugClickRequest(BaseModel):
+    selector: str = Field(min_length=1, max_length=300)
+    hasText: str | None = Field(default=None, max_length=120)
+    nth: int = Field(default=0, ge=0, le=20)
+
+
 @router.post("/start", response_model=LoginStartResponse)
 async def login_start(req: LoginStartRequest, request: Request) -> LoginStartResponse:
     pool: LoginPool = request.app.state.login_pool
@@ -146,3 +152,15 @@ async def login_cancel(ticket: str, request: Request) -> Response:
     pool: LoginPool = request.app.state.login_pool
     await pool.drop(ticket)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/debug-click")
+async def login_debug_click(ticket: str, payload: LoginDebugClickRequest, request: Request) -> dict:
+    """Internal-only live DOM click helper for platform selector debugging."""
+    pool: LoginPool = request.app.state.login_pool
+    return await pool.debug_click(
+        ticket,
+        selector=payload.selector,
+        has_text=payload.hasText,
+        nth=payload.nth,
+    )

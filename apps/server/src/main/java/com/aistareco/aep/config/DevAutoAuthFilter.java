@@ -1,7 +1,9 @@
 package com.aistareco.aep.config;
 
 import com.aistareco.aep.model.AepUser;
+import com.aistareco.aep.model.AdminUser;
 import com.aistareco.aep.repository.AepUserRepository;
+import com.aistareco.aep.repository.AdminUserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,9 +38,11 @@ import java.util.List;
 public class DevAutoAuthFilter extends OncePerRequestFilter {
 
     private final AepUserRepository userRepo;
+    private final AdminUserRepository adminUserRepo;
 
-    public DevAutoAuthFilter(AepUserRepository userRepo) {
+    public DevAutoAuthFilter(AepUserRepository userRepo, AdminUserRepository adminUserRepo) {
         this.userRepo = userRepo;
+        this.adminUserRepo = adminUserRepo;
     }
 
     /**
@@ -68,13 +72,15 @@ public class DevAutoAuthFilter extends OncePerRequestFilter {
     /**
      * 哪些路径需要在 dev 环境下"自动登录"：
      * - 默认是所有 /api/* 接口（因为绝大多数 controller 会注入 Principal）
-     * - 明确公开的端点排除：/api/auth/**、/api/admin/auth/**、/api/config/**
+     * - 明确公开的端点排除：/api/auth/**、/api/admin/auth/login、/api/config/**
+     * - /api/admin/auth/me 保留自动登录，否则 admin sidebar 拿不到 SUPER_ADMIN 角色，
+     *   role-gated 菜单（错误日志 / 后台管理员）会在 dev 真后端模式下消失。
      * - 非 /api 前缀（如 /h2-console）不管
      */
     private static boolean shouldAutoAuth(String path) {
         if (path == null || !path.startsWith("/api/")) return false;
         if (path.startsWith("/api/auth/")) return false;
-        if (path.startsWith("/api/admin/auth/")) return false;
+        if (path.startsWith("/api/admin/auth/login")) return false;
         if (path.startsWith("/api/config/")) return false;
         return true;
     }
@@ -82,7 +88,7 @@ public class DevAutoAuthFilter extends OncePerRequestFilter {
     private void seedAuth(String path) {
         String role = path.startsWith("/api/admin/") ? "SUPER_ADMIN" : "USER";
         String userId = path.startsWith("/api/admin/")
-                ? "dev-admin"
+                ? pickSeedAdminId()
                 : pickSeedUserId();
 
         var auth = new UsernamePasswordAuthenticationToken(
@@ -100,6 +106,17 @@ public class DevAutoAuthFilter extends OncePerRequestFilter {
                         .findFirst()
                         .map(AepUser::getId)
                         .orElse("dev-anonymous"));
+    }
+
+    private String pickSeedAdminId() {
+        return adminUserRepo.findAll().stream()
+                .filter(u -> u.getRole() == AdminUser.AdminRole.SUPER_ADMIN)
+                .findFirst()
+                .map(AdminUser::getId)
+                .orElseGet(() -> adminUserRepo.findAll().stream()
+                        .findFirst()
+                        .map(AdminUser::getId)
+                        .orElse("dev-admin"));
     }
 
     /**

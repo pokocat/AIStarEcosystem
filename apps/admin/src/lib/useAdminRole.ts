@@ -45,7 +45,11 @@ export function useAdminRole(): string | null {
           return cachedRole;
         },
         // 未登录 / 网络挂 → null，role-gated 菜单按"未知角色"处理（隐藏）。
-        () => null,
+        () => {
+          cachedRole = null;
+          cachePromise = null;
+          return null;
+        },
       );
     }
     cachePromise.then((r) => {

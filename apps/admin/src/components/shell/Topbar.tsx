@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, HelpCircle, Menu, Search } from "lucide-react";
+import { Bell, HelpCircle, LogOut, Menu, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { setAuthToken } from "@/api/_client";
 
 interface TopbarProps {
   operator?: { name: string; role: string; initials: string };
@@ -16,6 +17,11 @@ export function Topbar({
   unread = 0,
   onMenuClick,
 }: TopbarProps) {
+  const handleLogout = () => {
+    setAuthToken(null);
+    window.location.assign("/admin/login");
+  };
+
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/90 px-4 md:px-5 backdrop-blur">
       <Button
@@ -60,6 +66,10 @@ export function Topbar({
           <span className="text-xs text-muted-foreground">{operator.role}</span>
         </div>
       </div>
+
+      <Button variant="ghost" size="icon" aria-label="退出登录" onClick={handleLogout}>
+        <LogOut className="h-4 w-4 text-muted-foreground" />
+      </Button>
     </header>
   );
 }

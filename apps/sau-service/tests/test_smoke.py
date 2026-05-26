@@ -869,6 +869,73 @@ def test_douyin_submit_code_tries_child_frames(monkeypatch) -> None:
     assert calls == [("page", "123456", "page"), ("frame", "123456", "page")]
 
 
+def test_douyin_choice_panel_clicks_sms_row_before_text(monkeypatch) -> None:
+    from sau_service.interaction import _DouyinSmsDriver
+
+    monkeypatch.delenv("SAU_DOUYIN_AUTO_ADVANCE_CHOICE", raising=False)
+
+    class _Locator:
+        def __init__(self, scope, kind: str, selector: str = "", text: str = "") -> None:
+            self.scope = scope
+            self.kind = kind
+            self.selector = selector
+            self.text = text
+
+        @property
+        def first(self):
+            return self
+
+        def filter(self, *, has_text: str):
+            return _Locator(self.scope, self.kind, self.selector, has_text)
+
+        async def count(self) -> int:
+            if self.kind == "title":
+                return 1
+            if self.kind == "row":
+                return int(
+                    "uc_verification_component_list_item" in self.selector
+                    and self.text == "接收短信验证码"
+                )
+            if self.kind == "text":
+                return int(self.text in {"接收短信验证码", "身份验证"})
+            return 0
+
+        async def is_visible(self, timeout: int = 0) -> bool:
+            return await self.count() > 0
+
+        async def click(self, timeout: int = 0) -> None:
+            self.scope.clicked.append((self.kind, self.selector, self.text))
+
+    class _Scope:
+        frames = []
+
+        def __init__(self) -> None:
+            self.clicked: list[tuple[str, str, str]] = []
+
+        def get_by_text(self, text: str, exact: bool = False):
+            if text == "身份验证":
+                return _Locator(self, "title", text=text)
+            return _Locator(self, "text", text=text)
+
+        def locator(self, selector: str):
+            return _Locator(self, "row", selector=selector)
+
+        async def wait_for_timeout(self, ms: int) -> None:
+            return None
+
+    scope = _Scope()
+    driver = _DouyinSmsDriver()
+
+    assert asyncio.run(driver._try_advance_choice_in_scope(scope)) is True
+    assert scope.clicked == [
+        (
+            "row",
+            "#uc-second-verify div[class*='uc_verification_component_list_item']",
+            "接收短信验证码",
+        ),
+    ]
+
+
 def test_login_poll_reports_sms_before_logged_in_success(monkeypatch) -> None:
     """Binding poll must not treat creator-center URL as success while SMS is visible."""
     from sau_service import interaction

@@ -31,10 +31,15 @@ import { listPlatforms } from "@/api/distribution";
 import { listTransactions } from "@/api/finance";
 import { listEvents } from "@/api/community";
 
-export function useSidebarBadges(): SidebarBadges {
+export function useSidebarBadges(enabled = true): SidebarBadges {
   const [badges, setBadges] = React.useState<SidebarBadges>({});
 
   React.useEffect(() => {
+    if (!enabled) {
+      setBadges({});
+      return;
+    }
+
     let alive = true;
 
     (async () => {
@@ -76,7 +81,7 @@ export function useSidebarBadges(): SidebarBadges {
     })();
 
     return () => { alive = false; };
-  }, []);
+  }, [enabled]);
 
   return badges;
 }

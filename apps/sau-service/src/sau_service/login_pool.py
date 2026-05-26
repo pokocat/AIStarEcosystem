@@ -2004,6 +2004,9 @@ class LoginSession:
     # real-mode: current platform interaction needed to finish login
     # (SMS verification for v1). Shape mirrors frontend InteractionRequired.
     interaction_required: dict[str, Any] | None = None
+    # Serialize Playwright access for one ticket. Frontend refreshes/retries can
+    # otherwise issue concurrent polls that race on the same Page.
+    op_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     error_code: str | None = None
     error_message: str | None = None
     diagnostic_id: str | None = None
@@ -2047,9 +2050,16 @@ class LoginPool:
         if time.time() > session.expires_at:
             await self.drop(ticket)
             return {"status": "expired"}
-        if mock:
-            return await self._poll_mock(session)
-        return await self._poll_real(session)
+        async with session.op_lock:
+            async with self._lock:
+                if self._sessions.get(ticket) is not session:
+                    return {"status": "expired"}
+            if time.time() > session.expires_at:
+                await self.drop(ticket)
+                return {"status": "expired"}
+            if mock:
+                return await self._poll_mock(session)
+            return await self._poll_real(session)
 
     async def submit_interaction(self, ticket: str, response: dict[str, Any], *, mock: bool) -> str:
         """Submit a user answer for a login-time interaction.
@@ -2126,6 +2136,115 @@ class LoginPool:
         async with self._lock:
             self._sweep_locked()
             return self._sessions.get(ticket)
+
+    async def debug_click(
+        self,
+        ticket: str,
+        *,
+        selector: str,
+        has_text: str | None = None,
+        nth: int = 0,
+    ) -> dict[str, Any]:
+        """Internal operator helper: click a live login page element.
+
+        This is intentionally not arbitrary JS eval. It exists so production
+        DOM fixes can be verified against the current platform page before the
+        selector is folded into a driver.
+        """
+        async with self._lock:
+            self._sweep_locked()
+            session = self._sessions.get(ticket)
+        if session is None:
+            return {"ok": False, "error": "not_found"}
+        async with session.op_lock:
+            async with self._lock:
+                if self._sessions.get(ticket) is not session:
+                    return {"ok": False, "error": "not_found"}
+            page = session.handles.get("page")
+            if page is None:
+                return {"ok": False, "error": "page_missing"}
+            before = await self._debug_page_summary(page)
+            try:
+                matches = page.locator(selector)
+                if has_text:
+                    matches = matches.filter(has_text=has_text)
+                total_count = await matches.count()
+                locator = matches.nth(max(0, nth))
+                count = await locator.count()
+            except Exception as exc:  # noqa: BLE001
+                return {
+                    "ok": False,
+                    "error": "selector_invalid",
+                    "message": str(exc),
+                    "before": before,
+                }
+            if count <= 0:
+                return {
+                    "ok": False,
+                    "error": "selector_not_found",
+                    "count": total_count,
+                    "before": before,
+                }
+            target = locator.first
+            text = ""
+            try:
+                text = (await target.inner_text(timeout=800) or "").strip()
+            except Exception:  # noqa: BLE001
+                try:
+                    text = (await target.text_content(timeout=800) or "").strip()
+                except Exception:  # noqa: BLE001
+                    text = ""
+            try:
+                await target.click(timeout=2_000)
+            except Exception as exc:  # noqa: BLE001
+                return {
+                    "ok": False,
+                    "error": "click_failed",
+                    "message": str(exc),
+                    "count": total_count,
+                    "targetText": text[:240],
+                    "before": before,
+                }
+            try:
+                await page.wait_for_timeout(1_200)
+            except Exception:  # noqa: BLE001
+                await asyncio.sleep(1.2)
+            after = await self._debug_page_summary(page)
+            return {
+                "ok": True,
+                "count": total_count,
+                "targetText": text[:240],
+                "before": before,
+                "after": after,
+            }
+
+    async def _debug_page_summary(self, page: Any) -> dict[str, Any]:
+        try:
+            return await page.evaluate("""() => {
+                function clean(text, limit = 600) {
+                    return String(text || "").replace(/\\s+/g, " ").trim().slice(0, limit);
+                }
+                const bodyText = clean(document.body ? document.body.innerText : "", 1200);
+                const inputs = Array.from(document.querySelectorAll("input,textarea"))
+                    .filter((el) => {
+                        const style = window.getComputedStyle(el);
+                        const r = el.getBoundingClientRect();
+                        return style.display !== "none" && style.visibility !== "hidden"
+                            && r.width > 0 && r.height > 0;
+                    })
+                    .slice(0, 12)
+                    .map((el) => ({
+                        tag: el.tagName.toLowerCase(),
+                        id: el.id || null,
+                        className: clean(el.className || "", 160),
+                        type: el.getAttribute("type"),
+                        placeholder: clean(el.getAttribute("placeholder")),
+                        hasValue: !!el.value,
+                    }));
+                return { url: location.href, title: document.title, bodyText, inputs };
+            }""")
+        except Exception as exc:  # noqa: BLE001
+            return {"error": str(exc)}
 
     # ── teardown ─────────────────────────────────────────────────────
 

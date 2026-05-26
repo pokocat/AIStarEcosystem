@@ -2,7 +2,7 @@
 // api/auth.ts — Admin 鉴权。对应 AdminAuthController。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { apiFetch } from "./_client";
+import { apiFetch, setAuthToken } from "./_client";
 
 export interface AdminLoginRequest {
   username: string;
@@ -23,10 +23,12 @@ export interface AdminLoginResult {
 
 /** 管理员登录 */
 export async function login(req: AdminLoginRequest): Promise<AdminLoginResult> {
-  return apiFetch<AdminLoginResult>("/admin/auth/login", {
+  const result = await apiFetch<AdminLoginResult>("/admin/auth/login", {
     method: "POST",
     body: req,
   });
+  setAuthToken(result.token);
+  return result;
 }
 
 /** 获取当前管理员信息 */

@@ -15,6 +15,37 @@ export const API_BASE_URL: string =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL) ||
   "/api";
 
+/** Admin JWT 存储键。生产模式下后端只认 Authorization: Bearer <token>。 */
+export const AUTH_TOKEN_KEY = "aistareco.admin.auth.token";
+
+export function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAuthToken(token: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    /* localStorage 不可用时保持请求失败语义 */
+  }
+}
+
+function loginUrl(): string {
+  if (typeof window === "undefined") return "/admin/login";
+  const { pathname, search } = window.location;
+  const base = pathname.startsWith("/admin") ? "/admin" : "";
+  if (pathname === `${base}/login`) return `${base}/login`;
+  const next = `${pathname}${search}`;
+  return `${base}/login?next=${encodeURIComponent(next)}`;
+}
+
 export class ApiError extends Error {
   code: string;
   details?: unknown;
@@ -57,17 +88,30 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { method = "GET", body, query, headers, signal } = opts;
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
+  const token = getAuthToken();
 
   const res = await fetch(url, {
     method,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
     credentials: "include",
   });
+
+  if (res.status === 401) {
+    setAuthToken(null);
+    if (typeof window !== "undefined" && !window.location.pathname.endsWith("/login")) {
+      window.location.assign(loginUrl());
+    }
+    throw new ApiError(
+      { code: "UNAUTHORIZED", message: "登录状态无效或已过期" },
+      res.status
+    );
+  }
 
   let parsed: unknown;
   try {

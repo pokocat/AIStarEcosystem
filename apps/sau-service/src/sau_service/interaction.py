@@ -1120,6 +1120,17 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
     def _panel(self, page: Any) -> Any:
         return page.locator(self.PANEL_SELECTOR).filter(has_text="接收短信验证码").first
 
+    CHOICE_SMS_LABELS = ("接收短信验证码", "发送短信验证", "短信验证码", "短信验证", "手机短信")
+    CHOICE_ROW_SELECTORS = (
+        "#uc-second-verify div[class*='uc_verification_component_list_item']",
+        "#uc-second-verify div[class*='list_item']",
+        "#uc-second-verify div[class*='list'] > div",
+        "div[class*='uc_verification_component_list_item']",
+        "div[class*='list_item']",
+        "[role='button']",
+        "button",
+    )
+
     async def _advance_choice_panel(self, page: Any) -> bool:
         """Click through Douyin's identity-verification method picker.
 
@@ -1157,54 +1168,86 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
             return False
 
         log.info("[interaction douyin] _advance_choice_panel: 身份验证 detected in scope=%s", self._scope_label(scope))
+        auto_advance = os.environ.get("SAU_DOUYIN_AUTO_ADVANCE_CHOICE", "1").strip().lower()
+        if auto_advance in {"0", "false", "no", "off"}:
+            log.info("[interaction douyin] _advance_choice_panel: auto advance disabled by env")
+            return False
 
-        # Try known label substrings (exact=False catches "短信验证码验证" etc.)
-        for label in ("接收短信验证码", "发送短信验证", "短信验证码", "短信验证", "手机短信"):
+        # Prefer clicking the whole verification-method row. In Douyin's current
+        # second-verify DOM the label text itself is a nested typography div, and
+        # clicking only that text may no-op while the row handles the action.
+        for selector in self.CHOICE_ROW_SELECTORS:
+            for label in self.CHOICE_SMS_LABELS:
+                try:
+                    target = scope.locator(selector).filter(has_text=label).first
+                    if await target.count() and await target.is_visible(timeout=500):
+                        await target.click(timeout=1_500)
+                        await self._wait_after_choice_click(scope)
+                        log.info(
+                            "[interaction douyin] _advance_choice_panel: clicked row selector=%r label=%r",
+                            selector,
+                            label,
+                        )
+                        return True
+                except Exception:  # noqa: BLE001
+                    continue
+
+        # Text click fallback for older templates where the label itself is the
+        # clickable button. Keep it after row-click attempts.
+        for label in self.CHOICE_SMS_LABELS:
             try:
                 target = scope.get_by_text(label, exact=False).first
                 if await target.count() and await target.is_visible(timeout=500):
                     await target.click(timeout=1_500)
-                    try:
-                        await scope.wait_for_timeout(600)
-                    except (AttributeError, TypeError):
-                        import asyncio
-                        await asyncio.sleep(0.6)
+                    await self._wait_after_choice_click(scope)
                     log.info("[interaction douyin] _advance_choice_panel: clicked label=%r", label)
                     return True
             except Exception:  # noqa: BLE001
                 continue
 
-        # JS fallback: click any visible clickable element containing "短信"
+        # JS fallback: click the smallest visible row/button-like element
+        # containing an SMS keyword. Avoid broad list/panel containers because
+        # those can swallow the click without changing the selected method.
         try:
             clicked = await scope.evaluate("""() => {
                 const SMS_RE = /短信|sms/i;
-                const candidates = document.querySelectorAll(
-                    '[role="button"],[role="option"],li,a,button,div[class*="item"],div[class*="option"],div[class*="row"],div[class*="card"],div[class*="list"]'
-                );
-                for (const el of candidates) {
+                const candidates = Array.from(document.querySelectorAll(
+                    '#uc-second-verify [role="button"],#uc-second-verify [role="option"],#uc-second-verify li,#uc-second-verify a,#uc-second-verify button,#uc-second-verify div[class*="item"],#uc-second-verify div[class*="option"],#uc-second-verify div[class*="row"],[role="button"],[role="option"],li,a,button,div[class*="item"],div[class*="option"],div[class*="row"]'
+                )).map((el) => {
                     const style = window.getComputedStyle(el);
-                    if (style.display === 'none' || style.visibility === 'hidden') continue;
                     const r = el.getBoundingClientRect();
-                    if (r.width < 40 || r.height < 20) continue;
-                    if (SMS_RE.test(el.textContent || '')) {
-                        el.click();
-                        return true;
-                    }
+                    return { el, r, text: el.textContent || '', style };
+                }).filter(({ r, text, style }) => {
+                    return style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && r.width >= 40
+                        && r.height >= 20
+                        && r.width <= 520
+                        && r.height <= 120
+                        && SMS_RE.test(text);
+                }).sort((a, b) => (a.r.width * a.r.height) - (b.r.width * b.r.height));
+                const hit = candidates[0];
+                if (hit) {
+                    hit.el.click();
+                    return { clicked: true, text: hit.text.replace(/\\s+/g, ' ').trim().slice(0, 80) };
                 }
-                return false;
+                return { clicked: false, text: '' };
             }""")
-            if clicked:
-                try:
-                    await scope.wait_for_timeout(600)
-                except (AttributeError, TypeError):
-                    import asyncio
-                    await asyncio.sleep(0.6)
-                log.info("[interaction douyin] _advance_choice_panel: JS fallback clicked SMS row")
+            if clicked and clicked.get("clicked"):
+                await self._wait_after_choice_click(scope)
+                log.info("[interaction douyin] _advance_choice_panel: JS fallback clicked SMS row text=%r", clicked.get("text"))
                 return True
         except Exception:  # noqa: BLE001
             log.exception("[interaction douyin] _advance_choice_panel JS fallback failed")
 
         return False
+
+    async def _wait_after_choice_click(self, scope: Any) -> None:
+        try:
+            await scope.wait_for_timeout(600)
+        except (AttributeError, TypeError):
+            import asyncio
+            await asyncio.sleep(0.6)
 
     async def _is_modal_visible(self, page: Any) -> bool:
         panel = self._panel(page)

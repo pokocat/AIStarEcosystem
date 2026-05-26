@@ -308,7 +308,7 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
             {errorMsg && <p className="text-xs text-rose-600">{errorMsg}</p>}
             {submitting && (
               <p className="text-xs text-zinc-500 leading-relaxed">
-                正在拉起浏览器抓 QR 码，首次启动通常需要 3-8 秒…
+                正在打开扫码页面，请稍候…
               </p>
             )}
             <div className="mt-2 flex justify-end gap-2">
