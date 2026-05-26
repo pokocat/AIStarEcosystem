@@ -21,13 +21,13 @@ import { SmsInteractionDialog } from "./SmsInteractionDialog";
 import { useConfirm } from "@/components/common/confirm-dialog";
 
 const STATUS_META: Record<PublishJobStatus, { label: string; cls: string; bar: string }> = {
-  queued:        { label: "排队中",     cls: "bg-zinc-50 text-zinc-600 border-zinc-200",       bar: "bg-zinc-300" },
+  queued:        { label: "等待中",     cls: "bg-zinc-50 text-zinc-600 border-zinc-200",       bar: "bg-zinc-300" },
   uploading:     { label: "上传中",     cls: "bg-violet-50 text-violet-700 border-violet-200", bar: "bg-violet-400" },
-  transcoding:   { label: "转码中",     cls: "bg-indigo-50 text-indigo-700 border-indigo-200", bar: "bg-indigo-400" },
+  transcoding:   { label: "处理中",     cls: "bg-indigo-50 text-indigo-700 border-indigo-200", bar: "bg-indigo-400" },
   publishing:    { label: "发布中",     cls: "bg-sky-50 text-sky-700 border-sky-200",          bar: "bg-sky-400" },
-  awaiting_user: { label: "待输入验证码", cls: "bg-amber-50 text-amber-700 border-amber-200",   bar: "bg-amber-400" },
-  live:          { label: "已上线",     cls: "bg-emerald-50 text-emerald-700 border-emerald-200", bar: "bg-emerald-400" },
-  failed:        { label: "失败",       cls: "bg-rose-50 text-rose-700 border-rose-200",       bar: "bg-rose-400" },
+  awaiting_user: { label: "需要验证",   cls: "bg-amber-50 text-amber-700 border-amber-200",    bar: "bg-amber-400" },
+  live:          { label: "已发布",     cls: "bg-emerald-50 text-emerald-700 border-emerald-200", bar: "bg-emerald-400" },
+  failed:        { label: "未成功",     cls: "bg-rose-50 text-rose-700 border-rose-200",       bar: "bg-rose-400" },
   cancelled:     { label: "已取消",     cls: "bg-zinc-50 text-zinc-500 border-zinc-200",       bar: "bg-zinc-300" },
 };
 
@@ -105,8 +105,8 @@ export function PublishJobList({ projectId }: Props) {
 
   const handleCancel = async (id: string) => {
     const ok = await confirm({
-      title: "取消该任务？",
-      description: "取消后将不退还已扣的积分。",
+      title: "取消这条分发？",
+      description: "取消后已扣除的积分不会退还。",
       confirmText: "确认取消",
       tone: "danger",
     });
@@ -136,7 +136,7 @@ export function PublishJobList({ projectId }: Props) {
         <div>
           <h2 className="text-base font-semibold text-zinc-800">分发任务</h2>
           <p className="text-xs text-zinc-500">
-            分发进度自动同步，无需刷新；失败可在下方点「重试」，不重复扣积分。
+            进度自动同步无需手动刷新；未成功的任务可点「重试」，不会重复扣积分。
           </p>
         </div>
         <button
@@ -149,10 +149,10 @@ export function PublishJobList({ projectId }: Props) {
       </header>
 
       {loading ? (
-        <div className="py-8 text-center text-sm text-zinc-400">加载中……</div>
+        <div className="py-8 text-center text-sm text-zinc-400">加载中</div>
       ) : jobs.length === 0 ? (
         <div className="py-8 text-center text-sm text-zinc-400">
-          还没有分发任务。绑定一个账号后，可以从项目详情触发批量分发。
+          还没有分发任务。绑定账号后即可从项目详情或视频库一键分发。
         </div>
       ) : (
         <ul className="flex flex-col gap-2 pt-3">
