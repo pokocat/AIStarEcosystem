@@ -6,6 +6,7 @@ import com.aistareco.aep.model.MixcutRenderJob;
 import com.aistareco.aep.model.MixcutRenderOutput;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.aistareco.aep.repository.MixcutRenderOutputRepository;
+import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.picgen.PicgenClient;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -69,6 +70,8 @@ public class MixcutRenderingService {
     private final CdnUploader cdnUploader;
     /** v0.16+: 文字转图客户端，调独立 pic-gen 服务。 */
     private final PicgenClient picgen;
+    /** v0.33+: 任务级 hold/commit/release —— 每变体真渲染成功 commit；失败整体 release 剩余。 */
+    private final CreditService creditService;
 
     public MixcutRenderingService(
             MixcutProperties props,
@@ -80,7 +83,8 @@ public class MixcutRenderingService {
             ObjectMapper mapper,
             MixcutAssetService assetService,
             @Autowired(required = false) CdnUploader cdnUploader,
-            PicgenClient picgen
+            PicgenClient picgen,
+            CreditService creditService
     ) {
         this.props = props;
         this.picgenProps = picgenProps;
@@ -92,6 +96,7 @@ public class MixcutRenderingService {
         this.assetService = assetService;
         this.cdnUploader = cdnUploader;
         this.picgen = picgen;
+        this.creditService = creditService;
         if (cdnUploader != null) {
             log.info("[mixcut] CDN uploader injected: {}", cdnUploader.driverName());
         } else {
@@ -136,6 +141,13 @@ public class MixcutRenderingService {
             j.setCompletedAt(OffsetDateTime.now());
             jobRepo.save(j);
         });
+        // v0.33+: 退回剩余冻结积分。已 commit 的（每变体成功时已扣）不动；只退还没消费的。
+        try {
+            creditService.releaseHold("mixcut_job", jobId,
+                    "混剪任务失败 · 退回剩余积分 · " + truncate(message, 200));
+        } catch (Exception e) {
+            log.warn("[mixcut] release hold failed jobId={} err={}", jobId, e.getMessage());
+        }
         // v0.14+: 失败时清理已上传到 CDN 的部分变体，避免孤儿文件
         if (cdnUploader != null) {
             try {
@@ -181,6 +193,18 @@ public class MixcutRenderingService {
         MixcutRenderJob job = jobRepo.findById(jobId).orElseThrow();
         output.setJob(job);
         outputRepo.save(output);
+        // v0.33+: 单变体真完成 → commit 一份 hold。失败仅 log，不阻断主流程
+        // （commitHold 把 pending 扣到 totalBalance；hold 未存在/已终态/超额都安全 return）。
+        long perVariant = job.getCreditsPerVariant();
+        if (perVariant > 0) {
+            try {
+                creditService.commitHold("mixcut_job", jobId, perVariant,
+                        "混剪变体 " + (output.getVariantIndex() + 1) + " 渲染完成");
+            } catch (Exception e) {
+                log.warn("[mixcut] commit hold failed jobId={} variant={} err={}",
+                        jobId, output.getVariantIndex(), e.getMessage());
+            }
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

@@ -5,13 +5,19 @@ import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * AI 明星专区领域服务（v2.7）。
@@ -21,7 +27,14 @@ import java.util.*;
 @Transactional
 public class CelebrityZoneService {
 
+    private static final Logger log = LoggerFactory.getLogger(CelebrityZoneService.class);
     private static final ObjectMapper OM = new ObjectMapper();
+
+    /** PlatformConfig key. v0.33+ 起整表 JSON 写入此 key；admin PUT 走 upsert。 */
+    public static final String ENGINE_PRICING_CONFIG_KEY = "celebrity.engine-pricing";
+
+    /** 缓存 TTL —— 写入后立即失效，平时按这个间隔 lazy refresh。 */
+    private static final long PRICING_CACHE_TTL_MS = 60_000L;
 
     /** 引擎计价表（默认值） — 与前端 ENGINE_META（celebrity-zone-ui.ts）保持一致。 */
     private static final Map<String, EnginePricingDto> ENGINE_PRICING_DEFAULTS = Map.of(
@@ -31,11 +44,13 @@ public class CelebrityZoneService {
     );
 
     /**
-     * 可变运行时价格表（admin PUT /admin/celebrity/engine-pricing 更新此处）。
-     * 启动时从默认值初始化；如有 PlatformConfig key=celebrity.engine-pricing 则覆盖（D5）。
-     * 本期为 in-memory + ConcurrentHashMap，重启后回到默认值；持久化由 controller 层负责挂 PlatformConfig。
+     * v0.33+: pricing 缓存。
+     * 读路径优先从 PlatformConfig 取（key=celebrity.engine-pricing），1min cache 减压；
+     * config 不存在 → 退到 ENGINE_PRICING_DEFAULTS。
+     * 写路径（admin PUT）直接落 PlatformConfig 并失效本缓存。
      */
-    private final Map<String, EnginePricingDto> mutablePricing = new java.util.concurrent.ConcurrentHashMap<>(ENGINE_PRICING_DEFAULTS);
+    private record PricingCache(Map<String, EnginePricingDto> snapshot, long fetchedAt) {}
+    private final AtomicReference<PricingCache> pricingCache = new AtomicReference<>(null);
 
     private final CelebrityStarRepository starRepo;
     private final CelebrityProjectRepository projectRepo;
@@ -44,6 +59,7 @@ public class CelebrityZoneService {
     private final CelebrityShowcaseRepository showcaseRepo;
     private final CelebrityStarAuthorizationRepository authRepo;
     private final CreditService creditService;
+    private final PlatformConfigService platformConfig;
 
     public CelebrityZoneService(CelebrityStarRepository starRepo,
                                  CelebrityProjectRepository projectRepo,
@@ -51,7 +67,8 @@ public class CelebrityZoneService {
                                  CelebrityTemplateRepository templateRepo,
                                  CelebrityShowcaseRepository showcaseRepo,
                                  CelebrityStarAuthorizationRepository authRepo,
-                                 CreditService creditService) {
+                                 CreditService creditService,
+                                 PlatformConfigService platformConfig) {
         this.starRepo = starRepo;
         this.projectRepo = projectRepo;
         this.videoRepo = videoRepo;
@@ -59,6 +76,21 @@ public class CelebrityZoneService {
         this.showcaseRepo = showcaseRepo;
         this.authRepo = authRepo;
         this.creditService = creditService;
+        this.platformConfig = platformConfig;
+    }
+
+    /** 启动时种子默认 pricing 到 PlatformConfig（首次启动；已存在则 no-op，保留 admin 编辑）。 */
+    @PostConstruct
+    void seedEnginePricingIfAbsent() {
+        try {
+            platformConfig.seedIfAbsent(
+                    ENGINE_PRICING_CONFIG_KEY,
+                    OM.valueToTree(ENGINE_PRICING_DEFAULTS),
+                    "AI 明星生成引擎计价（每引擎 creditPrice + quotaCost）"
+            );
+        } catch (Exception e) {
+            log.warn("[celebrity-zone] seed engine-pricing failed: {}", e.getMessage());
+        }
     }
 
     // ── Stars ───────────────────────────────────────────────────────────────
@@ -250,13 +282,17 @@ public class CelebrityZoneService {
     }
 
     /**
-     * v0.4：扣减积分 + 触发异步生成。
+     * v0.33+：服务端重算 creditCost（不再信前端）+ hold 冻结 + 任务完成时 commit。
      *
      * payload 关键字段（与 apps/web/src/types/celebrity-zone.ts CelebrityGenerationRequest 对齐）：
      *   - starId, mode, templateId, engine / engineName, duration / durationSec
-     *   - creditCost：可选，前端按 engine.creditPrice × 时长系数计算后透传。提供且 > 0 时本服务
-     *     调用 CreditService.debit 扣减；不足抛 402 PAYMENT_REQUIRED。
+     *   - creditCost：v0.33+ 已废弃，前端透传值被忽略；服务端按 engineCode × durationFactor 重算。
      *   - language, keypoints：透传到生成管道（本期不消费）
+     *
+     * 计费：creditCost = engine.creditPrice × durationFactor。
+     *   durationFactor = max(1, ceil(durationSec / 15))  —— 默认 15s 一档。
+     * 走 CreditService.hold("celebrity_generation", jobId)；getJobProgress 看到 done 时
+     * commit。任务真正失败（接入真后端 pipeline 后）走 releaseHold。
      */
     public AsyncJobStartedDto startGeneration(Map<String, Object> payload, String userId) {
         String engine = firstNonBlank(
@@ -264,17 +300,27 @@ public class CelebrityZoneService {
                 String.valueOf(payload.getOrDefault("engine", "HiGen")));
         if (engine == null || engine.isBlank() || "null".equals(engine)) engine = "HiGen";
 
-        long creditCost = parseLongOrZero(payload.get("creditCost"));
         String starId = String.valueOf(payload.getOrDefault("starId", ""));
         String templateId = String.valueOf(payload.getOrDefault("templateId", ""));
 
-        // 扣分（仅当有 userId 且声明了 creditCost 时）
+        // v0.33+: 服务端重算 creditCost（不再信前端）。
+        long durationSec = parseLongOrZero(payload.get("durationSec"));
+        if (durationSec <= 0) durationSec = parseLongOrZero(payload.get("duration"));
+        if (durationSec <= 0) durationSec = 15;
+        long durationFactor = Math.max(1, (durationSec + 14) / 15);
+        EnginePricingDto pricing = getEnginePricingFor(engine);
+        long creditCost = (long) pricing.creditPrice() * durationFactor;
+
+        String jobId = "gen-" + UUID.randomUUID().toString().substring(0, 8);
+
+        // hold 冻结积分（仅当 userId 非空且 cost > 0）。
+        // 402 PAYMENT_REQUIRED 由 CreditService 直接抛出，job 不再入 JOBS 表。
         if (userId != null && !userId.isBlank() && creditCost > 0) {
-            creditService.debit(
+            creditService.hold(
                     userId,
                     creditCost,
                     "celebrity_generation",
-                    starId + (templateId.isBlank() ? "" : ":" + templateId),
+                    jobId,
                     "AI 明星视频生成 · " + engine + (templateId.isBlank() ? "" : " · " + templateId)
             );
         }
@@ -284,11 +330,11 @@ public class CelebrityZoneService {
             case "MiniMax" -> 10;
             default -> 8;
         };
-        String jobId = "gen-" + UUID.randomUUID().toString().substring(0, 8);
-        // v0.5.1：登记到 in-memory 任务表，给 GET /celebrity/jobs/{id} 用
-        long totalSec = (long) estimatedMinutes * 60L / 30L; // 把"分钟数"压成几十秒，便于演示进度
+        long totalSec = (long) estimatedMinutes * 60L / 30L; // 演示用：分钟压成秒
         if (totalSec < 8) totalSec = 8;
-        JOBS.put(jobId, new JobState(jobId, java.time.Instant.now(), totalSec, engine));
+        JOBS.put(jobId, new JobState(jobId, java.time.Instant.now(), totalSec, engine, userId, creditCost));
+        log.info("[celebrity-gen] queued jobId={} user={} engine={} duration={}s factor={} cost={}",
+                jobId, userId, engine, durationSec, durationFactor, creditCost);
         return new AsyncJobStartedDto(
                 jobId,
                 "queued",
@@ -300,8 +346,12 @@ public class CelebrityZoneService {
 
     // ── v0.5.1：任务进度跟踪（in-memory） ─────────────────────────────────────
 
-    /** 任务状态。startedAt + totalSec 决定进度；不依赖客户端 setInterval。 */
-    private record JobState(String jobId, java.time.Instant startedAt, long totalSec, String engine) {}
+    /**
+     * 任务状态。startedAt + totalSec 决定进度；不依赖客户端 setInterval。
+     * v0.33+: 加 userId / creditCost，用于进度走到 done 时延迟 commit hold（idempotent）。
+     */
+    private record JobState(String jobId, java.time.Instant startedAt, long totalSec, String engine,
+                             String userId, long creditCost) {}
 
     private static final java.util.concurrent.ConcurrentHashMap<String, JobState> JOBS =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -334,6 +384,23 @@ public class CelebrityZoneService {
         int currentStep = (int) Math.min(stepCount - 1, progress * stepCount / 100);
         long etaSec = Math.max(0, total - elapsed);
         String state = progress >= 100 ? "done" : (progress > 0 ? "running" : "queued");
+
+        // v0.33+: 看到 done 状态时，commit 对应 hold（幂等：commitHold 内部检查状态，
+        // 已 COMMITTED / RELEASED / 不存在均安全 return）。restart 后 JOBS 为空 → exists=false →
+        // 也 short-circuit 不 commit（因为没有 userId 上下文）；那种孤儿 hold 由
+        // 启动时的 sweep（@PostConstruct）或运营手动 release 处理。
+        if (state.equals("done") && exists && s.userId() != null && !s.userId().isBlank() && s.creditCost() > 0) {
+            try {
+                creditService.commitHold(
+                        "celebrity_generation",
+                        jobId,
+                        s.creditCost(),
+                        "AI 明星视频生成完成 · " + s.engine()
+                );
+            } catch (Exception e) {
+                log.warn("[celebrity-gen] commit hold failed jobId={} err={}", jobId, e.getMessage());
+            }
+        }
 
         List<GenerationJobProgressDto.StepDto> steps = new java.util.ArrayList<>();
         for (int i = 0; i < stepCount; i++) {
@@ -382,8 +449,55 @@ public class CelebrityZoneService {
         }
     }
 
+    /**
+     * v0.33+: 读 PlatformConfig 中的 pricing；1min cache。
+     * config 不存在或解析失败 → 退到 ENGINE_PRICING_DEFAULTS（仍可用，但运营修改不生效）。
+     */
     public Map<String, EnginePricingDto> getEnginePricing() {
-        return Collections.unmodifiableMap(mutablePricing);
+        PricingCache cached = pricingCache.get();
+        long now = System.currentTimeMillis();
+        if (cached != null && now - cached.fetchedAt() < PRICING_CACHE_TTL_MS) {
+            return cached.snapshot();
+        }
+        Map<String, EnginePricingDto> fresh = loadEnginePricingFromConfig();
+        pricingCache.set(new PricingCache(fresh, now));
+        return fresh;
+    }
+
+    /** 单一引擎价格读取（hold 算 creditCost 时用）。引擎不存在 → 退默认 HiGen。 */
+    public EnginePricingDto getEnginePricingFor(String engineCode) {
+        Map<String, EnginePricingDto> all = getEnginePricing();
+        if (engineCode != null && all.containsKey(engineCode)) return all.get(engineCode);
+        // 兜底：用 HiGen 默认（前端 default fallback 一致）
+        return all.getOrDefault("HiGen", ENGINE_PRICING_DEFAULTS.get("HiGen"));
+    }
+
+    private Map<String, EnginePricingDto> loadEnginePricingFromConfig() {
+        try {
+            return platformConfig.findByKey(ENGINE_PRICING_CONFIG_KEY)
+                    .map(c -> {
+                        try {
+                            JsonNode node = c.value();
+                            if (node == null || !node.isObject()) return ENGINE_PRICING_DEFAULTS;
+                            Map<String, EnginePricingDto> parsed = new LinkedHashMap<>();
+                            node.fields().forEachRemaining(e -> {
+                                JsonNode v = e.getValue();
+                                int credit = v.path("creditPrice").asInt();
+                                int quota = v.path("quotaCost").asInt();
+                                parsed.put(e.getKey(), new EnginePricingDto(credit, quota));
+                            });
+                            if (parsed.isEmpty()) return ENGINE_PRICING_DEFAULTS;
+                            return Collections.unmodifiableMap(parsed);
+                        } catch (Exception ex) {
+                            log.warn("[celebrity-zone] parse engine-pricing config failed, fallback to defaults: {}", ex.getMessage());
+                            return ENGINE_PRICING_DEFAULTS;
+                        }
+                    })
+                    .orElse(ENGINE_PRICING_DEFAULTS);
+        } catch (Exception e) {
+            log.warn("[celebrity-zone] load engine-pricing failed, fallback to defaults: {}", e.getMessage());
+            return ENGINE_PRICING_DEFAULTS;
+        }
     }
 
     // ── Overview (data center) ──────────────────────────────────────────────
@@ -606,15 +720,24 @@ public class CelebrityZoneService {
         return CelebrityTemplateDto.from(templateRepo.save(entity));
     }
 
-    /** PUT /admin/celebrity/engine-pricing — 整表替换；本期挂 in-memory（D5 提到 PlatformConfig 落库由 controller 层负责）。 */
+    /**
+     * PUT /admin/celebrity/engine-pricing — 整表替换，落 PlatformConfig（key=celebrity.engine-pricing）。
+     * v0.33+: 重启不丢；上层 admin 路由仍可继续调用，行为对前端透明。
+     */
     public Map<String, EnginePricingDto> adminReplaceEnginePricing(Map<String, EnginePricingDto> next) {
         if (next == null || next.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PRICING_EMPTY", "pricing 不能为空");
         }
-        // ENGINE_PRICING 是 final 字段；用一个可变镜像替代（见下方 mutablePricing）
-        mutablePricing.clear();
-        mutablePricing.putAll(next);
-        return Collections.unmodifiableMap(mutablePricing);
+        JsonNode payload = OM.valueToTree(next);
+        platformConfig.upsert(
+                ENGINE_PRICING_CONFIG_KEY,
+                payload,
+                "AI 明星生成引擎计价（每引擎 creditPrice + quotaCost）",
+                "admin"
+        );
+        // 立即让缓存失效，下一次 read 拿到新值
+        pricingCache.set(new PricingCache(Collections.unmodifiableMap(new LinkedHashMap<>(next)), System.currentTimeMillis()));
+        return Collections.unmodifiableMap(new LinkedHashMap<>(next));
     }
 
     // ── 内部工具 ─────────────────────────────────────────────────────────────

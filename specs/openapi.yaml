@@ -1200,8 +1200,11 @@ components:
 
     LedgerEntryType:
       type: string
-      description: 不可变流水分类。所有钱包余额变更必须走 ledger，禁止直接 UPDATE 余额列。
-      enum: [income, gift, spend, withdraw, freeze, unfreeze, adjust]
+      description: |
+        不可变流水分类。所有钱包余额变更必须走 ledger，禁止直接 UPDATE 余额列。
+        v0.33+: 完整覆盖 server LedgerEntry.LedgerEntryType 10 种类型；
+        freeze/unfreeze 是 hold/release 生命周期事件，spend 是 commitHold 真扣。
+      enum: [license_grant, recharge, refund, income, gift, spend, withdraw, freeze, unfreeze, adjust]
 
     LedgerEntry:
       type: object

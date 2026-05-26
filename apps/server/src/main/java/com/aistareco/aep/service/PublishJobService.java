@@ -248,8 +248,9 @@ public class PublishJobService {
         }
 
         long cost = defaultUploadCost; // 后续可按 platform 读 PlatformConfig
-        // debit 抛 PAYMENT_REQUIRED 时事务回滚，任务保持 queued
-        creditService.debit(userId, cost, "publish_job_upload", job.getId(),
+        // v0.33+: hold 替代 debit。任务终态 LIVE → commit；FAILED / CANCELLED → release。
+        // 402 PAYMENT_REQUIRED 时事务回滚，任务保持 queued。
+        creditService.hold(userId, cost, "publish_job_upload", job.getId(),
                 "发布任务上传 - " + account.getPlatform().wire() + " - " + job.getTitle());
         job.setCreditsSpent(cost);
 
@@ -289,7 +290,7 @@ public class PublishJobService {
                 jobRepo.save(job);
             }
         } catch (BusinessException e) {
-            // sau-service 调用失败 → 任务标 FAILED，不退款
+            // v0.33+: sau-service 调用失败 → 任务标 FAILED + 退回 hold（之前是不退款）
             log.warn("sau upload failed jobId={} err={}", job.getId(), e.getMessage());
             job.setStatus(PublishJobStatus.FAILED);
             job.setErrorCode(e.getCode());
@@ -297,6 +298,7 @@ public class PublishJobService {
             jobRepo.save(job);
             writeEvent(job.getId(), "error", PublishJobStatus.UPLOADING, PublishJobStatus.FAILED,
                     job.getProgress(), e.getCode() + ": " + e.getMessage());
+            releaseHoldOnFailure(job, "派单失败 · " + safeShort(e.getMessage()));
             // 不重抛 — 让调用方拿到 PublishJobDto 看到 FAILED 状态
         }
         return PublishJobDto.from(job);
@@ -450,6 +452,16 @@ public class PublishJobService {
             if (cb.externalUrl() != null) job.setExternalUrl(cb.externalUrl());
             job.setProgress(100);
             job.setInteractionRequiredJson(null);
+            // v0.33+: 真正发布上线 → commit hold（hold 总额 = creditsSpent）。
+            Long spent = job.getCreditsSpent();
+            if (spent != null && spent > 0) {
+                try {
+                    creditService.commitHold("publish_job_upload", job.getId(), spent,
+                            "发布上线 · " + job.getPlatform().wire() + " · " + safeTitle(job.getTitle()));
+                } catch (Exception e) {
+                    log.warn("publish commit hold failed jobId={} err={}", job.getId(), e.getMessage());
+                }
+            }
         }
         if (to == PublishJobStatus.FAILED) {
             if (isCookieInvalidUploadError(cb)) {
@@ -459,6 +471,8 @@ public class PublishJobService {
             } else {
                 if (cb.errorCode() != null) job.setErrorCode(cb.errorCode());
                 if (cb.errorMessage() != null) job.setErrorMessage(cb.errorMessage());
+                // v0.33+: 普通失败 → release hold（cookie-invalid 已在 expireAccount... 内退）。
+                releaseHoldOnFailure(job, "发布失败 · " + safeShort(cb.errorMessage()));
             }
             job.setInteractionRequiredJson(null);
         }
@@ -501,16 +515,43 @@ public class PublishJobService {
         Long spent = job.getCreditsSpent();
         if (spent != null && spent > 0) {
             try {
-                creditService.creditAccount(job.getUserId(), spent, LedgerEntry.LedgerEntryType.REFUND,
-                        "publish_job_upload_refund", job.getId(),
+                // v0.33+: 走 releaseHold（pending → 原桶），不再用 creditAccount(REFUND) 凭空入账。
+                creditService.releaseHold("publish_job_upload", job.getId(),
                         "发布前账号校验漏判，上传阶段发现账号登录失效，自动退回积分");
                 job.setCreditsSpent(null);
                 writeEvent(job.getId(), "refund", job.getStatus(), job.getStatus(), job.getProgress(),
                         "credit:+" + spent + " account_expired_after_upload_check");
             } catch (Exception e) {
-                log.warn("refund failed for cookie-invalid publish job {}: {}", job.getId(), e.getMessage());
+                log.warn("release hold failed for cookie-invalid publish job {}: {}", job.getId(), e.getMessage());
             }
         }
+    }
+
+    /**
+     * v0.33+: 任务真正失败（非 cookie-invalid 那条路径）时退回 hold。
+     * 幂等：releaseHold 内部检查 hold 状态；重复调用安全 return null。
+     */
+    private void releaseHoldOnFailure(PublishJob job, String reason) {
+        Long spent = job.getCreditsSpent();
+        if (spent == null || spent <= 0) return;
+        try {
+            creditService.releaseHold("publish_job_upload", job.getId(), reason);
+            writeEvent(job.getId(), "refund", job.getStatus(), job.getStatus(), job.getProgress(),
+                    "credit:+" + spent + " " + reason);
+            job.setCreditsSpent(null);
+        } catch (Exception e) {
+            log.warn("release hold failed jobId={} err={}", job.getId(), e.getMessage());
+        }
+    }
+
+    private static String safeShort(String s) {
+        if (s == null) return "";
+        return s.length() > 80 ? s.substring(0, 80) + "..." : s;
+    }
+
+    private static String safeTitle(String s) {
+        if (s == null) return "";
+        return s.length() > 40 ? s.substring(0, 40) + "..." : s;
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper INTERACTION_OM =
@@ -575,6 +616,8 @@ public class PublishJobService {
         job.setStatus(PublishJobStatus.CANCELLED);
         jobRepo.save(job);
         writeEvent(job.getId(), "transition", from, PublishJobStatus.CANCELLED, job.getProgress(), "user cancel");
+        // v0.33+: 用户取消 → 退回 hold（已扣过的部分 commit 不动；未消费部分退回原桶）
+        releaseHoldOnFailure(job, "用户取消分发任务");
 
         // best-effort 通知 sau-service；不阻塞用户
         if (job.getExternalTaskId() != null) {
@@ -666,6 +709,8 @@ public class PublishJobService {
         job.setErrorMessage(msg);
         jobRepo.save(job);
         writeEvent(job.getId(), "system", from, PublishJobStatus.FAILED, job.getProgress(), code + ": " + msg);
+        // v0.33+: 启动 sweep 标 FAILED 也走 release
+        releaseHoldOnFailure(job, "启动时同步状态失败 · " + code);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

@@ -60,6 +60,15 @@ import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
 import { resolvePolicy } from "@/components/mixcut-zone/lib/perturbation-defaults";
 import { flatSlotsOf, flatSlotsAbsolute, orientationLabel, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { useConfirm } from "@/components/common/confirm-dialog";
+import { useCelebrityShell } from "@/lib/celebrity-shell-context";
+import { formatCredits } from "@ai-star-eco/api-client/format";
+
+/**
+ * v0.33+: 单变体积分价（与 server MixcutJobService.MIXCUT_PER_VARIANT_COST_DEFAULT 同步）。
+ * 真值在 server PlatformConfig key=mixcut.credit-per-variant；admin 修改后前端常量需同步更新。
+ * 实际 hold 由 server 计算，前端展示与 server 不一致时 server 会按真值扣（前端值仅用于 UI 预估）。
+ */
+const MIXCUT_CREDIT_PER_VARIANT = 30;
 
 // ─── v0.26+ 商品启发式 slot 绑定 ──────────────────────────────────────────────
 //
@@ -388,9 +397,14 @@ export function CreateClient({ id }: { id: string }) {
 
   const quotaRemaining = code.monthly_quota - code.quota_used_this_period;
   const overQuota = variants > quotaRemaining;
+  // v0.33+: 真扣费预估 + 余额预检
+  const { wallet: walletBalance } = useCelebrityShell();
+  const creditCost = variants * MIXCUT_CREDIT_PER_VARIANT;
+  const available = walletBalance?.totalBalance ?? 0;
+  const insufficientCredits = walletBalance != null && available < creditCost;
 
   const handleSubmit = async () => {
-    if (!allRequiredFilled || overQuota) return;
+    if (!allRequiredFilled || overQuota || insufficientCredits) return;
 
     // v0.23: 视频位空 → 后端会用 demo 兜底；给一次明确确认避免"为啥用的不是我的视频"。
     if (unboundVideoSlots.length > 0) {
@@ -690,16 +704,24 @@ export function CreateClient({ id }: { id: string }) {
           {/* 消耗 / 出片预估 —— 中宽度起显示 */}
           <div className="hidden xl:flex items-center gap-3 text-[11px] tabular-nums ml-1">
             <div className="flex items-center gap-1">
-              <span className="text-muted-foreground">消耗</span>
+              <span className="text-muted-foreground">将消耗</span>
               <span
                 className={cn(
                   "font-mono font-medium",
-                  overQuota ? "text-rose-600" : "text-foreground",
+                  insufficientCredits ? "text-rose-600" : "text-foreground",
                 )}
+                title={`${variants} × ${MIXCUT_CREDIT_PER_VARIANT} 积分/条`}
               >
-                {variants}
+                {creditCost}
               </span>
               <span className="text-muted-foreground">积分</span>
+            </div>
+            <span className="text-muted-foreground/60">·</span>
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <span>余额</span>
+              <span className={cn("font-mono", insufficientCredits && "text-rose-600 font-semibold")}>
+                {walletBalance ? formatCredits(available) : "—"}
+              </span>
             </div>
             <span className="text-muted-foreground/60">·</span>
             <div className="flex items-center gap-1 text-muted-foreground">
@@ -718,8 +740,9 @@ export function CreateClient({ id }: { id: string }) {
             variant="gradient"
             size="default"
             className="ml-auto h-9 px-5 shrink-0"
-            disabled={!allRequiredFilled || overQuota || submitting}
+            disabled={!allRequiredFilled || overQuota || insufficientCredits || submitting}
             onClick={handleSubmit}
+            title={insufficientCredits ? `积分不足：需要 ${creditCost}，当前可用 ${available}` : undefined}
           >
             {submitting ? (
               <>
@@ -739,6 +762,13 @@ export function CreateClient({ id }: { id: string }) {
           <div className="px-6 lg:px-8 py-1.5 bg-rose-500/10 border-t border-rose-500/20 flex items-center gap-2 text-[11px] text-rose-700">
             <AlertTriangle className="size-3 shrink-0" />
             本月剩余额度 {formatNumber(quotaRemaining)} 不够生成 {variants} 条，请减少数量或升级套餐
+          </div>
+        )}
+        {insufficientCredits && !overQuota && (
+          <div className="px-6 lg:px-8 py-1.5 bg-rose-500/10 border-t border-rose-500/20 flex items-center gap-2 text-[11px] text-rose-700">
+            <AlertTriangle className="size-3 shrink-0" />
+            积分不足：本次需 {creditCost} 积分，当前余额 {formatCredits(available)}。
+            <Link href="/wallet" className="ml-1 underline">前往充值</Link>
           </div>
         )}
       </div>

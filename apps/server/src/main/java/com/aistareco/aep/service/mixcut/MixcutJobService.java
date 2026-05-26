@@ -10,6 +10,8 @@ import com.aistareco.aep.model.MixcutRenderOutput;
 import com.aistareco.aep.repository.MixcutAssetRepository;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.aistareco.aep.repository.MixcutRenderOutputRepository;
+import com.aistareco.aep.service.CreditService;
+import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.aep.service.ProductService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -38,12 +40,18 @@ public class MixcutJobService {
 
     private static final Logger log = LoggerFactory.getLogger(MixcutJobService.class);
 
+    /** PlatformConfig key for mixcut 单变体成本（积分）。default 30 / variant。 */
+    public static final String MIXCUT_PER_VARIANT_COST_KEY = "mixcut.credit-per-variant";
+    public static final long MIXCUT_PER_VARIANT_COST_DEFAULT = 30L;
+
     private final MixcutRenderJobRepository jobRepo;
     private final MixcutRenderOutputRepository outputRepo;
     private final MixcutAssetRepository assetRepo;
     private final ObjectMapper mapper;
     private final MixcutRenderingService rendering;
     private final ProductService productService;
+    private final CreditService creditService;
+    private final PlatformConfigService platformConfig;
 
     public MixcutJobService(
             MixcutRenderJobRepository jobRepo,
@@ -51,7 +59,9 @@ public class MixcutJobService {
             MixcutAssetRepository assetRepo,
             ObjectMapper mapper,
             MixcutRenderingService rendering,
-            ProductService productService
+            ProductService productService,
+            CreditService creditService,
+            PlatformConfigService platformConfig
     ) {
         this.jobRepo = jobRepo;
         this.outputRepo = outputRepo;
@@ -59,6 +69,19 @@ public class MixcutJobService {
         this.mapper = mapper;
         this.rendering = rendering;
         this.productService = productService;
+        this.creditService = creditService;
+        this.platformConfig = platformConfig;
+    }
+
+    /** 当前单变体成本（PlatformConfig 缺省 → MIXCUT_PER_VARIANT_COST_DEFAULT）。 */
+    public long currentPerVariantCost() {
+        long v = platformConfig.getLong(MIXCUT_PER_VARIANT_COST_KEY, MIXCUT_PER_VARIANT_COST_DEFAULT);
+        return v > 0 ? v : MIXCUT_PER_VARIANT_COST_DEFAULT;
+    }
+
+    /** "anonymous" 等占位用户名不参与扣费。 */
+    private static boolean billable(String userId) {
+        return userId != null && !userId.isBlank() && !"anonymous".equals(userId);
     }
 
     /**
@@ -154,13 +177,31 @@ public class MixcutJobService {
         }
 
         job.setPerturbationProfile(safe(req.perturbationProfile(), "moderate"));
-        job.setOutputVariants(req.outputVariants() != null && req.outputVariants() > 0 ? req.outputVariants() : 1);
+        int variants = req.outputVariants() != null && req.outputVariants() > 0 ? req.outputVariants() : 1;
+        job.setOutputVariants(variants);
         job.setStatus("queued");
         job.setProgress(0);
         job.setCreatedAt(OffsetDateTime.now());
         // v0.30+: 血缘字段。null = 普通 create；非空 = 从原任务 rerun fork 出来的
         if (forkedFromJobId != null && !forkedFromJobId.isBlank()) {
             job.setForkedFromJobId(forkedFromJobId);
+        }
+
+        // v0.33+: 真扣费 —— hold(variants × perVariant)，PAYMENT_REQUIRED 直接抛出。
+        // anonymous 用户跳过扣费（保留 dev/H2 lite 场景）。
+        long perVariant = currentPerVariantCost();
+        long totalCost = perVariant * variants;
+        job.setCreditsPerVariant(perVariant);
+        job.setCreditsHeld(billable(effectiveUserId) ? totalCost : 0L);
+
+        if (billable(effectiveUserId) && totalCost > 0) {
+            creditService.hold(
+                    effectiveUserId,
+                    totalCost,
+                    "mixcut_job",
+                    job.getId(),
+                    "混剪生成 · " + variants + " 条变体 · 模板 " + safe(req.templateName(), req.templateId())
+            );
         }
 
         jobRepo.save(job);

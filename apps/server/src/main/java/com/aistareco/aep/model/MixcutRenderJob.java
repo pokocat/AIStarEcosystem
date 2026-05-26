@@ -119,6 +119,21 @@ public class MixcutRenderJob {
     @Column(name = "forked_from_job_id", length = 64)
     private String forkedFromJobId;
 
+    /**
+     * v0.33+: 任务创建时冻结的总积分（= variants × per_variant_cost @ create 时点）。
+     * 写入后即固化，PlatformConfig 后续改价不影响已创建的任务。
+     * 0 = 历史任务（v0.32 及之前未接入扣费）。
+     */
+    @Column(name = "credits_held", nullable = false)
+    private long creditsHeld;
+
+    /**
+     * v0.33+: 单变体成本（commit 时的步进单位）。
+     * 与 creditsHeld 一起保证 PlatformConfig 改价不影响进行中的任务。
+     */
+    @Column(name = "credits_per_variant", nullable = false)
+    private long creditsPerVariant;
+
     @OneToMany(mappedBy = "job", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @OrderBy("variantIndex ASC")
     private List<MixcutRenderOutput> outputs = new ArrayList<>();
@@ -189,4 +204,10 @@ public class MixcutRenderJob {
 
     public String getForkedFromJobId() { return forkedFromJobId; }
     public void setForkedFromJobId(String forkedFromJobId) { this.forkedFromJobId = forkedFromJobId; }
+
+    public long getCreditsHeld() { return creditsHeld; }
+    public void setCreditsHeld(long creditsHeld) { this.creditsHeld = creditsHeld; }
+
+    public long getCreditsPerVariant() { return creditsPerVariant; }
+    public void setCreditsPerVariant(long creditsPerVariant) { this.creditsPerVariant = creditsPerVariant; }
 }

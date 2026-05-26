@@ -7,7 +7,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AepUser, Tenant } from "@ai-star-eco/types/account";
-import type { Wallet, LedgerEntry } from "@ai-star-eco/types/wallet";
+import type {
+  Wallet,
+  LedgerEntry,
+  RechargePackage,
+  RechargeRequest,
+  RechargeResponse,
+} from "@ai-star-eco/types/wallet";
 import { apiFetch } from "../_client";
 
 /** 获取当前登录用户信息 */
@@ -39,5 +45,18 @@ export async function getMyWallet(): Promise<Wallet> {
 export async function getMyLedger(page = 0, size = 20): Promise<LedgerEntry[]> {
   return apiFetch<LedgerEntry[]>("/me/ledger", {
     query: { page, size },
+  });
+}
+
+/** v0.33+: 可购买的充值套餐列表 */
+export async function listRechargePackages(): Promise<RechargePackage[]> {
+  return apiFetch<RechargePackage[]>("/me/wallet/packages");
+}
+
+/** v0.33+: 充值落账（MVP 直接走，无支付网关） */
+export async function rechargeWallet(req: RechargeRequest): Promise<RechargeResponse> {
+  return apiFetch<RechargeResponse>("/me/wallet/recharge", {
+    method: "POST",
+    body: req,
   });
 }

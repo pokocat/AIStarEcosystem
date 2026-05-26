@@ -120,6 +120,7 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       title: "洞察",
       items: [
         { icon: BarChart3, label: "数据中心", href: "/data", selected: isExact("/data") },
+        { icon: Coins, label: "积分钱包", href: "/wallet", selected: pathname === "/wallet" || pathname.startsWith("/wallet/") },
       ],
     },
   ];
@@ -135,6 +136,7 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/products": "商品库",
     "/data": "数据中心",
     "/mixcut": "混剪工作台",
+    "/wallet": "积分钱包",
   };
   // /distribution 默认 = 分发工作台，单独分支以保证子菜单层级正确
   if (pathname === "/distribution") return ["工作台", "分发中心", "分发工作台"];
@@ -168,8 +170,9 @@ function TopbarRight() {
   const { user, logout } = useAuth();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <div
-        title="积分余额"
+      <Link
+        href="/wallet"
+        title="积分钱包 · 点击查看明细 / 充值"
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -182,10 +185,26 @@ function TopbarRight() {
           fontSize: 12,
           color: "var(--accent-strong)",
           fontWeight: 600,
+          textDecoration: "none",
+          transition: "background 0.15s",
         }}
       >
         <Coins size={11} /> {wallet ? formatCredits(wallet.totalBalance) : "—"}
-      </div>
+        {wallet && wallet.pendingBalance > 0 && (
+          <span
+            title={`已冻结 ${formatCredits(wallet.pendingBalance)}（任务进行中）`}
+            style={{
+              fontSize: 10,
+              padding: "1px 5px",
+              borderRadius: 4,
+              background: "color-mix(in srgb, var(--accent) 18%, transparent)",
+              fontWeight: 500,
+            }}
+          >
+            冻结 {formatCredits(wallet.pendingBalance)}
+          </span>
+        )}
+      </Link>
       <Button variant="secondary" size="sm">
         导出
       </Button>
