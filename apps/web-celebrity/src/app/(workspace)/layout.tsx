@@ -172,7 +172,7 @@ function TopbarRight() {
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <Link
         href="/wallet"
-        title="积分钱包 · 点击查看明细 / 充值"
+        title="积分钱包，点击查看明细或充值"
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -192,7 +192,7 @@ function TopbarRight() {
         <Coins size={11} /> {wallet ? formatCredits(wallet.totalBalance) : "—"}
         {wallet && wallet.pendingBalance > 0 && (
           <span
-            title={`已冻结 ${formatCredits(wallet.pendingBalance)}（任务进行中）`}
+            title={`${formatCredits(wallet.pendingBalance)} 积分已锁定（生成中的任务）`}
             style={{
               fontSize: 10,
               padding: "1px 5px",
@@ -201,7 +201,7 @@ function TopbarRight() {
               fontWeight: 500,
             }}
           >
-            冻结 {formatCredits(wallet.pendingBalance)}
+            锁定 {formatCredits(wallet.pendingBalance)}
           </span>
         )}
       </Link>
@@ -213,7 +213,7 @@ function TopbarRight() {
         新建项目
       </Button>
       <Avatar seed={user?.username ?? user?.displayName ?? "anon"} size={32} />
-      <Button variant="icon" size="sm" onClick={logout} title="退出登录" style={{ width: 32, padding: 0 }}>
+      <Button variant="icon" size="sm" onClick={logout} title="退出当前账号" style={{ width: 32, padding: 0 }}>
         <LogOut size={12} />
       </Button>
     </div>
@@ -319,7 +319,7 @@ function TipOfDay() {
       </div>
       <div style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
         用<span className="mono" style={{ color: "var(--accent)" }}> ⌘K </span>
-        快速搜索明星 / 项目；切片审核通过后自动进入分发队列。
+        快速搜索明星和项目；视频审核通过后会自动进入分发流程。
       </div>
     </div>
   );
@@ -436,7 +436,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                     letterSpacing: 0.3,
                   }}
                 >
-                  {user?.studio?.name ?? "未绑定工作室"}
+                  {user?.studio?.name ?? "还未绑定工作室"}
                 </div>
               </div>
               <Link

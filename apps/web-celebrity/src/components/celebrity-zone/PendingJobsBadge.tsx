@@ -67,12 +67,12 @@ export function PendingJobsBadge() {
         {running.length > 0 ? (
           <>
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>{running.length} 个生成中</span>
+            <span>{running.length} 个视频正在生成</span>
           </>
         ) : (
           <>
             <CheckCircle2 className="h-3 w-3" />
-            <span>{completed.length} 已完成 · 待查看</span>
+            <span>{completed.length} 条已完成</span>
           </>
         )}
       </button>
@@ -80,12 +80,12 @@ export function PendingJobsBadge() {
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[var(--shadow-pop)]">
           <div className="border-b border-zinc-200 px-4 py-2 text-[11px] text-zinc-500">
-            我的进行中任务
+            正在进行的任务
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             {running.length === 0 && completed.length === 0 && (
               <div className="px-4 py-6 text-center text-xs text-zinc-500">
-                暂无进行中任务
+                没有正在生成的任务
               </div>
             )}
             {running.map((job) => (
@@ -93,7 +93,7 @@ export function PendingJobsBadge() {
             ))}
             {completed.length > 0 && running.length > 0 && (
               <div className="border-t border-zinc-200 px-4 py-1.5 text-[10px] text-zinc-500">
-                已完成 · 待查看
+                已完成，等你查看
               </div>
             )}
             {completed.map((job) => (
@@ -147,7 +147,7 @@ function JobRow({ job, onClose }: { job: PendingJobRecord; onClose: () => void }
         <div className="mt-1 flex items-center gap-1 text-[10px] text-zinc-500">
           <Sparkles className="h-2.5 w-2.5" />
           <span>{meta.name} · {meta.level}</span>
-          {isCompleted && <span className="text-emerald-600">· 已完成，点击查看</span>}
+          {isCompleted && <span className="text-emerald-600">· 已完成，点击查看视频</span>}
         </div>
       </div>
       <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />

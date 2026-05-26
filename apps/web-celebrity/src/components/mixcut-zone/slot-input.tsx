@@ -144,7 +144,7 @@ export function SlotInput({
             )}
             {effectiveFill === "fixed" && (
               <div className="text-xs text-muted-foreground bg-secondary/50 rounded-md p-2">
-                由系统自动填充,无需操作
+                系统已自动填充，无需手动操作
               </div>
             )}
           </div>
@@ -196,7 +196,7 @@ function TextSlotInput({
       />
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-muted-foreground">
-          样式预设 <span className="font-mono">{slot.style_preset}</span> · 最多 18 字
+          最多 18 字
         </span>
         <Button
           variant="ghost"
@@ -212,7 +212,7 @@ function TextSlotInput({
       </div>
       {aiOpen && (
         <div className="space-y-1.5 pt-2 border-t border-border">
-          <div className="text-[10px] text-muted-foreground">推荐文案(基于 8000w GMV 爆款数据)</div>
+          <div className="text-[10px] text-muted-foreground">推荐文案（基于爆款话术）</div>
           {aiSuggestions.map((s) => (
             <button
               key={s}
@@ -251,8 +251,7 @@ function ApiGeneratedSlotInput({
           <span className="text-sm font-medium">AI 数字人 · 自动生成</span>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          系统会基于您填写的字幕文案,通过外部 API(HeyGen / 硅基智能)生成对应的数字人讲解视频。
-          约耗时 60-90 秒,消耗 1 个数字人配额。
+          根据填写的文案，AI 会自动生成数字人讲解视频。通常需要 1-2 分钟，消耗 1 次数字人生成次数。
         </p>
       </div>
       <div className="grid grid-cols-2 gap-2">

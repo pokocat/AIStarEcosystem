@@ -116,7 +116,7 @@ export default function CelebrityDashboardPage() {
           <PipelineStep
             n={2}
             title="申请授权"
-            desc="选档位，签约用量配额"
+            desc="选套餐版本，签约约定用量"
             href="/cast"
             tone="rose"
             count={pendingStars.length}
@@ -125,7 +125,7 @@ export default function CelebrityDashboardPage() {
           <PipelineStep
             n={3}
             title="AI 生成"
-            desc="模板 / 盲盒生成切片"
+            desc="用模板或盲盒生成视频"
             href="/projects"
             tone="peach"
             count={generating.length}
@@ -134,7 +134,7 @@ export default function CelebrityDashboardPage() {
           <PipelineStep
             n={4}
             title="审核分发"
-            desc="切片审核通过自动分发"
+            desc="视频审核通过自动分发"
             href="/library"
             tone="amber"
             count={pendingReview.length}
@@ -152,7 +152,7 @@ export default function CelebrityDashboardPage() {
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>我的明星</div>
               <div style={{ fontSize: 11.5, color: "var(--fg-2)", marginTop: 4 }}>
-                已授权 {authorizedStars.length} 位 · 配额用量按档位计
+                已授权 {authorizedStars.length} 位 · 用量按套餐计算
               </div>
             </div>
             <Link href="/cast" style={inlineLink}>

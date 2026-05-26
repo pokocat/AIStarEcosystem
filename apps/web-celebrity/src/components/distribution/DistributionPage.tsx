@@ -41,9 +41,9 @@ const SUBPAGE_LABEL: Record<DistributionSubpage, string> = {
 };
 
 const SUBPAGE_DESC: Record<DistributionSubpage, string> = {
-  workbench: "挑选已生成的视频，绑账号、配文案，一次分发到多个平台。",
-  accounts: "管理已绑定的社交账号，新增绑定 / 解绑 / 重新验证。",
-  jobs: "查看每条分发任务的实时进度，按状态过滤，可重试或取消。",
+  workbench: "挑选已生成的视频，选好账号、写好文案，一次分发到多个平台。",
+  accounts: "管理已绑定的社交账号，可新增、解除绑定或重新验证。",
+  jobs: "查看每条分发的实时进度，可按状态筛选、重试或取消。",
 };
 
 export function DistributionShell({ subpage, fromJobId }: Props) {
@@ -104,10 +104,10 @@ export function DistributionShell({ subpage, fromJobId }: Props) {
             type="button"
             onClick={() => setManualOpen(true)}
             className={cn(CTA_SECONDARY, "shrink-0")}
-            title="不走视频库，直接粘贴外部视频链接分发"
+            title="不通过视频库，直接粘贴外部视频链接分发"
           >
             <Plus className="h-3.5 w-3.5" />
-            上传链接分发
+            粘贴链接分发
           </button>
         </div>
 
@@ -118,7 +118,7 @@ export function DistributionShell({ subpage, fromJobId }: Props) {
             value={activeAccounts.length}
             total={accounts.length}
             tone="violet"
-            hint="active / 总数"
+            hint="可用 / 全部"
             active={subpage === "accounts"}
             onClick={() => router.push("/distribution/accounts")}
           />

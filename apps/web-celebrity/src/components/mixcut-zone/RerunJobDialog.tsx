@@ -31,9 +31,9 @@ interface Props {
 }
 
 const PROFILE_LABEL: Record<PerturbationProfile, string> = {
-  light: "轻度（高保真，差异小）",
-  moderate: "中度（推荐，平衡）",
-  aggressive: "重度（更易过审 / 不易判重）",
+  light: "细微变化（每条几乎一样）",
+  moderate: "均衡变化（推荐）",
+  aggressive: "明显变化（差异最大）",
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -96,7 +96,7 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
       } else if (e instanceof ApiError) {
         setGenericError(`${e.code}: ${e.message}`);
       } else {
-        setGenericError(e instanceof Error ? e.message : "重跑失败，请稍后再试");
+        setGenericError(e instanceof Error ? e.message : "重新生成失败，请稍后再试");
       }
       setSubmitting(false);
     }
@@ -109,20 +109,19 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-amber-600">
-              <AlertTriangle className="size-5" /> 无法重跑：素材已删除
+              <AlertTriangle className="size-5" /> 无法继续：素材已被删除
             </DialogTitle>
             <DialogDescription>
-              这个任务用到的 {missing.length} 个素材已被删除，重跑会取不到文件。
-              你可以重新上传同名素材后再试，或用同一模板从头做一份。
+              这个任务用到的 {missing.length} 个素材已被删除，无法继续生成。
+              可以重新上传素材后再试，或基于同一模板从头开始。
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-1.5 rounded-md border border-border bg-secondary/30 p-3">
             {missingFormatted.map((m) => (
-              <div key={`${m.slot_id}-${m.asset_id}`} className="text-xs font-mono leading-snug">
-                <span className="text-muted-foreground">槽位</span>{" "}
+              <div key={`${m.slot_id}-${m.asset_id}`} className="text-xs leading-snug">
+                <span className="text-muted-foreground">位置「</span>
                 <span className="text-foreground">{m.slot_id}</span>
-                <span className="text-muted-foreground"> · {m.kindLabel} · </span>
-                <span className="text-foreground/70">{m.asset_id}</span>
+                <span className="text-muted-foreground">」的{m.kindLabel}已删除</span>
               </div>
             ))}
           </div>
@@ -134,7 +133,7 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
                 router.push(`/mixcut/library?tab=assets`);
               }}
             >
-              去素材库重传
+              去素材库上传
             </Button>
             <Button
               onClick={() => {
@@ -142,7 +141,7 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
                 router.push(`/mixcut/create/${encodeURIComponent(job.template_id)}`);
               }}
             >
-              用模板从头做
+              从模板重新开始
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -156,10 +155,10 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <RefreshCw className="size-5" /> 重新跑这个任务
+            <RefreshCw className="size-5" /> 再生成一批
           </DialogTitle>
           <DialogDescription>
-            用原任务的素材和配置 fork 一份新任务。可调生成条数和差异度；其它（素材绑定、场景、贴图池）保持原样。
+            用原来的素材和配置再生成一批视频。可以调整生成数量和差异程度；其它设置保持不变。
           </DialogDescription>
         </DialogHeader>
 
@@ -169,13 +168,13 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
             模板 · {job.template_name ?? job.template_id}
           </span>
           <span className="rounded-full bg-secondary px-2 py-0.5 text-secondary-foreground">
-            原 {job.output_variants} 条 · {PROFILE_LABEL[job.perturbation_profile]}
+            上次 {job.output_variants} 条 · {PROFILE_LABEL[job.perturbation_profile]}
           </span>
         </div>
 
         <div className="space-y-4 pt-2">
           <div>
-            <Label className="text-xs text-muted-foreground">生成几条（1 - 10）</Label>
+            <Label className="text-xs text-muted-foreground">生成几条视频（1 - 10）</Label>
             <Input
               type="number"
               min={1}
@@ -188,7 +187,7 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
           </div>
 
           <div>
-            <Label className="text-xs text-muted-foreground">差异度</Label>
+            <Label className="text-xs text-muted-foreground">每条视频的差异程度</Label>
             <RadioGroup
               value={profile}
               onValueChange={(v) => setProfile(v as PerturbationProfile)}
@@ -221,7 +220,7 @@ export function RerunJobDialog({ open, onOpenChange, job }: Props) {
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
             {submitting && <Loader2 className="size-4 animate-spin" />}
-            {submitting ? "提交中…" : `开始重跑（${variants} 条）`}
+            {submitting ? "提交中…" : `开始生成 ${variants} 条`}
           </Button>
         </DialogFooter>
       </DialogContent>

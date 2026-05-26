@@ -21,11 +21,11 @@ interface Props {
 }
 
 const STAGES = [
-  { key: "queued", label: "提交任务", hint: "正在排队", weight: 0.05 },
-  { key: "compose", label: "脚本生成", hint: "AI 撰写口播脚本中…", weight: 0.2 },
-  { key: "synth", label: "明星合成", hint: "驱动明星形象与口型对齐…", weight: 0.4 },
-  { key: "render", label: "画面渲染", hint: "高清视频渲染中…", weight: 0.25 },
-  { key: "polish", label: "后期合成", hint: "添加字幕/配乐/水印…", weight: 0.1 },
+  { key: "queued", label: "准备就绪", hint: "马上就开始…", weight: 0.05 },
+  { key: "compose", label: "撰写脚本", hint: "AI 撰写口播脚本中…", weight: 0.2 },
+  { key: "synth", label: "合成明星", hint: "对齐明星形象与口型…", weight: 0.4 },
+  { key: "render", label: "生成画面", hint: "高清画面生成中…", weight: 0.25 },
+  { key: "polish", label: "后期合成", hint: "加字幕、配乐、水印…", weight: 0.1 },
 ] as const;
 
 /**
@@ -131,7 +131,7 @@ export function CelebrityGenerationProgress({
           <button
             type="button"
             onClick={() => setMinimized(true)}
-            title="最小化（任务后台继续运行）"
+            title="最小化（视频会在后台继续生成）"
             className="rounded-md p-1 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
           >
             <ChevronDown className="h-4 w-4" />
@@ -188,8 +188,8 @@ export function CelebrityGenerationProgress({
         <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-700">
           <X className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
           <div className="leading-relaxed">
-            已扣除 <span className="font-semibold text-amber-600">✦{formatCredits(creditPrice)}</span> 积分，请求已发到{meta.name}队列。
-            <span className="text-amber-700">异步执行不可中途取消</span>，可继续浏览其他页面，完成后会在顶部「我的进行中任务」徽章提醒。
+            已扣除 <span className="font-semibold text-amber-600">✦{formatCredits(creditPrice)}</span> 积分，{meta.name} 正在为你生成视频。
+            <span className="text-amber-700">生成中无法取消</span>，可以先去做别的事，完成后会在顶部「进行中任务」徽章提醒你。
           </div>
         </div>
 
@@ -199,7 +199,7 @@ export function CelebrityGenerationProgress({
             onClick={() => setMinimized(true)}
             className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[11px] text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
           >
-            后台运行 · 继续浏览
+            放后台 · 继续浏览
           </button>
         </div>
       </div>

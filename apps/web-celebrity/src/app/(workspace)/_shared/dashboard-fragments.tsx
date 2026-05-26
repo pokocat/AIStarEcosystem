@@ -153,7 +153,7 @@ export function QuotaBar({ used, total }: { used: number; total: number }) {
           letterSpacing: 0.3,
         }}
       >
-        <span>配额 {used} / {total}</span>
+        <span>已用 {used} / {total}</span>
         <span style={{ color }}>{pct}%</span>
       </div>
       <div

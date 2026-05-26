@@ -1113,14 +1113,14 @@ export function CreateClient({ id }: { id: string }) {
 
                   <Separator />
 
-                  {/* —— 扰动贴图池（迁自中列）—— */}
+                  {/* —— 动态贴图（迁自中列）—— */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                        扰动贴图池
+                        动态贴图
                       </div>
                       <span className="text-[10px] text-muted-foreground">
-                        每变体随机抽样
+                        每条视频随机选择
                       </span>
                     </div>
                     <StickerPoolPicker

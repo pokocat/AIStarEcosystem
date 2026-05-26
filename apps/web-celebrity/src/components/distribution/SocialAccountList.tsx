@@ -17,9 +17,9 @@ import { useConfirm } from "@/components/common/confirm-dialog";
 
 const STATUS_META: Record<SocialAccountStatus, { label: string; cls: string }> = {
   active: { label: "可用", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  pending: { label: "绑定中", cls: "bg-zinc-50 text-zinc-600 border-zinc-200" },
-  expired: { label: "已失效", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  banned: { label: "被封禁", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+  pending: { label: "待完成绑定", cls: "bg-zinc-50 text-zinc-600 border-zinc-200" },
+  expired: { label: "登录过期", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  banned: { label: "平台限制", cls: "bg-rose-50 text-rose-700 border-rose-200" },
 };
 
 interface Props {
@@ -79,7 +79,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
         setLastListedAt(Date.now());
         if (!opts.silent) setRefreshError(null);
       } catch (e) {
-        if (!opts.silent) setRefreshError(e instanceof Error ? e.message : "刷新失败");
+        if (!opts.silent) setRefreshError(e instanceof Error ? e.message : "账号列表加载失败");
       } finally {
         inFlightRef.current = false;
         setInitialLoading(false);
@@ -141,7 +141,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
       }
       setLastRefreshedAt(Date.now());
     } catch (e) {
-      setRefreshError(e instanceof Error ? e.message : "刷新失败");
+      setRefreshError(e instanceof Error ? e.message : "验证失败");
     } finally {
       setVerifyProgress(null);
       setRefreshing(false);
@@ -238,9 +238,9 @@ export function SocialAccountList({ onAccountsChange }: Props) {
     const target = accounts.find((a) => a.id === id);
     const accLabel = target ? target.accountName : "该账号";
     const ok = await confirm({
-      title: `解绑${accLabel}？`,
-      description: "解绑后将无法用此账号继续发布；已发布的视频不受影响。",
-      confirmText: "解绑",
+      title: `解除绑定 ${accLabel}？`,
+      description: "解除绑定后无法再用此账号发布视频；已发布的视频不受影响。",
+      confirmText: "解除绑定",
       tone: "danger",
     });
     if (!ok) return;
@@ -260,16 +260,16 @@ export function SocialAccountList({ onAccountsChange }: Props) {
       <header className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3 flex-wrap">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-base font-semibold text-zinc-800">已绑定账号</h2>
+            <h2 className="text-base font-semibold text-zinc-800">我的账号</h2>
             <span
-              className="text-[10px] font-mono text-zinc-400"
+              className="text-[10px] text-zinc-400"
               title={lastListedAt ? new Date(lastListedAt).toLocaleString() : undefined}
             >
-              {lastListedAt ? `· 列表 ${formatRelativeSeconds(lastListedAt)}更新` : ""}
+              {lastListedAt ? `· ${formatRelativeSeconds(lastListedAt)}更新` : ""}
             </span>
             {lastRefreshedAt && (
               <span
-                className="text-[10px] font-mono text-zinc-400"
+                className="text-[10px] text-zinc-400"
                 title={new Date(lastRefreshedAt).toLocaleString()}
               >
                 · 上次验证 {formatRelativeSeconds(lastRefreshedAt)}
@@ -277,8 +277,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
             )}
           </div>
           <p className="text-xs text-zinc-500 mt-0.5">
-            仅绑定本人持有的账号；账号凭据已加密存储，平台密码全程不接触。
-            重新验证一次一个账号串行进行，不会并发压宿主机。
+            只绑定你本人持有的账号，账号信息已加密保存。验证账号时会一个一个进行，避免触发平台风控。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -286,9 +285,9 @@ export function SocialAccountList({ onAccountsChange }: Props) {
             type="button"
             onClick={() => void runVerifySerial()}
             disabled={refreshing}
-            aria-label="串行重新验证所有 active 账号"
+            aria-label="重新验证所有账号"
             aria-busy={refreshing}
-            title="对每个活跃账号串行跑一次平台请求验证 cookie。10 分钟内已验证过的会自动跳过；想强制重验单个账号请点该行的图标。"
+            title="逐个检查每个账号的登录状态。10 分钟内验证过的会自动跳过；想立即重新验证某个账号请点击对应行的图标。"
             className={cn(
               CTA_SECONDARY,
               "px-3 py-1.5 text-xs",
@@ -319,7 +318,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
         <div className="mt-3 flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
           <RefreshCw className="h-3.5 w-3.5 animate-spin" />
           <span>
-            正在验证 {verifyProgress.current}/{verifyProgress.total}：
+            正在验证第 {verifyProgress.current}/{verifyProgress.total} 个：
             <span className="font-medium">{verifyProgress.accountName}</span>
           </span>
         </div>
@@ -332,10 +331,10 @@ export function SocialAccountList({ onAccountsChange }: Props) {
       )}
 
       {initialLoading ? (
-        <div className="py-8 text-center text-sm text-zinc-400">加载中……</div>
+        <div className="py-8 text-center text-sm text-zinc-400">加载中</div>
       ) : accounts.length === 0 ? (
         <div className="py-8 text-center text-sm text-zinc-400">
-          还没有绑定任何账号，点右上「新增绑定」开始。
+          还没有绑定任何账号，点右上「新增绑定」即可开始。
         </div>
       ) : (
         <ul className="divide-y divide-zinc-100">
@@ -366,8 +365,8 @@ export function SocialAccountList({ onAccountsChange }: Props) {
                   {a.status === "active" ? (
                     <button
                       type="button"
-                      aria-label="验证"
-                      title="重新验证账号登录是否仍然有效"
+                      aria-label="重新验证"
+                      title="检查该账号的登录是否仍然有效"
                       disabled={busyId === a.id}
                       className={cn(CTA_SECONDARY, "px-2.5 py-1.5 text-xs")}
                       onClick={() => void handleAccountAction(a)}
@@ -382,7 +381,7 @@ export function SocialAccountList({ onAccountsChange }: Props) {
                     <button
                       type="button"
                       aria-label="重新扫码绑定"
-                      title="该账号尚未完成绑定 / 已失效；点此重新扫码"
+                      title="该账号绑定未完成或已过期，点这里重新扫码"
                       disabled={busyId === a.id}
                       className={cn(CTA_SECONDARY, "px-2.5 py-1.5 text-xs")}
                       onClick={() => openResumeBind(a)}
@@ -392,8 +391,8 @@ export function SocialAccountList({ onAccountsChange }: Props) {
                   )}
                   <button
                     type="button"
-                    aria-label="解绑"
-                    title="解绑账号（凭据将一并清除）"
+                    aria-label="解除绑定"
+                    title="解除绑定（账号信息会被清除）"
                     disabled={busyId === a.id}
                     className={cn(CTA_SECONDARY, "px-2.5 py-1.5 text-xs hover:border-rose-300 hover:text-rose-600")}
                     onClick={() => unbind(a.id)}

@@ -122,15 +122,15 @@ export function CelebrityProductLibrary() {
       reload();
       if (n === 0) {
         await confirm({
-          title: "未抓到新图片",
-          description: "链接可能已失效，或商品页 DOM 结构变化。",
+          title: "未获取到新图片",
+          description: "链接可能已失效，或商品页面结构有变化。",
           confirmText: "知道了",
         });
       }
     } catch (e) {
       await confirm({
-        title: "刷新图片失败",
-        description: e instanceof Error ? e.message : "未知错误",
+        title: "商品图更新失败",
+        description: e instanceof Error ? e.message : "请稍后再试",
         confirmText: "知道了",
       });
     } finally {
@@ -172,20 +172,20 @@ export function CelebrityProductLibrary() {
           </div>
           <div className="text-xs text-zinc-500">
             {canManage
-              ? "你以运营身份登录，可录入 / 编辑 / 删除公共商品池条目。生成视频后将自动累计引用次数。"
-              : "公共商品池由运营维护；如需补充新品请联系运营。生成视频后将自动累计引用次数。"}
+              ? "你是管理员，可以新增、编辑或删除公共商品库中的商品。生成视频后会自动累计引用次数。"
+              : "公共商品库由管理员维护；如需补充新商品请联系管理员。生成视频后会自动累计引用次数。"}
           </div>
         </div>
         {canManage && (
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setQuickLinkOpen(true)} className={CTA_SECONDARY}>
-              <Link2 className="h-3.5 w-3.5" /> 从抖音链接快速建档
+              <Link2 className="h-3.5 w-3.5" /> 从抖音链接建档
             </button>
             <button type="button" onClick={() => setBatchOpen(true)} className={CTA_SECONDARY}>
-              <FileSpreadsheet className="h-3.5 w-3.5" /> 批量录入
+              <FileSpreadsheet className="h-3.5 w-3.5" /> 批量导入
             </button>
             <button type="button" onClick={handleNew} className={CTA_PRIMARY}>
-              <Plus className="h-3.5 w-3.5" /> 快速录入
+              <Plus className="h-3.5 w-3.5" /> 新增商品
             </button>
           </div>
         )}
@@ -253,7 +253,7 @@ export function CelebrityProductLibrary() {
 
       {/* Body */}
       {loading ? (
-        <div className="py-16 text-center text-sm text-zinc-500">加载中…</div>
+        <div className="py-16 text-center text-sm text-zinc-500">加载中</div>
       ) : list.length === 0 ? (
         <EmptyState
           canManage={canManage}
@@ -627,10 +627,10 @@ function EmptyState({
             <Link2 className="h-3.5 w-3.5" /> 从抖音链接建档
           </button>
           <button type="button" onClick={onCreate} className={CTA_SECONDARY}>
-            <Plus className="h-3.5 w-3.5" /> 手动录入
+            <Plus className="h-3.5 w-3.5" /> 逐项填写
           </button>
           <button type="button" onClick={onBatch} className={CTA_SECONDARY}>
-            <FileSpreadsheet className="h-3.5 w-3.5" /> 批量 / 文件导入
+            <FileSpreadsheet className="h-3.5 w-3.5" /> 批量导入
           </button>
         </div>
       )}
@@ -670,7 +670,7 @@ function QuickLinkDialog({
       const created = await ProductsApi.parseAndCreateProduct(trimmed);
       onCreated(created);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "解析失败，请改用「快速录入」手动填");
+      setError(e instanceof Error ? e.message : "无法识别链接，请用「逐项填写」手动录入");
     } finally {
       setBusy(false);
     }
@@ -686,7 +686,7 @@ function QuickLinkDialog({
           <Link2 className="h-4 w-4 text-violet-600" /> 从抖音链接快速建档
         </h3>
         <p className="mt-1 text-xs text-zinc-500">
-          支持「分享长链」和「PC 选品库短链」两种形态；后端会自动抽取商品名 / 图片 / 价格。
+          支持「分享长链」和「PC 选品库短链」两种形式，系统会自动提取商品名、图片和价格。
         </p>
         <textarea
           className="mt-3 min-h-[88px] w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500 focus:bg-white"
@@ -703,11 +703,11 @@ function QuickLinkDialog({
           <button type="button" onClick={handleSubmit} disabled={busy || !url.trim()} className={CTA_PRIMARY}>
             {busy ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> 解析中…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在提取
               </>
             ) : (
               <>
-                <Sparkles className="h-3.5 w-3.5" /> 解析并建档
+                <Sparkles className="h-3.5 w-3.5" /> 提取并建档
               </>
             )}
           </button>

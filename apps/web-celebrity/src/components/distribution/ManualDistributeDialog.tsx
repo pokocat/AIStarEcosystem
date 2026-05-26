@@ -98,7 +98,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
       })
       .catch((err) => {
         if (cancelled) return;
-        setErrorMsg(err instanceof Error ? err.message : "拉取已绑定账号失败");
+        setErrorMsg(err instanceof Error ? err.message : "账号加载失败");
       })
       .finally(() => {
         if (!cancelled) setLoadingAccounts(false);
@@ -167,7 +167,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
       onCreated(jobs.map((j) => j.id));
       onClose();
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "创建分发任务失败");
+      setErrorMsg(err instanceof Error ? err.message : "分发提交失败");
     } finally {
       setSubmitting(false);
     }
@@ -181,9 +181,9 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3.5">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-800">上传链接分发</h2>
+            <h2 className="text-sm font-semibold text-zinc-800">粘贴链接分发</h2>
             <p className="text-xs text-zinc-500">
-              不走视频库，直接粘外部视频链接 + 选账号一键分发
+              粘贴外部视频链接，选好账号即可分发到各平台
             </p>
           </div>
           <button
@@ -199,25 +199,25 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
         {/* Body */}
         <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
           {/* 1. 视频源 */}
-          <Section title="视频源" sub="系统会下载该视频后转发到所选平台">
+          <Section title="视频源" sub="系统会下载视频后转发到所选平台">
             <div className="flex items-start gap-2">
               <Link2 className="mt-2 h-3.5 w-3.5 shrink-0 text-zinc-400" />
               <input
                 type="url"
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="视频文件 URL（https://... .mp4）"
+                placeholder="视频链接，以 https:// 开头"
                 className={INPUT_CLS}
               />
             </div>
             {videoUrl && !videoUrlValid ? (
-              <p className="text-[11px] text-rose-600">URL 必须以 http:// 或 https:// 开头</p>
+              <p className="text-[11px] text-rose-600">链接需要以 http:// 或 https:// 开头</p>
             ) : null}
             <input
               type="url"
               value={coverUrl}
               onChange={(e) => setCoverUrl(e.target.value)}
-              placeholder="封面图 URL（可选）"
+              placeholder="封面图链接（可选）"
               className={INPUT_CLS}
             />
           </Section>
@@ -302,7 +302,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
           <Section title="选择平台与账号">
             {loadingAccounts ? (
               <div className="flex items-center gap-2 text-xs text-zinc-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> 加载已绑定账号…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在加载账号
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -319,7 +319,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
                         <span>{label}</span>
                       </span>
                       {platformAccounts.length === 0 ? (
-                        <span className="text-[11px] text-zinc-400">未绑定 active 账号</span>
+                        <span className="text-[11px] text-zinc-400">未绑定此平台账号</span>
                       ) : (
                         <Select
                           value={selected || NO_ACCOUNT}
@@ -354,11 +354,11 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
           {douyinSelected ? (
             <Section
               title="抖音商品挂载"
-              sub="蓝V / 橱窗带货；视频画面下方挂「立即购买」卡片"
+              sub="在视频画面下方挂「立即购买」卡片，需开通蓝V或橱窗带货"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] text-zinc-400">
-                  也可一键引用商品库中的现有商品
+                  也可直接从商品库中选择
                 </span>
                 <button
                   type="button"
@@ -389,11 +389,11 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
               />
               {productTitle && !productLink ? (
                 <p className="text-[11px] text-amber-600">
-                  该商品未填链接，挂件不会触发；可到商品库补一下链接。
+                  缺少商品链接，挂件不会显示；可去商品库补一下链接。
                 </p>
               ) : (
                 <p className="text-[11px] text-zinc-400">
-                  两项都填才会触发挂件；非带货视频留空即可。
+                  两项都填才会显示挂件；非带货视频留空即可。
                 </p>
               )}
             </Section>
@@ -410,7 +410,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 border-t border-zinc-200 bg-zinc-50/60 px-5 py-3">
           <div className="text-[11px] text-zinc-500">
-            将创建 {targets.length} 条分发任务；启动时按平台单价扣积分。
+            将创建 {targets.length} 条分发任务，开始时按平台单价扣积分。
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className={CTA_SECONDARY}>
@@ -424,7 +424,7 @@ export function ManualDistributeDialog({ open, onClose, onCreated }: Props) {
             >
               {submitting ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> 创建中…
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> 提交中
                 </>
               ) : (
                 "开始分发"

@@ -136,7 +136,7 @@ export function ProductFormDialog({
     } catch (e) {
       setParseStatus({
         kind: "fail",
-        reason: e instanceof Error ? e.message : "解析失败",
+        reason: e instanceof Error ? e.message : "无法识别链接",
       });
     }
   };
@@ -173,10 +173,10 @@ export function ProductFormDialog({
       <DialogContent className="max-w-lg border-zinc-200 bg-white text-zinc-900 shadow-[var(--shadow-pop)]">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">
-            {initial ? "编辑商品" : "快速录入商品"}
+            {initial ? "编辑商品" : "新增商品"}
           </DialogTitle>
           <DialogDescription className="text-xs text-zinc-500">
-            录入后可在生成带货视频时复用，提升二次生成效率。粘贴抖音商城链接可一键回填。
+            录入后可在生成带货视频时复用，让重复生成更快。粘贴抖音商城链接可一键填好。
           </DialogDescription>
         </DialogHeader>
 
@@ -225,20 +225,20 @@ export function ProductFormDialog({
             >
               {parseStatus.kind === "parsing" ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> 解析中…
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在提取
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-3.5 w-3.5" /> 📋 从抖音链接解析（仅覆盖空字段）
+                  <Sparkles className="h-3.5 w-3.5" /> 📋 从抖音链接提取（仅填空项）
                 </>
               )}
             </button>
             {parseStatus.kind === "success" && (
               <div className="text-[11px] text-emerald-600">
-                ✓ 已解析：
-                {parseStatus.titleFilled && "回填商品名 · "}
+                ✓ 已提取：
+                {parseStatus.titleFilled && "填好商品名 · "}
                 {parseStatus.imagesFilled > 0 && `${parseStatus.imagesFilled} 张图片 · `}
-                {!parseStatus.titleFilled && parseStatus.imagesFilled === 0 && "信息已是最新（未覆盖已填字段）"}
+                {!parseStatus.titleFilled && parseStatus.imagesFilled === 0 && "已填字段保持不变"}
               </div>
             )}
             {parseStatus.kind === "fail" && (
