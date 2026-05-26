@@ -2,11 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { LockKeyhole, Loader2, ShieldCheck } from "lucide-react";
+import { LockKeyhole, Loader2, ShieldCheck, History, LifeBuoy, AlertCircle } from "lucide-react";
 import { login } from "@/api/auth";
 import { getAuthToken } from "@/api/_client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 function nextPathFromLocation(): string {
@@ -18,12 +17,33 @@ function nextPathFromLocation(): string {
   return raw.startsWith("/admin/") ? raw.slice("/admin".length) || "/" : raw;
 }
 
+type Env = { label: string; tone: "production" | "staging" | "local" };
+
+function detectEnv(): Env {
+  if (typeof window === "undefined") return { label: "生产环境", tone: "production" };
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")) {
+    return { label: "本地开发", tone: "local" };
+  }
+  if (host.includes("staging") || host.includes("preview") || host.includes("test")) {
+    return { label: "预发环境", tone: "staging" };
+  }
+  return { label: "生产环境", tone: "production" };
+}
+
+const ENV_TONE: Record<Env["tone"], { dot: string; chip: string }> = {
+  production: { dot: "bg-success", chip: "border-success/30 text-success" },
+  staging: { dot: "bg-warning", chip: "border-warning/40 text-warning" },
+  local: { dot: "bg-info", chip: "border-info/30 text-info" },
+};
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const [username, setUsername] = React.useState("admin");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const env = React.useMemo(detectEnv, []);
 
   React.useEffect(() => {
     if (getAuthToken()) router.replace(nextPathFromLocation());
@@ -45,21 +65,42 @@ export default function AdminLoginPage() {
     }
   };
 
+  const envClasses = ENV_TONE[env.tone];
+
   return (
-    <main className="grid min-h-screen place-items-center bg-background px-4 py-10">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShieldCheck className="h-5 w-5" />
+    <main className="grid min-h-screen place-items-center bg-background px-4 py-12">
+      <div className="w-full max-w-sm space-y-5">
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground font-semibold text-[13px] tracking-tight">
+              AS
+            </div>
+            <div className="flex flex-col leading-tight">
+              <span className="text-sm font-semibold tracking-tight">AI Star Eco</span>
+              <span className="text-xs text-muted-foreground">运营工作台</span>
+            </div>
           </div>
-          <CardTitle>管理员登录</CardTitle>
-          <CardDescription>使用 admin_users 账号进入运营后台</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border bg-surface px-2 py-0.5 text-[11px] font-medium ${envClasses.chip}`}
+            title={`当前域：${typeof window !== "undefined" ? window.location.host : ""}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${envClasses.dot}`} />
+            {env.label}
+          </span>
+        </header>
+
+        <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+          <div className="mb-4 space-y-1">
+            <h1 className="text-lg font-semibold tracking-tight">登录到运营工作台</h1>
+            <p className="text-xs text-muted-foreground">
+              使用平台分发给你的运营账号登录。
+            </p>
+          </div>
+
+          <form className="space-y-3.5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="username">
-                用户名或邮箱
+              <label className="text-xs font-medium text-foreground/80" htmlFor="username">
+                用户名 / 邮箱
               </label>
               <Input
                 id="username"
@@ -70,7 +111,7 @@ export default function AdminLoginPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="password">
+              <label className="text-xs font-medium text-foreground/80" htmlFor="password">
                 密码
               </label>
               <Input
@@ -84,18 +125,51 @@ export default function AdminLoginPage() {
             </div>
 
             {error && (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {error}
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/8 px-3 py-2 text-sm text-destructive"
+              >
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <div className="flex-1">{error}</div>
               </div>
             )}
 
-            <Button type="submit" className="w-full" disabled={submitting || !username.trim() || !password}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockKeyhole className="h-4 w-4" />}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={submitting || !username.trim() || !password}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LockKeyhole className="h-4 w-4" />
+              )}
               登录
             </Button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+
+        <ul className="space-y-1.5 px-1 text-[11px] leading-5 text-muted-foreground">
+          <li className="flex items-start gap-2">
+            <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-success" />
+            <span>登录及后续敏感操作将完整记录到审计日志。</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <History className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>会话默认 1 小时；闲置后请重新登录。</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <LifeBuoy className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>
+              账号问题请联系{" "}
+              <a className="text-foreground hover:underline" href="mailto:platform@aistar.example">
+                platform@aistar.example
+              </a>
+              。
+            </span>
+          </li>
+        </ul>
+      </div>
     </main>
   );
 }

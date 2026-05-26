@@ -16,8 +16,11 @@ import type { Product, ProductCategory, ProductInput } from "@/types/product";
 import { PRODUCT_CATEGORIES } from "@/types/product";
 import { formatDateCN } from "@/lib/utils";
 import { formatCompactNumber } from "@/lib/format";
+import { useConfirm, useToast } from "@/components/feedback";
 
 export default function AdminProductsPage() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [products, setProducts] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -54,12 +57,30 @@ export default function AdminProductsPage() {
   }, [reload]);
 
   const handleDelete = async (p: Product) => {
-    if (!window.confirm(`确认删除商品「${p.name}」？此操作不可撤销。`)) return;
+    const res = await confirm({
+      title: "删除商品",
+      tone: "danger",
+      confirmLabel: "确认删除",
+      description: "删除后将从公共商品池移除，已挂载该商品的混剪任务不受影响。无法撤销。",
+      affected: (
+        <div className="space-y-1">
+          <div className="font-medium">{p.name}</div>
+          <div className="text-xs text-muted-foreground">
+            分类：{p.category} · 商品编号 <span className="font-mono">{p.id}</span>
+          </div>
+        </div>
+      ),
+    });
+    if (!res.ok) return;
     try {
       await ProductsApi.deleteProduct(p.id);
       await reload();
+      toast.success({ title: "商品已删除" });
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "删除失败");
+      toast.danger({
+        title: "删除失败",
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
@@ -70,10 +91,18 @@ export default function AdminProductsPage() {
       const n = await ProductsApi.refreshImages(p.id);
       await reload();
       if (n === 0) {
-        window.alert("未抓到新图片。链接可能已失效，或商品页 DOM 结构变化。");
+        toast.warning({
+          title: "未抓到新图片",
+          description: "原链接可能已失效，或商品页 DOM 结构变化。",
+        });
+      } else {
+        toast.success({ title: `已更新 ${n} 张图片` });
       }
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "刷新图片失败");
+      toast.danger({
+        title: "刷新图片失败",
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setRefreshing((s) => {
         const next = new Set(s);
@@ -357,6 +386,7 @@ function ProductFormDialog({
   initial: Product | null;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [name, setName] = React.useState("");
   const [category, setCategory] = React.useState<ProductCategory>("日用百货");
   const [link, setLink] = React.useState("");
@@ -398,8 +428,12 @@ function ProductFormDialog({
     try {
       const r = await ProductsApi.extractSellingPoints({ name: name.trim(), link: link.trim() });
       setSellingPoints(r.sellingPoints);
+      toast.success({ title: "已抽取卖点" });
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "AI 抽取失败");
+      toast.danger({
+        title: "AI 抽取失败",
+        description: e instanceof Error ? e.message : undefined,
+      });
     } finally {
       setExtracting(false);
     }

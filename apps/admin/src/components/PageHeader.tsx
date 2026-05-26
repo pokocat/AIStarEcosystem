@@ -6,19 +6,28 @@ interface PageHeaderProps {
   description?: string;
   breadcrumb?: { label: string; href?: string }[];
   actions?: ReactNode;
+  /** Render below the title row (e.g. tabs, filters). Spans full width. */
+  meta?: ReactNode;
   className?: string;
 }
 
-export function PageHeader({ title, description, breadcrumb, actions, className }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  breadcrumb,
+  actions,
+  meta,
+  className,
+}: PageHeaderProps) {
   return (
     <div className={cn("flex flex-col gap-3 border-b border-border pb-4 mb-6", className)}>
       {breadcrumb && breadcrumb.length > 0 && (
-        <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <nav className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {breadcrumb.map((b, i) => (
             <span key={i} className="flex items-center gap-1.5">
               {i > 0 && <span className="opacity-50">/</span>}
               {b.href ? (
-                <a href={b.href} className="hover:text-foreground">
+                <a href={b.href} className="hover:text-foreground transition-colors">
                   {b.label}
                 </a>
               ) : (
@@ -28,13 +37,24 @@ export function PageHeader({ title, description, breadcrumb, actions, className 
           ))}
         </nav>
       )}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex flex-col gap-1 min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight leading-tight">{title}</h1>
+          {description && (
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-[70ch]">
+              {description}
+            </p>
+          )}
         </div>
-        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+        {actions && (
+          <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+            {actions}
+          </div>
+        )}
       </div>
+
+      {meta && <div className="-mb-1">{meta}</div>}
     </div>
   );
 }

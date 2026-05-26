@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { AepUsersApi } from "@/api";
 import type { AepUser, OperatorRole } from "@/types/account";
 import { formatDateCN } from "@/lib/utils";
+import { useToast } from "@/components/feedback";
 
 /**
  * v0.31+: 平台运营 · celebrity 内嵌运营管理。
@@ -20,6 +21,7 @@ import { formatDateCN } from "@/lib/utils";
  * 也能在 web-celebrity 里做运营动作」的内嵌身份。
  */
 export default function CelebrityOperatorsPage() {
+  const toast = useToast();
   const [users, setUsers] = React.useState<AepUser[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -54,8 +56,15 @@ export default function CelebrityOperatorsPage() {
     try {
       await AepUsersApi.updateOperatorRole(user.id, next);
       await reload();
+      toast.success({
+        title: next ? `已设为${next === "super_admin" ? "超管" : "运营"}` : "已移除运营角色",
+        description: user.displayName || user.username,
+      });
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "保存失败");
+      toast.danger({
+        title: "保存失败",
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setSavingId(null);
     }
@@ -66,8 +75,8 @@ export default function CelebrityOperatorsPage() {
   return (
     <div className="max-w-screen-2xl mx-auto">
       <PageHeader
-        title="平台运营 · celebrity"
-        description="管理 aep_users.operatorRole 字段 —— 决定哪些 celebrity 用户在 web-celebrity 里能录入 / 编辑公共商品池等运营动作。与 admin 后台的 admin_users 是两套独立体系。"
+        title="平台运营 · 明星带货"
+        description="把 celebrity 用户升级为内嵌运营，让他在 web-celebrity 里也能录入 / 编辑公共商品池等运营动作。与后台管理员是两套独立体系。"
         breadcrumb={[{ label: "明星带货" }, { label: "平台运营" }]}
       />
 
@@ -99,7 +108,7 @@ export default function CelebrityOperatorsPage() {
         </CardHeader>
         <CardContent className="p-0">
           {loadError && (
-            <div className="px-4 py-3 text-sm text-rose-700 bg-rose-50 border-b border-rose-200">
+            <div className="border-b border-destructive/20 bg-destructive/8 px-4 py-3 text-sm text-destructive">
               加载失败：{loadError}
             </div>
           )}
@@ -140,7 +149,7 @@ export default function CelebrityOperatorsPage() {
                   </TableCell>
                   <TableCell>
                     {u.operatorRole ? (
-                      <span className="inline-flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/10 px-2 py-0.5 text-xs text-violet-700">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/8 px-2 py-0.5 text-xs font-medium text-primary">
                         <ShieldCheck className="h-3 w-3" />
                         {u.operatorRole === "super_admin" ? "超管" : "运营"}
                       </span>

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PlatformConfigApi } from "@/api";
 import type { PlatformConfigDto } from "@/api/platform-config";
+import { useConfirm } from "@/components/feedback";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /base/presets — 孵化 / 锻造炉 预设
@@ -57,6 +58,7 @@ const ALL_KNOWN: Record<string, KnownKeyMeta> = Object.fromEntries(
 type Toast = { type: "ok" | "err"; msg: string } | null;
 
 export default function PresetsPage() {
+  const confirm = useConfirm();
   const [configs, setConfigs] = React.useState<PlatformConfigDto[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [active, setActive] = React.useState<string | null>(null);
@@ -123,7 +125,16 @@ export default function PresetsPage() {
   };
 
   const remove = async (key: string) => {
-    if (!confirm(`确定删除预设 ${key}？`)) return;
+    const res = await confirm({
+      title: "删除预设",
+      tone: "danger",
+      confirmLabel: "确认删除",
+      description: "删除后端的预设配置；前端读取该 key 时会回退到默认值。",
+      affected: (
+        <div className="font-mono text-xs">{key}</div>
+      ),
+    });
+    if (!res.ok) return;
     try {
       await PlatformConfigApi.deleteConfig(key);
       if (active === key) setActive(null);

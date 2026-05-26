@@ -80,7 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/platform/staff",
         label: "后台管理员",
         icon: ShieldCheck,
-        description: "admin_users CRUD（仅超级管理员可见）",
+        description: "后台账号增删改查（仅超级管理员可见）",
         roles: ["SUPER_ADMIN"],
       },
     ],

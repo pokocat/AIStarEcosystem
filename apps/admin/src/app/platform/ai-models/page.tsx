@@ -1,10 +1,9 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 平台 · AI 模型配置（v0.5 §D8 新增）
-//   - 接入 OpenAI 兼容协议的 LLM provider（支持 Anthropic / Azure / 月之暗面 / 国产等 enum，
-//     但本期 chat 调用仅 OPENAI / OPENAI_COMPATIBLE 真实跑通）
-//   - apiKey 入口走明文，service 端 AES-GCM 加密落库；列表只显示脱敏值
+// 平台 · AI 模型配置（v0.5 §D8）
+//   接入 OpenAI 兼容协议的大模型服务商，apiKey 由 server 用 AES-GCM 加密落库。
+//   本期仅 OpenAI / OpenAI 兼容协议 真实可用；其他类型可建档，连通性测试会返回「暂不支持」。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -12,18 +11,61 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Lock, ShieldCheck, ChevronRight, Settings2 } from "lucide-react";
+import { useConfirm, useToast } from "@/components/feedback";
 import { AiModelsApi } from "@/api";
+import { cn } from "@/lib/utils";
 import type { AiModelProvider, AiModelProviderType, AiModelPurpose } from "@/api/ai-models";
 
 const PROVIDER_TYPES: AiModelProviderType[] = [
-  "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "AZURE_OPENAI",
-  "MOONSHOT", "DEEPSEEK", "BAIDU", "ALIYUN", "TENCENT", "VOLCENGINE", "CUSTOM",
+  "OPENAI",
+  "OPENAI_COMPATIBLE",
+  "ANTHROPIC",
+  "AZURE_OPENAI",
+  "MOONSHOT",
+  "DEEPSEEK",
+  "BAIDU",
+  "ALIYUN",
+  "TENCENT",
+  "VOLCENGINE",
+  "CUSTOM",
 ];
+
+const PROVIDER_LABEL: Record<AiModelProviderType, string> = {
+  OPENAI: "OpenAI 原生",
+  OPENAI_COMPATIBLE: "OpenAI 兼容协议",
+  ANTHROPIC: "Anthropic Claude",
+  AZURE_OPENAI: "Azure OpenAI",
+  MOONSHOT: "月之暗面 Kimi",
+  DEEPSEEK: "DeepSeek",
+  BAIDU: "百度文心",
+  ALIYUN: "阿里通义",
+  TENCENT: "腾讯混元",
+  VOLCENGINE: "火山豆包",
+  CUSTOM: "自定义",
+};
+
+const SUPPORTED_PROVIDERS = new Set<AiModelProviderType>(["OPENAI", "OPENAI_COMPATIBLE"]);
+
 const PURPOSES: AiModelPurpose[] = [
-  "SCRIPT_DRAFT", "SAFETY_REVIEW", "VIDEO_REF_ANALYSIS", "TEMPLATE_REWRITE", "GENERAL",
+  "SCRIPT_DRAFT",
+  "SAFETY_REVIEW",
+  "VIDEO_REF_ANALYSIS",
+  "TEMPLATE_REWRITE",
+  "GENERAL",
 ];
+
+const PURPOSE_LABEL: Record<AiModelPurpose, string> = {
+  SCRIPT_DRAFT: "脚本起草",
+  SAFETY_REVIEW: "安全审核",
+  VIDEO_REF_ANALYSIS: "参考视频解析",
+  TEMPLATE_REWRITE: "模板改写",
+  GENERAL: "通用",
+};
 
 interface FormState {
   id?: string;
@@ -50,12 +92,18 @@ const EMPTY_FORM: FormState = {
   enabled: true,
 };
 
+type TestState = "idle" | "running" | "ok" | "fail";
+
 export default function AdminAiModelsPage() {
+  const toast = useToast();
+  const confirm = useConfirm();
+
   const [list, setList] = React.useState<AiModelProvider[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<FormState | null>(null);
-  const [testing, setTesting] = React.useState<Record<string, string>>({});
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [testing, setTesting] = React.useState<Record<string, { state: TestState; message?: string }>>({});
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -76,11 +124,11 @@ export default function AdminAiModelsPage() {
   async function onSave() {
     if (!editing) return;
     if (!editing.name.trim() || !editing.baseUrl.trim()) {
-      alert("name / baseUrl 必填");
+      toast.warning({ title: "服务商名称 / 调用地址 必填" });
       return;
     }
     if (!editing.id && !editing.apiKey.trim()) {
-      alert("新建时 apiKey 必填");
+      toast.warning({ title: "新建时 API 密钥 必填" });
       return;
     }
     try {
@@ -101,27 +149,67 @@ export default function AdminAiModelsPage() {
         await AiModelsApi.create(body);
       }
       setEditing(null);
+      setShowAdvanced(false);
       await refresh();
+      toast.success({ title: editing.id ? "已保存" : "服务商已创建" });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "保存失败");
+      toast.danger({
+        title: "保存失败",
+        description: e instanceof Error ? e.message : undefined,
+      });
     }
   }
-  async function onDelete(id: string) {
-    if (!confirm("删除该 provider？")) return;
+
+  async function onDelete(p: AiModelProvider) {
+    const res = await confirm({
+      title: "删除大模型服务商",
+      tone: "danger",
+      confirmLabel: "确认删除",
+      requireReason: true,
+      reasonPlaceholder: "例如：密钥泄漏 / 已迁移到新服务商",
+      affected: (
+        <div className="space-y-1">
+          <div className="font-medium">{p.name}</div>
+          <div className="text-xs text-muted-foreground">
+            类型：{PROVIDER_LABEL[p.providerType]} · 用途：
+            {(p.purposes ?? []).map((x) => PURPOSE_LABEL[x]).join("、") || "未指定"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            服务商编号 <span className="font-mono">{p.id}</span>
+          </div>
+        </div>
+      ),
+      description:
+        "删除后依赖该服务商的脚本起草、模板改写、安全审核能力会立即失效。请先确认有兜底服务商在线。",
+    });
+    if (!res.ok) return;
     try {
-      await AiModelsApi.remove(id);
+      await AiModelsApi.remove(p.id);
       await refresh();
+      toast.success({ title: "服务商已删除" });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "删除失败");
+      toast.danger({ title: "删除失败", description: e instanceof Error ? e.message : undefined });
     }
   }
+
   async function onTest(id: string) {
-    setTesting((t) => ({ ...t, [id]: "测试中…" }));
+    setTesting((t) => ({ ...t, [id]: { state: "running" } }));
     try {
       const r = await AiModelsApi.testConnection(id);
-      setTesting((t) => ({ ...t, [id]: r.ok ? `OK (${r.statusCode ?? "?"})` : `FAIL: ${r.error ?? r.statusCode}` }));
+      if (r.ok) {
+        setTesting((t) => ({
+          ...t,
+          [id]: { state: "ok", message: r.statusCode ? `HTTP ${r.statusCode}` : "联通" },
+        }));
+        toast.success({ title: "联通正常", description: r.statusCode ? `HTTP ${r.statusCode}` : undefined });
+      } else {
+        setTesting((t) => ({ ...t, [id]: { state: "fail", message: r.error ?? `HTTP ${r.statusCode ?? "?"}` } }));
+        toast.danger({ title: "联通失败", description: r.error ?? `HTTP ${r.statusCode ?? "?"}` });
+      }
     } catch (e) {
-      setTesting((t) => ({ ...t, [id]: e instanceof Error ? `FAIL: ${e.message}` : "FAIL" }));
+      const msg = e instanceof Error ? e.message : "未知错误";
+      setTesting((t) => ({ ...t, [id]: { state: "fail", message: msg } }));
+      toast.danger({ title: "联通失败", description: msg });
     }
   }
 
@@ -129,122 +217,303 @@ export default function AdminAiModelsPage() {
     <div className="space-y-6">
       <PageHeader
         title="AI 模型配置"
-        description="管理 OpenAI 兼容 API（含 Anthropic / Azure / 月之暗面 / 国产等）。本期 chat 调用仅 OPENAI / OPENAI_COMPATIBLE 真实可用，其他 providerType CRUD 可建但 testConnection 会返回 'not yet supported'。apiKey 走 AES-GCM 加密落库。"
+        description="管理对接的大模型服务商（脚本起草、模板改写、安全审核所用）。API 密钥由服务端加密存储，列表仅显示脱敏值。"
       />
 
       <Card>
-        <CardHeader>
-          <CardTitle>{editing ? (editing.id ? "编辑 provider" : "新建 provider") : "操作"}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {!editing ? (
+        <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle className="text-base">
+            {editing ? (editing.id ? "编辑服务商" : "新建服务商") : "操作"}
+          </CardTitle>
+          {!editing && (
             <div className="flex gap-2">
-              <Button onClick={() => setEditing({ ...EMPTY_FORM })}>+ 新建 provider</Button>
-              <Button variant="outline" onClick={() => void refresh()}>刷新</Button>
+              <Button variant="outline" onClick={() => void refresh()}>
+                刷新
+              </Button>
+              <Button onClick={() => setEditing({ ...EMPTY_FORM })}>新建服务商</Button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="name（运营备注）"><Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
-              <Field label="providerType">
-                <Select value={editing.providerType} onValueChange={(v) => setEditing({ ...editing, providerType: v as AiModelProviderType })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+          )}
+        </CardHeader>
+        {editing && (
+          <CardContent className="space-y-5">
+            <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="服务商名称" hint="给运营用的备注，例如「主用 GPT-4o」">
+                <Input
+                  value={editing.name}
+                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  placeholder="主用 GPT-4o"
+                />
+              </Field>
+              <Field
+                label="服务商类型"
+                hint={
+                  SUPPORTED_PROVIDERS.has(editing.providerType)
+                    ? "本期 chat 接口已真实接通"
+                    : "本期 chat 接口尚未接通，可建档但联通性测试不可用"
+                }
+              >
+                <Select
+                  value={editing.providerType}
+                  onValueChange={(v) => setEditing({ ...editing, providerType: v as AiModelProviderType })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {PROVIDER_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {PROVIDER_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        <div className="flex items-center gap-2">
+                          <span>{PROVIDER_LABEL[t]}</span>
+                          {!SUPPORTED_PROVIDERS.has(t) && (
+                            <span className="text-[10px] text-muted-foreground">未接通</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="baseUrl"><Input value={editing.baseUrl} onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })} /></Field>
-              <Field label={`apiKey${editing.id ? "（编辑模式留空表示不修改）" : "（必填）"}`}>
-                <Input type="password" autoComplete="new-password" placeholder={editing.id ? "***（不修改）" : "sk-..."} value={editing.apiKey} onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })} />
+              <Field label="调用地址" hint="服务商提供的 API base URL">
+                <Input
+                  value={editing.baseUrl}
+                  onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })}
+                  placeholder="https://api.openai.com/v1"
+                />
               </Field>
-              <Field label="apiVersion（Azure 用）"><Input value={editing.apiVersion} onChange={(e) => setEditing({ ...editing, apiVersion: e.target.value })} /></Field>
-              <Field label="defaultModel"><Input value={editing.defaultModel} onChange={(e) => setEditing({ ...editing, defaultModel: e.target.value })} /></Field>
-              <Field label="priority（数字越小优先级越高）"><Input type="number" value={editing.priority} onChange={(e) => setEditing({ ...editing, priority: Number(e.target.value) || 100 })} /></Field>
-              <Field label="enabled">
-                <input type="checkbox" checked={editing.enabled} onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })} />
-              </Field>
-              <div className="md:col-span-2">
-                <div className="mb-1 text-xs text-muted-foreground">purposes（多选）</div>
-                <div className="flex flex-wrap gap-2">
-                  {PURPOSES.map((p) => {
-                    const checked = editing.purposes.includes(p);
-                    return (
-                      <label key={p} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs ${checked ? "border-emerald-300 bg-emerald-50" : "border-slate-300"}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => setEditing({
-                            ...editing,
-                            purposes: e.target.checked
-                              ? [...editing.purposes, p]
-                              : editing.purposes.filter((x) => x !== p),
-                          })}
-                        />{p}
-                      </label>
-                    );
-                  })}
+              <Field
+                label="API 密钥"
+                hint={
+                  editing.id
+                    ? "留空表示不修改；填写则覆盖。服务端用 AES-GCM 加密落库。"
+                    : "新建时必填。服务端用 AES-GCM 加密落库，仅在调用时解密。"
+                }
+              >
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    className="pl-8"
+                    placeholder={editing.id ? "***（不修改）" : "sk-..."}
+                    value={editing.apiKey}
+                    onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
+                  />
                 </div>
+              </Field>
+              <Field label="默认模型" hint="例如 gpt-4o / claude-sonnet-4 / moonshot-v1-32k">
+                <Input
+                  value={editing.defaultModel}
+                  onChange={(e) => setEditing({ ...editing, defaultModel: e.target.value })}
+                  placeholder="gpt-4o"
+                />
+              </Field>
+              <Field label="启用" hint="关闭后调度器会跳过该服务商">
+                <div className="flex h-9 items-center">
+                  <Switch
+                    checked={editing.enabled}
+                    onCheckedChange={(v) => setEditing({ ...editing, enabled: v })}
+                  />
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    {editing.enabled ? "已启用" : "已停用"}
+                  </span>
+                </div>
+              </Field>
+            </section>
+
+            <section>
+              <div className="mb-2 text-sm font-medium">用途</div>
+              <div className="text-xs text-muted-foreground mb-2">
+                标记该服务商可被哪些业务调度使用。可多选。
               </div>
-              <div className="md:col-span-2 flex gap-2">
-                <Button onClick={() => void onSave()}>{editing.id ? "保存修改" : "新建"}</Button>
-                <Button variant="outline" onClick={() => setEditing(null)}>取消</Button>
+              <div className="flex flex-wrap gap-2">
+                {PURPOSES.map((p) => {
+                  const checked = editing.purposes.includes(p);
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() =>
+                        setEditing({
+                          ...editing,
+                          purposes: checked
+                            ? editing.purposes.filter((x) => x !== p)
+                            : [...editing.purposes, p],
+                        })
+                      }
+                      aria-pressed={checked}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                        checked
+                          ? "border-primary/30 bg-primary/10 text-primary"
+                          : "border-border bg-surface text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {PURPOSE_LABEL[p]}
+                    </button>
+                  );
+                })}
               </div>
+            </section>
+
+            <section className="rounded-md border border-border bg-surface-muted/40">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="flex w-full items-center justify-between px-3.5 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Settings2 className="h-3.5 w-3.5" />
+                  高级
+                </span>
+                <ChevronRight
+                  className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-90")}
+                />
+              </button>
+              {showAdvanced && (
+                <div className="grid grid-cols-1 gap-4 border-t border-border p-3.5 md:grid-cols-2">
+                  <Field label="API 版本" hint="仅 Azure OpenAI 需要，例如 2024-08-01-preview">
+                    <Input
+                      value={editing.apiVersion}
+                      onChange={(e) => setEditing({ ...editing, apiVersion: e.target.value })}
+                      placeholder="留空"
+                    />
+                  </Field>
+                  <Field label="优先级" hint="数字越小越优先；同一用途有多个服务商时按此排序">
+                    <Input
+                      type="number"
+                      value={editing.priority}
+                      onChange={(e) =>
+                        setEditing({ ...editing, priority: Number(e.target.value) || 100 })
+                      }
+                    />
+                  </Field>
+                </div>
+              )}
+            </section>
+
+            <div className="flex gap-2 pt-1">
+              <Button onClick={() => void onSave()}>{editing.id ? "保存修改" : "新建"}</Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditing(null);
+                  setShowAdvanced(false);
+                }}
+              >
+                取消
+              </Button>
             </div>
-          )}
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>provider 列表（{list.length}）</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between text-base">
+            <span>服务商列表（{list.length}）</span>
+            <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5 text-success" /> 密钥加密存储
+            </span>
+          </CardTitle>
+        </CardHeader>
         <CardContent>
           {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
-          {err && <div className="text-sm text-rose-600">{err}</div>}
+          {err && <div className="text-sm text-destructive">{err}</div>}
           {!loading && !err && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>name</TableHead>
-                  <TableHead>type</TableHead>
-                  <TableHead>baseUrl</TableHead>
-                  <TableHead>apiKey</TableHead>
-                  <TableHead>defaultModel</TableHead>
-                  <TableHead>priority</TableHead>
-                  <TableHead>enabled</TableHead>
-                  <TableHead>purposes</TableHead>
-                  <TableHead className="w-[260px]">操作</TableHead>
+                  <TableHead>名称</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>调用地址</TableHead>
+                  <TableHead>密钥</TableHead>
+                  <TableHead>默认模型</TableHead>
+                  <TableHead>优先级</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>用途</TableHead>
+                  <TableHead className="w-[260px] text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>{p.name}</TableCell>
-                    <TableCell><span className="rounded bg-slate-100 px-1 text-xs">{p.providerType}</span></TableCell>
-                    <TableCell className="max-w-[200px] truncate text-xs font-mono">{p.baseUrl}</TableCell>
-                    <TableCell className="text-xs font-mono">{p.apiKeyMasked}</TableCell>
-                    <TableCell className="text-xs">{p.defaultModel ?? "—"}</TableCell>
-                    <TableCell>{p.priority}</TableCell>
-                    <TableCell>{p.enabled ? "✓" : "✗"}</TableCell>
-                    <TableCell className="text-xs">{(p.purposes ?? []).join(", ")}</TableCell>
-                    <TableCell className="space-x-1">
-                      <Button size="sm" variant="outline" onClick={() => setEditing({
-                        id: p.id,
-                        name: p.name,
-                        providerType: p.providerType,
-                        baseUrl: p.baseUrl,
-                        apiKey: "",
-                        apiVersion: p.apiVersion ?? "",
-                        defaultModel: p.defaultModel ?? "",
-                        purposes: p.purposes ?? [],
-                        priority: p.priority,
-                        enabled: p.enabled,
-                      })}>编辑</Button>
-                      <Button size="sm" variant="outline" onClick={() => void onTest(p.id)}>
-                        {testing[p.id] ?? "测试"}
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => void onDelete(p.id)}>删</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {list.map((p) => {
+                  const t = testing[p.id];
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">{p.id}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone="neutral" className="font-normal">
+                          {PROVIDER_LABEL[p.providerType] ?? p.providerType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[220px] truncate text-xs font-mono">
+                        {p.baseUrl}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">{p.apiKeyMasked}</TableCell>
+                      <TableCell className="text-xs">{p.defaultModel ?? "—"}</TableCell>
+                      <TableCell className="tabular-nums">{p.priority}</TableCell>
+                      <TableCell>
+                        {p.enabled ? (
+                          <Badge tone="success" className="font-normal">
+                            已启用
+                          </Badge>
+                        ) : (
+                          <Badge tone="neutral" className="font-normal text-muted-foreground">
+                            已停用
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {(p.purposes ?? []).map((x) => PURPOSE_LABEL[x]).join("、") || "—"}
+                      </TableCell>
+                      <TableCell className="space-x-1 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setEditing({
+                              id: p.id,
+                              name: p.name,
+                              providerType: p.providerType,
+                              baseUrl: p.baseUrl,
+                              apiKey: "",
+                              apiVersion: p.apiVersion ?? "",
+                              defaultModel: p.defaultModel ?? "",
+                              purposes: p.purposes ?? [],
+                              priority: p.priority,
+                              enabled: p.enabled,
+                            })
+                          }
+                        >
+                          编辑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void onTest(p.id)}
+                          aria-live="polite"
+                          className={cn(
+                            t?.state === "ok" && "border-success/40 text-success",
+                            t?.state === "fail" && "border-destructive/40 text-destructive"
+                          )}
+                        >
+                          {t?.state === "running"
+                            ? "测试中…"
+                            : t?.state === "ok"
+                            ? "已联通"
+                            : t?.state === "fail"
+                            ? "已失败"
+                            : "测试连接"}
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => void onDelete(p)}>
+                          删除
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -254,11 +523,20 @@ export default function AdminAiModelsPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <div className="mb-1 text-xs text-muted-foreground">{label}</div>
+      <div className="mb-1 text-sm font-medium">{label}</div>
       {children}
+      {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
     </div>
   );
 }
