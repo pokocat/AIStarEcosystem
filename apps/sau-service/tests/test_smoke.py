@@ -838,7 +838,7 @@ def test_login_poll_clears_stale_sms_after_platform_logged_in(monkeypatch) -> No
     assert session.ticket not in pool._sessions
 
 
-def test_douyin_submit_code_tries_child_frames(monkeypatch) -> None:
+def test_douyin_submit_code_scopes_to_receive_sms_overlay(monkeypatch) -> None:
     from sau_service.interaction import _DouyinSmsDriver
 
     class _Scope:
@@ -850,23 +850,25 @@ def test_douyin_submit_code_tries_child_frames(monkeypatch) -> None:
             return None
 
     page = _Scope("page")
-    frame = _Scope("frame")
-    page.frames = [frame]
-    calls: list[tuple[str, str, str]] = []
+    calls: list[tuple[str, str]] = []
     driver = _DouyinSmsDriver()
 
     async def no_specific(_page):
         return False
 
-    async def fake_submit(scope, code, *, keyboard_page=None):
-        calls.append((scope.name, code, keyboard_page.name if keyboard_page else ""))
-        return scope.name == "frame"
+    async def receive_overlay(_page):
+        return {"visible": True}
+
+    async def fake_submit(scope, code):
+        calls.append((scope.name, code))
+        return True
 
     monkeypatch.setattr(driver, "_is_modal_visible", no_specific)
-    monkeypatch.setattr(driver, "_submit_generic_code_in_surface", fake_submit)
+    monkeypatch.setattr(driver, "_detect_receive_sms_overlay", receive_overlay)
+    monkeypatch.setattr(driver, "_submit_receive_overlay_code", fake_submit)
 
     assert asyncio.run(driver.submit_code(page, "123456")) is True
-    assert calls == [("page", "123456", "page"), ("frame", "123456", "page")]
+    assert calls == [("page", "123456")]
 
 
 def test_douyin_choice_panel_clicks_sms_row_before_text(monkeypatch) -> None:
@@ -934,6 +936,70 @@ def test_douyin_choice_panel_clicks_sms_row_before_text(monkeypatch) -> None:
             "接收短信验证码",
         ),
     ]
+
+
+def test_douyin_choice_panel_does_not_use_send_sms(monkeypatch) -> None:
+    from sau_service.interaction import _DouyinSmsDriver
+
+    monkeypatch.delenv("SAU_DOUYIN_AUTO_ADVANCE_CHOICE", raising=False)
+
+    class _Locator:
+        def __init__(self, scope, kind: str, selector: str = "", text: str = "") -> None:
+            self.scope = scope
+            self.kind = kind
+            self.selector = selector
+            self.text = text
+
+        @property
+        def first(self):
+            return self
+
+        def filter(self, *, has_text: str):
+            return _Locator(self.scope, self.kind, self.selector, has_text)
+
+        async def count(self) -> int:
+            if self.kind == "title":
+                return 1
+            if self.kind == "row":
+                return int(
+                    "uc_verification_component_list_item" in self.selector
+                    and self.text == "发送短信验证"
+                )
+            if self.kind == "text":
+                return int(self.text in {"发送短信验证", "身份验证"})
+            return 0
+
+        async def is_visible(self, timeout: int = 0) -> bool:
+            return await self.count() > 0
+
+        async def click(self, timeout: int = 0) -> None:
+            self.scope.clicked.append((self.kind, self.selector, self.text))
+
+    class _Scope:
+        frames = []
+
+        def __init__(self) -> None:
+            self.clicked: list[tuple[str, str, str]] = []
+
+        def get_by_text(self, text: str, exact: bool = False):
+            if text == "身份验证":
+                return _Locator(self, "title", text=text)
+            return _Locator(self, "text", text=text)
+
+        def locator(self, selector: str):
+            return _Locator(self, "row", selector=selector)
+
+        async def wait_for_timeout(self, ms: int) -> None:
+            return None
+
+        async def evaluate(self, script: str):
+            return {"clicked": False, "text": ""}
+
+    scope = _Scope()
+    driver = _DouyinSmsDriver()
+
+    assert asyncio.run(driver._try_advance_choice_in_scope(scope)) is False
+    assert scope.clicked == []
 
 
 def test_login_poll_reports_sms_before_logged_in_success(monkeypatch) -> None:

@@ -1107,8 +1107,9 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
 
     PLATFORM_NAME = "douyin"
 
-    MASK_SELECTOR = "#uc-second-verify .second-verify-mask"
-    PANEL_SELECTOR = "#uc-second-verify .second-verify-panel"
+    SECOND_VERIFY_SELECTOR = "#uc-second-verify"
+    MASK_SELECTOR = "#uc-second-verify .second-verify-mask,#uc-second-verify [class*='second_verify_mask']"
+    PANEL_SELECTOR = "#uc-second-verify .second-verify-panel,#uc-second-verify [class*='second_verify_panel']"
     PHONE_TEXT_SELECTOR = ".uc-ui-verify_sms-verify_content_desc"
     CODE_INPUT_SELECTOR = 'input[placeholder="请输入验证码"]'
     REQUEST_SMS_SELECTOR = ".uc-ui-verify_sms-verify_input .uc-ui-input_right"
@@ -1120,28 +1121,24 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
     def _panel(self, page: Any) -> Any:
         return page.locator(self.PANEL_SELECTOR).filter(has_text="接收短信验证码").first
 
-    CHOICE_SMS_LABELS = ("接收短信验证码", "发送短信验证", "短信验证码", "短信验证", "手机短信")
+    RECEIVE_SMS_LABELS = ("接收短信验证码",)
+    NON_RECEIVE_LABELS = ("发送短信验证", "验证登录密码")
     CHOICE_ROW_SELECTORS = (
         "#uc-second-verify div[class*='uc_verification_component_list_item']",
         "#uc-second-verify div[class*='list_item']",
         "#uc-second-verify div[class*='list'] > div",
-        "div[class*='uc_verification_component_list_item']",
-        "div[class*='list_item']",
-        "[role='button']",
-        "button",
+        "#uc-second-verify [role='button']",
+        "#uc-second-verify button",
     )
 
     async def _advance_choice_panel(self, page: Any) -> bool:
         """Click through Douyin's identity-verification method picker.
 
         The login/bind flow can first show a large "身份验证" panel with rows
-        like "接收短信验证码" or "发送短信验证". That is not the code input panel
-        yet; clicking the SMS row lands on the panel handled by the existing
-        selectors below.
-
-        Also handles the ato_web MFA template which may use different button
-        text variants (e.g. "短信验证码验证"). Uses exact=False substring match
-        plus a JS fallback for any SMS-related clickable row.
+        like "接收短信验证码". That is not the code input panel yet; clicking
+        the receive-SMS row lands on the panel handled by the existing
+        selectors below. Do not choose "发送短信验证": that is a different flow
+        where the user sends an SMS from the phone.
 
         Searches both main frame and child frames (passport iframes).
         """
@@ -1177,10 +1174,13 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
         # second-verify DOM the label text itself is a nested typography div, and
         # clicking only that text may no-op while the row handles the action.
         for selector in self.CHOICE_ROW_SELECTORS:
-            for label in self.CHOICE_SMS_LABELS:
+            for label in self.RECEIVE_SMS_LABELS:
                 try:
                     target = scope.locator(selector).filter(has_text=label).first
                     if await target.count() and await target.is_visible(timeout=500):
+                        text = await self._text_or_empty(target)
+                        if any(blocked in text for blocked in self.NON_RECEIVE_LABELS):
+                            continue
                         await target.click(timeout=1_500)
                         await self._wait_after_choice_click(scope)
                         log.info(
@@ -1194,7 +1194,7 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
 
         # Text click fallback for older templates where the label itself is the
         # clickable button. Keep it after row-click attempts.
-        for label in self.CHOICE_SMS_LABELS:
+        for label in self.RECEIVE_SMS_LABELS:
             try:
                 target = scope.get_by_text(label, exact=False).first
                 if await target.count() and await target.is_visible(timeout=500):
@@ -1205,18 +1205,21 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
             except Exception:  # noqa: BLE001
                 continue
 
-        # JS fallback: click the smallest visible row/button-like element
-        # containing an SMS keyword. Avoid broad list/panel containers because
-        # those can swallow the click without changing the selected method.
+        # JS fallback: click the smallest visible row/button-like element in the
+        # second-verify overlay that explicitly contains "接收短信验证码". Avoid
+        # page-wide SMS keywords because the underlying login card stays visible
+        # below the floating overlay.
         try:
             clicked = await scope.evaluate("""() => {
-                const SMS_RE = /短信|sms/i;
-                const candidates = Array.from(document.querySelectorAll(
-                    '#uc-second-verify [role="button"],#uc-second-verify [role="option"],#uc-second-verify li,#uc-second-verify a,#uc-second-verify button,#uc-second-verify div[class*="item"],#uc-second-verify div[class*="option"],#uc-second-verify div[class*="row"],[role="button"],[role="option"],li,a,button,div[class*="item"],div[class*="option"],div[class*="row"]'
+                const root = document.querySelector('#uc-second-verify');
+                if (!root) return { clicked: false, text: '' };
+                const candidates = Array.from(root.querySelectorAll(
+                    '[role="button"],[role="option"],li,a,button,div[class*="uc_verification_component_list_item"],div[class*="list_item"],div[class*="item"],div[class*="option"],div[class*="row"]'
                 )).map((el) => {
                     const style = window.getComputedStyle(el);
                     const r = el.getBoundingClientRect();
-                    return { el, r, text: el.textContent || '', style };
+                    const text = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+                    return { el, r, text, style };
                 }).filter(({ r, text, style }) => {
                     return style.display !== 'none'
                         && style.visibility !== 'hidden'
@@ -1224,7 +1227,9 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
                         && r.height >= 20
                         && r.width <= 520
                         && r.height <= 120
-                        && SMS_RE.test(text);
+                        && text.includes('接收短信验证码')
+                        && !text.includes('发送短信验证')
+                        && !text.includes('验证登录密码');
                 }).sort((a, b) => (a.r.width * a.r.height) - (b.r.width * b.r.height));
                 const hit = candidates[0];
                 if (hit) {
@@ -1242,6 +1247,52 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
 
         return False
 
+    async def _detect_receive_sms_overlay(self, page: Any) -> dict[str, Any] | None:
+        """Detect code-input state only inside Douyin's second-verify overlay.
+
+        The base login card remains in the DOM behind the floating overlay and
+        contains its own phone/code inputs. Those must not drive the bind flow.
+        """
+        script = r"""
+        () => {
+          const root = document.querySelector('#uc-second-verify');
+          if (!root) return null;
+          const styleOf = (el) => window.getComputedStyle(el);
+          function isVisible(el) {
+            if (!el) return false;
+            const style = styleOf(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && r.bottom >= 0 && r.right >= 0 && r.top <= window.innerHeight && r.left <= window.innerWidth;
+          }
+          if (!isVisible(root)) return null;
+          const text = (root.innerText || root.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!text.includes('接收短信验证码')) return null;
+          const input = Array.from(root.querySelectorAll('input,textarea')).find((el) => {
+            const hint = `${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('name') || ''}`;
+            return isVisible(el) && /验证码|校验码|code|sms/i.test(hint);
+          });
+          if (!input) return null;
+          const request = Array.from(root.querySelectorAll('button,[role="button"],span,div,a'))
+            .filter(isVisible)
+            .map((el) => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())
+            .find((t) => /(获取|重新|重发).{0,8}(验证码|校验码)|验证码/.test(t)) || null;
+          const phoneMatch = text.match(/1\d{2}[\d*\s.-]{4,12}\d{2,4}/);
+          return {
+            visible: true,
+            phone_raw: phoneMatch ? phoneMatch[0] : null,
+            request_text: request,
+            root_text: text.slice(0, 260),
+          };
+        }
+        """
+        try:
+            result = await page.evaluate(script)
+        except Exception:  # noqa: BLE001
+            log.exception("[interaction douyin] receive SMS overlay detect failed")
+            return None
+        return result if isinstance(result, dict) and result.get("visible") else None
+
     async def _wait_after_choice_click(self, scope: Any) -> None:
         try:
             await scope.wait_for_timeout(600)
@@ -1250,13 +1301,11 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
             await asyncio.sleep(0.6)
 
     async def _is_modal_visible(self, page: Any) -> bool:
-        panel = self._panel(page)
-        try:
-            if await panel.count() == 0:
-                return False
-            return await panel.is_visible(timeout=500)
-        except Exception:  # noqa: BLE001
-            return False
+        # "身份验证" method-choice and receive-code input share the same
+        # #uc-second-verify shell. Treat it as an SMS modal only after a code
+        # input exists inside the overlay; the underlying login form also has
+        # code inputs and must be ignored.
+        return await self._detect_receive_sms_overlay(page) is not None
 
     async def _text_or_empty(self, locator: Any, *, timeout: int = 500) -> str:
         try:
@@ -1283,11 +1332,11 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
                     await page.wait_for_timeout(500)
                     if await self._is_modal_visible(page):
                         break
-                    if await self._detect_generic_sms(page):
+                    if await self._detect_receive_sms_overlay(page):
                         break
         specific_visible = await self._is_modal_visible(page)
         if not specific_visible:
-            detected = await self._detect_generic_sms_anywhere(page)
+            detected = await self._detect_receive_sms_overlay(page)
             if not detected:
                 log.debug("[interaction douyin] detect: no SMS panel found (modal_visible=False, generic=None, url=%s)", getattr(page, "url", None))
                 return None
@@ -1315,10 +1364,88 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
             "can_resend_at": can_resend_at,
         }
 
+    async def _click_receive_overlay_button(self, page: Any, pattern: str) -> bool:
+        script = r"""
+        (source) => {
+          const root = document.querySelector('#uc-second-verify');
+          if (!root) return false;
+          const re = new RegExp(source, 'i');
+          function isVisible(el) {
+            if (!el) return false;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && r.bottom >= 0 && r.right >= 0 && r.top <= window.innerHeight && r.left <= window.innerWidth;
+          }
+          const candidates = Array.from(root.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"],a,span,div'))
+            .filter(isVisible)
+            .map((el) => ({ el, text: (el.innerText || el.textContent || el.getAttribute('value') || '').replace(/\s+/g, ' ').trim(), r: el.getBoundingClientRect() }))
+            .filter(({ text, r }) => text && re.test(text) && r.width >= 20 && r.height >= 16 && r.width <= 360 && r.height <= 80)
+            .sort((a, b) => (a.r.width * a.r.height) - (b.r.width * b.r.height));
+          const hit = candidates[0];
+          if (!hit) return false;
+          hit.el.click();
+          return true;
+        }
+        """
+        try:
+            return bool(await page.evaluate(script, pattern))
+        except Exception:  # noqa: BLE001
+            log.exception("[interaction douyin] receive overlay button click failed")
+            return False
+
+    async def _submit_receive_overlay_code(self, page: Any, code: str) -> bool:
+        script = r"""
+        async ({ code }) => {
+          const root = document.querySelector('#uc-second-verify');
+          if (!root) return false;
+          function isVisible(el) {
+            if (!el) return false;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && r.bottom >= 0 && r.right >= 0 && r.top <= window.innerHeight && r.left <= window.innerWidth;
+          }
+          const input = Array.from(root.querySelectorAll('input,textarea')).find((el) => {
+            const hint = `${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('name') || ''}`;
+            return isVisible(el) && /验证码|校验码|code|sms/i.test(hint);
+          });
+          if (!input) return false;
+          input.focus();
+          input.value = '';
+          input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null }));
+          input.value = code;
+          input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: code }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise((resolve) => setTimeout(resolve, 180));
+          const candidates = Array.from(root.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"],a,span,div'))
+            .filter(isVisible)
+            .map((el) => ({ el, text: (el.innerText || el.textContent || el.getAttribute('value') || '').replace(/\s+/g, ' ').trim(), r: el.getBoundingClientRect() }))
+            .filter(({ text, r }) => /^(验证|确认|提交|确定|完成)$/.test(text) && r.width >= 20 && r.height >= 16 && r.width <= 360 && r.height <= 90)
+            .sort((a, b) => (a.r.width * a.r.height) - (b.r.width * b.r.height));
+          const hit = candidates[0];
+          if (hit) hit.el.click();
+          return true;
+        }
+        """
+        try:
+            return bool(await page.evaluate(script, {"code": code}))
+        except Exception:  # noqa: BLE001
+            log.exception("[interaction douyin] receive overlay code submit failed")
+            return False
+
     async def request_sms(self, page: Any) -> bool:
-        specific_visible = await self._is_modal_visible(page)
-        if not specific_visible:
-            return await self._click_generic_button_anywhere(page, self.REQUEST_BUTTON_RE)
+        overlay = await self._detect_receive_sms_overlay(page)
+        if not overlay:
+            # Do not click the underlying login card's "获取验证码"; only the
+            # second-verify overlay belongs to account binding.
+            return False
+        request_text = str(overlay.get("request_text") or "")
+        if re.search(r"(\d{1,3})\s*(?:s|秒)", request_text, flags=re.IGNORECASE):
+            return False
+        if await self._click_receive_overlay_button(page, self.REQUEST_BUTTON_RE):
+            return True
+
         panel = self._panel(page)
         button = panel.locator(self.REQUEST_SMS_SELECTOR).first
         text = await self._text_or_empty(button)
@@ -1335,20 +1462,18 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
             return False
 
     async def submit_code(self, page: Any, code: str) -> bool:
-        specific_visible = await self._is_modal_visible(page)
-        if not specific_visible:
-            normalized_generic = "".join(ch for ch in code if ch.isdigit())
-            if len(normalized_generic) < 4 or len(normalized_generic) > 8:
-                return False
+        normalized = "".join(ch for ch in code if ch.isdigit())
+        if len(normalized) < 4 or len(normalized) > 8:
+            return False
+        if await self._detect_receive_sms_overlay(page):
             try:
-                submitted = await self._submit_generic_code_anywhere(page, normalized_generic)
+                submitted = await self._submit_receive_overlay_code(page, normalized)
                 if submitted:
                     await page.wait_for_timeout(200)
                 return submitted
             except Exception:  # noqa: BLE001
-                log.exception("[interaction douyin] generic submit_code failed")
+                log.exception("[interaction douyin] receive overlay submit_code failed")
                 return False
-        normalized = "".join(ch for ch in code if ch.isdigit())
         if len(normalized) != 6:
             return False
 
@@ -1371,9 +1496,9 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
     async def is_cleared(self, page: Any) -> bool:
         try:
             await page.locator(self.PANEL_SELECTOR).first.wait_for(state="hidden", timeout=2_000)
-            return not await self._is_generic_sms_visible(page)
+            return not await self._detect_receive_sms_overlay(page)
         except Exception:  # noqa: BLE001
-            return not await self._is_modal_visible(page) and not await self._is_generic_sms_visible(page)
+            return not await self._is_modal_visible(page) and not await self._detect_receive_sms_overlay(page)
 
 
 # Per-platform drivers; only douyin auto-detects and auto-submits SMS today.
