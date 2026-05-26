@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 import { visibleNavGroups, ADMIN_BRAND } from "@/constants/nav";
 import { useAdminRole } from "@/lib/useAdminRole";
 import { cn } from "@/lib/utils";
@@ -41,12 +41,15 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="flex items-center gap-2.5 px-5 py-5 border-b border-sidebar-border">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm">
-            <Sparkles className="h-4 w-4" />
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border">
+          <div
+            aria-hidden
+            className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground font-semibold text-[13px] tracking-tight"
+          >
+            AS
           </div>
-          <div className="flex flex-col leading-tight flex-1">
-            <span className="text-sm font-semibold">{ADMIN_BRAND.title}</span>
+          <div className="flex flex-col leading-tight flex-1 min-w-0">
+            <span className="text-sm font-semibold tracking-tight">{ADMIN_BRAND.title}</span>
             <span className="text-xs text-muted-foreground">{ADMIN_BRAND.subtitle}</span>
           </div>
           <button
@@ -97,7 +100,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
                           "inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
                           active
                             ? "bg-primary text-primary-foreground"
-                            : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200"
+                            : "bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20"
                         )}
                       >
                         {count}

@@ -26,12 +26,15 @@ import { MixcutOfficialClipsApi } from "@/api";
 import type { OfficialClip } from "@/api/mixcut-official-clips";
 import { formatDateCN } from "@/lib/utils";
 import { formatCompactNumber } from "@/lib/format";
+import { useConfirm, useToast } from "@/components/feedback";
 
 // v0.21+：「官方明星片段」管理页。
 // 由平台运营整理上传，用户在 web-celebrity 的「我的混剪库 > 官方明星片段」tab 只读消费。
 const PRESET_CATEGORIES = ["直播切片", "综艺", "访谈", "短视频", "Vlog"];
 
 export default function AdminMixcutOfficialClipsPage() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [clips, setClips] = React.useState<OfficialClip[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -71,13 +74,32 @@ export default function AdminMixcutOfficialClipsPage() {
     );
   });
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("确认删除该官方片段？删除后用户端立即不可见，文件一并清除。")) return;
+  const handleDelete = async (clip: OfficialClip) => {
+    const res = await confirm({
+      title: "删除官方明星片段",
+      tone: "danger",
+      confirmLabel: "确认删除",
+      description: "删除后用户端立即不可见，文件一并清除。无法恢复。",
+      affected: (
+        <div className="space-y-1">
+          <div className="font-medium">{clip.name}</div>
+          <div className="text-xs text-muted-foreground">
+            分类：{clip.official_category ?? "未分类"} · 关联明星：
+            <span className="font-mono">{clip.related_star_id ?? "—"}</span>
+          </div>
+        </div>
+      ),
+    });
+    if (!res.ok) return;
     try {
-      await MixcutOfficialClipsApi.deleteOfficialClip(id);
+      await MixcutOfficialClipsApi.deleteOfficialClip(clip.id);
       await reload();
+      toast.success({ title: "片段已删除" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "删除失败");
+      toast.danger({
+        title: "删除失败",
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
@@ -191,7 +213,7 @@ export default function AdminMixcutOfficialClipsPage() {
                     isEditing={editingId === c.id}
                     onEditToggle={(on) => setEditingId(on ? c.id : null)}
                     onChanged={reload}
-                    onDelete={() => handleDelete(c.id)}
+                    onDelete={() => handleDelete(c)}
                     categoryOptions={categories}
                   />
                 ))
@@ -230,6 +252,7 @@ function ClipRow({
   onDelete: () => void;
   categoryOptions: string[];
 }) {
+  const toast = useToast();
   const [name, setName] = React.useState(clip.name);
   const [category, setCategory] = React.useState(clip.official_category ?? "");
   const [starId, setStarId] = React.useState(clip.related_star_id ?? "");
@@ -256,8 +279,12 @@ function ClipRow({
       });
       onEditToggle(false);
       onChanged();
+      toast.success({ title: "已保存" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "保存失败");
+      toast.danger({
+        title: "保存失败",
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setSaving(false);
     }

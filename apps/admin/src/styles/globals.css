@@ -6,16 +6,16 @@
   --font-size: 14px;
   --radius: 0.625rem;
 
-  /* Light, data-dense admin palette */
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.2 0.02 264);
-  --surface: oklch(1 0 0);
-  --surface-muted: oklch(0.975 0.004 264);
+  /* Light, data-dense admin palette — neutrals tinted toward brand indigo (h≈264). */
+  --background: oklch(0.987 0.005 264);
+  --foreground: oklch(0.2 0.025 264);
+  --surface: oklch(0.998 0.003 264);
+  --surface-muted: oklch(0.972 0.007 264);
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0.02 264);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.02 264);
+  --card: oklch(0.998 0.003 264);
+  --card-foreground: oklch(0.2 0.025 264);
+  --popover: oklch(0.998 0.003 264);
+  --popover-foreground: oklch(0.2 0.025 264);
 
   --primary: oklch(0.52 0.18 264);            /* indigo-600 */
   --primary-foreground: oklch(1 0 0);
@@ -52,8 +52,8 @@
   --chart-4: oklch(0.65 0.22 320);  /* magenta */
   --chart-5: oklch(0.58 0.16 237);  /* sky */
 
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.3 0.02 264);
+  --sidebar: oklch(0.978 0.008 264);
+  --sidebar-foreground: oklch(0.3 0.022 264);
   --sidebar-primary: oklch(0.52 0.18 264);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.955 0.01 264);
