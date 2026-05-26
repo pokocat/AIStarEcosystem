@@ -53,6 +53,7 @@ class LoginDebugClickRequest(BaseModel):
     selector: str = Field(min_length=1, max_length=300)
     hasText: str | None = Field(default=None, max_length=120)
     nth: int = Field(default=0, ge=0, le=20)
+    action: str = Field(default="click", max_length=32)
 
 
 @router.post("/start", response_model=LoginStartResponse)
@@ -163,4 +164,5 @@ async def login_debug_click(ticket: str, payload: LoginDebugClickRequest, reques
         selector=payload.selector,
         has_text=payload.hasText,
         nth=payload.nth,
+        action=payload.action,
     )

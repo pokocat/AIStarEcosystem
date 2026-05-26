@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 from .browser_runtime import chromium_launch_kwargs
 from .interaction import SmsInteractionDriver, get_sms_driver, now_unix
@@ -69,6 +70,53 @@ def string_or_none(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _redact_url_for_log(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        if not parsed.scheme or not parsed.netloc:
+            return value[:160]
+        query_keys = sorted({key for key, _value in parse_qsl(parsed.query, keep_blank_values=True)})
+        suffix = f"?keys={','.join(query_keys[:20])}" if query_keys else ""
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}{suffix}"[:240]
+    except Exception:  # noqa: BLE001
+        return value[:160]
+
+
+def _compact_for_log(value: Any, *, depth: int = 0) -> Any:
+    if depth > 2:
+        return "..."
+    if isinstance(value, str):
+        if value.startswith(("http://", "https://")):
+            return _redact_url_for_log(value)
+        return value[:160]
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_compact_for_log(item, depth=depth + 1) for item in value[:6]]
+    if isinstance(value, dict):
+        return {
+            str(key)[:80]: _compact_for_log(item, depth=depth + 1)
+            for key, item in list(value.items())[:20]
+        }
+    return str(value)[:160]
+
+
+def _summarize_qr_status_payload(data: dict[str, Any]) -> dict[str, Any]:
+    interesting = (
+        "status",
+        "account_flow",
+        "description",
+        "verify_scene_desc",
+        "verify_ways",
+        "pack_verify_way",
+        "url",
+        "schema",
+        "desc_url",
+        "error_code",
+    )
+    return {key: _compact_for_log(data.get(key)) for key in interesting if key in data}
 
 
 # ─── Platform drivers ────────────────────────────────────────────────────
@@ -2004,6 +2052,8 @@ class LoginSession:
     # real-mode: current platform interaction needed to finish login
     # (SMS verification for v1). Shape mirrors frontend InteractionRequired.
     interaction_required: dict[str, Any] | None = None
+    # Last QR status payload summary. Stored only for internal diagnostics.
+    qr_status_payload: dict[str, Any] | None = None
     # Serialize Playwright access for one ticket. Frontend refreshes/retries can
     # otherwise issue concurrent polls that race on the same Page.
     op_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
@@ -2144,6 +2194,7 @@ class LoginPool:
         selector: str,
         has_text: str | None = None,
         nth: int = 0,
+        action: str = "click",
     ) -> dict[str, Any]:
         """Internal operator helper: click a live login page element.
 
@@ -2194,16 +2245,41 @@ class LoginPool:
                     text = (await target.text_content(timeout=800) or "").strip()
                 except Exception:  # noqa: BLE001
                     text = ""
+            details = await self._debug_locator_details(target)
+            normalized_action = (action or "click").strip().lower()
             try:
-                await target.click(timeout=2_000)
+                if normalized_action == "inspect":
+                    pass
+                elif normalized_action == "force_click":
+                    await target.click(timeout=2_000, force=True)
+                elif normalized_action == "dispatch_click":
+                    await target.dispatch_event("click")
+                elif normalized_action == "mouse_click":
+                    box = await target.bounding_box(timeout=1_000)
+                    if not box:
+                        return {
+                            "ok": False,
+                            "error": "missing_bounding_box",
+                            "count": total_count,
+                            "targetText": text[:240],
+                            "before": before,
+                            "details": details,
+                        }
+                    await page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                elif normalized_action == "dblclick":
+                    await target.dblclick(timeout=2_000)
+                else:
+                    await target.click(timeout=2_000)
             except Exception as exc:  # noqa: BLE001
                 return {
                     "ok": False,
                     "error": "click_failed",
+                    "action": normalized_action,
                     "message": str(exc),
                     "count": total_count,
                     "targetText": text[:240],
                     "before": before,
+                    "details": details,
                 }
             try:
                 await page.wait_for_timeout(1_200)
@@ -2212,11 +2288,47 @@ class LoginPool:
             after = await self._debug_page_summary(page)
             return {
                 "ok": True,
+                "action": normalized_action,
                 "count": total_count,
                 "targetText": text[:240],
+                "details": details,
                 "before": before,
                 "after": after,
             }
+
+    async def _debug_locator_details(self, target: Any) -> dict[str, Any]:
+        try:
+            handle = await target.element_handle(timeout=800)
+            if handle is None:
+                return {"found": False}
+            return await handle.evaluate("""(el) => {
+                function clean(text, limit = 240) {
+                    return String(text || "").replace(/\\s+/g, " ").trim().slice(0, limit);
+                }
+                function simple(node) {
+                    if (!node) return null;
+                    const style = window.getComputedStyle(node);
+                    const r = node.getBoundingClientRect();
+                    return {
+                        tag: node.tagName ? node.tagName.toLowerCase() : null,
+                        id: node.id || null,
+                        className: clean(node.className || "", 180),
+                        text: clean(node.innerText || node.textContent || ""),
+                        role: node.getAttribute ? node.getAttribute("role") : null,
+                        pointerEvents: style.pointerEvents,
+                        cursor: style.cursor,
+                        rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+                    };
+                }
+                const ancestors = [];
+                let cur = el;
+                for (let i = 0; cur && i < 5; i += 1, cur = cur.parentElement) {
+                    ancestors.push(simple(cur));
+                }
+                return { found: true, target: simple(el), ancestors };
+            }""")
+        except Exception as exc:  # noqa: BLE001
+            return {"found": False, "error": str(exc)}
 
     async def _debug_page_summary(self, page: Any) -> dict[str, Any]:
         try:
@@ -2339,6 +2451,7 @@ class LoginPool:
 
             # 监听 check_qrconnect 响应，把 QR 扫码状态变化记入日志
             _last_qr_status: dict[str, str | None] = {"v": None}
+            _qr_state: dict[str, Any] = {"payload": None, "session": None}
 
             async def _on_qr_response(resp):
                 if "check_qrconnect" not in resp.url:
@@ -2348,10 +2461,14 @@ class LoginPool:
                     body = await resp.text()
                     data = _json.loads(body).get("data", {})
                     status = data.get("status") or data.get("account_flow") or "unknown"
+                    summary = _summarize_qr_status_payload(data)
+                    _qr_state["payload"] = summary
+                    if isinstance(_qr_state.get("session"), LoginSession):
+                        _qr_state["session"].qr_status_payload = summary
                     if status != _last_qr_status["v"]:
                         log.info(
-                            "login_pool: [QR-listener] ticket=%s status=%r → %r data_keys=%s",
-                            ticket, _last_qr_status["v"], status, list(data.keys()),
+                            "login_pool: [QR-listener] ticket=%s status=%r → %r data_keys=%s verify_summary=%s",
+                            ticket, _last_qr_status["v"], status, list(data.keys()), _json.dumps(summary, ensure_ascii=False),
                         )
                         _last_qr_status["v"] = status
                 except Exception:  # noqa: BLE001
@@ -2424,7 +2541,9 @@ class LoginPool:
             qr_image_data_url=qr_data_url,
             already_logged_in=already_logged_in,
             handles={"playwright": playwright, "browser": browser, "context": context, "page": page},
+            qr_status_payload=_qr_state.get("payload"),
         )
+        _qr_state["session"] = session
         async with self._lock:
             self._sessions[ticket] = session
         return session

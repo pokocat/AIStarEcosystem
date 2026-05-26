@@ -1181,14 +1181,9 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
                         text = await self._text_or_empty(target)
                         if any(blocked in text for blocked in self.NON_RECEIVE_LABELS):
                             continue
-                        await target.click(timeout=1_500)
-                        await self._wait_after_choice_click(scope)
-                        log.info(
-                            "[interaction douyin] _advance_choice_panel: clicked row selector=%r label=%r",
-                            selector,
-                            label,
-                        )
-                        return True
+                        advanced = await self._click_choice_locator(scope, target, selector=selector, label=label)
+                        if advanced:
+                            return True
                 except Exception:  # noqa: BLE001
                     continue
 
@@ -1200,8 +1195,10 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
                 if await target.count() and await target.is_visible(timeout=500):
                     await target.click(timeout=1_500)
                     await self._wait_after_choice_click(scope)
-                    log.info("[interaction douyin] _advance_choice_panel: clicked label=%r", label)
-                    return True
+                    if await self._choice_click_advanced(scope):
+                        log.info("[interaction douyin] _advance_choice_panel: clicked label=%r", label)
+                        return True
+                    log.info("[interaction douyin] _advance_choice_panel: label click did not advance label=%r", label)
             except Exception:  # noqa: BLE001
                 continue
 
@@ -1209,10 +1206,101 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
         # second-verify overlay that explicitly contains "接收短信验证码". Avoid
         # page-wide SMS keywords because the underlying login card stays visible
         # below the floating overlay.
+        return await self._js_click_receive_choice(scope)
+
+    async def _click_choice_locator(self, scope: Any, target: Any, *, selector: str, label: str) -> bool:
+        attempts = (
+            ("click", self._choice_click),
+            ("force_click", self._choice_force_click),
+            ("mouse_click", self._choice_mouse_click),
+            ("dispatch_click", self._choice_dispatch_click),
+        )
+        for name, fn in attempts:
+            try:
+                await fn(scope, target)
+                await self._wait_after_choice_click(scope)
+                if await self._choice_click_advanced(scope):
+                    log.info(
+                        "[interaction douyin] _advance_choice_panel: %s advanced row selector=%r label=%r",
+                        name,
+                        selector,
+                        label,
+                    )
+                    return True
+                log.info(
+                    "[interaction douyin] _advance_choice_panel: %s did not advance row selector=%r label=%r",
+                    name,
+                    selector,
+                    label,
+                )
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
+    async def _choice_click(self, _scope: Any, target: Any) -> None:
+        await target.click(timeout=1_500)
+
+    async def _choice_force_click(self, _scope: Any, target: Any) -> None:
+        await target.click(timeout=1_500, force=True)
+
+    async def _choice_mouse_click(self, scope: Any, target: Any) -> None:
+        mouse = getattr(scope, "mouse", None)
+        if mouse is None:
+            raise RuntimeError("scope has no mouse")
+        box = await target.bounding_box(timeout=1_000)
+        if not box:
+            raise RuntimeError("choice target has no bounding box")
+        await mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+
+    async def _choice_dispatch_click(self, _scope: Any, target: Any) -> None:
+        await target.dispatch_event("click")
+
+    async def _choice_state_in_scope(self, scope: Any) -> str:
+        try:
+            state = await scope.evaluate("""() => {
+                const root = document.querySelector('#uc-second-verify');
+                if (!root) return 'gone';
+                function isVisible(el) {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0 && r.bottom >= 0 && r.right >= 0 && r.top <= window.innerHeight && r.left <= window.innerWidth;
+                }
+                if (!isVisible(root)) return 'gone';
+                const input = Array.from(root.querySelectorAll('input,textarea')).find((el) => {
+                    const hint = `${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('name') || ''}`;
+                    return isVisible(el) && /验证码|校验码|code|sms/i.test(hint);
+                });
+                if (input) return 'code';
+                const text = (root.innerText || root.textContent || '').replace(/\\s+/g, ' ').trim();
+                if (text.includes('身份验证') && text.includes('接收短信验证码')
+                    && text.includes('验证登录密码') && text.includes('发送短信验证')) {
+                    return 'choice';
+                }
+                return 'other';
+            }""")
+            return str(state or "unknown")
+        except Exception:  # noqa: BLE001
+            return "unknown"
+
+    async def _choice_click_advanced(self, scope: Any) -> bool:
+        state = await self._choice_state_in_scope(scope)
+        return state != "choice"
+
+    async def _js_click_receive_choice(self, scope: Any) -> bool:
         try:
             clicked = await scope.evaluate("""() => {
                 const root = document.querySelector('#uc-second-verify');
                 if (!root) return { clicked: false, text: '' };
+                function fire(el, type) {
+                    const eventInit = { bubbles: true, cancelable: true, view: window };
+                    if (type.startsWith('pointer') && typeof PointerEvent === 'function') {
+                        el.dispatchEvent(new PointerEvent(type, { ...eventInit, pointerType: 'mouse', isPrimary: true }));
+                    } else {
+                        el.dispatchEvent(new MouseEvent(type, eventInit));
+                    }
+                }
                 const candidates = Array.from(root.querySelectorAll(
                     '[role="button"],[role="option"],li,a,button,div[class*="uc_verification_component_list_item"],div[class*="list_item"],div[class*="item"],div[class*="option"],div[class*="row"]'
                 )).map((el) => {
@@ -1233,6 +1321,11 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
                 }).sort((a, b) => (a.r.width * a.r.height) - (b.r.width * b.r.height));
                 const hit = candidates[0];
                 if (hit) {
+                    hit.el.scrollIntoView({ block: 'center', inline: 'center' });
+                    fire(hit.el, 'pointerdown');
+                    fire(hit.el, 'mousedown');
+                    fire(hit.el, 'pointerup');
+                    fire(hit.el, 'mouseup');
                     hit.el.click();
                     return { clicked: true, text: hit.text.replace(/\\s+/g, ' ').trim().slice(0, 80) };
                 }
@@ -1240,8 +1333,10 @@ class _DouyinSmsDriver(_PlaceholderSmsDriver):
             }""")
             if clicked and clicked.get("clicked"):
                 await self._wait_after_choice_click(scope)
-                log.info("[interaction douyin] _advance_choice_panel: JS fallback clicked SMS row text=%r", clicked.get("text"))
-                return True
+                if await self._choice_click_advanced(scope):
+                    log.info("[interaction douyin] _advance_choice_panel: JS fallback advanced SMS row text=%r", clicked.get("text"))
+                    return True
+                log.info("[interaction douyin] _advance_choice_panel: JS fallback did not advance SMS row text=%r", clicked.get("text"))
         except Exception:  # noqa: BLE001
             log.exception("[interaction douyin] _advance_choice_panel JS fallback failed")
 
