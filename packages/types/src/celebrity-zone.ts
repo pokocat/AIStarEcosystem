@@ -183,6 +183,14 @@ export interface CelebrityTemplate {
   previewVideoUrl?: string;
   /** 推荐时长 */
   durationSec?: CelebrityVideoDuration;
+
+  // ── v0.34 字段：工厂模板 vs 用户私有模板归属 ─────────────────────────────────
+  /** true = 运营初始化的工厂模板（所有用户可见）；false = 用户自建私有模板 */
+  isFactory: boolean;
+  /** "factory" 或 ownerUserId；listTemplates 按此过滤可见性 */
+  ownerScope: string;
+  /** 用户自建模板的 owner（isFactory=true 时为 null） */
+  ownerUserId?: ID | null;
 }
 
 // ── 项目 ─────────────────────────────────────────────────────────────────────

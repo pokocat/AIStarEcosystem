@@ -45,8 +45,9 @@ public class CelebrityZoneController {
     }
 
     @GetMapping("/templates")
-    public ApiResponse<List<CelebrityTemplateDto>> listTemplates() {
-        return ApiResponse.of(service.listTemplates());
+    public ApiResponse<List<CelebrityTemplateDto>> listTemplates(Principal principal) {
+        String userId = principal != null ? principal.getName() : null;
+        return ApiResponse.of(service.listTemplatesForUser(userId));
     }
 
     @GetMapping("/showcases")

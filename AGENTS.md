@@ -981,77 +981,53 @@ web-celebrity:
 
 切换：[`apps/admin/src/constants/nav.ts`](apps/admin/src/constants/nav.ts) 改 `enabled` 字段。
 
-### v0.34（2026-05-27）— 阿里云部署架构（infra/ + Flyway + seeder gate + 密钥 fail-fast）
+- **未涉及**：小程序的 wx.subscribeMessage / WebSocket（v0.6+）、Cookie SSO 跨子域（Phase 5）、
+  K8s ACK（Phase 6）、MixcutAsset 上传 OSS 化（Phase 4）。
 
-为阿里云 **ECS + RDS + OSS** 提供一套版本化、可一键复制的部署基础设施。范围 Phase 0+1+2：
-基础设施版本化、生产硬伤修复、RDS/OSS 配置就绪。Phase 3（全栈容器化 + CI/CD）、Phase 4
-（用户上传素材 OSS 化）、Phase 5（多实例 Redis + ShedLock）留作 v0.35+。
+### v0.34a（2026-05-26）— Stars 写入闭环 + Celebrity 工厂模板（运营初始化能力补齐）
 
-**A. 基础设施版本化（Phase 0）**
+> 与同期上游 v0.34（部署架构）并行的 celebrity 子产品迭代。
 
-新增 `infra/` 目录把部署资产纳入 git：
-
-```
-infra/
-├── README.md                    ← 入口 + 拓扑图 + 一次性环境拉起 SOP + FAQ（单一真值源）
-├── env/                         ← 7 份 *.env.example（server / sau-service / 5 个 web app）
-├── nginx/                       ← ai.conf.example（HTTP 入口）+ ai.aibuzz.cn.conf.example（HTTPS 多子域）
-├── systemd/                     ← 7 个 *.service.example
-├── rds/                         ← 00_create_database.sql + 01_create_app_user.sql + README
-├── oss/                         ← ram-policy.json + cors-config.json + lifecycle.xml + README
-└── scripts/                     ← deploy.sh / rollback.sh / verify.sh
-```
-
-**B. 生产硬伤修复（Phase 1）**
+主线背景：celebrity 子产品**初始化生产部署**时，运营需要先添加明星档案 / 配置工厂模板，用户才能在 web-celebrity 看到。审计发现：(a) `AdminCelebrityController` 的 stars POST/PUT/DELETE 端点完整，但 admin 前端 `/celebrity/stars` 只有列表展示，**没有创建/编辑表单 UI**；(b) `CelebrityTemplate` 模型**完全没有 owner 概念**（所有模板由 seeder 写死），无法区分「工厂模板（所有用户可见）」与「用户私有模板」；(c) nav.ts L100 注册了 `/celebrity/templates` 路由但**页面文件不存在**。
 
 ```
-server : pom.xml +flyway-core +flyway-mysql
-       : src/main/resources/db/migration/V1__baseline.sql (空文件 + 注释；baseline 占位)
-       : application.yml +spring.flyway.{enabled,baseline-on-migrate=true,baseline-version=1,locations}
-       : application.yml +aep.seed.dev-data.enabled: ${AEP_SEED_DEV_DATA_ENABLED:true}
-       : application-mysql.yml +aep.seed.dev-data.enabled: ${AEP_SEED_DEV_DATA_ENABLED:false}（生产覆盖）
-       : application-mysql.yml +spring.datasource.hikari.{maximum-pool-size,minimum-idle,...} 显式参数
-       : DataInitializer / CelebrityZoneDataInitializer / CelebrityProductSeeder /
-         DataSeeder / AiModelProviderDataInitializer / MixcutTemplateSeeder
-         全部 +@ConditionalOnProperty(aep.seed.dev-data.enabled, true, matchIfMissing=true)
-         （DemoCatalogSeeder 已 @Profile({"dev","test"}) 不动；MixcutPresetSeeder 是平台基础数据不动）
-       : JwtUtil 加 Environment 注入 + 启动时 mysql/prod profile 看到 dev default secret → 抛
-         IllegalStateException 阻止启动；同时校验 secret 长度 ≥ 32
-       : AepCryptoUtil 在 static {} 块加同样校验（读 SPRING_PROFILES_ACTIVE env 变量）
-miniprogram : 新增 config/env.example.js（apiBaseUrl + useMock 多环境配置）；
-              app.js 改用 try { require("./config/env.js") } catch fallback：默认 useMock=true
-              + apiBaseUrl=http://localhost:8080/api（首次 clone 无需配置即可跑 mock）
-.gitignore  : +apps/miniprogram/config/env.js  +infra/env/*.env （保留 *.example）
-docs/INDEX.md : 部署段重写指向 infra/README.md（旧 DEPLOYMENT.md / aliyun-deploy skill 整体废弃删除）
+server : CelebrityTemplate.java +isFactory(boolean, ColumnDefault "true") / +ownerScope(varchar 64,
+       :   ColumnDefault "'factory'") / +ownerUserId(varchar 64, nullable) —— 镜像 MixcutTemplate
+       :   pattern；JPA ddl-auto=update 自动加列；老行默认全部视为 factory。
+       : CelebrityTemplateDto +isFactory/+ownerScope/+ownerUserId 三字段；from() 同步落值
+       : AdminCelebrityTemplateUpsertDto +isFactory(Boolean, nullable)/+ownerScope/+ownerUserId
+       : CelebrityZoneService.applyTemplateUpsert() 处理新字段；空值兜底为 factory + "factory"
+       : CelebrityZoneService 新增 listTemplatesForUser(userId) —— factory + 自己私有；老
+       :   listTemplates() 保留（admin / 无身份调用走全表）
+       : CelebrityZoneController.GET /templates 改走 listTemplatesForUser(principal)
+
+types  : packages/types/src/celebrity-zone.ts CelebrityTemplate +isFactory: boolean / +ownerScope:
+       :   string / +ownerUserId?: ID | null（required，无默认）
+       : apps/admin/src/types/celebrity-zone.ts 镜像
+       : apps/web/src/types/celebrity-zone.ts 遗留：用 optional 字段（避免改老 mocks，apps/web
+       :   Phase 5 即将删）
+
+admin  : src/app/celebrity/stars/page.tsx 加 CRUD：「新增明星」按钮 → StarFormDialog；
+       :   行级 Pencil/Trash2 按钮；删除走 shadcn Dialog 二次确认（不裸 confirm()）
+       :   表单字段：name / category / avatar / cover / description / pricingTier / startingPrice /
+       :   isHot / quotaTotal（基础字段够用，复杂 JSON 嵌套留给 photos / videos 子端点）
+       : src/app/celebrity/templates/page.tsx 新建：模板 CRUD 全功能页 + 「工厂模板 / 用户私有」
+       :   筛选 chip + 「新增工厂模板」按钮 + 行级编辑/删除；归属字段在表单里用 Switch 切换
+       :   factory / private
+       : src/mocks/celebrity-zone.ts ADMIN_CELEBRITY_TEMPLATES 补 isFactory + ownerScope
+
+web-celebrity:
+       : src/mocks/celebrity-zone.ts CELEBRITY_TEMPLATES 6 条预设模板均补 isFactory:true + ownerScope:"factory"
+openapi: CelebrityTemplate schema +isFactory + ownerScope + ownerUserId；required 列表追加
+       :   isFactory + ownerScope（ownerUserId 仍 nullable）
 ```
-
-**C. RDS / OSS 配置就绪（Phase 2）**
-
-代码层面已就绪（v0.14 `AliyunOssCdnUploader` + v0.31 `AliyunSmsSender` 都是完整实现，不是 stub），
-本次只补：
-- `infra/env/server.env.example` 完整含 RDS endpoint / OSS 6 个 env / SMS 4 个 env 的占位 + 注释
-- `infra/rds/` 建库 + 应用账号 SQL + 阿里云 RDS 控制台操作 SOP
-- `infra/oss/` RAM 最小权限策略 + CORS 规则 + 生命周期规则 + bucket / CDN 创建 SOP
 
 **注意事项**：
 
-- **Flyway baseline 当前是空文件**（仅占位）。Flyway 启动时看到现存 schema 但无 schema_history
-  会自动 baseline 到 V1，**不执行**本文件 → 兼容已存在的库。真正 schema 改动从 V2__xxx.sql 起。
-  RDS 切到 ddl-auto=validate 前需要先把生产 schema mysqldump 出来填入 V1。
-- **dev-data gate 用 `matchIfMissing=true`**：不显式配 yaml 也默认开（兼容现有 H2 / unit test 行为）；
-  application-mysql.yml 显式 false 才会让生产关掉。`AEP_SEED_DEV_DATA_ENABLED` env 可覆盖。
-- **DataInitializer.ensureCelebrityOperatorSeed 也被 gate 一并关掉**。生产环境真的运营人员通过
-  admin /admin/celebrity/operators 页面手动给 aep_user 升级 OperatorRole，不再依赖 seeder 兜底。
-- **JwtUtil 密钥校验在 Spring 构造 bean 时**（fail-fast 时机正确）；AepCryptoUtil 是 static util，
-  校验在 static {} 块通过读 `SPRING_PROFILES_ACTIVE` env 变量 best-effort。systemd `EnvironmentFile`
-  形式部署完全覆盖；命令行 `-D` / `--arg` 形式校验会跳过（只剩 dev 警告），不抛假阳性。
-- **OSS bucket 必须用内网 endpoint**（`oss-cn-hangzhou-internal.aliyuncs.com`）写到 server.env。
-  公网 endpoint 会算流量费 + 增延迟 + 暴露 AK 风险面。
-- **RDS 应用账号最小权限**：Flyway 接管前需要 CREATE/ALTER/DROP，落 V1 完整 baseline + 切
-  ddl-auto=validate 后可降权为 SELECT/INSERT/UPDATE/DELETE + EXECUTE。
-- **deploy.sh 走 rsync + ssh**（轻量、不依赖 CI）；后续容器化 + GitHub Actions 是 Phase 3。
-- **未涉及**：小程序的 wx.subscribeMessage / WebSocket（v0.6+）、Cookie SSO 跨子域（Phase 5）、
-  K8s ACK（Phase 6）、MixcutAsset 上传 OSS 化（Phase 4）。
+- 老 `CelebrityTemplate` 行：依赖 `@ColumnDefault("true")` + JPA ddl-auto=update 自动补 isFactory=true / ownerScope="factory"，无需手写 migration。MySQL prod 部署同样兼容（不再走 H2）。
+- `listTemplates()` 老方法**保留**：admin 端 (`/api/admin/celebrity/templates`) 不需要 userId 过滤，直接看全部；用户端走新的 `listTemplatesForUser(principal)`。
+- admin 「新增工厂模板」默认 `isFactory=true / ownerScope="factory"`；用户私有模板入口暂未在 UI 上暴露（v0.34a 范围仅工厂模板初始化能力），用户私有模板由 web-celebrity 端用户「保存」时由后端 service 写入。
+- mocks 三处同步保证 USE_MOCK 模式下 typecheck 全绿（packages/types 字段 required → 编译器强校验）。
 
 ### v0.32（2026-05-25）— admin 后台「秘钥铸码 UI」+「管理员账号 CRUD UI」补全 + DataInitializer 明文激活码日志
 

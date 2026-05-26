@@ -174,6 +174,7 @@ export const ADMIN_CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     isHot: true, plays: "120K", conversionRate: "8.2%",
     fitHint: "适合美妆 / 食品类",
     previews: [{ thumb: placeholderThumb(21), videoUrl: placeholderVideo }],
+    isFactory: true, ownerScope: "factory",
   },
   {
     id: "tpl-002", name: "硬核测评", style: "硬核测评",
@@ -182,5 +183,6 @@ export const ADMIN_CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
     isHot: true, plays: "98K", conversionRate: "11.5%",
     fitHint: "适合数码 3C / 家电",
     previews: [{ thumb: placeholderThumb(22), videoUrl: placeholderVideo }],
+    isFactory: true, ownerScope: "factory",
   },
 ];

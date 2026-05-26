@@ -174,8 +174,24 @@ public class CelebrityZoneService {
     }
 
     // ── Templates / Showcases ───────────────────────────────────────────────
+
+    /**
+     * Admin 或无身份调用：返回全部模板（factory + 所有用户私有）。
+     * v0.34：保留兼容老调用点。
+     */
     public List<CelebrityTemplateDto> listTemplates() {
         return templateRepo.findAll().stream().map(CelebrityTemplateDto::from).toList();
+    }
+
+    /**
+     * 用户侧调用（v0.34）：只看 factory 模板 + 自己的私有模板。
+     * userId 为 null 时只返回 factory（公开 fallback）。
+     */
+    public List<CelebrityTemplateDto> listTemplatesForUser(String userId) {
+        return templateRepo.findAll().stream()
+                .filter(t -> t.isFactory() || (userId != null && userId.equals(t.getOwnerUserId())))
+                .map(CelebrityTemplateDto::from)
+                .toList();
     }
 
     public List<CelebrityShowcaseDto> listShowcases(String mode) {
@@ -786,10 +802,19 @@ public class CelebrityZoneService {
         if (req.previewCover() != null) entity.setPreviewCover(req.previewCover());
         if (req.previewVideoUrl() != null) entity.setPreviewVideoUrl(req.previewVideoUrl());
         if (req.durationSec() != null) entity.setDurationSec(req.durationSec());
+        // v0.34 工厂/用户归属
+        if (req.isFactory() != null) entity.setFactory(req.isFactory());
+        if (req.ownerScope() != null) entity.setOwnerScope(req.ownerScope());
+        if (req.ownerUserId() != null) entity.setOwnerUserId(req.ownerUserId());
         // 必填兜底
         if (entity.getStyle() == null) entity.setStyle("种草安利");
         if (entity.getRecommendedEngine() == null) entity.setRecommendedEngine("HiGen");
         if (entity.getRecommendedPrice() == null) entity.setRecommendedPrice("标准");
+        if (entity.getOwnerScope() == null || entity.getOwnerScope().isBlank()) {
+            // admin 走 controller 不显式传时默认建为 factory
+            entity.setOwnerScope("factory");
+            entity.setFactory(true);
+        }
         return entity;
     }
 

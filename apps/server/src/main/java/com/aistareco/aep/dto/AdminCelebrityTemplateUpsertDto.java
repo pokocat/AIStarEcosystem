@@ -24,5 +24,9 @@ public record AdminCelebrityTemplateUpsertDto(
         // ── v0.4 字段 ────────────────────────────────────────
         String previewCover,
         String previewVideoUrl,
-        Integer durationSec
+        Integer durationSec,
+        // ── v0.34 字段：工厂/用户模板归属 ────────────────────
+        Boolean isFactory,
+        String ownerScope,
+        String ownerUserId
 ) {}

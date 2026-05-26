@@ -60,4 +60,23 @@ public class CelebrityTemplate {
 
     /** 推荐时长（15 / 30 / 60 秒）。 */
     private Integer durationSec;
+
+    // ── v0.34 字段：工厂 / 用户模板归属（镜像 MixcutTemplate pattern）──────────
+
+    /**
+     * 是否工厂模板（运营初始化、所有用户可见）。
+     * 老数据默认 true —— v0.34 之前所有模板都由 admin/seeder 上传，全部视为 factory。
+     */
+    @Column(name = "is_factory", nullable = false)
+    @org.hibernate.annotations.ColumnDefault("true")
+    private boolean isFactory = true;
+
+    /** "factory" 或 ownerUserId。listTemplates 用此过滤可见性。 */
+    @Column(name = "owner_scope", length = 64, nullable = false)
+    @org.hibernate.annotations.ColumnDefault("'factory'")
+    private String ownerScope = "factory";
+
+    /** 用户自建模板的 owner（isFactory=true 时为 null）。 */
+    @Column(name = "owner_user_id", length = 64)
+    private String ownerUserId;
 }

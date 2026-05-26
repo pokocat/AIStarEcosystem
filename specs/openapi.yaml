@@ -1541,7 +1541,7 @@ components:
     CelebrityTemplate:
       type: object
       required: [id, name, style, description, recommendedEngine, recommendedPrice,
-                 isHot, plays, conversionRate]
+                 isHot, plays, conversionRate, isFactory, ownerScope]
       properties:
         id:                 { type: string }
         name:               { type: string }
@@ -1564,6 +1564,10 @@ components:
         previewCover:     { type: string, nullable: true }
         previewVideoUrl:  { type: string, nullable: true }
         durationSec:      { type: integer, enum: [15, 30, 60], nullable: true }
+        # ── v0.34：工厂 vs 用户私有模板归属 ──
+        isFactory:        { type: boolean, description: 'true = 工厂模板（所有用户可见），false = 用户私有' }
+        ownerScope:       { type: string, description: '"factory" 或 ownerUserId；过滤可见性' }
+        ownerUserId:      { type: string, nullable: true }
 
     CelebrityProjectStatus:
       type: string

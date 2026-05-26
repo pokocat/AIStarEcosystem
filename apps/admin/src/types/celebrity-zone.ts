@@ -183,6 +183,11 @@ export interface CelebrityTemplate {
   previewVideoUrl?: string;
   /** 推荐时长 */
   durationSec?: CelebrityVideoDuration;
+
+  // ── v0.34 字段：工厂 vs 用户私有模板归属 ──────────────────────────────────
+  isFactory: boolean;
+  ownerScope: string;
+  ownerUserId?: ID | null;
 }
 
 // ── 项目 ─────────────────────────────────────────────────────────────────────

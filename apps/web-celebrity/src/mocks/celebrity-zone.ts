@@ -444,6 +444,8 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
       { thumb: thumb("tpl-bff-1"), videoUrl: pickVideo("tpl-bff-1") },
       { thumb: thumb("tpl-bff-2"), videoUrl: pickVideo("tpl-bff-2") },
     ],
+    isFactory: true,
+    ownerScope: "factory",
   },
   {
     id: "tpl-pro-review",
@@ -459,6 +461,8 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
       { thumb: thumb("tpl-review-1"), videoUrl: pickVideo("tpl-review-1") },
       { thumb: thumb("tpl-review-2"), videoUrl: pickVideo("tpl-review-2") },
     ],
+    isFactory: true,
+    ownerScope: "factory",
   },
   {
     id: "tpl-unbox",
@@ -474,6 +478,8 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
       { thumb: thumb("tpl-unbox-1"), videoUrl: pickVideo("tpl-unbox-1") },
       { thumb: thumb("tpl-unbox-2"), videoUrl: pickVideo("tpl-unbox-2") },
     ],
+    isFactory: true,
+    ownerScope: "factory",
   },
   {
     id: "tpl-live-clip",
@@ -489,6 +495,8 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
       { thumb: thumb("tpl-live-1"), videoUrl: pickVideo("tpl-live-1") },
       { thumb: thumb("tpl-live-2"), videoUrl: pickVideo("tpl-live-2") },
     ],
+    isFactory: true,
+    ownerScope: "factory",
   },
   {
     id: "tpl-vlog",
@@ -504,6 +512,8 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
       { thumb: thumb("tpl-vlog-1"), videoUrl: pickVideo("tpl-vlog-1") },
       { thumb: thumb("tpl-vlog-2"), videoUrl: pickVideo("tpl-vlog-2") },
     ],
+    isFactory: true,
+    ownerScope: "factory",
   },
   {
     id: "tpl-plot-twist",
@@ -519,6 +529,8 @@ export const CELEBRITY_TEMPLATES: CelebrityTemplate[] = [
       { thumb: thumb("tpl-twist-1"), videoUrl: pickVideo("tpl-twist-1") },
       { thumb: thumb("tpl-twist-2"), videoUrl: pickVideo("tpl-twist-2") },
     ],
+    isFactory: true,
+    ownerScope: "factory",
   },
 ];
 

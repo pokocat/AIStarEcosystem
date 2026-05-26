@@ -30,7 +30,11 @@ public record CelebrityTemplateDto(
         // ── v0.4 ────────────────────────────────────────────
         String previewCover,
         String previewVideoUrl,
-        Integer durationSec
+        Integer durationSec,
+        // ── v0.34 ───────────────────────────────────────────
+        boolean isFactory,
+        String ownerScope,
+        String ownerUserId
 ) {
     private static final ObjectMapper OM = new ObjectMapper();
     private static final TypeReference<List<Map<String, Object>>> ARR_T = new TypeReference<>() {};
@@ -43,7 +47,10 @@ public record CelebrityTemplateDto(
                 readArr(t.getPreviewsJson()),
                 t.getPreviewCover(),
                 t.getPreviewVideoUrl(),
-                t.getDurationSec()
+                t.getDurationSec(),
+                t.isFactory(),
+                t.getOwnerScope(),
+                t.getOwnerUserId()
         );
     }
 

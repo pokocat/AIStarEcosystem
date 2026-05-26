@@ -183,6 +183,11 @@ export interface CelebrityTemplate {
   previewVideoUrl?: string;
   /** 推荐时长 */
   durationSec?: CelebrityVideoDuration;
+
+  // ── v0.34（apps/web 遗留：保持 optional 避免改 mocks，apps/web 即将删除） ──
+  isFactory?: boolean;
+  ownerScope?: string;
+  ownerUserId?: ID | null;
 }
 
 // ── 项目 ─────────────────────────────────────────────────────────────────────
