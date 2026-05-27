@@ -31,7 +31,7 @@ public class ForgeBlueprint {
 
     private Instant createdAt;
 
-    @Column(name = "snapshot_json", columnDefinition = "TEXT")
+    @Column(name = "snapshot_json", columnDefinition = "LONGTEXT")
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> snapshotJson;
 }

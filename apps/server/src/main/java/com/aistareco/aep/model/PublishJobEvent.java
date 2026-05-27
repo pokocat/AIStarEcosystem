@@ -47,7 +47,7 @@ public class PublishJobEvent {
     @Column(name = "progress")
     private Integer progress;
 
-    @Column(name = "note", columnDefinition = "TEXT")
+    @Column(name = "note", columnDefinition = "LONGTEXT")
     private String note;
 
     @Column(name = "at", nullable = false)

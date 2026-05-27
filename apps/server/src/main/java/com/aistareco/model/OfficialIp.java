@@ -22,7 +22,7 @@ public class OfficialIp {
     private String rarity;
     private String avatarUrl;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> tags;
 

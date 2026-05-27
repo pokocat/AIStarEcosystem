@@ -38,7 +38,7 @@ public class Studio {
     @Builder.Default
     private StudioStatus status = StudioStatus.ACTIVE;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String bio;
 
     private String logoUrl;

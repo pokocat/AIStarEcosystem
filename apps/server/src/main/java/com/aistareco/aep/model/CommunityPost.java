@@ -27,13 +27,13 @@ public class CommunityPost {
 
     private String artistId;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String content;
 
     private Instant createdAt;
 
     /** 附件 URL 列表（图片 / 视频 / 音频）。 */
-    @Column(name = "media_urls", columnDefinition = "TEXT")
+    @Column(name = "media_urls", columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> mediaUrls;
 }

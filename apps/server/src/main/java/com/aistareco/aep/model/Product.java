@@ -34,12 +34,12 @@ public class Product {
     private String link;
 
     /** JSON-encoded list of image URLs。 */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> images = new ArrayList<>();
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String sellingPoints;
 
     @Column(nullable = false)

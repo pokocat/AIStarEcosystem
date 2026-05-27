@@ -27,7 +27,7 @@ public class Singer {
     private int fansCount;
     private int popularity;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> tags;
 

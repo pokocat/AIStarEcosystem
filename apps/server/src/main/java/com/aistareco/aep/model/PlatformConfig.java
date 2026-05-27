@@ -32,7 +32,7 @@ public class PlatformConfig {
     @Column(name = "config_key", unique = true, nullable = false, length = 128)
     private String configKey;
 
-    @Column(name = "value_json", columnDefinition = "TEXT")
+    @Column(name = "value_json", columnDefinition = "LONGTEXT")
     private String valueJson;
 
     /** 每次更新自增，前端做缓存校验用。 */

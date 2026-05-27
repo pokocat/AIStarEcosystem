@@ -38,7 +38,7 @@ public class Album {
     private String artistId;
 
     /** 收录歌曲顺序（歌单曲序）；JSON 列，存 Song.id 数组。 */
-    @Column(name = "track_ids", columnDefinition = "TEXT")
+    @Column(name = "track_ids", columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> trackIds;
 

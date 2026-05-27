@@ -40,7 +40,7 @@ public class MixcutRenderOutput {
 
     /** 应用的扰动参数 JSON：mirror / speed / brightness / saturation / crop / slot_jitter */
     @Lob
-    @Column(name = "applied_transforms_json", columnDefinition = "TEXT")
+    @Column(name = "applied_transforms_json", columnDefinition = "LONGTEXT")
     private String appliedTransformsJson;
 
     @Column(length = 64)

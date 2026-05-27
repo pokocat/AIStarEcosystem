@@ -84,16 +84,16 @@ public class MixcutTemplate {
 
     /** TemplateCanvas JSON：{ width, height, duration, fps, background_color } */
     @Lob
-    @Column(name = "canvas_json", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "canvas_json", columnDefinition = "LONGTEXT", nullable = false)
     private String canvasJson;
 
     /** TemplateScene[] JSON */
     @Lob
-    @Column(name = "scenes_json", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "scenes_json", columnDefinition = "LONGTEXT", nullable = false)
     private String scenesJson;
 
     /** { min_phash_distance, max_retries } */
-    @Column(name = "quality_gate_json", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "quality_gate_json", columnDefinition = "LONGTEXT", nullable = false)
     private String qualityGateJson;
 
     @Column(nullable = false)

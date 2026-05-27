@@ -69,7 +69,7 @@ public class SocialAccount {
      *
      * TEXT 列；storage_state JSON 通常 1-30 KB。
      */
-    @Column(name = "storage_state_encrypted", columnDefinition = "TEXT")
+    @Column(name = "storage_state_encrypted", columnDefinition = "LONGTEXT")
     private String storageStateEncrypted;
 
     @Column(name = "bound_at", nullable = false)

@@ -81,15 +81,15 @@ public class ErrorLog {
     private String errorCode;
 
     /** 给用户看的错误文案（异常 message）。 */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String message;
 
     /** 完整堆栈（已截到 8KB 内，避免 OOM）。 */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String stacktrace;
 
     /** 请求 query string + sanitized body 摘要（JSON 文本）。 */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String requestParams;
 
     @Column(length = 512)

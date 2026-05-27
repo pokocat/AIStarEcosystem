@@ -59,7 +59,7 @@ public class SellingChannel {
     private String contactPhone;
 
     /** 内部备注。 */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String remark;
 
     @Enumerated(EnumType.STRING)
