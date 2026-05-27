@@ -20,6 +20,8 @@
 #   ./infra/scripts/dev-server.sh --mysql-user U       # 默认 root
 #   ./infra/scripts/dev-server.sh --mysql-pass P       # 默认 root
 #   ./infra/scripts/dev-server.sh --skip-mysql         # 假设已就绪，跳过所有 mysql 检查
+#   ./infra/scripts/dev-server.sh --log                # 日志同步写 logs/server-<timestamp>.log
+#   ./infra/scripts/dev-server.sh --log FILE           # 指定日志文件路径
 #   ./infra/scripts/dev-server.sh --mvn-args "-DskipTests"
 #
 # ⚠️ 注入的是 **固定弱密钥**（包含 NOT-FOR-PROD 字样），仅本机 dev 用，绝不能上生产。
@@ -40,6 +42,7 @@ MYSQL_USER="root"
 MYSQL_PASS="root"
 MYSQL_DB="aistareco"
 MVN_ARGS=""
+LOG_FILE=""
 DOCKER_CONTAINER="aistareco-mysql-dev"
 DOCKER_VOLUME="aistareco-mysql-dev-data"
 DOCKER_IMAGE="mysql:8.0"
@@ -55,7 +58,18 @@ while [[ $# -gt 0 ]]; do
     --mysql-user) MYSQL_USER="$2"; shift 2;;
     --mysql-pass) MYSQL_PASS="$2"; shift 2;;
     --mvn-args)   MVN_ARGS="$2"; shift 2;;
-    -h|--help)    sed -n '2,28p' "$0"; exit 0;;
+    --log)
+      # --log 后面跟值或单独：./dev-server.sh --log              → 自动时间戳
+      #                       ./dev-server.sh --log file.log    → 指定路径
+      if [[ ${2:-} == "" || ${2:-} == --* ]]; then
+        LOG_FILE="logs/server-$(date +%Y%m%d-%H%M%S).log"
+        shift
+      else
+        LOG_FILE="$2"
+        shift 2
+      fi
+      ;;
+    -h|--help)    sed -n '2,30p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -75,14 +89,14 @@ command -v java >/dev/null || die "缺 java（推荐 java 17）"
 case "$MODE" in
 
   native)
-    log "MySQL 模式：本机服务（$MYSQL_USER@$MYSQL_HOST:$MYSQL_PORT）"
+    log "MySQL 模式：本机服务（${MYSQL_USER}@${MYSQL_HOST}:${MYSQL_PORT}）"
 
     command -v mysql >/dev/null || die "缺 mysql client（brew install mysql-client 或 apt install mysql-client）"
     command -v mysqladmin >/dev/null || die "缺 mysqladmin（同上）"
 
     # 1) ping 测试服务
-    if ! mysqladmin ping -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" --silent 2>/dev/null; then
-      die "MySQL 连不上 $MYSQL_HOST:$MYSQL_PORT（user=$MYSQL_USER）。
+    if ! mysqladmin ping -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}" -p"${MYSQL_PASS}" --silent 2>/dev/null; then
+      die "MySQL 连不上 ${MYSQL_HOST}:${MYSQL_PORT}（user=${MYSQL_USER}）。
    - macOS:    brew services start mysql
    - Linux:    systemctl start mysql
    - 密码不对: --mysql-user / --mysql-pass 改默认值
@@ -91,82 +105,82 @@ case "$MODE" in
     ok "MySQL 服务在跑"
 
     # 2) --reset-db
-    if [[ $RESET_DB -eq 1 ]]; then
-      log "重置：DROP DATABASE IF EXISTS $MYSQL_DB"
-      mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" \
-        -e "DROP DATABASE IF EXISTS $MYSQL_DB;" 2>/dev/null
-      ok "$MYSQL_DB 已删"
+    if [[ ${RESET_DB} -eq 1 ]]; then
+      log "重置：DROP DATABASE IF EXISTS ${MYSQL_DB}"
+      mysql -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}" -p"${MYSQL_PASS}" \
+        -e "DROP DATABASE IF EXISTS ${MYSQL_DB};" 2>/dev/null
+      ok "${MYSQL_DB} 已删"
     fi
 
     # 3) 确保库存在（首启自动建，utf8mb4_unicode_ci 跟 application-mysql.yml 对齐）
-    mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASS" \
-      -e "CREATE DATABASE IF NOT EXISTS $MYSQL_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
+    mysql -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}" -p"${MYSQL_PASS}" \
+      -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
       2>/dev/null
-    ok "数据库 $MYSQL_DB 就绪"
+    ok "数据库 ${MYSQL_DB} 就绪"
     ;;
 
   docker)
-    log "MySQL 模式：docker 容器 $DOCKER_CONTAINER（port $MYSQL_PORT）"
+    log "MySQL 模式：docker 容器 ${DOCKER_CONTAINER}（port ${MYSQL_PORT}）"
 
     command -v docker >/dev/null || die "缺 docker（curl -fsSL https://get.docker.com | sh）"
     docker info >/dev/null 2>&1 || die "docker 未运行（启动 Docker Desktop 或 systemctl start docker）"
 
-    if [[ $RESET_DB -eq 1 ]]; then
+    if [[ ${RESET_DB} -eq 1 ]]; then
       log "重置：stop+rm 容器 + 删 volume"
-      docker rm -f "$DOCKER_CONTAINER" 2>/dev/null || true
-      docker volume rm "$DOCKER_VOLUME" 2>/dev/null || true
+      docker rm -f "${DOCKER_CONTAINER}" 2>/dev/null || true
+      docker volume rm "${DOCKER_VOLUME}" 2>/dev/null || true
       ok "容器 + 数据卷已清"
     fi
 
-    state=$(docker inspect -f '{{.State.Status}}' "$DOCKER_CONTAINER" 2>/dev/null || echo "absent")
-    case "$state" in
+    state=$(docker inspect -f '{{.State.Status}}' "${DOCKER_CONTAINER}" 2>/dev/null || echo "absent")
+    case "${state}" in
       running)        ok "容器已在跑";;
-      exited|created) log "启动已停容器"; docker start "$DOCKER_CONTAINER" >/dev/null; ok "已 start";;
+      exited|created) log "启动已停容器"; docker start "${DOCKER_CONTAINER}" >/dev/null; ok "已 start";;
       absent)
-        if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$MYSQL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-          die "宿主端口 $MYSQL_PORT 已被占用。--mysql-port 换端口；或不加 --docker 让脚本走本机 mysql"
+        if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"${MYSQL_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+          die "宿主端口 ${MYSQL_PORT} 已被占用。--mysql-port 换端口；或不加 --docker 让脚本走本机 mysql"
         fi
-        log "首次启动：docker run $DOCKER_IMAGE → volume $DOCKER_VOLUME"
+        log "首次启动：docker run ${DOCKER_IMAGE} → volume ${DOCKER_VOLUME}"
         docker run -d \
-          --name "$DOCKER_CONTAINER" \
-          -p "$MYSQL_PORT:3306" \
-          -e MYSQL_ROOT_PASSWORD="$MYSQL_PASS" \
-          -e MYSQL_DATABASE="$MYSQL_DB" \
-          -v "$DOCKER_VOLUME:/var/lib/mysql" \
+          --name "${DOCKER_CONTAINER}" \
+          -p "${MYSQL_PORT}:3306" \
+          -e MYSQL_ROOT_PASSWORD="${MYSQL_PASS}" \
+          -e MYSQL_DATABASE="${MYSQL_DB}" \
+          -v "${DOCKER_VOLUME}:/var/lib/mysql" \
           --restart unless-stopped \
-          "$DOCKER_IMAGE" \
+          "${DOCKER_IMAGE}" \
           --character-set-server=utf8mb4 \
           --collation-server=utf8mb4_unicode_ci \
           --default-time-zone=+08:00 \
           >/dev/null
         ok "容器已起"
         ;;
-      *) die "容器状态异常：$state";;
+      *) die "容器状态异常：${state}";;
     esac
 
     log "等 MySQL ready（最多 60s）"
     for i in $(seq 1 30); do
-      if docker exec "$DOCKER_CONTAINER" mysqladmin ping -uroot -p"$MYSQL_PASS" >/dev/null 2>&1; then
+      if docker exec "${DOCKER_CONTAINER}" mysqladmin ping -uroot -p"${MYSQL_PASS}" >/dev/null 2>&1; then
         ok "MySQL ready"; break
       fi
       sleep 2
-      [[ $i -eq 30 ]] && die "MySQL 60s 内未 ready，看 docker logs $DOCKER_CONTAINER"
+      [[ ${i} -eq 30 ]] && die "MySQL 60s 内未 ready，看 docker logs ${DOCKER_CONTAINER}"
     done
 
-    docker exec "$DOCKER_CONTAINER" mysql -uroot -p"$MYSQL_PASS" \
-      -e "CREATE DATABASE IF NOT EXISTS $MYSQL_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
+    docker exec "${DOCKER_CONTAINER}" mysql -uroot -p"${MYSQL_PASS}" \
+      -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
       2>/dev/null
-    ok "数据库 $MYSQL_DB 就绪"
+    ok "数据库 ${MYSQL_DB} 就绪"
 
     MYSQL_HOST="localhost"     # docker 暴露的端口在 localhost
     ;;
 
   skip)
-    if [[ "$PROFILE" == "mysql" ]]; then
+    if [[ "${PROFILE}" == "mysql" ]]; then
       log "MySQL 模式：跳过（假设你已经搞定）"
     fi
     # --reset-db 在 H2 模式下清本地 ./data
-    if [[ $RESET_DB -eq 1 && "$PROFILE" == "dev" ]]; then
+    if [[ ${RESET_DB} -eq 1 && "${PROFILE}" == "dev" ]]; then
       log "重置 H2：rm -rf apps/server/data"
       rm -rf apps/server/data
       ok "H2 文件库已清"
@@ -185,26 +199,54 @@ export AEP_SECRET_KEY="dev-local-aes-key-NOT-FOR-PROD-bbbbbbb"
 export AEP_SEED_DEV_DATA_ENABLED="true"
 export AEP_DEV_AUTH_ENABLED="true"
 
-if [[ "$PROFILE" == "mysql" ]]; then
+if [[ "${PROFILE}" == "mysql" ]]; then
   export DB_URL="jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&connectionCollation=utf8mb4_unicode_ci&characterEncoding=UTF-8"
-  export DB_USERNAME="$MYSQL_USER"
-  export DB_PASSWORD="$MYSQL_PASS"
+  export DB_USERNAME="${MYSQL_USER}"
+  export DB_PASSWORD="${MYSQL_PASS}"
 fi
 
 # ── 启动 server ──────────────────────────────────────────────────────────
-log "启动 Spring Boot（profile=$PROFILE）"
+log "启动 Spring Boot（profile=${PROFILE}）"
 echo
 echo "${Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}"
 echo "${Y}  ⚠️  注入的是 dev 弱密钥（NOT-FOR-PROD），不可上线${N}"
 echo "${Y}  ✓ http://localhost:8080/api/auth/dev-accounts  ← 看演示账号${N}"
-[[ "$PROFILE" == "dev" ]] && \
+[[ "${PROFILE}" == "dev" ]] && \
 echo "${Y}  ✓ http://localhost:8080/h2-console             ← H2 GUI${N}"
-[[ "$PROFILE" == "mysql" && "$MODE" == "native" ]] && \
-echo "${Y}  ✓ mysql -h $MYSQL_HOST -P $MYSQL_PORT -u $MYSQL_USER -p $MYSQL_DB${N}"
-[[ "$PROFILE" == "mysql" && "$MODE" == "docker" ]] && \
-echo "${Y}  ✓ docker logs -f $DOCKER_CONTAINER             ← MySQL 容器日志${N}"
+[[ "${PROFILE}" == "mysql" && "${MODE}" == "native" ]] && \
+echo "${Y}  ✓ mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u ${MYSQL_USER} -p ${MYSQL_DB}${N}"
+[[ "${PROFILE}" == "mysql" && "${MODE}" == "docker" ]] && \
+echo "${Y}  ✓ docker logs -f ${DOCKER_CONTAINER}             ← MySQL 容器日志${N}"
+[[ -n "${LOG_FILE}" ]] && \
+echo "${Y}  ✓ 日志同步写到: ${LOG_FILE}                ← tail -f 跟踪${N}"
 echo "${Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}"
 echo
-exec mvn -f apps/server/pom.xml spring-boot:run \
-  -Dspring-boot.run.profiles="$PROFILE" \
-  $MVN_ARGS
+
+# 启动 mvn：可选 tee 到日志文件
+# - 无 --log：直接 exec，stdout/stderr 打 console
+# - 有 --log：mkdir -p logs/ 后 mvn 2>&1 | tee FILE。pipefail 保留 mvn 退出码
+if [[ -n "${LOG_FILE}" ]]; then
+  mkdir -p "$(dirname "${LOG_FILE}")"
+  log "stdout/stderr 同步写入: ${LOG_FILE}"
+  # 头里写一行元信息方便事后定位
+  {
+    echo "# dev-server.sh launched at $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "# profile=${PROFILE} mode=${MODE} mysql=${MYSQL_USER}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}"
+    echo "# mvn args: ${MVN_ARGS}"
+    echo "# ── server output ──────────────────────────────────────────────────"
+  } >> "${LOG_FILE}"
+  # 用 stdbuf 让 mvn 不缓冲，日志实时刷盘（Linux）；macOS 自带 stdbuf 在 coreutils
+  if command -v stdbuf >/dev/null 2>&1; then
+    stdbuf -oL -eL mvn -f apps/server/pom.xml spring-boot:run \
+      -Dspring-boot.run.profiles="${PROFILE}" \
+      ${MVN_ARGS} 2>&1 | tee -a "${LOG_FILE}"
+  else
+    mvn -f apps/server/pom.xml spring-boot:run \
+      -Dspring-boot.run.profiles="${PROFILE}" \
+      ${MVN_ARGS} 2>&1 | tee -a "${LOG_FILE}"
+  fi
+else
+  exec mvn -f apps/server/pom.xml spring-boot:run \
+    -Dspring-boot.run.profiles="${PROFILE}" \
+    ${MVN_ARGS}
+fi
