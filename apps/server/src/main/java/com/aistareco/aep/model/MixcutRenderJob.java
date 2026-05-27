@@ -1,6 +1,8 @@
 package com.aistareco.aep.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
+
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -123,8 +125,12 @@ public class MixcutRenderJob {
      * v0.33+: 任务创建时冻结的总积分（= variants × per_variant_cost @ create 时点）。
      * 写入后即固化，PlatformConfig 后续改价不影响已创建的任务。
      * 0 = 历史任务（v0.32 及之前未接入扣费）。
+     *
+     * v0.34.x: 加 @ColumnDefault("0") 让 Hibernate ddl-auto=update 给现有行自动填 0，
+     * 否则 H2 / MySQL 严格模式下 alter add NOT NULL 列会因「现有行无值」失败。
      */
     @Column(name = "credits_held", nullable = false)
+    @ColumnDefault("0")
     private long creditsHeld;
 
     /**
@@ -132,6 +138,7 @@ public class MixcutRenderJob {
      * 与 creditsHeld 一起保证 PlatformConfig 改价不影响进行中的任务。
      */
     @Column(name = "credits_per_variant", nullable = false)
+    @ColumnDefault("0")
     private long creditsPerVariant;
 
     @OneToMany(mappedBy = "job", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
