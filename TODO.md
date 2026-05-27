@@ -2,9 +2,10 @@
 
 本文件记录已定位但暂未修复的问题，方便后续排期。动手修时请勾掉对应条目并在代码里落实。
 
-> 状态注（2026-05-09 / v0.5.4 文档审计）：本文 2026-04-21 记录的 admin auth / error-handler / logId 问题截至 v0.5.3 **未处理**；v0.5.0 ~ v0.5.3 的工作集中在 admin 页面 / 模板脚本系统 / AI 模型配置 / miniprogram 拉模式同步，没碰这条 auth 链。本节内容**仍然有效**，留待 v0.6+。
->
-> v0.5.x 期间发现的新待办见文末「v0.6 候选」段。
+> 状态注（2026-05-27 / v0.34 部署基础设施落地后审计）：
+> - **2026-04-21 admin auth 块部分完成**：admin `apiFetch` Authorization 头 ✅（`AUTH_TOKEN_KEY` + `Bearer ${token}` 在 `apps/admin/src/api/_client.ts:18-97`）、admin login 页 + AuthContext ✅、MDC ✅（v0.30+ 改名 `traceId`，pattern `%X{traceId:-}` 已生效）。**剩两项未做**：`DevAutoAuthFilter` 仍 `@Profile("dev")`（未按 `aep.dev-auth.enabled` property 门控）、`SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler` 仍未补 → 401/403 仍空 body。
+> - **角色拆分 `SUPER_ADMIN/OPERATOR → PLATFORM_OPERATOR/FINANCE_ADMIN` 已反向决策不做**（v0.31 改在 `aep_users` 加 `operatorRole` 复用现有命名 — 见 `AGENTS.md` v0.31 B 节）。
+> - v0.7 ~ v0.34 期间累积的新待办见文末「v0.7 ~ v0.34 累积待办」段。
 
 ---
 
@@ -18,15 +19,9 @@
 
 ### 根因（互相叠加，需一起治理）
 
-1. **admin `apiFetch` 不发 `Authorization` 头**
-   - 位置：`apps/admin/src/api/_client.ts:61-70`
-   - 对比 web 实现 `apps/web/src/api/_client.ts:90-96`（会读 `localStorage` token 并带 `Bearer`）。
-   - admin 侧完全没有 `getAuthToken` / 头注入逻辑。
+1. ✅ ~~**admin `apiFetch` 不发 `Authorization` 头**~~（已修，`apps/admin/src/api/_client.ts:18-97` 已带 `AUTH_TOKEN_KEY` + `getAuthToken` + `Bearer ${token}`）
 
-2. **admin 没有登录页**
-   - `apps/admin/src/app/` 下没有 `login/` 目录，也没有 `AuthContext`。
-   - `apps/admin/src/api/auth.ts` 里的 `login()` / `getMe()` 没有任何调用方。
-   - 即使修好第 1 点，也没有 token 来源。
+2. ✅ ~~**admin 没有登录页**~~（已修，`apps/admin/src/app/login/page.tsx` + AuthContext 已上线）
 
 3. **`DevAutoAuthFilter` 门控与 `DevAuthController` 不一致**
    - `apps/server/src/main/java/com/aistareco/aep/config/DevAutoAuthFilter.java` 仍是 `@Profile("dev")`。
@@ -39,9 +34,7 @@
    - Security 链上 `AccessDeniedException` / `AuthenticationException` 由 `AccessDeniedHandler` / `AuthenticationEntryPoint` 处理，当前没自定义 → 默认空 body。
    - 需要补 `SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler`，在 `AepSecurityConfig` 里 wire 上。
 
-5. **后端请求没有 logId / requestId**
-   - 现有 `application.yml` 日志 pattern 没有 MDC 字段。
-   - 错误响应体里也没有可与日志对照的关联 id。
+5. ✅ ~~**后端请求没有 logId / requestId**~~（已修，v0.30+ 落地为 `traceId`：`application.yml` pattern `%X{traceId:-}` + `TraceFilter` MDC 注入）
 
 ### 修复方案（落实时再做）
 
@@ -126,7 +119,7 @@
 
 ### 角色拆分
 
-- [ ] **`SUPER_ADMIN/OPERATOR` → `PLATFORM_OPERATOR/FINANCE_ADMIN`**：`docs/ADMIN_PRODUCT_SPEC.md` §2.1 / §10.2 规划中。届时同步改 4 处：`AdminUser.AdminRole` / `AepSecurityConfig.hasAnyRole` / `DataInitializer` seed / `apps/admin/src/types/account.ts`。
+- [x] ~~**`SUPER_ADMIN/OPERATOR` → `PLATFORM_OPERATOR/FINANCE_ADMIN`**~~（**v0.31 反向决策不拆**。改在 `aep_users` 加 `operatorRole` 字段，复用现有 `SUPER_ADMIN/OPERATOR` 命名让 celebrity 端用户也能命中 `hasAnyRole` 门禁；admin / aep 两套用户表保持独立。详见 `AGENTS.md` v0.31 B 节。）
 
 ### 基础设施收敛
 
@@ -212,3 +205,84 @@
 
 - [ ] **Script / PublishJob server `*Dto`**：drama 真后端落地时按 `packages/types/src/{script,publish-job}.ts` 字段名严格 mirror（与 D-1 协同）。
 - [ ] **community / appearance-forge types 上推**：music 这两域接入真后端时，把本地 `src/types/...`（如有）上推到 `packages/types`，同步 admin/server *Dto。
+
+---
+
+## v0.7 ~ v0.34 累积待办（2026-05-27 整理）
+
+> 来源：`AGENTS.md` v0.7 ~ v0.34 各节末的「注意事项」+ "out-of-scope" + "候选" 字段汇总。按主题归并，避免散落在版本日志里被忘掉。
+
+### 部署 / 生产基础设施（v0.34 之后）
+
+- [ ] **Phase 3 · 全栈容器化 + CI/CD**（v0.34 显式 v0.35+）：server + sau-service + 5 个 web app 出 Dockerfile + docker-compose；GitHub Actions 跑 build / typecheck / contract / push 镜像 + 部署。
+- [ ] **Phase 4 · 用户上传素材 OSS 化**（v0.34 显式 v0.35+）：`MixcutAsset` 上传从本地 fs（`./mixcut-assets`）切换到 OSS（沿用 `AliyunOssCdnUploader`）。当前 v0.14 已做 mixcut **渲染产出** OSS 化；用户**上传**仍落本地。
+- [ ] **Phase 5 · 多实例 + Redis + ShedLock**（v0.34 显式）：
+  - `PublishJobScheduler` / `MixcutOutputCleanupScheduler` 两个 `@Scheduled` 加 ShedLock（源码注释已挂 TODO）
+  - `SmsCodeService` in-memory `ConcurrentHashMap`（验证码 + 失败次数 + 锁定态）→ Redis
+  - JWT 黑名单（v0.31 提到的 operatorRole 变更后旧 token 不失效问题）→ Redis 黑名单
+  - Cookie SSO 跨子域（`packages/api-client/src/_client.ts` 现有 TODO）
+- [ ] **Phase 6 · K8s / ACK**（v0.34 显式）：从 ECS + systemd 迁到 ACK，HPA + 滚动发布。
+- [ ] **Flyway V1__baseline.sql 当前是空占位**（v0.34 §B）：切 `ddl-auto=validate` 之前需把生产 schema `mysqldump` 出来填入 V1；当前依赖 Flyway 看到现存 schema 自动 baseline 到 V1 但不执行。
+- [ ] **RDS 应用账号 Flyway 接管后降权**（v0.34 §C）：从 `CREATE/ALTER/DROP` 降到 `SELECT/INSERT/UPDATE/DELETE + EXECUTE`。
+
+### admin 后台健全（v0.31 / v0.32）
+
+- [ ] **`AdminStaffController` self-protect 校验**（v0.32 注意事项）：当前 admin 能删/降级**自己**账号；前端 loose `isSelf` 判断形同无防护。server 端加 `if (id.equals(principal.getName())) throw ...`。
+- [ ] **admin TS 类型 enum 大小写归一**（v0.32 注意事项）：当前 wire 是小写（`"super_admin"`/`"operator"`）但 admin TS 类型用大写（`"SUPER_ADMIN"`/`"OPERATOR"`），靠 `useAdminRole` + `staff.ts.normalize()` 在 API 边界翻译。可统一为小写跟其它 enum 一致。
+- [ ] **admin operator self-grant operatorRole 防护**（v0.31 §C）：`/api/admin/aep-users/{id}/operator-role` 当前 hasAnyRole（OPERATOR 也能调，能给自己/他人发 SUPER_ADMIN）。改为 `@PreAuthorize("hasRole('SUPER_ADMIN')")`。
+- [ ] **admin `window.confirm` / `alert` 历史欠债迁移**（v0.23 硬规则但仅约束 web-celebrity；admin 仍有 8 文件用）：`apps/admin/src/app/{platform/llm-keys, platform/ai-models, finance/recharge-packages, base/presets, celebrity/{star-authorizations, template-scripts, mixcut-official-clips, products}}/page.tsx` → 改用 shadcn `AlertDialog` + Promise-based `useConfirm()`。
+
+### 安全 / Auth（2026-04-21 块剩余）
+
+- [ ] **`DevAutoAuthFilter` 门控统一**（2026-04-21 §根因 3）：`@Profile("dev")` → `@ConditionalOnProperty("aep.dev-auth.enabled")`，与 `DevAuthController` 对齐。
+- [ ] **`SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler`**（2026-04-21 §根因 4）：Spring Security 401/403 当前还是空 body；加两 handler 输出 `{error:{code,message,traceId}}` 与 `GlobalExceptionHandler` 同壳。
+
+### sau-service（v0.17 ~ v0.19）
+
+- [ ] **SMS 风控人机交互 — 真实 selector driver**（v0.19 §B）：当前 `_PlaceholderSmsDriver.detect()` 永远返回 `None`；整 stack 已联通但**生产不会触发**。需要在抖音/视频号触发风控时抓 SMS 弹窗 DOM 选择器替换占位实现。
+- [ ] **sau-service driver selector 首次绑定后按诊断 WARNING 回填**（v0.17.1 ~ v0.17.3）：XHS / 视频号 / 快手 driver selectors 是基于上游 sau 命名约定**猜的**；首次真实绑定后看 `[<platform>] extract_profile incomplete after retry budget` WARNING dump 取真 class / outerHTML 回填。
+- [ ] **XHS 改用 `xhs-toolkit.XhsClient.get_qrcode()` API 替代 DOM scrape**（v0.17.3 注意事项）：上游 `pokocat/social-auto-upload` 的 `xhs_uploader/xhs_login_qrcode.py` 走的就是这条 API；DOM scrape 是临时活路。
+- [ ] **sau-service 浏览器进程复用**（旧 v0.6 候选）：当前每次 verify 都 `chromium.launch()`，冷启 3-4s。引常驻 persistent context worker → 0.5s。
+- [ ] **HTTP-only cookie 探测（长期）**（旧 v0.6 候选）：彻底脱离浏览器跑 verify。先视频号试点；签名头逆向工程量大。
+- [ ] **upstream `social-auto-upload` patch `on_page` callback**（v0.19 §B 注意事项）：当前 `_hook_chromium_for_page_capture` monkey-patch `chromium.launch()` 抓 page，耦合上游用 `launch()` 而非 `launch_persistent_context()`。长期 fork 上游加 callback 参数。
+
+### 混剪 / 分发（v0.15 ~ v0.30）
+
+- [ ] **`PublishJobScheduler` 多实例 ShedLock**（v0.15 注意事项 / 源码注释 v0.16+ 候选 → 实际推到 Phase 5）。
+- [ ] **`MixcutOutputCleanupScheduler` 多实例 ShedLock**（v0.21 §C，同上）。
+- [ ] **`expandSchedule` jitter 可重放**（v0.20 注意事项）：当前 `ThreadLocalRandom` 不可重放；未来要可复算引 `seed = hash(projectId, i)`。
+- [ ] **批次取消 / 重新调度的 campaign 级语义**（v0.23 显式 out-of-scope）：当前只支持 tracking tab 单条 cancel，批次级 cancel-all 还未做（v0.23 仅做了批次聚合显示）。
+- [ ] **跨账号错峰 / interval / random_window / weekly 派单策略**（v0.20 out-of-scope）：`ScheduleSpec` discriminator 已预留扩展位。
+- [ ] **手动 URL 输入合并进分发工作台**（v0.16 注意事项）：当前 `ManualDistributeDialog` 独立弹窗，字段差异大未 inline 合并。
+- [ ] **`mixcut_output.last_published_at` server 落库稳态去重**（v0.16 已废弃 localStorage；v0.19 §A 已加 `publishCount` + `lastPublishedAt`，本条已实质完成 → 可在下次 audit 时勾掉确认）。
+
+### 数据模型 / 配置
+
+- [ ] **engine-pricing 落到 `PlatformConfig`**（旧 v0.6 候选）：`CelebrityZoneService.mutablePricing` in-memory ConcurrentHashMap，admin PUT 即时生效但重启失效。`PlatformConfig` 实体已存在，接进去即可。
+- [ ] **生成任务 `JOBS` 落表**（旧 v0.6 候选）：`CelebrityZoneService.JOBS` 同样 in-memory。建 `generation_jobs(id, started_at, total_sec, engine, status, created_at)`。
+- [ ] **真实微信支付**：`POST /me/wallet/recharge` 当前 mock 直接落账；线上需 `wx.requestPayment` → `notify_url` 验签后再调 server。
+- [ ] **国产 LLM provider 真实调用**（旧 v0.6 候选）：`AiModelInvocationService` 当前只 OpenAI 兼容；`ANTHROPIC` / `BAIDU` / `ALIYUN` / `TENCENT` 各自鉴权。
+- [ ] **`ConfigItem` 配置中心 + 17 字典上移**（旧 v0.6 候选，`docs/ADMIN_PRODUCT_SPEC.md` §10 设计已写）：草稿/审核/发布状态机 + 灰度（白名单 / AB 桶）。
+- [ ] **`/celebrity/dictionaries`** 当前 hard-coded；接 `ConfigItem` 后改为运营可配。
+
+### 商品 / 模板 / 素材
+
+- [ ] **抖音以外平台 商品链接 handler**（v0.28 显式未实现）：当前只 `DouyinQueryEmbeddedHandler` + `DouyinHtmlScrapeHandler`。
+- [ ] **商品图本地化备份**（v0.28 显式未实现）：当前外网 CDN URL 直接登记，不下载本地。
+- [ ] **AI 生成带货视频**（v0.28 显式未实现）：当前仅在 `MixcutAsset.subkind` 预留 `"ai-marketing-video"` 占位。
+- [ ] **`PublishJob.productId` 冗余列**（v0.28 显式未实现 — 当前依赖 `MixcutRenderJob.productId` + BatchPublishDrawer 反查 Product 来 prefill 抖音商品挂载）。
+- [ ] **模板 `video_ref` 自动检测**（旧 v0.6 候选）：转码 / 抽帧 / BGM BPM / NSFW / 主色板检测。
+- [ ] **admin 表单 OSS multipart 上传 + STS 临时凭证**（旧 v0.6 候选）：当前只接 URL。
+- [ ] **模板 A/B 桶 + 多人审批**（旧 v0.6 候选）：当前 `experiment` / `metrics` 字段保留但不分桶。
+
+### 通知 / 实时（旧 v0.6 候选）
+
+- [ ] **WebSocket 升级路径**：当前轮询 15s + 5s + 业务关键点 trigger 已"近实时"。
+- [ ] **`wx.subscribeMessage` 模板消息**：用户离线推醒（生成完成 / 授权审核结果）。
+- [ ] **Bot 消息真实事件触发推送**（替代或补充拉模式）：业务事件 → `Notification` → WebSocket 推。
+- [ ] **"数据日报" todo count**：`NotificationService.computeTodos` 当前回退常量 1。
+
+### 文档 / 元数据
+
+- [ ] **根 `PRODUCT.md` `## Register` 段补全**：当前只写了一个词 `product`，像未完成的脚手架。其余段（Users / Brand / Design Principles）齐全，是 `/impeccable` skill 的强制上下文，**保留不删**。
+- [ ] **`docs/INDEX.md` last-reviewed 滚动**：当前停在 2026-05-23 / v0.5.4 与 2026-05-21 / v0.21 双行；v0.22 ~ v0.34 增量未追加。每次大版本提交时同 commit 更新。
