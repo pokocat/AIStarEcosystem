@@ -14,7 +14,8 @@ try {
   _env = require("./config/env.js");
 } catch (e) {
   // env.js 不存在 → fallback 走 mock，避免无声打到不存在的线上域名
-  _env = { useMock: true, apiBaseUrl: "https://api.aistareco.local/api" };
+  // apiBaseUrl 此时不会真发请求，仅作占位；要真联本机后端请 cp env.example.js → env.js
+  _env = { useMock: true, apiBaseUrl: "http://localhost:8080/api" };
 }
 
 App({

@@ -1,9 +1,7 @@
 # AI Star Eco Server
 
-> 线上部署、增量发布 SOP、`/static/videos` 共享静态资源说明，以及本地联调方式见 [`../../DEPLOYMENT.md`](../../DEPLOYMENT.md)。
->
-> **v0.34+**: 阿里云 ECS + RDS + OSS 的完整版本化基础设施在 [`../../infra/`](../../infra/README.md)。
-> 新机器拉起 / RDS 切换 / OSS 上云请按 [`../../infra/MIGRATION.md`](../../infra/MIGRATION.md)。
+> 阿里云 **ECS + RDS + OSS** 部署的完整版本化基础设施在 [`../../infra/`](../../infra/README.md)。
+> 新机器从零拉起、env / nginx / systemd / RDS / OSS 模板、deploy 脚本均在该目录。
 
 Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘钥）、积分钱包、审计日志等核心业务。
 

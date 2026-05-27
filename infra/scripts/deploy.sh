@@ -20,7 +20,7 @@
 #   仅在 sau-service 时用于 docker image tag
 #
 # 环境变量（必填）：
-#   ECS_HOST            — 形如 root@47.94.102.182
+#   ECS_HOST            — 形如 root@<your-ecs-host>
 #   REMOTE_ROOT         — 默认 /opt/ai-star-eco
 #
 # 假设：
@@ -39,7 +39,7 @@
 set -euo pipefail
 
 # ── 配置 ─────────────────────────────────────────────────────────
-ECS_HOST="${ECS_HOST:?ECS_HOST is required, e.g. ECS_HOST=root@47.94.102.182}"
+ECS_HOST="${ECS_HOST:?ECS_HOST is required, e.g. ECS_HOST=root@<your-ecs-host>}"
 REMOTE_ROOT="${REMOTE_ROOT:-/opt/ai-star-eco}"
 SERVICE="${1:?usage: deploy.sh <service> [tag]}"
 TAG="${2:-$(git rev-parse --short HEAD)}"

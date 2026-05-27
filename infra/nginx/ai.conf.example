@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# AI Star Eco — 单 ECS / 单 IP 入口（当前 47.94.102.182 形态）
+# AI Star Eco — 单 ECS / HTTP 入口（适合首次部署或内网联调）
 # 落位：/etc/nginx/conf.d/ai.conf
 #
 # 路由：
@@ -9,7 +9,7 @@
 #   /api/*             → systemd:8080 (Spring Boot, 长超时支持 QR 扫码)
 #   /static/videos/*   → ECS 本地盘（迁到 OSS 后此 location 可删）
 #
-# 上 HTTPS + 多子域请用 ai.aistar.com.conf.example 替换
+# 生产 HTTPS + 多子域形态用 ai.aistar.com.conf.example 替换
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 公共 proxy header / timeout（避免每个 location 重复）
@@ -71,8 +71,7 @@ server {
     }
 }
 
-# ── apps/web-celebrity 直接 :3012 暴露（当前形态；上多子域后此 server block 可删）
-# 浏览器访问 http://47.94.102.182:3012/
+# ── apps/web-celebrity 可选：直接 :3012 暴露（用 HTTPS 多子域形态后此 block 可删）
 # server {
 #     listen 3012 default_server;
 #     server_name _;

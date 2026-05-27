@@ -3,12 +3,12 @@
 # infra/scripts/verify.sh — 部署后健康检查批量
 #
 # 用法：
-#   ECS_HOST=root@47.94.102.182 ./infra/scripts/verify.sh
-#   ECS_HOST=root@47.94.102.182 PUBLIC_BASE=http://47.94.102.182 ./infra/scripts/verify.sh
+#   ECS_HOST=root@<your-ecs-host> ./infra/scripts/verify.sh
+#   ECS_HOST=root@<your-ecs-host> PUBLIC_BASE=https://aistar.com ./infra/scripts/verify.sh
 #
 # 环境变量：
 #   ECS_HOST    — ssh 目标（用于 systemctl status / docker logs / 内网 healthz）
-#   PUBLIC_BASE — 公网入口 base url，默认从 ECS_HOST 抽 IP；多子域用 https://aistar.com
+#   PUBLIC_BASE — 公网入口 base url，默认从 ECS_HOST 抽 host；多子域形态用 https://aistar.com
 #
 # 检查项：
 #   1. 公网入口 200（/web /admin /api/auth/dev-accounts）
@@ -22,9 +22,9 @@
 
 set -euo pipefail
 
-ECS_HOST="${ECS_HOST:?ECS_HOST required, e.g. root@47.94.102.182}"
-HOST_IP="${ECS_HOST#*@}"
-PUBLIC_BASE="${PUBLIC_BASE:-http://$HOST_IP}"
+ECS_HOST="${ECS_HOST:?ECS_HOST required, e.g. root@<your-ecs-host>}"
+HOST_REMOTE="${ECS_HOST#*@}"
+PUBLIC_BASE="${PUBLIC_BASE:-http://$HOST_REMOTE}"
 
 log()  { printf "\033[1;34m[verify]\033[0m %s\n" "$*"; }
 ok()   { printf "\033[1;32m  ✓\033[0m %s\n" "$*"; }
@@ -47,7 +47,7 @@ else
 fi
 
 # ── 2) web-celebrity（如果直接 :3012 暴露） ─────────────────────
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$HOST_IP:3012/" || echo "000")
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$HOST_REMOTE:3012/" || echo "000")
 if [[ "$code" == "200" || "$code" == "307" ]]; then ok ":3012/ → $code"; else warn ":3012/ → $code (or behind nginx)"; fi
 
 # ── 3) 静态视频 ─────────────────────────────────────────────────
