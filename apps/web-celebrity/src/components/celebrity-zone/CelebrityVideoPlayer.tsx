@@ -5,7 +5,8 @@ import { Play } from "lucide-react";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
-  src: string;
+  /** 视频源 URL；为空则降级为静态海报视图（不渲染 <video>）。 */
+  src?: string;
   poster?: string;
   /** 时长秒数，仅展示用（缩略模式右下角） */
   durationSec?: number;
@@ -40,7 +41,9 @@ export function CelebrityVideoPlayer({
   className,
   aspect = "9/16",
 }: Props) {
-  const [active, setActive] = React.useState(!thumbnailMode);
+  // src 为空时锁定在缩略视图：没有可播放源就不渲染 <video>，避免空 src 警告
+  const hasSrc = Boolean(src);
+  const [active, setActive] = React.useState(hasSrc && !thumbnailMode);
   const aspectClass = aspect === "16/9" ? "aspect-video" : "aspect-[9/16]";
 
   return (
@@ -51,7 +54,7 @@ export function CelebrityVideoPlayer({
         className,
       )}
     >
-      {active ? (
+      {active && hasSrc ? (
         <video
           src={src}
           poster={poster}
@@ -69,10 +72,11 @@ export function CelebrityVideoPlayer({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setActive(true);
+            if (hasSrc) setActive(true);
           }}
-          className="block h-full w-full"
-          aria-label="播放视频"
+          disabled={!hasSrc}
+          className="block h-full w-full disabled:cursor-default"
+          aria-label={hasSrc ? "播放视频" : "暂无视频"}
         >
           {poster ? (
             <img
@@ -85,9 +89,15 @@ export function CelebrityVideoPlayer({
             <div className="h-full w-full bg-gradient-to-br from-zinc-900 to-zinc-800" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
-          <span className="absolute left-1/2 top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/60 text-zinc-900 backdrop-blur-sm transition group-hover:bg-white/80 group-hover:scale-110">
-            <Play className="ml-0.5 h-5 w-5" />
-          </span>
+          {hasSrc ? (
+            <span className="absolute left-1/2 top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/60 text-zinc-900 backdrop-blur-sm transition group-hover:bg-white/80 group-hover:scale-110">
+              <Play className="ml-0.5 h-5 w-5" />
+            </span>
+          ) : (
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white/85 backdrop-blur-sm">
+              暂无视频
+            </span>
+          )}
           {durationSec ? (
             <span className="absolute bottom-1.5 right-1.5 rounded bg-white/65 px-1 py-0.5 text-[9px] font-medium tabular-nums text-zinc-700 backdrop-blur">
               {pad2(Math.floor(durationSec / 60))}:{pad2(durationSec % 60)}

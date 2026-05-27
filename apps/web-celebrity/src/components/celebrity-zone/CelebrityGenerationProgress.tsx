@@ -111,11 +111,20 @@ export function CelebrityGenerationProgress({
               style={{ animation: "spin 1.6s linear infinite" }}
               aria-hidden
             />
-            <img
-              src={star.avatar}
-              alt={star.name}
-              className="h-10 w-10 rounded-full border border-violet-400/40 object-cover"
-            />
+            {star.avatar ? (
+              <img
+                src={star.avatar}
+                alt={star.name}
+                className="h-10 w-10 rounded-full border border-violet-400/40 object-cover"
+              />
+            ) : (
+              <span
+                aria-label={star.name}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-400/40 bg-zinc-100 text-sm font-semibold text-zinc-500"
+              >
+                {star.name.charAt(0)}
+              </span>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1 text-[10px] text-violet-600">

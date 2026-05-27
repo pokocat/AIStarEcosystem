@@ -28,11 +28,20 @@ export function CelebrityProjectCard({ project }: Props) {
             {project.name}
           </Link>
           <div className="mt-1.5 flex items-center gap-2">
-            <img
-              src={project.starAvatar}
-              alt={project.starName}
-              className="h-5 w-5 rounded-full border border-zinc-200 object-cover"
-            />
+            {project.starAvatar ? (
+              <img
+                src={project.starAvatar}
+                alt={project.starName}
+                className="h-5 w-5 rounded-full border border-zinc-200 object-cover"
+              />
+            ) : (
+              <span
+                aria-label={project.starName}
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[10px] font-medium text-zinc-500"
+              >
+                {project.starName.charAt(0)}
+              </span>
+            )}
             <span className="text-xs text-zinc-600">{project.starName}</span>
             <span className="text-[10px] text-zinc-400">·</span>
             <span className="text-[11px] text-zinc-500">

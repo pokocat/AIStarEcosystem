@@ -86,7 +86,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
                 {(tpl.previews ?? []).slice(0, 2).map((p, i) => (
                   <CelebrityVideoPlayer
                     key={i}
-                    src={p.videoUrl ?? ""}
+                    src={p.videoUrl}
                     poster={p.thumb}
                     aspect="9/16"
                   />

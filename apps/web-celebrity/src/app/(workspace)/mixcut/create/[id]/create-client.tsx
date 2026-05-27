@@ -252,6 +252,29 @@ export function CreateClient({ id }: { id: string }) {
     });
   }, [id]);
 
+  // 当 template 首次变为非空(localStorage 覆盖加载到)时,把 bindings / profile / variants
+  // 重新用模板里的默认值 seed 一次。只跑一次,之后用户改了的就不再覆盖。
+  //
+  // ⚠ 声明顺序：此 effect 必须在下面的「商品自动填」effect 之前，因为后者依赖
+  // `initFromTemplateRef.current === true`。React 按声明顺序运行 effect；同一 commit
+  // 里两个 effect 都被 template 触发，若顺序反过来，商品 effect 会先看到 ref=false 而提前 return，
+  // 之后 ref 翻 true 也不会重新触发它（ref 不在 deps 里、template 也没再变），自动填永远不发生。
+  useEffect(() => {
+    if (!template || initFromTemplateRef.current) return;
+    initFromTemplateRef.current = true;
+    const initial: Record<string, SlotBinding> = {};
+    flatSlotsOf(template).forEach((s) => {
+      if (s.fill_strategy === "user_input" && s.default_value) {
+        initial[s.slot_id] = { source: "input", text: s.default_value };
+      } else if (s.fill_strategy === "fixed") {
+        initial[s.slot_id] = { source: "fixed" };
+      }
+    });
+    setBindings(initial);
+    setProfile(template.perturbation_profile);
+    setVariants(template.output_variants_default);
+  }, [template]);
+
   /**
    * v0.26+: 当 product_id 在 URL 中 + 模板已加载 + 模板默认绑定也已就位时，
    * 并发拉取 product + 关联素材，按启发式规则把 slot bindings 自动填上。
@@ -276,24 +299,6 @@ export function CreateClient({ id }: { id: string }) {
         // 失败静默，用户仍可手动填
       });
   }, [productIdFromUrl, template]);
-
-  // 当 template 首次变为非空(localStorage 覆盖加载到)时,把 bindings / profile / variants
-  // 重新用模板里的默认值 seed 一次。只跑一次,之后用户改了的就不再覆盖。
-  useEffect(() => {
-    if (!template || initFromTemplateRef.current) return;
-    initFromTemplateRef.current = true;
-    const initial: Record<string, SlotBinding> = {};
-    flatSlotsOf(template).forEach((s) => {
-      if (s.fill_strategy === "user_input" && s.default_value) {
-        initial[s.slot_id] = { source: "input", text: s.default_value };
-      } else if (s.fill_strategy === "fixed") {
-        initial[s.slot_id] = { source: "fixed" };
-      }
-    });
-    setBindings(initial);
-    setProfile(template.perturbation_profile);
-    setVariants(template.output_variants_default);
-  }, [template]);
 
   // v0.26+: 用户在中列点开某个 slot 的 input → 画布自动跳到该 slot 所在场景。
   // 让"我在填的内容"和"画布上正在显示的画面"始终对齐，避免用户编辑 scene 3 的标题

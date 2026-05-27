@@ -44,12 +44,21 @@ export function CelebrityStarCard({ star }: Props) {
     >
       {/* 3:4 cover */}
       <div className="relative aspect-[3/4] overflow-hidden">
-        <img
-          src={star.cover}
-          alt={star.name}
-          loading="lazy"
-          className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
-        />
+        {star.cover ? (
+          <img
+            src={star.cover}
+            alt={star.name}
+            loading="lazy"
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+          />
+        ) : (
+          <div
+            aria-label={star.name}
+            className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-200 to-zinc-300 text-4xl font-semibold text-zinc-500"
+          >
+            {star.name.charAt(0)}
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
 
         {/* 顶部右：热门 / 授权徽章（实色 + 白字 + 柔阴影，对抗封面图像） */}

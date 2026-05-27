@@ -150,11 +150,20 @@ export function CelebrityDataCenter({ overview }: Props) {
               >
                 {i + 1}
               </span>
-              <img
-                src={row.avatar}
-                alt={row.name}
-                className="h-9 w-9 rounded-full border border-zinc-200 object-cover"
-              />
+              {row.avatar ? (
+                <img
+                  src={row.avatar}
+                  alt={row.name}
+                  className="h-9 w-9 rounded-full border border-zinc-200 object-cover"
+                />
+              ) : (
+                <span
+                  aria-label={row.name}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-xs font-semibold text-zinc-500"
+                >
+                  {row.name.charAt(0)}
+                </span>
+              )}
               <span className="flex-1 text-sm font-medium text-zinc-800">
                 {row.name}
               </span>

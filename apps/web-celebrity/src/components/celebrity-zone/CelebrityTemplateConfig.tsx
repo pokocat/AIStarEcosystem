@@ -123,7 +123,7 @@ export function CelebrityTemplateConfig({
           <div className="flex gap-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-3">
             <div className="w-[64px] shrink-0">
               <CelebrityVideoPlayer
-                src={template.previews?.[0]?.videoUrl ?? ""}
+                src={template.previews?.[0]?.videoUrl}
                 poster={template.previews?.[0]?.thumb}
                 aspect="9/16"
               />
@@ -238,7 +238,7 @@ export function CelebrityTemplateConfig({
               {(template.previews ?? []).slice(0, 2).map((p, i) => (
                 <CelebrityVideoPlayer
                   key={i}
-                  src={p.videoUrl ?? ""}
+                  src={p.videoUrl}
                   poster={p.thumb}
                   aspect="9/16"
                 />
@@ -257,7 +257,7 @@ export function CelebrityTemplateConfig({
               {showcases.map((s) => (
                 <div key={s.id}>
                   <CelebrityVideoPlayer
-                    src={s.videoUrl ?? ""}
+                    src={s.videoUrl}
                     poster={s.thumb}
                     aspect="9/16"
                   />

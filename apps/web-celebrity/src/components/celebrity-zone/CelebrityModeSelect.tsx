@@ -30,11 +30,20 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
     <div className="flex flex-col gap-6">
       {/* 明星 mini 信息条 */}
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-[var(--shadow-soft)]">
-        <img
-          src={star.avatar}
-          alt={star.name}
-          className="h-10 w-10 rounded-full object-cover border border-violet-500/30"
-        />
+        {star.avatar ? (
+          <img
+            src={star.avatar}
+            alt={star.name}
+            className="h-10 w-10 rounded-full object-cover border border-violet-500/30"
+          />
+        ) : (
+          <span
+            aria-label={star.name}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-500/30 bg-zinc-100 text-sm font-semibold text-zinc-500"
+          >
+            {star.name.charAt(0)}
+          </span>
+        )}
         <div className="flex flex-col">
           <div className="text-sm font-semibold text-zinc-800">
             {star.name}
@@ -82,7 +91,7 @@ export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props)
               {templatePreviews.map((p) => (
                 <CelebrityVideoPlayer
                   key={p.key}
-                  src={p.videoUrl ?? ""}
+                  src={p.videoUrl}
                   poster={p.thumb}
                   aspect="9/16"
                   className="h-full w-auto shrink-0"

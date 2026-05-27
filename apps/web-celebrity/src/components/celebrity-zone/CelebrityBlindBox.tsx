@@ -201,7 +201,7 @@ export function CelebrityBlindBox({ star, projects, showcases, onGenerate }: Pro
             {showcases.map((s) => (
               <div key={s.id}>
                 <CelebrityVideoPlayer
-                  src={s.videoUrl ?? ""}
+                  src={s.videoUrl}
                   poster={s.thumb}
                   aspect="9/16"
                 />

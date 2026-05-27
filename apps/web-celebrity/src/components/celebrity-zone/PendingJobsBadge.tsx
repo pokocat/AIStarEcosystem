@@ -117,11 +117,20 @@ function JobRow({ job, onClose }: { job: PendingJobRecord; onClose: () => void }
       onClick={onClose}
       className="flex items-center gap-3 border-b border-zinc-200 px-4 py-3 last:border-b-0 transition hover:bg-zinc-50"
     >
-      <img
-        src={job.artistAvatar}
-        alt={job.artistName}
-        className="h-9 w-9 shrink-0 rounded-full border border-violet-400/30 object-cover"
-      />
+      {job.artistAvatar ? (
+        <img
+          src={job.artistAvatar}
+          alt={job.artistName}
+          className="h-9 w-9 shrink-0 rounded-full border border-violet-400/30 object-cover"
+        />
+      ) : (
+        <span
+          aria-label={job.artistName}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-400/30 bg-zinc-100 text-xs font-semibold text-zinc-500"
+        >
+          {job.artistName.charAt(0)}
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-xs">
           <span className="truncate font-medium text-zinc-800">{job.artistName}</span>
