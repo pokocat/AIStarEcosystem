@@ -75,12 +75,21 @@ export function CelebrityStarDetail({ star }: Props) {
           {/* 个人信息 */}
           <div className="flex flex-col items-center gap-3 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
             <div className="relative w-full">
-              <img
-                src={star.cover}
-                alt={star.name}
-                loading="lazy"
-                className="aspect-[3/4] w-full rounded-xl object-cover"
-              />
+              {star.cover ? (
+                <img
+                  src={star.cover}
+                  alt={star.name}
+                  loading="lazy"
+                  className="aspect-[3/4] w-full rounded-xl object-cover"
+                />
+              ) : (
+                <div
+                  aria-label={star.name}
+                  className="flex aspect-[3/4] w-full items-center justify-center rounded-xl bg-gradient-to-br from-zinc-200 to-zinc-300 text-5xl font-semibold text-zinc-500"
+                >
+                  {star.name.charAt(0)}
+                </div>
+              )}
               <span
                 className={cn(
                   "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white shadow-[var(--shadow-lift)] ring-1 ring-white/40",
@@ -176,7 +185,7 @@ export function CelebrityStarDetail({ star }: Props) {
               {star.sampleVideos.slice(0, 8).map((sv) => (
                 <div key={sv.id} className="flex flex-col gap-1.5">
                   <CelebrityVideoPlayer
-                    src={sv.videoUrl ?? ""}
+                    src={sv.videoUrl}
                     poster={sv.thumb}
                     aspect="9/16"
                   />

@@ -101,11 +101,20 @@ export function CelebrityProjectDetail({ project, videos }: Props) {
         <div className="flex flex-col gap-4">
           {/* Project header */}
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
-            <img
-              src={project.starAvatar}
-              alt={project.starName}
-              className="h-12 w-12 rounded-full border border-violet-500/30 object-cover"
-            />
+            {project.starAvatar ? (
+              <img
+                src={project.starAvatar}
+                alt={project.starName}
+                className="h-12 w-12 rounded-full border border-violet-500/30 object-cover"
+              />
+            ) : (
+              <span
+                aria-label={project.starName}
+                className="flex h-12 w-12 items-center justify-center rounded-full border border-violet-500/30 bg-zinc-100 text-lg font-semibold text-zinc-500"
+              >
+                {project.starName.charAt(0)}
+              </span>
+            )}
             <div className="flex-1">
               <div className="text-base font-semibold text-zinc-800">
                 {project.starName} · {project.pricingTier}

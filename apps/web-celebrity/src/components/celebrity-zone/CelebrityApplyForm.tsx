@@ -88,11 +88,20 @@ export function CelebrityApplyForm({ star }: Props) {
 
       {/* Hero card */}
       <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-violet-400/20 bg-gradient-to-r from-violet-500/[0.08] to-pink-500/[0.05] p-5 shadow-[var(--shadow-soft)]">
-        <img
-          src={star.cover}
-          alt={star.name}
-          className="h-16 w-12 rounded-md object-cover"
-        />
+        {star.cover ? (
+          <img
+            src={star.cover}
+            alt={star.name}
+            className="h-16 w-12 rounded-md object-cover"
+          />
+        ) : (
+          <div
+            aria-label={star.name}
+            className="flex h-16 w-12 items-center justify-center rounded-md bg-gradient-to-br from-zinc-200 to-zinc-300 text-base font-semibold text-zinc-500"
+          >
+            {star.name.charAt(0)}
+          </div>
+        )}
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-violet-600" />

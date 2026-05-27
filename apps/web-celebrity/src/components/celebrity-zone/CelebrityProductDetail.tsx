@@ -168,11 +168,17 @@ export function CelebrityProductDetail({ productId }: Props) {
                   }`}
                   title={`图片 ${i + 1}`}
                 >
-                  <img
-                    src={src}
-                    alt={`${product.name} 图 ${i + 1}`}
-                    className="h-full w-full object-cover"
-                  />
+                  {src ? (
+                    <img
+                      src={src}
+                      alt={`${product.name} 图 ${i + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-zinc-400">
+                      无图
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
