@@ -66,12 +66,23 @@ public class CelebrityTemplate {
     /**
      * 是否工厂模板（运营初始化、所有用户可见）。
      * 老数据默认 true —— v0.34 之前所有模板都由 admin/seeder 上传，全部视为 factory。
+     *
+     * 注意：@Builder.Default 必加 —— Lombok 的 @Builder 不读取 Java 字段初始值，
+     * builder field 默认是 boolean 的 false（≠ Java 字段写的 true）。加 @Builder.Default
+     * 让 builder 也用 = true 作为默认。漏加会导致 builder().build() 实例的 isFactory
+     * 始终是 false，与 Java 字段声明的语义不一致。
      */
+    @Builder.Default
     @Column(name = "is_factory", nullable = false)
     @org.hibernate.annotations.ColumnDefault("true")
     private boolean isFactory = true;
 
-    /** "factory" 或 ownerUserId。listTemplates 用此过滤可见性。 */
+    /**
+     * "factory" 或 ownerUserId。listTemplates 用此过滤可见性。
+     * @Builder.Default 必加（同 isFactory 原因）—— 漏加会让 builder().build() 的
+     * ownerScope 是 null，撞 NOT NULL 约束。
+     */
+    @Builder.Default
     @Column(name = "owner_scope", length = 64, nullable = false)
     @org.hibernate.annotations.ColumnDefault("'factory'")
     private String ownerScope = "factory";
