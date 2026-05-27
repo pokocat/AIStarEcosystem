@@ -296,11 +296,11 @@ function StarFormDialog({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="头像 URL">
-              <Input value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="https://..." required />
+            <Field label="头像">
+              <ImageField value={avatar} onChange={setAvatar} kind="avatar" placeholder="贴 URL 或点「上传」" required />
             </Field>
-            <Field label="封面 URL">
-              <Input value={cover} onChange={(e) => setCover(e.target.value)} placeholder="https://..." />
+            <Field label="封面">
+              <ImageField value={cover} onChange={setCover} kind="cover" placeholder="贴 URL 或点「上传」" />
             </Field>
             <Field label="套餐档位">
               <Select value={pricingTier} onValueChange={(v) => setPricingTier(v)}>
@@ -350,5 +350,77 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
+  );
+}
+
+/**
+ * 图片字段：URL 输入 + 上传按钮二合一。
+ * 上传成功后把返回的 public URL 回填到 value。
+ */
+function ImageField({
+  value,
+  onChange,
+  kind,
+  placeholder,
+  required,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  kind: "avatar" | "cover" | "preview" | "photo";
+  placeholder?: string;
+  required?: boolean;
+}) {
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await CelebrityZoneApi.uploadCelebrityImage(file, kind);
+      onChange(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          required={required}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFile(f);
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? "上传中…" : "上传"}
+        </Button>
+      </div>
+      {value && (
+        <img src={value} alt="" className="h-16 w-16 rounded object-cover border" onError={(e) => (e.currentTarget.style.display = "none")} />
+      )}
+      {error && <p className="text-xs text-rose-600">{error}</p>}
+    </div>
   );
 }

@@ -333,8 +333,8 @@ function TemplateFormDialog({
             <Field label="转化率">
               <Input value={conversionRate} onChange={(e) => setConversionRate(e.target.value)} placeholder="如 8.5%" />
             </Field>
-            <Field label="预览封面 URL">
-              <Input value={previewCover} onChange={(e) => setPreviewCover(e.target.value)} placeholder="https://..." />
+            <Field label="预览封面">
+              <ImageField value={previewCover} onChange={setPreviewCover} kind="preview" placeholder="贴 URL 或点「上传」" />
             </Field>
             <Field label="预览视频 URL">
               <Input value={previewVideoUrl} onChange={(e) => setPreviewVideoUrl(e.target.value)} placeholder="https://..." />
@@ -369,5 +369,58 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
+  );
+}
+
+function ImageField({
+  value,
+  onChange,
+  kind,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  kind: "avatar" | "cover" | "preview" | "photo";
+  placeholder?: string;
+}) {
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setUploading(true); setError(null);
+    try {
+      const res = await CelebrityZoneApi.uploadCelebrityImage(file, kind);
+      onChange(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); }}
+        />
+        <Button type="button" variant="outline" size="sm" disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}>
+          {uploading ? "上传中…" : "上传"}
+        </Button>
+      </div>
+      {value && (
+        <img src={value} alt="" className="h-16 w-16 rounded object-cover border"
+          onError={(e) => (e.currentTarget.style.display = "none")} />
+      )}
+      {error && <p className="text-xs text-rose-600">{error}</p>}
+    </div>
   );
 }

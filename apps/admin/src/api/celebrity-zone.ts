@@ -192,3 +192,16 @@ export async function replaceActionPricing(
 ): Promise<Record<string, ActionPricing>> {
   return apiFetch("/admin/celebrity/action-pricing", { method: "PUT", body });
 }
+
+// ── v0.34+：明星档案 / 模板的图片上传（multipart） ─────────────────────────
+/** POST /admin/celebrity/uploads —— kind ∈ avatar / cover / preview / photo / video */
+export async function uploadCelebrityImage(file: File, kind: "avatar" | "cover" | "preview" | "photo" | "video"): Promise<{ url: string; kind: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", kind);
+  // apiFetch 的 body 支持原始 FormData（_client 应直接 fetch body）
+  return apiFetch<{ url: string; kind: string }>("/admin/celebrity/uploads", {
+    method: "POST",
+    body: form,
+  });
+}
