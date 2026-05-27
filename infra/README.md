@@ -52,6 +52,7 @@ infra/
 └── scripts/                        ← 部署 / 验证 / 回滚 + 引导式配置
     ├── preflight.sh                ← 检测本机 / ECS 是否装齐 java/nginx/docker/ffmpeg/node/ossutil...
     ├── init.sh                     ← 交互式收集参数 + openssl 生成密钥 + 渲染 env/nginx 到 infra/.local/
+    ├── dev-server.sh               ← 本机 server 启动 wrapper（自动起 docker mysql + 注入 dev 弱密钥）
     ├── deploy.sh                   ← deploy.sh <service> [tag]，幂等
     ├── rollback.sh                 ← rollback.sh <service> <tag>
     └── verify.sh                   ← 部署后健康检查批量
