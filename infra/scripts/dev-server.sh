@@ -20,6 +20,7 @@
 #   ./infra/scripts/dev-server.sh --mysql-user U       # 默认 root
 #   ./infra/scripts/dev-server.sh --mysql-pass P       # 默认 root
 #   ./infra/scripts/dev-server.sh --skip-mysql         # 假设已就绪，跳过所有 mysql 检查
+#   ./infra/scripts/dev-server.sh --repair-flyway      # 清 flyway_schema_history 里的失败记录
 #   ./infra/scripts/dev-server.sh --log                # 日志同步写 logs/server-<timestamp>.log
 #   ./infra/scripts/dev-server.sh --log FILE           # 指定日志文件路径
 #   ./infra/scripts/dev-server.sh --mvn-args "-DskipTests"
@@ -36,6 +37,7 @@ cd "$REPO_ROOT"
 PROFILE="mysql"
 MODE="native"            # native | docker | skip
 RESET_DB=0
+REPAIR_FLYWAY=0
 MYSQL_HOST="localhost"
 MYSQL_PORT=3306
 MYSQL_USER="root"
@@ -52,7 +54,8 @@ while [[ $# -gt 0 ]]; do
     --h2)         PROFILE="dev"; MODE="skip"; shift;;
     --docker)     MODE="docker"; shift;;
     --skip-mysql) MODE="skip"; shift;;
-    --reset-db)   RESET_DB=1; shift;;
+    --reset-db)       RESET_DB=1; shift;;
+    --repair-flyway)  REPAIR_FLYWAY=1; shift;;
     --mysql-host) MYSQL_HOST="$2"; shift 2;;
     --mysql-port) MYSQL_PORT="$2"; shift 2;;
     --mysql-user) MYSQL_USER="$2"; shift 2;;
@@ -133,6 +136,18 @@ case "$MODE" in
     mysql_exec "CREATE DATABASE IF NOT EXISTS ${MYSQL_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
       || die "CREATE DATABASE 失败（见上面 mysql 错误，多半是该用户无 CREATE 权限）"
     ok "数据库 ${MYSQL_DB} 就绪"
+
+    # 4) --repair-flyway: 清掉 flyway_schema_history 里的失败记录
+    # 用途：上次 V<N> migration 跑到一半失败留下 success=0 的脏数据，下次启动 Flyway
+    # validate 会拒绝继续。这个开关把 success=0 的行删掉让 Flyway 重新尝试。
+    if [[ ${REPAIR_FLYWAY} -eq 1 ]]; then
+      log "清 flyway_schema_history 里 success=0 的失败记录..."
+      # 用 mysql_exec 跑 DELETE。如果 schema_history 还不存在（首启），DELETE 会
+      # 报「table doesn't exist」，整个 || true 跳过（不算 repair 失败）
+      mysql_exec "USE ${MYSQL_DB}; DELETE FROM flyway_schema_history WHERE success = 0;" \
+        2>/dev/null || warn "flyway_schema_history 表不存在或无失败记录，跳过"
+      ok "Flyway 失败记录已清"
+    fi
     ;;
 
   docker)
