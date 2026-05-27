@@ -166,7 +166,7 @@ export function CelebrityProjectDetail({ project, videos }: Props) {
 
           {filtered.length === 0 ? (
             <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-6 py-16 text-center text-sm text-zinc-500">
-              暂无符合筛选条件的视频
+              没有符合筛选条件的视频
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">

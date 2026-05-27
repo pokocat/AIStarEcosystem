@@ -198,7 +198,7 @@ function SendCodeButton({ phone, onError }: { phone: string; onError: (msg: stri
       style={{ minWidth: 116, whiteSpace: "nowrap" }}
     >
       {sending ? <Loader2 size={12} className="animate-spin" /> : null}
-      {cooldown > 0 ? `${cooldown}s 后重试` : sending ? "发送中…" : "发送验证码"}
+      {cooldown > 0 ? `${cooldown} 秒后可重发` : sending ? "发送中" : "发送验证码"}
     </Button>
   );
 }
@@ -225,7 +225,7 @@ function PhoneLoginForm({
     } catch (e) {
       const err = e as { status?: number; error?: { code?: string; message?: string }; message?: string };
       if (err.error?.code === "USER_NOT_FOUND" || err.status === 404) {
-        setError("该手机号尚未注册，请切到「注册」 tab。");
+        setError("该手机号还没有注册，已为你切换到「注册」");
         onNeedRegister();
       } else {
         setError(err.error?.message ?? err.message ?? "登录失败");
@@ -272,7 +272,7 @@ function PhoneLoginForm({
         style={{ width: "100%", marginTop: 6 }}
       >
         {submitting ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
-        {submitting ? "登录中…" : "登录"}
+        {submitting ? "正在登录" : "登录"}
         {!submitting && <ArrowRight size={14} />}
       </Button>
     </div>
@@ -373,7 +373,7 @@ function PhoneRegisterForm({ onSuccess }: { onSuccess: () => Promise<void> }) {
         style={{ width: "100%", marginTop: 6 }}
       >
         {submitting ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
-        {submitting ? "注册中…" : "完成注册并登录"}
+        {submitting ? "正在注册" : "完成注册并登录"}
       </Button>
     </div>
   );
@@ -396,7 +396,7 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
         if (list.length > 0) setSelected(list[0].username);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message ?? "获取账号列表失败（仅 dev profile 可用）");
+        if (!cancelled) setError(err.message ?? "账号列表加载失败（仅开发模式可用）");
       });
     return () => { cancelled = true; };
   }, []);
@@ -419,11 +419,11 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
       {!accounts ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 88, color: "var(--fg-2)", fontSize: 13 }}>
           <Loader2 size={14} className="animate-spin" style={{ marginRight: 8 }} />
-          载入账号中...
+          加载账号中
         </div>
       ) : accounts.length === 0 ? (
         <div style={{ textAlign: "center", color: "var(--fg-2)", fontSize: 13, padding: "24px 0" }}>
-          后端未启用 dev profile（dev-accounts 为空）。请用「手机号登录」入口。
+          开发模式下没有可用账号。请改用「手机号登录」。
         </div>
       ) : (
         <>
@@ -472,14 +472,14 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
           </div>
           <Button onClick={() => handle(selected)} disabled={submitting || !selected} variant="dark" size="lg" style={{ width: "100%" }}>
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
-            {submitting ? "登录中..." : "登录进入"}
+            {submitting ? "正在登录" : "登录进入"}
             {!submitting && <ArrowRight size={14} />}
           </Button>
         </>
       )}
 
       <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>手动输入用户名（调试）</div>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>手动输入用户名（仅调试）</div>
         <div style={{ display: "flex", gap: 8 }}>
           <input
             value={manualUsername}

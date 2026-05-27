@@ -805,7 +805,7 @@ export function TemplateDetailClient({
                 </Link>
               </Button>
             ) : (
-              <Button variant="default" size="default" disabled className="h-10 px-5" title="该模板暂无可填内容位，请先编辑添加">
+              <Button variant="default" size="default" disabled className="h-10 px-5" title="该模板还没有可填的内容位置，请先编辑添加">
                 使用此模板
               </Button>
             )}
@@ -1239,7 +1239,7 @@ function CanvasEditor({
           onChange={(v) => onChange({ height: v })}
         />
         <NumField
-          label="帧率 (fps)"
+          label="帧率"
           value={canvas.fps}
           min={15} max={60}
           onChange={(v) => onChange({ fps: v })}

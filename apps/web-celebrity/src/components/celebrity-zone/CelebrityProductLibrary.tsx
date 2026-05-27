@@ -152,7 +152,7 @@ export function CelebrityProductLibrary() {
         const p = await ProductsApi.createProduct(rows[i]);
         created.push(p);
       } catch (e) {
-        failed.push({ row: i, reason: e instanceof Error ? e.message : "未知错误" });
+        failed.push({ row: i, reason: e instanceof Error ? e.message : "出了点问题，请稍后再试" });
       }
     }
     reload();
@@ -406,7 +406,7 @@ function ProductTable({
               </td>
               <td className="px-3 py-2">
                 <p className="line-clamp-2 text-[11px] leading-relaxed text-zinc-600">
-                  {p.sellingPoints || <span className="text-zinc-400">（暂无）</span>}
+                  {p.sellingPoints || <span className="text-zinc-400">（未填写）</span>}
                 </p>
               </td>
               <td className="px-3 py-2">
@@ -533,7 +533,7 @@ function ProductCard({
           </span>
         </div>
         <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-zinc-500">
-          {product.sellingPoints || "（暂无卖点描述）"}
+          {product.sellingPoints || "（还未填写卖点）"}
         </p>
       </div>
       <div className="flex items-center justify-between text-[10px] text-zinc-500">

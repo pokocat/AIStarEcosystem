@@ -316,7 +316,7 @@ export function MediaSlotInput({ slot, binding, onChange, mode, productId }: Pro
         <div className={cn("grid gap-2 max-h-72 overflow-y-auto scrollbar-thin", cols)}>
           {items === null && (
             <div className={cn("text-center text-xs text-muted-foreground py-6", kind === "video" ? "col-span-2" : "col-span-3")}>
-              加载中…
+              加载中
             </div>
           )}
           {items && filtered.length === 0 && (

@@ -98,7 +98,7 @@ function EmptyProjects({
         <Plus className="h-6 w-6 text-violet-600" />
       </div>
       <h3 className="text-base font-semibold text-zinc-800">
-        {status === "全部" ? "还没有项目" : `暂无「${status}」状态的项目`}
+        {status === "全部" ? "还没有项目" : `还没有「${status}」状态的项目`}
       </h3>
       <p className="mt-1 max-w-md text-sm text-zinc-500">
         将多条带货视频归入同一个项目，便于统一分发、追踪 ROI、按周期归档。

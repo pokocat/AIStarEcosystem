@@ -96,10 +96,10 @@ export function ProductGenerateDialog({ open, onOpenChange, product }: Props) {
         <div className="my-2">
           {loading ? (
             <div className="flex items-center justify-center py-10 text-sm text-zinc-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 加载模板…
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 加载模板
             </div>
           ) : templates.length === 0 ? (
-            <div className="py-10 text-center text-sm text-zinc-500">暂无可用模板</div>
+            <div className="py-10 text-center text-sm text-zinc-500">还没有可用模板</div>
           ) : (
             <div className="grid max-h-[420px] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
               {templates.map((t) => (

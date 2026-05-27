@@ -145,7 +145,7 @@ export function CelebrityTemplateGallery({ star, templates, onPickTemplate, onBa
 
       {filtered.length === 0 && (
         <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-6 py-12 text-center text-sm text-zinc-500">
-          暂无符合该风格的模板
+          没有符合该风格的模板
         </div>
       )}
     </div>

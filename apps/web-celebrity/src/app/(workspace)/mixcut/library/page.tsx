@@ -47,7 +47,7 @@ export default function MixcutLibraryPage() {
     <Suspense
       fallback={
         <div className="px-6 lg:px-8 py-12 max-w-[1600px] mx-auto text-center text-muted-foreground text-sm">
-          加载中…
+          加载中
         </div>
       }
     >
@@ -795,7 +795,7 @@ function ProductAssetsTab() {
       {productsEmpty.length > 0 && (
         <Card className="border-dashed">
           <CardContent className="p-4 text-xs text-muted-foreground">
-            还有 <span className="font-mono text-foreground">{productsEmpty.length}</span> 个商品暂无关联素材，
+            还有 <span className="font-mono text-foreground">{productsEmpty.length}</span> 个商品还没有关联素材，
             到商品库逐条点击「刷新图片」可自动抓取抖音商品图。
           </CardContent>
         </Card>
@@ -975,7 +975,7 @@ function OfficialClipsTab() {
         <Card className="border-dashed">
           <CardContent className="p-12 text-center text-muted-foreground text-sm space-y-2">
             <Sparkles className="size-6 mx-auto text-violet-500" />
-            <p>暂无官方片段。运营正在上传首批内容，敬请期待。</p>
+            <p>还没有官方片段，首批内容正在准备中，敬请期待。</p>
           </CardContent>
         </Card>
       ) : (

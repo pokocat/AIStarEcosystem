@@ -185,13 +185,13 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
       if (e instanceof ApiError) {
         if (e.code === "SAU_HTTP_ERROR" && /timed out|timeout/i.test(e.message)) {
           friendly =
-            "扫码服务响应超时（patchright 首次启动可能慢，请重试一次；若仍失败请检查 sau-service 状态）。";
+            "扫码服务暂时无响应，请稍候重试。如果多次失败请联系支持。";
         } else if (e.code === "PLATFORM_NOT_IMPLEMENTED") {
-          friendly = "该平台暂未启用扫码登录，请换一个平台或联系运营。";
+          friendly = "该平台还不支持扫码登录，请换一个平台或联系运营。";
         } else if (e.code === "ACCOUNT_ALREADY_ACTIVE") {
-          friendly = "该账号别名已被一个有效账号占用，请先解绑或换一个别名。";
+          friendly = "该账号别名已被使用，请先解除绑定或换一个别名。";
         } else if (e.code === "PARSE_ERROR") {
-          friendly = `后端响应解析失败：${e.message}`;
+          friendly = `请求失败：${e.message}`;
         } else {
           friendly = e.message;
         }
@@ -330,7 +330,7 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
                 {submitting ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    获取 QR 中…
+                    正在获取二维码
                   </>
                 ) : (
                   "开始扫码"

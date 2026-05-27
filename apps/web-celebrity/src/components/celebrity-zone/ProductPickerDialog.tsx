@@ -102,11 +102,11 @@ export function ProductPickerDialog({ open, onOpenChange, onPick }: Props) {
           <div className="max-h-[420px] overflow-y-auto pr-1">
             {loading ? (
               <div className="flex items-center justify-center py-12 text-sm text-zinc-500">
-                加载中…
+                加载中
               </div>
             ) : list.length === 0 ? (
               <div className="rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500">
-                暂无符合条件的商品。
+                没有符合条件的商品
               </div>
             ) : (
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">

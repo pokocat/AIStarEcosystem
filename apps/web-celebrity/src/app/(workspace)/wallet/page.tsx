@@ -162,12 +162,12 @@ export default function WalletPage() {
         <div style={{ padding: "20px 28px 24px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>充值套餐</h2>
-            <span style={{ fontSize: 11, color: "var(--fg-3)" }}>当前为 MVP：选择套餐后直接落账，正式支付通道接入后切换为微信支付 / 对公转账</span>
+            <span style={{ fontSize: 11, color: "var(--fg-3)" }}>当前为体验版：选择套餐后直接到账。正式上线后将接入微信支付与对公转账。</span>
           </div>
           {packagesLoading ? (
-            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>套餐加载中…</div>
+            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>套餐加载中</div>
           ) : packages.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>暂无可购买套餐，请联系平台运营。</div>
+            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>当前没有可购买的套餐，请联系平台运营。</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
               {packages.map((pkg) => (
@@ -208,13 +208,13 @@ export default function WalletPage() {
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)" }}>积分流水</h2>
             <Button variant="secondary" size="sm" onClick={loadLedger} disabled={ledgerLoading}>
-              {ledgerLoading ? "刷新中…" : "刷新"}
+              {ledgerLoading ? "刷新中" : "刷新"}
             </Button>
           </div>
           {ledgerLoading && ledger.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>流水加载中…</div>
+            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>流水加载中</div>
           ) : ledger.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>暂无流水。生成任务 / 发布任务 / 充值之后会在此处出现。</div>
+            <div style={{ fontSize: 13, color: "var(--fg-2)" }}>还没有积分流水。生成视频、分发任务或充值后会在这里出现。</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               <LedgerHeader />
