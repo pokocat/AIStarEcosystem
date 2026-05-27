@@ -236,6 +236,16 @@ if [[ "${PROFILE}" == "mysql" ]]; then
   export DB_PASSWORD="${MYSQL_PASS}"
 fi
 
+# ── 清 target/ 里可能残留的旧 Flyway migration ───────────────────────────
+# 背景：mvn process-resources 只 copy，不删 target/classes 里 source 已不存在的
+# 文件。若 db/migration/ 下做过 SQL → Java（或反向）替换，target/classes 里同时
+# 留着新旧两份 V<N>__*.{sql,class} → Flyway 启动报「Found more than one migration
+# with version N」。这里精确清掉 target/classes/db/migration/，让 mvn 重 copy。
+# 代价：每次启动多 100ms 左右 resource copy；好处：跨 git pull / branch 切换稳定。
+if [[ -d apps/server/target/classes/db/migration ]]; then
+  rm -rf apps/server/target/classes/db/migration
+fi
+
 # ── 启动 server ──────────────────────────────────────────────────────────
 log "启动 Spring Boot（profile=${PROFILE}）"
 echo
