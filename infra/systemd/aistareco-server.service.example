@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# /etc/systemd/system/aistareco-server.service
+#
+# Spring Boot 后端。环境变量从 /etc/aistareco/server.env 注入（infra/env/server.env.example 模板）
+#
+# 启动后耗时 2~3 分钟（MySQL profile 建表 + seed 检查）
+# 重启：systemctl restart aistareco-server
+# 看日志：journalctl -u aistareco-server -n 80 --no-pager
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=AI Star Eco — Spring Boot Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-star-eco/apps/server
+
+EnvironmentFile=/etc/aistareco/server.env
+
+# JVM 调优：8GB 机器分 2GB heap；按实际 ECS 规格调整
+ExecStart=/usr/bin/java \
+  -Xms1g -Xmx2g \
+  -XX:+UseG1GC \
+  -XX:+HeapDumpOnOutOfMemoryError \
+  -XX:HeapDumpPath=/var/log/aistareco/heapdump.hprof \
+  -Dfile.encoding=UTF-8 \
+  -Duser.timezone=Asia/Shanghai \
+  -jar /opt/ai-star-eco/apps/server/target/ai-star-eco-server-1.0.0.jar
+
+# graceful shutdown：JPA + ffmpeg 子进程清理
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10s
+
+# 文件描述符（mixcut 并发渲染 + 数据库连接池）
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

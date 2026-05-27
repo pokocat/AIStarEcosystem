@@ -1,13 +1,27 @@
 # MySQL — 生产 / 联调环境
 # 启动方式: --spring.profiles.active=mysql
 # 建库: CREATE DATABASE aistareco CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+#       （参考 infra/rds/00_create_database.sql / infra/rds/01_create_app_user.sql）
 spring:
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/aistareco?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&connectionCollation=utf8mb4_unicode_ci&characterEncoding=UTF-8}
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root}
+    hikari:
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE:20}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUMIDLE:5}
+      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT:30000}
+      idle-timeout: ${SPRING_DATASOURCE_HIKARI_IDLETIMEOUT:600000}
+      max-lifetime: ${SPRING_DATASOURCE_HIKARI_MAXLIFETIME:1800000}
   jpa:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
+
+aep:
+  # 生产默认关演示数据 seeder。新空库需要 admin 账号请按 infra/env/server.env.example
+  # AEP_SEED_DEV_DATA_ENABLED 注释中的 SQL 手动插入第一个 SUPER_ADMIN。
+  seed:
+    dev-data:
+      enabled: ${AEP_SEED_DEV_DATA_ENABLED:false}

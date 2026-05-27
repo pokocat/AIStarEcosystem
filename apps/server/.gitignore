@@ -12,7 +12,8 @@ cdn-mock/
 
 # H2 file-mode 数据库（dev profile，application-dev.yml）— 本地持久化，不入 git。
 # 想清空跑：rm -rf apps/server/data
-data/
+# 注意：前缀 / 限定只匹本目录 ./data/（避免误匹 Java package src/main/java/com/aistareco/data/）
+/data/
 *.mv.db
 *.trace.db
 *.lock.db

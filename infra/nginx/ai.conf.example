@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Star Eco — 单 ECS / 单 IP 入口（当前 47.94.102.182 形态）
+# 落位：/etc/nginx/conf.d/ai.conf
+#
+# 路由：
+#   GET  /             → 302 /web
+#   /web/*             → systemd:3002 (apps/web, basePath=/web)
+#   /admin/*           → systemd:3003 (apps/admin, basePath=/admin)
+#   /api/*             → systemd:8080 (Spring Boot, 长超时支持 QR 扫码)
+#   /static/videos/*   → ECS 本地盘（迁到 OSS 后此 location 可删）
+#
+# 上 HTTPS + 多子域请用 ai.aistar.com.conf.example 替换
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 公共 proxy header / timeout（避免每个 location 重复）
+include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
+
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # 上传体积上限（mixcut 素材最大 200MB）
+    client_max_body_size 200m;
+
+    # ── 根路径：默认进 /web ─────────────────────────────────
+    location = / {
+        return 302 /web;
+    }
+
+    # ── apps/web (basePath=/web) ────────────────────────────
+    # 必须不带尾 /，否则 /web/_next/* 会被剥成 /_next/* → chunk 404
+    location = /web {
+        proxy_pass http://127.0.0.1:3002;
+    }
+    location /web/ {
+        proxy_pass http://127.0.0.1:3002;
+    }
+
+    # ── apps/admin (basePath=/admin) ────────────────────────
+    location = /admin {
+        proxy_pass http://127.0.0.1:3003;
+    }
+    location /admin/ {
+        proxy_pass http://127.0.0.1:3003;
+    }
+
+    # ── Spring Boot 后端 ─────────────────────────────────────
+    # /api/me/social-accounts/bind-init 首次冷启 30~60s + sau patchright，
+    # 必须 read/send timeout 180s 否则 nginx 502 提前断
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    # ── 静态视频（迁移到 OSS 之前的过渡形态）─────────────────
+    # 迁完后整段可删，url 由 AEP_FORGE_VIDEO_BASE 指向 CDN 域名直供
+    location /static/videos/ {
+        alias /opt/ai-star-eco/static/videos/;
+        access_log off;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+
+    # ── 健康检查（运维 / SLB 用）────────────────────────────
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+    }
+}
+
+# ── apps/web-celebrity 直接 :3012 暴露（当前形态；上多子域后此 server block 可删）
+# 浏览器访问 http://47.94.102.182:3012/
+# server {
+#     listen 3012 default_server;
+#     server_name _;
+#     location / {
+#         proxy_pass http://127.0.0.1:3012;
+#         include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
+#     }
+# }

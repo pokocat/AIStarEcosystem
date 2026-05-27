@@ -48,6 +48,20 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- Flyway 数据库版本控制（v0.34+）。
+         dev / mysql 两个 profile 都启用，但行为不同：
+         - dev (H2)   : 自动 baseline + 跟踪 V2+；Hibernate ddl-auto=update 仍接管首次建表
+         - mysql      : baseline-on-migrate=true（看到现存 schema 就标记 V1 已应用）
+         迁移文件位置：src/main/resources/db/migration/V<N>__<desc>.sql -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-mysql</artifactId>
+    </dependency>
+
     <!-- Validation -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

@@ -4,6 +4,7 @@ import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +20,7 @@ import java.util.*;
  */
 @Component
 @Order(2)
+@ConditionalOnProperty(name = "aep.seed.dev-data.enabled", havingValue = "true", matchIfMissing = true)
 public class CelebrityZoneDataInitializer implements CommandLineRunner {
 
     private static final ObjectMapper OM = new ObjectMapper();

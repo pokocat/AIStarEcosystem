@@ -6,6 +6,7 @@ import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.repository.AiModelProviderRepository;
 import com.aistareco.common.AepCryptoUtil;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +22,7 @@ import java.util.List;
  */
 @Component
 @Order(3)
+@ConditionalOnProperty(name = "aep.seed.dev-data.enabled", havingValue = "true", matchIfMissing = true)
 public class AiModelProviderDataInitializer implements CommandLineRunner {
 
     private final AiModelProviderRepository repo;

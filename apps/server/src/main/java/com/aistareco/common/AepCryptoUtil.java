@@ -76,10 +76,46 @@ public final class AepCryptoUtil {
         return plaintext.substring(0, 3) + "..." + plaintext.substring(n - 4);
     }
 
-    private static SecretKeySpec key() {
+    /** dev fallback；任何生产 profile 看到它就 fail-fast。 */
+    private static final String DEV_DEFAULT_KEY = "dev-aes-256-key-32bytes!!!!!!!!";
+
+    /** 启动时尝试静态校验一次；mysql/prod profile 看到 dev key 立即抛。 */
+    static {
+        String raw = readRaw();
+        if (raw == null || raw.isBlank() || DEV_DEFAULT_KEY.equals(raw)) {
+            String profiles = System.getProperty("spring.profiles.active",
+                    System.getenv().getOrDefault("SPRING_PROFILES_ACTIVE", ""));
+            if (isProdProfile(profiles)) {
+                throw new IllegalStateException(
+                    "FATAL: AEP_SECRET_KEY 未配置（或仍是 dev default）但 active profile 是 [" + profiles + "]。" +
+                    " 请在 /etc/aistareco/server.env 设置 AEP_SECRET_KEY=<32 字节高熵随机 base64>。" +
+                    " 参考 infra/env/server.env.example §3 密钥段。");
+            }
+            // dev 环境保留 warn —— 不抛，让本机调试继续可用
+            System.err.println("[AepCryptoUtil] ⚠️  Using DEV-DEFAULT AES key. NEVER use in production.");
+        }
+    }
+
+    private static String readRaw() {
         String raw = System.getenv("AEP_SECRET_KEY");
         if (raw == null || raw.isBlank()) raw = System.getProperty("aep.secret.key");
-        if (raw == null || raw.isBlank()) raw = "dev-aes-256-key-32bytes!!!!!!!!";
+        return raw;
+    }
+
+    private static boolean isProdProfile(String profilesCsv) {
+        if (profilesCsv == null || profilesCsv.isBlank()) return false;
+        for (String p : profilesCsv.split(",")) {
+            String trimmed = p.trim().toLowerCase();
+            if (trimmed.equals("mysql") || trimmed.equals("prod") || trimmed.equals("production")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static SecretKeySpec key() {
+        String raw = readRaw();
+        if (raw == null || raw.isBlank()) raw = DEV_DEFAULT_KEY;
         byte[] bytes = raw.getBytes(StandardCharsets.UTF_8);
         if (bytes.length != 32) {
             try {

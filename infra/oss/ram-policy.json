@@ -1,0 +1,42 @@
+{
+  "_comment_": "阿里云 RAM Policy — 给 aistareco-app 子用户的最小权限。仅允许在 aistareco-prod bucket 的 mixcut/ 前缀下读写，避免越权操作其它 bucket 或前缀。在阿里云 RAM 控制台「权限策略管理」→「新建权限策略」→「脚本编辑」中粘贴本 JSON，命名建议 AistarecoOssMixcutWrite。",
+  "_replace_": "将 aistareco-prod 替换为你的真实 bucket 名；将 mixcut 前缀按需扩展（如 mixcut|forge|picgen）",
+
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:PutObject",
+        "oss:GetObject",
+        "oss:DeleteObject",
+        "oss:AbortMultipartUpload",
+        "oss:ListParts"
+      ],
+      "Resource": [
+        "acs:oss:*:*:aistareco-prod/mixcut/*",
+        "acs:oss:*:*:aistareco-prod/forge/*",
+        "acs:oss:*:*:aistareco-prod/picgen/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:ListObjects",
+        "oss:GetBucketInfo"
+      ],
+      "Resource": [
+        "acs:oss:*:*:aistareco-prod"
+      ],
+      "Condition": {
+        "StringLike": {
+          "oss:Prefix": [
+            "mixcut/*",
+            "forge/*",
+            "picgen/*"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# /etc/systemd/system/aistareco-web-celebrity.service
+# apps/web-celebrity — Next 16 standalone（pnpm workspace；产物路径含 apps/web-celebrity 子目录）
+
+[Unit]
+Description=AI Star Eco — Next.js Web-Celebrity (root path)
+After=network.target aistareco-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-star-eco/repo/apps/web-celebrity/.next/standalone
+
+Environment=NODE_ENV=production
+Environment=PORT=3012
+# 当前 :3012 直接暴露公网（nginx 不代理）；上多子域后改 127.0.0.1
+Environment=HOSTNAME=0.0.0.0
+
+# Next 16 + pnpm workspace 的 standalone 产物 server.js 在 apps/web-celebrity 子路径下
+ExecStart=/root/.nvm/versions/node/v24.14.1/bin/node apps/web-celebrity/server.js
+
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

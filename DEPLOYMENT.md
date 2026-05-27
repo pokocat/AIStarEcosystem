@@ -1,6 +1,22 @@
 # AI Star Eco 部署与本地调试说明
 
+> **v0.34+ 新增 [`infra/`](infra/README.md) 目录** — 阿里云 ECS + RDS + OSS 的完整版本化基础设施。
+> 新机器拉起、灰度迁移、配置模板请优先看 [`infra/README.md`](infra/README.md)
+> 与 [`infra/MIGRATION.md`](infra/MIGRATION.md)。本文档保留为「当前生产 47.94.102.182
+> 增量部署 SOP」与历史档案，最终会与 `infra/` 收敛。
+
 本文记录 2026-04-19 这次实际部署过程、后续增量部署 SOP，以及在本次 `/web`、`/admin` 子路径部署与共享视频静态资源改造之后的本地启动调试方式。
+
+## v0.34 部署架构重构（2026-05-27）
+
+完整说明在 [`infra/README.md`](infra/README.md)。摘要：
+
+- **基础设施版本化（Phase 0）**：nginx / systemd / env / RDS / OSS 模板全部进 `infra/`。再装一台新 ECS 不再需要爬文档拷文件。
+- **生产硬伤修复（Phase 1）**：
+  - 引入 **Flyway**（`db/migration/V<N>__xxx.sql`），后续 schema 改动走 Flyway 而非 Hibernate ddl-auto
+  - **演示数据 seeder 加 gate**（`aep.seed.dev-data.enabled`，mysql profile 默认 `false`），避免生产空库无声写入 admin/admin123 等演示账号
+  - **密钥 fail-fast**：mysql/prod profile 看到 dev default JWT secret / AES key 启动时直接抛异常
+- **RDS / OSS 真切（Phase 2）**：`AliyunOssCdnUploader` / `AliyunSmsSender` 早已就绪，只缺配置；脚本 `infra/scripts/migrate-db.sh` + `migrate-cdn.sh` 一次性迁
 
 ## v0.5 部署变更（2026-05-08 ~ 05-09）
 

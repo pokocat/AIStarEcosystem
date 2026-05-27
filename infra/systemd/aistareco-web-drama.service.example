@@ -1,0 +1,24 @@
+# /etc/systemd/system/aistareco-web-drama.service
+# apps/web-drama — Next 16 standalone（根路径）
+
+[Unit]
+Description=AI Star Eco — Next.js Web-Drama (root path)
+After=network.target aistareco-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-star-eco/repo/apps/web-drama/.next/standalone
+
+Environment=NODE_ENV=production
+Environment=PORT=3011
+Environment=HOSTNAME=127.0.0.1
+
+ExecStart=/root/.nvm/versions/node/v24.14.1/bin/node apps/web-drama/server.js
+
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

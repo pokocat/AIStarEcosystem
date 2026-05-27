@@ -1,0 +1,115 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Star Eco — HTTPS 多子域目标形态
+# 落位：/etc/nginx/conf.d/ai.aistar.com.conf
+#
+# 域名规划：
+#   aistar.com / www.aistar.com   → web (basePath=/web)，根路径 302 /web
+#   admin.aistar.com              → admin
+#   celebrity.aistar.com          → web-celebrity
+#   music.aistar.com              → web-music
+#   drama.aistar.com              → web-drama
+#   api.aistar.com                → server
+#   cdn.aistar.com                → 阿里云 CDN 直供 OSS（不经 nginx）
+#
+# 证书：用 certbot 通配符 `*.aistar.com` + 主域 `aistar.com`
+#   certbot certonly --dns-aliyun -d aistar.com -d '*.aistar.com'
+# ─────────────────────────────────────────────────────────────────────────────
+
+include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
+
+# 通用 HTTPS 跳转（80 → 443）
+server {
+    listen 80;
+    server_name aistar.com www.aistar.com admin.aistar.com celebrity.aistar.com
+                music.aistar.com drama.aistar.com api.aistar.com;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS 共享配置（每个 server block 都要 include 证书 + 协议 + cipher）
+# 提取到 /etc/nginx/conf.d/snippets/ssl-aistar.conf 复用：
+#   ssl_certificate     /etc/letsencrypt/live/aistar.com/fullchain.pem;
+#   ssl_certificate_key /etc/letsencrypt/live/aistar.com/privkey.pem;
+#   ssl_protocols TLSv1.2 TLSv1.3;
+#   ssl_ciphers HIGH:!aNULL:!MD5;
+#   ssl_prefer_server_ciphers on;
+#   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+# ── aistar.com / www → apps/web ─────────────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name aistar.com www.aistar.com;
+    include /etc/nginx/conf.d/snippets/ssl-aistar.conf;
+    client_max_body_size 200m;
+
+    location = / { return 302 /web; }
+    location = /web { proxy_pass http://127.0.0.1:3002; }
+    location /web/ { proxy_pass http://127.0.0.1:3002; }
+}
+
+# ── admin.aistar.com → apps/admin ───────────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name admin.aistar.com;
+    include /etc/nginx/conf.d/snippets/ssl-aistar.conf;
+    client_max_body_size 200m;
+
+    location = /admin { proxy_pass http://127.0.0.1:3003; }
+    location /admin/  { proxy_pass http://127.0.0.1:3003; }
+    location = /      { return 302 /admin; }
+}
+
+# ── celebrity.aistar.com → apps/web-celebrity（根路径） ─────────────
+server {
+    listen 443 ssl http2;
+    server_name celebrity.aistar.com;
+    include /etc/nginx/conf.d/snippets/ssl-aistar.conf;
+    client_max_body_size 200m;
+
+    location / { proxy_pass http://127.0.0.1:3012; }
+}
+
+# ── music.aistar.com → apps/web-music ───────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name music.aistar.com;
+    include /etc/nginx/conf.d/snippets/ssl-aistar.conf;
+    client_max_body_size 200m;
+
+    location / { proxy_pass http://127.0.0.1:3010; }
+}
+
+# ── drama.aistar.com → apps/web-drama ───────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name drama.aistar.com;
+    include /etc/nginx/conf.d/snippets/ssl-aistar.conf;
+    client_max_body_size 200m;
+
+    location / { proxy_pass http://127.0.0.1:3011; }
+}
+
+# ── api.aistar.com → Spring Boot ────────────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name api.aistar.com;
+    include /etc/nginx/conf.d/snippets/ssl-aistar.conf;
+    client_max_body_size 200m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+}
+
+# ── 健康检查（SLB 用） ─────────────────────────────────────────────
+server {
+    listen 80;
+    server_name _;
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+    }
+}

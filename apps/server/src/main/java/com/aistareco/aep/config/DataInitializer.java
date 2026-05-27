@@ -5,6 +5,7 @@ import com.aistareco.aep.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -19,9 +20,15 @@ import java.util.UUID;
  * that mirror the model defined in /product_spec.md.
  *
  * Idempotent: skips when admin staff already exist.
+ *
+ * v0.34+: gated by {@code aep.seed.dev-data.enabled} (default true in application.yml,
+ * false in application-mysql.yml). Production RDS 空库不会被无声写入 admin/admin123
+ * 等演示账号；要在生产建第一个 SUPER_ADMIN 请按 infra/env/server.env.example 中
+ * AEP_SEED_DEV_DATA_ENABLED 注释里的 SQL 手动 INSERT。
  */
 @Component
 @Order(1)
+@ConditionalOnProperty(name = "aep.seed.dev-data.enabled", havingValue = "true", matchIfMissing = true)
 public class DataInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);

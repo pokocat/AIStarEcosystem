@@ -1,0 +1,27 @@
+{
+  "_comment_": "OSS Bucket CORS 规则 — 给前端浏览器直接拉 CDN 视频用。在 OSS 控制台 → 数据安全 → 跨域设置中粘贴。当前架构其实是 server 上传 + 浏览器只读 CDN，CORS 主要给 <video> 标签预读元数据时不被 chrome 卡。如果后续做前端直传，再扩 PUT/POST。",
+
+  "CORSRule": [
+    {
+      "AllowedOrigin": [
+        "https://aistar.com",
+        "https://*.aistar.com",
+        "http://47.94.102.182",
+        "http://47.94.102.182:3012"
+      ],
+      "AllowedMethod": [
+        "GET",
+        "HEAD"
+      ],
+      "AllowedHeader": [
+        "*"
+      ],
+      "ExposeHeader": [
+        "ETag",
+        "x-oss-request-id",
+        "Content-Length"
+      ],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}
