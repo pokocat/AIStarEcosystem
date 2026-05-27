@@ -5,7 +5,10 @@
 //   cp apps/miniprogram/config/env.example.js apps/miniprogram/config/env.js
 //   vim apps/miniprogram/config/env.js   // 改 apiBaseUrl / useMock
 //
-// 没有 env.js 时（首次 clone / CI），app.js 用 module 内部 fallback（与本文件 default 一致）。
+// 没有 env.js 时（首次 clone / CI），app.js 用 mock fallback（useMock=true），
+// **不会**用本文件的 default —— 让首次 clone 的开发者无需配置即可启动。
+// 想用本文件的「联线上」default，必须 cp 一份成 env.js。
+//
 // 小程序「上传发布」前确保 env.js 是生产值；微信开发者工具会把整个目录打包，所以 env.js
 // 会随代码上传 → **绝不要** 在 env.js 里写敏感密钥（如 admin token）。
 //

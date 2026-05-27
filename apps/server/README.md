@@ -62,6 +62,20 @@ mysql -u root -p -e "CREATE DATABASE aistareco CHARACTER SET utf8mb4 COLLATE utf
 mvn spring-boot:run -Dspring.profiles.active=mysql
 ```
 
+**v0.34+ 本地用 mysql profile 联调的最小 env 集**（必须 export 后再 mvn 启动，否则
+JwtUtil / AepCryptoUtil 启动时 fail-fast 抛 IllegalStateException）：
+
+```bash
+export AEP_JWT_SECRET='dev-local-jwt-secret-≥32-chars-aaaaaaaa'   # 至少 32 字符
+export AEP_SECRET_KEY='dev-local-aes-key-32bytes-bbbbbbbb'        # 任意 ≥1 字符，内部会 SHA-256 派生
+export AEP_SEED_DEV_DATA_ENABLED=true                              # 想要本地有 admin/admin123 等演示数据
+mvn spring-boot:run -Dspring.profiles.active=mysql
+```
+
+为什么：mysql profile 被设计为「生产形态」，启动时拒绝 dev-default 密钥；上面三个 env
+让本机也能用 mysql profile 联调。生产 server.env 用真正高熵密钥（见
+`infra/env/server.env.example`）。
+
 MySQL 默认连接配置（可在 `application-mysql.yml` 中修改）：
 
 | 参数 | 默认值 |

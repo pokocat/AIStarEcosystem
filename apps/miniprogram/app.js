@@ -6,12 +6,15 @@
 // 模板见 config/env.example.js；env.js 已在 .gitignore，请按环境填写。
 
 // 平台坑：小程序 require 缺失模块会 throw；用 try/catch 兜底
+// fallback 保留 v0.33 之前的 dev-friendly 默认（useMock=true）：
+//   - 本地开发者首次 clone 没建 env.js 时，仍能用 mock 数据无网络启动
+//   - 生产上线前必须 cp config/env.example.js config/env.js 并改 useMock=false + 真实 apiBaseUrl
 let _env = null;
 try {
   _env = require("./config/env.js");
 } catch (e) {
-  // env.js 不存在 → 用 fallback（与 example 默认值一致）
-  _env = { useMock: false, apiBaseUrl: "https://api.aistar.com/api" };
+  // env.js 不存在 → fallback 走 mock，避免无声打到不存在的线上域名
+  _env = { useMock: true, apiBaseUrl: "https://api.aistareco.local/api" };
 }
 
 App({
