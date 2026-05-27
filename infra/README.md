@@ -25,7 +25,7 @@ infra/
 │
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
-│   ├── ai.aistar.com.conf.example  ← HTTPS 多子域生产形态
+│   ├── ai.aibuzz.cn.conf.example  ← HTTPS 多子域生产形态
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集
 │
@@ -61,12 +61,12 @@ infra/
 
 ```
                           ┌─ SLB / Nginx (公网入口, HTTPS 域名)
-                          │   ├─ aistar.com / www → web (3002, basePath=/web)
-                          │   ├─ admin.aistar.com → admin (3003)
-                          │   ├─ celebrity.aistar.com → web-celebrity (3012)
-                          │   ├─ music.aistar.com → web-music (3010)
-                          │   ├─ drama.aistar.com → web-drama (3011)
-                          │   └─ api.aistar.com → server (8080)
+                          │   ├─ aibuzz.cn / www → web (3002, basePath=/web)
+                          │   ├─ admin.aibuzz.cn → admin (3003)
+                          │   ├─ celebrity.aibuzz.cn → web-celebrity (3012)
+                          │   ├─ music.aibuzz.cn → web-music (3010)
+                          │   ├─ drama.aibuzz.cn → web-drama (3011)
+                          │   └─ api.aibuzz.cn → server (8080)
                           │
 ECS 集群 (1~N 台, VPC 内网)│
   ├─ systemd                                                                  
@@ -85,7 +85,7 @@ ECS 集群 (1~N 台, VPC 内网)│
 │  阿里云托管服务                                                 │
 │  • RDS MySQL 8.0   ← rm-xxx.mysql.rds.aliyuncs.com:3306      │
 │  • OSS Bucket      ← aistareco-prod (内网 endpoint)           │
-│  • CDN 域名         ← cdn.aistar.com → 回源 OSS                │
+│  • CDN 域名         ← cdn.aibuzz.cn → 回源 OSS                │
 │  • Redis（Phase 5+）← SmsCodeService / JWT 黑名单 / ShedLock   │
 │  • KMS / Secret Manager（推荐）← 取代 server.env 明文密钥       │
 │  • ACR（Phase 3+）  ← 推送 docker image                       │
@@ -156,7 +156,7 @@ chmod 600 /etc/aistareco/*.env
 cp infra/nginx/ai.conf.example /etc/nginx/conf.d/ai.conf
 cp infra/nginx/snippets/proxy-defaults.conf /etc/nginx/conf.d/snippets/
 # 或选生产 HTTPS 多子域：
-# cp infra/nginx/ai.aistar.com.conf.example /etc/nginx/conf.d/ai.aistar.com.conf
+# cp infra/nginx/ai.aibuzz.cn.conf.example /etc/nginx/conf.d/ai.aibuzz.cn.conf
 nginx -t && systemctl reload nginx
 
 # systemd 单元

@@ -2,7 +2,7 @@
 //
 // 设计原则：
 //   - 网络专用（无 mock 分支）；新 web app 若需 mock，自行在 src/api 包一层。
-//   - 跨子域名（music/drama/celebrity.aistar.com）SSO 见 _client.ts TODO。
+//   - 跨子域名（music/drama/celebrity.aibuzz.cn）SSO 见 _client.ts TODO。
 //
 // 用法：
 //   import { apiFetch, ApiError, AuthProvider, useAuth, AccountApi, AuthApi } from "@ai-star-eco/api-client";

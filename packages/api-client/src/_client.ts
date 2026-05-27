@@ -7,12 +7,12 @@ import type { ApiResponse, ApiErrorShape } from "@ai-star-eco/types/_shared";
 import { findMockHandler, type MockMethod } from "./_mock-registry";
 
 // TODO(cross-subdomain SSO)：当前 token 写 localStorage，仅本子域可见。
-// 三个新 web app 部署到 music/drama/celebrity.aistar.com 后需改写入 cookie
-// 并由后端把 Set-Cookie 的 Domain 设为 .aistar.com。改造点：
+// 三个新 web app 部署到 music/drama/celebrity.aibuzz.cn 后需改写入 cookie
+// 并由后端把 Set-Cookie 的 Domain 设为 .aibuzz.cn。改造点：
 //   - getAuthToken / setAuthToken 改读写 document.cookie
 //   - apiFetch 移除 Authorization header（cookie 由浏览器自动带上）
 //   - server 端 SecurityConfig 启用 cookie 鉴权
-//   - server 端 Set-Cookie 写 Domain=.aistar.com; SameSite=Lax
+//   - server 端 Set-Cookie 写 Domain=.aibuzz.cn; SameSite=Lax
 
 /** 当 NEXT_PUBLIC_USE_MOCK=1 时，API 层直接返回 mocks/ 目录中的静态数据。 */
 export const USE_MOCK: boolean =

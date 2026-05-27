@@ -89,7 +89,7 @@ Aisingerecosystem/
 
 ### Auth 多域规划
 
-同根域名 + 三子域名（music.aistar.com / drama.aistar.com / celebrity.aistar.com）+ cookie sharing（domain=.aistar.com）。当前 dev/local 走子端口而非子域名。
+同根域名 + 三子域名（music.aibuzz.cn / drama.aibuzz.cn / celebrity.aibuzz.cn）+ cookie sharing（domain=.aibuzz.cn）。当前 dev/local 走子端口而非子域名。
 
 ---
 
@@ -995,7 +995,7 @@ web-celebrity:
 infra/
 ├── README.md                    ← 入口 + 拓扑图 + 一次性环境拉起 SOP + FAQ（单一真值源）
 ├── env/                         ← 7 份 *.env.example（server / sau-service / 5 个 web app）
-├── nginx/                       ← ai.conf.example（HTTP 入口）+ ai.aistar.com.conf.example（HTTPS 多子域）
+├── nginx/                       ← ai.conf.example（HTTP 入口）+ ai.aibuzz.cn.conf.example（HTTPS 多子域）
 ├── systemd/                     ← 7 个 *.service.example
 ├── rds/                         ← 00_create_database.sql + 01_create_app_user.sql + README
 ├── oss/                         ← ram-policy.json + cors-config.json + lifecycle.xml + README

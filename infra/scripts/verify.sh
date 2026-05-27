@@ -4,11 +4,11 @@
 #
 # 用法：
 #   ECS_HOST=root@<your-ecs-host> ./infra/scripts/verify.sh
-#   ECS_HOST=root@<your-ecs-host> PUBLIC_BASE=https://aistar.com ./infra/scripts/verify.sh
+#   ECS_HOST=root@<your-ecs-host> PUBLIC_BASE=https://aibuzz.cn ./infra/scripts/verify.sh
 #
 # 环境变量：
 #   ECS_HOST    — ssh 目标（用于 systemctl status / docker logs / 内网 healthz）
-#   PUBLIC_BASE — 公网入口 base url，默认从 ECS_HOST 抽 host；多子域形态用 https://aistar.com
+#   PUBLIC_BASE — 公网入口 base url，默认从 ECS_HOST 抽 host；多子域形态用 https://aibuzz.cn
 #
 # 检查项：
 #   1. 公网入口 200（/web /admin /api/auth/dev-accounts）

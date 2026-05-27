@@ -44,11 +44,7 @@ mysql -h <RDS_INTERNAL_HOST> -P 3306 -u aistareco_root -p < 00_create_database.s
 mysql -h <RDS_INTERNAL_HOST> -P 3306 -u aistareco_root -p < 01_create_app_user.sql
 ```
 
-## 4. 现网数据迁移（从老 MariaDB localhost → RDS）
-
-见 `infra/scripts/migrate-db.sh`。
-
-## 5. Flyway 接管
+## 4. Flyway 接管
 
 server v0.34+ 引入了 Flyway（`apps/server/pom.xml` 加 `flyway-mysql`），
 启动时会自动：
@@ -71,7 +67,7 @@ server v0.34+ 引入了 Flyway（`apps/server/pom.xml` 加 `flyway-mysql`），
 - Hibernate 启动时只校验 schema 与 entity 字段对齐，**不再 ALTER**
 - 任何结构改动必须先写 `V<N>__xxx.sql` 文件 + commit
 
-## 6. 监控告警
+## 5. 监控告警
 
 控制台「监控与告警」开：
 - CPU > 80% 持续 3 分钟
@@ -80,7 +76,7 @@ server v0.34+ 引入了 Flyway（`apps/server/pom.xml` 加 `flyway-mysql`），
 - 连接数 > 800（占 max_connections 80%）
 - 主从延迟 > 30s（高可用版才有）
 
-## 7. 备份
+## 6. 备份
 
 控制台「备份恢复」默认开「数据备份」+ 「日志备份」：
 - 全量备份：每天凌晨 2-4 点

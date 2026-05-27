@@ -4,8 +4,8 @@
   "CORSRule": [
     {
       "AllowedOrigin": [
-        "https://aistar.com",
-        "https://*.aistar.com"
+        "https://aibuzz.cn",
+        "https://*.aibuzz.cn"
       ],
       "AllowedMethod": [
         "GET",

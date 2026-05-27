@@ -24,18 +24,18 @@ OSS 控制台 → 「Bucket 列表」→ 「创建 Bucket」
 
 阿里云 CDN 控制台 → 「域名管理」→ 「添加域名」：
 
-- **加速域名**：`cdn.aistar.com`
+- **加速域名**：`cdn.aibuzz.cn`
 - **业务类型**：视频点播加速
 - **回源**：OSS bucket（私有 bucket 需开「OSS Private Bucket 回源」）
-- **加速区域**：中国内地（如需海外另起 `cdn-intl.aistar.com`）
+- **加速区域**：中国内地（如需海外另起 `cdn-intl.aibuzz.cn`）
 - **HTTPS**：必开（用阿里云免费 SSL 或上传自己的）
 
-DNS 解析：把 `cdn.aistar.com` CNAME 到阿里云分配的 `.kunlunca.com` 域名。
+DNS 解析：把 `cdn.aibuzz.cn` CNAME 到阿里云分配的 `.kunlunca.com` 域名。
 
 最终在 `server.env` 配：
 ```
-AEP_CDN_OSS_BASE_URL=https://cdn.aistar.com
-AEP_CDN_PUBLIC_BASE_URL=https://cdn.aistar.com
+AEP_CDN_OSS_BASE_URL=https://cdn.aibuzz.cn
+AEP_CDN_PUBLIC_BASE_URL=https://cdn.aibuzz.cn
 ```
 
 ## 4. RAM 子用户 + 权限
@@ -83,12 +83,8 @@ curl -s http://127.0.0.1:8080/api/auth/dev-accounts
 # 上传一个测试 mixcut 任务（前端走流程），然后看后端日志：
 journalctl -u aistareco-server -n 100 | grep '\[cdn\]'
 # 期望看到：
-# [cdn] AliyunOssCdnUploader bucket=aistareco-prod endpoint=oss-cn-... publicBase=https://cdn.aistar.com keyPrefix=mixcut
-# [cdn] uploaded oss key=mixcut/<jobId>/v0.mp4 bytes=... url=https://cdn.aistar.com/mixcut/...
+# [cdn] AliyunOssCdnUploader bucket=aistareco-prod endpoint=oss-cn-... publicBase=https://cdn.aibuzz.cn keyPrefix=mixcut
+# [cdn] uploaded oss key=mixcut/<jobId>/v0.mp4 bytes=... url=https://cdn.aibuzz.cn/mixcut/...
 
-# 浏览器打 https://cdn.aistar.com/mixcut/<jobId>/v0.mp4，应该 200 视频流
+# 浏览器打 https://cdn.aibuzz.cn/mixcut/<jobId>/v0.mp4，应该 200 视频流
 ```
-
-## 9. 现网静态文件迁移（cdn-mock / showreel videos → OSS）
-
-见 `infra/scripts/migrate-cdn.sh`。

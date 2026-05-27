@@ -25,6 +25,6 @@ module.exports = {
 
   // 后端 base url
   // 本地联调：http://localhost:8080/api （需把 localhost 加进小程序「不校验合法域名」白名单）
-  // 生产    ：https://api.aistar.com/api
-  apiBaseUrl: "https://api.aistar.com/api",
+  // 生产    ：https://api.aibuzz.cn/api
+  apiBaseUrl: "https://api.aibuzz.cn/api",
 };
