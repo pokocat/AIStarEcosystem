@@ -117,7 +117,7 @@ export default function CelebrityDashboardPage() {
             n={2}
             title="申请授权"
             desc="选套餐版本，签约约定用量"
-            href="/cast"
+            href="/market"
             tone="rose"
             count={pendingStars.length}
             countLabel="审核中"
@@ -155,7 +155,7 @@ export default function CelebrityDashboardPage() {
                 已授权 {authorizedStars.length} 位 · 用量按套餐计算
               </div>
             </div>
-            <Link href="/cast" style={inlineLink}>
+            <Link href="/market" style={inlineLink}>
               管理 <ArrowUpRight size={12} />
             </Link>
           </div>

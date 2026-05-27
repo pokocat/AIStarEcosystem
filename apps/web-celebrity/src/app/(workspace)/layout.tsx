@@ -19,7 +19,6 @@ import {
   Send,
   ShoppingBag,
   Star,
-  Users,
   Video,
 } from "lucide-react";
 import { useAuth, PublishJobApi } from "@ai-star-eco/api-client";
@@ -89,8 +88,9 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       title: "工作台",
       items: [
         { icon: LayoutDashboard, label: "今日", href: "/dashboard", selected: isExact("/dashboard") },
+        // v0.37+：合并「我的明星」/cast 入「明星市场」/market —— 同页面顶部就是「我的授权明星」section，
+        // 数据源也对齐 admin DB（v0.34+ /api/celebrity/stars）。
         { icon: Star, label: "明星市场", href: "/market", selected: isExact("/market") },
-        { icon: Users, label: "我的明星", href: "/cast", selected: isExact("/cast") },
       ],
     },
     {
@@ -129,7 +129,6 @@ function CrumbsFromPathname(pathname: string): string[] {
   const TAB_LABEL: Record<string, string> = {
     "/dashboard": "今日",
     "/market": "明星市场",
-    "/cast": "我的明星",
     "/projects": "我的项目",
     "/library": "视频中心",
     "/products": "商品库",

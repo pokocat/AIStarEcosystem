@@ -32,6 +32,16 @@ export function CelebrityMarket({ stars }: Props) {
     [stars],
   );
 
+  // v0.37+：合并自 /cast —— 同一页面展示「已授权 / 审核中 / 已过期」三段，不再分两个菜单。
+  const pendingStars = React.useMemo(
+    () => stars.filter((s) => s.authorization.status === "pending"),
+    [stars],
+  );
+  const expiredStars = React.useMemo(
+    () => stars.filter((s) => s.authorization.status === "expired"),
+    [stars],
+  );
+
   const filtered = React.useMemo(() => {
     let s = stars;
     if (category !== "全部") {
@@ -78,6 +88,42 @@ export function CelebrityMarket({ stars }: Props) {
           </div>
         )}
       </section>
+
+      {/* ─── 审核中 / 已过期（合并自 /cast；条件展示，零结果不渲染） ─── */}
+      {pendingStars.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            <h2 className="text-base font-semibold text-zinc-800">审核中</h2>
+            <span className="rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+              {pendingStars.length} 位
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+            {pendingStars.map((s) => (
+              <CelebrityStarCard key={s.id} star={s} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {expiredStars.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Sparkles className="h-4 w-4 text-rose-500" />
+            <h2 className="text-base font-semibold text-zinc-800">已过期</h2>
+            <span className="rounded-md border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700">
+              {expiredStars.length} 位
+            </span>
+            <span className="ml-auto text-[11px] text-zinc-500">需重新授权后才能继续生成</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+            {expiredStars.map((s) => (
+              <CelebrityStarCard key={s.id} star={s} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ─── 全部明星市场 ─── */}
       <section id="all-stars" className="flex flex-col gap-4">

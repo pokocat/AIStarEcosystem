@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 // /console?tab=<id> → 对应顶层路径。无 tab 时 → /dashboard。
 const TAB_MAP: Record<string, string> = {
   market: "/market",
-  cast: "/cast",
+  cast: "/market", // v0.37+：合并入明星市场（CelebrityMarket 已含「我的授权 / 审核中 / 已过期」三段）
   projects: "/projects",
   products: "/products",
   library: "/library",
@@ -38,9 +38,16 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
+  // v0.37+：旧 /cast 兼容 → 全部跳到 /market（不丢 query）
+  if (pathname === "/cast" || pathname.startsWith("/cast/")) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/market";
+    return NextResponse.redirect(url, 308);
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/console", "/console/:path*"],
+  matcher: ["/console", "/console/:path*", "/cast", "/cast/:path*"],
 };
