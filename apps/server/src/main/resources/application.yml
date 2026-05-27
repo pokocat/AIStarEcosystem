@@ -20,6 +20,21 @@ spring:
       max-file-size: ${AEP_UPLOAD_MAX_FILE_SIZE:200MB}
       max-request-size: ${AEP_UPLOAD_MAX_REQUEST_SIZE:200MB}
       file-size-threshold: 4MB
+  # v0.34+ Flyway 数据库版本控制（dev/prod 共享）。
+  # 行为：
+  #   - 首启看到 schema 已有表但无 flyway_schema_history → baseline-on-migrate=true 自动 baseline 到 V1
+  #   - 之后每次启动按 V<N>__xxx.sql 排序应用未执行的
+  # 与 Hibernate ddl-auto=update 共存策略：当前 update 仍负责首次建表 + 字段补全；
+  # 真正 schema 改动应该走 V2+ 文件而非依赖 ddl-auto。
+  flyway:
+    enabled: ${AEP_FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: "baseline"
+    locations: classpath:db/migration
+    # 出错时不自动修复历史；保持人工介入
+    out-of-order: false
+    validate-on-migrate: true
 
 logging:
   level:
@@ -35,6 +50,15 @@ logging:
     file:    "%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } --- [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"
 
 aep:
+  # v0.34+ 演示数据 seeder 全局开关。
+  # true  → DataInitializer / CelebrityZoneDataInitializer / CelebrityProductSeeder /
+  #         DemoCatalogSeeder / DataSeeder / AiModelProviderDataInitializer /
+  #         MixcutTemplateSeeder 全部运行（dev / 本地 H2 用）
+  # false → 全部跳过（生产 / RDS 空库用，避免无声写入 admin/admin123 等演示账号）
+  # 注意：MixcutPresetSeeder 不受此开关控制（它是平台基础数据，生产也需要）
+  seed:
+    dev-data:
+      enabled: ${AEP_SEED_DEV_DATA_ENABLED:true}
   jwt:
     secret: ${AEP_JWT_SECRET:aep-dev-secret-key-change-in-prod-32chars}
     expiration-ms: ${AEP_JWT_EXPIRATION_MS:3600000}

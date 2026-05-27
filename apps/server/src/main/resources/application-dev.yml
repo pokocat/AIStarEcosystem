@@ -29,6 +29,6 @@ aep:
   # CDN 公开 URL 必须是绝对地址 — sau-service 是独立进程（端口 8090），
   # 拿到相对路径 `/cdn/...` 时 httpx 会抛 UnsupportedProtocol（缺 http://）。
   # 前端浏览器同样可以直接打开这个绝对 URL，因为 server 在 8080 暴露 /cdn/** 静态 handler。
-  # 生产把这个值设为 OSS CDN 域名（如 https://cdn.aistar.com）。
+  # 生产把这个值设为 OSS CDN 域名（如 https://cdn.aibuzz.cn）。
   cdn:
     public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:http://localhost:8080/cdn}

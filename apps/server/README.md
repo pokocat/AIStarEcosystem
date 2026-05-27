@@ -1,8 +1,18 @@
 # AI Star Eco Server
 
-> 线上部署、增量发布 SOP、`/static/videos` 共享静态资源说明，以及本地联调方式见 [`../../DEPLOYMENT.md`](../../DEPLOYMENT.md)。
+> 阿里云 **ECS + RDS + OSS** 部署的完整版本化基础设施在 [`../../infra/`](../../infra/README.md)。
+> 新机器从零拉起、env / nginx / systemd / RDS / OSS 模板、deploy 脚本均在该目录。
 
 Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘钥）、积分钱包、审计日志等核心业务。
+
+## 版本日志
+
+- **v0.34（2026-05-27）**：
+  - 引入 **Flyway**（`db/migration/V<N>__xxx.sql`）；首启 baseline-on-migrate 自动到 V1，后续 schema 改动走 V2+
+  - 演示数据 seeder 全部加 `aep.seed.dev-data.enabled` gate（mysql profile 默认 `false`），生产空库不会写入 admin/admin123 等演示账号
+  - **密钥 fail-fast**：mysql/prod profile 启动时检测到 `AEP_JWT_SECRET` / `AEP_SECRET_KEY` 仍是 dev default → 立即抛异常拒绝启动
+  - HikariCP 显式参数化（maximum-pool-size 等），便于按 RDS 规格调
+  - 完整 deploy 模板在 `infra/`
 
 ## 技术栈
 
@@ -50,6 +60,20 @@ mysql -u root -p -e "CREATE DATABASE aistareco CHARACTER SET utf8mb4 COLLATE utf
 mvn spring-boot:run -Dspring.profiles.active=mysql
 ```
 
+**v0.34+ 本地用 mysql profile 联调的最小 env 集**（必须 export 后再 mvn 启动，否则
+JwtUtil / AepCryptoUtil 启动时 fail-fast 抛 IllegalStateException）：
+
+```bash
+export AEP_JWT_SECRET='dev-local-jwt-secret-≥32-chars-aaaaaaaa'   # 至少 32 字符
+export AEP_SECRET_KEY='dev-local-aes-key-32bytes-bbbbbbbb'        # 任意 ≥1 字符，内部会 SHA-256 派生
+export AEP_SEED_DEV_DATA_ENABLED=true                              # 想要本地有 admin/admin123 等演示数据
+mvn spring-boot:run -Dspring.profiles.active=mysql
+```
+
+为什么：mysql profile 被设计为「生产形态」，启动时拒绝 dev-default 密钥；上面三个 env
+让本机也能用 mysql profile 联调。生产 server.env 用真正高熵密钥（见
+`infra/env/server.env.example`）。
+
 MySQL 默认连接配置（可在 `application-mysql.yml` 中修改）：
 
 | 参数 | 默认值 |
@@ -61,7 +85,32 @@ MySQL 默认连接配置（可在 `application-mysql.yml` 中修改）：
 | charset | utf8mb4 |
 | timezone | Asia/Shanghai |
 
-`ddl-auto: update` 会自动建表，首次启动后 `DataInitializer` 会自动写入种子数据。
+`ddl-auto: update` 会自动建表。
+
+**v0.34+ 重要变化**：演示数据 seeder（`DataInitializer` 等）受 `aep.seed.dev-data.enabled` 控制：
+- `application.yml` 默认 `true`（H2 dev / 联调环境会自动种 admin/admin123 + 演示明星 + license keys）
+- `application-mysql.yml` 默认 **`false`**（**生产空库不会**自动种）
+
+生产首次部署后建第一个 SUPER_ADMIN：
+
+```sql
+INSERT INTO admin_users (id, username, password_hash, role, status, created_at)
+VALUES (
+  UUID(),
+  'your-admin',
+  '<bcrypt-hash-of-your-password>',   -- 用 BCryptPasswordEncoder 离线生成
+  'super_admin',
+  'active',
+  NOW()
+);
+```
+
+或临时启用 seeder 跑一次（不推荐，因为会一并种全部演示数据）：
+
+```bash
+AEP_SEED_DEV_DATA_ENABLED=true java -jar ...   # 启动一次
+# 然后 admin/admin123 登录 → 立即改密码 + 新建生产管理员 → 删 admin/operator 演示账号
+```
 
 ## Profile 配置说明
 

@@ -80,9 +80,9 @@
 
 | 文档 | 用途 |
 |---|---|
-| [`DEPLOYMENT.md`](../DEPLOYMENT.md) | 47.94.102.182 当前线上部署基线 + 增量部署 SOP + **v0.5 部署变更（AEP_SECRET_KEY、新 admin 路径）** |
-| [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | 触发 deploy skill 时使用；覆盖 `web` / `admin` / `server` / `web-celebrity` / `sau-service` 部署与账号绑定 QR smoke test |
-| [`.claude/skills/aliyun-deploy/references/production.md`](../.claude/skills/aliyun-deploy/references/production.md) | 47.94.102.182 生产拓扑、systemd / Docker / Nginx 超时、CORS、sau-service real 模式与验证脚本 |
+| [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引 |
+| [`infra/rds/README.md`](../infra/rds/README.md) | RDS MySQL 8.0 创建 / 内网白名单 / 参数组 / Flyway baseline |
+| [`infra/oss/README.md`](../infra/oss/README.md) | OSS Bucket / CDN 域名 / RAM 最小权限 / 生命周期规则 |
 
 **v0.8 新增部署需求**：mixcut 真后端要求生产环境装 ffmpeg：
 

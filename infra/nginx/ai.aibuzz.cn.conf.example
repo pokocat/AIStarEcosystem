@@ -1,0 +1,115 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Star Eco — HTTPS 多子域目标形态
+# 落位：/etc/nginx/conf.d/ai.aibuzz.cn.conf
+#
+# 域名规划：
+#   aibuzz.cn / www.aibuzz.cn   → web (basePath=/web)，根路径 302 /web
+#   admin.aibuzz.cn              → admin
+#   celebrity.aibuzz.cn          → web-celebrity
+#   music.aibuzz.cn              → web-music
+#   drama.aibuzz.cn              → web-drama
+#   api.aibuzz.cn                → server
+#   cdn.aibuzz.cn                → 阿里云 CDN 直供 OSS（不经 nginx）
+#
+# 证书：用 certbot 通配符 `*.aibuzz.cn` + 主域 `aibuzz.cn`
+#   certbot certonly --dns-aliyun -d aibuzz.cn -d '*.aibuzz.cn'
+# ─────────────────────────────────────────────────────────────────────────────
+
+include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
+
+# 通用 HTTPS 跳转（80 → 443）
+server {
+    listen 80;
+    server_name aibuzz.cn www.aibuzz.cn admin.aibuzz.cn celebrity.aibuzz.cn
+                music.aibuzz.cn drama.aibuzz.cn api.aibuzz.cn;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS 共享配置（每个 server block 都要 include 证书 + 协议 + cipher）
+# 提取到 /etc/nginx/conf.d/snippets/ssl-aibuzz.conf 复用：
+#   ssl_certificate     /etc/letsencrypt/live/aibuzz.cn/fullchain.pem;
+#   ssl_certificate_key /etc/letsencrypt/live/aibuzz.cn/privkey.pem;
+#   ssl_protocols TLSv1.2 TLSv1.3;
+#   ssl_ciphers HIGH:!aNULL:!MD5;
+#   ssl_prefer_server_ciphers on;
+#   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+# ── aibuzz.cn / www → apps/web ─────────────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name aibuzz.cn www.aibuzz.cn;
+    include /etc/nginx/conf.d/snippets/ssl-aibuzz.conf;
+    client_max_body_size 200m;
+
+    location = / { return 302 /web; }
+    location = /web { proxy_pass http://127.0.0.1:3002; }
+    location /web/ { proxy_pass http://127.0.0.1:3002; }
+}
+
+# ── admin.aibuzz.cn → apps/admin ───────────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name admin.aibuzz.cn;
+    include /etc/nginx/conf.d/snippets/ssl-aibuzz.conf;
+    client_max_body_size 200m;
+
+    location = /admin { proxy_pass http://127.0.0.1:3003; }
+    location /admin/  { proxy_pass http://127.0.0.1:3003; }
+    location = /      { return 302 /admin; }
+}
+
+# ── celebrity.aibuzz.cn → apps/web-celebrity（根路径） ─────────────
+server {
+    listen 443 ssl http2;
+    server_name celebrity.aibuzz.cn;
+    include /etc/nginx/conf.d/snippets/ssl-aibuzz.conf;
+    client_max_body_size 200m;
+
+    location / { proxy_pass http://127.0.0.1:3012; }
+}
+
+# ── music.aibuzz.cn → apps/web-music ───────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name music.aibuzz.cn;
+    include /etc/nginx/conf.d/snippets/ssl-aibuzz.conf;
+    client_max_body_size 200m;
+
+    location / { proxy_pass http://127.0.0.1:3010; }
+}
+
+# ── drama.aibuzz.cn → apps/web-drama ───────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name drama.aibuzz.cn;
+    include /etc/nginx/conf.d/snippets/ssl-aibuzz.conf;
+    client_max_body_size 200m;
+
+    location / { proxy_pass http://127.0.0.1:3011; }
+}
+
+# ── api.aibuzz.cn → Spring Boot ────────────────────────────────────
+server {
+    listen 443 ssl http2;
+    server_name api.aibuzz.cn;
+    include /etc/nginx/conf.d/snippets/ssl-aibuzz.conf;
+    client_max_body_size 200m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+}
+
+# ── 健康检查（SLB 用） ─────────────────────────────────────────────
+server {
+    listen 80;
+    server_name _;
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+    }
+}

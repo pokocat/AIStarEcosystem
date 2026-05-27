@@ -1,0 +1,28 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- V1__baseline.sql — Flyway 基线占位
+--
+-- 为什么是空的：
+--   v0.34 引入 Flyway 时，线上 RDS / 本地 H2 都已经由 Hibernate ddl-auto=update
+--   自动建好了 schema。Flyway 接管的方式是 "baseline-on-migrate"：
+--     1) 首次启动看到 schema 已有表但 flyway_schema_history 不存在
+--     2) 自动建 flyway_schema_history 并插入 (version=1, description='baseline', success=true)
+--     3) **不执行** 本文件内容
+--     4) 从 V2__xxx.sql 起的所有新文件被正常 apply
+--
+--   也就是说，本文件**永远不会被执行**，仅作为「V1 = 现网 schema 任意态」的标记位。
+--
+-- 后续 schema 改动约定：
+--   - 任何 ALTER / CREATE / DROP 都先写 V2__<change>.sql，命名形如：
+--       V2__add_publish_count_to_mixcut_render_output.sql
+--       V3__add_operator_role_to_aep_users.sql
+--   - **不再依赖** Hibernate ddl-auto=update 自动改 schema
+--   - 上线步骤：先 git push 包含 V<N>.sql 的 commit → 重启 server → Flyway 自动 apply
+--
+-- 如要把 V1 升级为「完整 schema dump」（推荐做法），在切 RDS 时：
+--   mysqldump --no-data --routines --triggers -h <RDS_HOST> -u root -p aistareco \
+--     | sed -e '/^--/d' -e '/^\/\*!/d' -e '/^SET /d' -e '/^DROP/d' \
+--     > V1__baseline.sql
+--   同时把 application.yml 的 spring.jpa.hibernate.ddl-auto 从 update 改 validate
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- intentionally empty (baseline placeholder)

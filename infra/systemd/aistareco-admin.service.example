@@ -1,0 +1,24 @@
+# /etc/systemd/system/aistareco-admin.service
+# apps/admin — Next 14 standalone（basePath=/admin）
+
+[Unit]
+Description=AI Star Eco — Next.js Admin (basePath=/admin)
+After=network.target aistareco-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-star-eco/apps/admin/.next/standalone
+
+Environment=NODE_ENV=production
+Environment=PORT=3003
+Environment=HOSTNAME=127.0.0.1
+
+ExecStart=/root/.nvm/versions/node/v24.14.1/bin/node server.js
+
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

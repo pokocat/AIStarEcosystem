@@ -1,13 +1,28 @@
 // AI 明星带货 · 小程序入口
 // 复用 apps/server 后端（默认 http://localhost:8080/api，正式环境替换 baseUrl）
 // 运营审核能力在 apps/admin（小程序内不暴露 admin 入口）。
+//
+// v0.34+ 多环境配置：从 config/env.js 读 useMock / apiBaseUrl；不存在则用内置 fallback。
+// 模板见 config/env.example.js；env.js 已在 .gitignore，请按环境填写。
+
+// 平台坑：小程序 require 缺失模块会 throw；用 try/catch 兜底
+// fallback 保留 v0.33 之前的 dev-friendly 默认（useMock=true）：
+//   - 本地开发者首次 clone 没建 env.js 时，仍能用 mock 数据无网络启动
+//   - 生产上线前必须 cp config/env.example.js config/env.js 并改 useMock=false + 真实 apiBaseUrl
+let _env = null;
+try {
+  _env = require("./config/env.js");
+} catch (e) {
+  // env.js 不存在 → fallback 走 mock，避免无声打到不存在的线上域名
+  // apiBaseUrl 此时不会真发请求，仅作占位；要真联本机后端请 cp env.example.js → env.js
+  _env = { useMock: true, apiBaseUrl: "http://localhost:8080/api" };
+}
 
 App({
   globalData: {
-    // 是否走 mock 数据：开发态可置 true，避免依赖 server。生产置 false。
-    useMock: true,
-    // 后端 base url；线上替换为 https://your-domain/api
-    apiBaseUrl: "https://api.aistareco.local/api",
+    // 由 config/env.js 注入，避免硬编 + 方便多环境切换
+    useMock: _env.useMock,
+    apiBaseUrl: _env.apiBaseUrl,
     // 当前登录态（激活码 + token）
     auth: {
       token: "",

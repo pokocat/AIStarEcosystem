@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
-  // 部署到 drama.aistar.com 根路径，无 basePath；本地 dev: localhost:3011
+  // 部署到 drama.aibuzz.cn 根路径，无 basePath；本地 dev: localhost:3011
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },

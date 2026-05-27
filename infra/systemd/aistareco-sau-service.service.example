@@ -1,0 +1,33 @@
+# /etc/systemd/system/aistareco-sau-service.service
+# apps/sau-service — Docker 容器（Python FastAPI + Playwright/patchright）
+#
+# 镜像必须 --build-arg INSTALL_REAL=1 构建，否则 /login/start 抛 ModuleNotFoundError: patchright
+# 镜像版本由 deploy.sh 拼接 :git-sha 标签传入；首次部署用 :latest
+
+[Unit]
+Description=AI Star Eco — sau-service (Docker)
+After=docker.service network.target
+Requires=docker.service
+
+[Service]
+Type=simple
+TimeoutStartSec=120
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10s
+
+# 启动前清掉旧容器（幂等）
+ExecStartPre=-/usr/bin/docker rm -f aistareco-sau-service
+
+ExecStart=/usr/bin/docker run --rm \
+  --name aistareco-sau-service \
+  -p 127.0.0.1:8090:8090 \
+  --tmpfs /dev/shm:rw,size=2g \
+  --env-file /etc/aistareco/sau-service.env \
+  -v /opt/ai-star-eco/sau-debug-snapshots:/data/sau-debug \
+  aistareco/sau-service:real
+
+ExecStop=/usr/bin/docker stop aistareco-sau-service
+
+[Install]
+WantedBy=multi-user.target

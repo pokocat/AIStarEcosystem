@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OSS Bucket 生命周期规则
+  在 OSS 控制台 → 基础设置 → 生命周期 → XML 模板编辑中粘贴
+
+  规则：
+  - mixcut/temp/    — 临时工作产物（如果有写到 OSS 的话），30 天硬删
+  - mixcut/output/  — 渲染产出视频，90 天降低存储类型为 IA（低频访问，省钱），180 天归档
+  - mixcut/assets/  — 用户上传素材（v0.32+ OSS 化后落这里），永久保留（用户主动删除）
+  - picgen/         — 文字转图临时产物，7 天硬删
+
+  调整时注意：与 server 的 MixcutOutputCleanupScheduler 的 30 天清理保持语义一致。
+-->
+<LifecycleConfiguration>
+  <Rule>
+    <ID>mixcut-temp-clean-30d</ID>
+    <Prefix>mixcut/temp/</Prefix>
+    <Status>Enabled</Status>
+    <Expiration>
+      <Days>30</Days>
+    </Expiration>
+  </Rule>
+
+  <Rule>
+    <ID>mixcut-output-tier-90-180</ID>
+    <Prefix>mixcut/output/</Prefix>
+    <Status>Enabled</Status>
+    <Transition>
+      <Days>90</Days>
+      <StorageClass>IA</StorageClass>
+    </Transition>
+    <Transition>
+      <Days>180</Days>
+      <StorageClass>Archive</StorageClass>
+    </Transition>
+  </Rule>
+
+  <Rule>
+    <ID>picgen-clean-7d</ID>
+    <Prefix>picgen/</Prefix>
+    <Status>Enabled</Status>
+    <Expiration>
+      <Days>7</Days>
+    </Expiration>
+  </Rule>
+</LifecycleConfiguration>

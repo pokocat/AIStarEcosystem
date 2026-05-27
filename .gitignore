@@ -22,3 +22,10 @@ figma/
 *.ttf
 *.otf
 *.woff
+
+# v0.34+ 小程序多环境 / infra 本机覆写文件（含敏感配置，绝不入 git）
+apps/miniprogram/config/env.js
+apps/miniprogram/config/env.*.js
+!apps/miniprogram/config/env.example.js
+infra/env/*.env
+!infra/env/*.env.example

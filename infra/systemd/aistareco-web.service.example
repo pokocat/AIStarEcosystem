@@ -1,0 +1,26 @@
+# /etc/systemd/system/aistareco-web.service
+# apps/web — Next 14 standalone（basePath=/web）
+
+[Unit]
+Description=AI Star Eco — Next.js Web (basePath=/web)
+After=network.target aistareco-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-star-eco/apps/web/.next/standalone
+
+# 注意：node 路径按 nvm 装在哪里改；推荐固定 node 24
+Environment=NODE_ENV=production
+Environment=PORT=3002
+Environment=HOSTNAME=127.0.0.1
+# build-time NEXT_PUBLIC_* 已注入产物；runtime 只需 PORT/HOSTNAME
+
+ExecStart=/root/.nvm/versions/node/v24.14.1/bin/node server.js
+
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
