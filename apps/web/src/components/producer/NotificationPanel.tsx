@@ -25,15 +25,18 @@ export const NotificationPanel = ({ lang, open, onClose, notifications, setNotif
   const zh = lang === 'zh';
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const filtered = filter === 'all' ? notifications : notifications.filter(n => !n.read);
+  const unreadCount = notifications.filter(n => n.viewedAt == null).length;
+  const filtered = filter === 'all' ? notifications : notifications.filter(n => n.viewedAt == null);
 
+  // v0.34.x: viewedAt 替代旧 boolean read。已读不可逆 — 仅给未读条目设首次时间戳
   const markAllRead = () => {
-    setNotifications(ns => ns.map(n => ({ ...n, read: true })));
+    const now = new Date().toISOString();
+    setNotifications(ns => ns.map(n => (n.viewedAt == null ? { ...n, viewedAt: now } : n)));
     NotificationsApi.markAllNotificationsRead().catch(() => { /* optimistic: tolerate failure */ });
   };
   const markRead = (id: string) => {
-    setNotifications(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
+    const now = new Date().toISOString();
+    setNotifications(ns => ns.map(n => (n.id === id && n.viewedAt == null ? { ...n, viewedAt: now } : n)));
     NotificationsApi.markNotificationRead(id).catch(() => { /* optimistic */ });
   };
   const removeNotif = (id: string) => {
@@ -108,14 +111,14 @@ export const NotificationPanel = ({ lang, open, onClose, notifications, setNotif
                   return (
                     <motion.div key={notif.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * .03 }}
                       onClick={() => markRead(notif.id)}
-                      className={`flex gap-3 px-4 py-3 border-b border-white/5 cursor-pointer transition hover:bg-white/[0.02] ${!notif.read ? 'bg-white/[0.01]' : ''}`}>
+                      className={`flex gap-3 px-4 py-3 border-b border-white/5 cursor-pointer transition hover:bg-white/[0.02] ${notif.viewedAt == null ? 'bg-white/[0.01]' : ''}`}>
                       <div className={`w-8 h-8 rounded-lg ${conf.bg} flex items-center justify-center shrink-0 mt-0.5`}>
                         <Icon className={`w-4 h-4 ${conf.color}`} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          {!notif.read && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />}
-                          <span className={`text-xs font-semibold truncate ${notif.read ? 'text-gray-400' : 'text-white'}`}>{notif.title}</span>
+                          {notif.viewedAt == null && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />}
+                          <span className={`text-xs font-semibold truncate ${notif.viewedAt != null ? 'text-gray-400' : 'text-white'}`}>{notif.title}</span>
                         </div>
                         <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{notif.desc}</p>
                         <span className="text-[10px] text-gray-600 mt-1 block">{notif.time} {zh ? '前' : 'ago'}</span>

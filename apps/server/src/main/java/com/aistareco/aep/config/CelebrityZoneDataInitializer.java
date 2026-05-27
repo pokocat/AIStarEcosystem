@@ -770,6 +770,10 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
     }
 
     private void seedNotif(String id, String botId, String title, boolean read, java.time.Instant createdAt) {
+        // v0.34.x: 已读由 viewedAt 时间戳表达（null = 未读，非 null = 已读 + 何时被读）。
+        // 旧 boolean read 参数保留为 seeder 内部入参，转换为：已读 → 用 createdAt + 1s 作为
+        // 标读时间（mock 数据无真实交互时点，给个略晚于创建的合理近似）；未读 → null。
+        java.time.Instant viewedAt = read ? createdAt.plusSeconds(1) : null;
         notificationRepo.save(com.aistareco.aep.model.Notification.builder()
                 .id(id)
                 .userId("demo-user")
@@ -777,7 +781,7 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                 .title(title)
                 .description(title)
                 .botId(botId)
-                .read(read)
+                .viewedAt(viewedAt)
                 .createdAt(createdAt)
                 .build());
     }

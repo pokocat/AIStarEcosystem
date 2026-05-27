@@ -2,7 +2,6 @@ package com.aistareco.aep.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 
@@ -38,15 +37,20 @@ public class Notification {
     private String botId;
 
     /**
-     * 注意：列名 `read` 是 MySQL 8 / MariaDB 保留字，必须用反引号转义，否则
-     * Hibernate ddl-auto=update 生成 DDL 时会撞「SQL syntax error near 'read bit'」。
-     * H2 dev profile（MODE=MySQL 兼容）也接受反引号。Java 字段名 read 不动以保持
-     * 与 Notification.isRead() / setRead(...) 一致 + 兼容现有 DTO/Service。
+     * v0.34.x：viewedAt 替代旧 boolean read 字段。
+     *
+     *   viewedAt IS NULL    → 未读
+     *   viewedAt IS NOT NULL → 已读 + 何时被读（事件模型替代贫血 boolean）
+     *
+     * 设计：
+     *   1) 列名 viewed_at 避开 MySQL 保留字 read（旧版本撞 DDL 语法错误）
+     *   2) Instant 而非 boolean 自带审计 + 排序能力，标读不可逆事件语义清晰
+     *   3) nullable 兼容老数据迁移期 + 表达「未读」无需 NOT NULL + 默认值
+     *
+     * 模型迁移见 db/migration/V2__notification_use_viewed_at_instead_of_read.sql
      */
-    @Builder.Default
-    @Column(name = "`read`", nullable = false)
-    @ColumnDefault("false")
-    private boolean read = false;
+    @Column(name = "viewed_at")
+    private Instant viewedAt;
 
     private Instant createdAt;
 

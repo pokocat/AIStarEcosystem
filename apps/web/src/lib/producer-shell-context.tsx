@@ -120,7 +120,7 @@ export function ProducerShellProvider({
     };
   }, []);
   const unreadCount = React.useMemo(
-    () => notifications.filter((n) => !n.read).length,
+    () => notifications.filter((n) => n.viewedAt == null).length,
     [notifications],
   );
 

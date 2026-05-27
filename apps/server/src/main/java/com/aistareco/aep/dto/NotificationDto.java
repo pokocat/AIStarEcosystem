@@ -12,7 +12,13 @@ public record NotificationDto(
         String title,
         String desc,
         String time,
-        boolean read,
+        /**
+         * v0.34.x：viewedAt 替代旧 boolean read。
+         *   null         → 未读
+         *   ISO 字符串    → 已读时间戳（事件模型）
+         * 前端按 viewedAt == null 判断未读，比 boolean read 多审计能力。
+         */
+        Instant viewedAt,
         Audience audience
 ) {
     /** 推送对象。scope: all | studio | artist | account. 对齐前端 NotificationAudience 契约。 */
@@ -25,7 +31,7 @@ public record NotificationDto(
                 n.getTitle(),
                 n.getDescription(),
                 relativeTime(n.getCreatedAt()),
-                n.isRead(),
+                n.getViewedAt(),
                 new Audience("all", null, null)
         );
     }

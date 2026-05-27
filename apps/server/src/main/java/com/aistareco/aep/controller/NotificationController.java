@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -41,8 +42,11 @@ public class NotificationController {
     @PostMapping("/{id}/read")
     public ApiResponse<NotificationDto> markRead(Principal principal, @PathVariable String id) {
         Notification n = loadOwned(id, principal.getName());
-        n.setRead(true);
-        repo.save(n);
+        // 已读不可逆：仅当未读时设置时间戳，避免重复标读改写历史「首次读」时间
+        if (n.getViewedAt() == null) {
+            n.setViewedAt(Instant.now());
+            repo.save(n);
+        }
         return ApiResponse.of(NotificationDto.from(n));
     }
 
@@ -50,10 +54,11 @@ public class NotificationController {
     @Transactional
     public ApiResponse<Map<String, Object>> markAllRead(Principal principal) {
         List<Notification> mine = repo.findByUserIdOrderByCreatedAtDesc(principal.getName());
+        Instant now = Instant.now();
         int updated = 0;
         for (Notification n : mine) {
-            if (!n.isRead()) {
-                n.setRead(true);
+            if (n.getViewedAt() == null) {
+                n.setViewedAt(now);
                 updated++;
             }
         }

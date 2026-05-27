@@ -261,27 +261,29 @@ public class DemoCatalogSeeder implements CommandLineRunner {
 
     private void seedNotifications(Instant now, AepUser studio, AepUser fan) {
         if (notificationRepo.count() > 0) return;
+        // v0.34.x: viewedAt 替代旧 boolean read。null = 未读；非 null = 已读 + 何时被读
         if (studio != null) {
             notificationRepo.saveAll(List.of(
                     Notification.builder().id(UUID.randomUUID().toString())
                             .userId(studio.getId()).type(Notification.NotificationType.REVENUE)
                             .title("月度结算到账").description("本月营收 ¥61,000 已到账")
-                            .read(false).createdAt(now.minus(2, ChronoUnit.HOURS)).build(),
+                            .viewedAt(null).createdAt(now.minus(2, ChronoUnit.HOURS)).build(),
                     Notification.builder().id(UUID.randomUUID().toString())
                             .userId(studio.getId()).type(Notification.NotificationType.CONTENT)
                             .title("版权登记已通过").description("「Neon Heart 编舞」审核通过")
-                            .read(false).createdAt(now.minus(1, ChronoUnit.DAYS)).build(),
+                            .viewedAt(null).createdAt(now.minus(1, ChronoUnit.DAYS)).build(),
                     Notification.builder().id(UUID.randomUUID().toString())
                             .userId(studio.getId()).type(Notification.NotificationType.FAN)
                             .title("新粉丝里程碑").description("Luna 突破 16 万粉丝")
-                            .read(true).createdAt(now.minus(3, ChronoUnit.DAYS)).build()
+                            .viewedAt(now.minus(3, ChronoUnit.DAYS).plusSeconds(60))
+                            .createdAt(now.minus(3, ChronoUnit.DAYS)).build()
             ));
         }
         if (fan != null) {
             notificationRepo.save(Notification.builder().id(UUID.randomUUID().toString())
                     .userId(fan.getId()).type(Notification.NotificationType.SYSTEM)
                     .title("欢迎加入").description("送你 500 积分新手大礼包")
-                    .read(false).createdAt(now.minus(7, ChronoUnit.DAYS)).build());
+                    .viewedAt(null).createdAt(now.minus(7, ChronoUnit.DAYS)).build());
         }
     }
 

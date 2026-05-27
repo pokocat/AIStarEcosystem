@@ -86,10 +86,10 @@ export default function NotificationsPage() {
     return () => { active = false; };
   }, []);
 
-  const unread = list.filter((n) => !n.read).length;
+  const unread = list.filter((n) => n.viewedAt == null).length;
 
   const filtered = list.filter((n) => {
-    if (tab === "unread" && n.read) return false;
+    if (tab === "unread" && n.viewedAt != null) return false;
     if (tab !== "all" && tab !== "unread" && n.type !== tab) return false;
     const scope = n.audience?.scope ?? "all";
     if (audienceFilter !== "all" && scope !== audienceFilter) return false;
@@ -97,10 +97,19 @@ export default function NotificationsPage() {
   });
 
   const toggleRead = (id: string) => {
-    setList((prev) => prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n)));
+    // v0.34.x: 已读不可逆。toggle 仅作为运营 UI 上「切回未读」的乐观显示，
+    // 后端 markNotificationRead 仅在 viewedAt==null 时落首次时间，再点不会改时间。
+    setList((prev) =>
+      prev.map((n) =>
+        n.id === id ? { ...n, viewedAt: n.viewedAt ? null : new Date().toISOString() } : n
+      )
+    );
     markNotificationRead(id).catch(() => { /* 后端未读/已读切换暂未持久化时静默 */ });
   };
-  const markAllRead = () => setList((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllRead = () => {
+    const now = new Date().toISOString();
+    setList((prev) => prev.map((n) => (n.viewedAt == null ? { ...n, viewedAt: now } : n)));
+  };
 
   return (
     <div className="max-w-screen-2xl mx-auto">
@@ -161,7 +170,7 @@ export default function NotificationsPage() {
                     <div
                       key={n.id}
                       className={
-                        "py-3 flex items-start gap-3 " + (!n.read ? "bg-indigo-50/30 -mx-4 px-4" : "")
+                        "py-3 flex items-start gap-3 " + (n.viewedAt == null ? "bg-indigo-50/30 -mx-4 px-4" : "")
                       }
                     >
                       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-muted text-muted-foreground shrink-0">
@@ -169,16 +178,16 @@ export default function NotificationsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={"text-sm " + (n.read ? "font-medium" : "font-semibold")}>{n.title}</span>
+                          <span className={"text-sm " + (n.viewedAt != null ? "font-medium" : "font-semibold")}>{n.title}</span>
                           <Badge tone={meta.tone}>{meta.label}</Badge>
                           <AudienceBadge audience={n.audience} />
-                          {!n.read && <span className="h-2 w-2 rounded-full bg-rose-500" />}
+                          {n.viewedAt == null && <span className="h-2 w-2 rounded-full bg-rose-500" />}
                           <span className="text-xs text-muted-foreground">· {n.time} 前</span>
                         </div>
                         <div className="text-sm text-muted-foreground mt-0.5">{n.desc}</div>
                       </div>
                       <Button size="sm" variant="ghost" onClick={() => toggleRead(n.id)} className="shrink-0">
-                        {n.read ? "标为未读" : "已读"}
+                        {n.viewedAt != null ? "标为未读" : "已读"}
                       </Button>
                     </div>
                   );

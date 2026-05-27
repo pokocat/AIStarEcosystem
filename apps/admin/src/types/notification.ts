@@ -26,7 +26,13 @@ export interface Notification {
   desc: string;
   /** 相对时间文案，如 "2min" / "1h" / "1d" */
   time: string;
-  read: boolean;
+  /**
+   * v0.34.x：viewedAt 替代旧 boolean read。
+   *   null      → 未读
+   *   ISO 字符串 → 已读 + 何时被读（事件模型，标读不可逆）
+   * 前端按 `viewedAt == null` 判断未读。
+   */
+  viewedAt: string | null;
   audience?: NotificationAudience;
 }
 
