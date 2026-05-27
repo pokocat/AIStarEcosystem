@@ -29,3 +29,4 @@ apps/miniprogram/config/env.*.js
 !apps/miniprogram/config/env.example.js
 infra/env/*.env
 !infra/env/*.env.example
+infra/.local/

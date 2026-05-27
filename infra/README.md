@@ -49,7 +49,9 @@ infra/
 │   ├── cors-config.json            ← CORS 规则
 │   └── lifecycle.xml               ← OSS 生命周期（temp/ 30 天清理等）
 │
-└── scripts/                        ← 部署 / 验证 / 回滚脚本
+└── scripts/                        ← 部署 / 验证 / 回滚 + 引导式配置
+    ├── preflight.sh                ← 检测本机 / ECS 是否装齐 java/nginx/docker/ffmpeg/node/ossutil...
+    ├── init.sh                     ← 交互式收集参数 + openssl 生成密钥 + 渲染 env/nginx 到 infra/.local/
     ├── deploy.sh                   ← deploy.sh <service> [tag]，幂等
     ├── rollback.sh                 ← rollback.sh <service> <tag>
     └── verify.sh                   ← 部署后健康检查批量
@@ -97,6 +99,29 @@ ECS 集群 (1~N 台, VPC 内网)│
 ## 3. 一次性环境拉起（新 ECS）
 
 > **前置**：阿里云账号已开通 ECS / RDS / OSS，VPC 内网已通。
+
+### 3.0 快速路径：引导式脚本（推荐）
+
+```bash
+# 1) 检测本机工具齐备
+./infra/scripts/preflight.sh
+
+# 2) 检测目标 ECS 工具齐备（先做完 §3.2 ECS 准备）
+./infra/scripts/preflight.sh --remote root@<ECS_HOST>
+
+# 3) 交互式生成 server.env / sau-service.env / nginx config 到 infra/.local/
+#    脚本会问 ECS / RDS / OSS / SMS / Coze 等参数，自动 openssl 生成 JWT/AES/INTERNAL 密钥
+./infra/scripts/init.sh
+```
+
+生成完后 review `infra/.local/*` → 按脚本输出的「下一步」scp 到 ECS → 起服务。
+
+⚠️ `infra/.local/secrets-backup.txt` 列出自动生成的密钥，**立刻备份到密码管理器后 rm**
+（密钥已写入 server.env，删 backup 不影响 server 运行；丢了 `AEP_SECRET_KEY` 历史
+加密数据不可解，丢了 `AEP_JWT_SECRET` 在线用户被登出但可恢复）。
+
+下面 §3.1-§3.6 是详细的手动步骤，跟 §3.0 是「引导式」与「手工」两种路径，
+做完任一即可。
 
 ### 3.1 阿里云资源开通
 
