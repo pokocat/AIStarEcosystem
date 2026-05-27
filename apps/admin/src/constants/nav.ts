@@ -50,6 +50,13 @@ export interface NavItem {
    * 也隐藏 role-gated 项以避免菜单闪烁后才消失。
    */
   roles?: ("SUPER_ADMIN" | "OPERATOR")[];
+  /**
+   * v0.37+：限定账号来源 —— "admin" 表示仅 admin_users 体系登录可见，
+   * "operator" 表示仅 aep_users.operatorRole 体系（v0.37 operator-login）可见，
+   * 不传 = 两套体系都能看。
+   * 用途：秘钥批次 / 管理员账号 CRUD 等敏感能力收口到 admin 来源。
+   */
+  accountSource?: "admin" | "operator";
 }
 
 export interface NavGroup {
@@ -75,14 +82,17 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "平台账户",
     items: [
       { href: "/platform/accounts", label: "账号 & 经纪公司", icon: Users,     badgeKey: "account_suspended", description: "AepUser ↔ Studio 1:1，账号/主体状态" },
-      { href: "/platform/licenses", label: "秘钥批次",        icon: KeySquare, badgeKey: "license_low",       description: "批次 / 秘钥 / 核销" },
-      { href: "/celebrity/selling-channels", label: "销售渠道", icon: ShieldCheck, description: "v0.36：批次的销售来源 / 售卖主体（内部可见，与 MCN 无关）" },
+      // v0.37+：秘钥批次仅 admin_users 体系可见 / 可调；operator-login 进 admin 后台时此菜单隐藏。
+      { href: "/platform/licenses", label: "秘钥批次",        icon: KeySquare, badgeKey: "license_low",       description: "批次 / 秘钥 / 核销（仅 admin 账号）", accountSource: "admin" },
+      { href: "/celebrity/selling-channels", label: "销售渠道", icon: ShieldCheck, description: "v0.36：批次的销售来源 / 售卖主体（内部可见，与 MCN 无关）", accountSource: "admin" },
       {
         href: "/platform/staff",
         label: "后台管理员",
         icon: ShieldCheck,
         description: "后台账号增删改查（仅超级管理员可见）",
         roles: ["SUPER_ADMIN"],
+        // v0.37+：管理员账号体系 CRUD 必须在 admin_users 通道内
+        accountSource: "admin",
       },
     ],
   },
@@ -187,17 +197,26 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /**
  * v0.5：取启用的 NavGroups（filter group.enabled !== false 且至少有一个 enabled !== false 的 item）。
- * v0.30：可选传入当前 admin 角色，过滤掉 roles 不满足的项。currentRole=undefined / null
- *        时按"未知角色"处理 —— role-gated 项隐藏（避免登录中或 mock 不齐时菜单闪烁）。
- *        SUPER_ADMIN 总能看到全部 role-gated 项，不再单独检查 roles 列表。
+ * v0.30：可选传入当前 admin 角色，过滤掉 roles 不满足的项。
+ * v0.37+：可选传入 accountSource —— "admin"（admin_users 体系）/"operator"（aep_users.operatorRole 体系）。
+ *        accountSource 不满足的项隐藏（与 role 共同决定可见性）。
  */
-export function visibleNavGroups(currentRole?: string | null): NavGroup[] {
+export function visibleNavGroups(
+  currentRole?: string | null,
+  accountSource?: "admin" | "operator" | null,
+): NavGroup[] {
   return NAV_GROUPS
     .filter((g) => g.enabled !== false)
     .map((g) => ({
       ...g,
       items: g.items.filter((it) => {
         if (it.enabled === false) return false;
+        // v0.37+ accountSource gate（在 role 之前 —— 与 role 是 AND 关系）
+        if (it.accountSource) {
+          // 未知 accountSource（加载中 / 未登录）→ 隐藏，避免菜单闪烁后才消失
+          if (!accountSource) return false;
+          if (accountSource !== it.accountSource) return false;
+        }
         if (!it.roles || it.roles.length === 0) return true;
         if (!currentRole) return false;
         if (currentRole === "SUPER_ADMIN") return true;

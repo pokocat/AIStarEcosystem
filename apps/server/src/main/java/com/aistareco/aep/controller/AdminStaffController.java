@@ -23,6 +23,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/admin/staff")
+@org.springframework.security.access.prepost.PreAuthorize("@accountSourceResolver.isAdmin(authentication)")
 public class AdminStaffController {
 
     private final AdminUserRepository adminUserRepo;

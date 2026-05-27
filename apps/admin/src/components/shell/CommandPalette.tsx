@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Search, ArrowRight, CornerDownLeft } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { visibleNavGroups } from "@/constants/nav";
-import { useAdminRole } from "@/lib/useAdminRole";
+import { useAdminIdentity } from "@/lib/useAdminRole";
 import { cn } from "@/lib/utils";
 
 interface CommandPaletteProps {
@@ -24,14 +24,14 @@ interface Hit {
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
-  const role = useAdminRole();
+  const { role, accountSource } = useAdminIdentity();
   const [query, setQuery] = React.useState("");
   const [active, setActive] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const allHits = React.useMemo<Hit[]>(() => {
     const out: Hit[] = [];
-    for (const g of visibleNavGroups(role)) {
+    for (const g of visibleNavGroups(role, accountSource)) {
       for (const it of g.items) {
         out.push({
           href: it.href,

@@ -17,46 +17,64 @@ import { useEffect, useState } from "react";
 import { getMe } from "@/api/auth";
 import { USE_MOCK } from "@/api/_client";
 
-let cachedRole: string | null = null;
-let cachePromise: Promise<string | null> | null = null;
+export type AccountSource = "admin" | "operator";
+export interface AdminIdentity {
+  role: string | null;
+  accountSource: AccountSource | null;
+}
 
-export function useAdminRole(): string | null {
-  // 同步初始化：mock 或已缓存场景在 render 之前就有值，避免首帧菜单闪烁。
-  const [role, setRole] = useState<string | null>(() => {
-    if (cachedRole) return cachedRole;
+let cachedRole: string | null = null;
+let cachedSource: AccountSource | null = null;
+let cachePromise: Promise<AdminIdentity> | null = null;
+
+/**
+ * v0.37+：返回登录管理员的 role + accountSource。
+ * - role: SUPER_ADMIN / OPERATOR / null（小写归一为大写）
+ * - accountSource: "admin"（admin_users 体系）/ "operator"（aep_users.operatorRole 体系）
+ *
+ * 前端按 accountSource="admin" 隐藏「秘钥批次 / 管理员账号」等仅 admin 可见菜单。
+ */
+export function useAdminIdentity(): AdminIdentity {
+  const [identity, setIdentity] = useState<AdminIdentity>(() => {
+    if (cachedRole) return { role: cachedRole, accountSource: cachedSource };
     if (USE_MOCK) {
       cachedRole = "SUPER_ADMIN";
-      return cachedRole;
+      cachedSource = "admin";
+      return { role: cachedRole, accountSource: cachedSource };
     }
-    return null;
+    return { role: null, accountSource: null };
   });
 
   useEffect(() => {
-    // 已知 role（mock 或上次缓存）→ 不发请求
     if (cachedRole || USE_MOCK) return;
     let alive = true;
     if (!cachePromise) {
       cachePromise = getMe().then(
         (u) => {
-          // server 的 AdminUserDto.from() 把 role 转成小写（"super_admin"/"operator"），
-          // 但本仓库管理端约定的 AdminRole 字面量是大写（"SUPER_ADMIN"/"OPERATOR"），
-          // 与 nav role-gate / 角色判断保持一致 → 在此处归一化为大写。
           cachedRole = u.role ? u.role.toUpperCase() : null;
-          return cachedRole;
+          // server /me 返回 accountSource: "admin" | "operator"（v0.37+）
+          const src = (u as { accountSource?: string }).accountSource;
+          cachedSource = src === "admin" || src === "operator" ? src : null;
+          return { role: cachedRole, accountSource: cachedSource };
         },
-        // 未登录 / 网络挂 → null，role-gated 菜单按"未知角色"处理（隐藏）。
         () => {
           cachedRole = null;
+          cachedSource = null;
           cachePromise = null;
-          return null;
+          return { role: null, accountSource: null };
         },
       );
     }
     cachePromise.then((r) => {
-      if (alive && r) setRole(r);
+      if (alive && (r.role || r.accountSource)) setIdentity(r);
     });
     return () => { alive = false; };
   }, []);
 
-  return role;
+  return identity;
+}
+
+/** 仅取 role 的向后兼容包装（保留旧调用点的契约不变）。 */
+export function useAdminRole(): string | null {
+  return useAdminIdentity().role;
 }

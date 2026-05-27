@@ -93,6 +93,8 @@ public class AdminAuthController {
             body.put("displayName", dto.displayName());
             body.put("role", dto.role());
             body.put("status", dto.status());
+            // v0.37+：账号来源 —— 前端按此隐藏「秘钥批次 / 管理员账号」等仅 admin 可见菜单。
+            body.put("accountSource", "admin");
             return ApiResponse.of(body);
         }
         AepUser aep = aepUserRepo.findById(id).orElse(null);
@@ -104,6 +106,7 @@ public class AdminAuthController {
             body.put("displayName", aep.getDisplayName());
             body.put("role", aep.getOperatorRole().name().toLowerCase(Locale.ROOT));
             body.put("status", aep.getStatus() != null ? aep.getStatus().name().toLowerCase(Locale.ROOT) : "active");
+            body.put("accountSource", "operator");
             return ApiResponse.of(body);
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");

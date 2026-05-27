@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { visibleNavGroups, ADMIN_BRAND } from "@/constants/nav";
-import { useAdminRole } from "@/lib/useAdminRole";
+import { useAdminIdentity } from "@/lib/useAdminRole";
 import { cn } from "@/lib/utils";
 
 export interface SidebarBadges {
@@ -19,7 +19,7 @@ interface SidebarProps {
 
 export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
-  const currentRole = useAdminRole();
+  const { role: currentRole, accountSource } = useAdminIdentity();
 
   return (
     <>
@@ -63,7 +63,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-4">
-          {visibleNavGroups(currentRole).map((group) => (
+          {visibleNavGroups(currentRole, accountSource).map((group) => (
             <div key={group.label} className="space-y-0.5">
               <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {group.label}

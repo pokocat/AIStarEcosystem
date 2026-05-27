@@ -17,7 +17,7 @@ import {
 import { setAuthToken } from "@/api/_client";
 import { CommandPalette } from "./CommandPalette";
 import { visibleNavGroups } from "@/constants/nav";
-import { useAdminRole } from "@/lib/useAdminRole";
+import { useAdminIdentity } from "@/lib/useAdminRole";
 import { cn } from "@/lib/utils";
 
 interface TopbarProps {
@@ -32,7 +32,7 @@ export function Topbar({
   onMenuClick,
 }: TopbarProps) {
   const pathname = usePathname();
-  const role = useAdminRole();
+  const { role, accountSource } = useAdminIdentity();
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
   const isMac =
@@ -57,7 +57,7 @@ export function Topbar({
 
   // Find the nav item that matches the current route, for the help panel.
   const currentNav = React.useMemo(() => {
-    const all = visibleNavGroups(role).flatMap((g) =>
+    const all = visibleNavGroups(role, accountSource).flatMap((g) =>
       g.items.map((it) => ({ ...it, group: g.label }))
     );
     return (

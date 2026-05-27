@@ -17,6 +17,7 @@ import java.util.Locale;
 
 @RestController
 @RequestMapping("/api/admin")
+@org.springframework.security.access.prepost.PreAuthorize("@accountSourceResolver.isAdmin(authentication)")
 public class AdminLicenseController {
 
     private final LicenseService licenseService;

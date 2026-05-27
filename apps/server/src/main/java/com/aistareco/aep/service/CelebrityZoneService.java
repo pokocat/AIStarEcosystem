@@ -785,6 +785,16 @@ public class CelebrityZoneService {
         if (entity.getCategory() == null) entity.setCategory("综艺");
         if (entity.getStartingPrice() == null) entity.setStartingPrice("¥0起");
         if (entity.getDescription() == null) entity.setDescription("");
+        // v0.34+ 修复：admin 新建明星时 authorization JSON 默认给「未授权」陈列态，
+        // 否则前端 CelebrityStarCard 读 auth.icon 时 undefined → TypeError。
+        if (entity.getAuthorizationJson() == null || entity.getAuthorizationJson().isBlank()) {
+            entity.setAuthorizationJson(
+                    "{\"status\":\"unauthorized\",\"scenes\":[],\"pendingNote\":null,\"expireDate\":null}");
+        }
+        if (entity.getStatsJson() == null || entity.getStatsJson().isBlank()) {
+            entity.setStatsJson(
+                    "{\"totalGenerated\":0,\"totalPlays\":\"—\",\"gmv\":\"—\"}");
+        }
         return entity;
     }
 

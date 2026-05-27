@@ -34,7 +34,10 @@ const AUTH_COVER_BADGE: Record<CelebrityAuthStatus, string> = {
 
 /** 明星卡片：3:4 公开图 + 名字 + 热门 + 类目/价格 + 授权徽章 */
 export function CelebrityStarCard({ star }: Props) {
-  const auth = AUTH_STATUS_META[star.authorization.status];
+  // v0.34+ defensive：admin 新建的明星可能 authorization 缺失 / status 取值不在字典里。
+  // 兜底为 "unauthorized" 陈列态，避免 AUTH_STATUS_META[undefined].icon 直接 TypeError。
+  const status = star.authorization?.status ?? "unauthorized";
+  const auth = AUTH_STATUS_META[status] ?? AUTH_STATUS_META["unauthorized"];
   const Icon = AUTH_ICONS[auth.icon];
 
   return (
