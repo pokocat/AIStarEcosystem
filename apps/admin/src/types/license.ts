@@ -47,7 +47,14 @@ export interface LicenseBatch {
   id: ID;
   batchNo: string;
   name: string;
-  issuerTenantId: ID;
+  /**
+   * v0.36：老批次的 Tenant 关联；新批次走 sellingChannelId，本字段可选保留兼容。
+   */
+  issuerTenantId?: ID | null;
+  /**
+   * v0.36：销售渠道（指向 SellingChannel）。新批次必填；老批次 null（由 v0.36 迁移 seeder backfill）。
+   */
+  sellingChannelId?: ID | null;
   /** 秘钥等级（basic / premium） */
   tier: LicenseTier;
   /** 该批次每个秘钥兑换时一次性入账的点数 (credits) —— 与 tier 对应 */

@@ -76,6 +76,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/platform/accounts", label: "账号 & 经纪公司", icon: Users,     badgeKey: "account_suspended", description: "AepUser ↔ Studio 1:1，账号/主体状态" },
       { href: "/platform/licenses", label: "秘钥批次",        icon: KeySquare, badgeKey: "license_low",       description: "批次 / 秘钥 / 核销" },
+      { href: "/celebrity/selling-channels", label: "销售渠道", icon: ShieldCheck, description: "v0.36：批次的销售来源 / 售卖主体（内部可见，与 MCN 无关）" },
       {
         href: "/platform/staff",
         label: "后台管理员",

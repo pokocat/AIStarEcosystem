@@ -56,8 +56,12 @@ export async function listKeys(
 export interface CreateBatchInput {
   /** 批次名（必填） */
   name: string;
-  /** 发证方 tenantId（必填） */
-  issuerTenantId: string;
+  /** v0.36：销售渠道 ID（与 issuerTenantId 二选一；新批次必填 sellingChannelId） */
+  sellingChannelId?: string;
+  /** v0.36：老路径保留 —— 与 sellingChannelId 二选一 */
+  issuerTenantId?: string;
+  /** v0.36：秘钥等级（透传到后端，前端无需派生） */
+  tier?: string;
   /** 单包初始点数（兑换后一次性入账） */
   initialCreditGrant: number;
   /** 一次铸多少把 key（与 batch 同建；之后还能通过 mintKeys 追加） */

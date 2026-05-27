@@ -26,10 +26,14 @@ public class LicenseService {
 
     private final LicenseBatchRepository batchRepo;
     private final LicenseKeyRepository keyRepo;
+    private final SellingChannelService sellingChannelService;
 
-    public LicenseService(LicenseBatchRepository batchRepo, LicenseKeyRepository keyRepo) {
+    public LicenseService(LicenseBatchRepository batchRepo,
+                          LicenseKeyRepository keyRepo,
+                          SellingChannelService sellingChannelService) {
         this.batchRepo = batchRepo;
         this.keyRepo = keyRepo;
+        this.sellingChannelService = sellingChannelService;
     }
 
     public Page<LicenseBatchDto> listBatches(Pageable pageable) {
@@ -45,20 +49,30 @@ public class LicenseService {
     @Transactional
     public LicenseBatchDto createBatch(Map<String, Object> body) {
         int count = getInt(body, "totalCount", 1);
-        String issuerTenantId = getString(body, "issuerTenantId");
-        if (issuerTenantId == null || issuerTenantId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "issuerTenantId 不能为空");
-        }
         String name = getString(body, "name");
         if (name == null || name.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "批次 name 不能为空");
+        }
+
+        // v0.36：批次必须绑定一个销售渠道（SellingChannel），issuerTenantId 仅向后兼容老路径
+        String sellingChannelId = getString(body, "sellingChannelId");
+        String issuerTenantId = getString(body, "issuerTenantId");
+        if ((sellingChannelId == null || sellingChannelId.isBlank())
+                && (issuerTenantId == null || issuerTenantId.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "sellingChannelId 不能为空（或提供 issuerTenantId 走老路径）");
+        }
+        if (sellingChannelId != null && !sellingChannelId.isBlank()) {
+            sellingChannelService.requireActive(sellingChannelId); // 校验存在且 ACTIVE
         }
 
         LicenseBatch batch = LicenseBatch.builder()
                 .id(UUID.randomUUID().toString())
                 .batchNo("BATCH-" + System.currentTimeMillis())
                 .name(name)
-                .issuerTenantId(issuerTenantId)
+                .issuerTenantId(issuerTenantId) // 可为 null
+                .sellingChannelId(sellingChannelId)
+                .tier(getString(body, "tier"))
                 .initialCreditGrant(getLong(body, "initialCreditGrant", 0L))
                 .totalCount(count)
                 .activatedCount(0)

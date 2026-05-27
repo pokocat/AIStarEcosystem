@@ -14,7 +14,12 @@ export interface LicenseBatch {
   id: ID;
   batchNo: string;                 // "BATCH-2026-001"
   name: string;                    // 营销名称，如 "种子用户包"
-  issuerTenantId: ID;              // 发放方机构（核销统计入口）
+  /** v0.36：老批次的 Tenant 关联；新批次走 sellingChannelId */
+  issuerTenantId?: ID | null;
+  /** v0.36：销售渠道 ID（指向 SellingChannel） */
+  sellingChannelId?: ID | null;
+  /** v0.36：秘钥等级（与 admin 端对齐） */
+  tier?: string;
   initialCreditGrant: number;      // 该批次每个 Key 兑换时一次性入账的点数 (credits)
   totalCount: number;
   activatedCount: number;

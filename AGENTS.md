@@ -984,6 +984,83 @@ web-celebrity:
 - **未涉及**：小程序的 wx.subscribeMessage / WebSocket（v0.6+）、Cookie SSO 跨子域（Phase 5）、
   K8s ACK（Phase 6）、MixcutAsset 上传 OSS 化（Phase 4）。
 
+### v0.36a（2026-05-27）— SellingChannel 解耦 + LicenseBatch 重构（批次 = 销售渠道 + 售卖主体）
+
+> celebrity 子产品迭代第三批。
+
+**背景**：用户反馈「激活码批次的逻辑不对 —— 批次本质是销售渠道，与 MCN 机构无关」。
+审计发现：(a) `LicenseBatch.issuerTenantId` 指向 `Tenant` 实体，激活时强制建 Membership，
+与 MCN 体系隐式耦合；(b) admin types `tier` 字段后端模型 + DTO 完全缺失（前后端 drift）。
+
+本版引入 `SellingChannel` 实体，把批次的归属从 Tenant 解耦到独立的「销售渠道 / 售卖主体」。
+新批次走纯 SellingChannel 路径，老批次保留 issuerTenantId 向后兼容。
+
+```
+server : 新 SellingChannel entity（aep_selling_channels 表）
+       :   id / code(unique) / name(内部) / sellingEntity(对账主体) /
+       :   type(direct/agent/online_store/event/partner) / contact* / remark /
+       :   status(active/inactive) / createdAt / updatedAt
+       : 新 SellingChannelRepository / SellingChannelService(CRUD + requireActive)
+       : 新 AdminSellingChannelController /api/admin/selling-channels (GET/POST/PUT/DELETE)
+       :   DELETE = 软删（status → inactive，保留历史 batch 引用一致性）
+       : 新 SellingChannelDto（enum wire 全小写）
+
+       : LicenseBatch +sellingChannelId(varchar 64) / +tier(varchar 32)
+       :   issuerTenantId 改 nullable（向后兼容）
+       : LicenseBatchDto 同步新字段（修复前后端 drift —— 之前 tier 只在 admin types 有）
+       : LicenseService.createBatch 改签名：
+       :   - 必须有 sellingChannelId 或 issuerTenantId 之一
+       :   - sellingChannelId 非空时校验 SellingChannelService.requireActive
+       :   - 透传 tier 字段
+       : LicenseActivationService L141：Membership 只在 issuerTenantId 非空时建
+       :   - 新批次走纯 SellingChannel 路径 → 不再自动加 Membership（彻底脱离 MCN 耦合）
+       :   - 老批次行为不变
+
+       : 新 SellingChannelMigrationSeeder（@Order 50, CommandLineRunner）
+       :   - 首启 seed 默认渠道 "platform-self"（平台直营）
+       :   - 扫所有 sellingChannelId=null 且 issuerTenantId 非空的老批次
+       :     → 为每个 distinct tenantId 建 legacy-tenant-<前8> channel
+       :     → 回填 batch.sellingChannelId
+       :   - 幂等（按 code 查重）；JPA ddl-auto=update 自动建表 + 加列
+
+types  : packages/types/src/selling-channel.ts 新建（SellingChannel / SellingChannelType /
+       :   SellingChannelStatus / SellingChannelUpsertInput）
+       : apps/admin/src/types/selling-channel.ts 镜像 + SELLING_CHANNEL_TYPE_LABEL 字典
+       : apps/admin/src/types/license.ts LicenseBatch +sellingChannelId / +tier，
+       :   issuerTenantId 改 optional
+       : apps/web 遗留 license.ts 同样改 optional（apps/web Phase 5 待删）
+
+admin  : 新 api/selling-channels.ts (list/get/create/update/delete) + api/index 注册
+       : 新 /celebrity/selling-channels 页 CRUD（含「停用」二次确认 dialog，不裸 confirm）
+       : nav.ts「平台账户」组追加「销售渠道」入口
+       : /platform/licenses 改造：
+       :   - load 并维护 channels 状态
+       :   - CreateBatchDialog 把 tenant 下拉换成 sellingChannel 下拉（默认 platform-self）
+       :   - 表格「发放方」列优先显示 sellingChannel.name + type 标签；
+       :     老批次落到 issuerTenantId.name + "(legacy)" tag
+       : api/licenses.ts CreateBatchInput +sellingChannelId / +tier，issuerTenantId 改 optional
+
+openapi: +SellingChannel / SellingChannelType / SellingChannelStatus schemas
+       : +/admin/selling-channels (GET/POST) + /admin/selling-channels/{id} (GET/PUT/DELETE) paths
+       : +ActionPricing schema（v0.35 顺手补）
+```
+
+**数据迁移策略（重要）**：
+
+- **不删除 `issuerTenantId` 列**：保留至少 2 个版本以便回滚 + 历史 ledger 追溯（v0.38+ 候选删除）。
+- **现有 Membership 行保留**：v0.35+ 新激活不再 insert，但已有的不删除。Admin 「成员」页仍能查到老用户。
+- **现有 LicenseBatch 自动迁移**：`SellingChannelMigrationSeeder` 首启把每个 distinct issuerTenantId 转成
+  legacy-tenant-XXX channel，并回填 sellingChannelId。零手写 SQL。
+
+**注意事项**：
+
+- **破坏性变更等级最高**：涉及核心激活流程。但新老路径并存，老 dev 数据无破坏（迁移 seeder 自动 backfill）。
+- 前端 tier drift 修复：admin types 早期已有 LicenseTier，后端模型现在补齐，DTO `tier` 字段终于流通。
+- SellingChannel 与 Tenant 完全独立：Tenant 表保留用于 MCN / 合作伙伴关系等其它业务，不再绑批次。
+- enum wire 全小写：`selling_channel.type/status` 都走小写串（direct / agent / active / inactive）。
+- **未做**：(a) admin 「成员」页对 LICENSE_ACTIVATION 来源行的 UI 标记；(b) 按渠道维度的销售统计报表（v0.37+）；
+  (c) 删除 issuerTenantId 列；(d) SellingChannel 与发票/对账系统打通。
+
 ### v0.35a（2026-05-27）— 动作级权益扣减配置（混剪生成 / 分发上传 / 视频生成）
 
 > celebrity 子产品迭代第二批。

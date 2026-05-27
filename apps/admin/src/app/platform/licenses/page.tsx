@@ -16,10 +16,13 @@ import { ActionDialog } from "@/components/ActionDialog";
 import { createBatch, listBatches, listKeys, mintKeys, revokeKey } from "@/api/licenses";
 import { listTenants } from "@/api/tenants";
 import { listUsers } from "@/api/users";
+import { SellingChannelsApi } from "@/api";
 import { LICENSE_BATCH_STATUS, LICENSE_KEY_STATUS, LICENSE_TIER } from "@/constants/status";
 import { LICENSE_TIERS, type LicenseBatch, type LicenseKey, type LicenseTier } from "@/types/license";
 import type { Tenant } from "@/types/account";
 import type { AepUser } from "@/types/account";
+import type { SellingChannel } from "@/types/selling-channel";
+import { SELLING_CHANNEL_TYPE_LABEL } from "@/types/selling-channel";
 import { formatDateCN } from "@/lib/utils";
 import { formatCredits, formatPercent } from "@/lib/format";
 
@@ -28,6 +31,7 @@ export default function LicensesPage() {
   const [keys, setKeys] = React.useState<LicenseKey[]>([]);
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
   const [users, setUsers] = React.useState<AepUser[]>([]);
+  const [channels, setChannels] = React.useState<SellingChannel[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
@@ -41,16 +45,18 @@ export default function LicensesPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [b, k, t, u] = await Promise.all([
+      const [b, k, t, u, ch] = await Promise.all([
         listBatches(0, 200),
         listKeys(undefined, 0, 500),
         listTenants(0, 200),
         listUsers(0, 500),
+        SellingChannelsApi.listChannels().catch(() => [] as SellingChannel[]),
       ]);
       setBatches(b);
       setKeys(k);
       setTenants(t);
       setUsers(u);
+      setChannels(ch);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -63,6 +69,7 @@ export default function LicensesPage() {
   }, [reload]);
 
   const tenantById = React.useMemo(() => new Map(tenants.map((t) => [t.id, t])), [tenants]);
+  const channelById = React.useMemo(() => new Map(channels.map((c) => [c.id, c])), [channels]);
   const userById = React.useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const batchById = React.useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
 
@@ -148,7 +155,8 @@ export default function LicensesPage() {
                     </TableRow>
                   )}
                   {!loading && !loadError && batches.map((b) => {
-                    const issuer = tenantById.get(b.issuerTenantId);
+                    const channel = b.sellingChannelId ? channelById.get(b.sellingChannelId) : undefined;
+                    const issuer = b.issuerTenantId ? tenantById.get(b.issuerTenantId) : undefined;
                     const rate = b.totalCount > 0 ? (b.activatedCount / b.totalCount) * 100 : 0;
                     return (
                       <TableRow key={b.id}>
@@ -159,7 +167,13 @@ export default function LicensesPage() {
                           </div>
                         </TableCell>
                         <TableCell><StatusBadge meta={LICENSE_TIER[b.tier]} /></TableCell>
-                        <TableCell className="text-sm">{issuer?.name ?? "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          {channel ? (
+                            <span>{channel.name} <span className="text-xs text-muted-foreground">· {SELLING_CHANNEL_TYPE_LABEL[channel.type]}</span></span>
+                          ) : issuer ? (
+                            <span>{issuer.name} <span className="text-xs text-amber-600">(legacy)</span></span>
+                          ) : "—"}
+                        </TableCell>
                         <TableCell className="text-right tabular-nums">{formatCredits(b.initialCreditGrant)}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {b.activatedCount} / {b.totalCount}
@@ -258,9 +272,9 @@ export default function LicensesPage() {
       </Tabs>
 
       <CreateBatchDialog
+        channels={channels}
         open={createOpen}
         onOpenChange={setCreateOpen}
-        tenants={tenants}
         onCreated={(batch, codes) => {
           setCreateOpen(false);
           void reload();
@@ -315,16 +329,17 @@ export default function LicensesPage() {
 function CreateBatchDialog({
   open,
   onOpenChange,
-  tenants,
+  channels,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  tenants: Tenant[];
+  channels: SellingChannel[];
   onCreated: (batch: LicenseBatch, codes: string[]) => void;
 }) {
+  const activeChannels = channels.filter((c) => c.status === "active");
   const [name, setName] = React.useState("");
-  const [tenantId, setTenantId] = React.useState<string>("");
+  const [channelId, setChannelId] = React.useState<string>("");
   const [tier, setTier] = React.useState<LicenseTier>("basic");
   const [totalCount, setTotalCount] = React.useState("10");
   const [validFrom, setValidFrom] = React.useState("");
@@ -335,24 +350,26 @@ function CreateBatchDialog({
   React.useEffect(() => {
     if (!open) return;
     setName("");
-    setTenantId(tenants[0]?.id ?? "");
+    // 默认选「平台直营」（platform-self）渠道
+    const defaultCh = activeChannels.find((c) => c.code === "platform-self") ?? activeChannels[0];
+    setChannelId(defaultCh?.id ?? "");
     setTier("basic");
     setTotalCount("10");
-    // 默认有效期：今天 ~ 一年后
     const today = new Date();
     const oneYearLater = new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000);
     setValidFrom(today.toISOString().slice(0, 10));
     setValidTo(oneYearLater.toISOString().slice(0, 10));
     setBusy(false);
     setError(null);
-  }, [open, tenants]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const initialCreditGrant = LICENSE_TIERS[tier].initialCreditGrant;
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) return setError("批次名不能为空");
-    if (!tenantId) return setError("请选择发放方");
+    if (!channelId) return setError("请选择销售渠道");
     const count = parseInt(totalCount, 10);
     if (!Number.isFinite(count) || count < 1) return setError("数量必须是正整数");
     if (count > 100) return setError("一次最多 100 把（避免一次性日志爆炸）");
@@ -362,13 +379,13 @@ function CreateBatchDialog({
     try {
       const batch = await createBatch({
         name: trimmedName,
-        issuerTenantId: tenantId,
+        sellingChannelId: channelId,
+        tier,
         initialCreditGrant,
         totalCount: count,
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
         validTo: validTo ? `${validTo}T23:59:59Z` : undefined,
       });
-      // 创建 batch 时不返回明文码 —— 需用「铸码」单独获取。
       onCreated(batch, []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建失败");
@@ -397,15 +414,20 @@ function CreateBatchDialog({
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">发放方（issuer tenant）</label>
-            <Select value={tenantId} onValueChange={setTenantId}>
-              <SelectTrigger><SelectValue placeholder="选择发证主体…" /></SelectTrigger>
+            <label className="text-xs text-muted-foreground">销售渠道（售卖主体）</label>
+            <Select value={channelId} onValueChange={setChannelId}>
+              <SelectTrigger><SelectValue placeholder="选择销售渠道…" /></SelectTrigger>
               <SelectContent>
-                {tenants.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                {activeChannels.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} · {SELLING_CHANNEL_TYPE_LABEL[c.type]}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              v0.36：渠道决定批次的销售来源 / 售卖主体，仅内部可见。前往「平台账户 → 销售渠道」管理。
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

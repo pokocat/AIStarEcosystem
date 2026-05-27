@@ -138,14 +138,18 @@ public class LicenseActivationService {
                 .updatedAt(now)
                 .build());
 
-        membershipRepo.save(Membership.builder()
-                .id(UUID.randomUUID().toString())
-                .tenantId(batch.getIssuerTenantId())
-                .userId(user.getId())
-                .source(Membership.MembershipSource.LICENSE_ACTIVATION)
-                .licenseKeyId(key.getId())
-                .joinedAt(now)
-                .build());
+        // v0.36：只在老批次（issuerTenantId 非空）时建 Membership。
+        // 新批次走 SellingChannel 路径，与 Tenant 体系解耦，不再自动加 Membership。
+        if (batch.getIssuerTenantId() != null && !batch.getIssuerTenantId().isBlank()) {
+            membershipRepo.save(Membership.builder()
+                    .id(UUID.randomUUID().toString())
+                    .tenantId(batch.getIssuerTenantId())
+                    .userId(user.getId())
+                    .source(Membership.MembershipSource.LICENSE_ACTIVATION)
+                    .licenseKeyId(key.getId())
+                    .joinedAt(now)
+                    .build());
+        }
 
         long grant = batch.getInitialCreditGrant();
         Wallet wallet = Wallet.builder()

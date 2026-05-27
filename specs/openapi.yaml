@@ -1422,6 +1422,37 @@ components:
         creditPrice: { type: integer, description: 单条视频积分单价 }
         quotaCost:   { type: integer, description: 占套餐额度的「条数」 }
 
+    # ── v0.35：动作级权益扣减 ──
+    ActionPricing:
+      type: object
+      description: 单个 action 的单价配置（celebrity.action-pricing PlatformConfig）。
+      properties:
+        creditPrice:      { type: integer, nullable: true, description: 单价积分（null 时回退默认） }
+        useEnginePricing: { type: boolean, nullable: true, description: true 时回退到 engine-pricing 表（仅 celebrity.video 适用） }
+
+    # ── v0.36：销售渠道 / 售卖主体 ──
+    SellingChannelType:
+      type: string
+      enum: [direct, agent, online_store, event, partner]
+    SellingChannelStatus:
+      type: string
+      enum: [active, inactive]
+    SellingChannel:
+      type: object
+      required: [id, code, name, type, status, createdAt, updatedAt]
+      properties:
+        id:            { type: string }
+        code:          { type: string, description: '内部短码（唯一），如 platform-self / agent-xingmeng' }
+        name:          { type: string, description: '显示名（内部可见）' }
+        sellingEntity: { type: string, nullable: true, description: '售卖主体真实名称（财务对账用）' }
+        type:          { $ref: '#/components/schemas/SellingChannelType' }
+        contactEmail:  { type: string, nullable: true }
+        contactPhone:  { type: string, nullable: true }
+        remark:        { type: string, nullable: true }
+        status:        { $ref: '#/components/schemas/SellingChannelStatus' }
+        createdAt:     { type: string, format: date-time }
+        updatedAt:     { type: string, format: date-time }
+
     CelebrityCategory:
       type: string
       enum: [演员, 歌手, 主持人, 运动员, 网红, 综艺]
@@ -4913,6 +4944,15 @@ paths:
   /admin/celebrity/action-pricing:
     get: { tags: [admin-celebrity], operationId: adminGetCelebrityActionPricing, responses: { '200': { description: ok } } }
     put: { tags: [admin-celebrity], operationId: adminReplaceCelebrityActionPricing, responses: { '200': { description: ok } } }
+
+  # ── v0.36：销售渠道 / 售卖主体 CRUD（与 MCN 无关，仅内部可见） ──────────────
+  /admin/selling-channels:
+    get:  { tags: [admin-selling-channels], operationId: adminListSellingChannels,   responses: { '200': { description: ok } } }
+    post: { tags: [admin-selling-channels], operationId: adminCreateSellingChannel,  responses: { '201': { description: created } } }
+  /admin/selling-channels/{id}:
+    get:    { tags: [admin-selling-channels], operationId: adminGetSellingChannel,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-selling-channels], operationId: adminUpdateSellingChannel, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-selling-channels], operationId: adminDeleteSellingChannel, responses: { '204': { description: deleted (soft) } } }
 
   # ── 授权关系 CRUD + 状态机（v0.5 §D3 新增） ──────────────────────────
   /admin/celebrity/star-authorizations:
