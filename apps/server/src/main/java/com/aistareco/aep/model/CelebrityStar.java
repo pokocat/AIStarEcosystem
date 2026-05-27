@@ -44,8 +44,10 @@ public class CelebrityStar {
     @Builder.Default
     private List<String> subCategories = new ArrayList<>();
 
+    @Builder.Default
     @Column(nullable = false)
-    private boolean isHot;
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean isHot = false;
 
     @Column(columnDefinition = "TEXT")
     private String description;
