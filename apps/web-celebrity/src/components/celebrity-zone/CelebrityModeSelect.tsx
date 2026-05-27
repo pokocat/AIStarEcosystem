@@ -4,7 +4,8 @@ import * as React from "react";
 import { ArrowRight, Dice5, LayoutTemplate, Sparkles } from "lucide-react";
 import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
 import { CELEBRITY_TEMPLATES } from "@/mocks/celebrity-zone";
-import type { GenerationMode, CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
+import { listTemplates } from "@/api/celebrity-zone";
+import type { CelebrityTemplate, GenerationMode, CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 
 interface Props {
   star: CelebrityStar;
@@ -14,16 +15,26 @@ interface Props {
 
 /** Step 1：生成模式选择页（模板 / 盲盒）。两卡顶部 / 媒体区 / 底部 CTA 三段对齐。 */
 export function CelebrityModeSelect({ star, onSelectMode, onSwitchStar }: Props) {
+  // v0.37+：模板预览来源走 listTemplates（USE_MOCK=1 自动回退 CELEBRITY_TEMPLATES）。
+  const [templates, setTemplates] = React.useState<CelebrityTemplate[]>(CELEBRITY_TEMPLATES);
+  React.useEffect(() => {
+    let cancelled = false;
+    listTemplates()
+      .then((t) => { if (!cancelled && t.length > 0) setTemplates(t); })
+      .catch(() => { /* 静默回退 mocks */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // 取前 3 个模板的预览视频做模板卡的媒体区缩略
   const templatePreviews = React.useMemo(
     () =>
-      CELEBRITY_TEMPLATES.slice(0, 3).map((t, i) => ({
+      templates.slice(0, 3).map((t, i) => ({
         thumb: t.previews?.[0]?.thumb,
         videoUrl: t.previews?.[0]?.videoUrl,
         label: t.name,
         key: `${t.id}-${i}`,
       })),
-    [],
+    [templates],
   );
 
   return (

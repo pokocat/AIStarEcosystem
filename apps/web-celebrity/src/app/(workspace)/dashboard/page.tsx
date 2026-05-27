@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Plus, Sparkles } from "lucide-react";
@@ -9,6 +11,12 @@ import {
   PROJECT_VIDEOS_MAP,
   ZONE_OVERVIEW,
 } from "@/mocks/celebrity-zone";
+import { listStars, listProjects, listAllVideos } from "@/api/celebrity-zone";
+import type {
+  CelebrityProject,
+  CelebrityProjectVideo,
+  CelebrityStar,
+} from "@ai-star-eco/types/celebrity-zone";
 import {
   AUTH_STATUS_LABEL,
   DATE_LINE,
@@ -19,12 +27,33 @@ import {
 } from "../_shared/dashboard-fragments";
 
 // 业务总览（围绕"明星市场 → 申请授权 → AI 生成 → 多平台分发 → 带货变现"主线）
+// v0.37+：三个数据源 listStars / listProjects / listAllVideos 接通真后端；USE_MOCK=1 自动回退 mocks。
 export default function CelebrityDashboardPage() {
-  const authorizedStars = MARKET_STARS.filter((s) => s.authorization.status === "authorized");
-  const pendingStars = MARKET_STARS.filter((s) => s.authorization.status === "pending");
-  const activeProjects = CELEBRITY_PROJECTS.filter((p) => p.status === "进行中");
-  const prepProjects = CELEBRITY_PROJECTS.filter((p) => p.status === "筹备中");
-  const allVideos = Object.values(PROJECT_VIDEOS_MAP).flat();
+  const fallbackVideos = React.useMemo(() => Object.values(PROJECT_VIDEOS_MAP).flat(), []);
+  const [stars, setStars] = React.useState<CelebrityStar[]>(MARKET_STARS);
+  const [projects, setProjects] = React.useState<CelebrityProject[]>(CELEBRITY_PROJECTS);
+  const [allVideos, setAllVideos] = React.useState<CelebrityProjectVideo[]>(fallbackVideos);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [s, p, v] = await Promise.all([listStars(), listProjects(), listAllVideos()]);
+        if (cancelled) return;
+        if (s.length > 0) setStars(s);
+        if (p.length > 0) setProjects(p);
+        if (v.length > 0) setAllVideos(v);
+      } catch {
+        // 静默回退 mocks
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const authorizedStars = stars.filter((s) => s.authorization?.status === "authorized");
+  const pendingStars = stars.filter((s) => s.authorization?.status === "pending");
+  const activeProjects = projects.filter((p) => p.status === "进行中");
+  const prepProjects = projects.filter((p) => p.status === "筹备中");
   const pendingReview = allVideos.filter((v) => v.status === "待审核").slice(0, 4);
   const generating = allVideos.filter((v) => v.status === "生成中").slice(0, 3);
 
@@ -102,7 +131,7 @@ export default function CelebrityDashboardPage() {
         />
         <KpiCard
           label="授权明星"
-          value={`${authorizedStars.length} / ${MARKET_STARS.length}`}
+          value={`${authorizedStars.length} / ${stars.length}`}
           delta={`${pendingStars.length} 申请审核中`}
           gradient="teal"
         />
@@ -424,7 +453,7 @@ export default function CelebrityDashboardPage() {
                 color: "var(--fg-0)",
               }}
             >
-              {MARKET_STARS.filter((s) => s.isHot).length} 位明星上新，转化率高于均值{" "}
+              {stars.filter((s) => s.isHot).length} 位明星上新，转化率高于均值{" "}
               <span className="serif-italic" style={{ color: "var(--accent)" }}>
                 +32%
               </span>
