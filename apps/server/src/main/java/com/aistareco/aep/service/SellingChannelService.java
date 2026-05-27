@@ -78,7 +78,13 @@ public class SellingChannelService {
         SellingChannel c = repo.findById(id)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
                         "SELLING_CHANNEL_NOT_FOUND", "销售渠道不存在"));
-        if (body.containsKey("name")) c.setName(str(body, "name"));
+        if (body.containsKey("name")) {
+            String s = str(body, "name");
+            if (s == null || s.isBlank()) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "CHANNEL_NAME_REQUIRED", "name 不能为空");
+            }
+            c.setName(s);
+        }
         if (body.containsKey("sellingEntity")) c.setSellingEntity(str(body, "sellingEntity"));
         if (body.containsKey("type")) c.setType(parseType(str(body, "type"), c.getType()));
         if (body.containsKey("contactEmail")) c.setContactEmail(str(body, "contactEmail"));

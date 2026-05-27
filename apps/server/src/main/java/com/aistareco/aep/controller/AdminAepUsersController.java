@@ -66,8 +66,12 @@ public class AdminAepUsersController {
         return ApiResponse.of(rows);
     }
 
-    /** 改某账号的 operatorRole。 */
+    /**
+     * 改某账号的 operatorRole。
+     * v0.37 安全：限制 SUPER_ADMIN —— 防止 OPERATOR 提权他人到 SUPER_ADMIN 再借 operator-login 反登。
+     */
     @PatchMapping("/{id}/operator-role")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @Transactional
     public ApiResponse<AepUserDto> updateOperatorRole(@PathVariable String id,
                                                       @RequestBody Map<String, String> body,

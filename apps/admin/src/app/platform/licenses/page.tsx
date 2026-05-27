@@ -166,7 +166,7 @@ export default function LicensesPage() {
                             <span className="text-xs text-muted-foreground tabular-nums">{b.batchNo}</span>
                           </div>
                         </TableCell>
-                        <TableCell><StatusBadge meta={LICENSE_TIER[b.tier]} /></TableCell>
+                        <TableCell>{b.tier && LICENSE_TIER[b.tier as keyof typeof LICENSE_TIER] ? <StatusBadge meta={LICENSE_TIER[b.tier as keyof typeof LICENSE_TIER]} /> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-sm">
                           {channel ? (
                             <span>{channel.name} <span className="text-xs text-muted-foreground">· {SELLING_CHANNEL_TYPE_LABEL[channel.type]}</span></span>
@@ -250,7 +250,7 @@ export default function LicensesPage() {
                     return (
                       <TableRow key={k.id}>
                         <TableCell className="font-mono text-xs">{k.maskedCode}</TableCell>
-                        <TableCell>{b ? <StatusBadge meta={LICENSE_TIER[b.tier]} /> : "—"}</TableCell>
+                        <TableCell>{b?.tier && LICENSE_TIER[b.tier as keyof typeof LICENSE_TIER] ? <StatusBadge meta={LICENSE_TIER[b.tier as keyof typeof LICENSE_TIER]} /> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-sm">{b?.name ?? "—"}</TableCell>
                         <TableCell className="text-sm">{user?.displayName ?? "—"}</TableCell>
                         <TableCell className="text-xs">{k.activatedAt ? formatDateCN(k.activatedAt) : "—"}</TableCell>

@@ -3,7 +3,9 @@ package com.aistareco.aep.controller;
 import com.aistareco.aep.config.JwtUtil;
 import com.aistareco.aep.dto.AdminUserDto;
 import com.aistareco.aep.model.AdminUser;
+import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.repository.AdminUserRepository;
+import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
+import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -22,13 +26,16 @@ import java.util.Map;
 public class AdminAuthController {
 
     private final AdminUserRepository adminUserRepo;
+    private final AepUserRepository aepUserRepo;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
     public AdminAuthController(AdminUserRepository adminUserRepo,
+                                AepUserRepository aepUserRepo,
                                 PasswordEncoder passwordEncoder,
                                 JwtUtil jwtUtil) {
         this.adminUserRepo = adminUserRepo;
+        this.aepUserRepo = aepUserRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
@@ -65,13 +72,40 @@ public class AdminAuthController {
         ));
     }
 
+    /**
+     * v0.37：me 端点同时支持 admin_users（原管理员）和 aep_users + operatorRole（平台运营登录）。
+     * principal.getName() 是登录时 JWT subject (= user id)，先查 admin_users，未命中再查 aep_users。
+     * 返回统一的 wire shape：{id, username, email, displayName, role, status}，role 用 JWT.role claim 对齐。
+     */
     @GetMapping("/me")
-    public ApiResponse<AdminUserDto> me(Principal principal) {
+    public ApiResponse<Map<String, Object>> me(Principal principal) {
         if (principal == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "未登录");
         }
-        AdminUser admin = adminUserRepo.findById(principal.getName())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在"));
-        return ApiResponse.of(AdminUserDto.from(admin));
+        String id = principal.getName();
+        AdminUser admin = adminUserRepo.findById(id).orElse(null);
+        if (admin != null) {
+            Map<String, Object> body = new HashMap<>();
+            AdminUserDto dto = AdminUserDto.from(admin);
+            body.put("id", dto.id());
+            body.put("username", dto.username());
+            body.put("email", dto.email());
+            body.put("displayName", dto.displayName());
+            body.put("role", dto.role());
+            body.put("status", dto.status());
+            return ApiResponse.of(body);
+        }
+        AepUser aep = aepUserRepo.findById(id).orElse(null);
+        if (aep != null && aep.getOperatorRole() != null) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("id", aep.getId());
+            body.put("username", aep.getUsername());
+            body.put("email", aep.getEmail());
+            body.put("displayName", aep.getDisplayName());
+            body.put("role", aep.getOperatorRole().name().toLowerCase(Locale.ROOT));
+            body.put("status", aep.getStatus() != null ? aep.getStatus().name().toLowerCase(Locale.ROOT) : "active");
+            return ApiResponse.of(body);
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");
     }
 }

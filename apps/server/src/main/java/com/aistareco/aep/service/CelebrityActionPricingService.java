@@ -98,6 +98,20 @@ public class CelebrityActionPricingService {
         if (next == null || next.isEmpty()) {
             throw new IllegalArgumentException("action pricing 不能为空");
         }
+        // v0.35+：服务端校验 action allowEngineFallback 契约：
+        // 只有 celebrity.video 允许 useEnginePricing=true（admin UI 也是这么限制的，但 curl 可绕过）。
+        for (Map.Entry<String, ActionPricingDto> e : next.entrySet()) {
+            ActionPricingDto v = e.getValue();
+            if (v == null) continue;
+            if (Boolean.TRUE.equals(v.useEnginePricing()) && !ACTION_CELEBRITY_VIDEO.equals(e.getKey())) {
+                throw new IllegalArgumentException(
+                        "action '" + e.getKey() + "' 不允许 useEnginePricing=true（仅 celebrity.video 适用）");
+            }
+            if (v.creditPrice() != null && v.creditPrice() < 0) {
+                throw new IllegalArgumentException(
+                        "action '" + e.getKey() + "' creditPrice 不能为负");
+            }
+        }
         JsonNode payload = OM.valueToTree(next);
         platformConfig.upsert(
                 ACTION_PRICING_CONFIG_KEY,
@@ -105,7 +119,11 @@ public class CelebrityActionPricingService {
                 "celebrity 动作级权益扣减单价（混剪生成 / 分发上传 / 视频生成）",
                 "admin"
         );
+        // 缓存写入前先 backfill 默认 action 行，避免后续 GET 在 TTL 内返回截断的表。
         Map<String, ActionPricingDto> snap = new LinkedHashMap<>(next);
+        for (Map.Entry<String, ActionPricingDto> def : ACTION_PRICING_DEFAULTS.entrySet()) {
+            snap.putIfAbsent(def.getKey(), def.getValue());
+        }
         cache.set(new Cache(snap, System.currentTimeMillis()));
         return snap;
     }

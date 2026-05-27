@@ -96,7 +96,10 @@ public class LicenseActivationService {
         if (key.getExpiresAt() != null && key.getExpiresAt().isBefore(now)) {
             throw new ResponseStatusException(HttpStatus.GONE, "该激活码已过期");
         }
-        if (!tenantRepo.existsById(batch.getIssuerTenantId())) {
+        // v0.36：issuerTenantId 现可为 null（新批次走纯 SellingChannel 路径）。
+        // 仅老批次时才校验 tenant 存在性，否则 existsById(null) 会抛 InvalidDataAccessApiUsageException。
+        if (batch.getIssuerTenantId() != null && !batch.getIssuerTenantId().isBlank()
+                && !tenantRepo.existsById(batch.getIssuerTenantId())) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "批次发放方租户不存在");
         }
 
@@ -197,12 +200,19 @@ public class LicenseActivationService {
                 : user.getKind().name();
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), role);
 
-        return Map.of(
-                "token", token,
-                "user", AepUserDto.from(user),
-                "studio", StudioDto.from(studio),
-                "tenantId", batch.getIssuerTenantId()
-        );
+        // v0.36：Map.of 禁止 null 值；issuerTenantId 可能为 null（SellingChannel-only 批次）。
+        // 用 HashMap，缺省为 null 时省略 tenantId 字段（前端 LicenseRedeemResult.tenantId 已为 optional）。
+        java.util.HashMap<String, Object> resp = new java.util.HashMap<>();
+        resp.put("token", token);
+        resp.put("user", AepUserDto.from(user));
+        resp.put("studio", StudioDto.from(studio));
+        if (batch.getIssuerTenantId() != null) {
+            resp.put("tenantId", batch.getIssuerTenantId());
+        }
+        if (batch.getSellingChannelId() != null) {
+            resp.put("sellingChannelId", batch.getSellingChannelId());
+        }
+        return resp;
     }
 
     private void validateUserIdentity(String username, String email, String phone) {

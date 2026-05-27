@@ -245,6 +245,12 @@ function TemplateFormDialog({
     e.preventDefault();
     setError(null);
     if (!name.trim()) { setError("模板名称必填"); return; }
+    // v0.34+：admin 后台暂不提供「指定用户私有模板的 owner」选择 UI。
+    // 新建私有模板时如果没有 owner，会变成孤儿行（无用户能看到），所以阻塞。
+    if (!isFactory && !isEdit) {
+      setError("新建私有模板需通过用户端「保存为我的模板」入口创建；admin 后台仅支持新建工厂模板。");
+      return;
+    }
     setSaving(true);
     try {
       const body: Partial<CelebrityTemplate> = {
@@ -261,7 +267,12 @@ function TemplateFormDialog({
         previewCover: previewCover || undefined,
         previewVideoUrl: previewVideoUrl || undefined,
         isFactory,
+        // v0.34+ 修复：私有模板 admin 端目前没有 owner 选择 UI；阻塞「未选 owner 又勾私有」生成孤儿行。
+        // factory: ownerScope='factory' / ownerUserId 不传
+        // private (编辑): 保留原 ownerScope + ownerUserId
+        // private (新建): 不允许（在 handleSubmit 前已校验）
         ownerScope: isFactory ? "factory" : (template?.ownerScope ?? "factory"),
+        ownerUserId: isFactory ? null : (template?.ownerUserId ?? undefined),
       };
       if (isEdit && template) {
         await CelebrityZoneApi.updateTemplate(template.id, body);
