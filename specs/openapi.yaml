@@ -4954,6 +4954,14 @@ paths:
     put:    { tags: [admin-selling-channels], operationId: adminUpdateSellingChannel, responses: { '200': { description: ok } } }
     delete: { tags: [admin-selling-channels], operationId: adminDeleteSellingChannel, responses: { '204': { description: deleted (soft) } } }
 
+  # ── v0.37：平台运营登录（AepUser + operatorRole 体系，独立通道） ─────────────
+  /admin/auth/operator-login:
+    post: { tags: [admin-auth], operationId: adminOperatorLogin, responses: { '200': { description: ok }, '401': { description: 'invalid credentials' }, '403': { description: 'no operatorRole or inactive' } } }
+
+  # ── v0.37：超级管理员给 AepUser 设置密码（让 operator 能登 admin） ─────────
+  /admin/aep-users/{id}/set-password:
+    post: { tags: [admin-aep-users], operationId: adminSetAepUserPassword, responses: { '200': { description: ok }, '403': { description: 'requires SUPER_ADMIN' } } }
+
   # ── 授权关系 CRUD + 状态机（v0.5 §D3 新增） ──────────────────────────
   /admin/celebrity/star-authorizations:
     get:

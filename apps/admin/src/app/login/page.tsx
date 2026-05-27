@@ -3,10 +3,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, Loader2, ShieldCheck, History, LifeBuoy, AlertCircle } from "lucide-react";
-import { login } from "@/api/auth";
+import { login, operatorLogin } from "@/api/auth";
 import { getAuthToken } from "@/api/_client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type LoginMode = "admin" | "operator";
 
 function nextPathFromLocation(): string {
   if (typeof window === "undefined") return "/";
@@ -39,6 +42,7 @@ const ENV_TONE: Record<Env["tone"], { dot: string; chip: string }> = {
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const [mode, setMode] = React.useState<LoginMode>("admin");
   const [username, setUsername] = React.useState("admin");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -49,13 +53,22 @@ export default function AdminLoginPage() {
     if (getAuthToken()) router.replace(nextPathFromLocation());
   }, [router]);
 
+  // 切 tab 时清错 + 重置默认 username
+  function handleModeChange(next: LoginMode) {
+    setMode(next);
+    setError(null);
+    setUsername(next === "admin" ? "admin" : "celebrity_operator");
+    setPassword("");
+  }
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitting) return;
     setError(null);
     setSubmitting(true);
     try {
-      await login({ username: username.trim(), password });
+      const fn = mode === "operator" ? operatorLogin : login;
+      await fn({ username: username.trim(), password });
       router.replace(nextPathFromLocation());
       router.refresh();
     } catch (err) {
@@ -93,9 +106,18 @@ export default function AdminLoginPage() {
           <div className="mb-4 space-y-1">
             <h1 className="text-lg font-semibold tracking-tight">登录到运营工作台</h1>
             <p className="text-xs text-muted-foreground">
-              使用平台分发给你的运营账号登录。
+              {mode === "admin"
+                ? "管理员账号体系（admin_users 表）"
+                : "v0.37：平台运营账号体系（AepUser.operatorRole，与 web-celebrity 共用账号）"}
             </p>
           </div>
+
+          <Tabs value={mode} onValueChange={(v) => handleModeChange(v as LoginMode)} className="mb-4">
+            <TabsList className="grid grid-cols-2 w-full">
+              <TabsTrigger value="admin">管理员账号</TabsTrigger>
+              <TabsTrigger value="operator">平台运营账号</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           <form className="space-y-3.5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">

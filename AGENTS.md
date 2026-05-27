@@ -984,6 +984,60 @@ web-celebrity:
 - **未涉及**：小程序的 wx.subscribeMessage / WebSocket（v0.6+）、Cookie SSO 跨子域（Phase 5）、
   K8s ACK（Phase 6）、MixcutAsset 上传 OSS 化（Phase 4）。
 
+### v0.37a（2026-05-27）— Operator 双端登录（Plan B：admin 独立登录通道）
+
+> celebrity 子产品迭代第四批。
+
+**背景**：用户希望 celebrity operator（aep_users.operatorRole=OPERATOR）既能在
+web-celebrity 内嵌写权限，又能登 admin 后台做运营工作。但 `AdminAuthController`
+严格只查 `admin_users` 表 —— 这是双账号体系核心约束（AepUser.java L53-58 注释明示），
+强行让 AepUser 走 AdminAuth 会污染该约束。
+
+**采用 Plan B**：admin 后台新增独立登录通道 `POST /api/admin/auth/operator-login`，
+admin 登录页加 Tab「管理员账号 / 平台运营账号」二选一。两套账号、两套表、共享 JWT
+role claim、共享 `AepSecurityConfig.hasAnyRole` 门禁，互不污染。
+
+```
+server : 新 AepOperatorAuthController (/api/admin/auth/operator-login)
+       :   - 校验：aepUserRepo.findByUsername + passwordEncoder.matches
+       :   - 必须 operatorRole != null（否则 403 「该账号无平台运营权限」）
+       :   - 必须 passwordHash 非空（否则 403，提示「请联系超管设置密码」）
+       :   - JWT.role = operatorRole.name() (OPERATOR / SUPER_ADMIN)
+       :   - 成功 / 失败均落 slf4j 日志 (event_type=admin.operator_login.{success|fail})
+       : AepSecurityConfig +/api/admin/auth/operator-login permitAll
+
+       : DataInitializer.ensureCelebrityOperatorSeed:
+       :   - 新建 seed 行时给 celebrity_operator 落 passwordHash = bcrypt("operator123")
+       :   - 老 seed 行无 passwordHash 时自动补一次（幂等升级老 dev 数据）
+
+       : AdminAepUsersController:
+       :   - +PATCH /{id}/operator-role 加 self-protect (Principal == id → 403)
+       :     防 OPERATOR 误操作把自己降级 / null 锁死
+       :   - +POST /{id}/set-password (@PreAuthorize hasRole('SUPER_ADMIN'))
+       :     SUPER_ADMIN 给 AepUser 重置密码 / 设密码
+
+admin  : api/auth.ts +operatorLogin（POST /admin/auth/operator-login）
+       : /login/page.tsx 加 shadcn Tabs「管理员账号 / 平台运营账号」
+       :   - 切 tab 清错 + 重置默认 username (admin / celebrity_operator)
+       :   - handleSubmit 按 mode 路由到 login / operatorLogin
+       :   - 文案明确区分两个体系
+
+openapi: +/admin/auth/operator-login + /admin/aep-users/{id}/set-password paths
+```
+
+**注意事项**：
+
+- **AdminAuthController 不动**：admin_users 体系与 aep_users.operatorRole 体系完全独立，
+  共享 JWT role claim（OPERATOR / SUPER_ADMIN 字符串对齐），共享 AepSecurityConfig
+  hasAnyRole 门禁规则。
+- **passwordHash 兼容升级**：v0.37 起首启自动给老的 celebrity_operator seed 行补密码；
+  老 dev 数据无需手动 reset DB。
+- **self-protect**：v0.32 注释指出 admin 自删 / 自降级保护缺失。v0.37 顺手在 operator-role
+  PATCH 加 self-modify 防护（principal == id → 403）。
+- **未做**：(a) rate-limit；(b) admin 失败计数锁定；(c) operator 登入审计的 error_log 表写入
+  （仅 slf4j，v0.38+ 候选）；(d) SSO / OAuth 集成；(e) admin 登录页里给 OPERATOR 设密码的 UI
+  （SUPER_ADMIN 走 set-password endpoint，UI 是 platform/staff 页面已有的 reset 风格，留待后续）。
+
 ### v0.36a（2026-05-27）— SellingChannel 解耦 + LicenseBatch 重构（批次 = 销售渠道 + 售卖主体）
 
 > celebrity 子产品迭代第三批。

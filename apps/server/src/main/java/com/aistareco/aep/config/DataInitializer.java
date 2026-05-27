@@ -480,12 +480,21 @@ public class DataInitializer implements CommandLineRunner {
      * 时给 celebrity 端添加这条运营账号（用于 web-celebrity 商品库写入入口 E2E）。
      */
     private void ensureCelebrityOperatorSeed(Instant now) {
-        if (userRepo.findByUsername("celebrity_operator").isPresent()) {
+        var existing = userRepo.findByUsername("celebrity_operator");
+        if (existing.isPresent()) {
+            // v0.37：老 seed 行可能没有 passwordHash —— 补一次，让 operator-login 能用
+            AepUser u = existing.get();
+            if (u.getPasswordHash() == null || u.getPasswordHash().isBlank()) {
+                u.setPasswordHash(passwordEncoder.encode("operator123"));
+                u.setUpdatedAt(now);
+                userRepo.save(u);
+            }
             return;
         }
         AepUser u = AepUser.builder()
                 .id(UUID.randomUUID().toString())
                 .username("celebrity_operator")
+                .passwordHash(passwordEncoder.encode("operator123")) // v0.37：登 admin 后台需密码
                 .email("celebrity-operator@aistareco.com")
                 .displayName("平台运营 · 商品库")
                 .kind(AepUser.AccountKind.STUDIO)

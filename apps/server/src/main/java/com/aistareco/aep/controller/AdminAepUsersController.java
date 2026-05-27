@@ -7,9 +7,12 @@ import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -30,9 +33,12 @@ import java.util.Map;
 public class AdminAepUsersController {
 
     private final AepUserRepository userRepo;
+    private final PasswordEncoder passwordEncoder;
 
-    public AdminAepUsersController(AepUserRepository userRepo) {
+    public AdminAepUsersController(AepUserRepository userRepo,
+                                    PasswordEncoder passwordEncoder) {
         this.userRepo = userRepo;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**
@@ -64,14 +70,43 @@ public class AdminAepUsersController {
     @PatchMapping("/{id}/operator-role")
     @Transactional
     public ApiResponse<AepUserDto> updateOperatorRole(@PathVariable String id,
-                                                      @RequestBody Map<String, String> body) {
+                                                      @RequestBody Map<String, String> body,
+                                                      Principal principal) {
         AepUser user = userRepo.findById(id)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "用户不存在"));
+        // v0.37 self-protect：不允许把自己降级 / 改成 null（防止 OPERATOR 误操作锁死自己）
+        if (principal != null && id.equals(principal.getName())) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "OPERATOR_SELF_MODIFY",
+                    "不能修改自己的 operatorRole（请让其他超管处理）");
+        }
         String raw = body == null ? null : body.get("operatorRole");
         user.setOperatorRole(parseOperatorRole(raw));
         user.setUpdatedAt(Instant.now());
         userRepo.save(user);
         return ApiResponse.of(AepUserDto.from(user));
+    }
+
+    /**
+     * v0.37：超级管理员给 AepUser 设/重置密码。
+     * 用途：让 celebrity operator / SUPER_ADMIN 能用密码登 admin 后台
+     * （走 /api/admin/auth/operator-login）。
+     */
+    @PostMapping("/{id}/set-password")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Transactional
+    public ApiResponse<Map<String, Object>> setPassword(@PathVariable String id,
+                                                         @RequestBody Map<String, String> body) {
+        String password = body == null ? null : body.get("password");
+        if (password == null || password.length() < 6) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PASSWORD_TOO_SHORT",
+                    "密码至少 6 位");
+        }
+        AepUser user = userRepo.findById(id)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "用户不存在"));
+        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setUpdatedAt(Instant.now());
+        userRepo.save(user);
+        return ApiResponse.of(Map.of("ok", true, "userId", user.getId()));
     }
 
     private static AepUser.OperatorRole parseOperatorRole(String raw) {

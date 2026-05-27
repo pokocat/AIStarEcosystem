@@ -53,6 +53,7 @@ public class AepSecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
                         .requestMatchers("/api/admin/auth/login").permitAll()
+                        .requestMatchers("/api/admin/auth/operator-login").permitAll() // v0.37 平台运营登录
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
