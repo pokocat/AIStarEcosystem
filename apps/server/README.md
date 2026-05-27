@@ -57,7 +57,9 @@ mvn spring-boot:run
 mysql -u root -p -e "CREATE DATABASE aistareco CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # 2. 启动（指定 mysql profile）
-mvn spring-boot:run -Dspring.profiles.active=mysql
+# ⚠️ Spring Boot 3.x maven plugin 用 -Dspring-boot.run.profiles（dash 不是 dot）
+#    旧写法 -Dspring.profiles.active=mysql 在 3.x 不生效，会回退到 dev profile + H2
+mvn spring-boot:run -Dspring-boot.run.profiles=mysql
 ```
 
 **v0.34+ 本地用 mysql profile 联调的最小 env 集**（必须 export 后再 mvn 启动，否则
@@ -67,7 +69,7 @@ JwtUtil / AepCryptoUtil 启动时 fail-fast 抛 IllegalStateException）：
 export AEP_JWT_SECRET='dev-local-jwt-secret-≥32-chars-aaaaaaaa'   # 至少 32 字符
 export AEP_SECRET_KEY='dev-local-aes-key-32bytes-bbbbbbbb'        # 任意 ≥1 字符，内部会 SHA-256 派生
 export AEP_SEED_DEV_DATA_ENABLED=true                              # 想要本地有 admin/admin123 等演示数据
-mvn spring-boot:run -Dspring.profiles.active=mysql
+mvn spring-boot:run -Dspring-boot.run.profiles=mysql
 ```
 
 为什么：mysql profile 被设计为「生产形态」，启动时拒绝 dev-default 密钥；上面三个 env
@@ -123,12 +125,13 @@ AEP_SEED_DEV_DATA_ENABLED=true java -jar ...   # 启动一次
 切换方式：
 
 ```bash
-# 方式一：命令行参数
-mvn spring-boot:run -Dspring.profiles.active=mysql
+# 方式一：spring-boot-maven-plugin 专属参数（注意 dash `-` 不是 dot `.`）
+# 旧写法 -Dspring.profiles.active=mysql 在 Spring Boot 3.x 不生效（plugin fork
+# 子进程不继承 JVM system property），会回退到 application.yml 的默认 dev profile
+mvn spring-boot:run -Dspring-boot.run.profiles=mysql
 
-# 方式二：环境变量
-export SPRING_PROFILES_ACTIVE=mysql
-mvn spring-boot:run
+# 方式二：环境变量（推荐，2.x / 3.x 都通）
+SPRING_PROFILES_ACTIVE=mysql mvn spring-boot:run
 
 # 方式三：修改 application.yml 中的 spring.profiles.active
 ```
