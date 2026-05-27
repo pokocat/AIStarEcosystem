@@ -18,6 +18,7 @@ import {
   Search,
   Send,
   ShoppingBag,
+  Sparkles,
   Star,
   Video,
 } from "lucide-react";
@@ -91,6 +92,8 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
         // v0.37+：合并「我的明星」/cast 入「明星市场」/market —— 同页面顶部就是「我的授权明星」section，
         // 数据源也对齐 admin DB（v0.34+ /api/celebrity/stars）。
         { icon: Star, label: "明星市场", href: "/market", selected: isExact("/market") },
+        // v0.37+：「快速生成」入口外放 —— 直接列已授权明星 → /star/{id}/generate
+        { icon: Sparkles, label: "快速生成", href: "/generate", selected: isExact("/generate") },
       ],
     },
     {
@@ -129,6 +132,7 @@ function CrumbsFromPathname(pathname: string): string[] {
   const TAB_LABEL: Record<string, string> = {
     "/dashboard": "今日",
     "/market": "明星市场",
+    "/generate": "快速生成",
     "/projects": "我的项目",
     "/library": "视频中心",
     "/products": "商品库",
