@@ -30,3 +30,6 @@ apps/miniprogram/config/env.*.js
 infra/env/*.env
 !infra/env/*.env.example
 infra/.local/
+
+# v0.34.x dev-server.sh --log 写到这里（包含完整 SQL / stack trace，不入 git）
+/logs/
