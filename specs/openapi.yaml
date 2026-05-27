@@ -4909,6 +4909,11 @@ paths:
     get: { tags: [admin-celebrity], operationId: adminGetCelebrityEnginePricing, responses: { '200': { description: ok } } }
     put: { tags: [admin-celebrity], operationId: adminReplaceCelebrityEnginePricing, responses: { '200': { description: ok } } }
 
+  # ── v0.35：动作级权益扣减单价（celebrity.action-pricing） ───────────────────
+  /admin/celebrity/action-pricing:
+    get: { tags: [admin-celebrity], operationId: adminGetCelebrityActionPricing, responses: { '200': { description: ok } } }
+    put: { tags: [admin-celebrity], operationId: adminReplaceCelebrityActionPricing, responses: { '200': { description: ok } } }
+
   # ── 授权关系 CRUD + 状态机（v0.5 §D3 新增） ──────────────────────────
   /admin/celebrity/star-authorizations:
     get:

@@ -1,6 +1,7 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.*;
+import com.aistareco.aep.service.CelebrityActionPricingService;
 import com.aistareco.aep.service.CelebrityZoneService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
@@ -12,6 +13,7 @@ import java.util.Map;
 /**
  * Admin 侧 AI 明星专区运营：/api/admin/celebrity/*。
  * v0.5：补齐 CRUD（明星 / 模板 / 资料图集 / 视频 / 引擎价）。
+ * v0.35：加 action-pricing 端点（动作级权益扣减配置）。
  * 由 AepSecurityConfig 强制管理员角色（SUPER_ADMIN / OPERATOR）。
  */
 @RestController
@@ -19,9 +21,12 @@ import java.util.Map;
 public class AdminCelebrityController {
 
     private final CelebrityZoneService service;
+    private final CelebrityActionPricingService actionPricing;
 
-    public AdminCelebrityController(CelebrityZoneService service) {
+    public AdminCelebrityController(CelebrityZoneService service,
+                                     CelebrityActionPricingService actionPricing) {
         this.service = service;
+        this.actionPricing = actionPricing;
     }
 
     // ── Stars 读 ────────────────────────────────────────────────────────────
@@ -146,5 +151,17 @@ public class AdminCelebrityController {
     public ApiResponse<Map<String, EnginePricingDto>> replaceEnginePricing(
             @RequestBody Map<String, EnginePricingDto> next) {
         return ApiResponse.of(service.adminReplaceEnginePricing(next));
+    }
+
+    // ── v0.35：动作级权益扣减单价（PlatformConfig key=celebrity.action-pricing）─────
+    @GetMapping("/action-pricing")
+    public ApiResponse<Map<String, ActionPricingDto>> actionPricing() {
+        return ApiResponse.of(actionPricing.getAll());
+    }
+
+    @PutMapping("/action-pricing")
+    public ApiResponse<Map<String, ActionPricingDto>> replaceActionPricing(
+            @RequestBody Map<String, ActionPricingDto> next) {
+        return ApiResponse.of(actionPricing.replaceAll(next));
     }
 }

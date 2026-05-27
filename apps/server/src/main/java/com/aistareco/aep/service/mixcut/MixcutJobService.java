@@ -49,6 +49,7 @@ public class MixcutJobService {
     private final MixcutAssetRepository assetRepo;
     private final ObjectMapper mapper;
     private final MixcutRenderingService rendering;
+    private final com.aistareco.aep.service.CelebrityActionPricingService actionPricing;
     private final ProductService productService;
     private final CreditService creditService;
     private final PlatformConfigService platformConfig;
@@ -61,7 +62,8 @@ public class MixcutJobService {
             MixcutRenderingService rendering,
             ProductService productService,
             CreditService creditService,
-            PlatformConfigService platformConfig
+            PlatformConfigService platformConfig,
+            com.aistareco.aep.service.CelebrityActionPricingService actionPricing
     ) {
         this.jobRepo = jobRepo;
         this.outputRepo = outputRepo;
@@ -69,12 +71,21 @@ public class MixcutJobService {
         this.mapper = mapper;
         this.rendering = rendering;
         this.productService = productService;
+        this.actionPricing = actionPricing;
         this.creditService = creditService;
         this.platformConfig = platformConfig;
     }
 
-    /** 当前单变体成本（PlatformConfig 缺省 → MIXCUT_PER_VARIANT_COST_DEFAULT）。 */
+    /**
+     * 当前单变体成本（积分）。
+     * v0.35：优先 CelebrityActionPricingService action="mixcut.generate"；
+     *        缺失则回退到老 PlatformConfig key {@code mixcut.credit-per-variant}；
+     *        再缺失回退到 MIXCUT_PER_VARIANT_COST_DEFAULT。
+     */
     public long currentPerVariantCost() {
+        Long fromAction = actionPricing.creditPriceOf(
+                com.aistareco.aep.service.CelebrityActionPricingService.ACTION_MIXCUT_GENERATE);
+        if (fromAction != null && fromAction > 0) return fromAction;
         long v = platformConfig.getLong(MIXCUT_PER_VARIANT_COST_KEY, MIXCUT_PER_VARIANT_COST_DEFAULT);
         return v > 0 ? v : MIXCUT_PER_VARIANT_COST_DEFAULT;
     }

@@ -178,3 +178,17 @@ export async function replaceEnginePricing(
 ): Promise<Record<string, { creditPrice: number; cost: number }>> {
   return apiFetch("/admin/celebrity/engine-pricing", { method: "PUT", body });
 }
+
+// ── v0.35：动作级权益扣减单价（PlatformConfig key=celebrity.action-pricing） ──
+export type ActionPricing = { creditPrice?: number | null; useEnginePricing?: boolean | null };
+
+/** GET /admin/celebrity/action-pricing */
+export async function getActionPricing(): Promise<Record<string, ActionPricing>> {
+  return apiFetch("/admin/celebrity/action-pricing");
+}
+/** PUT /admin/celebrity/action-pricing */
+export async function replaceActionPricing(
+  body: Record<string, ActionPricing>,
+): Promise<Record<string, ActionPricing>> {
+  return apiFetch("/admin/celebrity/action-pricing", { method: "PUT", body });
+}

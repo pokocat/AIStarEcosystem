@@ -984,6 +984,50 @@ web-celebrity:
 - **未涉及**：小程序的 wx.subscribeMessage / WebSocket（v0.6+）、Cookie SSO 跨子域（Phase 5）、
   K8s ACK（Phase 6）、MixcutAsset 上传 OSS 化（Phase 4）。
 
+### v0.35a（2026-05-27）— 动作级权益扣减配置（混剪生成 / 分发上传 / 视频生成）
+
+> celebrity 子产品迭代第二批。
+
+**背景**：v0.34 之前，celebrity 子产品权益扣减单价分散在两处：
+- 混剪生成走 PlatformConfig key `mixcut.credit-per-variant`（default 30）；
+- 分发上传走 application.yml `sau.default-upload-cost`（default 20）；
+- 视频生成走 EnginePricing 表（KeLing/HiGen/MiniMax 三引擎统一）。
+
+运营无法按业务动作细粒度配置。本版引入统一的「动作单价配置」入口。
+
+```
+server : 新 CelebrityActionPricingService（注 PlatformConfigService）
+       :   key = celebrity.action-pricing，JSON 结构：
+       :     { "mixcut.generate": { creditPrice: 30 },
+       :       "publish.upload":  { creditPrice: 20 },
+       :       "celebrity.video": { useEnginePricing: true } }
+       :   @PostConstruct seedIfAbsent → 首启灌默认；admin PUT 立即失效缓存
+       :   creditPriceOf(action) 返回 Long 或 null（null 表示「让调用方走自己的 fallback」）
+       : 新 ActionPricingDto record { Long creditPrice, Boolean useEnginePricing }
+       : MixcutJobService.currentPerVariantCost 优先 actionPricing("mixcut.generate")
+       :   缺失 → 回退到老 PlatformConfig key `mixcut.credit-per-variant`
+       :   再缺失 → MIXCUT_PER_VARIANT_COST_DEFAULT
+       : PublishJobService 新增 currentUploadCost() 同 pattern：
+       :   优先 actionPricing("publish.upload")，缺失回退到 sau.default-upload-cost
+       : AdminCelebrityController +GET/PUT /api/admin/celebrity/action-pricing
+
+admin  : api/celebrity-zone.ts +getActionPricing / +replaceActionPricing + ActionPricing 类型
+       : /celebrity/engine-pricing 改造为双 Tab：
+       :   - 「动作单价（v0.35）」：3 行 mixcut.generate / publish.upload / celebrity.video，
+       :     可输入 creditPrice 或勾选「沿用引擎价」（仅 celebrity.video 允许）
+       :   - 「引擎单价」：原 v0.5 KeLing / HiGen / MiniMax 表，行为不变
+
+openapi: +/admin/celebrity/action-pricing (GET/PUT) path 骨架
+```
+
+**注意事项**：
+
+- **积分账本不可变约束**（CLAUDE.md §4.2）：扣点链路完全沿用既有 `CreditService.hold/commitHold/releaseHold` 三段式；本版只改「单价从哪里读」，不动 LedgerEntry 写入路径。
+- **向后兼容三层 fallback**：CelebrityActionPricingService 缺值 → 老 PlatformConfig key → 代码内 default。运营不动配置时行为与 v0.34 完全一致；老 dev/H2 lite 数据无破坏。
+- **缓存一致性**：`AtomicReference<Cache>` 1min TTL；admin PUT 后立即失效。沿用 EnginePricing 的 v0.33 pattern。
+- **action 命名约定**：`<domain>.<verb>`（如 `mixcut.generate` / `publish.upload`）。后续扩展按需追加 `celebrity.template-purchase` 等动作。
+- **未做**：(a) 按用户 / 工作室 / 明星粒度差异化定价（v0.37+ 候选）；(b) `celebrity.video` 的真扣费链路（v0.34 没接 hold/commit，本版只把单价入口准备好）；(c) 分发 perTargetPrice 累乘（接口预留但 service 未消费）。
+
 ### v0.34a（2026-05-26）— Stars 写入闭环 + Celebrity 工厂模板（运营初始化能力补齐）
 
 > 与同期上游 v0.34（部署架构）并行的 celebrity 子产品迭代。

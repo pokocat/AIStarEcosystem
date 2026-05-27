@@ -63,6 +63,7 @@ public class PublishJobService {
     private final SocialAccountSecretService secret;
     private final SauServiceClient sau;
     private final CreditService creditService;
+    private final CelebrityActionPricingService actionPricing;
     private final String internalSecret;
     private final String selfBaseUrl;
     private final long defaultUploadCost;
@@ -73,6 +74,7 @@ public class PublishJobService {
                               SocialAccountSecretService secret,
                               SauServiceClient sau,
                               CreditService creditService,
+                              CelebrityActionPricingService actionPricing,
                               @Value("${aep.internal.secret:aep-dev-internal-secret-change-in-prod}") String internalSecret,
                               @Value("${sau.callback-base-url:http://localhost:8080/api/internal/sau}") String selfBaseUrl,
                               @Value("${sau.default-upload-cost:20}") long defaultUploadCost) {
@@ -82,9 +84,22 @@ public class PublishJobService {
         this.secret = secret;
         this.sau = sau;
         this.creditService = creditService;
+        this.actionPricing = actionPricing;
         this.internalSecret = internalSecret;
         this.selfBaseUrl = selfBaseUrl;
         this.defaultUploadCost = defaultUploadCost;
+    }
+
+    /**
+     * 单任务上传扣点。
+     * v0.35：优先 CelebrityActionPricingService action="publish.upload"；
+     *        缺失则回退到 application.yml {@code sau.default-upload-cost}。
+     */
+    private long currentUploadCost() {
+        Long fromAction = actionPricing.creditPriceOf(
+                CelebrityActionPricingService.ACTION_PUBLISH_UPLOAD);
+        if (fromAction != null && fromAction > 0) return fromAction;
+        return defaultUploadCost;
     }
 
     // ── list / get ──────────────────────────────────────────────────────
@@ -247,8 +262,9 @@ public class PublishJobService {
             return PublishJobDto.from(job);
         }
 
-        long cost = defaultUploadCost; // 后续可按 platform 读 PlatformConfig
+        long cost = currentUploadCost();
         // v0.33+: hold 替代 debit。任务终态 LIVE → commit；FAILED / CANCELLED → release。
+        // v0.35+: cost 来源走 CelebrityActionPricingService（action="publish.upload"），fallback 旧 default。
         // 402 PAYMENT_REQUIRED 时事务回滚，任务保持 queued。
         creditService.hold(userId, cost, "publish_job_upload", job.getId(),
                 "发布任务上传 - " + account.getPlatform().wire() + " - " + job.getTitle());
