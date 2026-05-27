@@ -50,7 +50,7 @@ export default function MixcutHomePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">混剪工作台</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            选模板 · 填素材 · 一次生成多条差异化短视频
+            选模板，填素材，一次生成多条不同版本的短视频。
           </p>
         </div>
         <div className="grid grid-cols-[auto_auto] items-stretch gap-3">
@@ -73,7 +73,7 @@ export default function MixcutHomePage() {
             <div>
               <div className="text-sm font-medium">继续上次进度</div>
               <div className="text-xs text-muted-foreground mt-0.5">
-                {recentJobs.length > 0 ? `最近 ${recentJobs.length} 个生成任务` : "暂无生成任务"}
+                {recentJobs.length > 0 ? `最近 ${recentJobs.length} 个生成任务` : "还没有生成任务"}
               </div>
             </div>
             <Button variant="ghost" size="sm" asChild>
@@ -113,11 +113,11 @@ export default function MixcutHomePage() {
             ))}
             {recentJobs.length === 0 && (
               <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-                还没有任务,去
+                还没有生成任务，先去
                 <Link href="/mixcut/templates" className="text-foreground underline mx-1">
                   模板库
                 </Link>
-                开始第一个吧
+                挑一个模板开始
               </div>
             )}
           </div>
@@ -238,9 +238,9 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { variant: any; label: string; icon: any }> = {
     success: { variant: "success", label: "已完成", icon: CheckCircle2 },
     running: { variant: "default", label: "生成中", icon: Clock },
-    queued: { variant: "muted", label: "排队中", icon: Clock },
-    failed: { variant: "danger", label: "失败", icon: AlertCircle },
-    pending: { variant: "muted", label: "待处理", icon: Clock },
+    queued: { variant: "muted", label: "等待中", icon: Clock },
+    failed: { variant: "danger", label: "未成功", icon: AlertCircle },
+    pending: { variant: "muted", label: "准备中", icon: Clock },
     partial: { variant: "warning", label: "部分完成", icon: AlertCircle },
   };
   const info = map[status] || map.pending;

@@ -299,7 +299,7 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
       setParseHint({ matched, ignored });
       setMode("manual");
     } catch (e) {
-      setFileError(e instanceof Error ? e.message : "文件解析失败");
+      setFileError(e instanceof Error ? e.message : "文件无法读取");
     } finally {
       setParsingFile(false);
     }
@@ -331,22 +331,22 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] max-w-[1280px] sm:max-w-[1280px] max-h-[92vh] overflow-y-auto border-zinc-200 bg-white text-zinc-900 shadow-[var(--shadow-pop)]">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold">批量录入商品</DialogTitle>
+          <DialogTitle className="text-base font-semibold">批量导入商品</DialogTitle>
           <DialogDescription className="text-xs text-zinc-500">
-            手动逐行、Excel 复制粘贴、CSV/Excel 文件上传 三选一；解析后会落到下方编辑表，提交前可自由微调。
+            三种方式任选其一：逐行填写、粘贴 Excel、上传文件。导入后会显示到下方表格，提交前可自由调整。
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)} className="w-full">
           <TabsList className="w-full grid grid-cols-3">
             <TabsTrigger value="manual" className="text-xs gap-1.5">
-              <Plus className="size-3.5" /> 手动录入
+              <Plus className="size-3.5" /> 逐项填写
             </TabsTrigger>
             <TabsTrigger value="paste" className="text-xs gap-1.5">
               <ClipboardPaste className="size-3.5" /> 粘贴 Excel
             </TabsTrigger>
             <TabsTrigger value="file" className="text-xs gap-1.5">
-              <FileSpreadsheet className="size-3.5" /> 文件上传
+              <FileSpreadsheet className="size-3.5" /> 上传文件
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -378,7 +378,7 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
               />
               <div className="flex justify-end">
                 <button type="button" className={CTA_SECONDARY} onClick={handlePasteParse}>
-                  <ClipboardPaste className="size-3.5" /> 解析到表格 →
+                  <ClipboardPaste className="size-3.5" /> 导入到表格 →
                 </button>
               </div>
             </div>
@@ -394,7 +394,7 @@ export function ProductBatchImportDialog({ open, onOpenChange, onSubmit, onSaved
               </div>
               <label className={cn(CTA_PRIMARY, "cursor-pointer", parsingFile && "opacity-50 pointer-events-none")}>
                 {parsingFile ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-                {parsingFile ? "解析中…" : "选择文件…"}
+                {parsingFile ? "正在处理…" : "选择文件…"}
                 <input
                   type="file"
                   accept=".xlsx,.xls,.csv,.tsv,.txt"

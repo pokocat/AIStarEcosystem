@@ -32,6 +32,36 @@ export interface BatchPublishItem {
   thumbnail_url?: string;
 }
 
+/**
+ * 记住用户上次分发用的账号 id。每次发起分发成功时写入，下次打开抽屉时按当前可用账号
+ * 过滤后预选。让"复用同一组账号每天发"这类高频场景免去重复勾选 N 次的负担。
+ *
+ * 仅写 active 账号 id；恢复时按 id in accounts 过滤，账号被解绑 / 失效 → 自动忽略。
+ * 用户当次手动改了选择 → 不影响下次（只有成功分发后才覆盖记忆）。
+ */
+const LAST_ACCOUNTS_KEY = "aep:publish:last-account-ids";
+
+function readLastAccountIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LAST_ACCOUNTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLastAccountIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAST_ACCOUNTS_KEY, JSON.stringify(ids));
+  } catch {
+    /* localStorage 不可用 / 配额满 → 静默 */
+  }
+}
+
 interface Props {
   /** 可选：单任务上下文（详情页用）。提供时自动推导 items 与 defaultTitle。 */
   job?: RenderJob;
@@ -147,6 +177,23 @@ export function BatchPublishDrawer({
     setProductPickerOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /**
+   * 抽屉打开 + 账号加载完成后，按 localStorage 里上次成功分发的账号 id 预选。
+   * 仅在用户当次还没勾任何账号时填充（不覆盖用户主动选择）。账号已失效 / 解绑 → 自动跳过。
+   * 让"日常重复发到同一组账号"的运营人员省下每次手动勾选的步骤。
+   */
+  useEffect(() => {
+    if (!open) return;
+    if (loadingAccounts) return;
+    if (selectedAccountIds.length > 0) return;
+    const remembered = readLastAccountIds();
+    if (remembered.length === 0) return;
+    const stillValid = remembered.filter((id) => accounts.some((a) => a.id === id));
+    if (stillValid.length > 0) {
+      setSelectedAccountIds(stillValid);
+    }
+  }, [open, loadingAccounts, accounts, selectedAccountIds.length]);
 
   /**
    * v0.26+: 商品挂载自动带入。
@@ -269,6 +316,8 @@ export function BatchPublishDrawer({
         product_link: carryProduct ? productLinkTrimmed : undefined,
         product_title: carryProduct ? productTitleTrimmed : undefined,
       });
+      // 成功后记住这次的账号选择，下次打开抽屉自动预选
+      writeLastAccountIds(selectedAccountIds);
       setResult(res);
       onPublished?.(res);
     } catch (e) {
@@ -371,7 +420,7 @@ export function BatchPublishDrawer({
                   <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 flex items-start gap-2">
                     <AlertCircle className="size-4 shrink-0 mt-0.5" />
                     <div>
-                      视频还在生成，请稍后再来。可以回到任务详情看进度。
+                      视频还在生成中，稍后再来。也可以查看任务详情了解进度。
                     </div>
                   </div>
                 ) : (
@@ -410,7 +459,7 @@ export function BatchPublishDrawer({
                 )}
                 {skippedCount > 0 && (
                   <p className="text-[11px] text-muted-foreground mt-1.5">
-                    另有 {skippedCount} 条还没生成完成，已跳过
+                    另有 {skippedCount} 条还在生成中，已跳过
                   </p>
                 )}
               </section>
@@ -442,23 +491,23 @@ export function BatchPublishDrawer({
                 {loadingAccounts ? (
                   <div className="text-xs text-muted-foreground py-4 text-center">
                     <Loader2 className="size-3 inline animate-spin mr-1" />
-                    加载账号中…
+                    正在加载账号…
                   </div>
                 ) : accountsError ? (
-                  <div className="text-xs text-rose-500">加载失败：{accountsError}</div>
+                  <div className="text-xs text-rose-500">账号加载失败：{accountsError}</div>
                 ) : accounts.length === 0 ? (
                   <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3">
                     {allAccounts.length === 0 ? (
                       <>
-                        还没有绑定任何账号。先到{" "}
+                        还没有绑定任何账号。先去{" "}
                         <a href="/distribution/accounts" className="underline">
                           账号管理
                         </a>{" "}
-                        绑定一个。
+                        绑一个账号。
                       </>
                     ) : (
                       <>
-                        当前 {allAccounts.length} 个账号都不可用（已失效 / 绑定中 / 被封禁）。请到{" "}
+                        当前 {allAccounts.length} 个账号都不可用（登录过期 / 绑定未完成 / 平台限制）。请去{" "}
                         <a href="/distribution/accounts" className="underline">
                           账号管理
                         </a>{" "}
@@ -499,7 +548,7 @@ export function BatchPublishDrawer({
                     </ul>
                     {unavailableCount > 0 && (
                       <p className="text-[11px] text-muted-foreground mt-1.5">
-                        另有 {unavailableCount} 个账号当前不可用（已失效 / 绑定中），可到{" "}
+                        另有 {unavailableCount} 个账号当前不可用（登录过期 / 绑定未完成），可去{" "}
                         <a href="/distribution/accounts" className="underline">
                           账号管理
                         </a>{" "}
@@ -585,8 +634,7 @@ export function BatchPublishDrawer({
                     </div>
                   )}
                   <p className="text-[11px] text-muted-foreground -mt-1">
-                    蓝V / 橱窗带货；视频画面下方挂「立即购买」卡片。两项都填才会触发挂件；
-                    非抖音平台账号 sau-service 会自动忽略。
+                    在视频画面下方挂「立即购买」卡片，需开通蓝V或橱窗带货。两项都填才会显示；非抖音平台会自动忽略。
                   </p>
                   <div>
                     <label className="text-xs text-muted-foreground">商品链接</label>
@@ -610,11 +658,11 @@ export function BatchPublishDrawer({
                     />
                     {productTitle && !productLink ? (
                       <p className="mt-1 text-[11px] text-amber-600">
-                        该商品未填链接，挂件不会触发；到商品库补一下链接再来。
+                        缺少商品链接，挂件不会显示。可去商品库补充链接后再来。
                       </p>
                     ) : (
                       <p className="mt-1 text-[11px] text-muted-foreground">
-                        最长 50 字；将作为视频底部「立即购买」按钮上方的商品标题展示。
+                        最长 50 字，将显示在视频底部「立即购买」按钮上方。
                       </p>
                     )}
                   </div>
@@ -664,7 +712,7 @@ export function BatchPublishDrawer({
           ) : (
             <>
               <div className="text-xs text-muted-foreground">
-                共 <span className="font-mono font-semibold text-foreground">{totalJobs}</span> 条分发任务
+                将创建 <span className="font-mono font-semibold text-foreground">{totalJobs}</span> 条分发任务
               </div>
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={onClose} disabled={submitting}>
@@ -707,21 +755,21 @@ function ResultSummary({ result }: { result: MixcutApi.MixcutPublishBatchResult 
     <div className="space-y-3">
       <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3">
         <div className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-          已成功提交 {successCount} 条分发
+          {successCount} 条视频已开始分发
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          可到 <a href="/distribution/jobs" className="underline">分发进度</a> 查看实时状态。
+          可去 <a href="/distribution/jobs" className="underline">分发进度</a> 查看实时状态。
         </p>
       </div>
       {failedCount > 0 && (
         <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-3 space-y-1">
           <div className="text-sm font-medium text-rose-600 dark:text-rose-400">
-            {failedCount} 条失败
+            {failedCount} 条未成功
           </div>
           <ul className="text-xs text-muted-foreground space-y-0.5">
             {result.failed_items.map((f, i) => (
               <li key={i}>
-                <span className="font-mono">{f.output_id ?? "?"}</span>: {f.reason}
+                {f.reason}
                 {f.detail ? ` — ${f.detail}` : ""}
               </li>
             ))}
@@ -729,7 +777,7 @@ function ResultSummary({ result }: { result: MixcutApi.MixcutPublishBatchResult 
         </div>
       )}
       <div className="text-[11px] text-muted-foreground">
-        共请求 {result.total_requested} 条；成功率 {successCount}/{result.total_requested}。
+        共 {result.total_requested} 条，{successCount} 条成功。
       </div>
     </div>
   );

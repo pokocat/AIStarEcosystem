@@ -129,8 +129,8 @@ export function BatchTrackingTab() {
   const handleCancel = async (batch: PublishBatchSummary) => {
     const ok = await confirm({
       title: `取消整批：${batch.displayTitle}`,
-      description: "批次里所有未完成的任务会被取消。已上线 / 已失败的任务不受影响。",
-      confirmText: "取消整批",
+      description: "批次里所有未完成的任务会被取消。已发布 / 已失败的任务不受影响。",
+      confirmText: "全部取消",
       tone: "danger",
     });
     if (!ok) return;
@@ -139,10 +139,10 @@ export function BatchTrackingTab() {
   const handleRetry = async (batch: PublishBatchSummary) => {
     const failed = batch.statusCounts.failed ?? 0;
     const ok = await confirm({
-      title: `重试失败：${batch.displayTitle}`,
+      title: `重试未成功的任务：${batch.displayTitle}`,
       description: (
         <>
-          将重试该批次里的 <b>{failed}</b> 个失败任务。每条会重新走扣费流程。
+          将重试该批次中 <b>{failed}</b> 条未成功的任务，每条会按平台单价重新扣积分。
         </>
       ),
       confirmText: "确认重试",
@@ -172,10 +172,10 @@ export function BatchTrackingTab() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="text-xs text-zinc-500">
           {loading
-            ? "加载中…"
+            ? "加载中"
             : total > 0
               ? `共 ${total} 个批次 · 第 ${page + 1} / ${totalPages} 页`
-              : "暂无批次"}
+              : "还没有分发批次"}
         </div>
         <button
           type="button"
@@ -228,13 +228,13 @@ export function BatchTrackingTab() {
       {loading ? (
         <div className="flex items-center justify-center py-12 text-sm text-zinc-400">
           <Loader2 className="size-4 animate-spin mr-2" />
-          加载中……
+          加载中
         </div>
       ) : content.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/50 p-10 text-center">
           <p className="text-sm text-zinc-600">还没有分发任务</p>
           <p className="text-xs text-zinc-400 mt-1">
-            去工作台挑选已生成的视频开始分发，或者用上传链接分发外部视频。
+            可去工作台挑选已生成的视频开始分发，或粘贴链接分发外部视频。
           </p>
         </div>
       ) : (
@@ -305,8 +305,8 @@ function buildRetryNotice(batch: PublishBatchSummary, jobs: PublishJob[]): Actio
     return {
       tone: "warning",
       message: requested > 0
-        ? `已请求重试 ${requested} 个失败任务，但后端没有返回可更新任务；请刷新后查看详情。`
-        : "当前批次没有可重试的失败任务。",
+        ? `已请求重试 ${requested} 条任务，暂时没有更新结果，请稍后刷新查看。`
+        : "这个批次没有可重试的任务。",
     };
   }
   const accountBlocked = jobs.filter(isAccountStateBlocked);
@@ -314,26 +314,26 @@ function buildRetryNotice(batch: PublishBatchSummary, jobs: PublishJob[]): Actio
   if (accountBlocked.length === jobs.length) {
     return {
       tone: "warning",
-      message: `已尝试重试 ${jobs.length} 个失败任务，但账号仍不可用或已解绑；请先重新绑定账号后再重试。`,
+      message: `重试 ${jobs.length} 条任务时账号都不可用；请先重新绑定账号后再重试。`,
       action: "accounts",
     };
   }
   if (accountBlocked.length > 0) {
     return {
       tone: "warning",
-      message: `已尝试重试 ${jobs.length} 个失败任务，其中 ${accountBlocked.length} 个因账号不可用未发起；其余任务已重新进入分发流程。`,
+      message: `重试 ${jobs.length} 条任务，其中 ${accountBlocked.length} 条因账号不可用未启动；其余已重新进入分发。`,
       action: "accounts",
     };
   }
   if (stillFailed.length === jobs.length) {
     return {
       tone: "warning",
-      message: `已尝试重试 ${jobs.length} 个失败任务，但任务仍然失败；请打开详情查看具体错误。`,
+      message: `重试 ${jobs.length} 条任务，但仍未成功；请打开详情查看具体原因。`,
     };
   }
   return {
     tone: "success",
-    message: `已发起重试 ${jobs.length} 个失败任务，页面会继续同步分发进度。`,
+    message: `已重新发起 ${jobs.length} 条任务的分发，进度会自动更新。`,
   };
 }
 

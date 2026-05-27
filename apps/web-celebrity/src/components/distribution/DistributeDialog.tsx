@@ -175,7 +175,7 @@ export function DistributeDialog({ open, onClose, project, videos, onCreated }: 
           {/* 1. video selector */}
           <Section title="选择视频" sub={`${candidates.length} 条候选`}>
             {candidates.length === 0 ? (
-              <EmptyHint>此项目暂无可分发的视频（需 videoUrl 已生成）</EmptyHint>
+              <EmptyHint>该项目还没有可分发的视频，请先生成视频</EmptyHint>
             ) : (
               <div className="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto">
                 {candidates.map((v) => (

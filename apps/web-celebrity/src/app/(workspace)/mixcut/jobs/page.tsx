@@ -28,9 +28,9 @@ import { cn, relativeTime } from "@/components/mixcut-zone/lib/utils";
 const STATUS_FILTERS: { value: "all" | JobStatus; label: string }[] = [
   { value: "all", label: "全部" },
   { value: "running", label: "生成中" },
-  { value: "queued", label: "排队中" },
+  { value: "queued", label: "等待中" },
   { value: "success", label: "已完成" },
-  { value: "failed", label: "失败" },
+  { value: "failed", label: "未成功" },
 ];
 
 export default function MixcutJobsPage() {
@@ -99,7 +99,7 @@ export default function MixcutJobsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">生成任务</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            管理您的生成历史 · 查看进度 · 下载成片 · 一键再生成
+            查看历史记录、进度，下载成片，一键再生成。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -110,7 +110,7 @@ export default function MixcutJobsPage() {
             aria-label="刷新任务列表"
             title={
               hasActive
-                ? "有任务在生成中,列表每 2.5 秒自动刷新"
+                ? "有任务正在生成，列表会自动更新"
                 : lastRefreshAt
                   ? `上次刷新 ${new Date(lastRefreshAt).toLocaleTimeString("zh-CN", { hour12: false })}`
                   : "刷新"
@@ -136,7 +136,7 @@ export default function MixcutJobsPage() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索任务 / 模板名…"
+                placeholder="搜索任务或模板"
                 className="pl-9"
               />
             </div>
@@ -216,15 +216,13 @@ function JobRow({ job }: { job: RenderJob }) {
               </div>
 
               <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                <span className="font-mono">{job.id.slice(0, 12)}…</span>
-                <span>·</span>
-                <span>{job.output_variants} 条</span>
+                <span>{job.output_variants} 条视频</span>
                 <span>·</span>
                 <span>{relativeTime(job.created_at)}</span>
                 {job.completed_at && (
                   <>
                     <span>·</span>
-                    <span>耗时 {Math.round((new Date(job.completed_at).getTime() - new Date(job.created_at).getTime()) / 1000)}s</span>
+                    <span>用时 {formatJobDuration(new Date(job.completed_at).getTime() - new Date(job.created_at).getTime())}</span>
                   </>
                 )}
               </div>
@@ -303,9 +301,9 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { variant: any; label: string; icon: any }> = {
     success: { variant: "success", label: "已完成", icon: CheckCircle2 },
     running: { variant: "default", label: "生成中", icon: Clock },
-    queued: { variant: "muted", label: "排队中", icon: Clock },
-    failed: { variant: "danger", label: "失败", icon: AlertCircle },
-    pending: { variant: "muted", label: "待处理", icon: Clock },
+    queued: { variant: "muted", label: "等待中", icon: Clock },
+    failed: { variant: "danger", label: "未成功", icon: AlertCircle },
+    pending: { variant: "muted", label: "准备中", icon: Clock },
   };
   const info = map[status] || map.pending;
   const Icon = info.icon;
@@ -315,4 +313,12 @@ function StatusBadge({ status }: { status: string }) {
       {info.label}
     </Badge>
   );
+}
+
+function formatJobDuration(ms: number): string {
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec} 秒`;
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  return remSec > 0 ? `${min} 分 ${remSec} 秒` : `${min} 分钟`;
 }

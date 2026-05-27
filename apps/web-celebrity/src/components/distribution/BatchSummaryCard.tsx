@@ -33,13 +33,13 @@ const SOURCE_BADGE: Record<PublishBatchSummary["source"], { label: string; cls: 
 };
 
 const STATUS_CHIP_META: Record<PublishJobStatus, { label: string; cls: string }> = {
-  queued:        { label: "排队",     cls: "bg-zinc-100 text-zinc-700" },
+  queued:        { label: "等待",     cls: "bg-zinc-100 text-zinc-700" },
   uploading:     { label: "上传",     cls: "bg-violet-100 text-violet-700" },
-  transcoding:   { label: "转码",     cls: "bg-indigo-100 text-indigo-700" },
+  transcoding:   { label: "处理",     cls: "bg-indigo-100 text-indigo-700" },
   publishing:    { label: "发布",     cls: "bg-sky-100 text-sky-700" },
-  awaiting_user: { label: "待验证码", cls: "bg-amber-100 text-amber-700" },
-  live:          { label: "已上线",   cls: "bg-emerald-100 text-emerald-700" },
-  failed:        { label: "失败",     cls: "bg-rose-100 text-rose-700" },
+  awaiting_user: { label: "需验证",   cls: "bg-amber-100 text-amber-700" },
+  live:          { label: "已发布",   cls: "bg-emerald-100 text-emerald-700" },
+  failed:        { label: "未成功",   cls: "bg-rose-100 text-rose-700" },
   cancelled:     { label: "已取消",   cls: "bg-zinc-100 text-zinc-500" },
 };
 
@@ -104,10 +104,10 @@ export function BatchSummaryCard({
       <div className="mt-3">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-xs text-zinc-600">
-            {liveCount}/{batch.totalJobs} 已上线
-            {failedCount > 0 && <span className="text-rose-600 ml-1">· {failedCount} 失败</span>}
+            {liveCount}/{batch.totalJobs} 已发布
+            {failedCount > 0 && <span className="text-rose-600 ml-1">· {failedCount} 未成功</span>}
           </span>
-          <span className="text-[11px] text-zinc-500 tabular-nums">已结束 {batch.progressPct}%</span>
+          <span className="text-[11px] text-zinc-500 tabular-nums">完成 {batch.progressPct}%</span>
         </div>
         <div
           className="mt-1 flex h-1.5 rounded-full bg-zinc-100 overflow-hidden"
@@ -143,7 +143,7 @@ export function BatchSummaryCard({
           ))}
       </div>
 
-      {/* 平台 + 调度区间 */}
+      {/* 平台 + 发布时间 */}
       <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-zinc-500">
         <div>
           <span className="text-zinc-400">平台：</span>
@@ -153,7 +153,7 @@ export function BatchSummaryCard({
         </div>
         <div className="flex items-center gap-1">
           <CalendarClock className="size-3 text-zinc-400" />
-          <span className="text-zinc-400">调度：</span>
+          <span className="text-zinc-400">发布时间：</span>
           {formatScheduleRange(batch.firstScheduledAt, batch.lastScheduledAt)}
         </div>
       </div>
@@ -165,42 +165,42 @@ export function BatchSummaryCard({
           className={cn(CTA_SECONDARY, "text-xs px-2.5 py-1.5")}
           disabled={!canCancel || busyAction !== null}
           onClick={onCancelBatch}
-          title={canCancel ? "取消所有未完成的任务" : "本批次没有可取消的任务"}
+          title={canCancel ? "取消所有未完成的任务" : "这个批次没有可取消的任务"}
         >
           {busyAction === "cancel" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <X className="h-3.5 w-3.5" />
           )}
-          取消整批
+          全部取消
         </button>
         <button
           type="button"
           className={cn(CTA_SECONDARY, "text-xs px-2.5 py-1.5")}
           disabled={!canRetryFailed || busyAction !== null}
           onClick={onRetryFailed}
-          title={canRetryFailed ? `重试 ${failedCount} 个失败任务` : "本批次没有失败任务"}
+          title={canRetryFailed ? `重试 ${failedCount} 条未成功的任务` : "这个批次没有未成功的任务"}
         >
           {busyAction === "retry" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <RotateCw className="h-3.5 w-3.5" />
           )}
-          重试失败 {canRetryFailed ? `(${failedCount})` : ""}
+          重试 {canRetryFailed ? `(${failedCount})` : ""}
         </button>
         <button
           type="button"
           className={cn(CTA_SECONDARY, "text-xs px-2.5 py-1.5")}
           disabled={!canReschedule || busyAction !== null}
           onClick={onReschedule}
-          title={canReschedule ? `重新调度 ${queuedCount} 个未开始任务` : "本批次没有待派单的任务"}
+          title={canReschedule ? `重新安排 ${queuedCount} 条还未开始的任务` : "这个批次没有可重新安排的任务"}
         >
           {busyAction === "reschedule" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <CalendarClock className="h-3.5 w-3.5" />
           )}
-          重新调度
+          改时间
         </button>
         <button
           type="button"

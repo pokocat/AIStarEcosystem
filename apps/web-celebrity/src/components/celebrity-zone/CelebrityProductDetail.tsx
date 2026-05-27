@@ -94,7 +94,7 @@ export function CelebrityProductDetail({ productId }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-sm text-zinc-500">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 加载中…
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 加载中
       </div>
     );
   }

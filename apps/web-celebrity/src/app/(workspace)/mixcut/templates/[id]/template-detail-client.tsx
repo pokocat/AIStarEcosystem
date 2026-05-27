@@ -805,7 +805,7 @@ export function TemplateDetailClient({
                 </Link>
               </Button>
             ) : (
-              <Button variant="default" size="default" disabled className="h-10 px-5" title="该模板暂无可填内容位，请先编辑添加">
+              <Button variant="default" size="default" disabled className="h-10 px-5" title="该模板还没有可填的内容位置，请先编辑添加">
                 使用此模板
               </Button>
             )}
@@ -1239,7 +1239,7 @@ function CanvasEditor({
           onChange={(v) => onChange({ height: v })}
         />
         <NumField
-          label="帧率 (fps)"
+          label="帧率"
           value={canvas.fps}
           min={15} max={60}
           onChange={(v) => onChange({ fps: v })}
@@ -1875,10 +1875,10 @@ function TemplateConfigBar({
       <span className="text-muted-foreground">/ 次</span>
       <Separator orientation="vertical" className="h-3" />
       <span className="inline-flex items-center gap-1 text-muted-foreground">
-        <span>差异阈值</span>
+        <span>变化下限</span>
         <span
           className="cursor-help inline-flex"
-          title="与原片越像分越低，越不像分越高。低于此阈值会自动重试以避免平台判重。"
+          title="每条视频与原片的差异程度，越高说明变化越大。低于此值时会自动再生成一遍，确保每条视频都足够独特。"
         >
           <Info className="size-3 opacity-60" />
         </span>
@@ -1889,7 +1889,6 @@ function TemplateConfigBar({
       <span className="font-mono font-medium text-foreground">
         {template.canvas.width}×{template.canvas.height}
       </span>
-      <span className="text-muted-foreground/70 font-mono">· {template.canvas.fps}fps</span>
     </div>
   );
 

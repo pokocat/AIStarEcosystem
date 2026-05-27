@@ -137,7 +137,7 @@ export function SmsInteractionDialog({ job, onClose, onSubmitted }: Props) {
               {Math.floor(remainingS / 60)}:{String(remainingS % 60).padStart(2, "0")}
             </span>
           </span>
-          <span>超时后任务自动失败，请重新派单</span>
+          <span>超时后此次分发会自动失败，需要重新发起</span>
         </div>
 
         {error && (

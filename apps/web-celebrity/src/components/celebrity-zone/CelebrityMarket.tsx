@@ -121,7 +121,7 @@ export function CelebrityMarket({ stars }: Props) {
 
         {filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-zinc-200 px-6 py-16 text-center text-sm text-zinc-500">
-            暂无符合该筛选条件的明星
+            没有符合筛选条件的明星
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">

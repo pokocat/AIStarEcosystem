@@ -27,15 +27,15 @@ export const TIER_COLORS: Record<Tier, string> = {
 };
 
 export const PROFILE_LABELS: Record<PerturbationProfile, string> = {
-  light: "轻度差异",
-  moderate: "适中差异",
-  aggressive: "高强差异",
+  light: "细微变化",
+  moderate: "均衡变化",
+  aggressive: "明显变化",
 };
 
 export const PROFILE_DESCRIPTIONS: Record<PerturbationProfile, string> = {
-  light: "颜色和速度做小幅微调,画面看起来几乎一样,出片最快。适合追求「看上去像同一条」的批量场景。",
-  moderate: "每条会做轻微的画面翻转、颜色调整和位置微调,既保证出片量、又能在平台算法面前显得是不同视频。推荐档。",
-  aggressive: "画面变化幅度最大,差异度最高,平台最不容易判重;但偶尔会牺牲一点观感,适合对去重要求极高的账号。",
+  light: "颜色和速度做小幅调整，每条视频看起来几乎一样，出片最快。适合「批量复用同一个版本」的场景。",
+  moderate: "每条视频会做轻微的画面翻转、颜色调整和位置微调，保证出片量的同时让每条都不一样。推荐档。",
+  aggressive: "画面变化幅度最大，每条视频差异明显；偶尔会牺牲一点观感，适合对独特性要求很高的账号。",
 };
 
 // ── 内容类型 / 填充方式 / 画面处理算子 友好标签 ─────────────────────────────

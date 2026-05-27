@@ -739,7 +739,7 @@ function EmptyState({
           </p>
         </>
       ) : (
-        <p className="text-sm text-zinc-700">暂无可分发的视频</p>
+        <p className="text-sm text-zinc-700">还没有可分发的视频</p>
       )}
     </div>
   );

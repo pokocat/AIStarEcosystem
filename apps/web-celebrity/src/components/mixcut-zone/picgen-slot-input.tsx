@@ -68,7 +68,7 @@ export function PicgenSlotInput({ slot, binding, onChange, canvasWidth, canvasHe
 
   const handlePreview = async () => {
     if (!title.trim()) {
-      setError("先填一个主标题");
+      setError("请先填写主标题");
       return;
     }
     setError(null);
@@ -95,11 +95,10 @@ export function PicgenSlotInput({ slot, binding, onChange, canvasWidth, canvasHe
       <div className="rounded-lg bg-gradient-to-br from-fuchsia-500/10 to-violet-500/10 border border-fuchsia-500/30 p-3">
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="size-4 text-fuchsia-400" />
-          <span className="text-sm font-medium">AI 文字图 · 每条自动换版式</span>
+          <span className="text-sm font-medium">AI 文字图 · 每条自动换样式</span>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          填一段文字，下面可以点生成预览看看大致效果。提交批量生成时，每条变体会随机换字体、配色和版式，
-          所以正式视频里的样子和预览不会完全一样 —— 这是有意为之的差异化机制。
+          填好文字后可点预览看效果。最终生成时每条视频的字体、配色和版式会有所不同，所以预览和成片不会完全一样 —— 这是为了让每条视频都更独特。
         </p>
       </div>
 
@@ -162,7 +161,7 @@ export function PicgenSlotInput({ slot, binding, onChange, canvasWidth, canvasHe
         </Button>
         {previewUrl && (
           <span className="text-[10px] text-muted-foreground">
-            ⓘ 仅为示意；正式渲染时每条会再随机一次
+            ⓘ 仅为参考，实际生成时每条会有所不同
           </span>
         )}
       </div>

@@ -90,7 +90,7 @@ export function CelebrityProductForm({
                   : "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400",
               )}
             >
-              <Sparkles className="h-3 w-3" /> {extracting ? "AI 抽取中…" : "AI 提取卖点"}
+              <Sparkles className="h-3 w-3" /> {extracting ? "提取中" : "AI 提取卖点"}
             </button>
           )}
         </div>

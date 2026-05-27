@@ -311,19 +311,19 @@ export function TemplatePreview({
 
         {isBlueprint && visualSlots.length === 0 && (
           <div className="absolute inset-0 grid place-items-center text-xs text-white/60">
-            空模板
+            还没有内容
           </div>
         )}
 
         {/* 画布信息 */}
         {showChrome && (
           <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur text-[10px] text-white/80 font-mono">
-            {template.canvas.width}×{template.canvas.height} · {template.canvas.duration}s · {template.canvas.fps}fps
+            {template.canvas.width}×{template.canvas.height} · {template.canvas.duration} 秒
           </div>
         )}
         {showChrome && variantSeed != null && (
           <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-violet-500/30 backdrop-blur text-[10px] text-violet-100 font-medium border border-violet-500/40">
-            变体 #{variantSeed + 1}
+            第 {variantSeed + 1} 条
           </div>
         )}
       </div>

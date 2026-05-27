@@ -187,7 +187,7 @@ export default function MixcutTemplatesPage() {
                 )}
                 {(t.metadata.hit_rate ?? 0) > 90 && (
                   <Badge variant="success" className="gap-1 text-[10px]">
-                    <ShieldCheck className="size-2.5" /> 不易判重
+                    <ShieldCheck className="size-2.5" /> 独特性高
                   </Badge>
                 )}
                 {t.metadata.tags.slice(0, 2).map((tag) => (

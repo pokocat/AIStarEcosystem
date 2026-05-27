@@ -142,7 +142,7 @@ export function JobDetailClient({ id }: { id: string }) {
                 title="点击查看原任务"
               >
                 <RefreshCw className="size-2.5" />
-                由 #{job.forked_from_job_id.slice(-6)} 重跑
+                由 #{job.forked_from_job_id.slice(-6)} 再生成
               </Link>
             )}
           </div>
@@ -168,7 +168,7 @@ export function JobDetailClient({ id }: { id: string }) {
           {completed && hasOutputs && (
             <>
               <Button variant="gradient" onClick={() => setPublishOpen(true)}>
-                <Send className="size-4" /> 批量发布
+                <Send className="size-4" /> 批量分发
               </Button>
               {/* v0.16: 引导用户认识统一出口 — 分发中心。 */}
               <Button variant="ghost" asChild>
@@ -187,16 +187,16 @@ export function JobDetailClient({ id }: { id: string }) {
             <Button
               variant={renderFailed ? "gradient" : "outline"}
               onClick={() => setRerunOpen(true)}
-              title="用同样的素材与配置再跑一次"
+              title="用同样的素材与配置再生成一批"
             >
-              <RefreshCw className="size-4" /> 重跑
+              <RefreshCw className="size-4" /> 再生成一批
             </Button>
           )}
           {renderFailed && (
             <Button
               variant="ghost"
               onClick={() => router.push(`/mixcut/create/${encodeURIComponent(job.template_id)}`)}
-              title="跳到 create 页，从模板默认值开始换一组素材重做"
+              title="基于模板默认值换一组素材，从头开始做"
             >
               换素材重做 →
             </Button>
@@ -223,7 +223,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </div>
               <div className="flex-1">
                 <div className="font-medium text-sm">
-                  {job.status === "queued" ? "排队中，稍候即可开始生成…" : "生成中…"}
+                  {job.status === "queued" ? "准备中，马上开始…" : "生成中…"}
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {progressStage(job.progress)} · 预计还需 {Math.max(1, Math.ceil((100 - job.progress) * 0.4))} 秒
@@ -263,11 +263,11 @@ export function JobDetailClient({ id }: { id: string }) {
           <CardContent className="p-5 flex items-start gap-3">
             <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <div className="font-medium text-sm text-red-400">生成失败</div>
+              <div className="font-medium text-sm text-red-400">生成未成功</div>
               <div className="text-xs text-muted-foreground mt-1">{job.error_message}</div>
               <div className="text-xs text-muted-foreground mt-2">
-                · 本次消耗的积分已自动退还
-                <br />· 您可以更换素材后重试,或联系客服
+                · 本次消耗的积分已自动退回到你的钱包
+                <br />· 可以更换素材后再试，或联系客服
               </div>
             </div>
             <Button
@@ -295,8 +295,8 @@ export function JobDetailClient({ id }: { id: string }) {
                   {stillRendering && (
                     <span
                       className="relative inline-flex h-1.5 w-1.5"
-                      aria-label="渲染中"
-                      title="还有变体在渲染中"
+                      aria-label="生成中"
+                      title="还有视频正在生成中"
                     >
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-500 opacity-75" />
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-500" />
@@ -304,10 +304,10 @@ export function JobDetailClient({ id }: { id: string }) {
                   )}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="bindings">内容明细</TabsTrigger>
-              <TabsTrigger value="perturbations">每条对照表</TabsTrigger>
-              <TabsTrigger value="phash">指纹对比</TabsTrigger>
-              <TabsTrigger value="watermark">版权水印</TabsTrigger>
+              <TabsTrigger value="bindings">素材明细</TabsTrigger>
+              <TabsTrigger value="perturbations">每条处理对比</TabsTrigger>
+              <TabsTrigger value="phash">差异分析</TabsTrigger>
+              <TabsTrigger value="watermark">水印保护</TabsTrigger>
             </TabsList>
 
             <TabsContent value="outputs">
@@ -322,7 +322,7 @@ export function JobDetailClient({ id }: { id: string }) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium">
-                            已完成 {outputs.length} / {totalExpected} 条，剩余 {pendingCount} 条渲染中…
+                            已完成 {outputs.length} / {totalExpected} 条，还有 {pendingCount} 条正在生成…
                           </div>
                           <div className="mt-1.5 h-1 rounded-full bg-secondary overflow-hidden">
                             <div
@@ -332,7 +332,7 @@ export function JobDetailClient({ id }: { id: string }) {
                           </div>
                         </div>
                         <div className="text-xs text-muted-foreground shrink-0 hidden sm:block">
-                          每条完成自动入列，无需刷新
+                          每条完成会立即显示
                         </div>
                       </CardContent>
                     </Card>
@@ -384,11 +384,11 @@ export function JobDetailClient({ id }: { id: string }) {
                                   <Stat label="与原片差异度" value={`${o.phash_distance_to_source} 分`} highlight={o.phash_distance_to_source >= 10} />
                                   <Stat label="文件大小" value={formatBytes(o.file_size)} />
                                   <Stat label="时长" value={`${o.duration} 秒`} />
-                                  <Stat label="防伪标识" value={shortHash(o.watermark_token, 10)} mono />
+                                  <Stat label="防伪水印" value={shortHash(o.watermark_token, 10)} mono />
                                 </div>
                                 <Separator />
                                 <div>
-                                  <div className="text-xs text-muted-foreground mb-2">本条做了哪些处理</div>
+                                  <div className="text-xs text-muted-foreground mb-2">这条做了哪些处理</div>
                                   <div className="flex flex-wrap gap-1.5">
                                     {Object.entries(o.applied_transforms).map(([k, v]) => {
                                       if (k === "slot_jitter" || k === "overlays_detail" || k === "segments_detail" || k === "overrides" || v == null || v === false) return null;
@@ -461,7 +461,7 @@ export function JobDetailClient({ id }: { id: string }) {
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent p-2 flex items-center justify-between">
                           <span className="text-[10px] text-white">第 {o.variant_index + 1} 条</span>
                           <Badge variant="success" className="text-[9px]">
-                            差异 {o.phash_distance_to_source}
+                            变化 {o.phash_distance_to_source}
                           </Badge>
                         </div>
                       </button>
@@ -487,10 +487,10 @@ export function JobDetailClient({ id }: { id: string }) {
                           </div>
                           <div className="flex-1">
                             <div className="font-medium text-sm">
-                              {outputsPending ? "渲染已完成，正在同步成片文件…" : "正在生成第一条，稍后自动出现"}
+                              {outputsPending ? "生成已完成，正在导出成片文件…" : "正在生成第一条，稍后自动出现"}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">
-                              共 {totalExpected} 条，每条完成会立即入列，无需刷新
+                              共 {totalExpected} 条，每条完成会立即显示
                             </div>
                           </div>
                         </div>
@@ -501,7 +501,7 @@ export function JobDetailClient({ id }: { id: string }) {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center text-muted-foreground text-sm">暂无成片</div>
+                      <div className="text-center text-muted-foreground text-sm">还没有成片</div>
                     )}
                   </CardContent>
                 </Card>
@@ -511,7 +511,7 @@ export function JobDetailClient({ id }: { id: string }) {
             <TabsContent value="bindings">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">每个内容位填的什么</CardTitle>
+                  <CardTitle className="text-base">每个位置填的什么</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {Object.entries(job.slot_bindings).map(([slotId, b]) => {
@@ -521,12 +521,12 @@ export function JobDetailClient({ id }: { id: string }) {
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium">{slot?.label || slotId}</div>
                           <div className="text-xs text-muted-foreground mt-0.5">
-                            {b.source === "input" && `手填文字:"${b.text}"`}
-                            {b.source === "library" && `从素材库:${(() => {
+                            {b.source === "input" && `手填文字："${b.text}"`}
+                            {b.source === "library" && `来自素材库：${(() => {
                               const s = mockStarClips.find((x) => x.id === b.asset_id);
                               return s ? s.star_name : "已选素材";
                             })()}`}
-                            {b.source === "upload" && `自己上传:${uploadBindingLabel(b)}`}
+                            {b.source === "upload" && `自己上传：${uploadBindingLabel(b)}`}
                             {b.source === "fixed" && "系统自动填充"}
                           </div>
                         </div>
@@ -541,14 +541,14 @@ export function JobDetailClient({ id }: { id: string }) {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center justify-between">
-                    <span>每条做了什么处理</span>
+                    <span>每条视频应用的处理</span>
                     {stillRendering && (
                       <span className="text-[11px] font-normal text-muted-foreground inline-flex items-center gap-1.5">
                         <span className="relative inline-flex h-1.5 w-1.5">
                           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-500 opacity-75" />
                           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-500" />
                         </span>
-                        渲染中 {outputs.length}/{totalExpected}
+                        生成中 {outputs.length}/{totalExpected}
                       </span>
                     )}
                   </CardTitle>
@@ -595,7 +595,7 @@ export function JobDetailClient({ id }: { id: string }) {
                                 <td className="py-2 px-2" colSpan={5}>
                                   <span className="inline-flex items-center gap-1.5">
                                     <Wand2 className="size-3 animate-pulse" />
-                                    渲染中…
+                                    生成中
                                   </span>
                                 </td>
                                 <td className="py-2 px-2">
@@ -608,7 +608,7 @@ export function JobDetailClient({ id }: { id: string }) {
                     </div>
                   ) : (
                     <div className="text-center text-muted-foreground text-sm py-6">
-                      {outputsPending ? "渲染已完成,正在同步成片文件…" : "等待生成完成…"}
+                      {outputsPending ? "生成已完成，正在导出成片…" : "等待生成完成…"}
                     </div>
                   )}
                 </CardContent>
@@ -629,13 +629,13 @@ export function JobDetailClient({ id }: { id: string }) {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="text-sm text-muted-foreground">
-                    每条成片都嵌入三层水印,出现盗用或维权时可作为归属证据。
+                    每条成片都嵌入三层水印，遇到盗用或维权时可作为归属证据。
                   </div>
                   <div className="space-y-2">
                     {[
-                      { title: "视频文件标记", desc: "藏在视频文件的隐藏信息里,正常播放不显示", level: "肉眼不可见" },
-                      { title: "画面角标", desc: "右下角微小标识,几乎察觉不到", level: "肉眼几乎不可见" },
-                      { title: "文件指纹", desc: "成片在后台留底,有纠纷可一键比对", level: "后台留底" },
+                      { title: "视频文件标记", desc: "藏在视频文件的隐藏信息里，正常播放看不到", level: "肉眼不可见" },
+                      { title: "画面角标", desc: "右下角的微小标识，几乎察觉不到", level: "肉眼几乎不可见" },
+                      { title: "文件指纹", desc: "成片在后台留有记录，有纠纷可一键比对", level: "后台留底" },
                     ].map((l) => (
                       <div key={l.title} className="p-3 rounded-lg border border-border flex items-center gap-3">
                         <div className="size-9 rounded-lg bg-emerald-500/10 grid place-items-center">
@@ -721,7 +721,7 @@ function Row({ icon: Icon, label, children }: { icon?: any; label: string; child
 }
 
 const STAGES = [
-  { label: "读取模板", desc: "检查内容位是否齐全" },
+  { label: "读取模板", desc: "检查素材位置是否齐全" },
   { label: "拉取素材", desc: "下载明星片段、商品图等" },
   { label: "合成与处理", desc: "拼接并生成多条版本" },
   { label: "加水印 · 收尾", desc: "嵌入版权水印、生成预览图" },
@@ -767,10 +767,10 @@ function formatSaturation(v?: number): string {
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { variant: any; label: string; icon: any }> = {
     success: { variant: "success", label: "已完成", icon: CheckCircle2 },
-    running: { variant: "default", label: "渲染中", icon: Clock },
-    queued: { variant: "muted", label: "排队中", icon: Clock },
-    failed: { variant: "danger", label: "失败", icon: AlertCircle },
-    pending: { variant: "muted", label: "待处理", icon: Clock },
+    running: { variant: "default", label: "生成中", icon: Clock },
+    queued: { variant: "muted", label: "等待中", icon: Clock },
+    failed: { variant: "danger", label: "未成功", icon: AlertCircle },
+    pending: { variant: "muted", label: "准备中", icon: Clock },
   };
   const info = map[status] || map.pending;
   const Icon = info.icon;
@@ -854,7 +854,7 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
     return (
       <Card>
         <CardContent className="p-12 text-center text-muted-foreground text-sm">
-          等待渲染完成后才能比对指纹。
+          等视频生成完成后，这里会显示与原片的差异分析。
         </CardContent>
       </Card>
     );
@@ -863,7 +863,7 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
     return (
       <Card>
         <CardContent className="p-12 text-center text-muted-foreground text-sm">
-          原片指纹未生成（早期任务或后端跳过了 phash 计算）。重新生成一批即可看到对比。
+          这个任务不支持差异分析（该功能在较早的任务上暂不可用），再生成一批即可看到对比。
         </CardContent>
       </Card>
     );
@@ -884,21 +884,20 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Fingerprint className="size-4 text-violet-500" />
-          原片 vs 成片视觉指纹
+          原片与成片的视觉对比
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
         <p className="text-xs text-muted-foreground leading-relaxed">
-          每张视频经过 <span className="font-mono">aHash</span> 算法压成 <strong>8×8 = 64 位</strong>{" "}
-          的画面亮度指纹。深格 = 这块区域亮度高于全图平均,浅格 = 低于平均。
-          下面每条成片的 <span className="text-red-500 font-medium">红色高亮</span>{" "}
-          表示与原片不同的比特,数量越多说明画面差异越大。
+          每个视频都有一个 8×8 = 64 格的画面亮度图。深格 = 比平均更亮的区域，浅格 = 比平均更暗。下面每条成片的
+          <span className="text-red-500 font-medium"> 红色高亮 </span>
+          表示与原片不同的格子，数量越多说明画面变化越大。
         </p>
 
         {/* 原片 */}
         <div className="rounded-lg border border-border bg-secondary/30 p-4">
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-            <div className="text-sm font-medium">原片指纹</div>
+            <div className="text-sm font-medium">原片画面图</div>
             <code className="text-[10px] font-mono text-muted-foreground select-all">{source}</code>
           </div>
           <PhashGrid bits={hexToBits(source)} />
@@ -909,7 +908,7 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
           <div className="text-xs font-medium text-muted-foreground">
             {outputs.length <= 3
               ? `全部 ${outputs.length} 条对比`
-              : `展示差异最低 / 中位 / 最高三条（共 ${outputs.length} 条）`}
+              : `展示变化最小 / 中等 / 最大三条（共 ${outputs.length} 条）`}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {picks.map(({ o, originalIndex }) => {
@@ -936,7 +935,7 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
                       variant={tone === "high" ? "success" : tone === "mid" ? "warning" : "danger"}
                       className="text-[10px]"
                     >
-                      差异 {distance}/64
+                      变化 {distance}/64
                     </Badge>
                   </div>
                   {variantBits ? (
@@ -949,7 +948,7 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
                     </>
                   ) : (
                     <div className="aspect-square grid place-items-center text-[10px] text-muted-foreground">
-                      指纹不可用
+                      无法显示对比
                     </div>
                   )}
                 </div>
@@ -962,11 +961,11 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
         {outputs.length > 3 && (
           <div className="rounded-lg border border-border p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-medium">{outputs.length} 条整体差异分布</div>
+              <div className="text-xs font-medium">{outputs.length} 条视频的差异分布</div>
               <div className="text-[10px] text-muted-foreground font-mono">
-                min {Math.min(...outputs.map((o) => o.phash_distance_to_source))} ·
-                {" "}avg {Math.round(outputs.reduce((s, o) => s + o.phash_distance_to_source, 0) / outputs.length)} ·
-                {" "}max {Math.max(...outputs.map((o) => o.phash_distance_to_source))}
+                最小 {Math.min(...outputs.map((o) => o.phash_distance_to_source))} ·
+                {" "}平均 {Math.round(outputs.reduce((s, o) => s + o.phash_distance_to_source, 0) / outputs.length)} ·
+                {" "}最大 {Math.max(...outputs.map((o) => o.phash_distance_to_source))}
               </div>
             </div>
             <div className="flex items-end gap-0.5 h-12">
@@ -976,7 +975,7 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
                 return (
                   <div
                     key={o.id}
-                    title={`第 ${i + 1} 条 · 差异 ${o.phash_distance_to_source}/64`}
+                    title={`第 ${i + 1} 条 · 变化 ${o.phash_distance_to_source}/64`}
                     className={cn(
                       "flex-1 rounded-t transition-all",
                       tone === "high" ? "bg-emerald-500" : tone === "mid" ? "bg-amber-500" : "bg-red-500"
@@ -987,8 +986,8 @@ function PhashCompareCard({ job }: { job: RenderJob }) {
               })}
             </div>
             <p className="text-[10px] text-muted-foreground leading-relaxed">
-              一般距离 ≥ {job && (job as any).quality_gate_min ? (job as any).quality_gate_min : 10}{" "}
-              视为有效扰动;低于此值后端会自动重试。
+              变化值 ≥ {job && (job as any).quality_gate_min ? (job as any).quality_gate_min : 10}{" "}
+              视为变化充分；低于此值系统会自动重新生成。
             </p>
           </div>
         )}
@@ -1013,7 +1012,7 @@ function PhashGrid({ bits, diffWith }: { bits: number[]; diffWith?: number[] }) 
                   ? "bg-foreground"
                   : "bg-foreground/15"
             )}
-            title={isDiff ? "与原片不同的比特" : b ? "高于均值" : "低于均值"}
+            title={isDiff ? "与原片不同的格子" : b ? "较亮区域" : "较暗区域"}
           />
         );
       })}
@@ -1037,10 +1036,10 @@ function DistanceBar({ distance }: { distance: number }) {
         />
       </div>
       <div className="text-[10px] text-muted-foreground">
-        汉明距离 {distance} / 64{" "}
-        {tone === "high" && "· 充分扰动"}
-        {tone === "mid" && "· 中等扰动"}
-        {tone === "low" && "· 扰动偏弱"}
+        变化 {distance} / 64{" "}
+        {tone === "high" && "· 变化充分"}
+        {tone === "mid" && "· 变化中等"}
+        {tone === "low" && "· 变化偏小"}
       </div>
     </div>
   );
@@ -1073,12 +1072,12 @@ function PendingVariantTile({ label }: { label: string }) {
   return (
     <div
       className="relative rounded-lg overflow-hidden aspect-[9/16] bg-secondary/40 border border-dashed border-border/60 grid place-items-center"
-      aria-label={`${label} 渲染中`}
+      aria-label={`${label} 生成中`}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-violet-500/[0.04] to-transparent animate-pulse" />
       <div className="relative flex flex-col items-center gap-1.5 text-muted-foreground">
         <Wand2 className="size-4 text-violet-500/70 animate-pulse" />
-        <span className="text-[10px]">渲染中</span>
+        <span className="text-[10px]">生成中</span>
       </div>
       <div className="absolute inset-x-0 bottom-0 p-2">
         <span className="text-[10px] text-muted-foreground/80">{label}</span>
