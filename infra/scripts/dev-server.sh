@@ -92,30 +92,46 @@ case "$MODE" in
     log "MySQL 模式：本机服务（${MYSQL_USER}@${MYSQL_HOST}:${MYSQL_PORT}）"
 
     command -v mysql >/dev/null || die "缺 mysql client（brew install mysql-client 或 apt install mysql-client）"
-    command -v mysqladmin >/dev/null || die "缺 mysqladmin（同上）"
 
-    # 1) ping 测试服务
-    if ! mysqladmin ping -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}" -p"${MYSQL_PASS}" --silent 2>/dev/null; then
-      die "MySQL 连不上 ${MYSQL_HOST}:${MYSQL_PORT}（user=${MYSQL_USER}）。
-   - macOS:    brew services start mysql
-   - Linux:    systemctl start mysql
-   - 密码不对: --mysql-user / --mysql-pass 改默认值
-   - 用 docker: --docker      用 H2: --h2"
+    # mysql 命令封装：捕获 stderr，失败时打印让用户能看到原始 mysql 错（不再静默吞）
+    mysql_exec() {
+      local sql="$1"
+      local err
+      if ! err=$(mysql --connect-timeout=5 \
+                       -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" \
+                       -u "${MYSQL_USER}" -p"${MYSQL_PASS}" \
+                       -e "${sql}" 2>&1); then
+        printf "${R}  ✗ mysql 命令失败:${N}\n  $ mysql -h %s -P %s -u %s -p*** -e %q\n  → %s\n" \
+          "${MYSQL_HOST}" "${MYSQL_PORT}" "${MYSQL_USER}" "${sql}" "${err}" >&2
+        return 1
+      fi
+      return 0
+    }
+
+    # 1) 真实连接测试（同时测端口可达 + 用户名/密码正确），不依赖 mysqladmin ping
+    #    （mysqladmin ping 在某些版本即使认证失败仍返回 alive，导致后续 CREATE 静默失败）
+    log "测试连接 ${MYSQL_USER}@${MYSQL_HOST}:${MYSQL_PORT}..."
+    if ! mysql_exec "SELECT 1;" >/dev/null; then
+      die "MySQL 连不上或认证失败。常见原因：
+   - 服务未启动:  macOS  brew services start mysql
+                  Linux  systemctl start mysql
+   - 密码不对:    --mysql-pass <真实密码>（默认是 root）
+                  或重置 root 密码：mysqladmin -uroot password 'root'
+   - 用户不存在:  --mysql-user <user>
+   - 改用 docker: --docker      改用 H2: --h2"
     fi
-    ok "MySQL 服务在跑"
+    ok "MySQL 服务在跑，认证通过"
 
     # 2) --reset-db
     if [[ ${RESET_DB} -eq 1 ]]; then
       log "重置：DROP DATABASE IF EXISTS ${MYSQL_DB}"
-      mysql -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}" -p"${MYSQL_PASS}" \
-        -e "DROP DATABASE IF EXISTS ${MYSQL_DB};" 2>/dev/null
+      mysql_exec "DROP DATABASE IF EXISTS ${MYSQL_DB};" || die "DROP DATABASE 失败（见上面 mysql 错误）"
       ok "${MYSQL_DB} 已删"
     fi
 
     # 3) 确保库存在（首启自动建，utf8mb4_unicode_ci 跟 application-mysql.yml 对齐）
-    mysql -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}" -p"${MYSQL_PASS}" \
-      -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
-      2>/dev/null
+    mysql_exec "CREATE DATABASE IF NOT EXISTS ${MYSQL_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
+      || die "CREATE DATABASE 失败（见上面 mysql 错误，多半是该用户无 CREATE 权限）"
     ok "数据库 ${MYSQL_DB} 就绪"
     ;;
 
