@@ -28,7 +28,7 @@ public class CreditPack {
 
     private long priceCents;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> highlights;
 

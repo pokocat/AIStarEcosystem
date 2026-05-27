@@ -20,7 +20,7 @@ public class RechargeRecord {
     private LocalDate recordDate;
 
     /** Maps to DTO field "desc". */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String description;
 
     @Enumerated(EnumType.STRING)

@@ -37,7 +37,7 @@ public class PlatformConnection {
 
     private Instant connectedAt;
 
-    @Column(name = "credentials_json", columnDefinition = "TEXT")
+    @Column(name = "credentials_json", columnDefinition = "LONGTEXT")
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> credentialsJson;
 

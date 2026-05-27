@@ -29,7 +29,7 @@ public class ForgeResult {
      */
     private String videoUrl;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String prompt;
 
     @Enumerated(EnumType.STRING)
@@ -38,7 +38,7 @@ public class ForgeResult {
 
     private Instant createdAt;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> locked;
 

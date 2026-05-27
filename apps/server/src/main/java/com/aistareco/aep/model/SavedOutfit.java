@@ -31,7 +31,7 @@ public class SavedOutfit {
 
     private Instant createdAt;
 
-    @Column(name = "slots_json", columnDefinition = "TEXT")
+    @Column(name = "slots_json", columnDefinition = "LONGTEXT")
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> slotsJson;
 }

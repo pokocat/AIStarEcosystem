@@ -47,11 +47,11 @@ public class AiModelProvider {
     private String defaultModel;
 
     /** 可选模型列表 JSON：[{ id, label, contextWindow, supportsVision }]。 */
-    @Column(name = "models_json", columnDefinition = "TEXT")
+    @Column(name = "models_json", columnDefinition = "LONGTEXT")
     private String modelsJson;
 
     /** 用途分类（comma-separated 存储；List<AiModelPurpose> 走自定义 converter）。 */
-    @Column(name = "purposes", columnDefinition = "TEXT")
+    @Column(name = "purposes", columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> purposes = new ArrayList<>();

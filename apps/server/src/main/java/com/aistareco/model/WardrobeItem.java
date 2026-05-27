@@ -22,7 +22,7 @@ public class WardrobeItem {
     private String rarity;
     private int price;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> tags;
 

@@ -48,55 +48,55 @@ public class TemplateScript {
     private TemplateScriptKind kind;
 
     /** Persona —— 角色画像 JSON。 */
-    @Column(name = "persona_json", columnDefinition = "TEXT")
+    @Column(name = "persona_json", columnDefinition = "LONGTEXT")
     private String personaJson;
 
     /** systemPrompt —— 顶层总体约束。 */
-    @Column(name = "system_prompt", columnDefinition = "TEXT")
+    @Column(name = "system_prompt", columnDefinition = "LONGTEXT")
     private String systemPrompt;
 
     /** scenes[] JSON。 */
-    @Column(name = "scenes_json", columnDefinition = "TEXT")
+    @Column(name = "scenes_json", columnDefinition = "LONGTEXT")
     private String scenesJson;
 
     /** visualStyle JSON。 */
-    @Column(name = "visual_style_json", columnDefinition = "TEXT")
+    @Column(name = "visual_style_json", columnDefinition = "LONGTEXT")
     private String visualStyleJson;
 
     /** negativePrompt 文本。 */
-    @Column(name = "negative_prompt", columnDefinition = "TEXT")
+    @Column(name = "negative_prompt", columnDefinition = "LONGTEXT")
     private String negativePrompt;
 
     /** variables[] JSON。 */
-    @Column(name = "variables_json", columnDefinition = "TEXT")
+    @Column(name = "variables_json", columnDefinition = "LONGTEXT")
     private String variablesJson;
 
     /** engineAdapters{} JSON。 */
-    @Column(name = "engine_adapters_json", columnDefinition = "TEXT")
+    @Column(name = "engine_adapters_json", columnDefinition = "LONGTEXT")
     private String engineAdaptersJson;
 
     /** durationVariants{} JSON。 */
-    @Column(name = "duration_variants_json", columnDefinition = "TEXT")
+    @Column(name = "duration_variants_json", columnDefinition = "LONGTEXT")
     private String durationVariantsJson;
 
     /** postProcess JSON。 */
-    @Column(name = "post_process_json", columnDefinition = "TEXT")
+    @Column(name = "post_process_json", columnDefinition = "LONGTEXT")
     private String postProcessJson;
 
     /** safety JSON。 */
-    @Column(name = "safety_json", columnDefinition = "TEXT")
+    @Column(name = "safety_json", columnDefinition = "LONGTEXT")
     private String safetyJson;
 
     /** referenceClip JSON（kind=VIDEO_REF 时必填）。 */
-    @Column(name = "reference_clip_json", columnDefinition = "TEXT")
+    @Column(name = "reference_clip_json", columnDefinition = "LONGTEXT")
     private String referenceClipJson;
 
     /** experiment JSON（可选）。 */
-    @Column(name = "experiment_json", columnDefinition = "TEXT")
+    @Column(name = "experiment_json", columnDefinition = "LONGTEXT")
     private String experimentJson;
 
     /** metrics JSON（系统回填）。 */
-    @Column(name = "metrics_json", columnDefinition = "TEXT")
+    @Column(name = "metrics_json", columnDefinition = "LONGTEXT")
     private String metricsJson;
 
     @Column(nullable = false)

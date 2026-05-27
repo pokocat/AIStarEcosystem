@@ -45,7 +45,7 @@ public class CelebrityStarAuthorization {
     private CelebrityAuthStatus status;
 
     /** 已授权场景：带货/种草/测评 等；unauthorized 时为空。 */
-    @Column(name = "scenes_json", columnDefinition = "TEXT")
+    @Column(name = "scenes_json", columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> scenes = new ArrayList<>();

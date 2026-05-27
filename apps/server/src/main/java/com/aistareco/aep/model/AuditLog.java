@@ -27,7 +27,7 @@ public class AuditLog {
     @Enumerated(EnumType.STRING)
     private AuditResult result;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String detail;
 
     private Instant createdAt;

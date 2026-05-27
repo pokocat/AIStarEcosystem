@@ -39,7 +39,7 @@ public class CelebrityStar {
     private String category;
 
     /** 子分类（中文枚举数组）。 */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> subCategories = new ArrayList<>();
@@ -47,7 +47,7 @@ public class CelebrityStar {
     @Column(nullable = false)
     private boolean isHot;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String description;
 
     /** 起拍价文案：例 "¥299起"。 */
@@ -61,25 +61,25 @@ public class CelebrityStar {
     private Integer quotaTotal;
 
     /** 嵌套：CelebrityAuthorization JSON。 */
-    @Column(name = "authorization_json", columnDefinition = "TEXT")
+    @Column(name = "authorization_json", columnDefinition = "LONGTEXT")
     private String authorizationJson;
 
     /** 嵌套：stats JSON。 */
-    @Column(name = "stats_json", columnDefinition = "TEXT")
+    @Column(name = "stats_json", columnDefinition = "LONGTEXT")
     private String statsJson;
 
     /** 嵌套：sampleVideos JSON 数组。 */
-    @Column(name = "sample_videos_json", columnDefinition = "TEXT")
+    @Column(name = "sample_videos_json", columnDefinition = "LONGTEXT")
     private String sampleVideosJson;
 
     /** 嵌套：pricing 套餐 JSON 数组。 */
-    @Column(name = "pricing_json", columnDefinition = "TEXT")
+    @Column(name = "pricing_json", columnDefinition = "LONGTEXT")
     private String pricingJson;
 
     // ── v0.4 字段：详情页扩展（admin 后台维护，小程序详情页消费） ──────────────
 
     /** 一段简介，约 50-200 字。 */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String bio;
 
     /** 所在地，如 "上海 / 北京"。 */
@@ -95,10 +95,10 @@ public class CelebrityStar {
     private Long avgGmv;
 
     /** 嵌套：photos JSON 数组（[{id,url,caption}]）。 */
-    @Column(name = "photos_json", columnDefinition = "TEXT")
+    @Column(name = "photos_json", columnDefinition = "LONGTEXT")
     private String photosJson;
 
     /** 嵌套：videos JSON 数组（[{id,title,durationSec,coverUrl,playUrl,tag}]）。 */
-    @Column(name = "videos_json", columnDefinition = "TEXT")
+    @Column(name = "videos_json", columnDefinition = "LONGTEXT")
     private String videosJson;
 }

@@ -34,7 +34,7 @@ public class Concert {
     // ── 新规范字段 ─────────────────────────────────────────────────────────
 
     /** 参演 AI 艺人 ID 列表。 */
-    @Column(name = "artist_ids", columnDefinition = "TEXT")
+    @Column(name = "artist_ids", columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> artistIds;
 

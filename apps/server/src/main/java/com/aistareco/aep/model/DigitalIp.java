@@ -70,11 +70,11 @@ public class DigitalIp {
     private int statEndorsements;
     private long statCommercialValueCredits;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String bio;
 
     /** JSON-encoded list of domain ids. */
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> domains;
 
@@ -83,7 +83,7 @@ public class DigitalIp {
      * (e.g. faceStyle, fashionStyle, age, height, sweetness, energy, mystery, confidence…)
      * 以 JSON 形式存在单列，字段演进时无需迁移表结构。
      */
-    @Column(name = "incubation_params", columnDefinition = "TEXT")
+    @Column(name = "incubation_params", columnDefinition = "LONGTEXT")
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> incubationParams;
 

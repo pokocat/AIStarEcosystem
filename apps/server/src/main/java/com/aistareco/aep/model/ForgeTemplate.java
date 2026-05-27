@@ -22,7 +22,7 @@ public class ForgeTemplate {
 
     private String image;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> tags;
 

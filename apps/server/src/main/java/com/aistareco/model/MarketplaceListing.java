@@ -21,7 +21,7 @@ public class MarketplaceListing {
     private int songs;
     private String followersLabel;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String description;
 
     private boolean autoReplyEnabled;

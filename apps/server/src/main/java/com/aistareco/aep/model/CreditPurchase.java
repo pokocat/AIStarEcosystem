@@ -35,7 +35,7 @@ public class CreditPurchase {
     private Instant createdAt;
 
     /** 支付渠道元信息（渠道 id、交易号、风控结果等），结构随渠道演进。 */
-    @Column(name = "payment_meta_json", columnDefinition = "TEXT")
+    @Column(name = "payment_meta_json", columnDefinition = "LONGTEXT")
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> paymentMetaJson;
 }
