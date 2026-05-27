@@ -14,7 +14,6 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
-  Plus,
   Scissors,
   Search,
   Send,
@@ -205,13 +204,6 @@ function TopbarRight() {
           </span>
         )}
       </Link>
-      <Button variant="secondary" size="sm">
-        导出
-      </Button>
-      <Button variant="accent" size="sm">
-        <Plus size={12} />
-        新建项目
-      </Button>
       <Avatar seed={user?.username ?? user?.displayName ?? "anon"} size={32} />
       <Button variant="icon" size="sm" onClick={logout} title="退出当前账号" style={{ width: 32, padding: 0 }}>
         <LogOut size={12} />

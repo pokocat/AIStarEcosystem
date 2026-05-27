@@ -420,16 +420,16 @@ export function BindAccountDialog({ open, onClose, onBound, prefill }: Props) {
               )}
             >
               {pollStatus === "pending" && (
-                init.alreadyLoggedIn ? "正在读取账号信息……" : "等待扫码……"
+                init.alreadyLoggedIn ? "正在读取账号信息" : "等待扫码"
               )}
-              {pollStatus === "failed" && (errorMsg ?? "绑定失败，请重新生成 QR 后再试")}
-              {pollStatus === "expired" && "扫码已超时，可以重试"}
-              {pollStatus === "error" && (errorMsg ?? "网络异常，重试一下")}
+              {pollStatus === "failed" && (errorMsg ?? "绑定失败，请重新生成二维码后再试")}
+              {pollStatus === "expired" && "二维码已过期，请重新生成"}
+              {pollStatus === "error" && (errorMsg ?? "网络异常，请稍后重试")}
             </p>
             {pollStatus === "failed" && diagnosticId && (
               <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>诊断编号：{diagnosticId}</span>
+                <span>故障编号：{diagnosticId}</span>
               </div>
             )}
             <div className="flex gap-2">

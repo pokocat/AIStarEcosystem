@@ -32,6 +32,36 @@ export interface BatchPublishItem {
   thumbnail_url?: string;
 }
 
+/**
+ * 记住用户上次分发用的账号 id。每次发起分发成功时写入，下次打开抽屉时按当前可用账号
+ * 过滤后预选。让"复用同一组账号每天发"这类高频场景免去重复勾选 N 次的负担。
+ *
+ * 仅写 active 账号 id；恢复时按 id in accounts 过滤，账号被解绑 / 失效 → 自动忽略。
+ * 用户当次手动改了选择 → 不影响下次（只有成功分发后才覆盖记忆）。
+ */
+const LAST_ACCOUNTS_KEY = "aep:publish:last-account-ids";
+
+function readLastAccountIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LAST_ACCOUNTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLastAccountIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAST_ACCOUNTS_KEY, JSON.stringify(ids));
+  } catch {
+    /* localStorage 不可用 / 配额满 → 静默 */
+  }
+}
+
 interface Props {
   /** 可选：单任务上下文（详情页用）。提供时自动推导 items 与 defaultTitle。 */
   job?: RenderJob;
@@ -147,6 +177,23 @@ export function BatchPublishDrawer({
     setProductPickerOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /**
+   * 抽屉打开 + 账号加载完成后，按 localStorage 里上次成功分发的账号 id 预选。
+   * 仅在用户当次还没勾任何账号时填充（不覆盖用户主动选择）。账号已失效 / 解绑 → 自动跳过。
+   * 让"日常重复发到同一组账号"的运营人员省下每次手动勾选的步骤。
+   */
+  useEffect(() => {
+    if (!open) return;
+    if (loadingAccounts) return;
+    if (selectedAccountIds.length > 0) return;
+    const remembered = readLastAccountIds();
+    if (remembered.length === 0) return;
+    const stillValid = remembered.filter((id) => accounts.some((a) => a.id === id));
+    if (stillValid.length > 0) {
+      setSelectedAccountIds(stillValid);
+    }
+  }, [open, loadingAccounts, accounts, selectedAccountIds.length]);
 
   /**
    * v0.26+: 商品挂载自动带入。
@@ -269,6 +316,8 @@ export function BatchPublishDrawer({
         product_link: carryProduct ? productLinkTrimmed : undefined,
         product_title: carryProduct ? productTitleTrimmed : undefined,
       });
+      // 成功后记住这次的账号选择，下次打开抽屉自动预选
+      writeLastAccountIds(selectedAccountIds);
       setResult(res);
       onPublished?.(res);
     } catch (e) {
