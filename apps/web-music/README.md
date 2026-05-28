@@ -60,6 +60,50 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.40 · 2026-05-28 · 孵化向导 AI 顾问融合 + 形象锻造左对话右渲染 {#v040}
+
+把 figma 「AI 艺人孵化工坊」原型中间栏的 `WizardInlineChat` 对话框融合进 web-music
+现有的 `/incubator`（IncubationWizardV2），同步把 `/appearance`（AppearanceForge.v3）
+从 3 栏布局（左表单 / 中渲染 / 右对话）翻转为业界通用的 2 栏 **左对话、右渲染**
+（ChatGPT / Midjourney / Claude 图像生成同款）。
+
+**新增文件**：
+
+- `src/components/producer/WizardChatPanel.tsx` —— 7 步上下文（与 IncubationWizardV2
+  的 SECTIONS origin/form/psyche/talent/craft/fandom/lore 一一对齐）的 AI 顾问聊天面板。
+  从 figma `mcn/WizardInlineChat.tsx` 移植，i18n 剥离为中文单语，色彩从 cyan/gray
+  字面色换成 app.css token（--card / --border / --primary / --muted）。
+  - props: `{ step: number }` —— 跟随当前章节切换 STEP_CONTEXT，自动重置 chat
+  - 内置 typing 动画 / quick tips / quick tags / 回车发送 / 重置按钮
+
+**修改文件**：
+
+- `src/components/producer/IncubationWizardV2.tsx`
+  - 右栏宽度 320 → 360px；从单 `<SummaryPanel>` 改为 shadcn `<Tabs>`
+    切换：「档案预览」(默认) ↔ 「AI 顾问」(`<WizardChatPanel step={section} />`)
+  - 用户切换章节时，advisor tab 内的 chat 自动按新步骤重置
+
+- `src/components/producer/AppearanceForge.v3.tsx`
+  - 3 栏 `[300px form][1fr canvas][320px chat]` → 2 栏 `[420px chat][1fr canvas]`
+  - 原 LEFT 列「素材与约束」表单（锻造模式 / 身份气质 / 参考照片 / 模版-参考混合 /
+    发型发量 / 风格标签 / 面部微调）整体 stash 到 shadcn `<Sheet side="left">`
+    抽屉，由工具条新增的「形象参数」按钮唤起（默认收起）
+  - 原 RIGHT 列「对话 / 历史 / 流」3 tab dock 加 `lg:order-1`，视觉上靠左
+  - 原 CENTER 列「工具条 / 模版条 / 画布」加 `lg:order-2`，视觉上靠右
+  - 表单状态全部保留（mode / gender / age / region / vibe / uploadedPhoto /
+    fusionRatio / selectedHair / hairVolume / selectedTags / faceValues /
+    lockedFeatures 等 12 项），抽屉关闭后改动依然影响下一次锻造
+
+**验收**：
+- ✅ `pnpm typecheck:all` 7 workspaces clean
+- ✅ `pnpm build` web-music 21 routes static
+- ✅ dev `curl /` `/incubator` `/appearance` `/asset-center` `/production` 全部 200，无运行时错误
+
+**显式 out-of-scope**：
+- chat 的真后端接入（当前是 mock 响应：每步 3-4 句预设回复轮换）
+- chat 历史持久化（每次切步骤即重置；如需保留，需要外置 store 或 localStorage）
+- chat 与表单的双向联动（advisor 给的建议不会自动回填 wizard 表单）
+
 ### v0.39 · 2026-05-28 · figma MCN 运营端「素材中心 + 制作工坊」迁入 {#v039}
 
 按页迁移第一批：从 figma Make 原型 `it1dxlMSY0ph39pBCawC8i` 迁入 `mcn/AssetCenter`（含 AssetVault + CopyVault）和 `mcn/ProductionWorkshop`（含 ClipStudio + DigitalPersonHub + BatchMixStudio）。**零影响既有 15 个路由**，sidebar 内容创作组顺序插入 2 项。

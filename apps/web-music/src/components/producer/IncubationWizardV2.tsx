@@ -34,6 +34,8 @@ import { Input } from "@ai-star-eco/ui/ui/input";
 import { Textarea } from "@ai-star-eco/ui/ui/textarea";
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Progress } from "@ai-star-eco/ui/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ai-star-eco/ui/ui/tabs";
+import { WizardChatPanel } from "./WizardChatPanel";
 import {
   type ArtistType,
   ARTIST_TYPE_CONFIG, ARTIST_TYPE_LABELS, TALENT_LABELS,
@@ -455,8 +457,8 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
         })}
       </nav>
 
-      {/* 主体：左 form / 右 summary */}
-      <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px]">
+      {/* 主体：左 form / 右 summary + AI 顾问（Tabs 切换） */}
+      <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
         <main className="min-w-0 overflow-y-auto px-6 py-6 lg:px-8 lg:py-8">
           <div className="mb-6">
             <p className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -491,19 +493,34 @@ export const IncubationWizardV2: React.FC<Props> = ({ lang, onClose, onCreated }
           </div>
         </main>
 
-        {/* 右侧档案预览 */}
-        <aside className="hidden lg:block border-l border-border bg-background/30 overflow-y-auto">
-          <SummaryPanel
-            state={state}
-            typeKey={state.type}
-            faceStyles={FACE_STYLES}
-            fashionStyles={FASHION_STYLES}
-            mbti={MBTI_TYPES}
-            personaTags={PERSONA_TAGS}
-            fandomColors={FANDOM_COLORS}
-            signatureColorHex={signatureColorHex}
-            completeness={completeness}
-          />
+        {/* 右侧：档案预览 + AI 顾问（Tabs 切换；advisor 步骤随 section 自动同步） */}
+        <aside className="hidden lg:flex min-h-0 flex-col border-l border-border bg-background/30">
+          <Tabs defaultValue="preview" className="flex flex-1 min-h-0 flex-col">
+            <div className="shrink-0 px-3 pt-3">
+              <TabsList className="grid h-9 w-full grid-cols-2">
+                <TabsTrigger value="preview">档案预览</TabsTrigger>
+                <TabsTrigger value="advisor" className="gap-1">
+                  <Sparkles className="h-3 w-3" /> AI 顾问
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="preview" className="m-0 flex-1 min-h-0 overflow-y-auto">
+              <SummaryPanel
+                state={state}
+                typeKey={state.type}
+                faceStyles={FACE_STYLES}
+                fashionStyles={FASHION_STYLES}
+                mbti={MBTI_TYPES}
+                personaTags={PERSONA_TAGS}
+                fandomColors={FANDOM_COLORS}
+                signatureColorHex={signatureColorHex}
+                completeness={completeness}
+              />
+            </TabsContent>
+            <TabsContent value="advisor" className="m-0 flex-1 min-h-0">
+              <WizardChatPanel step={section} />
+            </TabsContent>
+          </Tabs>
         </aside>
       </div>
 
