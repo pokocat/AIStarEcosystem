@@ -5074,6 +5074,18 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-ai-models], operationId: adminFetchAiModels, responses: { '200': { description: 用已存 apiKey 重新拉取可用模型（拉回后保存写入配置） } } }
 
+  # ── Agent 平台 bot 配置（v0.39 新增；Coze 等，按 sceneKey 绑定业务功能） ──────────
+  /admin/agent-bots:
+    get:  { tags: [admin-agent-bots], operationId: adminListAgentBots,  responses: { '200': { description: ok } } }
+    post: { tags: [admin-agent-bots], operationId: adminCreateAgentBot, responses: { '201': { description: created } } }
+  /admin/agent-bots/scenes:
+    get: { tags: [admin-agent-bots], operationId: adminListAgentScenes, responses: { '200': { description: 可绑定的业务场景目录（如 appearance-forge） } } }
+  /admin/agent-bots/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-agent-bots], operationId: adminGetAgentBot,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-agent-bots], operationId: adminUpdateAgentBot, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-agent-bots], operationId: adminDeleteAgentBot, responses: { '204': { description: ok } } }
+
   # ── admin · products（商品库管理；v0.31 起承载所有写动作） ───────────────────────
 
   /admin/products:
