@@ -50,6 +50,37 @@ function cozeBotUrl(p: { platform: AgentPlatform; apiBase?: string; botId?: stri
   return p.spaceId ? `${host}/space/${p.spaceId}/bot/${p.botId}` : host;
 }
 
+/**
+ * 从粘贴的 Coze bot 编辑页链接里拆出 apiBase / spaceId / botId。
+ * 支持 www.coze.cn|coze.com/space/{spaceId}/bot/{botId}（容忍尾部 query/hash），
+ * 以及无 space 段的 .../bot/{botId}。识别不出返回 null。
+ */
+function parseCozeBotUrl(raw: string): { apiBase?: string; spaceId?: string; botId?: string } | null {
+  const text = (raw ?? "").trim();
+  if (!text) return null;
+  let u: URL;
+  try {
+    u = new URL(text);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  const out: { apiBase?: string; spaceId?: string; botId?: string } = {};
+  if (host.includes("coze.com")) out.apiBase = "https://api.coze.com";
+  else if (host.includes("coze.cn")) out.apiBase = "https://api.coze.cn";
+
+  const withSpace = u.pathname.match(/\/space\/([^/]+)\/bot\/([^/?#]+)/);
+  if (withSpace) {
+    out.spaceId = withSpace[1];
+    out.botId = withSpace[2];
+  } else {
+    const botOnly = u.pathname.match(/\/bot\/([^/?#]+)/);
+    if (botOnly) out.botId = botOnly[1];
+  }
+  if (!out.botId && !out.spaceId) return null;
+  return out;
+}
+
 interface FormState {
   id?: string;
   name: string;
@@ -89,6 +120,7 @@ export default function AdminAgentBotsPage() {
   const [err, setErr] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<FormState | null>(null);
   const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [pasteUrl, setPasteUrl] = React.useState("");
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -150,6 +182,7 @@ export default function AdminAgentBotsPage() {
       }
       setEditing(null);
       setShowAdvanced(false);
+      setPasteUrl("");
       await refresh();
       toast.success({ title: editing.id ? "已保存" : "Bot 已创建" });
     } catch (e) {
@@ -187,6 +220,29 @@ export default function AdminAgentBotsPage() {
     }
   }
 
+  function applyPastedUrl() {
+    if (!editing) return;
+    const parsed = parseCozeBotUrl(pasteUrl);
+    if (!parsed) {
+      toast.warning({
+        title: "无法识别链接",
+        description: "请粘贴形如 https://www.coze.cn/space/<spaceId>/bot/<botId> 的地址",
+      });
+      return;
+    }
+    setEditing({
+      ...editing,
+      ...(parsed.apiBase ? { apiBase: parsed.apiBase } : {}),
+      ...(parsed.botId ? { botId: parsed.botId } : {}),
+      ...(parsed.spaceId ? { spaceId: parsed.spaceId } : {}),
+    });
+    setPasteUrl("");
+    const bits = [parsed.botId && `Bot ${parsed.botId}`, parsed.spaceId && `Space ${parsed.spaceId}`]
+      .filter(Boolean)
+      .join(" · ");
+    toast.success({ title: "已自动填充", description: bits || undefined });
+  }
+
   // 场景下拉：已知目录 + 当前编辑值（兼容历史自定义 sceneKey）。
   const sceneOptions = React.useMemo(() => {
     const keys = new Map<string, string>();
@@ -220,6 +276,28 @@ export default function AdminAgentBotsPage() {
         </CardHeader>
         {editing && (
           <CardContent className="space-y-5">
+            <section className="rounded-md border border-dashed border-border bg-surface-muted/30 p-3">
+              <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+                快速填充：粘贴 Coze bot 编辑页链接，自动拆出 Bot ID / Space ID / 调用地址
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={pasteUrl}
+                  onChange={(e) => setPasteUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applyPastedUrl();
+                    }
+                  }}
+                  placeholder="https://www.coze.cn/space/74xxxx/bot/74xxxx"
+                />
+                <Button type="button" variant="outline" onClick={applyPastedUrl}>
+                  解析填充
+                </Button>
+              </div>
+            </section>
+
             <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="名称" hint="给运营用的备注，例如「形象锻造 · 主用 bot」">
                 <Input
@@ -389,6 +467,7 @@ export default function AdminAgentBotsPage() {
                 onClick={() => {
                   setEditing(null);
                   setShowAdvanced(false);
+                  setPasteUrl("");
                 }}
               >
                 取消

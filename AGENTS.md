@@ -1670,6 +1670,7 @@ admin  : 新 api/agent-bots.ts（list/get/create/update/remove/listScenes）+ ap
        : 新页 /platform/agent-bots（CRUD + 平台/场景下拉 + token 加密输入 + 高级项）；nav「平台与配置」加「Agent 平台」
        : Bot ID 列 / 表单渲染「在 Coze 打开 bot 配置页」深链（{console}/space/{spaceId}/bot/{botId}，
          console 由 apiBase 推断 coze.cn/coze.com）；AgentBotProvider +可选 spaceId（仅拼链，不参与调用）
+       : 表单加「粘贴 Coze bot 链接」快速填充（parseCozeBotUrl 拆 apiBase/spaceId/botId 回填，纯前端）
 web-music : 形象锻造前端 USE_MOCK 开关本就齐全（mock 本地回放 / live 走 /appearance-forge/coze/stream），本期未改
 openapi: +/admin/agent-bots（GET/POST）+/scenes（GET）+/{id}（GET/PUT/DELETE）骨架
 ```
