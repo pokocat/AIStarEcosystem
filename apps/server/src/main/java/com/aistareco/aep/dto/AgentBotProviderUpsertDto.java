@@ -11,6 +11,7 @@ public record AgentBotProviderUpsertDto(
         String apiBase,
         String token,
         String botId,
+        String spaceId,
         String userIdPrefix,
         Integer readTimeoutMs,
         String description,

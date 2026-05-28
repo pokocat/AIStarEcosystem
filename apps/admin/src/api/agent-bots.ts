@@ -24,6 +24,7 @@ export interface AgentBotProvider {
   apiBase: string;
   tokenMasked: string;
   botId: string;
+  spaceId?: string;
   userIdPrefix?: string;
   readTimeoutMs?: number;
   description?: string;
@@ -41,6 +42,7 @@ export interface AgentBotProviderUpsert {
   apiBase?: string;
   token?: string;
   botId: string;
+  spaceId?: string;
   userIdPrefix?: string;
   readTimeoutMs?: number;
   description?: string;

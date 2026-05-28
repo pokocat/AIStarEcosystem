@@ -67,6 +67,7 @@ public class AgentBotProviderAdminService {
                 .apiBase(blankTo(req.apiBase(), "https://api.coze.cn"))
                 .tokenEncrypted(AepCryptoUtil.encrypt(req.token().trim()))
                 .botId(req.botId().trim())
+                .spaceId(trimToNull(req.spaceId()))
                 .userIdPrefix(blankTo(req.userIdPrefix(), "aep-producer-"))
                 .readTimeoutMs(req.readTimeoutMs() != null ? req.readTimeoutMs() : 120000)
                 .description(req.description())
@@ -94,6 +95,7 @@ public class AgentBotProviderAdminService {
             entity.setTokenEncrypted(AepCryptoUtil.encrypt(req.token().trim()));
         }
         if (req.botId() != null) entity.setBotId(req.botId().trim());
+        if (req.spaceId() != null) entity.setSpaceId(trimToNull(req.spaceId()));
         if (req.userIdPrefix() != null) entity.setUserIdPrefix(blankTo(req.userIdPrefix(), "aep-producer-"));
         if (req.readTimeoutMs() != null) entity.setReadTimeoutMs(req.readTimeoutMs());
         if (req.description() != null) entity.setDescription(req.description());
@@ -115,6 +117,10 @@ public class AgentBotProviderAdminService {
 
     private static String blankTo(String v, String def) {
         return v == null || v.isBlank() ? def : v.trim();
+    }
+
+    private static String trimToNull(String v) {
+        return v == null || v.isBlank() ? null : v.trim();
     }
 
     private static void require(boolean ok, String code, String message) {

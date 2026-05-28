@@ -50,6 +50,10 @@ public class AgentBotProvider {
     @Column(name = "bot_id", nullable = false)
     private String botId;
 
+    /** Coze 空间 id（可选）；仅用于 admin 拼「打开 bot 配置页」深链，不参与调用。 */
+    @Column(name = "space_id")
+    private String spaceId;
+
     /** Coze userID 前缀（区分会话归属，便于平台侧风控/统计）。 */
     @Column(name = "user_id_prefix")
     @Builder.Default

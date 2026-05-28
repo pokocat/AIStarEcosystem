@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Lock, ShieldCheck, ChevronRight, Settings2 } from "lucide-react";
+import { Lock, ShieldCheck, ChevronRight, Settings2, ExternalLink } from "lucide-react";
 import { useConfirm, useToast } from "@/components/feedback";
 import { AgentBotsApi } from "@/api";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,24 @@ const PLATFORM_LABEL: Record<AgentPlatform, string> = {
 
 const SUPPORTED_PLATFORMS = new Set<AgentPlatform>(["coze"]);
 
+/** 由 apiBase 推断 Coze 控制台域名（国内 coze.cn / 海外 coze.com）。 */
+function cozeConsoleHost(apiBase?: string): string {
+  return (apiBase ?? "").toLowerCase().includes("coze.com")
+    ? "https://www.coze.com"
+    : "https://www.coze.cn";
+}
+
+/**
+ * 拼「打开 bot 配置页」深链。Coze 的开发页需要 space 上下文：
+ *   {host}/space/{spaceId}/bot/{botId}
+ * 没填 spaceId 时退回控制台首页（仍可点，进去自己找）。仅 coze 平台返回链接。
+ */
+function cozeBotUrl(p: { platform: AgentPlatform; apiBase?: string; botId?: string; spaceId?: string }): string | null {
+  if (p.platform !== "coze" || !p.botId) return null;
+  const host = cozeConsoleHost(p.apiBase);
+  return p.spaceId ? `${host}/space/${p.spaceId}/bot/${p.botId}` : host;
+}
+
 interface FormState {
   id?: string;
   name: string;
@@ -40,6 +58,7 @@ interface FormState {
   apiBase: string;
   token: string;
   botId: string;
+  spaceId: string;
   userIdPrefix: string;
   readTimeoutMs: number;
   description: string;
@@ -53,6 +72,7 @@ const EMPTY_FORM: FormState = {
   apiBase: "https://api.coze.cn",
   token: "",
   botId: "",
+  spaceId: "",
   userIdPrefix: "aep-producer-",
   readTimeoutMs: 120000,
   description: "",
@@ -117,6 +137,7 @@ export default function AdminAgentBotsPage() {
         apiBase: editing.apiBase.trim() || undefined,
         ...(editing.token.trim() ? { token: editing.token.trim() } : {}),
         botId: editing.botId.trim(),
+        spaceId: editing.spaceId.trim() || undefined,
         userIdPrefix: editing.userIdPrefix.trim() || undefined,
         readTimeoutMs: editing.readTimeoutMs || undefined,
         description: editing.description.trim() || undefined,
@@ -255,6 +276,32 @@ export default function AdminAgentBotsPage() {
                   onChange={(e) => setEditing({ ...editing, botId: e.target.value })}
                   placeholder="74xxxxxxxxxxxxxxxxx"
                 />
+              </Field>
+              <Field
+                label="Space ID"
+                hint="可选；Coze 控制台 bot 编辑页 URL 里的 space 段（www.coze.cn/space/<这段>/bot/...）。填了才能直达 bot 配置页。"
+              >
+                <Input
+                  value={editing.spaceId}
+                  onChange={(e) => setEditing({ ...editing, spaceId: e.target.value })}
+                  placeholder="74xxxxxxxxxxxxxxxxx"
+                />
+                {editing.platform === "coze" && editing.botId.trim() && (
+                  <a
+                    href={cozeBotUrl({
+                      platform: editing.platform,
+                      apiBase: editing.apiBase,
+                      botId: editing.botId.trim(),
+                      spaceId: editing.spaceId.trim() || undefined,
+                    })!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {editing.spaceId.trim() ? "在 Coze 打开 bot 配置页" : "打开 Coze 控制台（未填 Space ID）"}
+                  </a>
+                )}
               </Field>
               <Field label="调用地址" hint="Coze 国内默认 https://api.coze.cn；海外 https://api.coze.com">
                 <Input
@@ -398,7 +445,25 @@ export default function AdminAgentBotsPage() {
                       <div>{sceneLabel(p.sceneKey)}</div>
                       <div className="font-mono text-[10px] text-muted-foreground">{p.sceneKey}</div>
                     </TableCell>
-                    <TableCell className="max-w-[160px] truncate text-xs font-mono">{p.botId}</TableCell>
+                    <TableCell className="max-w-[180px] text-xs font-mono">
+                      {(() => {
+                        const url = cozeBotUrl(p);
+                        return url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={p.spaceId ? "在 Coze 打开 bot 配置页" : "打开 Coze 控制台（未填 Space ID，无法直达 bot）"}
+                            className="inline-flex max-w-full items-center gap-1 text-primary hover:underline"
+                          >
+                            <span className="truncate">{p.botId}</span>
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="block truncate">{p.botId}</span>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell className="max-w-[200px] truncate text-xs font-mono">{p.apiBase}</TableCell>
                     <TableCell className="text-xs font-mono">{p.tokenMasked}</TableCell>
                     <TableCell>
@@ -425,6 +490,7 @@ export default function AdminAgentBotsPage() {
                             apiBase: p.apiBase ?? "https://api.coze.cn",
                             token: "",
                             botId: p.botId,
+                            spaceId: p.spaceId ?? "",
                             userIdPrefix: p.userIdPrefix ?? "aep-producer-",
                             readTimeoutMs: p.readTimeoutMs ?? 120000,
                             description: p.description ?? "",

@@ -29,7 +29,7 @@ class AgentBotProviderAdminServiceTest {
     private static AgentBotProviderUpsertDto sample(String sceneKey) {
         return new AgentBotProviderUpsertDto(
                 null, "形象锻造 bot", "coze", sceneKey,
-                "https://api.coze.cn", "pat_secret_token_123", "bot-001",
+                "https://api.coze.cn", "pat_secret_token_123", "bot-001", "space-001",
                 "aep-producer-", 120000, null, true);
     }
 
@@ -45,6 +45,7 @@ class AgentBotProviderAdminServiceTest {
         assertEquals("appearance-forge", dto.sceneKey());
         assertEquals("coze", dto.platform());
         assertEquals("bot-001", dto.botId());
+        assertEquals("space-001", dto.spaceId());
         assertNotEquals("pat_secret_token_123", dto.tokenMasked(), "明文不应出现在 DTO");
         assertTrue(dto.tokenMasked().startsWith("pat") && dto.tokenMasked().contains("..."),
                 "token 应脱敏: " + dto.tokenMasked());
