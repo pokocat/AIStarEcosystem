@@ -30,8 +30,10 @@ public class RechargePackage {
     @Column(nullable = false)
     private String tag;
 
+    @Builder.Default
     @Column(nullable = false)
-    private boolean recommended;
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean recommended = false;
 
     /** 赠送积分（充进 giftBalance），可空。 */
     @Builder.Default

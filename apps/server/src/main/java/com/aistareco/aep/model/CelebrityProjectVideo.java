@@ -44,9 +44,11 @@ public class CelebrityProjectVideo {
     /** 播放数文案（"12.4K"），生成中/待审核可能为空。 */
     private String plays;
 
-    /** 时长枚举：15 / 30 / 60 秒。 */
+    /** 时长枚举：15 / 30 / 60 秒。默认 0 表示尚未生成 / 未知。 */
+    @Builder.Default
     @Column(nullable = false)
-    private int durationSec;
+    @org.hibernate.annotations.ColumnDefault("0")
+    private int durationSec = 0;
 
     /** CelebrityEngine：KeLing / HiGen / MiniMax。 */
     @Column(nullable = false)
