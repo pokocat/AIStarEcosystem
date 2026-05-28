@@ -11,16 +11,21 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Coins,
+  Flame,
+  FlaskConical,
+  Images,
   LayoutDashboard,
   LogOut,
   Megaphone,
   Scissors,
+  ScrollText,
   Search,
   Send,
   ShoppingBag,
   Sparkles,
   Star,
   Video,
+  Workflow,
 } from "lucide-react";
 import { useAuth, PublishJobApi } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
@@ -41,6 +46,7 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
   const isExact = (href: string) => pathname === href;
   const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
   const isDistribution = pathname === "/distribution" || pathname.startsWith("/distribution/");
+  const isWorkshop = pathname === "/material/workshop" || pathname.startsWith("/material/workshop/");
 
   // 混剪二级菜单:仅在用户处于 /mixcut/* 时展开,避免常态污染侧栏。
   // 创建任务页 (/mixcut/create/<id>) 不高亮任一子项 —— 它是一次性流程,不属于任何长存的子区。
@@ -119,6 +125,18 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       ],
     },
     {
+      // 素材运营：脚本工坊 → 商品素材库 → 爆款雷达 → 智能体训练 → 效果回流。
+      // 迁自「素材运营平台」原型；纯前端 + Mock。
+      title: "素材运营",
+      items: [
+        { icon: ScrollText, label: "脚本工坊", href: "/material/workshop", selected: isWorkshop },
+        { icon: Images, label: "商品素材库", href: "/material/assets", selected: isExact("/material/assets") },
+        { icon: Flame, label: "爆款雷达", href: "/material/radar", selected: isExact("/material/radar") },
+        { icon: FlaskConical, label: "智能体训练", href: "/material/agent", selected: isExact("/material/agent") },
+        { icon: Workflow, label: "效果回流", href: "/material/loop", selected: isExact("/material/loop") },
+      ],
+    },
+    {
       title: "洞察",
       items: [
         { icon: BarChart3, label: "数据中心", href: "/data", selected: isExact("/data") },
@@ -163,6 +181,15 @@ function CrumbsFromPathname(pathname: string): string[] {
   if (pathname === "/distribution/accounts") return ["工作台", "分发中心", "账号管理"];
   if (pathname === "/distribution/jobs") return ["工作台", "分发中心", "任务追踪"];
   if (pathname.startsWith("/distribution/")) return ["工作台", "分发中心"];
+
+  // 素材运营
+  if (pathname === "/material/workshop") return ["素材运营", "脚本工坊"];
+  if (pathname.endsWith("/edit")) return ["素材运营", "脚本工坊", "编辑脚本"];
+  if (pathname.startsWith("/material/workshop/")) return ["素材运营", "脚本工坊", "脚本预览"];
+  if (pathname === "/material/assets") return ["素材运营", "商品素材库"];
+  if (pathname === "/material/radar") return ["素材运营", "爆款雷达"];
+  if (pathname === "/material/agent") return ["素材运营", "智能体训练"];
+  if (pathname === "/material/loop") return ["素材运营", "效果回流"];
 
   return ["工作台"];
 }
