@@ -60,6 +60,54 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.41 · 2026-05-28 · 前后端连通性全面修复 {#v041}
+
+针对全面连通性审计发现的漂移 bug 做修复。发布中心（distribution）暂跳过（后续复用
+celebrity 分发中心能力）；v0.39 五个 mock-only 模块按「仅补 openapi + 保持 mock」处理。
+
+**bug A · music.ts 4/5 endpoints 死路 → 已修**
+
+server 端 `AccountController` 补 4 个 endpoint（openapi 早已声明，缺的是实现）：
+- `GET /me/albums` —— 当前用户名下所有艺人的专辑（owned artistIds 过滤）
+- `GET /me/concerts` —— 演唱会（artistIds 命中任一即归属）
+- `POST /me/songs/{id}/advance` —— 状态机 recording → mixing → released，释放落 releaseDate
+- `GET /me/music/trends?range=30d` —— 无逐日埋点表，按用户歌曲播放/收入总量派生确定性累计曲线（接入真实埋点后替换为日维聚合）
+- 新增 DTO `MusicTrendPointDto`（字段对齐 TS `MusicTrendPoint`）
+
+**bug B · products.ts 5/7 走错域 → 删除整模块**
+
+products 写动作 v0.31 已收紧到 `/admin/products/*`，且 music 子产品业务上不应有商品库
+写入入口。审计确认 `ProductsApi` 被零组件引用 → 删除 `api/products.ts` + `mocks/products.ts`
++ `api/index.ts` 的 export。
+
+**bug E · wardrobe `/generate-look` 缺实现 → 已落地**
+
+`WardrobeController.generateLook`（被 WardrobePageV2.tsx:257 调用，原 USE_MOCK=0 会 404）：
+取稀有度最高的已装备单品图作 hero 主图，prompt 拼接单品名，返回 `ForgeResultDto`
+（草稿语义，不落库；入库走 `/appearance-forge/save`）。
+
+**bug D · generation.ts `/me/generation/run` → 维持现状**
+
+确认是文档化的后端锚点 stub（openapi 已声明 + 零组件调用），非破损路径，保留。
+
+**v0.39 五模块（素材/文案/切片/数字人/混剪批量）→ 补 openapi path 占位**
+
+`specs/openapi.yaml` 新增 13 个 path（18 个 method-operation）声明，标注「mock-only · v0.39」。
+contract gate 现在 web-music **100% 通过**；schema 待 server 落地时补全。前端保持 mock-only。
+
+**验收**：
+- ✅ `apps/server` `mvn compile` clean（AccountController / WardrobeController / MusicTrendPointDto 编译通过，.class 产出）
+- ✅ `pnpm typecheck:all` 7 workspaces clean
+- ✅ `pnpm check:api-contract` web-music **0 失败**（剩余 18 个失败全部属 web-drama，非本次范围）
+- ⚠️ **未做运行时联调**：本环境 maven 离线无法拉取 spring-boot 运行时依赖（h2 / hibernate / byte-buddy 等未缓存 + 网络策略禁外网），server 编译通过但无法 `spring-boot:run` 启动。新 endpoint 严格复用既有 endpoint 的 ownership 校验 + DTO + ApiResponse 包壳模式，但建议在有完整后端环境时跑一次 dev-login → curl 实测。
+
+**显式 out-of-scope**：
+- distribution（发布中心）—— 后续复用 celebrity 分发中心
+- v0.39 五模块的真后端落地 —— 等产品方向确认
+- web-drama 的 18 个 contract gate 失败 —— 非 music 范围
+- `check:api-contract` 接入 git pre-push hook（建议作为后续 CI 加固）
+- `.env` 的 `USE_MOCK=0` 默认值（联调真后端时正确，保留）
+
 ### v0.40 · 2026-05-28 · 孵化向导 AI 顾问融合 + 形象锻造左对话右渲染 {#v040}
 
 把 figma 「AI 艺人孵化工坊」原型中间栏的 `WizardInlineChat` 对话框融合进 web-music

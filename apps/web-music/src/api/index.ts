@@ -32,7 +32,6 @@ export * as AppearanceForgeApi from "./appearance-forge";
 export * as ConfigApi from "./config";
 export * as StoreApi from "./store";
 export * as GenerationApi from "./generation";
-export * as ProductsApi from "./products";
 // ── v0.39 · 素材中心 / 制作工坊（figma MCN 运营端 2 页迁入）──────────────────
 export * as AssetApi from "./asset";
 export * as CopyApi from "./copy";
