@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
+import com.aistareco.aep.dto.AiModelEntryDto;
 import com.aistareco.aep.model.AiModelProvider;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
@@ -100,6 +102,35 @@ public class AiModelInvocationService {
         }
     }
 
+    /**
+     * 拉取服务商可用模型列表（GET {baseUrl}/models）。失败不抛异常，包成
+     * AiModelDiscoveryResultDto.fail 返回，便于前端直接展示原因。
+     */
+    public AiModelDiscoveryResultDto listModels(AiModelProviderType type, String baseUrl, String apiKey) {
+        if (type != null && !isOpenAiCompatible(type)) {
+            return AiModelDiscoveryResultDto.fail(null,
+                    "providerType=" + type.wire() + " 暂不支持模型发现（仅 ANTHROPIC / AZURE_OPENAI 需独立适配）");
+        }
+        if (baseUrl == null || baseUrl.isBlank()) return AiModelDiscoveryResultDto.fail(null, "baseUrl 为空");
+        if (apiKey == null || apiKey.isBlank()) return AiModelDiscoveryResultDto.fail(null, "apiKey 为空");
+        try {
+            URI uri = URI.create(rstrip(baseUrl, "/") + "/models");
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                return AiModelDiscoveryResultDto.fail(resp.statusCode(),
+                        "HTTP " + resp.statusCode() + ": " + snippet(resp.body()));
+            }
+            return AiModelDiscoveryResultDto.ok(resp.statusCode(), parseModelsResponse(resp.body()));
+        } catch (Exception e) {
+            return AiModelDiscoveryResultDto.fail(null, e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
     // ── 内部 ───────────────────────────────────────────────────────────────
 
     private List<AiModelProvider> pickProviders(AiModelPurpose purpose) {
@@ -172,6 +203,33 @@ public class AiModelInvocationService {
     /** 是否走 OpenAI 兼容 wire（除 ANTHROPIC / AZURE_OPENAI 外都是）。 */
     private static boolean isOpenAiCompatible(AiModelProviderType type) {
         return !NON_OPENAI_WIRE.contains(type);
+    }
+
+    /** 解析 OpenAI /models 响应 data[]；过滤 status=Shutdown/Retiring（火山方舟会带 status）。 */
+    private static List<AiModelEntryDto> parseModelsResponse(String body) throws Exception {
+        Map<?, ?> parsed = OM.readValue(body, Map.class);
+        List<AiModelEntryDto> out = new ArrayList<>();
+        if (parsed.get("data") instanceof List<?> list) {
+            for (Object o : list) {
+                if (!(o instanceof Map<?, ?> m)) continue;
+                Object id = m.get("id");
+                if (id == null) continue;
+                Object status = m.get("status");
+                if (status != null) {
+                    String s = String.valueOf(status);
+                    if (s.equalsIgnoreCase("Shutdown") || s.equalsIgnoreCase("Retiring")) continue;
+                }
+                Object name = m.get("name");
+                String label = name != null ? String.valueOf(name) : String.valueOf(id);
+                out.add(new AiModelEntryDto(String.valueOf(id), label, null, null));
+            }
+        }
+        return out;
+    }
+
+    private static String snippet(String body) {
+        if (body == null) return "";
+        return body.length() > 200 ? body.substring(0, 200) : body;
     }
 
     /** chat 调用结果。 */

@@ -84,6 +84,10 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.38 / 2026-05-28**：`/platform/ai-models` 大模型配置增强。
+  - 顶部「快速添加」内置常见服务商预设（火山方舟 / Kimi / DeepSeek / 千问 / OpenAI），选中即填好 baseUrl / 默认模型，补 API 密钥即可建档。
+  - 编辑表单新增「可用模型」区：点「获取模型列表」调 `discover-models`（新建）/ `fetch-models`（已存，用落库密钥）从服务商拉取模型，点选设为默认模型，保存写入配置。
+  - 列表新增「模型数」列 + 顶部搜索框（名称 / 编号 / 地址 / 模型）。server 端不再 seed 占位 provider（删除 `AiModelProviderDataInitializer`），完全配置化。
 - **v0.32 / 2026-05-25**：
   - `/platform/licenses`「新建批次」按钮接入弹窗（名称 / 发证方 / 等级 / 数量 / 有效期）；批次行追加「铸码」按钮 → `/api/admin/license-batches/{id}/mint-keys` 一次性返回明文激活码 + 复制/保存弹窗。
   - 新页 `/platform/staff` — admin_users CRUD（列表 + 搜索 + 角色筛选 + 新建 + 编辑 + 重置密码 + 停用 + 删除）。

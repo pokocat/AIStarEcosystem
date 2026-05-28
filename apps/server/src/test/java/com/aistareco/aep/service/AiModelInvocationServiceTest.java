@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
+import com.aistareco.aep.dto.AiModelEntryDto;
 import com.aistareco.aep.model.AiModelProvider;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
@@ -24,6 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -292,6 +295,58 @@ class AiModelInvocationServiceTest {
                 new AiModelInvocationService(repo).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
         assertEquals("PROVIDER_NOT_FOUND", ex.getCode());
+    }
+
+    @Test
+    void listModelsParsesAndFiltersRetiredEntries() throws Exception {
+        String body = """
+                {"object":"list","data":[
+                  {"id":"doubao-1-5-lite-32k-250115","name":"doubao-1.5-lite","status":"None"},
+                  {"id":"old-model","status":"Shutdown"},
+                  {"id":"retiring-model","status":"Retiring"},
+                  {"id":"plain-model"}
+                ]}
+                """;
+        StubServer server = stub(200, body);
+        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
+
+        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo).listModels(
+                AiModelProviderType.VOLCENGINE, server.baseUrl(), "sk-models");
+
+        assertTrue(result.ok());
+        assertEquals(200, result.statusCode());
+        List<String> ids = result.models().stream().map(AiModelEntryDto::id).toList();
+        assertEquals(List.of("doubao-1-5-lite-32k-250115", "plain-model"), ids, "Shutdown/Retiring 应被过滤");
+        assertEquals("doubao-1.5-lite", result.models().get(0).label());
+        assertEquals("plain-model", result.models().get(1).label(), "无 name 时 label 回退为 id");
+
+        StubServer.Recorded r = server.requests.get(0);
+        assertEquals("GET", r.method());
+        assertEquals("/v1/models", r.path());
+        assertEquals("Bearer sk-models", r.authorization());
+    }
+
+    @Test
+    void listModelsReturnsFailOnNon2xx() throws Exception {
+        StubServer server = stub(401, "{\"error\":\"unauthorized\"}");
+        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
+
+        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo).listModels(
+                AiModelProviderType.OPENAI, server.baseUrl(), "sk-bad");
+
+        assertFalse(result.ok());
+        assertEquals(401, result.statusCode());
+        assertTrue(result.models().isEmpty());
+        assertNotNull(result.error());
+    }
+
+    @Test
+    void listModelsRejectsNonOpenAiType() {
+        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
+        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo).listModels(
+                AiModelProviderType.ANTHROPIC, "http://127.0.0.1:1/v1", "sk-x");
+        assertFalse(result.ok());
+        assertNotNull(result.error());
     }
 
     /** JDK 内置 HTTP server：记录收到的请求，对任意路径返回预设 status + body。 */

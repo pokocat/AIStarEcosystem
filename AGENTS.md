@@ -1621,6 +1621,37 @@ web-celebrity:
 
 策略选择：**等比例缩放**而非仅 clamp —— 用户改时长一般是整体节奏调整（"这段做短"），而非"保留前 N 秒砍后面"。要精修单 slot 端点可单独编辑 time_range。
 
+### v0.38（2026-05-28）— 大模型配置化 + 内置预设 + 模型发现
+
+把大模型 provider 从「seed 占位 + dev/prod 区分」彻底改成「纯 admin 配置 + 内置预设 + 接口拉模型」。
+配套 v0.37 起的集成测试发现：`AiModelInvocationService` 只认 OPENAI/OPENAI_COMPATIBLE，
+而 seed 把火山/阿里标为 VOLCENGINE/ALIYUN，启用后必 501（同期已放宽兼容集，见 server README）。
+
+```
+server : 删除 AiModelProviderDataInitializer（不再 seed 占位 provider；dev/prod 一视同仁走配置）
+       : AiModelProviderDto / AdminAiModelProviderUpsertDto +models（落 ai_model_providers.models_json）
+       : 新 dto AiModelEntryDto / AiModelProviderPresetDto / AiModelDiscoveryRequestDto / AiModelDiscoveryResultDto
+       : AiModelProviderAdminService +listPresets（5 个内置：火山方舟/Kimi/DeepSeek/千问/OpenAI）
+         +discoverModels(baseUrl,apiKey)（新建前拉）+fetchModels(id)（已存用落库密钥拉）；create/update 序列化 models→modelsJson
+       : AiModelInvocationService +listModels(type,baseUrl,apiKey)：GET /models 解析 data[].id，
+         过滤 status=Shutdown/Retiring（火山方舟会带 status）
+       : AdminAiModelProviderController +GET /presets +POST /discover-models +POST /{id}/fetch-models
+admin  : api/ai-models.ts +AiModelEntry/+AiModelProviderPreset/+ModelDiscoveryResult +listPresets/discoverModels/fetchModels；
+         AiModelProvider/upsert +models
+       : /platform/ai-models 页：顶部「快速添加」预设 chip；表单「可用模型」区（获取模型列表→点选默认）；
+         列表 +模型数列 + 搜索框
+openapi: +/admin/ai-models/presets +/discover-models +/{id}/fetch-models（骨架，沿用既有 admin 风格）
+specs  : 契约 gate 不扫 apps/admin，故不阻断；openapi 仍补齐 path 以免 drift
+```
+
+**注意事项**：
+
+- 模型发现 / fetch 都**不落库**，仅返回列表；持久化统一走 create/update 的 `models`，避免「拉一下就改库」。
+- discover（新建）用表单里现填的明文 AK；fetch（已存）用解密后的落库 AK——所以已存 provider 不必重填密钥。
+- providerType 兼容集放宽是同期 server 改动（除 ANTHROPIC/AZURE_OPENAI 外都走 OpenAI wire），预设里火山/阿里/Kimi/DeepSeek 因此可直接发起 chat 与 /models。
+- 老部署若已有 seed 占位行（`REPLACE_WITH_*`）不会被自动清理——在 admin 列表里删掉即可。
+- 模型 id 必须是服务商真实 id（如火山方舟 `doubao-1-5-lite-32k-250115`，非展示名）；「获取模型列表」就是为了避免手填错 id。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）
