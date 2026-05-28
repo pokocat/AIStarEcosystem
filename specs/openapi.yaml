@@ -4383,6 +4383,24 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/MusicTrendPoint' }
 
+  # ── v0.39 · 素材中心 + 制作工坊（figma MCN 运营端迁入）────────────────────────
+  # 当前前端 mock-only（packages/types + mocks + api 五件套齐备，server 未落地）。
+  # 这里仅声明 path + method 让 check:api-contract 过门；schema 待 server 落地时补全。
+  # 业务规则见 apps/web-music README v0.39。
+  /me/assets:                                  { get:  { tags: [asset],          operationId: listAssets,            summary: '数字资产库列表（mock-only · v0.39）',   responses: { '200': { description: ok } } }, post: { tags: [asset], operationId: uploadAsset, summary: '上传素材（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/assets/{id}/freeze:                      { post: { tags: [asset],          operationId: freezeAsset,           summary: '冻结素材（mock-only · v0.39）',         responses: { '200': { description: ok } } } }
+  /me/copies:                                  { get:  { tags: [copy],           operationId: listCopies,            summary: '文案库列表（mock-only · v0.39）',       responses: { '200': { description: ok } } }, post: { tags: [copy], operationId: createCopy, summary: '新增文案（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/copies/{id}/approve:                     { post: { tags: [copy],           operationId: approveCopy,           summary: '推进/驳回三阶段审批（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/clip-tasks:                              { get:  { tags: [clip-studio],    operationId: listClipTasks,         summary: '切片任务列表（mock-only · v0.39）',     responses: { '200': { description: ok } } }, post: { tags: [clip-studio], operationId: createClipTask, summary: '新建切片任务（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/clip-tasks/{id}/submit-qc:               { post: { tags: [clip-studio],    operationId: submitClipQc,          summary: '提交 6 项质检（mock-only · v0.39）',     responses: { '200': { description: ok } } } }
+  /me/person-models:                           { get:  { tags: [digital-person], operationId: listPersonModels,      summary: '数字人模型库（mock-only · v0.39）',     responses: { '200': { description: ok } } } }
+  /me/digital-person/gen-tasks:                { get:  { tags: [digital-person], operationId: listGenTasks,          summary: '数字人生成任务（mock-only · v0.39）',   responses: { '200': { description: ok } } }, post: { tags: [digital-person], operationId: createGenTask, summary: '新建生成任务（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/digital-person/gen-tasks/{id}/push-to-pool: { post: { tags: [digital-person], operationId: pushGenTaskToPool,  summary: '已通过任务入发布池（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/mix-templates:                           { get:  { tags: [batch-mix],      operationId: listMixTemplates,      summary: '混剪模板库（mock-only · v0.39）',       responses: { '200': { description: ok } } } }
+  /me/batch-tasks:                             { get:  { tags: [batch-mix],      operationId: listBatchTasks,        summary: '混剪批量任务（mock-only · v0.39）',     responses: { '200': { description: ok } } }, post: { tags: [batch-mix], operationId: createBatchTask, summary: '新建批量任务（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/batch-tasks/{id}/start:                  { post: { tags: [batch-mix],      operationId: startBatchTask,        summary: '开始批量渲染（mock-only · v0.39）',     responses: { '200': { description: ok } } } }
+  /me/batch-tasks/{id}/push-to-pool:           { post: { tags: [batch-mix],      operationId: pushBatchToPool,       summary: '批量入发布池（mock-only · v0.39）',     responses: { '200': { description: ok } } } }
+
   /me/generation/run:
     post:
       tags: [generation]

@@ -31,6 +31,7 @@ import {
   Play,
   RefreshCw,
   Send,
+  Settings2,
   Sparkles,
   Square,
   Unlock,
@@ -45,6 +46,14 @@ import { Input } from "@ai-star-eco/ui/ui/input";
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ai-star-eco/ui/ui/tabs";
 import { Progress } from "@ai-star-eco/ui/ui/progress";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@ai-star-eco/ui/ui/sheet";
 import {
   FORGE_HISTORY_MAX,
   MODE_CONFIG,
@@ -200,6 +209,8 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
     { id: "v-04", label: "版本 04", at: "--:--", image: FORGE_TEMPLATES[4].image },
   ]);
   const [activeHistoryId, setActiveHistoryId] = useState<string>("v-01");
+  // v0.40 · 「形象参数」侧抽屉开关（原 LEFT 列的素材与约束表单 stash 到这里）
+  const [paramsOpen, setParamsOpen] = useState(false);
   const [promptStrength] = useState(8.5);
   const [seedLocked, setSeedLocked] = useState(true);
   const [seed] = useState("#7F3C");
@@ -514,13 +525,16 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
         </Badge>
       </div>
 
-      {/* 主体：3 栏 */}
-      <div className="grid flex-1 min-h-0 gap-3 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
-        {/* ───────── LEFT · 素材与约束 ───────── */}
-        <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card overflow-hidden">
-          <div className="shrink-0 border-b border-border px-4 py-3">
-            <h2 className="text-sm font-medium">素材与约束</h2>
-          </div>
+      {/* 主体：2 栏 · 左对话、右渲染（业界通用形象生成 UI 范式）。
+          原 LEFT 列的「素材与约束」表单 stash 到 Sheet 抽屉，由工具条「形象参数」按钮唤起。*/}
+      <Sheet open={paramsOpen} onOpenChange={setParamsOpen}>
+        <SheetContent side="left" className="w-[360px] sm:w-[420px] flex flex-col p-0 gap-0">
+          <SheetHeader className="shrink-0 border-b border-border px-4 py-3">
+            <SheetTitle className="text-sm font-medium text-left">素材与约束</SheetTitle>
+            <SheetDescription className="text-xs text-muted-foreground text-left">
+              锻造模式 / 身份 / 参考照片 / 风格 / 面部微调，调整后实时影响下一次锻造。
+            </SheetDescription>
+          </SheetHeader>
 
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
             {/* 锻造模式 */}
@@ -688,13 +702,25 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
               </div>
             </Section>
           </div>
-        </aside>
+        </SheetContent>
+      </Sheet>
 
-        {/* ───────── CENTER · 工具条 + 模版条 + 画布 ───────── */}
-        <section className="flex min-w-0 min-h-0 flex-col gap-3">
+      <div className="grid flex-1 min-h-0 gap-3 grid-cols-1 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+        {/* ───────── RIGHT · 工具条 + 模版条 + 画布（视觉上靠右） ───────── */}
+        <section className="flex min-w-0 min-h-0 flex-col gap-3 lg:order-2">
           {/* 工具条 */}
           <div className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
             <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => setParamsOpen(true)}
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                title="打开素材与约束（左侧抽屉）"
+              >
+                <Settings2 className="h-3.5 w-3.5" /> 形象参数
+              </Button>
               {generating ? (
                 <Button onClick={handleStop} variant="destructive" size="sm" className="gap-1.5">
                   <Square className="h-3.5 w-3.5 fill-current" /> 终止锻造
@@ -795,8 +821,8 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
           </div>
         </section>
 
-        {/* ───────── RIGHT · 对话 / 历史 / 流 ───────── */}
-        <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card overflow-hidden">
+        {/* ───────── LEFT · 对话 / 历史 / 流（lg:order-1 视觉上靠左）───────── */}
+        <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card overflow-hidden lg:order-1">
           <Tabs value={dockTab} onValueChange={(v) => setDockTab(v as typeof dockTab)} className="flex flex-col flex-1 min-h-0">
             <div className="shrink-0 border-b border-border px-3 pt-3">
               <TabsList className="w-full grid grid-cols-3 h-9">

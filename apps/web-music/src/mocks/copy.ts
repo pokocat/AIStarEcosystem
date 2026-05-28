@@ -1,0 +1,111 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// mocks/copy.ts — 文案库样本（5 条，覆盖 5 种状态：approved/partner_review/ops_review/rejected/approved）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { CopyItem } from "@ai-star-eco/types/copy";
+
+export const COPIES: CopyItem[] = [
+  {
+    id: "cp-1",
+    title: "张艺星 × 极速数码 618 主推文案-V3",
+    type: "script",
+    partnerScope: "张艺星",
+    content:
+      "姐妹们，今天给大家带来一个我自己用了三个月的手机，性能真的绝了！618 期间限时优惠，比官网便宜 800 元，而且还有赠品...",
+    stage: "approved",
+    platformScope: ["DY", "KS"],
+    productScope: "极速数码旗舰手机 X12",
+    validFrom: "2025-06-01",
+    validTo: "2025-07-31",
+    version: 3,
+    author: "运营小王",
+    createdAt: "2025-05-20",
+    comments: [
+      { stage: "运营初审", author: "运营小王", text: "整体方向 OK，已去掉极限词", time: "2025-05-21T14:30:00Z", passed: true },
+      { stage: "合作方复审", author: "张艺星团队", text: "口吻符合人设，无异议", time: "2025-05-22T10:00:00Z", passed: true },
+      { stage: "法务终审", author: "法务张", text: "无违规用词，已通过", time: "2025-05-22T16:45:00Z", passed: true },
+    ],
+    riskFlags: [],
+  },
+  {
+    id: "cp-2",
+    title: "林音宝护肤产品口播稿-效果版",
+    type: "script",
+    partnerScope: "林音宝",
+    content:
+      "大家好，今天来测评一下这款最新的精华液，我坚持使用了两周，皮肤确实有明显的变化，毛孔看起来收缩了很多...",
+    stage: "partner_review",
+    platformScope: ["XHS", "DY"],
+    productScope: "轻奢护肤精华液",
+    validFrom: "2025-09-01",
+    validTo: "2025-10-31",
+    version: 1,
+    author: "运营李梅",
+    createdAt: "2025-08-28",
+    comments: [
+      { stage: "运营初审", author: "运营李梅", text: "已检查禁用词，通过", time: "2025-08-29T11:00:00Z", passed: true },
+      { stage: "合作方复审", author: "林音宝团队", text: "待审阅...", time: "", passed: false },
+    ],
+    riskFlags: [],
+  },
+  {
+    id: "cp-3",
+    title: "清洁卫士评论区引导话术-夏季版",
+    type: "comment",
+    partnerScope: "清洁卫士品牌方",
+    content:
+      "家人们，这款清洁产品真的是夏天必备，去油污效果一级棒，而且无残留，厨房打扫再也不费劲了！想了解的直接评论区找我~",
+    stage: "ops_review",
+    platformScope: ["DY", "KS", "XHS"],
+    productScope: "多效厨房清洁剂",
+    validFrom: "2025-07-01",
+    validTo: "2025-08-31",
+    version: 2,
+    author: "运营小陈",
+    createdAt: "2025-06-25",
+    comments: [
+      { stage: "运营初审", author: "运营小陈", text: "正在审核...", time: "", passed: false },
+    ],
+    riskFlags: [],
+  },
+  {
+    id: "cp-4",
+    title: "张艺星商品卖点文案-数码周",
+    type: "selling_point",
+    partnerScope: "张艺星",
+    content: "全球首发！最强拍照旗舰！史上最低价！三重大礼包免费送！",
+    stage: "rejected",
+    platformScope: ["DY"],
+    productScope: "极速数码旗舰手机",
+    validFrom: "2025-06-10",
+    validTo: "2025-06-18",
+    version: 1,
+    author: "运营小赵",
+    createdAt: "2025-06-05",
+    comments: [
+      { stage: "运营初审", author: "运营小赵", text: "\"全球首发\"、\"史上最低价\" 属于极限词，需修改", time: "2025-06-06T09:00:00Z", passed: false },
+    ],
+    riskFlags: ["全球首发", "史上最低价"],
+  },
+  {
+    id: "cp-5",
+    title: "林音宝短视频标题库-日常系列",
+    type: "title",
+    partnerScope: "林音宝",
+    content: "被这款精华\"救\"了！|测了 20 款终于找到它|素颜也能出门的秘密|",
+    stage: "approved",
+    platformScope: ["XHS", "DY", "VCH"],
+    productScope: "轻奢护肤系列",
+    validFrom: "2025-08-01",
+    validTo: "2025-12-31",
+    version: 2,
+    author: "运营李梅",
+    createdAt: "2025-07-15",
+    comments: [
+      { stage: "运营初审", author: "运营李梅", text: "标题吸引力强，无违规", time: "2025-07-16T10:00:00Z", passed: true },
+      { stage: "合作方复审", author: "林音宝团队", text: "认可，符合人设调性", time: "2025-07-17T14:00:00Z", passed: true },
+      { stage: "法务终审", author: "法务张", text: "无问题", time: "2025-07-17T17:00:00Z", passed: true },
+    ],
+    riskFlags: [],
+  },
+];

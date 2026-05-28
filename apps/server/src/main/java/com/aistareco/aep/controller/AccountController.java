@@ -1,9 +1,12 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.dto.AlbumDto;
+import com.aistareco.aep.dto.ConcertDto;
 import com.aistareco.aep.dto.DigitalIpDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.MeDto;
 import com.aistareco.aep.dto.MessagesOverviewDto;
+import com.aistareco.aep.dto.MusicTrendPointDto;
 import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.dto.RechargePackageDto;
 import com.aistareco.aep.dto.RechargeRequestDto;
@@ -13,6 +16,8 @@ import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.dto.WalletDto;
 import com.aistareco.aep.model.DigitalIp;
 import com.aistareco.aep.model.Song;
+import com.aistareco.aep.repository.AlbumRepository;
+import com.aistareco.aep.repository.ConcertRepository;
 import com.aistareco.aep.repository.DigitalIpRepository;
 import com.aistareco.aep.repository.SongRepository;
 import com.aistareco.aep.service.AccountSelfService;
@@ -28,10 +33,15 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/me")
@@ -40,6 +50,8 @@ public class AccountController {
     private final AccountSelfService accountSelfService;
     private final DigitalIpService digitalIpService;
     private final SongRepository songRepo;
+    private final AlbumRepository albumRepo;
+    private final ConcertRepository concertRepo;
     private final DigitalIpRepository digitalIpRepo;
     private final RechargeService rechargeService;
     private final NotificationService notificationService;
@@ -47,12 +59,16 @@ public class AccountController {
     public AccountController(AccountSelfService accountSelfService,
                              DigitalIpService digitalIpService,
                              SongRepository songRepo,
+                             AlbumRepository albumRepo,
+                             ConcertRepository concertRepo,
                              DigitalIpRepository digitalIpRepo,
                              RechargeService rechargeService,
                              NotificationService notificationService) {
         this.accountSelfService = accountSelfService;
         this.digitalIpService = digitalIpService;
         this.songRepo = songRepo;
+        this.albumRepo = albumRepo;
+        this.concertRepo = concertRepo;
         this.digitalIpRepo = digitalIpRepo;
         this.rechargeService = rechargeService;
         this.notificationService = notificationService;
@@ -267,6 +283,132 @@ public class AccountController {
                 .build();
         Song saved = songRepo.save(song);
         return ApiResponse.of(SongDto.from(saved));
+    }
+
+    /**
+     * 推进歌曲状态机：recording → mixing → released（POST /me/songs/{id}/advance）。
+     * body: {@code { "status": "mixing" | "released" }}（wire 小写）。释放时落 releaseDate。
+     */
+    @PostMapping("/songs/{id}/advance")
+    public ApiResponse<SongDto> advanceSong(Principal principal,
+                                            @PathVariable String id,
+                                            @RequestBody Map<String, Object> body) {
+        Song existing = songRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "歌曲不存在"));
+        requireSongOwnership(principal, existing);
+
+        String next = str(body.get("status"));
+        if (next == null || next.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status 必填");
+        }
+        Song.SongStatus target;
+        try {
+            target = Song.SongStatus.valueOf(next.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "非法状态：" + next);
+        }
+        existing.setStatus(target);
+        if (target == Song.SongStatus.RELEASED && existing.getReleaseDate() == null) {
+            existing.setReleaseDate(Instant.now());
+        }
+        return ApiResponse.of(SongDto.from(songRepo.save(existing)));
+    }
+
+    /** 当前用户名下所有 AI 艺人的专辑（按创建倒序）。 */
+    @GetMapping("/albums")
+    public ApiResponse<List<AlbumDto>> listMyAlbums(Principal principal) {
+        Set<String> owned = ownedArtistIds(principal);
+        if (owned.isEmpty()) return ApiResponse.of(List.of());
+        List<AlbumDto> albums = albumRepo.findAll().stream()
+                .filter(a -> a.getArtistId() != null && owned.contains(a.getArtistId()))
+                .sorted((a, b) -> nullSafeCompareDesc(a.getCreatedAt(), b.getCreatedAt()))
+                .map(AlbumDto::from)
+                .toList();
+        return ApiResponse.of(albums);
+    }
+
+    /** 当前用户名下所有 AI 艺人的演唱会（artistIds 命中任一即归属）。 */
+    @GetMapping("/concerts")
+    public ApiResponse<List<ConcertDto>> listMyConcerts(Principal principal) {
+        Set<String> owned = ownedArtistIds(principal);
+        if (owned.isEmpty()) return ApiResponse.of(List.of());
+        List<ConcertDto> concerts = concertRepo.findAll().stream()
+                .filter(c -> c.getArtistIds() != null
+                        && c.getArtistIds().stream().anyMatch(owned::contains))
+                .sorted((a, b) -> nullSafeCompareDesc(a.getDate(), b.getDate()))
+                .map(ConcertDto::from)
+                .toList();
+        return ApiResponse.of(concerts);
+    }
+
+    /**
+     * 近 N 天音乐业务趋势（GET /me/music/trends?range=30d）。
+     * 当前无逐日播放史表，按用户歌曲的播放/收入总量派生一条确定性的累计曲线
+     * （线性铺到 [range] 天，末日 = 当前总量）。接入真实埋点后替换为日维聚合。
+     */
+    @GetMapping("/music/trends")
+    public ApiResponse<List<MusicTrendPointDto>> musicTrends(Principal principal,
+                                                             @RequestParam(required = false, defaultValue = "30d") String range) {
+        int days = parseRangeDays(range);
+        Set<String> owned = ownedArtistIds(principal);
+
+        long totalPlays = 0L;
+        long totalRevenue = 0L;
+        if (!owned.isEmpty()) {
+            List<Song> songs = owned.stream()
+                    .flatMap(aid -> songRepo.findByArtistIdOrderByCreatedAtDesc(aid).stream())
+                    .toList();
+            for (Song s : songs) {
+                totalPlays += Math.max(0, s.getPlays());
+                totalRevenue += Math.max(0, s.getRevenue());
+            }
+        }
+
+        List<MusicTrendPointDto> series = new ArrayList<>(days);
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate d = today.minusDays(i);
+            // 累计曲线：第 k 天（1..days）持有 k/days 的总量，确定性、单调不减。
+            double ratio = (double) (days - i) / days;
+            long plays = Math.round(totalPlays * ratio);
+            long revenue = Math.round(totalRevenue * ratio);
+            series.add(new MusicTrendPointDto(d.toString(), plays, revenue));
+        }
+        return ApiResponse.of(series);
+    }
+
+    // ── 内部工具 ────────────────────────────────────────────────────────────
+    private Set<String> ownedArtistIds(Principal principal) {
+        return digitalIpRepo.findByOwnerUserId(principal.getName()).stream()
+                .map(DigitalIp::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private void requireSongOwnership(Principal principal, Song song) {
+        String artistId = song.getArtistId();
+        if (artistId == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "歌曲缺少艺人归属");
+        }
+        DigitalIp artist = digitalIpRepo.findById(artistId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "艺人不存在"));
+        if (!principal.getName().equals(artist.getOwnerUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该歌曲不属于当前用户");
+        }
+    }
+
+    private static int parseRangeDays(String range) {
+        if (range == null) return 30;
+        String digits = range.replaceAll("[^0-9]", "");
+        if (digits.isBlank()) return 30;
+        int n = Integer.parseInt(digits);
+        return Math.min(Math.max(n, 1), 365);
+    }
+
+    private static int nullSafeCompareDesc(Instant a, Instant b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return b.compareTo(a);
     }
 
     private static long mockCreditsFor(String modelVersion, String thinkDepth) {
