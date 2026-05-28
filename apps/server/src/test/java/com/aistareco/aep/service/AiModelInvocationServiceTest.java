@@ -204,19 +204,49 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
-    void unsupportedProviderTypeThrows501() {
-        // ANTHROPIC 在 v0.5 未实现 → doChat 抛 501（不发 HTTP）。
-        AiModelProvider p = provider("p1", "http://127.0.0.1:1/v1", 10,
-                AiModelProviderType.ANTHROPIC, List.of("GENERAL"), "claude-3", "sk-x");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
+    void anthropicAndAzureThrow501() {
+        // 仅 ANTHROPIC / AZURE_OPENAI 走独立 wire，未实现 → doChat 抛 501（不发 HTTP）。
+        for (AiModelProviderType type : List.of(AiModelProviderType.ANTHROPIC, AiModelProviderType.AZURE_OPENAI)) {
+            AiModelProvider p = provider("p1", "http://127.0.0.1:1/v1", 10,
+                    type, List.of("GENERAL"), "vendor-model", "sk-x");
+            AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
+            when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
 
-        BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(repo).invokeChat(
-                        AiModelPurpose.GENERAL,
-                        List.of(Map.of("role", "user", "content", "hi")), null));
-        assertEquals(HttpStatus.NOT_IMPLEMENTED, ex.getStatus());
-        assertEquals("PROVIDER_NOT_SUPPORTED", ex.getCode());
+            BusinessException ex = assertThrows(BusinessException.class, () ->
+                    new AiModelInvocationService(repo).invokeChat(
+                            AiModelPurpose.GENERAL,
+                            List.of(Map.of("role", "user", "content", "hi")), null),
+                    "providerType=" + type.wire() + " 应抛 501");
+            assertEquals(HttpStatus.NOT_IMPLEMENTED, ex.getStatus());
+            assertEquals("PROVIDER_NOT_SUPPORTED", ex.getCode());
+        }
+    }
+
+    @Test
+    void compatibleVendorTypesUseOpenAiPath() throws Exception {
+        // 国产厂商（均提供 OpenAI 兼容端点）不再被 501 拦下，统一走 /chat/completions。
+        // 与真实验证一致：Volcengine Ark providerType=VOLCENGINE 也能正常发起。
+        List<AiModelProviderType> compatible = List.of(
+                AiModelProviderType.VOLCENGINE, AiModelProviderType.ALIYUN,
+                AiModelProviderType.MOONSHOT, AiModelProviderType.DEEPSEEK,
+                AiModelProviderType.BAIDU, AiModelProviderType.TENCENT,
+                AiModelProviderType.CUSTOM);
+        for (AiModelProviderType type : compatible) {
+            StubServer server = stub(200, CHAT_OK);
+            AiModelProvider p = provider("p-" + type.wire(), server.baseUrl(), 10,
+                    type, List.of("GENERAL"), "vendor-model", "sk-" + type.wire());
+            AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
+            when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
+
+            AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo).invokeChat(
+                    AiModelPurpose.GENERAL,
+                    List.of(Map.of("role", "user", "content", "hi")), null);
+
+            assertEquals("你好，我是测试回答。", resp.content(),
+                    "providerType=" + type.wire() + " 应走 OpenAI 兼容分支并解析响应");
+            assertEquals("/v1/chat/completions", server.requests.get(0).path());
+            assertEquals("Bearer sk-" + type.wire(), server.requests.get(0).authorization());
+        }
     }
 
     @Test
@@ -241,15 +271,16 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
-    void testConnectionRejectsNonOpenAiType() {
+    void testConnectionRejectsUnsupportedType() {
+        // AZURE_OPENAI 走独立 wire → 不做连通测试，直接返回 ok=false（不发 HTTP）。
         AiModelProvider p = provider("pY", "http://127.0.0.1:1/v1", 10,
-                AiModelProviderType.VOLCENGINE, List.of("GENERAL"), "doubao", "sk-x");
+                AiModelProviderType.AZURE_OPENAI, List.of("GENERAL"), "gpt-4o", "sk-x");
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
         when(repo.findById("pY")).thenReturn(Optional.of(p));
 
         Map<String, Object> result = new AiModelInvocationService(repo).testConnection("pY");
         assertEquals(false, result.get("ok"));
-        assertEquals("VOLCENGINE", result.get("providerType"));
+        assertEquals("AZURE_OPENAI", result.get("providerType"));
     }
 
     @Test
