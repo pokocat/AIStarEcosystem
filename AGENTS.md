@@ -1621,6 +1621,68 @@ web-celebrity:
 
 策略选择：**等比例缩放**而非仅 clamp —— 用户改时长一般是整体节奏调整（"这段做短"），而非"保留前 N 秒砍后面"。要精修单 slot 端点可单独编辑 time_range。
 
+### v0.38（2026-05-28）— 大模型配置化 + 内置预设 + 模型发现
+
+把大模型 provider 从「seed 占位 + dev/prod 区分」彻底改成「纯 admin 配置 + 内置预设 + 接口拉模型」。
+配套 v0.37 起的集成测试发现：`AiModelInvocationService` 只认 OPENAI/OPENAI_COMPATIBLE，
+而 seed 把火山/阿里标为 VOLCENGINE/ALIYUN，启用后必 501（同期已放宽兼容集，见 server README）。
+
+```
+server : 删除 AiModelProviderDataInitializer（不再 seed 占位 provider；dev/prod 一视同仁走配置）
+       : AiModelProviderDto / AdminAiModelProviderUpsertDto +models（落 ai_model_providers.models_json）
+       : 新 dto AiModelEntryDto / AiModelProviderPresetDto / AiModelDiscoveryRequestDto / AiModelDiscoveryResultDto
+       : AiModelProviderAdminService +listPresets（5 个内置：火山方舟/Kimi/DeepSeek/千问/OpenAI）
+         +discoverModels(baseUrl,apiKey)（新建前拉）+fetchModels(id)（已存用落库密钥拉）；create/update 序列化 models→modelsJson
+       : AiModelInvocationService +listModels(type,baseUrl,apiKey)：GET /models 解析 data[].id，
+         过滤 status=Shutdown/Retiring（火山方舟会带 status）
+       : AdminAiModelProviderController +GET /presets +POST /discover-models +POST /{id}/fetch-models
+admin  : api/ai-models.ts +AiModelEntry/+AiModelProviderPreset/+ModelDiscoveryResult +listPresets/discoverModels/fetchModels；
+         AiModelProvider/upsert +models
+       : /platform/ai-models 页：顶部「快速添加」预设 chip；表单「可用模型」区（获取模型列表→点选默认）；
+         列表 +模型数列 + 搜索框
+openapi: +/admin/ai-models/presets +/discover-models +/{id}/fetch-models（骨架，沿用既有 admin 风格）
+specs  : 契约 gate 不扫 apps/admin，故不阻断；openapi 仍补齐 path 以免 drift
+```
+
+**注意事项**：
+
+- 模型发现 / fetch 都**不落库**，仅返回列表；持久化统一走 create/update 的 `models`，避免「拉一下就改库」。
+- discover（新建）用表单里现填的明文 AK；fetch（已存）用解密后的落库 AK——所以已存 provider 不必重填密钥。
+- providerType 兼容集放宽是同期 server 改动（除 ANTHROPIC/AZURE_OPENAI 外都走 OpenAI wire），预设里火山/阿里/Kimi/DeepSeek 因此可直接发起 chat 与 /models。
+- 老部署若已有 seed 占位行（`REPLACE_WITH_*`）不会被自动清理——在 admin 列表里删掉即可。
+- 模型 id 必须是服务商真实 id（如火山方舟 `doubao-1-5-lite-32k-250115`，非展示名）；「获取模型列表」就是为了避免手填错 id。
+
+### v0.39（2026-05-28）— Agent 平台（Coze）配置化
+
+把「形象锻造」这类挂在 agent 平台（Coze）上的会话能力从 env 写死改为后台可配。
+与 v0.38 的 AiModelProvider（裸大模型 /chat/completions）互补：本表是「agent 平台托管的 bot」
+（带知识库 / 工作流 / 工具编排），按 sceneKey 绑定到具体业务功能。
+
+```
+server : 新实体 AgentBotProvider（agent_bot_providers 表，sceneKey 唯一）+ AgentPlatform 枚举（COZE/DIFY/CUSTOM）
+       : 新 repo AgentBotProviderRepository（findBySceneKeyAndEnabledTrue / findBySceneKey）
+       : 新 dto AgentBotProviderDto（token 脱敏）/ AgentBotProviderUpsertDto（token 明文进，加密落库）/ AgentSceneDto
+       : 新 service AgentScenes（场景目录单一真源：appearance-forge）+ AgentBotProviderAdminService（CRUD + listScenes）
+       : 新 controller AdminAgentBotController → /api/admin/agent-bots（CRUD + /scenes）
+       : ForgeCozeService 改造：按 sceneKey=appearance-forge 从 DB 解析 bot（token/botId/apiBase/userIdPrefix），
+         env 兜底（envEnabled/envToken/...）保持老部署不破；client 按 (apiBase, token) 缓存
+admin  : 新 api/agent-bots.ts（list/get/create/update/remove/listScenes）+ api/index 注册 AgentBotsApi
+       : 新页 /platform/agent-bots（CRUD + 平台/场景下拉 + token 加密输入 + 高级项）；nav「平台与配置」加「Agent 平台」
+       : Bot ID 列 / 表单渲染「在 Coze 打开 bot 配置页」深链（{console}/space/{spaceId}/bot/{botId}，
+         console 由 apiBase 推断 coze.cn/coze.com）；AgentBotProvider +可选 spaceId（仅拼链，不参与调用）
+       : 表单加「粘贴 Coze bot 链接」快速填充（parseCozeBotUrl 拆 apiBase/spaceId/botId 回填，纯前端）
+web-music : 形象锻造前端 USE_MOCK 开关本就齐全（mock 本地回放 / live 走 /appearance-forge/coze/stream），本期未改
+openapi: +/admin/agent-bots（GET/POST）+/scenes（GET）+/{id}（GET/PUT/DELETE）骨架
+```
+
+**注意事项**：
+
+- **一个 sceneKey 唯一对应一个 bot**（DB unique + service 双校验）；要换 bot 是「编辑」而非新增第二行。
+- **env 兜底**：未在后台为某 scene 配置 bot 时，回退到原 `aep.coze.*` env（老部署 / 现网不破）。两者都没有 → `/coze/status` 报未配置、stream 抛 503。
+- **mock/live 切换在前端**（`NEXT_PUBLIC_USE_MOCK`）：mock 不碰后端;live 才用后台 bot。所以本地开发不配 Coze 也能跑形象锻造。
+- **本期只接 Coze**；DIFY/CUSTOM 是枚举占位，invoke 路径未实现（admin 可建档但不生效）。
+- 新增一个 agent 功能 = AgentScenes 加 scene + 写薄 handler（鉴权 + 拼 prompt，按 sceneKey 取配置）+ admin 配一行 bot。流式/解析核心（ForgeCozeService 的 Coze 事件解析）待第二个场景出现时再抽公共件（现在抽属于过早）。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

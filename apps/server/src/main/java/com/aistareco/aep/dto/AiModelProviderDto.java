@@ -3,6 +3,8 @@ package com.aistareco.aep.dto;
 import com.aistareco.aep.model.AiModelProvider;
 import com.aistareco.common.AepCryptoUtil;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,12 +21,15 @@ public record AiModelProviderDto(
         String apiKeyMasked,
         String apiVersion,
         String defaultModel,
+        List<AiModelEntryDto> models,
         List<String> purposes,
         Integer priority,
         boolean enabled,
         Instant createdAt,
         Instant updatedAt
 ) {
+    private static final ObjectMapper OM = new ObjectMapper();
+
     public static AiModelProviderDto from(AiModelProvider p) {
         // 解密 apiKey 后立即脱敏；密文不外泄
         String plaintext = null;
@@ -39,11 +44,21 @@ public record AiModelProviderDto(
                 plaintext != null ? AepCryptoUtil.mask(plaintext) : "***",
                 p.getApiVersion(),
                 p.getDefaultModel(),
+                parseModels(p.getModelsJson()),
                 p.getPurposes() != null ? p.getPurposes() : List.of(),
                 p.getPriority(),
                 p.isEnabled(),
                 p.getCreatedAt(),
                 p.getUpdatedAt()
         );
+    }
+
+    private static List<AiModelEntryDto> parseModels(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return OM.readValue(json, new TypeReference<List<AiModelEntryDto>>() {});
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 }

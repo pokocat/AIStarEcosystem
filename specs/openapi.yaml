@@ -5054,10 +5054,14 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-template-scripts], operationId: adminUploadTemplateScriptClip, responses: { '200': { description: ok } } }
 
-  # ── 大模型配置（v0.5 §D8 新增） ──────────────────────────────────────
+  # ── 大模型配置（v0.5 §D8 新增；配置化 + 预设 + 模型发现 增量） ──────────────
   /admin/ai-models:
     get:  { tags: [admin-ai-models], operationId: adminListAiModelProviders,  responses: { '200': { description: ok } } }
     post: { tags: [admin-ai-models], operationId: adminCreateAiModelProvider, responses: { '201': { description: created } } }
+  /admin/ai-models/presets:
+    get: { tags: [admin-ai-models], operationId: adminListAiModelPresets, responses: { '200': { description: 内置常见服务商预设（火山方舟 / Kimi / DeepSeek / 千问 / OpenAI） } } }
+  /admin/ai-models/discover-models:
+    post: { tags: [admin-ai-models], operationId: adminDiscoverAiModels, responses: { '200': { description: 用 baseUrl+apiKey 调服务商 GET /models 拉取可用模型 } } }
   /admin/ai-models/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get:    { tags: [admin-ai-models], operationId: adminGetAiModelProvider,    responses: { '200': { description: ok } } }
@@ -5066,6 +5070,21 @@ paths:
   /admin/ai-models/{id}/test:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-ai-models], operationId: adminTestAiModelProvider, responses: { '200': { description: ok } } }
+  /admin/ai-models/{id}/fetch-models:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-ai-models], operationId: adminFetchAiModels, responses: { '200': { description: 用已存 apiKey 重新拉取可用模型（拉回后保存写入配置） } } }
+
+  # ── Agent 平台 bot 配置（v0.39 新增；Coze 等，按 sceneKey 绑定业务功能） ──────────
+  /admin/agent-bots:
+    get:  { tags: [admin-agent-bots], operationId: adminListAgentBots,  responses: { '200': { description: ok } } }
+    post: { tags: [admin-agent-bots], operationId: adminCreateAgentBot, responses: { '201': { description: created } } }
+  /admin/agent-bots/scenes:
+    get: { tags: [admin-agent-bots], operationId: adminListAgentScenes, responses: { '200': { description: 可绑定的业务场景目录（如 appearance-forge） } } }
+  /admin/agent-bots/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-agent-bots], operationId: adminGetAgentBot,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-agent-bots], operationId: adminUpdateAgentBot, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-agent-bots], operationId: adminDeleteAgentBot, responses: { '204': { description: ok } } }
 
   # ── admin · products（商品库管理；v0.31 起承载所有写动作） ───────────────────────
 
