@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
+import com.aistareco.aep.dto.AiModelEntryDto;
 import com.aistareco.aep.model.AiModelProvider;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
@@ -18,10 +20,13 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * 大模型调用门面（v0.5 §D8 新增）。
+ * 大模型调用门面（v0.5 §D8 新增；providerType 兼容集后续放宽）。
  *
- * 本期实现：OPENAI / OPENAI_COMPATIBLE 的 /chat/completions 调用。
- * 其他 providerType（ANTHROPIC / 国产）保留 enum 与 admin CRUD，但 invokeChat 时抛 501。
+ * 走 OpenAI /chat/completions + /v1/models wire 协议的 provider 都支持，即除
+ * ANTHROPIC（Messages API：x-api-key 头 + 不同 body）与 AZURE_OPENAI
+ * （api-key 头 + ?api-version= + deployment 在路径）以外的所有 providerType。
+ * 国产厂商（VOLCENGINE / ALIYUN / MOONSHOT / DEEPSEEK / BAIDU / TENCENT / CUSTOM 等）
+ * 几乎都提供 OpenAI 兼容端点，统一走同一分支；ANTHROPIC / AZURE_OPENAI 需独立适配，调用时抛 501。
  *
  * 选 provider 策略：按 purpose 过滤启用项 → 按 priority 升序取第一个。
  * fallback：若失败，用同 purpose priority 次高的 provider 重试一次。
@@ -33,6 +38,10 @@ public class AiModelInvocationService {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
             .build();
+
+    /** 不走 OpenAI wire（/chat/completions + /v1/models）、需独立适配的 providerType。 */
+    private static final EnumSet<AiModelProviderType> NON_OPENAI_WIRE =
+            EnumSet.of(AiModelProviderType.ANTHROPIC, AiModelProviderType.AZURE_OPENAI);
 
     private final AiModelProviderRepository repo;
 
@@ -69,8 +78,10 @@ public class AiModelInvocationService {
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PROVIDER_NOT_FOUND",
                         "provider 不存在"));
         AiModelProviderType type = p.getProviderType();
-        if (type != AiModelProviderType.OPENAI && type != AiModelProviderType.OPENAI_COMPATIBLE) {
-            return Map.of("ok", false, "error", "v0.5 仅支持 OPENAI / OPENAI_COMPATIBLE 类型测试连通", "providerType", type.wire());
+        if (!isOpenAiCompatible(type)) {
+            return Map.of("ok", false,
+                    "error", "providerType=" + type.wire() + " 暂不支持连通测试（仅 ANTHROPIC / AZURE_OPENAI 需独立适配）",
+                    "providerType", type.wire());
         }
         try {
             String apiKey = AepCryptoUtil.decrypt(p.getApiKeyEncrypted());
@@ -91,6 +102,35 @@ public class AiModelInvocationService {
         }
     }
 
+    /**
+     * 拉取服务商可用模型列表（GET {baseUrl}/models）。失败不抛异常，包成
+     * AiModelDiscoveryResultDto.fail 返回，便于前端直接展示原因。
+     */
+    public AiModelDiscoveryResultDto listModels(AiModelProviderType type, String baseUrl, String apiKey) {
+        if (type != null && !isOpenAiCompatible(type)) {
+            return AiModelDiscoveryResultDto.fail(null,
+                    "providerType=" + type.wire() + " 暂不支持模型发现（仅 ANTHROPIC / AZURE_OPENAI 需独立适配）");
+        }
+        if (baseUrl == null || baseUrl.isBlank()) return AiModelDiscoveryResultDto.fail(null, "baseUrl 为空");
+        if (apiKey == null || apiKey.isBlank()) return AiModelDiscoveryResultDto.fail(null, "apiKey 为空");
+        try {
+            URI uri = URI.create(rstrip(baseUrl, "/") + "/models");
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                return AiModelDiscoveryResultDto.fail(resp.statusCode(),
+                        "HTTP " + resp.statusCode() + ": " + snippet(resp.body()));
+            }
+            return AiModelDiscoveryResultDto.ok(resp.statusCode(), parseModelsResponse(resp.body()));
+        } catch (Exception e) {
+            return AiModelDiscoveryResultDto.fail(null, e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
     // ── 内部 ───────────────────────────────────────────────────────────────
 
     private List<AiModelProvider> pickProviders(AiModelPurpose purpose) {
@@ -103,9 +143,9 @@ public class AiModelInvocationService {
     private AiModelResponse doChat(AiModelProvider p, List<Map<String, String>> messages,
                                     Map<String, Object> options) throws Exception {
         AiModelProviderType type = p.getProviderType();
-        if (type != AiModelProviderType.OPENAI && type != AiModelProviderType.OPENAI_COMPATIBLE) {
+        if (!isOpenAiCompatible(type)) {
             throw new BusinessException(HttpStatus.NOT_IMPLEMENTED, "PROVIDER_NOT_SUPPORTED",
-                    "v0.5 仅实现 OPENAI / OPENAI_COMPATIBLE；当前 providerType=" + type.wire());
+                    "providerType=" + type.wire() + " 暂未实现（ANTHROPIC / AZURE_OPENAI 需独立适配；其余走 OpenAI 兼容）");
         }
         String apiKey = AepCryptoUtil.decrypt(p.getApiKeyEncrypted());
         String model = options != null && options.get("model") != null
@@ -158,6 +198,38 @@ public class AiModelInvocationService {
 
     private static String rstrip(String s, String suffix) {
         return s.endsWith(suffix) ? s.substring(0, s.length() - suffix.length()) : s;
+    }
+
+    /** 是否走 OpenAI 兼容 wire（除 ANTHROPIC / AZURE_OPENAI 外都是）。 */
+    private static boolean isOpenAiCompatible(AiModelProviderType type) {
+        return !NON_OPENAI_WIRE.contains(type);
+    }
+
+    /** 解析 OpenAI /models 响应 data[]；过滤 status=Shutdown/Retiring（火山方舟会带 status）。 */
+    private static List<AiModelEntryDto> parseModelsResponse(String body) throws Exception {
+        Map<?, ?> parsed = OM.readValue(body, Map.class);
+        List<AiModelEntryDto> out = new ArrayList<>();
+        if (parsed.get("data") instanceof List<?> list) {
+            for (Object o : list) {
+                if (!(o instanceof Map<?, ?> m)) continue;
+                Object id = m.get("id");
+                if (id == null) continue;
+                Object status = m.get("status");
+                if (status != null) {
+                    String s = String.valueOf(status);
+                    if (s.equalsIgnoreCase("Shutdown") || s.equalsIgnoreCase("Retiring")) continue;
+                }
+                Object name = m.get("name");
+                String label = name != null ? String.valueOf(name) : String.valueOf(id);
+                out.add(new AiModelEntryDto(String.valueOf(id), label, null, null));
+            }
+        }
+        return out;
+    }
+
+    private static String snippet(String body) {
+        if (body == null) return "";
+        return body.length() > 200 ? body.substring(0, 200) : body;
     }
 
     /** chat 调用结果。 */

@@ -2,8 +2,11 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.ForgeCozeChatRequest;
 import com.aistareco.aep.dto.ForgeProviderStatusDto;
+import com.aistareco.aep.model.AgentBotProvider;
 import com.aistareco.aep.model.DigitalIp;
+import com.aistareco.aep.repository.AgentBotProviderRepository;
 import com.aistareco.aep.repository.DigitalIpRepository;
+import com.aistareco.common.AepCryptoUtil;
 import com.coze.openapi.client.chat.CreateChatReq;
 import com.coze.openapi.client.chat.model.Chat;
 import com.coze.openapi.client.chat.model.ChatEvent;
@@ -30,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.BiConsumer;
@@ -45,19 +49,26 @@ public class ForgeCozeService implements DisposableBean {
     private static final Pattern MARKDOWN_IMAGE_PATTERN = Pattern.compile("!\\[[^\\]]*]\\((https?://[^)\\s]+)\\)");
     private static final Pattern HTTP_URL_PATTERN = Pattern.compile("https?://[^\\s\"')]+");
 
-    private final DigitalIpRepository digitalIpRepo;
-    private final ObjectMapper objectMapper;
-    private final boolean enabled;
-    private final String token;
-    private final String botId;
-    private final String apiBase;
-    private final String userIdPrefix;
-    private final int readTimeoutMs;
+    /** 本服务托管的业务场景；bot 配置按此 sceneKey 从 agent_bot_providers 解析。 */
+    private static final String SCENE = AgentScenes.APPEARANCE_FORGE;
 
-    private volatile CozeAPI client;
+    private final DigitalIpRepository digitalIpRepo;
+    private final AgentBotProviderRepository agentBotRepo;
+    private final ObjectMapper objectMapper;
+    // env 兜底：后台未为本 scene 配置 bot 时回退到这套 env（保持老部署不破）。
+    private final boolean envEnabled;
+    private final String envToken;
+    private final String envBotId;
+    private final String envApiBase;
+    private final String envUserIdPrefix;
+    private final int envReadTimeoutMs;
+
+    // 按 (apiBase, token) 缓存 Coze client；token 改了自然换 key。
+    private final Map<String, CozeAPI> clients = new ConcurrentHashMap<>();
 
     public ForgeCozeService(
             DigitalIpRepository digitalIpRepo,
+            AgentBotProviderRepository agentBotRepo,
             ObjectMapper objectMapper,
             @Value("${aep.coze.enabled:true}") boolean enabled,
             @Value("${aep.coze.token:}") String token,
@@ -67,25 +78,30 @@ public class ForgeCozeService implements DisposableBean {
             @Value("${aep.coze.read-timeout-ms:120000}") int readTimeoutMs
     ) {
         this.digitalIpRepo = digitalIpRepo;
+        this.agentBotRepo = agentBotRepo;
         this.objectMapper = objectMapper;
-        this.enabled = enabled;
-        this.token = token == null ? "" : token.trim();
-        this.botId = botId == null ? "" : botId.trim();
-        this.apiBase = apiBase == null || apiBase.isBlank() ? "https://api.coze.cn" : apiBase.trim();
-        this.userIdPrefix = userIdPrefix == null || userIdPrefix.isBlank() ? "aep-producer-" : userIdPrefix.trim();
-        this.readTimeoutMs = readTimeoutMs;
+        this.envEnabled = enabled;
+        this.envToken = token == null ? "" : token.trim();
+        this.envBotId = botId == null ? "" : botId.trim();
+        this.envApiBase = apiBase == null || apiBase.isBlank() ? "https://api.coze.cn" : apiBase.trim();
+        this.envUserIdPrefix = userIdPrefix == null || userIdPrefix.isBlank() ? "aep-producer-" : userIdPrefix.trim();
+        this.envReadTimeoutMs = readTimeoutMs;
     }
 
     public ForgeProviderStatusDto status() {
-        log.info("Forge Coze provider status checked: enabled={}, configured={}, botIdPresent={}, apiBase={}",
-                enabled, isConfigured(), !botId.isBlank(), apiBase);
-        if (isConfigured()) {
-            return new ForgeProviderStatusDto(true, "coze", "Coze 已配置，可直接开始流式锻造");
+        BotConfig cfg = resolveBot();
+        boolean configured = cfg != null;
+        log.info("Forge Coze provider status checked: configured={}, source={}",
+                configured, cfg == null ? "none" : cfg.source());
+        if (configured) {
+            String origin = "db".equals(cfg.source()) ? "后台配置" : "环境变量";
+            return new ForgeProviderStatusDto(true, "coze",
+                    "Coze 已配置（来源：" + origin + "），可直接开始流式锻造");
         }
         return new ForgeProviderStatusDto(
                 false,
                 "coze",
-                "Coze 未配置，请设置 AEP_COZE_TOKEN 与 AEP_COZE_BOT_ID"
+                "Coze 未配置：请在后台「Agent 平台」为场景 " + SCENE + " 配置 bot，或设置 AEP_COZE_TOKEN/AEP_COZE_BOT_ID"
         );
     }
 
@@ -95,19 +111,19 @@ public class ForgeCozeService implements DisposableBean {
             ForgeCozeChatRequest request,
             BiConsumer<String, Map<String, Object>> sink
     ) {
-        ensureConfigured();
+        BotConfig cfg = ensureConfigured();
         DigitalIp artist = requireOwnedArtist(request.artistId(), ownerUserId);
-        String cozeUserId = buildCozeUserId(ownerUserId, artist.getId());
+        String cozeUserId = buildCozeUserId(cfg.userIdPrefix(), ownerUserId, artist.getId());
 
-        log.info("Forge Coze stream start: requestId={}, ownerUserId={}, artistId={}, artistName={}, botId={}, cozeUserId={}, promptLength={}, promptPreview={}",
-                requestId, ownerUserId, artist.getId(), artist.getName(), botId, cozeUserId,
+        log.info("Forge Coze stream start: requestId={}, ownerUserId={}, artistId={}, artistName={}, botId={}, source={}, cozeUserId={}, promptLength={}, promptPreview={}",
+                requestId, ownerUserId, artist.getId(), artist.getName(), cfg.botId(), cfg.source(), cozeUserId,
                 request.prompt() == null ? 0 : request.prompt().length(),
                 preview(request.prompt()));
 
         sink.accept("status", payload("phase", "validated", "message", "已校验艺人归属，准备连接 Coze"));
 
         CreateChatReq chatReq = CreateChatReq.builder()
-                .botID(botId)
+                .botID(cfg.botId())
                 .userID(cozeUserId)
                 .messages(List.of(Message.buildUserQuestionText(request.prompt())))
                 .autoSaveHistory(false)
@@ -121,7 +137,7 @@ public class ForgeCozeService implements DisposableBean {
 
         ResponseState responseState = new ResponseState();
         try {
-            Flowable<ChatEvent> flow = client().chat().stream(chatReq);
+            Flowable<ChatEvent> flow = client(cfg).chat().stream(chatReq);
             flow.blockingForEach(event -> handleEvent(requestId, event, responseState, sink));
             log.info("Forge Coze stream finished: requestId={}, replyLength={}, hasImage={}",
                     requestId, responseState.reply.length(), responseState.imageUrl != null);
@@ -259,33 +275,63 @@ public class ForgeCozeService implements DisposableBean {
         log.debug("Forge Coze ignored event: requestId={}, event={}", requestId, event.getEvent());
     }
 
-    private synchronized CozeAPI client() {
-        if (client == null) {
-            log.info("Forge Coze client init: apiBase={}, botId={}, readTimeoutMs={}, tokenConfigured={}",
-                    apiBase, botId, readTimeoutMs, !token.isBlank());
-            client = new CozeAPI.Builder()
-                    .auth(new TokenAuth(token))
-                    .baseURL(apiBase)
-                    .readTimeout(readTimeoutMs)
+    private CozeAPI client(BotConfig cfg) {
+        String key = cfg.apiBase() + " " + cfg.token();
+        return clients.computeIfAbsent(key, k -> {
+            log.info("Forge Coze client init: apiBase={}, readTimeoutMs={}, source={}",
+                    cfg.apiBase(), cfg.readTimeoutMs(), cfg.source());
+            return new CozeAPI.Builder()
+                    .auth(new TokenAuth(cfg.token()))
+                    .baseURL(cfg.apiBase())
+                    .readTimeout(cfg.readTimeoutMs())
                     .build();
-        }
-        return client;
+        });
     }
 
-    private void ensureConfigured() {
-        if (!isConfigured()) {
-            log.warn("Forge Coze requested but not configured: enabled={}, tokenPresent={}, botIdPresent={}, apiBase={}",
-                    enabled, !token.isBlank(), !botId.isBlank(), apiBase);
+    private BotConfig ensureConfigured() {
+        BotConfig cfg = resolveBot();
+        if (cfg == null) {
+            log.warn("Forge Coze requested but not configured (no admin bot for scene={} and no env fallback)", SCENE);
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
-                    "Coze 未配置，请设置 AEP_COZE_TOKEN 与 AEP_COZE_BOT_ID"
+                    "Coze 未配置：请在后台「Agent 平台」为场景 " + SCENE + " 配置 bot，或设置 AEP_COZE_TOKEN/AEP_COZE_BOT_ID"
             );
         }
+        return cfg;
     }
 
-    private boolean isConfigured() {
-        return enabled && !token.isBlank() && !botId.isBlank();
+    /** 解析本场景的 bot 配置：后台配置（agent_bot_providers）优先，env 兜底。 */
+    private BotConfig resolveBot() {
+        AgentBotProvider row = agentBotRepo.findBySceneKeyAndEnabledTrue(SCENE).orElse(null);
+        if (row != null) {
+            String tok = "";
+            try {
+                tok = AepCryptoUtil.decrypt(row.getTokenEncrypted());
+            } catch (Exception e) {
+                log.warn("Forge agent bot {} token 解密失败：{}", row.getId(), e.getMessage());
+            }
+            if (tok != null && !tok.isBlank() && row.getBotId() != null && !row.getBotId().isBlank()) {
+                return new BotConfig(
+                        tok.trim(),
+                        row.getBotId().trim(),
+                        blankTo(row.getApiBase(), "https://api.coze.cn"),
+                        blankTo(row.getUserIdPrefix(), "aep-producer-"),
+                        row.getReadTimeoutMs() != null ? row.getReadTimeoutMs() : 120000,
+                        "db");
+            }
+        }
+        if (envEnabled && !envToken.isBlank() && !envBotId.isBlank()) {
+            return new BotConfig(envToken, envBotId, envApiBase, envUserIdPrefix, envReadTimeoutMs, "env");
+        }
+        return null;
     }
+
+    private static String blankTo(String v, String def) {
+        return v == null || v.isBlank() ? def : v.trim();
+    }
+
+    private record BotConfig(String token, String botId, String apiBase, String userIdPrefix,
+                            int readTimeoutMs, String source) {}
 
     private DigitalIp requireOwnedArtist(String artistId, String ownerUserId) {
         DigitalIp artist = digitalIpRepo.findById(artistId)
@@ -296,7 +342,7 @@ public class ForgeCozeService implements DisposableBean {
         return artist;
     }
 
-    private String buildCozeUserId(String ownerUserId, String artistId) {
+    private String buildCozeUserId(String userIdPrefix, String ownerUserId, String artistId) {
         return userIdPrefix + ownerUserId + "-" + artistId;
     }
 
@@ -515,9 +561,13 @@ public class ForgeCozeService implements DisposableBean {
 
     @Override
     public void destroy() {
-        if (client != null) {
-            log.info("Forge Coze client shutdown");
-            client.shutdownExecutor();
-        }
+        clients.values().forEach(c -> {
+            try {
+                c.shutdownExecutor();
+            } catch (Exception ignored) {
+                // best-effort shutdown
+            }
+        });
+        clients.clear();
     }
 }

@@ -1,7 +1,10 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.AdminAiModelProviderUpsertDto;
+import com.aistareco.aep.dto.AiModelDiscoveryRequestDto;
+import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelProviderDto;
+import com.aistareco.aep.dto.AiModelProviderPresetDto;
 import com.aistareco.aep.service.AiModelProviderAdminService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
@@ -30,6 +33,18 @@ public class AdminAiModelProviderController {
         return ApiResponse.of(service.list());
     }
 
+    /** 内置常见大模型服务商预设（火山方舟 / Kimi / DeepSeek / 千问 / OpenAI）。 */
+    @GetMapping("/presets")
+    public ApiResponse<List<AiModelProviderPresetDto>> presets() {
+        return ApiResponse.of(service.listPresets());
+    }
+
+    /** 新建前用表单的 baseUrl + apiKey 调服务商 GET /models 拉取可用模型。 */
+    @PostMapping("/discover-models")
+    public ApiResponse<AiModelDiscoveryResultDto> discoverModels(@RequestBody AiModelDiscoveryRequestDto req) {
+        return ApiResponse.of(service.discoverModels(req));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<AiModelProviderDto> get(@PathVariable String id) {
         return ApiResponse.of(service.get(id));
@@ -56,5 +71,11 @@ public class AdminAiModelProviderController {
     @PostMapping("/{id}/test")
     public ApiResponse<Map<String, Object>> test(@PathVariable String id) {
         return ApiResponse.of(service.testConnection(id));
+    }
+
+    /** 已存 provider：用落库的 apiKey 重新拉取可用模型（前端拉回后保存写入配置）。 */
+    @PostMapping("/{id}/fetch-models")
+    public ApiResponse<AiModelDiscoveryResultDto> fetchModels(@PathVariable String id) {
+        return ApiResponse.of(service.fetchModels(id));
     }
 }

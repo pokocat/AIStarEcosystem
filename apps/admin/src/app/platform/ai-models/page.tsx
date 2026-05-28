@@ -15,11 +15,17 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Lock, ShieldCheck, ChevronRight, Settings2 } from "lucide-react";
+import { Lock, ShieldCheck, ChevronRight, Settings2, Search, Wand2, Download } from "lucide-react";
 import { useConfirm, useToast } from "@/components/feedback";
 import { AiModelsApi } from "@/api";
 import { cn } from "@/lib/utils";
-import type { AiModelProvider, AiModelProviderType, AiModelPurpose } from "@/api/ai-models";
+import type {
+  AiModelProvider,
+  AiModelProviderType,
+  AiModelPurpose,
+  AiModelEntry,
+  AiModelProviderPreset,
+} from "@/api/ai-models";
 
 const PROVIDER_TYPES: AiModelProviderType[] = [
   "OPENAI",
@@ -75,6 +81,7 @@ interface FormState {
   apiKey: string;
   apiVersion: string;
   defaultModel: string;
+  models: AiModelEntry[];
   purposes: AiModelPurpose[];
   priority: number;
   enabled: boolean;
@@ -87,6 +94,7 @@ const EMPTY_FORM: FormState = {
   apiKey: "",
   apiVersion: "",
   defaultModel: "gpt-4o",
+  models: [],
   purposes: ["SCRIPT_DRAFT", "TEMPLATE_REWRITE"],
   priority: 100,
   enabled: true,
@@ -104,6 +112,9 @@ export default function AdminAiModelsPage() {
   const [editing, setEditing] = React.useState<FormState | null>(null);
   const [showAdvanced, setShowAdvanced] = React.useState(false);
   const [testing, setTesting] = React.useState<Record<string, { state: TestState; message?: string }>>({});
+  const [presets, setPresets] = React.useState<AiModelProviderPreset[]>([]);
+  const [fetchingModels, setFetchingModels] = React.useState(false);
+  const [query, setQuery] = React.useState("");
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -120,6 +131,72 @@ export default function AdminAiModelsPage() {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  React.useEffect(() => {
+    void AiModelsApi.listPresets()
+      .then(setPresets)
+      .catch(() => {
+        /* 预设拉取失败不阻塞页面 */
+      });
+  }, []);
+
+  function startFromPreset(p: AiModelProviderPreset) {
+    setEditing({
+      ...EMPTY_FORM,
+      name: p.name,
+      providerType: p.providerType,
+      baseUrl: p.baseUrl,
+      defaultModel: p.suggestedModel ?? "",
+      models: [],
+    });
+    setShowAdvanced(false);
+  }
+
+  async function onFetchModels() {
+    if (!editing) return;
+    if (!editing.baseUrl.trim()) {
+      toast.warning({ title: "请先填写调用地址" });
+      return;
+    }
+    // 已存服务商且未重填密钥 → 用落库密钥；否则用表单里新填的密钥发现。
+    const useStored = !!editing.id && !editing.apiKey.trim();
+    if (!useStored && !editing.apiKey.trim()) {
+      toast.warning({ title: "请先填写 API 密钥（已存服务商可留空，用已存密钥）" });
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      const r = useStored
+        ? await AiModelsApi.fetchModels(editing.id!)
+        : await AiModelsApi.discoverModels({
+            providerType: editing.providerType,
+            baseUrl: editing.baseUrl.trim(),
+            apiKey: editing.apiKey.trim(),
+          });
+      if (r.ok) {
+        const models = r.models ?? [];
+        setEditing((prev) =>
+          prev ? { ...prev, models, defaultModel: prev.defaultModel || (models[0]?.id ?? "") } : prev,
+        );
+        toast.success({ title: `已获取 ${models.length} 个模型`, description: "点选某个模型可设为默认；保存后写入配置。" });
+      } else {
+        toast.danger({ title: "获取模型失败", description: r.error ?? `HTTP ${r.statusCode ?? "?"}` });
+      }
+    } catch (e) {
+      toast.danger({ title: "获取模型失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setFetchingModels(false);
+    }
+  }
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((p) =>
+      [p.name, p.id, p.baseUrl, p.defaultModel ?? "", PROVIDER_LABEL[p.providerType] ?? p.providerType]
+        .some((s) => s.toLowerCase().includes(q)),
+    );
+  }, [list, query]);
 
   async function onSave() {
     if (!editing) return;
@@ -139,6 +216,7 @@ export default function AdminAiModelsPage() {
         ...(editing.apiKey.trim() ? { apiKey: editing.apiKey.trim() } : {}),
         apiVersion: editing.apiVersion.trim() || undefined,
         defaultModel: editing.defaultModel.trim() || undefined,
+        models: editing.models,
         purposes: editing.purposes,
         priority: editing.priority,
         enabled: editing.enabled,
@@ -234,6 +312,27 @@ export default function AdminAiModelsPage() {
             </div>
           )}
         </CardHeader>
+        {!editing && presets.length > 0 && (
+          <CardContent className="pt-0">
+            <div className="mb-2 text-xs text-muted-foreground">
+              快速添加（内置常见服务商，选中后只需补 API 密钥）：
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {presets.map((p) => (
+                <button
+                  key={p.code}
+                  type="button"
+                  onClick={() => startFromPreset(p)}
+                  title={p.apiKeyHint}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <Wand2 className="h-3.5 w-3.5 text-primary" />
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        )}
         {editing && (
           <CardContent className="space-y-5">
             <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -318,6 +417,56 @@ export default function AdminAiModelsPage() {
                   </span>
                 </div>
               </Field>
+            </section>
+
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium">可用模型</div>
+                  <div className="text-xs text-muted-foreground">
+                    从服务商接口拉取（GET /models），点选某个设为默认模型；保存后写入配置。
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={fetchingModels}
+                  onClick={() => void onFetchModels()}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  {fetchingModels ? "获取中…" : "获取模型列表"}
+                </Button>
+              </div>
+              {editing.models.length === 0 ? (
+                <div className="text-xs text-muted-foreground">
+                  尚未获取。填好调用地址 + API 密钥后点「获取模型列表」（已存服务商可留空密钥，用已存密钥）。
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {editing.models.map((m) => {
+                    const active = editing.defaultModel === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setEditing({ ...editing, defaultModel: m.id })}
+                        aria-pressed={active}
+                        title={m.label && m.label !== m.id ? m.label : undefined}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-mono transition-colors",
+                          active
+                            ? "border-primary/30 bg-primary/10 text-primary"
+                            : "border-border bg-surface text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {m.id}
+                        {active && <span className="font-sans">· 默认</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             <section>
@@ -410,13 +559,22 @@ export default function AdminAiModelsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between text-base">
-            <span>服务商列表（{list.length}）</span>
+            <span>服务商列表（{filtered.length}）</span>
             <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
               <ShieldCheck className="h-3.5 w-3.5 text-success" /> 密钥加密存储
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="relative mb-3 max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="搜索名称 / 编号 / 地址 / 模型…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
           {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
           {err && <div className="text-sm text-destructive">{err}</div>}
           {!loading && !err && (
@@ -428,6 +586,7 @@ export default function AdminAiModelsPage() {
                   <TableHead>调用地址</TableHead>
                   <TableHead>密钥</TableHead>
                   <TableHead>默认模型</TableHead>
+                  <TableHead>模型数</TableHead>
                   <TableHead>优先级</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>用途</TableHead>
@@ -435,7 +594,7 @@ export default function AdminAiModelsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.map((p) => {
+                {filtered.map((p) => {
                   const t = testing[p.id];
                   return (
                     <TableRow key={p.id}>
@@ -453,6 +612,7 @@ export default function AdminAiModelsPage() {
                       </TableCell>
                       <TableCell className="text-xs font-mono">{p.apiKeyMasked}</TableCell>
                       <TableCell className="text-xs">{p.defaultModel ?? "—"}</TableCell>
+                      <TableCell className="tabular-nums text-xs">{p.models?.length ?? 0}</TableCell>
                       <TableCell className="tabular-nums">{p.priority}</TableCell>
                       <TableCell>
                         {p.enabled ? (
@@ -481,6 +641,7 @@ export default function AdminAiModelsPage() {
                               apiKey: "",
                               apiVersion: p.apiVersion ?? "",
                               defaultModel: p.defaultModel ?? "",
+                              models: p.models ?? [],
                               purposes: p.purposes ?? [],
                               priority: p.priority,
                               enabled: p.enabled,
