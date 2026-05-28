@@ -14,6 +14,7 @@ import {
   Star, CheckCircle2, Film, Tv, Mic,
   Wand2, Shirt, Building2, Bell, Coins, UserCircle,
   Megaphone, PersonStanding,
+  Package, Factory,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -71,6 +72,8 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     title: "内容创作",
     items: [
+      { id: "asset-center", icon: Package, label: "素材中心" },
+      { id: "production", icon: Factory, label: "制作工坊" },
       { id: "studio", icon: Music, label: "创作工坊", dynamicLabel: true },
       { id: "music", icon: TrendingUp, label: "音乐商业" },
       { id: "copyright", icon: Shield, label: "版权资产" },
