@@ -3,7 +3,7 @@
 > 子产品：**AI Music Studio** — 面向 MCN 机构的歌手类数字人 IP 工作台。
 > 本文件是产品形态 + 设计约束的真值源。技术 onboarding 在 [`README.md`](README.md)，业务规格在仓库根 [`product_spec.md`](../../product_spec.md)（数字人/数字 IP 主线，v2.7）。
 
-**Last reviewed**: 2026-05-17
+**Last reviewed**: 2026-05-28（v0.39 · 素材中心 + 制作工坊 figma 迁入）
 
 ---
 
@@ -57,24 +57,47 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/incubator` | 艺人管理 | AI 艺人孵化向导（多步表单：声线 → 形象 → 风格） |
 | `/appearance` | 艺人管理 | 形象锻造（Coze event stream） |
 | `/wardrobe` | 艺人管理 | 戏服 / 道具管理 + 装备槽 |
+| `/poses` | 艺人管理 | 动作姿态库 |
+| `/asset-center` ★ | 内容创作 | 素材中心（数字资产库 + 文案库 双 tab） |
+| `/production` ★ | 内容创作 | 制作工坊（切片制作 + AI 数字人 + 混剪批量 三 tab） |
 | `/studio` | 内容创作 | 创作工坊（label 随艺人类型切换：「音乐工坊」「直播工坊」…） |
 | `/music` | 内容创作 | 单曲商业详情（流量 / 收益 / 平台） |
 | `/copyright` | 内容创作 | 版权登记 / NFT 铸造 |
+| `/notices` | 商业运营 | 商业邀约 |
 | `/distribution` | 商业运营 | 多平台分发（B 站 / 网易云 / QQ 音乐 / 抖音…） |
 | `/community` | 商业运营 | 粉丝社群（mock-only） |
 | `/finance` | 商业运营 | 财务中心（充值 / 提现 / 流水） |
 | `/settings` | 系统 | 工作室设置 / 团队成员 |
+
+★ = v0.39 新增。详见 [`README.md` 版本日志](README.md#v039)。
 
 详见 [`src/app/(workspace)/layout.tsx`](src/app/(workspace)/layout.tsx) `SIDEBAR_GROUPS`。
 
 **Sidebar 分组**（4 组）：
 
 1. **工作台** — dashboard / artist / artists
-2. **艺人管理** — incubator / appearance / wardrobe
-3. **内容创作** — studio / music / copyright
-4. **商业运营** — distribution / community / finance
+2. **艺人管理** — incubator / appearance / wardrobe / poses
+3. **内容创作** — **asset-center** ★ / **production** ★ / studio / music / copyright
+4. **商业运营** — notices / distribution / community / finance
 
 `/settings` 单独挂在 footer 区。
+
+### 跨页数据联动（v0.39 待升级，当前用字符串标签）
+
+```
+Asset.partnerName     ┐
+Asset.authStatus      │
+CopyItem.partnerScope │ ← 暂用字符串；待 Partner / ContentLicense 页面
+ClipTask.partnerName  │   迁入后升级为 ID + denormalized name
+ClipTask.authContract │
+ClipTask.copyVersion  │
+PersonModel.partnerName ┘
+GenTask.copyTitle     ← 与 CopyItem.title 字符串匹配（业务约束：copy.stage === "approved" 才可用）
+BatchTask.slotBindings → 槽位绑定 Asset.id / CopyItem.id
+* → PublishPool（「入池」按钮，目标页面尚未迁入）
+```
+
+每条引用都在 packages/types/src/<domain>.ts 顶部注释里说明"当前 string，待对应页面迁入升级为 ID"。
 
 ---
 

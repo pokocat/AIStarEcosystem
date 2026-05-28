@@ -27,9 +27,13 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 /incubator           ← 新艺人孵化向导（IncubationWizardV2 多步表单 + draft 持久化）
 /appearance          ← 形象锻造（AppearanceForge.v3，Coze event stream 占位）
 /wardrobe            ← 戏服 / 道具（WardrobeSystem，上传 + 分配）
+/poses               ← 动作姿态库
+/asset-center  ★v0.39 ← 素材中心（数字资产库 + 文案库 双 tab）
+/production    ★v0.39 ← 制作工坊（切片制作 + AI 数字人 + 混剪批量 三 tab）
 /studio              ← 音乐工坊（MusicLibrary + 生成 dialog）
 /music               ← 单曲详情入口（SongDetailDrawer）
 /copyright           ← 版权 / NFT（NFTMintingDialog）
+/notices             ← 商业邀约
 /distribution        ← 多平台分发
 /community           ← 粉丝社区（mock-only，OpenAPI 未覆盖）
 /finance             ← 财务中心（充值 / 提现 / 流水）
@@ -55,6 +59,58 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - `music.ts` / `artists.ts` / `wardrobe.ts` / `distribution.ts` / `finance.ts` / `copyright.ts`（store / products / pose / generation / notifications / settings 同节奏）—— 真后端落地后切实数据源，mock 分支保留。
 
 ## 版本日志
+
+### v0.39 · 2026-05-28 · figma MCN 运营端「素材中心 + 制作工坊」迁入 {#v039}
+
+按页迁移第一批：从 figma Make 原型 `it1dxlMSY0ph39pBCawC8i` 迁入 `mcn/AssetCenter`（含 AssetVault + CopyVault）和 `mcn/ProductionWorkshop`（含 ClipStudio + DigitalPersonHub + BatchMixStudio）。**零影响既有 15 个路由**，sidebar 内容创作组顺序插入 2 项。
+
+**新增路由**：
+
+| 路由 | 复合页 | 子 tab | 数据模型（packages/types） |
+|---|---|---|---|
+| `/asset-center` | AssetCenterPage | 数字资产库 / 文案库 | `asset` / `copy` |
+| `/production`   | ProductionWorkshopPage | 切片制作 / AI 数字人 / 混剪批量 | `clip-studio` / `digital-person` / `batch-mix` |
+
+**新增文件**（38 个）：
+
+- **packages/types（5）**：`asset.ts` / `copy.ts` / `clip-studio.ts` / `digital-person.ts` / `batch-mix.ts` + `index.ts` 追加 5 行 export
+- **apps/web-music/src/mocks（5）**：每页一份样本（与 figma 原型一一对齐）
+- **apps/web-music/src/constants（5）**：UI 色板 + 图标 + 三阶段审批步骤定义 + 默认质检项模板
+- **apps/web-music/src/api（5）**：USE_MOCK 分支齐全；约定后端端点：
+  - `GET/POST /me/assets` + `POST .../{id}/freeze`
+  - `GET/POST /me/copies` + `POST .../{id}/approve`（推进或驳回三阶段）
+  - `GET/POST /me/clip-tasks` + `POST .../{id}/submit-qc`
+  - `GET/POST /me/person-models` + `GET/POST /me/digital-person/gen-tasks` + `POST .../push-to-pool`
+  - `GET/POST /me/mix-templates` + `GET/POST /me/batch-tasks` + `POST .../start` + `POST .../push-to-pool`
+- **apps/web-music/src/api/index.ts** — 追加 5 namespace（AssetApi / CopyApi / ClipStudioApi / DigitalPersonApi / BatchMixApi）
+- **apps/web-music/src/components/producer（7）**：5 个 panel 子组件 + 2 个 composer page
+- **apps/web-music/src/app/(workspace)（2）**：路由 shell
+
+**关键业务规则（来自 figma 原型注释，已沉淀到 packages/types JSDoc）**：
+
+1. **文案三阶段审批**：`ops_review → partner_review → legal_review → approved`，任一阶段驳回即 `rejected` 终态；`approved` 自动锁定 version（content 不可改）
+2. **6 项强制质检**：切片任务必须通过 黑屏/字幕/画幅/敏感词/品牌露出/授权范围 6 项，全过才可入池
+3. **数字人生成门禁**：`copy.stage === "approved"` + 形象/声音模型 `status === "active"` 才可发起生成；frozen 模型禁用
+4. **数字资产授权校验**：`Asset.authStatus === "expired" | "none"` 自动 `status = "frozen"`，所有引用方（混剪槽位、数字人生成）禁用
+
+**迁入工程约束**（与 figma 原型的差异）：
+
+- i18n 全部剥离（中文单语）
+- 类型上提到 packages/types（前端 TS 是契约真源）
+- mock / constants / api 完全外抽
+- 数值字段一律 `number`（秒数 / 元 / 评分）；展示走 `lib/format` 或本地 `fmtClock` helper
+- `"use client"` 全加
+- 跨页引用（partnerName / authContract / copyVersion）暂用字符串标签；待对应主题页面（Partner / ContentLicense / CopyItem 的 CRUD 页面）迁入后升级为 ID 引用
+
+**验收**：
+- ✅ `pnpm typecheck:all` 7 个 workspace 全绿
+- ✅ `pnpm build` web-music 21 routes 全部静态预渲染（含新 2 个）
+
+**显式 out-of-scope**：
+- apps/admin / apps/server 三端同步（等用户明确需求后再补）
+- `specs/openapi.yaml` 端点定义（等 server 落地）
+- 跨页 ID 引用升级（等 Partner / ContentLicense / CopyItem 的 CRUD 主页面也迁入）
+- PublishPool（「入池」按钮目标页）
 
 ### v0.6 · 2026-05-15 · README 落地 + tsconfig 收尾 + any 大清扫
 
