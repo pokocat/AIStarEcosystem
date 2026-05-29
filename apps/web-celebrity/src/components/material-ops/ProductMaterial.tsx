@@ -13,7 +13,7 @@ import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice
 import { AiThinking } from "@/components/common/ai-thinking";
 import { Card, Button } from "@/components/creator";
 import { MaterialOpsApi, ProductsApi } from "@/api";
-import { MATERIAL_PRODUCTS, getScript } from "@/mocks/material-ops";
+import { MATERIAL_PRODUCTS, getScript, getProduct, toMaterialProduct } from "@/mocks/material-ops";
 import { VARIANT_AXES } from "@/constants/material-ops-ui";
 import type { MaterialProduct, MaterialVideo, VariantAxisKey } from "./types";
 import { VideoGenDialog } from "./VideoGenDialog";
@@ -22,6 +22,25 @@ import { Eyebrow, Tag, Seg, FilterChip, PageHeader, MetricTile, SearchInput, Emp
 interface Group {
   product: MaterialProduct;
   videos: MaterialVideo[];
+}
+
+// 视频引用了一个既不在系统商品库、也不在本地 mock 富数据里的 product_id 时的兜底占位，
+// 保证这些视频仍能在素材库里被看到（而不是被静默丢掉）。
+function placeholderProduct(id: string): MaterialProduct {
+  return {
+    id,
+    name: `未归类商品 ${id.slice(0, 8)}`,
+    category: "其他",
+    images: [],
+    sellingPoints: "",
+    usageCount: 0,
+    source: "manual",
+    createdAt: "",
+    updatedAt: "",
+    sellingPointList: [],
+    audience: [],
+    suggestedAngles: [],
+  };
 }
 
 export function ProductMaterial({ initialProductId }: { initialProductId?: string } = {}) {
@@ -35,8 +54,9 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
   const [videoGen, setVideoGen] = React.useState<{ mode: "baseline" | "variant"; baseline: MaterialVideo | null; scriptId: string } | null>(null);
   const [loadError, setLoadError] = React.useState(false);
 
-  // 真实商品图：从后端商品库按 id 取首图，覆盖到展示用商品上（无图回退首字 monogram）。
-  const [imageById, setImageById] = React.useState<Map<string, string>>(new Map());
+  // 商品目录直接读系统商品库（/api/products）→ 映射成展示用 MaterialProduct（含真实图 / 价格 / 佣金）。
+  // 这样素材库左侧与商品库严格对齐：商品库新增 / 删除即时反映。拉取失败回退本地 mock，保证视频库仍可用。
+  const [products, setProducts] = React.useState<MaterialProduct[]>([]);
 
   const load = React.useCallback(() => {
     MaterialOpsApi.listVideos()
@@ -46,24 +66,17 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
       })
       .catch(() => setLoadError(true));
   }, []);
-  React.useEffect(() => {
-    load();
-  }, [load]);
+
+  const loadProducts = React.useCallback(() => {
+    ProductsApi.listProducts()
+      .then((list) => setProducts(list.map(toMaterialProduct)))
+      .catch(() => setProducts(MATERIAL_PRODUCTS)); // 商品库拉取失败 → 回退 mock，不阻断视频库
+  }, []);
 
   React.useEffect(() => {
-    ProductsApi.listProducts()
-      .then((list) => {
-        const m = new Map<string, string>();
-        list.forEach((p) => {
-          const first = p.images?.find((u) => !!u);
-          if (first) m.set(p.id, first);
-        });
-        setImageById(m);
-      })
-      .catch(() => {
-        /* 商品库拉取失败 → 全部回退 monogram，不阻断视频库 */
-      });
-  }, []);
+    load();
+    loadProducts();
+  }, [load, loadProducts]);
 
   // 渲染中任务推进
   const hasRendering = videos.some((v) => v.status === "rendering");
@@ -78,16 +91,21 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
   const groups: Group[] = React.useMemo(() => {
     const byProduct = new Map<string, MaterialVideo[]>();
     videos.forEach((v) => {
-      const pid = v.product_id ?? getScript(v.script_id)?.product_id ?? "p4";
+      const pid = v.product_id ?? getScript(v.script_id)?.product_id;
+      if (!pid) return;
       if (!byProduct.has(pid)) byProduct.set(pid, []);
       byProduct.get(pid)!.push(v);
     });
-    return MATERIAL_PRODUCTS.map((product) => {
-      const realImg = imageById.get(product.id);
-      const merged = realImg ? { ...product, images: [realImg, ...product.images] } : product;
-      return { product: merged, videos: byProduct.get(product.id) ?? [] };
+    const base = products.length > 0 ? products : MATERIAL_PRODUCTS;
+    const known = new Set(base.map((p) => p.id));
+    // 视频引用了、但系统商品库里没有的商品（如本地 mock 演示视频）→ 合成一行，避免视频丢失。
+    const extras: MaterialProduct[] = [];
+    byProduct.forEach((_, pid) => {
+      if (known.has(pid)) return;
+      extras.push(getProduct(pid) ?? placeholderProduct(pid));
     });
-  }, [videos, imageById]);
+    return [...base, ...extras].map((product) => ({ product, videos: byProduct.get(product.id) ?? [] }));
+  }, [videos, products]);
 
   const filteredProducts = React.useMemo(() => {
     return groups
@@ -104,7 +122,7 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
   const selectedGroup = groups.find((g) => g.product.id === selectedProductId) ?? filteredProducts[0];
   const groupVideos = selectedGroup?.videos ?? [];
   const selectedVideo = groupVideos.find((v) => v.id === selectedVideoId) ?? null;
-  const cats = ["all", ...Array.from(new Set(MATERIAL_PRODUCTS.map((p) => p.category)))];
+  const cats = ["all", ...Array.from(new Set(groups.map((g) => g.product.category)))];
   const totalVideos = videos.length;
 
   const onComplete = (made: MaterialVideo[]) => {
@@ -151,7 +169,7 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
         }
         right={
           <>
-            <Button variant="secondary" size="sm" onClick={load}>
+            <Button variant="secondary" size="sm" onClick={() => { load(); loadProducts(); }}>
               <RefreshCw size={13} /> 同步最新
             </Button>
             <Button variant="accent" size="sm" onClick={() => router.push("/material/workshop")}>

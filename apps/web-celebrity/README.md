@@ -69,7 +69,14 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
-### v0.41 · 2026-05-29 · 修复：弹窗内调起确认框导致整页卡死
+### v0.41 · 2026-05-29 · 素材库商品目录对齐系统商品库 + 修复弹窗卡死
+
+**A. 商品素材库左侧目录直读系统商品库**
+
+- **问题**：`ProductMaterial` 左侧商品目录写死本地 mock `MATERIAL_PRODUCTS`（p1–p6），只从 `/api/products` 借了首图覆盖，列表本身与系统商品库不对齐 —— 商品库新增/删除不反映。
+- **修复**：目录改为直接拉 `ProductsApi.listProducts()`（`/api/products`），经 `toMaterialProduct` 映射成展示用 `MaterialProduct`（含真实图 / 价格 / 佣金 / 卖点）。视频按 `product_id` 归到对应商品下；商品库里有、暂无视频的商品也会列出（可直接发起首条生成）。视频引用了但商品库里没有的 `product_id`（如本地 mock 演示视频）→ 用 `getProduct` 富数据或占位行兜底，视频不丢。拉取失败回退本地 mock，不阻断视频库。「同步最新」按钮同时刷新商品与视频。
+
+**B. 修复：弹窗内调起确认框导致整页卡死**
 
 - **症状**：素材库点「生成基线视频」（及其它在自定义全屏弹窗内调起 `useConfirm` 的入口）后整页卡死、无法点击。
 - **根因**：共享 `AlertDialog`（`useConfirm` 用）的遮罩 + 内容默认 `z-50`，而 `VideoGenDialog` 等自定义弹窗是 `z-80/90`，确认框被盖在下面看不见、点不到；同时 Radix 锁了页面 `pointer-events` + focus，`await confirm(...)` 永远等不到点击 → 整页"卡死"。
