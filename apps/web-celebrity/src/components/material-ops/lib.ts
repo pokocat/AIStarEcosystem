@@ -4,12 +4,14 @@
 import { PALETTE, VARIANT_AXES, VARIANT_AXIS_ORDER } from "@/constants/material-ops-ui";
 import type {
   AsyncRenderTask,
+  MaterialProduct,
   MaterialVideo,
   ScriptAsset,
   ScriptBlock,
   ScriptVariable,
   VariantConfig,
   VariantSample,
+  VideoGenJobRequest,
 } from "./types";
 
 const VAR_TONES = [PALETTE.rose, PALETTE.teal, PALETTE.amber, PALETTE.violet, PALETTE.violetDeep, PALETTE.peach];
@@ -238,3 +240,96 @@ export function buildAsyncTasks(
 }
 
 export const VARIANT_AXIS_KEYS = VARIANT_AXIS_ORDER;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 真实视频生成：把脚本 + 商品 + 6 轴画面维度拼成发给视频大模型的提示词，并构造提交载荷。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 6 轴 config id → 人类可读 label（找不到回退 id 本身）。 */
+function axisLabel(axisKey: keyof VariantConfig, optId: string): string {
+  const axis = VARIANT_AXES[axisKey as keyof typeof VARIANT_AXES];
+  const opt = axis?.options.find((o) => o.id === optId);
+  return opt ? `${opt.label}${opt.sub ? `（${opt.sub}）` : ""}` : optId;
+}
+
+/**
+ * 把脚本 + 商品 + 画面维度拼成发给视频大模型的中文提示词。
+ * blocks 传 sample.blocks（派生已替换变量）或 script.blocks（基线）。
+ */
+export function buildVideoPrompt(opts: {
+  script: ScriptAsset;
+  product: MaterialProduct;
+  blocks: ScriptBlock[];
+  config: VariantConfig;
+}): string {
+  const { script, product, blocks, config } = opts;
+  const totalDur = blocks.reduce((s, b) => s + (b.dur || 0), 0) || script.duration_sec || 30;
+  const price = product.priceCents ? `¥${(product.priceCents / 100).toFixed(0)}` : "未知价格";
+  const points = (product.sellingPointList?.length ? product.sellingPointList : (product.sellingPoints ?? "").split(/[/、,，]/))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const shotLines = blocks
+    .map((b, i) => {
+      const subtitle = b.genVoice === false ? "（本镜无口播/字幕，纯画面）" : `字幕/口播「${b.text || "—"}」`;
+      return `  镜${i + 1} · ${b.label} · ${b.dur}s：${subtitle}${b.shot ? `｜画面：${b.shot}` : ""}`;
+    })
+    .join("\n");
+
+  return [
+    `请生成一条 ${totalDur}s、比例 9:16 的带货短视频，风格真实自然、电影感、商用级，画面清晰稳定、无水印。`,
+    ``,
+    `【商品】${product.name}（${product.category} · ${price}${product.commissionRate != null ? ` · 佣金 ${product.commissionRate}%` : ""}）`,
+    points.length ? `【卖点】${points.join(" / ")}` : ``,
+    ``,
+    `【画面维度】人物：${axisLabel("character", config.character)}；场景：${axisLabel("scene", config.scene)}；天气：${axisLabel("weather", config.weather)}；光线：${axisLabel("lighting", config.lighting)}；角色关系：${config.role_relation}；配音：${axisLabel("voice", config.voice)}。`,
+    ``,
+    `【分镜脚本】（共 ${blocks.length} 镜 · ${totalDur}s）`,
+    shotLines,
+    ``,
+    `要求：钩子前置 3 秒抓人；口播自然口语化；产品出场真实可信；结尾引导评论/下单。`,
+  ]
+    .filter((l) => l !== ``)
+    .join("\n");
+}
+
+/**
+ * 构造视频生成提交载荷。
+ *   · baseline：samples 为空 → 1 条任务（script.blocks 原文）。
+ *   · variant ：每个 sample 一条任务（sample.blocks 已替换变量），parent 指向 baseline。
+ */
+export function buildJobRequests(opts: {
+  script: ScriptAsset;
+  product: MaterialProduct;
+  config: VariantConfig;
+  samples?: VariantSample[];
+  baseline?: MaterialVideo | null;
+}): VideoGenJobRequest[] {
+  const { script, product, config, samples, baseline } = opts;
+  const totalDur = (script.blocks ?? []).reduce((s, b) => s + (b.dur || 0), 0) || script.duration_sec || 30;
+  const aspect = "9:16";
+  const common = {
+    script_id: script.id,
+    product_id: script.product_id,
+    variant_config: config,
+    duration_sec: totalDur,
+    aspect_ratio: aspect,
+  };
+  if (!samples || samples.length === 0) {
+    return [
+      {
+        ...common,
+        name: "基线视频",
+        kind: "baseline",
+        parent_video_id: null,
+        prompt: buildVideoPrompt({ script, product, blocks: script.blocks, config }),
+      },
+    ];
+  }
+  return samples.map((s) => ({
+    ...common,
+    name: s._label,
+    kind: "variant",
+    parent_video_id: baseline?.id ?? null,
+    prompt: buildVideoPrompt({ script, product, blocks: s.blocks, config }),
+  }));
+}

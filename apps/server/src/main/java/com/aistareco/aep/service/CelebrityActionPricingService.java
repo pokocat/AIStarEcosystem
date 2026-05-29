@@ -41,6 +41,8 @@ public class CelebrityActionPricingService {
     public static final String ACTION_CELEBRITY_VIDEO = "celebrity.video";
     /** AI 脚本起稿单价（积分 / 单稿）。默认 0 = 不计费；运营在 admin 设单价即开启计费。 */
     public static final String ACTION_SCRIPT_DRAFT = "material.script-draft";
+    /** 带货视频生成单价（积分 / 条）。素材运营派生视频；默认 30/条。 */
+    public static final String ACTION_VIDEO_GENERATE = "material.video-generate";
 
     /** 默认表：与 v0.34 行为完全一致（运行时若 config 为空则按此 fallback）。 */
     private static final Map<String, ActionPricingDto> ACTION_PRICING_DEFAULTS = new LinkedHashMap<>() {{
@@ -48,6 +50,7 @@ public class CelebrityActionPricingService {
         put(ACTION_PUBLISH_UPLOAD,  new ActionPricingDto(20L, false));
         put(ACTION_CELEBRITY_VIDEO, new ActionPricingDto(0L,  true));
         put(ACTION_SCRIPT_DRAFT,    new ActionPricingDto(0L,  false)); // 默认不计费，运营按需开启
+        put(ACTION_VIDEO_GENERATE,  new ActionPricingDto(30L, false)); // 带货视频生成 · 默认 30/条
     }};
 
     private static final long CACHE_TTL_MS = 60_000L;

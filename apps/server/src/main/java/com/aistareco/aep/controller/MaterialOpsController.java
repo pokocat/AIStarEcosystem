@@ -1,6 +1,7 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.service.MaterialOpsService;
+import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatus;
@@ -23,9 +24,11 @@ import java.util.List;
 public class MaterialOpsController {
 
     private final MaterialOpsService service;
+    private final MaterialVideoJobService videoJobs;
 
-    public MaterialOpsController(MaterialOpsService service) {
+    public MaterialOpsController(MaterialOpsService service, MaterialVideoJobService videoJobs) {
         this.service = service;
+        this.videoJobs = videoJobs;
     }
 
     private static String uid(Principal p) {
@@ -81,6 +84,33 @@ public class MaterialOpsController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteVideo(@PathVariable String id, Principal principal) {
         service.deleteVideo(id, uid(principal));
+    }
+
+    // ── 带货视频生成任务（真实视频大模型 · 异步 submit + 轮询） ──────────────────
+    /**
+     * 提交一批视频生成任务。body = { items: [ {script_id, product_id, name, kind,
+     * parent_video_id, prompt, variant_config, duration_sec, aspect_ratio} ... ] }。
+     * 未配置视频大模型 → 503 VIDEO_NOT_CONFIGURED（明确提示去 AI 模型页配置）。
+     * 返回创建出的任务卡（MaterialVideo 形状，status=rendering）。
+     */
+    @PostMapping("/videos/generate")
+    public ApiResponse<List<JsonNode>> generateVideos(@RequestBody JsonNode body, Principal principal) {
+        return ApiResponse.of(videoJobs.submit(body, uid(principal)));
+    }
+
+    /** 列出当前用户的生成任务（可按 script_id / product_id 过滤）。前端进入页面时拉取回显。 */
+    @GetMapping("/videos/jobs")
+    public ApiResponse<List<JsonNode>> listVideoJobs(
+            @RequestParam(value = "script_id", required = false) String scriptId,
+            @RequestParam(value = "product_id", required = false) String productId,
+            Principal principal) {
+        return ApiResponse.of(videoJobs.listJobs(uid(principal), scriptId, productId));
+    }
+
+    /** 单个生成任务的进度 / 结果（前端独立轮询）。 */
+    @GetMapping("/videos/jobs/{id}")
+    public ApiResponse<JsonNode> getVideoJob(@PathVariable String id, Principal principal) {
+        return ApiResponse.of(videoJobs.getJob(id, uid(principal)));
     }
 
     // ── 爆款雷达（共享，无需归属过滤） ──────────────────────────────────────────

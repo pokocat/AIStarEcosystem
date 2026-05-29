@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { MaterialOpsApi, ProductsApi } from "@/api";
-import { MATERIAL_PRODUCTS, toMaterialProduct } from "@/mocks/material-ops";
+import { MaterialOpsApi } from "@/api";
 import type { MaterialProduct, ScriptAsset } from "@/components/material-ops/types";
 import { WorkshopScreen } from "@/components/material-ops/WorkshopScreen";
 
@@ -14,34 +13,21 @@ export function EditorClient({ scriptId }: { scriptId: string }) {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      const s = await MaterialOpsApi.getScript(scriptId);
-      if (!alive) return;
+    let cancelled = false;
+    MaterialOpsApi.getScript(scriptId).then(async (s) => {
+      if (cancelled) return;
       setDraft(s);
-      if (s) {
-        // 关联商品解析：优先脚本自带 product → 素材运营内置 6 商品 → 真实商品库（ProductsApi）。
-        // 之前漏了最后一步，商品库选品建的脚本回退到 MATERIAL_PRODUCTS[0]（德绒打底衫）造成错配。
-        let p: MaterialProduct | undefined =
-          s.product ?? MATERIAL_PRODUCTS.find((m) => m.id === s.product_id);
-        if (!p && s.product_id) {
-          const real = await ProductsApi.getProduct(s.product_id);
-          if (real) p = toMaterialProduct(real);
-        }
-        if (alive) setProduct(p ?? null);
-      }
-      setLoading(false);
-    })();
+      // 按 product_id 解析真实关联商品（全量商品库），不再回退到错误的 MATERIAL_PRODUCTS[0]。
+      if (s) setProduct(await MaterialOpsApi.resolveProductForScript(s));
+      if (!cancelled) setLoading(false);
+    });
     return () => {
-      alive = false;
+      cancelled = true;
     };
   }, [scriptId]);
 
   if (loading) return <div style={{ padding: 40, color: "var(--fg-2)", fontFamily: "var(--font-mono)", fontSize: 13 }}>加载脚本…</div>;
-  if (!draft) return <div style={{ padding: 40, color: "var(--fg-2)" }}>未找到脚本 {scriptId}</div>;
-
-  // 商品仍解析不到时才退回内置首个，避免整页崩；正常路径上面已覆盖商品库全集。
-  const resolvedProduct: MaterialProduct = product ?? MATERIAL_PRODUCTS[0];
+  if (!draft || !product) return <div style={{ padding: 40, color: "var(--fg-2)" }}>未找到脚本 {scriptId}</div>;
 
   const onSaveAndPreview = () => {
     const dur = draft.blocks.reduce((s, b) => s + b.dur, 0);
@@ -50,5 +36,5 @@ export function EditorClient({ scriptId }: { scriptId: string }) {
     });
   };
 
-  return <WorkshopScreen draft={draft} setDraft={setDraft} product={resolvedProduct} onSaveAndPreview={onSaveAndPreview} />;
+  return <WorkshopScreen draft={draft} setDraft={setDraft} product={product} onSaveAndPreview={onSaveAndPreview} />;
 }

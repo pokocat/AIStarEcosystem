@@ -17,7 +17,7 @@ import { Card, Button } from "@/components/creator";
 import { MaterialOpsApi, ProductsApi } from "@/api";
 import { MATERIAL_PRODUCTS, getScript, getProduct, toMaterialProduct } from "@/mocks/material-ops";
 import { VARIANT_AXES } from "@/constants/material-ops-ui";
-import type { MaterialProduct, MaterialVideo, VariantAxisKey } from "./types";
+import type { MaterialProduct, MaterialVideo, ScriptAsset, VariantAxisKey } from "./types";
 import { VideoGenDialog } from "./VideoGenDialog";
 import { Eyebrow, Tag, Seg, PageHeader, MetricTile, SearchInput, EmptyState, ProductThumb, fmtWan, parsePlays, hexA } from "./shared";
 
@@ -59,7 +59,7 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
   const [products, setProducts] = React.useState<MaterialProduct[]>([]);
   const [loadError, setLoadError] = React.useState(false);
   const [selectedVideoId, setSelectedVideoId] = React.useState<string | null>(null);
-  const [videoGen, setVideoGen] = React.useState<{ mode: "baseline" | "variant"; baseline: MaterialVideo | null; scriptId: string } | null>(null);
+  const [videoGen, setVideoGen] = React.useState<{ mode: "baseline" | "variant"; baseline: MaterialVideo | null; script: ScriptAsset; product: MaterialProduct } | null>(null);
 
   // 全局筛选状态（视频为主；商品只是其中一个维度）。
   const [productFilter, setProductFilter] = React.useState<string>(initialProductId ?? ALL);
@@ -89,13 +89,14 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
     loadProducts();
   }, [load, loadProducts]);
 
-  // 渲染中任务推进
+  // 渲染中任务推进：mock 模式由 advanceRenderTasks 模拟进度；live 模式 advanceRenderTasks 为空，
+  // 靠 load() 重新拉取真实任务进度（视频生成慢，3s 轮询足够）。
   const hasRendering = videos.some((v) => v.status === "rendering");
   React.useEffect(() => {
     if (!hasRendering) return;
     const t = setInterval(() => {
       MaterialOpsApi.advanceRenderTasks().then(() => load());
-    }, 1600);
+    }, 3000);
     return () => clearInterval(t);
   }, [hasRendering, load]);
 
@@ -156,35 +157,14 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
 
   const selectedVideo = selectedVideoId ? videos.find((v) => v.id === selectedVideoId) ?? null : null;
 
-  const onComplete = (made: MaterialVideo[]) => {
-    MaterialOpsApi.addVideos(made).then(() => {
-      setVideoGen(null);
-      load();
-    });
-  };
-  const onSubmitAsync = (payload: { names: string[]; configs: import("./types").VariantConfig[] }) => {
-    if (!videoGen) return;
-    const script = getScript(videoGen.scriptId);
+  // 「派生新视频」入口：拉真实脚本 + 解析真实关联商品（mock getScript 只认 6 个内置脚本，
+  // 用户脚本走 MaterialOpsApi.getScript），再开派生弹窗。
+  const openDerive = React.useCallback(async (video: MaterialVideo) => {
+    const script = await MaterialOpsApi.getScript(video.script_id);
     if (!script) return;
-    const tasks = payload.names.map((name, i) => ({
-      id: `task-${Date.now()}-${i}`,
-      script_id: script.id,
-      product_id: script.product_id,
-      parent_video_id: videoGen.mode === "variant" ? videoGen.baseline?.id ?? null : null,
-      kind: videoGen.mode === "variant" ? ("variant" as const) : ("baseline" as const),
-      name,
-      status: "pending" as const,
-      submitted_at: new Date(Date.now() + i * 100).toISOString(),
-      eta_sec: 90,
-      progress_pct: 0,
-      stage: "已入队",
-      variant_config: payload.configs[i] ?? payload.configs[0],
-    }));
-    MaterialOpsApi.enqueueRenderTasks(tasks).then(() => {
-      setVideoGen(null);
-      load();
-    });
-  };
+    const product = await MaterialOpsApi.resolveProductForScript(script);
+    setVideoGen({ mode: "variant", baseline: video, script, product });
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -231,7 +211,7 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
           onBack={() => setSelectedVideoId(null)}
           onSelectVideo={setSelectedVideoId}
           onOpenScript={(sid) => router.push(`/material/workshop/${sid}`)}
-          onDerive={(v) => setVideoGen({ mode: "variant", baseline: v, scriptId: v.script_id })}
+          onDerive={openDerive}
         />
       ) : (
         <GlobalVideoLibrary
@@ -258,14 +238,15 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
         />
       )}
 
-      {videoGen && getScript(videoGen.scriptId) && (
+      {videoGen && (
         <VideoGenDialog
-          script={{ ...getScript(videoGen.scriptId)!, product: MATERIAL_PRODUCTS.find((p) => p.id === getScript(videoGen.scriptId)!.product_id) }}
+          script={videoGen.script}
+          product={videoGen.product}
           mode={videoGen.mode}
           baseline={videoGen.baseline}
           onClose={() => setVideoGen(null)}
-          onComplete={onComplete}
-          onSubmitAsync={onSubmitAsync}
+          onSubmitted={load}
+          onViewLibrary={() => setVideoGen(null)}
         />
       )}
     </div>

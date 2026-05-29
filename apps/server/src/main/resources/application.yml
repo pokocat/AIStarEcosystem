@@ -126,6 +126,21 @@ aep:
     # 预览图落盘目录（24h 后由 cleanup 任务清掉；MVP 不做）
     preview-dir: ${AEP_PICGEN_PREVIEW_DIR:./mixcut-output/picgen-preview}
     preview-public-url-base: ${AEP_PICGEN_PREVIEW_URL_BASE:/static/picgen-preview}
+  # v0.41+: 素材运营带货视频生成（真实视频大模型 · 异步 submit + 轮询）。
+  # token / baseUrl / model 在后台「AI 模型」页按 provider 配（用途勾「视频生成」），不在此配 token。
+  # 这里只配「怎么提交 / 怎么轮询」协议细节 + 轮询节奏，换厂商时一般只改这些子路径即可。
+  # 默认对齐异步任务约定（提交返回 task_id，轮询拿状态 + 成片 URL，如 智谱 CogVideoX）。
+  material:
+    video:
+      submit-path: ${AEP_VIDEO_SUBMIT_PATH:/videos/generations}
+      poll-path-template: ${AEP_VIDEO_POLL_PATH:/async-result/{id}}
+      poll-interval-seconds: ${AEP_VIDEO_POLL_INTERVAL_SEC:8}
+      max-wait-seconds: ${AEP_VIDEO_MAX_WAIT_SEC:600}
+      max-concurrent: ${AEP_VIDEO_MAX_CONCURRENT:3}
+      default-model: ${AEP_VIDEO_DEFAULT_MODEL:cogvideox-flash}
+      default-duration-sec: ${AEP_VIDEO_DEFAULT_DURATION_SEC:5}
+      default-aspect-ratio: ${AEP_VIDEO_DEFAULT_ASPECT:9:16}
+      http-timeout-seconds: ${AEP_VIDEO_HTTP_TIMEOUT_SEC:30}
   coze:
     enabled: ${AEP_COZE_ENABLED:true}
     token: ${AEP_COZE_TOKEN:}

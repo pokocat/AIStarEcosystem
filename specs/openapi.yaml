@@ -5117,6 +5117,21 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [material], operationId: materialExtractVariables, responses: { '200': { description: 脚本可替换变量 ScriptVariable[]（已过滤幻觉；失败/无权访问返回空，前端用正则兜底） } } }
 
+  # ── 素材运营 · 带货视频生成（v0.41 新增；真实视频大模型 · 异步 submit + 轮询，见 MaterialVideoJobService） ──
+  /material/videos/generate:
+    post: { tags: [material], operationId: materialGenerateVideos, responses: { '200': { description: '提交一批生成任务（body={items:[...]}）→ 返回任务卡 MaterialVideo[]（status=rendering）；未配置视频大模型 → 503 VIDEO_NOT_CONFIGURED' } } }
+  /material/videos/jobs:
+    get:
+      tags: [material]
+      operationId: materialListVideoJobs
+      parameters:
+        - { in: query, name: script_id, schema: { type: string } }
+        - { in: query, name: product_id, schema: { type: string } }
+      responses: { '200': { description: 当前用户的视频生成任务 MaterialVideo[]（含 rendering/ready/failed） } }
+  /material/videos/jobs/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [material], operationId: materialGetVideoJob, responses: { '200': { description: 单个生成任务的最新状态 / 结果 MaterialVideo（前端独立轮询；非本人返回 null） } } }
+
   # ── admin · products（商品库管理；v0.31 起承载所有写动作） ───────────────────────
 
   /admin/products:

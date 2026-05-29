@@ -138,6 +138,27 @@ export interface MaterialVideo {
   stage?: string;
   /** 标记由后台异步任务合成的渲染中卡 */
   isAsyncTask?: boolean;
+  /** 真实视频大模型出片地址（status=ready 时非空）；mock 模式为空（用渐变封面占位）。 */
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+  /** status=failed 时的失败原因（后端透传，前端直接展示）。 */
+  error_message?: string | null;
+  /** 视频大模型异步任务 id（排障用）。 */
+  external_task_id?: string | null;
+}
+
+// 视频生成任务提交载荷（前端 → POST /api/material/videos/generate { items: [...] }）。
+export interface VideoGenJobRequest {
+  script_id: string;
+  product_id?: string;
+  name: string;
+  kind: MaterialVideoKind;
+  parent_video_id?: string | null;
+  /** 提交给视频大模型的完整提示词（前端拼好；见 lib.buildVideoPrompt）。 */
+  prompt: string;
+  variant_config: VariantConfig;
+  duration_sec: number;
+  aspect_ratio: string;
 }
 
 // 渲染中后台任务（提交到后台后回库展示进度）。结构与 MaterialVideo 渲染态对齐。

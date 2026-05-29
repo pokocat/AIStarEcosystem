@@ -69,6 +69,14 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.42 · 2026-05-29 · 素材运营带货视频生成接真后端 + 脚本预览修复
+
+- **脚本预览关联商品修复**：`/material/workshop/{id}` 预览 / 编辑页之前用 `MATERIAL_PRODUCTS.find(...) ?? MATERIAL_PRODUCTS[0]` 兜底，选了非 6 个内置商品时显示成 `MATERIAL_PRODUCTS[0]`（错商品）。`api/material-ops.ts` 新增 `resolveProductForScript` / `resolveProductById`，按 `product_id` 查全量商品库（`ProductsApi.getProduct` → `toMaterialProduct`），查不到给中性占位；preview-client / editor-client / ProductMaterial 派生入口均改走它。
+- **基线生成直给**（issue 2）：`VideoGenDialog` baseline 模式去掉 6 轴 + 18 项参数，改「脚本+商品摘要 + 一句话补充要求 + 生成」直接生成；画面维度 6 轴选项移到**派生**时（`DeriveVariablesPanel` 折叠「画面维度」区）。
+- **派生接真后端 + 轮询**（issue 3）：派生面板进入不再自动跑 AI（改「AI 识别变量」按钮 + 可重新识别）；「生成 N 条」= 真实提交 `POST /material/videos/generate`（不再 mock 进度动画）→ generating 阶段轮询每个任务、出片内嵌 `<video>` 播放 + 支持「重新生成」。任务也进素材库（库 3s 轮询），关弹窗不影响。
+- `api/material-ops.ts` +`submitVideoJobs` / `getVideoJob` / `listVideoJobs`；`listVideos`（live）合并真实任务卡。`lib.ts` +`buildVideoPrompt` / `buildJobRequests`。`types.ts` MaterialVideo +`video_url`/`thumbnail_url`/`error_message`；+`VideoGenJobRequest`。
+- **配置**：视频大模型 token 在后台「AI 模型」页配（用途「视频生成」），不在前端 / env 配 token。未配前端会显示「未配置」明确错误。详见 [`AGENTS.md`](../../AGENTS.md) §v0.42。
+
 ### v0.41 · 2026-05-29 · 素材库改为视频为主（商品作筛选）+ 对齐商品库 + 修复弹窗卡死
 
 **A. 商品素材库 IA 重构：视频为主，商品降级为筛选条件**
