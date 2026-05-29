@@ -21,13 +21,13 @@ interface Group {
   videos: MaterialVideo[];
 }
 
-export function ProductMaterial() {
+export function ProductMaterial({ initialProductId }: { initialProductId?: string } = {}) {
   const router = useRouter();
   const [videos, setVideos] = React.useState<MaterialVideo[]>([]);
   const [query, setQuery] = React.useState("");
   const [catFilter, setCatFilter] = React.useState("all");
   const [sortProducts, setSortProducts] = React.useState<"videos" | "name" | "price">("videos");
-  const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>("p4");
+  const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>(initialProductId ?? "p4");
   const [selectedVideoId, setSelectedVideoId] = React.useState<string | null>(null);
   const [videoGen, setVideoGen] = React.useState<{ mode: "baseline" | "variant"; baseline: MaterialVideo | null; scriptId: string } | null>(null);
 

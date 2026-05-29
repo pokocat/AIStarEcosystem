@@ -4,14 +4,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ChevronRight, ScrollText, LayoutTemplate, Flame, Wand2 } from "lucide-react";
+import { Plus, ChevronRight, ScrollText, LayoutTemplate, Flame, Wand2, Video } from "lucide-react";
 import { Card, Button } from "@/components/creator";
 import { MaterialOpsApi } from "@/api";
 import { SCRIPT_ASSETS, getProduct } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, ScriptAsset, Tier } from "./types";
 import { ProductPickerDialog } from "./ProductPickerDialog";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, formatLastUsed } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, formatLastUsed, hexA } from "./shared";
 
 const KIND_ICON: Record<AssetKind, React.ComponentType<{ size?: number; color?: string }>> = {
   my_script: ScrollText,
@@ -142,10 +142,15 @@ export function ScriptLibrary() {
           const kindMeta = ASSET_KIND_META[a.kind];
           const product = getProduct(a.product_id);
           return (
-            <button
+            <div
               key={a.id}
+              role="button"
+              tabIndex={0}
               onClick={() => router.push(`/material/workshop/${a.id}`)}
-              style={{ width: "100%", textAlign: "left", padding: "14px 18px", display: "grid", gridTemplateColumns: COLS, gap: 14, alignItems: "center", cursor: "pointer", borderBottom: "1px solid var(--line)", background: "transparent", fontFamily: "var(--font-sans)" }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") router.push(`/material/workshop/${a.id}`);
+              }}
+              style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: COLS, gap: 14, alignItems: "center", cursor: "pointer", borderBottom: "1px solid var(--line)", background: "transparent", fontFamily: "var(--font-sans)" }}
             >
               <div style={{ position: "relative" }}>
                 <CoverTile color={a.cover_color} icon={<KindIcon size={13} color="#fff" />} />
@@ -168,14 +173,39 @@ export function ScriptLibrary() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 <span style={{ fontSize: 16, flexShrink: 0 }}>{product?.emoji ?? "📦"}</span>
-                <span style={{ fontSize: 12, color: "var(--fg-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product?.name ?? "—"}</span>
+                {product ? (
+                  <>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/products/${product.id}`);
+                      }}
+                      title="查看商品详情"
+                      style={{ fontSize: 12, color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", textDecorationLine: "underline", textDecorationColor: "var(--line-2)", textUnderlineOffset: 2 }}
+                    >
+                      {product.name}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/material/assets?product=${product.id}`);
+                      }}
+                      title="查看该商品的视频素材"
+                      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 7px", borderRadius: "var(--radius-pill)", fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--accent)", background: hexA("#7c5cff", "14"), border: `1px solid ${hexA("#7c5cff", "33")}`, cursor: "pointer" }}
+                    >
+                      <Video size={9} /> 素材
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 12, color: "var(--fg-2)" }}>—</span>
+                )}
               </div>
               <span style={{ fontSize: 12, color: "var(--fg-1)" }}>{a.source?.author}</span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--extra-teal)", fontVariantNumeric: "tabular-nums" }}>{a.metrics.ctr_pct}%</span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--fg-1)", fontVariantNumeric: "tabular-nums" }}>{a.metrics.uses_count}</span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)" }}>{formatLastUsed(a.metrics.last_used_at)}</span>
               <ChevronRight size={14} color="var(--fg-3)" />
-            </button>
+            </div>
           );
         })}
       </Card>

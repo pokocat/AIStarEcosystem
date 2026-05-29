@@ -10,12 +10,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Product } from "@ai-star-eco/types/product";
+import { MATERIAL_PRODUCTS } from "./material-ops";
 
 const link = (id: string) =>
   `https://haohuo.jinritemai.com/ecommerce/trade/detail/index.html?id=${id}&origin_type=pc_buyin_selection_decision`;
 
 const today = "2026-05-23";
 
+// 抖音商城选品库样例 6 条 + 素材运营 6 条（p1-p6，带货脚本演示商品）。
+// 素材运营商品并入共享商品库 —— 脚本/视频以 product_id 关联到真实商品行，
+// 「关联商品」超链可直达 /products/{id}。
 export const SEED_PRODUCTS: Product[] = [
   {
     id: "3485332505048038713",
@@ -101,4 +105,5 @@ export const SEED_PRODUCTS: Product[] = [
     createdAt: today,
     updatedAt: today,
   },
+  ...MATERIAL_PRODUCTS,
 ];
