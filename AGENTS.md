@@ -1759,6 +1759,58 @@ test   : MaterialAiE2ETest（@MockBean）—— 正常 JSON / 脏输出自修复
    finish=length 警告截断）；错误消息均带 `promptKey`（issue 5：方便定位调的哪个 prompt）。DraftingHub /
    DeriveVariablesPanel / CelebrityProductForm / 商品 hero 统一用该组件展示。
 
+### v0.42（2026-05-29）— 素材运营带货视频生成接真后端（异步 submit + 轮询）+ 脚本预览修复
+
+把素材运营「派生视频」从纯前端 mock 改成真实视频大模型生成 + 服务端轮询；同时修了脚本预览关联商品错配、简化了基线生成入口。**仅 celebrity 线 + server 改动**。
+
+**1. 脚本预览关联商品修复（bug）**
+
+`/material/workshop/{id}` 预览页（及编辑页）之前用 `MATERIAL_PRODUCTS.find(...) ?? MATERIAL_PRODUCTS[0]` 兜底解析商品 —— 商品选择器拉的是**全量商品库**，选了非这 6 个内置 mock 商品时落到 `MATERIAL_PRODUCTS[0]`（德绒高领打底衫），显示成完全无关的商品。修复：`material-ops.ts` 新增 `resolveProductForScript` / `resolveProductById`，按 `product_id` 查全量商品库（live `/api/products/{id}` / mock SEED_PRODUCTS）→ `toMaterialProduct`；查不到也只给中性占位，绝不张冠李戴。`getScript` 落库时即用它挂 `product`；preview-client / editor-client / ProductMaterial（派生入口）都改走它。
+
+**2. 基线生成直给（去冗余选项）**
+
+脚本预览「生成视频」之前弹出 6 轴画面维度 + 18 项结构化参数，对一键生成无用。`VideoGenDialog` baseline 模式重写为**直接生成**（脚本+商品摘要 + 一句话可选「补充要求」+ 生成按钮）；6 轴画面维度选项移到**派生**时才出现（`DeriveVariablesPanel` 新增折叠「画面维度」区）。
+
+**3. 派生视频接真后端 + 轮询 + 每任务独立回显**
+
+- 派生面板进入**不再自动跑 AI**：变量先用正则占位，用户点「AI 识别变量」才调真 LLM（可反复重新识别）。
+- 点「生成 N 条」= 真实提交（不再 mock 进度动画）；进入 generating 阶段轮询每个任务、出片后内嵌 `<video>` 播放；支持「重新生成」。
+- 任务持久化 + 独立查询：每个任务可单独轮询回显；任务也出现在素材库（库自带 3s 轮询），关弹窗不影响。
+
+```
+server : 新实体 MaterialVideoJob（material_video_job 表）+ MaterialVideoJobRepository
+       : MaterialVideoModelClient —— 视频大模型「提交 + 轮询」HTTP 客户端（单一可替换点）。
+       :   provider（baseUrl/apiKey/model）取自后台「AI 模型」配置（用途 = VIDEO_GENERATION）；
+       :   submit/poll 协议细节取自 aep.material.video.*；响应解析对常见字段多形态兜底
+       :   （默认对齐异步任务约定，如 智谱 CogVideoX：POST /videos/generations → GET /async-result/{id}）。
+       :   未配 provider/apiKey → 抛 VIDEO_NOT_CONFIGURED（503，明确提示去 AI 模型页配）。
+       : MaterialVideoJobService（submit 扣费+派发 / getJob / listJobs / →MaterialVideo 形状 wire 映射）
+       : MaterialVideoWorker（@Async("materialVideoExecutor") 提交后服务端轮询直到出片/超时；
+       :   成功 commitHold / 失败 release）；MaterialVideoAsyncConfig 线程池
+       : AiModelPurpose +VIDEO_GENERATION；CelebrityActionPricingService +action material.video-generate（默认 30/条）
+       : MaterialOpsController +POST /material/videos/generate + GET /material/videos/jobs[/{id}]
+       : application.yml +aep.material.video.*（submit/poll 路径、轮询间隔、最大等待、并发、默认 model）
+       : 测试 MaterialVideoModelClientTest（normalizeStatus / extractVideoUrl 多形态解析，4 测）
+
+web-celebrity:
+       : types.ts MaterialVideo +video_url/thumbnail_url/error_message/external_task_id；+VideoGenJobRequest
+       : api/material-ops.ts +resolveProductForScript/resolveProductById +submitVideoJobs/getVideoJob/listVideoJobs；
+       :   listVideos（live）合并真实任务卡；mock 沿用 localStorage 模拟
+       : lib.ts +buildVideoPrompt（脚本+商品+画面维度→中文提示词）+buildJobRequests
+       : VideoGenDialog 重写（baseline 直给 / variant 派生 + 真实提交轮询 + 重新生成 + 内嵌播放）
+       : DeriveVariablesPanel（去自动跑 AI → 按钮触发 + 重新识别；+折叠画面维度；单一「生成」按钮）
+admin  : ai-models 页 PURPOSES + PURPOSE_LABEL +「视频生成」(VIDEO_GENERATION)
+openapi: +/material/videos/generate + /material/videos/jobs[/{id}]
+```
+
+**注意事项**：
+
+- **token 在后台配，不在 env 配 token**：到 管理后台 → 平台与配置 → AI 模型 加一个服务商，勾「视频生成」用途，填 baseUrl + 有效 API Key、默认 model 用真实模型 id。未配前端发起生成会显示「未配置」明确错误（不静默兜底，对齐 v0.40 文本三件）。
+- **换厂商**：多数只改 baseUrl（provider 里）+ `aep.material.video.submit-path/poll-path-template`；wire 差异大就替换 `MaterialVideoModelClient` 这一个文件，不影响调度/积分/前端。默认值对齐 智谱 CogVideoX 异步任务约定。
+- **服务端轮询占线程**：worker 提交后在该线程上轮询直到出片/超时（视频生成慢，单任务可达数分钟），并发上限 = `aep.material.video.max-concurrent`（默认 3）。多实例 / 高并发需改 @Scheduled 轮询 + ShedLock（沿用 PublishJobScheduler 待办）。
+- **积分**：单价走 `material.video-generate`（admin 可配，默认 30/条）；hold→commit/release 三段式（不可变账本约束）。失败 / 超时自动退款。
+- **MaterialVideoJob 即视频源**：成功任务直接作为素材库的 ready 卡（带 video_url），不再额外写 MaterialVideo 行；旧的 `/material/videos/batch` + mock localStorage 模拟保留（USE_MOCK / seed 演示）。
+
 ### v0.41（2026-05-29）— 大模型用量统计（自建 token 流水）
 
 把每次 `/chat/completions` 响应里**已经返回但之前用完即丢**的 `usage`（prompt/completion/total tokens）

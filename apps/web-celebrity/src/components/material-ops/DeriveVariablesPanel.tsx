@@ -4,58 +4,71 @@
 // 左：派生数量 + AI 提取变量 + 替换值管理；右：替换后脚本 ↔ AI 提示词 预览 + 编号翻页。
 
 import * as React from "react";
-import { Plus, Trash2, X, ChevronRight, FlaskConical, ArrowRight, Shuffle, ListPlus } from "lucide-react";
+import { Plus, Trash2, X, ChevronRight, FlaskConical, ArrowRight, Shuffle, ListPlus, Wand2, Loader2 } from "lucide-react";
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Button } from "@/components/creator";
 import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
 import { AiThinking } from "@/components/common/ai-thinking";
 import { MaterialOpsApi } from "@/api";
 import { MATERIAL_PRODUCTS } from "@/mocks/material-ops";
-import type { ScriptAsset, ScriptVariable, VariantSample } from "./types";
+import { VARIANT_AXES, VARIANT_AXIS_ORDER } from "@/constants/material-ops-ui";
+import type { ScriptAsset, ScriptVariable, VariantConfig, VariantSample } from "./types";
 import { extractVariablesFromScript, sampleVariants, totalCombinations, estimateVideoCredits } from "./lib";
 import { Eyebrow, Seg, hexA, CostLine } from "./shared";
+
+const LOCAL_DEFAULT_CONFIG: VariantConfig = {
+  character: "human-001",
+  scene: "auto-shop",
+  weather: "sunny",
+  lighting: "natural",
+  role_relation: "夫妻",
+  voice: "voice-male-01",
+};
 
 export function DeriveVariablesPanel({
   script,
   walletBalance = null,
+  submitting = false,
+  error = null,
   onClose,
-  onSubmit,
-  onSubmitAsync,
+  onGenerate,
 }: {
   script: ScriptAsset;
   walletBalance?: number | null;
+  submitting?: boolean;
+  error?: string | null;
   onClose: () => void;
-  onSubmit: (samples: VariantSample[]) => void;
-  onSubmitAsync: (samples: VariantSample[]) => void;
+  onGenerate: (samples: VariantSample[], config: VariantConfig) => void;
 }) {
   const [count, setCount] = React.useState(4);
-  // 即时用正则结果占位；接真 LLM（live：POST /material/scripts/{id}/variables）回来后若非空则升级。
+  // 进入不自动跑 AI（用户反馈「不要一进入就生成」）：先用正则结果占位；
+  // 用户点「AI 识别变量」才调真 LLM（可反复重新识别）。
   const [variables, setVariables] = React.useState<ScriptVariable[]>(() => extractVariablesFromScript(script));
   const [activeVar, setActiveVar] = React.useState(variables[0]?.id);
   const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiDone, setAiDone] = React.useState(false);
   // AI 失败不静默：保留正则结果可继续用，但把后端的明确报错亮出来（token / prompt 未配等）。
   const [aiError, setAiError] = React.useState<string | null>(null);
+  // 画面维度（6 轴）—— issue 2：这些选项移到派生时才出现。
+  const [config, setConfig] = React.useState<VariantConfig>(LOCAL_DEFAULT_CONFIG);
+  const [showAxes, setShowAxes] = React.useState(false);
 
-  React.useEffect(() => {
-    let cancelled = false;
+  // 主动触发 AI 变量识别（不自动跑）。失败保留正则结果 + 亮报错；可反复点击重新识别。
+  const runExtract = React.useCallback(() => {
     setAiLoading(true);
     setAiError(null);
     MaterialOpsApi.extractScriptVariables(script.id)
       .then((vars) => {
-        if (cancelled || !vars.length) return;
-        setVariables(vars);
-        setActiveVar(vars[0]?.id);
+        if (vars.length) {
+          setVariables(vars);
+          setActiveVar(vars[0]?.id);
+        }
+        setAiDone(true);
       })
-      .catch((e: unknown) => {
-        if (!cancelled) setAiError(errorMessage(e, "AI 变量识别失败"));
-      })
-      .finally(() => {
-        if (!cancelled) setAiLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch((e: unknown) => setAiError(errorMessage(e, "AI 变量识别失败")))
+      .finally(() => setAiLoading(false));
   }, [script.id]);
+
   const [previewIdx, setPreviewIdx] = React.useState(0);
   const [previewMode, setPreviewMode] = React.useState<"rendered" | "raw">("rendered");
 
@@ -104,10 +117,17 @@ export function DeriveVariablesPanel({
         </div>
 
         {/* 变量 tabs */}
-        <div style={{ padding: "12px 20px 0", display: "flex", alignItems: "center", gap: 8 }}>
-          <Eyebrow>AI 提取的变量 · {variables.length}</Eyebrow>
+        <div style={{ padding: "12px 20px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <Eyebrow>变量 · {variables.length}</Eyebrow>
           {aiLoading && <AiThinking compact stages={["读取脚本…", "识别可替换变量…", "生成候选替换值…"]} />}
           <span style={{ flex: 1 }} />
+          <button
+            onClick={runExtract}
+            disabled={aiLoading}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: aiLoading ? "var(--fg-3)" : "var(--accent)", background: "transparent", border: 0, cursor: aiLoading ? "not-allowed" : "pointer", padding: "0 0 8px" }}
+          >
+            {aiLoading ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />} {aiDone ? "重新识别" : "AI 识别变量"}
+          </button>
           <button onClick={addVariable} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--extra-teal)", background: "transparent", border: 0, cursor: "pointer", padding: "0 0 8px" }}>
             <ListPlus size={11} /> 自定义变量
           </button>
@@ -147,9 +167,10 @@ export function DeriveVariablesPanel({
           })}
         </div>
 
-        {/* 变量编辑器 */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+        {/* 变量编辑器 + 画面维度 */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
           {active && <VariableEditor variable={active} onUpdate={updateVar} onRemove={() => removeVar(active.id)} />}
+          <AxesPicker config={config} setConfig={setConfig} open={showAxes} setOpen={setShowAxes} />
         </div>
       </div>
 
@@ -233,22 +254,91 @@ export function DeriveVariablesPanel({
           {samples[safeIdx] && previewMode === "raw" && <RawPromptPreview script={script} sample={samples[safeIdx]} variables={variables} />}
         </div>
 
+        {/* 提交错误（如未配置视频大模型）不静默，明确展示 */}
+        {error && (
+          <div style={{ padding: "0 22px 12px" }}>
+            <AiErrorNotice title="视频生成提交失败" message={error} />
+          </div>
+        )}
+
         {/* footer */}
         <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "var(--bg-2)" }}>
-          <CostLine count={count} credits={estimateVideoCredits(count)} balance={walletBalance} unit="变体" />
+          <CostLine count={count} credits={estimateVideoCredits(count)} balance={walletBalance} unit="视频" />
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <Button variant="ghost" onClick={onClose}>
               取消
             </Button>
-            <Button variant="secondary" onClick={() => onSubmitAsync(samples)}>
-              提交到后台
-            </Button>
-            <Button variant="accent" onClick={() => onSubmit(samples)}>
-              <Shuffle size={13} /> 派生 {count} 条 · {estimateVideoCredits(count)} 积分
+            <Button variant="accent" onClick={() => onGenerate(samples, config)} disabled={submitting}>
+              {submitting ? <Loader2 size={13} className="animate-spin" /> : <Shuffle size={13} />}
+              {submitting ? "提交中…" : `生成 ${count} 条 · ${estimateVideoCredits(count)} 积分`}
             </Button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// 画面维度（6 轴）—— 折叠面板。issue 2：这些选项移到派生时才出现。
+function AxesPicker({
+  config,
+  setConfig,
+  open,
+  setOpen,
+}: {
+  config: VariantConfig;
+  setConfig: (c: VariantConfig) => void;
+  open: boolean;
+  setOpen: (b: boolean) => void;
+}) {
+  return (
+    <div style={{ borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--line)", overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "transparent", border: 0, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+      >
+        <ChevronRight size={14} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 160ms", flexShrink: 0, color: "var(--fg-2)" }} />
+        <span style={{ fontWeight: 600, color: "var(--fg-0)", fontSize: 12.5 }}>画面维度</span>
+        <span style={{ color: "var(--fg-3)", fontSize: 11 }}>人物 / 场景 / 光线 / 配音…</span>
+        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)" }}>{open ? "收起" : "展开"}</span>
+      </button>
+      {open && (
+        <div style={{ padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {VARIANT_AXIS_ORDER.map((id) => {
+            const axis = VARIANT_AXES[id];
+            return (
+              <div key={id}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: 99, background: axis.toneVar }} />
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: axis.toneVar, letterSpacing: "0.1em", textTransform: "uppercase" }}>{axis.label}</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {axis.options.map((opt) => {
+                    const activeOpt = config[id] === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => setConfig({ ...config, [id]: opt.id })}
+                        style={{
+                          padding: "5px 9px",
+                          borderRadius: "var(--radius-md)",
+                          cursor: "pointer",
+                          background: activeOpt ? hexA(axis.toneVar, "16") : "var(--bg-1)",
+                          border: `1px solid ${activeOpt ? axis.toneVar : "var(--line)"}`,
+                          color: activeOpt ? "var(--fg-0)" : "var(--fg-1)",
+                          fontSize: 11.5,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

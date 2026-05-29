@@ -8,14 +8,17 @@
 // localStorage），素材库即可看到。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { SCRIPT_ASSETS, VIDEO_ASSETS, VIRAL_HITS, getProduct } from "@/mocks/material-ops";
+import { SCRIPT_ASSETS, VIDEO_ASSETS, VIRAL_HITS, getProduct, toMaterialProduct } from "@/mocks/material-ops";
 import type {
   AsyncRenderTask,
+  MaterialProduct,
   MaterialVideo,
   ScriptAsset,
   ScriptVariable,
+  VideoGenJobRequest,
   ViralHit,
 } from "@/components/material-ops/types";
+import { getProduct as fetchProductById } from "./products";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
 const SCRIPTS_KEY = "aistareco.web.material.scripts.v1"; // mock：用户草稿覆盖层
@@ -75,14 +78,64 @@ export async function listScripts(filter?: ScriptFilter): Promise<ScriptAsset[]>
 }
 
 export async function getScript(id: string): Promise<ScriptAsset | null> {
-  if (USE_MOCK) {
-    const found = mockScripts().find((s) => s.id === id) ?? null;
-    if (found && !found.product) found.product = getProduct(found.product_id);
-    return mockDelay(found);
+  const s = USE_MOCK
+    ? (mockScripts().find((x) => x.id === id) ?? null)
+    : await apiFetch<ScriptAsset | null>(`/material/scripts/${encodeURIComponent(id)}`);
+  // 用 product_id 还原真实关联商品（不只 6 个素材运营 mock 商品，而是全量商品库）。
+  if (s && !s.product) s.product = await resolveProductForScript(s);
+  return USE_MOCK ? mockDelay(s) : s;
+}
+
+/**
+ * 用 script.product_id 解析其关联商品 —— **始终返回一个 MaterialProduct，绝不返回错的商品**。
+ * 解析顺序：
+ *   1) script.product（已挂上的实体）
+ *   2) 素材运营自带的 6 个富数据商品（MATERIAL_PRODUCTS）
+ *   3) 全量商品库（live → GET /api/products/{id}；mock → SEED_PRODUCTS）→ toMaterialProduct
+ *   4) 兜底占位（用 product_id 造一个最小商品；找不到 id 时返回「未关联商品」占位）
+ *
+ * 历史 bug：preview/editor 之前用 `MATERIAL_PRODUCTS.find(...) ?? MATERIAL_PRODUCTS[0]` 兜底，
+ * 选了商品库里非这 6 个的商品时会落到 MATERIAL_PRODUCTS[0]（德绒高领打底衫）——显示成完全无关的商品。
+ * 这里改为查全量商品库；查不到也只给中性占位，不再张冠李戴。
+ */
+export async function resolveProductForScript(script: ScriptAsset): Promise<MaterialProduct> {
+  if (script.product) return script.product;
+  const pid = script.product_id;
+  return resolveProductById(pid);
+}
+
+/** 同 resolveProductForScript，但直接按 productId 解析（供详情/列表复用）。 */
+export async function resolveProductById(productId?: string): Promise<MaterialProduct> {
+  if (productId) {
+    const rich = getProduct(productId);
+    if (rich) return rich;
+    try {
+      const p = await fetchProductById(productId);
+      if (p) return toMaterialProduct(p);
+    } catch {
+      /* 商品库拉取失败 → 走占位，不阻塞脚本预览 */
+    }
   }
-  const s = await apiFetch<ScriptAsset | null>(`/material/scripts/${encodeURIComponent(id)}`);
-  if (s && !s.product) s.product = getProduct(s.product_id);
-  return s;
+  return placeholderProduct(productId);
+}
+
+function placeholderProduct(productId?: string): MaterialProduct {
+  return {
+    id: productId ?? "unknown",
+    name: productId ? "未找到商品" : "未关联商品",
+    category: "其他",
+    link: "",
+    images: [],
+    sellingPoints: "",
+    sellingPointList: [],
+    usageCount: 0,
+    source: "manual",
+    accentColor: "#7a6f5d",
+    audience: [],
+    suggestedAngles: [],
+    createdAt: "",
+    updatedAt: "",
+  } as MaterialProduct;
 }
 
 export async function saveScript(asset: ScriptAsset): Promise<ScriptAsset> {
@@ -106,8 +159,8 @@ function mockBaseVideos(): MaterialVideo[] {
   return [...userVideos, ...VIDEO_ASSETS].filter((v) => !deleted.has(v.id));
 }
 
-function taskCards(): MaterialVideo[] {
-  return readJSON<AsyncRenderTask[]>(TASKS_KEY, []).map((t) => ({
+function taskToCard(t: AsyncRenderTask): MaterialVideo {
+  return {
     id: t.id,
     script_id: t.script_id,
     product_id: t.product_id,
@@ -128,20 +181,84 @@ function taskCards(): MaterialVideo[] {
     eta_sec: t.eta_sec,
     stage: t.stage,
     isAsyncTask: true,
-  }));
+  };
+}
+
+function taskCards(): MaterialVideo[] {
+  return readJSON<AsyncRenderTask[]>(TASKS_KEY, []).map(taskToCard);
 }
 
 export async function listVideos(productId?: string): Promise<MaterialVideo[]> {
-  let base: MaterialVideo[];
   if (USE_MOCK) {
-    base = await mockDelay(mockBaseVideos());
-  } else {
-    const suffix = productId ? `?product_id=${encodeURIComponent(productId)}` : "";
-    base = await apiFetch<MaterialVideo[]>(`/material/videos${suffix}`);
+    const base = await mockDelay(mockBaseVideos());
+    let all = [...taskCards(), ...base];
+    if (productId) all = all.filter((v) => (v.product_id ?? scriptProductId(v.script_id)) === productId);
+    return all;
   }
-  let all = [...taskCards(), ...base];
+  // live：成片视频（/material/videos）+ 真实生成任务（/material/videos/jobs，含 rendering/failed/ready）。
+  const suffix = productId ? `?product_id=${encodeURIComponent(productId)}` : "";
+  const [base, jobs] = await Promise.all([
+    apiFetch<MaterialVideo[]>(`/material/videos${suffix}`),
+    listVideoJobs({ productId }).catch(() => [] as MaterialVideo[]),
+  ]);
+  // 任务在前（最新生成的优先展示）；按 id 去重。
+  const seen = new Set<string>();
+  let all = [...jobs, ...base].filter((v) => (seen.has(v.id) ? false : (seen.add(v.id), true)));
   if (productId) all = all.filter((v) => (v.product_id ?? scriptProductId(v.script_id)) === productId);
   return all;
+}
+
+// ── 带货视频生成任务（真实视频大模型 · 异步 submit + 轮询） ────────────────────
+// USE_MOCK：沿用 localStorage 渲染任务模拟（enqueue + advanceRenderTasks 推进）。
+// live：POST /material/videos/generate 提交 → GET /material/videos/jobs[/{id}] 轮询。
+// 未配置视频大模型时 live 会抛 ApiError（VIDEO_NOT_CONFIGURED），由调用方展示明确错误。
+
+/** 提交一批视频生成任务，返回创建出的任务卡（status=rendering）。 */
+export async function submitVideoJobs(requests: VideoGenJobRequest[]): Promise<MaterialVideo[]> {
+  if (!requests.length) return [];
+  if (USE_MOCK) {
+    const startedAt = Date.now();
+    const tasks: AsyncRenderTask[] = requests.map((r, i) => ({
+      id: `task-${startedAt}-${i}`,
+      script_id: r.script_id,
+      product_id: r.product_id,
+      parent_video_id: r.parent_video_id ?? null,
+      kind: r.kind,
+      name: r.name,
+      status: "pending" as const,
+      submitted_at: new Date(startedAt + i * 100).toISOString(),
+      eta_sec: 90,
+      progress_pct: 0,
+      stage: "已入队",
+      variant_config: r.variant_config,
+    }));
+    await enqueueRenderTasks(tasks);
+    return tasks.map((t) => taskToCard(t));
+  }
+  return apiFetch<MaterialVideo[]>("/material/videos/generate", { method: "POST", body: { items: requests } });
+}
+
+/** 单个生成任务的最新状态（前端轮询）。 */
+export async function getVideoJob(id: string): Promise<MaterialVideo | null> {
+  if (USE_MOCK) {
+    return mockDelay([...taskCards(), ...mockBaseVideos()].find((v) => v.id === id) ?? null);
+  }
+  return apiFetch<MaterialVideo | null>(`/material/videos/jobs/${encodeURIComponent(id)}`);
+}
+
+/** 列出当前用户的生成任务（可按脚本 / 商品过滤）。 */
+export async function listVideoJobs(filter?: { scriptId?: string; productId?: string }): Promise<MaterialVideo[]> {
+  if (USE_MOCK) {
+    let cards = taskCards();
+    if (filter?.scriptId) cards = cards.filter((c) => c.script_id === filter.scriptId);
+    if (filter?.productId) cards = cards.filter((c) => (c.product_id ?? scriptProductId(c.script_id)) === filter.productId);
+    return mockDelay(cards);
+  }
+  const qs = new URLSearchParams();
+  if (filter?.scriptId) qs.set("script_id", filter.scriptId);
+  if (filter?.productId) qs.set("product_id", filter.productId);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return apiFetch<MaterialVideo[]>(`/material/videos/jobs${suffix}`);
 }
 
 /** 落库一批已生成视频（弹窗内完成 / 后台任务完成时调用）。 */
