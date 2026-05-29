@@ -99,7 +99,7 @@ class AiModelInvocationServiceTest {
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
         when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
 
-        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo).invokeChat(
+        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
                 AiModelPurpose.SCRIPT_DRAFT,
                 List.of(Map.of("role", "system", "content", "你是助手"),
                         Map.of("role", "user", "content", "讲个笑话")),
@@ -135,7 +135,7 @@ class AiModelInvocationServiceTest {
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
         when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
 
-        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo).invokeChat(
+        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
                 AiModelPurpose.GENERAL,
                 List.of(Map.of("role", "user", "content", "hi")),
                 null);
@@ -156,7 +156,7 @@ class AiModelInvocationServiceTest {
         when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(repo).invokeChat(
+                new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
                         AiModelPurpose.SCRIPT_DRAFT,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
@@ -175,7 +175,7 @@ class AiModelInvocationServiceTest {
         // repo 方法名语义即「按 priority 升序」；service 不再二次排序，照原顺序消费。
         when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p1, p2));
 
-        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo).invokeChat(
+        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
                 AiModelPurpose.GENERAL,
                 List.of(Map.of("role", "user", "content", "hi")), null);
 
@@ -197,7 +197,7 @@ class AiModelInvocationServiceTest {
         when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p1, p2));
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(repo).invokeChat(
+                new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
                         AiModelPurpose.GENERAL,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
@@ -216,7 +216,7 @@ class AiModelInvocationServiceTest {
             when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
 
             BusinessException ex = assertThrows(BusinessException.class, () ->
-                    new AiModelInvocationService(repo).invokeChat(
+                    new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
                             AiModelPurpose.GENERAL,
                             List.of(Map.of("role", "user", "content", "hi")), null),
                     "providerType=" + type.wire() + " 应抛 501");
@@ -241,7 +241,7 @@ class AiModelInvocationServiceTest {
             AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
             when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
 
-            AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo).invokeChat(
+            AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
                     AiModelPurpose.GENERAL,
                     List.of(Map.of("role", "user", "content", "hi")), null);
 
@@ -261,7 +261,7 @@ class AiModelInvocationServiceTest {
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
         when(repo.findById("pX")).thenReturn(Optional.of(p));
 
-        Map<String, Object> result = new AiModelInvocationService(repo).testConnection("pX");
+        Map<String, Object> result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).testConnection("pX");
 
         assertEquals(true, result.get("ok"));
         assertEquals(200, result.get("statusCode"));
@@ -281,7 +281,7 @@ class AiModelInvocationServiceTest {
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
         when(repo.findById("pY")).thenReturn(Optional.of(p));
 
-        Map<String, Object> result = new AiModelInvocationService(repo).testConnection("pY");
+        Map<String, Object> result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).testConnection("pY");
         assertEquals(false, result.get("ok"));
         assertEquals("AZURE_OPENAI", result.get("providerType"));
     }
@@ -292,7 +292,7 @@ class AiModelInvocationServiceTest {
         when(repo.findById("nope")).thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(repo).testConnection("nope"));
+                new AiModelInvocationService(repo, mock(AiModelUsageService.class)).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
         assertEquals("PROVIDER_NOT_FOUND", ex.getCode());
     }
@@ -310,7 +310,7 @@ class AiModelInvocationServiceTest {
         StubServer server = stub(200, body);
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
 
-        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo).listModels(
+        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).listModels(
                 AiModelProviderType.VOLCENGINE, server.baseUrl(), "sk-models");
 
         assertTrue(result.ok());
@@ -331,7 +331,7 @@ class AiModelInvocationServiceTest {
         StubServer server = stub(401, "{\"error\":\"unauthorized\"}");
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
 
-        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo).listModels(
+        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).listModels(
                 AiModelProviderType.OPENAI, server.baseUrl(), "sk-bad");
 
         assertFalse(result.ok());
@@ -343,7 +343,7 @@ class AiModelInvocationServiceTest {
     @Test
     void listModelsRejectsNonOpenAiType() {
         AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo).listModels(
+        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).listModels(
                 AiModelProviderType.ANTHROPIC, "http://127.0.0.1:1/v1", "sk-x");
         assertFalse(result.ok());
         assertNotNull(result.error());

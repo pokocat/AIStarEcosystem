@@ -84,6 +84,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.41 / 2026-05-29**：`/platform/ai-models` 加「用量统计」卡片。时间窗下拉（近 1/7/30/90/365 天）+ 4 个汇总数（调用次数 / 总 / 输入 / 输出 token）+ 按服务商、按模型两张占比表；空窗给引导文案。数据来自 server 自建 token 流水聚合（`GET /api/admin/ai-models/usage`，对所有服务商通用，不依赖各家计费接口）。`api/ai-models.ts` +`getUsage(days)` / `getProviderUsage(id, days)`。
 - **v0.40 / 2026-05-29**：新页 `/platform/prompts`（平台与配置组「Prompt 管理」）。素材运营文本三件（脚本起稿 / 卖点提取 / 变量抽取）的 system + user 模板在此管理：system/user 双 textarea + params（temperature / max_tokens / json 模式）+ 启用开关 + 试运行（填充预览，不真调模型）。对应 server `AdminPromptController`（/api/admin/prompts）+ `prompt_template` 表。`/platform/ai-models` 的可选 purpose 加「卖点提取 / 变量抽取」，可把 provider 路由到这两类用途。`/celebrity/engine-pricing` 动作单价表加「AI 脚本起稿」一行（积分/单稿，0=不计费），运营设单价即开启起稿计费。
 - **v0.39 / 2026-05-28**：新页 `/platform/agent-bots`（平台与配置组「Agent 平台」）。
   接入 Coze 等 agent 平台 bot 做「形象锻造」这类场景：CRUD + 场景下拉（一个 sceneKey 对应一个 bot）+ token 加密存储（仅显示脱敏值）。server 端 `ForgeCozeService` 改为按 sceneKey 从后台配置取 bot，env 兜底；不再 env 写死。

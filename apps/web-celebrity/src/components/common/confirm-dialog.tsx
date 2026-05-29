@@ -101,7 +101,12 @@ export function useConfirm() {
           if (!o && pending !== null) close(false);
         }}
       >
-        <AlertDialogContent>
+        {/*
+          确认弹窗必须始终位于最上层：它常从更高 z-index 的自定义全屏弹窗（如视频生成 z-90）
+          内部调起。共享 AlertDialog 默认 z-50 会被这些弹窗盖住 —— 弹窗看不见、按钮点不到，
+          而 Radix 又锁了页面 pointer-events，整页表现为"卡死"。这里把遮罩 + 内容统一抬到 z-[200]。
+        */}
+        <AlertDialogContent className="z-[200]" overlayClassName="z-[200]">
           <AlertDialogHeader>
             <AlertDialogTitle>{pending?.title}</AlertDialogTitle>
             {pending?.description != null && (

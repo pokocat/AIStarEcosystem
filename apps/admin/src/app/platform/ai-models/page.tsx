@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Lock, ShieldCheck, ChevronRight, Settings2, Search, Wand2, Download } from "lucide-react";
+import { Lock, ShieldCheck, ChevronRight, Settings2, Search, Wand2, Download, BarChart3 } from "lucide-react";
 import { useConfirm, useToast } from "@/components/feedback";
 import { AiModelsApi } from "@/api";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,8 @@ import type {
   AiModelPurpose,
   AiModelEntry,
   AiModelProviderPreset,
+  AiModelUsageReport,
+  AiModelUsageStat,
 } from "@/api/ai-models";
 
 const PROVIDER_TYPES: AiModelProviderType[] = [
@@ -119,6 +121,28 @@ export default function AdminAiModelsPage() {
   const [presets, setPresets] = React.useState<AiModelProviderPreset[]>([]);
   const [fetchingModels, setFetchingModels] = React.useState(false);
   const [query, setQuery] = React.useState("");
+
+  // v0.41：用量统计
+  const [usage, setUsage] = React.useState<AiModelUsageReport | null>(null);
+  const [usageDays, setUsageDays] = React.useState(30);
+  const [usageLoading, setUsageLoading] = React.useState(true);
+  const [usageErr, setUsageErr] = React.useState<string | null>(null);
+
+  const loadUsage = React.useCallback(async (days: number) => {
+    setUsageLoading(true);
+    setUsageErr(null);
+    try {
+      setUsage(await AiModelsApi.getUsage(days));
+    } catch (e) {
+      setUsageErr(e instanceof Error ? e.message : "用量统计加载失败");
+    } finally {
+      setUsageLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadUsage(usageDays);
+  }, [loadUsage, usageDays]);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -561,6 +585,58 @@ export default function AdminAiModelsPage() {
       </Card>
 
       <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle className="flex items-center gap-1.5 text-base">
+            <BarChart3 className="h-4 w-4 text-primary" /> 用量统计
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Select value={String(usageDays)} onValueChange={(v) => setUsageDays(Number(v))}>
+              <SelectTrigger className="h-8 w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">近 1 天</SelectItem>
+                <SelectItem value="7">近 7 天</SelectItem>
+                <SelectItem value="30">近 30 天</SelectItem>
+                <SelectItem value="90">近 90 天</SelectItem>
+                <SelectItem value="365">近 365 天</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => void loadUsage(usageDays)}>
+              刷新
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            按每次调用响应里返回的 token 用量自行汇总（对所有服务商通用，不依赖各家计费接口）。仅统计成功调用。
+          </p>
+          {usageLoading && <div className="text-sm text-muted-foreground">加载中…</div>}
+          {usageErr && <div className="text-sm text-destructive">{usageErr}</div>}
+          {!usageLoading && !usageErr && usage && (
+            <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <StatBox label="调用次数" value={usage.totalCalls.toLocaleString()} />
+                <StatBox label="总 Token" value={usage.totalTokens.toLocaleString()} />
+                <StatBox label="输入 Token" value={usage.promptTokens.toLocaleString()} />
+                <StatBox label="输出 Token" value={usage.completionTokens.toLocaleString()} />
+              </div>
+              {usage.totalCalls === 0 ? (
+                <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                  该时间窗内暂无调用记录。发起脚本起草 / 卖点提取 / 变量抽取等会调用大模型的操作后，这里会出现用量。
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <UsageTable title="按服务商" rows={usage.byProvider} total={usage.totalTokens} />
+                  <UsageTable title="按模型" rows={usage.byModel} total={usage.totalTokens} />
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between text-base">
             <span>服务商列表（{filtered.length}）</span>
@@ -702,6 +778,51 @@ function Field({
       <div className="mb-1 text-sm font-medium">{label}</div>
       {children}
       {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function UsageTable({ title, rows, total }: { title: string; rows: AiModelUsageStat[]; total: number }) {
+  return (
+    <div>
+      <div className="mb-2 text-sm font-medium">{title}</div>
+      {rows.length === 0 ? (
+        <div className="text-xs text-muted-foreground">无数据</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{title.includes("模型") ? "模型" : "服务商"}</TableHead>
+              <TableHead className="text-right">调用</TableHead>
+              <TableHead className="text-right">总 Token</TableHead>
+              <TableHead className="text-right">占比</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.key}>
+                <TableCell className="max-w-[180px] truncate text-xs font-medium" title={r.label}>
+                  {r.label}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-xs">{r.calls.toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums text-xs">{r.totalTokens.toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
+                  {total > 0 ? `${((r.totalTokens / total) * 100).toFixed(1)}%` : "—"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </div>
   );
 }

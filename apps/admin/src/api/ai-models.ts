@@ -86,6 +86,28 @@ export interface ModelDiscoveryResult {
   error?: string;
 }
 
+/** 用量聚合行（按服务商或模型分组）。v0.41 新增。 */
+export interface AiModelUsageStat {
+  key: string;
+  label: string;
+  calls: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+}
+
+/** 用量报表（最近 windowDays 天）。v0.41 新增。 */
+export interface AiModelUsageReport {
+  windowDays: number;
+  since: string;
+  totalCalls: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  byProvider: AiModelUsageStat[];
+  byModel: AiModelUsageStat[];
+}
+
 const BASE = "/admin/ai-models";
 
 export async function list(): Promise<AiModelProvider[]> {
@@ -122,4 +144,13 @@ export async function discoverModels(body: {
 /** 已存 provider：用落库的 apiKey 重新拉取可用模型（拉回后由保存写入配置）。 */
 export async function fetchModels(id: string): Promise<ModelDiscoveryResult> {
   return apiFetch<ModelDiscoveryResult>(`${BASE}/${encodeURIComponent(id)}/fetch-models`, { method: "POST" });
+}
+
+/** 全局大模型用量报表（days：统计窗口天数，缺省 30，封顶 365）。v0.41 新增。 */
+export async function getUsage(days?: number): Promise<AiModelUsageReport> {
+  return apiFetch<AiModelUsageReport>(BASE + "/usage", { query: { days } });
+}
+/** 单服务商用量报表。v0.41 新增。 */
+export async function getProviderUsage(id: string, days?: number): Promise<AiModelUsageReport> {
+  return apiFetch<AiModelUsageReport>(`${BASE}/${encodeURIComponent(id)}/usage`, { query: { days } });
 }

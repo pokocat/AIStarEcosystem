@@ -69,6 +69,22 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.41 · 2026-05-29 · 素材库改为视频为主（商品作筛选）+ 对齐商品库 + 修复弹窗卡死
+
+**A. 商品素材库 IA 重构：视频为主，商品降级为筛选条件**
+
+- **改动**：`ProductMaterial` 从「左商品目录 → 下钻看该商品视频」改为**全局历史视频库**（默认按时间倒序列出所有视频）。商品成为筛选维度之一：顶部工具条 `ProductFilter` 可搜索下拉（全部商品 / 未关联·已删除商品 / 逐个商品，带视频计数）；视图三态「全部 / 按商品分组 / 按脚本分组」；叠加状态筛选 + 搜索 + 排序。跨商品（全部）视图下视频卡片标注所属商品名。
+- **选中某商品时浮出该商品 hero**（价格 / 佣金 / 卖点 / AI 提取卖点入口 + 视频/渲染中/已发布/总播放统计）；「全部 / 未关联」视图则显示聚合 `StatBar`。
+- **商品目录直读系统商品库** `ProductsApi.listProducts()`（`/api/products`，经 `toMaterialProduct` 映射含真实图/价格/佣金/卖点），与商品库严格对齐；拉取失败回退本地 mock，不阻断视频库。
+- **商品库是唯一真源**：已在商品库删除的商品不再出现在筛选项里；其孤儿视频归入「未关联 / 已删除商品」筛选项（视频不丢、但不冒充存在的商品）。仅「随仓打包的本地演示商品」(p1–p6) 仍可作为筛选项保住 dev demo。
+- 删除旧的 `ProductDirectory` 左栏；`VideoLibraryView` 重构为全局 `GlobalVideoLibrary` + `ProductHero` + `ProductFilter` + `ProductGroupCard`。
+
+**B. 修复：弹窗内调起确认框导致整页卡死**
+
+- **症状**：素材库点「生成基线视频」（及其它在自定义全屏弹窗内调起 `useConfirm` 的入口）后整页卡死、无法点击。
+- **根因**：共享 `AlertDialog`（`useConfirm` 用）的遮罩 + 内容默认 `z-50`，而 `VideoGenDialog` 等自定义弹窗是 `z-80/90`，确认框被盖在下面看不见、点不到；同时 Radix 锁了页面 `pointer-events` + focus，`await confirm(...)` 永远等不到点击 → 整页"卡死"。
+- **修复**：`components/common/confirm-dialog.tsx` 的 `ConfirmHost` 把遮罩 + 内容统一抬到 `z-[200]`，确认框始终位于最上层。配套给共享 `packages/ui` 的 `AlertDialogContent` 增可选 `overlayClassName`（透传遮罩层 className；加性变更，不影响既有调用）。覆盖**所有** `useConfirm` 在高 z-index 弹窗内调起的场景，非仅基线视频。
+
 ### v0.40 · 2026-05-29 · 素材运营文本三件接真 LLM
 
 - 起稿中心「AI 生成」`DraftingHub` 的 `AIPicker.run` 接 `POST /material/scripts/ai-draft`（真 LLM 起稿候选）。**失败不静默兜底**：直接展示后端明确报错（token 未配 / prompt 未配 / 模型异常）+ 重试。USE_MOCK 模式不打后端、用本地占位池 `aiCandidates`。
