@@ -20,6 +20,8 @@ export type AiModelProviderType =
 
 export type AiModelPurpose =
   | "SCRIPT_DRAFT"
+  | "SELLING_POINTS"
+  | "VARIABLE_EXTRACT"
   | "SAFETY_REVIEW"
   | "VIDEO_REF_ANALYSIS"
   | "TEMPLATE_REWRITE"

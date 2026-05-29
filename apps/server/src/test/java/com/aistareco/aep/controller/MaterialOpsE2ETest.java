@@ -1,5 +1,7 @@
 package com.aistareco.aep.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -9,9 +11,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.oneOf;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -34,14 +37,53 @@ class MaterialOpsE2ETest {
     @Autowired
     private MockMvc mvc;
 
+    @Autowired
+    private ObjectMapper om;
+
+    private JsonNode dataOf(String path) throws Exception {
+        String body = mvc.perform(get(path)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return om.readTree(body).get("data");
+    }
+
     // ── 脚本 ─────────────────────────────────────────────────────────────────
     @Test
-    void listScripts_returnsSeeded() throws Exception {
+    void listScripts_returnsSharedScripts() throws Exception {
+        // 共享脚本（爆款同款 / 官方模板，owner=null）对所有登录用户可见。
         mvc.perform(get("/api/material/scripts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[?(@.id=='asset-2604')]").exists())
-                .andExpect(jsonPath("$.data[?(@.id=='asset-2598')]").exists());
+                .andExpect(jsonPath("$.data[?(@.id=='asset-2604')]").exists())  // viral_clone 共享
+                .andExpect(jsonPath("$.data[?(@.id=='asset-2401')]").exists()); // template 共享
+    }
+
+    @Test
+    void scriptScope_isolatesPrivateScripts() throws Exception {
+        // 3 个个人脚本（asset-2598/asset-2477/asset-2398）分属 3 个 studio。
+        // 当前登录用户至多看到属于自己的那些；其余别人的私有脚本既不在列表里，
+        // 也无法通过 getScript 直接取到（owner 校验返回 null）。
+        List<String> seedPrivate = List.of("asset-2598", "asset-2477", "asset-2398");
+        JsonNode data = dataOf("/api/material/scripts");
+        List<String> visiblePrivate = new ArrayList<>();
+        boolean sawLegacyOwner = false;
+        for (JsonNode s : data) {
+            String id = s.get("id").asText();
+            if (seedPrivate.contains(id)) visiblePrivate.add(id);
+            JsonNode cb = s.get("created_by");
+            if (cb != null && "user-bb".equals(cb.asText())) sawLegacyOwner = true;
+        }
+        // 隔离：绝不会看到全部 3 个（最多看到自己的）
+        assertTrue(visiblePrivate.size() <= 1, "个人脚本应按归属隔离，实际可见: " + visiblePrivate);
+        // 归属人已映射到真实 seed 用户：列表里不该再有 mock 的 user-bb
+        assertTrue(!sawLegacyOwner, "created_by 不应再是 mock 的 user-bb");
+
+        // 不可见的别人私有脚本：getScript 也取不到
+        for (String id : seedPrivate) {
+            if (!visiblePrivate.contains(id)) {
+                mvc.perform(get("/api/material/scripts/" + id))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data").doesNotExist()); // success:true, data:null
+            }
+        }
     }
 
     @Test
@@ -55,16 +97,6 @@ class MaterialOpsE2ETest {
                 .andExpect(jsonPath("$.data.blocks.length()").value(5))
                 .andExpect(jsonPath("$.data.blocks[0].kind").value("hook"))
                 .andExpect(jsonPath("$.data.metrics.ctr_pct").value(9.2));
-    }
-
-    @Test
-    void script_ownerMappedToSeededUser() throws Exception {
-        // 我的脚本（asset-2598）的归属人应映射到系统 seed 用户：
-        // created_by 不再是 mock 的 "user-bb"；source.author = 某个 seed studio 的 displayName。
-        mvc.perform(get("/api/material/scripts/asset-2598"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.created_by").value(not(is("user-bb"))))
-                .andExpect(jsonPath("$.data.source.author").value(oneOf("Luna 个人创作者", "星光经纪", "月升经纪")));
     }
 
     @Test

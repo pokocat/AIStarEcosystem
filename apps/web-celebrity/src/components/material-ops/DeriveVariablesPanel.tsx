@@ -7,6 +7,8 @@ import * as React from "react";
 import { Plus, Trash2, X, ChevronRight, FlaskConical, ArrowRight, Shuffle, ListPlus } from "lucide-react";
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Button } from "@/components/creator";
+import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
+import { MaterialOpsApi } from "@/api";
 import { MATERIAL_PRODUCTS } from "@/mocks/material-ops";
 import type { ScriptAsset, ScriptVariable, VariantSample } from "./types";
 import { extractVariablesFromScript, sampleVariants, totalCombinations, estimateVideoCredits } from "./lib";
@@ -26,8 +28,33 @@ export function DeriveVariablesPanel({
   onSubmitAsync: (samples: VariantSample[]) => void;
 }) {
   const [count, setCount] = React.useState(4);
+  // 即时用正则结果占位；接真 LLM（live：POST /material/scripts/{id}/variables）回来后若非空则升级。
   const [variables, setVariables] = React.useState<ScriptVariable[]>(() => extractVariablesFromScript(script));
   const [activeVar, setActiveVar] = React.useState(variables[0]?.id);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  // AI 失败不静默：保留正则结果可继续用，但把后端的明确报错亮出来（token / prompt 未配等）。
+  const [aiError, setAiError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setAiLoading(true);
+    setAiError(null);
+    MaterialOpsApi.extractScriptVariables(script.id)
+      .then((vars) => {
+        if (cancelled || !vars.length) return;
+        setVariables(vars);
+        setActiveVar(vars[0]?.id);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setAiError(errorMessage(e, "AI 变量识别失败"));
+      })
+      .finally(() => {
+        if (!cancelled) setAiLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [script.id]);
   const [previewIdx, setPreviewIdx] = React.useState(0);
   const [previewMode, setPreviewMode] = React.useState<"rendered" | "raw">("rendered");
 
@@ -78,11 +105,17 @@ export function DeriveVariablesPanel({
         {/* 变量 tabs */}
         <div style={{ padding: "12px 20px 0", display: "flex", alignItems: "center", gap: 8 }}>
           <Eyebrow>AI 提取的变量 · {variables.length}</Eyebrow>
+          {aiLoading && <span style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}>识别中…</span>}
           <span style={{ flex: 1 }} />
           <button onClick={addVariable} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--extra-teal)", background: "transparent", border: 0, cursor: "pointer", padding: "0 0 8px" }}>
             <ListPlus size={11} /> 自定义变量
           </button>
         </div>
+        {aiError && (
+          <div style={{ margin: "0 20px 10px" }}>
+            <AiErrorNotice tone="warning" title="AI 变量识别未生效（当前显示规则兜底结果，可继续编辑）" message={aiError} />
+          </div>
+        )}
         <div style={{ padding: "10px 20px", borderBottom: "1px solid var(--line)", display: "flex", flexWrap: "wrap", gap: 5 }}>
           {variables.map((v) => {
             const isA = activeVar === v.id;

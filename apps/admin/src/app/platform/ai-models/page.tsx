@@ -59,6 +59,8 @@ const SUPPORTED_PROVIDERS = new Set<AiModelProviderType>(["OPENAI", "OPENAI_COMP
 
 const PURPOSES: AiModelPurpose[] = [
   "SCRIPT_DRAFT",
+  "SELLING_POINTS",
+  "VARIABLE_EXTRACT",
   "SAFETY_REVIEW",
   "VIDEO_REF_ANALYSIS",
   "TEMPLATE_REWRITE",
@@ -67,6 +69,8 @@ const PURPOSES: AiModelPurpose[] = [
 
 const PURPOSE_LABEL: Record<AiModelPurpose, string> = {
   SCRIPT_DRAFT: "脚本起草",
+  SELLING_POINTS: "卖点提取",
+  VARIABLE_EXTRACT: "变量抽取",
   SAFETY_REVIEW: "安全审核",
   VIDEO_REF_ANALYSIS: "参考视频解析",
   TEMPLATE_REWRITE: "模板改写",

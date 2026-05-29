@@ -49,10 +49,14 @@ public class AiModelInvocationService {
         this.repo = repo;
     }
 
+    /** 是否存在该用途的启用 provider（用于上层在调用前判断「未配置大模型」并给出明确提示）。 */
+    public boolean hasProviderFor(AiModelPurpose purpose) {
+        return !pickProviders(purpose).isEmpty();
+    }
+
     /** 简易 chat：messages = [{role, content}, ...]。 */
     public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
-                                       Map<String, Object> options) {
-        List<AiModelProvider> candidates = pickProviders(purpose);
+                                       Map<String, Object> options) {        List<AiModelProvider> candidates = pickProviders(purpose);
         BusinessException lastErr = null;
         for (AiModelProvider p : candidates) {
             try {
@@ -157,6 +161,9 @@ public class AiModelInvocationService {
         if (options != null) {
             if (options.get("temperature") != null) body.put("temperature", options.get("temperature"));
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
+            // response_format 透传（如 {"type":"json_object"}）；provider 不支持时会自行忽略或报错，
+            // 由调用方（MaterialAiService）catch 后走解析重试 / 兜底。
+            if (options.get("response_format") != null) body.put("response_format", options.get("response_format"));
         }
         URI uri = URI.create(rstrip(p.getBaseUrl(), "/") + "/chat/completions");
         HttpRequest req = HttpRequest.newBuilder(uri)

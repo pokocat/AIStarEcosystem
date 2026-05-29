@@ -6,6 +6,7 @@ import type { CelebrityProductInput } from "@ai-star-eco/types/celebrity-zone";
 import { ProductsApi } from "@/api";
 import { useAuth } from "@ai-star-eco/api-client";
 import { ProductPickerDialog } from "./ProductPickerDialog";
+import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
@@ -38,6 +39,8 @@ export function CelebrityProductForm({
 
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [extracting, setExtracting] = React.useState(false);
+  // 卖点提取失败不静默：把后端明确报错（token 未配 / prompt 未配 / 模型异常）展示出来。
+  const [extractError, setExtractError] = React.useState<string | null>(null);
 
   const trimmedName = value.name.trim();
   const trimmedLink = value.link?.trim() ?? "";
@@ -50,12 +53,15 @@ export function CelebrityProductForm({
   const onExtract = async () => {
     if (!canExtract) return;
     setExtracting(true);
+    setExtractError(null);
     try {
       const { sellingPoints } = await ProductsApi.extractSellingPoints({
         name: trimmedName,
         link: trimmedLink,
       });
       onChange({ ...value, sellingPoints });
+    } catch (e) {
+      setExtractError(errorMessage(e, "AI 提取卖点失败，请稍后重试"));
     } finally {
       setExtracting(false);
     }
@@ -119,10 +125,13 @@ export function CelebrityProductForm({
           value={value.sellingPoints}
           onChange={(e) => set({ sellingPoints: e.target.value })}
         />
-        {canExtractWithAI && !canExtract && !extracting && (
+        {canExtractWithAI && !canExtract && !extracting && !extractError && (
           <p className="text-[11px] text-zinc-500">
             💡 想用 AI 自动抽卖点？请先填好商品名称和商品链接 →
           </p>
+        )}
+        {extractError && (
+          <AiErrorNotice title="AI 提取卖点失败" message={extractError} onRetry={onExtract} />
         )}
       </div>
 

@@ -13,6 +13,7 @@ import type {
   AsyncRenderTask,
   MaterialVideo,
   ScriptAsset,
+  ScriptVariable,
   ViralHit,
 } from "@/components/material-ops/types";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
@@ -221,6 +222,35 @@ export async function advanceRenderTasks(): Promise<boolean> {
 
 export async function hasInflightTasks(): Promise<boolean> {
   return readJSON<AsyncRenderTask[]>(TASKS_KEY, []).length > 0;
+}
+
+// ── AI 起稿 / 变量抽取（接真 LLM，见 server MaterialAiService） ────────────────
+// USE_MOCK：返回空 [] → 调用方（DraftingHub / DeriveVariablesPanel）用本地占位池 / 正则。
+// live：成功返回结果；失败抛 ApiError（不静默兜底）—— 后端带明确 code/message（token 未配 /
+// prompt 未配 / 模型异常），由调用方 catch 后展示，便于定位配置问题。
+export interface AiDraftParams {
+  product_id?: string;
+  product_name?: string;
+  category?: string;
+  selling_points?: string;
+  tone: string;
+  audience: string[];
+  duration_sec: number;
+  count: number;
+}
+
+/** AI 起稿候选（不落库）。失败 / mock → 返回 []，调用方用本地占位池兜底。 */
+export async function aiDraftScripts(params: AiDraftParams): Promise<ScriptAsset[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch<ScriptAsset[]>("/material/scripts/ai-draft", { method: "POST", body: params });
+}
+
+/** 从脚本抽取可替换变量。失败 / mock → 返回 []，调用方用正则兜底。 */
+export async function extractScriptVariables(scriptId: string): Promise<ScriptVariable[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch<ScriptVariable[]>(`/material/scripts/${encodeURIComponent(scriptId)}/variables`, {
+    method: "POST",
+  });
 }
 
 // ── 爆款雷达 ─────────────────────────────────────────────────────────────────

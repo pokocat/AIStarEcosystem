@@ -1683,6 +1683,79 @@ openapi: +/admin/agent-bots（GET/POST）+/scenes（GET）+/{id}（GET/PUT/DELET
 - **本期只接 Coze**；DIFY/CUSTOM 是枚举占位，invoke 路径未实现（admin 可建档但不生效）。
 - 新增一个 agent 功能 = AgentScenes 加 scene + 写薄 handler（鉴权 + 拼 prompt，按 sceneKey 取配置）+ admin 配一行 bot。流式/解析核心（ForgeCozeService 的 Coze 事件解析）待第二个场景出现时再抽公共件（现在抽属于过早）。
 
+### v0.40（2026-05-29）— 素材运营「文本三件」接真 LLM + prompt_template 表配置化
+
+把素材运营之前是「前端表演 / 后端 stub」的三处文本 AI 接到现成的 `AiModelInvocationService.invokeChat`
+网关（不引 agent / 编排框架）：脚本 AI 起稿、商品卖点提取、脚本变量抽取。prompt（system + user 模板）
+建专用 `prompt_template` 表存储，运营可在 admin 后台改 / 灰度 / 回滚。方案见
+[`docs/MATERIAL_OPS_AI_TEXT_PLAN.md`](docs/MATERIAL_OPS_AI_TEXT_PLAN.md)。
+
+```
+server : AiModelPurpose +SELLING_POINTS / +VARIABLE_EXTRACT（SCRIPT_DRAFT 复用）
+       : AiModelInvocationService.doChat +response_format 透传（json_object 模式）
+       : 新 PromptTemplate 实体（prompt_template 表：promptKey 唯一 / systemPrompt / userTemplate /
+         paramsJson / version / enabled）+ PromptTemplateRepository
+       : 新 PromptService —— resolve(key) 解析顺序 DB→resource(.md)→代码兜底；1min 缓存（PUT 立即失效）；
+         占位符 fill；admin CRUD + dry-run；seedIfAbsent / reseedBaselineIfUntouched
+       : 新 PromptTemplateSeeder（@Order 38）—— resources/prompts/material/*.md「缺行才插」，
+         SEED_VERSION 推新基线仅刷 version==1 的行（绝不 clobber 运营改过的 prompt）
+       : 新 MaterialAiService —— 文本三件薄流水线：resolve+fill → invokeChat → 解析/校验/
+         自修复重试 1 次 → 仍失败抛带 code 的明确错误（不静默兜底）；脚本校验 blocks 3-8、变量过滤幻觉（原值须在脚本里出现）；ensureConfigured 先判 provider/prompt 是否配置
+       : ProductService.extractSellingPoints 换实现（stub → MaterialAiService，失败回退原 stub）
+       : 脚本起稿计费（后端可配置）：CelebrityActionPricingService +action material.script-draft（默认 0=不计费）；
+         MaterialOpsService.draftScripts 走 CreditService hold(单价×稿数)→commit/release 三段式，余额不足抛 402，
+         anonymous 不计费；方法标 @Transactional(NOT_SUPPORTED) 让 hold/commit 独立落账 + LLM HTTP 不占 DB 连接
+       : MaterialOpsService +draftScripts / +extractVariables；MaterialOpsController
+         +POST /material/scripts/ai-draft + POST /material/scripts/{id}/variables
+       : 新 AdminPromptController /api/admin/prompts（GET list / GET {key} / PUT {key} / POST {key}/dry-run）
+       : 新 dto PromptTemplateDto / PromptTemplateUpsertDto / PromptParamsDto
+web-celebrity:
+       : api/material-ops.ts +aiDraftScripts / +extractScriptVariables（USE_MOCK → []；live 失败抛 ApiError）
+       : DraftingHub AIPicker.run 接 ai-draft（失败显示后端明确报错 + 重试；不静默兜底）
+       : DeriveVariablesPanel 挂载时拉 extractScriptVariables（即时正则占位；AI 非空则升级，失败显式警示保留正则）
+       : CelebrityProductForm「AI 提取卖点」失败 inline 报错
+admin  : api/prompts.ts + 新页 /platform/prompts（system/user 双 textarea + params + 启用开关 + 试运行）
+       : nav「平台与配置」加「Prompt 管理」；ai-models 页 PURPOSES +卖点提取/变量抽取（可路由 provider）
+       : /celebrity/engine-pricing 动作单价表 +行 material.script-draft（AI 脚本起稿，0=不计费）
+test   : MaterialAiE2ETest（@MockBean）—— 正常 JSON / 脏输出自修复 / 无 provider → AI_NOT_CONFIGURED 503 /
+         调用失败 → AI_CALL_FAILED 502 / 卖点 join / 变量过滤幻觉（8 测）
+       : MaterialDraftBillingTest（独立 datasource）—— 单价×稿数扣减 / 余额不足 402 / 单价 0 不计费（3 测）
+```
+
+**注意事项**：
+
+- **不静默兜底，配置问题可见**（按用户要求）：provider 未配 / prompt 未配 / 调用失败（含 token 无效 401/403）/
+  JSON 解析失败 → 抛带 code 的明确错误（`AI_NOT_CONFIGURED` 503 / `PROMPT_NOT_CONFIGURED` 503 /
+  `AI_CALL_FAILED` 502 / `AI_BAD_OUTPUT` 502），前端展示。脚本起稿 / 卖点提取阻塞式报错（不再用占位池）；
+  变量抽取保留正则兜底但显式警示 AI 未生效。`USE_MOCK` 前端模式不打后端、自有本地占位，与此无关。
+  上线前需在 `/platform/ai-models` 配带 `SCRIPT_DRAFT/SELLING_POINTS/VARIABLE_EXTRACT` purpose 的
+  provider + 真 apiKey（模型 id 用「获取模型列表」选真实 id），否则前端直接显示 `AI_NOT_CONFIGURED`。
+- **prompt 真源在 DB**：system 与 user 模板都在 `prompt_template` 表，代码只填 `{{占位符}}`。
+  `.md` 默认仅作 seeder 基线 + git 留底，运行时读表不读文件。
+- **JSON 模式**：provider 支持时开 `response_format=json_object`；为兼容 array 用对象包裹
+  （`{"scripts":[]}` / `{"variables":[]}` / `{"selling_points":[]}`）。弱模型建议用稍强模型降低重试/兜底率。
+- **多实例缓存**：PromptService 1min 内存缓存单实例 OK；多实例时 admin 改 prompt 后其他实例最多 1min 生效。
+- **脚本起稿计费**：已接 `CreditService` hold→commit/release 三段式，单价走 `material.script-draft` action
+  （admin → 平台与配置 → 引擎价格 → 动作单价表；默认 0 = 不计费，运营设单价即开启）。卖点/变量量小暂不计费。
+- **未做**：违禁词 server lint 端点（前端纯规则已够用）、Langfuse 埋点、视频生成引擎 / RAG。
+
+**v0.40 修订（用户反馈 6 项）**：
+
+1. **起稿 500 / JSON 截断**：起稿默认只生成 1 稿（之前 3 稿，输出过长在 maxTokens 处被截断 → JSON 不完整 →
+   解析失败 → 偶发代理超时返回 500）；`PromptParamsDto.DEFAULT_MAX_TOKENS` 2048→4096；`extractJson` 加 markdown
+   围栏剥离；`buildScriptAsset` 逐候选 try/catch（坏候选跳过不 500）；解析失败日志 body 截断阈值 240→1000。
+2. **只起 1 稿**：`DraftingHub` AIPicker 去掉「起稿数量」选择器，固定 1 稿，不满意可重新生成。
+3. **应用按钮去重**：起稿预览只保留「应用到编辑器」一个按钮（删「应用并预览」）。
+4. **脚本/字幕语义**（rebase 到 goods_to_video 后对齐其编辑器方向）：`text`＝脚本（口播台词 + 画面内容描述，主，必填）、
+   `shot`＝字幕/画面花字（屏幕短文字，选填）。material.script_draft prompt 按此口径生成；编辑器 ShotBlock 标签 /
+   mocks / DraftingHub 占位池均为 goods_to_video 版（PromptTemplateSeeder SEED_VERSION bump 刷新 version==1 基线）。
+   注：与本 session 早先 issue-3 的相反口径（脚本=画面/shot）已被 goods_to_video 方向取代。
+5. **商品详情提卖点入口**：素材库 `VideoLibraryView` 商品 hero 加「AI 提取卖点」（运营角色可见）→ 提取 + 落库 + 即时展示。
+6. **错误可见 + 日志**：新增统一错误组件 `components/common/ai-error-notice.tsx`（展示报错 + 可复制「追查号」logId）；
+   `MaterialAiService` 全链路 INFO/WARN 日志（promptKey / provider / model / finish_reason / tokens / 解析结果；
+   finish=length 警告截断）；错误消息均带 `promptKey`（issue 5：方便定位调的哪个 prompt）。DraftingHub /
+   DeriveVariablesPanel / CelebrityProductForm / 商品 hero 统一用该组件展示。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）
