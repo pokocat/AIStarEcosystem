@@ -238,21 +238,51 @@ function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: Scr
         <Tag color="var(--extra-teal)">{totalDur}s 总时长</Tag>
       </div>
 
-      {/* timeline */}
+      {/* timeline：按时长比例的可点片段，段内标「序号 · 类型 · 时长」，点击滚动到对应分镜卡 */}
       <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 2, height: 16 }}>
-          {blocks.map((b, i) => (
-            <div
-              key={i}
-              title={`${b.label} · ${b.dur}s`}
-              style={{
-                flex: b.dur,
-                height: "100%",
-                background: i === 0 ? hexA("#f0a83a", "55") : "var(--line-2)",
-                borderRadius: i === 0 ? "4px 0 0 4px" : i === blocks.length - 1 ? "0 4px 4px 0" : 0,
-              }}
-            />
-          ))}
+        <div style={{ display: "flex", alignItems: "stretch", gap: 3, height: 40 }}>
+          {blocks.map((b, i) => {
+            const meta = SHOT_KIND_META[b.kind];
+            const cum = blocks.slice(0, i).reduce((s, bb) => s + bb.dur, 0);
+            // 段太窄时只显示序号+时长，留出 hover tooltip 看全名
+            const narrow = b.dur / Math.max(totalDur, 1) < 0.12;
+            return (
+              <button
+                key={i}
+                className="mo-seg"
+                data-hook={i === 0 ? "true" : undefined}
+                title={`镜头 ${i + 1} · ${meta.label} · ${cum}s–${cum + b.dur}s（${b.dur}s）`}
+                onClick={() => {
+                  const el = document.getElementById(`shot-${i}`);
+                  if (!el) return;
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  el.classList.remove("mo-pulse");
+                  void el.offsetWidth; // 重启动画
+                  el.classList.add("mo-pulse");
+                }}
+                style={{
+                  flex: b.dur,
+                  minWidth: 34,
+                  borderRadius: i === 0 ? "6px 3px 3px 6px" : i === blocks.length - 1 ? "3px 6px 6px 3px" : 3,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "flex-start",
+                  gap: 1,
+                  padding: "4px 8px",
+                  overflow: "hidden",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                  {narrow ? i + 1 : `${i + 1} · ${meta.label}`}
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, lineHeight: 1, fontVariantNumeric: "tabular-nums", opacity: 0.85 }}>
+                  {b.dur}s
+                </span>
+              </button>
+            );
+          })}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)" }}>
           <span>0s</span>
@@ -315,7 +345,7 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
   const [kindMenu, setKindMenu] = React.useState(false);
 
   return (
-    <div style={{ borderRadius: "var(--radius-md)", overflow: "hidden", background: "var(--bg-2)", border: "1px solid var(--line)", position: "relative" }}>
+    <div id={`shot-${index}`} style={{ borderRadius: "var(--radius-md)", overflow: "hidden", background: "var(--bg-2)", border: "1px solid var(--line)", position: "relative", scrollMarginTop: 16 }}>
       {/* left rail */}
       <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 34, borderRight: "1px solid var(--line)", background: `linear-gradient(180deg, ${hexA(color, "14")} 0%, transparent 30%)`, display: "flex", flexDirection: "column", alignItems: "center", padding: "12px 0", gap: 4 }}>
         <GripVertical size={11} color="var(--fg-3)" />
@@ -369,22 +399,35 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             {index === 0 && <Tag color="var(--warning)">黄金 3s</Tag>}
             {flagged.length > 0 && <Tag color="var(--danger)">{flagged.length} 违禁</Tag>}
-            <Button variant="icon" size="sm" title="删除" onClick={onRemove} style={{ width: 28, height: 28, padding: 0 }}>
+            {/* 针对单镜的起稿动作（模板层已有同款能力，这里收缩为图标） */}
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <IconAction icon={<LayoutTemplate size={13} />} title="套用模板片段" tone="var(--accent)" onClick={() => onAction("template")} />
+              <IconAction icon={<Flame size={13} />} title="套用爆款同款" tone="var(--danger)" onClick={() => onAction("viral")} />
+              <IconAction icon={<Wand2 size={13} />} title="AI 重写该镜头" tone="var(--extra-teal)" onClick={() => onAction("ai")} />
+            </div>
+            <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 2px" }} />
+            <Button variant="icon" size="sm" title="删除该镜头" onClick={onRemove} style={{ width: 28, height: 28, padding: 0 }}>
               <Trash2 size={12} />
             </Button>
           </div>
         </div>
 
-        {/* body */}
-        <div style={{ padding: "14px 16px", display: "grid", gridTemplateColumns: "1fr 240px", gap: 16 }}>
+        {/* body：脚本是主编辑面（台词，更宽更高），字幕为次要/选填（更窄） */}
+        <div style={{ padding: "14px 16px", display: "grid", gridTemplateColumns: "minmax(0, 1.9fr) minmax(0, 1fr)", gap: 18 }}>
           <div>
-            <Eyebrow style={{ marginBottom: 8 }}>口播 / 旁白 / 字幕</Eyebrow>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+              <Eyebrow>脚本 · 口播 / 旁白</Eyebrow>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)", fontVariantNumeric: "tabular-nums" }}>
+                {block.text.length} 字 · 约 {Math.ceil(block.text.length / 4)}s 口播
+              </span>
+            </div>
             <BannedTextarea
               value={block.text}
               onChange={(v) => onUpdate({ text: v })}
               placeholder={index === 0 ? "前 3 秒就要勾住观众…试试反差、提问、身份共鸣" : "把这一镜的台词写下来…"}
               flagged={flagged}
               onFlaggedClick={(w) => setPickedWord(w)}
+              minHeight={104}
             />
             {pickedWord && (
               <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: "var(--radius-md)", background: hexA("#ff5b8a", "0d"), border: `1px solid ${hexA("#ff5b8a", "44")}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -400,21 +443,15 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
                 <button onClick={() => setPickedWord(null)} style={{ marginLeft: "auto", background: "transparent", border: 0, color: "var(--fg-3)", cursor: "pointer", fontSize: 11 }}>忽略</button>
               </div>
             )}
-            <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--bg-1)", border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.14em", color: "var(--fg-3)", textTransform: "uppercase", marginRight: 4 }}>为该镜头</span>
-              <ModeAction icon={<LayoutTemplate size={12} />} label="套模板" tone="var(--accent)" onClick={() => onAction("template")} />
-              <ModeAction icon={<Flame size={12} />} label="套同款" tone="var(--danger)" onClick={() => onAction("viral")} />
-              <ModeAction icon={<Wand2 size={12} />} label="AI 重写" tone="var(--extra-teal)" onClick={() => onAction("ai")} />
-              <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)" }}>
-                {block.text.length} 字 · 约 {Math.ceil(block.text.length / 4)}s 口播
-              </span>
-            </div>
           </div>
           <div>
-            <Eyebrow style={{ marginBottom: 8 }}>镜头脚本 · 画面指令</Eyebrow>
-            <BannedTextarea value={block.shot} onChange={(v) => onUpdate({ shot: v })} placeholder="镜头景别、运镜、动作、字幕…" minHeight={60} small />
-            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {["特写", "中景", "怼脸", "跟拍", "反应镜", "字幕飘屏"].map((t) => (
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 8 }}>
+              <Eyebrow>字幕 · 画面文字</Eyebrow>
+              <span style={{ fontSize: 10, color: "var(--fg-3)" }}>选填</span>
+            </div>
+            <BannedTextarea value={block.shot} onChange={(v) => onUpdate({ shot: v })} placeholder="画面上的花字 / 字幕条…" minHeight={56} small />
+            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {["同期声", "标题花字", "重点强调", "字幕条", "弹幕样式"].map((t) => (
                 <button key={t} onClick={() => onUpdate({ shot: block.shot ? `${block.shot} · ${t}` : t })} style={{ padding: "2px 7px", borderRadius: "var(--radius-sm)", fontSize: 10, background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line)", cursor: "pointer", fontFamily: "var(--font-mono)" }}>
                   + {t}
                 </button>
@@ -430,14 +467,17 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
 const railBtn = (disabled: boolean): React.CSSProperties => ({ width: 22, height: 18, borderRadius: 4, background: "transparent", border: 0, color: "var(--fg-3)", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.4 : 1, display: "flex", alignItems: "center", justifyContent: "center" });
 const stepBtn: React.CSSProperties = { width: 18, height: 18, borderRadius: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", color: "var(--fg-1)", cursor: "pointer", fontSize: 12, lineHeight: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0 };
 
-function ModeAction({ icon, label, tone, onClick }: { icon: React.ReactNode; label: string; tone: string; onClick: () => void }) {
+// 单镜起稿动作：仅图标的 ghost 按钮，hover 揭示语义色 + 原生 tooltip 说明。
+function IconAction({ icon, title, tone, onClick }: { icon: React.ReactNode; title: string; tone: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
+      title={title}
+      aria-label={title}
       className="mo-ghost"
-      style={{ ["--mo-tone" as string]: tone, display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+      style={{ ["--mo-tone" as string]: tone, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, padding: 0, borderRadius: "var(--radius-sm)", cursor: "pointer" }}
     >
-      {icon} {label}
+      {icon}
     </button>
   );
 }
