@@ -221,8 +221,8 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
       .catch((err: unknown) => {
         if (!cancelled) setProviderStatus({
           configured: false,
-          provider: "coze",
-          message: (err as Error).message || "大模型状态获取失败",
+          provider: "none",
+          message: (err as Error).message || "形象锻造暂时不可用，请稍后再试",
         });
       })
       .finally(() => { if (!cancelled) setProviderLoading(false); });

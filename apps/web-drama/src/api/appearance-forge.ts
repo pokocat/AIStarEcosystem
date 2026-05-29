@@ -186,7 +186,7 @@ export async function streamForgeConversation(
   }
 
   if (!res.ok) {
-    let message = `请求失败（HTTP ${res.status}）`;
+    let message = "形象方案生成失败，请稍后重试";
     try {
       const payload = await res.json();
       message =
