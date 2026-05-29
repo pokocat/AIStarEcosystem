@@ -14,6 +14,14 @@ import type {
 
 const VAR_TONES = [PALETTE.rose, PALETTE.teal, PALETTE.amber, PALETTE.violet, PALETTE.violetDeep, PALETTE.peach];
 
+/** 单条视频生成的积分单价（与混剪 mixcut.credit-per-variant 默认值对齐）。 */
+export const CREDIT_PER_VIDEO = 30;
+
+/** 估算一批视频生成消耗的积分。 */
+export function estimateVideoCredits(count: number): number {
+  return Math.max(0, count) * CREDIT_PER_VIDEO;
+}
+
 /** AI 从脚本里抽取可替换变量（mock：正则 + 类目启发式）。 */
 export function extractVariablesFromScript(script: ScriptAsset): ScriptVariable[] {
   const out: ScriptVariable[] = [];
@@ -197,7 +205,6 @@ export function buildVideoAsset(
     variant_config: variantConfig,
     metrics: null,
     cover_color: palette[idx % palette.length],
-    thumb_emoji: VARIANT_AXES.character.options.find((o) => o.id === variantConfig.character)?.emoji || "🎬",
     created_at: now,
     generated_at: now,
     render_cost_sec: 90 + idx * 8,

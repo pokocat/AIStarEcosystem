@@ -4,7 +4,7 @@
     "name": "修车老李 · 基线版", "status": "ready", "duration_sec": 41, "aspect_ratio": "9:16",
     "variant_config": { "character": "human-001", "scene": "auto-shop", "weather": "sunny", "lighting": "natural", "role_relation": "夫妻", "voice": "voice-male-01" },
     "metrics": { "plays": "812w", "likes": "32w", "ctr_pct": 9.2, "gmv": "¥184,200", "completion_pct": 78, "comments": 4820 },
-    "cover_color": "#f0a83a", "thumb_emoji": "🔧",
+    "cover_color": "#f0a83a",
     "created_at": "2026-05-26T14:36:00Z", "generated_at": "2026-05-26T14:48:12Z", "render_cost_sec": 134, "model": "sora-zh-v3", "parent_video_id": null
   },
   {
@@ -12,7 +12,7 @@
     "name": "父女视角 · 闺女偷拍 · v1", "status": "ready", "parent_video_id": "video-2604-001", "duration_sec": 41, "aspect_ratio": "9:16",
     "variant_config": { "character": "human-004", "scene": "home-livingroom", "weather": "sunny", "lighting": "warm", "role_relation": "父女", "voice": "voice-fem-02" },
     "metrics": { "plays": "162w", "likes": "8.4w", "ctr_pct": 8.7, "gmv": "¥98,400", "completion_pct": 71, "comments": 1240 },
-    "cover_color": "#ff5b8a", "thumb_emoji": "👨‍👧",
+    "cover_color": "#ff5b8a",
     "created_at": "2026-05-26T15:20:00Z", "generated_at": "2026-05-26T15:32:48Z", "render_cost_sec": 152, "model": "sora-zh-v3"
   },
   {
@@ -20,14 +20,14 @@
     "name": "雨夜 · 通勤场景", "status": "ready", "parent_video_id": "video-2604-001", "duration_sec": 41, "aspect_ratio": "9:16",
     "variant_config": { "character": "human-001", "scene": "subway-station", "weather": "rainy", "lighting": "cool", "role_relation": "夫妻", "voice": "voice-male-01" },
     "metrics": { "plays": "48w", "likes": "1.8w", "ctr_pct": 6.4, "gmv": "¥18,400", "completion_pct": 64, "comments": 380 },
-    "cover_color": "#7c5cff", "thumb_emoji": "🌧️",
+    "cover_color": "#7c5cff",
     "created_at": "2026-05-26T15:45:00Z", "generated_at": "2026-05-26T15:58:30Z", "render_cost_sec": 168, "model": "sora-zh-v3"
   },
   {
     "id": "video-2604-004", "script_id": "asset-2604", "product_id": "p4", "kind": "variant",
     "name": "中年同事场景", "status": "rendering", "parent_video_id": "video-2604-001", "duration_sec": 41, "aspect_ratio": "9:16",
     "variant_config": { "character": "human-002", "scene": "office-meeting", "weather": "sunny", "lighting": "natural", "role_relation": "同事", "voice": "voice-male-02" },
-    "metrics": null, "cover_color": "#5b3fe0", "thumb_emoji": "👔",
+    "metrics": null, "cover_color": "#5b3fe0",
     "created_at": "2026-05-26T10:14:00Z", "generated_at": null, "render_cost_sec": null, "model": "sora-zh-v3",
     "progress_pct": 64, "eta_sec": 42, "stage": "场景合成"
   },
@@ -36,7 +36,7 @@
     "name": "微胖姐妹 · 试衣镜测试", "status": "ready", "duration_sec": 22, "aspect_ratio": "9:16",
     "variant_config": { "character": "human-005", "scene": "dressing-room", "weather": "sunny", "lighting": "soft", "role_relation": "个人", "voice": "voice-fem-01" },
     "metrics": { "plays": "14w", "likes": "4.2w", "ctr_pct": 7.8, "gmv": "¥12,600", "completion_pct": 64, "comments": 480 },
-    "cover_color": "#7c5cff", "thumb_emoji": "👚",
+    "cover_color": "#7c5cff",
     "created_at": "2026-05-22T11:30:00Z", "generated_at": "2026-05-22T11:42:00Z", "render_cost_sec": 96, "model": "sora-zh-v3", "parent_video_id": null
   },
   {
@@ -44,7 +44,7 @@
     "name": "母女反差 · 客厅化妆台", "status": "ready", "duration_sec": 28, "aspect_ratio": "9:16",
     "variant_config": { "character": "human-006", "scene": "home-dresser", "weather": "sunny", "lighting": "warm", "role_relation": "母女", "voice": "voice-fem-03" },
     "metrics": { "plays": "162w", "likes": "6.4w", "ctr_pct": 8.7, "gmv": "¥98,400", "completion_pct": 72, "comments": 2410 },
-    "cover_color": "#ff5b8a", "thumb_emoji": "💄",
+    "cover_color": "#ff5b8a",
     "created_at": "2026-05-24T16:20:00Z", "generated_at": "2026-05-24T16:33:00Z", "render_cost_sec": 112, "model": "sora-zh-v3", "parent_video_id": null
   }
 ]

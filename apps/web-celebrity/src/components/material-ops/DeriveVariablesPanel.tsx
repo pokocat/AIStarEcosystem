@@ -4,21 +4,23 @@
 // 左：派生数量 + AI 提取变量 + 替换值管理；右：替换后脚本 ↔ AI 提示词 预览 + 编号翻页。
 
 import * as React from "react";
-import { Plus, Trash2, X, ChevronRight, Sparkles, FlaskConical, ArrowRight, Shuffle, ListPlus } from "lucide-react";
+import { Plus, Trash2, X, ChevronRight, FlaskConical, ArrowRight, Shuffle, ListPlus } from "lucide-react";
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Button } from "@/components/creator";
 import { MATERIAL_PRODUCTS } from "@/mocks/material-ops";
 import type { ScriptAsset, ScriptVariable, VariantSample } from "./types";
-import { extractVariablesFromScript, sampleVariants, totalCombinations } from "./lib";
-import { Eyebrow, Seg, hexA } from "./shared";
+import { extractVariablesFromScript, sampleVariants, totalCombinations, estimateVideoCredits } from "./lib";
+import { Eyebrow, Seg, hexA, CostLine } from "./shared";
 
 export function DeriveVariablesPanel({
   script,
+  walletBalance = null,
   onClose,
   onSubmit,
   onSubmitAsync,
 }: {
   script: ScriptAsset;
+  walletBalance?: number | null;
   onClose: () => void;
   onSubmit: (samples: VariantSample[]) => void;
   onSubmitAsync: (samples: VariantSample[]) => void;
@@ -198,12 +200,9 @@ export function DeriveVariablesPanel({
         </div>
 
         {/* footer */}
-        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-2)" }}>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)" }}>
-            <Sparkles size={11} color="var(--extra-teal)" style={{ verticalAlign: -2, marginRight: 4 }} />
-            sora-zh-v3 · 单条约 90s · 共 {count} 条
-          </span>
-          <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "var(--bg-2)" }}>
+          <CostLine count={count} credits={estimateVideoCredits(count)} balance={walletBalance} unit="变体" />
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <Button variant="ghost" onClick={onClose}>
               取消
             </Button>
@@ -211,7 +210,7 @@ export function DeriveVariablesPanel({
               提交到后台
             </Button>
             <Button variant="accent" onClick={() => onSubmit(samples)}>
-              <Shuffle size={13} /> 派生 {count} 条视频
+              <Shuffle size={13} /> 派生 {count} 条 · {estimateVideoCredits(count)} 积分
             </Button>
           </div>
         </div>

@@ -30,29 +30,43 @@ export const PALETTE = {
   faint: "#a89e88",
 } as const;
 
-// 分级元数据：S 爆款 / A 优质 / B 普通 / D 草稿
+// ─────────────────────────────────────────────────────────────────────────────
+// Restrained 配色策略：单一主强调（violet）+ 中性灰，语义色（teal/amber/rose）
+// 只保留给「真正的状态」（通过 / 告警 / 违禁）。分类标签（镜头类型 / 素材类型 /
+// 参数分组 / 变量轴）一律走中性或主强调，不再各自一种饱和色 —— 避免彩虹噪声，
+// 贴合「沉稳、克制、专业」品牌定位。语义状态色由各组件直接用 CSS 变量。
+// ─────────────────────────────────────────────────────────────────────────────
+const ACCENT = PALETTE.violet; // 选中 / 主操作 / 最高分级
+const NEUTRAL = PALETTE.muted; // 次要分类标签
+const NEUTRAL_FAINT = PALETTE.faint; // 最弱（草稿 / 失活）
+const SEVERITY_HIGH = PALETTE.rose; // 仅：高风险 / 违禁强阻断
+const SEVERITY_MID = PALETTE.amber; // 仅：中风险 / 告警
+
+// 分级元数据：S 爆款 / A 优质 / B 普通 / D 草稿。
+// 仅最高级「爆款」用主强调吸睛，其余走中性灰阶（字母本身承载排序）。
 export const TIER_META: Record<Tier, { label: string; toneVar: string }> = {
-  S: { label: "爆款", toneVar: "#ff5b8a" }, // rose
-  A: { label: "优质", toneVar: "#f0a83a" }, // amber
-  B: { label: "普通", toneVar: "#22b59a" }, // teal
-  D: { label: "草稿", toneVar: "#a89e88" }, // neutral
+  S: { label: "爆款", toneVar: ACCENT },
+  A: { label: "优质", toneVar: NEUTRAL },
+  B: { label: "普通", toneVar: NEUTRAL },
+  D: { label: "草稿", toneVar: NEUTRAL_FAINT },
 };
 
+// 素材类型：图标承载区分，颜色统一中性（不再四色）。
 export const ASSET_KIND_META: Record<AssetKind, { label: string; icon: string; toneVar: string }> = {
-  my_script: { label: "我的脚本", icon: "ScrollText", toneVar: "#7c5cff" },
-  template: { label: "官方模板", icon: "LayoutTemplate", toneVar: "#22b59a" },
-  viral_clone: { label: "爆款同款", icon: "Flame", toneVar: "#ff5b8a" },
-  ai_seed: { label: "AI 起稿", icon: "Wand2", toneVar: "#5b3fe0" },
+  my_script: { label: "我的脚本", icon: "ScrollText", toneVar: NEUTRAL },
+  template: { label: "官方模板", icon: "LayoutTemplate", toneVar: NEUTRAL },
+  viral_clone: { label: "爆款同款", icon: "Flame", toneVar: NEUTRAL },
+  ai_seed: { label: "AI 起稿", icon: "Wand2", toneVar: NEUTRAL },
 };
 
-// 镜头类型配色（6 类，creator 6 色）
+// 镜头类型：标签即信息，统一中性（取消 6 色彩虹）。
 export const SHOT_KIND_META: Record<ShotKind, { label: string; toneVar: string }> = {
-  hook: { label: "钩子", toneVar: "#ff5b8a" },
-  scene: { label: "场景", toneVar: "#f0a83a" },
-  emotion: { label: "情感", toneVar: "#22b59a" },
-  product: { label: "产品", toneVar: "#7c5cff" },
-  effect: { label: "效果", toneVar: "#ff8a5b" },
-  cta: { label: "CTA", toneVar: "#5b3fe0" },
+  hook: { label: "钩子", toneVar: NEUTRAL },
+  scene: { label: "场景", toneVar: NEUTRAL },
+  emotion: { label: "情感", toneVar: NEUTRAL },
+  product: { label: "产品", toneVar: NEUTRAL },
+  effect: { label: "效果", toneVar: NEUTRAL },
+  cta: { label: "CTA", toneVar: NEUTRAL },
 };
 
 // 平台规则（品牌色保留 hex 作点缀；其余文案为运营词典）
@@ -107,10 +121,11 @@ export const BANNED_WORDS: BannedWord[] = [
   { word: "一辈子", tier: "soft", count: 1 },
 ];
 
+// 违禁词严重度是「真正的状态」，保留语义色（高=红 / 中=琥珀 / 低=中性）。
 export const BANNED_TIER_META: Record<BannedWord["tier"], { label: string; toneVar: string }> = {
-  hard: { label: "HARD", toneVar: "#ff5b8a" },
-  medical: { label: "MED", toneVar: "#f0a83a" },
-  soft: { label: "SOFT", toneVar: "#7a6f5d" },
+  hard: { label: "HARD", toneVar: SEVERITY_HIGH },
+  medical: { label: "MED", toneVar: SEVERITY_MID },
+  soft: { label: "SOFT", toneVar: NEUTRAL },
 };
 
 // 违禁词替换建议（脚本编辑器内点击违禁词后弹出）
@@ -131,86 +146,86 @@ export const VARIANT_AXES: Record<VariantAxisKey, VariantAxis & { icon: string }
   character: {
     label: "人物",
     icon: "Users",
-    toneVar: "#7c5cff",
+    toneVar: ACCENT,
     options: [
-      { id: "human-001", label: "蓝领大哥 · 老李", sub: "40+ 男 · 沉稳", emoji: "👨🏻‍🔧", tags: ["蓝领", "中年"] },
-      { id: "human-002", label: "中年大叔 · 老王", sub: "45+ 男 · 微胖", emoji: "👨🏻‍💼", tags: ["中年", "居家"] },
-      { id: "human-003", label: "年轻爸爸 · 小陈", sub: "30+ 男 · 文艺", emoji: "👨🏻", tags: ["年轻", "宠妻"] },
-      { id: "human-004", label: "闺女小七", sub: "14 女 · 学生", emoji: "👧🏻", tags: ["学生", "父女"] },
-      { id: "human-005", label: "微胖姐姐 · 阿欧", sub: "28 女 · 通勤", emoji: "👩🏻", tags: ["微胖", "通勤"] },
-      { id: "human-006", label: "妈妈级 · 阿芬", sub: "50+ 女 · 慈祥", emoji: "👩🏻‍🦳", tags: ["银发", "妈妈"] },
-      { id: "human-007", label: "都市精英 · Lina", sub: "30 女 · 干练", emoji: "👩🏻‍💻", tags: ["白领", "精英"] },
-      { id: "human-008", label: "健身教练 · Coach", sub: "32 男 · 健硕", emoji: "🏋🏻", tags: ["运动", "健硕"] },
+      { id: "human-001", label: "蓝领大哥 · 老李", sub: "40+ 男 · 沉稳", tags: ["蓝领", "中年"] },
+      { id: "human-002", label: "中年大叔 · 老王", sub: "45+ 男 · 微胖", tags: ["中年", "居家"] },
+      { id: "human-003", label: "年轻爸爸 · 小陈", sub: "30+ 男 · 文艺", tags: ["年轻", "宠妻"] },
+      { id: "human-004", label: "闺女小七", sub: "14 女 · 学生", tags: ["学生", "父女"] },
+      { id: "human-005", label: "微胖姐姐 · 阿欧", sub: "28 女 · 通勤", tags: ["微胖", "通勤"] },
+      { id: "human-006", label: "妈妈级 · 阿芬", sub: "50+ 女 · 慈祥", tags: ["银发", "妈妈"] },
+      { id: "human-007", label: "都市精英 · Lina", sub: "30 女 · 干练", tags: ["白领", "精英"] },
+      { id: "human-008", label: "健身教练 · Coach", sub: "32 男 · 健硕", tags: ["运动", "健硕"] },
     ],
   },
   scene: {
     label: "场景",
     icon: "Globe",
-    toneVar: "#22b59a",
+    toneVar: ACCENT,
     options: [
-      { id: "auto-shop", label: "修车铺", sub: "油污 · 工具墙", emoji: "🔧", tags: ["工作"] },
-      { id: "home-livingroom", label: "家庭客厅", sub: "沙发 · 暖色调", emoji: "🛋️", tags: ["居家"] },
-      { id: "home-kitchen", label: "家庭厨房", sub: "vlog 视角", emoji: "🍳", tags: ["居家", "日常"] },
-      { id: "home-dresser", label: "化妆台", sub: "镜面反光", emoji: "🪞", tags: ["居家", "美妆"] },
-      { id: "dressing-room", label: "试衣间", sub: "镜面 + 衣架", emoji: "👗", tags: ["购物"] },
-      { id: "subway-station", label: "地铁站", sub: "通勤 · 都市", emoji: "🚇", tags: ["通勤"] },
-      { id: "office-meeting", label: "办公会议室", sub: "工位 · 冷色", emoji: "💼", tags: ["办公"] },
-      { id: "street-cafe", label: "街边咖啡店", sub: "阳光 + 玻璃", emoji: "☕", tags: ["户外"] },
-      { id: "gym", label: "健身房", sub: "器械 · 暖光", emoji: "🏋️", tags: ["运动"] },
-      { id: "park-jogging", label: "公园跑道", sub: "自然光 · 绿植", emoji: "🌳", tags: ["户外", "运动"] },
+      { id: "auto-shop", label: "修车铺", sub: "油污 · 工具墙", tags: ["工作"] },
+      { id: "home-livingroom", label: "家庭客厅", sub: "沙发 · 暖色调", tags: ["居家"] },
+      { id: "home-kitchen", label: "家庭厨房", sub: "vlog 视角", tags: ["居家", "日常"] },
+      { id: "home-dresser", label: "化妆台", sub: "镜面反光", tags: ["居家", "美妆"] },
+      { id: "dressing-room", label: "试衣间", sub: "镜面 + 衣架", tags: ["购物"] },
+      { id: "subway-station", label: "地铁站", sub: "通勤 · 都市", tags: ["通勤"] },
+      { id: "office-meeting", label: "办公会议室", sub: "工位 · 冷色", tags: ["办公"] },
+      { id: "street-cafe", label: "街边咖啡店", sub: "阳光 + 玻璃", tags: ["户外"] },
+      { id: "gym", label: "健身房", sub: "器械 · 暖光", tags: ["运动"] },
+      { id: "park-jogging", label: "公园跑道", sub: "自然光 · 绿植", tags: ["户外", "运动"] },
     ],
   },
   weather: {
     label: "天气",
     icon: "CloudSun",
-    toneVar: "#ff8a5b",
+    toneVar: ACCENT,
     options: [
-      { id: "sunny", label: "晴天", sub: "高光照度", emoji: "☀️" },
-      { id: "cloudy", label: "阴天", sub: "柔和漫射", emoji: "☁️" },
-      { id: "rainy", label: "雨天", sub: "湿润 · 反光", emoji: "🌧️" },
-      { id: "snowy", label: "雪天", sub: "冷色 · 静谧", emoji: "❄️" },
-      { id: "sunset", label: "黄昏", sub: "金色暖调", emoji: "🌇" },
-      { id: "night", label: "夜晚", sub: "霓虹 · 暗调", emoji: "🌃" },
+      { id: "sunny", label: "晴天", sub: "高光照度" },
+      { id: "cloudy", label: "阴天", sub: "柔和漫射" },
+      { id: "rainy", label: "雨天", sub: "湿润 · 反光" },
+      { id: "snowy", label: "雪天", sub: "冷色 · 静谧" },
+      { id: "sunset", label: "黄昏", sub: "金色暖调" },
+      { id: "night", label: "夜晚", sub: "霓虹 · 暗调" },
     ],
   },
   lighting: {
     label: "光线",
     icon: "Sun",
-    toneVar: "#f0a83a",
+    toneVar: ACCENT,
     options: [
-      { id: "natural", label: "自然光", sub: "日光偏色温", emoji: "🌤️" },
-      { id: "warm", label: "暖光", sub: "暖黄 · 居家感", emoji: "🕯️" },
-      { id: "cool", label: "冷光", sub: "冷蓝 · 科技感", emoji: "💡" },
-      { id: "soft", label: "柔光", sub: "漫射柔焦", emoji: "✨" },
-      { id: "dramatic", label: "戏剧光", sub: "强对比侧逆光", emoji: "🎭" },
+      { id: "natural", label: "自然光", sub: "日光偏色温" },
+      { id: "warm", label: "暖光", sub: "暖黄 · 居家感" },
+      { id: "cool", label: "冷光", sub: "冷蓝 · 科技感" },
+      { id: "soft", label: "柔光", sub: "漫射柔焦" },
+      { id: "dramatic", label: "戏剧光", sub: "强对比侧逆光" },
     ],
   },
   role_relation: {
     label: "角色关系",
     icon: "UsersRound",
-    toneVar: "#ff5b8a",
+    toneVar: ACCENT,
     options: [
-      { id: "夫妻", label: "夫妻", sub: "伴侣视角", emoji: "👫" },
-      { id: "父女", label: "父女", sub: "父亲送女儿视角", emoji: "👨‍👧" },
-      { id: "母女", label: "母女", sub: "母女互动", emoji: "👩‍👧" },
-      { id: "同事", label: "同事", sub: "职场场景", emoji: "👔" },
-      { id: "闺蜜", label: "闺蜜", sub: "姐妹推荐", emoji: "👯" },
-      { id: "个人", label: "个人", sub: "独白 / 测评", emoji: "🧍" },
-      { id: "医患", label: "医患", sub: "专业建议", emoji: "🩺" },
+      { id: "夫妻", label: "夫妻", sub: "伴侣视角" },
+      { id: "父女", label: "父女", sub: "父亲送女儿视角" },
+      { id: "母女", label: "母女", sub: "母女互动" },
+      { id: "同事", label: "同事", sub: "职场场景" },
+      { id: "闺蜜", label: "闺蜜", sub: "姐妹推荐" },
+      { id: "个人", label: "个人", sub: "独白 / 测评" },
+      { id: "医患", label: "医患", sub: "专业建议" },
     ],
   },
   voice: {
     label: "配音",
     icon: "Mic",
-    toneVar: "#5b3fe0",
+    toneVar: ACCENT,
     options: [
-      { id: "voice-male-01", label: "低沉男声", sub: "40+ 沉稳", emoji: "🎙️" },
-      { id: "voice-male-02", label: "中年男声", sub: "45+ 朴实", emoji: "🎙️" },
-      { id: "voice-male-03", label: "年轻男声", sub: "25+ 清爽", emoji: "🎙️" },
-      { id: "voice-fem-01", label: "温柔女声", sub: "28 柔和", emoji: "🎙️" },
-      { id: "voice-fem-02", label: "少女声", sub: "16 灵动", emoji: "🎙️" },
-      { id: "voice-fem-03", label: "妈妈女声", sub: "50+ 慈祥", emoji: "🎙️" },
-      { id: "voice-fem-04", label: "都市女声", sub: "32 干练", emoji: "🎙️" },
+      { id: "voice-male-01", label: "低沉男声", sub: "40+ 沉稳" },
+      { id: "voice-male-02", label: "中年男声", sub: "45+ 朴实" },
+      { id: "voice-male-03", label: "年轻男声", sub: "25+ 清爽" },
+      { id: "voice-fem-01", label: "温柔女声", sub: "28 柔和" },
+      { id: "voice-fem-02", label: "少女声", sub: "16 灵动" },
+      { id: "voice-fem-03", label: "妈妈女声", sub: "50+ 慈祥" },
+      { id: "voice-fem-04", label: "都市女声", sub: "32 干练" },
     ],
   },
 };
@@ -240,7 +255,7 @@ export const VIDEO_CONFIG_FIELDS: Record<string, VideoConfigGroupDef> = {
   basic: {
     label: "基础信息",
     icon: "Settings2",
-    toneVar: "#7c5cff",
+    toneVar: NEUTRAL,
     fields: {
       duration: { label: "视频时长", options: ["5s", "10s", "15s", "30s", "60s"], default: "30s" },
       ratio: { label: "视频比例", options: ["9:16", "16:9", "1:1", "4:3"], default: "9:16" },
@@ -252,7 +267,7 @@ export const VIDEO_CONFIG_FIELDS: Record<string, VideoConfigGroupDef> = {
   subject: {
     label: "画面主体",
     icon: "Users",
-    toneVar: "#ff5b8a",
+    toneVar: NEUTRAL,
     fields: {
       subject_type: { label: "主体类型", options: ["人物", "产品", "风景", "数字人"], default: "人物" },
       scene: { label: "场景环境", options: ["室内", "户外", "城市", "居家", "工作室"], default: "居家" },
@@ -262,7 +277,7 @@ export const VIDEO_CONFIG_FIELDS: Record<string, VideoConfigGroupDef> = {
   camera: {
     label: "镜头语言",
     icon: "Clapperboard",
-    toneVar: "#f0a83a",
+    toneVar: NEUTRAL,
     fields: {
       shot_size: { label: "景别", options: ["全景", "中景", "近景", "特写"], default: "中景" },
       movement: { label: "运镜", options: ["固定", "推拉", "平移", "环绕", "跟随", "慢动作"], default: "固定" },
@@ -272,7 +287,7 @@ export const VIDEO_CONFIG_FIELDS: Record<string, VideoConfigGroupDef> = {
   audio: {
     label: "音频",
     icon: "Music",
-    toneVar: "#5b3fe0",
+    toneVar: NEUTRAL,
     fields: {
       bgm: { label: "BGM", options: ["轻快", "动感", "舒缓", "商务", "无 BGM"], default: "动感" },
       voice: { label: "语音类型", options: ["男声", "女声", "少女声", "情感男声", "主播女声"], default: "女声" },
@@ -282,7 +297,7 @@ export const VIDEO_CONFIG_FIELDS: Record<string, VideoConfigGroupDef> = {
   advanced: {
     label: "高级控制",
     icon: "ShieldCheck",
-    toneVar: "#22b59a",
+    toneVar: NEUTRAL,
     fields: {
       consistency: { label: "画面一致性", options: ["锁定人物", "锁定场景", "不锁定"], default: "锁定人物" },
       color_tone: { label: "色调", options: ["明亮", "电影色", "暖色", "冷色", "自然"], default: "自然" },

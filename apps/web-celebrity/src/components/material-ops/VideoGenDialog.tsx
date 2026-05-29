@@ -4,13 +4,16 @@
 // baseline 模式：prompt + 结构化参数 + 6 轴单选；variant 模式：DeriveVariablesPanel（变量派生）。
 
 import * as React from "react";
-import { X, PlayCircle, Shuffle, Sparkles, ListChecks, Check, Lock, RefreshCw, Loader2 } from "lucide-react";
+import { X, PlayCircle, Shuffle, ListChecks, Check, Lock, Loader2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/creator";
 import { VARIANT_AXES, VARIANT_AXIS_ORDER, VIDEO_CONFIG_FIELDS, VIDEO_GEN_STAGES } from "@/constants/material-ops-ui";
+import { formatCredits } from "@ai-star-eco/api-client/format";
 import type { MaterialVideo, ScriptAsset, VariantConfig, VariantSample } from "./types";
 import { DeriveVariablesPanel } from "./DeriveVariablesPanel";
-import { buildVideoAsset, buildAsyncTasks } from "./lib";
-import { Eyebrow, hexA } from "./shared";
+import { buildVideoAsset, estimateVideoCredits, CREDIT_PER_VIDEO } from "./lib";
+import { useConfirm } from "@/components/common/confirm-dialog";
+import { useCelebrityShell } from "@/lib/celebrity-shell-context";
+import { Eyebrow, hexA, CostLine } from "./shared";
 
 type Stage = "config" | "generating" | "done";
 
@@ -60,13 +63,59 @@ export function VideoGenDialog({
   // 进入生成阶段的计划
   const [plan, setPlan] = React.useState<{ names: string[]; configs: VariantConfig[] }>({ names: ["基线版"], configs: [config] });
 
-  const startBaseline = () => {
-    setPlan({ names: ["基线版"], configs: [config] });
-    setStage("generating");
+  const { confirm, ConfirmHost } = useConfirm();
+  const { wallet } = useCelebrityShell();
+  const balance = wallet?.totalBalance ?? null;
+
+  // 生成前的积分确认：展示预计消耗 + 余额影响，余额不足时红色阻断式确认。
+  const confirmAndStart = async (count: number, run: () => void) => {
+    const credits = estimateVideoCredits(count);
+    const insufficient = balance != null && balance < credits;
+    const ok = await confirm({
+      title: `确认生成 ${count} 条视频？`,
+      tone: insufficient ? "danger" : "default",
+      confirmText: insufficient ? "余额不足" : `确认生成 · ${credits} 积分`,
+      cancelText: "再想想",
+      description: (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div>
+            预计消耗 <strong style={{ color: "var(--fg-0)" }}>{credits} 积分</strong>
+            <span style={{ color: "var(--fg-3)" }}>（{count} 条 × {CREDIT_PER_VIDEO} 积分/条）</span>
+          </div>
+          {balance != null && (
+            <div style={{ color: insufficient ? "var(--danger)" : "var(--fg-2)" }}>
+              {insufficient
+                ? `当前余额 ${formatCredits(balance)} 积分，不足以发起本次生成。`
+                : `当前余额 ${formatCredits(balance)} 积分，生成期间将锁定相应额度，完成后结算。`}
+            </div>
+          )}
+        </div>
+      ),
+    });
+    if (ok && !insufficient) run();
   };
-  const startVariant = (samples: VariantSample[]) => {
-    setPlan({ names: samples.map((s) => s._label), configs: samples.map(() => config) });
-    setStage("generating");
+
+  const startBaseline = () =>
+    confirmAndStart(1, () => {
+      setPlan({ names: ["基线版"], configs: [config] });
+      setStage("generating");
+    });
+  const startVariant = (samples: VariantSample[]) =>
+    confirmAndStart(samples.length, () => {
+      setPlan({ names: samples.map((s) => s._label), configs: samples.map(() => config) });
+      setStage("generating");
+    });
+
+  // 中途取消正在生成的批次：丢弃进度、退回参数页，锁定的额度退回。
+  const cancelGenerating = async () => {
+    const ok = await confirm({
+      title: "取消本次生成？",
+      tone: "danger",
+      confirmText: "取消生成",
+      cancelText: "继续生成",
+      description: "正在生成的视频会被丢弃，已锁定的积分将退回。已完成入库的视频不受影响。",
+    });
+    if (ok) setStage("config");
   };
 
   return (
@@ -124,7 +173,7 @@ export function VideoGenDialog({
           <div style={{ flex: 1 }}>
             <Eyebrow>{isVariant ? "视频变体批量生成" : "基线版视频生成"}</Eyebrow>
             <div style={{ fontSize: 15, color: "var(--fg-0)", fontWeight: 600, marginTop: 2 }}>
-              {isVariant ? `基于脚本 ${script.id} · 派生 N 条变体视频` : `为 ${script.title ?? script.name} 生成第一条预览视频`}
+              {isVariant ? `基于《${script.title ?? script.name}》派生多条变体视频` : `为《${script.title ?? script.name}》生成第一条预览视频`}
             </div>
           </div>
           {stage !== "generating" && (
@@ -138,6 +187,7 @@ export function VideoGenDialog({
         {stage === "config" && isVariant && (
           <DeriveVariablesPanel
             script={script}
+            walletBalance={balance}
             onClose={onClose}
             onSubmit={startVariant}
             onSubmitAsync={(samples) => {
@@ -155,6 +205,7 @@ export function VideoGenDialog({
             setStructured={setStructured}
             prompt={prompt}
             setPrompt={setPrompt}
+            walletBalance={balance}
             onSubmit={startBaseline}
             onSubmitAsync={() => {
               onSubmitAsync({ names: ["基线版"], configs: [config] });
@@ -177,9 +228,11 @@ export function VideoGenDialog({
               onSubmitAsync(plan);
               onClose();
             }}
+            onCancel={cancelGenerating}
           />
         )}
       </div>
+      <ConfirmHost />
     </>
   );
 }
@@ -192,6 +245,7 @@ function ConfigStage({
   setStructured,
   prompt,
   setPrompt,
+  walletBalance,
   onSubmit,
   onSubmitAsync,
 }: {
@@ -202,9 +256,13 @@ function ConfigStage({
   setStructured: (s: Record<string, string>) => void;
   prompt: string;
   setPrompt: (p: string) => void;
+  walletBalance: number | null;
   onSubmit: () => void;
   onSubmitAsync: () => void;
 }) {
+  const credits = estimateVideoCredits(1);
+  // 渐进式披露：默认只露「画面维度」核心创作项；18 项结构化参数收进「高级参数」。
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   return (
     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
       {/* 左：prompt + 脚本上下文 */}
@@ -234,7 +292,6 @@ function ConfigStage({
             <div style={{ padding: 12, borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--line)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: "var(--fg-0)", fontWeight: 500 }}>{script.title ?? script.name}</span>
-                <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)" }}>{script.id}</span>
               </div>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)", marginBottom: 8 }}>
                 {script.blocks.length} 镜头 · {script.blocks.reduce((s, b) => s + b.dur, 0)}s
@@ -260,7 +317,76 @@ function ConfigStage({
       {/* 右：结构化参数 + 画面维度 */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ flex: 1, overflowY: "auto", padding: 22 }}>
-          <Eyebrow style={{ marginBottom: 12 }}>视频生成参数 · 结构化参数</Eyebrow>
+          <div style={{ marginBottom: 12 }}>
+            <Eyebrow>画面维度</Eyebrow>
+            <div style={{ fontSize: 11, color: "var(--fg-2)", marginTop: 3 }}>选好人物、场景、配音即可生成；其余参数用智能默认。</div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {VARIANT_AXIS_ORDER.map((id) => {
+              const axis = VARIANT_AXES[id];
+              return (
+                <div key={id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 99, background: axis.toneVar }} />
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: axis.toneVar, letterSpacing: "0.1em", textTransform: "uppercase" }}>{axis.label}</span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {axis.options.map((opt) => {
+                      const activeOpt = config[id] === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => setConfig({ ...config, [id]: opt.id })}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "var(--radius-md)",
+                            cursor: "pointer",
+                            background: activeOpt ? hexA(axis.toneVar, "16") : "var(--bg-2)",
+                            border: `1px solid ${activeOpt ? axis.toneVar : "var(--line)"}`,
+                            color: activeOpt ? "var(--fg-0)" : "var(--fg-1)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 12,
+                          }}
+                        >
+                          <span>{opt.label}</span>
+                          {opt.sub && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)" }}>· {opt.sub}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => setShowAdvanced((s) => !s)}
+            style={{
+              marginTop: 22,
+              marginBottom: showAdvanced ? 12 : 0,
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              borderRadius: "var(--radius-md)",
+              background: "var(--bg-2)",
+              border: "1px solid var(--line)",
+              color: "var(--fg-1)",
+              cursor: "pointer",
+              fontFamily: "var(--font-sans)",
+              fontSize: 12.5,
+            }}
+          >
+            <ChevronRight size={14} style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 160ms ease", flexShrink: 0 }} />
+            <span style={{ fontWeight: 600, color: "var(--fg-0)" }}>高级参数</span>
+            <span style={{ color: "var(--fg-3)" }}>画质 / 镜头语言 / 音频 / 高级控制</span>
+            <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)" }}>{showAdvanced ? "收起" : "展开"}</span>
+          </button>
+
+          {showAdvanced && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 22 }}>
             {Object.entries(VIDEO_CONFIG_FIELDS).map(([gid, group]) => (
               <div key={gid} style={{ padding: "12px 14px", borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--line)" }}>
@@ -302,62 +428,18 @@ function ConfigStage({
               </div>
             ))}
           </div>
-
-          <Eyebrow style={{ marginBottom: 12 }}>画面变体维度</Eyebrow>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {VARIANT_AXIS_ORDER.map((id) => {
-              const axis = VARIANT_AXES[id];
-              return (
-                <div key={id}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                    <span style={{ width: 5, height: 5, borderRadius: 99, background: axis.toneVar }} />
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: axis.toneVar, letterSpacing: "0.1em", textTransform: "uppercase" }}>{axis.label}</span>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {axis.options.map((opt) => {
-                      const activeOpt = config[id] === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          onClick={() => setConfig({ ...config, [id]: opt.id })}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "var(--radius-md)",
-                            cursor: "pointer",
-                            background: activeOpt ? hexA(axis.toneVar, "16") : "var(--bg-2)",
-                            border: `1px solid ${activeOpt ? axis.toneVar : "var(--line)"}`,
-                            color: activeOpt ? "var(--fg-0)" : "var(--fg-1)",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            fontSize: 12,
-                          }}
-                        >
-                          <span style={{ fontSize: 14 }}>{opt.emoji}</span>
-                          <span>{opt.label}</span>
-                          {opt.sub && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)" }}>· {opt.sub}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          )}
         </div>
 
         {/* footer */}
         <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-2)" }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)" }}>
-            <Sparkles size={11} color="var(--extra-teal)" style={{ verticalAlign: -2, marginRight: 4 }} />
-            模型 sora-zh-v3 · 单条预估 90s · 基线版
-          </div>
+          <CostLine count={1} credits={credits} balance={walletBalance} unit="基线视频" />
           <div style={{ display: "flex", gap: 8 }}>
             <Button variant="secondary" onClick={onSubmitAsync}>
               <ListChecks size={14} /> 提交到后台
             </Button>
             <Button variant="accent" onClick={onSubmit}>
-              <PlayCircle size={14} /> 生成基线视频
+              <PlayCircle size={14} /> 生成基线视频 · {credits} 积分
             </Button>
           </div>
         </div>
@@ -374,6 +456,7 @@ function GeneratingStage({
   plan,
   onComplete,
   onSendToBackground,
+  onCancel,
 }: {
   script: ScriptAsset;
   baseline: MaterialVideo | null;
@@ -382,6 +465,7 @@ function GeneratingStage({
   plan: { names: string[]; configs: VariantConfig[] };
   onComplete: (videos: MaterialVideo[]) => void;
   onSendToBackground: () => void;
+  onCancel: () => void;
 }) {
   const target = plan.names.length;
   const [videos, setVideos] = React.useState(() =>
@@ -444,6 +528,11 @@ function GeneratingStage({
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-0)" }}>
             {doneCount} / {target} 完成
           </span>
+          {doneCount < target && (
+            <Button variant="ghost" size="sm" onClick={onCancel} style={{ marginLeft: "auto", color: "var(--danger)" }}>
+              <X size={12} /> 取消生成
+            </Button>
+          )}
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
           <Bubble role="user" content={prompt} />
@@ -451,7 +540,7 @@ function GeneratingStage({
             role="system"
             content={
               <>
-                <LogLine ok>已解析脚本 {script.id} · {script.blocks.length} 镜头</LogLine>
+                <LogLine ok>已解析脚本《{script.title ?? script.name}》· {script.blocks.length} 镜头</LogLine>
                 <LogLine ok>已派发 {target} 个渲染任务</LogLine>
                 {isVariant && <LogLine>脚本内容锁定 · 仅变化人物 / 场景 / 配音 等维度</LogLine>}
               </>
@@ -501,7 +590,6 @@ function GeneratingStage({
         </div>
         <div style={{ display: "grid", gridTemplateColumns: target === 1 ? "minmax(0,280px)" : `repeat(${Math.min(3, Math.ceil(Math.sqrt(target)))}, 1fr)`, gap: 14 }}>
           {videos.map((v, i) => {
-            const charOpt = VARIANT_AXES.character.options.find((o) => o.id === v.config.character);
             const tone = ["#7c5cff", "#ff5b8a", "#22b59a", "#f0a83a", "#5b3fe0", "#ff8a5b"][v.idx % 6];
             const overall = ((v.stage_idx + (v.status === "done" ? 1 : v.progress / 100)) / VIDEO_GEN_STAGES.length) * 100;
             const isDone = v.status === "done";
@@ -513,7 +601,6 @@ function GeneratingStage({
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#fff", opacity: 0.7 }}>排队中</span>
                   ) : (
                     <>
-                      <div style={{ fontSize: isDone ? 44 : 36, opacity: isDone ? 1 : 0.5 }}>{charOpt?.emoji ?? "🎬"}</div>
                       {!isDone && <Loader2 size={20} color="#fff" className="animate-spin" style={{ position: "absolute" }} />}
                       {isDone && <PlayCircle size={32} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
                     </>
