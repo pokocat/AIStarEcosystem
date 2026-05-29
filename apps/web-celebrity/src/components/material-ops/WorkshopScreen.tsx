@@ -238,21 +238,51 @@ function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: Scr
         <Tag color="var(--extra-teal)">{totalDur}s 总时长</Tag>
       </div>
 
-      {/* timeline */}
+      {/* timeline：按时长比例的可点片段，段内标「序号 · 类型 · 时长」，点击滚动到对应分镜卡 */}
       <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 2, height: 16 }}>
-          {blocks.map((b, i) => (
-            <div
-              key={i}
-              title={`${b.label} · ${b.dur}s`}
-              style={{
-                flex: b.dur,
-                height: "100%",
-                background: i === 0 ? hexA("#f0a83a", "55") : "var(--line-2)",
-                borderRadius: i === 0 ? "4px 0 0 4px" : i === blocks.length - 1 ? "0 4px 4px 0" : 0,
-              }}
-            />
-          ))}
+        <div style={{ display: "flex", alignItems: "stretch", gap: 3, height: 40 }}>
+          {blocks.map((b, i) => {
+            const meta = SHOT_KIND_META[b.kind];
+            const cum = blocks.slice(0, i).reduce((s, bb) => s + bb.dur, 0);
+            // 段太窄时只显示序号+时长，留出 hover tooltip 看全名
+            const narrow = b.dur / Math.max(totalDur, 1) < 0.12;
+            return (
+              <button
+                key={i}
+                className="mo-seg"
+                data-hook={i === 0 ? "true" : undefined}
+                title={`镜头 ${i + 1} · ${meta.label} · ${cum}s–${cum + b.dur}s（${b.dur}s）`}
+                onClick={() => {
+                  const el = document.getElementById(`shot-${i}`);
+                  if (!el) return;
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  el.classList.remove("mo-pulse");
+                  void el.offsetWidth; // 重启动画
+                  el.classList.add("mo-pulse");
+                }}
+                style={{
+                  flex: b.dur,
+                  minWidth: 34,
+                  borderRadius: i === 0 ? "6px 3px 3px 6px" : i === blocks.length - 1 ? "3px 6px 6px 3px" : 3,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "flex-start",
+                  gap: 1,
+                  padding: "4px 8px",
+                  overflow: "hidden",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                  {narrow ? i + 1 : `${i + 1} · ${meta.label}`}
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, lineHeight: 1, fontVariantNumeric: "tabular-nums", opacity: 0.85 }}>
+                  {b.dur}s
+                </span>
+              </button>
+            );
+          })}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)" }}>
           <span>0s</span>
@@ -315,7 +345,7 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
   const [kindMenu, setKindMenu] = React.useState(false);
 
   return (
-    <div style={{ borderRadius: "var(--radius-md)", overflow: "hidden", background: "var(--bg-2)", border: "1px solid var(--line)", position: "relative" }}>
+    <div id={`shot-${index}`} style={{ borderRadius: "var(--radius-md)", overflow: "hidden", background: "var(--bg-2)", border: "1px solid var(--line)", position: "relative", scrollMarginTop: 16 }}>
       {/* left rail */}
       <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 34, borderRight: "1px solid var(--line)", background: `linear-gradient(180deg, ${hexA(color, "14")} 0%, transparent 30%)`, display: "flex", flexDirection: "column", alignItems: "center", padding: "12px 0", gap: 4 }}>
         <GripVertical size={11} color="var(--fg-3)" />

@@ -222,13 +222,52 @@
   outline-offset: 1px;
 }
 
+/* 时间轴段：按时长比例的可点片段，段内承载「类型 + 时长」标签。
+   静止中性，hover/focus 加深并露主强调描边，点击滚动到对应分镜卡。 */
+.mo-seg {
+  background: var(--bg-3);
+  border: 1px solid transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.mo-seg:hover {
+  background: var(--line-2);
+  color: var(--fg-0);
+}
+.mo-seg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* 钩子段：唯一保留的一抹 amber，呼应「黄金 3s」徽标 */
+.mo-seg[data-hook="true"] {
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+  color: var(--fg-0);
+}
+.mo-seg[data-hook="true"]:hover {
+  background: color-mix(in srgb, var(--warning) 34%, transparent);
+}
+
+/* 分镜卡被时间轴点击后的短暂高亮脉冲 */
+@keyframes mo-pulse {
+  0% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  100% { box-shadow: 0 0 0 6px transparent; }
+}
+.mo-pulse {
+  animation: mo-pulse 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mo-row,
   .mo-card,
   .mo-input,
   .mo-well,
-  .mo-ghost {
+  .mo-ghost,
+  .mo-seg {
     transition: none;
+  }
+  .mo-pulse {
+    animation: none;
   }
   .mo-card:hover {
     transform: none;
