@@ -12,7 +12,7 @@ import { SCRIPT_ASSETS, getProduct, toMaterialProduct } from "@/mocks/material-o
 import { TIER_META, ASSET_KIND_META } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, ScriptAsset, Tier } from "./types";
 import { ProductPickerDialog } from "./ProductPickerDialog";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, formatLastUsed, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, EmptyState, formatLastUsed, hexA } from "./shared";
 
 const KIND_ICON: Record<AssetKind, React.ComponentType<{ size?: number; color?: string }>> = {
   my_script: ScrollText,
@@ -116,7 +116,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
         title={
           <>
             脚本工坊 ·{" "}
-            <span style={{ color: "var(--fg-2)", fontWeight: 400, fontSize: 16 }}>
+            <span style={{ color: "var(--fg-2)", fontWeight: 400, fontSize: 15 }}>
               {counts.all} 条脚本 · {counts.my_script} 条来自团队
             </span>
           </>
@@ -181,7 +181,18 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
           <span>最近使用</span>
           <span />
         </div>
-        {filtered.length === 0 && <div style={{ padding: 48, textAlign: "center", color: "var(--fg-2)", fontSize: 13 }}>没有匹配的脚本 · 试试新建一个</div>}
+        {filtered.length === 0 && (
+          <EmptyState
+            icon={<ScrollText size={26} />}
+            title="没有匹配的脚本"
+            hint="调整筛选条件，或新建一个脚本开始创作。"
+            action={
+              <Button variant="accent" size="sm" onClick={() => setPickerOpen(true)}>
+                <Plus size={13} /> 新建脚本
+              </Button>
+            }
+          />
+        )}
         {filtered.map((a) => {
           const KindIcon = KIND_ICON[a.kind];
           const kindMeta = ASSET_KIND_META[a.kind];
@@ -191,11 +202,15 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
               key={a.id}
               role="button"
               tabIndex={0}
+              className="mo-row"
               onClick={() => router.push(`/material/workshop/${a.id}`)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") router.push(`/material/workshop/${a.id}`);
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  router.push(`/material/workshop/${a.id}`);
+                }
               }}
-              style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: COLS, gap: 14, alignItems: "center", cursor: "pointer", borderBottom: "1px solid var(--line)", background: "transparent", fontFamily: "var(--font-sans)" }}
+              style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: COLS, gap: 14, alignItems: "center", cursor: "pointer", borderBottom: "1px solid var(--line)", fontFamily: "var(--font-sans)" }}
             >
               <div style={{ position: "relative" }}>
                 <CoverTile color={a.cover_color} icon={<KindIcon size={13} color="#fff" />} />

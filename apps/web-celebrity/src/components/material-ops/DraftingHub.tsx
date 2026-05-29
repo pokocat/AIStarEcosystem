@@ -170,7 +170,7 @@ function FilterLine({ label, children }: { label: string; children: React.ReactN
 function AssetRow({ asset, active, onClick }: { asset: ScriptAsset; active: boolean; onClick: () => void }) {
   const kindMeta = ASSET_KIND_META[asset.kind];
   return (
-    <button onClick={onClick} style={{ width: "100%", textAlign: "left", padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--line)", boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none", background: active ? hexA("#7c5cff", "12") : "transparent", display: "flex", gap: 12, fontFamily: "var(--font-sans)" }}>
+    <button onClick={onClick} className="mo-row" style={{ width: "100%", textAlign: "left", padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--line)", boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none", background: active ? hexA("#7c5cff", "12") : undefined, display: "flex", gap: 12, fontFamily: "var(--font-sans)" }}>
       <div style={{ width: 56, height: 72, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(160deg, ${hexA(asset.cover_color, "88")}, ${hexA(asset.cover_color, "33")})`, border: "1px solid var(--line)", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <ScrollText size={20} color="#fff" style={{ opacity: 0.7 }} />
         <span style={{ position: "absolute", top: 3, right: 3, width: 14, height: 14, borderRadius: 3, background: TIER_META[asset.tier].toneVar, color: "#fff", fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -384,7 +384,7 @@ function ViralPicker({ product, onApply, onApplyAndPreview }: { product: Materia
           {list.map((h) => {
             const active = selected?.id === h.id;
             return (
-              <button key={h.id} onClick={() => setSelectedId(h.id)} style={{ width: "100%", textAlign: "left", padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--line)", boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none", background: active ? hexA("#7c5cff", "12") : "transparent", display: "flex", gap: 12, fontFamily: "var(--font-sans)" }}>
+              <button key={h.id} onClick={() => setSelectedId(h.id)} className="mo-row" style={{ width: "100%", textAlign: "left", padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--line)", boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none", background: active ? hexA("#7c5cff", "12") : undefined, display: "flex", gap: 12, fontFamily: "var(--font-sans)" }}>
                 <div style={{ width: 56, height: 72, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(160deg, ${hexA(h.cat_color, "88")}, ${hexA(h.cat_color, "33")})`, border: "1px solid var(--line)" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12.5, color: "var(--fg-0)", lineHeight: 1.4, fontWeight: 500 }}>{h.title}</div>
@@ -524,7 +524,7 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
           {candidates.map((c, i) => {
             const isP = previewId === c.id;
             return (
-              <button key={c.id} onClick={() => setPreviewId(c.id)} style={{ width: "100%", textAlign: "left", padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--line)", boxShadow: isP ? "inset 0 0 0 1px var(--accent)" : "none", background: isP ? hexA("#7c5cff", "12") : "transparent", fontFamily: "var(--font-sans)" }}>
+              <button key={c.id} onClick={() => setPreviewId(c.id)} className="mo-row" style={{ width: "100%", textAlign: "left", padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--line)", boxShadow: isP ? "inset 0 0 0 1px var(--accent)" : "none", background: isP ? hexA("#7c5cff", "12") : undefined, fontFamily: "var(--font-sans)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <span style={{ width: 22, height: 22, borderRadius: "var(--radius-sm)", background: hexA("#22b59a", "1f"), color: "var(--extra-teal)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
                   <span style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 500 }}>{c.name}</span>

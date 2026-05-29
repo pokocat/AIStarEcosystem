@@ -149,6 +149,42 @@ export function formatLastUsed(iso?: string): string {
   return d.toISOString().slice(5, 10).replace("-", "/");
 }
 
+// ── EmptyState（统一空态：图标 + 主文案 + 提示 + 可选操作） ────────────────────
+export function EmptyState({
+  icon,
+  title,
+  hint,
+  action,
+  compact,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  hint?: string;
+  action?: React.ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        padding: compact ? "40px 24px" : "64px 24px",
+        textAlign: "center",
+      }}
+    >
+      {icon && (
+        <div style={{ color: "var(--fg-3)", display: "inline-flex", marginBottom: 2 }}>{icon}</div>
+      )}
+      <div style={{ fontSize: 14, color: "var(--fg-1)", fontWeight: 500 }}>{title}</div>
+      {hint && <div style={{ fontSize: 12.5, color: "var(--fg-3)", maxWidth: 360, lineHeight: 1.6 }}>{hint}</div>}
+      {action && <div style={{ marginTop: 6 }}>{action}</div>}
+    </div>
+  );
+}
+
 // ── Eyebrow（mono 小标题） ────────────────────────────────────────────────────
 export function Eyebrow({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -370,6 +406,7 @@ export function SearchInput({
 }) {
   return (
     <div
+      className="mo-input"
       style={{
         display: "flex",
         alignItems: "center",
@@ -377,7 +414,6 @@ export function SearchInput({
         padding: "7px 11px",
         borderRadius: "var(--radius-pill)",
         background: "var(--bg-1)",
-        border: "1px solid var(--line-2)",
         width,
         minWidth: 0,
       }}

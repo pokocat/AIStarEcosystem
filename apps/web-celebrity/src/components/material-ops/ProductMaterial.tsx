@@ -14,7 +14,7 @@ import { MATERIAL_PRODUCTS, getScript } from "@/mocks/material-ops";
 import { VARIANT_AXES } from "@/constants/material-ops-ui";
 import type { MaterialProduct, MaterialVideo, VariantAxisKey } from "./types";
 import { VideoGenDialog } from "./VideoGenDialog";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, MetricTile, SearchInput, fmtWan, parsePlays, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, MetricTile, SearchInput, EmptyState, fmtWan, parsePlays, hexA } from "./shared";
 
 interface Group {
   product: MaterialProduct;
@@ -168,7 +168,9 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
             </Card>
           )}
           {!selectedGroup && (
-            <Card style={{ padding: 80, textAlign: "center", color: "var(--fg-2)" }}>没有匹配的商品 · 试试别的关键词</Card>
+            <Card>
+              <EmptyState icon={<Search size={26} />} title="没有匹配的商品" hint="换个关键词或类目，看看其它商品的视频素材。" />
+            </Card>
           )}
           {selectedGroup && !selectedVideo && (
             <VideoLibraryView
@@ -246,7 +248,7 @@ function ProductDirectory({
         <Seg value={sort} onChange={setSort} size="sm" options={[{ value: "videos", label: "视频多" }, { value: "name", label: "名称" }, { value: "price", label: "价格" }]} />
       </div>
       <div style={{ maxHeight: "calc(100vh - 280px)", overflowY: "auto" }}>
-        {products.length === 0 && <div style={{ padding: 30, textAlign: "center", color: "var(--fg-3)", fontSize: 12 }}>没有匹配的商品</div>}
+        {products.length === 0 && <EmptyState compact title="没有匹配的商品" hint="换个关键词或类目试试。" />}
         {products.map((g) => {
           const active = g.product.id === selectedId;
           const rendering = g.videos.filter((v) => v.status === "rendering").length;
@@ -254,6 +256,7 @@ function ProductDirectory({
             <button
               key={g.product.id}
               onClick={() => onSelect(g.product.id)}
+              className="mo-row"
               style={{
                 width: "100%",
                 textAlign: "left",
@@ -263,7 +266,7 @@ function ProductDirectory({
                 alignItems: "center",
                 gap: 10,
                 boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none",
-                background: active ? hexA("#7c5cff", "12") : "transparent",
+                background: active ? hexA("#7c5cff", "12") : undefined,
                 borderBottom: "1px solid var(--line)",
                 fontFamily: "var(--font-sans)",
               }}
@@ -387,7 +390,11 @@ function VideoLibraryView({
         </div>
       </div>
 
-      {filtered.length === 0 && <Card style={{ padding: 60, textAlign: "center", color: "var(--fg-2)" }}>没有匹配的视频</Card>}
+      {filtered.length === 0 && (
+        <Card>
+          <EmptyState icon={<PlayCircle size={26} />} title="没有匹配的视频" hint="换个筛选条件，或为该商品生成新的视频。" />
+        </Card>
+      )}
 
       {viewMode === "flat" && filtered.length > 0 && (
         <Card style={{ padding: 16 }}>
@@ -506,6 +513,7 @@ function VideoCard({ video, onClick, onRetry, showParent }: { video: MaterialVid
     <button
       onClick={isFailed && onRetry ? onRetry : onClick}
       title={isFailed ? "生成失败 · 点击重试" : undefined}
+      className="mo-card"
       style={{ textAlign: "left", borderRadius: "var(--radius-md)", overflow: "hidden", cursor: "pointer", border: `1px solid ${isFailed ? "var(--danger)" : "var(--line)"}`, background: "var(--bg-1)", padding: 0, fontFamily: "var(--font-sans)" }}
     >
       <div style={{ aspectRatio: "9 / 14", position: "relative", background: isFailed ? "var(--bg-2)" : `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
