@@ -3,13 +3,107 @@
 // 素材运营共享小件 + 格式化 helper（creator 配色换肤版）。
 
 import * as React from "react";
+import { Coins, FlaskConical } from "lucide-react";
 import { TIER_META } from "@/constants/material-ops-ui";
 import type { ScriptBlock, Tier } from "./types";
 import { SHOT_KIND_META } from "@/constants/material-ops-ui";
+import { formatCredits } from "@ai-star-eco/api-client/format";
+
+// ── 生成消耗提示行：派单底栏统一展示「预计消耗 + 余额」，余额不足时转红。 ─────────
+export function CostLine({
+  count,
+  credits,
+  balance,
+  unit = "视频",
+}: {
+  count: number;
+  credits: number;
+  balance: number | null;
+  unit?: string;
+}) {
+  const insufficient = balance != null && balance < credits;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--fg-2)", minWidth: 0 }}>
+      <Coins size={13} color={insufficient ? "var(--danger)" : "var(--accent)"} style={{ flexShrink: 0 }} />
+      <span>
+        共 {count} 条{unit} · 预计消耗{" "}
+        <strong style={{ color: insufficient ? "var(--danger)" : "var(--fg-0)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+          {credits} 积分
+        </strong>
+      </span>
+      {balance != null && (
+        <span style={{ color: insufficient ? "var(--danger)" : "var(--fg-3)", whiteSpace: "nowrap" }}>
+          · 余额 {formatCredits(balance)}
+          {insufficient && " · 不足"}
+        </span>
+      )}
+    </div>
+  );
+}
 
 // ── 颜色 helper：hex + 两位 alpha（"14" ≈ 8%，"22" ≈ 13%，"33" ≈ 20%） ─────────
 export function hexA(hex: string, aa: string): string {
   return `${hex}${aa}`;
+}
+
+// ── 智能体本周学到（智能体训练 + 效果回流 复用同一张卡，单一真源） ─────────────
+// 强调短语统一中性加粗，不再一句话里多种饱和色。
+export const AGENT_LEARNINGS: React.ReactNode[] = [
+  <>
+    <strong style={{ color: "var(--fg-0)" }}>蓝领情感故事</strong> 钩子在抖音 25-35 男性受众完播率提升 32%
+  </>,
+  <>
+    “<strong style={{ color: "var(--fg-0)" }}>反差</strong>” 类钩子在小红书命中率下降 12%，建议切到 “
+    <strong style={{ color: "var(--fg-0)" }}>测评对比</strong>”
+  </>,
+  <>
+    <strong style={{ color: "var(--fg-0)" }}>低糖燕麦</strong> 类目同质化严重，差异度需从 65 提至 80
+  </>,
+  <>
+    视频号 <strong style={{ color: "var(--fg-0)" }}>父女视角</strong> 比夫妻视角 GMV 高 2.4 倍
+  </>,
+];
+
+export function AgentLearningsCard({
+  items = AGENT_LEARNINGS,
+  action,
+}: {
+  items?: React.ReactNode[];
+  action?: React.ReactNode;
+}) {
+  return (
+    <div style={{ padding: 18, borderRadius: "var(--radius-lg)", background: "var(--bg-1)", border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: "var(--radius-md)",
+          background: hexA("#7c5cff", "16"),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <FlaskConical size={16} color="var(--accent)" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 14, color: "var(--fg-0)", fontWeight: 600 }}>智能体本周学到</span>
+          <Tag color="var(--accent)">{items.length} 条新规律</Tag>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-1)", lineHeight: 1.8 }}>
+          {items.map((it, i) => (
+            <span key={i}>
+              {i > 0 && <>&nbsp;&nbsp;</>}
+              {`①②③④⑤⑥`[i] ?? "·"} {it}
+            </span>
+          ))}
+        </div>
+      </div>
+      {action}
+    </div>
+  );
 }
 
 // ── 格式化 ────────────────────────────────────────────────────────────────────
@@ -46,8 +140,9 @@ export function formatLastUsed(iso?: string): string {
   if (!iso || iso === "—" || iso === "...") return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  const now = new Date("2026-05-28T14:36:00Z");
+  const now = new Date();
   const diffH = (now.getTime() - d.getTime()) / 1000 / 3600;
+  if (diffH < 0) return "刚刚";
   if (diffH < 2) return `${Math.max(1, Math.round(diffH * 60))} 分钟前`;
   if (diffH < 24) return `${Math.round(diffH)} 小时前`;
   if (diffH < 24 * 7) return `${Math.round(diffH / 24)} 天前`;

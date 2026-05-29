@@ -24,8 +24,17 @@ export function PromptView({ script, product }: { script: ScriptAsset; product: 
   const sections = React.useMemo(() => buildSections(script, product, blocks, totalDur), [script, product, blocks, totalDur]);
   const compiled = React.useMemo(() => sections.map((s) => s.compiled).join("\n\n"), [sections]);
   const json = React.useMemo(() => buildJSON(sections, script, product), [sections, script, product]);
-  const [tab, setTab] = React.useState<"mapping" | "compiled" | "api">("mapping");
+  // 运营只需「完整提示词」；字段对照 / 数据包（JSON）是工程排障视图，仅 dev 暴露。
+  const showDevTabs = process.env.NODE_ENV !== "production";
+  const [tab, setTab] = React.useState<"mapping" | "compiled" | "api">("compiled");
   const [copied, setCopied] = React.useState(false);
+  const tabOptions: { value: "mapping" | "compiled" | "api"; label: string }[] = showDevTabs
+    ? [
+        { value: "compiled", label: "完整提示词" },
+        { value: "mapping", label: "字段对照" },
+        { value: "api", label: "给 AI 的数据包" },
+      ]
+    : [{ value: "compiled", label: "完整提示词" }];
 
   const copy = (text: string) => {
     if (typeof navigator !== "undefined" && navigator.clipboard) navigator.clipboard.writeText(text);
@@ -41,7 +50,7 @@ export function PromptView({ script, product }: { script: ScriptAsset; product: 
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)", marginTop: 3 }}>每一项都可以在表单里改 · 保存后这里实时更新</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Seg value={tab} onChange={setTab} size="sm" options={[{ value: "mapping", label: "字段对照" }, { value: "compiled", label: "完整提示词" }, { value: "api", label: "给 AI 的数据包" }]} />
+          {tabOptions.length > 1 && <Seg value={tab} onChange={setTab} size="sm" options={tabOptions} />}
           <Button variant={copied ? "accent" : "secondary"} size="sm" onClick={() => copy(tab === "api" ? JSON.stringify(json, null, 2) : compiled)}>
             {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? "已复制" : "复制"}
           </Button>
@@ -104,7 +113,7 @@ function SchemaSection({ idx, section }: { idx: number; section: Section }) {
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)", lineHeight: 1.6, marginBottom: 8, padding: "6px 8px", background: "var(--bg-1)", borderRadius: "var(--radius-sm)" }}>
             {renderTemplate(section.template, section.tone)}
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--fg-0)", lineHeight: 1.7, padding: "6px 8px", background: hexA(section.tone, "0d"), borderRadius: "var(--radius-sm)", borderLeft: `2px solid ${section.tone}` }}>
+          <div style={{ fontSize: 12.5, color: "var(--fg-0)", lineHeight: 1.7, padding: "6px 8px", background: hexA(section.tone, "0d"), borderRadius: "var(--radius-sm)", border: `1px solid ${hexA(section.tone, "33")}` }}>
             {section.compiled}
           </div>
         </div>

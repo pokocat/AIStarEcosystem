@@ -6,7 +6,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   RefreshCw, Plus, Search, X, ChevronRight, ChevronDown, Play, PlayCircle, Loader2,
-  Link2, ScrollText, Shuffle, Lock, FlaskConical,
+  Link2, ScrollText, Shuffle, Lock, FlaskConical, TriangleAlert,
 } from "lucide-react";
 import { Card, Button } from "@/components/creator";
 import { MaterialOpsApi } from "@/api";
@@ -30,9 +30,15 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
   const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>(initialProductId ?? "p4");
   const [selectedVideoId, setSelectedVideoId] = React.useState<string | null>(null);
   const [videoGen, setVideoGen] = React.useState<{ mode: "baseline" | "variant"; baseline: MaterialVideo | null; scriptId: string } | null>(null);
+  const [loadError, setLoadError] = React.useState(false);
 
   const load = React.useCallback(() => {
-    MaterialOpsApi.listVideos().then(setVideos);
+    MaterialOpsApi.listVideos()
+      .then((v) => {
+        setVideos(v);
+        setLoadError(false);
+      })
+      .catch(() => setLoadError(true));
   }, []);
   React.useEffect(() => {
     load();
@@ -149,6 +155,18 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
         />
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {loadError && (
+            <Card style={{ padding: 16, display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--danger)" }}>
+              <TriangleAlert size={18} color="var(--danger)" style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: "var(--fg-0)", fontWeight: 600 }}>视频库加载失败</div>
+                <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2 }}>网络异常或服务暂不可用，请重试。</div>
+              </div>
+              <Button variant="secondary" size="sm" onClick={load}>
+                <RefreshCw size={13} /> 重试
+              </Button>
+            </Card>
+          )}
           {!selectedGroup && (
             <Card style={{ padding: 80, textAlign: "center", color: "var(--fg-2)" }}>没有匹配的商品 · 试试别的关键词</Card>
           )}
@@ -158,6 +176,7 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
               videos={groupVideos}
               onSelectVideo={setSelectedVideoId}
               onOpenScript={(sid) => router.push(`/material/workshop/${sid}`)}
+              onRetry={load}
             />
           )}
           {selectedGroup && selectedVideo && (
@@ -243,7 +262,7 @@ function ProductDirectory({
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
+                boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none",
                 background: active ? hexA("#7c5cff", "12") : "transparent",
                 borderBottom: "1px solid var(--line)",
                 fontFamily: "var(--font-sans)",
@@ -276,12 +295,13 @@ function ProductDirectory({
 
 // ── 视频库 ───────────────────────────────────────────────────────────────────
 function VideoLibraryView({
-  product, videos, onSelectVideo, onOpenScript,
+  product, videos, onSelectVideo, onOpenScript, onRetry,
 }: {
   product: MaterialProduct;
   videos: MaterialVideo[];
   onSelectVideo: (id: string) => void;
   onOpenScript: (scriptId: string) => void;
+  onRetry?: () => void;
 }) {
   const [viewMode, setViewMode] = React.useState<"flat" | "by-script">("flat");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "published" | "ready" | "rendering">("all");
@@ -373,7 +393,7 @@ function VideoLibraryView({
         <Card style={{ padding: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
             {filtered.map((v) => (
-              <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} />
+              <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} onRetry={onRetry} />
             ))}
           </div>
         </Card>
@@ -399,6 +419,7 @@ function VideoLibraryView({
               onToggle={() => setCollapsed({ ...collapsed, [g.scriptId]: !collapsed[g.scriptId] })}
               onSelectVideo={onSelectVideo}
               onOpenScript={onOpenScript}
+              onRetry={onRetry}
             />
           ))}
         </div>
@@ -419,7 +440,7 @@ function HeroStat({ label, value, tone }: { label: string; value: string; tone: 
 }
 
 function ScriptGroupCard({
-  scriptId, script, videos, collapsed, onToggle, onSelectVideo, onOpenScript,
+  scriptId, script, videos, collapsed, onToggle, onSelectVideo, onOpenScript, onRetry,
 }: {
   scriptId: string;
   script?: import("./types").ScriptAsset;
@@ -428,6 +449,7 @@ function ScriptGroupCard({
   onToggle: () => void;
   onSelectVideo: (id: string) => void;
   onOpenScript: (id: string) => void;
+  onRetry?: () => void;
 }) {
   const totalPlays = videos.reduce((s, v) => s + parsePlays(v.metrics?.plays), 0);
   const bestCtr = Math.max(0, ...videos.map((v) => v.metrics?.ctr_pct ?? 0));
@@ -459,7 +481,7 @@ function ScriptGroupCard({
       {!collapsed && (
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
           {videos.map((v) => (
-            <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} />
+            <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} onRetry={onRetry} />
           ))}
         </div>
       )}
@@ -476,14 +498,31 @@ function GroupStat({ label, value, tone }: { label: string; value: string; tone:
   );
 }
 
-function VideoCard({ video, onClick, showParent }: { video: MaterialVideo; onClick: () => void; showParent?: boolean }) {
+function VideoCard({ video, onClick, onRetry, showParent }: { video: MaterialVideo; onClick: () => void; onRetry?: () => void; showParent?: boolean }) {
   const isRendering = video.status === "rendering";
+  const isFailed = video.status === "failed";
   const published = !!video.metrics;
   return (
-    <button onClick={onClick} style={{ textAlign: "left", borderRadius: "var(--radius-md)", overflow: "hidden", cursor: "pointer", border: "1px solid var(--line)", background: "var(--bg-1)", padding: 0, fontFamily: "var(--font-sans)" }}>
-      <div style={{ aspectRatio: "9 / 14", position: "relative", background: `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontSize: 36 }}>{video.thumb_emoji}</span>
-        {!isRendering && <PlayCircle size={26} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
+    <button
+      onClick={isFailed && onRetry ? onRetry : onClick}
+      title={isFailed ? "生成失败 · 点击重试" : undefined}
+      style={{ textAlign: "left", borderRadius: "var(--radius-md)", overflow: "hidden", cursor: "pointer", border: `1px solid ${isFailed ? "var(--danger)" : "var(--line)"}`, background: "var(--bg-1)", padding: 0, fontFamily: "var(--font-sans)" }}
+    >
+      <div style={{ aspectRatio: "9 / 14", position: "relative", background: isFailed ? "var(--bg-2)" : `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {isFailed ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 12, textAlign: "center" }}>
+            <TriangleAlert size={24} color="var(--danger)" />
+            <span style={{ fontSize: 11, color: "var(--danger)", fontWeight: 600 }}>生成失败</span>
+            {onRetry && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--accent)" }}>
+                <RefreshCw size={11} /> 点击重试
+              </span>
+            )}
+          </div>
+        ) : (
+          <span style={{ fontSize: 36 }}>{video.thumb_emoji}</span>
+        )}
+        {!isRendering && !isFailed && <PlayCircle size={26} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
         {isRendering && (
           <>
             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
@@ -494,8 +533,8 @@ function VideoCard({ video, onClick, showParent }: { video: MaterialVideo; onCli
           </>
         )}
         {published && <span style={{ position: "absolute", top: 5, left: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(34,181,154,0.9)", padding: "2px 6px", borderRadius: 3 }}>已发布</span>}
-        {!published && !isRendering && <span style={{ position: "absolute", top: 5, left: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 3 }}>未发布</span>}
-        {showParent && !isRendering && (
+        {!published && !isRendering && !isFailed && <span style={{ position: "absolute", top: 5, left: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 3 }}>未发布</span>}
+        {showParent && !isRendering && !isFailed && (
           <span style={{ position: "absolute", top: 5, right: 6, display: "inline-flex", alignItems: "center", gap: 3, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 3 }}>
             <Link2 size={9} /> 派生
           </span>
@@ -513,8 +552,8 @@ function VideoCard({ video, onClick, showParent }: { video: MaterialVideo; onCli
             <span style={{ color: "var(--warning)" }}>· {video.metrics.gmv}</span>
           </div>
         ) : (
-          <div style={{ marginTop: 5, fontFamily: "var(--font-mono)", fontSize: 9, color: isRendering ? "var(--extra-teal)" : "var(--fg-3)" }}>
-            {isRendering ? `${video.stage} · ${video.progress_pct ?? 0}%` : video.generated_at ? `生成于 ${(video.generated_at || "").slice(5, 10)}` : "未发布"}
+          <div style={{ marginTop: 5, fontFamily: "var(--font-mono)", fontSize: 9, color: isFailed ? "var(--danger)" : isRendering ? "var(--extra-teal)" : "var(--fg-3)" }}>
+            {isFailed ? "生成失败 · 可重试" : isRendering ? `${video.stage} · ${video.progress_pct ?? 0}%` : video.generated_at ? `生成于 ${(video.generated_at || "").slice(5, 10)}` : "未发布"}
           </div>
         )}
       </div>
@@ -657,22 +696,24 @@ function VideoDetail({
             </Card>
           )}
 
-          {/* schema */}
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
-              <Eyebrow>视频卡片 · 存了什么</Eyebrow>
-            </div>
-            <div style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.7 }}>
-              <SchemaLine k="id" v={video.id} />
-              <SchemaLine k="script_id" v={video.script_id} tone="var(--accent)" />
-              <SchemaLine k="product_id" v={product.id} tone="var(--warning)" />
-              {video.parent_video_id && <SchemaLine k="parent_video_id" v={video.parent_video_id} tone="var(--accent-strong)" />}
-              <SchemaLine k="status" v={video.status} />
-              <SchemaLine k="duration_sec" v={String(video.duration_sec)} />
-              <SchemaLine k="aspect_ratio" v={video.aspect_ratio} />
-              <SchemaLine k="model" v={video.model} />
-            </div>
-          </Card>
+          {/* schema —— 工程排障视图，仅 dev 暴露（运营无需看原始字段 / 外键） */}
+          {process.env.NODE_ENV !== "production" && (
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
+                <Eyebrow>视频卡片 · 存了什么（dev）</Eyebrow>
+              </div>
+              <div style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.7 }}>
+                <SchemaLine k="id" v={video.id} />
+                <SchemaLine k="script_id" v={video.script_id} />
+                <SchemaLine k="product_id" v={product.id} />
+                {video.parent_video_id && <SchemaLine k="parent_video_id" v={video.parent_video_id} />}
+                <SchemaLine k="status" v={video.status} />
+                <SchemaLine k="duration_sec" v={String(video.duration_sec)} />
+                <SchemaLine k="aspect_ratio" v={video.aspect_ratio} />
+                <SchemaLine k="model" v={video.model} />
+              </div>
+            </Card>
+          )}
         </div>
       </div>
     </>

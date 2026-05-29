@@ -8,7 +8,7 @@ import { Card, Button } from "@/components/creator";
 import { PLATFORM_RULES } from "@/constants/material-ops-ui";
 import { LOOP_ROWS } from "@/mocks/material-ops";
 import type { PlatformId } from "./types";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, Spark, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, Spark, AgentLearningsCard } from "./shared";
 
 const PLATFORM_ICONS: Record<PlatformId, React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }>> = {
   douyin: Music2,
@@ -34,9 +34,9 @@ export function LoopScreen() {
       {/* KPI */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
         <BigKpi label="发布脚本" value="184" sub="本周" tone="var(--accent)" trend={[3, 5, 4, 6, 8, 7, 10]} />
-        <BigKpi label="爆款命中" value="12" sub="6.5% 命中率" tone="var(--extra-teal)" trend={[1, 0, 2, 1, 3, 2, 4]} />
-        <BigKpi label="去重通过" value="92%" sub="+8% vs 上周" tone="var(--extra-teal)" trend={[80, 82, 85, 84, 88, 90, 92]} />
-        <BigKpi label="GMV 回流" value="¥482k" sub="+34% vs 上周" tone="var(--warning)" trend={[40, 55, 48, 70, 65, 80, 95]} />
+        <BigKpi label="爆款命中" value="12" sub="6.5% 命中率" tone="var(--accent)" trend={[1, 0, 2, 1, 3, 2, 4]} />
+        <BigKpi label="去重通过" value="92%" sub="+8% vs 上周" tone="var(--accent)" trend={[80, 82, 85, 84, 88, 90, 92]} />
+        <BigKpi label="GMV 回流" value="¥482k" sub="+34% vs 上周" tone="var(--accent)" trend={[40, 55, 48, 70, 65, 80, 95]} />
       </div>
 
       {/* 表格 */}
@@ -141,41 +141,13 @@ export function LoopScreen() {
       </Card>
 
       {/* 学到 */}
-      <Card style={{ padding: 18, background: `linear-gradient(135deg, ${hexA("#22b59a", "0d")} 0%, transparent 50%), var(--bg-1)` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: "var(--radius-md)",
-              background: hexA("#22b59a", "1f"),
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              fontSize: 18,
-            }}
-          >
-            🧪
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14, color: "var(--fg-0)", fontWeight: 600 }}>智能体本周学到</span>
-              <Tag color="var(--extra-teal)">4 条新规律</Tag>
-            </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-1)", lineHeight: 1.8 }}>
-              ① <strong style={{ color: "var(--extra-teal)" }}>蓝领情感故事</strong> 钩子在抖音 25-35 男性受众完播率提升 32% &nbsp; ② “
-              <strong style={{ color: "var(--warning)" }}>反差</strong>” 类钩子在小红书命中率下降 12%，建议切到 “
-              <strong style={{ color: "var(--accent)" }}>测评对比</strong>” &nbsp; ③{" "}
-              <strong style={{ color: "var(--danger)" }}>低糖燕麦</strong> 类目同质化严重，差异度需从 65 提至 80 &nbsp; ④ 视频号{" "}
-              <strong style={{ color: "var(--fg-0)" }}>父女视角</strong> 比夫妻视角 GMV 高 2.4 倍
-            </div>
-          </div>
+      <AgentLearningsCard
+        action={
           <Button variant="accent" size="md">
             <Check size={13} /> 确认应用
           </Button>
-        </div>
-      </Card>
+        }
+      />
     </div>
   );
 }
