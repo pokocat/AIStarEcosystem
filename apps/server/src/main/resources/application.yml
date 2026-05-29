@@ -78,6 +78,13 @@ aep:
   # 访问拦截在前端按 /api/me 返回的 platforms 判断；后端只负责注册时授予哪些平台。
   platform:
     dev-grant-all: ${AEP_PLATFORM_DEV_GRANT_ALL:true}
+  # v0.43+ 本地 fake 大模型（OpenAI 兼容）。开启后 DevFakeAiSeeder 自动接入端点 + 绑定用途，
+  # 让「真连后端大模型」链路在没有真实 key 时也能端到端跑通（配套 scripts/dev-fake-llm-server.mjs）。
+  # 仅 dev 默认开启；prod 关闭，由运营在后台配真实端点。
+  dev-fake-llm:
+    enabled: ${AEP_DEV_FAKE_LLM_ENABLED:false}
+    base-url: ${AEP_DEV_FAKE_LLM_BASE_URL:http://localhost:8091/v1}
+    model: ${AEP_DEV_FAKE_LLM_MODEL:fake-model-v1}
   assets:
     video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}
   mixcut:

@@ -47,10 +47,15 @@ public class PromptService {
     public static final String KEY_SELLING_POINTS = "material.selling_points";
     public static final String KEY_VARIABLE_EXTRACT = "material.variable_extract";
     public static final String KEY_VIDEO_REF_ANALYSIS = "material.video_ref_analysis";
+    /** v0.43+: 形象锻造对话（music/drama 形象顾问）。 */
+    public static final String KEY_APPEARANCE_FORGE = "appearance.forge";
+    /** v0.43+: 短剧脚本起草（drama 短剧生成）。 */
+    public static final String KEY_DRAMA_SCRIPT_DRAFT = "drama.script_draft";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
     public static final List<String> KNOWN_KEYS =
-            List.of(KEY_SCRIPT_DRAFT, KEY_SELLING_POINTS, KEY_VARIABLE_EXTRACT, KEY_VIDEO_REF_ANALYSIS);
+            List.of(KEY_SCRIPT_DRAFT, KEY_SELLING_POINTS, KEY_VARIABLE_EXTRACT, KEY_VIDEO_REF_ANALYSIS,
+                    KEY_APPEARANCE_FORGE, KEY_DRAMA_SCRIPT_DRAFT);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =
@@ -81,6 +86,8 @@ public class PromptService {
             case SELLING_POINTS -> KEY_SELLING_POINTS;
             case VARIABLE_EXTRACT -> KEY_VARIABLE_EXTRACT;
             case VIDEO_REF_ANALYSIS -> KEY_VIDEO_REF_ANALYSIS;
+            case APPEARANCE_FORGE -> KEY_APPEARANCE_FORGE;
+            case DRAMA_SCRIPT_DRAFT -> KEY_DRAMA_SCRIPT_DRAFT;
             default -> "material." + purpose.wire().toLowerCase();
         };
     }

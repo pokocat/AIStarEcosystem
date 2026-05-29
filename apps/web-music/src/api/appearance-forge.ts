@@ -216,10 +216,10 @@ export async function getForgeProviderStatus(): Promise<ForgeProviderStatus> {
     return mockDelay({
       configured: true,
       provider: "mock",
-      message: "当前为 mock 模式，将使用本地流式回放",
+      message: "当前为演示模式，将使用本地回放生成方案",
     });
   }
-  return apiFetch<ForgeProviderStatus>("/appearance-forge/coze/status");
+  return apiFetch<ForgeProviderStatus>("/appearance-forge/chat/status");
 }
 
 export async function streamForgeConversation(
@@ -232,7 +232,7 @@ export async function streamForgeConversation(
   }
 
   const token = getAuthToken();
-  const res = await fetch(`${API_BASE_URL}/appearance-forge/coze/stream`, {
+  const res = await fetch(`${API_BASE_URL}/appearance-forge/chat/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -283,7 +283,7 @@ export async function streamForgeConversation(
       if (!event) continue;
       onEvent(event);
       if (event.event === "error") {
-        throw new Error(event.data.message || "Coze 流式响应失败");
+        throw new Error(event.data.message || "形象方案生成失败，请稍后重试");
       }
     }
   }
@@ -301,12 +301,12 @@ async function streamMockForgeConversation(
   const reply = buildMockForgeReply(request.prompt);
   onEvent({
     event: "status",
-    data: { phase: "validated", message: "Mock 模式已接管，本地开始回放流式锻造" },
+    data: { phase: "validated", message: "演示模式：开始本地生成形象方案" },
   });
   await sleep(180, signal);
   onEvent({
     event: "status",
-    data: { phase: "in_progress", message: "Mock 正在逐字回写 Coze 响应" },
+    data: { phase: "in_progress", message: "正在生成形象方案" },
   });
 
   let assembled = "";
@@ -325,7 +325,7 @@ async function streamMockForgeConversation(
     event: "completed",
     data: {
       phase: "completed",
-      message: "Mock 响应完成",
+      message: "形象方案生成完成",
       content: assembled,
       tokenCount: Math.max(64, Math.floor(request.prompt.length * 1.6)),
       inputTokens: Math.max(24, request.prompt.length),

@@ -6,7 +6,7 @@ import com.aistareco.aep.model.ForgeResult;
 import com.aistareco.aep.repository.ForgeBlueprintRepository;
 import com.aistareco.aep.repository.ForgeResultRepository;
 import com.aistareco.aep.repository.ForgeTemplateRepository;
-import com.aistareco.aep.service.ForgeCozeService;
+import com.aistareco.aep.service.ForgeChatService;
 import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -62,7 +62,7 @@ public class ForgeController {
     private final ForgeResultRepository resultRepo;
     private final ForgeBlueprintRepository blueprintRepo;
     private final PlatformConfigService configService;
-    private final ForgeCozeService forgeCozeService;
+    private final ForgeChatService forgeChatService;
     private final ObjectMapper objectMapper;
     private final String forgeVideoBaseUrl;
 
@@ -70,14 +70,14 @@ public class ForgeController {
                            ForgeResultRepository resultRepo,
                            ForgeBlueprintRepository blueprintRepo,
                            PlatformConfigService configService,
-                           ForgeCozeService forgeCozeService,
+                           ForgeChatService forgeChatService,
                            ObjectMapper objectMapper,
                            @Value("${aep.assets.video-base-url:/static/videos}") String forgeVideoBaseUrl) {
         this.templateRepo = templateRepo;
         this.resultRepo = resultRepo;
         this.blueprintRepo = blueprintRepo;
         this.configService = configService;
-        this.forgeCozeService = forgeCozeService;
+        this.forgeChatService = forgeChatService;
         this.objectMapper = objectMapper;
         this.forgeVideoBaseUrl = trimTrailingSlash(forgeVideoBaseUrl);
     }
@@ -233,43 +233,60 @@ public class ForgeController {
                 .stream().map(ForgeBlueprintDto::from).toList());
     }
 
+    /** v0.43+ 形象锻造对话状态（大模型优先，Coze 回退）。canonical 路径。 */
+    @GetMapping("/chat/status")
+    public ApiResponse<ForgeProviderStatusDto> chatStatus() {
+        return ApiResponse.of(forgeChatService.status());
+    }
+
+    /** v0.43+ 形象锻造对话流（大模型优先，Coze 回退）。canonical 路径。 */
+    @PostMapping(path = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamChat(Principal principal,
+                                 @Valid @RequestBody ForgeCozeChatRequest body) {
+        return runForgeStream(principal, body);
+    }
+
+    /** 兼容别名：旧前端仍打 /coze/*；行为与 /chat/* 完全一致（同样走混合通道）。 */
     @GetMapping("/coze/status")
     public ApiResponse<ForgeProviderStatusDto> cozeStatus() {
-        log.info("Forge Coze status endpoint hit");
-        return ApiResponse.of(forgeCozeService.status());
+        return ApiResponse.of(forgeChatService.status());
     }
 
     @PostMapping(path = "/coze/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamCozeConversation(Principal principal,
                                              @Valid @RequestBody ForgeCozeChatRequest body) {
+        return runForgeStream(principal, body);
+    }
+
+    private SseEmitter runForgeStream(Principal principal, ForgeCozeChatRequest body) {
         String requestId = UUID.randomUUID().toString();
-        log.info("Forge Coze stream request accepted: requestId={}, principal={}, artistId={}, promptLength={}",
+        log.info("Forge chat stream request accepted: requestId={}, principal={}, artistId={}, promptLength={}",
                 requestId,
                 principal == null ? null : principal.getName(),
                 body.artistId(),
                 body.prompt() == null ? 0 : body.prompt().length());
         SseEmitter emitter = new SseEmitter(300_000L);
         emitter.onTimeout(() -> {
-            log.warn("Forge Coze stream timeout: requestId={}", requestId);
+            log.warn("Forge chat stream timeout: requestId={}", requestId);
             emitter.complete();
         });
-        emitter.onCompletion(() -> log.info("Forge Coze stream emitter completed: requestId={}", requestId));
-        emitter.onError(ex -> log.error("Forge Coze stream emitter error: requestId={}, message={}",
+        emitter.onCompletion(() -> log.info("Forge chat stream emitter completed: requestId={}", requestId));
+        emitter.onError(ex -> log.error("Forge chat stream emitter error: requestId={}, message={}",
                 requestId, ex == null ? null : ex.getMessage(), ex));
 
         CompletableFuture.runAsync(() -> {
             try {
-                forgeCozeService.streamConversation(
+                forgeChatService.streamConversation(
                         requestId,
                         principal.getName(),
                         body,
                         (eventName, data) -> sendEvent(emitter, eventName, data)
                 );
-                log.info("Forge Coze stream request done: requestId={}", requestId);
+                log.info("Forge chat stream request done: requestId={}", requestId);
                 sendEvent(emitter, "done", Map.of("message", "stream closed"));
                 emitter.complete();
             } catch (Exception ex) {
-                log.error("Forge Coze stream request failed: requestId={}, message={}",
+                log.error("Forge chat stream request failed: requestId={}, message={}",
                         requestId, ex.getMessage(), ex);
                 try {
                     sendEvent(emitter, "error", Map.of("message", resolveStreamError(ex)));

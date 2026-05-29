@@ -58,6 +58,7 @@ public class AepSecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
+                        .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
                         // 素材运营（脚本 / 视频 / 爆款雷达）—— 任意登录用户可读写共享库
