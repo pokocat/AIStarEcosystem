@@ -5,7 +5,9 @@ import com.aistareco.aep.dto.AiModelDiscoveryRequestDto;
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelProviderDto;
 import com.aistareco.aep.dto.AiModelProviderPresetDto;
+import com.aistareco.aep.dto.AiModelUsageReportDto;
 import com.aistareco.aep.service.AiModelProviderAdminService;
+import com.aistareco.aep.service.AiModelUsageService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -23,9 +25,12 @@ import java.util.Map;
 public class AdminAiModelProviderController {
 
     private final AiModelProviderAdminService service;
+    private final AiModelUsageService usageService;
 
-    public AdminAiModelProviderController(AiModelProviderAdminService service) {
+    public AdminAiModelProviderController(AiModelProviderAdminService service,
+                                          AiModelUsageService usageService) {
         this.service = service;
+        this.usageService = usageService;
     }
 
     @GetMapping
@@ -45,9 +50,25 @@ public class AdminAiModelProviderController {
         return ApiResponse.of(service.discoverModels(req));
     }
 
+    /**
+     * 全局大模型用量报表（v0.41）。
+     * days：统计窗口天数，缺省 30，封顶 365。按服务商 + 模型两个维度聚合。
+     */
+    @GetMapping("/usage")
+    public ApiResponse<AiModelUsageReportDto> usage(@RequestParam(required = false) Integer days) {
+        return ApiResponse.of(usageService.report(days));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<AiModelProviderDto> get(@PathVariable String id) {
         return ApiResponse.of(service.get(id));
+    }
+
+    /** 单服务商用量报表（v0.41）。 */
+    @GetMapping("/{id}/usage")
+    public ApiResponse<AiModelUsageReportDto> usageForProvider(@PathVariable String id,
+                                                               @RequestParam(required = false) Integer days) {
+        return ApiResponse.of(usageService.reportForProvider(id, days));
     }
 
     @PostMapping

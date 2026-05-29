@@ -44,9 +44,11 @@ public class AiModelInvocationService {
             EnumSet.of(AiModelProviderType.ANTHROPIC, AiModelProviderType.AZURE_OPENAI);
 
     private final AiModelProviderRepository repo;
+    private final AiModelUsageService usage;
 
-    public AiModelInvocationService(AiModelProviderRepository repo) {
+    public AiModelInvocationService(AiModelProviderRepository repo, AiModelUsageService usage) {
         this.repo = repo;
+        this.usage = usage;
     }
 
     /** 是否存在该用途的启用 provider（用于上层在调用前判断「未配置大模型」并给出明确提示）。 */
@@ -60,7 +62,7 @@ public class AiModelInvocationService {
         BusinessException lastErr = null;
         for (AiModelProvider p : candidates) {
             try {
-                return doChat(p, messages, options);
+                return doChat(p, purpose, messages, options);
             } catch (BusinessException e) {
                 lastErr = e;
                 if (e.getStatus() != null && e.getStatus().is5xxServerError()) continue;
@@ -144,7 +146,7 @@ public class AiModelInvocationService {
                 .toList();
     }
 
-    private AiModelResponse doChat(AiModelProvider p, List<Map<String, String>> messages,
+    private AiModelResponse doChat(AiModelProvider p, AiModelPurpose purpose, List<Map<String, String>> messages,
                                     Map<String, Object> options) throws Exception {
         AiModelProviderType type = p.getProviderType();
         if (!isOpenAiCompatible(type)) {
@@ -195,12 +197,23 @@ public class AiModelInvocationService {
                 if (fr != null) finishReason = String.valueOf(fr);
             }
         }
+        Long promptTokens = null;
+        Long completionTokens = null;
         Long tokensUsed = null;
-        if (parsed.get("usage") instanceof Map<?, ?> usage
-                && usage.get("total_tokens") instanceof Number n) {
-            tokensUsed = n.longValue();
+        if (parsed.get("usage") instanceof Map<?, ?> usageMap) {
+            promptTokens = asLong(usageMap.get("prompt_tokens"));
+            completionTokens = asLong(usageMap.get("completion_tokens"));
+            tokensUsed = asLong(usageMap.get("total_tokens"));
         }
+        // v0.41：自建用量流水。best-effort，失败只 log，不阻断 chat 返回。
+        usage.record(p.getId(), p.getName(), model,
+                purpose != null ? purpose.wire() : null,
+                promptTokens, completionTokens, tokensUsed, true);
         return new AiModelResponse(content, finishReason, tokensUsed, p.getName(), model);
+    }
+
+    private static Long asLong(Object o) {
+        return o instanceof Number n ? n.longValue() : null;
     }
 
     private static String rstrip(String s, String suffix) {

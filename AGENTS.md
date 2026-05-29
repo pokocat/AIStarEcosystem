@@ -1759,6 +1759,43 @@ test   : MaterialAiE2ETest（@MockBean）—— 正常 JSON / 脏输出自修复
    finish=length 警告截断）；错误消息均带 `promptKey`（issue 5：方便定位调的哪个 prompt）。DraftingHub /
    DeriveVariablesPanel / CelebrityProductForm / 商品 hero 统一用该组件展示。
 
+### v0.41（2026-05-29）— 大模型用量统计（自建 token 流水）
+
+把每次 `/chat/completions` 响应里**已经返回但之前用完即丢**的 `usage`（prompt/completion/total tokens）
+落库聚合，admin 后台「AI 模型配置」页新增「用量统计」卡片。背景：各大模型厂商**没有统一的用量查询
+协议**（OpenAI 用量需 Admin key、火山/阿里走独立签名的计费 OpenAPI），但响应里的 usage 字段对所有
+OpenAI 兼容 provider 通用，因此自建流水是最稳的通用方案，也符合本仓「账本式只追加」的设计哲学。
+
+```
+server : 新实体 AiModelUsageRecord（ai_model_usage_record 表：providerId / providerName / model /
+       :   purpose / promptTokens / completionTokens / totalTokens / success / createdAt；createdAt + providerId 两索引）
+       : 新 AiModelUsageRecordRepository —— Object[] 聚合查询（aggregateByProvider / byModel /
+       :   byModelForProvider / totals / totalsForProvider；用 Object[] 而非 JPQL new 构造器表达式，
+       :   避开 Long→long 拆箱兼容坑）
+       : 新 AiModelUsageService —— record(...)（@Transactional REQUIRES_NEW + try/catch，best-effort 不阻断 chat）
+       :   + report(days) / reportForProvider(id, days)（days 缺省 30，封顶 365）
+       : 新 dto AiModelUsageStatDto（分组行）/ AiModelUsageReportDto（窗口 + 总计 + byProvider + byModel）
+       : AiModelInvocationService.doChat 解析 prompt_tokens / completion_tokens（之前只取 total），
+       :   末尾调 usage.record(...)；invokeChat 透传 purpose 进 doChat
+       : AdminAiModelProviderController +GET /usage +GET /{id}/usage（days 查询参数）
+admin  : api/ai-models.ts +AiModelUsageStat / AiModelUsageReport + getUsage(days) / getProviderUsage(id, days)
+       : /platform/ai-models 页加「用量统计」卡片：时间窗下拉（1/7/30/90/365 天）+ 4 个汇总数
+       :   （调用次数 / 总 / 输入 / 输出 token）+ 按服务商 / 按模型两张占比表；空窗给引导文案
+openapi: +/admin/ai-models/usage +/admin/ai-models/{id}/usage（path 骨架，沿用 ai-models 既有无 schema 风格）
+```
+
+**注意事项**：
+
+- **只记成功调用**：失败（4xx/5xx）在 doChat 里 parse 之前就抛了，不落流水；统计的是真实消耗。
+- **best-effort 落库**：record 用 `REQUIRES_NEW` 独立事务 + try/catch，写库失败只 WARN，绝不影响 chat 返回
+  （调用方 MaterialAiService.draftScripts 跑在 `NOT_SUPPORTED` 事务里，独立事务避免连带）。
+- **聚合按时间窗 since 起**：每次查询 `createdAt >= now - days`，volume 可控；未做 byDay 趋势（DB date 函数
+  跨 H2/MySQL 可移植性留待后续）。
+- **JPA ddl-auto=update 自动建表**：H2 dev / MySQL prod 双兼容，不写 migration（沿用本仓惯例）。
+- **未做**：(a) 按调用方 / 用户维度归集（record 暂不带 callerUserId）；(b) 各厂商真实余额代理（DeepSeek
+  `/user/balance` / Moonshot `/v1/users/me/balance` 等，方案 B，本期未实现）；(c) 流水清理调度（长期增长需
+  加 @Scheduled 归档）；(d) 按金额估算（需各模型单价表）。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

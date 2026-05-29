@@ -5060,6 +5060,12 @@ paths:
     post: { tags: [admin-ai-models], operationId: adminCreateAiModelProvider, responses: { '201': { description: created } } }
   /admin/ai-models/presets:
     get: { tags: [admin-ai-models], operationId: adminListAiModelPresets, responses: { '200': { description: 内置常见服务商预设（火山方舟 / Kimi / DeepSeek / 千问 / OpenAI） } } }
+  /admin/ai-models/usage:
+    get:
+      tags: [admin-ai-models]
+      operationId: adminAiModelUsage
+      parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
+      responses: { '200': { description: 全局大模型用量报表（自建 token 流水聚合；按服务商 + 模型维度） } }
   /admin/ai-models/discover-models:
     post: { tags: [admin-ai-models], operationId: adminDiscoverAiModels, responses: { '200': { description: 用 baseUrl+apiKey 调服务商 GET /models 拉取可用模型 } } }
   /admin/ai-models/{id}:
@@ -5073,6 +5079,13 @@ paths:
   /admin/ai-models/{id}/fetch-models:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-ai-models], operationId: adminFetchAiModels, responses: { '200': { description: 用已存 apiKey 重新拉取可用模型（拉回后保存写入配置） } } }
+  /admin/ai-models/{id}/usage:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [admin-ai-models]
+      operationId: adminAiModelUsageForProvider
+      parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
+      responses: { '200': { description: 单服务商大模型用量报表 } }
 
   # ── Agent 平台 bot 配置（v0.39 新增；Coze 等，按 sceneKey 绑定业务功能） ──────────
   /admin/agent-bots:
