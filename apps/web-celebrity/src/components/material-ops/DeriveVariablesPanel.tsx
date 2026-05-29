@@ -7,6 +7,7 @@ import * as React from "react";
 import { Plus, Trash2, X, ChevronRight, FlaskConical, ArrowRight, Shuffle, ListPlus } from "lucide-react";
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Button } from "@/components/creator";
+import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
 import { MaterialOpsApi } from "@/api";
 import { MATERIAL_PRODUCTS } from "@/mocks/material-ops";
 import type { ScriptAsset, ScriptVariable, VariantSample } from "./types";
@@ -45,7 +46,7 @@ export function DeriveVariablesPanel({
         setActiveVar(vars[0]?.id);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setAiError((e as Error)?.message || "AI 变量识别失败");
+        if (!cancelled) setAiError(errorMessage(e, "AI 变量识别失败"));
       })
       .finally(() => {
         if (!cancelled) setAiLoading(false);
@@ -111,9 +112,8 @@ export function DeriveVariablesPanel({
           </button>
         </div>
         {aiError && (
-          <div style={{ margin: "0 20px 10px", padding: "8px 10px", borderRadius: "var(--radius-sm)", background: hexA("#f0a83a", "0f"), border: `1px solid ${hexA("#f0a83a", "44")}`, color: "var(--warning, #b97e12)", fontSize: 11, lineHeight: 1.6 }}>
-            <strong style={{ fontWeight: 600 }}>AI 变量识别未生效：</strong>{aiError}
-            <div style={{ color: "var(--fg-3)", marginTop: 2 }}>当前显示规则兜底结果，可继续编辑。</div>
+          <div style={{ margin: "0 20px 10px" }}>
+            <AiErrorNotice tone="warning" title="AI 变量识别未生效（当前显示规则兜底结果，可继续编辑）" message={aiError} />
           </div>
         )}
         <div style={{ padding: "10px 20px", borderBottom: "1px solid var(--line)", display: "flex", flexWrap: "wrap", gap: 5 }}>

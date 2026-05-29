@@ -6,8 +6,10 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   RefreshCw, Plus, Search, X, ChevronRight, ChevronDown, Play, PlayCircle, Loader2,
-  Link2, ScrollText, Shuffle, Lock, FlaskConical, TriangleAlert,
+  Link2, ScrollText, Shuffle, Lock, FlaskConical, TriangleAlert, Sparkles,
 } from "lucide-react";
+import { useAuth } from "@ai-star-eco/api-client";
+import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
 import { Card, Button } from "@/components/creator";
 import { MaterialOpsApi, ProductsApi } from "@/api";
 import { MATERIAL_PRODUCTS, getScript } from "@/mocks/material-ops";
@@ -332,6 +334,35 @@ function VideoLibraryView({
   const [sort, setSort] = React.useState<"recent" | "plays" | "ctr">("recent");
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
 
+  // 商品详情 · AI 提取卖点（issue 4：给一个主动触发入口）。仅运营角色可见；提取后落库 + 即时展示。
+  const { user } = useAuth();
+  const canExtract = !!user?.operatorRole;
+  const [sellingPoints, setSellingPoints] = React.useState(product.sellingPoints ?? "");
+  const [extracting, setExtracting] = React.useState(false);
+  const [extractError, setExtractError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setSellingPoints(product.sellingPoints ?? "");
+    setExtractError(null);
+  }, [product.id, product.sellingPoints]);
+
+  const extractSelling = async () => {
+    if (!product.link?.trim()) {
+      setExtractError("该商品缺少链接，无法 AI 提取卖点（请先在商品库补充链接）");
+      return;
+    }
+    setExtracting(true);
+    setExtractError(null);
+    try {
+      const { sellingPoints: sp } = await ProductsApi.extractSellingPoints({ name: product.name, link: product.link });
+      await ProductsApi.updateProduct(product.id, { sellingPoints: sp });
+      setSellingPoints(sp);
+    } catch (e) {
+      setExtractError(errorMessage(e, "AI 提取卖点失败，请稍后重试"));
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const filtered = React.useMemo(() => {
     return videos
       .filter(
@@ -387,6 +418,25 @@ function VideoLibraryView({
             <HeroStat label="总播放" value={fmtWan(totalPlays)} tone="var(--warning)" />
           </div>
         </div>
+        {/* 卖点 + AI 提取入口（issue 4） */}
+        <div style={{ padding: "10px 18px 14px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Eyebrow style={{ marginBottom: 4 }}>商品卖点</Eyebrow>
+            <div style={{ fontSize: 12, color: sellingPoints ? "var(--fg-1)" : "var(--fg-3)", lineHeight: 1.6, wordBreak: "break-word" }}>
+              {sellingPoints || "暂无卖点 · 可用 AI 根据商品名 + 链接自动提炼"}
+            </div>
+          </div>
+          {canExtract && (
+            <Button variant="secondary" size="sm" onClick={extractSelling} disabled={extracting} style={{ flexShrink: 0 }}>
+              <Sparkles size={12} /> {extracting ? "提取中…" : "AI 提取卖点"}
+            </Button>
+          )}
+        </div>
+        {extractError && (
+          <div style={{ padding: "0 18px 14px" }}>
+            <AiErrorNotice title="AI 提取卖点失败" message={extractError} onRetry={extractSelling} />
+          </div>
+        )}
       </Card>
 
       {/* toolbar */}

@@ -1739,6 +1739,23 @@ test   : MaterialAiE2ETest（@MockBean）—— 正常 JSON / 脏输出自修复
   （admin → 平台与配置 → 引擎价格 → 动作单价表；默认 0 = 不计费，运营设单价即开启）。卖点/变量量小暂不计费。
 - **未做**：违禁词 server lint 端点（前端纯规则已够用）、Langfuse 埋点、视频生成引擎 / RAG。
 
+**v0.40 修订（用户反馈 6 项）**：
+
+1. **起稿 500 / JSON 截断**：起稿默认只生成 1 稿（之前 3 稿，输出过长在 maxTokens 处被截断 → JSON 不完整 →
+   解析失败 → 偶发代理超时返回 500）；`PromptParamsDto.DEFAULT_MAX_TOKENS` 2048→4096；`extractJson` 加 markdown
+   围栏剥离；`buildScriptAsset` 逐候选 try/catch（坏候选跳过不 500）；解析失败日志 body 截断阈值 240→1000。
+2. **只起 1 稿**：`DraftingHub` AIPicker 去掉「起稿数量」选择器，固定 1 稿，不满意可重新生成。
+3. **应用按钮去重**：起稿预览只保留「应用到编辑器」一个按钮（删「应用并预览」）。
+4. **脚本/字幕语义**（rebase 到 goods_to_video 后对齐其编辑器方向）：`text`＝脚本（口播台词 + 画面内容描述，主，必填）、
+   `shot`＝字幕/画面花字（屏幕短文字，选填）。material.script_draft prompt 按此口径生成；编辑器 ShotBlock 标签 /
+   mocks / DraftingHub 占位池均为 goods_to_video 版（PromptTemplateSeeder SEED_VERSION bump 刷新 version==1 基线）。
+   注：与本 session 早先 issue-3 的相反口径（脚本=画面/shot）已被 goods_to_video 方向取代。
+5. **商品详情提卖点入口**：素材库 `VideoLibraryView` 商品 hero 加「AI 提取卖点」（运营角色可见）→ 提取 + 落库 + 即时展示。
+6. **错误可见 + 日志**：新增统一错误组件 `components/common/ai-error-notice.tsx`（展示报错 + 可复制「追查号」logId）；
+   `MaterialAiService` 全链路 INFO/WARN 日志（promptKey / provider / model / finish_reason / tokens / 解析结果；
+   finish=length 警告截断）；错误消息均带 `promptKey`（issue 5：方便定位调的哪个 prompt）。DraftingHub /
+   DeriveVariablesPanel / CelebrityProductForm / 商品 hero 统一用该组件展示。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

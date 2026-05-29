@@ -9,7 +9,7 @@ public record PromptParamsDto(
         Boolean jsonMode
 ) {
     public static final double DEFAULT_TEMPERATURE = 0.7;
-    public static final int DEFAULT_MAX_TOKENS = 2048;
+    public static final int DEFAULT_MAX_TOKENS = 4096;
     public static final boolean DEFAULT_JSON_MODE = true;
 
     public double temperatureOrDefault() {

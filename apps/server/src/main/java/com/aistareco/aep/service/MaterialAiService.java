@@ -99,19 +99,24 @@ public class MaterialAiService {
         JsonNode root = callJsonObject(AiModelPurpose.SCRIPT_DRAFT, p, user);
         List<JsonNode> out = new ArrayList<>();
         JsonNode arr = root.get("scripts");
+        int seen = 0;
         if (arr != null && arr.isArray()) {
-            int i = 0;
             for (JsonNode s : arr) {
-                JsonNode built = buildScriptAsset(s, product, audience, i);
-                if (built != null) {
-                    out.add(built);
-                    i++;
+                seen++;
+                JsonNode built;
+                try {
+                    built = buildScriptAsset(s, product, audience, out.size());
+                } catch (Exception e) {
+                    log.warn("[material-ai] SCRIPT_DRAFT 第 {} 个候选构造失败，跳过：{}", seen, e.getMessage());
+                    continue;
                 }
-                if (i >= n) break;
+                if (built != null) out.add(built);
+                if (out.size() >= n) break;
             }
         }
+        log.info("[material-ai] SCRIPT_DRAFT 产出 {} 条有效脚本（模型返回 {} 条，请求 {} 条）", out.size(), seen, n);
         if (out.isEmpty()) {
-            throw badOutput(AiModelPurpose.SCRIPT_DRAFT, "未产出有效脚本（镜头数/字段校验后为空）");
+            throw badOutput(AiModelPurpose.SCRIPT_DRAFT, "未产出有效脚本（镜头数/字段校验后为空，模型返回 " + seen + " 条）");
         }
         return out;
     }
@@ -157,54 +162,76 @@ public class MaterialAiService {
     // ── 配置校验（不静默兜底，给明确提示） ──────────────────────────────────────
 
     private void ensureConfigured(AiModelPurpose purpose, ResolvedPrompt p) {
+        String key = PromptService.promptKeyFor(purpose);
         if (!invocation.hasProviderFor(purpose)) {
+            log.warn("[material-ai] {} key={} 阻断：无启用 provider", purpose.wire(), key);
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "未配置「" + purposeLabel(purpose) + "」用途的大模型服务商。请到 管理后台 → 平台与配置 → "
-                            + "AI 模型，添加服务商并勾选该用途（含有效 API Key）。");
+                    "未配置「" + purposeLabel(purpose) + "」用途的大模型服务商（promptKey=" + key + "）。请到 管理后台 → "
+                            + "平台与配置 → AI 模型，添加服务商并勾选该用途（含有效 API Key）。");
         }
         if ("code".equals(p.origin())) {
+            log.warn("[material-ai] {} key={} 阻断：prompt 仅命中代码兜底（DB/resource 均无）", purpose.wire(), key);
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "「" + purposeLabel(purpose) + "」的 Prompt 模板缺失。请到 管理后台 → 平台与配置 → "
-                            + "Prompt 管理 检查 " + PromptService.promptKeyFor(purpose) + "。");
+                    "「" + purposeLabel(purpose) + "」的 Prompt 模板缺失（promptKey=" + key + "）。请到 管理后台 → "
+                            + "平台与配置 → Prompt 管理 检查。");
         }
     }
 
     // ── LLM 调用 + 解析 + 自修复重试（失败抛 BusinessException） ──────────────────
 
     private JsonNode callJsonObject(AiModelPurpose purpose, ResolvedPrompt p, String user) {
+        String key = PromptService.promptKeyFor(purpose);
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", p.system()));
         messages.add(Map.of("role", "user", "content", user));
         Map<String, Object> options = new HashMap<>();
         options.put("temperature", p.params().temperatureOrDefault());
         options.put("max_tokens", p.params().maxTokensOrDefault());
-        if (p.params().jsonModeOrDefault()) {
-            options.put("response_format", Map.of("type", "json_object"));
-        }
+        boolean jsonMode = p.params().jsonModeOrDefault();
+        if (jsonMode) options.put("response_format", Map.of("type", "json_object"));
+        log.info("[material-ai] {} key={} origin={} 开始调用 · temp={} maxTokens={} jsonMode={}",
+                purpose.wire(), key, p.origin(), p.params().temperatureOrDefault(),
+                p.params().maxTokensOrDefault(), jsonMode);
+
         String lastParseErr = null;
         for (int attempt = 0; attempt < 2; attempt++) {
-            String content;
+            AiModelInvocationService.AiModelResponse resp;
             try {
-                content = invocation.invokeChat(purpose, messages, options).content();
+                resp = invocation.invokeChat(purpose, messages, options);
             } catch (BusinessException be) {
-                // provider 调用失败（含 401/403 = token 无效）→ 明确抛出，不重试
                 String hint = (be.getStatus() == HttpStatus.UNAUTHORIZED || be.getStatus() == HttpStatus.FORBIDDEN)
                         ? "（API Key 可能无效或无权限，请检查 AI 模型配置）" : "";
+                log.warn("[material-ai] {} key={} invoke 失败(attempt {}): status={} {}",
+                        purpose.wire(), key, attempt, be.getStatus(), be.getMessage());
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                        "大模型调用失败（" + purposeLabel(purpose) + "）" + hint + "：" + be.getMessage());
+                        "大模型调用失败（" + purposeLabel(purpose) + "，promptKey=" + key + "）" + hint + "：" + be.getMessage());
             } catch (Exception e) {
+                log.warn("[material-ai] {} key={} invoke 异常(attempt {}): {}",
+                        purpose.wire(), key, attempt, e.toString());
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                        "大模型调用失败（" + purposeLabel(purpose) + "）：" + e.getMessage());
+                        "大模型调用失败（" + purposeLabel(purpose) + "，promptKey=" + key + "）：" + e.getMessage());
+            }
+            String content = resp.content();
+            log.info("[material-ai] {} key={} 收到响应(attempt {}) · provider={} model={} finish={} tokens={} len={}",
+                    purpose.wire(), key, attempt, resp.providerUsed(), resp.modelUsed(),
+                    resp.finishReason(), resp.tokensUsed(), content == null ? 0 : content.length());
+            // finish_reason=length 说明被 max_tokens 截断 → JSON 极可能不完整
+            if ("length".equalsIgnoreCase(resp.finishReason())) {
+                log.warn("[material-ai] {} key={} 输出被 max_tokens 截断（finish=length）→ JSON 可能不完整，建议调大 maxTokens 或减少生成条数",
+                        purpose.wire(), key);
             }
             String json = extractJson(content);
             try {
                 JsonNode rootNode = json == null ? null : om.readTree(json);
-                if (rootNode != null && rootNode.isObject()) return rootNode;
+                if (rootNode != null && rootNode.isObject()) {
+                    log.info("[material-ai] {} key={} 解析成功(attempt {})", purpose.wire(), key, attempt);
+                    return rootNode;
+                }
                 throw new IllegalArgumentException("非 JSON 对象");
             } catch (Exception parseErr) {
                 lastParseErr = parseErr.getMessage();
-                log.warn("[material-ai] {} parse failed (attempt {}): {} | body: {}",
-                        purpose.wire(), attempt, parseErr.getMessage(), snippet(content));
+                log.warn("[material-ai] {} key={} 解析失败(attempt {}): {} | body[:1000]={}",
+                        purpose.wire(), key, attempt, parseErr.getMessage(), snippet(content));
                 if (attempt == 0) {
                     messages = new ArrayList<>(messages);
                     messages.add(Map.of("role", "assistant", "content", content == null ? "" : content));
@@ -215,7 +242,8 @@ public class MaterialAiService {
             }
         }
         throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                "大模型输出无法解析为有效 JSON（已重试 1 次）。请检查所选模型是否支持 JSON 输出，或调整 Prompt。错误：" + lastParseErr);
+                "大模型输出无法解析为有效 JSON（promptKey=" + key + "，已重试 1 次）。"
+                        + "请检查所选模型是否支持 JSON 输出，或调整 Prompt。错误：" + lastParseErr);
     }
 
     private BusinessException badOutput(AiModelPurpose purpose, String why) {
@@ -236,6 +264,13 @@ public class MaterialAiService {
     static String extractJson(String content) {
         if (content == null) return null;
         String s = content.strip();
+        // 去 markdown 代码围栏（```json ... ``` / ``` ... ```）
+        if (s.startsWith("```")) {
+            int nl = s.indexOf('\n');
+            if (nl >= 0) s = s.substring(nl + 1);
+            if (s.endsWith("```")) s = s.substring(0, s.length() - 3);
+            s = s.strip();
+        }
         int start = s.indexOf('{');
         int end = s.lastIndexOf('}');
         if (start >= 0 && end > start) return s.substring(start, end + 1);
@@ -384,7 +419,7 @@ public class MaterialAiService {
     }
 
     private static String snippet(String s) {
-        if (s == null) return "";
-        return s.length() > 240 ? s.substring(0, 240) : s;
+        if (s == null) return "<null>";
+        return s.length() > 1000 ? s.substring(0, 1000) + "…(截断)" : s;
     }
 }

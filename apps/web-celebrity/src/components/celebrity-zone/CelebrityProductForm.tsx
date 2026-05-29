@@ -6,6 +6,7 @@ import type { CelebrityProductInput } from "@ai-star-eco/types/celebrity-zone";
 import { ProductsApi } from "@/api";
 import { useAuth } from "@ai-star-eco/api-client";
 import { ProductPickerDialog } from "./ProductPickerDialog";
+import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
@@ -60,7 +61,7 @@ export function CelebrityProductForm({
       });
       onChange({ ...value, sellingPoints });
     } catch (e) {
-      setExtractError((e as Error)?.message || "AI 提取卖点失败，请稍后重试");
+      setExtractError(errorMessage(e, "AI 提取卖点失败，请稍后重试"));
     } finally {
       setExtracting(false);
     }
@@ -130,10 +131,7 @@ export function CelebrityProductForm({
           </p>
         )}
         {extractError && (
-          <p className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-rose-600">
-            <span className="font-medium">AI 提取卖点失败：</span>
-            {extractError}
-          </p>
+          <AiErrorNotice title="AI 提取卖点失败" message={extractError} onRetry={onExtract} />
         )}
       </div>
 

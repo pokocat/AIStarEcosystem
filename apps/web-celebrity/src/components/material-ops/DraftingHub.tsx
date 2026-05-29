@@ -3,8 +3,9 @@
 // 起稿中心 —— 全屏选择器，3 tab：模板库 / 爆款雷达 / AI 生成。左筛选列表 + 右预览。
 
 import * as React from "react";
-import { X, LayoutTemplate, Flame, Wand2, Check, Shuffle, ScrollText, Link2 } from "lucide-react";
+import { X, LayoutTemplate, Flame, Wand2, Check, ScrollText, Link2 } from "lucide-react";
 import { Button } from "@/components/creator";
+import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
 import { MaterialOpsApi } from "@/api";
 import { SCRIPT_ASSETS, VIRAL_HITS } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META, PLATFORM_RULES } from "@/constants/material-ops-ui";
@@ -301,11 +302,8 @@ function AssetPreview({ asset, product, onApply, onApplyAndPreview }: { asset: S
           </span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Button variant="secondary" onClick={() => onApply(toBlocks(asset, product))}>
-            <Check size={13} /> 应用整套
-          </Button>
-          <Button variant="accent" onClick={() => onApplyAndPreview(toBlocks(asset, product))}>
-            <Shuffle size={13} /> 应用并预览
+          <Button variant="accent" onClick={() => onApply(toBlocks(asset, product))}>
+            <Check size={13} /> 应用到编辑器
           </Button>
         </div>
       </div>
@@ -452,13 +450,12 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
   const [stage, setStage] = React.useState<"config" | "results">("config");
   const [tone, setTone] = React.useState(product.suggestedAngles?.[0] ?? "情感故事");
   const [audience, setAudience] = React.useState(product.audience?.[0] ?? "女性 25-35");
-  const [count, setCount] = React.useState(3);
   const [running, setRunning] = React.useState(false);
   const [candidates, setCandidates] = React.useState<ScriptAsset[]>([]);
   const [previewId, setPreviewId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  // 接真 LLM（live：POST /material/scripts/ai-draft）。
+  // 接真 LLM（live：POST /material/scripts/ai-draft）。每次只起 1 稿，不满意可重新生成。
   // 失败不静默兜底：把后端的明确报错（token 未配 / prompt 未配 / 模型异常）展示出来。
   // USE_MOCK 模式后端不被调用，aiDraftScripts 返回 [] → 用本地占位池 aiCandidates。
   const run = async () => {
@@ -473,14 +470,14 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
         tone,
         audience: [audience],
         duration_sec: 38,
-        count,
+        count: 1,
       });
-      const list = next.length ? next : aiCandidates(product, count); // 空仅出现在 USE_MOCK
-      setCandidates(list);
+      const list = next.length ? next : aiCandidates(product, 1); // 空仅出现在 USE_MOCK
+      setCandidates(list.slice(0, 1));
       setPreviewId(list[0]?.id ?? null);
       setStage("results");
     } catch (e) {
-      setError((e as Error)?.message || "AI 起稿失败，请稍后重试");
+      setError(errorMessage(e, "AI 起稿失败，请稍后重试"));
     } finally {
       setRunning(false);
     }
@@ -497,7 +494,7 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
             </div>
             <div>
               <div style={{ fontSize: 16, color: "var(--fg-0)", fontWeight: 600 }}>AI 生成脚本</div>
-              <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2 }}>配置参数 · 智能体起 N 稿候选 · 点击预览 / 应用</div>
+              <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2 }}>选风格与受众 · 智能体起 1 稿 · 不满意可重新生成</div>
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -517,20 +514,16 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
                 ))}
               </div>
             </div>
-            <div>
-              <Eyebrow style={{ marginBottom: 8 }}>起稿数量 · {count} 稿</Eyebrow>
-              <Seg value={count} onChange={setCount} options={[2, 3, 4, 5].map((n) => ({ value: n, label: `${n} 稿` }))} />
-            </div>
           </div>
           {error && (
-            <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: "var(--radius-sm)", background: hexA("#ff5b8a", "0d"), border: `1px solid ${hexA("#ff5b8a", "44")}`, color: "var(--danger)", fontSize: 12, lineHeight: 1.6 }}>
-              <strong style={{ fontWeight: 600 }}>AI 起稿失败：</strong>{error}
+            <div style={{ marginTop: 16 }}>
+              <AiErrorNotice title="AI 起稿失败" message={error} onRetry={run} />
             </div>
           )}
           <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <Button variant="ghost" onClick={onClose}>取消</Button>
             <Button variant="accent" onClick={run} disabled={running}>
-              <Wand2 size={13} /> {running ? "生成中…" : error ? "重试" : `起 ${count} 稿`}
+              <Wand2 size={13} /> {running ? "生成中…" : error ? "重试" : "生成脚本"}
             </Button>
           </div>
         </div>
