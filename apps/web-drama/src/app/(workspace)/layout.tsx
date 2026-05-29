@@ -55,6 +55,7 @@ const GROUPS: NavGroup[] = [
       { href: "/forge", icon: Sparkles, label: "形象锻造炉" },
       { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
       { href: "/scripts", icon: PenTool, label: "脚本工坊" },
+      { href: "/short-drama", icon: Clapperboard, label: "短剧生成" },
       { href: "/projects", icon: Film, label: "项目流水线" },
     ],
   },
