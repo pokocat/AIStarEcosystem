@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import { useRouter, usePathname } from "next/navigation";
-import type { AepUser } from "@ai-star-eco/types/account";
+import type { AepUser, SubProduct } from "@ai-star-eco/types/account";
 import {
   getAuthToken,
   registerUnauthorizedHandler,
@@ -21,6 +21,15 @@ import * as AccountApi from "./api/account";
 interface AuthState {
   user: AepUser | null;
   loading: boolean;
+  /** v0.43+: 本子产品 key（由 AuthProvider.requiredPlatform 注入）；未配置时为 null。 */
+  platform: SubProduct | null;
+  /**
+   * v0.43+: 当前账号是否可访问本子产品平台。
+   * - 未配置 requiredPlatform → 恒 true（不做隔离）
+   * - 未登录 / 加载中 → false（交由各页面的登录跳转处理）
+   * - 已登录：账号 platforms 含本平台才为 true（platforms 缺失时宽松放行）
+   */
+  hasPlatformAccess: boolean;
   loginAs: (username?: string) => Promise<AepUser>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -35,6 +44,8 @@ export interface AuthProviderProps {
   publicPathPrefixes?: string[];
   /** 未登录或 401 后跳转的路径。默认 "/login"。 */
   loginPath?: string;
+  /** v0.43+: 本子产品 key（music / drama / celebrity）。配置后启用平台访问隔离。 */
+  requiredPlatform?: SubProduct;
 }
 
 const DEFAULT_PUBLIC_PREFIXES = ["/login", "/activate", "/"];
@@ -43,6 +54,7 @@ export function AuthProvider({
   children,
   publicPathPrefixes = DEFAULT_PUBLIC_PREFIXES,
   loginPath = "/login",
+  requiredPlatform,
 }: AuthProviderProps) {
   const [user, setUser] = React.useState<AepUser | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -108,7 +120,23 @@ export function AuthProvider({
     router.replace(loginPath);
   }, [router, loginPath]);
 
-  const value: AuthState = { user, loading, loginAs, logout, refresh: loadMe };
+  const hasPlatformAccess = React.useMemo(() => {
+    if (!requiredPlatform) return true;
+    if (!user) return false;
+    // platforms 缺失（老后端 / 未回填）→ 宽松放行，避免误锁。
+    if (!user.platforms || user.platforms.length === 0) return true;
+    return user.platforms.includes(requiredPlatform);
+  }, [requiredPlatform, user]);
+
+  const value: AuthState = {
+    user,
+    loading,
+    platform: requiredPlatform ?? null,
+    hasPlatformAccess,
+    loginAs,
+    logout,
+    refresh: loadMe,
+  };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

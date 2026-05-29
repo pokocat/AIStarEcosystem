@@ -116,6 +116,7 @@ public class SmsAuthController {
         String licenseKey = body.get("licenseKey");
         String studioName = body.get("studioName");
         String displayName = body.get("displayName");
+        String platform = body.get("platform"); // v0.43+: 注册来源子产品（music/drama/celebrity）
 
         String trimmedPhone = phone == null ? null : phone.trim();
         if (licenseKey == null || licenseKey.isBlank()) {
@@ -139,6 +140,9 @@ public class SmsAuthController {
         activateBody.put("username", "phone_" + trimmedPhone);
         activateBody.put("displayName", (displayName == null || displayName.isBlank()) ? studioName : displayName);
         activateBody.put("studioName", studioName);
+        if (platform != null && !platform.isBlank()) {
+            activateBody.put("platform", platform.trim());
+        }
 
         Map<String, Object> activated = licenseService.activate(activateBody);
 

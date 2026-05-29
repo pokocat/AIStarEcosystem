@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useAuth, PublishJobApi } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
+import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import {
   Avatar,
   Button,
@@ -495,6 +496,27 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
+  const { user, hasPlatformAccess } = useAuth();
+
+  // v0.43+：平台访问隔离 —— 已登录但账号未开通「AI 明星带货」时拦截（未登录由 AuthProvider 跳登录）。
+  if (user && !hasPlatformAccess) {
+    return (
+      <PlatformAccessDenied
+        appName="AI 明星带货"
+        theme={{
+          bg: "var(--bg-0)",
+          surface: "#ffffff",
+          fg: "var(--fg-0)",
+          fgMuted: "var(--fg-2)",
+          accent: "var(--accent)",
+          accentFg: "#ffffff",
+          border: "var(--line)",
+          radius: "var(--radius-lg)",
+        }}
+      />
+    );
+  }
+
   return (
     <CelebrityShellProvider>
       <Shell>{children}</Shell>

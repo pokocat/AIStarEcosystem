@@ -72,6 +72,12 @@ aep:
     credits-per-100-tokens: ${AEP_LLM_CREDITS_PER_100_TOKENS:1}
   dev-auth:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
+  # v0.43+ 子产品平台访问隔离（music / drama / celebrity）。
+  #   true  → 任意注册入口授予全部子产品（一处注册，三端可用）。开发 / 联调默认。
+  #   false → 注册只授予来源子产品（前端登录页透传 platform）；其余子产品需另行开通。
+  # 访问拦截在前端按 /api/me 返回的 platforms 判断；后端只负责注册时授予哪些平台。
+  platform:
+    dev-grant-all: ${AEP_PLATFORM_DEV_GRANT_ALL:true}
   assets:
     video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}
   mixcut:

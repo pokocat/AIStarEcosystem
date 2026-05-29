@@ -45,6 +45,7 @@ public class LicenseActivationService {
     private final LedgerEntryRepository ledgerRepo;
     private final StudioRepository studioRepo;
     private final JwtUtil jwtUtil;
+    private final PlatformAccessService platformAccessService;
 
     public LicenseActivationService(LicenseKeyRepository keyRepo,
                                      LicenseBatchRepository batchRepo,
@@ -54,7 +55,8 @@ public class LicenseActivationService {
                                      WalletRepository walletRepo,
                                      LedgerEntryRepository ledgerRepo,
                                      StudioRepository studioRepo,
-                                     JwtUtil jwtUtil) {
+                                     JwtUtil jwtUtil,
+                                     PlatformAccessService platformAccessService) {
         this.keyRepo = keyRepo;
         this.batchRepo = batchRepo;
         this.userRepo = userRepo;
@@ -64,6 +66,7 @@ public class LicenseActivationService {
         this.ledgerRepo = ledgerRepo;
         this.studioRepo = studioRepo;
         this.jwtUtil = jwtUtil;
+        this.platformAccessService = platformAccessService;
     }
 
     @Transactional
@@ -114,6 +117,10 @@ public class LicenseActivationService {
         }
         Studio.StudioKind studioKind = parseStudioKind(body.get("studioKind"));
 
+        // v0.43+: 子产品平台授权。注册来源平台由 body.platform 透传（music/drama/celebrity）；
+        // 开发态 dev-grant-all=true 时无视来源直接授予全部平台（一处注册三端可用）。
+        String grantedPlatforms = platformAccessService.grantedCsvForNewUser(body.get("platform"));
+
         AepUser user = AepUser.builder()
                 .id(UUID.randomUUID().toString())
                 .username(username)
@@ -122,6 +129,7 @@ public class LicenseActivationService {
                 .displayName(body.get("displayName"))
                 .kind(AepUser.AccountKind.STUDIO)
                 .status(AepUser.UserStatus.ACTIVE)
+                .platforms(grantedPlatforms)
                 .emailVerified(false)
                 .phoneVerified(false)
                 .createdAt(now)

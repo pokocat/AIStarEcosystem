@@ -94,6 +94,8 @@ export interface SmsRegisterPayload {
   licenseKey: string;
   studioName: string;
   displayName?: string;
+  /** v0.43+: 注册来源子产品（music/drama/celebrity）。后端据此授予平台访问权（dev 全授予）。 */
+  platform?: string;
 }
 
 export interface SmsRegisterResult {

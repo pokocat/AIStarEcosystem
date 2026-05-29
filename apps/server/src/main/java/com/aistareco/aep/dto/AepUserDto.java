@@ -1,8 +1,10 @@
 package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.AepUser;
+import com.aistareco.aep.service.PlatformSupport;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 
 public record AepUserDto(
@@ -18,6 +20,8 @@ public record AepUserDto(
         String status,
         /** v0.31+: 内嵌运营角色（"operator" / "super_admin" / null）。详见 AepUser.operatorRole。 */
         String operatorRole,
+        /** v0.43+: 可访问的子产品平台（["music","drama","celebrity"] 子集）。空配置回落为全集。 */
+        List<String> platforms,
         boolean emailVerified,
         boolean phoneVerified,
         String langPreference,
@@ -32,6 +36,7 @@ public record AepUserDto(
                 u.getBio(),
                 lower(u.getKind()), lower(u.getStatus()),
                 lower(u.getOperatorRole()),
+                PlatformSupport.effective(u.getPlatforms()),
                 u.isEmailVerified(), u.isPhoneVerified(), u.getLangPreference(),
                 u.getCreatedAt(), u.getUpdatedAt(), u.getLastLoginAt()
         );

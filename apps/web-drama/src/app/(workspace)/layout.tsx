@@ -29,6 +29,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
+import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
 
 interface NavItem {
@@ -458,6 +459,27 @@ function Topbar() {
 }
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
+  const { user, hasPlatformAccess } = useAuth();
+
+  // v0.43+：平台访问隔离 —— 已登录但账号未开通「AI 短剧」时拦截（未登录由 AuthProvider 跳登录）。
+  if (user && !hasPlatformAccess) {
+    return (
+      <PlatformAccessDenied
+        appName="AI 短剧"
+        theme={{
+          bg: "var(--bg-0)",
+          surface: "var(--bg-1)",
+          fg: "var(--fg-0)",
+          fgMuted: "var(--fg-2)",
+          accent: "var(--accent)",
+          accentFg: "#1a1410",
+          border: "var(--line)",
+          radius: "var(--radius-lg)",
+        }}
+      />
+    );
+  }
+
   return (
     <div
       style={{
