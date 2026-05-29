@@ -39,10 +39,12 @@ export interface ScriptBlock {
   label: string;
   /** 时长（秒），对齐 Scene.durationSec */
   dur: number;
-  /** 口播 / 旁白 / 字幕，对齐 Scene.dialogue */
+  /** 字幕 / 口播语音（要念出来、显示为字幕的台词；会用于 TTS 配音 + 字幕条） */
   text: string;
-  /** 镜头/画面指令，对齐 Scene.action + cameraMotion */
+  /** 脚本 / 画面 / 分镜（这一镜画面里发生什么、怎么拍：场景/动作/运镜/产品出现） */
   shot: string;
+  /** 是否为该镜生成字幕 / 口播语音（默认生成；取消则该镜为纯画面，无配音/字幕） */
+  genVoice?: boolean;
 }
 
 export interface ScriptMetrics {

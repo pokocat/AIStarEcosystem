@@ -19,6 +19,9 @@ import { Eyebrow, Tag, TierBadge, ProductThumb, hexA } from "./shared";
 
 const SHOT_KINDS: ShotKind[] = ["hook", "scene", "emotion", "product", "effect", "cta"];
 
+// 画面 / 分镜快捷填入（追加到 shot 字段）。
+const SHOT_QUICK_FILLS = ["近景", "中景", "远景", "特写", "跟拍", "主播出镜", "产品特写", "使用过程", "前后对比", "场景转换"];
+
 export function WorkshopScreen({
   draft,
   setDraft,
@@ -412,51 +415,74 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
           </div>
         </div>
 
-        {/* body：脚本是主编辑面（台词，更宽更高），字幕为次要/选填（更窄） */}
+        {/* body：脚本=画面/分镜（主，更宽，含快捷填入）；字幕=口播语音（可勾选是否生成配音/字幕） */}
         <div style={{ padding: "14px 16px", display: "grid", gridTemplateColumns: "minmax(0, 1.9fr) minmax(0, 1fr)", gap: 18 }}>
+          {/* 脚本 · 画面 / 分镜 —— 描述视频内容（拍什么、怎么拍） */}
           <div>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-              <Eyebrow>脚本 · 口播 / 旁白</Eyebrow>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)", fontVariantNumeric: "tabular-nums" }}>
-                {block.text.length} 字 · 约 {Math.ceil(block.text.length / 4)}s 口播
-              </span>
-            </div>
+            <Eyebrow style={{ marginBottom: 8 }}>脚本 · 画面 / 分镜</Eyebrow>
             <BannedTextarea
-              value={block.text}
-              onChange={(v) => onUpdate({ text: v })}
-              placeholder={index === 0 ? "前 3 秒就要勾住观众…试试反差、提问、身份共鸣" : "把这一镜的台词写下来…"}
-              flagged={flagged}
-              onFlaggedClick={(w) => setPickedWord(w)}
+              value={block.shot}
+              onChange={(v) => onUpdate({ shot: v })}
+              placeholder={index === 0 ? "开场画面：场景 / 人物 / 怎么拍（如：近景，主播面对镜头提问）…" : "这一镜画面里发生什么、怎么拍：场景 / 人物动作 / 运镜景别 / 产品如何出现…"}
               minHeight={104}
             />
-            {pickedWord && (
-              <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: "var(--radius-md)", background: hexA("#ff5b8a", "0d"), border: `1px solid ${hexA("#ff5b8a", "44")}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <TriangleAlert size={12} color="var(--danger)" />
-                <span style={{ fontSize: 11, color: "var(--fg-1)" }}>
-                  替换 <strong style={{ color: "var(--danger)" }}>「{pickedWord}」</strong> →
-                </span>
-                {(WORD_SUGGESTIONS[pickedWord] ?? ["请人工修改"]).map((s) => (
-                  <button key={s} onClick={() => { onUpdate({ text: block.text.split(pickedWord).join(s) }); setPickedWord(null); }} style={{ padding: "3px 9px", borderRadius: "var(--radius-sm)", fontSize: 11, background: hexA("#22b59a", "1f"), color: "var(--extra-teal)", border: `1px solid ${hexA("#22b59a", "44")}`, cursor: "pointer" }}>
-                    {s}
-                  </button>
-                ))}
-                <button onClick={() => setPickedWord(null)} style={{ marginLeft: "auto", background: "transparent", border: 0, color: "var(--fg-3)", cursor: "pointer", fontSize: 11 }}>忽略</button>
-              </div>
-            )}
-          </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 8 }}>
-              <Eyebrow>字幕 · 画面文字</Eyebrow>
-              <span style={{ fontSize: 10, color: "var(--fg-3)" }}>选填</span>
-            </div>
-            <BannedTextarea value={block.shot} onChange={(v) => onUpdate({ shot: v })} placeholder="画面上的花字 / 字幕条…" minHeight={56} small />
             <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {["同期声", "标题花字", "重点强调", "字幕条", "弹幕样式"].map((t) => (
+              {SHOT_QUICK_FILLS.map((t) => (
                 <button key={t} onClick={() => onUpdate({ shot: block.shot ? `${block.shot} · ${t}` : t })} style={{ padding: "2px 7px", borderRadius: "var(--radius-sm)", fontSize: 10, background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line)", cursor: "pointer", fontFamily: "var(--font-mono)" }}>
                   + {t}
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 字幕 · 口播语音 —— 要念出来、显示为字幕的台词；可勾选是否生成 */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
+              <Eyebrow>字幕 · 口播语音</Eyebrow>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--fg-2)", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}>
+                <input
+                  type="checkbox"
+                  checked={block.genVoice !== false}
+                  onChange={(e) => onUpdate({ genVoice: e.target.checked })}
+                  style={{ accentColor: "var(--accent)", width: 12, height: 12 }}
+                />
+                生成配音/字幕
+              </label>
+            </div>
+            {block.genVoice !== false ? (
+              <>
+                <BannedTextarea
+                  value={block.text}
+                  onChange={(v) => onUpdate({ text: v })}
+                  placeholder={index === 0 ? "前 3 秒就要勾住观众的台词…试试反差、提问、身份共鸣" : "这一镜要念出来 / 显示为字幕的话…"}
+                  flagged={flagged}
+                  onFlaggedClick={(w) => setPickedWord(w)}
+                  minHeight={72}
+                  small
+                />
+                <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)", fontVariantNumeric: "tabular-nums" }}>
+                  {block.text.length} 字 · 约 {Math.ceil(block.text.length / 4)}s 口播
+                </div>
+                {pickedWord && (
+                  <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: "var(--radius-md)", background: hexA("#ff5b8a", "0d"), border: `1px solid ${hexA("#ff5b8a", "44")}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <TriangleAlert size={12} color="var(--danger)" />
+                    <span style={{ fontSize: 11, color: "var(--fg-1)" }}>
+                      替换 <strong style={{ color: "var(--danger)" }}>「{pickedWord}」</strong> →
+                    </span>
+                    {(WORD_SUGGESTIONS[pickedWord] ?? ["请人工修改"]).map((s) => (
+                      <button key={s} onClick={() => { onUpdate({ text: block.text.split(pickedWord).join(s) }); setPickedWord(null); }} style={{ padding: "3px 9px", borderRadius: "var(--radius-sm)", fontSize: 11, background: hexA("#22b59a", "1f"), color: "var(--extra-teal)", border: `1px solid ${hexA("#22b59a", "44")}`, cursor: "pointer" }}>
+                        {s}
+                      </button>
+                    ))}
+                    <button onClick={() => setPickedWord(null)} style={{ marginLeft: "auto", background: "transparent", border: 0, color: "var(--fg-3)", cursor: "pointer", fontSize: 11 }}>忽略</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ padding: "14px 12px", borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px dashed var(--line-2)", fontSize: 11, color: "var(--fg-3)", textAlign: "center" }}>
+                该镜为纯画面 · 不生成配音 / 字幕
+              </div>
+            )}
           </div>
         </div>
       </div>

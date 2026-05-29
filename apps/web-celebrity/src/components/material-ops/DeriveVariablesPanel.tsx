@@ -8,6 +8,7 @@ import { Plus, Trash2, X, ChevronRight, FlaskConical, ArrowRight, Shuffle, ListP
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Button } from "@/components/creator";
 import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
+import { AiThinking } from "@/components/common/ai-thinking";
 import { MaterialOpsApi } from "@/api";
 import { MATERIAL_PRODUCTS } from "@/mocks/material-ops";
 import type { ScriptAsset, ScriptVariable, VariantSample } from "./types";
@@ -105,7 +106,7 @@ export function DeriveVariablesPanel({
         {/* 变量 tabs */}
         <div style={{ padding: "12px 20px 0", display: "flex", alignItems: "center", gap: 8 }}>
           <Eyebrow>AI 提取的变量 · {variables.length}</Eyebrow>
-          {aiLoading && <span style={{ fontSize: 10, color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}>识别中…</span>}
+          {aiLoading && <AiThinking compact stages={["读取脚本…", "识别可替换变量…", "生成候选替换值…"]} />}
           <span style={{ flex: 1 }} />
           <button onClick={addVariable} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--extra-teal)", background: "transparent", border: 0, cursor: "pointer", padding: "0 0 8px" }}>
             <ListPlus size={11} /> 自定义变量

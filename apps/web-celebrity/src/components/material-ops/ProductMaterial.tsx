@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
+import { AiThinking } from "@/components/common/ai-thinking";
 import { Card, Button } from "@/components/creator";
 import { MaterialOpsApi, ProductsApi } from "@/api";
 import { MATERIAL_PRODUCTS, getScript } from "@/mocks/material-ops";
@@ -427,9 +428,15 @@ function VideoLibraryView({
             </div>
           </div>
           {canExtract && (
-            <Button variant="secondary" size="sm" onClick={extractSelling} disabled={extracting} style={{ flexShrink: 0 }}>
-              <Sparkles size={12} /> {extracting ? "提取中…" : "AI 提取卖点"}
-            </Button>
+            extracting ? (
+              <div style={{ flexShrink: 0 }}>
+                <AiThinking compact stages={["读取商品信息…", "提炼卖点…", "整理输出…"]} />
+              </div>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={extractSelling} style={{ flexShrink: 0 }}>
+                <Sparkles size={12} /> AI 提取卖点
+              </Button>
+            )
           )}
         </div>
         {extractError && (
