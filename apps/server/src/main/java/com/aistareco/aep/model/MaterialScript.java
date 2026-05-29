@@ -48,6 +48,15 @@ public class MaterialScript {
     @Builder.Default
     private int ord = 0;
 
+    /**
+     * 归属人（AepUser.id）。
+     *  - 个人脚本（kind=my_script）：= created_by，仅本人可见。
+     *  - 共享脚本（template / viral_clone / ai_seed）：null，全员可见。
+     * 列表按「ownerUserId IS NULL OR = 当前用户」过滤。
+     */
+    @Column(name = "owner_user_id")
+    private String ownerUserId;
+
     /** 完整 ScriptAsset JSON（snake_case 字段，前端直接消费）。 */
     @Lob
     @Column(name = "payload_json", columnDefinition = "LONGTEXT", nullable = false)
