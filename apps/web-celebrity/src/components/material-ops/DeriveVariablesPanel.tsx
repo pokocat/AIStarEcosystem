@@ -31,18 +31,21 @@ export function DeriveVariablesPanel({
   const [variables, setVariables] = React.useState<ScriptVariable[]>(() => extractVariablesFromScript(script));
   const [activeVar, setActiveVar] = React.useState(variables[0]?.id);
   const [aiLoading, setAiLoading] = React.useState(false);
+  // AI 失败不静默：保留正则结果可继续用，但把后端的明确报错亮出来（token / prompt 未配等）。
+  const [aiError, setAiError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
     setAiLoading(true);
+    setAiError(null);
     MaterialOpsApi.extractScriptVariables(script.id)
       .then((vars) => {
         if (cancelled || !vars.length) return;
         setVariables(vars);
         setActiveVar(vars[0]?.id);
       })
-      .catch(() => {
-        /* 失败保留正则结果 */
+      .catch((e: unknown) => {
+        if (!cancelled) setAiError((e as Error)?.message || "AI 变量识别失败");
       })
       .finally(() => {
         if (!cancelled) setAiLoading(false);
@@ -107,6 +110,12 @@ export function DeriveVariablesPanel({
             <ListPlus size={11} /> 自定义变量
           </button>
         </div>
+        {aiError && (
+          <div style={{ margin: "0 20px 10px", padding: "8px 10px", borderRadius: "var(--radius-sm)", background: hexA("#f0a83a", "0f"), border: `1px solid ${hexA("#f0a83a", "44")}`, color: "var(--warning, #b97e12)", fontSize: 11, lineHeight: 1.6 }}>
+            <strong style={{ fontWeight: 600 }}>AI 变量识别未生效：</strong>{aiError}
+            <div style={{ color: "var(--fg-3)", marginTop: 2 }}>当前显示规则兜底结果，可继续编辑。</div>
+          </div>
+        )}
         <div style={{ padding: "10px 20px", borderBottom: "1px solid var(--line)", display: "flex", flexWrap: "wrap", gap: 5 }}>
           {variables.map((v) => {
             const isA = activeVar === v.id;

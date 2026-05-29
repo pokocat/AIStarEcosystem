@@ -40,7 +40,7 @@
 1. **不引 agent 系统**：三件均为单轮「prompt 进 → 结构化 JSON 出」，无工具/多步/记忆需求。引 Dify/FastGPT/LangChain 会与现有 `AiModelProvider` 网关重复造轮子、双份运维。
 2. **复用现成网关**：所有 LLM 调用唯一入口 = `AiModelInvocationService.invokeChat(purpose, messages)`；provider 选择/fallback/加密/计费全部沿用。
 3. **prompt 真源在 DB**：每个能力的 **system + user 模板都存 `prompt_template` 表**（见 §6），运营可在 admin 改 / 灰度 / 回滚，无需改代码或重启；server 代码只负责把业务参数填进 `{{占位符}}`。前端只传业务参数，不传 prompt/模型。
-4. **永远可降级**：provider 未配 / 调用失败 / JSON 解析失败 → 回退到现有占位（mock 文案 / 正则），HTTP 仍 200，前端无感。
+4. **不静默兜底，配置问题要可见**（按用户要求，v0.40 修订）：provider 未配 / prompt 未配 / 调用失败（含 token 无效 401/403）/ JSON 解析失败 → 抛带 code 的明确错误（`AI_NOT_CONFIGURED` / `PROMPT_NOT_CONFIGURED` / `AI_CALL_FAILED` / `AI_BAD_OUTPUT`），前端展示出来，便于定位「token / prompt 未配」等配置问题。脚本起稿 / 卖点提取为阻塞式报错（不再自动用占位池/模板）；变量抽取保留正则结果可继续用，但显式警示 AI 未生效。`USE_MOCK` 前端模式不打后端、自有本地占位池/正则，与此无关。
 5. **加性变更**：新增 purpose 与端点，不动现有 `invokeChat`、不动其他 purpose 的调用方。
 
 ---
@@ -60,7 +60,7 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
                               ② PromptService.resolve(key) 取 system+user 模板（DB，见 §6）→ 填业务参数
                               ③ invokeChat(purpose, messages) ───────────────▶ /chat/completions
                               ④ 解析 JSON → 校验(Jackson→record)              ◀──────────────
-                              ⑤ 不合法 → 带错误重试 1 次；再失败 → 占位兜底
+                              ⑤ 不合法 → 带错误重试 1 次；再失败 → 抛 AI_BAD_OUTPUT（不静默兜底）
                               ⑥ (可选) Langfuse 记录 in/out/token/耗时
                                     │
                               复用：AiModelProvider(purpose路由) · AepCryptoUtil · CreditService
@@ -205,17 +205,20 @@ resolve(promptKey) →
 
 ---
 
-## 8. 降级与容错矩阵
+## 8. 错误与容错矩阵（v0.40：不静默兜底，配置问题可见）
 
-| 情况 | 行为 |
-|---|---|
-| 无对应 purpose 的启用 provider | `invokeChat` 抛「没有可用 provider」→ `MaterialAiService` catch → 返回占位 + WARN（提示去 `/platform/ai-models` 配） |
-| provider 5xx | `invokeChat` 已自动 fallback 到次高 priority |
-| 调用超时 / 网络错 | catch → 占位兜底 |
-| JSON 解析/校验失败 | 重试 1 次 → 仍失败则占位兜底 |
-| `USE_MOCK=1`（前端无后端） | 前端走本地占位（aiCandidates/正则/模板），与今天一致 |
+| 情况 | 行为 | 错误码 / HTTP |
+|---|---|---|
+| 无对应 purpose 的启用 provider | `MaterialAiService.ensureConfigured` 先判 `invocation.hasProviderFor` → 抛明确错误（提示去 `/platform/ai-models` 配该用途 + 有效 Key） | `AI_NOT_CONFIGURED` / 503 |
+| prompt 模板缺失（DB 无 + resource 无 → 仅代码兜底） | `ensureConfigured` 判 `resolved.origin()=="code"` → 抛（提示去 Prompt 管理） | `PROMPT_NOT_CONFIGURED` / 503 |
+| provider 调用失败（含 token 无效 401/403、网络、5xx fallback 用尽） | `invokeChat` 抛 → `MaterialAiService` 包成明确错误（401/403 附「API Key 可能无效」提示） | `AI_CALL_FAILED` / 502 |
+| JSON 解析失败 | 自修复重试 1 次 → 仍失败抛 | `AI_BAD_OUTPUT` / 502 |
+| 校验后无有效结果（脚本镜头/字段、卖点为空） | 抛 | `AI_BAD_OUTPUT` / 502 |
+| 变量抽取失败 | 后端抛上述错误；**前端 catch 后保留正则结果可继续用 + 显式警示** AI 未生效 | （前端非阻塞） |
+| 变量抽取返回空（模型确实没找到） | 合法，返回 `[]`，不报错 | 200 |
+| `USE_MOCK=1`（前端无后端） | 前端走本地占位（aiCandidates/正则），不打后端，与此无关 | — |
 
-**原则：AI 失败绝不让用户流程中断**——降级到占位即可，体验退化但不报错。
+**原则（v0.40 按用户要求修订）：配置/调用/解析失败不静默吞掉**——把带 code 的明确报错透传到前端，便于一眼看出「token 未配 / prompt 未配 / 模型不行」。脚本起稿 / 卖点提取为阻塞式报错（不再自动用占位池）；变量抽取保留正则兜底但显式提示 AI 未生效。前端 `apiFetch` 把错误包成 `ApiError`（`.code` / `.message`）。
 
 ---
 
@@ -284,8 +287,8 @@ resolve(promptKey) →
 
 ## 15. 风险 / 待决
 
-- **provider 未配则全降级**：上线前需在 `/platform/ai-models` 配好带 `SCRIPT_DRAFT/SELLING_POINTS/VARIABLE_EXTRACT` purpose 的 provider + 真 apiKey（模型 id 用「获取模型列表」选真实 id）。
-- **JSON 稳定性**：弱模型可能频繁触发重试/兜底 → 建议这几件用稍强的模型（如 DeepSeek-V3 / 豆包 pro 级）。
+- **provider 未配 → 明确报错（不降级）**：上线前需在 `/platform/ai-models` 配好带 `SCRIPT_DRAFT/SELLING_POINTS/VARIABLE_EXTRACT` purpose 的 provider + 真 apiKey（模型 id 用「获取模型列表」选真实 id）。未配时前端会直接显示 `AI_NOT_CONFIGURED` 报错（这正是 v0.40 想要的：配置问题可见，不被占位掩盖）。
+- **JSON 稳定性**：弱模型可能频繁触发重试/报错 → 建议这几件用稍强的模型（如 DeepSeek-V3 / 豆包 pro 级）。
 - **成本/并发**：脚本生成 N 稿 = N 段长输出；批量与配额需观察（`invokeChat` 已有 fallback，但无限流，必要时加节流）。
 - **prompt 多实例缓存**：`PromptService` 1min 内存缓存单实例 OK；多实例部署时 admin 改 prompt 后其他实例最多 1min 后才生效（可接受；强一致需 Redis pub/sub，后置）。
 - **prompt seeder 不回填运营改过的行**：bump `SEED_VERSION` 只覆盖 `version==1` 的行；运营手改后想回默认基线需在 admin 手动操作（无自动 diff/merge）。

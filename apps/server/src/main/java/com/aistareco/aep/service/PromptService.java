@@ -67,8 +67,11 @@ public class PromptService {
         this.om = om;
     }
 
-    /** 解析结果：system / user 模板 + 调用参数（params 永不为 null）。 */
-    public record ResolvedPrompt(String system, String userTemplate, PromptParamsDto params) {}
+    /**
+     * 解析结果：system / user 模板 + 调用参数（params 永不为 null）。
+     * origin 标记主内容来源：db（运营落库）/ resource（.md 默认）/ code（最终兜底，视为「prompt 未配置」）。
+     */
+    public record ResolvedPrompt(String system, String userTemplate, PromptParamsDto params, String origin) {}
 
     /** promptKey ↔ AiModelPurpose 映射（文本三件）。 */
     public static String promptKeyFor(AiModelPurpose purpose) {
@@ -114,7 +117,11 @@ public class PromptService {
         PromptParamsDto params = dbParams != null
                 ? dbParams
                 : new PromptParamsDto(null, null, null); // 全 null → 各自取默认
-        return new ResolvedPrompt(system, user, params);
+        // origin：有 db 内容 → db；否则有 resource 内容 → resource；都没有 → code（视为未配置）
+        boolean dbReal = (dbSystem != null && !dbSystem.isBlank()) || (dbUser != null && !dbUser.isBlank());
+        boolean resReal = (resSystem != null && !resSystem.isBlank()) || (resUser != null && !resUser.isBlank());
+        String origin = dbReal ? "db" : (resReal ? "resource" : "code");
+        return new ResolvedPrompt(system, user, params, origin);
     }
 
     /** 读 classpath resources/prompts/material/&lt;key&gt;.md；按首个独占 "---" 行分隔。 */

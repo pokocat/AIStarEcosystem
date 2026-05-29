@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -48,6 +49,12 @@ class MaterialAiE2ETest {
     @Autowired private MaterialAiService materialAi;
 
     @MockBean private AiModelInvocationService invocation;
+
+    @BeforeEach
+    void setUp() {
+        // 默认「已配置 provider」，个别测试再覆盖为 false。
+        when(invocation.hasProviderFor(any())).thenReturn(true);
+    }
 
     private AiModelInvocationService.AiModelResponse resp(String content) {
         return new AiModelInvocationService.AiModelResponse(content, "stop", 100L, "fake", "fake-model");
@@ -94,18 +101,30 @@ class MaterialAiE2ETest {
     }
 
     @Test
-    void aiDraft_noProvider_fallsBackToPool() throws Exception {
-        when(invocation.invokeChat(any(), any(), any()))
-                .thenThrow(new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "NO_PROVIDER", "没有可用的 provider"));
+    void aiDraft_noProvider_surfacesConfigError() throws Exception {
+        // 未配置该用途的大模型 provider → 明确 503 + AI_NOT_CONFIGURED（不再静默兜底占位池）
+        when(invocation.hasProviderFor(AiModelPurpose.SCRIPT_DRAFT)).thenReturn(false);
         String body = """
                 {"product_id":"p4","tone":"情感故事","audience":["打工人"],"duration_sec":38,"count":3}
                 """;
         mvc.perform(post("/api/material/scripts/ai-draft").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.length()").value(3))   // 内置占位池 3 条
-                .andExpect(jsonPath("$.data[0].kind").value("ai_seed"))
-                .andExpect(jsonPath("$.data[0].blocks[0].kind").value("hook"));
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value("AI_NOT_CONFIGURED"))
+                .andExpect(jsonPath("$.error.message", org.hamcrest.Matchers.containsString("AI 模型")));
+    }
+
+    @Test
+    void aiDraft_invokeFails_surfacesCallError() throws Exception {
+        // provider 已配但调用失败（如 401 token 无效）→ 502 + AI_CALL_FAILED
+        when(invocation.invokeChat(any(), any(), any()))
+                .thenThrow(new BusinessException(HttpStatus.UNAUTHORIZED, "AI_PROVIDER_HTTP_401", "provider HTTP 401"));
+        String body = """
+                {"product_id":"p4","tone":"情感故事","audience":["打工人"],"duration_sec":38,"count":2}
+                """;
+        mvc.perform(post("/api/material/scripts/ai-draft").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error.code").value("AI_CALL_FAILED"))
+                .andExpect(jsonPath("$.error.message", org.hamcrest.Matchers.containsString("API Key")));
     }
 
     // ── 卖点提取（直接打 MaterialAiService） ──────────────────────────────────────
@@ -118,10 +137,20 @@ class MaterialAiE2ETest {
     }
 
     @Test
-    void sellingPoints_invokeFails_returnsNullForCallerFallback() {
+    void sellingPoints_noProvider_throwsConfigError() {
+        when(invocation.hasProviderFor(AiModelPurpose.SELLING_POINTS)).thenReturn(false);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> materialAi.extractSellingPoints("便携按摩仪", "https://example.com"));
+        assertEquals("AI_NOT_CONFIGURED", ex.getCode());
+    }
+
+    @Test
+    void sellingPoints_invokeFails_throwsCallError() {
         when(invocation.invokeChat(any(), any(), any()))
-                .thenThrow(new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "NO_PROVIDER", "无 provider"));
-        assertNull(materialAi.extractSellingPoints("便携按摩仪", "https://example.com"));
+                .thenThrow(new BusinessException(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_ERROR", "boom"));
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> materialAi.extractSellingPoints("便携按摩仪", "https://example.com"));
+        assertEquals("AI_CALL_FAILED", ex.getCode());
     }
 
     // ── 变量抽取（过滤幻觉） ──────────────────────────────────────────────────────

@@ -207,24 +207,12 @@ public class ProductService {
     }
 
     /**
-     * 卖点抽取：优先真 LLM（MaterialAiService → invokeChat，purpose=SELLING_POINTS）；
-     * provider 未配 / 调用失败 / JSON 解析失败时回退到固定模板串（永远可降级，HTTP 仍 200）。
+     * 卖点抽取：真 LLM（MaterialAiService → invokeChat，purpose=SELLING_POINTS）。
+     * 不静默兜底 —— provider 未配 / prompt 未配 / 调用 / 解析问题由 MaterialAiService 抛
+     * BusinessException（带 code + 明确提示），透传到前端展示，便于定位配置问题。
      */
     public String extractSellingPoints(String name, String link) {
-        try {
-            String ai = materialAi.extractSellingPoints(name, link);
-            if (ai != null && !ai.isBlank()) return ai;
-        } catch (Exception e) {
-            // MaterialAiService 内部已 catch + log；此处再兜一层防御。
-        }
-        return fallbackSellingPoints(name);
-    }
-
-    /** 卖点提取占位兜底（与历史 mock 行为一致）。 */
-    private static String fallbackSellingPoints(String name) {
-        String trimmed = name == null ? "" : name.trim();
-        return trimmed + "：精选优质原料，工艺细节考究；上身/上脸效果显著，"
-                + "用户好评 95%+。日常通勤 / 节日送礼 / 自用囤货皆宜，下单立享平台保障。";
+        return materialAi.extractSellingPoints(name, link);
     }
 
     private static boolean blank(String s) {
