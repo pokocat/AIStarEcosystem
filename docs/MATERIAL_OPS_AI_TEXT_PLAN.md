@@ -1,6 +1,6 @@
 # 素材运营 · 文本类 AI 接入技术方案（Tier 1）
 
-> 状态：**已落地（v0.40，2026-05-29）** —— M1–M4 + 管理页（M1.5）已实现；违禁词 server lint / Langfuse 仍为可选未做
+> 状态：**已落地（v0.40，2026-05-29）** —— M1–M4 + 管理页（M1.5）+ 脚本起稿计费（后端可配置，默认 0）已实现；不静默兜底（配置问题明确报错）；违禁词 server lint / Langfuse 仍为可选未做
 > 范围：脚本 AI 生成 · 卖点提取 · 变量抽取（「文本三件」）+ 顺带的违禁词真扫描
 > last-reviewed：2026-05-29
 > 关联：[`AGENTS.md`](../AGENTS.md) §AI、[`docs/INDEX.md`](INDEX.md)
@@ -226,7 +226,7 @@ resolve(promptKey) →
 
 - **门禁**：卖点提取留在 `/api/admin/products/**`（仅运营）；脚本/变量在 `/api/material/**`（authenticated），私有脚本沿用 owner 校验。
 - **凭据**：provider apiKey 走 `AepCryptoUtil`（已有），不在前端/日志出现。
-- **计费（可选，建议脚本生成做）**：AI 起稿按 `CelebrityActionPricingService` 取单价（新增 action `material.script-draft`）→ `CreditService.hold → commit/release` 三段式（不可变账本约束，CLAUDE.md §4.2）。卖点/变量量小，可暂不计费。
+- **计费（已落地，后端可配置）**：AI 起稿按 `CelebrityActionPricingService` action `material.script-draft` 取单价（admin → 平台与配置 → 引擎价格 → 动作单价表；**默认 0 = 不计费**，运营设单价即开启）。`MaterialOpsService.draftScripts` 走 `CreditService.hold(单价 × 稿数) → 成功 commitHold / 失败 releaseHold` 三段式（不可变账本约束，CLAUDE.md §4.2）；余额不足 → `CreditService` 抛 402，明确报错；`anonymous` 用户不计费。方法标 `@Transactional(NOT_SUPPORTED)`，让 hold/commit 各自独立落账且 LLM HTTP 调用不占 DB 连接。卖点/变量量小，暂不计费。
 
 ---
 
@@ -293,4 +293,5 @@ resolve(promptKey) →
 - **prompt 多实例缓存**：`PromptService` 1min 内存缓存单实例 OK；多实例部署时 admin 改 prompt 后其他实例最多 1min 后才生效（可接受；强一致需 Redis pub/sub，后置）。
 - **prompt seeder 不回填运营改过的行**：bump `SEED_VERSION` 只覆盖 `version==1` 的行；运营手改后想回默认基线需在 admin 手动操作（无自动 diff/merge）。
 - **已决**：prompt（system + user）建 `prompt_template` 表存储、admin 可改（见 §6）。
-- **待决**：脚本生成是否计费、违禁词扫描放前端还是 server、是否现在就接 Langfuse。
+- **已决**：脚本起稿计费已接 `CreditService` 三段式，单价走 `material.script-draft` action（admin 可配，默认 0=不计费，见 §9）。
+- **待决**：违禁词扫描放前端还是 server、是否现在就接 Langfuse。
