@@ -1,12 +1,13 @@
 package com.aistareco.aep.controller;
 
-import com.aistareco.aep.dto.AdminAiModelProviderUpsertDto;
+import com.aistareco.aep.dto.AdminAiModelEndpointUpsertDto;
 import com.aistareco.aep.dto.AiModelDiscoveryRequestDto;
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
-import com.aistareco.aep.dto.AiModelProviderDto;
+import com.aistareco.aep.dto.AiModelEndpointDto;
+import com.aistareco.aep.dto.AiModelEndpointKeyMintedDto;
 import com.aistareco.aep.dto.AiModelProviderPresetDto;
 import com.aistareco.aep.dto.AiModelUsageReportDto;
-import com.aistareco.aep.service.AiModelProviderAdminService;
+import com.aistareco.aep.service.AiModelEndpointAdminService;
 import com.aistareco.aep.service.AiModelUsageService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
@@ -16,25 +17,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Admin AI 模型 provider 配置：/api/admin/ai-models/*。v0.5 §D8 新增。
+ * Admin AI 模型接入端点配置：/api/admin/ai-models/*（v0.41，原 AdminAiModelProviderController）。
  *
- * apiKey 永远不在响应中明文返回（DTO 内部脱敏）。
+ * 路由保留 /api/admin/ai-models（admin 鉴权不依赖路径，省 churn）。
+ * 一行端点 = 固定 {上游密钥 + 单模型 + 地址}，并自带网关 Key（mint-key / revoke-key）。
+ * 上游 apiKey / 网关 Key 永远不在响应中明文返回（mint-key 仅一次返回 plaintext）。
  */
 @RestController
 @RequestMapping("/api/admin/ai-models")
-public class AdminAiModelProviderController {
+public class AdminAiModelEndpointController {
 
-    private final AiModelProviderAdminService service;
+    private final AiModelEndpointAdminService service;
     private final AiModelUsageService usageService;
 
-    public AdminAiModelProviderController(AiModelProviderAdminService service,
+    public AdminAiModelEndpointController(AiModelEndpointAdminService service,
                                           AiModelUsageService usageService) {
         this.service = service;
         this.usageService = usageService;
     }
 
     @GetMapping
-    public ApiResponse<List<AiModelProviderDto>> list() {
+    public ApiResponse<List<AiModelEndpointDto>> list() {
         return ApiResponse.of(service.list());
     }
 
@@ -60,7 +63,7 @@ public class AdminAiModelProviderController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<AiModelProviderDto> get(@PathVariable String id) {
+    public ApiResponse<AiModelEndpointDto> get(@PathVariable String id) {
         return ApiResponse.of(service.get(id));
     }
 
@@ -73,13 +76,13 @@ public class AdminAiModelProviderController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<AiModelProviderDto> create(@RequestBody AdminAiModelProviderUpsertDto req) {
+    public ApiResponse<AiModelEndpointDto> create(@RequestBody AdminAiModelEndpointUpsertDto req) {
         return ApiResponse.of(service.create(req));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<AiModelProviderDto> update(@PathVariable String id,
-                                                    @RequestBody AdminAiModelProviderUpsertDto req) {
+    public ApiResponse<AiModelEndpointDto> update(@PathVariable String id,
+                                                  @RequestBody AdminAiModelEndpointUpsertDto req) {
         return ApiResponse.of(service.update(id, req));
     }
 
@@ -94,9 +97,21 @@ public class AdminAiModelProviderController {
         return ApiResponse.of(service.testConnection(id));
     }
 
-    /** 已存 provider：用落库的 apiKey 重新拉取可用模型（前端拉回后保存写入配置）。 */
+    /** 已存端点：用落库的 apiKey 重新拉取可用模型（前端拉回后保存写入配置）。 */
     @PostMapping("/{id}/fetch-models")
     public ApiResponse<AiModelDiscoveryResultDto> fetchModels(@PathVariable String id) {
         return ApiResponse.of(service.fetchModels(id));
+    }
+
+    /** 给端点铸造（或重铸）网关 Key —— 唯一返回明文一次的接口。 */
+    @PostMapping("/{id}/mint-key")
+    public ApiResponse<AiModelEndpointKeyMintedDto> mintKey(@PathVariable String id) {
+        return ApiResponse.of(service.mintKey(id));
+    }
+
+    /** 撤销端点的网关 Key（不删端点）。 */
+    @PostMapping("/{id}/revoke-key")
+    public ApiResponse<AiModelEndpointDto> revokeKey(@PathVariable String id) {
+        return ApiResponse.of(service.revokeKey(id));
     }
 }

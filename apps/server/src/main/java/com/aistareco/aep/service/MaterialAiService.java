@@ -163,11 +163,11 @@ public class MaterialAiService {
 
     private void ensureConfigured(AiModelPurpose purpose, ResolvedPrompt p) {
         String key = PromptService.promptKeyFor(purpose);
-        if (!invocation.hasProviderFor(purpose)) {
-            log.warn("[material-ai] {} key={} 阻断：无启用 provider", purpose.wire(), key);
+        if (!invocation.hasEndpointFor(purpose)) {
+            log.warn("[material-ai] {} key={} 阻断：未绑定可用 AI 模型端点", purpose.wire(), key);
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "未配置「" + purposeLabel(purpose) + "」用途的大模型服务商（promptKey=" + key + "）。请到 管理后台 → "
-                            + "平台与配置 → AI 模型，添加服务商并勾选该用途（含有效 API Key）。");
+                    "未为「" + purposeLabel(purpose) + "」绑定 AI 模型端点（promptKey=" + key + "）。请到 管理后台 → "
+                            + "平台与配置 → AI 模型与 Key → 「AI 应用绑定」为该用途选择一个端点（端点需含有效上游密钥）。");
         }
         if ("code".equals(p.origin())) {
             log.warn("[material-ai] {} key={} 阻断：prompt 仅命中代码兜底（DB/resource 均无）", purpose.wire(), key);
@@ -212,8 +212,8 @@ public class MaterialAiService {
                         "大模型调用失败（" + purposeLabel(purpose) + "，promptKey=" + key + "）：" + e.getMessage());
             }
             String content = resp.content();
-            log.info("[material-ai] {} key={} 收到响应(attempt {}) · provider={} model={} finish={} tokens={} len={}",
-                    purpose.wire(), key, attempt, resp.providerUsed(), resp.modelUsed(),
+            log.info("[material-ai] {} key={} 收到响应(attempt {}) · endpoint={} model={} finish={} tokens={} len={}",
+                    purpose.wire(), key, attempt, resp.endpointUsed(), resp.modelUsed(),
                     resp.finishReason(), resp.tokensUsed(), content == null ? 0 : content.length());
             // finish_reason=length 说明被 max_tokens 截断 → JSON 极可能不完整
             if ("length".equalsIgnoreCase(resp.finishReason())) {

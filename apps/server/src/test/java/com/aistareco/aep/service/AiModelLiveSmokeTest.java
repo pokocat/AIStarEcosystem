@@ -1,9 +1,11 @@
 package com.aistareco.aep.service;
 
-import com.aistareco.aep.model.AiModelProvider;
+import com.aistareco.aep.model.AiAppBinding;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
-import com.aistareco.aep.repository.AiModelProviderRepository;
+import com.aistareco.aep.repository.AiAppBindingRepository;
+import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Assumptions;
@@ -28,7 +30,7 @@ import static org.mockito.Mockito.when;
 /**
  * 真实大模型 smoke / 录制测试 —— 验证「给出可用 AK → 前端的大模型调用能正常 work」。
  *
- * 默认 SKIP（不影响 ./mvnw test）。仅当配齐下列配置（环境变量优先，同名 -D 系统属性兜底）才发起真实调用：
+ * 默认 SKIP（不影响 mvn test）。仅当配齐下列配置（环境变量优先，同名 -D 系统属性兜底）才发起真实调用：
  *
  *   AEP_LLM_TEST_BASE_URL   必填  OpenAI 兼容 base（如 https://dashscope.aliyuncs.com/compatible-mode/v1）
  *   AEP_LLM_TEST_API_KEY    必填  真实 apiKey（仅在本机内存里被 AES-GCM 加密→解密，不落盘、不打印）
@@ -37,12 +39,10 @@ import static org.mockito.Mockito.when;
  *   AEP_LLM_TEST_PROMPT         选填  默认一句自我介绍
  *   AEP_LLM_TEST_RECORD_DIR     选填  录制落盘目录，默认 ./target/llm-recordings/（已在 .gitignore）
  *
- * 调用结果（请求 messages + 解析后的响应，**不含 apiKey**）以 pretty JSON 落盘，供前端联调参照。
- *
  * 跑法：
  *   AEP_LLM_TEST_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 \
  *   AEP_LLM_TEST_API_KEY=sk-xxxx AEP_LLM_TEST_MODEL=qwen-plus \
- *   ./mvnw -Dtest=AiModelLiveSmokeTest test
+ *   mvn -Dtest=AiModelLiveSmokeTest test
  */
 class AiModelLiveSmokeTest {
 
@@ -60,9 +60,14 @@ class AiModelLiveSmokeTest {
         AiModelProviderType type = AiModelProviderType.fromWire(cfgOrDefault("AEP_LLM_TEST_PROVIDER_TYPE", "OPENAI_COMPATIBLE"));
         String prompt = cfgOrDefault("AEP_LLM_TEST_PROMPT", "用一句话介绍你自己，并说明你是哪个模型。");
 
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findByEnabledTrueOrderByPriorityAsc())
-                .thenReturn(List.of(liveProvider("live-chat", baseUrl, apiKey, model, type)));
+        AiModelEndpoint ep = liveEndpoint("live-chat", baseUrl, apiKey, model, type);
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        AiAppBinding binding = new AiAppBinding();
+        binding.setPurpose(AiModelPurpose.GENERAL);
+        binding.setEndpointId(ep.getId());
+        when(bindingRepo.findById(AiModelPurpose.GENERAL)).thenReturn(Optional.of(binding));
+        when(endpointRepo.findById("live-chat")).thenReturn(Optional.of(ep));
 
         List<Map<String, String>> messages = List.of(
                 Map.of("role", "system", "content", "你是一个简洁的中文助手。"),
@@ -73,7 +78,8 @@ class AiModelLiveSmokeTest {
         options.put("max_tokens", 256);
 
         AiModelInvocationService.AiModelResponse resp =
-                new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(AiModelPurpose.GENERAL, messages, options);
+                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class))
+                        .invokeChat(AiModelPurpose.GENERAL, messages, options);
 
         assertNotNull(resp, "response 不应为 null");
         assertNotNull(resp.content(), "content 不应为 null");
@@ -85,7 +91,7 @@ class AiModelLiveSmokeTest {
         response.put("content", resp.content());
         response.put("finishReason", resp.finishReason());
         response.put("tokensUsed", resp.tokensUsed());
-        response.put("providerUsed", resp.providerUsed());
+        response.put("endpointUsed", resp.endpointUsed());
         response.put("modelUsed", resp.modelUsed());
         payload.put("response", response);
 
@@ -105,35 +111,32 @@ class AiModelLiveSmokeTest {
                 "Set AEP_LLM_TEST_BASE_URL / AEP_LLM_TEST_API_KEY to run the live connectivity test");
 
         AiModelProviderType type = AiModelProviderType.fromWire(cfgOrDefault("AEP_LLM_TEST_PROVIDER_TYPE", "OPENAI_COMPATIBLE"));
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findById("live-conn"))
-                .thenReturn(Optional.of(liveProvider("live-conn", baseUrl, apiKey, model, type)));
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        when(endpointRepo.findById("live-conn"))
+                .thenReturn(Optional.of(liveEndpoint("live-conn", baseUrl, apiKey, model, type)));
 
-        Map<String, Object> result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).testConnection("live-conn");
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class))
+                .testConnection("live-conn");
         Path file = record("connection", baseUrl, model, result);
         System.out.println("[AiModelLiveSmokeTest] testConnection result=" + result
                 + " recorded=" + file.toAbsolutePath());
 
-        // 结构性保证：service 要么拿到 HTTP statusCode（baseUrl 可达 + TLS 通），要么明确报 error。
-        // 注意：部分 OpenAI 兼容厂商不提供 GET /v1/models（会 4xx/404），此时 ok=false 但网络是通的；
-        // 真正的可用性判定以 liveChatCompletionReturnsContent 为准。
         assertTrue(result.containsKey("statusCode") || result.containsKey("error"),
                 "testConnection 应返回 statusCode 或 error：" + result);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────
 
-    private static AiModelProvider liveProvider(String id, String baseUrl, String apiKey,
+    private static AiModelEndpoint liveEndpoint(String id, String baseUrl, String apiKey,
                                                 String model, AiModelProviderType type) {
-        return AiModelProvider.builder()
+        return AiModelEndpoint.builder()
                 .id(id)
                 .name(id + "-" + type.wire())
                 .providerType(type)
                 .baseUrl(baseUrl)
-                .apiKeyEncrypted(AepCryptoUtil.encrypt(apiKey))
-                .defaultModel(model)
-                .purposes(List.of(AiModelPurpose.GENERAL.wire()))
-                .priority(1)
+                .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt(apiKey))
+                .model(model)
                 .enabled(true)
                 .build();
     }

@@ -22,6 +22,20 @@ public enum AiModelPurpose {
         return name();
     }
 
+    /** 中文展示名（admin「AI 应用绑定」用）。 */
+    public String label() {
+        return switch (this) {
+            case SCRIPT_DRAFT -> "脚本起草";
+            case SELLING_POINTS -> "卖点提取";
+            case VARIABLE_EXTRACT -> "变量抽取";
+            case VIDEO_GENERATION -> "视频生成";
+            case SAFETY_REVIEW -> "风控复检";
+            case VIDEO_REF_ANALYSIS -> "视频参考分析";
+            case TEMPLATE_REWRITE -> "模板改写";
+            case GENERAL -> "通用";
+        };
+    }
+
     @JsonCreator
     public static AiModelPurpose fromWire(String w) {
         if (w == null) return GENERAL;

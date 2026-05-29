@@ -1,7 +1,7 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.InternalUpstreamDto;
-import com.aistareco.aep.service.AiModelProviderInternalService;
+import com.aistareco.aep.service.AiModelEndpointInternalService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,15 +10,16 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 仅供 apps/llm-gateway 调用。X-Internal-Secret 校验在 InternalAuthFilter 中完成。
+ * 仅供 apps/llm-gateway 调用（v0.41：upstream 由 AiModelEndpoint 派生）。
+ * X-Internal-Secret 校验在 InternalAuthFilter 中完成。
  */
 @RestController
 @RequestMapping("/api/internal/ai-models")
 public class InternalAiModelController {
 
-    private final AiModelProviderInternalService service;
+    private final AiModelEndpointInternalService service;
 
-    public InternalAiModelController(AiModelProviderInternalService service) {
+    public InternalAiModelController(AiModelEndpointInternalService service) {
         this.service = service;
     }
 

@@ -52,8 +52,8 @@ class MaterialAiE2ETest {
 
     @BeforeEach
     void setUp() {
-        // 默认「已配置 provider」，个别测试再覆盖为 false。
-        when(invocation.hasProviderFor(any())).thenReturn(true);
+        // 默认「已绑定端点」，个别测试再覆盖为 false。
+        when(invocation.hasEndpointFor(any())).thenReturn(true);
     }
 
     private AiModelInvocationService.AiModelResponse resp(String content) {
@@ -102,8 +102,8 @@ class MaterialAiE2ETest {
 
     @Test
     void aiDraft_noProvider_surfacesConfigError() throws Exception {
-        // 未配置该用途的大模型 provider → 明确 503 + AI_NOT_CONFIGURED（不再静默兜底占位池）
-        when(invocation.hasProviderFor(AiModelPurpose.SCRIPT_DRAFT)).thenReturn(false);
+        // 未为该用途绑定端点 → 明确 503 + AI_NOT_CONFIGURED（不再静默兜底占位池）
+        when(invocation.hasEndpointFor(AiModelPurpose.SCRIPT_DRAFT)).thenReturn(false);
         String body = """
                 {"product_id":"p4","tone":"情感故事","audience":["打工人"],"duration_sec":38,"count":3}
                 """;
@@ -138,7 +138,7 @@ class MaterialAiE2ETest {
 
     @Test
     void sellingPoints_noProvider_throwsConfigError() {
-        when(invocation.hasProviderFor(AiModelPurpose.SELLING_POINTS)).thenReturn(false);
+        when(invocation.hasEndpointFor(AiModelPurpose.SELLING_POINTS)).thenReturn(false);
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> materialAi.extractSellingPoints("便携按摩仪", "https://example.com"));
         assertEquals("AI_NOT_CONFIGURED", ex.getCode());

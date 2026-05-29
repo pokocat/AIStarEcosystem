@@ -682,6 +682,7 @@ POST /notifications/conversations/{botId}/read-all
      转码 / 抽帧 / NSFW / BGM 检测留给 v0.6
    - DataInitializer 给 5 个模板各 seed 1 份 PUBLISHED TemplateScript（4 text + 1 video_ref）
 6. **§D8 AiModelProvider — 大模型配置**（用户新增）：
+   > **v0.41 起已演进**：`AiModelProvider`（一对多模型/用途 + priority 兜底）改为 `AiModelEndpoint`（固定 {上游密钥 + 单模型 + 地址}，自带网关 Key），用途经独立的 `ai_app_binding`（一用途一端点、无兜底）路由；并合并了旧「LLM 网关 Key」。详见 `apps/server/README.md` v0.41 与 `AGENTS.md` §7 v0.41。
    - 实体 `AiModelProvider`（apiKey 用 AES-GCM 加密落库，密钥从 `AEP_SECRET_KEY`）
    - `AiModelInvocationService` 实现 OPENAI / OPENAI_COMPATIBLE 的 `/chat/completions`，
      其他 providerType（Anthropic / Azure / 月之暗面 / 国产）保留 enum + CRUD 但 invokeChat 抛 501

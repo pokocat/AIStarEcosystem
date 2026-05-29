@@ -1811,42 +1811,62 @@ openapi: +/material/videos/generate + /material/videos/jobs[/{id}]
 - **积分**：单价走 `material.video-generate`（admin 可配，默认 30/条）；hold→commit/release 三段式（不可变账本约束）。失败 / 超时自动退款。
 - **MaterialVideoJob 即视频源**：成功任务直接作为素材库的 ready 卡（带 video_url），不再额外写 MaterialVideo 行；旧的 `/material/videos/batch` + mock localStorage 模拟保留（USE_MOCK / seed 演示）。
 
-### v0.41（2026-05-29）— 大模型用量统计（自建 token 流水）
+### v0.41（2026-05-29）— 合并「AI 模型」+「LLM 网关 Key」为「模型接入端点 + Key」+ AI 应用绑定 + 大模型用量统计
 
-把每次 `/chat/completions` 响应里**已经返回但之前用完即丢**的 `usage`（prompt/completion/total tokens）
-落库聚合，admin 后台「AI 模型配置」页新增「用量统计」卡片。背景：各大模型厂商**没有统一的用量查询
-协议**（OpenAI 用量需 Admin key、火山/阿里走独立签名的计费 OpenAPI），但响应里的 usage 字段对所有
-OpenAI 兼容 provider 通用，因此自建流水是最稳的通用方案，也符合本仓「账本式只追加」的设计哲学。
+把 admin 两个割裂入口（`/platform/ai-models` 服务商 / `/platform/llm-keys` 网关 Key）合并为**一个**「AI 模型与 Key」入口（双 Tab）。模型配置从「服务商（一对多模型/用途 + priority 兜底）」改成「**固定模型接入端点** = {上游密钥 + 单模型 + 地址}，端点自带网关 Key」；每个 **AI 应用（用途）固定绑一个端点**，前端用 AI 时经绑定路由到对应模型。
+
+**核心设计决策**（用户确认）：
+- **两层，端点自带 Key**：折叠旧 `LlmApiKey` 进端点（`sk-aep-*` 的 prefix/hash/usage/ownerUserId 落到 `ai_model_providers`）。
+- **一用途一端点，无兜底**：废弃 `purposes` 过滤 + `priority` + 5xx fallback。
+- **统一 Key 概念**：同一 Key 既供内部 AI 应用路由（经绑定），又供外部 llm-gateway 计费（`ownerUserId` 非空才扣钱包，空=平台级仅累计）。
+- **范围仅 LLM 文本类用途**（`AiModelPurpose`）；Coze / `AgentBotProvider` / 形象锻造不动。
 
 ```
-server : 新实体 AiModelUsageRecord（ai_model_usage_record 表：providerId / providerName / model /
-       :   purpose / promptTokens / completionTokens / totalTokens / success / createdAt；createdAt + providerId 两索引）
-       : 新 AiModelUsageRecordRepository —— Object[] 聚合查询（aggregateByProvider / byModel /
-       :   byModelForProvider / totals / totalsForProvider；用 Object[] 而非 JPQL new 构造器表达式，
-       :   避开 Long→long 拆箱兼容坑）
-       : 新 AiModelUsageService —— record(...)（@Transactional REQUIRES_NEW + try/catch，best-effort 不阻断 chat）
-       :   + report(days) / reportForProvider(id, days)（days 缺省 30，封顶 365）
-       : 新 dto AiModelUsageStatDto（分组行）/ AiModelUsageReportDto（窗口 + 总计 + byProvider + byModel）
-       : AiModelInvocationService.doChat 解析 prompt_tokens / completion_tokens（之前只取 total），
-       :   末尾调 usage.record(...)；invokeChat 透传 purpose 进 doChat
-       : AdminAiModelProviderController +GET /usage +GET /{id}/usage（days 查询参数）
-admin  : api/ai-models.ts +AiModelUsageStat / AiModelUsageReport + getUsage(days) / getProviderUsage(id, days)
-       : /platform/ai-models 页加「用量统计」卡片：时间窗下拉（1/7/30/90/365 天）+ 4 个汇总数
-       :   （调用次数 / 总 / 输入 / 输出 token）+ 按服务商 / 按模型两张占比表；空窗给引导文案
-openapi: +/admin/ai-models/usage +/admin/ai-models/{id}/usage（path 骨架，沿用 ai-models 既有无 schema 风格）
+server : 实体 AiModelProvider → AiModelEndpoint（@Table 仍 ai_model_providers；@Column 复用 api_key_encrypted /
+       :   default_model；+key_prefix/key_hash/owner_user_id/total_tokens/total_calls/last_used_at/key_revoked_at；
+       :   删 purposes/priority 字段——物理列残留无害，迁移 seeder 在弃用前 native 读一次）
+       : 新 AiAppBinding（ai_app_binding 表，AiModelPurpose 作 @Id → endpoint_id）+ AiAppBindingService（list/bind/unbind）
+       : AiModelInvocationService：pickProviders → resolveEndpoint(purpose)（binding→endpoint，filter enabled，无兜底）；
+       :   hasProviderFor → hasEndpointFor；doChat 用 upstreamApiKeyEncrypted + endpoint.model；AiModelResponse.providerUsed → endpointUsed
+       : 新 AiModelEndpointKeyService（mint/revoke/validate/reportUsage；validate/usage 未命中端点→回退旧 LlmApiKeyService）
+       : AiModelProviderAdminService → AiModelEndpointAdminService（+mintKey/revokeKey；删端点前 countByEndpointId 守卫）
+       : AiModelProviderInternalService → AiModelEndpointInternalService（/upstreams 的 modelPrefixes=[endpoint.model]）
+       : InternalLlmApiKeyController 改注入 AiModelEndpointKeyService（URL /api/internal/llm-keys/{validate,usage} 不变）
+       : 控制器 AdminAiModelProviderController → AdminAiModelEndpointController（路由仍 /api/admin/ai-models；+mint-key/revoke-key）
+       : 新 AdminAiAppBindingController（/api/admin/ai-app-bindings GET + /{purpose} PUT/DELETE）；删 AdminLlmApiKeyController
+       : 迁移 AiModelEndpointBindingSeeder（@Order 55）：model 回填 + 旧 purposes/priority 升序回填绑定（首个最低 priority 胜）；
+       :   全新 DB 无旧列 → native 读失败静默跳过。LlmApiKey 表/Service 保留作兼容回退（下一版删）
+admin  : nav.ts 两条合并为「AI 模型与 Key」一条（删 /platform/llm-keys）
+       : api/ai-models.ts 重写（AiModelEndpoint 删 purposes/priority、defaultModel→model、+key/usage/ownerUserId；
+       :   +mintKey/revokeKey/listBindings/bind/unbind）；删 api/llm-keys.ts + index 的 LlmKeysApi 导出
+       : /platform/ai-models 重写为双 Tab：模型接入端点（CRUD + 固定模型 + 生成/撤销网关 Key + 明文一次横幅 + ownerUserId）
+       :   / AI 应用绑定（7 用途各一个端点下拉）；删 /platform/llm-keys 页
+openapi: +/admin/ai-models/{id}/mint-key + /revoke-key；+/admin/ai-app-bindings (get) + /{purpose} (put/delete)
+       : 既有 /admin/ai-models* 路径保留；/admin/llm-keys* 本就不在 openapi（无可删）
 ```
 
 **注意事项**：
+- **网关零改（Option A）**：`InternalUpstreamDto` 形状不变（`modelPrefixes=[endpoint.model]`，精确模型即自身前缀，`Upstream.matches` 仍生效）。`validate` 返回 `userId` 可空（平台级），gateway `path("userId").asText()`→"" 不 NPE。
+- **破坏性 + 兼容**：表名 / 物理列 / 内部 URL / admin 路由全部保留；旧 provider 行经 seeder 自动迁为端点 + 绑定；旧 `sk-aep-*` 经 validate 回退继续可验。`ddl-auto=update` 加新列（`@ColumnDefault` 兜底），不删旧列（`purposes`/`priority` 残留，下一版清理）。
+- **风险 R1**：`admin-sync` 开启后 gateway 按精确 model 键控 registry；两个启用端点 model 串相同时 `findForModel` 命中不确定 —— 约定启用端点 model 唯一。
+- **未做**：Option B（key 完全决定 gateway 路由，需改 ApiKeyAuthFilter/ChatProxyService）；删 `llm_api_keys` 表；端点级多 Key。
 
-- **只记成功调用**：失败（4xx/5xx）在 doChat 里 parse 之前就抛了，不落流水；统计的是真实消耗。
-- **best-effort 落库**：record 用 `REQUIRES_NEW` 独立事务 + try/catch，写库失败只 WARN，绝不影响 chat 返回
-  （调用方 MaterialAiService.draftScripts 跑在 `NOT_SUPPORTED` 事务里，独立事务避免连带）。
-- **聚合按时间窗 since 起**：每次查询 `createdAt >= now - days`，volume 可控；未做 byDay 趋势（DB date 函数
-  跨 H2/MySQL 可移植性留待后续）。
-- **JPA ddl-auto=update 自动建表**：H2 dev / MySQL prod 双兼容，不写 migration（沿用本仓惯例）。
-- **未做**：(a) 按调用方 / 用户维度归集（record 暂不带 callerUserId）；(b) 各厂商真实余额代理（DeepSeek
-  `/user/balance` / Moonshot `/v1/users/me/balance` 等，方案 B，本期未实现）；(c) 流水清理调度（长期增长需
-  加 @Scheduled 归档）；(d) 按金额估算（需各模型单价表）。
+**大模型用量统计（自建 token 流水，同期合并自 goods_to_video）**：把每次 `/chat/completions` 响应里的 `usage`（prompt/completion/total tokens）落库聚合，admin 端新增「用量统计」Tab。各厂商无统一用量查询协议，但响应 usage 字段对所有 OpenAI 兼容端点通用 → 自建流水最稳，也符合本仓「账本式只追加」哲学。
+
+```
+server : 新实体 AiModelUsageRecord（ai_model_usage_record：providerId(=端点 id)/providerName/model/purpose/
+       :   prompt|completion|total Tokens/success/createdAt）+ AiModelUsageRecordRepository（Object[] 聚合）
+       : 新 AiModelUsageService.record(...)（@Transactional REQUIRES_NEW + try/catch，best-effort）
+       :   + report(days)/reportForProvider(id,days)（days 缺省 30 封顶 365）
+       : AiModelInvocationService.doChat 解析 prompt/completion tokens + 末尾 usage.record(...)（透传 purpose）
+       : AdminAiModelEndpointController +GET /usage +GET /{id}/usage
+admin  : api/ai-models.ts +AiModelUsageStat/Report + getUsage/getProviderUsage；/platform/ai-models +「用量统计」Tab
+       :   （时间窗 1/7/30/90/365 天 + 4 汇总数 + 按端点/按模型占比表）
+openapi: +/admin/ai-models/usage + /{id}/usage
+```
+
+- **只记成功调用 + best-effort**：失败在 parse 前抛出不落流水；record 独立事务写库失败只 WARN，不阻断 chat。
+- **provider 维度即端点维度**：usage 的 providerId/providerName 传 endpoint.id/name（端点已取代 provider）。
 
 ---
 

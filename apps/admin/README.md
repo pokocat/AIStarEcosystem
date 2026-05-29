@@ -55,7 +55,7 @@ DataInitializer 默认 seed 两个账号：
 - **财务**：结算中心、**充值套餐**、异常风控
 - **分发**：分发渠道、发行队列
 - **基础数据**：积分包（其他子项隐藏）
-- **平台与配置**：**AI 模型**、**Prompt 管理**（v0.40 新增）、**Agent 平台**、平台配置
+- **平台与配置**：**AI 模型与 Key**（v0.41 合并）、**Prompt 管理**（v0.40 新增）、**Agent 平台**、平台配置
 - **消息与日志**：消息中心、审计日志
 
 ## 隐藏的菜单（v0.5 sidebar enabled = false，URL 直访仍可用）
@@ -74,7 +74,7 @@ DataInitializer 默认 seed 两个账号：
 - **`/celebrity/star-authorizations`**（v0.5 新增）— 用户 × 明星 授权 CRUD + 状态机推进
 - **`/celebrity/engine-pricing`**（v0.5 新增）— 引擎价格表
 - **`/finance/recharge-packages`**（v0.5 新增）— 充值套餐 CRUD（软删）
-- **`/platform/ai-models`**（v0.5 新增）— OpenAI 兼容 API token 接入
+- **`/platform/ai-models`**（v0.5 起；v0.41 合并「LLM 网关 Key」）— 双 Tab：模型接入端点（上游密钥+单模型+地址，含网关 Key）/ AI 应用绑定
 
 ## 与 server / web / miniprogram 的契约
 
@@ -84,7 +84,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
-- **v0.41 / 2026-05-29**：`/platform/ai-models` 加「用量统计」卡片。时间窗下拉（近 1/7/30/90/365 天）+ 4 个汇总数（调用次数 / 总 / 输入 / 输出 token）+ 按服务商、按模型两张占比表；空窗给引导文案。数据来自 server 自建 token 流水聚合（`GET /api/admin/ai-models/usage`，对所有服务商通用，不依赖各家计费接口）。`api/ai-models.ts` +`getUsage(days)` / `getProviderUsage(id, days)`。
+- **v0.41 / 2026-05-29**：合并「AI 模型」+「LLM 网关 Key」两个菜单为一个「AI 模型与 Key」（`/platform/ai-models`，删 `/platform/llm-keys`）。改为三 Tab：①**模型接入端点（含 Key）**—— 固定 {上游密钥 + 单模型 + 地址} 的 CRUD + 测试连接 + 获取模型列表选固定模型 + 生成/撤销网关 Key（`sk-aep-*`，明文一次横幅）+ 计费归属用户（空=平台级不计费）；②**AI 应用绑定** —— 7 个用途各一个端点下拉（脚本起草 / 卖点提取 / 变量抽取等），一用途一端点、无兜底；③**用量统计** —— 时间窗下拉（近 1/7/30/90/365 天）+ 4 个汇总数 + 按端点 / 按模型两张占比表，数据来自 server 自建 token 流水聚合（`GET /api/admin/ai-models/usage`，不依赖各家计费接口）。对应 server `AdminAiModelEndpointController`（+`/{id}/mint-key`、`/{id}/revoke-key`、`/usage`）+ `AdminAiAppBindingController`（`/api/admin/ai-app-bindings`）。`api/ai-models.ts` +`getUsage`/`getProviderUsage`/绑定函数；`api/llm-keys.ts` + `LlmKeysApi` 删除。
 - **v0.40 / 2026-05-29**：新页 `/platform/prompts`（平台与配置组「Prompt 管理」）。素材运营文本三件（脚本起稿 / 卖点提取 / 变量抽取）的 system + user 模板在此管理：system/user 双 textarea + params（temperature / max_tokens / json 模式）+ 启用开关 + 试运行（填充预览，不真调模型）。对应 server `AdminPromptController`（/api/admin/prompts）+ `prompt_template` 表。`/platform/ai-models` 的可选 purpose 加「卖点提取 / 变量抽取」，可把 provider 路由到这两类用途。`/celebrity/engine-pricing` 动作单价表加「AI 脚本起稿」一行（积分/单稿，0=不计费），运营设单价即开启起稿计费。
 - **v0.39 / 2026-05-28**：新页 `/platform/agent-bots`（平台与配置组「Agent 平台」）。
   接入 Coze 等 agent 平台 bot 做「形象锻造」这类场景：CRUD + 场景下拉（一个 sceneKey 对应一个 bot）+ token 加密存储（仅显示脱敏值）。server 端 `ForgeCozeService` 改为按 sceneKey 从后台配置取 bot，env 兜底；不再 env 写死。

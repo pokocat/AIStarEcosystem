@@ -2,10 +2,11 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
-import com.aistareco.aep.model.AiModelProvider;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
-import com.aistareco.aep.repository.AiModelProviderRepository;
+import com.aistareco.aep.repository.AiAppBindingRepository;
+import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,16 +21,15 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * 大模型调用门面（v0.5 §D8 新增；providerType 兼容集后续放宽）。
+ * 大模型调用门面（v0.5 §D8；v0.41 改为按 AI 应用绑定解析单端点 + 自建用量流水）。
  *
- * 走 OpenAI /chat/completions + /v1/models wire 协议的 provider 都支持，即除
- * ANTHROPIC（Messages API：x-api-key 头 + 不同 body）与 AZURE_OPENAI
- * （api-key 头 + ?api-version= + deployment 在路径）以外的所有 providerType。
+ * 走 OpenAI /chat/completions + /v1/models wire 协议的端点都支持，即除
+ * ANTHROPIC（Messages API）与 AZURE_OPENAI（api-key 头 + ?api-version=）以外的所有 providerType。
  * 国产厂商（VOLCENGINE / ALIYUN / MOONSHOT / DEEPSEEK / BAIDU / TENCENT / CUSTOM 等）
  * 几乎都提供 OpenAI 兼容端点，统一走同一分支；ANTHROPIC / AZURE_OPENAI 需独立适配，调用时抛 501。
  *
- * 选 provider 策略：按 purpose 过滤启用项 → 按 priority 升序取第一个。
- * fallback：若失败，用同 purpose priority 次高的 provider 重试一次。
+ * 选端点策略（v0.41）：purpose → {@code ai_app_binding} → 唯一启用端点；**无优先级 / 无 5xx 兜底**。
+ * 每次成功 chat 落一条用量流水（{@link AiModelUsageService}，best-effort，绝不阻断业务）。
  */
 @Service
 public class AiModelInvocationService {
@@ -43,55 +43,60 @@ public class AiModelInvocationService {
     private static final EnumSet<AiModelProviderType> NON_OPENAI_WIRE =
             EnumSet.of(AiModelProviderType.ANTHROPIC, AiModelProviderType.AZURE_OPENAI);
 
-    private final AiModelProviderRepository repo;
+    private final AiModelEndpointRepository endpointRepo;
+    private final AiAppBindingRepository bindingRepo;
     private final AiModelUsageService usage;
 
-    public AiModelInvocationService(AiModelProviderRepository repo, AiModelUsageService usage) {
-        this.repo = repo;
+    public AiModelInvocationService(AiModelEndpointRepository endpointRepo,
+                                    AiAppBindingRepository bindingRepo,
+                                    AiModelUsageService usage) {
+        this.endpointRepo = endpointRepo;
+        this.bindingRepo = bindingRepo;
         this.usage = usage;
     }
 
-    /** 是否存在该用途的启用 provider（用于上层在调用前判断「未配置大模型」并给出明确提示）。 */
-    public boolean hasProviderFor(AiModelPurpose purpose) {
-        return !pickProviders(purpose).isEmpty();
+    /** purpose → 绑定端点（启用）。无绑定 / 端点停用 / 端点不存在 → empty。 */
+    public Optional<AiModelEndpoint> resolveEndpoint(AiModelPurpose purpose) {
+        return bindingRepo.findById(purpose)
+                .flatMap(b -> endpointRepo.findById(b.getEndpointId()))
+                .filter(AiModelEndpoint::isEnabled);
     }
 
-    /** 简易 chat：messages = [{role, content}, ...]。 */
+    /** 是否已为该用途绑定可用端点（上层在调用前判断「未配置」并给明确提示）。 */
+    public boolean hasEndpointFor(AiModelPurpose purpose) {
+        return resolveEndpoint(purpose).isPresent();
+    }
+
+    /** 简易 chat：messages = [{role, content}, ...]。单端点，无兜底。 */
     public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
-                                       Map<String, Object> options) {        List<AiModelProvider> candidates = pickProviders(purpose);
-        BusinessException lastErr = null;
-        for (AiModelProvider p : candidates) {
-            try {
-                return doChat(p, purpose, messages, options);
-            } catch (BusinessException e) {
-                lastErr = e;
-                if (e.getStatus() != null && e.getStatus().is5xxServerError()) continue;
-                // 4xx 直接抛出，不 fallback
-                throw e;
-            } catch (Exception e) {
-                lastErr = new BusinessException(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_ERROR",
-                        "调用 provider 失败: " + p.getName() + " - " + e.getMessage());
-            }
+                                      Map<String, Object> options) {
+        AiModelEndpoint endpoint = resolveEndpoint(purpose).orElseThrow(() ->
+                new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                        "未为用途 " + purpose.wire() + " 绑定可用的 AI 模型端点"));
+        try {
+            return doChat(endpoint, purpose, messages, options);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_ERROR",
+                    "调用端点失败: " + endpoint.getName() + " - " + e.getMessage());
         }
-        if (lastErr != null) throw lastErr;
-        throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "NO_PROVIDER",
-                "没有可用的 provider for purpose=" + purpose.wire());
     }
 
     /** 测试连通性：调 /v1/models（GET），200 即通过。 */
-    public Map<String, Object> testConnection(String providerId) {
-        AiModelProvider p = repo.findById(providerId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PROVIDER_NOT_FOUND",
-                        "provider 不存在"));
-        AiModelProviderType type = p.getProviderType();
+    public Map<String, Object> testConnection(String endpointId) {
+        AiModelEndpoint e = endpointRepo.findById(endpointId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND",
+                        "AI 模型端点不存在"));
+        AiModelProviderType type = e.getProviderType();
         if (!isOpenAiCompatible(type)) {
             return Map.of("ok", false,
                     "error", "providerType=" + type.wire() + " 暂不支持连通测试（仅 ANTHROPIC / AZURE_OPENAI 需独立适配）",
                     "providerType", type.wire());
         }
         try {
-            String apiKey = AepCryptoUtil.decrypt(p.getApiKeyEncrypted());
-            URI uri = URI.create(rstrip(p.getBaseUrl(), "/") + "/models");
+            String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
+            URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/models");
             HttpRequest req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(8))
                     .header("Authorization", "Bearer " + apiKey)
@@ -103,8 +108,8 @@ public class AiModelInvocationService {
                     "statusCode", resp.statusCode(),
                     "snippet", resp.body() == null ? "" : (resp.body().length() > 200 ? resp.body().substring(0, 200) : resp.body())
             );
-        } catch (Exception e) {
-            return Map.of("ok", false, "error", e.getClass().getSimpleName() + ": " + e.getMessage());
+        } catch (Exception ex) {
+            return Map.of("ok", false, "error", ex.getClass().getSimpleName() + ": " + ex.getMessage());
         }
     }
 
@@ -139,35 +144,28 @@ public class AiModelInvocationService {
 
     // ── 内部 ───────────────────────────────────────────────────────────────
 
-    private List<AiModelProvider> pickProviders(AiModelPurpose purpose) {
-        String wire = purpose.wire();
-        return repo.findByEnabledTrueOrderByPriorityAsc().stream()
-                .filter(p -> p.getPurposes() != null && p.getPurposes().contains(wire))
-                .toList();
-    }
-
-    private AiModelResponse doChat(AiModelProvider p, AiModelPurpose purpose, List<Map<String, String>> messages,
-                                    Map<String, Object> options) throws Exception {
-        AiModelProviderType type = p.getProviderType();
+    private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<Map<String, String>> messages,
+                                   Map<String, Object> options) throws Exception {
+        AiModelProviderType type = e.getProviderType();
         if (!isOpenAiCompatible(type)) {
             throw new BusinessException(HttpStatus.NOT_IMPLEMENTED, "PROVIDER_NOT_SUPPORTED",
                     "providerType=" + type.wire() + " 暂未实现（ANTHROPIC / AZURE_OPENAI 需独立适配；其余走 OpenAI 兼容）");
         }
-        String apiKey = AepCryptoUtil.decrypt(p.getApiKeyEncrypted());
+        String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
         String model = options != null && options.get("model") != null
                 ? String.valueOf(options.get("model"))
-                : (p.getDefaultModel() != null ? p.getDefaultModel() : "gpt-4o");
+                : (e.getModel() != null ? e.getModel() : "gpt-4o");
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages);
         if (options != null) {
             if (options.get("temperature") != null) body.put("temperature", options.get("temperature"));
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
-            // response_format 透传（如 {"type":"json_object"}）；provider 不支持时会自行忽略或报错，
+            // response_format 透传（如 {"type":"json_object"}）；端点不支持时会自行忽略或报错，
             // 由调用方（MaterialAiService）catch 后走解析重试 / 兜底。
             if (options.get("response_format") != null) body.put("response_format", options.get("response_format"));
         }
-        URI uri = URI.create(rstrip(p.getBaseUrl(), "/") + "/chat/completions");
+        URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Bearer " + apiKey)
@@ -178,7 +176,7 @@ public class AiModelInvocationService {
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             throw new BusinessException(HttpStatus.valueOf(resp.statusCode()),
                     "AI_PROVIDER_HTTP_" + resp.statusCode(),
-                    "provider " + p.getName() + " HTTP " + resp.statusCode() + ": "
+                    "端点 " + e.getName() + " HTTP " + resp.statusCode() + ": "
                             + (resp.body() == null ? "" : resp.body()));
         }
         Map<?, ?> parsed = OM.readValue(resp.body(), Map.class);
@@ -206,10 +204,10 @@ public class AiModelInvocationService {
             tokensUsed = asLong(usageMap.get("total_tokens"));
         }
         // v0.41：自建用量流水。best-effort，失败只 log，不阻断 chat 返回。
-        usage.record(p.getId(), p.getName(), model,
+        usage.record(e.getId(), e.getName(), model,
                 purpose != null ? purpose.wire() : null,
                 promptTokens, completionTokens, tokensUsed, true);
-        return new AiModelResponse(content, finishReason, tokensUsed, p.getName(), model);
+        return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model);
     }
 
     private static Long asLong(Object o) {
@@ -257,7 +255,7 @@ public class AiModelInvocationService {
             String content,
             String finishReason,
             Long tokensUsed,
-            String providerUsed,
+            String endpointUsed,
             String modelUsed
     ) {}
 }

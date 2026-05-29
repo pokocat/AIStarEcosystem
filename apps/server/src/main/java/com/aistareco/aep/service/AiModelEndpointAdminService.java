@@ -1,14 +1,16 @@
 package com.aistareco.aep.service;
 
-import com.aistareco.aep.dto.AdminAiModelProviderUpsertDto;
+import com.aistareco.aep.dto.AdminAiModelEndpointUpsertDto;
 import com.aistareco.aep.dto.AiModelDiscoveryRequestDto;
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
+import com.aistareco.aep.dto.AiModelEndpointDto;
+import com.aistareco.aep.dto.AiModelEndpointKeyMintedDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
-import com.aistareco.aep.dto.AiModelProviderDto;
 import com.aistareco.aep.dto.AiModelProviderPresetDto;
-import com.aistareco.aep.model.AiModelProvider;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
-import com.aistareco.aep.repository.AiModelProviderRepository;
+import com.aistareco.aep.repository.AiAppBindingRepository;
+import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,18 +18,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * AI provider 管理（v0.5 §D8）。
- * apiKey 走明文进 service，加密落库；DTO 出口剥离明文，仅返回脱敏值。
+ * AI 模型接入端点管理（v0.41，原 AiModelProviderAdminService）。
+ * 上游 apiKey 走明文进 service，加密落库；DTO 出口剥离明文，仅返回脱敏值。
+ * 网关 Key 铸造 / 撤销委派给 {@link AiModelEndpointKeyService}。
  */
 @Service
 @Transactional
-public class AiModelProviderAdminService {
+public class AiModelEndpointAdminService {
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -55,13 +57,19 @@ public class AiModelProviderAdminService {
                     "在 platform.openai.com「API keys」创建，形如 sk-xxxxxxxx。")
     );
 
-    private final AiModelProviderRepository repo;
+    private final AiModelEndpointRepository repo;
+    private final AiAppBindingRepository bindingRepo;
     private final AiModelInvocationService invocation;
+    private final AiModelEndpointKeyService keyService;
 
-    public AiModelProviderAdminService(AiModelProviderRepository repo,
-                                        AiModelInvocationService invocation) {
+    public AiModelEndpointAdminService(AiModelEndpointRepository repo,
+                                       AiAppBindingRepository bindingRepo,
+                                       AiModelInvocationService invocation,
+                                       AiModelEndpointKeyService keyService) {
         this.repo = repo;
+        this.bindingRepo = bindingRepo;
         this.invocation = invocation;
+        this.keyService = keyService;
     }
 
     /** 内置服务商预设列表（前端「快速添加」用）。 */
@@ -69,22 +77,17 @@ public class AiModelProviderAdminService {
         return PRESETS;
     }
 
-    public List<AiModelProviderDto> list() {
-        return repo.findAll().stream()
-                .sorted((a, b) -> {
-                    int pa = a.getPriority() != null ? a.getPriority() : 100;
-                    int pb = b.getPriority() != null ? b.getPriority() : 100;
-                    return Integer.compare(pa, pb);
-                })
-                .map(AiModelProviderDto::from)
+    public List<AiModelEndpointDto> list() {
+        return repo.findAllByOrderByCreatedAtDesc().stream()
+                .map(AiModelEndpointDto::from)
                 .toList();
     }
 
-    public AiModelProviderDto get(String id) {
-        return AiModelProviderDto.from(load(id));
+    public AiModelEndpointDto get(String id) {
+        return AiModelEndpointDto.from(load(id));
     }
 
-    public AiModelProviderDto create(AdminAiModelProviderUpsertDto req) {
+    public AiModelEndpointDto create(AdminAiModelEndpointUpsertDto req) {
         if (req == null || req.name() == null || req.name().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "NAME_REQUIRED", "name 必填");
         }
@@ -98,46 +101,50 @@ public class AiModelProviderAdminService {
                 ? req.id()
                 : "ai-" + UUID.randomUUID().toString().substring(0, 12);
         if (repo.existsById(id)) {
-            throw new BusinessException(HttpStatus.CONFLICT, "PROVIDER_DUPLICATE", "provider id 已存在");
+            throw new BusinessException(HttpStatus.CONFLICT, "ENDPOINT_DUPLICATE", "端点 id 已存在");
         }
-        AiModelProvider entity = AiModelProvider.builder()
+        AiModelEndpoint entity = AiModelEndpoint.builder()
                 .id(id)
                 .name(req.name())
                 .providerType(req.providerType() != null
                         ? AiModelProviderType.fromWire(req.providerType())
                         : AiModelProviderType.OPENAI_COMPATIBLE)
                 .baseUrl(req.baseUrl())
-                .apiKeyEncrypted(AepCryptoUtil.encrypt(req.apiKey()))
+                .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt(req.apiKey()))
                 .apiVersion(req.apiVersion())
-                .defaultModel(req.defaultModel())
+                .model(req.model())
                 .modelsJson(serializeModels(req.models()))
-                .purposes(req.purposes() != null ? new ArrayList<>(req.purposes()) : new ArrayList<>())
-                .priority(req.priority() != null ? req.priority() : 100)
+                .ownerUserId(blankToNull(req.ownerUserId()))
                 .enabled(req.enabled() != null ? req.enabled() : true)
                 .build();
-        return AiModelProviderDto.from(repo.save(entity));
+        return AiModelEndpointDto.from(repo.save(entity));
     }
 
-    public AiModelProviderDto update(String id, AdminAiModelProviderUpsertDto req) {
-        AiModelProvider entity = load(id);
+    public AiModelEndpointDto update(String id, AdminAiModelEndpointUpsertDto req) {
+        AiModelEndpoint entity = load(id);
         if (req.name() != null) entity.setName(req.name());
         if (req.providerType() != null) entity.setProviderType(AiModelProviderType.fromWire(req.providerType()));
         if (req.baseUrl() != null) entity.setBaseUrl(req.baseUrl());
         if (req.apiKey() != null && !req.apiKey().isBlank()) {
-            entity.setApiKeyEncrypted(AepCryptoUtil.encrypt(req.apiKey()));
+            entity.setUpstreamApiKeyEncrypted(AepCryptoUtil.encrypt(req.apiKey()));
         }
         if (req.apiVersion() != null) entity.setApiVersion(req.apiVersion());
-        if (req.defaultModel() != null) entity.setDefaultModel(req.defaultModel());
+        if (req.model() != null) entity.setModel(req.model());
         if (req.models() != null) entity.setModelsJson(serializeModels(req.models()));
-        if (req.purposes() != null) entity.setPurposes(new ArrayList<>(req.purposes()));
-        if (req.priority() != null) entity.setPriority(req.priority());
+        // ownerUserId：null = 不改；"" = 清空为平台级；非空 = 设置
+        if (req.ownerUserId() != null) entity.setOwnerUserId(blankToNull(req.ownerUserId()));
         if (req.enabled() != null) entity.setEnabled(req.enabled());
-        return AiModelProviderDto.from(repo.save(entity));
+        return AiModelEndpointDto.from(repo.save(entity));
     }
 
     public void delete(String id) {
         if (!repo.existsById(id)) {
-            throw new BusinessException(HttpStatus.NOT_FOUND, "PROVIDER_NOT_FOUND", "provider 不存在");
+            throw new BusinessException(HttpStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND", "AI 模型端点不存在");
+        }
+        long bound = bindingRepo.countByEndpointId(id);
+        if (bound > 0) {
+            throw new BusinessException(HttpStatus.CONFLICT, "ENDPOINT_IN_USE",
+                    "该端点还有 " + bound + " 个 AI 应用绑定，请先在「AI 应用绑定」改绑或解绑后再删除。");
         }
         repo.deleteById(id);
     }
@@ -146,7 +153,17 @@ public class AiModelProviderAdminService {
         return invocation.testConnection(id);
     }
 
-    /** 新建 provider 前：用表单里填的 baseUrl + apiKey 直接拉取可用模型（不落库）。 */
+    /** 给端点铸造（或重铸）网关 Key，明文一次性返回。 */
+    public AiModelEndpointKeyMintedDto mintKey(String id) {
+        return keyService.mintKey(id);
+    }
+
+    /** 撤销端点的网关 Key。 */
+    public AiModelEndpointDto revokeKey(String id) {
+        return keyService.revokeKey(id);
+    }
+
+    /** 新建端点前：用表单里填的 baseUrl + apiKey 直接拉取可用模型（不落库）。 */
     public AiModelDiscoveryResultDto discoverModels(AiModelDiscoveryRequestDto req) {
         if (req == null || req.baseUrl() == null || req.baseUrl().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "BASE_URL_REQUIRED", "baseUrl 必填");
@@ -160,12 +177,12 @@ public class AiModelProviderAdminService {
         return invocation.listModels(type, req.baseUrl(), req.apiKey());
     }
 
-    /** 已存 provider：用落库（解密后）的 apiKey 拉取可用模型（不落库；前端拉回后由保存写入）。 */
+    /** 已存端点：用落库（解密后）的 apiKey 拉取可用模型（不落库；前端拉回后由保存写入）。 */
     public AiModelDiscoveryResultDto fetchModels(String id) {
-        AiModelProvider entity = load(id);
+        AiModelEndpoint entity = load(id);
         String apiKey;
         try {
-            apiKey = AepCryptoUtil.decrypt(entity.getApiKeyEncrypted());
+            apiKey = AepCryptoUtil.decrypt(entity.getUpstreamApiKeyEncrypted());
         } catch (Exception e) {
             return AiModelDiscoveryResultDto.fail(null, "已存 apiKey 解密失败：" + e.getMessage());
         }
@@ -181,9 +198,13 @@ public class AiModelProviderAdminService {
         }
     }
 
-    private AiModelProvider load(String id) {
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
+    }
+
+    private AiModelEndpoint load(String id) {
         return repo.findById(id)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PROVIDER_NOT_FOUND",
-                        "provider 不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND",
+                        "AI 模型端点不存在"));
     }
 }

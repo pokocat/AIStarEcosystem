@@ -53,7 +53,7 @@ class MaterialDraftBillingTest {
 
     @BeforeEach
     void setUp() {
-        when(invocation.hasProviderFor(any())).thenReturn(true);
+        when(invocation.hasEndpointFor(any())).thenReturn(true);
         when(invocation.invokeChat(any(), any(), any()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(VALID, "stop", 50L, "fake", "m"));
     }

@@ -2,10 +2,12 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
-import com.aistareco.aep.model.AiModelProvider;
+import com.aistareco.aep.model.AiAppBinding;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
-import com.aistareco.aep.repository.AiModelProviderRepository;
+import com.aistareco.aep.repository.AiAppBindingRepository;
+import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,12 +38,13 @@ import static org.mockito.Mockito.when;
  * AiModelInvocationService 调用链集成测试（确定性、无外网、无 Spring 上下文）。
  *
  * 用 JDK 内置 com.sun.net.httpserver 起本地 OpenAI 兼容 stub，验证 service 真实发出的
- * HTTP 请求形态（Authorization=Bearer <解密后的 apiKey> + model / messages / temperature /
- * max_tokens body）、响应解析、provider 选取（purpose 过滤 + priority 顺序）、5xx fallback、
- * 4xx 直抛、非 OpenAI 类型 501。
+ * HTTP 请求形态（Authorization=Bearer &lt;解密后的上游 apiKey&gt; + model / messages / temperature /
+ * max_tokens body）、响应解析、端点解析（purpose → ai_app_binding → 单端点，**无优先级 / 无兜底**）、
+ * 4xx/5xx 直抛、非 OpenAI 类型 501。
  *
- * repo 用 Mockito stub —— AiModelProviderRepository 是 JpaRepository，方法太多不便手撸 fake；
- * 这两个方法（findByEnabledTrueOrderByPriorityAsc / findById）是 service 仅有的两个 DB 依赖。
+ * repo 用 Mockito stub —— 两个 JpaRepository 方法太多不便手撸 fake；
+ * service 仅依赖 bindingRepo.findById / endpointRepo.findById（+ listModels 不依赖 repo）。
+ * AiModelUsageService 用 mock（用量流水是 best-effort 副作用，与解析/路由断言无关）。
  */
 class AiModelInvocationServiceTest {
 
@@ -73,33 +76,40 @@ class AiModelInvocationServiceTest {
         return s;
     }
 
-    private static AiModelProvider provider(String id, String baseUrl, int priority,
-                                            AiModelProviderType type, List<String> purposes,
-                                            String defaultModel, String plaintextKey) {
-        return AiModelProvider.builder()
+    private static AiModelEndpoint endpoint(String id, String baseUrl,
+                                            AiModelProviderType type, String model,
+                                            String plaintextKey, boolean enabled) {
+        return AiModelEndpoint.builder()
                 .id(id)
                 .name("stub-" + id)
                 .providerType(type)
                 .baseUrl(baseUrl)
-                .apiKeyEncrypted(AepCryptoUtil.encrypt(plaintextKey))
-                .defaultModel(defaultModel)
-                .purposes(purposes)
-                .priority(priority)
-                .enabled(true)
+                .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt(plaintextKey))
+                .model(model)
+                .enabled(enabled)
                 .build();
+    }
+
+    /** 装配 service：purpose → binding(endpointId) → endpoint。 */
+    private static AiModelInvocationService boundSvc(AiModelPurpose purpose, AiModelEndpoint ep) {
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        AiAppBinding binding = new AiAppBinding();
+        binding.setPurpose(purpose);
+        binding.setEndpointId(ep.getId());
+        when(bindingRepo.findById(purpose)).thenReturn(Optional.of(binding));
+        when(endpointRepo.findById(ep.getId())).thenReturn(Optional.of(ep));
+        return new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class));
     }
 
     @Test
     void invokeChatBuildsRequestAndParsesResponse() throws Exception {
         StubServer server = stub(200, CHAT_OK);
-        AiModelProvider p = provider("p1", server.baseUrl(), 10,
-                AiModelProviderType.OPENAI_COMPATIBLE, List.of("SCRIPT_DRAFT"),
-                "default-model", "sk-secret-123");
+        AiModelEndpoint ep = endpoint("ep1", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "default-model", "sk-secret-123", true);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.SCRIPT_DRAFT, ep);
 
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
-
-        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
+        AiModelInvocationService.AiModelResponse resp = svc.invokeChat(
                 AiModelPurpose.SCRIPT_DRAFT,
                 List.of(Map.of("role", "system", "content", "你是助手"),
                         Map.of("role", "user", "content", "讲个笑话")),
@@ -109,7 +119,7 @@ class AiModelInvocationServiceTest {
         assertEquals("你好，我是测试回答。", resp.content());
         assertEquals("stop", resp.finishReason());
         assertEquals(42L, resp.tokensUsed().longValue());
-        assertEquals("stub-p1", resp.providerUsed());
+        assertEquals("stub-ep1", resp.endpointUsed());
         assertEquals("override-model", resp.modelUsed());
 
         // ── 真实发出的请求形态 ──
@@ -117,7 +127,7 @@ class AiModelInvocationServiceTest {
         StubServer.Recorded r = server.requests.get(0);
         assertEquals("POST", r.method());
         assertEquals("/v1/chat/completions", r.path());
-        assertEquals("Bearer sk-secret-123", r.authorization(), "Bearer 头应为解密后的 apiKey");
+        assertEquals("Bearer sk-secret-123", r.authorization(), "Bearer 头应为解密后的上游 apiKey");
         Map<?, ?> sent = OM.readValue(r.body(), Map.class);
         assertEquals("override-model", sent.get("model"));
         assertEquals(0.7, ((Number) sent.get("temperature")).doubleValue(), 1e-9);
@@ -127,15 +137,13 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
-    void invokeChatUsesProviderDefaultModelWhenOptionsOmitModel() throws Exception {
+    void invokeChatUsesEndpointModelWhenOptionsOmitModel() throws Exception {
         StubServer server = stub(200, CHAT_OK);
-        AiModelProvider p = provider("p1", server.baseUrl(), 10,
-                AiModelProviderType.OPENAI, List.of("GENERAL"),
-                "doubao-1-5-pro-32k", "sk-x");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
+        AiModelEndpoint ep = endpoint("ep1", server.baseUrl(),
+                AiModelProviderType.OPENAI, "doubao-1-5-pro-32k", "sk-x", true);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
 
-        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
+        AiModelInvocationService.AiModelResponse resp = svc.invokeChat(
                 AiModelPurpose.GENERAL,
                 List.of(Map.of("role", "user", "content", "hi")),
                 null);
@@ -148,76 +156,75 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
-    void purposeFilterExcludesNonMatchingProviders() {
-        // provider 只挂 GENERAL；请求 SCRIPT_DRAFT → 无候选 → 503 NO_PROVIDER（不发 HTTP）。
-        AiModelProvider p = provider("p1", "http://127.0.0.1:1/v1", 10,
-                AiModelProviderType.OPENAI, List.of("GENERAL"), "m", "sk-x");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
+    void unboundPurposeThrowsAiNotConfigured() {
+        // 用途无绑定 → 503 AI_NOT_CONFIGURED（不发 HTTP）。
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        when(bindingRepo.findById(AiModelPurpose.SCRIPT_DRAFT)).thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
+                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).invokeChat(
                         AiModelPurpose.SCRIPT_DRAFT,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
-        assertEquals("NO_PROVIDER", ex.getCode());
+        assertEquals("AI_NOT_CONFIGURED", ex.getCode());
     }
 
     @Test
-    void fallsBackToNextProviderOn5xx() throws Exception {
-        StubServer bad = stub(500, "{\"error\":\"boom\"}");
-        StubServer good = stub(200, CHAT_OK);
-        AiModelProvider p1 = provider("p1", bad.baseUrl(), 10,
-                AiModelProviderType.OPENAI, List.of("GENERAL"), "m1", "sk-1");
-        AiModelProvider p2 = provider("p2", good.baseUrl(), 20,
-                AiModelProviderType.OPENAI, List.of("GENERAL"), "m2", "sk-2");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        // repo 方法名语义即「按 priority 升序」；service 不再二次排序，照原顺序消费。
-        when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p1, p2));
-
-        AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
-                AiModelPurpose.GENERAL,
-                List.of(Map.of("role", "user", "content", "hi")), null);
-
-        assertEquals("你好，我是测试回答。", resp.content());
-        assertEquals("stub-p2", resp.providerUsed(), "5xx 应回退到下一个 provider");
-        assertEquals(1, bad.requests.size(), "首个 provider 被尝试");
-        assertEquals(1, good.requests.size(), "回退 provider 被尝试");
-    }
-
-    @Test
-    void doesNotFallBackOn4xx() throws Exception {
-        StubServer bad = stub(400, "{\"error\":\"bad request\"}");
-        StubServer never = stub(200, CHAT_OK);
-        AiModelProvider p1 = provider("p1", bad.baseUrl(), 10,
-                AiModelProviderType.OPENAI, List.of("GENERAL"), "m1", "sk-1");
-        AiModelProvider p2 = provider("p2", never.baseUrl(), 20,
-                AiModelProviderType.OPENAI, List.of("GENERAL"), "m2", "sk-2");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p1, p2));
+    void disabledEndpointThrowsAiNotConfigured() {
+        // 绑定指向一个被停用的端点 → 解析为空 → 503 AI_NOT_CONFIGURED。
+        AiModelEndpoint ep = endpoint("ep1", "http://127.0.0.1:1/v1",
+                AiModelProviderType.OPENAI, "m", "sk-x", false);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
-                        AiModelPurpose.GENERAL,
+                svc.invokeChat(AiModelPurpose.GENERAL,
+                        List.of(Map.of("role", "user", "content", "hi")), null));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
+        assertEquals("AI_NOT_CONFIGURED", ex.getCode());
+    }
+
+    @Test
+    void fiveXxThrowsWithoutFallback() throws Exception {
+        // v0.41：单端点，无兜底。5xx 直接抛 AI_PROVIDER_HTTP_500。
+        StubServer bad = stub(500, "{\"error\":\"boom\"}");
+        AiModelEndpoint ep = endpoint("ep1", bad.baseUrl(),
+                AiModelProviderType.OPENAI, "m1", "sk-1", true);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                svc.invokeChat(AiModelPurpose.GENERAL,
+                        List.of(Map.of("role", "user", "content", "hi")), null));
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, ex.getStatus());
+        assertEquals("AI_PROVIDER_HTTP_500", ex.getCode());
+        assertEquals(1, bad.requests.size(), "单端点被尝试一次，不回退");
+    }
+
+    @Test
+    void throwsDirectlyOn4xx() throws Exception {
+        StubServer bad = stub(400, "{\"error\":\"bad request\"}");
+        AiModelEndpoint ep = endpoint("ep1", bad.baseUrl(),
+                AiModelProviderType.OPENAI, "m1", "sk-1", true);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                svc.invokeChat(AiModelPurpose.GENERAL,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
         assertEquals("AI_PROVIDER_HTTP_400", ex.getCode());
         assertEquals(1, bad.requests.size());
-        assertEquals(0, never.requests.size(), "4xx 必须直接抛出，不得回退");
     }
 
     @Test
     void anthropicAndAzureThrow501() {
         // 仅 ANTHROPIC / AZURE_OPENAI 走独立 wire，未实现 → doChat 抛 501（不发 HTTP）。
         for (AiModelProviderType type : List.of(AiModelProviderType.ANTHROPIC, AiModelProviderType.AZURE_OPENAI)) {
-            AiModelProvider p = provider("p1", "http://127.0.0.1:1/v1", 10,
-                    type, List.of("GENERAL"), "vendor-model", "sk-x");
-            AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-            when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
+            AiModelEndpoint ep = endpoint("ep1", "http://127.0.0.1:1/v1",
+                    type, "vendor-model", "sk-x", true);
+            AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
 
             BusinessException ex = assertThrows(BusinessException.class, () ->
-                    new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
-                            AiModelPurpose.GENERAL,
+                    svc.invokeChat(AiModelPurpose.GENERAL,
                             List.of(Map.of("role", "user", "content", "hi")), null),
                     "providerType=" + type.wire() + " 应抛 501");
             assertEquals(HttpStatus.NOT_IMPLEMENTED, ex.getStatus());
@@ -228,7 +235,6 @@ class AiModelInvocationServiceTest {
     @Test
     void compatibleVendorTypesUseOpenAiPath() throws Exception {
         // 国产厂商（均提供 OpenAI 兼容端点）不再被 501 拦下，统一走 /chat/completions。
-        // 与真实验证一致：Volcengine Ark providerType=VOLCENGINE 也能正常发起。
         List<AiModelProviderType> compatible = List.of(
                 AiModelProviderType.VOLCENGINE, AiModelProviderType.ALIYUN,
                 AiModelProviderType.MOONSHOT, AiModelProviderType.DEEPSEEK,
@@ -236,12 +242,11 @@ class AiModelInvocationServiceTest {
                 AiModelProviderType.CUSTOM);
         for (AiModelProviderType type : compatible) {
             StubServer server = stub(200, CHAT_OK);
-            AiModelProvider p = provider("p-" + type.wire(), server.baseUrl(), 10,
-                    type, List.of("GENERAL"), "vendor-model", "sk-" + type.wire());
-            AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-            when(repo.findByEnabledTrueOrderByPriorityAsc()).thenReturn(List.of(p));
+            AiModelEndpoint ep = endpoint("ep-" + type.wire(), server.baseUrl(),
+                    type, "vendor-model", "sk-" + type.wire(), true);
+            AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
 
-            AiModelInvocationService.AiModelResponse resp = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).invokeChat(
+            AiModelInvocationService.AiModelResponse resp = svc.invokeChat(
                     AiModelPurpose.GENERAL,
                     List.of(Map.of("role", "user", "content", "hi")), null);
 
@@ -256,12 +261,13 @@ class AiModelInvocationServiceTest {
     void testConnectionReturnsOkOn200Models() throws Exception {
         String modelsBody = "{\"object\":\"list\",\"data\":[{\"id\":\"gpt-4o\"}]}";
         StubServer server = stub(200, modelsBody);
-        AiModelProvider p = provider("pX", server.baseUrl(), 10,
-                AiModelProviderType.OPENAI, List.of("GENERAL"), "gpt-4o", "sk-conn");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findById("pX")).thenReturn(Optional.of(p));
+        AiModelEndpoint ep = endpoint("pX", server.baseUrl(),
+                AiModelProviderType.OPENAI, "gpt-4o", "sk-conn", true);
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        when(endpointRepo.findById("pX")).thenReturn(Optional.of(ep));
 
-        Map<String, Object> result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).testConnection("pX");
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).testConnection("pX");
 
         assertEquals(true, result.get("ok"));
         assertEquals(200, result.get("statusCode"));
@@ -276,25 +282,27 @@ class AiModelInvocationServiceTest {
     @Test
     void testConnectionRejectsUnsupportedType() {
         // AZURE_OPENAI 走独立 wire → 不做连通测试，直接返回 ok=false（不发 HTTP）。
-        AiModelProvider p = provider("pY", "http://127.0.0.1:1/v1", 10,
-                AiModelProviderType.AZURE_OPENAI, List.of("GENERAL"), "gpt-4o", "sk-x");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findById("pY")).thenReturn(Optional.of(p));
+        AiModelEndpoint ep = endpoint("pY", "http://127.0.0.1:1/v1",
+                AiModelProviderType.AZURE_OPENAI, "gpt-4o", "sk-x", true);
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        when(endpointRepo.findById("pY")).thenReturn(Optional.of(ep));
 
-        Map<String, Object> result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).testConnection("pY");
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).testConnection("pY");
         assertEquals(false, result.get("ok"));
         assertEquals("AZURE_OPENAI", result.get("providerType"));
     }
 
     @Test
-    void testConnectionThrowsWhenProviderMissing() {
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        when(repo.findById("nope")).thenReturn(Optional.empty());
+    void testConnectionThrowsWhenEndpointMissing() {
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        when(endpointRepo.findById("nope")).thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(repo, mock(AiModelUsageService.class)).testConnection("nope"));
+                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
-        assertEquals("PROVIDER_NOT_FOUND", ex.getCode());
+        assertEquals("ENDPOINT_NOT_FOUND", ex.getCode());
     }
 
     @Test
@@ -308,9 +316,9 @@ class AiModelInvocationServiceTest {
                 ]}
                 """;
         StubServer server = stub(200, body);
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
+        AiModelInvocationService svc = bareSvc();
 
-        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).listModels(
+        AiModelDiscoveryResultDto result = svc.listModels(
                 AiModelProviderType.VOLCENGINE, server.baseUrl(), "sk-models");
 
         assertTrue(result.ok());
@@ -329,9 +337,7 @@ class AiModelInvocationServiceTest {
     @Test
     void listModelsReturnsFailOnNon2xx() throws Exception {
         StubServer server = stub(401, "{\"error\":\"unauthorized\"}");
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-
-        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).listModels(
+        AiModelDiscoveryResultDto result = bareSvc().listModels(
                 AiModelProviderType.OPENAI, server.baseUrl(), "sk-bad");
 
         assertFalse(result.ok());
@@ -342,11 +348,16 @@ class AiModelInvocationServiceTest {
 
     @Test
     void listModelsRejectsNonOpenAiType() {
-        AiModelProviderRepository repo = mock(AiModelProviderRepository.class);
-        AiModelDiscoveryResultDto result = new AiModelInvocationService(repo, mock(AiModelUsageService.class)).listModels(
+        AiModelDiscoveryResultDto result = bareSvc().listModels(
                 AiModelProviderType.ANTHROPIC, "http://127.0.0.1:1/v1", "sk-x");
         assertFalse(result.ok());
         assertNotNull(result.error());
+    }
+
+    private static AiModelInvocationService bareSvc() {
+        return new AiModelInvocationService(
+                mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),
+                mock(AiModelUsageService.class));
     }
 
     /** JDK 内置 HTTP server：记录收到的请求，对任意路径返回预设 status + body。 */

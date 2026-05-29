@@ -5054,10 +5054,11 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-template-scripts], operationId: adminUploadTemplateScriptClip, responses: { '200': { description: ok } } }
 
-  # ── 大模型配置（v0.5 §D8 新增；配置化 + 预设 + 模型发现 增量） ──────────────
+  # ── AI 模型接入端点 + 网关 Key + AI 应用绑定（v0.5 §D8 起；v0.41 统一 endpoint+key+binding） ──
+  # 端点 = 固定 {上游密钥 + 单模型 + 地址}，自带网关 Key（sk-aep-*）；路由保留 /admin/ai-models。
   /admin/ai-models:
-    get:  { tags: [admin-ai-models], operationId: adminListAiModelProviders,  responses: { '200': { description: ok } } }
-    post: { tags: [admin-ai-models], operationId: adminCreateAiModelProvider, responses: { '201': { description: created } } }
+    get:  { tags: [admin-ai-models], operationId: adminListAiModelEndpoints,  responses: { '200': { description: ok } } }
+    post: { tags: [admin-ai-models], operationId: adminCreateAiModelEndpoint, responses: { '201': { description: created } } }
   /admin/ai-models/presets:
     get: { tags: [admin-ai-models], operationId: adminListAiModelPresets, responses: { '200': { description: 内置常见服务商预设（火山方舟 / Kimi / DeepSeek / 千问 / OpenAI） } } }
   /admin/ai-models/usage:
@@ -5085,7 +5086,21 @@ paths:
       tags: [admin-ai-models]
       operationId: adminAiModelUsageForProvider
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
-      responses: { '200': { description: 单服务商大模型用量报表 } }
+      responses: { '200': { description: 单端点大模型用量报表 } }
+  /admin/ai-models/{id}/mint-key:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-ai-models], operationId: adminMintEndpointKey, responses: { '200': { description: 'v0.41：给端点铸造/重铸网关 Key sk-aep-*，明文仅返回一次（DB 存 bcrypt）' } } }
+  /admin/ai-models/{id}/revoke-key:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-ai-models], operationId: adminRevokeEndpointKey, responses: { '200': { description: 'v0.41：撤销端点的网关 Key（不删端点）' } } }
+
+  # ── AI 应用绑定（v0.41 新增；用途 → 端点，一用途一端点，无兜底） ──────────
+  /admin/ai-app-bindings:
+    get: { tags: [admin-ai-models], operationId: adminListAiAppBindings, responses: { '200': { description: 全部用途（含未绑定）及其绑定端点 } } }
+  /admin/ai-app-bindings/{purpose}:
+    parameters: [{ name: purpose, in: path, required: true, schema: { type: string }, description: 'AiModelPurpose（如 SCRIPT_DRAFT / SELLING_POINTS / VARIABLE_EXTRACT）' }]
+    put:    { tags: [admin-ai-models], operationId: adminBindAiApp,   responses: { '200': { description: '把用途绑定到一个启用端点（body: { endpointId }）' } } }
+    delete: { tags: [admin-ai-models], operationId: adminUnbindAiApp, responses: { '204': { description: 解绑该用途 } } }
 
   # ── Agent 平台 bot 配置（v0.39 新增；Coze 等，按 sceneKey 绑定业务功能） ──────────
   /admin/agent-bots:

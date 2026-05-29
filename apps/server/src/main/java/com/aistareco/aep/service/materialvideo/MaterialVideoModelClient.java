@@ -1,9 +1,9 @@
 package com.aistareco.aep.service.materialvideo;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
-import com.aistareco.aep.model.AiModelProvider;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
-import com.aistareco.aep.repository.AiModelProviderRepository;
+import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,7 +24,8 @@ import java.util.Map;
 /**
  * 带货视频生成 —— 视频大模型的「提交 + 轮询」HTTP 客户端（单一可替换点）。
  *
- * Provider（baseUrl / apiKey / model）取自后台「AI 模型」配置（用途 = VIDEO_GENERATION）；
+ * 端点（baseUrl / apiKey / model）取自后台「AI 模型与 Key」配置：把用途 VIDEO_GENERATION 在
+ * 「AI 应用绑定」绑到一个模型接入端点（v0.41 起统一走 {@link AiModelInvocationService#resolveEndpoint}）；
  * 「怎么提交 / 怎么轮询」的协议细节取自 aep.material.video.*（见 MaterialVideoProperties）。
  *
  * 默认对齐「异步任务式」约定（提交返回 task_id，轮询拿 status + 成片 URL），与
@@ -32,7 +33,7 @@ import java.util.Map;
  * 响应解析对常见字段做了多形态兜底，换厂商时一般只需改 baseUrl + submit/poll 子路径；
  * 若厂商 wire 差异大，替换本文件的 submit()/poll() 解析即可，不影响任务调度 / 积分 / 前端。
  *
- * 不静默兜底：未配置 provider / apiKey → 抛 VIDEO_NOT_CONFIGURED（503，明确提示去哪配）。
+ * 不静默兜底：未绑定端点 / 无 apiKey → 抛 VIDEO_NOT_CONFIGURED（503，明确提示去哪配）。
  */
 @Service
 public class MaterialVideoModelClient {
@@ -40,33 +41,33 @@ public class MaterialVideoModelClient {
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoModelClient.class);
     private static final ObjectMapper OM = new ObjectMapper();
 
-    private final AiModelProviderRepository providerRepo;
+    private final AiModelInvocationService invocation;
     private final MaterialVideoProperties props;
     private final HttpClient http;
 
-    public MaterialVideoModelClient(AiModelProviderRepository providerRepo, MaterialVideoProperties props) {
-        this.providerRepo = providerRepo;
+    public MaterialVideoModelClient(AiModelInvocationService invocation, MaterialVideoProperties props) {
+        this.invocation = invocation;
         this.props = props;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
     }
 
-    /** 是否已配置可用的视频生成 provider（用途 VIDEO_GENERATION + 有 apiKey）。 */
+    /** 是否已配置可用的视频生成端点（用途 VIDEO_GENERATION 已绑定 + 有 apiKey）。 */
     public boolean isConfigured() {
-        AiModelProvider p = pickProvider();
+        AiModelEndpoint p = pickEndpoint();
         return p != null && decryptKey(p) != null;
     }
 
-    /** 失败快：未配置 provider / apiKey 时抛 VIDEO_NOT_CONFIGURED（带明确提示）。 */
+    /** 失败快：未绑定端点 / 无 apiKey 时抛 VIDEO_NOT_CONFIGURED（带明确提示）。 */
     public void ensureConfigured() {
-        requireKey(requireProvider());
+        requireKey(requireEndpoint());
     }
 
-    /** 提交一个生成任务，返回外部 task_id + 实际用到的 provider / model。 */
+    /** 提交一个生成任务，返回外部 task_id + 实际用到的端点 / model。 */
     public SubmitResult submit(String prompt, int durationSec, String aspectRatio) {
-        AiModelProvider p = requireProvider();
+        AiModelEndpoint p = requireEndpoint();
         String apiKey = requireKey(p);
-        String model = (p.getDefaultModel() != null && !p.getDefaultModel().isBlank())
-                ? p.getDefaultModel() : props.getDefaultModel();
+        String model = (p.getModel() != null && !p.getModel().isBlank())
+                ? p.getModel() : props.getDefaultModel();
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
@@ -89,7 +90,7 @@ public class MaterialVideoModelClient {
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                        "视频生成提交失败（provider " + p.getName() + "，HTTP " + resp.statusCode() + "）："
+                        "视频生成提交失败（端点 " + p.getName() + "，HTTP " + resp.statusCode() + "）："
                                 + snippet(resp.body()));
             }
             JsonNode root = OM.readTree(resp.body());
@@ -100,21 +101,21 @@ public class MaterialVideoModelClient {
             }
             if (taskId == null || taskId.isBlank()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                        "视频生成提交成功但未解析到任务 id（provider " + p.getName() + "）：" + snippet(resp.body()));
+                        "视频生成提交成功但未解析到任务 id（端点 " + p.getName() + "）：" + snippet(resp.body()));
             }
-            log.info("[material-video] submit ok provider={} model={} taskId={}", p.getName(), model, taskId);
+            log.info("[material-video] submit ok endpoint={} model={} taskId={}", p.getName(), model, taskId);
             return new SubmitResult(taskId, p.getName(), model);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                    "视频生成提交异常（provider " + p.getName() + "）：" + e.getMessage());
+                    "视频生成提交异常（端点 " + p.getName() + "）：" + e.getMessage());
         }
     }
 
     /** 轮询一个任务的状态。失败抛 BusinessException（含 HTTP 详情）。 */
     public PollResult poll(String taskId) {
-        AiModelProvider p = requireProvider();
+        AiModelEndpoint p = requireEndpoint();
         String apiKey = requireKey(p);
         String path = props.getPollPathTemplate().replace("{id}", taskId);
         URI uri = URI.create(rstrip(p.getBaseUrl(), "/") + path);
@@ -147,41 +148,38 @@ public class MaterialVideoModelClient {
         }
     }
 
-    // ── provider 选取 ──────────────────────────────────────────────────────────
+    // ── 端点选取（v0.41：用途 VIDEO_GENERATION → ai_app_binding → 端点） ─────────────
 
-    private AiModelProvider pickProvider() {
-        String wire = AiModelPurpose.VIDEO_GENERATION.wire();
-        return providerRepo.findByEnabledTrueOrderByPriorityAsc().stream()
-                .filter(p -> p.getPurposes() != null && p.getPurposes().contains(wire))
+    private AiModelEndpoint pickEndpoint() {
+        return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)
                 .filter(p -> p.getBaseUrl() != null && !p.getBaseUrl().isBlank())
-                .findFirst()
                 .orElse(null);
     }
 
-    private AiModelProvider requireProvider() {
-        AiModelProvider p = pickProvider();
+    private AiModelEndpoint requireEndpoint() {
+        AiModelEndpoint p = pickEndpoint();
         if (p == null) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_NOT_CONFIGURED",
-                    "未配置「视频生成」用途的大模型服务商。请到 管理后台 → 平台与配置 → AI 模型，"
-                            + "添加服务商并勾选「视频生成」用途（填好 baseUrl 与有效 API Key）。");
+                    "未为「视频生成」绑定 AI 模型端点。请到 管理后台 → 平台与配置 → AI 模型与 Key →"
+                            + "「AI 应用绑定」把「视频生成」绑到一个端点（端点需含 baseUrl 与有效 API Key）。");
         }
         return p;
     }
 
-    private String decryptKey(AiModelProvider p) {
+    private String decryptKey(AiModelEndpoint p) {
         try {
-            String k = AepCryptoUtil.decrypt(p.getApiKeyEncrypted());
+            String k = AepCryptoUtil.decrypt(p.getUpstreamApiKeyEncrypted());
             return (k == null || k.isBlank()) ? null : k;
         } catch (Exception e) {
             return null;
         }
     }
 
-    private String requireKey(AiModelProvider p) {
+    private String requireKey(AiModelEndpoint p) {
         String k = decryptKey(p);
         if (k == null) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_NOT_CONFIGURED",
-                    "视频生成服务商「" + p.getName() + "」未配置有效 API Key（请到 AI 模型页补全）。");
+                    "视频生成端点「" + p.getName() + "」未配置有效 API Key（请到 AI 模型与 Key 页补全）。");
         }
         return k;
     }
