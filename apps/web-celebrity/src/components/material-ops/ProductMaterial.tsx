@@ -24,25 +24,6 @@ interface Group {
   videos: MaterialVideo[];
 }
 
-// 视频引用了一个既不在系统商品库、也不在本地 mock 富数据里的 product_id 时的兜底占位，
-// 保证这些视频仍能在素材库里被看到（而不是被静默丢掉）。
-function placeholderProduct(id: string): MaterialProduct {
-  return {
-    id,
-    name: `未归类商品 ${id.slice(0, 8)}`,
-    category: "其他",
-    images: [],
-    sellingPoints: "",
-    usageCount: 0,
-    source: "manual",
-    createdAt: "",
-    updatedAt: "",
-    sellingPointList: [],
-    audience: [],
-    suggestedAngles: [],
-  };
-}
-
 export function ProductMaterial({ initialProductId }: { initialProductId?: string } = {}) {
   const router = useRouter();
   const [videos, setVideos] = React.useState<MaterialVideo[]>([]);
@@ -98,11 +79,14 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
     });
     const base = products.length > 0 ? products : MATERIAL_PRODUCTS;
     const known = new Set(base.map((p) => p.id));
-    // 视频引用了、但系统商品库里没有的商品（如本地 mock 演示视频）→ 合成一行，避免视频丢失。
+    // 仅「随仓打包的本地演示商品」(p1–p6，getProduct 命中) 才补一行，保住 mock demo 视频可见。
+    // 其它在商品库里查不到的 product_id（典型：已在商品库删除、但旧视频仍引用的商品）一律不补 ——
+    // 商品库是唯一真源，删了就不该在素材库目录里出现。
     const extras: MaterialProduct[] = [];
     byProduct.forEach((_, pid) => {
       if (known.has(pid)) return;
-      extras.push(getProduct(pid) ?? placeholderProduct(pid));
+      const demo = getProduct(pid);
+      if (demo) extras.push(demo);
     });
     return [...base, ...extras].map((product) => ({ product, videos: byProduct.get(product.id) ?? [] }));
   }, [videos, products]);

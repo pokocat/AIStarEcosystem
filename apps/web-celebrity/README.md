@@ -74,7 +74,8 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 **A. 商品素材库左侧目录直读系统商品库**
 
 - **问题**：`ProductMaterial` 左侧商品目录写死本地 mock `MATERIAL_PRODUCTS`（p1–p6），只从 `/api/products` 借了首图覆盖，列表本身与系统商品库不对齐 —— 商品库新增/删除不反映。
-- **修复**：目录改为直接拉 `ProductsApi.listProducts()`（`/api/products`），经 `toMaterialProduct` 映射成展示用 `MaterialProduct`（含真实图 / 价格 / 佣金 / 卖点）。视频按 `product_id` 归到对应商品下；商品库里有、暂无视频的商品也会列出（可直接发起首条生成）。视频引用了但商品库里没有的 `product_id`（如本地 mock 演示视频）→ 用 `getProduct` 富数据或占位行兜底，视频不丢。拉取失败回退本地 mock，不阻断视频库。「同步最新」按钮同时刷新商品与视频。
+- **修复**：目录改为直接拉 `ProductsApi.listProducts()`（`/api/products`），经 `toMaterialProduct` 映射成展示用 `MaterialProduct`（含真实图 / 价格 / 佣金 / 卖点）。视频按 `product_id` 归到对应商品下；商品库里有、暂无视频的商品也会列出（可直接发起首条生成）。拉取失败回退本地 mock，不阻断视频库。「同步最新」按钮同时刷新商品与视频。
+- **商品库是唯一真源**：仅「随仓打包的本地演示商品」(p1–p6，`getProduct` 命中) 在有 mock 视频时才补一行，保住 dev demo 视频可见；其它在商品库里查不到的 `product_id`（典型：**已在商品库删除、但旧视频仍引用的商品**）一律不在目录出现。修掉了「商品库已删除的商品仍在素材库列表里能看到」的问题（旧实现会用占位行把这类孤儿商品 resurrect 出来）。
 
 **B. 修复：弹窗内调起确认框导致整页卡死**
 
