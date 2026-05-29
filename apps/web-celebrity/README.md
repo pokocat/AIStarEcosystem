@@ -69,6 +69,12 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.41 · 2026-05-29 · 修复：弹窗内调起确认框导致整页卡死
+
+- **症状**：素材库点「生成基线视频」（及其它在自定义全屏弹窗内调起 `useConfirm` 的入口）后整页卡死、无法点击。
+- **根因**：共享 `AlertDialog`（`useConfirm` 用）的遮罩 + 内容默认 `z-50`，而 `VideoGenDialog` 等自定义弹窗是 `z-80/90`，确认框被盖在下面看不见、点不到；同时 Radix 锁了页面 `pointer-events` + focus，`await confirm(...)` 永远等不到点击 → 整页"卡死"。
+- **修复**：`components/common/confirm-dialog.tsx` 的 `ConfirmHost` 把遮罩 + 内容统一抬到 `z-[200]`，确认框始终位于最上层。配套给共享 `packages/ui` 的 `AlertDialogContent` 增可选 `overlayClassName`（透传遮罩层 className；加性变更，不影响既有调用）。覆盖**所有** `useConfirm` 在高 z-index 弹窗内调起的场景，非仅基线视频。
+
 ### v0.40 · 2026-05-29 · 素材运营文本三件接真 LLM
 
 - 起稿中心「AI 生成」`DraftingHub` 的 `AIPicker.run` 接 `POST /material/scripts/ai-draft`（真 LLM 起稿候选）。**失败不静默兜底**：直接展示后端明确报错（token 未配 / prompt 未配 / 模型异常）+ 重试。USE_MOCK 模式不打后端、用本地占位池 `aiCandidates`。
