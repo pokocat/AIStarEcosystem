@@ -429,7 +429,8 @@ function viralToAsset(v: ViralHit): ScriptAsset {
     blocks: v.structure.map((s) => {
       const m = s.t.match(/(\d+)-(\d+)/);
       const dur = m ? parseInt(m[2]) - parseInt(m[1]) : 5;
-      return { kind: kindMap[s.label] ?? "scene", label: s.label, dur, text: s.text, shot: s.tag };
+      // s.tag 是段落分类标签（反差/人物/产品…），非字幕文案；不灌入字幕字段，留空待用户填。
+      return { kind: kindMap[s.label] ?? "scene", label: s.label, dur, text: s.text, shot: "" };
     }),
     metrics: {
       uses_count: v.reproduces,
@@ -552,51 +553,51 @@ function aiCandidates(product: MaterialProduct, count: number): ScriptAsset[] {
     {
       name: "蓝领情感 · 修车老李 · v3", tier: "A", tags: ["情感", "蓝领", "送礼"], ctr: 8.7, diversity: 78,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `修了 30 年车，第一次给老婆买${pn}`, shot: "油污大手特写" },
-        { kind: "emotion", label: "情感铺垫", dur: 9, text: "收摊回家 · 老婆在沙发上揉脖子", shot: "跟拍" },
-        { kind: "product", label: "产品揭示", dur: 13, text: `从口袋拿出${pn} · 老婆惊讶反应`, shot: "怼镜 30 帧" },
-        { kind: "effect", label: "效果体验", dur: 10, text: '老婆边吃饭边按 · "舒服死了"', shot: "双人对坐" },
-        { kind: "cta", label: "行动召唤", dur: 6, text: '"姐妹有需要的评论区扣 1"', shot: "CTA 字幕" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `修了 30 年车，第一次给老婆买${pn}`, shot: "修了30年车 · 第一次给老婆买" },
+        { kind: "emotion", label: "情感铺垫", dur: 9, text: "收摊回家 · 老婆在沙发上揉脖子", shot: "她颈椎不好好多年了" },
+        { kind: "product", label: "产品揭示", dur: 13, text: `从口袋拿出${pn} · 老婆惊讶反应`, shot: `这就是${pn}` },
+        { kind: "effect", label: "效果体验", dur: 10, text: '老婆边吃饭边按 · "舒服死了"', shot: "她说：舒服死了" },
+        { kind: "cta", label: "行动召唤", dur: 6, text: '"姐妹有需要的评论区扣 1"', shot: "有需要的姐妹评论区扣1" },
       ],
     },
     {
       name: "父女视角 · 闺女偷拍", tier: "A", tags: ["父女", "反差", "送礼"], ctr: 9.1, diversity: 82,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "我爸 50 岁，第一次悄悄给我妈下单了这个", shot: "手机屏幕特写" },
-        { kind: "emotion", label: "情感铺垫", dur: 8, text: "闺女躲门后偷拍 · 爸爸的手指划过价格", shot: "门缝偷拍" },
-        { kind: "product", label: "产品揭示", dur: 11, text: `快递到家 · 妈妈拆出${pn}愣住`, shot: "拆箱反应" },
-        { kind: "effect", label: "效果体验", dur: 10, text: '妈妈戴上 · 爸爸偷笑 · 字幕"破防了"', shot: "三人同框" },
-        { kind: "cta", label: "行动召唤", dur: 8, text: '"链接放评论 · 一定要给爸看一眼"', shot: "CTA" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "我爸 50 岁，第一次悄悄给我妈下单了这个", shot: "我爸50岁 · 第一次给我妈下单" },
+        { kind: "emotion", label: "情感铺垫", dur: 8, text: "闺女躲门后偷拍 · 爸爸的手指划过价格", shot: "他犹豫了很久" },
+        { kind: "product", label: "产品揭示", dur: 11, text: `快递到家 · 妈妈拆出${pn}愣住`, shot: "妈妈愣住了" },
+        { kind: "effect", label: "效果体验", dur: 10, text: '妈妈戴上 · 爸爸偷笑 · 字幕"破防了"', shot: "破防了" },
+        { kind: "cta", label: "行动召唤", dur: 8, text: '"链接放评论 · 一定要给爸看一眼"', shot: "链接在评论区" },
       ],
     },
     {
       name: "反差对比 · 价格压制", tier: "B", tags: ["价格", "反差", "测评"], ctr: 7.4, diversity: 68,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `别再花 800 块买同类了，${pn}才是真的`, shot: "价格对比字幕" },
-        { kind: "scene", label: "场景对比", dur: 10, text: "同台展示三款不同价位 · 用户测评剪辑", shot: "三机位平铺" },
-        { kind: "product", label: "产品揭示", dur: 14, text: `怼镜${pn} · 字幕"229 vs 800"`, shot: "产品 360°" },
-        { kind: "effect", label: "效果体验", dur: 8, text: '体验师"用完不想脱" · 表情管理失败', shot: "反应慢镜" },
-        { kind: "cta", label: "行动召唤", dur: 5, text: '"今天直播间还有 50 单 · 错过等下周"', shot: "紧迫挂车" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `别再花 800 块买同类了，${pn}才是真的`, shot: "别再花800块了" },
+        { kind: "scene", label: "场景对比", dur: 10, text: "同台展示三款不同价位 · 用户测评剪辑", shot: "三款实测对比" },
+        { kind: "product", label: "产品揭示", dur: 14, text: `怼镜${pn} · 字幕"229 vs 800"`, shot: "229 vs 800" },
+        { kind: "effect", label: "效果体验", dur: 8, text: '体验师"用完不想脱" · 表情管理失败', shot: "用完不想脱" },
+        { kind: "cta", label: "行动召唤", dur: 5, text: '"今天直播间还有 50 单 · 错过等下周"', shot: "今天还剩50单" },
       ],
     },
     {
       name: "通勤打工人 · 自救", tier: "A", tags: ["通勤", "打工人"], ctr: 7.2, diversity: 75,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "加班到 11 点，我决定对自己好一点", shot: "电脑反光" },
-        { kind: "scene", label: "场景铺垫", dur: 8, text: "地铁视角 · 同事都在揉肩膀", shot: "通勤 vlog" },
-        { kind: "product", label: "产品揭示", dur: 10, text: `下单${pn} · 第二天通勤拿出来用`, shot: "产品特写" },
-        { kind: "effect", label: "效果体验", dur: 6, text: '前 vs 后 30 天对比 · 字幕"8→3"', shot: "量化字幕" },
-        { kind: "cta", label: "行动召唤", dur: 3, text: '"打工人姐妹评论区扣 1"', shot: "评论引导" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "加班到 11 点，我决定对自己好一点", shot: "加班到11点" },
+        { kind: "scene", label: "场景铺垫", dur: 8, text: "地铁视角 · 同事都在揉肩膀", shot: "打工人的通病" },
+        { kind: "product", label: "产品揭示", dur: 10, text: `下单${pn} · 第二天通勤拿出来用`, shot: "对自己好一点" },
+        { kind: "effect", label: "效果体验", dur: 6, text: '前 vs 后 30 天对比 · 字幕"8→3"', shot: "30天：8→3" },
+        { kind: "cta", label: "行动召唤", dur: 3, text: '"打工人姐妹评论区扣 1"', shot: "打工人姐妹扣1" },
       ],
     },
     {
       name: "专业解析 · 测评博主", tier: "B", tags: ["测评", "专业"], ctr: 6.1, diversity: 84,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 4, text: `测了 12 款 · ${pn}是 229 价位天花板`, shot: "测评台特写" },
-        { kind: "product", label: "产品解构", dur: 12, text: "拆解结构 · 标注电机/温控/电池参数", shot: "微距 + 拆解图" },
-        { kind: "effect", label: "体感测评", dur: 10, text: "压力传感数据 · 真人 60 分钟使用日志", shot: "数据可视化" },
-        { kind: "scene", label: "横向对比", dur: 6, text: "5 款竞品对比表格 · 价格 vs 体感打分", shot: "对比表格" },
-        { kind: "cta", label: "行动召唤", dur: 3, text: '"理性党姐妹直接抄作业 · 链接置顶"', shot: "CTA + 徽章" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 4, text: `测了 12 款 · ${pn}是 229 价位天花板`, shot: "测了12款" },
+        { kind: "product", label: "产品解构", dur: 12, text: "拆解结构 · 标注电机/温控/电池参数", shot: "电机 / 温控 / 电池" },
+        { kind: "effect", label: "体感测评", dur: 10, text: "压力传感数据 · 真人 60 分钟使用日志", shot: "60分钟实测数据" },
+        { kind: "scene", label: "横向对比", dur: 6, text: "5 款竞品对比表格 · 价格 vs 体感打分", shot: "5款横向对比" },
+        { kind: "cta", label: "行动召唤", dur: 3, text: '"理性党姐妹直接抄作业 · 链接置顶"', shot: "理性党抄作业" },
       ],
     },
   ];
