@@ -111,7 +111,7 @@ class MaterialOpsE2ETest {
                 {"videos":[{"id":"video-e2e-1","script_id":"asset-2604","product_id":"p4","kind":"variant",
                  "name":"E2E 派生视频","status":"ready","duration_sec":30,"aspect_ratio":"9:16",
                  "variant_config":{"character":"human-002","scene":"gym","weather":"sunny","lighting":"warm","role_relation":"个人","voice":"voice-male-02"},
-                 "metrics":null,"cover_color":"#22b59a","thumb_emoji":"🎬","created_at":"2026-05-29T00:00:00Z",
+                 "metrics":null,"cover_color":"#22b59a","created_at":"2026-05-29T00:00:00Z",
                  "generated_at":"2026-05-29T00:00:10Z","render_cost_sec":92,"model":"sora-zh-v3"}]}
                 """;
         mvc.perform(post("/api/material/videos/batch").contentType(MediaType.APPLICATION_JSON).content(body))

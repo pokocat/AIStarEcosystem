@@ -9,7 +9,7 @@ import { Card, Button } from "@/components/creator";
 import { VIDEO_ASSETS } from "@/mocks/material-ops";
 import { SHOT_KIND_META, ASSET_KIND_META, PLATFORM_RULES } from "@/constants/material-ops-ui";
 import type { MaterialProduct, ScriptAsset, ScriptBlock } from "./types";
-import { Eyebrow, Tag, Seg, TierBadge, MetricTile, FilterChip, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, TierBadge, MetricTile, FilterChip, ProductThumb, hexA } from "./shared";
 import { PromptView } from "./PromptView";
 
 export function ScriptPreview({
@@ -92,7 +92,7 @@ export function ScriptPreview({
               <div style={{ padding: "12px 26px 18px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
                 <QuickMeta label="时长" value={`${totalDur}s`} />
                 <QuickMeta label="镜头数" value={String(blocks.length)} />
-                <QuickMeta label="商品" value={`${product.emoji} ${product.name}`} />
+                <QuickMeta label="商品" value={product.name} />
                 <QuickMeta label="钩子类型" value={script.hook_type} />
                 <QuickMeta label="受众" value={(script.audience ?? ["通用"])[0]} />
                 <QuickMeta label="平台" value={(script.platforms ?? ["douyin"]).join(" / ")} />
@@ -102,9 +102,7 @@ export function ScriptPreview({
             {/* linked product */}
             <Card style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
               <Eyebrow style={{ width: 70 }}>关联商品</Eyebrow>
-              <div style={{ width: 44, height: 44, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(135deg, ${product.accentColor}, ${hexA(product.accentColor ?? "#7c5cff", "99")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-                {product.emoji}
-              </div>
+              <ProductThumb name={product.name} image={product.images?.[0]} color={product.accentColor} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, color: "var(--fg-0)", fontWeight: 500 }}>{product.name}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
@@ -166,8 +164,8 @@ export function ScriptPreview({
                 )}
                 {relatedVideos.map((v) => (
                   <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-                    <div style={{ width: 32, height: 42, borderRadius: 5, flexShrink: 0, background: `linear-gradient(180deg, ${hexA(v.cover_color, "99")}, ${hexA(v.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
-                      {v.thumb_emoji}
+                    <div style={{ width: 32, height: 42, borderRadius: 5, flexShrink: 0, background: `linear-gradient(180deg, ${hexA(v.cover_color, "99")}, ${hexA(v.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <PlayCircle size={15} color="#fff" style={{ opacity: 0.85 }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, color: "var(--fg-0)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</div>

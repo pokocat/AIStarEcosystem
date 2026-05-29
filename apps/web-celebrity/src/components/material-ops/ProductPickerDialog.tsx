@@ -8,7 +8,7 @@ import { Button } from "@/components/creator";
 import { ProductsApi } from "@/api";
 import { toMaterialProduct } from "@/mocks/material-ops";
 import type { MaterialProduct } from "./types";
-import { Eyebrow, SearchInput, hexA } from "./shared";
+import { Eyebrow, SearchInput, ProductThumb, hexA } from "./shared";
 
 export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; onPick: (p: MaterialProduct) => void }) {
   const [query, setQuery] = React.useState("");
@@ -101,9 +101,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
                     fontSize: 12.5,
                   }}
                 >
-                  <span style={{ width: 22, height: 22, borderRadius: 99, background: `linear-gradient(135deg, ${p.accentColor}, ${hexA(p.accentColor ?? "#7c5cff", "99")})`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
-                    {p.emoji}
-                  </span>
+                  <ProductThumb name={p.name} image={p.images?.[0]} color={p.accentColor} size={22} radius={99} monoScale={0.5} />
                   {p.name}
                 </button>
               );
@@ -131,9 +129,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
                     boxShadow: active ? `0 0 0 3px ${hexA(p.accentColor ?? "#7c5cff", "22")}` : "none",
                   }}
                 >
-                  <span style={{ width: 48, height: 48, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(135deg, ${p.accentColor}, ${hexA(p.accentColor ?? "#7c5cff", "99")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>
-                    {p.emoji}
-                  </span>
+                  <ProductThumb name={p.name} image={p.images?.[0]} color={p.accentColor} size={48} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, color: "var(--fg-0)", fontWeight: 500 }}>{p.name}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
@@ -154,7 +150,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
         <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-2)" }}>
           {selected ? (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)" }}>
-              已选 · <span style={{ color: "var(--fg-0)" }}>{selected.emoji} {selected.name}</span>
+              已选 · <span style={{ color: "var(--fg-0)" }}>{selected.name}</span>
             </span>
           ) : (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-3)" }}>先选一个商品才能继续</span>

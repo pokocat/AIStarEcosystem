@@ -299,6 +299,62 @@ export function CoverTile({
   );
 }
 
+// ── ProductThumb（商品缩略：真实图优先，无图回退首字 monogram；不用 emoji） ─────
+// 后端 Product.images[0] 有值 → 直接 <img>；否则用商品名首字（中文取首字，
+// 英文取首字母大写）叠在主题色渐变上。统一替代原来的 emoji 占位。
+export function ProductThumb({
+  name,
+  image,
+  color,
+  size = 36,
+  radius = "var(--radius-md)",
+  monoScale = 0.42,
+}: {
+  name: string;
+  image?: string | null;
+  color?: string;
+  size?: number;
+  radius?: number | string;
+  monoScale?: number;
+}) {
+  const tone = color ?? "#7c5cff";
+  const [broken, setBroken] = React.useState(false);
+  const mono = (name ?? "").trim().charAt(0).toUpperCase() || "·";
+  const showImg = !!image && !broken;
+  return (
+    <span
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        flexShrink: 0,
+        overflow: "hidden",
+        background: showImg ? "var(--bg-2)" : `linear-gradient(135deg, ${hexA(tone, "ff")}, ${hexA(tone, "99")})`,
+        border: "1px solid var(--line)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#fff",
+        fontWeight: 600,
+        fontSize: Math.round(size * monoScale),
+        lineHeight: 1,
+      }}
+    >
+      {showImg ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={image!}
+          alt={name}
+          onError={() => setBroken(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : (
+        mono
+      )}
+    </span>
+  );
+}
+
 // ── MetricTile（指标卡） ──────────────────────────────────────────────────────
 export function MetricTile({
   label,

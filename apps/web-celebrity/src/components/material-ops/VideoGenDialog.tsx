@@ -350,7 +350,6 @@ function ConfigStage({
                             fontSize: 12,
                           }}
                         >
-                          <span style={{ fontSize: 14 }}>{opt.emoji}</span>
                           <span>{opt.label}</span>
                           {opt.sub && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)" }}>· {opt.sub}</span>}
                         </button>
@@ -591,7 +590,6 @@ function GeneratingStage({
         </div>
         <div style={{ display: "grid", gridTemplateColumns: target === 1 ? "minmax(0,280px)" : `repeat(${Math.min(3, Math.ceil(Math.sqrt(target)))}, 1fr)`, gap: 14 }}>
           {videos.map((v, i) => {
-            const charOpt = VARIANT_AXES.character.options.find((o) => o.id === v.config.character);
             const tone = ["#7c5cff", "#ff5b8a", "#22b59a", "#f0a83a", "#5b3fe0", "#ff8a5b"][v.idx % 6];
             const overall = ((v.stage_idx + (v.status === "done" ? 1 : v.progress / 100)) / VIDEO_GEN_STAGES.length) * 100;
             const isDone = v.status === "done";
@@ -603,7 +601,6 @@ function GeneratingStage({
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#fff", opacity: 0.7 }}>排队中</span>
                   ) : (
                     <>
-                      <div style={{ fontSize: isDone ? 44 : 36, opacity: isDone ? 1 : 0.5 }}>{charOpt?.emoji ?? "🎬"}</div>
                       {!isDone && <Loader2 size={20} color="#fff" className="animate-spin" style={{ position: "absolute" }} />}
                       {isDone && <PlayCircle size={32} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
                     </>

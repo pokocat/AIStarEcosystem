@@ -205,7 +205,6 @@ export function buildVideoAsset(
     variant_config: variantConfig,
     metrics: null,
     cover_color: palette[idx % palette.length],
-    thumb_emoji: VARIANT_AXES.character.options.find((o) => o.id === variantConfig.character)?.emoji || "🎬",
     created_at: now,
     generated_at: now,
     render_cost_sec: 90 + idx * 8,

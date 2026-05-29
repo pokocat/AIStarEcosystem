@@ -57,7 +57,7 @@ export function DraftingHub({
           <div style={{ flex: 1 }}>
             <Eyebrow>起稿中心</Eyebrow>
             <div style={{ fontSize: 16, color: "var(--fg-0)", fontWeight: 600, marginTop: 2 }}>
-              为 <span style={{ color: "var(--warning)" }}>{product.emoji} {product.name}</span> 选起稿方式
+              为 <span style={{ color: "var(--warning)" }}>{product.name}</span> 选起稿方式
             </div>
           </div>
           <Tag color="var(--extra-teal)">语料库 · 1,284 条爆款基因</Tag>

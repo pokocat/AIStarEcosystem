@@ -12,7 +12,7 @@ import { SCRIPT_ASSETS, getProduct, toMaterialProduct } from "@/mocks/material-o
 import { TIER_META, ASSET_KIND_META } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, ScriptAsset, Tier } from "./types";
 import { ProductPickerDialog } from "./ProductPickerDialog";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, EmptyState, formatLastUsed, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, EmptyState, ProductThumb, formatLastUsed, hexA } from "./shared";
 
 const KIND_ICON: Record<AssetKind, React.ComponentType<{ size?: number; color?: string }>> = {
   my_script: ScrollText,
@@ -232,7 +232,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>{product?.emoji ?? "📦"}</span>
+                <ProductThumb name={product?.name ?? "—"} image={product?.images?.[0]} color={product?.accentColor} size={22} radius={6} monoScale={0.5} />
                 {product ? (
                   <>
                     <span

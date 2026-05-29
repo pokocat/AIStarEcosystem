@@ -9,12 +9,12 @@ import {
   Link2, ScrollText, Shuffle, Lock, FlaskConical, TriangleAlert,
 } from "lucide-react";
 import { Card, Button } from "@/components/creator";
-import { MaterialOpsApi } from "@/api";
+import { MaterialOpsApi, ProductsApi } from "@/api";
 import { MATERIAL_PRODUCTS, getScript } from "@/mocks/material-ops";
 import { VARIANT_AXES } from "@/constants/material-ops-ui";
 import type { MaterialProduct, MaterialVideo, VariantAxisKey } from "./types";
 import { VideoGenDialog } from "./VideoGenDialog";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, MetricTile, SearchInput, EmptyState, fmtWan, parsePlays, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, MetricTile, SearchInput, EmptyState, ProductThumb, fmtWan, parsePlays, hexA } from "./shared";
 
 interface Group {
   product: MaterialProduct;
@@ -32,6 +32,9 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
   const [videoGen, setVideoGen] = React.useState<{ mode: "baseline" | "variant"; baseline: MaterialVideo | null; scriptId: string } | null>(null);
   const [loadError, setLoadError] = React.useState(false);
 
+  // 真实商品图：从后端商品库按 id 取首图，覆盖到展示用商品上（无图回退首字 monogram）。
+  const [imageById, setImageById] = React.useState<Map<string, string>>(new Map());
+
   const load = React.useCallback(() => {
     MaterialOpsApi.listVideos()
       .then((v) => {
@@ -43,6 +46,21 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
   React.useEffect(() => {
     load();
   }, [load]);
+
+  React.useEffect(() => {
+    ProductsApi.listProducts()
+      .then((list) => {
+        const m = new Map<string, string>();
+        list.forEach((p) => {
+          const first = p.images?.find((u) => !!u);
+          if (first) m.set(p.id, first);
+        });
+        setImageById(m);
+      })
+      .catch(() => {
+        /* 商品库拉取失败 → 全部回退 monogram，不阻断视频库 */
+      });
+  }, []);
 
   // 渲染中任务推进
   const hasRendering = videos.some((v) => v.status === "rendering");
@@ -61,8 +79,12 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
       if (!byProduct.has(pid)) byProduct.set(pid, []);
       byProduct.get(pid)!.push(v);
     });
-    return MATERIAL_PRODUCTS.map((product) => ({ product, videos: byProduct.get(product.id) ?? [] }));
-  }, [videos]);
+    return MATERIAL_PRODUCTS.map((product) => {
+      const realImg = imageById.get(product.id);
+      const merged = realImg ? { ...product, images: [realImg, ...product.images] } : product;
+      return { product: merged, videos: byProduct.get(product.id) ?? [] };
+    });
+  }, [videos, imageById]);
 
   const filteredProducts = React.useMemo(() => {
     return groups
@@ -271,9 +293,7 @@ function ProductDirectory({
                 fontFamily: "var(--font-sans)",
               }}
             >
-              <span style={{ width: 36, height: 36, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(135deg, ${hexA(g.product.accentColor ?? "#7c5cff", "ff")}, ${hexA(g.product.accentColor ?? "#7c5cff", "99")})`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-                {g.product.emoji}
-              </span>
+              <ProductThumb name={g.product.name} image={g.product.images?.[0]} color={g.product.accentColor} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{g.product.name}</span>
@@ -346,9 +366,7 @@ function VideoLibraryView({
       {/* hero */}
       <Card style={{ padding: 0, overflow: "hidden", background: `linear-gradient(110deg, ${hexA(product.accentColor ?? "#7c5cff", "1f")} 0%, transparent 40%), var(--bg-1)`, border: `1px solid ${hexA(product.accentColor ?? "#7c5cff", "44")}` }}>
         <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 48, height: 48, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(135deg, ${product.accentColor}, ${hexA(product.accentColor ?? "#7c5cff", "99")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
-            {product.emoji}
-          </div>
+          <ProductThumb name={product.name} image={product.images?.[0]} color={product.accentColor} size={48} />
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 16, color: "var(--fg-0)", fontWeight: 600 }}>{product.name}</span>
@@ -527,9 +545,7 @@ function VideoCard({ video, onClick, onRetry, showParent }: { video: MaterialVid
               </span>
             )}
           </div>
-        ) : (
-          <span style={{ fontSize: 36 }}>{video.thumb_emoji}</span>
-        )}
+        ) : null}
         {!isRendering && !isFailed && <PlayCircle size={26} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
         {isRendering && (
           <>
@@ -612,7 +628,6 @@ function VideoDetail({
         {/* 视频帧 */}
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ aspectRatio: "9 / 16", background: `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-            <div style={{ fontSize: 64 }}>{video.thumb_emoji}</div>
             <PlayCircle size={56} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />
             <span style={{ position: "absolute", bottom: 10, right: 10, fontFamily: "var(--font-mono)", fontSize: 10, color: "#fff", background: "rgba(0,0,0,0.45)", padding: "3px 8px", borderRadius: 4 }}>
               {video.duration_sec}s · {video.aspect_ratio}
@@ -749,7 +764,6 @@ function AxisChip({
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: axis.toneVar, letterSpacing: "0.1em", textTransform: "uppercase" }}>{axis.label}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 22 }}>{current.emoji}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.label}</div>
           {current.sub && <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)", marginTop: 2 }}>{current.sub}</div>}
@@ -763,7 +777,7 @@ function AxisChip({
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {alts.map((o) => (
               <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--fg-1)" }}>
-                <span style={{ fontSize: 13 }}>{o.emoji}</span>
+                <span style={{ width: 3, height: 3, borderRadius: 99, background: hexA(axis.toneVar, "88"), flexShrink: 0 }} />
                 <span>{o.label}</span>
               </div>
             ))}

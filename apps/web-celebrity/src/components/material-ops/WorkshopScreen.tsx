@@ -15,7 +15,7 @@ import {
 import { VIRAL_HITS } from "@/mocks/material-ops";
 import type { MaterialProduct, PlatformId, ScriptAsset, ScriptBlock, ShotKind } from "./types";
 import { DraftingHub } from "./DraftingHub";
-import { Eyebrow, Tag, TierBadge, hexA } from "./shared";
+import { Eyebrow, Tag, TierBadge, ProductThumb, hexA } from "./shared";
 
 const SHOT_KINDS: ShotKind[] = ["hook", "scene", "emotion", "product", "effect", "cta"];
 
@@ -110,9 +110,8 @@ function ProductHero({ product, onTemplate, onViral, onAI }: { product: Material
     <Card style={{ padding: 0, overflow: "hidden", background: `linear-gradient(110deg, ${hexA(product.accentColor ?? "#7c5cff", "1f")} 0%, transparent 38%), var(--bg-1)`, border: `1px solid ${hexA(product.accentColor ?? "#7c5cff", "44")}` }}>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1.4fr 1fr auto", alignItems: "stretch" }}>
         <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, borderRight: "1px solid var(--line)" }}>
-          <div style={{ width: 64, height: 64, borderRadius: "var(--radius-lg)", background: `linear-gradient(135deg, ${product.accentColor}, ${hexA(product.accentColor ?? "#7c5cff", "99")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, flexShrink: 0 }}>
-            {product.emoji}
-          </div>
+          <ProductThumb name={product.name} image={product.images?.[0]} color={product.accentColor} size={64} radius="var(--radius-lg)" />
+
           <div style={{ minWidth: 0 }}>
             <Eyebrow style={{ marginBottom: 4 }}>关联商品</Eyebrow>
             <div style={{ fontSize: 16, color: "var(--fg-0)", fontWeight: 600, whiteSpace: "nowrap" }}>{product.name}</div>
