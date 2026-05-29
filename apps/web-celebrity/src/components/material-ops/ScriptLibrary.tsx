@@ -4,11 +4,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ChevronRight, ScrollText, LayoutTemplate, Flame, Wand2, Video } from "lucide-react";
+import { Plus, ChevronRight, ScrollText, LayoutTemplate, Flame, Wand2, Video, Loader2 } from "lucide-react";
 import { Card, Button } from "@/components/creator";
-import { MaterialOpsApi } from "@/api";
+import { MaterialOpsApi, ProductsApi } from "@/api";
 import { SCRIPT_ASSETS, getProduct } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META } from "@/constants/material-ops-ui";
+import type { Product } from "@ai-star-eco/types/product";
 import type { AssetKind, MaterialProduct, ScriptAsset, Tier } from "./types";
 import { ProductPickerDialog } from "./ProductPickerDialog";
 import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, formatLastUsed, hexA } from "./shared";
@@ -22,7 +23,7 @@ const KIND_ICON: Record<AssetKind, React.ComponentType<{ size?: number; color?: 
 
 const COLS = "40px 1.6fr 1.1fr 0.9fr 0.6fr 0.6fr 0.8fr 24px";
 
-export function ScriptLibrary() {
+export function ScriptLibrary({ composeProductId }: { composeProductId?: string } = {}) {
   const router = useRouter();
   const [scripts, setScripts] = React.useState<ScriptAsset[]>(SCRIPT_ASSETS);
   const [tab, setTab] = React.useState<AssetKind | "all">("all");
@@ -35,6 +36,37 @@ export function ScriptLibrary() {
   React.useEffect(() => {
     MaterialOpsApi.listScripts().then(setScripts);
   }, []);
+
+  // 商品库「脚本生成」深链：?compose=<productId> → 自动锚定该商品建草稿，跳进编辑。
+  // composing 用 state 驱动过渡态（ref 防 StrictMode 双跑）；商品找不到则退回普通脚本库。
+  const [composing, setComposing] = React.useState<boolean>(!!composeProductId);
+  const composedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!composeProductId || composedRef.current) return;
+    composedRef.current = true;
+    (async () => {
+      let mp: MaterialProduct | undefined = getProduct(composeProductId);
+      if (!mp) {
+        const p = await ProductsApi.getProduct(composeProductId);
+        if (p) mp = toMaterialProduct(p);
+      }
+      if (!mp) {
+        setComposing(false); // 商品没找到，退回普通脚本库
+        return;
+      }
+      const draft = blankDraft(mp);
+      await MaterialOpsApi.saveScript(draft);
+      router.replace(`/material/workshop/${draft.id}/edit`);
+    })();
+  }, [composeProductId, router]);
+
+  if (composing) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: 80, color: "var(--fg-2)", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+        <Loader2 size={16} className="animate-spin" /> 正在为该商品创建脚本…
+      </div>
+    );
+  }
 
   const filtered = React.useMemo(() => {
     return scripts
@@ -213,6 +245,15 @@ export function ScriptLibrary() {
       {pickerOpen && <ProductPickerDialog onClose={() => setPickerOpen(false)} onPick={onNewProductPicked} />}
     </div>
   );
+}
+
+// 真实 Product（商品库任意商品，可能没有 emoji/受众等展示字段）→ MaterialProduct。
+function toMaterialProduct(p: Product): MaterialProduct {
+  const points = (p.sellingPoints ?? "")
+    .split(/[/、,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { ...p, emoji: "📦", accentColor: "#7c5cff", sellingPointList: points, audience: [], suggestedAngles: [] };
 }
 
 function blankDraft(product: MaterialProduct): ScriptAsset {
