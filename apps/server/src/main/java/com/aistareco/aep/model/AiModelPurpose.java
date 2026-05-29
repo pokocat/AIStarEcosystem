@@ -8,7 +8,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * AiModelInvocationService.invokeChat(purpose, ...) 按此选 provider。
  */
 public enum AiModelPurpose {
-    SCRIPT_DRAFT,           // 模板脚本起草（admin 编辑器"AI 改写"）
+    SCRIPT_DRAFT,           // 模板脚本起草（admin 编辑器"AI 改写" + 素材运营起稿中心 AI 起稿）
+    SELLING_POINTS,         // 商品卖点提取（素材运营商品表单「AI 提取卖点」）
+    VARIABLE_EXTRACT,       // 脚本可替换变量抽取（素材运营派生变体）
     SAFETY_REVIEW,          // 风控复检（敏感词 / 政策合规）
     VIDEO_REF_ANALYSIS,     // 视频参考分析（v0.6 自动抽帧用）
     TEMPLATE_REWRITE,       // 现有 prompt 改写

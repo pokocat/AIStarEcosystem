@@ -2,9 +2,11 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.model.MaterialScript;
 import com.aistareco.aep.model.MaterialVideo;
+import com.aistareco.aep.model.Product;
 import com.aistareco.aep.repository.MaterialScriptRepository;
 import com.aistareco.aep.repository.MaterialVideoRepository;
 import com.aistareco.aep.repository.MaterialViralHitRepository;
+import com.aistareco.aep.repository.ProductRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -26,17 +28,23 @@ public class MaterialOpsService {
     private final MaterialVideoRepository videoRepo;
     private final MaterialViralHitRepository viralRepo;
     private final ProductService productService;
+    private final ProductRepository productRepo;
+    private final MaterialAiService materialAi;
     private final ObjectMapper om;
 
     public MaterialOpsService(MaterialScriptRepository scriptRepo,
                               MaterialVideoRepository videoRepo,
                               MaterialViralHitRepository viralRepo,
                               ProductService productService,
+                              ProductRepository productRepo,
+                              MaterialAiService materialAi,
                               ObjectMapper om) {
         this.scriptRepo = scriptRepo;
         this.videoRepo = videoRepo;
         this.viralRepo = viralRepo;
         this.productService = productService;
+        this.productRepo = productRepo;
+        this.materialAi = materialAi;
         this.om = om;
     }
 
@@ -129,6 +137,40 @@ public class MaterialOpsService {
         videoRepo.deleteById(id);
     }
 
+    // ── AI 起稿 / 变量抽取（接真 LLM，失败降级，见 MaterialAiService） ──────────────
+    /**
+     * AI 起脚本候选（不落库，仅返回；用户选用并保存时才走 saveScript）。
+     * 上下文优先取库内 Product（权威卖点）；库里没有则用请求里带的字段构造临时上下文。
+     */
+    @Transactional(readOnly = true)
+    public List<JsonNode> draftScripts(JsonNode body, String userId) {
+        String productId = text(body, "product_id");
+        Product product = productId != null ? productRepo.findById(productId).orElse(null) : null;
+        if (product == null) {
+            product = new Product();
+            product.setId(productId);
+            product.setName(orDefault(text(body, "product_name"), "商品"));
+            product.setCategory(orDefault(text(body, "category"), "通用"));
+            product.setSellingPoints(text(body, "selling_points"));
+        }
+        String tone = orDefault(text(body, "tone"), "情感故事");
+        List<String> audience = strList(body.get("audience"));
+        int durationSec = body.path("duration_sec").asInt(38);
+        int count = body.path("count").asInt(3);
+        return materialAi.draftScripts(product, tone, audience, durationSec, count);
+    }
+
+    /**
+     * 从脚本抽取可替换变量（owner 校验：私有脚本仅本人）。
+     * 找不到 / 无权访问 → 返回空列表（前端用正则兜底，不泄露存在性）。
+     */
+    @Transactional(readOnly = true)
+    public List<JsonNode> extractVariables(String scriptId, String userId) {
+        JsonNode script = getScript(scriptId, userId);
+        if (script == null) return new ArrayList<>();
+        return materialAi.extractVariables(script.get("blocks"));
+    }
+
     // ── 爆款雷达 ───────────────────────────────────────────────────────────────
     @Transactional(readOnly = true)
     public List<JsonNode> listViralHits() {
@@ -169,5 +211,16 @@ public class MaterialOpsService {
 
     private static String orDefault(String v, String d) {
         return v == null || v.isBlank() ? d : v;
+    }
+
+    private static List<String> strList(JsonNode arr) {
+        List<String> out = new ArrayList<>();
+        if (arr != null && arr.isArray()) {
+            arr.forEach(x -> {
+                String t = x.asText("").strip();
+                if (!t.isBlank()) out.add(t);
+            });
+        }
+        return out;
     }
 }

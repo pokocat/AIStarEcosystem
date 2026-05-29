@@ -48,6 +48,18 @@ public class MaterialOpsController {
         return ApiResponse.of(service.saveScript(body, uid(principal)));
     }
 
+    /** AI 起稿候选（接真 LLM，失败降级到内置占位池）。不落库，用户选用保存时才落库。 */
+    @PostMapping("/scripts/ai-draft")
+    public ApiResponse<List<JsonNode>> aiDraft(@RequestBody JsonNode body, Principal principal) {
+        return ApiResponse.of(service.draftScripts(body, uid(principal)));
+    }
+
+    /** 从脚本抽取可替换变量（接真 LLM，失败 / 无权访问返回空 → 前端用正则兜底）。 */
+    @PostMapping("/scripts/{id}/variables")
+    public ApiResponse<List<JsonNode>> extractVariables(@PathVariable String id, Principal principal) {
+        return ApiResponse.of(service.extractVariables(id, uid(principal)));
+    }
+
     // ── 视频 ─────────────────────────────────────────────────────────────────
     @GetMapping("/videos")
     public ApiResponse<List<JsonNode>> listVideos(

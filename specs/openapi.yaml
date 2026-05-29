@@ -5086,6 +5086,24 @@ paths:
     put:    { tags: [admin-agent-bots], operationId: adminUpdateAgentBot, responses: { '200': { description: ok } } }
     delete: { tags: [admin-agent-bots], operationId: adminDeleteAgentBot, responses: { '204': { description: ok } } }
 
+  # ── Prompt 模板管理（v0.40 新增；素材运营文本三件 system+user 模板，DB 真源可改/灰度/回滚） ──────────
+  /admin/prompts:
+    get: { tags: [admin-prompts], operationId: adminListPrompts, responses: { '200': { description: prompt_template 列表（含未落库但有 resource 默认的已知 key） } } }
+  /admin/prompts/{key}:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    get: { tags: [admin-prompts], operationId: adminGetPrompt,    responses: { '200': { description: ok } } }
+    put: { tags: [admin-prompts], operationId: adminUpsertPrompt, responses: { '200': { description: upsert（version 自增，1min 缓存立即失效） } } }
+  /admin/prompts/{key}/dry-run:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-prompts], operationId: adminDryRunPrompt, responses: { '200': { description: 用样例参数 fill 出最终 messages（不真调模型） } } }
+
+  # ── 素材运营 · 文本类 AI（v0.40 新增；接真 LLM，失败降级，见 MaterialAiService） ──────────
+  /material/scripts/ai-draft:
+    post: { tags: [material], operationId: materialAiDraftScripts, responses: { '200': { description: AI 起稿候选 ScriptAsset[]（不落库；LLM 失败回退内置占位池） } } }
+  /material/scripts/{id}/variables:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [material], operationId: materialExtractVariables, responses: { '200': { description: 脚本可替换变量 ScriptVariable[]（已过滤幻觉；失败/无权访问返回空，前端用正则兜底） } } }
+
   # ── admin · products（商品库管理；v0.31 起承载所有写动作） ───────────────────────
 
   /admin/products:

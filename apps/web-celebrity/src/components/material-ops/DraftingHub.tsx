@@ -5,6 +5,7 @@
 import * as React from "react";
 import { X, LayoutTemplate, Flame, Wand2, Check, Shuffle, ScrollText, Link2 } from "lucide-react";
 import { Button } from "@/components/creator";
+import { MaterialOpsApi } from "@/api";
 import { SCRIPT_ASSETS, VIRAL_HITS } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META, PLATFORM_RULES } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, PlatformId, ScriptAsset, ScriptBlock, Tier, ViralHit } from "./types";
@@ -456,15 +457,29 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
   const [candidates, setCandidates] = React.useState<ScriptAsset[]>([]);
   const [previewId, setPreviewId] = React.useState<string | null>(null);
 
-  const run = () => {
+  // 接真 LLM（live：POST /material/scripts/ai-draft）；mock / 失败 → 回退本地占位池 aiCandidates。
+  const run = async () => {
     setRunning(true);
-    setTimeout(() => {
-      const next = aiCandidates(product, count);
-      setCandidates(next);
-      setPreviewId(next[0]?.id ?? null);
-      setRunning(false);
-      setStage("results");
-    }, 600);
+    let next: ScriptAsset[] = [];
+    try {
+      next = await MaterialOpsApi.aiDraftScripts({
+        product_id: product.id,
+        product_name: product.name,
+        category: product.category,
+        selling_points: product.sellingPoints ?? undefined,
+        tone,
+        audience: [audience],
+        duration_sec: 38,
+        count,
+      });
+    } catch {
+      next = [];
+    }
+    if (!next.length) next = aiCandidates(product, count);
+    setCandidates(next);
+    setPreviewId(next[0]?.id ?? null);
+    setRunning(false);
+    setStage("results");
   };
   const preview = candidates.find((c) => c.id === previewId);
 

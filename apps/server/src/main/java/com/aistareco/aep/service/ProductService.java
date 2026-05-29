@@ -23,9 +23,11 @@ import java.util.UUID;
 public class ProductService {
 
     private final ProductRepository repo;
+    private final MaterialAiService materialAi;
 
-    public ProductService(ProductRepository repo) {
+    public ProductService(ProductRepository repo, MaterialAiService materialAi) {
         this.repo = repo;
+        this.materialAi = materialAi;
     }
 
     public List<ProductDto> list(String category, String q) {
@@ -205,12 +207,22 @@ public class ProductService {
     }
 
     /**
-     * Mock LLM 卖点抽取：根据商品名 + 链接产出一段固定模板的卖点。
-     * 与前端 mock 行为一致（apps/web/src/api/products.ts:extractSellingPoints）。
+     * 卖点抽取：优先真 LLM（MaterialAiService → invokeChat，purpose=SELLING_POINTS）；
+     * provider 未配 / 调用失败 / JSON 解析失败时回退到固定模板串（永远可降级，HTTP 仍 200）。
      */
     public String extractSellingPoints(String name, String link) {
-        if (name == null) name = "";
-        String trimmed = name.trim();
+        try {
+            String ai = materialAi.extractSellingPoints(name, link);
+            if (ai != null && !ai.isBlank()) return ai;
+        } catch (Exception e) {
+            // MaterialAiService 内部已 catch + log；此处再兜一层防御。
+        }
+        return fallbackSellingPoints(name);
+    }
+
+    /** 卖点提取占位兜底（与历史 mock 行为一致）。 */
+    private static String fallbackSellingPoints(String name) {
+        String trimmed = name == null ? "" : name.trim();
         return trimmed + "：精选优质原料，工艺细节考究；上身/上脸效果显著，"
                 + "用户好评 95%+。日常通勤 / 节日送礼 / 自用囤货皆宜，下单立享平台保障。";
     }

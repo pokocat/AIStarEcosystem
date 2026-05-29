@@ -175,6 +175,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "平台与配置",
     items: [
       { href: "/platform/ai-models",  label: "AI 模型",  icon: Sparkles, description: "v0.5：接入 OpenAI 兼容 API token，driver template-scripts 与脚本起草" },
+      { href: "/platform/prompts",    label: "Prompt 管理", icon: Sparkles, description: "素材运营文本三件（起稿/卖点/变量）的 system + user 模板，可改/灰度/回滚" },
       { href: "/platform/agent-bots", label: "Agent 平台", icon: Sparkles, description: "v0.39：接入 Coze 等 agent 平台 bot（形象锻造等场景），token 加密存储" },
       { href: "/platform/llm-keys",   label: "LLM 网关 Key", icon: KeySquare, description: "v0.6：业务侧调 llm-gateway 的 sk-aep-* key，按 token 计费回写 ledger" },
       { href: "/platform/config",     label: "平台配置", icon: KeySquare, description: "全站开关与文案" },
