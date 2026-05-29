@@ -412,11 +412,11 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
           </div>
         </div>
 
-        {/* body：脚本是主编辑面（更宽更高），画面指令为次要/选填（更窄） */}
+        {/* body：脚本是主编辑面（台词，更宽更高），字幕为次要/选填（更窄） */}
         <div style={{ padding: "14px 16px", display: "grid", gridTemplateColumns: "minmax(0, 1.9fr) minmax(0, 1fr)", gap: 18 }}>
           <div>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-              <Eyebrow>口播 / 旁白 / 字幕</Eyebrow>
+              <Eyebrow>脚本 · 口播 / 旁白</Eyebrow>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)", fontVariantNumeric: "tabular-nums" }}>
                 {block.text.length} 字 · 约 {Math.ceil(block.text.length / 4)}s 口播
               </span>
@@ -446,12 +446,12 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 8 }}>
-              <Eyebrow>画面指令</Eyebrow>
+              <Eyebrow>字幕 · 画面文字</Eyebrow>
               <span style={{ fontSize: 10, color: "var(--fg-3)" }}>选填</span>
             </div>
-            <BannedTextarea value={block.shot} onChange={(v) => onUpdate({ shot: v })} placeholder="镜头景别、运镜、动作…" minHeight={56} small />
+            <BannedTextarea value={block.shot} onChange={(v) => onUpdate({ shot: v })} placeholder="画面上的花字 / 字幕条…" minHeight={56} small />
             <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {["特写", "中景", "怼脸", "跟拍", "反应镜", "字幕飘屏"].map((t) => (
+              {["同期声", "标题花字", "重点强调", "字幕条", "弹幕样式"].map((t) => (
                 <button key={t} onClick={() => onUpdate({ shot: block.shot ? `${block.shot} · ${t}` : t })} style={{ padding: "2px 7px", borderRadius: "var(--radius-sm)", fontSize: 10, background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line)", cursor: "pointer", fontFamily: "var(--font-mono)" }}>
                   + {t}
                 </button>
