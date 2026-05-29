@@ -71,10 +71,10 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ### v0.40 · 2026-05-29 · 素材运营文本三件接真 LLM
 
-- 起稿中心「AI 生成」`DraftingHub` 的 `AIPicker.run` 接 `POST /material/scripts/ai-draft`（真 LLM 起稿候选），失败 / mock 回退本地占位池 `aiCandidates`。
-- 派生变体 `DeriveVariablesPanel` 挂载时拉 `POST /material/scripts/{id}/variables`（真 LLM 抽变量）；即时用正则结果占位，AI 回来非空则升级。
-- `api/material-ops.ts` +`aiDraftScripts` / `extractScriptVariables`（USE_MOCK / 失败 → `[]`，由调用方兜底）。
-- 卖点提取（商品表单「AI 提取卖点」）后端换真实现（端点不变）。
+- 起稿中心「AI 生成」`DraftingHub` 的 `AIPicker.run` 接 `POST /material/scripts/ai-draft`（真 LLM 起稿候选）。**失败不静默兜底**：直接展示后端明确报错（token 未配 / prompt 未配 / 模型异常）+ 重试。USE_MOCK 模式不打后端、用本地占位池 `aiCandidates`。
+- 派生变体 `DeriveVariablesPanel` 挂载时拉 `POST /material/scripts/{id}/variables`（真 LLM 抽变量）；即时用正则结果占位，AI 回来非空则升级；AI 失败显式警示（保留正则结果可继续编辑）。
+- 卖点提取（商品表单「AI 提取卖点」）后端换真实现（端点不变）；失败 inline 报错。
+- `api/material-ops.ts` +`aiDraftScripts` / `extractScriptVariables`（USE_MOCK → `[]`；live 失败抛 `ApiError`，由调用方展示）。
 - prompt（system+user）由 admin `/platform/prompts` 管理；server 侧见 `MaterialAiService` / `PromptService` / `prompt_template` 表。方案见 [`docs/MATERIAL_OPS_AI_TEXT_PLAN.md`](../../docs/MATERIAL_OPS_AI_TEXT_PLAN.md)。
 
 ### v0.31 · 2026-05-24 · 账户隔离收口：商品库公共池只读 + 写收归 admin

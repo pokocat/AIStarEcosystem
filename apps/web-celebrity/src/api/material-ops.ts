@@ -225,8 +225,9 @@ export async function hasInflightTasks(): Promise<boolean> {
 }
 
 // ── AI 起稿 / 变量抽取（接真 LLM，见 server MaterialAiService） ────────────────
-// USE_MOCK：返回空 → 调用方（DraftingHub / DeriveVariablesPanel）回退到本地占位池 / 正则，
-// 与 live 模式下后端不可用时的降级路径一致。
+// USE_MOCK：返回空 [] → 调用方（DraftingHub / DeriveVariablesPanel）用本地占位池 / 正则。
+// live：成功返回结果；失败抛 ApiError（不静默兜底）—— 后端带明确 code/message（token 未配 /
+// prompt 未配 / 模型异常），由调用方 catch 后展示，便于定位配置问题。
 export interface AiDraftParams {
   product_id?: string;
   product_name?: string;

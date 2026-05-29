@@ -38,6 +38,8 @@ export function CelebrityProductForm({
 
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [extracting, setExtracting] = React.useState(false);
+  // 卖点提取失败不静默：把后端明确报错（token 未配 / prompt 未配 / 模型异常）展示出来。
+  const [extractError, setExtractError] = React.useState<string | null>(null);
 
   const trimmedName = value.name.trim();
   const trimmedLink = value.link?.trim() ?? "";
@@ -50,12 +52,15 @@ export function CelebrityProductForm({
   const onExtract = async () => {
     if (!canExtract) return;
     setExtracting(true);
+    setExtractError(null);
     try {
       const { sellingPoints } = await ProductsApi.extractSellingPoints({
         name: trimmedName,
         link: trimmedLink,
       });
       onChange({ ...value, sellingPoints });
+    } catch (e) {
+      setExtractError((e as Error)?.message || "AI 提取卖点失败，请稍后重试");
     } finally {
       setExtracting(false);
     }
@@ -119,9 +124,15 @@ export function CelebrityProductForm({
           value={value.sellingPoints}
           onChange={(e) => set({ sellingPoints: e.target.value })}
         />
-        {canExtractWithAI && !canExtract && !extracting && (
+        {canExtractWithAI && !canExtract && !extracting && !extractError && (
           <p className="text-[11px] text-zinc-500">
             💡 想用 AI 自动抽卖点？请先填好商品名称和商品链接 →
+          </p>
+        )}
+        {extractError && (
+          <p className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-rose-600">
+            <span className="font-medium">AI 提取卖点失败：</span>
+            {extractError}
           </p>
         )}
       </div>

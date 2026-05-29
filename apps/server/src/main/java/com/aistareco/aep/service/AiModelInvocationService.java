@@ -49,10 +49,14 @@ public class AiModelInvocationService {
         this.repo = repo;
     }
 
+    /** 是否存在该用途的启用 provider（用于上层在调用前判断「未配置大模型」并给出明确提示）。 */
+    public boolean hasProviderFor(AiModelPurpose purpose) {
+        return !pickProviders(purpose).isEmpty();
+    }
+
     /** 简易 chat：messages = [{role, content}, ...]。 */
     public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
-                                       Map<String, Object> options) {
-        List<AiModelProvider> candidates = pickProviders(purpose);
+                                       Map<String, Object> options) {        List<AiModelProvider> candidates = pickProviders(purpose);
         BusinessException lastErr = null;
         for (AiModelProvider p : candidates) {
             try {
