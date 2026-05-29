@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { PALETTE } from "@/constants/material-ops-ui";
+import type { Product } from "@ai-star-eco/types/product";
 import type {
   MaterialProduct,
   MaterialVideo,
@@ -141,6 +142,41 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
 export function getProduct(id?: string): MaterialProduct | undefined {
   if (!id) return undefined;
   return MATERIAL_PRODUCTS.find((p) => p.id === id);
+}
+
+// 类目 → 展示元数据（emoji / 主题色），给商品库里非素材运营的商品补默认展示。
+const CATEGORY_ENRICH: Record<string, { emoji: string; accentColor: string }> = {
+  美妆: { emoji: "💄", accentColor: PALETTE.rose },
+  食品饮料: { emoji: "🥣", accentColor: PALETTE.teal },
+  "数码 3C": { emoji: "📱", accentColor: PALETTE.violet },
+  服饰: { emoji: "👕", accentColor: PALETTE.violetDeep },
+  日用百货: { emoji: "🧺", accentColor: PALETTE.amber },
+  母婴: { emoji: "🍼", accentColor: PALETTE.peach },
+  运动: { emoji: "🏋", accentColor: PALETTE.violetDeep },
+  其他: { emoji: "📦", accentColor: PALETTE.teal },
+};
+
+/**
+ * 任意系统商品（Product）→ 展示用 MaterialProduct。
+ * 素材运营自带的 6 个用其完整富数据；商品库里的其它商品按类目补 emoji/色，
+ * 卖点串拆成 chip 列表。供新建脚本商品选择器 / 脚本列表展示复用。
+ */
+export function toMaterialProduct(p: Product): MaterialProduct {
+  const rich = MATERIAL_PRODUCTS.find((m) => m.id === p.id);
+  if (rich) return rich;
+  const meta = CATEGORY_ENRICH[p.category] ?? CATEGORY_ENRICH["其他"];
+  const points = (p.sellingPoints ?? "")
+    .split(/[/、,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return {
+    ...p,
+    emoji: meta.emoji,
+    accentColor: meta.accentColor,
+    sellingPointList: points,
+    audience: [],
+    suggestedAngles: [],
+  };
 }
 
 // ── 脚本资产（9 条；blocks≈Scene；product_id 显式互链） ────────────────────────

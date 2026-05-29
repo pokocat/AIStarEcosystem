@@ -9,6 +9,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.oneOf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -52,6 +55,16 @@ class MaterialOpsE2ETest {
                 .andExpect(jsonPath("$.data.blocks.length()").value(5))
                 .andExpect(jsonPath("$.data.blocks[0].kind").value("hook"))
                 .andExpect(jsonPath("$.data.metrics.ctr_pct").value(9.2));
+    }
+
+    @Test
+    void script_ownerMappedToSeededUser() throws Exception {
+        // 我的脚本（asset-2598）的归属人应映射到系统 seed 用户：
+        // created_by 不再是 mock 的 "user-bb"；source.author = 某个 seed studio 的 displayName。
+        mvc.perform(get("/api/material/scripts/asset-2598"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.created_by").value(not(is("user-bb"))))
+                .andExpect(jsonPath("$.data.source.author").value(oneOf("Luna 个人创作者", "星光经纪", "月升经纪")));
     }
 
     @Test

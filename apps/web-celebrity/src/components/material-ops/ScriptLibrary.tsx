@@ -6,10 +6,10 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ChevronRight, ScrollText, LayoutTemplate, Flame, Wand2, Video, Loader2 } from "lucide-react";
 import { Card, Button } from "@/components/creator";
+import { useAuth } from "@ai-star-eco/api-client";
 import { MaterialOpsApi, ProductsApi } from "@/api";
-import { SCRIPT_ASSETS, getProduct } from "@/mocks/material-ops";
+import { SCRIPT_ASSETS, getProduct, toMaterialProduct } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META } from "@/constants/material-ops-ui";
-import type { Product } from "@ai-star-eco/types/product";
 import type { AssetKind, MaterialProduct, ScriptAsset, Tier } from "./types";
 import { ProductPickerDialog } from "./ProductPickerDialog";
 import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, formatLastUsed, hexA } from "./shared";
@@ -32,6 +32,19 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
   const [query, setQuery] = React.useState("");
   const [sort, setSort] = React.useState<"recent" | "perf" | "uses">("recent");
   const [pickerOpen, setPickerOpen] = React.useState(false);
+  const { user } = useAuth();
+  const owner = React.useMemo(
+    () => ({ id: user?.id, name: user?.displayName ?? user?.username }),
+    [user?.id, user?.displayName, user?.username],
+  );
+
+  // 全部系统商品 → id 映射，供「关联商品」列展示（覆盖商品库里任意商品，不止素材运营 6 个）。
+  const [productById, setProductById] = React.useState<Map<string, MaterialProduct>>(new Map());
+  React.useEffect(() => {
+    ProductsApi.listProducts().then((list) => {
+      setProductById(new Map(list.map((p) => [p.id, toMaterialProduct(p)])));
+    });
+  }, []);
 
   React.useEffect(() => {
     MaterialOpsApi.listScripts().then(setScripts);
@@ -54,11 +67,11 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
         setComposing(false); // 商品没找到，退回普通脚本库
         return;
       }
-      const draft = blankDraft(mp);
+      const draft = blankDraft(mp, owner);
       await MaterialOpsApi.saveScript(draft);
       router.replace(`/material/workshop/${draft.id}/edit`);
     })();
-  }, [composeProductId, router]);
+  }, [composeProductId, router, owner]);
 
   if (composing) {
     return (
@@ -90,7 +103,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
   };
 
   const onNewProductPicked = async (product: MaterialProduct) => {
-    const draft = blankDraft(product);
+    const draft = blankDraft(product, owner);
     await MaterialOpsApi.saveScript(draft);
     setPickerOpen(false);
     router.push(`/material/workshop/${draft.id}/edit`);
@@ -172,7 +185,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
         {filtered.map((a) => {
           const KindIcon = KIND_ICON[a.kind];
           const kindMeta = ASSET_KIND_META[a.kind];
-          const product = getProduct(a.product_id);
+          const product = (a.product_id ? productById.get(a.product_id) : undefined) ?? getProduct(a.product_id);
           return (
             <div
               key={a.id}
@@ -247,16 +260,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
   );
 }
 
-// 真实 Product（商品库任意商品，可能没有 emoji/受众等展示字段）→ MaterialProduct。
-function toMaterialProduct(p: Product): MaterialProduct {
-  const points = (p.sellingPoints ?? "")
-    .split(/[/、,，]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return { ...p, emoji: "📦", accentColor: "#7c5cff", sellingPointList: points, audience: [], suggestedAngles: [] };
-}
-
-function blankDraft(product: MaterialProduct): ScriptAsset {
+function blankDraft(product: MaterialProduct, owner: { id?: string; name?: string }): ScriptAsset {
   const id = `asset-${Math.floor(Math.random() * 9000 + 1000)}-new`;
   const now = new Date().toISOString();
   return {
@@ -281,9 +285,9 @@ function blankDraft(product: MaterialProduct): ScriptAsset {
       { kind: "cta", label: "行动召唤", dur: 5, text: "", shot: "" },
     ],
     metrics: { uses_count: 0, ctr_pct: 0, diversity_pct: 0, completion_pct: 0, best_video: null, last_used_at: now },
-    source: { type: "user", author: "陈彬彬" },
+    source: { type: "user", ref_id: owner.id ?? null, author: owner.name ?? "我" },
     tags: [],
-    created_by: "user-bb",
+    created_by: owner.id ?? "self",
     workspace_id: "mcn-001",
   };
 }
