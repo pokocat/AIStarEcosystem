@@ -60,6 +60,8 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
+                        // 素材运营（脚本 / 视频 / 爆款雷达）—— 任意登录用户可读写共享库
+                        .requestMatchers("/api/material/**").authenticated()
                         // v0.31：商品库公共池 —— 任意登录用户可读，但禁止匿名读；
                         //  写动作（POST/PATCH/DELETE/from-link/refresh-images/extract-selling-points）
                         //  已迁至 /api/admin/products/**，受下方 hasAnyRole 门禁。

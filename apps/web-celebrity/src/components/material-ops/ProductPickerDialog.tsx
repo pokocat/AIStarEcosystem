@@ -3,18 +3,28 @@
 // 新建脚本第一步 —— 强制选择关联商品（商品库由商品中心维护，预留入口）。
 
 import * as React from "react";
-import { X, Check, ArrowRight, Package, ExternalLink } from "lucide-react";
+import { X, Check, ArrowRight, Package, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/creator";
-import { MATERIAL_PRODUCTS } from "@/mocks/material-ops";
+import { ProductsApi } from "@/api";
+import { toMaterialProduct } from "@/mocks/material-ops";
 import type { MaterialProduct } from "./types";
-import { Eyebrow, SearchInput, hexA } from "./shared";
+import { Eyebrow, SearchInput, ProductThumb, hexA } from "./shared";
 
 export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; onPick: (p: MaterialProduct) => void }) {
   const [query, setQuery] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [products, setProducts] = React.useState<MaterialProduct[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
-  const filtered = MATERIAL_PRODUCTS.filter((p) => !query || p.name.includes(query) || p.category.includes(query));
-  const selected = MATERIAL_PRODUCTS.find((p) => p.id === selectedId) ?? null;
+  // 拉系统全部商品（live → 真后端 /api/products；mock → 本地商品库），补展示元数据。
+  React.useEffect(() => {
+    ProductsApi.listProducts()
+      .then((list) => setProducts(list.map(toMaterialProduct)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = products.filter((p) => !query || p.name.includes(query) || p.category.includes(query));
+  const selected = products.find((p) => p.id === selectedId) ?? null;
   const yuan = (p: MaterialProduct) => (p.priceCents ? `¥${(p.priceCents / 100).toFixed(0)}` : "—");
 
   return (
@@ -65,9 +75,14 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: 22 }}>
+          {loading && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 40, color: "var(--fg-2)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+              <Loader2 size={14} className="animate-spin" /> 加载商品库…
+            </div>
+          )}
           <Eyebrow style={{ marginBottom: 12 }}>近期常用</Eyebrow>
           <div style={{ display: "flex", gap: 8, marginBottom: 22, flexWrap: "wrap" }}>
-            {MATERIAL_PRODUCTS.slice(0, 3).map((p) => {
+            {products.slice(0, 3).map((p) => {
               const active = selectedId === p.id;
               return (
                 <button
@@ -86,9 +101,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
                     fontSize: 12.5,
                   }}
                 >
-                  <span style={{ width: 22, height: 22, borderRadius: 99, background: `linear-gradient(135deg, ${p.accentColor}, ${hexA(p.accentColor ?? "#7c5cff", "99")})`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
-                    {p.emoji}
-                  </span>
+                  <ProductThumb name={p.name} image={p.images?.[0]} color={p.accentColor} size={22} radius={99} monoScale={0.5} />
                   {p.name}
                 </button>
               );
@@ -116,9 +129,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
                     boxShadow: active ? `0 0 0 3px ${hexA(p.accentColor ?? "#7c5cff", "22")}` : "none",
                   }}
                 >
-                  <span style={{ width: 48, height: 48, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(135deg, ${p.accentColor}, ${hexA(p.accentColor ?? "#7c5cff", "99")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>
-                    {p.emoji}
-                  </span>
+                  <ProductThumb name={p.name} image={p.images?.[0]} color={p.accentColor} size={48} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, color: "var(--fg-0)", fontWeight: 500 }}>{p.name}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
@@ -139,7 +150,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
         <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-2)" }}>
           {selected ? (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)" }}>
-              已选 · <span style={{ color: "var(--fg-0)" }}>{selected.emoji} {selected.name}</span>
+              已选 · <span style={{ color: "var(--fg-0)" }}>{selected.name}</span>
             </span>
           ) : (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-3)" }}>先选一个商品才能继续</span>

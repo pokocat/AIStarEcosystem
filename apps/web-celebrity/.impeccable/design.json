@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-29T00:00:00Z",
+  "title": "Design System: AI Star Eco · Celebrity (Creator Theme)",
+  "extensions": {
+    "colorMeta": {
+      "electric-violet": {
+        "role": "primary",
+        "displayName": "Electric Violet",
+        "canonical": "#7c5cff",
+        "tonalRamp": ["#221363", "#3a23a8", "#4a2fc9", "#5b3fe0", "#7c5cff", "#9d83ff", "#b4a4ff", "#eae3ff"]
+      },
+      "teal": {
+        "role": "secondary",
+        "displayName": "Signal Teal",
+        "canonical": "#22b59a",
+        "tonalRamp": ["#0c4a3f", "#13715f", "#188a76", "#22b59a", "#4ace9f", "#7dddc9", "#a7e9da", "#e6f7f3"]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Hook Amber",
+        "canonical": "#f0a83a",
+        "tonalRamp": ["#5c3c0c", "#8a5d18", "#c88820", "#f0a83a", "#f4be63", "#f7cf86", "#fae0b3", "#fef6e7"]
+      },
+      "rose": {
+        "role": "secondary",
+        "displayName": "Flag Rose",
+        "canonical": "#ff5b8a",
+        "tonalRamp": ["#5c1730", "#8a2348", "#d63a6c", "#ff5b8a", "#ff85a3", "#ffadc1", "#ffd6e0", "#fff0f4"]
+      },
+      "cream": {
+        "role": "neutral",
+        "displayName": "Cream Paper",
+        "canonical": "#faf7f2",
+        "tonalRamp": ["#1f1a14", "#3a3329", "#7a6f5d", "#a89e88", "#d8cfba", "#ebe5d8", "#f3efe7", "#faf7f2"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1f1a14",
+        "tonalRamp": ["#14110d", "#1f1a14", "#2a241c", "#3a3329", "#5a4f42", "#7a6f5d", "#a89e88", "#d8cfba"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page and editor titles. The largest type on a working screen." },
+      "headline": { "displayName": "Headline", "purpose": "Card titles, hero product name, section leads." },
+      "title": { "displayName": "Title", "purpose": "Inline editable labels, shot-block names, row primary text." },
+      "body": { "displayName": "Body", "purpose": "Script text, descriptions, help copy. Line-height 1.75 for editable prose." },
+      "label": { "displayName": "Label / Mono", "purpose": "Eyebrows, IDs, durations, metric units, timestamps. Uppercase, Clay or fainter." },
+      "accent-serif": { "displayName": "Accent Serif", "purpose": "Rare human-voice highlight, italic only. Never UI chrome." }
+    },
+    "shadows": [
+      { "name": "soft", "value": "0 1px 2px rgba(31,26,20,0.04)", "purpose": "Resting card lift against cream. Barely perceptible." },
+      { "name": "lift", "value": "0 6px 20px rgba(31,26,20,0.06)", "purpose": "Hover state for interactive cards, paired with 2px upward translate." },
+      { "name": "pop", "value": "0 20px 48px rgba(31,26,20,0.08)", "purpose": "Floating layers only: drawers, popovers, dropdown menus." }
+    ],
+    "motion": [
+      { "name": "ease-out-quart", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Standard easing for interaction-state transitions (rows, cards, wells)." },
+      { "name": "duration-fast", "value": "120ms", "purpose": "Button and chip state changes." },
+      { "name": "duration-base", "value": "130ms", "purpose": "Input/well border and focus-ring transitions." },
+      { "name": "duration-lift", "value": "170ms", "purpose": "Card hover lift (transform + shadow)." }
+    ],
+    "breakpoints": [
+      { "name": "workspace-twocol", "value": "1024px", "purpose": "Editor splits into main column + 320px agent rail above this width." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Accent Button",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "The single colored CTA. One per context.",
+      "html": "<button class=\"ds-btn-accent\">保存并预览</button>",
+      "css": ".ds-btn-accent { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #7c5cff; color: #fff; border: 1px solid #5b3fe0; border-radius: 999px; padding: 9px 18px; height: 36px; font-family: 'AEP Inter', system-ui, sans-serif; font-weight: 500; font-size: 13.5px; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; } .ds-btn-accent:hover { background: #6a48ee; } .ds-btn-accent:focus-visible { outline: 2px solid rgba(124,92,255,0.32); outline-offset: 2px; }"
+    },
+    {
+      "name": "Dark Button",
+      "kind": "button",
+      "refersTo": "button-dark",
+      "description": "Strongest CTA, used for confirm/save where no color is wanted.",
+      "html": "<button class=\"ds-btn-dark\">确认</button>",
+      "css": ".ds-btn-dark { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #1f1a14; color: #fff; border: 1px solid #1f1a14; border-radius: 999px; padding: 9px 18px; height: 36px; font-family: 'AEP Inter', system-ui, sans-serif; font-weight: 500; font-size: 13.5px; cursor: pointer; transition: opacity 120ms ease; } .ds-btn-dark:hover { opacity: 0.88; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral workhorse button.",
+      "html": "<button class=\"ds-btn-secondary\">另存为模板</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #fff; color: #1f1a14; border: 1px solid #d8cfba; border-radius: 999px; padding: 9px 18px; height: 36px; font-family: 'AEP Inter', system-ui, sans-serif; font-weight: 500; font-size: 13.5px; cursor: pointer; transition: border-color 120ms ease, background 120ms ease; } .ds-btn-secondary:hover { border-color: #a89e88; background: #faf7f2; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Raised paper surface on the cream canvas. Flat at rest.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-eyebrow\">关联商品</div><div class=\"ds-card-title\">玻尿酸保湿精华</div></div>",
+      "css": ".ds-card { background: #fff; border: 1px solid #e8e1d3; border-radius: 16px; box-shadow: 0 1px 2px rgba(31,26,20,0.04); padding: 16px; } .ds-eyebrow { font-family: 'AEP JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6f5d; } .ds-card-title { font-family: 'AEP Manrope', system-ui, sans-serif; font-size: 16px; font-weight: 600; color: #1f1a14; margin-top: 4px; }"
+    },
+    {
+      "name": "Editable Well",
+      "kind": "input",
+      "refersTo": "well",
+      "description": "White editable surface inside a recessed sand tray. White-on-sand is the 'type here' affordance.",
+      "html": "<div class=\"ds-well\"><textarea class=\"ds-well-area\" rows=\"2\" placeholder=\"把这一镜的台词写下来…\"></textarea></div>",
+      "css": ".ds-well { background: #fff; border: 1px solid #d8cfba; border-radius: 6px; transition: border-color 130ms ease, box-shadow 130ms ease; } .ds-well:hover { border-color: #a89e88; } .ds-well:focus-within { border-color: #7c5cff; box-shadow: 0 0 0 3px rgba(124,92,255,0.12); } .ds-well-area { width: 100%; resize: none; background: transparent; border: 0; outline: none; padding: 8px 10px; color: #1f1a14; font-family: 'AEP Inter', system-ui, sans-serif; font-size: 13.5px; line-height: 1.75; }"
+    },
+    {
+      "name": "Sand Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard labelled field on a paper surface.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">标题</span><input class=\"ds-input\" placeholder=\"为脚本起一个标题…\" /></label>",
+      "css": ".ds-field { display: block; } .ds-field-label { display: block; font-family: 'AEP JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #7a6f5d; margin-bottom: 4px; } .ds-input { width: 100%; padding: 8px 10px; background: #f3efe7; color: #1f1a14; border: 1px solid #d8cfba; border-radius: 10px; font-size: 13px; font-family: 'AEP Inter', system-ui, sans-serif; outline: none; transition: border-color 130ms ease, box-shadow 130ms ease; } .ds-input:focus { border-color: #7c5cff; box-shadow: 0 0 0 3px rgba(124,92,255,0.12); }"
+    },
+    {
+      "name": "Accent Chip",
+      "kind": "chip",
+      "refersTo": "chip-accent",
+      "description": "Quiet tint, saturated label. Marks selection or primary tag.",
+      "html": "<span class=\"ds-chip\">共 5 镜</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px; border-radius: 999px; font-family: 'AEP Inter', system-ui, sans-serif; font-size: 11.5px; font-weight: 500; letter-spacing: 0.1px; color: #7c5cff; background: color-mix(in srgb, #7c5cff 14%, transparent); white-space: nowrap; }"
+    },
+    {
+      "name": "Ghost Action Chip",
+      "kind": "chip",
+      "refersTo": "button-ghost",
+      "description": "Neutral at rest; reveals its semantic tone only on hover/focus so per-item actions don't out-shout content.",
+      "html": "<button class=\"ds-ghost\" style=\"--mo-tone:#7c5cff\">套模板</button>",
+      "css": ".ds-ghost { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 6px; background: transparent; border: 1px solid #d8cfba; color: #3a3329; font-family: 'AEP Inter', system-ui, sans-serif; font-size: 12px; font-weight: 500; cursor: pointer; transition: background 120ms ease, border-color 120ms ease, color 120ms ease; } .ds-ghost:hover, .ds-ghost:focus-visible { background: color-mix(in srgb, var(--mo-tone) 10%, transparent); border-color: var(--mo-tone); color: var(--mo-tone); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Studio",
+    "overview": "This is a workstation, not a showcase. The surface is warm cream paper and the chrome stays out of the way so the work (scripts, products, generated video, distribution) is the only thing that carries color and weight. Confidence comes from structure and restraint, not spectacle: a creator against a deadline should always know the next action and where the editable surface lives, without the interface raising its voice. The palette is deliberately quiet so a single accent can mean something. Electric Violet is the one chromatic voice; everything else is a tinted warm neutral. Status colors are reserved for genuine state, never decoration. Depth is conveyed by stepping through four cream tones and 1px hairlines, not by stacked shadows. It explicitly rejects the flashy-AI-demo look: no neon, no sci-fi glassmorphism, no surfaces that look generated rather than designed.",
+    "keyCharacteristics": [
+      "Cream-paper canvas (#faf7f2), four-step tonal layering for depth.",
+      "One accent (Electric Violet) used as signal, not surface; status hues reserved for real state.",
+      "Flat by default; shadows appear only as a response to state.",
+      "Pill buttons, generous radii (10–16px), 1px warm hairlines everywhere.",
+      "Mono eyebrows and tabular numerals give an operational, instrument-like precision."
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "Electric Violet is the only chromatic accent on a working screen, and it stays under ~10% of the surface. A second saturated color must carry real state (teal pass, amber warning, rose danger), never decoration.", "section": "colors" },
+      { "name": "The Reserved Status Rule", "body": "Teal / amber / rose are forbidden as classification or branding colors. Categories, tabs, and taxonomy labels resolve to neutral or the single accent. Color is spent only on state.", "section": "colors" },
+      { "name": "The Mono Numeral Rule", "body": "Every number that can change (durations, scores, counts, prices, percentages) is set in JetBrains Mono with tabular-nums, so figures stay column-aligned and read as data.", "section": "typography" },
+      { "name": "The Eyebrow Rule", "body": "Section context is a 10px uppercase mono eyebrow in Clay, never a bold heading. Hierarchy is carried by the title beneath it.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. A shadow heavier than Soft without hover/floating is wrong. Reach for a tonal step or a hairline before a shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do spend Electric Violet sparingly: one accent per context, under ~10% of the surface.",
+      "Do build depth from the four cream steps (Cream / Paper White / Sand / Well) and 1px hairlines before reaching for a shadow.",
+      "Do keep editable surfaces Paper White so the affordance is obvious, especially inside a recessed tray.",
+      "Do set every changeable number in JetBrains Mono with tabular numerals.",
+      "Do reserve teal / amber / rose for genuine state, and always pair status color with text or shape, never color alone.",
+      "Do use the shared primitives (Button, Card, Chip, Input) and the .mo-* utilities instead of re-styling inline."
+    ],
+    "donts": [
+      "Don't make this feel like a flashy AI demo: no neon gimmicks, no sci-fi clichés, no novelty-first effects.",
+      "Don't use glassmorphism, decorative blurs, or glass cards. Depth is tonal, not glassy.",
+      "Don't use gradient text (background-clip: text); emphasize with weight or size on a solid color.",
+      "Don't use a colored side-stripe (border-left/right > 1px) on cards, rows, or callouts.",
+      "Don't color classification or taxonomy with status hues; categories resolve to neutral or the single accent.",
+      "Don't put gray text on a colored fill; use a shade of that color or a transparency of it.",
+      "Don't reach for a modal as the first thought; exhaust inline and drawer alternatives.",
+      "Don't stack shadows or use a shadow heavier than Soft at rest.",
+      "Don't use em dashes in copy."
+    ]
+  }
+}

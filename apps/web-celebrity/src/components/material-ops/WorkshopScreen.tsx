@@ -15,7 +15,7 @@ import {
 import { VIRAL_HITS } from "@/mocks/material-ops";
 import type { MaterialProduct, PlatformId, ScriptAsset, ScriptBlock, ShotKind } from "./types";
 import { DraftingHub } from "./DraftingHub";
-import { Eyebrow, Tag, TierBadge, hexA } from "./shared";
+import { Eyebrow, Tag, TierBadge, ProductThumb, hexA } from "./shared";
 
 const SHOT_KINDS: ShotKind[] = ["hook", "scene", "emotion", "product", "effect", "cta"];
 
@@ -110,9 +110,8 @@ function ProductHero({ product, onTemplate, onViral, onAI }: { product: Material
     <Card style={{ padding: 0, overflow: "hidden", background: `linear-gradient(110deg, ${hexA(product.accentColor ?? "#7c5cff", "1f")} 0%, transparent 38%), var(--bg-1)`, border: `1px solid ${hexA(product.accentColor ?? "#7c5cff", "44")}` }}>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1.4fr 1fr auto", alignItems: "stretch" }}>
         <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, borderRight: "1px solid var(--line)" }}>
-          <div style={{ width: 64, height: 64, borderRadius: "var(--radius-lg)", background: `linear-gradient(135deg, ${product.accentColor}, ${hexA(product.accentColor ?? "#7c5cff", "99")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, flexShrink: 0 }}>
-            {product.emoji}
-          </div>
+          <ProductThumb name={product.name} image={product.images?.[0]} color={product.accentColor} size={64} radius="var(--radius-lg)" />
+
           <div style={{ minWidth: 0 }}>
             <Eyebrow style={{ marginBottom: 4 }}>关联商品</Eyebrow>
             <div style={{ fontSize: 16, color: "var(--fg-0)", fontWeight: 600, whiteSpace: "nowrap" }}>{product.name}</div>
@@ -243,7 +242,16 @@ function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: Scr
       <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 2, height: 16 }}>
           {blocks.map((b, i) => (
-            <div key={i} title={`${b.label} · ${b.dur}s`} style={{ flex: b.dur, height: "100%", background: SHOT_KIND_META[b.kind].toneVar, opacity: 0.9, borderRadius: i === 0 ? "4px 0 0 4px" : i === blocks.length - 1 ? "0 4px 4px 0" : 0 }} />
+            <div
+              key={i}
+              title={`${b.label} · ${b.dur}s`}
+              style={{
+                flex: b.dur,
+                height: "100%",
+                background: i === 0 ? hexA("#f0a83a", "55") : "var(--line-2)",
+                borderRadius: i === 0 ? "4px 0 0 4px" : i === blocks.length - 1 ? "0 4px 4px 0" : 0,
+              }}
+            />
           ))}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)" }}>
@@ -424,7 +432,11 @@ const stepBtn: React.CSSProperties = { width: 18, height: 18, borderRadius: 4, b
 
 function ModeAction({ icon, label, tone, onClick }: { icon: React.ReactNode; label: string; tone: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: "var(--radius-sm)", background: hexA(tone, "18"), border: `1px solid ${hexA(tone, "55")}`, color: tone, fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+    <button
+      onClick={onClick}
+      className="mo-ghost"
+      style={{ ["--mo-tone" as string]: tone, display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+    >
       {icon} {label}
     </button>
   );
@@ -441,7 +453,7 @@ function BannedTextarea({ value, onChange, placeholder, flagged = [], onFlaggedC
   }, [value]);
   const fontSize = small ? 12 : 13.5;
   return (
-    <div style={{ position: "relative" }}>
+    <div className="mo-well" style={{ position: "relative" }}>
       <div aria-hidden style={{ position: "absolute", inset: 0, padding: "8px 10px", fontSize, lineHeight: 1.75, fontFamily: "var(--font-sans)", color: "transparent", whiteSpace: "pre-wrap", wordBreak: "break-word", pointerEvents: flagged.length ? "auto" : "none" }}>
         {renderFlagged(value, flagged, onFlaggedClick)}
       </div>
@@ -451,7 +463,7 @@ function BannedTextarea({ value, onChange, placeholder, flagged = [], onFlaggedC
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={1}
-        style={{ position: "relative", width: "100%", resize: "none", overflow: "hidden", background: "transparent", border: "1px solid var(--line)", padding: "8px 10px", borderRadius: "var(--radius-sm)", color: "var(--fg-0)", fontFamily: "var(--font-sans)", fontSize, lineHeight: 1.75, outline: "none", minHeight }}
+        style={{ position: "relative", width: "100%", resize: "none", overflow: "hidden", background: "transparent", border: 0, padding: "8px 10px", borderRadius: "var(--radius-sm)", color: "var(--fg-0)", fontFamily: "var(--font-sans)", fontSize, lineHeight: 1.75, outline: "none", minHeight }}
       />
     </div>
   );

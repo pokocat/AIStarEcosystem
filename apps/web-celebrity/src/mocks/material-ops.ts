@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { PALETTE } from "@/constants/material-ops-ui";
+import type { Product } from "@ai-star-eco/types/product";
 import type {
   MaterialProduct,
   MaterialVideo,
@@ -14,7 +15,7 @@ import type {
 
 const today = "2026-05-26";
 
-// ── 商品（复用 Product；emoji/accentColor/audience 等为展示扩展） ─────────────
+// ── 商品（复用 Product；accentColor/audience 等为展示扩展；缩略图走真实 images） ──
 export const MATERIAL_PRODUCTS: MaterialProduct[] = [
   {
     id: "p1",
@@ -29,7 +30,6 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
     priceCents: 6900,
     commissionRate: 28,
     stock: 8420,
-    emoji: "👚",
     accentColor: PALETTE.violet,
     audience: ["女性 25-40", "微胖姐妹", "通勤打工人"],
     suggestedAngles: ["身材共鸣", "价格反差", "上身展示"],
@@ -49,7 +49,6 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
     priceCents: 3900,
     commissionRate: 32,
     stock: 12030,
-    emoji: "🥣",
     accentColor: PALETTE.teal,
     audience: ["打工人", "减脂女性", "早餐困难户"],
     suggestedAngles: ["打工人共鸣", "减脂场景", "5min 教程"],
@@ -69,7 +68,6 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
     priceCents: 15900,
     commissionRate: 40,
     stock: 2240,
-    emoji: "💧",
     accentColor: PALETTE.rose,
     audience: ["女性 25-35", "敏感肌人群", "抗老入门"],
     suggestedAngles: ["母女反差", "90 天对比", "成分讲解"],
@@ -89,7 +87,6 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
     priceCents: 22900,
     commissionRate: 25,
     stock: 1860,
-    emoji: "🪑",
     accentColor: PALETTE.amber,
     audience: ["女性 30-50", "久坐打工人", "送父母送老婆"],
     suggestedAngles: ["蓝领情感", "送礼故事", "伴侣视角"],
@@ -109,7 +106,6 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
     priceCents: 18900,
     commissionRate: 30,
     stock: 940,
-    emoji: "🏋",
     accentColor: PALETTE.violetDeep,
     audience: ["健身爱好者", "办公族", "运动初学者"],
     suggestedAngles: ["办公室自救", "健身房测评", "反差小巧"],
@@ -129,7 +125,6 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
     priceCents: 9900,
     commissionRate: 35,
     stock: 5410,
-    emoji: "🦠",
     accentColor: PALETTE.teal,
     audience: ["宝妈", "便秘人群", "免疫力关注者"],
     suggestedAngles: ["宝妈群推荐", "体感对比", "冻干工艺"],
@@ -141,6 +136,41 @@ export const MATERIAL_PRODUCTS: MaterialProduct[] = [
 export function getProduct(id?: string): MaterialProduct | undefined {
   if (!id) return undefined;
   return MATERIAL_PRODUCTS.find((p) => p.id === id);
+}
+
+// 类目 → 展示主题色，给商品库里非素材运营的商品补默认 accentColor（缩略图走真实图 / 首字）。
+const CATEGORY_ACCENT: Record<string, string> = {
+  美妆: PALETTE.rose,
+  食品饮料: PALETTE.teal,
+  "数码 3C": PALETTE.violet,
+  服饰: PALETTE.violetDeep,
+  日用百货: PALETTE.amber,
+  母婴: PALETTE.peach,
+  运动: PALETTE.violetDeep,
+  其他: PALETTE.teal,
+};
+
+/**
+ * 任意系统商品（Product）→ 展示用 MaterialProduct。
+ * 素材运营自带的 6 个用其完整富数据；商品库里的其它商品按类目补主题色，
+ * 卖点串拆成 chip 列表。缩略图统一走 ProductThumb（真实 images / 首字 monogram）。
+ * 供新建脚本商品选择器 / 脚本列表展示复用。
+ */
+export function toMaterialProduct(p: Product): MaterialProduct {
+  const rich = MATERIAL_PRODUCTS.find((m) => m.id === p.id);
+  if (rich) return rich;
+  const accentColor = CATEGORY_ACCENT[p.category] ?? CATEGORY_ACCENT["其他"];
+  const points = (p.sellingPoints ?? "")
+    .split(/[/、,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return {
+    ...p,
+    accentColor,
+    sellingPointList: points,
+    audience: [],
+    suggestedAngles: [],
+  };
 }
 
 // ── 脚本资产（9 条；blocks≈Scene；product_id 显式互链） ────────────────────────
@@ -293,7 +323,7 @@ export const VIDEO_ASSETS: MaterialVideo[] = [
     name: "修车老李 · 基线版", status: "ready", duration_sec: 41, aspect_ratio: "9:16",
     variant_config: { character: "human-001", scene: "auto-shop", weather: "sunny", lighting: "natural", role_relation: "夫妻", voice: "voice-male-01" },
     metrics: { plays: "812w", likes: "32w", ctr_pct: 9.2, gmv: "¥184,200", completion_pct: 78, comments: 4820 },
-    cover_color: PALETTE.amber, thumb_emoji: "🔧",
+    cover_color: PALETTE.amber,
     created_at: "2026-05-26T14:36:00Z", generated_at: "2026-05-26T14:48:12Z", render_cost_sec: 134, model: "sora-zh-v3", parent_video_id: null,
   },
   {
@@ -301,7 +331,7 @@ export const VIDEO_ASSETS: MaterialVideo[] = [
     name: "父女视角 · 闺女偷拍 · v1", status: "ready", parent_video_id: "video-2604-001", duration_sec: 41, aspect_ratio: "9:16",
     variant_config: { character: "human-004", scene: "home-livingroom", weather: "sunny", lighting: "warm", role_relation: "父女", voice: "voice-fem-02" },
     metrics: { plays: "162w", likes: "8.4w", ctr_pct: 8.7, gmv: "¥98,400", completion_pct: 71, comments: 1240 },
-    cover_color: PALETTE.rose, thumb_emoji: "👨‍👧",
+    cover_color: PALETTE.rose,
     created_at: "2026-05-26T15:20:00Z", generated_at: "2026-05-26T15:32:48Z", render_cost_sec: 152, model: "sora-zh-v3",
   },
   {
@@ -309,14 +339,14 @@ export const VIDEO_ASSETS: MaterialVideo[] = [
     name: "雨夜 · 通勤场景", status: "ready", parent_video_id: "video-2604-001", duration_sec: 41, aspect_ratio: "9:16",
     variant_config: { character: "human-001", scene: "subway-station", weather: "rainy", lighting: "cool", role_relation: "夫妻", voice: "voice-male-01" },
     metrics: { plays: "48w", likes: "1.8w", ctr_pct: 6.4, gmv: "¥18,400", completion_pct: 64, comments: 380 },
-    cover_color: PALETTE.violet, thumb_emoji: "🌧️",
+    cover_color: PALETTE.violet,
     created_at: "2026-05-26T15:45:00Z", generated_at: "2026-05-26T15:58:30Z", render_cost_sec: 168, model: "sora-zh-v3",
   },
   {
     id: "video-2604-004", script_id: "asset-2604", product_id: "p4", kind: "variant",
     name: "中年同事场景", status: "rendering", parent_video_id: "video-2604-001", duration_sec: 41, aspect_ratio: "9:16",
     variant_config: { character: "human-002", scene: "office-meeting", weather: "sunny", lighting: "natural", role_relation: "同事", voice: "voice-male-02" },
-    metrics: null, cover_color: PALETTE.violetDeep, thumb_emoji: "👔",
+    metrics: null, cover_color: PALETTE.violetDeep,
     created_at: "2026-05-26T10:14:00Z", generated_at: null, render_cost_sec: null, model: "sora-zh-v3",
     progress_pct: 64, eta_sec: 42, stage: "场景合成",
   },
@@ -325,7 +355,7 @@ export const VIDEO_ASSETS: MaterialVideo[] = [
     name: "微胖姐妹 · 试衣镜测试", status: "ready", duration_sec: 22, aspect_ratio: "9:16",
     variant_config: { character: "human-005", scene: "dressing-room", weather: "sunny", lighting: "soft", role_relation: "个人", voice: "voice-fem-01" },
     metrics: { plays: "14w", likes: "4.2w", ctr_pct: 7.8, gmv: "¥12,600", completion_pct: 64, comments: 480 },
-    cover_color: PALETTE.violet, thumb_emoji: "👚",
+    cover_color: PALETTE.violet,
     created_at: "2026-05-22T11:30:00Z", generated_at: "2026-05-22T11:42:00Z", render_cost_sec: 96, model: "sora-zh-v3", parent_video_id: null,
   },
   {
@@ -333,7 +363,7 @@ export const VIDEO_ASSETS: MaterialVideo[] = [
     name: "母女反差 · 客厅化妆台", status: "ready", duration_sec: 28, aspect_ratio: "9:16",
     variant_config: { character: "human-006", scene: "home-dresser", weather: "sunny", lighting: "warm", role_relation: "母女", voice: "voice-fem-03" },
     metrics: { plays: "162w", likes: "6.4w", ctr_pct: 8.7, gmv: "¥98,400", completion_pct: 72, comments: 2410 },
-    cover_color: PALETTE.rose, thumb_emoji: "💄",
+    cover_color: PALETTE.rose,
     created_at: "2026-05-24T16:20:00Z", generated_at: "2026-05-24T16:33:00Z", render_cost_sec: 112, model: "sora-zh-v3", parent_video_id: null,
   },
 ];

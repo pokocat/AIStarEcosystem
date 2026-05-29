@@ -3,13 +3,13 @@
 // 智能体训练 —— 违禁词词典 / 平台规则 / 训练语料 / 差异度规则。
 
 import * as React from "react";
-import { Plus, TriangleAlert, FlaskConical, ClipboardPaste, Music2, BookHeart, MessageCircle, Zap } from "lucide-react";
+import { Plus, TriangleAlert, ClipboardPaste, Music2, BookHeart, MessageCircle, Zap } from "lucide-react";
 import { Card, Button } from "@/components/creator";
 import { Slider } from "@ai-star-eco/ui/ui/slider";
 import { Switch } from "@ai-star-eco/ui/ui/switch";
 import { BANNED_WORDS, BANNED_TIER_META, PLATFORM_RULES } from "@/constants/material-ops-ui";
 import type { PlatformId } from "./types";
-import { Eyebrow, Tag, PageHeader, hexA } from "./shared";
+import { Eyebrow, Tag, PageHeader, hexA, AgentLearningsCard } from "./shared";
 
 const PLATFORM_ICONS: Record<PlatformId, React.ComponentType<{ size?: number; color?: string }>> = {
   douyin: Music2,
@@ -150,36 +150,7 @@ export function AgentScreen() {
         </Card>
       </div>
 
-      <Card style={{ padding: 18, background: `linear-gradient(135deg, ${hexA("#22b59a", "0d")} 0%, transparent 50%), var(--bg-1)` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: "var(--radius-md)",
-              background: hexA("#22b59a", "1f"),
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <FlaskConical size={16} color="var(--extra-teal)" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14, color: "var(--fg-0)", fontWeight: 600 }}>智能体本周学到</span>
-              <Tag color="var(--extra-teal)">4 条新规律</Tag>
-            </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-1)", lineHeight: 1.8 }}>
-              ① <strong style={{ color: "var(--extra-teal)" }}>蓝领情感故事</strong> 钩子在抖音 25-35 男性受众完播率提升 32% &nbsp; ② “
-              <strong style={{ color: "var(--warning)" }}>反差</strong>” 类钩子在小红书命中率下降 12%，建议切到 “
-              <strong style={{ color: "var(--accent)" }}>测评对比</strong>” &nbsp; ③{" "}
-              <strong style={{ color: "var(--danger)" }}>低糖燕麦</strong> 类目同质化严重，差异度需从 65 提至 80
-            </div>
-          </div>
-        </div>
-      </Card>
+      <AgentLearningsCard />
     </div>
   );
 }

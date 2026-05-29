@@ -32,7 +32,7 @@ export function RadarScreen() {
         title={
           <>
             实时抓取 ·{" "}
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--extra-teal)" }}>{hits.length * 7}</span>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--extra-teal)" }}>{hits.length}</span>
             <span style={{ color: "var(--fg-2)", fontWeight: 400, fontSize: 15, marginLeft: 6 }}>条候选爆款</span>
           </>
         }
@@ -96,7 +96,7 @@ export function RadarScreen() {
                   borderBottom: "1px solid var(--line)",
                   cursor: "pointer",
                   background: active ? hexA("#7c5cff", "12") : "transparent",
-                  borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
+                  boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none",
                   display: "flex",
                   gap: 12,
                   fontFamily: "var(--font-sans)",

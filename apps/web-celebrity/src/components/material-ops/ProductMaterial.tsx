@@ -6,37 +6,61 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   RefreshCw, Plus, Search, X, ChevronRight, ChevronDown, Play, PlayCircle, Loader2,
-  Link2, ScrollText, Shuffle, Lock, FlaskConical,
+  Link2, ScrollText, Shuffle, Lock, FlaskConical, TriangleAlert,
 } from "lucide-react";
 import { Card, Button } from "@/components/creator";
-import { MaterialOpsApi } from "@/api";
+import { MaterialOpsApi, ProductsApi } from "@/api";
 import { MATERIAL_PRODUCTS, getScript } from "@/mocks/material-ops";
 import { VARIANT_AXES } from "@/constants/material-ops-ui";
 import type { MaterialProduct, MaterialVideo, VariantAxisKey } from "./types";
 import { VideoGenDialog } from "./VideoGenDialog";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, MetricTile, SearchInput, fmtWan, parsePlays, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, MetricTile, SearchInput, EmptyState, ProductThumb, fmtWan, parsePlays, hexA } from "./shared";
 
 interface Group {
   product: MaterialProduct;
   videos: MaterialVideo[];
 }
 
-export function ProductMaterial() {
+export function ProductMaterial({ initialProductId }: { initialProductId?: string } = {}) {
   const router = useRouter();
   const [videos, setVideos] = React.useState<MaterialVideo[]>([]);
   const [query, setQuery] = React.useState("");
   const [catFilter, setCatFilter] = React.useState("all");
   const [sortProducts, setSortProducts] = React.useState<"videos" | "name" | "price">("videos");
-  const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>("p4");
+  const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>(initialProductId ?? "p4");
   const [selectedVideoId, setSelectedVideoId] = React.useState<string | null>(null);
   const [videoGen, setVideoGen] = React.useState<{ mode: "baseline" | "variant"; baseline: MaterialVideo | null; scriptId: string } | null>(null);
+  const [loadError, setLoadError] = React.useState(false);
+
+  // 真实商品图：从后端商品库按 id 取首图，覆盖到展示用商品上（无图回退首字 monogram）。
+  const [imageById, setImageById] = React.useState<Map<string, string>>(new Map());
 
   const load = React.useCallback(() => {
-    MaterialOpsApi.listVideos().then(setVideos);
+    MaterialOpsApi.listVideos()
+      .then((v) => {
+        setVideos(v);
+        setLoadError(false);
+      })
+      .catch(() => setLoadError(true));
   }, []);
   React.useEffect(() => {
     load();
   }, [load]);
+
+  React.useEffect(() => {
+    ProductsApi.listProducts()
+      .then((list) => {
+        const m = new Map<string, string>();
+        list.forEach((p) => {
+          const first = p.images?.find((u) => !!u);
+          if (first) m.set(p.id, first);
+        });
+        setImageById(m);
+      })
+      .catch(() => {
+        /* 商品库拉取失败 → 全部回退 monogram，不阻断视频库 */
+      });
+  }, []);
 
   // 渲染中任务推进
   const hasRendering = videos.some((v) => v.status === "rendering");
@@ -55,8 +79,12 @@ export function ProductMaterial() {
       if (!byProduct.has(pid)) byProduct.set(pid, []);
       byProduct.get(pid)!.push(v);
     });
-    return MATERIAL_PRODUCTS.map((product) => ({ product, videos: byProduct.get(product.id) ?? [] }));
-  }, [videos]);
+    return MATERIAL_PRODUCTS.map((product) => {
+      const realImg = imageById.get(product.id);
+      const merged = realImg ? { ...product, images: [realImg, ...product.images] } : product;
+      return { product: merged, videos: byProduct.get(product.id) ?? [] };
+    });
+  }, [videos, imageById]);
 
   const filteredProducts = React.useMemo(() => {
     return groups
@@ -149,8 +177,22 @@ export function ProductMaterial() {
         />
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {loadError && (
+            <Card style={{ padding: 16, display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--danger)" }}>
+              <TriangleAlert size={18} color="var(--danger)" style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: "var(--fg-0)", fontWeight: 600 }}>视频库加载失败</div>
+                <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2 }}>网络异常或服务暂不可用，请重试。</div>
+              </div>
+              <Button variant="secondary" size="sm" onClick={load}>
+                <RefreshCw size={13} /> 重试
+              </Button>
+            </Card>
+          )}
           {!selectedGroup && (
-            <Card style={{ padding: 80, textAlign: "center", color: "var(--fg-2)" }}>没有匹配的商品 · 试试别的关键词</Card>
+            <Card>
+              <EmptyState icon={<Search size={26} />} title="没有匹配的商品" hint="换个关键词或类目，看看其它商品的视频素材。" />
+            </Card>
           )}
           {selectedGroup && !selectedVideo && (
             <VideoLibraryView
@@ -158,6 +200,7 @@ export function ProductMaterial() {
               videos={groupVideos}
               onSelectVideo={setSelectedVideoId}
               onOpenScript={(sid) => router.push(`/material/workshop/${sid}`)}
+              onRetry={load}
             />
           )}
           {selectedGroup && selectedVideo && (
@@ -227,7 +270,7 @@ function ProductDirectory({
         <Seg value={sort} onChange={setSort} size="sm" options={[{ value: "videos", label: "视频多" }, { value: "name", label: "名称" }, { value: "price", label: "价格" }]} />
       </div>
       <div style={{ maxHeight: "calc(100vh - 280px)", overflowY: "auto" }}>
-        {products.length === 0 && <div style={{ padding: 30, textAlign: "center", color: "var(--fg-3)", fontSize: 12 }}>没有匹配的商品</div>}
+        {products.length === 0 && <EmptyState compact title="没有匹配的商品" hint="换个关键词或类目试试。" />}
         {products.map((g) => {
           const active = g.product.id === selectedId;
           const rendering = g.videos.filter((v) => v.status === "rendering").length;
@@ -235,6 +278,7 @@ function ProductDirectory({
             <button
               key={g.product.id}
               onClick={() => onSelect(g.product.id)}
+              className="mo-row"
               style={{
                 width: "100%",
                 textAlign: "left",
@@ -243,15 +287,13 @@ function ProductDirectory({
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
-                background: active ? hexA("#7c5cff", "12") : "transparent",
+                boxShadow: active ? "inset 0 0 0 1px var(--accent)" : "none",
+                background: active ? hexA("#7c5cff", "12") : undefined,
                 borderBottom: "1px solid var(--line)",
                 fontFamily: "var(--font-sans)",
               }}
             >
-              <span style={{ width: 36, height: 36, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(135deg, ${hexA(g.product.accentColor ?? "#7c5cff", "ff")}, ${hexA(g.product.accentColor ?? "#7c5cff", "99")})`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-                {g.product.emoji}
-              </span>
+              <ProductThumb name={g.product.name} image={g.product.images?.[0]} color={g.product.accentColor} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{g.product.name}</span>
@@ -276,12 +318,13 @@ function ProductDirectory({
 
 // ── 视频库 ───────────────────────────────────────────────────────────────────
 function VideoLibraryView({
-  product, videos, onSelectVideo, onOpenScript,
+  product, videos, onSelectVideo, onOpenScript, onRetry,
 }: {
   product: MaterialProduct;
   videos: MaterialVideo[];
   onSelectVideo: (id: string) => void;
   onOpenScript: (scriptId: string) => void;
+  onRetry?: () => void;
 }) {
   const [viewMode, setViewMode] = React.useState<"flat" | "by-script">("flat");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "published" | "ready" | "rendering">("all");
@@ -323,9 +366,7 @@ function VideoLibraryView({
       {/* hero */}
       <Card style={{ padding: 0, overflow: "hidden", background: `linear-gradient(110deg, ${hexA(product.accentColor ?? "#7c5cff", "1f")} 0%, transparent 40%), var(--bg-1)`, border: `1px solid ${hexA(product.accentColor ?? "#7c5cff", "44")}` }}>
         <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 48, height: 48, borderRadius: "var(--radius-md)", flexShrink: 0, background: `linear-gradient(135deg, ${product.accentColor}, ${hexA(product.accentColor ?? "#7c5cff", "99")})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
-            {product.emoji}
-          </div>
+          <ProductThumb name={product.name} image={product.images?.[0]} color={product.accentColor} size={48} />
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 16, color: "var(--fg-0)", fontWeight: 600 }}>{product.name}</span>
@@ -367,13 +408,17 @@ function VideoLibraryView({
         </div>
       </div>
 
-      {filtered.length === 0 && <Card style={{ padding: 60, textAlign: "center", color: "var(--fg-2)" }}>没有匹配的视频</Card>}
+      {filtered.length === 0 && (
+        <Card>
+          <EmptyState icon={<PlayCircle size={26} />} title="没有匹配的视频" hint="换个筛选条件，或为该商品生成新的视频。" />
+        </Card>
+      )}
 
       {viewMode === "flat" && filtered.length > 0 && (
         <Card style={{ padding: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
             {filtered.map((v) => (
-              <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} />
+              <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} onRetry={onRetry} />
             ))}
           </div>
         </Card>
@@ -399,6 +444,7 @@ function VideoLibraryView({
               onToggle={() => setCollapsed({ ...collapsed, [g.scriptId]: !collapsed[g.scriptId] })}
               onSelectVideo={onSelectVideo}
               onOpenScript={onOpenScript}
+              onRetry={onRetry}
             />
           ))}
         </div>
@@ -419,7 +465,7 @@ function HeroStat({ label, value, tone }: { label: string; value: string; tone: 
 }
 
 function ScriptGroupCard({
-  scriptId, script, videos, collapsed, onToggle, onSelectVideo, onOpenScript,
+  scriptId, script, videos, collapsed, onToggle, onSelectVideo, onOpenScript, onRetry,
 }: {
   scriptId: string;
   script?: import("./types").ScriptAsset;
@@ -428,6 +474,7 @@ function ScriptGroupCard({
   onToggle: () => void;
   onSelectVideo: (id: string) => void;
   onOpenScript: (id: string) => void;
+  onRetry?: () => void;
 }) {
   const totalPlays = videos.reduce((s, v) => s + parsePlays(v.metrics?.plays), 0);
   const bestCtr = Math.max(0, ...videos.map((v) => v.metrics?.ctr_pct ?? 0));
@@ -459,7 +506,7 @@ function ScriptGroupCard({
       {!collapsed && (
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
           {videos.map((v) => (
-            <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} />
+            <VideoCard key={v.id} video={v} showParent={!!v.parent_video_id} onClick={() => onSelectVideo(v.id)} onRetry={onRetry} />
           ))}
         </div>
       )}
@@ -476,14 +523,30 @@ function GroupStat({ label, value, tone }: { label: string; value: string; tone:
   );
 }
 
-function VideoCard({ video, onClick, showParent }: { video: MaterialVideo; onClick: () => void; showParent?: boolean }) {
+function VideoCard({ video, onClick, onRetry, showParent }: { video: MaterialVideo; onClick: () => void; onRetry?: () => void; showParent?: boolean }) {
   const isRendering = video.status === "rendering";
+  const isFailed = video.status === "failed";
   const published = !!video.metrics;
   return (
-    <button onClick={onClick} style={{ textAlign: "left", borderRadius: "var(--radius-md)", overflow: "hidden", cursor: "pointer", border: "1px solid var(--line)", background: "var(--bg-1)", padding: 0, fontFamily: "var(--font-sans)" }}>
-      <div style={{ aspectRatio: "9 / 14", position: "relative", background: `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontSize: 36 }}>{video.thumb_emoji}</span>
-        {!isRendering && <PlayCircle size={26} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
+    <button
+      onClick={isFailed && onRetry ? onRetry : onClick}
+      title={isFailed ? "生成失败 · 点击重试" : undefined}
+      className="mo-card"
+      style={{ textAlign: "left", borderRadius: "var(--radius-md)", overflow: "hidden", cursor: "pointer", border: `1px solid ${isFailed ? "var(--danger)" : "var(--line)"}`, background: "var(--bg-1)", padding: 0, fontFamily: "var(--font-sans)" }}
+    >
+      <div style={{ aspectRatio: "9 / 14", position: "relative", background: isFailed ? "var(--bg-2)" : `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {isFailed ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 12, textAlign: "center" }}>
+            <TriangleAlert size={24} color="var(--danger)" />
+            <span style={{ fontSize: 11, color: "var(--danger)", fontWeight: 600 }}>生成失败</span>
+            {onRetry && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--accent)" }}>
+                <RefreshCw size={11} /> 点击重试
+              </span>
+            )}
+          </div>
+        ) : null}
+        {!isRendering && !isFailed && <PlayCircle size={26} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
         {isRendering && (
           <>
             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
@@ -494,8 +557,8 @@ function VideoCard({ video, onClick, showParent }: { video: MaterialVideo; onCli
           </>
         )}
         {published && <span style={{ position: "absolute", top: 5, left: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(34,181,154,0.9)", padding: "2px 6px", borderRadius: 3 }}>已发布</span>}
-        {!published && !isRendering && <span style={{ position: "absolute", top: 5, left: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 3 }}>未发布</span>}
-        {showParent && !isRendering && (
+        {!published && !isRendering && !isFailed && <span style={{ position: "absolute", top: 5, left: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 3 }}>未发布</span>}
+        {showParent && !isRendering && !isFailed && (
           <span style={{ position: "absolute", top: 5, right: 6, display: "inline-flex", alignItems: "center", gap: 3, fontFamily: "var(--font-mono)", fontSize: 9, color: "#fff", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 3 }}>
             <Link2 size={9} /> 派生
           </span>
@@ -513,8 +576,8 @@ function VideoCard({ video, onClick, showParent }: { video: MaterialVideo; onCli
             <span style={{ color: "var(--warning)" }}>· {video.metrics.gmv}</span>
           </div>
         ) : (
-          <div style={{ marginTop: 5, fontFamily: "var(--font-mono)", fontSize: 9, color: isRendering ? "var(--extra-teal)" : "var(--fg-3)" }}>
-            {isRendering ? `${video.stage} · ${video.progress_pct ?? 0}%` : video.generated_at ? `生成于 ${(video.generated_at || "").slice(5, 10)}` : "未发布"}
+          <div style={{ marginTop: 5, fontFamily: "var(--font-mono)", fontSize: 9, color: isFailed ? "var(--danger)" : isRendering ? "var(--extra-teal)" : "var(--fg-3)" }}>
+            {isFailed ? "生成失败 · 可重试" : isRendering ? `${video.stage} · ${video.progress_pct ?? 0}%` : video.generated_at ? `生成于 ${(video.generated_at || "").slice(5, 10)}` : "未发布"}
           </div>
         )}
       </div>
@@ -565,7 +628,6 @@ function VideoDetail({
         {/* 视频帧 */}
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ aspectRatio: "9 / 16", background: `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-            <div style={{ fontSize: 64 }}>{video.thumb_emoji}</div>
             <PlayCircle size={56} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />
             <span style={{ position: "absolute", bottom: 10, right: 10, fontFamily: "var(--font-mono)", fontSize: 10, color: "#fff", background: "rgba(0,0,0,0.45)", padding: "3px 8px", borderRadius: 4 }}>
               {video.duration_sec}s · {video.aspect_ratio}
@@ -657,22 +719,24 @@ function VideoDetail({
             </Card>
           )}
 
-          {/* schema */}
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
-              <Eyebrow>视频卡片 · 存了什么</Eyebrow>
-            </div>
-            <div style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.7 }}>
-              <SchemaLine k="id" v={video.id} />
-              <SchemaLine k="script_id" v={video.script_id} tone="var(--accent)" />
-              <SchemaLine k="product_id" v={product.id} tone="var(--warning)" />
-              {video.parent_video_id && <SchemaLine k="parent_video_id" v={video.parent_video_id} tone="var(--accent-strong)" />}
-              <SchemaLine k="status" v={video.status} />
-              <SchemaLine k="duration_sec" v={String(video.duration_sec)} />
-              <SchemaLine k="aspect_ratio" v={video.aspect_ratio} />
-              <SchemaLine k="model" v={video.model} />
-            </div>
-          </Card>
+          {/* schema —— 工程排障视图，仅 dev 暴露（运营无需看原始字段 / 外键） */}
+          {process.env.NODE_ENV !== "production" && (
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
+                <Eyebrow>视频卡片 · 存了什么（dev）</Eyebrow>
+              </div>
+              <div style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.7 }}>
+                <SchemaLine k="id" v={video.id} />
+                <SchemaLine k="script_id" v={video.script_id} />
+                <SchemaLine k="product_id" v={product.id} />
+                {video.parent_video_id && <SchemaLine k="parent_video_id" v={video.parent_video_id} />}
+                <SchemaLine k="status" v={video.status} />
+                <SchemaLine k="duration_sec" v={String(video.duration_sec)} />
+                <SchemaLine k="aspect_ratio" v={video.aspect_ratio} />
+                <SchemaLine k="model" v={video.model} />
+              </div>
+            </Card>
+          )}
         </div>
       </div>
     </>
@@ -700,7 +764,6 @@ function AxisChip({
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: axis.toneVar, letterSpacing: "0.1em", textTransform: "uppercase" }}>{axis.label}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 22 }}>{current.emoji}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.label}</div>
           {current.sub && <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)", marginTop: 2 }}>{current.sub}</div>}
@@ -714,7 +777,7 @@ function AxisChip({
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {alts.map((o) => (
               <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--fg-1)" }}>
-                <span style={{ fontSize: 13 }}>{o.emoji}</span>
+                <span style={{ width: 3, height: 3, borderRadius: 99, background: hexA(axis.toneVar, "88"), flexShrink: 0 }} />
                 <span>{o.label}</span>
               </div>
             ))}

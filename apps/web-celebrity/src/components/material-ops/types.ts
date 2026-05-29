@@ -21,10 +21,10 @@ export type PlatformId = "douyin" | "xhs" | "wechat" | "kuaishou";
 export type ShotKind = "hook" | "scene" | "emotion" | "product" | "effect" | "cta";
 
 // ── 商品（复用 Product + 展示扩展） ───────────────────────────────────────────
-// 原型 PRODUCTS 的 emoji/color/audience/suggested_angles 在 celebrity Product 上没有，
-// 作为 mock 展示字段挂在 MaterialProduct 上；price/commission 走 Product 的 priceCents/commissionRate。
+// 原型 PRODUCTS 的 color/audience/suggested_angles 在 celebrity Product 上没有，
+// 作为 mock 展示字段挂在 MaterialProduct 上；商品缩略图走真实后端 Product.images（无图回退首字
+// monogram，见 shared.ProductThumb）；price/commission 走 Product 的 priceCents/commissionRate。
 export interface MaterialProduct extends Product {
-  emoji?: string;
   accentColor?: string;
   stock?: number;
   /** 卖点 chip 列表（Product.sellingPoints 是单串，这里拆开供 hero 展示） */
@@ -126,7 +126,6 @@ export interface MaterialVideo {
   variant_config: VariantConfig;
   metrics: VideoMetrics | null;
   cover_color: string;
-  thumb_emoji: string;
   created_at: string;
   generated_at: string | null;
   render_cost_sec: number | null;
@@ -195,7 +194,6 @@ export interface VariantAxisOption {
   id: string;
   label: string;
   sub?: string;
-  emoji: string;
   tags?: string[];
 }
 
