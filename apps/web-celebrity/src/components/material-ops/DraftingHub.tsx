@@ -6,6 +6,7 @@ import * as React from "react";
 import { X, LayoutTemplate, Flame, Wand2, Check, ScrollText, Link2 } from "lucide-react";
 import { Button } from "@/components/creator";
 import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
+import { AiThinking } from "@/components/common/ai-thinking";
 import { MaterialOpsApi } from "@/api";
 import { SCRIPT_ASSETS, VIRAL_HITS } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META, PLATFORM_RULES } from "@/constants/material-ops-ui";
@@ -484,6 +485,11 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
   };
   const preview = candidates.find((c) => c.id === previewId);
 
+  // 生成中：全局通用 AI 等待视觉（item 2），避免「卡半天没反应」。
+  if (running) {
+    return <AiThinking title="AI 起稿中" stages={["正在理解商品与卖点…", "构思脚本结构与钩子…", "逐镜生成画面与口播台词…", "校验违禁词与合规…", "整理脚本输出…"]} />;
+  }
+
   if (stage === "config") {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
@@ -509,7 +515,7 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
             <div>
               <Eyebrow style={{ marginBottom: 8 }}>目标受众</Eyebrow>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {(product.audience ?? []).concat(["宝妈群体", "银发族", "微胖姐妹", "打工人"]).slice(0, 7).map((a) => (
+                {[...new Set([...(product.audience ?? []), "宝妈群体", "银发族", "微胖姐妹", "打工人"])].slice(0, 7).map((a) => (
                   <FilterChip key={a} active={audience === a} onClick={() => setAudience(a)}>{a}</FilterChip>
                 ))}
               </div>
@@ -570,51 +576,51 @@ function aiCandidates(product: MaterialProduct, count: number): ScriptAsset[] {
     {
       name: "蓝领情感 · 修车老李 · v3", tier: "A", tags: ["情感", "蓝领", "送礼"], ctr: 8.7, diversity: 78,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `修了 30 年车，第一次给老婆买${pn}`, shot: "修了30年车 · 第一次给老婆买" },
-        { kind: "emotion", label: "情感铺垫", dur: 9, text: "收摊回家 · 老婆在沙发上揉脖子", shot: "她颈椎不好好多年了" },
-        { kind: "product", label: "产品揭示", dur: 13, text: `从口袋拿出${pn} · 老婆惊讶反应`, shot: `这就是${pn}` },
-        { kind: "effect", label: "效果体验", dur: 10, text: '老婆边吃饭边按 · "舒服死了"', shot: "她说：舒服死了" },
-        { kind: "cta", label: "行动召唤", dur: 6, text: '"姐妹有需要的评论区扣 1"', shot: "有需要的姐妹评论区扣1" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `修了 30 年车，第一次给老婆买${pn}`, shot: "油污大手特写，修车师傅收工，镜头跟到口袋" },
+        { kind: "emotion", label: "情感铺垫", dur: 9, text: "她颈椎不好好多年了，我一直没空管", shot: "收摊回家，老婆在沙发上揉脖子，暖色家居" },
+        { kind: "product", label: "产品揭示", dur: 13, text: "这是给你的", shot: `从口袋拿出${pn}，递到老婆面前，老婆惊讶反应` },
+        { kind: "effect", label: "效果体验", dur: 10, text: "舒服死了", shot: "老婆边吃饭边用，表情放松，特写她的笑" },
+        { kind: "cta", label: "行动召唤", dur: 6, text: "姐妹有需要的评论区扣 1", shot: "产品摆台，CTA 字幕飘屏" },
       ],
     },
     {
       name: "父女视角 · 闺女偷拍", tier: "A", tags: ["父女", "反差", "送礼"], ctr: 9.1, diversity: 82,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "我爸 50 岁，第一次悄悄给我妈下单了这个", shot: "我爸50岁 · 第一次给我妈下单" },
-        { kind: "emotion", label: "情感铺垫", dur: 8, text: "闺女躲门后偷拍 · 爸爸的手指划过价格", shot: "他犹豫了很久" },
-        { kind: "product", label: "产品揭示", dur: 11, text: `快递到家 · 妈妈拆出${pn}愣住`, shot: "妈妈愣住了" },
-        { kind: "effect", label: "效果体验", dur: 10, text: '妈妈戴上 · 爸爸偷笑 · 字幕"破防了"', shot: "破防了" },
-        { kind: "cta", label: "行动召唤", dur: 8, text: '"链接放评论 · 一定要给爸看一眼"', shot: "链接在评论区" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "我爸 50 岁，第一次悄悄给我妈下单了这个", shot: "手机屏幕特写下单页，父亲的手" },
+        { kind: "emotion", label: "情感铺垫", dur: 8, text: "他犹豫了很久", shot: "闺女躲门后偷拍，爸爸手指划过价格" },
+        { kind: "product", label: "产品揭示", dur: 11, text: "妈，给你的", shot: `快递到家，妈妈拆出${pn}愣住` },
+        { kind: "effect", label: "效果体验", dur: 10, text: "破防了", shot: "妈妈用上，爸爸在旁偷笑，三人同框" },
+        { kind: "cta", label: "行动召唤", dur: 8, text: "链接放评论，一定要给爸看一眼", shot: "CTA 字幕，链接引导" },
       ],
     },
     {
       name: "反差对比 · 价格压制", tier: "B", tags: ["价格", "反差", "测评"], ctr: 7.4, diversity: 68,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `别再花 800 块买同类了，${pn}才是真的`, shot: "别再花800块了" },
-        { kind: "scene", label: "场景对比", dur: 10, text: "同台展示三款不同价位 · 用户测评剪辑", shot: "三款实测对比" },
-        { kind: "product", label: "产品揭示", dur: 14, text: `怼镜${pn} · 字幕"229 vs 800"`, shot: "229 vs 800" },
-        { kind: "effect", label: "效果体验", dur: 8, text: '体验师"用完不想脱" · 表情管理失败', shot: "用完不想脱" },
-        { kind: "cta", label: "行动召唤", dur: 5, text: '"今天直播间还有 50 单 · 错过等下周"', shot: "今天还剩50单" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: `别再花 800 块买同类了，${pn}才是真的`, shot: "价格对比字幕，两款产品同框" },
+        { kind: "scene", label: "场景对比", dur: 10, text: "同价位我测了三款", shot: "三款不同价位同台展示，用户测评剪辑" },
+        { kind: "product", label: "产品揭示", dur: 14, text: "229 对 800，你猜哪个是它", shot: `怼镜${pn}，字幕「229 vs 800」` },
+        { kind: "effect", label: "效果体验", dur: 8, text: "用完真的不想脱", shot: "体验师反应慢镜，表情管理失败" },
+        { kind: "cta", label: "行动召唤", dur: 5, text: "今天直播间还有 50 单，错过等下周", shot: "紧迫感字幕，挂车引导" },
       ],
     },
     {
       name: "通勤打工人 · 自救", tier: "A", tags: ["通勤", "打工人"], ctr: 7.2, diversity: 75,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "加班到 11 点，我决定对自己好一点", shot: "加班到11点" },
-        { kind: "scene", label: "场景铺垫", dur: 8, text: "地铁视角 · 同事都在揉肩膀", shot: "打工人的通病" },
-        { kind: "product", label: "产品揭示", dur: 10, text: `下单${pn} · 第二天通勤拿出来用`, shot: "对自己好一点" },
-        { kind: "effect", label: "效果体验", dur: 6, text: '前 vs 后 30 天对比 · 字幕"8→3"', shot: "30天：8→3" },
-        { kind: "cta", label: "行动召唤", dur: 3, text: '"打工人姐妹评论区扣 1"', shot: "打工人姐妹扣1" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "加班到 11 点，我决定对自己好一点", shot: "电脑屏幕反光，深夜办公室" },
+        { kind: "scene", label: "场景铺垫", dur: 8, text: "这是打工人的通病", shot: "地铁视角，同事都在揉肩膀" },
+        { kind: "product", label: "产品揭示", dur: 10, text: "下单了它，第二天就带去公司", shot: `拆封${pn}，通勤包特写` },
+        { kind: "effect", label: "效果体验", dur: 6, text: "30 天，从 8 分酸到 3 分", shot: "前后对比，量化字幕「8→3」" },
+        { kind: "cta", label: "行动召唤", dur: 3, text: "打工人姐妹评论区扣 1", shot: "CTA 字幕" },
       ],
     },
     {
       name: "专业解析 · 测评博主", tier: "B", tags: ["测评", "专业"], ctr: 6.1, diversity: 84,
       blocks: [
-        { kind: "hook", label: "黄金 3s 钩子", dur: 4, text: `测了 12 款 · ${pn}是 229 价位天花板`, shot: "测了12款" },
-        { kind: "product", label: "产品解构", dur: 12, text: "拆解结构 · 标注电机/温控/电池参数", shot: "电机 / 温控 / 电池" },
-        { kind: "effect", label: "体感测评", dur: 10, text: "压力传感数据 · 真人 60 分钟使用日志", shot: "60分钟实测数据" },
-        { kind: "scene", label: "横向对比", dur: 6, text: "5 款竞品对比表格 · 价格 vs 体感打分", shot: "5款横向对比" },
-        { kind: "cta", label: "行动召唤", dur: 3, text: '"理性党姐妹直接抄作业 · 链接置顶"', shot: "理性党抄作业" },
+        { kind: "hook", label: "黄金 3s 钩子", dur: 4, text: `测了 12 款，${pn}是 229 价位的天花板`, shot: "测评台特写，多款产品排列" },
+        { kind: "product", label: "产品解构", dur: 12, text: "先看做工和参数", shot: "拆解结构，标注电机 / 温控 / 电池" },
+        { kind: "effect", label: "体感测评", dur: 10, text: "真人 60 分钟实测", shot: "压力传感数据可视化，使用日志" },
+        { kind: "scene", label: "横向对比", dur: 6, text: "横向对比看这张表", shot: "5 款竞品对比表格，价格 vs 体感打分" },
+        { kind: "cta", label: "行动召唤", dur: 3, text: "理性党直接抄作业，链接置顶", shot: "CTA，徽章" },
       ],
     },
   ];
