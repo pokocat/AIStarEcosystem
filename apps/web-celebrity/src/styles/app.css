@@ -217,6 +217,26 @@
   border-color: var(--mo-tone);
   color: var(--mo-tone);
 }
+
+/* 可编辑标题 input：静止态像纯文本，hover/focus 才显露可编辑（虚线 → 实线 + soft ring），
+   配 ✎ 铅笔提示。让"标题可改"这件事在视觉上看得见。 */
+.mo-titleedit {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  margin-left: -8px;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.mo-titleedit:hover {
+  background: var(--bg-2);
+  border-color: var(--line-2);
+}
+.mo-titleedit:focus {
+  background: var(--bg-1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .mo-ghost:focus-visible {
   outline: 2px solid var(--accent-soft);
   outline-offset: 1px;

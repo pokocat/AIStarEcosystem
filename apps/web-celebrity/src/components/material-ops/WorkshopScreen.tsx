@@ -6,7 +6,7 @@
 import * as React from "react";
 import {
   Wand2, LayoutTemplate, Flame, Check, Copy, ChevronRight, ChevronUp, ChevronDown,
-  Plus, Trash2, GripVertical, TriangleAlert, X, ShieldCheck,
+  Plus, Trash2, GripVertical, TriangleAlert, X, ShieldCheck, Pencil,
 } from "lucide-react";
 import { Card, Button } from "@/components/creator";
 import {
@@ -226,12 +226,17 @@ function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: Scr
     <Card style={{ padding: 0, overflow: "hidden", minHeight: 560 }}>
       <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Eyebrow>镜头脚本</Eyebrow>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--fg-2)" }}>
+            <Pencil size={9} />
+            <Eyebrow>脚本标题 · 可编辑</Eyebrow>
+          </div>
           <input
             value={draft.title ?? draft.name}
             onChange={(e) => setDraft({ ...draft, title: e.target.value, name: e.target.value })}
             placeholder="为脚本起一个标题…"
-            style={{ marginTop: 6, width: "100%", background: "transparent", border: 0, color: "var(--fg-0)", fontFamily: "var(--font-display)", fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", outline: "none" }}
+            title="点击编辑脚本标题"
+            className="mo-titleedit"
+            style={{ marginTop: 4, width: "100%", background: "transparent", color: "var(--fg-0)", fontFamily: "var(--font-display)", fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", outline: "none", paddingTop: 2, paddingBottom: 2 }}
           />
         </div>
         <Tag color="var(--accent)">共 {blocks.length} 镜</Tag>
