@@ -5,6 +5,7 @@
 import * as React from "react";
 import { X, LayoutTemplate, Flame, Wand2, Check, Shuffle, ScrollText, Link2 } from "lucide-react";
 import { Button } from "@/components/creator";
+import { MaterialOpsApi } from "@/api";
 import { SCRIPT_ASSETS, VIRAL_HITS } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META, PLATFORM_RULES } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, PlatformId, ScriptAsset, ScriptBlock, Tier, ViralHit } from "./types";
@@ -455,16 +456,34 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
   const [running, setRunning] = React.useState(false);
   const [candidates, setCandidates] = React.useState<ScriptAsset[]>([]);
   const [previewId, setPreviewId] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const run = () => {
+  // 接真 LLM（live：POST /material/scripts/ai-draft）。
+  // 失败不静默兜底：把后端的明确报错（token 未配 / prompt 未配 / 模型异常）展示出来。
+  // USE_MOCK 模式后端不被调用，aiDraftScripts 返回 [] → 用本地占位池 aiCandidates。
+  const run = async () => {
     setRunning(true);
-    setTimeout(() => {
-      const next = aiCandidates(product, count);
-      setCandidates(next);
-      setPreviewId(next[0]?.id ?? null);
-      setRunning(false);
+    setError(null);
+    try {
+      const next = await MaterialOpsApi.aiDraftScripts({
+        product_id: product.id,
+        product_name: product.name,
+        category: product.category,
+        selling_points: product.sellingPoints ?? undefined,
+        tone,
+        audience: [audience],
+        duration_sec: 38,
+        count,
+      });
+      const list = next.length ? next : aiCandidates(product, count); // 空仅出现在 USE_MOCK
+      setCandidates(list);
+      setPreviewId(list[0]?.id ?? null);
       setStage("results");
-    }, 600);
+    } catch (e) {
+      setError((e as Error)?.message || "AI 起稿失败，请稍后重试");
+    } finally {
+      setRunning(false);
+    }
   };
   const preview = candidates.find((c) => c.id === previewId);
 
@@ -503,10 +522,15 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
               <Seg value={count} onChange={setCount} options={[2, 3, 4, 5].map((n) => ({ value: n, label: `${n} 稿` }))} />
             </div>
           </div>
+          {error && (
+            <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: "var(--radius-sm)", background: hexA("#ff5b8a", "0d"), border: `1px solid ${hexA("#ff5b8a", "44")}`, color: "var(--danger)", fontSize: 12, lineHeight: 1.6 }}>
+              <strong style={{ fontWeight: 600 }}>AI 起稿失败：</strong>{error}
+            </div>
+          )}
           <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <Button variant="ghost" onClick={onClose}>取消</Button>
             <Button variant="accent" onClick={run} disabled={running}>
-              <Wand2 size={13} /> {running ? "生成中…" : `起 ${count} 稿`}
+              <Wand2 size={13} /> {running ? "生成中…" : error ? "重试" : `起 ${count} 稿`}
             </Button>
           </div>
         </div>

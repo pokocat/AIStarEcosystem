@@ -51,7 +51,7 @@ public class MaterialOpsSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(MaterialOpsSeeder.class);
 
     /** 改 seed 数据（含归属人映射）时升这个值，下次启动自动 re-upsert。 */
-    private static final String SEED_VERSION = "v2-2026-05-29-owners";
+    private static final String SEED_VERSION = "v3-2026-05-29-scope";
     private static final String CONFIG_KEY = "aep.material.seed-version";
 
     private static final List<String> STUDIO_USERNAMES = List.of("creator_luna", "studio_starlight", "agency_moonrise");
@@ -138,46 +138,43 @@ public class MaterialOpsSeeder implements CommandLineRunner {
         }
 
         int i = 0;
-        int ownerCursor = 0;
+        int myCursor = 0; // 个人脚本独立轮转：3 个 my_script 分给 3 个 studio 各一个，第一个给 creator_luna
         for (JsonNode raw : readArray("seed/material-scripts.json")) {
             ObjectNode n = (ObjectNode) raw;
-            if (!studios.isEmpty()) ownerCursor = assignOwner(n, studios, operator, ownerCursor);
+            String kind = orDefault(text(n, "kind"), "my_script");
+            String ownerUserId = null; // 默认共享
+            if (!studios.isEmpty()) {
+                JsonNode srcNode = n.get("source");
+                String type = srcNode != null ? optText(srcNode, "type") : "user";
+                if ("system".equals(type)) {
+                    // 官方模板：归 celebrity_operator（created_by），author 保留「系统内置」，共享
+                    AepUser ownerOp = operator != null ? operator : studios.get(0);
+                    n.put("created_by", ownerOp.getId());
+                } else if ("my_script".equals(kind)) {
+                    // 个人脚本：归轮转分配的 studio，私有（ownerUserId 非空）
+                    AepUser owner = studios.get(myCursor++ % studios.size());
+                    n.put("created_by", owner.getId());
+                    if (srcNode instanceof ObjectNode src) src.put("author", owner.getDisplayName());
+                    ownerUserId = owner.getId();
+                } else {
+                    // 爆款同款 / 非系统模板 / AI：共享，created_by 记克隆者(studios[0]) 供展示，author 保留外部
+                    n.put("created_by", studios.get(0).getId());
+                }
+            }
             scriptRepo.save(MaterialScript.builder()
                     .id(n.get("id").asText())
                     .productId(text(n, "product_id"))
-                    .kind(orDefault(text(n, "kind"), "my_script"))
+                    .kind(kind)
                     .tier(orDefault(text(n, "tier"), "D"))
                     .category(text(n, "category"))
                     .hookType(text(n, "hook_type"))
                     .durationSec(n.path("duration_sec").asInt(0))
                     .ord(i++)
+                    .ownerUserId(ownerUserId)
                     .payloadJson(om.writeValueAsString(n))
                     .build());
         }
-        log.info("MaterialOpsSeeder: upsert {} material scripts（归属人已映射到 seed 用户）", i);
-    }
-
-    /**
-     * 把脚本归属人映射到真实 seed 用户：
-     *  - 官方模板（source.type=system）→ created_by = celebrity_operator，source.author 保留「系统内置」
-     *  - 我的脚本（source.type=user）  → created_by + source.author = 轮转分配的 studio 用户
-     *  - 爆款同款（source.type=viral） → created_by = studio 用户（克隆者），source.author 保留外部 @作者
-     * 返回更新后的轮转游标。
-     */
-    private int assignOwner(ObjectNode n, List<AepUser> studios, AepUser operator, int cursor) {
-        JsonNode srcNode = n.get("source");
-        String type = srcNode != null ? optText(srcNode, "type") : "user";
-        boolean isSystem = "system".equals(type);
-        AepUser owner = isSystem ? (operator != null ? operator : studios.get(0))
-                : studios.get(cursor % studios.size());
-        if (!isSystem) cursor++;
-
-        n.put("created_by", owner.getId());
-        if (srcNode instanceof ObjectNode src && !"viral".equals(type)) {
-            // user → 用户名；system → 保留「系统内置」展示
-            if ("user".equals(type)) src.put("author", owner.getDisplayName());
-        }
-        return cursor;
+        log.info("MaterialOpsSeeder: upsert {} material scripts（个人脚本归属 seed 用户，官方/爆款共享）", i);
     }
 
     private void seedVideos() throws Exception {

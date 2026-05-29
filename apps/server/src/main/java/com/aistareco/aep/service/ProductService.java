@@ -23,9 +23,11 @@ import java.util.UUID;
 public class ProductService {
 
     private final ProductRepository repo;
+    private final MaterialAiService materialAi;
 
-    public ProductService(ProductRepository repo) {
+    public ProductService(ProductRepository repo, MaterialAiService materialAi) {
         this.repo = repo;
+        this.materialAi = materialAi;
     }
 
     public List<ProductDto> list(String category, String q) {
@@ -205,14 +207,12 @@ public class ProductService {
     }
 
     /**
-     * Mock LLM 卖点抽取：根据商品名 + 链接产出一段固定模板的卖点。
-     * 与前端 mock 行为一致（apps/web/src/api/products.ts:extractSellingPoints）。
+     * 卖点抽取：真 LLM（MaterialAiService → invokeChat，purpose=SELLING_POINTS）。
+     * 不静默兜底 —— provider 未配 / prompt 未配 / 调用 / 解析问题由 MaterialAiService 抛
+     * BusinessException（带 code + 明确提示），透传到前端展示，便于定位配置问题。
      */
     public String extractSellingPoints(String name, String link) {
-        if (name == null) name = "";
-        String trimmed = name.trim();
-        return trimmed + "：精选优质原料，工艺细节考究；上身/上脸效果显著，"
-                + "用户好评 95%+。日常通勤 / 节日送礼 / 自用囤货皆宜，下单立享平台保障。";
+        return materialAi.extractSellingPoints(name, link);
     }
 
     private static boolean blank(String s) {

@@ -22,9 +22,10 @@ type EnginePricing = Record<string, { creditPrice: number; cost: number }>;
 const ENGINES = ["KeLing", "HiGen", "MiniMax"];
 
 const ACTIONS: { code: string; label: string; unit: string; allowEngineFallback: boolean }[] = [
-  { code: "mixcut.generate", label: "混剪生成", unit: "积分 / 单变体", allowEngineFallback: false },
-  { code: "publish.upload",  label: "分发上传", unit: "积分 / 单任务", allowEngineFallback: false },
-  { code: "celebrity.video", label: "数字人视频生成", unit: "积分 / 单条", allowEngineFallback: true },
+  { code: "mixcut.generate",     label: "混剪生成",       unit: "积分 / 单变体", allowEngineFallback: false },
+  { code: "publish.upload",      label: "分发上传",       unit: "积分 / 单任务", allowEngineFallback: false },
+  { code: "celebrity.video",     label: "数字人视频生成", unit: "积分 / 单条",   allowEngineFallback: true },
+  { code: "material.script-draft", label: "AI 脚本起稿",   unit: "积分 / 单稿（0=不计费）", allowEngineFallback: false },
 ];
 
 export default function CelebrityPricingPage() {
