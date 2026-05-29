@@ -60,6 +60,12 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.43 · 2026-05-29 · 形象锻造接平台大模型 + 登录与平台访问隔离 {#v043}
+
+- ✅ **形象锻造接大模型**：`/appearance` 的对话从 Coze-only 改为**优先走平台大模型**（后端 `ForgeChatService`：`invokeChat` 取整段方案 + 服务端切流成 SSE，Coze 回退）。前端 `api/appearance-forge` 改打 `/appearance-forge/chat/*`；`AppearanceForge.v3` 聊天框接**真流式回复**（实时回写气泡，可多轮打磨）；全量去技术化文案（Coze/Mock → 大模型/演示模式）。
+- ✅ **登录与平台隔离**：登录页改用共享 `AuthScreen`（手机号登录/注册/体验账号三 tab）；workspace 在「账号未开通 AI 音乐人」时拦截。注册透传 `platform=music`。
+- 联调：后端 `aep.dev-fake-llm` + `scripts/dev-fake-llm-server.mjs`，无真实 key 也能跑通。详见根目录 [`AGENTS.md`](../../AGENTS.md) §v0.43。
+
 ### v0.41 · 2026-05-28 · 前后端连通性全面修复 {#v041}
 
 针对全面连通性审计发现的漂移 bug 做修复。发布中心（distribution）暂跳过（后续复用

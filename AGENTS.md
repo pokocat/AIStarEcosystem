@@ -1868,6 +1868,79 @@ openapi: +/admin/ai-models/usage + /{id}/usage
 - **只记成功调用 + best-effort**：失败在 parse 前抛出不落流水；record 独立事务写库失败只 WARN，不阻断 chat。
 - **provider 维度即端点维度**：usage 的 providerId/providerName 传 endpoint.id/name（端点已取代 provider）。
 
+### v0.43（2026-05-29）— 三子产品平台访问隔离 + 音乐形象锻造接大模型 + 短剧脚本化生成
+
+一次性补齐三件事：(1) music/drama/celebrity 账户登录的**平台访问隔离**；(2) **音乐形象锻造**从 Coze-only
+升级为**优先走平台大模型**的流式对话，drama 形象锻造对齐同一逻辑（UI 独立）；(3) **短剧生成**（脚本化：
+AI 起草分场景脚本 → 生成短剧视频），复用 celebrity 的视频任务管线。配套本地 fake 大模型，全链路在无真实
+key 时也能端到端跑通。
+
+**A. 平台访问隔离（access isolation）**
+
+```
+server : AepUser +platforms 列（CSV，如 "music,drama,celebrity"；空=全部可访问，老账号不被锁）
+       : PlatformSupport（纯函数：parse/effective/canAccess/toCsv）+ PlatformAccessService（注册授予策略）
+       : AepUserDto / MeDto +platforms（/api/me 透出 effective 列表）
+       : LicenseActivationService.activate / SmsAuthController.register 按 PlatformAccessService 授予
+       : application.yml aep.platform.dev-grant-all（默认 true）：true=一处注册三端可用；false=按注册来源 platform 授予
+       : DataInitializer 种子账号补 platforms = 全平台
+types  : account.ts +SubProduct（music/drama/celebrity）+ ALL_SUB_PRODUCTS + SUB_PRODUCT_LABEL_ZH；AepUser +platforms
+shared : AuthProvider +requiredPlatform → 计算 hasPlatformAccess；packages/landing +AuthScreen（主题化三 tab
+         手机号登录/注册/体验账号）+ PlatformAccessDenied（拦截屏）
+web-*  : 三端 providers 注入 requiredPlatform；workspace 布局在「已登录但未开通本子产品」时渲染 PlatformAccessDenied
+       : music/drama 登录页改用共享 AuthScreen（与 celebrity 对齐；注册透传 platform）
+test   : PlatformSupportTest（5 测：canAccess 对未授予平台返回 false 即隔离成立；空配置宽松放行）
+```
+
+> 隔离拦截在前端（按 /api/me.platforms 判断），后端不做逐接口平台门禁 —— 用户私有数据本就按 ownerUserId 隔离。
+> JWT 不带 platform；改 platforms 后需重新登录 / 刷新 /api/me 才生效。
+
+**B. 形象锻造接平台大模型（music + drama 共用后端）**
+
+```
+server : AiModelPurpose +APPEARANCE_FORGE；PromptService +KEY_APPEARANCE_FORGE("appearance.forge") 入 KNOWN_KEYS
+       : resources/prompts/material/appearance.forge.md（系统设定 + {{input}}）
+       : ForgeChatService（混合通道）：APPEARANCE_FORGE 绑定端点 → invokeChat 取整段方案后服务端切流成 SSE delta；
+         否则 Coze 已配 → 回退 Coze；都没有 → 503 明确文案。artist 归属校验（在 DigitalIp 表则校验，不在则放行）
+       : ForgeController +/appearance-forge/chat/status + /chat/stream（/coze/* 保留为同行为别名）；安全放行 /chat/**
+web-music : api/appearance-forge 改打 /chat/*；AppearanceForge.v3 聊天框接真流式回复（实时回写气泡）；去技术化文案
+web-drama : api/appearance-forge 改打 /chat/*；/forge 页从 mock 渐变批量 重写为 对话式形象顾问（影院风独立 UI），
+            移除 window.prompt 预设命名（违禁原生弹窗）
+```
+
+**C. 短剧生成（脚本化，参考 celebrity 商品视频脚本方案）**
+
+```
+server : DramaScript 实体（drama_scripts 表：ownerUserId/title/genre/durationSec/status/payloadJson 软删）+ repo
+       : DramaScriptService（CRUD + aiDraft 大模型 + generateEpisodes 委派 MaterialVideoJobService）
+       : DramaController /api/me/drama/{scripts*,scripts/ai-draft,episodes/generate,episodes/jobs*}
+       : AiModelPurpose +DRAMA_SCRIPT_DRAFT；prompts/material/drama.script_draft.md（输出 scenes JSON：
+         heading/summary/shot(画面)/dialogue(台词)/duration_sec）
+       : 视频生成复用 MaterialVideoModelClient/Worker/Job —— 短剧任务以 kind="drama-episode" + scriptId 区分带货视频
+web-drama : api/short-drama.ts + /short-drama 页（起草→预览→保存→生成→轮询回显视频）+ 侧栏「短剧生成」入口
+```
+
+**D. 本地 fake 大模型联调链路**
+
+```
+server : DevFakeAiSeeder（@ConditionalOnProperty aep.dev-fake-llm.enabled，dev 默认开）：接入 fake 端点 +
+         为 APPEARANCE_FORGE/DRAMA_SCRIPT_DRAFT/SCRIPT_DRAFT/.../VIDEO_GENERATION 绑定（已被运营绑过的不动）
+       : application.yml aep.dev-fake-llm.{enabled,base-url,model}
+scripts: dev-fake-llm-server.mjs（零依赖 OpenAI 兼容 /chat/completions + 视频 submit/poll；按 prompt 关键词
+         返回中文方案 / 短剧 scenes JSON / 视频任务）
+```
+
+**注意事项**：
+
+- **不静默兜底**：短剧脚本起草 未配端点 → AI_NOT_CONFIGURED 503；未配 prompt → PROMPT_NOT_CONFIGURED 503；
+  调用失败 → AI_CALL_FAILED 502；输出无法解析 → AI_BAD_OUTPUT 502。形象锻造同理（FORGE_NOT_CONFIGURED 等）。
+- **生产接入**：管理后台 → 平台与配置 → AI 模型与 Key，为「形象锻造对话」「短剧脚本起草」「视频生成」用途各绑一个
+  真实端点（模型 id 用「获取模型列表」选真实 id）。dev 不配也能用 fake 端点跑通。
+- **drama 视频任务**与 celebrity 带货视频共用 material_video_job 表，靠 kind + scriptId 区分；listJobs 按 scriptId 过滤。
+- **E2E 已验证**（dev + fake LLM/video）：/api/me 返回 platforms；形象锻造 SSE 经 Next dev proxy 流式回写；
+  短剧 起草(4 场景)→保存(ready)→生成→轮询至 ready 带 video_url。
+- ffmpeg 在本环境缺失，但形象锻造 / 短剧脚本 / 视频任务（fake）均不依赖本地 ffmpeg；混剪渲染仍需 ffmpeg。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）
