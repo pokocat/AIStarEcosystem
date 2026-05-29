@@ -157,6 +157,9 @@ public class AiModelInvocationService {
         if (options != null) {
             if (options.get("temperature") != null) body.put("temperature", options.get("temperature"));
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
+            // response_format 透传（如 {"type":"json_object"}）；provider 不支持时会自行忽略或报错，
+            // 由调用方（MaterialAiService）catch 后走解析重试 / 兜底。
+            if (options.get("response_format") != null) body.put("response_format", options.get("response_format"));
         }
         URI uri = URI.create(rstrip(p.getBaseUrl(), "/") + "/chat/completions");
         HttpRequest req = HttpRequest.newBuilder(uri)

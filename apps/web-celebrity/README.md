@@ -69,6 +69,14 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.40 · 2026-05-29 · 素材运营文本三件接真 LLM
+
+- 起稿中心「AI 生成」`DraftingHub` 的 `AIPicker.run` 接 `POST /material/scripts/ai-draft`（真 LLM 起稿候选），失败 / mock 回退本地占位池 `aiCandidates`。
+- 派生变体 `DeriveVariablesPanel` 挂载时拉 `POST /material/scripts/{id}/variables`（真 LLM 抽变量）；即时用正则结果占位，AI 回来非空则升级。
+- `api/material-ops.ts` +`aiDraftScripts` / `extractScriptVariables`（USE_MOCK / 失败 → `[]`，由调用方兜底）。
+- 卖点提取（商品表单「AI 提取卖点」）后端换真实现（端点不变）。
+- prompt（system+user）由 admin `/platform/prompts` 管理；server 侧见 `MaterialAiService` / `PromptService` / `prompt_template` 表。方案见 [`docs/MATERIAL_OPS_AI_TEXT_PLAN.md`](../../docs/MATERIAL_OPS_AI_TEXT_PLAN.md)。
+
 ### v0.31 · 2026-05-24 · 账户隔离收口：商品库公共池只读 + 写收归 admin
 
 商品库前端不再暴露写入入口。`/products` 列表 / 详情页保留浏览 + 「生成视频」入口，
