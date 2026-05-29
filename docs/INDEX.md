@@ -111,6 +111,7 @@ sudo yum install -y ffmpeg ffmpeg-devel
 | 文档 | 用途 |
 |---|---|
 | [`TODO.md`](../TODO.md) | 已定位但未修的问题清单 + **v0.6 候选**（engine-pricing 落表 / WebSocket / OSS 上传 / 配置中心 / 角色拆分 等）+ **三子产品 web app 待办**（CG-* / M-* / D-* / C-*） |
+| [`docs/MATERIAL_OPS_AI_TEXT_PLAN.md`](MATERIAL_OPS_AI_TEXT_PLAN.md) | **提案（未落地）**：素材运营文本三件（脚本生成/卖点/变量抽取）接真 LLM 方案 —— 复用 `AiModelInvocationService.invokeChat`，不引 agent 框架（last-reviewed 2026-05-29） |
 
 **v0.10 候选**（mixcut 真素材化后的下一步）：
 
