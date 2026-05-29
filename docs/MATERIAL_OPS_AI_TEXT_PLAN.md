@@ -30,7 +30,7 @@
 - 违禁词扫描 → 纯规则真实化（顺带，无需模型）。
 - 结构化输出可靠性、降级、计费、测试、可观测接入点。
 
-**Out of scope（明确不做，列在 §12）**
+**Out of scope（明确不做，列在 §13）**
 - 真·视频生成引擎、RAG/向量去重、多轮对话式 agent、爆款雷达真实抓取。
 
 ---
@@ -39,7 +39,7 @@
 
 1. **不引 agent 系统**：三件均为单轮「prompt 进 → 结构化 JSON 出」，无工具/多步/记忆需求。引 Dify/FastGPT/LangChain 会与现有 `AiModelProvider` 网关重复造轮子、双份运维。
 2. **复用现成网关**：所有 LLM 调用唯一入口 = `AiModelInvocationService.invokeChat(purpose, messages)`；provider 选择/fallback/加密/计费全部沿用。
-3. **prompt 在 server 组装**：延续「prompt 真值源在后端」（参考 `ScriptPreview` PromptView 的字段→模板思路）。前端只传业务参数，不传 prompt/模型。
+3. **prompt 真源在 DB**：每个能力的 **system + user 模板都存 `prompt_template` 表**（见 §6），运营可在 admin 改 / 灰度 / 回滚，无需改代码或重启；server 代码只负责把业务参数填进 `{{占位符}}`。前端只传业务参数，不传 prompt/模型。
 4. **永远可降级**：provider 未配 / 调用失败 / JSON 解析失败 → 回退到现有占位（mock 文案 / 正则），HTTP 仍 200，前端无感。
 5. **加性变更**：新增 purpose 与端点，不动现有 `invokeChat`、不动其他 purpose 的调用方。
 
@@ -57,7 +57,7 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
                                     ▼
                               MaterialAiService（新增·薄层）
                               ① 取业务上下文（商品卖点/平台规则/违禁词/脚本）
-                              ② 组装 system+user prompt（注入 JSON Schema + few-shot）
+                              ② PromptService.resolve(key) 取 system+user 模板（DB，见 §6）→ 填业务参数
                               ③ invokeChat(purpose, messages) ───────────────▶ /chat/completions
                               ④ 解析 JSON → 校验(Jackson→record)              ◀──────────────
                               ⑤ 不合法 → 带错误重试 1 次；再失败 → 占位兜底
@@ -79,14 +79,18 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 | `MaterialAiService` | **新增**：3 个方法（draftScripts / extractSellingPoints / extractVariables）+ 解析兜底 helper | `aep/service/MaterialAiService.java` |
 | `MaterialOpsController` | **加 2 个端点**（ai-draft / variables）；注入 `MaterialAiService` | `aep/controller/MaterialOpsController.java` |
 | `ProductService.extractSellingPoints()` | **换实现**：stub → 调 `MaterialAiService`（端点不变） | `aep/service/ProductService.java` |
-| prompt 模板 | **新增**：`resources/prompts/material/*.txt`（可版本化/灰度） | `apps/server/src/main/resources/prompts/` |
+| `PromptTemplate` 实体 + repo | **新增**：`prompt_template` 表（promptKey / systemPrompt / userTemplate / paramsJson / version / enabled，见 §6） | `aep/model/PromptTemplate.java` + `aep/repository/` |
+| `PromptService` | **新增**：`resolve(promptKey)` 取模板（1min 缓存 + admin 改后失效）；DB 缺 → resource 默认 → 代码内兜底 | `aep/service/PromptService.java` |
+| `PromptTemplateSeeder` | **新增**：`SEED_VERSION` 守门，把 `resources/prompts/material/*.md` 默认灌库（缺行才插，不覆盖运营改过的行） | `aep/config/PromptTemplateSeeder.java` |
+| admin prompt 管理 | **新增**：`/api/admin/prompts` CRUD + 试运行；admin 页 `/platform/prompts` | controller + `apps/admin` |
+| prompt 默认文案 | **新增**：`resources/prompts/material/*.md`（仅作 seeder 基线 / git 留底，运行时读 DB 而非直接读文件） | `apps/server/src/main/resources/prompts/material/` |
 | 前端 api/组件 | 接新端点，`USE_MOCK` 兜底保留 | 见 §5 各节 |
 
 ---
 
 ## 5. 三个能力详细规格
 
-> 通用：`messages = [{role:system,…},{role:user,…}]`；要求 provider 支持时开 `response_format=json_object`；输出 JSON 一律走 §6 的解析+校验+兜底。
+> 通用：每个能力的 system + user 模板取自 `prompt_template` 表（`PromptService.resolve`，见 §6），server 仅把业务参数填进 `{{占位符}}`；`messages = [{role:system,…},{role:user,…}]`；provider 支持时开 `response_format=json_object`；输出 JSON 一律走 §7 的解析+校验+兜底。下文各能力的「prompt 骨架」即 `.md` 默认模板的来源（存表后可改）。
 
 ### 5.1 卖点提取 `SELLING_POINTS`
 - **端点**（已存在，换实现）：`POST /api/admin/products/extract-selling-points`，body `{ name, link }`（仅运营角色，沿用现门禁）。
@@ -139,7 +143,56 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 6. 结构化输出可靠性（横切，最关键）
+## 6. Prompt 存储与管理（`prompt_template` 表）
+
+> 决策：**system 与 user 模板都建表存**，不放 `.txt`、不塞 `PlatformConfig` blob。运营可在后台改 prompt / 灰度 / 回滚，无需改代码或重启；代码只负责把业务参数填进占位符。
+
+### 6.1 表结构
+
+`prompt_template`（JPA `ddl-auto=update` 自动建表，H2/MySQL 双兼容，沿用 v0.30/v0.21 加列惯例）：
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | varchar(64) PK | nanoid |
+| `prompt_key` | varchar(64) unique | 与 `AiModelPurpose` 对齐：`material.script_draft` / `material.selling_points` / `material.variable_extract` |
+| `system_prompt` | `@Lob` LONGTEXT | system 角色内容（空 → 取 resource 默认） |
+| `user_template` | `@Lob` LONGTEXT | user 角色模板，含 `{{placeholder}}`（如 `{{name}}` / `{{audience}}` / `{{banned_words}}` / `{{schema}}`） |
+| `params_json` | `@Lob` TEXT | `{ temperature, maxTokens, jsonMode }`，注入 `invokeChat` |
+| `version` | int | 每次保存 +1，便于回滚 / 审计 / 判断运营是否改过 |
+| `enabled` | boolean | false → `PromptService` 跳过 DB，直接走 resource 默认 |
+| `updated_at` / `updated_by` | timestamp / varchar | 审计 |
+
+> **只有「把业务参数填进 `{{占位符}}`」留在代码**（`MaterialAiService`）；模板文本（system + user）全部来自表。占位符是契约：seeder 默认模板里的 key 与代码填充的 key 必须一致（§6.4）。
+
+### 6.2 `PromptService.resolve(promptKey)`
+
+```
+resolve(promptKey) →
+  ① 读 1min 缓存（AtomicReference<Map>，admin PUT 后立即 invalidate）——沿用 CelebrityActionPricingService 模式
+  ② 缓存未命中 → 查 prompt_template（enabled=true）
+  ③ DB 命中 → { system, userTemplate, params }
+  ④ DB 无 / disabled → 读 resource 默认（resources/prompts/material/<key>.md，按 "---" 分隔 system / user）
+  ⑤ resource 也缺 → 代码内常量兜底（保证永不 NPE / 永远可降级）
+```
+
+`MaterialAiService` 拿到 `{system, userTemplate, params}` 后：`userPrompt = fill(userTemplate, 业务参数)` → `messages=[{system},{user}]` → 按 `params` 调 `invokeChat`。`fill` 是纯字符串替换（不引模板引擎，避免新依赖）。
+
+### 6.3 admin 管理页 `/platform/prompts`
+
+- **列表**：promptKey / version / enabled / updatedAt / updatedBy。
+- **编辑**：system + userTemplate 双 textarea（占位符高亮 + 「可用变量」提示）、params（temperature / maxTokens / jsonMode）、enable 开关。
+- **试运行**：填一组样例参数 → `POST /api/admin/prompts/{key}/dry-run` → 展示 fill 后的最终 messages（可选真调一次看输出），让运营改 prompt 不动代码即可验证。
+- **端点**：`GET/PUT /api/admin/prompts[/{key}]`、`POST /api/admin/prompts/{key}/dry-run`（仅 SUPER_ADMIN / OPERATOR；沿用 `/api/admin/**` 门禁）。
+
+### 6.4 默认值与 seeder
+
+- 默认 prompt 文案以 `resources/prompts/material/<key>.md` 入 git（评审友好 + 留底）；**运行时不直接读文件**，由 `PromptTemplateSeeder` 首启灌库。
+- seeder 策略：**缺行才插**（按 `prompt_key`），已存在的行不覆盖 —— 避免 clobber 运营在后台改过的 prompt。需要推新基线时 bump `SEED_VERSION`，仅回填运营未改过的行（`version == 1`）。
+- §5 各能力的「prompt 骨架」就是这些 `.md` 默认文案的来源；落地时把 §5 文字转成默认模板，system / user 用 `---` 分隔。
+
+---
+
+## 7. 结构化输出可靠性（横切，最关键）
 
 这三件的真正工程风险不是「编排」，是「LLM 稳定出合法 JSON」。统一策略：
 
@@ -152,7 +205,7 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 7. 降级与容错矩阵
+## 8. 降级与容错矩阵
 
 | 情况 | 行为 |
 |---|---|
@@ -166,7 +219,7 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 8. 安全与计费
+## 9. 安全与计费
 
 - **门禁**：卖点提取留在 `/api/admin/products/**`（仅运营）；脚本/变量在 `/api/material/**`（authenticated），私有脚本沿用 owner 校验。
 - **凭据**：provider apiKey 走 `AepCryptoUtil`（已有），不在前端/日志出现。
@@ -174,7 +227,7 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 9. 可观测（可选但推荐）
+## 10. 可观测（可选但推荐）
 
 - 接 **Langfuse**（开源，自托管）：在 `MaterialAiService` 调 `invokeChat` 处埋点，记录 purpose / prompt / 输出 / token / 耗时 / 是否兜底。
 - 价值：prompt 迭代时能看真实样本、做 A/B 与回归；与 provider 选择解耦。
@@ -182,7 +235,7 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 10. 测试方案
+## 11. 测试方案
 
 - **单测/集成**（`@SpringBootTest`，注入 fake `AiModelInvocationService`）：
   - 正常：fake 返回合法 JSON → 端点返回结构化结果。
@@ -194,11 +247,12 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 11. 工作量与里程碑
+## 12. 工作量与里程碑
 
 | 里程碑 | 内容 | 量 |
 |---|---|---|
-| M1 | `AiModelPurpose` 加值 + `MaterialAiService` 骨架 + §6 解析/兜底 helper + 单测 | S |
+| M1 | `AiModelPurpose` 加值 + `prompt_template` 表/`PromptService`/seeder（§6）+ `MaterialAiService` 骨架 + §7 解析/兜底 helper + 单测 | M |
+| M1.5 | admin `/platform/prompts` 管理页（CRUD + 试运行） | S |
 | M2 | 卖点提取换实现（端点不变） | S |
 | M3 | 脚本 AI 生成端点 + 前端接入 + 计费(可选) | M |
 | M4 | 变量抽取端点 + 前端接入 + 原值后校验 | M |
@@ -208,7 +262,7 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 12. 明确 Out of scope
+## 13. 明确 Out of scope
 
 - **真·视频生成引擎**（文生视频/数字人 adapter、celebrity 引擎、VideoGenDialog 真生成）——另立方案，需先选型 provider。
 - **RAG / 向量去重**（历史相似度、智能体「喂语料」检索）——需向量库，后置。
@@ -217,19 +271,23 @@ DeriveVariablesPanel  ── POST ─▶    │  /api/material/scripts/{id}/vari
 
 ---
 
-## 13. 文档同步清单（落地时按 CLAUDE.md §9 同 commit 更新）
+## 14. 文档同步清单（落地时按 CLAUDE.md §9 同 commit 更新）
 
-- `specs/openapi.yaml`：新增 `/material/scripts/ai-draft`、`/material/scripts/{id}/variables`（+ 复核 `extract-selling-points`）。
-- `apps/server/README.md`：AI 数据流 / 新 purpose / `MaterialAiService` 段。
+- `specs/openapi.yaml`：新增 `/material/scripts/ai-draft`、`/material/scripts/{id}/variables`、`/admin/prompts*`（+ 复核 `extract-selling-points`）。
+- `apps/server/README.md`：AI 数据流 / 新 purpose / `MaterialAiService` + `prompt_template` 表 / `PromptService` 段。
+- `apps/admin/README.md`：sidebar 加「Prompt 管理」入口（`/platform/prompts`）。
 - `apps/web-celebrity/README.md` + `PRODUCT.md`：AI 起稿/变量「接真」版本日志。
 - `docs/INDEX.md`：补本文件行（已加）。
-- `AGENTS.md`：v 增量节记录「文本三件接真」。
+- `AGENTS.md`：v 增量节记录「文本三件接真 + prompt 配置化」。
 
 ---
 
-## 14. 风险 / 待决
+## 15. 风险 / 待决
 
 - **provider 未配则全降级**：上线前需在 `/platform/ai-models` 配好带 `SCRIPT_DRAFT/SELLING_POINTS/VARIABLE_EXTRACT` purpose 的 provider + 真 apiKey（模型 id 用「获取模型列表」选真实 id）。
 - **JSON 稳定性**：弱模型可能频繁触发重试/兜底 → 建议这几件用稍强的模型（如 DeepSeek-V3 / 豆包 pro 级）。
 - **成本/并发**：脚本生成 N 稿 = N 段长输出；批量与配额需观察（`invokeChat` 已有 fallback，但无限流，必要时加节流）。
+- **prompt 多实例缓存**：`PromptService` 1min 内存缓存单实例 OK；多实例部署时 admin 改 prompt 后其他实例最多 1min 后才生效（可接受；强一致需 Redis pub/sub，后置）。
+- **prompt seeder 不回填运营改过的行**：bump `SEED_VERSION` 只覆盖 `version==1` 的行；运营手改后想回默认基线需在 admin 手动操作（无自动 diff/merge）。
+- **已决**：prompt（system + user）建 `prompt_template` 表存储、admin 可改（见 §6）。
 - **待决**：脚本生成是否计费、违禁词扫描放前端还是 server、是否现在就接 Langfuse。
