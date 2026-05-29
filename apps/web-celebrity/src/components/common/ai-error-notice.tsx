@@ -15,9 +15,11 @@ export function errorMessage(e: unknown, fallback = "操作失败，请稍后重
   return typeof msg === "string" && msg.trim() ? msg : fallback;
 }
 
-/** 从 message 末尾解析「追查号 XXXX」。 */
-function parseLogId(message: string): { text: string; logId: string | null } {
-  const m = message.match(/·?\s*追查号\s+([A-Za-z0-9]+)\s*$/);
+/** 从 message 末尾解析「追查号 XXXX」或「日志 ID: XXXX」。 */
+export function parseLogId(message: string): { text: string; logId: string | null } {
+  const m = message.match(
+    /·?\s*(?:追查号|日志\s*ID)\s*[：:]?\s*([A-Za-z0-9_-]+)\s*$/i,
+  );
   if (!m) return { text: message, logId: null };
   return { text: message.slice(0, m.index).replace(/[·\s]+$/, ""), logId: m[1] };
 }
@@ -39,9 +41,13 @@ export function AiErrorNotice({
 
   const copy = () => {
     if (logId && typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(logId);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
+      void navigator.clipboard
+        .writeText(logId)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1400);
+        })
+        .catch(() => undefined);
     }
   };
 
@@ -64,10 +70,10 @@ export function AiErrorNotice({
               <button
                 type="button"
                 onClick={copy}
-                title="复制追查号给运维排查"
+                title="复制日志 ID 给运维排查"
                 className="inline-flex items-center gap-1 rounded-md border border-current/30 bg-white/40 px-1.5 py-0.5 font-mono text-[10px] hover:bg-white/70"
               >
-                追查号 {logId}
+                日志 ID {logId}
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               </button>
             )}

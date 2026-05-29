@@ -13,6 +13,7 @@ import type {
   AsyncRenderTask,
   MaterialProduct,
   MaterialVideo,
+  PlatformId,
   ScriptAsset,
   ScriptVariable,
   VideoGenJobRequest,
@@ -22,9 +23,11 @@ import { getProduct as fetchProductById } from "./products";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
 const SCRIPTS_KEY = "aistareco.web.material.scripts.v1"; // mock：用户草稿覆盖层
+const DELETED_SCRIPTS_KEY = "aistareco.web.material.deleted-scripts.v1"; // mock：脚本软删 tombstone
 const VIDEOS_KEY = "aistareco.web.material.videos.v1"; // mock：用户生成的视频
 const TASKS_KEY = "aistareco.web.material.tasks.v1"; // 后台渲染任务队列（两模式共用）
 const DELETED_VIDEOS_KEY = "aistareco.web.material.deleted-videos.v1"; // mock：软删
+const ANALYZED_VIRAL_KEY = "aistareco.web.material.analyzed-viral.v1"; // mock：用户主动提交链接后的分析结果
 
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -58,9 +61,11 @@ export interface ScriptFilter {
 }
 
 function mockScripts(): ScriptAsset[] {
+  const deleted = new Set(readJSON<string[]>(DELETED_SCRIPTS_KEY, []));
   const drafts = readJSON<ScriptAsset[]>(SCRIPTS_KEY, []);
+  const activeDrafts = drafts.filter((d) => !d.deleted_at && !deleted.has(d.id));
   const ids = new Set(drafts.map((d) => d.id));
-  return [...drafts, ...SCRIPT_ASSETS.filter((s) => !ids.has(s.id))];
+  return [...activeDrafts, ...SCRIPT_ASSETS.filter((s) => !ids.has(s.id) && !deleted.has(s.id))];
 }
 
 export async function listScripts(filter?: ScriptFilter): Promise<ScriptAsset[]> {
@@ -82,25 +87,27 @@ export async function getScript(id: string): Promise<ScriptAsset | null> {
     ? (mockScripts().find((x) => x.id === id) ?? null)
     : await apiFetch<ScriptAsset | null>(`/material/scripts/${encodeURIComponent(id)}`);
   // 用 product_id 还原真实关联商品（不只 6 个素材运营 mock 商品，而是全量商品库）。
-  if (s && !s.product) s.product = await resolveProductForScript(s);
+  if (s) s.product = await resolveProductForScript(s);
   return USE_MOCK ? mockDelay(s) : s;
 }
 
 /**
  * 用 script.product_id 解析其关联商品 —— **始终返回一个 MaterialProduct，绝不返回错的商品**。
  * 解析顺序：
- *   1) script.product（已挂上的实体）
+ *   1) script.product_id 指向的商品库真值
  *   2) 素材运营自带的 6 个富数据商品（MATERIAL_PRODUCTS）
  *   3) 全量商品库（live → GET /api/products/{id}；mock → SEED_PRODUCTS）→ toMaterialProduct
- *   4) 兜底占位（用 product_id 造一个最小商品；找不到 id 时返回「未关联商品」占位）
+ *   4) script.product（兼容旧 payload 快照，只做兜底）
+ *   5) 兜底占位（用 product_id 造一个最小商品；找不到 id 时返回「未关联商品」占位）
  *
  * 历史 bug：preview/editor 之前用 `MATERIAL_PRODUCTS.find(...) ?? MATERIAL_PRODUCTS[0]` 兜底，
  * 选了商品库里非这 6 个的商品时会落到 MATERIAL_PRODUCTS[0]（德绒高领打底衫）——显示成完全无关的商品。
  * 这里改为查全量商品库；查不到也只给中性占位，不再张冠李戴。
  */
 export async function resolveProductForScript(script: ScriptAsset): Promise<MaterialProduct> {
-  if (script.product) return script.product;
   const pid = script.product_id;
+  if (pid) return resolveProductById(pid);
+  if (script.product) return script.product;
   return resolveProductById(pid);
 }
 
@@ -139,7 +146,7 @@ function placeholderProduct(productId?: string): MaterialProduct {
 }
 
 export async function saveScript(asset: ScriptAsset): Promise<ScriptAsset> {
-  const stored: ScriptAsset = { ...asset };
+  const stored: ScriptAsset = { ...asset, deleted_at: null };
   delete stored.product; // product 不入库，按 product_id 还原
   if (USE_MOCK) {
     const drafts = readJSON<ScriptAsset[]>(SCRIPTS_KEY, []);
@@ -147,9 +154,29 @@ export async function saveScript(asset: ScriptAsset): Promise<ScriptAsset> {
     if (idx >= 0) drafts[idx] = stored;
     else drafts.unshift(stored);
     writeJSON(SCRIPTS_KEY, drafts);
+    const deleted = readJSON<string[]>(DELETED_SCRIPTS_KEY, []);
+    if (deleted.includes(asset.id)) writeJSON(DELETED_SCRIPTS_KEY, deleted.filter((id) => id !== asset.id));
     return mockDelay(asset);
   }
   return apiFetch<ScriptAsset>("/material/scripts", { method: "POST", body: stored });
+}
+
+export async function deleteScript(id: string): Promise<void> {
+  if (USE_MOCK) {
+    const deletedAt = new Date().toISOString();
+    const drafts = readJSON<ScriptAsset[]>(SCRIPTS_KEY, []);
+    const idx = drafts.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      const next = [...drafts];
+      next[idx] = { ...next[idx], deleted_at: deletedAt };
+      delete next[idx].product;
+      writeJSON(SCRIPTS_KEY, next);
+    }
+    const deleted = readJSON<string[]>(DELETED_SCRIPTS_KEY, []);
+    if (!deleted.includes(id)) writeJSON(DELETED_SCRIPTS_KEY, [...deleted, id]);
+    return mockDelay(undefined);
+  }
+  await apiFetch<void>(`/material/scripts/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 // ── 视频 ─────────────────────────────────────────────────────────────────────
@@ -372,6 +399,95 @@ export async function extractScriptVariables(scriptId: string): Promise<ScriptVa
 
 // ── 爆款雷达 ─────────────────────────────────────────────────────────────────
 export async function listViralHits(): Promise<ViralHit[]> {
-  if (USE_MOCK) return mockDelay([...VIRAL_HITS]);
+  if (USE_MOCK) {
+    const analyzed = readJSON<ViralHit[]>(ANALYZED_VIRAL_KEY, []);
+    const ids = new Set(analyzed.map((h) => h.id));
+    return mockDelay([...analyzed, ...VIRAL_HITS.filter((h) => !ids.has(h.id)).map((h) => ({ ...h, analysis_mode: "seed" as const }))]);
+  }
   return apiFetch<ViralHit[]>("/material/viral-hits");
+}
+
+export interface ViralAnalyzeRequest {
+  url: string;
+  platform?: PlatformId;
+}
+
+export async function analyzeViralUrl(input: ViralAnalyzeRequest): Promise<ViralHit> {
+  if (USE_MOCK) {
+    const hit = mockAnalyzeViralUrl(input);
+    const analyzed = readJSON<ViralHit[]>(ANALYZED_VIRAL_KEY, []);
+    writeJSON(ANALYZED_VIRAL_KEY, [hit, ...analyzed.filter((h) => h.id !== hit.id)]);
+    return mockDelay(hit, 900);
+  }
+  return apiFetch<ViralHit>("/material/viral-hits/analyze-url", { method: "POST", body: input });
+}
+
+function mockAnalyzeViralUrl(input: ViralAnalyzeRequest): ViralHit {
+  const sourceUrl = extractFirstUrl(input.url) ?? input.url.trim();
+  const titleHint = titleHintFromUrl(sourceUrl);
+  const lower = decodeURIComponent(sourceUrl).toLowerCase();
+  const isEssence = titleHint.includes("精油") || lower.includes("jingyou");
+  const isSink = titleHint.includes("水槽") || titleHint.includes("过滤");
+  const isFresh = titleHint.includes("保鲜") || titleHint.includes("碗罩");
+  const platform = input.platform ?? inferPlatform(sourceUrl);
+  const catColor = isEssence ? "#22b59a" : isSink ? "#f0a83a" : isFresh ? "#5b3fe0" : "#7c5cff";
+  const title = titleHint === "链接解析视频" ? "手动链接 · 爆款拆解" : `${titleHint} · 链接拆解`;
+  const tag = isEssence ? "精油贴" : isSink ? "水槽过滤网" : isFresh ? "保鲜膜套" : "链接解析";
+  return {
+    id: `viral-url-${hashText(sourceUrl)}`,
+    platform,
+    plays: "0",
+    likes: "0",
+    author: "链接解析",
+    title,
+    cat: "日用百货",
+    cat_color: catColor,
+    duration: 10,
+    postedAt: "刚刚",
+    hook: isSink ? "用厨房脏乱痛点开场，快速给出一次性解决方案。" : isEssence ? "用夏季出门场景开场，先建立宝妈真实需求。" : "先给出高频生活痛点，再展示低门槛替代方案。",
+    structure: [
+      { t: "0-2s", label: "钩子", text: isSink ? "水槽堵塞、饭渣油腻直接入镜，制造不适感。" : "用一个具体生活场景快速提出问题。", tag: "钩子" },
+      { t: "2-4s", label: "痛点", text: isEssence ? "放大夏季出门、孩子衣物背包等使用场景。" : "展示旧方法麻烦、脏或不稳定，让用户代入。", tag: "痛点" },
+      { t: "4-6s", label: "产品动作", text: `产品 ${tag} 出场，用手部动作演示怎么用。`, tag: "产品" },
+      { t: "6-8s", label: "效果证明", text: "给到使用后的对比效果，突出省事、顺手和低成本。", tag: "效果" },
+      { t: "8-10s", label: "转化收口", text: "用常备/囤货/低价理由收尾，适合导入脚本工坊改成同款。", tag: "转化" },
+    ],
+    tags: [tag, "手动链接", "AI拆解"],
+    score: 72,
+    risk: sourceUrl.match(/\.(mp4|mov|webm|m4v)(\?|$)/i) ? 1 : 2,
+    reproduces: 0,
+    source_url: sourceUrl,
+    video_url: sourceUrl.match(/\.(mp4|mov|webm|m4v)(\?|$)/i) ? sourceUrl : null,
+    analyzed_at: new Date().toISOString(),
+    analysis_mode: "manual_link_ai",
+  };
+}
+
+function extractFirstUrl(raw: string): string | null {
+  const match = raw.match(/https?:\/\/[^\s，。；;、)）]+/i);
+  return match?.[0]?.replace(/[.,，。]+$/, "") ?? null;
+}
+
+function inferPlatform(url: string): PlatformId {
+  const u = url.toLowerCase();
+  if (u.includes("xiaohongshu") || u.includes("xhslink")) return "xhs";
+  if (u.includes("kuaishou") || u.includes("gifshow")) return "kuaishou";
+  if (u.includes("weixin") || u.includes("channels")) return "wechat";
+  return "douyin";
+}
+
+function titleHintFromUrl(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const file = decodeURIComponent(path.split("/").filter(Boolean).pop() ?? "");
+    return file.replace(/\.(mp4|mov|webm|m4v)$/i, "") || "链接解析视频";
+  } catch {
+    return "链接解析视频";
+  }
+}
+
+function hashText(input: string): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) h = (Math.imul(31, h) + input.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36);
 }

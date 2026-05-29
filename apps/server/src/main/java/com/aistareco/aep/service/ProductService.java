@@ -5,6 +5,8 @@ import com.aistareco.aep.dto.ProductInputDto;
 import com.aistareco.aep.model.Product;
 import com.aistareco.aep.repository.ProductRepository;
 import com.aistareco.common.BusinessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,8 @@ import java.util.UUID;
 @Service
 @Transactional
 public class ProductService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository repo;
     private final MaterialAiService materialAi;
@@ -208,15 +212,37 @@ public class ProductService {
 
     /**
      * 卖点抽取：真 LLM（MaterialAiService → invokeChat，purpose=SELLING_POINTS）。
-     * 不静默兜底 —— provider 未配 / prompt 未配 / 调用 / 解析问题由 MaterialAiService 抛
-     * BusinessException（带 code + 明确提示），透传到前端展示，便于定位配置问题。
+     * 产品创作流里不能因为模型配置缺失直接中断，失败时返回规则兜底文案。
      */
     public String extractSellingPoints(String name, String link) {
-        return materialAi.extractSellingPoints(name, link);
+        try {
+            return materialAi.extractSellingPoints(name, link);
+        } catch (RuntimeException e) {
+            log.warn("[products] AI 卖点抽取失败，使用规则兜底：{}", e.getMessage());
+            return fallbackSellingPoints(name);
+        }
     }
 
     private static boolean blank(String s) {
         return s == null || s.trim().isEmpty();
+    }
+
+    private static String fallbackSellingPoints(String name) {
+        String n = blank(name) ? "该商品" : name.trim();
+        String lower = n.toLowerCase();
+        if (n.contains("水槽") || n.contains("过滤") || n.contains("漏网")) {
+            return "过滤残渣 / 干湿分离 / 用完即扔 / 厨房收尾更省心";
+        }
+        if (n.contains("保鲜") || n.contains("碗罩")) {
+            return "加厚防串味 / 大小碗适配 / 一拉即套 / 冰箱收纳更整洁";
+        }
+        if (n.contains("精油") || n.contains("贴")) {
+            return "随身便携 / 使用场景高频 / 可爱外观 / 家庭出行常备";
+        }
+        if (lower.contains("beauty") || n.contains("美妆") || n.contains("口红") || n.contains("粉")) {
+            return "上妆效果直观 / 质感细节突出 / 通勤约会适用 / 适合真人试用展示";
+        }
+        return n + " / 核心卖点清晰 / 使用场景明确 / 低门槛转化 / 适合短视频演示";
     }
 
     private static String nextId() {

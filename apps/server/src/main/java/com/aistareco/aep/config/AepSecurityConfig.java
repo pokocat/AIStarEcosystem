@@ -62,8 +62,8 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/mixcut/**").authenticated()
                         // 素材运营（脚本 / 视频 / 爆款雷达）—— 任意登录用户可读写共享库
                         .requestMatchers("/api/material/**").authenticated()
-                        // v0.31：商品库公共池 —— 任意登录用户可读，但禁止匿名读；
-                        //  写动作（POST/PATCH/DELETE/from-link/refresh-images/extract-selling-points）
+                        // v0.31+：商品库公共池 —— 任意登录用户可读；卖点抽取只返回文本、不写库。
+                        //  真正写动作（POST/PATCH/DELETE/from-link/refresh-images/持久化卖点）
                         //  已迁至 /api/admin/products/**，受下方 hasAnyRole 门禁。
                         .requestMatchers("/api/products/**").authenticated()
                         // Internal service-to-service endpoints — InternalAuthFilter 已校验 X-Internal-Secret

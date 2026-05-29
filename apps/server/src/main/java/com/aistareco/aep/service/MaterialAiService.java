@@ -159,6 +159,25 @@ public class MaterialAiService {
         return out;
     }
 
+    // ── 爆款链接分析 ──────────────────────────────────────────────────────────
+    /** 用户主动提交单条链接后，按 VIDEO_REF_ANALYSIS prompt 产出 ViralHit 形状。 */
+    public JsonNode analyzeViralLink(String sourceUrl, String videoUrl, String platform, String titleHint) {
+        ResolvedPrompt p = promptService.resolve(AiModelPurpose.VIDEO_REF_ANALYSIS);
+        ensureConfigured(AiModelPurpose.VIDEO_REF_ANALYSIS, p);
+        Map<String, String> vars = new HashMap<>();
+        vars.put("source_url", nz(sourceUrl));
+        vars.put("video_url", nz(videoUrl));
+        vars.put("platform", nz(platform));
+        vars.put("title_hint", nz(titleHint));
+        String user = PromptService.fill(p.userTemplate(), vars);
+        JsonNode root = callJsonObject(AiModelPurpose.VIDEO_REF_ANALYSIS, p, user);
+        JsonNode built = buildViralHit(root, platform, sourceUrl, videoUrl, titleHint);
+        if (built == null) {
+            throw badOutput(AiModelPurpose.VIDEO_REF_ANALYSIS, "未产出有效爆款拆解");
+        }
+        return built;
+    }
+
     // ── 配置校验（不静默兜底，给明确提示） ──────────────────────────────────────
 
     private void ensureConfigured(AiModelPurpose purpose, ResolvedPrompt p) {
@@ -256,6 +275,7 @@ public class MaterialAiService {
             case SCRIPT_DRAFT -> "脚本起草";
             case SELLING_POINTS -> "卖点提取";
             case VARIABLE_EXTRACT -> "变量抽取";
+            case VIDEO_REF_ANALYSIS -> "视频参考分析";
             default -> purpose.wire();
         };
     }
@@ -389,6 +409,62 @@ public class MaterialAiService {
         return out;
     }
 
+    /** 校验并补全为 ViralHit。 */
+    private JsonNode buildViralHit(JsonNode raw, String platformHint, String sourceUrl, String videoUrl, String titleHint) {
+        if (raw == null || !raw.isObject()) return null;
+        ObjectNode out = om.createObjectNode();
+        String platform = normalizePlatform(raw.path("platform").asText(platformHint));
+        String title = raw.path("title").asText("").strip();
+        if (title.isBlank()) title = titleHint == null || titleHint.isBlank() ? "链接解析视频" : titleHint;
+        String cat = raw.path("cat").asText("日用百货").strip();
+        out.put("platform", platform);
+        out.put("plays", raw.path("plays").asText("0"));
+        out.put("likes", raw.path("likes").asText("0"));
+        out.put("author", raw.path("author").asText("链接解析"));
+        out.put("title", title);
+        out.put("cat", cat.isBlank() ? "日用百货" : cat);
+        out.put("cat_color", categoryColor(cat));
+        out.put("duration", clamp(raw.path("duration").asInt(10), 5, 180));
+        out.put("postedAt", "刚刚");
+        out.put("hook", raw.path("hook").asText(title));
+
+        ArrayNode structure = om.createArrayNode();
+        JsonNode structureIn = raw.get("structure");
+        if (structureIn != null && structureIn.isArray()) {
+            for (JsonNode s : structureIn) {
+                String text = s.path("text").asText("").strip();
+                if (text.isBlank()) continue;
+                ObjectNode shot = om.createObjectNode();
+                shot.put("t", s.path("t").asText((structure.size() * 2) + "-" + ((structure.size() + 1) * 2) + "s"));
+                shot.put("label", s.path("label").asText("镜头" + (structure.size() + 1)));
+                shot.put("text", text);
+                shot.put("tag", s.path("tag").asText("分析"));
+                structure.add(shot);
+                if (structure.size() >= 8) break;
+            }
+        }
+        if (structure.size() < 3) return null;
+        out.set("structure", structure);
+
+        ArrayNode tags = om.createArrayNode();
+        JsonNode tagsIn = raw.get("tags");
+        if (tagsIn != null && tagsIn.isArray()) {
+            tagsIn.forEach(t -> {
+                String v = t.asText("").strip();
+                if (!v.isBlank()) tags.add(v);
+            });
+        }
+        if (tags.size() == 0) tags.add("链接解析");
+        out.set("tags", tags);
+        out.put("score", clamp(raw.path("score").asInt(70), 0, 100));
+        out.put("risk", clamp(raw.path("risk").asInt(videoUrl == null || videoUrl.isBlank() ? 2 : 1), 0, 3));
+        out.put("reproduces", Math.max(0, raw.path("reproduces").asInt(0)));
+        if (sourceUrl != null && !sourceUrl.isBlank()) out.put("source_url", sourceUrl);
+        if (videoUrl != null && !videoUrl.isBlank()) out.put("video_url", videoUrl);
+        out.put("analysis_mode", "manual_link_ai");
+        return out;
+    }
+
     // ── 杂项 ──────────────────────────────────────────────────────────────────
 
     private static String defaultLabel(String kind) {
@@ -408,6 +484,30 @@ public class MaterialAiService {
             case "S", "A", "B", "D" -> u;
             default -> "B";
         };
+    }
+
+    private static String normalizePlatform(String p) {
+        String v = p == null ? "" : p.strip().toLowerCase();
+        return switch (v) {
+            case "douyin", "xhs", "wechat", "kuaishou" -> v;
+            case "xiaohongshu", "redbook", "小红书" -> "xhs";
+            case "视频号", "weixin" -> "wechat";
+            case "快手" -> "kuaishou";
+            default -> "douyin";
+        };
+    }
+
+    private static String categoryColor(String cat) {
+        String c = cat == null ? "" : cat;
+        if (c.contains("美妆")) return "#ff5b8a";
+        if (c.contains("食品")) return "#22b59a";
+        if (c.contains("服饰")) return "#5b3fe0";
+        if (c.contains("小家电") || c.contains("数码")) return "#7c5cff";
+        return "#f0a83a";
+    }
+
+    private static int clamp(int v, int min, int max) {
+        return Math.max(min, Math.min(max, v));
     }
 
     private static String formatYuan(int cents) {

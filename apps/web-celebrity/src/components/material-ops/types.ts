@@ -84,10 +84,17 @@ export interface ScriptAsset {
   product_id?: string;
   /** 关联商品（编辑/预览时挂上 Product 实体） */
   product?: MaterialProduct;
+  /** 后端权威归属：material_scripts.owner_user_id。共享脚本为空。 */
+  owner_user_id?: string | null;
+  /** 后端按 owner_user_id 从 AepUser 解析出的展示名。 */
+  owner_display_name?: string | null;
+  owner_username?: string | null;
   /** 挂车 */
   cart?: boolean;
   created_by?: string;
   workspace_id?: string;
+  /** 软删时间；前端 mock / 后端列表默认过滤。 */
+  deleted_at?: string | null;
 }
 
 // ── 视频资产（字段对齐 mixcut RenderOutput/RenderJob） ─────────────────────────
@@ -202,6 +209,12 @@ export interface ViralHit {
   score: number;
   risk: number;
   reproduces: number;
+  /** 用户主动提交的原始链接；爆款雷达不再自动抓取平台列表。 */
+  source_url?: string;
+  /** 解析出的可播放视频地址；直链/OSS 可直接预览，平台短链可能为空。 */
+  video_url?: string | null;
+  analyzed_at?: string;
+  analysis_mode?: "manual_link_ai" | "seed";
 }
 
 // ── 变量轴（派生变体的可变维度，原型独有） ─────────────────────────────────────

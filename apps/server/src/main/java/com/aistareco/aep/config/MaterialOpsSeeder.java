@@ -33,13 +33,13 @@ import java.util.UUID;
  * 素材运营 seed —— 把前端 mock（脚本 / 视频 / 爆款 / 商品）落库为 DB 初始数据。
  *
  * 数据集成：
- *  - 6 个带货商品并入共享 products 表（与商品库同源，脚本/视频以 product_id 关联）。
+ *  - 历史 p1-p6 演示商品不再并入共享 products 表；脚本直接引用商品库里的真实选品 id。
  *  - 脚本「归属人」映射到系统真实 seed 用户：created_by = 真实 AepUser.id；
  *    我的脚本（source.type=user）的 source.author 改为该用户 displayName；
  *    爆款同款保留原始外部 @作者；官方模板归 celebrity_operator。
  *
  * 幂等 / 升级：
- *  - 商品按 id existence 守门（每次启动确保存在）。
+ *  - 商品 seed 只负责清理历史 p1-p6 行，真实选品由 CelebrityProductSeeder 维护。
  *  - 脚本/视频/爆款用 SEED_VERSION（存 PlatformConfig）守门：版本不匹配则按 id upsert
  *    重新落库（覆盖 seed 行、保留用户自建草稿），无需手动清库。改 seed 数据 → 升版本号即可。
  */
@@ -51,11 +51,12 @@ public class MaterialOpsSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(MaterialOpsSeeder.class);
 
     /** 改 seed 数据（含归属人映射）时升这个值，下次启动自动 re-upsert。 */
-    private static final String SEED_VERSION = "v3-2026-05-29-scope";
+    private static final String SEED_VERSION = "v6-2026-05-29-oss-material-videos";
     private static final String CONFIG_KEY = "aep.material.seed-version";
 
     private static final List<String> STUDIO_USERNAMES = List.of("creator_luna", "studio_starlight", "agency_moonrise");
     private static final String OPERATOR_USERNAME = "celebrity_operator";
+    private static final List<String> REMOVED_MATERIAL_PRODUCT_IDS = List.of("p1", "p2", "p3", "p4", "p5", "p6");
 
     private final ProductRepository productRepo;
     private final MaterialScriptRepository scriptRepo;
@@ -100,6 +101,14 @@ public class MaterialOpsSeeder implements CommandLineRunner {
     }
 
     private void seedProducts() throws Exception {
+        int removed = 0;
+        for (String id : REMOVED_MATERIAL_PRODUCT_IDS) {
+            if (!productRepo.existsById(id)) continue;
+            productRepo.deleteById(id);
+            removed++;
+        }
+        if (removed > 0) log.info("MaterialOpsSeeder: removed {} legacy material demo products", removed);
+
         LocalDate today = LocalDate.now();
         int added = 0;
         for (JsonNode n : readArray("seed/material-products.json")) {
@@ -141,6 +150,8 @@ public class MaterialOpsSeeder implements CommandLineRunner {
         int myCursor = 0; // 个人脚本独立轮转：3 个 my_script 分给 3 个 studio 各一个，第一个给 creator_luna
         for (JsonNode raw : readArray("seed/material-scripts.json")) {
             ObjectNode n = (ObjectNode) raw;
+            String id = n.get("id").asText();
+            MaterialScript existingScript = scriptRepo.findById(id).orElse(null);
             String kind = orDefault(text(n, "kind"), "my_script");
             String ownerUserId = null; // 默认共享
             if (!studios.isEmpty()) {
@@ -162,7 +173,7 @@ public class MaterialOpsSeeder implements CommandLineRunner {
                 }
             }
             scriptRepo.save(MaterialScript.builder()
-                    .id(n.get("id").asText())
+                    .id(id)
                     .productId(text(n, "product_id"))
                     .kind(kind)
                     .tier(orDefault(text(n, "tier"), "D"))
@@ -171,6 +182,7 @@ public class MaterialOpsSeeder implements CommandLineRunner {
                     .durationSec(n.path("duration_sec").asInt(0))
                     .ord(i++)
                     .ownerUserId(ownerUserId)
+                    .deletedAt(existingScript != null ? existingScript.getDeletedAt() : null)
                     .payloadJson(om.writeValueAsString(n))
                     .build());
         }

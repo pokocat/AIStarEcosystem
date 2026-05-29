@@ -141,6 +141,11 @@ aep:
       default-duration-sec: ${AEP_VIDEO_DEFAULT_DURATION_SEC:5}
       default-aspect-ratio: ${AEP_VIDEO_DEFAULT_ASPECT:9:16}
       http-timeout-seconds: ${AEP_VIDEO_HTTP_TIMEOUT_SEC:30}
+      # 成片持久化：模型返回 URL → server 下载 → CdnUploader 上传。
+      # dev 默认落 local fake-CDN；生产 aep.cdn.driver=oss 时落 OSS。
+      upload-to-cdn: ${AEP_VIDEO_UPLOAD_TO_CDN:true}
+      download-timeout-seconds: ${AEP_VIDEO_DOWNLOAD_TIMEOUT_SEC:120}
+      max-download-bytes: ${AEP_VIDEO_MAX_DOWNLOAD_BYTES:536870912}
   coze:
     enabled: ${AEP_COZE_ENABLED:true}
     token: ${AEP_COZE_TOKEN:}

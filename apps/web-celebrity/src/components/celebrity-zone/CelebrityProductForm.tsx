@@ -4,7 +4,6 @@ import * as React from "react";
 import { Library, Sparkles } from "lucide-react";
 import type { CelebrityProductInput } from "@ai-star-eco/types/celebrity-zone";
 import { ProductsApi } from "@/api";
-import { useAuth } from "@ai-star-eco/api-client";
 import { ProductPickerDialog } from "./ProductPickerDialog";
 import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
 import { cn } from "@ai-star-eco/ui/ui/utils";
@@ -23,8 +22,7 @@ const inputCls =
 
 /** 商品信息表单（模板 / 盲盒共用），仅做「per-generation 字段收集」。
  *
- * v0.31+ 「AI 提取卖点」按钮仅在运营角色（operatorRole 非空）下渲染 ——
- * 它调 /api/admin/products/extract-selling-points，普通用户无权限。
+ * v0.42+ 「AI 提取卖点」只返回文本、不写商品库；普通登录用户也可用于当前生成流。
  */
 export function CelebrityProductForm({
   value,
@@ -32,8 +30,6 @@ export function CelebrityProductForm({
   sellingPointsOptional,
   title = "商品信息",
 }: Props) {
-  const { user } = useAuth();
-  const canExtractWithAI = !!user?.operatorRole;
   const set = (patch: Partial<CelebrityProductInput>) =>
     onChange({ ...value, ...patch });
 
@@ -45,7 +41,6 @@ export function CelebrityProductForm({
   const trimmedName = value.name.trim();
   const trimmedLink = value.link?.trim() ?? "";
   const canExtract =
-    canExtractWithAI &&
     trimmedName.length > 0 &&
     trimmedLink.length > 0 &&
     !extracting;
@@ -79,26 +74,24 @@ export function CelebrityProductForm({
           >
             <Library className="h-3 w-3" /> 从商品库选择
           </button>
-          {canExtractWithAI && (
-            <button
-              type="button"
-              disabled={!canExtract}
-              title={
-                !canExtract
-                  ? "请先填写商品名称和商品链接"
-                  : "调用 AI 抽取卖点（基于商品名 + 链接）"
-              }
-              onClick={onExtract}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] transition",
-                canExtract
-                  ? "border-violet-500/30 bg-violet-500/10 text-violet-600 hover:border-violet-500 hover:bg-violet-500/20"
-                  : "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400",
-              )}
-            >
-              <Sparkles className="h-3 w-3" /> {extracting ? "提取中" : "AI 提取卖点"}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={!canExtract}
+            title={
+              !canExtract
+                ? "请先填写商品名称和商品链接"
+                : "调用 AI 抽取卖点（基于商品名 + 链接）"
+            }
+            onClick={onExtract}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] transition",
+              canExtract
+                ? "border-violet-500/30 bg-violet-500/10 text-violet-600 hover:border-violet-500 hover:bg-violet-500/20"
+                : "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400",
+            )}
+          >
+            <Sparkles className="h-3 w-3" /> {extracting ? "提取中" : "AI 提取卖点"}
+          </button>
         </div>
       </div>
 
@@ -125,7 +118,7 @@ export function CelebrityProductForm({
           value={value.sellingPoints}
           onChange={(e) => set({ sellingPoints: e.target.value })}
         />
-        {canExtractWithAI && !canExtract && !extracting && !extractError && (
+        {!canExtract && !extracting && !extractError && (
           <p className="text-[11px] text-zinc-500">
             💡 想用 AI 自动抽卖点？请先填好商品名称和商品链接 →
           </p>

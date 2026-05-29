@@ -1,48 +1,76 @@
 [
   {
-    "id": "video-2604-001", "script_id": "asset-2604", "product_id": "p4", "kind": "baseline",
-    "name": "修车老李 · 基线版", "status": "ready", "duration_sec": 41, "aspect_ratio": "9:16",
-    "variant_config": { "character": "human-001", "scene": "auto-shop", "weather": "sunny", "lighting": "natural", "role_relation": "夫妻", "voice": "voice-male-01" },
+    "id": "video-2604-001", "script_id": "asset-2604", "product_id": "3485332505048038713", "kind": "baseline",
+    "name": "水槽过滤网 · 基线版", "status": "ready", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-001", "scene": "home-kitchen", "weather": "sunny", "lighting": "natural", "role_relation": "个人", "voice": "voice-fem-01" },
     "metrics": { "plays": "812w", "likes": "32w", "ctr_pct": 9.2, "gmv": "¥184,200", "completion_pct": 78, "comments": 4820 },
+    "video_url": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/videos/%E4%B8%80%E6%AC%A1%E6%80%A7%E6%B0%B4%E6%A7%BD%E8%BF%87%E6%BB%A4%E7%BD%91.mp4",
     "cover_color": "#f0a83a",
     "created_at": "2026-05-26T14:36:00Z", "generated_at": "2026-05-26T14:48:12Z", "render_cost_sec": 134, "model": "sora-zh-v3", "parent_video_id": null
   },
   {
-    "id": "video-2604-002", "script_id": "asset-2604", "product_id": "p4", "kind": "variant",
-    "name": "父女视角 · 闺女偷拍 · v1", "status": "ready", "parent_video_id": "video-2604-001", "duration_sec": 41, "aspect_ratio": "9:16",
-    "variant_config": { "character": "human-004", "scene": "home-livingroom", "weather": "sunny", "lighting": "warm", "role_relation": "父女", "voice": "voice-fem-02" },
+    "id": "video-2604-002", "script_id": "asset-2604", "product_id": "3485332505048038713", "kind": "variant",
+    "name": "饭后收尾 · 水流测试", "status": "ready", "parent_video_id": "video-2604-001", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-004", "scene": "home-kitchen", "weather": "sunny", "lighting": "warm", "role_relation": "夫妻", "voice": "voice-fem-02" },
     "metrics": { "plays": "162w", "likes": "8.4w", "ctr_pct": 8.7, "gmv": "¥98,400", "completion_pct": 71, "comments": 1240 },
     "cover_color": "#ff5b8a",
     "created_at": "2026-05-26T15:20:00Z", "generated_at": "2026-05-26T15:32:48Z", "render_cost_sec": 152, "model": "sora-zh-v3"
   },
   {
-    "id": "video-2604-003", "script_id": "asset-2604", "product_id": "p4", "kind": "variant",
-    "name": "雨夜 · 通勤场景", "status": "ready", "parent_video_id": "video-2604-001", "duration_sec": 41, "aspect_ratio": "9:16",
-    "variant_config": { "character": "human-001", "scene": "subway-station", "weather": "rainy", "lighting": "cool", "role_relation": "夫妻", "voice": "voice-male-01" },
+    "id": "video-2604-003", "script_id": "asset-2604", "product_id": "3485332505048038713", "kind": "variant",
+    "name": "租房厨房 · 夜间清理", "status": "ready", "parent_video_id": "video-2604-001", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-001", "scene": "rental-kitchen", "weather": "rainy", "lighting": "cool", "role_relation": "个人", "voice": "voice-male-01" },
     "metrics": { "plays": "48w", "likes": "1.8w", "ctr_pct": 6.4, "gmv": "¥18,400", "completion_pct": 64, "comments": 380 },
     "cover_color": "#7c5cff",
     "created_at": "2026-05-26T15:45:00Z", "generated_at": "2026-05-26T15:58:30Z", "render_cost_sec": 168, "model": "sora-zh-v3"
   },
   {
-    "id": "video-2604-004", "script_id": "asset-2604", "product_id": "p4", "kind": "variant",
-    "name": "中年同事场景", "status": "rendering", "parent_video_id": "video-2604-001", "duration_sec": 41, "aspect_ratio": "9:16",
-    "variant_config": { "character": "human-002", "scene": "office-meeting", "weather": "sunny", "lighting": "natural", "role_relation": "同事", "voice": "voice-male-02" },
+    "id": "video-2604-004", "script_id": "asset-2604", "product_id": "3485332505048038713", "kind": "variant",
+    "name": "家庭厨房 · 渲染中", "status": "rendering", "parent_video_id": "video-2604-001", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-002", "scene": "home-kitchen", "weather": "sunny", "lighting": "natural", "role_relation": "家人", "voice": "voice-male-02" },
     "metrics": null, "cover_color": "#5b3fe0",
     "created_at": "2026-05-26T10:14:00Z", "generated_at": null, "render_cost_sec": null, "model": "sora-zh-v3",
     "progress_pct": 64, "eta_sec": 42, "stage": "场景合成"
   },
   {
-    "id": "video-2585-001", "script_id": "asset-2585", "product_id": "p1", "kind": "baseline",
-    "name": "微胖姐妹 · 试衣镜测试", "status": "ready", "duration_sec": 22, "aspect_ratio": "9:16",
-    "variant_config": { "character": "human-005", "scene": "dressing-room", "weather": "sunny", "lighting": "soft", "role_relation": "个人", "voice": "voice-fem-01" },
+    "id": "video-2480-001", "script_id": "asset-2480", "product_id": "3737779702866247934", "kind": "baseline",
+    "name": "一次性保鲜膜套 · 抽取演示", "status": "ready", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-003", "scene": "home-kitchen", "weather": "sunny", "lighting": "natural", "role_relation": "主播", "voice": "voice-fem-01" },
+    "metrics": { "plays": "6.2w", "likes": "1.4w", "ctr_pct": 6.5, "gmv": "¥18,400", "completion_pct": 58, "comments": 220 },
+    "video_url": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/videos/%E4%B8%80%E6%AC%A1%E6%80%A7%E4%BF%9D%E9%B2%9C%E8%86%9C%E5%A5%97.mp4",
+    "cover_color": "#5b3fe0",
+    "created_at": "2026-05-29T10:10:00Z", "generated_at": "2026-05-29T10:10:00Z", "render_cost_sec": null, "model": "oss-seed", "parent_video_id": null
+  },
+  {
+    "id": "video-2591-001", "script_id": "asset-2591", "product_id": "3548176134007053937", "kind": "baseline",
+    "name": "精油贴 · 夏季爆款", "status": "ready", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-007", "scene": "outdoor-park", "weather": "sunny", "lighting": "natural", "role_relation": "母子", "voice": "voice-fem-02" },
+    "metrics": { "plays": "24w", "likes": "8.8w", "ctr_pct": 7.1, "gmv": "¥21,400", "completion_pct": 68, "comments": 540 },
+    "video_url": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/videos/%E5%A4%8F%E5%AD%A3%E7%88%86%E6%AC%BE%E7%B2%BE%E6%B2%B9%E8%B4%B42.mp4",
+    "cover_color": "#22b59a",
+    "created_at": "2026-05-29T10:12:00Z", "generated_at": "2026-05-29T10:12:00Z", "render_cost_sec": null, "model": "oss-seed", "parent_video_id": null
+  },
+  {
+    "id": "video-2591-002", "script_id": "asset-2591", "product_id": "3548176134007053937", "kind": "variant",
+    "name": "精油贴 · 贴片特写", "status": "ready", "parent_video_id": "video-2591-001", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-007", "scene": "outdoor-park", "weather": "sunny", "lighting": "soft", "role_relation": "母子", "voice": "voice-fem-02" },
+    "metrics": { "plays": "8.6w", "likes": "2.9w", "ctr_pct": 6.8, "gmv": "¥6,800", "completion_pct": 64, "comments": 180 },
+    "video_url": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/videos/%E7%B2%BE%E6%B2%B9%E8%B4%B4.mp4",
+    "cover_color": "#22b59a",
+    "created_at": "2026-05-29T10:14:00Z", "generated_at": "2026-05-29T10:14:00Z", "render_cost_sec": null, "model": "oss-seed"
+  },
+  {
+    "id": "video-2585-001", "script_id": "asset-2585", "product_id": "3819840696727240859", "kind": "baseline",
+    "name": "外卖到手 · 工位擦拭", "status": "ready", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-005", "scene": "office-desk", "weather": "sunny", "lighting": "soft", "role_relation": "个人", "voice": "voice-fem-01" },
     "metrics": { "plays": "14w", "likes": "4.2w", "ctr_pct": 7.8, "gmv": "¥12,600", "completion_pct": 64, "comments": 480 },
     "cover_color": "#7c5cff",
     "created_at": "2026-05-22T11:30:00Z", "generated_at": "2026-05-22T11:42:00Z", "render_cost_sec": 96, "model": "sora-zh-v3", "parent_video_id": null
   },
   {
-    "id": "video-2598-001", "script_id": "asset-2598", "product_id": "p3", "kind": "baseline",
-    "name": "母女反差 · 客厅化妆台", "status": "ready", "duration_sec": 28, "aspect_ratio": "9:16",
-    "variant_config": { "character": "human-006", "scene": "home-dresser", "weather": "sunny", "lighting": "warm", "role_relation": "母女", "voice": "voice-fem-03" },
+    "id": "video-2598-001", "script_id": "asset-2598", "product_id": "3706263707349811466", "kind": "baseline",
+    "name": "冰箱串味 · 食品碗罩", "status": "ready", "duration_sec": 10, "aspect_ratio": "9:16",
+    "variant_config": { "character": "human-006", "scene": "home-kitchen", "weather": "sunny", "lighting": "warm", "role_relation": "母女", "voice": "voice-fem-03" },
     "metrics": { "plays": "162w", "likes": "6.4w", "ctr_pct": 8.7, "gmv": "¥98,400", "completion_pct": 72, "comments": 2410 },
     "cover_color": "#ff5b8a",
     "created_at": "2026-05-24T16:20:00Z", "generated_at": "2026-05-24T16:33:00Z", "render_cost_sec": 112, "model": "sora-zh-v3", "parent_video_id": null

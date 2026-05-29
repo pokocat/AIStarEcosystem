@@ -6,8 +6,11 @@
 import * as React from "react";
 import {
   Wand2, LayoutTemplate, Flame, Check, Copy, ChevronRight, ChevronUp, ChevronDown,
-  Plus, Trash2, GripVertical, TriangleAlert, X, ShieldCheck, Pencil,
+  Plus, Trash2, GripVertical, TriangleAlert, X, ShieldCheck, Pencil, Sparkles,
 } from "lucide-react";
+import { ProductsApi } from "@/api";
+import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
+import { AiThinking } from "@/components/common/ai-thinking";
 import { Card, Button } from "@/components/creator";
 import {
   BLOCK_SNIPPETS, BANNED_WORDS, WORD_SUGGESTIONS, PLATFORM_RULES, SHOT_KIND_META, TIER_META,
@@ -16,6 +19,7 @@ import { VIRAL_HITS } from "@/mocks/material-ops";
 import type { MaterialProduct, PlatformId, ScriptAsset, ScriptBlock, ShotKind } from "./types";
 import { DraftingHub } from "./DraftingHub";
 import { Eyebrow, Tag, TierBadge, ProductThumb, hexA } from "./shared";
+import { useProductThumbUrl } from "./product-thumbnails";
 
 const SHOT_KINDS: ShotKind[] = ["hook", "scene", "emotion", "product", "effect", "cta"];
 
@@ -27,11 +31,15 @@ export function WorkshopScreen({
   setDraft,
   product,
   onSaveAndPreview,
+  onDelete,
+  onProductChange,
 }: {
   draft: ScriptAsset;
   setDraft: (d: ScriptAsset) => void;
   product: MaterialProduct;
   onSaveAndPreview: () => void;
+  onDelete?: () => void;
+  onProductChange?: (product: MaterialProduct) => void;
 }) {
   const [platform, setPlatform] = React.useState<PlatformId>("douyin");
   const [hub, setHub] = React.useState<"template" | "viral" | "ai" | null>(null);
@@ -57,6 +65,11 @@ export function WorkshopScreen({
           <Button variant="secondary" size="md">
             <Copy size={13} /> 另存为模板
           </Button>
+          {onDelete && (
+            <Button variant="danger" size="md" onClick={onDelete}>
+              <Trash2 size={13} /> 删除脚本
+            </Button>
+          )}
           <Button variant="accent" size="md" onClick={onSaveAndPreview}>
             <Check size={13} /> 保存并预览 →
           </Button>
@@ -65,6 +78,7 @@ export function WorkshopScreen({
 
       <ProductHero
         product={product}
+        onProductChange={onProductChange}
         onTemplate={() => setHub("template")}
         onViral={() => setHub("viral")}
         onAI={() => setHub("ai")}
@@ -107,13 +121,67 @@ export function WorkshopScreen({
 }
 
 // ── Product Hero ─────────────────────────────────────────────────────────────
-function ProductHero({ product, onTemplate, onViral, onAI }: { product: MaterialProduct; onTemplate: () => void; onViral: () => void; onAI: () => void }) {
+function ProductHero({
+  product,
+  onProductChange,
+  onTemplate,
+  onViral,
+  onAI,
+}: {
+  product: MaterialProduct;
+  onProductChange?: (product: MaterialProduct) => void;
+  onTemplate: () => void;
+  onViral: () => void;
+  onAI: () => void;
+}) {
   const yuan = product.priceCents ? `¥${(product.priceCents / 100).toFixed(0)}` : "—";
+  const thumbUrl = useProductThumbUrl(product);
+  const [sellingPoints, setSellingPoints] = React.useState(product.sellingPoints ?? "");
+  const [extracting, setExtracting] = React.useState(false);
+  const [extractError, setExtractError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setSellingPoints(product.sellingPoints ?? "");
+    setExtractError(null);
+  }, [product.id, product.sellingPoints]);
+
+  const sellingPointList = React.useMemo(() => {
+    const parsed = splitSellingPoints(sellingPoints);
+    return parsed.length ? parsed : (product.sellingPointList ?? []);
+  }, [product.sellingPointList, sellingPoints]);
+
+  const extractSelling = async () => {
+    if (!product.link?.trim()) {
+      setExtractError("该商品缺少链接，无法 AI 提取卖点（请先在商品库补充链接）");
+      return;
+    }
+
+    setExtracting(true);
+    setExtractError(null);
+    try {
+      const { sellingPoints: nextSellingPoints } = await ProductsApi.extractSellingPoints({
+        name: product.name,
+        link: product.link,
+      });
+      const nextProduct = {
+        ...product,
+        sellingPoints: nextSellingPoints,
+        sellingPointList: splitSellingPoints(nextSellingPoints),
+      };
+      setSellingPoints(nextSellingPoints);
+      onProductChange?.(nextProduct);
+    } catch (e) {
+      setExtractError(errorMessage(e, "AI 提取卖点失败，请稍后重试"));
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   return (
     <Card style={{ padding: 0, overflow: "hidden", background: `linear-gradient(110deg, ${hexA(product.accentColor ?? "#7c5cff", "1f")} 0%, transparent 38%), var(--bg-1)`, border: `1px solid ${hexA(product.accentColor ?? "#7c5cff", "44")}` }}>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1.4fr 1fr auto", alignItems: "stretch" }}>
         <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, borderRight: "1px solid var(--line)" }}>
-          <ProductThumb name={product.name} image={product.images?.[0]} color={product.accentColor} size={64} radius="var(--radius-lg)" />
+          <ProductThumb name={product.name} image={thumbUrl} color={product.accentColor} size={64} radius="var(--radius-lg)" />
 
           <div style={{ minWidth: 0 }}>
             <Eyebrow style={{ marginBottom: 4 }}>关联商品</Eyebrow>
@@ -127,17 +195,49 @@ function ProductHero({ product, onTemplate, onViral, onAI }: { product: Material
         </div>
 
         <div style={{ padding: "14px 20px", borderRight: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-            <Eyebrow>AI 帮你提取的卖点</Eyebrow>
-            <Tag color="var(--extra-teal)" style={{ fontSize: 9, padding: "1px 5px" }}>AI 自动</Tag>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+              <Eyebrow>AI 帮你提取的卖点</Eyebrow>
+              <Tag color="var(--extra-teal)" style={{ fontSize: 9, padding: "1px 5px" }}>AI 自动</Tag>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={extractSelling}
+              disabled={extracting}
+              title={product.link?.trim() ? "基于商品名和链接重新提取卖点" : "该商品缺少链接，无法提取"}
+              style={{
+                height: 26,
+                padding: "4px 9px",
+                fontSize: 11,
+                gap: 5,
+                opacity: extracting ? 0.7 : 1,
+                cursor: extracting ? "wait" : "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <Sparkles size={11} /> {extracting ? "提取中" : "AI 提取"}
+            </Button>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {(product.sellingPointList ?? []).map((s) => (
+          {extracting && (
+            <div style={{ marginBottom: 8 }}>
+              <AiThinking compact stages={["读取商品信息…", "提炼卖点…", "整理输出…"]} />
+            </div>
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, minHeight: 24 }}>
+            {sellingPointList.length > 0 ? sellingPointList.map((s) => (
               <span key={s} style={{ fontSize: 11, color: "var(--fg-1)", background: "var(--bg-2)", padding: "4px 9px", borderRadius: "var(--radius-sm)", border: "1px solid var(--line)" }}>
                 {s}
               </span>
-            ))}
+            )) : (
+              <span style={{ fontSize: 11, color: "var(--fg-3)", lineHeight: 1.7 }}>暂无卖点 · 点击 AI 提取后用于当前脚本起稿</span>
+            )}
           </div>
+          {extractError && (
+            <div style={{ marginTop: 8 }}>
+              <AiErrorNotice title="AI 提取卖点失败" message={extractError} onRetry={extractSelling} />
+            </div>
+          )}
         </div>
 
         <div style={{ padding: "14px 20px" }}>
@@ -173,6 +273,14 @@ function ProductHero({ product, onTemplate, onViral, onAI }: { product: Material
       </div>
     </Card>
   );
+}
+
+function splitSellingPoints(text?: string | null): string[] {
+  return (text ?? "")
+    .split(/[\/、,，;；。.\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 6);
 }
 
 function HeroAction({ icon, label, sub, tone, primary, onClick }: { icon: React.ReactNode; label: string; sub: string; tone: string; primary?: boolean; onClick: () => void }) {

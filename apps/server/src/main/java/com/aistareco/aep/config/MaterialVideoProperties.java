@@ -14,6 +14,9 @@ import org.springframework.context.annotation.Configuration;
  * （如 智谱 CogVideoX：POST {baseUrl}/videos/generations → GET {baseUrl}/async-result/{id}）。
  * 换厂商时多数只需改 baseUrl（在 AI 模型 provider 里）+ 这里的 submit/poll 子路径；
  * 响应解析对常见字段做了多形态兜底（见 MaterialVideoModelClient）。
+ *
+ * 成片 URL 默认会经 CdnUploader 持久化一次：dev 复制到 fake CDN，prod 在
+ * aep.cdn.driver=oss 时上传到 OSS，避免直接依赖模型厂商临时 URL。
  */
 @Configuration
 @ConfigurationProperties(prefix = "aep.material.video")
@@ -44,6 +47,15 @@ public class MaterialVideoProperties {
     /** 单次 HTTP 超时（秒）。 */
     private int httpTimeoutSeconds = 30;
 
+    /** 轮询成功后是否把模型返回的成片下载并上传到 CdnUploader。 */
+    private boolean uploadToCdn = true;
+
+    /** 下载模型成片 / 缩略图的单次 HTTP 超时（秒）。 */
+    private int downloadTimeoutSeconds = 120;
+
+    /** 防止异常大文件打满本地盘；<=0 表示不限制。默认 512MiB。 */
+    private long maxDownloadBytes = 512L * 1024L * 1024L;
+
     public String getSubmitPath() { return submitPath; }
     public void setSubmitPath(String submitPath) { this.submitPath = submitPath; }
 
@@ -70,4 +82,13 @@ public class MaterialVideoProperties {
 
     public int getHttpTimeoutSeconds() { return httpTimeoutSeconds; }
     public void setHttpTimeoutSeconds(int httpTimeoutSeconds) { this.httpTimeoutSeconds = httpTimeoutSeconds; }
+
+    public boolean isUploadToCdn() { return uploadToCdn; }
+    public void setUploadToCdn(boolean uploadToCdn) { this.uploadToCdn = uploadToCdn; }
+
+    public int getDownloadTimeoutSeconds() { return downloadTimeoutSeconds; }
+    public void setDownloadTimeoutSeconds(int downloadTimeoutSeconds) { this.downloadTimeoutSeconds = downloadTimeoutSeconds; }
+
+    public long getMaxDownloadBytes() { return maxDownloadBytes; }
+    public void setMaxDownloadBytes(long maxDownloadBytes) { this.maxDownloadBytes = maxDownloadBytes; }
 }

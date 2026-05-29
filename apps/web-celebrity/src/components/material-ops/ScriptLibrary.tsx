@@ -13,6 +13,8 @@ import { TIER_META, ASSET_KIND_META } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, ScriptAsset, Tier } from "./types";
 import { ProductPickerDialog } from "./ProductPickerDialog";
 import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, EmptyState, ProductThumb, formatLastUsed, hexA } from "./shared";
+import { loadProductThumbMap, productThumbUrl } from "./product-thumbnails";
+import { scriptOwnerLabel } from "./script-owner";
 
 const KIND_ICON: Record<AssetKind, React.ComponentType<{ size?: number; color?: string }>> = {
   my_script: ScrollText,
@@ -40,10 +42,19 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
 
   // 全部系统商品 → id 映射，供「关联商品」列展示（覆盖商品库里任意商品，不止素材运营 6 个）。
   const [productById, setProductById] = React.useState<Map<string, MaterialProduct>>(new Map());
+  const [thumbByProductId, setThumbByProductId] = React.useState<Record<string, string>>({});
   React.useEffect(() => {
-    ProductsApi.listProducts().then((list) => {
-      setProductById(new Map(list.map((p) => [p.id, toMaterialProduct(p)])));
-    });
+    let cancelled = false;
+    (async () => {
+      const products = (await ProductsApi.listProducts()).map(toMaterialProduct);
+      if (cancelled) return;
+      setProductById(new Map(products.map((p) => [p.id, p])));
+      const thumbs = await loadProductThumbMap(products);
+      if (!cancelled) setThumbByProductId(thumbs);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   React.useEffect(() => {
@@ -232,7 +243,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <ProductThumb name={product?.name ?? "—"} image={product?.images?.[0]} color={product?.accentColor} size={22} radius={6} monoScale={0.5} />
+                <ProductThumb name={product?.name ?? "—"} image={productThumbUrl(product, thumbByProductId)} color={product?.accentColor} size={22} radius={6} monoScale={0.5} />
                 {product ? (
                   <>
                     <span
@@ -260,7 +271,12 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
                   <span style={{ fontSize: 12, color: "var(--fg-2)" }}>—</span>
                 )}
               </div>
-              <span style={{ fontSize: 12, color: "var(--fg-1)" }}>{a.source?.author}</span>
+              <span
+                title={a.owner_user_id ? `用户 ${a.owner_user_id}` : undefined}
+                style={{ fontSize: 12, color: "var(--fg-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
+                {scriptOwnerLabel(a)}
+              </span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--extra-teal)", fontVariantNumeric: "tabular-nums" }}>{a.metrics.ctr_pct}%</span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--fg-1)", fontVariantNumeric: "tabular-nums" }}>{a.metrics.uses_count}</span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)" }}>{formatLastUsed(a.metrics.last_used_at)}</span>
@@ -303,6 +319,8 @@ function blankDraft(product: MaterialProduct, owner: { id?: string; name?: strin
     source: { type: "user", ref_id: owner.id ?? null, author: owner.name ?? "我" },
     tags: [],
     created_by: owner.id ?? "self",
+    owner_user_id: owner.id ?? null,
+    owner_display_name: owner.name ?? "我",
     workspace_id: "mcn-001",
   };
 }

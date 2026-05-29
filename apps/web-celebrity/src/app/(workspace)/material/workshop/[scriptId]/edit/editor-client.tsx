@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { MaterialOpsApi } from "@/api";
 import type { MaterialProduct, ScriptAsset } from "@/components/material-ops/types";
+import { useConfirm } from "@/components/common/confirm-dialog";
 import { WorkshopScreen } from "@/components/material-ops/WorkshopScreen";
 
 export function EditorClient({ scriptId }: { scriptId: string }) {
@@ -11,6 +12,8 @@ export function EditorClient({ scriptId }: { scriptId: string }) {
   const [draft, setDraft] = React.useState<ScriptAsset | null>(null);
   const [product, setProduct] = React.useState<MaterialProduct | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [deleting, setDeleting] = React.useState(false);
+  const { confirm, ConfirmHost } = useConfirm();
 
   React.useEffect(() => {
     let cancelled = false;
@@ -36,5 +39,35 @@ export function EditorClient({ scriptId }: { scriptId: string }) {
     });
   };
 
-  return <WorkshopScreen draft={draft} setDraft={setDraft} product={product} onSaveAndPreview={onSaveAndPreview} />;
+  const onDelete = async () => {
+    if (deleting) return;
+    const ok = await confirm({
+      title: `删除脚本：${draft.name || draft.id}`,
+      description: "删除后脚本会从脚本库隐藏，历史生成视频不会删除。",
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await MaterialOpsApi.deleteScript(draft.id);
+      router.replace("/material/workshop");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <>
+      <WorkshopScreen
+        draft={draft}
+        setDraft={setDraft}
+        product={product}
+        onProductChange={(nextProduct) => setProduct(nextProduct)}
+        onSaveAndPreview={onSaveAndPreview}
+        onDelete={onDelete}
+      />
+      <ConfirmHost />
+    </>
+  );
 }

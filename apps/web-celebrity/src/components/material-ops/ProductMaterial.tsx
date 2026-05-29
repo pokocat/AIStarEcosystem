@@ -53,6 +53,43 @@ function fallbackProduct(id: string): MaterialProduct {
   };
 }
 
+function VideoPoster({ video }: { video: MaterialVideo }) {
+  const ref = React.useRef<HTMLVideoElement>(null);
+
+  if (video.thumbnail_url) {
+    return (
+      <img
+        src={video.thumbnail_url}
+        alt=""
+        loading="lazy"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+      />
+    );
+  }
+
+  if (!video.video_url) return null;
+
+  return (
+    <video
+      ref={ref}
+      src={video.video_url}
+      muted
+      playsInline
+      preload="metadata"
+      onLoadedMetadata={() => {
+        const el = ref.current;
+        if (!el || !Number.isFinite(el.duration)) return;
+        try {
+          el.currentTime = Math.min(0.75, Math.max(0, el.duration - 0.1));
+        } catch {
+          /* Some browsers may reject early seeks; keep the first decoded frame. */
+        }
+      }}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none", background: "#000" }}
+    />
+  );
+}
+
 export function ProductMaterial({ initialProductId }: { initialProductId?: string } = {}) {
   const router = useRouter();
   const [videos, setVideos] = React.useState<MaterialVideo[]>([]);
@@ -100,7 +137,7 @@ export function ProductMaterial({ initialProductId }: { initialProductId?: strin
     return () => clearInterval(t);
   }, [hasRendering, load]);
 
-  // 可筛选的商品 = 系统商品库 ∪「被视频引用、且随仓打包的本地演示商品(p1–p6)」。
+  // 可筛选的商品 = 系统商品库 ∪「被视频引用、且随仓打包的本地富数据商品」。
   // 已在商品库删除的商品不会进来（其孤儿视频归入「未关联」）。
   const productList = products.length > 0 ? products : MATERIAL_PRODUCTS;
   const knownIds = React.useMemo(() => new Set(productList.map((p) => p.id)), [productList]);
@@ -757,6 +794,10 @@ function VideoCard({ video, onClick, onRetry, showParent, productName }: { video
       style={{ textAlign: "left", borderRadius: "var(--radius-md)", overflow: "hidden", cursor: "pointer", border: `1px solid ${isFailed ? "var(--danger)" : "var(--line)"}`, background: "var(--bg-1)", padding: 0, fontFamily: "var(--font-sans)" }}
     >
       <div style={{ aspectRatio: "9 / 14", position: "relative", background: isFailed ? "var(--bg-2)" : `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {!isFailed && !isRendering && <VideoPoster video={video} />}
+        {!isFailed && !isRendering && (video.thumbnail_url || video.video_url) && (
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.34))", pointerEvents: "none" }} />
+        )}
         {isFailed ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 12, textAlign: "center" }}>
             <TriangleAlert size={24} color="var(--danger)" />
@@ -855,8 +896,24 @@ function VideoDetail({
         {/* 视频帧 */}
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ aspectRatio: "9 / 16", background: `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-            <PlayCircle size={56} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />
-            <span style={{ position: "absolute", bottom: 10, right: 10, fontFamily: "var(--font-mono)", fontSize: 10, color: "#fff", background: "rgba(0,0,0,0.45)", padding: "3px 8px", borderRadius: 4 }}>
+            {video.video_url ? (
+              <video
+                src={video.video_url}
+                controls
+                playsInline
+                preload="metadata"
+                poster={video.thumbnail_url ?? undefined}
+                style={{ width: "100%", height: "100%", objectFit: "cover", background: "#000" }}
+              />
+            ) : (
+              <>
+                <PlayCircle size={56} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />
+                <span style={{ position: "absolute", left: 12, right: 12, bottom: 40, textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.82)", lineHeight: 1.5 }}>
+                  暂无可播放源
+                </span>
+              </>
+            )}
+            <span style={{ position: "absolute", bottom: 10, right: 10, fontFamily: "var(--font-mono)", fontSize: 10, color: "#fff", background: "rgba(0,0,0,0.45)", padding: "3px 8px", borderRadius: 4, pointerEvents: "none" }}>
               {video.duration_sec}s · {video.aspect_ratio}
             </span>
           </div>
@@ -966,6 +1023,7 @@ function VideoDetail({
                 <SchemaLine k="duration_sec" v={String(video.duration_sec)} />
                 <SchemaLine k="aspect_ratio" v={video.aspect_ratio} />
                 <SchemaLine k="model" v={video.model} />
+                {video.video_url && <SchemaLine k="video_url" v={video.video_url} />}
               </div>
             </Card>
           )}

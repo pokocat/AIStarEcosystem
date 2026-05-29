@@ -9,23 +9,43 @@ import { ProductsApi } from "@/api";
 import { toMaterialProduct } from "@/mocks/material-ops";
 import type { MaterialProduct } from "./types";
 import { Eyebrow, SearchInput, ProductThumb, hexA } from "./shared";
+import { loadProductThumbMap, productThumbUrl } from "./product-thumbnails";
 
 export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; onPick: (p: MaterialProduct) => void }) {
   const [query, setQuery] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [products, setProducts] = React.useState<MaterialProduct[]>([]);
+  const [thumbByProductId, setThumbByProductId] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
 
   // 拉系统全部商品（live → 真后端 /api/products；mock → 本地商品库），补展示元数据。
   React.useEffect(() => {
-    ProductsApi.listProducts()
-      .then((list) => setProducts(list.map(toMaterialProduct)))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = (await ProductsApi.listProducts()).map(toMaterialProduct);
+        if (cancelled) return;
+        setProducts(list);
+        setLoading(false);
+
+        const thumbs = await loadProductThumbMap(list);
+        if (!cancelled) setThumbByProductId(thumbs);
+      } catch {
+        if (!cancelled) {
+          setProducts([]);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = products.filter((p) => !query || p.name.includes(query) || p.category.includes(query));
   const selected = products.find((p) => p.id === selectedId) ?? null;
   const yuan = (p: MaterialProduct) => (p.priceCents ? `¥${(p.priceCents / 100).toFixed(0)}` : "—");
+  const thumb = (p: MaterialProduct) => productThumbUrl(p, thumbByProductId);
 
   return (
     <>
@@ -101,7 +121,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
                     fontSize: 12.5,
                   }}
                 >
-                  <ProductThumb name={p.name} image={p.images?.[0]} color={p.accentColor} size={22} radius={99} monoScale={0.5} />
+                  <ProductThumb name={p.name} image={thumb(p)} color={p.accentColor} size={22} radius={99} monoScale={0.5} />
                   {p.name}
                 </button>
               );
@@ -129,7 +149,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
                     boxShadow: active ? `0 0 0 3px ${hexA(p.accentColor ?? "#7c5cff", "22")}` : "none",
                   }}
                 >
-                  <ProductThumb name={p.name} image={p.images?.[0]} color={p.accentColor} size={48} />
+                  <ProductThumb name={p.name} image={thumb(p)} color={p.accentColor} size={56} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, color: "var(--fg-0)", fontWeight: 500 }}>{p.name}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>

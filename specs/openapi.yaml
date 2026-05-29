@@ -4797,7 +4797,7 @@ paths:
       operationId: listProducts
       summary: |
         商品库列表。v0.31+: 任意已登录用户可读；匿名访问被 AepSecurityConfig 401。
-        写操作（POST/PATCH/DELETE/from-link/refresh-images/extract-selling-points）
+        写操作（POST/PATCH/DELETE/from-link/refresh-images/持久化卖点）
         已收归 /admin/products/**，仅 SUPER_ADMIN / OPERATOR 可调。
       parameters:
         - in: query
@@ -4819,6 +4819,39 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/Product' }
+
+  /products/extract-selling-points:
+    post:
+      tags: [products]
+      operationId: extractSellingPoints
+      summary: |
+        登录用户可调的 LLM 卖点抽取。只返回文本，不修改商品库；
+        脚本编辑 / 单次生成流可直接使用返回结果。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, link]
+              properties:
+                name: { type: string }
+                link: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [sellingPoints]
+                        properties:
+                          sellingPoints: { type: string }
 
   /products/{id}:
     parameters:
@@ -4874,9 +4907,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  # v0.31: from-link / refresh-images / extract-selling-points 已迁至 /admin/products/**。
+  # v0.31: from-link / refresh-images / 持久化卖点 已迁至 /admin/products/**。
   # 旧 path（/me/products/from-link, /me/products/{id}/refresh-images,
-  # /products/extract-selling-points, POST /products, PATCH/DELETE /products/{id},
+  # POST /products, PATCH/DELETE /products/{id},
   # /products/upsert-from-generation）已删除，仅 admin 可写。
 
   # ═══════════════════════════════════════════════════════════════════════
@@ -5126,6 +5159,13 @@ paths:
     post: { tags: [admin-prompts], operationId: adminDryRunPrompt, responses: { '200': { description: 用样例参数 fill 出最终 messages（不真调模型） } } }
 
   # ── 素材运营 · 文本类 AI（v0.40 新增；接真 LLM，失败降级，见 MaterialAiService） ──────────
+  /material/scripts:
+    get: { tags: [material], operationId: materialListScripts, responses: { '200': { description: 当前用户可见 ScriptAsset[]（过滤 deleted_at） } } }
+    post: { tags: [material], operationId: materialSaveScript, responses: { '200': { description: 保存脚本 ScriptAsset } } }
+  /material/scripts/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [material], operationId: materialGetScript, responses: { '200': { description: 单个脚本 ScriptAsset；已软删/无权访问返回 null } } }
+    delete: { tags: [material], operationId: materialDeleteScript, responses: { '204': { description: 软删除脚本（写 deleted_at，不物理删除） } } }
   /material/scripts/ai-draft:
     post: { tags: [material], operationId: materialAiDraftScripts, responses: { '200': { description: AI 起稿候选 ScriptAsset[]（不落库；LLM 失败回退内置占位池） } } }
   /material/scripts/{id}/variables:
@@ -5146,6 +5186,10 @@ paths:
   /material/videos/jobs/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get: { tags: [material], operationId: materialGetVideoJob, responses: { '200': { description: 单个生成任务的最新状态 / 结果 MaterialVideo（前端独立轮询；非本人返回 null） } } }
+  /material/viral-hits:
+    get: { tags: [material], operationId: materialListViralHits, responses: { '200': { description: 用户主动提交链接后的历史爆款分析结果 ViralHit[]（不自动抓取平台列表） } } }
+  /material/viral-hits/analyze-url:
+    post: { tags: [material], operationId: materialAnalyzeViralUrl, responses: { '200': { description: '提交单条视频链接 → 解析可用 video_url → AI 拆解 ViralHit；body={url, platform?}' } } }
 
   # ── admin · products（商品库管理；v0.31 起承载所有写动作） ───────────────────────
 

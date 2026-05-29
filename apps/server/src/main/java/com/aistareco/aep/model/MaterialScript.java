@@ -3,6 +3,8 @@ package com.aistareco.aep.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.OffsetDateTime;
+
 /**
  * 素材运营 · 脚本资产（前端真值源：apps/web-celebrity material-ops ScriptAsset）。
  * 采用「关键列 + JSON payload」存法（与 MixcutTemplate 的 *_json 列同惯例）：
@@ -56,6 +58,10 @@ public class MaterialScript {
      */
     @Column(name = "owner_user_id")
     private String ownerUserId;
+
+    /** 软删除时间；列表 / 详情默认过滤。 */
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
 
     /** 完整 ScriptAsset JSON（snake_case 字段，前端直接消费）。 */
     @Lob

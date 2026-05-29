@@ -3,6 +3,7 @@
 //
 // 读路径（任意已登录用户）：
 //   - listProducts / getProduct → GET /api/products(/{id})
+//   - extractSellingPoints      → POST /api/products/extract-selling-points（不写库）
 //   - parseProductLink          → POST /api/me/products/parse-link（不写库）
 //
 // 写路径（仅 operatorRole ∈ {operator, super_admin} 的账号可调；server 端
@@ -10,7 +11,6 @@
 //   - createProduct / updateProduct / deleteProduct
 //   - parseAndCreateProduct   → POST /api/admin/products/from-link
 //   - refreshProductImages    → POST /api/admin/products/{id}/refresh-images
-//   - extractSellingPoints    → POST /api/admin/products/extract-selling-points
 //
 // USE_MOCK 模式下走模块级数组（仅本地无 server 演示）。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ export async function refreshProductImages(productId: string): Promise<number> {
   return res.registered;
 }
 
-/** Mock LLM 卖点抽取。仅运营角色可调（建档辅助）。 */
+/** LLM 卖点抽取。任意登录用户可调；只返回文本，不直接写商品库。 */
 export async function extractSellingPoints(input: {
   name: string;
   link: string;
@@ -252,7 +252,7 @@ export async function extractSellingPoints(input: {
         `用户好评 95%+。日常通勤 / 节日送礼 / 自用囤货皆宜，下单立享平台保障。`,
     };
   }
-  return apiFetch<{ sellingPoints: string }>("/admin/products/extract-selling-points", {
+  return apiFetch<{ sellingPoints: string }>("/products/extract-selling-points", {
     method: "POST",
     body: input,
   });

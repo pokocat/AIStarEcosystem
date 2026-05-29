@@ -51,6 +51,12 @@ public class MaterialOpsController {
         return ApiResponse.of(service.saveScript(body, uid(principal)));
     }
 
+    @DeleteMapping("/scripts/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteScript(@PathVariable String id, Principal principal) {
+        service.deleteScript(id, uid(principal));
+    }
+
     /** AI 起稿候选（接真 LLM，失败降级到内置占位池）。不落库，用户选用保存时才落库。 */
     @PostMapping("/scripts/ai-draft")
     public ApiResponse<List<JsonNode>> aiDraft(@RequestBody JsonNode body, Principal principal) {
@@ -117,5 +123,10 @@ public class MaterialOpsController {
     @GetMapping("/viral-hits")
     public ApiResponse<List<JsonNode>> listViralHits() {
         return ApiResponse.of(service.listViralHits());
+    }
+
+    @PostMapping("/viral-hits/analyze-url")
+    public ApiResponse<JsonNode> analyzeViralUrl(@RequestBody JsonNode body, Principal principal) {
+        return ApiResponse.of(service.analyzeViralUrl(body, uid(principal)));
     }
 }

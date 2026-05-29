@@ -11,6 +11,8 @@ import { SHOT_KIND_META, ASSET_KIND_META, PLATFORM_RULES } from "@/constants/mat
 import type { MaterialProduct, ScriptAsset, ScriptBlock } from "./types";
 import { Eyebrow, Tag, Seg, TierBadge, MetricTile, FilterChip, ProductThumb, hexA } from "./shared";
 import { PromptView } from "./PromptView";
+import { scriptOwnerLabel } from "./script-owner";
+import { useProductThumbUrl } from "./product-thumbnails";
 
 export function ScriptPreview({
   script,
@@ -33,6 +35,7 @@ export function ScriptPreview({
   const relatedVideos = VIDEO_ASSETS.filter((v) => v.script_id === script.id);
   const isReadOnly = !!isFromLibrary && script.kind !== "my_script";
   const [viewMode, setViewMode] = React.useState<"structured" | "prompt">("structured");
+  const thumbUrl = useProductThumbUrl(product);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 1280 }}>
@@ -82,7 +85,9 @@ export function ScriptPreview({
                 </div>
                 <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "var(--fg-0)", fontWeight: 700, margin: 0, letterSpacing: "-0.015em" }}>{script.name}</h1>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)", flexWrap: "wrap" }}>
-                  <span>{script.source?.author}</span>
+                  <span title={script.owner_user_id ? `用户 ${script.owner_user_id}` : undefined}>
+                    {scriptOwnerLabel(script)}
+                  </span>
                   <span>·</span>
                   <span>{script.category} · {script.hook_type}</span>
                   <span>·</span>
@@ -102,7 +107,7 @@ export function ScriptPreview({
             {/* linked product */}
             <Card style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
               <Eyebrow style={{ width: 70 }}>关联商品</Eyebrow>
-              <ProductThumb name={product.name} image={product.images?.[0]} color={product.accentColor} size={44} />
+              <ProductThumb name={product.name} image={thumbUrl} color={product.accentColor} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, color: "var(--fg-0)", fontWeight: 500 }}>{product.name}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>

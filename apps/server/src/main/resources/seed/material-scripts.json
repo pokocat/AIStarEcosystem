@@ -1,136 +1,137 @@
 [
   {
-    "id": "asset-2604", "kind": "viral_clone", "name": "蓝领情感 · 送礼老婆", "tier": "S",
-    "category": "小家电", "hook_type": "情感", "audience": ["女性 30-50", "送礼场景"],
-    "platforms": ["douyin", "wechat"], "duration_sec": 41, "product_id": "p4",
+    "id": "asset-2604", "kind": "viral_clone", "name": "厨房崩溃 · 水槽过滤网", "tier": "S",
+    "category": "日用百货", "hook_type": "痛点", "audience": ["做饭人", "租房厨房", "宝妈"],
+    "platforms": ["douyin", "wechat"], "duration_sec": 10, "product_id": "3485332505048038713",
     "blocks": [
-      { "kind": "hook", "label": "黄金 3s 钩子", "dur": 3, "text": "修了 30 年车，第一次给老婆买这个", "shot": "油污大手特写 · 镜头怼脸" },
-      { "kind": "emotion", "label": "故事铺垫", "dur": 9, "text": "修车场景 · 收摊回家 · 老婆揉脖子", "shot": "跟拍 · 自然光" },
-      { "kind": "product", "label": "产品揭示", "dur": 13, "text": "从口袋拿出按摩仪 · 老婆惊讶反应", "shot": "产品怼镜 30 帧" },
-      { "kind": "effect", "label": "使用过程", "dur": 10, "text": "使用 + 老婆“舒服死了” + 笑场", "shot": "双人对坐 · 自然光" },
-      { "kind": "cta", "label": "行动召唤", "dur": 6, "text": "“老婆说有需要的姐妹评论区扣 1”", "shot": "CTA + 字幕飘屏" }
+      { "kind": "hook", "label": "堵水槽开场", "dur": 2, "text": "洗个碗，水槽又堵了？别用手抠。", "shot": "俯拍水槽，饭渣菜叶堆住下水口，水位慢慢上来" },
+      { "kind": "scene", "label": "痛点放大", "dur": 2, "text": "油腻饭渣一抓，真的很崩溃。", "shot": "手套刚碰到残渣立刻缩回，字幕弹出“太脏了”" },
+      { "kind": "product", "label": "产品上场", "dur": 2, "text": "套上这个一次性过滤网，边缘压平。", "shot": "手把过滤网套在水槽口，镜头给到网面和弹性边缘" },
+      { "kind": "effect", "label": "效果演示", "dur": 2, "text": "水能下去，饭渣全兜住。", "shot": "倒半碗剩菜汤，水流走，残渣留在网兜里" },
+      { "kind": "cta", "label": "收尾转化", "dur": 2, "text": "用完一提就扔，9块9先囤一包。", "shot": "拎起网兜丢进垃圾桶，包装和价格贴片同框" }
     ],
     "metrics": { "uses_count": 312, "ctr_pct": 9.2, "diversity_pct": 58, "completion_pct": 76, "best_video": { "script_id": "video-2604-001", "plays": "812w", "likes": "32w", "gmv": "¥184,200" }, "last_used_at": "2026-05-26T14:36:00Z" },
-    "source": { "type": "viral", "ref_id": "v3", "original_url": "https://v.douyin.com/iY7xRk8R", "cloned_from": null, "author": "@老李修车" },
-    "tags": ["情感", "蓝领", "送礼", "颈椎"], "cover_color": "#f0a83a", "created_by": "user-bb", "workspace_id": "mcn-001"
+    "source": { "type": "viral", "ref_id": "v3", "original_url": "https://v.douyin.com/iY7xRk8R", "cloned_from": null, "author": "@厨房收尾员" },
+    "tags": ["厨房", "水槽", "懒人清洁", "9块9"], "cover_color": "#f0a83a", "created_by": "user-bb", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2598", "kind": "my_script", "name": "母女反差 · 抗老精华", "tier": "S",
-    "category": "美妆", "hook_type": "反差", "audience": ["女性 25-35"],
-    "platforms": ["douyin", "xhs"], "duration_sec": 28, "product_id": "p3",
+    "id": "asset-2598", "kind": "my_script", "name": "冰箱串味 · 食品碗罩", "tier": "S",
+    "category": "日用百货", "hook_type": "痛点", "audience": ["宝妈", "独居人群", "厨房囤货"],
+    "platforms": ["douyin", "xhs"], "duration_sec": 10, "product_id": "3706263707349811466",
     "blocks": [
-      { "kind": "hook", "label": "黄金 3s 钩子", "dur": 3, "text": "我妈用了这瓶精华，被亲戚以为是我姐", "shot": "镜头怼脸 · “你猜我妈多大”" },
-      { "kind": "scene", "label": "人物展示", "dur": 5, "text": "母亲皮肤特写 · 字幕“52 岁”", "shot": "特写 · 自然光" },
-      { "kind": "product", "label": "产品引入", "dur": 10, "text": "从化妆台拿起精华瓶 · 镜头怼瓶身 30 帧", "shot": "产品特写 · 30 帧静帧" },
-      { "kind": "effect", "label": "效果展示", "dur": 7, "text": "使用前后对比 · 三周时间轴", "shot": "对比镜 + 字幕标注" },
-      { "kind": "cta", "label": "行动召唤", "dur": 3, "text": "“链接放购物车了” + 字幕飘屏", "shot": "CTA + 商品弹窗" }
+      { "kind": "hook", "label": "开冰箱钩子", "dur": 2, "text": "冰箱一打开，全是剩菜味？", "shot": "镜头从冰箱门内侧推出来，字幕“串味警告”" },
+      { "kind": "scene", "label": "真实场景", "dur": 2, "text": "半碗汤、切好的水果，最怕没盖严。", "shot": "桌上摆汤碗和水果盘，保鲜膜皱成一团放旁边" },
+      { "kind": "product", "label": "一拉一套", "dur": 2, "text": "这个碗罩一拉就套住，大小碗都能包。", "shot": "手快速撑开碗罩，套住圆碗和盘子各一次" },
+      { "kind": "effect", "label": "密封展示", "dur": 2, "text": "汤汁不乱晃，水果也不沾味。", "shot": "轻晃碗盘，边缘贴合，切到冰箱分层摆放" },
+      { "kind": "cta", "label": "下单理由", "dur": 2, "text": "9块9一包，厨房抽屉常备。", "shot": "抽屉里抽出一只碗罩，包装和价格贴片定格" }
     ],
     "metrics": { "uses_count": 142, "ctr_pct": 8.7, "diversity_pct": 68, "completion_pct": 72, "best_video": { "script_id": "video-2598-001", "plays": "162w", "likes": "6.4w", "gmv": "¥98,400" }, "last_used_at": "2026-05-24T16:20:00Z" },
     "source": { "type": "user", "ref_id": "u-bb", "original_url": null, "cloned_from": "asset-2401", "author": "陈彬彬" },
-    "tags": ["反差", "母女", "抗老"], "cover_color": "#ff5b8a", "created_by": "user-bb", "workspace_id": "mcn-001"
+    "tags": ["冰箱", "保鲜", "碗罩", "防串味"], "cover_color": "#ff5b8a", "created_by": "user-bb", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2591", "kind": "template", "name": "打工人 vlog · 5min 早餐", "tier": "A",
-    "category": "食品", "hook_type": "提问", "audience": ["打工人", "减脂女性"],
-    "platforms": ["xhs", "douyin"], "duration_sec": 32, "product_id": "p2",
+    "id": "asset-2591", "kind": "template", "name": "带娃出门 · 精油防护贴", "tier": "A",
+    "category": "日用百货", "hook_type": "场景", "audience": ["宝妈", "户外出行", "夏季家庭"],
+    "platforms": ["xhs", "douyin"], "duration_sec": 10, "product_id": "3548176134007053937",
     "blocks": [
-      { "kind": "hook", "label": "黄金 3s 钩子", "dur": 3, "text": "为什么我吃完早餐 11 点就饿？", "shot": "空桌特写 + 提问" },
-      { "kind": "scene", "label": "场景搭建", "dur": 7, "text": "厨房 vlog 视角 · 烧水 · 倒燕麦", "shot": "厨房自然光跟拍" },
-      { "kind": "product", "label": "产品融入", "dur": 12, "text": "产品袋特写 4 次 · 强调“低糖”标签", "shot": "产品特写循环" },
-      { "kind": "effect", "label": "使用展示", "dur": 8, "text": "撕开倒入 · 加奶搅拌 · 第一口", "shot": "近景慢镜" },
-      { "kind": "cta", "label": "CTA", "dur": 2, "text": "“评论区扣早 + 链接放小黄车”", "shot": "CTA + 字幕" }
+      { "kind": "hook", "label": "夏天出门", "dur": 2, "text": "夏天带娃下楼，包里一定放这个。", "shot": "妈妈推开家门，孩子背包特写，字幕“出门前10秒”" },
+      { "kind": "scene", "label": "痛点环境", "dur": 2, "text": "小区花园、露营、晚饭后散步都用得上。", "shot": "快切草地、露营椅、傍晚小区路灯三个场景" },
+      { "kind": "product", "label": "贴片动作", "dur": 2, "text": "植物精油贴撕开，贴在衣角或背包上。", "shot": "手撕开贴片，贴到孩子衣角和书包侧袋" },
+      { "kind": "effect", "label": "体验表达", "dur": 2, "text": "味道清清爽爽，不用往身上抹。", "shot": "孩子跑动，贴片在衣角轻晃，妈妈闻一下点头" },
+      { "kind": "cta", "label": "囤货收口", "dur": 2, "text": "9块9一包，夏天出门前贴一片。", "shot": "贴片小包装铺开，价格贴片和“出门常备”同框" }
     ],
-    "metrics": { "uses_count": 96, "ctr_pct": 7.1, "diversity_pct": 71, "completion_pct": 68, "best_video": { "script_id": "video-2412", "plays": "24w", "likes": "8.8w", "gmv": "¥21,400" }, "last_used_at": "2026-05-22T09:00:00Z" },
-    "source": { "type": "viral", "ref_id": "v2", "original_url": "https://www.xiaohongshu.com/...", "cloned_from": null, "author": "@早餐打工人" },
-    "tags": ["打工人", "早餐", "低糖", "减脂"], "cover_color": "#22b59a", "created_by": "system", "workspace_id": "mcn-001"
+    "metrics": { "uses_count": 96, "ctr_pct": 7.1, "diversity_pct": 71, "completion_pct": 68, "best_video": { "script_id": "video-2591-001", "plays": "24w", "likes": "8.8w", "gmv": "¥21,400" }, "last_used_at": "2026-05-22T09:00:00Z" },
+    "source": { "type": "viral", "ref_id": "v2", "original_url": "https://www.xiaohongshu.com/...", "cloned_from": null, "author": "@夏天带娃记" },
+    "tags": ["夏季", "带娃", "户外", "精油贴"], "cover_color": "#22b59a", "created_by": "system", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2585", "kind": "viral_clone", "name": "微胖姐妹 · 22s 打底测评", "tier": "A",
-    "category": "服饰", "hook_type": "身份", "audience": ["微胖姐妹", "通勤打工人"],
-    "platforms": ["xhs"], "duration_sec": 22, "product_id": "p1",
+    "id": "asset-2585", "kind": "viral_clone", "name": "外卖到手 · 酒精湿巾", "tier": "A",
+    "category": "日用百货", "hook_type": "习惯", "audience": ["上班族", "租房党", "通勤人群"],
+    "platforms": ["xhs"], "duration_sec": 10, "product_id": "3819840696727240859",
     "blocks": [
-      { "kind": "hook", "label": "身材钩子", "dur": 3, "text": "160 微胖姐妹，这件打底救我一命", "shot": "镜头从下往上 + 字幕“160/68”" },
-      { "kind": "scene", "label": "痛点", "dur": 5, "text": "展示其他打底显胖 · 翻白眼", "shot": "换装快剪 + 反应" },
-      { "kind": "product", "label": "产品上身", "dur": 8, "text": "穿上德绒打底 · 转圈展示 · 弹幕“绝”", "shot": "试衣镜 · 360 度" },
-      { "kind": "cta", "label": "价格 + CTA", "dur": 6, "text": "“69 块钱姐妹冲” + 链接动画", "shot": "CTA + 价格弹窗" }
+      { "kind": "hook", "label": "外卖钩子", "dur": 2, "text": "外卖到手，我第一步不是拆袋。", "shot": "外卖袋放到桌上，手停在袋口前，字幕“先别急”" },
+      { "kind": "scene", "label": "使用场景", "dur": 2, "text": "桌面、手机、门把手，顺手擦一遍。", "shot": "湿巾依次擦桌面、手机壳和门把手，三连快切" },
+      { "kind": "product", "label": "产品特写", "dur": 2, "text": "80抽大包装，抽出来不连张。", "shot": "包装开盖，一张湿巾被顺手抽出，镜头给到湿润质感" },
+      { "kind": "effect", "label": "使用反馈", "dur": 2, "text": "大张够用，擦完不黏手。", "shot": "一张湿巾擦完整张小桌，手背轻拍桌面" },
+      { "kind": "cta", "label": "价格收口", "dur": 2, "text": "家里、车里、工位都放一包。", "shot": "三处摆放快切，最后定格包装和价格" }
     ],
     "metrics": { "uses_count": 56, "ctr_pct": 7.8, "diversity_pct": 74, "completion_pct": 64, "best_video": { "script_id": "video-2585-001", "plays": "14w", "likes": "4.2w", "gmv": "¥12,600" }, "last_used_at": "2026-05-20T11:30:00Z" },
-    "source": { "type": "viral", "ref_id": "v4", "original_url": "https://v.douyin.com/iA8sLm2X", "cloned_from": null, "author": "@穿搭小欧" },
-    "tags": ["微胖", "穿搭", "打底", "69 元"], "cover_color": "#7c5cff", "created_by": "user-bb", "workspace_id": "mcn-001"
+    "source": { "type": "viral", "ref_id": "v4", "original_url": "https://v.douyin.com/iA8sLm2X", "cloned_from": null, "author": "@工位生活家" },
+    "tags": ["酒精湿巾", "外卖", "工位", "清洁"], "cover_color": "#7c5cff", "created_by": "user-bb", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2480", "kind": "template", "name": "直播切片 · 抢购场", "tier": "B",
-    "category": "通用", "hook_type": "紧迫", "audience": ["老铁", "中老年"],
-    "platforms": ["douyin", "kuaishou"], "duration_sec": 30, "product_id": "p4",
+    "id": "asset-2480", "kind": "template", "name": "直播切片 · 抽取式保鲜套", "tier": "B",
+    "category": "日用百货", "hook_type": "紧迫", "audience": ["宝妈", "厨房囤货", "中老年"],
+    "platforms": ["douyin", "kuaishou"], "duration_sec": 10, "product_id": "3737779702866247934",
     "blocks": [
-      { "kind": "hook", "label": "主播喊麦", "dur": 3, "text": "“今天 229 抢 50 台！”", "shot": "直播机位 · 怼镜" },
-      { "kind": "product", "label": "产品演示", "dur": 10, "text": "助理拆封演示 · 主播口播卖点 4 条", "shot": "双机位 · 商品台" },
-      { "kind": "effect", "label": "现场体验", "dur": 8, "text": "观众试用 · 弹幕实时反馈“信她”", "shot": "观众席 + 弹幕同框" },
-      { "kind": "scene", "label": "紧迫氛围", "dur": 6, "text": "“还剩 12 单！姐妹快冲！”", "shot": "倒计时数字 + 红色字幕" },
-      { "kind": "cta", "label": "CTA", "dur": 3, "text": "小黄车自取 · “抢完拉黑下一波”", "shot": "CTA + 库存归零" }
+      { "kind": "hook", "label": "主播开场", "dur": 2, "text": "剩菜别再拿盘子压了，真的不稳。", "shot": "直播间俯拍，一只盘子盖碗晃了一下差点滑落" },
+      { "kind": "scene", "label": "痛点展示", "dur": 2, "text": "冰箱一挤，汤汁就容易蹭得到处都是。", "shot": "碗盘塞进冰箱，盘盖倾斜，字幕“尴尬”" },
+      { "kind": "product", "label": "抽取演示", "dur": 2, "text": "抽取式保鲜膜套，拉一个直接套。", "shot": "从挂袋里抽出一只，单手撑开套住饭碗" },
+      { "kind": "effect", "label": "对比效果", "dur": 2, "text": "松紧口贴住碗边，叠放也省心。", "shot": "两个碗上下叠放，边缘贴合特写" },
+      { "kind": "cta", "label": "直播收口", "dur": 2, "text": "限时囤装，厨房挂一袋随手抽。", "shot": "挂在厨房墙面，主播手指小黄车方向" }
     ],
-    "metrics": { "uses_count": 41, "ctr_pct": 6.5, "diversity_pct": 48, "completion_pct": 58, "best_video": { "script_id": "video-2462", "plays": "6.2w", "likes": "1.4w", "gmv": "¥18,400" }, "last_used_at": "2026-05-15T22:00:00Z" },
+    "metrics": { "uses_count": 41, "ctr_pct": 6.5, "diversity_pct": 48, "completion_pct": 58, "best_video": { "script_id": "video-2480-001", "plays": "6.2w", "likes": "1.4w", "gmv": "¥18,400" }, "last_used_at": "2026-05-15T22:00:00Z" },
     "source": { "type": "system", "ref_id": null, "original_url": null, "cloned_from": null, "author": "系统内置" },
-    "tags": ["直播", "抢购", "紧迫"], "cover_color": "#5b3fe0", "created_by": "system", "workspace_id": "mcn-001"
+    "tags": ["直播", "保鲜", "抽取式", "厨房"], "cover_color": "#5b3fe0", "created_by": "system", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2477", "kind": "my_script", "name": "父女视角 · 送礼故事", "tier": "A",
-    "category": "小家电", "hook_type": "情感", "audience": ["宝妈群体", "送礼场景"],
-    "platforms": ["douyin", "wechat"], "duration_sec": 40, "product_id": "p4",
+    "id": "asset-2477", "kind": "my_script", "name": "租房厨房 · 挂抽保鲜套", "tier": "A",
+    "category": "日用百货", "hook_type": "空间", "audience": ["租房党", "独居人群", "厨房小户型"],
+    "platforms": ["douyin", "wechat"], "duration_sec": 10, "product_id": "3737779702866247934",
     "blocks": [
-      { "kind": "hook", "label": "黄金 3s 钩子", "dur": 3, "text": "我爸 50 岁，第一次悄悄给我妈下单了这个", "shot": "手机屏幕特写 · 购物车" },
-      { "kind": "emotion", "label": "情感铺垫", "dur": 8, "text": "闺女躲门后偷拍 · 爸爸的手指划过价格", "shot": "门缝偷拍视角" },
-      { "kind": "product", "label": "产品揭示", "dur": 11, "text": "快递到家 · 妈妈拆出按摩仪愣住", "shot": "拆箱节奏 + 妈妈反应" },
-      { "kind": "effect", "label": "效果体验", "dur": 10, "text": "妈妈戴上 · 爸爸偷笑 · 闺女字幕“破防了”", "shot": "三人同框 · 暖光" },
-      { "kind": "cta", "label": "行动召唤", "dur": 8, "text": "“链接放评论 · 一定要给爸看一眼”", "shot": "CTA + 商品弹窗" }
+      { "kind": "hook", "label": "小厨房开场", "dur": 2, "text": "租房厨房小，保鲜膜别再乱塞抽屉。", "shot": "狭窄厨房抽屉拉开，保鲜膜盒和杂物挤在一起" },
+      { "kind": "scene", "label": "真实困扰", "dur": 2, "text": "每次找半天，最后还是盖不严。", "shot": "手翻抽屉找东西，碗口保鲜膜松掉翘边" },
+      { "kind": "product", "label": "挂墙动作", "dur": 2, "text": "这袋直接挂起来，随手一抽。", "shot": "把抽取袋挂到墙钩，单手抽出一只保鲜套" },
+      { "kind": "effect", "label": "顺手套碗", "dur": 2, "text": "碗、盘、水果盆，十秒全盖好。", "shot": "三种容器快速套好，镜头跟手移动" },
+      { "kind": "cta", "label": "生活化收尾", "dur": 2, "text": "小厨房想清爽，这种小东西真有用。", "shot": "整理后的台面干净，包装挂在墙边，字幕“厨房常备”" }
     ],
     "metrics": { "uses_count": 24, "ctr_pct": 7.4, "diversity_pct": 79, "completion_pct": 71, "best_video": { "script_id": "video-2461", "plays": "8w", "likes": "2.1w", "gmv": "¥7,200" }, "last_used_at": "2026-05-18T14:00:00Z" },
     "source": { "type": "user", "ref_id": "u-bb", "original_url": null, "cloned_from": "asset-2604", "author": "陈彬彬" },
-    "tags": ["父女", "反差", "送礼"], "cover_color": "#f0a83a", "created_by": "user-bb", "workspace_id": "mcn-001"
+    "tags": ["租房", "收纳", "保鲜", "厨房"], "cover_color": "#f0a83a", "created_by": "user-bb", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2412", "kind": "template", "name": "校园短剧 · 单集", "tier": "B",
-    "category": "通用", "hook_type": "剧情", "audience": ["学生党", "95 后"],
-    "platforms": ["douyin"], "duration_sec": 60, "product_id": "p1",
+    "id": "asset-2412", "kind": "template", "name": "宿舍水果 · 翻盖碗罩", "tier": "B",
+    "category": "日用百货", "hook_type": "剧情", "audience": ["学生党", "宿舍党", "水果爱好者"],
+    "platforms": ["douyin"], "duration_sec": 10, "product_id": "3819075223949541738",
     "blocks": [
-      { "kind": "hook", "label": "冲突钩子", "dur": 4, "text": "“同桌偷看我抽屉，发现了一个秘密”", "shot": "抽屉特写 + 同桌反应" },
-      { "kind": "scene", "label": "场景铺垫", "dur": 15, "text": "教室场景 · 上课偷传纸条", "shot": "校园 vlog 视角" },
-      { "kind": "product", "label": "产品出现", "dur": 18, "text": "产品作为道具自然融入剧情", "shot": "道具特写 + 情节" },
-      { "kind": "effect", "label": "剧情高潮", "dur": 18, "text": "反转 + 同桌反应", "shot": "面部特写 + 慢镜" },
-      { "kind": "cta", "label": "CTA", "dur": 5, "text": "“下集预告 + 求关注”", "shot": "字幕 + 关注按钮" }
+      { "kind": "hook", "label": "宿舍冲突", "dur": 2, "text": "室友：你这半盘水果，怎么又没盖？", "shot": "宿舍桌面，切好的水果露在空气里，室友从旁边入镜吐槽" },
+      { "kind": "scene", "label": "尴尬痛点", "dur": 2, "text": "纸巾盖不住，保鲜膜又撕得乱七八糟。", "shot": "纸巾被风吹起，保鲜膜粘成一团，字幕“翻车”" },
+      { "kind": "product", "label": "翻盖抽取", "dur": 2, "text": "翻盖抽一只碗罩，直接套上。", "shot": "打开翻盖包装，抽出碗罩套住水果盘" },
+      { "kind": "effect", "label": "宿舍适配", "dur": 2, "text": "盘子、泡面碗、小盆都能用。", "shot": "三种宿舍容器快速切换，碗罩贴合边缘" },
+      { "kind": "cta", "label": "宿舍囤货", "dur": 2, "text": "500只一包，宿舍四个人都够用。", "shot": "四个室友一人抽一只，包装和价格贴片收尾" }
     ],
     "metrics": { "uses_count": 18, "ctr_pct": 5.4, "diversity_pct": 82, "completion_pct": 81, "best_video": { "script_id": "video-2334", "plays": "2.4w", "likes": "8k", "gmv": "¥1,800" }, "last_used_at": "2026-04-28T10:00:00Z" },
     "source": { "type": "system", "ref_id": null, "original_url": null, "cloned_from": null, "author": "系统内置" },
-    "tags": ["短剧", "校园", "剧情"], "cover_color": "#22b59a", "created_by": "system", "workspace_id": "mcn-001"
+    "tags": ["宿舍", "水果", "翻盖抽取", "碗罩"], "cover_color": "#22b59a", "created_by": "system", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2401", "kind": "template", "name": "人物反差 · 30s 种草", "tier": "S",
-    "category": "美妆", "hook_type": "反差", "audience": ["女性 25-40"],
-    "platforms": ["douyin", "xhs"], "duration_sec": 30, "product_id": "p3",
+    "id": "asset-2401", "kind": "template", "name": "宝妈冰箱 · 500只碗罩", "tier": "S",
+    "category": "日用百货", "hook_type": "反差", "audience": ["宝妈", "家庭厨房", "囤货人群"],
+    "platforms": ["douyin", "xhs"], "duration_sec": 10, "product_id": "3819075223949541738",
     "blocks": [
-      { "kind": "hook", "label": "反差钩子", "dur": 3, "text": "“年龄/身份反差 · 引发好奇”", "shot": "人物怼镜特写" },
-      { "kind": "scene", "label": "人物展示", "dur": 6, "text": "场景化人物背景", "shot": "场景介绍镜头" },
-      { "kind": "product", "label": "产品引入", "dur": 10, "text": "产品作为关键道具", "shot": "产品 30 帧静帧" },
-      { "kind": "effect", "label": "效果对比", "dur": 8, "text": "使用前后对比", "shot": "对比镜 + 字幕" },
-      { "kind": "cta", "label": "CTA", "dur": 3, "text": "“链接 + 行动召唤”", "shot": "CTA 字幕" }
+      { "kind": "hook", "label": "反差钩子", "dur": 2, "text": "我妈以前用盘子盖剩菜，现在全换这个。", "shot": "一排盘子盖碗的老方法快切，镜头突然停住" },
+      { "kind": "scene", "label": "旧方法对比", "dur": 2, "text": "盘子占地方，还容易串味。", "shot": "冰箱里盘子叠盘子，门差点关不上" },
+      { "kind": "product", "label": "新方法展示", "dur": 2, "text": "抽一只保鲜碗罩，套上就能放。", "shot": "从翻盖盒抽出碗罩，套在剩菜碗上" },
+      { "kind": "effect", "label": "冰箱整齐", "dur": 2, "text": "每个碗都盖好，冰箱一下清爽。", "shot": "俯拍冰箱层架，碗盘整齐摆放，标签贴日期" },
+      { "kind": "cta", "label": "家庭囤货", "dur": 2, "text": "500只一包，家里真的消耗得很快。", "shot": "妈妈顺手抽一只，镜头定格包装和厨房台面" }
     ],
     "metrics": { "uses_count": 184, "ctr_pct": 8.4, "diversity_pct": 62, "completion_pct": 70, "best_video": { "script_id": "video-2398", "plays": "482w", "likes": "18w", "gmv": "¥124,800" }, "last_used_at": "2026-05-26T08:00:00Z" },
     "source": { "type": "system", "ref_id": null, "original_url": null, "cloned_from": null, "author": "系统内置" },
-    "tags": ["反差", "种草", "通用"], "cover_color": "#ff5b8a", "created_by": "system", "workspace_id": "mcn-001"
+    "tags": ["宝妈", "冰箱", "囤货", "碗罩"], "cover_color": "#ff5b8a", "created_by": "system", "workspace_id": "mcn-001"
   },
   {
-    "id": "asset-2398", "kind": "my_script", "name": "修车老李 · 颈椎按摩仪 · v1", "tier": "B",
-    "category": "小家电", "hook_type": "情感", "audience": ["送礼场景"],
-    "platforms": ["douyin"], "duration_sec": 38, "product_id": "p4",
+    "id": "asset-2398", "kind": "my_script", "name": "水槽清理 · 懒人收尾", "tier": "B",
+    "category": "日用百货", "hook_type": "情感", "audience": ["做饭人", "懒人清洁", "家庭厨房"],
+    "platforms": ["douyin"], "duration_sec": 10, "product_id": "3485332505048038713",
     "blocks": [
-      { "kind": "hook", "label": "黄金 3s 钩子", "dur": 3, "text": "蓝领老公给老婆买礼物，全村都馋哭了", "shot": "修车铺远景" },
-      { "kind": "emotion", "label": "情感铺垫", "dur": 10, "text": "工地下班顺手买", "shot": "工地下班 vlog" },
-      { "kind": "product", "label": "产品揭示", "dur": 12, "text": "产品特写", "shot": "产品怼镜" },
-      { "kind": "effect", "label": "使用", "dur": 8, "text": "老婆使用反应", "shot": "反应镜" },
-      { "kind": "cta", "label": "CTA", "dur": 5, "text": "“评论区扣 1”", "shot": "CTA" }
+      { "kind": "hook", "label": "收尾共鸣", "dur": 2, "text": "做饭最烦的不是炒菜，是最后清水槽。", "shot": "饭后厨房，灶台收干净，镜头转到脏水槽" },
+      { "kind": "emotion", "label": "情绪放大", "dur": 2, "text": "菜叶、米粒、油渣，全卡在下水口。", "shot": "微距拍下水口残渣，字幕逐个点名" },
+      { "kind": "product", "label": "工具出现", "dur": 2, "text": "提前套个过滤网，洗完不用抠。", "shot": "洗碗前先套网，手指压平边缘" },
+      { "kind": "effect", "label": "饭后验证", "dur": 2, "text": "水槽冲干净，垃圾一兜带走。", "shot": "水龙头冲洗，拎起网兜，水槽底部干净" },
+      { "kind": "cta", "label": "口播收口", "dur": 2, "text": "这种小东西，真能少吵一架。", "shot": "夫妻一人洗碗一人递网，包装贴片轻轻弹出" }
     ],
     "metrics": { "uses_count": 12, "ctr_pct": 4.6, "diversity_pct": 42, "completion_pct": 52, "best_video": { "script_id": "video-2398", "plays": "6w", "likes": "1.2k", "gmv": "¥640" }, "last_used_at": "2026-05-10T10:00:00Z" },
     "source": { "type": "user", "ref_id": "u-bb", "original_url": null, "cloned_from": "asset-2604", "author": "陈彬彬" },
-    "tags": ["情感", "蓝领"], "cover_color": "#f0a83a", "created_by": "user-bb", "workspace_id": "mcn-001"
+    "tags": ["水槽", "饭后收尾", "家庭", "懒人清洁"], "cover_color": "#f0a83a", "created_by": "user-bb", "workspace_id": "mcn-001"
   }
 ]
