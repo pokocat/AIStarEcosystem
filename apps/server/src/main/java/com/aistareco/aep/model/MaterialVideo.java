@@ -40,6 +40,13 @@ public class MaterialVideo {
     @Builder.Default
     private int ord = 0;
 
+    /**
+     * 归属人（AepUser.id）。用户生成的视频 = 生成者，仅本人可见；
+     * seed 演示视频 = null，全员可见。
+     */
+    @Column(name = "owner_user_id")
+    private String ownerUserId;
+
     @Lob
     @Column(name = "payload_json", columnDefinition = "LONGTEXT", nullable = false)
     private String payloadJson;
