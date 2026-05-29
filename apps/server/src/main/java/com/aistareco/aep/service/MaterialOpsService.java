@@ -10,6 +10,7 @@ import com.aistareco.aep.repository.ProductRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -30,6 +31,8 @@ public class MaterialOpsService {
     private final ProductService productService;
     private final ProductRepository productRepo;
     private final MaterialAiService materialAi;
+    private final CreditService creditService;
+    private final CelebrityActionPricingService actionPricing;
     private final ObjectMapper om;
 
     public MaterialOpsService(MaterialScriptRepository scriptRepo,
@@ -38,6 +41,8 @@ public class MaterialOpsService {
                               ProductService productService,
                               ProductRepository productRepo,
                               MaterialAiService materialAi,
+                              CreditService creditService,
+                              CelebrityActionPricingService actionPricing,
                               ObjectMapper om) {
         this.scriptRepo = scriptRepo;
         this.videoRepo = videoRepo;
@@ -45,6 +50,8 @@ public class MaterialOpsService {
         this.productService = productService;
         this.productRepo = productRepo;
         this.materialAi = materialAi;
+        this.creditService = creditService;
+        this.actionPricing = actionPricing;
         this.om = om;
     }
 
@@ -141,8 +148,16 @@ public class MaterialOpsService {
     /**
      * AI 起脚本候选（不落库，仅返回；用户选用并保存时才走 saveScript）。
      * 上下文优先取库内 Product（权威卖点）；库里没有则用请求里带的字段构造临时上下文。
+     *
+     * 计费（后端可配置）：单价取 CelebrityActionPricingService action="material.script-draft"
+     * （admin → 平台与配置 → 引擎价格 → 动作单价；默认 0 = 不计费）。单价 > 0 时按
+     * 单价 × 稿数 走 CreditService hold → 成功 commit / 失败 release 三段式（不可变账本约束）。
+     * 余额不足 → CreditService 抛 402，明确报错。anonymous 用户不计费（dev/H2 lite）。
+     *
+     * NOT_SUPPORTED：挂起外层事务，让 hold / commit / release 各自独立成事务（立即落账），
+     * 且 LLM 的 HTTP 调用不占用 DB 连接（避免长事务）。
      */
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<JsonNode> draftScripts(JsonNode body, String userId) {
         String productId = text(body, "product_id");
         Product product = productId != null ? productRepo.findById(productId).orElse(null) : null;
@@ -156,15 +171,52 @@ public class MaterialOpsService {
         String tone = orDefault(text(body, "tone"), "情感故事");
         List<String> audience = strList(body.get("audience"));
         int durationSec = body.path("duration_sec").asInt(38);
-        int count = body.path("count").asInt(3);
-        return materialAi.draftScripts(product, tone, audience, durationSec, count);
+        int count = Math.max(1, Math.min(body.path("count").asInt(3), 5));
+
+        long unit = scriptDraftUnitCost();
+        long cost = unit * count;
+        boolean charge = billable(userId) && cost > 0;
+        String ref = "material-draft-" + (userId == null ? "anon" : userId) + "-" + System.nanoTime();
+        String desc = "AI 起稿 · " + count + " 稿 · " + orDefault(product.getName(), "商品");
+
+        if (charge) {
+            // 余额不足在此抛 402（PAYMENT_REQUIRED），明确报错，不会进入 AI 调用。
+            creditService.hold(userId, cost, "material_script_draft", ref, desc);
+        }
+        try {
+            List<JsonNode> out = materialAi.draftScripts(product, tone, audience, durationSec, count);
+            if (charge) creditService.commitHold("material_script_draft", ref, cost, desc);
+            return out;
+        } catch (RuntimeException e) {
+            // AI 未配置 / 调用失败 / 解析失败 → 退还冻结，向上抛明确错误（不扣费）。
+            if (charge) {
+                try {
+                    creditService.releaseHold("material_script_draft", ref, "AI 起稿失败回滚");
+                } catch (Exception ignore) {
+                    /* 退款失败仅 log，不掩盖原始错误 */
+                }
+            }
+            throw e;
+        }
+    }
+
+    /** AI 起稿单价（积分/单稿）；未配置或 0 → 0（不计费）。 */
+    private long scriptDraftUnitCost() {
+        Long p = actionPricing.creditPriceOf(CelebrityActionPricingService.ACTION_SCRIPT_DRAFT);
+        return p != null && p > 0 ? p : 0L;
+    }
+
+    /** "anonymous" 等占位用户名不参与扣费（与 mixcut 同口径）。 */
+    private static boolean billable(String userId) {
+        return userId != null && !userId.isBlank() && !"anonymous".equals(userId);
     }
 
     /**
      * 从脚本抽取可替换变量（owner 校验：私有脚本仅本人）。
      * 找不到 / 无权访问 → 返回空列表（前端用正则兜底，不泄露存在性）。
+     * NOT_SUPPORTED：LLM 的 HTTP 调用不占用 DB 连接（脚本只读一次，autocommit 即可）。
      */
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<JsonNode> extractVariables(String scriptId, String userId) {
         JsonNode script = getScript(scriptId, userId);
         if (script == null) return new ArrayList<>();
