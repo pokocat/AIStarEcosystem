@@ -21,6 +21,7 @@ import {
   ScrollText,
   Search,
   Send,
+  Settings,
   ShoppingBag,
   Sparkles,
   Star,
@@ -143,6 +144,7 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       items: [
         { icon: BarChart3, label: "数据中心", href: "/data", selected: isExact("/data") },
         { icon: Coins, label: "积分钱包", href: "/wallet", selected: pathname === "/wallet" || pathname.startsWith("/wallet/") },
+        { icon: Settings, label: "账户设置", href: "/account", selected: isExact("/account") },
       ],
     },
   ];
@@ -159,6 +161,7 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/data": "数据中心",
     "/mixcut": "混剪工作台",
     "/wallet": "积分钱包",
+    "/account": "账户设置",
   };
   // /distribution 默认 = 分发工作台，单独分支以保证子菜单层级正确
   if (pathname === "/distribution") return ["工作台", "分发中心", "分发工作台"];

@@ -31,7 +31,8 @@ import java.util.concurrent.TimeoutException;
  *   aep.sms.aliyun.access-key-id=LTAIxxxx
  *   aep.sms.aliyun.access-key-secret=xxxx
  *   aep.sms.aliyun.sign-name=星耀生态
- *   aep.sms.aliyun.template-code=SMS_xxxxx
+ *   aep.sms.aliyun.login-template-code=SMS_507065062
+ *   aep.sms.aliyun.register-template-code=SMS_xxxxx
  *
  * 阿里云控制台准备：
  *   1. 开通短信服务 + 添加签名（备案审核）
@@ -45,8 +46,8 @@ public class AliyunSmsSender implements SmsSender {
     private static final Logger log = LoggerFactory.getLogger(AliyunSmsSender.class);
 
     private final String signName;
-    private final String templateCode;
-    private final String templateParamCodeKey;
+    private final String loginTemplateCode;
+    private final String registerTemplateCode;
     private final long callTimeoutSeconds;
     private final ObjectMapper mapper;
     private final ICredentialProvider credentialProvider;
@@ -56,8 +57,9 @@ public class AliyunSmsSender implements SmsSender {
             @Value("${aep.sms.aliyun.access-key-id:}") String accessKeyId,
             @Value("${aep.sms.aliyun.access-key-secret:}") String accessKeySecret,
             @Value("${aep.sms.aliyun.sign-name:}") String signName,
-            @Value("${aep.sms.aliyun.template-code:}") String templateCode,
-            @Value("${aep.sms.aliyun.template-param-code-key:code}") String templateParamCodeKey,
+            @Value("${aep.sms.aliyun.template-code:}") String legacyTemplateCode,
+            @Value("${aep.sms.aliyun.login-template-code:}") String loginTemplateCode,
+            @Value("${aep.sms.aliyun.register-template-code:}") String registerTemplateCode,
             @Value("${aep.sms.aliyun.region:cn-hangzhou}") String region,
             @Value("${aep.sms.aliyun.endpoint:dysmsapi.aliyuncs.com}") String endpoint,
             @Value("${aep.sms.aliyun.connect-timeout-seconds:10}") long connectTimeoutSeconds,
@@ -72,14 +74,19 @@ public class AliyunSmsSender implements SmsSender {
                     "aep.sms.driver=aliyun 时 access-key-id / access-key-secret 必须同时配置，"
                             + "或同时留空改用 Alibaba Cloud 默认凭据链");
         }
-        if (trim(signName).isBlank() || trim(templateCode).isBlank()) {
+        String resolvedLoginTemplateCode = firstNonBlank(loginTemplateCode, legacyTemplateCode);
+        String resolvedRegisterTemplateCode = firstNonBlank(registerTemplateCode, legacyTemplateCode);
+        if (trim(signName).isBlank()
+                || resolvedLoginTemplateCode.isBlank()
+                || resolvedRegisterTemplateCode.isBlank()) {
             throw new IllegalStateException(
-                    "aep.sms.driver=aliyun 但未配齐 sign-name / template-code；"
-                            + "请检查 ALIYUN_SMS_SIGN_NAME / ALIYUN_SMS_TEMPLATE_CODE 或回退到 driver=log");
+                    "aep.sms.driver=aliyun 但未配齐 sign-name / login-template-code / register-template-code；"
+                            + "请检查 ALIYUN_SMS_SIGN_NAME / application.yml 登录模板 / "
+                            + "ALIYUN_SMS_REGISTER_TEMPLATE_CODE 或回退到 driver=log");
         }
         this.signName = trim(signName);
-        this.templateCode = trim(templateCode);
-        this.templateParamCodeKey = trim(templateParamCodeKey).isBlank() ? "code" : trim(templateParamCodeKey);
+        this.loginTemplateCode = resolvedLoginTemplateCode;
+        this.registerTemplateCode = resolvedRegisterTemplateCode;
         this.callTimeoutSeconds = Math.max(1, callTimeoutSeconds);
         this.mapper = mapper;
         this.credentialProvider = buildCredentialProvider(trimmedAccessKeyId, trimmedAccessKeySecret);
@@ -96,46 +103,53 @@ public class AliyunSmsSender implements SmsSender {
     }
 
     @Override
-    public void sendVerificationCode(String phone, String code) {
+    public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
+        SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
+        String templateCode = templateCodeFor(resolvedPurpose);
         try {
             SendSmsRequest request = SendSmsRequest.builder()
                     .phoneNumbers(phone)
                     .signName(signName)
                     .templateCode(templateCode)
-                    .templateParam(mapper.writeValueAsString(Map.of(templateParamCodeKey, code)))
+                    .templateParam(mapper.writeValueAsString(Map.of("code", code)))
                     .build();
 
             SendSmsResponse response = client.sendSms(request).get(callTimeoutSeconds, TimeUnit.SECONDS);
             Integer statusCode = response == null ? null : response.getStatusCode();
             SendSmsResponseBody body = response == null ? null : response.getBody();
             if (body == null) {
-                logAliyunFailure("empty-body", phone, statusCode, null);
+                logAliyunFailure("empty-body", resolvedPurpose, templateCode, phone, statusCode, null);
                 throw new SmsSendException("阿里云短信发送失败：响应体为空" + httpStatusSuffix(statusCode));
             }
             if (statusCode != null && statusCode >= 400) {
-                logAliyunFailure("http-error", phone, statusCode, body);
+                logAliyunFailure("http-error", resolvedPurpose, templateCode, phone, statusCode, body);
                 throw new SmsSendException(failureMessage("阿里云短信发送失败", statusCode, body));
             }
             if (!"OK".equals(body.getCode())) {
-                logAliyunFailure("provider-error", phone, statusCode, body);
+                logAliyunFailure("provider-error", resolvedPurpose, templateCode, phone, statusCode, body);
                 throw new SmsSendException(failureMessage("阿里云短信发送失败", statusCode, body));
             }
-            log.info("[sms-aliyun] sent phone={} httpStatus={} code={} message={} requestId={} bizId={}",
-                    phone, statusCode, body.getCode(), body.getMessage(), body.getRequestId(), body.getBizId());
+            log.info("[sms-aliyun] sent purpose={} templateCode={} phone={} httpStatus={} code={} message={} requestId={} bizId={}",
+                    resolvedPurpose.wire(), templateCode, phone, statusCode, body.getCode(), body.getMessage(),
+                    body.getRequestId(), body.getBizId());
         } catch (SmsSendException e) {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("[sms-aliyun] interrupted phone={} err={}", phone, e.getMessage(), e);
+            log.warn("[sms-aliyun] interrupted purpose={} templateCode={} phone={} err={}",
+                    resolvedPurpose.wire(), templateCode, phone, e.getMessage(), e);
             throw new SmsSendException("阿里云 SMS 调用被中断", e);
         } catch (ExecutionException e) {
-            log.warn("[sms-aliyun] call failed phone={} err={}", phone, rootMessage(e), e);
+            log.warn("[sms-aliyun] call failed purpose={} templateCode={} phone={} err={}",
+                    resolvedPurpose.wire(), templateCode, phone, rootMessage(e), e);
             throw new SmsSendException("阿里云 SMS 调用异常: " + rootMessage(e), e);
         } catch (TimeoutException e) {
-            log.warn("[sms-aliyun] timeout phone={} timeoutSeconds={}", phone, callTimeoutSeconds, e);
+            log.warn("[sms-aliyun] timeout purpose={} templateCode={} phone={} timeoutSeconds={}",
+                    resolvedPurpose.wire(), templateCode, phone, callTimeoutSeconds, e);
             throw new SmsSendException("阿里云 SMS 调用超时（" + callTimeoutSeconds + "s）", e);
         } catch (Exception e) {
-            log.warn("[sms-aliyun] call failed phone={} err={}", phone, e.getMessage(), e);
+            log.warn("[sms-aliyun] call failed purpose={} templateCode={} phone={} err={}",
+                    resolvedPurpose.wire(), templateCode, phone, e.getMessage(), e);
             throw new SmsSendException("阿里云 SMS 调用异常: " + e.getMessage(), e);
         }
     }
@@ -171,13 +185,37 @@ public class AliyunSmsSender implements SmsSender {
         return trimmed.isBlank() ? fallback : trimmed;
     }
 
+    private static String firstNonBlank(String first, String second) {
+        String trimmedFirst = trim(first);
+        if (!trimmedFirst.isBlank()) {
+            return trimmedFirst;
+        }
+        return trim(second);
+    }
+
+    private String templateCodeFor(SmsCodePurpose purpose) {
+        return switch (purpose) {
+            case LOGIN -> loginTemplateCode;
+            case REGISTER -> registerTemplateCode;
+        };
+    }
+
     private static String trim(String value) {
         return value == null ? "" : value.trim();
     }
 
-    private static void logAliyunFailure(String event, String phone, Integer httpStatus, SendSmsResponseBody body) {
-        log.warn("[sms-aliyun] {} phone={} httpStatus={} code={} message={} requestId={} bizId={}",
+    private static void logAliyunFailure(
+            String event,
+            SmsCodePurpose purpose,
+            String templateCode,
+            String phone,
+            Integer httpStatus,
+            SendSmsResponseBody body
+    ) {
+        log.warn("[sms-aliyun] {} purpose={} templateCode={} phone={} httpStatus={} code={} message={} requestId={} bizId={}",
                 event,
+                purpose.wire(),
+                templateCode,
                 phone,
                 httpStatus,
                 bodyCode(body),

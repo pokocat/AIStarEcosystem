@@ -186,8 +186,11 @@ aep:
       access-key-id: ${ALIYUN_SMS_ACCESS_KEY_ID:}
       access-key-secret: ${ALIYUN_SMS_ACCESS_KEY_SECRET:}
       sign-name: ${ALIYUN_SMS_SIGN_NAME:声量算法杭州科技}
-      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:SMS_506890177}
-      template-param-code-key: ${ALIYUN_SMS_TEMPLATE_PARAM_CODE_KEY:code}
+      # 两个模板变量都固定只有 code；sender 始终发送 {"code":"123456"} 形态。
+      login-template-code: SMS_507065062
+      register-template-code: ${ALIYUN_SMS_REGISTER_TEMPLATE_CODE:${ALIYUN_SMS_TEMPLATE_CODE:SMS_506890177}}
+      # legacy fallback，仅兼容旧部署自定义配置；新配置请用 login/register-template-code。
+      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:}
       region: ${ALIYUN_SMS_REGION:cn-hangzhou}
       endpoint: ${ALIYUN_SMS_ENDPOINT:dysmsapi.aliyuncs.com}
       connect-timeout-seconds: ${ALIYUN_SMS_CONNECT_TIMEOUT_SECONDS:10}

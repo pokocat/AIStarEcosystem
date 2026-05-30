@@ -94,6 +94,18 @@ public class AccountController {
         return ApiResponse.of(accountSelfService.updateCurrentUser(principal.getName(), body));
     }
 
+    @PostMapping("/password")
+    public ApiResponse<Map<String, Object>> changePassword(Principal principal,
+                                                           @RequestBody(required = false) ChangePasswordRequest body) {
+        return ApiResponse.of(accountSelfService.changePassword(
+                principal.getName(),
+                body == null ? null : body.currentPassword(),
+                body == null ? null : body.newPassword()
+        ));
+    }
+
+    public record ChangePasswordRequest(String currentPassword, String newPassword) {}
+
     @GetMapping("/tenants")
     public ApiResponse<List<TenantDto>> tenants(Principal principal) {
         return ApiResponse.of(accountSelfService.listCurrentTenants(principal.getName()));

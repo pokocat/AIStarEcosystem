@@ -11,7 +11,7 @@ export default function LoginPage() {
       brandLabel="AI 短剧"
       brandSub="AI Star Eco · Cinematic"
       icon={Clapperboard}
-      tagline="手机号 + 短信验证码登录；新用户用激活码 + 手机号完成注册，开通后即可搭建短剧流水线。"
+      tagline="手机号支持验证码或密码登录；新用户用激活码 + 手机号完成注册，开通后即可搭建短剧流水线。"
       defaultPostLoginPath="/dashboard"
       theme={{
         bg: "var(--bg-0)",

@@ -25,3 +25,18 @@ aep:
   seed:
     dev-data:
       enabled: ${AEP_SEED_DEV_DATA_ENABLED:false}
+  # MySQL profile 同时服务 dev 联调和生产；默认 log，避免本地 dev mysql 误访问阿里云短信。
+  # 生产真发必须显式设置 AEP_SMS_DRIVER=aliyun。
+  sms:
+    driver: ${AEP_SMS_DRIVER:log}
+    code:
+      length: 6
+      ttl-seconds: 300            # 验证码有效期 5 分钟
+      rate-limit-seconds: 60      # 同一手机号 60s 内不能重发
+      max-failures: 5             # 单手机号连错 5 次 → 锁定
+      lock-seconds: 1800          # 锁定 30 分钟
+      # v0.31+ dev 联调专用：设非空时所有手机号都收同一个码（如 123456），
+      # 省去每次去 server log grep 真随机码的麻烦。
+      # **严格双门禁**：必须 driver=log + dev-fixed 非空才生效；driver=aliyun
+      # 时即使配了 dev-fixed 也会被忽略（防 prod 误启用）。
+      dev-fixed: ${AEP_SMS_DEV_FIXED_CODE:}

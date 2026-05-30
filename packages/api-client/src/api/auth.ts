@@ -56,14 +56,16 @@ export function logout() {
 
 // ── v0.31+ 手机号 + SMS 验证码 登录 / 注册 ────────────────────────────────
 
+export type SmsCodePurpose = "login" | "register";
+
 /**
  * 请求一个新的短信验证码。失败抛 ApiError（429 速率限制 / 锁定；400 手机号格式）。
  * 成功无显式返回（resolve 即可），码默认 5 分钟有效。
  */
-export async function smsRequestCode(phone: string): Promise<void> {
+export async function smsRequestCode(phone: string, purpose: SmsCodePurpose = "login"): Promise<void> {
   await apiFetch<{ sent: boolean }>("/auth/sms/request-code", {
     method: "POST",
-    body: { phone },
+    body: { phone, purpose },
   });
 }
 
@@ -83,6 +85,21 @@ export async function smsLogin(phone: string, code: string): Promise<SmsLoginRes
   const result = await apiFetch<SmsLoginResult>("/auth/sms/verify", {
     method: "POST",
     body: { phone, code },
+  });
+  if (result?.token) setAuthToken(result.token);
+  return result;
+}
+
+export interface PasswordLoginResult {
+  token: string;
+  user: AepUser;
+}
+
+/** 手机号 + 密码登录。密码需先在登录后的账号安全页设置。 */
+export async function passwordLogin(phone: string, password: string): Promise<PasswordLoginResult> {
+  const result = await apiFetch<PasswordLoginResult>("/auth/password/login", {
+    method: "POST",
+    body: { phone, password },
   });
   if (result?.token) setAuthToken(result.token);
   return result;

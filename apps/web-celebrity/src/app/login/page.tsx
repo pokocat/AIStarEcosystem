@@ -5,12 +5,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Check, KeyRound, Loader2, LogIn, Phone, Smartphone } from "lucide-react";
+import { ArrowRight, Check, KeyRound, Loader2, Lock, LogIn, Phone, Smartphone } from "lucide-react";
 import { AuthApi, ENABLE_DEV_LOGIN, useAuth } from "@ai-star-eco/api-client";
 import { STUDIO_KIND_LABEL_ZH, type StudioKind } from "@ai-star-eco/types/account";
 import { Avatar, Button, Card, Chip } from "@/components/creator";
 
 type Tab = "phone-login" | "phone-register" | "dev";
+type LoginMode = "code" | "password";
+type SmsCodePurpose = "login" | "register";
 
 function CelebrityLoginInner() {
   const router = useRouter();
@@ -54,7 +56,7 @@ function CelebrityLoginInner() {
             }}
           >
             <TabBtn active={tab === "phone-login"} onClick={() => setTab("phone-login")}>
-              <Phone size={12} /> 手机号登录
+              <Phone size={12} /> 登录
             </TabBtn>
             <TabBtn active={tab === "phone-register"} onClick={() => setTab("phone-register")}>
               <KeyRound size={12} /> 注册
@@ -104,8 +106,8 @@ function CelebrityLoginInner() {
           }}
         >
           {enableDev
-            ? "手机号登录支持任意环境；dev tab 仅在后端 dev profile 下生效。"
-            : "手机号登录支持当前环境；新用户请使用激活码完成注册。"}
+            ? "验证码 / 密码登录支持任意环境；dev tab 仅在后端 dev profile 下生效。"
+            : "验证码 / 密码登录支持当前环境；新用户请使用激活码完成注册。"}
         </p>
       </div>
     </div>
@@ -129,7 +131,7 @@ function Brand() {
         工作台
       </h1>
       <p style={{ fontSize: 13, color: "var(--fg-2)", maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>
-        手机号 + 短信验证码登录；新用户需要激活码 + 手机号完成注册。
+        手机号支持验证码或密码登录；新用户需要激活码 + 手机号完成注册。
       </p>
     </div>
   );
@@ -164,7 +166,15 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 }
 
 // ── 通用：发送验证码按钮（带 60s 倒计时） ────────────────────────────────
-function SendCodeButton({ phone, onError }: { phone: string; onError: (msg: string) => void }) {
+function SendCodeButton({
+  phone,
+  purpose = "login",
+  onError,
+}: {
+  phone: string;
+  purpose?: SmsCodePurpose;
+  onError: (msg: string) => void;
+}) {
   const [sending, setSending] = React.useState(false);
   const [cooldown, setCooldown] = React.useState(0);
 
@@ -183,7 +193,7 @@ function SendCodeButton({ phone, onError }: { phone: string; onError: (msg: stri
     setSending(true);
     onError("");
     try {
-      await AuthApi.smsRequestCode(trimmed);
+      await AuthApi.smsRequestCode(trimmed, purpose);
       setCooldown(60);
     } catch (e) {
       const err = e as { error?: { message?: string }; message?: string };
@@ -218,6 +228,8 @@ function PhoneLoginForm({
 }) {
   const [phone, setPhone] = React.useState("");
   const [code, setCode] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [mode, setMode] = React.useState<LoginMode>("code");
   const [error, setError] = React.useState<string>("");
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -225,15 +237,22 @@ function PhoneLoginForm({
     setSubmitting(true);
     setError("");
     try {
-      await AuthApi.smsLogin(phone.trim(), code.trim());
+      if (mode === "password") {
+        await AuthApi.passwordLogin(phone.trim(), password);
+      } else {
+        await AuthApi.smsLogin(phone.trim(), code.trim());
+      }
       await onSuccess();
     } catch (e) {
       const err = e as { status?: number; error?: { code?: string; message?: string }; message?: string };
       if (err.error?.code === "USER_NOT_FOUND" || err.status === 404) {
         setError("该手机号还没有注册，已为你切换到「注册」");
         onNeedRegister();
+      } else if (err.error?.code === "PASSWORD_NOT_SET") {
+        setError("该账号还没设置密码，请先用验证码登录后设置。");
+        setMode("code");
       } else {
-        setError(err.error?.message ?? err.message ?? "登录失败");
+        setError(err.error?.message ?? err.message ?? (mode === "password" ? "请检查手机号和密码" : "请检查手机号和验证码"));
       }
     } finally {
       setSubmitting(false);
@@ -243,6 +262,36 @@ function PhoneLoginForm({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {error && <ErrBox msg={error} />}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          background: "var(--bg-2)",
+          borderRadius: "var(--radius-md)",
+          padding: 4,
+        }}
+      >
+        <ModeBtn
+          active={mode === "code"}
+          onClick={() => {
+            setMode("code");
+            setError("");
+          }}
+          disabled={submitting}
+        >
+          <Phone size={12} /> 验证码登录
+        </ModeBtn>
+        <ModeBtn
+          active={mode === "password"}
+          onClick={() => {
+            setMode("password");
+            setError("");
+          }}
+          disabled={submitting}
+        >
+          <Lock size={12} /> 密码登录
+        </ModeBtn>
+      </div>
       <Field label="手机号">
         <input
           value={phone}
@@ -254,24 +303,38 @@ function PhoneLoginForm({
           style={inputStyle}
         />
       </Field>
-      <Field label="验证码">
-        <div style={{ display: "flex", gap: 8 }}>
+      {mode === "code" ? (
+        <Field label="验证码">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="6 位数字"
+              inputMode="numeric"
+              maxLength={6}
+              disabled={submitting}
+              style={{ ...inputStyle, flex: 1 }}
+              autoComplete="one-time-code"
+            />
+            <SendCodeButton phone={phone} purpose="login" onError={setError} />
+          </div>
+        </Field>
+      ) : (
+        <Field label="密码">
           <input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="6 位数字"
-            inputMode="numeric"
-            maxLength={6}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="请输入密码"
+            type="password"
             disabled={submitting}
-            style={{ ...inputStyle, flex: 1 }}
-            autoComplete="one-time-code"
+            style={inputStyle}
+            autoComplete="current-password"
           />
-          <SendCodeButton phone={phone} onError={setError} />
-        </div>
-      </Field>
+        </Field>
+      )}
       <Button
         onClick={handleSubmit}
-        disabled={submitting || !phone || !code}
+        disabled={submitting || !phone || (mode === "code" ? !code : !password)}
         variant="dark"
         size="lg"
         style={{ width: "100%", marginTop: 6 }}
@@ -281,6 +344,43 @@ function PhoneLoginForm({
         {!submitting && <ArrowRight size={14} />}
       </Button>
     </div>
+  );
+}
+
+function ModeBtn({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        minHeight: 32,
+        background: active ? "var(--bg-0)" : "transparent",
+        color: active ? "var(--fg-0)" : "var(--fg-2)",
+        border: "none",
+        borderRadius: "calc(var(--radius-md) - 2px)",
+        fontSize: 12,
+        fontWeight: active ? 600 : 500,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -341,7 +441,7 @@ function PhoneRegisterForm({ onSuccess }: { onSuccess: () => Promise<void> }) {
             style={{ ...inputStyle, flex: 1 }}
             autoComplete="one-time-code"
           />
-          <SendCodeButton phone={phone} onError={setError} />
+          <SendCodeButton phone={phone} purpose="register" onError={setError} />
         </div>
       </Field>
       <Field label="激活码">

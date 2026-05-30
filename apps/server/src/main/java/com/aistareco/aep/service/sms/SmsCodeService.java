@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * <p>不引入 Redis 的原因：单实例 dev/MVP 够用；重启丢失少数用户的码可接受（用户重发即可）。
  * 多实例 prod 部署前需要换成 Redis（共享状态）。
  *
- * <p>状态条目按手机号 key：
+ * <p>状态条目按手机号 key，并记录当前验证码用途：
  * <ul>
  *   <li>{@link CodeEntry#code}     当前有效验证码（plain text，in-memory only）</li>
  *   <li>{@link CodeEntry#sentAt}   发送时间（用于 ttl + rate-limit）</li>
@@ -101,39 +101,49 @@ public class SmsCodeService {
      * 失败抛 BusinessException（4xx 透传给前端）。
      */
     public void requestCode(String phone) {
+        requestCode(phone, SmsCodePurpose.LOGIN);
+    }
+
+    public void requestCode(String phone, SmsCodePurpose purpose) {
+        SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
         validatePhone(phone);
         Instant now = Instant.now();
         CodeEntry existing = store.get(phone);
         if (existing != null) {
             if (existing.lockedUntil != null && existing.lockedUntil.isAfter(now)) {
                 long waitMin = Math.max(1, java.time.Duration.between(now, existing.lockedUntil).toMinutes());
-                log.warn("[sms-code] request blocked locked phone={} waitMin={}", phone, waitMin);
+                log.warn("[sms-code] request blocked locked purpose={} phone={} waitMin={}",
+                        resolvedPurpose.wire(), phone, waitMin);
                 throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "SMS_CODE_LOCKED",
                         "手机号已被临时锁定，请 " + waitMin + " 分钟后再试");
             }
             long elapsedSec = java.time.Duration.between(existing.sentAt, now).getSeconds();
             if (elapsedSec < rateLimitSeconds) {
                 long wait = rateLimitSeconds - elapsedSec;
-                log.warn("[sms-code] request rate-limited phone={} waitSeconds={}", phone, wait);
+                log.warn("[sms-code] request rate-limited purpose={} phone={} waitSeconds={}",
+                        resolvedPurpose.wire(), phone, wait);
                 throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "SMS_CODE_RATE_LIMITED",
                         "短信发送过于频繁，请 " + wait + " 秒后再试");
             }
         }
         String code = generateCode();
         try {
-            sender.sendVerificationCode(phone, code);
+            sender.sendVerificationCode(phone, code, resolvedPurpose);
         } catch (SmsSender.SmsSendException e) {
-            log.warn("[sms-code] send failed phone={} err={}", phone, e.getMessage());
+            log.warn("[sms-code] send failed purpose={} phone={} err={}",
+                    resolvedPurpose.wire(), phone, e.getMessage());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "SMS_SEND_FAILED",
                     "短信发送失败：" + e.getMessage());
         }
         CodeEntry entry = new CodeEntry();
         entry.code = code;
+        entry.purpose = resolvedPurpose;
         entry.sentAt = now;
         entry.failures = 0;
         entry.lockedUntil = null;
         store.put(phone, entry);
-        log.info("[sms-code] verification code sent phone={} ttlSeconds={}", phone, ttlSeconds);
+        log.info("[sms-code] verification code sent purpose={} phone={} ttlSeconds={}",
+                resolvedPurpose.wire(), phone, ttlSeconds);
     }
 
     /**
@@ -141,6 +151,11 @@ public class SmsCodeService {
      * 失败抛 BusinessException；成功无返回。
      */
     public void verifyCode(String phone, String code) {
+        verifyCode(phone, code, SmsCodePurpose.LOGIN);
+    }
+
+    public void verifyCode(String phone, String code, SmsCodePurpose purpose) {
+        SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
         validatePhone(phone);
         if (code == null || code.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "SMS_CODE_REQUIRED", "请输入验证码");
@@ -148,20 +163,29 @@ public class SmsCodeService {
         Instant now = Instant.now();
         CodeEntry entry = store.get(phone);
         if (entry == null) {
-            log.warn("[sms-code] verify without requested code phone={}", phone);
+            log.warn("[sms-code] verify without requested code purpose={} phone={}",
+                    resolvedPurpose.wire(), phone);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "SMS_CODE_NOT_REQUESTED",
                     "请先获取验证码");
         }
+        if (entry.purpose != resolvedPurpose) {
+            log.warn("[sms-code] verify purpose mismatch requestedPurpose={} storedPurpose={} phone={}",
+                    resolvedPurpose.wire(), entry.purpose == null ? null : entry.purpose.wire(), phone);
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "SMS_CODE_NOT_REQUESTED",
+                    "请先获取" + resolvedPurpose.label() + "验证码");
+        }
         if (entry.lockedUntil != null && entry.lockedUntil.isAfter(now)) {
             long waitMin = Math.max(1, java.time.Duration.between(now, entry.lockedUntil).toMinutes());
-            log.warn("[sms-code] verify blocked locked phone={} waitMin={}", phone, waitMin);
+            log.warn("[sms-code] verify blocked locked purpose={} phone={} waitMin={}",
+                    resolvedPurpose.wire(), phone, waitMin);
             throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "SMS_CODE_LOCKED",
                     "手机号已被临时锁定，请 " + waitMin + " 分钟后再试");
         }
         long elapsed = java.time.Duration.between(entry.sentAt, now).getSeconds();
         if (elapsed > ttlSeconds) {
             store.remove(phone);
-            log.info("[sms-code] verify expired phone={} elapsedSeconds={}", phone, elapsed);
+            log.info("[sms-code] verify expired purpose={} phone={} elapsedSeconds={}",
+                    resolvedPurpose.wire(), phone, elapsed);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "SMS_CODE_EXPIRED",
                     "验证码已过期，请重新获取");
         }
@@ -170,20 +194,21 @@ public class SmsCodeService {
             if (entry.failures >= maxFailures) {
                 entry.lockedUntil = now.plusSeconds(lockSeconds);
                 entry.code = "";   // 清空 code 防侧通道继续比对
-                log.warn("[sms-code] verify failed and locked phone={} failures={} lockSeconds={}",
-                        phone, entry.failures, lockSeconds);
+                log.warn("[sms-code] verify failed and locked purpose={} phone={} failures={} lockSeconds={}",
+                        resolvedPurpose.wire(), phone, entry.failures, lockSeconds);
                 throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "SMS_CODE_LOCKED",
                         "错误次数过多，手机号已被锁定 " + (lockSeconds / 60) + " 分钟");
             }
             int remain = maxFailures - entry.failures;
-            log.warn("[sms-code] verify failed phone={} failures={} remaining={}",
-                    phone, entry.failures, remain);
+            log.warn("[sms-code] verify failed purpose={} phone={} failures={} remaining={}",
+                    resolvedPurpose.wire(), phone, entry.failures, remain);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "SMS_CODE_INVALID",
                     "验证码错误，剩余 " + remain + " 次机会");
         }
         // 成功 → 删除 entry，防止同一码被重用
         store.remove(phone);
-        log.info("[sms-code] verification code verified phone={}", phone);
+        log.info("[sms-code] verification code verified purpose={} phone={}",
+                resolvedPurpose.wire(), phone);
     }
 
     /** 每分钟清理过期 / 已锁定到期的 entry，避免内存累积。 */
@@ -224,6 +249,7 @@ public class SmsCodeService {
 
     private static class CodeEntry {
         String code;
+        SmsCodePurpose purpose;
         Instant sentAt;
         int failures;
         Instant lockedUntil;

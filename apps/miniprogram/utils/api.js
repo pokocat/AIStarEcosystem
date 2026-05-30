@@ -68,10 +68,10 @@ const AuthApi = {
     return apiFetch("/auth/activate", { method: "POST", data: payload });
   },
   /** POST /auth/sms/request-code */
-  smsRequestCode(phone) {
+  smsRequestCode(phone, purpose = "login") {
     const app = getApp_();
     if (app.globalData.useMock) return mockDelay({ sent: true });
-    return apiFetch("/auth/sms/request-code", { method: "POST", data: { phone } });
+    return apiFetch("/auth/sms/request-code", { method: "POST", data: { phone, purpose } });
   },
   /** POST /auth/sms/register */
   smsRegister(payload) {

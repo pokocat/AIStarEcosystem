@@ -9,6 +9,7 @@ import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.StudioRepository;
 import com.aistareco.aep.service.LicenseActivationService;
 import com.aistareco.aep.service.sms.SmsCodeService;
+import com.aistareco.aep.service.sms.SmsCodePurpose;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
@@ -25,8 +26,8 @@ import java.util.Map;
  * /api/auth/** permitAll。
  *
  * 端点：
- *   POST /api/auth/sms/request-code  { phone }
- *       发送验证码（log driver 落 server log；aliyun driver 真发）。
+ *   POST /api/auth/sms/request-code  { phone, purpose?: "login" | "register" }
+ *       发送验证码（log driver 落 server log；aliyun driver 按 purpose 选模板真发）。
  *       含速率限制（60s/次）+ 锁定（连错 5 次锁 30 分钟）。
  *
  *   POST /api/auth/sms/verify        { phone, code }
@@ -68,8 +69,9 @@ public class SmsAuthController {
     public ApiResponse<Map<String, Object>> requestCode(@RequestBody(required = false) SmsRequestCodeRequest body) {
         String phone = body == null ? null : body.phone();
         String trimmedPhone = phone == null ? null : phone.trim();
-        smsCodeService.requestCode(trimmedPhone);
-        log.info("[auth-sms] request-code ok phone={}", trimmedPhone);
+        SmsCodePurpose purpose = parsePurpose(body == null ? null : body.purpose());
+        smsCodeService.requestCode(trimmedPhone, purpose);
+        log.info("[auth-sms] request-code ok purpose={} phone={}", purpose.wire(), trimmedPhone);
         return ApiResponse.of(Map.of("sent", true));
     }
 
@@ -82,7 +84,7 @@ public class SmsAuthController {
         String phone = body == null ? null : body.phone();
         String code = body == null ? null : body.code();
         String trimmedPhone = phone == null ? null : phone.trim();
-        smsCodeService.verifyCode(trimmedPhone, code);
+        smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.LOGIN);
 
         AepUser user = userRepo.findByPhone(trimmedPhone).orElse(null);
         if (user == null) {
@@ -136,7 +138,7 @@ public class SmsAuthController {
         if (studioName == null || studioName.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_NAME_REQUIRED", "请填写工作室名称");
         }
-        smsCodeService.verifyCode(trimmedPhone, code);
+        smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.REGISTER);
 
         if (userRepo.existsByPhone(trimmedPhone)) {
             log.info("[auth-sms] register blocked already-registered phone={}", trimmedPhone);
@@ -178,7 +180,16 @@ public class SmsAuthController {
         return ApiResponse.of(activated);
     }
 
-    public record SmsRequestCodeRequest(String phone) {}
+    private static SmsCodePurpose parsePurpose(String purpose) {
+        try {
+            return SmsCodePurpose.fromWireOrDefault(purpose);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "SMS_PURPOSE_INVALID",
+                    "验证码用途仅支持 login / register");
+        }
+    }
+
+    public record SmsRequestCodeRequest(String phone, String purpose) {}
 
     public record SmsVerifyRequest(String phone, String code) {}
 

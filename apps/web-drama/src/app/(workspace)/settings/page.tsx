@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Save, UserPlus } from "lucide-react";
+import { Eye, EyeOff, Lock, Save, UserPlus } from "lucide-react";
+import { AccountApi } from "@ai-star-eco/api-client";
 import { Button, Card } from "@/components/premium";
 import {
   Dialog,
@@ -61,11 +62,24 @@ export default function SettingsPage() {
   const [draft, setDraft] = React.useState<StudioSettings>(DEFAULT_SETTINGS);
   const [saving, setSaving] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [hasPassword, setHasPassword] = React.useState(false);
+  const [passwordForm, setPasswordForm] = React.useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [showPasswords, setShowPasswords] = React.useState(false);
+  const [passwordSaving, setPasswordSaving] = React.useState(false);
 
   React.useEffect(() => {
     const cur = loadSettings();
     setSettings(cur);
     setDraft(cur);
+    AccountApi.getMe()
+      .then((me) => setHasPassword(Boolean(me.hasPassword)))
+      .catch(() => {
+        /* 登录态兜底由 AuthProvider 处理。 */
+      });
   }, []);
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(draft);
@@ -88,6 +102,37 @@ export default function SettingsPage() {
   function removeMember(id: string) {
     setDraft({ ...draft, team: draft.team.filter((m) => m.id !== id) });
     toast.success("成员已移除");
+  }
+
+  async function savePassword() {
+    if (hasPassword && !passwordForm.currentPassword.trim()) {
+      toast.error("请填写当前密码");
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      toast.error("新密码至少 6 位");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error("两次输入的新密码不一致");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await AccountApi.changePassword({
+        currentPassword: hasPassword ? passwordForm.currentPassword : undefined,
+        newPassword: passwordForm.newPassword,
+      });
+      setHasPassword(true);
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast.success(hasPassword ? "密码已更新" : "密码已设置");
+    } catch (err) {
+      const apiErr = err as { error?: { message?: string }; message?: string };
+      toast.error(apiErr.error?.message ?? apiErr.message ?? "密码保存失败");
+    } finally {
+      setPasswordSaving(false);
+    }
   }
 
   return (
@@ -148,6 +193,51 @@ export default function SettingsPage() {
               maxLength={32}
             />
           </Field>
+          <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--line)" }}>
+            <SectionHeader
+              eyebrow="登录"
+              title={hasPassword ? "修改登录密码" : "设置登录密码"}
+              right={
+                <Button variant="ghost" size="sm" onClick={() => setShowPasswords((v) => !v)}>
+                  {showPasswords ? <EyeOff size={11} /> : <Eye size={11} />}
+                  {showPasswords ? "隐藏" : "显示"}
+                </Button>
+              }
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, color: "var(--fg-2)", fontSize: 12 }}>
+              <Lock size={13} />
+              <span>设置后登录页可选择手机号 + 密码登录。</span>
+            </div>
+            {hasPassword && (
+              <Field label="当前密码">
+                <TextInput
+                  type={showPasswords ? "text" : "password"}
+                  value={passwordForm.currentPassword}
+                  autoComplete="current-password"
+                  onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                />
+              </Field>
+            )}
+            <Field label="新密码">
+              <TextInput
+                type={showPasswords ? "text" : "password"}
+                value={passwordForm.newPassword}
+                autoComplete="new-password"
+                onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+              />
+            </Field>
+            <Field label="确认新密码">
+              <TextInput
+                type={showPasswords ? "text" : "password"}
+                value={passwordForm.confirmPassword}
+                autoComplete="new-password"
+                onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+              />
+            </Field>
+            <Button variant="secondary" size="md" loading={passwordSaving} onClick={savePassword}>
+              {hasPassword ? "更新密码" : "设置密码"}
+            </Button>
+          </div>
         </Card>
 
         <Card style={{ padding: "26px 28px" }}>

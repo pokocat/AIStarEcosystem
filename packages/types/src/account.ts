@@ -51,6 +51,8 @@ export interface AepUser {
   platforms?: SubProduct[];
   emailVerified: boolean;
   phoneVerified: boolean;
+  /** 是否已设置手机号密码登录的密码；后端不会返回 passwordHash。 */
+  hasPassword: boolean;
   langPreference: "zh" | "en";
   createdAt: ISODateTime;
   updatedAt: ISODateTime;

@@ -24,6 +24,8 @@ public record AepUserDto(
         List<String> platforms,
         boolean emailVerified,
         boolean phoneVerified,
+        /** 普通用户是否已设置登录密码；只暴露布尔值，永不返回 passwordHash。 */
+        boolean hasPassword,
         String langPreference,
         Instant createdAt,
         Instant updatedAt,
@@ -37,12 +39,16 @@ public record AepUserDto(
                 lower(u.getKind()), lower(u.getStatus()),
                 lower(u.getOperatorRole()),
                 PlatformSupport.effective(u.getPlatforms()),
-                u.isEmailVerified(), u.isPhoneVerified(), u.getLangPreference(),
+                u.isEmailVerified(), u.isPhoneVerified(), hasPassword(u), u.getLangPreference(),
                 u.getCreatedAt(), u.getUpdatedAt(), u.getLastLoginAt()
         );
     }
 
     private static String lower(Enum<?> value) {
         return value == null ? null : value.name().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean hasPassword(AepUser user) {
+        return user.getPasswordHash() != null && !user.getPasswordHash().isBlank();
     }
 }

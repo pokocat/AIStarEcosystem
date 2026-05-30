@@ -288,8 +288,9 @@ prod 环境的唯一注册路径：
 **主流程：手机号 + SMS 验证码**
 
 ```
-POST /api/auth/sms/request-code { phone }  → 200 { sent: true }
+POST /api/auth/sms/request-code { phone, purpose: "login" }  → 200 { sent: true }
 POST /api/auth/sms/verify { phone, code }  → 200 { token, user } 或 404 USER_NOT_FOUND
+POST /api/auth/sms/request-code { phone, purpose: "register" }  → 注册验证码
 ```
 
 - `404 USER_NOT_FOUND`：手机号未注册。验证码**已被消费**（防爆破），用户切到注册
@@ -343,8 +344,8 @@ PATCH /api/admin/aep-users/{id}/operator-role { operatorRole: "operator" | "supe
 
 | Driver | 配置 | 行为 | 用途 |
 |---|---|---|---|
-| **log**（默认） | `aep.sms.driver=log` | 验证码打到 server log `[sms-log] phone=xxx code=xxxxxx` | dev / 联调 / 阿里云未备案时占位 |
-| **aliyun** | `aep.sms.driver=aliyun` + `ALIYUN_SMS_*` env | 调阿里云 SMS 官方 SDK（签名 / 模板 / region / endpoint / 超时可配置） | prod 真发短信 |
+| **log**（默认） | `aep.sms.driver=log` | 验证码打到 server log `[sms-log] purpose=xxx phone=xxx code=xxxxxx` | dev / 联调 / 阿里云未备案时占位 |
+| **aliyun** | `aep.sms.driver=aliyun` + `ALIYUN_SMS_*` env | 调阿里云 SMS 官方 SDK；登录模板 `SMS_507065062`，注册模板独立配置；模板变量固定只有 `code` | prod 真发短信 |
 
 **dev-fixed 测试码**（联调小技巧）：
 

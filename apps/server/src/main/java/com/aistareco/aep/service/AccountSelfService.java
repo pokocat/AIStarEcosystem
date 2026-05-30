@@ -12,9 +12,11 @@ import com.aistareco.aep.repository.MembershipRepository;
 import com.aistareco.aep.repository.StudioRepository;
 import com.aistareco.aep.repository.TenantRepository;
 import com.aistareco.aep.repository.WalletRepository;
+import com.aistareco.common.BusinessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,6 +33,7 @@ public class AccountSelfService {
     private final WalletRepository walletRepo;
     private final LedgerEntryRepository ledgerRepo;
     private final StudioRepository studioRepo;
+    private final PasswordEncoder passwordEncoder;
 
     public AccountSelfService(
             AepUserRepository userRepo,
@@ -38,7 +41,8 @@ public class AccountSelfService {
             TenantRepository tenantRepo,
             WalletRepository walletRepo,
             LedgerEntryRepository ledgerRepo,
-            StudioRepository studioRepo
+            StudioRepository studioRepo,
+            PasswordEncoder passwordEncoder
     ) {
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
@@ -46,6 +50,7 @@ public class AccountSelfService {
         this.walletRepo = walletRepo;
         this.ledgerRepo = ledgerRepo;
         this.studioRepo = studioRepo;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public AepUserDto getCurrentUser(String userId) {
@@ -84,6 +89,43 @@ public class AccountSelfService {
         var saved = userRepo.save(user);
         var studio = studioRepo.findByOwnerUserId(userId).orElse(null);
         return MeDto.from(saved, studio);
+    }
+
+    /**
+     * 当前登录用户设置 / 修改登录密码。
+     * - 首次设置：不要求 currentPassword（用户已通过 JWT 证明刚登录过）。
+     * - 已有密码：必须校验 currentPassword，避免被已登录设备无感改密。
+     */
+    public Map<String, Object> changePassword(String userId, String currentPassword, String newPassword) {
+        var user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户不存在"));
+
+        String next = newPassword == null ? "" : newPassword.trim();
+        if (next.isBlank()) {
+            throw BusinessException.badRequest("PASSWORD_REQUIRED", "请填写新密码");
+        }
+        if (next.length() < 6) {
+            throw BusinessException.badRequest("PASSWORD_TOO_SHORT", "新密码至少 6 位");
+        }
+
+        boolean hasPassword = user.getPasswordHash() != null && !user.getPasswordHash().isBlank();
+        if (hasPassword) {
+            String current = currentPassword == null ? "" : currentPassword;
+            if (current.isBlank()) {
+                throw BusinessException.badRequest("CURRENT_PASSWORD_REQUIRED", "请填写当前密码");
+            }
+            if (!passwordEncoder.matches(current, user.getPasswordHash())) {
+                throw new BusinessException(HttpStatus.FORBIDDEN, "CURRENT_PASSWORD_INVALID", "当前密码错误");
+            }
+            if (passwordEncoder.matches(next, user.getPasswordHash())) {
+                throw BusinessException.badRequest("PASSWORD_UNCHANGED", "新密码不能与当前密码相同");
+            }
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(next));
+        user.setUpdatedAt(Instant.now());
+        userRepo.save(user);
+        return Map.of("changed", true, "hasPassword", true);
     }
 
     private static String asString(Object v) {
