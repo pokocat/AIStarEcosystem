@@ -15,8 +15,10 @@ public class DisabledSmsSender implements SmsSender {
     private static final Logger log = LoggerFactory.getLogger(DisabledSmsSender.class);
 
     @Override
-    public void sendVerificationCode(String phone, String code) {
-        log.warn("[sms-disabled] blocked verification code request phone={} (SMS provider not configured)", phone);
+    public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
+        SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
+        log.warn("[sms-disabled] blocked verification code request purpose={} phone={} (SMS provider not configured)",
+                resolvedPurpose.wire(), phone);
         throw new SmsSendException("短信服务未配置，请先配置真实短信供应商");
     }
 }

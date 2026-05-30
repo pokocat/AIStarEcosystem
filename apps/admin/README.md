@@ -14,7 +14,7 @@ pnpm --filter @ai-star-eco/admin-new build
 环境变量（`.env.local`）：
 
 ```
-NEXT_PUBLIC_API_BASE_URL=/api          # 反代到 apps/server (8080) 或开发态直连
+NEXT_PUBLIC_API_BASE_URL=/api          # 浏览器侧 API base；填 https://api.aibuzz.cn 也会自动补 /api
 NEXT_PUBLIC_USE_MOCK=0                 # 0 跑真后端；1 用 mocks/ 静态数据
 ```
 
@@ -29,7 +29,7 @@ NEXT_PUBLIC_USE_MOCK=0                 # 0 跑真后端；1 用 mocks/ 静态数
 
 ## 登录
 
-`AdminAuthController` 在 `/api/admin/auth/login`：
+`AdminAuthController` 在 `/api/admin/auth/login`，平台运营账号走 `/api/admin/auth/operator-login`：
 
 ```bash
 curl -s -X POST localhost:8080/api/admin/auth/login \
@@ -45,6 +45,7 @@ DataInitializer 默认 seed 两个账号：
 | operator | operator123 | OPERATOR |
 
 > v0.5：`AdminRole` 在 admin TS 已与 server enum 大小写对齐为 `SUPER_ADMIN | OPERATOR`。
+> v0.42+：登录后可在 `/profile` 修改自己的后台登录密码；该入口同时兼容 `admin_users` 与 `AepUser.operatorRole` 两套后台账号来源。
 
 ## 当前可用菜单（v0.5 sidebar enabled = true）
 

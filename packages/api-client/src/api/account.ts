@@ -31,6 +31,24 @@ export async function updateProfile(
   });
 }
 
+export interface ChangePasswordPayload {
+  currentPassword?: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordResult {
+  changed: boolean;
+  hasPassword: boolean;
+}
+
+/** 当前登录账号设置 / 修改密码。首次设置可不传 currentPassword。 */
+export async function changePassword(payload: ChangePasswordPayload): Promise<ChangePasswordResult> {
+  return apiFetch<ChangePasswordResult>("/me/password", {
+    method: "POST",
+    body: payload,
+  });
+}
+
 /** 获取当前用户关联的机构列表 */
 export async function getMyTenants(): Promise<Tenant[]> {
   return apiFetch<Tenant[]>("/me/tenants");

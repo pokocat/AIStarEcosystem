@@ -1389,14 +1389,14 @@ admin   : /admin/celebrity/operators 新页面：list + 「运营 / 超管 / 移
 
 | 端点 | 用途 |
 |---|---|
-| `POST /api/auth/sms/request-code { phone }` | 发码；返回 `{ sent: true }` |
+| `POST /api/auth/sms/request-code { phone, purpose?: "login" \| "register" }` | 发码；返回 `{ sent: true }`；登录 / 注册模板分离 |
 | `POST /api/auth/sms/verify { phone, code }` | 登录；用户必须已注册；404 USER_NOT_FOUND 引导走 register |
 | `POST /api/auth/sms/register { phone, code, licenseKey, studioName, displayName? }` | **双因素注册**：SMS 验证码 + License 激活码同时通过；复用 LicenseActivationService.activate；username 自动 `phone_<手机号>`；phoneVerified=true |
 | `POST /api/admin/license-batches/{id}/mint-keys?count=N` | （配套）admin 一次性铸 N 把 key 并**返回 raw codes**（write-once；DB 只存 sha256） |
 
 **SmsCodeService**（in-memory + 节流）：
 
-- ConcurrentHashMap 存 `phone → { code, sentAt, failures, lockedUntil }`
+- ConcurrentHashMap 存 `phone → { purpose, code, sentAt, failures, lockedUntil }`
 - 60s 速率限制（单 phone）
 - 5 次错误自动锁定 30 分钟
 - 验证码 5 分钟 TTL；成功后**立即删除** entry（防重放）
@@ -1434,8 +1434,9 @@ aep:
       access-key-id: ${ALIYUN_SMS_ACCESS_KEY_ID:}
       access-key-secret: ${ALIYUN_SMS_ACCESS_KEY_SECRET:}
       sign-name: ${ALIYUN_SMS_SIGN_NAME:}
-      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:}
-      template-param-code-key: ${ALIYUN_SMS_TEMPLATE_PARAM_CODE_KEY:code}
+      # 模板变量固定只有 code；sender 始终发送 {"code":"123456"} 形态
+      login-template-code: SMS_507065062
+      register-template-code: ${ALIYUN_SMS_REGISTER_TEMPLATE_CODE:}
       region: ${ALIYUN_SMS_REGION:cn-hangzhou}
       endpoint: ${ALIYUN_SMS_ENDPOINT:dysmsapi.aliyuncs.com}
       connect-timeout-seconds: ${ALIYUN_SMS_CONNECT_TIMEOUT_SECONDS:10}
@@ -1449,8 +1450,8 @@ aep:
 被忽略并 WARN，防 prod 误开。
 
 **生产切换路径**：
-1. 阿里云控制台备案签名 + 创建模板（默认带 `${code}` 变量）+ RAM 给 SMS FullAccess
-2. `export AEP_SMS_DRIVER=aliyun ALIYUN_SMS_SIGN_NAME=... ALIYUN_SMS_TEMPLATE_CODE=...`
+1. 阿里云控制台备案签名 + 创建登录/注册模板（都只带 `${code}` 变量）+ RAM 给 SMS FullAccess
+2. `export AEP_SMS_DRIVER=aliyun ALIYUN_SMS_SIGN_NAME=... ALIYUN_SMS_REGISTER_TEMPLATE_CODE=...`
    并配置 AK，或让运行环境提供 Alibaba Cloud 默认凭据链
 3. 重启 server，`AliyunSmsSender` bean 注入，`LogSmsSender` 自动停用
 

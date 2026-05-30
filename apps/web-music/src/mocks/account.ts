@@ -17,6 +17,7 @@ export const CURRENT_USER: AepUser = {
   status: "active",
   emailVerified: true,
   phoneVerified: true,
+  hasPassword: true,
   langPreference: "zh",
   createdAt: "2025-09-12T08:10:00Z",
   updatedAt: "2026-04-10T11:22:00Z",

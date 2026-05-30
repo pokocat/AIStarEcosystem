@@ -67,7 +67,7 @@ apps/miniprogram/
 
 | 屏 | 调用 | endpoint |
 |---|---|---|
-| 01 | 发送登录验证码 | `POST /auth/sms/request-code` |
+| 01 | 发送注册验证码 | `POST /auth/sms/request-code { purpose: "register" }` |
 | 01 | 激活码 + 验证码注册 | `POST /auth/sms/register` |
 | 02 | 通知/待办 | `GET /notifications` |
 | 03 / 09 | 工作台 / 看板总览 | `GET /celebrity/overview` |

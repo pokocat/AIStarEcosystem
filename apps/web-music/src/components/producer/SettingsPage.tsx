@@ -45,6 +45,16 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
   });
   const [studio, setStudio] = useState<Studio | null>(null);
   const [username, setUsername] = useState<string>('');
+  const [hasPassword, setHasPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const [notifications, setNotifications] = useState({
     email: true, push: true, sms: false,
@@ -69,6 +79,7 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
         });
         setStudio(me.studio ?? null);
         setUsername(me.username ?? '');
+        setHasPassword(Boolean(me.hasPassword));
       })
       .catch(() => { /* 未登录或接口失败，保持空表单 */ });
     return () => { cancelled = true; };
@@ -95,6 +106,38 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
       setSaveError((err instanceof Error ? err.message : null) ?? (zh ? '保存失败' : 'Save failed'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePasswordSave = async () => {
+    setPasswordError(null);
+    setPasswordMessage(null);
+    if (hasPassword && !passwordForm.currentPassword.trim()) {
+      setPasswordError('请填写当前密码');
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordError('新密码至少 6 位');
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('两次输入的新密码不一致');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await AccountApi.changePassword({
+        currentPassword: hasPassword ? passwordForm.currentPassword : undefined,
+        newPassword: passwordForm.newPassword,
+      });
+      setHasPassword(true);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordMessage(hasPassword ? '密码已更新' : '密码已设置，下次可用手机号 + 密码登录');
+    } catch (err: unknown) {
+      const apiErr = err as { error?: { message?: string }; message?: string };
+      setPasswordError(apiErr.error?.message ?? apiErr.message ?? '密码保存失败');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -230,8 +273,77 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
               <div className="space-y-4">
                 <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-5">
                   <h3 className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>{zh ? '账号安全' : 'Account Security'}</h3>
+                  <div className="rounded-lg border border-white/5 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
+                          <Lock className="w-4 h-4 text-cyan-300" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold">{hasPassword ? '修改登录密码' : '设置登录密码'}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">手机号验证码仍可用，设置后可选择密码登录。</div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="border-white/10 text-gray-400 text-xs gap-1"
+                        onClick={() => setShowPasswords(v => !v)}
+                      >
+                        {showPasswords ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        {showPasswords ? '隐藏' : '显示'}
+                      </Button>
+                    </div>
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      {hasPassword && (
+                        <div>
+                          <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">当前密码</label>
+                          <input
+                            value={passwordForm.currentPassword}
+                            onChange={e => setPasswordForm(p => ({ ...p, currentPassword: e.target.value }))}
+                            type={showPasswords ? 'text' : 'password'}
+                            autoComplete="current-password"
+                            className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:border-cyan-500/40 focus:outline-none transition"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">新密码</label>
+                        <input
+                          value={passwordForm.newPassword}
+                          onChange={e => setPasswordForm(p => ({ ...p, newPassword: e.target.value }))}
+                          type={showPasswords ? 'text' : 'password'}
+                          autoComplete="new-password"
+                          className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:border-cyan-500/40 focus:outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">确认新密码</label>
+                        <input
+                          value={passwordForm.confirmPassword}
+                          onChange={e => setPasswordForm(p => ({ ...p, confirmPassword: e.target.value }))}
+                          type={showPasswords ? 'text' : 'password'}
+                          autoComplete="new-password"
+                          className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:border-cyan-500/40 focus:outline-none transition"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        onClick={handlePasswordSave}
+                        disabled={passwordSaving}
+                        className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-1 disabled:opacity-60"
+                      >
+                        <Save className="w-4 h-4" />
+                        {passwordSaving ? '保存中...' : hasPassword ? '更新密码' : '设置密码'}
+                      </Button>
+                      {passwordMessage && <span className="text-xs text-green-400">{passwordMessage}</span>}
+                      {passwordError && <span className="text-xs text-red-400">{passwordError}</span>}
+                    </div>
+                  </div>
                   {[
-                    { icon: Lock, label: zh ? '修改密码' : 'Change Password', desc: zh ? '上次修改: 30天前' : 'Last changed: 30 days ago', action: zh ? '修改' : 'Change' },
                     { icon: Smartphone, label: zh ? '两步验证' : 'Two-Factor Auth', desc: zh ? '已启用 (手机验证)' : 'Enabled (SMS)', action: zh ? '管理' : 'Manage', badge: true },
                     { icon: Key, label: 'API Key', desc: 'sk-****...****a8b3', action: zh ? '重新生成' : 'Regenerate' },
                     { icon: Shield, label: zh ? '登录设备' : 'Login Devices', desc: zh ? '3个活跃设备' : '3 active devices', action: zh ? '查看' : 'View' },

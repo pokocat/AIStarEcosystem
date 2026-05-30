@@ -61,7 +61,7 @@ Page({
     }
     wx.showLoading({ title: "发送中…", mask: true });
     try {
-      await AuthApi.smsRequestCode(this.data.form.phone);
+      await AuthApi.smsRequestCode(this.data.form.phone, "register");
       wx.hideLoading();
       this.setData({ cooldown: 60 });
       smsTimer = setInterval(() => {

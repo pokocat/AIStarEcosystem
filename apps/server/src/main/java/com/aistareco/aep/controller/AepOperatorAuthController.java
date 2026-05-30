@@ -1,16 +1,16 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.config.JwtUtil;
-import com.aistareco.aep.dto.AepUserDto;
+import com.aistareco.aep.dto.AdminAuthUserDto;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.common.ApiResponse;
+import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.Map;
@@ -57,34 +57,34 @@ public class AepOperatorAuthController {
         String password = body == null ? null : body.get("password");
 
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "用户名和密码不能为空");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ADMIN_LOGIN_REQUIRED", "用户名和密码不能为空");
         }
 
         AepUser user = aepUserRepo.findByUsername(username.trim())
                 .orElseThrow(() -> {
                     log.warn("[operator-login] miss username={}", username);
-                    return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+                    return new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_CREDENTIALS_INVALID", "用户名或密码错误");
                 });
 
         // operator 必须有 operatorRole 才能登 admin 后台
         if (user.getOperatorRole() == null) {
             log.warn("[operator-login] no operatorRole username={} userId={}", username, user.getId());
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账号无平台运营权限");
+            throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_OPERATOR_ROLE_REQUIRED", "该账号无平台运营权限");
         }
 
         // 必须设过 passwordHash —— v0.37 起 DataInitializer 会给 celebrity_operator 落默认密码
         if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
             log.warn("[operator-login] no passwordHash userId={}", user.getId());
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+            throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_PASSWORD_NOT_SET",
                     "该账号未设置密码，请联系超级管理员通过 /admin/aep-users/{id}/set-password 设置");
         }
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             log.warn("[operator-login] bad password userId={}", user.getId());
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_CREDENTIALS_INVALID", "用户名或密码错误");
         }
 
         if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户已被停用");
+            throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_ACCOUNT_DISABLED", "该账户已被停用");
         }
 
         user.setLastLoginAt(Instant.now());
@@ -97,7 +97,7 @@ public class AepOperatorAuthController {
         log.info("[operator-login] success userId={} role={}", user.getId(), user.getOperatorRole());
         return ApiResponse.of(Map.of(
                 "token", token,
-                "user", AepUserDto.from(user)
+                "user", AdminAuthUserDto.fromOperator(user)
         ));
     }
 }

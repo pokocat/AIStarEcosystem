@@ -1,22 +1,20 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.config.JwtUtil;
-import com.aistareco.aep.dto.AdminUserDto;
+import com.aistareco.aep.dto.AdminAuthUserDto;
 import com.aistareco.aep.model.AdminUser;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.repository.AdminUserRepository;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.common.ApiResponse;
+import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
-import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -52,7 +50,7 @@ public class AdminAuthController {
         if (username == null || password == null) {
             log.warn("[admin-login] rejected missing-field usernamePresent={} passwordPresent={}",
                     username != null, password != null);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "用户名和密码不能为空");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ADMIN_LOGIN_REQUIRED", "用户名和密码不能为空");
         }
 
         String loginName = username.trim();
@@ -61,18 +59,18 @@ public class AdminAuthController {
                 .orElse(null);
         if (admin == null) {
             log.warn("[admin-login] miss username={}", loginName);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_CREDENTIALS_INVALID", "用户名或密码错误");
         }
 
         if (admin.getPasswordHash() == null || !passwordEncoder.matches(password, admin.getPasswordHash())) {
             log.warn("[admin-login] bad-password adminId={} username={}", admin.getId(), admin.getUsername());
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_CREDENTIALS_INVALID", "用户名或密码错误");
         }
 
         if (admin.getStatus() != AdminUser.AdminStatus.ACTIVE) {
             log.warn("[admin-login] inactive adminId={} username={} status={}",
                     admin.getId(), admin.getUsername(), admin.getStatus());
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户已被停用");
+            throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_ACCOUNT_DISABLED", "该账户已被停用");
         }
 
         admin.setLastLoginAt(java.time.Instant.now());
@@ -84,7 +82,7 @@ public class AdminAuthController {
 
         return ApiResponse.of(Map.of(
                 "token", token,
-                "user", AdminUserDto.from(admin)
+                "user", AdminAuthUserDto.fromAdmin(admin)
         ));
     }
 
@@ -94,57 +92,39 @@ public class AdminAuthController {
      * 返回统一的 wire shape：{id, username, email, displayName, role, status}，role 用 JWT.role claim 对齐。
      */
     @GetMapping("/me")
-    public ApiResponse<Map<String, Object>> me(Principal principal) {
+    public ApiResponse<AdminAuthUserDto> me(Principal principal) {
         if (principal == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "未登录");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_UNAUTHENTICATED", "未登录");
         }
         String id = principal.getName();
         AdminUser admin = adminUserRepo.findById(id).orElse(null);
         if (admin != null) {
-            Map<String, Object> body = new HashMap<>();
-            AdminUserDto dto = AdminUserDto.from(admin);
-            body.put("id", dto.id());
-            body.put("username", dto.username());
-            body.put("email", dto.email());
-            body.put("displayName", dto.displayName());
-            body.put("role", dto.role());
-            body.put("status", dto.status());
-            // v0.37+：账号来源 —— 前端按此隐藏「秘钥批次 / 管理员账号」等仅 admin 可见菜单。
-            body.put("accountSource", "admin");
-            return ApiResponse.of(body);
+            return ApiResponse.of(AdminAuthUserDto.fromAdmin(admin));
         }
         AepUser aep = aepUserRepo.findById(id).orElse(null);
         if (aep != null && aep.getOperatorRole() != null) {
-            Map<String, Object> body = new HashMap<>();
-            body.put("id", aep.getId());
-            body.put("username", aep.getUsername());
-            body.put("email", aep.getEmail());
-            body.put("displayName", aep.getDisplayName());
-            body.put("role", aep.getOperatorRole().name().toLowerCase(Locale.ROOT));
-            body.put("status", aep.getStatus() != null ? aep.getStatus().name().toLowerCase(Locale.ROOT) : "active");
-            body.put("accountSource", "operator");
-            return ApiResponse.of(body);
+            return ApiResponse.of(AdminAuthUserDto.fromOperator(aep));
         }
-        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");
+        throw new BusinessException(HttpStatus.NOT_FOUND, "ADMIN_ACCOUNT_NOT_FOUND", "管理员账号不存在");
     }
 
     @PostMapping("/change-password")
     public ApiResponse<Map<String, Object>> changePassword(Principal principal,
                                                            @RequestBody Map<String, String> body) {
         if (principal == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "未登录");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_UNAUTHENTICATED", "未登录");
         }
         String currentPassword = body == null ? null : body.get("currentPassword");
         String newPassword = body == null ? null : body.get("newPassword");
         if (currentPassword == null || currentPassword.isBlank()
                 || newPassword == null || newPassword.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前密码和新密码不能为空");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ADMIN_PASSWORD_REQUIRED", "当前密码和新密码不能为空");
         }
         if (newPassword.length() < 6) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新密码至少 6 位");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ADMIN_PASSWORD_TOO_SHORT", "新密码至少 6 位");
         }
         if (currentPassword.equals(newPassword)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新密码不能与当前密码相同");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ADMIN_PASSWORD_UNCHANGED", "新密码不能与当前密码相同");
         }
 
         String id = principal.getName();
@@ -154,7 +134,7 @@ public class AdminAuthController {
                     || !passwordEncoder.matches(currentPassword, admin.getPasswordHash())) {
                 log.warn("[admin-change-password] bad-current-password adminId={} username={}",
                         admin.getId(), admin.getUsername());
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前密码错误");
+                throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_CURRENT_PASSWORD_INVALID", "当前密码错误");
             }
             admin.setPasswordHash(passwordEncoder.encode(newPassword));
             admin.setUpdatedAt(java.time.Instant.now());
@@ -170,7 +150,7 @@ public class AdminAuthController {
                     || !passwordEncoder.matches(currentPassword, aep.getPasswordHash())) {
                 log.warn("[operator-change-password] bad-current-password userId={} username={}",
                         aep.getId(), aep.getUsername());
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前密码错误");
+                throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_CURRENT_PASSWORD_INVALID", "当前密码错误");
             }
             aep.setPasswordHash(passwordEncoder.encode(newPassword));
             aep.setUpdatedAt(java.time.Instant.now());
@@ -180,6 +160,6 @@ public class AdminAuthController {
             return ApiResponse.of(Map.of("changed", true, "accountSource", "operator"));
         }
 
-        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");
+        throw new BusinessException(HttpStatus.NOT_FOUND, "ADMIN_ACCOUNT_NOT_FOUND", "管理员账号不存在");
     }
 }

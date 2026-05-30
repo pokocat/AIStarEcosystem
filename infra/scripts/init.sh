@@ -134,13 +134,14 @@ if [[ "$SMS_ENABLE" == "yes" ]]; then
   ask_required SMS_AK_ID "SMS RAM 子用户 AccessKey ID"
   ask_secret SMS_AK_SECRET "SMS RAM 子用户 AccessKey Secret"
   ask_required SMS_SIGN_NAME "SMS 签名（控制台备案过的企业名）"
-  ask_required SMS_TEMPLATE_CODE "SMS 模板代码（如 SMS_xxxxx）"
+  ask_required SMS_REGISTER_TEMPLATE_CODE "SMS 注册模板代码（如 SMS_506890177）"
   ask_default SMS_REGION "SMS Region" "cn-hangzhou"
   ask_default SMS_ENDPOINT "SMS endpoint" "dysmsapi.aliyuncs.com"
   SMS_DRIVER="aliyun"
 else
   SMS_DRIVER="log"
-  SMS_AK_ID=""; SMS_AK_SECRET=""; SMS_SIGN_NAME=""; SMS_TEMPLATE_CODE=""
+  SMS_AK_ID=""; SMS_AK_SECRET=""; SMS_SIGN_NAME=""
+  SMS_REGISTER_TEMPLATE_CODE=""
   SMS_REGION="cn-hangzhou"; SMS_ENDPOINT="dysmsapi.aliyuncs.com"
 fi
 
@@ -188,7 +189,7 @@ render_server_env() {
     line="${line//<FILL_SMS_AK_ID>/$SMS_AK_ID}"
     line="${line//<FILL_SMS_AK_SECRET>/$SMS_AK_SECRET}"
     line="${line//<FILL_企业签名（如：星耀生态）>/$SMS_SIGN_NAME}"
-    line="${line//<FILL_SMS_TEMPLATE_CODE（如：SMS_xxxxx）>/$SMS_TEMPLATE_CODE}"
+    line="${line//<FILL_REGISTER_SMS_TEMPLATE_CODE（如：SMS_506890177）>/$SMS_REGISTER_TEMPLATE_CODE}"
     line="${line//<FILL_COZE_API_TOKEN>/$COZE_TOKEN}"
     line="${line//<FILL_COZE_BOT_ID>/$COZE_BOT_ID}"
 
@@ -196,6 +197,7 @@ render_server_env() {
     case "$line" in
       DB_USERNAME=*)                    line="DB_USERNAME=$DB_USERNAME";;
       AEP_SMS_DRIVER=*)                 line="AEP_SMS_DRIVER=$SMS_DRIVER";;
+      ALIYUN_SMS_REGISTER_TEMPLATE_CODE=*) line="ALIYUN_SMS_REGISTER_TEMPLATE_CODE=$SMS_REGISTER_TEMPLATE_CODE";;
       ALIYUN_SMS_REGION=*)              line="ALIYUN_SMS_REGION=$SMS_REGION";;
       ALIYUN_SMS_ENDPOINT=*)            line="ALIYUN_SMS_ENDPOINT=$SMS_ENDPOINT";;
       AEP_CDN_OSS_ENDPOINT=*)           line="AEP_CDN_OSS_ENDPOINT=$OSS_ENDPOINT";;

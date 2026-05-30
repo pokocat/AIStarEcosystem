@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.service.sms.SmsCodeService;
+import com.aistareco.aep.service.sms.SmsCodePurpose;
 import com.aistareco.aep.service.sms.SmsSender;
 import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,35 @@ class SmsCodeServiceTest {
 
         assertEquals("13800138000", sender.lastPhone);
         assertEquals("123456", sender.lastCode);
+        assertEquals(SmsCodePurpose.LOGIN, sender.lastPurpose);
+    }
+
+    @Test
+    void requestCode_sendsRegisterPurposeThroughConfiguredSender() {
+        CapturingSender sender = new CapturingSender();
+        SmsCodeService service = service(sender, 60, 5);
+
+        service.requestCode("13800138000", SmsCodePurpose.REGISTER);
+
+        assertEquals("13800138000", sender.lastPhone);
+        assertEquals("123456", sender.lastCode);
+        assertEquals(SmsCodePurpose.REGISTER, sender.lastPurpose);
+    }
+
+    @Test
+    void verifyCode_requiresMatchingPurpose() {
+        SmsCodeService service = service(new CapturingSender(), 60, 5);
+
+        service.requestCode("13800138000", SmsCodePurpose.REGISTER);
+
+        BusinessException mismatch = assertThrows(
+                BusinessException.class,
+                () -> service.verifyCode("13800138000", "123456", SmsCodePurpose.LOGIN)
+        );
+        assertEquals(HttpStatus.BAD_REQUEST, mismatch.getStatus());
+        assertEquals("SMS_CODE_NOT_REQUESTED", mismatch.getCode());
+
+        service.verifyCode("13800138000", "123456", SmsCodePurpose.REGISTER);
     }
 
     @Test
@@ -126,17 +156,19 @@ class SmsCodeServiceTest {
     private static class CapturingSender implements SmsSender {
         String lastPhone;
         String lastCode;
+        SmsCodePurpose lastPurpose;
 
         @Override
-        public void sendVerificationCode(String phone, String code) {
+        public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
             this.lastPhone = phone;
             this.lastCode = code;
+            this.lastPurpose = purpose;
         }
     }
 
     private static class FailingSender implements SmsSender {
         @Override
-        public void sendVerificationCode(String phone, String code) throws SmsSendException {
+        public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) throws SmsSendException {
             throw new SmsSendException("upstream unavailable");
         }
     }

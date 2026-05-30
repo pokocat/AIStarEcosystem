@@ -80,6 +80,21 @@ components:
         error:
           $ref: '#/components/schemas/ErrorDetail'
 
+    AdminAuthUser:
+      type: object
+      required: [id, username, displayName, role, status, accountSource]
+      properties:
+        id:            { type: string }
+        username:      { type: string }
+        email:         { type: string, nullable: true }
+        displayName:   { type: string, nullable: true }
+        role:          { type: string, enum: [super_admin, operator] }
+        status:        { type: string, enum: [active, suspended] }
+        accountSource: { type: string, enum: [admin, operator], description: admin_users 或 AepUser.operatorRole 登录来源 }
+        createdAt:     { type: string, format: date-time, nullable: true }
+        updatedAt:     { type: string, format: date-time, nullable: true }
+        lastLoginAt:   { type: string, format: date-time, nullable: true }
+
     AsyncJobStarted:
       type: object
       required: [jobId, status, pollUrl, pollIntervalMs]
@@ -261,6 +276,7 @@ components:
           type: string
           default: cyberpunk
         walletAddress:   { type: string, nullable: true, description: ETH格式 }
+        hasPassword:     { type: boolean, description: 当前账号是否已设置手机号密码登录的密码 }
         createdAt:       { type: string, format: date-time }
         updatedAt:       { type: string, format: date-time }
 
@@ -3954,7 +3970,7 @@ paths:
       tags: [auth]
       operationId: smsRequestCode
       security: []
-      summary: 请求短信验证码（速率限制 60s/次；连错 5 次锁定 30 分钟）
+      summary: 请求短信验证码（登录 / 注册模板分离；速率限制 60s/次；连错 5 次锁定 30 分钟）
       requestBody:
         required: true
         content:
@@ -3964,6 +3980,11 @@ paths:
               required: [phone]
               properties:
                 phone: { type: string, description: 11 位国内手机号 }
+                purpose:
+                  type: string
+                  enum: [login, register]
+                  default: login
+                  description: 验证码用途；login 使用登录模板 SMS_507065062，register 使用注册模板
       responses:
         '200':
           description: ok
@@ -4033,6 +4054,29 @@ paths:
         '400': { description: 参数缺失 / 验证码 / 激活码错误 }
         '409': { description: 该手机号已注册 / 激活码已使用 }
 
+  /auth/password/login:
+    post:
+      tags: [auth]
+      operationId: passwordLogin
+      security: []
+      summary: 手机号 + 密码登录（密码需登录后在账号安全页设置）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone: { type: string, description: 已注册手机号 }
+                password: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: 登录成功，返回 token + user
+        '400': { description: 手机号或密码缺失 }
+        '401': { description: 手机号或密码错误 }
+        '403': { description: PASSWORD_NOT_SET / ACCOUNT_DISABLED }
+
   # v0.31+ admin 端：管理 AepUser.operatorRole 字段（内嵌运营角色）
   /admin/aep-users:
     get:
@@ -4089,6 +4133,26 @@ paths:
       summary: 更新当前用户可编辑资料（displayName/avatarUrl/phone/email/bio/langPreference）
       responses:
         '200': { description: ok }
+
+  /me/password:
+    post:
+      tags: [account]
+      operationId: changeMyPassword
+      summary: 当前登录用户设置或修改登录密码；首次设置可不传 currentPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                currentPassword: { type: string, description: 已有密码时必填 }
+                newPassword: { type: string, minLength: 6 }
+      responses:
+        '200': { description: ok }
+        '400': { description: 新密码缺失 / 太短 / 未填写当前密码 }
+        '403': { description: 当前密码错误 }
 
   /me/wallet:
     get:
@@ -5011,13 +5075,110 @@ paths:
 
   # ── v0.37：平台运营登录（AepUser + operatorRole 体系，独立通道） ─────────────
   /admin/auth/login:
-    post: { tags: [admin-auth], operationId: adminLogin, responses: { '200': { description: ok }, '401': { description: 'invalid credentials' } } }
+    post:
+      tags: [admin-auth]
+      operationId: adminLogin
+      summary: admin_users 管理员账号密码登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, description: 用户名或邮箱 }
+                password: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token: { type: string }
+                          user: { $ref: '#/components/schemas/AdminAuthUser' }
+        '400': { description: 用户名或密码为空 }
+        '401': { description: 用户名或密码错误 }
+        '403': { description: 账号已停用 }
   /admin/auth/me:
-    get: { tags: [admin-auth], operationId: adminGetMe, responses: { '200': { description: ok }, '401': { description: 'unauthorized' } } }
+    get:
+      tags: [admin-auth]
+      operationId: adminGetMe
+      summary: 当前后台登录身份
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AdminAuthUser' }
+        '401': { description: unauthorized }
   /admin/auth/operator-login:
-    post: { tags: [admin-auth], operationId: adminOperatorLogin, responses: { '200': { description: ok }, '401': { description: 'invalid credentials' }, '403': { description: 'no operatorRole or inactive' } } }
+    post:
+      tags: [admin-auth]
+      operationId: adminOperatorLogin
+      summary: AepUser.operatorRole 平台运营账号密码登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, description: AepUser.username }
+                password: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token: { type: string }
+                          user: { $ref: '#/components/schemas/AdminAuthUser' }
+        '400': { description: 用户名或密码为空 }
+        '401': { description: 用户名或密码错误 }
+        '403': { description: 无 operatorRole / 未设置密码 / 账号已停用 }
   /admin/auth/change-password:
-    post: { tags: [admin-auth], operationId: adminChangeOwnPassword, responses: { '200': { description: ok }, '400': { description: 'invalid new password' }, '401': { description: 'unauthorized' }, '403': { description: 'bad current password' } } }
+    post:
+      tags: [admin-auth]
+      operationId: adminChangeOwnPassword
+      summary: 当前后台登录账号修改自己的密码，兼容 admin 和 operator 两种账号来源
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 6 }
+      responses:
+        '200': { description: ok }
+        '400': { description: 当前密码或新密码为空 / 新密码太短 / 新旧密码相同 }
+        '401': { description: unauthorized }
+        '403': { description: 当前密码错误 }
 
   # ── v0.37：超级管理员给 AepUser 设置密码（让 operator 能登 admin） ─────────
   /admin/aep-users/{id}/set-password:

@@ -15,7 +15,7 @@ import type { LicenseRedeemRequest, LicenseRedeemResult } from "@ai-star-eco/typ
 import { mockDelay, setAuthToken } from "./_client";
 import { registerMocks } from "./_mock-registry";
 import { MOCK_TENANTS, MOCK_USER, MOCK_WALLET } from "./_mocks";
-import type { DevAccount, DevLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult } from "./api/auth";
+import type { DevAccount, DevLoginResult, PasswordLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult } from "./api/auth";
 
 registerMocks([
   // ── account ──────────────────────────────────────────────────────────────
@@ -29,6 +29,11 @@ registerMocks([
         ...((body ?? {}) as Partial<AepUser>),
         updatedAt: new Date().toISOString(),
       }),
+  },
+  {
+    method: "POST",
+    pattern: "/me/password",
+    handler: () => mockDelay({ changed: true, hasPassword: true }),
   },
   { method: "GET", pattern: "/me/tenants", handler: () => mockDelay(MOCK_TENANTS) },
   { method: "GET", pattern: "/me/wallet", handler: () => mockDelay(MOCK_WALLET) },
@@ -63,6 +68,7 @@ registerMocks([
         displayName: req.displayName || req.studioName,
         email: req.email ?? MOCK_USER.email,
         phone: req.phone ?? MOCK_USER.phone,
+        hasPassword: false,
         updatedAt: now,
         lastLoginAt: now,
         studio,
@@ -117,6 +123,19 @@ registerMocks([
   },
   {
     method: "POST",
+    pattern: "/auth/password/login",
+    handler: ({ body }) => {
+      const phone = (body as { phone?: string } | undefined)?.phone ?? MOCK_USER.phone;
+      const token = `mock-password-login-${Date.now()}`;
+      setAuthToken(token);
+      return mockDelay<PasswordLoginResult>({
+        token,
+        user: { ...MOCK_USER, phone, phoneVerified: true, hasPassword: true },
+      });
+    },
+  },
+  {
+    method: "POST",
     pattern: "/auth/sms/register",
     handler: ({ body }) => {
       const req = body as SmsRegisterPayload;
@@ -140,6 +159,7 @@ registerMocks([
         displayName: req.displayName || req.studioName,
         phone: req.phone,
         phoneVerified: true,
+        hasPassword: false,
         updatedAt: now,
         lastLoginAt: now,
         studio,

@@ -15,6 +15,7 @@ import {
   Check,
   KeyRound,
   Loader2,
+  Lock,
   LogIn,
   Phone,
   Smartphone,
@@ -72,6 +73,8 @@ export interface AuthScreenProps {
 }
 
 type Tab = "phone-login" | "phone-register" | "dev";
+type LoginMode = "code" | "password";
+type SmsCodePurpose = "login" | "register";
 
 function AuthScreenInner(props: AuthScreenProps) {
   const {
@@ -154,7 +157,7 @@ function AuthScreenInner(props: AuthScreenProps) {
             登录工作台
           </h1>
           <p style={{ fontSize: 13, color: "var(--as-fg-muted)", maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>
-            {tagline ?? "手机号 + 短信验证码登录；新用户用激活码 + 手机号完成注册。"}
+            {tagline ?? "手机号支持验证码或密码登录；新用户用激活码 + 手机号完成注册。"}
           </p>
         </div>
 
@@ -171,7 +174,7 @@ function AuthScreenInner(props: AuthScreenProps) {
             }}
           >
             <TabBtn active={tab === "phone-login"} onClick={() => setTab("phone-login")}>
-              <Phone size={12} /> 手机号登录
+              <Phone size={12} /> 登录
             </TabBtn>
             <TabBtn active={tab === "phone-register"} onClick={() => setTab("phone-register")}>
               <KeyRound size={12} /> 注册
@@ -221,8 +224,8 @@ function AuthScreenInner(props: AuthScreenProps) {
           }}
         >
           {enableDev
-            ? "手机号登录适用于任意环境；体验账号仅在开发环境下可用。"
-            : "手机号登录适用于当前环境；新用户请使用激活码完成注册。"}
+            ? "验证码 / 密码登录适用于任意环境；体验账号仅在开发环境下可用。"
+            : "验证码 / 密码登录适用于当前环境；新用户请使用激活码完成注册。"}
         </p>
       </div>
     </div>
@@ -256,7 +259,15 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   );
 }
 
-function SendCodeButton({ phone, onError }: { phone: string; onError: (msg: string) => void }) {
+function SendCodeButton({
+  phone,
+  purpose = "login",
+  onError,
+}: {
+  phone: string;
+  purpose?: SmsCodePurpose;
+  onError: (msg: string) => void;
+}) {
   const [sending, setSending] = React.useState(false);
   const [cooldown, setCooldown] = React.useState(0);
 
@@ -275,7 +286,7 @@ function SendCodeButton({ phone, onError }: { phone: string; onError: (msg: stri
     setSending(true);
     onError("");
     try {
-      await AuthApi.smsRequestCode(trimmed);
+      await AuthApi.smsRequestCode(trimmed, purpose);
       setCooldown(60);
     } catch (e) {
       onError(extractErr(e, "验证码发送失败，请稍后重试"));
@@ -321,6 +332,8 @@ function PhoneLoginForm({
 }) {
   const [phone, setPhone] = React.useState("");
   const [code, setCode] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [mode, setMode] = React.useState<LoginMode>("code");
   const [error, setError] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -328,15 +341,22 @@ function PhoneLoginForm({
     setSubmitting(true);
     setError("");
     try {
-      await AuthApi.smsLogin(phone.trim(), code.trim());
+      if (mode === "password") {
+        await AuthApi.passwordLogin(phone.trim(), password);
+      } else {
+        await AuthApi.smsLogin(phone.trim(), code.trim());
+      }
       await onSuccess();
     } catch (e) {
       const err = e as { status?: number; error?: { code?: string; message?: string }; message?: string };
       if (err.error?.code === "USER_NOT_FOUND" || err.status === 404) {
         setError("这个手机号还没注册，已为你切到「注册」。");
         onNeedRegister();
+      } else if (err.error?.code === "PASSWORD_NOT_SET") {
+        setError("该账号还没设置密码，请先用验证码登录后设置。");
+        setMode("code");
       } else {
-        setError(extractErr(e, "登录没成功，请检查手机号和验证码后重试"));
+        setError(extractErr(e, mode === "password" ? "登录没成功，请检查手机号和密码后重试" : "登录没成功，请检查手机号和验证码后重试"));
       }
     } finally {
       setSubmitting(false);
@@ -346,21 +366,94 @@ function PhoneLoginForm({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {error && <ErrBox msg={error} />}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          background: "var(--as-surface-alt)",
+          borderRadius: "var(--as-radius)",
+          padding: 4,
+        }}
+      >
+        <SegmentButton
+          active={mode === "code"}
+          onClick={() => {
+            setMode("code");
+            setError("");
+          }}
+          disabled={submitting}
+        >
+          <Phone size={12} /> 验证码登录
+        </SegmentButton>
+        <SegmentButton
+          active={mode === "password"}
+          onClick={() => {
+            setMode("password");
+            setError("");
+          }}
+          disabled={submitting}
+        >
+          <Lock size={12} /> 密码登录
+        </SegmentButton>
+      </div>
       <Field label="手机号">
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="请输入 11 位手机号" inputMode="numeric" maxLength={11} disabled={submitting} style={inputStyle} />
       </Field>
-      <Field label="验证码">
-        <div style={{ display: "flex", gap: 8 }}>
-          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位数字" inputMode="numeric" maxLength={6} disabled={submitting} style={{ ...inputStyle, flex: 1 }} autoComplete="one-time-code" />
-          <SendCodeButton phone={phone} onError={setError} />
-        </div>
-      </Field>
-      <PrimaryButton onClick={handleSubmit} disabled={submitting || !phone || !code}>
+      {mode === "code" ? (
+        <Field label="验证码">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位数字" inputMode="numeric" maxLength={6} disabled={submitting} style={{ ...inputStyle, flex: 1 }} autoComplete="one-time-code" />
+            <SendCodeButton phone={phone} purpose="login" onError={setError} />
+          </div>
+        </Field>
+      ) : (
+        <Field label="密码">
+          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" type="password" disabled={submitting} style={inputStyle} autoComplete="current-password" />
+        </Field>
+      )}
+      <PrimaryButton onClick={handleSubmit} disabled={submitting || !phone || (mode === "code" ? !code : !password)}>
         {submitting ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
         {submitting ? "正在登录" : "登录"}
         {!submitting && <ArrowRight size={14} />}
       </PrimaryButton>
     </div>
+  );
+}
+
+function SegmentButton({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        minHeight: 32,
+        border: "none",
+        borderRadius: "calc(var(--as-radius) - 2px)",
+        background: active ? "var(--as-bg)" : "transparent",
+        color: active ? "var(--as-fg)" : "var(--as-fg-muted)",
+        fontSize: 12,
+        fontWeight: active ? 600 : 500,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -402,7 +495,7 @@ function PhoneRegisterForm({ platform, onSuccess }: { platform: SubProduct; onSu
       <Field label="验证码">
         <div style={{ display: "flex", gap: 8 }}>
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位数字" inputMode="numeric" maxLength={6} disabled={submitting} style={{ ...inputStyle, flex: 1 }} autoComplete="one-time-code" />
-          <SendCodeButton phone={phone} onError={setError} />
+          <SendCodeButton phone={phone} purpose="register" onError={setError} />
         </div>
       </Field>
       <Field label="激活码">

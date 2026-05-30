@@ -11,10 +11,20 @@ export const USE_MOCK: boolean =
   typeof process !== "undefined" &&
   process.env.NEXT_PUBLIC_USE_MOCK === "1";
 
-/** 后端基础地址，默认 /api（同域反向代理），可通过环境变量覆盖。 */
-export const API_BASE_URL: string =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL) ||
-  "/api";
+function normalizeApiBaseUrl(raw: string | undefined): string {
+  const value = (raw || "").trim();
+  if (!value) return "/api";
+  const withoutTrailingSlash = value.replace(/\/+$/, "");
+  if (!withoutTrailingSlash || withoutTrailingSlash === "/") return "/api";
+  return withoutTrailingSlash.endsWith("/api")
+    ? withoutTrailingSlash
+    : `${withoutTrailingSlash}/api`;
+}
+
+/** 后端 API base。可填 /api、https://api.example.com/api，或后端根地址（会自动补 /api）。 */
+export const API_BASE_URL: string = normalizeApiBaseUrl(
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined
+);
 
 /** Admin JWT 存储键。生产模式下后端只认 Authorization: Bearer <token>。 */
 export const AUTH_TOKEN_KEY = "aistareco.admin.auth.token";
@@ -136,20 +146,6 @@ export async function apiFetch<T>(
     );
   }
 
-  if (res.status === 401) {
-    setAuthToken(null);
-    if (typeof window !== "undefined" && !window.location.pathname.endsWith("/login")) {
-      window.location.assign(loginUrl());
-    }
-    throwApiError(
-      new ApiError(
-        { code: "UNAUTHORIZED", message: "登录状态无效或已过期" },
-        res.status,
-      ),
-      path,
-    );
-  }
-
   if (res.status === 204) {
     return undefined as T;
   }
@@ -175,9 +171,15 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const err = (parsed as { error?: ApiErrorShape })?.error ?? {
-      code: "HTTP_ERROR",
-      message: `HTTP ${res.status}`,
+      code: res.status === 401 ? "UNAUTHORIZED" : "HTTP_ERROR",
+      message: res.status === 401 ? "登录状态无效或已过期" : `HTTP ${res.status}`,
     };
+    if (res.status === 401) {
+      setAuthToken(null);
+      if (typeof window !== "undefined" && !window.location.pathname.endsWith("/login")) {
+        window.location.assign(loginUrl());
+      }
+    }
     throwApiError(new ApiError(err, res.status), path);
   }
 
