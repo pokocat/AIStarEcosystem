@@ -28,6 +28,15 @@ export NEXT_PUBLIC_USE_MOCK="${NEXT_PUBLIC_USE_MOCK:-0}"
 export NEXT_PUBLIC_MIXCUT_USE_REAL="${NEXT_PUBLIC_MIXCUT_USE_REAL:-1}"
 export NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-/api}"
 export NEXT_PUBLIC_SERVER_API_BASE="${NEXT_PUBLIC_SERVER_API_BASE:-http://127.0.0.1:8080}"
+export COPYFILE_DISABLE="${COPYFILE_DISABLE:-1}"
+
+TAR_CREATE_EXTRA_ARGS=()
+if tar --no-xattrs -cf /dev/null --files-from /dev/null >/dev/null 2>&1; then
+  TAR_CREATE_EXTRA_ARGS+=(--no-xattrs)
+fi
+if tar --no-mac-metadata -cf /dev/null --files-from /dev/null >/dev/null 2>&1; then
+  TAR_CREATE_EXTRA_ARGS+=(--no-mac-metadata)
+fi
 
 log() { printf "\033[1;34m[build-release]\033[0m %s\n" "$*"; }
 ok() { printf "\033[1;32m[build-release]\033[0m %s\n" "$*"; }
@@ -82,7 +91,7 @@ copy_dir_contents() {
 
 make_tar_from_dir() {
   local src="$1" tarball="$2"
-  (cd "$src" && tar -czf "$tarball" .)
+  (cd "$src" && tar "${TAR_CREATE_EXTRA_ARGS[@]}" -czf "$tarball" .)
 }
 
 strip_env_files() {
@@ -136,21 +145,24 @@ build_web_celebrity() {
 build_admin() {
   log "building admin standalone"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
-    (cd apps/admin && npm ci --no-audit --no-fund)
+    pnpm install --frozen-lockfile
   fi
   if [[ "$SKIP_TYPECHECK" != "1" ]]; then
-    (cd apps/admin && npm run typecheck)
+    pnpm --filter @ai-star-eco/admin-new run typecheck
   fi
-  (cd apps/admin && npm run build)
+  pnpm --filter @ai-star-eco/admin-new run build
 
   local tmp="$OUT_DIR/.tmp/admin"
   rm -rf "$tmp"
   mkdir -p "$tmp"
   copy_dir_contents "apps/admin/.next/standalone" "$tmp"
-  copy_dir_contents "apps/admin/.next/static" "$tmp/.next/static"
+  copy_dir_contents "apps/admin/.next/static" "$tmp/apps/admin/.next/static"
   if [[ -d apps/admin/public ]]; then
-    copy_dir_contents "apps/admin/public" "$tmp/public"
+    copy_dir_contents "apps/admin/public" "$tmp/apps/admin/public"
   fi
+  cat > "$tmp/server.js" <<'EOF'
+require("./apps/admin/server.js");
+EOF
   strip_env_files "$tmp"
   make_tar_from_dir "$tmp" "$OUT_DIR/admin.tar.gz"
 }
@@ -158,10 +170,12 @@ build_admin() {
 build_sau_service() {
   log "packing sau-service source"
   mkdir -p "$OUT_DIR"
-  tar \
+  tar "${TAR_CREATE_EXTRA_ARGS[@]}" \
     --exclude='.venv' \
     --exclude='.env' \
     --exclude='.env.*' \
+    --exclude='._*' \
+    --exclude='*/._*' \
     --exclude='.pytest_cache' \
     --exclude='__pycache__' \
     --exclude='sau-debug-snapshots' \
