@@ -107,7 +107,8 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       title: "制作",
       items: [
         { icon: Megaphone, label: "我的项目", href: "/projects", selected: isExact("/projects") },
-        { icon: Video, label: "视频中心", href: "/library", selected: isExact("/library"), badge: 4 },
+        // v0.44+：「视频库」聚合三类成片（明星视频 / 脚本视频 / 混剪成片），只读浏览。
+        { icon: Video, label: "视频库", href: "/library", selected: isExact("/library") },
         { icon: ShoppingBag, label: "商品库", href: "/products", selected: isExact("/products") },
         {
           icon: Scissors,
@@ -153,7 +154,7 @@ function CrumbsFromPathname(pathname: string): string[] {
     "/market": "明星市场",
     "/generate": "快速生成",
     "/projects": "我的项目",
-    "/library": "视频中心",
+    "/library": "视频库",
     "/products": "商品库",
     "/data": "数据中心",
     "/mixcut": "混剪工作台",

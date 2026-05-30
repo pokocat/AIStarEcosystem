@@ -434,9 +434,9 @@ export function DistributeWorkbench({ fromJobId }: Props) {
           <p>· 同一条视频可多次分发到不同账号 / 时段，已分发的会标「已分发 ×N」。</p>
           <p>· 想分期铺开？分发抽屉支持「每天分 N 次发」。</p>
           <p>
-            · 想管理已生成的视频？去
-            <Link href="/mixcut/library?tab=videos" className="text-violet-600 underline mx-1">视频库</Link>
-            可以批量删除。
+            · 想浏览已生成的视频？去
+            <Link href="/library?source=mixcut" className="text-violet-600 underline mx-1">视频库</Link>
+            汇总查看。
           </p>
           <p>
             · 没绑过账号？先到 <Link href="/distribution/accounts" className="text-violet-600 underline">账号管理</Link> 绑定。

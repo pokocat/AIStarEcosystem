@@ -28,20 +28,18 @@ import { MixcutApi, ProductsApi } from "@/api";
 import type {
   MixcutAsset,
   MixcutAssetKind,
-  RenderJob,
-  RenderOutput,
 } from "@/components/mixcut-zone/types";
 import type { Product } from "@ai-star-eco/types/product";
 import { formatDuration, relativeTime, formatBytes } from "@/components/mixcut-zone/lib/utils";
 import { useConfirm } from "@/components/common/confirm-dialog";
 
-type TopTab = "assets" | "products" | "videos" | "official";
+type TopTab = "assets" | "products" | "official";
 
-// v0.21+: 顶层三分区
+// 混剪素材库：只放制作素材，不放成片视频。
 //   - assets   我的素材  ← 自己上传的视频 / 商品图 / 贴图 / 背景音乐
-//   - videos   我的视频  ← 已生成的混剪成片（可软删 30 天）
+//   - products 商品素材  ← 按商品分组列 relatedProductId 非空的 MixcutAsset
 //   - official 官方明星片段  ← 后台运营上传的直播切片等（只读消费）
-// v0.28+: 加 products  商品素材  ← 按商品分组列 relatedProductId 非空的 MixcutAsset
+// 成片视频（混剪成片）已迁到一级「视频库」(/library?source=mixcut)；?tab=videos 旧链自动跳转。
 export default function MixcutLibraryPage() {
   return (
     <Suspense
@@ -59,12 +57,18 @@ export default function MixcutLibraryPage() {
 function LibraryShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = (searchParams?.get("tab") as TopTab) ?? "assets";
-  const [topTab, setTopTab] = useState<TopTab>(
-    initialTab === "videos" || initialTab === "official" || initialTab === "products"
-      ? initialTab
-      : "assets",
-  );
+  const rawTab = searchParams?.get("tab");
+
+  // 旧深链兼容：成片视频已迁到一级「视频库」。?tab=videos → 跳转。
+  useEffect(() => {
+    if (rawTab === "videos") {
+      router.replace("/library?source=mixcut");
+    }
+  }, [rawTab, router]);
+
+  const initialTab: TopTab =
+    rawTab === "official" || rawTab === "products" ? rawTab : "assets";
+  const [topTab, setTopTab] = useState<TopTab>(initialTab);
 
   const handleTabChange = (v: TopTab) => {
     setTopTab(v);
@@ -78,9 +82,12 @@ function LibraryShell() {
   return (
     <div className="px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">我的混剪库</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">混剪素材库</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          管理自己上传的素材、生成的视频，以及平台提供的官方明星片段
+          管理自己上传的素材、商品素材，以及平台提供的官方明星片段。
+          <Link href="/library?source=mixcut" className="ml-1 text-violet-600 hover:underline">
+            找已生成的成片？前往视频库 →
+          </Link>
         </p>
       </div>
 
@@ -88,7 +95,6 @@ function LibraryShell() {
         <TabsList>
           <TabsTrigger value="assets">我的素材</TabsTrigger>
           <TabsTrigger value="products">商品素材</TabsTrigger>
-          <TabsTrigger value="videos">我的视频</TabsTrigger>
           <TabsTrigger value="official">官方明星片段</TabsTrigger>
         </TabsList>
 
@@ -97,9 +103,6 @@ function LibraryShell() {
         </TabsContent>
         <TabsContent value="products">
           <ProductAssetsTab />
-        </TabsContent>
-        <TabsContent value="videos">
-          <MyVideosTab />
         </TabsContent>
         <TabsContent value="official">
           <OfficialClipsTab />
@@ -445,220 +448,6 @@ function VideoThumb({ asset }: { asset: MixcutAsset }) {
         </>
       )}
     </div>
-  );
-}
-
-// ── 我的视频 tab：展示已生成的混剪成片，支持软删 ───────────────────────────
-
-type EligibleOutput = RenderOutput & {
-  cdn_url?: string;
-  cdn_thumbnail_url?: string;
-  publish_count?: number;
-};
-
-interface VideoItem {
-  jobId: string;
-  templateName: string;
-  output: EligibleOutput;
-}
-
-function MyVideosTab() {
-  const [jobs, setJobs] = useState<RenderJob[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const { confirm, ConfirmHost } = useConfirm();
-
-  const load = async () => {
-    try {
-      const list = await MixcutApi.listJobs();
-      setJobs(list ?? []);
-      setError(null);
-    } catch (e: any) {
-      setError(e?.message ?? "加载失败");
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const items: VideoItem[] = (() => {
-    if (!jobs) return [];
-    const result: VideoItem[] = [];
-    for (const j of jobs) {
-      if (j.status !== "success") continue;
-      const outs = (j.outputs ?? []) as EligibleOutput[];
-      for (const o of outs) {
-        // 仅展示渲染完成的（含未上传 CDN 的也允许删除）
-        if (!o.file_url && !o.cdn_url) continue;
-        result.push({
-          jobId: j.id,
-          templateName: j.template_name ?? j.template_id,
-          output: o,
-        });
-      }
-    }
-    result.sort((a, b) => {
-      const ta = new Date(a.output.created_at).getTime();
-      const tb = new Date(b.output.created_at).getTime();
-      return tb - ta;
-    });
-    return result;
-  })();
-
-  const filtered = items.filter((it) => {
-    const ql = search.trim().toLowerCase();
-    if (!ql) return true;
-    return (
-      it.templateName.toLowerCase().includes(ql) ||
-      it.jobId.toLowerCase().includes(ql)
-    );
-  });
-
-  const handleDelete = async (outputId: string) => {
-    if (deletingId) return;
-    const ok = await confirm({
-      title: "删除这条视频？",
-      description: (
-        <>
-          <p>删除后 30 天内可联系客服恢复，30 天后将自动清理。</p>
-          <p className="text-muted-foreground/80 mt-1">已分发的历史任务不受影响。</p>
-        </>
-      ),
-      confirmText: "删除",
-      tone: "danger",
-    });
-    if (!ok) return;
-    setDeletingId(outputId);
-    try {
-      await MixcutApi.deleteOutput(outputId);
-      await load();
-    } catch (e: any) {
-      setError(e?.message ?? "删除失败");
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  if (jobs === null && !error) {
-    return (
-      <Card className="mt-4">
-        <CardContent className="p-12 text-center text-muted-foreground text-sm">
-          <Loader2 className="size-6 animate-spin mx-auto mb-2 text-violet-500" />
-          加载中…
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4 mt-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-xs text-muted-foreground">
-          共 <span className="font-mono text-foreground">{filtered.length}</span> 条已生成视频；删除后 30 天内可恢复
-        </div>
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索模板 / 任务名…"
-            className="pl-9 h-9"
-          />
-        </div>
-      </div>
-
-      {error && (
-        <Card className="border-red-500/30 bg-red-500/[0.04]">
-          <CardContent className="p-3 flex items-center gap-2 text-sm text-red-500">
-            <AlertCircle className="size-4 shrink-0" /> {error}
-          </CardContent>
-        </Card>
-      )}
-
-      {filtered.length === 0 && !error ? (
-        <Card className="border-dashed">
-          <CardContent className="p-12 text-center text-muted-foreground text-sm">
-            <Sparkles className="size-6 mx-auto mb-2 text-zinc-400" />
-            还没有已生成的视频。先去模板库挑一个模板，生成一批吧。
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map((it) => (
-            <VideoCard
-              key={it.output.id}
-              item={it}
-              deleting={deletingId === it.output.id}
-              onDelete={() => handleDelete(it.output.id)}
-            />
-          ))}
-        </div>
-      )}
-      <ConfirmHost />
-    </div>
-  );
-}
-
-function VideoCard({
-  item,
-  deleting,
-  onDelete,
-}: {
-  item: VideoItem;
-  deleting: boolean;
-  onDelete: () => void;
-}) {
-  const thumb = item.output.cdn_thumbnail_url || item.output.thumbnail_url;
-  const publishCount = item.output.publish_count ?? 0;
-  return (
-    <Card className="overflow-hidden group hover:border-foreground/30 transition-colors">
-      <div className="relative aspect-[9/16] bg-secondary/40">
-        {thumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumb} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 grid place-items-center text-muted-foreground text-xs">
-            无预览
-          </div>
-        )}
-        <div className="absolute top-1.5 left-1.5">
-          <span className="text-[10px] font-mono bg-black/65 text-white px-1.5 py-0.5 rounded">
-            第 {item.output.variant_index + 1} 条
-          </span>
-        </div>
-        {publishCount > 0 && (
-          <div className="absolute top-1.5 right-1.5">
-            <span className="text-[10px] bg-emerald-500/85 text-white px-1.5 py-0.5 rounded">
-              已分发 ×{publishCount}
-            </span>
-          </div>
-        )}
-      </div>
-      <CardContent className="p-3 space-y-1.5">
-        <div className="flex items-start gap-2">
-          <div className="text-sm font-medium line-clamp-1 flex-1" title={item.templateName}>
-            {item.templateName}
-          </div>
-          <button
-            onClick={onDelete}
-            disabled={deleting}
-            className="size-6 rounded grid place-items-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50"
-            title="删除视频"
-          >
-            {deleting ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="size-3.5" />
-            )}
-          </button>
-        </div>
-        <div className="text-[10px] text-muted-foreground">
-          {relativeTime(item.output.created_at)}
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
