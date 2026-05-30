@@ -223,6 +223,10 @@ public class PublishJobService {
             writeEvent(job.getId(), "transition", null, PublishJobStatus.QUEUED, 0, "queued");
             created.add(job);
         }
+        log.info("[publish] batch queued user={} projectId={} jobs={} targets={} titleLength={} hasProduct={}",
+                userId, projectId, created.size(), input.targets().size(),
+                input.title() == null ? 0 : input.title().length(),
+                input.productLink() != null && !input.productLink().isBlank());
         return created.stream().map(PublishJobDto::from).toList();
     }
 
@@ -232,6 +236,8 @@ public class PublishJobService {
     public PublishJobDto startJob(String userId, String jobId) {
         PublishJob job = jobRepo.findByIdAndUserId(jobId, userId)
                 .orElseThrow(() -> BusinessException.notFound("PUBLISH_JOB_NOT_FOUND", "发布任务不存在"));
+        log.info("[publish] start requested user={} jobId={} status={} platform={} accountId={}",
+                userId, jobId, job.getStatus().wire(), platformWire(job), job.getSocialAccountId());
         if (job.getStatus() != PublishJobStatus.QUEUED) {
             throw new BusinessException(HttpStatus.CONFLICT, "JOB_NOT_QUEUED",
                     "仅 queued 任务可启动，当前 status=" + job.getStatus().wire());
@@ -304,6 +310,11 @@ public class PublishJobService {
             if (taskId != null) {
                 job.setExternalTaskId(taskId);
                 jobRepo.save(job);
+                log.info("[publish] dispatched jobId={} externalTaskId={} platform={} accountId={} cost={}",
+                        job.getId(), taskId, platformWire(job), account.getId(), cost);
+            } else {
+                log.warn("[publish] dispatched without externalTaskId jobId={} platform={} accountId={}",
+                        job.getId(), platformWire(job), account.getId());
             }
         } catch (BusinessException e) {
             // v0.33+: sau-service 调用失败 → 任务标 FAILED + 退回 hold（之前是不退款）
@@ -509,6 +520,9 @@ public class PublishJobService {
         jobRepo.save(job);
         writeEvent(job.getId(), "callback", from, to, job.getProgress(),
                 cb.errorMessage() != null ? cb.errorMessage() : cb.externalUrl());
+        log.info("[publish] callback applied jobId={} externalTaskId={} from={} to={} progress={} errorCode={} externalUrlPresent={}",
+                job.getId(), cb.externalTaskId(), from.wire(), to.wire(), job.getProgress(),
+                cb.errorCode(), cb.externalUrl() != null && !cb.externalUrl().isBlank());
     }
 
     private boolean isCookieInvalidUploadError(PublishJobCallbackDto cb) {
@@ -570,6 +584,10 @@ public class PublishJobService {
         return s.length() > 40 ? s.substring(0, 40) + "..." : s;
     }
 
+    private static String platformWire(PublishJob job) {
+        return job == null || job.getPlatform() == null ? null : job.getPlatform().wire();
+    }
+
     private static final com.fasterxml.jackson.databind.ObjectMapper INTERACTION_OM =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -613,6 +631,8 @@ public class PublishJobService {
             throw BusinessException.badRequest("INTERACTION_CODE_BLANK", "验证码不能为空");
         }
         sau.submitInteraction(job.getExternalTaskId(), code.trim());
+        log.info("[publish] interaction submitted user={} jobId={} externalTaskId={}",
+                userId, jobId, job.getExternalTaskId());
         // sau-service 接受后会异步：fill page → callback 回 PUBLISHING/UPLOADING
         // 这里返回当前 DTO（仍是 AWAITING_USER），前端会轮询拿到更新。
         return PublishJobDto.from(job);
@@ -634,6 +654,8 @@ public class PublishJobService {
         writeEvent(job.getId(), "transition", from, PublishJobStatus.CANCELLED, job.getProgress(), "user cancel");
         // v0.33+: 用户取消 → 退回 hold（已扣过的部分 commit 不动；未消费部分退回原桶）
         releaseHoldOnFailure(job, "用户取消分发任务");
+        log.info("[publish] canceled user={} jobId={} from={} externalTaskId={}",
+                userId, jobId, from.wire(), job.getExternalTaskId());
 
         // best-effort 通知 sau-service；不阻塞用户
         if (job.getExternalTaskId() != null) {
@@ -663,6 +685,7 @@ public class PublishJobService {
         job.setExternalTaskId(null);
         jobRepo.save(job);
         writeEvent(job.getId(), "transition", from, PublishJobStatus.QUEUED, 0, "retry");
+        log.info("[publish] retry user={} jobId={} from={}", userId, jobId, from.wire());
         return startJob(userId, jobId);
     }
 

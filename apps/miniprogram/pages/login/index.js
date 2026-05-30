@@ -53,35 +53,53 @@ Page({
     this.setData({ canSubmit: codeOk && phoneOk && smsOk && agreed });
   },
 
-  sendSms() {
+  async sendSms() {
     if (this.data.cooldown > 0) return;
     if (!/^1\d{10}$/.test(this.data.form.phone)) {
       wx.showToast({ icon: "none", title: "请输入正确的手机号" });
       return;
     }
-    this.setData({ cooldown: 60 });
-    smsTimer = setInterval(() => {
-      const next = this.data.cooldown - 1;
-      if (next <= 0) {
-        clearInterval(smsTimer); smsTimer = null;
-        this.setData({ cooldown: 0 });
-      } else {
-        this.setData({ cooldown: next });
-      }
-    }, 1000);
-    wx.showToast({ icon: "none", title: "验证码已发送（mock）" });
+    wx.showLoading({ title: "发送中…", mask: true });
+    try {
+      await AuthApi.smsRequestCode(this.data.form.phone);
+      wx.hideLoading();
+      this.setData({ cooldown: 60 });
+      smsTimer = setInterval(() => {
+        const next = this.data.cooldown - 1;
+        if (next <= 0) {
+          clearInterval(smsTimer); smsTimer = null;
+          this.setData({ cooldown: 0 });
+        } else {
+          this.setData({ cooldown: next });
+        }
+      }, 1000);
+      wx.showToast({ icon: "none", title: "验证码已发送" });
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ icon: "none", title: "发送失败：" + (e.message || "未知错误") });
+    }
   },
 
   async submit() {
     if (!this.data.canSubmit) return;
     wx.showLoading({ title: "激活中…", mask: true });
     try {
-      const r = await AuthApi.activate({
-        activationCode: this.data.form.code,
-        phone: this.data.form.phone,
-        smsCode: this.data.form.sms
+      const phone = this.data.form.phone;
+      const studioName = "带货工作室" + phone.slice(-4);
+      const r = await AuthApi.smsRegister({
+        phone,
+        code: this.data.form.sms,
+        licenseKey: this.data.form.code,
+        studioName,
+        displayName: studioName,
+        platform: "celebrity"
       });
-      app.setAuth({ token: r.token, activationCode: r.activationCode, phone: r.phone });
+      app.setAuth({
+        token: r.token,
+        activationCode: this.data.form.code,
+        phone,
+        user: r.user
+      });
       wx.hideLoading();
       // 平台坑：登录页是 navigateTo 进来；进入 tabBar 必须用 switchTab。详见 agent.md「路由」
       wx.switchTab({ url: "/pages/messages/index" });

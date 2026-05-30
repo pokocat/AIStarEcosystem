@@ -64,6 +64,19 @@ public class AepUser {
     @Column(length = 32)
     private OperatorRole operatorRole;
 
+    /**
+     * v0.43+: 该账号可访问的子产品平台（CSV，如 {@code "music,drama,celebrity"}）。
+     *
+     * - 空 / null（历史账号或未显式配置）→ 视为全部可访问（见 {@code PlatformSupport.effective}），
+     *   避免老账号被锁在门外。
+     * - 注册时由 {@code PlatformAccessService} 决定授予哪些：开发态全授予；生产态按注册来源授予。
+     *
+     * 真正的访问拦截在各子产品前端（按 /api/me 返回的 platforms 判断），后端不做逐接口隔离
+     * —— 用户私有数据本身已按 ownerUserId 严格隔离。
+     */
+    @Column(length = 128)
+    private String platforms;
+
     private boolean emailVerified;
     private boolean phoneVerified;
     private String langPreference;

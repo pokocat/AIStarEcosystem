@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # infra/scripts/dev-server.sh — 本机 server 启动 wrapper
 #
-# 默认连本机 MySQL（localhost:3306, root/root, 库 aistareco）+ 注入 dev 弱密钥 +
+# 默认连本机 MySQL（localhost:3306, root/空密码, 库 aistareco）+ 注入 dev 弱密钥 +
 # 跑 mvn spring-boot:run mysql profile。脚本会：
 #   1. 检查 mysql client 是否装
 #   2. 检查 MySQL 服务是否在跑（mysqladmin ping）
@@ -18,7 +18,7 @@
 #   ./infra/scripts/dev-server.sh --mysql-host HOST    # 默认 localhost
 #   ./infra/scripts/dev-server.sh --mysql-port N       # 默认 3306
 #   ./infra/scripts/dev-server.sh --mysql-user U       # 默认 root
-#   ./infra/scripts/dev-server.sh --mysql-pass P       # 默认 root
+#   ./infra/scripts/dev-server.sh --mysql-pass P       # 默认空密码
 #   ./infra/scripts/dev-server.sh --skip-mysql         # 假设已就绪，跳过所有 mysql 检查
 #   ./infra/scripts/dev-server.sh --repair-flyway      # 清 flyway_schema_history 里的失败记录
 #   ./infra/scripts/dev-server.sh --log                # 日志同步写 logs/server-<timestamp>.log
@@ -100,12 +100,16 @@ case "$MODE" in
     mysql_exec() {
       local sql="$1"
       local err
-      if ! err=$(mysql --connect-timeout=5 \
-                       -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" \
-                       -u "${MYSQL_USER}" -p"${MYSQL_PASS}" \
+      local mysql_args=(--connect-timeout=5 -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}")
+      local pass_display=""
+      if [[ -n "${MYSQL_PASS}" ]]; then
+        mysql_args+=(-p"${MYSQL_PASS}")
+        pass_display=" -p***"
+      fi
+      if ! err=$(mysql "${mysql_args[@]}" \
                        -e "${sql}" 2>&1); then
-        printf "${R}  ✗ mysql 命令失败:${N}\n  $ mysql -h %s -P %s -u %s -p*** -e %q\n  → %s\n" \
-          "${MYSQL_HOST}" "${MYSQL_PORT}" "${MYSQL_USER}" "${sql}" "${err}" >&2
+        printf "${R}  ✗ mysql 命令失败:${N}\n  $ mysql -h %s -P %s -u %s%s -e %q\n  → %s\n" \
+          "${MYSQL_HOST}" "${MYSQL_PORT}" "${MYSQL_USER}" "${pass_display}" "${sql}" "${err}" >&2
         return 1
       fi
       return 0
@@ -118,7 +122,7 @@ case "$MODE" in
       die "MySQL 连不上或认证失败。常见原因：
    - 服务未启动:  macOS  brew services start mysql
                   Linux  systemctl start mysql
-   - 密码不对:    --mysql-pass <真实密码>（默认是 root）
+   - 密码不对:    --mysql-pass <真实密码>（默认空密码）
                   或重置 root 密码：mysqladmin -uroot password 'root'
    - 用户不存在:  --mysql-user <user>
    - 改用 docker: --docker      改用 H2: --h2"
@@ -255,7 +259,11 @@ echo "${Y}  ✓ http://localhost:8080/api/auth/dev-accounts  ← 看演示账号
 [[ "${PROFILE}" == "dev" ]] && \
 echo "${Y}  ✓ http://localhost:8080/h2-console             ← H2 GUI${N}"
 [[ "${PROFILE}" == "mysql" && "${MODE}" == "native" ]] && \
-echo "${Y}  ✓ mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u ${MYSQL_USER} -p ${MYSQL_DB}${N}"
+if [[ -n "${MYSQL_PASS}" ]]; then
+  echo "${Y}  ✓ mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u ${MYSQL_USER} -p ${MYSQL_DB}${N}"
+else
+  echo "${Y}  ✓ mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u ${MYSQL_USER} ${MYSQL_DB}${N}"
+fi
 [[ "${PROFILE}" == "mysql" && "${MODE}" == "docker" ]] && \
 echo "${Y}  ✓ docker logs -f ${DOCKER_CONTAINER}             ← MySQL 容器日志${N}"
 [[ -n "${LOG_FILE}" ]] && \

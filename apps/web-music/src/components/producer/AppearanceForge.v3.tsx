@@ -173,27 +173,10 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
   const [forgingStatus, setForgingStatus] = useState<ForgingStatus>("idle");
   const [conversation, setConversation] = useState<ConversationTurn[]>(() => [
     {
-      id: "seed-1",
+      id: "seed-welcome",
       role: "assistant",
       at: "--:--",
-      text: "已应用「霓虹偶像」模版 + 参考照片 50:50 融合。建议：试试「机械义体」或调整颧骨。",
-    },
-    {
-      id: "seed-2",
-      role: "user",
-      at: "--:--",
-      text: "让下颌再收一点，加个右颧的机械义体",
-    },
-    {
-      id: "seed-3",
-      role: "assistant",
-      at: "--:--",
-      text: "已调下颌 -0.44，添加右颧义体配件。",
-      actions: [
-        { label: "确认锻造", primary: true },
-        { label: "再激进些" },
-        { label: "撤回" },
-      ],
+      text: "在左侧选好参考与设定后点「开始锻造」，我会生成一版完整的形象方案；也可以直接在下面告诉我你的想法，我们一起来打磨。",
     },
   ]);
   const [dockTab, setDockTab] = useState<"chat" | "history" | "log">("chat");
@@ -238,8 +221,8 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
       .catch((err: unknown) => {
         if (!cancelled) setProviderStatus({
           configured: false,
-          provider: "coze",
-          message: (err as Error).message || "Coze 状态获取失败",
+          provider: "none",
+          message: (err as Error).message || "形象锻造暂时不可用，请稍后再试",
         });
       })
       .finally(() => { if (!cancelled) setProviderLoading(false); });
@@ -393,8 +376,8 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
 
     appendStreamNote(
       providerStatus?.provider === "mock"
-        ? "当前使用本地 mock 流式回放"
-        : "后端已接管请求，正在通过 Coze 官方 SDK 创建会话",
+        ? "演示模式：正在本地生成形象方案"
+        : "正在调用平台大模型生成形象方案",
       "info",
     );
 
@@ -429,7 +412,7 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
               if (event.data.imageUrl) {
                 setCanvasPreview(event.data.imageUrl);
                 setGeneratedImageUrl(event.data.imageUrl);
-                appendStreamNote("已收到 Coze 返回的形象图片链接", "success");
+                appendStreamNote("已收到生成的形象图片", "success");
               }
               return;
             }
@@ -472,7 +455,7 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
         setActiveHistoryId(nextVersion.id);
       }
     } catch (error) {
-      const message = (error as Error).message || "Coze 流式请求失败";
+      const message = (error as Error).message || "形象方案生成失败，请稍后重试";
       setForgingStatus(controller.signal.aborted ? "aborted" : "error");
       appendStreamNote(message, "error");
     } finally {
@@ -481,14 +464,77 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
     }
   };
 
-  const handleSend = () => {
+  // 聊天追问：把用户的自由文本（带上当前方案上下文）发给大模型，流式回写到一条助手气泡里。
+  const handleSend = async () => {
     const text = composer.trim();
-    if (!text) return;
+    if (!text || generating) return;
+    if (!providerLoading && providerStatus && !providerStatus.configured) {
+      appendStreamNote(providerStatus.message, "error");
+      setDockTab("log");
+      return;
+    }
     pushUser(text);
     setComposer("");
-    setTimeout(() => {
-      pushAssistant(`已记录指令：${text}\n将在下一次「开始锻造」时合并到提示词中。`);
-    }, 280);
+
+    // 上下文：带上最近一版完整方案，让模型在已有方案上迭代（后端无会话记忆）。
+    const lastPlan = [...conversation].reverse().find(
+      t => t.role === "assistant" && t.text.trim().length > 40,
+    )?.text;
+    const chatPrompt = [
+      `你正在和「${activeArtist.name}」的形象锻造顾问对话。`,
+      lastPlan ? `当前形象方案如下：\n${lastPlan}` : null,
+      `用户的新要求：${text}`,
+      "请基于以上给出更新后的形象建议，中文、简明可执行，必要时说明改了哪里。",
+    ].filter(Boolean).join("\n\n");
+
+    const assistantId = `a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setConversation(prev => [
+      ...prev,
+      { id: assistantId, role: "assistant", text: "", at: nowHHmm(0) },
+    ]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setGenerating(true);
+    try {
+      await AppearanceForgeApi.streamForgeConversation(
+        { artistId: activeArtist.id, prompt: chatPrompt },
+        {
+          signal: controller.signal,
+          onEvent: event => {
+            if (event.event === "delta") {
+              setConversation(prev =>
+                prev.map(t => (t.id === assistantId ? { ...t, text: event.data.reply } : t)));
+            } else if (event.event === "message" || event.event === "completed") {
+              const content = event.data.content;
+              if (content) {
+                setConversation(prev =>
+                  prev.map(t => (t.id === assistantId ? { ...t, text: content } : t)));
+              }
+            } else if (event.event === "error") {
+              appendStreamNote(event.data.message, "error");
+            }
+          },
+        },
+      );
+      // 兜底：若没有任何 delta（极少见），给一句占位，避免空气泡。
+      setConversation(prev =>
+        prev.map(t =>
+          t.id === assistantId && !t.text.trim()
+            ? { ...t, text: "这次没有生成有效内容，请换个说法再试一次。" }
+            : t,
+        ));
+    } catch (error) {
+      const message = (error as Error).message || "回复生成失败，请稍后重试";
+      setConversation(prev =>
+        prev.map(t =>
+          t.id === assistantId && !t.text.trim() ? { ...t, text: `（${message}）` } : t,
+        ));
+      appendStreamNote(message, "error");
+    } finally {
+      abortRef.current = null;
+      setGenerating(false);
+    }
   };
 
   const handleQuickRefine = (tag: string) => {
@@ -518,10 +564,10 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
           {providerLoading
             ? "检测中"
             : providerStatus?.provider === "mock"
-              ? "Mock Stream"
+              ? "演示模式"
               : providerStatus?.configured
-                ? "Coze Live"
-                : "Coze 未配置"}
+                ? "已接入大模型"
+                : "大模型未配置"}
         </Badge>
       </div>
 
@@ -931,7 +977,7 @@ export const AppearanceForgeV3: React.FC<Props> = ({ activeArtist, onArtistAvata
             <TabsContent value="log" className="flex-1 min-h-0 m-0 overflow-y-auto px-3 py-3">
               {streamNotes.length === 0 ? (
                 <p className="text-xs text-muted-foreground px-1 py-4">
-                  尚未开始会话。点击「开始锻造」后，Coze 事件会按时序记录在此。
+                  尚未开始会话。点击「开始锻造」后，生成过程会按时序记录在此。
                 </p>
               ) : (
                 <div className="space-y-1.5">

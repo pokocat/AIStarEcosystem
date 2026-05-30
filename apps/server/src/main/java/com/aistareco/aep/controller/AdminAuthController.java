@@ -7,6 +7,8 @@ import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.repository.AdminUserRepository;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.common.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +27,8 @@ import java.util.Map;
 @RequestMapping("/api/admin/auth")
 public class AdminAuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminAuthController.class);
+
     private final AdminUserRepository adminUserRepo;
     private final AepUserRepository aepUserRepo;
     private final PasswordEncoder passwordEncoder;
@@ -42,22 +46,32 @@ public class AdminAuthController {
 
     @PostMapping("/login")
     public ApiResponse<Map<String, Object>> login(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
+        String username = body == null ? null : body.get("username");
+        String password = body == null ? null : body.get("password");
 
         if (username == null || password == null) {
+            log.warn("[admin-login] rejected missing-field usernamePresent={} passwordPresent={}",
+                    username != null, password != null);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "用户名和密码不能为空");
         }
 
-        AdminUser admin = adminUserRepo.findByUsername(username)
-                .or(() -> adminUserRepo.findByEmail(username))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误"));
+        String loginName = username.trim();
+        AdminUser admin = adminUserRepo.findByUsername(loginName)
+                .or(() -> adminUserRepo.findByEmail(loginName))
+                .orElse(null);
+        if (admin == null) {
+            log.warn("[admin-login] miss username={}", loginName);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+        }
 
         if (admin.getPasswordHash() == null || !passwordEncoder.matches(password, admin.getPasswordHash())) {
+            log.warn("[admin-login] bad-password adminId={} username={}", admin.getId(), admin.getUsername());
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
         }
 
         if (admin.getStatus() != AdminUser.AdminStatus.ACTIVE) {
+            log.warn("[admin-login] inactive adminId={} username={} status={}",
+                    admin.getId(), admin.getUsername(), admin.getStatus());
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户已被停用");
         }
 
@@ -65,6 +79,8 @@ public class AdminAuthController {
         adminUserRepo.save(admin);
 
         String token = jwtUtil.generateToken(admin.getId(), admin.getUsername(), admin.getRole().name());
+        log.info("[admin-login] success adminId={} username={} role={}",
+                admin.getId(), admin.getUsername(), admin.getRole());
 
         return ApiResponse.of(Map.of(
                 "token", token,

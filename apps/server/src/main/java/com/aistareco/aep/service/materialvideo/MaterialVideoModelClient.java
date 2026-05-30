@@ -80,6 +80,9 @@ public class MaterialVideoModelClient {
         }
 
         URI uri = URI.create(rstrip(p.getBaseUrl(), "/") + props.getSubmitPath());
+        long startNanos = System.nanoTime();
+        log.info("[material-video] submit start endpoint={} model={} durationSec={} aspectRatio={} promptLength={}",
+                p.getName(), model, durationSec, aspectRatio, prompt == null ? 0 : prompt.length());
         try {
             HttpRequest req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
@@ -89,6 +92,8 @@ public class MaterialVideoModelClient {
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.warn("[material-video] submit http-error endpoint={} model={} status={} durationMs={} body={}",
+                        p.getName(), model, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                         "视频生成提交失败（端点 " + p.getName() + "，HTTP " + resp.statusCode() + "）："
                                 + snippet(resp.body()));
@@ -100,14 +105,19 @@ public class MaterialVideoModelClient {
                 if (data != null) taskId = firstText(data, "id", "task_id", "request_id", "taskId");
             }
             if (taskId == null || taskId.isBlank()) {
+                log.warn("[material-video] submit missing-task-id endpoint={} model={} durationMs={} body={}",
+                        p.getName(), model, elapsedMs(startNanos), snippet(resp.body()));
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                         "视频生成提交成功但未解析到任务 id（端点 " + p.getName() + "）：" + snippet(resp.body()));
             }
-            log.info("[material-video] submit ok endpoint={} model={} taskId={}", p.getName(), model, taskId);
+            log.info("[material-video] submit ok endpoint={} model={} taskId={} durationMs={}",
+                    p.getName(), model, taskId, elapsedMs(startNanos));
             return new SubmitResult(taskId, p.getName(), model);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
+            log.warn("[material-video] submit exception endpoint={} model={} durationMs={} err={}",
+                    p.getName(), model, elapsedMs(startNanos), e.toString());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                     "视频生成提交异常（端点 " + p.getName() + "）：" + e.getMessage());
         }
@@ -119,6 +129,7 @@ public class MaterialVideoModelClient {
         String apiKey = requireKey(p);
         String path = props.getPollPathTemplate().replace("{id}", taskId);
         URI uri = URI.create(rstrip(p.getBaseUrl(), "/") + path);
+        long startNanos = System.nanoTime();
         try {
             HttpRequest req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
@@ -127,6 +138,8 @@ public class MaterialVideoModelClient {
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.warn("[material-video] poll http-error endpoint={} taskId={} status={} durationMs={} body={}",
+                        p.getName(), taskId, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
                         "视频任务轮询失败（HTTP " + resp.statusCode() + "）：" + snippet(resp.body()));
             }
@@ -139,10 +152,16 @@ public class MaterialVideoModelClient {
             String status = normalizeStatus(rawStatus);
             String videoUrl = extractVideoUrl(root);
             String thumb = extractThumb(root);
+            if (!"processing".equals(status)) {
+                log.info("[material-video] poll terminal endpoint={} taskId={} status={} rawStatus={} hasVideo={} durationMs={}",
+                        p.getName(), taskId, status, rawStatus, videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
+            }
             return new PollResult(status, videoUrl, thumb, rawStatus);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
+            log.warn("[material-video] poll exception endpoint={} taskId={} durationMs={} err={}",
+                    p.getName(), taskId, elapsedMs(startNanos), e.toString());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
                     "视频任务轮询异常：" + e.getMessage());
         }
@@ -254,6 +273,10 @@ public class MaterialVideoModelClient {
     private static String snippet(String body) {
         if (body == null) return "";
         return body.length() > 300 ? body.substring(0, 300) + "…" : body;
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 
     // ── 结果记录 ────────────────────────────────────────────────────────────────

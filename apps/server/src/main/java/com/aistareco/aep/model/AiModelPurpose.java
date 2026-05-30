@@ -15,6 +15,8 @@ public enum AiModelPurpose {
     SAFETY_REVIEW,          // 风控复检（敏感词 / 政策合规）
     VIDEO_REF_ANALYSIS,     // 视频参考分析（v0.6 自动抽帧用）
     TEMPLATE_REWRITE,       // 现有 prompt 改写
+    APPEARANCE_FORGE,       // 形象锻造对话（music/drama 形象顾问；流式 chat，见 ForgeChatService）
+    DRAMA_SCRIPT_DRAFT,     // 短剧脚本起草（drama 短剧生成；分场景 + 分镜 + 台词，见 DramaScriptService）
     GENERAL;                // 通用兜底
 
     @JsonValue
@@ -32,6 +34,8 @@ public enum AiModelPurpose {
             case SAFETY_REVIEW -> "风控复检";
             case VIDEO_REF_ANALYSIS -> "视频参考分析";
             case TEMPLATE_REWRITE -> "模板改写";
+            case APPEARANCE_FORGE -> "形象锻造对话";
+            case DRAMA_SCRIPT_DRAFT -> "短剧脚本起草";
             case GENERAL -> "通用";
         };
     }

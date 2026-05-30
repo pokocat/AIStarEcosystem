@@ -15,7 +15,7 @@ import type { LicenseRedeemRequest, LicenseRedeemResult } from "@ai-star-eco/typ
 import { mockDelay, setAuthToken } from "./_client";
 import { registerMocks } from "./_mock-registry";
 import { MOCK_TENANTS, MOCK_USER, MOCK_WALLET } from "./_mocks";
-import type { DevAccount, DevLoginResult } from "./api/auth";
+import type { DevAccount, DevLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult } from "./api/auth";
 
 registerMocks([
   // ── account ──────────────────────────────────────────────────────────────
@@ -95,6 +95,61 @@ registerMocks([
         ? { ...MOCK_USER, username, displayName: username }
         : MOCK_USER;
       return mockDelay<DevLoginResult>({ token, user });
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/auth/sms/request-code",
+    handler: () => mockDelay({ sent: true }),
+  },
+  {
+    method: "POST",
+    pattern: "/auth/sms/verify",
+    handler: ({ body }) => {
+      const phone = (body as { phone?: string } | undefined)?.phone ?? MOCK_USER.phone;
+      const token = `mock-sms-login-${Date.now()}`;
+      setAuthToken(token);
+      return mockDelay<SmsLoginResult>({
+        token,
+        user: { ...MOCK_USER, phone, phoneVerified: true },
+      });
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/auth/sms/register",
+    handler: ({ body }) => {
+      const req = body as SmsRegisterPayload;
+      const now = new Date().toISOString();
+      const token = `mock-sms-register-${Date.now()}`;
+      setAuthToken(token);
+      const studio = {
+        id: `s-phone-${req.phone.slice(-4)}`,
+        ownerUserId: MOCK_USER.id,
+        name: req.studioName,
+        kind: "personal_creator" as const,
+        status: "active" as const,
+        bio: "",
+        contactPhone: req.phone,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const user: AepUser = {
+        ...MOCK_USER,
+        username: `phone_${req.phone}`,
+        displayName: req.displayName || req.studioName,
+        phone: req.phone,
+        phoneVerified: true,
+        updatedAt: now,
+        lastLoginAt: now,
+        studio,
+      };
+      return mockDelay<SmsRegisterResult>({
+        token,
+        user,
+        studio,
+        tenantId: `t-${studio.id}`,
+      });
     },
   },
 ]);

@@ -8,6 +8,8 @@ import com.aistareco.aep.model.SocialAccountStatus;
 import com.aistareco.aep.model.SocialPlatform;
 import com.aistareco.aep.repository.SocialAccountRepository;
 import com.aistareco.common.BusinessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,8 @@ import java.util.UUID;
  */
 @Service
 public class SocialAccountService {
+
+    private static final Logger log = LoggerFactory.getLogger(SocialAccountService.class);
 
     private final SocialAccountRepository repo;
     private final SocialAccountSecretService secret;
@@ -92,6 +96,8 @@ public class SocialAccountService {
         Optional<SocialAccount> existing = repo.findByUserIdAndPlatformAndAccountName(userId, platform, accountName);
         SocialAccount entity = existing.orElse(null);
         if (entity != null && entity.getStatus() == SocialAccountStatus.ACTIVE) {
+            log.warn("[social-account] bind-init blocked active user={} platform={} accountId={} alias={}",
+                    userId, platform.wire(), entity.getId(), accountName);
             throw new BusinessException(HttpStatus.CONFLICT, "ACCOUNT_ALREADY_ACTIVE",
                     "该账号别名已被一个有效账号占用，请先解绑或换一个别名");
         }
@@ -122,6 +128,8 @@ public class SocialAccountService {
         Instant expiresAt = parseInstantOrNull(sauResp.get("expiresAt"));
         if (expiresAt == null) expiresAt = Instant.now().plusSeconds(300);
 
+        log.info("[social-account] bind-init user={} platform={} accountId={} alias={} alreadyLoggedIn={} expiresAt={}",
+                userId, platform.wire(), entity.getId(), accountName, alreadyLoggedIn, expiresAt);
         return new SocialAccountBindInitDto(ticket, qrImageDataUrl, qrUrl, alreadyLoggedIn, expiresAt);
     }
 
@@ -150,12 +158,20 @@ public class SocialAccountService {
             case "awaiting_user":
                 @SuppressWarnings("unchecked")
                 Map<String, Object> interaction = (Map<String, Object>) sauResp.get("interactionRequired");
+                log.info("[social-account] bind awaiting-user user={} accountId={} platform={} interactionType={}",
+                        userId, entity.getId(), entity.getPlatform().wire(),
+                        interaction == null ? null : stringOrNull(interaction.get("type")));
                 return SocialAccountBindPollResultDto.awaitingUser(interaction);
             case "expired":
+                log.info("[social-account] bind expired user={} accountId={} platform={}",
+                        userId, entity.getId(), entity.getPlatform().wire());
                 return SocialAccountBindPollResultDto.expired();
             case "failed":
                 entity.setStatus(SocialAccountStatus.EXPIRED);
                 repo.save(entity);
+                log.warn("[social-account] bind failed user={} accountId={} platform={} code={} diagnosticId={}",
+                        userId, entity.getId(), entity.getPlatform().wire(),
+                        stringOrNull(sauResp.get("errorCode")), stringOrNull(sauResp.get("diagnosticId")));
                 return SocialAccountBindPollResultDto.failed(
                         stringOrNull(sauResp.get("errorCode")),
                         stringOrNull(sauResp.get("message")),
@@ -179,8 +195,14 @@ public class SocialAccountService {
                 entity.setLastVerifiedAt(Instant.now());
                 applyProfile(entity, profile, true);
                 repo.save(entity);
+                log.info("[social-account] bind success user={} accountId={} platform={} displayNamePresent={} platformAccountIdPresent={}",
+                        userId, entity.getId(), entity.getPlatform().wire(),
+                        entity.getDisplayName() != null && !entity.getDisplayName().isBlank(),
+                        entity.getPlatformAccountId() != null && !entity.getPlatformAccountId().isBlank());
                 return SocialAccountBindPollResultDto.success(SocialAccountDto.from(entity));
             default:
+                log.warn("[social-account] bind unknown-status user={} accountId={} platform={} status={}",
+                        userId, entity.getId(), entity.getPlatform().wire(), status);
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "SAU_UNKNOWN_STATUS",
                         "sau-service 返回未知 status=" + status);
         }
@@ -195,6 +217,7 @@ public class SocialAccountService {
             throw BusinessException.badRequest("INTERACTION_CODE_BLANK", "验证码不能为空");
         }
         sau.loginInteraction(ticket, code.trim());
+        log.info("[social-account] bind interaction submitted user={} ticket={}", userId, ticket);
     }
 
     /**
@@ -215,11 +238,15 @@ public class SocialAccountService {
             sau.loginCancel(ticket);
         } catch (Exception e) {
             // 不阻塞用户：playwright 这边即便没杀掉，sweep_expired 也会 TTL 后兜底
+            log.warn("[social-account] bind cancel sau failed user={} ticket={} err={}",
+                    userId, ticket, e.getMessage());
         }
         repo.findByIdAndUserId(ticket, userId).ifPresent(entity -> {
             if (entity.getStatus() == SocialAccountStatus.PENDING
                     && entity.getStorageStateEncrypted() == null) {
                 repo.delete(entity);
+                log.info("[social-account] bind canceled user={} accountId={} platform={}",
+                        userId, entity.getId(), entity.getPlatform().wire());
             }
         });
     }
@@ -254,6 +281,8 @@ public class SocialAccountService {
             entity.setStatus(SocialAccountStatus.EXPIRED);
         }
         repo.save(entity);
+        log.info("[social-account] verify result user={} accountId={} platform={} valid={} status={}",
+                userId, entity.getId(), entity.getPlatform().wire(), valid, entity.getStatus().wire());
         return SocialAccountDto.from(entity);
     }
 
@@ -263,6 +292,8 @@ public class SocialAccountService {
                 .orElseThrow(() -> BusinessException.notFound("SOCIAL_ACCOUNT_NOT_FOUND",
                         "社交账号不存在"));
         repo.delete(entity);
+        log.info("[social-account] unbound user={} accountId={} platform={}",
+                userId, entity.getId(), entity.getPlatform().wire());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────

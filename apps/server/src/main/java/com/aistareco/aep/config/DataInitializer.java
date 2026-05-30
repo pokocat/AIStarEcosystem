@@ -139,6 +139,7 @@ public class DataInitializer implements CommandLineRunner {
                 .displayName("Luna 个人创作者")
                 .kind(AepUser.AccountKind.STUDIO)
                 .status(AepUser.UserStatus.ACTIVE)
+                .platforms("music,drama,celebrity")
                 .emailVerified(true)
                 .phoneVerified(false)
                 .createdAt(now.minus(7, ChronoUnit.DAYS))
@@ -168,6 +169,7 @@ public class DataInitializer implements CommandLineRunner {
                 .displayName("星光经纪")
                 .kind(AepUser.AccountKind.STUDIO)
                 .status(AepUser.UserStatus.ACTIVE)
+                .platforms("music,drama,celebrity")
                 .emailVerified(true)
                 .phoneVerified(true)
                 .phone("13900139000")
@@ -214,6 +216,7 @@ public class DataInitializer implements CommandLineRunner {
                 .displayName("月升经纪")
                 .kind(AepUser.AccountKind.STUDIO)
                 .status(AepUser.UserStatus.ACTIVE)
+                .platforms("music,drama,celebrity")
                 .emailVerified(true)
                 .phoneVerified(false)
                 .createdAt(now.minus(60, ChronoUnit.DAYS))
@@ -486,8 +489,17 @@ public class DataInitializer implements CommandLineRunner {
         if (existing.isPresent()) {
             // v0.37：老 seed 行可能没有 passwordHash —— 补一次，让 operator-login 能用
             AepUser u = existing.get();
+            boolean dirty = false;
             if (u.getPasswordHash() == null || u.getPasswordHash().isBlank()) {
                 u.setPasswordHash(passwordEncoder.encode("operator123"));
+                dirty = true;
+            }
+            // v0.43：老 seed 行补平台授权（空 → 全平台），让运营账号也能进三端工作台。
+            if (u.getPlatforms() == null || u.getPlatforms().isBlank()) {
+                u.setPlatforms("music,drama,celebrity");
+                dirty = true;
+            }
+            if (dirty) {
                 u.setUpdatedAt(now);
                 userRepo.save(u);
             }
@@ -502,6 +514,7 @@ public class DataInitializer implements CommandLineRunner {
                 .kind(AepUser.AccountKind.STUDIO)
                 .operatorRole(AepUser.OperatorRole.OPERATOR)
                 .status(AepUser.UserStatus.ACTIVE)
+                .platforms("music,drama,celebrity")
                 .emailVerified(true)
                 .createdAt(now.minus(7, ChronoUnit.DAYS))
                 .updatedAt(now)

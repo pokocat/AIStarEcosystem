@@ -19,6 +19,13 @@ export const USE_MOCK: boolean =
   typeof process !== "undefined" &&
   process.env.NEXT_PUBLIC_USE_MOCK === "1";
 
+/** dev-login 入口：生产构建默认隐藏；联调环境可用 NEXT_PUBLIC_ENABLE_DEV_LOGIN=1 显式打开。 */
+export const ENABLE_DEV_LOGIN: boolean =
+  typeof process !== "undefined" &&
+  (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1" ||
+    (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN !== "0" &&
+      process.env.NODE_ENV !== "production"));
+
 /** 后端基础地址，默认 /api（同域反向代理），可通过环境变量覆盖。 */
 export const API_BASE_URL: string =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL) ||

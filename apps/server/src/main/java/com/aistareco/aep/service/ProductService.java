@@ -216,7 +216,10 @@ public class ProductService {
      */
     public String extractSellingPoints(String name, String link) {
         try {
-            return materialAi.extractSellingPoints(name, link);
+            String points = materialAi.extractSellingPoints(name, link);
+            log.info("[products] AI 卖点抽取成功 namePresent={} linkPresent={} pointsLength={}",
+                    !blank(name), !blank(link), points == null ? 0 : points.length());
+            return points;
         } catch (RuntimeException e) {
             log.warn("[products] AI 卖点抽取失败，使用规则兜底：{}", e.getMessage());
             return fallbackSellingPoints(name);

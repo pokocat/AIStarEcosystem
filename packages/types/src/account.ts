@@ -11,6 +11,18 @@ import type { Studio } from "./studio";
 export type AccountKind = "personal" | "studio";
 export type AccountStatus = "active" | "suspended" | "deleted";
 /**
+ * v0.43+: 子产品（三个 web app）。一个账号可被授予其中若干个的访问权（access 隔离）。
+ * 开发阶段「一处注册三端可用」即授予全部 3 个子产品。
+ * 注：命名为 SubProduct 以区别于 distribution.ts 的 Platform（分发渠道，如抖音/B站）。
+ */
+export type SubProduct = "music" | "drama" | "celebrity";
+export const ALL_SUB_PRODUCTS: readonly SubProduct[] = ["music", "drama", "celebrity"];
+export const SUB_PRODUCT_LABEL_ZH: Record<SubProduct, string> = {
+  music: "AI 音乐人",
+  drama: "AI 短剧",
+  celebrity: "AI 明星带货",
+};
+/**
  * v0.31+: 内嵌运营角色（celebrity 等用户子产品内的「平台运营人员」标记）。
  * 与 admin 后台的 AdminUser 体系**独立**；这里只用于让运营在用户视角下也能做
  * 部分管理动作（例：在 web-celebrity 界面管理公共商品池）。
@@ -32,6 +44,11 @@ export interface AepUser {
   status: AccountStatus;
   /** v0.31+: 内嵌运营角色；null/undefined = 非运营。详见 OperatorRole 注释。 */
   operatorRole?: OperatorRole | null;
+  /**
+   * v0.43+: 可访问的子产品。后端 /api/me 返回；空配置时后端回落为全集。
+   * 各子产品 workspace 布局按 `platforms.includes(本子产品)` 决定是否放行。
+   */
+  platforms?: SubProduct[];
   emailVerified: boolean;
   phoneVerified: boolean;
   langPreference: "zh" | "en";

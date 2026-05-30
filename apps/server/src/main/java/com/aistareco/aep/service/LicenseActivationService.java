@@ -5,6 +5,8 @@ import com.aistareco.aep.dto.AepUserDto;
 import com.aistareco.aep.dto.StudioDto;
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +19,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -36,6 +39,8 @@ import java.util.UUID;
 @Service
 public class LicenseActivationService {
 
+    private static final Logger log = LoggerFactory.getLogger(LicenseActivationService.class);
+
     private final LicenseKeyRepository keyRepo;
     private final LicenseBatchRepository batchRepo;
     private final AepUserRepository userRepo;
@@ -45,6 +50,7 @@ public class LicenseActivationService {
     private final LedgerEntryRepository ledgerRepo;
     private final StudioRepository studioRepo;
     private final JwtUtil jwtUtil;
+    private final PlatformAccessService platformAccessService;
 
     public LicenseActivationService(LicenseKeyRepository keyRepo,
                                      LicenseBatchRepository batchRepo,
@@ -54,7 +60,8 @@ public class LicenseActivationService {
                                      WalletRepository walletRepo,
                                      LedgerEntryRepository ledgerRepo,
                                      StudioRepository studioRepo,
-                                     JwtUtil jwtUtil) {
+                                     JwtUtil jwtUtil,
+                                     PlatformAccessService platformAccessService) {
         this.keyRepo = keyRepo;
         this.batchRepo = batchRepo;
         this.userRepo = userRepo;
@@ -64,6 +71,7 @@ public class LicenseActivationService {
         this.ledgerRepo = ledgerRepo;
         this.studioRepo = studioRepo;
         this.jwtUtil = jwtUtil;
+        this.platformAccessService = platformAccessService;
     }
 
     @Transactional
@@ -74,10 +82,17 @@ public class LicenseActivationService {
         }
 
         String codeHash = sha256(rawCode.trim().toUpperCase());
-        LicenseKey key = keyRepo.findByCodeHash(codeHash)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "无效的激活码"));
+        Optional<LicenseKey> keyOpt = keyRepo.findByCodeHash(codeHash);
+        if (keyOpt.isEmpty()) {
+            log.warn("[license] activation rejected invalid-code hashPrefix={} username={} phone={}",
+                    codeHash.substring(0, 8), body.get("username"), body.get("phone"));
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "无效的激活码");
+        }
+        LicenseKey key = keyOpt.get();
 
         if (key.getStatus() != LicenseKey.LicenseKeyStatus.CREATED) {
+            log.warn("[license] activation rejected keyId={} status={} username={} phone={}",
+                    key.getId(), key.getStatus(), body.get("username"), body.get("phone"));
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "该激活码已被使用或已失效（当前状态: " + key.getStatus() + "）");
         }
@@ -88,12 +103,18 @@ public class LicenseActivationService {
         Instant now = Instant.now();
         if (batch.getStatus() == LicenseBatch.LicenseBatchStatus.REVOKED
                 || batch.getStatus() == LicenseBatch.LicenseBatchStatus.EXPIRED) {
+            log.warn("[license] activation rejected batch inactive keyId={} batchId={} status={}",
+                    key.getId(), batch.getId(), batch.getStatus());
             throw new ResponseStatusException(HttpStatus.GONE, "该激活码所属批次已失效");
         }
         if (batch.getValidTo() != null && batch.getValidTo().isBefore(now)) {
+            log.warn("[license] activation rejected batch expired keyId={} batchId={} validTo={}",
+                    key.getId(), batch.getId(), batch.getValidTo());
             throw new ResponseStatusException(HttpStatus.GONE, "该激活码所属批次已过期");
         }
         if (key.getExpiresAt() != null && key.getExpiresAt().isBefore(now)) {
+            log.warn("[license] activation rejected key expired keyId={} batchId={} expiresAt={}",
+                    key.getId(), batch.getId(), key.getExpiresAt());
             throw new ResponseStatusException(HttpStatus.GONE, "该激活码已过期");
         }
         // v0.36：issuerTenantId 现可为 null（新批次走纯 SellingChannel 路径）。
@@ -114,6 +135,10 @@ public class LicenseActivationService {
         }
         Studio.StudioKind studioKind = parseStudioKind(body.get("studioKind"));
 
+        // v0.43+: 子产品平台授权。注册来源平台由 body.platform 透传（music/drama/celebrity）；
+        // 开发态 dev-grant-all=true 时无视来源直接授予全部平台（一处注册三端可用）。
+        String grantedPlatforms = platformAccessService.grantedCsvForNewUser(body.get("platform"));
+
         AepUser user = AepUser.builder()
                 .id(UUID.randomUUID().toString())
                 .username(username)
@@ -122,6 +147,7 @@ public class LicenseActivationService {
                 .displayName(body.get("displayName"))
                 .kind(AepUser.AccountKind.STUDIO)
                 .status(AepUser.UserStatus.ACTIVE)
+                .platforms(grantedPlatforms)
                 .emailVerified(false)
                 .phoneVerified(false)
                 .createdAt(now)
@@ -212,6 +238,8 @@ public class LicenseActivationService {
         if (batch.getSellingChannelId() != null) {
             resp.put("sellingChannelId", batch.getSellingChannelId());
         }
+        log.info("[license] activation success userId={} studioId={} keyId={} batchId={} grant={} platforms={} channel={}",
+                user.getId(), studio.getId(), key.getId(), batch.getId(), grant, grantedPlatforms, batch.getSellingChannelId());
         return resp;
     }
 

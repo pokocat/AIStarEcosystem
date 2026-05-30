@@ -14,7 +14,7 @@ const PUBLIC_PREFIXES = ["/", "/login", "/activate"];
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider>
-      <AuthProvider publicPathPrefixes={PUBLIC_PREFIXES} loginPath="/login">
+      <AuthProvider publicPathPrefixes={PUBLIC_PREFIXES} loginPath="/login" requiredPlatform="drama">
         {children}
         <Toaster
           position="top-center"

@@ -3948,7 +3948,7 @@ paths:
         '200':
           description: ok
 
-  # v0.31+ 手机号 + SMS 验证码 登录 / 注册（celebrity 子产品主入口）
+  # v0.31+ 手机号 + SMS 验证码 登录 / 注册（三个新 web app + 小程序入口）
   /auth/sms/request-code:
     post:
       tags: [auth]
@@ -4023,6 +4023,10 @@ paths:
                 licenseKey: { type: string, description: License 激活码 }
                 studioName: { type: string }
                 displayName: { type: string }
+                platform:
+                  type: string
+                  enum: [music, drama, celebrity]
+                  description: 注册来源子产品；后端据此授予平台访问权
       responses:
         '200':
           description: 注册并登录成功
@@ -6072,6 +6076,23 @@ paths:
 
   /appearance-forge/blueprints:  { get: { tags: [forge], operationId: listForgeBlueprints, responses: { '200': { description: ok } } } }
   /appearance-forge/coze/status: { get: { tags: [forge], operationId: getCozeStatus,       responses: { '200': { description: ok } } } }
+  # v0.43：形象锻造对话（大模型优先，Coze 回退）。/coze/* 保留为同行为别名。music + drama 共用。
+  /appearance-forge/chat/status: { get:  { tags: [forge], operationId: getForgeChatStatus, responses: { '200': { description: 'provider: llm|coze|mock|none' } } } }
+  /appearance-forge/chat/stream: { post: { tags: [forge], operationId: streamForgeChat, summary: 形象锻造流式对话（SSE）, responses: { '200': { description: 'text/event-stream：status/delta/message/completed/done' } } } }
+
+  # ── 短剧生成（drama 子产品；脚本化 → 视频）v0.43 ─────
+  # 脚本结构见 apps/web-drama/src/api/short-drama.ts（scenes[]：heading/summary/shot/dialogue/duration_sec）。
+  # 视频生成复用 material_video_job（kind=drama-episode）。鉴权：/api/me/** authenticated。
+  /me/drama/scripts:
+    get:  { tags: [drama], operationId: listDramaScripts, responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: saveDramaScript,  responses: { '200': { description: ok } } }
+  /me/drama/scripts/{id}:
+    get:    { tags: [drama], operationId: getDramaScript,    parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaScript, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: deleted } } }
+  /me/drama/scripts/ai-draft:    { post: { tags: [drama], operationId: aiDraftDramaScripts, summary: AI 起草分场景短剧脚本（大模型）, responses: { '200': { description: 'ok；未配置 → 503 AI_NOT_CONFIGURED' } } } }
+  /me/drama/episodes/generate:   { post: { tags: [drama], operationId: generateDramaEpisodes, summary: 由脚本生成短剧视频（异步 submit）, responses: { '200': { description: 'ok（status=rendering 任务卡）' } } } }
+  /me/drama/episodes/jobs:       { get:  { tags: [drama], operationId: listDramaEpisodeJobs, parameters: [{ name: script_id, in: query, required: false, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /me/drama/episodes/jobs/{id}:  { get:  { tags: [drama], operationId: getDramaEpisodeJob, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
 
   # ── mixcut（混剪专区 · web-celebrity 子模块） ─────
   # 完整 schema 见 apps/web-celebrity/src/components/mixcut-zone/types.ts。

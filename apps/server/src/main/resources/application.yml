@@ -72,6 +72,19 @@ aep:
     credits-per-100-tokens: ${AEP_LLM_CREDITS_PER_100_TOKENS:1}
   dev-auth:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
+  # v0.43+ 子产品平台访问隔离（music / drama / celebrity）。
+  #   true  → 任意注册入口授予全部子产品（一处注册，三端可用）。开发 / 联调默认。
+  #   false → 注册只授予来源子产品（前端登录页透传 platform）；其余子产品需另行开通。
+  # 访问拦截在前端按 /api/me 返回的 platforms 判断；后端只负责注册时授予哪些平台。
+  platform:
+    dev-grant-all: ${AEP_PLATFORM_DEV_GRANT_ALL:true}
+  # v0.43+ 本地 fake 大模型（OpenAI 兼容）。开启后 DevFakeAiSeeder 自动接入端点 + 绑定用途，
+  # 让「真连后端大模型」链路在没有真实 key 时也能端到端跑通（配套 scripts/dev-fake-llm-server.mjs）。
+  # 仅 dev 默认开启；prod 关闭，由运营在后台配真实端点。
+  dev-fake-llm:
+    enabled: ${AEP_DEV_FAKE_LLM_ENABLED:false}
+    base-url: ${AEP_DEV_FAKE_LLM_BASE_URL:http://localhost:8091/v1}
+    model: ${AEP_DEV_FAKE_LLM_MODEL:fake-model-v1}
   assets:
     video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}
   mixcut:
@@ -153,11 +166,11 @@ aep:
     api-base: ${AEP_COZE_API_BASE:https://api.coze.cn}
     user-id-prefix: ${AEP_COZE_USER_ID_PREFIX:aep-producer-}
     read-timeout-ms: ${AEP_COZE_READ_TIMEOUT_MS:120000}
-  # v0.31+ 手机号 + SMS 验证码登录 / 注册（celebrity 子产品入口）。
+  # v0.31+ 手机号 + SMS 验证码登录 / 注册（三个新 web app + 小程序入口）。
   # driver=log：默认；验证码打到 server log，dev / 联调 / 阿里云模板未备案前的占位
-  # driver=aliyun：调阿里云 SMS REST API，需配齐 aep.sms.aliyun.*
+  # driver=aliyun：调阿里云 SMS SDK，需配齐签名 / 模板；凭据可显式配 AK 或走默认凭据链
   sms:
-    driver: ${AEP_SMS_DRIVER:log}
+    driver: ${AEP_SMS_DRIVER:aliyun}
     code:
       length: 6
       ttl-seconds: 300            # 验证码有效期 5 分钟
@@ -172,8 +185,14 @@ aep:
     aliyun:
       access-key-id: ${ALIYUN_SMS_ACCESS_KEY_ID:}
       access-key-secret: ${ALIYUN_SMS_ACCESS_KEY_SECRET:}
-      sign-name: ${ALIYUN_SMS_SIGN_NAME:}
-      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:}
+      sign-name: ${ALIYUN_SMS_SIGN_NAME:声量算法杭州科技}
+      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:SMS_506890177}
+      template-param-code-key: ${ALIYUN_SMS_TEMPLATE_PARAM_CODE_KEY:code}
+      region: ${ALIYUN_SMS_REGION:cn-hangzhou}
+      endpoint: ${ALIYUN_SMS_ENDPOINT:dysmsapi.aliyuncs.com}
+      connect-timeout-seconds: ${ALIYUN_SMS_CONNECT_TIMEOUT_SECONDS:10}
+      response-timeout-seconds: ${ALIYUN_SMS_RESPONSE_TIMEOUT_SECONDS:20}
+      call-timeout-seconds: ${ALIYUN_SMS_CALL_TIMEOUT_SECONDS:30}
 
 # sau-service (Python + Playwright，独立 FastAPI 进程) 集成配置
 # dev: docker-compose 启 apps/sau-service:8090; prod: k8s 同 namespace

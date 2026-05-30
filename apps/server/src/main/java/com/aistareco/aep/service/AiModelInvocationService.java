@@ -10,6 +10,8 @@ import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +36,7 @@ import java.util.*;
 @Service
 public class AiModelInvocationService {
 
+    private static final Logger log = LoggerFactory.getLogger(AiModelInvocationService.class);
     private static final ObjectMapper OM = new ObjectMapper();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
@@ -70,14 +73,19 @@ public class AiModelInvocationService {
     /** 简易 chat：messages = [{role, content}, ...]。单端点，无兜底。 */
     public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
                                       Map<String, Object> options) {
-        AiModelEndpoint endpoint = resolveEndpoint(purpose).orElseThrow(() ->
-                new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                        "未为用途 " + purpose.wire() + " 绑定可用的 AI 模型端点"));
+        AiModelEndpoint endpoint = resolveEndpoint(purpose).orElse(null);
+        if (endpoint == null) {
+            log.warn("[ai-chat] blocked purpose={} reason=no-enabled-endpoint", purpose == null ? null : purpose.wire());
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                    "未为用途 " + purpose.wire() + " 绑定可用的 AI 模型端点");
+        }
         try {
             return doChat(endpoint, purpose, messages, options);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
+            log.warn("[ai-chat] invoke exception purpose={} endpointId={} endpoint={} err={}",
+                    purpose == null ? null : purpose.wire(), endpoint.getId(), endpoint.getName(), e.toString());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_ERROR",
                     "调用端点失败: " + endpoint.getName() + " - " + e.getMessage());
         }
@@ -103,12 +111,21 @@ public class AiModelInvocationService {
                     .GET()
                     .build();
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                log.info("[ai-model] test-connection ok endpointId={} endpoint={} status={}",
+                        e.getId(), e.getName(), resp.statusCode());
+            } else {
+                log.warn("[ai-model] test-connection failed endpointId={} endpoint={} status={} body={}",
+                        e.getId(), e.getName(), resp.statusCode(), snippet(resp.body()));
+            }
             return Map.of(
                     "ok", resp.statusCode() == 200,
                     "statusCode", resp.statusCode(),
                     "snippet", resp.body() == null ? "" : (resp.body().length() > 200 ? resp.body().substring(0, 200) : resp.body())
             );
         } catch (Exception ex) {
+            log.warn("[ai-model] test-connection exception endpointId={} endpoint={} err={}",
+                    e.getId(), e.getName(), ex.toString());
             return Map.of("ok", false, "error", ex.getClass().getSimpleName() + ": " + ex.getMessage());
         }
     }
@@ -133,11 +150,18 @@ public class AiModelInvocationService {
                     .build();
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.warn("[ai-model] discover-models failed providerType={} baseUrl={} status={} body={}",
+                        type == null ? null : type.wire(), baseUrl, resp.statusCode(), snippet(resp.body()));
                 return AiModelDiscoveryResultDto.fail(resp.statusCode(),
                         "HTTP " + resp.statusCode() + ": " + snippet(resp.body()));
             }
-            return AiModelDiscoveryResultDto.ok(resp.statusCode(), parseModelsResponse(resp.body()));
+            List<AiModelEntryDto> models = parseModelsResponse(resp.body());
+            log.info("[ai-model] discover-models ok providerType={} baseUrl={} status={} count={}",
+                    type == null ? null : type.wire(), baseUrl, resp.statusCode(), models.size());
+            return AiModelDiscoveryResultDto.ok(resp.statusCode(), models);
         } catch (Exception e) {
+            log.warn("[ai-model] discover-models exception providerType={} baseUrl={} err={}",
+                    type == null ? null : type.wire(), baseUrl, e.toString());
             return AiModelDiscoveryResultDto.fail(null, e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
@@ -148,6 +172,8 @@ public class AiModelInvocationService {
                                    Map<String, Object> options) throws Exception {
         AiModelProviderType type = e.getProviderType();
         if (!isOpenAiCompatible(type)) {
+            log.warn("[ai-chat] provider unsupported purpose={} endpointId={} providerType={}",
+                    purpose == null ? null : purpose.wire(), e.getId(), type == null ? null : type.wire());
             throw new BusinessException(HttpStatus.NOT_IMPLEMENTED, "PROVIDER_NOT_SUPPORTED",
                     "providerType=" + type.wire() + " 暂未实现（ANTHROPIC / AZURE_OPENAI 需独立适配；其余走 OpenAI 兼容）");
         }
@@ -166,6 +192,16 @@ public class AiModelInvocationService {
             if (options.get("response_format") != null) body.put("response_format", options.get("response_format"));
         }
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
+        long startNanos = System.nanoTime();
+        log.info("[ai-chat] invoke start purpose={} endpointId={} endpoint={} providerType={} model={} messages={} maxTokens={} jsonMode={}",
+                purpose == null ? null : purpose.wire(),
+                e.getId(),
+                e.getName(),
+                type == null ? null : type.wire(),
+                model,
+                messages == null ? 0 : messages.size(),
+                options == null ? null : options.get("max_tokens"),
+                hasJsonMode(options));
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Bearer " + apiKey)
@@ -174,10 +210,13 @@ public class AiModelInvocationService {
                 .build();
         HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            log.warn("[ai-chat] invoke http-error purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
+                    purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
+                    resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
             throw new BusinessException(HttpStatus.valueOf(resp.statusCode()),
                     "AI_PROVIDER_HTTP_" + resp.statusCode(),
                     "端点 " + e.getName() + " HTTP " + resp.statusCode() + ": "
-                            + (resp.body() == null ? "" : resp.body()));
+                            + snippet(resp.body()));
         }
         Map<?, ?> parsed = OM.readValue(resp.body(), Map.class);
         Object choices = parsed.get("choices");
@@ -207,6 +246,17 @@ public class AiModelInvocationService {
         usage.record(e.getId(), e.getName(), model,
                 purpose != null ? purpose.wire() : null,
                 promptTokens, completionTokens, tokensUsed, true);
+        log.info("[ai-chat] invoke ok purpose={} endpointId={} endpoint={} model={} finish={} tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
+                purpose == null ? null : purpose.wire(),
+                e.getId(),
+                e.getName(),
+                model,
+                finishReason,
+                tokensUsed,
+                promptTokens,
+                completionTokens,
+                content == null ? 0 : content.length(),
+                elapsedMs(startNanos));
         return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model);
     }
 
@@ -248,6 +298,19 @@ public class AiModelInvocationService {
     private static String snippet(String body) {
         if (body == null) return "";
         return body.length() > 200 ? body.substring(0, 200) : body;
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    private static boolean hasJsonMode(Map<String, Object> options) {
+        Object rf = options == null ? null : options.get("response_format");
+        if (rf instanceof Map<?, ?> m) {
+            Object type = m.get("type");
+            return type != null && "json_object".equalsIgnoreCase(String.valueOf(type));
+        }
+        return false;
     }
 
     /** chat 调用结果。 */

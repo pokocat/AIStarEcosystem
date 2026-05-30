@@ -39,7 +39,12 @@ function apiFetch(path, options) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(unwrap(res.data));
         } else {
-          reject(new Error("HTTP " + res.statusCode));
+          const body = res.data || {};
+          const err = body.error || {};
+          const e = new Error(err.message || body.message || ("HTTP " + res.statusCode));
+          e.status = res.statusCode;
+          e.code = err.code || "HTTP_ERROR";
+          reject(e);
         }
       },
       fail(err) { reject(err); }
@@ -61,6 +66,26 @@ const AuthApi = {
       });
     }
     return apiFetch("/auth/activate", { method: "POST", data: payload });
+  },
+  /** POST /auth/sms/request-code */
+  smsRequestCode(phone) {
+    const app = getApp_();
+    if (app.globalData.useMock) return mockDelay({ sent: true });
+    return apiFetch("/auth/sms/request-code", { method: "POST", data: { phone } });
+  },
+  /** POST /auth/sms/register */
+  smsRegister(payload) {
+    const app = getApp_();
+    if (app.globalData.useMock) {
+      const phone = payload.phone || "";
+      return mockDelay({
+        token: "mock-token-" + Date.now(),
+        user: { id: "u-mock", role: "STUDIO", phone, phoneVerified: true },
+        studio: { id: "s-mock", name: payload.studioName || "AI 明星带货工作室" },
+        tenantId: "t-mock"
+      });
+    }
+    return apiFetch("/auth/sms/register", { method: "POST", data: payload });
   }
 };
 

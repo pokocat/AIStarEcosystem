@@ -54,10 +54,11 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/cast/[id]` | 工作台 | 演员详情（履历 / 装备 / 历史项目） |
 | `/cast/[id]/generate` | 工作台 | 演员形象生成（针对某角色） |
 | `/incubator` | 工作台 | 多步孵化器（localStorage 草稿保留） |
-| `/forge` | 工作台 | 形象批量锻造（多角色同时） |
+| `/forge` | 工作台 | 形象锻造（**v0.43 对话式 AI 形象顾问**，接平台大模型流式生成；影院风独立 UI） |
 | `/wardrobe` | 工作台 | 戏服 / 道具上传 + 分配给演员 |
 | `/scripts` | 工作台 | 脚本库（多版本对比） |
 | `/scripts/[id]` | 工作台 | 脚本编辑器（**版本树 + AI 续写**） |
+| `/short-drama` ★ | 工作台 | **短剧生成（v0.43）**：AI 起草分场景脚本 → 保存 → 生成短剧视频（异步轮询）。后端 `/api/me/drama/*`，复用 celebrity 视频管线 |
 | `/projects` | 工作台 | 项目管线（状态机：草稿 / 选角 / 拍摄 / 后期 / 上线） |
 | `/projects/[id]` | 工作台 | 项目详情（演员表 / 排期 / 资产） |
 | `/projects/[id]/distribute` | 工作台 | 项目多平台发布 |

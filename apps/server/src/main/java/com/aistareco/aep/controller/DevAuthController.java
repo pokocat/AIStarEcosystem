@@ -7,6 +7,8 @@ import com.aistareco.aep.model.Studio;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.StudioRepository;
 import com.aistareco.common.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +30,8 @@ import java.util.Map;
 @RequestMapping("/api/auth")
 @ConditionalOnProperty(prefix = "aep.dev-auth", name = "enabled", havingValue = "true")
 public class DevAuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(DevAuthController.class);
 
     private final AepUserRepository userRepo;
     private final StudioRepository studioRepo;
@@ -73,9 +77,14 @@ public class DevAuthController {
         AepUser user = (username == null || username.isBlank())
                 ? pickDefaultStudioUser()
                 : userRepo.findByUsername(username.trim())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在: " + username));
+                    .orElseThrow(() -> {
+                        log.warn("[dev-login] miss username={}", username.trim());
+                        return new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在: " + username);
+                    });
 
         if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
+            log.warn("[dev-login] inactive userId={} username={} status={}",
+                    user.getId(), user.getUsername(), user.getStatus());
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户已被停用");
         }
 
@@ -89,6 +98,8 @@ public class DevAuthController {
                 : (user.getKind() == AepUser.AccountKind.STUDIO ? "STUDIO" : "USER");
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), role);
         Studio studio = studioRepo.findByOwnerUserId(user.getId()).orElse(null);
+        log.info("[dev-login] success userId={} username={} role={} studioId={}",
+                user.getId(), user.getUsername(), role, studio == null ? null : studio.getId());
 
         return ApiResponse.of(Map.of(
                 "token", token,

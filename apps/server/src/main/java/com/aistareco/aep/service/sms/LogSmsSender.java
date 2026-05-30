@@ -14,7 +14,8 @@ import org.springframework.stereotype.Component;
  *   3. CI / 单测（不依赖外网）
  *
  * 默认启用（aep.sms.driver 未配 或 显式设为 log）。生产环境切到 aliyun 驱动前
- * 必须配齐 ALIYUN_SMS_* 环境变量；否则 AliyunSmsSender bean 也会启动失败 fail-fast。
+ * 必须配齐 ALIYUN_SMS_SIGN_NAME / ALIYUN_SMS_TEMPLATE_CODE；凭据可显式配置 AK 或走
+ * Alibaba Cloud 默认凭据链。
  */
 @Component
 @ConditionalOnProperty(prefix = "aep.sms", name = "driver", havingValue = "log", matchIfMissing = true)

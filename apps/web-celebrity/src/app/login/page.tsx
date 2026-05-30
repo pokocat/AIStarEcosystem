@@ -1,12 +1,12 @@
 "use client";
 
-// Creator-Friendly login — v0.31+: 主入口手机号 + 验证码；保留 dev-login 下拉给本地联调用。
+// Creator-Friendly login — v0.31+: 主入口手机号 + 验证码；dev-login 入口仅开发/显式开启时显示。
 
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, KeyRound, Loader2, LogIn, Phone, Smartphone } from "lucide-react";
-import { AuthApi, useAuth } from "@ai-star-eco/api-client";
+import { AuthApi, ENABLE_DEV_LOGIN, useAuth } from "@ai-star-eco/api-client";
 import { STUDIO_KIND_LABEL_ZH, type StudioKind } from "@ai-star-eco/types/account";
 import { Avatar, Button, Card, Chip } from "@/components/creator";
 
@@ -17,6 +17,7 @@ function CelebrityLoginInner() {
   const search = useSearchParams();
   const from = search.get("from") || "/dashboard";
   const { loginAs, refresh, user } = useAuth();
+  const enableDev = ENABLE_DEV_LOGIN;
 
   const [tab, setTab] = React.useState<Tab>("phone-login");
 
@@ -58,9 +59,11 @@ function CelebrityLoginInner() {
             <TabBtn active={tab === "phone-register"} onClick={() => setTab("phone-register")}>
               <KeyRound size={12} /> 注册
             </TabBtn>
-            <TabBtn active={tab === "dev"} onClick={() => setTab("dev")}>
-              <Smartphone size={12} /> dev
-            </TabBtn>
+            {enableDev && (
+              <TabBtn active={tab === "dev"} onClick={() => setTab("dev")}>
+                <Smartphone size={12} /> dev
+              </TabBtn>
+            )}
           </div>
 
           {tab === "phone-login" && (
@@ -80,7 +83,7 @@ function CelebrityLoginInner() {
               }}
             />
           )}
-          {tab === "dev" && (
+          {tab === "dev" && enableDev && (
             <DevLoginForm
               onSuccess={async (username) => {
                 await loginAs(username);
@@ -100,7 +103,9 @@ function CelebrityLoginInner() {
             letterSpacing: 0.3,
           }}
         >
-          手机号登录支持任意 prod 环境；dev tab 仅在后端 dev profile 下生效。
+          {enableDev
+            ? "手机号登录支持任意环境；dev tab 仅在后端 dev profile 下生效。"
+            : "手机号登录支持当前环境；新用户请使用激活码完成注册。"}
         </p>
       </div>
     </div>
@@ -299,6 +304,7 @@ function PhoneRegisterForm({ onSuccess }: { onSuccess: () => Promise<void> }) {
         licenseKey: licenseKey.trim(),
         studioName: studioName.trim(),
         displayName: displayName.trim() || undefined,
+        platform: "celebrity",
       });
       await onSuccess();
     } catch (e) {

@@ -5,7 +5,7 @@ package com.aistareco.aep.service.sms;
  *
  * 当前两个实现：
  *   - {@link LogSmsSender}    驱动 = "log"（默认） — 把验证码打到 server log，dev / 联调 / 占位
- *   - {@link AliyunSmsSender} 驱动 = "aliyun"      — 调阿里云 SMS REST API（手撸签名，无 SDK 依赖）
+ *   - {@link AliyunSmsSender} 驱动 = "aliyun"      — 调阿里云 SMS 官方 SDK
  *
  * 切换：application.yml 的 aep.sms.driver。
  */

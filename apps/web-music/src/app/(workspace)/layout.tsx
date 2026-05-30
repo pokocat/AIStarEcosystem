@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useLang } from "@/lib/lang-context";
 import { useAuth } from "@ai-star-eco/api-client";
+import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import { useTheme, themeConfig } from "@ai-star-eco/ui";
 import { CommandPalette } from "@/components/producer/CommandPalette";
 import { NotificationPanel } from "@/components/producer/NotificationPanel";
@@ -139,12 +140,31 @@ function ProducerLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { lang, setLang } = useLang();
-  const { logout: authLogout } = useAuth();
+  const { logout: authLogout, user, hasPlatformAccess } = useAuth();
 
   const onLogout = React.useCallback(() => {
     authLogout();
     router.push("/login");
   }, [authLogout, router]);
+
+  // v0.43+：平台访问隔离 —— 已登录但账号未开通「AI 音乐人」时拦截（未登录由 AuthProvider 跳登录）。
+  if (user && !hasPlatformAccess) {
+    return (
+      <PlatformAccessDenied
+        appName="AI 音乐人"
+        theme={{
+          bg: "var(--background)",
+          surface: "var(--card)",
+          fg: "var(--foreground)",
+          fgMuted: "var(--muted-foreground)",
+          accent: "var(--primary)",
+          accentFg: "var(--primary-foreground)",
+          border: "var(--border)",
+          radius: "14px",
+        }}
+      />
+    );
+  }
 
   return (
     <ProducerShellProvider lang={lang} setLang={setLang} onLogout={onLogout} currentPath={pathname}>

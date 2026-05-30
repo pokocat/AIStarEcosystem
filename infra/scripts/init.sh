@@ -135,10 +135,13 @@ if [[ "$SMS_ENABLE" == "yes" ]]; then
   ask_secret SMS_AK_SECRET "SMS RAM 子用户 AccessKey Secret"
   ask_required SMS_SIGN_NAME "SMS 签名（控制台备案过的企业名）"
   ask_required SMS_TEMPLATE_CODE "SMS 模板代码（如 SMS_xxxxx）"
+  ask_default SMS_REGION "SMS Region" "cn-hangzhou"
+  ask_default SMS_ENDPOINT "SMS endpoint" "dysmsapi.aliyuncs.com"
   SMS_DRIVER="aliyun"
 else
   SMS_DRIVER="log"
   SMS_AK_ID=""; SMS_AK_SECRET=""; SMS_SIGN_NAME=""; SMS_TEMPLATE_CODE=""
+  SMS_REGION="cn-hangzhou"; SMS_ENDPOINT="dysmsapi.aliyuncs.com"
 fi
 
 # ── E. Coze（可选） ──────────────────────────────────────────────────────
@@ -193,6 +196,8 @@ render_server_env() {
     case "$line" in
       DB_USERNAME=*)                    line="DB_USERNAME=$DB_USERNAME";;
       AEP_SMS_DRIVER=*)                 line="AEP_SMS_DRIVER=$SMS_DRIVER";;
+      ALIYUN_SMS_REGION=*)              line="ALIYUN_SMS_REGION=$SMS_REGION";;
+      ALIYUN_SMS_ENDPOINT=*)            line="ALIYUN_SMS_ENDPOINT=$SMS_ENDPOINT";;
       AEP_CDN_OSS_ENDPOINT=*)           line="AEP_CDN_OSS_ENDPOINT=$OSS_ENDPOINT";;
       AEP_CDN_OSS_BUCKET=*)             line="AEP_CDN_OSS_BUCKET=$OSS_BUCKET";;
       AEP_CDN_OSS_BASE_URL=*)           line="AEP_CDN_OSS_BASE_URL=$OSS_CDN_URL";;

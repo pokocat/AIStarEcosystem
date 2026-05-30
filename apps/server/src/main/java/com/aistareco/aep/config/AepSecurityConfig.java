@@ -26,6 +26,7 @@ public class AepSecurityConfig {
     private final JwtAuthenticationFilter jwtFilter;
     private final InternalAuthFilter internalFilter;
     private final TraceFilter traceFilter;
+    private final ApiOperationLogFilter apiOperationLogFilter;
 
     /** dev profile 专用。非 dev 环境不会注入。 */
     @Autowired(required = false)
@@ -33,10 +34,12 @@ public class AepSecurityConfig {
 
     public AepSecurityConfig(JwtAuthenticationFilter jwtFilter,
                               InternalAuthFilter internalFilter,
-                              TraceFilter traceFilter) {
+                              TraceFilter traceFilter,
+                              ApiOperationLogFilter apiOperationLogFilter) {
         this.jwtFilter = jwtFilter;
         this.internalFilter = internalFilter;
         this.traceFilter = traceFilter;
+        this.apiOperationLogFilter = apiOperationLogFilter;
     }
 
     @Bean
@@ -58,6 +61,7 @@ public class AepSecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
+                        .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
                         // 素材运营（脚本 / 视频 / 爆款雷达）—— 任意登录用户可读写共享库
@@ -86,7 +90,8 @@ public class AepSecurityConfig {
                 // traceFilter 最先跑：所有后续 filter / controller / exception handler 共享同一个 traceId
                 .addFilterBefore(traceFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(apiOperationLogFilter, JwtAuthenticationFilter.class);
 
         // dev 环境：在 JWT filter 之后兜底自动登录
         if (devAutoAuthFilter != null) {
