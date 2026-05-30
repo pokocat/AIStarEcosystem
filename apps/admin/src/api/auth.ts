@@ -4,21 +4,34 @@
 
 import { apiFetch, setAuthToken } from "./_client";
 
+export type AdminAccountSource = "admin" | "operator";
+
 export interface AdminLoginRequest {
   username: string;
   password: string;
 }
 
+export interface AdminMeUser {
+  id: string;
+  username: string;
+  email?: string;
+  displayName: string;
+  role: string;
+  status: string;
+  accountSource: AdminAccountSource;
+  createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
+}
+
 export interface AdminLoginResult {
   token: string;
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    displayName: string;
-    role: string;
-    status: string;
-  };
+  user: AdminMeUser;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 /** 管理员登录 */
@@ -45,6 +58,14 @@ export async function operatorLogin(req: AdminLoginRequest): Promise<AdminLoginR
 }
 
 /** 获取当前管理员信息 */
-export async function getMe(): Promise<AdminLoginResult["user"]> {
-  return apiFetch<AdminLoginResult["user"]>("/admin/auth/me");
+export async function getMe(): Promise<AdminMeUser> {
+  return apiFetch<AdminMeUser>("/admin/auth/me");
+}
+
+/** 当前登录账号修改自己的密码，兼容 admin_users 与 operator-login 两套账号来源。 */
+export async function changePassword(req: ChangePasswordRequest): Promise<void> {
+  await apiFetch<Record<string, never>>("/admin/auth/change-password", {
+    method: "POST",
+    body: req,
+  });
 }

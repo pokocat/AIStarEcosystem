@@ -23,7 +23,6 @@ function nextPathFromLocation(): string {
 type Env = { label: string; tone: "production" | "staging" | "local" };
 
 function detectEnv(): Env {
-  if (typeof window === "undefined") return { label: "生产环境", tone: "production" };
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")) {
     return { label: "本地开发", tone: "local" };
@@ -47,7 +46,13 @@ export default function AdminLoginPage() {
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
-  const env = React.useMemo(detectEnv, []);
+  const [env, setEnv] = React.useState<Env>({ label: "生产环境", tone: "production" });
+  const [host, setHost] = React.useState("");
+
+  React.useEffect(() => {
+    setEnv(detectEnv());
+    setHost(window.location.host);
+  }, []);
 
   React.useEffect(() => {
     if (getAuthToken()) router.replace(nextPathFromLocation());
@@ -95,7 +100,7 @@ export default function AdminLoginPage() {
           </div>
           <span
             className={`inline-flex items-center gap-1.5 rounded-full border bg-surface px-2 py-0.5 text-[11px] font-medium ${envClasses.chip}`}
-            title={`当前域：${typeof window !== "undefined" ? window.location.host : ""}`}
+            title={host ? `当前域：${host}` : undefined}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${envClasses.dot}`} />
             {env.label}

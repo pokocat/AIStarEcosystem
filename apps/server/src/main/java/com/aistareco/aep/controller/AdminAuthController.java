@@ -127,4 +127,59 @@ public class AdminAuthController {
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");
     }
+
+    @PostMapping("/change-password")
+    public ApiResponse<Map<String, Object>> changePassword(Principal principal,
+                                                           @RequestBody Map<String, String> body) {
+        if (principal == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "未登录");
+        }
+        String currentPassword = body == null ? null : body.get("currentPassword");
+        String newPassword = body == null ? null : body.get("newPassword");
+        if (currentPassword == null || currentPassword.isBlank()
+                || newPassword == null || newPassword.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前密码和新密码不能为空");
+        }
+        if (newPassword.length() < 6) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新密码至少 6 位");
+        }
+        if (currentPassword.equals(newPassword)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新密码不能与当前密码相同");
+        }
+
+        String id = principal.getName();
+        AdminUser admin = adminUserRepo.findById(id).orElse(null);
+        if (admin != null) {
+            if (admin.getPasswordHash() == null
+                    || !passwordEncoder.matches(currentPassword, admin.getPasswordHash())) {
+                log.warn("[admin-change-password] bad-current-password adminId={} username={}",
+                        admin.getId(), admin.getUsername());
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前密码错误");
+            }
+            admin.setPasswordHash(passwordEncoder.encode(newPassword));
+            admin.setUpdatedAt(java.time.Instant.now());
+            adminUserRepo.save(admin);
+            log.info("[admin-change-password] success adminId={} username={}",
+                    admin.getId(), admin.getUsername());
+            return ApiResponse.of(Map.of("changed", true, "accountSource", "admin"));
+        }
+
+        AepUser aep = aepUserRepo.findById(id).orElse(null);
+        if (aep != null && aep.getOperatorRole() != null) {
+            if (aep.getPasswordHash() == null
+                    || !passwordEncoder.matches(currentPassword, aep.getPasswordHash())) {
+                log.warn("[operator-change-password] bad-current-password userId={} username={}",
+                        aep.getId(), aep.getUsername());
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前密码错误");
+            }
+            aep.setPasswordHash(passwordEncoder.encode(newPassword));
+            aep.setUpdatedAt(java.time.Instant.now());
+            aepUserRepo.save(aep);
+            log.info("[operator-change-password] success userId={} username={}",
+                    aep.getId(), aep.getUsername());
+            return ApiResponse.of(Map.of("changed", true, "accountSource", "operator"));
+        }
+
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");
+    }
 }

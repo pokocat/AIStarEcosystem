@@ -2,7 +2,7 @@
   "name": "ai-star-eco-monorepo",
   "private": true,
   "version": "0.0.0",
-  "description": "AI Star Eco monorepo — 三个子产品（音乐人/短剧/明星带货）共享后端与 packages/*。新代码 Next 16 + React 19；apps/web 与 apps/admin 仍 Next 14（不在 workspace 内）。",
+  "description": "AI Star Eco monorepo — 三个子产品（音乐人/短剧/明星带货）共享后端与 packages/*。新代码 Next 16 + React 19；apps/admin 已升级为 pnpm workspace，apps/web 仍为 legacy Next 14。",
   "packageManager": "pnpm@10.33.2",
   "engines": {
     "node": ">=20.9",
@@ -17,6 +17,8 @@
     "dev:music": "pnpm --filter @ai-star-eco/web-music run dev",
     "dev:drama": "pnpm --filter @ai-star-eco/web-drama run dev",
     "dev:celebrity": "pnpm --filter @ai-star-eco/web-celebrity run dev",
+    "dev:admin": "pnpm --filter @ai-star-eco/admin-new run dev",
+    "typecheck:admin": "pnpm --filter @ai-star-eco/admin-new run typecheck",
     "check:api-contract": "node scripts/check-api-contract.mjs"
   }
 }

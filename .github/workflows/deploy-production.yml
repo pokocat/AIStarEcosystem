@@ -1,0 +1,110 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Services to deploy: all, or comma-separated server,web-celebrity,admin,sau-service"
+        required: true
+        default: "all"
+      public_base:
+        description: "Public base URL used by post-deploy verification. Empty uses PROD_PUBLIC_BASE or host IP."
+        required: false
+        default: ""
+      skip_typecheck:
+        description: "Skip TypeScript checks during emergency deploy"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set release id
+        run: |
+          echo "RELEASE_ID=${GITHUB_SHA::12}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build release artifacts
+        env:
+          RELEASE_ID: ${{ env.RELEASE_ID }}
+          SKIP_TYPECHECK: ${{ inputs.skip_typecheck && '1' || '0' }}
+          NEXT_PUBLIC_USE_MOCK: "0"
+          NEXT_PUBLIC_MIXCUT_USE_REAL: "1"
+          NEXT_PUBLIC_SERVER_API_BASE: "http://127.0.0.1:8080"
+        run: ./infra/scripts/build-release.sh "${{ inputs.services }}"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aistareco-release-${{ env.RELEASE_ID }}
+          path: dist/deploy/${{ env.RELEASE_ID }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Configure SSH
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+        run: |
+          : "${PROD_SSH_HOST:?Missing GitHub secret PROD_SSH_HOST}"
+          : "${PROD_SSH_PRIVATE_KEY:?Missing GitHub secret PROD_SSH_PRIVATE_KEY}"
+          SSH_PORT="${PROD_SSH_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > ~/.ssh/aistareco_prod
+          chmod 600 ~/.ssh/aistareco_prod
+          ssh-keyscan -p "$SSH_PORT" -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy to production
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+          PROD_REMOTE_ROOT: ${{ secrets.PROD_REMOTE_ROOT }}
+          PROD_PUBLIC_BASE: ${{ secrets.PROD_PUBLIC_BASE }}
+          PUBLIC_BASE_INPUT: ${{ inputs.public_base }}
+          RELEASE_ID: ${{ env.RELEASE_ID }}
+        run: |
+          : "${PROD_SSH_HOST:?Missing GitHub secret PROD_SSH_HOST}"
+          : "${PROD_SSH_USER:?Missing GitHub secret PROD_SSH_USER}"
+
+          export DEPLOY_HOST="${PROD_SSH_USER}@${PROD_SSH_HOST}"
+          export SSH_KEY="$HOME/.ssh/aistareco_prod"
+          export SSH_PORT="${PROD_SSH_PORT:-22}"
+          export REMOTE_ROOT="${PROD_REMOTE_ROOT:-/opt/ai-star-eco}"
+          export PUBLIC_BASE="${PUBLIC_BASE_INPUT:-${PROD_PUBLIC_BASE:-}}"
+
+          ./infra/scripts/deploy-release.sh "dist/deploy/${RELEASE_ID}" "${{ inputs.services }}"

@@ -233,19 +233,79 @@ VALUES (UUID(), 'your-admin', '<bcrypt-hash>', 'super_admin', 'active', NOW());
 
 ## 4. 日常增量部署
 
-代码改动后，本地 build → rsync 产物 → ssh 重启：
+当前生产机采用「CI / 本地构建 release 包 → rsync 到 ECS → 远端解包 + systemd 重启」。
+构建机不需要 Docker；`sau-service` 的真实模式镜像在 ECS 上构建，避免跨架构镜像问题。
+
+### 4.1 本地手动部署
 
 ```bash
-ECS_HOST=root@<ECS_HOST> ./infra/scripts/deploy.sh <service>
-ECS_HOST=root@<ECS_HOST> ./infra/scripts/verify.sh
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+./infra/scripts/deploy.sh all
 ```
 
-`<service>` 取值：`server / web / admin / web-celebrity / web-music / web-drama / sau-service / all`。
-
-回滚到任意历史 tag：
+只部署某几个服务：
 
 ```bash
-ECS_HOST=root@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+./infra/scripts/deploy.sh server,web-celebrity
+```
+
+当前生产脚本支持的 `<service>`：`server / web-celebrity / admin / sau-service / all`。
+
+也可以拆成两步，便于先检查产物再发布：
+
+```bash
+RELEASE_ID=$(git rev-parse --short HEAD) ./infra/scripts/build-release.sh all
+
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+./infra/scripts/deploy-release.sh "dist/deploy/$(git rev-parse --short HEAD)" all
+```
+
+部署后验证：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+./infra/scripts/verify.sh
+```
+
+### 4.2 GitHub Actions 部署
+
+工作流：`.github/workflows/deploy-production.yml`，手动触发 `workflow_dispatch`。
+
+GitHub 仓库需要配置这些 Secrets：
+
+| Secret | 示例 | 说明 |
+|---|---|---|
+| `PROD_SSH_HOST` | `47.98.162.120` | ECS 公网 IP 或域名 |
+| `PROD_SSH_USER` | `ecs-user` | 需要免密 `sudo` 执行 systemctl/docker |
+| `PROD_SSH_PRIVATE_KEY` | PEM 私钥内容 | 对应 ECS 登录 key |
+| `PROD_SSH_PORT` | `22` | 可选，默认 22 |
+| `PROD_REMOTE_ROOT` | `/opt/ai-star-eco` | 可选，默认 `/opt/ai-star-eco` |
+| `PROD_PUBLIC_BASE` | `http://47.98.162.120` | 可选，用于部署后公网验证 |
+
+触发时 `services` 可填：
+
+```text
+all
+server
+server,web-celebrity,admin
+sau-service
+```
+
+工作流会上传 `dist/deploy/<release-id>` 为 GitHub artifact，保留 14 天，便于追溯当次部署产物。
+
+回滚到任意历史 tag 仍可用：
+
+```bash
+ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 ```
 
 ---
@@ -270,7 +330,8 @@ ECS_HOST=root@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 | **0** 基础设施版本化 | ✅ | `infra/` 目录骨架（本 README + 模板 + 脚本） |
 | **1** 生产硬伤修复 | ✅ | Flyway 接入 + 7 个 seeder 加 dev-data gate + JWT/AES 密钥 fail-fast |
 | **2** RDS / OSS 配置就绪 | ✅ | env 模板齐全，代码层 AliyunOssCdnUploader / AliyunSmsSender 早已实现，配 env 即可启用 |
-| **3** 全栈容器化 + CI/CD | ⏳ 待 | 给所有 app 加 Dockerfile + docker-compose + GitHub Actions 推 ACR |
+| **3a** artifact CI/CD | ✅ | GitHub Actions 构建 release 包，SSH/rsync 部署到当前单 ECS |
+| **3b** 全栈容器化 | ⏳ 待 | 给所有 app 加 Dockerfile + docker-compose + ACR 镜像发布 |
 | **4** 用户上传素材 OSS 化 | ⏳ 待 | `MixcutAssetService` 上传走 `CdnUploader`（当前仍落本地盘） |
 | **5** 多实例就绪 | ⏳ 待 | Redis（`SmsCodeService`）+ ShedLock（`@Scheduled`）+ cookie SSO + JWT 黑名单 |
 

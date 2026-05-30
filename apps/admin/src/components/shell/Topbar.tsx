@@ -32,11 +32,15 @@ export function Topbar({
   onMenuClick,
 }: TopbarProps) {
   const pathname = usePathname();
-  const { role, accountSource } = useAdminIdentity();
+  const identity = useAdminIdentity();
+  const { role, accountSource } = identity;
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
-  const isMac =
-    typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  const [isMac, setIsMac] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsMac(/Mac|iPod|iPhone|iPad/.test(navigator.platform));
+  }, []);
 
   // Global Cmd/Ctrl+K → open palette.
   React.useEffect(() => {
@@ -65,7 +69,16 @@ export function Topbar({
       all.find((it) => it.href !== "/" && pathname.startsWith(it.href + "/")) ??
       all.find((it) => it.href === "/")
     );
-  }, [pathname, role]);
+  }, [pathname, role, accountSource]);
+
+  const displayName = identity.displayName || identity.username || operator.name;
+  const roleLabel =
+    role === "SUPER_ADMIN"
+      ? "超级管理员"
+      : role === "OPERATOR"
+        ? "平台运营"
+        : operator.role;
+  const initials = getInitials(displayName, operator.initials);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -145,17 +158,21 @@ export function Topbar({
           </Tooltip>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2.5 pl-2 ml-1 border-l border-border">
+        <Link
+          href="/profile"
+          className="hidden sm:flex items-center gap-2.5 pl-2 ml-1 border-l border-border rounded-md outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="个人设置"
+        >
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-              {operator.initials}
+              {initials}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col leading-tight">
-            <span className="text-sm font-medium">{operator.name}</span>
-            <span className="text-xs text-muted-foreground">{operator.role}</span>
+            <span className="text-sm font-medium">{displayName}</span>
+            <span className="text-xs text-muted-foreground">{roleLabel}</span>
           </div>
-        </div>
+        </Link>
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -214,4 +231,14 @@ export function Topbar({
       </Dialog>
     </TooltipProvider>
   );
+}
+
+function getInitials(name: string, fallback: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return fallback;
+  const asciiParts = trimmed.split(/\s+/).filter(Boolean);
+  if (asciiParts.length > 1) {
+    return asciiParts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || fallback;
+  }
+  return trimmed.slice(0, 2).toUpperCase();
 }

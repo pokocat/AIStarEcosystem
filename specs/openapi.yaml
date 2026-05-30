@@ -5010,8 +5010,14 @@ paths:
     delete: { tags: [admin-selling-channels], operationId: adminDeleteSellingChannel, responses: { '204': { description: deleted (soft) } } }
 
   # ── v0.37：平台运营登录（AepUser + operatorRole 体系，独立通道） ─────────────
+  /admin/auth/login:
+    post: { tags: [admin-auth], operationId: adminLogin, responses: { '200': { description: ok }, '401': { description: 'invalid credentials' } } }
+  /admin/auth/me:
+    get: { tags: [admin-auth], operationId: adminGetMe, responses: { '200': { description: ok }, '401': { description: 'unauthorized' } } }
   /admin/auth/operator-login:
     post: { tags: [admin-auth], operationId: adminOperatorLogin, responses: { '200': { description: ok }, '401': { description: 'invalid credentials' }, '403': { description: 'no operatorRole or inactive' } } }
+  /admin/auth/change-password:
+    post: { tags: [admin-auth], operationId: adminChangeOwnPassword, responses: { '200': { description: ok }, '400': { description: 'invalid new password' }, '401': { description: 'unauthorized' }, '403': { description: 'bad current password' } } }
 
   # ── v0.37：超级管理员给 AepUser 设置密码（让 operator 能登 admin） ─────────
   /admin/aep-users/{id}/set-password:

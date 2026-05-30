@@ -139,7 +139,7 @@ public class AiModelEndpointAdminService {
 
     public void delete(String id) {
         if (!repo.existsById(id)) {
-            throw new BusinessException(HttpStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND", "AI 模型端点不存在");
+            return;
         }
         long bound = bindingRepo.countByEndpointId(id);
         if (bound > 0) {

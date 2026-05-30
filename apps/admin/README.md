@@ -5,11 +5,10 @@
 ## 启动
 
 ```bash
-cd apps/admin
-npm install
-npm run dev      # http://localhost:3003
-npm run typecheck
-npm run build
+pnpm install
+pnpm dev:admin      # http://localhost:3003
+pnpm typecheck:admin
+pnpm --filter @ai-star-eco/admin-new build
 ```
 
 环境变量（`.env.local`）：
@@ -24,7 +23,7 @@ NEXT_PUBLIC_USE_MOCK=0                 # 0 跑真后端；1 用 mocks/ 静态数
 | 服务 | 端口 |
 |---|---|
 | `apps/server`（Spring Boot） | 8080 |
-| `apps/admin`（本应用） | **3003** |
+| `apps/admin`（本应用，Next 16 / React 19 / pnpm workspace） | **3003** |
 | `apps/web`（带货方用户端） | 3002 |
 | `apps/miniprogram`（小程序） | — |
 
@@ -84,6 +83,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.42 / 2026-05-30**：admin 升级到 Next 16.2.6 + React 19，纳入根 pnpm workspace；新增 `/profile` 个人设置页（当前身份 + 自助改密），后端新增 `POST /api/admin/auth/change-password`；修复 Topbar / 登录页 render 期间读取浏览器环境造成的 hydration mismatch；全局错误通知接入 API 失败、未处理 Promise、脚本错误和 App Router error boundary。
 - **v0.41 / 2026-05-29**：合并「AI 模型」+「LLM 网关 Key」两个菜单为一个「AI 模型与 Key」（`/platform/ai-models`，删 `/platform/llm-keys`）。改为三 Tab：①**模型接入端点（含 Key）**—— 固定 {上游密钥 + 单模型 + 地址} 的 CRUD + 测试连接 + 获取模型列表选固定模型 + 生成/撤销网关 Key（`sk-aep-*`，明文一次横幅）+ 计费归属用户（空=平台级不计费）；②**AI 应用绑定** —— 7 个用途各一个端点下拉（脚本起草 / 卖点提取 / 变量抽取等），一用途一端点、无兜底；③**用量统计** —— 时间窗下拉（近 1/7/30/90/365 天）+ 4 个汇总数 + 按端点 / 按模型两张占比表，数据来自 server 自建 token 流水聚合（`GET /api/admin/ai-models/usage`，不依赖各家计费接口）。对应 server `AdminAiModelEndpointController`（+`/{id}/mint-key`、`/{id}/revoke-key`、`/usage`）+ `AdminAiAppBindingController`（`/api/admin/ai-app-bindings`）。`api/ai-models.ts` +`getUsage`/`getProviderUsage`/绑定函数；`api/llm-keys.ts` + `LlmKeysApi` 删除。
 - **v0.40 / 2026-05-29**：新页 `/platform/prompts`（平台与配置组「Prompt 管理」）。素材运营文本三件（脚本起稿 / 卖点提取 / 变量抽取）的 system + user 模板在此管理：system/user 双 textarea + params（temperature / max_tokens / json 模式）+ 启用开关 + 试运行（填充预览，不真调模型）。对应 server `AdminPromptController`（/api/admin/prompts）+ `prompt_template` 表。`/platform/ai-models` 的可选 purpose 加「卖点提取 / 变量抽取」，可把 provider 路由到这两类用途。`/celebrity/engine-pricing` 动作单价表加「AI 脚本起稿」一行（积分/单稿，0=不计费），运营设单价即开启起稿计费。
 - **v0.39 / 2026-05-28**：新页 `/platform/agent-bots`（平台与配置组「Agent 平台」）。

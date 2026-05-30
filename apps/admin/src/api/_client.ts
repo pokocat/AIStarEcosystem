@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ApiResponse, ApiErrorShape } from "@/types/_shared";
+import { emitGlobalError } from "@/lib/global-errors";
 
 /** 当 NEXT_PUBLIC_USE_MOCK=1 时，API 层直接返回 mocks/ 目录中的静态数据。 */
 export const USE_MOCK: boolean =
@@ -58,6 +59,20 @@ export class ApiError extends Error {
   }
 }
 
+function reportApiError(error: ApiError, path: string) {
+  emitGlobalError({
+    title: error.status === 401 ? "登录状态异常" : "接口请求失败",
+    description: error.message,
+    source: `${path}${error.code ? ` · ${error.code}` : ""}`,
+    fingerprint: `api:${path}:${error.status ?? "network"}:${error.code}:${error.message}`,
+  });
+}
+
+function throwApiError(error: ApiError, path: string): never {
+  reportApiError(error, path);
+  throw error;
+}
+
 /** 构造 URL 查询串，自动过滤 undefined / null。 */
 export function buildQuery(params?: Record<string, unknown>): string {
   if (!params) return "";
@@ -98,33 +113,64 @@ export async function apiFetch<T>(
     ...(headers || {}),
   };
 
-  const res = await fetch(url, {
-    method,
-    headers: finalHeaders,
-    body: body === undefined ? undefined : (isFormData ? body : JSON.stringify(body)),
-    signal,
-    credentials: "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: finalHeaders,
+      body: body === undefined ? undefined : (isFormData ? body : JSON.stringify(body)),
+      signal,
+      credentials: "include",
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throwApiError(
+      new ApiError(
+        {
+          code: "NETWORK_ERROR",
+          message: err instanceof Error ? err.message : "网络请求失败",
+        },
+        undefined,
+      ),
+      path,
+    );
+  }
 
   if (res.status === 401) {
     setAuthToken(null);
     if (typeof window !== "undefined" && !window.location.pathname.endsWith("/login")) {
       window.location.assign(loginUrl());
     }
-    throw new ApiError(
-      { code: "UNAUTHORIZED", message: "登录状态无效或已过期" },
-      res.status
+    throwApiError(
+      new ApiError(
+        { code: "UNAUTHORIZED", message: "登录状态无效或已过期" },
+        res.status,
+      ),
+      path,
     );
   }
 
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   let parsed: unknown;
+  let rawBody = "";
   try {
-    parsed = await res.json();
+    rawBody = await res.text();
+    parsed = rawBody ? JSON.parse(rawBody) : undefined;
   } catch {
-    throw new ApiError(
-      { code: "PARSE_ERROR", message: `Invalid JSON from ${path}` },
-      res.status
+    throwApiError(
+      new ApiError(
+        { code: "PARSE_ERROR", message: `Invalid JSON from ${path}` },
+        res.status,
+      ),
+      path,
     );
+  }
+
+  if (!rawBody && res.ok) {
+    return undefined as T;
   }
 
   if (!res.ok) {
@@ -132,7 +178,7 @@ export async function apiFetch<T>(
       code: "HTTP_ERROR",
       message: `HTTP ${res.status}`,
     };
-    throw new ApiError(err, res.status);
+    throwApiError(new ApiError(err, res.status), path);
   }
 
   const envelope = parsed as ApiResponse<T>;
@@ -141,7 +187,7 @@ export async function apiFetch<T>(
       code: "BAD_ENVELOPE",
       message: "Response envelope missing success:true",
     };
-    throw new ApiError(err, res.status);
+    throwApiError(new ApiError(err, res.status), path);
   }
   return envelope.data;
 }

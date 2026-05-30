@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# Deploy a release directory produced by infra/scripts/build-release.sh.
+#
+# Usage:
+#   DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/path/key.pem \
+#     ./infra/scripts/deploy-release.sh dist/deploy/<release> [services]
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+RELEASE_DIR="${1:?usage: deploy-release.sh <release-dir> [services]}"
+RAW_SERVICES="${2:-${SERVICES:-}}"
+DEPLOY_HOST="${DEPLOY_HOST:-${ECS_HOST:-}}"
+REMOTE_ROOT="${REMOTE_ROOT:-/opt/ai-star-eco}"
+SSH_PORT="${SSH_PORT:-22}"
+SSH_KEY="${SSH_KEY:-}"
+SUDO="${SUDO:-sudo}"
+VERIFY="${VERIFY:-1}"
+PUBLIC_BASE="${PUBLIC_BASE:-}"
+REMOTE_APP_USER="${REMOTE_APP_USER:-}"
+REMOTE_APP_GROUP="${REMOTE_APP_GROUP:-}"
+
+[[ -n "$DEPLOY_HOST" ]] || { echo "DEPLOY_HOST or ECS_HOST is required" >&2; exit 1; }
+[[ -d "$RELEASE_DIR" ]] || { echo "release dir not found: $RELEASE_DIR" >&2; exit 1; }
+[[ -f "$RELEASE_DIR/manifest.env" ]] || { echo "manifest missing: $RELEASE_DIR/manifest.env" >&2; exit 1; }
+
+# shellcheck disable=SC1090
+. "$RELEASE_DIR/manifest.env"
+RELEASE_ID="${RELEASE_ID:?manifest RELEASE_ID missing}"
+[[ "$RELEASE_ID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "invalid RELEASE_ID: $RELEASE_ID" >&2; exit 1; }
+if [[ -z "$RAW_SERVICES" ]]; then
+  RAW_SERVICES="${SERVICES:?manifest SERVICES missing}"
+fi
+
+DEFAULT_SERVICES="server web-celebrity admin sau-service"
+
+log() { printf "\033[1;34m[deploy-release]\033[0m %s\n" "$*"; }
+ok() { printf "\033[1;32m[deploy-release]\033[0m %s\n" "$*"; }
+fail() { printf "\033[1;31m[deploy-release] %s\033[0m\n" "$*" >&2; exit 1; }
+
+normalize_services() {
+  local raw="${1//,/ }"
+  local out="" item
+  for item in $raw; do
+    case "$item" in
+      all) out="$out $DEFAULT_SERVICES" ;;
+      server|web-celebrity|admin|sau-service) out="$out $item" ;;
+      "") ;;
+      *) fail "unknown service '$item' (expected server|web-celebrity|admin|sau-service|all)" ;;
+    esac
+  done
+
+  local seen=" " deduped=""
+  for item in $out; do
+    case "$seen" in
+      *" $item "*) ;;
+      *)
+        seen="$seen$item "
+        deduped="$deduped $item"
+        ;;
+    esac
+  done
+  printf "%s\n" "$deduped" | xargs
+}
+
+SERVICES_TO_DEPLOY="$(normalize_services "$RAW_SERVICES")"
+[[ -n "$SERVICES_TO_DEPLOY" ]] || fail "no services selected"
+
+SSH_BASE=(ssh -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new)
+RSYNC_SSH=(ssh -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new)
+if [[ -n "$SSH_KEY" ]]; then
+  SSH_BASE+=(-i "$SSH_KEY")
+  RSYNC_SSH+=(-i "$SSH_KEY")
+fi
+
+ssh_remote() {
+  "${SSH_BASE[@]}" "$DEPLOY_HOST" "$@"
+}
+
+REMOTE_STAGE="/tmp/aistareco-release-$RELEASE_ID"
+
+require_artifact() {
+  local file="$1"
+  [[ -f "$RELEASE_DIR/$file" ]] || fail "selected service requires missing artifact: $RELEASE_DIR/$file"
+}
+
+for svc in $SERVICES_TO_DEPLOY; do
+  case "$svc" in
+    server) require_artifact "server/app.jar" ;;
+    web-celebrity) require_artifact "web-celebrity.tar.gz" ;;
+    admin) require_artifact "admin.tar.gz" ;;
+    sau-service) require_artifact "sau-service.tar.gz" ;;
+  esac
+done
+
+log "uploading release $RELEASE_ID to $DEPLOY_HOST:$REMOTE_STAGE"
+ssh_remote "rm -rf '$REMOTE_STAGE' && mkdir -p '$REMOTE_STAGE'"
+rsync -az --delete -e "${RSYNC_SSH[*]}" "$RELEASE_DIR/" "$DEPLOY_HOST:$REMOTE_STAGE/"
+
+log "applying release on remote host"
+ssh_remote \
+  "RELEASE_ID='$RELEASE_ID' REMOTE_STAGE='$REMOTE_STAGE' REMOTE_ROOT='$REMOTE_ROOT' SERVICES_TO_DEPLOY='$SERVICES_TO_DEPLOY' SUDO='$SUDO' REMOTE_APP_USER='$REMOTE_APP_USER' REMOTE_APP_GROUP='$REMOTE_APP_GROUP' bash -s" <<'REMOTE_SCRIPT'
+set -euo pipefail
+
+log() { printf "\033[1;34m[remote-deploy]\033[0m %s\n" "$*"; }
+
+APP_USER="${REMOTE_APP_USER:-$(id -un)}"
+APP_GROUP="${REMOTE_APP_GROUP:-$(id -gn)}"
+RELEASE_STORE="$REMOTE_ROOT/releases/$RELEASE_ID"
+
+$SUDO mkdir -p "$REMOTE_ROOT/releases" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
+$SUDO rm -rf "$RELEASE_STORE"
+$SUDO mkdir -p "$RELEASE_STORE"
+$SUDO cp -a "$REMOTE_STAGE"/. "$RELEASE_STORE"/
+$SUDO chown -R "$APP_USER:$APP_GROUP" "$RELEASE_STORE" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
+
+deploy_server() {
+  log "install server jar"
+  $SUDO install -m 0644 "$RELEASE_STORE/server/app.jar" "$REMOTE_ROOT/server/app.jar"
+  $SUDO chown "$APP_USER:$APP_GROUP" "$REMOTE_ROOT/server/app.jar"
+  $SUDO systemctl restart aistareco-server
+}
+
+extract_app() {
+  local service="$1" tarball="$2" target="$3" unit="$4"
+  log "extract $service"
+  local next="${target}.__next__${RELEASE_ID}"
+  local prev="${target}.__previous__"
+  $SUDO rm -rf "$next"
+  $SUDO mkdir -p "$next"
+  $SUDO tar -xzf "$RELEASE_STORE/$tarball" -C "$next"
+  $SUDO chown -R "$APP_USER:$APP_GROUP" "$next"
+  $SUDO rm -rf "$prev"
+  if [[ -e "$target" ]]; then
+    $SUDO mv "$target" "$prev"
+  fi
+  $SUDO mv "$next" "$target"
+  $SUDO systemctl restart "$unit"
+  $SUDO rm -rf "$prev"
+}
+
+deploy_sau_service() {
+  log "extract sau-service source"
+  local target="$REMOTE_ROOT/sau-service"
+  local next="${target}.__next__${RELEASE_ID}"
+  local prev="${target}.__previous__"
+  $SUDO rm -rf "$next"
+  $SUDO mkdir -p "$next"
+  $SUDO tar -xzf "$RELEASE_STORE/sau-service.tar.gz" -C "$next"
+  $SUDO chown -R "$APP_USER:$APP_GROUP" "$next"
+
+  log "build sau-service docker image"
+  cd "$next"
+  $SUDO docker build --build-arg INSTALL_REAL=1 -t "aistareco/sau-service:$RELEASE_ID" -t aistareco/sau-service:real .
+  $SUDO rm -rf "$prev"
+  if [[ -e "$target" ]]; then
+    $SUDO mv "$target" "$prev"
+  fi
+  $SUDO mv "$next" "$target"
+  $SUDO systemctl restart aistareco-sau-service
+  $SUDO rm -rf "$prev"
+}
+
+for svc in $SERVICES_TO_DEPLOY; do
+  case "$svc" in
+    server) deploy_server ;;
+    web-celebrity) extract_app web-celebrity web-celebrity.tar.gz "$REMOTE_ROOT/web-celebrity" aistareco-web-celebrity ;;
+    admin) extract_app admin admin.tar.gz "$REMOTE_ROOT/admin" aistareco-admin ;;
+    sau-service) deploy_sau_service ;;
+  esac
+done
+
+log "deployed services: $SERVICES_TO_DEPLOY"
+REMOTE_SCRIPT
+
+if [[ "$VERIFY" == "1" ]]; then
+  log "running verify.sh"
+  ECS_HOST="$DEPLOY_HOST" SSH_KEY="$SSH_KEY" SSH_PORT="$SSH_PORT" PUBLIC_BASE="$PUBLIC_BASE" REMOTE_ROOT="$REMOTE_ROOT" "$REPO_ROOT/infra/scripts/verify.sh"
+fi
+
+ok "release deployed: $RELEASE_ID ($SERVICES_TO_DEPLOY)"

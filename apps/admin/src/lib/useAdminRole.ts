@@ -14,18 +14,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from "react";
-import { getMe } from "@/api/auth";
+import { getMe, type AdminMeUser } from "@/api/auth";
 import { USE_MOCK } from "@/api/_client";
 
 export type AccountSource = "admin" | "operator";
-export interface AdminIdentity {
-  role: string | null;
+export interface AdminIdentity extends Partial<Omit<AdminMeUser, "role" | "accountSource">> {
+  role: "SUPER_ADMIN" | "OPERATOR" | null;
   accountSource: AccountSource | null;
 }
 
-let cachedRole: string | null = null;
-let cachedSource: AccountSource | null = null;
+let cachedIdentity: AdminIdentity | null = null;
 let cachePromise: Promise<AdminIdentity> | null = null;
+
+const MOCK_IDENTITY: AdminIdentity = {
+  id: "mock-admin",
+  username: "admin",
+  email: "admin@example.local",
+  displayName: "张运营",
+  role: "SUPER_ADMIN",
+  status: "active",
+  accountSource: "admin",
+};
 
 /**
  * v0.37+：返回登录管理员的 role + accountSource。
@@ -36,30 +45,33 @@ let cachePromise: Promise<AdminIdentity> | null = null;
  */
 export function useAdminIdentity(): AdminIdentity {
   const [identity, setIdentity] = useState<AdminIdentity>(() => {
-    if (cachedRole) return { role: cachedRole, accountSource: cachedSource };
+    if (cachedIdentity) return cachedIdentity;
     if (USE_MOCK) {
-      cachedRole = "SUPER_ADMIN";
-      cachedSource = "admin";
-      return { role: cachedRole, accountSource: cachedSource };
+      cachedIdentity = MOCK_IDENTITY;
+      return cachedIdentity;
     }
     return { role: null, accountSource: null };
   });
 
   useEffect(() => {
-    if (cachedRole || USE_MOCK) return;
+    if (cachedIdentity || USE_MOCK) return;
     let alive = true;
     if (!cachePromise) {
       cachePromise = getMe().then(
         (u) => {
-          cachedRole = u.role ? u.role.toUpperCase() : null;
-          // server /me 返回 accountSource: "admin" | "operator"（v0.37+）
-          const src = (u as { accountSource?: string }).accountSource;
-          cachedSource = src === "admin" || src === "operator" ? src : null;
-          return { role: cachedRole, accountSource: cachedSource };
+          const rawRole = u.role ? u.role.toUpperCase() : null;
+          const normalizedRole =
+            rawRole === "SUPER_ADMIN" || rawRole === "OPERATOR" ? rawRole : null;
+          const src = u.accountSource;
+          cachedIdentity = {
+            ...u,
+            role: normalizedRole,
+            accountSource: src === "admin" || src === "operator" ? src : null,
+          };
+          return cachedIdentity;
         },
         () => {
-          cachedRole = null;
-          cachedSource = null;
+          cachedIdentity = null;
           cachePromise = null;
           return { role: null, accountSource: null };
         },

@@ -33,6 +33,7 @@ import {
   History,
   Package,
   Briefcase,
+  UserCog,
 } from "lucide-react";
 
 export interface NavItem {
@@ -76,6 +77,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "全局",
     items: [
       { href: "/", label: "运营总览", icon: LayoutDashboard, description: "平台 KPI 与待办队列" },
+      { href: "/profile", label: "个人设置", icon: UserCog, description: "当前登录身份与密码修改" },
     ],
   },
   {
