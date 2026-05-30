@@ -18,6 +18,11 @@ interface Props {
    * 防止网格一次加载几十路视频流。设为 false 则直接渲染 video（详情大图位）。
    */
   thumbnailMode?: boolean;
+  /**
+   * 点击缩略图时的回调（缩略模式有 src 时生效）。
+   * 提供时点击不再就地播放，而是交给外层（如打开 lightbox 大图浏览）。
+   */
+  onOpen?: () => void;
   className?: string;
   /** 视频比例（默认 9:16 portrait） */
   aspect?: "9/16" | "16/9";
@@ -27,10 +32,35 @@ function pad2(n: number) {
   return n.toString().padStart(2, "0");
 }
 
+/** 无海报但有视频源时，用视频首帧当封面（muted + preload=metadata + 轻微 seek）。 */
+function PosterFromVideo({ src }: { src: string }) {
+  const ref = React.useRef<HTMLVideoElement>(null);
+  return (
+    <video
+      ref={ref}
+      src={src}
+      muted
+      playsInline
+      preload="metadata"
+      onLoadedMetadata={() => {
+        const el = ref.current;
+        if (!el || !Number.isFinite(el.duration)) return;
+        try {
+          el.currentTime = Math.min(0.75, Math.max(0, el.duration - 0.1));
+        } catch {
+          /* 某些浏览器拒绝过早 seek，保留首帧即可。 */
+        }
+      }}
+      className="h-full w-full object-cover transition group-hover:scale-105"
+    />
+  );
+}
+
 /**
  * 列表 / 详情通用视频播放器：
- * - thumbnailMode=true（默认）→ 海报 + 中心 ▶︎；点击后载入并播放，附原生 controls。
- * - thumbnailMode=false → 直接渲染 video，preload="metadata"。
+ * - thumbnailMode=true（默认）→ 海报 + 中心 ▶︎；点击后载入并播放（或走 onOpen）。
+ *   无海报但有视频源时用视频首帧当封面。
+ * - thumbnailMode=false → 直接渲染 video，preload="metadata"，自动播放。
  */
 export function CelebrityVideoPlayer({
   src,
@@ -38,6 +68,7 @@ export function CelebrityVideoPlayer({
   durationSec,
   badge,
   thumbnailMode = true,
+  onOpen,
   className,
   aspect = "9/16",
 }: Props) {
@@ -59,7 +90,7 @@ export function CelebrityVideoPlayer({
           src={src}
           poster={poster}
           controls
-          autoPlay={thumbnailMode}
+          autoPlay
           preload="metadata"
           playsInline
           className="h-full w-full object-cover"
@@ -72,7 +103,9 @@ export function CelebrityVideoPlayer({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (hasSrc) setActive(true);
+            if (!hasSrc) return;
+            if (onOpen) onOpen();
+            else setActive(true);
           }}
           disabled={!hasSrc}
           className="block h-full w-full disabled:cursor-default"
@@ -85,6 +118,8 @@ export function CelebrityVideoPlayer({
               loading="lazy"
               className="h-full w-full object-cover transition group-hover:scale-105"
             />
+          ) : hasSrc ? (
+            <PosterFromVideo src={src!} />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-zinc-900 to-zinc-800" />
           )}

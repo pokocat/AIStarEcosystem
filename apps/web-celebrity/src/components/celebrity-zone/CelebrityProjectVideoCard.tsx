@@ -11,19 +11,22 @@ interface Props {
   video: CelebrityProjectVideo;
   /** 是否显示项目名（视频库 Tab 用） */
   showProject?: boolean;
+  /** 点击卡片打开大图浏览（lightbox）。 */
+  onOpen?: (video: CelebrityProjectVideo) => void;
 }
 
-export function CelebrityProjectVideoCard({ video, showProject }: Props) {
+export function CelebrityProjectVideoCard({ video, showProject, onOpen }: Props) {
   const status = VIDEO_STATUS_BADGE[video.status];
   const engineColor = ENGINE_META[video.engine].color;
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 transition hover:border-zinc-200 hover:bg-zinc-100">
+    <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 transition hover:border-violet-300 hover:bg-zinc-100">
       <CelebrityVideoPlayer
         src={video.videoUrl}
         poster={video.thumb}
         durationSec={video.durationSec}
         aspect="9/16"
+        onOpen={onOpen ? () => onOpen(video) : undefined}
         badge={
           <span
             className={cn(
@@ -35,7 +38,12 @@ export function CelebrityProjectVideoCard({ video, showProject }: Props) {
           </span>
         }
       />
-      <div className="px-0.5">
+      <button
+        type="button"
+        onClick={() => onOpen?.(video)}
+        disabled={!onOpen}
+        className="px-0.5 text-left disabled:cursor-default"
+      >
         <div className="line-clamp-1 text-xs font-medium text-zinc-700">
           {video.productName}
         </div>
@@ -61,7 +69,7 @@ export function CelebrityProjectVideoCard({ video, showProject }: Props) {
             </span>
           )}
         </div>
-      </div>
+      </button>
     </div>
   );
 }
