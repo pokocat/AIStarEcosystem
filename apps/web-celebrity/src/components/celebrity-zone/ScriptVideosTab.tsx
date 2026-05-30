@@ -1,9 +1,12 @@
 "use client";
 
 // 脚本视频（只读聚合）——一级「视频库」的来源 Tab 之一。
-// 拉 MaterialOpsApi.listVideos() 汇总素材运营脚本派生出来的带货视频，纯浏览。
-// 生产动作（派生 / 详情 / AI 提卖点 / 删除）仍在「素材运营 → 商品素材库」(/material/assets)；
-// 这里点击卡片即跳过去操作。
+// 拉 MaterialOpsApi.listVideos() 平铺汇总素材运营脚本派生出来的全部带货视频。
+// 可见 + 可预览 + 可就地播放：
+//   - 封面：thumbnail_url → 无则用 video_url 首帧 → 再无则 cover_color 渐变。
+//   - 点击有 video_url 的卡 → 弹 lightbox 就地播放；无 video_url → 跳商品素材库。
+// 生产动作（派生 / 详情 / AI 提卖点 / 删除）仍在「素材运营 → 商品素材库」(/material/assets)，
+// lightbox 内提供「去商品素材库」入口。
 //
 // 渲染中（status=rendering）存在时 3s 轻量轮询刷新进度。
 
@@ -13,6 +16,12 @@ import { ExternalLink, PlayCircle, Loader2, TriangleAlert, Search, Film } from "
 import type { MaterialVideo } from "@/components/material-ops/types";
 import { MaterialOpsApi } from "@/api";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@ai-star-eco/ui/ui/dialog";
 
 const STATUS_BADGE: Record<MaterialVideo["status"], { label: string; className: string }> = {
   ready: { label: "已生成", className: "bg-emerald-500/90 text-white" },
@@ -21,11 +30,36 @@ const STATUS_BADGE: Record<MaterialVideo["status"], { label: string; className: 
   failed: { label: "生成失败", className: "bg-red-500/90 text-white" },
 };
 
+/** 无海报但有视频源时，用视频首帧当封面（muted + preload=metadata + 轻 seek）。 */
+function PosterFromVideo({ src }: { src: string }) {
+  const ref = React.useRef<HTMLVideoElement>(null);
+  return (
+    <video
+      ref={ref}
+      src={src}
+      muted
+      playsInline
+      preload="metadata"
+      onLoadedMetadata={() => {
+        const el = ref.current;
+        if (!el || !Number.isFinite(el.duration)) return;
+        try {
+          el.currentTime = Math.min(0.75, Math.max(0, el.duration - 0.1));
+        } catch {
+          /* 某些浏览器拒绝过早 seek，保留首帧即可。 */
+        }
+      }}
+      className="h-full w-full object-cover"
+    />
+  );
+}
+
 export function ScriptVideosTab() {
   const router = useRouter();
   const [videos, setVideos] = React.useState<MaterialVideo[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
+  const [playing, setPlaying] = React.useState<MaterialVideo | null>(null);
 
   const load = React.useCallback(() => {
     return MaterialOpsApi.listVideos()
@@ -55,6 +89,12 @@ export function ScriptVideosTab() {
     router.push(pid ? `/material/assets?product=${encodeURIComponent(pid)}` : "/material/assets");
   };
 
+  // 点击卡片：有可播放源 → 就地开 lightbox；否则（渲染中 / 无源）→ 跳商品素材库。
+  const handleCardClick = (video: MaterialVideo) => {
+    if (video.status === "ready" && video.video_url) setPlaying(video);
+    else goManage(video);
+  };
+
   const filtered = (videos ?? []).filter((v) => {
     const q = query.trim();
     return !q || v.name.includes(q);
@@ -81,7 +121,7 @@ export function ScriptVideosTab() {
             脚本视频 · {videos?.length ?? 0} 条
           </div>
           <div className="text-xs text-zinc-500">
-            素材运营脚本派生的带货视频，此处汇总浏览。派生 / 详情 / 提取卖点等请前往
+            素材运营脚本派生的全部带货视频，点击即可预览播放。派生 / 详情 / 提取卖点等请前往
             <button
               type="button"
               onClick={() => goManage()}
@@ -119,10 +159,54 @@ export function ScriptVideosTab() {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
           {filtered.map((v) => (
-            <ScriptVideoCard key={v.id} video={v} onClick={() => goManage(v)} />
+            <ScriptVideoCard key={v.id} video={v} onClick={() => handleCardClick(v)} />
           ))}
         </div>
       )}
+
+      {/* 就地播放 lightbox */}
+      <Dialog open={!!playing} onOpenChange={(o) => !o && setPlaying(null)}>
+        <DialogContent className="max-w-sm overflow-hidden border-zinc-800 bg-zinc-950 p-0">
+          {playing && (
+            <>
+              <DialogHeader className="px-4 pb-2 pt-4">
+                <DialogTitle className="line-clamp-1 text-sm font-medium text-white">
+                  {playing.name}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="px-4">
+                <video
+                  src={playing.video_url ?? undefined}
+                  poster={playing.thumbnail_url ?? undefined}
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="metadata"
+                  className="mx-auto aspect-[9/16] w-[300px] max-w-full rounded-lg bg-black object-cover"
+                >
+                  您的浏览器不支持视频播放。
+                </video>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-[11px] text-zinc-400">
+                {playing.metrics ? (
+                  <span className="font-mono">
+                    {playing.metrics.plays} · {playing.metrics.ctr_pct}% · {playing.metrics.gmv}
+                  </span>
+                ) : (
+                  <span className="font-mono">{playing.duration_sec}s</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => goManage(playing)}
+                  className="ml-auto inline-flex items-center gap-0.5 text-violet-400 underline-offset-2 hover:underline"
+                >
+                  去商品素材库 <ExternalLink className="h-3 w-3" />
+                </button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -131,11 +215,12 @@ function ScriptVideoCard({ video, onClick }: { video: MaterialVideo; onClick: ()
   const badge = STATUS_BADGE[video.status];
   const isRendering = video.status === "rendering";
   const isFailed = video.status === "failed";
+  const canPlay = video.status === "ready" && !!video.video_url;
   return (
     <button
       type="button"
       onClick={onClick}
-      title="前往商品素材库查看 / 操作"
+      title={canPlay ? "点击预览播放" : "前往商品素材库查看 / 操作"}
       className="group flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-left transition hover:border-violet-300 hover:bg-zinc-100"
     >
       <div
@@ -146,9 +231,12 @@ function ScriptVideoCard({ video, onClick }: { video: MaterialVideo; onClick: ()
             : "#18181b",
         }}
       >
+        {/* 封面：缩略图 → 视频首帧 → 渐变兜底。渲染中 / 失败不取视频帧。 */}
         {video.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={video.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : !isRendering && !isFailed && video.video_url ? (
+          <PosterFromVideo src={video.video_url} />
         ) : null}
 
         {/* 状态徽标 */}
@@ -166,6 +254,10 @@ function ScriptVideoCard({ video, onClick }: { video: MaterialVideo; onClick: ()
           <TriangleAlert className="absolute left-1/2 top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 text-white/90" />
         ) : isRendering ? (
           <Loader2 className="absolute left-1/2 top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 animate-spin text-white/90" />
+        ) : canPlay ? (
+          <span className="absolute left-1/2 top-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/55 text-zinc-900 backdrop-blur-sm transition group-hover:bg-white/80 group-hover:scale-110">
+            <PlayCircle className="size-6" />
+          </span>
         ) : (
           <PlayCircle className="absolute left-1/2 top-1/2 size-7 -translate-x-1/2 -translate-y-1/2 text-white/85 opacity-0 transition group-hover:opacity-100" />
         )}
