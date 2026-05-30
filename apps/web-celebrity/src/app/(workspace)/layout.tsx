@@ -31,9 +31,11 @@ import {
 import { useAuth, PublishJobApi } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
 import { PlatformAccessDenied } from "@ai-star-eco/landing";
+import { useIsMobile } from "@ai-star-eco/ui/ui/use-mobile";
 import {
   Avatar,
   Button,
+  MobileShell,
   Sidebar,
   type NavGroup,
   type NavSubItem,
@@ -355,6 +357,7 @@ function TipOfDay() {
 function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/dashboard";
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
   const isDistribution =
     pathname === "/distribution" || pathname.startsWith("/distribution/");
@@ -422,6 +425,16 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   const groups = buildGroups(pathname, activeJobs, inflightPublishJobs);
   const crumbs = CrumbsFromPathname(pathname);
+
+  // 窄屏（<768px）走移动 shell：底部 Tab Bar + 抽屉导航，复用同一份 groups。
+  if (isMobile) {
+    const title = crumbs[crumbs.length - 1] ?? "AI 明星带货";
+    return (
+      <MobileShell groups={groups} title={title}>
+        {children}
+      </MobileShell>
+    );
+  }
 
   return (
     <div

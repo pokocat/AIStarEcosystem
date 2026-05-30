@@ -294,6 +294,23 @@
   }
 }
 
+/* ============================================================
+   移动端 H5 · 响应式工具（v0.45）
+   本站大量页面用内联 style 的固定栅格（gridTemplateColumns: repeat(N,1fr) /
+   "1fr 1fr" / "1.4fr 1fr" 等），在 ~390px 直接溢出。这些类用 !important 仅在
+   <768px 覆盖内联模板，把多列塌成 1 / 2 列；≥768px 不生效 → 桌面布局一字不动。
+   （带 !important 的作者样式优先级高于不带 !important 的内联声明，故可覆盖。）
+   用法：给内联 grid 的元素附加 className，保留其桌面端 inline gridTemplateColumns。
+   ============================================================ */
+@media (max-width: 767px) {
+  .stack-mobile {
+    grid-template-columns: 1fr !important;
+  }
+  .stack-mobile-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
 @layer base {
   html,
   body {

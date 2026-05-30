@@ -66,6 +66,7 @@ export default function CelebrityDashboardPage() {
           justifyContent: "space-between",
           alignItems: "flex-end",
           gap: 24,
+          flexWrap: "wrap",
         }}
       >
         <div>
@@ -115,7 +116,7 @@ export default function CelebrityDashboardPage() {
       </div>
 
       {/* KPI —— 业务核心指标 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         <KpiCard label="30 日 GMV" value="¥8.42M" delta="环比上月 +12.4%" gradient="violet" />
         <KpiCard
           label="累计播放 · 近 7 日"
@@ -140,7 +141,7 @@ export default function CelebrityDashboardPage() {
       {/* 业务主线 5 步指引 */}
       <Card style={{ padding: "18px 22px" }}>
         <div className="eyebrow" style={{ marginBottom: 14 }}>明星带货 · 五步主线</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+        <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
           <PipelineStep n={1} title="找明星" desc="浏览市场，按分类与人气挑选" href="/market" tone="violet" active />
           <PipelineStep
             n={2}
@@ -174,7 +175,7 @@ export default function CelebrityDashboardPage() {
       </Card>
 
       {/* 两栏：我的明星 / 在产项目 */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         {/* 我的明星 */}
         <Card style={{ padding: "22px 22px 18px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
@@ -297,7 +298,7 @@ export default function CelebrityDashboardPage() {
       </div>
 
       {/* 待审切片 / 渠道分发 两栏 */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
+      <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
         {/* 待审切片 */}
         <Card style={{ padding: "22px 22px 18px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
@@ -425,6 +426,7 @@ export default function CelebrityDashboardPage() {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 24,
+          flexWrap: "wrap",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 22 }}>

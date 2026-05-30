@@ -3,7 +3,7 @@
 > 子产品：**AI Celebrity Studio** — 基于真人明星授权的 AI 复刻 IP 带货平台。
 > 本文件是产品形态 + 设计约束的真值源。技术 onboarding 在 [`README.md`](README.md)，业务规格在仓库根 [`product_spec_ai_celebrity.md`](../../product_spec_ai_celebrity.md)（AI 明星带货主线，v0.5.x）。
 
-**Last reviewed**: 2026-05-17
+**Last reviewed**: 2026-05-30
 
 ---
 
@@ -159,6 +159,13 @@ fuchsia-*   → 紫罗兰深档
 - **Sidebar**：220px 固定宽，3 分组（工作台 / 制作 / 洞察）
 - **Topbar**：48px，breadcrumb + 搜索 + 导出按钮 + accent CTA「新建项目」+ 钱包余额 + 头像 + 退出
 - **主体**：max-w 1600px，padding 24-28px
+
+### 4.3.1 移动端 H5（v0.45+）
+
+- **断点 768px**：`useIsMobile()`（[`@ai-star-eco/ui/ui/use-mobile`](../../packages/ui/src/ui/use-mobile.ts)）在窄屏把 `(workspace)` 桌面 shell 整体换成 [`MobileShell`](src/components/creator/MobileShell.tsx)（精简顶栏 + 固定底部 Tab Bar「今日 / 市场 / 混剪 / 分发 / 更多」+「更多」打开复用桌面 `Sidebar` 的左侧 `Sheet` 抽屉）。桌面 220px 栅格分支不变。
+- **新页面/改页面约束**：避免内联 style 写死的多列栅格（`gridTemplateColumns: "repeat(N,1fr)"`/`"1.4fr 1fr"` 等）在窄屏溢出。统一手法 —— 给该 grid 附加 `.stack-mobile`（塌 1 列）或 `.stack-mobile-2`（塌 2 列）类（定义在 [`styles/app.css`](src/styles/app.css)，`!important` 仅 <768px 生效，桌面不受影响）；密集表格在窄屏用横向滚动容器或卡片列表。优先用 Tailwind 响应式断点（`sm:`/`md:`）写新组件。
+- **安全区**：`app/layout.tsx` 的 `viewport` 设 `viewport-fit=cover`；移动 shell 顶/底用 `env(safe-area-inset-*)`。
+- **重型编辑器**（模板画布编辑器 / 脚本双栏编辑器）移动端先做「查看 + 轻编辑」，复杂排版引导桌面（v0.45 范围，后续增量）。
 
 ### 4.4 组件分层
 

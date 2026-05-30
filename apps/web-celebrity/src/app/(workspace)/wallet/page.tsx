@@ -142,7 +142,7 @@ export default function WalletPage() {
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginTop: 20 }}>
+          <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginTop: 20 }}>
             <BucketTile label="充值积分" hint="充值入账，永不过期" value={wallet?.rechargeBalance ?? 0} />
             <BucketTile label="License 积分" hint="激活码核销" value={wallet?.licenseBalance ?? 0} />
             <BucketTile label="赠送积分" hint="平台活动 / 运营调账" value={wallet?.giftBalance ?? 0} />
@@ -216,11 +216,14 @@ export default function WalletPage() {
           ) : ledger.length === 0 ? (
             <div style={{ fontSize: 13, color: "var(--fg-2)" }}>还没有积分流水。生成视频、分发任务或充值后会在这里出现。</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              <LedgerHeader />
-              {ledger.map((e) => (
-                <LedgerRow key={e.id} entry={e} />
-              ))}
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              {/* 窄屏：账本列宽固定，整体横向滚动查看（不挤压列宽） */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 0, minWidth: 560 }}>
+                <LedgerHeader />
+                {ledger.map((e) => (
+                  <LedgerRow key={e.id} entry={e} />
+                ))}
+              </div>
             </div>
           )}
         </div>

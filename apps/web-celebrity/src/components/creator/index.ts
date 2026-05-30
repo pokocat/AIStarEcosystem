@@ -9,6 +9,7 @@ export { Meter } from "./Meter";
 export { Input } from "./Input";
 export { DataTable, type Column } from "./DataTable";
 export { Sidebar, type NavItem, type NavGroup, type NavSubItem } from "./Sidebar";
+export { MobileShell } from "./MobileShell";
 export { Topbar } from "./Topbar";
 export { Avatar, gradientForSeed } from "./Avatar";
 export { Tabs } from "./Tabs";
