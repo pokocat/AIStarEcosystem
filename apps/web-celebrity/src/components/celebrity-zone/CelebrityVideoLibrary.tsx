@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Film } from "lucide-react";
+import { Film, Eye } from "lucide-react";
 import { CelebrityProjectVideoCard } from "./CelebrityProjectVideoCard";
+import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
+import { ENGINE_META, VIDEO_STATUS_BADGE } from "@/constants/celebrity-zone-ui";
 import type {
   CelebrityProject,
   CelebrityProjectVideo,
@@ -10,6 +12,12 @@ import type {
   ProjectVideoStatus,
 } from "@ai-star-eco/types/celebrity-zone";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@ai-star-eco/ui/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -40,6 +48,7 @@ export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
   const [starId, setStarId] = React.useState<"all" | string>("all");
   const [projectId, setProjectId] = React.useState<"all" | string>("all");
   const [sort, setSort] = React.useState<SortKey>("createdDesc");
+  const [selected, setSelected] = React.useState<CelebrityProjectVideo | null>(null);
 
   const filtered = React.useMemo(() => {
     let v = [...videos];
@@ -142,10 +151,62 @@ export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
           {filtered.map((v) => (
-            <CelebrityProjectVideoCard key={v.id} video={v} showProject />
+            <CelebrityProjectVideoCard key={v.id} video={v} showProject onOpen={setSelected} />
           ))}
         </div>
       )}
+
+      {/* 大图浏览 lightbox：点击卡片打开，大屏自动播放 + 元信息 */}
+      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+        <DialogContent className="max-w-sm overflow-hidden border-zinc-800 bg-zinc-950 p-0">
+          {selected && (
+            <>
+              <DialogHeader className="px-4 pb-2 pt-4">
+                <DialogTitle className="line-clamp-1 text-sm font-medium text-white">
+                  {selected.productName}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="px-4">
+                <CelebrityVideoPlayer
+                  src={selected.videoUrl}
+                  poster={selected.thumb}
+                  thumbnailMode={false}
+                  aspect="9/16"
+                  className="mx-auto w-[300px] max-w-full"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-[11px] text-zinc-400">
+                <span>
+                  {selected.projectName} · {selected.starName}
+                </span>
+                <span
+                  className="rounded border px-1 text-[10px]"
+                  style={{
+                    borderColor: `${ENGINE_META[selected.engine].color}55`,
+                    color: ENGINE_META[selected.engine].color,
+                    background: `${ENGINE_META[selected.engine].color}14`,
+                  }}
+                >
+                  {selected.engine}
+                </span>
+                <span
+                  className={cn(
+                    "rounded-md border px-1.5 py-0.5 text-[10px]",
+                    VIDEO_STATUS_BADGE[selected.status].className,
+                  )}
+                >
+                  {selected.status}
+                </span>
+                {selected.plays && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <Eye className="h-3 w-3" /> {selected.plays}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
