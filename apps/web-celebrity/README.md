@@ -69,15 +69,17 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
-### v0.45 · 2026-05-30 · 移动端 H5 第一期（自适应 shell + 高频页响应式）
+### v0.45 · 2026-05-30 · 移动端 H5（自适应 shell + 全页响应式 + 编辑器降级，Phase 1–4）
 
 - **背景**：工作台是桌面优先 —— `(workspace)/layout.tsx` 写死 `gridTemplateColumns: "220px 1fr"` 固定栅格 + 220px 侧栏 + ⌘K 搜索；大量页面用内联 style 的固定多列栅格（`repeat(4/5,1fr)`、`1.4fr 1fr`、账本 `150px 120px 1fr 120px 110px`），在手机上溢出/挤压，基本不可用。
 - **方案（同一 app 自适应改造，零后端/契约改动）**：业务逻辑已与表现解耦（数据走 `@ai-star-eco/api-client` namespace API + `AuthProvider`），移动化只换一层表现。用 `useIsMobile()`（`@ai-star-eco/ui/ui/use-mobile`，768 断点）在窄屏切换到移动 shell，桌面 220px 栅格分支原样保留。
-- **移动 shell**：新增 [`components/creator/MobileShell.tsx`](src/components/creator/MobileShell.tsx) —— 精简顶栏（iP 标 + 当前页标题 + 钱包 chip + 头像）+ 固定**底部 Tab Bar**（今日 / 市场 / 混剪 / 分发 / 更多）+「更多」打开左侧 `Sheet` 抽屉。抽屉**直接复用桌面 `creator/Sidebar`**，把 layout 已算好的 `buildGroups()` 原样喂入（导航数据零重复），点链接冒泡自动收起。顶/底含 `env(safe-area-inset-*)` 安全区。
-- **响应式地基**：`app/layout.tsx` 加 `viewport`（`width=device-width, viewport-fit=cover`）；`styles/app.css` 加 `.stack-mobile` / `.stack-mobile-2` 工具类 —— `!important` 仅在 <768px 覆盖内联 `gridTemplateColumns`（带 `!important` 的作者样式优先级高于不带 `!important` 的内联声明），把多列塌成 1 / 2 列，**桌面端一字不改**。
-- **高频页响应式（P2 起步）**：`/dashboard`（KPI/五步主线塌成 2 列、两栏区块塌成 1 列、hero `flexWrap`）、`/wallet`（四桶塌成 2 列、账本表格窄屏改横向滚动容器保列宽）。其余高频页（market / projects / products / library / distribution / mixcut 列表 / material 列表）走同一手法，后续增量。
-- **不在本期**：混剪模板画布编辑器（`template-detail-client.tsx`）、脚本双栏编辑器的移动重交互（移动端先做查看 + 轻编辑，复杂排版引导桌面）；PWA + Web Push。
-- **验证**：`typecheck` + `build` 全绿（36 路由）；移动 shell 在 SSR/首屏走桌面分支（`useIsMobile` 初值 false，hydration 一致），挂载后切移动，无 hydration mismatch。
+- **P1 移动 shell**：新增 [`components/creator/MobileShell.tsx`](src/components/creator/MobileShell.tsx) —— 精简顶栏（iP 标 + 当前页标题 + 钱包 chip + 头像）+ 固定**底部 Tab Bar**（今日 / 市场 / 混剪 / 分发 / 更多）+「更多」打开左侧 `Sheet` 抽屉。抽屉**直接复用桌面 `creator/Sidebar`**，把 layout 已算好的 `buildGroups()` 原样喂入（导航数据零重复），点链接冒泡自动收起。顶/底含 `env(safe-area-inset-*)` 安全区。
+- **P0 响应式地基**：`app/layout.tsx` 加 `viewport`（`width=device-width, viewport-fit=cover`）+ `theme-color`；`styles/app.css` 加 `.stack-mobile` / `.stack-mobile-2` 工具类 —— `!important` 仅在 <768px 覆盖内联 `gridTemplateColumns`（带 `!important` 的作者样式优先级高于不带 `!important` 的内联声明），把多列塌成 1 / 2 列，**桌面端一字不改**。
+- **P2 全页响应式（约 24 文件）**：`/dashboard`、`/wallet`（账本表格→横向滚动）、公开 landing（hero/案例/主线/能力/合规多栏塌列 + 顶栏导航 `hidden md:flex`）；组件层 `celebrity-zone`（6）/ `material-ops`（9，含 ScriptLibrary/LoopScreen 固定列表格→`overflow-x` 横滚）/ `distribution`（3）/ `mixcut-zone`（1）统一：内联栅格挂 `stack-mobile*`、Tailwind 网格改 mobile-first（`grid-cols-2 md:grid-cols-4` 等保桌面列数）、固定宽弹窗/抽屉加 `max-w-[95vw]`、密集表格包横滚、`space-between` 头部 `flex-wrap`。
+- **P3 中等页**：`/mixcut/create/[id]`（主双栏已 `grid-cols-1 lg:grid-cols-[440px_1fr]`，移动单列）、`/mixcut/jobs/[id]`（进度步骤 `grid-cols-2 sm:grid-cols-4`，产出表已在 `overflow-x-auto`）。
+- **P4 重型编辑器（移动「查看 + 轻编辑」）**：`template-detail-client.tsx` 主双栏已 `grid-cols-1` 基（移动单列），编辑态加 `md:hidden` 提示「画布精排建议桌面」；`WorkshopScreen.tsx` 双栏（`minmax(0,1fr) 320px`）+ block 双栏 + 商品头挂 `stack-mobile`，Agent/校验面板落到编辑器下方。
+- **不在本期**：P5 PWA（安装）+ Web Push（生成完成 / 待审核 / 分发结果）；模板画布拖拽定位 slot 的移动重交互。
+- **验证**：`typecheck` + `build` 全绿（36 路由）；产物 CSS 确含 `@media (max-width:767px){.stack-mobile{grid-template-columns:1fr!important}…}`，预渲染 HTML（dashboard/index/wallet）已带 `stack-mobile*` 类，viewport/theme-color meta 入 head，dev server `✓ Ready`。移动 shell SSR/首屏走桌面分支（`useIsMobile` 初值 false，hydration 一致），挂载后切移动，无 mismatch。交互式真机视口验证需在浏览器 DevTools 设备模式 / 真机进行。
 
 ### v0.44 · 2026-05-30 · 三类成片视频聚合进一级「视频库」(/library)
 

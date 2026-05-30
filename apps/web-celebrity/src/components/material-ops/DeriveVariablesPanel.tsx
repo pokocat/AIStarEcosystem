@@ -93,7 +93,7 @@ export function DeriveVariablesPanel({
   return (
     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
       {/* 左：变量管理 */}
-      <div style={{ width: 440, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ width: 440, maxWidth: "95vw", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
         {/* 派生数量 */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", background: `linear-gradient(135deg, ${hexA("#5b3fe0", "12")}, transparent 60%)` }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>

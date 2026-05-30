@@ -39,7 +39,7 @@ export function ScriptPreview({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 1280 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <Button variant="ghost" onClick={onBack}>
           <ChevronRight size={13} style={{ transform: "rotate(180deg)" }} /> 返回脚本库
         </Button>
@@ -71,7 +71,7 @@ export function ScriptPreview({
       {viewMode === "prompt" ? (
         <PromptView script={script} product={product} />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 18, alignItems: "flex-start" }}>
+        <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 18, alignItems: "flex-start" }}>
           {/* center */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Card style={{ padding: 0, overflow: "hidden", background: `linear-gradient(135deg, ${hexA(script.cover_color, "14")} 0%, transparent 50%), var(--bg-1)` }}>
@@ -137,7 +137,7 @@ export function ScriptPreview({
             {script.metrics.uses_count > 0 && (
               <Card style={{ padding: 18 }}>
                 <Eyebrow style={{ marginBottom: 12 }}>历史表现</Eyebrow>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <MetricTile label="平均 CTR" value={`${script.metrics.ctr_pct}%`} tone="var(--extra-teal)" />
                   <MetricTile label="完播率" value={`${script.metrics.completion_pct}%`} tone="var(--extra-teal)" />
                   <MetricTile label="差异度" value={`${script.metrics.diversity_pct}%`} tone="var(--accent)" />

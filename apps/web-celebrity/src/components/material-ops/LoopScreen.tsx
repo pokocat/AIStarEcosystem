@@ -32,7 +32,7 @@ export function LoopScreen() {
       />
 
       {/* KPI */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
         <BigKpi label="发布脚本" value="184" sub="本周" tone="var(--accent)" trend={[3, 5, 4, 6, 8, 7, 10]} />
         <BigKpi label="爆款命中" value="12" sub="6.5% 命中率" tone="var(--accent)" trend={[1, 0, 2, 1, 3, 2, 4]} />
         <BigKpi label="去重通过" value="92%" sub="+8% vs 上周" tone="var(--accent)" trend={[80, 82, 85, 84, 88, 90, 92]} />
@@ -51,6 +51,8 @@ export function LoopScreen() {
             ))}
           </div>
         </div>
+        <div style={{ overflowX: "auto" }}>
+        <div style={{ minWidth: 760 }}>
         <div
           style={{
             padding: "8px 18px 6px",
@@ -138,6 +140,8 @@ export function LoopScreen() {
             </div>
           );
         })}
+        </div>
+        </div>
       </Card>
 
       {/* 学到 */}

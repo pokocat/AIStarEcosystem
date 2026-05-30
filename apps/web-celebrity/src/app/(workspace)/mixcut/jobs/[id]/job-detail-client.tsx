@@ -231,7 +231,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </div>
               <div className="text-2xl font-mono font-semibold tabular-nums">{job.progress}%</div>
             </div>
-            <div className="mt-4 grid grid-cols-4 gap-2">
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
               {STAGES.map((s, idx) => {
                 const startProgress = idx * 25;
                 const active = job.progress >= startProgress;

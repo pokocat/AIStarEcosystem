@@ -64,7 +64,7 @@ export function CelebrityProductForm({
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-medium text-zinc-700">{title}</span>
         <div className="flex items-center gap-1.5">
           <button

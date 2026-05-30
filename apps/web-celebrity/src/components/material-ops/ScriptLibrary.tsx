@@ -182,6 +182,8 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
 
       {/* table */}
       <Card style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+        <div style={{ minWidth: 920 }}>
         <div style={{ padding: "10px 18px", display: "grid", gridTemplateColumns: COLS, gap: 14, fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.12em", color: "var(--fg-3)", textTransform: "uppercase", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
           <span />
           <span>脚本名 / ID</span>
@@ -284,6 +286,8 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
             </div>
           );
         })}
+        </div>
+        </div>
       </Card>
 
       {pickerOpen && <ProductPickerDialog onClose={() => setPickerOpen(false)} onPick={onNewProductPicked} />}

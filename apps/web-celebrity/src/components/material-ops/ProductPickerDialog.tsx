@@ -129,7 +129,7 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
           </div>
 
           <Eyebrow style={{ marginBottom: 12 }}>商品库 · {filtered.length} 件</Eyebrow>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+          <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
             {filtered.map((p) => {
               const active = selectedId === p.id;
               return (

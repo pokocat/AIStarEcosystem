@@ -1007,6 +1007,23 @@ export function TemplateDetailClient({
             </div>
           )}
 
+          {editing && (
+            <div
+              className="md:hidden"
+              style={{
+                marginBottom: 12,
+                borderRadius: "var(--radius-md)",
+                border: "1px solid color-mix(in srgb, var(--warning) 45%, transparent)",
+                background: "color-mix(in srgb, var(--warning) 12%, transparent)",
+                padding: "8px 12px",
+                fontSize: 12,
+                color: "var(--fg-1)",
+                lineHeight: 1.5,
+              }}
+            >
+              小屏可查看与微调内容；画布精排（slot 位置 / 多场景时间轴）建议在桌面端操作。
+            </div>
+          )}
           <div className={cn("grid grid-cols-1 gap-8", editing ? "md:grid-cols-[340px_1fr]" : "md:grid-cols-[380px_1fr]")}>
             <div className={cn(!editing && "md:sticky md:top-20 md:self-start", editing && "md:sticky md:top-20 md:self-start space-y-3")}>
               <TemplatePreview

@@ -155,7 +155,7 @@ export function CelebrityProductDetail({ productId }: Props) {
             )}
           </div>
           {product.images.length > 1 && (
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
               {product.images.slice(0, 10).map((src, i) => (
                 <button
                   key={`${src}-${i}`}

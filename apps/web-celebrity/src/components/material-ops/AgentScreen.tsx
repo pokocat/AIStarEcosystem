@@ -33,7 +33,7 @@ export function AgentScreen() {
         right={<Tag color="var(--extra-teal)">训练中 · 第 84 轮</Tag>}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {/* 违禁词词典 */}
         <Card style={{ padding: 18 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

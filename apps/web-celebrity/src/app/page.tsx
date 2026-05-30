@@ -136,7 +136,7 @@ export default function CelebrityLandingPage() {
           </div>
         </Link>
 
-        <nav style={{ display: "flex", alignItems: "center", gap: 28 }}>
+        <nav className="hidden md:flex" style={{ alignItems: "center", gap: 28 }}>
           <Link href="#pipeline" style={navLink}>业务主线</Link>
           <Link href="#features" style={navLink}>核心能力</Link>
           <Link href="#showcase" style={navLink}>明星阵容</Link>
@@ -176,6 +176,7 @@ export default function CelebrityLandingPage() {
       <main>
         {/* hero */}
         <section
+          className="stack-mobile"
           style={{
             maxWidth: 1180,
             margin: "0 auto",
@@ -303,6 +304,7 @@ export default function CelebrityLandingPage() {
           }}
         >
           <div
+            className="stack-mobile"
             style={{
               display: "grid",
               gridTemplateColumns: "auto 1fr",
@@ -368,7 +370,7 @@ export default function CelebrityLandingPage() {
 
         {/* showcase 多色卡 */}
         <section id="showcase" style={{ maxWidth: 1180, margin: "0 auto", padding: "32px 32px 48px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
             <h2
               style={{
                 fontSize: 28,
@@ -400,7 +402,7 @@ export default function CelebrityLandingPage() {
               查看全部 <ArrowUpRight size={12} />
             </Link>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
             {SHOWCASE.map((s) => (
               <GradientBlock
                 key={s.id}
@@ -432,6 +434,7 @@ export default function CelebrityLandingPage() {
           }}
         >
           <Card
+            className="stack-mobile"
             style={{
               padding: 0,
               overflow: "hidden",
@@ -527,7 +530,7 @@ export default function CelebrityLandingPage() {
 
         {/* 5 步业务主线 */}
         <section id="pipeline" style={{ maxWidth: 1180, margin: "0 auto", padding: "32px 32px 64px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 32 }}>
             <h2
               style={{
                 fontSize: 28,
@@ -562,6 +565,7 @@ export default function CelebrityLandingPage() {
             </Link>
           </div>
           <ol
+            className="stack-mobile"
             style={{
               listStyle: "none",
               padding: 0,
@@ -644,7 +648,7 @@ export default function CelebrityLandingPage() {
             </span>
             。
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 16 }}>
+          <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 16 }}>
             {FEATURES.map((f, idx) => {
               const Icon = f.icon;
               const isHero = idx === 0;
@@ -703,6 +707,7 @@ export default function CelebrityLandingPage() {
           }}
         >
           <div
+            className="stack-mobile"
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
@@ -888,6 +893,7 @@ export default function CelebrityLandingPage() {
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              flexWrap: "wrap",
               gap: 32,
               background: "var(--ink)",
               border: "1px solid var(--ink)",

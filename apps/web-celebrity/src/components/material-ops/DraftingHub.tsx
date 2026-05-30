@@ -122,7 +122,7 @@ function TemplatePicker({ product, onApply, onApplyAndPreview }: { product: Mate
 
   return (
     <>
-      <div style={{ width: 440, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ width: 440, maxWidth: "95vw", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
           <SearchInput value={query} onChange={setQuery} placeholder="搜索模板名 · 标签 · 钩子类型…" />
         </div>
@@ -237,7 +237,7 @@ function AssetPreview({ asset, product, onApply, onApplyAndPreview }: { asset: S
       <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
         <div>
           <Eyebrow style={{ marginBottom: 10 }}>实战表现</Eyebrow>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+          <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
             <MetricTile label="CTR" value={`${asset.metrics.ctr_pct}%`} tone="var(--extra-teal)" hint="点击通过率" />
             <MetricTile label="完播率" value={`${asset.metrics.completion_pct}%`} tone="var(--extra-teal)" hint="预估完播" />
             <MetricTile label="差异度" value={`${asset.metrics.diversity_pct}%`} tone="var(--accent)" hint="去重通过率" />
@@ -259,7 +259,7 @@ function AssetPreview({ asset, product, onApply, onApplyAndPreview }: { asset: S
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
           <div>
             <Eyebrow style={{ marginBottom: 8 }}>受众</Eyebrow>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
@@ -281,7 +281,7 @@ function AssetPreview({ asset, product, onApply, onApplyAndPreview }: { asset: S
         {process.env.NODE_ENV !== "production" && (
           <div style={{ padding: "12px 14px", borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px dashed var(--line-2)" }}>
             <Eyebrow style={{ marginBottom: 8 }}>脚本卡片 · 存了什么（dev）</Eyebrow>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px 18px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6 }}>
+            <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px 18px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6 }}>
               <SchemaField k="id" v={asset.id} />
               <SchemaField k="kind" v={asset.kind} />
               <SchemaField k="tier" v={asset.tier} />
@@ -371,7 +371,7 @@ function ViralPicker({ product, onApply, onApplyAndPreview }: { product: Materia
 
   return (
     <>
-      <div style={{ width: 440, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ width: 440, maxWidth: "95vw", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <FilterChip active={platform === "all"} onClick={() => setPlatform("all")}>全部 · {VIRAL_HITS.length}</FilterChip>
           {(Object.keys(PLATFORM_RULES) as PlatformId[]).map((id) => (
@@ -493,7 +493,7 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
   if (stage === "config") {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
-        <div style={{ width: 680 }}>
+        <div style={{ width: 680, maxWidth: "95vw" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
             <div style={{ width: 44, height: 44, borderRadius: "var(--radius-md)", background: hexA("#22b59a", "1f"), color: "var(--extra-teal)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Wand2 size={22} />
@@ -539,7 +539,7 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
 
   return (
     <>
-      <div style={{ width: 380, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ width: 380, maxWidth: "95vw", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-2)" }}>
           <Eyebrow>已生成 {candidates.length} 稿候选</Eyebrow>
           <button onClick={() => setStage("config")} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)", background: "transparent", border: 0, cursor: "pointer" }}>重新生成</button>

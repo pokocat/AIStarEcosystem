@@ -77,7 +77,7 @@ export function Section({
 
 export function CastGrid({ stars }: { stars: typeof MarketStarsType }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+    <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
       {stars.map((s) => (
         <Link key={s.id} href={`/star/${s.id}`} style={{ textDecoration: "none" }}>
           <Card style={{ padding: 0, overflow: "hidden" }}>

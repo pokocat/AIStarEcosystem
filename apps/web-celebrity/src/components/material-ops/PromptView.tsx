@@ -97,7 +97,7 @@ function SchemaSection({ idx, section }: { idx: number; section: Section }) {
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)" }}>/{section.id}</span>
         <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-3)" }}>{Object.keys(section.fields).length} 字段</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ padding: "10px 14px", borderRight: "1px solid var(--line)" }}>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-3)", letterSpacing: "0.1em", marginBottom: 6 }}>表单里填的值</div>
           {Object.entries(section.fields).map(([k, v]) => (

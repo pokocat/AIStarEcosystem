@@ -92,7 +92,7 @@ export function CelebrityTemplateConfig({
   return (
     <div className="flex flex-col gap-5">
       {/* 进度步骤条 */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {STEP_ORDER.map((step, i) => {
           const order = STEP_ORDER.indexOf(currentStep);
           const isDone = i < order || step === "selectTemplate";
@@ -253,7 +253,7 @@ export function CelebrityTemplateConfig({
                 查看更多 →
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {showcases.map((s) => (
                 <div key={s.id}>
                   <CelebrityVideoPlayer

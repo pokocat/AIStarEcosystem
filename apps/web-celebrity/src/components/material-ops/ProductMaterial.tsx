@@ -331,7 +331,7 @@ function ProductFilter({
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
           <div
             style={{
-              position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 31, width: 300,
+              position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 31, width: 300, maxWidth: "95vw",
               background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: "var(--radius-md)",
               boxShadow: "var(--shadow-pop)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: 360,
             }}
@@ -876,7 +876,7 @@ function VideoDetail({
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <Button variant="ghost" onClick={onBack}>
           <ChevronRight size={13} style={{ transform: "rotate(180deg)" }} /> 返回视频库
         </Button>
@@ -892,7 +892,7 @@ function VideoDetail({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 16, alignItems: "flex-start" }}>
+      <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 16, alignItems: "flex-start" }}>
         {/* 视频帧 */}
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ aspectRatio: "9 / 16", background: `linear-gradient(135deg, ${hexA(video.cover_color, "99")}, ${hexA(video.cover_color, "33")})`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
@@ -918,7 +918,7 @@ function VideoDetail({
             </span>
           </div>
           {video.metrics && (
-            <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6, background: "var(--bg-2)" }}>
+            <div className="stack-mobile-2" style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6, background: "var(--bg-2)" }}>
               <MetricTile label="播放" value={video.metrics.plays} tone="var(--accent)" />
               <MetricTile label="CTR" value={`${video.metrics.ctr_pct}%`} tone="var(--extra-teal)" />
               <MetricTile label="完播" value={`${video.metrics.completion_pct}%`} tone="var(--extra-teal)" />
@@ -978,7 +978,7 @@ function VideoDetail({
               </div>
               <Tag color="var(--extra-teal)">已分析</Tag>
             </div>
-            <div style={{ padding: "14px 22px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            <div className="stack-mobile" style={{ padding: "14px 22px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
               {axes.map(({ key, axis, opt }) => (
                 <AxisChip key={key} axis={axis!} current={opt!} hovered={hoveredAxis === key} onHover={() => setHoveredAxis(key)} onLeave={() => setHoveredAxis(null)} />
               ))}
@@ -1014,7 +1014,7 @@ function VideoDetail({
               <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
                 <Eyebrow>视频卡片 · 存了什么（dev）</Eyebrow>
               </div>
-              <div style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.7 }}>
+              <div className="stack-mobile" style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.7 }}>
                 <SchemaLine k="id" v={video.id} />
                 <SchemaLine k="script_id" v={video.script_id} />
                 <SchemaLine k="product_id" v={product.id} />

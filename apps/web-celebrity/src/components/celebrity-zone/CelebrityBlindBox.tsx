@@ -197,7 +197,7 @@ export function CelebrityBlindBox({ star, projects, showcases, onGenerate }: Pro
 
         <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-[var(--shadow-soft)]">
           <div className="mb-3 text-sm font-medium text-zinc-700">盲盒往期作品</div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {showcases.map((s) => (
               <div key={s.id}>
                 <CelebrityVideoPlayer

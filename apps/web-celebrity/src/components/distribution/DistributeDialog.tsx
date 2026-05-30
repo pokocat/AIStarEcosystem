@@ -177,7 +177,7 @@ export function DistributeDialog({ open, onClose, project, videos, onCreated }: 
             {candidates.length === 0 ? (
               <EmptyHint>该项目还没有可分发的视频，请先生成视频</EmptyHint>
             ) : (
-              <div className="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto">
+              <div className="grid max-h-44 grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto">
                 {candidates.map((v) => (
                   <label
                     key={v.id}

@@ -295,7 +295,7 @@ function RadarDetail({ hit, onClone }: { hit: ViralHit; onClone: () => void }) {
                 <ExternalLink size={11} style={{ flexShrink: 0 }} />
               </a>
             )}
-            <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+            <div className="stack-mobile-2" style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
               <BigStat label="播放" value={fmtW(hit.plays)} tone="var(--accent)" />
               <BigStat label="点赞" value={fmtW(hit.likes)} tone="var(--danger)" />
               <BigStat label="爆款分" value={String(hit.score)} tone="var(--extra-teal)" />

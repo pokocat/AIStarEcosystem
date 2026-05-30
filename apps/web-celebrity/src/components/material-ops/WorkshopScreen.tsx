@@ -84,7 +84,8 @@ export function WorkshopScreen({
         onAI={() => setHub("ai")}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 16, alignItems: "flex-start" }}>
+      {/* 窄屏：Agent 面板（平台 / 校验）落到编辑器下方，单列堆叠 */}
+      <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 16, alignItems: "flex-start" }}>
         <ScriptEditor draft={draft} setDraft={setDraft} platform={platform} onBlockAction={(i, k) => setDrawer({ blockIndex: i, kind: k })} />
         <AgentPanel draft={draft} platform={platform} setPlatform={setPlatform} />
       </div>
@@ -179,7 +180,7 @@ function ProductHero({
 
   return (
     <Card style={{ padding: 0, overflow: "hidden", background: `linear-gradient(110deg, ${hexA(product.accentColor ?? "#7c5cff", "1f")} 0%, transparent 38%), var(--bg-1)`, border: `1px solid ${hexA(product.accentColor ?? "#7c5cff", "44")}` }}>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1.4fr 1fr auto", alignItems: "stretch" }}>
+      <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "auto 1.4fr 1fr auto", alignItems: "stretch" }}>
         <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, borderRight: "1px solid var(--line)" }}>
           <ProductThumb name={product.name} image={thumbUrl} color={product.accentColor} size={64} radius="var(--radius-lg)" />
 
@@ -529,7 +530,7 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
         </div>
 
         {/* body：脚本=画面/分镜（主，更宽，含快捷填入）；字幕=口播语音（可勾选是否生成配音/字幕） */}
-        <div style={{ padding: "14px 16px", display: "grid", gridTemplateColumns: "minmax(0, 1.9fr) minmax(0, 1fr)", gap: 18 }}>
+        <div className="stack-mobile" style={{ padding: "14px 16px", display: "grid", gridTemplateColumns: "minmax(0, 1.9fr) minmax(0, 1fr)", gap: 18 }}>
           {/* 脚本 · 画面 / 分镜 —— 描述视频内容（拍什么、怎么拍） */}
           <div>
             <Eyebrow style={{ marginBottom: 8 }}>脚本 · 画面 / 分镜</Eyebrow>
@@ -809,7 +810,7 @@ function AgentPanel({ draft, platform, setPlatform }: { draft: ScriptAsset; plat
           <Eyebrow>智能体校验 · 平台适配</Eyebrow>
         </div>
         <div style={{ padding: "10px 10px 14px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
+          <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
             {(Object.keys(PLATFORM_RULES) as PlatformId[]).map((id) => {
               const active = platform === id;
               return (

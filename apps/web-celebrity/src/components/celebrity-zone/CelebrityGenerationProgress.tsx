@@ -98,7 +98,7 @@ export function CelebrityGenerationProgress({
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[360px] overflow-hidden rounded-2xl border border-violet-400/30 bg-white/95 shadow-[var(--shadow-pop)] backdrop-blur">
+    <div className="fixed bottom-6 right-6 z-50 w-[360px] max-w-[95vw] overflow-hidden rounded-2xl border border-violet-400/30 bg-white/95 shadow-[var(--shadow-pop)] backdrop-blur">
       {/* 顶部光效 */}
       <div className="pointer-events-none absolute -top-10 left-1/2 h-24 w-48 -translate-x-1/2 rounded-full bg-violet-500/15 blur-3xl" />
 

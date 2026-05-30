@@ -80,9 +80,9 @@ export function ScheduleEditor(props: ScheduleEditorProps) {
 
   const gridColsClass =
     allowedStrategies.length === 3
-      ? "grid-cols-3"
+      ? "grid-cols-1 sm:grid-cols-3"
       : allowedStrategies.length === 2
-        ? "grid-cols-2"
+        ? "grid-cols-1 sm:grid-cols-2"
         : "grid-cols-1";
 
   return (

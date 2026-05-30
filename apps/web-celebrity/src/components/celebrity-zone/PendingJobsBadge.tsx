@@ -78,7 +78,7 @@ export function PendingJobsBadge() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[var(--shadow-pop)]">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[95vw] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[var(--shadow-pop)]">
           <div className="border-b border-zinc-200 px-4 py-2 text-[11px] text-zinc-500">
             正在进行的任务
           </div>

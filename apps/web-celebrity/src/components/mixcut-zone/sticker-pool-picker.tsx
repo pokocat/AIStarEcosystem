@@ -222,7 +222,7 @@ export function StickerPoolPicker({ value, onChange, disabled, label = "动态�
         <div className="space-y-3 pt-3 border-t border-border/60">
           <div>
             <div className="text-xs font-medium mb-1.5">时间覆盖</div>
-            <div className="grid grid-cols-4 gap-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
               {COVERAGE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -243,7 +243,7 @@ export function StickerPoolPicker({ value, onChange, disabled, label = "动态�
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <div className="text-xs font-medium mb-1.5">
                 每条抽样
