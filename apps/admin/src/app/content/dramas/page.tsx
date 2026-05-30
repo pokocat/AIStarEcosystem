@@ -43,7 +43,7 @@ export default function DramasPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="短剧"
         description="虚拟演员主演的短剧项目与上线审核。"

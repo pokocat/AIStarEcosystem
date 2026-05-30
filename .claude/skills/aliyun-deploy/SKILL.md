@@ -1,0 +1,118 @@
+---
+name: aliyun-deploy
+description: Use when deploying, redeploying, verifying, or rolling back the AI Star Eco production stack on Aliyun/ECS, including deploying all apps, deploying selected apps, building release artifacts, using the GitHub Actions production deployment workflow, or troubleshooting production deployment issues for server, web-celebrity, admin, and sau-service.
+---
+
+# Aliyun Production Deploy
+
+This skill is the repo-local deployment entrypoint. Before any deployment action:
+
+1. Read `infra/README.md`.
+2. Run `git status --short` and identify unrelated dirty changes.
+3. Do not edit `/etc/aistareco/*.env` secrets or credentials as part of a deploy. If env values are missing or wrong, tell the user exactly what to configure.
+
+## Services
+
+Current production services are:
+
+- `server` - Spring Boot backend, systemd unit `aistareco-server`.
+- `web-celebrity` - Next.js 16 celebrity app, systemd unit `aistareco-web-celebrity`.
+- `admin` - Next.js admin app, systemd unit `aistareco-admin`.
+- `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
+- `all` - builds and deploys all current production services above.
+
+Do not include `web-music` or `web-drama` in production deploy commands until the deploy scripts explicitly support them.
+
+## Default Production Parameters
+
+Use these defaults unless the user gives a different host or topology:
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120
+PUBLIC_BASE=http://47.98.162.120
+REMOTE_ROOT=/opt/ai-star-eco
+```
+
+For local manual deploys, use the user's local private key path if provided, for example:
+
+```bash
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem
+```
+
+Never write the private key value into repo files or GitHub Secrets examples.
+
+## Deployment Paths
+
+Use the artifact deploy chain as the only deploy path.
+
+Build release artifacts without deploying:
+
+```bash
+./infra/scripts/build-release.sh all
+./infra/scripts/build-release.sh server,web-celebrity
+```
+
+Build locally and deploy in one command:
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+REMOTE_ROOT=/opt/ai-star-eco \
+./infra/scripts/deploy.sh all
+```
+
+Deploy only selected services:
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+REMOTE_ROOT=/opt/ai-star-eco \
+./infra/scripts/deploy.sh server,web-celebrity
+```
+
+Deploy an already-built release directory:
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+REMOTE_ROOT=/opt/ai-star-eco \
+./infra/scripts/deploy-release.sh dist/deploy/<release-id> server,admin
+```
+
+Verify production after deploy:
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 \
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 \
+./infra/scripts/verify.sh
+```
+
+## GitHub Actions
+
+If the user asks for a GitHub workflow, CI/CD, or "流水线部署", prefer the manual GitHub Actions workflow instead of local SSH deployment:
+
+- Workflow: `.github/workflows/deploy-production.yml`
+- Trigger: `workflow_dispatch`
+- `services` input accepts `all`, `server`, `server,web-celebrity,admin`, or `sau-service`.
+- Required repository secrets:
+  - `PROD_SSH_HOST`
+  - `PROD_SSH_USER`
+  - `PROD_SSH_PRIVATE_KEY`
+  - optional `PROD_SSH_PORT`
+  - optional `PROD_REMOTE_ROOT`
+  - optional `PROD_PUBLIC_BASE`
+
+Do not put real AK, SMS templates, OSS credentials, or PEM contents into the repo. GitHub Secrets hold SSH deployment credentials only; runtime app credentials stay on the server in `/etc/aistareco/*.env`.
+
+## Troubleshooting
+
+- HTML `502 Bad Gateway` from nginx usually means the upstream service is restarting or unreachable. First check `systemctl status aistareco-server` and `journalctl -u aistareco-server`.
+- SMS issues belong to `apps/server`, not `sau-service`. First check `AEP_SMS_DRIVER` in `/etc/aistareco/server.env` and `journalctl -u aistareco-server` for `sms-aliyun`, `sms-disabled`, or `sms-log`.
+- `sau-service` must be built with `--build-arg INSTALL_REAL=1`. After deploy, verify `curl http://127.0.0.1:8090/healthz` returns `mockMode:false`.
+- If a deploy changes only one app, pass only that service list. Do not redeploy `all` unless the user asks for a full release or dependencies require it.
+- If production env values need changes, stop and ask the user to edit `/etc/aistareco/*.env` or confirm the exact non-secret change. Do not invent or overwrite secrets.
+

@@ -125,7 +125,7 @@ export default function AdminProductsPage() {
   const autoCount = products.filter((p) => p.source === "auto-from-generation").length;
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="商品库"
         description="AI 明星专区生成视频引用的公共商品池。普通用户只读；CRUD / 抖音链接建档 / 刷新图片仅运营可操作。"

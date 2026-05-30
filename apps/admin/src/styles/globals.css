@@ -4,7 +4,7 @@
 
 :root {
   --font-size: 14px;
-  --radius: 0.625rem;
+  --radius: 0.5rem;
 
   /* Light, data-dense admin palette — neutrals tinted toward brand indigo (h≈264). */
   --background: oklch(0.987 0.005 264);
@@ -18,7 +18,7 @@
   --popover-foreground: oklch(0.2 0.025 264);
 
   --primary: oklch(0.52 0.18 264);            /* indigo-600 */
-  --primary-foreground: oklch(1 0 0);
+  --primary-foreground: oklch(0.992 0.004 264);
 
   --secondary: oklch(0.965 0.01 264);
   --secondary-foreground: oklch(0.3 0.04 264);
@@ -30,20 +30,20 @@
   --accent-foreground: oklch(0.3 0.08 240);
 
   --destructive: oklch(0.58 0.22 27);         /* red-600 */
-  --destructive-foreground: oklch(1 0 0);
+  --destructive-foreground: oklch(0.992 0.004 27);
 
   --success: oklch(0.62 0.16 152);            /* emerald-600 */
-  --success-foreground: oklch(1 0 0);
+  --success-foreground: oklch(0.992 0.004 152);
 
   --warning: oklch(0.7 0.17 75);              /* amber-500 */
   --warning-foreground: oklch(0.25 0.04 75);
 
   --info: oklch(0.58 0.16 237);               /* sky-600 */
-  --info-foreground: oklch(1 0 0);
+  --info-foreground: oklch(0.992 0.004 237);
 
   --border: oklch(0.92 0.005 264);
   --input: oklch(0.96 0.005 264);
-  --input-background: oklch(1 0 0);
+  --input-background: oklch(0.996 0.004 264);
   --ring: oklch(0.52 0.18 264);
 
   --chart-1: oklch(0.52 0.18 264);  /* indigo */
@@ -55,7 +55,7 @@
   --sidebar: oklch(0.978 0.008 264);
   --sidebar-foreground: oklch(0.3 0.022 264);
   --sidebar-primary: oklch(0.52 0.18 264);
-  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-primary-foreground: oklch(0.992 0.004 264);
   --sidebar-accent: oklch(0.955 0.01 264);
   --sidebar-accent-foreground: oklch(0.3 0.04 264);
   --sidebar-border: oklch(0.92 0.005 264);
@@ -125,6 +125,13 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 18%, transparent);
+  }
   /* Numeric tabular-nums for data tables */
   table, .tabular {
     font-variant-numeric: tabular-nums;
@@ -142,10 +149,44 @@
 }
 
 @layer utilities {
+  .admin-page {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 1540px;
+  }
+  .admin-page-narrow {
+    max-width: 1280px;
+  }
+  .admin-section {
+    display: grid;
+    gap: 1rem;
+  }
+  .admin-scroll-shadow {
+    background:
+      linear-gradient(90deg, var(--card) 30%, color-mix(in oklch, var(--card) 0%, transparent)),
+      linear-gradient(90deg, color-mix(in oklch, var(--card) 0%, transparent), var(--card) 70%) 100% 0,
+      linear-gradient(90deg, color-mix(in oklch, var(--foreground) 8%, transparent), transparent),
+      linear-gradient(270deg, color-mix(in oklch, var(--foreground) 8%, transparent), transparent) 100% 0;
+    background-attachment: local, local, scroll, scroll;
+    background-repeat: no-repeat;
+    background-size: 32px 100%, 32px 100%, 12px 100%, 12px 100%;
+  }
+  .rounded-lg {
+    border-radius: var(--radius-lg);
+  }
   .card-shadow {
     box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 1px 0 rgb(15 23 42 / 0.03);
   }
   .card-shadow-hover {
     box-shadow: 0 4px 14px -4px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

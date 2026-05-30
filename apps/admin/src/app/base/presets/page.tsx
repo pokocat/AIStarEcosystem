@@ -164,7 +164,7 @@ export default function PresetsPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="孵化 / 锻造炉 预设"
         description="面部风格 / 发型 / 瞳色 / 推荐标签 等预设列表。常用类型提供结构化编辑，复杂对象回退 JSON。"

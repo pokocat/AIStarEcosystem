@@ -40,7 +40,7 @@ export default function CopyrightPage() {
   const verified = items.filter((c) => c.status === "verified");
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="版权核验"
         description="版权登记需人工核查资料与权属，才可进入发行队列"

@@ -108,7 +108,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl gap-0 p-0 sm:rounded-xl overflow-hidden">
+      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0 sm:rounded-lg">
         <DialogTitle className="sr-only">控制台导航搜索</DialogTitle>
         <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
           <Search className="h-4 w-4 text-muted-foreground" aria-hidden />

@@ -41,7 +41,7 @@ export default function ConcertsPage() {
   const totalRevenue = concerts.reduce((a, b) => a + (b.revenue ?? 0), 0);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="演出管理"
         description="演唱会 / 见面会的排期、售票与结算审核"

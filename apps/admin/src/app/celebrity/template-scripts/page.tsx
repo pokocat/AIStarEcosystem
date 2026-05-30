@@ -190,7 +190,7 @@ export default function TemplateScriptsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="admin-page space-y-6">
       <PageHeader
         title="模板脚本"
         description="为每个明星模板维护一份「prompt 集合」（纯文本）或挂参考视频。同一模板仅一条「已发布」生效，发布后立即对小程序生成器生效。"

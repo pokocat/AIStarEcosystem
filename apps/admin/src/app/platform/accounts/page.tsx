@@ -76,7 +76,7 @@ export default function AccountsPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="账号 & 经纪公司"
         description="AepUser ↔ Studio 1:1 绑定：登录账号、所属经纪公司 / 工作室、聚合收益与状态。"

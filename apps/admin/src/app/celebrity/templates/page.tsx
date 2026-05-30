@@ -72,7 +72,7 @@ export default function AdminCelebrityTemplatesPage() {
   }
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="明星视频模板"
         description="数字人 / 明星视频生成模板。工厂模板对所有用户可见，用户私有模板仅本人可见。"

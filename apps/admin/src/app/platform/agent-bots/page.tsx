@@ -252,7 +252,7 @@ export default function AdminAgentBotsPage() {
   }, [scenes, editing?.sceneKey]);
 
   return (
-    <div className="space-y-6">
+    <div className="admin-page space-y-6">
       <PageHeader
         title="Agent 平台配置"
         description="接入 Coze 等 agent 平台的 bot（形象锻造等场景使用）。访问 Token 由服务端加密存储，列表仅显示脱敏值。一个场景对应一个 bot。"

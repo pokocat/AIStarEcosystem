@@ -79,7 +79,7 @@ export default function LicensesPage() {
   const totalGranted = batches.reduce((s, b) => s + b.initialCreditGrant * b.activatedCount, 0);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="秘钥批次"
         description="批次 = 入场券 + 初始点数包。核销时一次性发放积分，不设订阅。"

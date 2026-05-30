@@ -59,7 +59,7 @@ export default function GenresPage() {
   }, [artists]);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="曲风 / 领域"
         description="维护基础分类数据：音乐曲风与艺人领域，影响前台筛选和匹配逻辑"

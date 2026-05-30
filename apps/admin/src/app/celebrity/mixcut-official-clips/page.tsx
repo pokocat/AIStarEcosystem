@@ -112,7 +112,7 @@ export default function AdminMixcutOfficialClipsPage() {
   })();
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="官方明星片段"
         description="平台运营整理上传的明星直播切片 / 综艺 / 访谈片段。用户在「我的混剪库」可只读消费，用作混剪素材。"
@@ -409,7 +409,7 @@ function UploadDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40">
       <div className="w-full max-w-lg bg-background border border-border rounded-lg shadow-xl">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <div>

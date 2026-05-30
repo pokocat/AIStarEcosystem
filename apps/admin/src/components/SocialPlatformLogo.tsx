@@ -17,14 +17,14 @@ const PLATFORM_ICON_URL: Record<string, string> = {
 };
 
 const PLATFORM_FALLBACK_CLASS: Record<string, string> = {
-  douyin: "bg-zinc-950 text-white",
-  kuaishou: "bg-orange-500 text-white",
-  xiaohongshu: "bg-red-500 text-white",
-  shipinhao: "bg-emerald-500 text-white",
-  bilibili: "bg-sky-500 text-white",
-  tiktok: "bg-zinc-950 text-white",
-  youtube: "bg-red-600 text-white",
-  baijiahao: "bg-blue-600 text-white",
+  douyin: "bg-zinc-950 text-primary-foreground",
+  kuaishou: "bg-orange-500 text-primary-foreground",
+  xiaohongshu: "bg-red-500 text-primary-foreground",
+  shipinhao: "bg-emerald-500 text-primary-foreground",
+  bilibili: "bg-sky-500 text-primary-foreground",
+  tiktok: "bg-zinc-950 text-primary-foreground",
+  youtube: "bg-red-600 text-primary-foreground",
+  baijiahao: "bg-blue-600 text-primary-foreground",
 };
 
 interface Props {
@@ -44,7 +44,7 @@ export function SocialPlatformLogo({ platform, className }: Props) {
   return (
     <span
       className={cn(
-        "inline-grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-full border bg-white text-[10px] shadow-sm",
+        "inline-grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-full border bg-surface text-[10px] shadow-sm",
         className,
       )}
       title={label}

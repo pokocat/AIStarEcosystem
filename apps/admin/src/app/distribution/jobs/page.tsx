@@ -72,7 +72,7 @@ export default function PublishJobsPage() {
   const list = rows.filter((r) => tab === "all" || r.status === tab);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="发布任务"
         description="跨用户 sau-service 发布任务清单与事件流审计"

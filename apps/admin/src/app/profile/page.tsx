@@ -85,7 +85,7 @@ export default function AdminProfilePage() {
   const source = me?.accountSource ? SOURCE_LABEL[me.accountSource] ?? me.accountSource : "—";
 
   return (
-    <div className="mx-auto max-w-screen-xl">
+    <div className="admin-page admin-page-narrow">
       <PageHeader
         title="个人设置"
         description="查看当前后台登录身份，修改自己的登录密码。"

@@ -142,7 +142,7 @@ export default function PromptsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="admin-page space-y-6">
       <PageHeader
         title="Prompt 管理"
         description="素材运营文本能力（脚本起稿 / 卖点提取 / 变量抽取）的 system + user 模板。改完保存即生效，无需改代码或重启。占位符形如 {{name}}，调用时按业务参数填充。"

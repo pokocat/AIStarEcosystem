@@ -75,7 +75,7 @@ export default function ModerationPage() {
   const giftTotal = activities.filter((a) => a.type === "gift").reduce((s, a) => s + parseGift(a.action), 0);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="互动审核"
         description="粉丝动态、打赏与评论的人工核查，疑似刷单 / 不当内容统一处置"

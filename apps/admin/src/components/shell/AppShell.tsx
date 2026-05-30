@@ -30,6 +30,12 @@ export function AppShell({ children }: AppShellProps) {
     <>{children}</>
   ) : (
     <div className="flex min-h-screen bg-background">
+      <a
+        href="#admin-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+      >
+        跳到主内容
+      </a>
       <Sidebar
         badges={badges}
         mobileOpen={mobileOpen}
@@ -37,7 +43,9 @@ export function AppShell({ children }: AppShellProps) {
       />
       <div className="flex flex-1 min-w-0 flex-col">
         <Topbar unread={unread} onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 min-w-0 px-4 py-6 md:px-6">{children}</main>
+        <main id="admin-main" className="flex-1 min-w-0 px-4 py-5 sm:px-5 md:px-7 lg:px-8">
+          {children}
+        </main>
       </div>
     </div>
   );

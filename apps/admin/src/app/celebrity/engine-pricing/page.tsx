@@ -30,7 +30,7 @@ const ACTIONS: { code: string; label: string; unit: string; allowEngineFallback:
 
 export default function CelebrityPricingPage() {
   return (
-    <div className="space-y-6">
+    <div className="admin-page space-y-6">
       <PageHeader
         title="权益扣减配置"
         description="混剪生成 / 分发上传 / 数字人视频生成 各自的积分单价，以及引擎计价表。修改后用户端立即生效。"

@@ -23,10 +23,9 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
 
   return (
     <>
-      {/* 遮罩层（仅窄屏显示） */}
       <div
         className={cn(
-          "fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden transition-opacity",
+          "fixed inset-0 z-40 bg-slate-900/40 lg:hidden transition-opacity",
           mobileOpen ? "opacity-100" : "pointer-events-none opacity-0"
         )}
         onClick={onMobileClose}
@@ -55,7 +54,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
           <button
             type="button"
             aria-label="关闭菜单"
-            className="lg:hidden inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60"
+            className="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60"
             onClick={onMobileClose}
           >
             <X className="h-4 w-4" />
@@ -79,11 +78,12 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={active ? "page" : undefined}
                     onClick={onMobileClose}
                     className={cn(
-                      "group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                      "group flex min-h-9 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                       active
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
                         : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                     )}
                   >
@@ -118,7 +118,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
             <span>v0.1 · 运营版</span>
             <span className="inline-flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              服务正常
+              已连接
             </span>
           </div>
         </div>

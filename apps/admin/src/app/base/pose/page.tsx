@@ -112,7 +112,7 @@ export default function PosePage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="动作 / 表情 / 手势库"
         description="艺人表演素材库：姿态、表情、手势三大维度（支持积分定价）"
@@ -160,7 +160,7 @@ export default function PosePage() {
                 <TabsContent value={poseCat}>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {poseList.map((p) => (
-                      <div key={p.id} className="rounded-xl border border-border bg-card overflow-hidden card-shadow">
+                      <div key={p.id} className="rounded-lg border border-border bg-card overflow-hidden card-shadow">
                         <div className="aspect-square relative bg-surface-muted">
                           {p.thumbnail
                             ? <Image src={p.thumbnail} alt={p.name} fill sizes="200px" className="object-cover" />
@@ -198,7 +198,7 @@ export default function PosePage() {
             <CardContent>
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {expressions.map((e) => (
-                  <div key={e.id} className="rounded-xl border border-border bg-card p-4 flex flex-col items-center gap-2 card-shadow">
+                  <div key={e.id} className="rounded-lg border border-border bg-card p-4 flex flex-col items-center gap-2 card-shadow">
                     <div className="text-4xl">{e.emoji}</div>
                     <div className="font-medium text-sm">{e.name}</div>
                     <div className="w-full">
@@ -231,7 +231,7 @@ export default function PosePage() {
             <CardContent>
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3">
                 {gestures.map((g) => (
-                  <div key={g.id} className="rounded-xl border border-border bg-card p-4 flex flex-col items-center gap-2 card-shadow">
+                  <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-col items-center gap-2 card-shadow">
                     <div className="text-4xl">{g.icon}</div>
                     <div className="font-medium text-sm">{g.name}</div>
                     <div className="text-xs text-muted-foreground">{g.category}</div>

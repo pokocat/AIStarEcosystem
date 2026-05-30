@@ -54,7 +54,7 @@ export default function SocialAccountsPage() {
   const list = rows.filter((r) => tab === "all" || r.status === tab);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="社交账号绑定"
         description="跨用户审计：sau-service 扫码绑定的第三方平台账号清单"

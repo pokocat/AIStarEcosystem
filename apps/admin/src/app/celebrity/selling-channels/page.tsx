@@ -61,7 +61,7 @@ export default function SellingChannelsPage() {
   }
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="销售渠道"
         description="激活码批次的「销售来源 / 售卖主体」。内部可见，用于财务对账与运营统计；与 MCN 机构无关。"

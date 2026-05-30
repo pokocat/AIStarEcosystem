@@ -42,7 +42,7 @@ export default function NftMarketPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="数字藏品"
         description="粉丝端数字藏品上架审核与持有量监控。"

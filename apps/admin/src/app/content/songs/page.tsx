@@ -122,7 +122,7 @@ function SongsReviewPageContent() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="歌曲列表"
         description="默认策略：新建音乐自动通过审核并上架。本页用于查看发行情况与人工干预（如违规下架）。"
@@ -311,7 +311,7 @@ function SongsReviewPageContent() {
 
 export default function SongsReviewPage() {
   return (
-    <React.Suspense fallback={<div className="mx-auto max-w-screen-2xl py-10 text-sm text-muted-foreground">正在加载歌曲列表...</div>}>
+    <React.Suspense fallback={<div className="admin-page py-10 text-sm text-muted-foreground">正在加载歌曲列表...</div>}>
       <SongsReviewPageContent />
     </React.Suspense>
   );

@@ -52,7 +52,7 @@ export default function PlatformsPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="分发渠道"
         description="第三方平台接入审核、同步监控与断开处理"
@@ -90,7 +90,7 @@ export default function PlatformsPage() {
                 {list.map((p) => (
                   <div
                     key={p.id}
-                    className="rounded-xl border border-border bg-card p-4 card-shadow"
+                    className="rounded-lg border border-border bg-card p-4 card-shadow"
                   >
                     <div className="flex items-center gap-3 mb-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-muted text-xl">

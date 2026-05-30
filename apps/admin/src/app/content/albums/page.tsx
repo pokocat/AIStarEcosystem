@@ -44,7 +44,7 @@ export default function AlbumsPage() {
   const albumStatus = (a: Album) => a.status ?? "released";
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="专辑审核"
         description="专辑发行排期、物料准备与上线审核"

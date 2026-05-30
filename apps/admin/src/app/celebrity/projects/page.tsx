@@ -72,7 +72,7 @@ export default function AdminCelebrityProjectsPage() {
   const reviewingVideos = videos.filter((v) => v.status === "待审核").length;
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="带货项目"
         description="所有用户在 AI 明星专区下创建的带货项目（来自 /admin/celebrity/projects）·跨用户聚合"

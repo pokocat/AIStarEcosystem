@@ -78,11 +78,13 @@ export function Topbar({
       : role === "OPERATOR"
         ? "平台运营"
         : operator.role;
+  const secondaryLabel =
+    displayName === roleLabel && identity.username ? identity.username : roleLabel;
   const initials = getInitials(displayName, operator.initials);
 
   return (
     <TooltipProvider delayDuration={200}>
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface/85 px-3 backdrop-blur-md md:px-5">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface px-3 md:px-5">
         <Button
           variant="ghost"
           size="icon"
@@ -170,7 +172,7 @@ export function Topbar({
           </Avatar>
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-medium">{displayName}</span>
-            <span className="text-xs text-muted-foreground">{roleLabel}</span>
+            <span className="text-xs text-muted-foreground">{secondaryLabel}</span>
           </div>
         </Link>
 

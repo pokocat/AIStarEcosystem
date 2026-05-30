@@ -117,7 +117,7 @@ export default function AdminRechargePackagesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="admin-page space-y-6">
       <PageHeader
         title="充值套餐"
         description="管理小程序充值页可见的积分套餐。删除走软删（下架），保留 ledger 引用。"

@@ -43,7 +43,7 @@ export default function AdsPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="商业广告"
         description="品牌代言 / TVC / 数字广告 / 社媒广告合约审核。"

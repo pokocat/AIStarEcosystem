@@ -48,7 +48,7 @@ export default function VoicePage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="配音作品"
         description="动画 / 纪录片 / 有声书 / 游戏配音项目。"

@@ -188,7 +188,7 @@ export default function AuditPage() {
   const completed = entries.filter((e) => e.result === "success").length;
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="审计日志"
         description="所有人工介入动作的归档与追溯：结算 / 合约 / 分发 / 版权 / 渠道"

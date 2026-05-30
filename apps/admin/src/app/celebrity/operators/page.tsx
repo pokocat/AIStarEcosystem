@@ -73,7 +73,7 @@ export default function CelebrityOperatorsPage() {
   const opCount = users.filter((u) => !!u.operatorRole).length;
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="平台运营 · 明星带货"
         description="把 celebrity 用户升级为内嵌运营，让他在 web-celebrity 里也能录入 / 编辑公共商品池等运营动作。与后台管理员是两套独立体系。"

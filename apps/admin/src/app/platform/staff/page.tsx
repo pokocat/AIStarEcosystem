@@ -80,7 +80,7 @@ export default function AdminStaffPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="后台管理员"
         description="admin_users 表 · 管理 admin 后台登录账号与角色。仅超级管理员可访问。"

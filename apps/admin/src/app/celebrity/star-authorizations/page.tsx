@@ -143,7 +143,7 @@ export default function AdminCelebrityAuthorizationsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="admin-page space-y-6">
       <PageHeader
         title="明星授权关系"
         description="用户 × 明星 的授权状态机。修改后对小程序「我的明星」立即生效。"

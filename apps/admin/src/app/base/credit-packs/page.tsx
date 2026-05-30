@@ -48,7 +48,7 @@ export default function CreditPacksPage() {
   const totalRevenueCents = history.reduce((s, r) => s + r.priceCents, 0);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="积分包"
         description="积分售卖规格（替代订阅模型）。点数永不过期。"

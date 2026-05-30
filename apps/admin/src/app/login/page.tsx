@@ -107,7 +107,7 @@ export default function AdminLoginPage() {
           </span>
         </header>
 
-        <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">
           <div className="mb-4 space-y-1">
             <h1 className="text-lg font-semibold tracking-tight">登录到运营工作台</h1>
             <p className="text-xs text-muted-foreground">

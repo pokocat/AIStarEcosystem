@@ -79,7 +79,7 @@ export default function RosterPage() {
   });
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="艺人档案"
         description="全站虚拟艺人档案（来自后端 /admin/digital-ips）·支持按经纪公司筛选、状态流转与品质调整"

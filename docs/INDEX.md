@@ -82,6 +82,7 @@
 | 文档 | 用途 |
 |---|---|
 | [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引 |
+| [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | Agent 部署技能入口：本地 artifact 部署、按应用部署、GitHub Actions 流水线部署、验证与排障 |
 | [`infra/rds/README.md`](../infra/rds/README.md) | RDS MySQL 8.0 创建 / 内网白名单 / 参数组 / Flyway baseline |
 | [`infra/oss/README.md`](../infra/oss/README.md) | OSS Bucket / CDN 域名 / RAM 最小权限 / 生命周期规则 |
 
@@ -136,7 +137,7 @@ sudo yum install -y ffmpeg ffmpeg-devel
 | 加新接口 | 前端 `types/*` 改字段（真源）→ server `*Dto` → `specs/openapi.yaml` → 跑 `check:api-contract`；详见 [`AGENTS.md` §5](../AGENTS.md) |
 | 看 AI 明星带货某功能怎么实现 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md)（找对应版本节）→ `apps/server/src/main/java/com/aistareco/aep/service/`（具体 service） |
 | 看混剪专区怎么实现 | [`apps/web-celebrity/PRODUCT.md` §5](../apps/web-celebrity/PRODUCT.md) → `apps/server/src/main/java/com/aistareco/aep/service/mixcut/` |
-| 部署到生产 | [`DEPLOYMENT.md`](../DEPLOYMENT.md) → [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md)；注意 `AEP_SECRET_KEY`、ffmpeg、`web-celebrity` 3012、`sau-service` real 模式和 `/api` 长超时 |
+| 部署到生产 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) → [`infra/README.md`](../infra/README.md)；使用 `build-release.sh` / `deploy.sh` / GitHub Actions artifact 部署链路 |
 | 修 admin auth/403 问题 | [`TODO.md`](../TODO.md) 第一节 |
 | 加新 LLM provider | `apps/server/.../service/AiModelInvocationService.java`（v0.5 仅 OPENAI/OPENAI_COMPATIBLE） |
 | 配置 / 上下架 / 调价 | 进 admin（端口 3003），见 [`apps/admin/README.md`](../apps/admin/README.md) 当前可用菜单段 |

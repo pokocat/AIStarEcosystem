@@ -46,7 +46,7 @@ export default function QueuePage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="发行队列"
         description="内容分发请求的全生命周期：审核 → 通过 → 分发"

@@ -106,7 +106,7 @@ export default function WardrobePage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="造型库"
         description="服装 / 配饰 / 发型等虚拟物品的上架、稀有度与积分定价管理"
@@ -161,7 +161,7 @@ export default function WardrobePage() {
                   const status: SaleStatus = c.saleStatus ?? "FREE";
                   const hasImg = Boolean(c.imageUrl);
                   return (
-                    <div key={c.id} className="rounded-xl border border-border bg-card overflow-hidden card-shadow">
+                    <div key={c.id} className="rounded-lg border border-border bg-card overflow-hidden card-shadow">
                       <div className="aspect-square relative bg-surface-muted">
                         {hasImg ? (
                           <Image src={c.imageUrl} alt={c.name} fill sizes="200px" className="object-cover" />

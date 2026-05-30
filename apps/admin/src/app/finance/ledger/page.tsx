@@ -84,7 +84,7 @@ export default function LedgerPage() {
   const outflow = -transactions.filter((t) => t.amount < 0).reduce((s, t) => s + t.amount, 0);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="结算中心"
         description="钱包 / 点数流水 / 业务交易复核。所有金额单位：积分。"

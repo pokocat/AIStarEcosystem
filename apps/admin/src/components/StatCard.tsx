@@ -27,15 +27,15 @@ const toneIconBg: Record<NonNullable<StatCardProps["tone"]>, string> = {
 
 export function StatCard({ label, value, hint, icon: Icon, delta, tone = "default" }: StatCardProps) {
   return (
-    <div className={cn("rounded-xl border border-border bg-card p-5 card-shadow", toneRing[tone])}>
+    <div className={cn("rounded-lg border border-border bg-card p-4 card-shadow sm:p-5", toneRing[tone])}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1 min-w-0">
           <span className="text-xs text-muted-foreground">{label}</span>
-          <span className="text-2xl font-semibold tabular-nums">{value}</span>
+          <span className="text-[1.45rem] font-semibold leading-tight tabular-nums">{value}</span>
           {hint && <span className="text-xs text-muted-foreground truncate">{hint}</span>}
         </div>
         {Icon && (
-          <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", toneIconBg[tone])}>
+          <div className={cn("flex h-9 w-9 items-center justify-center rounded-md", toneIconBg[tone])}>
             <Icon className="h-4.5 w-4.5" />
           </div>
         )}

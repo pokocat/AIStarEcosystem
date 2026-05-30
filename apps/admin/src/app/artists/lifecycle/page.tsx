@@ -52,7 +52,7 @@ export default function ArtistLifecyclePage() {
   }, {});
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="艺人生命周期"
         description="练习生 → 出道 → 活跃 / 休整 / 退役 的状态流转"
@@ -94,7 +94,7 @@ export default function ArtistLifecyclePage() {
         {LIFECYCLE_COLUMNS.map((col) => {
           const items = artists.filter((a) => a.status === col.status);
           return (
-            <div key={col.status} className={"rounded-xl border p-3 " + col.tone}>
+            <div key={col.status} className={"rounded-lg border p-3 " + col.tone}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-semibold">{col.label}</span>
                 <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>

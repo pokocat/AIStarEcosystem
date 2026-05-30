@@ -89,7 +89,7 @@ export default function RiskPage() {
   const midCount = cases.filter((c) => c.level === "mid").length;
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="异常风控"
         description="异常流水、大额打赏与可疑提现的人工复核"

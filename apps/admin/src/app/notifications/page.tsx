@@ -112,7 +112,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="消息中心"
         description="平台运营推送、收益到账与系统告警统一收件箱。每条消息标注推送对象，方便溯源。"

@@ -97,7 +97,7 @@ export default function ArtistDetailPage() {
   const expPercent = Math.min(100, Math.round((artist.exp / artist.maxExp) * 100));
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title={artist.name}
         description={artist.bio}

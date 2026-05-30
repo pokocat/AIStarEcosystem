@@ -18,7 +18,7 @@ export default function GlobalError({
               maxWidth: 560,
               width: "100%",
               border: "1px solid #e5e7eb",
-              borderRadius: 12,
+              borderRadius: 8,
               padding: 24,
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -51,7 +51,7 @@ export default function GlobalError({
                 border: 0,
                 borderRadius: 8,
                 background: "#111827",
-                color: "white",
+                color: "oklch(0.992 0.004 264)",
                 padding: "0 14px",
                 cursor: "pointer",
               }}

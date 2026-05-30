@@ -82,7 +82,7 @@ export default function AdminCelebrityStarsPage() {
   }
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="明星档案"
         description="AI 明星专区市场可见的明星形象（来自 /admin/celebrity/stars）·授权状态 / 套餐用量 / 引用统计"

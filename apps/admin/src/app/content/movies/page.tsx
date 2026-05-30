@@ -45,7 +45,7 @@ export default function MoviesPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="电影"
         description="虚拟演员参演电影的角色、进度与上映审核。"

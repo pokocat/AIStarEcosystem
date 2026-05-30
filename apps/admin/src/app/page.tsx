@@ -217,7 +217,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-screen-2xl space-y-8">
+    <div className="admin-page space-y-8">
       <PageHeader
         title="运营总览"
         description="先处理阻塞项，再看趋势与在途产能。"
@@ -259,9 +259,9 @@ export default function DashboardPage() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="group flex items-start gap-4 rounded-xl border border-border px-4 py-4 transition hover:border-indigo-200 hover:bg-surface-muted/40"
+                  className="group flex items-start gap-4 rounded-lg border border-border px-4 py-4 transition hover:border-indigo-200 hover:bg-surface-muted/40"
                 >
-                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${item.tone}`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1 space-y-1">
@@ -459,7 +459,7 @@ export default function DashboardPage() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="group flex items-start gap-3 rounded-xl border border-border px-4 py-4 transition hover:border-indigo-200 hover:bg-surface-muted/40"
+                    className="group flex items-start gap-3 rounded-lg border border-border px-4 py-4 transition hover:border-indigo-200 hover:bg-surface-muted/40"
                   >
                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${item.tone}`}>
                       <Icon className="h-4.5 w-4.5" />

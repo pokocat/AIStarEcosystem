@@ -48,7 +48,7 @@ export default function EventsPage() {
   const participants = events.reduce((a, b) => a + b.participants, 0);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="活动管理"
         description="粉丝投票 / 见面会 / 挑战赛 / 纪念活动 的生命周期管理"

@@ -100,7 +100,7 @@ export default function ErrorLogsPage() {
   }, [logs]);
 
   return (
-    <div className="max-w-screen-2xl mx-auto">
+    <div className="admin-page">
       <PageHeader
         title="错误日志"
         description="所有用户操作触发的后端异常（业务错误 + 系统错误）。用户报错时拿「追查号」即可秒查。"
