@@ -16,7 +16,7 @@
 **核心链路**：
 
 ```
-浏览明星市场（market）  →  申请授权（apply）  →  AI 生成带货视频（generate / mixcut）  →  项目管理（projects）  →  视频中心（library）  →  数据中心（data）
+浏览明星市场（market）  →  申请授权（apply）  →  AI 生成带货视频（generate / mixcut）  →  项目管理（projects）  →  视频库（library）  →  数据中心（data）
 ```
 
 **与其他子产品的边界**：
@@ -69,7 +69,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/projects` | 制作 | 我的项目（多项目管理） |
 | `/projects/[projectId]` | 制作 | 项目详情（视频管理 / 状态推进） |
 | `/products` | 制作 | 商品库（v0.31 起公共池只读：浏览 / 筛选 / 「生成视频」入口；CRUD / 抖音链接建档 / 刷新图片由运营在 admin 管理） |
-| `/library` | 制作 | 视频中心（跨项目聚合产出） |
+| `/library` | 制作 | 视频库（v0.44 聚合三类成片，只读浏览：来源 Tab `?source=project\|material\|mixcut` = 明星视频 / 脚本视频 / 混剪成片） |
 | `/data` | 洞察 | 数据中心（分发占比 / 转化率） |
 
 ### 3.2 混剪专区（v0.7 内嵌 + v0.8 真后端）
@@ -82,7 +82,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/mixcut/create/[id]` | 制作 | 新建渲染任务（slot 填充 + perturbation profile + 变体数） |
 | `/mixcut/jobs` | 制作 | 渲染任务列表 |
 | `/mixcut/jobs/[id]` | 制作 | 任务详情（进度 + 产出 + 槽位绑定 + 扰动详情 + 水印追溯） |
-| `/mixcut/library` | 制作 | 素材库（明星 / 商品 / 贴图 / BGM 四 tab） |
+| `/mixcut/library` | 制作 | 混剪素材库（v0.44 起仅制作素材三 tab：我的素材 / 商品素材 / 官方明星片段；成片视频已迁到 `/library?source=mixcut`） |
 
 **Sidebar 分组**（[`src/app/(workspace)/layout.tsx`](src/app/(workspace)/layout.tsx) 第 37-63 行）：
 

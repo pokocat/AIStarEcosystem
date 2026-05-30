@@ -69,6 +69,19 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.44 · 2026-05-30 · 三类成片视频聚合进一级「视频库」(/library)
+
+- **背景**：「看成片视频」的入口散在三处、数据模型各异，用户找视频要在多个菜单间跳：视频中心 `/library`（明星项目成片 `CelebrityProjectVideo`）、混剪·我的视频 `/mixcut/library?tab=videos`（混剪成片 `RenderOutput`）、商品素材库 `/material/assets`（脚本派生带货视频 `MaterialVideo`）。
+- **方案**：把三类**成片**聚合进现有左侧一级入口「视频库」(`/library`)，顶层「来源 Tab」区分（明星视频 / 脚本视频 / 混剪成片），URL `?source=project|material|mixcut` 软同步，默认 `project`。**全部只读浏览**；三类数据各读各的现有 API，不融合数据模型。纯前端信息架构重组，**不动** server / api 调用层 / `packages/types` / openapi。
+- **来源 Tab body**：
+  - 明星视频 → 复用 `CelebrityVideoLibrary`（零改动），数据加载移入壳内 `ProjectVideosTab`。
+  - 脚本视频 → 新 `components/celebrity-zone/ScriptVideosTab.tsx`：只读聚合 `MaterialOpsApi.listVideos()`，渲染中 3s 轮询；卡片点击跳 `/material/assets`（带 `?product=`）到商品素材库做派生 / 详情 / AI 提卖点。
+  - 混剪成片 → 新 `components/mixcut-zone/MixcutOutputsTab.tsx`：从原 `MyVideosTab` 抽只读版，保留「第 N 条」「已分发 ×N」徽标 + 搜索，**去掉软删按钮**（删除迁回混剪任务详情页；后端 `DELETE /mixcut/outputs/{id}` 端点保留）。
+  - 仅渲染当前 active 来源，避免首屏同时打三套接口。
+- **混剪专区瘦身**：`/mixcut/library` 删「我的视频」tab，剩「我的素材 / 商品素材 / 官方明星片段」三素材 tab；标题改「混剪素材库」+ 加「前往视频库 →」链接；`?tab=videos` 旧深链 `router.replace("/library?source=mixcut")` 兼容。
+- **生产功能与原始素材保留不动**：素材运营→脚本工坊 / **商品素材库**(`/material/assets`，含全部派生 / 详情 / AI 提卖点) / 混剪素材，各归原菜单。
+- **导航**：侧栏「制作」组「视频中心」→ 改名「视频库」、去 `badge:4`；面包屑同步。`DistributeWorkbench` 右栏「视频库」超链 → `/library?source=mixcut`。
+
 ### v0.42 · 2026-05-29 · 素材运营带货视频生成接真后端 + 脚本预览修复
 
 - **脚本预览关联商品修复**：`/material/workshop/{id}` 预览 / 编辑页之前用 `MATERIAL_PRODUCTS.find(...) ?? MATERIAL_PRODUCTS[0]` 兜底，选了非 6 个内置商品时显示成 `MATERIAL_PRODUCTS[0]`（错商品）。`api/material-ops.ts` 新增 `resolveProductForScript` / `resolveProductById`，按 `product_id` 查全量商品库（`ProductsApi.getProduct` → `toMaterialProduct`），查不到给中性占位；preview-client / editor-client / ProductMaterial 派生入口均改走它。
