@@ -12,11 +12,13 @@
     "typecheck:web-music": "pnpm --filter @ai-star-eco/web-music run typecheck",
     "typecheck:web-drama": "pnpm --filter @ai-star-eco/web-drama run typecheck",
     "typecheck:web-celebrity": "pnpm --filter @ai-star-eco/web-celebrity run typecheck",
+    "typecheck:web-aiavatar": "pnpm --filter @ai-star-eco/web-aiavatar run typecheck",
     "typecheck:all": "pnpm -r --parallel run typecheck",
     "test:all": "pnpm -r --parallel run test",
     "dev:music": "pnpm --filter @ai-star-eco/web-music run dev",
     "dev:drama": "pnpm --filter @ai-star-eco/web-drama run dev",
     "dev:celebrity": "pnpm --filter @ai-star-eco/web-celebrity run dev",
+    "dev:aiavatar": "pnpm --filter @ai-star-eco/web-aiavatar run dev",
     "dev:admin": "pnpm --filter @ai-star-eco/admin-new run dev",
     "typecheck:admin": "pnpm --filter @ai-star-eco/admin-new run typecheck",
     "check:api-contract": "node scripts/check-api-contract.mjs"

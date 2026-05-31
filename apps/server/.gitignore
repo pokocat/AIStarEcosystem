@@ -10,6 +10,11 @@ mixcut-assets/
 mixcut-work/
 cdn-mock/
 
+# 数字人资产中心运行产出 / 真人照片加密存储（dev 默认 ./dh-assets，生产用 AEP_DH_ASSET_DIR / AEP_DH_WORK_DIR 指向他处）。
+# 测试 / dev 运行时由 Provider 落盘的图 / 视频 / 3D / 加密照片，不入 git。
+dh-assets/
+dh-work/
+
 # H2 file-mode 数据库（dev profile，application-dev.yml）— 本地持久化，不入 git。
 # 想清空跑：rm -rf apps/server/data
 # 注意：前缀 / 限定只匹本目录 ./data/（避免误匹 Java package src/main/java/com/aistareco/data/）

@@ -166,6 +166,26 @@ aep:
     api-base: ${AEP_COZE_API_BASE:https://api.coze.cn}
     user-id-prefix: ${AEP_COZE_USER_ID_PREFIX:aep-producer-}
     read-timeout-ms: ${AEP_COZE_READ_TIMEOUT_MS:120000}
+  # AiAvatar 形象资产管理中心（独立领域 com.aistareco.aep.aiavatar.*；表 aiavatar_*；账户复用 aep_users）。
+  # appMode：dev → 各能力默认 mock（可离线整跑）；prod → 默认走真实方案。
+  # providers.<capability>：按能力覆盖实现来源（mock|backend|selfhost），任务书 §6.2。
+  #   能力名（wire）：faceClone txt2img img2img faceWarp inpaint makeup hair restore img23d img2video faceDetect nlu segment
+  #   例：AEP_AIAVATAR_PROVIDERS_FACECLONE=selfhost
+  # selfhostBaseUrls.<capability>：自部署模型微服务地址（POST {base}/run）。
+  # 注意 faceWarp 永远走真实确定性算法（任务书 §4 明确不许 mock）。
+  aiavatar:
+    app-mode: ${AEP_AIAVATAR_APP_MODE:dev}
+    asset-dir: ${AEP_AIAVATAR_ASSET_DIR:./aiavatar-assets}
+    asset-public-url-base: ${AEP_AIAVATAR_ASSET_URL_BASE:/static/aiavatar-assets}
+    max-concurrent: ${AEP_AIAVATAR_MAX_CONCURRENT:3}
+    # 监控线程巡检间隔（毫秒）。任务书要求每小时；<=0 禁用。
+    watchdog-interval-ms: ${AEP_AIAVATAR_WATCHDOG_INTERVAL_MS:3600000}
+    # RUNNING 任务心跳超过该毫秒数无更新 → 监控线程判定异常中断并续跑。
+    job-stale-ms: ${AEP_AIAVATAR_JOB_STALE_MS:600000}
+    # 单次生成扣费（credits）；0 = 不计费（dev 默认 0 便于联调）。
+    credit-per-generation: ${AEP_AIAVATAR_CREDIT_PER_GENERATION:0}
+    providers: {}
+    selfhost-base-urls: {}
   # v0.31+ 手机号 + SMS 验证码登录 / 注册（三个新 web app + 小程序入口）。
   # driver=log：默认；验证码打到 server log，dev / 联调 / 阿里云模板未备案前的占位
   # driver=aliyun：调阿里云 SMS SDK，需配齐签名 / 模板；凭据可显式配 AK 或走默认凭据链

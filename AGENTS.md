@@ -8,7 +8,7 @@
 | 维度 | 真值文件 | 备注 |
 |---|---|---|
 | 项目结构 / 工作流 | 本文件（**AGENTS.md**） | 给 agent 看的执行约束 |
-| 数字人/数字 IP 业务规格 | [`product_spec.md`](product_spec.md) | v2.7（2026-05-06） |
+| AiAvatar/数字 IP 业务规格 | [`product_spec.md`](product_spec.md) | v2.7（2026-05-06） |
 | AI 明星带货业务规格 | [`product_spec_ai_celebrity.md`](product_spec_ai_celebrity.md) | v0.5.x 滚动 |
 | 后端 API 契约 | [`specs/openapi.yaml`](specs/openapi.yaml) + [`specs/BUSINESS_RULES.md`](specs/BUSINESS_RULES.md) | CI 守门 |
 | 子应用产品 / 设计约束 | `apps/<sub-app>/PRODUCT.md` | music / drama / celebrity 各一份 |
@@ -18,7 +18,7 @@
 **核心信息（避免新 agent 反复翻仓）**：
 
 - 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (prod)
-- 三个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）
+- 四个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013）
 - 遗留 web app: **apps/web**（3002，即将删除）/ 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 
@@ -37,7 +37,8 @@ Aisingerecosystem/
 │   ├── miniprogram/        # AI 明星带货 · 微信小程序
 │   ├── web-music/          # AI 音乐人（Next 16 / React 19 / Tailwind v4）— port 3010
 │   ├── web-drama/          # AI 短剧（同上）— port 3011
-│   └── web-celebrity/      # AI 明星带货（同上）— port 3012
+│   ├── web-celebrity/      # AI 明星带货（同上）— port 3012
+│   └── web-aiavatar/       # AiAvatar 形象资产管理中心（同上）— port 3013
 ├── packages/               # pnpm workspace 共享包（新代码真源）
 │   ├── types/              # @ai-star-eco/types（22 域类型定义）
 │   ├── ui/                 # @ai-star-eco/ui（48 shadcn + ThemeProvider + globals.css）
@@ -84,11 +85,11 @@ Aisingerecosystem/
 - **中间件文件名 `proxy.ts`**（不是 `middleware.ts`，v16 重命名）
 - **`cookies()` / `headers()` / `params` / `searchParams` 都是 Promise**，必须 `await`
 - 客户端组件读 `params` 用 `use(params)` (React 19) 或拆 server outer + client inner
-- 新 app 不属 workspace 时不要混 npm/pnpm；`pnpm-workspace.yaml` 纳入 `packages/*`、三个新 web app、`apps/admin`
+- 新 app 不属 workspace 时不要混 npm/pnpm；`pnpm-workspace.yaml` 纳入 `packages/*`、四个新 web app、`apps/admin`
 
 ### Auth 多域规划
 
-同根域名 + 三子域名（music.aibuzz.cn / drama.aibuzz.cn / celebrity.aibuzz.cn）+ cookie sharing（domain=.aibuzz.cn）。当前 dev/local 走子端口而非子域名。
+同根域名 + 四子域名（music.aibuzz.cn / drama.aibuzz.cn / celebrity.aibuzz.cn / aiavatar.aibuzz.cn）+ cookie sharing（domain=.aibuzz.cn）。当前 dev/local 走子端口而非子域名。
 
 ---
 
@@ -112,12 +113,15 @@ pnpm install                                  # 装所有 workspace 依赖
 pnpm dev:music                                # web-music — http://localhost:3010
 pnpm dev:drama                                # web-drama — http://localhost:3011
 pnpm dev:celebrity                            # web-celebrity — http://localhost:3012
+pnpm dev:aiavatar                             # web-aiavatar — http://localhost:3013
 pnpm dev:admin                                # apps/admin — http://localhost:3003
 
 pnpm typecheck:all                            # workspace 一次性 typecheck
 pnpm --filter @ai-star-eco/web-celebrity typecheck    # 单个 app typecheck
+pnpm --filter @ai-star-eco/web-aiavatar typecheck      # AiAvatar app typecheck
 pnpm typecheck:admin                                  # admin typecheck
 pnpm --filter @ai-star-eco/web-celebrity build        # 单个 app 生产构建
+pnpm --filter @ai-star-eco/web-aiavatar build         # AiAvatar app 生产构建
 pnpm --filter @ai-star-eco/admin-new build            # admin 生产构建
 ```
 
@@ -155,8 +159,10 @@ workspace 额外门：`pnpm typecheck:all`。
 │  web (3002) │ ──────────────────→ │                              │
 │  web-music  │                      │  Spring Boot server :8080   │
 │  web-drama  │                      │                              │
-│  web-      │                      │  /api/auth/*    permitAll    │
+│  web-       │                      │  /api/auth/*    permitAll    │
 │  celebrity  │                      │  /api/me/*      authenticated │
+│  web-       │                      │  /api/aiavatar/health/** permitAll │
+│  aiavatar   │                      │  /api/aiavatar/** authenticated │
 └─────────────┘                      │  /api/celebrity/*            │
                                      │  /api/mixcut/*  (v0.8 新增)  │
 ┌─────────────┐    rewrite /api/*    │  /api/admin/*   SUPER_ADMIN  │
@@ -314,7 +320,7 @@ specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束
 
 ---
 
-## 6. 三个新 web app 子产品
+## 6. 四个新 web app 子产品
 
 每个子产品独立 brand / 路由 / 业务领域，但共享 server + 共享 packages 层。
 
@@ -323,8 +329,9 @@ specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束
 | **AI 音乐人** | `apps/web-music/` | 3010 | [`apps/web-music/PRODUCT.md`](apps/web-music/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
 | **AI 短剧** | `apps/web-drama/` | 3011 | [`apps/web-drama/PRODUCT.md`](apps/web-drama/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
 | **AI 明星带货** | `apps/web-celebrity/` | 3012 | [`apps/web-celebrity/PRODUCT.md`](apps/web-celebrity/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
+| **AiAvatar** | `apps/web-aiavatar/` | 3013 | [`apps/web-aiavatar/README.md`](apps/web-aiavatar/README.md) | [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md) | `/library` |
 
-三个 app 路由形态一致：
+前三个业务 app 路由形态一致：
 
 ```
 /                          ← 公开 landing（ProductLanding，postLoginPath="/dashboard"）
@@ -1977,6 +1984,54 @@ web-celebrity:
 - **三类数据不融合**：状态枚举（中文 `已发布|待审核…` vs `ready|rendering…` vs success output）、操作各异，用来源 Tab 隔离 + 各自复用现有卡片，不强行融成单一网格。
 - **未做**：混剪成片软删的新入口（暂下线）；脚本视频在视频库内直接派生（仍引导回商品素材库）；三来源跨 Tab 统一搜索/排序。
 
+### v0.45（2026-05-30）— AiAvatar 形象资产管理中心（第 4 个 web 子产品 + 独立 aiavatar 后端领域）
+
+新增独立子产品「AiAvatar 形象资产管理中心」：真人授权复刻 / 纯 AI 原创两种创建模式，7 步标准链路
+（打样 → 草稿迭代 → 精调 → 模板美化出图 → 定稿 → 衍生 3D/视频 → 入库）+ 资产版本管理 / 素材管理 /
+真人授权管理 / AI 模板中心 / 异步任务中心。**独立实现**：新 server 领域包 `com.aistareco.aep.aiavatar.*`，
+所有新表统一 `aiavatar_` 前缀；账户复用 `aep_users`，积分复用 `CreditService`。新前端 app `apps/web-aiavatar`
+（Next 16 / React 19 / Tailwind v4 / pnpm，port **3013**，深色琥珀主题）。详见
+[`apps/web-aiavatar/README.md`](apps/web-aiavatar/README.md) + [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md) +
+[`docs/AIAVATAR_PROGRESS.md`](docs/AIAVATAR_PROGRESS.md)。
+
+```
+server : 8 实体（aiavatar_avatar / aiavatar_avatar_version / aiavatar_asset / aiavatar_source_material / aiavatar_license_grant /
+         aiavatar_template / aiavatar_job / aiavatar_refine_edit）+ 10 枚举（8 态状态机 AiAvatarStatus / 13 能力 AiAvatarCapability …）
+       : Provider 抽象层 CapabilityProvider + AiAvatarProviderRegistry（按 aep.aiavatar.app-mode + 每能力
+         aep.aiavatar.providers.<cap> 选 mock/backend/selfhost，热切换）；13 能力实现：
+         faceWarp=真实确定性液化(AiAvatarGeometryWarp，任务书§4硬要求不许mock)；nlu=BackendNluProvider 接
+         AiModelInvocationService LLM 网关；其余 Mock（产出真 PNG/真 GLB，模拟真实进度）+ SelfHostHttpProvider 通用编排
+       : AiAvatarJobRunner(@Async aiAvatarJobExecutor + 进度心跳 + 落资产/建版本快照/推状态机/积分 hold-commit-release)
+       : AiAvatarJobWatchdog —— 监控线程（用户硬要求）：AiAvatarAsyncConfig 编程式调度每 aep.aiavatar.watchdog-interval-ms
+         （默认 1h）巡检；RUNNING 心跳超 aep.aiavatar.job-stale-ms / FAILED 有额度 / 卡死 QUEUED → 自动续跑（重试上限）
+       : AiAvatarCryptoStore（真人原始照片 AES-GCM 加密落 aiavatar-assets/secure/，UI 仅脱敏预览）
+       : 6 控制器：AiAvatarController(/api/me/aiavatar/avatars，7步动作) / AiAvatarJobController(/jobs + SSE 进度流) /
+         AiAvatarAssetController(上传/加密下载) / AiAvatarTemplateController / AiAvatarHealthController(/api/aiavatar/health/providers，公开可观测) /
+         AiAvatarAdminController(/api/admin/aiavatar，工厂模板 CRUD + 手动 sweep)
+       : AiAvatarTemplateSeeder（6 工厂模板，@Order 60）；AepSecurityConfig +/api/aiavatar/health permitAll + /api/aiavatar/** authenticated
+       : application.yml +aep.aiavatar.*；测试 40 例（AiAvatarStatusTest 7 + AiAvatarProviderContractTest 22 +
+         AiAvatarJobWatchdogTest 8 + AiAvatarJobIntegrationTest 3，真实 Bean+H2）
+types  : packages/types/src/ai-avatar.ts（唯一契约：13 能力 / 8 态 / 全实体 / 请求体，camelCase）
+web    : apps/web-aiavatar —— 10 页面（landing/login/资产总库三视图/创建/资产详情7Tab+工作流动作区/
+         精调工作台/模板中心/授权管理/任务中心/能力健康）+ mock 引擎(store.ts，离线整跑) + apiFetch 双路径 +
+         真实几何形变 lib(face-warp.ts，7 vitest) + ModelViewer(CSS3D 可旋转) + SourceBadge(MOCK 角标)
+openapi: +33 aiavatar path 骨架（/aiavatar/health + /me/aiavatar/* + /admin/aiavatar/*）
+```
+
+**注意事项**：
+
+- **三种运行路径均验证**：dev mock（USE_MOCK=1 离线）/ server+H2（dev profile）/ server+MySQL（mysql profile，
+  docker mysql:8.0 验证 aiavatar_* 8 表自动建表 + 7 步链路 + 持久化 + 监控线程活体续跑）。
+- **平台隔离**：ai-avatar 不接入 v0.43 的 `SubProduct`(music/drama/celebrity) 平台门禁（`requiredPlatform`
+  仅那三者）；任何已登录账号可访问。要纳入隔离需扩 `SubProduct` 并同步后端 `PlatformSupport`（见 DECISIONS §A3）。
+- **InsightFace 非商用**：InstantID(faceClone) / RetinaFace(faceDetect) 依赖的 InsightFace 仅限非商用研究；
+  生产商用前必须换可商用人脸编码 / 检测或获授权（DECISIONS §C）。
+- **能力切真实**：`AEP_AIAVATAR_APP_MODE=prod` 或 `AEP_AIAVATAR_PROVIDERS_<CAP>=selfhost` + `AEP_AIAVATAR_SELFHOST_BASE_URLS_<CAP>=...`；
+  Mock 与 Real 走同一组契约测试，可无缝替换。
+- **监控线程多实例**：内存进度 + 单实例调度；多实例需 ShedLock（沿用 PublishJobScheduler 同样待办）+ Redis 共享进度。
+- **api-contract gate**：检查器（scripts/check-api-contract.mjs）已扫描 web-aiavatar；当前剩余 20 missing path
+  + 1 missing method 来自 web-drama / web-celebrity 历史 drift，非 AiAvatar 引入。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）
@@ -2003,7 +2058,7 @@ web-celebrity:
 - **`params` / `searchParams` / `cookies()` / `headers()` 必须 await**
 - **route group `(workspace)`** — URL 不出现，仅做布局复用
 - **CSS 变量优先**：Creator 主题用 `var(--accent)` / `var(--bg-0)` 等；Tailwind v4 `@theme` 块映射 Tailwind palette
-- **不混 npm/pnpm**：workspace app（web-music / web-drama / web-celebrity / admin）都用 pnpm；遗留 apps/web 沿用 npm
+- **不混 npm/pnpm**：workspace app（web-music / web-drama / web-celebrity / web-aiavatar / admin）都用 pnpm；遗留 apps/web 沿用 npm
 
 ---
 
@@ -2070,7 +2125,7 @@ pnpm typecheck:all
 | 完整文档地图 | [`docs/INDEX.md`](docs/INDEX.md) |
 | 后端 API 列表 + schema | [`specs/openapi.yaml`](specs/openapi.yaml) + [`specs/README.md`](specs/README.md) |
 | 后端业务规则（校验 / 计算 / 状态机 / 错误码） | [`specs/BUSINESS_RULES.md`](specs/BUSINESS_RULES.md) |
-| 数字人/数字 IP 业务规格 | [`product_spec.md`](product_spec.md) |
+| AiAvatar/数字 IP 业务规格 | [`product_spec.md`](product_spec.md) |
 | AI 明星带货业务规格 | [`product_spec_ai_celebrity.md`](product_spec_ai_celebrity.md) |
 | 子应用产品功能 / 设计约束 | `apps/<sub-app>/PRODUCT.md` |
 | 子应用启动 / 版本日志 | `apps/<sub-app>/README.md` |

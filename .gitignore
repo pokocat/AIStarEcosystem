@@ -12,7 +12,7 @@
 **/.vitepress
 **/.worktree
 .claude/worktrees/
-
+**/.env
 # /impeccable skill 工作区与时间戳快照（critique 报告本机生成，跨开发者无意义）
 # 但 ignore.md 是团队约定的 false-positive 列表，保留 commit
 .impeccable/live/
