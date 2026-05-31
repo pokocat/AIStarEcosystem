@@ -531,7 +531,14 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
         if (list.length > 0) setSelected(list[0].username);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message ?? "体验账号加载失败（仅开发环境可用）");
+        if (!cancelled) {
+          setAccounts([]);
+          setError(
+            err.message.includes("Invalid JSON")
+              ? "体验账号暂不可用：请确认 apps/server 已启动并启用了 dev profile。"
+              : err.message || "体验账号加载失败（仅开发环境可用）",
+          );
+        }
       });
     return () => {
       cancelled = true;

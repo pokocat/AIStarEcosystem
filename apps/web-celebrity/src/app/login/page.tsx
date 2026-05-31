@@ -502,7 +502,14 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
         if (list.length > 0) setSelected(list[0].username);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message ?? "账号列表加载失败（仅开发模式可用）");
+        if (!cancelled) {
+          setAccounts([]);
+          setError(
+            err.message.includes("Invalid JSON")
+              ? "dev 账号暂不可用：请确认 apps/server 已启动并启用了 dev profile。"
+              : err.message || "账号列表加载失败（仅开发模式可用）",
+          );
+        }
       });
     return () => { cancelled = true; };
   }, []);

@@ -90,6 +90,7 @@ interface RequestOptions {
   query?: Record<string, unknown>;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  suppressParseErrorLog?: boolean;
 }
 
 /**
@@ -100,7 +101,7 @@ export async function apiFetch<T>(
   path: string,
   opts: RequestOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, query, headers, signal } = opts;
+  const { method = "GET", body, query, headers, signal, suppressParseErrorLog = false } = opts;
 
   // USE_MOCK：在网络层拦截，命中 registry 直接返回 handler 结果（已是 unwrapped T）。
   // handler 抛 ApiError 即可模拟错误。未注册路径会落到下方网络分支（dev 期可见 404，便于发现缺口）。
@@ -158,7 +159,7 @@ export async function apiFetch<T>(
     // 触发同一句）。
     const snippet = raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
     const contentType = res.headers.get("content-type") ?? "<missing>";
-    if (typeof console !== "undefined") {
+    if (!suppressParseErrorLog && typeof console !== "undefined") {
       // eslint-disable-next-line no-console
       console.error(
         `[apiFetch] non-JSON body from ${path}  status=${res.status}  ` +

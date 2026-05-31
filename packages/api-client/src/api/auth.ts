@@ -32,7 +32,9 @@ export interface DevAccount {
 
 /** 返回一组可登录的 STUDIO 账号（dev profile 才返回非空）。 */
 export async function listDevAccounts(): Promise<DevAccount[]> {
-  return apiFetch<DevAccount[]>("/auth/dev-accounts");
+  return apiFetch<DevAccount[]>("/auth/dev-accounts", {
+    suppressParseErrorLog: true,
+  });
 }
 
 export interface DevLoginResult {

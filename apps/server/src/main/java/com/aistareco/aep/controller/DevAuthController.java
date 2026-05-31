@@ -51,14 +51,15 @@ public class DevAuthController {
         List<Map<String, Object>> rows = userRepo.findAll().stream()
                 .filter(u -> u.getKind() == AepUser.AccountKind.STUDIO)
                 .filter(u -> u.getStatus() == AepUser.UserStatus.ACTIVE)
+                .filter(u -> u.getUsername() != null && !u.getUsername().isBlank())
                 .sorted((a, b) -> a.getUsername().compareTo(b.getUsername()))
                 .map(u -> {
                     Studio s = studioRepo.findByOwnerUserId(u.getId()).orElse(null);
                     return Map.<String, Object>of(
                             "username", u.getUsername(),
-                            "displayName", u.getDisplayName() == null ? u.getUsername() : u.getDisplayName(),
-                            "studioName", s == null ? "" : s.getName(),
-                            "studioKind", s == null ? "" : s.getKind().name().toLowerCase()
+                            "displayName", nonBlankOr(u.getDisplayName(), u.getUsername()),
+                            "studioName", s == null ? "" : nonBlankOr(s.getName(), ""),
+                            "studioKind", s == null || s.getKind() == null ? "" : s.getKind().name().toLowerCase()
                     );
                 })
                 .toList();
@@ -111,7 +112,12 @@ public class DevAuthController {
         return userRepo.findAll().stream()
                 .filter(u -> u.getKind() == AepUser.AccountKind.STUDIO)
                 .filter(u -> u.getStatus() == AepUser.UserStatus.ACTIVE)
+                .filter(u -> u.getUsername() != null && !u.getUsername().isBlank())
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "dev 环境尚未种子任何 STUDIO 账户"));
+    }
+
+    private static String nonBlankOr(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }
