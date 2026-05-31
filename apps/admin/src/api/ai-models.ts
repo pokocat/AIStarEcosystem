@@ -28,6 +28,13 @@ export type AiModelPurpose =
   | "SAFETY_REVIEW"
   | "VIDEO_REF_ANALYSIS"
   | "TEMPLATE_REWRITE"
+  | "APPEARANCE_FORGE"
+  | "DRAMA_SCRIPT_DRAFT"
+  | "AIAVATAR_PERSONA_PARSE"
+  | "AIAVATAR_PROMPT_REWRITE"
+  | "AIAVATAR_IMAGE_GENERATION"
+  | "AIAVATAR_IMAGE_EDIT"
+  | "AIAVATAR_STANDARD_SHOTS"
   | "GENERAL";
 
 /** 单个可用模型条目（通常由 discover/fetch-models 拉取后写入配置）。 */

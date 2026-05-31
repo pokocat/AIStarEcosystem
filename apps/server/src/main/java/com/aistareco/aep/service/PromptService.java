@@ -51,11 +51,20 @@ public class PromptService {
     public static final String KEY_APPEARANCE_FORGE = "appearance.forge";
     /** v0.43+: 短剧脚本起草（drama 短剧生成）。 */
     public static final String KEY_DRAMA_SCRIPT_DRAFT = "drama.script_draft";
+    /** AiAvatar 形象资产中心：大模型服务化 prompt（运营在 web-aiavatar /config 可配）。 */
+    public static final String KEY_AIAVATAR_NLU_PERSONA = "aiavatar.nlu.persona";
+    public static final String KEY_AIAVATAR_SAMPLING_REAL = "aiavatar.sampling.real";
+    public static final String KEY_AIAVATAR_SAMPLING_AI = "aiavatar.sampling.ai";
+    public static final String KEY_AIAVATAR_DRAFT_ITERATE = "aiavatar.draft.iterate";
+    public static final String KEY_AIAVATAR_REFINE_APPEARANCE = "aiavatar.refine.appearance";
+    public static final String KEY_AIAVATAR_STANDARD_SHOTS = "aiavatar.standard_shots";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
     public static final List<String> KNOWN_KEYS =
             List.of(KEY_SCRIPT_DRAFT, KEY_SELLING_POINTS, KEY_VARIABLE_EXTRACT, KEY_VIDEO_REF_ANALYSIS,
-                    KEY_APPEARANCE_FORGE, KEY_DRAMA_SCRIPT_DRAFT);
+                    KEY_APPEARANCE_FORGE, KEY_DRAMA_SCRIPT_DRAFT,
+                    KEY_AIAVATAR_NLU_PERSONA, KEY_AIAVATAR_SAMPLING_REAL, KEY_AIAVATAR_SAMPLING_AI,
+                    KEY_AIAVATAR_DRAFT_ITERATE, KEY_AIAVATAR_REFINE_APPEARANCE, KEY_AIAVATAR_STANDARD_SHOTS);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =
@@ -88,6 +97,11 @@ public class PromptService {
             case VIDEO_REF_ANALYSIS -> KEY_VIDEO_REF_ANALYSIS;
             case APPEARANCE_FORGE -> KEY_APPEARANCE_FORGE;
             case DRAMA_SCRIPT_DRAFT -> KEY_DRAMA_SCRIPT_DRAFT;
+            case AIAVATAR_PERSONA_PARSE -> KEY_AIAVATAR_NLU_PERSONA;
+            case AIAVATAR_PROMPT_REWRITE -> KEY_AIAVATAR_SAMPLING_AI;
+            case AIAVATAR_IMAGE_GENERATION -> KEY_AIAVATAR_SAMPLING_AI;
+            case AIAVATAR_IMAGE_EDIT -> KEY_AIAVATAR_DRAFT_ITERATE;
+            case AIAVATAR_STANDARD_SHOTS -> KEY_AIAVATAR_STANDARD_SHOTS;
             default -> "material." + purpose.wire().toLowerCase();
         };
     }

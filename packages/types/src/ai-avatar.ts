@@ -55,8 +55,14 @@ export type AiAvatarAssetKind =
   | "mask"
   | "draft_image";
 
-/** 标准构图（2D 标准图集固定 4 张 + 表情图）。 */
+/** 标准构图（新流程固定 6 镜头；旧 4 视图 + 表情图保留为历史兼容）。 */
 export type AiAvatarStandardShot =
+  | "full_body"     // 全景远景全身
+  | "half_body"     // 半身中景
+  | "bust_closeup"  // 胸像近景
+  | "detail_closeup" // 细节特写
+  | "three_quarter_profile" // 45°侧颜
+  | "overhead"      // 俯拍视角
   | "front_bust"     // 正面半身
   | "front_full"     // 正面全身
   | "left_profile"   // 左侧脸

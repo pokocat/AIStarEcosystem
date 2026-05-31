@@ -6382,7 +6382,7 @@ paths:
   /me/aiavatar/avatars/{id}/refine/geometry:
     post: { tags: [aiavatar], operationId: recordAiAvatarGeometryRefine, description: 几何微调结果登记（前端 canvas 真实液化后回传），同步建版本, responses: { '200': { description: ok } } }
   /me/aiavatar/avatars/{id}/template-beautify:
-    post: { tags: [aiavatar], operationId: startAiAvatarTemplateBeautify, description: 模板美化 + 标准 4 图集 + 表情图, responses: { '200': { description: ok } } }
+    post: { tags: [aiavatar], operationId: startAiAvatarTemplateBeautify, description: 模板美化 + 标准数字人 6 镜头图集, responses: { '200': { description: ok } } }
   /me/aiavatar/avatars/{id}/finalize:
     post: { tags: [aiavatar], operationId: finalizeAiAvatar, responses: { '200': { description: ok } } }
   /me/aiavatar/avatars/{id}/derive:

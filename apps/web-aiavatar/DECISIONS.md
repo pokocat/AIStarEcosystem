@@ -22,20 +22,20 @@
 
 ## B. 能力 → 实现映射（真实 vs mock，§4/§5/§9）
 
-Provider 抽象层 `CapabilityProvider` + `AiAvatarProviderRegistry`：每能力一个 Mock + 一或多个 Real（Backend/SelfHost），按 `aep.aiavatar.app-mode`（dev/prod）+ 每能力 `aep.aiavatar.providers.<cap>` 覆盖选择，运行时热切换。`GET /api/aiavatar/health/providers` 可观测每能力当前 `mode + engine`。
+Provider 抽象层 `CapabilityProvider` + `AiAvatarProviderRegistry`：每能力一个 Mock + 一或多个 Real（Backend/SelfHost），按 `aep.aiavatar.app-mode`（mock/live/prod）+ 每能力 `aep.aiavatar.providers.<cap>` 覆盖选择，运行时热切换。真实模式不回退 mock；`GET /api/aiavatar/health/providers` 可观测每能力当前 `mode + engine`。
 
 | 能力 | 当前实现 | 真实方案 | 取舍理由 |
 |---|---|---|---|
 | **faceWarp 几何形变（眼睛/脸型/鼻梁/嘴）** | **真实**：MediaPipe FaceLandmarker 478 关键点（`@mediapipe/tasks-vision`，Apache-2.0，浏览器 WASM/CPU）→ 确定性径向液化（`face-warp.ts` 前端 canvas + `AiAvatarGeometryWarp` 后端同族） | MediaPipe FaceMesh 478 点 + 液化形变 | 任务书 §4 明确「必须接的真实算法，不要 mock」。**v0.45.1 已真实集成 MediaPipe SDK**：`face-landmarks.ts` 加载官方 WASM+模型，检测真实眼睛/脸轮廓/鼻/嘴关键点 → `landmarksToAnchors` 算出锚点 → 形变定位到真实位置（任意构图都准），不再是固定居中估计。检测不可用（无网络/无脸）回退启发式锚点，仍可用。**真浏览器验证**（`scripts/verify-mediapipe-browser.mjs`，Chromium 实跑）确认检测出 478 点；前端 19 vitest（含锚点驱动 + landmark→anchor 换算）守门。 |
-| txt2img / faceClone | Mock（占位 PNG，真实进度/延迟） | SDXL/FLUX、InstantID | 需 GPU + 模型权重 + 网关多模态图像端点，本环境不可得；mock 走与真实完全相同的 Job 管线/状态机/产出契约。InstantID 依赖的 InsightFace **非商用授权**，商用须换可商用人脸编码（见 §C）。 |
-| img2img / inpaint / makeup / hair / restore | Mock | InstructPix2Pix / SD-inpaint+ControlNet / EleGANt / HairCLIP / GFPGAN | 同上，均需 GPU 自部署；SelfHostHttpProvider 已就绪，配 `aep.aiavatar.selfhost-base-urls.<cap>` 即接真实微服务。 |
-| nlu 人设解析 | **Backend 优先**（`BackendNluProvider` → `AiModelInvocationService` LLM 网关），dev 回退 Mock | 平台已有 LLM 网关 | 任务书 §0/§4「后端已有 LLM 网关」。绑定了用途端点即走真实大模型；未绑定时 dev 回退 mock、prod 抛可见错误。 |
+| txt2img / faceClone | **Backend**（`BackendImageProvider` → `AiModelInvocationService` prompt rewrite + image endpoint） | OpenAI 兼容图像端点 / 自研网关 | admin 绑定 `AIAVATAR_PROMPT_REWRITE` + `AIAVATAR_IMAGE_GENERATION` 后走真实调用；mock 仅在 `AEP_AIAVATAR_APP_MODE=mock` 或显式 provider=mock 时启用。InstantID 依赖的 InsightFace **非商用授权**，商用须换可商用人脸编码（见 §C）。 |
+| img2img / inpaint / makeup / hair / restore | **Backend**（图像编辑 / 标准 6 镜头） | OpenAI 兼容图像编辑端点 / 自研网关 | admin 绑定 `AIAVATAR_IMAGE_EDIT` / `AIAVATAR_IMAGE_GENERATION` / `AIAVATAR_STANDARD_SHOTS`；未绑定时任务显性失败，不混入 mock。 |
+| nlu 人设解析 | **Backend**（`BackendNluProvider` → `AiModelInvocationService` LLM 网关） | 平台已有 LLM 网关 | 任务书 §0/§4「后端已有 LLM 网关」。绑定 `AIAVATAR_PERSONA_PARSE` 即走真实大模型；未绑定时显性报 `AI_NOT_CONFIGURED`。 |
 | img23d | Mock（产出**真实有效** GLB 立方体网格，可被 three.js/model-viewer 加载旋转） | TripoSR | TripoSR 需 GPU；mock 产出真 .glb 满足「3D 可交互/下载」验收，接口契约一致。 |
 | img2video | Mock（海报帧 + 前端 CSS ken-burns 运镜） | SVD-XT / AnimateDiff | 本环境无 ffmpeg + 无 GPU；mock 用 CSS 运镜满足「缓慢运镜可播放」语义，接 SVD 后 fileUrl 换真 mp4，前端组件走 `<video>`。 |
 | faceDetect 合规 | Mock（返回结构化合规判定 JSON） | InsightFace RetinaFace | 同 InsightFace 非商用问题；mock 走相同的「上传→检测→合规标记」管线。 |
 | segment | Mock（产出黑底白区 inpaint mask PNG） | SAM / BiSeNet | GPU 依赖；mask 产出契约一致。 |
 
-> **一键切换**：`AEP_AIAVATAR_APP_MODE=prod` 或逐能力 `AEP_AIAVATAR_PROVIDERS_TXT2IMG=selfhost` + `AEP_AIAVATAR_SELFHOST_BASE_URLS_TXT2IMG=http://...`。Mock 与 Real 通过同一组 `AiAvatarProviderContractTest` 契约测试，保证可无缝替换。
+> **一键切换**：`AEP_AIAVATAR_APP_MODE=mock` 明确使用 mock；`live/prod/real/backend` 真实模式下缺端点直接报配置错误。逐能力仍可用 `AEP_AIAVATAR_PROVIDERS_<CAP>=backend|selfhost|mock` 覆盖。Mock 与 Real 通过同一组 `AiAvatarProviderContractTest` 契约测试，保证可无缝替换。
 
 ## C. 合规 / 安全
 

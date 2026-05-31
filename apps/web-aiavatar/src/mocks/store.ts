@@ -464,11 +464,18 @@ function buildAssetSpecs(job: AiAvatarJob, opts: StartJobOpts): Partial<AiAvatar
   const faceFor = (i: number) => sourceFace(opts.avatarId) ?? sampleFace(i);
 
   if (opts.standardShots) {
-    const shots: AiAvatarAsset["standardShot"][] = ["front_bust", "front_full", "left_profile", "right_profile", "expression"];
+    const shots: AiAvatarAsset["standardShot"][] = [
+      "full_body",
+      "half_body",
+      "bust_closeup",
+      "detail_closeup",
+      "three_quarter_profile",
+      "overhead",
+    ];
     return shots.map((shot, i) => {
       const url = faceFor(i);
       return {
-        kind: shot === "expression" ? "expression_image" : "image_2d", standardShot: shot,
+        kind: "image_2d", standardShot: shot,
         fileUrl: url, thumbnailUrl: url,
         mimeType: imageMime(url), width: 384, height: 512, fileSize: 0, durationSec: 0,
         engine: "MOCK", providerMode: "mock", encrypted: false,
@@ -635,7 +642,17 @@ export function capabilityLabel(c: AiAvatarCapability): string {
 }
 export function shotLabel(s: NonNullable<AiAvatarAsset["standardShot"]>): string {
   const m: Record<string, string> = {
-    front_bust: "正面半身", front_full: "正面全身", left_profile: "左侧脸", right_profile: "右侧脸", expression: "表情图",
+    full_body: "全身远景",
+    half_body: "半身中景",
+    bust_closeup: "胸像近景",
+    detail_closeup: "面部特写",
+    three_quarter_profile: "3/4 侧身",
+    overhead: "俯拍氛围",
+    front_bust: "正面半身",
+    front_full: "正面全身",
+    left_profile: "左侧脸",
+    right_profile: "右侧脸",
+    expression: "表情图",
   };
   return m[s] ?? s;
 }

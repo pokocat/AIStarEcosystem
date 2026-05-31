@@ -788,7 +788,7 @@ export default function AdminAiModelsPage() {
             <CardContent>
               <div className="mb-3 text-xs text-muted-foreground">
                 每个 AI 应用（用途）固定指向一个模型接入端点。前端用到该能力时，经此绑定路由到对应模型。
-                当前实际消费的是：脚本起草 / 卖点提取 / 变量抽取。
+                当前实际消费的是：素材文本、短剧脚本、形象锻造、AiAvatar 人设解析 / 图像生成 / 标准 6 镜头分镜。
               </div>
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}

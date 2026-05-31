@@ -17,6 +17,11 @@ public enum AiModelPurpose {
     TEMPLATE_REWRITE,       // 现有 prompt 改写
     APPEARANCE_FORGE,       // 形象锻造对话（music/drama 形象顾问；流式 chat，见 ForgeChatService）
     DRAMA_SCRIPT_DRAFT,     // 短剧脚本起草（drama 短剧生成；分场景 + 分镜 + 台词，见 DramaScriptService）
+    AIAVATAR_PERSONA_PARSE, // AiAvatar 人设文案解析 / 结构化
+    AIAVATAR_PROMPT_REWRITE,// AiAvatar 生成提示词改写（打样 / 草稿 / 精调）
+    AIAVATAR_IMAGE_GENERATION, // AiAvatar 文生图 / 标准视角出图
+    AIAVATAR_IMAGE_EDIT,    // AiAvatar 图生图 / 局部重绘 / 妆发编辑
+    AIAVATAR_STANDARD_SHOTS,// AiAvatar 标准 6 镜头分镜提示词规划
     GENERAL;                // 通用兜底
 
     @JsonValue
@@ -36,6 +41,11 @@ public enum AiModelPurpose {
             case TEMPLATE_REWRITE -> "模板改写";
             case APPEARANCE_FORGE -> "形象锻造对话";
             case DRAMA_SCRIPT_DRAFT -> "短剧脚本起草";
+            case AIAVATAR_PERSONA_PARSE -> "AiAvatar 人设解析";
+            case AIAVATAR_PROMPT_REWRITE -> "AiAvatar 提示词改写";
+            case AIAVATAR_IMAGE_GENERATION -> "AiAvatar 图像生成";
+            case AIAVATAR_IMAGE_EDIT -> "AiAvatar 图像编辑";
+            case AIAVATAR_STANDARD_SHOTS -> "AiAvatar 6 镜头分镜";
             case GENERAL -> "通用";
         };
     }

@@ -23,7 +23,14 @@ export function TemplateBeautifyDialog({ avatar, onClose, onStarted }: { avatar:
     finally { setBusy(false); }
   };
 
-  const shots: AiAvatarStandardShot[] = ["front_bust", "front_full", "left_profile", "right_profile", "expression"];
+  const shots: AiAvatarStandardShot[] = [
+    "full_body",
+    "half_body",
+    "bust_closeup",
+    "detail_closeup",
+    "three_quarter_profile",
+    "overhead",
+  ];
 
   return (
     <DialogShell title="模板美化 & 标准出图" onClose={onClose} wide
@@ -31,7 +38,7 @@ export function TemplateBeautifyDialog({ avatar, onClose, onStarted }: { avatar:
         <>
           <button onClick={onClose} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300">取消</button>
           <button onClick={submit} disabled={busy} className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-semibold text-zinc-950 disabled:opacity-60">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} 批量出图（5 张）
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} 批量出图（6 张）
           </button>
         </>
       }>
@@ -53,7 +60,7 @@ export function TemplateBeautifyDialog({ avatar, onClose, onStarted }: { avatar:
           </div>
         </div>
         <div>
-          <div className="mb-2 text-xs text-zinc-400">标准输出构图（固定 4 张 + 表情图）</div>
+          <div className="mb-2 text-xs text-zinc-400">标准输出构图（固定 6 镜头）</div>
           <div className="flex flex-wrap gap-1.5">
             {shots.map((s) => (
               <span key={s} className="rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-300">{STANDARD_SHOT_LABEL[s]}</span>

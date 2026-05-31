@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * AiAvatar 领域配置（{@code aep.aiavatar.*}）。
  *
- * - appMode：全局 dev/prod（任务书 §6.1）。dev → 各能力默认 mock；prod → 默认 backend。
+ * - appMode：全局 mock/live/prod（任务书 §6.1）。mock/dev/offline → 显式离线 mock；live/prod → 默认真实方案。
  * - providers：按能力覆盖实现（mock|backend|selfhost），任务书 §6.2。
  *   例：{@code aep.aiavatar.providers.faceClone=selfhost}。
  * - selfhostBaseUrls：各能力自部署微服务地址（mode=selfhost 时用）。
@@ -19,8 +19,8 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "aep.aiavatar")
 public class AiAvatarProperties {
 
-    /** dev | prod。 */
-    private String appMode = "dev";
+    /** mock | live | prod。历史 dev/offline 值按 mock 处理。 */
+    private String appMode = "live";
 
     /** 按能力覆盖：capability wire → mock|backend|selfhost。 */
     private Map<String, String> providers = new HashMap<>();
@@ -74,6 +74,16 @@ public class AiAvatarProperties {
     public void setCreditPerGeneration(long creditPerGeneration) { this.creditPerGeneration = creditPerGeneration; }
 
     public boolean isProd() {
-        return "prod".equalsIgnoreCase(appMode) || "production".equalsIgnoreCase(appMode);
+        return "prod".equalsIgnoreCase(appMode)
+                || "production".equalsIgnoreCase(appMode)
+                || "live".equalsIgnoreCase(appMode)
+                || "backend".equalsIgnoreCase(appMode)
+                || "real".equalsIgnoreCase(appMode);
+    }
+
+    public boolean isMockMode() {
+        return "mock".equalsIgnoreCase(appMode)
+                || "dev".equalsIgnoreCase(appMode)
+                || "offline".equalsIgnoreCase(appMode);
     }
 }

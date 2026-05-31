@@ -50,7 +50,17 @@ export const MODE_META: Record<AiAvatarCreationMode, { label: string; desc: stri
 };
 
 export const STANDARD_SHOT_LABEL: Record<AiAvatarStandardShot, string> = {
-  front_bust: "正面半身", front_full: "正面全身", left_profile: "左侧脸", right_profile: "右侧脸", expression: "表情图",
+  full_body: "全景远景",
+  half_body: "半身中景",
+  bust_closeup: "胸像近景",
+  detail_closeup: "细节特写",
+  three_quarter_profile: "45°侧颜",
+  overhead: "俯拍视角",
+  front_bust: "正面半身",
+  front_full: "正面全身",
+  left_profile: "左侧脸",
+  right_profile: "右侧脸",
+  expression: "表情图",
 };
 
 /** 精调-外观编辑的可选能力。 */

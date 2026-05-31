@@ -22,7 +22,7 @@ import java.util.List;
  * 参数 / MOCK 角标 / 人像剪影，并模拟真实进度事件与延迟，使任务管线在 mock 下被同等走通（任务书 §5）。
  *
  * 支持两种产出形态：
- *  - 标准出图：input.standardShots=[front_bust,...] → 每构图一张（kind=image_2d, standardShot 标注）
+ *  - 标准出图：input.standardShots=[full_body,...] → 每构图一张（kind=image_2d, standardShot 标注）
  *  - 多版打样 / 单版编辑：input.variants=N → N 张
  */
 public class MockImageProvider extends AbstractCapabilityProvider {

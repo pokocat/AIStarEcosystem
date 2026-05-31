@@ -35,9 +35,12 @@ export const FACTORY_TEMPLATES: AiAvatarTemplate[] = [
     official: true, enabled: true, usageCount: 93, createdAt: now, updatedAt: now,
   },
   {
-    id: "dhtpl-standard-4", name: "标准四视图", category: "composition", categoryLabel: "标准构图",
-    description: "正面半身 / 正面全身 / 左侧脸 / 右侧脸 标准构图出图", capability: "restore",
-    params: { composition: "standard_4", withExpression: true },
+    id: "dhtpl-standard-6", name: "标准数字人 6 镜头", category: "composition", categoryLabel: "标准构图",
+    description: "全身远景 / 半身中景 / 胸像近景 / 面部特写 / 3/4 侧身 / 俯拍氛围，用于固定人设后的标准一致性出图", capability: "restore",
+    params: {
+      composition: "standard_6_avatar",
+      shots: ["full_body", "half_body", "bust_closeup", "detail_closeup", "three_quarter_profile", "overhead"],
+    },
     official: true, enabled: true, usageCount: 67, createdAt: now, updatedAt: now,
   },
 ];

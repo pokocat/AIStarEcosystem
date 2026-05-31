@@ -50,9 +50,9 @@ public class AiAvatarTemplateSeeder implements CommandLineRunner {
                 tpl("精致日常妆", AiAvatarTemplateCategory.BEAUTY, AiAvatarCapability.MAKEUP,
                         "自然底妆 + 柔焦眼妆 + 水光唇，妆容迁移保留五官",
                         "{\"makeupRef\":\"daily_soft\",\"intensity\":0.5,\"engine\":\"EleGANt\"}"),
-                tpl("标准四视图", AiAvatarTemplateCategory.COMPOSITION, AiAvatarCapability.RESTORE,
-                        "正面半身 / 正面全身 / 左侧脸 / 右侧脸 标准构图出图",
-                        "{\"composition\":\"standard_4\",\"withExpression\":true}")
+                tpl("标准数字人 6 镜头", AiAvatarTemplateCategory.COMPOSITION, AiAvatarCapability.RESTORE,
+                        "全身远景 / 半身中景 / 胸像近景 / 面部特写 / 3/4 侧身 / 俯拍氛围，用于固定人设后的标准一致性出图",
+                        "{\"composition\":\"standard_6_avatar\",\"shots\":[\"full_body\",\"half_body\",\"bust_closeup\",\"detail_closeup\",\"three_quarter_profile\",\"overhead\"]}")
         );
         repo.saveAll(seeds);
         log.info("[aiavatar-seed] seeded {} factory templates", seeds.size());

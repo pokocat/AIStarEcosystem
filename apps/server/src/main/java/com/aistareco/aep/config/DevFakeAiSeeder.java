@@ -22,7 +22,7 @@ import java.util.List;
  * 开发 / 联调专用：把一个「本地 fake 大模型端点」一键接入，并为形象锻造 / 短剧脚本 /
  * 视频生成等用途绑定到它，让整条「真连后端大模型」链路在没有真实 API key 的情况下也能跑通。
  *
- * 仅当 {@code aep.dev-fake-llm.enabled=true} 时运行（application-dev.yml 默认开启，prod 不开）。
+ * 仅当 {@code aep.dev-fake-llm.enabled=true} 时运行（dev/prod 默认都关闭）。
  * 幂等：端点 / 绑定已存在则不覆盖 —— 运营在后台配过真实端点后，本 seeder 不会抢路由。
  *
  * 配套的 fake 服务见仓库 {@code scripts/dev-fake-llm-server.mjs}（OpenAI 兼容 /chat/completions
@@ -44,6 +44,11 @@ public class DevFakeAiSeeder implements CommandLineRunner {
             AiModelPurpose.SELLING_POINTS,
             AiModelPurpose.VARIABLE_EXTRACT,
             AiModelPurpose.VIDEO_GENERATION,
+            AiModelPurpose.AIAVATAR_PERSONA_PARSE,
+            AiModelPurpose.AIAVATAR_PROMPT_REWRITE,
+            AiModelPurpose.AIAVATAR_IMAGE_GENERATION,
+            AiModelPurpose.AIAVATAR_IMAGE_EDIT,
+            AiModelPurpose.AIAVATAR_STANDARD_SHOTS,
             AiModelPurpose.GENERAL
     );
 

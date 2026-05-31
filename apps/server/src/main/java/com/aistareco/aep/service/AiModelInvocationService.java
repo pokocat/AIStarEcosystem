@@ -91,6 +91,91 @@ public class AiModelInvocationService {
         }
     }
 
+    /**
+     * OpenAI-compatible 图像生成：POST {baseUrl}/images/generations。
+     *
+     * 用途仍走 {@code ai_app_binding}，因此 AiAvatar 的图像生成 / 图像编辑可以在 admin 上
+     * 分别绑定到不同模型端点。没有模拟返回；端点不支持 image wire 时会显性抛上游错误。
+     */
+    public AiImageResponse invokeImageGeneration(AiModelPurpose purpose, String prompt,
+                                                 int n, String size, Map<String, Object> options) {
+        AiModelEndpoint endpoint = resolveEndpoint(purpose).orElse(null);
+        if (endpoint == null) {
+            log.warn("[ai-image] blocked purpose={} reason=no-enabled-endpoint", purpose == null ? null : purpose.wire());
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                    "未为用途 " + purpose.wire() + " 绑定可用的 AI 图像模型端点");
+        }
+        AiModelProviderType type = endpoint.getProviderType();
+        if (!isOpenAiCompatible(type)) {
+            throw new BusinessException(HttpStatus.NOT_IMPLEMENTED, "PROVIDER_NOT_SUPPORTED",
+                    "providerType=" + type.wire() + " 暂未实现图像接口适配");
+        }
+        if (prompt == null || prompt.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "AI_IMAGE_PROMPT_REQUIRED", "图像生成 prompt 为空");
+        }
+
+        try {
+            String apiKey = AepCryptoUtil.decrypt(endpoint.getUpstreamApiKeyEncrypted());
+            String model = options != null && options.get("model") != null
+                    ? String.valueOf(options.get("model"))
+                    : (endpoint.getModel() != null ? endpoint.getModel() : "gpt-image-1");
+            int count = Math.max(1, Math.min(8, n));
+            String imageSize = size == null || size.isBlank() ? "1024x1024" : size;
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("model", model);
+            body.put("prompt", prompt);
+            body.put("n", count);
+            body.put("size", imageSize);
+            if (options != null) {
+                copyIfPresent(options, body, "quality");
+                copyIfPresent(options, body, "style");
+                copyIfPresent(options, body, "response_format");
+                copyIfPresent(options, body, "user");
+            }
+
+            URI uri = URI.create(rstrip(endpoint.getBaseUrl(), "/") + "/images/generations");
+            long startNanos = System.nanoTime();
+            log.info("[ai-image] invoke start purpose={} endpointId={} endpoint={} providerType={} model={} n={} size={} promptLength={}",
+                    purpose == null ? null : purpose.wire(), endpoint.getId(), endpoint.getName(),
+                    type == null ? null : type.wire(), model, count, imageSize, prompt.length());
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofMinutes(2))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
+                    .build();
+            HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.warn("[ai-image] invoke http-error purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
+                        purpose == null ? null : purpose.wire(), endpoint.getId(), endpoint.getName(), model,
+                        resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
+                throw new BusinessException(HttpStatus.valueOf(resp.statusCode()),
+                        "AI_IMAGE_PROVIDER_HTTP_" + resp.statusCode(),
+                        "图像端点 " + endpoint.getName() + " HTTP " + resp.statusCode() + ": " + snippet(resp.body()));
+            }
+            Map<?, ?> parsed = OM.readValue(resp.body(), Map.class);
+            List<AiImageItem> images = parseImageItems(parsed.get("data"));
+            if (images.isEmpty()) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_IMAGE_BAD_OUTPUT",
+                        "图像端点未返回 data[].url 或 data[].b64_json");
+            }
+            usage.record(endpoint.getId(), endpoint.getName(), model,
+                    purpose != null ? purpose.wire() : null, null, null, null, true);
+            log.info("[ai-image] invoke ok purpose={} endpointId={} endpoint={} model={} images={} durationMs={}",
+                    purpose == null ? null : purpose.wire(), endpoint.getId(), endpoint.getName(),
+                    model, images.size(), elapsedMs(startNanos));
+            return new AiImageResponse(images, endpoint.getName(), model, imageSize);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[ai-image] invoke exception purpose={} endpointId={} endpoint={} err={}",
+                    purpose == null ? null : purpose.wire(), endpoint.getId(), endpoint.getName(), e.toString());
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_IMAGE_PROVIDER_ERROR",
+                    "调用图像端点失败: " + endpoint.getName() + " - " + e.getMessage());
+        }
+    }
+
     /** 测试连通性：调 /v1/models（GET），200 即通过。 */
     public Map<String, Object> testConnection(String endpointId) {
         AiModelEndpoint e = endpointRepo.findById(endpointId)
@@ -264,6 +349,10 @@ public class AiModelInvocationService {
         return o instanceof Number n ? n.longValue() : null;
     }
 
+    private static void copyIfPresent(Map<String, Object> from, Map<String, Object> to, String key) {
+        if (from.get(key) != null) to.put(key, from.get(key));
+    }
+
     private static String rstrip(String s, String suffix) {
         return s.endsWith(suffix) ? s.substring(0, s.length() - suffix.length()) : s;
     }
@@ -295,6 +384,22 @@ public class AiModelInvocationService {
         return out;
     }
 
+    private static List<AiImageItem> parseImageItems(Object data) {
+        List<AiImageItem> out = new ArrayList<>();
+        if (data instanceof List<?> list) {
+            for (Object item : list) {
+                if (!(item instanceof Map<?, ?> m)) continue;
+                String url = m.get("url") == null ? null : String.valueOf(m.get("url"));
+                String b64 = m.get("b64_json") == null ? null : String.valueOf(m.get("b64_json"));
+                String revised = m.get("revised_prompt") == null ? null : String.valueOf(m.get("revised_prompt"));
+                if ((url != null && !url.isBlank()) || (b64 != null && !b64.isBlank())) {
+                    out.add(new AiImageItem(url, b64, revised));
+                }
+            }
+        }
+        return out;
+    }
+
     private static String snippet(String body) {
         if (body == null) return "";
         return body.length() > 200 ? body.substring(0, 200) : body;
@@ -320,5 +425,16 @@ public class AiModelInvocationService {
             Long tokensUsed,
             String endpointUsed,
             String modelUsed
+    ) {}
+
+    /** 图像生成单项结果。 */
+    public record AiImageItem(String url, String b64Json, String revisedPrompt) {}
+
+    /** 图像生成调用结果。 */
+    public record AiImageResponse(
+            List<AiImageItem> images,
+            String endpointUsed,
+            String modelUsed,
+            String size
     ) {}
 }

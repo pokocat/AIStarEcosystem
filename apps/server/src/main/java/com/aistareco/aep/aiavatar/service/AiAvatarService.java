@@ -310,10 +310,10 @@ public class AiAvatarService {
         AiAvatar a = requireOwned(avatarId, userId);
         ensureNotFrozen(a);
         ObjectNode input = baseInput(req);
-        // 标准 4 图集 + 表情图
+        // 标准 6 镜头：全身 / 半身 / 胸像 / 细节 / 45°侧颜 / 俯拍。
         if (!input.has("standardShots")) {
             var arr = input.putArray("standardShots");
-            for (AiAvatarStandardShot s : AiAvatarStandardShot.values()) arr.add(s.wire());
+            for (AiAvatarStandardShot s : AiAvatarStandardShot.standardSix()) arr.add(s.wire());
         }
         if (req.templateId() != null) {
             AiAvatarTemplate t = templateService.requireById(req.templateId());

@@ -72,14 +72,15 @@ pnpm --filter @ai-star-eco/web-aiavatar exec vitest run   # 几何形变 7 例
 
 ## Provider 模式（mock ↔ 真实，一键切换）
 
-后端 `AiAvatarProviderRegistry` 按 `aep.aiavatar.app-mode`（dev/prod）+ 每能力 `aep.aiavatar.providers.<cap>` 选实现。
+后端 `AiAvatarProviderRegistry` 按 `aep.aiavatar.app-mode`（mock/live）+ 每能力 `aep.aiavatar.providers.<cap>` 选实现。
 前端在结果卡片 / 任务行 / 能力健康页用 **MOCK 角标 / 引擎名** 标注来源。
 
-| 能力 | dev 默认 | 切真实 |
+| 能力 | live 默认 | 配置方式 |
 |---|---|---|
 | `faceWarp` 几何形变 | **真实**（确定性液化，前后端同算法） | 始终真实 |
-| `nlu` 人设解析 | Backend（LLM 网关）/ 回退 mock | 后台绑定 LLM 端点 |
-| `txt2img`/`faceClone`/`img2img`/`inpaint`/`makeup`/`hair`/`restore`/`img23d`/`img2video`/`faceDetect`/`segment` | mock | `AEP_AIAVATAR_PROVIDERS_<CAP>=selfhost` + `AEP_AIAVATAR_SELFHOST_BASE_URLS_<CAP>=http://...` |
+| `nlu` 人设解析 | Backend（LLM 网关） | admin 绑定 `AIAVATAR_PERSONA_PARSE` |
+| `txt2img`/`faceClone`/`img2img`/`inpaint`/`makeup`/`hair`/`restore` | Backend（LLM 图像网关） | admin 绑定 `AIAVATAR_PROMPT_REWRITE` + `AIAVATAR_IMAGE_GENERATION` / `AIAVATAR_IMAGE_EDIT` / `AIAVATAR_STANDARD_SHOTS` |
+| `img23d`/`img2video`/`faceDetect`/`segment` | selfhost | `AEP_AIAVATAR_PROVIDERS_<CAP>=selfhost` + `AEP_AIAVATAR_SELFHOST_BASE_URLS_<CAP>=http://...` |
 
 详见 [`DECISIONS.md`](DECISIONS.md) §B。
 

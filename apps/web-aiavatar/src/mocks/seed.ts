@@ -70,15 +70,15 @@ export function seedVersionsFor(a: AiAvatar): AiAvatarVersion[] {
 export function seedAssetsFor(a: AiAvatar, versions: AiAvatarVersion[]): AiAvatarAsset[] {
   const out: AiAvatarAsset[] = [];
   if (a.id === "aiavatar-seed-luna") {
-    out.push(asset("aiavatar-seed-luna-cover", a.id, "aiavatar-seed-luna-v2", "image_2d", sampleFace(1), "front_bust"));
+    out.push(asset("aiavatar-seed-luna-cover", a.id, "aiavatar-seed-luna-v2", "image_2d", sampleFace(1), "half_body"));
     out.push(asset("aiavatar-seed-luna-d1", a.id, "aiavatar-seed-luna-v1", "draft_image", sampleFace(1)));
     out.push(asset("aiavatar-seed-luna-d2", a.id, "aiavatar-seed-luna-v1", "draft_image", sampleFace(3)));
   }
   if (a.id === "aiavatar-seed-yan") {
-    out.push(asset("aiavatar-seed-yan-cover", a.id, "aiavatar-seed-yan-v1", "image_2d", sampleFace(0), "front_bust"));
+    out.push(asset("aiavatar-seed-yan-cover", a.id, "aiavatar-seed-yan-v1", "image_2d", sampleFace(0), "half_body"));
   }
   if (a.id === "aiavatar-seed-nova") {
-    out.push(asset("aiavatar-seed-nova-cover", a.id, "aiavatar-seed-nova-v1", "image_2d", sampleFace(2), "front_bust"));
+    out.push(asset("aiavatar-seed-nova-cover", a.id, "aiavatar-seed-nova-v1", "image_2d", sampleFace(2), "half_body"));
     out.push({
       id: "aiavatar-seed-nova-3d", avatarId: a.id, versionId: "aiavatar-seed-nova-v1", kind: "model_3d",
       fileUrl: "#mock-glb", thumbnailUrl: ph(384, 384, "3D MODEL", "GLB · 可旋转", "MOCK", 6),

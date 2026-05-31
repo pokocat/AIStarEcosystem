@@ -6,6 +6,7 @@ import com.aistareco.aep.aiavatar.model.AiAvatarProviderMode;
 import com.aistareco.aep.aiavatar.provider.impl.*;
 import com.aistareco.aep.aiavatar.service.AiAvatarStorage;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.PromptService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +22,10 @@ import java.util.Map;
  *
  * 选择规则（任务书 §6.2）：
  *  1. {@code aep.aiavatar.providers.<capabilityWire>} 显式指定 mock|backend|selfhost → 用它；
- *  2. 否则按 appMode：dev → MOCK；prod → 该能力的「首选真实实现」（见 defaultRealMode）。
+ *  2. 否则按 appMode：mock/dev/offline → MOCK；live/prod → 该能力的「首选真实实现」（见 defaultRealMode）。
  *  3. faceWarp 例外：永远走真实确定性算法（即便 dev），任务书 §4 明确要求。
- *  4. 选了 real 但该 real 不可用（如 backend 未配端点 / selfhost 无 url）→ dev 回退 mock 并告警；
- *     prod 保留 real（其 run() 会抛可见错误）。
+ *  4. 选了 real 但该 real 不可用（如 backend 未配端点 / selfhost 无 url）→ 保留 real，让任务显性失败；
+ *     只有显式 mock/appMode=mock 才会使用 Mock Provider。
  */
 @Component
 public class AiAvatarProviderRegistry {
@@ -35,6 +36,7 @@ public class AiAvatarProviderRegistry {
     private final AiAvatarStorage storage;
     private final ObjectMapper mapper;
     private final AiModelInvocationService gateway;
+    private final PromptService promptService;
 
     /** capability → 选中的 Provider（构造期一次性解析）。 */
     private final Map<AiAvatarCapability, CapabilityProvider> active = new EnumMap<>(AiAvatarCapability.class);
@@ -42,11 +44,13 @@ public class AiAvatarProviderRegistry {
     private final Map<AiAvatarCapability, Map<AiAvatarProviderMode, CapabilityProvider>> all = new EnumMap<>(AiAvatarCapability.class);
 
     public AiAvatarProviderRegistry(AiAvatarProperties props, AiAvatarStorage storage, ObjectMapper mapper,
-                              @Autowired(required = false) AiModelInvocationService gateway) {
+                              @Autowired(required = false) AiModelInvocationService gateway,
+                              @Autowired(required = false) PromptService promptService) {
         this.props = props;
         this.storage = storage;
         this.mapper = mapper;
         this.gateway = gateway;
+        this.promptService = promptService;
         build();
     }
 
@@ -58,21 +62,15 @@ public class AiAvatarProviderRegistry {
             AiAvatarProviderMode desired = resolveMode(cap);
             CapabilityProvider chosen = candidates.get(desired);
 
-            // real 不可用时的回退
-            if (chosen == null || !chosen.healthcheck().healthy()) {
-                if (props.isProd() && chosen != null) {
-                    // prod 保留 real（run 时抛可见错误），不静默回退
-                    log.warn("[aiavatar-provider] {} desired={} unhealthy in prod — kept (will surface error). msg={}",
-                            cap.wire(), desired, chosen.healthcheck().message());
-                } else {
-                    CapabilityProvider mock = candidates.get(AiAvatarProviderMode.MOCK);
-                    if (chosen == null) {
-                        log.info("[aiavatar-provider] {} has no {} impl → fallback MOCK", cap.wire(), desired);
-                    } else {
-                        log.warn("[aiavatar-provider] {} desired={} unhealthy → fallback MOCK. msg={}",
-                                cap.wire(), desired, chosen.healthcheck().message());
-                    }
-                    chosen = mock != null ? mock : chosen;
+            if (chosen == null) {
+                chosen = unavailable(cap, desired, "未实现 " + desired.wire() + " provider");
+                log.warn("[aiavatar-provider] {} desired={} unavailable — kept error provider (no mock fallback)",
+                        cap.wire(), desired);
+            } else {
+                ProviderHealth health = chosen.healthcheck();
+                if (!health.healthy() && desired != AiAvatarProviderMode.MOCK) {
+                    log.warn("[aiavatar-provider] {} desired={} unhealthy — kept (no mock fallback). msg={}",
+                            cap.wire(), desired, health.message());
                 }
             }
             active.put(cap, chosen);
@@ -97,15 +95,11 @@ public class AiAvatarProviderRegistry {
             m.put(AiAvatarProviderMode.SELFHOST, new SelfHostHttpProvider(cap, url, storage, mapper));
         }
 
-        // BACKEND —— 走平台大模型网关；当前 nlu 有专门实现，其余能力 backend 复用 selfhost 语义（多模态网关）
+        // BACKEND —— 走平台大模型网关；文本 / 出图能力均通过 admin 的 AI 应用绑定解析端点。
         if (cap == AiAvatarCapability.NLU) {
-            m.put(AiAvatarProviderMode.BACKEND, new BackendNluProvider(gateway, storage, mapper));
-        } else {
-            // 其它能力的 backend：占位走 selfhost-http（大模型多模态网关也可包成同协议）。
-            String url = props.getSelfhostBaseUrls().get(cap.wire());
-            if (url != null && !url.isBlank()) {
-                m.put(AiAvatarProviderMode.BACKEND, new SelfHostHttpProvider(cap, url, storage, mapper));
-            }
+            m.put(AiAvatarProviderMode.BACKEND, new BackendNluProvider(gateway, storage, mapper, promptService));
+        } else if (isBackendImageCapability(cap)) {
+            m.put(AiAvatarProviderMode.BACKEND, new BackendImageProvider(cap, gateway, storage, mapper, promptService));
         }
         return m;
     }
@@ -127,16 +121,35 @@ public class AiAvatarProviderRegistry {
         // faceWarp 永远真实（确定性算法）
         if (cap == AiAvatarCapability.FACE_WARP) return AiAvatarProviderMode.SELFHOST;
 
-        String override = props.getProviders().get(cap.wire());
+        String override = props.getProviders() == null ? null : props.getProviders().get(cap.wire());
         if (override != null && !override.isBlank()) {
-            return AiAvatarProviderMode.fromWire(override);
+            return parseModeOverride(cap, override);
         }
-        return props.isProd() ? defaultRealMode(cap) : AiAvatarProviderMode.MOCK;
+        return props.isMockMode() ? AiAvatarProviderMode.MOCK : defaultRealMode(cap);
     }
 
     private AiAvatarProviderMode defaultRealMode(AiAvatarCapability cap) {
-        // nlu 默认走大模型网关；其余真实能力默认 selfhost 微服务
-        return cap == AiAvatarCapability.NLU ? AiAvatarProviderMode.BACKEND : AiAvatarProviderMode.SELFHOST;
+        // nlu / 人像出图默认走平台大模型网关；3D / 视频 / 分割 / 人脸检测默认 selfhost 微服务。
+        return (cap == AiAvatarCapability.NLU || isBackendImageCapability(cap))
+                ? AiAvatarProviderMode.BACKEND
+                : AiAvatarProviderMode.SELFHOST;
+    }
+
+    private AiAvatarProviderMode parseModeOverride(AiAvatarCapability cap, String raw) {
+        try {
+            return AiAvatarProviderMode.valueOf(raw.trim().toUpperCase());
+        } catch (Exception e) {
+            AiAvatarProviderMode fallback = props.isMockMode() ? AiAvatarProviderMode.MOCK : defaultRealMode(cap);
+            log.warn("[aiavatar-provider] invalid provider override {}='{}', using {}", cap.wire(), raw, fallback);
+            return fallback;
+        }
+    }
+
+    private boolean isBackendImageCapability(AiAvatarCapability cap) {
+        return switch (cap) {
+            case FACE_CLONE, TXT2IMG, IMG2IMG, INPAINT, MAKEUP, HAIR, RESTORE -> true;
+            default -> false;
+        };
     }
 
     public CapabilityProvider get(AiAvatarCapability cap) {
@@ -149,5 +162,17 @@ public class AiAvatarProviderRegistry {
 
     public Map<AiAvatarCapability, CapabilityProvider> active() {
         return active;
+    }
+
+    private CapabilityProvider unavailable(AiAvatarCapability cap, AiAvatarProviderMode desired, String message) {
+        return new CapabilityProvider() {
+            @Override public AiAvatarCapability capability() { return cap; }
+            @Override public AiAvatarProviderMode mode() { return desired; }
+            @Override public String engine() { return desired.wire() + ":unavailable"; }
+            @Override public ProviderResult run(com.fasterxml.jackson.databind.JsonNode input, AiAvatarJobContext ctx) {
+                throw new IllegalStateException("AIAVATAR_PROVIDER_NOT_CONFIGURED: " + message + " (" + cap.wire() + ")");
+            }
+            @Override public ProviderHealth healthcheck() { return ProviderHealth.down(message); }
+        };
     }
 }
