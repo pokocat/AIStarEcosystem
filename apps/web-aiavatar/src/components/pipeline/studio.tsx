@@ -13,8 +13,30 @@ import type { AiAvatarDetail } from "@ai-star-eco/types/ai-avatar";
 import { Btn, IconBtn, Portrait, Seg, StatusPill, Tag } from "@/components/ui/primitives";
 import { Icons, type IconComponent } from "@/components/ui/icons";
 import { usePolling } from "@/lib/hooks";
-import { refineAppearance, refineRegion, commitGeometryRefine, commitBeautyRefine } from "@/api/ai-avatar";
-import { GEO_PARAMS, type GeoParamDef, APPEARANCE_EDITS, CAPABILITY_ENGINE, CAPABILITY_KIND, CAPABILITY_LABEL, styleHue, BEAUTY_TEMPLATES, STYLE_LOOK_TEMPLATES, combineBeauty } from "@/constants/aiavatar-ui";
+import { refineAppearance, refineRegion, commitGeometryRefine, commitBeautyRefine, listTemplatesByCategory, getUiConfig } from "@/api/ai-avatar";
+import { GEO_PARAMS, type GeoParamDef, APPEARANCE_EDITS, CAPABILITY_ENGINE, CAPABILITY_KIND, CAPABILITY_LABEL, styleHue, UI_CONFIG_DEFAULTS } from "@/constants/aiavatar-ui";
+import { useApi } from "@/lib/hooks";
+import type { BeautyParams } from "@/lib/beauty";
+import type { AiAvatarTemplate } from "@ai-star-eco/types/ai-avatar";
+
+// 配置驱动的视图模型（从 aiavatar_template 派生）。
+interface BeautyTpl { id: string; name: string; tag: string; hue: number; params: BeautyParams }
+interface StyleTpl { id: string; name: string; desc: string; prompt: string; sampleUrl: string | null; hue: number }
+
+function toBeautyTpl(t: AiAvatarTemplate): BeautyTpl {
+  const p = (t.params ?? {}) as Record<string, number>;
+  return { id: t.id, name: t.name, tag: t.description ?? "美颜", hue: typeof p.hue === "number" ? p.hue : 28, params: { smooth: p.smooth ?? 0, whiten: p.whiten ?? 0, warmth: p.warmth ?? 0, brightness: p.brightness ?? 50 } };
+}
+function toStyleTpl(t: AiAvatarTemplate): StyleTpl {
+  const p = (t.params ?? {}) as Record<string, unknown>;
+  return { id: t.id, name: t.name, desc: t.description ?? "", prompt: typeof p.prompt === "string" ? p.prompt : "", sampleUrl: t.thumbnailUrl ?? null, hue: typeof p.hue === "number" ? (p.hue as number) : 28 };
+}
+function combineBeautyParams(tpls: BeautyTpl[], ids: string[]): BeautyParams {
+  const ps = tpls.filter((t) => ids.includes(t.id)).map((t) => t.params);
+  if (!ps.length) return { smooth: 0, whiten: 0, warmth: 0, brightness: 50 };
+  const avg = (k: keyof BeautyParams) => ps.reduce((s, p) => s + p[k], 0) / ps.length;
+  return { smooth: avg("smooth"), whiten: avg("whiten"), warmth: avg("warmth"), brightness: avg("brightness") };
+}
 import { fmtDateTime } from "@/lib/format";
 import { toast } from "@/components/ui/toast";
 import { warpImageToDataUrl, heuristicAnchors, isNeutral, NEUTRAL, type FaceAnchors, type FaceSliders } from "@/lib/face-warp";
@@ -48,6 +70,15 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
   const [selStyle, setSelStyle] = React.useState<string | null>(null);
   const [tplPreview, setTplPreview] = React.useState<string | null>(null);
   const [applying, setApplying] = React.useState(false);
+
+  // 运营可配置：美颜 / 风格模板 + UI 文案（mock 订阅自动刷新；运营在 /config 改后即时生效）。
+  const { data: beautyRows } = useApi(() => listTemplatesByCategory("beauty"), []);
+  const { data: styleRows } = useApi(() => listTemplatesByCategory("style"), []);
+  const { data: uiCfg } = useApi(() => getUiConfig(), []);
+  const beautyTpls = React.useMemo(() => (beautyRows ?? []).map(toBeautyTpl), [beautyRows]);
+  const styleTpls = React.useMemo(() => (styleRows ?? []).map(toStyleTpl), [styleRows]);
+  const refinePresets = uiCfg?.refinePresets ?? UI_CONFIG_DEFAULTS.refinePresets;
+  const regionPrompt = uiCfg?.regionInpaintPrompt ?? UI_CONFIG_DEFAULTS.regionInpaintPrompt;
 
   // 真实形变状态
   const [img, setImg] = React.useState<HTMLImageElement | null>(null);
@@ -128,7 +159,7 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
   };
   const applyRegion = async () => {
     try {
-      await refineRegion(avatar.id, { prompt: "服饰区域重绘" });
+      await refineRegion(avatar.id, { prompt: regionPrompt });
       reload();
       toast("已提交局部重绘任务");
     } catch (e) {
@@ -168,21 +199,22 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
     }
     const id = window.setTimeout(async () => {
       try {
-        setTplPreview(await beautifyToDataUrl(img, combineBeauty(selBeauty)));
+        setTplPreview(await beautifyToDataUrl(img, combineBeautyParams(beautyTpls, selBeauty)));
       } catch {
         /* keep */
       }
     }, 90);
     return () => window.clearTimeout(id);
-  }, [mode, selBeauty, img]);
+  }, [mode, selBeauty, img, beautyTpls]);
 
   const applyBeautyTemplates = async () => {
     if (!img || selBeauty.length === 0) return;
     setApplying(true);
     try {
-      const url = tplPreview ?? (await beautifyToDataUrl(img, combineBeauty(selBeauty)));
-      const names = BEAUTY_TEMPLATES.filter((b) => selBeauty.includes(b.id)).map((b) => b.name).join(" + ");
-      await commitBeautyRefine(avatar.id, url, { templateIds: selBeauty, ...combineBeauty(selBeauty) }, names, "精调 · 美颜模版");
+      const combined = combineBeautyParams(beautyTpls, selBeauty);
+      const url = tplPreview ?? (await beautifyToDataUrl(img, combined));
+      const names = beautyTpls.filter((b) => selBeauty.includes(b.id)).map((b) => b.name).join(" + ");
+      await commitBeautyRefine(avatar.id, url, { templateIds: selBeauty, ...combined }, names, "精调 · 美颜模版");
       setSelBeauty([]);
       setTplPreview(null);
       reload();
@@ -196,7 +228,7 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
 
   const applyStyleTemplate = async () => {
     if (!selStyle) return;
-    const tpl = STYLE_LOOK_TEMPLATES.find((t) => t.id === selStyle);
+    const tpl = styleTpls.find((t) => t.id === selStyle);
     if (!tpl) return;
     try {
       await refineAppearance(avatar.id, "img2img", { prompt: tpl.prompt, note: tpl.name });
@@ -233,7 +265,7 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
   );
 
   const canvas = <Canvas hue={hue} tool={tool} compare={compare} busy={refineRunning} warpedUrl={warpedUrl} beforeUrl={avatar.coverUrl ?? null} landmarks={landmarks} engine={engine} avatarLabel={`${avatar.id} · ${detail.versions[0]?.label ?? "v"}`} />;
-  const right = <RightControls params={params} setParams={setParams} apply={applyAppearance} applyNL={applyNL} applyRegion={applyRegion} busy={refineRunning} resetGeo={resetGeo} onSave={saveSnapshot} saving={saving} engine={engine} />;
+  const right = <RightControls params={params} setParams={setParams} apply={applyAppearance} applyNL={applyNL} applyRegion={applyRegion} busy={refineRunning} resetGeo={resetGeo} onSave={saveSnapshot} saving={saving} engine={engine} refinePresets={refinePresets} />;
 
   let body: React.ReactNode;
   if (layout === "split") {
@@ -258,7 +290,7 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
           <div><div style={secLbl}>外观编辑</div><AppearancePanel onApply={applyAppearance} busy={refineRunning} /></div>
         </div>
         <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(560px, 58%)", padding: 12, background: "var(--bg-glass)", backdropFilter: "blur(14px)", border: "1px solid var(--line-2)", borderRadius: 16, boxShadow: "var(--shadow-2)" }}>
-          <NLPanel onApply={applyNL} busy={refineRunning} />
+          <NLPanel onApply={applyNL} busy={refineRunning} presets={refinePresets} />
         </div>
       </div>
     );
@@ -277,7 +309,7 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
     );
   }
 
-  const styleSample = selStyle ? STYLE_LOOK_TEMPLATES.find((t) => t.id === selStyle) ?? null : null;
+  const styleSample = selStyle ? styleTpls.find((t) => t.id === selStyle) ?? null : null;
   const templateBody = (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", flex: 1, minHeight: 0 }}>
       <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
@@ -301,6 +333,8 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
         </div>
       </div>
       <TemplateApplyPanel
+        beautyTpls={beautyTpls}
+        styleTpls={styleTpls}
         selBeauty={selBeauty}
         setSelBeauty={setSelBeauty}
         selStyle={selStyle}
@@ -417,9 +451,8 @@ function AppearancePanel({ onApply, busy }: { onApply: (cap: Parameters<typeof r
   );
 }
 
-function NLPanel({ onApply, busy }: { onApply: (text: string) => void; busy: boolean }) {
+function NLPanel({ onApply, busy, presets = [] }: { onApply: (text: string) => void; busy: boolean; presets?: string[] }) {
   const [v, setV] = React.useState("");
-  const presets = ["表情更自然", "光影更柔和", "背景虚化", "气质更亲和"];
   return (
     <div>
       <EngineNote icon={Icons.sparkle} text={CAPABILITY_ENGINE.img2img} badge="需生成" />
@@ -479,13 +512,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function RightControls({ params, setParams, apply, applyNL, applyRegion, busy, resetGeo, onSave, saving, engine }: { params: GeoParamDef[]; setParams: React.Dispatch<React.SetStateAction<GeoParamDef[]>>; apply: (cap: Parameters<typeof refineAppearance>[1], label: string) => void; applyNL: (t: string) => void; applyRegion: () => void; busy: boolean; resetGeo: () => void; onSave: () => void; saving: boolean; engine: { name: string; count: number } }) {
+function RightControls({ params, setParams, apply, applyNL, applyRegion, busy, resetGeo, onSave, saving, engine, refinePresets }: { params: GeoParamDef[]; setParams: React.Dispatch<React.SetStateAction<GeoParamDef[]>>; apply: (cap: Parameters<typeof refineAppearance>[1], label: string) => void; applyNL: (t: string) => void; applyRegion: () => void; busy: boolean; resetGeo: () => void; onSave: () => void; saving: boolean; engine: { name: string; count: number }; refinePresets: string[] }) {
   return (
     <div style={{ borderLeft: "1px solid var(--line)", background: "var(--bg-1)", overflowY: "auto", display: "flex", flexDirection: "column" }}>
       <Section title="几何微调 · 关键点形变"><GeoPanel params={params} setParams={setParams} onReset={resetGeo} engine={engine} /></Section>
       <Section title="外观编辑 · 生成式"><AppearancePanel onApply={apply} busy={busy} /></Section>
       <Section title="局部重绘"><div><EngineNote icon={Icons.sliders} text={CAPABILITY_ENGINE.inpaint} badge="需生成" /><Btn variant="signal" full icon={Icons.wand} onClick={applyRegion} disabled={busy} style={{ marginTop: 12 }}>重绘框选区域</Btn></div></Section>
-      <Section title="自然语言精调"><NLPanel onApply={applyNL} busy={busy} /></Section>
+      <Section title="自然语言精调"><NLPanel onApply={applyNL} busy={busy} presets={refinePresets} /></Section>
       <div style={{ padding: 18, marginTop: "auto", position: "sticky", bottom: 0, background: "var(--bg-1)", borderTop: "1px solid var(--line)" }}>
         <div style={{ fontSize: 11, color: "var(--ink-2)", marginBottom: 10, lineHeight: 1.5 }}>几何调整实时生效（客户端形变）；外观/语言编辑提交后台任务并保存为新版本快照。</div>
         <Btn variant="pri" full icon={Icons.history} onClick={onSave} disabled={busy || saving}>{saving ? "保存中…" : "保存为新版本快照"}</Btn>
@@ -496,6 +529,8 @@ function RightControls({ params, setParams, apply, applyNL, applyRegion, busy, r
 
 // ── 模版套用面板：美颜模板（真实 canvas beauty，实时）+ 风格妆造模板（样片→图生图）──────
 function TemplateApplyPanel({
+  beautyTpls,
+  styleTpls,
   selBeauty,
   setSelBeauty,
   selStyle,
@@ -505,6 +540,8 @@ function TemplateApplyPanel({
   applying,
   busy,
 }: {
+  beautyTpls: BeautyTpl[];
+  styleTpls: StyleTpl[];
   selBeauty: string[];
   setSelBeauty: React.Dispatch<React.SetStateAction<string[]>>;
   selStyle: string | null;
@@ -520,7 +557,7 @@ function TemplateApplyPanel({
       <Section title="美颜 / 美化模板 · 可叠加">
         <EngineNote icon={Icons.wand} text="GFPGAN + beauty · 客户端实时" badge="实时" />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-          {BEAUTY_TEMPLATES.map((b) => {
+          {beautyTpls.map((b) => {
             const on = selBeauty.includes(b.id);
             return (
               <button key={b.id} onClick={() => toggleBeauty(b.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line)") }}>
@@ -543,7 +580,7 @@ function TemplateApplyPanel({
       <Section title="风格 / 妆造模板 · 样片图生图">
         <EngineNote icon={Icons.sparkle} text="img2img + 样片参考（职业妆 / 古风…）" badge="需生成" />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-          {STYLE_LOOK_TEMPLATES.map((t) => {
+          {styleTpls.map((t) => {
             const on = selStyle === t.id;
             return (
               <button key={t.id} onClick={() => setSelStyle(on ? null : t.id)} style={{ padding: 8, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent)" : "var(--line)") }}>

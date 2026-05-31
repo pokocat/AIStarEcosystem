@@ -9,10 +9,13 @@ import type { AiAvatarDetail } from "@ai-star-eco/types/ai-avatar";
 import { Btn, Panel, Portrait, Tag, StatusPill } from "@/components/ui/primitives";
 import { SourceBadge } from "@/components/common/source-badge";
 import { Icons } from "@/components/ui/icons";
-import { usePolling } from "@/lib/hooks";
-import { templateBeautify } from "@/api/ai-avatar";
+import { usePolling, useApi } from "@/lib/hooks";
+import { templateBeautify, listTemplatesByCategory } from "@/api/ai-avatar";
 import { COMPOSITIONS, styleHue } from "@/constants/aiavatar-ui";
 import { toast } from "@/components/ui/toast";
+import type { AiAvatarStandardShot } from "@ai-star-eco/types/ai-avatar";
+
+interface CompItem { id: string; name: string; shot: AiAvatarStandardShot; ratio: string; main?: boolean }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -47,7 +50,23 @@ const RATIO: Record<string, number> = { "3:4": 3 / 4, "9:16": 9 / 16, "1:1": 1 }
 export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload: () => void }) {
   const router = useRouter();
   const { avatar } = detail;
-  const [comps, setComps] = React.useState<string[]>(COMPOSITIONS.map((c) => c.id));
+  // 运营可配（/config）：标准构图视角；空 / 未加载时回退出厂 COMPOSITIONS（绝不空视角）。
+  const { data: compRows } = useApi(() => listTemplatesByCategory("composition"), []);
+  const compositions: CompItem[] = React.useMemo(() => {
+    const rows = compRows ?? [];
+    if (!rows.length) return COMPOSITIONS.map((c) => ({ id: c.id, name: c.name, shot: c.shot, ratio: c.ratio, main: c.main }));
+    return rows.map((t) => {
+      const p = (t.params ?? {}) as Record<string, unknown>;
+      return { id: t.id, name: t.name, shot: (p.shot as AiAvatarStandardShot) ?? "front_bust", ratio: typeof p.ratio === "string" ? p.ratio : "3:4", main: !!p.main };
+    });
+  }, [compRows]);
+
+  const [comps, setComps] = React.useState<string[] | null>(null);
+  // 构图加载后默认全选（仅首次）。
+  React.useEffect(() => {
+    if (comps === null && compositions.length) setComps(compositions.map((c) => c.id));
+  }, [compositions, comps]);
+  const selectedIds = comps ?? compositions.map((c) => c.id);
   const [previews, setPreviews] = React.useState<Record<string, string>>({});
 
   const job = detail.recentJobs.find((j) => (j.input as { kind?: string } | null)?.kind === "beautify");
@@ -56,11 +75,11 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
   const phase: "config" | "gen" | "done" = running ? "gen" : done ? "done" : "config";
   usePolling(reload, 700, running);
 
-  const toggle = (id: string) => setComps((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
-  const selComps = COMPOSITIONS.filter((c) => comps.includes(c.id));
+  const toggle = (id: string) => setComps(() => { const arr = selectedIds; return arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]; });
+  const selComps = compositions.filter((c) => selectedIds.includes(c.id));
 
   const run = async () => {
-    if (!comps.length) return;
+    if (!selectedIds.length) return;
     try {
       if (avatar.coverUrl) {
         const img = await loadImage(avatar.coverUrl);
@@ -69,7 +88,7 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
         setPreviews(next);
       }
       // 后台任务（记录版本 + 推状态机 pending_finalize）。本步无美颜模板入参。
-      await templateBeautify(avatar.id, { params: { shots: comps, multiView: true } });
+      await templateBeautify(avatar.id, { params: { shots: selectedIds, multiView: true } });
       reload();
     } catch (e) {
       toast(e instanceof Error ? e.message : "出图失败", { icon: "!", tone: "var(--err)" });
@@ -86,10 +105,10 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
       <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 28, alignItems: "start" }}>
         {/* 左控制：只选构图视角 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-          <Panel title="标准构图视角（系统预设规格）" right={<Tag>{comps.length} / 6</Tag>}>
+          <Panel title="标准构图视角（系统预设规格）" right={<Tag>{selectedIds.length} / {compositions.length}</Tag>}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {COMPOSITIONS.map((c) => {
-                const on = comps.includes(c.id);
+              {compositions.map((c) => {
+                const on = selectedIds.includes(c.id);
                 return (
                   <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 11px", borderRadius: "var(--r-md)", cursor: "pointer", background: on ? "var(--bg-3)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--line-2)" : "var(--line)") }}>
                     <input type="checkbox" checked={on} onChange={() => toggle(c.id)} style={{ accentColor: "var(--accent)", width: 15, height: 15 }} />
@@ -104,7 +123,7 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
             <Icons.wand size={15} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
             <span>需要改妆容 / 美颜 / 脸型？请回到<b style={{ color: "var(--ink-1)" }}>「精调」</b>，本步仅出标准视角图。</span>
           </div>
-          <Btn variant="pri" size="lg" full icon={Icons.layers} onClick={run} disabled={phase === "gen" || !comps.length}>{phase === "gen" ? "批量出图中…" : "批量出标准图"}</Btn>
+          <Btn variant="pri" size="lg" full icon={Icons.layers} onClick={run} disabled={phase === "gen" || !selectedIds.length}>{phase === "gen" ? "批量出图中…" : "批量出标准图"}</Btn>
         </div>
 
         {/* 右预览 */}

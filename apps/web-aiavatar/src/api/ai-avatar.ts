@@ -24,6 +24,12 @@ import type {
   AiAvatarDeriveInput,
   AiAvatarStatus,
   AiAvatarCapability,
+  AiAvatarTemplateCategory,
+  AiAvatarTemplateUpsertInput,
+  AiAvatarPromptConfig,
+  AiAvatarPromptUpsertInput,
+  AiAvatarPromptDryRunResult,
+  AiAvatarUiConfig,
 } from "@ai-star-eco/types/ai-avatar";
 import { mockStore } from "@/mocks/store";
 
@@ -220,6 +226,57 @@ export async function revertToVersion(id: string, versionId: string): Promise<Ai
 export async function listTemplates(): Promise<AiAvatarTemplate[]> {
   if (USE_MOCK) return mockStore().listTemplates();
   return apiFetch<AiAvatarTemplate[]>("/me/aiavatar/templates");
+}
+
+/** 按 category 读模板（studio 风格/美颜面板、output 构图消费；只读，过滤 enabled）。 */
+export async function listTemplatesByCategory(category: AiAvatarTemplateCategory): Promise<AiAvatarTemplate[]> {
+  if (USE_MOCK) return mockStore().listTemplatesByCategory(category);
+  const all = await apiFetch<AiAvatarTemplate[]>("/me/aiavatar/templates");
+  return all.filter((t) => t.category === category && t.enabled);
+}
+
+// ── 运营配置：prompt 模板（复用共享 /admin/prompts；key=aiavatar.*） ─────────────
+export async function listPromptConfigs(): Promise<AiAvatarPromptConfig[]> {
+  if (USE_MOCK) return mockStore().listPromptConfigs();
+  // live: 共享 prompt 列表里筛 aiavatar.* key（后端 AdminPromptController 返回全部 known keys）。
+  const all = await apiFetch<AiAvatarPromptConfig[]>("/admin/prompts");
+  return all.filter((p) => p.key.startsWith("aiavatar."));
+}
+export async function getPromptConfig(key: string): Promise<AiAvatarPromptConfig> {
+  if (USE_MOCK) return mockStore().getPromptConfig(key);
+  return apiFetch<AiAvatarPromptConfig>(`/admin/prompts/${encodeURIComponent(key)}`);
+}
+export async function upsertPromptConfig(key: string, input: AiAvatarPromptUpsertInput): Promise<AiAvatarPromptConfig> {
+  if (USE_MOCK) return mockStore().upsertPromptConfig(key, input);
+  return apiFetch<AiAvatarPromptConfig>(`/admin/prompts/${encodeURIComponent(key)}`, { method: "PUT", body: input });
+}
+export async function dryRunPromptConfig(key: string, vars: Record<string, string>): Promise<AiAvatarPromptDryRunResult> {
+  if (USE_MOCK) return mockStore().dryRunPrompt(key, vars);
+  return apiFetch<AiAvatarPromptDryRunResult>(`/admin/prompts/${encodeURIComponent(key)}/dry-run`, { method: "POST", body: { vars } });
+}
+
+// ── 运营配置：模板 CRUD（写走 /admin/aiavatar/templates，运营角色） ─────────────────
+export async function createTemplate(input: AiAvatarTemplateUpsertInput): Promise<AiAvatarTemplate> {
+  if (USE_MOCK) return mockStore().createTemplate(input);
+  return apiFetch<AiAvatarTemplate>("/admin/aiavatar/templates", { method: "POST", body: input });
+}
+export async function updateTemplate(id: string, input: AiAvatarTemplateUpsertInput): Promise<AiAvatarTemplate> {
+  if (USE_MOCK) return mockStore().updateTemplate(id, input);
+  return apiFetch<AiAvatarTemplate>(`/admin/aiavatar/templates/${id}`, { method: "PUT", body: input });
+}
+export async function deleteTemplate(id: string): Promise<void> {
+  if (USE_MOCK) { mockStore().deleteTemplate(id); return; }
+  await apiFetch<void>(`/admin/aiavatar/templates/${id}`, { method: "DELETE" });
+}
+
+// ── 运营配置：UI 文案（快捷指令 / 默认人设 / 局部重绘默认词） ─────────────────────
+export async function getUiConfig(): Promise<AiAvatarUiConfig> {
+  if (USE_MOCK) return mockStore().getUiConfig();
+  return apiFetch<AiAvatarUiConfig>("/me/aiavatar/ui-config");
+}
+export async function updateUiConfig(input: Partial<AiAvatarUiConfig>): Promise<AiAvatarUiConfig> {
+  if (USE_MOCK) return mockStore().updateUiConfig(input);
+  return apiFetch<AiAvatarUiConfig>("/admin/aiavatar/ui-config", { method: "PUT", body: input });
 }
 
 // ── 任务中心 ───────────────────────────────────────────────────────────────

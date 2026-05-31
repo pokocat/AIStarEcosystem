@@ -26,6 +26,10 @@ const NAV: NavItem[] = [
   { key: "licenses", href: "/licenses", icon: Icons.shield, label: "授权管理" },
   { key: "health", href: "/health", icon: Icons.activity, label: "能力健康" },
 ];
+// 仅平台运营（operatorRole 非空）可见的配置入口。
+const OPERATOR_NAV: NavItem[] = [
+  { key: "config", href: "/config", icon: Icons.settings, label: "运营配置" },
+];
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -33,6 +37,8 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const { data: jobs } = useApi(() => listJobs(), []);
   const running = (jobs ?? []).filter((j) => j.status === "running" || j.status === "queued").length;
+  const canManage = !!user?.operatorRole; // 复用 web-celebrity 内嵌运营模式
+  const nav = canManage ? [...NAV, ...OPERATOR_NAV] : NAV;
 
   const isActive = (href: string) => pathname === href || (href !== "/library" && pathname.startsWith(href));
 
@@ -56,7 +62,7 @@ export function Sidebar() {
 
       {/* nav */}
       <nav style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
-        {NAV.map((n) => {
+        {nav.map((n) => {
           const active = isActive(n.href);
           return (
             <Link

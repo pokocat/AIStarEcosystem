@@ -243,3 +243,91 @@ export const STYLE_LOOK_TEMPLATES: StyleLookTemplateDef[] = [
   { id: "look-gangfeng", name: "港风复古", desc: "复古胶片 · 浓颜", prompt: "港风复古妆容，胶片质感，浓颜立体，保留五官结构", sampleUrl: "/seed/looks/look-gangfeng.jpg", hue: 12 },
   { id: "look-fresh", name: "校园清新", desc: "清透裸妆 · 元气", prompt: "校园清新风，清透裸妆，元气自然，保留五官结构", sampleUrl: "/seed/looks/look-fresh.jpg", hue: 88 },
 ];
+
+// ── 运营配置「出厂默认」（运营可改；mock seed 首次从这里灌入，离线兜底） ──────────────
+import type {
+  AiAvatarPromptConfig,
+  AiAvatarUiConfig,
+} from "@ai-star-eco/types/ai-avatar";
+
+/**
+ * 对接大模型的 5 个生成动作的 prompt「出厂默认」。
+ * 运营可在「运营配置 → Prompt 模板」改写；后端复用共享 prompt_template 表（key=aiavatar.*）。
+ * systemPrompt 抽取自原本硬编码处（BackendNluProvider / sampling / drafting / studio）。
+ */
+export const PROMPT_CONFIG_DEFAULTS: AiAvatarPromptConfig[] = [
+  {
+    key: "aiavatar.nlu.persona",
+    label: "人设文案解析",
+    description: "AI 原创路径：把用户的人设描述抽取为结构化 JSON（外貌/气质/风格/场景/关键词）。",
+    capability: "nlu",
+    systemPrompt:
+      "你是AiAvatar形象策划。把用户的人设描述抽取为结构化 JSON，字段：appearance(外貌)、temperament(气质)、style(风格)、scene(适用场景)、keywords(关键词数组)、summary(一句话总结)。只输出 JSON，不要多余文字。",
+    userTemplate: "{{input}}",
+    params: { temperature: 0.4, maxTokens: 1024, jsonMode: true },
+    enabled: true,
+    version: 1,
+    origin: "code",
+  },
+  {
+    key: "aiavatar.sampling.real",
+    label: "真人复刻打样",
+    description: "真人授权复刻路径打样：基于参考照片 + 风格做 ID 保持生成（InstantID）。",
+    capability: "faceClone",
+    systemPrompt:
+      "你是数字人形象生成引擎的提示词专家。基于真人参考照片做 ID 保持复刻，保留人物身份与五官结构，叠加目标风格。输出适合扩散模型的英文/中文混合提示词。",
+    userTemplate: "风格：{{style}}\n人设：{{persona}}\n生成 {{variants}} 版高质量写实人像，保持身份一致。",
+    params: { temperature: 0.7, maxTokens: 512, jsonMode: false },
+    enabled: true,
+    version: 1,
+    origin: "code",
+  },
+  {
+    key: "aiavatar.sampling.ai",
+    label: "AI 原创打样",
+    description: "纯 AI 原创路径打样：根据人设文案做文生图（SDXL / FLUX）。",
+    capability: "txt2img",
+    systemPrompt:
+      "你是数字人形象生成引擎的提示词专家。把结构化人设转写为高质量文生图提示词（SDXL/FLUX），强调外貌、气质、风格、光影与构图。",
+    userTemplate: "人设：{{persona}}\n风格：{{style}}\n生成 {{variants}} 版原创人像方案。",
+    params: { temperature: 0.85, maxTokens: 512, jsonMode: false },
+    enabled: true,
+    version: 1,
+    origin: "code",
+  },
+  {
+    key: "aiavatar.draft.iterate",
+    label: "草稿迭代指令",
+    description: "草稿迭代：把用户自然语言调整指令转写为图生图编辑提示（InstructPix2Pix）。",
+    capability: "img2img",
+    systemPrompt:
+      "你是图像指令编辑助手。把用户的中文调整指令转写为保持人物身份的图生图编辑提示，只改用户要求的部分，保留五官结构与构图。",
+    userTemplate: "调整指令：{{instruction}}\n在保持身份的前提下生成 {{variants}} 版草稿。",
+    params: { temperature: 0.7, maxTokens: 512, jsonMode: false },
+    enabled: true,
+    version: 1,
+    origin: "code",
+  },
+  {
+    key: "aiavatar.refine.appearance",
+    label: "外观精调重绘",
+    description: "精调-外观编辑 / 风格妆造模板：妆容 / 发型 / 肤质 / 服饰的迁移与局部重绘提示。",
+    capability: "inpaint",
+    systemPrompt:
+      "你是人像外观精调助手。把目标妆造 / 发型 / 服饰需求转写为保留五官结构的迁移 / 局部重绘提示，自然真实、不改变身份。",
+    userTemplate: "目标外观：{{look}}\n保留五官结构与身份，仅迁移目标风格妆造。",
+    params: { temperature: 0.6, maxTokens: 512, jsonMode: false },
+    enabled: true,
+    version: 1,
+    origin: "code",
+  },
+];
+
+/** UI 文案「出厂默认」：快捷指令 / 默认人设 / 局部重绘默认词。 */
+export const UI_CONFIG_DEFAULTS: AiAvatarUiConfig = {
+  draftPresets: ["瘦脸", "淡妆", "换职业装", "发型微卷", "更年轻"],
+  refinePresets: ["表情更自然", "光影更柔和", "背景虚化", "气质更亲和"],
+  personaChips: ["圆脸", "温柔气质", "休闲职业装", "写实风格", "齐肩短发"],
+  defaultPersona: "25 岁女带货主播，圆脸，温柔气质，休闲职业装，写实风格",
+  regionInpaintPrompt: "服饰区域重绘",
+};

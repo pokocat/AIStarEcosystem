@@ -8,9 +8,10 @@ import { useRouter } from "next/navigation";
 import type { AiAvatarDetail } from "@ai-star-eco/types/ai-avatar";
 import { Btn, IconBtn, Portrait, StatusPill, Tag } from "@/components/ui/primitives";
 import { Icons } from "@/components/ui/icons";
-import { usePolling } from "@/lib/hooks";
-import { startDraftIterate, chooseVariant, transitionAvatar } from "@/api/ai-avatar";
+import { usePolling, useApi } from "@/lib/hooks";
+import { startDraftIterate, chooseVariant, transitionAvatar, getUiConfig } from "@/api/ai-avatar";
 import { hueFor } from "@/lib/hue";
+import { UI_CONFIG_DEFAULTS } from "@/constants/aiavatar-ui";
 import { toast } from "@/components/ui/toast";
 
 interface Round { key: string; instr: string; initial?: boolean; running?: boolean; variants: { assetId: string; label: string; src?: string | null }[] }
@@ -20,7 +21,8 @@ export function DraftingStep({ detail, reload }: { detail: AiAvatarDetail; reloa
   const { avatar } = detail;
   const [input, setInput] = React.useState("");
   const [chosen, setChosen] = React.useState<string | null>(null);
-  const presets = ["瘦脸", "淡妆", "换职业装", "发型微卷", "更年轻"];
+  const { data: uiCfg } = useApi(() => getUiConfig(), []);
+  const presets = uiCfg?.draftPresets ?? UI_CONFIG_DEFAULTS.draftPresets; // 运营可配（/config）
   const chatEndRef = React.useRef<HTMLDivElement>(null);
 
   const draftJobs = detail.recentJobs.filter((j) => (j.input as { kind?: string } | null)?.kind === "draft").reverse();

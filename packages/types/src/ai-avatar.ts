@@ -340,3 +340,63 @@ export interface AiAvatarTemplateUpsertInput {
   official?: boolean;
   enabled?: boolean;
 }
+
+// ── 运营配置：大模型 prompt / UI 文案配置（运营角色可改，复用共享 prompt_template + PlatformConfig）──
+
+/** LLM prompt 模板参数（与后端 PromptParamsDto 对齐）。 */
+export interface AiAvatarPromptParams {
+  temperature?: number;
+  maxTokens?: number;
+  jsonMode?: boolean;
+}
+
+/**
+ * 一条可配置 LLM prompt（复用共享 `prompt_template` 表，key=`aiavatar.*`）。
+ * 对接大模型的每个生成动作（NLU 人设解析 / 真人打样 / AI 打样 / 草稿迭代 / 外观重绘）各一条。
+ */
+export interface AiAvatarPromptConfig {
+  key: string;                 // e.g. "aiavatar.nlu.persona"
+  label: string;               // 运营可读名："人设文案解析"
+  description?: string;        // 用途说明
+  capability?: AiAvatarCapability | null;
+  systemPrompt: string;
+  userTemplate: string;        // 含 {{占位符}}
+  params?: AiAvatarPromptParams | null;
+  enabled: boolean;
+  version: number;             // 灰度 / 回滚（version==1 = 出厂基线）
+  /** "db" | "resource" | "code"：当前生效来源（可观测，运营未改时为 resource/code）。 */
+  origin?: string | null;
+  updatedAt?: ISODateTime | null;
+  updatedBy?: string | null;
+}
+
+export interface AiAvatarPromptUpsertInput {
+  systemPrompt?: string;
+  userTemplate?: string;
+  params?: AiAvatarPromptParams;
+  enabled?: boolean;
+}
+
+/** dry-run 试运行结果（占位符填充后的最终 prompt，不真调大模型）。 */
+export interface AiAvatarPromptDryRunResult {
+  system: string;
+  user: string;
+  origin?: string | null;
+}
+
+/**
+ * 轻量 UI 文案配置（落 PlatformConfig key=`aiavatar.ui-config`）：
+ * 草稿 / 精调快捷指令、AI 模式默认人设、局部重绘默认词。
+ */
+export interface AiAvatarUiConfig {
+  /** 草稿迭代快捷指令 chip。 */
+  draftPresets: string[];
+  /** 精调-自然语言快捷指令 chip。 */
+  refinePresets: string[];
+  /** 创建-AI 路径人设描述 chip。 */
+  personaChips: string[];
+  /** 创建-AI 路径默认人设文案。 */
+  defaultPersona: string;
+  /** 精调-局部重绘默认指令词。 */
+  regionInpaintPrompt: string;
+}

@@ -6,6 +6,7 @@ import { useAuth, AuthApi, ENABLE_DEV_LOGIN, USE_MOCK, ApiError } from "@ai-star
 import { Btn, inputStyle } from "@/components/ui/primitives";
 import { Icons } from "@/components/ui/icons";
 import { toast } from "@/components/ui/toast";
+import { isMockOperator, setMockOperator } from "@/mocks/auth-override";
 
 type Mode = "sms" | "register" | "dev";
 
@@ -213,8 +214,10 @@ function Register({ onDone }: { onDone: () => void }) {
 
 function DevLogin({ loginAs, onDone }: { loginAs: (u?: string) => Promise<unknown>; onDone: () => void }) {
   const [busy, setBusy] = React.useState(false);
+  const [asOperator, setAsOperator] = React.useState(false);
   const [accounts, setAccounts] = React.useState<{ username: string; displayName: string }[]>([]);
   React.useEffect(() => {
+    setAsOperator(isMockOperator());
     AuthApi.listDevAccounts()
       .then((a) => setAccounts(a))
       .catch(() => setAccounts([]));
@@ -222,6 +225,7 @@ function DevLogin({ loginAs, onDone }: { loginAs: (u?: string) => Promise<unknow
   const go = async (username?: string) => {
     setBusy(true);
     try {
+      if (USE_MOCK) setMockOperator(asOperator); // mock：决定 /me 是否带 operatorRole
       await loginAs(username);
       await onDone();
     } catch (e) {
@@ -235,8 +239,15 @@ function DevLogin({ loginAs, onDone }: { loginAs: (u?: string) => Promise<unknow
       <p style={{ fontSize: 13, color: "var(--ink-1)", lineHeight: 1.6, margin: "0 0 18px" }}>
         {USE_MOCK ? "当前为离线演示模式，点击下方按钮即可进入工作台体验全链路。" : "开发期免密登录（dev profile）。"}
       </p>
+      {USE_MOCK && (
+        <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 14, borderRadius: "var(--r-md)", border: "1px solid " + (asOperator ? "var(--accent-line)" : "var(--line)"), background: asOperator ? "var(--accent-soft)" : "var(--bg-2)", cursor: "pointer" }}>
+          <input type="checkbox" checked={asOperator} onChange={(e) => setAsOperator(e.target.checked)} style={{ accentColor: "var(--accent)", width: 16, height: 16 }} />
+          <span style={{ flex: 1, fontSize: 13, color: asOperator ? "var(--accent-hi)" : "var(--ink-1)" }}>以平台运营身份进入</span>
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-2)" }}>operatorRole</span>
+        </label>
+      )}
       <Btn variant="pri" full size="lg" icon={Icons.bolt} onClick={() => go()} disabled={busy}>
-        {busy ? "进入中…" : "进入工作台"}
+        {busy ? "进入中…" : asOperator ? "以运营身份进入" : "进入工作台"}
       </Btn>
       {accounts.length > 0 && (
         <div style={{ marginTop: 18 }}>

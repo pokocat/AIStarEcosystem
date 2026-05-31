@@ -31,11 +31,17 @@ import type {
   AiAvatarSignLicenseInput,
   AiAvatarFinalizeInput,
   AiAvatarDeriveInput,
+  AiAvatarTemplateCategory,
+  AiAvatarTemplateUpsertInput,
+  AiAvatarPromptConfig,
+  AiAvatarPromptUpsertInput,
+  AiAvatarPromptDryRunResult,
+  AiAvatarUiConfig,
 } from "@ai-star-eco/types/ai-avatar";
 import { buildSeed, OWNER, PORTRAITS } from "./seed";
-import { CAPABILITY_ENGINE, CAPABILITY_KIND, CAPABILITY_LABEL, COMPOSITIONS } from "@/constants/aiavatar-ui";
+import { CAPABILITY_ENGINE, CAPABILITY_KIND, CAPABILITY_LABEL, COMPOSITIONS, PROMPT_CONFIG_DEFAULTS, UI_CONFIG_DEFAULTS, BEAUTY_TEMPLATES, STYLE_LOOK_TEMPLATES } from "@/constants/aiavatar-ui";
 
-const LS_KEY = "aiavatar.mock.store.v1";
+const LS_KEY = "aiavatar.mock.store.v2";
 const now = () => new Date().toISOString();
 
 interface State {
@@ -47,6 +53,15 @@ interface State {
   templates: AiAvatarTemplate[];
   jobs: AiAvatarJob[];
   refineEdits: AiAvatarRefineEdit[];
+  /** v2: 运营可配置 prompt（复用共享 prompt_template 形态）。 */
+  promptConfigs: AiAvatarPromptConfig[];
+  /** v2: 运营可配置 UI 文案。 */
+  uiConfig: AiAvatarUiConfig;
+}
+
+/** 简单 {{占位符}} 填充（镜像后端 PromptService.fill）。 */
+function fillTemplate(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] ?? "");
 }
 
 // 合法状态跃迁（8 态状态机；与后端 AiAvatarStatus 对齐）。
@@ -81,8 +96,7 @@ class MockStore {
         /* ignore */
       }
     }
-    const seed = buildSeed();
-    return { ...seed, refineEdits: [] };
+    return freshState();
   }
   private persist() {
     if (typeof window === "undefined") return;
@@ -93,8 +107,7 @@ class MockStore {
     }
   }
   reset() {
-    const seed = buildSeed();
-    this.s = { ...seed, refineEdits: [] };
+    this.s = freshState();
     this.persist();
     this.emit();
   }
@@ -756,6 +769,131 @@ class MockStore {
     const vs = this.s.versions.filter((v) => v.avatarId === id);
     return vs.length ? Math.max(...vs.map((v) => v.versionNo)) + 1 : 1;
   }
+
+  // ── 运营配置：prompt 模板（复用共享 prompt_template 形态） ──────────────────────
+  listPromptConfigs(): AiAvatarPromptConfig[] {
+    return this.s.promptConfigs.map((p) => ({ ...p }));
+  }
+  getPromptConfig(key: string): AiAvatarPromptConfig {
+    const p = this.s.promptConfigs.find((x) => x.key === key);
+    if (!p) throw notFound("PROMPT_NOT_FOUND", "Prompt 不存在");
+    return { ...p };
+  }
+  upsertPromptConfig(key: string, input: AiAvatarPromptUpsertInput): AiAvatarPromptConfig {
+    const p = this.s.promptConfigs.find((x) => x.key === key);
+    if (!p) throw notFound("PROMPT_NOT_FOUND", "Prompt 不存在");
+    if (input.systemPrompt !== undefined) p.systemPrompt = input.systemPrompt;
+    if (input.userTemplate !== undefined) p.userTemplate = input.userTemplate;
+    if (input.params !== undefined) p.params = input.params;
+    if (input.enabled !== undefined) p.enabled = input.enabled;
+    p.version += 1; // 灰度：每次保存版本 +1（version>1 = 运营已改，seeder 不再覆盖）
+    p.origin = "db";
+    p.updatedAt = now();
+    p.updatedBy = "运营";
+    this.emit();
+    return { ...p };
+  }
+  dryRunPrompt(key: string, vars: Record<string, string>): AiAvatarPromptDryRunResult {
+    const p = this.getPromptConfig(key);
+    return { system: p.systemPrompt, user: fillTemplate(p.userTemplate, vars), origin: p.origin };
+  }
+
+  // ── 运营配置：UI 文案 ─────────────────────────────────────────────────────────
+  getUiConfig(): AiAvatarUiConfig {
+    return { ...this.s.uiConfig };
+  }
+  updateUiConfig(input: Partial<AiAvatarUiConfig>): AiAvatarUiConfig {
+    this.s.uiConfig = { ...this.s.uiConfig, ...input };
+    this.emit();
+    return { ...this.s.uiConfig };
+  }
+
+  // ── 运营配置：模板 CRUD（按 category：style / beauty / composition） ──────────────
+  listTemplatesByCategory(category: AiAvatarTemplateCategory): AiAvatarTemplate[] {
+    return this.s.templates.filter((t) => t.category === category && t.enabled).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+  listAllTemplates(): AiAvatarTemplate[] {
+    return [...this.s.templates];
+  }
+  createTemplate(input: AiAvatarTemplateUpsertInput): AiAvatarTemplate {
+    const t: AiAvatarTemplate = {
+      id: `tpl-${nanoid(8)}`,
+      name: input.name,
+      category: input.category,
+      categoryLabel: input.category,
+      description: input.description ?? null,
+      thumbnailUrl: input.thumbnailUrl ?? null,
+      params: (input.params as Record<string, unknown>) ?? null,
+      capability: input.capability ?? null,
+      official: input.official ?? true,
+      ownerUserId: input.official === false ? OWNER : null,
+      enabled: input.enabled ?? true,
+      usageCount: 0,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    this.s.templates.push(t);
+    this.emit();
+    return { ...t };
+  }
+  updateTemplate(id: string, input: AiAvatarTemplateUpsertInput): AiAvatarTemplate {
+    const t = this.s.templates.find((x) => x.id === id);
+    if (!t) throw notFound("TEMPLATE_NOT_FOUND", "模板不存在");
+    if (input.name !== undefined) t.name = input.name;
+    if (input.category !== undefined) { t.category = input.category; t.categoryLabel = input.category; }
+    if (input.description !== undefined) t.description = input.description;
+    if (input.thumbnailUrl !== undefined) t.thumbnailUrl = input.thumbnailUrl;
+    if (input.params !== undefined) t.params = input.params as Record<string, unknown>;
+    if (input.capability !== undefined) t.capability = input.capability;
+    if (input.enabled !== undefined) t.enabled = input.enabled;
+    t.updatedAt = now();
+    this.emit();
+    return { ...t };
+  }
+  deleteTemplate(id: string): void {
+    this.s.templates = this.s.templates.filter((x) => x.id !== id);
+    this.emit();
+  }
+}
+
+/**
+ * 构造全新 mock state：avatar 数据来自 buildSeed()，模板/prompt/ui-config 来自「出厂默认」常量。
+ * 模板按 category 建成「配置级」（params 带真实配置：beauty 参数 / style prompt / composition 规格），
+ * 让精调 / 出图屏能直接消费；运营在配置页改动后持久化覆盖这里的默认值。
+ */
+function freshState(): State {
+  const seed = buildSeed();
+  const ts = now();
+  const mk = (
+    id: string,
+    name: string,
+    category: AiAvatarTemplateCategory,
+    description: string | null,
+    params: Record<string, unknown>,
+    capability: AiAvatarTemplate["capability"],
+    thumbnailUrl: string | null,
+  ): AiAvatarTemplate => ({
+    id, name, category, categoryLabel: category, description, thumbnailUrl,
+    params, capability, official: true, ownerUserId: null, enabled: true,
+    usageCount: 0, createdAt: ts, updatedAt: ts,
+  });
+
+  const templates: AiAvatarTemplate[] = [
+    ...BEAUTY_TEMPLATES.map((b) =>
+      mk(b.id, b.name, "beauty", b.tag, { ...b.params, hue: b.hue }, "restore", null)),
+    ...STYLE_LOOK_TEMPLATES.map((s) =>
+      mk(s.id, s.name, "style", s.desc, { prompt: s.prompt, hue: s.hue }, "img2img", s.sampleUrl)),
+    ...COMPOSITIONS.map((c) =>
+      mk(c.id, c.name, "composition", c.sub, { shot: c.shot, ratio: c.ratio, main: !!c.main }, null, null)),
+  ];
+
+  return {
+    ...seed,
+    templates,
+    refineEdits: [],
+    promptConfigs: PROMPT_CONFIG_DEFAULTS.map((p) => ({ ...p, params: p.params ? { ...p.params } : null })),
+    uiConfig: { ...UI_CONFIG_DEFAULTS },
+  };
 }
 
 function version(avatarId: string, no: number, label: string, note: string, stage: AiAvatarStatus): AiAvatarVersion {

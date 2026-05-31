@@ -7,9 +7,10 @@ import { useRouter } from "next/navigation";
 import type { AiAvatarDetail } from "@ai-star-eco/types/ai-avatar";
 import { Btn, Panel, Portrait, Tag, inputStyle } from "@/components/ui/primitives";
 import { Icons } from "@/components/ui/icons";
-import { STYLE_TEMPLATES } from "@/constants/aiavatar-ui";
+import { STYLE_TEMPLATES, UI_CONFIG_DEFAULTS } from "@/constants/aiavatar-ui";
 import { PORTRAITS } from "@/mocks/seed";
-import { updateAvatar, uploadSourcePhoto, addSourceText, signLicense, startSampling } from "@/api/ai-avatar";
+import { updateAvatar, uploadSourcePhoto, addSourceText, signLicense, startSampling, getUiConfig } from "@/api/ai-avatar";
+import { useApi } from "@/lib/hooks";
 import { toast } from "@/components/ui/toast";
 
 function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
@@ -31,7 +32,19 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
   const [tags, setTags] = React.useState<string[]>(avatar.tags ?? []);
   const [agreed, setAgreed] = React.useState(false);
   const [scope, setScope] = React.useState("commercial");
-  const [persona, setPersona] = React.useState(avatar.persona ?? (isReal ? "" : "25 岁女带货主播，圆脸，温柔气质，休闲职业装，写实风格"));
+  // 运营可配（/config）：默认人设 + 人设描述 chip。
+  const { data: uiCfg } = useApi(() => getUiConfig(), []);
+  const personaChips = uiCfg?.personaChips ?? UI_CONFIG_DEFAULTS.personaChips;
+  const [persona, setPersona] = React.useState(avatar.persona ?? "");
+  const personaSeeded = React.useRef(false);
+  React.useEffect(() => {
+    // AI 模式且用户未填、未改过 → 用运营配置的默认人设预填一次。
+    if (isReal || personaSeeded.current) return;
+    if (!persona && uiCfg?.defaultPersona) {
+      setPersona(uiCfg.defaultPersona);
+      personaSeeded.current = true;
+    }
+  }, [uiCfg, isReal, persona]);
   const [style, setStyle] = React.useState(avatar.styleCategory ?? (isReal ? "写实主播风" : "简约风"));
   const [busy, setBusy] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -159,7 +172,7 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
             <Panel title="人设描述词" right={<Tag on>LLM 解析 → 结构化人设</Tag>}>
               <textarea value={persona} onChange={(e) => setPersona(e.target.value)} rows={4} placeholder="角色人设、外貌、风格、穿搭、气质…" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                {["圆脸", "温柔气质", "休闲职业装", "写实风格", "齐肩短发"].map((t) => (
+                {personaChips.map((t) => (
                   <button key={t} onClick={() => setPersona((p) => p + " " + t)} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--ink-1)", cursor: "pointer" }}>+ {t}</button>
                 ))}
               </div>
