@@ -9,6 +9,7 @@ import com.aistareco.aep.aiavatar.provider.ProviderResult;
 import com.aistareco.aep.aiavatar.service.AiAvatarStorage;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.PromptService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,15 +21,27 @@ import java.util.Map;
  * 人设文案解析 **真实**实现（nlu）—— 走平台大模型网关（{@link AiModelInvocationService}）。
  * 任务书 §0/§4：「后端已有 LLM 网关」，描述词→结构化人设走真实大模型。
  *
+ * v0.46+: system prompt 不再硬编码，改由 {@link PromptService} 按 key=aiavatar.nlu.persona 解析
+ * （DB→resource .md→code 兜底），运营可在 web-aiavatar /config 改写。PromptService 不可用时
+ * 退回内置兜底文案（行为与旧版一致）。
+ *
  * 网关未配置对应用途端点时 healthcheck=false；registry 在 dev 回退 mock，prod 抛错可见。
  */
 public class BackendNluProvider extends AbstractCapabilityProvider {
 
-    private final AiModelInvocationService gateway;
+    private static final String FALLBACK_SYS =
+            "你是AiAvatar形象策划。把用户的人设描述抽取为结构化 JSON，"
+            + "字段：appearance(外貌)、temperament(气质)、style(风格)、scene(适用场景)、"
+            + "keywords(关键词数组)、summary(一句话总结)。只输出 JSON，不要多余文字。";
 
-    public BackendNluProvider(AiModelInvocationService gateway, AiAvatarStorage storage, ObjectMapper mapper) {
+    private final AiModelInvocationService gateway;
+    private final PromptService promptService;
+
+    public BackendNluProvider(AiModelInvocationService gateway, AiAvatarStorage storage, ObjectMapper mapper,
+                              PromptService promptService) {
         super(AiAvatarCapability.NLU, AiAvatarProviderMode.BACKEND, "LLM-Gateway", storage, mapper);
         this.gateway = gateway;
+        this.promptService = promptService;
     }
 
     @Override
@@ -39,12 +52,19 @@ public class BackendNluProvider extends AbstractCapabilityProvider {
         String prompt = strVal(input, "prompt", "");
         ctx.onProgress(20, "调用大模型解析人设");
 
-        String sys = "你是AiAvatar形象策划。把用户的人设描述抽取为结构化 JSON，"
-                + "字段：appearance(外貌)、temperament(气质)、style(风格)、scene(适用场景)、"
-                + "keywords(关键词数组)、summary(一句话总结)。只输出 JSON，不要多余文字。";
+        // 运营可配 prompt（key=aiavatar.nlu.persona）；不可用时退回内置兜底。
+        String sys = FALLBACK_SYS;
+        String userContent = prompt;
+        if (promptService != null) {
+            PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_AIAVATAR_NLU_PERSONA);
+            if (p.system() != null && !p.system().isBlank()) sys = p.system();
+            if (p.userTemplate() != null && !p.userTemplate().isBlank()) {
+                userContent = PromptService.fill(p.userTemplate(), Map.of("input", prompt));
+            }
+        }
         List<Map<String, String>> messages = List.of(
                 Map.of("role", "system", "content", sys),
-                Map.of("role", "user", "content", prompt)
+                Map.of("role", "user", "content", userContent)
         );
 
         Object resp = gateway.invokeChat(AiModelPurpose.GENERAL, messages, Map.of("response_format", "json_object"));

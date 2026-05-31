@@ -150,3 +150,48 @@ QUEUED 积压 → 在重试上限内自动续跑。`POST /api/admin/aiavatar/wat
 - 信封加密（KMS 包裹 DEK）当前为单层 AES-GCM（后端），接口不变。
 - 多实例 watchdog 需 ShedLock。
 - 任务书 §8 的 Testcontainers 集成 / 真实 provider 冒烟需 GPU + 模型服务环境，本环境以 mock E2E + 后端 H2 集成测覆盖。
+
+## H. 运营配置化 + 内嵌运营角色（v0.46）
+
+> 用户要求：把所有「对接大模型 / 用到模板」的地方做成运营可配，并新增运营登录用户角色的配置能力。
+
+### H1. 配置范围 → 存储映射（4 组 → 3 个后端存储）
+- **LLM prompt 模板**（NLU 人设解析 / 真人打样 / AI 打样 / 草稿迭代 / 外观重绘）→ **复用共享
+  `prompt_template` 表 + PromptService + AdminPromptController**（key=`aiavatar.*`，加进 KNOWN_KEYS）。
+  运营可改 system/user/params + 启用开关 + dry-run 试运行 + version 灰度/回滚。零造轮子。
+- **风格/妆造 + 美颜 + 标准构图模板** → **复用 `aiavatar_template` 表**（category STYLE/BEAUTY/COMPOSITION）。
+  paramsJson 承载：style→{prompt}+thumbnailUrl(样片)；beauty→{smooth,whiten,warmth,brightness}；
+  composition→{shot,ratio,main}。CRUD 走既有 `/api/admin/aiavatar/templates`。
+- **快捷指令 + 默认人设 + 局部重绘默认词** → **PlatformConfig key=`aiavatar.ui-config`**（轻量 JSON）。
+  新增 `AiAvatarUiConfigService` + admin PUT + `/me` 只读。理由：纯 UI 文案，不值得单建表/塞进 prompt 表。
+
+### H2. 运营登录角色：复用 AepUser.operatorRole（不新增登录通道）
+- 复用 web-celebrity 的 `canManage = !!user?.operatorRole` 内嵌运营模式。sidebar 仅运营可见「运营配置」入口；
+  `/config` 路由非运营 `router.replace("/library")`。运营授权由 admin `/celebrity/operators` 既有页面发放。
+- **mock 运营身份**：`src/mocks/auth-override.ts` 覆盖 `/me` + `/auth/dev-login`（registerMock 后注册即覆盖），
+  按 localStorage 开关注入 `operatorRole=operator`；登录页 dev tab「以平台运营身份进入」开关。仅 mock 演示；
+  live 由后端 JWT.role 决定（OPERATOR / SUPER_ADMIN）。
+
+### H3. 消费屏「配置层读 + 出厂常量兜底」
+- studio（美颜/风格模板、NL 快捷指令、局部重绘词）/ drafting（草稿快捷指令）/ material（默认人设+chip）/
+  output（标准构图）全部改为 `useApi` 读配置层；常量降级为 mock seed 出厂默认 + 加载失败兜底（绝不空屏/空视角）。
+
+### H4. 前后端 prompt DTO 形态差异 → 前端适配（不动共享 DTO）
+- 共享 `PromptTemplateDto` 用 `promptKey`（无 label/capability/origin），dry-run 返回 `Map`。为不污染跨产品
+  共享 DTO，**在前端 live 路径做适配**（`adaptServerPrompt`：promptKey→key，label/description/capability
+  取自本地 `PROMPT_CONFIG_DEFAULTS` 元数据；version>1 视为 origin=db）。upsert body（systemPrompt/userTemplate/
+  params/enabled）与 `PromptParamsDto`(temperature/maxTokens/jsonMode) 与前端完全一致，无需转换。
+
+### H5. 后端 mirror（小、多复用）
+- PromptService.KNOWN_KEYS +5 个 aiavatar.* key；resources/prompts/material/aiavatar.*.md 基线 5 份；
+  PromptTemplateSeeder SEED_VERSION bump（v6，仅刷 version==1 未改行）。
+- BackendNluProvider 抽出硬编码 system prompt → `promptService.resolve("aiavatar.nlu.persona")`，
+  PromptService 不可用时退回内置兜底（行为不变）。Registry 注入 PromptService（@Autowired required=false）。
+- AiAvatarTemplateSeeder 重写：18 个工厂模板（6 美颜+6 风格+6 构图），params 形态与前端消费屏严格对齐
+  （旧版只有 6 个、params 形态不匹配，会导致 live 模式精调/出图读不到正确参数）。幂等：官方模板非空跳过。
+- 新增 AiAvatarUiConfigService（PlatformConfig 落 aiavatar.ui-config）+ 端点。
+
+### H6. 验证
+- typecheck 0 / build 18 路由 / 26 vitest / **7 Playwright E2E**（原 3 创建路径 + 新 4 运营配置：
+  门控 / Prompt 编辑试运行 / 风格模板新增→创作者精调可选用 / 快捷指令构图）全绿。
+- 后端 `mvn -q compile` 通过（PromptService / BackendNluProvider / registry / seeder / ui-config 端点）。

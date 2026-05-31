@@ -2059,6 +2059,46 @@ web-aiavatar（重建）:
 - 重型生成能力（txt2img/inpaint/3D/video…）前端在 mock 下产出占位 / CSS 运镜预览；`NEXT_PUBLIC_USE_MOCK=0` 切真实后端。
 - E2E 用 Playwright（chromium），跑前先 `NEXT_PUBLIC_USE_MOCK=1 pnpm build && pnpm start`（或 `pnpm dev`）起 :3013。
 
+### v0.46（2026-05-31）— AiAvatar 大模型对接配置化 + 内嵌运营配置能力
+
+把 AiAvatar 所有「对接大模型 / 用到模板」处从硬编码抽取到可配置数据层；新增运营登录角色
+（复用 `AepUser.operatorRole`）的内嵌配置 UI。前端先行（mock 离线全功能），后端复用既有
+`prompt_template` / `aiavatar_template` mirror。
+
+```
+配置范围 → 存储（4 组 → 3 存储）：
+  · LLM prompt（NLU/真人打样/AI 打样/草稿迭代/外观重绘）→ 共享 prompt_template（key=aiavatar.*，
+    复用 PromptService + AdminPromptController；运营改 system/user/params + 启用 + dry-run + version 灰度）
+  · 风格妆造/美颜/构图模板 → aiavatar_template（category STYLE/BEAUTY/COMPOSITION，复用既有 CRUD 端点）
+  · 快捷指令/默认人设/局部重绘默认词 → PlatformConfig key=aiavatar.ui-config（新 AiAvatarUiConfigService）
+
+types : +AiAvatarPromptConfig/Params/UpsertInput/DryRunResult + AiAvatarUiConfig
+web   : api/ai-avatar.ts +prompt 配置 CRUD+dryRun / 模板 CRUD / ui-config（mock↔live；live 写走
+        /admin/prompts + /admin/aiavatar/templates + /admin/aiavatar/ui-config；prompt 用 adaptServerPrompt
+        适配共享 PromptTemplateDto.promptKey→key + 本地元数据补 label/capability）
+      : mocks/store.ts +promptConfigs/uiConfig + CRUD + freshState() 出厂常量灌入（LS v2）
+      : constants +PROMPT_CONFIG_DEFAULTS(5) + UI_CONFIG_DEFAULTS
+      : 消费屏（studio/drafting/material/output）改「配置层读 + 出厂常量兜底」
+      : 新 /(workspace)/config（operatorRole 门控）+ components/config/*；sidebar 运营可见入口
+      : mocks/auth-override.ts 覆盖 /me + dev-login 注入 operatorRole；登录页「以运营身份进入」开关
+server: PromptService.KNOWN_KEYS +5 aiavatar.* key + resources/prompts/material/aiavatar.*.md 基线 +
+        PromptTemplateSeeder SEED_VERSION→v6；BackendNluProvider 抽硬编码 prompt→resolve(aiavatar.nlu.persona)；
+        AiAvatarProviderRegistry 注入 PromptService；AiAvatarTemplateSeeder 重写为 18 工厂模板（params 形态
+        对齐前端消费屏）；+AiAvatarUiConfigService/Dto + admin PUT + /me 只读
+openapi: +/admin/aiavatar/ui-config(get/put) + /me/aiavatar/ui-config(get)
+```
+
+**注意事项**：
+- prompt 复用共享 `prompt_template`：AiAvatar prompt 与 material/appearance/drama 同表同 admin 页；运营在
+  web-aiavatar /config 改的就是这张表的 aiavatar.* 行（也可在 admin /platform/prompts 改，等价）。
+- **前后端 prompt DTO 差异**：共享 `PromptTemplateDto` 用 `promptKey`（无 label/origin），故前端 live 路径
+  `adaptServerPrompt` 适配，不动共享 DTO。upsert body + PromptParamsDto 与前端完全一致。
+- **AiAvatarTemplateSeeder 重写**：旧版只种 6 个、params 形态（beautyStrength/style/composition:standard_4）与
+  v0.45.1 重建后的消费屏不匹配；本版改为 18 个、params 与前端 STYLE_LOOK/BEAUTY/COMPOSITIONS 严格对齐。
+  幂等：官方模板非空跳过；已部署若已种旧 6 个，需手动清 aiavatar_template 官方行再重启才会重灌。
+- **operatorRole 不主动失效旧 JWT**：用户被授权后需重登/等 JWT 过期才生效（沿用 v0.31 既有限制）。
+- mock 运营身份仅前端演示；live 必须后端 JWT.role=OPERATOR/SUPER_ADMIN，授权走 admin /celebrity/operators。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

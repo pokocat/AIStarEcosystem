@@ -6,6 +6,7 @@ import com.aistareco.aep.aiavatar.model.AiAvatarProviderMode;
 import com.aistareco.aep.aiavatar.provider.impl.*;
 import com.aistareco.aep.aiavatar.service.AiAvatarStorage;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.PromptService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +36,7 @@ public class AiAvatarProviderRegistry {
     private final AiAvatarStorage storage;
     private final ObjectMapper mapper;
     private final AiModelInvocationService gateway;
+    private final PromptService promptService;
 
     /** capability → 选中的 Provider（构造期一次性解析）。 */
     private final Map<AiAvatarCapability, CapabilityProvider> active = new EnumMap<>(AiAvatarCapability.class);
@@ -42,11 +44,13 @@ public class AiAvatarProviderRegistry {
     private final Map<AiAvatarCapability, Map<AiAvatarProviderMode, CapabilityProvider>> all = new EnumMap<>(AiAvatarCapability.class);
 
     public AiAvatarProviderRegistry(AiAvatarProperties props, AiAvatarStorage storage, ObjectMapper mapper,
-                              @Autowired(required = false) AiModelInvocationService gateway) {
+                              @Autowired(required = false) AiModelInvocationService gateway,
+                              @Autowired(required = false) PromptService promptService) {
         this.props = props;
         this.storage = storage;
         this.mapper = mapper;
         this.gateway = gateway;
+        this.promptService = promptService;
         build();
     }
 
@@ -99,7 +103,7 @@ public class AiAvatarProviderRegistry {
 
         // BACKEND —— 走平台大模型网关；当前 nlu 有专门实现，其余能力 backend 复用 selfhost 语义（多模态网关）
         if (cap == AiAvatarCapability.NLU) {
-            m.put(AiAvatarProviderMode.BACKEND, new BackendNluProvider(gateway, storage, mapper));
+            m.put(AiAvatarProviderMode.BACKEND, new BackendNluProvider(gateway, storage, mapper, promptService));
         } else {
             // 其它能力的 backend：占位走 selfhost-http（大模型多模态网关也可包成同协议）。
             String url = props.getSelfhostBaseUrls().get(cap.wire());

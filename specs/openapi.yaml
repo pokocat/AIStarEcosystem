@@ -6421,3 +6421,8 @@ paths:
     delete: { tags: [aiavatar], operationId: adminDeleteAiAvatarTemplate, responses: { '200': { description: ok } } }
   /admin/aiavatar/watchdog/sweep:
     post: { tags: [aiavatar], operationId: adminAiAvatarWatchdogSweep, description: 手动触发任务监控线程巡检, responses: { '200': { description: ok } } }
+  /admin/aiavatar/ui-config:
+    get: { tags: [aiavatar], operationId: adminGetAiAvatarUiConfig, description: 运营读取 UI 文案配置（快捷指令/默认人设/局部重绘默认词）, responses: { '200': { description: ok } } }
+    put: { tags: [aiavatar], operationId: adminUpdateAiAvatarUiConfig, description: 运营覆盖保存 UI 文案配置, responses: { '200': { description: ok } } }
+  /me/aiavatar/ui-config:
+    get: { tags: [aiavatar], operationId: meGetAiAvatarUiConfig, description: 创作者只读 UI 文案配置, responses: { '200': { description: ok } } }

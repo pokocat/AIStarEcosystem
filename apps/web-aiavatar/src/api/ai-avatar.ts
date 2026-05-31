@@ -32,6 +32,7 @@ import type {
   AiAvatarUiConfig,
 } from "@ai-star-eco/types/ai-avatar";
 import { mockStore } from "@/mocks/store";
+import { PROMPT_CONFIG_DEFAULTS } from "@/constants/aiavatar-ui";
 
 /** 当前数据源（前端可见 · 任务书 §6.4）。 */
 export type DataSourceMode = "mock" | "live";
@@ -236,23 +237,55 @@ export async function listTemplatesByCategory(category: AiAvatarTemplateCategory
 }
 
 // ── 运营配置：prompt 模板（复用共享 /admin/prompts；key=aiavatar.*） ─────────────
+// 后端共享 PromptTemplateDto 用 promptKey（无 label/capability/origin），这里适配成
+// 前端 AiAvatarPromptConfig（label/description/capability 取自本地出厂常量元数据）。
+interface ServerPromptDto {
+  promptKey: string;
+  systemPrompt: string;
+  userTemplate: string;
+  params?: { temperature?: number; maxTokens?: number; jsonMode?: boolean } | null;
+  version: number;
+  enabled: boolean;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
+}
+function adaptServerPrompt(s: ServerPromptDto): AiAvatarPromptConfig {
+  const meta = PROMPT_CONFIG_DEFAULTS.find((d) => d.key === s.promptKey);
+  return {
+    key: s.promptKey,
+    label: meta?.label ?? s.promptKey,
+    description: meta?.description,
+    capability: meta?.capability ?? null,
+    systemPrompt: s.systemPrompt,
+    userTemplate: s.userTemplate,
+    params: s.params ?? null,
+    enabled: s.enabled,
+    version: s.version,
+    origin: s.version > 1 ? "db" : "resource",
+    updatedAt: s.updatedAt ?? null,
+    updatedBy: s.updatedBy ?? null,
+  };
+}
+
 export async function listPromptConfigs(): Promise<AiAvatarPromptConfig[]> {
   if (USE_MOCK) return mockStore().listPromptConfigs();
   // live: 共享 prompt 列表里筛 aiavatar.* key（后端 AdminPromptController 返回全部 known keys）。
-  const all = await apiFetch<AiAvatarPromptConfig[]>("/admin/prompts");
-  return all.filter((p) => p.key.startsWith("aiavatar."));
+  const all = await apiFetch<ServerPromptDto[]>("/admin/prompts");
+  return all.filter((p) => p.promptKey.startsWith("aiavatar.")).map(adaptServerPrompt);
 }
 export async function getPromptConfig(key: string): Promise<AiAvatarPromptConfig> {
   if (USE_MOCK) return mockStore().getPromptConfig(key);
-  return apiFetch<AiAvatarPromptConfig>(`/admin/prompts/${encodeURIComponent(key)}`);
+  return adaptServerPrompt(await apiFetch<ServerPromptDto>(`/admin/prompts/${encodeURIComponent(key)}`));
 }
 export async function upsertPromptConfig(key: string, input: AiAvatarPromptUpsertInput): Promise<AiAvatarPromptConfig> {
   if (USE_MOCK) return mockStore().upsertPromptConfig(key, input);
-  return apiFetch<AiAvatarPromptConfig>(`/admin/prompts/${encodeURIComponent(key)}`, { method: "PUT", body: input });
+  return adaptServerPrompt(await apiFetch<ServerPromptDto>(`/admin/prompts/${encodeURIComponent(key)}`, { method: "PUT", body: input }));
 }
 export async function dryRunPromptConfig(key: string, vars: Record<string, string>): Promise<AiAvatarPromptDryRunResult> {
   if (USE_MOCK) return mockStore().dryRunPrompt(key, vars);
-  return apiFetch<AiAvatarPromptDryRunResult>(`/admin/prompts/${encodeURIComponent(key)}/dry-run`, { method: "POST", body: { vars } });
+  // 后端 dry-run 返回 Map（含 system / user）；做防御性取值。
+  const r = await apiFetch<Record<string, unknown>>(`/admin/prompts/${encodeURIComponent(key)}/dry-run`, { method: "POST", body: vars });
+  return { system: String(r.system ?? ""), user: String(r.user ?? r.userTemplate ?? ""), origin: (r.origin as string) ?? null };
 }
 
 // ── 运营配置：模板 CRUD（写走 /admin/aiavatar/templates，运营角色） ─────────────────

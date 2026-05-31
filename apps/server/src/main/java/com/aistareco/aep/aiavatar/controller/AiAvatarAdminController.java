@@ -2,8 +2,10 @@ package com.aistareco.aep.aiavatar.controller;
 
 import com.aistareco.aep.aiavatar.dto.AiAvatarRequests;
 import com.aistareco.aep.aiavatar.dto.AiAvatarTemplateDto;
+import com.aistareco.aep.aiavatar.dto.AiAvatarUiConfigDto;
 import com.aistareco.aep.aiavatar.service.AiAvatarJobWatchdog;
 import com.aistareco.aep.aiavatar.service.AiAvatarTemplateService;
+import com.aistareco.aep.aiavatar.service.AiAvatarUiConfigService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,10 +24,13 @@ public class AiAvatarAdminController {
 
     private final AiAvatarTemplateService templateService;
     private final AiAvatarJobWatchdog watchdog;
+    private final AiAvatarUiConfigService uiConfigService;
 
-    public AiAvatarAdminController(AiAvatarTemplateService templateService, AiAvatarJobWatchdog watchdog) {
+    public AiAvatarAdminController(AiAvatarTemplateService templateService, AiAvatarJobWatchdog watchdog,
+                                   AiAvatarUiConfigService uiConfigService) {
         this.templateService = templateService;
         this.watchdog = watchdog;
+        this.uiConfigService = uiConfigService;
     }
 
     @GetMapping("/templates")
@@ -49,6 +54,18 @@ public class AiAvatarAdminController {
     public ApiResponse<Boolean> deleteTemplate(@PathVariable String id) {
         templateService.delete(id);
         return ApiResponse.of(true);
+    }
+
+    // ── UI 文案配置（快捷指令 / 默认人设 / 局部重绘默认词） ──────────────────────
+    @GetMapping("/ui-config")
+    public ApiResponse<AiAvatarUiConfigDto> getUiConfig() {
+        return ApiResponse.of(uiConfigService.get());
+    }
+
+    @PutMapping("/ui-config")
+    public ApiResponse<AiAvatarUiConfigDto> updateUiConfig(@RequestBody AiAvatarUiConfigDto in, Principal principal) {
+        String by = principal == null ? "operator" : principal.getName();
+        return ApiResponse.of(uiConfigService.update(in, by));
     }
 
     /** 手动触发一次监控线程巡检（任务书监控线程：平时每小时自动，运维可即时触发）。 */
