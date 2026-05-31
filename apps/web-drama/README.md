@@ -58,6 +58,18 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.45 · 2026-05-31 · 前后端数据对齐补齐 + 短剧「完整创作工作流」
+
+- **数据对齐**：`USE_MOCK=0` 下补齐一批拉不到数据的页面（除数字人 `/cast`、形象锻造 `/forge`）：
+  - 脚本工坊 `/scripts`（后端新建 `/api/me/scripts/**` + 版本树 + AI 续写）；
+  - 项目流水线 `/projects`（`/api/film/dramas` 增删改 + 详情）；
+  - 多平台分发 `/distribution`（`/api/distribution/jobs/**` 发布任务，进度模拟）；
+  - 财务中心 `/finance`（`/api/me/wallet/withdraw` 提现）；
+  - 短剧 / 影视 / 社区 / 分发内容等空数据源由 `DramaDemoSeeder` 种入（dev/test）。
+- **短剧生成重建**为多阶段工作流：题材灵感 → AI 多稿起草 → 分场景编辑器（增删改 / 调序 / 景别·运镜·时长 / 逐镜配音开关 / 逐镜 AI 重写）→ 角色与演员绑定（接入 `/cast` 虚拟演员）→ 剧集(多集)管理 → 风格与变体生成 + 积分预估 → 生成视频 → 视频库 → 归入项目 / 去分发。
+- 新组件 `components/short-drama/{scene-editor,character-panel,video-library}.tsx`；`api/short-drama.ts` 扩类型 + `rewriteScene` / `listSeriesEpisodes` / `publishToProject`。
+- 详见根目录 [`AGENTS.md`](../../AGENTS.md) §v0.45。
+
 ### 2026-05-31 · 移动端浏览适配（响应式）
 
 把 web-drama 从「桌面固定 240px 侧栏」改造为可在手机 / 平板浏览的响应式布局。**纯前端，无 API / 数据模型变更；`tsc --noEmit` 绿。**

@@ -11,4 +11,7 @@ public interface DramaScriptRepository extends JpaRepository<DramaScript, String
     List<DramaScript> findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(String ownerUserId);
 
     Optional<DramaScript> findByIdAndOwnerUserIdAndDeletedAtIsNull(String id, String ownerUserId);
+
+    /** v0.45：一部多集短剧的所有集，按集号升序。 */
+    List<DramaScript> findByOwnerUserIdAndSeriesIdAndDeletedAtIsNullOrderByEpisodeNoAsc(String ownerUserId, String seriesId);
 }

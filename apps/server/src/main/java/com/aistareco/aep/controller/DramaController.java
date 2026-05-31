@@ -1,5 +1,6 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.dto.DramaDto;
 import com.aistareco.aep.service.DramaScriptService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -52,6 +53,24 @@ public class DramaController {
     @PostMapping("/scripts/ai-draft")
     public ApiResponse<List<JsonNode>> aiDraft(Principal principal, @RequestBody JsonNode body) {
         return ApiResponse.of(service.aiDraft(body, principal.getName()));
+    }
+
+    /** 单镜 AI 改写：body { script_id, scene_index, prompt? } → 返回改写后的 scene JSON（未落库）。 */
+    @PostMapping("/scenes/rewrite")
+    public ApiResponse<JsonNode> rewriteScene(Principal principal, @RequestBody JsonNode body) {
+        return ApiResponse.of(service.rewriteScene(body, principal.getName()));
+    }
+
+    /** 一部多集短剧的所有集（按集号升序）。 */
+    @GetMapping("/series/{seriesId}/episodes")
+    public ApiResponse<List<JsonNode>> seriesEpisodes(Principal principal, @PathVariable String seriesId) {
+        return ApiResponse.of(service.listSeriesEpisodes(seriesId, principal.getName()));
+    }
+
+    /** 成片归入项目流水线：据脚本创建/复用 Drama 项目，回写 drama_id。 */
+    @PostMapping("/scripts/{id}/publish-to-project")
+    public ApiResponse<DramaDto> publishToProject(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(service.publishToProject(id, principal.getName()));
     }
 
     // ── 短剧视频 ─────────────────────────────────────────────────────────────────
