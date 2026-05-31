@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="384" height="512" viewBox="0 0 384 512">
+  <defs>
+    <linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2b30"/><stop offset="1" stop-color="#16171b"/>
+    </linearGradient>
+    <radialGradient id="skin1" cx="0.5" cy="0.42" r="0.7">
+      <stop offset="0" stop-color="#e8c4a0"/><stop offset="1" stop-color="#d4a87f"/>
+    </radialGradient>
+  </defs>
+  <rect width="384" height="512" fill="url(#bg1)"/>
+  <!-- 脖子 + 肩 -->
+  <rect x="150" y="340" width="84" height="70" rx="24" fill="#d4a87f"/>
+  <path d="M 42 512 Q 72 400 192 410 Q 312 400 342 512 Z" fill="#2a2b30" opacity="0.9"/>
+  <path d="M 72 512 Q 96 418 192 426 Q 288 418 312 512 Z" fill="#3a3a42"/>
+  <!-- 后发(长发垂肩) -->
+  
+  <!-- 脸 -->
+  <ellipse cx="192" cy="250" rx="118" ry="150" fill="url(#skin1)"/>
+  <!-- 腮红 -->
+  <ellipse cx="130" cy="274" rx="22" ry="14" fill="#e08a72" opacity="0.18"/>
+  <ellipse cx="254" cy="274" rx="22" ry="14" fill="#e08a72" opacity="0.18"/>
+  <path d="M 122 332 Q 192 330 262 332 Q 192 392 122 332 Z" fill="#241c16" opacity="0.32"/>
+  <!-- 鼻 -->
+  <path d="M 186 238 L 179 268 Q 192 280 205 268 L 198 238" fill="none" stroke="#d4a87f" stroke-width="3"/>
+  <ellipse cx="183" cy="272" rx="4" ry="3" fill="#d4a87f" opacity="0.7"/>
+  <ellipse cx="201" cy="272" rx="4" ry="3" fill="#d4a87f" opacity="0.7"/>
+  <!-- 眉 / 眼 / 嘴 -->
+  <path d="M 116 201 Q 142 190 168 204" stroke="#241c16" stroke-width="7" fill="none" stroke-linecap="round"/> <path d="M 216 204 Q 242 190 268 201" stroke="#241c16" stroke-width="7" fill="none" stroke-linecap="round"/>
+  
+    <ellipse cx="142" cy="232" rx="26" ry="15" fill="#fbfbf8"/>
+    <ellipse cx="142" cy="232" rx="26" ry="15" fill="none" stroke="#8a7560" stroke-width="1.5"/>
+    <circle cx="142" cy="232" r="10.5" fill="#4a3526"/>
+    <circle cx="142" cy="232" r="5" fill="#1a120c"/>
+    <circle cx="139" cy="228" r="2.2" fill="#ffffff" opacity="0.9"/> 
+    <ellipse cx="242" cy="232" rx="26" ry="15" fill="#fbfbf8"/>
+    <ellipse cx="242" cy="232" rx="26" ry="15" fill="none" stroke="#8a7560" stroke-width="1.5"/>
+    <circle cx="242" cy="232" r="10.5" fill="#4a3526"/>
+    <circle cx="242" cy="232" r="5" fill="#1a120c"/>
+    <circle cx="239" cy="228" r="2.2" fill="#ffffff" opacity="0.9"/>
+  <path d="M 162 328 Q 192 336 222 328" stroke="#b06a55" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <!-- 前发 -->
+  <path d="M 78 214 Q 68 100 192 92 Q 316 100 306 214 Q 280 134 192 128 Q 104 134 78 214 Z" fill="#241c16"/>
+  <text x="14" y="498" font-family="monospace" font-size="13" fill="#f0a83a" opacity="0.85">SAMPLE · 男·短发</text>
+</svg>

@@ -2,11 +2,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // scripts/check-api-contract.mjs
 //
-// 校验三个 web app + packages/api-client 中所有 apiFetch(...) 调用是否在
+// 校验四个 web app + packages/api-client 中所有 apiFetch(...) 调用是否在
 // specs/openapi.yaml 中既有 path 又有匹配的 HTTP method。drift 即报错。
 //
 // 比旧版 apps/web/scripts/check-api-contract.mjs 多了：
-//   - 扫描三个新 app（web-music / web-drama / web-celebrity）+ packages/api-client
+//   - 扫描新 app（web-music / web-drama / web-celebrity / web-aiavatar）+ packages/api-client
 //   - 方法级匹配（旧版只看 path）
 //
 // 用法（在仓库根运行）：
@@ -22,6 +22,7 @@ const SCAN_DIRS = [
   "apps/web-music/src",
   "apps/web-drama/src",
   "apps/web-celebrity/src",
+  "apps/web-aiavatar/src",
   "packages/api-client/src",
 ];
 const OPENAPI_PATH = join(REPO_ROOT, "specs/openapi.yaml");
@@ -45,8 +46,19 @@ function walk(dir, acc = []) {
  *   /celebrity/showcases?mode=x                → /celebrity/showcases
  *   /me/songs/${encodeURIComponent(id)}        → /me/songs/{id}
  */
-function normalizeUrl(raw) {
+function extractStringConstants(src) {
+  const constants = new Map();
+  const re = /\bconst\s+([A-Z][A-Z0-9_]*)\s*=\s*(["'`])([^"'`]+)\2\s*;/g;
+  let m;
+  while ((m = re.exec(src)) !== null) constants.set(m[1], m[3]);
+  return constants;
+}
+
+function normalizeUrl(raw, constants = new Map()) {
   let s = raw;
+  for (const [name, value] of constants) {
+    s = s.replaceAll("${" + name + "}", value);
+  }
   s = s.replace(/\?.*$/, "");
   s = s.replace(/\$\{suffix\}/g, "");
   s = s.replace(/\$\{qs\}/g, "");
@@ -65,6 +77,7 @@ function extractCalls() {
     const abs = join(REPO_ROOT, dir);
     for (const file of walk(abs)) {
       const src = readFileSync(file, "utf8");
+      const constants = extractStringConstants(src);
       // apiFetch<T>(`/...`[, { method: "POST", ... }])
       // 第 2 个参数是对象字面量；跨行需要 [\s\S]*? 才能命中 method。
       const re = /apiFetch[^(]*\(\s*([`"])([^`"]+)\1(?:\s*,\s*(\{[\s\S]*?\}))?/g;
@@ -78,7 +91,7 @@ function extractCalls() {
           file: file.replace(REPO_ROOT + "/", ""),
           rawUrl: url,
           method,
-          path: normalizeUrl(url),
+          path: normalizeUrl(url, constants),
         });
       }
     }

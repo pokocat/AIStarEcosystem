@@ -64,6 +64,9 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
+                        // AiAvatar 资产中心：Provider 健康可观测公开（任务书 §6.3）；用户 / 管理端各自门禁。
+                        .requestMatchers("/api/aiavatar/health/**").permitAll()
+                        .requestMatchers("/api/aiavatar/**").authenticated()
                         // 素材运营（脚本 / 视频 / 爆款雷达）—— 任意登录用户可读写共享库
                         .requestMatchers("/api/material/**").authenticated()
                         // v0.31+：商品库公共池 —— 任意登录用户可读；卖点抽取只返回文本、不写库。

@@ -16,7 +16,7 @@
 
 | 文档 | 范围 | 当前状态 |
 |---|---|---|
-| [`product_spec.md`](../product_spec.md) | **数字人 / 数字 IP 主线** —— 数字艺人孵化、音乐工坊、内容（影视/综艺/广告/配音）、社群、版权、分发、变现 | v2.7 canonical（2026-05-06） |
+| [`product_spec.md`](../product_spec.md) | **AiAvatar / 数字 IP 主线** —— 数字艺人孵化、音乐工坊、内容（影视/综艺/广告/配音）、社群、版权、分发、变现 | v2.7 canonical（2026-05-06） |
 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线** —— 明星市场、授权、模板/脚本、AI 模型、生成器、积分钱包、消息中心、社交账号绑定 profile | v0.17 rolling（2026-05-20） |
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划** —— 全配置化终态（ConfigItem / 灰度 / AB 桶 / 17 个字典上移） | 大目标稿；当前 admin 是其 P0 子集 |
 
@@ -27,6 +27,9 @@
 | [`apps/web-music/PRODUCT.md`](../apps/web-music/PRODUCT.md) ★ | AI 音乐人（3010） | 产品定位 / 路由 / 业务领域 / 视觉系统（Restrained dark + Inter） |
 | [`apps/web-drama/PRODUCT.md`](../apps/web-drama/PRODUCT.md) ★ | AI 短剧（3011） | 产品定位 / 路由 / 业务领域 / 视觉系统（Premium Cinematic + 金色 accent + serif） |
 | [`apps/web-celebrity/PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) ★ | AI 明星带货（3012） | 产品定位 / 路由 / 业务领域 / 视觉系统（Creator-Friendly + 紫罗兰）+ **混剪专区完整设计** |
+| [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) ★ | AiAvatar 形象资产中心（3013） | 真人复刻 / AI 原创 · 7 步链路 + 衍生 3D/视频 · 深色琥珀 · aiavatar_* 独立后端领域（last-reviewed 2026-05-30） |
+| [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 中心 | 架构 / 能力真实-vs-mock 映射 / 合规 / 状态机 / 监控线程 决策记录 |
+| [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |
 
 不动产品规格的方向时不必读 §3 ~ §7。
 

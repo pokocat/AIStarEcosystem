@@ -4,4 +4,5 @@ packages:
   - "apps/web-music"
   - "apps/web-drama"
   - "apps/web-celebrity"
+  - "apps/web-aiavatar"
   - "apps/admin"

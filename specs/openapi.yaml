@@ -4461,8 +4461,8 @@ paths:
   /me/copies/{id}/approve:                     { post: { tags: [copy],           operationId: approveCopy,           summary: '推进/驳回三阶段审批（mock-only · v0.39）', responses: { '200': { description: ok } } } }
   /me/clip-tasks:                              { get:  { tags: [clip-studio],    operationId: listClipTasks,         summary: '切片任务列表（mock-only · v0.39）',     responses: { '200': { description: ok } } }, post: { tags: [clip-studio], operationId: createClipTask, summary: '新建切片任务（mock-only · v0.39）', responses: { '200': { description: ok } } } }
   /me/clip-tasks/{id}/submit-qc:               { post: { tags: [clip-studio],    operationId: submitClipQc,          summary: '提交 6 项质检（mock-only · v0.39）',     responses: { '200': { description: ok } } } }
-  /me/person-models:                           { get:  { tags: [digital-person], operationId: listPersonModels,      summary: '数字人模型库（mock-only · v0.39）',     responses: { '200': { description: ok } } } }
-  /me/digital-person/gen-tasks:                { get:  { tags: [digital-person], operationId: listGenTasks,          summary: '数字人生成任务（mock-only · v0.39）',   responses: { '200': { description: ok } } }, post: { tags: [digital-person], operationId: createGenTask, summary: '新建生成任务（mock-only · v0.39）', responses: { '200': { description: ok } } } }
+  /me/person-models:                           { get:  { tags: [digital-person], operationId: listPersonModels,      summary: 'AI 数字人模型库（mock-only · v0.39）',     responses: { '200': { description: ok } } } }
+  /me/digital-person/gen-tasks:                { get:  { tags: [digital-person], operationId: listGenTasks,          summary: 'AI 数字人生成任务（mock-only · v0.39）',   responses: { '200': { description: ok } } }, post: { tags: [digital-person], operationId: createGenTask, summary: '新建生成任务（mock-only · v0.39）', responses: { '200': { description: ok } } } }
   /me/digital-person/gen-tasks/{id}/push-to-pool: { post: { tags: [digital-person], operationId: pushGenTaskToPool,  summary: '已通过任务入发布池（mock-only · v0.39）', responses: { '200': { description: ok } } } }
   /me/mix-templates:                           { get:  { tags: [batch-mix],      operationId: listMixTemplates,      summary: '混剪模板库（mock-only · v0.39）',       responses: { '200': { description: ok } } } }
   /me/batch-tasks:                             { get:  { tags: [batch-mix],      operationId: listBatchTasks,        summary: '混剪批量任务（mock-only · v0.39）',     responses: { '200': { description: ok } } }, post: { tags: [batch-mix], operationId: createBatchTask, summary: '新建批量任务（mock-only · v0.39）', responses: { '200': { description: ok } } } }
@@ -6346,3 +6346,78 @@ paths:
       operationId: publishMixcutBatch
       description: 一次性将多个混剪变体（必须有 cdn_url）派单到多个社交账号；schedule 字段决定 cadence。
       responses: { '200': { description: ok } }
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # AiAvatar 形象资产管理中心（com.aistareco.aep.aiavatar.*，表 aiavatar_*，账户复用 aep_users）
+  # 路径骨架：契约 gate 只校验 path 存在。详细 schema 见 packages/types/src/ai-avatar.ts。
+  # ───────────────────────────────────────────────────────────────────────────
+  /aiavatar/health/providers:
+    get: { tags: [aiavatar], operationId: aiAvatarProviderHealth, description: 每能力当前 mode + 实现来源（mock/真实），公开可观测, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars:
+    get:  { tags: [aiavatar], operationId: listAiAvatars,  responses: { '200': { description: ok } } }
+    post: { tags: [aiavatar], operationId: createAiAvatar,  responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}:
+    get: { tags: [aiavatar], operationId: getAiAvatarDetail, responses: { '200': { description: ok } } }
+    put: { tags: [aiavatar], operationId: updateAiAvatar,    responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/archive:
+    post: { tags: [aiavatar], operationId: archiveAiAvatar, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/fork:
+    post: { tags: [aiavatar], operationId: forkAiAvatar, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/transition:
+    post: { tags: [aiavatar], operationId: transitionAiAvatar, description: 8 态状态机跃迁（非法 409 AIAVATAR_ILLEGAL_TRANSITION）, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/source-text:
+    post: { tags: [aiavatar], operationId: addAiAvatarSourceText, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/source-photo:
+    post: { tags: [aiavatar], operationId: uploadAiAvatarSourcePhoto, description: 真人照片 multipart 上传（加密存储 + 触发合规检测）, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/licenses:
+    post: { tags: [aiavatar], operationId: signAiAvatarLicense, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/sampling:
+    post: { tags: [aiavatar], operationId: startAiAvatarSampling, description: 打样（真人 faceClone / AI txt2img），异步任务, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/draft-iterate:
+    post: { tags: [aiavatar], operationId: startAiAvatarDraftIterate, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/refine/appearance:
+    post: { tags: [aiavatar], operationId: startAiAvatarAppearanceRefine, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/refine/region:
+    post: { tags: [aiavatar], operationId: startAiAvatarRegionInpaint, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/refine/geometry:
+    post: { tags: [aiavatar], operationId: recordAiAvatarGeometryRefine, description: 几何微调结果登记（前端 canvas 真实液化后回传），同步建版本, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/template-beautify:
+    post: { tags: [aiavatar], operationId: startAiAvatarTemplateBeautify, description: 模板美化 + 标准 4 图集 + 表情图, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/finalize:
+    post: { tags: [aiavatar], operationId: finalizeAiAvatar, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/derive:
+    post: { tags: [aiavatar], operationId: deriveAiAvatar, description: 衍生 3D（TripoSR）/ 视频（SVD），需已定稿, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/versions:
+    get: { tags: [aiavatar], operationId: listAiAvatarVersions, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/versions/{versionId}/mark:
+    post: { tags: [aiavatar], operationId: markAiAvatarVersion, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{id}/versions/{versionId}/revert:
+    post: { tags: [aiavatar], operationId: revertAiAvatarVersion, responses: { '200': { description: ok } } }
+  /me/aiavatar/avatars/{avatarId}/assets:
+    get: { tags: [aiavatar], operationId: listAiAvatarAssets, responses: { '200': { description: ok } } }
+  /me/aiavatar/assets:
+    post: { tags: [aiavatar], operationId: uploadAiAvatarImage, responses: { '200': { description: ok } } }
+  /me/aiavatar/assets/{assetId}/raw:
+    get: { tags: [aiavatar], operationId: getAiAvatarAssetRaw, description: 加密原始照片解密下载（owner 校验）, responses: { '200': { description: ok } } }
+  /me/aiavatar/jobs:
+    get: { tags: [aiavatar], operationId: listAiAvatarJobs, responses: { '200': { description: ok } } }
+  /me/aiavatar/jobs/{id}:
+    get: { tags: [aiavatar], operationId: getAiAvatarJob, responses: { '200': { description: ok } } }
+  /me/aiavatar/jobs/{id}/cancel:
+    post: { tags: [aiavatar], operationId: cancelAiAvatarJob, responses: { '200': { description: ok } } }
+  /me/aiavatar/jobs/{id}/retry:
+    post: { tags: [aiavatar], operationId: retryAiAvatarJob, responses: { '200': { description: ok } } }
+  /me/aiavatar/jobs/{id}/stream:
+    get: { tags: [aiavatar], operationId: streamAiAvatarJob, description: SSE 任务进度流, responses: { '200': { description: ok } } }
+  /me/aiavatar/templates:
+    get: { tags: [aiavatar], operationId: listAiAvatarTemplatesForUser, responses: { '200': { description: ok } } }
+  /me/aiavatar/templates/{id}:
+    get: { tags: [aiavatar], operationId: getAiAvatarTemplate, responses: { '200': { description: ok } } }
+  /admin/aiavatar/templates:
+    get:  { tags: [aiavatar], operationId: adminListAiAvatarTemplates,  responses: { '200': { description: ok } } }
+    post: { tags: [aiavatar], operationId: adminCreateAiAvatarTemplate, responses: { '200': { description: ok } } }
+  /admin/aiavatar/templates/{id}:
+    put:    { tags: [aiavatar], operationId: adminUpdateAiAvatarTemplate, responses: { '200': { description: ok } } }
+    delete: { tags: [aiavatar], operationId: adminDeleteAiAvatarTemplate, responses: { '200': { description: ok } } }
+  /admin/aiavatar/watchdog/sweep:
+    post: { tags: [aiavatar], operationId: adminAiAvatarWatchdogSweep, description: 手动触发任务监控线程巡检, responses: { '200': { description: ok } } }
