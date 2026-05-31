@@ -15,7 +15,7 @@ export const WIZARD = [
   { key: "sampling", no: "03", label: "打样" },
   { key: "drafting", no: "04", label: "草稿迭代" },
   { key: "studio", no: "05", label: "精细化精调" },
-  { key: "output", no: "06", label: "模板美化 · 出图" },
+  { key: "output", no: "06", label: "分视角出图" },
   { key: "finalize", no: "07", label: "定稿确认" },
   { key: "derive", no: "08", label: "衍生 · 入库" },
 ] as const;

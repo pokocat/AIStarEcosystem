@@ -454,6 +454,57 @@ class MockStore {
     return this.recordGeometryRefine(id, { afterAssetId: afterId, params: params as never, note });
   }
 
+  /** 提交客户端美颜/模版套用结果（beauty.ts 真实 canvas 算法产出的 dataURL）：落 after 资产 + 版本 + 置封面。 */
+  commitBeauty(id: string, dataUrl: string, params: Record<string, unknown>, note?: string, label = "精调 · 模版套用"): AiAvatarVersion {
+    const a = this.getAvatar(id);
+    a.status = "refining";
+    a.updatedAt = now();
+    const afterId = `look-${nanoid(8)}`;
+    this.s.assets.push({
+      id: afterId,
+      avatarId: id,
+      versionId: null,
+      kind: "image_2d",
+      standardShot: null,
+      fileUrl: dataUrl,
+      thumbnailUrl: dataUrl,
+      mimeType: "image/png",
+      width: 512,
+      height: 683,
+      fileSize: Math.round(dataUrl.length * 0.75),
+      durationSec: 0,
+      format3d: null,
+      engine: "GFPGAN + beauty (client)",
+      providerMode: "selfhost",
+      watermarkToken: null,
+      encrypted: false,
+      meta: { params },
+      createdAt: now(),
+    });
+    a.coverUrl = dataUrl;
+    a.coverAssetId = afterId;
+    const v = version(id, this.nextVersionNo(id), label, note ?? "美颜 / 模版套用", "refining");
+    v.previewUrl = dataUrl;
+    v.assetIds = [afterId];
+    v.params = (params as Record<string, unknown>) ?? null;
+    this.s.versions.push(v);
+    this.s.refineEdits.push({
+      id: `re-${nanoid(8)}`,
+      avatarId: id,
+      versionId: v.id,
+      kind: "appearance",
+      params: (params as Record<string, unknown>) ?? null,
+      beforeAssetId: null,
+      afterAssetId: afterId,
+      jobId: null,
+      note: note ?? null,
+      createdAt: now(),
+    });
+    a.currentVersionId = v.id;
+    this.emit();
+    return v;
+  }
+
   startTemplateBeautify(id: string, req: AiAvatarSubmitJobInput): AiAvatarJob {
     const a = this.getAvatar(id);
     a.status = "refining";

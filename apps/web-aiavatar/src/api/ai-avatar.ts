@@ -145,6 +145,37 @@ export async function commitGeometryRefine(
   const afterAssetId = upJson?.data?.id as string | undefined;
   return refineGeometry(id, { afterAssetId: afterAssetId ?? "", params: params as never, note });
 }
+
+/**
+ * 提交客户端美颜 / 模版套用（beauty.ts 真实 canvas 算法）的结果图为新版本。
+ * mock：直接落 dataURL 资产 + 版本（即时可见）；live：multipart 上传 after 图 → 记录 appearance RefineEdit。
+ */
+export async function commitBeautyRefine(
+  id: string,
+  dataUrl: string,
+  params: Record<string, unknown>,
+  note?: string,
+  label?: string,
+): Promise<AiAvatarVersion> {
+  if (USE_MOCK) return mockStore().commitBeauty(id, dataUrl, params, note, label);
+  const blob = await (await fetch(dataUrl)).blob();
+  const file = new File([blob], "beauty-refine.png", { type: "image/png" });
+  const form = new FormData();
+  form.append("file", file);
+  form.append("avatarId", id);
+  form.append("kind", "image_2d");
+  const token = getAuthToken();
+  const up = await fetch(`${API_BASE_URL}/me/aiavatar/assets`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+    credentials: "include",
+  });
+  const upJson = await up.json();
+  const afterAssetId = upJson?.data?.id as string | undefined;
+  // 复用 geometry 记录端点提交「客户端产出图为新版本」（server 端按 RefineEdit 落库；params 标注 beauty）。
+  return refineGeometry(id, { afterAssetId: afterAssetId ?? "", params: { ...params, _kind: "beauty" } as never, note });
+}
 export async function templateBeautify(id: string, req: AiAvatarSubmitJobInput): Promise<AiAvatarJob> {
   if (USE_MOCK) return mockStore().startTemplateBeautify(id, req);
   return apiFetch<AiAvatarJob>(`${BASE}/${id}/template-beautify`, { method: "POST", body: req });

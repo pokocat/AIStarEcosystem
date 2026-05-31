@@ -22,11 +22,11 @@ async function runPipelineToArchive(page: Page) {
   await page.getByTitle("选定").first().click();
   await page.getByRole("button", { name: "选定此版 · 进入精调" }).click();
 
-  // STEP 05 精调：实时几何形变画布渲染 → 进入美化出图
-  await expect(page.getByRole("button", { name: "进入美化出图" })).toBeVisible();
-  await page.getByRole("button", { name: "进入美化出图" }).click();
+  // STEP 05 精调（五官微调 / 模版套用）：实时几何形变 → 进入分视角出图
+  await expect(page.getByRole("button", { name: "进入分视角出图" })).toBeVisible();
+  await page.getByRole("button", { name: "进入分视角出图" }).click();
 
-  // STEP 06 模板美化 · 标准出图：批量出图（真实 beauty）→ 前往定稿
+  // STEP 06 标准分视角出图：批量出图 → 前往定稿
   await page.getByRole("button", { name: "批量出标准图" }).click();
   await expect(page.getByRole("button", { name: "前往定稿" })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "前往定稿" }).click();

@@ -65,6 +65,22 @@ ai-avatar app 不设 `requiredPlatform`（v0.43 的 `SubProduct` 仅 music/drama
 - **关于美狐(Meihu) SDK**：是 **Android/iOS 原生商用** 实时相机美颜/美型 SDK（OpenGL/Metal，license 绑包名），
   **无 web/WASM 版本**，无法在本 Next.js web 应用中运行。web 端能跑的同类只有 Banuba（仍需商用 token，见 B1）。
 
+### B3. 编辑能力归并到「精调」+ 出图步纯化 + 草稿迭代 AI 对话左置（IA 调整）
+- **原状**：(1) 草稿迭代的 AI 指令面板在右侧；(2)「模板美化 · 出图」步既做美颜模板、又做标准出图（编辑与出图混在一步）。
+- **改动**：
+  1. **草稿迭代 AI 对话框移到左侧**，改 Figma-AI 风格（渐变头像头部 + 用户/AI 消息气泡 + 快捷指令 chip +
+     Enter 发送 composer），右侧为草稿画廊；每轮指令/生成以对话往返呈现。
+  2. **精调（STEP 05）= 两种模式**：`五官微调`（原几何形变+外观编辑+自然语言+局部重绘，真实 MediaPipe 液化）/
+     `模版套用`（美颜美化模板=真实 canvas beauty 实时套用；风格妆造模板=职业妆/古风等样片→img2img 图生图）。
+     美颜模板从原出图步迁入此处。
+  3. **出图（STEP 06）纯化为「标准分视角出图」**：只按标准构图（正面半身/全身/左右侧脸/表情）分视角批量出图，
+     **不做任何编辑**；左侧仅视角勾选 + 「去精调改妆容/美颜」引导。wizard label 改「分视角出图」。
+- **理由**：用户反馈——编辑功能应集中在「精调」（直接五官微调 + 模版套用两条路），出图只负责分视角产图。
+  职责单一、心智清晰；美颜/妆造在精调即可所见即所得，出图阶段不再有「为什么这里还能改妆」的困惑。
+- **落地**：`BEAUTY_TEMPLATES` / `STYLE_LOOK_TEMPLATES` / `combineBeauty` 入 `constants/aiavatar-ui.ts`；
+  store 加 `commitBeauty`、api 加 `commitBeautyRefine`（mock 落 dataURL 版本；live multipart 上传 + RefineEdit）。
+  风格妆造走既有 `refineAppearance(img2img, {prompt})` 异步任务。26 vitest + 3 E2E 全绿。
+
 ## C. 合规 / 安全（既有，未改）
 
 - **InsightFace 非商用**：InstantID（faceClone）/ RetinaFace（faceDetect）依赖的 InsightFace 仅限非商用研究。

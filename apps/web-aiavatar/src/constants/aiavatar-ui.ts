@@ -196,3 +196,48 @@ export const STATUS_NEXT_STEP: Partial<Record<AiAvatarStatus, string>> = {
   finalized_2d: "derive",
   deriving: "derive",
 };
+
+// ── 精调「模版套用」模式：美颜模板（真实 canvas beauty）+ 风格妆造模板（样片→图生图）──────
+import type { BeautyParams } from "@/lib/beauty";
+
+/** 美颜 / 美化模板 → 真实 beauty 参数（warmth 可负=偏冷）。从原 output 步迁入精调。 */
+export interface BeautyTemplateDef {
+  id: string;
+  name: string;
+  tag: string;
+  hue: number;
+  params: BeautyParams;
+}
+export const BEAUTY_TEMPLATES: BeautyTemplateDef[] = [
+  { id: "b1", name: "主播美颜", tag: "通用", hue: 28, params: { smooth: 55, whiten: 30, warmth: 12, brightness: 56 } },
+  { id: "b2", name: "高清质感", tag: "细节", hue: 200, params: { smooth: 30, whiten: 8, warmth: 0, brightness: 54 } },
+  { id: "b3", name: "冷白皮", tag: "肤色", hue: 220, params: { smooth: 42, whiten: 70, warmth: -22, brightness: 60 } },
+  { id: "b4", name: "复古滤镜", tag: "色调", hue: 38, params: { smooth: 35, whiten: 12, warmth: 38, brightness: 48 } },
+  { id: "b5", name: "奶油雾面", tag: "色调", hue: 18, params: { smooth: 60, whiten: 30, warmth: 18, brightness: 58 } },
+  { id: "b6", name: "通透裸妆", tag: "妆容", hue: 340, params: { smooth: 38, whiten: 22, warmth: 6, brightness: 55 } },
+];
+export const BEAUTY_PRESET_MAP: Record<string, BeautyParams> = Object.fromEntries(BEAUTY_TEMPLATES.map((b) => [b.id, b.params]));
+
+export function combineBeauty(ids: string[]): BeautyParams {
+  const ps = ids.map((id) => BEAUTY_PRESET_MAP[id]).filter(Boolean);
+  if (!ps.length) return { smooth: 0, whiten: 0, warmth: 0, brightness: 50 };
+  const avg = (k: keyof BeautyParams) => ps.reduce((s, p) => s + p[k], 0) / ps.length;
+  return { smooth: avg("smooth"), whiten: avg("whiten"), warmth: avg("warmth"), brightness: avg("brightness") };
+}
+
+/** 风格 / 妆造模板：带「样片」让 AI 做图生图（img2img + 参考）。如职业妆容 / 国风古韵等。 */
+export interface StyleLookTemplateDef {
+  id: string;
+  name: string;
+  desc: string;
+  prompt: string;
+  hue: number;
+}
+export const STYLE_LOOK_TEMPLATES: StyleLookTemplateDef[] = [
+  { id: "look-pro", name: "职业妆容", desc: "干练通勤 · 自然底妆", prompt: "职业通勤妆容，自然底妆，知性干练气质，保留五官结构", hue: 200 },
+  { id: "look-guofeng", name: "国风古韵", desc: "古典发饰 · 东方妆造", prompt: "国风古典妆造，古典发饰与服饰，东方韵味，保留五官结构", hue: 340 },
+  { id: "look-lux", name: "轻奢氛围", desc: "高级感 · 质感妆容", prompt: "轻奢高级感妆容，质感光影，时尚氛围，保留五官结构", hue: 38 },
+  { id: "look-2d", name: "二次元渲染", desc: "动漫风 · 通透大眼", prompt: "二次元动漫渲染风格，通透大眼，干净光影，保留五官结构", hue: 268 },
+  { id: "look-gangfeng", name: "港风复古", desc: "复古胶片 · 浓颜", prompt: "港风复古妆容，胶片质感，浓颜立体，保留五官结构", hue: 12 },
+  { id: "look-fresh", name: "校园清新", desc: "清透裸妆 · 元气", prompt: "校园清新风，清透裸妆，元气自然，保留五官结构", hue: 88 },
+];

@@ -1,10 +1,11 @@
 "use client";
 // ============================================================
-// 精细化精调（STEP 05）— 真实能力对齐：
-//   · 几何微调 = MediaPipe 478 关键点 + 网格液化形变（client，确定性、实时；face-warp.ts）。
-//   · 外观编辑 = 妆容/发型/肤质/服饰（提交异步任务，mock 走 store）。
-//   · 自然语言整体微调 + 局部框选 + 前后对比 + 版本回退。
-//   3 种布局：split / island / tri。
+// 精细化精调（STEP 05）— 两种模式：
+//   A. 五官微调（tune）= MediaPipe 478 关键点 + 网格液化形变（client，确定性、实时；face-warp.ts）
+//      + 外观编辑（妆容/发型/肤质/服饰，异步任务）+ 自然语言 + 局部重绘 + 前后对比 + 三布局。
+//   B. 模版套用（template）= 美颜/美化模板（真实 canvas beauty，实时预览即时套用）
+//      + 风格/妆造模板（职业妆/古风…样片 → img2img 图生图，异步任务）。
+//   编辑能力集中在本步；下一步「分视角出图」只按标准构图出图、不做编辑。
 // ============================================================
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -12,15 +13,17 @@ import type { AiAvatarDetail } from "@ai-star-eco/types/ai-avatar";
 import { Btn, IconBtn, Portrait, Seg, StatusPill, Tag } from "@/components/ui/primitives";
 import { Icons, type IconComponent } from "@/components/ui/icons";
 import { usePolling } from "@/lib/hooks";
-import { refineAppearance, refineRegion, commitGeometryRefine } from "@/api/ai-avatar";
-import { GEO_PARAMS, type GeoParamDef, APPEARANCE_EDITS, CAPABILITY_ENGINE, CAPABILITY_KIND, CAPABILITY_LABEL, styleHue } from "@/constants/aiavatar-ui";
+import { refineAppearance, refineRegion, commitGeometryRefine, commitBeautyRefine } from "@/api/ai-avatar";
+import { GEO_PARAMS, type GeoParamDef, APPEARANCE_EDITS, CAPABILITY_ENGINE, CAPABILITY_KIND, CAPABILITY_LABEL, styleHue, BEAUTY_TEMPLATES, STYLE_LOOK_TEMPLATES, combineBeauty } from "@/constants/aiavatar-ui";
 import { fmtDateTime } from "@/lib/format";
 import { toast } from "@/components/ui/toast";
 import { warpImageToDataUrl, heuristicAnchors, isNeutral, NEUTRAL, type FaceAnchors, type FaceSliders } from "@/lib/face-warp";
+import { beautifyToDataUrl } from "@/lib/beauty";
 import { detectFaceAnchors, warmupLandmarker, type LM } from "@/lib/face-landmarks";
 
 type Tool = "move" | "geo" | "region" | "compare";
 type Layout = "split" | "island" | "tri";
+type Mode = "tune" | "template";
 
 const WARP_SIDE = 512;
 
@@ -36,8 +39,15 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
   const [params, setParams] = React.useState<GeoParamDef[]>(GEO_PARAMS.map((p) => ({ ...p })));
   const [tool, setTool] = React.useState<Tool>("geo");
   const [layout, setLayout] = React.useState<Layout>("split");
+  const [mode, setMode] = React.useState<Mode>("tune");
   const [info, setInfo] = React.useState(false);
   const [activeVer, setActiveVer] = React.useState(detail.versions[0]?.id ?? "");
+
+  // 模版套用模式状态
+  const [selBeauty, setSelBeauty] = React.useState<string[]>([]);
+  const [selStyle, setSelStyle] = React.useState<string | null>(null);
+  const [tplPreview, setTplPreview] = React.useState<string | null>(null);
+  const [applying, setApplying] = React.useState(false);
 
   // 真实形变状态
   const [img, setImg] = React.useState<HTMLImageElement | null>(null);
@@ -149,6 +159,55 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
   const compare = tool === "compare";
   const hue = styleHue(avatar.styleCategory);
 
+  // 模版套用：美颜模板实时预览（客户端 beauty）。
+  React.useEffect(() => {
+    if (mode !== "template" || !img) return;
+    if (selBeauty.length === 0) {
+      setTplPreview(null);
+      return;
+    }
+    const id = window.setTimeout(async () => {
+      try {
+        setTplPreview(await beautifyToDataUrl(img, combineBeauty(selBeauty)));
+      } catch {
+        /* keep */
+      }
+    }, 90);
+    return () => window.clearTimeout(id);
+  }, [mode, selBeauty, img]);
+
+  const applyBeautyTemplates = async () => {
+    if (!img || selBeauty.length === 0) return;
+    setApplying(true);
+    try {
+      const url = tplPreview ?? (await beautifyToDataUrl(img, combineBeauty(selBeauty)));
+      const names = BEAUTY_TEMPLATES.filter((b) => selBeauty.includes(b.id)).map((b) => b.name).join(" + ");
+      await commitBeautyRefine(avatar.id, url, { templateIds: selBeauty, ...combineBeauty(selBeauty) }, names, "精调 · 美颜模版");
+      setSelBeauty([]);
+      setTplPreview(null);
+      reload();
+      toast(`已套用美颜模版：${names}`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "套用失败", { icon: "!", tone: "var(--err)" });
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const applyStyleTemplate = async () => {
+    if (!selStyle) return;
+    const tpl = STYLE_LOOK_TEMPLATES.find((t) => t.id === selStyle);
+    if (!tpl) return;
+    try {
+      await refineAppearance(avatar.id, "img2img", { prompt: tpl.prompt, note: tpl.name });
+      setSelStyle(null);
+      reload();
+      toast(`已提交「${tpl.name}」图生图任务`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "提交失败", { icon: "!", tone: "var(--err)" });
+    }
+  };
+
   const topbar = (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: "1px solid var(--line)", background: "var(--bg-1)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -160,10 +219,15 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
         <span style={{ marginLeft: 6 }}><StatusPill status="refining" /></span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <IconBtn icon={Icons.doc} size={36} active={info} title="实现方式" onClick={() => setInfo((v) => !v)} />
-        <span style={{ fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }}>布局</span>
-        <Seg<Layout> size="sm" value={layout} onChange={setLayout} options={[{ value: "split", label: "双栏" }, { value: "island", label: "工具岛" }, { value: "tri", label: "三栏" }]} />
-        <Btn variant="pri" size="sm" iconR={Icons.arrowR} onClick={() => router.push(`/avatars/${avatar.id}/output`)}>进入美化出图</Btn>
+        <Seg<Mode> size="sm" value={mode} onChange={setMode} options={[{ value: "tune", label: "五官微调" }, { value: "template", label: "模版套用" }]} />
+        {mode === "tune" && (
+          <>
+            <IconBtn icon={Icons.doc} size={36} active={info} title="实现方式" onClick={() => setInfo((v) => !v)} />
+            <span style={{ fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }}>布局</span>
+            <Seg<Layout> size="sm" value={layout} onChange={setLayout} options={[{ value: "split", label: "双栏" }, { value: "island", label: "工具岛" }, { value: "tri", label: "三栏" }]} />
+          </>
+        )}
+        <Btn variant="pri" size="sm" iconR={Icons.arrowR} onClick={() => router.push(`/avatars/${avatar.id}/output`)}>进入分视角出图</Btn>
       </div>
     </div>
   );
@@ -213,11 +277,40 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
     );
   }
 
+  const templateBody = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", flex: 1, minHeight: 0 }}>
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
+        <div style={{ position: "relative", height: "72%", aspectRatio: "3/4" }}>
+          <Portrait hue={hue} src={tplPreview ?? avatar.coverUrl} label={tplPreview ? "美颜预览" : refineRunning ? "图生图生成中…" : "当前形象"} sub={avatar.id} style={{ height: "100%" }} dim={refineRunning} />
+          {tplPreview && <span style={cmpTag}>PREVIEW</span>}
+          {refineRunning && (
+            <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
+              <span style={{ width: 26, height: 26, border: "2.5px solid var(--signal)", borderTopColor: "transparent", borderRadius: 999, animation: "spin .8s linear infinite" }} />
+            </div>
+          )}
+        </div>
+        <div className="mono" style={{ fontSize: 11, color: "var(--ink-2)", textAlign: "center" }}>
+          {selBeauty.length ? "GFPGAN + beauty (client) · 实时预览" : selStyle ? "img2img + 样片参考 · 图生图（提交生成）" : "选择美颜模板（实时）或风格妆造模板（样片图生图）套用"}
+        </div>
+      </div>
+      <TemplateApplyPanel
+        selBeauty={selBeauty}
+        setSelBeauty={setSelBeauty}
+        selStyle={selStyle}
+        setSelStyle={setSelStyle}
+        onApplyBeauty={applyBeautyTemplates}
+        onApplyStyle={applyStyleTemplate}
+        applying={applying}
+        busy={refineRunning}
+      />
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 53px)", position: "relative" }}>
       {topbar}
-      {body}
-      {info && <InfoOverlay onClose={() => setInfo(false)} />}
+      {mode === "template" ? templateBody : body}
+      {info && mode === "tune" && <InfoOverlay onClose={() => setInfo(false)} />}
     </div>
   );
 }
@@ -389,6 +482,78 @@ function RightControls({ params, setParams, apply, applyNL, applyRegion, busy, r
       <div style={{ padding: 18, marginTop: "auto", position: "sticky", bottom: 0, background: "var(--bg-1)", borderTop: "1px solid var(--line)" }}>
         <div style={{ fontSize: 11, color: "var(--ink-2)", marginBottom: 10, lineHeight: 1.5 }}>几何调整实时生效（客户端形变）；外观/语言编辑提交后台任务并保存为新版本快照。</div>
         <Btn variant="pri" full icon={Icons.history} onClick={onSave} disabled={busy || saving}>{saving ? "保存中…" : "保存为新版本快照"}</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── 模版套用面板：美颜模板（真实 canvas beauty，实时）+ 风格妆造模板（样片→图生图）──────
+function TemplateApplyPanel({
+  selBeauty,
+  setSelBeauty,
+  selStyle,
+  setSelStyle,
+  onApplyBeauty,
+  onApplyStyle,
+  applying,
+  busy,
+}: {
+  selBeauty: string[];
+  setSelBeauty: React.Dispatch<React.SetStateAction<string[]>>;
+  selStyle: string | null;
+  setSelStyle: React.Dispatch<React.SetStateAction<string | null>>;
+  onApplyBeauty: () => void;
+  onApplyStyle: () => void;
+  applying: boolean;
+  busy: boolean;
+}) {
+  const toggleBeauty = (id: string) => setSelBeauty((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  return (
+    <div style={{ borderLeft: "1px solid var(--line)", background: "var(--bg-1)", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+      <Section title="美颜 / 美化模板 · 可叠加">
+        <EngineNote icon={Icons.wand} text="GFPGAN + beauty · 客户端实时" badge="实时" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+          {BEAUTY_TEMPLATES.map((b) => {
+            const on = selBeauty.includes(b.id);
+            return (
+              <button key={b.id} onClick={() => toggleBeauty(b.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line)") }}>
+                <div style={{ width: 34, height: 34, borderRadius: 7, flexShrink: 0, background: `linear-gradient(140deg, oklch(0.55 0.1 ${b.hue}), oklch(0.32 0.07 ${b.hue}))`, position: "relative" }}>
+                  {on && <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "#fff" }}><Icons.check size={16} stroke={3} /></span>}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 500, color: on ? "var(--accent-hi)" : "var(--ink-0)" }}>{b.name}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-2)" }}>{b.tag}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <Btn variant="pri" full icon={Icons.check} disabled={!selBeauty.length || applying} onClick={onApplyBeauty} style={{ marginTop: 12 }}>
+          {applying ? "套用中…" : `套用美颜模版${selBeauty.length ? ` (${selBeauty.length})` : ""}`}
+        </Btn>
+      </Section>
+
+      <Section title="风格 / 妆造模板 · 样片图生图">
+        <EngineNote icon={Icons.sparkle} text="img2img + 样片参考（职业妆 / 古风…）" badge="需生成" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+          {STYLE_LOOK_TEMPLATES.map((t) => {
+            const on = selStyle === t.id;
+            return (
+              <button key={t.id} onClick={() => setSelStyle(on ? null : t.id)} style={{ padding: 8, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent)" : "var(--line)") }}>
+                <Portrait hue={t.hue} ratio="3/4" label="样片" selected={on} style={{ borderRadius: 7 }} />
+                <div style={{ marginTop: 7 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 500, color: on ? "var(--accent-hi)" : "var(--ink-0)" }}>{t.name}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-2)" }}>{t.desc}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <Btn variant="signal" full icon={Icons.wand} disabled={!selStyle || busy} onClick={onApplyStyle} style={{ marginTop: 12 }}>套用此模版（图生图）</Btn>
+      </Section>
+
+      <div style={{ padding: 18, marginTop: "auto", borderTop: "1px solid var(--line)", fontSize: 11, color: "var(--ink-2)", lineHeight: 1.6 }}>
+        美颜模板客户端实时套用并存为新版本；风格妆造模板用样片做图生图，提交后台任务生成新版本。下一步「分视角出图」只按标准构图批量出图，不再做编辑。
       </div>
     </div>
   );

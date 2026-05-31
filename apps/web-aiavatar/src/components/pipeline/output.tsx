@@ -1,7 +1,7 @@
 "use client";
 // ============================================================
-// 模板美化 + 标准出图（STEP 06）— 美颜模板可叠加（真实客户端 beauty 算法预览）+ 标准构图批量出图。
-// 真实算法：beauty.ts（磨皮 / 美白 / 暖色 / 亮度，确定性）。后台 templateBeautify 任务记录版本 + 推状态机。
+// 标准分视角出图（STEP 06）— 仅按标准构图分视角批量出图，不做任何编辑。
+// 美颜 / 妆造 / 五官微调全部在上一步「精调」完成；本步只把定妆形象按 5 个标准视角裁切出图。
 // ============================================================
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -9,28 +9,10 @@ import type { AiAvatarDetail } from "@ai-star-eco/types/ai-avatar";
 import { Btn, Panel, Portrait, Tag, StatusPill } from "@/components/ui/primitives";
 import { SourceBadge } from "@/components/common/source-badge";
 import { Icons } from "@/components/ui/icons";
-import { useApi, usePolling } from "@/lib/hooks";
-import { listTemplates, templateBeautify } from "@/api/ai-avatar";
+import { usePolling } from "@/lib/hooks";
+import { templateBeautify } from "@/api/ai-avatar";
 import { COMPOSITIONS, styleHue } from "@/constants/aiavatar-ui";
-import { applyBeauty, type BeautyParams, BEAUTY_NEUTRAL } from "@/lib/beauty";
 import { toast } from "@/components/ui/toast";
-
-// 美颜模板 → 真实 beauty 参数（warmth 可负=偏冷）。
-const BEAUTY_PRESETS: Record<string, BeautyParams> = {
-  b1: { smooth: 55, whiten: 30, warmth: 12, brightness: 56 },
-  b2: { smooth: 30, whiten: 8, warmth: 0, brightness: 54 },
-  b3: { smooth: 42, whiten: 70, warmth: -22, brightness: 60 },
-  b4: { smooth: 35, whiten: 12, warmth: 38, brightness: 48 },
-  b5: { smooth: 60, whiten: 30, warmth: 18, brightness: 58 },
-  b6: { smooth: 38, whiten: 22, warmth: 6, brightness: 55 },
-};
-
-function combine(ids: string[]): BeautyParams {
-  const ps = ids.map((id) => BEAUTY_PRESETS[id]).filter(Boolean);
-  if (!ps.length) return BEAUTY_NEUTRAL;
-  const avg = (k: keyof BeautyParams) => ps.reduce((s, p) => s + p[k], 0) / ps.length;
-  return { smooth: avg("smooth"), whiten: avg("whiten"), warmth: avg("warmth"), brightness: avg("brightness") };
-}
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -42,20 +24,21 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-async function beautifyShot(img: HTMLImageElement, params: BeautyParams, ratio: number): Promise<string> {
-  // 按构图比例裁切后做 beauty。
+// 仅按构图比例裁切出图（不做美颜/编辑）。不同视角用不同裁切位移模拟「分视角」。
+async function renderShot(img: HTMLImageElement, ratio: number, shot: string): Promise<string> {
   const W = 480;
   const H = Math.round(W / ratio);
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
-  // cover 裁切
   const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
-  const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
-  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2 - dh * 0.04, dw, dh);
-  const data = ctx.getImageData(0, 0, W, H);
-  ctx.putImageData(applyBeauty(data, params), 0, 0);
+  const dw = img.naturalWidth * scale;
+  const dh = img.naturalHeight * scale;
+  // 视角偏移：左/右侧脸水平偏移裁切窗口，全身略微下移，半身/表情居中。
+  const shiftX = shot === "left_profile" ? -0.12 : shot === "right_profile" ? 0.12 : 0;
+  const shiftY = shot === "front_full" ? 0.06 : -0.04;
+  ctx.drawImage(img, (W - dw) / 2 + dw * shiftX, (H - dh) / 2 + dh * shiftY, dw, dh);
   return canvas.toDataURL("image/jpeg", 0.9);
 }
 
@@ -64,9 +47,6 @@ const RATIO: Record<string, number> = { "3:4": 3 / 4, "9:16": 9 / 16, "1:1": 1 }
 export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload: () => void }) {
   const router = useRouter();
   const { avatar } = detail;
-  const { data: templates } = useApi(() => listTemplates(), []);
-  const beautyTemplates = (templates ?? []).filter((t) => t.category === "beauty" || t.category === "retouch");
-  const [beauty, setBeauty] = React.useState<string[]>(["b1", "b3"]);
   const [comps, setComps] = React.useState<string[]>(COMPOSITIONS.map((c) => c.id));
   const [previews, setPreviews] = React.useState<Record<string, string>>({});
 
@@ -76,24 +56,20 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
   const phase: "config" | "gen" | "done" = running ? "gen" : done ? "done" : "config";
   usePolling(reload, 700, running);
 
-  const toggle = (arr: string[], set: (v: string[]) => void, id: string) => set(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+  const toggle = (id: string) => setComps((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
   const selComps = COMPOSITIONS.filter((c) => comps.includes(c.id));
 
   const run = async () => {
     if (!comps.length) return;
     try {
-      // 真实 beauty 预览（客户端确定性算法）
       if (avatar.coverUrl) {
         const img = await loadImage(avatar.coverUrl);
-        const params = combine(beauty);
         const next: Record<string, string> = {};
-        for (const c of selComps) {
-          next[c.id] = await beautifyShot(img, params, RATIO[c.ratio] ?? 0.75);
-        }
+        for (const c of selComps) next[c.id] = await renderShot(img, RATIO[c.ratio] ?? 0.75, c.shot);
         setPreviews(next);
       }
-      // 后台任务（记录版本 + 推状态机 pending_finalize）
-      await templateBeautify(avatar.id, { params: { templateIds: beauty, shots: comps } });
+      // 后台任务（记录版本 + 推状态机 pending_finalize）。本步无美颜模板入参。
+      await templateBeautify(avatar.id, { params: { shots: comps, multiView: true } });
       reload();
     } catch (e) {
       toast(e instanceof Error ? e.message : "出图失败", { icon: "!", tone: "var(--err)" });
@@ -104,38 +80,19 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
 
   return (
     <div style={{ padding: "28px 36px 60px", maxWidth: 1340, margin: "0 auto" }}>
-      <PageHead no="STEP 06 · 标准素材图集" title="模板美化 · 标准出图" status="pending_finalize" sub="统一风格与构图，产出下游通用标准底图（固定规格）。"
+      <PageHead no="STEP 06 · 标准素材图集" title="标准分视角出图" status="pending_finalize" sub="基于精调定妆的形象，按标准构图分视角批量出图。本步不做编辑——美颜 / 妆造 / 五官微调请在上一步「精调」完成。"
         right={phase === "done" && <Btn variant="pri" size="lg" iconR={Icons.arrowR} onClick={() => router.push(`/avatars/${avatar.id}/finalize`)}>前往定稿</Btn>} />
 
       <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 28, alignItems: "start" }}>
-        {/* 左控制 */}
+        {/* 左控制：只选构图视角 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-          <Panel title="美颜 / 美化模板" right={<Tag on>可叠加 · {beauty.length}</Tag>}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {beautyTemplates.map((b) => {
-                const on = beauty.includes(b.id);
-                const hueB = 28 + (b.id.charCodeAt(1) % 6) * 40;
-                return (
-                  <button key={b.id} onClick={() => toggle(beauty, setBeauty, b.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line)") }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 7, flexShrink: 0, background: `linear-gradient(140deg, oklch(0.55 0.1 ${hueB}), oklch(0.32 0.07 ${hueB}))`, position: "relative" }}>
-                      {on && <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "#fff" }}><Icons.check size={16} stroke={3} /></span>}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 500, color: on ? "var(--accent-hi)" : "var(--ink-0)" }}>{b.name}</div>
-                      <div style={{ fontSize: 10.5, color: "var(--ink-2)" }}>{b.category === "retouch" ? "细节" : "美颜"}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </Panel>
-          <Panel title="标准构图（系统预设规格）" right={<Tag>{comps.length} / 6</Tag>}>
+          <Panel title="标准构图视角（系统预设规格）" right={<Tag>{comps.length} / 6</Tag>}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {COMPOSITIONS.map((c) => {
                 const on = comps.includes(c.id);
                 return (
                   <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 11px", borderRadius: "var(--r-md)", cursor: "pointer", background: on ? "var(--bg-3)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--line-2)" : "var(--line)") }}>
-                    <input type="checkbox" checked={on} onChange={() => toggle(comps, setComps, c.id)} style={{ accentColor: "var(--accent)", width: 15, height: 15 }} />
+                    <input type="checkbox" checked={on} onChange={() => toggle(c.id)} style={{ accentColor: "var(--accent)", width: 15, height: 15 }} />
                     <span style={{ flex: 1, fontSize: 13, color: "var(--ink-0)" }}>{c.name}{c.main && <span style={{ marginLeft: 8 }}><Tag on>主图</Tag></span>}</span>
                     <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-2)" }}>{c.ratio}</span>
                   </label>
@@ -143,14 +100,18 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
               })}
             </div>
           </Panel>
-          <Btn variant="pri" size="lg" full icon={Icons.layers} onClick={run} disabled={phase === "gen" || !comps.length}>{phase === "gen" ? "批量生成中…" : "批量出标准图"}</Btn>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: 14, borderRadius: "var(--r-md)", background: "var(--bg-1)", border: "1px solid var(--line)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>
+            <Icons.wand size={15} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
+            <span>需要改妆容 / 美颜 / 脸型？请回到<b style={{ color: "var(--ink-1)" }}>「精调」</b>，本步仅出标准视角图。</span>
+          </div>
+          <Btn variant="pri" size="lg" full icon={Icons.layers} onClick={run} disabled={phase === "gen" || !comps.length}>{phase === "gen" ? "批量出图中…" : "批量出标准图"}</Btn>
         </div>
 
         {/* 右预览 */}
         <div>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-2)", letterSpacing: "0.1em", marginBottom: 16, display: "flex", justifyContent: "space-between" }}>
-            <span>OUTPUT · 标准形象图集</span>
-            <span>{phase === "done" ? "✓ 风格统一 · 固定规格 · GFPGAN + beauty" : "GFPGAN 修复 + 客户端 beauty · PNG/JPG"}</span>
+            <span>OUTPUT · 标准形象图集（分视角）</span>
+            <span>{phase === "done" ? "✓ 固定规格 · PNG/JPG" : "正面半身 / 全身 / 左右侧脸 / 表情"}</span>
           </div>
           {phase === "config" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
@@ -161,7 +122,7 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
               {selComps.map((c, i) => (
                 <div key={c.id} style={{ aspectRatio: "3/4", borderRadius: "var(--r-md)", border: "1px solid var(--line)", background: "linear-gradient(100deg, var(--bg-2) 30%, var(--bg-3) 50%, var(--bg-2) 70%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite", animationDelay: i * 0.12 + "s", display: "grid", placeItems: "center" }}>
-                  <span className="mono" style={{ fontSize: 10.5, color: "var(--signal)" }}>生成中</span>
+                  <span className="mono" style={{ fontSize: 10.5, color: "var(--signal)" }}>出图中</span>
                 </div>
               ))}
             </div>
@@ -170,7 +131,7 @@ export function OutputStep({ detail, reload }: { detail: AiAvatarDetail; reload:
             <div className="fade-up" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
               {selComps.map((c) => (
                 <Portrait key={c.id} hue={hue} src={previews[c.id]} ratio="3/4" label={c.name} sub={c.ratio + " · 1080P"}
-                  badge={<SourceBadge mode="mock" engine="GFPGAN + beauty (client)" />} />
+                  badge={<SourceBadge mode="mock" engine="多视角出图 (client)" />} />
               ))}
             </div>
           )}
