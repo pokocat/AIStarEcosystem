@@ -58,7 +58,11 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
     im.crossOrigin = "anonymous";
     im.onload = () => {
       setImg(im);
-      const w = WARP_SIDE, h = Math.round((im.naturalHeight / im.naturalWidth) * WARP_SIDE) || WARP_SIDE;
+      // 关键：检测尺寸必须与 warpImageToDataUrl 内部「按长边缩放到 WARP_SIDE」一致，
+      // 否则锚点落在不同像素空间，竖图形变会整体错位（「不准」的根因之一）。
+      const scale = Math.min(1, WARP_SIDE / Math.max(im.naturalWidth, im.naturalHeight));
+      const w = Math.max(1, Math.round(im.naturalWidth * scale));
+      const h = Math.max(1, Math.round(im.naturalHeight * scale));
       detectFaceAnchors(im, w, h)
         .then((r) => {
           setAnchors(r.anchors);

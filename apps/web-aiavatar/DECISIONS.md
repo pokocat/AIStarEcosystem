@@ -39,6 +39,20 @@ ai-avatar app 不设 `requiredPlatform`（v0.43 的 `SubProduct` 仅 music/drama
 | nlu 人设解析 | Backend 优先（`BackendNluProvider` → LLM 网关），dev 回退 mock | 平台 LLM 网关 | 任务书「后端已有 LLM 网关」。绑定端点即走真实大模型 |
 | txt2img / faceClone / img2img / inpaint / makeup / hair / img23d / img2video / faceDetect / segment | Mock（真实进度/延迟，产出占位资产；img23d 产真 GLB / img2video 产 CSS 运镜预览） | SDXL/FLUX / InstantID / InstructPix2Pix / SD-inpaint / EleGANt / HairCLIP / TripoSR / SVD / InsightFace / SAM | 均需 GPU + 模型权重，本环境不可得；`SelfHostHttpProvider` 已就绪，配 base url 即接真实微服务。**InstantID/RetinaFace 依赖的 InsightFace 仅限非商用**（见 §C） |
 
+### B1. MediaPipe 资产同源自托管 + 检测/形变像素空间对齐（修「调整不准」）
+- **原状**：`face-landmarks.ts` 默认从外网 jsDelivr CDN 加载 WASM、从 Google Storage 加载模型。生产网络策略一挡，
+  检测失败 → 静默回退**启发式锚点**（按「脸居中、上半部」估计）→ 瘦脸/眼睛落在假设位置 → **形变不准**。
+  另：studio 检测尺寸按「宽」缩放，而 `warpImageToDataUrl` 按「长边」缩放，竖图两者不一致 → 锚点像素空间错位。
+- **改动**：(1) WASM 改**同源自托管** `/mediapipe/wasm`（`scripts/setup-mediapipe.mjs` 于 predev/prebuild 从
+  node_modules 拷入，版本永远与 npm 包一致、无网可用，wasm 不入库由脚本生成）；模型 `face_landmarker.task`
+  直接提交在 `public/mediapipe/`（无网构建也可用）。(2) studio 检测尺寸改为与 warp 完全一致的「长边缩放」，
+  锚点与形变同一像素空间。
+- **理由**：外网 CDN 是「不准」的常见根因（回退启发式）；同源自托管让真实 478 关键点检测稳定命中。
+  浏览器实测确认画布提示「MediaPipe · 478 关键点已对齐」。**评估过 Banuba/beauty-web 做更高质量实时美颜/微调**——
+  其 `@banuba/webar` 需 client token（商用授权，trial 需申请），无 token 不可运行；若后续提供 token 可接为
+  token-gated provider（有 token 走 Banuba，无则回退本方案）。当前先用免授权的自托管 MediaPipe 把准确度修好。
+- **覆盖**：`NEXT_PUBLIC_MEDIAPIPE_WASM_BASE` / `NEXT_PUBLIC_MEDIAPIPE_MODEL_URL` 可改内网/自定义 CDN。
+
 ## C. 合规 / 安全（既有，未改）
 
 - **InsightFace 非商用**：InstantID（faceClone）/ RetinaFace（faceDetect）依赖的 InsightFace 仅限非商用研究。

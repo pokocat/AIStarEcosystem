@@ -4,7 +4,10 @@
   "private": true,
   "description": "AiAvatar 形象资产管理中心 — 数字人 IP 形象创建 / 精调 / 美化 / 定稿 / 衍生 全链路（独立 Next 16 应用，深色琥珀主题）。",
   "scripts": {
+    "setup:mediapipe": "node scripts/setup-mediapipe.mjs",
+    "predev": "node scripts/setup-mediapipe.mjs",
     "dev": "next dev -p 3013",
+    "prebuild": "node scripts/setup-mediapipe.mjs",
     "build": "next build",
     "start": "next start -p 3013",
     "typecheck": "tsc --noEmit",

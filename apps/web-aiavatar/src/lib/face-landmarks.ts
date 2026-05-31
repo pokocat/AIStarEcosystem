@@ -6,18 +6,20 @@
 // （眼心 / 脸心 / 脸宽 / 下颌 / 鼻 / 嘴），让 face-warp 真正按检测位置形变，而非固定估计。
 //
 // 资产加载（按优先级）：
-//   1. NEXT_PUBLIC_MEDIAPIPE_WASM_BASE / NEXT_PUBLIC_MEDIAPIPE_MODEL_URL（自托管 / 内网，prod 首选）
-//   2. jsDelivr CDN + Google Storage 官方模型（dev / 默认）
-// 自托管做法：把 node_modules/@mediapipe/tasks-vision/wasm 拷到 public/，模型下到 public/，配两个 env。
+//   1. NEXT_PUBLIC_MEDIAPIPE_WASM_BASE / NEXT_PUBLIC_MEDIAPIPE_MODEL_URL（覆盖；内网 CDN 等）
+//   2. 默认**同源自托管**：/mediapipe/wasm（由 scripts/setup-mediapipe.mjs 于 predev/prebuild 从
+//      node_modules 拷入 public/）+ /mediapipe/face_landmarker.task（已提交在 public/）。
+//      同源 → 离线可用、WASM 版本永远与 npm 包一致、不受外网 CDN 网络策略影响。
+//      （依赖外网 jsDelivr/Google Storage 时，CDN 一被挡就检测失败 → 回退启发式锚点 → 形变不准，
+//       这是「精细化调整不准」的常见根因。）
 //
-// 检测失败（无网络 / 无脸 / WASM 不可用）一律抛出，调用方回退到 face-warp 的启发式锚点 —— 不阻塞。
+// 检测失败（资产缺失 / 无脸 / WASM 不可用）一律抛出，调用方回退到 face-warp 的启发式锚点 —— 不阻塞。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { FaceAnchors } from "./face-warp";
 
-const DEFAULT_WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
-const DEFAULT_MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const DEFAULT_WASM_BASE = "/mediapipe/wasm";
+const DEFAULT_MODEL_URL = "/mediapipe/face_landmarker.task";
 
 function wasmBase(): string {
   return process.env.NEXT_PUBLIC_MEDIAPIPE_WASM_BASE || DEFAULT_WASM_BASE;

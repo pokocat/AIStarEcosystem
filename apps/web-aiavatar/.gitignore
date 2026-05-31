@@ -18,3 +18,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /.playwright/
+
+# mediapipe wasm 由 scripts/setup-mediapipe.mjs 从 node_modules 拷入（不入库）；模型 face_landmarker.task 提交
+/public/mediapipe/wasm/
