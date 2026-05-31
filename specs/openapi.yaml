@@ -3465,6 +3465,9 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/DistributionJob' }
 
+  /distribution/jobs/{id}/retry:  { post: { tags: [distribution], operationId: retryDistributionJob,  parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /distribution/jobs/{id}/cancel: { post: { tags: [distribution], operationId: cancelDistributionJob, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+
   # ── 3.11 Charts ──────────────────────────
 
   /charts:
@@ -4207,6 +4210,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/RechargePackage' }
 
+  /me/wallet/withdraw: { post: { tags: [finance], operationId: createWithdrawal, summary: 提现到银行卡（走 LedgerEntry，扣 recharge 桶；余额不足 402）, responses: { '200': { description: ok }, '402': { description: 可提现余额不足 } } } }
   /me/wallet/recharge:
     post:
       tags: [finance]
@@ -5344,6 +5348,9 @@ paths:
     post: { tags: [material], operationId: materialExtractVariables, responses: { '200': { description: 脚本可替换变量 ScriptVariable[]（已过滤幻觉；失败/无权访问返回空，前端用正则兜底） } } }
 
   # ── 素材运营 · 带货视频生成（v0.41 新增；真实视频大模型 · 异步 submit + 轮询，见 MaterialVideoJobService） ──
+  /material/videos:        { get: { tags: [material], operationId: materialListVideos, responses: { '200': { description: ok } } } }
+  /material/videos/batch:  { post: { tags: [material], operationId: materialBatchVideos, summary: 批量登记已有视频素材, responses: { '200': { description: ok } } } }
+  /material/videos/{id}:   { delete: { tags: [material], operationId: materialDeleteVideo, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: deleted } } } }
   /material/videos/generate:
     post: { tags: [material], operationId: materialGenerateVideos, responses: { '200': { description: '提交一批生成任务（body={items:[...]}）→ 返回任务卡 MaterialVideo[]（status=rendering）；未配置视频大模型 → 503 VIDEO_NOT_CONFIGURED' } } }
   /material/videos/jobs:
@@ -6169,7 +6176,9 @@ paths:
 
   # ── film（影视类） ────────────────────────────────
 
-  /film/dramas:      { get: { tags: [film], operationId: listDramas,     responses: { '200': { description: ok } } } }
+  /film/dramas:      { get: { tags: [film], operationId: listDramas,     responses: { '200': { description: ok } } }, post: { tags: [film], operationId: createDrama, summary: 新建短剧项目, responses: { '200': { description: ok } } } }
+  /film/dramas/{id}: { get: { tags: [film], operationId: getDrama, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }, patch: { tags: [film], operationId: patchDrama, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }, delete: { tags: [film], operationId: deleteDrama, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: deleted } } } }
+  /film/dramas/{id}/status: { patch: { tags: [film], operationId: updateDramaStatus, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
   /film/movies:      { get: { tags: [film], operationId: listMovies,     responses: { '200': { description: ok } } } }
   /film/ads:         { get: { tags: [film], operationId: listAds,        responses: { '200': { description: ok } } } }
   /film/voice-works: { get: { tags: [film], operationId: listVoiceWorks, responses: { '200': { description: ok } } } }
@@ -6260,6 +6269,18 @@ paths:
   /me/drama/episodes/generate:   { post: { tags: [drama], operationId: generateDramaEpisodes, summary: 由脚本生成短剧视频（异步 submit）, responses: { '200': { description: 'ok（status=rendering 任务卡）' } } } }
   /me/drama/episodes/jobs:       { get:  { tags: [drama], operationId: listDramaEpisodeJobs, parameters: [{ name: script_id, in: query, required: false, schema: { type: string } }], responses: { '200': { description: ok } } } }
   /me/drama/episodes/jobs/{id}:  { get:  { tags: [drama], operationId: getDramaEpisodeJob, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /me/drama/scenes/rewrite:                  { post: { tags: [drama], operationId: rewriteDramaScene, summary: 单镜 AI 改写（未落库，前端合并）, responses: { '200': { description: ok } } } }
+  /me/drama/series/{seriesId}/episodes:      { get:  { tags: [drama], operationId: listDramaSeriesEpisodes, parameters: [{ name: seriesId, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /me/drama/scripts/{id}/publish-to-project: { post: { tags: [drama], operationId: publishDramaToProject, summary: 短剧成片归入项目流水线（创建/复用 Drama）, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+
+  # ── 脚本工坊（drama /scripts，v0.45；字段见 packages/types/src/script.ts） ─────
+  /me/scripts:                     { get: { tags: [scripts], operationId: listScripts, responses: { '200': { description: ok } } }, post: { tags: [scripts], operationId: createScript, summary: 新建脚本（含初始版本）, responses: { '200': { description: ok } } } }
+  /me/scripts/{id}:                { get: { tags: [scripts], operationId: getScript, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }, delete: { tags: [scripts], operationId: deleteScript, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: deleted } } } }
+  /me/scripts/{id}/versions:       { get: { tags: [scripts], operationId: listScriptVersions, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }, post: { tags: [scripts], operationId: commitScriptVersion, summary: 提交新版本, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /me/scripts/{id}/status:         { patch: { tags: [scripts], operationId: setScriptStatus, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /me/scripts/{id}/clone:          { post: { tags: [scripts], operationId: cloneScript, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /me/scripts/{id}/generate:       { post: { tags: [scripts], operationId: generateScriptDraft, summary: 'AI 续写 / 改写（返回 { content }；未配置 → 503）', parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
+  /me/script-versions/{versionId}: { get: { tags: [scripts], operationId: getScriptVersion, parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } } }
 
   # ── mixcut（混剪专区 · web-celebrity 子模块） ─────
   # 完整 schema 见 apps/web-celebrity/src/components/mixcut-zone/types.ts。

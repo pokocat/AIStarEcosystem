@@ -58,7 +58,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/wardrobe` | 工作台 | 戏服 / 道具上传 + 分配给演员 |
 | `/scripts` | 工作台 | 脚本库（多版本对比） |
 | `/scripts/[id]` | 工作台 | 脚本编辑器（**版本树 + AI 续写**） |
-| `/short-drama` ★ | 工作台 | **短剧生成（v0.43）**：AI 起草分场景脚本 → 保存 → 生成短剧视频（异步轮询）。后端 `/api/me/drama/*`，复用 celebrity 视频管线 |
+| `/short-drama` ★ | 工作台 | **短剧生成 · 完整创作工作流（v0.45）**：题材灵感 → AI 多稿起草 → 分场景编辑器（增删改/调序/景别·运镜·时长/逐镜配音/逐镜 AI 重写）→ 角色与演员绑定（接 `/cast` 虚拟演员）→ 剧集(多集)管理 → 风格与变体 + 积分预估 → 生成视频（异步轮询）→ 视频库 → 归入项目 / 去分发。后端 `/api/me/drama/*`（含 `/scenes/rewrite`、`/series/{id}/episodes`、`/scripts/{id}/publish-to-project`），复用 celebrity 视频管线 |
 | `/projects` | 工作台 | 项目管线（状态机：草稿 / 选角 / 拍摄 / 后期 / 上线） |
 | `/projects/[id]` | 工作台 | 项目详情（演员表 / 排期 / 资产） |
 | `/projects/[id]/distribute` | 工作台 | 项目多平台发布 |
@@ -185,9 +185,12 @@ src/lib/drama-query.ts   — 极轻量客户端缓存：useAsync / usePageData /
 
 ### 8.3 已知待办
 
-- 后端 `/api/film/*` 真后端覆盖度提升（当前许多模块仍 mock）
-- 项目状态机正式落表（当前内存）
+- 后端 `/api/film/*` 真后端覆盖度提升（v0.45 已补 Drama 增删改 + 详情；Movie/Ad/VoiceWork 仍只读）
+- 项目状态机正式落表（当前 Drama 行 + 内存推进）
 - 跨子域 SSO（同 music / celebrity）
+- **v0.45 生产硬化项**：`/api/film/**`、`/api/distribution/**` 当前 permitAll（无 owner 隔离，沿用 demo 姿态）—— 生产应迁 `/api/me/film`、`/api/me/distribution` 并强制认证
+- **drama 发布任务为进度模拟**（`DramaPublishJob` 读时推进 queued→…→live，无真发布）；要真发到平台需接 sau（同 celebrity 的社媒账号绑定 + PublishJob 体系）
+- 脚本工坊 `/scripts` 与短剧 `/short-drama` 是两套脚本（前者带版本树，后者轻量生成）；当前仅单向，未做双向同步
 
 ---
 

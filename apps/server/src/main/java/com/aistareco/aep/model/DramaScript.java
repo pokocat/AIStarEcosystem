@@ -2,6 +2,7 @@ package com.aistareco.aep.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.OffsetDateTime;
 
@@ -38,6 +39,18 @@ public class DramaScript {
 
     /** draft | ready */
     private String status;
+
+    /** v0.45：多集短剧分组 —— 同 seriesId 的多行 = 一部剧集，按 episodeNo 排序。 */
+    @Column(name = "series_id")
+    private String seriesId;
+
+    @Column(name = "episode_no")
+    @ColumnDefault("0")
+    private int episodeNo;
+
+    /** v0.45：成片已归入的项目流水线 Drama 项目 id（publish-to-project 桥接）。 */
+    @Column(name = "drama_id")
+    private String dramaId;
 
     @Lob
     @Column(name = "payload_json", columnDefinition = "LONGTEXT")

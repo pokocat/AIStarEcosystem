@@ -1984,7 +1984,40 @@ web-celebrity:
 - **三类数据不融合**：状态枚举（中文 `已发布|待审核…` vs `ready|rendering…` vs success output）、操作各异，用来源 Tab 隔离 + 各自复用现有卡片，不强行融成单一网格。
 - **未做**：混剪成片软删的新入口（暂下线）；脚本视频在视频库内直接派生（仍引导回商品素材库）；三来源跨 Tab 统一搜索/排序。
 
-### v0.45（2026-05-30）— AiAvatar 形象资产管理中心（第 4 个 web 子产品 + 独立 aiavatar 后端领域）
+### v0.45（2026-05-31）— web-drama 前后端数据对齐补齐 + 短剧「完整创作工作流」
+
+drama 子产品两件事：(1) 修复 web-drama 在 `USE_MOCK=0` 时一批前端调用后端缺失 / 空数据的页面（除数字人 `/cast`、形象锻造 `/forge` 外）；(2) 把短剧生成从单线流程升级为多阶段创作工作流，接入演员、剧集、变体，并打通到项目流水线 + 多平台分发。
+
+**A. 数据对齐 —— 补齐缺失后端端点（DTO 字段镜像 TS）**
+
+| 端点 | 实现 |
+|---|---|
+| `/api/me/scripts/**` + `/api/me/script-versions/{id}`（脚本工坊） | 新建 `WorkshopScript` / `WorkshopScriptVersion` 实体 + repo + `ScriptDto` / `ScriptVersionDto`（镜像 `packages/types/src/script.ts`）+ `ScriptWorkshopService`（CRUD + 版本树 + AI 续写，复用 `AiModelInvocationService` 用途 `DRAMA_SCRIPT_DRAFT`）+ `ScriptWorkshopController` |
+| `POST /api/me/wallet/withdraw`（提现） | `CreditService.withdraw`（仅扣 recharge 桶，写 WITHDRAW LedgerEntry，余额不足 402）+ `WalletWithdrawController`（独立 controller，不动 AccountController 构造器）+ `WithdrawalRequestDto` |
+| `/api/film/dramas` 增删改 + `/{id}` 详情 + `/{id}/status` | `FilmController` 扩为可写（Drama 实体 / DramaDto 复用，id `d-…`）。⚠️ `/api/film/**` permitAll，写无 owner 隔离（沿用 demo 姿态，生产硬化项） |
+| `/api/distribution/jobs/**`（发布任务） | 新建 `DramaPublishJob`（`drama_publish_jobs`）+ repo + `DramaPublishJobDto`（镜像 PublishJob 消费子集）+ `DramaPublishService`（读时推进进度模拟 queued→…→live，约 15s）+ `DramaDistributionController`（`/api/distribution/jobs` GET/POST、`/{id}` GET、`/{id}/retry`、`/{id}/cancel`）。**刻意不接 sau**（drama 无社媒绑定）；DTO 命名带 `Drama` 防撞 sau 的 `CreatePublishJobInputDto` |
+
+**B. 数据对齐 —— 补齐空数据源**
+
+新建 `DramaDemoSeeder`（`@Profile dev/test`、`@Order(101)`，紧随 DemoCatalogSeeder），按 `count()==0` 幂等种：drama / movie / ad / voice-work / fan-tier / fan-activity / community-event / fan-growth / distribution-content，外加 2 条演示 `drama_scripts`。（DemoCatalogSeeder 显式跳过这些领域；platform-views 由 Platform 派生无需种。`generation.ts` `/me/generation/run` 全仓无调用方=死代码，openapi 已有 path，不补后端。）
+
+**C. 短剧「完整创作工作流」**
+
+- `DramaScript` +3 列：`series_id`（多集分组）/ `episode_no`（`@ColumnDefault("0")`）/ `drama_id`（成片归入的项目）。`payloadJson` 扩展（加性、缺字段兜底）：scenes[] +`shot_type`(景别) +`camera_move`(运镜) +`style` +`gen_voice`(逐镜配音开关) +`character_ids`；顶层 +`theme` +`aspect_ratio` +`characters[]`(可绑定 cast_id) +`style` +`variants[]`。
+- `DramaScriptService`：注入只读 `DigitalIpRepository`（cast 形象合成）+ `DramaRepository`（publish-to-project）。`buildEpisodePrompt` 增【角色设定】（含绑定演员形象，从 owner 匹配的 DigitalIp 的 bio + incubationParams 合成）+ 分镜景别/运镜/出场角色/配音 or 字幕。新方法 `rewriteScene`（单镜 AI 改写）/ `listSeriesEpisodes` / `publishToProject`（建/复用 Drama 项目 id `d-…`，回写 drama_id）。`generateEpisodes` 支持 `variants[]`（每变体一条 job，`variant_config` 透传 + prompt 追加风格）。
+- 新端点：`POST /api/me/drama/scenes/rewrite`、`GET /api/me/drama/series/{seriesId}/episodes`、`POST /api/me/drama/scripts/{id}/publish-to-project`。
+- 前端 `apps/web-drama`：`/short-drama` 重建为多阶段工作流（题材灵感 → AI 多稿起草 → 分场景编辑器 `components/short-drama/scene-editor.tsx` → 角色绑定 `character-panel.tsx`（消费 `/me/digital-ips` 只读）→ 剧集多集 → 风格与变体 + 积分预估 → 生成 → 视频库 `video-library.tsx` → 归入项目 / 去分发）。`api/short-drama.ts` 扩类型 + `rewriteScene` / `listSeriesEpisodes` / `publishToProject`。既有页面（`/scripts` `/projects` `/distribution` `/finance`）落后端 + 种子后即通。
+
+**注意事项**：
+
+- 演员 / 形象锻造**只读消费，不改其数据模型**（按用户要求）。短剧把 `/cast` digital-ip 作为角色输入；prompt 注入演员形象时校验 `ownerUserId`。
+- AI 链路（aiDraft / scene-rewrite / scripts generate / generateEpisodes）未配模型端点即 503（沿用 v0.40「不静默兜底」）；dev 用 `DevFakeAiSeeder` 兜底或 `USE_MOCK=1`。
+- JPA 加列均 nullable / `@ColumnDefault` → H2/MySQL `ddl-auto=update` 安全；新表自动建。
+- 提现走 `CreditService.withdraw`（积分账本不可变约束）；短剧视频积分仍走 `material.video-generate` 的 hold→commit/release。
+- 两 PublishJob 世界：drama 用瘦发布任务（进度模拟，无真发布）；要真发布需单独接 sau。`/api/film/**`、`/api/distribution/**` permitAll，controller 内按 principal 防御性 scope，列为生产硬化项。
+- **未做**：drama publish 真发平台；film 写操作 owner 隔离（需迁 `/api/me/film`）；脚本工坊与短剧脚本的双向同步（仅单向「另存」可后续加）。
+
+### v0.46（2026-05-30）— AiAvatar 形象资产管理中心（第 4 个 web 子产品 + 独立 aiavatar 后端领域）
 
 新增独立子产品「AiAvatar 形象资产管理中心」：真人授权复刻 / 纯 AI 原创两种创建模式，7 步标准链路
 （打样 → 草稿迭代 → 精调 → 模板美化出图 → 定稿 → 衍生 3D/视频 → 入库）+ 资产版本管理 / 素材管理 /

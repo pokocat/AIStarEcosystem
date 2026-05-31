@@ -192,6 +192,45 @@ public class CreditService {
     }
 
     /**
+     * 提现（v0.45 drama 财务中心）：从可提现的 recharge 桶扣减 amount，写一条 WITHDRAW LedgerEntry。
+     * 仅 recharge 桶（真实充值 / 业务收益）可提现；license / gift 桶不可提现。
+     * 可提现余额不足抛 402。满足「积分账本不可变」—— 余额变动经 LedgerEntry。
+     */
+    @Transactional
+    public LedgerEntryDto withdraw(String userId, long amount, String referenceType,
+                                   String referenceId, String description) {
+        if (amount <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "提现金额必须为正数");
+        }
+        Wallet wallet = walletRepo.findByUserId(userId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "钱包不存在或可提现余额不足"));
+        if (wallet.getRechargeBalance() < amount) {
+            throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
+                    "可提现余额不足，本次提现需 " + amount + "，当前可提现 " + wallet.getRechargeBalance());
+        }
+        wallet.setRechargeBalance(wallet.getRechargeBalance() - amount);
+        long newBalance = wallet.getTotalBalance() - amount;
+        wallet.setTotalBalance(newBalance);
+        wallet.setUpdatedAt(Instant.now());
+        walletRepo.save(wallet);
+
+        LedgerEntry entry = LedgerEntry.builder()
+                .id(UUID.randomUUID().toString())
+                .walletId(wallet.getId())
+                .userId(userId)
+                .entryType(LedgerEntry.LedgerEntryType.WITHDRAW)
+                .amount(-amount)
+                .balanceAfter(newBalance)
+                .description(description)
+                .referenceId(referenceId)
+                .referenceType(referenceType)
+                .createdAt(Instant.now())
+                .build();
+
+        return LedgerEntryDto.from(ledgerRepo.save(entry));
+    }
+
+    /**
      * 业务侧"加积分"通用入口（v0.4 新增）：原子地把 amount 加入指定桶并写一条 LedgerEntry。
      * 调用方负责选对桶：
      *   - RECHARGE：充值落账
