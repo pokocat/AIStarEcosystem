@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Plus_Jakarta_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "../styles/app.css";
@@ -41,6 +41,14 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "AI 短剧 — AI Star Eco",
   description: "演员 IP 阵容、脚本工坊、短剧项目与多平台分发的一体化工坊",
+};
+
+// 移动端视口：随设备宽度自适应，支持刘海屏安全区。
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0a0810",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

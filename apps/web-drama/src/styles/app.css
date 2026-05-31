@@ -58,3 +58,146 @@
   animation: drama-shimmer 1.4s ease-in-out infinite;
   border-radius: var(--radius-sm);
 }
+
+/* ============================================================
+   移动端适配（响应式）
+   本应用大量使用内联样式，无法直接挂媒体查询；这里用「语义类 +
+   属性选择器（!important 覆盖内联）」统一收口移动端布局：
+     · 工作台 shell 在窄屏收起侧栏，改用汉堡抽屉
+     · 顶栏在窄屏隐藏搜索 / 折叠次要文案、缩小留白
+     · 内容区多列栅格在窄屏自动折叠为单列
+   断点：≤1024 平板（4 列降 2 列）；≤860 收侧栏；≤720 栅格折单列；≤560 极窄
+   ============================================================ */
+
+/* 防止任何横向溢出导致的全页面横滚 */
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* 媒体元素不撑破容器 */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+/* ---------- 工作台 shell ---------- */
+.ws-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100vh;
+  height: 100dvh; /* 移动端动态视口高度，避免被地址栏遮挡 */
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.ws-sidebar-wrap {
+  height: 100%;
+  min-width: 0;
+}
+
+.ws-content {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 28px 32px;
+  position: relative;
+  z-index: 2;
+}
+
+/* 汉堡按钮：桌面隐藏，窄屏显示 */
+.ws-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 移动端抽屉（侧栏的浮层形态） */
+.ws-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(8, 6, 14, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.ws-drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(264px, 82vw);
+  height: 100%;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  animation: drawerIn 200ms ease;
+}
+@keyframes drawerIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ---------- ≤1024：平板，4 列降为 2 列 ---------- */
+@media (min-width: 721px) and (max-width: 1024px) {
+  .ws-content [style*="repeat(4"],
+  .public-page [style*="repeat(4"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ---------- ≤860：收起侧栏，启用汉堡抽屉 ---------- */
+@media (max-width: 860px) {
+  .ws-shell {
+    grid-template-columns: 1fr;
+  }
+  .ws-sidebar-wrap {
+    display: none;
+  }
+  .ws-hamburger {
+    display: inline-flex;
+  }
+  .ws-topbar {
+    padding: 12px 16px !important;
+    gap: 10px !important;
+  }
+  .ws-topbar-search {
+    display: none !important;
+  }
+  .ws-content {
+    padding: 18px 16px;
+  }
+}
+
+/* ---------- ≤720：内容区多列栅格折叠为单列（覆盖内联 grid-template-columns） ---------- */
+@media (max-width: 720px) {
+  .ws-content [style*="repeat(2"],
+  .ws-content [style*="repeat(3"],
+  .ws-content [style*="repeat(4"],
+  .ws-content [style*="fr 1fr"],
+  .ws-content [style*="fr 2fr"],
+  .ws-content [style*="1fr 1."],
+  .ws-content [style*="px 1fr"],
+  .public-page [style*="repeat(2"],
+  .public-page [style*="repeat(3"],
+  .public-page [style*="repeat(4"],
+  .public-page [style*="fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ---------- ≤560：极窄屏，折叠次要文案 / 按钮文字 ---------- */
+@media (max-width: 560px) {
+  .ws-btn-label {
+    display: none;
+  }
+  .ws-topbar-sub {
+    display: none;
+  }
+  .ws-content-badge {
+    display: none !important;
+  }
+}

@@ -17,6 +17,7 @@ import {
   Film,
   LayoutDashboard,
   LogOut,
+  Menu,
   PenTool,
   Plus,
   Search,
@@ -82,7 +83,7 @@ function isActive(pathname: string | null, item: NavItem): boolean {
   return pathname === item.href || pathname.startsWith(item.href + "/");
 }
 
-function Sidebar() {
+function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
   return (
@@ -98,6 +99,7 @@ function Sidebar() {
     >
       <Link
         href="/dashboard"
+        onClick={onNavigate}
         style={{
           padding: "0 20px 18px",
           display: "flex",
@@ -148,6 +150,7 @@ function Sidebar() {
                 <Link
                   key={it.href}
                   href={it.href}
+                  onClick={onNavigate}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -353,7 +356,7 @@ function GlobalSearch() {
   );
 }
 
-function Topbar() {
+function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { logout } = useAuth();
   const router = useRouter();
   const [wallet, setWallet] = React.useState<Wallet | null>(null);
@@ -379,6 +382,7 @@ function Topbar() {
 
   return (
     <header
+      className="ws-topbar"
       style={{
         display: "flex",
         alignItems: "center",
@@ -390,11 +394,36 @@ function Topbar() {
         WebkitBackdropFilter: "blur(12px)",
       }}
     >
-      <div className="mono" style={{ fontSize: 11, color: "var(--fg-2)", letterSpacing: 0.4 }}>
-        AI 短剧 <span style={{ color: "var(--fg-3)" }}>/</span> 工作台
+      <button
+        type="button"
+        onClick={onMenuToggle}
+        className="ws-hamburger"
+        title="打开菜单"
+        aria-label="打开菜单"
+        style={{
+          padding: 8,
+          borderRadius: "var(--radius-md)",
+          background: "transparent",
+          border: "1px solid var(--line-2)",
+          color: "var(--fg-1)",
+        }}
+      >
+        <Menu size={16} />
+      </button>
+      <div
+        className="mono"
+        style={{ fontSize: 11, color: "var(--fg-2)", letterSpacing: 0.4, whiteSpace: "nowrap" }}
+      >
+        AI 短剧
+        <span className="ws-topbar-sub">
+          {" "}
+          <span style={{ color: "var(--fg-3)" }}>/</span> 工作台
+        </span>
       </div>
       <div style={{ flex: 1 }} />
-      <GlobalSearch />
+      <div className="ws-topbar-search">
+        <GlobalSearch />
+      </div>
 
       <button
         onClick={() => router.push("/finance")}
@@ -438,7 +467,7 @@ function Topbar() {
         }}
       >
         <Plus size={13} strokeWidth={2.6} />
-        新建项目
+        <span className="ws-btn-label">新建项目</span>
       </button>
 
       <button
@@ -461,6 +490,17 @@ function Topbar() {
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const { user, hasPlatformAccess } = useAuth();
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+
+  // 抽屉打开时锁定背景滚动（移动端体验）。
+  React.useEffect(() => {
+    if (!drawerOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [drawerOpen]);
 
   // v0.43+：平台访问隔离 —— 已登录但账号未开通「AI 短剧」时拦截（未登录由 AuthProvider 跳登录）。
   if (user && !hasPlatformAccess) {
@@ -482,23 +522,17 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "240px 1fr",
-        height: "100vh",
-        background: "var(--bg-0)",
-        color: "var(--fg-0)",
-        fontFamily: "var(--font-sans)",
-      }}
-    >
-      <Sidebar />
+    <div className="ws-shell">
+      <div className="ws-sidebar-wrap">
+        <Sidebar />
+      </div>
       <main
         style={{
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
           position: "relative",
+          minWidth: 0,
         }}
       >
         <div
@@ -515,19 +549,10 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
             filter: "blur(140px)",
           }}
         />
-        <Topbar />
+        <Topbar onMenuToggle={() => setDrawerOpen(true)} />
+        <div className="ws-content">{children}</div>
         <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "28px 32px",
-            position: "relative",
-            zIndex: 2,
-          }}
-        >
-          {children}
-        </div>
-        <div
+          className="ws-content-badge"
           style={{
             position: "absolute",
             bottom: 16,
@@ -545,6 +570,20 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           CINEMATIC · v0.6
         </div>
       </main>
+
+      {/* 移动端抽屉导航 */}
+      {drawerOpen ? (
+        <div className="ws-drawer-overlay" onClick={() => setDrawerOpen(false)}>
+          <div
+            className="ws-drawer"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <Sidebar onNavigate={() => setDrawerOpen(false)} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

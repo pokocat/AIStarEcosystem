@@ -54,6 +54,7 @@ export default function DramaLandingPage() {
 
   return (
     <div
+      className="public-page"
       style={{
         minHeight: "100vh",
         position: "relative",
@@ -105,7 +106,9 @@ export default function DramaLandingPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "22px 48px",
+          gap: 12,
+          flexWrap: "wrap",
+          padding: "16px clamp(16px, 4vw, 48px)",
           borderBottom: "1px solid var(--line)",
         }}
       >
@@ -140,7 +143,7 @@ export default function DramaLandingPage() {
             </div>
           </div>
         </Link>
-        <nav style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <nav style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <Link
             href="#trial"
             style={{
@@ -190,7 +193,7 @@ export default function DramaLandingPage() {
       <main style={{ position: "relative", zIndex: 5 }}>
         <section
           style={{
-            padding: "96px 48px 64px",
+            padding: "clamp(56px, 10vw, 96px) clamp(20px, 5vw, 48px) 64px",
             maxWidth: 1180,
             margin: "0 auto",
             textAlign: "center",
@@ -216,7 +219,7 @@ export default function DramaLandingPage() {
 
           <h1
             style={{
-              fontSize: 88,
+              fontSize: "clamp(40px, 9vw, 88px)",
               lineHeight: 0.98,
               fontFamily: "var(--font-display)",
               fontWeight: 800,
@@ -275,7 +278,7 @@ export default function DramaLandingPage() {
           style={{
             maxWidth: 1180,
             margin: "0 auto",
-            padding: "8px 48px 48px",
+            padding: "8px clamp(16px, 4vw, 48px) 48px",
           }}
         >
           <div
@@ -341,7 +344,7 @@ export default function DramaLandingPage() {
         </section>
 
         {/* features */}
-        <section style={{ maxWidth: 1180, margin: "0 auto", padding: "32px 48px 96px" }}>
+        <section style={{ maxWidth: 1180, margin: "0 auto", padding: "32px clamp(16px, 4vw, 48px) 96px" }}>
           <div
             style={{
               display: "grid",
@@ -393,7 +396,7 @@ export default function DramaLandingPage() {
         style={{
           position: "relative",
           zIndex: 5,
-          padding: "32px 48px",
+          padding: "28px clamp(16px, 4vw, 48px)",
           borderTop: "1px solid var(--line)",
         }}
       >
@@ -404,6 +407,8 @@ export default function DramaLandingPage() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            flexWrap: "wrap",
+            gap: 16,
             fontSize: 12,
             color: "var(--fg-2)",
           }}
@@ -419,7 +424,7 @@ export default function DramaLandingPage() {
             />
             <span className="mono" style={{ letterSpacing: 0.6 }}>AI STAR ECO · 短剧工业流</span>
           </div>
-          <div style={{ display: "flex", gap: 28 }}>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             <Link href="/" style={{ color: "var(--fg-2)" }}>产品矩阵</Link>
             <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"} style={{ color: "var(--fg-2)" }}>
               {isLoggedIn ? "工作台" : "登录"}
