@@ -85,43 +85,65 @@ export function warpImageData(src: ImageData, s: FaceSliders, anchors?: FaceAnch
   const a = anchors ?? heuristicAnchors(w, h);
 
   const faceR = a.faceRadius;
+  const faceW = a.faceWidth;
   const slim = s.slimFace / 100, eye = s.eyeSize / 100, nose = s.noseBridge / 100,
     face = s.faceShape / 100, mouth = s.mouthShape / 100;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      let sx = x, sy = y;
+      const di = (y * w + x) * 4;
 
-      // 1) 瘦脸：脸颊水平向脸中线 pinch（纵向高斯衰减到脸高度）。
-      if (slim !== 0) {
-        const vy = gaussian((y - a.faceCenter.y) / (faceR * 0.9));
-        sx += (x - a.faceCenter.x) * 0.18 * slim * vy;
+      // 全局人脸椭圆遮罩：脸心为 1，向外平滑衰减到 0。所有位移都乘以它 →
+      // 人脸区域外（背景 / 肩膀 / 头发外缘 / 画面边缘）位移≈0，绝不被一起拉变形。
+      // （这正是「调脸型把整张图都变形」的修复点：之前只有纵向衰减、无横向 + 无区域遮罩。）
+      const mdx = (x - a.faceCenter.x) / (faceW * 0.8);
+      const mdy = (y - a.faceCenter.y) / (faceR * 1.35);
+      const faceMask = Math.exp(-(mdx * mdx + mdy * mdy));
+
+      if (faceMask < 0.02) {
+        // 远离人脸：原样拷贝，零形变、零重采样模糊。
+        dp[di] = sp[di]; dp[di + 1] = sp[di + 1]; dp[di + 2] = sp[di + 2]; dp[di + 3] = sp[di + 3];
+        continue;
       }
-      // 2) 眼睛：左右眼锚点径向 bulge/pinch（往中心取样=放大）。
+
+      // 各效果的「加性位移」，均带横向 + 纵向局部高斯，再统一乘全局遮罩。
+      let dx = 0, dy = 0;
+
+      // 1) 瘦脸：脸颊水平向脸中线 pinch（纵向限制在脸高度内；横向由 faceMask 收口）。
+      if (slim !== 0) {
+        const wy = gaussian((y - a.faceCenter.y) / (faceR * 0.75));
+        dx += (x - a.faceCenter.x) * 0.38 * slim * wy;
+      }
+      // 2) 鼻梁：鼻区纵向拉伸（鼻区 2D 高斯，本就局部）。
+      if (nose !== 0) {
+        const wx = gaussian((x - a.noseTip.x) / (faceR * 0.16));
+        const wy = gaussian((y - a.noseTip.y) / (faceR * 0.45));
+        dy += (y - a.noseTop.y) * 0.16 * nose * wx * wy;
+      }
+      // 3) 脸型 / 下颌：下颌纵向收放（仅脸中线以下；+横向高斯限制在脸宽内，肩膀同高度不动）。
+      if (face !== 0 && y > a.faceCenter.y) {
+        const wy = gaussian((y - a.jaw.y) / (faceR * 0.5));
+        const wx = gaussian((x - a.faceCenter.x) / (faceW * 0.5));
+        dy += (y - a.jaw.y) * 0.34 * face * wy * wx;
+      }
+      // 4) 嘴型：嘴区水平收放（嘴区 2D 高斯）。
+      if (mouth !== 0) {
+        const wy = gaussian((y - a.mouthCenter.y) / (faceR * 0.18));
+        const wx = gaussian((x - a.mouthCenter.x) / (a.mouthWidth * 0.9));
+        dx += (x - a.mouthCenter.x) * 0.28 * mouth * wy * wx;
+      }
+
+      let sx = x + dx * faceMask;
+      let sy = y + dy * faceMask;
+
+      // 5) 眼睛：左右眼锚点径向 bulge/pinch（radial 自身限制在 eyeRadius 内，已是局部）。
       if (eye !== 0) {
         sx = radial(sx, sy, a.leftEye.x, a.leftEye.y, a.eyeRadius, eye * 0.35, sx, true);
         sy = radial(sx, sy, a.leftEye.x, a.leftEye.y, a.eyeRadius, eye * 0.35, sy, false);
         sx = radial(sx, sy, a.rightEye.x, a.rightEye.y, a.eyeRadius, eye * 0.35, sx, true);
         sy = radial(sx, sy, a.rightEye.x, a.rightEye.y, a.eyeRadius, eye * 0.35, sy, false);
       }
-      // 3) 鼻梁：鼻区纵向拉伸。
-      if (nose !== 0) {
-        const vx = gaussian((x - a.noseTip.x) / (faceR * 0.18));
-        const vy = gaussian((y - a.noseTip.y) / (faceR * 0.45));
-        sy += (y - a.noseTop.y) * 0.12 * nose * vx * vy;
-      }
-      // 4) 脸型：下颌纵向缩放（仅脸中线以下）。
-      if (face !== 0 && y > a.faceCenter.y) {
-        const vy = gaussian((y - a.jaw.y) / (faceR * 0.6));
-        sy += (y - a.jaw.y) * 0.14 * face * vy;
-      }
-      // 5) 嘴型：嘴区水平缩放。
-      if (mouth !== 0) {
-        const vy = gaussian((y - a.mouthCenter.y) / (faceR * 0.22));
-        sx += (x - a.mouthCenter.x) * 0.14 * mouth * vy;
-      }
 
-      const di = (y * w + x) * 4;
       sampleBilinear(sp, w, h, sx, sy, dp, di);
     }
   }

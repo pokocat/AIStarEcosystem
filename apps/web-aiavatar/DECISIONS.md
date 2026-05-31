@@ -53,6 +53,18 @@ ai-avatar app 不设 `requiredPlatform`（v0.43 的 `SubProduct` 仅 music/drama
   token-gated provider（有 token 走 Banuba，无则回退本方案）。当前先用免授权的自托管 MediaPipe 把准确度修好。
 - **覆盖**：`NEXT_PUBLIC_MEDIAPIPE_WASM_BASE` / `NEXT_PUBLIC_MEDIAPIPE_MODEL_URL` 可改内网/自定义 CDN。
 
+### B2. 几何形变局部化（修「调脸型把整张图都拉变形」）
+- **原状**：`face-warp.ts` 的瘦脸/脸型/嘴位移**只有纵向高斯衰减、无横向局部化、也无全局人脸区域遮罩** →
+  同一行的背景 / 肩膀 / 画面边缘被一起拉；脸型尤甚（整下半幅变形）。
+- **改动**：(1) 引入**全局人脸椭圆遮罩** `faceMask=exp(-((x-cx)/(faceW·0.8))² - ((y-cy)/(faceR·1.35))²)`，
+  所有加性位移乘以它；`faceMask<0.02` 的像素直接原样拷贝（背景零形变、零重采样模糊）。
+  (2) 瘦脸/脸型/嘴各自补**横向高斯**，把作用域收到脸/下颌/嘴的局部；眼睛仍用 `radial`（本就限制在 eyeRadius）。
+  (3) 局部化后适度提高强度（slim 0.18→0.30、face 0.14→0.24、mouth 0.14→0.22、nose 0.12→0.16）。
+- **理由**：真实美型工具（Meitu/美狐/Banuba）都把形变限制在人脸网格内。本修复让「调脸型只动脸、不动背景肩膀」。
+  新增单测「形变限制在人脸区域内：四角背景零改动」守门（14 个 warp 测全绿）；浏览器实测下颌轮廓 +84 时背景/肩膀稳定。
+- **关于美狐(Meihu) SDK**：是 **Android/iOS 原生商用** 实时相机美颜/美型 SDK（OpenGL/Metal，license 绑包名），
+  **无 web/WASM 版本**，无法在本 Next.js web 应用中运行。web 端能跑的同类只有 Banuba（仍需商用 token，见 B1）。
+
 ## C. 合规 / 安全（既有，未改）
 
 - **InsightFace 非商用**：InstantID（faceClone）/ RetinaFace（faceDetect）依赖的 InsightFace 仅限非商用研究。
