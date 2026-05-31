@@ -22,7 +22,6 @@ import { useAsync, invalidate } from "@/lib/drama-query";
 import { ArtistsApi, FilmApi } from "@/api";
 import { deriveCastView } from "@/lib/cast-derive";
 import { NewProjectDialog } from "../projects/_dialogs/NewProjectDialog";
-import { NewScriptDialog } from "../scripts/_dialogs/NewScriptDialog";
 import { NewArtistDialog } from "../cast/_dialogs/NewArtistDialog";
 
 type ProjectTone = "accent" | "success" | "warning" | "danger" | "info" | "violet" | "neutral";
@@ -55,7 +54,6 @@ export default function DashboardPage() {
   const artistsQ = useAsync<Artist[]>("/me/artists", () => ArtistsApi.listArtists());
 
   const [showNewProject, setShowNewProject] = React.useState(false);
-  const [showNewScript, setShowNewScript] = React.useState(false);
   const [showNewArtist, setShowNewArtist] = React.useState(false);
 
   const dramas = dramasQ.data ?? [];
@@ -101,9 +99,9 @@ export default function DashboardPage() {
               <Clock size={14} />
               排期日历
             </Button>
-            <Button variant="primary" size="md" onClick={() => setShowNewProject(true)}>
+            <Button variant="primary" size="md" onClick={() => router.push("/create")}>
               <Sparkles size={14} />
-              创建新项目
+              开始创作
             </Button>
           </>
         }
@@ -189,7 +187,7 @@ export default function DashboardPage() {
                     gap: 14,
                     padding: 14,
                     borderRadius: "var(--radius-md)",
-                    background: "rgba(255,255,255,0.02)",
+                    background: "var(--surface-1)",
                     border: "1px solid var(--line)",
                     cursor: "pointer",
                     textAlign: "left",
@@ -279,19 +277,19 @@ export default function DashboardPage() {
                 variant="primary"
                 size="md"
                 style={{ width: "100%" }}
-                onClick={() => setShowNewProject(true)}
+                onClick={() => router.push("/create")}
               >
                 <Wand2 size={14} />
-                启动新剧集
+                开始创作短剧
               </Button>
               <Button
                 variant="secondary"
                 size="md"
                 style={{ width: "100%" }}
-                onClick={() => setShowNewScript(true)}
+                onClick={() => setShowNewProject(true)}
               >
                 <Film size={14} />
-                新建脚本
+                新建空白项目
               </Button>
               <Button
                 variant="secondary"
@@ -319,8 +317,8 @@ export default function DashboardPage() {
       {/* projects */}
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader
-          eyebrow="project pipeline"
-          title="项目流水线"
+          eyebrow="works & pipeline"
+          title="作品与项目"
           right={
             <Link
               href="/projects"
@@ -349,7 +347,7 @@ export default function DashboardPage() {
           >
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+                <tr style={{ background: "var(--surface-1)" }}>
                   {["剧名", "类型", "集数", "主演", "状态", "排期"].map((h) => (
                     <th
                       key={h}
@@ -378,7 +376,7 @@ export default function DashboardPage() {
                     }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLTableRowElement).style.background =
-                        "rgba(255,255,255,0.02)";
+                        "var(--surface-1)";
                     }}
                     onMouseLeave={(e) => {
                       (e.currentTarget as HTMLTableRowElement).style.background = "transparent";
@@ -423,15 +421,6 @@ export default function DashboardPage() {
           invalidate("/film/dramas");
           toast.success(`项目「${d.title}」已创建`);
           router.push(`/projects/${encodeURIComponent(d.id)}`);
-        }}
-      />
-      <NewScriptDialog
-        open={showNewScript}
-        onOpenChange={setShowNewScript}
-        onCreated={(s) => {
-          invalidate("/me/scripts");
-          toast.success(`脚本「${s.title}」已创建`);
-          router.push(`/scripts/${encodeURIComponent(s.id)}`);
         }}
       />
       <NewArtistDialog

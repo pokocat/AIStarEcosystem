@@ -21,7 +21,7 @@ const variantStyle: Record<Variant, CSSProperties> = {
     fontWeight: 600,
   },
   secondary: {
-    background: "rgba(255,255,255,0.04)",
+    background: "var(--surface-2)",
     color: "var(--fg-0)",
     border: "1px solid var(--line-2)",
   },

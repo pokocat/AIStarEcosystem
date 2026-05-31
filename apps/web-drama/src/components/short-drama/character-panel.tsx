@@ -60,13 +60,13 @@ export function CharacterPanel({
         <EmptyState icon={<UserPlus size={26} />} title="还没有角色" description="添加角色并绑定演员阵容里的虚拟演员，生成时会带入演员形象。" />
       )}
       {characters.map((c, i) => (
-        <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", padding: "12px 14px", background: "rgba(255,255,255,0.02)" }}>
+        <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", padding: "12px 14px", background: "var(--surface-1)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             {c.cast_avatar ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={c.cast_avatar} alt={c.cast_name ?? ""} style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: "1px solid var(--line)" }} />
             ) : (
-              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-3)", fontSize: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-3)", fontSize: 12 }}>
                 {(c.name || "角").slice(0, 1)}
               </div>
             )}
@@ -77,7 +77,7 @@ export function CharacterPanel({
               type="button"
               title="删除角色"
               onClick={() => onChange(characters.filter((_, idx) => idx !== i))}
-              style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-sm)", border: "1px solid var(--line)", background: "rgba(255,255,255,0.02)", color: "var(--danger)", cursor: "pointer" }}
+              style={{ display: "inline-flex", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-sm)", border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--danger)", cursor: "pointer" }}
             >
               <Trash2 size={13} />
             </button>

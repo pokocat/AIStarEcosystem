@@ -113,7 +113,7 @@ function ProjectsListInner() {
               alignItems: "center",
               gap: 8,
               padding: "8px 12px",
-              background: "rgba(255,255,255,0.03)",
+              background: "var(--surface-1)",
               border: "1px solid var(--line-2)",
               borderRadius: "var(--radius-md)",
             }}
@@ -179,7 +179,7 @@ function ProjectsListInner() {
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+              <tr style={{ background: "var(--surface-1)" }}>
                 {["剧名", "类型", "集数", "主演", "状态", "排期"].map((h) => (
                   <th
                     key={h}
@@ -208,7 +208,7 @@ function ProjectsListInner() {
                   }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLTableRowElement).style.background =
-                      "rgba(255,255,255,0.02)";
+                      "var(--surface-1)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLTableRowElement).style.background = "transparent";

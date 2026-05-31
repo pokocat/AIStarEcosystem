@@ -165,7 +165,7 @@ export default function FinancePage() {
           >
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+                <tr style={{ background: "var(--surface-1)" }}>
                   {["日期", "来源", "类型", "金额", "状态"].map((h) => (
                     <th
                       key={h}

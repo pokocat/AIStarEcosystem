@@ -3,7 +3,7 @@
 > 子产品：**AI Drama Studio** — 演员 IP 阵容 + 脚本工坊 + 短剧项目 + 多平台分发，一体化短剧工坊。
 > 本文件是产品形态 + 设计约束的真值源。技术 onboarding 在 [`README.md`](README.md)，业务规格在仓库根 [`product_spec.md`](../../product_spec.md)（数字人/数字 IP 主线，v2.7）。
 
-**Last reviewed**: 2026-05-17
+**Last reviewed**: 2026-05-31
 
 ---
 
@@ -11,13 +11,19 @@
 
 **目标用户**：MCN 中的内容创作者、编导、短剧制作团队。
 
-**价值主张**：以演员 IP 阵容为核心，AI 辅助完成「脚本撰写 → 形象锻造 → 项目排期 → 全网分发」闭环。
+**价值主张**：以演员 IP 阵容为核心，AI 辅助完成「短剧创作 → 形象锻造 → 项目归集 → 全网分发」闭环。短剧创作走一条清晰动线，区分极速（小白一句话出片）与专业（从业者分步精修）双模式。
 
 **核心链路**：
 
 ```
-演员阵容（cast）  →  脚本工坊（scripts，版本树 + AI 续写）  →  项目流水线（projects，多状态推进）  →  多平台分发（distribute）  →  数据洞察（insights / trends）
+演员 IP 阵容（cast）
+  →  短剧创作（create：极速一句话出片 / 专业分步流水线 —— 选题灵感 → 剧本（结构化分镜 + 长文本编剧室/版本树）→ 分镜 → 角色与演员 → 生成 → 成片）
+  →  作品与项目（projects，成片归集 + 多状态推进）
+  →  多平台分发（distribute）
+  →  数据洞察（insights / trends）
 ```
+
+> v0.7 重构：原「脚本工坊 /scripts」与「短剧生成 /short-drama」合并为统一的「短剧创作 /create」主线（旧链接 308 重定向）；项目流水线重定位为「作品与项目」收口区；整体改纸感淡色主题（保留金/琥珀 accent）。
 
 **与其他子产品的边界**：
 
@@ -50,31 +56,34 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | 路径 | 模块 | 功能 |
 |---|---|---|
 | `/dashboard` | 工作台 | 总览（项目 KPI / 待办 / 近期产出） |
-| `/cast` | 工作台 | 演员阵容（多艺人卡片墙） |
-| `/cast/[id]` | 工作台 | 演员详情（履历 / 装备 / 历史项目） |
-| `/cast/[id]/generate` | 工作台 | 演员形象生成（针对某角色） |
-| `/incubator` | 工作台 | 多步孵化器（localStorage 草稿保留） |
-| `/forge` | 工作台 | 形象锻造（**v0.43 对话式 AI 形象顾问**，接平台大模型流式生成；影院风独立 UI） |
-| `/wardrobe` | 工作台 | 戏服 / 道具上传 + 分配给演员 |
-| `/scripts` | 工作台 | 脚本库（多版本对比） |
-| `/scripts/[id]` | 工作台 | 脚本编辑器（**版本树 + AI 续写**） |
-| `/short-drama` ★ | 工作台 | **短剧生成 · 完整创作工作流（v0.45）**：题材灵感 → AI 多稿起草 → 分场景编辑器（增删改/调序/景别·运镜·时长/逐镜配音/逐镜 AI 重写）→ 角色与演员绑定（接 `/cast` 虚拟演员）→ 剧集(多集)管理 → 风格与变体 + 积分预估 → 生成视频（异步轮询）→ 视频库 → 归入项目 / 去分发。后端 `/api/me/drama/*`（含 `/scenes/rewrite`、`/series/{id}/episodes`、`/scripts/{id}/publish-to-project`），复用 celebrity 视频管线 |
-| `/projects` | 工作台 | 项目管线（状态机：草稿 / 选角 / 拍摄 / 后期 / 上线） |
-| `/projects/[id]` | 工作台 | 项目详情（演员表 / 排期 / 资产） |
+| `/cast` | 演员与形象 | 演员阵容（多艺人卡片墙） |
+| `/cast/[id]` | 演员与形象 | 演员详情（履历 / 装备 / 历史项目） |
+| `/cast/[id]/generate` | 演员与形象 | 演员形象生成（针对某角色） |
+| `/incubator` | 演员与形象 | 多步孵化器（localStorage 草稿保留） |
+| `/forge` | 演员与形象 | 形象锻造（**v0.43 对话式 AI 形象顾问**，接平台大模型流式生成；影院风独立 UI） |
+| `/wardrobe` | 演员与形象 | 戏服 / 道具上传 + 分配给演员 |
+| `/create` ★ | 工作台 | **短剧创作 · 统一入口（v0.7）**：`?mode=express\|pro`。<br>**极速模式**：一句话 / 选模板 → 自动起草+生成 → 成片（带积分确认）。<br>**专业模式**：线性流水线 灵感 → 剧本（结构化分镜 `SceneEditor` + 长文本编剧室 `ScriptProsePanel`：版本树 + AI 续写）→ 分镜（竖屏分镜板）→ 角色与演员（绑 `/cast` 虚拟演员）→ 生成（风格变体 + 积分预估）→ 成片（视频库 + 归入项目 / 去分发）→ 审核（合规预审占位）。两模式共用同一 `DramaScript`。后端复用 `/api/me/drama/*` + `/api/me/scripts/*`，无契约变更 |
+| `/templates` ★ | 工作台 | 模板广场：精选爆款赛道模板，一键带入极速模式（`/create?mode=express&tpl=`）；社区模板库占位 |
+| `/projects` | 工作台 | **作品与项目**（原「项目流水线」）：成片归集 + 状态机（选角 / 拍摄 / 后期 / 上线） |
+| `/projects/[id]` | 工作台 | 项目详情（演员表 / 排期 / 资产 / 分发） |
 | `/projects/[id]/distribute` | 工作台 | 项目多平台发布 |
+| `/assets` ★ | 工作台 | 素材资产中心（占位：云端存储 / 检索 / 团队共享即将上线） |
 | `/distribution` | 分发与洞察 | 分发总览（跨项目聚合） |
 | `/insights` | 分发与洞察 | 数据洞察（窗口选择 + 维度切换） |
 | `/trends` | 分发与洞察 | 趋势雷达（行业 / 题材热度） |
 | `/finance` | 系统 | 财务（充值 / 提现 / 流水） |
 | `/settings` | 系统 | 工作室 / 团队成员 |
 
-详见 [`src/app/(workspace)/layout.tsx`](src/app/(workspace)/layout.tsx) GROUPS 定义（第 47-75 行）。
+详见 [`src/app/(workspace)/layout.tsx`](src/app/(workspace)/layout.tsx) GROUPS 定义。
 
-**Sidebar 分组**（3 组）：
+**Sidebar 分组**（v0.7，4 组）：
 
-1. **工作台**（7 项）— dashboard / cast / incubator / forge / wardrobe / scripts / projects
-2. **分发与洞察**（3 项）— distribution / insights / trends
-3. **系统**（2 项）— finance / settings
+1. **工作台**（5 项）— dashboard / **create（短剧创作）** / **templates（模板广场）** / **projects（作品与项目）** / **assets（素材资产）**
+2. **演员与形象**（4 项）— cast / incubator / forge / wardrobe
+3. **分发与洞察**（3 项）— distribution / insights / trends
+4. **系统**（2 项）— finance / settings
+
+> 旧入口 `/scripts`、`/short-drama` 已合并入 `/create`，`next.config.mjs` 配 308 重定向到 `/create`。
 
 ---
 
@@ -82,26 +91,28 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 
 ### 4.1 视觉系统
 
-**主题**：**Premium Cinematic**（金色 accent 在深紫近黑画布上，配合玻璃质感和粉紫青大渐变。源自「AI IP Design Directions 03」）。
+**主题**：**Studio · 纸感淡色（v0.7）**。在纸感淡底上保留金/琥珀 accent（品牌延续，与 music=紫 / celebrity=紫罗兰 区隔由 accent 承担）。整页主题集中在 [`src/styles/tokens.css`](src/styles/tokens.css) 的 `:root, [data-theme="premium"]` 块；组件内原大量 `rgba(255,255,255,.0x)` 暗底面已统一换成中性 token（`--surface-1/2`、`--track`、`--overlay-scrim`）。
+
+> 淡色配方参考同仓 `apps/web-celebrity` 的 `[data-theme="creator"]`；drama 保留金色而非紫色。root `layout.tsx` 已移除 `dark` class（让 `@ai-star-eco/ui` 继承淡色），`themeColor` 改 `#f7f3ec`。
 
 **核心 CSS 变量**（[`src/styles/tokens.css`](src/styles/tokens.css)）：
 
 | 变量 | 值 | 用途 |
 |---|---|---|
-| `--bg-0` | 深紫近黑 | 页面底 |
-| `--accent` | `#d4af6a` | 金色 accent |
-| `--gradient-hero` | 粉紫青大渐变 | landing hero 区 |
-| `--gradient-gold` | 金色光斑 | CTA / KPI 高亮 |
-| `--glass-bg` | 半透明 + 20px blur | 卡片玻璃质感 |
-| `--radius-md` | 12px | 卡片圆角 |
-| `--radius-lg` | 20px | 大模块圆角 |
-| `--radius-pill` | 999px | 胶囊按钮 |
+| `--bg-0` | `#f7f3ec` 纸感淡底 | 页面底 |
+| `--bg-1` | `#ffffff` | 卡片 / 输入面 |
+| `--fg-0` | `#221c14` 深墨 | 主文字 |
+| `--accent` | `#c79a4e` 金/琥珀 | accent（CTA 用更亮的 `--gradient-gold`） |
+| `--surface-1/2`、`--track` | 深墨低透明 | 中性面 / 进度轨（淡底专用） |
+| `--overlay-scrim` | `rgba(40,34,24,.45)` | 弹窗 / 抽屉遮罩 |
+| `--video-letterbox` | `#1a1712` | 视频播放器黑边（唯一保留深色处） |
+| `--radius-md / lg / pill` | 12 / 20 / 999px | 圆角体系 |
 
 **关键特征**：
 
-- 玻璃质感 `.glass` 类（与 web-music 的 "no glass" 相反 —— 这里**有意**用玻璃）
-- 大圆角（电影海报感）
-- 金色作为 CTA accent，避免与 music 的紫色撞色
+- 纸感淡底 + 柔和投影 + 大圆角；玻璃质感 `.glass` 改为淡底白玻璃
+- 金/琥珀作为 CTA accent，避免与 music 的紫色 / celebrity 的紫罗兰撞色
+- `.text-gradient-gold` 用更深的金渐变以保证淡底上的文字对比
 
 ### 4.2 字体
 
@@ -190,7 +201,8 @@ src/lib/drama-query.ts   — 极轻量客户端缓存：useAsync / usePageData /
 - 跨子域 SSO（同 music / celebrity）
 - **v0.45 生产硬化项**：`/api/film/**`、`/api/distribution/**` 当前 permitAll（无 owner 隔离，沿用 demo 姿态）—— 生产应迁 `/api/me/film`、`/api/me/distribution` 并强制认证
 - **drama 发布任务为进度模拟**（`DramaPublishJob` 读时推进 queued→…→live，无真发布）；要真发到平台需接 sau（同 celebrity 的社媒账号绑定 + PublishJob 体系）
-- 脚本工坊 `/scripts` 与短剧 `/short-drama` 是两套脚本（前者带版本树，后者轻量生成）；当前仅单向，未做双向同步
+- ~~脚本工坊 `/scripts` 与短剧 `/short-drama` 是两套脚本~~ **（v0.7 已解决）**：两者合并入统一的 `/create` 主线 —— 结构化分镜（`DramaScript`，生成真源）为主，长文本 + 版本树（`Script`/`ScriptsApi`）作为「剧本」步内的编剧室 `ScriptProsePanel` 并行存在；`/scripts`、`/short-drama` 308 重定向到 `/create`
+- v0.7 占位（即将上线，非造假）：`/create` 的「审核（合规预审）」步、「剪辑微调」、`/assets` 素材资产中心、`/templates` 社区模板库；当前已落地的生成 / 分发链路是真的（复用 celebrity `material_video_job` 管线）
 
 ---
 

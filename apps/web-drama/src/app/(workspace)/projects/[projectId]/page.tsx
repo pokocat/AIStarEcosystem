@@ -166,7 +166,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
                       ? "color-mix(in srgb, var(--accent) 14%, transparent)"
                       : done
                         ? "rgba(76,224,160,0.08)"
-                        : "rgba(255,255,255,0.02)",
+                        : "var(--surface-1)",
                     border: current
                       ? "1px solid color-mix(in srgb, var(--accent) 40%, transparent)"
                       : "1px solid var(--line-2)",
@@ -249,7 +249,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
                     alignItems: "center",
                     gap: 12,
                     padding: "12px 14px",
-                    background: "rgba(255,255,255,0.02)",
+                    background: "var(--surface-1)",
                     border: "1px solid var(--line)",
                     borderRadius: "var(--radius-md)",
                     cursor: "pointer",
@@ -369,7 +369,7 @@ function PublishJobRow({ job }: { job: PublishJob }) {
     <div
       style={{
         padding: "12px 14px",
-        background: "rgba(255,255,255,0.02)",
+        background: "var(--surface-1)",
         border: "1px solid var(--line)",
         borderRadius: "var(--radius-md)",
       }}
@@ -381,7 +381,7 @@ function PublishJobRow({ job }: { job: PublishJob }) {
       <div
         style={{
           height: 4,
-          background: "rgba(255,255,255,0.06)",
+          background: "var(--track)",
           borderRadius: "var(--radius-pill)",
           overflow: "hidden",
         }}

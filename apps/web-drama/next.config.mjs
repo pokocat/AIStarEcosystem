@@ -30,6 +30,11 @@ const nextConfig = {
     return [
       { source: "/drama", destination: "/", permanent: false },
       { source: "/drama/:path*", destination: "/", permanent: false },
+      // v0.7 重构：脚本工坊 + 短剧生成 合并为统一「短剧创作」(/create)，旧链接重定向。
+      { source: "/scripts", destination: "/create", permanent: false },
+      { source: "/scripts/:path*", destination: "/create", permanent: false },
+      { source: "/short-drama", destination: "/create", permanent: false },
+      { source: "/short-drama/:path*", destination: "/create", permanent: false },
     ];
   },
 };

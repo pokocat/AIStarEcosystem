@@ -170,7 +170,7 @@ function CastListInner() {
               alignItems: "center",
               gap: 8,
               padding: "8px 12px",
-              background: "rgba(255,255,255,0.03)",
+              background: "var(--surface-1)",
               border: "1px solid var(--line-2)",
               borderRadius: "var(--radius-md)",
             }}

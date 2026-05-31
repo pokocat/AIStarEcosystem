@@ -131,7 +131,7 @@ export default function DistributionOverviewPage() {
                     alignItems: "center",
                     gap: 10,
                     padding: "12px 14px",
-                    background: "rgba(255,255,255,0.02)",
+                    background: "var(--surface-1)",
                     border: "1px solid var(--line)",
                     borderRadius: "var(--radius-md)",
                   }}
@@ -198,7 +198,7 @@ export default function DistributionOverviewPage() {
                     gap: 12,
                     alignItems: "center",
                     padding: "12px 14px",
-                    background: "rgba(255,255,255,0.02)",
+                    background: "var(--surface-1)",
                     border: "1px solid var(--line)",
                     borderRadius: "var(--radius-md)",
                     cursor: "pointer",
@@ -208,7 +208,7 @@ export default function DistributionOverviewPage() {
                   <div className="mono" style={{ fontSize: 11, color: "var(--fg-2)" }}>
                     项目 {j.projectId}
                   </div>
-                  <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}>
+                  <div style={{ height: 4, background: "var(--track)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}>
                     <div
                       style={{
                         width: `${j.progress}%`,

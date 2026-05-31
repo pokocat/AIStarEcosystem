@@ -221,7 +221,7 @@ export default function IncubatorPage() {
                   background:
                     active?.id === d.id
                       ? "color-mix(in srgb, var(--accent) 10%, transparent)"
-                      : "rgba(255,255,255,0.02)",
+                      : "var(--surface-1)",
                   border:
                     active?.id === d.id
                       ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)"
@@ -301,7 +301,7 @@ export default function IncubatorPage() {
                           ? "color-mix(in srgb, var(--accent) 12%, transparent)"
                           : done
                             ? "rgba(76,224,160,0.10)"
-                            : "rgba(255,255,255,0.02)",
+                            : "var(--surface-1)",
                         border: current
                           ? "1px solid color-mix(in srgb, var(--accent) 35%, transparent)"
                           : "1px solid var(--line-2)",
@@ -319,7 +319,7 @@ export default function IncubatorPage() {
                           width: 20,
                           height: 20,
                           borderRadius: "50%",
-                          background: done ? "var(--success)" : "rgba(255,255,255,0.06)",
+                          background: done ? "var(--success)" : "var(--track)",
                           color: done ? "#0a0810" : "var(--fg-2)",
                           display: "flex",
                           alignItems: "center",

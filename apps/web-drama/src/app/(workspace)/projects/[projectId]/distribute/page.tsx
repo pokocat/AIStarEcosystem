@@ -207,7 +207,7 @@ export default function DistributePage({ params }: PageProps) {
                       : "1px solid var(--line-2)",
                     background: checked
                       ? "color-mix(in srgb, var(--accent) 10%, transparent)"
-                      : "rgba(255,255,255,0.02)",
+                      : "var(--surface-1)",
                     cursor: disabled ? "not-allowed" : "pointer",
                     opacity: disabled ? 0.5 : 1,
                     color: "var(--fg-0)",
@@ -277,7 +277,7 @@ export default function DistributePage({ params }: PageProps) {
                   key={j.id}
                   style={{
                     padding: "12px 14px",
-                    background: "rgba(255,255,255,0.02)",
+                    background: "var(--surface-1)",
                     border: "1px solid var(--line)",
                     borderRadius: "var(--radius-md)",
                   }}
@@ -289,7 +289,7 @@ export default function DistributePage({ params }: PageProps) {
                   <div
                     style={{
                       height: 4,
-                      background: "rgba(255,255,255,0.06)",
+                      background: "var(--track)",
                       borderRadius: "var(--radius-pill)",
                       overflow: "hidden",
                     }}

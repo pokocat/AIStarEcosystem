@@ -32,7 +32,7 @@ export function Field({ label, hint, error, required, children }: FieldProps) {
 
 const inputBase: React.CSSProperties = {
   width: "100%",
-  background: "rgba(255,255,255,0.03)",
+  background: "var(--bg-1)",
   border: "1px solid var(--line-2)",
   borderRadius: "var(--radius-sm)",
   padding: "9px 12px",

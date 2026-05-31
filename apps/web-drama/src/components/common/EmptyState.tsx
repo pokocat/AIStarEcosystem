@@ -15,7 +15,7 @@ export function EmptyState({ icon, title, description, action }: Props) {
       style={{
         padding: "48px 32px",
         textAlign: "center",
-        background: "rgba(255,255,255,0.02)",
+        background: "var(--surface-1)",
         border: "1px dashed var(--line-2)",
         borderRadius: "var(--radius-md)",
         color: "var(--fg-2)",

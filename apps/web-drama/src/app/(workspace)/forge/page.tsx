@@ -289,7 +289,7 @@ function DramaBubble({ turn }: { turn: Turn }) {
           maxWidth: "82%",
           padding: "10px 14px",
           borderRadius: "var(--radius-md)",
-          background: isUser ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "rgba(255,255,255,0.03)",
+          background: isUser ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--surface-1)",
           border: isUser ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "1px solid var(--line)",
           fontSize: 13,
           lineHeight: 1.7,

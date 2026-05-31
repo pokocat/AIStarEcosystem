@@ -261,7 +261,7 @@ export default function SettingsPage() {
                   gap: 12,
                   padding: "10px 12px",
                   borderRadius: "var(--radius-md)",
-                  background: "rgba(255,255,255,0.02)",
+                  background: "var(--surface-1)",
                   border: "1px solid var(--line)",
                 }}
               >

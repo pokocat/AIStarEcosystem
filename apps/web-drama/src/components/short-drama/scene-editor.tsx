@@ -64,7 +64,7 @@ export function SceneEditor({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {scenes.map((sc, i) => (
-        <div key={i} style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", padding: "12px 14px", background: "rgba(255,255,255,0.02)" }}>
+        <div key={i} style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", padding: "12px 14px", background: "var(--surface-1)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <span className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>镜 {String(i + 1).padStart(2, "0")}</span>
             <div style={{ display: "flex", gap: 4 }}>
@@ -134,7 +134,7 @@ function IconBtn({ children, onClick, disabled, danger, title }: { children: Rea
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         width: 26, height: 26, borderRadius: "var(--radius-sm)",
-        border: "1px solid var(--line)", background: "rgba(255,255,255,0.02)",
+        border: "1px solid var(--line)", background: "var(--surface-1)",
         color: danger ? "var(--danger)" : "var(--fg-2)",
         cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.4 : 1,
       }}

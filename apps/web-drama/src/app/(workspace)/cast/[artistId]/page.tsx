@@ -303,7 +303,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
                     {v}
                   </span>
                 </div>
-                <div style={{ height: 6, background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-pill)" }}>
+                <div style={{ height: 6, background: "var(--track)", borderRadius: "var(--radius-pill)" }}>
                   <div
                     style={{
                       width: `${v}%`,

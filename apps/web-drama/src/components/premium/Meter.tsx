@@ -43,7 +43,7 @@ export function Meter({ label, value, tone = "accent", hint }: Props) {
       <div
         style={{
           height: 6,
-          background: "rgba(255,255,255,0.05)",
+          background: "var(--track)",
           borderRadius: "var(--radius-pill)",
           overflow: "hidden",
         }}

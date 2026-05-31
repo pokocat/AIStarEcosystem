@@ -1,36 +1,44 @@
 /* ============================================================
-   drama · Premium 设计 token（来源：AI IP Design Directions 03）
-   暗紫近黑底 + 金色 accent + glass 卡片 + 大圆角 + 深阴影 + 宽 tracking。
+   drama · Studio 设计 token（v0.7 淡色重构）
+   纸感淡底 + 金/琥珀 accent + 柔和投影 + 大圆角 + 宽 tracking。
+   保留电影质感，去掉深紫近黑（与 music=紫 / celebrity=紫罗兰 区隔由 accent 承担）。
    作用域：本 app html 根元素带 data-theme="premium"，整页生效。
    字体经由 next/font/google 注入：--font-sans / --font-display / --font-serif。
    ============================================================ */
 
 :root,
 [data-theme="premium"] {
-  /* surface */
-  --bg-0: #0a0810;
-  --bg-1: #13101c;
-  --bg-2: #1c1828;
-  --bg-3: #261f36;
-  --line: rgba(255, 255, 255, 0.10);
-  --line-2: rgba(255, 255, 255, 0.18);
+  /* surface — 纸感淡底 */
+  --bg-0: #f7f3ec;
+  --bg-1: #ffffff;
+  --bg-2: #f1ece1;
+  --bg-3: #e8e1d2;
+  --line: #e7e0d2;
+  --line-2: #d6ccb8;
 
-  /* foreground */
-  --fg-0: #f5f0e6;
-  --fg-1: #c8c0b0;
-  --fg-2: #8a8294;
-  --fg-3: #56516a;
+  /* foreground — 深墨 */
+  --fg-0: #221c14;
+  --fg-1: #4a4234;
+  --fg-2: #857a64;
+  --fg-3: #aaa089;
 
-  /* accent */
-  --accent: #d4af6a;
+  /* accent — 保留金/琥珀（品牌延续） */
+  --accent: #c79a4e;
   --accent-strong: #a8884a;
-  --accent-soft: rgba(212, 175, 106, 0.14);
-  --info: #3de0ff;
-  --success: #4ce0a0;
-  --warning: #d4af6a;
-  --danger: #ff3d8a;
-  --extra-violet: #a44cff;
-  --extra-champagne: #ead7a8;
+  --accent-soft: rgba(199, 154, 78, 0.14);
+  --info: #2f9fcf;
+  --success: #2fae84;
+  --warning: #c98a2e;
+  --danger: #e0427f;
+  --extra-violet: #7c5cff;
+  --extra-champagne: #b89a5e;
+
+  /* neutral 中性面（淡底专用）：原组件大量 rgba(255,255,255,.0x) 在淡底不可见 → 统一引这几个 */
+  --surface-1: rgba(34, 28, 20, 0.03);
+  --surface-2: rgba(34, 28, 20, 0.05);
+  --track: rgba(34, 28, 20, 0.08);
+  --overlay-scrim: rgba(40, 34, 24, 0.45);
+  --video-letterbox: #1a1712;
 
   /* type — fonts come from next/font; mono 是回退 */
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -46,20 +54,20 @@
   --radius-xl: 28px;
   --radius-pill: 999px;
 
-  /* shadow */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.65);
+  /* shadow — 淡底柔和投影 */
+  --shadow-sm: 0 1px 2px rgba(34, 28, 20, 0.05);
+  --shadow-md: 0 6px 20px rgba(34, 28, 20, 0.07);
+  --shadow-lg: 0 20px 48px rgba(34, 28, 20, 0.10);
 
-  /* glass card recipe */
-  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
-  --glass-border: rgba(255, 255, 255, 0.08);
+  /* glass card recipe（淡底玻璃） */
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.6));
+  --glass-border: var(--line);
   --glass-blur: 20px;
 
-  --gradient-hero: linear-gradient(135deg, #ff3d8a 0%, #a44cff 50%, #3de0ff 100%);
-  --gradient-gold: linear-gradient(135deg, #d4af6a 0%, #ead7a8 100%);
+  --gradient-hero: linear-gradient(135deg, #f6e7c9 0%, #efd9b0 50%, #f3ece0 100%);
+  --gradient-gold: linear-gradient(135deg, #d8b066 0%, #b78f3f 100%);
 
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 /* universal helpers */
@@ -87,7 +95,8 @@
 }
 
 .text-gradient-gold {
-  background: var(--gradient-gold);
+  /* 淡底上的金色文字需更深，否则低对比；按钮仍用更亮的 --gradient-gold */
+  background: linear-gradient(135deg, #a8884a 0%, #c79a4e 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

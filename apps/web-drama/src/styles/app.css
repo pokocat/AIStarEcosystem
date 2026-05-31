@@ -50,9 +50,9 @@
 .drama-skeleton {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.04) 100%
+    var(--surface-1) 0%,
+    var(--track) 50%,
+    var(--surface-1) 100%
   );
   background-size: 220% 100%;
   animation: drama-shimmer 1.4s ease-in-out infinite;
@@ -120,7 +120,7 @@ svg {
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(8, 6, 14, 0.6);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
@@ -129,7 +129,7 @@ svg {
   inset: 0 auto 0 0;
   width: min(264px, 82vw);
   height: 100%;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-lg);
   animation: drawerIn 200ms ease;
 }
 @keyframes drawerIn {

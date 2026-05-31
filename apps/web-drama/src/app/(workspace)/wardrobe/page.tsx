@@ -167,7 +167,7 @@ function WardrobeInner() {
               alignItems: "center",
               gap: 8,
               padding: "8px 12px",
-              background: "rgba(255,255,255,0.03)",
+              background: "var(--surface-1)",
               border: "1px solid var(--line-2)",
               borderRadius: "var(--radius-md)",
             }}
@@ -402,7 +402,7 @@ function UploadDialog({
             height: 200,
             borderRadius: "var(--radius-md)",
             border: "1px dashed var(--line-2)",
-            background: preview ? `url(${preview}) center/cover` : "rgba(255,255,255,0.03)",
+            background: preview ? `url(${preview}) center/cover` : "var(--surface-1)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -519,7 +519,7 @@ function AssignDialog({
                 alignItems: "center",
                 gap: 10,
                 padding: "8px 10px",
-                background: checked ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "rgba(255,255,255,0.02)",
+                background: checked ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "var(--surface-1)",
                 border: checked
                   ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)"
                   : "1px solid var(--line)",

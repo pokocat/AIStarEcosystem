@@ -207,7 +207,7 @@ export default function DramaLandingPage() {
               padding: "8px 16px",
               borderRadius: "var(--radius-pill)",
               border: "1px solid var(--line-2)",
-              background: "rgba(255,255,255,0.03)",
+              background: "var(--surface-1)",
               marginBottom: 28,
             }}
           >

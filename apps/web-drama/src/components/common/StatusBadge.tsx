@@ -18,7 +18,7 @@ const TONE: Record<StatusTone, { bg: string; fg: string; border: string }> = {
   danger: { bg: "rgba(255,61,138,0.14)", fg: "var(--danger)", border: "rgba(255,61,138,0.34)" },
   info: { bg: "rgba(61,224,255,0.14)", fg: "var(--info)", border: "rgba(61,224,255,0.32)" },
   violet: { bg: "rgba(164,76,255,0.16)", fg: "var(--extra-violet)", border: "rgba(164,76,255,0.32)" },
-  neutral: { bg: "rgba(255,255,255,0.04)", fg: "var(--fg-1)", border: "var(--line-2)" },
+  neutral: { bg: "var(--surface-2)", fg: "var(--fg-1)", border: "var(--line-2)" },
 };
 
 interface Props {

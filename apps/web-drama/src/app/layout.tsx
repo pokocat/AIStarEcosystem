@@ -48,7 +48,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0a0810",
+  themeColor: "#f7f3ec",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -63,7 +63,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html
       lang="zh"
       data-theme="premium"
-      className={`dark ${fontClassNames}`}
+      className={fontClassNames}
       suppressHydrationWarning
     >
       <body>

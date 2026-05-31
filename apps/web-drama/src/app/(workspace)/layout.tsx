@@ -15,10 +15,11 @@ import {
   Coins,
   Compass,
   Film,
+  FolderOpen,
   LayoutDashboard,
+  LayoutGrid,
   LogOut,
   Menu,
-  PenTool,
   Plus,
   Search,
   Settings,
@@ -51,13 +52,19 @@ const GROUPS: NavGroup[] = [
     title: "工作台",
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "总览", exact: true },
+      { href: "/create", icon: Clapperboard, label: "短剧创作" },
+      { href: "/templates", icon: LayoutGrid, label: "模板广场" },
+      { href: "/projects", icon: Film, label: "作品与项目" },
+      { href: "/assets", icon: FolderOpen, label: "素材资产" },
+    ],
+  },
+  {
+    title: "演员与形象",
+    items: [
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
       { href: "/incubator", icon: Wand2, label: "孵化新演员" },
       { href: "/forge", icon: Sparkles, label: "形象锻造炉" },
       { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
-      { href: "/scripts", icon: PenTool, label: "脚本工坊" },
-      { href: "/short-drama", icon: Clapperboard, label: "短剧生成" },
-      { href: "/projects", icon: Film, label: "项目流水线" },
     ],
   },
   {
@@ -129,7 +136,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             AI 短剧
           </div>
           <div className="eyebrow" style={{ fontSize: 9 }}>
-            短剧工坊 · v0.6
+            短剧工坊 · v0.7
           </div>
         </div>
       </Link>
@@ -268,7 +275,7 @@ function GlobalSearch() {
           alignItems: "center",
           gap: 8,
           padding: "7px 12px",
-          background: "rgba(255,255,255,0.03)",
+          background: "var(--surface-1)",
           border: "1px solid var(--line-2)",
           borderRadius: "var(--radius-md)",
           fontSize: 12,
@@ -299,7 +306,7 @@ function GlobalSearch() {
             position: "fixed",
             inset: 0,
             zIndex: 100,
-            background: "rgba(8, 6, 14, 0.74)",
+            background: "var(--overlay-scrim)",
             backdropFilter: "blur(8px)",
             display: "flex",
             justifyContent: "center",
@@ -318,7 +325,7 @@ function GlobalSearch() {
               display: "flex",
               alignItems: "center",
               gap: 10,
-              boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+              boxShadow: "var(--shadow-lg)",
             }}
           >
             <Search size={16} color="var(--fg-2)" />
@@ -389,7 +396,7 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         gap: 16,
         padding: "14px 28px",
         borderBottom: "1px solid var(--line)",
-        background: "rgba(10,8,16,0.6)",
+        background: "rgba(255,255,255,0.72)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
       }}
@@ -449,8 +456,8 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
       </button>
 
       <button
-        onClick={() => router.push("/projects?new=1")}
-        title="快速创建项目"
+        onClick={() => router.push("/create")}
+        title="开始创作短剧"
         style={{
           display: "flex",
           alignItems: "center",
@@ -467,7 +474,7 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         }}
       >
         <Plus size={13} strokeWidth={2.6} />
-        <span className="ws-btn-label">新建项目</span>
+        <span className="ws-btn-label">新建短剧</span>
       </button>
 
       <button
@@ -567,7 +574,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           }}
         >
           <Sparkles size={10} />
-          CINEMATIC · v0.6
+          STUDIO · v0.7
         </div>
       </main>
 

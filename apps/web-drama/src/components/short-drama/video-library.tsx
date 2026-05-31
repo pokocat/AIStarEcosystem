@@ -21,8 +21,8 @@ function EpisodeCard({ job }: { job: DramaEpisodeJob }) {
   const ready = job.status === "ready";
   const failed = job.status === "failed";
   return (
-    <div style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", overflow: "hidden", background: "rgba(255,255,255,0.02)" }}>
-      <div style={{ aspectRatio: "9 / 16", background: "#0d0b08", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+    <div style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", overflow: "hidden", background: "var(--surface-1)" }}>
+      <div style={{ aspectRatio: "9 / 16", background: "var(--video-letterbox)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
         {ready && job.video_url ? (
           <video src={job.video_url} controls style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : failed ? (

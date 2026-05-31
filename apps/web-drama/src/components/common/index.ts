@@ -3,6 +3,7 @@ export { ConfirmDialog } from "./ConfirmDialog";
 export { FormDialog } from "./FormDialog";
 export { Field, TextInput, TextArea, Select } from "./Field";
 export { EmptyState } from "./EmptyState";
+export { ComingSoon } from "./ComingSoon";
 export { LoadingBlock } from "./LoadingBlock";
 export { ErrorBlock } from "./ErrorBlock";
 export { StatusBadge, type StatusTone } from "./StatusBadge";
