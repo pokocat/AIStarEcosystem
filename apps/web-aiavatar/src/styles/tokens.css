@@ -1,0 +1,119 @@
+/* ============================================================
+   数字人资产管理中心 — Design Tokens
+   Aesthetic: 科技感 / 未来感 AI 工具 · 深色 · 琥珀主色
+   （从原型 styles/tokens.css 1:1 移植；token 不改。）
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+
+:root {
+  /* — 背景层次 — */
+  --bg-0: #0a0b0e;   /* 基底 */
+  --bg-1: #101218;   /* 面板 */
+  --bg-2: #161922;   /* 抬升卡片 */
+  --bg-3: #1e222c;   /* 输入 / hover */
+  --bg-glass: rgba(22, 25, 34, 0.72);
+
+  /* — 描边 — */
+  --line:    rgba(255,255,255,0.07);
+  --line-2:  rgba(255,255,255,0.12);
+  --line-3:  rgba(255,255,255,0.20);
+
+  /* — 文字 — */
+  --ink-0: #f3f5f9;  /* 主 */
+  --ink-1: #a7adba;  /* 次 */
+  --ink-2: #6a7180;  /* 弱 / 占位 */
+  --ink-3: #464c5a;  /* 极弱 */
+
+  /* — 主色 琥珀 — */
+  --accent:      #f5a524;
+  --accent-hi:   #ffc25c;
+  --accent-dim:  #b97d18;
+  --accent-soft: rgba(245,165,36,0.13);
+  --accent-line: rgba(245,165,36,0.35);
+  --accent-glow: rgba(245,165,36,0.28);
+
+  /* — 信号色（AI 生成中 / 同 L,C 异 hue 的青）— */
+  --signal:      #34d3e0;
+  --signal-soft: rgba(52,211,224,0.12);
+  --signal-line: rgba(52,211,224,0.35);
+
+  /* — 状态 — */
+  --ok:   #56d6a0;
+  --warn: #f5a524;
+  --err:  #f06b6b;
+  --ok-soft:  rgba(86,214,160,0.13);
+  --err-soft: rgba(240,107,107,0.13);
+
+  /* — 字体 — */
+  --font-ui: 'Space Grotesk', 'Noto Sans SC', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  --font-cn: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  /* — 圆角 — */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  /* — 阴影 / 辉光 — */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-2: 0 8px 28px rgba(0,0,0,0.45);
+  --shadow-3: 0 24px 64px rgba(0,0,0,0.55);
+  --glow-accent: 0 0 0 1px var(--accent-line), 0 8px 30px var(--accent-glow);
+
+  /* — 间距基准 — */
+  --gap: 8px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { padding: 0; margin: 0; }
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-0);
+  color: var(--ink-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 细网格底纹 */
+.tex-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* 占位图（条纹 + 说明） */
+.ph {
+  position: relative;
+  background-color: var(--bg-2);
+  background-image: repeating-linear-gradient(
+    -45deg, rgba(255,255,255,0.03) 0 10px, transparent 10px 20px);
+  border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px; letter-spacing: 0.04em;
+  text-align: center; overflow: hidden;
+}
+.ph::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(120% 80% at 50% 0%, transparent 60%, rgba(0,0,0,0.25));
+  pointer-events: none;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 8px; border: 2px solid var(--bg-0); }
+::-webkit-scrollbar-thumb:hover { background: #2a2f3a; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 选区 */
+::selection { background: var(--accent-soft); color: var(--accent-hi); }
+
+/* 通用工具 */
+.mono { font-family: var(--font-mono); }
+.tnum { font-variant-numeric: tabular-nums; }

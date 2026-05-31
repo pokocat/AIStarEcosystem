@@ -2032,6 +2032,33 @@ openapi: +33 aiavatar path 骨架（/aiavatar/health + /me/aiavatar/* + /admin/a
 - **api-contract gate**：检查器（scripts/check-api-contract.mjs）已扫描 web-aiavatar；当前剩余 20 missing path
   + 1 missing method 来自 web-drama / web-celebrity 历史 drift，非 AiAvatar 引入。
 
+### v0.45.1（2026-05-31）— AiAvatar 前端按上传原型 1:1 重建（后端不变）
+
+`apps/web-aiavatar` 曾被整体删除（commit 3aba153），本版按用户上传的高保真 design 原型 + 任务说明书**重建前端**；
+后端 `com.aistareco.aep.aiavatar.*` 领域、`packages/types/src/ai-avatar.ts` 契约、openapi 骨架均不变。
+
+```
+web-aiavatar（重建）:
+  · 样式：直接移植原型 styles/tokens.css（token 不改）+ 类型化内联样式基元（primitives.tsx）。
+    不引 Tailwind/shadcn/@ai-star-eco/{ui,landing} —— 仅消费 TS-only 的 types + api-client（见 DECISIONS §A2）。
+  · 路由：/login + /(workspace)/{library,create,templates,tasks,licenses,health} + avatar 作用域
+    /(workspace)/avatars/[id]（详情）+ /avatars/[id]/{material,sampling,drafting,studio,output,finalize,derive}（7 步）。
+  · 数据层：api/ai-avatar.ts mock↔live 双路径（NEXT_PUBLIC_USE_MOCK），mock 引擎 mocks/store.ts
+    （8 态状态机 + 异步任务 ticker + 版本快照 + localStorage 持久化），种子 12 张开源真人照片 public/seed/portrait-*.jpg。
+  · 真实算法：lib/face-warp.ts（液化）+ lib/face-landmarks.ts（MediaPipe 478 点）+ lib/beauty.ts（canvas 美颜，
+    评估 Banuba beauty-web 需 token → 用开源 canvas 路径，见 DECISIONS §B）。
+  · 可观测：/health 镜像 /api/aiavatar/health/providers；SourceBadge MOCK 角标 + 常驻 DEV MOCK/LIVE 指示。
+  · .env.development 默认 NEXT_PUBLIC_USE_MOCK=1（dev 离线整跑）。
+验证：typecheck 0 / build 17 路由 / 25 vitest（warp 13 + beauty 6 + landmark 6）/ 3 Playwright E2E
+     （总库种子 + 两条创建路径从新建到入库归档，NEXT_PUBLIC_USE_MOCK=1 离线）全绿。
+```
+
+**注意事项**：
+- 前端样式栈与三端（Tailwind v4）不同——AiAvatar 自洽走 CSS 令牌 + 内联样式（DECISIONS §A2 记录）。docs/INDEX 的
+  README/DECISIONS 链接随本版恢复（删除期间为 dangling）。
+- 重型生成能力（txt2img/inpaint/3D/video…）前端在 mock 下产出占位 / CSS 运镜预览；`NEXT_PUBLIC_USE_MOCK=0` 切真实后端。
+- E2E 用 Playwright（chromium），跑前先 `NEXT_PUBLIC_USE_MOCK=1 pnpm build && pnpm start`（或 `pnpm dev`）起 :3013。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

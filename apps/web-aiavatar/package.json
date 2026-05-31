@@ -1,0 +1,32 @@
+{
+  "name": "@ai-star-eco/web-aiavatar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AiAvatar 形象资产管理中心 — 数字人 IP 形象创建 / 精调 / 美化 / 定稿 / 衍生 全链路（独立 Next 16 应用，深色琥珀主题）。",
+  "scripts": {
+    "dev": "next dev -p 3013",
+    "build": "next build",
+    "start": "next start -p 3013",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@ai-star-eco/api-client": "workspace:*",
+    "@ai-star-eco/types": "workspace:*",
+    "nanoid": "^5.0.7",
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@mediapipe/tasks-vision": "^0.10.18",
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^20.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

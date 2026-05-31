@@ -84,3 +84,33 @@ admin /api/admin/aiavatar/watchdog/sweep   → 手动触发巡检 ✅
 2. 后端是否可编译：`cd apps/server && mvn -q -o compile`（或修复 mvnw）。
 3. 前端是否 typecheck：`pnpm --filter @ai-star-eco/web-aiavatar typecheck`。
 4. 从第一个 ⬜ / ⏳ 里程碑继续，完成即更新本表 + commit。
+
+---
+
+## v0.45.1（2026-05-31）— 前端按上传原型 1:1 重建
+
+> 背景：`apps/web-aiavatar` 曾被整体删除（commit 3aba153）。本轮按用户上传的高保真 design 原型
+> （`数字人资产平台.html` + `app/*.jsx` + `styles/tokens.css`）+ 任务说明书**重建前端**。后端
+> `com.aistareco.aep.aiavatar.*` 领域 / `packages/types/src/ai-avatar.ts` / openapi 均**未改**。
+
+| 里程碑 | 状态 |
+|---|---|
+| 脚手架（Next 16 / pnpm workspace / port 3013 / tokens.css 移植 / 内联样式基元 + 图标） | ✅ |
+| 数据层（api mock↔live 双路径 + mocks/store.ts 8 态状态机 ticker + 12 张开源真人照片种子） | ✅ |
+| 登录接入（@ai-star-eco/api-client：SMS / 注册 / dev-login；mock 离线可登） | ✅ |
+| 10 页面 + 6 模块（总库三视图 / 创建 / 素材授权 / 打样三对比 / 草稿迭代 / 精调工作台三布局 / 模板出图 / 定稿 / 衍生 / 详情 / 模板中心 / 任务中心 / 授权管理 / 能力健康） | ✅ |
+| 真实算法（MediaPipe 478 关键点 + 液化形变 face-warp.ts；canvas 美颜 beauty.ts） | ✅ |
+| 可观测（/health 镜像 providers + SourceBadge + 常驻 DEV MOCK/LIVE 指示） | ✅ |
+| 单元测试 vitest 25 例（warp 13 + beauty 6 + landmark 6） | ✅ |
+| E2E Playwright 3 例（总库种子 + AI 原创/真人复刻 两条路径从新建到归档，离线 mock） | ✅ |
+| typecheck 0 error / build 17 路由（mock & live 两种 baked） | ✅ |
+
+**E2E 验证记录**（`NEXT_PUBLIC_USE_MOCK=1`，Chromium）：
+```
+资产总库展示种子真人形象                         ✅ (876ms)
+AI 原创：从新建到入库归档（8 步全过 + 状态机 + 归档断言）   ✅ (19.3s)
+真人复刻：从新建（上传示例照片 + 签署授权）到入库归档       ✅ (20.2s)
+```
+
+过程中修复真实 UI bug：数据源指示浮层（fixed button）遮挡底部操作条主 CTA → 改为 `pointer-events:none`
+静态指示药丸（DECISIONS §F1）。
