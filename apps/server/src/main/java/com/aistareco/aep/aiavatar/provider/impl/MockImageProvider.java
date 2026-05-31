@@ -41,6 +41,8 @@ public class MockImageProvider extends AbstractCapabilityProvider {
         step(ctx, 25, capabilityVerb() + "：构图与基底", 350);
 
         List<String> shots = readStandardShots(input);
+        List<JsonNode> storyboardShots = readStoryboardShots(input);
+        String negativePrompt = strVal(input, "negativePrompt", "");
         List<AssetSpec> out = new ArrayList<>();
 
         if (!shots.isEmpty()) {
@@ -49,9 +51,11 @@ public class MockImageProvider extends AbstractCapabilityProvider {
             for (int i = 0; i < n; i++) {
                 if (ctx.isCancelled()) break;
                 AiAvatarStandardShot shot = AiAvatarStandardShot.fromWire(shots.get(i));
+                JsonNode storyboardShot = i < storyboardShots.size() ? storyboardShots.get(i) : null;
+                String shotLabel = storyboardShot == null ? shot.label() : storyboardShot.path("name").asText(shot.label());
                 int pct = 25 + (int) ((i + 1) * 60.0 / n);
-                step(ctx, pct, "出图 " + shot.label() + " (" + (i + 1) + "/" + n + ")", 300);
-                out.add(renderOne(ctx, shot, i, prompt, AiAvatarAssetKind.IMAGE_2D));
+                step(ctx, pct, "出图 " + shotLabel + " (" + (i + 1) + "/" + n + ")", 300);
+                out.add(renderOne(ctx, shot, storyboardShot, i, prompt, negativePrompt, AiAvatarAssetKind.IMAGE_2D));
             }
         } else {
             int variants = Math.max(1, Math.min(8, intVal(input, "variants", defaultVariants())));
@@ -59,7 +63,7 @@ public class MockImageProvider extends AbstractCapabilityProvider {
                 if (ctx.isCancelled()) break;
                 int pct = 25 + (int) ((i + 1) * 60.0 / variants);
                 step(ctx, pct, "生成第 " + (i + 1) + "/" + variants + " 版", 350);
-                out.add(renderOne(ctx, null, i, prompt, resultKind()));
+                out.add(renderOne(ctx, null, null, i, prompt, negativePrompt, resultKind()));
             }
         }
 
@@ -67,19 +71,29 @@ public class MockImageProvider extends AbstractCapabilityProvider {
         return ProviderResult.of(out);
     }
 
-    private AssetSpec renderOne(AiAvatarJobContext ctx, AiAvatarStandardShot shot, int idx, String prompt, AiAvatarAssetKind kind) {
+    private AssetSpec renderOne(AiAvatarJobContext ctx, AiAvatarStandardShot shot, JsonNode storyboardShot,
+                                int idx, String prompt, String negativePrompt, AiAvatarAssetKind kind) {
         long seed = (ctx.jobId() + ":" + idx + ":" + (shot == null ? "" : shot.wire())).hashCode();
+        String storyboardName = storyboardShot == null ? null : storyboardShot.path("name").asText(null);
+        String storyboardPrompt = storyboardShot == null ? null : storyboardShot.path("prompt").asText(null);
         List<String> lines = new ArrayList<>();
         lines.add("cap   : " + capability.wire());
         if (shot != null) lines.add("shot  : " + shot.wire());
         else lines.add("variant: #" + (idx + 1));
-        if (prompt != null && !prompt.isBlank()) {
-            lines.add("prompt: " + clip(prompt, 28));
+        if (storyboardName != null && !storyboardName.isBlank()) {
+            lines.add("view  : " + clip(storyboardName, 24));
+        }
+        String linePrompt = storyboardPrompt != null && !storyboardPrompt.isBlank() ? storyboardPrompt : prompt;
+        if (linePrompt != null && !linePrompt.isBlank()) {
+            lines.add("prompt: " + clip(linePrompt, 28));
         }
         lines.add("engine: MOCK");
-        String subtitle = shot != null ? shot.label() : (capability.label() + " · 第 " + (idx + 1) + " 版");
+        String subtitle = storyboardName != null && !storyboardName.isBlank()
+                ? storyboardName
+                : (shot != null ? shot.label() : (capability.label() + " · 第 " + (idx + 1) + " 版"));
         AiAvatarStorage.StoredFile sf = storage.writePlaceholder(
                 W, H, capability.wire().toUpperCase(), subtitle, lines, "MOCK", true, seed, ctx.ownerUserId());
+        String metaJson = storyboardShot == null ? null : storyboardMetaJson(storyboardShot, negativePrompt);
         return AssetSpec.builder()
                 .kind(kind)
                 .standardShot(shot)
@@ -90,6 +104,7 @@ public class MockImageProvider extends AbstractCapabilityProvider {
                 .height(sf.height())
                 .fileSize(sf.bytes())
                 .engine("MOCK")
+                .metaJson(metaJson)
                 .build();
     }
 
@@ -99,6 +114,25 @@ public class MockImageProvider extends AbstractCapabilityProvider {
             for (JsonNode n : input.get("standardShots")) shots.add(n.asText());
         }
         return shots;
+    }
+
+    private List<JsonNode> readStoryboardShots(JsonNode input) {
+        List<JsonNode> shots = new ArrayList<>();
+        JsonNode arr = input == null ? null : input.at("/storyboard/shots");
+        if (arr != null && arr.isArray()) {
+            for (JsonNode n : arr) shots.add(n);
+        }
+        return shots;
+    }
+
+    private String storyboardMetaJson(JsonNode storyboardShot, String negativePrompt) {
+        var meta = mapper.createObjectNode();
+        if (storyboardShot.hasNonNull("id")) meta.put("storyboardShotId", storyboardShot.get("id").asText());
+        if (storyboardShot.hasNonNull("name")) meta.put("storyboardShotName", storyboardShot.get("name").asText());
+        if (storyboardShot.hasNonNull("usage")) meta.put("storyboardUsage", storyboardShot.get("usage").asText());
+        if (storyboardShot.hasNonNull("prompt")) meta.put("prompt", storyboardShot.get("prompt").asText());
+        if (negativePrompt != null && !negativePrompt.isBlank()) meta.put("negativePrompt", negativePrompt);
+        return meta.toString();
     }
 
     private int defaultVariants() {

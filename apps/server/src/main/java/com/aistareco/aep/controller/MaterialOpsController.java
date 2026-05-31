@@ -57,7 +57,7 @@ public class MaterialOpsController {
         service.deleteScript(id, uid(principal));
     }
 
-    /** AI 起稿候选（接真 LLM，失败降级到内置占位池）。不落库，用户选用保存时才落库。 */
+    /** AI 起稿候选（接真 LLM，失败直接透出明确错误）。不落库，用户选用保存时才落库。 */
     @PostMapping("/scripts/ai-draft")
     public ApiResponse<List<JsonNode>> aiDraft(@RequestBody JsonNode body, Principal principal) {
         return ApiResponse.of(service.draftScripts(body, uid(principal)));

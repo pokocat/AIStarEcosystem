@@ -6,8 +6,7 @@ import { ThemeProvider } from "@ai-star-eco/ui";
 import { AuthProvider } from "@ai-star-eco/api-client";
 import { GlobalApiErrorNotification } from "@/components/common/global-api-error-notification";
 
-// USE_MOCK 拦截层：side-effect import，在 apiFetch 网络层注册所有 mock handler。
-// USE_MOCK=0 时 registry 不被读取，仅 bundle 多余 KB（后续可按需 tree-shake）。
+// USE_MOCK 拦截层：side-effect import。USE_MOCK=0 时 registerMocks 为 no-op。
 import "@/mocks/_register";
 
 const PUBLIC_PREFIXES = ["/", "/login", "/activate"];

@@ -8,6 +8,7 @@
 import { apiFetch, USE_MOCK, getAuthToken, API_BASE_URL } from "@ai-star-eco/api-client";
 import type {
   AiAvatar,
+  AiAvatarAsset,
   AiAvatarDetail,
   AiAvatarVersion,
   AiAvatarJob,
@@ -95,6 +96,27 @@ export async function uploadSourcePhoto(id: string, file: File): Promise<AiAvata
   const json = await res.json();
   if (!res.ok || json?.success !== true) throw new Error(json?.error?.message ?? "上传失败");
   return json.data as AiAvatarSourceMaterial;
+}
+/** 上传 AI 原创参考图：普通参考资产，不走真人照片加密/肖像检测。 */
+export async function uploadReferenceImage(id: string, file: File): Promise<AiAvatarAsset> {
+  if (USE_MOCK) {
+    const dataUrl = await fileToDataUrl(file);
+    return mockStore().addReferenceImage(id, dataUrl, file.type || "image/*");
+  }
+  const form = new FormData();
+  form.append("file", file);
+  form.append("avatarId", id);
+  form.append("kind", "reference_image");
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/me/aiavatar/assets`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+    credentials: "include",
+  });
+  const json = await res.json();
+  if (!res.ok || json?.success !== true) throw new Error(json?.error?.message ?? "上传失败");
+  return json.data as AiAvatarAsset;
 }
 export async function signLicense(id: string, input: AiAvatarSignLicenseInput): Promise<AiAvatarLicenseGrant> {
   if (USE_MOCK) return mockStore().signLicense(id, input);

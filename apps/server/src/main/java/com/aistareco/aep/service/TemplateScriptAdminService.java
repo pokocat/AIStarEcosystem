@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.*;
+import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.TemplateScript;
 import com.aistareco.aep.model.TemplateScriptKind;
 import com.aistareco.aep.model.TemplateScriptStatus;
@@ -13,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,13 +33,19 @@ public class TemplateScriptAdminService {
     private final TemplateScriptRepository repo;
     private final CelebrityTemplateRepository templateRepo;
     private final PromptAssemblyService assemblyService;
+    private final AiModelInvocationService invocation;
+    private final PromptService promptService;
 
     public TemplateScriptAdminService(TemplateScriptRepository repo,
                                        CelebrityTemplateRepository templateRepo,
-                                       PromptAssemblyService assemblyService) {
+                                       PromptAssemblyService assemblyService,
+                                       AiModelInvocationService invocation,
+                                       PromptService promptService) {
         this.repo = repo;
         this.templateRepo = templateRepo;
         this.assemblyService = assemblyService;
+        this.invocation = invocation;
+        this.promptService = promptService;
     }
 
     public List<TemplateScriptDto> list(String templateId, String status, String kind) {
@@ -163,16 +172,47 @@ public class TemplateScriptAdminService {
                 result.request(), result.warnings());
     }
 
-    /** v0.5：不实际接 LLM，仅返回一个固定 stub；接 AiModelInvocationService 后再换实现（§D8）。 */
+    /** 调真实 LLM 生成模板脚本草稿；未配置端点 / prompt / 调用失败时直接报错，不返回 stub。 */
     public Map<String, String> draftWithAi(String id, Map<String, Object> req) {
-        load(id); // 校验 script 存在
+        TemplateScript script = load(id);
         String prompt = req != null && req.get("prompt") != null
                 ? String.valueOf(req.get("prompt"))
                 : "";
-        return Map.of(
-                "draft", "【AI 草稿 stub】基于 prompt：\n" + prompt
-                        + "\n\nv0.5 当前 stub；接入 AiModelInvocationService 后由 LLM 输出真实草稿。"
-        );
+        if (!invocation.hasEndpointFor(AiModelPurpose.SCRIPT_DRAFT)) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                    "未为「脚本起草」绑定 AI 模型端点，请先到管理后台配置真实模型。");
+        }
+        PromptService.ResolvedPrompt p = promptService.resolve(AiModelPurpose.SCRIPT_DRAFT);
+        if ("code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "脚本起草 Prompt 模板缺失（promptKey=" + PromptService.KEY_SCRIPT_DRAFT + "）。");
+        }
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (p.system() != null && !p.system().isBlank()) {
+            messages.add(Map.of("role", "system", "content", p.system()));
+        }
+        messages.add(Map.of("role", "user", "content", buildAiDraftPrompt(script, prompt)));
+
+        Map<String, Object> options = new LinkedHashMap<>();
+        options.put("temperature", p.params().temperatureOrDefault());
+        options.put("max_tokens", p.params().maxTokensOrDefault());
+
+        AiModelInvocationService.AiModelResponse resp;
+        try {
+            resp = invocation.invokeChat(AiModelPurpose.SCRIPT_DRAFT, messages, options);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
+                    "脚本起草大模型调用失败：" + e.getMessage());
+        }
+        String draft = resp.content() == null ? "" : resp.content().trim();
+        if (draft.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+                    "脚本起草大模型未返回有效内容，请重试或更换模型。");
+        }
+        return Map.of("draft", draft);
     }
 
     /** v0.5：upload-clip 走 JSON URL 模式，无 multipart。 */
@@ -217,6 +257,33 @@ public class TemplateScriptAdminService {
         if (req.referenceClip() != null) entity.setReferenceClipJson(toJson(req.referenceClip()));
         if (req.experiment() != null) entity.setExperimentJson(toJson(req.experiment()));
         if (req.metrics() != null) entity.setMetricsJson(toJson(req.metrics()));
+    }
+
+    private String buildAiDraftPrompt(TemplateScript script, String instruction) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("请基于当前模板脚本生成一版可直接给运营编辑器使用的中文带货脚本草稿。\n");
+        if (instruction != null && !instruction.isBlank()) {
+            sb.append("【运营要求】\n").append(instruction.strip()).append("\n\n");
+        }
+        sb.append("【模板脚本上下文】\n");
+        sb.append("scriptId: ").append(script.getId()).append("\n");
+        sb.append("templateId: ").append(script.getTemplateId()).append("\n");
+        sb.append("kind: ").append(script.getKind() == null ? "" : script.getKind().wire()).append("\n");
+        sb.append("language: ").append(script.getLanguage()).append("\n");
+        appendBlock(sb, "persona", script.getPersonaJson());
+        appendBlock(sb, "systemPrompt", script.getSystemPrompt());
+        appendBlock(sb, "scenes", script.getScenesJson());
+        appendBlock(sb, "visualStyle", script.getVisualStyleJson());
+        appendBlock(sb, "negativePrompt", script.getNegativePrompt());
+        appendBlock(sb, "variables", script.getVariablesJson());
+        appendBlock(sb, "referenceClip", script.getReferenceClipJson());
+        sb.append("\n输出要求：只输出草稿正文或结构化 JSON，不要解释你如何生成，不要返回 stub/mock 字样。");
+        return sb.toString();
+    }
+
+    private static void appendBlock(StringBuilder sb, String label, String value) {
+        if (value == null || value.isBlank()) return;
+        sb.append(label).append(":\n").append(value.strip()).append("\n");
     }
 
     private static String toJson(Object value) {

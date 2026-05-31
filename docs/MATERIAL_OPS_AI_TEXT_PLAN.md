@@ -200,7 +200,7 @@ resolve(promptKey) →
 2. **Schema 注入 + few-shot**：prompt 内贴目标 JSON Schema 与 1 个示例，降低跑偏。
 3. **解析→校验**：Jackson 反序列化到目标 record（`MaterialScriptDraft[]` / `ScriptVariableDto[]`），字段缺失/类型错即视为不合法。
 4. **自修复重试 1 次**：不合法时追加一条 `assistant`(上次输出) + `user`(「上次不符合 schema，错误：X，请只返回合法 JSON」) 再调一次。
-5. **失败降级**：仍失败 → 回退占位（§5 各节兜底），并记 WARN（含 provider、purpose、body 前 240 字）。
+5. **失败显性化**：仍失败 → 抛 `AI_BAD_OUTPUT` / `AI_CALL_FAILED` 等明确错误，不回退占位；占位池仅限 `USE_MOCK=1` 的纯前端模式。
 6. **业务后校验**：变量抽取额外校验「原值确实出现在脚本」；脚本生成校验「恰好 5 镜头、dur 合理」，不满足则丢弃该候选。
 
 ---

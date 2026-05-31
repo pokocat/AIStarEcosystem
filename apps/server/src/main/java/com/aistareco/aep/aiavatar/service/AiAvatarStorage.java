@@ -21,8 +21,8 @@ import java.util.UUID;
 /**
  * AiAvatar 资产落盘 / CDN 上传统一入口。
  *
- * dev：写本地 {@code aep.aiavatar.asset-dir}（默认 ./aiavatar-assets），经静态映射 {@code /static/aiavatar-assets/**} 暴露。
- * prod：若注入了非 local 的 {@link CdnUploader}（如阿里云 OSS），同步上传并返回 CDN URL（对象存储）。
+ * dev：写本地 {@code aep.aiavatar.asset-dir}（默认 ./aiavatar-assets），再上传到 local fake-CDN，返回 {@code /cdn/...}。
+ * prod：注入 {@link CdnUploader}（如阿里云 OSS），同步上传并返回 CDN / OSS URL（对象存储）。
  *
  * 真人原始照片以「信封加密简化版（AES-GCM）」存储（{@link AiAvatarCryptoStore} 负责），不经此明文落盘入口。
  */
@@ -73,13 +73,13 @@ public class AiAvatarStorage {
 
             String relativeKey = "aiavatar/" + safeOwner + "/" + filename;
             String url;
-            // prod：非 local CDN → 上传对象存储
-            if (cdn != null && cdn.driverName() != null && !"local".equalsIgnoreCase(cdn.driverName())) {
+            if (cdn != null) {
                 try {
                     CdnUploader.CdnUploadResult r = cdn.upload(file, relativeKey, mime);
                     url = r.cdnUrl();
                 } catch (Exception e) {
-                    log.warn("[aiavatar] CDN 上传失败，回退本地 URL: {}", e.getMessage());
+                    log.warn("[aiavatar] CDN 上传失败 driver={}，回退本地 URL: {}",
+                            cdn.driverName(), e.getMessage());
                     url = localUrl(safeOwner, filename);
                 }
             } else {

@@ -27,6 +27,11 @@ const CARDS: ModeCard[] = [
   { key: "ai_original", icon: Icons.sparkle, title: "纯 AI 原创生成", en: "AI ORIGINAL", desc: "无需真人素材，文字描述直接生成原创形象。适合虚拟角色、二次元、品牌 IP。", points: ["输入人设文案描述词", "可选上传风格参考图", "文生图大模型原创生成"], note: "无肖像风险 · 版权归平台", hue: 268 },
 ];
 
+const DRAFT_NAME_BY_MODE: Record<AiAvatarCreationMode, string> = {
+  real_clone: "新数字人",
+  ai_original: "AI 形象",
+};
+
 const backLink: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 7, background: "none", border: "none", color: "var(--ink-2)", cursor: "pointer", fontSize: 13, fontFamily: "var(--font-mono)" };
 
 export default function CreateSelect() {
@@ -38,7 +43,7 @@ export default function CreateSelect() {
     if (!mode) return;
     setBusy(true);
     try {
-      const a = await createAvatar({ mode, name: "" });
+      const a = await createAvatar({ mode, name: DRAFT_NAME_BY_MODE[mode] });
       router.push(`/avatars/${a.id}/material`);
     } catch (e) {
       toast(e instanceof Error ? e.message : "创建失败", { icon: "!", tone: "var(--err)" });

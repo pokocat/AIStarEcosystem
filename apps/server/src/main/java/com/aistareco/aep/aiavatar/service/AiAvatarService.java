@@ -4,6 +4,7 @@ import com.aistareco.aep.aiavatar.dto.*;
 import com.aistareco.aep.aiavatar.model.*;
 import com.aistareco.aep.aiavatar.repository.*;
 import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
@@ -197,13 +198,28 @@ public class AiAvatarService {
     /** Step 1 打样：真人=faceClone，AI=txt2img；一次 3~5 版 → 状态 sampling。 */
     public AiAvatarJob startSampling(String avatarId, String userId, AiAvatarRequests.SubmitJob req) {
         AiAvatar a = requireOwned(avatarId, userId);
+        AiAvatarRequests.SubmitJob body = req == null
+                ? new AiAvatarRequests.SubmitJob(null, null, null, null, null, null, null, null, null)
+                : req;
         AiAvatarCapability cap = a.getMode() == AiAvatarCreationMode.REAL_CLONE ? AiAvatarCapability.FACE_CLONE : AiAvatarCapability.TXT2IMG;
-        ObjectNode input = baseInput(req);
-        input.put("variants", req.variants() == null ? 3 : Math.max(1, Math.min(5, req.variants())));
+        ObjectNode input = baseInput(body);
+        input.put("kind", "sampling");
+        int variants = body.variants() == null ? 3 : Math.max(1, Math.min(5, body.variants()));
+        input.put("variants", variants);
         input.put("_advanceStatusTo", AiAvatarStatus.SAMPLING.wire());
         attachPersona(input, a);
+
+        String batch = batchId();
+        String nluPrompt = input.hasNonNull("prompt") ? input.get("prompt").asText() : null;
+        if (a.getMode() == AiAvatarCreationMode.AI_ORIGINAL && nluPrompt != null && !nluPrompt.isBlank()) {
+            ObjectNode nluInput = mapper.createObjectNode();
+            nluInput.put("kind", "nlu");
+            nluInput.put("prompt", nluPrompt);
+            if (a.getStyleCategory() != null) nluInput.put("styleCategory", a.getStyleCategory());
+            jobService.createAndDispatch(userId, avatarId, AiAvatarCapability.NLU, "人设解析", nluInput, 1, batch);
+        }
         return jobService.createAndDispatch(userId, avatarId, cap, "打样", input,
-                req.variants() == null ? 3 : req.variants(), batchId());
+                variants, batch);
     }
 
     /** Step 2 草稿迭代：自然语言指令 img2img → 状态 draft_iterating。 */
@@ -211,8 +227,11 @@ public class AiAvatarService {
         AiAvatar a = requireOwned(avatarId, userId);
         ensureNotFrozen(a);
         ObjectNode input = baseInput(req);
+        input.put("kind", "draft");
         input.put("_advanceStatusTo", AiAvatarStatus.DRAFT_ITERATING.wire());
-        return jobService.createAndDispatch(userId, avatarId, AiAvatarCapability.IMG2IMG, "草稿迭代", input, 1, null);
+        int variants = req.variants() == null ? 2 : Math.max(1, Math.min(4, req.variants()));
+        input.put("variants", variants);
+        return jobService.createAndDispatch(userId, avatarId, AiAvatarCapability.IMG2IMG, "草稿迭代", input, variants, null);
     }
 
     /** Step 3 精调-外观编辑（妆容 / 发型 / 肤质 / 服饰 / 局部重绘）→ 状态 refining。 */
@@ -224,6 +243,7 @@ public class AiAvatarService {
             throw BusinessException.badRequest("AIAVATAR_BAD_CAPABILITY", "精调能力不支持：" + cap.wire());
         }
         ObjectNode input = baseInput(req);
+        input.put("kind", "refine");
         input.put("_advanceStatusTo", AiAvatarStatus.REFINING.wire());
         AiAvatarJob job = jobService.createAndDispatch(userId, avatarId, cap, "精调-" + cap.label(), input, 1, null);
         // 记录 refine edit（关联 job）
@@ -247,6 +267,7 @@ public class AiAvatarService {
         AiAvatar a = requireOwned(avatarId, userId);
         ensureNotFrozen(a);
         ObjectNode input = baseInput(req);
+        input.put("kind", "refine");
         input.put("_advanceStatusTo", AiAvatarStatus.REFINING.wire());
         return jobService.createAndDispatch(userId, avatarId, AiAvatarCapability.INPAINT, "局部重绘", input, 1, null);
     }
@@ -310,7 +331,9 @@ public class AiAvatarService {
         AiAvatar a = requireOwned(avatarId, userId);
         ensureNotFrozen(a);
         ObjectNode input = baseInput(req);
-        // 标准 4 图集 + 表情图
+        input.put("kind", "beautify");
+        applyStoryboardStandardShots(input);
+        // 无分镜入参时回退到旧的标准 4 图集 + 表情图。
         if (!input.has("standardShots")) {
             var arr = input.putArray("standardShots");
             for (AiAvatarStandardShot s : AiAvatarStandardShot.values()) arr.add(s.wire());
@@ -369,6 +392,8 @@ public class AiAvatarService {
         for (AiAvatarCapability cap : in.capabilities()) {
             if (cap != AiAvatarCapability.IMG23D && cap != AiAvatarCapability.IMG2VIDEO) continue;
             ObjectNode input = mapper.createObjectNode();
+            input.put("kind", "derive");
+            input.put("capability", cap.wire());
             if (in.baseAssetId() != null) input.put("baseAssetId", in.baseAssetId());
             if (in.videoDurationSec() != null) input.put("videoDurationSec", in.videoDurationSec());
             if (in.params() != null) input.set("params", in.params());
@@ -456,6 +481,26 @@ public class AiAvatarService {
             assetRepo.findById(req.baseAssetId()).ifPresent(as -> input.put("baseImageUrl", as.getFileUrl()));
         }
         return input;
+    }
+
+    private void applyStoryboardStandardShots(ObjectNode input) {
+        JsonNode storyboard = input.at("/params/storyboard");
+        if (storyboard == null || storyboard.isMissingNode() || !storyboard.path("shots").isArray()) {
+            return;
+        }
+        input.set("storyboard", storyboard);
+        JsonNode negativePrompt = storyboard.path("negativePrompt");
+        if (negativePrompt.isTextual()) {
+            input.put("negativePrompt", negativePrompt.asText());
+        }
+        var arr = input.putArray("standardShots");
+        for (JsonNode shot : storyboard.path("shots")) {
+            String wire = shot.path("standardShot").asText(AiAvatarStandardShot.FRONT_BUST.wire());
+            arr.add(AiAvatarStandardShot.fromWire(wire).wire());
+        }
+        if (arr.size() == 0) {
+            input.remove("standardShots");
+        }
     }
 
     private void attachPersona(ObjectNode input, AiAvatar a) {

@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // mocks/_register.ts — 集中注册所有 mock handler 到 apiFetch 拦截层。
-// 由 app/providers.tsx 顶层 side-effect import；USE_MOCK=0 时 registry 不被读取。
+// 由 app/providers.tsx 顶层 side-effect import；USE_MOCK=0 时 registerMocks 为 no-op。
 //
 // 添加新域：在此 import "./_handlers/<domain>"。每个 handler 文件末尾自带
 // registerMocks([...]) 调用。

@@ -187,7 +187,7 @@ public class MaterialOpsService {
         videoRepo.deleteById(id);
     }
 
-    // ── AI 起稿 / 变量抽取（接真 LLM，失败降级，见 MaterialAiService） ──────────────
+    // ── AI 起稿 / 变量抽取（接真 LLM，失败透出明确错误，见 MaterialAiService） ──────────────
     /**
      * AI 起脚本候选（不落库，仅返回；用户选用并保存时才走 saveScript）。
      * 上下文优先取库内 Product（权威卖点）；库里没有则用请求里带的字段构造临时上下文。

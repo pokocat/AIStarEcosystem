@@ -25,7 +25,7 @@ import java.util.Map;
  * （DB→resource .md→code 兜底），运营可在 web-aiavatar /config 改写。PromptService 不可用时
  * 退回内置兜底文案（行为与旧版一致）。
  *
- * 网关未配置对应用途端点时 healthcheck=false；registry 在 dev 回退 mock，prod 抛错可见。
+ * 网关未配置对应用途端点时 healthcheck=false；registry 会保留真实 provider 并让任务显性失败，不回退 mock。
  */
 public class BackendNluProvider extends AbstractCapabilityProvider {
 

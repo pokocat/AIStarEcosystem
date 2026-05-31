@@ -35,7 +35,11 @@ export function DeriveStep({ detail, reload }: { detail: AiAvatarDetail; reload:
     if (sel.video) caps.push("img2video");
     if (!caps.length) return;
     try {
-      await deriveAssets(avatar.id, { capabilities: caps, videoDurationSec: dur, params: { precision, scene } });
+      await deriveAssets(avatar.id, {
+        capabilities: caps,
+        videoDurationSec: dur,
+        params: { precision, scene },
+      });
       reload();
     } catch (e) {
       toast(e instanceof Error ? e.message : "提交失败", { icon: "!", tone: "var(--err)" });

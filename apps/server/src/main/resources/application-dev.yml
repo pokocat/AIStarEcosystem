@@ -26,10 +26,11 @@ spring:
 aep:
   dev-auth:
     enabled: true
-  # 本地 fake 大模型默认开启（联调）。跑 scripts/dev-fake-llm-server.mjs 即可让形象锻造 /
-  # 短剧脚本 / 视频生成走通真实 HTTP 调用。不想用时设 AEP_DEV_FAKE_LLM_ENABLED=false。
+  # 本地 fake 大模型默认关闭。需要离线联调 fake 服务时，显式设
+  # AEP_DEV_FAKE_LLM_ENABLED=true 并启动 scripts/dev-fake-llm-server.mjs。
+  # dev 连真实后端时不允许自动绑定 fake 端点。
   dev-fake-llm:
-    enabled: ${AEP_DEV_FAKE_LLM_ENABLED:true}
+    enabled: ${AEP_DEV_FAKE_LLM_ENABLED:false}
   # CDN 公开 URL 必须是绝对地址 — sau-service 是独立进程（端口 8090），
   # 拿到相对路径 `/cdn/...` 时 httpx 会抛 UnsupportedProtocol（缺 http://）。
   # 前端浏览器同样可以直接打开这个绝对 URL，因为 server 在 8080 暴露 /cdn/** 静态 handler。

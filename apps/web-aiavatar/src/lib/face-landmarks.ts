@@ -21,6 +21,57 @@ import type { FaceAnchors } from "./face-warp";
 const DEFAULT_WASM_BASE = "/mediapipe/wasm";
 const DEFAULT_MODEL_URL = "/mediapipe/face_landmarker.task";
 
+const MEDIAPIPE_CONSOLE_NOISE = [
+  "Created TensorFlow Lite XNNPACK delegate for CPU",
+  "Feedback manager requires a model with a single signature inference",
+  "face_landmarker_graph.cc",
+  "gl_context.cc",
+  "vision_wasm_internal.js",
+];
+
+function isMediapipeConsoleNoise(args: unknown[]): boolean {
+  const text = args.map((arg) => {
+    if (typeof arg === "string") return arg;
+    if (arg instanceof Error) return arg.message;
+    return "";
+  }).join(" ");
+  return MEDIAPIPE_CONSOLE_NOISE.some((needle) => text.includes(needle));
+}
+
+function suppressMediapipeConsoleNoise<T>(fn: () => T): T {
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  console.error = (...args: unknown[]) => {
+    if (!isMediapipeConsoleNoise(args)) originalError(...args);
+  };
+  console.warn = (...args: unknown[]) => {
+    if (!isMediapipeConsoleNoise(args)) originalWarn(...args);
+  };
+  try {
+    return fn();
+  } finally {
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
+}
+
+async function suppressMediapipeConsoleNoiseAsync<T>(fn: () => Promise<T>): Promise<T> {
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  console.error = (...args: unknown[]) => {
+    if (!isMediapipeConsoleNoise(args)) originalError(...args);
+  };
+  console.warn = (...args: unknown[]) => {
+    if (!isMediapipeConsoleNoise(args)) originalWarn(...args);
+  };
+  try {
+    return await fn();
+  } finally {
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
+}
+
 function wasmBase(): string {
   return process.env.NEXT_PUBLIC_MEDIAPIPE_WASM_BASE || DEFAULT_WASM_BASE;
 }
@@ -82,11 +133,13 @@ async function getLandmarker() {
   if (!landmarkerPromise) {
     landmarkerPromise = (async () => {
       const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
-      const fileset = await FilesetResolver.forVisionTasks(wasmBase());
-      return FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: modelUrl(), delegate: "CPU" },
-        runningMode: "IMAGE",
-        numFaces: 1,
+      return suppressMediapipeConsoleNoiseAsync(async () => {
+        const fileset = await FilesetResolver.forVisionTasks(wasmBase());
+        return FaceLandmarker.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: modelUrl(), delegate: "CPU" },
+          runningMode: "IMAGE",
+          numFaces: 1,
+        });
       });
     })().catch((e) => {
       landmarkerPromise = null; // 失败可重试
@@ -114,7 +167,7 @@ export async function detectFaceAnchors(
   h: number,
 ): Promise<DetectResult> {
   const landmarker = await getLandmarker();
-  const res = landmarker.detect(source as HTMLImageElement);
+  const res = suppressMediapipeConsoleNoise(() => landmarker.detect(source as HTMLImageElement));
   const faces = res.faceLandmarks;
   if (!faces || faces.length === 0 || !faces[0] || faces[0].length < 468) {
     throw new Error("NO_FACE_DETECTED");

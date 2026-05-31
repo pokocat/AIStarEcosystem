@@ -7,9 +7,9 @@ import { useRouter } from "next/navigation";
 import type { AiAvatarDetail } from "@ai-star-eco/types/ai-avatar";
 import { Btn, Panel, Portrait, Tag, inputStyle } from "@/components/ui/primitives";
 import { Icons } from "@/components/ui/icons";
-import { STYLE_TEMPLATES, UI_CONFIG_DEFAULTS } from "@/constants/aiavatar-ui";
+import { STYLE_LOOK_TEMPLATES, STYLE_TEMPLATES, UI_CONFIG_DEFAULTS } from "@/constants/aiavatar-ui";
 import { PORTRAITS } from "@/mocks/seed";
-import { updateAvatar, uploadSourcePhoto, addSourceText, signLicense, startSampling, getUiConfig } from "@/api/ai-avatar";
+import { updateAvatar, uploadReferenceImage, uploadSourcePhoto, addSourceText, signLicense, startSampling, getUiConfig } from "@/api/ai-avatar";
 import { useApi } from "@/lib/hooks";
 import { toast } from "@/components/ui/toast";
 
@@ -22,13 +22,143 @@ function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: stri
   );
 }
 
+function DesignSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div tabIndex={0} onBlur={() => window.setTimeout(() => setOpen(false), 100)} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          ...inputStyle,
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <span>{value}</span>
+        <Icons.chevD size={15} style={{ color: "var(--ink-2)" }} />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            zIndex: 20,
+            left: 0,
+            right: 0,
+            top: "calc(100% + 6px)",
+            padding: 6,
+            borderRadius: "var(--r-md)",
+            border: "1px solid var(--line-2)",
+            background: "var(--bg-1)",
+            boxShadow: "0 18px 48px rgba(0,0,0,.32)",
+            maxHeight: 260,
+            overflowY: "auto",
+          }}
+        >
+          {options.map((option) => {
+            const on = option === value;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "9px 10px",
+                  border: "none",
+                  borderRadius: 7,
+                  background: on ? "var(--accent-soft)" : "transparent",
+                  color: on ? "var(--accent-hi)" : "var(--ink-1)",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  textAlign: "left",
+                }}
+              >
+                {option}
+                {on && <Icons.check size={14} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ALL_TAGS = ["带货主播", "商用", "个人分身", "品牌IP", "泛娱乐"];
+const SCENE_OPTIONS = ["带货直播", "品牌代言", "个人分身", "泛娱乐", "虚拟主播", "课程讲师"];
+
+const NAME_SUGGESTIONS = [
+  "星眠", "鹿禾", "青岚", "若白", "云栖", "南音", "澈夏", "知予",
+  "Nova", "Mira", "Luna", "Astra", "Nori", "Iris",
+];
+
+const PERSONA_STYLE_PRESETS = [
+  {
+    id: "real-influencer",
+    name: "写实虚拟达人",
+    tag: "商用写实",
+    text: "25 岁左右写实虚拟达人，鹅蛋脸，清透底妆，亲和但专业，适合直播带货和品牌短视频，服装为浅色通勤套装，柔和棚拍光，正面半身构图。",
+  },
+  {
+    id: "editorial-fashion",
+    name: "时装杂志感",
+    tag: "高级质感",
+    text: "都市时装杂志风数字人，冷静自信，五官立体，轻奢妆容，黑白灰极简造型，电影级侧逆光，背景干净，适合品牌代言和新品发布。",
+  },
+  {
+    id: "cyber-idol",
+    name: "赛博虚拟偶像",
+    tag: "未来感",
+    text: "未来感赛博虚拟偶像，银灰短发，虹膜微光，机能风外套，蓝紫霓虹边缘光，性格聪明利落，适合科技品牌、游戏和潮流内容。",
+  },
+  {
+    id: "anime-vtuber",
+    name: "二次元主播",
+    tag: "动漫渲染",
+    text: "二次元虚拟主播，大眼但比例自然，蓬松短发，元气开朗，服装带轻量舞台感，干净赛璐璐渲染，适合直播互动和粉丝运营。",
+  },
+  {
+    id: "guofeng-muse",
+    name: "新国风主理人",
+    tag: "东方审美",
+    text: "新国风数字主理人，温润含蓄，东方古典妆造，发饰克制精致，丝绸质感服装，暖色室内光，适合文旅、茶饮、美妆和非遗品牌。",
+  },
+  {
+    id: "soft-3d",
+    name: "轻 3D 品牌吉祥物",
+    tag: "亲和可爱",
+    text: "轻 3D 风格品牌数字人，圆润面部比例，干净大色块服装，微笑亲和，柔和漫反射光，像可长期运营的品牌吉祥物但不过度幼态。",
+  },
+];
 
 export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reload: () => void }) {
   const router = useRouter();
   const { avatar } = detail;
   const isReal = avatar.mode === "real_clone";
   const [name, setName] = React.useState(avatar.name);
+  const nameSuggestions = React.useMemo(() => shuffle(NAME_SUGGESTIONS).slice(0, 3), []);
+  const [suggestionIndex, setSuggestionIndex] = React.useState(0);
+  const recommendedName = nameSuggestions[suggestionIndex] ?? "星眠";
+  const [scene, setScene] = React.useState("带货直播");
   const [tags, setTags] = React.useState<string[]>(avatar.tags ?? []);
   const [agreed, setAgreed] = React.useState(false);
   const [scope, setScope] = React.useState("commercial");
@@ -46,11 +176,16 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
     }
   }, [uiCfg, isReal, persona]);
   const [style, setStyle] = React.useState(avatar.styleCategory ?? (isReal ? "写实主播风" : "简约风"));
+  const [selectedLookId, setSelectedLookId] = React.useState(STYLE_LOOK_TEMPLATES[0]?.id ?? "");
+  const [selectedReferenceId, setSelectedReferenceId] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const referenceRef = React.useRef<HTMLInputElement>(null);
 
   const photos = detail.sourceMaterials.filter((m) => m.kind === "photo");
+  const referenceAssets = detail.assets.filter((a) => a.kind === "reference_image");
+  const selectedLook = STYLE_LOOK_TEMPLATES.find((t) => t.id === selectedLookId) ?? STYLE_LOOK_TEMPLATES[0];
   const canNext = isReal ? photos.length >= 3 && agreed : persona.trim().length > 4;
 
   const onPick = async (files: FileList | null) => {
@@ -64,6 +199,24 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
       toast(e instanceof Error ? e.message : "上传失败", { icon: "!", tone: "var(--err)" });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const onPickReference = async (files: FileList | null) => {
+    const f = files?.[0];
+    if (!f) return;
+    setUploading(true);
+    try {
+      const asset = await uploadReferenceImage(avatar.id, f);
+      setSelectedReferenceId(asset.id);
+      setSelectedLookId("");
+      reload();
+      toast("参考风格图已上传");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "上传失败", { icon: "!", tone: "var(--err)" });
+    } finally {
+      setUploading(false);
+      if (referenceRef.current) referenceRef.current.value = "";
     }
   };
 
@@ -89,13 +242,18 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
   const startGen = async () => {
     setBusy(true);
     try {
-      await updateAvatar(avatar.id, { name: name || (isReal ? "林夕" : "Aria"), persona, styleCategory: style, tags });
+      await updateAvatar(avatar.id, { name: name || recommendedName, persona, styleCategory: style, tags: [...new Set([...tags, scene])] });
       if (isReal) {
         await signLicense(avatar.id, { scope, signatureName: name || avatar.name || "授权人", platforms: ["全平台"], boundAssetIds: photos.map((p) => p.assetId ?? "").filter(Boolean) });
       } else {
         await addSourceText(avatar.id, persona, "persona");
       }
-      await startSampling(avatar.id, { variants: 5, prompt: persona });
+      await startSampling(avatar.id, {
+        variants: 5,
+        prompt: selectedLook?.prompt ? `${persona}\n风格参考：${selectedLook.prompt}` : persona,
+        referenceAssetId: selectedReferenceId ?? undefined,
+        params: selectedLook ? { scene, styleLookId: selectedLook.id, styleLookSampleUrl: selectedLook.sampleUrl } : { scene },
+      });
       router.push(`/avatars/${avatar.id}/sampling`);
     } catch (e) {
       toast(e instanceof Error ? e.message : "操作失败", { icon: "!", tone: "var(--err)" });
@@ -113,17 +271,43 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
       <div style={{ display: "grid", gridTemplateColumns: isReal ? "1fr 360px" : "1fr", gap: 28, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
           {/* 基本信息 */}
-          <Panel title="基本信息">
+          <Panel title="基本信息" style={{ overflow: "visible", position: "relative", zIndex: 5 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <div>
                 <FieldLabel>数字人名称</FieldLabel>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：林夕" style={inputStyle} />
+                <div style={{ position: "relative" }}>
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`AI 推荐：${recommendedName}`} style={{ ...inputStyle, paddingRight: 112 }} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setName(recommendedName);
+                      setSuggestionIndex((i) => (i + 1) % nameSuggestions.length);
+                    }}
+                    style={{
+                      position: "absolute",
+                      right: 7,
+                      top: 7,
+                      height: 28,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "0 9px",
+                      borderRadius: 7,
+                      border: "1px solid var(--accent-line)",
+                      background: "var(--accent-soft)",
+                      color: "var(--accent-hi)",
+                      fontSize: 11.5,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Icons.sparkle size={13} />
+                    推荐名
+                  </button>
+                </div>
               </div>
               <div>
                 <FieldLabel>使用场景</FieldLabel>
-                <select style={{ ...inputStyle, appearance: "none" }}>
-                  {["带货直播", "品牌代言", "个人分身", "泛娱乐"].map((o) => <option key={o}>{o}</option>)}
-                </select>
+                <DesignSelect value={scene} options={SCENE_OPTIONS} onChange={setScene} />
               </div>
             </div>
             <div style={{ marginTop: 16 }}>
@@ -132,7 +316,7 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
                 {ALL_TAGS.map((tg) => {
                   const on = tags.includes(tg);
                   return (
-                    <button key={tg} onClick={() => setTags((s) => (on ? s.filter((x) => x !== tg) : [...s, tg]))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                    <button key={tg} type="button" onClick={() => setTags((s) => (on ? s.filter((x) => x !== tg) : [...s, tg]))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
                       <Tag on={on}># {tg}</Tag>
                     </button>
                   );
@@ -155,7 +339,7 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
                     </div>
                   </div>
                 ))}
-                <button onClick={() => fileRef.current?.click()} disabled={uploading} style={{ aspectRatio: "3 / 4", borderRadius: "var(--r-md)", border: "1.5px dashed var(--line-3)", background: "transparent", color: "var(--ink-2)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} style={{ aspectRatio: "3 / 4", borderRadius: "var(--r-md)", border: "1.5px dashed var(--line-3)", background: "transparent", color: "var(--ink-2)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   <Icons.upload size={22} />
                   <span style={{ fontSize: 12 }}>{uploading ? "上传中…" : "上传照片"}</span>
                 </button>
@@ -171,16 +355,87 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
           ) : (
             <Panel title="人设描述词" right={<Tag on>LLM 解析 → 结构化人设</Tag>}>
               <textarea value={persona} onChange={(e) => setPersona(e.target.value)} rows={4} placeholder="角色人设、外貌、风格、穿搭、气质…" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
+              <div style={{ marginTop: 14 }}>
+                <FieldLabel hint="点击直接填入，可再手动修改">风格化数字人预设</FieldLabel>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  {PERSONA_STYLE_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPersona(p.text)}
+                      style={{
+                        minHeight: 92,
+                        padding: 12,
+                        borderRadius: "var(--r-md)",
+                        border: "1px solid var(--line)",
+                        background: "var(--bg-2)",
+                        color: "var(--ink-0)",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--accent-hi)" }}>{p.tag}</span>
+                      </span>
+                      <span style={{ display: "block", marginTop: 7, color: "var(--ink-2)", fontSize: 11.5, lineHeight: 1.45 }}>
+                        {p.text.slice(0, 42)}…
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 {personaChips.map((t) => (
-                  <button key={t} onClick={() => setPersona((p) => p + " " + t)} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--ink-1)", cursor: "pointer" }}>+ {t}</button>
+                  <button key={t} type="button" onClick={() => setPersona((p) => p + " " + t)} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--ink-1)", cursor: "pointer" }}>+ {t}</button>
                 ))}
               </div>
               <div style={{ marginTop: 18 }}>
-                <FieldLabel hint="可选 · 仅作风格参考，非肖像">参考风格图</FieldLabel>
-                <div style={{ display: "flex", gap: 12 }}>
-                  {[0, 1].map((i) => <div key={i} style={{ width: 90 }}><Portrait hue={268} ratio="1 / 1" label="风格图" /></div>)}
-                  <button style={{ width: 90, aspectRatio: "1", borderRadius: "var(--r-md)", border: "1.5px dashed var(--line-3)", background: "transparent", color: "var(--ink-2)", cursor: "pointer", display: "grid", placeItems: "center" }}><Icons.plus size={20} /></button>
+                <FieldLabel hint="可选 · 可选模板或上传参考图">参考风格图</FieldLabel>
+                <input ref={referenceRef} type="file" accept="image/*" hidden onChange={(e) => onPickReference(e.target.files)} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+                  {STYLE_LOOK_TEMPLATES.map((look) => {
+                    const on = selectedLookId === look.id && !selectedReferenceId;
+                    return (
+                      <button
+                        key={look.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLookId(look.id);
+                          setSelectedReferenceId(null);
+                          setStyle(look.name);
+                        }}
+                        style={{ border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                      >
+                        <Portrait hue={look.hue} src={look.sampleUrl} ratio="1 / 1" label={look.name} sub={look.desc} selected={on} />
+                      </button>
+                    );
+                  })}
+                  {referenceAssets.map((asset) => {
+                    const on = selectedReferenceId === asset.id;
+                    return (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedReferenceId(asset.id);
+                          setSelectedLookId("");
+                        }}
+                        style={{ border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                      >
+                        <Portrait hue={268} src={asset.thumbnailUrl || asset.fileUrl} ratio="1 / 1" label="上传参考" sub="自定义图片" selected={on} />
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => referenceRef.current?.click()}
+                    disabled={uploading}
+                    style={{ aspectRatio: "1", borderRadius: "var(--r-md)", border: "1.5px dashed var(--line-3)", background: "transparent", color: "var(--ink-2)", cursor: uploading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 7 }}
+                  >
+                    <Icons.upload size={20} />
+                    <span style={{ fontSize: 11.5 }}>{uploading ? "上传中…" : "上传图片"}</span>
+                  </button>
                 </div>
               </div>
             </Panel>
@@ -192,7 +447,7 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
               {STYLE_TEMPLATES.map((s) => {
                 const on = style === s.name;
                 return (
-                  <button key={s.id} onClick={() => setStyle(s.name)} style={{ display: "flex", gap: 12, alignItems: "center", padding: 12, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line)") }}>
+                  <button key={s.id} type="button" onClick={() => setStyle(s.name)} style={{ display: "flex", gap: 12, alignItems: "center", padding: 12, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line)") }}>
                     <div style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, background: `linear-gradient(140deg, oklch(0.5 0.12 ${s.hue}), oklch(0.3 0.08 ${s.hue}))` }} />
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: on ? "var(--accent-hi)" : "var(--ink-0)" }}>{s.name}</div>
@@ -218,7 +473,7 @@ export function MaterialStep({ detail, reload }: { detail: AiAvatarDetail; reloa
               <FieldLabel>授权范围</FieldLabel>
               <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
                 {([["commercial", "商用"], ["noncommercial", "非商用"]] as const).map(([k, l]) => (
-                  <button key={k} onClick={() => setScope(k)} style={{ flex: 1, padding: "9px", fontSize: 13, borderRadius: "var(--r-md)", cursor: "pointer", border: "1px solid " + (scope === k ? "var(--accent-line)" : "var(--line)"), background: scope === k ? "var(--accent-soft)" : "var(--bg-2)", color: scope === k ? "var(--accent-hi)" : "var(--ink-1)" }}>{l}</button>
+                  <button key={k} type="button" onClick={() => setScope(k)} style={{ flex: 1, padding: "9px", fontSize: 13, borderRadius: "var(--r-md)", cursor: "pointer", border: "1px solid " + (scope === k ? "var(--accent-line)" : "var(--line)"), background: scope === k ? "var(--accent-soft)" : "var(--bg-2)", color: scope === k ? "var(--accent-hi)" : "var(--ink-1)" }}>{l}</button>
                 ))}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
@@ -262,4 +517,13 @@ function OutputBox({ isReal, inline }: { isReal: boolean; inline?: boolean }) {
       ))}
     </div>
   );
+}
+
+function shuffle<T>(items: readonly T[]): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }

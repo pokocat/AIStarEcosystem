@@ -11,7 +11,7 @@ import { SourceBadge } from "@/components/common/source-badge";
 import { VideoPlayer, Viewer3D } from "@/components/common/media";
 import { Icons } from "@/components/ui/icons";
 import { useApi } from "@/lib/hooks";
-import { getAvatarDetail, forkAvatar, revertToVersion } from "@/api/ai-avatar";
+import { archiveAvatar, getAvatarDetail, forkAvatar, revertToVersion } from "@/api/ai-avatar";
 import { modeLabel, styleHue, STATUS_NEXT_STEP, COMPOSITIONS } from "@/constants/aiavatar-ui";
 import { hueFor } from "@/lib/hue";
 import { fmtDate, fmtDateTime, fmtBytes } from "@/lib/format";
@@ -24,6 +24,7 @@ export default function AvatarDetailPage() {
   const { data: detail, loading, reload } = useApi(() => getAvatarDetail(id), [id]);
   const [tab, setTab] = React.useState("images");
   const [active, setActive] = React.useState(0);
+  const [moreOpen, setMoreOpen] = React.useState(false);
 
   if (loading && !detail) return <Center>载入资产…</Center>;
   if (!detail) return <Center tone="err">资产不存在</Center>;
@@ -69,11 +70,28 @@ export default function AvatarDetailPage() {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, position: "relative" }}>
           <Btn variant="line" icon={Icons.copy} onClick={async () => { const f = await forkAvatar(avatar.id); toast("已另存为新数字人草稿", { icon: "⎘" }); router.push(`/avatars/${f.id}`); }}>另存为新数字人</Btn>
-          <Btn variant="line" icon={Icons.download} onClick={() => toast(`资产包下载中 · ${avatar.id}.zip`)}>下载资产包</Btn>
+          <Btn variant="line" icon={Icons.download} onClick={() => downloadAssetManifest(detail)}>下载资产包</Btn>
           {avatar.status !== "archived" && continueStep && <Btn variant="pri" icon={Icons.sliders} onClick={() => router.push(`/avatars/${avatar.id}/${continueStep}`)}>继续编辑</Btn>}
-          <IconBtn icon={Icons.more} onClick={() => toast("更多操作：归档 / 转移 / 删除", { icon: "⋯" })} />
+          <IconBtn icon={Icons.more} active={moreOpen} onClick={() => setMoreOpen((v) => !v)} />
+          {moreOpen && (
+            <MoreActions
+              detail={detail}
+              currentAssetUrl={cur?.src}
+              onClose={() => setMoreOpen(false)}
+              onFork={async () => {
+                const f = await forkAvatar(avatar.id);
+                toast("已另存为新数字人草稿", { icon: "⎘" });
+                router.push(`/avatars/${f.id}`);
+              }}
+              onArchive={async () => {
+                await archiveAvatar(avatar.id);
+                await reload();
+                toast("已归档入库");
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -144,6 +162,189 @@ export default function AvatarDetailPage() {
       </div>
     </div>
   );
+}
+
+function MoreActions({
+  detail,
+  currentAssetUrl,
+  onClose,
+  onFork,
+  onArchive,
+}: {
+  detail: AiAvatarDetail;
+  currentAssetUrl?: string | null;
+  onClose: () => void;
+  onFork: () => Promise<void>;
+  onArchive: () => Promise<void>;
+}) {
+  const { avatar } = detail;
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const run = async (key: string, fn: () => Promise<void> | void) => {
+    try {
+      setBusy(key);
+      await fn();
+      onClose();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "操作失败", { icon: "!", tone: "var(--err)" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        zIndex: 80,
+        right: 0,
+        top: "calc(100% + 8px)",
+        width: 246,
+        padding: 8,
+        borderRadius: "var(--r-md)",
+        border: "1px solid var(--line-2)",
+        background: "var(--bg-1)",
+        boxShadow: "0 22px 60px rgba(0,0,0,.42)",
+      }}
+      onMouseLeave={onClose}
+    >
+      <MenuItem icon={Icons.copy} label="复制详情链接" busy={busy === "copy-link"} onClick={() => run("copy-link", async () => {
+        await copyText(window.location.href);
+        toast("已复制详情链接");
+      })} />
+      <MenuItem icon={Icons.tag} label="复制资产 ID" busy={busy === "copy-id"} onClick={() => run("copy-id", async () => {
+        await copyText(avatar.id);
+        toast("已复制资产 ID");
+      })} />
+      <MenuItem icon={Icons.download} label="下载当前预览图" disabled={!currentAssetUrl} busy={busy === "download-image"} onClick={() => run("download-image", () => {
+        if (!currentAssetUrl) throw new Error("当前没有可下载预览图");
+        downloadUrl(currentAssetUrl, `${safeFilename(avatar.name)}-${avatar.id.slice(0, 8)}.png`);
+      })} />
+      <MenuItem icon={Icons.doc} label="下载资产清单" busy={busy === "manifest"} onClick={() => run("manifest", () => downloadAssetManifest(detail))} />
+      <Divider />
+      <MenuItem icon={Icons.copy} label="另存为新数字人" busy={busy === "fork"} onClick={() => run("fork", onFork)} />
+      <MenuItem icon={Icons.folder} label={avatar.status === "archived" ? "已归档" : "归档入库"} disabled={avatar.status === "archived"} busy={busy === "archive"} onClick={() => run("archive", onArchive)} />
+      <Divider />
+      <div style={{ padding: "8px 9px", fontSize: 11.5, lineHeight: 1.5, color: "var(--ink-3)" }}>
+        转移所有权 / 彻底删除需要后端审计接口，当前不展示假按钮。
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({
+  icon: I,
+  label,
+  onClick,
+  disabled,
+  busy,
+}: {
+  icon: typeof Icons[keyof typeof Icons];
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || busy}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        padding: "9px 10px",
+        border: "none",
+        borderRadius: 7,
+        background: "transparent",
+        color: disabled ? "var(--ink-3)" : "var(--ink-1)",
+        cursor: disabled || busy ? "not-allowed" : "pointer",
+        fontSize: 13,
+        textAlign: "left",
+        fontFamily: "var(--font-ui)",
+        opacity: busy ? 0.65 : 1,
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled && !busy) {
+          e.currentTarget.style.background = "var(--bg-2)";
+          e.currentTarget.style.color = "var(--ink-0)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+        e.currentTarget.style.color = disabled ? "var(--ink-3)" : "var(--ink-1)";
+      }}
+    >
+      <I size={15} />
+      <span>{busy ? "处理中..." : label}</span>
+    </button>
+  );
+}
+
+function Divider() {
+  return <div style={{ height: 1, background: "var(--line)", margin: "6px 4px" }} />;
+}
+
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.style.position = "fixed";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  el.select();
+  document.execCommand("copy");
+  document.body.removeChild(el);
+}
+
+function downloadAssetManifest(detail: AiAvatarDetail) {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    avatar: detail.avatar,
+    assets: detail.assets.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      standardShot: a.standardShot,
+      fileUrl: absoluteUrl(a.fileUrl),
+      thumbnailUrl: a.thumbnailUrl ? absoluteUrl(a.thumbnailUrl) : null,
+      mimeType: a.mimeType,
+      width: a.width,
+      height: a.height,
+      fileSize: a.fileSize,
+      engine: a.engine,
+      providerMode: a.providerMode,
+    })),
+    versions: detail.versions,
+    licenses: detail.licenses,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  downloadUrl(url, `${safeFilename(detail.avatar.name)}-${detail.avatar.id.slice(0, 8)}-assets.json`);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("已下载资产清单 JSON");
+}
+
+function downloadUrl(url: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function absoluteUrl(url: string) {
+  if (/^https?:\/\//.test(url)) return url;
+  return new URL(url, window.location.origin).toString();
+}
+
+function safeFilename(name: string) {
+  return name.trim().replace(/[\\/:*?"<>|]+/g, "_").slice(0, 48) || "aiavatar";
 }
 
 function InfoBlock({ title, rows }: { title: string; rows: [string, string][] }) {

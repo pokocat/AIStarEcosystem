@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // _bootstrap-mocks.ts — api-client 自带的 auth + account mock handler。
-// 由 index.ts 顶层 side-effect import；USE_MOCK=0 时 registry 不被读取。
+// 由 index.ts 顶层 side-effect import；USE_MOCK=0 时不注册任何 handler。
 //
 // 业务领域 mock 由各 web app 的 src/mocks/_register.ts 自行注册；
 // 这里只兜 dev-login / activate / /me / /me/wallet 这些"启动条件"接口，
@@ -12,12 +12,12 @@
 
 import type { AepUser } from "@ai-star-eco/types/account";
 import type { LicenseRedeemRequest, LicenseRedeemResult } from "@ai-star-eco/types/license";
-import { mockDelay, setAuthToken } from "./_client";
+import { mockDelay, setAuthToken, USE_MOCK } from "./_client";
 import { registerMocks } from "./_mock-registry";
 import { MOCK_TENANTS, MOCK_USER, MOCK_WALLET } from "./_mocks";
 import type { DevAccount, DevLoginResult, PasswordLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult } from "./api/auth";
 
-registerMocks([
+if (USE_MOCK) registerMocks([
   // ── account ──────────────────────────────────────────────────────────────
   { method: "GET", pattern: "/me", handler: () => mockDelay(MOCK_USER) },
   {

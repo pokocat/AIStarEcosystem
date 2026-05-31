@@ -10,8 +10,10 @@ mixcut-assets/
 mixcut-work/
 cdn-mock/
 
-# 数字人资产中心运行产出 / 真人照片加密存储（dev 默认 ./dh-assets，生产用 AEP_DH_ASSET_DIR / AEP_DH_WORK_DIR 指向他处）。
+# AiAvatar 资产中心运行产出 / 真人照片加密存储（dev 默认 ./aiavatar-assets，生产用 AEP_AIAVATAR_ASSET_DIR / AEP_AIAVATAR_WORK_DIR 指向他处）。
 # 测试 / dev 运行时由 Provider 落盘的图 / 视频 / 3D / 加密照片，不入 git。
+aiavatar-assets/
+aiavatar-work/
 dh-assets/
 dh-work/
 

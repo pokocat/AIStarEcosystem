@@ -4,7 +4,7 @@
 // 设计目标：把「USE_MOCK 短路」从业务 api/*.ts 抽到网络边界。
 // 业务模块只写 apiFetch(...)，mock 数据集中在各 web app 的 mocks/_handlers/ 下，
 // 通过 registerMock(method, pattern, handler) 注册。USE_MOCK=1 时 apiFetch
-// 优先命中 registry；USE_MOCK=0 时 registry 完全不被读取，正常走网络。
+// 优先命中 registry；USE_MOCK=0 时注册动作本身就是 no-op，正常走网络。
 //
 // 路径模板：/me/scripts/:scriptId/versions —— ":xxx" 段会被 captured 为 params。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +28,10 @@ interface MockRoute {
 
 const routes: MockRoute[] = [];
 
+const REGISTRY_ENABLED: boolean =
+  typeof process !== "undefined" &&
+  process.env.NEXT_PUBLIC_USE_MOCK === "1";
+
 function splitPath(p: string): string[] {
   // 移除查询串 + 去前导斜杠后按 "/" 切片。保留空段以便长度比对。
   const noQuery = p.split("?")[0] ?? "";
@@ -50,6 +54,7 @@ export function registerMock<T>(
   pattern: string,
   handler: MockHandler<T>
 ): void {
+  if (!REGISTRY_ENABLED) return;
   const compiled = compile(pattern);
   const idx = routes.findIndex(
     (r) =>
@@ -71,6 +76,7 @@ export function registerMocks(
 
 /** 清空（测试 / 调试用）。 */
 export function clearMocks(): void {
+  if (!REGISTRY_ENABLED) return;
   routes.length = 0;
 }
 

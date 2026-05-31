@@ -20,6 +20,7 @@ export function SamplingStep({ detail, reload }: { detail: AiAvatarDetail; reloa
   const router = useRouter();
   const { avatar } = detail;
   const job = detail.recentJobs.find((j) => (j.input as { kind?: string } | null)?.kind === "sampling");
+  const nluJob = detail.recentJobs.find((j) => (j.input as { kind?: string } | null)?.kind === "nlu");
   const running = !!job && (job.status === "running" || job.status === "queued");
   const [mode, setMode] = React.useState<"grid" | "side" | "slider">("grid");
   const [picked, setPicked] = React.useState<string | null>(null);
@@ -61,6 +62,7 @@ export function SamplingStep({ detail, reload }: { detail: AiAvatarDetail; reloa
     return (
       <div style={{ padding: 36 }}>
         <Header sub="尚未开始打样" />
+        <NluNotice job={nluJob} />
         <div style={{ display: "grid", placeItems: "center", padding: "60px 0", gap: 18 }}>
           <div style={{ color: "var(--ink-2)", fontSize: 14 }}>点击下方开始第一轮 AI 打样生成。</div>
           <Btn variant="pri" size="lg" icon={Icons.sparkle} onClick={restart}>开始打样</Btn>
@@ -73,11 +75,28 @@ export function SamplingStep({ detail, reload }: { detail: AiAvatarDetail; reloa
     return (
       <div style={{ padding: 36 }}>
         <Header sub="第一轮 AI 生成 · 快速出初稿" />
+        <NluNotice job={nluJob} />
         <Generating
           count={(job.input as { variants?: number } | null)?.variants ?? 5}
           pct={job.progress}
           label={avatar.mode === "real_clone" ? "InstantID · 单图 ID 保持复刻 + 风格迁移" : "SDXL / FLUX · 文生图原创人像"}
         />
+      </div>
+    );
+  }
+
+  if (job.status === "failed") {
+    return (
+      <div style={{ padding: 36 }}>
+        <Header sub="打样任务失败" />
+        <NluNotice job={nluJob} />
+        <div style={{ display: "grid", placeItems: "center", padding: "60px 0", gap: 16, color: "var(--ink-1)", textAlign: "center" }}>
+          <div style={{ width: 52, height: 52, borderRadius: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,107,107,.45)", background: "rgba(255,107,107,.12)", color: "var(--err)" }}>
+            <Icons.x size={24} />
+          </div>
+          <div style={{ maxWidth: 520, fontSize: 13.5, lineHeight: 1.7 }}>{job.errorMessage ?? "生成服务暂不可用，请稍后重试。"}</div>
+          <Btn variant="pri" size="lg" icon={Icons.retry} onClick={restart}>重新打样</Btn>
+        </div>
       </div>
     );
   }
@@ -93,6 +112,7 @@ export function SamplingStep({ detail, reload }: { detail: AiAvatarDetail; reloa
           </div>
         }
       />
+      <NluNotice job={nluJob} />
 
       {mode === "grid" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginTop: 8 }}>
@@ -124,6 +144,22 @@ export function SamplingStep({ detail, reload }: { detail: AiAvatarDetail; reloa
         </div>
         <Btn variant="pri" size="lg" iconR={Icons.arrowR} disabled={!picked || busy} onClick={proceed}>进入草稿迭代</Btn>
       </div>
+    </div>
+  );
+}
+
+function NluNotice({ job }: { job?: AiAvatarDetail["recentJobs"][number] }) {
+  if (!job || job.status === "succeeded") return null;
+  if (job.status === "failed") {
+    return (
+      <div style={{ margin: "0 0 18px", padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(255,107,107,.35)", background: "rgba(255,107,107,.10)", color: "var(--ink-1)", fontSize: 12.5, lineHeight: 1.6 }}>
+        服务端大模型人设解析未完成：{job.errorMessage ?? "未配置可用大模型端点"}。当前继续使用原始人设文案打样。
+      </div>
+    );
+  }
+  return (
+    <div style={{ margin: "0 0 18px", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--ink-1)", fontSize: 12.5 }}>
+      正在通过服务端大模型解析人设文案…
     </div>
   );
 }

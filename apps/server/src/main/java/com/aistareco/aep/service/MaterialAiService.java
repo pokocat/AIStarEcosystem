@@ -25,7 +25,7 @@ import java.util.Set;
  * 单轮「prompt 进 → 结构化 JSON 出」，无 agent / 多步 / 记忆：
  *   ① 校验配置：无该用途的启用 provider / prompt 未配置 → 抛 BusinessException（明确提示去哪配）
  *   ② PromptService.resolve 取 system+user 模板（DB→resource→code）→ fill 业务参数
- *   ③ AiModelInvocationService.invokeChat（按 purpose 选 provider + priority fallback）
+ *   ③ AiModelInvocationService.invokeChat（按 purpose 选唯一绑定端点，无 fallback）
  *   ④ 解析 JSON → 校验 → 不合法自修复重试 1 次 → 仍失败抛 AI_BAD_OUTPUT
  *
  * 不静默兜底：配置/调用/解析问题一律抛出带 code 的错误（AI_NOT_CONFIGURED /

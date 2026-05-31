@@ -17,6 +17,8 @@ const nextConfig = {
       { source: "/api/:path*", destination: `${apiBase}/api/:path*` },
       // 后端把 AiAvatar 渲染产出 / 加密素材原文挂在 /static/aiavatar/** —— 代理到 server。
       { source: "/static/:path*", destination: `${apiBase}/static/:path*` },
+      // 本地 fake-CDN / 生产 OSS CDN 可统一返回 /cdn/...，dev 反代到 Spring Boot 静态映射。
+      { source: "/cdn/:path*", destination: `${apiBase}/cdn/:path*` },
     ];
   },
 };

@@ -11,6 +11,7 @@ import com.aistareco.aep.aiavatar.repository.*;
 import com.aistareco.aep.service.CreditService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -174,42 +175,45 @@ public class AiAvatarJobRunner {
             previewAssetId = assetIds.get(0);
         }
 
-        // 2) 建版本快照（任务书 §3：每次 AI 动作生成 AvatarVersion）
+        // 2) 建版本快照（只对真实产出资产的 AI 动作生成 AvatarVersion）。
+        // NLU / faceDetect 这类元数据任务不应覆盖 currentVersionId。
         String versionId = null;
         if (avatarId != null) {
             AiAvatar avatar = avatarRepo.findById(avatarId).orElse(null);
             if (avatar != null) {
-                int nextNo = versionRepo.findTopByAvatarIdOrderByVersionNoDesc(avatarId)
-                        .map(v -> v.getVersionNo() + 1).orElse(1);
-                AiAvatarVersion ver = AiAvatarVersion.builder()
-                        .id(UUID.randomUUID().toString())
-                        .avatarId(avatarId)
-                        .ownerUserId(job.getOwnerUserId())
-                        .versionNo(nextNo)
-                        .label(job.getTitle())
-                        .note(job.getCapability().label())
-                        .author(job.getOwnerUserId())
-                        .sourceStatus(avatar.getStatus())
-                        .paramsJson(job.getInputJson())
-                        .previewAssetId(previewAssetId)
-                        .assetIds(assetIds)
-                        .jobId(job.getId())
-                        .preferred(false)
-                        .discarded(false)
-                        .createdAt(OffsetDateTime.now())
-                        .build();
-                versionRepo.save(ver);
-                versionId = ver.getId();
+                if (!assetIds.isEmpty()) {
+                    int nextNo = versionRepo.findTopByAvatarIdOrderByVersionNoDesc(avatarId)
+                            .map(v -> v.getVersionNo() + 1).orElse(1);
+                    AiAvatarVersion ver = AiAvatarVersion.builder()
+                            .id(UUID.randomUUID().toString())
+                            .avatarId(avatarId)
+                            .ownerUserId(job.getOwnerUserId())
+                            .versionNo(nextNo)
+                            .label(job.getTitle())
+                            .note(job.getCapability().label())
+                            .author(job.getOwnerUserId())
+                            .sourceStatus(avatar.getStatus())
+                            .paramsJson(job.getInputJson())
+                            .previewAssetId(previewAssetId)
+                            .assetIds(assetIds)
+                            .jobId(job.getId())
+                            .preferred(false)
+                            .discarded(false)
+                            .createdAt(OffsetDateTime.now())
+                            .build();
+                    versionRepo.save(ver);
+                    versionId = ver.getId();
 
-                // 资产回填 versionId
-                for (String aid : assetIds) {
-                    assetRepo.findById(aid).ifPresent(a -> { a.setVersionId(ver.getId()); assetRepo.save(a); });
-                }
+                    // 资产回填 versionId
+                    for (String aid : assetIds) {
+                        assetRepo.findById(aid).ifPresent(a -> { a.setVersionId(ver.getId()); assetRepo.save(a); });
+                    }
 
-                // 3) 更新 avatar 当前版本 / 封面 / 标记 / 状态机推进
-                avatar.setCurrentVersionId(ver.getId());
-                if (avatar.getCoverAssetId() == null && previewAssetId != null) {
-                    avatar.setCoverAssetId(previewAssetId);
+                    // 3) 更新 avatar 当前版本 / 封面
+                    avatar.setCurrentVersionId(ver.getId());
+                    if (avatar.getCoverAssetId() == null && previewAssetId != null) {
+                        avatar.setCoverAssetId(previewAssetId);
+                    }
                 }
                 applyCapabilityFlags(avatar, job, result);
                 applyStatusAdvance(avatar, job);
@@ -231,7 +235,7 @@ public class AiAvatarJobRunner {
         job.setStatus(AiAvatarJobStatus.SUCCEEDED);
         job.setProgress(100);
         job.setVersionId(versionId);
-        job.setResultJson(result.metaJson());
+        job.setResultJson(buildResultJson(result, assetIds, versionId));
         job.setHeartbeatAt(OffsetDateTime.now());
         job.setCompletedAt(OffsetDateTime.now());
         job.setErrorMessage(null);
@@ -311,6 +315,22 @@ public class AiAvatarJobRunner {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private String buildResultJson(ProviderResult result, List<String> assetIds, String versionId) {
+        ObjectNode out = mapper.createObjectNode();
+        JsonNode meta = result == null ? null : parseInput(result.metaJson());
+        if (meta != null && meta.isObject()) {
+            out.setAll((ObjectNode) meta);
+        } else if (meta != null) {
+            out.set("meta", meta);
+        } else if (result != null && result.metaJson() != null && !result.metaJson().isBlank()) {
+            out.put("meta", result.metaJson());
+        }
+        var arr = out.putArray("assetIds");
+        for (String id : assetIds) arr.add(id);
+        if (versionId != null) out.put("versionId", versionId);
+        return out.toString();
     }
 
     private boolean isImage(AiAvatarAssetKind kind) {

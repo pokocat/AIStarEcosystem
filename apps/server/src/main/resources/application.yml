@@ -78,9 +78,9 @@ aep:
   # 访问拦截在前端按 /api/me 返回的 platforms 判断；后端只负责注册时授予哪些平台。
   platform:
     dev-grant-all: ${AEP_PLATFORM_DEV_GRANT_ALL:true}
-  # v0.43+ 本地 fake 大模型（OpenAI 兼容）。开启后 DevFakeAiSeeder 自动接入端点 + 绑定用途，
-  # 让「真连后端大模型」链路在没有真实 key 时也能端到端跑通（配套 scripts/dev-fake-llm-server.mjs）。
-  # 仅 dev 默认开启；prod 关闭，由运营在后台配真实端点。
+  # v0.43+ 本地 fake 大模型（OpenAI 兼容）。默认关闭。
+  # 只有显式 AEP_DEV_FAKE_LLM_ENABLED=true 时，DevFakeAiSeeder 才会自动接入 fake 端点 + 绑定用途。
+  # dev 连真实后端时必须由运营后台配置真实端点，不能自动注入 fake。
   dev-fake-llm:
     enabled: ${AEP_DEV_FAKE_LLM_ENABLED:false}
     base-url: ${AEP_DEV_FAKE_LLM_BASE_URL:http://localhost:8091/v1}
@@ -167,14 +167,14 @@ aep:
     user-id-prefix: ${AEP_COZE_USER_ID_PREFIX:aep-producer-}
     read-timeout-ms: ${AEP_COZE_READ_TIMEOUT_MS:120000}
   # AiAvatar 形象资产管理中心（独立领域 com.aistareco.aep.aiavatar.*；表 aiavatar_*；账户复用 aep_users）。
-  # appMode：dev → 各能力默认 mock（可离线整跑）；prod → 默认走真实方案。
+  # appMode：mock/dev → 各能力默认 mock（仅显式离线演示）；live/prod → 默认走真实方案。
   # providers.<capability>：按能力覆盖实现来源（mock|backend|selfhost），任务书 §6.2。
   #   能力名（wire）：faceClone txt2img img2img faceWarp inpaint makeup hair restore img23d img2video faceDetect nlu segment
   #   例：AEP_AIAVATAR_PROVIDERS_FACECLONE=selfhost
   # selfhostBaseUrls.<capability>：自部署模型微服务地址（POST {base}/run）。
   # 注意 faceWarp 永远走真实确定性算法（任务书 §4 明确不许 mock）。
   aiavatar:
-    app-mode: ${AEP_AIAVATAR_APP_MODE:dev}
+    app-mode: ${AEP_AIAVATAR_APP_MODE:live}
     asset-dir: ${AEP_AIAVATAR_ASSET_DIR:./aiavatar-assets}
     asset-public-url-base: ${AEP_AIAVATAR_ASSET_URL_BASE:/static/aiavatar-assets}
     max-concurrent: ${AEP_AIAVATAR_MAX_CONCURRENT:3}
@@ -184,7 +184,10 @@ aep:
     job-stale-ms: ${AEP_AIAVATAR_JOB_STALE_MS:600000}
     # 单次生成扣费（credits）；0 = 不计费（dev 默认 0 便于联调）。
     credit-per-generation: ${AEP_AIAVATAR_CREDIT_PER_GENERATION:0}
-    providers: {}
+    providers:
+      # 人设文案解析默认接 server 端大模型网关；未配置 token / endpoint 时创建可见失败任务，
+      # 前端继续用原始文案打样，方便本地验证真实失败流程。
+      nlu: ${AEP_AIAVATAR_PROVIDER_NLU:backend}
     selfhost-base-urls: {}
   # v0.31+ 手机号 + SMS 验证码登录 / 注册（三个新 web app + 小程序入口）。
   # driver=log：默认；验证码打到 server log，dev / 联调 / 阿里云模板未备案前的占位

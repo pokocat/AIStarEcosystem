@@ -325,6 +325,34 @@ class MockStore {
     this.emit();
     return m;
   }
+  /** Mock 上传 AI 原创参考图：普通 reference_image 资产，供打样 prompt 作为风格参考。 */
+  addReferenceImage(id: string, dataUrl: string, mimeType = "image/*"): AiAvatarAsset {
+    this.getAvatar(id);
+    const asset: AiAvatarAsset = {
+      id: `ref-${nanoid(8)}`,
+      avatarId: id,
+      versionId: null,
+      kind: "reference_image",
+      standardShot: null,
+      fileUrl: dataUrl,
+      thumbnailUrl: dataUrl,
+      mimeType,
+      width: 1024,
+      height: 1024,
+      fileSize: Math.round(dataUrl.length * 0.75),
+      durationSec: 0,
+      format3d: null,
+      engine: "upload",
+      providerMode: "mock",
+      watermarkToken: null,
+      encrypted: false,
+      meta: null,
+      createdAt: now(),
+    };
+    this.s.assets.unshift(asset);
+    this.emit();
+    return asset;
+  }
   signLicense(id: string, input: AiAvatarSignLicenseInput): AiAvatarLicenseGrant {
     const a = this.getAvatar(id);
     const lic: AiAvatarLicenseGrant = {
@@ -522,10 +550,16 @@ class MockStore {
     const a = this.getAvatar(id);
     a.status = "refining";
     a.updatedAt = now();
+    const storyboard = req.params?.storyboard as { shots?: Array<{ id?: string }> } | undefined;
+    const shots = Array.isArray(storyboard?.shots) && storyboard.shots.length
+      ? storyboard.shots.map((s) => s.id).filter((sid): sid is string => !!sid)
+      : ((req.params?.shots as string[]) ?? COMPOSITIONS.map((c) => c.id));
     const j = this.newJob(id, "restore", `${a.name} · 模板美化 · 标准出图`, {
       kind: "beautify",
       templateIds: (req.params?.templateIds as string[]) ?? [],
-      shots: (req.params?.shots as string[]) ?? COMPOSITIONS.map((c) => c.id),
+      shots,
+      storyboard: storyboard ?? null,
+      negativePrompt: req.params?.negativePrompt ?? null,
     });
     this.emit();
     return j;
@@ -692,11 +726,15 @@ class MockStore {
       a.currentVersionId = v.id;
       j.result = { assetIds: [aid], versionId: v.id };
     } else if (kind === "beautify") {
+      const storyboard = j.input?.storyboard as { shots?: Array<{ name?: string; standardShot?: AiAvatarStandardShot }> } | null | undefined;
+      const storyShots = Array.isArray(storyboard?.shots) ? storyboard.shots : [];
       const shots = (j.input?.shots as string[]) ?? COMPOSITIONS.map((c) => c.id);
-      const ids = shots.map((sid, i) => {
-        const comp = COMPOSITIONS.find((c) => c.id === sid);
-        return mkImg(comp?.shot ?? "front_bust", comp?.name ?? "标准图", i);
-      });
+      const ids = storyShots.length
+        ? storyShots.map((shot, i) => mkImg(shot.standardShot ?? "front_bust", shot.name ?? "标准图", i))
+        : shots.map((sid, i) => {
+            const comp = COMPOSITIONS.find((c) => c.id === sid);
+            return mkImg(comp?.shot ?? "front_bust", comp?.name ?? "标准图", i);
+          });
       a.status = "pending_finalize";
       const v = version(a.id, this.nextVersionNo(a.id), "模板美化 · 标准出图", `${ids.length} 张标准图集`, "pending_finalize");
       v.assetIds = ids;

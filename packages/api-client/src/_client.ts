@@ -104,12 +104,19 @@ export async function apiFetch<T>(
   const { method = "GET", body, query, headers, signal, suppressParseErrorLog = false } = opts;
 
   // USE_MOCK：在网络层拦截，命中 registry 直接返回 handler 结果（已是 unwrapped T）。
-  // handler 抛 ApiError 即可模拟错误。未注册路径会落到下方网络分支（dev 期可见 404，便于发现缺口）。
+  // mock 模式必须纯前端闭环；未注册路径直接报错，禁止偷偷打真实后端。
   if (USE_MOCK) {
     const match = findMockHandler(method as MockMethod, path);
     if (match) {
       return (await match.handler({ params: match.params, query, body })) as T;
     }
+    throw new ApiError(
+      {
+        code: "MOCK_HANDLER_NOT_FOUND",
+        message: `Mock 模式未注册 ${method} ${path}，已阻止请求真实后端。`,
+      },
+      599,
+    );
   }
 
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
@@ -224,6 +231,13 @@ export async function apiFetchPaginated<T>(
     if (match) {
       return (await match.handler({ params: match.params, query, body })) as PaginatedResponse<T>;
     }
+    throw new ApiError(
+      {
+        code: "MOCK_HANDLER_NOT_FOUND",
+        message: `Mock 模式未注册 ${method} ${path}，已阻止请求真实后端。`,
+      },
+      599,
+    );
   }
 
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
