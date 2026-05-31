@@ -277,12 +277,19 @@ export function StudioStep({ detail, reload }: { detail: AiAvatarDetail; reload:
     );
   }
 
+  const styleSample = selStyle ? STYLE_LOOK_TEMPLATES.find((t) => t.id === selStyle) ?? null : null;
   const templateBody = (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", flex: 1, minHeight: 0 }}>
       <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
         <div style={{ position: "relative", height: "72%", aspectRatio: "3/4" }}>
           <Portrait hue={hue} src={tplPreview ?? avatar.coverUrl} label={tplPreview ? "美颜预览" : refineRunning ? "图生图生成中…" : "当前形象"} sub={avatar.id} style={{ height: "100%" }} dim={refineRunning} />
           {tplPreview && <span style={cmpTag}>PREVIEW</span>}
+          {/* 选中风格妆造模板时，右上角浮一张样片参考缩略（img2img 的风格参考） */}
+          {styleSample && !tplPreview && (
+            <div style={{ position: "absolute", top: 10, right: 10, width: "26%", borderRadius: 8, overflow: "hidden", border: "1px solid var(--accent-line)", boxShadow: "var(--shadow-2)" }}>
+              <Portrait hue={styleSample.hue} src={styleSample.sampleUrl} ratio="3/4" label="样片参考" style={{ borderRadius: 0, border: "none" }} />
+            </div>
+          )}
           {refineRunning && (
             <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
               <span style={{ width: 26, height: 26, border: "2.5px solid var(--signal)", borderTopColor: "transparent", borderRadius: 999, animation: "spin .8s linear infinite" }} />
@@ -540,7 +547,7 @@ function TemplateApplyPanel({
             const on = selStyle === t.id;
             return (
               <button key={t.id} onClick={() => setSelStyle(on ? null : t.id)} style={{ padding: 8, borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "left", background: on ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (on ? "var(--accent)" : "var(--line)") }}>
-                <Portrait hue={t.hue} ratio="3/4" label="样片" selected={on} style={{ borderRadius: 7 }} />
+                <Portrait hue={t.hue} src={t.sampleUrl} ratio="3/4" label="样片参考" selected={on} style={{ borderRadius: 7 }} />
                 <div style={{ marginTop: 7 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 500, color: on ? "var(--accent-hi)" : "var(--ink-0)" }}>{t.name}</div>
                   <div style={{ fontSize: 10.5, color: "var(--ink-2)" }}>{t.desc}</div>

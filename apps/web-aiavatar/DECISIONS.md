@@ -81,6 +81,15 @@ ai-avatar app 不设 `requiredPlatform`（v0.43 的 `SubProduct` 仅 music/drama
   store 加 `commitBeauty`、api 加 `commitBeautyRefine`（mock 落 dataURL 版本；live multipart 上传 + RefineEdit）。
   风格妆造走既有 `refineAppearance(img2img, {prompt})` 异步任务。26 vitest + 3 E2E 全绿。
 
+### B4. 风格/妆造模板样片改用真实开源人像（替换 hue 占位）
+- **原状**：精调「模版套用」里 6 个风格妆造模板的样片是 hue 色卡占位，看不出风格。
+- **改动**：下载 6 张开源人像样片落 `public/seed/looks/look-*.jpg`，`STYLE_LOOK_TEMPLATES` 加 `sampleUrl`，
+  模板卡 + 画布右上角「样片参考」缩略均渲染真实图。选中某模板时画布浮该样片，直观呈现「样片 → 当前 → 图生图结果」。
+- **样片来源与配对**：Unsplash（免费可用）。职业妆容=商务女性 / 二次元=粉底大眼 / 轻奢氛围=影棚高级感 /
+  港风复古=红唇浓颜 / 校园清新=短发清新 / 国风古韵=东方面孔盘发侧颜（Unsplash 缺传统古装，取最贴近东方感者；
+  真实风格由 img2img prompt 决定，样片仅作风格参考展示）。首批下载有几张不贴切（国风出男性、清新偏暗调）已人工换掉。
+- **验证**：Playwright 程序化断言 6 张样片 `<img>` 全部 `naturalWidth>0` 真实加载；选中国风时面板卡 + 画布参考共 2 张加载。
+
 ## C. 合规 / 安全（既有，未改）
 
 - **InsightFace 非商用**：InstantID（faceClone）/ RetinaFace（faceDetect）依赖的 InsightFace 仅限非商用研究。

@@ -225,19 +225,21 @@ export function combineBeauty(ids: string[]): BeautyParams {
   return { smooth: avg("smooth"), whiten: avg("whiten"), warmth: avg("warmth"), brightness: avg("brightness") };
 }
 
-/** 风格 / 妆造模板：带「样片」让 AI 做图生图（img2img + 参考）。如职业妆容 / 国风古韵等。 */
+/** 风格 / 妆造模板：带「样片」让 AI 做图生图（img2img + 参考）。如职业妆容 / 国风古韵等。
+ *  sampleUrl 是真实开源人像样片（public/seed/looks/*.jpg），作为图生图的风格参考展示。 */
 export interface StyleLookTemplateDef {
   id: string;
   name: string;
   desc: string;
   prompt: string;
+  sampleUrl: string;
   hue: number;
 }
 export const STYLE_LOOK_TEMPLATES: StyleLookTemplateDef[] = [
-  { id: "look-pro", name: "职业妆容", desc: "干练通勤 · 自然底妆", prompt: "职业通勤妆容，自然底妆，知性干练气质，保留五官结构", hue: 200 },
-  { id: "look-guofeng", name: "国风古韵", desc: "古典发饰 · 东方妆造", prompt: "国风古典妆造，古典发饰与服饰，东方韵味，保留五官结构", hue: 340 },
-  { id: "look-lux", name: "轻奢氛围", desc: "高级感 · 质感妆容", prompt: "轻奢高级感妆容，质感光影，时尚氛围，保留五官结构", hue: 38 },
-  { id: "look-2d", name: "二次元渲染", desc: "动漫风 · 通透大眼", prompt: "二次元动漫渲染风格，通透大眼，干净光影，保留五官结构", hue: 268 },
-  { id: "look-gangfeng", name: "港风复古", desc: "复古胶片 · 浓颜", prompt: "港风复古妆容，胶片质感，浓颜立体，保留五官结构", hue: 12 },
-  { id: "look-fresh", name: "校园清新", desc: "清透裸妆 · 元气", prompt: "校园清新风，清透裸妆，元气自然，保留五官结构", hue: 88 },
+  { id: "look-pro", name: "职业妆容", desc: "干练通勤 · 自然底妆", prompt: "职业通勤妆容，自然底妆，知性干练气质，保留五官结构", sampleUrl: "/seed/looks/look-pro.jpg", hue: 200 },
+  { id: "look-guofeng", name: "国风古韵", desc: "古典发饰 · 东方妆造", prompt: "国风古典妆造，古典发饰与服饰，东方韵味，保留五官结构", sampleUrl: "/seed/looks/look-guofeng.jpg", hue: 340 },
+  { id: "look-lux", name: "轻奢氛围", desc: "高级感 · 质感妆容", prompt: "轻奢高级感妆容，质感光影，时尚氛围，保留五官结构", sampleUrl: "/seed/looks/look-lux.jpg", hue: 38 },
+  { id: "look-2d", name: "二次元渲染", desc: "动漫风 · 通透大眼", prompt: "二次元动漫渲染风格，通透大眼，干净光影，保留五官结构", sampleUrl: "/seed/looks/look-2d.jpg", hue: 268 },
+  { id: "look-gangfeng", name: "港风复古", desc: "复古胶片 · 浓颜", prompt: "港风复古妆容，胶片质感，浓颜立体，保留五官结构", sampleUrl: "/seed/looks/look-gangfeng.jpg", hue: 12 },
+  { id: "look-fresh", name: "校园清新", desc: "清透裸妆 · 元气", prompt: "校园清新风，清透裸妆，元气自然，保留五官结构", sampleUrl: "/seed/looks/look-fresh.jpg", hue: 88 },
 ];
