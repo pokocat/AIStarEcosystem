@@ -10,7 +10,7 @@
 | 维度 | 选型 |
 |---|---|
 | 前端 | Next.js 16.2.6（App Router）+ React 19 + TypeScript |
-| 样式 | Tailwind v4 + 自托管设计令牌（深色 + 琥珀，`src/styles/tokens.css`） |
+| 样式 | Tailwind v4 + 自托管设计令牌（**精致浅色工作台 · 冷调中性 + 克制琥珀**，`src/styles/tokens.css` + `src/styles/app.css` 组件原语） |
 | 状态 | React state + 轮询 hooks（`src/lib/use-job-poll.ts`） |
 | 共享 | `@ai-star-eco/{types,ui,api-client,landing}`（pnpm workspace） |
 | 后端 | 共享 `apps/server`（Spring Boot 3.3.5 / Java 17，port 8080），领域包 `com.aistareco.aep.aiavatar.*`，表 `aiavatar_*`，账户复用 `aep_users` |
@@ -59,16 +59,17 @@ pnpm --filter @ai-star-eco/web-aiavatar exec vitest run   # 几何形变 7 例
 |---|---|
 | `/` | 公开 landing |
 | `/login` | dev-login + 手机号验证码登录 |
-| `/library` | **资产总库**：卡片 / 列表 / 画廊三视图 + 搜索 + 状态/含3D 筛选 + 进行中任务条 |
-| `/create` | **创建选择 + 素材授权填写**：真人复刻 / AI 原创两路径分流 |
-| `/avatar/[id]` | **资产详情**：图集/3D/视频/版本时间线/素材/授权/衍生 7 Tab + 7 步工作流动作区 + 实现方式面板 |
+| `/library` | **资产库**（IA 主线的家）：卡片 / 列表 / 画廊三视图 + 搜索 + 状态/含3D 筛选 + 进行中任务条 |
+| `/create` | **新建**：真人复刻 / AI 原创两路径分流 |
+| `/avatar/[id]` | **资产详情**（单个 AiAvatar 的生产工作台）：链路 + **当前阶段行动区（下一步主操作置为焦点，衍生内嵌）** + 3 个检视标签（产出 / 版本时间线 / 输入与授权） |
 | `/refine` | **人像精调工作台**：几何（**真实实时液化**）/ 外观 / 语言 / 局部 四模式 + 前后对比 |
-| `/templates` | **AI 模板中心** |
-| `/licenses` | **真人授权管理**（跨资产总览） |
-| `/jobs` | **异步任务中心**：实时进度 + 重试 + 取消 + 批量操作 |
-| `/health` | **能力健康**：每能力 mock/真实来源可观测（镜像 `GET /api/aiavatar/health/providers`） |
+| `/templates` | **模板库**（配套工具，导航降一级） |
+| `/licenses` | **授权总览**（跨资产只读汇总，配套工具） |
+| `/jobs` | **任务中心**：实时进度 + 重试 + 取消 + 批量操作 |
+| `/health` | **能力状态**：每能力 mock/真实来源可观测（镜像 `GET /api/aiavatar/health/providers`） |
 
-打样 / 草稿迭代 / 精调-外观 / 模板美化 / 定稿 / 衍生 等动作通过详情页工作流动作区 + 对应 dialog 完成。
+导航分两层：**主线**（资产库 + 新建 CTA）+ **工具**（任务 / 模板 / 授权 / 能力，视觉降一级）。
+打样 / 草稿迭代 / 精调 / 模板美化 / 定稿 / 衍生 等动作从资产详情页「当前阶段」行动区 + 对应 dialog 完成。
 
 ## Provider 模式（mock ↔ 真实，一键切换）
 
@@ -94,6 +95,19 @@ pnpm --filter @ai-star-eco/web-aiavatar exec vitest run   # 几何形变 7 例
 
 ## 版本日志
 
+- **v0.2（2026-06-01）— 前端整体重设计（精致浅色工作台 + IA 主线重整）**。仅 web-aiavatar 改动，
+  后端 / API 契约 / `packages/types` / openapi 零变化。
+  - **视觉系统**：`tokens.css` 重写为冷调中性浅色 + 克制琥珀（琥珀只用于主操作 / 当前选中 / 当前链路步 / 品牌标识）；
+    状态色与品牌解耦（蓝=进行中 · 绿=完成 · 橙=待处理 · 红=失败 · 灰=草稿/归档）。`app.css` 新增一套统一组件原语
+    （`.btn` / `.aa-input` / `.chip` / `.seg` / `.aa-card` / `.src-badge` / `.ph` / `.meta`），删除旧"深色 utility 再覆盖"
+    的脆弱重映射层；`data-theme` 由 `aiavatar-dark` 更名为 `aiavatar`。
+  - **IA 主线重整**（解决"页面/状态机/tab 太多、找不到主线"）：导航由 3 组 7 项收敛为两层（主线：资产库 + 新建；
+    工具：任务 / 模板 / 授权 / 能力）；资产详情由 7 个并列 Tab 重构为「**当前阶段行动区**（下一步主操作为焦点，
+    衍生内嵌）+ 3 检视标签（产出 / 版本 / 输入与授权）」。
+  - **去 AI-demo 化**（贴合 PRODUCT.md「安静高级、专业」）：去掉满屏琥珀辉光、对角斜纹占位图、当装饰的等宽字体；
+    MOCK 角标改安静中性，REAL 用语义绿；landing 改影像优先；修复 license 表单内联深色 hex 与 `alert()`（改内联报错）。
+  - 校验：`pnpm --filter @ai-star-eco/web-aiavatar typecheck` + `build`（11 路由）全绿；Chromium 实截图核验
+    桌面 + 移动端全部页面。
 - **v0.1（2026-05-30）** — 首版交付。后端 aiavatar 领域（8 实体 / 13 能力 Provider / 监控线程 / 6 控制器）+
   前端 10 页面 6 模块 + 共享类型 `ai-avatar.ts`。测试：后端 40 例 + 前端 7 例全绿；
   H2 + MySQL 双 profile E2E 通过。

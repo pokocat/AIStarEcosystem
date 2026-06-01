@@ -7,7 +7,7 @@ import { SourceBadge } from "./source-badge";
 import { STANDARD_SHOT_LABEL } from "@/constants/aiavatar-ui";
 
 /**
- * 资产缩略瓦片：图/草稿图显示图片；视频显示海报 + 运镜 ken-burns CSS；3D 显示可旋转预览入口。
+ * 资产缩略瓦片：图/草稿图显示图片；视频显示海报 + 运镜 ken-burns；3D 显示可旋转预览入口。
  * fileUrl 以 data: 或 /static 提供；缺失走 .ph 占位。
  */
 export function AssetTile({
@@ -27,7 +27,9 @@ export function AssetTile({
       className={cn(
         "group relative w-full overflow-hidden rounded-lg border text-left transition",
         ratio === "portrait" ? "aspect-[3/4]" : "aspect-square",
-        selected ? "border-amber-400 ring-2 ring-amber-400/40" : "border-zinc-700 hover:border-zinc-500",
+        selected
+          ? "border-[var(--brand)] ring-2 ring-[var(--brand-soft)]"
+          : "border-[var(--line)] hover:border-[var(--line-strong)]",
         !showImg && "ph",
         className,
       )}
@@ -42,15 +44,15 @@ export function AssetTile({
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <span className="meta">{is3d ? "GLB 3D" : "无预览"}</span>
+          <span className="num text-[10px] text-[var(--fg-3)]">{is3d ? "GLB 3D" : "无预览"}</span>
         </div>
       )}
 
-      {/* 顶部角标：来源 + 类型 */}
+      {/* 顶部角标：来源 + 构图（覆盖在照片上，用深色 scrim 保持可读，与主题无关）*/}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-1.5">
         <SourceBadge engine={asset.engine} mode={asset.providerMode} />
         {asset.standardShot && (
-          <span className="rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-zinc-100">
+          <span className="rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
             {STANDARD_SHOT_LABEL[asset.standardShot]}
           </span>
         )}
@@ -59,7 +61,7 @@ export function AssetTile({
       {/* 底部：视频时长 / 3D 标记 */}
       {(isVideo || is3d) && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent p-1.5">
-          <span className="meta text-zinc-200">
+          <span className="num text-[10px] text-white">
             {isVideo ? `▶ ${Math.round(asset.durationSec)}s 运镜` : "⬣ 可旋转 3D"}
           </span>
         </div>

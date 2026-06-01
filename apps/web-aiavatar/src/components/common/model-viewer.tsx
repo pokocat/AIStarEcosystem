@@ -5,9 +5,8 @@ import { RotateCw } from "lucide-react";
 
 /**
  * 3D 可交互预览（任务书 §7：3D 可旋转）。
- *
- * 不引入 three.js（避免重依赖）：用纯 CSS 3D transform 渲染一个可拖拽旋转的立方体，
- * 六面贴海报缩略图 —— 满足「可旋转交互」的产品语义。接 TripoSR 真模型后可换 <model-viewer> web component。
+ * 不引入 three.js：用纯 CSS 3D transform 渲染可拖拽旋转的立方体，六面贴海报缩略图。
+ * 接 TripoSR 真模型后可换 <model-viewer> web component。
  */
 export function ModelViewer({ thumbnailUrl }: { thumbnailUrl?: string | null }) {
   const [rot, setRot] = React.useState({ x: -18, y: 24 });
@@ -20,17 +19,18 @@ export function ModelViewer({ thumbnailUrl }: { thumbnailUrl?: string | null }) 
     return () => clearInterval(t);
   }, [auto]);
 
-  const face = (transform: string) => ({
-    position: "absolute" as const, width: 140, height: 140, transform,
-    backgroundImage: thumbnailUrl && !thumbnailUrl.startsWith("#") ? `url(${thumbnailUrl})` : undefined,
-    backgroundColor: "rgba(240,168,58,0.12)", backgroundSize: "cover", backgroundPosition: "center",
-    border: "1px solid rgba(240,168,58,0.5)", borderRadius: 8, opacity: 0.92,
+  const hasImg = !!thumbnailUrl && !thumbnailUrl.startsWith("#");
+  const face = (transform: string): React.CSSProperties => ({
+    position: "absolute", width: 140, height: 140, transform,
+    backgroundImage: hasImg ? `url(${thumbnailUrl})` : undefined,
+    backgroundColor: "var(--bg-3)", backgroundSize: "cover", backgroundPosition: "center",
+    border: "1px solid var(--brand-line)", borderRadius: 8, opacity: 0.94,
   });
 
   return (
     <div className="relative">
       <div
-        className="flex h-56 cursor-grab items-center justify-center overflow-hidden rounded-lg bg-[var(--bg-2)] active:cursor-grabbing"
+        className="flex h-56 cursor-grab items-center justify-center overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--bg-2)] active:cursor-grabbing"
         style={{ perspective: "700px" }}
         onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY }; setAuto(false); }}
         onPointerMove={(e) => {
@@ -52,7 +52,7 @@ export function ModelViewer({ thumbnailUrl }: { thumbnailUrl?: string | null }) 
         </div>
       </div>
       <button onClick={() => setAuto((a) => !a)}
-        className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/50 px-2 py-1 text-[11px] text-zinc-200 hover:bg-black/70">
+        className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/45 px-2 py-1 text-[11px] text-white backdrop-blur-sm hover:bg-black/60">
         <RotateCw className="h-3 w-3" /> {auto ? "暂停" : "自转"}
       </button>
       <p className="meta mt-1.5 text-center">拖拽旋转 · GLB 可下载到 model-viewer / three.js 查看</p>

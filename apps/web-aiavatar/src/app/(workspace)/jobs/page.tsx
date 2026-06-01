@@ -1,9 +1,9 @@
 "use client";
 
-// 异步任务中心（任务书 §7）：实时进度 + 重试 + 取消 + 批量操作。
+// 任务中心（配套工具）：异步生成任务实时进度 + 重试 + 取消 + 批量操作。
 import * as React from "react";
 import Link from "next/link";
-import { Ban, CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import type { AiAvatarJob, AiAvatarJobStatus } from "@ai-star-eco/types/ai-avatar";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { AiAvatarApi } from "@/api";
@@ -12,6 +12,11 @@ import { SourceBadge } from "@/components/common/source-badge";
 import { useJobList } from "@/lib/use-job-poll";
 import { useConfirm } from "@/components/common/confirm-dialog";
 import { relativeTime } from "@/lib/format";
+
+const FILTERS: { key: AiAvatarJobStatus | "all"; label: string }[] = [
+  { key: "all", label: "全部" }, { key: "running", label: "生成中" }, { key: "queued", label: "排队" },
+  { key: "succeeded", label: "已完成" }, { key: "failed", label: "失败" }, { key: "cancelled", label: "已取消" },
+];
 
 export default function JobsPage() {
   const { jobs, refresh } = useJobList(1500);
@@ -49,29 +54,26 @@ export default function JobsPage() {
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">异步任务中心</h1>
-          <p className="mt-0.5 text-sm text-zinc-500">{active.length} 进行中 · {failed.length} 失败 · 共 {jobs.length}</p>
+          <h1 className="text-xl font-semibold tracking-tight">任务中心</h1>
+          <p className="mt-0.5 text-sm text-[var(--fg-2)]"><span className="num">{active.length}</span> 进行中 · <span className="num">{failed.length}</span> 失败 · 共 <span className="num">{jobs.length}</span></p>
         </div>
         {selected.size > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500">已选 {selected.size}</span>
-            <button onClick={batchRetry} className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-200"><RefreshCw className="h-3.5 w-3.5" /> 重试失败</button>
-            <button onClick={batchCancel} className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-rose-300"><Ban className="h-3.5 w-3.5" /> 取消进行中</button>
+            <span className="text-xs text-[var(--fg-3)]">已选 <span className="num">{selected.size}</span></span>
+            <button onClick={batchRetry} className="btn btn-ghost btn-sm"><RefreshCw className="h-3.5 w-3.5" /> 重试失败</button>
+            <button onClick={batchCancel} className="btn btn-danger btn-sm"><Ban className="h-3.5 w-3.5" /> 取消进行中</button>
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {(["all", "running", "queued", "succeeded", "failed", "cancelled"] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={cn("rounded-full border px-3 py-1 text-xs", filter === f ? "border-amber-500 bg-amber-500/15 text-amber-300" : "border-zinc-700 text-zinc-400")}>
-            {f === "all" ? "全部" : f === "running" ? "生成中" : f === "queued" ? "排队" : f === "succeeded" ? "已完成" : f === "failed" ? "失败" : "已取消"}
-          </button>
+        {FILTERS.map((f) => (
+          <button key={f.key} onClick={() => setFilter(f.key)} className="chip" data-on={filter === f.key}>{f.label}</button>
         ))}
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-700 py-16 text-center text-sm text-zinc-500">暂无任务</div>
+        <div className="rounded-xl border border-dashed border-[var(--line-strong)] bg-[var(--bg-1)] py-16 text-center text-sm text-[var(--fg-3)]">暂无任务</div>
       ) : (
         <div className="space-y-2">
           {filtered.map((j) => (
@@ -88,41 +90,37 @@ function JobRow({ job, selected, onToggle, onRetry, onCancel }: {
 }) {
   const isActive = job.status === "running" || job.status === "queued";
   return (
-    <div className={cn("flex items-center gap-3 rounded-xl border bg-[var(--bg-1)] p-3", selected ? "border-amber-500/50" : "border-zinc-800")}>
-      <input type="checkbox" checked={selected} onChange={onToggle} className="accent-amber-500" />
+    <div className={cn("flex items-center gap-3 rounded-xl border bg-[var(--bg-1)] p-3 transition", selected ? "border-[var(--brand-line)] bg-[var(--brand-soft)]" : "border-[var(--line)]")}>
+      <input type="checkbox" checked={selected} onChange={onToggle} className="h-4 w-4 rounded" style={{ accentColor: "var(--brand)" }} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-zinc-100">{job.title ?? job.capabilityLabel}</span>
+          <span className="text-sm font-medium text-[var(--fg-0)]">{job.title ?? job.capabilityLabel}</span>
           <SourceBadge engine={job.engine} mode={job.providerMode} />
           <JobStatusPill status={job.status} />
-          {job.attempts > 1 && <span className="text-[11px] text-zinc-500">第 {job.attempts} 次尝试</span>}
+          {job.attempts > 1 && <span className="text-[11px] text-[var(--fg-3)]">第 <span className="num">{job.attempts}</span> 次尝试</span>}
         </div>
         {isActive ? (
           <div className="mt-2">
-            <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
-              <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${job.progress}%` }} />
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-3)]">
+              <div className="h-full rounded-full transition-all" style={{ width: `${job.progress}%`, background: "var(--info)" }} />
             </div>
-            <div className="meta mt-1">{job.progress}%</div>
+            <div className="meta mt-1"><span className="num">{job.progress}%</span></div>
           </div>
         ) : (
           <div className="meta mt-1 flex items-center gap-2">
-            {job.status === "succeeded" && <span className="flex items-center gap-1 text-emerald-400"><CheckCircle2 className="h-3 w-3" /> 完成</span>}
-            {job.status === "failed" && <span className="flex items-center gap-1 text-rose-400"><XCircle className="h-3 w-3" /> {job.errorMessage || "失败"}</span>}
+            {job.status === "succeeded" && <span className="flex items-center gap-1 text-[var(--success)]"><CheckCircle2 className="h-3 w-3" /> 完成</span>}
+            {job.status === "failed" && <span className="flex items-center gap-1 text-[var(--danger)]"><XCircle className="h-3 w-3" /> {job.errorMessage || "失败"}</span>}
             <span>{relativeTime(job.completedAt ?? job.createdAt)}</span>
-            {job.avatarId && <Link href={`/avatar/${job.avatarId}`} className="text-amber-400 hover:underline">查看AiAvatar →</Link>}
+            {job.avatarId && <Link href={`/avatar/${job.avatarId}`} className="text-[var(--brand-strong)] hover:underline">查看 AiAvatar →</Link>}
           </div>
         )}
       </div>
       <div className="flex shrink-0 gap-1">
         {job.status === "failed" && (
-          <button onClick={onRetry} title="重试" className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-amber-500">
-            <RefreshCw className="h-3.5 w-3.5" /> 重试
-          </button>
+          <button onClick={onRetry} className="btn btn-ghost btn-sm"><RefreshCw className="h-3.5 w-3.5" /> 重试</button>
         )}
         {isActive && (
-          <button onClick={onCancel} title="取消" className="rounded-lg border border-zinc-700 p-1.5 text-rose-300 hover:border-rose-500">
-            <Ban className="h-3.5 w-3.5" />
-          </button>
+          <button onClick={onCancel} title="取消" className="btn btn-danger btn-sm"><Ban className="h-3.5 w-3.5" /></button>
         )}
       </div>
     </div>

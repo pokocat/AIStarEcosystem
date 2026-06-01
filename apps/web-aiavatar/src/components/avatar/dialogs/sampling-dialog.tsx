@@ -22,28 +22,29 @@ export function SamplingDialog({ avatar, onClose, onStarted }: { avatar: AiAvata
   };
 
   return (
-    <DialogShell title="打样" onClose={onClose}
+    <DialogShell title="打样" description="一次出 3~5 版，单选满意的进入草稿迭代" onClose={onClose}
       footer={
         <>
-          <button onClick={onClose} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300">取消</button>
-          <button onClick={submit} disabled={busy} className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-semibold text-zinc-950 disabled:opacity-60">
+          <button onClick={onClose} className="btn btn-ghost">取消</button>
+          <button onClick={submit} disabled={busy} className="btn btn-primary">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} 开始打样
           </button>
         </>
       }>
       <div className="space-y-4">
-        <div className="rounded-lg bg-zinc-800/60 px-3 py-2 text-xs text-zinc-400">
+        <p className="aa-inset px-3 py-2 text-xs text-[var(--fg-2)]">
           {isReal ? "真人复刻：InstantID 基于已上传的合规照片做 ID 保持打样。" : "AI 原创：SDXL/FLUX 按人设文案文生图打样。"}
-          一次出 3~5 版，单选进入草稿迭代。
-        </div>
+        </p>
         <label className="block">
-          <span className="mb-1.5 block text-xs text-zinc-400">{isReal ? "补充提示词（可选）" : "人设 / 提示词"}</span>
-          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
-            className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-500" />
+          <span className="mb-1.5 block text-xs text-[var(--fg-2)]">{isReal ? "补充提示词（可选）" : "人设 / 提示词"}</span>
+          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} className="aa-textarea" />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-xs text-zinc-400">出版数量：{variants}</span>
-          <input type="range" min={3} max={5} value={variants} onChange={(e) => setVariants(Number(e.target.value))} className="w-full accent-amber-500" />
+          <span className="mb-1.5 flex items-center justify-between text-xs text-[var(--fg-2)]">
+            出版数量 <span className="num font-semibold text-[var(--fg-0)]">{variants}</span>
+          </span>
+          <input type="range" min={3} max={5} value={variants} onChange={(e) => setVariants(Number(e.target.value))}
+            className="w-full" style={{ accentColor: "var(--brand)" }} />
         </label>
       </div>
     </DialogShell>

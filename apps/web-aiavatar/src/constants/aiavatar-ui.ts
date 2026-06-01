@@ -1,18 +1,23 @@
-// UI 配置：状态 / 任务态 / 能力 / 模板分类的中文标签 + 颜色（Tailwind utility，经主题映射到深色琥珀）。
+// UI 配置：状态 / 任务态 / 能力 / 模板分类的中文标签 + 语义 tone。
+// 重设计：状态色与品牌琥珀解耦 —— 蓝=进行中 · 绿=完成 · 橙=待你处理 · 红=失败 · 灰=草稿/归档。
+// 琥珀(brand)只留给主操作、当前选中、当前链路步，不进状态色表。
 
 import type {
   AiAvatarStatus, AiAvatarCapability, AiAvatarJobStatus, AiAvatarTemplateCategory, AiAvatarCreationMode, AiAvatarStandardShot,
 } from "@ai-star-eco/types/ai-avatar";
 
-export const STATUS_META: Record<AiAvatarStatus, { label: string; cls: string; step: number }> = {
-  draft: { label: "草稿新建", cls: "bg-zinc-700 text-zinc-100", step: 0 },
-  sampling: { label: "打样中", cls: "bg-violet-500/20 text-violet-300", step: 1 },
-  draft_iterating: { label: "草稿迭代中", cls: "bg-blue-500/20 text-blue-400", step: 2 },
-  refining: { label: "精调中", cls: "bg-amber-500/20 text-amber-400", step: 3 },
-  pending_finalize: { label: "待定稿", cls: "bg-orange-500/20 text-orange-400", step: 4 },
-  finalized_2d: { label: "已定稿", cls: "bg-emerald-500/20 text-emerald-400", step: 5 },
-  deriving: { label: "衍生生成中", cls: "bg-violet-500/20 text-violet-300", step: 6 },
-  archived: { label: "正式归档", cls: "bg-zinc-600 text-zinc-200", step: 7 },
+/** 语义 tone（驱动 token 化的 pill / dot 配色）。 */
+export type Tone = "neutral" | "muted" | "info" | "success" | "warning" | "danger" | "brand" | "violet";
+
+export const STATUS_META: Record<AiAvatarStatus, { label: string; tone: Tone; step: number }> = {
+  draft: { label: "草稿新建", tone: "neutral", step: 0 },
+  sampling: { label: "打样中", tone: "info", step: 1 },
+  draft_iterating: { label: "草稿迭代中", tone: "info", step: 2 },
+  refining: { label: "精调中", tone: "info", step: 3 },
+  pending_finalize: { label: "待定稿", tone: "warning", step: 4 },
+  finalized_2d: { label: "已定稿", tone: "success", step: 5 },
+  deriving: { label: "衍生生成中", tone: "info", step: 6 },
+  archived: { label: "正式归档", tone: "muted", step: 7 },
 };
 
 export const PIPELINE_STEPS: { status: AiAvatarStatus; label: string }[] = [
@@ -26,12 +31,12 @@ export const PIPELINE_STEPS: { status: AiAvatarStatus; label: string }[] = [
   { status: "archived", label: "归档" },
 ];
 
-export const JOB_STATUS_META: Record<AiAvatarJobStatus, { label: string; cls: string }> = {
-  queued: { label: "排队中", cls: "bg-zinc-700 text-zinc-200" },
-  running: { label: "生成中", cls: "bg-amber-500/20 text-amber-400" },
-  succeeded: { label: "已完成", cls: "bg-emerald-500/20 text-emerald-400" },
-  failed: { label: "失败", cls: "bg-rose-500/20 text-rose-400" },
-  cancelled: { label: "已取消", cls: "bg-zinc-600 text-zinc-300" },
+export const JOB_STATUS_META: Record<AiAvatarJobStatus, { label: string; tone: Tone }> = {
+  queued: { label: "排队中", tone: "neutral" },
+  running: { label: "生成中", tone: "info" },
+  succeeded: { label: "已完成", tone: "success" },
+  failed: { label: "失败", tone: "danger" },
+  cancelled: { label: "已取消", tone: "muted" },
 };
 
 export const CAPABILITY_LABEL: Record<AiAvatarCapability, string> = {

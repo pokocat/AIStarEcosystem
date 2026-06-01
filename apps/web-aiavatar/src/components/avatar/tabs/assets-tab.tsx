@@ -7,7 +7,7 @@ import { AssetTile } from "@/components/common/asset-tile";
 import { fileSize, dateTime } from "@/lib/format";
 import { ModelViewer } from "@/components/common/model-viewer";
 
-/** 图集 / 3D / 视频 Tab：网格 + 选中查看（3D 可旋转，视频运镜预览）。 */
+/** 图集 / 3D / 视频：网格 + 选中查看（3D 可旋转，视频运镜预览）。 */
 export function AssetsTab({ assets, empty, ratio = "portrait" }: {
   assets: AiAvatarAsset[]; empty?: string; ratio?: "portrait" | "square";
 }) {
@@ -15,21 +15,19 @@ export function AssetsTab({ assets, empty, ratio = "portrait" }: {
   React.useEffect(() => { setSel(assets[0] ?? null); }, [assets]);
 
   if (assets.length === 0) {
-    return <div className="rounded-xl border border-dashed border-zinc-700 py-14 text-center text-sm text-zinc-500">{empty ?? "尚无资产"}</div>;
+    return <div className="rounded-xl border border-dashed border-[var(--line-strong)] py-14 text-center text-sm text-[var(--fg-3)]">{empty ?? "尚无资产"}</div>;
   }
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
-      {/* 网格 */}
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
         {assets.map((a) => (
           <AssetTile key={a.id} asset={a} ratio={ratio} selected={sel?.id === a.id} onClick={() => setSel(a)} />
         ))}
       </div>
 
-      {/* 详情面板 */}
       {sel && (
-        <aside className="space-y-3 rounded-xl border border-zinc-800 bg-[var(--bg-1)] p-3">
+        <aside className="space-y-3 rounded-xl border border-[var(--line)] bg-[var(--bg-1)] p-3">
           {sel.kind === "model_3d" ? (
             <ModelViewer thumbnailUrl={sel.thumbnailUrl} />
           ) : (
@@ -46,8 +44,7 @@ export function AssetsTab({ assets, empty, ratio = "portrait" }: {
             <Row k="来源" v={sel.engine ?? "MOCK"} />
             <Row k="生成" v={dateTime(sel.createdAt)} />
           </dl>
-          <a href={sel.fileUrl} download
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 py-2 text-sm text-zinc-200 hover:border-zinc-500">
+          <a href={sel.fileUrl} download className="btn btn-ghost w-full">
             <Download className="h-4 w-4" /> 下载{sel.kind === "model_3d" ? " GLB" : ""}
           </a>
         </aside>
@@ -58,9 +55,9 @@ export function AssetsTab({ assets, empty, ratio = "portrait" }: {
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <div className="flex items-center justify-between">
-      <dt className="text-zinc-500">{k}</dt>
-      <dd className="font-mono text-zinc-300">{v}</dd>
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-[var(--fg-3)]">{k}</dt>
+      <dd className="num truncate text-[var(--fg-1)]">{v}</dd>
     </div>
   );
 }

@@ -1,73 +1,90 @@
 /* ============================================================
-   AiAvatar 资产平台 · 设计令牌
-   浅色工作台 + 琥珀主色 + 等宽元数据 + .ph 占位图。
+   AiAvatar 资产中心 · 设计令牌（v2 重设计）
+   精致浅色工作台 —— 冷调中性纸面 + 克制琥珀（仅主操作 / 当前选中 / 品牌）。
+   状态自带语义色（蓝=进行中 · 绿=完成 · 红=失败），不再用满饱和琥珀做装饰。
+   作用域 html[data-theme="aiavatar"]：同时覆盖 @ai-star-eco/ui 的 shadcn 令牌契约。
    ============================================================ */
 
-:root,
-[data-theme="aiavatar-dark"] {
-  /* surface（浅色分层） */
-  --bg-0: oklch(0.955 0.011 82);       /* 最底背景 */
-  --bg-1: oklch(0.985 0.006 82);       /* 卡片 */
-  --bg-2: oklch(0.935 0.012 82);       /* 抬升面 */
-  --bg-3: oklch(0.902 0.016 82);       /* hover / 输入 */
-  --line: oklch(0.822 0.018 78);       /* 描边 */
-  --line-2: oklch(0.72 0.024 74);      /* 强描边 */
-  --ink: oklch(0.68 0.14 68);          /* 主按钮底（琥珀） */
+html[data-theme="aiavatar"] {
+  /* ── 表面（冷调中性，浅 → 深）─────────────────────────── */
+  --bg-0: oklch(0.974 0.004 256);     /* app 画布（柔和冷灰） */
+  --bg-1: oklch(0.998 0.0016 256);    /* 卡片 / 内容面（近白） */
+  --bg-2: oklch(0.958 0.005 256);     /* 内嵌 / 表头 / 分段控件槽 */
+  --bg-3: oklch(0.936 0.006 256);     /* hover / 输入态 */
+  --panel: oklch(0.986 0.0035 256);   /* 侧栏（介于画布与卡片之间的第二中性层） */
+  --line: oklch(0.906 0.007 256);     /* 发丝描边 */
+  --line-strong: oklch(0.858 0.009 256);
 
-  /* foreground */
-  --fg-0: oklch(0.215 0.022 70);       /* 高对比文字 */
-  --fg-1: oklch(0.34 0.021 70);
-  --fg-2: oklch(0.47 0.02 70);         /* 次要文字 / 元数据 */
-  --fg-3: oklch(0.61 0.018 70);
+  /* ── 墨（冷调，非纯黑）──────────────────────────────── */
+  --fg-0: oklch(0.245 0.014 266);     /* 主文字 */
+  --fg-1: oklch(0.375 0.013 266);     /* 强次级 */
+  --fg-2: oklch(0.520 0.012 266);     /* 次要 / 元数据 */
+  --fg-3: oklch(0.642 0.010 266);     /* 三级 / 占位符 */
 
-  /* accent palette（琥珀主色系） */
-  --accent: oklch(0.68 0.14 68);          /* amber —— 主强调色 */
-  --accent-strong: oklch(0.48 0.13 62);
-  --accent-soft: oklch(0.68 0.14 68 / 0.14);
-  --extra-lime: oklch(0.64 0.14 122);
-  --extra-peach: oklch(0.66 0.14 42);
-  --extra-rose: oklch(0.58 0.18 17);
-  --extra-teal: oklch(0.58 0.11 178);
-  --extra-amber: oklch(0.68 0.14 68);
-  --extra-violet: oklch(0.55 0.16 292);
+  /* ── 品牌：克制琥珀（仅主操作 / 当前选中 / 品牌标识）────── */
+  --brand: oklch(0.705 0.115 71);         /* 主按钮底 / 选中实色 */
+  --brand-hover: oklch(0.665 0.118 68);   /* 主按钮 hover */
+  --brand-strong: oklch(0.505 0.105 62);  /* 浅底上的琥珀文字 / 图标（过 AA） */
+  --brand-soft: oklch(0.705 0.115 71 / 0.13);   /* 选中行 / 激活导航 的浅填充 */
+  --brand-line: oklch(0.705 0.115 71 / 0.55);   /* 选中卡片描边 */
+  --brand-ink: oklch(0.255 0.035 64);     /* 琥珀底上的深色文字 */
 
-  /* 状态色 */
-  --info: oklch(0.55 0.13 248);
-  --success: oklch(0.48 0.12 163);
-  --warning: var(--accent);
-  --danger: oklch(0.55 0.18 23);
+  /* ── 语义状态色（浅底过 AA；soft = 浅填充）────────────── */
+  --info: oklch(0.545 0.13 250);       --info-soft: oklch(0.545 0.13 250 / 0.12);
+  --success: oklch(0.545 0.105 159);   --success-soft: oklch(0.545 0.105 159 / 0.13);
+  --warning: oklch(0.62 0.13 55);      --warning-soft: oklch(0.62 0.13 55 / 0.14);
+  --danger: oklch(0.555 0.17 26);      --danger-soft: oklch(0.555 0.17 26 / 0.12);
+  --violet: oklch(0.535 0.14 286);     --violet-soft: oklch(0.535 0.14 286 / 0.13);
 
-  /* 占位图 .ph 斜纹色 */
-  --ph-stripe: oklch(0.68 0.14 68 / 0.12);
-  --ph-bg: oklch(0.925 0.012 82);
+  /* ── 占位图（安静中性，无斜纹）──────────────────────── */
+  --ph-bg: oklch(0.955 0.006 256);
+  --ph-fg: oklch(0.78 0.008 256);
 
-  /* 字体：等宽元数据是原型核心特征 */
-  --font-sans: "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Times New Roman", "Songti SC", ui-serif, serif;
-  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "JetBrains Mono", monospace;
+  /* ── 字体：一族无衬线承载全部 UI；mono 仅留给真·机读数值 ── */
+  --font-sans: "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
-  /* 字距 */
-  --tracking-tight: -0.02em;
-  --tracking-wide: 0.12em;
-
-  /* 圆角 */
+  /* ── 圆角（克制、统一）────────────────────────────── */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-pill: 999px;
 
-  /* 阴影（浅色） */
-  --shadow-soft: 0 1px 2px oklch(0.3 0.035 70 / 0.08);
-  --shadow-lift: 0 10px 28px oklch(0.3 0.035 70 / 0.12);
-  --shadow-pop:  0 24px 64px oklch(0.3 0.035 70 / 0.18);
-  --shadow-sm: var(--shadow-soft);
-  --shadow-md: var(--shadow-lift);
-  --shadow-lg: var(--shadow-pop);
+  /* ── 阴影（冷调、极轻；浅色工作台以 1px 描边为主，阴影仅留给浮层）── */
+  --shadow-sm: 0 1px 2px oklch(0.42 0.02 266 / 0.06);
+  --shadow-md: 0 6px 20px oklch(0.42 0.02 266 / 0.10), 0 1px 2px oklch(0.42 0.02 266 / 0.05);
+  --shadow-lg: 0 18px 48px oklch(0.36 0.02 266 / 0.16);
 
-  /* 渐变 */
-  --gradient-amber:  linear-gradient(135deg, oklch(0.74 0.13 72) 0%, oklch(0.66 0.15 62) 100%);
-  --gradient-ember:  linear-gradient(135deg, oklch(0.48 0.13 62) 0%, oklch(0.68 0.14 68) 60%, oklch(0.82 0.08 72) 100%);
-  --gradient-night:  linear-gradient(160deg, oklch(0.985 0.006 82) 0%, oklch(0.942 0.012 82) 100%);
+  /* ── 映射 @ai-star-eco/ui 的 shadcn 令牌（弹窗 / AlertDialog 等共享组件用）── */
+  --background: var(--bg-0);
+  --foreground: var(--fg-0);
+  --card: var(--bg-1);
+  --card-foreground: var(--fg-0);
+  --popover: var(--bg-1);
+  --popover-foreground: var(--fg-0);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-ink);
+  --secondary: var(--bg-2);
+  --secondary-foreground: var(--fg-0);
+  --muted: var(--bg-2);
+  --muted-foreground: var(--fg-2);
+  --accent: var(--bg-2);              /* shadcn 的 accent = 中性 hover（不是品牌色！）*/
+  --accent-foreground: var(--fg-0);
+  --destructive: var(--danger);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: var(--line);
+  --input: var(--line);
+  --input-background: var(--bg-1);
+  --ring: var(--brand);
+  --radius: 12px;
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--fg-1);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-ink);
+  --sidebar-accent: var(--brand-soft);
+  --sidebar-accent-foreground: var(--brand-strong);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brand);
 }

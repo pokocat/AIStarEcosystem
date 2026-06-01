@@ -1,15 +1,28 @@
 "use client";
 
-// 7 步工作流动作区：按当前状态展示「下一步」主操作 + 进行中任务进度 + 实现方式说明面板。
+// 当前阶段卡（详情页的"行动区"）：按状态明确给出"下一步该做什么" + 主操作。
+// 设计：把"下一步"做成页面焦点（不再埋在 7 个并列 tab 里）。衍生作为定稿后的阶段动作直接内嵌。
 import * as React from "react";
 import { Cpu, Loader2, Play, Sparkles, Wand2 } from "lucide-react";
-import type { AiAvatarDetail, AiAvatarJob } from "@ai-star-eco/types/ai-avatar";
+import type { AiAvatarDetail, AiAvatarJob, AiAvatarStatus } from "@ai-star-eco/types/ai-avatar";
 import { AiAvatarApi } from "@/api";
 import { JobStatusPill } from "@/components/common/status-pill";
 import { SourceBadge } from "@/components/common/source-badge";
 import { SamplingDialog } from "./dialogs/sampling-dialog";
 import { DraftIterateDialog } from "./dialogs/draft-iterate-dialog";
 import { TemplateBeautifyDialog } from "./dialogs/template-beautify-dialog";
+import { DeriveTab } from "./tabs/derive-tab";
+
+const STAGE_HINT: Record<AiAvatarStatus, string> = {
+  draft: "还没有打样。开始第一次打样，AI 会一次出 3~5 版供你挑选。",
+  sampling: "打样已出。可继续草稿迭代细化方向，或进入精调工作台精修。",
+  draft_iterating: "在当前版上继续用指令迭代，满意后进入精调或模板美化出图。",
+  refining: "几何 / 外观精调中。调到位后用模板美化批量出标准图，进入待定稿。",
+  pending_finalize: "标准图已出。确认定稿即冻结草稿链路，可开始衍生 3D / 视频。",
+  finalized_2d: "已定稿。可衍生可旋转 3D 模型与运镜短视频，产出会进入「产出」。",
+  deriving: "衍生生成进行中，完成后在「产出」查看 3D / 视频。",
+  archived: "已归档 · 只读资产。如需继续编辑，请用顶部「另存为新 AiAvatar」。",
+};
 
 export function WorkflowActionBar({
   detail, onChanged, onGoTab,
@@ -18,64 +31,78 @@ export function WorkflowActionBar({
 }) {
   const { avatar } = detail;
   const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
   const [openSampling, setOpenSampling] = React.useState(false);
   const [openDraft, setOpenDraft] = React.useState(false);
   const [openBeautify, setOpenBeautify] = React.useState(false);
 
   const activeJob = detail.recentJobs.find((j) => j.status === "running" || j.status === "queued");
+  const s = avatar.status;
+  const canDerive = s === "finalized_2d" || s === "deriving";
 
   const finalize = async () => {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try { await AiAvatarApi.finalize(avatar.id, {}); onChanged(); }
-    catch (e) { alert(e instanceof Error ? e.message : "定稿失败"); }
+    catch (e) { setErr(e instanceof Error ? e.message : "定稿失败"); }
     finally { setBusy(false); }
   };
 
   return (
-    <div className="space-y-3">
-      {/* 进行中任务 */}
-      {activeJob && <ActiveJobBar job={activeJob} onDone={onChanged} />}
-
-      {/* 下一步动作（按状态） */}
-      {!activeJob && (
-        <div className="flex flex-wrap items-center gap-2">
-          {(avatar.status === "draft" || avatar.status === "sampling") && (
-            <Primary onClick={() => setOpenSampling(true)} icon={Sparkles}>
-              {avatar.status === "draft" ? "开始打样" : "重新打样"}
-            </Primary>
-          )}
-          {(avatar.status === "sampling" || avatar.status === "draft_iterating") && (
-            <Secondary onClick={() => setOpenDraft(true)} icon={Wand2}>草稿迭代（指令调整）</Secondary>
-          )}
-          {(avatar.status === "sampling" || avatar.status === "draft_iterating" || avatar.status === "refining") && (
-            <Secondary onClick={() => { window.location.href = `/refine?avatar=${avatar.id}`; }} icon={Cpu}>进入精调工作台</Secondary>
-          )}
-          {(avatar.status === "refining" || avatar.status === "draft_iterating") && (
-            <Secondary onClick={() => setOpenBeautify(true)} icon={Sparkles}>模板美化 & 标准出图</Secondary>
-          )}
-          {avatar.status === "pending_finalize" && (
-            <Primary onClick={finalize} icon={Play} busy={busy}>定稿确认</Primary>
-          )}
-          {(avatar.status === "finalized_2d" || avatar.status === "deriving") && (
-            <Primary onClick={() => onGoTab("derive")} icon={Cpu}>衍生 3D / 视频</Primary>
-          )}
-          {avatar.status === "archived" && (
-            <span className="text-sm text-zinc-500">已归档 · 只读资产</span>
-          )}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--fg-3)]">当前阶段</div>
+          <p className="mt-0.5 text-sm text-[var(--fg-1)]">{STAGE_HINT[s]}</p>
         </div>
+      </div>
+
+      {activeJob ? (
+        <ActiveJobBar job={activeJob} onDone={onChanged} />
+      ) : (
+        <>
+          {/* 下一步动作（按状态）。主操作用琥珀，其余为中性幽灵按钮。 */}
+          <div className="flex flex-wrap items-center gap-2">
+            {(s === "draft" || s === "sampling") && (
+              <button onClick={() => setOpenSampling(true)} className="btn btn-primary">
+                <Sparkles className="h-4 w-4" /> {s === "draft" ? "开始打样" : "重新打样"}
+              </button>
+            )}
+            {(s === "sampling" || s === "draft_iterating") && (
+              <button onClick={() => setOpenDraft(true)} className="btn btn-ghost">
+                <Wand2 className="h-4 w-4" /> 草稿迭代
+              </button>
+            )}
+            {(s === "sampling" || s === "draft_iterating" || s === "refining") && (
+              <a href={`/refine?avatar=${avatar.id}`} className="btn btn-ghost">
+                <Cpu className="h-4 w-4" /> 进入精调工作台
+              </a>
+            )}
+            {(s === "refining" || s === "draft_iterating") && (
+              <button onClick={() => setOpenBeautify(true)} className="btn btn-ghost">
+                <Sparkles className="h-4 w-4" /> 模板美化出图
+              </button>
+            )}
+            {s === "pending_finalize" && (
+              <button onClick={finalize} disabled={busy} className="btn btn-primary">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} 定稿确认
+              </button>
+            )}
+            {s === "archived" && <span className="text-sm text-[var(--fg-3)]">已归档 · 只读资产</span>}
+          </div>
+
+          {/* 衍生：定稿后的阶段动作，直接内嵌（产出在「产出」标签查看）。 */}
+          {canDerive && (
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--bg-2)] p-3">
+              <div className="mb-3 flex items-center gap-1.5 text-sm font-medium text-[var(--fg-0)]">
+                <Cpu className="h-4 w-4 text-[var(--brand-strong)]" /> 衍生 3D / 视频
+              </div>
+              <DeriveTab detail={detail} onChanged={onChanged} showResults={false} onSeeOutputs={() => onGoTab("outputs")} />
+            </div>
+          )}
+        </>
       )}
 
-      {/* 实现方式说明面板（任务书 §7：精调要保留"实现方式"说明） */}
-      <details className="rounded-lg border border-zinc-800 bg-[var(--bg-2)] px-3 py-2 text-xs text-zinc-400">
-        <summary className="cursor-pointer select-none text-zinc-300">实现方式 · 当前阶段技术说明</summary>
-        <div className="mt-2 space-y-1.5">
-          <Impl cap="真人复刻打样" tech="InstantID / IP-Adapter-FaceID（SDXL，单图免训练 ID 保持）" mock />
-          <Impl cap="AI 原创打样" tech="SDXL / FLUX 文生图（走大模型网关或自部署）" mock />
-          <Impl cap="几何微调" tech="MediaPipe FaceMesh + 液化形变（确定性，前端实时）" real />
-          <Impl cap="妆容/发型/服饰" tech="EleGANt / HairCLIP / SD inpainting" mock />
-          <Impl cap="2D→3D / 视频" tech="TripoSR / Stable Video Diffusion（仅运镜）" mock />
-        </div>
-      </details>
+      {err && <p className="rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger)]">{err}</p>}
 
       {openSampling && <SamplingDialog avatar={avatar} onClose={() => setOpenSampling(false)} onStarted={() => { setOpenSampling(false); onChanged(); }} />}
       {openDraft && <DraftIterateDialog avatar={avatar} onClose={() => setOpenDraft(false)} onStarted={() => { setOpenDraft(false); onChanged(); }} />}
@@ -85,59 +112,30 @@ export function WorkflowActionBar({
 }
 
 function ActiveJobBar({ job, onDone }: { job: AiAvatarJob; onDone: () => void }) {
-  // 轮询本任务直到终态，终态时刷新父级
   React.useEffect(() => {
     let alive = true;
     const t = setInterval(async () => {
       try {
         const j = await AiAvatarApi.getJob(job.id);
         if (!alive) return;
-        if (j.status === "succeeded" || j.status === "failed" || j.status === "cancelled") {
-          clearInterval(t); onDone();
-        }
+        if (j.status === "succeeded" || j.status === "failed" || j.status === "cancelled") { clearInterval(t); onDone(); }
       } catch { /* keep polling */ }
     }, 1000);
     return () => { alive = false; clearInterval(t); };
   }, [job.id, onDone]);
 
   return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+    <div className="rounded-lg border border-[var(--info-soft)] bg-[var(--info-soft)] p-3">
       <div className="flex items-center gap-2 text-sm">
-        <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
-        <span className="text-amber-200">{job.title ?? job.capabilityLabel}</span>
+        <Loader2 className="h-4 w-4 animate-spin text-[var(--info)]" />
+        <span className="font-medium text-[var(--fg-0)]">{job.title ?? job.capabilityLabel}</span>
         <SourceBadge engine={job.engine} mode={job.providerMode} />
         <JobStatusPill status={job.status} className="ml-auto" />
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-        <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${job.progress}%` }} />
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--bg-3)]">
+        <div className="h-full rounded-full transition-all" style={{ width: `${job.progress}%`, background: "var(--info)" }} />
       </div>
-      <div className="meta mt-1">{job.progress}% · 任务实时进度</div>
-    </div>
-  );
-}
-
-function Primary({ onClick, icon: Icon, children, busy }: { onClick: () => void; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode; busy?: boolean }) {
-  return (
-    <button onClick={onClick} disabled={busy}
-      className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-60">
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />} {children}
-    </button>
-  );
-}
-function Secondary({ onClick, icon: Icon, children }: { onClick: () => void; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick} className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-200 hover:border-zinc-500">
-      <Icon className="h-4 w-4" /> {children}
-    </button>
-  );
-}
-function Impl({ cap, tech, mock, real }: { cap: string; tech: string; mock?: boolean; real?: boolean }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-28 shrink-0 text-zinc-300">{cap}</span>
-      <span className="flex-1 font-mono text-[11px] text-zinc-500">{tech}</span>
-      {real && <SourceBadge engine="liquify" mode="selfhost" />}
-      {mock && <SourceBadge engine="MOCK" mode="mock" />}
+      <div className="meta mt-1"><span className="num">{job.progress}%</span> · 任务实时进度</div>
     </div>
   );
 }
