@@ -2,258 +2,190 @@
 
 export const dynamic = "force-dynamic";
 
+// 我的短剧 — 短剧工坊首页（设计真源:screens-entry.jsx `HomeScreen`）。
+// 新建按钮 → /projects/new(B4 创建流);项目卡 → /projects/<id>(B5 工作台)。
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
-import { Film, Plus, Search, Sparkles } from "lucide-react";
-import type { Drama, DramaStatus } from "@ai-star-eco/types/film";
-import { Button, Card, KpiCard } from "@/components/premium";
-import {
-  EmptyState,
-  ErrorBlock,
-  LoadingBlock,
-  StatusBadge,
-  ViewHeader,
-} from "@/components/common";
-import { FilmApi } from "@/api";
-import { useAsync, invalidate } from "@/lib/drama-query";
-import { NewProjectDialog } from "./_dialogs/NewProjectDialog";
+import { Layers, Plus, Sliders } from "lucide-react";
+import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
+import { PROJECTS, type DramaProjectSummary } from "@/mocks/drama-workshop";
 
-const STATUS_LABEL: Record<DramaStatus, string> = {
-  released: "在线",
-  filming: "制作中",
-  "post-production": "首映 T-3",
-  casting: "选角",
-};
-const STATUS_TONE: Record<DramaStatus, "success" | "info" | "accent" | "violet"> = {
-  released: "success",
-  filming: "info",
-  "post-production": "accent",
-  casting: "violet",
-};
-
-type Filter = "all" | DramaStatus;
-
-export default function ProjectsListPage() {
+export default function ProjectsHomePage() {
   return (
-    <React.Suspense fallback={null}>
-      <ProjectsListInner />
+    <React.Suspense fallback={<HomeSkeleton />}>
+      <ProjectsHomeInner />
     </React.Suspense>
   );
 }
 
-function ProjectsListInner() {
+function ProjectsHomeInner() {
   const router = useRouter();
   const sp = useSearchParams();
-  const [showNew, setShowNew] = React.useState(sp.get("new") === "1");
-  const [filter, setFilter] = React.useState<Filter>("all");
-  const [q, setQ] = React.useState("");
+  const [loading, setLoading] = React.useState(true);
+  const [operator, setOperator] = React.useState(false);
 
+  // 进入页面给一点骨架时间（与设计真源 final-home loading 行为一致）。
   React.useEffect(() => {
-    // URL ?new=1 触发后自动清掉
+    const t = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(t);
+  }, []);
+
+  // 兼容旧链接 ?new=1 → 跳新建流
+  React.useEffect(() => {
     if (sp.get("new") === "1") {
-      window.history.replaceState(null, "", "/projects");
+      router.replace("/projects/new");
     }
-  }, [sp]);
+  }, [sp, router]);
 
-  const dramasQ = useAsync<Drama[]>("/film/dramas", () => FilmApi.listDramas());
-  const all = (dramasQ.data ?? []).filter((d) => d.id.startsWith("d-"));
-
-  const filtered = all.filter((d) => {
-    if (filter !== "all" && d.status !== filter) return false;
-    if (q) {
-      const needle = q.toLowerCase();
-      if (!d.title.toLowerCase().includes(needle) && !d.genre.includes(q) && !d.role.includes(q)) return false;
-    }
-    return true;
-  });
-
-  const released = all.filter((d) => d.status === "released").length;
-  const filming = all.filter((d) => d.status === "filming").length;
-  const post = all.filter((d) => d.status === "post-production").length;
-  const casting = all.filter((d) => d.status === "casting").length;
+  const openProject = (p: DramaProjectSummary) => router.push(`/projects/${p.id}`);
+  const openNew = () => router.push("/projects/new");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      <ViewHeader
-        eyebrow="项目流水线"
-        title={
-          <>
-            项目{" "}
-            <span
-              className="text-gradient-gold"
-              style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}
-            >
-              流水线
-            </span>
-          </>
-        }
-        meta={`${all.length} 条剧集 · ${released} 在线 · ${filming} 制作`}
-        action={
-          <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
-            <Sparkles size={14} />
-            创建新项目
-          </Button>
-        }
-      />
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="在线" value={String(released)} tone="success" />
-        <KpiCard label="制作中" value={String(filming)} tone="info" />
-        <KpiCard label="后期" value={String(post)} tone="accent" />
-        <KpiCard label="选角中" value={String(casting)} tone="violet" />
-      </div>
-
-      <Card style={{ padding: "16px 18px" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
-          <div
+    <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+      {/* 标题区 + 顶部操作 */}
+      <div
+        className="row"
+        style={{ marginBottom: 28, gap: 16, flexWrap: "wrap" }}
+      >
+        <div className="grow" style={{ minWidth: 280 }}>
+          <h1
             style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid var(--line-2)",
-              borderRadius: "var(--radius-md)",
+              margin: 0,
+              fontSize: 30,
+              fontWeight: 800,
+              letterSpacing: "-.02em",
             }}
           >
-            <Search size={14} color="var(--fg-2)" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="按剧名 / 类型 / 主演搜索…"
-              style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                color: "var(--fg-0)",
-                fontSize: 13,
-                outline: "none",
-              }}
-            />
+            我的短剧
+          </h1>
+          <div className="muted" style={{ marginTop: 6 }}>
+            从灵感到能直接开拍的成片配方,一条流水线搞定
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(["all", "released", "filming", "post-production", "casting"] as Filter[]).map((f) => {
-            const active = filter === f;
-            return (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "var(--radius-pill)",
-                  border: active
-                    ? "1px solid color-mix(in srgb, var(--accent) 50%, transparent)"
-                    : "1px solid var(--line-2)",
-                  background: active ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
-                  color: active ? "var(--accent)" : "var(--fg-1)",
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                {f === "all" ? "全部" : STATUS_LABEL[f]}
-              </button>
-            );
-          })}
+        <div className="row gap-3">
+          {/* 运营身份开关(演示,实际权限由后端 operatorRole 控制) */}
+          <button
+            type="button"
+            className="chip static"
+            title="切换运营身份(演示)"
+            onClick={() => setOperator((v) => !v)}
+            style={{
+              background: operator ? "var(--accent-soft)" : "var(--surface-2)",
+              color: operator ? "var(--accent)" : "var(--ink-3)",
+            }}
+          >
+            <Sliders size={13} /> 运营身份 {operator ? "开" : "关"}
+          </button>
+          {operator && (
+            <button type="button" className="btn btn-line btn-sm">
+              <Layers size={15} /> 爆款拆解
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-grad"
+            style={{ height: 46, padding: "0 22px", fontSize: 15 }}
+            onClick={openNew}
+          >
+            <Plus size={18} /> 新建短剧
+          </button>
         </div>
-      </Card>
+      </div>
 
-      {dramasQ.isLoading && <LoadingBlock rows={3} height={64} />}
-      {!!dramasQ.error && <ErrorBlock onRetry={dramasQ.refetch} />}
-      {!dramasQ.isLoading && !dramasQ.error && filtered.length === 0 && (
-        <EmptyState
-          icon={<Film size={28} />}
-          title="还没有项目"
-          action={
-            <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
-              <Plus size={14} />
-              创建新项目
-            </Button>
-          }
-        />
-      )}
-
-      {!dramasQ.isLoading && filtered.length > 0 && (
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                {["剧名", "类型", "集数", "主演", "状态", "排期"].map((h) => (
-                  <th
-                    key={h}
-                    className="eyebrow"
-                    style={{
-                      textAlign: "left",
-                      padding: "14px 18px",
-                      borderBottom: "1px solid var(--line)",
-                      color: "var(--fg-2)",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p, i) => (
-                <tr
-                  key={p.id}
-                  onClick={() => router.push(`/projects/${encodeURIComponent(p.id)}`)}
-                  style={{
-                    borderBottom: i < filtered.length - 1 ? "1px solid var(--line)" : "none",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.background =
-                      "rgba(255,255,255,0.02)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.background = "transparent";
-                  }}
-                >
-                  <td
-                    style={{
-                      padding: "16px 18px",
-                      color: "var(--fg-0)",
-                      fontWeight: 500,
-                      fontFamily: "var(--font-display)",
-                    }}
-                  >
-                    {p.title}
-                  </td>
-                  <td style={{ padding: "16px 18px", color: "var(--fg-1)" }}>{p.genre}</td>
-                  <td className="mono" style={{ padding: "16px 18px", color: "var(--fg-1)", fontSize: 12 }}>
-                    {p.episodes > 0 ? `${p.episodes} 集` : "—"}
-                  </td>
-                  <td style={{ padding: "16px 18px", color: "var(--fg-1)" }}>{p.role}</td>
-                  <td style={{ padding: "16px 18px" }}>
-                    <StatusBadge tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</StatusBadge>
-                  </td>
-                  <td
-                    className="mono"
-                    style={{ padding: "16px 18px", color: "var(--fg-2)", fontSize: 12 }}
-                  >
-                    {p.releaseDate ? p.releaseDate.slice(0, 10) : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      <NewProjectDialog
-        open={showNew}
-        onOpenChange={setShowNew}
-        onCreated={(d) => {
-          invalidate("/film/dramas");
-          toast.success(`项目「${d.title}」已创建`);
-          router.push(`/projects/${encodeURIComponent(d.id)}`);
+      {/* 网格 */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(232px, 1fr))",
+          gap: 20,
         }}
-      />
+      >
+        {/* 新建卡 */}
+        <button
+          type="button"
+          onClick={openNew}
+          className="col center"
+          style={{
+            aspectRatio: "3/4",
+            borderRadius: "var(--radius)",
+            border: "2px dashed var(--line)",
+            color: "var(--ink-3)",
+            gap: 10,
+            background: "var(--surface)",
+            transition: "border-color .18s, color .18s",
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--accent)";
+            e.currentTarget.style.color = "var(--accent)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--line)";
+            e.currentTarget.style.color = "var(--ink-3)";
+          }}
+        >
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 16,
+              background: "var(--accent-soft)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--accent)",
+            }}
+          >
+            <Plus size={26} />
+          </div>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>开一部新剧</span>
+        </button>
+
+        {/* 项目卡 / 骨架 */}
+        {loading
+          ? Array.from({ length: 6 }).map((_, i) => <ProjectCardSkeleton key={i} />)
+          : PROJECTS.map((p, i) => (
+              <ProjectCard
+                key={p.id}
+                p={p}
+                delay={i * 40}
+                stageNames={STAGE_NAMES}
+                onOpen={openProject}
+              />
+            ))}
+      </div>
+    </div>
+  );
+}
+
+function ProjectCardSkeleton() {
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="skel" style={{ aspectRatio: "3/2", borderRadius: 0 }} />
+      <div style={{ padding: 14 }}>
+        <div className="skel" style={{ height: 12, width: "60%", marginBottom: 10 }} />
+        <div className="skel" style={{ height: 8, width: "100%", marginBottom: 8 }} />
+        <div className="skel" style={{ height: 6, width: "40%" }} />
+      </div>
+    </div>
+  );
+}
+
+function HomeSkeleton() {
+  return (
+    <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+      <div className="skel" style={{ height: 36, width: 180, marginBottom: 8 }} />
+      <div className="skel" style={{ height: 16, width: 320, marginBottom: 28 }} />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(232px, 1fr))",
+          gap: 20,
+        }}
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <ProjectCardSkeleton key={i} />
+        ))}
+      </div>
     </div>
   );
 }
