@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Sparkles } from "lucide-react";
-import { getProjectData, PROJECTS } from "@/mocks/drama-workshop";
+import { getProjectData, PROJECTS, type ProjectData } from "@/mocks/drama-workshop";
 import {
   StageHeader,
   WorkshopShell,
@@ -17,6 +17,7 @@ import {
   type WorkshopState,
 } from "@/components/drama-workshop/workbench";
 import type { StageKey } from "@/components/drama-workshop";
+import { CastStage, OutlineStage, TopicStage } from "@/components/drama-workshop/stages";
 
 export default function ProjectWorkbench() {
   const router = useRouter();
@@ -47,10 +48,33 @@ export default function ProjectWorkbench() {
       data={data}
       initialStage={meta.stage <= 3 ? "outline" : "script"}
       renderStage={({ state, dispatch }) => (
-        <StageStub state={state} dispatch={dispatch} />
+        <StageOutlet state={state} dispatch={dispatch} data={data} prefilled={meta.mode === "template"} />
       )}
     />
   );
+}
+
+function StageOutlet({
+  state,
+  dispatch,
+  data,
+  prefilled,
+}: {
+  state: WorkshopState;
+  dispatch: React.Dispatch<WorkshopAction>;
+  data: ProjectData;
+  prefilled: boolean;
+}) {
+  switch (state.stage) {
+    case "topic":
+      return <TopicStage state={state} dispatch={dispatch} data={data} />;
+    case "outline":
+      return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} />;
+    case "cast":
+      return <CastStage state={state} dispatch={dispatch} data={data} />;
+    default:
+      return <StageStub state={state} dispatch={dispatch} />;
+  }
 }
 
 // 各阶段占位 — B6/B7 将以真实组件替换。
