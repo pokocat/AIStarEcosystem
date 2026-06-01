@@ -11,6 +11,7 @@ import { ProjectTopbar } from "./project-topbar";
 import { StageRail } from "./stage-rail";
 import { EpisodeStrip } from "./episode-strip";
 import { CastPanel } from "./cast-panel";
+import { RunAllDialog } from "./run-all-dialog";
 import type { StageKey } from "../stages-config";
 
 export interface WorkshopState {
@@ -32,7 +33,8 @@ export type WorkshopAction =
   | { type: "setEp"; ep: number }
   | { type: "bindAvatar"; charId: string; avatar?: string }
   | { type: "toggleRole"; charId: string }
-  | { type: "spend"; n: number };
+  | { type: "spend"; n: number }
+  | { type: "runAllComplete"; keys: StageKey[]; cost: number };
 
 function reducer(state: WorkshopState, a: WorkshopAction): WorkshopState {
   switch (a.type) {
@@ -76,6 +78,16 @@ function reducer(state: WorkshopState, a: WorkshopAction): WorkshopState {
       };
     case "spend":
       return { ...state, balance: Math.max(0, state.balance - a.n) };
+    case "runAllComplete": {
+      const ls = { ...state.lockedStages };
+      for (const k of a.keys) if (k !== "prompt") ls[k] = true;
+      return {
+        ...state,
+        lockedStages: ls,
+        stage: "prompt",
+        balance: Math.max(0, state.balance - a.cost),
+      };
+    }
     default:
       return state;
   }
@@ -106,6 +118,7 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
     balance: 1280,
   }));
   const [castCollapsed, setCastCollapsed] = React.useState(false);
+  const [runAllOpen, setRunAllOpen] = React.useState(false);
 
   const isEpisodeStage = EPISODE_STAGES.includes(state.stage);
 
@@ -114,8 +127,11 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
     logout();
     toast.success("已退出登录");
   };
-  const handleRunAll = () => {
-    toast.success("一键连跑:即将上线(B8)");
+  const handleRunAll = () => setRunAllOpen(true);
+  const handleRunAllComplete = (keys: StageKey[], cost: number) => {
+    setRunAllOpen(false);
+    dispatch({ type: "runAllComplete", keys, cost });
+    toast.success("连跑完成 · 成片配方已就绪");
   };
 
   return (
@@ -158,6 +174,16 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
         onToggle={() => setCastCollapsed((v) => !v)}
         onBind={() => dispatch({ type: "jump", stage: "cast" })}
       />
+
+      {runAllOpen && (
+        <RunAllDialog
+          current={state.stage}
+          locked={state.lockedStages}
+          onCancel={() => setRunAllOpen(false)}
+          onComplete={handleRunAllComplete}
+        />
+      )}
     </div>
   );
 }
+

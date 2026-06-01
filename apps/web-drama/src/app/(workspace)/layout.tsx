@@ -48,16 +48,20 @@ interface NavGroup {
 
 const GROUPS: NavGroup[] = [
   {
-    title: "工作台",
+    title: "短剧工坊",
     items: [
+      { href: "/projects", icon: Clapperboard, label: "我的短剧" },
       { href: "/dashboard", icon: LayoutDashboard, label: "总览", exact: true },
+    ],
+  },
+  {
+    title: "创作素材",
+    items: [
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
       { href: "/incubator", icon: Wand2, label: "孵化新演员" },
       { href: "/forge", icon: Sparkles, label: "形象锻造炉" },
       { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
       { href: "/scripts", icon: PenTool, label: "脚本工坊" },
-      { href: "/short-drama", icon: Clapperboard, label: "短剧生成" },
-      { href: "/projects", icon: Film, label: "项目流水线" },
     ],
   },
   {
@@ -69,7 +73,7 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "系统",
+    title: "账户",
     items: [
       { href: "/finance", icon: WalletIcon, label: "财务中心" },
       { href: "/settings", icon: Settings, label: "工作室设置" },
@@ -137,8 +141,13 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {GROUPS.map((g, gi) => (
           <div key={gi}>
             <div
-              className="eyebrow"
-              style={{ padding: gi === 0 ? "8px 10px 8px" : "20px 10px 8px" }}
+              className="faint"
+              style={{
+                padding: gi === 0 ? "8px 12px 6px" : "18px 12px 6px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: ".05em",
+              }}
             >
               {g.title}
             </div>
@@ -154,23 +163,21 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     display: "flex",
                     alignItems: "center",
                     gap: 12,
-                    padding: "9px 10px",
-                    borderRadius: "var(--radius-md)",
-                    background: active
-                      ? "color-mix(in srgb, var(--accent) 10%, transparent)"
-                      : "transparent",
-                    color: active ? "var(--fg-0)" : "var(--fg-1)",
-                    fontSize: 13,
-                    fontWeight: active ? 500 : 400,
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    background: active ? "var(--accent-soft)" : "transparent",
+                    color: active ? "var(--accent)" : "var(--ink-2)",
+                    fontSize: 13.5,
+                    fontWeight: active ? 700 : 600,
                     marginBottom: 2,
-                    border: active
-                      ? "1px solid color-mix(in srgb, var(--accent) 25%, transparent)"
-                      : "1px solid transparent",
-                    transition: "background 160ms ease, border-color 160ms ease",
+                    transition: "background 160ms ease, color 160ms ease",
                     textDecoration: "none",
                   }}
                 >
-                  <Icon size={15} color={active ? "var(--accent)" : "var(--fg-2)"} />
+                  <Icon
+                    size={15}
+                    color={active ? "var(--accent)" : "var(--ink-3)"}
+                  />
                   <span>{it.label}</span>
                 </Link>
               );

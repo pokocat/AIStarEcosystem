@@ -24,7 +24,7 @@ export function EngineLimits({ shot }: EngineLimitsProps) {
           style={{ color: "var(--accent)", flex: "none", marginTop: 1 }}
         />
         <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
-          由<b style={{ color: "var(--accent)" }}>数字人引擎</b>承接真人脸,按其自身能力运作,没有特效镜的文件 / 时长限制。
+          走<b style={{ color: "var(--accent)" }}>数字人出镜</b>,真人脸即时出片,没有特效镜的文件 / 时长限制。
         </div>
       </div>
     );

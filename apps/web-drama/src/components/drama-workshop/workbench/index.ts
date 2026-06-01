@@ -5,3 +5,4 @@ export { ProjectTopbar } from "./project-topbar";
 export { StageHeader } from "./stage-header";
 export { WorkshopShell } from "./workshop-shell";
 export type { WorkshopState, WorkshopAction } from "./workshop-shell";
+export { RunAllDialog } from "./run-all-dialog";

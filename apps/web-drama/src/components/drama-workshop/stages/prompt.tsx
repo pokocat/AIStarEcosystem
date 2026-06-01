@@ -73,7 +73,7 @@ export function PromptStage({ state, dispatch, data }: PromptStageProps) {
             成片配方已就绪
           </h1>
           <div className="muted" style={{ marginTop: 6, maxWidth: 440 }}>
-            第 {pack.ep} 集 · {pack.scene} —— 逐镜整理好,可直接喂给视频大模型开拍。
+            第 {pack.ep} 集 · {pack.scene} —— 逐镜整理好,可直接拿去开拍。
           </div>
           <div className="row gap-3" style={{ marginTop: 18 }}>
             <button
@@ -121,7 +121,7 @@ export function PromptStage({ state, dispatch, data }: PromptStageProps) {
         >
           <Clock size={18} style={{ color: "var(--accent)", flex: "none" }} />
           <div style={{ fontSize: 13, color: "var(--ink-2)" }}>
-            <b style={{ color: "var(--ink)" }}>特效镜(非真人脸)</b>走特效引擎,目前按权益开通 —— 配方已经写好,开通后即可直接出片。数字人出镜镜头不受影响,本期就能用。
+            <b style={{ color: "var(--ink)" }}>特效镜(非真人脸)</b>的出片能力按权益开通 —— 配方已经写好,开通后即可直接出片。数字人出镜镜头不受影响,本期就能用。
           </div>
         </div>
 
@@ -156,7 +156,7 @@ export function PromptStage({ state, dispatch, data }: PromptStageProps) {
       <DramaConfirmDialog
         open={exportOpen}
         title="导出整集成片配方?"
-        body="将把第 1 集所有镜头打包成可直接喂给视频大模型的配方。特效镜按权益开通,数字人镜头即刻可用。"
+        body="将把第 1 集所有镜头打包成可直接开拍的配方。特效镜按权益开通,数字人镜头即刻可用。"
         cost={32}
         confirmLabel="确认导出"
         onCancel={() => setExportOpen(false)}

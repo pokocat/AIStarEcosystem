@@ -17,6 +17,7 @@ import {
   Wand2,
 } from "lucide-react";
 import type { Script, ScriptVersion } from "@ai-star-eco/types/script";
+import { dramaConfirm } from "@/components/drama-ui";
 import { Button, Card, Chip } from "@/components/premium";
 import {
   ConfirmDialog,
@@ -73,9 +74,16 @@ export default function ScriptEditorPage({ params }: PageProps) {
     }
   }, [script, versions, activeVersionId]);
 
-  function switchVersion(v: ScriptVersion) {
+  async function switchVersion(v: ScriptVersion) {
     if (content !== versions.find((x) => x.id === activeVersionId)?.content) {
-      if (!window.confirm("当前有未保存的修改，确认切换版本？")) return;
+      const ok = await dramaConfirm({
+        title: "切换版本会丢弃未保存修改",
+        body: "当前编辑器里的内容还没保存。切换到这一版历史后,未保存的改动会丢失。",
+        confirmLabel: "确认切换",
+        cancelLabel: "再想想",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
     setActiveVersionId(v.id);
     setContent(v.content);
