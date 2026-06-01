@@ -430,6 +430,10 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const { user, hasPlatformAccess } = useAuth();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const pathname = usePathname();
+  // 短剧工作台沉浸态:进入某部短剧后(`/projects/<id>`)自带 6 阶段轨 + 顶部
+  // 项目条 + 角色面板,不挂通用 workspace sidebar/topbar。
+  const isWorkshop = !!pathname?.match(/^\/projects\/[^/]+(\/.*)?$/) && !pathname.startsWith("/projects/new");
 
   // 抽屉打开时锁定背景滚动（移动端体验）。
   React.useEffect(() => {
@@ -447,16 +451,25 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       <PlatformAccessDenied
         appName="AI 短剧"
         theme={{
-          bg: "var(--bg-0)",
-          surface: "var(--bg-1)",
-          fg: "var(--fg-0)",
-          fgMuted: "var(--fg-2)",
+          bg: "var(--bg)",
+          surface: "var(--surface)",
+          fg: "var(--ink)",
+          fgMuted: "var(--ink-2)",
           accent: "var(--accent)",
-          accentFg: "#1a1410",
+          accentFg: "#fff",
           border: "var(--line)",
-          radius: "var(--radius-lg)",
+          radius: "var(--radius)",
         }}
       />
+    );
+  }
+
+  // 工作台沉浸态:跳过通用 sidebar/topbar,把整屏交给 page.tsx
+  if (isWorkshop) {
+    return (
+      <div className="ws-shell" style={{ display: "block", gridTemplateColumns: "none", overflow: "hidden" }}>
+        {children}
+      </div>
     );
   }
 

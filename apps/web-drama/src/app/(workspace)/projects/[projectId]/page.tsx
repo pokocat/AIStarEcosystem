@@ -2,17 +2,23 @@
 
 export const dynamic = "force-dynamic";
 
-// 短剧工作台 — 占位(B5 将填入完整的 6 阶段轨 + 顶部项目条 + 剧集切换器 +
-// 中央工作区 + 右侧角色面板)。当前占位渲染项目信息 + 阶段轨预览。
+// 短剧工作台 — 沉浸式接管,自带 StageRail + 顶部项目条 + EpisodeStrip +
+// CastPanel + 中央阶段视图。
+// 各阶段内容(topic/outline/cast/script/board/prompt)由 B6/B7 填入完整组件,
+// 当前 B5 给出 stub:每个阶段一张占位卡,验收外壳布局。
 import * as React from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, Lock } from "lucide-react";
-import { STAGES } from "@/components/drama-workshop";
+import { ChevronLeft, Sparkles } from "lucide-react";
 import { getProjectData, PROJECTS } from "@/mocks/drama-workshop";
-import { Thumb } from "@/components/drama-ui";
+import {
+  StageHeader,
+  WorkshopShell,
+  type WorkshopAction,
+  type WorkshopState,
+} from "@/components/drama-workshop/workbench";
+import type { StageKey } from "@/components/drama-workshop";
 
-export default function ProjectWorkbenchStub() {
+export default function ProjectWorkbench() {
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
   const id = params?.projectId ?? "";
@@ -21,10 +27,14 @@ export default function ProjectWorkbenchStub() {
 
   if (!meta || !data) {
     return (
-      <div className="col center" style={{ minHeight: "60vh", gap: 14, textAlign: "center" }}>
+      <div className="col center" style={{ height: "100%", gap: 14, textAlign: "center" }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>没找到这部短剧</h1>
         <div className="muted">可能是链接过期了。回到我的短剧重新挑选一部。</div>
-        <button type="button" className="btn btn-line" onClick={() => router.push("/projects")}>
+        <button
+          type="button"
+          className="btn btn-line"
+          onClick={() => router.push("/projects")}
+        >
           <ChevronLeft size={16} /> 返回我的短剧
         </button>
       </div>
@@ -32,120 +42,88 @@ export default function ProjectWorkbenchStub() {
   }
 
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto" }}>
-      {/* 头部:封面 + 项目信息 */}
-      <div className="row gap-4 fade-up" style={{ marginBottom: 24, alignItems: "stretch" }}>
-        <Thumb
-          from={meta.cover.from}
-          to={meta.cover.to}
-          ratio={meta.ratio === "16:9" ? "16/10" : "3/2"}
-          w={200}
-          radius={16}
-        />
-        <div className="col grow" style={{ justifyContent: "center", gap: 8 }}>
-          <div className="row gap-2">
-            <span className="tag tag-gray">{meta.type}</span>
-            <span
-              className="tag"
-              style={{
-                background: meta.mode === "guided" ? "var(--accent-soft)" : "var(--accent-2-soft)",
-                color: meta.mode === "guided" ? "var(--accent)" : "var(--accent-2)",
-              }}
-            >
-              {meta.mode === "guided" ? "AI 引导" : "套用模板"}
-            </span>
-            <span className="grow" />
-            <Link href="/projects" className="btn btn-ghost btn-sm">
-              <ChevronLeft size={15} /> 返回
-            </Link>
-          </div>
-          <h1
+    <WorkshopShell
+      meta={meta}
+      data={data}
+      initialStage={meta.stage <= 3 ? "outline" : "script"}
+      renderStage={({ state, dispatch }) => (
+        <StageStub state={state} dispatch={dispatch} />
+      )}
+    />
+  );
+}
+
+// 各阶段占位 — B6/B7 将以真实组件替换。
+const STAGE_META: Record<
+  StageKey,
+  { no: number; scope: "项目" | "剧集"; title: string; desc: string }
+> = {
+  topic:   { no: 1, scope: "项目", title: "选题立项",     desc: "立项起点已在新建时完成,这里随时回看与微调。" },
+  outline: { no: 2, scope: "项目", title: "大纲分集",     desc: "铺好人物小传、主线,再把故事拆成一集一集的钩子和梗概。" },
+  cast:    { no: 3, scope: "项目", title: "角色与资产", desc: "给关键角色绑定一个数字人分身锁住形象 —— 这是跨集一致性和真人脸的地基。" },
+  script:  { no: 4, scope: "剧集", title: "单集剧本",     desc: "把这一集写成一个个场景。点任意文字即可直接编辑。" },
+  board:   { no: 5, scope: "剧集", title: "分镜工作台", desc: "按剧本场景逐场拆镜。描述、台词点击即改,景别运镜在精修栏点选。" },
+  prompt:  { no: 6, scope: "剧集", title: "成片配方",     desc: "逐镜整理好,可直接喂给视频大模型开拍。" },
+};
+
+function StageStub({
+  state,
+  dispatch,
+}: {
+  state: WorkshopState;
+  dispatch: React.Dispatch<WorkshopAction>;
+}) {
+  const m = STAGE_META[state.stage];
+  const titleWithEp =
+    m.scope === "剧集" ? `第 ${state.ep} 集 · ${m.title.replace(/^.*·\s*/, "")}` : m.title;
+  return (
+    <div className="scroll" style={{ height: "100%" }}>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 32px 64px" }}>
+        <StageHeader no={m.no} scope={m.scope} title={titleWithEp} desc={m.desc} />
+        <div
+          className="card col center"
+          style={{ padding: "60px 24px", gap: 14, textAlign: "center" }}
+        >
+          <div
             style={{
-              margin: 0,
-              fontSize: 28,
-              fontWeight: 800,
-              letterSpacing: "-.02em",
+              width: 60,
+              height: 60,
+              borderRadius: 20,
+              background: "var(--accent-soft)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--accent)",
             }}
           >
-            {data.projectInfo.title}
-          </h1>
-          <div className="faint num" style={{ fontSize: 13 }}>
-            {data.projectInfo.episodes} 集 · {data.projectInfo.duration} ·{" "}
-            {data.projectInfo.ratio}
+            <Sparkles size={28} />
           </div>
-          <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-            {data.projectInfo.logline}
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>
+              「{m.title}」工作区
+            </div>
+            <div className="muted" style={{ fontSize: 13.5, marginTop: 4, maxWidth: 380 }}>
+              {m.desc}
+            </div>
           </div>
-        </div>
-      </div>
-
-      {/* 阶段轨预览 */}
-      <div className="card" style={{ padding: 22 }}>
-        <div className="row gap-2" style={{ marginBottom: 14 }}>
-          <span className="tag tag-accent">即将上线</span>
-          <span style={{ fontWeight: 700 }}>六阶段工作台</span>
-        </div>
-        <div className="muted" style={{ fontSize: 13.5, marginBottom: 16 }}>
-          顶部项目条 + 剧集切换器、左侧六阶段轨(进度 + 软锁可自由跳)、右侧常驻可折叠角色面板、中间专注区 —— 正在搭建(B5)。
-        </div>
-        <div className="col gap-2">
-          {STAGES.map((s) => {
-            const reached = s.no <= meta.stage;
-            const current = s.no === meta.stage;
-            return (
-              <div
-                key={s.key}
-                className="row gap-3"
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  background: current ? "var(--accent-soft)" : "var(--surface-2)",
-                  color: current ? "var(--accent)" : reached ? "var(--ink)" : "var(--ink-3)",
-                  border: current
-                    ? "1.5px solid var(--accent)"
-                    : "1.5px solid transparent",
-                }}
+          <div className="row gap-3">
+            {state.lockedStages[state.stage] ? (
+              <span className="tag tag-accent">已锁定</span>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-grad"
+                onClick={() =>
+                  dispatch({ type: "lock", stage: state.stage, cost: 0 })
+                }
               >
-                <span
-                  className="num"
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: 8,
-                    display: "grid",
-                    placeItems: "center",
-                    background: current
-                      ? "var(--accent)"
-                      : reached
-                        ? "var(--surface)"
-                        : "var(--surface)",
-                    color: current ? "#fff" : reached ? "var(--ink)" : "var(--ink-3)",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    flex: "none",
-                  }}
-                >
-                  {s.no}
-                </span>
-                <span style={{ fontWeight: current ? 700 : 600 }}>{s.name}</span>
-                <span className="faint" style={{ fontSize: 11.5, fontWeight: 600 }}>
-                  · {s.scope}{s.scopeHint ? "·" + s.scopeHint : ""}
-                </span>
-                <span className="grow" />
-                {reached && s.no < meta.stage && (
-                  <span className="faint num" style={{ fontSize: 11 }}>
-                    <Lock size={12} style={{ marginRight: 4, verticalAlign: -2 }} />
-                    已锁
-                  </span>
-                )}
-                {current && (
-                  <span className="num" style={{ fontSize: 12, fontWeight: 700 }}>
-                    当前
-                  </span>
-                )}
-              </div>
-            );
-          })}
+                <Sparkles size={15} /> 演示:锁定本阶段并进入下一步
+              </button>
+            )}
+          </div>
+          <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>
+            真正的「{m.title}」交互将在{" "}
+            {m.scope === "项目" ? "B6" : "B7"} 批次填入。
+          </div>
         </div>
       </div>
     </div>
