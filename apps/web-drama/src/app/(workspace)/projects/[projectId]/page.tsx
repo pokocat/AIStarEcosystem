@@ -17,7 +17,14 @@ import {
   type WorkshopState,
 } from "@/components/drama-workshop/workbench";
 import type { StageKey } from "@/components/drama-workshop";
-import { CastStage, OutlineStage, TopicStage } from "@/components/drama-workshop/stages";
+import {
+  BoardStage,
+  CastStage,
+  OutlineStage,
+  PromptStage,
+  ScriptStage,
+  TopicStage,
+} from "@/components/drama-workshop/stages";
 
 export default function ProjectWorkbench() {
   const router = useRouter();
@@ -72,6 +79,12 @@ function StageOutlet({
       return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} />;
     case "cast":
       return <CastStage state={state} dispatch={dispatch} data={data} />;
+    case "script":
+      return <ScriptStage state={state} dispatch={dispatch} data={data} />;
+    case "board":
+      return <BoardStage state={state} dispatch={dispatch} data={data} />;
+    case "prompt":
+      return <PromptStage state={state} dispatch={dispatch} data={data} />;
     default:
       return <StageStub state={state} dispatch={dispatch} />;
   }
