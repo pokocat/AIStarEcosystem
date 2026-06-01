@@ -10,7 +10,7 @@ export function StepInspiration({ ctrl }: { ctrl: DramaDraftController }) {
   return (
     <Card style={{ padding: "22px 24px" }}>
       <SectionHeader eyebrow="选题 · 灵感" title="从一句话开始" />
-      <Field label="短剧主题 / 灵感" hint="越具体，脚本越贴合。也可以从「模板广场」挑一个赛道带入。">
+      <Field label="短剧主题 / 灵感" hint="越具体，脚本越贴合。也可以从「智能选题」挑题材 / 人设 / 框架带入。">
         <TextArea
           rows={4}
           value={ctrl.theme}

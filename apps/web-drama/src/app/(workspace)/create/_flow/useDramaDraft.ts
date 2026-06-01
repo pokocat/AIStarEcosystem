@@ -1,9 +1,8 @@
 "use client";
 
-// useDramaDraft — 短剧创作的共享状态引擎（v0.7）。
-// 从原 short-drama/page.tsx 抽出，供「极速模式」与「专业模式」共用同一 DramaScript，
-// 切换模式不丢草稿。包含：起草输入 / 工作区脚本 / 分镜 / 角色 / 变体 / 生成任务（轮询） /
-// 剧集多集 / 归入项目 / 去分发 全套动作。
+// useDramaDraft — 短剧创作的共享状态引擎（v0.7.1）。
+// 极速 / 专业两模式只是「生成最终脚本的方式」不同，产物是同一份 DramaScript（含人物/分镜/场景），
+// 多集时是同一 series 的多个 DramaScript。视频按「一集一任务」单独派发（generateEpisodes 逐集）。
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -14,10 +13,11 @@ import type { CastOption } from "@/components/short-drama/character-panel";
 export const GENRES = ["都市情感", "甜宠", "逆袭爽剧", "古装", "悬疑", "喜剧"];
 export const DURATIONS = [30, 60, 90];
 export const DRAFT_COUNTS = [1, 2, 3];
+export const EPISODE_COUNTS = [1, 2, 3, 4];
 export const CREDIT_PER_VIDEO = 30;
 
-/** 专业模式流水线步骤。 */
-export type CreateStep = "inspiration" | "script" | "storyboard" | "cast" | "generate" | "footage" | "review";
+/** 专业模式流水线步骤（角色在前；剧本即分镜，不拆分；分镜仅渲染时按场景脚本驱动）。 */
+export type CreateStep = "inspiration" | "cast" | "script" | "generate" | "footage" | "review";
 
 export function errMsg(e: unknown, fallback: string): string {
   const err = e as { error?: { message?: string }; message?: string };
@@ -29,8 +29,9 @@ function baseSeriesTitle(title: string): string {
   return title.replace(/\s*第\s*\d+\s*集\s*$/, "").trim() || title;
 }
 
+const isTerminal = (j: DramaEpisodeJob) => j.status === "ready" || j.status === "failed";
+
 export interface DramaDraftController {
-  // 起草输入
   theme: string;
   setTheme: (v: string) => void;
   genre: string;
@@ -42,7 +43,6 @@ export interface DramaDraftController {
   drafting: boolean;
   draftError: string | null;
   drafts: DramaScript[];
-  // 工作区
   activeScript: DramaScript | null;
   setActiveScript: React.Dispatch<React.SetStateAction<DramaScript | null>>;
   update: (patch: Partial<DramaScript>) => void;
@@ -53,13 +53,15 @@ export interface DramaDraftController {
   setVariants: (v: DramaVariant[]) => void;
   genCount: number;
   setGenCount: (n: number) => void;
+  /** 当前 activeScript 的视频任务（派生自 jobsByScript）。 */
   jobs: DramaEpisodeJob[];
+  jobsByScript: Record<string, DramaEpisodeJob[]>;
+  jobsFor: (scriptId: string) => DramaEpisodeJob[];
   savedScripts: DramaScript[];
   castOptions: CastOption[];
   seriesEpisodes: DramaScript[];
   creditEstimate: number;
   persisted: boolean;
-  // 动作
   handleDraft: () => Promise<void>;
   newBlankScript: () => void;
   selectScript: (s: DramaScript) => void;
@@ -68,8 +70,10 @@ export interface DramaDraftController {
   handleSave: () => Promise<void>;
   handleRewrite: (index: number) => Promise<void>;
   handleGenerate: () => Promise<void>;
-  /** 极速模式：一句话 → 起草 → 保存 → 生成 1 条，一气呵成；返回是否成功。 */
-  expressRun: () => Promise<boolean>;
+  /** 极速：一次性生成完整脚本包（人物/分镜/场景，多集时为 series）。返回生成的（多集）脚本，按集号升序。 */
+  expressGenerate: (episodeCount: number) => Promise<DramaScript[] | null>;
+  /** 为某一集单独派发视频生成任务（一集一任务）。 */
+  generateForEpisode: (scriptId: string, name?: string) => Promise<void>;
   handlePublishToProject: () => Promise<string | null>;
   handleGoDistribute: () => Promise<void>;
   makeSeries: () => Promise<void>;
@@ -93,7 +97,7 @@ export function useDramaDraft(): DramaDraftController {
   const [publishing, setPublishing] = React.useState(false);
   const [variants, setVariants] = React.useState<DramaVariant[]>([]);
   const [genCount, setGenCount] = React.useState(1);
-  const [jobs, setJobs] = React.useState<DramaEpisodeJob[]>([]);
+  const [jobsByScript, setJobsByScript] = React.useState<Record<string, DramaEpisodeJob[]>>({});
 
   const [savedScripts, setSavedScripts] = React.useState<DramaScript[]>([]);
   const [castOptions, setCastOptions] = React.useState<CastOption[]>([]);
@@ -106,22 +110,28 @@ export function useDramaDraft(): DramaDraftController {
       .catch(() => {});
   }, []);
 
-  // 轮询：有任务仍在生成时每 3.5s 刷新
-  const anyRendering = jobs.some((j) => j.status !== "ready" && j.status !== "failed");
+  // 轮询：任何脚本有未完成任务时每 3.5s 刷新该脚本的任务（支持多集并行）。
+  const pollKey = Object.entries(jobsByScript)
+    .filter(([, js]) => js.some((j) => !isTerminal(j)))
+    .map(([id]) => id)
+    .sort()
+    .join(",");
   React.useEffect(() => {
-    if (!anyRendering || !activeScript) return;
+    if (!pollKey) return;
+    const ids = pollKey.split(",");
     const t = setInterval(async () => {
-      try {
-        const fresh = await ShortDramaApi.listEpisodeJobs(activeScript.id);
-        if (fresh.length > 0) setJobs(fresh);
-      } catch {
-        /* 静默重试 */
+      for (const id of ids) {
+        try {
+          const fresh = await ShortDramaApi.listEpisodeJobs(id);
+          if (fresh.length > 0) setJobsByScript((prev) => ({ ...prev, [id]: fresh }));
+        } catch {
+          /* 静默重试 */
+        }
       }
     }, 3500);
     return () => clearInterval(t);
-  }, [anyRendering, activeScript]);
+  }, [pollKey]);
 
-  // 剧集列表
   React.useEffect(() => {
     if (activeScript?.series_id) {
       ShortDramaApi.listSeriesEpisodes(activeScript.series_id).then(setSeriesEpisodes).catch(() => setSeriesEpisodes([]));
@@ -129,6 +139,12 @@ export function useDramaDraft(): DramaDraftController {
       setSeriesEpisodes([]);
     }
   }, [activeScript?.series_id, activeScript?.id]);
+
+  const jobs = React.useMemo(
+    () => (activeScript ? jobsByScript[activeScript.id] ?? [] : []),
+    [jobsByScript, activeScript],
+  );
+  const jobsFor = React.useCallback((scriptId: string) => jobsByScript[scriptId] ?? [], [jobsByScript]);
 
   function update(patch: Partial<DramaScript>) {
     setActiveScript((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -139,13 +155,16 @@ export function useDramaDraft(): DramaDraftController {
     ? !activeScript.id.startsWith("ds_new_") && !activeScript.id.startsWith("ds_mock_")
     : false;
 
+  const isReal = (id: string) => !id.startsWith("ds_new_") && !id.startsWith("ds_mock_");
+
   function selectScript(s: DramaScript) {
     setActiveScript(s);
     setVariants([]);
-    setJobs([]);
     setDraftError(null);
-    if (s.id && !s.id.startsWith("ds_new_") && !s.id.startsWith("ds_mock_")) {
-      ShortDramaApi.listEpisodeJobs(s.id).then(setJobs).catch(() => setJobs([]));
+    if (s.id && isReal(s.id)) {
+      ShortDramaApi.listEpisodeJobs(s.id)
+        .then((js) => setJobsByScript((prev) => ({ ...prev, [s.id]: js })))
+        .catch(() => {});
     }
   }
 
@@ -224,6 +243,10 @@ export function useDramaDraft(): DramaDraftController {
     }
   }
 
+  function pushJobs(scriptId: string, created: DramaEpisodeJob[]) {
+    setJobsByScript((prev) => ({ ...prev, [scriptId]: [...created, ...(prev[scriptId] ?? [])] }));
+  }
+
   async function handleGenerate() {
     const saved = await ensureSaved();
     if (!saved) return;
@@ -235,7 +258,7 @@ export function useDramaDraft(): DramaDraftController {
         count: variants.length > 0 ? undefined : genCount,
         variants: variants.length > 0 ? variants : undefined,
       });
-      setJobs((prev) => [...created, ...prev]);
+      pushJobs(saved.id, created);
       toast.success(`已提交 ${created.length} 条短剧视频，正在生成`);
     } catch (e) {
       toast.error(errMsg(e, "短剧视频生成失败"));
@@ -244,34 +267,62 @@ export function useDramaDraft(): DramaDraftController {
     }
   }
 
-  async function expressRun(): Promise<boolean> {
+  async function generateForEpisode(scriptId: string, name?: string) {
+    try {
+      const created = await ShortDramaApi.generateEpisodes({ scriptId, count: 1, name });
+      pushJobs(scriptId, created);
+    } catch (e) {
+      toast.error(errMsg(e, "本集视频生成失败"));
+    }
+  }
+
+  async function expressGenerate(episodeCount: number): Promise<DramaScript[] | null> {
     if (!theme.trim()) {
       toast.error("先写一句短剧主题或灵感");
-      return false;
+      return null;
     }
+    const count = Math.max(1, Math.min(episodeCount, 8));
     setDrafting(true);
     setDraftError(null);
     try {
-      const result = await ShortDramaApi.aiDraftScripts({ theme: theme.trim(), genre, durationSec: duration, count: 1 });
-      if (result.length === 0) {
+      const base = (await ShortDramaApi.aiDraftScripts({ theme: theme.trim(), genre, durationSec: duration, count: 1 }))[0];
+      if (!base) {
         setDraftError("未能生成脚本，请换个描述重试");
-        return false;
+        return null;
       }
-      setDrafts(result);
-      const saved = await ShortDramaApi.saveScript(result[0]);
-      setActiveScript(saved);
-      setSavedScripts((prev) => [saved, ...prev.filter((s) => s.id !== saved.id)]);
-      setGenerating(true);
-      const created = await ShortDramaApi.generateEpisodes({ scriptId: saved.id, name: saved.title, count: 1 });
-      setJobs(created);
-      toast.success("已提交生成，正在出片");
-      return true;
+      const eps: DramaScript[] = [];
+      if (count <= 1) {
+        eps.push(await ShortDramaApi.saveScript(base));
+      } else {
+        const seriesId = `series_${Date.now()}`;
+        const ep1 = await ShortDramaApi.saveScript({ ...base, series_id: seriesId, episode_no: 1 });
+        eps.push(ep1);
+        const baseName = baseSeriesTitle(ep1.title);
+        for (let n = 2; n <= count; n++) {
+          const draftN = (await ShortDramaApi.aiDraftScripts({ theme: `${theme.trim()}（第${n}集）`, genre, durationSec: duration, count: 1 }))[0];
+          const epN = await ShortDramaApi.saveScript({
+            ...(draftN ?? base),
+            title: `${baseName} 第${n}集`,
+            series_id: seriesId,
+            episode_no: n,
+            characters: ep1.characters,
+            style: ep1.style,
+          });
+          eps.push(epN);
+        }
+      }
+      setSavedScripts((prev) => [...eps, ...prev.filter((s) => !eps.some((e) => e.id === s.id))]);
+      setActiveScript(eps[0]);
+      if (eps[0].series_id) {
+        ShortDramaApi.listSeriesEpisodes(eps[0].series_id).then(setSeriesEpisodes).catch(() => {});
+      }
+      toast.success(count > 1 ? `已生成 ${eps.length} 集脚本` : "已生成完整脚本");
+      return eps;
     } catch (e) {
       setDraftError(errMsg(e, "极速生成失败，请稍后重试"));
-      return false;
+      return null;
     } finally {
       setDrafting(false);
-      setGenerating(false);
     }
   }
 
@@ -343,9 +394,9 @@ export function useDramaDraft(): DramaDraftController {
     theme, setTheme, genre, setGenre, duration, setDuration, draftCount, setDraftCount,
     drafting, draftError, drafts,
     activeScript, setActiveScript, update, saving, generating, publishing,
-    variants, setVariants, genCount, setGenCount, jobs, savedScripts, castOptions, seriesEpisodes,
+    variants, setVariants, genCount, setGenCount, jobs, jobsByScript, jobsFor, savedScripts, castOptions, seriesEpisodes,
     creditEstimate, persisted,
     handleDraft, newBlankScript, selectScript, loadSaved, ensureSaved, handleSave,
-    handleRewrite, handleGenerate, expressRun, handlePublishToProject, handleGoDistribute, makeSeries, addEpisode,
+    handleRewrite, handleGenerate, expressGenerate, generateForEpisode, handlePublishToProject, handleGoDistribute, makeSeries, addEpisode,
   };
 }

@@ -16,8 +16,8 @@
 **核心链路**：
 
 ```
-演员 IP 阵容（cast）
-  →  短剧创作（create：极速一句话出片 / 专业分步流水线 —— 选题灵感 → 剧本（结构化分镜 + 长文本编剧室/版本树）→ 分镜 → 角色与演员 → 生成 → 成片）
+智能选题（topics，AI 题材推荐 + 自定义）
+  →  短剧创作（create：极速一句话整包出片 / 专业分步流水线 —— 选题 → 角色 → 脚本（剧本=分镜，prompt 驱动）→ 生成（逐集任务）→ 成片）
   →  作品与项目（projects，成片归集 + 多状态推进）
   →  多平台分发（distribute）
   →  数据洞察（insights / trends）
@@ -62,8 +62,8 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/incubator` | 演员与形象 | 多步孵化器（localStorage 草稿保留） |
 | `/forge` | 演员与形象 | 形象锻造（**v0.43 对话式 AI 形象顾问**，接平台大模型流式生成；影院风独立 UI） |
 | `/wardrobe` | 演员与形象 | 戏服 / 道具上传 + 分配给演员 |
-| `/create` ★ | 工作台 | **短剧创作 · 统一入口（v0.7）**：`?mode=express\|pro`。<br>**极速模式**：一句话 / 选模板 → 自动起草+生成 → 成片（带积分确认）。<br>**专业模式**：线性流水线 灵感 → 剧本（结构化分镜 `SceneEditor` + 长文本编剧室 `ScriptProsePanel`：版本树 + AI 续写）→ 分镜（竖屏分镜板）→ 角色与演员（绑 `/cast` 虚拟演员）→ 生成（风格变体 + 积分预估）→ 成片（视频库 + 归入项目 / 去分发）→ 审核（合规预审占位）。两模式共用同一 `DramaScript`。后端复用 `/api/me/drama/*` + `/api/me/scripts/*`，无契约变更 |
-| `/templates` ★ | 工作台 | 模板广场：精选爆款赛道模板，一键带入极速模式（`/create?mode=express&tpl=`）；社区模板库占位 |
+| `/create` ★ | 工作台 | **短剧创作 · 统一入口（v0.7）**：`?mode=express\|pro`。两模式只是「生成脚本的方式」不同，产物同为 `DramaScript`（多集时为同一 series 的多个脚本）。<br>**极速模式**：一句话 / 选题 → 一次性生成完整脚本包（人物 / 分镜 / 场景，可选 1–8 集）→ 剧集总览逐集「一集一任务」派发视频。<br>**专业模式**：线性流水线 选题 → **角色** → **脚本（剧本=分镜不分开**：`SceneEditor` 编辑 ⇄ 竖屏分镜预览；每个场景的剧情/画面/台词即分镜 prompt，渲染时逐镜驱动）+ 长文本编剧室 `ScriptProsePanel`（版本树 / AI 续写）→ 生成（风格变体 + 积分预估）→ 成片 → 审核（占位）。后端复用 `/api/me/drama/*` + `/api/me/scripts/*`，无契约变更 |
+| `/topics` ★ | 工作台 | 智能选题（原「模板广场」）：AI 题材推荐（热门题材 + 爆款选题）+ 自定义题材 / 人设 / 故事框架 → 带入极速模式（`/create?mode=express&tpl=` 或 `&theme=&genre=`）；实时热度榜占位 |
 | `/projects` | 工作台 | **作品与项目**（原「项目流水线」）：成片归集 + 状态机（选角 / 拍摄 / 后期 / 上线） |
 | `/projects/[id]` | 工作台 | 项目详情（演员表 / 排期 / 资产 / 分发） |
 | `/projects/[id]/distribute` | 工作台 | 项目多平台发布 |
@@ -78,7 +78,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 
 **Sidebar 分组**（v0.7，4 组）：
 
-1. **工作台**（5 项）— dashboard / **create（短剧创作）** / **templates（模板广场）** / **projects（作品与项目）** / **assets（素材资产）**
+1. **工作台**（5 项）— dashboard / **create（短剧创作）** / **topics（智能选题）** / **projects（作品与项目）** / **assets（素材资产）**
 2. **演员与形象**（4 项）— cast / incubator / forge / wardrobe
 3. **分发与洞察**（3 项）— distribution / insights / trends
 4. **系统**（2 项）— finance / settings
@@ -202,7 +202,8 @@ src/lib/drama-query.ts   — 极轻量客户端缓存：useAsync / usePageData /
 - **v0.45 生产硬化项**：`/api/film/**`、`/api/distribution/**` 当前 permitAll（无 owner 隔离，沿用 demo 姿态）—— 生产应迁 `/api/me/film`、`/api/me/distribution` 并强制认证
 - **drama 发布任务为进度模拟**（`DramaPublishJob` 读时推进 queued→…→live，无真发布）；要真发到平台需接 sau（同 celebrity 的社媒账号绑定 + PublishJob 体系）
 - ~~脚本工坊 `/scripts` 与短剧 `/short-drama` 是两套脚本~~ **（v0.7 已解决）**：两者合并入统一的 `/create` 主线 —— 结构化分镜（`DramaScript`，生成真源）为主，长文本 + 版本树（`Script`/`ScriptsApi`）作为「剧本」步内的编剧室 `ScriptProsePanel` 并行存在；`/scripts`、`/short-drama` 308 重定向到 `/create`
-- v0.7 占位（即将上线，非造假）：`/create` 的「审核（合规预审）」步、「剪辑微调」、`/assets` 素材资产中心、`/templates` 社区模板库；当前已落地的生成 / 分发链路是真的（复用 celebrity `material_video_job` 管线）
+- v0.7 占位（即将上线，非造假）：`/create` 的「审核（合规预审）」步、「剪辑微调」、`/assets` 素材资产中心、`/topics` 实时热度榜；当前已落地的生成 / 分发链路是真的（复用 celebrity `material_video_job` 管线）
+- **多集生成的诚实边界**：后端无「跨集续写剧情」端点，极速「多集」是对草稿端点逐集调用（live LLM 各集不同；mock 内容相近）。真正的剧情连续多集需新增后端，超出本期范围
 
 ---
 

@@ -17,7 +17,7 @@ import {
   Film,
   FolderOpen,
   LayoutDashboard,
-  LayoutGrid,
+  Lightbulb,
   LogOut,
   Menu,
   Plus,
@@ -53,7 +53,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "总览", exact: true },
       { href: "/create", icon: Clapperboard, label: "短剧创作" },
-      { href: "/templates", icon: LayoutGrid, label: "模板广场" },
+      { href: "/topics", icon: Lightbulb, label: "智能选题" },
       { href: "/projects", icon: Film, label: "作品与项目" },
       { href: "/assets", icon: FolderOpen, label: "素材资产" },
     ],

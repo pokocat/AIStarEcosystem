@@ -28,8 +28,8 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 /incubator           ← 孵化新演员（多步表单 + localStorage 草稿）
 /forge               ← 形象锻造炉（批量应用到演员）
 /wardrobe            ← 戏服 / 道具（上传 + 分配）
-/create              ← 短剧创作（v0.7 统一入口：?mode=express|pro；极速一句话出片 / 专业分步流水线）
-/templates           ← 模板广场（爆款赛道模板 → 一键带入极速模式）
+/create              ← 短剧创作（v0.7 统一入口：?mode=express|pro；极速整包生成 / 专业分步流水线，逐集出片）
+/topics              ← 智能选题（AI 题材推荐 + 自定义题材/人设/框架 → 带入极速模式）
 /projects            ← 作品与项目（成片归集 + 状态机推进）
 /projects/[id]       ← 项目详情（状态机推进）
 /projects/[id]/distribute ← 多平台发布
@@ -65,10 +65,12 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 - **信息架构重构**：把分工不清的「脚本工坊 `/scripts`」「短剧生成 `/short-drama`」「项目流水线 `/projects`」收敛为
   - 单一创作主线 **`/create`**（极速 / 专业双模式），
   - **作品与项目** `/projects`（成片归集 + 生命周期），
-  - 新增 **模板广场** `/templates`（极速模式入口）与 **素材资产** `/assets`（占位）。
-- **两套脚本合并**：结构化分镜（`DramaScript`，生成真源）为主线；长文本 + 版本树 + AI 续写并入「剧本」步的编剧室组件 `components/short-drama/script-prose-panel.tsx`（原 `scripts/[id]` 逻辑迁入，`window.confirm` 换成 `ConfirmDialog`）。`/scripts`、`/short-drama` → `/create` 308 重定向。
-- **双模式**：`create/_flow/`（`ModePicker` / `ExpressMode` / `ProMode` / `Stepper` / 7 个 `steps/*`）共用 `useDramaDraft` 控制器（从原 `short-drama/page.tsx` 抽出，新增一气呵成的 `expressRun`）。专业模式线性步进：灵感 → 剧本 → 分镜（新 `storyboard-grid`）→ 角色 → 生成 → 成片 → 审核（占位）。
-- **占位诚实**：新增 `components/common/ComingSoon.tsx`；审核 / 剪辑 / 素材中心 / 社区模板库标「即将上线」，不造假；生成与分发链路是真的（复用 celebrity `material_video_job` 管线）。
+  - 新增 **智能选题** `/topics`（AI 题材推荐，原模板广场）与 **素材资产** `/assets`（占位）。
+- **两套脚本合并**：结构化分镜（`DramaScript`，生成真源）为主线；长文本 + 版本树 + AI 续写并入「脚本」步的编剧室组件 `components/short-drama/script-prose-panel.tsx`（原 `scripts/[id]` 逻辑迁入，`window.confirm` 换成 `ConfirmDialog`）。`/scripts`、`/short-drama` → `/create` 308 重定向。
+- **双模式只是「生成脚本的方式」不同，产物同为 `DramaScript`**：`create/_flow/`（`ModePicker` / `ExpressMode` / `ProMode` / `Stepper` / `steps/*`）共用 `useDramaDraft` 控制器（从原 `short-drama/page.tsx` 抽出）。
+  - **极速**：`expressGenerate(集数)` 一次性生成完整脚本包（人物/分镜/场景，多集为同一 series）→ 剧集总览逐集「一集一任务」派发视频（`generateForEpisode`，控制器用 `jobsByScript` 多集并行轮询）。
+  - **专业**：线性步进 **选题 → 角色 → 脚本（剧本=分镜不分开，`SceneEditor` 编辑 ⇄ 竖屏分镜预览 `storyboard-grid`）→ 生成 → 成片 → 审核（占位）**。
+- **占位诚实**：新增 `components/common/ComingSoon.tsx`；审核 / 剪辑 / 素材中心 / 实时热度榜标「即将上线」，不造假；生成与分发链路是真的（复用 celebrity `material_video_job` 管线）。多集生成无「跨集续写」后端，逐集调草稿端点（live 各集不同 / mock 相近）。
 - **纸感淡色主题**：`styles/tokens.css` 翻为淡底（参考 celebrity `[data-theme="creator"]`，保留金/琥珀 accent）+ 新增中性 token（`--surface-1/2` / `--track` / `--overlay-scrim` / `--video-letterbox`）；组件内 `rgba(255,255,255,.0x)` 暗底面全量 sweep；root `layout.tsx` 去 `dark` class、`themeColor` 改 `#f7f3ec`。
 - **复用 + 零契约变更**：仅前端 IA/UX/主题；后端 `/api/me/drama/*` + `/api/me/scripts/*` 既有端点复用，openapi / contract gate 不动。typecheck + `next build`（18 页）通过。
 

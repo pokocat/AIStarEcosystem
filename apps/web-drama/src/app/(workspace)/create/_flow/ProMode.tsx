@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronLeft,
-  Clapperboard,
   FileText,
   Film,
   Layers,
@@ -23,17 +22,15 @@ import { Stepper, type StepDef } from "./Stepper";
 import type { CreateStep, DramaDraftController } from "./useDramaDraft";
 import { StepInspiration } from "./steps/StepInspiration";
 import { StepScript } from "./steps/StepScript";
-import { StepStoryboard } from "./steps/StepStoryboard";
 import { StepCast } from "./steps/StepCast";
 import { StepGenerate } from "./steps/StepGenerate";
 import { StepFootage } from "./steps/StepFootage";
 import { StepReview } from "./steps/StepReview";
 
 const STEPS: StepDef[] = [
-  { key: "inspiration", label: "灵感", icon: <Lightbulb size={13} /> },
-  { key: "script", label: "剧本", icon: <FileText size={13} /> },
-  { key: "storyboard", label: "分镜", icon: <Clapperboard size={13} /> },
+  { key: "inspiration", label: "选题", icon: <Lightbulb size={13} /> },
   { key: "cast", label: "角色", icon: <Users size={13} /> },
+  { key: "script", label: "脚本", icon: <FileText size={13} /> },
   { key: "generate", label: "生成", icon: <Sparkles size={13} /> },
   { key: "footage", label: "成片", icon: <Film size={13} /> },
   { key: "review", label: "审核", icon: <ShieldCheck size={13} />, disabled: true },
@@ -120,9 +117,8 @@ export function ProMode({ ctrl, onBack }: { ctrl: DramaDraftController; onBack: 
         </Card>
 
         {step === "inspiration" && <StepInspiration ctrl={ctrl} />}
-        {step === "script" && <StepScript ctrl={ctrl} />}
-        {step === "storyboard" && <StepStoryboard ctrl={ctrl} />}
         {step === "cast" && <StepCast ctrl={ctrl} />}
+        {step === "script" && <StepScript ctrl={ctrl} />}
         {step === "generate" && <StepGenerate ctrl={ctrl} onGenerated={() => setStep("footage")} />}
         {step === "footage" && <StepFootage ctrl={ctrl} />}
         {step === "review" && <StepReview />}

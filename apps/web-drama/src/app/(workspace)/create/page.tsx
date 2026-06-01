@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ViewHeader } from "@/components/common";
-import { useDramaDraft } from "./_flow/useDramaDraft";
+import { GENRES, useDramaDraft } from "./_flow/useDramaDraft";
 import { ModePicker } from "./_flow/ModePicker";
 import { ExpressMode } from "./_flow/ExpressMode";
 import { ProMode } from "./_flow/ProMode";
@@ -32,20 +32,28 @@ function CreateInner() {
   const [mode, setMode] = React.useState<Mode>(() => {
     const m = sp.get("mode");
     if (m === "express" || m === "pro") return m;
-    if (sp.get("tpl")) return "express";
+    if (sp.get("tpl") || sp.get("theme")) return "express";
     return "pick";
   });
 
-  // 模板预填（仅一次）
-  const tplApplied = React.useRef(false);
+  // 选题预填（仅一次）：?tpl 取自模板；或 ?theme/?genre 取自「智能选题」自定义。
+  const prefillApplied = React.useRef(false);
   React.useEffect(() => {
-    if (tplApplied.current) return;
+    if (prefillApplied.current) return;
     const tpl = getDramaTemplate(sp.get("tpl"));
     if (tpl) {
       ctrl.setTheme(tpl.theme);
       ctrl.setGenre(tpl.genre);
       ctrl.setDuration(tpl.durationSec);
-      tplApplied.current = true;
+      prefillApplied.current = true;
+      return;
+    }
+    const theme = sp.get("theme");
+    const genre = sp.get("genre");
+    if (theme || genre) {
+      if (theme) ctrl.setTheme(theme);
+      if (genre && GENRES.includes(genre)) ctrl.setGenre(genre);
+      prefillApplied.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
