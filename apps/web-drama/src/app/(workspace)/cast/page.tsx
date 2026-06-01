@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Award, Crown, Eye, Search, Shield, Sparkles, Star, Users, Wand2, X } from "lucide-react";
+import Link from "next/link";
+import { Award, Crown, Eye, Search, Shield, Sparkles, Star, Users, Users as UsersIcon, Wand2, X } from "lucide-react";
 import type { Artist, ArtistStatus, ArtistQuality } from "@ai-star-eco/types/artist";
 import { Button, Card, Chip, KpiCard } from "@/components/premium";
 import {
@@ -125,19 +126,9 @@ function CastListInner() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <ViewHeader
-        eyebrow="演员阵容"
-        title={
-          <>
-            演员{" "}
-            <span
-              className="text-gradient-gold"
-              style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}
-            >
-              IP 阵容
-            </span>
-          </>
-        }
-        meta={`${all.length} 个 IP · ${active} 在线 · ${trainee} 训练中`}
+        eyebrow="跨项目 IP 资产"
+        title="演员 IP 阵容"
+        meta={`${all.length} 个 IP · ${active} 在线 · ${trainee} 训练中 · 跨项目复用`}
         action={
           <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
             <Wand2 size={14} />
@@ -145,6 +136,26 @@ function CastListInner() {
           </Button>
         }
       />
+
+      {/* 与短剧工坊 角色与资产 的职能分工 */}
+      <div
+        className="card row gap-3"
+        style={{
+          padding: "12px 16px",
+          background: "var(--surface-2)",
+          border: "1px solid var(--line-soft)",
+          alignItems: "center",
+        }}
+      >
+        <UsersIcon size={16} style={{ color: "var(--accent)", flex: "none" }} />
+        <div className="grow" style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+          这里是<b style={{ color: "var(--ink)" }}>跨项目的演员 IP 库</b>:可以反复在不同短剧里出演。
+          要给某部短剧的<b style={{ color: "var(--ink)" }}>角色绑数字人</b>,请到「我的短剧 → 进入项目 → 角色与资产」阶段。
+        </div>
+        <Link href="/projects" style={{ textDecoration: "none" }}>
+          <button type="button" className="btn btn-line btn-sm">去做短剧 →</button>
+        </Link>
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         <KpiCard label="在线 · 全部" value={String(active)} tone="success" delta={`${all.length} 总数`} />

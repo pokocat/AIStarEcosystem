@@ -101,12 +101,12 @@
 .mono  { font-family: var(--font-num); font-feature-settings: "tnum"; }
 .serif { font-family: var(--font); }
 .eyebrow {
-  font-family: var(--font-num);
-  font-size: 10.5px;
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
+  /* 中文 eyebrow 不再走 uppercase + Mono 字体,避免与新视觉令牌脱节。 */
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: .05em;
   color: var(--ink-3);
-  font-weight: 600;
+  font-weight: 700;
 }
 .text-gradient-gold,
 .text-gradient-accent {

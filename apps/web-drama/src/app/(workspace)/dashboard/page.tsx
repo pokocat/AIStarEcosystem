@@ -74,22 +74,8 @@ export default function DashboardPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <ViewHeader
-        eyebrow="AI 短剧 · 生产中台"
-        title={
-          <>
-            今天的{" "}
-            <span
-              className="text-gradient-gold"
-              style={{
-                fontFamily: "var(--font-serif)",
-                fontStyle: "italic",
-                fontWeight: 400,
-              }}
-            >
-              片场
-            </span>
-          </>
-        }
+        eyebrow="工作台总览"
+        title={<>今天的工作台</>}
         meta={`${dramaMain.length} 部在产剧集 · ${activeArtists.length} 位演员 IP 在线 · 同步于 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`}
         action={
           <>
@@ -101,13 +87,52 @@ export default function DashboardPage() {
               <Clock size={14} />
               排期日历
             </Button>
-            <Button variant="primary" size="md" onClick={() => setShowNewProject(true)}>
-              <Sparkles size={14} />
-              创建新项目
-            </Button>
+            <Link href="/projects" style={{ textDecoration: "none" }}>
+              <Button variant="primary" size="md">
+                <Sparkles size={14} />
+                去做短剧
+              </Button>
+            </Link>
           </>
         }
       />
+
+      {/* 主线引导:dashboard 是大盘视图,真正的创作主战场是「我的短剧」 */}
+      <div
+        className="card row gap-3"
+        style={{
+          padding: "14px 18px",
+          background: "linear-gradient(95deg, var(--accent-soft), var(--accent-2-soft))",
+          border: "none",
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 11,
+            background: "linear-gradient(135deg,var(--accent),var(--accent-2))",
+            display: "grid",
+            placeItems: "center",
+            color: "#fff",
+            flex: "none",
+          }}
+        >
+          <Sparkles size={18} />
+        </div>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>从灵感到能直接开拍的成片配方</div>
+          <div className="faint" style={{ fontSize: 12.5, marginTop: 2 }}>
+            短剧工坊的 6 阶段流水线：选题立项 · 大纲分集 · 角色与资产 · 单集剧本 · 分镜工作台 · 成片配方
+          </div>
+        </div>
+        <Link href="/projects" style={{ textDecoration: "none" }}>
+          <button type="button" className="btn btn-grad btn-sm">
+            进入短剧工坊
+          </button>
+        </Link>
+      </div>
 
       {/* KPI grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
