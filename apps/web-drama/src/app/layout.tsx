@@ -1,71 +1,45 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Plus_Jakarta_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { Noto_Sans_SC, Quicksand } from "next/font/google";
 import "../styles/app.css";
 import { AppProviders } from "./providers";
 
-// Premium 主题字体（来源：AI IP Design Directions 03）：
-//   Plus Jakarta Sans 做 sans + display
-//   Instrument Serif 做点缀（hero、eyebrow 等）
-//   JetBrains Mono 做数据 / 标签
-// 变量名 --font-sans / --font-display / --font-serif / --font-mono 与 tokens.css 对齐。
-const jakarta = Plus_Jakarta_Sans({
+// 字体（视觉真源 styles.css）：
+//   正文 = Noto Sans SC（中文优先）→ --font
+//   数字 = Quicksand（等宽）→ --font-num
+// 兼容旧别名 --font-sans / --font-display / --font-serif / --font-mono
+// 由 tokens.css 中的 var 引用统一指向 --font / --font-num。
+const notoSC = Noto_Sans_SC({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-sans",
+  weight: ["400", "500", "700", "900"],
+  variable: "--font",
   display: "swap",
 });
 
-const jakartaDisplay = Plus_Jakarta_Sans({
+const quicksand = Quicksand({
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: ["400"],
-  style: ["normal", "italic"],
-  variable: "--font-serif",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
+  weight: ["500", "600", "700"],
+  variable: "--font-num",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "AI 短剧 — AI Star Eco",
-  description: "演员 IP 阵容、脚本工坊、短剧项目与多平台分发的一体化工坊",
+  title: "短剧工坊 — AI Star Eco",
+  description: "从灵感到能直接开拍的成片配方,一条流水线搞定。",
 };
 
-// 移动端视口：随设备宽度自适应，支持刘海屏安全区。
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0a0810",
+  themeColor: "#fafaf9",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  const fontClassNames = [
-    jakarta.variable,
-    jakartaDisplay.variable,
-    instrumentSerif.variable,
-    jetbrainsMono.variable,
-  ].join(" ");
+  const fontClassNames = [notoSC.variable, quicksand.variable].join(" ");
 
   return (
-    <html
-      lang="zh"
-      data-theme="premium"
-      className={`dark ${fontClassNames}`}
-      suppressHydrationWarning
-    >
+    <html lang="zh" className={fontClassNames} suppressHydrationWarning>
       <body>
         <AppProviders>{children}</AppProviders>
       </body>

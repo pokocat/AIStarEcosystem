@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Archive, Copy, Download, Filter, PenTool, Plus, Search, Sparkles } from "lucide-react";
@@ -117,19 +118,9 @@ export default function ScriptsListPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="脚本工坊"
-        title={
-          <>
-            脚本{" "}
-            <span
-              className="text-gradient-gold"
-              style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}
-            >
-              工坊
-            </span>
-          </>
-        }
-        meta={`${all.length} 份脚本 · ${reviewCount} 待审`}
+        eyebrow="跨项目脚本素材"
+        title="脚本工坊"
+        meta={`${all.length} 份脚本 · ${reviewCount} 待审 · 跨项目通用素材`}
         action={
           <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
             <Plus size={14} />
@@ -137,6 +128,26 @@ export default function ScriptsListPage() {
           </Button>
         }
       />
+
+      {/* 与短剧工坊的职能分工说明 */}
+      <div
+        className="card row gap-3"
+        style={{
+          padding: "12px 16px",
+          background: "var(--surface-2)",
+          border: "1px solid var(--line-soft)",
+          alignItems: "center",
+        }}
+      >
+        <PenTool size={16} style={{ color: "var(--accent)", flex: "none" }} />
+        <div className="grow" style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+          这里是<b style={{ color: "var(--ink)" }}>跨项目的脚本归档</b>:已写好的剧集、广告、宣传片、配音脚本都在这里复用。
+          要写某部短剧的<b style={{ color: "var(--ink)" }}>单集剧本</b>,请到「我的短剧 → 进入项目 → 单集剧本」阶段。
+        </div>
+        <Link href="/projects" style={{ textDecoration: "none" }}>
+          <button type="button" className="btn btn-line btn-sm">去做短剧 →</button>
+        </Link>
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         <KpiCard label="脚本总数" value={String(all.length)} tone="accent" />

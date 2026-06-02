@@ -3,7 +3,7 @@
 > 子产品：**AI Drama Studio** — 演员 IP 阵容 + 脚本工坊 + 短剧项目 + 多平台分发，一体化短剧工坊。
 > 本文件是产品形态 + 设计约束的真值源。技术 onboarding 在 [`README.md`](README.md)，业务规格在仓库根 [`product_spec.md`](../../product_spec.md)（数字人/数字 IP 主线，v2.7）。
 
-**Last reviewed**: 2026-05-17
+**Last reviewed**: 2026-06-01（v0.44 短剧工坊视觉与业务流重构）
 
 ---
 
@@ -13,11 +13,20 @@
 
 **价值主张**：以演员 IP 阵容为核心，AI 辅助完成「脚本撰写 → 形象锻造 → 项目排期 → 全网分发」闭环。
 
-**核心链路**：
+**核心链路（v0.44 重构后,主线）**：
 
 ```
-演员阵容（cast）  →  脚本工坊（scripts，版本树 + AI 续写）  →  项目流水线（projects，多状态推进）  →  多平台分发（distribute）  →  数据洞察（insights / trends）
+我的短剧（/projects）  →  新建短剧（/projects/new，选类型→AI引导/模板）
+                       →  短剧工作台（/projects/<id>，沉浸式 6 阶段流水线）
+                          · 选题立项 → 大纲分集 → 角色与资产（项目级·跨集共享）
+                          · 单集剧本 → 分镜工作台 → 成片配方（剧集级·针对当前集）
+                          · 一键连跑可加速跑完剩余阶段;每步可锁定/回改
+                       →  成片配方（@图片N 渲染数字人头像缩略图，配方可直接拿去开拍）
+                       →  [出片 / 多平台分发 — 下游能力，Phase 2]
 ```
+
+**辅助素材库（跨项目复用）**：演员 IP 阵容（cast）/ 形象锻造炉（forge）/ 戏服与道具（wardrobe）/ 跨项目脚本归档（scripts），在 sidebar「创作素材」组。
+
 
 **与其他子产品的边界**：
 
@@ -32,12 +41,29 @@
 
 | 领域 | 实体 | 在 web-drama 的作用 |
 |---|---|---|
-| `artist` | `Artist`、`ArtistStatus`、`ArtistQuality` | 演员 IP（虚拟人 / 数字 IP） |
+| `artist` | `Artist`、`ArtistStatus`、`ArtistQuality` | 演员 IP（虚拟人 / 数字 IP），跨项目复用 |
 | `film` | `Drama`、`Movie`、`Advertisement`、`VoiceWork` | 短剧 / 电影 / 广告 / 配音剧 |
 | `wardrobe` | `ClothingItem`、`ClothingCategory`、`EquipSlot` | 戏服 / 道具（演员可装备） |
 | `appearance-forge` | `ForgeRequest`、`ForgeResult`、`ForgeMode` | 形象锻造（批量生成多角色形象） |
+| `script` | `Script`、`ScriptVersion`、`ScriptKind` | 跨项目脚本归档（剧集/广告/宣传片/配音） |
 | `account` | `AepUser`、`Studio`、`Tenant` | 工作室 / 团队 / 多租户 |
 | `settings` | `CreditPack`、`RechargeRecord` | 充值 / 流水 |
+
+**v0.44 短剧工作台内部业务结构**（前端 mock 数据：`mocks/drama-workshop/`，按项目隔离）：
+
+| 实体 | 在工作台的作用 |
+|---|---|
+| `DramaProjectSummary` | 我的短剧首页项目卡 |
+| `ContentType` / `Template` | 新建短剧的内容类型 + 爆款模板库 |
+| `ProjectInfo` | 项目信息条（标题/类型/集数/时长/画幅/logline/mainline） |
+| `TopicCard` | 选题方向卡（AI 引导式三步的产物） |
+| `EpisodeOutline` | 分集大纲（钩子/梗概/beat） |
+| `CharacterDef` | 项目内角色（关键/龙套 + 数字人 avatar key 绑定） |
+| `ScriptScene` / `ScriptLine` | 单集剧本（分场景 + 台词行） |
+| `BoardScene` / `BoardShot` | 分镜（含 size/move/dur/engine/cast/line/voice/moods/done/overLimit） |
+| `PromptShot` | 成片配方（style/timeline/sound/refs 四段式） |
+
+**后端契约不变**：仍走 `POST /api/me/drama/scripts*` + `POST /api/me/drama/episodes/generate`（v0.43）。前端 6 阶段工作台属于 UI 编排层，富数据先以 mock 演示，持久化由 `DramaScript.scenes[]` 承接（结构化扩展见 v0.45+ 后端契约规划）。
 
 后端 API 在 [`/api/film/**`](../../specs/openapi.yaml)（按 tag 分组：film / wardrobe / appearance-forge / settings）。
 

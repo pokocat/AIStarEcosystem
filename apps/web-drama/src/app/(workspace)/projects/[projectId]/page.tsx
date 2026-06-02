@@ -2,415 +2,166 @@
 
 export const dynamic = "force-dynamic";
 
+// 短剧工作台 — 沉浸式接管,自带 StageRail + 顶部项目条 + EpisodeStrip +
+// CastPanel + 中央阶段视图。
+// 各阶段内容(topic/outline/cast/script/board/prompt)由 B6/B7 填入完整组件,
+// 当前 B5 给出 stub:每个阶段一张占位卡,验收外壳布局。
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useParams, useRouter } from "next/navigation";
+import { ChevronLeft, Sparkles } from "lucide-react";
+import { getProjectData, PROJECTS, type ProjectData } from "@/mocks/drama-workshop";
 import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  PenTool,
-  Plus,
-  Share2,
-  Users,
-} from "lucide-react";
-import type { Drama, DramaStatus } from "@ai-star-eco/types/film";
-import type { Artist } from "@ai-star-eco/types/artist";
-import type { PublishJob } from "@ai-star-eco/types/publish-job";
-import { Button, Card, Chip, KpiCard } from "@/components/premium";
+  StageHeader,
+  WorkshopShell,
+  type WorkshopAction,
+  type WorkshopState,
+} from "@/components/drama-workshop/workbench";
+import type { StageKey } from "@/components/drama-workshop";
 import {
-  ConfirmDialog,
-  EmptyState,
-  ErrorBlock,
-  LoadingBlock,
-  SectionHeader,
-  StatusBadge,
-  ViewHeader,
-} from "@/components/common";
-import { ArtistsApi, DistributionApi, FilmApi } from "@/api";
-import { useAsync, invalidate } from "@/lib/drama-query";
-import { ApiError } from "@ai-star-eco/api-client";
+  BoardStage,
+  CastStage,
+  OutlineStage,
+  PromptStage,
+  ScriptStage,
+  TopicStage,
+} from "@/components/drama-workshop/stages";
 
-const STATUS_FLOW: DramaStatus[] = ["casting", "filming", "post-production", "released"];
-const STATUS_LABEL: Record<DramaStatus, string> = {
-  casting: "选角",
-  filming: "拍摄",
-  "post-production": "后期",
-  released: "已上线",
-};
-
-interface PageProps {
-  params: Promise<{ projectId: string }>;
-}
-
-export default function ProjectDetailPage({ params }: PageProps) {
-  const { projectId } = React.use(params);
+export default function ProjectWorkbench() {
   const router = useRouter();
+  const params = useParams<{ projectId: string }>();
+  const id = params?.projectId ?? "";
+  const meta = PROJECTS.find((p) => p.id === id);
+  const data = getProjectData(id);
 
-  const dramaQ = useAsync<Drama | null>(`/film/dramas/${projectId}`, () => FilmApi.getDrama(projectId));
-  const jobsQ = useAsync<PublishJob[]>(`/distribution/jobs?p=${projectId}`, () =>
-    DistributionApi.listPublishJobs(projectId),
-  );
-  const artistsQ = useAsync<Artist[]>("/me/artists", () => ArtistsApi.listArtists());
-
-  // 轮询任务（每 1.4s 拉一次，直到全部 live/failed）
-  React.useEffect(() => {
-    const t = setInterval(() => {
-      const arr = jobsQ.data ?? [];
-      if (arr.some((j) => j.status !== "live" && j.status !== "failed")) {
-        jobsQ.refetch();
-      }
-    }, 1400);
-    return () => clearInterval(t);
-  }, [jobsQ]);
-
-  const [advanceTarget, setAdvanceTarget] = React.useState<DramaStatus | null>(null);
-  const [advancing, setAdvancing] = React.useState(false);
-
-  if (dramaQ.isLoading) return <LoadingBlock rows={3} height={120} />;
-  if (dramaQ.error) return <ErrorBlock onRetry={dramaQ.refetch} />;
-  if (!dramaQ.data)
+  if (!meta || !data) {
     return (
-      <EmptyState
-        title="项目不存在"
-        action={
-          <Button variant="primary" size="md" onClick={() => router.push("/projects")}>
-            返回项目流水线
-          </Button>
-        }
-      />
+      <div className="col center" style={{ height: "100%", gap: 14, textAlign: "center" }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>没找到这部短剧</h1>
+        <div className="muted">可能是链接过期了。回到我的短剧重新挑选一部。</div>
+        <button
+          type="button"
+          className="btn btn-line"
+          onClick={() => router.push("/projects")}
+        >
+          <ChevronLeft size={16} /> 返回我的短剧
+        </button>
+      </div>
     );
-
-  const d = dramaQ.data;
-  const curIdx = STATUS_FLOW.indexOf(d.status);
-  const nextStatus = curIdx >= 0 && curIdx < STATUS_FLOW.length - 1 ? STATUS_FLOW[curIdx + 1]! : null;
-
-  async function advance() {
-    if (!advanceTarget) return;
-    setAdvancing(true);
-    try {
-      await FilmApi.updateDramaStatus(d.id, advanceTarget);
-      invalidate(`/film/dramas/${d.id}`);
-      invalidate("/film/dramas");
-      toast.success(`已推进到「${STATUS_LABEL[advanceTarget]}」`);
-      setAdvanceTarget(null);
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "操作失败");
-    } finally {
-      setAdvancing(false);
-    }
   }
 
-  // 取剧集主演（在 mock 的 d.role 里找演员名匹配）
-  const allArtists = artistsQ.data ?? [];
-  const castInProject = allArtists.filter((a) => d.role.includes(a.name));
-  const jobs = jobsQ.data ?? [];
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      <button
-        onClick={() => router.push("/projects")}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "4px 8px",
-          fontSize: 12,
-          color: "var(--fg-2)",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          alignSelf: "flex-start",
-        }}
-      >
-        <ArrowLeft size={12} /> 返回项目流水线
-      </button>
-
-      <ViewHeader
-        eyebrow={`项目 · ${d.genre}`}
-        title={d.title}
-        meta={`${d.episodes > 0 ? `${d.episodes} 集` : "集数未定"} · ${d.role}`}
-        action={
-          <>
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={() => router.push(`/projects/${encodeURIComponent(d.id)}/distribute`)}
-            >
-              <Share2 size={14} />
-              发布到平台
-            </Button>
-            {nextStatus && (
-              <Button variant="primary" size="md" onClick={() => setAdvanceTarget(nextStatus)}>
-                推进到 {STATUS_LABEL[nextStatus]}
-                <ArrowRight size={14} />
-              </Button>
-            )}
-          </>
-        }
-      />
-
-      {/* 状态机进度条 */}
-      <Card style={{ padding: "22px 26px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {STATUS_FLOW.map((s, i) => {
-            const done = i < curIdx;
-            const current = i === curIdx;
-            return (
-              <React.Fragment key={s}>
-                <div
-                  style={{
-                    flex: 1,
-                    padding: "12px 14px",
-                    background: current
-                      ? "color-mix(in srgb, var(--accent) 14%, transparent)"
-                      : done
-                        ? "rgba(76,224,160,0.08)"
-                        : "rgba(255,255,255,0.02)",
-                    border: current
-                      ? "1px solid color-mix(in srgb, var(--accent) 40%, transparent)"
-                      : "1px solid var(--line-2)",
-                    borderRadius: "var(--radius-md)",
-                    color: current ? "var(--accent)" : done ? "var(--success)" : "var(--fg-2)",
-                  }}
-                >
-                  <div className="mono" style={{ fontSize: 10, letterSpacing: 0.5 }}>
-                    STEP {i + 1}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                      fontFamily: "var(--font-display)",
-                      marginTop: 4,
-                      display: "flex",
-                      gap: 6,
-                      alignItems: "center",
-                    }}
-                  >
-                    {done && <Check size={13} />}
-                    {STATUS_LABEL[s]}
-                  </div>
-                </div>
-                {i < STATUS_FLOW.length - 1 && (
-                  <ArrowRight size={14} color={i < curIdx ? "var(--success)" : "var(--fg-3)"} />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </div>
-      </Card>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard
-          label="播放量"
-          value={d.views > 0 ? `${(d.views / 1_000_000).toFixed(1)}M` : "—"}
-          tone="info"
-        />
-        <KpiCard
-          label="累计营收"
-          value={d.revenue > 0 ? `¥${(d.revenue / 10_000).toFixed(1)}万` : "—"}
-          tone="accent"
-        />
-        <KpiCard label="评分" value={d.rating > 0 ? d.rating.toFixed(1) : "—"} tone="success" />
-        <KpiCard
-          label="分发任务"
-          value={`${jobs.filter((j) => j.status === "live").length}/${jobs.length}`}
-          tone="violet"
-          delta="live / 全部"
-        />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-        <Card style={{ padding: "24px 26px" }}>
-          <SectionHeader
-            eyebrow="演员阵容"
-            title={
-              <>
-                <Users size={13} style={{ marginRight: 6 }} /> 演员 / 角色
-              </>
-            }
-          />
-          {artistsQ.isLoading && <LoadingBlock rows={2} height={48} />}
-          {castInProject.length === 0 && (
-            <EmptyState
-              title="未匹配到平台演员"
-              description={`主演字段：${d.role}（暂无平台 IP 绑定）。`}
-            />
-          )}
-          {castInProject.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {castInProject.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => router.push(`/cast/${encodeURIComponent(a.id)}`)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "12px 14px",
-                    background: "rgba(255,255,255,0.02)",
-                    border: "1px solid var(--line)",
-                    borderRadius: "var(--radius-md)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    color: "var(--fg-0)",
-                    fontFamily: "var(--font-sans)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: "50%",
-                      background: "var(--bg-3)",
-                      border: "1px solid var(--line-2)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 13,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {a.name[0]}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>{a.name}</div>
-                    <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>
-                      {a.type} · {a.quality}
-                    </div>
-                  </div>
-                  <Chip tone={a.status === "active" ? "success" : "info"}>{a.status}</Chip>
-                </button>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card style={{ padding: "24px 26px" }}>
-          <SectionHeader
-            eyebrow="分发"
-            title={
-              <>
-                <Share2 size={13} style={{ marginRight: 6 }} /> 分发任务
-              </>
-            }
-            right={
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push(`/projects/${encodeURIComponent(d.id)}/distribute`)}
-              >
-                <Plus size={11} />
-                新发布
-              </Button>
-            }
-          />
-          {jobsQ.isLoading && <LoadingBlock rows={2} height={48} />}
-          {!jobsQ.isLoading && jobs.length === 0 && (
-            <EmptyState
-              title="还没有发布任务"
-              description="项目进入「后期」或「上线」后，可以推送到多个平台。"
-              action={
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => router.push(`/projects/${encodeURIComponent(d.id)}/distribute`)}
-                >
-                  <Share2 size={11} />
-                  开始发布
-                </Button>
-              }
-            />
-          )}
-          {jobs.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {jobs.map((j) => (
-                <PublishJobRow key={j.id} job={j} />
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <ConfirmDialog
-        open={!!advanceTarget}
-        onOpenChange={(o) => !o && setAdvanceTarget(null)}
-        title={`推进到「${advanceTarget ? STATUS_LABEL[advanceTarget] : ""}」`}
-        description={`当前状态为「${STATUS_LABEL[d.status]}」。状态推进会通知关联团队成员。`}
-        confirmLabel="确认推进"
-        onConfirm={advance}
-      />
-    </div>
+    <WorkshopShell
+      meta={meta}
+      data={data}
+      initialStage={meta.stage <= 3 ? "outline" : "script"}
+      renderStage={({ state, dispatch }) => (
+        <StageOutlet state={state} dispatch={dispatch} data={data} prefilled={meta.mode === "template"} />
+      )}
+    />
   );
 }
 
-function PublishJobRow({ job }: { job: PublishJob }) {
-  const tone =
-    job.status === "live"
-      ? "success"
-      : job.status === "failed"
-        ? "danger"
-        : job.status === "publishing"
-          ? "accent"
-          : "info";
-  const label =
-    {
-      queued: "排队中",
-      uploading: "上传中",
-      transcoding: "转码中",
-      publishing: "发布中",
-      awaiting_user: "待输入验证码",
-      live: "已上线",
-      failed: "失败",
-      cancelled: "已取消",
-    }[job.status] ?? job.status;
+function StageOutlet({
+  state,
+  dispatch,
+  data,
+  prefilled,
+}: {
+  state: WorkshopState;
+  dispatch: React.Dispatch<WorkshopAction>;
+  data: ProjectData;
+  prefilled: boolean;
+}) {
+  switch (state.stage) {
+    case "topic":
+      return <TopicStage state={state} dispatch={dispatch} data={data} />;
+    case "outline":
+      return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} />;
+    case "cast":
+      return <CastStage state={state} dispatch={dispatch} data={data} />;
+    case "script":
+      return <ScriptStage state={state} dispatch={dispatch} data={data} />;
+    case "board":
+      return <BoardStage state={state} dispatch={dispatch} data={data} />;
+    case "prompt":
+      return <PromptStage state={state} dispatch={dispatch} data={data} />;
+    default:
+      return <StageStub state={state} dispatch={dispatch} />;
+  }
+}
+
+// 各阶段占位 — B6/B7 将以真实组件替换。
+const STAGE_META: Record<
+  StageKey,
+  { no: number; scope: "项目" | "剧集"; title: string; desc: string }
+> = {
+  topic:   { no: 1, scope: "项目", title: "选题立项",     desc: "立项起点已在新建时完成,这里随时回看与微调。" },
+  outline: { no: 2, scope: "项目", title: "大纲分集",     desc: "铺好人物小传、主线,再把故事拆成一集一集的钩子和梗概。" },
+  cast:    { no: 3, scope: "项目", title: "角色与资产", desc: "给关键角色绑定一个数字人分身锁住形象 —— 这是跨集一致性和真人脸的地基。" },
+  script:  { no: 4, scope: "剧集", title: "单集剧本",     desc: "把这一集写成一个个场景。点任意文字即可直接编辑。" },
+  board:   { no: 5, scope: "剧集", title: "分镜工作台", desc: "按剧本场景逐场拆镜。描述、台词点击即改,景别运镜在精修栏点选。" },
+  prompt:  { no: 6, scope: "剧集", title: "成片配方",     desc: "逐镜整理好,可直接喂给视频大模型开拍。" },
+};
+
+function StageStub({
+  state,
+  dispatch,
+}: {
+  state: WorkshopState;
+  dispatch: React.Dispatch<WorkshopAction>;
+}) {
+  const m = STAGE_META[state.stage];
+  const titleWithEp =
+    m.scope === "剧集" ? `第 ${state.ep} 集 · ${m.title.replace(/^.*·\s*/, "")}` : m.title;
   return (
-    <div
-      style={{
-        padding: "12px 14px",
-        background: "rgba(255,255,255,0.02)",
-        border: "1px solid var(--line)",
-        borderRadius: "var(--radius-md)",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 500 }}>{job.platformName}</div>
-        <StatusBadge tone={tone}>{label}</StatusBadge>
-      </div>
-      <div
-        style={{
-          height: 4,
-          background: "rgba(255,255,255,0.06)",
-          borderRadius: "var(--radius-pill)",
-          overflow: "hidden",
-        }}
-      >
+    <div className="scroll" style={{ height: "100%" }}>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 32px 64px" }}>
+        <StageHeader no={m.no} scope={m.scope} title={titleWithEp} desc={m.desc} />
         <div
-          style={{
-            width: `${job.progress}%`,
-            height: "100%",
-            background: job.status === "failed" ? "var(--danger)" : "var(--gradient-gold)",
-            transition: "width 400ms ease",
-          }}
-        />
-      </div>
-      <div
-        className="mono"
-        style={{
-          fontSize: 10.5,
-          color: "var(--fg-3)",
-          marginTop: 6,
-          display: "flex",
-          justifyContent: "space-between",
-        }}
-      >
-        <span>{job.progress}%</span>
-        {job.externalUrl && (
-          <a href={job.externalUrl} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
-            打开 ↗
-          </a>
-        )}
+          className="card col center"
+          style={{ padding: "60px 24px", gap: 14, textAlign: "center" }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: 20,
+              background: "var(--accent-soft)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--accent)",
+            }}
+          >
+            <Sparkles size={28} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>
+              「{m.title}」工作区
+            </div>
+            <div className="muted" style={{ fontSize: 13.5, marginTop: 4, maxWidth: 380 }}>
+              {m.desc}
+            </div>
+          </div>
+          <div className="row gap-3">
+            {state.lockedStages[state.stage] ? (
+              <span className="tag tag-accent">已锁定</span>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-grad"
+                onClick={() =>
+                  dispatch({ type: "lock", stage: state.stage, cost: 0 })
+                }
+              >
+                <Sparkles size={15} /> 演示:锁定本阶段并进入下一步
+              </button>
+            )}
+          </div>
+          <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>
+            真正的「{m.title}」交互将在{" "}
+            {m.scope === "项目" ? "B6" : "B7"} 批次填入。
+          </div>
+        </div>
       </div>
     </div>
   );

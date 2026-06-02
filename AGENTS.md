@@ -2032,6 +2032,49 @@ openapi: +33 aiavatar path 骨架（/aiavatar/health + /me/aiavatar/* + /admin/a
 - **api-contract gate**：检查器（scripts/check-api-contract.mjs）已扫描 web-aiavatar；当前剩余 20 missing path
   + 1 missing method 来自 web-drama / web-celebrity 历史 drift，非 AiAvatar 引入。
 
+### v0.46（2026-06-01）— web-drama 短剧工坊视觉与业务流整体重构（B1-B8.5）
+
+按 Figma Make 原型「短剧工坊·桌面 + 移动端」逐项落地。**全站视觉令牌切到暖白橙红（`#fafaf9` 底 + `#f97316/#e11d48` 双点缀），业务主线从"短剧生成单页"重构为"6 阶段工作台流水线"。仅 web-drama 改动，后端契约不变。**
+
+```
+apps/web-drama:
+  styles/tokens.css                    完全重写:暖白橙红 + Noto Sans SC/Quicksand,旧名(--bg-0/--fg-0/--accent-strong/--gradient-gold)作别名指向新值
+  styles/app.css                       追加设计真源全部通用类(.btn/.chip/.tag/.card/.thumb/.overlay/.cost/.scroll/.skel/.fade-up/.pop-in/.slide-in-r/.phone-bezel)
+  app/layout.tsx                       字体 Noto Sans SC + Quicksand,去 dark/data-theme="premium"
+  app/providers.tsx                    Toaster light + 胶囊;挂 DramaConfirmHost
+  app/(workspace)/layout.tsx           暗色残余清扫 + sidebar IA 重整 4 组(短剧工坊/创作素材/分发与洞察/账户) + 工作台沉浸态(isWorkshop 路径跳过通用 sidebar/topbar)
+  app/(workspace)/projects/page.tsx    替换为「我的短剧」首页(项目卡格栅 + dashed 新建卡 + 6 项目按隔离 mock)
+  app/(workspace)/projects/new/...     新建短剧两步流(选类型 9 卡 + 选模式仪式感双选 + 五维挖掘/模板预填)
+  app/(workspace)/projects/[id]/...    短剧工作台沉浸态(StageRail + ProjectTopbar + EpisodeStrip + CastPanel + 6 阶段视图)
+  app/(workspace)/short-drama/...      → redirect("/projects")(老单页能力并入 6 阶段)
+  app/(workspace)/scripts/page.tsx     顶部主线引导 banner(跨项目脚本归档 vs 项目内单集剧本分工)
+  app/(workspace)/cast/page.tsx        同 banner(跨项目 IP vs 项目内角色)
+  app/(workspace)/dashboard/page.tsx   hero 重写 + "进入短剧工坊"主线 CTA;eyebrow 文案护栏
+  app/(workspace)/scripts/[id]/page.tsx window.confirm → dramaConfirm(tone:"danger")
+
+  components/drama-ui/                 10 个原语(Thumb/Avatar/Cost/useGen+GenSkeleton+GenError/AICollab+RewriteTagPill/ChipGroup/EngineTag/Editable/Meta/Field/DramaConfirmDialog+Host)
+  components/drama-workshop/
+    stages-config.ts                   6 阶段定义 + STAGE_BY_KEY + cost 预算
+    project-card.tsx                   首页项目卡(9:16/16:10 渐变缩略 + 进度条)
+    new-project/                       step-dot/pick-type/mode-card/guided-start/template-start/pick-mode
+    workbench/                         stage-rail/episode-strip/cast-panel/project-topbar/stage-header/workshop-shell/run-all-dialog
+    stages/                            topic/outline/cast/(char-card+avatar-picker+scene-picker)/script/board/(timeline-bar/layout-toggle/shot-bits/shot-cards/shot-detail/engine-limits/shot-prompt-peek)/prompt
+
+  mocks/drama-workshop/                5 文件(types/avatar-themes/meta/projects/index):
+                                       6 个项目全套样例数据(每项目独立
+                                       projectInfo/topicCards/episodes/characters/script/storyboard/promptPack),
+                                       严格按设计真源 data.js 一比一移植 — 切项目=切整套。
+```
+
+**核心交互保真度**(对照设计源):
+- 视觉令牌、6 阶段轨、双模式(AI 引导 + 模板)、数字人沉浸大图选择器、剧集切换器、撤销重做(⌘Z/⇧⌘Z 60 步)、分镜三布局(timeline 默认 + flow + grid)、单镜精修侧栏(slide-in-r 384px)、ShotPromptPeek 弹层、成片配方@图片N → 真实头像缩略图、一键连跑两阶段弹层、平台自有 ConfirmDialog 替原生 confirm、骨架屏(.skel)、追查号失败态、移动响应式 ≤860/≤720/≤560 三档断点。
+
+**注意事项**:
+- 后端契约不动:仍走 `POST /api/me/drama/scripts*` + `/episodes/generate`(v0.43)。6 阶段富数据先以 mock 演示;持久化由 `DramaScript.scenes[]` 承接(结构化扩展见 v0.47+ 规划)。
+- 文案护栏:UI 不出 "视频大模型 / 渲染 / 引擎 / Token / Prompt 包 / ⌘K / CINEMATIC" 等工程词;`engine` `avatar/seedance` 字段仅内部用,UI 一律说"数字人出镜 / 特效镜·待开通"。
+- 老路由(/cast、/scripts、/forge、/wardrobe、/incubator、/distribution、/finance、/settings)未改造,通过别名让其暖白化;`/cast` `/scripts` 顶部主线 banner 明确"跨项目素材"vs"项目内角色/剧本"分工,引导回 /projects。
+- 验收:`pnpm typecheck` 全绿;playwright 7 批 30+ 张截图覆盖(含移动 390px 单列);`grep 'confirm\|alert\|prompt'` 仅注释命中;主线动线 dashboard→/projects→/projects/new→/projects/<id> 一气呵成。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

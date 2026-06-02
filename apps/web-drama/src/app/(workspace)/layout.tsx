@@ -48,16 +48,20 @@ interface NavGroup {
 
 const GROUPS: NavGroup[] = [
   {
-    title: "工作台",
+    title: "短剧工坊",
     items: [
+      { href: "/projects", icon: Clapperboard, label: "我的短剧" },
       { href: "/dashboard", icon: LayoutDashboard, label: "总览", exact: true },
+    ],
+  },
+  {
+    title: "创作素材",
+    items: [
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
       { href: "/incubator", icon: Wand2, label: "孵化新演员" },
       { href: "/forge", icon: Sparkles, label: "形象锻造炉" },
       { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
       { href: "/scripts", icon: PenTool, label: "脚本工坊" },
-      { href: "/short-drama", icon: Clapperboard, label: "短剧生成" },
-      { href: "/projects", icon: Film, label: "项目流水线" },
     ],
   },
   {
@@ -69,7 +73,7 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "系统",
+    title: "账户",
     items: [
       { href: "/finance", icon: WalletIcon, label: "财务中心" },
       { href: "/settings", icon: Settings, label: "工作室设置" },
@@ -98,38 +102,37 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       }}
     >
       <Link
-        href="/dashboard"
+        href="/projects"
         onClick={onNavigate}
+        className="row gap-3"
         style={{
-          padding: "0 20px 18px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
+          padding: "0 18px 18px",
           borderBottom: "1px solid var(--line)",
-          color: "var(--fg-0)",
+          color: "var(--ink)",
           textDecoration: "none",
         }}
       >
         <div
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: "var(--radius-md)",
-            background: "var(--gradient-gold)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 4px 16px rgba(212,175,106,0.25)",
+            width: 34,
+            height: 34,
+            borderRadius: 11,
+            background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+            display: "grid",
+            placeItems: "center",
+            color: "#fff",
+            boxShadow: "var(--shadow-sm)",
+            flex: "none",
           }}
         >
-          <Clapperboard size={14} color="#1a1410" strokeWidth={2.4} />
+          <Clapperboard size={16} strokeWidth={2.4} />
         </div>
-        <div style={{ lineHeight: 1.2 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--font-display)" }}>
-            AI 短剧
+        <div style={{ lineHeight: 1.2, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.01em" }}>
+            短剧工坊
           </div>
-          <div className="eyebrow" style={{ fontSize: 9 }}>
-            短剧工坊 · v0.6
+          <div className="faint" style={{ fontSize: 11, fontWeight: 500, marginTop: 2 }}>
+            从灵感到成片配方
           </div>
         </div>
       </Link>
@@ -138,8 +141,13 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {GROUPS.map((g, gi) => (
           <div key={gi}>
             <div
-              className="eyebrow"
-              style={{ padding: gi === 0 ? "8px 10px 8px" : "20px 10px 8px" }}
+              className="faint"
+              style={{
+                padding: gi === 0 ? "8px 12px 6px" : "18px 12px 6px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: ".05em",
+              }}
             >
               {g.title}
             </div>
@@ -155,23 +163,21 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     display: "flex",
                     alignItems: "center",
                     gap: 12,
-                    padding: "9px 10px",
-                    borderRadius: "var(--radius-md)",
-                    background: active
-                      ? "color-mix(in srgb, var(--accent) 10%, transparent)"
-                      : "transparent",
-                    color: active ? "var(--fg-0)" : "var(--fg-1)",
-                    fontSize: 13,
-                    fontWeight: active ? 500 : 400,
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    background: active ? "var(--accent-soft)" : "transparent",
+                    color: active ? "var(--accent)" : "var(--ink-2)",
+                    fontSize: 13.5,
+                    fontWeight: active ? 700 : 600,
                     marginBottom: 2,
-                    border: active
-                      ? "1px solid color-mix(in srgb, var(--accent) 25%, transparent)"
-                      : "1px solid transparent",
-                    transition: "background 160ms ease, border-color 160ms ease",
+                    transition: "background 160ms ease, color 160ms ease",
                     textDecoration: "none",
                   }}
                 >
-                  <Icon size={15} color={active ? "var(--accent)" : "var(--fg-2)"} />
+                  <Icon
+                    size={15}
+                    color={active ? "var(--accent)" : "var(--ink-3)"}
+                  />
                   <span>{it.label}</span>
                 </Link>
               );
@@ -261,67 +267,39 @@ function GlobalSearch() {
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
-        title="全局搜索"
+        title="搜索"
+        className="row gap-2"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "7px 12px",
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid var(--line-2)",
-          borderRadius: "var(--radius-md)",
-          fontSize: 12,
-          color: "var(--fg-2)",
-          fontFamily: "var(--font-mono)",
+          padding: "0 14px",
+          height: 36,
+          background: "var(--surface-2)",
+          border: "1px solid transparent",
+          borderRadius: 999,
+          fontSize: 12.5,
+          color: "var(--ink-3)",
           minWidth: 280,
           cursor: "pointer",
+          transition: "border-color .15s, background .15s",
         }}
       >
-        <Search size={13} />
+        <Search size={14} />
         <span>搜索剧集、演员、脚本…</span>
-        <span
-          style={{
-            marginLeft: "auto",
-            padding: "1px 6px",
-            border: "1px solid var(--line-2)",
-            borderRadius: 3,
-            fontSize: 10,
-          }}
-        >
-          ⌘K
-        </span>
       </button>
       {open && (
-        <div
-          onClick={() => setOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 100,
-            background: "rgba(8, 6, 14, 0.74)",
-            backdropFilter: "blur(8px)",
-            display: "flex",
-            justifyContent: "center",
-            paddingTop: "12vh",
-          }}
-        >
+        <div className="overlay" onClick={() => setOpen(false)}>
           <form
             onSubmit={submit}
             onClick={(e) => e.stopPropagation()}
+            className="card pop-in row gap-3"
             style={{
               width: "min(560px, 90vw)",
-              background: "var(--bg-1)",
-              border: "1px solid var(--line-2)",
-              borderRadius: "var(--radius-lg)",
-              padding: "8px 12px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+              padding: "10px 16px",
+              boxShadow: "var(--shadow-lg)",
             }}
           >
-            <Search size={16} color="var(--fg-2)" />
+            <Search size={18} color="var(--ink-3)" />
             <input
               autoFocus
               value={q}
@@ -332,10 +310,10 @@ function GlobalSearch() {
                 padding: "12px 4px",
                 background: "transparent",
                 border: "none",
-                color: "var(--fg-0)",
+                color: "var(--ink)",
                 fontSize: 14,
                 outline: "none",
-                fontFamily: "var(--font-sans)",
+                fontFamily: "var(--font)",
               }}
             />
             <kbd
@@ -389,98 +367,66 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         gap: 16,
         padding: "14px 28px",
         borderBottom: "1px solid var(--line)",
-        background: "rgba(10,8,16,0.6)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
+        background: "color-mix(in oklch, var(--bg) 86%, transparent)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
       }}
     >
       <button
         type="button"
         onClick={onMenuToggle}
-        className="ws-hamburger"
+        className="ws-hamburger btn btn-icon btn-ghost btn-sm"
         title="打开菜单"
         aria-label="打开菜单"
-        style={{
-          padding: 8,
-          borderRadius: "var(--radius-md)",
-          background: "transparent",
-          border: "1px solid var(--line-2)",
-          color: "var(--fg-1)",
-        }}
       >
         <Menu size={16} />
       </button>
-      <div
-        className="mono"
-        style={{ fontSize: 11, color: "var(--fg-2)", letterSpacing: 0.4, whiteSpace: "nowrap" }}
-      >
-        AI 短剧
-        <span className="ws-topbar-sub">
-          {" "}
-          <span style={{ color: "var(--fg-3)" }}>/</span> 工作台
+      <div className="row gap-2" style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+        <span>短剧工坊</span>
+        <span className="ws-topbar-sub faint" style={{ fontWeight: 500 }}>
+          / 工作台
         </span>
       </div>
-      <div style={{ flex: 1 }} />
+      <div className="grow" />
       <div className="ws-topbar-search">
         <GlobalSearch />
       </div>
 
       <button
+        type="button"
         onClick={() => router.push("/finance")}
         title="积分余额 · 点击进入财务"
+        className="row gap-2"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "6px 12px",
-          background: "color-mix(in srgb, var(--accent) 10%, transparent)",
-          border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
-          borderRadius: "var(--radius-pill)",
+          padding: "6px 14px",
+          background: "var(--accent-soft)",
+          border: "none",
+          borderRadius: 999,
           cursor: "pointer",
+          color: "var(--accent)",
         }}
       >
-        <Coins size={13} color="var(--accent)" />
-        <span
-          className="mono"
-          style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", letterSpacing: 0.3 }}
-        >
+        <Coins size={13} />
+        <span className="num" style={{ fontSize: 13, fontWeight: 700 }}>
           {wallet ? wallet.totalBalance.toLocaleString("zh-CN") : "—"}
         </span>
       </button>
 
       <button
+        type="button"
         onClick={() => router.push("/projects?new=1")}
-        title="快速创建项目"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "7px 12px",
-          background: "var(--gradient-gold)",
-          color: "#1a1410",
-          border: "1px solid var(--accent-strong)",
-          borderRadius: "var(--radius-md)",
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: "pointer",
-          fontFamily: "var(--font-sans)",
-        }}
+        title="新建短剧项目"
+        className="btn btn-grad btn-sm"
       >
-        <Plus size={13} strokeWidth={2.6} />
-        <span className="ws-btn-label">新建项目</span>
+        <Plus size={14} />
+        <span className="ws-btn-label">新建短剧</span>
       </button>
 
       <button
+        type="button"
         onClick={handleLogout}
         title="退出登录"
-        style={{
-          padding: 8,
-          borderRadius: "var(--radius-md)",
-          background: "transparent",
-          border: "1px solid var(--line-2)",
-          color: "var(--fg-2)",
-          cursor: "pointer",
-        }}
+        className="btn btn-icon btn-ghost btn-sm"
       >
         <LogOut size={14} />
       </button>
@@ -491,6 +437,10 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const { user, hasPlatformAccess } = useAuth();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const pathname = usePathname();
+  // 短剧工作台沉浸态:进入某部短剧后(`/projects/<id>`)自带 6 阶段轨 + 顶部
+  // 项目条 + 角色面板,不挂通用 workspace sidebar/topbar。
+  const isWorkshop = !!pathname?.match(/^\/projects\/[^/]+(\/.*)?$/) && !pathname.startsWith("/projects/new");
 
   // 抽屉打开时锁定背景滚动（移动端体验）。
   React.useEffect(() => {
@@ -508,16 +458,25 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       <PlatformAccessDenied
         appName="AI 短剧"
         theme={{
-          bg: "var(--bg-0)",
-          surface: "var(--bg-1)",
-          fg: "var(--fg-0)",
-          fgMuted: "var(--fg-2)",
+          bg: "var(--bg)",
+          surface: "var(--surface)",
+          fg: "var(--ink)",
+          fgMuted: "var(--ink-2)",
           accent: "var(--accent)",
-          accentFg: "#1a1410",
+          accentFg: "#fff",
           border: "var(--line)",
-          radius: "var(--radius-lg)",
+          radius: "var(--radius)",
         }}
       />
+    );
+  }
+
+  // 工作台沉浸态:跳过通用 sidebar/topbar,把整屏交给 page.tsx
+  if (isWorkshop) {
+    return (
+      <div className="ws-shell" style={{ display: "block", gridTemplateColumns: "none", overflow: "hidden" }}>
+        {children}
+      </div>
     );
   }
 
@@ -533,42 +492,11 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           overflow: "hidden",
           position: "relative",
           minWidth: 0,
+          background: "var(--bg)",
         }}
       >
-        <div
-          aria-hidden
-          style={{
-            pointerEvents: "none",
-            position: "absolute",
-            top: -200,
-            right: -160,
-            width: 600,
-            height: 400,
-            background: "var(--gradient-hero)",
-            opacity: 0.08,
-            filter: "blur(140px)",
-          }}
-        />
         <Topbar onMenuToggle={() => setDrawerOpen(true)} />
         <div className="ws-content">{children}</div>
-        <div
-          className="ws-content-badge"
-          style={{
-            position: "absolute",
-            bottom: 16,
-            right: 18,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 10,
-            color: "var(--fg-3)",
-            fontFamily: "var(--font-mono)",
-            letterSpacing: 0.4,
-          }}
-        >
-          <Sparkles size={10} />
-          CINEMATIC · v0.6
-        </div>
       </main>
 
       {/* 移动端抽屉导航 */}
