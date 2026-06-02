@@ -21,6 +21,7 @@ VERIFY="${VERIFY:-1}"
 PUBLIC_BASE="${PUBLIC_BASE:-}"
 REMOTE_APP_USER="${REMOTE_APP_USER:-}"
 REMOTE_APP_GROUP="${REMOTE_APP_GROUP:-}"
+ENSURE_CJK_FONTS="${ENSURE_CJK_FONTS:-1}"
 
 [[ -n "$DEPLOY_HOST" ]] || { echo "DEPLOY_HOST or ECS_HOST is required" >&2; exit 1; }
 [[ -d "$RELEASE_DIR" ]] || { echo "release dir not found: $RELEASE_DIR" >&2; exit 1; }
@@ -98,10 +99,11 @@ done
 log "uploading release $RELEASE_ID to $DEPLOY_HOST:$REMOTE_STAGE"
 ssh_remote "rm -rf '$REMOTE_STAGE' && mkdir -p '$REMOTE_STAGE'"
 rsync -az --delete -e "${RSYNC_SSH[*]}" "$RELEASE_DIR/" "$DEPLOY_HOST:$REMOTE_STAGE/"
+rsync -az -e "${RSYNC_SSH[*]}" "$REPO_ROOT/infra/scripts/install-cjk-fonts.sh" "$DEPLOY_HOST:$REMOTE_STAGE/install-cjk-fonts.sh"
 
 log "applying release on remote host"
 ssh_remote \
-  "RELEASE_ID='$RELEASE_ID' REMOTE_STAGE='$REMOTE_STAGE' REMOTE_ROOT='$REMOTE_ROOT' SERVICES_TO_DEPLOY='$SERVICES_TO_DEPLOY' SUDO='$SUDO' REMOTE_APP_USER='$REMOTE_APP_USER' REMOTE_APP_GROUP='$REMOTE_APP_GROUP' bash -s" <<'REMOTE_SCRIPT'
+  "RELEASE_ID='$RELEASE_ID' REMOTE_STAGE='$REMOTE_STAGE' REMOTE_ROOT='$REMOTE_ROOT' SERVICES_TO_DEPLOY='$SERVICES_TO_DEPLOY' SUDO='$SUDO' REMOTE_APP_USER='$REMOTE_APP_USER' REMOTE_APP_GROUP='$REMOTE_APP_GROUP' ENSURE_CJK_FONTS='$ENSURE_CJK_FONTS' bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 
 log() { printf "\033[1;34m[remote-deploy]\033[0m %s\n" "$*"; }
@@ -110,7 +112,23 @@ APP_USER="${REMOTE_APP_USER:-$(id -un)}"
 APP_GROUP="${REMOTE_APP_GROUP:-$(id -gn)}"
 RELEASE_STORE="$REMOTE_ROOT/releases/$RELEASE_ID"
 
+ensure_cjk_fonts() {
+  if [[ "${ENSURE_CJK_FONTS:-1}" != "1" ]]; then
+    log "skip CJK font ensure (ENSURE_CJK_FONTS=$ENSURE_CJK_FONTS)"
+    return
+  fi
+  if [[ ! -f "$REMOTE_STAGE/install-cjk-fonts.sh" ]]; then
+    log "CJK font installer missing in remote stage; skip"
+    return
+  fi
+  log "ensure system CJK fonts"
+  $SUDO bash "$REMOTE_STAGE/install-cjk-fonts.sh"
+}
+
 $SUDO mkdir -p "$REMOTE_ROOT/releases" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
+
+ensure_cjk_fonts
+
 $SUDO rm -rf "$RELEASE_STORE"
 $SUDO mkdir -p "$RELEASE_STORE"
 $SUDO cp -a "$REMOTE_STAGE"/. "$RELEASE_STORE"/

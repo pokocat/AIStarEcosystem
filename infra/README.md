@@ -108,7 +108,7 @@ ECS 集群 (1~N 台, VPC 内网)│
 ./infra/scripts/preflight.sh
 
 # 2) 检测目标 ECS 工具齐备（先做完 §3.2 ECS 准备）
-./infra/scripts/preflight.sh --remote root@<ECS_HOST>
+SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
 
 # 3) 交互式生成 server.env / sau-service.env / nginx config 到 infra/.local/
 #    脚本会问 ECS / RDS / OSS / SMS / Coze 等参数，自动 openssl 生成 JWT/AES/INTERNAL 密钥
@@ -138,9 +138,11 @@ ECS 集群 (1~N 台, VPC 内网)│
 ```bash
 ssh root@<ECS_HOST>
 
-# Java 17 + nginx + docker + ffmpeg
-yum install -y java-17-openjdk-headless nginx rsync ffmpeg
+# Java 17 + nginx + docker + ffmpeg + CJK fonts
+yum install -y java-17-openjdk-headless nginx rsync ffmpeg fontconfig \
+  google-noto-sans-cjk-sc-fonts google-noto-serif-cjk-sc-fonts
 systemctl enable --now nginx docker
+fc-cache -f
 
 # nvm + node 24（next standalone runtime）
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
@@ -276,6 +278,14 @@ PUBLIC_BASE=http://47.98.162.120 \
 ./infra/scripts/verify.sh
 ```
 
+`deploy-release.sh` 默认会在 ECS 上幂等执行 `infra/scripts/install-cjk-fonts.sh`，确保系统层
+中文字体可供 Java2D、ffmpeg drawtext、headless browser 等服务使用。若只想预检/手动修复：
+
+```bash
+ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-cjk-fonts.sh
+SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
+```
+
 ### 4.2 GitHub Actions 部署
 
 工作流：`.github/workflows/deploy-production.yml`，手动触发 `workflow_dispatch`。
@@ -317,6 +327,8 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 - **密钥不入 git**：`infra/env/*.env`（不含 `.example`）和 `apps/miniprogram/config/env.js` 都已在 `.gitignore`
 - **`AEP_SEED_DEV_DATA_ENABLED=false`**：生产 server.env 默认值，避免新空库写入演示账号
 - **`AEP_DEV_AUTH_ENABLED=false`**：生产必须关闭免密 dev-login 入口
+- **系统 CJK 字体必须存在**：部署脚本默认确保 `google-noto-*-cjk-sc`，`verify.sh` 会检查。
+  这是 picgen、ffmpeg drawtext、headless browser 中文渲染的服务器级兜底。
 - **JWT / AES 密钥**：`AEP_JWT_SECRET`（≥32 字符高熵）/ `AEP_SECRET_KEY`（32 字节）必须 env 注入；
   mysql/prod profile 启动看到 dev default 直接抛异常拒绝启动
 - **MixcutPresetSeeder 不受 dev-data gate 控制**（GIF 扰动贴图池是平台基础数据，生产也要种）

@@ -88,6 +88,7 @@
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | Agent 部署技能入口：本地 artifact 部署、按应用部署、GitHub Actions 流水线部署、验证与排障 |
 | [`infra/rds/README.md`](../infra/rds/README.md) | RDS MySQL 8.0 创建 / 内网白名单 / 参数组 / Flyway baseline |
 | [`infra/oss/README.md`](../infra/oss/README.md) | OSS Bucket / CDN 域名 / RAM 最小权限 / 生命周期规则 |
+| [`infra/scripts/install-cjk-fonts.sh`](../infra/scripts/install-cjk-fonts.sh) | ECS 系统中文字体安装：Java2D / ffmpeg drawtext / headless browser 中文渲染兜底 |
 
 **v0.8 新增部署需求**：mixcut 真后端要求生产环境装 ffmpeg：
 
@@ -100,6 +101,9 @@ sudo yum install -y ffmpeg ffmpeg-devel
 ```
 
 并配置环境变量：`AEP_MIXCUT_OUTPUT_DIR` / `AEP_MIXCUT_WORK_DIR`（生产应指向有足够磁盘配额的卷）。
+
+中文渲染要求 ECS 安装 CJK 字体；部署脚本会默认执行
+[`infra/scripts/install-cjk-fonts.sh`](../infra/scripts/install-cjk-fonts.sh)，`verify.sh` 会检查字体是否可用。
 
 ## 6. Figma 原型迁移 & 设计系统（"设计稿怎么落 / 长什么样"）
 

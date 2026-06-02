@@ -10,8 +10,10 @@ import org.springframework.stereotype.Component;
 import java.awt.Font;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * 启动时扫描 {@code classpath:fonts/**\/*.ttf|*.otf}，把发现的中文字体加载到内存。
@@ -60,8 +62,7 @@ public class FontRegistry {
     public void load() {
         try {
             PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-            Resource[] resources = resolver.getResources("classpath*:fonts/**/*.[ot]tf");
-            for (Resource r : resources) {
+            for (Resource r : fontResources(resolver)) {
                 String filename = r.getFilename();
                 if (filename == null) continue;
                 try (InputStream in = r.getInputStream()) {
@@ -82,6 +83,30 @@ public class FontRegistry {
             log.info("[fonts] registry empty; BannerRenderer will fall back to JVM logical fonts");
         } else {
             log.info("[fonts] registry total = {} fonts", all.size());
+        }
+    }
+
+    private static List<Resource> fontResources(PathMatchingResourcePatternResolver resolver) throws Exception {
+        String[] patterns = {
+                "classpath*:fonts/**/*.ttf",
+                "classpath*:fonts/**/*.otf",
+                "classpath*:fonts/*.ttf",
+                "classpath*:fonts/*.otf",
+        };
+        Map<String, Resource> resources = new LinkedHashMap<>();
+        for (String pattern : patterns) {
+            for (Resource resource : resolver.getResources(pattern)) {
+                resources.putIfAbsent(resourceKey(resource), resource);
+            }
+        }
+        return new ArrayList<>(resources.values());
+    }
+
+    private static String resourceKey(Resource resource) {
+        try {
+            return resource.getURL().toString();
+        } catch (Exception ignored) {
+            return String.valueOf(resource.getDescription());
         }
     }
 

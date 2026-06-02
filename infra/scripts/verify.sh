@@ -75,6 +75,15 @@ else
   exit 1
 fi
 
+if command -v fc-list >/dev/null 2>&1 \
+  && fc-list :lang=zh family 2>/dev/null | grep -Eiq 'Noto (Sans|Serif) CJK|Source Han|WenQuanYi|WenQuan Yi|Microsoft YaHei|SimHei|PingFang'; then
+  match="$(fc-list :lang=zh family 2>/dev/null | grep -Eim1 'Noto (Sans|Serif) CJK|Source Han|WenQuanYi|WenQuan Yi|Microsoft YaHei|SimHei|PingFang' || true)"
+  echo "  ✓ CJK fonts ok (${match})"
+else
+  echo "  ✗ CJK fonts missing (run infra/scripts/install-cjk-fonts.sh on ECS)"
+  exit 1
+fi
+
 if curl -fsS http://127.0.0.1:8090/healthz >/dev/null; then
   echo "  ✓ sau-service /healthz ok"
 else

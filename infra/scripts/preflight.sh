@@ -15,6 +15,8 @@
 set -uo pipefail
 
 REMOTE=""
+SSH_PORT="${SSH_PORT:-22}"
+SSH_KEY="${SSH_KEY:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --remote) REMOTE="$2"; shift 2;;
@@ -23,6 +25,21 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
+
+SSH_BASE=(ssh -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new)
+SSH_CHECK_BASE=(ssh -p "$SSH_PORT" -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+if [[ -n "$SSH_KEY" ]]; then
+  SSH_BASE+=(-i "$SSH_KEY")
+  SSH_CHECK_BASE+=(-i "$SSH_KEY")
+fi
+
+ssh_remote() {
+  "${SSH_BASE[@]}" "$REMOTE" "$@"
+}
+
+ssh_remote_check() {
+  "${SSH_CHECK_BASE[@]}" "$REMOTE" "$@"
+}
 
 # 颜色 + 计数
 GREEN=$'\033[1;32m'; RED=$'\033[1;31m'; YELLOW=$'\033[1;33m'; CYAN=$'\033[1;36m'; RESET=$'\033[0m'
@@ -36,10 +53,10 @@ check() {
   local ok="no" output=""
 
   if [[ -n "$REMOTE" ]]; then
-    if ssh -o ConnectTimeout=5 -o BatchMode=yes "$REMOTE" "command -v $cmd >/dev/null 2>&1"; then
+    if ssh_remote_check "command -v $cmd >/dev/null 2>&1"; then
       ok="yes"
       if [[ -n "$verflag" ]]; then
-        output=$(ssh "$REMOTE" "$cmd $verflag 2>&1 | head -1" || true)
+        output=$(ssh_remote "$cmd $verflag 2>&1 | head -1" || true)
       fi
     fi
   else
@@ -64,10 +81,27 @@ check() {
   fi
 }
 
+check_cjk_font() {
+  local hint="./infra/scripts/install-cjk-fonts.sh  # or sudo dnf install -y google-noto-sans-cjk-sc-fonts google-noto-serif-cjk-sc-fonts"
+  local output=""
+  if [[ -n "$REMOTE" ]]; then
+    output=$(ssh_remote "fc-list :lang=zh family 2>/dev/null | grep -Eim1 'Noto (Sans|Serif) CJK|Source Han|WenQuanYi|WenQuan Yi|Microsoft YaHei|SimHei|PingFang'" || true)
+  else
+    output=$(fc-list :lang=zh family 2>/dev/null | grep -Eim1 'Noto (Sans|Serif) CJK|Source Han|WenQuanYi|WenQuan Yi|Microsoft YaHei|SimHei|PingFang' || true)
+  fi
+
+  if [[ -n "$output" ]]; then
+    printf "  ${GREEN}✓${RESET} %-15s ${CYAN}%s${RESET}\n" "cjk-fonts" "$output"
+  else
+    printf "  ${RED}✗${RESET} %-15s ${YELLOW}缺失${RESET}  install: %s\n" "cjk-fonts" "$hint"
+    MISSING_REQUIRED=$((MISSING_REQUIRED+1))
+  fi
+}
+
 # ── 头 ─────────────────────────────────────────────────────────────────────
 if [[ -n "$REMOTE" ]]; then
   echo "[preflight] 检测远端 ${CYAN}$REMOTE${RESET}（部署目标侧）"
-  if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$REMOTE" "true" 2>/dev/null; then
+  if ! ssh_remote_check "true" 2>/dev/null; then
     echo "${RED}✗ 无法 ssh 到 $REMOTE${RESET}（确保 ssh key 已加 + 主机已在 known_hosts）"
     exit 1
   fi
@@ -88,6 +122,9 @@ if [[ -n "$REMOTE" ]]; then
   check required systemctl "--version" "（systemd 应该是 OS 自带）"
   check required rsync  "--version"  "yum install -y rsync"
   check required curl   "--version" "yum install -y curl"
+  check required fc-match "" "yum install -y fontconfig"
+  check required fc-list  "" "yum install -y fontconfig"
+  check_cjk_font
 else
   # 本机侧：build + deploy 所需
   check required bash    "--version" "（应该是 OS 自带；macOS 推荐 brew install bash 升 5.x）"

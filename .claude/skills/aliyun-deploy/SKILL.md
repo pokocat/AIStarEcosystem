@@ -45,6 +45,18 @@ Never write the private key value into repo files or GitHub Secrets examples.
 
 Use the artifact deploy chain as the only deploy path.
 
+Remote ECS bootstrap/preflight:
+
+```bash
+SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+./infra/scripts/preflight.sh --remote ecs-user@47.98.162.120
+
+ssh -i /Users/donis/dev/aliyun/aiartist.pem ecs-user@47.98.162.120 \
+  'sudo bash -s' < infra/scripts/install-cjk-fonts.sh
+```
+
+`deploy-release.sh` runs `infra/scripts/install-cjk-fonts.sh` on the remote host by default before restarting services. This is idempotent and keeps system CJK fonts available for Java2D picgen, ffmpeg drawtext, browser rendering, and future server-side image work. Only set `ENSURE_CJK_FONTS=0` when explicitly troubleshooting package manager/network issues.
+
 Build release artifacts without deploying:
 
 ```bash
@@ -113,6 +125,6 @@ Do not put real AK, SMS templates, OSS credentials, or PEM contents into the rep
 - HTML `502 Bad Gateway` from nginx usually means the upstream service is restarting or unreachable. First check `systemctl status aistareco-server` and `journalctl -u aistareco-server`.
 - SMS issues belong to `apps/server`, not `sau-service`. First check `AEP_SMS_DRIVER` in `/etc/aistareco/server.env` and `journalctl -u aistareco-server` for `sms-aliyun`, `sms-disabled`, or `sms-log`.
 - `sau-service` must be built with `--build-arg INSTALL_REAL=1`. After deploy, verify `curl http://127.0.0.1:8090/healthz` returns `mockMode:false`.
+- Chinese text mojibake has two separate causes. For API/usernames, inspect DB stored values and MySQL `utf8mb4` connection/table settings. For picgen/ffmpeg/browser rendering, first run `fc-list :lang=zh family`, `fc-match 'Noto Sans CJK SC:lang=zh-cn'`, and check `journalctl -u aistareco-server` for `[fonts] registry total`.
 - If a deploy changes only one app, pass only that service list. Do not redeploy `all` unless the user asks for a full release or dependencies require it.
 - If production env values need changes, stop and ask the user to edit `/etc/aistareco/*.env` or confirm the exact non-secret change. Do not invent or overwrite secrets.
-
