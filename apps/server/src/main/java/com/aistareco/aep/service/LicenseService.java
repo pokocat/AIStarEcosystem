@@ -6,6 +6,8 @@ import com.aistareco.aep.model.LicenseBatch;
 import com.aistareco.aep.model.LicenseKey;
 import com.aistareco.aep.repository.LicenseBatchRepository;
 import com.aistareco.aep.repository.LicenseKeyRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -24,6 +26,8 @@ import java.util.UUID;
 @Service
 public class LicenseService {
 
+    private static final Logger log = LoggerFactory.getLogger(LicenseService.class);
+
     private final LicenseBatchRepository batchRepo;
     private final LicenseKeyRepository keyRepo;
     private final SellingChannelService sellingChannelService;
@@ -37,13 +41,59 @@ public class LicenseService {
     }
 
     public Page<LicenseBatchDto> listBatches(Pageable pageable) {
-        return batchRepo.findAll(pageable).map(LicenseBatchDto::from);
+        return batchRepo.findAll(pageable).map(this::toDtoWithDerivedCounts);
     }
 
     public LicenseBatchDto findBatchById(String id) {
-        return batchRepo.findById(id)
-                .map(LicenseBatchDto::from)
+        LicenseBatch batch = batchRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "License batch not found: " + id));
+        return toDtoWithDerivedCounts(batch);
+    }
+
+    /**
+     * v0.47：核销 / 总量 真实派生 + 自愈。
+     *
+     * <p>历史上 batch.totalCount / activatedCount 是 denormalized 列，靠
+     * createBatch / mintKeys / activate 三处协同 +/-，曾出现：
+     * <ul>
+     *   <li>revokeKey 时未对 activatedCount 减回（v0.46 之前），导致只增不减；</li>
+     *   <li>运营 / 测试手动改过列值；</li>
+     *   <li>极端能见 activatedCount &gt; totalCount，admin UI「核销 / 总量」展示 110 / 20。</li>
+     * </ul>
+     * 这里把 DTO 返回值改成对 keys 表的直接计数；同时把派生值回写存储列（用于
+     * EXHAUSTED 状态机判定等下游逻辑），并对状态做一次自愈：
+     * <ul>
+     *   <li>activatedCount &lt; totalCount &amp; status==EXHAUSTED → 回 ACTIVE；</li>
+     *   <li>activatedCount &gt;= totalCount &amp; status==ACTIVE → EXHAUSTED；</li>
+     *   <li>REVOKED / EXPIRED 不主动改回（人工状态权重高）。</li>
+     * </ul>
+     */
+    private LicenseBatchDto toDtoWithDerivedCounts(LicenseBatch batch) {
+        long derivedTotal = keyRepo.countByBatchId(batch.getId());
+        long derivedActivated = keyRepo.countByBatchIdAndStatus(
+                batch.getId(), LicenseKey.LicenseKeyStatus.ACTIVATED);
+
+        boolean drifted = batch.getTotalCount() != derivedTotal
+                || batch.getActivatedCount() != derivedActivated;
+        if (drifted) {
+            log.warn("[license-counter] self-heal batchId={} name='{}' storedTotal={} → derivedTotal={} | storedActivated={} → derivedActivated={}",
+                    batch.getId(), batch.getName(),
+                    batch.getTotalCount(), derivedTotal,
+                    batch.getActivatedCount(), derivedActivated);
+            batch.setTotalCount((int) Math.min(derivedTotal, Integer.MAX_VALUE));
+            batch.setActivatedCount((int) Math.min(derivedActivated, Integer.MAX_VALUE));
+
+            // 状态机微调：仅在 ACTIVE ↔ EXHAUSTED 之间自愈；REVOKED / EXPIRED 是运营人工决策，保留。
+            if (batch.getStatus() == LicenseBatch.LicenseBatchStatus.EXHAUSTED
+                    && derivedActivated < derivedTotal) {
+                batch.setStatus(LicenseBatch.LicenseBatchStatus.ACTIVE);
+            } else if (batch.getStatus() == LicenseBatch.LicenseBatchStatus.ACTIVE
+                    && derivedTotal > 0 && derivedActivated >= derivedTotal) {
+                batch.setStatus(LicenseBatch.LicenseBatchStatus.EXHAUSTED);
+            }
+            batchRepo.save(batch);
+        }
+        return LicenseBatchDto.fromDerived(batch, derivedTotal, derivedActivated);
     }
 
     @Transactional
@@ -153,11 +203,28 @@ public class LicenseService {
         return raws;
     }
 
+    @Transactional
     public LicenseKeyDto revokeKey(String id) {
         LicenseKey key = keyRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "License key not found: " + id));
+        // v0.47：撤销前若已激活，需把对应批次的 activatedCount 减回 1，避免 denormalized 列只增不减。
+        // DTO 已改走 keys 表派生 + 自愈，理论上这里可不再维护；但 service 层下游仍然有 batch.activatedCount
+        // 读取场景（如 EXHAUSTED 状态机），保持对称性以避免后续 regress。
+        boolean wasActivated = key.getStatus() == LicenseKey.LicenseKeyStatus.ACTIVATED;
         key.setStatus(LicenseKey.LicenseKeyStatus.REVOKED);
-        return LicenseKeyDto.from(keyRepo.save(key));
+        LicenseKey saved = keyRepo.save(key);
+        if (wasActivated && key.getBatchId() != null) {
+            batchRepo.findById(key.getBatchId()).ifPresent(batch -> {
+                int newCount = Math.max(0, batch.getActivatedCount() - 1);
+                batch.setActivatedCount(newCount);
+                if (batch.getStatus() == LicenseBatch.LicenseBatchStatus.EXHAUSTED
+                        && newCount < batch.getTotalCount()) {
+                    batch.setStatus(LicenseBatch.LicenseBatchStatus.ACTIVE);
+                }
+                batchRepo.save(batch);
+            });
+        }
+        return LicenseKeyDto.from(saved);
     }
 
     private String sha256(String input) {

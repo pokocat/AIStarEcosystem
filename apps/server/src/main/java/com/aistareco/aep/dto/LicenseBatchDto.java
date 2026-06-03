@@ -39,6 +39,27 @@ public record LicenseBatchDto(
         );
     }
 
+    /**
+     * v0.47：用 keys 表派生的真实计数覆盖 batch 的 denormalized 列。
+     * 修复历史 drift：activatedCount 只增不减（revoke 未减）+ 老数据手动改过 → 出现
+     * activatedCount &gt; totalCount 的违反不变量场景。listBatches / findBatchById
+     * 应改走此入口。
+     */
+    public static LicenseBatchDto fromDerived(LicenseBatch b, long totalCount, long activatedCount) {
+        int safeTotal = (int) Math.max(0, Math.min(totalCount, Integer.MAX_VALUE));
+        int safeActivated = (int) Math.max(0, Math.min(activatedCount, Integer.MAX_VALUE));
+        return new LicenseBatchDto(
+                b.getId(), b.getBatchNo(), b.getName(),
+                b.getIssuerTenantId(),
+                b.getSellingChannelId(),
+                b.getTier(),
+                b.getInitialCreditGrant(),
+                safeTotal, safeActivated,
+                b.getValidFrom(), b.getValidTo(),
+                lower(b.getStatus()), b.getCreatedAt()
+        );
+    }
+
     private static String lower(Enum<?> value) {
         return value == null ? null : value.name().toLowerCase(Locale.ROOT);
     }

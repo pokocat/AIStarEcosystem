@@ -3,10 +3,13 @@ package com.aistareco.aep.controller;
 import com.aistareco.aep.config.JwtUtil;
 import com.aistareco.aep.dto.MeDto;
 import com.aistareco.aep.model.AepUser;
+import com.aistareco.aep.model.AuditLog;
 import com.aistareco.aep.model.Studio;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.StudioRepository;
+import com.aistareco.aep.service.AuditService;
 import com.aistareco.common.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -36,13 +39,16 @@ public class DevAuthController {
     private final AepUserRepository userRepo;
     private final StudioRepository studioRepo;
     private final JwtUtil jwtUtil;
+    private final AuditService auditService;
 
     public DevAuthController(AepUserRepository userRepo,
                               StudioRepository studioRepo,
-                              JwtUtil jwtUtil) {
+                              JwtUtil jwtUtil,
+                              AuditService auditService) {
         this.userRepo = userRepo;
         this.studioRepo = studioRepo;
         this.jwtUtil = jwtUtil;
+        this.auditService = auditService;
     }
 
     /** 可选账号列表（包含 studio 概要），前端登录页直接渲染。 */
@@ -72,20 +78,32 @@ public class DevAuthController {
      * 返回 {@code { token, user: MeDto }}。
      */
     @PostMapping("/dev-login")
-    public ApiResponse<Map<String, Object>> devLogin(@RequestBody(required = false) Map<String, String> body) {
+    public ApiResponse<Map<String, Object>> devLogin(@RequestBody(required = false) Map<String, String> body,
+                                                      HttpServletRequest request) {
         String username = body == null ? null : body.get("username");
+        String requested = username == null ? null : username.trim();
 
-        AepUser user = (username == null || username.isBlank())
-                ? pickDefaultStudioUser()
-                : userRepo.findByUsername(username.trim())
-                    .orElseThrow(() -> {
-                        log.warn("[dev-login] miss username={}", username.trim());
-                        return new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在: " + username);
-                    });
+        AepUser user;
+        try {
+            user = (requested == null || requested.isBlank())
+                    ? pickDefaultStudioUser()
+                    : userRepo.findByUsername(requested)
+                        .orElseThrow(() -> {
+                            log.warn("[dev-login] miss username={}", requested);
+                            return new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不存在: " + requested);
+                        });
+        } catch (ResponseStatusException ex) {
+            auditService.recordAuthFailure(AuditService.Actions.DEV_LOGIN, requested,
+                    "DEV_LOGIN_USER_NOT_FOUND", "dev-login：账号未命中 · " + ex.getReason(), request);
+            throw ex;
+        }
 
         if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
             log.warn("[dev-login] inactive userId={} username={} status={}",
                     user.getId(), user.getUsername(), user.getStatus());
+            auditService.recordAuth(AuditService.Actions.DEV_LOGIN, AuditLog.AuditResult.FAILURE,
+                    user.getId(), user.getUsername(),
+                    "ACCOUNT_DISABLED", "dev-login：账号被停用 status=" + user.getStatus(), request);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该账户已被停用");
         }
 
@@ -101,6 +119,8 @@ public class DevAuthController {
         Studio studio = studioRepo.findByOwnerUserId(user.getId()).orElse(null);
         log.info("[dev-login] success userId={} username={} role={} studioId={}",
                 user.getId(), user.getUsername(), role, studio == null ? null : studio.getId());
+        auditService.recordAuthSuccess(AuditService.Actions.DEV_LOGIN, user.getId(), user.getUsername(),
+                "dev-login 成功 role=" + role + " studio=" + (studio == null ? null : studio.getName()), request);
 
         return ApiResponse.of(Map.of(
                 "token", token,

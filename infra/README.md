@@ -53,9 +53,10 @@ infra/
     ├── preflight.sh                ← 检测本机 / ECS 是否装齐 java/nginx/docker/ffmpeg/node/ossutil...
     ├── init.sh                     ← 交互式收集参数 + openssl 生成密钥 + 渲染 env/nginx 到 infra/.local/
     ├── dev-server.sh               ← 本机 server 启动 wrapper（自动起 docker mysql + 注入 dev 弱密钥）
-    ├── deploy.sh                   ← deploy.sh <service> [tag]，幂等
+    ├── deploy.sh                   ← deploy.sh <service> [tag]，开发机 build → ssh 推到 ECS（幂等）
+    ├── deploy-local.sh             ← **在 ECS 本机直接部署**，不走 SSH（v0.47+，all-in-one 或独立服务）
     ├── rollback.sh                 ← rollback.sh <service> <tag>
-    └── verify.sh                   ← 部署后健康检查批量
+    └── verify.sh                   ← 部署后健康检查批量（v0.47+ 支持 LOCAL_MODE=1 本机模式）
 ```
 
 ---
@@ -285,6 +286,59 @@ PUBLIC_BASE=http://47.98.162.120 \
 ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-cjk-fonts.sh
 SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
 ```
+
+### 4.1.1 ECS 本机直接部署（无 SSH，v0.47+）
+
+适用场景：
+
+- 开发机网络抖 / SSH 不稳，直接 ssh 进 ECS 本机一气呵成
+- GitHub Actions runner 临时不可用，应急部署
+- CI/CD pipeline 把代码 sync 到 ECS 后由 ECS 本机自己 build + 翻新
+
+前提：仓库已经 clone 到 ECS（README §3.2 推荐 `/opt/ai-star-eco/repo`）。
+
+```bash
+ssh root@<ECS_HOST>
+cd /opt/ai-star-eco/repo && git pull
+
+# all-in-one 一键全量
+sudo ./infra/scripts/deploy-local.sh all
+
+# 独立部署单个服务
+sudo ./infra/scripts/deploy-local.sh server
+sudo ./infra/scripts/deploy-local.sh web-celebrity
+sudo ./infra/scripts/deploy-local.sh admin
+sudo ./infra/scripts/deploy-local.sh sau-service
+
+# 部分服务（逗号或空格分隔）
+sudo ./infra/scripts/deploy-local.sh server,web-celebrity
+sudo ./infra/scripts/deploy-local.sh "server admin"
+
+# 紧急部署：跳 typecheck + 跳 verify
+SKIP_TYPECHECK=1 sudo ./infra/scripts/deploy-local.sh all --no-verify
+
+# 已经 build 过想只翻新位文件（如审 review 完产物再上线）
+./infra/scripts/build-release.sh all                          # 第一步：本机 build
+sudo ./infra/scripts/deploy-local.sh all \
+  --no-build --release-id=<dist/deploy/ 下的 RELEASE_ID>      # 第二步：仅翻新 + restart
+
+# 只重启 systemd 不重新落位（极少用，故障定位）
+sudo ./infra/scripts/deploy-local.sh server --no-build --no-restart=0 ...
+```
+
+行为说明：
+
+- 与 `deploy-release.sh` **完全相同**的落位规则：jar 直接 `install` 到 `$REMOTE_ROOT/server/app.jar`；
+  web/admin 解包到 `$REMOTE_ROOT/<svc>` + 原目录改名 `<svc>.__previous__-<RELEASE_ID>` 备份；
+  sau-service docker build 后 systemctl restart。
+- **备份保留**：默认保留最近 2 份 `.__previous__-*` 目录，超过按 mtime 删除最旧的。
+  调 `--keep-previous=N`（0 = 立即删；5 = 保留 5 份）。
+  回滚方式：`sudo mv $REMOTE_ROOT/web-celebrity.__previous__-<old-id> $REMOTE_ROOT/web-celebrity`
+  + `sudo systemctl restart aistareco-web-celebrity`。
+- **部署后健康检查**：自动调 `verify.sh LOCAL_MODE=1`（不走 SSH，直接本机 curl + systemctl status）。
+  失败只 WARN 不阻断（因为文件已经落位 + systemd 已重启）。
+- **systemd 单元不存在时跳过 restart**：首次部署 ECS 没装 systemd 单元，脚本会 WARN
+  「跳过 restart（首次部署？参考 infra/systemd/*.example）」并继续，便于先落位文件后人工建 systemd。
 
 ### 4.2 GitHub Actions 部署
 

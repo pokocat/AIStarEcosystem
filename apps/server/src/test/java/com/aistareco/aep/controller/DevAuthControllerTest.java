@@ -44,7 +44,11 @@ class DevAuthControllerTest {
         when(userRepo.findAll()).thenReturn(List.of(malformedUser, goodUser));
         when(studioRepo.findByOwnerUserId("u1")).thenReturn(Optional.of(incompleteStudio));
 
-        DevAuthController controller = new DevAuthController(userRepo, studioRepo, null);
+        // v0.47：DevAuthController 注入 AuditService（IP/UA 落审计日志）。
+        // 该用例只跑 listDevAccounts() 不触发审计写入 → 用 mock 但不 stub 即可。
+        com.aistareco.aep.service.AuditService auditService =
+                mock(com.aistareco.aep.service.AuditService.class);
+        DevAuthController controller = new DevAuthController(userRepo, studioRepo, null, auditService);
 
         ApiResponse<List<Map<String, Object>>> response = controller.listDevAccounts();
 

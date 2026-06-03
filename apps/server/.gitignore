@@ -15,6 +15,11 @@ cdn-mock/
 dh-assets/
 dh-work/
 
+# v0.45 AiAvatar 形象资产中心 — 默认 ./aiavatar-assets（AEP_AIAVATAR_ASSET_DIR 可覆盖）。
+# 集成测试 AiAvatarJobIntegrationTest 跑 mock provider 时也会落盘到这里，不入 git。
+aiavatar-assets/
+aiavatar-work/
+
 # H2 file-mode 数据库（dev profile，application-dev.yml）— 本地持久化，不入 git。
 # 想清空跑：rm -rf apps/server/data
 # 注意：前缀 / 限定只匹本目录 ./data/（避免误匹 Java package src/main/java/com/aistareco/data/）

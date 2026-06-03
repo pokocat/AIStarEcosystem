@@ -103,6 +103,32 @@ PUBLIC_BASE=http://47.98.162.120 \
 ./infra/scripts/verify.sh
 ```
 
+## ECS 本机直接部署（v0.47+，无 SSH）
+
+When the user is already on the ECS box (or want to deploy from ECS itself without SSH bouncing), use `deploy-local.sh`. Same artifact layout, same systemd units, same backup convention as `deploy-release.sh` — but everything happens locally.
+
+```bash
+# 在 ECS 本机
+cd /opt/ai-star-eco/repo && git pull
+
+# all-in-one
+sudo ./infra/scripts/deploy-local.sh all
+
+# 独立 / 多选
+sudo ./infra/scripts/deploy-local.sh server
+sudo ./infra/scripts/deploy-local.sh server,admin
+sudo ./infra/scripts/deploy-local.sh "web-celebrity sau-service"
+
+# 紧急部署：跳 typecheck + 跳 verify
+SKIP_TYPECHECK=1 sudo ./infra/scripts/deploy-local.sh all --no-verify
+
+# 已经 build 过仅翻新 + restart（审产物后再发布）
+./infra/scripts/build-release.sh all
+sudo ./infra/scripts/deploy-local.sh all --no-build --release-id=<RELEASE_ID>
+```
+
+`verify.sh` 同期加 `LOCAL_MODE=1`，被 `deploy-local.sh` 自动调用做本机健康检查。
+
 ## GitHub Actions
 
 If the user asks for a GitHub workflow, CI/CD, or "流水线部署", prefer the manual GitHub Actions workflow instead of local SSH deployment:

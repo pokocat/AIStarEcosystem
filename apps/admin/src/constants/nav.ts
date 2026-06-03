@@ -188,6 +188,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/notifications", label: "消息中心", icon: Bell,    description: "运营推送与告警" },
       { href: "/audit",         label: "审计日志", icon: History, description: "所有人工介入记录" },
       {
+        // v0.47：账号登录注册日志 —— 含 IP / UA / 错因 / 失败枚举排查
+        href: "/platform/auth-logs",
+        label: "账号登录日志",
+        icon: ShieldCheck,
+        description: "管理员 / 运营 / 创作者用户的登录 + 注册 + 改密事件（含 IP / 设备 / 错因）",
+      },
+      {
         href: "/platform/error-logs",
         label: "错误日志",
         icon: AlertTriangle,
