@@ -44,6 +44,23 @@ AEP_CDN_PUBLIC_BASE_URL=https://cdn.aibuzz.cn
 这种公开 URL 泄漏（被爬 / 进缓存 / 域名被扫），任何人都能持续刷流量直到资源消失，
 **最坏情况能在一夜之间打出几千块 RMB 的 CDN/OSS 流量账单**。
 
+#### 重要概念澄清 —— CDN URL 鉴权 vs OSS Pre-signed URL 是两套完全独立的体系
+
+| 维度 | CDN URL 鉴权（Type A） | OSS Pre-signed URL |
+|---|---|---|
+| 签名密钥 | **CDN 控制台的 PrivateKey**（32 位字符串） | **OSS bucket 的 AccessKey ID/Secret**（同上传那对 AK） |
+| 配置位置 | 阿里云 CDN 控制台 → 域名管理 → 访问控制 → URL 鉴权 → A 方式 | OSS 控制台 + RAM 子账号管理 |
+| 算法 | `md5(URI-timestamp-rand-uid-PrivateKey)` | V4 = HMAC-SHA256（新 SDK 默认） |
+| URL 形态 | `?auth_key=<ts>-<rand>-<uid>-<md5>` | `?x-oss-date=...&x-oss-signature=...&x-oss-credential=...` |
+| host | CDN 域名（cdn.aibuzz.cn） | OSS endpoint 公网（bucket.oss-cn-hangzhou.aliyuncs.com） |
+| 谁验签 | CDN 边缘节点 | OSS server |
+| 流量走 | CDN（0.24 元/GB） | OSS 外网（0.5 元/GB） |
+| OSS bucket / AK 是否需要 | 仅签 URL 不要；**上传文件依然要 OSS AK** | 签名 + 上传都要 |
+
+**⚠️ 易踩坑**：选 `strategy=cdn` 时**不能**省 `AEP_CDN_OSS_*` 配置 ——
+OSS AK 是 server 用来**上传文件**的（一直需要），CDN PrivateKey 是 server 用来**签 URL 给前端**的（仅 strategy=cdn 时用）。
+两组配置并存。
+
 server 端在 v0.47 起加了 `CdnUrlSigner`：所有 wire 出去的 CDN URL 都过一遍签名，
 URL 自带 expires + 鉴权字段，过期即失效。三种策略：
 
@@ -60,13 +77,23 @@ URL 自带 expires + 鉴权字段，过期即失效。三种策略：
 **配置步骤**（strategy=cdn）：
 
 1. 阿里云 CDN 控制台 → 域名管理 → 选 `cdn.aibuzz.cn` → **访问控制 → URL 鉴权**
-2. 鉴权类型选 **Type A**，**鉴权状态：开启**
-3. 「主 KEY」点「自动生成」拿到 32 位密钥 → 复制下来
+2. 鉴权类型选 **Type A**（**主 KEY + 备 KEY 至少填一个**），**鉴权状态：开启**
+3. 「主 KEY」点「自动生成」拿到 32 位字符串 → 复制下来（**这是一个全新的密钥，跟 OSS AK 没有任何关系**）
 4. 把密钥填到 ECS 上的 `/etc/aistareco/server.env`：
    ```bash
+   # ── A. OSS 上传 + 落点（任何 driver=oss 都必需，跟签名策略无关） ──
+   AEP_CDN_DRIVER=oss
+   AEP_CDN_OSS_ENDPOINT=oss-cn-hangzhou-internal.aliyuncs.com
+   AEP_CDN_OSS_BUCKET=aistareco-prod
+   AEP_CDN_OSS_ACCESS_KEY_ID=LTAI5tXXX                # OSS RAM 子账号 AK
+   AEP_CDN_OSS_ACCESS_KEY_SECRET=XXX
+   AEP_CDN_OSS_BASE_URL=https://cdn.aibuzz.cn          # 出 wire 用 CDN 域名
+   AEP_CDN_OSS_KEY_PREFIX=media
+
+   # ── B. URL 签名（独立配置；strategy=cdn 时密钥来源完全不同） ──
    AEP_CDN_SIGNED_URL_STRATEGY=cdn
    AEP_CDN_SIGNED_URL_TTL_SECONDS=3600     # URL 有效 1h
-   AEP_CDN_SIGNED_URL_CDN_AUTH_KEY=<32 位主 KEY 明文>
+   AEP_CDN_SIGNED_URL_CDN_AUTH_KEY=<上面步骤 3 拿到的 32 位 PrivateKey>
    ```
 5. `sudo systemctl restart aistareco-server`
 
@@ -89,6 +116,10 @@ curl -I "<上面输出的 URL 把 auth_key 改掉一位>"   # 期待 403
 - `none` 策略仅 dev 用；生产任何 driver=oss 的环境默认配 `cdn`。
 - 老 URL 兼容：DB 里仍存原始 CDN URL（不含签名），signer 在 DTO 出 wire 前实时签。
   老前端缓存的 URL 在过期前仍可访问，过期后用户刷新会拿到新签名 URL，无感知切换。
+- 选 `strategy=oss`（非推荐路径）时：URL 用 OSS V1/V4 签名格式，host = OSS endpoint（绕 CDN）。
+  OSS V4 签名 URL 最长 TTL 7 天（V1 无限制）。要走 CDN 节点 + OSS 签名的组合可以开 SDK
+  `setSupportCname(true)` + endpoint 填 CDN 域名，但需 CDN 透传 query 参数 + 不改 host，
+  实操复杂；本仓推荐直接用 strategy=cdn。
 
 ## 4. RAM 子用户 + 权限
 
