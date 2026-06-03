@@ -1,10 +1,13 @@
 package com.aistareco.aep.service.cdn;
 
+import com.aliyun.oss.ClientBuilderConfiguration;
 import com.aliyun.oss.ClientException;
 import com.aliyun.oss.HttpMethod;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
+import com.aliyun.oss.common.auth.DefaultCredentialProvider;
+import com.aliyun.oss.common.comm.SignVersion;
 import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.PutObjectRequest;
@@ -31,8 +34,13 @@ import java.util.Locale;
 /**
  * 阿里云 OSS 实现。
  *
- * 启用：aep.cdn.driver=oss + aep.cdn.oss.{endpoint,bucket,access-key-id,access-key-secret,base-url}
+ * 启用：aep.cdn.driver=oss + aep.cdn.oss.{endpoint,bucket,access-key-id,access-key-secret,base-url,region}
  * base-url 应配置为可公网访问的视频 CDN/OSS 域名，例如 https://cdn.example.com。
+ *
+ * v0.47+：SDK 3.18.5 + V4 签名（aliyun-sdk-oss V4 算法 OSS4-HMAC-SHA256，强制 region）。
+ *        要求新增 region 配置项（{@code aep.cdn.oss.region}，如 "cn-hangzhou"）。
+ *        旧 endpoint-only 构造方式继续可用（自动 region fallback），但生产 strategy=oss
+ *        必须显式配 region 才能生成合法的 V4 签名 URL。
  */
 @Component
 @ConditionalOnProperty(name = "aep.cdn.driver", havingValue = "oss")
@@ -42,6 +50,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
 
     private final String endpoint;
     private final String bucket;
+    private final String region;
     private final String baseUrl;
     private final String keyPrefix;
     private final OSS ossClient;
@@ -59,6 +68,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
             @Value("${aep.cdn.oss.access-key-secret:}") String accessKeySecret,
             @Value("${aep.cdn.oss.base-url:}") String baseUrl,
             @Value("${aep.cdn.oss.key-prefix:}") String keyPrefix,
+            @Value("${aep.cdn.oss.region:}") String region,
             @Value("${aep.cdn.signed-url.strategy:none}") String signStrategyRaw,
             @Value("${aep.cdn.signed-url.ttl-seconds:3600}") long ttlSeconds,
             @Value("${aep.cdn.signed-url.cdn-auth-key:}") String cdnAuthKey
@@ -67,9 +77,20 @@ public class AliyunOssCdnUploader implements CdnUploader {
         this.bucket = requireText(bucket, "aep.cdn.oss.bucket");
         this.baseUrl = trimTrailingSlash(requireText(baseUrl, "aep.cdn.oss.base-url"));
         this.keyPrefix = normalizePrefix(keyPrefix);
+        // v0.47+：region 优先取配置；缺失则从 endpoint 推导（"oss-cn-hangzhou(-internal).aliyuncs.com" → "cn-hangzhou"）
+        this.region = resolveRegion(region, this.endpoint);
         String id = requireText(accessKeyId, "aep.cdn.oss.access-key-id");
         String secret = requireText(accessKeySecret, "aep.cdn.oss.access-key-secret");
-        this.ossClient = new OSSClientBuilder().build(this.endpoint, id, secret);
+
+        // v0.47+：用 V4 签名 builder 构造 OSS client（SDK 3.18.5）
+        ClientBuilderConfiguration clientConfig = new ClientBuilderConfiguration();
+        clientConfig.setSignatureVersion(SignVersion.V4);
+        this.ossClient = OSSClientBuilder.create()
+                .endpoint(this.endpoint)
+                .credentialsProvider(new DefaultCredentialProvider(id, secret))
+                .clientConfiguration(clientConfig)
+                .region(this.region)
+                .build();
 
         this.signStrategy = parseStrategy(signStrategyRaw);
         this.defaultTtlSeconds = ttlSeconds > 0 ? ttlSeconds : 3600L;
@@ -80,8 +101,8 @@ public class AliyunOssCdnUploader implements CdnUploader {
                             + "(请在阿里云 CDN 控制台「访问控制 → URL 鉴权 Type A」获取 PrivateKey)");
         }
 
-        log.info("[cdn] AliyunOssCdnUploader bucket={} endpoint={} publicBase={} keyPrefix={} signStrategy={} ttl={}s",
-                this.bucket, this.endpoint, this.baseUrl,
+        log.info("[cdn] AliyunOssCdnUploader bucket={} endpoint={} region={} publicBase={} keyPrefix={} signVersion=V4 signStrategy={} ttl={}s",
+                this.bucket, this.endpoint, this.region, this.baseUrl,
                 this.keyPrefix.isBlank() ? "<none>" : this.keyPrefix,
                 this.signStrategy, this.defaultTtlSeconds);
         if (this.signStrategy == SignStrategy.NONE) {
@@ -153,15 +174,21 @@ public class AliyunOssCdnUploader implements CdnUploader {
     }
 
     /**
-     * OSS pre-signed URL（{@link OSS#generatePresignedUrl}）。
-     * URL 形如 {@code https://<bucket>.<endpoint>/<key>?Expires=...&OSSAccessKeyId=...&Signature=...}。
+     * OSS pre-signed URL（{@link OSS#generatePresignedUrl}，SDK 3.18.5 + V4 签名）。
+     * URL 形如 {@code https://<bucket>.<endpoint>/<key>?x-oss-date=...&x-oss-signature-version=OSS4-HMAC-SHA256&x-oss-credential=...&x-oss-signature=...}。
      *
-     * <p><b>注意</b>：返回的 host 是 OSS endpoint（不是 CDN 域名）；想走 CDN 节省带宽请用 CDN 策略。
-     * 这里把 OSS endpoint 自动从 internal 改成 public —— internal endpoint 只能从 ECS VPC 内访问。
+     * <p><b>注意</b>：
+     * <ul>
+     *   <li>返回的 host 是 OSS endpoint（不是 CDN 域名）；想走 CDN 节省带宽请用 CDN 策略</li>
+     *   <li>internal endpoint 只能从 ECS VPC 内访问 —— 自动改成 public</li>
+     *   <li>V4 签名最大 TTL 7 天（604800s）；超出会被 SDK clamp</li>
+     * </ul>
      */
     private String ossPresignedUrl(String objectKey, long ttl) {
         try {
-            Date expiration = new Date(System.currentTimeMillis() + ttl * 1000L);
+            // V4 签名最大 7 天
+            long safeTtl = Math.min(ttl, 7 * 24 * 3600L);
+            Date expiration = new Date(System.currentTimeMillis() + safeTtl * 1000L);
             GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.GET);
             req.setExpiration(expiration);
             String signed = ossClient.generatePresignedUrl(req).toString();
@@ -235,6 +262,37 @@ public class AliyunOssCdnUploader implements CdnUploader {
     }
 
     enum SignStrategy { NONE, OSS, CDN }
+
+    /**
+     * v0.47+ V4 签名要求显式 region。优先取配置（如 "cn-hangzhou"），缺失时从 endpoint 推导：
+     * <ul>
+     *   <li>{@code oss-cn-hangzhou.aliyuncs.com} → {@code cn-hangzhou}</li>
+     *   <li>{@code oss-cn-hangzhou-internal.aliyuncs.com} → {@code cn-hangzhou}</li>
+     *   <li>{@code https://oss-us-east-1.aliyuncs.com} → {@code us-east-1}</li>
+     * </ul>
+     * 推导失败 fail-fast（V4 签名拿不到 region 就生成不了合法签名 URL）。
+     */
+    static String resolveRegion(String configured, String endpoint) {
+        if (configured != null && !configured.isBlank()) return configured.trim();
+        String ep = endpoint == null ? "" : endpoint.toLowerCase(Locale.ROOT);
+        // 砍掉 protocol
+        if (ep.startsWith("https://")) ep = ep.substring("https://".length());
+        else if (ep.startsWith("http://")) ep = ep.substring("http://".length());
+        // 砍掉 path/port
+        int slash = ep.indexOf('/');
+        if (slash >= 0) ep = ep.substring(0, slash);
+        int colon = ep.indexOf(':');
+        if (colon >= 0) ep = ep.substring(0, colon);
+        // 匹配 oss-<region>(-internal).aliyuncs.com
+        if (ep.startsWith("oss-") && ep.endsWith(".aliyuncs.com")) {
+            String mid = ep.substring("oss-".length(), ep.length() - ".aliyuncs.com".length());
+            if (mid.endsWith("-internal")) mid = mid.substring(0, mid.length() - "-internal".length());
+            if (!mid.isBlank()) return mid;
+        }
+        throw new IllegalStateException(
+                "无法从 endpoint='" + endpoint + "' 推导出 OSS region；请显式配置 aep.cdn.oss.region "
+                        + "（如 cn-hangzhou / us-east-1）");
+    }
 
     @PreDestroy
     public void shutdown() {

@@ -3,6 +3,7 @@ package com.aistareco.aep.service.cdn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -37,6 +38,7 @@ public class CdnUrlSigner {
     private final String[] signedHostsPrefixes;  // 以这些 base URL 开头的 URL 才会被签名
     private final long defaultTtlSeconds;
 
+    @Autowired
     public CdnUrlSigner(
             ObjectProvider<CdnUploader> uploaderProvider,
             @Value("${aep.cdn.oss.base-url:}") String ossBaseUrl,

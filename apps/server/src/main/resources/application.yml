@@ -123,7 +123,7 @@ aep:
     local-root: ${AEP_CDN_LOCAL_ROOT:./cdn-mock}
     # 相对路径走 same-origin；绝对 URL（http://cdn.example.com）由外部 OSS / CDN 域名直供
     public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:/cdn}
-    # 阿里云 OSS（仅 driver=oss 时生效，v0.16+ 实现）
+    # 阿里云 OSS（仅 driver=oss 时生效，v0.16+ 实现；v0.47+ SDK 3.18.5 + V4 签名强制 region）
     oss:
       endpoint: ${AEP_CDN_OSS_ENDPOINT:}
       bucket: ${AEP_CDN_OSS_BUCKET:}
@@ -131,6 +131,8 @@ aep:
       access-key-secret: ${AEP_CDN_OSS_ACCESS_KEY_SECRET:}
       base-url: ${AEP_CDN_OSS_BASE_URL:}
       key-prefix: ${AEP_CDN_OSS_KEY_PREFIX:}
+      # v0.47+: V4 签名要求 region；缺失时从 endpoint 推导（oss-cn-hangzhou.aliyuncs.com → cn-hangzhou）
+      region: ${AEP_CDN_OSS_REGION:}
     # v0.47+: OSS URL 签名（防流量盗刷 / hot-link 滥用）
     #   strategy:
     #     none → 不签，直接返回 base-url + key（dev / 调试用；生产强烈不推荐）

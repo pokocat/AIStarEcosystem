@@ -36,9 +36,10 @@ class AliyunOssCdnUploaderSmokeTest {
                 "Set AEP_CDN_OSS_ENDPOINT/BUCKET/ACCESS_KEY_ID/ACCESS_KEY_SECRET/BASE_URL to run real OSS smoke test"
         );
 
-        // v0.47+: 构造器多 3 个签名相关参数（strategy / ttl / cdn-auth-key）
+        // v0.47+: 构造器多 region (V4 签名)+ 3 个签名相关参数（strategy / ttl / cdn-auth-key）
+        // region 留空让 resolveRegion 自动从 endpoint 推导
         AliyunOssCdnUploader uploader = new AliyunOssCdnUploader(
-                endpoint, bucket, accessKeyId, accessKeySecret, baseUrl, keyPrefix,
+                endpoint, bucket, accessKeyId, accessKeySecret, baseUrl, keyPrefix, "",
                 "none", 3600L, "");
         Path tmp = Files.createTempFile("aistareco-oss-smoke-", ".txt");
         String key = "codex-smoke/" + UUID.randomUUID() + ".txt";
