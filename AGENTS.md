@@ -287,20 +287,34 @@ duration: 7820         → formatDuration       → "2h 10min"
    未配 `AEP_CDN_DRIVER=oss` 的生产实例 = **配置错误**（启动会 WARN，但不阻断；
    线上巡检脚本应将 `aep.cdn.driver=local` 视作部署事故 P1）。
 
-4. **DTO 出 wire 必经 `CdnUrlSigner`**。所有新增的 DTO 字段如果存 OSS/CDN URL：
-   - 在 DTO 工厂方法签名里加 `CdnUrlSigner signer` 参数
-   - 调 `signer.maybeSign(url)`（默认 TTL）或 `signer.maybeSign(url, ttlSec)`（自定 TTL）
-   - 调用方（service）注入 `CdnUrlSigner` Bean
-   - 不允许把裸 `https://cdn.xxx.cn/...` 直接塞进 response body
+4. **DB 真值是 key，URL 是派生值**（v0.47F+ 强制规则）。
+   所有 OSS-bound 资产字段的真值是「OSS object key」，URL 是出 wire 时由
+   `CdnUrlSigner.signKey(cdnKey)` 实时构造的派生值，**不**作为 DB 真值。
+   - **新增字段必须**：`cdnKey VARCHAR(512) NOT NULL`；不要再加 `cdnUrl` 列
+   - **DTO 出 wire**：`signer.signKey(o.getCdnKey())` → 返回签名 URL；signer 失败/NOOP 时
+     才退到 fallback（读老 `cdnUrl` 列）
+   - **写库**：`cdnUploader.upload(...)` 返回 `CdnUploadResult.key()` 作为真值落库；
+     `cdnUrl` 字段在过渡期内可双写但不再依赖
+   - **不允许把裸 `https://cdn.xxx.cn/...` 直接塞进 response body** —— 必须经 signer
 
-5. **现有「local-only」字段必须分阶段迁移到 OSS**。已知的（v0.47+ 待完成）：
+   收益：driver 切 local↔oss / CDN 域名换 / key-prefix 调整 → DB 零迁移，自动适配。
+
+5. **DTO 出 wire 必经 `CdnUrlSigner`**。所有新增的 DTO 字段如果暴露资产 URL：
+   - 在 DTO 工厂方法签名里加 `CdnUrlSigner signer` 参数
+   - 优先 `signer.signKey(cdnKey)`（key → 派生 + 签名）；老 row 缺 cdnKey 时
+     fallback `signer.maybeSign(storedUrl)`（URL → 抽 key → 重签）
+   - 调用方（service）注入 `CdnUrlSigner` Bean
+   - 当前已落地：`MixcutRenderOutputDto.from(o, mapper, signer)` 走 cdnKey 优先
+
+6. **现有「local-only」字段必须分阶段迁移到 OSS**（按 §4.7.4 key-only 规则）：
    - `MixcutAsset.fileUrl`（用户上传素材，当前 `/static/mixcut-assets/...` 本地）
    - `MaterialVideoJob.videoUrl`（素材运营生成视频）
    - `AiAvatarAsset` 资产 URL（v0.45+）
    - `ForgeResult` 视频 URL
 
    迁移姿势：业务 service 在 `upload(...)` / `save(...)` 时调 `cdnUploader.upload(...)`，
-   把返回的 CDN URL 落 DB（旧本地路径字段保留一两版做 fallback 读，然后删）。
+   返回的 `CdnUploadResult.key()` 落 DB 的 `cdnKey` 列；DTO 出 wire 时由 signer 派生 URL。
+   旧本地路径字段保留一两版做 fallback 读，然后删。
 
 6. **本地短时临时区必须 gitignored 且不进备份**。当前已 ignore：
    - `apps/server/mixcut-assets/` / `mixcut-output/` / `mixcut-work/`
@@ -315,7 +329,9 @@ duration: 7820         → formatDuration       → "2h 10min"
 - PR 中出现 `Files.copy(... new File("/data/..."))` / `new FileOutputStream("./xxx-assets/...")`
   并把 path 落 DB 当 wire-out URL 用 → review reject，要求改 `cdnUploader.upload(...)`。
 - DTO `record` 里直接落 `https://cdn.xxx.cn/...` 字符串且未经 `CdnUrlSigner` →
-  review reject，要求改 `signer.maybeSign(...)`。
+  review reject，要求改 `signer.signKey(...)` 派生（首选）或 `signer.maybeSign(...)` 重签。
+- 新增 entity 加 `cdnUrl` 列（不带 `cdnKey`）→ review reject，要求把 key 列做真值，
+  URL 改为 DTO 出 wire 时派生（v0.47F+ key-only 规则，§4.7.4）。
 - 配置生产部署但 `AEP_CDN_DRIVER=local` 或缺 `AEP_CDN_SIGNED_URL_STRATEGY` →
   review reject，要求补 OSS 配置。
 

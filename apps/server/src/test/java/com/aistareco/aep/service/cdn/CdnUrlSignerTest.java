@@ -123,6 +123,66 @@ class CdnUrlSignerTest {
         assertThat(m.group(4)).hasSize(32);             // md5
     }
 
+    // ── v0.47F+ signKey / publicUrlFor 接口 ──────────────────────────────
+    @Test
+    void signKey_passesRawKeyToUploader() {
+        CdnUploader uploader = mock(CdnUploader.class);
+        when(uploader.signedUrlFor("mixcut/abc/v0.mp4", 3600L))
+                .thenReturn("https://cdn.aibuzz.cn/mixcut/abc/v0.mp4?auth_key=signed");
+        when(uploader.driverName()).thenReturn("oss");
+
+        CdnUrlSigner signer = newSigner(uploader, BASE, 3600);
+        assertThat(signer.signKey("mixcut/abc/v0.mp4"))
+                .isEqualTo("https://cdn.aibuzz.cn/mixcut/abc/v0.mp4?auth_key=signed");
+    }
+
+    @Test
+    void signKey_returnsNullWhenKeyOrUploaderMissing() {
+        CdnUploader uploader = mock(CdnUploader.class);
+        when(uploader.driverName()).thenReturn("oss");
+        CdnUrlSigner signer = newSigner(uploader, BASE, 3600);
+
+        assertThat(signer.signKey(null)).isNull();
+        assertThat(signer.signKey("")).isNull();
+        assertThat(signer.signKey("   ")).isNull();
+        // NOOP 单例（无 uploader）一律返回 null，让 DTO 走 fallback
+        assertThat(CdnUrlSigner.NOOP.signKey("any/key.mp4")).isNull();
+    }
+
+    @Test
+    void signKey_returnsNullOnUploaderException() {
+        CdnUploader uploader = mock(CdnUploader.class);
+        when(uploader.signedUrlFor(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong()))
+                .thenThrow(new RuntimeException("OSS unavailable"));
+        when(uploader.driverName()).thenReturn("oss");
+
+        CdnUrlSigner signer = newSigner(uploader, BASE, 3600);
+        // 异常 → 返回 null，让 DTO 走 fallback 到 storedCdnUrl
+        assertThat(signer.signKey("mixcut/x.mp4")).isNull();
+    }
+
+    @Test
+    void publicUrlFor_buildsUnsignedUrl() {
+        CdnUploader uploader = mock(CdnUploader.class);
+        when(uploader.publicUrlFor("mixcut/abc/v0.mp4"))
+                .thenReturn("https://cdn.aibuzz.cn/mixcut/abc/v0.mp4");
+        when(uploader.driverName()).thenReturn("oss");
+
+        CdnUrlSigner signer = newSigner(uploader, BASE, 3600);
+        assertThat(signer.publicUrlFor("mixcut/abc/v0.mp4"))
+                .isEqualTo("https://cdn.aibuzz.cn/mixcut/abc/v0.mp4");
+    }
+
+    @Test
+    void driverName_reflectsUnderlyingUploader() {
+        CdnUploader uploader = mock(CdnUploader.class);
+        when(uploader.driverName()).thenReturn("oss");
+        CdnUrlSigner signer = newSigner(uploader, BASE, 3600);
+        assertThat(signer.driverName()).isEqualTo("oss");
+        assertThat(CdnUrlSigner.NOOP.driverName()).isNull();
+    }
+
     private static CdnUrlSigner newSigner(CdnUploader uploader, String baseUrl, long ttl) {
         @SuppressWarnings("unchecked")
         ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);

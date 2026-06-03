@@ -86,6 +86,51 @@ public class CdnUrlSigner {
         }
     }
 
+    /**
+     * v0.47F+：从原始 key 直接派生 + 签 URL（推荐入口）。
+     *
+     * <p>对比 {@link #maybeSign(String)}（要从 URL 反向抽 key）：
+     * <ul>
+     *   <li>key 是 DB 真值，跨 driver / CDN 域名 / key-prefix 变更都不动；</li>
+     *   <li>URL 是 driver 决定的派生值 —— 每次 wire 实时拼 + 签。</li>
+     * </ul>
+     *
+     * <p>uploader 为空 / key 为空 → 返回 null（调用方需 fallback 到老 cdnUrl 字段）。
+     */
+    public String signKey(String key) {
+        return signKey(key, defaultTtlSeconds);
+    }
+
+    /** 同 {@link #signKey(String)}，但显式 TTL。 */
+    public String signKey(String key, long ttlSeconds) {
+        if (uploader == null || key == null || key.isBlank()) return null;
+        try {
+            return uploader.signedUrlFor(key, ttlSeconds);
+        } catch (Exception e) {
+            log.warn("[cdn-signer] signKey failed key={} → 返回 null: {}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * v0.47F+：仅做 key → 公开 URL 拼接（不签名）。
+     * 给 driver=local 等无需签名的场景用；driver=oss 也可在不需要时效保护时调用。
+     */
+    public String publicUrlFor(String key) {
+        if (uploader == null || key == null || key.isBlank()) return null;
+        try {
+            return uploader.publicUrlFor(key);
+        } catch (Exception e) {
+            log.warn("[cdn-signer] publicUrlFor failed key={}: {}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 当前注入的 driver 名（"local" / "oss" / null）；测试 / 日志诊断用。 */
+    public String driverName() {
+        return uploader == null ? null : uploader.driverName();
+    }
+
     private boolean isSignable(String url) {
         for (String prefix : signedHostsPrefixes) {
             if (!prefix.isBlank() && url.startsWith(prefix)) return true;
