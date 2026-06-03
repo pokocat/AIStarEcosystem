@@ -31,6 +31,25 @@ public interface CdnUploader {
     /** 仅做 URL 拼接，不传文件（用于 thumbnail 等已知 key 的二次 URL 构造）。 */
     String publicUrlFor(String key);
 
+    /**
+     * v0.47+：生成限时签名 URL（防 OSS 流量盗刷）。
+     *
+     * <p>调用方传 key（与 {@link #publicUrlFor} 同语义），返回带时效的可访问 URL。
+     * 默认实现回退到 {@link #publicUrlFor}（向后兼容；dev 本地驱动直接走 same-origin
+     * 静态资源不需要签名）。生产驱动按 {@code aep.cdn.signed-url.strategy} 配置：
+     * <ul>
+     *   <li>{@code none}：返回明文 URL（不推荐生产用）</li>
+     *   <li>{@code oss}：OSS SDK 生成 pre-signed URL（短时签名，绕 CDN 走 OSS endpoint）</li>
+     *   <li>{@code cdn}：CDN URL 鉴权 Type A（走 CDN 节省带宽费；需先在阿里云 CDN 控制台配 PrivateKey）</li>
+     * </ul>
+     *
+     * @param key         OSS object key（与 {@link #publicUrlFor} 同）
+     * @param ttlSeconds  URL 有效秒数；&lt;=0 表示由实现使用默认 TTL（{@code aep.cdn.signed-url.ttl-seconds}）
+     */
+    default String signedUrlFor(String key, long ttlSeconds) {
+        return publicUrlFor(key);
+    }
+
     /** 驱动名标识（"local" / "oss" / ...），用于日志。 */
     String driverName();
 

@@ -114,11 +114,12 @@
       <version>0.4.2</version>
     </dependency>
 
-    <!-- Aliyun OSS SDK for mixcut CDN uploads. Java 17 needs JAXB runtime deps for OSS SDK V1. -->
+    <!-- Aliyun OSS SDK for mixcut CDN uploads. Java 17 needs JAXB runtime deps for OSS SDK V1.
+         v0.47+: 3.18.4 → 3.18.5 (2025-01)，同期接入 V4 签名（强制 region 配置）。 -->
     <dependency>
       <groupId>com.aliyun.oss</groupId>
       <artifactId>aliyun-sdk-oss</artifactId>
-      <version>3.18.4</version>
+      <version>3.18.5</version>
     </dependency>
     <dependency>
       <groupId>javax.xml.bind</groupId>

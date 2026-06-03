@@ -255,6 +255,86 @@ duration: 7820         → formatDuration       → "2h 10min"
 
 前端文案全部中文。删除 `{ zh: 'X', en: 'Y' }` 字典和 `lang === 'zh' ? ... : ...` 三元。Legacy `src/translations.ts` 已 tombstoned。
 
+### 4.7 资产存储默认 OSS（v0.47+ 强制）
+
+**所有持久化的「资产 / 文件 / 媒体」（图片、音频、视频、模型文件、PDF、用户上传素材、AI 生成产出等）
+在生产环境的真值存储必须是阿里云 OSS**，不再写 ECS 本机文件系统。本机仅作短时临时区
+（ffmpeg / Python 子进程中转）+ dev/local 联调 fallback。
+
+**实现规则**：
+
+1. **新增任何资产字段必须经 `CdnUploader`**。新代码不允许直接写 `/data/...` / `./xxx-assets/`
+   做长期存储；ECS 本机目录只允许做 ffmpeg 渲染 / Python worker 子进程的临时工作区
+   （tmp dir / pre-upload staging），完成后调 `cdnUploader.upload(...)` 推到 OSS，
+   DB 存 OSS key + 派生的 CDN URL。
+
+2. **生产用 OSS，dev fallback 本地**。统一靠 `aep.cdn.driver`：
+   - `aep.cdn.driver=oss` → 注入 `AliyunOssCdnUploader`，所有 `cdnUploader.upload(...)`
+     落 OSS；URL 出 wire 时经 `CdnUrlSigner` 加时效签名（防流量盗刷）。
+   - `aep.cdn.driver=local`（默认 / dev / 未配 OSS） → 注入 `LocalFakeCdnUploader`，
+     文件落 `./cdn-mock/`，URL 形如 `/cdn/<key>`（server 自带静态 mount）。
+     上游业务代码完全不感知差异 —— 这就是 fallback 的实现位置。
+
+3. **生产 server.env 必须**：
+   ```
+   AEP_CDN_DRIVER=oss
+   AEP_CDN_OSS_BUCKET / ENDPOINT / ACCESS_KEY_ID / ACCESS_KEY_SECRET / BASE_URL
+   AEP_CDN_OSS_KEY_PREFIX=media               # 多业务共享 bucket 时按前缀隔离
+   AEP_CDN_SIGNED_URL_STRATEGY=cdn            # 防 hot-link 流量盗刷
+   AEP_CDN_SIGNED_URL_TTL_SECONDS=3600
+   AEP_CDN_SIGNED_URL_CDN_AUTH_KEY=<...>      # Aliyun CDN URL 鉴权 Type A
+   ```
+   未配 `AEP_CDN_DRIVER=oss` 的生产实例 = **配置错误**（启动会 WARN，但不阻断；
+   线上巡检脚本应将 `aep.cdn.driver=local` 视作部署事故 P1）。
+
+4. **DB 真值是 key，URL 是派生值**（v0.47F+ 强制规则）。
+   所有 OSS-bound 资产字段的真值是「OSS object key」，URL 是出 wire 时由
+   `CdnUrlSigner.signKey(cdnKey)` 实时构造的派生值，**不**作为 DB 真值。
+   - **新增字段必须**：`cdnKey VARCHAR(512) NOT NULL`；不要再加 `cdnUrl` 列
+   - **DTO 出 wire**：`signer.signKey(o.getCdnKey())` → 返回签名 URL；signer 失败/NOOP 时
+     才退到 fallback（读老 `cdnUrl` 列）
+   - **写库**：`cdnUploader.upload(...)` 返回 `CdnUploadResult.key()` 作为真值落库；
+     `cdnUrl` 字段在过渡期内可双写但不再依赖
+   - **不允许把裸 `https://cdn.xxx.cn/...` 直接塞进 response body** —— 必须经 signer
+
+   收益：driver 切 local↔oss / CDN 域名换 / key-prefix 调整 → DB 零迁移，自动适配。
+
+5. **DTO 出 wire 必经 `CdnUrlSigner`**。所有新增的 DTO 字段如果暴露资产 URL：
+   - 在 DTO 工厂方法签名里加 `CdnUrlSigner signer` 参数
+   - 优先 `signer.signKey(cdnKey)`（key → 派生 + 签名）；老 row 缺 cdnKey 时
+     fallback `signer.maybeSign(storedUrl)`（URL → 抽 key → 重签）
+   - 调用方（service）注入 `CdnUrlSigner` Bean
+   - 当前已落地：`MixcutRenderOutputDto.from(o, mapper, signer)` 走 cdnKey 优先
+
+6. **现有「local-only」字段必须分阶段迁移到 OSS**（按 §4.7.4 key-only 规则）：
+   - `MixcutAsset.fileUrl`（用户上传素材，当前 `/static/mixcut-assets/...` 本地）
+   - `MaterialVideoJob.videoUrl`（素材运营生成视频）
+   - `AiAvatarAsset` 资产 URL（v0.45+）
+   - `ForgeResult` 视频 URL
+
+   迁移姿势：业务 service 在 `upload(...)` / `save(...)` 时调 `cdnUploader.upload(...)`，
+   返回的 `CdnUploadResult.key()` 落 DB 的 `cdnKey` 列；DTO 出 wire 时由 signer 派生 URL。
+   旧本地路径字段保留一两版做 fallback 读，然后删。
+
+6. **本地短时临时区必须 gitignored 且不进备份**。当前已 ignore：
+   - `apps/server/mixcut-assets/` / `mixcut-output/` / `mixcut-work/`
+   - `apps/server/dh-assets/` / `dh-work/`
+   - `apps/server/aiavatar-assets/` / `aiavatar-work/`
+   - `apps/server/cdn-mock/`（dev fake CDN）
+
+   新增临时目录默认按这条规则 gitignore，**不要 commit 任何资产文件到 git**。
+
+**Review reject 规则**：
+
+- PR 中出现 `Files.copy(... new File("/data/..."))` / `new FileOutputStream("./xxx-assets/...")`
+  并把 path 落 DB 当 wire-out URL 用 → review reject，要求改 `cdnUploader.upload(...)`。
+- DTO `record` 里直接落 `https://cdn.xxx.cn/...` 字符串且未经 `CdnUrlSigner` →
+  review reject，要求改 `signer.signKey(...)` 派生（首选）或 `signer.maybeSign(...)` 重签。
+- 新增 entity 加 `cdnUrl` 列（不带 `cdnKey`）→ review reject，要求把 key 列做真值，
+  URL 改为 DTO 出 wire 时派生（v0.47F+ key-only 规则，§4.7.4）。
+- 配置生产部署但 `AEP_CDN_DRIVER=local` 或缺 `AEP_CDN_SIGNED_URL_STRATEGY` →
+  review reject，要求补 OSS 配置。
+
 ---
 
 ## 5. 新增领域 SOP
@@ -2183,6 +2263,65 @@ ssh 进 ECS 后一行命令完成 build + 翻新 + restart + verify，与 `deplo
 - **未做**：(a) `deploy-local.sh` 集成到 GitHub Actions（actions runner 仍是开发机模式 + ssh 推）；
   (b) 自动检测 deploy.sh 误在 ECS 本机执行并友好提示走 deploy-local.sh；
   (c) 多 ECS 节点的本机并行部署（当前是单机假设）。
+
+**D. OSS / CDN URL 签名（防流量盗刷）**
+
+背景：v0.46 之前 `AliyunOssCdnUploader.publicUrlFor(key)` 只是裸拼 CDN URL
+（`https://cdn.aibuzz.cn/<key>`），URL 永不过期 + 无鉴权 + 落 DB 后随 DTO 出 wire。
+任一泄漏（爬虫 / 浏览器缓存 / CDN 域名扫描）→ 持续被 hot-link 刷流量，
+**夜单 CDN/OSS 几千 RMB 流量账单不是危言耸听**。
+
+```
+server : CdnUploader.signedUrlFor(key, ttlSeconds) 默认方法（v0.47+；回退到 publicUrlFor）
+       : AliyunOssCdnUploader 构造器 +signStrategy / +defaultTtlSeconds / +cdnAuthKey 三个新字段
+       :   strategy=none：明文 URL（dev / 调试）
+       :   strategy=oss ：OSS SDK generatePresignedUrl（HttpMethod.GET + expires），
+       :                  URL host 自动从 -internal endpoint 修正为公网 endpoint
+       :   strategy=cdn ：阿里云 CDN URL 鉴权 Type A
+       :                  auth_key = expires + "-" + rand + "-" + uid + "-" + md5(URI-expires-rand-uid-PrivateKey)
+       :                  签名串走 SecureRandom + lowercase MD5 hex
+       :   启动时 strategy=cdn 但 cdn-auth-key 空 → fail-fast；strategy=none → 启动 WARN
+       : 新 CdnUrlSigner service（@Service，注入 ObjectProvider<CdnUploader> 让 dev 无 OSS bean 时不挂）
+       :   maybeSign(url) / maybeSign(url, ttl) —— 自动识别 URL 前缀是否属 OSS/CDN base，
+       :   是 → 抽 key 调 uploader.signedUrlFor；否 → 原样返回（local / 第三方外链 / null 透传）
+       :   http ↔ https 双 scheme 前缀都支持（防配 https base 后请求换 http 跳过签名）
+       :   uploader 抛错 → 不抛只 WARN，原样返回（不影响业务 wire）
+       :   NOOP 单例 = 老 test / seeder 不便注入 Spring bean 时回退
+       : MixcutRenderJobDto.from(job, mapper, signer) 新重载 —— outputs[*].cdnUrl + cdnThumbnailUrl
+       :   出 wire 前过 signer.maybeSign(...) 加时效签名；老 from(job, mapper) 委派到带 NOOP 的入口
+       : MixcutJobService 构造器 +cdnUrlSigner；listForUser / getForUser / create / rerun /
+       :   updateProgressForUser 4 处 from() 调用统一带签名
+
+config : application.yml aep.cdn.signed-url.{strategy, ttl-seconds, cdn-auth-key}
+       : infra/env/server.env.example +AEP_CDN_SIGNED_URL_STRATEGY=cdn / TTL=3600 / CDN_AUTH_KEY=...
+
+docs   : infra/oss/README.md +§3.1「URL 鉴权 / 签名」详细配置 + 验证 + 注意事项
+       : .claude/skills/aliyun-deploy/SKILL.md 同步签名配置项
+
+tests  : CdnUrlSignerTest（8 测）：noop / passthrough / 抽 key / 老 URL 已带 query / http-https
+       : 互换 scheme / uploader 异常不抛 / 自定义 TTL / Type A 签名串格式 regex
+```
+
+**注意事项**：
+
+- **当前签名范围**：v0.47 先覆盖 `MixcutRenderOutput.cdnUrl / cdnThumbnailUrl`（高带宽视频成片）。
+  后续待补：`MaterialVideoJob.videoUrl`（素材运营生成视频）、`AiAvatarAsset` 资产 URL、
+  ForgeResult 视频 URL —— 注入 `CdnUrlSigner` 到对应 service + DTO from() 加 signer 参数即可。
+- **DB 落的是原始 CDN URL，不带签名**：`AliyunOssCdnUploader.upload(...)` 仍调
+  `publicUrlFor(key)` 写库；签名只在 DTO 出 wire 一刻生成，每次请求都是一个新签名。
+  这样老前端缓存的 URL 过期前可继续访问，过期后用户刷新页面自然换新 URL。
+- **生产首选 strategy=cdn**：节省一半带宽费（CDN 0.24 元/GB vs OSS 外网 0.5 元/GB），
+  且流量经 CDN 加速节点 + HTTPS。需先在阿里云 CDN 控制台「访问控制 → URL 鉴权 → Type A」
+  生成 PrivateKey 并填到 `AEP_CDN_SIGNED_URL_CDN_AUTH_KEY`。
+- **strategy=oss 的 host 修正**：OSS SDK 用构造器传入的 endpoint（可能是 `-internal` 内网）
+  做签名 URL 的 host —— 我们在 `rewritePublicEndpoint` 替换为公网 endpoint，保证浏览器可访问。
+- **TTL 建议 3600 ~ 14400**：太短（< 600）H5 视频播放进度过半就 403；
+  太长（> 86400）URL 泄漏窗口大，hot-link 攻击仍能持续刷一天流量。
+- **未做**：(a) `oss / cdn` 两种策略可热切（重启 server 即可换，但运行时不能切；
+  v0.48+ 候选）；(b) Aliyun CDN 鉴权的 KEY 轮换流程（主备 KEY 切换）；
+  (c) 上传路径的 STS 临时签名（让浏览器直传 OSS，本仓暂保留 server-mediated 上传，
+  无浏览器 PUT，server 自身 AK 不外暴）；
+  (d) 按用户的上传速率 / 配额限制 —— 与盗刷不同，是另一类安全问题，v0.48+ 候选。
 
 **注意事项**：
 

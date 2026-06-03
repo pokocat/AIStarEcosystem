@@ -41,6 +41,38 @@ SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem
 
 Never write the private key value into repo files or GitHub Secrets examples.
 
+## OSS / CDN URL 签名（v0.47+，强制生产配置）
+
+Production deployments **MUST** configure OSS URL signing — bucket private + CDN 回源不足以防流量盗刷。
+Without signing, any leaked `https://cdn.aibuzz.cn/...` URL becomes an indefinite hot-link target.
+
+Required env vars in `/etc/aistareco/server.env`:
+
+```bash
+AEP_CDN_DRIVER=oss
+AEP_CDN_SIGNED_URL_STRATEGY=cdn         # cdn (推荐生产) | oss (中小流量) | none (仅 dev)
+AEP_CDN_SIGNED_URL_TTL_SECONDS=3600     # URL 有效 1h；视频长可调 14400
+AEP_CDN_SIGNED_URL_CDN_AUTH_KEY=<32字符密钥>  # 仅 strategy=cdn 用
+```
+
+Setup steps for `strategy=cdn`:
+
+1. Aliyun CDN 控制台 → 域名管理 → 选 `cdn.aibuzz.cn` → **访问控制 → URL 鉴权**
+2. 鉴权类型 = **Type A**，状态 = **开启**
+3. 「主 KEY」点「自动生成」复制 32 位密钥
+4. 填到 ECS `/etc/aistareco/server.env` 的 `AEP_CDN_SIGNED_URL_CDN_AUTH_KEY`
+5. `sudo systemctl restart aistareco-server`
+
+Verify:
+
+```bash
+# 拉混剪任务 JSON，outputs[*].cdn_url 应当带 ?auth_key=…
+curl -H "Authorization: Bearer <jwt>" https://api.aibuzz.cn/api/me/mixcut/jobs | jq '.data[0].outputs[0].cdn_url'
+# 直接 GET 应 200；改 auth_key 后再 GET 应 403
+```
+
+详见 [`infra/oss/README.md#31-url-鉴权--签名-v047-必配防流量盗刷`](../../infra/oss/README.md)。
+
 ## Deployment Paths
 
 Use the artifact deploy chain as the only deploy path.

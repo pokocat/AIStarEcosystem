@@ -371,8 +371,11 @@ public class MixcutRenderingService {
             o.setAppliedTransformsJson(transforms.toString());
             o.setWatermarkToken("wm_" + sha256Hex(outFile).substring(0, 16));
             o.setCreatedAt(OffsetDateTime.now());
-            o.setCdnUrl(cdnVideoUrl);
+            // v0.47F+：cdnKey 是真值（driver/域名/前缀无关），cdnUrl 仅作兼容兜底字段。
+            // 下次 DTO 出 wire 时优先 signer.signKey(cdnKey) → 实时拼 + 签；
+            // 仅 cdnKey 缺失（老数据）时才退到 signer.maybeSign(cdnUrl)。
             o.setCdnKey(cdnVideoKey);
+            o.setCdnUrl(cdnVideoUrl);
             o.setCdnThumbnailUrl(cdnThumbUrl);
             o.setCdnUploadedAt(cdnUploadedAt);
             saveOutput(jobId, o);

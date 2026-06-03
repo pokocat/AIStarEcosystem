@@ -2,6 +2,7 @@ package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.MixcutRenderJob;
 import com.aistareco.aep.model.MixcutRenderOutput;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -45,7 +46,19 @@ public record MixcutRenderJobDto(
         @JsonProperty("forked_from_job_id") String forkedFromJobId
 ) {
 
+    /**
+     * v0.47-：老入口，不签 CDN URL。新代码请用 {@link #from(MixcutRenderJob, ObjectMapper, CdnUrlSigner)}。
+     * 仅保留以避免 break 老 test / seeder 调用。
+     */
     public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper) {
+        return from(job, mapper, CdnUrlSigner.NOOP);
+    }
+
+    /**
+     * v0.47+：所有出 wire 的 CDN URL 字段过一遍 {@link CdnUrlSigner#maybeSign(String)} —
+     * 命中 OSS/CDN 域的 URL 会被换成限时签名版（防流量盗刷）。
+     */
+    public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper, CdnUrlSigner signer) {
         JsonNode bindings;
         try {
             bindings = job.getSlotBindingsJson() == null
@@ -65,7 +78,7 @@ public record MixcutRenderJobDto(
                 ? null
                 : job.getOutputs().stream()
                         .filter(o -> o.getDeletedAt() == null)
-                        .map(o -> MixcutRenderOutputDto.from(o, mapper))
+                        .map(o -> MixcutRenderOutputDto.from(o, mapper, signer))
                         .toList();
         return new MixcutRenderJobDto(
                 job.getId(),
@@ -125,7 +138,27 @@ public record MixcutRenderJobDto(
             @JsonProperty("publish_count") int publishCount,
             @JsonProperty("last_published_at") String lastPublishedAt
     ) {
+        /** v0.47-：老入口，不签 CDN URL。 */
         public static MixcutRenderOutputDto from(MixcutRenderOutput o, ObjectMapper mapper) {
+            return from(o, mapper, CdnUrlSigner.NOOP);
+        }
+
+        /**
+         * v0.47F+：cdnKey 为真值优先，DB cdnUrl 仅作 fallback。
+         *
+         * <p>设计：DB 存 OSS object key（与 driver / 域名 / key-prefix 无关），URL 是 driver
+         * 决定的派生值。出 wire 时优先 {@code signer.signKey(cdnKey)} 实时构造，DB cdnUrl 仅
+         * 在新代码没填 cdnKey 的过渡数据上用作 fallback。这样：
+         * <ul>
+         *   <li>driver 切换 local↔oss → 老数据自动适配新 driver</li>
+         *   <li>CDN 域名换 → 只改 base-url 配置，下次出 wire 自动用新域名</li>
+         *   <li>key-prefix 调整 → 老 row 的 cdnKey 仍是原始 key，publicUrlFor() 自动补新前缀</li>
+         * </ul>
+         *
+         * <p>thumbnailUrl 同理：v0.47F+ 起 fileUrl 单独存的本地路径不签（{@link CdnUrlSigner#maybeSign}
+         * 对相对路径透传），cdnThumbnailUrl 走 cdnKey + .thumb 派生。
+         */
+        public static MixcutRenderOutputDto from(MixcutRenderOutput o, ObjectMapper mapper, CdnUrlSigner signer) {
             JsonNode transforms;
             try {
                 transforms = o.getAppliedTransformsJson() == null
@@ -134,6 +167,12 @@ public record MixcutRenderJobDto(
             } catch (Exception e) {
                 transforms = NullNode.getInstance();
             }
+
+            // v0.47F+: cdnKey 优先 —— 派生 + 签名一次到位
+            // 老数据 cdnKey 缺失时降级到 maybeSign(cdnUrl) 路径，过渡期兼容读
+            String cdnUrlWire = deriveSignedUrl(signer, o.getCdnKey(), o.getCdnUrl());
+            String cdnThumbWire = deriveSignedUrl(signer, deriveThumbKey(o.getCdnKey()), o.getCdnThumbnailUrl());
+
             return new MixcutRenderOutputDto(
                     o.getId(),
                     o.getJob() == null ? null : o.getJob().getId(),
@@ -147,13 +186,41 @@ public record MixcutRenderJobDto(
                     transforms,
                     o.getWatermarkToken(),
                     o.getCreatedAt() == null ? null : o.getCreatedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                    o.getCdnUrl(),
+                    cdnUrlWire,
                     o.getCdnKey(),
-                    o.getCdnThumbnailUrl(),
+                    cdnThumbWire,
                     o.getCdnUploadedAt() == null ? null : o.getCdnUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                     o.getPublishCount(),
                     o.getLastPublishedAt() == null ? null : o.getLastPublishedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             );
+        }
+
+        /**
+         * v0.47F+ 派生策略：
+         *   1. cdnKey 非空 → signer.signKey(cdnKey) → 派生 + 签
+         *   2. cdnKey 缺失但 storedCdnUrl 在 → signer.maybeSign(storedCdnUrl) 兼容老数据
+         *   3. 都为空 → null
+         *
+         * 任一步失败 (signer 异常 / NOOP / driver=local 等) signKey 返回 null → 自动走步骤 2。
+         */
+        private static String deriveSignedUrl(CdnUrlSigner signer, String cdnKey, String storedCdnUrl) {
+            if (cdnKey != null && !cdnKey.isBlank()) {
+                String fromKey = signer.signKey(cdnKey);
+                if (fromKey != null && !fromKey.isBlank()) return fromKey;
+                // signer 是 NOOP / 没有 uploader 时，退化到拿 storedCdnUrl
+            }
+            return signer.maybeSign(storedCdnUrl);
+        }
+
+        /**
+         * v0.47F+：缩略图 key 命名约定 —— 视频 key 末尾追加 ".thumb.jpg"。
+         * 注：当前 {@link com.aistareco.aep.service.mixcut.MixcutRenderingService} 落库时
+         * cdnThumbnailUrl 是独立上传得到的 URL，本期暂不强约束缩略图 key 形式 —— null 时
+         * 自然 fallback 到 storedCdnUrl 路径。等后续把缩略图也按规则命名 key 入库后再启用此推导。
+         */
+        private static String deriveThumbKey(String videoCdnKey) {
+            // 暂留扩展点；返回 null 强制走 maybeSign(storedCdnThumbnailUrl) 路径
+            return null;
         }
     }
 }
