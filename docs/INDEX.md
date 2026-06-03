@@ -2,6 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
+> last-reviewed：2026-06-03 / v0.47F OSS 资产存储 key-only 真值 + URL 派生 + 切换迁移 SOP
 > last-reviewed：2026-05-29 / v0.41 合并「AI 模型」+「LLM 网关 Key」为「模型接入端点 + Key」+ AI 应用绑定
 > last-reviewed：2026-05-23 / v0.5.4
 > last-reviewed：2026-05-21 / v0.21 混剪 / 分发用户视角文案 + 视频库（软删 30 天）+ 官方明星片段
@@ -87,7 +88,7 @@
 | [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引 |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | Agent 部署技能入口：本地 artifact 部署、按应用部署、GitHub Actions 流水线部署、验证与排障 |
 | [`infra/rds/README.md`](../infra/rds/README.md) | RDS MySQL 8.0 创建 / 内网白名单 / 参数组 / Flyway baseline |
-| [`infra/oss/README.md`](../infra/oss/README.md) | OSS Bucket / CDN 域名 / RAM 最小权限 / 生命周期规则 |
+| [`infra/oss/README.md`](../infra/oss/README.md) | OSS Bucket / CDN 域名 / RAM 最小权限 / 生命周期规则 · §3.1 [URL 鉴权 / 签名](../infra/oss/README.md#31-url-鉴权--签名v047-必配防流量盗刷)（v0.47+ 必配防流量盗刷）· §3.2 [OSS / CDN 切换迁移 SOP](../infra/oss/README.md#32-oss--cdn-切换迁移-sopv047f)（v0.47F+，换 bucket / 跨地域迁 / 换 CDN 域名）|
 | [`infra/scripts/install-cjk-fonts.sh`](../infra/scripts/install-cjk-fonts.sh) | ECS 系统中文字体安装：Java2D / ffmpeg drawtext / headless browser 中文渲染兜底 |
 
 **v0.8 新增部署需求**：mixcut 真后端要求生产环境装 ffmpeg：

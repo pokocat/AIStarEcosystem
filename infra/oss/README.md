@@ -121,6 +121,163 @@ curl -I "<上面输出的 URL 把 auth_key 改掉一位>"   # 期待 403
   `setSupportCname(true)` + endpoint 填 CDN 域名，但需 CDN 透传 query 参数 + 不改 host，
   实操复杂；本仓推荐直接用 strategy=cdn。
 
+### 3.2 OSS / CDN 切换迁移 SOP（v0.47F+）
+
+> **典型场景**：换 bucket / 跨地域迁 / 换 CDN 域名 / 换 AK / 上下游厂商切换。
+>
+> **前置**：v0.47F 起 DB 真值是 `cdn_key`（OSS object key），URL 是 DTO 出 wire 时
+> 由 `CdnUrlSigner.signKey(cdnKey)` 实时派生 + 签名。所以**只要新 OSS 上对象的 key 与
+> 老 OSS 完全一致**，切完配置 server 出 wire 的 URL 自动指向新 OSS / 新 CDN 域名。
+>
+> 详见 [`AGENTS.md`](../../AGENTS.md) §4.7「资产存储默认 OSS」硬规则。
+
+#### 完全无缝的 4 条切换（只改配置 + 重启）
+
+| 切换 | 改的 env | DB 改动 | 用户感知 |
+|---|---|---|---|
+| 同地域换 bucket | `AEP_CDN_OSS_BUCKET` | 0 | 0 |
+| 跨地域迁 bucket | `BUCKET` + `ENDPOINT` + `REGION` | 0 | 0 |
+| 换 CDN 域名 | `BASE_URL` + `CDN_AUTH_KEY` | 0 | 重启后新签名 URL 走新域名 |
+| 同时换以上 + AK | 上面所有 + `ACCESS_KEY_ID/SECRET` | 0 | 0 |
+
+#### 完整迁移流程
+
+**步骤 1**：批量复制 OSS 对象（保持 key 完全一致）
+
+```bash
+# 阿里云推荐 ossutil sync（增量；幂等；支持 --update 仅同步 mtime 新的）
+ossutil sync \
+  oss://aistareco-prod-old/media/ \
+  oss://aistareco-prod-new/media/ \
+  --recursive --update
+
+# 校验对象数一致
+ossutil ls -s oss://aistareco-prod-old/ | tail -1
+ossutil ls -s oss://aistareco-prod-new/ | tail -1
+
+# 抽样几个对象确认可访问 + size 一致
+ossutil stat oss://aistareco-prod-new/media/mixcut/jobs/abc/v0.mp4
+```
+
+**步骤 2（可选）**：新 CDN 域名准备（仅换 CDN 时）
+
+阿里云 CDN 控制台：
+
+1. 加速域名 `cdn-v2.aibuzz.cn` → 添加 → 备案
+2. 回源 OSS bucket（开「OSS Private Bucket 回源」）→ 选新 bucket
+3. HTTPS 证书 → 上传或申请阿里云免费证书
+4. **访问控制 → URL 鉴权 → A 方式** → 鉴权开关「开启」→ 主 KEY 「自动生成」→ 复制下来
+5. DNS：CNAME `cdn-v2.aibuzz.cn` → 阿里云分配的 `.kunlunca.com`
+
+**步骤 3**：维护窗口切换 `server.env`
+
+```bash
+ssh root@<ECS_HOST>
+vim /etc/aistareco/server.env
+
+# 必改（任何换 bucket 场景）
+AEP_CDN_OSS_BUCKET=aistareco-prod-new
+
+# 跨地域时同步改
+AEP_CDN_OSS_ENDPOINT=oss-cn-beijing-internal.aliyuncs.com
+AEP_CDN_OSS_REGION=cn-beijing                  # V4 签名必填
+
+# 换 AK 时（新 RAM 子账号最小权限按 ram-policy.json）
+AEP_CDN_OSS_ACCESS_KEY_ID=<新 AK>
+AEP_CDN_OSS_ACCESS_KEY_SECRET=<新 SK>
+
+# 换 CDN 域名时（步骤 2 拿到的）
+AEP_CDN_OSS_BASE_URL=https://cdn-v2.aibuzz.cn
+AEP_CDN_SIGNED_URL_CDN_AUTH_KEY=<步骤 2.4 拿到的主 KEY>
+
+sudo systemctl restart aistareco-server
+```
+
+**步骤 4**：验证
+
+```bash
+# 启动日志看到新配置
+journalctl -u aistareco-server -n 30 | grep AliyunOssCdnUploader
+# 期望: bucket=aistareco-prod-new endpoint=oss-cn-beijing-internal.aliyuncs.com
+#       region=cn-beijing publicBase=https://cdn-v2.aibuzz.cn signVersion=V4 signStrategy=CDN
+
+# 拉一个混剪任务，检查 cdn_url 是新域名 + 带签名
+curl -H "Authorization: Bearer <jwt>" https://api.aibuzz.cn/api/me/mixcut/jobs \
+  | jq '.data[0].outputs[0].cdn_url'
+# 期望: https://cdn-v2.aibuzz.cn/media/mixcut/jobs/abc/v0.mp4?auth_key=<ts>-<rand>-0-<md5>
+
+# 浏览器/curl 访问该 URL 应 200，去掉 auth_key 应 403
+curl -I "<上一行输出的 URL>"
+```
+
+**步骤 5**：观察期后下老 OSS
+
+- 老 bucket 保留 **7～14 天** 应急回滚 + 兜底访问
+- 监控 CDN 老域名 + 老 bucket 访问日志，归零后再 ossutil rm 老 bucket
+- 删 OSS bucket 前一定记得**先解绑 RAM 子账号 + 删除老 CDN 域名**
+
+#### ⚠️ 3 个会翻车的边界 case
+
+**case 1：v0.47F 之前的老数据 `cdn_key` 字段为空**
+
+这些 row 出 wire 时 DTO 走 `signer.maybeSign(cdn_url)` fallback —— `cdn_url` 还是
+老 CDN 域名字符串，新 driver 的 base-url 不匹配 → 原样返回老 URL → 404。
+
+**修法**：迁移前跑一次性 SQL 回填 `cdn_key`（从 `cdn_url` 抽 path）：
+
+```sql
+-- 跑在切换 server.env 之前；幂等（只补 cdn_key IS NULL 的 row）
+UPDATE aep_mixcut_render_outputs
+SET cdn_key = REGEXP_REPLACE(cdn_url, '^https?://[^/]+/', '')
+WHERE cdn_key IS NULL
+  AND cdn_url IS NOT NULL
+  AND cdn_url REGEXP '^https?://';
+
+-- 类似的有 cdn_thumbnail_url（缩略图）；后续待补字段同理
+```
+
+**case 2：新 OSS 改了 `AEP_CDN_OSS_KEY_PREFIX`**
+
+老 row `cdn_key="media/mixcut/..."`，新 prefix=`prod`，老 row 出 wire 时
+`objectKeyFor()` 看到不带 `prod/` 前缀 → 又加上 → `prod/media/mixcut/...` → 404。
+
+**修法二选一**：
+
+- **首选**：迁移时**保留原 key-prefix**，不改 `AEP_CDN_OSS_KEY_PREFIX`
+- **不得不改**：SQL 替换老 cdnKey 前缀：
+  ```sql
+  UPDATE aep_mixcut_render_outputs
+  SET cdn_key = REPLACE(cdn_key, 'media/', 'prod/')
+  WHERE cdn_key LIKE 'media/%';
+  -- 同步 cdn_url 字段（兼容兜底）
+  UPDATE aep_mixcut_render_outputs
+  SET cdn_url = REPLACE(cdn_url, '/media/', '/prod/')
+  WHERE cdn_url LIKE '%/media/%';
+  ```
+
+**case 3：跨厂商迁移（阿里云 OSS → 腾讯云 COS / AWS S3）**
+
+`AliyunOssCdnUploader` 是阿里云专用实现（V4 签名 + CDN Type A 鉴权）。换厂商需要：
+
+1. 新增 `TencentCosCdnUploader` / `AwsS3CdnUploader` 实现 `CdnUploader` 接口
+2. `application.yml` 加 `AEP_CDN_DRIVER=cos|s3` 分支
+3. 服务商各自的 RAM / 签名 / CDN 鉴权算法（COS 用 STS / S3 用 SigV4 / CloudFront 用 OAI）
+
+这是大工程（每个签名算法重做一遍），**不在「换 bucket」无缝范畴**。需要先在 v0.48+
+开新 driver 实现，灰度跑通后再切换。
+
+#### 演练建议
+
+正式切之前在**测试环境**完整跑一遍：
+
+1. 把生产 RDS dump 一份到测试 RDS（带 `aep_mixcut_render_outputs` 等表）
+2. 把生产 OSS sync 到测试 bucket
+3. 测试 server 改 env 切到测试 bucket + 测试 CDN 域名
+4. 验证 §步骤 4
+5. 对照生产数据量评估 ossutil sync 完整耗时（大批量 TB 级可能要数小时）
+
+---
+
 ## 4. RAM 子用户 + 权限
 
 控制台 → 访问控制 RAM → 「用户」→ 「创建用户」：
