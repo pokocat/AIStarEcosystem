@@ -53,6 +53,8 @@ public class MixcutJobService {
     private final ProductService productService;
     private final CreditService creditService;
     private final PlatformConfigService platformConfig;
+    // v0.47+：OSS / CDN URL 出 wire 前用 signer 加时效签名，防流量盗刷
+    private final com.aistareco.aep.service.cdn.CdnUrlSigner cdnUrlSigner;
 
     public MixcutJobService(
             MixcutRenderJobRepository jobRepo,
@@ -63,7 +65,8 @@ public class MixcutJobService {
             ProductService productService,
             CreditService creditService,
             PlatformConfigService platformConfig,
-            com.aistareco.aep.service.CelebrityActionPricingService actionPricing
+            com.aistareco.aep.service.CelebrityActionPricingService actionPricing,
+            com.aistareco.aep.service.cdn.CdnUrlSigner cdnUrlSigner
     ) {
         this.jobRepo = jobRepo;
         this.outputRepo = outputRepo;
@@ -74,6 +77,7 @@ public class MixcutJobService {
         this.actionPricing = actionPricing;
         this.creditService = creditService;
         this.platformConfig = platformConfig;
+        this.cdnUrlSigner = cdnUrlSigner;
     }
 
     /**
@@ -123,7 +127,7 @@ public class MixcutJobService {
     public List<MixcutRenderJobDto> listForUser(String userId) {
         if (userId == null || userId.isBlank()) return List.of();
         return jobRepo.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(j -> MixcutRenderJobDto.from(j, mapper))
+                .map(j -> MixcutRenderJobDto.from(j, mapper, cdnUrlSigner))
                 .toList();
     }
 
@@ -133,7 +137,7 @@ public class MixcutJobService {
         if (userId == null || userId.isBlank()) return Optional.empty();
         return jobRepo.findById(id)
                 .filter(j -> userId.equals(j.getUserId()))
-                .map(j -> MixcutRenderJobDto.from(j, mapper));
+                .map(j -> MixcutRenderJobDto.from(j, mapper, cdnUrlSigner));
     }
 
     /**
@@ -249,7 +253,7 @@ public class MixcutJobService {
             rendering.renderAsync(jobId);
         }
 
-        return MixcutRenderJobDto.from(job, mapper);
+        return MixcutRenderJobDto.from(job, mapper, cdnUrlSigner);
     }
 
     /**
@@ -393,7 +397,7 @@ public class MixcutJobService {
                     if (progress != null) job.setProgress(Math.max(0, Math.min(100, progress)));
                     if (status != null && !status.isBlank()) job.setStatus(status);
                     jobRepo.save(job);
-                    return MixcutRenderJobDto.from(job, mapper);
+                    return MixcutRenderJobDto.from(job, mapper, cdnUrlSigner);
                 });
     }
 

@@ -38,6 +38,58 @@ AEP_CDN_OSS_BASE_URL=https://cdn.aibuzz.cn
 AEP_CDN_PUBLIC_BASE_URL=https://cdn.aibuzz.cn
 ```
 
+### 3.1 ⚠️ URL 鉴权 / 签名（v0.47+ 必配，防流量盗刷）
+
+**仅 bucket 私有 + CDN 回源 远远不够**。一旦 `https://cdn.aibuzz.cn/mixcut/<jobId>/v0.mp4`
+这种公开 URL 泄漏（被爬 / 进缓存 / 域名被扫），任何人都能持续刷流量直到资源消失，
+**最坏情况能在一夜之间打出几千块 RMB 的 CDN/OSS 流量账单**。
+
+server 端在 v0.47 起加了 `CdnUrlSigner`：所有 wire 出去的 CDN URL 都过一遍签名，
+URL 自带 expires + 鉴权字段，过期即失效。三种策略：
+
+| strategy | 适用 | 工作机制 | 带宽走 |
+|---|---|---|---|
+| `none` | dev / 调试 | 不签名，原样输出 | CDN |
+| `oss`  | 中小流量 / 临时下载 | OSS SDK `generatePresignedUrl`，URL host = OSS endpoint | OSS 直连（不走 CDN） |
+| `cdn`  | 生产视频（推荐） | 阿里云 CDN URL 鉴权 Type A | CDN |
+
+**生产推荐 `cdn` 策略**，因为：
+- 流量走 CDN（0.24 元/GB） vs OSS 外网（0.5 元/GB），高带宽节省一半
+- 视频走 CDN 节点加速 + 全国低延迟，用户体验更好
+
+**配置步骤**（strategy=cdn）：
+
+1. 阿里云 CDN 控制台 → 域名管理 → 选 `cdn.aibuzz.cn` → **访问控制 → URL 鉴权**
+2. 鉴权类型选 **Type A**，**鉴权状态：开启**
+3. 「主 KEY」点「自动生成」拿到 32 位密钥 → 复制下来
+4. 把密钥填到 ECS 上的 `/etc/aistareco/server.env`：
+   ```bash
+   AEP_CDN_SIGNED_URL_STRATEGY=cdn
+   AEP_CDN_SIGNED_URL_TTL_SECONDS=3600     # URL 有效 1h
+   AEP_CDN_SIGNED_URL_CDN_AUTH_KEY=<32 位主 KEY 明文>
+   ```
+5. `sudo systemctl restart aistareco-server`
+
+**配置完后验证**：
+
+```bash
+# 拉一个混剪任务 JSON，检查 outputs[*].cdn_url 是否带 ?auth_key=…
+curl -H "Authorization: Bearer <jwt>" https://api.aibuzz.cn/api/me/mixcut/jobs | jq '.data[0].outputs[0].cdn_url'
+# 应该看到形如：https://cdn.aibuzz.cn/media/mixcut/abc/v0.mp4?auth_key=1700000000-xxxx-0-md5sum
+
+# 直接 GET 应当 200；改 / 删 auth_key 后再 GET 应当 403
+curl -I "<上面输出的 URL>"
+curl -I "<上面输出的 URL 把 auth_key 改掉一位>"   # 期待 403
+```
+
+**注意事项**：
+- TTL 不要短于 H5 视频播放时长。3600s（1h）够用；如有 4K 长视频可调到 14400（4h）。
+- 备用密钥：阿里云支持「主 KEY + 备 KEY」热切，但本仓只读 server.env 一份；
+  轮换时先在 CDN 控制台把备 KEY 设为新值 → 改主 KEY → server.env 同步 → 重启。
+- `none` 策略仅 dev 用；生产任何 driver=oss 的环境默认配 `cdn`。
+- 老 URL 兼容：DB 里仍存原始 CDN URL（不含签名），signer 在 DTO 出 wire 前实时签。
+  老前端缓存的 URL 在过期前仍可访问，过期后用户刷新会拿到新签名 URL，无感知切换。
+
 ## 4. RAM 子用户 + 权限
 
 控制台 → 访问控制 RAM → 「用户」→ 「创建用户」：

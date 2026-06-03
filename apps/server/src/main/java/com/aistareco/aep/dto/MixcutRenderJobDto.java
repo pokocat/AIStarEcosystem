@@ -2,6 +2,7 @@ package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.MixcutRenderJob;
 import com.aistareco.aep.model.MixcutRenderOutput;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -45,7 +46,19 @@ public record MixcutRenderJobDto(
         @JsonProperty("forked_from_job_id") String forkedFromJobId
 ) {
 
+    /**
+     * v0.47-：老入口，不签 CDN URL。新代码请用 {@link #from(MixcutRenderJob, ObjectMapper, CdnUrlSigner)}。
+     * 仅保留以避免 break 老 test / seeder 调用。
+     */
     public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper) {
+        return from(job, mapper, CdnUrlSigner.NOOP);
+    }
+
+    /**
+     * v0.47+：所有出 wire 的 CDN URL 字段过一遍 {@link CdnUrlSigner#maybeSign(String)} —
+     * 命中 OSS/CDN 域的 URL 会被换成限时签名版（防流量盗刷）。
+     */
+    public static MixcutRenderJobDto from(MixcutRenderJob job, ObjectMapper mapper, CdnUrlSigner signer) {
         JsonNode bindings;
         try {
             bindings = job.getSlotBindingsJson() == null
@@ -65,7 +78,7 @@ public record MixcutRenderJobDto(
                 ? null
                 : job.getOutputs().stream()
                         .filter(o -> o.getDeletedAt() == null)
-                        .map(o -> MixcutRenderOutputDto.from(o, mapper))
+                        .map(o -> MixcutRenderOutputDto.from(o, mapper, signer))
                         .toList();
         return new MixcutRenderJobDto(
                 job.getId(),
@@ -125,7 +138,13 @@ public record MixcutRenderJobDto(
             @JsonProperty("publish_count") int publishCount,
             @JsonProperty("last_published_at") String lastPublishedAt
     ) {
+        /** v0.47-：老入口，不签 CDN URL。 */
         public static MixcutRenderOutputDto from(MixcutRenderOutput o, ObjectMapper mapper) {
+            return from(o, mapper, CdnUrlSigner.NOOP);
+        }
+
+        /** v0.47+：cdnUrl / cdnThumbnailUrl 出 wire 前过 signer.maybeSign(...) 加时效签名。 */
+        public static MixcutRenderOutputDto from(MixcutRenderOutput o, ObjectMapper mapper, CdnUrlSigner signer) {
             JsonNode transforms;
             try {
                 transforms = o.getAppliedTransformsJson() == null
@@ -147,9 +166,9 @@ public record MixcutRenderJobDto(
                     transforms,
                     o.getWatermarkToken(),
                     o.getCreatedAt() == null ? null : o.getCreatedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                    o.getCdnUrl(),
+                    signer.maybeSign(o.getCdnUrl()),
                     o.getCdnKey(),
-                    o.getCdnThumbnailUrl(),
+                    signer.maybeSign(o.getCdnThumbnailUrl()),
                     o.getCdnUploadedAt() == null ? null : o.getCdnUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                     o.getPublishCount(),
                     o.getLastPublishedAt() == null ? null : o.getLastPublishedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
