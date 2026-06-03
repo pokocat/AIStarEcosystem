@@ -4,16 +4,27 @@
 # Usage:
 #   DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/path/key.pem ./infra/scripts/verify.sh
 #   ECS_HOST=ecs-user@47.98.162.120 PUBLIC_BASE=http://47.98.162.120 ./infra/scripts/verify.sh
+#
+# Local mode（在 ECS 本机直接跑，不走 SSH）：
+#   LOCAL_MODE=1 PUBLIC_BASE=http://127.0.0.1 ./infra/scripts/verify.sh
 
 set -euo pipefail
 
+LOCAL_MODE="${LOCAL_MODE:-0}"
+
 DEPLOY_HOST="${DEPLOY_HOST:-${ECS_HOST:-}}"
-[[ -n "$DEPLOY_HOST" ]] || { echo "DEPLOY_HOST or ECS_HOST is required" >&2; exit 1; }
+if [[ "$LOCAL_MODE" != "1" ]]; then
+  [[ -n "$DEPLOY_HOST" ]] || { echo "DEPLOY_HOST or ECS_HOST is required (or set LOCAL_MODE=1)" >&2; exit 1; }
+fi
 
 SSH_PORT="${SSH_PORT:-22}"
 SSH_KEY="${SSH_KEY:-}"
 SUDO="${SUDO:-sudo}"
-HOST_REMOTE="${DEPLOY_HOST#*@}"
+if [[ "$LOCAL_MODE" == "1" ]]; then
+  HOST_REMOTE="${HOST_REMOTE:-127.0.0.1}"
+else
+  HOST_REMOTE="${DEPLOY_HOST#*@}"
+fi
 PUBLIC_BASE="${PUBLIC_BASE:-http://$HOST_REMOTE}"
 PUBLIC_PATHS="${PUBLIC_PATHS:-/ /login /admin /api/celebrity/dictionaries}"
 
@@ -29,8 +40,13 @@ if [[ -n "$SSH_KEY" ]]; then
   SSH_BASE+=(-i "$SSH_KEY")
 fi
 
-ssh_remote() {
-  "${SSH_BASE[@]}" "$DEPLOY_HOST" "$@"
+# v0.47：LOCAL_MODE=1 时把 remote check 直接本机 bash 跑，省去 ssh 回环。
+remote_exec() {
+  if [[ "$LOCAL_MODE" == "1" ]]; then
+    SUDO="$SUDO" bash -s
+  else
+    "${SSH_BASE[@]}" "$DEPLOY_HOST" "SUDO='$SUDO' bash -s"
+  fi
 }
 
 log "public endpoints ($PUBLIC_BASE)"
@@ -43,8 +59,8 @@ for path in $PUBLIC_PATHS; do
   fi
 done
 
-log "remote services"
-ssh_remote "SUDO='$SUDO' bash -s" <<'REMOTE_CHECKS' || warn "remote checks partially failed"
+log "$([[ "$LOCAL_MODE" == "1" ]] && echo "local" || echo "remote") services"
+remote_exec <<'REMOTE_CHECKS' || warn "remote checks partially failed"
 set -euo pipefail
 
 check_unit() {

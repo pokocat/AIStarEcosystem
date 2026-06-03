@@ -2143,6 +2143,47 @@ admin :
   mocks/audit.ts 补 username/errorCode 字段 + 9 条登录注册类样本
 ```
 
+**C. ECS 本机直接部署脚本（不走 SSH）**
+
+之前体系是「开发机 build → ssh 推 ECS」（`deploy.sh` = `build-release.sh` + `deploy-release.sh`），
+开发机网络抖 / GitHub Actions 不可用时没有快速兜底。新增 `infra/scripts/deploy-local.sh`：
+ssh 进 ECS 后一行命令完成 build + 翻新 + restart + verify，与 `deploy-release.sh` **完全一致**
+的落位规则 + 备份约定，但全程本机操作。
+
+```
+新文件 : infra/scripts/deploy-local.sh（约 220 行）
+  · all / 单服务 / 多服务（逗号或空格分隔）
+  · 复用 build-release.sh 产物 → 复用 deploy-release.sh 的 cp/install/tar -x/systemctl restart 逻辑
+  · 备份保留：.__previous__-<RELEASE_ID> 目录按 mtime 排序，默认保留 2 份（--keep-previous=N 可调）
+  · 选项：--no-build / --no-restart / --no-verify / --no-fonts / --release-id=<ID>
+  · systemd 单元不存在时 WARN 并跳过 restart，便于首次部署落位文件后人工建 unit
+  · 完成后自动调 verify.sh LOCAL_MODE=1
+
+改动 : infra/scripts/verify.sh +LOCAL_MODE=1 分支
+  · LOCAL_MODE=1 时跳过 DEPLOY_HOST 校验、HOST_REMOTE 默认 127.0.0.1
+  · 新 remote_exec() 函数：LOCAL_MODE=1 直接 bash -s，否则走 ssh
+  · 远端 check 脚本（systemd 状态 / API /healthz / nginx -t / 中文字体）零改动 1:1 复用
+
+文档 : infra/README.md +§4.1.1「ECS 本机直接部署（无 SSH，v0.47+）」+ 目录速览补 deploy-local.sh
+       .claude/skills/aliyun-deploy/SKILL.md +「ECS 本机直接部署」一节
+```
+
+**注意事项**：
+
+- **与 ssh 推送路径并存**：`deploy.sh` / `deploy-release.sh` 行为不动；GitHub Actions
+  工作流不动。`deploy-local.sh` 是新增的第三条路径，不替换任何东西。
+- **落位规则一致**：jar 经 `install -m 0644`；web/admin tar 解到 `${target}.__next__${RELEASE_ID}` 后 mv，
+  失败可保留旧目录便于排查。sau-service Docker build 用 `--build-arg INSTALL_REAL=1` 同 deploy-release.sh。
+- **首次部署 systemd 不存在时 WARN 不抛**：脚本检 `systemctl list-unit-files` 命中再 restart，
+  否则只翻文件 + 提示参考 `infra/systemd/*.example` 建 unit。
+- **备份策略改进**：`deploy-release.sh` 老路径只保留 `.__previous__`（一份），新落位会立刻覆盖；
+  `deploy-local.sh` 改用带 RELEASE_ID 后缀的目录，默认保留 2 份，回滚时可指定具体 release。
+- **verify 失败只 WARN**：文件已落位 + systemctl restart 已执行，verify 失败常为公网 path
+  暂未起来 / 中文字体未就绪等次要问题，不阻断部署完成态。运维仍可手动重跑 `LOCAL_MODE=1 ./verify.sh`。
+- **未做**：(a) `deploy-local.sh` 集成到 GitHub Actions（actions runner 仍是开发机模式 + ssh 推）；
+  (b) 自动检测 deploy.sh 误在 ECS 本机执行并友好提示走 deploy-local.sh；
+  (c) 多 ECS 节点的本机并行部署（当前是单机假设）。
+
 **注意事项**：
 
 - **DTO 派生为权威**：admin UI 直读 `b.activatedCount / b.totalCount`，但这两个值在
