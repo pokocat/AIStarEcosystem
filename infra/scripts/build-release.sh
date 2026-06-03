@@ -13,6 +13,7 @@
 #   dist/deploy/<RELEASE_ID>/
 
 set -euo pipefail
+export PATH="/usr/local/bin:/opt/node-current/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"

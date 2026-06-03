@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type DragEventHandler } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,6 +22,7 @@ import {
   MoreHorizontal,
   Sliders,
   Info,
+  GripVertical,
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { nanoid } from "nanoid";
@@ -1132,19 +1133,11 @@ export function TemplateDetailClient({
                               />
                             )}
                             <div
-                              draggable={editing}
-                              onDragStart={(e) => {
-                                if (!editing) return;
-                                e.dataTransfer.effectAllowed = "move";
-                                e.dataTransfer.setData("text/plain", String(idx));
-                                setSlotDragSrc(idx);
-                              }}
                               onDragEnd={() => {
                                 setSlotDragSrc(null);
                                 setSlotDragOverGap(null);
                               }}
                               className={cn(
-                                editing && "cursor-move",
                                 slotDragSrc === idx && "opacity-40"
                               )}
                             >
@@ -1170,6 +1163,18 @@ export function TemplateDetailClient({
                                 onChange={(patch) => updateSlot(s.slot_id, patch)}
                                 onChangePolicy={(patch) => updateSlotPolicy(s.slot_id, patch)}
                                 onRemove={() => removeSlot(s.slot_id)}
+                                dragHandleProps={
+                                  editing
+                                    ? {
+                                        draggable: true,
+                                        onDragStart: (e) => {
+                                          e.dataTransfer.effectAllowed = "move";
+                                          e.dataTransfer.setData("text/plain", String(idx));
+                                          setSlotDragSrc(idx);
+                                        },
+                                      }
+                                    : undefined
+                                }
                               />
                             </div>
                           </Fragment>
@@ -1287,6 +1292,7 @@ function SlotCard({
   onChange,
   onChangePolicy,
   onRemove,
+  dragHandleProps,
 }: {
   slot: TemplateSlot;
   canvas: Template["canvas"];
@@ -1305,6 +1311,10 @@ function SlotCard({
   onChange: (patch: Partial<TemplateSlot>) => void;
   onChangePolicy: (patch: Partial<SlotPerturbationPolicy>) => void;
   onRemove: () => void;
+  dragHandleProps?: {
+    draggable: boolean;
+    onDragStart: DragEventHandler<HTMLElement>;
+  };
 }) {
   const pixelRect = slot.rect ? rectToPixels(slot.rect, canvas) : null;
   const [tStart, tEnd] = slot.time_range;
@@ -1368,6 +1378,16 @@ function SlotCard({
               <span className="text-sm font-medium truncate">{reviewTitle}</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              {dragHandleProps && (
+                <span
+                  {...dragHandleProps}
+                  data-slot-drag-handle="true"
+                  title="拖拽调整内容位顺序"
+                  className="size-6 grid place-items-center rounded text-muted-foreground/60 cursor-grab hover:bg-secondary hover:text-muted-foreground active:cursor-grabbing transition-colors"
+                >
+                  <GripVertical className="size-3.5" />
+                </span>
+              )}
               {slot.required && <Badge variant="danger" className="text-[10px]">必填</Badge>}
               {!slot.user_editable && <Badge variant="muted" className="text-[10px]">系统填</Badge>}
             </div>
@@ -1450,6 +1470,16 @@ function SlotCard({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {layerBadge}
+          {dragHandleProps && (
+            <span
+              {...dragHandleProps}
+              data-slot-drag-handle="true"
+              title="拖拽调整内容位顺序"
+              className="size-7 grid place-items-center rounded text-muted-foreground/60 cursor-grab hover:bg-secondary hover:text-muted-foreground active:cursor-grabbing transition-colors"
+            >
+              <GripVertical className="size-4" />
+            </span>
+          )}
           <div className="flex items-center">
             <button
               type="button"

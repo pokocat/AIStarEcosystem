@@ -54,7 +54,10 @@ infra/
     ├── init.sh                     ← 交互式收集参数 + openssl 生成密钥 + 渲染 env/nginx 到 infra/.local/
     ├── dev-server.sh               ← 本机 server 启动 wrapper（自动起 docker mysql + 注入 dev 弱密钥）
     ├── deploy.sh                   ← deploy.sh <service> [tag]，开发机 build → ssh 推到 ECS（幂等）
+    ├── install-host-deps.sh         ← ECS 本机依赖补齐：按宿主机镜像自动走 dnf/yum/apt
+    ├── check-runtime-env.sh         ← ECS runtime env 预检：/etc/aistareco/*.env + release manifest
     ├── deploy-local.sh             ← **在 ECS 本机直接部署**，不走 SSH（v0.47+，all-in-one 或独立服务）
+    ├── update-and-deploy.sh         ← **ECS 一键更新代码 + 补依赖 + 本机部署**
     ├── rollback.sh                 ← rollback.sh <service> <tag>
     └── verify.sh                   ← 部署后健康检查批量（v0.47+ 支持 LOCAL_MODE=1 本机模式）
 ```
@@ -139,21 +142,19 @@ SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
 ```bash
 ssh root@<ECS_HOST>
 
-# Java 17 + nginx + docker + ffmpeg + CJK fonts
-yum install -y java-17-openjdk-headless nginx rsync ffmpeg fontconfig \
-  google-noto-sans-cjk-sc-fonts google-noto-serif-cjk-sc-fonts
-systemctl enable --now nginx docker
-fc-cache -f
-
-# nvm + node 24（next standalone runtime）
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-source ~/.bashrc
-nvm install 24
+# 如果是全新极简镜像，先装 git 以便拉仓库：
+#   Alibaba Cloud Linux / CentOS / RHEL: sudo dnf install -y git || sudo yum install -y git
+#   Ubuntu / Debian: sudo apt-get update && sudo apt-get install -y git
 
 # 拉仓库
 mkdir -p /opt/ai-star-eco
 git clone <repo-url> /opt/ai-star-eco/repo
 ln -s /opt/ai-star-eco/repo/apps /opt/ai-star-eco/apps
+
+# 自动补齐 ECS 宿主机依赖。脚本会读取 /etc/os-release，并按实际镜像使用 dnf / yum / apt：
+# Java 17 JDK、nginx、docker、ffmpeg、fontconfig + CJK 字体、Node 24.14.1、pnpm 10.33.2、rsync/curl/tar/unzip 等。
+cd /opt/ai-star-eco/repo
+sudo ./infra/scripts/install-host-deps.sh all
 ```
 
 ### 3.3 RDS 建库 + 应用账号
@@ -279,13 +280,20 @@ PUBLIC_BASE=http://47.98.162.120 \
 ./infra/scripts/verify.sh
 ```
 
-`deploy-release.sh` 默认会在 ECS 上幂等执行 `infra/scripts/install-cjk-fonts.sh`，确保系统层
-中文字体可供 Java2D、ffmpeg drawtext、headless browser 等服务使用。若只想预检/手动修复：
+`deploy-release.sh` 默认会在 ECS 上幂等执行 `infra/scripts/install-host-deps.sh`、
+`infra/scripts/check-runtime-env.sh` 和 `infra/scripts/install-cjk-fonts.sh`，按宿主机镜像自动补齐缺失命令，
+检查 `/etc/aistareco/*.env` 与 release manifest，并确保系统层中文字体可供 Java2D、ffmpeg drawtext、
+headless browser 等服务使用。若只想预检/手动修复：
 
 ```bash
+ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-host-deps.sh
+ssh root@<ECS_HOST> 'bash -s' < infra/scripts/check-runtime-env.sh
 ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-cjk-fonts.sh
 SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
 ```
+
+如需排查包管理器或网络问题，可临时设置 `ENSURE_HOST_DEPS=0` 跳过远端依赖补齐；
+只跳过 runtime env 检查用 `CHECK_RUNTIME_ENV=0`；只跳过字体安装用 `ENSURE_CJK_FONTS=0`。
 
 ### 4.1.1 ECS 本机直接部署（无 SSH，v0.47+）
 
@@ -299,12 +307,19 @@ SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
 
 ```bash
 ssh root@<ECS_HOST>
-cd /opt/ai-star-eco/repo && git pull
+cd /opt/ai-star-eco/repo
 
-# all-in-one 一键全量
-sudo ./infra/scripts/deploy-local.sh all
+# 一键：补依赖 → git fetch/pull --ff-only → build release → 本机落位 → restart → verify
+sudo ./infra/scripts/update-and-deploy.sh all
 
-# 独立部署单个服务
+# 只更新部分服务
+sudo ./infra/scripts/update-and-deploy.sh server,admin
+sudo ./infra/scripts/update-and-deploy.sh "web-celebrity sau-service"
+
+# 等价快捷方式：deploy-local.sh --pull 会转交给 update-and-deploy.sh
+sudo ./infra/scripts/deploy-local.sh all --pull
+
+# 如果代码已经是目标版本，只部署当前工作区
 sudo ./infra/scripts/deploy-local.sh server
 sudo ./infra/scripts/deploy-local.sh web-celebrity
 sudo ./infra/scripts/deploy-local.sh admin
@@ -317,13 +332,16 @@ sudo ./infra/scripts/deploy-local.sh "server admin"
 # 紧急部署：跳 typecheck + 跳 verify
 SKIP_TYPECHECK=1 sudo ./infra/scripts/deploy-local.sh all --no-verify
 
+# 只在确认宿主机依赖已齐备时跳过依赖补齐
+sudo ./infra/scripts/deploy-local.sh server,admin --no-deps
+
+# 只在故障排查时跳过 runtime env 检查
+sudo ./infra/scripts/deploy-local.sh server,admin --no-env-check
+
 # 已经 build 过想只翻新位文件（如审 review 完产物再上线）
 ./infra/scripts/build-release.sh all                          # 第一步：本机 build
 sudo ./infra/scripts/deploy-local.sh all \
   --no-build --release-id=<dist/deploy/ 下的 RELEASE_ID>      # 第二步：仅翻新 + restart
-
-# 只重启 systemd 不重新落位（极少用，故障定位）
-sudo ./infra/scripts/deploy-local.sh server --no-build --no-restart=0 ...
 ```
 
 行为说明：
@@ -331,6 +349,18 @@ sudo ./infra/scripts/deploy-local.sh server --no-build --no-restart=0 ...
 - 与 `deploy-release.sh` **完全相同**的落位规则：jar 直接 `install` 到 `$REMOTE_ROOT/server/app.jar`；
   web/admin 解包到 `$REMOTE_ROOT/<svc>` + 原目录改名 `<svc>.__previous__-<RELEASE_ID>` 备份；
   sau-service docker build 后 systemctl restart。
+- **依赖补齐**：`deploy-local.sh` 默认先调用 `install-host-deps.sh`，按宿主机 `/etc/os-release`
+  和可用包管理器自动安装缺失命令；`update-and-deploy.sh` 也会先执行同一检查。
+  依赖包括 Java 17 JDK、nginx、docker（仅 sau-service/all 需要）、ffmpeg、fontconfig + CJK 字体、
+  Node 24.14.1、pnpm 10.33.2、rsync/curl/tar/unzip 等。
+- **runtime env 预检**：部署前默认调用 `check-runtime-env.sh`。它读取
+  `/etc/aistareco/server.env`、`/etc/aistareco/sau-service.env` 和 release manifest，只输出变量名，
+  不打印真实密钥值。缺文件、占位符、关键密钥缺失、`AEP_DEV_AUTH_ENABLED=true`、SMS/OSS 真驱动缺凭据、
+  `SAU_MOCK_MODE!=0`、`SAU_INTERNAL_SECRET` 与 `AEP_INTERNAL_SECRET` 不一致会阻断部署；
+  文件权限非 600、`AEP_SEED_DEV_DATA_ENABLED=true` 等高风险项只警告。排障时可用
+  `--no-env-check` / `CHECK_RUNTIME_ENV=0` 跳过，或 `ENV_CHECK_WARN_ONLY=1` 改为只警告。
+- **代码更新**：`update-and-deploy.sh` 默认只做 `git pull --ff-only`，遇到服务器工作区有未提交改动会中止。
+  只有明确传 `--reset-to-origin` 时才会 `git reset --hard origin/<branch>` 丢弃服务器本地改动。
 - **备份保留**：默认保留最近 2 份 `.__previous__-*` 目录，超过按 mtime 删除最旧的。
   调 `--keep-previous=N`（0 = 立即删；5 = 保留 5 份）。
   回滚方式：`sudo mv $REMOTE_ROOT/web-celebrity.__previous__-<old-id> $REMOTE_ROOT/web-celebrity`

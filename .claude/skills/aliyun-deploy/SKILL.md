@@ -87,7 +87,7 @@ ssh -i /Users/donis/dev/aliyun/aiartist.pem ecs-user@47.98.162.120 \
   'sudo bash -s' < infra/scripts/install-cjk-fonts.sh
 ```
 
-`deploy-release.sh` runs `infra/scripts/install-cjk-fonts.sh` on the remote host by default before restarting services. This is idempotent and keeps system CJK fonts available for Java2D picgen, ffmpeg drawtext, browser rendering, and future server-side image work. Only set `ENSURE_CJK_FONTS=0` when explicitly troubleshooting package manager/network issues.
+`deploy-release.sh` runs `infra/scripts/install-host-deps.sh` on the remote host by default before restarting services. This idempotently installs missing host-level runtime/build dependencies for the selected services based on `/etc/os-release` and the available package manager (`dnf`, `yum`, or `apt-get`). It then runs `infra/scripts/check-runtime-env.sh` to validate `/etc/aistareco/*.env` and the release manifest without printing secret values. It also runs `infra/scripts/install-cjk-fonts.sh`, keeping system CJK fonts available for Java2D picgen, ffmpeg drawtext, browser rendering, and future server-side image work. Only set `ENSURE_HOST_DEPS=0`, `CHECK_RUNTIME_ENV=0`, or `ENSURE_CJK_FONTS=0` when explicitly troubleshooting package manager/network issues.
 
 Build release artifacts without deploying:
 
@@ -137,16 +137,24 @@ PUBLIC_BASE=http://47.98.162.120 \
 
 ## ECS 本机直接部署（v0.47+，无 SSH）
 
-When the user is already on the ECS box (or want to deploy from ECS itself without SSH bouncing), use `deploy-local.sh`. Same artifact layout, same systemd units, same backup convention as `deploy-release.sh` — but everything happens locally.
+When the user is already on the ECS box (or wants to deploy from ECS itself without SSH bouncing), prefer `update-and-deploy.sh` for one-command server-side updates. It installs missing host dependencies, safely fast-forwards the repo, then execs `deploy-local.sh`. Same artifact layout, same systemd units, same backup convention as `deploy-release.sh` — but everything happens locally.
 
 ```bash
 # 在 ECS 本机
-cd /opt/ai-star-eco/repo && git pull
+cd /opt/ai-star-eco/repo
 
-# all-in-one
-sudo ./infra/scripts/deploy-local.sh all
+# 一键：补依赖 → git pull --ff-only → build → deploy → verify
+sudo ./infra/scripts/update-and-deploy.sh all
 
 # 独立 / 多选
+sudo ./infra/scripts/update-and-deploy.sh server
+sudo ./infra/scripts/update-and-deploy.sh server,admin
+sudo ./infra/scripts/update-and-deploy.sh "web-celebrity sau-service"
+
+# 等价快捷方式：deploy-local --pull 会转交给 update-and-deploy.sh
+sudo ./infra/scripts/deploy-local.sh all --pull
+
+# 如果代码已经是目标版本，只部署当前工作区
 sudo ./infra/scripts/deploy-local.sh server
 sudo ./infra/scripts/deploy-local.sh server,admin
 sudo ./infra/scripts/deploy-local.sh "web-celebrity sau-service"
@@ -158,6 +166,12 @@ SKIP_TYPECHECK=1 sudo ./infra/scripts/deploy-local.sh all --no-verify
 ./infra/scripts/build-release.sh all
 sudo ./infra/scripts/deploy-local.sh all --no-build --release-id=<RELEASE_ID>
 ```
+
+Host dependency install is handled by `infra/scripts/install-host-deps.sh`. It reads `/etc/os-release`, selects `dnf`, `yum`, or `apt-get`, and installs only missing required runtime/build commands: Java 17 JDK, nginx, docker for `sau-service`, ffmpeg, fontconfig + CJK fonts, Node 24.14.1, pnpm 10.33.2, rsync/curl/tar/unzip, and related base packages. Use `--no-deps` only when intentionally skipping this step.
+
+Runtime env validation is handled by `infra/scripts/check-runtime-env.sh` and is enabled by default in both `deploy-local.sh` and `deploy-release.sh`. It checks `/etc/aistareco/server.env`, `/etc/aistareco/sau-service.env`, and release build-time env (`NEXT_PUBLIC_USE_MOCK`, `NEXT_PUBLIC_API_BASE_URL`, etc.) without printing actual values. Missing files, placeholders, missing key secrets, `AEP_DEV_AUTH_ENABLED=true`, missing Aliyun SMS credentials for `AEP_SMS_DRIVER=aliyun`, missing OSS/signing credentials for `AEP_CDN_DRIVER=oss`, `SAU_MOCK_MODE!=0`, and `SAU_INTERNAL_SECRET` mismatch must block deploy. Permission issues and `AEP_SEED_DEV_DATA_ENABLED=true` may warn. Use `--no-env-check` or `CHECK_RUNTIME_ENV=0` only for explicit troubleshooting; use `ENV_CHECK_WARN_ONLY=1` if the user asks to see warnings without blocking.
+
+`update-and-deploy.sh` defaults to `git pull --ff-only` and must stop on a dirty server worktree. Do not pass `--reset-to-origin` unless the user explicitly confirms that server-side repo changes may be discarded.
 
 `verify.sh` 同期加 `LOCAL_MODE=1`，被 `deploy-local.sh` 自动调用做本机健康检查。
 

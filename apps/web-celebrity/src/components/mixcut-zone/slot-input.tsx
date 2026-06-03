@@ -25,6 +25,7 @@ import { LAYER_LABELS, FILL_STRATEGY_LABELS } from "@/constants/mixcut-ui";
 import { SlotPolicyEditor } from "./slot-policy-editor";
 import { MediaSlotInput } from "./media-slot-input";
 import { PicgenSlotInput } from "./picgen-slot-input";
+import { effectiveFillForSlot, isSlotBindingFilled } from "./lib/slot-binding";
 
 interface Props {
   slot: TemplateSlot;
@@ -68,22 +69,8 @@ export function SlotInput({
   productId,
 }: Props) {
   const Icon = LAYER_ICON[slot.layer_type] || ImageIcon;
-  // 兜底：DB 里可能有"文字 + 自己上传"这种历史脏数据（编辑器之前没做联动）。
-  // 渲染时按 layer_type 强制纠正 fill_strategy，避免出现"文字 chip + 上传按钮"
-  // 这种交互错乱的 UI。新数据由模板编辑器的 reconcileFill 联动保证不再产生脏组合。
-  const effectiveFill: typeof slot.fill_strategy =
-    slot.layer_type === "text" &&
-    (slot.fill_strategy === "user_upload" || slot.fill_strategy === "library_select")
-      ? "user_input"
-      : slot.layer_type !== "text" && slot.fill_strategy === "user_input"
-        ? "user_upload"
-        : slot.fill_strategy;
-  const filled =
-    !!binding &&
-    ((binding.source === "input" && binding.text.trim().length > 0) ||
-      (binding.source === "library" && !!binding.asset_id) ||
-      binding.source === "upload" ||
-      (binding.source === "picgen" && binding.title.trim().length > 0));
+  const effectiveFill = effectiveFillForSlot(slot);
+  const filled = isSlotBindingFilled(slot, binding);
 
   return (
     <Card

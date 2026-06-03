@@ -21,7 +21,9 @@ VERIFY="${VERIFY:-1}"
 PUBLIC_BASE="${PUBLIC_BASE:-}"
 REMOTE_APP_USER="${REMOTE_APP_USER:-}"
 REMOTE_APP_GROUP="${REMOTE_APP_GROUP:-}"
+ENSURE_HOST_DEPS="${ENSURE_HOST_DEPS:-1}"
 ENSURE_CJK_FONTS="${ENSURE_CJK_FONTS:-1}"
+CHECK_RUNTIME_ENV="${CHECK_RUNTIME_ENV:-1}"
 
 [[ -n "$DEPLOY_HOST" ]] || { echo "DEPLOY_HOST or ECS_HOST is required" >&2; exit 1; }
 [[ -d "$RELEASE_DIR" ]] || { echo "release dir not found: $RELEASE_DIR" >&2; exit 1; }
@@ -99,11 +101,13 @@ done
 log "uploading release $RELEASE_ID to $DEPLOY_HOST:$REMOTE_STAGE"
 ssh_remote "rm -rf '$REMOTE_STAGE' && mkdir -p '$REMOTE_STAGE'"
 rsync -az --delete -e "${RSYNC_SSH[*]}" "$RELEASE_DIR/" "$DEPLOY_HOST:$REMOTE_STAGE/"
+rsync -az -e "${RSYNC_SSH[*]}" "$REPO_ROOT/infra/scripts/install-host-deps.sh" "$DEPLOY_HOST:$REMOTE_STAGE/install-host-deps.sh"
 rsync -az -e "${RSYNC_SSH[*]}" "$REPO_ROOT/infra/scripts/install-cjk-fonts.sh" "$DEPLOY_HOST:$REMOTE_STAGE/install-cjk-fonts.sh"
+rsync -az -e "${RSYNC_SSH[*]}" "$REPO_ROOT/infra/scripts/check-runtime-env.sh" "$DEPLOY_HOST:$REMOTE_STAGE/check-runtime-env.sh"
 
 log "applying release on remote host"
 ssh_remote \
-  "RELEASE_ID='$RELEASE_ID' REMOTE_STAGE='$REMOTE_STAGE' REMOTE_ROOT='$REMOTE_ROOT' SERVICES_TO_DEPLOY='$SERVICES_TO_DEPLOY' SUDO='$SUDO' REMOTE_APP_USER='$REMOTE_APP_USER' REMOTE_APP_GROUP='$REMOTE_APP_GROUP' ENSURE_CJK_FONTS='$ENSURE_CJK_FONTS' bash -s" <<'REMOTE_SCRIPT'
+  "RELEASE_ID='$RELEASE_ID' REMOTE_STAGE='$REMOTE_STAGE' REMOTE_ROOT='$REMOTE_ROOT' SERVICES_TO_DEPLOY='$SERVICES_TO_DEPLOY' SUDO='$SUDO' REMOTE_APP_USER='$REMOTE_APP_USER' REMOTE_APP_GROUP='$REMOTE_APP_GROUP' ENSURE_HOST_DEPS='$ENSURE_HOST_DEPS' ENSURE_CJK_FONTS='$ENSURE_CJK_FONTS' CHECK_RUNTIME_ENV='$CHECK_RUNTIME_ENV' bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 
 log() { printf "\033[1;34m[remote-deploy]\033[0m %s\n" "$*"; }
@@ -111,6 +115,19 @@ log() { printf "\033[1;34m[remote-deploy]\033[0m %s\n" "$*"; }
 APP_USER="${REMOTE_APP_USER:-$(id -un)}"
 APP_GROUP="${REMOTE_APP_GROUP:-$(id -gn)}"
 RELEASE_STORE="$REMOTE_ROOT/releases/$RELEASE_ID"
+
+ensure_host_deps() {
+  if [[ "${ENSURE_HOST_DEPS:-1}" != "1" ]]; then
+    log "skip host dependency ensure (ENSURE_HOST_DEPS=$ENSURE_HOST_DEPS)"
+    return
+  fi
+  if [[ ! -f "$REMOTE_STAGE/install-host-deps.sh" ]]; then
+    log "host dependency installer missing in remote stage; skip"
+    return
+  fi
+  log "ensure host dependencies"
+  $SUDO bash "$REMOTE_STAGE/install-host-deps.sh" "$SERVICES_TO_DEPLOY"
+}
 
 ensure_cjk_fonts() {
   if [[ "${ENSURE_CJK_FONTS:-1}" != "1" ]]; then
@@ -125,8 +142,23 @@ ensure_cjk_fonts() {
   $SUDO bash "$REMOTE_STAGE/install-cjk-fonts.sh"
 }
 
+check_runtime_env() {
+  if [[ "${CHECK_RUNTIME_ENV:-1}" != "1" ]]; then
+    log "skip runtime env check (CHECK_RUNTIME_ENV=$CHECK_RUNTIME_ENV)"
+    return
+  fi
+  if [[ ! -f "$REMOTE_STAGE/check-runtime-env.sh" ]]; then
+    log "runtime env checker missing in remote stage; skip"
+    return
+  fi
+  log "check runtime env"
+  $SUDO bash "$REMOTE_STAGE/check-runtime-env.sh" "$SERVICES_TO_DEPLOY" --release-dir "$REMOTE_STAGE"
+}
+
 $SUDO mkdir -p "$REMOTE_ROOT/releases" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
 
+ensure_host_deps
+check_runtime_env
 ensure_cjk_fonts
 
 $SUDO rm -rf "$RELEASE_STORE"

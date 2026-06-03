@@ -59,6 +59,7 @@ import { PROFILE_LABELS, PROFILE_DESCRIPTIONS, TIER_LABELS } from "@/constants/m
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
 import { resolvePolicy } from "@/components/mixcut-zone/lib/perturbation-defaults";
 import { flatSlotsOf, flatSlotsAbsolute, orientationLabel, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
+import { isSlotBindingFilled } from "@/components/mixcut-zone/lib/slot-binding";
 import { useConfirm } from "@/components/common/confirm-dialog";
 import { useCelebrityShell } from "@/lib/celebrity-shell-context";
 import { formatCredits } from "@ai-star-eco/api-client/format";
@@ -73,13 +74,14 @@ const MIXCUT_CREDIT_PER_VARIANT = 30;
 // ─── v0.26+ 商品启发式 slot 绑定 ──────────────────────────────────────────────
 //
 // 当用户从商品库点「生成视频」进入 create 页（URL ?product_id=X）时，
-// 按以下规则自动填 slot bindings（**仅覆盖** prev 中未绑或绑 fixed 的 slot，
-// 用户已经改过的 user_input default / library / upload 一律不动）：
+// 按以下规则自动填 slot bindings：
+// - picgen_text 槽位优先按文字图语义绑定，覆盖不兼容的旧 upload/library 绑定。
+// - 其它槽位仅覆盖 prev 中未绑或绑 fixed 的 slot；用户已经改过的 input/library/upload 一律不动。
 //
-//   layer_type=image + slot 标签命中 product|商品|图|cover|poster
-//     → { source: "upload", file_url: assets[0]?.file_url }（无素材则跳过）
 //   fill_strategy=picgen_text
 //     → { source: "picgen", title: product.name, subtitle: shorten(sellingPoints), tag: category }
+//   layer_type=image + slot 标签命中 product|商品|图|cover|poster
+//     → { source: "upload", file_url: assets[0]?.file_url }（无素材则跳过）
 //   layer_type=text + fill_strategy=user_input + 命中 title|标题|name
 //     → { source: "input", text: product.name }
 //   layer_type=text + fill_strategy=user_input + 命中 point|卖点|desc|描述|subtitle
@@ -125,10 +127,25 @@ function applyProductHeuristics(
 
   for (const slot of flatSlots) {
     const existing = next[slot.slot_id];
+
+    // 1) picgen 文字转图 slot —— 强类型语义：title + subtitle + tag 一起塞。
+    // 必须优先于商品图启发式；picgen 图片槽位只需要文字，不应该被自动塞成 upload/library。
+    if (slot.fill_strategy === "picgen_text") {
+      if (!existing || existing.source !== "picgen" || !existing.title.trim()) {
+        next[slot.slot_id] = {
+          source: "picgen",
+          title: product.name,
+          subtitle: shortenText(product.sellingPoints, 30),
+          tag: product.category,
+        };
+      }
+      continue;
+    }
+
     // 只覆盖未绑或绑 fixed 的 slot
     if (existing && existing.source !== "fixed") continue;
 
-    // 1) 商品图槽位
+    // 2) 商品图槽位
     if (isProductImageSlot(slot)) {
       const asset = productImages[0];
       if (asset) {
@@ -146,17 +163,6 @@ function applyProductHeuristics(
           file_url: product.images[0],
         };
       }
-      continue;
-    }
-
-    // 2) picgen 文字转图 slot —— 强类型语义：title + subtitle + tag 一起塞
-    if (slot.fill_strategy === "picgen_text") {
-      next[slot.slot_id] = {
-        source: "picgen",
-        title: product.name,
-        subtitle: shortenText(product.sellingPoints, 30),
-        tag: product.category,
-      };
       continue;
     }
 
@@ -358,18 +364,15 @@ export function CreateClient({ id }: { id: string }) {
       el?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
-  const isBound = (slotId: string) => {
-    const b = bindings[slotId];
-    return b && ((b.source === "input" && b.text.trim()) || b.source === "library" || b.source === "upload");
-  };
-  const filledRequired = requiredSlots.filter((s) => isBound(s.slot_id));
+  const isBound = (slot: TemplateSlot) => isSlotBindingFilled(slot, bindings[slot.slot_id]);
+  const filledRequired = requiredSlots.filter(isBound);
   const allRequiredFilled = filledRequired.length === requiredSlots.length;
 
   // v0.27+: 每个场景的必填进度 —— 给场景 tab 显示 dot（done / partial / empty / none）。
   // 仅按必填项计算；optional 没填不影响"该段已就绪"语义。
   const sceneProgress = template.scenes.map((sc) => {
     const sceneRequired = sc.slots.filter((s) => s.user_editable && s.required);
-    const sceneFilled = sceneRequired.filter((s) => isBound(s.slot_id));
+    const sceneFilled = sceneRequired.filter(isBound);
     return {
       total: sceneRequired.length,
       filled: sceneFilled.length,
@@ -388,7 +391,7 @@ export function CreateClient({ id }: { id: string }) {
   // "没用我的视频"。在提交前明确给一次确认，模板里所有 layer_type=video 的 user_editable
   // 槽位（不管 required 标）只要为空就提醒。
   const unboundVideoSlots = allSlots.filter(
-    (s) => s.layer_type === "video" && s.user_editable && !isBound(s.slot_id),
+    (s) => s.layer_type === "video" && s.user_editable && !isBound(s),
   );
 
   const handleSlotChange = (slotId: string, b: SlotBinding | undefined) => {
