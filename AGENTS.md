@@ -2075,6 +2075,100 @@ apps/web-drama:
 - 老路由(/cast、/scripts、/forge、/wardrobe、/incubator、/distribution、/finance、/settings)未改造,通过别名让其暖白化;`/cast` `/scripts` 顶部主线 banner 明确"跨项目素材"vs"项目内角色/剧本"分工,引导回 /projects。
 - 验收:`pnpm typecheck` 全绿;playwright 7 批 30+ 张截图覆盖(含移动 390px 单列);`grep 'confirm\|alert\|prompt'` 仅注释命中;主线动线 dashboard→/projects→/projects/new→/projects/<id> 一气呵成。
 
+### v0.47（2026-06-03）— admin 秘钥批次「核销 / 总量」对齐 + 全链路账号登录注册审计日志
+
+修两件事：(1) admin「秘钥批次」页面 `b.activatedCount` 长期 denormalized 列与真实 keys 表 drift，
+出现「秘钥数量 20 / 核销总量 110」类违反不变量的展示；(2) 五条登录 / 注册 / 改密链路未落 audit_log，
+排查暴力枚举 / 多端入口 / 失败原因只能靠 slf4j 日志 grep。
+
+**A. License batch 核销 / 总量 真实派生 + 自愈**
+
+```
+server : LicenseKeyRepository +countByBatchIdAndStatus(batchId, status)
+       : LicenseBatchDto +fromDerived(batch, totalCount, activatedCount) —— int 安全截断
+       : LicenseService.listBatches / findBatchById 全改走 toDtoWithDerivedCounts(b)：
+       :   - long derivedTotal = keyRepo.countByBatchId(b.id);
+       :   - long derivedActivated = keyRepo.countByBatchIdAndStatus(b.id, ACTIVATED);
+       :   - drift 时 WARN 日志 + 回写存储列 + ACTIVE↔EXHAUSTED 状态机自愈
+       :     （REVOKED / EXPIRED 是人工决策，保留不动）
+       : LicenseService.revokeKey +@Transactional + 反向递减：key 状态 ACTIVATED 时
+       :   batch.activatedCount -1，并 EXHAUSTED→ACTIVE 状态机回拨
+admin  : 前端 page.tsx 无需改 —— UI 仍读 b.activatedCount / b.totalCount，但这两个值
+       :   由 server toDtoWithDerivedCounts 用 keys 表派生，stat 顶部「累计发放点数」
+       :   reduce(b.initialCreditGrant * b.activatedCount) 自然修正
+```
+
+**B. 账号登录 / 注册 / 改密 全链路审计日志（含 IP / UA / 错因）**
+
+```
+shared model :
+  AuditLog +username(VARCHAR 128) / +errorCode(VARCHAR 64) 两列；+4 个索引
+  （createdAt / action / userId / username）；JPA ddl-auto=update 自动加列；
+  老 H2 / MySQL 双兼容。
+
+server :
+  AuditService +Actions 常量表（9 个动作）+ Actions.AUTH_ALL List
+    动作命名 ：admin.login / admin.operator_login / admin.change_password /
+              auth.sms.request_code / auth.sms.login / auth.sms.register /
+              auth.password.login / auth.dev_login / auth.license.activate
+  AuditService +recordAuth(action, result, userId, username, errorCode, detail, req)
+    - 从 HttpServletRequest 抽 IP（X-Forwarded-For → X-Real-IP → remoteAddr）+ UA
+    - 永不抛：写库失败 ERROR 日志后吞掉，不影响业务 401/403 真错返回
+  AuditService +recordAuthSuccess / +recordAuthFailure 便捷封装
+  AuditService +search(actions, userId, username, ipAddress, result, errorCode, since, until, pageable)
+  AuditLogRepository +search 自定义 JPQL（IN + LIKE 前缀 + 时间窗）
+
+  AuditLogDto +username / +errorCode 字段
+
+  AdminAuditController GET /api/admin/audit-logs：
+    +actions(CSV) / +scope(=auth-all 便捷预设) / +username / +ipAddress /
+    +errorCode / +since / +until 参数；老 (userId/action/result) 三维度兼容保留
+
+  下列控制器全部注入 AuditService 并落审计：
+  - AdminAuthController.login + changePassword（多失败分支 + 成功）
+  - AepOperatorAuthController.operatorLogin（5 失败分支 + 1 成功）
+  - SmsAuthController.requestCode / verify / register（多 try/catch 包裹 + 成功）
+  - PasswordAuthController.login（4 失败分支 + 1 成功）
+  - DevAuthController.devLogin（2 失败分支 + 1 成功）
+  - LicenseActivationController.activate（失败 try/catch 包裹 + 成功用 AepUserDto
+    取 userId/username）
+
+admin :
+  types/audit.ts AuditLog +username / +errorCode；+AUTH_ACTION_LABEL / +AUTH_ACTION_KEYS 字典
+  api/audit.ts +listAuthLogs(params) —— scope=auth-all 默认 + actions/username/ipAddress 等过滤
+  /platform/auth-logs/page.tsx 新页：StatCard ×4（总数/成功/失败/独立IP）+ 多维过滤栏
+    （搜索/动作Select/结果Select/账号前缀/IP前缀）+ 行表（时间/动作icon/账号/IP/结果/错因/详情/设备）
+    + 行点开详情 Dialog
+  nav.ts「消息与日志」组追加「账号登录日志」入口
+  mocks/audit.ts 补 username/errorCode 字段 + 9 条登录注册类样本
+```
+
+**注意事项**：
+
+- **DTO 派生为权威**：admin UI 直读 `b.activatedCount / b.totalCount`，但这两个值在
+  listBatches / findBatchById 入口已被 server 用 keys 表实时派生覆盖，
+  **denormalized 列保留以兼容老下游逻辑**（如 EXHAUSTED 状态机），但 DTO 永远返回派生值，
+  不再依赖列值正确。
+- **状态机自愈范围有限**：自愈只在 ACTIVE ↔ EXHAUSTED 之间，REVOKED / EXPIRED 是运营
+  人工决策必须保留。
+- **revokeKey 反向递减**：v0.46 之前缺失，导致只增不减是 drift 主源之一；本期补齐，
+  配合 DTO 派生形成双保险。
+- **审计日志永不抛**：try/catch 吞 persistence 异常，登录失败的 401/403 业务返回不会
+  被「记日志失败」二次覆盖（与 ErrorLogService 同款防御）。
+- **IP 抽取链**：X-Forwarded-For (取首段) → X-Real-IP → remoteAddr，按反代部署环境
+  兼容。**生产 Nginx / 阿里云 SLB 必须开 forward-ip header**，否则只能记到 LB 内网 IP。
+- **失败时 userId 可能为空**：用户名 / 手机号未命中 user 表的失败仍要落 username，
+  便于排查暴力枚举（同一手机号在多 IP 高频出现 → 风控告警）。
+- **AdminAuditController 新参数兼容老调用**：旧 `?userId=&action=&result=` 三参不变；
+  新维度任一非空时走 search 入口。
+- **/api/admin/audit-logs 安全**：沿用 `/api/admin/**` 通用门禁（hasAnyRole
+  SUPER_ADMIN, OPERATOR）。OPERATOR 也能看登录日志（属于运营职责）；如需收口为仅
+  SUPER_ADMIN，加 `.requestMatchers("/api/admin/audit-logs/**").hasRole("SUPER_ADMIN")`
+  排在通用 matcher 之前。
+- **未做**：(a) 多 IP / 高频失败的自动锁定 + 风控告警（v0.48+）；(b) 审计日志按用户
+  聚合的 dashboard（如「过去 24h 登录失败 Top10 账号」）；(c) 日志归档 / 冷热分层；
+  (d) `/api/admin/audit-logs` 加 openapi schema（管理后台路径不进 contract gate）。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

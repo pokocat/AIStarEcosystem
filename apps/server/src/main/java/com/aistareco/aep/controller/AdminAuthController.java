@@ -4,10 +4,13 @@ import com.aistareco.aep.config.JwtUtil;
 import com.aistareco.aep.dto.AdminAuthUserDto;
 import com.aistareco.aep.model.AdminUser;
 import com.aistareco.aep.model.AepUser;
+import com.aistareco.aep.model.AuditLog;
 import com.aistareco.aep.repository.AdminUserRepository;
 import com.aistareco.aep.repository.AepUserRepository;
+import com.aistareco.aep.service.AuditService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -31,25 +34,31 @@ public class AdminAuthController {
     private final AepUserRepository aepUserRepo;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final AuditService auditService;
 
     public AdminAuthController(AdminUserRepository adminUserRepo,
                                 AepUserRepository aepUserRepo,
                                 PasswordEncoder passwordEncoder,
-                                JwtUtil jwtUtil) {
+                                JwtUtil jwtUtil,
+                                AuditService auditService) {
         this.adminUserRepo = adminUserRepo;
         this.aepUserRepo = aepUserRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.auditService = auditService;
     }
 
     @PostMapping("/login")
-    public ApiResponse<Map<String, Object>> login(@RequestBody Map<String, String> body) {
+    public ApiResponse<Map<String, Object>> login(@RequestBody Map<String, String> body,
+                                                   HttpServletRequest request) {
         String username = body == null ? null : body.get("username");
         String password = body == null ? null : body.get("password");
 
         if (username == null || password == null) {
             log.warn("[admin-login] rejected missing-field usernamePresent={} passwordPresent={}",
                     username != null, password != null);
+            auditService.recordAuthFailure(AuditService.Actions.ADMIN_LOGIN, username,
+                    "ADMIN_LOGIN_REQUIRED", "用户名或密码字段缺失", request);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "ADMIN_LOGIN_REQUIRED", "用户名和密码不能为空");
         }
 
@@ -59,17 +68,25 @@ public class AdminAuthController {
                 .orElse(null);
         if (admin == null) {
             log.warn("[admin-login] miss username={}", loginName);
+            auditService.recordAuthFailure(AuditService.Actions.ADMIN_LOGIN, loginName,
+                    "ADMIN_CREDENTIALS_INVALID", "账号不存在", request);
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_CREDENTIALS_INVALID", "用户名或密码错误");
         }
 
         if (admin.getPasswordHash() == null || !passwordEncoder.matches(password, admin.getPasswordHash())) {
             log.warn("[admin-login] bad-password adminId={} username={}", admin.getId(), admin.getUsername());
+            auditService.recordAuth(AuditService.Actions.ADMIN_LOGIN, AuditLog.AuditResult.FAILURE,
+                    admin.getId(), admin.getUsername(),
+                    "ADMIN_CREDENTIALS_INVALID", "密码错误", request);
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_CREDENTIALS_INVALID", "用户名或密码错误");
         }
 
         if (admin.getStatus() != AdminUser.AdminStatus.ACTIVE) {
             log.warn("[admin-login] inactive adminId={} username={} status={}",
                     admin.getId(), admin.getUsername(), admin.getStatus());
+            auditService.recordAuth(AuditService.Actions.ADMIN_LOGIN, AuditLog.AuditResult.FAILURE,
+                    admin.getId(), admin.getUsername(),
+                    "ADMIN_ACCOUNT_DISABLED", "账号被停用 status=" + admin.getStatus(), request);
             throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_ACCOUNT_DISABLED", "该账户已被停用");
         }
 
@@ -79,6 +96,8 @@ public class AdminAuthController {
         String token = jwtUtil.generateToken(admin.getId(), admin.getUsername(), admin.getRole().name());
         log.info("[admin-login] success adminId={} username={} role={}",
                 admin.getId(), admin.getUsername(), admin.getRole());
+        auditService.recordAuthSuccess(AuditService.Actions.ADMIN_LOGIN, admin.getId(), admin.getUsername(),
+                "admin 后台登录成功 role=" + admin.getRole(), request);
 
         return ApiResponse.of(Map.of(
                 "token", token,
@@ -110,7 +129,8 @@ public class AdminAuthController {
 
     @PostMapping("/change-password")
     public ApiResponse<Map<String, Object>> changePassword(Principal principal,
-                                                           @RequestBody Map<String, String> body) {
+                                                           @RequestBody Map<String, String> body,
+                                                           HttpServletRequest request) {
         if (principal == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "ADMIN_UNAUTHENTICATED", "未登录");
         }
@@ -134,6 +154,9 @@ public class AdminAuthController {
                     || !passwordEncoder.matches(currentPassword, admin.getPasswordHash())) {
                 log.warn("[admin-change-password] bad-current-password adminId={} username={}",
                         admin.getId(), admin.getUsername());
+                auditService.recordAuth(AuditService.Actions.ADMIN_CHANGE_PASSWORD,
+                        AuditLog.AuditResult.FAILURE, admin.getId(), admin.getUsername(),
+                        "ADMIN_CURRENT_PASSWORD_INVALID", "管理员修改密码：当前密码错误", request);
                 throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_CURRENT_PASSWORD_INVALID", "当前密码错误");
             }
             admin.setPasswordHash(passwordEncoder.encode(newPassword));
@@ -141,6 +164,9 @@ public class AdminAuthController {
             adminUserRepo.save(admin);
             log.info("[admin-change-password] success adminId={} username={}",
                     admin.getId(), admin.getUsername());
+            auditService.recordAuthSuccess(AuditService.Actions.ADMIN_CHANGE_PASSWORD,
+                    admin.getId(), admin.getUsername(),
+                    "管理员修改密码成功（admin_users 体系）", request);
             return ApiResponse.of(Map.of("changed", true, "accountSource", "admin"));
         }
 
@@ -150,6 +176,9 @@ public class AdminAuthController {
                     || !passwordEncoder.matches(currentPassword, aep.getPasswordHash())) {
                 log.warn("[operator-change-password] bad-current-password userId={} username={}",
                         aep.getId(), aep.getUsername());
+                auditService.recordAuth(AuditService.Actions.ADMIN_CHANGE_PASSWORD,
+                        AuditLog.AuditResult.FAILURE, aep.getId(), aep.getUsername(),
+                        "ADMIN_CURRENT_PASSWORD_INVALID", "运营修改密码：当前密码错误", request);
                 throw new BusinessException(HttpStatus.FORBIDDEN, "ADMIN_CURRENT_PASSWORD_INVALID", "当前密码错误");
             }
             aep.setPasswordHash(passwordEncoder.encode(newPassword));
@@ -157,6 +186,9 @@ public class AdminAuthController {
             aepUserRepo.save(aep);
             log.info("[operator-change-password] success userId={} username={}",
                     aep.getId(), aep.getUsername());
+            auditService.recordAuthSuccess(AuditService.Actions.ADMIN_CHANGE_PASSWORD,
+                    aep.getId(), aep.getUsername(),
+                    "运营修改密码成功（aep_users.operatorRole 体系）", request);
             return ApiResponse.of(Map.of("changed", true, "accountSource", "operator"));
         }
 

@@ -4,18 +4,22 @@ import com.aistareco.aep.config.JwtUtil;
 import com.aistareco.aep.dto.AepUserDto;
 import com.aistareco.aep.dto.MeDto;
 import com.aistareco.aep.model.AepUser;
+import com.aistareco.aep.model.AuditLog;
 import com.aistareco.aep.model.Studio;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.StudioRepository;
+import com.aistareco.aep.service.AuditService;
 import com.aistareco.aep.service.LicenseActivationService;
 import com.aistareco.aep.service.sms.SmsCodeService;
 import com.aistareco.aep.service.sms.SmsCodePurpose;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -51,27 +55,47 @@ public class SmsAuthController {
     private final StudioRepository studioRepo;
     private final LicenseActivationService licenseService;
     private final JwtUtil jwtUtil;
+    private final AuditService auditService;
 
     public SmsAuthController(SmsCodeService smsCodeService,
                               AepUserRepository userRepo,
                               StudioRepository studioRepo,
                               LicenseActivationService licenseService,
-                              JwtUtil jwtUtil) {
+                              JwtUtil jwtUtil,
+                              AuditService auditService) {
         this.smsCodeService = smsCodeService;
         this.userRepo = userRepo;
         this.studioRepo = studioRepo;
         this.licenseService = licenseService;
         this.jwtUtil = jwtUtil;
+        this.auditService = auditService;
     }
 
     /** 请求一个新验证码。失败抛 4xx；成功返回 { sent: true }。 */
     @PostMapping("/request-code")
-    public ApiResponse<Map<String, Object>> requestCode(@RequestBody(required = false) SmsRequestCodeRequest body) {
+    public ApiResponse<Map<String, Object>> requestCode(@RequestBody(required = false) SmsRequestCodeRequest body,
+                                                         HttpServletRequest request) {
         String phone = body == null ? null : body.phone();
         String trimmedPhone = phone == null ? null : phone.trim();
-        SmsCodePurpose purpose = parsePurpose(body == null ? null : body.purpose());
-        smsCodeService.requestCode(trimmedPhone, purpose);
+        SmsCodePurpose purpose;
+        try {
+            purpose = parsePurpose(body == null ? null : body.purpose());
+        } catch (BusinessException ex) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REQUEST_CODE, trimmedPhone,
+                    ex.getCode(), "请求验证码：用途参数无效", request);
+            throw ex;
+        }
+        try {
+            smsCodeService.requestCode(trimmedPhone, purpose);
+        } catch (RuntimeException ex) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REQUEST_CODE, trimmedPhone,
+                    errorCodeOf(ex, "SMS_REQUEST_FAILED"),
+                    "请求验证码失败 purpose=" + purpose.wire() + " · " + ex.getMessage(), request);
+            throw ex;
+        }
         log.info("[auth-sms] request-code ok purpose={} phone={}", purpose.wire(), trimmedPhone);
+        auditService.recordAuthSuccess(AuditService.Actions.SMS_REQUEST_CODE, null, trimmedPhone,
+                "发送 SMS 验证码 purpose=" + purpose.wire(), request);
         return ApiResponse.of(Map.of("sent", true));
     }
 
@@ -80,15 +104,25 @@ public class SmsAuthController {
      * 找不到 user 返回 404 USER_NOT_FOUND（验证码已被消费，前端引导用户去 /sms/register）。
      */
     @PostMapping("/verify")
-    public ApiResponse<Map<String, Object>> verify(@RequestBody(required = false) SmsVerifyRequest body) {
+    public ApiResponse<Map<String, Object>> verify(@RequestBody(required = false) SmsVerifyRequest body,
+                                                    HttpServletRequest request) {
         String phone = body == null ? null : body.phone();
         String code = body == null ? null : body.code();
         String trimmedPhone = phone == null ? null : phone.trim();
-        smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.LOGIN);
+        try {
+            smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.LOGIN);
+        } catch (RuntimeException ex) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_LOGIN, trimmedPhone,
+                    errorCodeOf(ex, "SMS_CODE_INVALID"),
+                    "短信登录：验证码校验失败 · " + ex.getMessage(), request);
+            throw ex;
+        }
 
         AepUser user = userRepo.findByPhone(trimmedPhone).orElse(null);
         if (user == null) {
             log.info("[auth-sms] login user-not-found phone={}", trimmedPhone);
+            auditService.recordAuthFailure(AuditService.Actions.SMS_LOGIN, trimmedPhone,
+                    "USER_NOT_FOUND", "短信登录：手机号未注册（引导走注册）", request);
             throw new BusinessException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND",
                     "该手机号尚未注册，请先用「激活码 + 手机号」完成注册");
         }
@@ -106,6 +140,9 @@ public class SmsAuthController {
         Studio studio = studioRepo.findByOwnerUserId(user.getId()).orElse(null);
         log.info("[auth-sms] login success phone={} userId={} role={} studioId={}",
                 trimmedPhone, user.getId(), role, studio == null ? null : studio.getId());
+        auditService.recordAuthSuccess(AuditService.Actions.SMS_LOGIN, user.getId(),
+                user.getUsername(),
+                "短信登录成功 phone=" + trimmedPhone + " role=" + role, request);
         return ApiResponse.of(Map.of(
                 "token", token,
                 "user", MeDto.from(user, studio)
@@ -120,8 +157,11 @@ public class SmsAuthController {
      * username 自动生成（phone_<手机号>）；displayName 选填；studioName 必填。
      */
     @PostMapping("/register")
-    public ApiResponse<Map<String, Object>> register(@RequestBody(required = false) SmsRegisterRequest body) {
+    public ApiResponse<Map<String, Object>> register(@RequestBody(required = false) SmsRegisterRequest body,
+                                                      HttpServletRequest request) {
         if (body == null) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, null,
+                    "REGISTER_BODY_REQUIRED", "短信注册：请求体缺失", request);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "REGISTER_BODY_REQUIRED", "缺少注册参数");
         }
         String phone = body.phone();
@@ -133,15 +173,28 @@ public class SmsAuthController {
 
         String trimmedPhone = phone == null ? null : phone.trim();
         if (licenseKey == null || licenseKey.isBlank()) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
+                    "LICENSE_KEY_REQUIRED", "短信注册：激活码字段缺失 platform=" + platform, request);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "LICENSE_KEY_REQUIRED", "请填写激活码");
         }
         if (studioName == null || studioName.isBlank()) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
+                    "STUDIO_NAME_REQUIRED", "短信注册：工作室名称字段缺失 platform=" + platform, request);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_NAME_REQUIRED", "请填写工作室名称");
         }
-        smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.REGISTER);
+        try {
+            smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.REGISTER);
+        } catch (RuntimeException ex) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
+                    errorCodeOf(ex, "SMS_CODE_INVALID"),
+                    "短信注册：验证码校验失败 platform=" + platform + " · " + ex.getMessage(), request);
+            throw ex;
+        }
 
         if (userRepo.existsByPhone(trimmedPhone)) {
             log.info("[auth-sms] register blocked already-registered phone={}", trimmedPhone);
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
+                    "PHONE_ALREADY_REGISTERED", "短信注册：手机号已注册 platform=" + platform, request);
             throw new BusinessException(HttpStatus.CONFLICT, "PHONE_ALREADY_REGISTERED",
                     "该手机号已注册，请直接使用验证码登录");
         }
@@ -158,7 +211,15 @@ public class SmsAuthController {
             activateBody.put("platform", platform.trim());
         }
 
-        Map<String, Object> activated = licenseService.activate(activateBody);
+        Map<String, Object> activated;
+        try {
+            activated = licenseService.activate(activateBody);
+        } catch (RuntimeException ex) {
+            auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
+                    errorCodeOf(ex, "LICENSE_ACTIVATE_FAILED"),
+                    "短信注册：激活码校验/落库失败 platform=" + platform + " · " + ex.getMessage(), request);
+            throw ex;
+        }
 
         // activate 之后立刻回查 + 标 phoneVerified=true（activate 默认置 false）
         AepUser user = userRepo.findByPhone(trimmedPhone).orElse(null);
@@ -174,10 +235,25 @@ public class SmsAuthController {
             Studio studio = studioRepo.findByOwnerUserId(user.getId()).orElse(null);
             log.info("[auth-sms] register success phone={} userId={} platform={} studioId={}",
                     trimmedPhone, user.getId(), platform, studio == null ? null : studio.getId());
+            auditService.recordAuthSuccess(AuditService.Actions.SMS_REGISTER, user.getId(),
+                    user.getUsername(),
+                    "短信 + 激活码注册成功 phone=" + trimmedPhone + " platform=" + platform
+                            + " studio=" + studioName, request);
             return ApiResponse.of(patched);
         }
         log.warn("[auth-sms] register completed but user lookup missed phone={} platform={}", trimmedPhone, platform);
+        auditService.recordAuth(AuditService.Actions.SMS_REGISTER, AuditLog.AuditResult.SUCCESS,
+                null, trimmedPhone, null,
+                "短信注册：激活成功但 user lookup miss platform=" + platform, request);
         return ApiResponse.of(activated);
+    }
+
+    private static String errorCodeOf(Throwable ex, String fallback) {
+        if (ex instanceof BusinessException bex) return bex.getCode();
+        if (ex instanceof ResponseStatusException rsx) {
+            return rsx.getStatusCode().value() + "";
+        }
+        return fallback;
     }
 
     private static SmsCodePurpose parsePurpose(String purpose) {

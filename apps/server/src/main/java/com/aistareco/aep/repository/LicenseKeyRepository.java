@@ -24,4 +24,10 @@ public interface LicenseKeyRepository extends JpaRepository<LicenseKey, String>,
     long countByStatus(LicenseKey.LicenseKeyStatus status);
 
     long countByBatchId(String batchId);
+
+    /**
+     * v0.47：按批次 + 状态精确计数，用于 LicenseService 把 totalCount / activatedCount
+     * 改为从 keys 表实时派生（修复 denormalized 列长期 drift 导致核销数 &gt; 总量的 bug）。
+     */
+    long countByBatchIdAndStatus(String batchId, LicenseKey.LicenseKeyStatus status);
 }
