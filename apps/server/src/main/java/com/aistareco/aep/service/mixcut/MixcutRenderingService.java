@@ -380,13 +380,56 @@ public class MixcutRenderingService {
             o.setCdnUploadedAt(cdnUploadedAt);
             saveOutput(jobId, o);
 
+            // v0.48+: 成片已上传 OSS → 删本地临时副本（§4.7：ECS 本机仅作短时临时区）。
+            // 仅当 CDN 上传成功（cdnVideoKey != null）才删；上传失败 / 未配 CDN 时保留本地，
+            // fileUrl 仍可兜底播放。前端成片播放/下载/缩略图已优先 cdn_url（v0.48），不依赖本地。
+            if (cdnVideoKey != null) {
+                deleteQuietly(outFile);
+                deleteQuietly(thumbFile);
+            }
+
             int pct = 15 + (int) ((double) (i + 1) / variantCount * 80);
             updateProgress(jobId, Math.min(95, pct), "running");
             log.info("[mixcut] job {} variant {}/{} done {} bytes", jobId, i + 1, variantCount, outFile.length());
         }
 
         markSuccess(jobId);
+        // v0.48+: 清本地中间产物（picgen 临时 png）+ 尝试删空的成片目录
+        //（成片都已上传 OSS 并删本地时目录会变空；有上传失败兜底文件则保留）。
+        cleanupLocalArtifacts(outDir);
         log.info("[mixcut] job {} success", jobId);
+    }
+
+    /** 删本地中间产物（picgen png 子目录）+ 尝试删除已空的成片目录。全 best-effort。 */
+    private void cleanupLocalArtifacts(File outDir) {
+        try {
+            File picgenDir = new File(outDir, "picgen");
+            if (picgenDir.isDirectory()) {
+                File[] pngs = picgenDir.listFiles();
+                if (pngs != null) {
+                    for (File f : pngs) deleteQuietly(f);
+                }
+                //noinspection ResultOfMethodCallIgnored
+                picgenDir.delete();
+            }
+            String[] remaining = outDir.list();
+            if (remaining == null || remaining.length == 0) {
+                //noinspection ResultOfMethodCallIgnored
+                outDir.delete();
+            }
+        } catch (Exception e) {
+            log.debug("[mixcut] local artifact cleanup skipped for {}: {}", outDir, e.getMessage());
+        }
+    }
+
+    /** 删单个本地文件，失败仅 debug log（不阻塞渲染流程）。 */
+    private void deleteQuietly(File f) {
+        if (f == null) return;
+        try {
+            Files.deleteIfExists(f.toPath());
+        } catch (Exception e) {
+            log.debug("[mixcut] delete local file failed {}: {}", f, e.getMessage());
+        }
     }
 
     // ── 素材准备 ───────────────────────────────────────────────────────────────

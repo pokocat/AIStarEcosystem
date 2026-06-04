@@ -36,6 +36,19 @@ import { PROFILE_LABELS, TRANSFORM_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatBytes, relativeTime, shortHash } from "@/components/mixcut-zone/lib/utils";
 import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
 
+/**
+ * v0.48+: 成片播放 / 下载 / 缩略图统一优先用 CDN(OSS) URL，本地 file_url 仅作兜底。
+ * 背景：渲染产出已上传 OSS（cdn_url 为出 wire 时签名的 OSS/CDN URL），本地 mp4 是临时区，
+ * 渲染后即清理（§4.7）。之前任务详情页直接用 file_url（本地 /static），既走 ECS 带宽、
+ * 又会在本地清理后 404。cdn_url 缺失（未配 CDN）时回退 file_url，行为与之前一致。
+ */
+function outputVideoSrc(o: { cdn_url?: string; file_url: string }): string {
+  return o.cdn_url || o.file_url;
+}
+function outputPoster(o: { cdn_thumbnail_url?: string; thumbnail_url?: string }): string | undefined {
+  return o.cdn_thumbnail_url || o.thumbnail_url || undefined;
+}
+
 export function JobDetailClient({ id }: { id: string }) {
   const router = useRouter();
   const [job, setJob] = useState<RenderJob | null | undefined>(undefined); // undefined = loading
@@ -361,8 +374,8 @@ export function JobDetailClient({ id }: { id: string }) {
                               <VariantVideoPreview
                                 key={o.id}
                                 ref={previewVideoRef}
-                                src={o.file_url}
-                                poster={o.thumbnail_url || undefined}
+                                src={outputVideoSrc(o)}
+                                poster={outputPoster(o)}
                                 isPlaying={isPlaying}
                                 onPlay={() => setIsPlaying(true)}
                                 onPause={() => setIsPlaying(false)}
@@ -416,8 +429,10 @@ export function JobDetailClient({ id }: { id: string }) {
                                 <div className="flex items-center gap-2 pt-2">
                                   <Button variant="gradient" className="flex-1" asChild>
                                     <a
-                                      href={o.file_url}
+                                      href={outputVideoSrc(o)}
                                       download={`${job.template_name || "mixcut"}-v${variantLabel}.mp4`}
+                                      target="_blank"
+                                      rel="noreferrer"
                                     >
                                       <Download className="size-4" /> 下载这条
                                     </a>
@@ -466,7 +481,7 @@ export function JobDetailClient({ id }: { id: string }) {
                             : "hover:ring-2 hover:ring-white/30"
                         )}
                       >
-                        <VariantThumbnail src={o.file_url} poster={o.thumbnail_url || undefined} />
+                        <VariantThumbnail src={outputVideoSrc(o)} poster={outputPoster(o)} />
                         <div className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
                           <PlayCircle className="size-7 text-white/90" />
                         </div>
