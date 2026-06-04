@@ -2406,6 +2406,46 @@ openapi: +/mixcut/drafts（get/post）+/mixcut/drafts/{draftId}（get/put/delete
   （实例是用户私有工作态，不进 admin）；(e) 自动草稿（每次编辑静默落库）—— 当前显式保存，避免
   污染草稿箱。
 
+### v0.49（2026-06-04）— 统一文件存储门面 FileStorageService（上传/生成/大模型产出收口）
+
+把全系统「上传 / 生成 / 大模型返回」的图片、视频、音频、模型等**文件存储收口到一个服务**。
+背景：底层早有 `CdnUploader`（local/oss driver）+ `CdnUrlSigner`（签名）抽象，但只有 mixcut 成片 /
+aiavatar / material video 走了它；**用户上传素材（MixcutAssetService）、celebrity 档案图
+（AdminCelebrityUploadController）还是各自 `Files.copy` 裸写本地、各自拼 URL**，既不统一也是本地
+盘无界增长源。本版加一个高层门面 `FileStorageService`，把这些「真·绕过」的写入收编进来。
+
+```
+server : 新 service/storage/FileStorageService（门面）：
+       :   store(MultipartFile/byte[]) / storeExisting(Path) → StoredFile{key,url,signedUrl,localPath,bytes,mime}
+       :   signedUrl(key) / delete(key) / openForRead(key)（本地有则用,否则下载到 read-cache 给 ffmpeg/python）
+       :   统一 key 约定 <category>/<owner?>/<uuid>.<ext>；底层委托 CdnUploader + CdnUrlSigner（不重复造）
+       : 新 config/FileStorageProperties（aep.storage.local-dir / public-url-base / signed-ttl / keep-local-copy）
+       : 新 config/FileStorageWebConfig（无 CDN driver 时把 local-dir 挂 /static/files 兜底）
+       : [收口] MixcutAssetService.upload —— 落本地的同时经门面推 OSS + 记 cdnKey（best-effort,失败保留本地）
+       :   MixcutAsset +cdnKey 列 + schema 迁移；MixcutAssetDto +cdn_url(签名)/+cdn_key；Controller 注入 signer
+       :   渲染仍读 localPath（不受影响）；素材库展示从此走 OSS/CDN（省 ECS 带宽 + 防盗刷）
+       : [收口] AdminCelebrityUploadController（avatar/cover/...）—— 裸写本地 → 门面 store → OSS；
+       :   返回**未签名稳定公开 URL**（会被持久化进档案字段长期复用,签名会过期）
+web-celebrity : MixcutAsset +cdn_url/cdn_key；素材库视频缩略图优先 cdn_url（图片经 thumbnail_url 已自动走 CDN）
+```
+
+**注意事项**：
+
+- **已在 CdnUploader 层的域不强迁门面**：material video / aiavatar / mixcut 成片本来就走共享
+  `CdnUploader`+`CdnUrlSigner`（prod 已落 OSS），各有自己的 key 方案。把它们折进新门面属**纯
+  cosmetic dedup + 会改 URL/key 方案**，无运行时验证不盲改；要做应在 dev 验证后逐个迁。
+- **Forge 当前是 fake**（随机派 showreel 占位 URL,无真文件写入）；接真 AI 视频生成时直接用门面。
+- **本地副本仍保留**（`keep-local-copy=true`）：渲染读 localPath、file_url 兜底需要。**磁盘真正释放**
+  是后续步骤 —— 渲染输入改走 `openForRead(cdnKey)` 从 OSS 拉 + `keep-local-copy=false`（需 dev 验证
+  签名 URL 在异步渲染时不过期：渲染时按 asset_id→cdnKey 现签,不存快照签名 URL）。
+- **DB 真值统一存 key**（§4.7.4）：MixcutAsset.cdnKey 是真值,URL 出 wire 由 signer 派生;celebrity
+  档案字段当前仍存 URL（未签名公开),要防盗刷需改存 cdnKey + 出 wire 派生（留作后续）。
+- **无新 endpoint / openapi 变更**：门面是内部服务;MixcutAssetDto 仅加 wire 字段(加性,契约门不受影响)。
+- **未做**：(a) material video / aiavatar / mixcut 成片折进门面（cosmetic,待 dev 验证）；
+  (b) MixcutAsset preset/official 上传 + 商品外链登记的门面化（admin/seed/外链,低频）；
+  (c) keep-local-copy=false 的纯 OSS-read 终态 + 渲染 openForRead 切换；(d) celebrity 档案改 key-only；
+  (e) 按 owner 配额 / sha256 去重 / 图片转码 —— 门面已留扩展位,未实现。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）
