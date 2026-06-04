@@ -335,6 +335,7 @@ export function MediaSlotInput({ slot, binding, onChange, mode, productId }: Pro
             >
               <div className="aspect-square rounded mb-1 grid place-items-center overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600">
                 {(() => {
+                  // v0.49+: 展示优先用 CDN(cdn_url) —— 走 OSS/CDN 而非 ECS /static，省带宽 + 防盗刷
                   const thumb = item.preview_url ?? item.thumbnail_url;
                   // 视频：服务端通常不生成封面图。优先用真实图缩略图，否则用 <video> 首帧
                   // （#t=0.1 让浏览器渲染第 0.1s 的帧而非黑屏；preload=metadata 不下载整段）。
@@ -343,7 +344,8 @@ export function MediaSlotInput({ slot, binding, onChange, mode, productId }: Pro
                       // eslint-disable-next-line @next/next/no-img-element
                       return <img src={thumb} className="w-full h-full object-cover" alt={item.name} />;
                     }
-                    const vsrc = thumb && isVideoUrl(thumb) ? thumb : item.file_url;
+                    const vsrc =
+                      item.cdn_url ?? (thumb && isVideoUrl(thumb) ? thumb : item.file_url);
                     return vsrc ? (
                       <video
                         src={`${vsrc}#t=0.1`}

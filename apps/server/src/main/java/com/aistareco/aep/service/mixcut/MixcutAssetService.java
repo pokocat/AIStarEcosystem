@@ -54,11 +54,15 @@ public class MixcutAssetService {
     private final MixcutProperties props;
     private final MixcutAssetRepository repo;
     private final FfmpegRunner ffmpeg;
+    // v0.49+: 统一文件存储 —— 用户上传素材在落本地的同时推 OSS、记 cdnKey（素材库展示走 CDN）。
+    private final com.aistareco.aep.service.storage.FileStorageService fileStorage;
 
-    public MixcutAssetService(MixcutProperties props, MixcutAssetRepository repo, FfmpegRunner ffmpeg) {
+    public MixcutAssetService(MixcutProperties props, MixcutAssetRepository repo, FfmpegRunner ffmpeg,
+                              com.aistareco.aep.service.storage.FileStorageService fileStorage) {
         this.props = props;
         this.repo = repo;
         this.ffmpeg = ffmpeg;
+        this.fileStorage = fileStorage;
     }
 
     // ─── v0.13.0+ 安全感知列表 ─────────────────────────────────────────────────────
@@ -246,6 +250,16 @@ public class MixcutAssetService {
         asset.setUploadedAt(OffsetDateTime.now());
         asset.setPreset(false);
         asset.setPresetGroup(null);
+
+        // v0.49+: 同步推 OSS 并记 cdnKey（素材库展示走 CDN，省 ECS 带宽 + 防盗刷）。
+        // best-effort：失败仅 log，本地副本 + fileUrl 仍可用（渲染走 localPath，不受影响）。
+        try {
+            var stored = fileStorage.storeExisting(
+                    target.toPath(), "mixcut-assets", safeUserId, ext, file.getContentType(), /*deleteAfter=*/false);
+            asset.setCdnKey(stored.key());
+        } catch (Exception e) {
+            log.warn("[mixcut] asset OSS upload failed id={} (keeping local): {}", id, e.getMessage());
+        }
 
         return repo.save(asset);
     }

@@ -204,6 +204,12 @@ export interface MixcutAsset {
    *   "ai-marketing-video"     — AI 生成的带货视频（future scope，结构预留）
    */
   subkind?: string;
+  /**
+   * v0.49+: 统一文件存储 —— 由 cdnKey 签名出的 OSS/CDN URL（素材库展示优先用，省 ECS 带宽 + 防盗刷）。
+   * 老素材 / 上传 OSS 失败时为空，回退 file_url。
+   */
+  cdn_url?: string;
+  cdn_key?: string;
 }
 
 /**

@@ -1,6 +1,7 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.MixcutAssetDto;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.aep.service.mixcut.MixcutAssetService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.ResponseEntity;
@@ -27,9 +28,12 @@ import java.util.List;
 public class MixcutAssetController {
 
     private final MixcutAssetService service;
+    // v0.49+: 出 wire 把 cdnKey 签成时效 cdn_url（素材库展示走 CDN）
+    private final CdnUrlSigner signer;
 
-    public MixcutAssetController(MixcutAssetService service) {
+    public MixcutAssetController(MixcutAssetService service, CdnUrlSigner signer) {
         this.service = service;
+        this.signer = signer;
     }
 
     @GetMapping
@@ -44,18 +48,18 @@ public class MixcutAssetController {
         // v0.26+: 商品关联素材过滤优先（短路 listVisibleTo），避免和 preset 池混合
         if (relatedProductId != null && !relatedProductId.isBlank()) {
             var byProduct = service.listByProduct(relatedProductId, userId, kind)
-                    .stream().map(MixcutAssetDto::from).toList();
+                    .stream().map(a -> MixcutAssetDto.from(a, signer)).toList();
             return ApiResponse.of(byProduct);
         }
         var assets = service.listVisibleTo(userId, kind, preset, presetGroup)
-                .stream().map(MixcutAssetDto::from).toList();
+                .stream().map(a -> MixcutAssetDto.from(a, signer)).toList();
         return ApiResponse.of(assets);
     }
 
     @GetMapping("/{id}")
     public ApiResponse<MixcutAssetDto> get(@PathVariable String id, Principal principal) {
         String userId = currentUserId(principal);
-        return ApiResponse.of(service.getVisibleTo(id, userId).map(MixcutAssetDto::from).orElse(null));
+        return ApiResponse.of(service.getVisibleTo(id, userId).map(a -> MixcutAssetDto.from(a, signer)).orElse(null));
     }
 
     @PostMapping(consumes = {"multipart/form-data"})
@@ -69,7 +73,7 @@ public class MixcutAssetController {
         String userId = currentUserId(principal);
         try {
             var asset = service.upload(file, kind, userId, name, tags);
-            return ResponseEntity.ok(ApiResponse.of(MixcutAssetDto.from(asset)));
+            return ResponseEntity.ok(ApiResponse.of(MixcutAssetDto.from(asset, signer)));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest()
                     .body(new ApiResponse<>(false, null, e.getMessage()));
@@ -94,7 +98,7 @@ public class MixcutAssetController {
             @RequestParam(value = "category", required = false) String category,
             @RequestParam(value = "star_id", required = false) String starId
     ) {
-        var list = service.listOfficial(category, starId).stream().map(MixcutAssetDto::from).toList();
+        var list = service.listOfficial(category, starId).stream().map(a -> MixcutAssetDto.from(a, signer)).toList();
         return ApiResponse.of(list);
     }
 

@@ -40,6 +40,15 @@ public class MixcutAsset {
     @Column(length = 1024)
     private String localPath;
 
+    /**
+     * v0.49+: OSS object key（经统一 FileStorageService 上传得到）。
+     * 出 wire 时由 CdnUrlSigner 签名成 cdn_url（CDN/OSS 提供，省 ECS 带宽 + 防盗刷）。
+     * 渲染仍读 localPath；本字段只为「素材库展示走 CDN」+ 后续本地清理（key 是真值）。
+     * 老素材 / 上传 OSS 失败时为 null，前端回退 file_url。
+     */
+    @Column(name = "cdn_key", length = 512)
+    private String cdnKey;
+
     /** 原始文件名（用于展示）。 */
     @Column(length = 256)
     private String originalName;
@@ -124,6 +133,9 @@ public class MixcutAsset {
 
     public String getFileUrl() { return fileUrl; }
     public void setFileUrl(String fileUrl) { this.fileUrl = fileUrl; }
+
+    public String getCdnKey() { return cdnKey; }
+    public void setCdnKey(String cdnKey) { this.cdnKey = cdnKey; }
 
     public String getLocalPath() { return localPath; }
     public void setLocalPath(String localPath) { this.localPath = localPath; }

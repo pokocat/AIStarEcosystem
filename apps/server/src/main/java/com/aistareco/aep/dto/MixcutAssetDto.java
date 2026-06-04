@@ -1,6 +1,7 @@
 package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.MixcutAsset;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -35,13 +36,26 @@ public record MixcutAssetDto(
         @JsonProperty("related_star_id") String relatedStarId,
         // v0.26+ 商品主线
         @JsonProperty("related_product_id") String relatedProductId,
-        @JsonProperty("subkind") String subkind
+        @JsonProperty("subkind") String subkind,
+        // v0.49+ 统一文件存储：cdn_url = 由 cdnKey 签名的 OSS/CDN URL（前端优先用，省 ECS 带宽）
+        @JsonProperty("cdn_url") String cdnUrl,
+        @JsonProperty("cdn_key") String cdnKey
 ) {
+    /** v0.49-：老入口，不签 CDN（preset/official seed 等不便注入 signer 时用）。 */
     public static MixcutAssetDto from(MixcutAsset a) {
-        // thumbnail 优先级：明确的 previewUrl > image/sticker 自身 fileUrl > null
+        return from(a, CdnUrlSigner.NOOP);
+    }
+
+    /** v0.49+：cdnKey 非空时签出 cdn_url；image/sticker 缩略图优先用 cdn_url。 */
+    public static MixcutAssetDto from(MixcutAsset a, CdnUrlSigner signer) {
+        String cdnUrl = (a.getCdnKey() != null && !a.getCdnKey().isBlank() && signer != null)
+                ? signer.signKey(a.getCdnKey())
+                : null;
+        boolean imageish = "image".equals(a.getKind()) || "sticker".equals(a.getKind());
+        // thumbnail 优先级：明确 previewUrl > cdn_url(image/sticker) > fileUrl(image/sticker) > null
         String thumb = a.getPreviewUrl();
-        if (thumb == null && ("image".equals(a.getKind()) || "sticker".equals(a.getKind()))) {
-            thumb = a.getFileUrl();
+        if (thumb == null && imageish) {
+            thumb = (cdnUrl != null ? cdnUrl : a.getFileUrl());
         }
         return new MixcutAssetDto(
                 a.getId(),
@@ -64,7 +78,9 @@ public record MixcutAssetDto(
                 a.getOfficialCategory(),
                 a.getRelatedStarId(),
                 a.getRelatedProductId(),
-                a.getSubkind()
+                a.getSubkind(),
+                cdnUrl,
+                a.getCdnKey()
         );
     }
 }

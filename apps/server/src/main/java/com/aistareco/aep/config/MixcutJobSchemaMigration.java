@@ -66,6 +66,8 @@ public class MixcutJobSchemaMigration implements CommandLineRunner {
             new AddColumn("mixcut_render_job", "forked_from_job_id",  "VARCHAR(64)",               "VARCHAR(64)"),
             // v0.48：来源实例（草稿）血缘
             new AddColumn("mixcut_render_job", "draft_id",            "VARCHAR(64)",               "VARCHAR(64)"),
+            // v0.49：素材统一存储 —— OSS object key（FileStorageService）
+            new AddColumn("mixcut_asset",      "cdn_key",             "VARCHAR(512)",              "VARCHAR(512)"),
             // v0.28：商品贯穿
             new AddColumn("mixcut_render_job", "product_id",          "VARCHAR(64)",               "VARCHAR(64)"),
             // v0.25：场景快照
