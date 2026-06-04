@@ -25,6 +25,28 @@ aep:
   seed:
     dev-data:
       enabled: ${AEP_SEED_DEV_DATA_ENABLED:false}
+  # MySQL profile 用于生产 / 联调。持久化资产默认走阿里云 OSS；
+  # 本地 dev fallback 继续留在 application.yml 的 local fake-CDN。
+  cdn:
+    driver: ${AEP_CDN_DRIVER:oss}
+    local-root: ${AEP_CDN_LOCAL_ROOT:./cdn-mock}
+    public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:https://aiartist.oss-cn-hangzhou.aliyuncs.com}
+    oss:
+      # ECS 与 bucket 同地域时走内网 endpoint；跨地域部署时用公网 endpoint 覆盖。
+      endpoint: ${AEP_CDN_OSS_ENDPOINT:oss-cn-hangzhou-internal.aliyuncs.com}
+      bucket: ${AEP_CDN_OSS_BUCKET:aiartist}
+      access-key-id: ${AEP_CDN_OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${AEP_CDN_OSS_ACCESS_KEY_SECRET:}
+      # 出 wire 的公网 base URL。若已绑定 CDN/CNAME，可用 env 覆盖为对应 HTTPS 域名。
+      base-url: ${AEP_CDN_OSS_BASE_URL:https://aiartist.oss-cn-hangzhou.aliyuncs.com}
+      key-prefix: ${AEP_CDN_OSS_KEY_PREFIX:media}
+      region: ${AEP_CDN_OSS_REGION:cn-hangzhou}
+    signed-url:
+      # 默认用 OSS pre-signed URL，避免没有 CDN PrivateKey 时裸 URL 出网。
+      # 高带宽生产建议通过 env 改为 cdn 并配置 AEP_CDN_SIGNED_URL_CDN_AUTH_KEY。
+      strategy: ${AEP_CDN_SIGNED_URL_STRATEGY:oss}
+      ttl-seconds: ${AEP_CDN_SIGNED_URL_TTL_SECONDS:3600}
+      cdn-auth-key: ${AEP_CDN_SIGNED_URL_CDN_AUTH_KEY:}
   # MySQL profile 同时服务 dev 联调和生产；默认 log，避免本地 dev mysql 误访问阿里云短信。
   # 生产真发必须显式设置 AEP_SMS_DRIVER=aliyun。
   sms:

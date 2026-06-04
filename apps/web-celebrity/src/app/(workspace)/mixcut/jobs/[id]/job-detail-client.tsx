@@ -31,7 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/mixcut-zo
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
 import { mockTemplates, mockStarClips } from "@/mocks/mixcut";
-import type { RenderJob } from "@/components/mixcut-zone/types";
+import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
 import { PROFILE_LABELS, TRANSFORM_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatBytes, relativeTime, shortHash } from "@/components/mixcut-zone/lib/utils";
 import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
@@ -42,10 +42,10 @@ import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
  * 渲染后即清理（§4.7）。之前任务详情页直接用 file_url（本地 /static），既走 ECS 带宽、
  * 又会在本地清理后 404。cdn_url 缺失（未配 CDN）时回退 file_url，行为与之前一致。
  */
-function outputVideoSrc(o: { cdn_url?: string; file_url: string }): string {
+function outputVideoSrc(o: RenderOutput): string {
   return o.cdn_url || o.file_url;
 }
-function outputPoster(o: { cdn_thumbnail_url?: string; thumbnail_url?: string }): string | undefined {
+function outputPoster(o: RenderOutput): string | undefined {
   return o.cdn_thumbnail_url || o.thumbnail_url || undefined;
 }
 
