@@ -130,6 +130,25 @@ public class MixcutRenderingService {
                 // markFailed 也失败 → 这是 H2 锁 / 连接池耗尽等极端场景，至少要 log
                 log.error("[mixcut] job {} markFailed ALSO threw (status will stay running)", jobId, inner);
             }
+            // v0.48+: 失败兜底清理 —— 渲染中途崩溃留下的本地半成品成片都是垃圾
+            //（成功路径在变体循环里逐条上传后即删；失败路径之前没人删 → 本地盘泄漏）。
+            // markFailed 已清 CDN 孤儿；这里把本地任务目录整个删掉。best-effort，不再抛。
+            deleteJobLocalDir(jobId);
+        }
+    }
+
+    /** 递归删除某 job 的本地成片目录（best-effort）。失败路径兜底 + 可手动调。 */
+    private void deleteJobLocalDir(String jobId) {
+        try {
+            File dir = new File(props.getOutputDir(), jobId);
+            if (!dir.exists()) return;
+            Files.walk(dir.toPath())
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try { Files.deleteIfExists(p); } catch (Exception ignored) { /* best-effort */ }
+                    });
+        } catch (Exception e) {
+            log.debug("[mixcut] job {} local dir cleanup skipped: {}", jobId, e.getMessage());
         }
     }
 
