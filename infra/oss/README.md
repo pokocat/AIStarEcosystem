@@ -4,7 +4,7 @@
 
 OSS 控制台 → 「Bucket 列表」→ 「创建 Bucket」
 
-- **Bucket 名**：`aistareco-prod`（生产）；环境隔离用 `aistareco-staging` / `aistareco-dev`
+- **Bucket 名**：`aiartist`（生产）；环境隔离可另建 staging / dev bucket
 - **地域**：与 ECS / RDS **同地域**（如华东 1 杭州）
 - **存储类型**：标准存储；用 `lifecycle.xml` 自动降级低频 / 归档
 - **同城冗余**：建议开（默认存 3 副本同 zone；同城冗余存 3 zone）
@@ -18,29 +18,30 @@ OSS 控制台 → 「Bucket 列表」→ 「创建 Bucket」
 
 - **内网 endpoint**：`oss-cn-hangzhou-internal.aliyuncs.com` —— **server.env 必须用这个**
 - **外网 endpoint**：`oss-cn-hangzhou.aliyuncs.com` —— 仅本机调试用
-- **Bucket 域名**：`aistareco-prod.oss-cn-hangzhou.aliyuncs.com` —— 浏览器直访（不推荐，用 CDN）
+- **Bucket 域名**：`aiartist.oss-cn-hangzhou.aliyuncs.com` —— 浏览器直访（不推荐高带宽视频长期直走 OSS）
+- **CNAME 域名**：如 `aiartist.cn-hangzhou.taihangwkz.cn` —— 已绑定并配置 HTTPS 后可作为公网 base URL
 
 ## 3. 绑 CDN 域名（强烈推荐）
 
 阿里云 CDN 控制台 → 「域名管理」→ 「添加域名」：
 
-- **加速域名**：`cdn.aibuzz.cn`
+- **加速域名**：例如 `aiartist.cn-hangzhou.taihangwkz.cn` 或独立 CDN 域名
 - **业务类型**：视频点播加速
 - **回源**：OSS bucket（私有 bucket 需开「OSS Private Bucket 回源」）
 - **加速区域**：中国内地（如需海外另起 `cdn-intl.aibuzz.cn`）
 - **HTTPS**：必开（用阿里云免费 SSL 或上传自己的）
 
-DNS 解析：把 `cdn.aibuzz.cn` CNAME 到阿里云分配的 `.kunlunca.com` 域名。
+DNS 解析：把加速域名 CNAME 到阿里云分配的 `.kunlunca.com` 域名。
 
 最终在 `server.env` 配：
 ```
-AEP_CDN_OSS_BASE_URL=https://cdn.aibuzz.cn
-AEP_CDN_PUBLIC_BASE_URL=https://cdn.aibuzz.cn
+AEP_CDN_OSS_BASE_URL=https://aiartist.cn-hangzhou.taihangwkz.cn
+AEP_CDN_PUBLIC_BASE_URL=https://aiartist.cn-hangzhou.taihangwkz.cn
 ```
 
 ### 3.1 ⚠️ URL 鉴权 / 签名（v0.47+ 必配，防流量盗刷）
 
-**仅 bucket 私有 + CDN 回源 远远不够**。一旦 `https://cdn.aibuzz.cn/mixcut/<jobId>/v0.mp4`
+**仅 bucket 私有 + CDN 回源 远远不够**。一旦 `https://aiartist.cn-hangzhou.taihangwkz.cn/media/mixcut/<jobId>/v0.mp4`
 这种公开 URL 泄漏（被爬 / 进缓存 / 域名被扫），任何人都能持续刷流量直到资源消失，
 **最坏情况能在一夜之间打出几千块 RMB 的 CDN/OSS 流量账单**。
 
@@ -52,7 +53,7 @@ AEP_CDN_PUBLIC_BASE_URL=https://cdn.aibuzz.cn
 | 配置位置 | 阿里云 CDN 控制台 → 域名管理 → 访问控制 → URL 鉴权 → A 方式 | OSS 控制台 + RAM 子账号管理 |
 | 算法 | `md5(URI-timestamp-rand-uid-PrivateKey)` | V4 = HMAC-SHA256（新 SDK 默认） |
 | URL 形态 | `?auth_key=<ts>-<rand>-<uid>-<md5>` | `?x-oss-date=...&x-oss-signature=...&x-oss-credential=...` |
-| host | CDN 域名（cdn.aibuzz.cn） | OSS endpoint 公网（bucket.oss-cn-hangzhou.aliyuncs.com） |
+| host | CDN 域名（如 aiartist.cn-hangzhou.taihangwkz.cn） | OSS endpoint 公网（bucket.oss-cn-hangzhou.aliyuncs.com） |
 | 谁验签 | CDN 边缘节点 | OSS server |
 | 流量走 | CDN（0.24 元/GB） | OSS 外网（0.5 元/GB） |
 | OSS bucket / AK 是否需要 | 仅签 URL 不要；**上传文件依然要 OSS AK** | 签名 + 上传都要 |
@@ -76,7 +77,7 @@ URL 自带 expires + 鉴权字段，过期即失效。三种策略：
 
 **配置步骤**（strategy=cdn）：
 
-1. 阿里云 CDN 控制台 → 域名管理 → 选 `cdn.aibuzz.cn` → **访问控制 → URL 鉴权**
+1. 阿里云 CDN 控制台 → 域名管理 → 选你的加速域名 → **访问控制 → URL 鉴权**
 2. 鉴权类型选 **Type A**（**主 KEY + 备 KEY 至少填一个**），**鉴权状态：开启**
 3. 「主 KEY」点「自动生成」拿到 32 位字符串 → 复制下来（**这是一个全新的密钥，跟 OSS AK 没有任何关系**）
 4. 把密钥填到 ECS 上的 `/etc/aistareco/server.env`：
@@ -84,10 +85,10 @@ URL 自带 expires + 鉴权字段，过期即失效。三种策略：
    # ── A. OSS 上传 + 落点（任何 driver=oss 都必需，跟签名策略无关） ──
    AEP_CDN_DRIVER=oss
    AEP_CDN_OSS_ENDPOINT=oss-cn-hangzhou-internal.aliyuncs.com
-   AEP_CDN_OSS_BUCKET=aistareco-prod
+   AEP_CDN_OSS_BUCKET=aiartist
    AEP_CDN_OSS_ACCESS_KEY_ID=LTAI5tXXX                # OSS RAM 子账号 AK
    AEP_CDN_OSS_ACCESS_KEY_SECRET=XXX
-   AEP_CDN_OSS_BASE_URL=https://cdn.aibuzz.cn          # 出 wire 用 CDN 域名
+   AEP_CDN_OSS_BASE_URL=https://aiartist.cn-hangzhou.taihangwkz.cn  # 出 wire 用公网域名
    AEP_CDN_OSS_KEY_PREFIX=media
 
    # ── B. URL 签名（独立配置；strategy=cdn 时密钥来源完全不同） ──
@@ -102,7 +103,7 @@ URL 自带 expires + 鉴权字段，过期即失效。三种策略：
 ```bash
 # 拉一个混剪任务 JSON，检查 outputs[*].cdn_url 是否带 ?auth_key=…
 curl -H "Authorization: Bearer <jwt>" https://api.aibuzz.cn/api/me/mixcut/jobs | jq '.data[0].outputs[0].cdn_url'
-# 应该看到形如：https://cdn.aibuzz.cn/media/mixcut/abc/v0.mp4?auth_key=1700000000-xxxx-0-md5sum
+# 应该看到形如：https://aiartist.cn-hangzhou.taihangwkz.cn/media/mixcut/abc/v0.mp4?auth_key=1700000000-xxxx-0-md5sum
 
 # 直接 GET 应当 200；改 / 删 auth_key 后再 GET 应当 403
 curl -I "<上面输出的 URL>"
@@ -129,10 +130,10 @@ curl -I "<上面输出的 URL 把 auth_key 改掉一位>"   # 期待 403
 - **访问方式**：编程访问（OpenAPI / SDK）→ 拿到 AccessKey ID + Secret
 
 控制台 → RAM → 「权限策略」→ 「创建策略」→ 「脚本编辑」：
-- 粘贴 `ram-policy.json` 内容（先替换 `aistareco-prod` 为你的 bucket 名）
-- 命名 `AistarecoOssMixcutWrite`
+- 粘贴 `ram-policy.json` 内容（bucket 默认 `aiartist`；前缀默认 `media/`）
+- 命名 `AistarecoOssMediaWrite`
 
-回到子用户「权限管理」→ 「添加权限」→ 附加自定义策略 `AistarecoOssMixcutWrite`。
+回到子用户「权限管理」→ 「添加权限」→ 附加自定义策略 `AistarecoOssMediaWrite`。
 
 **绝对不要**给子用户绑 `AliyunOSSFullAccess`（默认策略），那会让 AK 一旦泄漏可删除整个账号下所有 bucket。
 
@@ -166,8 +167,8 @@ curl -s http://127.0.0.1:8080/api/auth/dev-accounts
 # 上传一个测试 mixcut 任务（前端走流程），然后看后端日志：
 journalctl -u aistareco-server -n 100 | grep '\[cdn\]'
 # 期望看到：
-# [cdn] AliyunOssCdnUploader bucket=aistareco-prod endpoint=oss-cn-... publicBase=https://cdn.aibuzz.cn keyPrefix=mixcut
-# [cdn] uploaded oss key=mixcut/<jobId>/v0.mp4 bytes=... url=https://cdn.aibuzz.cn/mixcut/...
+# [cdn] AliyunOssCdnUploader bucket=aiartist endpoint=oss-cn-... publicBase=https://aiartist.cn-hangzhou.taihangwkz.cn keyPrefix=media
+# [cdn] uploaded oss key=media/mixcut/<jobId>/v0.mp4 bytes=... url=https://aiartist.cn-hangzhou.taihangwkz.cn/media/mixcut/...
 
-# 浏览器打 https://cdn.aibuzz.cn/mixcut/<jobId>/v0.mp4，应该 200 视频流
+# 浏览器打 https://aiartist.cn-hangzhou.taihangwkz.cn/media/mixcut/<jobId>/v0.mp4，应该 200 视频流
 ```

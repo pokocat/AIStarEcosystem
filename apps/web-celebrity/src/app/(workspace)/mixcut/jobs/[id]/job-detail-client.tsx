@@ -30,7 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/mixcut-zo
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
 import { mockTemplates, mockStarClips } from "@/mocks/mixcut";
-import type { RenderJob } from "@/components/mixcut-zone/types";
+import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
 import { PROFILE_LABELS, TRANSFORM_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatBytes, relativeTime, shortHash } from "@/components/mixcut-zone/lib/utils";
 import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
@@ -345,12 +345,14 @@ export function JobDetailClient({ id }: { id: string }) {
                           {(() => {
                             const safeIdx = Math.min(selectedVariant, sortedOutputs.length - 1);
                             const o = sortedOutputs[safeIdx];
+                            const videoUrl = outputVideoUrl(o);
+                            const posterUrl = outputPosterUrl(o);
                             return (
                               <VariantVideoPreview
                                 key={o.id}
                                 ref={previewVideoRef}
-                                src={o.file_url}
-                                poster={o.thumbnail_url || undefined}
+                                src={videoUrl}
+                                poster={posterUrl}
                                 isPlaying={isPlaying}
                                 onPlay={() => setIsPlaying(true)}
                                 onPause={() => setIsPlaying(false)}
@@ -374,6 +376,7 @@ export function JobDetailClient({ id }: { id: string }) {
                             const safeIdx = Math.min(selectedVariant, sortedOutputs.length - 1);
                             const o = sortedOutputs[safeIdx];
                             const variantLabel = o.variant_index + 1;
+                            const downloadUrl = outputVideoUrl(o);
                             return (
                               <>
                                 <div>
@@ -404,7 +407,7 @@ export function JobDetailClient({ id }: { id: string }) {
                                 <div className="flex items-center gap-2 pt-2">
                                   <Button variant="gradient" className="flex-1" asChild>
                                     <a
-                                      href={o.file_url}
+                                      href={downloadUrl}
                                       download={`${job.template_name || "mixcut"}-v${variantLabel}.mp4`}
                                     >
                                       <Download className="size-4" /> 下载这条
@@ -454,7 +457,7 @@ export function JobDetailClient({ id }: { id: string }) {
                             : "hover:ring-2 hover:ring-white/30"
                         )}
                       >
-                        <VariantThumbnail src={o.file_url} poster={o.thumbnail_url || undefined} />
+                        <VariantThumbnail src={outputVideoUrl(o)} poster={outputPosterUrl(o)} />
                         <div className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
                           <PlayCircle className="size-7 text-white/90" />
                         </div>
@@ -794,6 +797,14 @@ interface VariantVideoPreviewProps {
   onPause: () => void;
   onEnded: () => void;
   fallback: ReactNode;
+}
+
+function outputVideoUrl(output: RenderOutput): string | undefined {
+  return output.cdn_url || output.file_url || undefined;
+}
+
+function outputPosterUrl(output: RenderOutput): string | undefined {
+  return output.cdn_thumbnail_url || output.thumbnail_url || undefined;
 }
 
 const VariantVideoPreview = forwardRef(function VariantVideoPreview(

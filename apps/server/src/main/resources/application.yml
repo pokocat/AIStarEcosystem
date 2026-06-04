@@ -117,33 +117,14 @@ aep:
     asset-dir: ${AEP_MIXCUT_ASSET_DIR:./mixcut-assets}
     # 用户上传素材公开 URL 前缀
     asset-public-url-base: ${AEP_MIXCUT_ASSET_URL_BASE:/static/mixcut-assets}
-  # v0.14+: CDN 抽象层 —— dev 用 local fake-CDN, prod 切 oss
+  # v0.14+: CDN 抽象层。
+  # 通用 / dev profile 默认 local fake-CDN；MySQL profile 在 application-mysql.yml
+  # 覆盖为 OSS 默认，生产再由 /etc/aistareco/server.env 注入密钥和域名。
   cdn:
     driver: ${AEP_CDN_DRIVER:local}
     local-root: ${AEP_CDN_LOCAL_ROOT:./cdn-mock}
     # 相对路径走 same-origin；绝对 URL（http://cdn.example.com）由外部 OSS / CDN 域名直供
     public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:/cdn}
-    # 阿里云 OSS（仅 driver=oss 时生效，v0.16+ 实现；v0.47+ SDK 3.18.5 + V4 签名强制 region）
-    oss:
-      endpoint: ${AEP_CDN_OSS_ENDPOINT:}
-      bucket: ${AEP_CDN_OSS_BUCKET:}
-      access-key-id: ${AEP_CDN_OSS_ACCESS_KEY_ID:}
-      access-key-secret: ${AEP_CDN_OSS_ACCESS_KEY_SECRET:}
-      base-url: ${AEP_CDN_OSS_BASE_URL:}
-      key-prefix: ${AEP_CDN_OSS_KEY_PREFIX:}
-      # v0.47+: V4 签名要求 region；缺失时从 endpoint 推导（oss-cn-hangzhou.aliyuncs.com → cn-hangzhou）
-      region: ${AEP_CDN_OSS_REGION:}
-    # v0.47+: OSS URL 签名（防流量盗刷 / hot-link 滥用）
-    #   strategy:
-    #     none → 不签，直接返回 base-url + key（dev / 调试用；生产强烈不推荐）
-    #     oss  → OSS SDK pre-signed URL（host=OSS endpoint，绕 CDN；MVP 推荐）
-    #     cdn  → 阿里云 CDN URL 鉴权 Type A（走 CDN 节省带宽费；需先在 CDN 控制台配 PrivateKey）
-    #   ttl-seconds: 签名有效秒数；推荐 3600~14400；过短 H5 视频播放中断
-    #   cdn-auth-key: 仅 strategy=cdn 用 —— 阿里云 CDN 控制台「访问控制 → URL 鉴权 Type A」的 PrivateKey
-    signed-url:
-      strategy: ${AEP_CDN_SIGNED_URL_STRATEGY:none}
-      ttl-seconds: ${AEP_CDN_SIGNED_URL_TTL_SECONDS:3600}
-      cdn-auth-key: ${AEP_CDN_SIGNED_URL_CDN_AUTH_KEY:}
   # v0.16+: 文字转图 —— 纯 Java2D 内部渲染，无外部进程依赖
   picgen:
     enabled: ${AEP_PICGEN_ENABLED:true}
