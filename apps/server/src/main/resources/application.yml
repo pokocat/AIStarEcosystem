@@ -87,6 +87,13 @@ aep:
     model: ${AEP_DEV_FAKE_LLM_MODEL:fake-model-v1}
   assets:
     video-base-url: ${AEP_FORGE_VIDEO_BASE:/static/videos}
+  # v0.49+: 统一文件存储门面（FileStorageService）。底层 driver 仍走 aep.cdn.*。
+  storage:
+    local-dir: ${AEP_STORAGE_LOCAL_DIR:./file-storage}
+    public-url-base: ${AEP_STORAGE_PUBLIC_URL_BASE:/static/files}
+    signed-url-ttl-seconds: ${AEP_STORAGE_SIGNED_TTL:3600}
+    # 上传 CDN 成功后是否保留本机副本（ffmpeg/file_url 兜底需要时为 true；纯 OSS-read 终态设 false）
+    keep-local-copy: ${AEP_STORAGE_KEEP_LOCAL:true}
   mixcut:
     # 渲染产出目录（绝对或相对工作目录）；下面映射到 publicUrlBase
     output-dir: ${AEP_MIXCUT_OUTPUT_DIR:./mixcut-output}
