@@ -375,6 +375,8 @@ src/main/java/com/aistareco/aep/
 | `products` 扩字段 (v0.28) | `price_cents`（INT nullable）/ `commission_rate`（INT nullable, 0-100 整数百分比）—— 选品表格导入 + 抖音链接解析的价格 / 佣金信息 |
 | `mixcut_asset` 扩字段 (v0.28) | `related_product_id`（VARCHAR(64), 关联 `products.id`，可空）/ `subkind`（VARCHAR(32), 区分 `"user-upload"` / `"product-photo"` / `"product-video"` / `"ai-marketing-video"`）—— 商品链接解析时把外网 CDN 图片直接登记为 MixcutAsset 行，create 页 `?product_id=X` 按此过滤「本商品素材」 |
 | `mixcut_render_job` 扩字段 (v0.28) | `product_id`（VARCHAR(64), 关联 `products.id`，可空）—— 从商品库「生成视频」入口透传，分发抽屉用它反查 Product 自动 prefill 抖音商品挂载字段（productLink / productTitle） |
+| `mixcut_draft`（v0.48 新表） | 混剪「实例 / 草稿」—— 模版与生成任务之间的中间层。字段与 `MixcutRenderJob` 快照列对齐（`slot_bindings_json` / `canvas_snapshot_json` / `slots_snapshot_json` / `scenes_snapshot_json` / `perturbation_overrides_json` / `sticker_pool_json` / `perturbation_profile` / `output_variants` / `product_id`）+ `name` / `template_version` / `status`（draft）/ `generated_job_count` / `last_generated_at`。`userId` 隔离。端点 `/api/mixcut/drafts`（CRUD + `/{id}/generate`）。保存填了一半的配置 → 可继续编辑 / 反复生成 |
+| `mixcut_render_job` 扩字段 (v0.48) | `draft_id`（VARCHAR(64), 关联 `mixcut_draft.id`，可空）—— 从实例 / 草稿生成时填入；任务详情页据此显示「来自实例」徽章并深链回 create 页继续编辑该实例。`MixcutJobSchemaMigration` 兜底加列 |
 
 **v0.28 新增端点**：
 

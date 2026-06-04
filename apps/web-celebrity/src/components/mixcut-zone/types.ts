@@ -367,6 +367,70 @@ export interface RenderJob {
    * 分发阶段 BatchPublishDrawer 用它反查 Product 并自动 prefill 抖音商品挂载字段。
    */
   product_id?: string;
+  /**
+   * v0.48+: 来源实例 id（MixcutDraft.id）。当任务由「实例 / 草稿」生成时填入，
+   * 任务详情页据此显示「来自实例」徽章并深链回 create 页继续编辑该实例。
+   * 直接走模板创建（无草稿）时为空。后端字段名 draft_id。
+   */
+  draft_id?: string;
+}
+
+/**
+ * v0.48+: 混剪「实例 / 草稿」—— 模版与生成任务之间的中间层。
+ *
+ * 一个实例 = 「针对某模版配好的一份素材绑定 + 扰动设置」，可保存、可反复编辑、可多次生成。
+ * 字段与 RenderJob 的快照部分对齐（本质是「还没提交渲染的任务配置」）。
+ * 后续从实例生成的每个 RenderJob 都带 draft_id 指回，形成
+ * 模版（Template） → 实例（MixcutDraft） → 生成任务（RenderJob）三层血缘。
+ */
+export interface MixcutDraft {
+  id: string;
+  user_id?: string;
+  template_id: string;
+  template_name?: string;
+  template_thumbnail?: string;
+  /** 实例名（用户可命名；默认「{模版名} · 草稿」）。 */
+  name: string;
+  /** 创建 / 上次保存时的模版 version，用于重开时 reconcile 提示「模版已更新」。 */
+  template_version?: string;
+  slot_bindings: Record<string, SlotBinding>;
+  canvas_snapshot?: CanvasSnapshot;
+  slots_snapshot?: SlotSnapshot[];
+  scenes_snapshot?: SceneSnapshot[];
+  perturbation_overrides?: PerturbationOverrides;
+  sticker_pool?: Record<string, StickerPoolBinding>;
+  perturbation_profile: PerturbationProfile;
+  output_variants: number;
+  product_id?: string;
+  /** draft / archived（预留）。 */
+  status: string;
+  /** 从本实例生成过几次任务。 */
+  generated_job_count: number;
+  last_generated_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * v0.48+: 新建 / 更新实例的请求体（POST /mixcut/drafts | PUT /mixcut/drafts/{id}）。
+ * id 可前端预生成；缺省由后端补齐。其余字段与 MixcutDraft 同名（快照子集）。
+ */
+export interface MixcutDraftUpsert {
+  id?: string;
+  template_id: string;
+  template_name?: string;
+  template_thumbnail?: string;
+  name?: string;
+  template_version?: string;
+  slot_bindings: Record<string, SlotBinding>;
+  canvas_snapshot?: CanvasSnapshot;
+  slots_snapshot?: SlotSnapshot[];
+  scenes_snapshot?: SceneSnapshot[];
+  perturbation_overrides?: PerturbationOverrides;
+  sticker_pool?: Record<string, StickerPoolBinding>;
+  perturbation_profile?: PerturbationProfile;
+  output_variants?: number;
+  product_id?: string;
 }
 
 /**

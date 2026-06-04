@@ -23,6 +23,10 @@ import {
   CheckCircle2,
   Lock,
   X as XIcon,
+  Save,
+  Bookmark,
+  PencilRuler,
+  Loader2 as Loader2Icon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-star-eco/ui/ui/collapsible";
 import { nanoid } from "nanoid";
@@ -54,6 +58,7 @@ import type {
   Template,
   MixcutAsset,
   TemplateSlot,
+  MixcutDraftUpsert,
 } from "@/components/mixcut-zone/types";
 import { PROFILE_LABELS, PROFILE_DESCRIPTIONS, TIER_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
@@ -184,6 +189,23 @@ function applyProductHeuristics(
   return next;
 }
 
+/**
+ * v0.48+: 实例填充态指纹 —— 用于「未保存改动」判定。把会落进实例的字段拍成一个稳定串，
+ * 与上次保存 / 恢复时的指纹比对；不等即 dirty。
+ */
+function draftSig(
+  bindings: Record<string, SlotBinding>,
+  profile: PerturbationProfile,
+  variants: number,
+  overrides: PerturbationOverrides,
+  stickerPool: StickerPoolBinding | undefined,
+  productId: string | undefined,
+): string {
+  const sortedBindings: Record<string, SlotBinding> = {};
+  for (const k of Object.keys(bindings).sort()) sortedBindings[k] = bindings[k];
+  return JSON.stringify([sortedBindings, profile, variants, overrides, stickerPool ?? null, productId ?? null]);
+}
+
 export function CreateClient({ id }: { id: string }) {
   const router = useRouter();
   const code = MixcutApi.mockActivationCode;
@@ -245,11 +267,26 @@ export function CreateClient({ id }: { id: string }) {
   const [activeSceneIdx, setActiveSceneIdx] = useState(0);
   const initFromTemplateRef = useRef(false);
   const productAutoFillRef = useRef(false);
+  const draftLoadRef = useRef(false);
   const { confirm, ConfirmHost } = useConfirm();
 
   // v0.26+: 从商品库「生成视频」入口带过来的 product_id（可空）
   const searchParams = useSearchParams();
   const productIdFromUrl = searchParams?.get("product_id") ?? null;
+
+  /**
+   * v0.48+: 实例 / 草稿。?draft_id=X 进入时恢复填充态；「保存草稿」把当前配置落库成实例。
+   * 生成任务时把 activeDraftId 写进 RenderJob.draft_id，建立「模版 → 实例 → 生成任务」血缘。
+   */
+  const draftIdFromUrl = searchParams?.get("draft_id") ?? null;
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(draftIdFromUrl);
+  const [draftName, setDraftName] = useState<string>("");
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [savedSig, setSavedSig] = useState<string | null>(null);
+  // 重开实例时若模版已变化，列出被丢弃的绑定 / 提示版本变更
+  const [reconcile, setReconcile] = useState<{ removed: string[]; versionChanged: boolean } | null>(null);
 
   useEffect(() => {
     MixcutApi.getTemplate(id).then((t) => {
@@ -288,6 +325,9 @@ export function CreateClient({ id }: { id: string }) {
    */
   useEffect(() => {
     if (!productIdFromUrl || !template || productAutoFillRef.current) return;
+    // v0.48+: 从实例恢复时不跑商品启发式 —— 实例里已有用户确认过的绑定，
+    // 由 draft-load effect 负责（含商品展示）。避免启发式覆盖实例绑定。
+    if (draftIdFromUrl) return;
     // 等 initFromTemplateRef 跑过（拿到模板默认 bindings 后再覆盖）
     if (!initFromTemplateRef.current) return;
     productAutoFillRef.current = true;
@@ -304,7 +344,78 @@ export function CreateClient({ id }: { id: string }) {
       .catch(() => {
         // 失败静默，用户仍可手动填
       });
-  }, [productIdFromUrl, template]);
+  }, [productIdFromUrl, draftIdFromUrl, template]);
+
+  /**
+   * v0.48+: ?draft_id=X 进入时恢复实例填充态。
+   * 等模板默认 bindings 就位后再覆盖：按 slot_id 把实例绑定叠到当前模板上 ——
+   * 仍存在的 slot 用实例绑定，已被模板删掉的 slot 收集到 reconcile.removed 提示用户。
+   * profile / variants / overrides / 贴图池 / 关联商品 一并恢复。仅跑一次。
+   */
+  useEffect(() => {
+    if (!draftIdFromUrl || !template || draftLoadRef.current) return;
+    if (!initFromTemplateRef.current) return;
+    draftLoadRef.current = true;
+    MixcutApi.getDraft(draftIdFromUrl)
+      .then((d) => {
+        if (!d) return;
+        setActiveDraftId(d.id);
+        setDraftName(d.name ?? "");
+        const tplSlotIds = new Set(flatSlotsOf(template).map((s) => s.slot_id));
+        const draftBindings = d.slot_bindings ?? {};
+        const removed = Object.keys(draftBindings).filter((id) => !tplSlotIds.has(id));
+
+        const seeded: Record<string, SlotBinding> = {};
+        // 模板默认（固定块 / 默认文案）打底
+        flatSlotsOf(template).forEach((s) => {
+          if (s.fill_strategy === "user_input" && s.default_value) {
+            seeded[s.slot_id] = { source: "input", text: s.default_value };
+          } else if (s.fill_strategy === "fixed") {
+            seeded[s.slot_id] = { source: "fixed" };
+          }
+        });
+        // 实例绑定覆盖（仅当前模板仍存在的 slot）
+        for (const [slotId, b] of Object.entries(draftBindings)) {
+          if (tplSlotIds.has(slotId)) seeded[slotId] = b as SlotBinding;
+        }
+        setBindings(seeded);
+
+        const seededProfile = d.perturbation_profile ?? template.perturbation_profile;
+        const seededVariants = d.output_variants ?? template.output_variants_default;
+        const seededOverrides: Required<PerturbationOverrides> = {
+          allow_mirror: d.perturbation_overrides?.allow_mirror ?? true,
+          allow_speed: d.perturbation_overrides?.allow_speed ?? true,
+          allow_brightness: d.perturbation_overrides?.allow_brightness ?? true,
+          allow_saturation: d.perturbation_overrides?.allow_saturation ?? true,
+          allow_position_jitter: d.perturbation_overrides?.allow_position_jitter ?? true,
+          allow_scale_jitter: d.perturbation_overrides?.allow_scale_jitter ?? true,
+        };
+        const seededSticker = d.sticker_pool?.["_global"];
+        setProfile(seededProfile);
+        setVariants(seededVariants);
+        setOverrides(seededOverrides);
+        if (seededSticker) setStickerPool(seededSticker);
+
+        const versionChanged = !!d.template_version && d.template_version !== template.version;
+        setReconcile(removed.length > 0 || versionChanged ? { removed, versionChanged } : null);
+        // 这份恢复态视作「已保存」基线
+        setSavedSig(
+          draftSig(seeded, seededProfile, seededVariants, seededOverrides, seededSticker, d.product_id),
+        );
+
+        if (d.product_id) {
+          ProductsApi.getProduct(d.product_id)
+            .then((p) => {
+              if (p) setLinkedProduct(p);
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        // 实例不存在 / 网络故障 → 当作普通新建（用户从模板默认开始）
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftIdFromUrl, template]);
 
   // v0.26+: 用户在中列点开某个 slot 的 input → 画布自动跳到该 slot 所在场景。
   // 让"我在填的内容"和"画布上正在显示的画面"始终对齐，避免用户编辑 scene 3 的标题
@@ -411,6 +522,106 @@ export function CreateClient({ id }: { id: string }) {
   const available = walletBalance?.totalBalance ?? 0;
   const insufficientCredits = walletBalance != null && available < creditCost;
 
+  // ── v0.48+: 实例 / 草稿 ─────────────────────────────────────────────────────
+  const currentDraftSig = draftSig(bindings, profile, variants, overrides, stickerPool, linkedProduct?.id);
+  const draftDirty = savedSig !== null && savedSig !== currentDraftSig;
+
+  /** 构造 slots / scenes / canvas 快照（submit 与 保存草稿 共用，保证生成任务与实例一致）。 */
+  const buildSnapshots = () => {
+    const slotsSnapshot: SlotSnapshot[] = flatSlotsAbsolute(template).map((s) => {
+      const userOverride = slotPolicies[s.slot_id];
+      const merged: Partial<SlotPerturbationPolicy> = {
+        ...(s.perturbation_policy ?? {}),
+        ...(userOverride ?? {}),
+      };
+      return {
+        slot_id: s.slot_id,
+        layer_type: s.layer_type,
+        rect: s.rect,
+        z_index: s.z_index,
+        perturbation_policy: resolvePolicy(s.layer_type, merged),
+        fit: s.fit ?? "cover",
+        time_range: s.time_range,
+      };
+    });
+    const scenesSnapshot: SceneSnapshot[] = template.scenes.map((sc) => ({
+      id: sc.id,
+      label: sc.label,
+      duration_sec: sc.duration,
+      slot_ids: sc.slots.map((s) => s.slot_id),
+    }));
+    const canvasSnapshot = {
+      width: template.canvas.width,
+      height: template.canvas.height,
+      fps: template.canvas.fps,
+    };
+    return { slotsSnapshot, scenesSnapshot, canvasSnapshot };
+  };
+
+  const buildDraftUpsert = (): MixcutDraftUpsert => {
+    const { slotsSnapshot, scenesSnapshot, canvasSnapshot } = buildSnapshots();
+    return {
+      id: activeDraftId ?? undefined,
+      template_id: template.template_id,
+      template_name: template.name,
+      template_thumbnail: template.metadata.thumbnail_url,
+      name: draftName.trim() || `${template.name} · 草稿`,
+      template_version: template.version,
+      slot_bindings: bindings,
+      canvas_snapshot: canvasSnapshot,
+      slots_snapshot: slotsSnapshot,
+      scenes_snapshot: scenesSnapshot,
+      perturbation_overrides: overrides,
+      sticker_pool: stickerPool ? { _global: stickerPool } : undefined,
+      perturbation_profile: profile,
+      output_variants: variants,
+      product_id: linkedProduct?.id,
+    };
+  };
+
+  /** 保存当前填充态为实例（草稿）。返回落库后的 draftId（失败返回 null）。 */
+  const handleSaveDraft = async (opts?: { syncUrl?: boolean }): Promise<string | null> => {
+    setSavingDraft(true);
+    setDraftError(null);
+    try {
+      const saved = await MixcutApi.saveDraft(buildDraftUpsert());
+      setActiveDraftId(saved.id);
+      setDraftName(saved.name);
+      setDraftSavedAt(Date.now());
+      setSavedSig(currentDraftSig);
+      setReconcile(null);
+      // 把 draft_id 同步进 URL，刷新可继续编辑该实例
+      if ((opts?.syncUrl ?? true) && !draftIdFromUrl) {
+        const qs = new URLSearchParams();
+        qs.set("draft_id", saved.id);
+        if (productIdFromUrl) qs.set("product_id", productIdFromUrl);
+        router.replace(`/mixcut/create/${template.template_id}?${qs.toString()}`, { scroll: false });
+      }
+      return saved.id;
+    } catch (e) {
+      setDraftError(e instanceof Error ? e.message : "保存草稿失败，请重试");
+      return null;
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  /** 先存草稿，再去编辑模板 —— 解决「改模板就把填的内容全丢了」。 */
+  const handleEditTemplate = async () => {
+    const savedId = await handleSaveDraft();
+    if (savedId !== null) {
+      router.push(`/mixcut/templates/${template.template_id}/edit`);
+      return;
+    }
+    const ok = await confirm({
+      title: "草稿没保存成功",
+      description: <p>仍要去编辑模板吗？当前填写的内容可能会丢失。</p>,
+      confirmText: "仍然去",
+      cancelText: "留下重试",
+    });
+    if (ok) router.push(`/mixcut/templates/${template.template_id}/edit`);
+  };
+
   const handleSubmit = async () => {
     if (!allRequiredFilled || overQuota || insufficientCredits) return;
 
@@ -434,35 +645,17 @@ export function CreateClient({ id }: { id: string }) {
     }
 
     setSubmitting(true);
+
+    // v0.48+: 若正在编辑某实例且有未保存改动，先把最新填充态存回实例 ——
+    // 保证「生成任务 → 实例」回溯到的就是这次生成所用的配置。
+    let draftIdForJob = activeDraftId;
+    if (activeDraftId && draftDirty) {
+      const saved = await handleSaveDraft({ syncUrl: false });
+      if (saved) draftIdForJob = saved;
+    }
+
     const jobId = `job_${nanoid(8)}`;
-
-    // 模板快照:flat 化 scenes,time_range 转为绝对秒数,后端按 flat list 渲染
-    const slotsSnapshot: SlotSnapshot[] = flatSlotsAbsolute(template).map((s) => {
-      const userOverride = slotPolicies[s.slot_id];
-      // layer_type 默认 ∪ 模板覆盖 ∪ 用户覆盖(最高优先级)
-      const merged: Partial<SlotPerturbationPolicy> = {
-        ...(s.perturbation_policy ?? {}),
-        ...(userOverride ?? {}),
-      };
-      return {
-        slot_id: s.slot_id,
-        layer_type: s.layer_type,
-        rect: s.rect,
-        z_index: s.z_index,
-        perturbation_policy: resolvePolicy(s.layer_type, merged),
-        fit: s.fit ?? "cover",
-        // v0.25+: 携带绝对 time_range，让渲染器把 overlay 限制在对应场景时段
-        time_range: s.time_range,
-      };
-    });
-
-    // v0.25+: 场景快照（按顺序）。渲染器据此按 scenes.length 拼接、按 scene.duration_sec 切段。
-    const scenesSnapshot: SceneSnapshot[] = template.scenes.map((sc) => ({
-      id: sc.id,
-      label: sc.label,
-      duration_sec: sc.duration,
-      slot_ids: sc.slots.map((s) => s.slot_id),
-    }));
+    const { slotsSnapshot, scenesSnapshot, canvasSnapshot } = buildSnapshots();
 
     const job: RenderJob = {
       id: jobId,
@@ -476,17 +669,15 @@ export function CreateClient({ id }: { id: string }) {
       status: "queued",
       progress: 0,
       created_at: new Date().toISOString(),
-      canvas_snapshot: {
-        width: template.canvas.width,
-        height: template.canvas.height,
-        fps: template.canvas.fps,
-      },
+      canvas_snapshot: canvasSnapshot,
       slots_snapshot: slotsSnapshot,
       scenes_snapshot: scenesSnapshot,
       perturbation_overrides: overrides,
       sticker_pool: stickerPool ? { _global: stickerPool } : undefined,
       // v0.26+: 把商品关联透传到 RenderJob，让分发抽屉能反查 product 自动填挂载字段
       product_id: linkedProduct?.id,
+      // v0.48+: 来源实例血缘（仅当从实例生成时）
+      draft_id: draftIdForJob ?? undefined,
     };
     await MixcutApi.createJob(job);
 
@@ -560,6 +751,16 @@ export function CreateClient({ id }: { id: string }) {
             <ArrowLeft className="size-4" /> 返回模板详情
           </Link>
         </Button>
+        {/* v0.48+: 改模板前先存草稿 —— 直接解决「改模板就把填的内容全丢了」 */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleEditTemplate}
+          disabled={savingDraft}
+          title="会先把当前填写保存为草稿，再进入模板编辑，避免内容丢失"
+        >
+          <PencilRuler className="size-3.5" /> 改模板（先存草稿）
+        </Button>
       </div>
 
       {/*
@@ -569,7 +770,7 @@ export function CreateClient({ id }: { id: string }) {
       */}
       <header className="mb-5">
         <div className="flex items-center gap-1.5 mb-2 flex-wrap text-[11px] uppercase tracking-wider text-muted-foreground">
-          <span>新建生成任务</span>
+          <span>{activeDraftId ? "编辑实例" : "新建生成任务"}</span>
           <span className="text-muted-foreground/40">·</span>
           <span>{template.metadata.category}</span>
           <span className="text-muted-foreground/40">·</span>
@@ -743,27 +944,63 @@ export function CreateClient({ id }: { id: string }) {
             </div>
           </div>
 
-          {/* 主 CTA：贴最右 */}
-          <Button
-            variant="gradient"
-            size="default"
-            className="ml-auto h-9 px-5 shrink-0"
-            disabled={!allRequiredFilled || overQuota || insufficientCredits || submitting}
-            onClick={handleSubmit}
-            title={insufficientCredits ? `积分不足：需要 ${creditCost}，当前可用 ${available}` : undefined}
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                提交中…
-              </>
-            ) : (
-              <>
-                <Sparkles className="size-4" />
-                生成 {variants} 条视频
-              </>
-            )}
-          </Button>
+          {/* 主操作群：保存草稿 + 生成，贴最右 */}
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {/* v0.48+: 草稿状态指示 */}
+            {draftError ? (
+              <span className="text-[11px] text-rose-600 max-w-[160px] truncate" title={draftError}>
+                {draftError}
+              </span>
+            ) : activeDraftId && draftDirty ? (
+              <span className="text-[11px] text-amber-600 inline-flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-amber-500" />
+                未保存
+              </span>
+            ) : draftSavedAt && !draftDirty ? (
+              <span className="text-[11px] text-emerald-600 inline-flex items-center gap-1">
+                <CheckCircle2 className="size-3" />
+                已存草稿
+              </span>
+            ) : null}
+
+            {/* v0.48+: 保存草稿 —— 把当前填充落库为实例，可继续编辑 / 反复生成 */}
+            <Button
+              variant="outline"
+              size="default"
+              className="h-9 px-3"
+              disabled={savingDraft || submitting}
+              onClick={() => handleSaveDraft()}
+              title={activeDraftId ? "更新当前实例（草稿）" : "把当前填充保存为实例，之后可继续编辑 / 反复生成"}
+            >
+              {savingDraft ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              {activeDraftId ? "更新草稿" : "保存草稿"}
+            </Button>
+
+            <Button
+              variant="gradient"
+              size="default"
+              className="h-9 px-5"
+              disabled={!allRequiredFilled || overQuota || insufficientCredits || submitting}
+              onClick={handleSubmit}
+              title={insufficientCredits ? `积分不足：需要 ${creditCost}，当前可用 ${available}` : undefined}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  提交中…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-4" />
+                  生成 {variants} 条视频
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {overQuota && (
@@ -807,6 +1044,41 @@ export function CreateClient({ id }: { id: string }) {
           >
             <XIcon className="h-3 w-3" /> 清除并重置
           </button>
+        </div>
+      )}
+
+      {/* v0.48+: 正在编辑某实例时的状态条 */}
+      {activeDraftId && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-violet-400/30 bg-violet-500/[0.04] px-3 py-2 text-xs">
+          <Bookmark className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+          <span className="text-zinc-700">正在编辑实例：</span>
+          <span className="font-medium text-zinc-900">{draftName || "未命名实例"}</span>
+          <span className="text-[11px] text-zinc-500">· 改好后点「更新草稿」保存，生成的视频会记得这份配置</span>
+          <Link
+            href="/mixcut/drafts"
+            className="ml-auto inline-flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-600 hover:border-violet-400/40 hover:text-violet-600"
+          >
+            草稿箱
+          </Link>
+        </div>
+      )}
+
+      {/* v0.48+: 重开实例时模板已变化的提示 */}
+      {reconcile && (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-800">
+          <div className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            模板自这份草稿保存后有更新
+          </div>
+          <div className="mt-1 leading-relaxed text-amber-700">
+            {reconcile.removed.length > 0 && (
+              <span>有 {reconcile.removed.length} 处原先填的素材位已从模板移除，对应内容未恢复。</span>
+            )}
+            {reconcile.versionChanged && reconcile.removed.length === 0 && (
+              <span>模板版本已更新，请检查各素材位是否仍然正确。</span>
+            )}
+            <span className="ml-1">其余内容已按素材位名称自动恢复。</span>
+          </div>
         </div>
       )}
 

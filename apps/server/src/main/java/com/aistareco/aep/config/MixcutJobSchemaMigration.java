@@ -64,6 +64,8 @@ public class MixcutJobSchemaMigration implements CommandLineRunner {
             new AddColumn("mixcut_render_job", "credits_per_variant", "BIGINT NOT NULL DEFAULT 0", "BIGINT NOT NULL DEFAULT 0"),
             // v0.30：rerun 血缘
             new AddColumn("mixcut_render_job", "forked_from_job_id",  "VARCHAR(64)",               "VARCHAR(64)"),
+            // v0.48：来源实例（草稿）血缘
+            new AddColumn("mixcut_render_job", "draft_id",            "VARCHAR(64)",               "VARCHAR(64)"),
             // v0.28：商品贯穿
             new AddColumn("mixcut_render_job", "product_id",          "VARCHAR(64)",               "VARCHAR(64)"),
             // v0.25：场景快照

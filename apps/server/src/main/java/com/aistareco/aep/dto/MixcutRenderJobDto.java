@@ -43,7 +43,9 @@ public record MixcutRenderJobDto(
         // v0.26+: 关联商品 id（来自 create 页 ?product_id=X）；分发抽屉用它反查商品自动填挂载
         @JsonProperty("product_id") String productId,
         // v0.30+: 任务血缘 —— 「重跑」入口 fork 出新 job 时填入原 jobId；直接创建的任务为空
-        @JsonProperty("forked_from_job_id") String forkedFromJobId
+        @JsonProperty("forked_from_job_id") String forkedFromJobId,
+        // v0.48+: 来源实例 id（草稿）。生成任务从实例创建时填入，前端任务详情可深链回该实例继续编辑
+        @JsonProperty("draft_id") String draftId
 ) {
 
     /**
@@ -102,7 +104,8 @@ public record MixcutRenderJobDto(
                 stickerPool,
                 scenesSnap,
                 job.getProductId(),
-                job.getForkedFromJobId()
+                job.getForkedFromJobId(),
+                job.getDraftId()
         );
     }
 

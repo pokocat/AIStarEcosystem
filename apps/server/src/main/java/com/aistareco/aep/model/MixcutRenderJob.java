@@ -122,6 +122,15 @@ public class MixcutRenderJob {
     private String forkedFromJobId;
 
     /**
+     * v0.48+: 来源实例 id（MixcutDraft.id），可空。
+     * 由 create 页 / 草稿箱「从实例生成」时填入，建立「模版 → 实例 → 生成任务」血缘。
+     * 任务详情页据此显示「来自实例」徽章并可深链回去继续编辑该实例。
+     * 不做外键约束（实例被删后保留字符串引用足够审计）。
+     */
+    @Column(name = "draft_id", length = 64)
+    private String draftId;
+
+    /**
      * v0.33+: 任务创建时冻结的总积分（= variants × per_variant_cost @ create 时点）。
      * 写入后即固化，PlatformConfig 后续改价不影响已创建的任务。
      * 0 = 历史任务（v0.32 及之前未接入扣费）。
@@ -211,6 +220,9 @@ public class MixcutRenderJob {
 
     public String getForkedFromJobId() { return forkedFromJobId; }
     public void setForkedFromJobId(String forkedFromJobId) { this.forkedFromJobId = forkedFromJobId; }
+
+    public String getDraftId() { return draftId; }
+    public void setDraftId(String draftId) { this.draftId = draftId; }
 
     public long getCreditsHeld() { return creditsHeld; }
     public void setCreditsHeld(long creditsHeld) { this.creditsHeld = creditsHeld; }

@@ -4,14 +4,15 @@
 // 强制走 apps/server 的真后端（ffmpeg 渲染），不影响其他模块的 USE_MOCK 行为。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { RenderJob, RenderOutput, MixcutAsset, MixcutAssetKind, Template, MixcutRerunJobRequest } from "@/components/mixcut-zone/types";
-import { mockJobs, mockActivationCode, mockTemplates } from "@/mocks/mixcut";
+import type { RenderJob, RenderOutput, MixcutAsset, MixcutAssetKind, Template, MixcutRerunJobRequest, MixcutDraft, MixcutDraftUpsert } from "@/components/mixcut-zone/types";
+import { mockJobs, mockActivationCode, mockTemplates, mockDrafts } from "@/mocks/mixcut";
 import { migrateLegacyTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
 import { apiFetch, API_BASE_URL, getAuthToken, USE_MOCK, mockDelay } from "./_client";
 
 const JOBS_KEY = "aistareco.web.mixcut.jobs.v1";
 const INTRO_KEY = "aistareco.web.mixcut.has-seen-intro.v1";
 const TEMPLATES_KEY = "aistareco.web.mixcut.templates.v1";
+const DRAFTS_KEY = "aistareco.web.mixcut.drafts.v1";
 
 // 独立开关：仅对 mixcut 切换"真后端模式"，不影响 celebrity-zone / products 的 mock。
 const REAL_BACKEND: boolean =
@@ -465,6 +466,182 @@ export function hasUserTemplate(id: string): boolean {
 /** 判断 ID 是否对应一条工厂模板(即不可硬删除,只能 override)。 */
 export function isFactoryTemplate(id: string): boolean {
   return mockTemplates.some((t) => t.template_id === id);
+}
+
+// ── v0.48+ 实例 / 草稿（模版 → 实例 → 生成任务）────────────────────────────────
+//
+// 一个实例（MixcutDraft）= 「针对某模版配好的一份素材绑定 + 扰动设置」，可保存、可反复
+// 编辑、可多次生成。USE_LOCAL 走 localStorage（与 jobs / templates 同款兜底）；REAL_BACKEND
+// 走 /api/mixcut/drafts CRUD。从实例生成的每个任务都带 draft_id 指回，可回溯当时配置。
+
+let memoryDrafts: MixcutDraft[] | null = null;
+
+function loadDrafts(): MixcutDraft[] {
+  if (memoryDrafts) return memoryDrafts;
+  if (typeof window === "undefined") {
+    memoryDrafts = [...mockDrafts];
+    return memoryDrafts;
+  }
+  try {
+    const raw = window.localStorage.getItem(DRAFTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as MixcutDraft[];
+      if (Array.isArray(parsed)) {
+        memoryDrafts = parsed;
+        return memoryDrafts;
+      }
+    }
+  } catch {
+    /* 隐私模式 / parse 失败 → 回种 */
+  }
+  memoryDrafts = [...mockDrafts];
+  saveDrafts();
+  return memoryDrafts;
+}
+
+function saveDrafts() {
+  if (typeof window === "undefined" || !memoryDrafts) return;
+  try {
+    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(memoryDrafts));
+  } catch {
+    /* storage 满 */
+  }
+}
+
+function shortId(prefix: string): string {
+  return prefix + Math.random().toString(36).slice(2, 14);
+}
+
+/** 列出当前用户的实例（按最近更新倒序）。 */
+export async function listDrafts(): Promise<MixcutDraft[]> {
+  if (USE_LOCAL) {
+    const list = [...loadDrafts()].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    );
+    return mockDelay(list);
+  }
+  return apiFetch<MixcutDraft[]>("/mixcut/drafts");
+}
+
+/** 取单个实例。 */
+export async function getDraft(id: string): Promise<MixcutDraft | null> {
+  if (USE_LOCAL) return mockDelay(loadDrafts().find((d) => d.id === id) ?? null);
+  return apiFetch<MixcutDraft | null>(`/mixcut/drafts/${id}`);
+}
+
+/**
+ * 新建 / 更新实例。带 id → PUT（更新）；无 id → POST（新建，后端补 id）。
+ * 返回落库后的完整实例（含 id / 时间戳 / generated_job_count）。
+ */
+export async function saveDraft(d: MixcutDraftUpsert): Promise<MixcutDraft> {
+  if (USE_LOCAL) {
+    const list = loadDrafts();
+    const now = new Date().toISOString();
+    const id = d.id && d.id.trim() ? d.id : shortId("draft_");
+    const idx = list.findIndex((x) => x.id === id);
+    const base = idx >= 0 ? list[idx] : null;
+    const next: MixcutDraft = {
+      id,
+      user_id: base?.user_id ?? "u1",
+      template_id: d.template_id,
+      template_name: d.template_name,
+      template_thumbnail: d.template_thumbnail,
+      name: d.name?.trim() || base?.name || `${d.template_name ?? "未命名模板"} · 草稿`,
+      template_version: d.template_version,
+      slot_bindings: d.slot_bindings ?? {},
+      canvas_snapshot: d.canvas_snapshot,
+      slots_snapshot: d.slots_snapshot,
+      scenes_snapshot: d.scenes_snapshot,
+      perturbation_overrides: d.perturbation_overrides,
+      sticker_pool: d.sticker_pool,
+      perturbation_profile: d.perturbation_profile ?? base?.perturbation_profile ?? "moderate",
+      output_variants: d.output_variants ?? base?.output_variants ?? 5,
+      product_id: d.product_id,
+      status: base?.status ?? "draft",
+      generated_job_count: base?.generated_job_count ?? 0,
+      last_generated_at: base?.last_generated_at,
+      created_at: base?.created_at ?? now,
+      updated_at: now,
+    };
+    if (idx >= 0) list[idx] = next;
+    else list.unshift(next);
+    saveDrafts();
+    return mockDelay(next);
+  }
+  if (d.id && d.id.trim()) {
+    return apiFetch<MixcutDraft>(`/mixcut/drafts/${d.id}`, { method: "PUT", body: d });
+  }
+  return apiFetch<MixcutDraft>("/mixcut/drafts", { method: "POST", body: d });
+}
+
+/** 删除实例。 */
+export async function deleteDraft(id: string): Promise<boolean> {
+  if (USE_LOCAL) {
+    const list = loadDrafts();
+    const idx = list.findIndex((d) => d.id === id);
+    if (idx < 0) return mockDelay(false);
+    list.splice(idx, 1);
+    saveDrafts();
+    return mockDelay(true);
+  }
+  return apiFetch<boolean>(`/mixcut/drafts/${id}`, { method: "DELETE" });
+}
+
+/**
+ * 从实例生成任务。后端读实例快照灌进标准创建链路（扣费 / 派发），返回新 RenderJob（带 draft_id）。
+ * body 可空；仅 variants / profile 可覆盖（与 rerun 同款）。
+ *
+ * 错误：404 MIXCUT_DRAFT_NOT_FOUND / 409 MISSING_ASSETS（ApiError.details.missing_assets）。
+ * USE_LOCAL：用本地实例克隆一个 mock job（跳过缺素材校验），写回 jobs 列表。
+ */
+export async function generateFromDraft(
+  draftId: string,
+  overrides?: MixcutRerunJobRequest,
+): Promise<RenderJob> {
+  if (USE_LOCAL) {
+    const draft = loadDrafts().find((d) => d.id === draftId);
+    if (!draft) throw new Error("找不到该草稿");
+    const jobId = shortId("job_");
+    const job: RenderJob = {
+      id: jobId,
+      user_id: draft.user_id ?? "u1",
+      template_id: draft.template_id,
+      template_name: draft.template_name,
+      template_thumbnail: draft.template_thumbnail,
+      slot_bindings: draft.slot_bindings ?? {},
+      perturbation_profile: overrides?.perturbation_profile ?? draft.perturbation_profile,
+      output_variants: overrides?.output_variants ?? draft.output_variants,
+      status: "queued",
+      progress: 0,
+      created_at: new Date().toISOString(),
+      canvas_snapshot: draft.canvas_snapshot,
+      slots_snapshot: draft.slots_snapshot,
+      scenes_snapshot: draft.scenes_snapshot,
+      perturbation_overrides: draft.perturbation_overrides,
+      sticker_pool: draft.sticker_pool,
+      product_id: draft.product_id,
+      draft_id: draft.id,
+    };
+    const jobs = loadJobs();
+    jobs.unshift(job);
+    saveJobs();
+    // 本地也累计实例生成次数
+    const list = loadDrafts();
+    const idx = list.findIndex((d) => d.id === draftId);
+    if (idx >= 0) {
+      list[idx] = {
+        ...list[idx],
+        generated_job_count: (list[idx].generated_job_count ?? 0) + 1,
+        last_generated_at: new Date().toISOString(),
+      };
+      saveDrafts();
+    }
+    return mockDelay(job);
+  }
+  return apiFetch<RenderJob>(`/mixcut/drafts/${draftId}/generate`, {
+    method: "POST",
+    body: overrides ?? {},
+  });
 }
 
 // ── v0.15+ 发布桥接 ─────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import type {
   ProductClip,
   Asset,
   RenderJob,
+  MixcutDraft,
   Course,
   CourseLesson,
   ActivationCode,
@@ -664,6 +665,50 @@ export const mockJobs: RenderJob[] = [
     progress: 38,
     error_message: "明星素材授权过期,请更换素材",
     created_at: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
+  },
+];
+
+// ============== 实例 / 草稿（v0.48+）==============
+// 模版 → 实例 → 生成任务 中间层。USE_MOCK 演示态：两个保存到一半的实例。
+
+export const mockDrafts: MixcutDraft[] = [
+  {
+    id: "draft_glasswater_01",
+    user_id: "u1",
+    template_id: "tpl_glasswater_v1",
+    template_name: "玻璃水带货 · 经典款",
+    template_thumbnail: "/thumbs/glasswater.svg",
+    name: "玻璃水带货 · 双十一冲量",
+    template_version: "2.0",
+    slot_bindings: {
+      star_video: { source: "library", asset_id: "star_001" },
+      main_subtitle: { source: "input", text: "工厂直发 · 玻璃水 2L 拿下" },
+    },
+    perturbation_profile: "moderate",
+    output_variants: 8,
+    status: "draft",
+    generated_job_count: 2,
+    last_generated_at: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString(),
+    updated_at: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
+  },
+  {
+    id: "draft_beauty_01",
+    user_id: "u1",
+    template_id: "tpl_beauty_v1",
+    template_name: "美妆口播 · 干净直推",
+    template_thumbnail: "/thumbs/beauty.svg",
+    name: "口红 #207 · 还没填完",
+    template_version: "2.0",
+    slot_bindings: {
+      main_subtitle: { source: "input", text: "比专柜便宜 70%" },
+    },
+    perturbation_profile: "moderate",
+    output_variants: 5,
+    status: "draft",
+    generated_job_count: 0,
+    created_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+    updated_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
   },
 ];
 

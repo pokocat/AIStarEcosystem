@@ -31,6 +31,9 @@ public record MixcutCreateJobRequest(
         // v0.25+: 场景快照（按顺序）。让渲染器按场景串行拼接而不是硬编 2 段。
         @JsonProperty("scenes_snapshot") JsonNode scenesSnapshot,
         // v0.26+: 关联商品 id（来自 create 页 ?product_id=X）；分发抽屉用它反查 Product
-        @JsonProperty("product_id") String productId
+        @JsonProperty("product_id") String productId,
+        // v0.48+: 来源实例 id（草稿）。从 create 页或草稿箱生成时携带，落到 MixcutRenderJob.draftId，
+        // 让生成任务能回溯到当时配置的实例。直接走模板创建（无草稿）时为空。
+        @JsonProperty("draft_id") String draftId
 ) {
 }

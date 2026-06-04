@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Bookmark,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
@@ -53,11 +54,16 @@ export default function MixcutHomePage() {
             选模板，填素材，一次生成多条不同版本的短视频。
           </p>
         </div>
-        <div className="grid grid-cols-[auto_auto] items-stretch gap-3">
+        <div className="grid grid-cols-[auto_auto_auto] items-stretch gap-3">
           <MonthlyStats
             videosThisMonth={monthlyStats.videosThisMonth}
             totalJobs={monthlyStats.totalJobs}
           />
+          <Button variant="outline" className="h-full min-h-[46px] rounded-2xl px-4" asChild>
+            <Link href="/mixcut/drafts">
+              <Bookmark className="size-4" /> 草稿箱
+            </Link>
+          </Button>
           <Button variant="gradient" className="h-full min-h-[46px] rounded-2xl px-4" asChild>
             <Link href="/mixcut/templates">
               <Sparkles className="size-4" /> 去模板库

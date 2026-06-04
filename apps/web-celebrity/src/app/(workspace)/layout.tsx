@@ -64,6 +64,12 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
         selected: pathname === "/mixcut/templates" || pathname.startsWith("/mixcut/templates/"),
       },
       {
+        // v0.48+: 草稿箱（实例）—— 模版 → 实例 → 生成任务 中间层
+        label: "草稿箱",
+        href: "/mixcut/drafts",
+        selected: pathname === "/mixcut/drafts",
+      },
+      {
         label: "生成任务",
         href: "/mixcut/jobs",
         selected: pathname === "/mixcut/jobs" || pathname.startsWith("/mixcut/jobs/"),
@@ -179,6 +185,7 @@ function CrumbsFromPathname(pathname: string): string[] {
   // 混剪专区子路径
   if (pathname === "/mixcut/templates") return ["工作台", "混剪专区", "模板库"];
   if (pathname.startsWith("/mixcut/templates/")) return ["工作台", "混剪专区", "模板库", "模板详情"];
+  if (pathname === "/mixcut/drafts") return ["工作台", "混剪专区", "草稿箱"];
   if (pathname.startsWith("/mixcut/create/")) return ["工作台", "混剪专区", "新建任务"];
   if (pathname === "/mixcut/jobs") return ["工作台", "混剪专区", "生成任务"];
   if (pathname.startsWith("/mixcut/jobs/")) return ["工作台", "混剪专区", "生成任务", "任务详情"];

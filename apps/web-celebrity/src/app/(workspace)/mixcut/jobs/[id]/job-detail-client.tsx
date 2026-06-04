@@ -19,6 +19,7 @@ import {
   Wand2,
   Fingerprint,
   Send,
+  Bookmark,
 } from "lucide-react";
 import { BatchPublishDrawer } from "@/components/mixcut-zone/BatchPublishDrawer";
 import { RerunJobDialog } from "@/components/mixcut-zone/RerunJobDialog";
@@ -143,6 +144,17 @@ export function JobDetailClient({ id }: { id: string }) {
               >
                 <RefreshCw className="size-2.5" />
                 由 #{job.forked_from_job_id.slice(-6)} 再生成
+              </Link>
+            )}
+            {/* v0.48+: 实例血缘 —— 由「实例 / 草稿」生成的任务，深链回去继续编辑该实例 */}
+            {job.draft_id && (
+              <Link
+                href={`/mixcut/create/${encodeURIComponent(job.template_id)}?draft_id=${encodeURIComponent(job.draft_id)}`}
+                className="inline-flex items-center gap-1 rounded-full border border-violet-400/40 bg-violet-500/[0.06] px-2 py-0.5 text-[10px] text-violet-700 hover:border-violet-500/60 transition-colors"
+                title="点击回到该实例继续编辑"
+              >
+                <Bookmark className="size-2.5" />
+                来自实例
               </Link>
             )}
           </div>

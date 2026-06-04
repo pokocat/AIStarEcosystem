@@ -6325,6 +6325,27 @@ paths:
     put:    { tags: [mixcut], operationId: upsertMixcutTemplate, responses: { '200': { description: ok } } }
     delete: { tags: [mixcut], operationId: deleteMixcutTemplate, responses: { '200': { description: ok } } }
 
+  # v0.48+: 实例 / 草稿（模版 → 实例 → 生成任务 中间层）。
+  # 用户保存填了一半的配置为实例，可继续编辑 / 反复生成；生成的任务带 draft_id 指回实例。
+  # 全部 user-private，按 principal 隔离。
+  /mixcut/drafts:
+    get:  { tags: [mixcut], operationId: listMixcutDrafts,  responses: { '200': { description: ok } } }
+    post: { tags: [mixcut], operationId: createMixcutDraft, responses: { '200': { description: ok } } }
+
+  /mixcut/drafts/{draftId}:
+    parameters:
+      - { in: path, name: draftId, required: true, schema: { type: string } }
+    get:    { tags: [mixcut], operationId: getMixcutDraft,    responses: { '200': { description: ok } } }
+    put:    { tags: [mixcut], operationId: upsertMixcutDraft, responses: { '200': { description: ok } } }
+    delete: { tags: [mixcut], operationId: deleteMixcutDraft, responses: { '200': { description: ok } } }
+
+  # 从实例生成任务。缺素材 → 409 MISSING_ASSETS（同 rerun，error.details.missing_assets[]）。
+  # body 可空；仅 output_variants / perturbation_profile 可覆盖。
+  /mixcut/drafts/{draftId}/generate:
+    parameters:
+      - { in: path, name: draftId, required: true, schema: { type: string } }
+    post: { tags: [mixcut], operationId: generateMixcutJobFromDraft, responses: { '200': { description: ok } } }
+
   # v0.16+: pic-gen 文字转图预览（独立 Node 服务由 aep.picgen.base-url 指向）
   /mixcut/picgen/preview:
     post:

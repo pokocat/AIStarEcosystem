@@ -47,6 +47,8 @@ public class MixcutJobService {
     private final MixcutRenderJobRepository jobRepo;
     private final MixcutRenderOutputRepository outputRepo;
     private final MixcutAssetRepository assetRepo;
+    // v0.48+: 从实例（草稿）生成时累计 generatedJobCount；best-effort，失败仅 log
+    private final com.aistareco.aep.repository.MixcutDraftRepository draftRepo;
     private final ObjectMapper mapper;
     private final MixcutRenderingService rendering;
     private final com.aistareco.aep.service.CelebrityActionPricingService actionPricing;
@@ -60,6 +62,7 @@ public class MixcutJobService {
             MixcutRenderJobRepository jobRepo,
             MixcutRenderOutputRepository outputRepo,
             MixcutAssetRepository assetRepo,
+            com.aistareco.aep.repository.MixcutDraftRepository draftRepo,
             ObjectMapper mapper,
             MixcutRenderingService rendering,
             ProductService productService,
@@ -71,6 +74,7 @@ public class MixcutJobService {
         this.jobRepo = jobRepo;
         this.outputRepo = outputRepo;
         this.assetRepo = assetRepo;
+        this.draftRepo = draftRepo;
         this.mapper = mapper;
         this.rendering = rendering;
         this.productService = productService;
@@ -201,6 +205,10 @@ public class MixcutJobService {
         if (forkedFromJobId != null && !forkedFromJobId.isBlank()) {
             job.setForkedFromJobId(forkedFromJobId);
         }
+        // v0.48+: 来源实例（草稿）血缘。从 create 页 / 草稿箱生成时带 draft_id
+        if (req.draftId() != null && !req.draftId().isBlank()) {
+            job.setDraftId(req.draftId().trim());
+        }
 
         // v0.33+: 真扣费 —— hold(variants × perVariant)，PAYMENT_REQUIRED 直接抛出。
         // anonymous 用户跳过扣费（保留 dev/H2 lite 场景）。
@@ -232,6 +240,23 @@ public class MixcutJobService {
             } catch (Exception e) {
                 log.warn("[mixcut] bump product usageCount failed jobId={} productId={} err={}",
                         job.getId(), job.getProductId(), e.getMessage());
+            }
+        }
+
+        // v0.48+: 从实例（草稿）生成 → 累计 generatedJobCount + lastGeneratedAt。best-effort，
+        // 实例不存在 / 已删 / 保存失败只 log，不阻断任务创建。
+        if (job.getDraftId() != null && !job.getDraftId().isBlank()) {
+            try {
+                draftRepo.findById(job.getDraftId())
+                        .filter(d -> job.getUserId() == null || job.getUserId().equals(d.getUserId()))
+                        .ifPresent(d -> {
+                            d.setGeneratedJobCount(d.getGeneratedJobCount() + 1);
+                            d.setLastGeneratedAt(OffsetDateTime.now());
+                            draftRepo.save(d);
+                        });
+            } catch (Exception e) {
+                log.warn("[mixcut] bump draft generatedJobCount failed jobId={} draftId={} err={}",
+                        job.getId(), job.getDraftId(), e.getMessage());
             }
         }
 
@@ -315,12 +340,26 @@ public class MixcutJobService {
                 pertOverrides,
                 stickerPool,
                 scenesSnap,
-                original.getProductId()
+                original.getProductId(),
+                original.getDraftId()    // v0.48+: 保留实例血缘 —— 重跑出的任务仍指回同一实例
         );
 
         log.info("[mixcut] rerun fork job={} variants={} profile={} forkedFrom={}",
                 "<auto>", effectiveVariants, effectiveProfile, originalJobId);
         return createForked(req, principalUserId, originalJobId);
+    }
+
+    /**
+     * v0.48+: 给定 slot_bindings JsonNode 做缺素材校验（供 MixcutDraftService「从实例生成」复用）。
+     * 序列化后委派给字符串版；解析失败视作无引用（不阻挡生成）。
+     */
+    public List<MissingAssetItem> collectMissingAssets(JsonNode slotBindings) {
+        if (slotBindings == null || slotBindings.isNull()) return List.of();
+        try {
+            return collectMissingAssets(mapper.writeValueAsString(slotBindings));
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     /**
