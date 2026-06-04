@@ -334,15 +334,37 @@ export function MediaSlotInput({ slot, binding, onChange, mode, productId }: Pro
               className="text-left p-1.5 rounded-lg border border-border hover:border-foreground/30 hover:bg-secondary/40 transition-colors"
             >
               <div className="aspect-square rounded mb-1 grid place-items-center overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600">
-                {item.preview_url || item.thumbnail_url ? (
-                  <img src={item.preview_url ?? item.thumbnail_url} className="w-full h-full object-cover" alt={item.name} />
-                ) : item.kind === "video" ? (
-                  <Video className="size-5 text-white" />
-                ) : item.kind === "bgm" ? (
-                  <Music className="size-5 text-white" />
-                ) : (
-                  <ImageIcon className="size-5 text-white" />
-                )}
+                {(() => {
+                  const thumb = item.preview_url ?? item.thumbnail_url;
+                  // 视频：服务端通常不生成封面图。优先用真实图缩略图，否则用 <video> 首帧
+                  // （#t=0.1 让浏览器渲染第 0.1s 的帧而非黑屏；preload=metadata 不下载整段）。
+                  if (item.kind === "video") {
+                    if (thumb && isImageUrl(thumb)) {
+                      // eslint-disable-next-line @next/next/no-img-element
+                      return <img src={thumb} className="w-full h-full object-cover" alt={item.name} />;
+                    }
+                    const vsrc = thumb && isVideoUrl(thumb) ? thumb : item.file_url;
+                    return vsrc ? (
+                      <video
+                        src={`${vsrc}#t=0.1`}
+                        className="w-full h-full object-cover"
+                        muted
+                        playsInline
+                        preload="metadata"
+                      />
+                    ) : (
+                      <Video className="size-5 text-white" />
+                    );
+                  }
+                  if (item.kind === "bgm") {
+                    return <Music className="size-5 text-white" />;
+                  }
+                  if (thumb) {
+                    // eslint-disable-next-line @next/next/no-img-element
+                    return <img src={thumb} className="w-full h-full object-cover" alt={item.name} />;
+                  }
+                  return <ImageIcon className="size-5 text-white" />;
+                })()}
               </div>
               <div className="text-xs font-medium line-clamp-1">{item.name}</div>
               <div className="text-[10px] text-muted-foreground line-clamp-1">
