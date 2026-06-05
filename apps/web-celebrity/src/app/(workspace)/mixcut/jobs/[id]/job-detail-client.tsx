@@ -471,9 +471,8 @@ export function JobDetailClient({ id }: { id: string }) {
                   {/* 缩略图网格：已完成 + 待生成 skeleton 占位 */}
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
                     {sortedOutputs.map((o, idx) => (
-                      <button
+                      <div
                         key={o.id}
-                        onClick={() => setSelectedVariant(idx)}
                         className={cn(
                           "group relative rounded-lg overflow-hidden transition-all aspect-[9/16] bg-secondary/60",
                           selectedVariant === idx
@@ -481,17 +480,34 @@ export function JobDetailClient({ id }: { id: string }) {
                             : "hover:ring-2 hover:ring-white/30"
                         )}
                       >
-                        <VariantThumbnail src={outputVideoSrc(o)} poster={outputPoster(o)} />
-                        <div className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-                          <PlayCircle className="size-7 text-white/90" />
-                        </div>
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent p-2 flex items-center justify-between">
+                        <button
+                          onClick={() => setSelectedVariant(idx)}
+                          className="absolute inset-0 w-full h-full"
+                          aria-label={`选择第 ${o.variant_index + 1} 条视频`}
+                        >
+                          <VariantThumbnail src={outputVideoSrc(o)} poster={outputPoster(o)} />
+                          <div className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                            <PlayCircle className="size-7 text-white/90" />
+                          </div>
+                        </button>
+                        {/* 下载按钮 - 右上角悬浮，点击区域足够大适合手机操作 */}
+                        <a
+                          href={outputVideoSrc(o)}
+                          download={`${job.template_name || "mixcut"}-v${o.variant_index + 1}.mp4`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-1.5 right-1.5 z-10 size-9 rounded-full bg-black/60 backdrop-blur-sm grid place-items-center text-white/90 hover:bg-black/80 hover:text-white active:scale-95 transition-all shadow-lg"
+                          title={`下载第 ${o.variant_index + 1} 条`}
+                          aria-label={`下载第 ${o.variant_index + 1} 条视频`}
+                        >
+                          <Download className="size-4" />
+                        </a>
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent p-2 flex items-center justify-between pointer-events-none">
                           <span className="text-[10px] text-white">第 {o.variant_index + 1} 条</span>
                           <Badge variant="success" className="text-[9px]">
                             变化 {o.phash_distance_to_source}
                           </Badge>
                         </div>
-                      </button>
+                      </div>
                     ))}
                     {pendingCount > 0 &&
                       Array.from({ length: pendingCount }).map((_, i) => (
