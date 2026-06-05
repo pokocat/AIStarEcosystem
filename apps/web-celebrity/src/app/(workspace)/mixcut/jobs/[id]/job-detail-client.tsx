@@ -22,7 +22,6 @@ import {
   Bookmark,
 } from "lucide-react";
 import { BatchPublishDrawer } from "@/components/mixcut-zone/BatchPublishDrawer";
-import { RerunJobDialog } from "@/components/mixcut-zone/RerunJobDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
@@ -57,8 +56,8 @@ export function JobDetailClient({ id }: { id: string }) {
   const [isPlaying, setIsPlaying] = useState(false);
   /** v0.15+: 批量发布抽屉开关 */
   const [publishOpen, setPublishOpen] = useState(false);
-  /** v0.30+: 重跑 dialog 开关 */
-  const [rerunOpen, setRerunOpen] = useState(false);
+  /** v0.50+: 正在创建实例中（从任务重跑入口） */
+  const [creatingDraft, setCreatingDraft] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,17 +203,35 @@ export function JobDetailClient({ id }: { id: string }) {
             </>
           )}
           {/*
-            v0.30+: 重跑入口 —— completed 与 failed 任务都显示。
-            语义：用当前任务的全部快照（slot_bindings/canvas/scenes/sticker_pool/...）fork 出新 job，
-            仅允许调 variants/profile。与下面「换素材重做」（跳 create 页从头）互补。
+            v0.50+: 重跑入口（改进）—— completed 与 failed 任务都显示。
+            v0.30 原设计直接弹 dialog 选 variants/profile 后立即生成新任务。
+            v0.50 改为跳转到 create 页面（带实例 ID），让用户可以查看/修改全部配置后再决定生成。
+            这样重跑的行为与「从草稿编辑」一致：任务完成后可以回到编辑态继续调整。
           */}
           {(completed || renderFailed) && (
             <Button
               variant={renderFailed ? "gradient" : "outline"}
-              onClick={() => setRerunOpen(true)}
-              title="用同样的素材与配置再生成一批"
+              disabled={creatingDraft}
+              onClick={async () => {
+                setCreatingDraft(true);
+                try {
+                  const draft = await MixcutApi.createDraftFromJob(job.id);
+                  router.push(
+                    `/mixcut/create/${encodeURIComponent(job.template_id)}?draft_id=${encodeURIComponent(draft.id)}`,
+                  );
+                } catch (e) {
+                  console.error("创建实例失败:", e);
+                  setCreatingDraft(false);
+                }
+              }}
+              title="跳转到编辑页面，可以查看/修改配置后再生成"
             >
-              <RefreshCw className="size-4" /> 再生成一批
+              {creatingDraft ? (
+                <Wand2 className="size-4 animate-pulse" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              {creatingDraft ? "准备中…" : "继续编辑 / 再生成"}
             </Button>
           )}
           {renderFailed && (
@@ -714,14 +731,6 @@ export function JobDetailClient({ id }: { id: string }) {
           job={job}
           open={publishOpen}
           onClose={() => setPublishOpen(false)}
-        />
-      )}
-      {/* v0.30+: 重跑 dialog */}
-      {job && (
-        <RerunJobDialog
-          job={job}
-          open={rerunOpen}
-          onOpenChange={setRerunOpen}
         />
       )}
     </div>

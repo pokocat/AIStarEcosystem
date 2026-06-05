@@ -6286,6 +6286,15 @@ paths:
       - { in: path, name: jobId, required: true, schema: { type: string } }
     post: { tags: [mixcut], operationId: rerunMixcutJob, responses: { '200': { description: ok } } }
 
+  # v0.50+: 从已有任务创建实例（用于改进后的「重跑」入口）。
+  # 若任务已有 draft_id → 直接返回现有实例；否则 → 从任务快照创建新实例。
+  # 调用方跳转 /mixcut/create/{templateId}?draft_id={id} 让用户可编辑后再生成。
+  # 404 MIXCUT_JOB_NOT_FOUND → job 不存在或不属于当前用户。
+  /mixcut/jobs/{jobId}/create-draft:
+    parameters:
+      - { in: path, name: jobId, required: true, schema: { type: string } }
+    post: { tags: [mixcut], operationId: createDraftFromJob, responses: { '200': { description: ok } } }
+
   /mixcut/assets:
     get:  { tags: [mixcut], operationId: listMixcutAssets,  responses: { '200': { description: ok } } }
     post: { tags: [mixcut], operationId: uploadMixcutAsset, responses: { '200': { description: ok } } }

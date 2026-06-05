@@ -588,6 +588,64 @@ export async function deleteDraft(id: string): Promise<boolean> {
 }
 
 /**
+ * v0.50+: 从已有任务创建实例（用于「重跑」入口）。
+ *
+ * 若任务已有 draft_id —— 直接返回现有实例；
+ * 否则 —— 从任务的快照数据创建一个新实例，并返回。
+ *
+ * 调用方拿到实例 id 后跳转 `/mixcut/create/{templateId}?draft_id={id}`，让用户可以编辑后再生成。
+ * 这样「重跑」的行为与「从草稿编辑」一致：先看/改配置，再决定生成。
+ *
+ * USE_LOCAL：用 job 快照数据克隆一个本地实例，写入 localStorage。
+ * REAL_BACKEND：POST /api/mixcut/jobs/{jobId}/create-draft。
+ *
+ * 错误：404 MIXCUT_JOB_NOT_FOUND。
+ */
+export async function createDraftFromJob(jobId: string): Promise<MixcutDraft> {
+  if (USE_LOCAL) {
+    const jobs = loadJobs();
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) throw new Error("找不到该任务");
+
+    // 若任务已有 draft_id，直接返回该实例
+    if (job.draft_id) {
+      const existing = loadDrafts().find((d) => d.id === job.draft_id);
+      if (existing) return mockDelay(existing);
+    }
+
+    // 从任务快照创建新实例
+    const drafts = loadDrafts();
+    const now = new Date().toISOString();
+    const draftId = shortId("draft_");
+    const newDraft: MixcutDraft = {
+      id: draftId,
+      user_id: job.user_id,
+      template_id: job.template_id,
+      template_name: job.template_name,
+      template_thumbnail: job.template_thumbnail,
+      name: `${job.template_name ?? "未命名模板"} · 重跑`,
+      slot_bindings: job.slot_bindings,
+      canvas_snapshot: job.canvas_snapshot,
+      slots_snapshot: job.slots_snapshot,
+      scenes_snapshot: job.scenes_snapshot,
+      perturbation_overrides: job.perturbation_overrides,
+      sticker_pool: job.sticker_pool,
+      perturbation_profile: job.perturbation_profile,
+      output_variants: job.output_variants,
+      product_id: job.product_id,
+      status: "draft",
+      generated_job_count: 0,
+      created_at: now,
+      updated_at: now,
+    };
+    drafts.unshift(newDraft);
+    saveDrafts();
+    return mockDelay(newDraft);
+  }
+  return apiFetch<MixcutDraft>(`/mixcut/jobs/${jobId}/create-draft`, { method: "POST" });
+}
+
+/**
  * 从实例生成任务。后端读实例快照灌进标准创建链路（扣费 / 派发），返回新 RenderJob（带 draft_id）。
  * body 可空；仅 variants / profile 可覆盖（与 rerun 同款）。
  *

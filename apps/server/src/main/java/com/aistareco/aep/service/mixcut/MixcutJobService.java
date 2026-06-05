@@ -145,6 +145,17 @@ public class MixcutJobService {
     }
 
     /**
+     * v0.50+: 取原始 job entity（不转 DTO）。用于 MixcutDraftService.createFromJob 提取快照字段。
+     * owner 校验：他人 jobId 直接返回 empty（视同不存在）。
+     */
+    @Transactional(readOnly = true)
+    public Optional<MixcutRenderJob> getRawJob(String id, String userId) {
+        if (userId == null || userId.isBlank()) return Optional.empty();
+        return jobRepo.findById(id)
+                .filter(j -> userId.equals(j.getUserId()));
+    }
+
+    /**
      * 创建任务并 dispatch 异步 worker。返回的 DTO 状态固定为 "queued"。
      * v0.13.0+: principalUserId 优先于 req.userId（避免越权创建别人名下 job）。
      */

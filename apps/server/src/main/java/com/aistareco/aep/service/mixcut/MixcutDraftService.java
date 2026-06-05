@@ -182,6 +182,78 @@ public class MixcutDraftService {
         return jobService.create(req, userId);
     }
 
+    /**
+     * v0.50+: 从已有任务创建实例（用于「重跑」入口）。
+     *
+     * <p>若任务已有 draft_id —— 直接返回现有实例（且 owner 符合）；
+     * 否则 —— 从任务的快照数据创建一个新实例。
+     *
+     * <p>调用方拿到实例 id 后跳转 `/mixcut/create/{templateId}?draft_id={id}`，
+     * 让用户可以编辑后再决定生成。
+     *
+     * @throws BusinessException 404 MIXCUT_JOB_NOT_FOUND — job 不存在或不属于当前用户
+     */
+    @Transactional
+    public MixcutDraftDto createFromJob(String jobId, String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "请先登录");
+        }
+        if (jobId == null || jobId.isBlank()) {
+            throw BusinessException.notFound("MIXCUT_JOB_NOT_FOUND", "找不到该任务");
+        }
+
+        // 1) 取 job（owner 校验）
+        var maybeJob = jobService.getRawJob(jobId, userId);
+        if (maybeJob.isEmpty()) {
+            throw BusinessException.notFound("MIXCUT_JOB_NOT_FOUND", "找不到该任务");
+        }
+        var job = maybeJob.get();
+
+        // 2) 若 job 已有 draft_id，直接返回该实例（owner 校验）
+        String existingDraftId = job.getDraftId();
+        if (existingDraftId != null && !existingDraftId.isBlank()) {
+            var existingDraft = draftRepo.findById(existingDraftId)
+                    .filter(d -> userId.equals(d.getUserId()))
+                    .orElse(null);
+            if (existingDraft != null) {
+                log.info("[mixcut] create-draft-from-job reusing existing draft={} job={} user={}",
+                        existingDraftId, jobId, userId);
+                return MixcutDraftDto.from(existingDraft, mapper);
+            }
+        }
+
+        // 3) 从 job 快照创建新实例
+        OffsetDateTime now = OffsetDateTime.now();
+        String draftId = "draft_" + shortUuid();
+
+        MixcutDraft draft = new MixcutDraft();
+        draft.setId(draftId);
+        draft.setUserId(userId);
+        draft.setTemplateId(job.getTemplateId());
+        draft.setTemplateName(job.getTemplateName());
+        draft.setTemplateThumbnail(job.getTemplateThumbnail());
+        draft.setName(defaultName(job.getTemplateName()) + " · 重跑");
+        // 从 job 拷贝所有快照字段
+        draft.setSlotBindingsJson(job.getSlotBindingsJson());
+        draft.setCanvasSnapshotJson(job.getCanvasSnapshotJson());
+        draft.setSlotsSnapshotJson(job.getSlotsSnapshotJson());
+        draft.setScenesSnapshotJson(job.getScenesSnapshotJson());
+        draft.setPerturbationOverridesJson(job.getPerturbationOverridesJson());
+        draft.setStickerPoolJson(job.getStickerPoolJson());
+        draft.setPerturbationProfile(job.getPerturbationProfile());
+        draft.setOutputVariants(job.getOutputVariants());
+        draft.setProductId(job.getProductId());
+        draft.setStatus("draft");
+        draft.setGeneratedJobCount(0);
+        draft.setCreatedAt(now);
+        draft.setUpdatedAt(now);
+
+        draftRepo.save(draft);
+        log.info("[mixcut] created draft from job draft={} job={} user={} template={}",
+                draftId, jobId, userId, job.getTemplateId());
+        return MixcutDraftDto.from(draft, mapper);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private String serialize(JsonNode node, String fallback) {
