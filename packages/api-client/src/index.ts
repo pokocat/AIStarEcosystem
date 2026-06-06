@@ -11,6 +11,7 @@ export {
   apiFetch,
   apiFetchPaginated,
   ApiError,
+  GLOBAL_API_ERROR_EVENT,
   USE_MOCK,
   ENABLE_DEV_LOGIN,
   AUTH_TOKEN_KEY,
@@ -20,6 +21,7 @@ export {
   registerUnauthorizedHandler,
   buildQuery,
   mockDelay,
+  type GlobalApiErrorEventDetail,
 } from "./_client";
 
 export { AuthProvider, useAuth, type AuthProviderProps } from "./auth-context";

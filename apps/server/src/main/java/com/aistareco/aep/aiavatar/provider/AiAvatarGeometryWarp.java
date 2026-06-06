@@ -9,8 +9,8 @@ import java.awt.image.BufferedImage;
  * 逐像素反向映射 + 双线性采样。确定性、可复算。
  *
  * 说明（DECISIONS.md）：完整方案是 MediaPipe FaceMesh 478 关键点 + TPS。本环境无 MediaPipe，
- * 改用「以图像几何中心估计面部锚点」的简化版（中心径向液化）。前端 canvas 走同一族算法做实时预览
- * （{@code apps/web-aiavatar/src/lib/face-warp.ts}），二者参数语义一致，可平滑替换为真 FaceMesh。
+ * 改用「以图像几何中心估计面部锚点」的简化版（中心径向液化）。可由前端 canvas
+ * 复用同一族算法做实时预览，二者参数语义一致，可平滑替换为真 FaceMesh。
  *
  * 滑块语义（相对中性值，范围约 -100..100）：
  *  - slimFace   : 脸颊向内 pinch（瘦脸）

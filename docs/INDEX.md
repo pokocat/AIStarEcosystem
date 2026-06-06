@@ -6,7 +6,7 @@
 > last-reviewed：2026-05-23 / v0.5.4
 > last-reviewed：2026-05-21 / v0.21 混剪 / 分发用户视角文案 + 视频库（软删 30 天）+ 官方明星片段
 
-> ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web`、`apps/admin`、`apps/server` 不动。详见 [`AGENTS.md`](../AGENTS.md) §1 顶部进度表。
+> ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*` + `apps/admin`）走 Next 16 + React 19 + pnpm；遗留 `apps/web` 仍独立 npm，`apps/server` 是 Spring Boot 后端。详见 [`AGENTS.md`](../AGENTS.md) §1 顶部进度表。
 
 ---
 
@@ -27,9 +27,6 @@
 | [`apps/web-music/PRODUCT.md`](../apps/web-music/PRODUCT.md) ★ | AI 音乐人（3010） | 产品定位 / 路由 / 业务领域 / 视觉系统（Restrained dark + Inter） |
 | [`apps/web-drama/PRODUCT.md`](../apps/web-drama/PRODUCT.md) ★ | AI 短剧（3011） | 产品定位 / 路由 / 业务领域 / 视觉系统（Premium Cinematic + 金色 accent + serif） |
 | [`apps/web-celebrity/PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) ★ | AI 明星带货（3012） | 产品定位 / 路由 / 业务领域 / 视觉系统（Creator-Friendly + 紫罗兰）+ **混剪专区完整设计** |
-| [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) ★ | AiAvatar 形象资产中心（3013） | 真人复刻 / AI 原创 · 7 步链路 + 衍生 3D/视频 · 深色琥珀 · aiavatar_* 独立后端领域（last-reviewed 2026-05-30） |
-| [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 中心 | 架构 / 能力真实-vs-mock 映射 / 合规 / 状态机 / 监控线程 决策记录 |
-| [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |
 
 不动产品规格的方向时不必读 §3 ~ §7。
 
@@ -150,8 +147,8 @@ sudo yum install -y ffmpeg ffmpeg-devel
 | 部署到生产 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) → [`infra/README.md`](../infra/README.md)；使用 `build-release.sh` / `deploy.sh` / GitHub Actions artifact 部署链路 |
 | 修 admin auth/403 问题 | [`TODO.md`](../TODO.md) 第一节 |
 | 加新 LLM provider | `apps/server/.../service/AiModelInvocationService.java`（v0.5 仅 OPENAI/OPENAI_COMPATIBLE） |
-| 配置 / 上下架 / 调价 | 进 admin（端口 3003），见 [`apps/admin/README.md`](../apps/admin/README.md) 当前可用菜单段 |
-| 加新子产品（第 4 个 web-X） | 先看现有三个 PRODUCT.md（music / drama / celebrity）取经；走 pnpm workspace + Next 16 + Tailwind v4 模板 |
+| 配置 / 上下架 / 调价 | 进 admin（`http://localhost:3003/admin`），见 [`apps/admin/README.md`](../apps/admin/README.md) 当前可用菜单段 |
+| 加新子产品（新的 web-X） | 先看现有三个 PRODUCT.md（music / drama / celebrity）取经；走 pnpm workspace + Next 16 + Tailwind v4 模板 |
 
 ## 维护规则
 

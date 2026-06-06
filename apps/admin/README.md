@@ -6,10 +6,13 @@
 
 ```bash
 pnpm install
-pnpm dev:admin      # http://localhost:3003
+pnpm dev:admin      # http://localhost:3003/admin
 pnpm typecheck:admin
 pnpm --filter @ai-star-eco/admin-new build
 ```
+
+本应用配置了 `basePath: "/admin"`；本地预览请打开 `http://localhost:3003/admin` 或
+`http://localhost:3003/admin/login`，裸 `http://localhost:3003/` 会是 404。
 
 环境变量（`.env.local`）：
 

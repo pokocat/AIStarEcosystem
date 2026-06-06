@@ -48,20 +48,20 @@ export function WorkshopScreen({
   const applyAsset = (blocks: ScriptBlock[]) => setDraft({ ...draft, blocks });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
+    <div className="mobile-editor-page md:pb-0" style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
       {/* title bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+      <div className="mobile-editor-titlebar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <div>
           <Eyebrow>脚本工坊</Eyebrow>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 4 }}>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, margin: 0, letterSpacing: "-0.01em", color: "var(--fg-0)" }}>
+            <h1 className="mobile-editor-heading" style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, margin: 0, letterSpacing: "-0.01em", color: "var(--fg-0)" }}>
               {draft.name || "新脚本"} ·{" "}
-              <span style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)", fontSize: 15, fontWeight: 400 }}>{draft.id}</span>
+              <span className="mobile-editor-heading-id" style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)", fontSize: 15, fontWeight: 400 }}>{draft.id}</span>
             </h1>
             <TierBadge tier={draft.tier} />
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="mobile-editor-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Button variant="secondary" size="md">
             <Copy size={13} /> 另存为模板
           </Button>
@@ -88,6 +88,19 @@ export function WorkshopScreen({
       <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 16, alignItems: "flex-start" }}>
         <ScriptEditor draft={draft} setDraft={setDraft} platform={platform} onBlockAction={(i, k) => setDrawer({ blockIndex: i, kind: k })} />
         <AgentPanel draft={draft} platform={platform} setPlatform={setPlatform} />
+      </div>
+
+      <div className="mobile-bottom-actionbar md:hidden">
+        <div style={{ display: "grid", gridTemplateColumns: onDelete ? "44px minmax(0, 1fr)" : "1fr", gap: 10, alignItems: "center" }}>
+          {onDelete && (
+            <Button variant="danger" size="md" onClick={onDelete} title="删除脚本" style={{ width: 44, padding: 0 }}>
+              <Trash2 size={15} />
+            </Button>
+          )}
+          <Button variant="accent" size="md" onClick={onSaveAndPreview} style={{ width: "100%" }}>
+            <Check size={14} /> 保存并预览
+          </Button>
+        </div>
       </div>
 
       {drawer && (
@@ -746,7 +759,7 @@ function BlockDrawer({ draft, setDraft, product, blockIndex, kind, onClose }: { 
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--bg-overlay)", zIndex: 80 }} />
-      <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 460, zIndex: 90, background: "var(--bg-1)", borderLeft: "1px solid var(--line)", boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column" }}>
+      <div className="mobile-drawer-panel" style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 460, maxWidth: "100vw", zIndex: 90, background: "var(--bg-1)", borderLeft: "1px solid var(--line)", boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "flex-start", gap: 12, background: `linear-gradient(135deg, ${hexA(meta.tone === "var(--accent)" ? "#7c5cff" : meta.tone === "var(--danger)" ? "#ff5b8a" : "#22b59a", "12")}, transparent 60%)` }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, color: "var(--fg-0)", fontWeight: 600 }}>{meta.title}</div>
@@ -804,7 +817,7 @@ function AgentPanel({ draft, platform, setPlatform }: { draft: ScriptAsset; plat
   const rules = PLATFORM_RULES[platform];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "sticky", top: 8 }}>
+    <div className="mobile-agent-panel" style={{ display: "flex", flexDirection: "column", gap: 14, position: "sticky", top: 8 }}>
       <Card style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)" }}>
           <Eyebrow>智能体校验 · 平台适配</Eyebrow>

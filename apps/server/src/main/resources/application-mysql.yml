@@ -1,5 +1,7 @@
 # MySQL — 生产 / 联调环境
-# 启动方式: --spring.profiles.active=mysql
+# 启动方式:
+#   Maven: ./mvnw spring-boot:run -Dspring-boot.run.profiles=mysql
+#   Jar  : java -jar app.jar --spring.profiles.active=mysql
 # 建库: CREATE DATABASE aistareco CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 #       （参考 infra/rds/00_create_database.sql / infra/rds/01_create_app_user.sql）
 spring:

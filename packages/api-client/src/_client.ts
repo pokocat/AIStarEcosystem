@@ -72,6 +72,17 @@ export class ApiError extends Error {
   }
 }
 
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export const GLOBAL_API_ERROR_EVENT = "aistareco:api-error";
+
+export type GlobalApiErrorEventDetail = {
+  error: ApiError;
+  path: string;
+  method: HttpMethod;
+  status?: number;
+};
+
 /** 构造 URL 查询串，自动过滤 undefined / null。 */
 export function buildQuery(params?: Record<string, unknown>): string {
   if (!params) return "";
@@ -85,12 +96,42 @@ export function buildQuery(params?: Record<string, unknown>): string {
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  method?: HttpMethod;
   body?: unknown;
   query?: Record<string, unknown>;
   headers?: Record<string, string>;
   signal?: AbortSignal;
   suppressParseErrorLog?: boolean;
+  suppressGlobalError?: boolean;
+}
+
+function dispatchGlobalApiError(
+  error: ApiError,
+  context: { path: string; method: HttpMethod; suppressGlobalError?: boolean },
+) {
+  if (context.suppressGlobalError || typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(
+      new CustomEvent<GlobalApiErrorEventDetail>(GLOBAL_API_ERROR_EVENT, {
+        detail: {
+          error,
+          path: context.path,
+          method: context.method,
+          status: error.status,
+        },
+      }),
+    );
+  } catch {
+    /* old browsers / test runtimes: global UI is best effort */
+  }
+}
+
+function throwApiError(
+  error: ApiError,
+  context: { path: string; method: HttpMethod; suppressGlobalError?: boolean },
+): never {
+  dispatchGlobalApiError(error, context);
+  throw error;
 }
 
 /**
@@ -101,50 +142,80 @@ export async function apiFetch<T>(
   path: string,
   opts: RequestOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, query, headers, signal, suppressParseErrorLog = false } = opts;
+  const {
+    method = "GET",
+    body,
+    query,
+    headers,
+    signal,
+    suppressParseErrorLog = false,
+    suppressGlobalError = false,
+  } = opts;
 
   // USE_MOCK：在网络层拦截，命中 registry 直接返回 handler 结果（已是 unwrapped T）。
   // handler 抛 ApiError 即可模拟错误。未注册路径会落到下方网络分支（dev 期可见 404，便于发现缺口）。
   if (USE_MOCK) {
     const match = findMockHandler(method as MockMethod, path);
     if (match) {
-      return (await match.handler({ params: match.params, query, body })) as T;
+      try {
+        return (await match.handler({ params: match.params, query, body })) as T;
+      } catch (error) {
+        if (error instanceof ApiError) {
+          dispatchGlobalApiError(error, { path, method, suppressGlobalError });
+        }
+        throw error;
+      }
     }
   }
 
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
 
   const token = getAuthToken();
-  const res = await fetch(url, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(headers || {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
-    credentials: "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(headers || {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+      credentials: "include",
+    });
+  } catch (error) {
+    if ((error as { name?: unknown })?.name === "AbortError") throw error;
+    throwApiError(
+      new ApiError({ code: "NETWORK_ERROR", message: "网络请求失败，请检查网络后重试" }),
+      { path, method, suppressGlobalError },
+    );
+  }
 
   if (res.status === 401) {
     setAuthToken(null);
     unauthorizedHandler?.();
-    throw new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401);
+    throwApiError(
+      new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401),
+      { path, method, suppressGlobalError },
+    );
   }
 
   const raw = await res.text();
   if (!raw) {
     if (!res.ok) {
-      throw new ApiError(
-        { code: "HTTP_ERROR", message: `HTTP ${res.status}` },
-        res.status
+      throwApiError(
+        new ApiError({ code: "HTTP_ERROR", message: `HTTP ${res.status}` }, res.status),
+        { path, method, suppressGlobalError },
       );
     }
     if (res.status !== 204 && res.status !== 205) {
-      throw new ApiError(
-        { code: "BAD_ENVELOPE", message: "Response envelope missing success:true" },
-        res.status
+      throwApiError(
+        new ApiError(
+          { code: "BAD_ENVELOPE", message: "Response envelope missing success:true" },
+          res.status,
+        ),
+        { path, method, suppressGlobalError },
       );
     }
     return undefined as T;
@@ -161,20 +232,23 @@ export async function apiFetch<T>(
     const contentType = res.headers.get("content-type") ?? "<missing>";
     if (!suppressParseErrorLog && typeof console !== "undefined") {
       // eslint-disable-next-line no-console
-      console.error(
+      console.warn(
         `[apiFetch] non-JSON body from ${path}  status=${res.status}  ` +
           `content-type=${contentType}\n` +
           snippet,
       );
     }
-    throw new ApiError(
-      {
-        code: "PARSE_ERROR",
-        message:
-          `Invalid JSON from ${path} (status=${res.status}, content-type=${contentType}). ` +
-          `Body starts with: ${snippet || "<empty>"}`,
-      },
-      res.status,
+    throwApiError(
+      new ApiError(
+        {
+          code: "PARSE_ERROR",
+          message:
+            `服务器返回了非标准错误响应：${path}（HTTP ${res.status}，${contentType}）。` +
+            `响应内容：${snippet || "<empty>"}`,
+        },
+        res.status,
+      ),
+      { path, method, suppressGlobalError },
     );
   }
 
@@ -183,7 +257,7 @@ export async function apiFetch<T>(
       code: "HTTP_ERROR",
       message: `HTTP ${res.status}`,
     };
-    throw new ApiError(err, res.status);
+    throwApiError(new ApiError(err, res.status), { path, method, suppressGlobalError });
   }
 
   const envelope = parsed as ApiResponse<T>;
@@ -192,7 +266,7 @@ export async function apiFetch<T>(
       code: "BAD_ENVELOPE",
       message: "Response envelope missing success:true",
     };
-    throw new ApiError(err, res.status);
+    throwApiError(new ApiError(err, res.status), { path, method, suppressGlobalError });
   }
   return envelope.data;
 }
@@ -217,33 +291,52 @@ export async function apiFetchPaginated<T>(
   path: string,
   opts: RequestOptions = {},
 ): Promise<PaginatedResponse<T>> {
-  const { method = "GET", body, query, headers, signal } = opts;
+  const { method = "GET", body, query, headers, signal, suppressGlobalError = false } = opts;
 
   if (USE_MOCK) {
     const match = findMockHandler(method as MockMethod, path);
     if (match) {
-      return (await match.handler({ params: match.params, query, body })) as PaginatedResponse<T>;
+      try {
+        return (await match.handler({ params: match.params, query, body })) as PaginatedResponse<T>;
+      } catch (error) {
+        if (error instanceof ApiError) {
+          dispatchGlobalApiError(error, { path, method, suppressGlobalError });
+        }
+        throw error;
+      }
     }
   }
 
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
   const token = getAuthToken();
-  const res = await fetch(url, {
-    method,
-    credentials: "same-origin",
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(headers ?? {}),
-    },
-    body: body == null ? undefined : JSON.stringify(body),
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      credentials: "same-origin",
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(headers ?? {}),
+      },
+      body: body == null ? undefined : JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    if ((error as { name?: unknown })?.name === "AbortError") throw error;
+    throwApiError(
+      new ApiError({ code: "NETWORK_ERROR", message: "网络请求失败，请检查网络后重试" }),
+      { path, method, suppressGlobalError },
+    );
+  }
 
   if (res.status === 401) {
     setAuthToken(null);
     unauthorizedHandler?.();
-    throw new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401);
+    throwApiError(
+      new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401),
+      { path, method, suppressGlobalError },
+    );
   }
 
   const raw = await res.text();
@@ -253,14 +346,17 @@ export async function apiFetchPaginated<T>(
   } catch {
     const snippet = raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
     const contentType = res.headers.get("content-type") ?? "<missing>";
-    throw new ApiError(
-      {
-        code: "PARSE_ERROR",
-        message:
-          `Invalid JSON from ${path} (status=${res.status}, content-type=${contentType}). ` +
-          `Body starts with: ${snippet || "<empty>"}`,
-      },
-      res.status,
+    throwApiError(
+      new ApiError(
+        {
+          code: "PARSE_ERROR",
+          message:
+            `服务器返回了非标准错误响应：${path}（HTTP ${res.status}，${contentType}）。` +
+            `响应内容：${snippet || "<empty>"}`,
+        },
+        res.status,
+      ),
+      { path, method, suppressGlobalError },
     );
   }
 
@@ -269,7 +365,7 @@ export async function apiFetchPaginated<T>(
       code: "HTTP_ERROR",
       message: `HTTP ${res.status}`,
     };
-    throw new ApiError(err, res.status);
+    throwApiError(new ApiError(err, res.status), { path, method, suppressGlobalError });
   }
 
   const envelope = parsed as PaginatedResponse<T>;
@@ -278,7 +374,7 @@ export async function apiFetchPaginated<T>(
       code: "BAD_ENVELOPE",
       message: "Response envelope missing pagination metadata",
     };
-    throw new ApiError(err, res.status);
+    throwApiError(new ApiError(err, res.status), { path, method, suppressGlobalError });
   }
   return envelope;
 }

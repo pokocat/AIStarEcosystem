@@ -54,7 +54,6 @@ import { mockTemplates } from "@/mocks/mixcut";
 import {
   PROFILE_LABELS,
   PROFILE_DESCRIPTIONS,
-  TIER_LABELS,
   LAYER_LABELS,
   FILL_STRATEGY_LABELS,
 } from "@/constants/mixcut-ui";
@@ -822,46 +821,90 @@ export function TemplateDetailClient({
   };
 
   return (
-    <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
+    <div className="px-4 md:px-6 lg:px-8 py-4 md:py-6 max-w-[1600px] mx-auto">
       <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal(null)} />
-      <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
-        <Button variant="ghost" size="sm" asChild className="-ml-2">
+      <div className="mb-4 md:mb-6 flex items-center justify-between gap-2">
+        <Button variant="ghost" size="sm" asChild className="-ml-2 h-9 px-2 md:px-3">
           <Link href="/mixcut/templates">
             <ArrowLeft className="size-4" /> 返回模板库
           </Link>
         </Button>
         {!editing && (
-          <div className="flex items-center gap-2">
-            {canManageTemplates && (
-              <Button variant="ghost" size="sm" asChild>
-                <Link href={`/mixcut/templates/${template.template_id}/edit`}>
-                  <Pencil className="size-3.5" /> 编辑模板
-                </Link>
-              </Button>
-            )}
-            {canDeleteTemplate && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={requestDeleteTemplate}
-                disabled={saving}
-              >
-                <Trash2 className="size-3.5" /> {deleteRestoresFactoryBase ? "删除我的版本" : "删除模板"}
-              </Button>
-            )}
-            {editableSlots.length > 0 ? (
-              <Button variant="gradient" size="default" asChild className="h-10 px-5">
-                <Link href={`/mixcut/create/${template.template_id}`}>
+          <>
+            <div className="hidden md:flex items-center gap-2">
+              {canManageTemplates && (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href={`/mixcut/templates/${template.template_id}/edit`}>
+                    <Pencil className="size-3.5" /> 编辑模板
+                  </Link>
+                </Button>
+              )}
+              {canDeleteTemplate && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={requestDeleteTemplate}
+                  disabled={saving}
+                >
+                  <Trash2 className="size-3.5" /> {deleteRestoresFactoryBase ? "删除我的版本" : "删除模板"}
+                </Button>
+              )}
+              {editableSlots.length > 0 ? (
+                <Button variant="gradient" size="default" asChild className="h-10 px-5">
+                  <Link href={`/mixcut/create/${template.template_id}`}>
+                    使用此模板
+                    <ChevronRight className="size-4" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="default" size="default" disabled className="h-10 px-5" title="该模板还没有可填的内容位置，请先编辑添加">
                   使用此模板
-                  <ChevronRight className="size-4" />
-                </Link>
-              </Button>
-            ) : (
-              <Button variant="default" size="default" disabled className="h-10 px-5" title="该模板还没有可填的内容位置，请先编辑添加">
-                使用此模板
-              </Button>
-            )}
-          </div>
+                </Button>
+              )}
+            </div>
+            <div className="flex md:hidden items-center gap-1.5">
+              {(canManageTemplates || canDeleteTemplate) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="size-9 rounded-full" title="模板操作">
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[168px]">
+                    {canManageTemplates && (
+                      <DropdownMenuItem onClick={() => router.push(`/mixcut/templates/${template.template_id}/edit`)}>
+                        <Pencil className="size-3.5" /> 编辑模板
+                      </DropdownMenuItem>
+                    )}
+                    {canDeleteTemplate && (
+                      <>
+                        {canManageTemplates && <DropdownMenuSeparator />}
+                        <DropdownMenuItem
+                          onClick={requestDeleteTemplate}
+                          disabled={saving}
+                          className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                        >
+                          <Trash2 className="size-3.5" /> {deleteRestoresFactoryBase ? "删除我的版本" : "删除模板"}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {editableSlots.length > 0 ? (
+                <Button variant="gradient" size="sm" asChild className="h-9 rounded-full px-3">
+                  <Link href={`/mixcut/create/${template.template_id}`}>
+                    使用模板
+                    <ChevronRight className="size-3.5" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="default" size="sm" disabled className="h-9 rounded-full px-3" title="该模板还没有可填的内容位置，请先编辑添加">
+                  使用模板
+                </Button>
+              )}
+            </div>
+          </>
         )}
         {editing ? (
           <div className="flex items-center gap-3 flex-wrap">
@@ -947,7 +990,6 @@ export function TemplateDetailClient({
           </div>
         ) : null}
       </div>
-
       {/* 模式提示：draft / factory 互斥，最多展示一条；单行无 Card chrome */}
       {(isNewMode || (isFactory && editing)) && (
         <ModeNotice
@@ -980,14 +1022,9 @@ export function TemplateDetailClient({
         {/* view 模式：极简标题块。仅 chip + name + 一行硬事实，避免 hero card 抢戏；
             页面焦点是下方的 preview + slot 列表（"内容结构 + 预期效果"）。*/}
         {!editing && (
-          <header className="mb-6">
-            <div className="flex items-center gap-1.5 mb-2 flex-wrap text-xs text-muted-foreground">
+          <header className="mb-4 md:mb-6">
+            <div className="hidden md:flex items-center gap-1.5 mb-2 flex-wrap text-xs text-muted-foreground">
               <span>{display.metadata.category}</span>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="inline-flex items-center gap-0.5">
-                <Lock className="size-3" />
-                {TIER_LABELS[display.metadata.required_tier]}
-              </span>
               {!isFactory && (
                 <>
                   <span className="text-muted-foreground/40">·</span>
@@ -995,17 +1032,20 @@ export function TemplateDetailClient({
                 </>
               )}
             </div>
-            <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight leading-tight">
+            {!isFactory && (
+              <div className="mb-1.5 text-xs font-medium text-emerald-600 md:hidden">
+                我的版本
+              </div>
+            )}
+            <h1 className="text-[24px] md:text-3xl font-semibold tracking-tight leading-tight">
               {display.name}
             </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
+            <p className="mt-1.5 hidden text-sm text-muted-foreground md:block">
               {orientationLabel(display.canvas.width, display.canvas.height).split(" · ")[0]}
               <span className="text-muted-foreground/40 mx-2">·</span>
               {display.canvas.width}×{display.canvas.height}
               <span className="text-muted-foreground/40 mx-2">·</span>
               {totalDuration(display)} 秒
-              <span className="text-muted-foreground/40 mx-2">·</span>
-              一次出 <span className="text-foreground font-medium">{display.output_variants_default} 条</span>不同版本
             </p>
           </header>
         )}
@@ -1051,9 +1091,6 @@ export function TemplateDetailClient({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
                   <Badge variant="muted" className="text-[10px]">{display.metadata.category}</Badge>
-                  <Badge variant="brand" className="text-[10px]">
-                    <Lock className="size-2.5" /> {TIER_LABELS[display.metadata.required_tier]}
-                  </Badge>
                   {!isFactory && <Badge variant="success" className="text-[10px]">我的模板</Badge>}
                 </div>
                 <Input
@@ -2143,14 +2180,8 @@ function EditingTipsBar({ className }: { className?: string }) {
   );
 }
 
-// ── 模板属性表单 body:品类 / 档位 / 标签 / 差异化策略 / 默认变体 / 去重保护 ───
+// ── 模板属性表单 body:品类 / 标签 / 差异化策略 / 默认变体 / 去重保护 ───
 // 不带外壳,由 TemplateConfigBar 展开面板内嵌使用。
-
-const TIER_EDIT_OPTIONS: Template["metadata"]["required_tier"][] = [
-  "basic",
-  "standard",
-  "professional",
-];
 
 const PROFILE_EDIT_OPTIONS: Template["perturbation_profile"][] = [
   "light",
@@ -2202,17 +2233,6 @@ function TemplateMetaFields({
           className="h-8 text-sm"
         />
       </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-xs">适用档位</Label>
-        <SegmentedRadio
-          value={template.metadata.required_tier}
-          onChange={(v) => updateMeta({ required_tier: v })}
-          options={TIER_EDIT_OPTIONS.map((t) => ({ value: t, label: TIER_LABELS[t] }))}
-        />
-      </div>
-
-      <Separator className="my-1" />
 
       <div className="space-y-1.5">
         <Label className="text-xs">差异化策略</Label>

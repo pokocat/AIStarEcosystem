@@ -21,8 +21,7 @@ import java.util.List;
  * 几何形变 Provider（faceWarp）—— **真实确定性算法**（{@link AiAvatarGeometryWarp} 径向液化），
  * 任务书 §4 明确「这是必须接的真实算法，不要 mock」。即便 dev 也走真实计算（in-process，无需 GPU）。
  *
- * 主路径其实在前端 canvas 实时液化（{@code apps/web-aiavatar/src/lib/face-warp.ts}）；本 Provider
- * 是服务端等价实现 + 契约测试样本。基底图来源：input.baseImageUrl（可拉取）→ 否则合成人像占位再形变，
+ * 本 Provider 是服务端等价实现 + 契约测试样本。基底图来源：input.baseImageUrl（可拉取）→ 否则合成人像占位再形变，
  * 二者都对**真实像素**施加真实形变。
  */
 public class RealFaceWarpProvider extends AbstractCapabilityProvider {
