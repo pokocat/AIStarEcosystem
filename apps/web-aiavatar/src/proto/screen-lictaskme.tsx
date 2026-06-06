@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA } from "./data";
+import { DATA, AvatarApi, LicenseApi, JobApi, VoiceApi, AccountApi, useApi, seed } from "./api";
 import { MShell, MKit } from "./shell";
 
 // ============================================================
@@ -21,10 +21,11 @@ function RegTagM({ prefix, id }) {
 // ============ 授权 ============
 function MLicenses({ ctx }) {
   const [f, setF] = useStateMS('all');
+  const licenses = useApi(() => LicenseApi.list(), seed.licenses());
   const tone = { active: 'ok', expired: 'err', pending: 'warn' };
   const label = { active: '生效中', expired: '已过期', pending: '待签署' };
   const filters = [{ key: 'all', label: '全部' }, { key: 'active', label: '生效中' }, { key: 'pending', label: '待签署' }, { key: 'expired', label: '已过期' }];
-  const list = DATA.LICENSES.filter(l => f === 'all' || l.status === f);
+  const list = licenses.filter(l => f === 'all' || l.status === f);
 
   return hMS('div', { className: 'm-overlay', 'data-screen-label': '授权登记' },
     hMS(WxNavS, { title: '授权登记', onBack: ctx.back,
@@ -61,7 +62,8 @@ function MLicenses({ ctx }) {
 
 // ============ 任务 ============
 function MTasks({ ctx }) {
-  const [tasks, setTasks] = useStateMS(DATA.TASKS.map(t => ({ ...t })));
+  const [tasks, setTasks] = useStateMS(seed.jobs());
+  useEffectMS(() => { JobApi.list().then(d => setTasks(d.map(t => ({ ...t })))).catch(() => {}); }, []);
   useEffectMS(() => {
     const iv = setInterval(() => setTasks(ts => ts.map(t => {
       if (t.status !== 'running') return t;
@@ -123,7 +125,12 @@ function MeRow({ icon, label, sub, badge, color, onClick, last }) {
 }
 
 function MMe({ ctx }) {
-  const favCount = DATA.CHARS.filter(c => c.fav).length;
+  const avatars = useApi(() => AvatarApi.list('mine'), seed.avatars());
+  const myVoices = useApi(() => VoiceApi.mine(), seed.myVoices());
+  const licenses = useApi(() => LicenseApi.list(), seed.licenses());
+  const jobs = useApi(() => JobApi.list(), seed.jobs());
+  const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
+  const favCount = avatars.filter(c => c.fav).length;
   return hMS('div', { className: 'm-body has-tabbar', 'data-screen-label': '我的' },
     hMS(WxNavS, { title: '我的',
       right: hMS('button', { className: 'nav-spacer m-tap', onClick: () => ctx.go('settings'), style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', display: 'grid', placeItems: 'center' } }, hMS(Icons.settings, { size: 20, stroke: 1.8 })) }),
@@ -135,7 +142,7 @@ function MMe({ ctx }) {
         hMS('div', { style: { minWidth: 0 } },
           hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             hMS('span', { style: { fontFamily: 'var(--font-disp)', fontWeight: 700, fontSize: 20 } }, '柯岚工作室'),
-            hMS(UI.Badge, { tone: 'primary' }, 'PRO')),
+            hMS(UI.Badge, { tone: 'primary' }, acct.planLabel || 'PRO')),
           hMS('div', { className: 'mono', style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 3 } }, 'UID · 88621049')))),
 
     // 算力卡
@@ -147,13 +154,13 @@ function MMe({ ctx }) {
             hMS('span', { style: { fontSize: 12.5, fontWeight: 600, opacity: .92 } }, '可用算力'),
             hMS('button', { onClick: () => ctx.go('membership'), className: 'm-tap', style: { background: 'rgba(255,255,255,.22)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, padding: '5px 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer' } }, '充值')),
           hMS('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 } },
-            hMS('span', { className: 'mono', style: { fontSize: 30, fontWeight: 800 } }, '1,240'),
+            hMS('span', { className: 'mono', style: { fontSize: 30, fontWeight: 800 } }, (acct.credits || 0).toLocaleString()),
             hMS('span', { style: { fontSize: 12.5, opacity: .9 } }, '点')),
-          hMS('div', { style: { fontSize: 11.5, opacity: .88, marginTop: 4 } }, '本月已用 860 点 · 约可生成 28 个数字人')))),
+          hMS('div', { style: { fontSize: 11.5, opacity: .88, marginTop: 4 } }, '本月已用 ' + (acct.creditsUsed || 0) + ' 点 · 约可生成 ' + (acct.generatableEstimate || 0) + ' 个数字人')))),
 
     // 数据概览
     hMS('div', { style: { padding: '16px 18px 0', display: 'flex', gap: 10 } },
-      [['数字人', DATA.CHARS.length, () => ctx.tab('library')], ['声音', DATA.VOICES.length, () => ctx.go('voice')], ['授权', DATA.LICENSES.length, () => ctx.go('licenses')]].map(([k, v, fn]) =>
+      [['数字人', avatars.length, () => ctx.tab('library')], ['声音', myVoices.length, () => ctx.go('voice')], ['授权', licenses.length, () => ctx.go('licenses')]].map(([k, v, fn]: any) =>
         hMS('button', { key: k, onClick: fn, className: 'm-card m-tap', style: { flex: 1, padding: '13px 8px', textAlign: 'center', cursor: 'pointer', border: '1px solid var(--line)' } },
           hMS('div', { className: 'mono', style: { fontSize: 20, fontWeight: 700, color: 'var(--ink)' } }, v),
           hMS('div', { style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 } }, k)))),
@@ -162,9 +169,9 @@ function MMe({ ctx }) {
     hMS('div', { style: { padding: '20px 18px 0' } },
       hMS('div', { style: { fontSize: 12, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '.06em', margin: '0 2px 9px' } }, '工作台'),
       hMS('div', { className: 'm-card', style: { padding: '0 0 0 0' } },
-        hMS(MeRow, { icon: Icons.mic, label: '声音工作室', sub: DATA.VOICES.length + ' 个声线资产', color: 'var(--ink-2)', onClick: () => ctx.go('voice') }),
+        hMS(MeRow, { icon: Icons.mic, label: '声音工作室', sub: myVoices.length + ' 个声线资产', color: 'var(--ink-2)', onClick: () => ctx.go('voice') }),
         hMS(MeRow, { icon: Icons.shield, label: '授权登记', sub: '真人肖像电子授权', color: 'var(--ink-2)', onClick: () => ctx.go('licenses') }),
-        hMS(MeRow, { icon: Icons.bolt, label: '作业队列', sub: '异步生成任务', color: 'var(--primary)', badge: DATA.TASKS.filter(t => t.status === 'running').length, onClick: () => ctx.go('tasks') }),
+        hMS(MeRow, { icon: Icons.bolt, label: '作业队列', sub: '异步生成任务', color: 'var(--primary)', badge: jobs.filter(t => t.status === 'running').length, onClick: () => ctx.go('tasks') }),
         hMS(MeRow, { icon: Icons.heart, label: '我的收藏', sub: favCount + ' 个数字人', color: 'var(--ink-2)', onClick: () => ctx.tab('library'), last: true }))),
 
     hMS('div', { style: { padding: '18px 18px 0' } },

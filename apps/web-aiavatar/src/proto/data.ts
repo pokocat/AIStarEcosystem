@@ -453,3 +453,98 @@ export const DATA = {
   catColor,
   catSoft,
 };
+
+// ── 公开数字人 / 应用中心 / 场景库 / 账户（原先内联在屏幕里的 mock，统一收口为数据源）──
+
+/** 公开（只读复用）数字人。字段较精简，用于库的 public 网格。 */
+export const PUBLIC_AVATARS: any[] = [
+  { id: "PA-01", name: "Annie", archetype: "商务职业", hue: 28, cat: "pro", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
+  { id: "PA-02", name: "Christina", archetype: "居家生活", hue: 168, cat: "life", fav: true, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
+  { id: "PA-03", name: "Terry", archetype: "播客主播", hue: 248, cat: "ugc", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
+  { id: "PA-04", name: "Pamela", archetype: "社媒口播", hue: 8, cat: "community", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
+  { id: "PA-05", name: "Marcus", archetype: "专业讲解", hue: 200, cat: "pro", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
+  { id: "PA-06", name: "Yuki", archetype: "生活方式", hue: 320, cat: "life", fav: true, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
+];
+
+export interface ApplicationTool {
+  name: string;
+  desc: string;
+  icon: string;
+}
+export interface Application {
+  key: "music" | "drama" | "live";
+  name: string;
+  code: string;
+  icon: string;
+  blurb: string;
+  g1: string;
+  g2: string;
+  accent: string;
+  tools: ApplicationTool[];
+}
+
+/** 下游子应用（复用已定稿 Avatar）。 */
+export const APPLICATIONS: Application[] = [
+  { key: "music", name: "音乐工作室", code: "APP-MUS", icon: "music", blurb: "数字人 MV、音乐短片与虚拟歌手演出", g1: "#7C5CE6", g2: "#2E2270", accent: "#C9B8FF",
+    tools: [{ name: "MV 生成器", desc: "一首歌一键生成数字人 MV", icon: "clapper" }, { name: "虚拟歌手演出", desc: "数字人演唱与舞台呈现", icon: "music" }, { name: "音乐短片", desc: "氛围配乐 + 角色叙事短片", icon: "play" }] },
+  { key: "drama", name: "短剧工坊", code: "APP-DRA", icon: "clapper", blurb: "数字人出演剧情短剧，多角色演绎成片", g1: "#3E63C8", g2: "#16224C", accent: "#9DB8FF",
+    tools: [{ name: "剧情短剧", desc: "剧本到成片的短剧制作", icon: "clapper" }, { name: "多角色对戏", desc: "多个数字人同场演绎", icon: "users" }, { name: "分镜成片", desc: "自动分镜与剪辑合成", icon: "layers" }] },
+  { key: "live", name: "短视频带货", code: "APP-LIV", icon: "cart", blurb: "数字人口播带货，短视频与直播间开播", g1: "#E8884A", g2: "#6E3214", accent: "#FFD0A6",
+    tools: [{ name: "口播带货", desc: "商品脚本一键口播视频", icon: "mic" }, { name: "直播间开播", desc: "数字人 7×24 无人直播", icon: "bolt" }, { name: "商品讲解", desc: "卖点拆解与讲解视频", icon: "doc" }] },
+];
+
+export interface Scene {
+  id: string;
+  name: string;
+  variant: string;
+  expr: string;
+}
+
+/** 平台预置场景库（设计新造型 → 选择场景替换）。 */
+export const SCENES: Scene[] = [
+  { id: "s1", name: "办公玻璃幕墙", variant: "key", expr: "calm" },
+  { id: "s2", name: "书架暖光", variant: "threeq", expr: "smile" },
+  { id: "s3", name: "米色针织", variant: "side", expr: "calm" },
+  { id: "s4", name: "彩色背景墙", variant: "look", expr: "smile" },
+  { id: "s5", name: "直播间", variant: "key", expr: "serious" },
+  { id: "s6", name: "咖啡馆", variant: "threeq", expr: "calm" },
+];
+
+export interface StorageSlice {
+  name: string;
+  size: number;
+  color: string;
+  icon: string;
+}
+export interface Account {
+  plan: "FREE" | "PRO" | "STUDIO";
+  planLabel: string;
+  credits: number;
+  monthlyGrant: number;
+  creditsUsed: number;
+  refreshDate: string;
+  generatableEstimate: number;
+  storageUsedGB: number;
+  storageQuotaGB: number;
+  storageBreakdown: StorageSlice[];
+}
+
+/** 账户 / 算力 / 存储（规格 §2.9）。 */
+export const ACCOUNT: Account = {
+  plan: "PRO",
+  planLabel: "PRO",
+  credits: 1240,
+  monthlyGrant: 1500,
+  creditsUsed: 860,
+  refreshDate: "6 月 30 日",
+  generatableEstimate: 28,
+  storageUsedGB: 68,
+  storageQuotaGB: 200,
+  storageBreakdown: [
+    { name: "形象图集", size: 28.4, color: "var(--primary)", icon: "image" },
+    { name: "衍生视频", size: 19.2, color: "#1AA06E", icon: "film" },
+    { name: "3D 资产", size: 11.6, color: "#D9920E", icon: "cube" },
+    { name: "声音文件", size: 5.3, color: "#8A6BFF", icon: "mic" },
+    { name: "授权素材", size: 3.5, color: "var(--ink-3)", icon: "shield" },
+  ],
+};

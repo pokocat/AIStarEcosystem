@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, BUILTIN_VOICES } from "./data";
+import { DATA, VoiceApi, useApi, seed } from "./api";
 import { Portrait } from "./portrait";
 import { MShell } from "./shell";
 import { toast } from "./toast";
@@ -231,7 +231,7 @@ function AIGenerating({ onDone, label }) {
 
 // —— 推荐音色（保存形象前，系统按形象推荐一个内置 AI 音色，可试听 / 更换）——
 function RecVoice({ value, onChange }) {
-  const VOICES = BUILTIN_VOICES || [];
+  const VOICES = useApi(() => VoiceApi.builtin(), seed.builtinVoices());
   const [open, setOpen] = useStateAC(false);
   const [playing, setPlaying] = useStateAC(false);
   const cur = VOICES.find(v => v.name === value) || VOICES[0];
@@ -264,7 +264,7 @@ function RecVoice({ value, onChange }) {
 // —— 挑选形象（四宫格，AI 设计路径）——
 function AIPick({ char, onSave, onRegen, onEdit, onClose }) {
   const [sel, setSel] = useStateAC(0);
-  const [voice, setVoice] = useStateAC((BUILTIN_VOICES || [{}])[0].name);
+  const [voice, setVoice] = useStateAC((seed.builtinVoices()[0] || {}).name);
   const variants = ['key', 'threeq', 'side', 'look'];
   const hues = [0, 18, -16, 30];
   return hAC('div', { style: { position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
@@ -294,7 +294,7 @@ function AIPick({ char, onSave, onRegen, onEdit, onClose }) {
 // —— 就绪 + 命名（上传照片路径，参考截图：你的虚拟形象已就绪）——
 function AIReady({ char, defaultName, onConfirm, onClose }) {
   const [name, setName] = useStateAC(defaultName || '星碎');
-  const [voice, setVoice] = useStateAC((BUILTIN_VOICES || [{}])[0].name);
+  const [voice, setVoice] = useStateAC((seed.builtinVoices()[0] || {}).name);
   return hAC('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
     hAC('div', { className: 'wx-nav', style: { paddingLeft: 8 } },
       hAC('span', { className: 'nav-spacer' }),

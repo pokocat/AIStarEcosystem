@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, BUILTIN_VOICES } from "./data";
+import { DATA, VoiceApi, useApi, seed } from "./api";
 import { MShell } from "./shell";
 
 // ============================================================
@@ -54,8 +54,8 @@ function VoiceCard({ v, on, playing, onSelect, onPlay }) {
 }
 
 function MChooseVoice({ char, ctx, onPick }) {
-  const VOICES = BUILTIN_VOICES || [];
-  const [sel, setSel] = useStateVP((char && ctx.voiceFor && ctx.voiceFor(char) && (VOICES.find(v => v.name === ctx.voiceFor(char)) || {}).id) || VOICES[0].id);
+  const VOICES = useApi(() => VoiceApi.builtin(), seed.builtinVoices());
+  const [sel, setSel] = useStateVP((char && ctx.voiceFor && ctx.voiceFor(char) && (VOICES.find(v => v.name === ctx.voiceFor(char)) || {}).id) || (VOICES[0] || {}).id);
   const [playing, setPlaying] = useStateVP(null);
   const [q, setQ] = useStateVP('');
 

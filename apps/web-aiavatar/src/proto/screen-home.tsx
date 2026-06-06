@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA } from "./data";
+import { DATA, AvatarApi, JobApi, useApi, seed } from "./api";
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 
@@ -155,9 +155,11 @@ function MFeatureCard({ title, sub, cta, tone, icon, onClick, big }) {
 // ——————————————————————————————————————————
 function MHome({ ctx }) {
   const [demoEmpty, setDemoEmpty] = useStateH(false);
-  const myAssets = demoEmpty ? [] : DATA.CHARS;
-  const wip = DATA.CHARS.filter(c => ['proofing','iterating','refining','pending','deriving'].includes(c.status));
-  const running = DATA.TASKS.filter(t => t.status === 'running').length;
+  const avatars = useApi(() => AvatarApi.list('mine'), seed.avatars());
+  const tasks = useApi(() => JobApi.list(), seed.jobs());
+  const myAssets = demoEmpty ? [] : avatars;
+  const wip = avatars.filter(c => ['proofing','iterating','refining','pending','deriving'].includes(c.status));
+  const running = tasks.filter(t => t.status === 'running').length;
   const hasAssets = myAssets.length > 0;
 
   const SLIDES = [

@@ -45,11 +45,25 @@
 （`real/ai`、8 态中文状态机、5 张标准图、6 类衍生、7 款内置音色、Look/Application/Account）。
 
 **决策**：首版**不强行对接**那套 server 契约，以保证对上传规格 / HTML 的忠实还原。
-- 数据真源：`src/proto/data.ts`（`NEXT_PUBLIC_USE_MOCK=1`）。
-- `next.config.mjs` 已配 `/api/*` → `:8080` rewrite，接后端时在其上补 `src/proto/api.ts`
-  （apiFetch + USE_MOCK 开关，参照 REST 面规格 §4）。
+- `next.config.mjs` 已配 `/api/*` → `:8080` rewrite。
 - 若未来要与 v0.45 server 领域合流，需要一次契约对齐（字段命名 / 状态机 / 标准图集张数 /
   能力枚举），属独立工作项，不在本次范围。
+
+### C2. 前端 API 契约层 `src/proto/api.ts`（v0.2，所有数据走它）
+
+补齐前端契约：`api.ts` 是**唯一数据出入口**，屏幕层不再 import `./data`。
+
+- **实体走异步 `*Api`**：`AvatarApi / VoiceApi / JobApi / LicenseApi / CaptureApi / AccountApi /
+  AppApi / SceneApi / TemplateApi`，对齐规格 §4 全部端点。每个函数 `USE_MOCK` 分支：mock 返回
+  `data.ts` 样例，live 走 `apiFetch('/api/v1/...')`（解包 `{success,data}` / 分页壳，失败抛 `ApiError`）。
+- **`useApi(fn, seed.xxx())` hook**：mock 下 `seed.*` 同步给出完整样例 → 首帧无闪烁；live 下初值空、
+  `useEffect` 异步填充。切后端 = 改 `NEXT_PUBLIC_USE_MOCK=0`，屏幕零改动。
+- **UI 字典是配置不是数据**：状态/路径/标准图/衍生 meta/链路/能力/精调/模板/配色由 `api.ts` 同步
+  再导出（`DATA.STATUS` 等）。它们不是「服务端拉取的数据」，但也只经 `api.ts` 这一个文件，screens
+  不直接碰 `data.ts`。
+- **纯展示文案保留在屏幕内**：首页轮播 `SLIDES`、真人录制提示 `TIPS`、AI 描述范例 `EXAMPLES`、
+  会员定价目录 `PLANS/PACKS` 是营销 / 配置文案（非用户数据），留在各自屏幕，不进 api。
+- `data.ts` 现在只被 `api.ts` 引用 —— 它是私有 mock「数据库」+ 领域类型真源。
 
 ---
 

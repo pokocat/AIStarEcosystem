@@ -80,17 +80,35 @@ src/
 
 ## 数据 / 后端
 
-- 当前**纯前端 mock 驱动、自包含**：所有领域数据在 `src/proto/data.ts`（含 8 态状态机、
-  6 类衍生、5 张标准图集、7 款内置音色、授权、任务、模板等），与规格 §1–§2、§6 完全对齐。
-- 仓库已有 `apps/server` 的 `com.aistareco.aep.aiavatar.*` 后端领域（v0.45），但其契约
-  （`packages/types/ai-avatar.ts`）与本规格是两套不同的解释。本前端**暂不**强行对接，
-  以保证对上传规格 / HTML 设计的忠实还原。接后端时以 `src/proto/data.ts` 的接口为对齐基准，
-  在 `next.config.mjs` 的 `/api/*` rewrite 之上补一层 `src/proto/api.ts`（apiFetch + USE_MOCK 开关）。
+**所有数据都经 `src/proto/api.ts` 这一个出入口**（屏幕层不直接 import `./data`）：
+
+- `api.ts` 是前端契约层，已按规格 §4 补齐全部 REST 端点（`AvatarApi` / `VoiceApi` /
+  `JobApi` / `LicenseApi` / `CaptureApi` / `AccountApi` / `AppApi` / `SceneApi` / `TemplateApi`），
+  每个函数都带 `USE_MOCK` 分支：
+  - `NEXT_PUBLIC_USE_MOCK=1`（默认）→ 返回 `src/proto/data.ts` 的样例（私有 mock「数据库」）。
+  - `NEXT_PUBLIC_USE_MOCK=0` → `apiFetch` 打 `/api/v1/*`（经 `next.config.mjs` rewrite 到 :8080），
+    自动解包后端响应壳 `{ success, data }` / 分页 `{ data, pagination }`。
+- 屏幕用 `useApi(fn, seed.xxx())` 取数据：mock 下 `seed.*` 同步给出完整样例（首帧无闪烁），
+  live 下初值为空、异步填充。**从 mock 切到真后端只需改 `USE_MOCK`，屏幕层零改动。**
+- UI 字典（状态/路径/标准图/衍生 meta/链路/能力/精调/模板/配色）是展示配置，由 `api.ts`
+  同步再导出（`DATA.STATUS` 等），同样只经本文件。
+- `src/proto/data.ts` 现在只被 `api.ts` 引用（领域类型 + mock 数据真源）。
+- 仓库已有 `apps/server` 的 `com.aistareco.aep.aiavatar.*`（v0.45）后端领域，但其契约与本规格
+  是两套不同解释。本前端的契约真源是 `data.ts` 的接口 + `api.ts` 的 REST 面；接后端时以此对齐。
   详见 [`DECISIONS.md`](DECISIONS.md)。
 
 ---
 
 ## 版本日志
+
+### v0.2（2026-06-06）— 前端 API 契约层（所有数据走 api.ts）
+
+- 新增 `src/proto/api.ts`：按规格 §4 补齐全部 REST 端点（9 个命名空间），每个带 `USE_MOCK` 分支
+  + `apiFetch`（解包响应壳）+ `useApi` hook（mock 首帧无闪烁）+ `seed` 同步种子。
+- 把屏幕里原先内联 / 直读 `data.ts` 的实体（公开数字人 / 应用中心 / 场景库 / 账户）统一收口到
+  `data.ts`，并全部改走 `*Api`：屏幕层不再 import `./data`，实体数据一律经 `api.ts`。
+- server 端不动；从 mock 切真后端只需 `NEXT_PUBLIC_USE_MOCK=0`。`pnpm typecheck` / `build` 全绿，
+  dev SSR 实测实体数据（如「林深」「星岚」）经 api 层正常渲染。
 
 ### v0.1（2026-06-06）— 首版落地（移动端原型工程化）
 

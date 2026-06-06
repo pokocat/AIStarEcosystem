@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, BUILTIN_VOICES } from "./data";
+import { DATA, AvatarApi, VoiceApi, AppApi, useApi, seed } from "./api";
 import { MShell, MKit } from "./shell";
 
 // ============================================================
@@ -37,8 +37,8 @@ function MWave({ data, color = 'var(--primary)', playing }) {
       opacity: playing ? 1 : .42, animation: playing ? `pulse ${0.7 + (i % 5) * 0.12}s ease-in-out infinite` : 'none' } })));
 }
 
-function VoiceRowM({ v, playing, onPlay }) {
-  const char = DATA.CHARS.find(c => c.id === v.char);
+function VoiceRowM({ v, playing, onPlay, chars }: any) {
+  const char = (chars || []).find(c => c.id === v.char);
   const kindLabel = { clone: '真人克隆', design: 'AI 设计' }[v.kind];
   const kindTone = { clone: 'info', design: 'primary' }[v.kind];
   return hMV('div', { className: 'm-card', style: { padding: '12px 14px' } },
@@ -63,7 +63,9 @@ function MVoice({ ctx }) {
   const [tab, setTab] = useStateMV('builtin');
   const [playing, setPlaying] = useStateMV(null);
   const onPlay = (id) => setPlaying(p => p === id ? null : id);
-  const VOICES = BUILTIN_VOICES || [];
+  const VOICES = useApi(() => VoiceApi.builtin(), seed.builtinVoices());
+  const myVoices = useApi(() => VoiceApi.mine(), seed.myVoices());
+  const chars = useApi(() => AvatarApi.list('mine'), seed.avatars());
 
   const vrow = (v) => {
     const pl = playing === v.id;
@@ -108,23 +110,16 @@ function MVoice({ ctx }) {
               hMV('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)' } }, VOICES.filter(v => v.gender === 'male').length)),
             VOICES.filter(v => v.gender === 'male').map(vrow))
         : hMV('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 11 } },
-            DATA.VOICES.map(v => hMV(VoiceRowM, { key: v.id, v, playing: playing === v.id, onPlay })))));
+            myVoices.map(v => hMV(VoiceRowM, { key: v.id, v, playing: playing === v.id, onPlay, chars })))));
 }
 
 // ============================================================
-// 应用中心 Apps
+// 应用中心 Apps（应用清单经 AppApi 提供，mock 源见 data.APPLICATIONS）
 // ============================================================
-const M_APPS = [
-  { key: 'music', name: '音乐工作室', code: 'APP-MUS', icon: 'music', blurb: '数字人 MV、音乐短片与虚拟歌手演出', g1: '#7C5CE6', g2: '#2E2270', accent: '#C9B8FF',
-    tools: [{ name: 'MV 生成器', desc: '一首歌一键生成数字人 MV', icon: 'clapper' }, { name: '虚拟歌手演出', desc: '数字人演唱与舞台呈现', icon: 'music' }, { name: '音乐短片', desc: '氛围配乐 + 角色叙事短片', icon: 'play' }] },
-  { key: 'drama', name: '短剧工坊', code: 'APP-DRA', icon: 'clapper', blurb: '数字人出演剧情短剧，多角色演绎成片', g1: '#3E63C8', g2: '#16224C', accent: '#9DB8FF',
-    tools: [{ name: '剧情短剧', desc: '剧本到成片的短剧制作', icon: 'clapper' }, { name: '多角色对戏', desc: '多个数字人同场演绎', icon: 'users' }, { name: '分镜成片', desc: '自动分镜与剪辑合成', icon: 'layers' }] },
-  { key: 'live', name: '短视频带货', code: 'APP-LIV', icon: 'cart', blurb: '数字人口播带货，短视频与直播间开播', g1: '#E8884A', g2: '#6E3214', accent: '#FFD0A6',
-    tools: [{ name: '口播带货', desc: '商品脚本一键口播视频', icon: 'mic' }, { name: '直播间开播', desc: '数字人 7×24 无人直播', icon: 'bolt' }, { name: '商品讲解', desc: '卖点拆解与讲解视频', icon: 'doc' }] },
-];
 
 function MApps({ ctx }) {
   const [tab, setTab] = useStateMV('all');
+  const M_APPS = useApi(() => AppApi.list(), seed.applications());
   const go = (name) => ctx.toast(name + ' · 即将上线，敬请期待', { tone: 'warn' });
   const tabs = [{ key: 'all', label: '全部' }, ...M_APPS.map(a => ({ key: a.key, label: a.name }))];
   const tools = M_APPS.flatMap(a => a.tools.map(t => ({ ...t, app: a }))).filter(t => tab === 'all' || t.app.key === tab);

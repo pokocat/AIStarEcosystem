@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA } from "./data";
+import { DATA, AvatarApi, LicenseApi, useApi, seed } from "./api";
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 
@@ -41,15 +41,7 @@ function MAssetCard({ char, onOpen }) {
     hML(Icons.chevR, { size: 18, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } }));
 }
 
-// 公开数字人（mock）
-const PUBLIC_AVATARS = [
-  { id: 'PA-01', name: 'Annie', archetype: '商务职业', hue: 28, cat: 'pro', fav: false, path: 'ai', status: 'archived', counts: {}, deriv: {}, def: {} },
-  { id: 'PA-02', name: 'Christina', archetype: '居家生活', hue: 168, cat: 'life', fav: true, path: 'ai', status: 'archived', counts: {}, deriv: {}, def: {} },
-  { id: 'PA-03', name: 'Terry', archetype: '播客主播', hue: 248, cat: 'ugc', fav: false, path: 'ai', status: 'archived', counts: {}, deriv: {}, def: {} },
-  { id: 'PA-04', name: 'Pamela', archetype: '社媒口播', hue: 8, cat: 'community', fav: false, path: 'ai', status: 'archived', counts: {}, deriv: {}, def: {} },
-  { id: 'PA-05', name: 'Marcus', archetype: '专业讲解', hue: 200, cat: 'pro', fav: false, path: 'ai', status: 'archived', counts: {}, deriv: {}, def: {} },
-  { id: 'PA-06', name: 'Yuki', archetype: '生活方式', hue: 320, cat: 'life', fav: true, path: 'ai', status: 'archived', counts: {}, deriv: {}, def: {} },
-];
+// 公开数字人经 AvatarApi.list('public') 提供（mock 源见 data.PUBLIC_AVATARS）。
 
 function MLibrary({ ctx }) {
   const [top, setTop] = useStateML('mine'); // mine | public
@@ -58,7 +50,8 @@ function MLibrary({ ctx }) {
   const [view, setView] = useStateML('grid');
   const [fav, setFav] = useStateML(false);
 
-  let list: any = top === 'mine' ? DATA.CHARS.slice() : PUBLIC_AVATARS.slice();
+  const pool = useApi(() => AvatarApi.list(top === 'mine' ? 'mine' : 'public'), seed.avatars(top === 'mine' ? 'mine' : 'public'), [top]);
+  let list: any = pool.slice();
   if (fav) list = list.filter(c => c.fav);
   if (top === 'public' && cat !== 'all') list = list.filter(c => cat === 'fav' ? c.fav : c.cat === cat);
   if (q) list = list.filter(c => (c.name + (c.archetype || '') + c.id).toLowerCase().includes(q.toLowerCase()));
@@ -249,6 +242,7 @@ function MVersions({ char }) {
 }
 
 function MLicense({ char, ctx }) {
+  const licenses = useApi(() => LicenseApi.list(), seed.licenses());
   if (char.path === 'ai') {
     return hML('div', null,
       hML('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14, padding: 12, background: 'var(--primary-tint)', borderRadius: 'var(--r-md)', border: '1px solid var(--primary-soft)' } },
@@ -259,7 +253,7 @@ function MLicense({ char, ctx }) {
           hML('div', { style: { fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 3 } }, k),
           hML('div', { style: { fontSize: 13.5, color: 'var(--ink)', fontWeight: Array.isArray(v) ? 400 : 600, lineHeight: 1.45 } }, Array.isArray(v) ? v.join(' · ') : v)))));
   }
-  const lic = DATA.LICENSES.find(l => l.id === char.license) || DATA.LICENSES[0];
+  const lic = licenses.find(l => l.id === char.license) || licenses[0] || {};
   return hML('div', { className: 'm-card', style: { padding: 16 } },
     hML('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
       hML('div', { style: { display: 'flex', alignItems: 'center', gap: 9 } },

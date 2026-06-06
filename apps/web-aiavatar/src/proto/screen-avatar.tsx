@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA } from "./data";
+import { DATA, SceneApi, useApi, seed } from "./api";
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 
@@ -14,15 +14,7 @@ const hAV : any = React.createElement;
 const { useState: useStateAV } = React;
 const { WxNav: WxNavAV } = MShell;
 
-// 场景库（用 Portrait 占位 + 不同 variant/expr 模拟）
-const SCENES = [
-  { id: 's1', name: '办公玻璃幕墙', variant: 'key', expr: 'calm' },
-  { id: 's2', name: '书架暖光', variant: 'threeq', expr: 'smile' },
-  { id: 's3', name: '米色针织', variant: 'side', expr: 'calm' },
-  { id: 's4', name: '彩色背景墙', variant: 'look', expr: 'smile' },
-  { id: 's5', name: '直播间', variant: 'key', expr: 'serious' },
-  { id: 's6', name: '咖啡馆', variant: 'threeq', expr: 'calm' },
-];
+// 场景库经 SceneApi 提供（见各组件内的 useApi 调用）。
 
 // ============================================================
 // 造型档案（截图：Avatar looks detail）
@@ -82,6 +74,7 @@ function MDesignLooks({ char, ctx }) {
   const [tab, setTab] = useStateAV('all');
   const [sel, setSel] = useStateAV(null);
   const [q, setQ] = useStateAV('');
+  const SCENES = useApi(() => SceneApi.list(), seed.scenes());
   return hAV('div', { className: 'm-overlay', 'data-screen-label': '设计造型' },
     hAV('div', { className: 'wx-nav', style: { paddingLeft: 8 } },
       hAV('button', { className: 'nav-back m-tap', onClick: ctx.back }, hAV(Icons.x, { size: 22, stroke: 2.2 })),

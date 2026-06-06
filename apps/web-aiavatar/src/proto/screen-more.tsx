@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA } from "./data";
+import { DATA, LicenseApi, AccountApi, useApi, seed } from "./api";
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 
@@ -45,6 +45,8 @@ function MSettings({ ctx }) {
   const [taskNotify, setTaskNotify] = useStateMM(true);
   const [watermark, setWatermark] = useStateMM(true);
   const [autoArchive, setAutoArchive] = useStateMM(false);
+  const licenses = useApi(() => LicenseApi.list(), seed.licenses());
+  const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
 
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '设置' },
     hMM(WxNavMM, { title: '设置', onBack: ctx.back }),
@@ -62,14 +64,14 @@ function MSettings({ ctx }) {
 
       hMM(GroupTitle, null, '隐私与合规'),
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
-        hMM(Row, { icon: Icons.shield, label: '肖像授权管理', sub: '已签署 ' + DATA.LICENSES.filter(l => l.status === 'active').length + ' 份', onClick: () => ctx.go('licenses') }),
+        hMM(Row, { icon: Icons.shield, label: '肖像授权管理', sub: '已签署 ' + licenses.filter(l => l.status === 'active').length + ' 份', onClick: () => ctx.go('licenses') }),
         hMM(Row, { icon: Icons.lock, label: '隐私与数据', sub: '素材加密 · 可申请删除', onClick: () => ctx.toast('隐私设置') }),
         hMM(Row, { icon: Icons.doc, label: '合规规范', sub: '《数字人肖像合规规范》', onClick: () => ctx.toast('查看规范'), last: true })),
 
       hMM(GroupTitle, null, '账户'),
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
         hMM(Row, { icon: Icons.idcard, label: '账户与实名', value: '已实名', onClick: () => ctx.toast('账户信息') }),
-        hMM(Row, { icon: Icons.folder, label: '存储用量', sub: '68 / 200 GB', onClick: () => ctx.go('storage') }),
+        hMM(Row, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedGB ?? 0) + ' / ' + (acct.storageQuotaGB ?? 0) + ' GB', onClick: () => ctx.go('storage') }),
         hMM(Row, { icon: Icons.trash, label: '清除缓存', value: '126 MB', onClick: () => ctx.toast('已清除缓存', { tone: 'ok' }), last: true })),
 
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
@@ -94,6 +96,7 @@ const PACKS = [
 
 function MMembership({ ctx }) {
   const [pack, setPack] = useStateMM(1);
+  const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '会员与算力' },
     hMM(WxNavMM, { title: '会员与算力', onBack: ctx.back }),
     hMM('div', { className: 'm-body', style: { padding: '4px 18px 30px' } },
@@ -103,13 +106,13 @@ function MMembership({ ctx }) {
         hMM('div', { style: { position: 'relative' } },
           hMM('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 } },
             hMM('span', { style: { fontSize: 12.5, fontWeight: 600, opacity: .85 } }, '当前可用算力'),
-            hMM('span', { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', background: 'rgba(255,255,255,.16)', padding: '3px 8px', borderRadius: 'var(--r-pill)' } }, 'PRO')),
+            hMM('span', { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', background: 'rgba(255,255,255,.16)', padding: '3px 8px', borderRadius: 'var(--r-pill)' } }, acct.planLabel || 'PRO')),
           hMM('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6 } },
-            hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, letterSpacing: '-.02em' } }, '1,240'),
+            hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, letterSpacing: '-.02em' } }, (acct.credits || 0).toLocaleString()),
             hMM('span', { style: { fontSize: 13, opacity: .85 } }, '点')),
           hMM('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 } },
-            hMM('span', { style: { fontSize: 11.5, opacity: .8 } }, '本月赠送 1,500 · 已用 860 · 6 月 30 日刷新'),
-            hMM('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700 } }, '约可生成 28 个', hMM(Icons.user, { size: 13 }))))),
+            hMM('span', { style: { fontSize: 11.5, opacity: .8 } }, '本月赠送 ' + (acct.monthlyGrant || 0).toLocaleString() + ' · 已用 ' + (acct.creditsUsed || 0) + ' · ' + (acct.refreshDate || '') + '刷新'),
+            hMM('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700 } }, '约可生成 ' + (acct.generatableEstimate || 0) + ' 个', hMM(Icons.user, { size: 13 }))))),
 
       // 充值点数
       hMM(GroupTitle, null, '充值算力'),
@@ -153,16 +156,12 @@ function MMembership({ ctx }) {
 // ============================================================
 // 存储用量
 // ============================================================
-const STORAGE = [
-  { name: '形象图集', size: 28.4, color: 'var(--primary)', icon: 'image' },
-  { name: '衍生视频', size: 19.2, color: '#1AA06E', icon: 'film' },
-  { name: '3D 资产', size: 11.6, color: '#D9920E', icon: 'cube' },
-  { name: '声音文件', size: 5.3, color: '#8A6BFF', icon: 'mic' },
-  { name: '授权素材', size: 3.5, color: 'var(--ink-3)', icon: 'shield' },
-];
+// 存储分类占用经 AccountApi.get().storageBreakdown 提供（mock 源见 data.ACCOUNT）。
 function MStorage({ ctx }) {
+  const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
+  const STORAGE: any[] = acct.storageBreakdown || [];
   const used = STORAGE.reduce((a, s) => a + s.size, 0);
-  const total = 200;
+  const total = acct.storageQuotaGB || 0;
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '存储用量' },
     hMM(WxNavMM, { title: '存储用量', onBack: ctx.back }),
     hMM('div', { className: 'm-body', style: { padding: '4px 18px 30px' } },
@@ -171,7 +170,7 @@ function MStorage({ ctx }) {
         hMM('div', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6, marginBottom: 4 } },
           hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, color: 'var(--ink)' } }, used.toFixed(1)),
           hMM('span', { style: { fontSize: 14, color: 'var(--ink-3)' } }, '/ ' + total + ' GB')),
-        hMM('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 16 } }, 'PRO 会员 · 共 ' + total + ' GB 空间'),
+        hMM('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 16 } }, (acct.planLabel || 'PRO') + ' 会员 · 共 ' + total + ' GB 空间'),
         // 堆叠条
         hMM('div', { style: { display: 'flex', height: 12, borderRadius: 99, overflow: 'hidden', background: 'var(--surface-3)', marginBottom: 14 } },
           STORAGE.map(s => hMM('div', { key: s.name, style: { width: (s.size / total * 100) + '%', background: s.color } }))),

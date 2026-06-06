@@ -6,7 +6,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA } from "./data";
+import { AvatarApi, useApi, seed } from "./api";
 import { MShell } from "./shell";
 import { toast } from "./toast";
 import { MHome } from "./screen-home";
@@ -25,8 +25,8 @@ const { useState: useStateA, useEffect: useEffectA } = React;
 const { PhoneFrame, WxTabBar } = MShell;
 
 // 合成一个新建草稿数字人（驱动创建向导）
-function freshChar(path) {
-  const base = DATA.CHARS.find((c) => c.path === path) || DATA.CHARS[0];
+function freshChar(path, avatars: any[] = []) {
+  const base = (avatars || []).find((c) => c.path === path) || avatars[0] || { hue: 250, hairStyle: "short", palette: {} };
   return {
     id: "DH-NEW", name: "新建数字人", codename: "new-character", path,
     archetype: path === "real" ? "真人授权复刻" : "AI 原创形象", tagline: "创建中…",
@@ -63,15 +63,15 @@ function CreateSheet({ onPick, onClose }) {
 const INDEX = [
   { label: "首页", n: "01", icon: Icons.home, go: (c) => c.tab("home") },
   { label: "数字人库", n: "02", icon: Icons.user, go: (c) => c.tab("library") },
-  { label: "资产详情", n: "03", icon: Icons.idcard, go: (c) => c.openChar(DATA.CHARS[0]) },
-  { label: "造型档案", n: "04", icon: Icons.images, go: (c) => c.openLooks(DATA.CHARS[0]) },
-  { label: "设计造型", n: "05", icon: Icons.wand, go: (c) => c.designLooks(DATA.CHARS[0]) },
-  { label: "衍生查看", n: "06", icon: Icons.image, go: (c) => c.openDeriv(DATA.CHARS[0], "scene") },
+  { label: "资产详情", n: "03", icon: Icons.idcard, go: (c) => c.openChar(c.firstAvatar) },
+  { label: "造型档案", n: "04", icon: Icons.images, go: (c) => c.openLooks(c.firstAvatar) },
+  { label: "设计造型", n: "05", icon: Icons.wand, go: (c) => c.designLooks(c.firstAvatar) },
+  { label: "衍生查看", n: "06", icon: Icons.image, go: (c) => c.openDeriv(c.firstAvatar, "scene") },
   { label: "AI 创建", n: "07", icon: Icons.sparkle, go: (c) => c.startCreate("ai") },
   { label: "真人捕获", n: "08", icon: Icons.film, go: (c) => c.startRealClone() },
   { label: "应用中心", n: "09", icon: Icons.grid, go: (c) => c.tab("apps") },
   { label: "声音工作室", n: "10", icon: Icons.mic, go: (c) => c.go("voice") },
-  { label: "选择声音", n: "11", icon: Icons.wave, go: (c) => c.chooseVoice(DATA.CHARS[0]) },
+  { label: "选择声音", n: "11", icon: Icons.wave, go: (c) => c.chooseVoice(c.firstAvatar) },
   { label: "声音克隆", n: "12", icon: Icons.mic, go: (c) => c.go("voiceclone") },
   { label: "授权登记", n: "13", icon: Icons.shield, go: (c) => c.go("licenses") },
   { label: "作业队列", n: "14", icon: Icons.bolt, go: (c) => c.go("tasks") },
@@ -87,6 +87,7 @@ export function App() {
   const [sheet, setSheet] = useStateA(false);
   const [label, setLabel] = useStateA("首页");
   const [voiceByChar, setVoiceByChar] = useStateA({});
+  const avatars = useApi(() => AvatarApi.list("mine"), seed.avatars());
 
   // 深链（hash）支持，挂载后读取，避免 SSR/水合不一致。
   useEffectA(() => {
@@ -94,15 +95,16 @@ export function App() {
     const tabs = ["home", "library", "apps", "me"];
     if (tabs.includes(h)) { setTab(h); return; }
     if (h === "voice" || h === "licenses" || h === "tasks") { setStack([{ screen: h, props: {} }]); return; }
-    if (h === "detail") { setTab("library"); setStack([{ screen: "detail", props: { char: DATA.CHARS[0] } }]); return; }
-    if (h === "create-ai") { setStack([{ screen: "aicreate", props: { char: freshChar("ai") } }]); return; }
-    if (h === "create-real") { setStack([{ screen: "realcapture", props: { char: freshChar("real") } }]); return; }
+    if (h === "detail") { setTab("library"); setStack([{ screen: "detail", props: { char: avatars[0] } }]); return; }
+    if (h === "create-ai") { setStack([{ screen: "aicreate", props: { char: freshChar("ai", avatars) } }]); return; }
+    if (h === "create-real") { setStack([{ screen: "realcapture", props: { char: freshChar("real", avatars) } }]); return; }
   }, []);
 
   const top = stack[stack.length - 1];
 
   const ctx: any = {
     toast: (m, o) => toast(m, o),
+    firstAvatar: avatars[0],
     tab: (k) => { setStack([]); setTab(k); setSheet(false); setLabel({ home: "首页", library: "数字人库", apps: "应用中心", me: "我的" }[k]); },
     go: (screen, props) => { setStack((s) => [...s, { screen, props: props || {} }]); setLabel({ voice: "声音工作室", licenses: "授权登记", tasks: "作业队列", settings: "设置", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆" }[screen] || screen); },
     openChar: (char) => { setStack((s) => [...s, { screen: "detail", props: { char } }]); setLabel("资产详情"); },
@@ -113,8 +115,8 @@ export function App() {
     voiceFor: (char) => (char && voiceByChar[char.id]) || "亲和邻家女声",
     setVoice: (char, name) => { if (char) setVoiceByChar((m) => ({ ...m, [char.id]: name })); },
     back: () => setStack((s) => s.slice(0, -1)),
-    startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
-    startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real") } }]); setLabel("真人捕获"); },
+    startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
+    startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("真人捕获"); },
     realToWizard: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "create", props: { char } }); return ns; }); setLabel("创建链路"); },
     finishCreate: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "detail", props: { char } }); return ns; }); setLabel("资产详情"); },
     openCreateSheet: () => setSheet(true),
