@@ -8,7 +8,9 @@ import com.aistareco.aep.dto.MixcutUpdateProgressRequest;
 import com.aistareco.aep.service.mixcut.MixcutDraftService;
 import com.aistareco.aep.service.mixcut.MixcutJobService;
 import com.aistareco.common.ApiResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
 import java.util.List;
@@ -115,6 +117,17 @@ public class MixcutController {
     ) {
         boolean ok = service.softDeleteOutput(outputId, currentUserId(principal));
         return ApiResponse.of(ok);
+    }
+
+    /** v0.50+: 下载专用 URL，点击时签发；播放 URL 保持 inline，下载 URL 保持 attachment。 */
+    @GetMapping("/outputs/{outputId}/download-url")
+    public ApiResponse<String> outputDownloadUrl(
+            @PathVariable String outputId,
+            Principal principal
+    ) {
+        String url = service.getOutputDownloadUrl(outputId, currentUserId(principal))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "output not found"));
+        return ApiResponse.of(url);
     }
 
     private static String currentUserId(Principal principal) {

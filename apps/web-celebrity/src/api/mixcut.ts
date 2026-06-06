@@ -316,6 +316,16 @@ export async function deleteOutput(outputId: string): Promise<boolean> {
   return apiFetch<boolean>(`/mixcut/outputs/${outputId}`, { method: "DELETE" });
 }
 
+export async function getOutputDownloadUrl(outputId: string): Promise<string> {
+  if (USE_LOCAL) {
+    const output = loadJobs()
+      .flatMap((job) => job.outputs ?? [])
+      .find((o) => o.id === outputId);
+    return mockDelay(output?.cdn_url || output?.file_url || "");
+  }
+  return apiFetch<string>(`/mixcut/outputs/${encodeURIComponent(outputId)}/download-url`);
+}
+
 // ── 模板编辑 / 另存为 ───────────────────────────────────────────────────────
 //
 // 数据层模型:

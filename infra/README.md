@@ -52,7 +52,7 @@ infra/
 └── scripts/                        ← 部署 / 验证 / 回滚 + 引导式配置
     ├── preflight.sh                ← 检测本机 / ECS 是否装齐 java/nginx/docker/ffmpeg/node/ossutil...
     ├── init.sh                     ← 交互式收集参数 + openssl 生成密钥 + 渲染 env/nginx 到 infra/.local/
-    ├── dev-server.sh               ← 本机 server 启动 wrapper（自动起 docker mysql + 注入 dev 弱密钥）
+    ├── dev-server.sh               ← 本机 server 启动 wrapper（自动起 docker mysql + 生成/加载本机 env）
     ├── deploy.sh                   ← deploy.sh <service> [tag]，开发机 build → ssh 推到 ECS（幂等）
     ├── install-host-deps.sh         ← ECS 本机依赖补齐：按宿主机镜像自动走 dnf/yum/apt
     ├── check-runtime-env.sh         ← ECS runtime env 预检：/etc/aistareco/*.env + release manifest
