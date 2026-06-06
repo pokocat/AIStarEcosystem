@@ -11,6 +11,7 @@ import com.aliyun.oss.common.comm.SignVersion;
 import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.PutObjectRequest;
+import com.aliyun.oss.model.ResponseHeaderOverrides;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -124,6 +125,9 @@ public class AliyunOssCdnUploader implements CdnUploader {
         metadata.setContentLength(size);
         if (contentType != null && !contentType.isBlank()) {
             metadata.setContentType(contentType);
+            if (isInlineMedia(contentType)) {
+                metadata.setContentDisposition("inline");
+            }
         }
 
         PutObjectRequest request = new PutObjectRequest(bucket, objectKey, localFile.toFile());
@@ -163,9 +167,16 @@ public class AliyunOssCdnUploader implements CdnUploader {
         String objectKey = objectKeyFor(key);
         return switch (signStrategy) {
             case NONE -> publicUrlFor(key);
-            case OSS  -> ossPresignedUrl(objectKey, ttl);
+            case OSS  -> ossPresignedUrl(objectKey, ttl, "inline");
             case CDN  -> cdnTypeAUrl(objectKey, ttl);
         };
+    }
+
+    @Override
+    public String downloadUrlFor(String key, String filename, long ttlSeconds) {
+        long ttl = ttlSeconds > 0 ? ttlSeconds : defaultTtlSeconds;
+        String objectKey = objectKeyFor(key);
+        return ossPresignedUrl(objectKey, ttl, attachmentDisposition(filename, objectKey));
     }
 
     @Override
@@ -184,13 +195,18 @@ public class AliyunOssCdnUploader implements CdnUploader {
      *   <li>V4 签名最大 TTL 7 天（604800s）；超出会被 SDK clamp</li>
      * </ul>
      */
-    private String ossPresignedUrl(String objectKey, long ttl) {
+    private String ossPresignedUrl(String objectKey, long ttl, String contentDisposition) {
         try {
             // V4 签名最大 7 天
             long safeTtl = Math.min(ttl, 7 * 24 * 3600L);
             Date expiration = new Date(System.currentTimeMillis() + safeTtl * 1000L);
             GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.GET);
             req.setExpiration(expiration);
+            if (contentDisposition != null && !contentDisposition.isBlank()) {
+                ResponseHeaderOverrides responseHeaders = new ResponseHeaderOverrides();
+                responseHeaders.setContentDisposition(contentDisposition);
+                req.setResponseHeaders(responseHeaders);
+            }
             String signed = ossClient.generatePresignedUrl(req).toString();
             // SDK 用构造器传入的 endpoint（可能是 -internal）做 host —— 修正为公网 endpoint
             return rewritePublicEndpoint(signed);
@@ -231,7 +247,32 @@ public class AliyunOssCdnUploader implements CdnUploader {
     /** OSS endpoint 含 "-internal" 时改为公网 endpoint —— pre-signed URL 必须公网可访问。 */
     private String rewritePublicEndpoint(String url) {
         if (url == null) return null;
-        return url.replace("-internal.aliyuncs.com", ".aliyuncs.com");
+        String publicUrl = url.replace("-internal.aliyuncs.com", ".aliyuncs.com");
+        if (baseUrl.toLowerCase(Locale.ROOT).startsWith("https://")
+                && publicUrl.toLowerCase(Locale.ROOT).startsWith("http://")) {
+            return "https://" + publicUrl.substring("http://".length());
+        }
+        return publicUrl;
+    }
+
+    private static boolean isInlineMedia(String contentType) {
+        String normalized = contentType == null ? "" : contentType.trim().toLowerCase(Locale.ROOT);
+        return normalized.startsWith("video/") || normalized.startsWith("image/");
+    }
+
+    private static String attachmentDisposition(String filename, String objectKey) {
+        String safeName = sanitizeFilename(filename);
+        if (safeName.isBlank()) {
+            int slash = objectKey == null ? -1 : objectKey.lastIndexOf('/');
+            safeName = sanitizeFilename(slash >= 0 ? objectKey.substring(slash + 1) : objectKey);
+        }
+        if (safeName.isBlank()) safeName = "download.bin";
+        return "attachment; filename=\"" + safeName + "\"";
+    }
+
+    private static String sanitizeFilename(String filename) {
+        if (filename == null) return "";
+        return filename.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     private String randomHex(int bytes) {

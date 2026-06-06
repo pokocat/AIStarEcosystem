@@ -50,6 +50,14 @@ public interface CdnUploader {
         return publicUrlFor(key);
     }
 
+    /**
+     * 生成下载专用 URL。默认实现沿用播放 URL；支持响应头覆盖的实现应返回
+     * {@code Content-Disposition: attachment} 的短时 URL。
+     */
+    default String downloadUrlFor(String key, String filename, long ttlSeconds) {
+        return signedUrlFor(key, ttlSeconds);
+    }
+
     /** 驱动名标识（"local" / "oss" / ...），用于日志。 */
     String driverName();
 

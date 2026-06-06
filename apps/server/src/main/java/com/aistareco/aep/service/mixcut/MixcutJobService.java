@@ -126,6 +126,30 @@ public class MixcutJobService {
                 .orElse(false);
     }
 
+    /** v0.50+: 生成下载专用 URL；仅 output 所属用户可取，点击时再签，避免页面长停后 URL 过期。 */
+    @Transactional(readOnly = true)
+    public Optional<String> getOutputDownloadUrl(String outputId, String userId) {
+        if (!hasText(outputId) || !hasText(userId)) return Optional.empty();
+        return outputRepo.findById(outputId)
+                .filter(o -> o.getDeletedAt() == null)
+                .filter(o -> o.getJob() != null && userId.equals(o.getJob().getUserId()))
+                .map(o -> {
+                    String filename = downloadFilename(o);
+                    String url = null;
+                    if (hasText(o.getCdnKey())) {
+                        url = cdnUrlSigner.downloadUrlForKey(o.getCdnKey(), filename);
+                    }
+                    if (!hasText(url) && hasText(o.getCdnUrl())) {
+                        url = cdnUrlSigner.downloadUrlForUrl(o.getCdnUrl(), filename);
+                    }
+                    if (!hasText(url)) {
+                        url = o.getFileUrl();
+                    }
+                    return url;
+                })
+                .filter(MixcutJobService::hasText);
+    }
+
     /** v0.13.0+: 取当前用户名下的任务列表（admin 跨用户列表见 AdminMixcutController）。 */
     @Transactional(readOnly = true)
     public List<MixcutRenderJobDto> listForUser(String userId) {
@@ -421,6 +445,21 @@ public class MixcutJobService {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
+    }
+
+    private static boolean hasText(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    private static String downloadFilename(MixcutRenderOutput output) {
+        String jobId = output.getJob() == null ? "job" : safeFilePart(output.getJob().getId());
+        int variant = Math.max(1, output.getVariantIndex() + 1);
+        return "mixcut-" + jobId + "-v" + variant + ".mp4";
+    }
+
+    private static String safeFilePart(String value) {
+        if (value == null || value.isBlank()) return "output";
+        return value.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     /**

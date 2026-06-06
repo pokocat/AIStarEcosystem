@@ -36,17 +36,27 @@ import { PROFILE_LABELS, TRANSFORM_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatBytes, relativeTime, shortHash } from "@/components/mixcut-zone/lib/utils";
 import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
 
-/**
- * v0.48+: 成片播放 / 下载 / 缩略图统一优先用 CDN(OSS) URL，本地 file_url 仅作兜底。
- * 背景：渲染产出已上传 OSS（cdn_url 为出 wire 时签名的 OSS/CDN URL），本地 mp4 是临时区，
- * 渲染后即清理（§4.7）。之前任务详情页直接用 file_url（本地 /static），既走 ECS 带宽、
- * 又会在本地清理后 404。cdn_url 缺失（未配 CDN）时回退 file_url，行为与之前一致。
- */
+/** v0.50+: 播放/预览走 inline media URL；下载点击时向后端换 attachment URL。 */
 function outputVideoSrc(o: RenderOutput): string {
-  return o.cdn_url || o.file_url;
+  return normalizeMediaUrl(o.cdn_url || o.file_url);
 }
 function outputPoster(o: RenderOutput): string | undefined {
-  return o.cdn_thumbnail_url || o.thumbnail_url || undefined;
+  return normalizeMediaUrl(o.cdn_thumbnail_url || o.thumbnail_url || undefined) || undefined;
+}
+function normalizeMediaUrl(url?: string): string {
+  if (!url) return "";
+  if (
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    url.startsWith("http://")
+  ) {
+    return "https://" + url.substring("http://".length);
+  }
+  return url;
+}
+function outputDownloadFilename(job: RenderJob, output: RenderOutput): string {
+  const jobId = job.id.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `${job.template_name || "mixcut"}-${jobId}-v${output.variant_index + 1}.mp4`;
 }
 
 export function JobDetailClient({ id }: { id: string }) {
@@ -59,6 +69,8 @@ export function JobDetailClient({ id }: { id: string }) {
   const [publishOpen, setPublishOpen] = useState(false);
   /** v0.30+: 重跑 dialog 开关 */
   const [rerunOpen, setRerunOpen] = useState(false);
+  const [downloadingOutputId, setDownloadingOutputId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +140,27 @@ export function JobDetailClient({ id }: { id: string }) {
   const template = mockTemplates.find((t) => t.template_id === job.template_id);
   const isProcessing = !renderFailed && (job.status === "running" || job.status === "queued" || job.status === "pending");
   const completed = job.status === "success" && !renderFailed;
+
+  async function handleDownload(currentJob: RenderJob, output: RenderOutput) {
+    setDownloadingOutputId(output.id);
+    setDownloadError(null);
+    try {
+      const href = normalizeMediaUrl(await MixcutApi.getOutputDownloadUrl(output.id));
+      if (!href) throw new Error("下载地址不可用");
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = outputDownloadFilename(currentJob, output);
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : "下载失败");
+    } finally {
+      setDownloadingOutputId(null);
+    }
+  }
   const outputsPending = completed && !hasOutputs;
   const stillRendering = isProcessing && pendingCount > 0;
   const displayStatus = renderFailed ? "failed" : job.status;
@@ -427,15 +460,14 @@ export function JobDetailClient({ id }: { id: string }) {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 pt-2">
-                                  <Button variant="gradient" className="flex-1" asChild>
-                                    <a
-                                      href={outputVideoSrc(o)}
-                                      download={`${job.template_name || "mixcut"}-v${variantLabel}.mp4`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                    >
-                                      <Download className="size-4" /> 下载这条
-                                    </a>
+                                  <Button
+                                    variant="gradient"
+                                    className="flex-1"
+                                    disabled={downloadingOutputId === o.id}
+                                    onClick={() => void handleDownload(job, o)}
+                                  >
+                                    <Download className="size-4" />
+                                    {downloadingOutputId === o.id ? "下载中" : "下载这条"}
                                   </Button>
                                   <Button
                                     variant="outline"
@@ -460,6 +492,9 @@ export function JobDetailClient({ id }: { id: string }) {
                                     )}
                                   </Button>
                                 </div>
+                                {downloadError ? (
+                                  <div className="text-xs text-destructive">{downloadError}</div>
+                                ) : null}
                               </>
                             );
                           })()}
@@ -1113,16 +1148,28 @@ function PendingVariantTile({ label }: { label: string }) {
   );
 }
 
-// 缩略图卡(底部 5 个变体网格):用 video 元素 + preload="metadata" 拿第一帧。
-// 不放 controls,避免和外层 <button> click 冲突;点击外层切换 selectedVariant。
+// 缩略图卡优先用渲染器生成的 jpg；老任务没有 poster 时才退回 video metadata。
 function VariantThumbnail({ src, poster }: { src?: string; poster?: string }) {
-  const [errored, setErrored] = useState(false);
+  const [posterErrored, setPosterErrored] = useState(false);
+  const [videoErrored, setVideoErrored] = useState(false);
 
   useEffect(() => {
-    setErrored(false);
-  }, [src]);
+    setPosterErrored(false);
+    setVideoErrored(false);
+  }, [src, poster]);
 
-  if (!src || errored) {
+  if (poster && !posterErrored) {
+    return (
+      <img
+        src={poster}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        onError={() => setPosterErrored(true)}
+      />
+    );
+  }
+
+  if (!src || videoErrored) {
     return (
       <div className="absolute inset-0 grid place-items-center text-muted-foreground text-xs">
         无预览
@@ -1138,7 +1185,7 @@ function VariantThumbnail({ src, poster }: { src?: string; poster?: string }) {
       muted
       playsInline
       className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-      onError={() => setErrored(true)}
+      onError={() => setVideoErrored(true)}
     />
   );
 }
