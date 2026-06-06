@@ -154,10 +154,9 @@ function MFeatureCard({ title, sub, cta, tone, icon, onClick, big }) {
 
 // ——————————————————————————————————————————
 function MHome({ ctx }) {
-  const [demoEmpty, setDemoEmpty] = useStateH(false);
   const avatars = useApi(() => AvatarApi.list('mine'), seed.avatars());
   const tasks = useApi(() => JobApi.list(), seed.jobs());
-  const myAssets = demoEmpty ? [] : avatars;
+  const myAssets = avatars;
   const wip = avatars.filter(c => ['proofing','iterating','refining','pending','deriving'].includes(c.status));
   const running = tasks.filter(t => t.status === 'running').length;
   const hasAssets = myAssets.length > 0;
@@ -187,13 +186,8 @@ function MHome({ ctx }) {
         hMH('div', { style: { minWidth: 0 } },
           hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' } }, '我的数字人资产'),
           hMH('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 } }, hasAssets ? (myAssets.length + ' 个形象 · 可随时调用') : '从这里开始你的第一个数字人')),
-        hMH('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' } },
-          // 空态预览开关（演示用）
-          hMH('button', { onClick: () => setDemoEmpty(v => !v), title: '预览「未创建」空态', style: {
-            display: 'grid', placeItems: 'center', width: 30, height: 30, borderRadius: 99, cursor: 'pointer', border: '1px solid var(--line-2)',
-            background: demoEmpty ? 'var(--primary-soft)' : 'var(--surface)', color: demoEmpty ? 'var(--primary)' : 'var(--ink-3)' } }, hMH(Icons.eye, { size: 15, stroke: 1.9 })),
-          hasAssets && hMH('button', { onClick: () => ctx.tab('library'), style: { display: 'inline-flex', alignItems: 'center', gap: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 13, fontWeight: 700, padding: 0 } },
-            '全部', hMH(Icons.chevR, { size: 15, stroke: 2.2 })))),
+        hasAssets && hMH('button', { onClick: () => ctx.tab('library'), style: { display: 'inline-flex', alignItems: 'center', gap: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 13, fontWeight: 700, padding: 0, flex: '0 0 auto' } },
+          '全部', hMH(Icons.chevR, { size: 15, stroke: 2.2 }))),
       hasAssets
         ? hMH('div', { className: 'm-hscroll', style: { padding: '0 18px 4px' } },
             myAssets.map(c => hMH(MAssetCardBig, { key: c.id, char: c, onOpen: ctx.openChar })),

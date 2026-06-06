@@ -21,7 +21,7 @@ import { MAICreate } from "./screen-aicreate";
 import { MChooseVoice } from "./screen-voicepick";
 
 const hA : any = React.createElement;
-const { useState: useStateA, useEffect: useEffectA } = React;
+const { useState: useStateA, useEffect: useEffectA, useRef: useRefA } = React;
 const { PhoneFrame, WxTabBar } = MShell;
 
 // 合成一个新建草稿数字人（驱动创建向导）
@@ -67,6 +67,31 @@ export function App() {
   const [label, setLabel] = useStateA("首页");
   const [voiceByChar, setVoiceByChar] = useStateA({});
   const avatars = useApi(() => AvatarApi.list("mine"), seed.avatars());
+
+  // 浏览器 / 系统返回键：关闭最上层覆盖页或 Sheet，而不是直接退出应用。
+  const open = stack.length + (sheet ? 1 : 0);
+  const openRef = useRefA(0); openRef.current = open;
+  const sheetRef = useRefA(false); sheetRef.current = sheet;
+  const armedRef = useRefA(false);
+  useEffectA(() => {
+    if (typeof window === "undefined") return;
+    const onPop = () => {
+      const o = openRef.current;
+      if (o <= 0) return;                                  // 已在根层 → 放行（离开应用）
+      if (sheetRef.current) setSheet(false);
+      else setStack((s) => s.slice(0, -1));
+      if (o - 1 > 0) { try { history.pushState({ aia: 1 }, ""); } catch {} }  // 仍有层 → 续上返回陷阱
+      else armedRef.current = false;
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // 进入第一层覆盖时埋一个返回陷阱（单哨兵，深度无关）。
+  useEffectA(() => {
+    if (typeof window === "undefined") return;
+    if (open > 0 && !armedRef.current) { try { history.pushState({ aia: 1 }, ""); } catch {} armedRef.current = true; }
+    if (open === 0) armedRef.current = false;
+  }, [open]);
 
   // 深链（hash）支持，挂载后读取，避免 SSR/水合不一致。
   useEffectA(() => {

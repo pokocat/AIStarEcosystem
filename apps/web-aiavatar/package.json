@@ -4,8 +4,10 @@
   "private": true,
   "description": "AiAvatar · 数字人资产平台（移动端 H5 / 微信小程序形态的独立 Next 16 应用）。",
   "scripts": {
-    "dev": "next dev -p 3013",
-    "build": "next build",
+    "dev": "next dev --webpack -p 3013",
+    "dev:turbo": "next dev --turbopack -p 3013",
+    "build": "next build --webpack",
+    "build:turbo": "next build --turbopack",
     "start": "next start -p 3013",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",

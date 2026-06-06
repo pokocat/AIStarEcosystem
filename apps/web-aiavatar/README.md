@@ -24,12 +24,19 @@ pnpm install                       # 安装依赖
 pnpm dev:aiavatar                  # http://localhost:3013
 
 # 或在本目录
-pnpm dev                           # 同上
+pnpm dev                           # 同上（默认 webpack 引擎，稳定）
+pnpm dev:turbo                     # 想要 Turbopack 提速时用（部分机器会 panic，见下）
 pnpm typecheck                     # tsc --noEmit
-pnpm build                         # 生产构建（standalone）
+pnpm build                         # 生产构建（webpack，standalone）
+pnpm build:turbo                   # Turbopack 构建（可选）
 ```
 
 无需启动后端：屏幕层直接消费 `src/proto/data.ts` 的样例数据（`NEXT_PUBLIC_USE_MOCK=1`）。
+
+> **构建引擎**：Next 16 默认用 Turbopack，但其在部分环境（尤其某些 macOS）会
+> `FATAL ... Turbopack ... panic`。因此本 app 的 `dev` / `build` **默认走 webpack**（稳定），
+> Turbopack 作为 `dev:turbo` / `build:turbo` 可选项。若仍遇 Turbopack panic：先
+> `rm -rf .next` 清缓存再重试，或直接用默认 webpack 脚本。
 
 ---
 
@@ -112,6 +119,11 @@ src/
 - 桌面端把应用居中为一列（`max-width:480px` + 细描边/投影），不是手机模型。
 - `layout.tsx`：`theme-color` 改为应用表面色、补 `appleWebApp` standalone 元信息、禁用电话号识别。
 - 行为 / 数据 / 屏幕逻辑不变；`pnpm typecheck` / `build` 全绿，dev 实测渲染已无任何手机壳痕迹。
+- **细节打磨**：(1) 默认构建引擎切回 **webpack**（规避 Turbopack 在部分环境的 FATAL panic；
+  Turbopack 留作 `dev:turbo`/`build:turbo`）；(2) **浏览器/系统返回键**接入覆盖页栈（单哨兵
+  `history.pushState`/`popstate`：返回先关最上层覆盖页 / Sheet，根层才离开应用）；(3) 移除首页
+  「预览空态」演示开关等原型残留；(4) CSS：`overscroll-behavior:contain` 防滚动链外泄、
+  `text-size-adjust` 防 iOS 文字缩放、控件 `user-select:none`、防横向溢出。
 
 ### v0.2（2026-06-06）— 前端 API 契约层（所有数据走 api.ts）
 

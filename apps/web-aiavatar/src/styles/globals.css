@@ -1043,3 +1043,10 @@ body {
 @media (min-width: 481px) {
   .app-root { box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20, 36, 55, .12); }
 }
+
+/* v0.3 — 移动端体验细节打磨 */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body, .app-root { overflow-x: hidden; }
+.m-body, .m-overlay { overscroll-behavior: contain; }     /* 不把滚动链传给外层 / 浏览器 */
+.wx-tab, .wx-fab, .m-tap, .m-press, button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.wx-tab.on { font-weight: 700; }
