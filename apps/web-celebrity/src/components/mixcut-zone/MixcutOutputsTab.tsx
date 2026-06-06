@@ -283,7 +283,7 @@ function VideoCard({
             onClick={() => onDelete(item)}
             disabled={deleting}
             title="删除视频"
-            className="absolute bottom-1 left-1 inline-flex size-7 items-center justify-center rounded-md bg-black/65 text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mobile-icon-target absolute bottom-1 left-1 inline-flex size-7 items-center justify-center rounded-md bg-black/65 text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
           </button>

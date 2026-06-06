@@ -12,9 +12,10 @@ import { SCRIPT_ASSETS, getProduct, toMaterialProduct } from "@/mocks/material-o
 import { TIER_META, ASSET_KIND_META } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, ScriptAsset, Tier } from "./types";
 import { ProductPickerDialog } from "./ProductPickerDialog";
-import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, TierBadge, CoverTile, EmptyState, ProductThumb, formatLastUsed, hexA } from "./shared";
+import { Eyebrow, Tag, Seg, FilterChip, PageHeader, SearchInput, CoverTile, EmptyState, ProductThumb, formatLastUsed, hexA } from "./shared";
 import { loadProductThumbMap, productThumbUrl } from "./product-thumbnails";
 import { scriptOwnerLabel } from "./script-owner";
+import { MobileFilterSheet } from "@/components/common/MobileFilterSheet";
 
 const KIND_ICON: Record<AssetKind, React.ComponentType<{ size?: number; color?: string }>> = {
   my_script: ScrollText,
@@ -119,6 +120,8 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
     setPickerOpen(false);
     router.push(`/material/workshop/${draft.id}/edit`);
   };
+  const activeFilterCount =
+    (cat !== "all" ? 1 : 0) + (tier !== "all" ? 1 : 0) + (query.trim() ? 1 : 0) + (sort !== "recent" ? 1 : 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 1280 }}>
@@ -139,8 +142,98 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
         }
       />
 
+      <div className="flex flex-col gap-[10px] md:hidden">
+        <div style={{ overflowX: "auto", paddingBottom: 2 }}>
+          <Seg
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "all", label: `全部 ${counts.all}` },
+              { value: "my_script", label: `我的 ${counts.my_script}` },
+              { value: "template", label: `模板 ${counts.template}` },
+              { value: "viral_clone", label: `爆款 ${counts.viral_clone}` },
+            ]}
+          />
+        </div>
+        <SearchInput value={query} onChange={setQuery} placeholder="搜索脚本名 · 标签 · 商品" />
+        <div className="mobile-filter-surface flex items-center justify-between gap-[10px]">
+          <MobileFilterSheet
+            title="脚本筛选"
+            summary={`当前匹配 ${filtered.length} / ${scripts.length} 条脚本`}
+            activeCount={activeFilterCount}
+          >
+            <div className="space-y-5">
+              <section>
+                <div className="mb-2 text-xs font-semibold text-zinc-500">类目</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {cats.slice(0, 8).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCat(c)}
+                      className={`mobile-touch-target rounded-lg border px-3 text-sm ${
+                        cat === c
+                          ? "border-violet-400/40 bg-violet-500/10 text-violet-700"
+                          : "border-zinc-200 bg-white text-zinc-600"
+                      }`}
+                    >
+                      {c === "all" ? "全部" : c}
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section>
+                <div className="mb-2 text-xs font-semibold text-zinc-500">分级</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["all", "S", "A", "B"] as Array<Tier | "all">).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTier(t)}
+                      className={`mobile-touch-target rounded-lg border px-3 text-sm ${
+                        tier === t
+                          ? "border-violet-400/40 bg-violet-500/10 text-violet-700"
+                          : "border-zinc-200 bg-white text-zinc-600"
+                      }`}
+                    >
+                      {t === "all" ? "全部" : `${t} ${TIER_META[t].label}`}
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section>
+                <div className="mb-2 text-xs font-semibold text-zinc-500">排序</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: "recent", label: "最近" },
+                    { value: "perf", label: "CTR" },
+                    { value: "uses", label: "复用" },
+                  ].map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => setSort(o.value as "recent" | "perf" | "uses")}
+                      className={`mobile-touch-target rounded-lg border px-3 text-sm ${
+                        sort === o.value
+                          ? "border-violet-400/40 bg-violet-500/10 text-violet-700"
+                          : "border-zinc-200 bg-white text-zinc-600"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </MobileFilterSheet>
+          <div style={{ minWidth: 0, textAlign: "right", fontSize: 12, color: "var(--fg-2)" }}>
+            {filtered.length} 条 · {sort === "recent" ? "最近" : sort === "perf" ? "CTR" : "复用"}
+          </div>
+        </div>
+      </div>
+
       {/* tabs + search */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div className="hidden items-center gap-3 md:flex" style={{ flexWrap: "wrap" }}>
         <Seg
           value={tab}
           onChange={setTab}
@@ -157,7 +250,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
       </div>
 
       {/* filters */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div className="hidden items-center gap-3 md:flex" style={{ flexWrap: "wrap" }}>
         <Eyebrow style={{ marginRight: 2 }}>类目</Eyebrow>
         {cats.slice(0, 6).map((c) => (
           <FilterChip key={c} active={cat === c} onClick={() => setCat(c)}>
@@ -180,8 +273,43 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
         </div>
       </div>
 
+      <div className="mobile-card-list md:hidden">
+        {filtered.length === 0 && (
+          <Card>
+            <EmptyState
+              icon={<ScrollText size={26} />}
+              title="没有匹配的脚本"
+              hint="调整筛选条件，或新建一个脚本开始创作。"
+              action={
+                <Button variant="accent" size="sm" onClick={() => setPickerOpen(true)} style={{ height: 44 }}>
+                  <Plus size={13} /> 新建脚本
+                </Button>
+              }
+            />
+          </Card>
+        )}
+        {filtered.map((a) => {
+          const KindIcon = KIND_ICON[a.kind];
+          const kindMeta = ASSET_KIND_META[a.kind];
+          const product = (a.product_id ? productById.get(a.product_id) : undefined) ?? getProduct(a.product_id);
+          return (
+            <ScriptMobileCard
+              key={a.id}
+              script={a}
+              product={product}
+              productThumb={productThumbUrl(product, thumbByProductId)}
+              kindIcon={<KindIcon size={14} color="#fff" />}
+              kindLabel={kindMeta.label}
+              onOpen={() => router.push(`/material/workshop/${a.id}`)}
+              onOpenProduct={product ? () => router.push(`/products/${product.id}`) : undefined}
+              onOpenMaterial={product ? () => router.push(`/material/assets?product=${product.id}`) : undefined}
+            />
+          );
+        })}
+      </div>
+
       {/* table */}
-      <Card style={{ padding: 0, overflow: "hidden" }}>
+      <Card className="hidden md:block" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
         <div style={{ minWidth: 920 }}>
         <div style={{ padding: "10px 18px", display: "grid", gridTemplateColumns: COLS, gap: 14, fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.12em", color: "var(--fg-3)", textTransform: "uppercase", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
@@ -291,6 +419,116 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
       </Card>
 
       {pickerOpen && <ProductPickerDialog onClose={() => setPickerOpen(false)} onPick={onNewProductPicked} />}
+    </div>
+  );
+}
+
+function ScriptMobileCard({
+  script,
+  product,
+  productThumb,
+  kindIcon,
+  kindLabel,
+  onOpen,
+  onOpenProduct,
+  onOpenMaterial,
+}: {
+  script: ScriptAsset;
+  product?: MaterialProduct;
+  productThumb?: string;
+  kindIcon: React.ReactNode;
+  kindLabel: string;
+  onOpen: () => void;
+  onOpenProduct?: () => void;
+  onOpenMaterial?: () => void;
+}) {
+  return (
+    <Card style={{ padding: 14 }}>
+      <div className="flex gap-3">
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <CoverTile color={script.cover_color} icon={kindIcon} w={42} h={54} radius={10} />
+          <span
+            style={{
+              position: "absolute",
+              top: -4,
+              right: -4,
+              width: 18,
+              height: 18,
+              borderRadius: 6,
+              background: TIER_META[script.tier].toneVar,
+              color: "#fff",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {script.tier}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <div
+              className="line-clamp-2 min-w-0 flex-1 text-sm font-semibold leading-snug"
+              style={{ color: "var(--fg-0)" }}
+            >
+              {script.name}
+            </div>
+            <Tag color={ASSET_KIND_META[script.kind].toneVar} style={{ fontSize: 10, padding: "1px 6px" }}>
+              {kindLabel}
+            </Tag>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--fg-3)" }}>
+            <span>{script.hook_type}</span>
+            <span>{script.duration_sec}s</span>
+            <span>{script.blocks.length} 镜</span>
+            <span>{scriptOwnerLabel(script)}</span>
+          </div>
+          {product && (
+            <button
+              type="button"
+              onClick={onOpenProduct}
+              className="mobile-touch-target mt-2 flex min-w-0 items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/[0.04] px-2 py-1.5 text-left"
+              style={{ width: "100%", color: "var(--accent)", fontFamily: "var(--font-sans)" }}
+            >
+              <ProductThumb name={product.name} image={productThumb} color={product.accentColor} size={24} radius={7} />
+              <span className="truncate text-xs font-medium">{product.name}</span>
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <MetricPill label="CTR" value={`${script.metrics.ctr_pct}%`} tone="var(--extra-teal)" />
+        <MetricPill label="复用" value={script.metrics.uses_count} tone="var(--accent)" />
+        <MetricPill label="最近" value={formatLastUsed(script.metrics.last_used_at)} tone="var(--fg-1)" />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button variant="accent" size="sm" onClick={onOpen} style={{ height: 44 }}>
+          查看脚本
+        </Button>
+        {onOpenMaterial ? (
+          <Button variant="secondary" size="sm" onClick={onOpenMaterial} style={{ height: 44 }}>
+            <Video size={13} /> 商品素材
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={onOpen} style={{ height: 44 }}>
+            详情
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function MetricPill({ label, value, tone }: { label: string; value: React.ReactNode; tone: string }) {
+  return (
+    <div className="rounded-lg border px-2 py-2 text-center" style={{ borderColor: "var(--line)", background: "var(--bg-2)" }}>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: tone, fontVariantNumeric: "tabular-nums" }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 10, color: "var(--fg-3)", marginTop: 1 }}>{label}</div>
     </div>
   );
 }

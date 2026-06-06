@@ -69,7 +69,7 @@ export function CelebrityProjectVideoCard({
             disabled={deleting}
             title="删除视频"
             className={cn(
-              "absolute z-20 inline-flex items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60",
+              "mobile-icon-target absolute z-20 inline-flex items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60",
               compact ? "bottom-1 left-1 h-7 w-7" : "bottom-1.5 left-1.5 h-8 w-8",
             )}
           >

@@ -528,6 +528,7 @@ export function Seg<T extends string | number>({
           <button
             key={String(o.value)}
             onClick={() => onChange(o.value)}
+            className="mo-seg-trigger"
             style={{
               padding: pad,
               fontSize: fs,
@@ -604,7 +605,10 @@ export function PageHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+    <div
+      className="mo-page-header"
+      style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}
+    >
       <div>
         <Eyebrow>{eyebrow}</Eyebrow>
         <h1
@@ -621,7 +625,7 @@ export function PageHeader({
         </h1>
         {sub && <div style={{ fontSize: 13, color: "var(--fg-2)", marginTop: 4 }}>{sub}</div>}
       </div>
-      {right && <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{right}</div>}
+      {right && <div className="mo-page-header-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>{right}</div>}
     </div>
   );
 }

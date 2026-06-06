@@ -66,10 +66,10 @@ function LibraryShell() {
       </div>
 
       <Tabs value={source} onValueChange={(v) => handleSourceChange(v as Source)}>
-        <TabsList>
-          <TabsTrigger value="project">明星视频</TabsTrigger>
-          <TabsTrigger value="material">脚本视频</TabsTrigger>
-          <TabsTrigger value="mixcut">混剪成片</TabsTrigger>
+        <TabsList className="h-auto">
+          <TabsTrigger className="mobile-touch-target" value="project">明星视频</TabsTrigger>
+          <TabsTrigger className="mobile-touch-target" value="material">脚本视频</TabsTrigger>
+          <TabsTrigger className="mobile-touch-target" value="mixcut">混剪成片</TabsTrigger>
         </TabsList>
 
         {/* 仅渲染当前 active 来源，避免首屏同时打三套接口 */}

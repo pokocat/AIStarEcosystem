@@ -21,6 +21,7 @@ import { canUseOperatorTools } from "@/lib/operator-role";
 import type { MaterialProduct, MaterialVideo, ScriptAsset, VariantAxisKey } from "./types";
 import { VideoGenDialog } from "./VideoGenDialog";
 import { Eyebrow, Tag, Seg, PageHeader, MetricTile, SearchInput, EmptyState, ProductThumb, fmtWan, parsePlays, hexA } from "./shared";
+import { MobileFilterSheet } from "@/components/common/MobileFilterSheet";
 
 type ViewMode = "flat" | "by-product" | "by-script";
 type StatusFilter = "all" | "published" | "ready" | "rendering" | "failed";
@@ -427,6 +428,12 @@ function GlobalVideoLibrary({
   }, [videos, statusFilter, query, sort]);
 
   const showProductOnCard = !selectedProduct; // 跨商品视图才在卡片上标商品名
+  const activeFilterCount =
+    (productFilter !== ALL ? 1 : 0) +
+    (statusFilter !== "all" ? 1 : 0) +
+    (viewMode !== "flat" ? 1 : 0) +
+    (query.trim() ? 1 : 0) +
+    (sort !== "recent" ? 1 : 0);
 
   const scriptGroups = React.useMemo(() => {
     const m = new Map<string, MaterialVideo[]>();
@@ -458,8 +465,58 @@ function GlobalVideoLibrary({
         <StatBar videos={filtered} />
       )}
 
+      <div className="mobile-filter-surface flex flex-col gap-3 md:hidden">
+        <SearchInput value={query} onChange={setQuery} placeholder="搜视频名" />
+        <div className="flex items-center justify-between gap-2">
+          <MobileFilterSheet
+            title="视频素材筛选"
+            summary={`当前匹配 ${filtered.length} / ${totalVideoCount} 条视频`}
+            activeCount={activeFilterCount}
+          >
+            <div className="space-y-5">
+              <section className="space-y-2">
+                <div className="text-xs font-semibold text-zinc-500">商品</div>
+                <ProductFilter
+                  products={filterableProducts}
+                  value={productFilter}
+                  onChange={setProductFilter}
+                  counts={countsByProduct}
+                  totalCount={totalVideoCount}
+                  unassignedCount={unassignedCount}
+                />
+              </section>
+              <section className="space-y-2">
+                <div className="text-xs font-semibold text-zinc-500">视图</div>
+                <Seg
+                  value={viewMode}
+                  onChange={setViewMode}
+                  size="sm"
+                  options={[{ value: "flat", label: "全部" }, { value: "by-product", label: "按商品" }, { value: "by-script", label: "按脚本" }]}
+                />
+              </section>
+              <section className="space-y-2">
+                <div className="text-xs font-semibold text-zinc-500">状态</div>
+                <Seg
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  size="sm"
+                  options={[{ value: "all", label: "全部" }, { value: "published", label: "已发布" }, { value: "ready", label: "未发布" }, { value: "rendering", label: "渲染中" }, { value: "failed", label: "失败" }]}
+                />
+              </section>
+              <section className="space-y-2">
+                <div className="text-xs font-semibold text-zinc-500">排序</div>
+                <Seg value={sort} onChange={setSort} size="sm" options={[{ value: "recent", label: "最新" }, { value: "plays", label: "播放" }, { value: "ctr", label: "CTR" }]} />
+              </section>
+            </div>
+          </MobileFilterSheet>
+          <div className="min-w-0 text-right text-xs" style={{ color: "var(--fg-2)" }}>
+            {filtered.length} 条 · {sort === "recent" ? "最新" : sort === "plays" ? "播放" : "CTR"}
+          </div>
+        </div>
+      </div>
+
       {/* toolbar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 14px", borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--line)" }}>
+      <div className="hidden items-center gap-[10px] md:flex" style={{ flexWrap: "wrap", padding: "10px 14px", borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--line)" }}>
         <ProductFilter
           products={filterableProducts}
           value={productFilter}

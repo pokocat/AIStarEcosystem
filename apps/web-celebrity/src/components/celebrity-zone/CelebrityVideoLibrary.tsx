@@ -13,6 +13,7 @@ import type {
   ProjectVideoStatus,
 } from "@ai-star-eco/types/celebrity-zone";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import { MobileFilterSheet } from "@/components/common/MobileFilterSheet";
 import {
   Dialog,
   DialogContent,
@@ -85,10 +86,89 @@ export function CelebrityVideoLibrary({
     );
     return byStatus;
   }, [videos]);
+  const activeFilterCount =
+    (status !== "全部" ? 1 : 0) +
+    (starId !== "all" ? 1 : 0) +
+    (projectId !== "all" ? 1 : 0) +
+    (sort !== "createdDesc" ? 1 : 0);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className={cn(VIDEO_ASSET_TOOLBAR_CLASS, "flex flex-wrap items-center gap-2")}>
+      <div className={cn(VIDEO_ASSET_TOOLBAR_CLASS, "flex items-center gap-2 md:hidden")}>
+        <div className="inline-flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-violet-400/25 bg-violet-500/10">
+            <Film className="h-4 w-4 text-violet-600" />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-zinc-800">
+              明星视频 · {filtered.length}/{videos.length}
+            </div>
+            <div className="truncate text-[11px] text-zinc-500">
+              {status !== "全部" ? status : "全部状态"} · {sort === "playsDesc" ? "播放最高" : "最新创建"}
+            </div>
+          </div>
+        </div>
+        <MobileFilterSheet
+          title="明星视频筛选"
+          summary={`当前匹配 ${filtered.length} / ${videos.length} 条视频`}
+          activeCount={activeFilterCount}
+        >
+          <div className="space-y-5">
+            <section>
+              <div className="mb-2 text-xs font-semibold text-zinc-500">状态</div>
+              <div className="grid grid-cols-2 gap-2">
+                {STATUS_TABS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStatus(s)}
+                    className={cn(
+                      "mobile-touch-target rounded-lg border px-3 text-sm transition",
+                      status === s
+                        ? "border-violet-400/40 bg-violet-500/10 text-violet-700"
+                        : "border-zinc-200 bg-white text-zinc-600",
+                    )}
+                  >
+                    {s} <span className="font-mono text-[11px] opacity-70">{counters[s] ?? 0}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="space-y-3">
+              <div className="text-xs font-semibold text-zinc-500">范围</div>
+              <FilterSelect
+                label="明星"
+                value={starId}
+                options={[
+                  { value: "all", label: "全部明星" },
+                  ...stars.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+                onChange={setStarId}
+              />
+              <FilterSelect
+                label="项目"
+                value={projectId}
+                options={[
+                  { value: "all", label: "全部项目" },
+                  ...projects.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+                onChange={setProjectId}
+              />
+              <FilterSelect
+                label="排序"
+                value={sort}
+                options={[
+                  { value: "createdDesc", label: "最新创建" },
+                  { value: "playsDesc", label: "播放最高" },
+                ]}
+                onChange={(v) => setSort(v as SortKey)}
+              />
+            </section>
+          </div>
+        </MobileFilterSheet>
+      </div>
+
+      <div className={cn(VIDEO_ASSET_TOOLBAR_CLASS, "hidden flex-wrap items-center gap-2 md:flex")}>
         <div className="inline-flex shrink-0 items-center gap-2 pr-1">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-400/25 bg-violet-500/10">
             <Film className="h-4 w-4 text-violet-600" />
@@ -234,7 +314,7 @@ function FilterSelect<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="inline-flex h-7 items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 text-[11px] text-zinc-600">
+    <div className="mobile-touch-target inline-flex h-7 items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 text-[11px] text-zinc-600">
       <span className="shrink-0 whitespace-nowrap text-zinc-500">{label}</span>
       <Select value={value} onValueChange={(v) => onChange(v as T)}>
         <SelectTrigger className="h-6 min-w-24 border-0 bg-transparent px-1 text-[11px] text-zinc-800 shadow-none focus:ring-0">
