@@ -18,6 +18,7 @@ export interface OfficialClip {
   duration: number;
   tags?: string;
   uploaded_at: string;
+  deleted_at?: string;
   is_official: boolean;
   official_category?: string;
   related_star_id?: string;

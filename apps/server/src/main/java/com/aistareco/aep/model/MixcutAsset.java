@@ -13,7 +13,8 @@ import java.time.OffsetDateTime;
 @Table(name = "mixcut_asset", indexes = {
         @Index(name = "idx_mixcut_asset_user_kind", columnList = "userId,kind"),
         @Index(name = "idx_mixcut_asset_kind", columnList = "kind"),
-        @Index(name = "idx_mixcut_asset_preset_group", columnList = "isPreset,presetGroup")
+        @Index(name = "idx_mixcut_asset_preset_group", columnList = "isPreset,presetGroup"),
+        @Index(name = "idx_mixcut_asset_deleted_at", columnList = "deleted_at")
 })
 public class MixcutAsset {
 
@@ -118,6 +119,13 @@ public class MixcutAsset {
     @Column(length = 32)
     private String subkind;
 
+    /**
+     * v0.51+: 软删标记。官方明星片段删除只置该字段，文件和行保留供恢复 / 审计；
+     * 对外列表默认过滤 deletedAt IS NULL。
+     */
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
     // ── getters / setters ─────────────────────────────────────────────────────
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -181,4 +189,7 @@ public class MixcutAsset {
 
     public String getSubkind() { return subkind; }
     public void setSubkind(String subkind) { this.subkind = subkind; }
+
+    public OffsetDateTime getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(OffsetDateTime deletedAt) { this.deletedAt = deletedAt; }
 }

@@ -2,6 +2,7 @@ package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.CelebrityProjectVideo;
 
+import java.time.Instant;
 import java.time.LocalDate;
 
 /**
@@ -20,7 +21,8 @@ public record CelebrityProjectVideoDto(
         String engine,
         String thumb,
         String videoUrl,
-        LocalDate createdAt
+        LocalDate createdAt,
+        Instant deletedAt
 ) {
     public static CelebrityProjectVideoDto from(CelebrityProjectVideo v) {
         return new CelebrityProjectVideoDto(
@@ -28,7 +30,7 @@ public record CelebrityProjectVideoDto(
                 v.getStarId(), v.getStarName(), v.getProductName(),
                 v.getStatus(), v.getPlays(), v.getDurationSec(),
                 v.getEngine(), v.getThumb(), v.getVideoUrl(),
-                v.getCreatedAt()
+                v.getCreatedAt(), v.getDeletedAt()
         );
     }
 }

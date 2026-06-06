@@ -12,6 +12,7 @@ import { apiFetch, API_BASE_URL, getAuthToken, USE_MOCK, mockDelay } from "./_cl
 const JOBS_KEY = "aistareco.web.mixcut.jobs.v1";
 const INTRO_KEY = "aistareco.web.mixcut.has-seen-intro.v1";
 const TEMPLATES_KEY = "aistareco.web.mixcut.templates.v1";
+const DELETED_FACTORY_TEMPLATES_KEY = "aistareco.web.mixcut.deleted-factory-templates.v1";
 const DRAFTS_KEY = "aistareco.web.mixcut.drafts.v1";
 
 // 独立开关：仅对 mixcut 切换"真后端模式"，不影响 celebrity-zone / products 的 mock。
@@ -355,7 +356,7 @@ function loadUserTemplates(): Record<string, Template> {
         // v0.11: localStorage 里可能有旧版 flat-slots 模板,过迁移一遍
         const upgraded: Record<string, Template> = {};
         for (const [k, v] of Object.entries(parsed)) {
-          upgraded[k] = migrateLegacyTemplate(v as any);
+          upgraded[k] = { ...migrateLegacyTemplate(v as any), is_factory: false };
         }
         memoryTemplates = upgraded;
         return memoryTemplates;
@@ -377,6 +378,30 @@ function saveUserTemplates() {
   }
 }
 
+function loadDeletedFactoryTemplateIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DELETED_FACTORY_TEMPLATES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedFactoryTemplateIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DELETED_FACTORY_TEMPLATES_KEY, JSON.stringify(ids));
+  } catch {
+    /* storage 满 */
+  }
+}
+
+function isFactoryDeleted(id: string): boolean {
+  return loadDeletedFactoryTemplateIds().includes(id);
+}
+
 /**
  * 合并 server 返回与 mock fallback:按 template_id 去重,server 优先。
  * 用于 REAL_BACKEND 模式下补齐尚未 seed 到 server 的 factory 模板。
@@ -389,7 +414,7 @@ function mergeWithMockFallback(serverList: Template[]): Template[] {
     seen.add(t.template_id);
   }
   for (const t of mockTemplates) {
-    if (!seen.has(t.template_id)) merged.push(t);
+    if (!seen.has(t.template_id) && !isFactoryDeleted(t.template_id)) merged.push(t);
   }
   return merged;
 }
@@ -405,7 +430,7 @@ export async function listTemplates(): Promise<Template[]> {
       seen.add(t.template_id);
     }
     for (const t of mockTemplates) {
-      if (!seen.has(t.template_id)) merged.push(t);
+      if (!seen.has(t.template_id) && !isFactoryDeleted(t.template_id)) merged.push(t);
     }
     return mockDelay(merged);
   }
@@ -418,6 +443,7 @@ export async function getTemplate(id: string): Promise<Template | null> {
   if (USE_LOCAL) {
     const user = loadUserTemplates();
     if (user[id]) return mockDelay(user[id]);
+    if (isFactoryDeleted(id)) return mockDelay(null);
     const factory = mockTemplates.find((t) => t.template_id === id);
     return mockDelay(factory ?? null);
   }
@@ -427,6 +453,7 @@ export async function getTemplate(id: string): Promise<Template | null> {
   } catch {
     /* server 404 / 网络故障 → 走 mock fallback */
   }
+  if (isFactoryDeleted(id)) return null;
   return mockTemplates.find((t) => t.template_id === id) ?? null;
 }
 
@@ -434,16 +461,18 @@ export async function getTemplate(id: string): Promise<Template | null> {
 export function getTemplateSync(id: string): Template | null {
   const user = loadUserTemplates();
   if (user[id]) return user[id];
+  if (isFactoryDeleted(id)) return null;
   return mockTemplates.find((t) => t.template_id === id) ?? null;
 }
 
 /** 写入/覆盖一个用户模板。 */
 export async function saveTemplate(t: Template): Promise<Template> {
   if (USE_LOCAL) {
+    const stored = { ...t, is_factory: false };
     const store = loadUserTemplates();
-    store[t.template_id] = t;
+    store[t.template_id] = stored;
     saveUserTemplates();
-    return mockDelay(t);
+    return mockDelay(stored);
   }
   return apiFetch<Template>(`/mixcut/templates/${t.template_id}`, {
     method: "PUT",
@@ -455,12 +484,41 @@ export async function saveTemplate(t: Template): Promise<Template> {
 export async function deleteTemplate(id: string): Promise<boolean> {
   if (USE_LOCAL) {
     const store = loadUserTemplates();
-    if (!store[id]) return mockDelay(false);
-    delete store[id];
-    saveUserTemplates();
+    if (store[id]) {
+      delete store[id];
+      saveUserTemplates();
+      return mockDelay(true);
+    }
+    if (!mockTemplates.some((t) => t.template_id === id)) return mockDelay(false);
+    const deleted = loadDeletedFactoryTemplateIds();
+    if (!deleted.includes(id)) saveDeletedFactoryTemplateIds([...deleted, id]);
     return mockDelay(true);
   }
   return apiFetch<boolean>(`/mixcut/templates/${id}`, { method: "DELETE" });
+}
+
+/** 删除全局工厂模板。运营 / 超管专用。 */
+export async function deleteFactoryTemplate(id: string): Promise<boolean> {
+  if (USE_LOCAL) {
+    const store = loadUserTemplates();
+    if (store[id]) {
+      delete store[id];
+      saveUserTemplates();
+    }
+    if (!mockTemplates.some((t) => t.template_id === id)) return mockDelay(false);
+    const deleted = loadDeletedFactoryTemplateIds();
+    if (!deleted.includes(id)) saveDeletedFactoryTemplateIds([...deleted, id]);
+    return mockDelay(true);
+  }
+  let deleted = await apiFetch<boolean>(`/admin/mixcut/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!deleted && mockTemplates.some((t) => t.template_id === id)) {
+    deleted = true;
+  }
+  if (deleted) {
+    const ids = loadDeletedFactoryTemplateIds();
+    if (!ids.includes(id)) saveDeletedFactoryTemplateIds([...ids, id]);
+  }
+  return deleted;
 }
 
 /**

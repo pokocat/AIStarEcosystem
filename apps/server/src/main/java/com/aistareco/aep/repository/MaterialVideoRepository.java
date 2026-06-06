@@ -10,13 +10,13 @@ import java.util.List;
 
 @Repository
 public interface MaterialVideoRepository extends JpaRepository<MaterialVideo, String> {
-    List<MaterialVideo> findAllByOrderByOrdAsc();
-    List<MaterialVideo> findByProductIdOrderByOrdAsc(String productId);
+    List<MaterialVideo> findByDeletedAtIsNullOrderByOrdAsc();
+    List<MaterialVideo> findByProductIdAndDeletedAtIsNullOrderByOrdAsc(String productId);
 
     /** 可见范围：共享视频（owner_user_id IS NULL）+ 当前用户生成的视频。 */
-    @Query("SELECT v FROM MaterialVideo v WHERE v.ownerUserId IS NULL OR v.ownerUserId = :uid ORDER BY v.ord ASC")
+    @Query("SELECT v FROM MaterialVideo v WHERE v.deletedAt IS NULL AND (v.ownerUserId IS NULL OR v.ownerUserId = :uid) ORDER BY v.ord ASC")
     List<MaterialVideo> findVisibleTo(@Param("uid") String uid);
 
-    @Query("SELECT v FROM MaterialVideo v WHERE v.productId = :pid AND (v.ownerUserId IS NULL OR v.ownerUserId = :uid) ORDER BY v.ord ASC")
+    @Query("SELECT v FROM MaterialVideo v WHERE v.deletedAt IS NULL AND v.productId = :pid AND (v.ownerUserId IS NULL OR v.ownerUserId = :uid) ORDER BY v.ord ASC")
     List<MaterialVideo> findVisibleToByProduct(@Param("uid") String uid, @Param("pid") String pid);
 }

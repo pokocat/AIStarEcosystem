@@ -367,7 +367,7 @@ public class NotificationService {
         Set<String> projectIds = projectRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(CelebrityProject::getId).collect(java.util.stream.Collectors.toSet());
         if (projectIds.isEmpty()) return List.of();
-        return videoRepo.findAllByOrderByCreatedAtDesc().stream()
+        return videoRepo.findByDeletedAtIsNullOrderByCreatedAtDesc().stream()
                 .filter(v -> projectIds.contains(v.getProjectId())).toList();
     }
 

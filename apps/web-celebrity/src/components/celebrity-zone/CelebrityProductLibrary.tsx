@@ -33,6 +33,7 @@ import { ProductGenerateDialog } from "./ProductGenerateDialog";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { useConfirm } from "@/components/common/confirm-dialog";
+import { canUseOperatorTools } from "@/lib/operator-role";
 
 const inputCls =
   "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500 focus:bg-white";
@@ -47,7 +48,7 @@ const VIEW_STORAGE_KEY = "aistareco.web.products.view-mode.v1";
  *  server 端 hasAnyRole 兜底）。 */
 export function CelebrityProductLibrary() {
   const { user } = useAuth();
-  const canManage = !!user?.operatorRole;
+  const canManage = canUseOperatorTools(user?.operatorRole);
 
   const [list, setList] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);

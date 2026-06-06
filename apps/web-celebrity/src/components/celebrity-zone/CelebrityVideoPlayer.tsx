@@ -25,7 +25,7 @@ interface Props {
   onOpen?: () => void;
   className?: string;
   /** 视频比例（默认 9:16 portrait） */
-  aspect?: "9/16" | "16/9";
+  aspect?: "9/16" | "16/9" | "4/5";
 }
 
 function pad2(n: number) {
@@ -75,7 +75,8 @@ export function CelebrityVideoPlayer({
   // src 为空时锁定在缩略视图：没有可播放源就不渲染 <video>，避免空 src 警告
   const hasSrc = Boolean(src);
   const [active, setActive] = React.useState(hasSrc && !thumbnailMode);
-  const aspectClass = aspect === "16/9" ? "aspect-video" : "aspect-[9/16]";
+  const aspectClass =
+    aspect === "16/9" ? "aspect-video" : aspect === "4/5" ? "aspect-[4/5]" : "aspect-[9/16]";
 
   return (
     <div

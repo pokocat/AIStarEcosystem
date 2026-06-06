@@ -52,6 +52,16 @@ public class MixcutTemplateService {
         return repo.findByTemplateIdAndOwnerScope(templateId, FACTORY_SCOPE);
     }
 
+    /** Admin 视角：只列出全局可见的工厂模板。 */
+    public List<MixcutTemplate> listFactoryTemplates() {
+        return repo.findByIsFactoryTrueOrderByUpdatedAtDesc();
+    }
+
+    /** Admin 视角：只读取工厂模板，不回退到任何用户副本。 */
+    public Optional<MixcutTemplate> getFactoryTemplate(String templateId) {
+        return repo.findByTemplateIdAndOwnerScope(templateId, FACTORY_SCOPE);
+    }
+
     /** 用户保存模板 —— upsert 到该用户的 scope。 */
     public MixcutTemplate upsertForUser(MixcutTemplateUpsertRequest req, String ownerUserId) {
         if (req.templateId() == null || req.templateId().isBlank()) {
@@ -103,6 +113,14 @@ public class MixcutTemplateService {
         applyRequest(t, req);
         t.setUpdatedAt(now);
         return repo.save(t);
+    }
+
+    /** Admin 删除全局工厂模板；不会删除任何用户 override 副本。 */
+    public boolean deleteFactory(String templateId) {
+        var existing = repo.findByTemplateIdAndOwnerScope(templateId, FACTORY_SCOPE);
+        if (existing.isEmpty()) return false;
+        repo.delete(existing.get());
+        return true;
     }
 
     public boolean hasAnyFactory() {

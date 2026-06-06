@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Crown, ShieldCheck, TrendingUp, Plus } from "lucide-react";
+import { Search, Crown, ShieldCheck, TrendingUp, Plus, Loader2, Trash2 } from "lucide-react";
+import { useAuth } from "@ai-star-eco/api-client";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
 import { Badge } from "@/components/mixcut-zone/ui/badge";
@@ -15,6 +16,8 @@ import { MixcutApi } from "@/api";
 import type { Tier, Template } from "@/components/mixcut-zone/types";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
 import { flatSlotsOf, firstScenePreviewTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
+import { canUseOperatorTools } from "@/lib/operator-role";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 const CATEGORIES = [
   "全部",
@@ -59,9 +62,13 @@ function templateStructureSummary(template: Template): string {
 
 export default function MixcutTemplatesPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const canManageTemplates = canUseOperatorTools(user?.operatorRole);
+  const { confirm, ConfirmHost } = useConfirm();
   const [category, setCategory] = useState("全部");
   const [tier, setTier] = useState<"all" | Tier>("all");
   const [search, setSearch] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   // 包含用户「另存为」/「保存为我的版本」生成的模板
   const [templates, setTemplates] = useState<Template[]>(mockTemplates);
 
@@ -72,7 +79,38 @@ export default function MixcutTemplatesPage() {
   // 新建走 /new 路由：进入编辑器后**不立即落库**，用户点保存才会真正创建模板。
   // 这样取消 / 关页不会在「我的模板」里留下空模板（v0.21+ 修复）。
   const handleCreate = () => {
+    if (!canManageTemplates) return;
     router.push("/mixcut/templates/new");
+  };
+
+  const handleDelete = async (template: Template) => {
+    if (!canManageTemplates || deletingId) return;
+    const isFactory = template.is_factory ?? MixcutApi.isFactoryTemplate(template.template_id);
+    const ok = await confirm({
+      title: isFactory ? "删除工厂模板?" : "删除模板?",
+      description: (
+        <span>
+          {isFactory
+            ? "该模板会从全局公共模板库隐藏，所有用户之后都不能再用它创建新任务。历史生成任务不会被删除。"
+            : "删除后无法恢复。历史生成任务不会被删除，但之后不能再用这个模板创建新任务。"}
+        </span>
+      ),
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setDeletingId(template.template_id);
+    try {
+      const deleted = isFactory
+        ? await MixcutApi.deleteFactoryTemplate(template.template_id)
+        : await MixcutApi.deleteTemplate(template.template_id);
+      if (deleted) {
+        const next = await MixcutApi.listTemplates();
+        setTemplates(next);
+      }
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -95,10 +133,12 @@ export default function MixcutTemplatesPage() {
             选个模板,填进素材,一次生成多条差异化短视频
           </p>
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="size-4" />
-          新建模板
-        </Button>
+        {canManageTemplates && (
+          <Button onClick={handleCreate}>
+            <Plus className="size-4" />
+            新建模板
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -163,46 +203,58 @@ export default function MixcutTemplatesPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
         {filtered.map((t) => (
-          <Link
-            key={t.template_id}
-            href={`/mixcut/templates/${t.template_id}`}
-            className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            <div className="relative">
-              <TemplatePreview template={firstScenePreviewTemplate(t)} mode="blueprint" />
-            </div>
-            <div className="mt-3 space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-medium text-sm leading-tight line-clamp-1 group-hover:underline underline-offset-2">
-                  {t.name}
+          <div key={t.template_id} className="group relative rounded-xl">
+            <Link
+              href={`/mixcut/templates/${t.template_id}`}
+              className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <div className="relative">
+                <TemplatePreview template={firstScenePreviewTemplate(t)} mode="blueprint" />
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-medium text-sm leading-tight line-clamp-1 group-hover:underline underline-offset-2">
+                    {t.name}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{t.canvas.duration}s</span>
                 </div>
-                <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{t.canvas.duration}s</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Badge variant="muted" className="text-[10px]">{t.metadata.category}</Badge>
+                  {t.metadata.required_tier === "professional" && (
+                    <Badge variant="brand" className="gap-1 text-[10px]">
+                      <Crown className="size-2.5" /> 专业版
+                    </Badge>
+                  )}
+                  {(t.metadata.hit_rate ?? 0) > 90 && (
+                    <Badge variant="success" className="gap-1 text-[10px]">
+                      <ShieldCheck className="size-2.5" /> 独特性高
+                    </Badge>
+                  )}
+                  {t.metadata.tags.slice(0, 2).map((tag) => (
+                    <span key={tag} className="text-[10px] text-muted-foreground">#{tag}</span>
+                  ))}
+                </div>
+                <div className="line-clamp-1 text-[10px] text-muted-foreground">
+                  {templateStructureSummary(t)}
+                </div>
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <TrendingUp className="size-2.5" />
+                  今日 {formatNumber(t.metadata.daily_creation_count ?? 0)} 条生成
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Badge variant="muted" className="text-[10px]">{t.metadata.category}</Badge>
-                {t.metadata.required_tier === "professional" && (
-                  <Badge variant="brand" className="gap-1 text-[10px]">
-                    <Crown className="size-2.5" /> 专业版
-                  </Badge>
-                )}
-                {(t.metadata.hit_rate ?? 0) > 90 && (
-                  <Badge variant="success" className="gap-1 text-[10px]">
-                    <ShieldCheck className="size-2.5" /> 独特性高
-                  </Badge>
-                )}
-                {t.metadata.tags.slice(0, 2).map((tag) => (
-                  <span key={tag} className="text-[10px] text-muted-foreground">#{tag}</span>
-                ))}
-              </div>
-              <div className="line-clamp-1 text-[10px] text-muted-foreground">
-                {templateStructureSummary(t)}
-              </div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <TrendingUp className="size-2.5" />
-                今日 {formatNumber(t.metadata.daily_creation_count ?? 0)} 条生成
-              </div>
-            </div>
-          </Link>
+            </Link>
+            {canManageTemplates && (
+              <button
+                type="button"
+                onClick={() => handleDelete(t)}
+                disabled={deletingId === t.template_id}
+                title="删除模板"
+                className="absolute left-2 top-2 z-20 inline-flex size-8 items-center justify-center rounded-md bg-black/65 text-white opacity-100 transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingId === t.template_id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              </button>
+            )}
+          </div>
         ))}
       </div>
 
@@ -211,6 +263,7 @@ export default function MixcutTemplatesPage() {
           没有匹配的模板,试试调整筛选条件
         </div>
       )}
+      <ConfirmHost />
     </div>
   );
 }

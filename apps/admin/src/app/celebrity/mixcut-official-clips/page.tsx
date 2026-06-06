@@ -79,7 +79,7 @@ export default function AdminMixcutOfficialClipsPage() {
       title: "删除官方明星片段",
       tone: "danger",
       confirmLabel: "确认删除",
-      description: "删除后用户端立即不可见，文件一并清除。无法恢复。",
+      description: "删除后用户端立即不可见；文件和记录会保留，后续可做恢复或审计。",
       affected: (
         <div className="space-y-1">
           <div className="font-medium">{clip.name}</div>
@@ -94,7 +94,7 @@ export default function AdminMixcutOfficialClipsPage() {
     try {
       await MixcutOfficialClipsApi.deleteOfficialClip(clip.id);
       await reload();
-      toast.success({ title: "片段已删除" });
+      toast.success({ title: "片段已软删" });
     } catch (err) {
       toast.danger({
         title: "删除失败",

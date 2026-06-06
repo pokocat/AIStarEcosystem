@@ -30,6 +30,34 @@ import {
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import { ENGINE_META } from "@/constants/celebrity-zone-ui";
 
+const DELETED_PROJECT_VIDEOS_KEY = "aistareco.web.celebrity.deleted-project-videos.v1";
+
+function readDeletedProjectVideos(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DELETED_PROJECT_VIDEOS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDeletedProjectVideos(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DELETED_PROJECT_VIDEOS_KEY, JSON.stringify(ids));
+  } catch {
+    /* storage 满 / 隐私模式静默 */
+  }
+}
+
+function visibleProjectVideos(videos: CelebrityProjectVideo[]): CelebrityProjectVideo[] {
+  if (!USE_MOCK) return videos;
+  const deleted = new Set(readDeletedProjectVideos());
+  return videos.filter((v) => !deleted.has(v.id) && !v.deletedAt);
+}
+
 // ── 明星市场 ────────────────────────────────────────────────────────────────
 export interface StarFilter {
   category?: "全部" | CelebrityCategory;
@@ -111,7 +139,7 @@ export async function getProject(id: ID): Promise<CelebrityProject | null> {
 }
 
 export async function listProjectVideos(projectId: ID): Promise<CelebrityProjectVideo[]> {
-  if (USE_MOCK) return mockDelay(PROJECT_VIDEOS_MAP[projectId] ?? []);
+  if (USE_MOCK) return mockDelay(visibleProjectVideos(PROJECT_VIDEOS_MAP[projectId] ?? []));
   return apiFetch<CelebrityProjectVideo[]>(`/celebrity/projects/${projectId}/videos`);
 }
 
@@ -128,7 +156,7 @@ export async function listAllVideos(
   filter?: AllVideosFilter,
 ): Promise<CelebrityProjectVideo[]> {
   if (USE_MOCK) {
-    let all = Object.values(PROJECT_VIDEOS_MAP).flat();
+    let all = visibleProjectVideos(Object.values(PROJECT_VIDEOS_MAP).flat());
     if (filter?.status && filter.status !== "全部") {
       all = all.filter((v) => v.status === filter.status);
     }
@@ -148,6 +176,15 @@ export async function listAllVideos(
   if (filter?.sort) qs.set("sort", filter.sort);
   const suffix = qs.toString() ? `?${qs}` : "";
   return apiFetch<CelebrityProjectVideo[]>(`/celebrity/videos${suffix}`);
+}
+
+export async function deleteVideo(videoId: ID): Promise<boolean> {
+  if (USE_MOCK) {
+    const deleted = readDeletedProjectVideos();
+    if (!deleted.includes(videoId)) writeDeletedProjectVideos([...deleted, videoId]);
+    return mockDelay(true);
+  }
+  return apiFetch<boolean>(`/celebrity/videos/${encodeURIComponent(videoId)}`, { method: "DELETE" });
 }
 
 function parsePlays(plays?: string): number {

@@ -17,6 +17,7 @@ import { Card, Button } from "@/components/creator";
 import { MaterialOpsApi, ProductsApi } from "@/api";
 import { MATERIAL_PRODUCTS, getScript, getProduct, toMaterialProduct } from "@/mocks/material-ops";
 import { VARIANT_AXES } from "@/constants/material-ops-ui";
+import { canUseOperatorTools } from "@/lib/operator-role";
 import type { MaterialProduct, MaterialVideo, ScriptAsset, VariantAxisKey } from "./types";
 import { VideoGenDialog } from "./VideoGenDialog";
 import { Eyebrow, Tag, Seg, PageHeader, MetricTile, SearchInput, EmptyState, ProductThumb, fmtWan, parsePlays, hexA } from "./shared";
@@ -568,7 +569,7 @@ const ghostLink: React.CSSProperties = { background: "transparent", border: 0, c
 // ── 商品 hero（选中某商品时浮出） ─────────────────────────────────────────────
 function ProductHero({ product, videos }: { product: MaterialProduct; videos: MaterialVideo[] }) {
   const { user } = useAuth();
-  const canExtract = !!user?.operatorRole;
+  const canExtract = canUseOperatorTools(user?.operatorRole);
   const [sellingPoints, setSellingPoints] = React.useState(product.sellingPoints ?? "");
   const [extracting, setExtracting] = React.useState(false);
   const [extractError, setExtractError] = React.useState<string | null>(null);

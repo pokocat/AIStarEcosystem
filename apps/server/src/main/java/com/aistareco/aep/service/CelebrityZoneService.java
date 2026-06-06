@@ -60,6 +60,7 @@ public class CelebrityZoneService {
     private final CelebrityStarAuthorizationRepository authRepo;
     private final CreditService creditService;
     private final PlatformConfigService platformConfig;
+    private final OperatorPermissionService operatorPermission;
 
     public CelebrityZoneService(CelebrityStarRepository starRepo,
                                  CelebrityProjectRepository projectRepo,
@@ -68,7 +69,8 @@ public class CelebrityZoneService {
                                  CelebrityShowcaseRepository showcaseRepo,
                                  CelebrityStarAuthorizationRepository authRepo,
                                  CreditService creditService,
-                                 PlatformConfigService platformConfig) {
+                                 PlatformConfigService platformConfig,
+                                 OperatorPermissionService operatorPermission) {
         this.starRepo = starRepo;
         this.projectRepo = projectRepo;
         this.videoRepo = videoRepo;
@@ -77,6 +79,7 @@ public class CelebrityZoneService {
         this.authRepo = authRepo;
         this.creditService = creditService;
         this.platformConfig = platformConfig;
+        this.operatorPermission = operatorPermission;
     }
 
     /** 启动时种子默认 pricing 到 PlatformConfig（首次启动；已存在则 no-op，保留 admin 编辑）。 */
@@ -257,7 +260,7 @@ public class CelebrityZoneService {
     }
 
     public List<CelebrityProjectVideoDto> listProjectVideos(String projectId) {
-        return videoRepo.findByProjectIdOrderByCreatedAtDesc(projectId)
+        return videoRepo.findByProjectIdAndDeletedAtIsNullOrderByCreatedAtDesc(projectId)
                 .stream().map(CelebrityProjectVideoDto::from).toList();
     }
 
@@ -274,7 +277,7 @@ public class CelebrityZoneService {
 
     // ── Videos (cross-project library) ──────────────────────────────────────
     public List<CelebrityProjectVideoDto> listAllVideos(String status, String starId, String projectId, String sort) {
-        List<CelebrityProjectVideo> rows = videoRepo.findAllByOrderByCreatedAtDesc();
+        List<CelebrityProjectVideo> rows = videoRepo.findByDeletedAtIsNullOrderByCreatedAtDesc();
         if (status != null && !status.isBlank() && !"全部".equals(status)) {
             String s = status;
             rows = rows.stream().filter(v -> s.equals(v.getStatus())).toList();
@@ -290,6 +293,22 @@ public class CelebrityZoneService {
             rows.sort((a, b) -> Long.compare(parsePlays(b.getPlays()), parsePlays(a.getPlays())));
         }
         return rows.stream().map(CelebrityProjectVideoDto::from).toList();
+    }
+
+    public boolean softDeleteVideo(String videoId) {
+        if (!operatorPermission.currentUserCanOperate()) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "OPERATOR_REQUIRED", "只有运营或超管可以删除视频");
+        }
+        if (videoId == null || videoId.isBlank()) return false;
+        return videoRepo.findById(videoId)
+                .filter(v -> v.getDeletedAt() == null)
+                .map(v -> {
+                    v.setDeletedAt(Instant.now());
+                    videoRepo.save(v);
+                    log.info("[celebrity-zone] soft-deleted project video {}", videoId);
+                    return true;
+                })
+                .orElse(false);
     }
 
     // ── Generation ──────────────────────────────────────────────────────────

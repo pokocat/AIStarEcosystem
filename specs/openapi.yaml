@@ -1680,6 +1680,7 @@ components:
         thumb:        { type: string }
         videoUrl:     { type: string }
         createdAt:    { type: string, format: date }
+        deletedAt:    { type: string, format: date-time, nullable: true, description: 软删时间；常规列表默认过滤 }
 
     CelebrityProductInput:
       type: object
@@ -4800,6 +4801,25 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/CelebrityProjectVideo' }
 
+  /celebrity/videos/{videoId}:
+    parameters:
+      - { in: path, name: videoId, required: true, schema: { type: string } }
+    delete:
+      tags: [celebrity]
+      operationId: deleteCelebrityVideo
+      summary: 运营 / 超管软删视频库中的明星项目视频
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { type: boolean }
+
   /celebrity/generate:
     post:
       tags: [celebrity]
@@ -5033,7 +5053,7 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     put: { tags: [admin-celebrity], operationId: adminSetCelebrityTemplatePreview, responses: { '200': { description: ok } } }
 
-  # v0.21+: 运营管理「官方明星片段」（mixcut 素材的 is_official=true 子集）
+  # v0.21+: 运营管理「官方明星片段」（mixcut 素材的 is_official=true 且 deleted_at IS NULL 子集）
   /admin/mixcut/official-clips:
     get:
       tags: [admin-mixcut]
@@ -5049,7 +5069,17 @@ paths:
   /admin/mixcut/official-clips/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     put:    { tags: [admin-mixcut], operationId: adminUpdateMixcutOfficialClip, responses: { '200': { description: ok } } }
-    delete: { tags: [admin-mixcut], operationId: adminDeleteMixcutOfficialClip, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-mixcut], operationId: adminDeleteMixcutOfficialClip, responses: { '200': { description: 软删除官方片段（写 deleted_at，不删除文件和 DB 行） } } }
+
+  # v0.50+: 运营管理「混剪工厂模板」（ownerScope=factory，全局可见）
+  /admin/mixcut/templates:
+    get:  { tags: [admin-mixcut], operationId: adminListMixcutFactoryTemplates, responses: { '200': { description: ok } } }
+    post: { tags: [admin-mixcut], operationId: adminCreateMixcutFactoryTemplate, responses: { '201': { description: created } } }
+  /admin/mixcut/templates/{templateId}:
+    parameters: [{ name: templateId, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-mixcut], operationId: adminGetMixcutFactoryTemplate,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-mixcut], operationId: adminUpdateMixcutFactoryTemplate, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-mixcut], operationId: adminDeleteMixcutFactoryTemplate, responses: { '200': { description: ok } } }
 
   /admin/celebrity/showcases:       { get: { tags: [admin-celebrity], operationId: adminListCelebrityShowcases, responses: { '200': { description: ok } } } }
   /admin/celebrity/projects:        { get: { tags: [admin-celebrity], operationId: adminListCelebrityProjects,  responses: { '200': { description: ok } } } }
@@ -5344,6 +5374,13 @@ paths:
     post: { tags: [material], operationId: materialExtractVariables, responses: { '200': { description: 脚本可替换变量 ScriptVariable[]（已过滤幻觉；失败/无权访问返回空，前端用正则兜底） } } }
 
   # ── 素材运营 · 带货视频生成（v0.41 新增；真实视频大模型 · 异步 submit + 轮询，见 MaterialVideoJobService） ──
+  /material/videos:
+    get: { tags: [material], operationId: materialListVideos, responses: { '200': { description: 当前用户可见 MaterialVideo[]（过滤 deleted_at） } } }
+  /material/videos/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete: { tags: [material], operationId: materialDeleteVideo, responses: { '204': { description: 软删除视频（本人视频或运营/超管全局删除） } } }
+  /material/videos/batch:
+    post: { tags: [material], operationId: materialAddVideos, responses: { '200': { description: 批量落库已生成视频；body={videos:[...]} } } }
   /material/videos/generate:
     post: { tags: [material], operationId: materialGenerateVideos, responses: { '200': { description: '提交一批生成任务（body={items:[...]}）→ 返回任务卡 MaterialVideo[]（status=rendering）；未配置视频大模型 → 503 VIDEO_NOT_CONFIGURED' } } }
   /material/videos/jobs:
@@ -6314,7 +6351,7 @@ paths:
     delete: { tags: [mixcut], operationId: deleteMixcutOutput, responses: { '200': { description: ok } } }
 
   # v0.21+: 官方明星片段（运营后台上传，用户只读消费）
-  # is_official=true 的 MixcutAsset；按 category（直播切片/综艺/访谈等）/ star_id 过滤。
+  # is_official=true 且 deleted_at IS NULL 的 MixcutAsset；按 category（直播切片/综艺/访谈等）/ star_id 过滤。
   /mixcut/assets/official-clips:
     get:
       tags: [mixcut]

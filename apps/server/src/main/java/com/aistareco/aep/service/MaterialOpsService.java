@@ -54,6 +54,7 @@ public class MaterialOpsService {
     private final MaterialAiService materialAi;
     private final CreditService creditService;
     private final CelebrityActionPricingService actionPricing;
+    private final OperatorPermissionService operatorPermission;
     private final ObjectMapper om;
     private final HttpClient viralHttp = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -69,6 +70,7 @@ public class MaterialOpsService {
                               MaterialAiService materialAi,
                               CreditService creditService,
                               CelebrityActionPricingService actionPricing,
+                              OperatorPermissionService operatorPermission,
                               ObjectMapper om) {
         this.scriptRepo = scriptRepo;
         this.videoRepo = videoRepo;
@@ -79,6 +81,7 @@ public class MaterialOpsService {
         this.materialAi = materialAi;
         this.creditService = creditService;
         this.actionPricing = actionPricing;
+        this.operatorPermission = operatorPermission;
         this.om = om;
     }
 
@@ -171,20 +174,23 @@ public class MaterialOpsService {
                     .parentVideoId(text(v, "parent_video_id"))
                     .ord(-1) // 新生成的排在前
                     .ownerUserId(userId) // 用户生成的视频归本人
+                    .deletedAt(null)
                     .payloadJson(write(v))
                     .build());
             if (productId != null) bumpProduct(productId);
         }
     }
 
-    /** 删视频：只能删自己生成的；共享演示视频（owner=null）与他人视频不允许删。 */
+    /** 软删视频：本人可删自己的；运营 / 超管可删共享或他人视频。 */
     public void deleteVideo(String id, String userId) {
         MaterialVideo v = videoRepo.findById(id).orElse(null);
-        if (v == null) return;
-        if (v.getOwnerUserId() == null || !v.getOwnerUserId().equals(userId)) {
-            throw new IllegalStateException("video not owned by current user");
+        if (v == null || v.getDeletedAt() != null) return;
+        boolean owned = v.getOwnerUserId() != null && v.getOwnerUserId().equals(userId);
+        if (!owned && !operatorPermission.currentUserCanOperate()) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "VIDEO_DELETE_FORBIDDEN", "没有权限删除该视频");
         }
-        videoRepo.deleteById(id);
+        v.setDeletedAt(OffsetDateTime.now());
+        videoRepo.save(v);
     }
 
     // ── AI 起稿 / 变量抽取（接真 LLM，失败降级，见 MaterialAiService） ──────────────

@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, type DragEventHandler } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@ai-star-eco/api-client";
 import {
   ArrowLeft,
   Sparkles,
@@ -73,6 +74,7 @@ import type {
 import { flatSlotsOf, orientationLabel, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
 import { SlotPolicyEditor } from "@/components/mixcut-zone/slot-policy-editor";
+import { canUseOperatorTools } from "@/lib/operator-role";
 
 // 段控 (RadioGroup) 内每个 item 的 card-shaped 样式。
 // 内部 RadioGroupItem 用 sr-only 隐藏只贡献 a11y / 焦点 / data-state；
@@ -265,13 +267,16 @@ export function TemplateDetailClient({
   mode?: "view" | "new";
 }) {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const canManageTemplates = canUseOperatorTools(user?.operatorRole);
   const isNewMode = mode === "new";
   // new 模式自动进编辑；view 模式沿用 /edit 路由 / ?edit=1 query
-  const wantEdit = isNewMode || initialEdit || legacyEditQuery;
+  const requestedEdit = isNewMode || initialEdit || legacyEditQuery;
+  const wantEdit = requestedEdit && canManageTemplates;
   // new 模式：用内存默认模板（不落库）
   // view 模式：SSR 看工厂模板，client hydration 升级到用户覆盖版本
   const freshTemplate = useMemo<Template | null>(() => {
-    if (!isNewMode) return null;
+    if (!isNewMode || !canManageTemplates) return null;
     const newId = `tpl_${nanoid(8)}`;
     return {
       template_id: newId,
@@ -290,7 +295,7 @@ export function TemplateDetailClient({
       quality_gate: { min_phash_distance: 10, max_retries: 3 },
       metadata: { category: "未分类", tags: [], required_tier: "basic" },
     };
-  }, [isNewMode]);
+  }, [isNewMode, canManageTemplates]);
   const [template, setTemplate] = useState<Template | null>(() => {
     if (freshTemplate) return freshTemplate;
     // 编辑路由下，不要先把工厂 mockTemplate 作为 fallback initial —— 否则用户进 /edit
@@ -317,6 +322,12 @@ export function TemplateDetailClient({
   const [templateMetaOpen, setTemplateMetaOpen] = useState(false);
   // 确认对话框:replace native confirm() (P3 polish)
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
+
+  useEffect(() => {
+    if (!isNewMode || !canManageTemplates || !freshTemplate || template !== null) return;
+    setTemplate(freshTemplate);
+    setResolved(true);
+  }, [isNewMode, canManageTemplates, freshTemplate, template]);
 
   useEffect(() => {
     // new 模式跳过 server 取数：直接使用内存默认模板，避免落库
@@ -378,6 +389,23 @@ export function TemplateDetailClient({
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
+  if (requestedEdit && authLoading) {
+    return (
+      <div className="px-6 lg:px-8 py-12 max-w-[1600px] mx-auto text-center text-muted-foreground text-sm">
+        加载中…
+      </div>
+    );
+  }
+  if (requestedEdit && !canManageTemplates) {
+    return <OperatorOnlyNotice />;
+  }
+  if (isNewMode && canManageTemplates && template === null) {
+    return (
+      <div className="px-6 lg:px-8 py-12 max-w-[1600px] mx-auto text-center text-muted-foreground text-sm">
+        加载中…
+      </div>
+    );
+  }
   if (resolved && template === null) notFound();
   if (template === null || display === null) {
     return (
@@ -401,10 +429,12 @@ export function TemplateDetailClient({
   const requiredSlots = editableSlots.filter((s) => s.required);
   const hasFactoryBase = MixcutApi.isFactoryTemplate(template.template_id);
   const isFactory = template.is_factory ?? hasFactoryBase;
-  const canDeleteTemplate = !isFactory || hasUserTemplate;
   const deleteRestoresFactoryBase = hasFactoryBase && !isFactory;
+  const deleteRemovesFactoryBase = isFactory;
+  const canDeleteTemplate = canManageTemplates && !isNewMode;
 
   const enterEdit = () => {
+    if (!canManageTemplates) return;
     setWorking(structuredClone(template));
     setEditing(true);
   };
@@ -452,6 +482,7 @@ export function TemplateDetailClient({
   };
 
   const handleSave = async () => {
+    if (!canManageTemplates) return;
     if (!working) return;
     if (hasValidationError) {
       setSaveError(timeRangeErrors[0]);
@@ -477,6 +508,7 @@ export function TemplateDetailClient({
   };
 
   const handleSaveAs = async () => {
+    if (!canManageTemplates) return;
     if (!working) return;
     const name = newName.trim();
     if (!name) return;
@@ -500,13 +532,17 @@ export function TemplateDetailClient({
   };
 
   const handleDeleteTemplate = async () => {
+    if (!canManageTemplates) return;
     if (!template || !canDeleteTemplate) return;
     const targetId = template.template_id;
-    const targetRestoresFactoryBase = MixcutApi.isFactoryTemplate(targetId);
+    const targetRestoresFactoryBase = deleteRestoresFactoryBase;
+    const targetDeletesFactoryBase = deleteRemovesFactoryBase;
     setSaving(true);
     setSaveError(null);
     try {
-      const deleted = await MixcutApi.deleteTemplate(targetId);
+      const deleted = targetDeletesFactoryBase
+        ? await MixcutApi.deleteFactoryTemplate(targetId)
+        : await MixcutApi.deleteTemplate(targetId);
       if (!deleted) {
         setHasUserTemplate(MixcutApi.hasUserTemplate(targetId));
         setSaveError(targetRestoresFactoryBase ? "当前没有可删除的我的版本" : "删除失败,模板可能已被删除");
@@ -536,12 +572,15 @@ export function TemplateDetailClient({
   };
 
   const requestDeleteTemplate = () => {
+    if (!canManageTemplates) return;
     if (!template || !canDeleteTemplate) return;
     setConfirmModal({
-      title: deleteRestoresFactoryBase ? "删除我的版本?" : "删除此模板?",
+      title: deleteRestoresFactoryBase ? "删除我的版本?" : deleteRemovesFactoryBase ? "删除工厂模板?" : "删除此模板?",
       body: deleteRestoresFactoryBase
         ? "只会删除你保存的本地版本,之后恢复显示工厂模板原版。当前未保存修改也会丢失。"
-        : "删除后无法恢复。历史生成任务不会被删除,但之后不能再用这个模板创建新任务。",
+        : deleteRemovesFactoryBase
+          ? "该模板会从全局公共模板库隐藏，所有用户之后都不能再用它创建新任务。历史生成任务不会被删除。"
+          : "删除后无法恢复。历史生成任务不会被删除,但之后不能再用这个模板创建新任务。",
       confirmText: "删除",
       confirmVariant: "destructive",
       onConfirm: () => {
@@ -793,11 +832,23 @@ export function TemplateDetailClient({
         </Button>
         {!editing && (
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={`/mixcut/templates/${template.template_id}/edit`}>
-                <Pencil className="size-3.5" /> 编辑模板
-              </Link>
-            </Button>
+            {canManageTemplates && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href={`/mixcut/templates/${template.template_id}/edit`}>
+                  <Pencil className="size-3.5" /> 编辑模板
+                </Link>
+              </Button>
+            )}
+            {canDeleteTemplate && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={requestDeleteTemplate}
+                disabled={saving}
+              >
+                <Trash2 className="size-3.5" /> {deleteRestoresFactoryBase ? "删除我的版本" : "删除模板"}
+              </Button>
+            )}
             {editableSlots.length > 0 ? (
               <Button variant="gradient" size="default" asChild className="h-10 px-5">
                 <Link href={`/mixcut/create/${template.template_id}`}>
@@ -847,6 +898,16 @@ export function TemplateDetailClient({
 
             {/* 主群：overflow（删除 / 另存）+ 保存。中间留一道竖线视觉分隔。 */}
             <div className="flex items-center gap-2 pl-3 border-l border-border">
+              {!isNewMode && canDeleteTemplate && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={requestDeleteTemplate}
+                  disabled={saving}
+                >
+                  <Trash2 className="size-3.5" /> {deleteRestoresFactoryBase ? "删除我的版本" : "删除模板"}
+                </Button>
+              )}
               {!isNewMode && (canDeleteTemplate || true) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -1877,6 +1938,34 @@ function ModeNotice({
           覆盖显示，可在「我的模板」列表中单独管理。想保留原版同时新增一份请用「另存为新模板」。
         </span>
       )}
+    </div>
+  );
+}
+
+function OperatorOnlyNotice() {
+  return (
+    <div className="px-6 lg:px-8 py-12 max-w-[960px] mx-auto">
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.04] p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="size-9 rounded-full bg-amber-500/10 text-amber-700 grid place-items-center shrink-0">
+            <Lock className="size-4" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-base font-semibold">只有平台运营或超管可以编辑混剪模板</h1>
+            <p className="text-sm text-muted-foreground">
+              公共模板仍可浏览和使用；新建、编辑、另存和删除模板需要运营权限。
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="default" size="sm" asChild>
+            <Link href="/mixcut/templates">返回模板库</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/mixcut">返回混剪专区</Link>
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

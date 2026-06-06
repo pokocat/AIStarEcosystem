@@ -33,6 +33,7 @@ import { ProductFormDialog } from "./ProductFormDialog";
 import { ProductGenerateDialog } from "./ProductGenerateDialog";
 import { useConfirm } from "@/components/common/confirm-dialog";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
+import { canUseOperatorTools } from "@/lib/operator-role";
 
 interface Props {
   productId: string;
@@ -52,7 +53,7 @@ const SOURCE_META: Record<Product["source"], { label: string; tone: string }> = 
 export function CelebrityProductDetail({ productId }: Props) {
   const router = useRouter();
   const { user } = useAuth();
-  const canManage = !!user?.operatorRole;
+  const canManage = canUseOperatorTools(user?.operatorRole);
   const [product, setProduct] = React.useState<Product | null>(null);
   const [assets, setAssets] = React.useState<MixcutAsset[]>([]);
   const [loading, setLoading] = React.useState(true);

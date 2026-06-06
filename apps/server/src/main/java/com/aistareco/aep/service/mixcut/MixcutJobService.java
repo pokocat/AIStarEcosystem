@@ -11,6 +11,7 @@ import com.aistareco.aep.repository.MixcutAssetRepository;
 import com.aistareco.aep.repository.MixcutRenderJobRepository;
 import com.aistareco.aep.repository.MixcutRenderOutputRepository;
 import com.aistareco.aep.service.CreditService;
+import com.aistareco.aep.service.OperatorPermissionService;
 import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.aep.service.ProductService;
 import com.aistareco.common.BusinessException;
@@ -55,6 +56,7 @@ public class MixcutJobService {
     private final ProductService productService;
     private final CreditService creditService;
     private final PlatformConfigService platformConfig;
+    private final OperatorPermissionService operatorPermission;
     // v0.47+：OSS / CDN URL 出 wire 前用 signer 加时效签名，防流量盗刷
     private final com.aistareco.aep.service.cdn.CdnUrlSigner cdnUrlSigner;
 
@@ -69,6 +71,7 @@ public class MixcutJobService {
             CreditService creditService,
             PlatformConfigService platformConfig,
             com.aistareco.aep.service.CelebrityActionPricingService actionPricing,
+            OperatorPermissionService operatorPermission,
             com.aistareco.aep.service.cdn.CdnUrlSigner cdnUrlSigner
     ) {
         this.jobRepo = jobRepo;
@@ -81,6 +84,7 @@ public class MixcutJobService {
         this.actionPricing = actionPricing;
         this.creditService = creditService;
         this.platformConfig = platformConfig;
+        this.operatorPermission = operatorPermission;
         this.cdnUrlSigner = cdnUrlSigner;
     }
 
@@ -113,8 +117,9 @@ public class MixcutJobService {
         if (outputId == null || outputId.isBlank() || userId == null || userId.isBlank()) {
             return false;
         }
+        boolean canOperate = operatorPermission.currentUserCanOperate();
         return outputRepo.findById(outputId)
-                .filter(o -> o.getJob() != null && userId.equals(o.getJob().getUserId()))
+                .filter(o -> o.getJob() != null && (canOperate || userId.equals(o.getJob().getUserId())))
                 .filter(o -> o.getDeletedAt() == null)
                 .map(o -> {
                     o.setDeletedAt(OffsetDateTime.now());
@@ -436,7 +441,9 @@ public class MixcutJobService {
         Set<String> requestedIds = new HashSet<>(assetRefs.keySet());
         List<MixcutAsset> found = assetRepo.findAllById(requestedIds);
         Set<String> foundIds = new HashSet<>();
-        for (MixcutAsset a : found) foundIds.add(a.getId());
+        for (MixcutAsset a : found) {
+            if (a.getDeletedAt() == null) foundIds.add(a.getId());
+        }
 
         List<MissingAssetItem> missing = new ArrayList<>();
         for (Map.Entry<String, MissingAssetItem> e : assetRefs.entrySet()) {

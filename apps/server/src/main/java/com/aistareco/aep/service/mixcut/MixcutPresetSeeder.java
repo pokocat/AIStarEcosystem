@@ -64,7 +64,7 @@ public class MixcutPresetSeeder implements CommandLineRunner {
             log.info("[mixcut] preset seed: classpath resources loaded={}", fromResources);
 
             // 2) DB 中 preset 为 0 → ffmpeg 程序化生成 5 张兜底
-            long existing = repo.findByIsPresetTrueOrderByPresetGroupAscNameAsc().size();
+            long existing = repo.findByIsPresetTrueAndDeletedAtIsNullOrderByPresetGroupAscNameAsc().size();
             if (existing == 0) {
                 int synth = synthesizeDemoStickers();
                 log.info("[mixcut] preset seed: no presets in db → synthesized {} demo stickers", synth);
@@ -93,7 +93,7 @@ public class MixcutPresetSeeder implements CommandLineRunner {
                 }
                 String group = parts[0];
                 String name = parts[1];
-                if (repo.findFirstByIsPresetTrueAndPresetGroupAndNameOrderByUploadedAtAsc(group, name).isPresent()) {
+                if (repo.findFirstByIsPresetTrueAndPresetGroupAndNameAndDeletedAtIsNullOrderByUploadedAtAsc(group, name).isPresent()) {
                     continue; // 已 seed 过
                 }
                 File copied = copyResourceToPresetDir(r, group, filename);
@@ -164,7 +164,7 @@ public class MixcutPresetSeeder implements CommandLineRunner {
         int count = 0;
         for (DemoSpec spec : DEMO_SPECS) {
             try {
-                if (repo.findFirstByIsPresetTrueAndPresetGroupAndNameOrderByUploadedAtAsc(spec.group, spec.name).isPresent()) {
+                if (repo.findFirstByIsPresetTrueAndPresetGroupAndNameAndDeletedAtIsNullOrderByUploadedAtAsc(spec.group, spec.name).isPresent()) {
                     continue;
                 }
                 File gif = synthesizeOne(spec);

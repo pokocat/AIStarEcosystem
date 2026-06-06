@@ -83,13 +83,13 @@ public class MixcutAssetService {
 
         List<MixcutAsset> presets;
         if (hasKind && hasGroup) {
-            presets = repo.findByIsPresetTrueAndKindAndPresetGroupOrderByNameAsc(kind, presetGroup);
+            presets = repo.findByIsPresetTrueAndKindAndPresetGroupAndDeletedAtIsNullOrderByNameAsc(kind, presetGroup);
         } else if (hasKind) {
-            presets = repo.findByIsPresetTrueAndKindOrderByPresetGroupAscNameAsc(kind);
+            presets = repo.findByIsPresetTrueAndKindAndDeletedAtIsNullOrderByPresetGroupAscNameAsc(kind);
         } else if (hasGroup) {
-            presets = repo.findByIsPresetTrueAndPresetGroupOrderByNameAsc(presetGroup);
+            presets = repo.findByIsPresetTrueAndPresetGroupAndDeletedAtIsNullOrderByNameAsc(presetGroup);
         } else {
-            presets = repo.findByIsPresetTrueOrderByPresetGroupAscNameAsc();
+            presets = repo.findByIsPresetTrueAndDeletedAtIsNullOrderByPresetGroupAscNameAsc();
         }
 
         if (onlyPreset || !hasUser) {
@@ -97,8 +97,8 @@ public class MixcutAssetService {
         }
 
         List<MixcutAsset> ownByUser = hasKind
-                ? repo.findByUserIdAndKindOrderByUploadedAtDesc(userId, kind)
-                : repo.findByUserIdOrderByUploadedAtDesc(userId);
+                ? repo.findByUserIdAndKindAndDeletedAtIsNullOrderByUploadedAtDesc(userId, kind)
+                : repo.findByUserIdAndDeletedAtIsNullOrderByUploadedAtDesc(userId);
 
         // user 私有的先 + preset 后（用户更可能想看自己刚传的）
         Map<String, MixcutAsset> merged = new LinkedHashMap<>();
@@ -109,7 +109,7 @@ public class MixcutAssetService {
 
     /** 当前用户可见 = 自己拥有 OR 是 preset。否则 empty。 */
     public Optional<MixcutAsset> getVisibleTo(String id, String userId) {
-        return repo.findById(id).filter(a -> {
+        return repo.findById(id).filter(a -> a.getDeletedAt() == null).filter(a -> {
             if (a.isPreset()) return true;
             return userId != null && !userId.isBlank() && userId.equals(a.getUserId());
         });
@@ -122,6 +122,7 @@ public class MixcutAssetService {
         Optional<MixcutAsset> opt = repo.findById(id);
         if (opt.isEmpty()) return false;
         MixcutAsset a = opt.get();
+        if (a.getDeletedAt() != null) return false;
         if (a.isPreset()) return false;
         if (!userId.equals(a.getUserId())) return false;
         return deleteInternal(a);
@@ -133,6 +134,7 @@ public class MixcutAssetService {
         Optional<MixcutAsset> opt = repo.findById(id);
         if (opt.isEmpty()) return false;
         MixcutAsset a = opt.get();
+        if (a.getDeletedAt() != null) return false;
         if (!a.isPreset()) return false;
         return deleteInternal(a);
     }
@@ -159,16 +161,16 @@ public class MixcutAssetService {
 
     public List<MixcutAsset> listAll(String kind, String userId) {
         if (kind != null && !kind.isBlank() && userId != null && !userId.isBlank()) {
-            return repo.findByUserIdAndKindOrderByUploadedAtDesc(userId, kind);
+            return repo.findByUserIdAndKindAndDeletedAtIsNullOrderByUploadedAtDesc(userId, kind);
         }
-        if (kind != null && !kind.isBlank()) return repo.findByKindOrderByUploadedAtDesc(kind);
-        if (userId != null && !userId.isBlank()) return repo.findByUserIdOrderByUploadedAtDesc(userId);
-        return repo.findAllByOrderByUploadedAtDesc();
+        if (kind != null && !kind.isBlank()) return repo.findByKindAndDeletedAtIsNullOrderByUploadedAtDesc(kind);
+        if (userId != null && !userId.isBlank()) return repo.findByUserIdAndDeletedAtIsNullOrderByUploadedAtDesc(userId);
+        return repo.findByDeletedAtIsNullOrderByUploadedAtDesc();
     }
 
     /** 内部用：从 jobId binding 解析 asset_id 时使用。无 ownership 校验（worker 已是受信路径）。 */
     public Optional<MixcutAsset> get(String id) {
-        return repo.findById(id);
+        return repo.findById(id).filter(a -> a.getDeletedAt() == null);
     }
 
     /**
@@ -184,9 +186,9 @@ public class MixcutAssetService {
     public List<MixcutAsset> listByProduct(String relatedProductId, String userId, String kind) {
         if (relatedProductId == null || relatedProductId.isBlank()) return List.of();
         if (kind != null && !kind.isBlank()) {
-            return repo.findByRelatedProductIdAndKindOrderByUploadedAtDesc(relatedProductId, kind);
+            return repo.findByRelatedProductIdAndKindAndDeletedAtIsNullOrderByUploadedAtDesc(relatedProductId, kind);
         }
-        return repo.findByRelatedProductIdOrderByUploadedAtDesc(relatedProductId);
+        return repo.findByRelatedProductIdAndDeletedAtIsNullOrderByUploadedAtDesc(relatedProductId);
     }
 
     /**
@@ -442,6 +444,7 @@ public class MixcutAssetService {
     public boolean delete(String id) {
         Optional<MixcutAsset> opt = repo.findById(id);
         if (opt.isEmpty()) return false;
+        if (opt.get().getDeletedAt() != null) return false;
         return deleteInternal(opt.get());
     }
 
@@ -452,15 +455,15 @@ public class MixcutAssetService {
         boolean hasCat = category != null && !category.isBlank();
         boolean hasStar = relatedStarId != null && !relatedStarId.isBlank();
         if (hasCat && hasStar) {
-            return repo.findByIsOfficialTrueAndOfficialCategoryAndRelatedStarIdOrderByUploadedAtDesc(category, relatedStarId);
+            return repo.findByIsOfficialTrueAndOfficialCategoryAndRelatedStarIdAndDeletedAtIsNullOrderByUploadedAtDesc(category, relatedStarId);
         }
         if (hasCat) {
-            return repo.findByIsOfficialTrueAndOfficialCategoryOrderByUploadedAtDesc(category);
+            return repo.findByIsOfficialTrueAndOfficialCategoryAndDeletedAtIsNullOrderByUploadedAtDesc(category);
         }
         if (hasStar) {
-            return repo.findByIsOfficialTrueAndRelatedStarIdOrderByUploadedAtDesc(relatedStarId);
+            return repo.findByIsOfficialTrueAndRelatedStarIdAndDeletedAtIsNullOrderByUploadedAtDesc(relatedStarId);
         }
-        return repo.findByIsOfficialTrueOrderByUploadedAtDesc();
+        return repo.findByIsOfficialTrueAndDeletedAtIsNullOrderByUploadedAtDesc();
     }
 
     /**
@@ -536,6 +539,7 @@ public class MixcutAssetService {
                                                    String relatedStarId, String tags) {
         return repo.findById(id)
                 .filter(MixcutAsset::isOfficial)
+                .filter(a -> a.getDeletedAt() == null)
                 .map(a -> {
                     if (name != null && !name.isBlank()) a.setName(name.trim());
                     if (category != null && !category.isBlank()) {
@@ -549,14 +553,19 @@ public class MixcutAssetService {
                 });
     }
 
-    /** 运营删除官方片段（admin only）。 */
+    /** 运营软删官方片段（admin only）。 */
     @Transactional
     public boolean deleteOfficial(String id) {
         Optional<MixcutAsset> opt = repo.findById(id);
         if (opt.isEmpty()) return false;
         MixcutAsset a = opt.get();
         if (!a.isOfficial()) return false;
-        return deleteInternal(a);
+        if (a.getDeletedAt() != null) return false;
+        a.setDeletedAt(OffsetDateTime.now());
+        repo.save(a);
+        log.info("[mixcut] official clip soft-deleted id={} cat={} star={}",
+                a.getId(), a.getOfficialCategory(), a.getRelatedStarId());
+        return true;
     }
 
     // ── 内部 ───────────────────────────────────────────────────────────────────

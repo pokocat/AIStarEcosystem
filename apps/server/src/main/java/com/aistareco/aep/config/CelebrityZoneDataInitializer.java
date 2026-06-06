@@ -340,6 +340,7 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                 .status(status).plays(plays).durationSec(durationSec)
                 .engine(engine).thumb(thumb).videoUrl(videoUrl)
                 .createdAt(createdAt)
+                .deletedAt(videoRepo.findById(id).map(CelebrityProjectVideo::getDeletedAt).orElse(null))
                 .build();
     }
 

@@ -39,7 +39,8 @@ public record MixcutAssetDto(
         @JsonProperty("subkind") String subkind,
         // v0.49+ 统一文件存储：cdn_url = 由 cdnKey 签名的 OSS/CDN URL（前端优先用，省 ECS 带宽）
         @JsonProperty("cdn_url") String cdnUrl,
-        @JsonProperty("cdn_key") String cdnKey
+        @JsonProperty("cdn_key") String cdnKey,
+        @JsonProperty("deleted_at") String deletedAt
 ) {
     /** v0.49-：老入口，不签 CDN（preset/official seed 等不便注入 signer 时用）。 */
     public static MixcutAssetDto from(MixcutAsset a) {
@@ -80,7 +81,9 @@ public record MixcutAssetDto(
                 a.getRelatedProductId(),
                 a.getSubkind(),
                 cdnUrl,
-                a.getCdnKey()
+                a.getCdnKey(),
+                a.getDeletedAt() == null ? null
+                        : a.getDeletedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
         );
     }
 }

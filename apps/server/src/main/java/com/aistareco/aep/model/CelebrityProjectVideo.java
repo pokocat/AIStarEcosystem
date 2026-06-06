@@ -3,6 +3,7 @@ package com.aistareco.aep.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDate;
 
 /**
@@ -62,4 +63,7 @@ public class CelebrityProjectVideo {
 
     @Column(nullable = false)
     private LocalDate createdAt;
+
+    /** 运营 / 超管在视频库执行软删后置非空，列表默认过滤。 */
+    private Instant deletedAt;
 }

@@ -5,6 +5,7 @@ import { Film, Eye } from "lucide-react";
 import { CelebrityProjectVideoCard } from "./CelebrityProjectVideoCard";
 import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
 import { ENGINE_META, VIDEO_STATUS_BADGE } from "@/constants/celebrity-zone-ui";
+import { VIDEO_ASSET_GRID_CLASS, VIDEO_ASSET_TOOLBAR_CLASS } from "@/components/common/video-library-density";
 import type {
   CelebrityProject,
   CelebrityProjectVideo,
@@ -30,6 +31,9 @@ interface Props {
   videos: CelebrityProjectVideo[];
   stars: CelebrityStar[];
   projects: CelebrityProject[];
+  canDeleteVideos?: boolean;
+  deletingId?: string | null;
+  onDeleteVideo?: (video: CelebrityProjectVideo) => void;
 }
 
 const STATUS_TABS: Array<"全部" | ProjectVideoStatus> = [
@@ -43,7 +47,14 @@ const STATUS_TABS: Array<"全部" | ProjectVideoStatus> = [
 type SortKey = "createdDesc" | "playsDesc";
 
 /** 视频库 Tab：跨项目视频聚合 + 多维度筛选。 */
-export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
+export function CelebrityVideoLibrary({
+  videos,
+  stars,
+  projects,
+  canDeleteVideos = false,
+  deletingId = null,
+  onDeleteVideo,
+}: Props) {
   const [status, setStatus] = React.useState<"全部" | ProjectVideoStatus>("全部");
   const [starId, setStarId] = React.useState<"all" | string>("all");
   const [projectId, setProjectId] = React.useState<"all" | string>("all");
@@ -76,72 +87,63 @@ export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
   }, [videos]);
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Header summary */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-[var(--shadow-soft)]">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/10">
-          <Film className="h-5 w-5 text-violet-600" />
+    <div className="flex flex-col gap-3">
+      <div className={cn(VIDEO_ASSET_TOOLBAR_CLASS, "flex flex-wrap items-center gap-2")}>
+        <div className="inline-flex shrink-0 items-center gap-2 pr-1">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-400/25 bg-violet-500/10">
+            <Film className="h-4 w-4 text-violet-600" />
+          </span>
+          <span className="text-sm font-semibold text-zinc-800">明星视频 · {filtered.length}/{videos.length}</span>
         </div>
-        <div className="flex-1">
-          <div className="text-base font-semibold text-zinc-800">
-            视频库 · {videos.length} 条
-          </div>
-          <div className="text-xs text-zinc-500">
-            跨项目聚合所有 AI 生成视频，支持按状态 / 明星 / 项目 / 时间筛选与排序。
-          </div>
+
+        <div className="flex flex-wrap items-center gap-1">
+          {STATUS_TABS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatus(s)}
+              className={cn(
+                "inline-flex h-7 items-center rounded-md border px-2 text-[11px] font-medium transition",
+                status === s
+                  ? "border-violet-300 bg-violet-50 text-violet-700"
+                  : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-800",
+              )}
+            >
+              {s}
+              <span className="ml-1 font-mono text-[10px] opacity-70">{counters[s] ?? 0}</span>
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Status tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-zinc-200">
-        {STATUS_TABS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatus(s)}
-            className={cn(
-              "relative px-4 py-2 text-sm font-medium transition",
-              status === s ? "text-violet-600" : "text-zinc-500 hover:text-zinc-800",
-            )}
-          >
-            {s}
-            <span className="ml-1 text-[10px] text-zinc-400">({counters[s] ?? 0})</span>
-            {status === s && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-gradient-to-r from-violet-500 to-violet-400" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <FilterSelect
-          label="明星"
-          value={starId}
-          options={[
-            { value: "all", label: "全部明星" },
-            ...stars.map((s) => ({ value: s.id, label: s.name })),
-          ]}
-          onChange={setStarId}
-        />
-        <FilterSelect
-          label="项目"
-          value={projectId}
-          options={[
-            { value: "all", label: "全部项目" },
-            ...projects.map((p) => ({ value: p.id, label: p.name })),
-          ]}
-          onChange={setProjectId}
-        />
-        <FilterSelect
-          label="排序"
-          value={sort}
-          options={[
-            { value: "createdDesc", label: "最新创建" },
-            { value: "playsDesc", label: "播放最高" },
-          ]}
-          onChange={(v) => setSort(v as SortKey)}
-        />
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <FilterSelect
+            label="明星"
+            value={starId}
+            options={[
+              { value: "all", label: "全部明星" },
+              ...stars.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+            onChange={setStarId}
+          />
+          <FilterSelect
+            label="项目"
+            value={projectId}
+            options={[
+              { value: "all", label: "全部项目" },
+              ...projects.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            onChange={setProjectId}
+          />
+          <FilterSelect
+            label="排序"
+            value={sort}
+            options={[
+              { value: "createdDesc", label: "最新创建" },
+              { value: "playsDesc", label: "播放最高" },
+            ]}
+            onChange={(v) => setSort(v as SortKey)}
+          />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -149,9 +151,18 @@ export function CelebrityVideoLibrary({ videos, stars, projects }: Props) {
           没有符合筛选条件的视频
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        <div className={VIDEO_ASSET_GRID_CLASS}>
           {filtered.map((v) => (
-            <CelebrityProjectVideoCard key={v.id} video={v} showProject onOpen={setSelected} />
+            <CelebrityProjectVideoCard
+              key={v.id}
+              video={v}
+              showProject
+              compact
+              onOpen={setSelected}
+              canDelete={canDeleteVideos}
+              deleting={deletingId === v.id}
+              onDelete={onDeleteVideo}
+            />
           ))}
         </div>
       )}
@@ -223,10 +234,10 @@ function FilterSelect<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600">
-      <span className="text-zinc-500">{label}</span>
+    <div className="inline-flex h-7 items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 text-[11px] text-zinc-600">
+      <span className="shrink-0 whitespace-nowrap text-zinc-500">{label}</span>
       <Select value={value} onValueChange={(v) => onChange(v as T)}>
-        <SelectTrigger className="h-6 border-0 bg-transparent px-1 text-xs text-zinc-800 shadow-none focus:ring-0">
+        <SelectTrigger className="h-6 min-w-24 border-0 bg-transparent px-1 text-[11px] text-zinc-800 shadow-none focus:ring-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

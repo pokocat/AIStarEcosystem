@@ -192,14 +192,17 @@ public class MaterialOpsSeeder implements CommandLineRunner {
     private void seedVideos() throws Exception {
         int i = 0;
         for (JsonNode n : readArray("seed/material-videos.json")) {
+            String id = n.get("id").asText();
+            MaterialVideo existing = videoRepo.findById(id).orElse(null);
             videoRepo.save(MaterialVideo.builder()
-                    .id(n.get("id").asText())
+                    .id(id)
                     .scriptId(text(n, "script_id"))
                     .productId(text(n, "product_id"))
                     .kind(text(n, "kind"))
                     .status(orDefault(text(n, "status"), "ready"))
                     .parentVideoId(text(n, "parent_video_id"))
                     .ord(i++)
+                    .deletedAt(existing != null ? existing.getDeletedAt() : null)
                     .payloadJson(om.writeValueAsString(n))
                     .build());
         }

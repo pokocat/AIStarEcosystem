@@ -103,6 +103,11 @@ public class CelebrityZoneController {
         return ApiResponse.of(service.listAllVideos(status, starId, projectId, sort));
     }
 
+    @DeleteMapping("/videos/{videoId}")
+    public ApiResponse<Boolean> deleteVideo(@PathVariable String videoId) {
+        return ApiResponse.of(service.softDeleteVideo(videoId));
+    }
+
     @PostMapping("/generate")
     public ApiResponse<AsyncJobStartedDto> startGeneration(Principal principal,
                                                             @RequestBody Map<String, Object> payload) {

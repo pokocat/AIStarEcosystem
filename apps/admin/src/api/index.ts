@@ -41,5 +41,6 @@ export * as AiModelsApi from "./ai-models";
 export * as PromptsApi from "./prompts";
 export * as AgentBotsApi from "./agent-bots";
 export * as MixcutOfficialClipsApi from "./mixcut-official-clips";
+export * as MixcutTemplatesApi from "./mixcut-templates";
 export * as ErrorLogApi from "./error-log";
 export * as SellingChannelsApi from "./selling-channels";

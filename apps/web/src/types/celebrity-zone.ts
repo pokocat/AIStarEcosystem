@@ -240,6 +240,8 @@ export interface CelebrityProjectVideo {
   /** 可播放视频 URL（公开样片或 AI 生成静态资源） */
   videoUrl: string;
   createdAt: ISODate;
+  /** 软删时间；常规列表默认过滤。 */
+  deletedAt?: ISODateTime | null;
 }
 
 // ── 往期案例（带水印展示） ────────────────────────────────────────────────────

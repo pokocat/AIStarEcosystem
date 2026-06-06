@@ -14,8 +14,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/mixcut-zo
 import { CelebrityVideoLibrary } from "@/components/celebrity-zone/CelebrityVideoLibrary";
 import { ScriptVideosTab } from "@/components/celebrity-zone/ScriptVideosTab";
 import { MixcutOutputsTab } from "@/components/mixcut-zone/MixcutOutputsTab";
-import { listAllVideos, listProjects, listStars } from "@/api/celebrity-zone";
+import { deleteVideo as deleteCelebrityVideo, listAllVideos, listProjects, listStars } from "@/api/celebrity-zone";
 import { CELEBRITY_PROJECTS, MARKET_STARS, PROJECT_VIDEOS_MAP } from "@/mocks/celebrity-zone";
+import { useAuth } from "@ai-star-eco/api-client";
+import { useConfirm } from "@/components/common/confirm-dialog";
+import { canUseOperatorTools } from "@/lib/operator-role";
 import type {
   CelebrityProject,
   CelebrityProjectVideo,
@@ -54,10 +57,10 @@ function LibraryShell() {
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 px-6 py-6 lg:px-8">
+    <div className="mx-auto max-w-[1600px] space-y-4 px-6 py-5 lg:px-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">视频库</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-xl font-semibold tracking-tight">视频库</h1>
+        <p className="mt-1 text-xs text-muted-foreground">
           汇总浏览明星项目视频、脚本派生带货视频与混剪成片
         </p>
       </div>
@@ -86,10 +89,14 @@ function LibraryShell() {
 
 // 明星项目视频：接通真后端（listAllVideos + listProjects + listStars），USE_MOCK / 失败回退 mocks。
 function ProjectVideosTab() {
+  const { user } = useAuth();
+  const canDeleteVideos = canUseOperatorTools(user?.operatorRole);
+  const { confirm, ConfirmHost } = useConfirm();
   const fallbackVideos = React.useMemo(() => Object.values(PROJECT_VIDEOS_MAP).flat(), []);
   const [videos, setVideos] = useState<CelebrityProjectVideo[]>(fallbackVideos);
   const [stars, setStars] = useState<CelebrityStar[]>(MARKET_STARS);
   const [projects, setProjects] = useState<CelebrityProject[]>(CELEBRITY_PROJECTS);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,5 +116,39 @@ function ProjectVideosTab() {
     };
   }, []);
 
-  return <CelebrityVideoLibrary videos={videos} stars={stars} projects={projects} />;
+  const handleDeleteVideo = async (video: CelebrityProjectVideo) => {
+    if (!canDeleteVideos || deletingId) return;
+    const ok = await confirm({
+      title: "删除视频?",
+      description: (
+        <span>
+          删除后会立即从视频库隐藏，后台保留软删记录，后续可做恢复或审计。
+        </span>
+      ),
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setDeletingId(video.id);
+    try {
+      const deleted = await deleteCelebrityVideo(video.id);
+      if (deleted) setVideos((prev) => prev.filter((v) => v.id !== video.id));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <>
+      <CelebrityVideoLibrary
+        videos={videos}
+        stars={stars}
+        projects={projects}
+        canDeleteVideos={canDeleteVideos}
+        deletingId={deletingId}
+        onDeleteVideo={handleDeleteVideo}
+      />
+      <ConfirmHost />
+    </>
+  );
 }

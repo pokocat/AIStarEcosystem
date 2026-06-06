@@ -171,7 +171,7 @@ public class CelebrityProductSeeder implements CommandLineRunner {
      */
     private void clearExistingData() {
         for (Product p : productRepository.findAll()) {
-            List<MixcutAsset> assets = mixcutAssetRepository.findByRelatedProductIdOrderByUploadedAtDesc(p.getId());
+            List<MixcutAsset> assets = mixcutAssetRepository.findByRelatedProductIdAndDeletedAtIsNullOrderByUploadedAtDesc(p.getId());
             if (!assets.isEmpty()) {
                 log.info("CelebrityProductSeeder: deleting {} MixcutAssets for product {}", assets.size(), p.getId());
                 mixcutAssetRepository.deleteAll(assets);

@@ -12,23 +12,33 @@
 
 import type { AepUser } from "@ai-star-eco/types/account";
 import type { LicenseRedeemRequest, LicenseRedeemResult } from "@ai-star-eco/types/license";
-import { mockDelay, setAuthToken } from "./_client";
+import { getAuthToken, mockDelay, setAuthToken } from "./_client";
 import { registerMocks } from "./_mock-registry";
-import { MOCK_TENANTS, MOCK_USER, MOCK_WALLET } from "./_mocks";
+import {
+  MOCK_DEV_USERS,
+  MOCK_TENANTS,
+  MOCK_USER,
+  MOCK_WALLET,
+  mockDevTokenForUsername,
+  mockUserForToken,
+  mockUserForUsername,
+} from "./_mocks";
 import type { DevAccount, DevLoginResult, PasswordLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult } from "./api/auth";
 
 registerMocks([
   // ── account ──────────────────────────────────────────────────────────────
-  { method: "GET", pattern: "/me", handler: () => mockDelay(MOCK_USER) },
+  { method: "GET", pattern: "/me", handler: () => mockDelay(mockUserForToken(getAuthToken())) },
   {
     method: "PATCH",
     pattern: "/me",
-    handler: ({ body }) =>
-      mockDelay({
-        ...MOCK_USER,
+    handler: ({ body }) => {
+      const currentUser = mockUserForToken(getAuthToken());
+      return mockDelay({
+        ...currentUser,
         ...((body ?? {}) as Partial<AepUser>),
         updatedAt: new Date().toISOString(),
-      }),
+      });
+    },
   },
   {
     method: "POST",
@@ -85,21 +95,23 @@ registerMocks([
     method: "GET",
     pattern: "/auth/dev-accounts",
     handler: () =>
-      mockDelay<DevAccount[]>([
-        { username: "studio_starlight", displayName: "星光经纪", studioName: "星光工作室", studioKind: "agency" },
-        { username: "agency_moonrise", displayName: "月升经纪", studioName: "月升传媒", studioKind: "mcn" },
-      ]),
+      mockDelay<DevAccount[]>(
+        MOCK_DEV_USERS.map((user) => ({
+          username: user.username,
+          displayName: user.displayName,
+          studioName: user.studio?.name ?? user.displayName,
+          studioKind: user.studio?.kind ?? "agency",
+        })),
+      ),
   },
   {
     method: "POST",
     pattern: "/auth/dev-login",
     handler: ({ body }) => {
       const username = (body as { username?: string } | undefined)?.username;
-      const token = "mock-dev-token";
+      const user = mockUserForUsername(username);
+      const token = mockDevTokenForUsername(user.username);
       setAuthToken(token);
-      const user: AepUser = username
-        ? { ...MOCK_USER, username, displayName: username }
-        : MOCK_USER;
       return mockDelay<DevLoginResult>({ token, user });
     },
   },

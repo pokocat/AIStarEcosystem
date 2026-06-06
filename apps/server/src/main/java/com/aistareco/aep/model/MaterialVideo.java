@@ -3,6 +3,8 @@ package com.aistareco.aep.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.OffsetDateTime;
+
 /**
  * 素材运营 · 视频资产（前端真值源：apps/web-celebrity material-ops MaterialVideo）。
  * 字段对齐 mixcut RenderOutput 语义（status / product_id / parent）；完整 MaterialVideo
@@ -46,6 +48,10 @@ public class MaterialVideo {
      */
     @Column(name = "owner_user_id")
     private String ownerUserId;
+
+    /** 软删时间。列表默认过滤，便于审计 / 恢复。 */
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
 
     @Lob
     @Column(name = "payload_json", columnDefinition = "LONGTEXT", nullable = false)

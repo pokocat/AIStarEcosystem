@@ -9,11 +9,11 @@ import java.util.List;
 @Repository
 public interface CelebrityProjectVideoRepository extends JpaRepository<CelebrityProjectVideo, String> {
 
-    List<CelebrityProjectVideo> findByProjectIdOrderByCreatedAtDesc(String projectId);
+    List<CelebrityProjectVideo> findByProjectIdAndDeletedAtIsNullOrderByCreatedAtDesc(String projectId);
 
-    List<CelebrityProjectVideo> findByStarIdOrderByCreatedAtDesc(String starId);
+    List<CelebrityProjectVideo> findByStarIdAndDeletedAtIsNullOrderByCreatedAtDesc(String starId);
 
-    List<CelebrityProjectVideo> findByStatusOrderByCreatedAtDesc(String status);
+    List<CelebrityProjectVideo> findByStatusAndDeletedAtIsNullOrderByCreatedAtDesc(String status);
 
-    List<CelebrityProjectVideo> findAllByOrderByCreatedAtDesc();
+    List<CelebrityProjectVideo> findByDeletedAtIsNullOrderByCreatedAtDesc();
 }
