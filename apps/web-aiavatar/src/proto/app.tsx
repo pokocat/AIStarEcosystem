@@ -60,27 +60,6 @@ function CreateSheet({ onPick, onClose }) {
         opt("real", Icons.person, "真人授权复刻", "录一段动作 / 上传素材，签署授权合规复刻", "var(--grad)"))));
 }
 
-const INDEX = [
-  { label: "首页", n: "01", icon: Icons.home, go: (c) => c.tab("home") },
-  { label: "数字人库", n: "02", icon: Icons.user, go: (c) => c.tab("library") },
-  { label: "资产详情", n: "03", icon: Icons.idcard, go: (c) => c.openChar(c.firstAvatar) },
-  { label: "造型档案", n: "04", icon: Icons.images, go: (c) => c.openLooks(c.firstAvatar) },
-  { label: "设计造型", n: "05", icon: Icons.wand, go: (c) => c.designLooks(c.firstAvatar) },
-  { label: "衍生查看", n: "06", icon: Icons.image, go: (c) => c.openDeriv(c.firstAvatar, "scene") },
-  { label: "AI 创建", n: "07", icon: Icons.sparkle, go: (c) => c.startCreate("ai") },
-  { label: "真人捕获", n: "08", icon: Icons.film, go: (c) => c.startRealClone() },
-  { label: "应用中心", n: "09", icon: Icons.grid, go: (c) => c.tab("apps") },
-  { label: "声音工作室", n: "10", icon: Icons.mic, go: (c) => c.go("voice") },
-  { label: "选择声音", n: "11", icon: Icons.wave, go: (c) => c.chooseVoice(c.firstAvatar) },
-  { label: "声音克隆", n: "12", icon: Icons.mic, go: (c) => c.go("voiceclone") },
-  { label: "授权登记", n: "13", icon: Icons.shield, go: (c) => c.go("licenses") },
-  { label: "作业队列", n: "14", icon: Icons.bolt, go: (c) => c.go("tasks") },
-  { label: "我的", n: "15", icon: Icons.dot, go: (c) => c.tab("me") },
-  { label: "会员与算力", n: "16", icon: Icons.gem, go: (c) => c.go("membership") },
-  { label: "存储用量", n: "17", icon: Icons.folder, go: (c) => c.go("storage") },
-  { label: "设置", n: "18", icon: Icons.settings, go: (c) => c.go("settings") },
-];
-
 export function App() {
   const [tab, setTab] = useStateA("home");
   const [stack, setStack] = useStateA([]);
@@ -126,20 +105,9 @@ export function App() {
   const overlayScreen = top && { detail: MDetail, voice: MVoice, licenses: MLicenses, tasks: MTasks, create: MCreate, realcapture: MRealCapture,
     settings: MSettings, membership: MMembership, storage: MStorage, voiceclone: MVoiceClone, derivview: MDerivView, looks: MLooksGrid, designlooks: MDesignLooks, aicreate: MAICreate, choosevoice: MChooseVoice }[top.screen];
   const hideTabBar = !!top;
-  const darkCap = false;
 
-  return hA("div", { className: "m-stage" },
-    // 屏幕索引（桌面通览）
-    hA("div", { className: "m-index" },
-      hA("h4", null, "屏幕索引"),
-      hA("div", { className: "m-index-hint" }, "点击跳转查看每个页面 · 移动端完整通览"),
-      INDEX.map((ix) => hA("button", { key: ix.label, className: "ix" + (label === ix.label ? " on" : ""), onClick: () => ix.go(ctx) },
-        hA("span", { className: "n" }, ix.n),
-        hA(ix.icon, { size: 17, stroke: 1.85 }),
-        hA("span", { style: { flex: 1 } }, ix.label)))),
-
-    // 手机
-    hA(PhoneFrame, { darkCap },
+  return hA(React.Fragment, null,
+    hA(PhoneFrame, null,
       hA("div", { key: tab, style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column" } },
         hA(tabScreen, { ctx })),
 

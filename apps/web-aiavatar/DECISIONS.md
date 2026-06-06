@@ -88,6 +88,24 @@ system-ui / Georgia / monospace 回退，优雅降级。
 
 ---
 
+## F. 去原型化：真实全屏 H5，而非手机壳预览（v0.3）
+
+原型把内容套在一个居中的 iPhone 外壳里（`.m-device` + 伪「9:41」状态栏 + 伪微信胶囊 +
+伪 home 指示条 + 桌面「屏幕索引」侧栏）——那是**演示预览**，不是能投产给用户用的产品。
+
+**决策**：彻底移除手机壳与所有 chrome 装饰，做成真实 H5：
+- `AppShell`(`.app-root`) `position:fixed; inset:0` 铺满视口；顶部 `padding-top:env(safe-area-inset-top)`，
+  底部 Tab / Sheet 用 `env(safe-area-inset-bottom)` 适配刘海屏 / home 指示条（真机真实安全区，不再画假的）。
+- 设备的真实系统状态栏 / 手势条由系统呈现；应用不再绘制假状态栏、假胶囊、假指示条。
+- 导航栏去掉为微信胶囊预留的右侧 padding（`--wx-cap` 收为 12px），右上操作槽变为真实可用。
+- 桌面端（≥481px）把应用居中为一列（`max-width:480px` + 细描边/投影）——这是「内容列」不是「手机模型」。
+- `viewport-fit=cover` + `appleWebApp` standalone 元信息，加入主屏后接近原生 app 外观。
+
+布局变量统一定义在 `:root`（`--navbar-h / --tabbar-h / --statusbar-h=safe-top / --home-ind=safe-bottom`），
+原 `.m-screen` 上的那套已废弃。
+
+---
+
 ## 未做 / 后续候选
 
 - `src/proto/api.ts`（apiFetch + USE_MOCK）+ 与 server 契约对齐。

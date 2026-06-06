@@ -6,49 +6,18 @@ import { DATA } from "./api";
 import { Portrait } from "./portrait";
 
 // ============================================================
-// 移动端 Shell — iPhone 外壳 + 微信小程序 chrome + 底部 Tab 栏
-//   关键约束：右上角胶囊区（约 92px）永远留空，自定义导航栏右侧 padding 让位
+// 移动端 Shell — 真实 H5 应用外层（无手机壳 / 无 chrome 装饰）
+//   依赖真实安全区：顶部 env(safe-area-inset-top)、底部 env(safe-area-inset-bottom)
 // ============================================================
 const hM : any = React.createElement;
 const { useState: useStateM } = React;
 
-// —— 微信状态栏（黑图标 / 浅底）——
-function WxStatusBar() {
-  return hM('div', { className: 'wx-statusbar' },
-    hM('span', { className: 't' }, '9:41'),
-    hM('span', { className: 'ico' },
-      // 信号
-      hM('svg', { width: 18, height: 11, viewBox: '0 0 18 11', fill: 'currentColor' },
-        hM('rect', { x: 0, y: 7, width: 3, height: 4, rx: .6 }),
-        hM('rect', { x: 4.5, y: 4.8, width: 3, height: 6.2, rx: .6 }),
-        hM('rect', { x: 9, y: 2.5, width: 3, height: 8.5, rx: .6 }),
-        hM('rect', { x: 13.5, y: 0, width: 3, height: 11, rx: .6 })),
-      // wifi
-      hM('svg', { width: 16, height: 11, viewBox: '0 0 16 11', fill: 'currentColor' },
-        hM('path', { d: 'M8 3C10.2 3 12.2 3.9 13.6 5.3L14.6 4.2C12.9 2.5 10.6 1.4 8 1.4C5.4 1.4 3.1 2.5 1.4 4.2L2.4 5.3C3.8 3.9 5.8 3 8 3Z' }),
-        hM('path', { d: 'M8 6.4C9.3 6.4 10.5 6.9 11.3 7.8L8 11L4.7 7.8C5.5 6.9 6.7 6.4 8 6.4Z' })),
-      // 电池
-      hM('svg', { width: 26, height: 12, viewBox: '0 0 26 12' },
-        hM('rect', { x: .5, y: .5, width: 22, height: 11, rx: 3, fill: 'none', stroke: 'currentColor', strokeOpacity: .4 }),
-        hM('rect', { x: 2, y: 2, width: 19, height: 8, rx: 1.6, fill: 'currentColor' }),
-        hM('path', { d: 'M24 4v4c.8-.3 1.4-1.1 1.4-2S24.8 4.3 24 4z', fill: 'currentColor', fillOpacity: .5 }))));
-}
-
-// —— 微信胶囊（占位 · 不可点，提醒此区域须避开）——
-function WxCapsule() {
-  return hM('div', { className: 'wx-capsule', title: '微信小程序胶囊按钮区域' },
-    hM(Icons.more, { size: 18, stroke: 2.2 }),
-    hM('span', { className: 'div' }),
-    hM('span', { style: { width: 14, height: 14, borderRadius: 99, border: '1.6px solid currentColor', display: 'inline-block' } }));
-}
-
-// —— 自定义导航栏 ——
-//  modes: title 居中（tab 页）/ back 返回（二级页）
-//  left: 放在标题左侧的元素（如通知铃）；right 侧因胶囊占位，尽量留空
+// —— 顶部导航栏 ——
+//  title 居中；onBack 时左侧返回；left/right 为可选操作槽（真实可用，无胶囊占位）
 function WxNav({ title, onBack, left, right }) {
   return hM('div', { className: 'wx-nav' },
     onBack
-      ? hM('button', { className: 'nav-back m-tap', onClick: onBack }, hM(Icons.chevL, { size: 24, stroke: 2.2 }))
+      ? hM('button', { className: 'nav-back m-tap', onClick: onBack, 'aria-label': '返回' }, hM(Icons.chevL, { size: 24, stroke: 2.2 }))
       : (left || hM('span', { className: 'nav-spacer' })),
     hM('span', { className: 'nav-title' }, title),
     right || hM('span', { className: 'nav-spacer' }));
@@ -83,18 +52,15 @@ function WxTabBar({ active, onTab, onCreate, meIcon }) {
     }));
 }
 
-// —— 手机外壳 ——
-//  状态栏固定在顶部（始终可见）；屏幕内容放在其下方的相对定位容器里，
-//  覆盖页只在该容器内 inset:0，绝不遮挡状态栏与胶囊。
-function PhoneFrame({ children, darkCap }) {
-  return hM('div', { className: 'm-device' },
-    hM('div', { className: 'm-island' }),
-    hM('div', { className: 'm-screen' + (darkCap ? ' dark-cap' : '') },
-      hM(WxStatusBar, null),
-      hM(WxCapsule, null),
-      hM('div', { className: 'm-content', style: { flex: 1, position: 'relative', minHeight: 0 } }, children),
-      hM('div', { className: 'm-home-ind' }, hM('span', null))));
+// —— 应用根容器 ——
+//  铺满视口（桌面端居中为一列），顶部预留状态栏安全区；
+//  内容、底部 Tab、覆盖页、Sheet 都挂在相对定位的 .m-content 里。
+function AppShell({ children }) {
+  return hM('div', { className: 'app-root' },
+    hM('div', { className: 'm-content', style: { flex: 1, position: 'relative', minHeight: 0 } }, children));
 }
+// 兼容旧名（调用方仍叫 PhoneFrame，但已无手机壳语义）
+const PhoneFrame = AppShell;
 
 // ============================================================
 // 共享内容部件（移动版）
@@ -142,5 +108,5 @@ function CornerTicks() {
   return pos.map((p, i) => hM('span', { key: i, className: 'corner-tick', style: { position: 'absolute', ...p } }));
 }
 
-export const MShell = { WxStatusBar, WxCapsule, WxNav, WxTabBar, PhoneFrame, TABS };
+export const MShell = { WxNav, WxTabBar, PhoneFrame, AppShell, TABS };
 export const MKit = { MStatus, MPath, MDeriv, MSection, CornerTicks };

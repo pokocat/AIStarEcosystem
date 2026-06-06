@@ -5,14 +5,17 @@ import "../styles/globals.css";
 export const metadata: Metadata = {
   title: "数字人资产平台 · AiAvatar",
   description: "真人授权复刻 / 纯 AI 原创，形象 · 声音 · 衍生物一站式沉淀的数字人资产平台。",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "数字人" },
+  formatDetection: { telephone: false, email: false, address: false },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
-  themeColor: "#12B3DE",
+  themeColor: "#F7F9FB",
 };
 
 // 字体：Manrope（UI/标题）+ Newsreader（资产身份衬线）+ JetBrains Mono（登记号）

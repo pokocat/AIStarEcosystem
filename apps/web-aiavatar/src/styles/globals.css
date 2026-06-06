@@ -1006,3 +1006,40 @@ html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
 }
 /* 让根容器吃满视口（Next body 容器） */
 body { background: var(--canvas); }
+
+/* =====================================================================
+   v0.3 — 真实 H5 应用外层（移除手机壳 / 微信 chrome 装饰）
+   · 应用铺满视口；桌面端居中为一列内容（非手机模型）
+   · 顶/底用真实安全区 env(safe-area-inset-*)，适配刘海屏 / home 指示条
+   ===================================================================== */
+:root {
+  --navbar-h: 48px;
+  --tabbar-h: 58px;
+  --statusbar-h: env(safe-area-inset-top, 0px);
+  --home-ind: env(safe-area-inset-bottom, 0px);
+  --wx-cap: 12px;                 /* 无胶囊，导航左右等距内边距 */
+}
+
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--canvas-2);    /* 桌面端两侧留白底色 */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+* { -webkit-tap-highlight-color: transparent; }
+
+.app-root {
+  position: fixed; inset: 0;
+  max-width: 480px;               /* 桌面端居中为一列；窄屏自动铺满 */
+  margin-inline: auto;
+  display: flex; flex-direction: column;
+  background: var(--canvas);
+  padding-top: var(--statusbar-h);
+  overflow: hidden;
+}
+.m-content { flex: 1; position: relative; min-height: 0; }
+
+/* 桌面端：内容列与背景的细分隔（仅描边 + 柔和投影，不做手机外框） */
+@media (min-width: 481px) {
+  .app-root { box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20, 36, 55, .12); }
+}

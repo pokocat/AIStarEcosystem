@@ -2455,28 +2455,35 @@ web-celebrity : MixcutAsset +cdn_url/cdn_key；素材库视频缩略图优先 cd
 ```
 apps/web-aiavatar (Next 16.2.6 / React 19 / TypeScript / pnpm, port 3013):
   app/layout.tsx + app/page.tsx              # 渲染客户端 <App />；字体走 React19 提升的 <link>（不用 next/font）
-  src/styles/globals.css                     # 设计令牌 + 手机壳/微信 chrome + V4「清爽」单色青皮肤（移植自原型 3 段级联）
+  src/styles/globals.css                     # 设计令牌 + 真实 H5 应用外层(app-root,安全区) + V4「清爽」单色青皮肤
   src/proto/data.ts                          # ★ 类型契约真源：Avatar/Look/Derivative/License/Job/BuiltinVoice(7)/
                                              #   Account/Application + 8 态状态机 + 5 步创建链路 + 6 类衍生 + 5 张标准图集
-  src/proto/{icons,portrait,ui,shell,toast}  # 图标库 / 占位图 / UI 原语 / 手机壳+微信 chrome / Toast 桥接（移植）
-  src/proto/app.tsx                          # ★ 根：Tab(home/library/apps/me) + 覆盖页栈 + 创建 sheet + #hash 深链 + 屏幕索引
+  src/proto/api.ts                           # ★ 前端 API 契约层(唯一数据出入口)：9 命名空间 + USE_MOCK 分支 + useApi + seed
+  src/proto/{icons,portrait,ui,shell,toast}  # 图标库 / 占位图 / UI 原语 / AppShell+导航+底部Tab / Toast 桥接
+  src/proto/app.tsx                          # ★ 根：Tab(home/library/apps/me) + 覆盖页栈 + 创建 sheet + #hash 深链
   src/proto/screen-*.tsx                     # 18 屏（home/library/avatar/voiceapps/lictaskme/more/real/chain/aicreate/voicepick）
 ```
 
 **关键决策**（详见 [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md)）：
 
-- **忠实移植、不绑共享层**：原型自带 HeyGen 风设计系统（纯白 + 单色青 `#12B3DE` + 手机壳 + 微信 chrome），
-  与 `@ai-star-eco/ui` 的 shadcn 体系完全不同，故 app 自包含（依赖仅 next/react），屏幕层保留原型的
+- **忠实移植、不绑共享层**：原型自带 HeyGen 风设计系统（纯白 + 单色青 `#12B3DE`），与 `@ai-star-eco/ui`
+  的 shadcn 体系完全不同，故 app 自包含（依赖仅 next/react），屏幕层保留原型的
   `React.createElement` + 内联样式写法（脚本仅做 `window.X` 全局 → ES module 的机械转换）。
+- **去原型化 = 真实 H5（非手机壳预览）**：移除 iPhone 外框 / 伪「9:41」状态栏 / 伪微信胶囊 / 伪 home 指示条 /
+  桌面屏幕索引侧栏；`AppShell`(`.app-root`) `position:fixed` 铺满视口 + `env(safe-area-inset-*)` 真实安全区，
+  桌面端居中为一列内容。系统状态栏/手势条交给系统呈现。
+- **所有数据走 `src/proto/api.ts`**：9 个命名空间（Avatar/Voice/Job/License/Capture/Account/App/Scene/Template）
+  对齐规格 §4，每个带 `USE_MOCK` 分支（mock 读 data.ts / live `apiFetch('/api/v1/*')` 解包响应壳）+ `useApi` hook
+  + 同步 `seed`（mock 首帧无闪烁）。屏幕层不再 import `./data`；切真后端只需 `NEXT_PUBLIC_USE_MOCK=0`，屏幕零改动。
 - **tsconfig 关闭 strict**：屏幕层是松类型 createElement；类型安全集中在 `src/proto/data.ts` 的 interface。
   `pnpm typecheck` / `pnpm build` 仍是门（已实测全绿，`/` 静态预渲染，dev `GET / 200` 渲染正常）。
 - **与既有 server `aiavatar_*` 领域（v0.45）解耦**：那是「形象资产管理中心（桌面 / `/library` / 深色琥珀 /
   `real_clone`,`ai_original` / 4 张标准图 / 13 能力）」的另一种解释；本 app 是上传规格的「数字人资产平台
   （移动 / `real`,`ai` / 8 态中文状态机 / 5 张标准图 / 6 类衍生 / 7 款内置音色）」。首版不强行对接，
-  接后端时以 `src/proto/data.ts` 为对齐基准，在 `/api/*` rewrite 上补 `src/proto/api.ts`（apiFetch + USE_MOCK）。
+  接后端时以 `src/proto/data.ts` + `api.ts` 的 REST 面为对齐基准。
 
 **注意**：v0.45 章节描述的 server-backed 桌面 AiAvatar 中心从未在本仓库副本落地为前端（仅 server 领域存在）；
-本节是 web-aiavatar 的**首个**实际前端落地，主入口为 `/`（移动端 SPA），非 `/library`。
+本节是 web-aiavatar 的**首个**实际前端落地，主入口为 `/`（真实全屏 H5 移动应用），非 `/library`。
 
 ---
 

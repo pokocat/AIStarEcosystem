@@ -9,7 +9,8 @@
 
 - **端口**：3013（`pnpm dev:aiavatar` / `next dev -p 3013`）
 - **技术栈**：Next 16.2.6 / React 19 / TypeScript（pnpm workspace 成员）
-- **形态**：手机壳 + 底部 5 Tab + 覆盖页栈的客户端 SPA（沉浸式移动体验，桌面端居中预览 + 屏幕索引）
+- **形态**：真实全屏 H5 应用 —— 底部 5 Tab + 覆盖页栈的客户端 SPA；铺满视口、真实安全区
+  （刘海屏 / home 指示条 `env(safe-area-inset-*)`）；桌面端居中为一列内容（非手机模型）
 - **主题**：HeyGen 风「清爽」皮肤 —— 纯白纸面 `#F7F9FB` + 单色青 `#12B3DE` 点睛
 - **字体**：Manrope（UI/标题）/ Newsreader（资产身份衬线）/ JetBrains Mono（登记号）/ Noto Sans SC（中文）
 
@@ -100,6 +101,17 @@ src/
 ---
 
 ## 版本日志
+
+### v0.3（2026-06-06）— 去原型化：真实可投产的全屏 H5 应用
+
+- **移除手机壳 / 微信 chrome 装饰**：删掉 iPhone 外框（`.m-device`/`.m-island`）、伪状态栏
+  （「9:41」+ 信号/wifi/电量）、伪微信胶囊、伪 home 指示条、桌面「屏幕索引」侧栏。
+- `PhoneFrame` → 真实 `AppShell`（`.app-root`）：`position:fixed` 铺满视口、`flex` 纵向布局；
+  顶部预留 `env(safe-area-inset-top)`、底部 Tab 与 Sheet 用 `env(safe-area-inset-bottom)` 适配
+  刘海屏 / home 指示条；导航栏去掉胶囊让位，左右等距。
+- 桌面端把应用居中为一列（`max-width:480px` + 细描边/投影），不是手机模型。
+- `layout.tsx`：`theme-color` 改为应用表面色、补 `appleWebApp` standalone 元信息、禁用电话号识别。
+- 行为 / 数据 / 屏幕逻辑不变；`pnpm typecheck` / `build` 全绿，dev 实测渲染已无任何手机壳痕迹。
 
 ### v0.2（2026-06-06）— 前端 API 契约层（所有数据走 api.ts）
 
