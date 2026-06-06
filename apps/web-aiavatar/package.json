@@ -1,0 +1,25 @@
+{
+  "name": "@ai-star-eco/web-aiavatar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AiAvatar · 数字人资产平台（移动端 H5 / 微信小程序形态的独立 Next 16 应用）。",
+  "scripts": {
+    "dev": "next dev -p 3013",
+    "build": "next build",
+    "start": "next start -p 3013",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test": "echo 'No unit tests for web-aiavatar yet (mock-driven 原型移植 app, type-safety guarded by typecheck). Add vitest when real backend lands.' && exit 0"
+  },
+  "dependencies": {
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.2"
+  }
+}

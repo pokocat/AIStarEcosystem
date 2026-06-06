@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    // 说明：本 app 是 Figma Make 移动端原型（数字人资产平台 V4）的忠实移植，
+    // 屏幕层全部沿用原型的 React.createElement + 内联样式写法（见 src/proto/*）。
+    // 原型本身是松类型的，强行对上千个 createElement 调用补全类型收益极低、
+    // 风险极高。因此本 app 关闭 strict（数据契约的类型安全集中在 src/proto/data.ts
+    // 的接口里，未来接后端时以那里为真源）。详见 DECISIONS.md。
+    "strict": false,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "baseUrl": "./",
+    "paths": { "@/*": ["./src/*"] },
+    "ignoreDeprecations": "5.0"
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+}

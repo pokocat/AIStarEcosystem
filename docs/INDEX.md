@@ -27,8 +27,8 @@
 | [`apps/web-music/PRODUCT.md`](../apps/web-music/PRODUCT.md) ★ | AI 音乐人（3010） | 产品定位 / 路由 / 业务领域 / 视觉系统（Restrained dark + Inter） |
 | [`apps/web-drama/PRODUCT.md`](../apps/web-drama/PRODUCT.md) ★ | AI 短剧（3011） | 产品定位 / 路由 / 业务领域 / 视觉系统（Premium Cinematic + 金色 accent + serif） |
 | [`apps/web-celebrity/PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) ★ | AI 明星带货（3012） | 产品定位 / 路由 / 业务领域 / 视觉系统（Creator-Friendly + 紫罗兰）+ **混剪专区完整设计** |
-| [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) ★ | AiAvatar 形象资产中心（3013） | 真人复刻 / AI 原创 · 7 步链路 + 衍生 3D/视频 · 深色琥珀 · aiavatar_* 独立后端领域（last-reviewed 2026-05-30） |
-| [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 中心 | 架构 / 能力真实-vs-mock 映射 / 合规 / 状态机 / 监控线程 决策记录 |
+| [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) ★ | AiAvatar 数字人资产平台（3013） | 移动端 H5/小程序形态 SPA · 真人复刻 / AI 原创 · 5 步链路 + 6 类衍生 · 单色青「清爽」皮肤 · mock 驱动自包含（last-reviewed 2026-06-06，v0.50 首版前端落地） |
+| [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 平台 | 忠实移植原型 / strict 关闭 / 与 v0.45 server 领域解耦 / 字体策略 / 导航栈 决策记录 |
 | [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |
 
 不动产品规格的方向时不必读 §3 ~ §7。

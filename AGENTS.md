@@ -38,7 +38,7 @@ Aisingerecosystem/
 │   ├── web-music/          # AI 音乐人（Next 16 / React 19 / Tailwind v4）— port 3010
 │   ├── web-drama/          # AI 短剧（同上）— port 3011
 │   ├── web-celebrity/      # AI 明星带货（同上）— port 3012
-│   └── web-aiavatar/       # AiAvatar 形象资产管理中心（同上）— port 3013
+│   └── web-aiavatar/       # AiAvatar 数字人资产平台（移动端 H5/小程序形态 SPA）— port 3013
 ├── packages/               # pnpm workspace 共享包（新代码真源）
 │   ├── types/              # @ai-star-eco/types（22 域类型定义）
 │   ├── ui/                 # @ai-star-eco/ui（48 shadcn + ThemeProvider + globals.css）
@@ -409,7 +409,7 @@ specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束
 | **AI 音乐人** | `apps/web-music/` | 3010 | [`apps/web-music/PRODUCT.md`](apps/web-music/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
 | **AI 短剧** | `apps/web-drama/` | 3011 | [`apps/web-drama/PRODUCT.md`](apps/web-drama/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
 | **AI 明星带货** | `apps/web-celebrity/` | 3012 | [`apps/web-celebrity/PRODUCT.md`](apps/web-celebrity/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
-| **AiAvatar** | `apps/web-aiavatar/` | 3013 | [`apps/web-aiavatar/README.md`](apps/web-aiavatar/README.md) | [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md) | `/library` |
+| **AiAvatar** | `apps/web-aiavatar/` | 3013 | [`apps/web-aiavatar/README.md`](apps/web-aiavatar/README.md) | [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md) | `/`（移动端 SPA） |
 
 前三个业务 app 路由形态一致：
 
@@ -2445,6 +2445,38 @@ web-celebrity : MixcutAsset +cdn_url/cdn_key；素材库视频缩略图优先 cd
   (b) MixcutAsset preset/official 上传 + 商品外链登记的门面化（admin/seed/外链,低频）；
   (c) keep-local-copy=false 的纯 OSS-read 终态 + 渲染 openForRead 切换；(d) celebrity 档案改 key-only；
   (e) 按 owner 配额 / sha256 去重 / 图片转码 —— 门面已留扩展位,未实现。
+
+### v0.50（2026-06-06）— web-aiavatar 落地为移动端「数字人资产平台」SPA（前端）
+
+按上传的《数字人资产平台 — 数据模型与系统逻辑规格》+ Figma Make 移动端原型
+《数字人资产平台-移动端-v4》落地 `apps/web-aiavatar`（此前 workspace / 根脚本已预留位置，
+但 app 目录一直不存在）。**纯前端、mock 驱动、自包含**；不改 server / openapi / 契约门。
+
+```
+apps/web-aiavatar (Next 16.2.6 / React 19 / TypeScript / pnpm, port 3013):
+  app/layout.tsx + app/page.tsx              # 渲染客户端 <App />；字体走 React19 提升的 <link>（不用 next/font）
+  src/styles/globals.css                     # 设计令牌 + 手机壳/微信 chrome + V4「清爽」单色青皮肤（移植自原型 3 段级联）
+  src/proto/data.ts                          # ★ 类型契约真源：Avatar/Look/Derivative/License/Job/BuiltinVoice(7)/
+                                             #   Account/Application + 8 态状态机 + 5 步创建链路 + 6 类衍生 + 5 张标准图集
+  src/proto/{icons,portrait,ui,shell,toast}  # 图标库 / 占位图 / UI 原语 / 手机壳+微信 chrome / Toast 桥接（移植）
+  src/proto/app.tsx                          # ★ 根：Tab(home/library/apps/me) + 覆盖页栈 + 创建 sheet + #hash 深链 + 屏幕索引
+  src/proto/screen-*.tsx                     # 18 屏（home/library/avatar/voiceapps/lictaskme/more/real/chain/aicreate/voicepick）
+```
+
+**关键决策**（详见 [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md)）：
+
+- **忠实移植、不绑共享层**：原型自带 HeyGen 风设计系统（纯白 + 单色青 `#12B3DE` + 手机壳 + 微信 chrome），
+  与 `@ai-star-eco/ui` 的 shadcn 体系完全不同，故 app 自包含（依赖仅 next/react），屏幕层保留原型的
+  `React.createElement` + 内联样式写法（脚本仅做 `window.X` 全局 → ES module 的机械转换）。
+- **tsconfig 关闭 strict**：屏幕层是松类型 createElement；类型安全集中在 `src/proto/data.ts` 的 interface。
+  `pnpm typecheck` / `pnpm build` 仍是门（已实测全绿，`/` 静态预渲染，dev `GET / 200` 渲染正常）。
+- **与既有 server `aiavatar_*` 领域（v0.45）解耦**：那是「形象资产管理中心（桌面 / `/library` / 深色琥珀 /
+  `real_clone`,`ai_original` / 4 张标准图 / 13 能力）」的另一种解释；本 app 是上传规格的「数字人资产平台
+  （移动 / `real`,`ai` / 8 态中文状态机 / 5 张标准图 / 6 类衍生 / 7 款内置音色）」。首版不强行对接，
+  接后端时以 `src/proto/data.ts` 为对齐基准，在 `/api/*` rewrite 上补 `src/proto/api.ts`（apiFetch + USE_MOCK）。
+
+**注意**：v0.45 章节描述的 server-backed 桌面 AiAvatar 中心从未在本仓库副本落地为前端（仅 server 领域存在）；
+本节是 web-aiavatar 的**首个**实际前端落地，主入口为 `/`（移动端 SPA），非 `/library`。
 
 ---
 
