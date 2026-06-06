@@ -1,12 +1,16 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.MixcutCreateJobRequest;
+import com.aistareco.aep.dto.MixcutDraftDto;
 import com.aistareco.aep.dto.MixcutRenderJobDto;
 import com.aistareco.aep.dto.MixcutRerunJobRequest;
 import com.aistareco.aep.dto.MixcutUpdateProgressRequest;
+import com.aistareco.aep.service.mixcut.MixcutDraftService;
 import com.aistareco.aep.service.mixcut.MixcutJobService;
 import com.aistareco.common.ApiResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
 import java.util.List;
@@ -28,9 +32,11 @@ import java.util.List;
 public class MixcutController {
 
     private final MixcutJobService service;
+    private final MixcutDraftService draftService;
 
-    public MixcutController(MixcutJobService service) {
+    public MixcutController(MixcutJobService service, MixcutDraftService draftService) {
         this.service = service;
+        this.draftService = draftService;
     }
 
     @GetMapping("/jobs")
@@ -71,6 +77,25 @@ public class MixcutController {
         return ApiResponse.of(service.rerun(jobId, currentUserId(principal), body));
     }
 
+    /**
+     * v0.50+: 从已有任务创建实例（用于改进后的「重跑」入口）。
+     *
+     * <p>若任务已有 draft_id —— 直接返回现有实例；
+     * 否则 —— 从任务的快照数据创建一个新实例。
+     *
+     * <p>调用方拿到实例 id 后跳转 `/mixcut/create/{templateId}?draft_id={id}`，
+     * 让用户可以编辑后再决定生成。这样「重跑」的行为与「从草稿编辑」一致。
+     *
+     * 错误：404 MIXCUT_JOB_NOT_FOUND — job 不存在或不属于当前用户
+     */
+    @PostMapping("/jobs/{jobId}/create-draft")
+    public ApiResponse<MixcutDraftDto> createDraftFromJob(
+            @PathVariable String jobId,
+            Principal principal
+    ) {
+        return ApiResponse.of(draftService.createFromJob(jobId, currentUserId(principal)));
+    }
+
     @PatchMapping("/jobs/{id}/progress")
     public ApiResponse<MixcutRenderJobDto> updateProgress(
             @PathVariable String id,
@@ -92,6 +117,17 @@ public class MixcutController {
     ) {
         boolean ok = service.softDeleteOutput(outputId, currentUserId(principal));
         return ApiResponse.of(ok);
+    }
+
+    /** v0.50+: 下载专用 URL，点击时签发；播放 URL 保持 inline，下载 URL 保持 attachment。 */
+    @GetMapping("/outputs/{outputId}/download-url")
+    public ApiResponse<String> outputDownloadUrl(
+            @PathVariable String outputId,
+            Principal principal
+    ) {
+        String url = service.getOutputDownloadUrl(outputId, currentUserId(principal))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "output not found"));
+        return ApiResponse.of(url);
     }
 
     private static String currentUserId(Principal principal) {

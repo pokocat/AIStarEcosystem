@@ -112,6 +112,33 @@ public class CdnUrlSigner {
         }
     }
 
+    /** 为下载动作生成 URL。支持的驱动会返回 attachment 响应头；失败时返回 null。 */
+    public String downloadUrlForKey(String key, String filename) {
+        return downloadUrlForKey(key, filename, defaultTtlSeconds);
+    }
+
+    /** 同 {@link #downloadUrlForKey(String, String)}，但显式 TTL。 */
+    public String downloadUrlForKey(String key, String filename, long ttlSeconds) {
+        if (uploader == null || key == null || key.isBlank()) return null;
+        try {
+            return uploader.downloadUrlFor(key, filename, ttlSeconds);
+        } catch (Exception e) {
+            log.warn("[cdn-signer] downloadUrlForKey failed key={} → 返回 null: {}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 从已落库的 CDN URL 反解 key 后生成下载 URL；老数据兼容路径。 */
+    public String downloadUrlForUrl(String url, String filename) {
+        if (url == null || url.isBlank()) return url;
+        if (uploader == null) return url;
+        if (!isSignable(url)) return url;
+        String key = extractKey(url);
+        if (key == null || key.isBlank()) return url;
+        String signed = downloadUrlForKey(key, filename, defaultTtlSeconds);
+        return signed == null || signed.isBlank() ? url : signed;
+    }
+
     /**
      * v0.47F+：仅做 key → 公开 URL 拼接（不签名）。
      * 给 driver=local 等无需签名的场景用；driver=oss 也可在不需要时效保护时调用。
