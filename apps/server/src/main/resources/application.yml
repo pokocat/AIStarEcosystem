@@ -184,6 +184,8 @@ aep:
     max-concurrent: ${AEP_DAP_MAX_CONCURRENT:3}
     # 月度赠送算力（点）；首次访问账户 / 提交任务时按月幂等发放。0 = 不发放。
     monthly-grant: ${AEP_DAP_MONTHLY_GRANT:1500}
+    # 回收站保留天数（软删超期后每日 03:50 物理清理行+文件）
+    trash-retention-days: ${AEP_DAP_TRASH_RETENTION_DAYS:30}
     # 各动作扣费（点，hold→commit/release 三段式）；0 = 免费
     pricing:
       generate: ${AEP_DAP_PRICE_GENERATE:20}

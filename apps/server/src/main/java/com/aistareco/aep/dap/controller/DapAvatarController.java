@@ -3,6 +3,7 @@ package com.aistareco.aep.dap.controller;
 import com.aistareco.aep.dap.dto.DapDtos.AvatarDto;
 import com.aistareco.aep.dap.dto.DapDtos.DerivativeDto;
 import com.aistareco.aep.dap.dto.DapDtos.LookDto;
+import com.aistareco.aep.dap.dto.DapDtos.TrashItemDto;
 import com.aistareco.aep.dap.dto.DapDtos.VersionDto;
 import com.aistareco.aep.dap.dto.DapRequests.BindVoiceRequest;
 import com.aistareco.aep.dap.dto.DapRequests.CreateAvatarRequest;
@@ -16,6 +17,7 @@ import com.aistareco.aep.dap.dto.DapRequests.PatchAvatarRequest;
 import com.aistareco.aep.dap.dto.DapRequests.PickRequest;
 import com.aistareco.aep.dap.service.DapAvatarService;
 import com.aistareco.aep.dap.service.DapCatalogService;
+import com.aistareco.aep.dap.service.DapTrashService;
 import com.aistareco.aep.dap.service.DapVoiceService;
 import com.aistareco.aep.dap.service.DapWorkflowService;
 import com.aistareco.common.ApiResponse;
@@ -47,15 +49,18 @@ public class DapAvatarController {
     private final DapWorkflowService workflow;
     private final DapVoiceService voiceService;
     private final DapCatalogService catalog;
+    private final DapTrashService trashService;
 
     public DapAvatarController(DapAvatarService avatarService,
                                DapWorkflowService workflow,
                                DapVoiceService voiceService,
-                               DapCatalogService catalog) {
+                               DapCatalogService catalog,
+                               DapTrashService trashService) {
         this.avatarService = avatarService;
         this.workflow = workflow;
         this.voiceService = voiceService;
         this.catalog = catalog;
+        this.trashService = trashService;
     }
 
     private static String uid(Principal p) {
@@ -96,8 +101,29 @@ public class DapAvatarController {
 
     @DeleteMapping("/{id}")
     public ApiResponse<Map<String, Object>> remove(Principal principal, @PathVariable String id) {
-        avatarService.remove(uid(principal), id);
-        return ApiResponse.of(Map.of("deleted", true));
+        trashService.softDelete(uid(principal), id);
+        return ApiResponse.of(Map.of(
+                "deleted", true,
+                "retentionDays", trashService.retentionDays()));
+    }
+
+    // ── 回收站（软删 → 恢复 / 彻底删除；30 天到期自动清理）─────
+
+    @GetMapping("/trash")
+    public ApiResponse<List<TrashItemDto>> trash(Principal principal) {
+        return ApiResponse.of(trashService.listTrash(uid(principal)));
+    }
+
+    @PostMapping("/{id}/restore")
+    public ApiResponse<AvatarDto> restore(Principal principal, @PathVariable String id) {
+        trashService.restore(uid(principal), id);
+        return ApiResponse.of(avatarService.get(uid(principal), id));
+    }
+
+    @DeleteMapping("/{id}/purge")
+    public ApiResponse<Map<String, Object>> purge(Principal principal, @PathVariable String id) {
+        trashService.purge(uid(principal), id);
+        return ApiResponse.of(Map.of("purged", true));
     }
 
     // ── 版本 / 造型 / 衍生 ─────────────────────────────────────

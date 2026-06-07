@@ -61,6 +61,24 @@ public final class DapDtos {
         }
     }
 
+    // ── 回收站 ────────────────────────────────────────────────
+
+    /** 回收站条目（软删数字人；purgeAt = deletedAt + 保留天数，到期由调度器物理清理）。 */
+    public record TrashItemDto(String id, String name, String archetype, String path, int hue,
+                               String imageUrl, String deletedAt, String purgeAt, long daysLeft) {
+        public static TrashItemDto from(DapAvatar a, int retentionDays, Function<String, String> keyToUrl) {
+            Instant deleted = a.getDeletedAt();
+            Instant purgeAt = deleted == null ? null : deleted.plusSeconds(retentionDays * 86400L);
+            long daysLeft = purgeAt == null ? retentionDays
+                    : Math.max(0, (purgeAt.toEpochMilli() - System.currentTimeMillis() + 86_399_999L) / 86_400_000L);
+            return new TrashItemDto(a.getId(), a.getName(), a.getArchetype(), a.getPath(), a.getHue(),
+                    a.getImageKey() != null ? keyToUrl.apply(a.getImageKey()) : null,
+                    deleted == null ? null : deleted.toString(),
+                    purgeAt == null ? null : purgeAt.toString(),
+                    daysLeft);
+        }
+    }
+
     // ── 版本时间线 ────────────────────────────────────────────
 
     public record VersionDto(String v, String t, String note, String kind, boolean cur, String imageUrl) {

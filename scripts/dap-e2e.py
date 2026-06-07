@@ -316,6 +316,34 @@ def main():
     if acct2.get("storageUsedGB", -1) >= 0:
         ok(f"存储统计（{acct2.get('storageUsedGB')} GB）")
 
+    # ── 回收站：软删 → 列表 → 恢复 → 彻底删除 ──
+    code, _ = req("DELETE", f"/api/v1/avatars/{aid}")
+    ok("软删（移入回收站）") if code == 200 else bad("软删", f"got {code}")
+    code, _ = req("GET", f"/api/v1/avatars/{aid}", expect_error=True)
+    ok("软删后详情 404") if code == 404 else bad("软删后详情应 404", f"got {code}")
+    code, tr = req("GET", "/api/v1/avatars/trash")
+    in_trash = code == 200 and any(t.get("id") == aid for t in (tr or []))
+    if in_trash:
+        item = next(t for t in tr if t.get("id") == aid)
+        ok(f"回收站可见（daysLeft={item.get('daysLeft')}）")
+    else:
+        bad("回收站列表", f"code={code} ids={[t.get('id') for t in (tr or [])]}")
+    code, _ = req("POST", f"/api/v1/avatars/{aid}/restore")
+    ok("回收站恢复") if code == 200 else bad("恢复", f"got {code}")
+    code, _ = req("GET", f"/api/v1/avatars/{aid}")
+    ok("恢复后详情可读") if code == 200 else bad("恢复后详情", f"got {code}")
+    code, _ = req("DELETE", f"/api/v1/avatars/{aid}/purge", expect_error=True)
+    ok("未删先 purge 被拒（400）") if code == 400 else bad("purge 前置校验应 400", f"got {code}")
+    code, _ = req("DELETE", f"/api/v1/avatars/{aid}")
+    code, _ = req("DELETE", f"/api/v1/avatars/{aid}/purge")
+    ok("彻底删除") if code == 200 else bad("彻底删除", f"got {code}")
+    code, tr2 = req("GET", "/api/v1/avatars/trash")
+    if code == 200 and not any(t.get("id") == aid for t in (tr2 or [])):
+        ok("彻底删除后回收站不可见")
+    else:
+        bad("彻底删除后回收站", f"code={code}")
+
+
     return finish()
 
 def finish():

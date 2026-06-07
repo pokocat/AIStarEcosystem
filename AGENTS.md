@@ -2564,6 +2564,17 @@ web    : api.ts 重写：auth（token/localStorage + 401 全局事件）+ AuthAp
    对 `EOF reached while reading` 类瞬断有效）。
 6. **dataURI 上行压缩**：身份图 >300KB 时缩到宽 768 JPEG q0.82（PNG alpha 铺白底）再 base64，
    显著缓解大请求体导致的 EOF/超时；压缩失败回退原图。
+7. **数字人回收站（软删 + 30 天自动清理）**：`DELETE /v1/avatars/{id}` 软删（deletedAt，
+   顺带 cancelRequested 该资产 queued/running 任务）→ `GET /v1/avatars/trash`（含 daysLeft/purgeAt）
+   → `POST /{id}/restore` 恢复 / `DELETE /{id}/purge` 立即彻底删除（仅回收站内资产，防误触）。
+   `DapTrashCleanupScheduler` 每日 03:50 物理清理超期行（`aep.dap.trash-retention-days` 默认 30）：
+   删全部关联行（versions/looks/derivatives/photos/captures/licenses/jobs）+ best-effort 删存储文件；
+   LedgerEntry 账本不动（审计真值）。前端：详情 header 删除入口（Confirm 二次确认）+
+   「我的 → 回收站」覆盖页（恢复 / 彻底删除 / 剩余天数）；ui.tsx 新增共享 `Confirm` 原语。
+   注意：账户页 creditsUsed=sumCost(dap_job)，彻底删除会连带删 job 行 → 当月「已用」统计随之减少（账本余额不受影响）。
+8. **prompt 真值在 DB**（重申，与 v0.40 机制一致）：`prompt_template` 表是运行时真源
+   （resolve 顺序 DB → resources/.md → 代码兜底）；`.md` 只是首启 seed 基线 + git 留底。
+   admin「Prompt 管理」改的就是 DB 行（version+1，seeder 永不覆盖）。
 
 ---
 

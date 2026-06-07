@@ -210,6 +210,8 @@ let mockSeq = 9000;
 const mockJobStore = new Map<string, any>();
 /** mock 模式下的「我的数字人」可变副本（创建流程会往里加）。 */
 const mockChars: any[] = Mock.CHARS.map((c) => ({ ...c }));
+/** mock 回收站（软删数字人；live 模式由 server 持久化）。 */
+const mockTrash: any[] = [];
 
 function newMockJob(partial: Partial<Mock.Job> & { kind: string }): Mock.Job {
   const id = `JOB-${mockSeq++}`;
@@ -333,13 +335,46 @@ export const AvatarApi = {
     }
     return apiFetch(`/avatars/${id}`, { method: "PATCH", body: JSON.stringify(body) });
   },
+  /** 软删 → 回收站（默认 30 天后自动清理）。 */
   remove: (id: string): Promise<any> => {
     if (USE_MOCK) {
       const i = mockChars.findIndex((x) => x.id === id);
-      if (i >= 0) mockChars.splice(i, 1);
-      return mock({ deleted: true });
+      if (i >= 0) {
+        const [c] = mockChars.splice(i, 1);
+        mockTrash.unshift({ ...c, deletedAt: new Date().toISOString(), daysLeft: 30 });
+      }
+      return mock({ deleted: true, retentionDays: 30 });
     }
     return apiFetch(`/avatars/${id}`, { method: "DELETE" });
+  },
+  /** 回收站列表（含 daysLeft 剩余天数 / purgeAt 清理时间）。 */
+  trash: (): Promise<any[]> => {
+    if (USE_MOCK) return mock(mockTrash.slice());
+    return apiFetch(`/avatars/trash`);
+  },
+  /** 从回收站恢复。 */
+  restore: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockTrash.findIndex((x) => x.id === id);
+      if (i >= 0) {
+        const [c] = mockTrash.splice(i, 1);
+        delete c.deletedAt; delete c.daysLeft;
+        c.updated = "刚刚";
+        mockChars.unshift(c);
+        return mock(c);
+      }
+      return mock({ id });
+    }
+    return apiFetch(`/avatars/${id}/restore`, { method: "POST" });
+  },
+  /** 立即彻底删除（仅回收站内资产）。 */
+  purge: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockTrash.findIndex((x) => x.id === id);
+      if (i >= 0) mockTrash.splice(i, 1);
+      return mock({ purged: true });
+    }
+    return apiFetch(`/avatars/${id}/purge`, { method: "DELETE" });
   },
   versions: (id: string): Promise<any[]> => {
     if (USE_MOCK) {

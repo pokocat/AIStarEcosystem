@@ -14,6 +14,8 @@ public class DapProperties {
     private final Pricing pricing = new Pricing();
     private int maxConcurrent = 3;
     private long monthlyGrant = 1500;
+    /** 回收站保留天数（软删超期后由 DapTrashCleanupScheduler 物理清理）。 */
+    private int trashRetentionDays = 30;
 
     public Agnes getAgnes() { return agnes; }
     public Pricing getPricing() { return pricing; }
@@ -21,6 +23,8 @@ public class DapProperties {
     public void setMaxConcurrent(int maxConcurrent) { this.maxConcurrent = maxConcurrent; }
     public long getMonthlyGrant() { return monthlyGrant; }
     public void setMonthlyGrant(long monthlyGrant) { this.monthlyGrant = monthlyGrant; }
+    public int getTrashRetentionDays() { return trashRetentionDays; }
+    public void setTrashRetentionDays(int trashRetentionDays) { this.trashRetentionDays = trashRetentionDays; }
 
     public static class Agnes {
         private String baseUrl = "https://apihub.agnes-ai.com";

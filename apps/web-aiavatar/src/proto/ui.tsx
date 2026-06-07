@@ -237,6 +237,20 @@ function Modal({ open, onClose, children, w = 720, title }) {
       children));
 }
 
+// —— Confirm（二次确认；危险操作用，替代原生 confirm）——
+function Confirm({ open, onClose, onConfirm, title = '确认操作', desc, confirmText = '确认', cancelText = '取消', danger = true, busy }) {
+  return h(Modal, { open, onClose: busy ? () => {} : onClose, w: 340 },
+    h('div', { style: { padding: '22px 22px 18px' } },
+      h('div', { style: { fontSize: 17, fontWeight: 800, marginBottom: 8 } }, title),
+      desc && h('div', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.55, marginBottom: 18 } }, desc),
+      h('div', { style: { display: 'flex', gap: 10, marginTop: desc ? 0 : 16 } },
+        h(Button, { variant: 'line', full: true, onClick: onClose, disabled: busy }, cancelText),
+        h('button', { onClick: onConfirm, disabled: busy, className: 'm-tap', style: {
+          flex: 1, height: 42, border: 'none', borderRadius: 'var(--r-pill)', cursor: busy ? 'default' : 'pointer',
+          background: danger ? 'var(--err)' : 'var(--primary)', color: '#fff', fontSize: 14, fontWeight: 700,
+          opacity: busy ? .6 : 1 } }, busy ? '处理中…' : confirmText))));
+}
+
 // —— Tooltip-ish 小标签 ——
 function Spec({ children, style }) {
   return h('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-3)', ...style } }, children);
@@ -265,4 +279,4 @@ function ToastHost() {
 }
 
 export { Button, Badge, EngineTag, Card, Tabs, Seg, FilterPill, Field, Input, Textarea, Select,
-  Slider, Progress, Spinner, Stepper, Modal, Spec, ToastHost, inputBase };
+  Slider, Progress, Spinner, Stepper, Modal, Confirm, Spec, ToastHost, inputBase };

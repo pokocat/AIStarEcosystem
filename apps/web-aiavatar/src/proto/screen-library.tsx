@@ -118,6 +118,8 @@ function MDetail({ char: initialChar, ctx }) {
   const [char, setChar] = useStateML(initialChar);
   const [tab, setTab] = useStateML('atlas');
   const [derivBusy, setDerivBusy] = useStateML({} as any);
+  const [confirmDel, setConfirmDel] = useStateML(false);
+  const [deleting, setDeleting] = useStateML(false);
   const voice = ctx.voiceFor(char);
   const s = DATA.STATUS[char.status] || DATA.STATUS.draft;
   const isPublic = String(char.id || '').startsWith('PA-');
@@ -154,6 +156,20 @@ function MDetail({ char: initialChar, ctx }) {
     } catch { toast('复制失败，请手动分享', { tone: 'warn' }); }
   };
 
+  const doDelete = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await AvatarApi.remove(char.id);
+      setConfirmDel(false);
+      toast('已移入回收站 · 30 天内可在「我的 → 回收站」恢复', { tone: 'ok' });
+      ctx.reload && ctx.reload();
+      ctx.back();
+    } catch (e: any) {
+      toast(e?.message || '删除失败', { tone: 'err' });
+    } finally { setDeleting(false); }
+  };
+
   const runDerive = async (key) => {
     if (derivBusy[key]) return;
     setDerivBusy((m) => ({ ...m, [key]: { pct: 3 } }));
@@ -171,7 +187,13 @@ function MDetail({ char: initialChar, ctx }) {
 
   return hML('div', { className: 'm-overlay', 'data-screen-label': '资产详情' },
     hML(WxNavL, { title: char.name, onBack: ctx.back,
-      right: hML('button', { className: 'nav-spacer m-tap', onClick: share, style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', display: 'grid', placeItems: 'center' } }, hML(Icons.share, { size: 19, stroke: 1.9 })) }),
+      right: hML('div', { style: { display: 'flex', alignItems: 'center', gap: 2 } },
+        !isPublic && hML('button', { className: 'm-tap', title: '删除（移入回收站）', onClick: () => setConfirmDel(true), style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', display: 'grid', placeItems: 'center', width: 34, height: 34 } }, hML(Icons.trash, { size: 18, stroke: 1.9 })),
+        hML('button', { className: 'm-tap', onClick: share, style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', display: 'grid', placeItems: 'center', width: 34, height: 34 } }, hML(Icons.share, { size: 19, stroke: 1.9 }))) }),
+    hML(UI.Confirm, { open: confirmDel, onClose: () => setConfirmDel(false), onConfirm: doDelete, busy: deleting,
+      title: '删除「' + char.name + '」？',
+      desc: '将移入回收站，30 天内可恢复；到期后自动彻底清理（含全部图集 / 衍生 / 版本与文件）。',
+      confirmText: '移入回收站' }),
     hML('div', { className: 'm-body', style: { paddingBottom: 88 } },
       // 档案头
       hML('div', { className: 'm-card', style: { margin: '4px 18px 0', overflow: 'hidden' } },

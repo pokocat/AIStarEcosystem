@@ -4,6 +4,7 @@ import { Icons } from "./icons";
 import * as UI from "./ui";
 import { DATA, AvatarApi, LicenseApi, JobApi, VoiceApi, AccountApi, useApi, seed, USE_MOCK, auth } from "./api";
 import { MShell, MKit } from "./shell";
+import { Portrait } from "./portrait";
 import { toast } from "./toast";
 
 // ============================================================
@@ -231,12 +232,82 @@ function MMe({ ctx }) {
       hMS('div', { className: 'm-card' },
         hMS(MeRow, { icon: Icons.gem, label: '会员与算力', sub: (acct.planLabel || 'PRO') + ' · ' + (acct.credits || 0).toLocaleString() + ' 点', color: 'var(--ink-2)', onClick: () => ctx.go('membership') }),
         hMS(MeRow, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedGB ?? 0) + ' / ' + (acct.storageQuotaGB ?? 0) + ' GB', color: 'var(--ink-2)', onClick: () => ctx.go('storage') }),
+        hMS(MeRow, { icon: Icons.trash, label: '回收站', sub: '已删数字人 · 30 天内可恢复', color: 'var(--ink-2)', onClick: () => ctx.go('trash') }),
         hMS(MeRow, { icon: Icons.settings, label: '设置', color: 'var(--ink-2)', onClick: () => ctx.go('settings'), last: true }))),
 
     hMS('div', { style: { padding: '22px 18px 10px', textAlign: 'center' } },
       hMS('div', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)' } }, '数字人资产平台 · v4.1')));
 }
 
+// ============ 回收站 Trash ============
+function MTrash({ ctx }) {
+  const [items, setItems] = useStateMS([] as any[]);
+  const [loaded, setLoaded] = useStateMS(false);
+  const [confirm, setConfirm] = useStateMS(null as any); // 待彻底删除的条目
+  const [busyId, setBusyId] = useStateMS('');
+
+  const load = () => AvatarApi.trash().then((l) => { setItems(l || []); setLoaded(true); }).catch(() => setLoaded(true));
+  useEffectMS(() => { load(); }, []);
+
+  const doRestore = async (it) => {
+    if (busyId) return;
+    setBusyId(it.id);
+    try {
+      await AvatarApi.restore(it.id);
+      toast('已恢复「' + it.name + '」', { tone: 'ok' });
+      ctx.reload && ctx.reload();
+      load();
+    } catch (e: any) { toast(e?.message || '恢复失败', { tone: 'err' }); }
+    finally { setBusyId(''); }
+  };
+
+  const doPurge = async () => {
+    if (!confirm || busyId) return;
+    setBusyId(confirm.id);
+    try {
+      await AvatarApi.purge(confirm.id);
+      toast('已彻底删除', { tone: 'ok' });
+      setConfirm(null);
+      load();
+    } catch (e: any) { toast(e?.message || '删除失败', { tone: 'err' }); }
+    finally { setBusyId(''); }
+  };
+
+  const daysLeftOf = (it) => {
+    if (it.daysLeft != null) return it.daysLeft;
+    if (it.purgeAt) return Math.max(0, Math.ceil((new Date(it.purgeAt).getTime() - Date.now()) / 86400000));
+    return 30;
+  };
+
+  return hMS('div', { className: 'm-overlay', 'data-screen-label': '回收站' },
+    hMS(WxNavS, { title: '回收站', onBack: ctx.back }),
+    hMS('div', { className: 'm-body', style: { padding: '12px 18px 24px' } },
+      hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14, padding: '10px 13px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' } },
+        hMS(Icons.info, { size: 15, style: { color: 'var(--ink-3)', flex: '0 0 auto' } }),
+        hMS('span', { style: { fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 } }, '删除的数字人在这里保留 30 天，可随时恢复；到期自动彻底清理（含全部图集 / 衍生 / 文件）。')),
+      !items.length
+        ? hMS('div', { style: { textAlign: 'center', padding: '52px 18px' } },
+            hMS('div', { style: { width: 52, height: 52, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'var(--surface-3)', color: 'var(--ink-4)' } }, hMS(Icons.trash, { size: 24 })),
+            hMS('div', { style: { fontSize: 14.5, fontWeight: 700, color: 'var(--ink-2)' } }, loaded ? '回收站是空的' : '加载中…'),
+            loaded && hMS('div', { style: { fontSize: 12, color: 'var(--ink-4)', marginTop: 5 } }, '删除的数字人会出现在这里'))
+        : hMS('div', { style: { display: 'flex', flexDirection: 'column', gap: 11 } },
+            items.map((it) => hMS('div', { key: it.id, className: 'm-card', style: { padding: 12, display: 'flex', alignItems: 'center', gap: 12 } },
+              hMS('div', { style: { width: 56, flex: '0 0 56px', borderRadius: 'var(--r-sm)', overflow: 'hidden' } },
+                hMS(Portrait, { char: it, variant: 'key', ratio: '3 / 4', expr: 'calm' })),
+              hMS('div', { style: { flex: 1, minWidth: 0 } },
+                hMS('div', { className: 'm-clip1', style: { fontSize: 14.5, fontWeight: 700 } }, it.name),
+                hMS('div', { className: 'm-clip1', style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 } }, it.archetype || (it.path === 'real' ? '真人授权复刻' : 'AI 原创形象')),
+                hMS('div', { style: { fontSize: 11, color: daysLeftOf(it) <= 3 ? 'var(--err)' : 'var(--ink-4)', marginTop: 4, fontWeight: 600 } }, '剩 ' + daysLeftOf(it) + ' 天自动清理')),
+              hMS('div', { style: { display: 'flex', flexDirection: 'column', gap: 7, flex: '0 0 auto' } },
+                hMS(UI.Button, { variant: 'line', size: 'sm', icon: Icons.refresh, disabled: busyId === it.id, onClick: () => doRestore(it) }, busyId === it.id ? '处理中' : '恢复'),
+                hMS('button', { onClick: () => setConfirm(it), className: 'm-tap', style: { height: 30, padding: '0 12px', border: '1px solid color-mix(in oklab, var(--err) 38%, transparent)', borderRadius: 'var(--r-pill)', background: 'none', color: 'var(--err)', fontSize: 12, fontWeight: 700, cursor: 'pointer' } }, '彻底删除'))))),
+      hMS(UI.Confirm, { open: !!confirm, onClose: () => setConfirm(null), onConfirm: doPurge, busy: !!busyId,
+        title: '彻底删除「' + (confirm ? confirm.name : '') + '」？',
+        desc: '将立即删除该数字人及其全部图集 / 衍生 / 版本与文件，不可恢复。',
+        confirmText: '彻底删除' })));
+}
+
 export { MLicenses };
 export { MTasks };
 export { MMe };
+export { MTrash };

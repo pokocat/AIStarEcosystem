@@ -12,4 +12,5 @@ public interface DapLicenseRepository extends JpaRepository<DapLicense, String> 
     List<DapLicense> findByOwnerUserIdOrderByCreatedAtDesc(String ownerUserId);
     Optional<DapLicense> findByIdAndOwnerUserId(String id, String ownerUserId);
     Optional<DapLicense> findFirstByAvatarIdAndOwnerUserId(String avatarId, String ownerUserId);
+    List<DapLicense> findByAvatarId(String avatarId);
 }

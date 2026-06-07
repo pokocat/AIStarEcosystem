@@ -19,4 +19,5 @@ public interface DapJobRepository extends JpaRepository<DapJob, String> {
     long countByOwnerUserIdAndStatusAndFinishedAtAfter(String ownerUserId, String status, Instant after);
     @Query("SELECT COALESCE(SUM(j.cost),0) FROM DapJob j WHERE j.ownerUserId = :uid AND j.createdAt >= :since AND j.status <> 'failed'")
     long sumCostSince(@Param("uid") String uid, @Param("since") Instant since);
+    List<DapJob> findByAvatarId(String avatarId);
 }
