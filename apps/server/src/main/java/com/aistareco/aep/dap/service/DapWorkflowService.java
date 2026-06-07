@@ -14,7 +14,9 @@ import com.aistareco.aep.dap.repository.DapDerivativeRepository;
 import com.aistareco.aep.dap.repository.DapLookRepository;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -124,6 +126,65 @@ public class DapWorkflowService {
         DapJob job = jobService.submit(userId, a, DapJob.T_WARP, "几何精调", engineName(),
                 jobService.priceOf(DapJob.T_WARP, null), "约 30 秒", payload);
         return JobDto.from(job, support::hm);
+    }
+
+    // ── 端上精调落库（v0.52）──────────────────────────────────
+    //   美颜/变形在浏览器端确定性完成（MediaPipe 关键点 + WebGL 位移场），
+    //   server 只接收成品图：存储 → 切定妆图 → 记版本 → 登记已完成作业。
+    //   不经生成式模型、不扣积分（无引擎成本）；params 仅作审计快照。
+
+    private static final ObjectMapper REFINE_JSON = new ObjectMapper();
+    private static final long REFINE_MAX_BYTES = 15L * 1024 * 1024;
+
+    public Map<String, Object> refineApply(String userId, String avatarId,
+                                           MultipartFile file, String paramsJson, String note) {
+        DapAvatar a = avatarService.required(userId, avatarId);
+        if (a.getImageKey() == null) {
+            throw BusinessException.badRequest("DAP_NO_IMAGE", "请先生成并挑选形象");
+        }
+        if (file == null || file.isEmpty()) {
+            throw BusinessException.badRequest("DAP_NO_FILES", "未收到精调结果图");
+        }
+        if (file.getSize() > REFINE_MAX_BYTES) {
+            throw BusinessException.badRequest("DAP_IMAGE_TOO_LARGE", "精调结果图过大（上限 15MB）");
+        }
+        String ct = file.getContentType();
+        if (ct == null || !ct.toLowerCase().startsWith("image/")) {
+            throw BusinessException.badRequest("DAP_BAD_IMAGE", "仅支持图片文件");
+        }
+
+        Map<String, Object> params = parseRefineParams(paramsJson);
+        String zhNote = note != null && !note.isBlank() ? note.trim() : "精调 · 端上美化";
+        if (zhNote.length() > 120) zhNote = zhNote.substring(0, 120);
+
+        FileStorageService.StoredFile stored = storage.store(file, "dap/avatar", userId);
+        a.setImageKey(stored.key());
+        a.setImageBytes(a.getImageBytes() + stored.bytes());
+        a.setStatus("refining");
+        avatarService.addVersion(a, zhNote, "refine", stored.key());
+        avatarService.save(a);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("params", params);
+        payload.put("source", "client");
+        DapJob job = jobService.recordLocalDone(userId, a, "精调 · 端上美化", DapJob.T_REFINE_LOCAL,
+                payload, Map.of("imageUrl", storage.signedUrl(stored.key())));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("avatar", avatarService.toDto(a));
+        out.put("imageUrl", storage.signedUrl(stored.key()));
+        out.put("jobId", job.getId());
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseRefineParams(String paramsJson) {
+        if (paramsJson == null || paramsJson.isBlank()) return Map.of();
+        try {
+            return REFINE_JSON.readValue(paramsJson, Map.class);
+        } catch (Exception e) {
+            return Map.of("_raw", paramsJson.length() > 500 ? paramsJson.substring(0, 500) : paramsJson);
+        }
     }
 
     // ── 造型 ──────────────────────────────────────────────────

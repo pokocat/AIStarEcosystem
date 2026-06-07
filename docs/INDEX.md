@@ -30,6 +30,7 @@
 | [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) ★ | AiAvatar 数字人资产平台（3013） | 移动端 H5/小程序形态 SPA · 真人复刻 / AI 原创 · 5 步链路 + 6 类衍生 · 单色青「清爽」皮肤 · mock 驱动自包含（last-reviewed 2026-06-06，v0.50 首版前端落地） |
 | [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 平台 | 忠实移植原型 / strict 关闭 / 与 v0.45 server 领域解耦 / 字体策略 / 导航栈 决策记录 |
 | [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |
+| [`docs/FACE_BEAUTY_RESEARCH.md`](FACE_BEAUTY_RESEARCH.md) | AiAvatar 平台 | 形象「精调 / 美颜」技术方案调研：浏览器端确定性美颜（推荐）vs 云 API vs Agnes i2i（last-reviewed 2026-06-07） |
 
 不动产品规格的方向时不必读 §3 ~ §7。
 

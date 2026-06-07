@@ -109,6 +109,35 @@ src/
 
 ## 版本日志
 
+### v0.5（2026-06-07）— 精调美颜端上化（真实生效：MediaPipe 关键点 + WebGL 实时美颜）
+
+- **痛点**：几何精调原走「滑杆参数 → 英文指令 → Agnes i2i 整图重绘」，细粒度数值指令对扩散模型
+  基本无效 / 不可控，且重绘漂移身份、无预览、不可复算。方案调研见
+  [`docs/FACE_BEAUTY_RESEARCH.md`](../../docs/FACE_BEAUTY_RESEARCH.md)。
+- **新模块 `src/proto/beauty/`**（端上确定性美颜，零新增 npm 依赖）：
+  - `landmarks.ts` — MediaPipe Face Landmarker（478 点，WASM，Apache-2.0）运行时加载：
+    自托管 `public/mediapipe/**` 优先，jsDelivr CDN 兜底（`NEXT_PUBLIC_MP_ASSETS_BASE` 可覆盖）；
+    检测失败 / mock 占位 → 标准构图近似锚点降级（流程不断，角标提示）。
+  - `engine.ts` — WebGL1 单 shader：位移场液化（径向缩放 + 定向位移 ≤12 op，5 滑杆 → 人脸锚点
+    构建）+ 保边磨皮（色距加权 + 高频回注，限皮肤 mask）+ 美白 + 滤镜调色；画布即原图分辨率，
+    导出 `canvas.toBlob`。像素级保身份、确定性可复算。
+  - `presets.ts` — 一键美颜三档（轻/标准/重）+ 7 款滤镜（参数式调色，新增滤镜一行配置）。
+  - `studio.tsx` — 精调工作台：实时预览（拖动 60fps）/ 按住对比原图 / 精调·美颜·滤镜三分区 /
+    应用 → 全分辨率导出上传。
+- **创建链路 step3 调整**（`screen-chain.tsx`）：「精确精调」→「精调美颜」（BeautyStudio 实时生效）；
+  「自然语言迭代」更名「AI 重绘迭代」（Agnes i2i 保留，定位语义级编辑）。
+- **api.ts**：`AvatarApi.imageBlob`（同源取图，规避 CDN 跨域 canvas 污染）+ `AvatarApi.applyRefine`
+  （multipart 成品回传）；mock 分支完整（占位画像可演示全流程，应用后 dataURL 落 mock store）。
+- **server**（`com.aistareco.aep.dap.*`）：
+  - `GET /api/v1/avatars/{id}/image` — 定妆图同源流式输出（owner 校验 + no-store）；
+  - `POST /api/v1/avatars/{id}/refine-apply` — 成品图落 `FileStorageService` → 切定妆图 →
+    `addVersion("refine")` → `recordLocalDone` 登记已完成作业（mode=local，**零积分**——无引擎成本）；
+  - `/avatars/{id}/warp`（Agnes 路径）保留为 legacy，UI 不再调用。
+- **自托管资产**：`public/mediapipe/`（~25MB：SIMD/nosimd 双 wasm + face_landmarker.task），
+  随仓库提交保证离线/国内可用；`scripts/fetch-mediapipe-assets.sh` 可重新拉取/升级。
+- **注意**：生产 CDN 无需为此配 CORS（取图走同源 API）；低端机首次加载关键点资产 3~11MB
+  （gzip 后显著小），仅精调页触发且全局单例缓存。
+
 ### v0.4（2026-06-06）— 全栈打通：登录 + 真实生成（server dap 领域 + Agnes 多模态）
 
 - **登录门**（live 模式）：新 `screen-login`（手机验证码 / 注册（验证码+激活码）/ dev 体验账号），

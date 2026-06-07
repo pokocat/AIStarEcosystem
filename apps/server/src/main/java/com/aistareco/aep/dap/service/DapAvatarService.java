@@ -244,6 +244,33 @@ public class DapAvatarService {
         return toDto(a);
     }
 
+    // ── 定妆图同源输出（端上精调取图；规避 CDN 跨域 canvas 污染）──
+
+    /** 当前定妆图的字节 + MIME（owner 校验；无图 404）。 */
+    public ImagePayload imageContent(String userId, String id) {
+        DapAvatar a = required(userId, id);
+        if (a.getImageKey() == null || a.getImageKey().isBlank()) {
+            throw BusinessException.notFound("DAP_NO_IMAGE", "尚未生成定妆形象");
+        }
+        try {
+            java.nio.file.Path p = storage.openForRead(a.getImageKey());
+            return new ImagePayload(java.nio.file.Files.readAllBytes(p), mimeOfKey(a.getImageKey()));
+        } catch (java.io.IOException e) {
+            throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,
+                    "DAP_IMAGE_READ_FAILED", "形象图读取失败，请稍后重试");
+        }
+    }
+
+    public record ImagePayload(byte[] bytes, String contentType) {}
+
+    private static String mimeOfKey(String key) {
+        String k = key.toLowerCase();
+        if (k.endsWith(".jpg") || k.endsWith(".jpeg")) return "image/jpeg";
+        if (k.endsWith(".webp")) return "image/webp";
+        if (k.endsWith(".gif")) return "image/gif";
+        return "image/png";
+    }
+
     // ── 照片素材 ──────────────────────────────────────────────
 
     @Transactional

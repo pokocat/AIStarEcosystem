@@ -169,6 +169,42 @@ public class DapJobService {
         return "JOB-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
+    // ── 端上完成作业登记 ───────────────────────────────────────
+
+    /**
+     * 登记一条「已完成」的端上作业（v0.52 端上精调）：图像处理在用户浏览器完成，
+     * 这里只为任务中心留审计痕迹。不走 runner、不扣积分、不要求生成引擎已配置。
+     */
+    public DapJob recordLocalDone(String userId, DapAvatar avatar, String kind, String type,
+                                  Map<String, Object> payload, Map<String, Object> result) {
+        Instant now = Instant.now();
+        DapJob job = DapJob.builder()
+                .id(uniqueId())
+                .ownerUserId(userId)
+                .avatarId(avatar != null ? avatar.getId() : null)
+                .charName(avatar != null ? avatar.getName() : null)
+                .kind(kind)
+                .type(type)
+                .engine("端上图像引擎")
+                .mode("local")
+                .status("done")
+                .stage("done")
+                .pct(100)
+                .eta("已完成")
+                .cost(0)
+                .payload(payload == null ? new LinkedHashMap<>() : payload)
+                .result(result == null ? new LinkedHashMap<>() : result)
+                .createdAt(now)
+                .startedAt(now)
+                .finishedAt(now)
+                .heartbeatAt(now)
+                .stageUpdatedAt(now)
+                .build();
+        jobRepo.save(job);
+        log.info("[dap-job] local-done id={} type={} avatar={} (端上处理，无扣费)", job.getId(), type, job.getAvatarId());
+        return job;
+    }
+
     // ── 价格表 ────────────────────────────────────────────────
 
     public long priceOf(String type, String derivKey) {

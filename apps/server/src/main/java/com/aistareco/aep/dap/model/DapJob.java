@@ -42,6 +42,7 @@ public class DapJob {
     public static final String T_LOOK = "look";                   // 设计造型 / 场景替换
     public static final String T_DERIVE = "derive";               // 衍生（payload.derivKey 细分）
     public static final String T_VOICE_CLONE = "voice_clone";     // 声音克隆登记
+    public static final String T_REFINE_LOCAL = "refine_local";   // 端上精调（浏览器实时美颜，成品回传落库）
 
     @Id
     @Column(length = 32)

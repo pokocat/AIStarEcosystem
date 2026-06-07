@@ -479,6 +479,56 @@ export const AvatarApi = {
     }
     return apiFetch(`/avatars/${id}/warp`, { method: "POST", body: JSON.stringify(params) });
   },
+  // —— 端上精调（v0.52：美颜在浏览器实时处理，这里只取图 / 存成品）——
+  /** 取当前定妆图字节（同源流式输出，规避 CDN 跨域 canvas 污染）。无图返回 null。 */
+  imageBlob: async (id: string): Promise<Blob | null> => {
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      const src = (c && (c.imageUrl || (c.variantImages || [])[0])) || null;
+      if (!src) return null;
+      try {
+        const r = await fetch(src);
+        return r.ok ? await r.blob() : null;
+      } catch {
+        return null;
+      }
+    }
+    try {
+      const res = await fetch(`${API_PREFIX}/avatars/${id}/image`, { headers: { ...authHeaders() } });
+      if (res.status === 401) { fireAuthExpired(); return null; }
+      if (!res.ok) return null;
+      return await res.blob();
+    } catch {
+      return null;
+    }
+  },
+  /** 上传端上精调成品 → 保存为新版本（不经生成式模型，零积分）。返回 { avatar, imageUrl, jobId }。 */
+  applyRefine: async (id: string, file: Blob, params: Record<string, unknown>, note?: string): Promise<any> => {
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      const dataUrl = await new Promise<string>((ok, err) => {
+        const fr = new FileReader();
+        fr.onload = () => ok(String(fr.result));
+        fr.onerror = () => err(new Error("READ_FAILED"));
+        fr.readAsDataURL(file);
+      });
+      if (c) {
+        c.imageUrl = dataUrl;
+        c.versions = (c.versions || 1) + 1;
+        c.updated = "刚刚";
+        if (c.status === "iterating" || c.status === "pending") c.status = "refining";
+      }
+      const job = newMockJob({ kind: "精调 · 端上美化", char: id, charName: c?.name, engine: "端上图像引擎", mode: "local" });
+      const j = mockJobStore.get(job.id);
+      if (j) { j.status = "done"; j.pct = 100; j.eta = "已完成"; j.stage = "done"; }
+      return mock({ avatar: c ? { ...c } : { id }, imageUrl: dataUrl, jobId: job.id });
+    }
+    const fd = new FormData();
+    fd.append("file", file, "refine.jpg");
+    fd.append("params", JSON.stringify(params || {}));
+    if (note) fd.append("note", note);
+    return apiUpload(`/avatars/${id}/refine-apply`, fd);
+  },
 };
 
 // ── 真人捕获 / 授权 ───────────────────────────────────────────

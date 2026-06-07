@@ -6,6 +6,7 @@ import { DATA, AvatarApi, JobApi, awaitJob, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { MShell } from "./shell";
 import { toast } from "./toast";
+import { BeautyStudio } from "./beauty/studio";
 
 // ============================================================
 // 移动端 · 创建链路 5 步全屏向导（live 全接 server）
@@ -210,7 +211,6 @@ function MStepAdjust({ wiz, onReady }) {
   const [rounds, setRounds] = useStateMC([] as any[]);
   const [input, setInput] = useStateMC('');
   const [busy, setBusy] = useStateMC(false);
-  const [warp, setWarp] = useStateMC(DATA.WARP_CTRLS.map(c => ({ ...c })));
   useEffectMC(() => { onReady(true); AvatarApi.versions(char.id).then(setRounds).catch(() => {}); }, []);
 
   const refreshAfterJob = async (jobId: string, doneMsg: string) => {
@@ -235,40 +235,29 @@ function MStepAdjust({ wiz, onReady }) {
     } finally { setBusy(false); }
   };
 
-  const applyWarp = async () => {
-    if (busy) return;
-    const params: any = {};
-    warp.forEach((c) => { if (c.val !== 0) params[c.key] = c.val; });
-    if (!Object.keys(params).length) { toast('先拖动滑杆设置精调参数', { tone: 'warn' }); return; }
-    setBusy(true);
-    try {
-      const j = await AvatarApi.warp(char.id, params);
-      toast('精调中…', { tone: 'ok' });
-      await refreshAfterJob(j.id, '精调完成');
-      setWarp(DATA.WARP_CTRLS.map(c => ({ ...c })));
-    } catch (e: any) {
-      toast(e?.message || '精调失败', { tone: 'err' });
-    } finally { setBusy(false); }
+  // 端上精调成功回调：刷新形象 + 版本时间线（图像处理在 BeautyStudio 内完成）
+  const onRefined = (fresh: any) => {
+    if (fresh && fresh.id) wiz.setChar({ ...char, ...fresh });
+    AvatarApi.versions(char.id).then(setRounds).catch(() => {});
   };
 
   return hMC('div', { className: 'm-fade', style: { padding: '18px 18px 0' } },
     hMC('h2', { style: { fontSize: 21, marginBottom: 6 } }, '调整形象'),
-    hMC('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 14 } }, '自然语言整体迭代，或几何精确精调，随时切换。满意后点底部「完成创建」直接保存到名录；标准图集与衍生可稍后在资产详情里生成。'),
+    hMC('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 14 } }, 'AI 重绘整体迭代，或实时精调美颜（拖动即生效），随时切换。满意后点底部「完成创建」直接保存到名录；标准图集与衍生可稍后在资产详情里生成。'),
     hMC('div', { style: { display: 'flex', background: 'var(--surface-3)', padding: 3, borderRadius: 'var(--r-pill)', marginBottom: 16 } },
-      [['iterate', '自然语言迭代', Icons.wand], ['refine', '精确精调', Icons.sliders]].map(([k, l, ic]: any) => {
+      [['iterate', 'AI 重绘迭代', Icons.wand], ['refine', '精调美颜', Icons.sliders]].map(([k, l, ic]: any) => {
         const on = mode === k;
         return hMC('button', { key: k, onClick: () => setMode(k), style: { flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 36, border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent', color: on ? 'var(--ink)' : 'var(--ink-3)', fontSize: 12.5, fontWeight: 600, boxShadow: on ? 'var(--sh-1)' : 'none' } },
           hMC(ic, { size: 15, stroke: 1.9 }), l);
       })),
 
-    hMC('div', { style: { position: 'relative', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)', marginBottom: 14 } },
-      hMC(Portrait, { char, variant: 'key', ratio: '4 / 5', expr: 'calm' }),
-      busy && hMC('div', { style: { position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,.55)', backdropFilter: 'blur(2px)' } },
-        hMC('div', { style: { display: 'flex', alignItems: 'center', gap: 9, padding: '10px 16px', background: 'var(--surface)', borderRadius: 'var(--r-pill)', boxShadow: 'var(--sh-2)' } },
-          hMC(UI.Spinner, { size: 16 }), hMC('span', { style: { fontSize: 13, fontWeight: 600 } }, '生成中…')))),
-
     mode === 'iterate'
       ? hMC('div', null,
+          hMC('div', { style: { position: 'relative', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)', marginBottom: 14 } },
+            hMC(Portrait, { char, variant: 'key', ratio: '4 / 5', expr: 'calm' }),
+            busy && hMC('div', { style: { position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,.55)', backdropFilter: 'blur(2px)' } },
+              hMC('div', { style: { display: 'flex', alignItems: 'center', gap: 9, padding: '10px 16px', background: 'var(--surface)', borderRadius: 'var(--r-pill)', boxShadow: 'var(--sh-2)' } },
+                hMC(UI.Spinner, { size: 16 }), hMC('span', { style: { fontSize: 13, fontWeight: 600 } }, '生成中…')))),
           hMC('div', { style: { display: 'flex', gap: 9, marginBottom: 14 } },
             hMC(UI.Textarea, { value: input, onChange: setInput, rows: 1, placeholder: '例：发色再亮、眼神更温柔…', style: { minHeight: 46 } }),
             hMC(UI.Button, { variant: 'primary', icon: Icons.wand, disabled: busy || !input.trim(), onClick: submitIterate, style: { flex: '0 0 auto', alignSelf: 'stretch' } })),
@@ -281,17 +270,7 @@ function MStepAdjust({ wiz, onReady }) {
               hMC('span', { className: 'mono', style: { fontSize: 11, fontWeight: 700, color: r.cur ? 'var(--primary)' : 'var(--ink-3)', flex: '0 0 auto' } }, r.v),
               hMC('span', { className: 'm-clip1', style: { fontSize: 12.5, color: 'var(--ink-2)', flex: 1 } }, r.note),
               hMC('span', { style: { fontSize: 10.5, color: 'var(--ink-4)', flex: '0 0 auto' } }, r.t)))))
-      : hMC('div', { className: 'm-card', style: { padding: 15 } },
-          hMC('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
-            hMC('span', { style: { fontSize: 14, fontWeight: 700 } }, '几何微调'),
-            hMC('button', { onClick: () => setWarp(DATA.WARP_CTRLS.map(c => ({ ...c }))), style: { background: 'none', border: 'none', color: 'var(--ink-3)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 } }, hMC(Icons.refresh, { size: 13 }), '重置')),
-          hMC('div', { style: { display: 'flex', flexDirection: 'column', gap: 15, marginBottom: 16 } },
-            warp.map((c, i) => hMC('div', { key: c.key },
-              hMC('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 7 } },
-                hMC('span', { style: { fontSize: 13, fontWeight: 600 } }, c.name),
-                hMC('span', { className: 'mono', style: { fontSize: 11.5, color: c.val !== 0 ? 'var(--primary)' : 'var(--ink-3)', fontWeight: 600 } }, (c.val > 0 ? '+' : '') + c.val)),
-              hMC(UI.Slider, { value: c.val, min: c.min, max: c.max, onChange: v => setWarp(w => w.map((x, j) => j === i ? { ...x, val: v } : x)) })))),
-          hMC(UI.Button, { variant: 'primary', full: true, icon: Icons.sliders, disabled: busy, onClick: applyWarp }, busy ? '生成中…' : '应用精调并重绘')));
+      : hMC(BeautyStudio, { char, onApplied: onRefined }));
 }
 
 // ===== 向导外壳 =====

@@ -39,7 +39,7 @@ export type LicenseStatus = "active" | "pending" | "expired";
 
 /** 任务状态 / 执行模式（规格 §1.7）。 */
 export type JobStatus = "running" | "done" | "failed";
-export type JobMode = "mock" | "backend" | "selfhost";
+export type JobMode = "mock" | "backend" | "selfhost" | "local"; // local = 端上处理（浏览器完成，server 仅登记）
 
 /** UI 徽标语义色调。 */
 export type Tone = "mute" | "primary" | "ok" | "warn" | "err" | "info";

@@ -6414,7 +6414,11 @@ paths:
   /v1/avatars/{id}/iterate:
     post: { tags: [dap], operationId: dapIterateAvatar, description: 自然语言迭代 → 异步任务, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/warp:
-    post: { tags: [dap], operationId: dapWarpAvatar, description: 几何精调参数 → 异步任务, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapWarpAvatar, description: 几何精调参数 → 异步任务（AI 重绘路径，legacy；v0.52 起精确滑杆走端上 refine-apply）, responses: { '200': { description: ok } } }
+  /v1/avatars/{id}/image:
+    get: { tags: [dap], operationId: dapAvatarImage, description: 当前定妆图同源流式输出（owner 校验；供端上精调画布取图，规避 CDN 跨域 canvas 污染）, responses: { '200': { description: image bytes } } }
+  /v1/avatars/{id}/refine-apply:
+    post: { tags: [dap], operationId: dapRefineApply, description: 端上精调成品回传（multipart file+params+note）→ 存储/切定妆图/记 refine 版本/登记已完成作业；零积分, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/finalize:
     post: { tags: [dap], operationId: dapFinalizeAvatar, description: 定稿（archive=true 直接入库）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/voice:

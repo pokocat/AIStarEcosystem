@@ -22,6 +22,8 @@ import com.aistareco.aep.dap.service.DapVoiceService;
 import com.aistareco.aep.dap.service.DapWorkflowService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -192,6 +194,27 @@ public class DapAvatarController {
     public ApiResponse<Map<String, Object>> warp(Principal principal, @PathVariable String id,
                                                  @RequestBody Map<String, Object> params) {
         return ApiResponse.of(workflow.warp(uid(principal), id, params).toWire());
+    }
+
+    // ── 端上精调（v0.52：浏览器实时美颜）─────────────────────
+
+    /** 当前定妆图同源流式输出（owner 校验）。供前端画布取图，规避 CDN 跨域 canvas 污染。 */
+    @GetMapping("/{id}/image")
+    public ResponseEntity<byte[]> image(Principal principal, @PathVariable String id) {
+        var img = avatarService.imageContent(uid(principal), id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, img.contentType())
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=0, no-store")
+                .body(img.bytes());
+    }
+
+    /** 接收端上精调成品图 → 存储 / 切定妆图 / 记版本 / 登记已完成作业（零积分）。 */
+    @PostMapping("/{id}/refine-apply")
+    public ApiResponse<Map<String, Object>> refineApply(Principal principal, @PathVariable String id,
+                                                        @RequestParam("file") MultipartFile file,
+                                                        @RequestParam(value = "params", required = false) String params,
+                                                        @RequestParam(value = "note", required = false) String note) {
+        return ApiResponse.of(workflow.refineApply(uid(principal), id, file, params, note));
     }
 
     @PostMapping("/{id}/finalize")

@@ -2581,6 +2581,39 @@ web    : api.ts 重写：auth（token/localStorage + 401 全局事件）+ AuthAp
    不建任务、不扣费、不产出灰底剪影占位图。dap-verify.sh `AGNES=none` 联调路径
    显式 export `AEP_DAP_ALLOW_PLACEHOLDER=true` 保持可用。
 
+### v0.52（2026-06-07）— web-aiavatar 精调美颜端上化（确定性真实生效）
+
+几何精调从「参数→英文指令→Agnes i2i 整图重绘」（不可控/漂移身份/无预览）改为**端上确定性美颜**：
+浏览器内 MediaPipe Face Landmarker（478 关键点，WASM，Apache-2.0）+ WebGL 位移场液化 + 磨皮美白 +
+滤镜，拖动滑杆实时生效，「应用」时全分辨率导出回传落库。方案调研见 `docs/FACE_BEAUTY_RESEARCH.md`
+（阿里云 viapi 人脸美型已下架；Face++ 0.1 元/次可作备选；选定端上方案：零成本/实时/保身份）。
+
+```
+web-aiavatar : 新 src/proto/beauty/{landmarks,engine,presets}.ts + studio.tsx（精调工作台：
+             :   精调 5 滑杆 / 一键美颜三档+磨皮美白 / 7 滤镜 / 按住对比 / 应用上传）
+             : screen-chain step3：「精确精调」→ BeautyStudio；「自然语言迭代」更名「AI 重绘迭代」
+             : api.ts +AvatarApi.imageBlob（同源取图）+applyRefine（multipart 成品回传）；mock 全程可演示
+             : public/mediapipe/（~25MB 自托管 wasm+模型，离线/国内可用）+ scripts/fetch-mediapipe-assets.sh
+server       : DapAvatarController +GET /api/v1/avatars/{id}/image（定妆图同源流式输出，解 CDN 跨域
+             :   canvas 污染）+POST /api/v1/avatars/{id}/refine-apply（multipart file+params+note）
+             : DapWorkflowService.refineApply：FileStorageService 落图 → 切定妆图 → addVersion("refine")
+             : DapJobService.recordLocalDone：登记 done 作业（type=refine_local, mode=local, cost=0——
+             :   端上处理无引擎成本，不扣积分，不要求 Agnes 已配置）
+             : /avatars/{id}/warp（Agnes i2i）保留 legacy，前端不再调用
+openapi      : +/v1/avatars/{id}/image (get) +/v1/avatars/{id}/refine-apply (post)
+```
+
+**注意事项**：
+
+- **不是生成式**：精调结果像素级保身份、同参数可复算；§8.0 静默降级规则不涉及（无降级占位概念，
+  WebGL 不可用时 UI 明示「不支持」，不产假图）。
+- **关键点资产加载链**：`/mediapipe`（自托管）→ jsDelivr CDN（`NEXT_PUBLIC_MP_ASSETS_BASE` 可覆盖）；
+  检测失败 → 标准构图近似锚点（UI 角标「近似调整」），流程不断。
+- **取图必须走 `/avatars/{id}/image` 同源端点**，不要让画布直接 `<img src=签名CDN URL>` 再导出
+  （canvas 跨域污染）。生产 CDN 无需为此配 CORS。
+- **未做**：资产详情页独立精调入口（详情「调整形象」本就跳 chain adjust，已覆盖）；美颜参数
+  服务端复算（beauty-service，研究文档 P1）；视频帧美颜；Agnes「AI 精修」独立按钮（迭代已覆盖语义编辑）。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）
