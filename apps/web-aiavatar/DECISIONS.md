@@ -112,3 +112,18 @@ system-ui / Georgia / monospace 回退，优雅降级。
 - Look / Scene 场景库、声音克隆、3D 可旋转查看器的真实后端落地。
 - 平台访问隔离（v0.43 的 `SubProduct` 仅含 music/drama/celebrity；纳入 aiavatar 需扩 `PlatformSupport`）。
 - 真·URL 路由 / 历史栈同步；i18n（当前中文单语，符合仓库约定）。
+
+
+---
+
+## v0.4 追加（2026-06-06）— 全栈打通后的边界决策
+
+- **server 对齐方式**：新建 `com.aistareco.aep.dap.*`（表 `dap_*`），REST 面 `/api/v1/**` 与
+  `src/proto/api.ts` 逐字段对齐（wire 含 `char` 等 TS 命名，Java 侧用 toWire Map 适配）；
+  v0.45 旧 `aiavatar_*` 领域经用户确认整体删除（V6 迁移幂等清表）。
+- **生成引擎**：Agnes AI 单一出口（AgnesClient）。不接 AiModelInvocationService（其仅 chat、且需
+  admin 配置端点），保持本子产品自包含；key 走 `AGNES_API_KEY` env。
+- **诚实降级三处**：未配 key → 占位产物 + `mock=true` 角标；3D → 多角度预览图（GLB 排期中）；
+  声音克隆 → 采样存档/回放（TTS 排期中）。UI 文案均明示，不伪装能力。
+- **mock 模式仍是一等公民**：`USE_MOCK=1` 内置任务模拟器（pct 推进 / deriv 状态翻转），
+  所有新流程离线可演示；live 切换零屏幕层改动的承诺保持成立。

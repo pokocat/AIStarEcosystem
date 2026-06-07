@@ -330,6 +330,22 @@ src/main/java/com/aistareco/aep/
 | `COACH` | 普通用户 | 掌门人，通过秘钥注册 |
 | `FAN` | 普通用户 | 粉丝，通过秘钥注册 |
 
+### 数字人资产平台域（dap_*，v0.51）
+
+> 服务 apps/web-aiavatar（/api/v1/**）。账户复用 aep_users + 钱包；大模型走 Agnes（AGNES_API_KEY）。
+
+| 表 | 说明 |
+|------|------|
+| `dap_avatar` | 数字人本体（8 态状态机 draft→…→archived；def/deriv/counts JSON；imageKey/variantKeys/shotKeys 存 storage key） |
+| `dap_avatar_version` | 版本时间线（init/iterate/refine/template/finalize/archive 事件 + 当时主图） |
+| `dap_look` | 造型（design 描述 / scene 场景替换，异步生成） |
+| `dap_derivative` | 衍生产物（atlas/expr/scene/ward/d3/video 单条文件 + bytes 存储统计） |
+| `dap_license` | 真人肖像电子授权（捕获核验自动登记；HTML 凭证 certKey） |
+| `dap_job` | 异步作业（wire 三态 running/done/failed；cost + hold referenceId=jobId:rN） |
+| `dap_voice` | 我的声线（克隆采样加密存档，试听=采样回放） |
+| `dap_capture` | 真人捕获会话（footage + ffmpeg 抽帧 frameKey） |
+| `dap_photo` | 形象照片素材（上传照片复刻输入） |
+
 ### 核心表（账户与计费域）
 
 > 已废弃：`aep_products` / `aep_plans` / `aep_features` / `aep_plan_features` / `aep_entitlements` —— 订阅 / 权益模型被「一次性点数发放 + License」替代，见 product_spec.md §0.1、§0.2。

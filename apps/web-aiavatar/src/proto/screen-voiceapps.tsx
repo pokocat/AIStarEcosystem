@@ -9,7 +9,7 @@ import { MShell, MKit } from "./shell";
 // 移动端 · 声音工作室 Voice + 应用中心 Apps
 // ============================================================
 const hMV : any = React.createElement;
-const { useState: useStateMV } = React;
+const { useState: useStateMV, useRef: useRefMV, useEffect: useEffectMV } = React;
 const { WxNav: WxNavV } = MShell;
 const { MSection: MSectionV } = MKit;
 
@@ -62,10 +62,34 @@ function VoiceRowM({ v, playing, onPlay, chars }: any) {
 function MVoice({ ctx }) {
   const [tab, setTab] = useStateMV('builtin');
   const [playing, setPlaying] = useStateMV(null);
-  const onPlay = (id) => setPlaying(p => p === id ? null : id);
+  const audioRef = useRefMV(null as any);
   const VOICES = useApi(() => VoiceApi.builtin(), seed.builtinVoices());
   const myVoices = useApi(() => VoiceApi.mine(), seed.myVoices());
   const chars = useApi(() => AvatarApi.list('mine'), seed.avatars());
+  useEffectMV(() => () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } }, []);
+
+  // 我的克隆声线 → 播放原始采样；内置音色 → 暂无 TTS，提示说明
+  const onPlay = (id) => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (playing === id) { setPlaying(null); return; }
+    const mine: any = myVoices.find((v: any) => v.id === id);
+    if (mine) {
+      if (mine.audioUrl) {
+        const a = new Audio(mine.audioUrl);
+        a.onended = () => setPlaying(null);
+        a.play().catch(() => ctx.toast('播放失败，请稍后重试', { tone: 'warn' }));
+        audioRef.current = a;
+        setPlaying(id);
+      } else {
+        ctx.toast('该声线暂无可播放采样', { tone: 'warn' });
+      }
+      return;
+    }
+    // 内置音色
+    setPlaying(id);
+    ctx.toast('内置音色为合成声线 · 在线试听即将上线', { tone: 'ok' });
+    setTimeout(() => setPlaying((p) => (p === id ? null : p)), 1800);
+  };
 
   const vrow = (v) => {
     const pl = playing === v.id;
@@ -87,8 +111,7 @@ function MVoice({ ctx }) {
       hMV('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 0 16px' } },
         '内置 AI 智能音色由大模型按音色描述实时合成，开箱即用；也可克隆本人声线作为专属音色。'),
       hMV('div', { style: { display: 'flex', flexDirection: 'column', gap: 11, marginBottom: 24 } },
-        hMV(VAction, { icon: Icons.mic, title: '克隆我的声音', sub: '录一段或上传音频，1:1 复刻声线', onClick: () => ctx.go('voiceclone') }),
-        hMV(VAction, { icon: Icons.upload, title: '从第三方导入', sub: '接入已有声音库 / 授权音色', onClick: () => ctx.go('voiceclone') })),
+        hMV(VAction, { icon: Icons.mic, title: '克隆我的声音', sub: '录一段或上传音频，加密存档为专属声线', onClick: () => ctx.go('voiceclone') })),
 
       hMV('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
         [['builtin', '内置音色'], ['mine', '我的声音']].map(([k, l]) => {
@@ -109,8 +132,14 @@ function MVoice({ ctx }) {
               hMV('span', { style: { fontFamily: 'var(--font-disp)', fontSize: 14.5, fontWeight: 800 } }, '男声'),
               hMV('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)' } }, VOICES.filter(v => v.gender === 'male').length)),
             VOICES.filter(v => v.gender === 'male').map(vrow))
-        : hMV('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 11 } },
-            myVoices.map(v => hMV(VoiceRowM, { key: v.id, v, playing: playing === v.id, onPlay, chars })))));
+        : myVoices.length === 0
+          ? hMV('div', { style: { textAlign: 'center', padding: '36px 18px', border: '1.5px dashed var(--line-3)', borderRadius: 'var(--r-xl)', background: 'var(--surface)' } },
+              hMV('div', { style: { width: 50, height: 50, borderRadius: 15, margin: '0 auto 13px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMV(Icons.mic, { size: 23 })),
+              hMV('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 5 } }, '还没有专属声线'),
+              hMV('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, '录 ' + 10 + ' 秒即可克隆你的声音'),
+              hMV(UI.Button, { variant: 'primary', icon: Icons.mic, onClick: () => ctx.go('voiceclone') }, '去克隆'))
+          : hMV('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 11 } },
+              myVoices.map(v => hMV(VoiceRowM, { key: v.id, v, playing: playing === v.id, onPlay, chars })))));
 }
 
 // ============================================================

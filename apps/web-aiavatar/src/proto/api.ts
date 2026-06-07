@@ -4,13 +4,13 @@
 //
 // 设计：屏幕层只 import 本文件，绝不直接读 ./data。
 //   · 实体数据（数字人 / 造型 / 衍生 / 授权 / 任务 / 音色 / 账户 / 应用 / 场景）
-//     一律走异步函数：USE_MOCK=1 → 返回 ./data 的样例；USE_MOCK=0 → apiFetch 打后端。
+//     一律走异步函数：USE_MOCK=1 → 返回 ./data 的样例（含本地任务模拟器）；
+//     USE_MOCK=0 → apiFetch 打 server（/api/v1/**，Bearer Token）。
 //   · UI 字典（状态/路径/标准图/衍生 meta/链路/能力/精调/模板/配色）是展示配置，
 //     从这里同步再导出（screens 用 DATA.STATUS 等），同样只经本文件。
 //
-// REST 面对齐规格《数字人资产平台》§4（/api/v1，Bearer Token，业务 id 暴露）。
-// server 端尚未实现这些端点；当前默认 USE_MOCK=1 走本地样例，接后端时把
-// NEXT_PUBLIC_USE_MOCK=0 即可，屏幕层零改动。
+// server 端实现：apps/server com.aistareco.aep.dap.*（v0.51，表 dap_*）。
+// 登录：/api/auth/sms/*（生产）+ /api/auth/dev-login（dev 体验账号）。
 // ============================================================
 import React from "react";
 import * as Mock from "./data";
@@ -19,6 +19,9 @@ import * as Mock from "./data";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
 const API_PREFIX = "/api/v1";
+const AUTH_PREFIX = "/api/auth";
+const TOKEN_KEY = "aiavatar_token";
+const USER_KEY = "aiavatar_user";
 
 export class ApiError extends Error {
   code?: string;
@@ -32,36 +35,126 @@ export class ApiError extends Error {
 }
 
 const mock = <T,>(v: T): Promise<T> => Promise.resolve(v);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// ── 登录态 ───────────────────────────────────────────────────
+
+type AuthListener = () => void;
+const authExpiredListeners = new Set<AuthListener>();
+
+export function onAuthExpired(cb: AuthListener): () => void {
+  authExpiredListeners.add(cb);
+  return () => authExpiredListeners.delete(cb);
+}
+
+export const auth = {
+  token(): string | null {
+    if (typeof window === "undefined") return null;
+    return window.localStorage?.getItem(TOKEN_KEY) || null;
+  },
+  user(): any | null {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage?.getItem(USER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+  setSession(token: string, user?: any) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(TOKEN_KEY, token);
+    if (user) window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+  },
+  clear() {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(USER_KEY);
+  },
+  isAuthed(): boolean {
+    return USE_MOCK || !!auth.token();
+  },
+};
 
 function authHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const t = window.localStorage?.getItem("aiavatar_token");
+  const t = auth.token();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-/**
- * 统一 fetch：拼 /api/v1 前缀（next.config.mjs 把 /api/* 代理到 :8080），
- * 解包后端响应壳 `{ success, data }` / 分页 `{ data, pagination }`，失败抛 ApiError。
- */
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_PREFIX}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers || {}) },
+function fireAuthExpired() {
+  auth.clear();
+  authExpiredListeners.forEach((cb) => {
+    try { cb(); } catch { /* noop */ }
   });
+}
+
+async function parseResponse<T>(res: Response): Promise<T> {
   let json: any = null;
   try {
     json = await res.json();
   } catch {
     /* 无 body */
   }
+  if (res.status === 401) {
+    fireAuthExpired();
+    const err = json?.error || {};
+    throw new ApiError(err.message || "登录状态已过期，请重新登录", err.code || "UNAUTHORIZED", 401);
+  }
   if (!res.ok || (json && json.success === false)) {
     const err = json?.error || {};
     throw new ApiError(err.message || `请求失败（${res.status}）`, err.code, res.status);
   }
-  // ApiResponse<T> / PageEnvelope<T> 自动解包 data；裸 body 原样返回
   if (json && typeof json === "object" && "data" in json) return json.data as T;
   return json as T;
 }
+
+/** 统一 fetch（/api/v1 前缀；解包 { success, data } 壳；401 触发登出事件）。 */
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_PREFIX}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers || {}) },
+  });
+  return parseResponse<T>(res);
+}
+
+/** multipart 上传（不设 Content-Type，浏览器自带 boundary）。 */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${API_PREFIX}${path}`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+    body: form,
+  });
+  return parseResponse<T>(res);
+}
+
+/** 认证端点（/api/auth 前缀，permitAll）。 */
+async function authFetch<T>(path: string, body?: any): Promise<T> {
+  const res = await fetch(`${AUTH_PREFIX}${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return parseResponse<T>(res);
+}
+
+export const AuthApi = {
+  /** dev 体验账号清单（生产环境 404 → 返回 []）。 */
+  devAccounts: async (): Promise<any[]> => {
+    try {
+      return await authFetch<any[]>(`/dev-accounts`);
+    } catch {
+      return [];
+    }
+  },
+  devLogin: (username: string): Promise<{ token: string; user: any }> =>
+    authFetch(`/dev-login`, { username }),
+  smsRequestCode: (phone: string, purpose: "login" | "register" = "login"): Promise<{ sent: boolean }> =>
+    authFetch(`/sms/request-code`, { phone, purpose }),
+  smsLogin: (phone: string, code: string): Promise<{ token: string; user: any }> =>
+    authFetch(`/sms/verify`, { phone, code }),
+  smsRegister: (input: { phone: string; code: string; licenseKey: string; studioName: string; displayName?: string }): Promise<{ token: string; user: any }> =>
+    authFetch(`/sms/register`, input),
+};
 
 // ── UI 字典（展示配置，同步再导出）────────────────────────────
 
@@ -111,11 +204,57 @@ export type {
   DerivStatus,
 } from "./data";
 
+// ── Mock 任务模拟器（USE_MOCK=1 时让创建/衍生流程可观察推进）────
+
+let mockSeq = 9000;
+const mockJobStore = new Map<string, any>();
+/** mock 模式下的「我的数字人」可变副本（创建流程会往里加）。 */
+const mockChars: any[] = Mock.CHARS.map((c) => ({ ...c }));
+
+function newMockJob(partial: Partial<Mock.Job> & { kind: string }): Mock.Job {
+  const id = `JOB-${mockSeq++}`;
+  const job: any = {
+    id, char: partial.char || "DH-NEW", charName: partial.charName || "新建数字人",
+    kind: partial.kind, engine: partial.engine || "Agnes Image 2.1", mode: "mock",
+    status: "running", pct: 4, eta: "排队中", stage: "mock.generate",
+    started: new Date().toTimeString().slice(0, 5),
+    ...partial,
+  };
+  mockJobStore.set(id, job);
+  return job;
+}
+
+function tickMockJob(id: string) {
+  const job = mockJobStore.get(id);
+  if (!job || job.status !== "running") return job;
+  job.pct = Math.min(100, job.pct + 22 + Math.random() * 14);
+  job.eta = job.pct >= 100 ? "已完成" : "生成中…";
+  job.stage = job.pct >= 100 ? "done" : "mock.generate";
+  if (job.pct >= 100) { job.pct = 100; job.status = "done"; }
+  return job;
+}
+
+/** 轮询任务直到终态；onTick 每次回调最新任务。失败时 reject ApiError。 */
+export async function awaitJob(jobId: string, onTick?: (job: Mock.Job) => void,
+                               intervalMs = USE_MOCK ? 700 : 1500): Promise<Mock.Job> {
+  // 上限 ~12 分钟（视频任务最长）
+  for (let i = 0; i < 700; i++) {
+    const job = await JobApi.get(jobId);
+    onTick?.(job);
+    if (job.status === "done") return job;
+    if (job.status === "failed") {
+      throw new ApiError((job as any).error || "任务执行失败，请稍后重试", "JOB_FAILED");
+    }
+    await sleep(intervalMs);
+  }
+  throw new ApiError("任务超时，请到作业队列查看", "JOB_TIMEOUT");
+}
+
 // ── 同步种子（仅 mock 模式有值；用于 useApi 初值，避免首帧闪烁）──
 
 export const seed = {
   avatars: (scope: "mine" | "public" = "mine"): any[] =>
-    USE_MOCK ? (scope === "public" ? Mock.PUBLIC_AVATARS : Mock.CHARS).slice() : [],
+    USE_MOCK ? (scope === "public" ? Mock.PUBLIC_AVATARS.slice() : mockChars.slice()) : [],
   builtinVoices: (): Mock.BuiltinVoice[] => (USE_MOCK ? Mock.BUILTIN_VOICES.slice() : []),
   myVoices: (): Mock.VoiceAsset[] => (USE_MOCK ? Mock.VOICES.slice() : []),
   jobs: (): Mock.Job[] => (USE_MOCK ? Mock.TASKS.map((t) => ({ ...t })) : []),
@@ -139,7 +278,7 @@ export function useApi<T>(fn: () => Promise<T>, initial: T, deps: any[] = []): T
         if (live) setVal(d);
       })
       .catch(() => {
-        /* 静默：保留 initial（mock 下即完整样例）。真实错误处理留待接后端时补 toast。 */
+        /* 静默：保留 initial。401 由 onAuthExpired 全局接管；其余错误由动作型调用处理。 */
       });
     return () => {
       live = false;
@@ -149,40 +288,72 @@ export function useApi<T>(fn: () => Promise<T>, initial: T, deps: any[] = []): T
   return val;
 }
 
-// ── 数字人 Avatars（规格 §4 Avatars + 创建流程）────────────────
+// ── 数字人 Avatars ────────────────────────────────────────────
 
 export const AvatarApi = {
   list: (scope: "mine" | "public" = "mine", params?: { path?: string; status?: string; fav?: boolean; q?: string }): Promise<any[]> => {
-    if (USE_MOCK) return mock(scope === "public" ? Mock.PUBLIC_AVATARS.slice() : Mock.CHARS.slice());
+    if (USE_MOCK) return mock(scope === "public" ? Mock.PUBLIC_AVATARS.slice() : mockChars.slice());
     const qs = new URLSearchParams({ scope, ...(params as any) }).toString();
     return apiFetch(`/avatars?${qs}`);
   },
   get: (id: string): Promise<any> => {
-    if (USE_MOCK) return mock(Mock.CHARS.find((c) => c.id === id) || Mock.CHARS[0]);
+    if (USE_MOCK) return mock(mockChars.find((c) => c.id === id) || mockChars[0]);
     return apiFetch(`/avatars/${id}`);
   },
-  create: (body: { path: string; entry?: string }): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "DH-NEW", ...body });
+  create: (body: { path: string; entry?: string; name?: string }): Promise<any> => {
+    if (USE_MOCK) {
+      const id = `DH-${mockSeq++}`;
+      const base = mockChars[0] || ({ palette: {}, hue: 250 } as any);
+      const fresh = {
+        ...base, id, name: body.name || "新建数字人", codename: "new-avatar", path: body.path,
+        archetype: body.path === "real" ? "真人授权复刻" : "AI 原创形象", tagline: "创建中…",
+        status: "draft", updated: "刚刚", fav: false, versions: 1, license: null,
+        deriv: { atlas: "empty", expr: "empty", scene: "empty", ward: "empty", d3: "empty", video: "empty" },
+        counts: { atlas: 0, expr: 0, scene: 0, ward: 0, d3: 0, video: 0 },
+        def: { ...base.def, 设定语: "" },
+      };
+      mockChars.unshift(fresh);
+      return mock(fresh);
+    }
     return apiFetch(`/avatars`, { method: "POST", body: JSON.stringify(body) });
   },
   patch: (id: string, body: Record<string, unknown>): Promise<any> => {
-    if (USE_MOCK) return mock({ id, ...body });
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      if (c) Object.assign(c, body, { updated: "刚刚" });
+      return mock(c || { id, ...body });
+    }
     return apiFetch(`/avatars/${id}`, { method: "PATCH", body: JSON.stringify(body) });
   },
-  remove: (id: string): Promise<void> => {
-    if (USE_MOCK) return mock(undefined);
+  remove: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockChars.findIndex((x) => x.id === id);
+      if (i >= 0) mockChars.splice(i, 1);
+      return mock({ deleted: true });
+    }
     return apiFetch(`/avatars/${id}`, { method: "DELETE" });
   },
   versions: (id: string): Promise<any[]> => {
-    if (USE_MOCK) return mock([]);
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id) || mockChars[0];
+      const n = c?.versions || 3;
+      return mock([
+        { v: `v${n}`, t: c?.updated || "刚刚", note: "完成创建 · 锁定标准图集", kind: "archive", cur: true },
+        { v: `v${Math.max(1, n - 1)}`, t: "今天 11:20", note: "定稿确认 · 5 张标准图", kind: "finalize", cur: false },
+        { v: "v1", t: "昨天 15:30", note: "初始选稿", kind: "init", cur: false },
+      ]);
+    }
     return apiFetch(`/avatars/${id}/versions`);
   },
   looks: (id: string): Promise<any[]> => {
     if (USE_MOCK) return mock([]);
     return apiFetch(`/avatars/${id}/looks`);
   },
-  createLook: (id: string, body: { source: string; prompt?: string; sceneId?: string }): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "LK-NEW", avatarId: id, ...body, status: "running" });
+  createLook: (id: string, body: { source?: string; prompt?: string; sceneId?: string }): Promise<any> => {
+    if (USE_MOCK) {
+      const job = newMockJob({ kind: "造型设计", char: id });
+      return mock({ id: `LK-${mockSeq++}`, avatarId: id, ...body, status: "running", jobId: job.id });
+    }
     return apiFetch(`/avatars/${id}/looks`, { method: "POST", body: JSON.stringify(body) });
   },
   derivatives: (id: string): Promise<any[]> => {
@@ -190,50 +361,93 @@ export const AvatarApi = {
     return apiFetch(`/avatars/${id}/derivatives`);
   },
   createDerivative: (id: string, body: { type: string }): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "JOB-NEW", avatarId: id, status: "running" });
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      const kindZh: any = { atlas: "多角度图集", expr: "表情图集", scene: "剧情场景图", ward: "换装变体", d3: "3D 模型", video: "运镜短视频" };
+      const job = newMockJob({ kind: kindZh[body.type] || "衍生生成", char: id, charName: c?.name });
+      if (c) c.deriv = { ...c.deriv, [body.type]: "running" };
+      // mock：任务完成时把 deriv 状态翻成 done
+      const watch = setInterval(() => {
+        const j = mockJobStore.get(job.id);
+        if (j && j.status !== "running") {
+          clearInterval(watch);
+          if (c) {
+            c.deriv = { ...c.deriv, [body.type]: "done" };
+            const inc: any = { atlas: 5, expr: 4, scene: 2, ward: 2, d3: 1, video: 1 };
+            c.counts = { ...c.counts, [body.type]: (c.counts?.[body.type] || 0) + (inc[body.type] || 1) };
+          }
+        }
+      }, 800);
+      return mock({ ...job });
+    }
     return apiFetch(`/avatars/${id}/derivatives`, { method: "POST", body: JSON.stringify(body) });
   },
-  finalize: (id: string, body: { templateId: string; confirmedShots: string[] }): Promise<any> => {
-    if (USE_MOCK) return mock({ id, status: "finalized" });
+  finalize: (id: string, body: { templateId?: string; confirmedShots?: string[]; archive?: boolean }): Promise<any> => {
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      if (c) { c.status = body.archive ? "archived" : "finalized"; c.updated = "刚刚"; }
+      return mock(c || { id, status: body.archive ? "archived" : "finalized" });
+    }
     return apiFetch(`/avatars/${id}/finalize`, { method: "POST", body: JSON.stringify(body) });
   },
   // —— 创建流程 ——
   describe: (id: string, body: Record<string, unknown>): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "JOB-NEW", status: "running" });
+    if (USE_MOCK) return mock({ ok: true, avatarId: id });
     return apiFetch(`/avatars/${id}/describe`, { method: "POST", body: JSON.stringify(body) });
   },
   photos: (id: string, files: FormData): Promise<any> => {
-    if (USE_MOCK) return mock({ passed: true });
-    return apiFetch(`/avatars/${id}/photos`, { method: "POST", body: files as any, headers: {} });
+    if (USE_MOCK) return mock({ passed: true, count: 3 });
+    return apiUpload(`/avatars/${id}/photos`, files);
   },
-  generate: (id: string, body: { mode: "upload" | "describe" }): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "JOB-NEW", status: "running" });
+  generate: (id: string, body: { mode: "upload" | "describe"; form?: Record<string, unknown>; captureId?: string }): Promise<any> => {
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      if (c) c.status = "proofing";
+      const job = newMockJob({ kind: body.mode === "upload" ? "真人复刻生成" : "形象生成", char: id, charName: c?.name });
+      const watch = setInterval(() => {
+        const j = mockJobStore.get(job.id);
+        if (j && j.status !== "running") { clearInterval(watch); if (c) c.status = body.mode === "upload" ? "pending" : "proofing"; }
+      }, 700);
+      return mock({ ...job });
+    }
     return apiFetch(`/avatars/${id}/generate`, { method: "POST", body: JSON.stringify(body) });
   },
   pick: (id: string, variantIndex: number): Promise<any> => {
-    if (USE_MOCK) return mock({ id, variantIndex });
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      if (c) { c.status = "iterating"; c.updated = "刚刚"; }
+      return mock(c || { id, variantIndex });
+    }
     return apiFetch(`/avatars/${id}/pick`, { method: "POST", body: JSON.stringify({ variantIndex }) });
   },
   iterate: (id: string, instruction: string): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "JOB-NEW", status: "running" });
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      const job = newMockJob({ kind: "形象迭代", char: id, charName: c?.name });
+      return mock({ ...job });
+    }
     return apiFetch(`/avatars/${id}/iterate`, { method: "POST", body: JSON.stringify({ instruction }) });
   },
   warp: (id: string, params: Record<string, number>): Promise<any> => {
-    if (USE_MOCK) return mock({ id, params });
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      const job = newMockJob({ kind: "几何精调", char: id, charName: c?.name });
+      return mock({ ...job });
+    }
     return apiFetch(`/avatars/${id}/warp`, { method: "POST", body: JSON.stringify(params) });
   },
 };
 
-// ── 真人捕获 / 授权 Captures & Licenses（规格 §4）────────────────
+// ── 真人捕获 / 授权 ───────────────────────────────────────────
 
 export const CaptureApi = {
   create: (avatarId: string): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "CAP-NEW", avatarId });
+    if (USE_MOCK) return mock({ id: `CAP-${mockSeq++}`, avatarId, status: "created" });
     return apiFetch(`/captures`, { method: "POST", body: JSON.stringify({ avatarId }) });
   },
   footage: (id: string, files: FormData): Promise<any> => {
-    if (USE_MOCK) return mock({ passed: true });
-    return apiFetch(`/captures/${id}/footage`, { method: "POST", body: files as any, headers: {} });
+    if (USE_MOCK) return mock({ id, status: "footage_uploaded" });
+    return apiUpload(`/captures/${id}/footage`, files);
   },
   verify: (id: string): Promise<{ passed: boolean }> => {
     if (USE_MOCK) return mock({ passed: true });
@@ -251,7 +465,7 @@ export const LicenseApi = {
     return apiFetch(`/licenses/${id}`);
   },
   certificate: (id: string): Promise<{ certificateUrl: string }> => {
-    if (USE_MOCK) return mock({ certificateUrl: `#cert-${id}` });
+    if (USE_MOCK) return mock({ certificateUrl: "" });
     return apiFetch(`/licenses/${id}/certificate`);
   },
   renew: (id: string): Promise<any> => {
@@ -259,12 +473,12 @@ export const LicenseApi = {
     return apiFetch(`/licenses/${id}/renew`, { method: "POST" });
   },
   create: (body: Record<string, unknown>): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "LIC-NEW", ...body, status: "active" });
+    if (USE_MOCK) return mock({ id: `LIC-${mockSeq++}`, ...body, status: "active" });
     return apiFetch(`/licenses`, { method: "POST", body: JSON.stringify(body) });
   },
 };
 
-// ── 音色 Voices（规格 §4 + §6 内置 7 款）────────────────────────
+// ── 音色 ─────────────────────────────────────────────────────
 
 export const VoiceApi = {
   builtin: (): Promise<Mock.BuiltinVoice[]> => {
@@ -275,38 +489,57 @@ export const VoiceApi = {
     if (USE_MOCK) return mock(Mock.VOICES.slice());
     return apiFetch(`/voices/mine`);
   },
-  preview: (voiceId: string, text?: string): Promise<{ audioUrl?: string }> => {
-    if (USE_MOCK) return mock({ audioUrl: `#preview-${voiceId}` });
+  preview: (voiceId: string, text?: string): Promise<{ audioUrl?: string; message?: string; kind?: string }> => {
+    if (USE_MOCK) return mock({ kind: "builtin", message: "内置音色为合成声线，在线试听即将上线" });
     return apiFetch(`/voices/preview`, { method: "POST", body: JSON.stringify({ voiceId, text }) });
   },
-  bind: (avatarId: string, voiceId: string): Promise<any> => {
-    if (USE_MOCK) return mock({ avatarId, voiceId });
-    return apiFetch(`/avatars/${avatarId}/voice`, { method: "POST", body: JSON.stringify({ voiceId }) });
+  bind: (avatarId: string, voiceName: string): Promise<any> => {
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === avatarId);
+      if (c) c.voiceName = voiceName;
+      return mock({ avatarId, voiceName });
+    }
+    return apiFetch(`/avatars/${avatarId}/voice`, { method: "POST", body: JSON.stringify({ voiceName }) });
   },
   clone: (files: FormData): Promise<any> => {
-    if (USE_MOCK) return mock({ id: "VC-NEW", status: "running" });
-    return apiFetch(`/voices/clone`, { method: "POST", body: files as any, headers: {} });
+    if (USE_MOCK) return mock({ id: `VC-${mockSeq++}`, name: "我的声音 01", kind: "clone", dur: "00:10", fav: false, wave: [6, 12, 8, 17, 10, 21, 9, 14, 7, 19, 11, 16, 6, 13, 20, 8, 15, 10, 18, 7] });
+    return apiUpload(`/voices/clone`, files);
   },
 };
 
-// ── 任务 Jobs（规格 §4）────────────────────────────────────────
+// ── 任务 ─────────────────────────────────────────────────────
 
 export const JobApi = {
   list: (params?: { status?: string; avatarId?: string }): Promise<Mock.Job[]> => {
-    if (USE_MOCK) return mock(Mock.TASKS.map((t) => ({ ...t })));
+    if (USE_MOCK) {
+      const dyn = Array.from(mockJobStore.values()).map((j) => { tickMockJob(j.id); return { ...j }; });
+      return mock([...dyn.reverse(), ...Mock.TASKS.map((t) => ({ ...t }))]);
+    }
     const qs = params ? `?${new URLSearchParams(params as any).toString()}` : "";
     return apiFetch(`/jobs${qs}`);
   },
   get: (id: string): Promise<Mock.Job> => {
-    if (USE_MOCK) return mock(Mock.TASKS.find((t) => t.id === id) || Mock.TASKS[0]);
+    if (USE_MOCK) {
+      const j = tickMockJob(id) || mockJobStore.get(id);
+      if (j) return mock({ ...j });
+      return mock(Mock.TASKS.find((t) => t.id === id) || Mock.TASKS[0]);
+    }
     return apiFetch(`/jobs/${id}`);
   },
   retry: (id: string): Promise<Mock.Job> => {
-    if (USE_MOCK) return mock({ ...(Mock.TASKS.find((t) => t.id === id) || Mock.TASKS[0]), status: "running", pct: 0, eta: "重新排队中" });
+    if (USE_MOCK) {
+      const j = mockJobStore.get(id);
+      if (j) { j.status = "running"; j.pct = 5; j.eta = "重试中"; return mock({ ...j }); }
+      return mock({ ...(Mock.TASKS.find((t) => t.id === id) || Mock.TASKS[0]), status: "running", pct: 0, eta: "重新排队中" });
+    }
     return apiFetch(`/jobs/${id}/retry`, { method: "POST" });
   },
-  cancel: (id: string): Promise<void> => {
-    if (USE_MOCK) return mock(undefined);
+  cancel: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const j = mockJobStore.get(id);
+      if (j) { j.status = "failed"; j.eta = "已取消"; }
+      return mock(undefined);
+    }
     return apiFetch(`/jobs/${id}/cancel`, { method: "POST" });
   },
 };

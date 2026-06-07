@@ -109,6 +109,21 @@ src/
 
 ## 版本日志
 
+### v0.4（2026-06-06）— 全栈打通：登录 + 真实生成（server dap 领域 + Agnes 多模态）
+
+- **登录门**（live 模式）：新 `screen-login`（手机验证码 / 注册（验证码+激活码）/ dev 体验账号），
+  token 持久化 `localStorage.aiavatar_token`，401 全局回登录屏；设置页真实退出登录（带二次确认）。
+- **server 端落地**：`com.aistareco.aep.dap.*`（表 `dap_*`，REST `/api/v1/**` 与 `src/proto/api.ts` 1:1），
+  账户复用 aep_users + 钱包三段式扣费 + 月度赠送；生成走 Agnes（chat/image/video），未配 key 自动降级占位产物。
+- **创建链路全接真**：AI 描述 → 人设解析 + 4 变体真图挑选；上传照片复刻（真实文件选择/预览）；
+  真人捕获（真实摄像头 MediaRecorder 录制 → 加密上传 → 核验自动登记授权 → 复刻）；
+  5 步向导（生成/迭代/精调/图集定稿/衍生）全部真任务 + 进度轮询 + 失败重试态。
+- **资产消费**：详情四 tab 真数据；衍生查看器真图/真视频播放/下载；造型档案轮询；声音克隆真麦克风
+  + 采样回放；任务中心真轮询 + 重试/取消；`Portrait` 支持真实图片（占位画像兜底）。
+- **mock 模式保留**：`NEXT_PUBLIC_USE_MOCK=1` 时内置任务模拟器，全部流程可离线演示推进。
+- **联调工具**：`scripts/dap-verify.sh`（一键编译+起服+30 步 API E2E）+ `scripts/dev-fake-agnes-server.mjs`。
+- 配套 `next.config.mjs` 增 `/cdn` `/static` rewrites（dev fake-CDN 产物直出）。
+
 ### v0.3（2026-06-06）— 去原型化：真实可投产的全屏 H5 应用
 
 - **移除手机壳 / 微信 chrome 装饰**：删掉 iPhone 外框（`.m-device`/`.m-island`）、伪状态栏

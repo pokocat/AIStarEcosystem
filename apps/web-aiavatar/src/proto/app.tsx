@@ -1,12 +1,12 @@
 "use client";
 // ============================================================
-// 移动端 · App 根 — 路由 / Tab / 覆盖页栈 / 创建入口 / 屏幕索引
-//   忠实移植自原型 m4/m-app.jsx；适配为 Next 客户端组件（SSR 安全）。
+// 移动端 · App 根 — 路由 / Tab / 覆盖页栈 / 创建入口 / 登录门
+//   live 模式（NEXT_PUBLIC_USE_MOCK=0）：未登录 → 登录屏；401 → 自动回登录屏。
 // ============================================================
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { AvatarApi, useApi, seed } from "./api";
+import { AvatarApi, VoiceApi, useApi, seed, auth, onAuthExpired, USE_MOCK } from "./api";
 import { MShell } from "./shell";
 import { toast } from "./toast";
 import { MHome } from "./screen-home";
@@ -19,12 +19,13 @@ import { MRealCapture } from "./screen-real";
 import { MCreate } from "./screen-chain";
 import { MAICreate } from "./screen-aicreate";
 import { MChooseVoice } from "./screen-voicepick";
+import { MLogin } from "./screen-login";
 
 const hA : any = React.createElement;
-const { useState: useStateA, useEffect: useEffectA, useRef: useRefA } = React;
+const { useState: useStateA, useEffect: useEffectA, useRef: useRefA, useCallback: useCallbackA } = React;
 const { PhoneFrame, WxTabBar } = MShell;
 
-// 合成一个新建草稿数字人（驱动创建向导）
+// 合成一个新建草稿数字人（驱动创建向导首屏；live 模式在流程内落 server）
 function freshChar(path, avatars: any[] = []) {
   const base = (avatars || []).find((c) => c.path === path) || avatars[0] || { hue: 250, hairStyle: "short", palette: {} };
   return {
@@ -61,12 +62,21 @@ function CreateSheet({ onPick, onClose }) {
 }
 
 export function App() {
+  const [authed, setAuthed] = useStateA(USE_MOCK ? true : null as any); // null = 挂载前未知（避免 SSR 闪登录屏）
   const [tab, setTab] = useStateA("home");
   const [stack, setStack] = useStateA([]);
   const [sheet, setSheet] = useStateA(false);
   const [label, setLabel] = useStateA("首页");
   const [voiceByChar, setVoiceByChar] = useStateA({});
-  const avatars = useApi(() => AvatarApi.list("mine"), seed.avatars());
+  const [reloadKey, setReloadKey] = useStateA(0);
+  const avatars = useApi(() => AvatarApi.list("mine"), seed.avatars(), [reloadKey, authed]);
+
+  // 登录态：挂载后读 localStorage；401 全局回登录屏
+  useEffectA(() => {
+    if (USE_MOCK) return;
+    setAuthed(auth.isAuthed());
+    return onAuthExpired(() => { setStack([]); setSheet(false); setAuthed(false); });
+  }, []);
 
   // 浏览器 / 系统返回键：关闭最上层覆盖页或 Sheet，而不是直接退出应用。
   const open = stack.length + (sheet ? 1 : 0);
@@ -104,11 +114,15 @@ export function App() {
     if (h === "create-real") { setStack([{ screen: "realcapture", props: { char: freshChar("real", avatars) } }]); return; }
   }, []);
 
+  const reload = useCallbackA(() => setReloadKey((k) => k + 1), []);
+
   const top = stack[stack.length - 1];
 
   const ctx: any = {
     toast: (m, o) => toast(m, o),
     firstAvatar: avatars[0],
+    avatars,
+    reload,
     tab: (k) => { setStack([]); setTab(k); setSheet(false); setLabel({ home: "首页", library: "数字人库", apps: "应用中心", me: "我的" }[k]); },
     go: (screen, props) => { setStack((s) => [...s, { screen, props: props || {} }]); setLabel({ voice: "声音工作室", licenses: "授权登记", tasks: "作业队列", settings: "设置", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆" }[screen] || screen); },
     openChar: (char) => { setStack((s) => [...s, { screen: "detail", props: { char } }]); setLabel("资产详情"); },
@@ -116,15 +130,30 @@ export function App() {
     openLooks: (char) => { setStack((s) => [...s, { screen: "looks", props: { char } }]); setLabel("造型档案"); },
     designLooks: (char) => { setStack((s) => [...s, { screen: "designlooks", props: { char } }]); setLabel("设计造型"); },
     chooseVoice: (char, onPick) => { setStack((s) => [...s, { screen: "choosevoice", props: { char, onPick } }]); setLabel("选择音色"); },
-    voiceFor: (char) => (char && voiceByChar[char.id]) || "亲和邻家女声",
-    setVoice: (char, name) => { if (char) setVoiceByChar((m) => ({ ...m, [char.id]: name })); },
+    voiceFor: (char) => (char && (char.voiceName || voiceByChar[char.id])) || "亲和邻家女声",
+    setVoice: (char, name) => {
+      if (!char) return;
+      setVoiceByChar((m) => ({ ...m, [char.id]: name }));
+      if (char.id && char.id !== "DH-NEW" && !char._fresh) {
+        VoiceApi.bind(char.id, name).then(reload).catch((e) => toast(e?.message || "音色保存失败", { tone: "err" }));
+      }
+    },
+    logout: () => { auth.clear(); setStack([]); setSheet(false); setTab("home"); if (!USE_MOCK) setAuthed(false); toast("已退出登录", { tone: "ok" }); },
     back: () => setStack((s) => s.slice(0, -1)),
     startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
     startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("真人捕获"); },
     realToWizard: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "create", props: { char } }); return ns; }); setLabel("创建链路"); },
-    finishCreate: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "detail", props: { char } }); return ns; }); setLabel("资产详情"); },
+    finishCreate: (char) => { reload(); setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "detail", props: { char } }); return ns; }); setLabel("资产详情"); },
     openCreateSheet: () => setSheet(true),
   };
+
+  // 登录门（live 模式）：authed=null 渲染空白避免闪屏；false 渲染登录
+  if (!USE_MOCK && authed !== true) {
+    return hA(React.Fragment, null,
+      hA(PhoneFrame, null,
+        authed === false && hA(MLogin, { onLoggedIn: () => { setAuthed(true); reload(); } })),
+      hA(UI.ToastHost, null));
+  }
 
   const tabScreen = { home: MHome, library: MLibrary, apps: MApps, me: MMe }[tab];
   const overlayScreen = top && { detail: MDetail, voice: MVoice, licenses: MLicenses, tasks: MTasks, create: MCreate, realcapture: MRealCapture,

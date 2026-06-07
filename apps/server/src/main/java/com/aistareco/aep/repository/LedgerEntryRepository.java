@@ -18,6 +18,9 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
 
     Page<LedgerEntry> findByWalletId(String walletId, Pageable pageable);
 
+    /** v0.51 dap：月度赠送幂等检查（referenceId = userId:yyyyMM）。 */
+    boolean existsByReferenceTypeAndReferenceId(String referenceType, String referenceId);
+
     Page<LedgerEntry> findByUserId(String userId, Pageable pageable);
 
     List<LedgerEntry> findByUserIdOrderByCreatedAtDesc(String userId);

@@ -4,7 +4,6 @@ export * from "./account";
 export * from "./appearance-forge";
 export * from "./artist";
 export * from "./asset";
-export * from "./ai-avatar";
 export * from "./batch-mix";
 export * from "./celebrity-zone";
 export * from "./clip-studio";

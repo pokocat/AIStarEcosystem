@@ -33,3 +33,7 @@ infra/.local/
 
 # v0.34.x dev-server.sh --log 写到这里（包含完整 SQL / stack trace，不入 git）
 /logs/
+.dap-verify/
+# v0.51 dap：统一文件存储门面本地落盘（FileStorageService local-dir，运行时产物）
+apps/server/file-storage/
+__pycache__/

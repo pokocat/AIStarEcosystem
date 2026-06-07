@@ -119,6 +119,16 @@ export interface Avatar {
   deriv: Record<DerivKey, DerivStatus>;
   counts: Record<DerivKey, number>;
   versions: number;
+  /** 绑定音色名（server 持久化；mock 下由本地状态兜底）。 */
+  voiceName?: string | null;
+  /** 当前定妆主图 URL（live 模式由 server 派生；为空时前端渲染占位画像）。 */
+  imageUrl?: string | null;
+  /** 形象生成候选（4 变体）URL。 */
+  variantImages?: string[];
+  /** 标准图集 {shotKey → URL}。 */
+  shotImages?: Record<string, string>;
+  /** 用户原始人设描述。 */
+  descPrompt?: string | null;
   /** 创建向导用的临时草稿标记。 */
   _fresh?: boolean;
 }
@@ -155,6 +165,10 @@ export interface Job {
   status: JobStatus;
   pct: number;
   eta: string;
+  stage?: string;
+  stageUpdatedAt?: string;
+  type?: string;
+  error?: string;
   started: string;
 }
 

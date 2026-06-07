@@ -2,15 +2,36 @@
 import React from "react";
 
 // ============================================================
-// Portrait — 数字人本体「占位图」
-//   不再程序化绘制卡通脸；统一渲染为干净的头像占位（柔和色底 + 剪影）
-//   按角色 hue 取不同柔和色调，多角度 variant 略作偏转区分。
+// Portrait — 数字人形象图
+//   优先级：显式 src > 按 variant 映射的标准图集 > 定妆主图 imageUrl > 占位画像。
+//   占位画像 = 柔和色底 + 剪影（真实图片生成前 / mock 数据）。
 //   保持原有 props 接口，所有调用处无需改动。
 // ============================================================
 const RCE : any = React.createElement;
 
+/** Portrait variant → 标准图集 shotKey 映射（live 模式多角度真实图）。 */
+const VARIANT_SHOT: Record<string, string> = {
+  key: "front-half",
+  front: "front-full",
+  side: "left",
+  threeq: "right",
+  look: "expr",
+};
+
+function realSrcFor(char: any, variant: string, src?: string): string | null {
+  if (src) return src;
+  if (!char) return null;
+  const shots = char.shotImages;
+  if (shots && typeof shots === "object") {
+    const mapped = shots[VARIANT_SHOT[variant] || ""];
+    if (mapped) return mapped;
+  }
+  return char.imageUrl || null;
+}
+
 function Portrait({ char = {}, variant = 'key', ratio = '3 / 4', radius = 0, expr = 'calm',
-                    showName, dim, badge, className, style, onClick }: any) {
+                    showName, dim, badge, className, style, src, imgFit = 'cover', onClick }: any) {
+  const real = realSrcFor(char, variant, src);
   const hue = (char.hue != null ? char.hue : 250);
   const bg1  = `hsl(${hue} 20% 94%)`;
   const bg2  = `hsl(${hue} 18% 86%)`;
@@ -24,13 +45,15 @@ function Portrait({ char = {}, variant = 'key', ratio = '3 / 4', radius = 0, exp
       position: 'relative', aspectRatio: ratio, borderRadius: radius, overflow: 'hidden',
       cursor: onClick ? 'pointer' : 'default', display: 'grid', placeItems: 'center',
       background: `linear-gradient(155deg, ${bg1}, ${bg2})`, ...style } },
-    // 柔和装饰光环
-    RCE('div', { style: { position: 'absolute', width: '56%', aspectRatio: '1', top: '13%',
+    // 真实图片（生成后）
+    real && RCE('img', { src: real, alt: char.name || '', loading: 'lazy', draggable: false, style: {
+      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: imgFit, display: 'block' } }),
+    // 占位画像（无真实图时）
+    !real && RCE('div', { style: { position: 'absolute', width: '56%', aspectRatio: '1', top: '13%',
       borderRadius: '50%', border: `1px solid ${ring}`, opacity: .55 } }),
-    RCE('div', { style: { position: 'absolute', width: '78%', aspectRatio: '1', top: '4%',
+    !real && RCE('div', { style: { position: 'absolute', width: '78%', aspectRatio: '1', top: '4%',
       borderRadius: '50%', border: `1px solid ${ring}`, opacity: .3 } }),
-    // 人物剪影占位
-    RCE('svg', { viewBox: '0 0 64 64', style: { width: '44%', position: 'relative',
+    !real && RCE('svg', { viewBox: '0 0 64 64', style: { width: '44%', position: 'relative',
         transform: `rotate(${turn}deg)${flip}`, color: fg } },
       RCE('circle', { cx: 32, cy: 22.5, r: 12.5, fill: 'currentColor' }),
       RCE('path', { d: 'M9 60c0-13.2 10.3-21 23-21s23 7.8 23 21z', fill: 'currentColor' })),

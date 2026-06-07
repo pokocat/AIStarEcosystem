@@ -2066,6 +2066,8 @@ web-celebrity:
 
 ### v0.45（2026-05-30）— AiAvatar 形象资产管理中心（第 4 个 web 子产品 + 独立 aiavatar 后端领域）
 
+> ⚠️ **该领域已于 v0.51 整体删除**（从未被前端消费；web-aiavatar 由全新 dap 领域承接，见 v0.51 节）。本节仅作历史记录。
+
 新增独立子产品「AiAvatar 形象资产管理中心」：真人授权复刻 / 纯 AI 原创两种创建模式，7 步标准链路
 （打样 → 草稿迭代 → 精调 → 模板美化出图 → 定稿 → 衍生 3D/视频 → 入库）+ 资产版本管理 / 素材管理 /
 真人授权管理 / AI 模板中心 / 异步任务中心。**独立实现**：新 server 领域包 `com.aistareco.aep.aiavatar.*`，
@@ -2484,6 +2486,59 @@ apps/web-aiavatar (Next 16.2.6 / React 19 / TypeScript / pnpm, port 3013):
 
 **注意**：v0.45 章节描述的 server-backed 桌面 AiAvatar 中心从未在本仓库副本落地为前端（仅 server 领域存在）；
 本节是 web-aiavatar 的**首个**实际前端落地，主入口为 `/`（真实全屏 H5 移动应用），非 `/library`。
+
+### v0.51（2026-06-06）— 数字人资产平台全栈打通（dap 领域 + Agnes 多模态 + 删除 v0.45 旧域）
+
+web-aiavatar 从「纯前端 mock 原型」升级为完整产品：新 server 领域 `com.aistareco.aep.dap.*`
+（表前缀 **`dap_`**，REST 面 **`/api/v1/**`** 精确对齐 `src/proto/api.ts` 契约），账户复用
+`aep_users` + 钱包/不可变账本；大模型走 **Agnes AI**（apihub.agnes-ai.com，文本/图片/视频全免费 API）。
+经用户确认，**v0.45 旧 aiavatar 领域整体删除**（77 文件 + 4 测试 + openapi 33 路径 +
+`packages/types/src/ai-avatar.ts`；`V6__drop_legacy_aiavatar_tables` 幂等清表）。
+
+```
+server : com.aistareco.aep.dap.* —— 9 实体（dap_avatar / dap_avatar_version / dap_look /
+       :   dap_derivative / dap_license / dap_job / dap_voice / dap_capture / dap_photo）
+       : AgnesClient（chat=agnes-2.0-flash / images=agnes-image-2.1-flash，i2i 走 extra_body.image，
+       :   本地文件转 dataURI、OSS 走签名 URL / videos=agnes-video-v2.0 异步 submit+poll）
+       : DapJobRunner @Async("dapJobExecutor")：形象生成（chat 人设 JSON + 4 变体图）/ 真人复刻
+       :   （照片或捕获帧 i2i）/ 自然语言迭代 / 几何精调（参数→英文编辑指令）/ 造型（场景库 promptEn）
+       :   / 六类衍生（atlas 5 机位回填 shotKeys、expr 4、scene 2、ward 2、d3 4 角度诚实占位、
+       :   video=Agnes 异步出 mp4 落库）；未配 AGNES_API_KEY 全链路降级本地占位产物 + avatar.mock 标记
+       : 扣费：CreditService hold→commit/release 三段式（referenceId=jobId:rN，重试独立冻结）；
+       :   月度赠送 1500 点幂等发放（LedgerEntry referenceId=userId:yyyyMM）；价格表 aep.dap.pricing.*
+       : 文件一律走 FileStorageService（§4.7：DB 存 key，URL 出 wire 派生）；存储统计按 bytes 列分类汇总
+       : 真人捕获：footage 上传 → ffmpeg 抽帧（best-effort）→ verify 自动登记 DapLicense + HTML 凭证下载
+       : AepSecurityConfig：/api/v1/** authenticated（删 /api/aiavatar/* 两条）；principal=userId
+web    : api.ts 重写：auth（token/localStorage + 401 全局事件）+ AuthApi（sms/dev-login）+ apiUpload
+       :   + awaitJob 轮询 + mock 任务模拟器（USE_MOCK=1 全流程可观察推进）
+       : 新 screen-login（手机验证码 / 注册（验证码+激活码）/ dev 体验账号三 tab）；app.tsx 登录门
+       : 创建链路全接真：AI 四变体挑选 / 上传照片复刻（真实文件选择）/ 真人捕获（真实 getUserMedia
+       :   + MediaRecorder 录制，失败引导上传）/ 5 步向导（人设→生成→迭代/精调→图集定稿→衍生）
+       : 详情四 tab 真数据（图集 / 衍生生成+重生成 / 版本时间线 / 授权凭证下载）；造型档案轮询；
+       :   声音克隆真麦克风 + 采样回放试听；任务中心真轮询 + 重试/取消；Portrait 支持真实图片
+       : next.config +/cdn /static rewrites；data.ts Avatar +imageUrl/variantImages/shotImages/voiceName
+工具   : scripts/dev-fake-agnes-server.mjs（零依赖 fake Agnes：chat 人设 JSON / 真 PNG 程序化生成 /
+       :   异步视频任务内嵌微型真 mp4 —— 无外网/无 key 全链路联调）
+       : scripts/dap-verify.sh + scripts/dap-e2e.py（一键：编译→起 server（H2/mysql）→ 30+ 步 API
+       :   E2E（登录/创建/生成/迭代/图集/授权/声音/任务/越权负例/扣费对账，真实下载产物字节）→
+       :   前端 typecheck；日志落 .dap-verify/，PROFILE=mysql / AGNES=real|fake|none / VIDEO=1 开关）
+```
+
+**注意事项**：
+
+- **Agnes key 不入库不入 git**：`AGNES_API_KEY` 环境变量注入（dap-verify.sh 会自动从 ~/dev/Agnes.md 提取）；
+  未配置时生成链路降级为占位产物（mock=true，前端 MOCK 角标），不阻断。
+- **i2i 身份输入**：公网 URL（OSS/CDN 签名地址）直接给 Agnes；相对路径或 localhost/127.0.0.1
+  地址（本地 fake-CDN）对 Agnes 云端不可达 → 自动转 base64 dataURI。多照片复刻取前 3 张。
+  真实 Agnes 全链路在生产以 OSS 公网 URL 为正路；本地联调靠 dataURI 兜底即可跑通。
+- **mysql profile 本地联调必须 `AEP_CDN_DRIVER=local`**（application-mysql.yml 默认 oss，无密钥会启动失败）；
+  dap-verify.sh 已内置。`createDatabaseIfNotExist=true` 兜底建库。
+- **取消语义**：cancel 置 cancelRequested，runner 在阶段检查点感知后落 failed+「已取消」+释放冻结；
+  wire 状态保持 running|done|failed 三态。
+- **诚实降级**：3D 模型 = 4 角度预览图（GLB 导出排期中，UI 明示）；声音克隆 = 原始采样存档/回放
+  （TTS 合成上线后启用，UI 明示）；内置音色试听返回说明文案。
+- **未做**：(a) Agnes 多图视频/关键帧模式；(b) 充值在线支付（UI 引导联系平台）；(c) 公开数字人
+  复制到我的名录；(d) 注册自助开通（沿用平台激活码双因素）；(e) 多实例 job 恢复 watchdog（单实例假设）。
 
 ---
 
