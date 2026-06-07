@@ -160,12 +160,28 @@ export function JobDetailClient({ id }: { id: string }) {
       setDownloadingOutputId(null);
     }
   }
+
+  async function handleContinueEdit() {
+    const currentJob = job;
+    if (!currentJob) return;
+    setCreatingDraft(true);
+    try {
+      const draft = await MixcutApi.createDraftFromJob(currentJob.id);
+      router.push(
+        `/mixcut/create/${encodeURIComponent(currentJob.template_id)}?draft_id=${encodeURIComponent(draft.id)}`,
+      );
+    } catch (e) {
+      console.error("创建实例失败:", e);
+      setCreatingDraft(false);
+    }
+  }
+
   const outputsPending = completed && !hasOutputs;
   const stillRendering = isProcessing && pendingCount > 0;
   const displayStatus = renderFailed ? "failed" : job.status;
 
   return (
-    <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
+    <div className="mobile-editor-page px-4 md:px-6 lg:px-8 py-5 md:py-6 max-w-[1600px] mx-auto">
       <div className="mb-4">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href="/mixcut/jobs">
@@ -209,7 +225,7 @@ export function JobDetailClient({ id }: { id: string }) {
             <Button
               variant="ghost"
               size="icon"
-              className="size-5"
+              className="mobile-icon-target size-5"
               onClick={() => {
                 void navigator.clipboard?.writeText(job.id);
               }}
@@ -221,7 +237,7 @@ export function JobDetailClient({ id }: { id: string }) {
             <span>创建于 {relativeTime(job.created_at)}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="mobile-editor-actions flex items-center gap-2">
           {completed && hasOutputs && (
             <>
               <Button variant="gradient" onClick={() => setPublishOpen(true)}>
@@ -245,18 +261,7 @@ export function JobDetailClient({ id }: { id: string }) {
             <Button
               variant={renderFailed ? "gradient" : "outline"}
               disabled={creatingDraft}
-              onClick={async () => {
-                setCreatingDraft(true);
-                try {
-                  const draft = await MixcutApi.createDraftFromJob(job.id);
-                  router.push(
-                    `/mixcut/create/${encodeURIComponent(job.template_id)}?draft_id=${encodeURIComponent(draft.id)}`,
-                  );
-                } catch (e) {
-                  console.error("创建实例失败:", e);
-                  setCreatingDraft(false);
-                }
-              }}
+              onClick={handleContinueEdit}
               title="跳转到编辑页面，可以查看/修改配置后再生成"
             >
               {creatingDraft ? (
@@ -277,6 +282,75 @@ export function JobDetailClient({ id }: { id: string }) {
             </Button>
           )}
         </div>
+      </div>
+
+      <div className="mobile-bottom-actionbar md:hidden">
+        <div className="mb-2 flex items-center justify-between gap-2 text-[11px]">
+          <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-muted-foreground">
+            <StatusBadge status={displayStatus} />
+            <span className="truncate">
+              {completed && hasOutputs
+                ? `${outputs.length}/${totalExpected} 条成片`
+                : renderFailed
+                  ? "生成未成功"
+                  : isProcessing
+                    ? `生成中 ${job.progress}%`
+                    : "等待成片"}
+            </span>
+          </span>
+          <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+            {relativeTime(job.created_at)}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {completed && hasOutputs ? (
+            <Button variant="gradient" className="h-11 px-2" onClick={() => setPublishOpen(true)}>
+              <Send className="size-4" /> 批量分发
+            </Button>
+          ) : renderFailed ? (
+            <Button
+              variant="gradient"
+              className="h-11 px-2"
+              onClick={() => router.push(`/mixcut/create/${encodeURIComponent(job.template_id)}`)}
+            >
+              <RefreshCw className="size-4" /> 重做
+            </Button>
+          ) : (
+            <Button variant="outline" className="h-11 px-2" asChild>
+              <Link href="/mixcut/jobs">
+                <ArrowLeft className="size-4" /> 任务列表
+              </Link>
+            </Button>
+          )}
+          {(completed || renderFailed) ? (
+            <Button
+              variant="outline"
+              className="h-11 px-2"
+              disabled={creatingDraft}
+              onClick={handleContinueEdit}
+              title="跳转到编辑页面，可以查看/修改配置后再生成"
+            >
+              {creatingDraft ? (
+                <Wand2 className="size-4 animate-pulse" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              {creatingDraft ? "准备中" : "继续编辑"}
+            </Button>
+          ) : (
+            <Button variant="ghost" className="h-11 px-2" disabled>
+              <Clock className="size-4" /> 自动刷新
+            </Button>
+          )}
+        </div>
+        {completed && hasOutputs && (
+          <Link
+            href={`/distribution?from_job=${encodeURIComponent(job.id)}`}
+            className="mt-2 flex min-h-10 items-center justify-center rounded-md border border-border bg-card px-3 text-xs font-medium text-muted-foreground"
+          >
+            去分发中心 →
+          </Link>
+        )}
       </div>
 
       {isProcessing && (
@@ -360,8 +434,8 @@ export function JobDetailClient({ id }: { id: string }) {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
         <div>
           <Tabs defaultValue="outputs">
-            <TabsList>
-              <TabsTrigger value="outputs">
+            <TabsList className="mobile-scroll-tabs h-auto">
+              <TabsTrigger value="outputs" className="mobile-touch-target">
                 <span className="inline-flex items-center gap-1.5">
                   成片
                   <span className="text-[10px] font-mono opacity-70">
@@ -379,10 +453,10 @@ export function JobDetailClient({ id }: { id: string }) {
                   )}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="bindings">素材明细</TabsTrigger>
-              <TabsTrigger value="perturbations">每条处理对比</TabsTrigger>
-              <TabsTrigger value="phash">差异分析</TabsTrigger>
-              <TabsTrigger value="watermark">水印保护</TabsTrigger>
+              <TabsTrigger value="bindings" className="mobile-touch-target">素材明细</TabsTrigger>
+              <TabsTrigger value="perturbations" className="mobile-touch-target">每条处理对比</TabsTrigger>
+              <TabsTrigger value="phash" className="mobile-touch-target">差异分析</TabsTrigger>
+              <TabsTrigger value="watermark" className="mobile-touch-target">水印保护</TabsTrigger>
             </TabsList>
 
             <TabsContent value="outputs">

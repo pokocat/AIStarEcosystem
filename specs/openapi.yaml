@@ -5261,6 +5261,17 @@ paths:
     put:    { tags: [admin-mixcut], operationId: adminUpdateMixcutOfficialClip, responses: { '200': { description: ok } } }
     delete: { tags: [admin-mixcut], operationId: adminDeleteMixcutOfficialClip, responses: { '200': { description: ok } } }
 
+  # v0.55+: 运营就地编辑 / 删除「工厂模板」(factory scope，全员可见)。
+  # 用户端 /mixcut/templates 的 PUT/DELETE 只作用于个人副本；本组始终落 factory scope。
+  /admin/mixcut/templates/{templateId}:
+    parameters: [{ name: templateId, in: path, required: true, schema: { type: string } }]
+    put:    { tags: [admin-mixcut], operationId: adminUpsertMixcutFactoryTemplate, responses: { '200': { description: ok } } }
+    delete: { tags: [admin-mixcut], operationId: adminDeleteMixcutFactoryTemplate, responses: { '200': { description: ok } } }
+
+  # 明星头像 / 封面等图片上传（multipart；web-celebrity 内嵌运营 + admin 共用）。
+  /admin/celebrity/uploads:
+    post: { tags: [admin-celebrity], operationId: adminUploadCelebrityImage, responses: { '200': { description: ok } } }
+
   /admin/celebrity/showcases:       { get: { tags: [admin-celebrity], operationId: adminListCelebrityShowcases, responses: { '200': { description: ok } } } }
   /admin/celebrity/projects:        { get: { tags: [admin-celebrity], operationId: adminListCelebrityProjects,  responses: { '200': { description: ok } } } }
   /admin/celebrity/videos:          { get: { tags: [admin-celebrity], operationId: adminListCelebrityVideos,    responses: { '200': { description: ok } } } }

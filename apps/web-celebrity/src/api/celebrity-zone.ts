@@ -30,6 +30,34 @@ import {
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import { ENGINE_META } from "@/constants/celebrity-zone-ui";
 
+const DELETED_PROJECT_VIDEOS_KEY = "aistareco.web.celebrity.deleted-project-videos.v1";
+
+function readDeletedProjectVideos(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DELETED_PROJECT_VIDEOS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDeletedProjectVideos(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DELETED_PROJECT_VIDEOS_KEY, JSON.stringify(ids));
+  } catch {
+    /* storage 满 / 隐私模式静默 */
+  }
+}
+
+function visibleProjectVideos(videos: CelebrityProjectVideo[]): CelebrityProjectVideo[] {
+  if (!USE_MOCK) return videos;
+  const deleted = new Set(readDeletedProjectVideos());
+  return videos.filter((v) => !deleted.has(v.id));
+}
+
 // ── 明星市场 ────────────────────────────────────────────────────────────────
 export interface StarFilter {
   category?: "全部" | CelebrityCategory;
@@ -75,6 +103,73 @@ export async function getActiveStar(): Promise<CelebrityStar> {
   return apiFetch<CelebrityStar>("/celebrity/active-star");
 }
 
+// ── 明星运营管理（v0.55+） ─────────────────────────────────────────────────────
+// web-celebrity 内嵌运营写入：URL 全走 /admin/celebrity/*，由 server 端
+// hasAnyRole(SUPER_ADMIN, OPERATOR) 兜底（沿用 v0.31 商品库同款模式）。
+// 普通用户前端不暴露入口；即便绕过 UI 直接调用，server 也会 403。
+
+/** 由 Partial 合出一个完整 CelebrityStar（仅 USE_MOCK 用，保证演示/类型完整）。 */
+function mockStarFrom(body: Partial<CelebrityStar>, base?: CelebrityStar | null): CelebrityStar {
+  return {
+    id: base?.id ?? `star-${Date.now()}`,
+    name: body.name ?? base?.name ?? "未命名明星",
+    avatar: body.avatar ?? base?.avatar ?? "",
+    cover: body.cover ?? base?.cover ?? "",
+    category: body.category ?? base?.category ?? "演员",
+    subCategories: body.subCategories ?? base?.subCategories,
+    isHot: body.isHot ?? base?.isHot ?? false,
+    description: body.description ?? base?.description ?? "",
+    startingPrice: body.startingPrice ?? base?.startingPrice ?? "¥99起",
+    pricingTier: body.pricingTier ?? base?.pricingTier,
+    quotaUsed: base?.quotaUsed,
+    quotaTotal: body.quotaTotal ?? base?.quotaTotal,
+    authorization:
+      base?.authorization ?? { status: "unauthorized", scenes: [], availableStyles: 0 },
+    stats: base?.stats ?? { totalGenerated: 0, totalPlays: "0", conversionRate: "0%", gmv: "¥0" },
+    sampleVideos: base?.sampleVideos ?? [],
+    pricing: base?.pricing ?? [],
+  };
+}
+
+export async function createStar(body: Partial<CelebrityStar>): Promise<CelebrityStar> {
+  if (USE_MOCK) return mockDelay(mockStarFrom(body));
+  return apiFetch<CelebrityStar>("/admin/celebrity/stars", { method: "POST", body });
+}
+
+export async function updateStar(id: ID, body: Partial<CelebrityStar>): Promise<CelebrityStar> {
+  if (USE_MOCK) {
+    const base = STAR_DETAIL_MAP[id] ?? MARKET_STARS.find((s) => s.id === id) ?? null;
+    return mockDelay(mockStarFrom(body, base ? { ...base, id } : null));
+  }
+  return apiFetch<CelebrityStar>(`/admin/celebrity/stars/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body,
+  });
+}
+
+export async function deleteStar(id: ID): Promise<void> {
+  if (USE_MOCK) {
+    await mockDelay(null);
+    return;
+  }
+  await apiFetch<void>(`/admin/celebrity/stars/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** 上传明星头像 / 封面到公共图床，返回可直接用作 avatar/cover 的 URL。 */
+export async function uploadCelebrityImage(
+  file: File,
+  kind: "avatar" | "cover" | "preview" | "photo" | "video",
+): Promise<{ url: string; kind: string }> {
+  if (USE_MOCK) return mockDelay({ url: URL.createObjectURL(file), kind });
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", kind);
+  return apiFetch<{ url: string; kind: string }>("/admin/celebrity/uploads", {
+    method: "POST",
+    body: form,
+  });
+}
+
 // ── 模板 / 案例 ─────────────────────────────────────────────────────────────
 export async function listTemplates(): Promise<CelebrityTemplate[]> {
   if (USE_MOCK) return mockDelay(CELEBRITY_TEMPLATES);
@@ -111,7 +206,7 @@ export async function getProject(id: ID): Promise<CelebrityProject | null> {
 }
 
 export async function listProjectVideos(projectId: ID): Promise<CelebrityProjectVideo[]> {
-  if (USE_MOCK) return mockDelay(PROJECT_VIDEOS_MAP[projectId] ?? []);
+  if (USE_MOCK) return mockDelay(visibleProjectVideos(PROJECT_VIDEOS_MAP[projectId] ?? []));
   return apiFetch<CelebrityProjectVideo[]>(`/celebrity/projects/${projectId}/videos`);
 }
 
@@ -128,7 +223,7 @@ export async function listAllVideos(
   filter?: AllVideosFilter,
 ): Promise<CelebrityProjectVideo[]> {
   if (USE_MOCK) {
-    let all = Object.values(PROJECT_VIDEOS_MAP).flat();
+    let all = visibleProjectVideos(Object.values(PROJECT_VIDEOS_MAP).flat());
     if (filter?.status && filter.status !== "全部") {
       all = all.filter((v) => v.status === filter.status);
     }
@@ -148,6 +243,15 @@ export async function listAllVideos(
   if (filter?.sort) qs.set("sort", filter.sort);
   const suffix = qs.toString() ? `?${qs}` : "";
   return apiFetch<CelebrityProjectVideo[]>(`/celebrity/videos${suffix}`);
+}
+
+export async function deleteVideo(videoId: ID): Promise<boolean> {
+  if (USE_MOCK) {
+    const deleted = readDeletedProjectVideos();
+    if (!deleted.includes(videoId)) writeDeletedProjectVideos([...deleted, videoId]);
+    return mockDelay(true);
+  }
+  return apiFetch<boolean>(`/celebrity/videos/${encodeURIComponent(videoId)}`, { method: "DELETE" });
 }
 
 function parsePlays(plays?: string): number {

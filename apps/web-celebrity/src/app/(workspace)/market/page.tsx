@@ -15,6 +15,16 @@ export default function CelebrityMarketPage() {
   const [stars, setStars] = React.useState<CelebrityStar[]>(MARKET_STARS);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
+  const reload = React.useCallback(async () => {
+    try {
+      const list = await listStars();
+      if (list.length > 0) setStars(list);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败");
+    }
+  }, []);
+
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -40,7 +50,7 @@ export default function CelebrityMarketPage() {
           明星数据加载失败：{loadError}（已回退到本地占位数据）
         </div>
       )}
-      <CelebrityMarket stars={stars} />
+      <CelebrityMarket stars={stars} onChanged={reload} />
     </div>
   );
 }

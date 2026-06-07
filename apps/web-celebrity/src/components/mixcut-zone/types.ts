@@ -210,6 +210,8 @@ export interface MixcutAsset {
    */
   cdn_url?: string;
   cdn_key?: string;
+  /** v0.51+: 软删时间；常规列表默认不返回已软删素材。 */
+  deleted_at?: string;
 }
 
 /**

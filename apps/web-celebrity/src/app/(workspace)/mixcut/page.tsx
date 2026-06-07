@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   Sparkles,
-  Video,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -42,29 +41,31 @@ export default function MixcutHomePage() {
     }
     return { videosThisMonth, totalJobs: jobs.length };
   })();
-  const recentJobs = jobs.slice(0, 4);
+  const recentJobs = jobs.slice(0, 2);
 
   return (
     <div className="px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto">
       {/* 与 /mixcut/jobs、/mixcut/templates 对齐的 slim 头 */}
-      <div className="flex items-end justify-between gap-4 flex-wrap">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">混剪工作台</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            选模板，填素材，一次生成多条不同版本的短视频。
+            选模板，填素材，生成可分发的短视频。
           </p>
         </div>
-        <div className="grid grid-cols-[auto_auto_auto] items-stretch gap-3">
-          <MonthlyStats
-            videosThisMonth={monthlyStats.videosThisMonth}
-            totalJobs={monthlyStats.totalJobs}
-          />
-          <Button variant="outline" className="h-full min-h-[46px] rounded-2xl px-4" asChild>
+        <div className="grid w-full grid-cols-2 items-stretch gap-2 sm:w-auto sm:grid-cols-[auto_auto_auto]">
+          <div className="col-span-2 sm:col-span-1">
+            <MonthlyStats
+              videosThisMonth={monthlyStats.videosThisMonth}
+              totalJobs={monthlyStats.totalJobs}
+            />
+          </div>
+          <Button variant="outline" className="h-11 rounded-xl px-4" asChild>
             <Link href="/mixcut/drafts">
               <Bookmark className="size-4" /> 草稿箱
             </Link>
           </Button>
-          <Button variant="gradient" className="h-full min-h-[46px] rounded-2xl px-4" asChild>
+          <Button variant="gradient" className="h-11 rounded-xl px-4" asChild>
             <Link href="/mixcut/templates">
               <Sparkles className="size-4" /> 去模板库
             </Link>
@@ -72,12 +73,12 @@ export default function MixcutHomePage() {
         </div>
       </div>
 
-      {/* 继续上次进度 —— 最近任务 */}
+      {/* 最近任务 */}
       <Card>
         <CardContent className="p-0">
-          <div className="flex items-center justify-between px-5 pt-4 pb-3">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2.5">
             <div>
-              <div className="text-sm font-medium">继续上次进度</div>
+              <div className="text-sm font-medium">最近任务</div>
               <div className="text-xs text-muted-foreground mt-0.5">
                 {recentJobs.length > 0 ? `最近 ${recentJobs.length} 个生成任务` : "还没有生成任务"}
               </div>
@@ -93,15 +94,12 @@ export default function MixcutHomePage() {
               <Link
                 key={j.id}
                 href={`/mixcut/jobs/${j.id}`}
-                className="flex items-center gap-4 px-5 py-3 hover:bg-secondary/50 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors"
               >
-                <div className="w-10 aspect-[9/16] rounded-md bg-gradient-to-br from-slate-700 to-slate-900 shrink-0 grid place-items-center">
-                  <Video className="size-3.5 text-white/40" />
-                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="font-medium text-sm truncate">{j.template_name}</div>
+                  <div className="flex items-center gap-2">
                     <StatusBadge status={j.status} />
+                    <div className="font-medium text-sm truncate">{j.template_name}</div>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {j.output_variants} 条 · {PROFILE_LABELS[j.perturbation_profile]} · {relativeTime(j.created_at)}
@@ -118,7 +116,7 @@ export default function MixcutHomePage() {
               </Link>
             ))}
             {recentJobs.length === 0 && (
-              <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                 还没有生成任务，先去
                 <Link href="/mixcut/templates" className="text-foreground underline mx-1">
                   模板库
@@ -184,7 +182,7 @@ function MonthlyStats({
 }) {
   return (
     <div
-      className="flex min-h-[46px] items-center gap-1 rounded-2xl p-1.5"
+      className="grid min-h-11 grid-cols-2 gap-1 rounded-xl p-1"
       style={{
         border: "1px solid color-mix(in srgb, var(--line-2) 55%, var(--line))",
         background: "color-mix(in srgb, var(--bg-2) 54%, var(--bg-1))",
@@ -192,7 +190,7 @@ function MonthlyStats({
       }}
       aria-label="本月混剪统计"
     >
-      <StatSegment label="本月已生成" value={videosThisMonth} suffix="条视频" highlight />
+      <StatSegment label="本月生成" value={videosThisMonth} suffix="条" />
       <StatSegment label="累计任务" value={totalJobs} suffix="个" />
     </div>
   );
@@ -202,35 +200,19 @@ function StatSegment({
   label,
   value,
   suffix,
-  highlight = false,
 }: {
   label: string;
   value: number;
   suffix: string;
-  highlight?: boolean;
 }) {
   return (
     <div
-      className="relative min-w-[104px] overflow-hidden rounded-[11px] px-2.5 py-1.5"
-      style={
-        highlight
-          ? {
-              background: "color-mix(in srgb, var(--accent) 12%, var(--bg-1))",
-              boxShadow: "0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent)",
-            }
-          : undefined
-      }
+      className="min-w-[96px] rounded-lg px-2.5 py-1.5"
     >
-      {highlight && (
-        <span
-          className="pointer-events-none absolute inset-0 bg-[var(--accent)] opacity-[0.02]"
-          aria-hidden="true"
-        />
-      )}
-      <div className="relative z-[1] text-[10px] leading-none text-muted-foreground">
+      <div className="text-[10px] leading-none text-muted-foreground">
         {label}
       </div>
-      <div className="relative z-[1] mt-1 flex items-baseline gap-1">
+      <div className="mt-1 flex items-baseline gap-1">
         <span className="font-mono text-sm font-medium leading-none text-foreground tabular-nums">
           {formatNumber(value)}
         </span>

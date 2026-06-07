@@ -14,6 +14,12 @@ export default function StarDetailPage() {
   const starId = params?.starId;
   const [star, setStar] = React.useState<CelebrityStar | null | undefined>(undefined);
 
+  const reload = React.useCallback(async () => {
+    if (!starId) return;
+    const s = await getStar(starId).catch(() => null);
+    setStar(s);
+  }, [starId]);
+
   React.useEffect(() => {
     if (!starId) return;
     let cancelled = false;
@@ -30,5 +36,5 @@ export default function StarDetailPage() {
   if (star === null) {
     notFound();
   }
-  return <CelebrityStarDetail star={star} />;
+  return <CelebrityStarDetail star={star} onChanged={reload} />;
 }

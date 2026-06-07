@@ -33,6 +33,8 @@ import { ProductGenerateDialog } from "./ProductGenerateDialog";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { useConfirm } from "@/components/common/confirm-dialog";
+import { MobileFilterSheet } from "@/components/common/MobileFilterSheet";
+import { canUseOperatorTools } from "@/lib/operator-role";
 
 const inputCls =
   "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500 focus:bg-white";
@@ -47,7 +49,7 @@ const VIEW_STORAGE_KEY = "aistareco.web.products.view-mode.v1";
  *  server 端 hasAnyRole 兜底）。 */
 export function CelebrityProductLibrary() {
   const { user } = useAuth();
-  const canManage = !!user?.operatorRole;
+  const canManage = canUseOperatorTools(user?.operatorRole);
 
   const [list, setList] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -159,6 +161,8 @@ export function CelebrityProductLibrary() {
     return { created, failed };
   };
 
+  const activeFilterCount = (category !== "全部" ? 1 : 0) + (q.trim() ? 1 : 0);
+
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
@@ -177,14 +181,14 @@ export function CelebrityProductLibrary() {
           </div>
         </div>
         {canManage && (
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setQuickLinkOpen(true)} className={CTA_SECONDARY}>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+            <button type="button" onClick={() => setQuickLinkOpen(true)} className={cn(CTA_SECONDARY, "mobile-touch-target")}>
               <Link2 className="h-3.5 w-3.5" /> 从抖音链接建档
             </button>
-            <button type="button" onClick={() => setBatchOpen(true)} className={CTA_SECONDARY}>
+            <button type="button" onClick={() => setBatchOpen(true)} className={cn(CTA_SECONDARY, "mobile-touch-target")}>
               <FileSpreadsheet className="h-3.5 w-3.5" /> 批量导入
             </button>
-            <button type="button" onClick={handleNew} className={CTA_PRIMARY}>
+            <button type="button" onClick={handleNew} className={cn(CTA_PRIMARY, "mobile-touch-target")}>
               <Plus className="h-3.5 w-3.5" /> 新增商品
             </button>
           </div>
@@ -192,7 +196,81 @@ export function CelebrityProductLibrary() {
       </div>
 
       {/* Filter + View toggle */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 pb-3">
+      <div className="mobile-filter-surface flex flex-col gap-3 md:hidden">
+        <div className="relative w-full">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            className={inputCls + " mobile-touch-target pl-9"}
+            placeholder="搜索商品名称 / 卖点关键词"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <MobileFilterSheet
+            title="商品筛选"
+            summary={`当前匹配 ${list.length} 个商品`}
+            activeCount={activeFilterCount}
+          >
+            <div className="space-y-5">
+              <section>
+                <div className="mb-2 text-xs font-semibold text-zinc-500">类目</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["全部", ...PRODUCT_CATEGORIES] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCategory(c)}
+                      className={cn(
+                        "mobile-touch-target rounded-lg border px-3 text-sm transition",
+                        category === c
+                          ? "border-violet-400/40 bg-violet-500/10 text-violet-700"
+                          : "border-zinc-200 bg-white text-zinc-600",
+                      )}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section>
+                <div className="mb-2 text-xs font-semibold text-zinc-500">桌面视图</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setViewModePersisted("list")}
+                    className={cn(
+                      "mobile-touch-target inline-flex items-center justify-center gap-2 rounded-lg border px-3 text-sm",
+                      viewMode === "list"
+                        ? "border-violet-400/40 bg-violet-500/10 text-violet-700"
+                        : "border-zinc-200 bg-white text-zinc-600",
+                    )}
+                  >
+                    <List className="h-4 w-4" /> 列表
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewModePersisted("grid")}
+                    className={cn(
+                      "mobile-touch-target inline-flex items-center justify-center gap-2 rounded-lg border px-3 text-sm",
+                      viewMode === "grid"
+                        ? "border-violet-400/40 bg-violet-500/10 text-violet-700"
+                        : "border-zinc-200 bg-white text-zinc-600",
+                    )}
+                  >
+                    <LayoutGrid className="h-4 w-4" /> 网格
+                  </button>
+                </div>
+              </section>
+            </div>
+          </MobileFilterSheet>
+          <div className="min-w-0 text-right text-xs text-zinc-500">
+            {category !== "全部" ? category : "全部类目"} · {list.length} 个
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden flex-wrap items-center gap-3 border-b border-zinc-200 pb-3 md:flex">
         <div className="flex flex-wrap gap-1">
           {(["全部", ...PRODUCT_CATEGORIES] as const).map((c) => (
             <button
@@ -262,30 +340,64 @@ export function CelebrityProductLibrary() {
           onQuickLink={() => setQuickLinkOpen(true)}
         />
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {list.map((p) => (
-            <ProductCard
-              key={p.id}
-              product={p}
-              canManage={canManage}
-              onEdit={() => handleEdit(p)}
-              onDelete={() => handleDelete(p)}
-              onGenerate={() => handleGenerate(p)}
-              onRefreshImages={() => handleRefreshImages(p)}
-              isRefreshing={refreshing.has(p.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mobile-card-list md:hidden">
+            {list.map((p) => (
+              <ProductMobileCard
+                key={p.id}
+                product={p}
+                canManage={canManage}
+                onEdit={() => handleEdit(p)}
+                onDelete={() => handleDelete(p)}
+                onGenerate={() => handleGenerate(p)}
+                onRefreshImages={() => handleRefreshImages(p)}
+                isRefreshing={refreshing.has(p.id)}
+              />
+            ))}
+          </div>
+          <div className="hidden gap-4 sm:grid-cols-2 md:grid lg:grid-cols-3 xl:grid-cols-4">
+            {list.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                canManage={canManage}
+                onEdit={() => handleEdit(p)}
+                onDelete={() => handleDelete(p)}
+                onGenerate={() => handleGenerate(p)}
+                onRefreshImages={() => handleRefreshImages(p)}
+                isRefreshing={refreshing.has(p.id)}
+              />
+            ))}
+          </div>
+        </>
       ) : (
-        <ProductTable
-          list={list}
-          canManage={canManage}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onGenerate={handleGenerate}
-          onRefreshImages={handleRefreshImages}
-          refreshingIds={refreshing}
-        />
+        <>
+          <div className="mobile-card-list md:hidden">
+            {list.map((p) => (
+              <ProductMobileCard
+                key={p.id}
+                product={p}
+                canManage={canManage}
+                onEdit={() => handleEdit(p)}
+                onDelete={() => handleDelete(p)}
+                onGenerate={() => handleGenerate(p)}
+                onRefreshImages={() => handleRefreshImages(p)}
+                isRefreshing={refreshing.has(p.id)}
+              />
+            ))}
+          </div>
+          <div className="hidden md:block">
+            <ProductTable
+              list={list}
+              canManage={canManage}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onGenerate={handleGenerate}
+              onRefreshImages={handleRefreshImages}
+              refreshingIds={refreshing}
+            />
+          </div>
+        </>
       )}
 
       {canManage && (
@@ -474,6 +586,111 @@ function ProductTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ProductMobileCard({
+  product,
+  canManage,
+  onEdit,
+  onDelete,
+  onGenerate,
+  onRefreshImages,
+  isRefreshing,
+}: {
+  product: Product;
+  canManage: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onGenerate: () => void;
+  onRefreshImages: () => void;
+  isRefreshing: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-[var(--shadow-soft)]">
+      <div className="flex gap-3">
+        <Link
+          href={`/products/${product.id}`}
+          className="block h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100"
+          title="查看商品详情"
+        >
+          {product.images[0] ? (
+            <img src={product.images[0]} alt={product.name} loading="lazy" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">无图</div>
+          )}
+        </Link>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <Link
+              href={`/products/${product.id}`}
+              className="line-clamp-2 flex-1 text-sm font-semibold leading-snug text-zinc-900"
+              style={{ minHeight: 40 }}
+            >
+              {product.name}
+            </Link>
+            <span className="shrink-0 rounded border border-violet-400/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-700">
+              {product.category}
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-500">
+            <span className="font-mono text-zinc-800">
+              {product.priceCents != null ? formatYuan(product.priceCents) : "未标价"}
+            </span>
+            {product.commissionRate != null && <span>佣金 {product.commissionRate}%</span>}
+            <span>引用 {product.usageCount} 次</span>
+          </div>
+          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-zinc-500">
+            {product.sellingPoints || "还未填写卖点"}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onGenerate}
+          className="mobile-touch-target inline-flex items-center justify-center gap-1 rounded-xl border border-violet-400/40 bg-violet-500/10 px-3 text-xs font-medium text-violet-700"
+        >
+          <Sparkles className="h-3.5 w-3.5" /> 生成视频
+        </button>
+        <Link
+          href={`/products/${product.id}#assets`}
+          className="mobile-touch-target inline-flex items-center justify-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700"
+          title="查看本商品详情 + 关联素材"
+        >
+          <Images className="h-3.5 w-3.5" /> 素材 {product.images.length}
+        </Link>
+        {canManage && product.link && (
+          <button
+            type="button"
+            onClick={onRefreshImages}
+            disabled={isRefreshing}
+            className="mobile-touch-target inline-flex items-center justify-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 disabled:opacity-50"
+          >
+            {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            刷新图片
+          </button>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="mobile-touch-target inline-flex items-center justify-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700"
+          >
+            <Edit3 className="h-3.5 w-3.5" /> 编辑
+          </button>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="mobile-touch-target inline-flex items-center justify-center gap-1 rounded-xl border border-pink-400/30 bg-pink-500/[0.06] px-3 text-xs font-medium text-pink-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> 删除
+          </button>
+        )}
+      </div>
     </div>
   );
 }

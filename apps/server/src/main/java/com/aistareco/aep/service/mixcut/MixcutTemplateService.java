@@ -83,7 +83,15 @@ public class MixcutTemplateService {
         return true;
     }
 
-    /** 写一个工厂模板（由 Seeder 用）。 */
+    /** 删除一个工厂模板（运营管理用；factory scope 物理删除）。 */
+    public boolean deleteFactory(String templateId) {
+        var existing = repo.findByTemplateIdAndOwnerScope(templateId, FACTORY_SCOPE);
+        if (existing.isEmpty()) return false;
+        repo.delete(existing.get());
+        return true;
+    }
+
+    /** 写一个工厂模板（由 Seeder + 运营管理端点用）。 */
     public MixcutTemplate upsertFactory(MixcutTemplateUpsertRequest req) {
         if (req.templateId() == null || req.templateId().isBlank()) {
             throw new IllegalArgumentException("template_id 不能为空");

@@ -69,6 +69,14 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.55 · 2026-06-07 · 运营内嵌管理「明星」+「混剪工厂模板」
+
+- **背景**：运营角色（`operatorRole`）此前在 web-celebrity 只对**商品库**有内嵌写权限（v0.31），但无法编辑明星、也无法编辑/删除工厂模板。本版把同一套 `canUseOperatorTools(role)` 门控扩展到明星与混剪工厂模板。
+- **角色判定集中化**：新增 [`src/lib/operator-role.ts`](src/lib/operator-role.ts) 的 `canUseOperatorTools(role)`（`"operator" | "super_admin"` → true），并回填到既有所有 `!!user?.operatorRole` 判断点（商品库 / 商品详情 / 素材提卖点 / 视频库删除等）。
+- **明星（全 CRUD，纯前端）**：`api/celebrity-zone.ts` +`createStar/updateStar/deleteStar/uploadCelebrityImage`（URL → `/admin/celebrity/*`，server `hasAnyRole` 兜底，后端无改动）。新 [`StarFormDialog`](src/components/celebrity-zone/StarFormDialog.tsx)（移植自 admin + 图片上传）。`CelebrityMarket`「新增明星」、`CelebrityStarCard` 封面覆盖「编辑/删除」、`CelebrityStarDetail` header「编辑/删除」，删除走 `useConfirm`。普通用户只读。
+- **混剪工厂模板（前端 + 后端）**：运营「保存=就地写工厂模板（全员可见）」、可删工厂模板；走 `api/mixcut.ts` 的 `saveFactoryTemplate/deleteFactoryTemplate`（→ `/admin/mixcut/templates`，server 新 `AdminMixcutTemplateController`）。模板新建/编辑/删除入口统一 `canManageTemplates` 门控；普通用户仅浏览 + 用模板创建任务。USE_LOCAL 用 localStorage「已删 id 集合」模拟「删了全员看不到」。
+- 详见根目录 [`AGENTS.md`](../../AGENTS.md) §v0.55。
+
 ### v0.45 · 2026-05-30 · 移动端 H5（自适应 shell + 全页响应式 + 编辑器降级，Phase 1–4）
 
 - **背景**：工作台是桌面优先 —— `(workspace)/layout.tsx` 写死 `gridTemplateColumns: "220px 1fr"` 固定栅格 + 220px 侧栏 + ⌘K 搜索；大量页面用内联 style 的固定多列栅格（`repeat(4/5,1fr)`、`1.4fr 1fr`、账本 `150px 120px 1fr 120px 110px`），在手机上溢出/挤压，基本不可用。

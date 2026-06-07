@@ -12,10 +12,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, PlayCircle, Loader2, TriangleAlert, Search, Film } from "lucide-react";
+import { ExternalLink, PlayCircle, Loader2, TriangleAlert, Search, Film, Trash2 } from "lucide-react";
 import type { MaterialVideo } from "@/components/material-ops/types";
 import { MaterialOpsApi } from "@/api";
 import { cn } from "@ai-star-eco/ui/ui/utils";
+import { useAuth } from "@ai-star-eco/api-client";
+import { useConfirm } from "@/components/common/confirm-dialog";
+import { VIDEO_ASSET_GRID_CLASS, VIDEO_ASSET_TOOLBAR_CLASS } from "@/components/common/video-library-density";
+import { canUseOperatorTools } from "@/lib/operator-role";
 import {
   Dialog,
   DialogContent,
@@ -56,10 +60,14 @@ function PosterFromVideo({ src }: { src: string }) {
 
 export function ScriptVideosTab() {
   const router = useRouter();
+  const { user } = useAuth();
+  const canDeleteVideos = canUseOperatorTools(user?.operatorRole);
+  const { confirm, ConfirmHost } = useConfirm();
   const [videos, setVideos] = React.useState<MaterialVideo[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [playing, setPlaying] = React.useState<MaterialVideo | null>(null);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const load = React.useCallback(() => {
     return MaterialOpsApi.listVideos()
@@ -95,6 +103,32 @@ export function ScriptVideosTab() {
     else goManage(video);
   };
 
+  const handleDelete = async (video: MaterialVideo) => {
+    if (!canDeleteVideos || deletingId) return;
+    const ok = await confirm({
+      title: "删除脚本视频?",
+      description: (
+        <span>
+          删除后会立即从视频库隐藏，后台保留软删记录，后续可做恢复或审计。
+        </span>
+      ),
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setDeletingId(video.id);
+    setError(null);
+    try {
+      await MaterialOpsApi.deleteVideo(video.id);
+      setVideos((prev) => prev?.filter((v) => v.id !== video.id) ?? prev);
+      if (playing?.id === video.id) setPlaying(null);
+    } catch (e: any) {
+      setError(e?.message ?? "删除失败");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const filtered = (videos ?? []).filter((v) => {
     const q = query.trim();
     return !q || v.name.includes(q);
@@ -110,34 +144,35 @@ export function ScriptVideosTab() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Header summary */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-[var(--shadow-soft)]">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/10">
-          <Film className="h-5 w-5 text-violet-600" />
-        </div>
-        <div className="flex-1">
-          <div className="text-base font-semibold text-zinc-800">
-            脚本视频 · {videos?.length ?? 0} 条
+    <div className="flex flex-col gap-3">
+      <div className={cn(VIDEO_ASSET_TOOLBAR_CLASS, "flex flex-wrap items-center gap-2")}>
+        <div className="inline-flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/25 bg-violet-500/10">
+            <Film className="h-4 w-4 text-violet-600" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-zinc-800">
+              脚本视频 · {filtered.length}/{videos?.length ?? 0}
+            </div>
+            <div className="truncate text-[11px] text-zinc-500">
+              点击预览播放，派生 / 详情 / 提取卖点前往
+              <button
+                type="button"
+                onClick={() => goManage()}
+                className="ml-1 inline-flex items-center gap-0.5 text-violet-600 underline-offset-2 hover:underline"
+              >
+                商品素材库 <ExternalLink className="h-3 w-3" />
+              </button>
+            </div>
           </div>
-          <div className="text-xs text-zinc-500">
-            素材运营脚本派生的全部带货视频，点击即可预览播放。派生 / 详情 / 提取卖点等请前往
-            <button
-              type="button"
-              onClick={() => goManage()}
-              className="mx-1 inline-flex items-center gap-0.5 text-violet-600 underline-offset-2 hover:underline"
-            >
-              商品素材库 <ExternalLink className="h-3 w-3" />
-            </button>
-          </div>
         </div>
-        <div className="relative w-56">
+        <div className="relative w-full sm:w-56">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索视频名…"
-            className="h-9 w-full rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-800 outline-none focus:border-violet-400"
+            className="h-8 w-full rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-xs text-zinc-800 outline-none focus:border-violet-400"
           />
         </div>
       </div>
@@ -157,9 +192,16 @@ export function ScriptVideosTab() {
           挑个脚本生成一批吧。
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        <div className={VIDEO_ASSET_GRID_CLASS}>
           {filtered.map((v) => (
-            <ScriptVideoCard key={v.id} video={v} onClick={() => handleCardClick(v)} />
+            <ScriptVideoCard
+              key={v.id}
+              video={v}
+              onClick={() => handleCardClick(v)}
+              canDelete={canDeleteVideos}
+              deleting={deletingId === v.id}
+              onDelete={() => handleDelete(v)}
+            />
           ))}
         </div>
       )}
@@ -207,68 +249,92 @@ export function ScriptVideosTab() {
           )}
         </DialogContent>
       </Dialog>
+      <ConfirmHost />
     </div>
   );
 }
 
-function ScriptVideoCard({ video, onClick }: { video: MaterialVideo; onClick: () => void }) {
+function ScriptVideoCard({
+  video,
+  onClick,
+  canDelete,
+  deleting,
+  onDelete,
+}: {
+  video: MaterialVideo;
+  onClick: () => void;
+  canDelete: boolean;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
   const badge = STATUS_BADGE[video.status];
   const isRendering = video.status === "rendering";
   const isFailed = video.status === "failed";
   const canPlay = video.status === "ready" && !!video.video_url;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={canPlay ? "点击预览播放" : "前往商品素材库查看 / 操作"}
-      className="group flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-left transition hover:border-violet-300 hover:bg-zinc-100"
-    >
-      <div
-        className="relative aspect-[9/16] overflow-hidden rounded-lg"
-        style={{
-          background: video.cover_color
-            ? `linear-gradient(135deg, ${video.cover_color}, ${video.cover_color}55)`
-            : "#18181b",
-        }}
-      >
-        {/* 封面：缩略图 → 视频首帧 → 渐变兜底。渲染中 / 失败不取视频帧。 */}
-        {video.thumbnail_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={video.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
-        ) : !isRendering && !isFailed && video.video_url ? (
-          <PosterFromVideo src={video.video_url} />
-        ) : null}
-
-        {/* 状态徽标 */}
-        <span
-          className={cn(
-            "absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 text-[9px] font-medium backdrop-blur",
-            badge.className,
-          )}
+    <div className="group flex flex-col gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 p-1.5 text-left transition hover:border-violet-300 hover:bg-zinc-100">
+      <div className="relative">
+        <button
+          type="button"
+          onClick={onClick}
+          title={canPlay ? "点击预览播放" : "前往商品素材库查看 / 操作"}
+          className="relative block aspect-[4/5] w-full overflow-hidden rounded-md text-left"
+          style={{
+            background: video.cover_color
+              ? `linear-gradient(135deg, ${video.cover_color}, ${video.cover_color}55)`
+              : "#18181b",
+          }}
         >
-          {isRendering ? `生成中 ${video.progress_pct ?? 0}%` : badge.label}
-        </span>
+          {/* 封面：缩略图 → 视频首帧 → 渐变兜底。渲染中 / 失败不取视频帧。 */}
+          {video.thumbnail_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={video.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+          ) : !isRendering && !isFailed && video.video_url ? (
+            <PosterFromVideo src={video.video_url} />
+          ) : null}
 
-        {/* 中央图标 */}
-        {isFailed ? (
-          <TriangleAlert className="absolute left-1/2 top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 text-white/90" />
-        ) : isRendering ? (
-          <Loader2 className="absolute left-1/2 top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 animate-spin text-white/90" />
-        ) : canPlay ? (
-          <span className="absolute left-1/2 top-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/55 text-zinc-900 backdrop-blur-sm transition group-hover:bg-white/80 group-hover:scale-110">
-            <PlayCircle className="size-6" />
+          {/* 状态徽标 */}
+          <span
+            className={cn(
+              "absolute left-1 top-1 rounded px-1.5 py-0.5 text-[9px] font-medium backdrop-blur",
+              badge.className,
+            )}
+          >
+            {isRendering ? `生成中 ${video.progress_pct ?? 0}%` : badge.label}
           </span>
-        ) : (
-          <PlayCircle className="absolute left-1/2 top-1/2 size-7 -translate-x-1/2 -translate-y-1/2 text-white/85 opacity-0 transition group-hover:opacity-100" />
-        )}
 
-        {/* 时长 */}
-        <span className="absolute bottom-1.5 right-1.5 rounded bg-black/55 px-1 text-[9px] font-mono text-white">
-          {video.duration_sec}s
-        </span>
+          {/* 中央图标 */}
+          {isFailed ? (
+            <TriangleAlert className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 text-white/90" />
+          ) : isRendering ? (
+            <Loader2 className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 animate-spin text-white/90" />
+          ) : canPlay ? (
+            <span className="absolute left-1/2 top-1/2 flex size-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/55 text-zinc-900 backdrop-blur-sm transition group-hover:bg-white/80 group-hover:scale-110">
+              <PlayCircle className="size-5" />
+            </span>
+          ) : (
+            <PlayCircle className="absolute left-1/2 top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 text-white/85 opacity-0 transition group-hover:opacity-100" />
+          )}
+
+          {/* 时长 */}
+          <span className="absolute bottom-1 right-1 rounded bg-black/55 px-1 text-[9px] font-mono text-white">
+            {video.duration_sec}s
+          </span>
+        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            title="删除视频"
+            className="mobile-icon-target absolute bottom-1 left-1 inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+          </button>
+        )}
       </div>
       <div className="px-0.5">
-        <div className="line-clamp-2 min-h-[2.4em] text-xs font-medium text-zinc-700">{video.name}</div>
+        <div className="line-clamp-1 text-[11px] font-medium text-zinc-700">{video.name}</div>
         {video.metrics ? (
           <div className="mt-1 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
             <span>{video.metrics.plays}</span>
@@ -281,6 +347,6 @@ function ScriptVideoCard({ video, onClick }: { video: MaterialVideo; onClick: ()
           </div>
         )}
       </div>
-    </button>
+    </div>
   );
 }

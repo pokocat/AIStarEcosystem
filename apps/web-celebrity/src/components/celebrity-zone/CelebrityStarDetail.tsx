@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowUpRight, Flame, RefreshCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, ArrowUpRight, Flame, Pencil, RefreshCcw, Trash2 } from "lucide-react";
+import { useAuth } from "@ai-star-eco/api-client";
 import type { CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 import {
   AUTH_STATUS_META,
@@ -13,11 +15,17 @@ import { CelebrityAuthBanner } from "./CelebrityAuthBanner";
 import { CelebrityPricingTierCard } from "./CelebrityPricingTierCard";
 import { CelebrityHeroCta } from "./CelebrityHeroCta";
 import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
+import { StarFormDialog } from "./StarFormDialog";
+import { CelebrityZoneApi } from "@/api";
+import { canUseOperatorTools } from "@/lib/operator-role";
+import { useConfirm } from "@/components/common/confirm-dialog";
 import { useProducerShell } from "@/lib/celebrity-shell-context";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
   star: CelebrityStar;
+  /** v0.55+：明星被运营编辑后回调（父级重新拉 getStar 刷新）。 */
+  onChanged?: () => void | Promise<void>;
 }
 
 const CHEAPEST_CREDIT_PRICE = Math.min(
@@ -25,7 +33,32 @@ const CHEAPEST_CREDIT_PRICE = Math.min(
 );
 
 /** P2 明星详情：左资料 + 右示例/套餐；已授权且积分够时顶部显示醒目 CTA。 */
-export function CelebrityStarDetail({ star }: Props) {
+export function CelebrityStarDetail({ star, onChanged }: Props) {
+  const router = useRouter();
+  const { user } = useAuth();
+  const canManage = canUseOperatorTools(user?.operatorRole);
+  const { confirm, ConfirmHost } = useConfirm();
+  const [editing, setEditing] = React.useState(false);
+  const [actionError, setActionError] = React.useState<string | null>(null);
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: `删除明星「${star.name}」？`,
+      description:
+        "删除后该明星不再出现在用户端市场，但历史已生成的视频与项目不受影响。该操作不可撤销。",
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setActionError(null);
+    try {
+      await CelebrityZoneApi.deleteStar(star.id);
+      router.push("/market");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "删除失败");
+    }
+  };
+
   const { wallet } = useProducerShell();
   const auth = AUTH_STATUS_META[star.authorization.status];
   const isAuthorized = star.authorization.status === "authorized";
@@ -54,7 +87,31 @@ export function CelebrityStarDetail({ star }: Props) {
             <Flame className="h-3 w-3" /> 热门
           </span>
         )}
+        {canManage && (
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/10 px-2.5 py-1.5 text-xs text-violet-600 transition hover:border-violet-500 hover:bg-violet-500/20"
+            >
+              <Pencil className="h-3.5 w-3.5" /> 编辑明星
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-600 transition hover:border-rose-400 hover:bg-rose-100"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> 删除
+            </button>
+          </div>
+        )}
       </div>
+
+      {actionError && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          操作失败：{actionError}
+        </div>
+      )}
 
       {/* 授权横幅（unauthorized / pending / expired 时） */}
       <CelebrityAuthBanner star={star} />
@@ -226,6 +283,19 @@ export function CelebrityStarDetail({ star }: Props) {
           )}
         </div>
       </div>
+
+      {/* 运营：明星编辑表单 + 删除确认 */}
+      {canManage && editing && (
+        <StarFormDialog
+          star={star}
+          onClose={() => setEditing(false)}
+          onSaved={async () => {
+            setEditing(false);
+            await onChanged?.();
+          }}
+        />
+      )}
+      <ConfirmHost />
     </div>
   );
 }

@@ -61,9 +61,9 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | 路径 | 模块 | 功能 |
 |---|---|---|
 | `/dashboard` | 工作台 | 今日总览（KPI / 待办 / 进行中任务） |
-| `/market` | 工作台 | 明星市场（浏览所有可申请明星） |
+| `/market` | 工作台 | 明星市场（浏览所有可申请明星；**运营**额外有「新增 / 编辑 / 删除明星」入口，v0.55） |
 | `/cast` | 工作台 | 我的明星（已授权明星墙） |
-| `/star/[starId]` | 详情 | 明星详情（含授权状态、可申请档位、过往项目） |
+| `/star/[starId]` | 详情 | 明星详情（含授权状态、可申请档位、过往项目；**运营**额外有「编辑 / 删除明星」，v0.55） |
 | `/star/[starId]/apply` | 详情 | 授权申请表单（定价档位选择） |
 | `/star/[starId]/generate` | 详情 | 生成工作流（模板 / 盲盒选择 → AI 生成视频） |
 | `/projects` | 制作 | 我的项目（多项目管理） |
@@ -77,8 +77,8 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | 路径 | 模块 | 功能 |
 |---|---|---|
 | `/mixcut` | 制作 | 混剪首页（KPI + 热门模板 + 最近任务） |
-| `/mixcut/templates` | 制作 | 模板库（筛选 / 搜索） |
-| `/mixcut/templates/[id]` | 制作 | 模板详情（slot schema + 扰动变体预览） |
+| `/mixcut/templates` | 制作 | 模板库（筛选 / 搜索；**运营**额外有「新建 / 删除工厂模板」入口，v0.55） |
+| `/mixcut/templates/[id]` | 制作 | 模板详情（slot schema + 扰动变体预览；**运营**保存=就地写工厂模板（全员可见）+ 可删除工厂模板，v0.55） |
 | `/mixcut/create/[id]` | 制作 | 新建渲染任务（slot 填充 + perturbation profile + 变体数）；`?draft_id=X` 恢复实例填充态（v0.48）；「保存草稿」/「改模板（先存草稿）」 |
 | `/mixcut/drafts` | 制作 | 草稿箱 / 我的实例（v0.48）—— 保存的填充配置，可继续编辑 / 直接生成 / 删除 |
 | `/mixcut/jobs` | 制作 | 渲染任务列表 |
@@ -92,6 +92,8 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 3. **洞察** — `/data`
 
 详情页 `/star/<id>`、`/projects/<id>`、`/mixcut/*` 子路由不挂在 sidebar 父级（设计选择 —— 避免与 list 父级竞争高亮）。
+
+**运营内嵌管理（v0.55）**：登录账号 `operatorRole ∈ {operator, super_admin}`（判定见 [`src/lib/operator-role.ts`](src/lib/operator-role.ts) `canUseOperatorTools`）时，在 web-celebrity 内直接获得「商品库（v0.31）/ 明星（v0.55）/ 混剪工厂模板（v0.55）」的写入口；写操作走 `/api/admin/**`，server `hasAnyRole(SUPER_ADMIN, OPERATOR)` 兜底。**运营管理的是共享池** —— 编辑/删除工厂模板与明星对全员生效。普通用户（STUDIO）：明星只读、模板仅浏览 + 用模板创建任务（模板写入口关闭）。
 
 ### 3.3 路由兼容
 

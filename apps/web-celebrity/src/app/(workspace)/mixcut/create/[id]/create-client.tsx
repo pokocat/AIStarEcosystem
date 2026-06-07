@@ -744,8 +744,8 @@ export function CreateClient({ id }: { id: string }) {
   };
 
   return (
-    <div className="px-6 lg:px-8 py-6 max-w-[1600px] mx-auto">
-      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+    <div className="mobile-editor-page px-4 md:px-6 lg:px-8 py-5 md:py-6 max-w-[1600px] mx-auto">
+      <div className="mobile-inline-action-row mb-3 flex items-center justify-between gap-3 flex-wrap">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href={`/mixcut/templates/${template.template_id}`}>
             <ArrowLeft className="size-4" /> 返回模板详情
@@ -817,7 +817,7 @@ export function CreateClient({ id }: { id: string }) {
         - 进度 chip / 数量 stepper + presets / 差异度 / 消耗 / CTA：单行扫读
         - overQuota 时下方挂一条 amber 警告条
       */}
-      <div className="sticky top-0 z-20 -mx-6 lg:-mx-8 mb-5 border-y border-border bg-background/92 backdrop-blur-md">
+      <div className="mobile-mixcut-toolbar sticky top-0 z-20 -mx-6 lg:-mx-8 mb-5 border-y border-border bg-background/92 backdrop-blur-md">
         <div className="px-6 lg:px-8 py-2.5 flex items-center gap-3 flex-wrap">
           {requiredSlots.length > 0 && (
             <div
@@ -1014,6 +1014,107 @@ export function CreateClient({ id }: { id: string }) {
             <AlertTriangle className="size-3 shrink-0" />
             积分不足：本次需 {creditCost} 积分，当前余额 {formatCredits(available)}。
             <Link href="/wallet" className="ml-1 underline">前往充值</Link>
+          </div>
+        )}
+      </div>
+
+      <div className="mobile-bottom-actionbar md:hidden">
+        <div className="mb-2 flex items-center justify-between gap-2 text-[11px]">
+          {requiredSlots.length > 0 ? (
+            <span
+              className={cn(
+                "inline-flex min-w-0 items-center gap-1.5 font-medium",
+                allRequiredFilled ? "text-emerald-700" : "text-amber-700",
+              )}
+            >
+              {allRequiredFilled ? (
+                <>
+                  <CheckCircle2 className="size-3" />
+                  必填已完成
+                </>
+              ) : (
+                <>
+                  <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  还差 {requiredSlots.length - filledRequired.length} 项必填
+                </>
+              )}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">无必填项</span>
+          )}
+          <span
+            className={cn(
+              "shrink-0 font-mono tabular-nums",
+              (overQuota || insufficientCredits) && "text-rose-600 font-semibold",
+            )}
+            title={insufficientCredits ? `积分不足：需要 ${creditCost}，当前可用 ${available}` : undefined}
+          >
+            {variants} 条 · {creditCost} 积分
+          </span>
+        </div>
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-2">
+          <div className="flex items-center rounded-md border border-border bg-card">
+            <button
+              type="button"
+              className="mobile-icon-target grid h-11 w-10 place-items-center text-muted-foreground disabled:opacity-40"
+              onClick={() => setVariants((v) => Math.max(1, v - 1))}
+              disabled={submitting}
+              aria-label="减少生成数量"
+            >
+              <Minus className="size-3.5" />
+            </button>
+            <span className="w-7 text-center text-sm font-semibold tabular-nums">{variants}</span>
+            <button
+              type="button"
+              className="mobile-icon-target grid h-11 w-10 place-items-center text-muted-foreground disabled:opacity-40"
+              onClick={() => setVariants((v) => Math.min(20, v + 1))}
+              disabled={submitting}
+              aria-label="增加生成数量"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </div>
+          <Button
+            variant="outline"
+            size="default"
+            className="h-11 px-2"
+            disabled={savingDraft || submitting}
+            onClick={() => handleSaveDraft()}
+            title={activeDraftId ? "更新当前实例（草稿）" : "把当前填充保存为实例，之后可继续编辑 / 反复生成"}
+          >
+            {savingDraft ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
+            {activeDraftId ? "更新" : "保存"}
+          </Button>
+          <Button
+            variant="gradient"
+            size="default"
+            className="h-11 px-2"
+            disabled={!allRequiredFilled || overQuota || insufficientCredits || submitting}
+            onClick={handleSubmit}
+            title={insufficientCredits ? `积分不足：需要 ${creditCost}，当前可用 ${available}` : undefined}
+          >
+            {submitting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            生成
+          </Button>
+        </div>
+        {(overQuota || insufficientCredits || draftError) && (
+          <div className="mt-2 flex items-start gap-1.5 text-[11px] leading-snug text-rose-700">
+            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+            <span className="min-w-0">
+              {draftError
+                ? draftError
+                : overQuota
+                  ? `本月剩余额度 ${formatNumber(quotaRemaining)} 不够生成 ${variants} 条`
+                  : `积分不足：本次需 ${creditCost}，当前余额 ${formatCredits(available)}`}
+            </span>
           </div>
         )}
       </div>

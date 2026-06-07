@@ -2,8 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowDownAZ, Filter, Flame, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowDownAZ, Filter, Flame, Plus, ShieldCheck, Sparkles } from "lucide-react";
+import { useAuth } from "@ai-star-eco/api-client";
 import { CelebrityStarCard } from "./CelebrityStarCard";
+import { StarFormDialog } from "./StarFormDialog";
+import { CelebrityZoneApi } from "@/api";
+import { canUseOperatorTools } from "@/lib/operator-role";
+import { useConfirm } from "@/components/common/confirm-dialog";
 import { CATEGORY_FILTERS, CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import type {
   CelebrityCategory,
@@ -13,6 +18,8 @@ import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
   stars: CelebrityStar[];
+  /** v0.55+：明星增删改后回调（父级重新拉 listStars 刷新）。 */
+  onChanged?: () => void | Promise<void>;
 }
 
 type SortKey = "hot" | "price-asc" | "price-desc";
@@ -23,9 +30,43 @@ const SORT_LABEL: Record<SortKey, string> = {
 };
 
 /** P1 主体：「我的授权明星」(顶部) + 类目筛选 + 排序 + 4 列明星网格（市场全量）。 */
-export function CelebrityMarket({ stars }: Props) {
+export function CelebrityMarket({ stars, onChanged }: Props) {
   const [category, setCategory] = React.useState<"全部" | CelebrityCategory>("全部");
   const [sort, setSort] = React.useState<SortKey>("hot");
+
+  // v0.55+：运营角色 (operatorRole) 内嵌管理明星（与 v0.31 商品库同款 canManage 模式）。
+  const { user } = useAuth();
+  const canManage = canUseOperatorTools(user?.operatorRole);
+  const { confirm, ConfirmHost } = useConfirm();
+  const [editing, setEditing] = React.useState<CelebrityStar | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [actionError, setActionError] = React.useState<string | null>(null);
+
+  const handleDelete = React.useCallback(
+    async (s: CelebrityStar) => {
+      const ok = await confirm({
+        title: `删除明星「${s.name}」？`,
+        description:
+          "删除后该明星不再出现在用户端市场，但历史已生成的视频与项目不受影响。该操作不可撤销。",
+        confirmText: "删除",
+        tone: "danger",
+      });
+      if (!ok) return;
+      setActionError(null);
+      try {
+        await CelebrityZoneApi.deleteStar(s.id);
+        await onChanged?.();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "删除失败");
+      }
+    },
+    [confirm, onChanged],
+  );
+
+  // 透传给每个卡片的运营管理 props（非运营时为 undefined，卡片不渲染入口）。
+  const cardManageProps = canManage
+    ? { canManage: true, onEdit: setEditing, onDelete: handleDelete }
+    : {};
 
   const authorizedStars = React.useMemo(
     () => stars.filter((s) => s.authorization.status === "authorized"),
@@ -65,6 +106,12 @@ export function CelebrityMarket({ stars }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
+      {actionError && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          操作失败：{actionError}
+        </div>
+      )}
+
       {/* ─── 我的授权明星 ─── */}
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -83,7 +130,7 @@ export function CelebrityMarket({ stars }: Props) {
         ) : (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
             {authorizedStars.map((s) => (
-              <CelebrityStarCard key={s.id} star={s} />
+              <CelebrityStarCard key={s.id} star={s} {...cardManageProps} />
             ))}
           </div>
         )}
@@ -101,7 +148,7 @@ export function CelebrityMarket({ stars }: Props) {
           </div>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
             {pendingStars.map((s) => (
-              <CelebrityStarCard key={s.id} star={s} />
+              <CelebrityStarCard key={s.id} star={s} {...cardManageProps} />
             ))}
           </div>
         </section>
@@ -119,7 +166,7 @@ export function CelebrityMarket({ stars }: Props) {
           </div>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
             {expiredStars.map((s) => (
-              <CelebrityStarCard key={s.id} star={s} />
+              <CelebrityStarCard key={s.id} star={s} {...cardManageProps} />
             ))}
           </div>
         </section>
@@ -133,9 +180,20 @@ export function CelebrityMarket({ stars }: Props) {
           <span className="rounded-md border border-violet-400/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-600">
             {stars.length} 位
           </span>
-          <span className="ml-auto text-[11px] text-zinc-500">
-            浏览市场全量明星，按需申请授权
-          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-[11px] text-zinc-500">
+              浏览市场全量明星，按需申请授权
+            </span>
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-700"
+              >
+                <Plus className="h-3.5 w-3.5" /> 新增明星
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200">
@@ -172,11 +230,28 @@ export function CelebrityMarket({ stars }: Props) {
         ) : (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
             {filtered.map((s) => (
-              <CelebrityStarCard key={s.id} star={s} />
+              <CelebrityStarCard key={s.id} star={s} {...cardManageProps} />
             ))}
           </div>
         )}
       </section>
+
+      {/* 运营：明星新增 / 编辑表单 + 删除确认 */}
+      {canManage && (creating || editing) && (
+        <StarFormDialog
+          star={editing}
+          onClose={() => {
+            setCreating(false);
+            setEditing(null);
+          }}
+          onSaved={async () => {
+            setCreating(false);
+            setEditing(null);
+            await onChanged?.();
+          }}
+        />
+      )}
+      <ConfirmHost />
     </div>
   );
 }

@@ -29,9 +29,13 @@ import {
   LogOut,
   type LucideIcon,
   Menu,
+  Package,
   Scissors,
   Send,
   Star,
+  UserCircle,
+  Video,
+  WalletCards,
 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
@@ -57,6 +61,15 @@ const TABS: {
   { icon: Send, label: "分发", href: "/distribution", match: (p) => p === "/distribution" || p.startsWith("/distribution/") },
 ];
 
+const MORE_CONTEXT: Array<{ label: string; icon: LucideIcon; match: (p: string) => boolean }> = [
+  { label: "视频", icon: Video, match: (p) => p.startsWith("/library") },
+  { label: "商品", icon: Package, match: (p) => p.startsWith("/products") },
+  { label: "素材", icon: Package, match: (p) => p.startsWith("/material") },
+  { label: "项目", icon: Star, match: (p) => p.startsWith("/projects") },
+  { label: "钱包", icon: WalletCards, match: (p) => p.startsWith("/wallet") },
+  { label: "账户", icon: UserCircle, match: (p) => p.startsWith("/account") },
+];
+
 export function MobileShell({
   groups,
   title,
@@ -70,6 +83,10 @@ export function MobileShell({
   const [navOpen, setNavOpen] = React.useState(false);
   const { user, logout } = useAuth();
   const { wallet } = useCelebrityShell();
+  const activePrimaryTab = TABS.some((t) => t.match(pathname));
+  const moreContext = MORE_CONTEXT.find((item) => item.match(pathname));
+  const MoreIcon = moreContext?.icon ?? Menu;
+  const moreActive = navOpen || !activePrimaryTab;
 
   // 路由变化时自动收起抽屉（点了导航后）。
   React.useEffect(() => {
@@ -78,6 +95,7 @@ export function MobileShell({
 
   return (
     <div
+      className="celebrity-mobile-shell"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -141,6 +159,7 @@ export function MobileShell({
             alignItems: "center",
             gap: 5,
             padding: "6px 10px",
+            minHeight: 40,
             background: "var(--accent-soft)",
             border: "1px solid color-mix(in srgb, var(--accent) 22%, transparent)",
             borderRadius: "var(--radius-pill)",
@@ -213,7 +232,7 @@ export function MobileShell({
         <button
           type="button"
           onClick={() => setNavOpen(true)}
-          aria-label="打开全部菜单"
+          aria-label={moreContext ? `打开${moreContext.label}相关菜单` : "打开全部菜单"}
           style={{
             display: "flex",
             flexDirection: "column",
@@ -225,11 +244,13 @@ export function MobileShell({
             border: "none",
             cursor: "pointer",
             fontFamily: "inherit",
-            color: navOpen ? "var(--accent)" : "var(--fg-3)",
+            color: moreActive ? "var(--accent)" : "var(--fg-3)",
           }}
         >
-          <Menu size={19} strokeWidth={2} />
-          <span style={{ fontSize: 10.5, fontWeight: 500 }}>更多</span>
+          <MoreIcon size={19} strokeWidth={moreActive ? 2.4 : 2} />
+          <span style={{ fontSize: 10.5, fontWeight: moreActive ? 600 : 500 }}>
+            {moreContext?.label ?? "更多"}
+          </span>
         </button>
       </nav>
 
