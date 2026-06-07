@@ -497,13 +497,14 @@ export interface Application {
 }
 
 /** 下游子应用（复用已定稿 Avatar）。 */
+// 与平台三个子应用一一对应：AI 歌手（web-music）/ AI 短视频带货（web-celebrity）/ AI 短剧（web-drama）
 export const APPLICATIONS: Application[] = [
-  { key: "music", name: "音乐工作室", code: "APP-MUS", icon: "music", blurb: "数字人 MV、音乐短片与虚拟歌手演出", g1: "#7C5CE6", g2: "#2E2270", accent: "#C9B8FF",
-    tools: [{ name: "MV 生成器", desc: "一首歌一键生成数字人 MV", icon: "clapper" }, { name: "虚拟歌手演出", desc: "数字人演唱与舞台呈现", icon: "music" }, { name: "音乐短片", desc: "氛围配乐 + 角色叙事短片", icon: "play" }] },
-  { key: "drama", name: "短剧工坊", code: "APP-DRA", icon: "clapper", blurb: "数字人出演剧情短剧，多角色演绎成片", g1: "#3E63C8", g2: "#16224C", accent: "#9DB8FF",
+  { key: "music", name: "AI 歌手", code: "APP-MUS", icon: "music", blurb: "数字人化身虚拟歌手：发单曲、出 MV、开虚拟演出", g1: "#7C5CE6", g2: "#2E2270", accent: "#C9B8FF",
+    tools: [{ name: "单曲 MV", desc: "一首歌一键生成数字人 MV", icon: "clapper" }, { name: "虚拟歌手演出", desc: "数字人演唱与舞台呈现", icon: "music" }, { name: "音乐短片", desc: "氛围配乐 + 角色叙事短片", icon: "play" }] },
+  { key: "live", name: "AI 短视频带货", code: "APP-LIV", icon: "cart", blurb: "数字人口播带货：短视频混剪、商品挂载、矩阵分发", g1: "#E8884A", g2: "#6E3214", accent: "#FFD0A6",
+    tools: [{ name: "口播带货视频", desc: "商品脚本一键口播成片", icon: "mic" }, { name: "商品讲解", desc: "卖点拆解与讲解视频", icon: "doc" }, { name: "矩阵分发", desc: "多账号定时分发到抖音等平台", icon: "bolt" }] },
+  { key: "drama", name: "AI 短剧", code: "APP-DRA", icon: "clapper", blurb: "数字人出演剧情短剧，从剧本到成片多角色演绎", g1: "#3E63C8", g2: "#16224C", accent: "#9DB8FF",
     tools: [{ name: "剧情短剧", desc: "剧本到成片的短剧制作", icon: "clapper" }, { name: "多角色对戏", desc: "多个数字人同场演绎", icon: "users" }, { name: "分镜成片", desc: "自动分镜与剪辑合成", icon: "layers" }] },
-  { key: "live", name: "短视频带货", code: "APP-LIV", icon: "cart", blurb: "数字人口播带货，短视频与直播间开播", g1: "#E8884A", g2: "#6E3214", accent: "#FFD0A6",
-    tools: [{ name: "口播带货", desc: "商品脚本一键口播视频", icon: "mic" }, { name: "直播间开播", desc: "数字人 7×24 无人直播", icon: "bolt" }, { name: "商品讲解", desc: "卖点拆解与讲解视频", icon: "doc" }] },
 ];
 
 export interface Scene {

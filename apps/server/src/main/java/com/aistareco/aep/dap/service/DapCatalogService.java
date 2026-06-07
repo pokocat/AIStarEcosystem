@@ -112,24 +112,25 @@ public class DapCatalogService {
                 .findFirst().orElse(null);
     }
 
-    /** 下游子应用（复用已定稿 Avatar）。 */
+    /** 下游子应用（复用已定稿 Avatar）—— 与平台三个子产品一一对应：
+     *  AI 歌手（web-music）/ AI 短视频带货（web-celebrity）/ AI 短剧（web-drama）。 */
     public List<Map<String, Object>> applications() {
         return List.of(
-                app("music", "音乐工作室", "APP-MUS", "music", "数字人 MV、音乐短片与虚拟歌手演出",
+                app("music", "AI 歌手", "APP-MUS", "music", "数字人化身虚拟歌手：发单曲、出 MV、开虚拟演出",
                         "#7C5CE6", "#2E2270", "#C9B8FF", List.of(
-                                tool("MV 生成器", "一首歌一键生成数字人 MV", "clapper"),
+                                tool("单曲 MV", "一首歌一键生成数字人 MV", "clapper"),
                                 tool("虚拟歌手演出", "数字人演唱与舞台呈现", "music"),
                                 tool("音乐短片", "氛围配乐 + 角色叙事短片", "play"))),
-                app("drama", "短剧工坊", "APP-DRA", "clapper", "数字人出演剧情短剧，多角色演绎成片",
+                app("live", "AI 短视频带货", "APP-LIV", "cart", "数字人口播带货：短视频混剪、商品挂载、矩阵分发",
+                        "#E8884A", "#6E3214", "#FFD0A6", List.of(
+                                tool("口播带货视频", "商品脚本一键口播成片", "mic"),
+                                tool("商品讲解", "卖点拆解与讲解视频", "doc"),
+                                tool("矩阵分发", "多账号定时分发到抖音等平台", "bolt"))),
+                app("drama", "AI 短剧", "APP-DRA", "clapper", "数字人出演剧情短剧，从剧本到成片多角色演绎",
                         "#3E63C8", "#16224C", "#9DB8FF", List.of(
                                 tool("剧情短剧", "剧本到成片的短剧制作", "clapper"),
                                 tool("多角色对戏", "多个数字人同场演绎", "users"),
-                                tool("分镜成片", "自动分镜与剪辑合成", "layers"))),
-                app("live", "短视频带货", "APP-LIV", "cart", "数字人口播带货，短视频与直播间开播",
-                        "#E8884A", "#6E3214", "#FFD0A6", List.of(
-                                tool("口播带货", "商品脚本一键口播视频", "mic"),
-                                tool("直播间开播", "数字人 7×24 无人直播", "bolt"),
-                                tool("商品讲解", "卖点拆解与讲解视频", "doc"))));
+                                tool("分镜成片", "自动分镜与剪辑合成", "layers"))));
     }
 
     private static Map<String, Object> app(String key, String name, String code, String icon, String blurb,
