@@ -235,8 +235,8 @@ public class DapJobRunner {
 
         byte[] img;
         if (agnes.isConfigured()) {
-            String en = agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
-                    promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", instruction)));
+            String en = cleanEditPhrase(agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+                    promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", instruction))));
             checkCancel(job);
             progress(job, 35, "image.edit", "重绘形象…");
             img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_ITERATE,
@@ -318,8 +318,8 @@ public class DapJobRunner {
         if (scenePrompt != null) {
             en = scenePrompt;
         } else if (agnes.isConfigured() && userPrompt != null && !userPrompt.isBlank()) {
-            en = agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
-                    promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", userPrompt)));
+            en = cleanEditPhrase(agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+                    promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", userPrompt))));
         } else {
             en = userPrompt == null ? "new outfit and scene" : userPrompt;
         }
@@ -790,6 +790,15 @@ public class DapJobRunner {
 
     private static String firstOrNull(List<String> l) {
         return l == null || l.isEmpty() ? null : l.get(0);
+    }
+
+    /** 清洗翻译产物：去引号/围栏与尾部句号，避免拼进模板后出现「.. Keep」之类。 */
+    private static String cleanEditPhrase(String s) {
+        if (s == null) return "";
+        String out = s.strip();
+        if (out.startsWith("\"") && out.endsWith("\"") && out.length() > 1) out = out.substring(1, out.length() - 1).strip();
+        while (out.endsWith(".") || out.endsWith("。")) out = out.substring(0, out.length() - 1).stripTrailing();
+        return out;
     }
 
     private static long elapsedMs(long startNanos) {

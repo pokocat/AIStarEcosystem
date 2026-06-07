@@ -29,7 +29,7 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(PromptTemplateSeeder.class);
 
     /** 推新默认 prompt 基线时改这个值；下次启动会刷新 version==1 的行。 */
-    private static final String SEED_VERSION = "v5-2026-05-29-video-ref-analysis";
+    private static final String SEED_VERSION = "v6-2026-06-06-dap-edit-strength";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;
