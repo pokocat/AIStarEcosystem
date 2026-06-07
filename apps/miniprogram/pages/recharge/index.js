@@ -50,20 +50,21 @@ Page({
 
   async submit() {
     if (!this.data.currentPkgId) return;
-    wx.showLoading({ title: "支付中…", mask: true });
+    wx.showLoading({ title: "提交中…", mask: true });
     try {
-      // mock：直接调充值落账。真实环境：先 wx.requestPayment 走微信支付，回调成功后再 recharge 落账。
-      const r = await WalletApi.recharge(this.data.currentPkgId);
+      // v0.56：下单生成充值申请（不直接入账）。平台运营线下收款后核准方到账。
+      await WalletApi.recharge(this.data.currentPkgId);
       wx.hideLoading();
-      wx.showToast({ icon: "success", title: "充值成功" });
-      // RechargeResponseDto: { wallet, ledgerEntry } —— credits 用 wallet 字段更新
-      this.setData({ credits: r.wallet || r.credits || this.data.credits });
-      // v0.5.3：充值后立即刷新未读（数数 Bot 的钱包卡会随之更新）
-      try { const app = getApp(); if (app && app.triggerUnreadRefresh) app.triggerUnreadRefresh(); } catch (e) {}
-      setTimeout(() => wx.navigateBack(), 800);
+      wx.showModal({
+        title: "充值申请已提交",
+        content: "请按平台提供的方式完成付款；平台确认收款后积分将自动到账。",
+        showCancel: false,
+        confirmText: "知道了",
+        success: () => wx.navigateBack()
+      });
     } catch (e) {
       wx.hideLoading();
-      wx.showToast({ icon: "none", title: e.message || "充值失败" });
+      wx.showToast({ icon: "none", title: e.message || "提交失败" });
     }
   }
 });

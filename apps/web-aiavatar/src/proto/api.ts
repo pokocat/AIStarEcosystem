@@ -152,6 +152,9 @@ export const AuthApi = {
     authFetch(`/sms/request-code`, { phone, purpose }),
   smsLogin: (phone: string, code: string): Promise<{ token: string; user: any }> =>
     authFetch(`/sms/verify`, { phone, code }),
+  /** 手机号 + 密码登录（账号需先在「账号与安全」设置过密码；未设置 → PASSWORD_NOT_SET）。 */
+  passwordLogin: (phone: string, password: string): Promise<{ token: string; user: any }> =>
+    authFetch(`/password/login`, { phone, password }),
   /** v0.53：注册透传 platform=aiavatar（dev-grant-all=false 时按来源授权本子产品）。 */
   smsRegister: (input: { phone: string; code: string; licenseKey: string; studioName: string; displayName?: string; platform?: string }): Promise<{ token: string; user: any }> =>
     authFetch(`/sms/register`, { platform: "aiavatar", ...input }),
@@ -173,6 +176,20 @@ export const AuthApi = {
       body: JSON.stringify({ code }),
     });
     return parseResponse<any>(res);
+  },
+
+  /**
+   * 当前登录账号设置 / 修改登录密码（/api/me/password，需登录态）。
+   * 首次设置可不传 currentPassword；已有密码则必须校验 currentPassword。
+   * 设置成功后即可在登录页用「手机号 + 密码」登录。
+   */
+  setPassword: async (input: { currentPassword?: string; newPassword: string }): Promise<{ changed: boolean; hasPassword: boolean }> => {
+    const res = await fetch(`/api/me/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(input),
+    });
+    return parseResponse<{ changed: boolean; hasPassword: boolean }>(res);
   },
 };
 

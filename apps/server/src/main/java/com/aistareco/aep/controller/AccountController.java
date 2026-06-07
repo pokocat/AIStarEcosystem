@@ -8,9 +8,8 @@ import com.aistareco.aep.dto.MeDto;
 import com.aistareco.aep.dto.MessagesOverviewDto;
 import com.aistareco.aep.dto.MusicTrendPointDto;
 import com.aistareco.aep.dto.PageEnvelope;
+import com.aistareco.aep.dto.RechargeOrderDto;
 import com.aistareco.aep.dto.RechargePackageDto;
-import com.aistareco.aep.dto.RechargeRequestDto;
-import com.aistareco.aep.dto.RechargeResponseDto;
 import com.aistareco.aep.dto.SongDto;
 import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.dto.WalletDto;
@@ -129,17 +128,30 @@ public class AccountController {
     }
 
     /**
-     * v0.4：充值落账。
-     * mock：直接落账。线上接 wx.requestPayment 回调成功后调用。
+     * v0.56：充值下单（不再直接入账）。
+     * 生成一张待确认账单（PENDING）；平台运营在 admin 后台线下收款后 approve 才经账本入账。
      */
     @PostMapping("/wallet/recharge")
-    public ApiResponse<RechargeResponseDto> walletRecharge(Principal principal,
-                                                            @RequestBody RechargeRequestDto req) {
-        if (req == null || req.packageId() == null || req.packageId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "packageId 必填");
-        }
-        return ApiResponse.of(rechargeService.recharge(principal.getName(), req.packageId()));
+    public ApiResponse<RechargeOrderDto> createRechargeOrder(Principal principal,
+                                                             @RequestBody(required = false) RechargeOrderRequest req) {
+        String packageId = req == null ? null : req.packageId();
+        String note = req == null ? null : req.note();
+        return ApiResponse.of(rechargeService.createOrder(principal.getName(), packageId, note));
     }
+
+    /** v0.56：我的充值订单（含待确认 / 已到账 / 已驳回 / 已取消）。 */
+    @GetMapping("/wallet/recharge/orders")
+    public ApiResponse<List<RechargeOrderDto>> listRechargeOrders(Principal principal) {
+        return ApiResponse.of(rechargeService.listMyOrders(principal.getName()));
+    }
+
+    /** v0.56：取消自己的待确认充值订单。 */
+    @PostMapping("/wallet/recharge/orders/{orderId}/cancel")
+    public ApiResponse<RechargeOrderDto> cancelRechargeOrder(Principal principal, @PathVariable String orderId) {
+        return ApiResponse.of(rechargeService.cancelOrder(principal.getName(), orderId));
+    }
+
+    public record RechargeOrderRequest(String packageId, String note) {}
 
     @GetMapping("/ledger")
     public PageEnvelope<LedgerEntryDto> ledger(

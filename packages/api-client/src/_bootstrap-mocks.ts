@@ -38,6 +38,29 @@ registerMocks([
   { method: "GET", pattern: "/me/tenants", handler: () => mockDelay(MOCK_TENANTS) },
   { method: "GET", pattern: "/me/wallet", handler: () => mockDelay(MOCK_WALLET) },
   { method: "GET", pattern: "/me/ledger", handler: () => mockDelay([]) },
+  // v0.56：充值订单（下单 → 运营核准入账）。mock 仅返回 pending 账单，不入账。
+  { method: "GET", pattern: "/me/wallet/recharge/orders", handler: () => mockDelay([]) },
+  {
+    method: "POST",
+    pattern: "/me/wallet/recharge",
+    handler: ({ body }) => {
+      const b = (body ?? {}) as { packageId?: string; note?: string };
+      const now = new Date().toISOString();
+      return mockDelay({
+        id: `ro-mock-${Date.now()}`,
+        userId: MOCK_USER.id,
+        packageId: b.packageId ?? "pkg-mock",
+        packageTag: "充值套餐",
+        credits: 0,
+        bonusCredits: 0,
+        priceCents: 0,
+        status: "pending",
+        userNote: b.note,
+        createdAt: now,
+        updatedAt: now,
+      });
+    },
+  },
 
   // ── auth ────────────────────────────────────────────────────────────────
   // activate / devLogin 的 setAuthToken 副作用仍在 api/auth.ts 内执行；

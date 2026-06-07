@@ -53,8 +53,10 @@ function CodeRow({ phone, value, onChange, purpose }) {
 
 export function MLogin({ onLoggedIn }) {
   const [tab, setTab] = useStateLG('login'); // login | register | dev
+  const [loginMode, setLoginMode] = useStateLG('code'); // code | password（仅 login tab）
   const [phone, setPhone] = useStateLG('');
   const [code, setCode] = useStateLG('');
+  const [password, setPassword] = useStateLG('');
   const [licenseKey, setLicenseKey] = useStateLG('');
   const [studioName, setStudioName] = useStateLG('');
   const [busy, setBusy] = useStateLG(false);
@@ -97,6 +99,25 @@ export function MLogin({ onLoggedIn }) {
     } finally { setBusy(false); }
   };
 
+  const doPasswordLogin = async () => {
+    if (!/^1\d{10}$/.test(phone)) { toast('请输入 11 位手机号', { tone: 'warn' }); return; }
+    if (!password.trim()) { toast('请输入密码', { tone: 'warn' }); return; }
+    setBusy(true);
+    try {
+      finish(await AuthApi.passwordLogin(phone, password));
+    } catch (e: any) {
+      if (e?.code === 'PASSWORD_NOT_SET') {
+        toast('该账号还未设置密码，请用验证码登录后在「账号与安全」中设置', { tone: 'warn' });
+        setLoginMode('code');
+      } else if (e?.code === 'USER_NOT_FOUND' || e?.status === 404) {
+        toast('该手机号尚未注册，请切换到注册', { tone: 'warn' });
+        setTab('register');
+      } else {
+        toast(e?.message || '登录失败', { tone: 'err' });
+      }
+    } finally { setBusy(false); }
+  };
+
   const doDevLogin = async (username: string) => {
     setBusy(true);
     try {
@@ -126,16 +147,37 @@ export function MLogin({ onLoggedIn }) {
         devAccounts.length > 0 && hLG(Tab, { on: tab === 'dev', onClick: () => setTab('dev') }, '体验账号')),
 
       tab !== 'dev' && hLG('div', null,
+        // 登录方式切换（仅登录 tab）：验证码 / 密码
+        tab === 'login' && hLG('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
+          hLG('button', { onClick: () => setLoginMode('code'), style: {
+            flex: 1, height: 34, border: '1px solid ' + (loginMode === 'code' ? 'var(--primary)' : 'var(--line-2)'), borderRadius: 'var(--r-md)', cursor: 'pointer',
+            background: loginMode === 'code' ? 'var(--primary-tint)' : 'var(--surface)', color: loginMode === 'code' ? 'var(--primary)' : 'var(--ink-3)',
+            fontSize: 13, fontWeight: 700, transition: 'all .15s' } }, '验证码登录'),
+          hLG('button', { onClick: () => setLoginMode('password'), style: {
+            flex: 1, height: 34, border: '1px solid ' + (loginMode === 'password' ? 'var(--primary)' : 'var(--line-2)'), borderRadius: 'var(--r-md)', cursor: 'pointer',
+            background: loginMode === 'password' ? 'var(--primary-tint)' : 'var(--surface)', color: loginMode === 'password' ? 'var(--primary)' : 'var(--ink-3)',
+            fontSize: 13, fontWeight: 700, transition: 'all .15s' } }, '密码登录')),
+
         hLG(Field, { label: '手机号' }, hLG(UI.Input, { value: phone, onChange: setPhone, placeholder: '11 位手机号', inputMode: 'tel' })),
-        hLG(Field, { label: '验证码' }, hLG(CodeRow, { phone, value: code, onChange: setCode, purpose: tab === 'register' ? 'register' : 'login' })),
+
+        tab === 'login' && loginMode === 'password'
+          ? hLG(React.Fragment, null,
+              hLG(Field, { label: '密码' }, hLG(UI.Input, { value: password, onChange: setPassword, placeholder: '登录密码', type: 'password' })),
+              hLG('div', { style: { textAlign: 'right', margin: '-6px 2px 6px' } },
+                hLG('button', { onClick: () => setLoginMode('code'), style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 11.5, color: 'var(--ink-3)' } }, '忘记密码？用验证码登录')))
+          : hLG(Field, { label: '验证码' }, hLG(CodeRow, { phone, value: code, onChange: setCode, purpose: tab === 'register' ? 'register' : 'login' })),
+
         tab === 'register' && hLG(React.Fragment, null,
           hLG(Field, { label: '激活码' }, hLG(UI.Input, { value: licenseKey, onChange: setLicenseKey, placeholder: '购买套餐后获得的激活码' })),
           hLG(Field, { label: '工作室名称' }, hLG(UI.Input, { value: studioName, onChange: setStudioName, placeholder: '如：柯岚工作室' })),
           hLG('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, margin: '4px 0 14px', padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' } },
             hLG(Icons.info, { size: 14, style: { color: 'var(--ink-3)', flex: '0 0 auto', marginTop: 1 } }),
             hLG('span', { style: { fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.5 } }, '注册需要激活码（双因素开通）。还没有激活码？联系平台获取，或在 dev 环境使用体验账号。'))),
-        hLG(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: busy, onClick: tab === 'register' ? doRegister : doLogin, style: { marginTop: 6 } },
-          busy ? '请稍候…' : tab === 'register' ? '注册并登录' : '登录')),
+        hLG(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: busy,
+          onClick: tab === 'register' ? doRegister : (loginMode === 'password' ? doPasswordLogin : doLogin), style: { marginTop: 6 } },
+          busy ? '请稍候…' : tab === 'register' ? '注册并登录' : (loginMode === 'password' ? '密码登录' : '登录')),
+        tab === 'login' && loginMode === 'password' && hLG('p', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', lineHeight: 1.6, margin: '12px 0 0' } },
+          '首次登录请用验证码；登录后可在「我的 → 设置 → 账号与安全」设置密码。')),
 
       tab === 'dev' && hLG('div', null,
         hLG('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, 'dev 环境体验账号，一键免密登录。'),

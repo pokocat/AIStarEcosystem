@@ -14,7 +14,7 @@ import { MLibrary, MDetail } from "./screen-library";
 import { MLooksGrid, MDesignLooks } from "./screen-avatar";
 import { MVoice, MApps } from "./screen-voiceapps";
 import { MLicenses, MTasks, MMe, MTrash } from "./screen-lictaskme";
-import { MDerivView, MMembership, MSettings, MStorage, MVoiceClone } from "./screen-more";
+import { MDerivView, MMembership, MSettings, MSecurity, MStorage, MVoiceClone } from "./screen-more";
 import { MRealCapture } from "./screen-real";
 import { MCreate } from "./screen-chain";
 import { MAICreate } from "./screen-aicreate";
@@ -176,7 +176,7 @@ export function App() {
     avatars,
     reload,
     tab: (k) => { setStack([]); setTab(k); setSheet(false); setLabel({ home: "首页", library: "数字人库", apps: "应用中心", me: "我的" }[k]); },
-    go: (screen, props) => { setStack((s) => [...s, { screen, props: props || {} }]); setLabel({ voice: "声音工作室", licenses: "授权登记", tasks: "作业队列", settings: "设置", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站" }[screen] || screen); },
+    go: (screen, props) => { setStack((s) => [...s, { screen, props: props || {} }]); setLabel({ voice: "声音工作室", licenses: "授权登记", tasks: "作业队列", settings: "设置", security: "账号与安全", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站" }[screen] || screen); },
     openChar: (char) => { setStack((s) => [...s, { screen: "detail", props: { char } }]); setLabel("资产详情"); },
     openDeriv: (char, deriv) => { setStack((s) => [...s, { screen: "derivview", props: { char, deriv } }]); setLabel("衍生查看"); },
     openLooks: (char) => { setStack((s) => [...s, { screen: "looks", props: { char } }]); setLabel("造型档案"); },
@@ -222,7 +222,7 @@ export function App() {
 
   const tabScreen = { home: MHome, library: MLibrary, apps: MApps, me: MMe }[tab];
   const overlayScreen = top && { detail: MDetail, voice: MVoice, licenses: MLicenses, tasks: MTasks, create: MCreate, realcapture: MRealCapture,
-    settings: MSettings, membership: MMembership, storage: MStorage, voiceclone: MVoiceClone, trash: MTrash, derivview: MDerivView, looks: MLooksGrid, designlooks: MDesignLooks, aicreate: MAICreate, choosevoice: MChooseVoice }[top.screen];
+    settings: MSettings, security: MSecurity, membership: MMembership, storage: MStorage, voiceclone: MVoiceClone, trash: MTrash, derivview: MDerivView, looks: MLooksGrid, designlooks: MDesignLooks, aicreate: MAICreate, choosevoice: MChooseVoice }[top.screen];
   const hideTabBar = !!top;
 
   return hA(React.Fragment, null,

@@ -12,7 +12,7 @@ import type {
   LedgerEntry,
   RechargePackage,
   RechargeRequest,
-  RechargeResponse,
+  RechargeOrder,
 } from "@ai-star-eco/types/wallet";
 import { apiFetch } from "../_client";
 
@@ -71,10 +71,25 @@ export async function listRechargePackages(): Promise<RechargePackage[]> {
   return apiFetch<RechargePackage[]>("/me/wallet/packages");
 }
 
-/** v0.33+: 充值落账（MVP 直接走，无支付网关） */
-export async function rechargeWallet(req: RechargeRequest): Promise<RechargeResponse> {
-  return apiFetch<RechargeResponse>("/me/wallet/recharge", {
+/**
+ * v0.56：充值下单（不再直接入账）。
+ * 生成一张待确认账单；平台运营线下收款后在 admin 核准方入账。返回新建的订单。
+ */
+export async function createRechargeOrder(req: RechargeRequest): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>("/me/wallet/recharge", {
     method: "POST",
     body: req,
+  });
+}
+
+/** v0.56：我的充值订单（待确认 / 已到账 / 已驳回 / 已取消）。 */
+export async function listMyRechargeOrders(): Promise<RechargeOrder[]> {
+  return apiFetch<RechargeOrder[]>("/me/wallet/recharge/orders");
+}
+
+/** v0.56：取消自己的待确认充值订单。 */
+export async function cancelRechargeOrder(orderId: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}/cancel`, {
+    method: "POST",
   });
 }
