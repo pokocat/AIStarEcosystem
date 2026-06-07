@@ -28,6 +28,22 @@ export interface SellingChannel {
   updatedAt: ISODateTime;
 }
 
+/**
+ * v0.53（审计 #8）：补镜像 —— 与 packages/types/src/selling-channel.ts 的
+ * SellingChannelUpsertInput 同名字段同语义（之前 admin api 用 Partial<SellingChannel>
+ * 充当入参，会把 id/createdAt 等只读字段也标成可传）。
+ */
+export interface SellingChannelUpsertInput {
+  code?: string;
+  name?: string;
+  sellingEntity?: string | null;
+  type?: SellingChannelType;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  remark?: string | null;
+  status?: SellingChannelStatus;
+}
+
 export const SELLING_CHANNEL_TYPE_LABEL: Record<SellingChannelType, string> = {
   direct: "平台直营",
   agent: "代销",

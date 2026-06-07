@@ -1,14 +1,17 @@
 package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.LicenseBatch;
+import com.aistareco.aep.service.PlatformSupport;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 
 /**
  * v0.36：补 sellingChannelId / tier 字段（修复前后端 drift）。
  * issuerTenantId 保留为 nullable（向后兼容老批次）。
+ * v0.53：补 platforms（批次可激活的子产品列表；空数组 = 全站可用）。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record LicenseBatchDto(
@@ -18,6 +21,8 @@ public record LicenseBatchDto(
         String issuerTenantId,
         String sellingChannelId,
         String tier,
+        /** v0.53：批次可激活的子产品（music/drama/celebrity/aiavatar）；空 = 全站可用。 */
+        List<String> platforms,
         long initialCreditGrant,
         int totalCount,
         int activatedCount,
@@ -32,6 +37,7 @@ public record LicenseBatchDto(
                 b.getIssuerTenantId(),
                 b.getSellingChannelId(),
                 b.getTier(),
+                PlatformSupport.parse(b.getPlatforms()),
                 b.getInitialCreditGrant(),
                 b.getTotalCount(), b.getActivatedCount(),
                 b.getValidFrom(), b.getValidTo(),
@@ -53,6 +59,7 @@ public record LicenseBatchDto(
                 b.getIssuerTenantId(),
                 b.getSellingChannelId(),
                 b.getTier(),
+                PlatformSupport.parse(b.getPlatforms()),
                 b.getInitialCreditGrant(),
                 safeTotal, safeActivated,
                 b.getValidFrom(), b.getValidTo(),

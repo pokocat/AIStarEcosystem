@@ -11,6 +11,18 @@ import type { ID, ISODateTime } from "./_shared";
 export type AccountKind = "personal" | "studio";
 export type AccountStatus = "active" | "suspended" | "deleted";
 /**
+ * v0.53: 子产品（与 packages/types/src/account.ts SubProduct 对齐，直接复制）。
+ * 用于秘钥批次的「可激活子应用」范围 + 账号的平台访问授权展示。
+ */
+export type SubProduct = "music" | "drama" | "celebrity" | "aiavatar";
+export const ALL_SUB_PRODUCTS: readonly SubProduct[] = ["music", "drama", "celebrity", "aiavatar"];
+export const SUB_PRODUCT_LABEL_ZH: Record<SubProduct, string> = {
+  music: "AI 音乐人",
+  drama: "AI 短剧",
+  celebrity: "AI 明星带货",
+  aiavatar: "数字人资产平台",
+};
+/**
  * v0.31+: 内嵌运营角色（celebrity 等用户子产品的「平台运营人员」标记）。
  * 与 admin 后台的 AdminUser 体系**独立**；这里只用于让运营在用户视角下也能做
  * 部分管理动作（如在 web-celebrity 界面内管理公共商品池）。
@@ -30,6 +42,8 @@ export interface AepUser {
   status: AccountStatus;
   /** v0.31+: 内嵌运营角色；null = 普通账号。 */
   operatorRole?: OperatorRole | null;
+  /** v0.43+: 可访问的子产品平台；缺失/空 = 全平台。 */
+  platforms?: SubProduct[];
   emailVerified: boolean;
   phoneVerified: boolean;
   langPreference: "zh" | "en";

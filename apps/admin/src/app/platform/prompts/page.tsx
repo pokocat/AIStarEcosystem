@@ -16,10 +16,25 @@ import { useToast } from "@/components/feedback";
 import { PromptsApi } from "@/api";
 import type { PromptTemplate, PromptDryRun } from "@/api/prompts";
 
+// v0.53（审计 #7）：补全友好名 —— 与 server PromptService.KNOWN_KEYS 16 个 key 对齐。
+// 列表本身由服务端动态返回（新 key 自动出现）；这里只是展示用中文名，缺失时回退裸 key。
 const KEY_LABEL: Record<string, string> = {
   "material.script_draft": "脚本 AI 起稿",
   "material.selling_points": "商品卖点提取",
   "material.variable_extract": "脚本变量抽取",
+  "material.video_ref_analysis": "视频参考分析",
+  "appearance.forge": "形象锻造对话（music/drama）",
+  "drama.script_draft": "短剧脚本起草",
+  "dap.persona": "数字人 · 人设解析",
+  "dap.translate_edit": "数字人 · 编辑指令翻译",
+  "dap.image_generate": "数字人 · 形象生成（AI 原创）",
+  "dap.image_clone": "数字人 · 真人照片复刻",
+  "dap.image_iterate": "数字人 · AI 重绘迭代",
+  "dap.image_warp": "数字人 · 几何精调（云端）",
+  "dap.image_look": "数字人 · 造型生成",
+  "dap.image_atlas": "数字人 · 标准图集",
+  "dap.image_deriv": "数字人 · 衍生图（表情/场景/服装）",
+  "dap.video_orbit": "数字人 · 运镜视频",
 };
 
 // 试运行的样例参数（与 server PromptService.fill 的占位符对齐）。

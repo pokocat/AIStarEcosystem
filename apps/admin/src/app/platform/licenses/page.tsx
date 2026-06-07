@@ -21,6 +21,7 @@ import { LICENSE_BATCH_STATUS, LICENSE_KEY_STATUS, LICENSE_TIER } from "@/consta
 import { LICENSE_TIERS, type LicenseBatch, type LicenseKey, type LicenseTier } from "@/types/license";
 import type { Tenant } from "@/types/account";
 import type { AepUser } from "@/types/account";
+import { ALL_SUB_PRODUCTS, SUB_PRODUCT_LABEL_ZH, type SubProduct } from "@/types/account";
 import type { SellingChannel } from "@/types/selling-channel";
 import { SELLING_CHANNEL_TYPE_LABEL } from "@/types/selling-channel";
 import { formatDateCN } from "@/lib/utils";
@@ -134,6 +135,7 @@ export default function LicensesPage() {
                   <TableRow>
                     <TableHead>批次号 / 名称</TableHead>
                     <TableHead>等级</TableHead>
+                    <TableHead>适用范围</TableHead>
                     <TableHead>发放方</TableHead>
                     <TableHead className="text-right">单包点数</TableHead>
                     <TableHead className="text-right">核销 / 总量</TableHead>
@@ -146,12 +148,12 @@ export default function LicensesPage() {
                 <TableBody>
                   {loading && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
+                      <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">加载中…</TableCell>
                     </TableRow>
                   )}
                   {!loading && loadError && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
+                      <TableCell colSpan={10} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell>
                     </TableRow>
                   )}
                   {!loading && !loadError && batches.map((b) => {
@@ -167,6 +169,7 @@ export default function LicensesPage() {
                           </div>
                         </TableCell>
                         <TableCell>{b.tier && LICENSE_TIER[b.tier as keyof typeof LICENSE_TIER] ? <StatusBadge meta={LICENSE_TIER[b.tier as keyof typeof LICENSE_TIER]} /> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
+                        <TableCell><BatchPlatformsBadges platforms={b.platforms} /></TableCell>
                         <TableCell className="text-sm">
                           {channel ? (
                             <span>{channel.name} <span className="text-xs text-muted-foreground">· {SELLING_CHANNEL_TYPE_LABEL[channel.type]}</span></span>
@@ -213,7 +216,7 @@ export default function LicensesPage() {
                   })}
                   {!loading && !loadError && batches.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">暂无批次</TableCell>
+                      <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">暂无批次</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -325,6 +328,22 @@ export default function LicensesPage() {
   );
 }
 
+// ── 批次适用范围徽章（空 = 全站可用） ────────────────────────────────────────
+function BatchPlatformsBadges({ platforms }: { platforms?: SubProduct[] }) {
+  if (!platforms || platforms.length === 0) {
+    return <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">全站可用</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {platforms.map((p) => (
+        <span key={p} className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700">
+          {SUB_PRODUCT_LABEL_ZH[p] ?? p}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ── 新建批次 dialog ──────────────────────────────────────────────────────────
 function CreateBatchDialog({
   open,
@@ -341,6 +360,8 @@ function CreateBatchDialog({
   const [name, setName] = React.useState("");
   const [channelId, setChannelId] = React.useState<string>("");
   const [tier, setTier] = React.useState<LicenseTier>("basic");
+  const [platforms, setPlatforms] = React.useState<SubProduct[]>([]);
+  const [grantOverride, setGrantOverride] = React.useState("");
   const [totalCount, setTotalCount] = React.useState("10");
   const [validFrom, setValidFrom] = React.useState("");
   const [validTo, setValidTo] = React.useState("");
@@ -354,6 +375,8 @@ function CreateBatchDialog({
     const defaultCh = activeChannels.find((c) => c.code === "platform-self") ?? activeChannels[0];
     setChannelId(defaultCh?.id ?? "");
     setTier("basic");
+    setPlatforms([]);
+    setGrantOverride("");
     setTotalCount("10");
     const today = new Date();
     const oneYearLater = new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000);
@@ -364,7 +387,15 @@ function CreateBatchDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const initialCreditGrant = LICENSE_TIERS[tier].initialCreditGrant;
+  // v0.53：单包点数 = 等级默认值，可被「自定义点数」覆盖（按 app 差异化发放，
+  // 如「仅 aiavatar · 1000 积分」批次）。
+  const tierGrant = LICENSE_TIERS[tier].initialCreditGrant;
+  const overrideNum = grantOverride.trim() === "" ? NaN : Number(grantOverride);
+  const hasOverride = Number.isFinite(overrideNum) && overrideNum >= 0;
+  const initialCreditGrant = hasOverride ? Math.floor(overrideNum) : tierGrant;
+
+  const togglePlatform = (p: SubProduct) =>
+    setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -373,6 +404,7 @@ function CreateBatchDialog({
     const count = parseInt(totalCount, 10);
     if (!Number.isFinite(count) || count < 1) return setError("数量必须是正整数");
     if (count > 100) return setError("一次最多 100 把（避免一次性日志爆炸）");
+    if (grantOverride.trim() !== "" && !hasOverride) return setError("自定义点数必须是 ≥ 0 的数字");
 
     setBusy(true);
     setError(null);
@@ -381,6 +413,7 @@ function CreateBatchDialog({
         name: trimmedName,
         sellingChannelId: channelId,
         tier,
+        platforms: platforms.length > 0 ? platforms : undefined,
         initialCreditGrant,
         totalCount: count,
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
@@ -454,6 +487,33 @@ function CreateBatchDialog({
               />
             </div>
           </div>
+          <div>
+            <label className="text-xs text-muted-foreground">适用子应用（不勾选 = 全站可用）</label>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {ALL_SUB_PRODUCTS.map((p) => {
+                const checked = platforms.includes(p);
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => togglePlatform(p)}
+                    className={
+                      "rounded-full border px-3 py-1 text-xs transition-colors " +
+                      (checked
+                        ? "border-sky-300 bg-sky-50 text-sky-700 font-medium"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted/50")
+                    }
+                  >
+                    {checked ? "✓ " : ""}{SUB_PRODUCT_LABEL_ZH[p]}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              v0.53：勾选后该批次秘钥激活时<strong>仅开通所选子应用</strong>（注册 / 已登录追加激活均按此授权）；
+              不勾选为全站秘钥。
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">生效起点</label>
@@ -464,10 +524,22 @@ function CreateBatchDialog({
               <Input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            单包点数：<span className="font-medium text-foreground">{formatCredits(initialCreditGrant)}</span>
-            （由等级派生 · 与 product_spec §2 对齐）
-          </p>
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <label className="text-xs text-muted-foreground">自定义单包点数（可选，覆盖等级默认）</label>
+              <Input
+                type="number"
+                min={0}
+                placeholder={`默认 ${tierGrant}（按等级）`}
+                value={grantOverride}
+                onChange={(e) => setGrantOverride(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground pb-2">
+              实际单包点数：<span className="font-medium text-foreground">{formatCredits(initialCreditGrant)}</span>
+              {hasOverride ? "（自定义）" : "（由等级派生）"}
+            </p>
+          </div>
         </div>
 
         {error && <div className="text-xs text-rose-600">{error}</div>}

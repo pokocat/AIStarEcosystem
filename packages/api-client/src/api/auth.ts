@@ -136,3 +136,27 @@ export async function smsRegister(payload: SmsRegisterPayload): Promise<SmsRegis
   if (result?.token) setAuthToken(result.token);
   return result;
 }
+
+// ── v0.53+ 已登录账号追加激活秘钥 ─────────────────────────────────────────
+
+export interface AppendActivateResult {
+  user: AepUser;
+  /** 本次追加发放的积分。 */
+  creditsGranted: number;
+  /** 发放后钱包总余额。 */
+  newTotalBalance: number;
+  /** 本次秘钥授予的子产品（全站秘钥 = 全集）。 */
+  platformsGranted: string[];
+}
+
+/**
+ * 已登录账号用新秘钥「追加激活」：合并开通秘钥批次绑定的子应用 + 追加发放该批次积分。
+ * 典型场景：老账号买了「仅 aiavatar」批次的秘钥，在拦截屏输入激活码即可开通，无需换号。
+ * 成功后调用方应 refresh() 当前用户以刷新 platforms。
+ */
+export async function activateAdditionalLicense(code: string): Promise<AppendActivateResult> {
+  return apiFetch<AppendActivateResult>("/me/license/activate", {
+    method: "POST",
+    body: { code },
+  });
+}

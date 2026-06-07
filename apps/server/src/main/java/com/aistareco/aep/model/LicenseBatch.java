@@ -42,12 +42,21 @@ public class LicenseBatch {
     private String sellingChannelId;
 
     /**
-     * v0.36：权益等级（修复前后端 drift）。
-     * 取值：trial / basic / standard / premium / annual_pro / city_agent —— 与
-     * {@code apps/admin/src/types/license.ts LICENSE_TIERS} 对齐；缺失则按 initialCreditGrant 派生。
+     * v0.36：权益等级。v0.53 起 createBatch 入参做白名单校验（之前自由 string）：
+     * 取值 6 档宽集 trial / basic / standard / premium / annual_pro / city_agent
+     * （真源见 {@code LicenseService.KNOWN_TIERS}）。admin UI 当前只暴露
+     * basic / premium 两档（LICENSE_TIERS），其余为预留档位；缺失则按 initialCreditGrant 派生。
      */
     @Column(length = 32)
     private String tier;
+
+    /**
+     * v0.53：本批次秘钥可激活的子产品（CSV，取值见 {@code PlatformSupport.ALL}，
+     * 如 "aiavatar" / "music,drama"）。null / 空 = 全站可用（激活时按既有注册来源策略授权）。
+     * 非空时激活按批次授权 —— 优先级高于 aep.platform.dev-grant-all。
+     */
+    @Column(length = 128)
+    private String platforms;
 
     /** One-time credits granted on activation. Same value for every key in the batch. */
     private long initialCreditGrant;

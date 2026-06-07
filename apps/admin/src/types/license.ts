@@ -5,9 +5,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID, ISODateTime } from "./_shared";
+import type { SubProduct } from "./account";
 
-// ── 秘钥等级（2 档） ──────────────────────────────────────────────────────────
+// ── 秘钥等级（UI 暴露 2 档） ──────────────────────────────────────────────────
 // 兑换后激活出不同类型的初始账户，对应不同的初始点数。
+// v0.53：server 端契约为 6 档宽集（trial/basic/standard/premium/annual_pro/city_agent，
+// 见 LicenseService.KNOWN_TIERS 白名单校验）；admin UI 当前只暴露 basic/premium，
+// 其余为预留档位 —— 启用新档位时同步扩这里的 LicenseTier + LICENSE_TIERS。
 export type LicenseTier = "basic" | "premium";
 
 export interface LicenseTierMeta {
@@ -57,6 +61,11 @@ export interface LicenseBatch {
   sellingChannelId?: ID | null;
   /** 秘钥等级（basic / premium） */
   tier: LicenseTier;
+  /**
+   * v0.53：本批次秘钥可激活的子应用。空数组/缺失 = 全站可用；
+   * 非空 = 激活仅授予列表中的子应用（如 ["aiavatar"]），并按本批次 initialCreditGrant 发积分。
+   */
+  platforms?: SubProduct[];
   /** 该批次每个秘钥兑换时一次性入账的点数 (credits) —— 与 tier 对应 */
   initialCreditGrant: number;
   totalCount: number;

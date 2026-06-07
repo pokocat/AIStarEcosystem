@@ -21,11 +21,32 @@ import type { ActionPricing } from "@/api/celebrity-zone";
 type EnginePricing = Record<string, { creditPrice: number; cost: number }>;
 const ENGINES = ["KeLing", "HiGen", "MiniMax"];
 
-const ACTIONS: { code: string; label: string; unit: string; allowEngineFallback: boolean }[] = [
+type ActionRow = { code: string; label: string; unit: string; allowEngineFallback: boolean };
+
+const ACTIONS: ActionRow[] = [
   { code: "mixcut.generate",     label: "混剪生成",       unit: "积分 / 单变体", allowEngineFallback: false },
   { code: "publish.upload",      label: "分发上传",       unit: "积分 / 单任务", allowEngineFallback: false },
   { code: "celebrity.video",     label: "数字人视频生成", unit: "积分 / 单条",   allowEngineFallback: true },
   { code: "material.script-draft", label: "AI 脚本起稿",   unit: "积分 / 单稿（0=不计费）", allowEngineFallback: false },
+  // v0.53 审计补：server v0.42 起已有该 action（默认 30/条），此前 admin 漏列导致运营无法改价
+  { code: "material.video-generate", label: "带货视频生成", unit: "积分 / 单条", allowEngineFallback: false },
+];
+
+// v0.53：dap（数字人资产平台）动作单价后台化。0 / 缺失 = 走部署默认价
+// （application.yml aep.dap.pricing.* / AEP_DAP_PRICING_* env），>0 = 覆盖默认价立即生效。
+const DAP_ACTIONS: ActionRow[] = [
+  { code: "dap.generate",        label: "AI 原创形象生成", unit: "积分 / 次（默认 20）", allowEngineFallback: false },
+  { code: "dap.generate-upload", label: "上传照片复刻",     unit: "积分 / 次（默认 15）", allowEngineFallback: false },
+  { code: "dap.iterate",         label: "AI 重绘迭代",      unit: "积分 / 次（默认 5）",  allowEngineFallback: false },
+  { code: "dap.warp",            label: "几何精调（云端）", unit: "积分 / 次（默认 3）",  allowEngineFallback: false },
+  { code: "dap.look",            label: "造型生成",         unit: "积分 / 次（默认 8）",  allowEngineFallback: false },
+  { code: "dap.derive-atlas",    label: "标准图集",         unit: "积分 / 次（默认 12）", allowEngineFallback: false },
+  { code: "dap.derive-expr",     label: "表情包",           unit: "积分 / 次（默认 10）", allowEngineFallback: false },
+  { code: "dap.derive-scene",    label: "场景图",           unit: "积分 / 次（默认 8）",  allowEngineFallback: false },
+  { code: "dap.derive-ward",     label: "服装造型图",       unit: "积分 / 次（默认 8）",  allowEngineFallback: false },
+  { code: "dap.derive-d3",       label: "3D 预览",          unit: "积分 / 次（默认 10）", allowEngineFallback: false },
+  { code: "dap.derive-video",    label: "运镜视频",         unit: "积分 / 次（默认 30）", allowEngineFallback: false },
+  { code: "dap.voice-clone",     label: "声音克隆",         unit: "积分 / 次（默认 10）", allowEngineFallback: false },
 ];
 
 export default function CelebrityPricingPage() {
@@ -101,6 +122,42 @@ function ActionPricingTab() {
     }
   }
 
+  function renderActionRow(a: ActionRow) {
+    const row = pricing[a.code] ?? {};
+    const useEngine = !!row.useEnginePricing;
+    return (
+      <TableRow key={a.code}>
+        <TableCell>
+          <div className="flex flex-col">
+            <span className="font-medium">{a.label}</span>
+            <span className="text-xs text-muted-foreground">{a.code}</span>
+          </div>
+        </TableCell>
+        <TableCell>
+          <Input
+            type="number"
+            className="w-32"
+            value={useEngine ? "" : (row.creditPrice ?? 0)}
+            onChange={(ev) => setPrice(a.code, Number(ev.target.value) || 0)}
+            disabled={useEngine}
+            placeholder={useEngine ? "—" : "0"}
+          />
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">{a.unit}</TableCell>
+        <TableCell>
+          {a.allowEngineFallback ? (
+            <div className="flex items-center gap-2">
+              <Switch checked={useEngine} onCheckedChange={(v) => setUseEngine(a.code, v)} />
+              <span className="text-xs text-muted-foreground">{useEngine ? "走引擎计价表" : "用左侧单价"}</span>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </TableCell>
+      </TableRow>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -120,41 +177,18 @@ function ActionPricingTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ACTIONS.map((a) => {
-                const row = pricing[a.code] ?? {};
-                const useEngine = !!row.useEnginePricing;
-                return (
-                  <TableRow key={a.code}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{a.label}</span>
-                        <span className="text-xs text-muted-foreground">{a.code}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        className="w-32"
-                        value={useEngine ? "" : (row.creditPrice ?? 0)}
-                        onChange={(ev) => setPrice(a.code, Number(ev.target.value) || 0)}
-                        disabled={useEngine}
-                        placeholder={useEngine ? "—" : "0"}
-                      />
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{a.unit}</TableCell>
-                    <TableCell>
-                      {a.allowEngineFallback ? (
-                        <div className="flex items-center gap-2">
-                          <Switch checked={useEngine} onCheckedChange={(v) => setUseEngine(a.code, v)} />
-                          <span className="text-xs text-muted-foreground">{useEngine ? "走引擎计价表" : "用左侧单价"}</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              <TableRow>
+                <TableCell colSpan={4} className="bg-muted/40 py-2 text-xs font-medium text-muted-foreground">
+                  明星带货 / 素材运营
+                </TableCell>
+              </TableRow>
+              {ACTIONS.map((a) => renderActionRow(a))}
+              <TableRow>
+                <TableCell colSpan={4} className="bg-muted/40 py-2 text-xs font-medium text-muted-foreground">
+                  数字人资产平台（dap）· 0 = 走部署默认价，&gt;0 = 覆盖默认价
+                </TableCell>
+              </TableRow>
+              {DAP_ACTIONS.map((a) => renderActionRow(a))}
             </TableBody>
           </Table>
         )}
@@ -165,7 +199,8 @@ function ActionPricingTab() {
           <Button variant="outline" onClick={() => void refresh()}>重新读取</Button>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          说明：单价缺失或为 0 时，对应动作回退到旧默认值（混剪 30，分发 20）；勾选「沿用引擎价」时调用方按 KeLing/HiGen/MiniMax 计价表算。
+          说明：单价缺失或为 0 时，对应动作回退到部署默认值（混剪 30 / 分发 20 / dap 走 aep.dap.pricing.*）；
+          勾选「沿用引擎价」时调用方按 KeLing/HiGen/MiniMax 计价表算。dap 行修改后约 1 分钟内全量生效（缓存 TTL）。
         </p>
       </CardContent>
     </Card>

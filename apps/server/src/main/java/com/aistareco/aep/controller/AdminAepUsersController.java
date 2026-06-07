@@ -91,6 +91,37 @@ public class AdminAepUsersController {
     }
 
     /**
+     * v0.53：改某账号的子产品平台访问授权（aep_users.platforms）。
+     * body: { "platforms": ["music","aiavatar"] }；空数组或 null = 全平台（清空显式配置）。
+     * 未知平台值静默丢弃（仅保留 PlatformSupport.ALL 内的项）。
+     * 注意：改完后用户旧 JWT 仍有效 —— 平台门禁读 /api/me 实时值，刷新页面即生效。
+     */
+    @PatchMapping("/{id}/platforms")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Transactional
+    public ApiResponse<AepUserDto> updatePlatforms(@PathVariable String id,
+                                                   @RequestBody Map<String, Object> body) {
+        AepUser user = userRepo.findById(id)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "用户不存在"));
+        Object raw = body == null ? null : body.get("platforms");
+        String csv = null;
+        if (raw instanceof java.util.Collection<?> coll) {
+            java.util.List<String> items = coll.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(Object::toString)
+                    .toList();
+            csv = com.aistareco.aep.service.PlatformSupport.toCsv(items);
+        } else if (raw != null) {
+            csv = com.aistareco.aep.service.PlatformSupport.toCsv(
+                    com.aistareco.aep.service.PlatformSupport.parse(raw.toString()));
+        }
+        user.setPlatforms(csv); // null = 全平台
+        user.setUpdatedAt(Instant.now());
+        userRepo.save(user);
+        return ApiResponse.of(AepUserDto.from(user));
+    }
+
+    /**
      * v0.37：超级管理员给 AepUser 设/重置密码。
      * 用途：让 celebrity operator / SUPER_ADMIN 能用密码登 admin 后台
      * （走 /api/admin/auth/operator-login）。

@@ -1,5 +1,5 @@
 import { apiFetch } from "./_client";
-import type { SellingChannel } from "@/types/selling-channel";
+import type { SellingChannel, SellingChannelUpsertInput } from "@/types/selling-channel";
 
 /** GET /admin/selling-channels */
 export async function listChannels(): Promise<SellingChannel[]> {
@@ -12,12 +12,12 @@ export async function getChannel(id: string): Promise<SellingChannel> {
 }
 
 /** POST /admin/selling-channels */
-export async function createChannel(body: Partial<SellingChannel>): Promise<SellingChannel> {
+export async function createChannel(body: SellingChannelUpsertInput): Promise<SellingChannel> {
   return apiFetch<SellingChannel>("/admin/selling-channels", { method: "POST", body });
 }
 
 /** PUT /admin/selling-channels/{id} */
-export async function updateChannel(id: string, body: Partial<SellingChannel>): Promise<SellingChannel> {
+export async function updateChannel(id: string, body: SellingChannelUpsertInput): Promise<SellingChannel> {
   return apiFetch<SellingChannel>(
     `/admin/selling-channels/${encodeURIComponent(id)}`,
     { method: "PUT", body },

@@ -11,16 +11,18 @@ import type { Studio } from "./studio";
 export type AccountKind = "personal" | "studio";
 export type AccountStatus = "active" | "suspended" | "deleted";
 /**
- * v0.43+: 子产品（三个 web app）。一个账号可被授予其中若干个的访问权（access 隔离）。
- * 开发阶段「一处注册三端可用」即授予全部 3 个子产品。
+ * v0.43+: 子产品（web app）。一个账号可被授予其中若干个的访问权（access 隔离）。
+ * 开发阶段「一处注册多端可用」即授予全部子产品。
+ * v0.53+: aiavatar（数字人资产平台）纳入全集；秘钥批次可按子产品收窄激活范围。
  * 注：命名为 SubProduct 以区别于 distribution.ts 的 Platform（分发渠道，如抖音/B站）。
  */
-export type SubProduct = "music" | "drama" | "celebrity";
-export const ALL_SUB_PRODUCTS: readonly SubProduct[] = ["music", "drama", "celebrity"];
+export type SubProduct = "music" | "drama" | "celebrity" | "aiavatar";
+export const ALL_SUB_PRODUCTS: readonly SubProduct[] = ["music", "drama", "celebrity", "aiavatar"];
 export const SUB_PRODUCT_LABEL_ZH: Record<SubProduct, string> = {
   music: "AI 音乐人",
   drama: "AI 短剧",
   celebrity: "AI 明星带货",
+  aiavatar: "数字人资产平台",
 };
 /**
  * v0.31+: 内嵌运营角色（celebrity 等用户子产品内的「平台运营人员」标记）。

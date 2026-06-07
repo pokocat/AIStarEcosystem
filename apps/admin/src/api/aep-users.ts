@@ -4,7 +4,7 @@
 // 用于在 admin 后台维护 aep_users 表的 operatorRole 字段（内嵌运营角色）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AepUser, OperatorRole } from "@/types/account";
+import type { AepUser, OperatorRole, SubProduct } from "@/types/account";
 import { apiFetch, USE_MOCK, mockDelay, buildQuery } from "./_client";
 
 export interface AepUserFilter {
@@ -64,6 +64,30 @@ export async function listAepUsers(filter?: AepUserFilter): Promise<AepUser[]> {
   if (filter?.q?.trim()) q.q = filter.q.trim();
   if (filter?.hasOperator !== undefined) q.hasOperator = filter.hasOperator;
   return apiFetch<AepUser[]>(`/admin/aep-users${buildQuery(q)}`);
+}
+
+/**
+ * v0.53：改某账号的子产品平台访问授权。
+ * 空数组 / null = 全平台（清空显式配置）；仅 SUPER_ADMIN 可调。
+ * 注意：用户旧 JWT 仍有效，平台门禁读 /api/me 实时值，刷新页面即生效。
+ */
+export async function updatePlatforms(
+  id: string,
+  platforms: SubProduct[] | null,
+): Promise<AepUser> {
+  if (USE_MOCK) {
+    const found = MOCK_USERS.find((u) => u.id === id);
+    if (!found) throw new Error(`AepUser ${id} not found`);
+    return mockDelay({
+      ...found,
+      platforms: platforms && platforms.length > 0 ? platforms : undefined,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  return apiFetch<AepUser>(`/admin/aep-users/${encodeURIComponent(id)}/platforms`, {
+    method: "PATCH",
+    body: { platforms },
+  });
 }
 
 /** 改某账号的 operatorRole。传 null 收回运营身份。 */

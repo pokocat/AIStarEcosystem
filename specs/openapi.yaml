@@ -1469,6 +1469,36 @@ components:
         createdAt:     { type: string, format: date-time }
         updatedAt:     { type: string, format: date-time }
 
+    # ── v0.53（审计 #9）：秘钥批次（与 server LicenseBatchDto / packages/types/license.ts 对齐） ──
+    LicenseBatchStatus:
+      type: string
+      enum: [active, exhausted, revoked, expired]
+    LicenseBatch:
+      type: object
+      required: [id, batchNo, name, initialCreditGrant, totalCount, activatedCount, status]
+      properties:
+        id:                 { type: string }
+        batchNo:            { type: string }
+        name:               { type: string, description: 营销名称，如「种子用户包」 }
+        issuerTenantId:     { type: string, nullable: true, description: 'v0.36 前老批次的 Tenant 关联；新批次走 sellingChannelId' }
+        sellingChannelId:   { type: string, nullable: true }
+        tier:
+          type: string
+          nullable: true
+          enum: [trial, basic, standard, premium, annual_pro, city_agent]
+          description: 'v0.53 起白名单校验；admin UI 当前仅暴露 basic/premium'
+        platforms:
+          type: array
+          description: 'v0.53：本批次可激活的子产品；空数组 = 全站可用'
+          items: { type: string, enum: [music, drama, celebrity, aiavatar] }
+        initialCreditGrant: { type: integer, format: int64, description: 每把秘钥核销时一次性入账的点数 }
+        totalCount:         { type: integer, description: keys 表实时派生（v0.47 自愈） }
+        activatedCount:     { type: integer, description: keys 表实时派生（v0.47 自愈） }
+        validFrom:          { type: string, format: date-time, nullable: true }
+        validTo:            { type: string, format: date-time, nullable: true }
+        status:             { $ref: '#/components/schemas/LicenseBatchStatus' }
+        createdAt:          { type: string, format: date-time }
+
     CelebrityCategory:
       type: string
       enum: [演员, 歌手, 主持人, 运动员, 网红, 综艺]
@@ -4141,6 +4171,162 @@ paths:
       responses:
         '200': { description: ok }
         '404': { description: USER_NOT_FOUND }
+
+  # v0.53：子产品平台访问授权（SUPER_ADMIN）。空数组/null = 全平台。
+  /admin/aep-users/{id}/platforms:
+    patch:
+      tags: [admin-account]
+      operationId: adminUpdateAepUserPlatforms
+      summary: 改某账号可访问的子产品平台（music/drama/celebrity/aiavatar）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                platforms:
+                  type: array
+                  nullable: true
+                  items:
+                    type: string
+                    enum: [music, drama, celebrity, aiavatar]
+      responses:
+        '200': { description: ok（返回 AepUser） }
+        '404': { description: USER_NOT_FOUND }
+
+  # ── v0.53（审计 #9）：秘钥批次 / 单码 admin 管理（AdminLicenseController） ─────
+
+  /admin/license-batches:
+    get:
+      tags: [admin-license]
+      operationId: adminListLicenseBatches
+      summary: 秘钥批次分页列表（核销/总量为 keys 表实时派生值）
+      parameters:
+        - { in: query, name: page, schema: { type: integer, default: 0 } }
+        - { in: query, name: size, schema: { type: integer, default: 20 } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LicenseBatch' }
+    post:
+      tags: [admin-license]
+      operationId: adminCreateLicenseBatch
+      summary: 新建批次（同时预铸 totalCount 把秘钥；明文不返回，需另走 mint-keys）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, totalCount]
+              properties:
+                name: { type: string }
+                sellingChannelId: { type: string, description: 与 issuerTenantId 二选一（新批次必填本字段） }
+                issuerTenantId: { type: string, description: 老路径保留 }
+                tier:
+                  type: string
+                  nullable: true
+                  enum: [trial, basic, standard, premium, annual_pro, city_agent]
+                platforms:
+                  type: array
+                  description: v0.53：可激活子应用；缺失/空 = 全站可用
+                  items: { type: string, enum: [music, drama, celebrity, aiavatar] }
+                initialCreditGrant: { type: integer, format: int64 }
+                totalCount: { type: integer }
+                validFrom: { type: string, format: date-time }
+                validTo: { type: string, format: date-time }
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/LicenseBatch' }
+
+  /admin/license-batches/{id}:
+    get:
+      tags: [admin-license]
+      operationId: adminGetLicenseBatch
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/LicenseBatch' }
+        '404': { description: not found }
+
+  /admin/license-batches/{id}/keys:
+    get:
+      tags: [admin-license]
+      operationId: adminListLicenseKeysByBatch
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, default: 0 } }
+        - { in: query, name: size, schema: { type: integer, default: 20 } }
+        - { in: query, name: status, schema: { type: string, enum: [created, activated, expired, revoked] } }
+      responses:
+        '200': { description: ok（PageEnvelope<LicenseKey>） }
+
+  /admin/license-batches/{id}/mint-keys:
+    post:
+      tags: [admin-license]
+      operationId: adminMintLicenseKeys
+      summary: 在批次下追加铸码（1..100；明文 raw codes 仅本次响应返回，DB 只存 sha256）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+        - { in: query, name: count, schema: { type: integer, default: 1, minimum: 1, maximum: 100 } }
+      responses:
+        '200':
+          description: ok（{ batchId, count, rawCodes[] }）
+        '409': { description: 批次状态非 ACTIVE }
+
+  /admin/license-keys:
+    get:
+      tags: [admin-license]
+      operationId: adminListLicenseKeys
+      parameters:
+        - { in: query, name: page, schema: { type: integer, default: 0 } }
+        - { in: query, name: size, schema: { type: integer, default: 20 } }
+        - { in: query, name: batchId, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string, enum: [created, activated, expired, revoked] } }
+      responses:
+        '200': { description: ok（PageEnvelope<LicenseKey>） }
+
+  /admin/license-keys/{id}/revoke:
+    put:
+      tags: [admin-license]
+      operationId: adminRevokeLicenseKey
+      summary: 吊销秘钥（已激活的会反向递减批次核销计数）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: ok }
+        '404': { description: not found }
 
   # ── 3.x.2 当前用户域 /me/** ─────────────────────────
 

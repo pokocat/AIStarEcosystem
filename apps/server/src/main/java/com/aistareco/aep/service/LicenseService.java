@@ -116,13 +116,22 @@ public class LicenseService {
             sellingChannelService.requireActive(sellingChannelId); // 校验存在且 ACTIVE
         }
 
+        // v0.53：批次可激活的子产品（数组或 CSV；空 = 全站可用）。
+        // 仅保留 PlatformSupport.ALL 中的已知平台；未知值静默丢弃后若为空仍按全站处理。
+        String platformsCsv = parsePlatforms(body.get("platforms"));
+
+        // v0.53（审计 #5）：tier 白名单校验 —— 之前是自由 string，三方注释各说各话。
+        // 契约收敛为 6 档宽集（admin UI 当前只暴露 basic/premium 两档，其余为预留档位）。
+        String tier = normalizeTier(getString(body, "tier"));
+
         LicenseBatch batch = LicenseBatch.builder()
                 .id(UUID.randomUUID().toString())
                 .batchNo("BATCH-" + System.currentTimeMillis())
                 .name(name)
                 .issuerTenantId(issuerTenantId) // 可为 null
                 .sellingChannelId(sellingChannelId)
-                .tier(getString(body, "tier"))
+                .tier(tier)
+                .platforms(platformsCsv)
                 .initialCreditGrant(getLong(body, "initialCreditGrant", 0L))
                 .totalCount(count)
                 .activatedCount(0)
@@ -235,6 +244,42 @@ public class LicenseService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * v0.53（审计 #5）：tier 档位白名单。与 admin types/license.ts 的 LICENSE_TIERS 注释
+     * 及 LicenseBatch.tier javadoc 三方对齐的唯一真源：6 档宽集；admin UI 当前只暴露
+     * basic / premium，其余档位预留（trial / standard / annual_pro / city_agent）。
+     */
+    private static final java.util.Set<String> KNOWN_TIERS =
+            java.util.Set.of("trial", "basic", "standard", "premium", "annual_pro", "city_agent");
+
+    /** tier 归一化 + 白名单校验；null/空 = 不设档位（按 initialCreditGrant 派生展示）。 */
+    private String normalizeTier(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!KNOWN_TIERS.contains(t)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "tier 必须是 trial / basic / standard / premium / annual_pro / city_agent 之一（或留空）");
+        }
+        return t;
+    }
+
+    /**
+     * v0.53：解析批次 platforms 入参 —— 兼容 JSON 数组（["aiavatar"]）与 CSV 字符串
+     * （"music,drama"）。清洗 / 去重 / 仅保留已知平台由 PlatformSupport.toCsv 完成；
+     * 空结果返回 null（= 全站可用）。
+     */
+    private String parsePlatforms(Object raw) {
+        if (raw == null) return null;
+        if (raw instanceof java.util.Collection<?> coll) {
+            java.util.List<String> items = coll.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(Object::toString)
+                    .toList();
+            return PlatformSupport.toCsv(items);
+        }
+        return PlatformSupport.toCsv(PlatformSupport.parse(raw.toString()));
     }
 
     private String getString(Map<String, Object> body, String key) {

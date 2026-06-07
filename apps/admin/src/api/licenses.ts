@@ -62,6 +62,11 @@ export interface CreateBatchInput {
   issuerTenantId?: string;
   /** v0.36：秘钥等级（透传到后端，前端无需派生） */
   tier?: string;
+  /**
+   * v0.53：本批次秘钥可激活的子应用（music/drama/celebrity/aiavatar）。
+   * 缺失/空数组 = 全站可用。非空时激活按批次授权（优先于注册来源策略）。
+   */
+  platforms?: string[];
   /** 单包初始点数（兑换后一次性入账） */
   initialCreditGrant: number;
   /** 一次铸多少把 key（与 batch 同建；之后还能通过 mintKeys 追加） */

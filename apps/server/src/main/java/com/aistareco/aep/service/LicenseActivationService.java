@@ -74,9 +74,14 @@ public class LicenseActivationService {
         this.platformAccessService = platformAccessService;
     }
 
-    @Transactional
-    public Map<String, Object> activate(Map<String, String> body) {
-        String rawCode = body.get("code");
+    /** 已通过全部可激活性校验的 key + batch 对。 */
+    record ActivatableKey(LicenseKey key, LicenseBatch batch) {}
+
+    /**
+     * v0.53：抽出 key + batch 的可激活性校验（注册激活 / 已登录追加激活共用）。
+     * logCtx 仅用于日志定位（如 "username=xx phone=yy" / "userId=zz"）。
+     */
+    private ActivatableKey requireActivatableKey(String rawCode, String logCtx) {
         if (rawCode == null || rawCode.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "激活码不能为空");
         }
@@ -84,15 +89,15 @@ public class LicenseActivationService {
         String codeHash = sha256(rawCode.trim().toUpperCase());
         Optional<LicenseKey> keyOpt = keyRepo.findByCodeHash(codeHash);
         if (keyOpt.isEmpty()) {
-            log.warn("[license] activation rejected invalid-code hashPrefix={} username={} phone={}",
-                    codeHash.substring(0, 8), body.get("username"), body.get("phone"));
+            log.warn("[license] activation rejected invalid-code hashPrefix={} {}",
+                    codeHash.substring(0, 8), logCtx);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "无效的激活码");
         }
         LicenseKey key = keyOpt.get();
 
         if (key.getStatus() != LicenseKey.LicenseKeyStatus.CREATED) {
-            log.warn("[license] activation rejected keyId={} status={} username={} phone={}",
-                    key.getId(), key.getStatus(), body.get("username"), body.get("phone"));
+            log.warn("[license] activation rejected keyId={} status={} {}",
+                    key.getId(), key.getStatus(), logCtx);
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "该激活码已被使用或已失效（当前状态: " + key.getStatus() + "）");
         }
@@ -123,6 +128,29 @@ public class LicenseActivationService {
                 && !tenantRepo.existsById(batch.getIssuerTenantId())) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "批次发放方租户不存在");
         }
+        return new ActivatableKey(key, batch);
+    }
+
+    /**
+     * v0.53：计算激活授予的平台 CSV —— 批次显式声明 platforms 时按批次授权
+     * （秘钥分「全站可用 / 指定子应用」，优先级高于 dev-grant-all）；
+     * 批次未声明（全站秘钥）时沿用既有注册来源策略。
+     */
+    private String resolveGrantedPlatforms(LicenseBatch batch, String registeringPlatform) {
+        java.util.List<String> batchPlatforms = PlatformSupport.parse(batch.getPlatforms());
+        if (!batchPlatforms.isEmpty()) {
+            return PlatformSupport.toCsv(batchPlatforms);
+        }
+        return platformAccessService.grantedCsvForNewUser(registeringPlatform);
+    }
+
+    @Transactional
+    public Map<String, Object> activate(Map<String, String> body) {
+        ActivatableKey validated = requireActivatableKey(body.get("code"),
+                "username=" + body.get("username") + " phone=" + body.get("phone"));
+        LicenseKey key = validated.key();
+        LicenseBatch batch = validated.batch();
+        Instant now = Instant.now();
 
         String username = body.getOrDefault("username", "user_" + System.currentTimeMillis());
         String email = body.get("email");
@@ -135,9 +163,10 @@ public class LicenseActivationService {
         }
         Studio.StudioKind studioKind = parseStudioKind(body.get("studioKind"));
 
-        // v0.43+: 子产品平台授权。注册来源平台由 body.platform 透传（music/drama/celebrity）；
-        // 开发态 dev-grant-all=true 时无视来源直接授予全部平台（一处注册三端可用）。
-        String grantedPlatforms = platformAccessService.grantedCsvForNewUser(body.get("platform"));
+        // v0.43+: 子产品平台授权。注册来源平台由 body.platform 透传（music/drama/celebrity/aiavatar）。
+        // v0.53+: 批次声明了 platforms 的秘钥按批次授权（如「仅 aiavatar」），优先于 dev-grant-all；
+        // 全站秘钥（批次未声明）沿用注册来源策略（开发态 dev-grant-all=true 授予全部平台）。
+        String grantedPlatforms = resolveGrantedPlatforms(batch, body.get("platform"));
 
         AepUser user = AepUser.builder()
                 .id(UUID.randomUUID().toString())
@@ -240,6 +269,111 @@ public class LicenseActivationService {
         }
         log.info("[license] activation success userId={} studioId={} keyId={} batchId={} grant={} platforms={} channel={}",
                 user.getId(), studio.getId(), key.getId(), batch.getId(), grant, grantedPlatforms, batch.getSellingChannelId());
+        return resp;
+    }
+
+    /**
+     * v0.53：已登录账号「追加激活」秘钥 —— 不建新账号，而是：
+     * <ol>
+     *   <li>校验 key + batch（与注册激活同一套规则）</li>
+     *   <li>合并授予批次平台到 user.platforms（全站秘钥 → 升为全部平台；
+     *       指定子应用秘钥 → 在现有平台集上做并集；用户原本已是全平台则保持）</li>
+     *   <li>按批次 initialCreditGrant 追加发放积分（wallet.licenseBalance + 不可变账本
+     *       LICENSE_GRANT，遵守 §4.2 禁止裸 UPDATE balance 的约束 —— 余额变动伴随 LedgerEntry）</li>
+     *   <li>key 标记 ACTIVATED（activatedByUserId = 当前用户）+ 批次核销计数</li>
+     * </ol>
+     * 老批次（issuerTenantId 非空）补建 Membership（幂等：已是成员则跳过）。
+     */
+    @Transactional
+    public Map<String, Object> activateForExistingUser(String userId, String rawCode) {
+        AepUser user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
+
+        ActivatableKey validated = requireActivatableKey(rawCode, "userId=" + userId + " (append)");
+        LicenseKey key = validated.key();
+        LicenseBatch batch = validated.batch();
+        Instant now = Instant.now();
+
+        // ── 平台合并 ────────────────────────────────────────────────────────────
+        java.util.List<String> batchPlatforms = PlatformSupport.parse(batch.getPlatforms());
+        String beforeCsv = user.getPlatforms();
+        boolean userHasAll = PlatformSupport.parse(beforeCsv).isEmpty(); // 空配置 = 全平台
+        if (batchPlatforms.isEmpty()) {
+            // 全站秘钥 → 升为全部平台（清空显式配置 = effective ALL）
+            user.setPlatforms(null);
+        } else if (!userHasAll) {
+            java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(PlatformSupport.parse(beforeCsv));
+            merged.addAll(batchPlatforms);
+            user.setPlatforms(PlatformSupport.toCsv(merged));
+        } // userHasAll && batch 指定子应用 → 已含该平台，保持 null
+        user.setUpdatedAt(now);
+        userRepo.save(user);
+
+        // ── 积分追加发放（钱包缺失则补建，防御老种子数据） ───────────────────────
+        long grant = batch.getInitialCreditGrant();
+        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .totalBalance(0L).licenseBalance(0L)
+                .rechargeBalance(0L).giftBalance(0L).pendingBalance(0L)
+                .createdAt(now).updatedAt(now)
+                .build());
+        if (grant > 0) {
+            wallet.setLicenseBalance(wallet.getLicenseBalance() + grant);
+            wallet.setTotalBalance(wallet.getTotalBalance() + grant);
+            wallet.setUpdatedAt(now);
+        }
+        walletRepo.save(wallet);
+        if (grant > 0) {
+            ledgerRepo.save(LedgerEntry.builder()
+                    .id(UUID.randomUUID().toString())
+                    .walletId(wallet.getId())
+                    .userId(userId)
+                    .entryType(LedgerEntry.LedgerEntryType.LICENSE_GRANT)
+                    .amount(grant)
+                    .balanceAfter(wallet.getTotalBalance())
+                    .description("追加激活秘钥发放积分")
+                    .referenceId(key.getId())
+                    .referenceType("license_key")
+                    .createdAt(now)
+                    .build());
+        }
+
+        // ── 老批次补建 Membership（幂等） ────────────────────────────────────────
+        if (batch.getIssuerTenantId() != null && !batch.getIssuerTenantId().isBlank()) {
+            boolean alreadyMember = membershipRepo.findByUserId(userId).stream()
+                    .anyMatch(m -> batch.getIssuerTenantId().equals(m.getTenantId()));
+            if (!alreadyMember) {
+                membershipRepo.save(Membership.builder()
+                        .id(UUID.randomUUID().toString())
+                        .tenantId(batch.getIssuerTenantId())
+                        .userId(userId)
+                        .source(Membership.MembershipSource.LICENSE_ACTIVATION)
+                        .licenseKeyId(key.getId())
+                        .joinedAt(now)
+                        .build());
+            }
+        }
+
+        // ── 核销 ────────────────────────────────────────────────────────────────
+        key.setStatus(LicenseKey.LicenseKeyStatus.ACTIVATED);
+        key.setActivatedByUserId(userId);
+        key.setActivatedAt(now);
+        keyRepo.save(key);
+
+        batch.setActivatedCount(batch.getActivatedCount() + 1);
+        if (batch.getActivatedCount() >= batch.getTotalCount()) {
+            batch.setStatus(LicenseBatch.LicenseBatchStatus.EXHAUSTED);
+        }
+        batchRepo.save(batch);
+
+        java.util.HashMap<String, Object> resp = new java.util.HashMap<>();
+        resp.put("user", AepUserDto.from(user));
+        resp.put("creditsGranted", grant);
+        resp.put("newTotalBalance", wallet.getTotalBalance());
+        resp.put("platformsGranted", batchPlatforms.isEmpty() ? PlatformSupport.ALL : batchPlatforms);
+        log.info("[license] append-activation success userId={} keyId={} batchId={} grant={} platforms: '{}' → '{}'",
+                userId, key.getId(), batch.getId(), grant, beforeCsv, user.getPlatforms());
         return resp;
     }
 

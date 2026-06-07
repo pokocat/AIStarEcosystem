@@ -63,6 +63,11 @@
 - 核销后 License 标记为 `ACTIVATED`，发放方可统计核销率与累计发放点数
 - 旧字段全部废弃：`licenseType` / `creditDelta` / `durationDays` / `settlementMode`
 - 新字段：`initialCreditGrant: BIGINT`（写在 LicenseBatch 表）
+- **v0.53 子应用范围**：`LicenseBatch.platforms`（CSV，null/空 = 全站可用）声明该批次可激活的
+  子产品（music / drama / celebrity / aiavatar）。非空批次激活时按批次授权账号的
+  `platforms`（优先于注册来源策略）；积分仍入单一钱包，额度走本批次 `initialCreditGrant`
+  （如「仅 aiavatar · 1000 credits」批次）。已登录账号可经 `POST /api/me/license/activate`
+  追加激活新秘钥（合并开通子应用 + 追加发放积分，不换号）。
 
 ### 0.3 Tenant — 用户归属载体
 

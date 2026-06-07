@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID, ISODateTime } from "./_shared";
+import type { SubProduct } from "./account";
 
 // ── License 批次 ──────────────────────────────────────────────────────────────
 
@@ -14,7 +15,20 @@ export interface LicenseBatch {
   id: ID;
   batchNo: string;                 // "BATCH-2026-001"
   name: string;                    // 营销名称，如 "种子用户包"
-  issuerTenantId: ID;              // 发放方机构（核销统计入口）
+  /** v0.36：老批次的 Tenant 关联；新批次走 sellingChannelId。 */
+  issuerTenantId?: ID | null;      // 发放方机构（核销统计入口）
+  /** v0.36：销售渠道（指向 SellingChannel）。 */
+  sellingChannelId?: ID | null;
+  /**
+   * v0.36：权益等级。v0.53 起 server 白名单校验 6 档宽集：
+   * trial/basic/standard/premium/annual_pro/city_agent（admin UI 当前仅暴露 basic/premium）。
+   */
+  tier?: string | null;
+  /**
+   * v0.53：本批次秘钥可激活的子产品。空数组/缺失 = 全站可用；
+   * 非空 = 激活仅授予列表中的子产品（如 ["aiavatar"]），优先级高于注册来源策略。
+   */
+  platforms?: SubProduct[];
   initialCreditGrant: number;      // 该批次每个 Key 兑换时一次性入账的点数 (credits)
   totalCount: number;
   activatedCount: number;

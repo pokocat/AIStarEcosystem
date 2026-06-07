@@ -3,11 +3,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // PlatformAccessDenied.tsx — 已登录但当前账号未开通本子产品时的拦截屏（v0.43+）。
 // 由各子产品 workspace 布局在 `!hasPlatformAccess` 时渲染。主题通过 props 注入。
+// v0.53+：内置「输入激活码开通」表单 —— 秘钥批次按子应用拆分后，老账号可用
+// 新秘钥追加激活本子产品（POST /api/me/license/activate），无需换号。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { ShieldAlert, LogOut } from "lucide-react";
-import { useAuth } from "@ai-star-eco/api-client";
+import { ShieldAlert, LogOut, KeyRound } from "lucide-react";
+import { useAuth, AuthApi } from "@ai-star-eco/api-client";
 import { SUB_PRODUCT_LABEL_ZH, type SubProduct } from "@ai-star-eco/types/account";
 
 export interface PlatformAccessDeniedProps {
@@ -27,8 +29,43 @@ export interface PlatformAccessDeniedProps {
 }
 
 export function PlatformAccessDenied({ appName, theme }: PlatformAccessDeniedProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const granted = (user?.platforms ?? []) as SubProduct[];
+
+  const [code, setCode] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [okMsg, setOkMsg] = React.useState<string | null>(null);
+
+  const handleActivate = async () => {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setError("请输入激活码");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await AuthApi.activateAdditionalLicense(trimmed);
+      setOkMsg(`开通成功，已发放 ${result.creditsGranted} 积分，正在进入…`);
+      await refresh(); // 刷新 /api/me → platforms 更新 → 拦截屏自动消失
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "激活失败，请检查激活码");
+      setBusy(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRadius: theme.radius,
+    border: `1px solid ${theme.border}`,
+    background: theme.bg,
+    color: theme.fg,
+    fontSize: 13.5,
+    outline: "none",
+  };
 
   return (
     <div
@@ -83,9 +120,66 @@ export function PlatformAccessDenied({ appName, theme }: PlatformAccessDeniedPro
               。
             </>
           ) : null}
-          <br />
-          如需开通，请联系你的客户经理，或更换已开通的账号登录。
         </p>
+
+        {/* v0.53：激活码追加开通 */}
+        <div
+          style={{
+            textAlign: "left",
+            border: `1px solid ${theme.border}`,
+            borderRadius: theme.radius,
+            padding: "14px 14px 16px",
+            marginBottom: 16,
+            background: `color-mix(in srgb, ${theme.accent} 5%, transparent)`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>
+            <KeyRound size={15} color={theme.accent} />
+            有{appName}的激活码？
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !busy) void handleActivate(); }}
+              placeholder="输入激活码直接开通"
+              disabled={busy}
+              style={inputStyle}
+            />
+            <button
+              type="button"
+              onClick={() => void handleActivate()}
+              disabled={busy}
+              style={{
+                padding: "10px 16px",
+                borderRadius: theme.radius,
+                border: "none",
+                background: theme.accent,
+                color: theme.accentFg,
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: busy ? "default" : "pointer",
+                opacity: busy ? 0.7 : 1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {busy ? "开通中…" : "开通"}
+            </button>
+          </div>
+          {error ? (
+            <div style={{ marginTop: 8, fontSize: 12.5, color: "#e11d48" }}>{error}</div>
+          ) : null}
+          {okMsg ? (
+            <div style={{ marginTop: 8, fontSize: 12.5, color: theme.accent }}>{okMsg}</div>
+          ) : null}
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: theme.fgMuted, lineHeight: 1.6 }}>
+            激活后将开通该激活码对应的子应用并发放积分；没有激活码请联系你的客户经理。
+          </p>
+        </div>
+
         <button
           type="button"
           onClick={logout}
@@ -93,9 +187,9 @@ export function PlatformAccessDenied({ appName, theme }: PlatformAccessDeniedPro
             width: "100%",
             padding: "11px 16px",
             borderRadius: theme.radius,
-            border: "none",
-            background: theme.accent,
-            color: theme.accentFg,
+            border: `1px solid ${theme.border}`,
+            background: "transparent",
+            color: theme.fg,
             fontSize: 14,
             fontWeight: 600,
             cursor: "pointer",
