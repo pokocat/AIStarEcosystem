@@ -114,10 +114,118 @@ function MLibrary({ ctx }) {
 // ============================================================
 // 详情 Detail（图集 / 衍生 / 版本 / 授权 全接真数据）
 // ============================================================
+// ── 衍生生成配置 Sheet（生成前可自定义：预设多选 / 运镜单选 / 补充描述 / prompt 透出）──
+function DerivConfigSheet({ derivKey, char, onClose, onSubmit }) {
+  const meta = DATA.DERIVS.find((d: any) => d.key === derivKey) || ({} as any);
+  const multi = derivKey === 'expr' || derivKey === 'scene' || derivKey === 'ward';
+  const presets = (DATA.DERIV_PRESETS as any)[derivKey] || [];
+  const defaultN = (DATA.DERIV_DEFAULT_PICKS as any)[derivKey] || 0;
+  const [sel, setSel] = useStateML(multi ? presets.slice(0, defaultN).map((p: any) => p.label) : [] as string[]);
+  const [motion, setMotion] = useStateML('orbit');
+  const [d3Style, setD3Style] = useStateML('');
+  const [tpl, setTpl] = useStateML(char.templateId || 't1');
+  const [extra, setExtra] = useStateML('');
+  const [showPrompt, setShowPrompt] = useStateML(false);
+
+  const toggle = (label) => setSel((s) => s.includes(label) ? s.filter((x) => x !== label) : (s.length >= 6 ? s : [...s, label]));
+  const chosen = presets.filter((p: any) => sel.includes(p.label));
+  const count = multi ? chosen.length : derivKey === 'atlas' ? 5 : derivKey === 'd3' ? 4 : 1;
+  const canSubmit = !multi || chosen.length > 0;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    const options: any = {};
+    if (multi) options.items = chosen.map((p: any) => ({ label: p.label, prompt: p.prompt }));
+    if (derivKey === 'video') options.motion = motion;
+    const extras: string[] = [];
+    if (derivKey === 'd3' && d3Style) {
+      const st = DATA.D3_STYLES.find((x: any) => x.label === d3Style);
+      if (st) extras.push(st.prompt);
+    }
+    if (extra.trim()) extras.push(extra.trim());
+    if (extras.length) options.extraPrompt = extras.join(', ');
+    onSubmit({ options, ...(derivKey === 'atlas' ? { templateId: tpl } : {}) });
+  };
+
+  // prompt 透出（实际将送入模型的描述；中文补充会先自动翻译）
+  const promptLines: string[] = [];
+  if (multi) chosen.forEach((p: any) => promptLines.push(p.label + ' → ' + p.prompt));
+  if (derivKey === 'video') {
+    const m = DATA.VIDEO_MOTIONS.find((x: any) => x.key === motion);
+    promptLines.push((m ? m.label : '环绕运镜') + (motion === 'orbit' ? '（提示词可在后台「Prompt 管理 · dap.video_orbit」调整）' : ''));
+  }
+  if (derivKey === 'atlas') promptLines.push('5 张标准机位（正面半身 / 全身 / 左右侧脸 / 表情）+ 所选美化模板');
+  if (derivKey === 'd3' && d3Style) { const st = DATA.D3_STYLES.find((x: any) => x.label === d3Style); if (st) promptLines.push(d3Style + ' → ' + st.prompt); }
+  if (extra.trim()) promptLines.push('补充 → ' + extra.trim() + '（自动翻译为英文）');
+
+  const chip = (on, label, onClick, key?) => hML('button', { key: key ?? label, onClick, className: 'm-tap', style: {
+    height: 32, padding: '0 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+    border: '1.5px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'),
+    background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, label);
+
+  return hML(React.Fragment, null,
+    hML('div', { className: 'm-sheet-backdrop', onClick: onClose }),
+    hML('div', { className: 'm-sheet', style: { padding: '0 18px calc(16px + var(--home-ind))', maxHeight: '82%', overflowY: 'auto' } },
+      hML('div', { className: 'm-sheet-grip' }),
+      hML('div', { style: { padding: '6px 0 4px' } },
+        hML('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 700, fontSize: 18 } }, (meta.name || '衍生') + ' · 生成配置'),
+        hML('div', { style: { fontSize: 12, color: 'var(--ink-3)', marginTop: 3 } }, meta.desc || '')),
+
+      // 多选条目（expr/scene/ward）
+      multi && hML('div', { style: { marginTop: 12 } },
+        hML('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8 } }, '选择条目 · 每项一张（' + chosen.length + '/6）'),
+        hML('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+          presets.map((p: any) => chip(sel.includes(p.label), p.label, () => toggle(p.label))))),
+
+      // 运镜单选（video）
+      derivKey === 'video' && hML('div', { style: { marginTop: 12 } },
+        hML('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8 } }, '运镜方式'),
+        hML('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          DATA.VIDEO_MOTIONS.map((m: any) => hML('button', { key: m.key, onClick: () => setMotion(m.key), className: 'm-tap', style: {
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 13px', textAlign: 'left', cursor: 'pointer',
+            borderRadius: 'var(--r-md)', border: '1.5px solid ' + (motion === m.key ? 'var(--primary)' : 'var(--line-2)'),
+            background: motion === m.key ? 'var(--primary-soft)' : 'var(--surface)' } },
+            hML('div', { style: { flex: 1 } },
+              hML('div', { style: { fontSize: 13.5, fontWeight: 700, color: motion === m.key ? 'var(--primary)' : 'var(--ink)' } }, m.label),
+              hML('div', { style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 } }, m.desc)),
+            motion === m.key && hML(Icons.checkc, { size: 17, style: { color: 'var(--primary)' } }))))),
+
+      // 3D 风格单选（d3）
+      derivKey === 'd3' && hML('div', { style: { marginTop: 12 } },
+        hML('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8 } }, '渲染风格（可选）'),
+        hML('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+          DATA.D3_STYLES.map((s: any) => chip(d3Style === s.label, s.label, () => setD3Style(d3Style === s.label ? '' : s.label))))),
+
+      // 美化模板（atlas）
+      derivKey === 'atlas' && hML('div', { style: { marginTop: 12 } },
+        hML('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8 } }, '美化模板'),
+        hML('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+          DATA.TEMPLATES.slice(0, 5).map((t: any) => chip(tpl === t.id, t.name, () => setTpl(t.id), t.id)))),
+
+      // 补充描述（全类型）
+      hML('div', { style: { marginTop: 12 } },
+        hML('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8 } }, '补充描述（可选）'),
+        hML(UI.Textarea, { value: extra, onChange: setExtra, rows: 2,
+          placeholder: derivKey === 'video' ? '例：微风吹动头发、霓虹夜景氛围…' : '例：胶片质感、冷色调、浅景深…' })),
+
+      // prompt 透出
+      promptLines.length > 0 && hML('div', { style: { marginTop: 10 } },
+        hML('button', { onClick: () => setShowPrompt(!showPrompt), style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--primary)', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4 } },
+          hML(Icons.chevD, { size: 13, stroke: 2.2, style: { transform: showPrompt ? 'rotate(180deg)' : 'none', transition: 'transform .15s' } }),
+          showPrompt ? '收起提示词' : '查看将使用的提示词'),
+        showPrompt && hML('div', { style: { marginTop: 7, padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', display: 'flex', flexDirection: 'column', gap: 5 } },
+          promptLines.map((l, i) => hML('div', { key: i, className: 'mono', style: { fontSize: 10.5, color: 'var(--ink-2)', lineHeight: 1.5, wordBreak: 'break-all' } }, l)))),
+
+      hML('div', { style: { marginTop: 14 } },
+        hML(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.sparkle, disabled: !canSubmit, onClick: submit },
+          '开始生成' + (multi ? '（' + chosen.length + ' 张）' : derivKey === 'atlas' ? '(5 张)'.replace('(', '（').replace(')', '）') : '')))));
+}
+
 function MDetail({ char: initialChar, ctx }) {
   const [char, setChar] = useStateML(initialChar);
   const [tab, setTab] = useStateML('atlas');
   const [derivBusy, setDerivBusy] = useStateML({} as any);
+  const [cfgKey, setCfgKey] = useStateML(null as any);
   const [confirmDel, setConfirmDel] = useStateML(false);
   const [deleting, setDeleting] = useStateML(false);
   const voice = ctx.voiceFor(char);
@@ -170,12 +278,13 @@ function MDetail({ char: initialChar, ctx }) {
     } finally { setDeleting(false); }
   };
 
-  const runDerive = async (key) => {
+  /** 真正派发生成（cfg 来自 DerivConfigSheet：{options, templateId?}）。 */
+  const runDerive = async (key, cfg?: any) => {
     if (derivBusy[key]) return;
     setDerivBusy((m) => ({ ...m, [key]: { pct: 3 } }));
     try {
-      const j = await AvatarApi.createDerivative(char.id, { type: key });
-      await awaitJob(j.id, (jj) => setDerivBusy((m) => ({ ...m, [key]: { pct: jj.pct } })));
+      const j = await AvatarApi.createDerivative(char.id, { type: key, ...(cfg || {}) });
+      await awaitJob(j.id, (jj) => setDerivBusy((m) => ({ ...m, [key]: { pct: jj.pct, eta: jj.eta } })));
       toast((DATA.DERIVS.find(d => d.key === key) || {}).name + ' · 完成', { tone: 'ok' });
       await refresh();
     } catch (e: any) {
@@ -184,6 +293,9 @@ function MDetail({ char: initialChar, ctx }) {
       setDerivBusy((m) => { const n = { ...m }; delete n[key]; return n; });
     }
   };
+
+  /** 生成入口统一先弹配置 sheet（不再一键抽卡）。 */
+  const openDerivConfig = (key) => { if (!derivBusy[key]) setCfgKey(key); };
 
   return hML('div', { className: 'm-overlay', 'data-screen-label': '资产详情' },
     hML(WxNavL, { title: char.name, onBack: ctx.back,
@@ -243,8 +355,8 @@ function MDetail({ char: initialChar, ctx }) {
           }))),
 
       hML('div', { className: 'm-fade', key: tab, style: { padding: '16px 18px 0' } },
-        tab === 'atlas' && hML(MAtlas, { char, busy: derivBusy['atlas'], onGenerate: () => runDerive('atlas') }),
-        tab === 'deriv' && hML(MDerivTab, { char, ctx, busy: derivBusy, onGenerate: runDerive }),
+        tab === 'atlas' && hML(MAtlas, { char, busy: derivBusy['atlas'], onGenerate: () => openDerivConfig('atlas') }),
+        tab === 'deriv' && hML(MDerivTab, { char, ctx, busy: derivBusy, onGenerate: openDerivConfig }),
         tab === 'versions' && hML(MVersions, { char }),
         tab === 'license' && hML(MLicense, { char, ctx }))),
 
@@ -256,7 +368,12 @@ function MDetail({ char: initialChar, ctx }) {
         : hML(React.Fragment, null,
             hML(UI.Button, { variant: 'primary', full: true, icon: wip ? Icons.bolt : Icons.wand, onClick: () => wip ? ctx.startCreate(char.path, char) : ctx.openLooks(char) },
               wip ? (char.status === 'proofing' && (char.variantImages || []).length ? '挑选形象（' + char.variantImages.length + ' 选 1）' : '继续创建链路') : '设计造型'),
-            hML(UI.Button, { variant: 'line', icon: Icons.grid, onClick: () => ctx.tab('apps') }, '投入应用'))));
+            hML(UI.Button, { variant: 'line', icon: Icons.grid, onClick: () => ctx.tab('apps') }, '投入应用'))),
+
+    // 衍生生成配置 sheet（生成前自定义；提交后派发任务）
+    cfgKey && hML(DerivConfigSheet, { derivKey: cfgKey, char,
+      onClose: () => setCfgKey(null),
+      onSubmit: (cfg) => { const k = cfgKey; setCfgKey(null); runDerive(k, cfg); } }));
 }
 
 function MAtlas({ char, busy, onGenerate }) {
@@ -323,7 +440,9 @@ function MDerivTab({ char, ctx, busy, onGenerate }) {
         hML('div', { style: { width: 40, height: 40, flex: '0 0 40px', borderRadius: 11, background: DATA.catSoft(d.cat), display: 'grid', placeItems: 'center', color: DATA.catColor(d.cat) } }, hML(Icons[d.icon], { size: 20 })),
         hML('div', { style: { flex: 1, minWidth: 0 } },
           hML('div', { style: { fontSize: 14, fontWeight: 700 } }, d.name),
-          b ? hML('div', { style: { marginTop: 6 } }, hML(UI.Progress, { pct: Math.round(b.pct || 4), h: 5 }))
+          b ? hML('div', { style: { marginTop: 6 } },
+                hML(UI.Progress, { pct: Math.round(b.pct || 4), h: 5 }),
+                b.eta && hML('div', { className: 'm-clip1', style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 3 } }, b.eta))
             : hML('div', { className: 'm-clip1', style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 } }, d.desc)),
         b ? hML('span', { className: 'mono', style: { fontSize: 11, color: 'var(--primary)', fontWeight: 700 } }, Math.round(b.pct || 4) + '%')
           : st === 'done'

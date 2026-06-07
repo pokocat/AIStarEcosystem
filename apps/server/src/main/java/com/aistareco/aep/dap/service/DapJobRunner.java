@@ -342,35 +342,46 @@ public class DapJobRunner {
         job.setResult(Map.of("lookId", look.getId(), "imageUrl", storage.signedUrl(stored.key())));
     }
 
-    /** 六类衍生。payload: derivKey, prevStatus, templateId?, confirmedShots? */
+    /** 各类型自定义条目的默认出图尺寸。 */
+    private static String defaultSizeOf(String key) {
+        return "expr".equals(key) ? "1024x1024" : "768x1024";
+    }
+
+    /** 六类衍生。payload: derivKey, prevStatus, templateId?, options?{items, extraPrompt, motion} */
     private void runDerive(DapJob job) {
         DapAvatar a = avatar(job);
         String key = str(job.getPayload(), "derivKey", "atlas");
         String prevStatus = str(job.getPayload(), "prevStatus", a.getStatus());
+        Map<String, Object> options = subMap(job.getPayload(), "options");
+        String extraEn = resolveExtraPrompt(job, options);              // 补充约束（已翻译，可空串）
+        List<String[]> custom = parseCustomItems(options, defaultSizeOf(key)); // 自定义条目（null=默认配方）
         try {
             switch (key) {
-                case "atlas" -> deriveAtlas(job, a);
-                case "expr" -> deriveImageSet(job, a, "expr", "image/png", List.of(
+                case "atlas" -> deriveAtlas(job, a, extraEn);
+                case "expr" -> deriveImageSet(job, a, "expr", "image/png",
+                        custom != null ? custom : List.of(
                         new String[]{"微笑", "bright warm smile expression", "1024x1024"},
                         new String[]{"严肃", "serious focused expression", "1024x1024"},
                         new String[]{"惊喜", "surprised delighted expression", "1024x1024"},
                         new String[]{"沉思", "thoughtful calm expression", "1024x1024"}),
-                        "表情差分 · 同一身份");
-                case "scene" -> deriveImageSet(job, a, "scene", "image/png", List.of(
+                        "表情差分 · 同一身份", extraEn);
+                case "scene" -> deriveImageSet(job, a, "scene", "image/png",
+                        custom != null ? custom : List.of(
                         new String[]{"书架暖光", catalog.scenePromptEn("s2"), "768x1024"},
                         new String[]{"咖啡馆", catalog.scenePromptEn("s6"), "768x1024"}),
-                        "剧情场景 · 置入环境");
-                case "ward" -> deriveImageSet(job, a, "ward", "image/png", List.of(
+                        "剧情场景 · 置入环境", extraEn);
+                case "ward" -> deriveImageSet(job, a, "ward", "image/png",
+                        custom != null ? custom : List.of(
                         new String[]{"商务正装", "wearing an elegant tailored business suit", "768x1024"},
                         new String[]{"街头潮流", "wearing trendy streetwear, casual style", "768x1024"}),
-                        "换装变体 · 沿用同脸");
+                        "换装变体 · 沿用同脸", extraEn);
                 case "d3" -> deriveImageSet(job, a, "d3", "image/png", List.of(
                         new String[]{"正面视图", "full-body 3d character turntable render, front view, neutral pose, studio background", "768x1024"},
                         new String[]{"侧面视图", "full-body 3d character turntable render, side view, neutral pose, studio background", "768x1024"},
                         new String[]{"背面视图", "full-body 3d character turntable render, back view, neutral pose, studio background", "768x1024"},
                         new String[]{"四分之三", "full-body 3d character turntable render, three-quarter view, neutral pose, studio background", "768x1024"}),
-                        "多角度 3D 预览 · GLB 导出排期中");
-                case "video" -> deriveVideo(job, a);
+                        "多角度 3D 预览 · GLB 导出排期中", extraEn);
+                case "video" -> deriveVideo(job, a, options, extraEn);
                 default -> throw new IllegalStateException("未知衍生类型 " + key);
             }
             Map<String, Object> deriv = a.derivOrEmpty();
@@ -391,7 +402,7 @@ public class DapJobRunner {
     }
 
     /** 标准图集（5 张固定机位），同时回填 avatar.shotKeys。 */
-    private void deriveAtlas(DapJob job, DapAvatar a) {
+    private void deriveAtlas(DapJob job, DapAvatar a, String extraEn) {
         String tplPrompt = catalog.templatePromptEn(str(job.getPayload(), "templateId", a.getTemplateId()));
         List<String[]> shots = List.of(
                 new String[]{"front-half", "正面半身", "front-facing half-body shot", "768x1024"},
@@ -410,7 +421,7 @@ public class DapJobRunner {
             byte[] img;
             if (agnes.isConfigured()) {
                 String prompt = promptOf(PromptService.KEY_DAP_IMAGE_ATLAS, Map.of(
-                        "shot", s[2],
+                        "shot", s[2] + (extraEn.isBlank() ? "" : ", " + extraEn),
                         "template", tplPrompt != null ? ". " + tplPrompt : ""));
                 img = agnes.generateImage(prompt, s[3], identityInputOf(a));
             } else {
@@ -440,9 +451,9 @@ public class DapJobRunner {
         job.setResult(Map.of("count", shots.size()));
     }
 
-    /** 通用图组衍生（expr / scene / ward / d3）。items: [label, promptEn, size] */
+    /** 通用图组衍生（expr / scene / ward / d3）。items: [label, promptEn, size]；extraEn 追加到每张图。 */
     private void deriveImageSet(DapJob job, DapAvatar a, String key, String mime,
-                                List<String[]> items, String specNote) {
+                                List<String[]> items, String specNote, String extraEn) {
         derivRepo.deleteByAvatarIdAndDerivKey(a.getId(), key);
         int i = 0;
         for (String[] it : items) {
@@ -452,7 +463,7 @@ public class DapJobRunner {
             byte[] img;
             if (agnes.isConfigured()) {
                 img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_DERIV,
-                        Map.of("item", it[1])), it[2], identityInputOf(a));
+                        Map.of("item", it[1] + (extraEn.isBlank() ? "" : ", " + extraEn))), it[2], identityInputOf(a));
             } else {
                 img = support.placeholderPortrait(a.getHue() + i * 13, "占位 · " + it[0], 768, 1024);
             }
@@ -478,18 +489,38 @@ public class DapJobRunner {
         job.setResult(Map.of("count", items.size()));
     }
 
-    /** 运镜短视频（Agnes 异步视频 → 下载落库）。 */
-    private void deriveVideo(DapJob job, DapAvatar a) {
+    /** 运镜方式 → 英文视频 prompt（orbit 走可配置的 dap.video_orbit 模板）。 */
+    private String videoPromptFor(String motion, String extraEn) {
+        String base = switch (motion == null ? "orbit" : motion) {
+            case "push_in" -> "Slow cinematic push-in towards this person, subtle natural motion, studio lighting, high quality, no scene change";
+            case "pull_back" -> "Slow cinematic pull-back revealing this person, subtle natural motion, studio lighting, high quality, no scene change";
+            case "pan" -> "Slow cinematic left-to-right pan across this person, subtle natural motion, studio lighting, high quality, no scene change";
+            default -> promptOf(PromptService.KEY_DAP_VIDEO_ORBIT, null);
+        };
+        return base + (extraEn.isBlank() ? "" : ", " + extraEn);
+    }
+
+    /** 运镜短视频（Agnes 异步视频 → 下载落库）。云端 status/progress 实时回显到任务卡。 */
+    private void deriveVideo(DapJob job, DapAvatar a, Map<String, Object> options, String extraEn) {
         progress(job, 8, "video.submit", "提交视频任务…");
         byte[] mp4;
         String spec;
         if (agnes.isConfigured()) {
+            String motion = str(options, "motion", "orbit");
             String taskId = agnes.createVideoTask(
-                    promptOf(PromptService.KEY_DAP_VIDEO_ORBIT, null),
+                    videoPromptFor(motion, extraEn),
                     firstOrNull(identityInputOf(a)), 768, 1152, 121, 24);
-            progress(job, 15, "video.poll", "云端渲染中…");
-            AgnesClient.VideoTask t = agnes.awaitVideo(taskId, frac -> {
-                progress(job, 15 + (int) (frac * 70), "video.poll", "云端渲染中…");
+            progress(job, 14, "video.queued", "已提交 · 云端排队中…");
+            AgnesClient.VideoTask t = agnes.awaitVideo(taskId, vt -> {
+                // 回显云端真实状态：queued → 排队中；in_progress + progress → 真实百分比
+                int cloudPct = vt.progress() == null ? -1 : Math.max(0, Math.min(100, vt.progress()));
+                if ("queued".equals(vt.status())) {
+                    progress(job, 16, "video.queued", "云端排队中…");
+                } else if (cloudPct >= 0) {
+                    progress(job, 18 + (int) (cloudPct * 0.65), "video.rendering", "云端渲染中 · " + cloudPct + "%");
+                } else {
+                    progress(job, Math.max(job.getPct(), 18), "video.rendering", "云端渲染中…");
+                }
                 checkCancelQuiet(job);
             });
             if (!"completed".equals(t.status()) || t.videoUrl() == null) {
@@ -524,6 +555,54 @@ public class DapJobRunner {
         counts.put("video", idx + 1);
         a.setCounts(counts);
         job.setResult(Map.of("videoUrl", storage.signedUrl(stored.key())));
+    }
+
+    // ── 衍生自定义配方（options：items / extraPrompt / motion）──
+
+    /** 补充约束：中文自动翻译成英文短语；空 → ""。 */
+    private String resolveExtraPrompt(DapJob job, Map<String, Object> options) {
+        String raw = str(options, "extraPrompt", null);
+        if (raw == null || raw.isBlank()) return "";
+        String en = toEnglishPhrase(raw.trim());
+        log.info("[dap-job] derive extraPrompt id={} raw={} en={}", job.getId(),
+                raw.length() > 80 ? raw.substring(0, 80) + "…" : raw,
+                en.length() > 120 ? en.substring(0, 120) + "…" : en);
+        return en;
+    }
+
+    /** options.items: [{label, prompt}] → [label, promptEn, size]；≤6 条；无有效条目返回 null（用默认配方）。 */
+    private List<String[]> parseCustomItems(Map<String, Object> options, String size) {
+        Object v = options == null ? null : options.get("items");
+        if (!(v instanceof List<?> list) || list.isEmpty()) return null;
+        List<String[]> out = new ArrayList<>();
+        int n = 1;
+        for (Object o : list) {
+            if (out.size() >= 6) break;
+            if (!(o instanceof Map<?, ?> m)) continue;
+            Object p = m.get("prompt");
+            String prompt = p == null ? null : String.valueOf(p).trim();
+            if (prompt == null || prompt.isBlank()) continue;
+            Object l = m.get("label");
+            String label = l == null || String.valueOf(l).isBlank() ? "自定义 " + n : String.valueOf(l).trim();
+            out.add(new String[]{label, toEnglishPhrase(prompt), size});
+            n++;
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /** 含中文且引擎可用 → 经翻译链转英文图像描述；否则原样（清洗引号/尾句号）。 */
+    private String toEnglishPhrase(String s) {
+        if (s == null || s.isBlank()) return "";
+        boolean hasCjk = s.codePoints().anyMatch(c -> c >= 0x4E00 && c <= 0x9FFF);
+        if (hasCjk && agnes.isConfigured()) {
+            try {
+                return cleanEditPhrase(agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+                        promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", s))));
+            } catch (Exception e) {
+                log.warn("[dap-job] extraPrompt translate failed, use raw: {}", e.getMessage());
+            }
+        }
+        return cleanEditPhrase(s);
     }
 
     // ── 身份输入（i2i 源图）────────────────────────────────────

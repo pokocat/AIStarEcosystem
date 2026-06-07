@@ -240,7 +240,8 @@ public class DapWorkflowService {
                 .toList();
     }
 
-    public JobDto createDerivative(String userId, String avatarId, String derivKey, String templateId) {
+    public JobDto createDerivative(String userId, String avatarId, String derivKey, String templateId,
+                                   Map<String, Object> options) {
         DapAvatar a = avatarService.required(userId, avatarId);
         String key = derivKey == null ? "" : derivKey;
         if (!DERIV_KIND_ZH.containsKey(key)) {
@@ -267,6 +268,7 @@ public class DapWorkflowService {
         payload.put("derivKey", key);
         payload.put("prevStatus", prevStatus);
         if (templateId != null) payload.put("templateId", templateId);
+        if (options != null && !options.isEmpty()) payload.put("options", options); // 自定义配方（items/extraPrompt/motion）
 
         String engine = "video".equals(key)
                 ? (agnes.isConfigured() ? "Agnes Video 2.0" : "占位引擎")

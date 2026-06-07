@@ -3940,6 +3940,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
 
+  # v0.53：已登录账号「追加激活」秘钥 —— 合并开通批次绑定的子应用 + 追加发放积分。
+  # 与 /auth/activate（注册新账号）互补；批次 platforms 非空时按批次授权（优先于注册来源策略）。
+  /me/license/activate:
+    post:
+      tags: [auth]
+      operationId: appendActivateLicense
+      summary: 已登录账号追加激活秘钥（开通批次绑定子应用 + 发放积分）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: 追加激活成功（返回 user / creditsGranted / newTotalBalance / platformsGranted）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
   /auth/dev-accounts:
     get:
       tags: [auth]
@@ -6402,7 +6426,7 @@ paths:
     post: { tags: [dap], operationId: dapCreateLook, description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/derivatives:
     get:  { tags: [dap], operationId: dapAvatarDerivatives, responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateDerivative, description: type=atlas|expr|scene|ward|d3|video → 异步任务, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateDerivative, description: type=atlas|expr|scene|ward|d3|video → 异步任务；options{items[{label,prompt}]≤6 / extraPrompt / motion} + templateId(atlas) 自定义配方（v0.52）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/describe:
     post: { tags: [dap], operationId: dapDescribeAvatar, description: 落人设描述与表单（同步）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/photos:

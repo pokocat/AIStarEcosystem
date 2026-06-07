@@ -37,10 +37,11 @@ if (clickText("继续创建链路")) {
   if (v2) { click(v2); await sleep(400); ok("挑选 v2"); }
   const next = $$("button").find(b => b.textContent.includes("下一步"));
   if (next && !next.disabled) { click(next); await sleep(300); ok("→ step3 调整"); } else bad("下一步未解锁");
-  // step3 精调 tab
-  clickText("精确精调"); await sleep(200);
-  document.body.textContent.includes("几何微调") ? ok("精调面板") : bad("精调面板缺失");
-  clickText("应用精调并重绘") && ok("精调空参数防御（toast 提示）");
+  // step3 精调 tab（v0.52 端上美颜：精确精调 → 精调美颜）。jsdom 无 canvas 实现，
+  // 像素链路无法验证 —— 断言工作台挂载（canvas 出现 + 已切出迭代历史）即可。
+  clickText("精调美颜"); await sleep(350);
+  ($$("canvas").length > 0 && !document.body.textContent.includes("迭代历史"))
+    ? ok("精调美颜工作台挂载（canvas 渲染）") : bad("精调美颜工作台缺失");
   // 退出向导
   click($(".nav-back") || $$("button").find(b => b.querySelector("svg"))); await sleep(250);
 } else bad("缺继续创建链路按钮");

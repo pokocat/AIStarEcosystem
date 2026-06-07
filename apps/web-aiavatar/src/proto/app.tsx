@@ -6,7 +6,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { AvatarApi, VoiceApi, useApi, seed, auth, onAuthExpired, USE_MOCK } from "./api";
+import { AvatarApi, VoiceApi, AuthApi, useApi, seed, auth, onAuthExpired, USE_MOCK } from "./api";
 import { MShell } from "./shell";
 import { toast } from "./toast";
 import { MHome } from "./screen-home";
@@ -61,8 +61,44 @@ function CreateSheet({ onPick, onClose }) {
         opt("real", Icons.person, "真人授权复刻", "录一段动作 / 上传素材，签署授权合规复刻", "var(--grad)"))));
 }
 
+// v0.53 平台门禁拦截屏：账号已登录但未开通「数字人资产平台」(aiavatar) 子产品。
+// 支持输入新秘钥「追加激活」（开通本子应用 + 发放该批次积分），或退出换号。
+function MPlatformGate({ onActivated, onLogout }) {
+  const [code, setCode] = useStateA("");
+  const [busy, setBusy] = useStateA(false);
+  const doActivate = async () => {
+    if (!code.trim()) { toast("请输入激活码", { tone: "warn" }); return; }
+    setBusy(true);
+    try {
+      const r = await AuthApi.activateLicense(code.trim());
+      if (r?.user) auth.setSession(auth.token() || "", r.user);
+      toast(`开通成功，已发放 ${r?.creditsGranted ?? 0} 积分`, { tone: "ok" });
+      onActivated();
+    } catch (e: any) {
+      toast(e?.message || "激活失败，请检查激活码", { tone: "err" });
+    } finally { setBusy(false); }
+  };
+  const btn = (label, onClick, primary = false) => hA("button", { className: "m-tap", onClick, disabled: busy, style: {
+    width: "100%", padding: "13px 16px", borderRadius: "var(--r-md)", fontSize: 14.5, fontWeight: 700, cursor: "pointer",
+    border: primary ? "none" : "1px solid var(--line)",
+    background: primary ? "var(--grad)" : "var(--surface)",
+    color: primary ? "#fff" : "var(--ink-2)", opacity: busy ? 0.65 : 1 } }, label);
+  return hA("div", { style: { position: "absolute", inset: 0, zIndex: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 26px", background: "var(--canvas)", textAlign: "center" }, "data-screen-label": "未开通" },
+    hA("div", { style: { width: 58, height: 58, borderRadius: "50%", background: "rgba(18,179,222,.12)", display: "grid", placeItems: "center", marginBottom: 16 } },
+      hA(Icons.lock || Icons.person, { size: 27, stroke: 1.9, style: { color: "var(--primary)" } })),
+    hA("div", { style: { fontFamily: "var(--font-disp)", fontSize: 19, fontWeight: 800, marginBottom: 8 } }, "当前账号未开通数字人资产平台"),
+    hA("p", { style: { fontSize: 13, color: "var(--ink-2)", lineHeight: 1.65, margin: "0 0 20px" } },
+      "你的账号还没有本平台的使用权限。", hA("br", null), "有对应的激活码可直接开通；没有请联系客户经理或换号登录。"),
+    hA("div", { style: { width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 11 } },
+      hA(UI.Input, { value: code, onChange: setCode, placeholder: "输入激活码开通本平台", disabled: busy }),
+      btn(busy ? "开通中…" : "激活开通", doActivate, true),
+      btn("退出并切换账号", onLogout)));
+}
+
 export function App() {
   const [authed, setAuthed] = useStateA(USE_MOCK ? true : null as any); // null = 挂载前未知（避免 SSR 闪登录屏）
+  // v0.53 平台门禁：null=待检 / true=已开通 / false=未开通（渲染拦截屏）
+  const [platformOk, setPlatformOk] = useStateA(USE_MOCK ? true : null as any);
   const [tab, setTab] = useStateA("home");
   const [stack, setStack] = useStateA([]);
   const [sheet, setSheet] = useStateA(false);
@@ -75,8 +111,24 @@ export function App() {
   useEffectA(() => {
     if (USE_MOCK) return;
     setAuthed(auth.isAuthed());
-    return onAuthExpired(() => { setStack([]); setSheet(false); setAuthed(false); });
+    return onAuthExpired(() => { setStack([]); setSheet(false); setAuthed(false); setPlatformOk(null); });
   }, []);
+
+  // v0.53 平台门禁：登录后拉 /api/me 校验 platforms 是否含 aiavatar。
+  // 拉取失败（网络/老后端）宽松放行，避免误锁；platforms 缺失/空 = 全平台。
+  useEffectA(() => {
+    if (USE_MOCK) return;
+    if (authed !== true) { setPlatformOk(null); return; }
+    let cancelled = false;
+    AuthApi.me()
+      .then((me) => {
+        if (cancelled) return;
+        const ps = me?.platforms;
+        setPlatformOk(!Array.isArray(ps) || ps.length === 0 || ps.includes("aiavatar"));
+      })
+      .catch(() => { if (!cancelled) setPlatformOk(true); });
+    return () => { cancelled = true; };
+  }, [authed]);
 
   // 浏览器 / 系统返回键：关闭最上层覆盖页或 Sheet，而不是直接退出应用。
   const open = stack.length + (sheet ? 1 : 0);
@@ -153,7 +205,18 @@ export function App() {
   if (!USE_MOCK && authed !== true) {
     return hA(React.Fragment, null,
       hA(PhoneFrame, null,
-        authed === false && hA(MLogin, { onLoggedIn: () => { setAuthed(true); reload(); } })),
+        authed === false && hA(MLogin, { onLoggedIn: () => { setAuthed(true); setPlatformOk(null); reload(); } })),
+      hA(UI.ToastHost, null));
+  }
+
+  // v0.53 平台门禁（live 模式）：已登录但账号未开通 aiavatar → 拦截屏（可激活码追加开通）
+  if (!USE_MOCK && platformOk === false) {
+    return hA(React.Fragment, null,
+      hA(PhoneFrame, null,
+        hA(MPlatformGate, {
+          onActivated: () => { setPlatformOk(true); reload(); },
+          onLogout: ctx.logout,
+        })),
       hA(UI.ToastHost, null));
   }
 

@@ -94,7 +94,11 @@ click(newCard); await sleep(350);
 clickText("衍生资产"); await sleep(200);
 const genBtns = $$("button").filter(b => b.textContent.trim() === "生成");
 if (genBtns.length) {
-  click(genBtns[0]); ok("发起衍生生成（图集）");
+  click(genBtns[0]); await sleep(250);
+  // v0.52：点「生成」先弹配置 sheet（预设/补充描述/prompt 透出），不再一键抽卡
+  document.body.textContent.includes("生成配置") ? ok("生成前弹配置 sheet") : bad("缺配置 sheet");
+  document.body.textContent.includes("查看将使用的提示词") ? ok("配置 sheet 透出提示词入口") : bad("缺提示词透出");
+  clickText("开始生成") ? ok("配置后发起衍生生成") : bad("缺开始生成按钮");
   let k = 0;
   while (k++ < 20) { await sleep(500); if (document.body.textContent.includes("5 张") || document.body.textContent.includes("完成")) break; }
   ok("衍生任务推进（mock）");

@@ -31,8 +31,15 @@ public final class DapRequests {
     /** POST /api/v1/avatars/{id}/looks */
     public record CreateLookRequest(String source, String prompt, String sceneId) {}
 
-    /** POST /api/v1/avatars/{id}/derivatives */
-    public record CreateDerivativeRequest(String type) {}
+    /**
+     * POST /api/v1/avatars/{id}/derivatives
+     * options（v0.52+，全部可选；缺省 = 各类型默认配方）：
+     *   items: [{label, prompt}]  — expr/scene/ward 自定义条目（替换默认，≤6 条；中文 prompt 自动翻译）
+     *   extraPrompt: string       — 追加到每张图/视频的补充约束（中文自动翻译）
+     *   motion: orbit|push_in|pull_back|pan — 仅 video：运镜方式
+     * templateId — 仅 atlas：美化模板。
+     */
+    public record CreateDerivativeRequest(String type, Map<String, Object> options, String templateId) {}
 
     /** POST /api/v1/avatars/{id}/finalize —— archive=true 时直接归档（AI 快速创建路径）。 */
     public record FinalizeRequest(String templateId, List<String> confirmedShots, Boolean archive) {}

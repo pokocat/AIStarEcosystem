@@ -2614,6 +2614,75 @@ openapi      : +/v1/avatars/{id}/image (get) +/v1/avatars/{id}/refine-apply (pos
 - **未做**：资产详情页独立精调入口（详情「调整形象」本就跳 chain adjust，已覆盖）；美颜参数
   服务端复算（beauty-service，研究文档 P1）；视频帧美颜；Agnes「AI 精修」独立按钮（迭代已覆盖语义编辑）。
 
+**v0.52 修订（衍生生成可自定义 + 视频任务真实状态回显）**：
+
+1. **衍生不再一键抽卡**：详情「标准图集 / 衍生资产」的生成入口先弹**生成配置 sheet**
+   （`DerivConfigSheet`）：expr/scene/ward 预设条目多选（≤6，每项一张图）、video 运镜方式
+   单选（环绕/推近/拉远/摇移）、d3 渲染风格单选、atlas 美化模板单选；全类型「补充描述」
+   textarea（中文自动经 dap.translate_edit 翻译）+「查看将使用的提示词」透出实际 prompt。
+   预设数据在 `data.ts`（DERIV_PRESETS / D3_STYLES / VIDEO_MOTIONS / DERIV_DEFAULT_PICKS）。
+2. **契约**：`POST /v1/avatars/{id}/derivatives` 请求体 +`options{items[{label,prompt}]≤6,
+   extraPrompt, motion}` + `templateId`（atlas）；server `DapJobRunner.runDerive` 消费
+   （items 替换默认配方；extraPrompt 追加到每张图/视频；中文 prompt 自动翻译，含 CJK 检测）。
+3. **视频任务云端状态回显**：`AgnesClient.VideoTask +progress(0-100，兼容 0-1 形态)`；
+   awaitVideo 回调改收完整 VideoTask；runner 把云端真实态写进 job —— queued →
+   「云端排队中…」/ in_progress → 「云端渲染中 · N%」（pct 18+0.65×真实进度），
+   前端任务卡 / 衍生行直接显示 eta 文本。轮询日志带 progress；`operation=null` 修为
+   video-status。
+4. 走查：walk2 +3 断言（配置 sheet / prompt 透出 / 配置后生成）；walk3 精调断言适配
+   v0.52 端上美颜改名（jsdom 无 canvas 实现 → 断言工作台挂载）。合计 82 断言全绿。
+
+### v0.53（2026-06-07）— 秘钥按子应用拆分（批次 platforms + 追加激活）+ aiavatar 纳入平台门禁
+
+秘钥从「全站统一」拆为「全站可用 / 指定子应用可用」：批次新增 platforms 维度（如「仅 aiavatar · 发 1000 积分」），
+激活按批次授权平台；aiavatar 正式加入平台全集（PlatformSupport.ALL 3 → 4）并给 web-aiavatar 上平台门禁；
+新增「已登录账号追加激活」端点 —— 老账号买新子应用秘钥不用换号。积分仍是**单一钱包**（批次只决定发放额度，
+不分桶；扣费链路零改动）。
+
+```
+server : LicenseBatch +platforms（CSV，null/空 = 全站可用）；LicenseBatchDto +platforms（List 出 wire）
+       : PlatformSupport +AIAVATAR；ALL = music/drama/celebrity/aiavatar
+       : LicenseService.createBatch 接收 platforms（数组或 CSV，仅保留已知平台）
+       : LicenseActivationService 抽 requireActivatableKey（注册/追加共用校验）；
+       :   resolveGrantedPlatforms：批次 platforms 非空 → 按批次授权（优先于 dev-grant-all）；
+       :   空（全站秘钥）→ 沿用注册来源策略
+       : +activateForExistingUser(userId, code)：合并平台（全站秘钥→升全平台；指定→并集）+
+       :   追加发放积分（wallet.licenseBalance + LedgerEntry LICENSE_GRANT，遵守 §4.2）+
+       :   key 核销 + 老批次幂等补 Membership
+       : 新 MeLicenseController POST /api/me/license/activate（authenticated；复用
+       :   auth.license.activate 审计动作，detail 标「追加激活」，admin 日志字典零新增）
+       : 新 PlatformsAiavatarMigrationSeeder(@Order 52)：platforms='music,drama,celebrity'
+       :   （v0.43 时代 dev-grant-all 写的「老全集」）→ NULL（= 新全集含 aiavatar），防误锁；
+       :   显式单/双平台收窄授权的行不动
+types  : SubProduct +"aiavatar"；ALL_SUB_PRODUCTS/SUB_PRODUCT_LABEL_ZH 同步；
+       : packages/types/license.ts LicenseBatch 补 tier/sellingChannelId/platforms（修审计 P1 drift）
+api-client : AuthApi +activateAdditionalLicense(code) → POST /me/license/activate
+landing: PlatformAccessDenied 内置「输入激活码开通」表单（成功后 refresh() 拦截屏自动消失）；
+       :   music/drama/celebrity 三端 workspace 布局零改动自动获得该入口
+admin  : types/account.ts +SubProduct/ALL_SUB_PRODUCTS/SUB_PRODUCT_LABEL_ZH + AepUser.platforms；
+       : types/license.ts LicenseBatch +platforms；api/licenses.ts CreateBatchInput +platforms
+       : /platform/licenses：批次表 +「适用范围」列（全站/子应用徽章）；CreateBatchDialog
+       :   +子应用多选 chip + 自定义单包点数（覆盖等级默认，支持「仅 aiavatar 发 1000」类批次）
+web-aiavatar : AuthApi.smsRegister 默认透传 platform=aiavatar；+me()/+activateLicense(code)
+       : app.tsx 登录后拉 /api/me 校验 platforms 含 aiavatar；未开通 → MPlatformGate 拦截屏
+       :   （激活码追加开通 / 退出换号）；me 拉取失败宽松放行（防网络抖动误锁）
+openapi: +/me/license/activate (post)
+```
+
+**注意事项**：
+
+- **积分模型不变**：仍是单一钱包 + 不可变账本；「按 app 区分发放」= 不同批次（绑定不同子应用）配
+  不同 initialCreditGrant，不是按 app 分桶。要做分桶钱包需另立大版本（动 Wallet/LedgerEntry/CreditService）。
+- **优先级**：批次 platforms 非空 > dev-grant-all > 注册来源。开发态建「仅 aiavatar」批次后，
+  用它注册的账号即使 dev-grant-all=true 也只开 aiavatar —— 这是预期行为（便于本地验证门禁）。
+- **历史账号迁移**：恰好等于老全集 "music,drama,celebrity" 的行被视为「全平台」语义升级为 NULL；
+  该串是 v0.43~v0.52 dev-grant-all 唯一产出形态（toCsv 保 ALL 顺序），不会误伤真实收窄授权。
+- **追加激活语义**：全站秘钥 → user.platforms 置 NULL（全平台）；指定子应用秘钥 → 并集；
+  用户原本已是全平台（空配置）→ 保持。每把 key 仍一次性核销（ACTIVATED 后不可复用）。
+- **审计**：追加激活复用 `auth.license.activate` 动作（detail 前缀「追加激活」），按 userId 可查。
+- **未做**：(a) 按 app 分桶的积分账户；(b) admin 给已有账号手动改 platforms 的 UI（审计 P2，
+  见 docs/ADMIN_ALIGNMENT_AUDIT.md）；(c) 批次 platforms 的事后编辑（建批后不可改，防已售秘钥语义漂移）。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

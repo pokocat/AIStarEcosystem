@@ -152,8 +152,28 @@ export const AuthApi = {
     authFetch(`/sms/request-code`, { phone, purpose }),
   smsLogin: (phone: string, code: string): Promise<{ token: string; user: any }> =>
     authFetch(`/sms/verify`, { phone, code }),
-  smsRegister: (input: { phone: string; code: string; licenseKey: string; studioName: string; displayName?: string }): Promise<{ token: string; user: any }> =>
-    authFetch(`/sms/register`, input),
+  /** v0.53：注册透传 platform=aiavatar（dev-grant-all=false 时按来源授权本子产品）。 */
+  smsRegister: (input: { phone: string; code: string; licenseKey: string; studioName: string; displayName?: string; platform?: string }): Promise<{ token: string; user: any }> =>
+    authFetch(`/sms/register`, { platform: "aiavatar", ...input }),
+
+  // ── v0.53 平台门禁（秘钥按子应用拆分）────────────────────────
+  /** 当前登录账号（/api/me，AepUser 形状；platforms 为已开通子产品列表）。 */
+  me: async (): Promise<any> => {
+    const res = await fetch(`/api/me`, { headers: { "Content-Type": "application/json", ...authHeaders() } });
+    return parseResponse<any>(res);
+  },
+  /**
+   * 已登录账号「追加激活」秘钥：开通秘钥批次绑定的子应用（如仅 aiavatar）+ 追加发放积分。
+   * 返回 { user, creditsGranted, newTotalBalance, platformsGranted }。
+   */
+  activateLicense: async (code: string): Promise<{ user: any; creditsGranted: number; newTotalBalance: number; platformsGranted: string[] }> => {
+    const res = await fetch(`/api/me/license/activate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ code }),
+    });
+    return parseResponse<any>(res);
+  },
 };
 
 // ── UI 字典（展示配置，同步再导出）────────────────────────────
@@ -163,6 +183,10 @@ export const {
   PATHS,
   SHOTS,
   DERIVS,
+  DERIV_PRESETS,
+  DERIV_DEFAULT_PICKS,
+  D3_STYLES,
+  VIDEO_MOTIONS,
   CHAIN,
   CAPS,
   WARP_CTRLS,
@@ -178,6 +202,10 @@ export const DATA = {
   PATHS,
   SHOTS,
   DERIVS,
+  DERIV_PRESETS,
+  DERIV_DEFAULT_PICKS,
+  D3_STYLES,
+  VIDEO_MOTIONS,
   CHAIN,
   CAPS,
   WARP_CTRLS,
@@ -403,7 +431,7 @@ export const AvatarApi = {
     if (USE_MOCK) return mock([]);
     return apiFetch(`/avatars/${id}/derivatives`);
   },
-  createDerivative: (id: string, body: { type: string }): Promise<any> => {
+  createDerivative: (id: string, body: { type: string; options?: { items?: { label: string; prompt: string }[]; extraPrompt?: string; motion?: string }; templateId?: string }): Promise<any> => {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
       const kindZh: any = { atlas: "多角度图集", expr: "表情图集", scene: "剧情场景图", ward: "换装变体", d3: "3D 模型", video: "运镜短视频" };

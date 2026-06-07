@@ -154,7 +154,7 @@ public class DapAvatarController {
     @PostMapping("/{id}/derivatives")
     public ApiResponse<Map<String, Object>> createDerivative(Principal principal, @PathVariable String id,
                                                              @RequestBody CreateDerivativeRequest req) {
-        return ApiResponse.of(workflow.createDerivative(uid(principal), id, req.type(), null).toWire());
+        return ApiResponse.of(workflow.createDerivative(uid(principal), id, req.type(), req.templateId(), req.options()).toWire());
     }
 
     // ── 创建链路 ──────────────────────────────────────────────

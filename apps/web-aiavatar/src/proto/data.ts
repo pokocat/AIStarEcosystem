@@ -281,6 +281,56 @@ export const DERIVS: DerivMeta[] = [
   { key: "video", cat: "video", icon: "film", name: "运镜短视频", unit: "条", desc: "环绕 / 推拉 运镜，导出 MP4（仅运镜无驱动）", engine: "SVD-XT" },
 ];
 
+// ── 衍生生成配置（生成前可自定义；prompt 为英文，直接进图像/视频模型）────────
+export interface DerivPresetItem { label: string; prompt: string }
+
+/** 多选条目预设（expr/scene/ward —— 选中项替换默认配方，每项一张图）。 */
+export const DERIV_PRESETS: Record<string, DerivPresetItem[]> = {
+  expr: [
+    { label: "微笑", prompt: "bright warm smile expression" },
+    { label: "严肃", prompt: "serious focused expression" },
+    { label: "惊喜", prompt: "surprised delighted expression" },
+    { label: "沉思", prompt: "thoughtful calm expression" },
+    { label: "大笑", prompt: "joyful open-mouth laughing expression" },
+    { label: "俏皮", prompt: "playful winking expression" },
+  ],
+  scene: [
+    { label: "书房暖光", prompt: "cozy study room with warm bookshelf lighting" },
+    { label: "咖啡馆", prompt: "sitting in a stylish cafe, soft daylight" },
+    { label: "街头夜景", prompt: "city street at night, neon lights, cinematic" },
+    { label: "海边日落", prompt: "seaside at golden sunset, gentle breeze" },
+    { label: "舞台聚光", prompt: "on stage under a spotlight, dramatic lighting" },
+    { label: "现代办公室", prompt: "modern bright office, professional ambience" },
+  ],
+  ward: [
+    { label: "商务正装", prompt: "wearing an elegant tailored business suit" },
+    { label: "街头潮流", prompt: "wearing trendy streetwear, casual style" },
+    { label: "晚礼服", prompt: "wearing an elegant evening gown" },
+    { label: "运动休闲", prompt: "wearing sporty athleisure outfit" },
+    { label: "新中式", prompt: "wearing modern hanfu-inspired chinese attire" },
+    { label: "赛博朋克", prompt: "wearing futuristic cyberpunk outfit with neon accents" },
+  ],
+};
+
+/** 各类型默认选中数（与 server 默认配方张数一致）。 */
+export const DERIV_DEFAULT_PICKS: Record<string, number> = { expr: 4, scene: 2, ward: 2 };
+
+/** 3D 渲染风格（单选 → 并入补充描述）。 */
+export const D3_STYLES: DerivPresetItem[] = [
+  { label: "写实雕塑", prompt: "photorealistic sculpted 3d render" },
+  { label: "手办质感", prompt: "collectible figurine style, glossy finish" },
+  { label: "粘土风", prompt: "cute claymation style render" },
+  { label: "低多边形", prompt: "stylized low-poly 3d render" },
+];
+
+/** 运镜方式（单选 → options.motion；orbit 的英文 prompt 在后台「Prompt 管理 · dap.video_orbit」可改）。 */
+export const VIDEO_MOTIONS = [
+  { key: "orbit", label: "环绕运镜", desc: "镜头绕人物缓慢环绕" },
+  { key: "push_in", label: "缓慢推近", desc: "从半身推向面部特写" },
+  { key: "pull_back", label: "缓慢拉远", desc: "由近及远展示全身" },
+  { key: "pan", label: "左右摇移", desc: "镜头水平掠过人物" },
+];
+
 export const CHARS: Avatar[] = [
   {
     id: "DH-2041", name: "林深 Lìn", codename: "lin-anchor", path: "real",

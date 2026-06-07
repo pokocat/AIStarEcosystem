@@ -180,7 +180,8 @@ public class AgnesClient {
 
     // ── 视频（异步）────────────────────────────────────────────
 
-    public record VideoTask(String taskId, String status, String videoUrl, String raw) {}
+    /** progress：云端真实进度 0-100（响应缺失时为 null，调用方自行兜底）。 */
+    public record VideoTask(String taskId, String status, String videoUrl, Integer progress, String raw) {}
 
     /**
      * 创建视频任务。
@@ -234,11 +235,17 @@ public class AgnesClient {
                 resp.path("data").path("video_url").asText(null),
                 resp.path("data").path("url").asText(null),
                 resp.path("output").path("video_url").asText(null));
-        return new VideoTask(taskId, status, videoUrl, resp.toString());
+        Integer progress = null;
+        JsonNode pn = resp.path("progress").isMissingNode() ? resp.path("data").path("progress") : resp.path("progress");
+        if (pn.isNumber()) {
+            double pv = pn.asDouble();
+            progress = (int) Math.round(pv <= 1.0 && pv > 0 ? pv * 100 : pv); // 兼容 0-1 / 0-100 两种形态
+        }
+        return new VideoTask(taskId, status, videoUrl, progress, resp.toString());
     }
 
-    /** 阻塞轮询直到 completed/failed/超时；progress 回调收 [0,1] 估算值。 */
-    public VideoTask awaitVideo(String taskId, java.util.function.DoubleConsumer progress) {
+    /** 阻塞轮询直到 completed/failed/超时；onPoll 每轮收到云端真实任务态（status / progress）。 */
+    public VideoTask awaitVideo(String taskId, java.util.function.Consumer<VideoTask> onPoll) {
         int interval = Math.max(2, props.getAgnes().getVideoPollIntervalSeconds());
         int maxWait = Math.max(30, props.getAgnes().getVideoMaxWaitSeconds());
         long deadline = System.currentTimeMillis() + maxWait * 1000L;
@@ -249,16 +256,14 @@ public class AgnesClient {
             VideoTask t = getVideoTask(taskId);
             long now = System.currentTimeMillis();
             if (!t.status().equals(lastStatus) || now - lastHeartbeat >= 60_000L) {
-                log.info("[agnes] video-task poll taskId={} status={} elapsedSec={} maxWaitSec={} videoUrlPresent={}",
-                        taskId, t.status(), (now - start) / 1000L, maxWait, t.videoUrl() != null && !t.videoUrl().isBlank());
+                log.info("[agnes] video-task poll taskId={} status={} progress={} elapsedSec={} maxWaitSec={} videoUrlPresent={}",
+                        taskId, t.status(), t.progress(), (now - start) / 1000L, maxWait,
+                        t.videoUrl() != null && !t.videoUrl().isBlank());
                 lastStatus = t.status();
                 lastHeartbeat = now;
             }
             if ("completed".equals(t.status()) || "failed".equals(t.status())) return t;
-            if (progress != null) {
-                double frac = Math.min(0.95, (System.currentTimeMillis() - start) / (double) (maxWait * 1000L) * 3.0);
-                progress.accept(frac);
-            }
+            if (onPoll != null) onPoll.accept(t);
             try {
                 Thread.sleep(interval * 1000L);
             } catch (InterruptedException e) {
@@ -482,7 +487,8 @@ public class AgnesClient {
         if (path.endsWith("/chat/completions")) return "chat";
         if (path.endsWith("/images/generations")) return "image";
         if (path.endsWith("/videos")) return "video";
-        return null;
+        if (path.contains("/videos/")) return "video-status";
+        return "other";
     }
 
     /** Agnes 调用异常（runner 捕获后落 job.errorMessage + 释放冻结积分）。 */
