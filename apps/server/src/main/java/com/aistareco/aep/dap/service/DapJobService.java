@@ -56,6 +56,7 @@ public class DapJobService {
 
     public DapJob submit(String userId, DapAvatar avatar, String type, String kind, String engine,
                          long cost, String eta, Map<String, Object> payload) {
+        requireEngineOrPlaceholderAllowed();
         accountService.ensureMonthlyGrant(userId);
 
         String id = uniqueId();
@@ -89,6 +90,19 @@ public class DapJobService {
         return job;
     }
 
+    /**
+     * 生产严格模式：未配置生成引擎（AGNES_API_KEY / admin「AI 应用绑定」端点）且未显式允许
+     * 占位降级（aep.dap.allow-placeholder，mysql/生产 profile 默认 false）时，
+     * 提交/重试直接 503 —— 不建任务、不扣费、不产出占位图。
+     */
+    private void requireEngineOrPlaceholderAllowed() {
+        if (agnes.isConfigured() || props.isAllowPlaceholder()) return;
+        log.warn("[dap-job] blocked reason=engine-not-configured allowPlaceholder=false");
+        throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                "DAP_ENGINE_NOT_CONFIGURED",
+                "生成引擎未配置：请在管理后台「AI 模型与 Key + AI 应用绑定」为数字人用途绑定端点，或设置 AGNES_API_KEY");
+    }
+
     // ── 查询 ──────────────────────────────────────────────────
 
     public List<JobDto> list(String userId, String status, String avatarId) {
@@ -113,6 +127,7 @@ public class DapJobService {
     // ── 重试 / 取消 ────────────────────────────────────────────
 
     public JobDto retry(String userId, String jobId) {
+        requireEngineOrPlaceholderAllowed();
         DapJob job = requiredJob(userId, jobId);
         if (!"failed".equals(job.getStatus())) {
             throw BusinessException.badRequest("DAP_JOB_NOT_FAILED", "只有失败任务可以重试");

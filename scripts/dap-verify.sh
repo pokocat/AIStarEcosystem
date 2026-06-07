@@ -65,7 +65,9 @@ if [ "$AGNES" = "fake" ]; then
   note "fake Agnes 已启动（${AGNES_BASE_URL}）"
 elif [ "$AGNES" = "none" ]; then
   export AGNES_API_KEY=""
-  note "AGNES=none · 走占位产物降级链路"
+  # 生产严格模式下未配引擎会 503（不生成不扣费）；联调显式放行占位降级
+  export AEP_DAP_ALLOW_PLACEHOLDER=true
+  note "AGNES=none · 显式放行占位产物降级链路（生产默认严格 503）"
 else
   note "真实 Agnes（apihub.agnes-ai.com）"
 fi

@@ -16,6 +16,8 @@ public class DapProperties {
     private long monthlyGrant = 1500;
     /** 回收站保留天数（软删超期后由 DapTrashCleanupScheduler 物理清理）。 */
     private int trashRetentionDays = 30;
+    /** 未配置生成引擎时是否允许占位产物降级（生产应为 false → 提交直接 503，不扣费）。 */
+    private boolean allowPlaceholder = false;
 
     public Agnes getAgnes() { return agnes; }
     public Pricing getPricing() { return pricing; }
@@ -25,6 +27,8 @@ public class DapProperties {
     public void setMonthlyGrant(long monthlyGrant) { this.monthlyGrant = monthlyGrant; }
     public int getTrashRetentionDays() { return trashRetentionDays; }
     public void setTrashRetentionDays(int trashRetentionDays) { this.trashRetentionDays = trashRetentionDays; }
+    public boolean isAllowPlaceholder() { return allowPlaceholder; }
+    public void setAllowPlaceholder(boolean allowPlaceholder) { this.allowPlaceholder = allowPlaceholder; }
 
     public static class Agnes {
         private String baseUrl = "https://apihub.agnes-ai.com";

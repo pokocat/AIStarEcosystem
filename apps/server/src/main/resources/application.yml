@@ -186,6 +186,10 @@ aep:
     monthly-grant: ${AEP_DAP_MONTHLY_GRANT:1500}
     # 回收站保留天数（软删超期后每日 03:50 物理清理行+文件）
     trash-retention-days: ${AEP_DAP_TRASH_RETENTION_DAYS:30}
+    # 未配置生成引擎（AGNES_API_KEY / admin 端点）时是否允许占位产物降级：
+    # dev 默认 true（无 key 也能联调全链路）；mysql/生产 profile 默认 false →
+    # 提交生成任务直接 503 DAP_ENGINE_NOT_CONFIGURED（不生成、不扣费）。
+    allow-placeholder: ${AEP_DAP_ALLOW_PLACEHOLDER:true}
     # 各动作扣费（点，hold→commit/release 三段式）；0 = 免费
     pricing:
       generate: ${AEP_DAP_PRICE_GENERATE:20}

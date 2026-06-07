@@ -2575,6 +2575,11 @@ web    : api.ts 重写：auth（token/localStorage + 401 全局事件）+ AuthAp
 8. **prompt 真值在 DB**（重申，与 v0.40 机制一致）：`prompt_template` 表是运行时真源
    （resolve 顺序 DB → resources/.md → 代码兜底）；`.md` 只是首启 seed 基线 + git 留底。
    admin「Prompt 管理」改的就是 DB 行（version+1，seeder 永不覆盖）。
+9. **生产禁占位生成**：`aep.dap.allow-placeholder`（dev 默认 true / mysql 生产默认 false）。
+   未配置生成引擎（AGNES_API_KEY / admin DAP_* 端点绑定）且不允许占位时，
+   `DapJobService.submit/retry` 在扣费前直接 503 `DAP_ENGINE_NOT_CONFIGURED`——
+   不建任务、不扣费、不产出灰底剪影占位图。dap-verify.sh `AGNES=none` 联调路径
+   显式 export `AEP_DAP_ALLOW_PLACEHOLDER=true` 保持可用。
 
 ---
 

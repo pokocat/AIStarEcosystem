@@ -25,6 +25,11 @@ aep:
   seed:
     dev-data:
       enabled: ${AEP_SEED_DEV_DATA_ENABLED:false}
+  # 生产严格模式：未配置生成引擎（AGNES_API_KEY / admin 端点绑定）时，
+  # 数字人生成任务提交直接 503 DAP_ENGINE_NOT_CONFIGURED，不产出占位图、不扣费。
+  # dev profile（application.yml）默认 true 以便无 key 联调。
+  dap:
+    allow-placeholder: ${AEP_DAP_ALLOW_PLACEHOLDER:false}
   # MySQL profile 用于生产 / 联调。持久化资产默认走阿里云 OSS；
   # 本地 dev fallback 继续留在 application.yml 的 local fake-CDN。
   cdn:
