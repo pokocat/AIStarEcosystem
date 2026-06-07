@@ -147,56 +147,37 @@ function MVoice({ ctx }) {
 // ============================================================
 
 function MApps({ ctx }) {
-  const [tab, setTab] = useStateMV('all');
   const M_APPS = useApi(() => AppApi.list(), seed.applications());
   const go = (name) => ctx.toast(name + ' · 即将上线，敬请期待', { tone: 'warn' });
-  const tabs = [{ key: 'all', label: '全部' }, ...M_APPS.map(a => ({ key: a.key, label: a.name }))];
-  const tools = M_APPS.flatMap(a => a.tools.map(t => ({ ...t, app: a }))).filter(t => tab === 'all' || t.app.key === tab);
 
   return hMV('div', { className: 'm-body has-tabbar', 'data-screen-label': '应用中心' },
     hMV(WxNavV, { title: '应用中心' }),
     hMV('div', { style: { padding: '2px 18px 0' } },
-      hMV('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '用你的数字人资产驱动下游业务，一键前往子应用。')),
+      hMV('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '子应用复用同一套已定稿的数字人资产，点击前往。')),
 
-    // 精选大卡（横滑）
-    hMV('div', { className: 'm-hscroll', style: { padding: '0 18px 4px' } },
+    // 竖向应用卡片（与平台子应用一一对应：AI 歌手 / AI 短视频带货 / AI 短剧）
+    hMV('div', { className: 'm-stagger', style: { padding: '0 18px 8px', display: 'flex', flexDirection: 'column', gap: 13 } },
       M_APPS.map(a => hMV('button', { key: a.key, onClick: () => go(a.name), className: 'm-press', style: {
-        flex: '0 0 244px', position: 'relative', height: 148, borderRadius: 'var(--r-xl)', overflow: 'hidden', cursor: 'pointer',
-        border: '1px solid var(--line-2)', background: 'var(--surface)', boxShadow: 'var(--sh-1)', textAlign: 'left', padding: 0 } },
-        hMV('div', { style: { position: 'absolute', right: -8, bottom: -10, color: 'var(--surface-3)', opacity: 1 } }, hMV(Icons[a.icon], { size: 96, stroke: 1.1 })),
-        hMV('div', { style: { position: 'absolute', top: 14, left: 16, display: 'flex', alignItems: 'center', gap: 9 } },
-          hMV('span', { style: { display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 10, background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMV(Icons[a.icon], { size: 18, stroke: 1.8 })),
+        position: 'relative', width: '100%', borderRadius: 'var(--r-xl)', overflow: 'hidden', cursor: 'pointer',
+        border: '1px solid var(--line-2)', background: 'var(--surface)', boxShadow: 'var(--sh-1)', textAlign: 'left', padding: '16px 16px 15px' } },
+        // 角落水印
+        hMV('div', { style: { position: 'absolute', right: -12, bottom: -16, color: 'var(--surface-3)', pointerEvents: 'none' } }, hMV(Icons[a.icon], { size: 110, stroke: 1 })),
+        // 头行：icon + 即将上线
+        hMV('div', { style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+          hMV('span', { style: { display: 'grid', placeItems: 'center', width: 40, height: 40, borderRadius: 12, background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMV(Icons[a.icon], { size: 20, stroke: 1.8 })),
           hMV('span', { style: { fontSize: 10, fontWeight: 700, color: 'var(--ink-3)', background: 'var(--surface-3)', padding: '3px 9px', borderRadius: 'var(--r-pill)' } }, '即将上线')),
-        hMV('div', { style: { position: 'absolute', left: 16, bottom: 15, right: 16 } },
-          hMV('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 20, color: 'var(--ink)', letterSpacing: '-.02em' } }, a.name),
-          hMV('div', { className: 'm-clip1', style: { fontSize: 12, color: 'var(--ink-3)', marginTop: 4, fontWeight: 500 } }, a.blurb))))),
-
-    // 信息条
-    hMV('div', { style: { margin: '18px 18px 6px', display: 'flex', alignItems: 'center', gap: 9, padding: '11px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
-      hMV(Icons.info, { size: 15, style: { color: 'var(--primary)', flex: '0 0 auto' } }),
-      hMV('span', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.45 } }, '子应用复用同一套已定稿的数字人资产，点击将跳转前往。')),
-
-    // tabs
-    hMV('div', { style: { display: 'flex', gap: 8, padding: '12px 18px 4px', overflowX: 'auto' }, className: 'no-bar' },
-      tabs.map(t => {
-        const on = t.key === tab;
-        return hMV('button', { key: t.key, onClick: () => setTab(t.key), style: {
-          flex: '0 0 auto', height: 32, padding: '0 14px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
-          background: on ? 'var(--ink)' : 'var(--surface-3)', color: on ? '#fff' : 'var(--ink-2)', fontSize: 12.5, fontWeight: 600 } }, t.label);
-      })),
-
-    // 工具列表
-    hMV('div', { className: 'm-stagger', style: { padding: '10px 18px 8px', display: 'flex', flexDirection: 'column', gap: 11 } },
-      tools.map((t, i) => hMV('button', { key: t.app.key + i, onClick: () => go(t.app.name), className: 'm-tap', style: {
-        display: 'flex', alignItems: 'center', gap: 12, padding: 13, width: '100%', textAlign: 'left', cursor: 'pointer',
-        background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-1)' } },
-        hMV('div', { style: { width: 44, height: 44, flex: '0 0 44px', borderRadius: 'var(--r-md)', background: 'var(--surface-3)', display: 'grid', placeItems: 'center', color: 'var(--ink)' } }, hMV(Icons[t.icon], { size: 21, stroke: 1.7 })),
-        hMV('div', { style: { flex: 1, minWidth: 0 } },
-          hMV('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            hMV('span', { className: 'm-clip1', style: { fontSize: 14, fontWeight: 700 } }, t.name),
-            hMV(Icons.external, { size: 12, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } })),
-          hMV('div', { className: 'm-clip1', style: { fontSize: 12, color: 'var(--ink-3)', marginTop: 2 } }, t.desc),
-          hMV('div', { style: { fontSize: 10, color: 'var(--ink-4)', marginTop: 3, fontWeight: 600 } }, t.app.name))))));
+        // 名称 + 描述
+        hMV('div', { style: { position: 'relative', marginTop: 12 } },
+          hMV('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
+            hMV('span', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 21, color: 'var(--ink)', letterSpacing: '-.02em' } }, a.name),
+            hMV(Icons.external, { size: 14, stroke: 2, style: { color: 'var(--ink-4)' } })),
+          hMV('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 5, lineHeight: 1.5, fontWeight: 500, paddingRight: 56 } }, a.blurb)),
+        // 能力标签
+        hMV('div', { style: { position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 12 } },
+          (a.tools || []).map((t, i) => hMV('span', { key: i, style: {
+            display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: 'var(--ink-2)',
+            background: 'var(--surface-2)', border: '1px solid var(--line)', padding: '4px 10px', borderRadius: 'var(--r-pill)' } },
+            hMV(Icons[t.icon] || Icons.sparkle, { size: 12, stroke: 2 }), t.name)))))));
 }
 
 export { MVoice };
