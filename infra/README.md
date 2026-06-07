@@ -27,6 +27,7 @@ infra/
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
 │   ├── ai.aibuzz.cn.conf.example   ← HTTPS 多子域生产形态
+│   ├── admin.aibuzz.cn.ssl.conf.example ← admin 单域 HTTPS 形态
 │   ├── aistar.aibuzz.cn.conf.example ← AiAvatar 单域 HTTPS 形态
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集
