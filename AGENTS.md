@@ -2585,6 +2585,57 @@ web    : api.ts 重写：auth（token/localStorage + 401 全局事件）+ AuthAp
 
 ## 8. 约定与陷阱（违反会 review reject）
 
+### 8.0 生产模式禁止静默降级（v0.51+ 强制，全仓适用）
+
+> 背景：dap 占位生成曾出现「未配 AGNES_API_KEY → 默默产出灰底剪影占位图 + 照常扣费」；
+> 卖点提取曾「AI 失败 → 默默返回规则模板假文案」。生产环境绝不允许这类行为。
+
+**硬规则**：任何依赖外部服务 / 凭据的业务能力（大模型、OSS、短信、支付、渲染引擎、
+sau-service…），当依赖**未配置**或**调用失败**时，在生产 profile（mysql / prod）下
+**禁止**自动回退到 mock / 占位产物 / 规则模板 / 本地实现。必须二选一：
+
+1. **启动期 fail-fast**：配置缺失即拒绝启动（如 `JwtUtil` / `AepCryptoUtil` 生产拒绝
+   dev 默认密钥；`CdnUrlSigner` strategy=cdn 缺 auth-key 拒启）。适用于「没有它服务
+   就不该跑」的硬依赖。
+2. **请求期明确报错**：对用户动作抛**带错误码**的 4xx/5xx（如 503 `AI_NOT_CONFIGURED` /
+   `DAP_ENGINE_NOT_CONFIGURED`、502 `AI_CALL_FAILED`），且**不扣费、不落假数据**；
+   错误文案给出运维指引（去 admin 哪里配什么）。适用于按需使用的能力。
+
+**降级仅允许 dev / 联调**，且必须同时满足四条件：
+(a) 显式开关（如 `aep.dap.allow-placeholder`），生产 profile 默认关闭；
+(b) 启动 banner 警示（生产 profile 下误开 → ERROR 横幅，如 `LogSmsSender` /
+    `LocalFakeCdnUploader` 的 mysql-profile 横幅）；
+(c) 降级产物打显式标记（`mock=true` → 前端 MOCK 角标），绝不与真产物混淆；
+(d) 联调脚本里显式 export 开关（如 dap-verify.sh `AGNES=none` 路径），不靠默认值。
+
+**允许的例外（仅观测类 best-effort）**：审计日志 / 用量统计 / 发布计数等**旁路写入**
+失败时可吞异常仅 WARN（不阻塞业务主链路）；`CdnUrlSigner` 签名失败回退未签名 URL
+（可用性优先于防盗刷）。例外仅限「丢观测数据」，**绝不允许**伪造业务产物、跳过扣费
+校验或返回假内容。
+
+**Review reject 规则**：
+- 新增 `isConfigured() ? 真实现 : 占位实现` 类分支，而占位分支没有生产 profile 门控
+  （开关 + 默认关 + ERROR 横幅）→ reject；
+- `try { ai调用 } catch { return 模板/规则兜底 }` 把假内容当真产物返回 → reject，
+  改为抛带 code 的 BusinessException；
+- 新增外部依赖 driver（`xxx.driver=local|log|fake` 形态）但生产 profile 默认值仍是
+  fake 形态且无启动横幅 → reject。
+
+**现存门禁 / 开关审计表**（新增依赖时照此登记）：
+
+| 能力 | 未配置时（生产） | dev 降级开关 / 兜底 |
+|---|---|---|
+| JWT / AES 密钥 | 启动 fail-fast | dev 默认密钥仅 dev profile |
+| dap 数字人生成 | 503 DAP_ENGINE_NOT_CONFIGURED（不扣费） | `aep.dap.allow-placeholder`（dev true / mysql false） |
+| 文本三件 / 短剧脚本 / 形象锻造 | 503 AI_NOT_CONFIGURED · 502 AI_CALL_FAILED | dev-fake-llm（默认 false，显式开） |
+| 素材视频生成 | 503 VIDEO_NOT_CONFIGURED | 同上 |
+| 卖点提取 | 同文本三件（v0.51 起删规则模板兜底） | — |
+| SMS 验证码 | driver=log 时 mysql profile ERROR 横幅（待运维改 aliyun） | log driver + dev-fixed 双门禁 |
+| 资产存储 CDN | driver=local 时 mysql profile ERROR 横幅（P1） | local fake-CDN（dev 默认） |
+| dev 免密登录 | `aep.dev-auth.enabled` 默认关 | 显式开 |
+| 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
+| music 形象锻造成片视频 | ⚠️ 未实现（随机 showreel 占位，接真前不得开放生产入口） | — |
+
 ### 跨 app 约定
 
 - **shadcn 原语**：放在 `components/ui/`（apps/web）/ `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
