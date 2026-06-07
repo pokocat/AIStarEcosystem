@@ -4,6 +4,7 @@ import { Icons } from "./icons";
 import * as UI from "./ui";
 import { DATA, AvatarApi, LicenseApi, awaitJob, useApi, seed } from "./api";
 import { Portrait } from "./portrait";
+import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
 
@@ -16,12 +17,13 @@ const { WxNav: WxNavL } = MShell;
 const { MStatus: MStatusL, MPath: MPathL, CornerTicks: CornerTicksL } = MKit;
 
 // —— 拼贴卡（大图 + 右侧两张小图 + 名称在下）——
-function MCollageCard({ char, onOpen }) {
+function MCollageCard({ char, onOpen, onJobDone }) {
   return hML('button', { onClick: () => onOpen(char), className: 'm-press', style: {
     display: 'block', width: '100%', textAlign: 'left', padding: 0, cursor: 'pointer', border: 'none', background: 'none' } },
     hML('div', { style: { display: 'flex', gap: 5, height: 150, borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-1)', background: 'var(--canvas-2)' } },
       hML('div', { style: { flex: '0 0 62%', position: 'relative' } },
         hML(Portrait, { char, variant: 'key', ratio: '', expr: 'calm', style: { width: '100%', height: '100%' } }),
+        hML(LiveJobBadge, { char, onDone: onJobDone, compact: true }),
         char.fav && hML('div', { style: { position: 'absolute', top: 7, right: 7, width: 22, height: 22, borderRadius: 99, background: 'rgba(255,255,255,.92)', display: 'grid', placeItems: 'center', color: 'var(--err)' } }, hML(Icons.heart, { size: 12, stroke: 2 }))),
       hML('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 5 } },
         hML('div', { style: { flex: 1, overflow: 'hidden' } }, hML(Portrait, { char, variant: 'threeq', expr: 'smile', style: { width: '100%', height: '100%' } })),
@@ -103,7 +105,7 @@ function MLibrary({ ctx }) {
             top === 'mine' && hML('button', { key: '__new', onClick: ctx.openCreateSheet, className: 'm-tap', style: { height: 150, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1.5px dashed var(--line-3)', background: 'var(--surface-2)', borderRadius: 'var(--r-lg)', color: 'var(--ink-3)' } },
               hML('span', { style: { width: 42, height: 42, borderRadius: 99, background: 'var(--surface)', border: '1px solid var(--line-2)', display: 'grid', placeItems: 'center', color: 'var(--primary)' } }, hML(Icons.add, { size: 20, stroke: 2 })),
               hML('span', { style: { fontSize: 13.5, fontWeight: 700, color: 'var(--ink-2)' } }, '新建数字人')),
-            filtered.map(c => hML(MCollageCard, { key: c.id, char: c, onOpen: ctx.openChar })))
+            filtered.map(c => hML(MCollageCard, { key: c.id, char: c, onOpen: ctx.openChar, onJobDone: ctx.reload })))
         : hML('div', { className: 'm-stagger', style: { padding: '14px 18px 8px', display: 'flex', flexDirection: 'column', gap: 10 } },
             filtered.map(c => hML(MAssetCard, { key: c.id, char: c, onOpen: ctx.openChar })));
     })());
@@ -182,6 +184,7 @@ function MDetail({ char: initialChar, ctx }) {
           hML('div', { style: { position: 'relative', padding: 11, background: 'var(--canvas-2)', flex: '0 0 158px' } },
             hML('div', { style: { position: 'relative', borderRadius: 'var(--r-sm)', overflow: 'hidden', border: '1px solid var(--line)' } },
               hML(Portrait, { char, variant: 'key', ratio: '4 / 5', expr: 'calm' }),
+              hML(LiveJobBadge, { char, onDone: refresh }),
               hML('div', { style: { position: 'absolute', bottom: 8, left: 8 } }, hML(MStatusL, { status: char.status })),
               char.status === 'archived' && hML('div', { style: { position: 'absolute', top: 9, right: 9 } }, hML('span', { className: 'seal', style: { fontSize: 9 } }, '已登记'))),
             hML(CornerTicksL, null)),

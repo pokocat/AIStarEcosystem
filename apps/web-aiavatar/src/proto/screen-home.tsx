@@ -4,6 +4,7 @@ import { Icons } from "./icons";
 import * as UI from "./ui";
 import { DATA, AvatarApi, JobApi, useApi, seed } from "./api";
 import { Portrait } from "./portrait";
+import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
 
 // ============================================================
@@ -66,13 +67,14 @@ function arrowStyle(side) {
 // ——————————————————————————————————————————
 // 「我的数字人资产」大卡（首屏主角）
 // ——————————————————————————————————————————
-function MAssetCardBig({ char, onOpen }) {
+function MAssetCardBig({ char, onOpen, onJobDone }) {
   return hMH('button', { onClick: () => onOpen(char), className: 'm-press', style: {
     flex: '0 0 165px', textAlign: 'left', padding: 0, cursor: 'pointer', overflow: 'hidden',
     background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-1)' } },
     hMH('div', { style: { position: 'relative', padding: 8, background: 'var(--canvas-2)' } },
       hMH('div', { style: { position: 'relative', borderRadius: 'var(--r-sm)', overflow: 'hidden', border: '1px solid var(--line)' } },
         hMH(Portrait, { char, variant: 'key', ratio: '4 / 5', expr: 'calm' }),
+        hMH(LiveJobBadge, { char, onDone: onJobDone }),
         hMH('div', { style: { position: 'absolute', bottom: 7, left: 7 } }, hMH(MStatusH, { status: char.status })),
         char.fav && hMH('div', { style: { position: 'absolute', top: 7, right: 7, width: 22, height: 22, borderRadius: 99, background: 'rgba(255,255,255,.92)', display: 'grid', placeItems: 'center', color: 'var(--err)' } }, hMH(Icons.heart, { size: 12, stroke: 2 }))),
       hMH(CornerTicksH, null)),
@@ -190,7 +192,7 @@ function MHome({ ctx }) {
           '全部', hMH(Icons.chevR, { size: 15, stroke: 2.2 }))),
       hasAssets
         ? hMH('div', { className: 'm-hscroll', style: { padding: '0 18px 4px' } },
-            myAssets.map(c => hMH(MAssetCardBig, { key: c.id, char: c, onOpen: ctx.openChar })),
+            myAssets.map(c => hMH(MAssetCardBig, { key: c.id, char: c, onOpen: ctx.openChar, onJobDone: ctx.reload })),
             hMH(MAddAssetCard, { onClick: ctx.openCreateSheet }))
         : hMH(MAssetEmpty, { ctx })),
 

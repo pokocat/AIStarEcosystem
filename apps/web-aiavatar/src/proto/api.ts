@@ -224,6 +224,14 @@ function newMockJob(partial: Partial<Mock.Job> & { kind: string }): Mock.Job {
   return job;
 }
 
+let staticJobsSeeded = false;
+/** 把静态种子任务并入模拟器，让它们也会推进到 done（向导 attach / 任务中心一致推进）。 */
+function seedStaticJobs() {
+  if (staticJobsSeeded) return;
+  staticJobsSeeded = true;
+  Mock.TASKS.forEach((t) => { if (!mockJobStore.has(t.id)) mockJobStore.set(t.id, { ...t }); });
+}
+
 function tickMockJob(id: string) {
   const job = mockJobStore.get(id);
   if (!job || job.status !== "running") return job;
@@ -512,14 +520,18 @@ export const VoiceApi = {
 export const JobApi = {
   list: (params?: { status?: string; avatarId?: string }): Promise<Mock.Job[]> => {
     if (USE_MOCK) {
-      const dyn = Array.from(mockJobStore.values()).map((j) => { tickMockJob(j.id); return { ...j }; });
-      return mock([...dyn.reverse(), ...Mock.TASKS.map((t) => ({ ...t }))]);
+      seedStaticJobs();
+      let all = Array.from(mockJobStore.values()).map((j) => { tickMockJob(j.id); return { ...j }; }).reverse();
+      if (params?.avatarId) all = all.filter((j: any) => j.char === params.avatarId);
+      if (params?.status) all = all.filter((j: any) => j.status === params.status);
+      return mock(all);
     }
     const qs = params ? `?${new URLSearchParams(params as any).toString()}` : "";
     return apiFetch(`/jobs${qs}`);
   },
   get: (id: string): Promise<Mock.Job> => {
     if (USE_MOCK) {
+      seedStaticJobs();
       const j = tickMockJob(id) || mockJobStore.get(id);
       if (j) return mock({ ...j });
       return mock(Mock.TASKS.find((t) => t.id === id) || Mock.TASKS[0]);

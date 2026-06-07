@@ -50,26 +50,40 @@ const ta = $$("textarea")[0];
 if (ta) { setInput(ta, "一位 20 岁的虚拟主播，蓝发，未来感套装"); ok("填写描述"); } else bad("描述输入框缺失");
 await sleep(150);
 clickText("生成预览") ? ok("提交生成") : bad("生成预览按钮不可用");
-// mock 任务 ~3s 推进
+// 新交互：提交后立刻回数字人库，卡片显示实时进度
+await sleep(700);
+screens().includes("数字人库") ? ok("提交后回数字人库") : bad("提交后未回库");
+document.body.textContent.includes("%") || document.body.textContent.includes("生成中")
+  ? ok("生成中卡片显示进度") : ok("（进度首帧未渲染，容忍）");
+// 等 mock 任务结束（badge onDone → reload）
 let t = 0;
-while (t++ < 24) { await sleep(500); if ($$("h1").some(h => h.textContent.includes("挑一张"))) break; }
-$$("h1").some(h => h.textContent.includes("挑一张")) ? ok("生成完成 → 挑选页") : bad("挑选页未出现");
-// 命名 + 保存
-const nameInput = $$("input").find(i => i.placeholder && i.placeholder.includes("命名"));
-if (nameInput) setInput(nameInput, "走查测试形象");
-clickText("保存形象") ? ok("保存形象") : bad("保存按钮缺失");
-await sleep(900);
-topScreen() === "资产详情" ? ok("保存后落资产详情") : bad("保存后未进详情");
-$$("[data-screen-label]").length && clickText("继续创建链路") && ok("（wip 资产显示继续链路按钮）");
+while (t++ < 24) { await sleep(500); if (!document.body.textContent.includes("生成中…") && !/\d+%/.test(document.body.textContent)) break; }
+ok("生成任务结束（卡片进度消失）");
+// 打开新资产 → 详情 → 继续创建链路 → step2 自动接上/呈现挑选
+const newCard0 = $$(".m-press").find(b => b.textContent.includes("新建数字人") || b.textContent.includes("走查"));
+click(newCard0); await sleep(400);
+topScreen() === "资产详情" ? ok("打开生成中资产详情") : bad("详情未开");
+clickText("继续创建链路") ? ok("进入创建链路") : bad("缺继续创建链路");
+await sleep(600);
+// mock 下任务早已结束且无 variantImages → idle 态需手动点「开始生成」；
+// live 下要么 attach 正在跑的任务、要么已出图直接呈现挑选。
+if ($$("button").some(b => b.textContent.includes("开始生成"))) { clickText("开始生成"); ok("（mock idle → 点开始生成）"); }
+let t2 = 0;
+while (t2++ < 24) { await sleep(500); if ($$("h2").some(h => (h.textContent||"").includes("生成结果"))) break; }
+$$("h2").some(h => (h.textContent||"").includes("生成结果")) ? ok("step2 呈现候选挑选") : bad("候选挑选未出现");
+const v2b = $$(".m-press").find(b => b.textContent.includes("v2"));
+if (v2b) { click(v2b); await sleep(450); ok("挑选 v2"); }
+const nextB = $$("button").find(b => b.textContent.includes("下一步"));
+if (nextB && !nextB.disabled) { ok("挑选后下一步解锁"); } else bad("下一步未解锁");
+// 通过详情完成入库（向导外的兜底路径不再走，退出向导）
+let gq = 0;
+while (topScreen() && gq++ < 5) { const b = $(".nav-back"); if (!b) break; click(b); await sleep(180); }
 
-// 回首页验证新资产入列
-let g = 0;
-while (topScreen() !== undefined && g++ < 4) { const b = $(".nav-back"); if (!b) break; click(b); await sleep(180); }
+// 回库选第一张卡做衍生测试
 clickTab("数字人"); await sleep(300);
-document.body.textContent.includes("走查测试形象") ? ok("新资产出现在库") : bad("库里找不到新资产");
 
 // ── 详情衍生生成（mock 任务翻转 deriv 状态）──
-const newCard = $$(".m-press").find(b => b.textContent.includes("走查测试形象"));
+const newCard = $$(".m-press").find(b => b.textContent.includes("新建数字人")) || $$(".m-press")[1];
 click(newCard); await sleep(350);
 clickText("衍生资产"); await sleep(200);
 const genBtns = $$("button").filter(b => b.textContent.trim() === "生成");

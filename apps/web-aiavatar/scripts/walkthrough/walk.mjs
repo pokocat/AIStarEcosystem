@@ -37,8 +37,9 @@ await sleep(400);
 screens().includes("首页") ? ok("首页渲染") : bad("首页未渲染");
 
 // ── 2. 底部 Tab 巡检 ──
+const clickTab = (l) => { const el = $$(".wx-tab").find((b) => (b.textContent || "").includes(l)); if (el) el.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); return !!el; };
 for (const [label, screen] of [["数字人", "数字人库"], ["应用", "应用中心"], ["我的", "我的"], ["首页", "首页"]]) {
-  clickText(label, ".wx-tab, button") || clickText(label);
+  clickTab(label);
   await sleep(250);
   screens().includes(screen) ? ok("Tab → " + screen) : bad("Tab " + label + " 应显示 " + screen);
 }

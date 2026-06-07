@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, awaitJob, USE_MOCK } from "./api";
+import { DATA, AvatarApi, JobApi, awaitJob, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { MShell } from "./shell";
 import { toast } from "./toast";
@@ -112,6 +112,17 @@ function MStepProof({ wiz, onReady }) {
   const variants = (wiz.char.variantImages && wiz.char.variantImages.length ? wiz.char.variantImages : [null, null, null, null]) as any[];
   useEffectMC(() => onReady(phase === 'done' && picked >= 0), [phase, picked]);
 
+  const settle = async (avatarId) => {
+    const fresh = await AvatarApi.get(avatarId);
+    // 真人复刻只出 1 张（imageUrl），把它视作唯一候选
+    if (fresh.path === 'real' && fresh.imageUrl && (!fresh.variantImages || !fresh.variantImages.length)) {
+      fresh.variantImages = [fresh.imageUrl];
+    }
+    wiz.setChar(fresh);
+    setPhase('done');
+    toast('已生成候选形象', { tone: 'ok' });
+  };
+
   const run = async () => {
     setPhase('running'); setErr(''); setPicked(-1);
     try {
@@ -122,18 +133,31 @@ function MStepProof({ wiz, onReady }) {
         : { mode: 'describe', form: { desc: wiz.form.desc, style: wiz.form.style } });
       setJob(j);
       await awaitJob(j.id, (jj) => setJob({ ...jj }));
-      const fresh = await AvatarApi.get(a.id);
-      wiz.setChar(fresh);
-      // 真人复刻只出 1 张（imageUrl），把它视作唯一候选
-      if (isReal && fresh.imageUrl && (!fresh.variantImages || !fresh.variantImages.length)) {
-        fresh.variantImages = [fresh.imageUrl];
-      }
-      setPhase('done');
-      toast('已生成候选形象', { tone: 'ok' });
+      await settle(a.id);
     } catch (e: any) {
       setErr(e?.message || '生成失败'); setPhase('failed');
     }
   };
+
+  // 已有正在跑的生成任务（如「AI 创建」提交后回库再进来）→ 自动接上轮询，而不是再点一次生成
+  useEffectMC(() => {
+    if (phase !== 'idle' || !char.id || char.id === 'DH-NEW' || char._fresh) return;
+    let live = true;
+    (async () => {
+      try {
+        const jobs = await JobApi.list({ avatarId: char.id, status: 'running' });
+        const running = (jobs || []).find((j: any) => j.char === char.id && j.status === 'running');
+        if (!running || !live) return;
+        setPhase('running'); setJob({ ...running });
+        await awaitJob(running.id, (jj) => live && setJob({ ...jj }));
+        if (!live) return;
+        await settle(char.id);
+      } catch (e: any) {
+        if (live) { setErr(e?.message || '生成失败'); setPhase('failed'); }
+      }
+    })();
+    return () => { live = false; };
+  }, []);
 
   const pick = async (i) => {
     setPicked(i);

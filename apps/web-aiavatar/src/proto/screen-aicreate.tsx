@@ -356,7 +356,9 @@ function MAICreate({ char, ctx }) {
   const [errMsg, setErrMsg] = useStateAC('');
   const [busy, setBusy] = useStateAC(false);
   const aliveRef = useRefAC(true);
-  useEffectAC(() => () => { aliveRef.current = false; }, []);
+  // StrictMode（dev）会 mount→unmount→remount：cleanup 把 ref 置 false 后必须在 effect body 复位，
+  // 否则所有 setState 被守卫拦截 → 生成完成 UI 也不动（实测 bug）。
+  useEffectAC(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
 
   /** 确保 server 端已建草稿资产。 */
   const ensureAvatar = async () => {
@@ -367,22 +369,40 @@ function MAICreate({ char, ctx }) {
   };
 
   const runGenerate = async (genMode: 'describe' | 'upload', f?: any, files?: File[]) => {
+    // —— AI 设计（4 变体，约 1 分钟）：提交即回数字人库，卡片上看实时进度，
+    //    完成后从资产「继续创建链路」挑选形象 —— 不再全屏阻塞等待。
+    if (genMode === 'describe') {
+      setStage('gen');
+      try {
+        const a = await ensureAvatar();
+        if (f && f.name) await AvatarApi.patch(a.id, { name: f.name }).catch(() => {});
+        await AvatarApi.generate(a.id, { mode: 'describe', form: f });
+        toast('已开始生成 · 在卡片上查看进度，完成后进入挑选', { tone: 'ok' });
+        (ctx.submitToLibrary || ctx.finishCreate)({ ...a, status: 'proofing' });
+      } catch (e: any) {
+        if (!aliveRef.current) return;
+        setErrMsg(e?.message || '生成失败');
+        setStage('failed');
+      }
+      return;
+    }
+    // —— 照片复刻（单图，约 30 秒）：保持原地等待，出图后命名 + 选音色 ——
     setStage('gen');
     try {
       const a = await ensureAvatar();
-      if (genMode === 'upload' && files && files.length) {
+      if (files && files.length) {
         const fd = new FormData();
         files.forEach((file) => fd.append('files', file));
         await AvatarApi.photos(a.id, fd);
       }
-      const j = await AvatarApi.generate(a.id, genMode === 'describe' ? { mode: 'describe', form: f } : { mode: 'upload' });
+      const j = await AvatarApi.generate(a.id, { mode: 'upload' });
       setJob(j);
       await awaitJob(j.id, (jj) => aliveRef.current && setJob({ ...jj }));
       const freshA = await AvatarApi.get(a.id);
       if (!aliveRef.current) return;
       setAvatar(freshA);
-      setStage(genMode === 'describe' ? 'pick' : 'ready');
-      toast(genMode === 'describe' ? '已生成 4 版候选形象' : '复刻完成', { tone: 'ok' });
+      setStage('ready');
+      toast('复刻完成', { tone: 'ok' });
     } catch (e: any) {
       if (!aliveRef.current) return;
       setErrMsg(e?.message || '生成失败');
