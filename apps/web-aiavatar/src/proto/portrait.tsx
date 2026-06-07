@@ -26,7 +26,14 @@ function realSrcFor(char: any, variant: string, src?: string): string | null {
     const mapped = shots[VARIANT_SHOT[variant] || ""];
     if (mapped) return mapped;
   }
-  return char.imageUrl || null;
+  if (char.imageUrl) return char.imageUrl;
+  // 尚未挑选定妆图（proofing 待挑选）→ 用候选图做预览，避免“生成完了却看不到图”
+  const variants = char.variantImages;
+  if (Array.isArray(variants) && variants.length) {
+    const idx = { key: 0, front: 0, threeq: 1, side: 2, look: 3 }[variant] ?? 0;
+    return variants[Math.min(idx, variants.length - 1)] || variants[0];
+  }
+  return null;
 }
 
 function Portrait({ char = {}, variant = 'key', ratio = '3 / 4', radius = 0, expr = 'calm',

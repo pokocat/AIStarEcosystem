@@ -232,14 +232,26 @@ function MDetail({ char: initialChar, ctx }) {
       isPublic
         ? hML(UI.Button, { variant: 'primary', full: true, icon: Icons.grid, onClick: () => ctx.tab('apps') }, '投入应用')
         : hML(React.Fragment, null,
-            hML(UI.Button, { variant: 'primary', full: true, icon: wip ? Icons.bolt : Icons.wand, onClick: () => wip ? ctx.startCreate(char.path, char) : ctx.openLooks(char) }, wip ? '继续创建链路' : '设计造型'),
+            hML(UI.Button, { variant: 'primary', full: true, icon: wip ? Icons.bolt : Icons.wand, onClick: () => wip ? ctx.startCreate(char.path, char) : ctx.openLooks(char) },
+              wip ? (char.status === 'proofing' && (char.variantImages || []).length ? '挑选形象（' + char.variantImages.length + ' 选 1）' : '继续创建链路') : '设计造型'),
             hML(UI.Button, { variant: 'line', icon: Icons.grid, onClick: () => ctx.tab('apps') }, '投入应用'))));
 }
 
 function MAtlas({ char, busy, onGenerate }) {
   const shots = char.shotImages || {};
   const hasReal = Object.keys(shots).length > 0;
-  const shotKeyOf = { 'front-half': 0, 'front-full': 1, left: 2, right: 3, expr: 4 };
+  const variants = char.variantImages || [];
+  // 候选已生成但还没挑选定妆 → 先展示候选，引导去挑选
+  if (!hasReal && !char.imageUrl && variants.length) {
+    return hML('div', null,
+      hML('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
+        hML(Icons.sparkle, { size: 15, style: { color: 'var(--primary)', flex: '0 0 auto' } }),
+        hML('span', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '已生成 ' + variants.length + ' 张候选形象 · 用下方「挑选形象」按钮 4 选 1 定妆')),
+      hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+        variants.map((u, i) => hML('div', { key: i, style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
+          hML('img', { src: u, alt: '候选 v' + (i + 1), style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
+          hML('div', { className: 'ph-label', style: { left: 8, bottom: 8 } }, 'v' + (i + 1))))));
+  }
   if (!hasReal && !char.imageUrl) {
     // 完全没有生成产物（mock 数据除外）→ 引导生成
     return hML('div', { style: { textAlign: 'center', padding: '34px 18px', border: '1.5px dashed var(--line-3)', borderRadius: 'var(--r-xl)', background: 'var(--surface)' } },
