@@ -203,8 +203,16 @@ Content-Type: application/json
 
 激活流程：秘钥 SHA-256 匹配 -> 校验状态 -> 创建用户 + 租户 + 钱包 + 权益 -> 激活秘钥 -> 返回 JWT Token。
 
+**v0.53 批次平台范围**：`LicenseBatch.platforms`（CSV，null/空 = 全站可用）声明该批次秘钥可激活的
+子产品（music / drama / celebrity / aiavatar）。非空时激活按批次授权 `aep_users.platforms`
+（优先级高于 `aep.platform.dev-grant-all`），积分发放额度仍走批次 `initialCreditGrant`
+（单一钱包，不按 app 分桶）。
+
+**v0.53 追加激活**：已登录账号 `POST /api/me/license/activate { code }` —— 合并开通批次绑定的
+子应用 + 追加发放该批次积分（LedgerEntry LICENSE_GRANT），老账号开通新子应用不必换号。
+
 秘钥来源：
-- **后台导入**：管理员通过 `POST /api/admin/license-batches` 创建批次，自动生成秘钥
+- **后台导入**：管理员通过 `POST /api/admin/license-batches` 创建批次（可带 `platforms` 数组），自动生成秘钥
 - **外部 CRM 对接**：预留 `channelPartnerId` 字段，后续实现同步
 
 ## API 端点
@@ -230,8 +238,8 @@ Content-Type: application/json
 | GET · POST · PUT · PATCH | `/api/admin/tenants/**` | `Tenant` 列表 / 创建 / 更新 |
 | GET | `/api/admin/memberships` | `Membership` 列表，支持 `?tenantId` / `?userId` 过滤 |
 | GET · POST · PUT · PATCH | `/api/admin/studios/**` | `Studio` CRUD；`GET` 返回 `AdminStudioDto`（含聚合指标） |
-| GET | `/api/admin/license-batches` | 秘钥批次列表 |
-| POST | `/api/admin/license-batches` | 新建批次 |
+| GET | `/api/admin/license-batches` | 秘钥批次列表（v0.53 起含 `platforms` 适用范围） |
+| POST | `/api/admin/license-batches` | 新建批次（v0.53 可带 `platforms` 指定可激活子应用） |
 | GET | `/api/admin/license-batches/{id}/keys` | 批次下的秘钥 |
 | GET | `/api/admin/license-keys` | 秘钥全局列表（支持 `batchId` / `status`） |
 | PUT | `/api/admin/license-keys/{id}/revoke` | 吊销秘钥 |
@@ -332,7 +340,7 @@ src/main/java/com/aistareco/aep/
 
 ### 数字人资产平台域（dap_*，v0.51）
 
-> 服务 apps/web-aiavatar（/api/v1/**）。账户复用 aep_users + 钱包；大模型走 Agnes（AGNES_API_KEY）。
+> 服务 apps/web-aiavatar（/api/v1/**）。账户复用 aep_users + 钱包；多模态大模型（文本/图片/视频）经 `DapMultimodalClient` 统一从后台「AI 应用绑定」端点解析（purpose=DAP_PERSONA/DAP_IMAGE/DAP_VIDEO，无 env 兜底）。
 
 | 表 | 说明 |
 |------|------|

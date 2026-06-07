@@ -121,9 +121,13 @@ system-ui / Georgia / monospace 回退，优雅降级。
 - **server 对齐方式**：新建 `com.aistareco.aep.dap.*`（表 `dap_*`），REST 面 `/api/v1/**` 与
   `src/proto/api.ts` 逐字段对齐（wire 含 `char` 等 TS 命名，Java 侧用 toWire Map 适配）；
   v0.45 旧 `aiavatar_*` 领域经用户确认整体删除（V6 迁移幂等清表）。
-- **生成引擎**：Agnes AI 单一出口（AgnesClient）。不接 AiModelInvocationService（其仅 chat、且需
-  admin 配置端点），保持本子产品自包含；key 走 `AGNES_API_KEY` env。
-- **诚实降级三处**：未配 key → 占位产物 + `mock=true` 角标；3D → 多角度预览图（GLB 排期中）；
+- **生成引擎**：多模态单一出口 `DapMultimodalClient`（OpenAI 兼容 chat / images / 异步 videos）。
+  v0.54 起接入点统一经后台「AI 模型与 Key + AI 应用绑定」管理（purpose=DAP_PERSONA/DAP_IMAGE/
+  DAP_VIDEO），运行时只读 admin 端点、**无 `AGNES_API_KEY` env 兜底**——与「大模型统一 server 端
+  admin 管理」原则对齐。dev/联调用 `aep.dap.dev-seed.*`（`DapDevEndpointSeeder`）开机把端点种进
+  admin 表（幂等、不覆盖运营已配）。
+- **诚实降级三处**：未绑端点 → 占位产物 + `mock=true` 角标（生产 mysql profile 默认严格 503）；
+  3D → 多角度预览图（GLB 排期中）；
   声音克隆 → 采样存档/回放（TTS 排期中）。UI 文案均明示，不伪装能力。
 - **mock 模式仍是一等公民**：`USE_MOCK=1` 内置任务模拟器（pct 推进 / deriv 状态翻转），
   所有新流程离线可演示；live 切换零屏幕层改动的承诺保持成立。

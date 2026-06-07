@@ -5,12 +5,19 @@ import org.springframework.stereotype.Component;
 
 /**
  * 数字人资产平台（apps/web-aiavatar，dap 领域）配置。见 application.yml `aep.dap.*`。
+ *
+ * 大模型接入点（chat / image / video）不在此配置 —— 统一由后台「AI 模型与 Key + AI 应用绑定」
+ * 管理（purpose=DAP_PERSONA / DAP_IMAGE / DAP_VIDEO），运行时经 {@link
+ * com.aistareco.aep.dap.service.DapMultimodalClient} 从 admin 端点解析，无 env 兜底。
+ * 这里只保留 HTTP / 视频轮询的通用参数 + dev 专用的「自动绑定本地引擎」种子配置。
  */
 @Component
 @ConfigurationProperties(prefix = "aep.dap")
 public class DapProperties {
 
-    private final Agnes agnes = new Agnes();
+    private final Http http = new Http();
+    private final Video video = new Video();
+    private final DevSeed devSeed = new DevSeed();
     private final Pricing pricing = new Pricing();
     private int maxConcurrent = 3;
     private long monthlyGrant = 1500;
@@ -19,7 +26,9 @@ public class DapProperties {
     /** 未配置生成引擎时是否允许占位产物降级（生产应为 false → 提交直接 503，不扣费）。 */
     private boolean allowPlaceholder = false;
 
-    public Agnes getAgnes() { return agnes; }
+    public Http getHttp() { return http; }
+    public Video getVideo() { return video; }
+    public DevSeed getDevSeed() { return devSeed; }
     public Pricing getPricing() { return pricing; }
     public int getMaxConcurrent() { return maxConcurrent; }
     public void setMaxConcurrent(int maxConcurrent) { this.maxConcurrent = maxConcurrent; }
@@ -30,16 +39,41 @@ public class DapProperties {
     public boolean isAllowPlaceholder() { return allowPlaceholder; }
     public void setAllowPlaceholder(boolean allowPlaceholder) { this.allowPlaceholder = allowPlaceholder; }
 
-    public static class Agnes {
-        private String baseUrl = "https://apihub.agnes-ai.com";
-        private String apiKey = "";
-        private String chatModel = "agnes-2.0-flash";
-        private String imageModel = "agnes-image-2.1-flash";
-        private String videoModel = "agnes-video-v2.0";
-        private int httpTimeoutSeconds = 120;
-        private int videoPollIntervalSeconds = 8;
-        private int videoMaxWaitSeconds = 900;
+    /** 多模态 HTTP 调用参数（chat / image / video / 下载产物共用）。 */
+    public static class Http {
+        private int timeoutSeconds = 120;
 
+        public int getTimeoutSeconds() { return timeoutSeconds; }
+        public void setTimeoutSeconds(int v) { this.timeoutSeconds = v; }
+    }
+
+    /** 异步视频任务轮询参数。 */
+    public static class Video {
+        private int pollIntervalSeconds = 8;
+        private int maxWaitSeconds = 900;
+
+        public int getPollIntervalSeconds() { return pollIntervalSeconds; }
+        public void setPollIntervalSeconds(int v) { this.pollIntervalSeconds = v; }
+        public int getMaxWaitSeconds() { return maxWaitSeconds; }
+        public void setMaxWaitSeconds(int v) { this.maxWaitSeconds = v; }
+    }
+
+    /**
+     * Dev 专用：开机自动把 DAP 三个用途（人设/图片/视频）绑定到一个本地/真实引擎，
+     * 让 dap-dev.sh / dap-verify.sh 无需手动进 admin 配置。
+     * 生产默认 enabled=false（CommandLineRunner 不跑）；运行时仍只读 admin 端点，
+     * 本配置只在启动时把端点+绑定「种」进 admin 表（幂等、不覆盖已配）。
+     */
+    public static class DevSeed {
+        private boolean enabled = false;
+        private String baseUrl = "http://localhost:18181";
+        private String apiKey = "dev-fake-key";
+        private String chatModel = "fake-chat";
+        private String imageModel = "fake-image";
+        private String videoModel = "fake-video";
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public String getBaseUrl() { return baseUrl; }
         public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
         public String getApiKey() { return apiKey; }
@@ -50,12 +84,6 @@ public class DapProperties {
         public void setImageModel(String imageModel) { this.imageModel = imageModel; }
         public String getVideoModel() { return videoModel; }
         public void setVideoModel(String videoModel) { this.videoModel = videoModel; }
-        public int getHttpTimeoutSeconds() { return httpTimeoutSeconds; }
-        public void setHttpTimeoutSeconds(int v) { this.httpTimeoutSeconds = v; }
-        public int getVideoPollIntervalSeconds() { return videoPollIntervalSeconds; }
-        public void setVideoPollIntervalSeconds(int v) { this.videoPollIntervalSeconds = v; }
-        public int getVideoMaxWaitSeconds() { return videoMaxWaitSeconds; }
-        public void setVideoMaxWaitSeconds(int v) { this.videoMaxWaitSeconds = v; }
     }
 
     /** 各动作扣费（点）。0 = 免费。 */

@@ -33,10 +33,10 @@ import java.util.UUID;
 
 /**
  * 异步作业执行器 —— 所有 AI 生成在 dapJobExecutor 线程上跑：
- * 形象生成（4 变体）/ 真人复刻 / 自然语言迭代 / 几何精调 / 造型设计 / 六类衍生（含 Agnes 视频）。
+ * 形象生成（4 变体）/ 真人复刻 / 自然语言迭代 / 几何精调 / 造型设计 / 六类衍生（含云端视频）。
  *
- * 降级策略：未配置 AGNES_API_KEY 时产出本地占位产物并把 avatar.mock=true（前端 MOCK 角标），
- * 链路不阻断；视频占位依赖本机 ffmpeg，没有则任务失败并明确提示。
+ * 降级策略：未在后台「AI 应用绑定」给 DAP_* 用途绑定端点时，产出本地占位产物并把 avatar.mock=true
+ * （前端 MOCK 角标），链路不阻断；视频占位依赖本机 ffmpeg，没有则任务失败并明确提示。
  */
 @Service
 public class DapJobRunner {
@@ -50,7 +50,7 @@ public class DapJobRunner {
     private final DapCaptureRepository captureRepo;
     private final DapAvatarService avatarService;
     private final DapCatalogService catalog;
-    private final AgnesClient agnes;
+    private final DapMultimodalClient multimodal;
     private final FileStorageService storage;
     private final CreditService creditService;
     private final DapSupport support;
@@ -63,7 +63,7 @@ public class DapJobRunner {
                         DapCaptureRepository captureRepo,
                         DapAvatarService avatarService,
                         DapCatalogService catalog,
-                        AgnesClient agnes,
+                        DapMultimodalClient multimodal,
                         FileStorageService storage,
                         CreditService creditService,
                         DapSupport support,
@@ -75,7 +75,7 @@ public class DapJobRunner {
         this.captureRepo = captureRepo;
         this.avatarService = avatarService;
         this.catalog = catalog;
-        this.agnes = agnes;
+        this.multimodal = multimodal;
         this.storage = storage;
         this.creditService = creditService;
         this.support = support;
@@ -127,8 +127,8 @@ public class DapJobRunner {
             fail(job, "已取消", null);
             log.info("[dap-job] run canceled id={} type={} durationMs={}",
                     job.getId(), job.getType(), elapsedMs(startNanos));
-        } catch (AgnesClient.AgnesException ae) {
-            log.warn("[dap-job] run agnes-error id={} type={} code={} durationMs={} msg={}",
+        } catch (DapMultimodalClient.DapModelException ae) {
+            log.warn("[dap-job] run model-error id={} type={} code={} durationMs={} msg={}",
                     job.getId(), job.getType(), ae.getCode(), elapsedMs(startNanos), ae.getMessage());
             releaseCredits(job, "生成失败");
             fail(job, "生成失败", ae.getCode() + ": " + ae.getMessage());
@@ -151,8 +151,8 @@ public class DapJobRunner {
 
         progress(job, 6, "persona.chat", "解析人设…");
         String imagePrompt;
-        if (agnes.isConfigured()) {
-            JsonNode persona = agnes.chatJson(systemOf(PromptService.KEY_DAP_PERSONA),
+        if (multimodal.isConfigured()) {
+            JsonNode persona = multimodal.chatJson(systemOf(PromptService.KEY_DAP_PERSONA),
                     promptOf(PromptService.KEY_DAP_PERSONA, personaVars(form)));
             applyPersona(a, persona, desc);
             imagePrompt = persona.path("imagePromptEn").asText(null);
@@ -177,8 +177,8 @@ public class DapJobRunner {
         long bytesTotal = 0;
         for (int i = 0; i < 4; i++) {
             byte[] img;
-            if (agnes.isConfigured()) {
-                img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_GENERATE,
+            if (multimodal.isConfigured()) {
+                img = multimodal.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_GENERATE,
                         Map.of("imagePrompt", imagePrompt, "variantHint", variantHints[i])), "768x1024", null);
             } else {
                 img = support.placeholderPortrait(a.getHue() + i * 16, "占位 · v" + (i + 1), 768, 1024);
@@ -191,8 +191,8 @@ public class DapJobRunner {
             checkCancel(job);
         }
         a.setVariantKeys(keys);
-        a.setMock(!agnes.isConfigured());
-        a.setEngine(agnes.isConfigured() ? "Agnes Image 2.1" : "占位引擎");
+        a.setMock(!multimodal.isConfigured());
+        a.setEngine(multimodal.isConfigured() ? "云端图像引擎" : "占位引擎");
         a.setImageBytes(a.getImageBytes() + bytesTotal);
         a.setStatus("proofing");
         avatarService.save(a);
@@ -207,11 +207,11 @@ public class DapJobRunner {
 
         progress(job, 30, "image.restore", "复刻形象…");
         byte[] img;
-        if (agnes.isConfigured() && !inputs.isEmpty()) {
-            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_CLONE, null), "768x1024", inputs);
-        } else if (agnes.isConfigured()) {
+        if (multimodal.isConfigured() && !inputs.isEmpty()) {
+            img = multimodal.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_CLONE, null), "768x1024", inputs);
+        } else if (multimodal.isConfigured()) {
             // 没有可用素材时退化为文生图（不应发生：controller 已校验）
-            img = agnes.generateImage("photorealistic half-body portrait of a person, studio lighting", "768x1024", null);
+            img = multimodal.generateImage("photorealistic half-body portrait of a person, studio lighting", "768x1024", null);
         } else {
             img = support.placeholderPortrait(a.getHue(), "占位 · 复刻", 768, 1024);
         }
@@ -219,7 +219,7 @@ public class DapJobRunner {
         progress(job, 80, "storage.persist", "落库…");
         FileStorageService.StoredFile stored = storage.store(img, "dap/avatar", job.getOwnerUserId(), "png", "image/png");
         a.setImageKey(stored.key());
-        a.setMock(!agnes.isConfigured());
+        a.setMock(!multimodal.isConfigured());
         a.setImageBytes(a.getImageBytes() + stored.bytes());
         a.setStatus("pending");
         avatarService.addVersionAt(a, 1, "真人复刻生成", "init", stored.key());
@@ -234,12 +234,12 @@ public class DapJobRunner {
         progress(job, 12, "instruction.translate", "理解修改意图…");
 
         byte[] img;
-        if (agnes.isConfigured()) {
-            String en = cleanEditPhrase(agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+        if (multimodal.isConfigured()) {
+            String en = cleanEditPhrase(multimodal.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
                     promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", instruction))));
             checkCancel(job);
             progress(job, 35, "image.edit", "重绘形象…");
-            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_ITERATE,
+            img = multimodal.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_ITERATE,
                     Map.of("instruction", en)), "768x1024", identityInputOf(a));
         } else {
             img = support.placeholderPortrait(a.getHue() + a.getVersions() * 7, "占位 · 迭代", 768, 1024);
@@ -283,11 +283,11 @@ public class DapJobRunner {
         String note = any ? zh.substring(0, zh.length() - 2) : "精调 · 无参数变化";
 
         byte[] img;
-        if (agnes.isConfigured() && any) {
+        if (multimodal.isConfigured() && any) {
             progress(job, 40, "image.edit", "重绘形象…");
-            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_WARP,
+            img = multimodal.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_WARP,
                     Map.of("adjustments", en.toString())), "768x1024", identityInputOf(a));
-        } else if (!agnes.isConfigured()) {
+        } else if (!multimodal.isConfigured()) {
             img = support.placeholderPortrait(a.getHue() + 3, "占位 · 精调", 768, 1024);
         } else {
             job.setResult(Map.of("skipped", true));
@@ -317,8 +317,8 @@ public class DapJobRunner {
         String en;
         if (scenePrompt != null) {
             en = scenePrompt;
-        } else if (agnes.isConfigured() && userPrompt != null && !userPrompt.isBlank()) {
-            en = cleanEditPhrase(agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+        } else if (multimodal.isConfigured() && userPrompt != null && !userPrompt.isBlank()) {
+            en = cleanEditPhrase(multimodal.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
                     promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", userPrompt))));
         } else {
             en = userPrompt == null ? "new outfit and scene" : userPrompt;
@@ -326,8 +326,8 @@ public class DapJobRunner {
         checkCancel(job);
         progress(job, 45, "image.look", "生成造型…");
         byte[] img;
-        if (agnes.isConfigured()) {
-            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_LOOK,
+        if (multimodal.isConfigured()) {
+            img = multimodal.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_LOOK,
                     Map.of("style", en)), "768x1024", identityInputOf(a));
         } else {
             img = support.placeholderPortrait(a.getHue() + 24, "占位 · 造型", 768, 1024);
@@ -419,11 +419,11 @@ public class DapJobRunner {
             checkCancel(job);
             progress(job, 10 + i * 17, "atlas.image." + (i + 1), "出图 " + s[1] + "（" + (i + 1) + "/5）…");
             byte[] img;
-            if (agnes.isConfigured()) {
+            if (multimodal.isConfigured()) {
                 String prompt = promptOf(PromptService.KEY_DAP_IMAGE_ATLAS, Map.of(
                         "shot", s[2] + (extraEn.isBlank() ? "" : ", " + extraEn),
                         "template", tplPrompt != null ? ". " + tplPrompt : ""));
-                img = agnes.generateImage(prompt, s[3], identityInputOf(a));
+                img = multimodal.generateImage(prompt, s[3], identityInputOf(a));
             } else {
                 img = support.placeholderPortrait(a.getHue() + i * 9, "占位 · " + s[1], 768, 1024);
             }
@@ -461,8 +461,8 @@ public class DapJobRunner {
             progress(job, 10 + i * (80 / Math.max(1, items.size())), key + ".image." + (i + 1),
                     it[0] + "（" + (i + 1) + "/" + items.size() + "）…");
             byte[] img;
-            if (agnes.isConfigured()) {
-                img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_DERIV,
+            if (multimodal.isConfigured()) {
+                img = multimodal.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_DERIV,
                         Map.of("item", it[1] + (extraEn.isBlank() ? "" : ", " + extraEn))), it[2], identityInputOf(a));
             } else {
                 img = support.placeholderPortrait(a.getHue() + i * 13, "占位 · " + it[0], 768, 1024);
@@ -505,13 +505,13 @@ public class DapJobRunner {
         progress(job, 8, "video.submit", "提交视频任务…");
         byte[] mp4;
         String spec;
-        if (agnes.isConfigured()) {
+        if (multimodal.isConfigured()) {
             String motion = str(options, "motion", "orbit");
-            String taskId = agnes.createVideoTask(
+            String taskId = multimodal.createVideoTask(
                     videoPromptFor(motion, extraEn),
                     firstOrNull(identityInputOf(a)), 768, 1152, 121, 24);
             progress(job, 14, "video.queued", "已提交 · 云端排队中…");
-            AgnesClient.VideoTask t = agnes.awaitVideo(taskId, vt -> {
+            DapMultimodalClient.VideoTask t = multimodal.awaitVideo(taskId, vt -> {
                 // 回显云端真实状态：queued → 排队中；in_progress + progress → 真实百分比
                 int cloudPct = vt.progress() == null ? -1 : Math.max(0, Math.min(100, vt.progress()));
                 if ("queued".equals(vt.status())) {
@@ -524,11 +524,11 @@ public class DapJobRunner {
                 checkCancelQuiet(job);
             });
             if (!"completed".equals(t.status()) || t.videoUrl() == null) {
-                throw new AgnesClient.AgnesException("AGNES_VIDEO_FAILED",
+                throw new DapMultimodalClient.DapModelException("DAP_MODEL_VIDEO_FAILED",
                         "视频任务未成功：status=" + t.status());
             }
             progress(job, 88, "video.download", "下载成片…");
-            mp4 = agnes.download(t.videoUrl(), 512L * 1024 * 1024);
+            mp4 = multimodal.download(t.videoUrl(), 512L * 1024 * 1024);
             spec = "768×1152 · 5s · MP4";
         } else {
             mp4 = placeholderVideo(a);
@@ -594,9 +594,9 @@ public class DapJobRunner {
     private String toEnglishPhrase(String s) {
         if (s == null || s.isBlank()) return "";
         boolean hasCjk = s.codePoints().anyMatch(c -> c >= 0x4E00 && c <= 0x9FFF);
-        if (hasCjk && agnes.isConfigured()) {
+        if (hasCjk && multimodal.isConfigured()) {
             try {
-                return cleanEditPhrase(agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+                return cleanEditPhrase(multimodal.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
                         promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", s))));
             } catch (Exception e) {
                 log.warn("[dap-job] extraPrompt translate failed, use raw: {}", e.getMessage());
@@ -720,8 +720,8 @@ public class DapJobRunner {
             Files.deleteIfExists(tmp);
             return data;
         } catch (Exception e) {
-            throw new AgnesClient.AgnesException("AGNES_NOT_CONFIGURED",
-                    "未配置生成引擎（AGNES_API_KEY），且本机无 ffmpeg 可生成占位视频");
+            throw new DapMultimodalClient.DapModelException("DAP_ENGINE_NOT_CONFIGURED",
+                    "未在后台为数字人视频用途绑定端点，且本机无 ffmpeg 可生成占位视频");
         }
     }
 

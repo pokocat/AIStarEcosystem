@@ -33,23 +33,26 @@ public class DapJobService {
     private final DapAccountService accountService;
     private final DapSupport support;
     private final DapProperties props;
+    private final DapPricingService pricing;
     private final DapJobRunner runner;
-    private final AgnesClient agnes;
+    private final DapMultimodalClient multimodal;
 
     public DapJobService(DapJobRepository jobRepo,
                          CreditService creditService,
                          DapAccountService accountService,
                          DapSupport support,
                          DapProperties props,
+                         DapPricingService pricing,
                          @Lazy DapJobRunner runner,
-                         AgnesClient agnes) {
+                         DapMultimodalClient multimodal) {
         this.jobRepo = jobRepo;
         this.creditService = creditService;
         this.accountService = accountService;
         this.support = support;
         this.props = props;
+        this.pricing = pricing;
         this.runner = runner;
-        this.agnes = agnes;
+        this.multimodal = multimodal;
     }
 
     // ── 建单 + 派发 ────────────────────────────────────────────
@@ -72,7 +75,7 @@ public class DapJobService {
                 .kind(kind)
                 .type(type)
                 .engine(engine)
-                .mode(agnes.isConfigured() ? "backend" : "mock")
+                .mode(multimodal.isConfigured() ? "backend" : "mock")
                 .status("running")
                 .stage("queued")
                 .pct(2)
@@ -91,16 +94,16 @@ public class DapJobService {
     }
 
     /**
-     * 生产严格模式：未配置生成引擎（AGNES_API_KEY / admin「AI 应用绑定」端点）且未显式允许
+     * 生产严格模式：未在后台「AI 应用绑定」给 DAP_* 用途绑定端点，且未显式允许
      * 占位降级（aep.dap.allow-placeholder，mysql/生产 profile 默认 false）时，
      * 提交/重试直接 503 —— 不建任务、不扣费、不产出占位图。
      */
     private void requireEngineOrPlaceholderAllowed() {
-        if (agnes.isConfigured() || props.isAllowPlaceholder()) return;
+        if (multimodal.isConfigured() || props.isAllowPlaceholder()) return;
         log.warn("[dap-job] blocked reason=engine-not-configured allowPlaceholder=false");
         throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
                 "DAP_ENGINE_NOT_CONFIGURED",
-                "生成引擎未配置：请在管理后台「AI 模型与 Key + AI 应用绑定」为数字人用途绑定端点，或设置 AGNES_API_KEY");
+                "生成引擎未配置：请在管理后台「AI 模型与 Key + AI 应用绑定」为数字人用途（人设/图片/视频）绑定端点");
     }
 
     // ── 查询 ──────────────────────────────────────────────────
@@ -207,23 +210,18 @@ public class DapJobService {
 
     // ── 价格表 ────────────────────────────────────────────────
 
+    /**
+     * v0.53：单价改走 {@link DapPricingService}（admin 动作单价表的 dap.* 行优先，
+     * env {@code aep.dap.pricing.*} fallback）。调价不再需要改环境变量重启。
+     */
     public long priceOf(String type, String derivKey) {
-        DapProperties.Pricing p = props.getPricing();
         return switch (type) {
-            case DapJob.T_GENERATE -> p.getGenerate();
-            case DapJob.T_GENERATE_UPLOAD -> p.getGenerateUpload();
-            case DapJob.T_ITERATE -> p.getIterate();
-            case DapJob.T_WARP -> p.getWarp();
-            case DapJob.T_LOOK -> p.getLook();
-            case DapJob.T_DERIVE -> switch (derivKey == null ? "" : derivKey) {
-                case "atlas" -> p.getDeriveAtlas();
-                case "expr" -> p.getDeriveExpr();
-                case "scene" -> p.getDeriveScene();
-                case "ward" -> p.getDeriveWard();
-                case "d3" -> p.getDeriveD3();
-                case "video" -> p.getDeriveVideo();
-                default -> 0;
-            };
+            case DapJob.T_GENERATE -> pricing.generate();
+            case DapJob.T_GENERATE_UPLOAD -> pricing.generateUpload();
+            case DapJob.T_ITERATE -> pricing.iterate();
+            case DapJob.T_WARP -> pricing.warp();
+            case DapJob.T_LOOK -> pricing.look();
+            case DapJob.T_DERIVE -> pricing.derive(derivKey);
             default -> 0;
         };
     }

@@ -51,7 +51,7 @@ public class PromptService {
     public static final String KEY_APPEARANCE_FORGE = "appearance.forge";
     /** v0.43+: 短剧脚本起草（drama 短剧生成）。 */
     public static final String KEY_DRAMA_SCRIPT_DRAFT = "drama.script_draft";
-    /** v0.51+: 数字人资产平台（dap）各大模型调用点位（AgnesClient / DapJobRunner）。 */
+    /** v0.51+: 数字人资产平台（dap）各大模型调用点位（DapMultimodalClient / DapJobRunner）。 */
     public static final String KEY_DAP_PERSONA = "dap.persona";
     public static final String KEY_DAP_TRANSLATE_EDIT = "dap.translate_edit";
     public static final String KEY_DAP_IMAGE_GENERATE = "dap.image_generate";

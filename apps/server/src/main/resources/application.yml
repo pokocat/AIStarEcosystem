@@ -168,26 +168,34 @@ aep:
     user-id-prefix: ${AEP_COZE_USER_ID_PREFIX:aep-producer-}
     read-timeout-ms: ${AEP_COZE_READ_TIMEOUT_MS:120000}
   # 数字人资产平台（apps/web-aiavatar，v0.51 dap 领域：com.aistareco.aep.dap.*；表 dap_*；账户复用 aep_users + 钱包）。
-  # 大模型走 Agnes AI（apihub.agnes-ai.com，OpenAI 兼容 chat / images + 异步 videos）。
-  # api-key 未配置时所有生成任务降级为本地占位产物（avatar.mock=true，前端可见 MOCK 角标），链路不阻断。
+  # 大模型接入点（chat / image / video）统一在后台「AI 模型与 Key + AI 应用绑定」配置
+  # （purpose=DAP_PERSONA / DAP_IMAGE / DAP_VIDEO），DapMultimodalClient 运行时只读 admin 端点，无 env 兜底。
+  # 未绑定端点时按 allow-placeholder 决定：dev 降级占位（avatar.mock=true，前端 MOCK 角标）/ 生产直接 503。
   dap:
-    agnes:
-      base-url: ${AGNES_BASE_URL:https://apihub.agnes-ai.com}
-      api-key: ${AGNES_API_KEY:}
-      chat-model: ${AGNES_CHAT_MODEL:agnes-2.0-flash}
-      image-model: ${AGNES_IMAGE_MODEL:agnes-image-2.1-flash}
-      video-model: ${AGNES_VIDEO_MODEL:agnes-video-v2.0}
-      http-timeout-seconds: ${AGNES_HTTP_TIMEOUT_SECONDS:120}
-      video-poll-interval-seconds: ${AGNES_VIDEO_POLL_INTERVAL_SECONDS:8}
-      video-max-wait-seconds: ${AGNES_VIDEO_MAX_WAIT_SECONDS:900}
+    # 多模态 HTTP 调用 + 异步视频轮询参数（与具体厂商无关）
+    http:
+      timeout-seconds: ${AEP_DAP_HTTP_TIMEOUT_SECONDS:120}
+    video:
+      poll-interval-seconds: ${AEP_DAP_VIDEO_POLL_INTERVAL_SECONDS:8}
+      max-wait-seconds: ${AEP_DAP_VIDEO_MAX_WAIT_SECONDS:900}
+    # Dev 专用：开机自动把 DAP 三个用途绑定到一个本地/真实引擎（dap-dev.sh / dap-verify.sh 用），
+    # 免去每次手动进 admin 配置。生产默认 enabled=false（DapDevEndpointSeeder 不跑）；即便开启也只是把端点 +
+    # 绑定「种」进 admin 表（幂等、不覆盖已配），运行时仍只读 admin 端点。指向真实引擎时把 base-url/api-key/*-model 填真值。
+    dev-seed:
+      enabled: ${AEP_DAP_DEV_SEED_ENABLED:false}
+      base-url: ${AEP_DAP_DEV_SEED_BASE_URL:http://localhost:18181}
+      api-key: ${AEP_DAP_DEV_SEED_API_KEY:dev-fake-key}
+      chat-model: ${AEP_DAP_DEV_SEED_CHAT_MODEL:fake-chat}
+      image-model: ${AEP_DAP_DEV_SEED_IMAGE_MODEL:fake-image}
+      video-model: ${AEP_DAP_DEV_SEED_VIDEO_MODEL:fake-video}
     # 异步生成任务并发上限（dapJobExecutor 线程池大小）
     max-concurrent: ${AEP_DAP_MAX_CONCURRENT:3}
     # 月度赠送算力（点）；首次访问账户 / 提交任务时按月幂等发放。0 = 不发放。
     monthly-grant: ${AEP_DAP_MONTHLY_GRANT:1500}
     # 回收站保留天数（软删超期后每日 03:50 物理清理行+文件）
     trash-retention-days: ${AEP_DAP_TRASH_RETENTION_DAYS:30}
-    # 未配置生成引擎（AGNES_API_KEY / admin 端点）时是否允许占位产物降级：
-    # dev 默认 true（无 key 也能联调全链路）；mysql/生产 profile 默认 false →
+    # 未配置生成引擎（admin「AI 应用绑定」未给 DAP_* 绑定端点）时是否允许占位产物降级：
+    # dev 默认 true（无端点也能联调全链路）；mysql/生产 profile 默认 false →
     # 提交生成任务直接 503 DAP_ENGINE_NOT_CONFIGURED（不生成、不扣费）。
     allow-placeholder: ${AEP_DAP_ALLOW_PLACEHOLDER:true}
     # 各动作扣费（点，hold→commit/release 三段式）；0 = 免费

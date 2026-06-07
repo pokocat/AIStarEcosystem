@@ -42,6 +42,7 @@ public class DapAccountService {
     private final DapCaptureRepository captureRepo;
     private final DapPhotoRepository photoRepo;
     private final DapProperties props;
+    private final DapPricingService pricing;
 
     public DapAccountService(CreditService creditService,
                              LedgerEntryRepository ledgerRepo,
@@ -52,7 +53,8 @@ public class DapAccountService {
                              DapVoiceRepository voiceRepo,
                              DapCaptureRepository captureRepo,
                              DapPhotoRepository photoRepo,
-                             DapProperties props) {
+                             DapProperties props,
+                             DapPricingService pricing) {
         this.creditService = creditService;
         this.ledgerRepo = ledgerRepo;
         this.jobRepo = jobRepo;
@@ -63,6 +65,7 @@ public class DapAccountService {
         this.captureRepo = captureRepo;
         this.photoRepo = photoRepo;
         this.props = props;
+        this.pricing = pricing;
     }
 
     /** 月度赠送算力（幂等：referenceId = userId:yyyyMM 只发一次）。 */
@@ -89,7 +92,7 @@ public class DapAccountService {
         var monthStart = YearMonth.now(ZONE).atDay(1).atStartOfDay(ZONE).toInstant();
         long creditsUsed = jobRepo.sumCostSince(userId, monthStart);
 
-        long perAvatar = Math.max(1, props.getPricing().getGenerate());
+        long perAvatar = Math.max(1, pricing.generate()); // v0.53：admin 单价优先，env fallback
         long generatable = credits / perAvatar;
 
         LocalDate monthEnd = YearMonth.now(ZONE).atEndOfMonth();

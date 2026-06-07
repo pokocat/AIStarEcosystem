@@ -20,7 +20,7 @@ import java.util.Map;
 import javax.imageio.ImageIO;
 
 /**
- * dap 领域小工具：业务 id 生成 / 中文相对时间 / 占位画像 PNG（未配置 Agnes 时的降级产物）。
+ * dap 领域小工具：业务 id 生成 / 中文相对时间 / 占位画像 PNG（未配置生成引擎时的降级产物）。
  */
 @Component
 public class DapSupport {
@@ -93,7 +93,7 @@ public class DapSupport {
 
     /**
      * 生成一张「占位画像」：柔和渐变底 + 人形剪影 + 标签。
-     * 仅在未配置 AGNES_API_KEY 时使用，产物会被打 mock 标记。
+     * 仅在未配置生成引擎（admin「AI 应用绑定」未绑 DAP_* 端点）时使用，产物会被打 mock 标记。
      */
     public byte[] placeholderPortrait(int hue, String label, int w, int h) {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);

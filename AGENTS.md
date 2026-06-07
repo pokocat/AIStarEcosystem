@@ -2680,8 +2680,70 @@ openapi: +/me/license/activate (post)
 - **追加激活语义**：全站秘钥 → user.platforms 置 NULL（全平台）；指定子应用秘钥 → 并集；
   用户原本已是全平台（空配置）→ 保持。每把 key 仍一次性核销（ACTIVATED 后不可复用）。
 - **审计**：追加激活复用 `auth.license.activate` 动作（detail 前缀「追加激活」），按 userId 可查。
-- **未做**：(a) 按 app 分桶的积分账户；(b) admin 给已有账号手动改 platforms 的 UI（审计 P2，
-  见 docs/ADMIN_ALIGNMENT_AUDIT.md）；(c) 批次 platforms 的事后编辑（建批后不可改，防已售秘钥语义漂移）。
+- **未做**：(a) 按 app 分桶的积分账户；(c) 批次 platforms 的事后编辑（建批后不可改，防已售秘钥语义漂移）。
+
+**v0.53 第二批（同日）— 三端对齐审计遗留全量治理**（详见 [`docs/ADMIN_ALIGNMENT_AUDIT.md`](docs/ADMIN_ALIGNMENT_AUDIT.md)，10 项发现全部处置）：
+
+```
+server : AdminAepUsersController +PATCH /{id}/platforms（SUPER_ADMIN；空/null = 全平台）
+       : LicenseService +KNOWN_TIERS 白名单（trial/basic/standard/premium/annual_pro/city_agent；
+       :   createBatch 入参校验，之前自由 string）—— tier 契约的唯一真源
+       : 新 dap/service/DapPricingService —— dap 动作单价后台化：admin 动作单价表 dap.* 12 行
+       :   （>0 覆盖）优先，aep.dap.pricing.* env 默认价 fallback；读失败回默认价不阻断业务。
+       :   刻意不把 dap.* 写进 CelebrityActionPricingService 默认表（否则常量压过 env 自定义）
+       : DapJobService.priceOf / DapVoiceService.clone / DapAccountService.account 三处接线
+admin  : /celebrity/operators +「平台访问」列 + PlatformsDialog（chip 多选；不勾选 = 全平台）
+       : api/aep-users.ts +updatePlatforms
+       : /celebrity/engine-pricing 动作单价表分两组：明星带货/素材运营 5 行 + 数字人平台 dap 12 行
+       :   （dap 行 0 = 走部署默认价；修改约 1min 内生效 —— action-pricing 缓存 TTL）
+       : /platform/prompts KEY_LABEL 补全 16 keys（dap.*/appearance.forge/drama.script_draft 等）
+       : types/selling-channel.ts +SellingChannelUpsertInput 镜像；api 入参改用（弃 Partial<SellingChannel>）
+openapi: +/admin/aep-users/{id}/platforms；+/admin/license-batches*（7 paths）+ LicenseBatch/
+       :   LicenseBatchStatus schema
+核实   : RechargePackage 三方字段一致（admin 多 active? 为软删专属字段），无需改动
+```
+
+### v0.54（2026-06-07）— dap 大模型统一 server 端 admin 管理（删 Agnes env 兜底 + 改名 DapMultimodalClient）
+
+数字人资产平台（dap）的多模态出口此前叫 `AgnesClient` 且保留 `AGNES_API_KEY` / `aep.dap.agnes.*`
+env 作为「admin 端点未绑定时的运行时兜底」。这与「大模型统一 server 端 admin 管理」原则冲突
+（配置散落 env + 品牌耦合）。本版彻底收口：运行时只读后台「AI 应用绑定」端点，无 env 兜底；
+类改名 `DapMultimodalClient`；dev/联调用一个 dev-only 种子器把端点种进 admin 表，脚本不再注入 AGNES env。
+
+```
+server : AgnesClient → DapMultimodalClient（AgnesException → DapModelException，
+       :   错误码 AGNES_* → DAP_MODEL_*，日志 [agnes] → [dap-ai]）；删 resolveTarget 的 env 兜底分支
+       :   —— 端点缺失/key 空/model 空一律 return null（不再回退 props.getAgnes()）
+       : DapProperties 删 Agnes 内部类；加 Http{timeoutSeconds} / Video{poll,maxWait} / DevSeed{enabled,
+       :   baseUrl,apiKey,chat/image/videoModel}（client 改读 props.getHttp()/getVideo()）
+       : 新 DapDevEndpointSeeder（@ConditionalOnProperty aep.dap.dev-seed.enabled，@Order 57）：
+       :   开机 upsert dev-dap-{chat,image,video} 端点 + 绑定 DAP_PERSONA/DAP_IMAGE/DAP_VIDEO；
+       :   端点用 dev 自有 id（每次刷新 baseUrl/key/model，便于 fake↔real 切换），绑定仅在缺失时新增
+       :   （绝不覆盖运营已配）；生产默认 enabled=false（不跑），运行时仍只读 admin 端点
+       : DapJobRunner/DapJobService/DapWorkflowService 注入改名 + 引擎标签去品牌
+       :   （「Agnes Image 2.1」→「云端图像引擎」/「Agnes Video 2.0」→「云端视频引擎」）
+       : application.yml aep.dap.agnes.* → aep.dap.http.* / aep.dap.video.* / aep.dap.dev-seed.*
+config : infra/env/server.env.example 删 AGNES_*（改为「后台为 DAP_* 绑定端点」说明）
+scripts: dev-fake-agnes-server.mjs → dev-fake-multimodal-server.mjs（去品牌，FAKE_MULTIMODAL_PORT）；
+       :   dap-dev.sh / dap-verify.sh 改设 aep.dap.dev-seed.* env（fake→本地多模态；real→Agnes+真 key），
+       :   不再 export AGNES_BASE_URL/AGNES_API_KEY 给 server；dap-e2e.py 不变（AGNES 仅作超时档位）
+```
+
+**注意事项**：
+
+- **运行时零 env 依赖**：`DapMultimodalClient.isConfigured()` 只看 `hasEndpointFor(DAP_IMAGE/DAP_PERSONA)`；
+  生产必须在后台「AI 模型与 Key + AI 应用绑定」为 DAP_PERSONA/DAP_IMAGE/DAP_VIDEO 三个用途各绑一个端点。
+  未绑定 + `allow-placeholder=false`（mysql 默认）→ 提交直接 503 `DAP_ENGINE_NOT_CONFIGURED`（不扣费），
+  符合 §8.0「生产禁静默降级」。
+- **dev-seed 不是 env 兜底**：它在开机时把配置**写进 admin 表**（与运营在 UI 配端点等价），运行时路径仍统一只读
+  admin 端点。仅 `aep.dap.dev-seed.enabled=true` 时跑（dev/脚本显式开），生产默认关。
+- **fake↔real 切换**：dev-dap-* 端点每次开机 upsert（刷 baseUrl/key/model），同一持久库切换即时生效；
+  绑定仅缺失时新增，不会抢运营已绑的用途。
+- **持久库联调注意**：`AGNES=none`（测占位）需 isConfigured()=false，但持久库上若前次已绑过 DAP 端点则仍 true →
+  测占位路径建议用 H2（dev profile 每次可控）或先清绑定。
+- **未做**：(a) admin UI 给 dap-dev/verify 一键写端点（当前靠 dev-seed env）；(b) dev-seed 多端点共享一个
+  baseUrl 时合并为单端点（现 3 端点便于 real 三类不同 model id）；(c) DapMultimodalClient 接 AiModelInvocationService
+  统一网关（dap 走自有多模态协议含 image/video，与通用 chat 网关形态不同，暂保持独立出口）。
 
 ---
 

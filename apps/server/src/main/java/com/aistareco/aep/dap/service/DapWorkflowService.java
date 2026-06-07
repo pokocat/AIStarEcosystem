@@ -39,7 +39,7 @@ public class DapWorkflowService {
     private final DapCatalogService catalog;
     private final DapSupport support;
     private final FileStorageService storage;
-    private final AgnesClient agnes;
+    private final DapMultimodalClient multimodal;
 
     public DapWorkflowService(DapAvatarService avatarService,
                               DapJobService jobService,
@@ -48,7 +48,7 @@ public class DapWorkflowService {
                               DapCatalogService catalog,
                               DapSupport support,
                               FileStorageService storage,
-                              AgnesClient agnes) {
+                              DapMultimodalClient multimodal) {
         this.avatarService = avatarService;
         this.jobService = jobService;
         this.lookRepo = lookRepo;
@@ -56,11 +56,11 @@ public class DapWorkflowService {
         this.catalog = catalog;
         this.support = support;
         this.storage = storage;
-        this.agnes = agnes;
+        this.multimodal = multimodal;
     }
 
     private String engineName() {
-        return agnes.isConfigured() ? "Agnes Image 2.1" : "占位引擎";
+        return multimodal.isConfigured() ? "云端图像引擎" : "占位引擎";
     }
 
     // ── 形象生成 ──────────────────────────────────────────────
@@ -271,7 +271,7 @@ public class DapWorkflowService {
         if (options != null && !options.isEmpty()) payload.put("options", options); // 自定义配方（items/extraPrompt/motion）
 
         String engine = "video".equals(key)
-                ? (agnes.isConfigured() ? "Agnes Video 2.0" : "占位引擎")
+                ? (multimodal.isConfigured() ? "云端视频引擎" : "占位引擎")
                 : engineName();
         String eta = "video".equals(key) ? "约 3-6 分钟" : "约 1-2 分钟";
         DapJob job = jobService.submit(userId, a, DapJob.T_DERIVE, DERIV_KIND_ZH.get(key), engine,

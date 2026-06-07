@@ -1,6 +1,5 @@
 package com.aistareco.aep.dap.service;
 
-import com.aistareco.aep.dap.config.DapProperties;
 import com.aistareco.aep.dap.dto.DapDtos.VoiceDto;
 import com.aistareco.aep.dap.model.DapVoice;
 import com.aistareco.aep.dap.repository.DapVoiceRepository;
@@ -32,7 +31,7 @@ public class DapVoiceService {
     private final DapCatalogService catalog;
     private final CreditService creditService;
     private final DapAccountService accountService;
-    private final DapProperties props;
+    private final DapPricingService pricing;
     private final DapSupport support;
 
     public DapVoiceService(DapVoiceRepository voiceRepo,
@@ -40,14 +39,14 @@ public class DapVoiceService {
                            DapCatalogService catalog,
                            CreditService creditService,
                            DapAccountService accountService,
-                           DapProperties props,
+                           DapPricingService pricing,
                            DapSupport support) {
         this.voiceRepo = voiceRepo;
         this.storage = storage;
         this.catalog = catalog;
         this.creditService = creditService;
         this.accountService = accountService;
-        this.props = props;
+        this.pricing = pricing;
         this.support = support;
     }
 
@@ -64,7 +63,7 @@ public class DapVoiceService {
             throw BusinessException.badRequest("DAP_NO_AUDIO", "未收到声音采样文件");
         }
         accountService.ensureMonthlyGrant(userId);
-        long price = props.getPricing().getVoiceClone();
+        long price = pricing.voiceClone(); // v0.53：admin 动作单价（dap.voice-clone）优先，env fallback
         FileStorageService.StoredFile stored = storage.store(audio, "dap/voice", userId);
 
         // 展示波形（确定性伪随机，按文件大小播种）

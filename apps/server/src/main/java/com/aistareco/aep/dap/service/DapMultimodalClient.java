@@ -23,32 +23,35 @@ import java.util.Base64;
 import java.util.List;
 
 /**
- * Agnes AI（apihub.agnes-ai.com）多模态客户端 —— 数字人资产平台唯一外部大模型出口。
+ * 数字人资产平台多模态客户端 —— dap 领域唯一外部大模型出口。
  *
- * 协议（references：agnes-ai.com/doc/*）：
- *   · 文本   POST /v1/chat/completions   OpenAI 兼容（model=agnes-2.0-flash）
- *   · 图片   POST /v1/images/generations OpenAI Images 兼容（model=agnes-image-2.1-flash，
- *            i2i 走 extra_body.image=[url|dataURI]，extra_body.response_format=url）
- *   · 视频   POST /v1/videos（异步）+ GET /v1/videos/{taskId}
- *            （model=agnes-video-v2.0，status: queued|in_progress|completed|failed）
+ * 接入点由「admin → 平台与配置 → AI 模型与 Key + AI 应用绑定」统一管理(v0.51 修订 #4 +
+ * v0.54),按用途路由:
+ *   · chat   → DAP_PERSONA  → POST {baseUrl}/v1/chat/completions   OpenAI 兼容
+ *   · image  → DAP_IMAGE    → POST {baseUrl}/v1/images/generations OpenAI Images 兼容
+ *                                            (i2i 走 extra_body.image=[url|dataURI])
+ *   · video  → DAP_VIDEO    → POST {baseUrl}/v1/videos             异步 submit + poll
+ *                              + GET  {baseUrl}/v1/videos/{taskId}
  *
- * 接入点解析（v0.51+，admin 可配）：每类调用先查「AI 应用绑定」——
- *   chat → DAP_PERSONA / image → DAP_IMAGE / video → DAP_VIDEO；
- * 绑定了启用端点则用端点的 baseUrl + apiKey + model（admin → 平台与配置 → AI 模型与 Key），
- * 未绑定回退 env（AGNES_API_KEY + aep.dap.agnes.*）。两者都没有时 isConfigured()=false，
- * 调用方自行降级（占位产物 + mock 标记）。
+ * 任一用途未绑定启用端点 → isConfigured()=false,调用方按 aep.dap.allow-placeholder
+ * 配合 DapJobService.requireEngineOrPlaceholderAllowed() 二选一:
+ *   · allow-placeholder=false(prod 默认) → submit 直接 503 DAP_ENGINE_NOT_CONFIGURED
+ *   · allow-placeholder=true (dev 默认)  → 调用方自行降级占位产物 + mock 标记
+ *
+ * 历史命名:本类此前叫 AgnesClient(品牌耦合),v0.54 起改名并删除 env(AGNES_API_KEY +
+ * aep.dap.agnes.*)兜底分支,与「大模型统一 server 端 admin 管理」原则对齐。
  */
 @Service
-public class AgnesClient {
+public class DapMultimodalClient {
 
-    private static final Logger log = LoggerFactory.getLogger(AgnesClient.class);
+    private static final Logger log = LoggerFactory.getLogger(DapMultimodalClient.class);
     private static final ObjectMapper OM = new ObjectMapper();
 
     private final DapProperties props;
     private final AiModelInvocationService aiModels;
     private final HttpClient http;
 
-    public AgnesClient(DapProperties props, AiModelInvocationService aiModels) {
+    public DapMultimodalClient(DapProperties props, AiModelInvocationService aiModels) {
         this.props = props;
         this.aiModels = aiModels;
         this.http = HttpClient.newBuilder()
@@ -57,62 +60,63 @@ public class AgnesClient {
                 .build();
     }
 
-    // ── 接入点解析（admin 端点优先，env 兜底）────────────────────
+    // ── 接入点解析(admin 端点为唯一真源)─────────────────────────
 
-    /** 一次调用的落地目标：baseUrl 不带尾斜杠；apiKey 明文（仅内存）；source 用于日志。 */
+    /** 一次调用的落地目标:baseUrl 不带尾斜杠;apiKey 明文(仅内存);source 用于日志。 */
     record Target(String baseUrl, String apiKey, String model, String source) {}
 
-    private Target resolveTarget(AiModelPurpose purpose, String envModel) {
+    private Target resolveTarget(AiModelPurpose purpose) {
         AiModelEndpoint e = aiModels.resolveEndpoint(purpose).orElse(null);
-        if (e != null) {
-            try {
-                String key = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
-                if (key != null && !key.isBlank()) {
-                    String model = e.getModel() != null && !e.getModel().isBlank() ? e.getModel() : envModel;
-                    return new Target(rstrip(e.getBaseUrl()), key, model, "endpoint:" + e.getName());
-                }
-            } catch (Exception ex) {
-                log.warn("[agnes] endpoint decrypt failed purpose={} endpoint={} err={} → fallback env",
-                        purpose.wire(), e.getName(), ex.getMessage());
+        if (e == null) return null;
+        try {
+            String key = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
+            if (key == null || key.isBlank()) {
+                log.warn("[dap-ai] endpoint key blank purpose={} endpoint={} → unconfigured",
+                        purpose.wire(), e.getName());
+                return null;
             }
+            String model = e.getModel() != null && !e.getModel().isBlank() ? e.getModel() : null;
+            if (model == null) {
+                log.warn("[dap-ai] endpoint model blank purpose={} endpoint={} → unconfigured",
+                        purpose.wire(), e.getName());
+                return null;
+            }
+            return new Target(rstrip(e.getBaseUrl()), key, model, "endpoint:" + e.getName());
+        } catch (Exception ex) {
+            log.warn("[dap-ai] endpoint decrypt failed purpose={} endpoint={} err={} → unconfigured",
+                    purpose.wire(), e.getName(), ex.getMessage());
+            return null;
         }
-        String envKey = props.getAgnes().getApiKey();
-        if (envKey != null && !envKey.isBlank()) {
-            return new Target(rstrip(props.getAgnes().getBaseUrl()), envKey, envModel, "env");
-        }
-        return null;
     }
 
-    private Target chatTarget()  { return resolveTarget(AiModelPurpose.DAP_PERSONA, props.getAgnes().getChatModel()); }
-    private Target imageTarget() { return resolveTarget(AiModelPurpose.DAP_IMAGE, props.getAgnes().getImageModel()); }
-    private Target videoTarget() { return resolveTarget(AiModelPurpose.DAP_VIDEO, props.getAgnes().getVideoModel()); }
+    private Target chatTarget()  { return resolveTarget(AiModelPurpose.DAP_PERSONA); }
+    private Target imageTarget() { return resolveTarget(AiModelPurpose.DAP_IMAGE); }
+    private Target videoTarget() { return resolveTarget(AiModelPurpose.DAP_VIDEO); }
 
-    /** 任一生成通道可用（env key 或 admin 绑定端点）。运行链路按各自通道再精确判定。 */
+    /** 图片 + 文本任一通道可用即视为已配置(视频是衍生能力,运行链路按各自通道再精确判定)。 */
     public boolean isConfigured() {
-        String key = props.getAgnes().getApiKey();
-        if (key != null && !key.isBlank()) return true;
         return aiModels.hasEndpointFor(AiModelPurpose.DAP_IMAGE)
                 || aiModels.hasEndpointFor(AiModelPurpose.DAP_PERSONA);
     }
 
     public String imageModel() {
         Target t = imageTarget();
-        return t != null ? t.model() : props.getAgnes().getImageModel();
+        return t != null ? t.model() : null;
     }
 
     public String videoModel() {
         Target t = videoTarget();
-        return t != null ? t.model() : props.getAgnes().getVideoModel();
+        return t != null ? t.model() : null;
     }
 
     public String chatModel() {
         Target t = chatTarget();
-        return t != null ? t.model() : props.getAgnes().getChatModel();
+        return t != null ? t.model() : null;
     }
 
     // ── 文本 ───────────────────────────────────────────────────
 
-    /** 单轮 chat；返回 assistant content。 */
+    /** 单轮 chat;返回 assistant content。 */
     public String chat(String systemPrompt, String userPrompt) {
         Target t = require(chatTarget(), "chat");
         ObjectNode body = OM.createObjectNode();
@@ -127,30 +131,30 @@ public class AgnesClient {
         JsonNode resp = postJson(t, "/v1/chat/completions", body);
         JsonNode content = resp.path("choices").path(0).path("message").path("content");
         if (content.isMissingNode() || content.isNull()) {
-            throw new AgnesException("AGNES_BAD_OUTPUT", "chat 响应缺少 choices[0].message.content");
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 响应缺少 choices[0].message.content");
         }
         return content.asText();
     }
 
-    /** chat 并解析 JSON 产物（剥 markdown 围栏 + 截取首个 {...}）。 */
+    /** chat 并解析 JSON 产物(剥 markdown 围栏 + 截取首个 {...})。 */
     public JsonNode chatJson(String systemPrompt, String userPrompt) {
         String raw = chat(systemPrompt, userPrompt);
         String cleaned = extractJson(raw);
         try {
             return OM.readTree(cleaned);
         } catch (IOException e) {
-            throw new AgnesException("AGNES_BAD_OUTPUT", "chat 输出不是合法 JSON: " + truncate(raw, 300));
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 输出不是合法 JSON: " + truncate(raw, 300));
         }
     }
 
     // ── 图片 ───────────────────────────────────────────────────
 
     /**
-     * 生成 / 编辑图片，返回图片字节。
+     * 生成 / 编辑图片,返回图片字节。
      *
-     * @param prompt      英文 prompt（调用方负责翻译）
-     * @param size        如 768x1024；null 用模型默认
-     * @param inputImages i2i 输入（公网 URL 或 data:image/...;base64,xxx），空 = 文生图
+     * @param prompt      英文 prompt(调用方负责翻译)
+     * @param size        如 768x1024;null 用模型默认
+     * @param inputImages i2i 输入(公网 URL 或 data:image/...;base64,xxx),空 = 文生图
      */
     public byte[] generateImage(String prompt, String size, List<String> inputImages) {
         Target t = require(imageTarget(), "image");
@@ -175,19 +179,19 @@ public class AgnesClient {
         if (b64 != null && !b64.isBlank()) {
             return Base64.getDecoder().decode(b64);
         }
-        throw new AgnesException("AGNES_BAD_OUTPUT", "images 响应缺少 data[0].url / b64_json: " + truncate(resp.toString(), 300));
+        throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "images 响应缺少 data[0].url / b64_json: " + truncate(resp.toString(), 300));
     }
 
-    // ── 视频（异步）────────────────────────────────────────────
+    // ── 视频(异步)────────────────────────────────────────────
 
-    /** progress：云端真实进度 0-100（响应缺失时为 null，调用方自行兜底）。 */
+    /** progress:云端真实进度 0-100(响应缺失时为 null,调用方自行兜底)。 */
     public record VideoTask(String taskId, String status, String videoUrl, Integer progress, String raw) {}
 
     /**
      * 创建视频任务。
      *
      * @param prompt     英文 prompt
-     * @param inputImage i2v 输入（URL / dataURI），null = 文生视频
+     * @param inputImage i2v 输入(URL / dataURI),null = 文生视频
      */
     public String createVideoTask(String prompt, String inputImage, int width, int height,
                                   int numFrames, int frameRate) {
@@ -209,14 +213,14 @@ public class AgnesClient {
                 resp.path("data").path("id").asText(null),
                 resp.path("data").path("task_id").asText(null));
         if (taskId == null) {
-            throw new AgnesException("AGNES_BAD_OUTPUT", "videos 响应缺少任务 id: " + truncate(resp.toString(), 300));
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "videos 响应缺少任务 id: " + truncate(resp.toString(), 300));
         }
-        log.info("[agnes] video-task created taskId={} model={} size={}x{} frames={} fps={}",
+        log.info("[dap-ai] video-task created taskId={} model={} size={}x{} frames={} fps={}",
                 taskId, t.model(), width, height, normalizeFrames(numFrames), frameRate);
         return taskId;
     }
 
-    /** 查询视频任务（status 归一化为 queued|in_progress|completed|failed）。 */
+    /** 查询视频任务(status 归一化为 queued|in_progress|completed|failed)。 */
     public VideoTask getVideoTask(String taskId) {
         Target t = require(videoTarget(), "video");
         JsonNode resp = getJson(t, "/v1/videos/" + taskId);
@@ -244,10 +248,10 @@ public class AgnesClient {
         return new VideoTask(taskId, status, videoUrl, progress, resp.toString());
     }
 
-    /** 阻塞轮询直到 completed/failed/超时；onPoll 每轮收到云端真实任务态（status / progress）。 */
+    /** 阻塞轮询直到 completed/failed/超时;onPoll 每轮收到云端真实任务态(status / progress)。 */
     public VideoTask awaitVideo(String taskId, java.util.function.Consumer<VideoTask> onPoll) {
-        int interval = Math.max(2, props.getAgnes().getVideoPollIntervalSeconds());
-        int maxWait = Math.max(30, props.getAgnes().getVideoMaxWaitSeconds());
+        int interval = Math.max(2, props.getVideo().getPollIntervalSeconds());
+        int maxWait = Math.max(30, props.getVideo().getMaxWaitSeconds());
         long deadline = System.currentTimeMillis() + maxWait * 1000L;
         long start = System.currentTimeMillis();
         String lastStatus = null;
@@ -256,7 +260,7 @@ public class AgnesClient {
             VideoTask t = getVideoTask(taskId);
             long now = System.currentTimeMillis();
             if (!t.status().equals(lastStatus) || now - lastHeartbeat >= 60_000L) {
-                log.info("[agnes] video-task poll taskId={} status={} progress={} elapsedSec={} maxWaitSec={} videoUrlPresent={}",
+                log.info("[dap-ai] video-task poll taskId={} status={} progress={} elapsedSec={} maxWaitSec={} videoUrlPresent={}",
                         taskId, t.status(), t.progress(), (now - start) / 1000L, maxWait,
                         t.videoUrl() != null && !t.videoUrl().isBlank());
                 lastStatus = t.status();
@@ -268,104 +272,104 @@ public class AgnesClient {
                 Thread.sleep(interval * 1000L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new AgnesException("AGNES_INTERRUPTED", "视频轮询被中断");
+                throw new DapModelException("DAP_MODEL_INTERRUPTED", "视频轮询被中断");
             }
         }
-        throw new AgnesException("AGNES_TIMEOUT", "视频生成超时（>" + maxWait + "s），任务 " + taskId);
+        throw new DapModelException("DAP_MODEL_TIMEOUT", "视频生成超时(>" + maxWait + "s),任务 " + taskId);
     }
 
     // ── 通用 HTTP ──────────────────────────────────────────────
 
     public byte[] download(String url, long maxBytes) {
         long startNanos = System.nanoTime();
-        log.info("[agnes] download start host={} maxBytes={}", hostOf(url), maxBytes);
+        log.info("[dap-ai] download start host={} maxBytes={}", hostOf(url), maxBytes);
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(Math.max(60, props.getAgnes().getHttpTimeoutSeconds())))
+                    .timeout(Duration.ofSeconds(Math.max(60, props.getHttp().getTimeoutSeconds())))
                     .GET().build();
             HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
             if (resp.statusCode() >= 400) {
-                log.warn("[agnes] download http-error host={} status={} durationMs={}",
+                log.warn("[dap-ai] download http-error host={} status={} durationMs={}",
                         hostOf(url), resp.statusCode(), elapsedMs(startNanos));
-                throw new AgnesException("AGNES_DOWNLOAD_FAILED", "下载产物失败 HTTP " + resp.statusCode() + " " + url);
+                throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", "下载产物失败 HTTP " + resp.statusCode() + " " + url);
             }
             byte[] body = resp.body();
             if (body.length > maxBytes) {
-                log.warn("[agnes] download too-large host={} bytes={} maxBytes={} durationMs={}",
+                log.warn("[dap-ai] download too-large host={} bytes={} maxBytes={} durationMs={}",
                         hostOf(url), body.length, maxBytes, elapsedMs(startNanos));
-                throw new AgnesException("AGNES_DOWNLOAD_TOO_LARGE", "产物超出大小上限: " + body.length + " bytes");
+                throw new DapModelException("DAP_MODEL_DOWNLOAD_TOO_LARGE", "产物超出大小上限: " + body.length + " bytes");
             }
-            log.info("[agnes] download ok host={} status={} bytes={} durationMs={}",
+            log.info("[dap-ai] download ok host={} status={} bytes={} durationMs={}",
                     hostOf(url), resp.statusCode(), body.length, elapsedMs(startNanos));
             return body;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            log.warn("[agnes] download exception host={} durationMs={} err={}",
+            log.warn("[dap-ai] download exception host={} durationMs={} err={}",
                     hostOf(url), elapsedMs(startNanos), e.toString());
-            throw new AgnesException("AGNES_DOWNLOAD_FAILED", "下载产物失败: " + e.getMessage());
+            throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", "下载产物失败: " + e.getMessage());
         }
     }
 
     private JsonNode postJson(Target t, String path, ObjectNode body) {
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(joinUrl(t.baseUrl(), path)))
-                    .timeout(Duration.ofSeconds(props.getAgnes().getHttpTimeoutSeconds()))
+                    .timeout(Duration.ofSeconds(props.getHttp().getTimeoutSeconds()))
                     .header("Authorization", "Bearer " + t.apiKey())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
                     .build();
             return sendForJson(req, path, t.source(), summarizeRequest(body));
         } catch (IOException e) {
-            throw new AgnesException("AGNES_CALL_FAILED", "请求体序列化失败: " + e.getMessage());
+            throw new DapModelException("DAP_MODEL_CALL_FAILED", "请求体序列化失败: " + e.getMessage());
         }
     }
 
     private JsonNode getJson(Target t, String path) {
         HttpRequest req = HttpRequest.newBuilder(URI.create(joinUrl(t.baseUrl(), path)))
-                .timeout(Duration.ofSeconds(props.getAgnes().getHttpTimeoutSeconds()))
+                .timeout(Duration.ofSeconds(props.getHttp().getTimeoutSeconds()))
                 .header("Authorization", "Bearer " + t.apiKey())
                 .GET().build();
         return sendForJson(req, path, t.source(), null);
     }
 
-    /** 发送 + 解析 JSON；IOException 自动重试 1 次；入参 / 返回 全量打日志（key 不打、dataURI 只打长度）。 */
+    /** 发送 + 解析 JSON;IOException 自动重试 1 次;入参 / 返回 全量打日志(key 不打、dataURI 只打长度)。 */
     private JsonNode sendForJson(HttpRequest req, String path, String source, String requestSummary) {
         int maxAttempts = 2;
         for (int attempt = 1; ; attempt++) {
             long startNanos = System.nanoTime();
-            log.info("[agnes] call start method={} path={} operation={} host={} source={} attempt={}/{} request={}",
+            log.info("[dap-ai] call start method={} path={} operation={} host={} source={} attempt={}/{} request={}",
                     req.method(), path, operationFromPath(req), req.uri().getHost(), source, attempt, maxAttempts,
                     requestSummary == null ? "-" : requestSummary);
             try {
                 HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() >= 400) {
-                    log.warn("[agnes] call http-error method={} path={} operation={} status={} durationMs={} request={} body={}",
+                    log.warn("[dap-ai] call http-error method={} path={} operation={} status={} durationMs={} request={} body={}",
                             req.method(), path, operationFromPath(req), resp.statusCode(), elapsedMs(startNanos),
                             requestSummary == null ? "-" : requestSummary, truncate(resp.body(), 600));
-                    throw new AgnesException("AGNES_HTTP_" + resp.statusCode(),
-                            "Agnes 调用失败 HTTP " + resp.statusCode() + "（" + path + "）: " + truncate(resp.body(), 200));
+                    throw new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(),
+                            "大模型调用失败 HTTP " + resp.statusCode() + "(" + path + "): " + truncate(resp.body(), 200));
                 }
-                log.info("[agnes] call ok method={} path={} operation={} status={} durationMs={} bytes={} response={}",
+                log.info("[dap-ai] call ok method={} path={} operation={} status={} durationMs={} bytes={} response={}",
                         req.method(), path, operationFromPath(req), resp.statusCode(), elapsedMs(startNanos),
                         resp.body() == null ? 0 : resp.body().length(), truncate(resp.body(), 600));
                 return OM.readTree(resp.body());
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
-                    throw new AgnesException("AGNES_CALL_FAILED", "Agnes 网络调用被中断（" + path + "）");
+                    throw new DapModelException("DAP_MODEL_CALL_FAILED", "大模型调用被中断(" + path + ")");
                 }
                 boolean willRetry = attempt < maxAttempts;
-                log.warn("[agnes] call exception method={} path={} operation={} durationMs={} attempt={}/{} willRetry={} request={} err={}",
+                log.warn("[dap-ai] call exception method={} path={} operation={} durationMs={} attempt={}/{} willRetry={} request={} err={}",
                         req.method(), path, operationFromPath(req), elapsedMs(startNanos), attempt, maxAttempts,
                         willRetry, requestSummary == null ? "-" : requestSummary, e.toString());
                 if (!willRetry) {
-                    throw new AgnesException("AGNES_CALL_FAILED", "Agnes 网络调用失败（" + path + "）: " + e.getMessage());
+                    throw new DapModelException("DAP_MODEL_CALL_FAILED", "大模型调用失败(" + path + "): " + e.getMessage());
                 }
                 try {
                     Thread.sleep(1200L);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    throw new AgnesException("AGNES_CALL_FAILED", "Agnes 网络调用被中断（" + path + "）");
+                    throw new DapModelException("DAP_MODEL_CALL_FAILED", "大模型调用被中断(" + path + ")");
                 }
             }
         }
@@ -373,13 +377,13 @@ public class AgnesClient {
 
     private Target require(Target t, String channel) {
         if (t == null) {
-            throw new AgnesException("AGNES_NOT_CONFIGURED",
-                    "未配置生成引擎（" + channel + "）：请在 admin「AI 模型与 Key + AI 应用绑定」配置端点，或设置 AGNES_API_KEY");
+            throw new DapModelException("DAP_ENGINE_NOT_CONFIGURED",
+                    "未配置生成引擎(" + channel + "):请在管理后台「AI 模型与 Key + AI 应用绑定」为对应用途绑定启用端点");
         }
         return t;
     }
 
-    /** 请求体 debug 摘要：文本字段截断；image 输入 dataURI 只打 mime+长度，URL 原样（不含 key）。 */
+    /** 请求体 debug 摘要:文本字段截断;image 输入 dataURI 只打 mime+长度,URL 原样(不含 key)。 */
     static String summarizeRequest(ObjectNode body) {
         try {
             ObjectNode copy = body.deepCopy();
@@ -395,7 +399,7 @@ public class AgnesClient {
             if (copy.path("prompt").isTextual()) {
                 copy.put("prompt", truncate(copy.path("prompt").asText(), 400));
             }
-            // i2i 输入：extra_body.image[] / image
+            // i2i 输入:extra_body.image[] / image
             JsonNode extra = copy.path("extra_body");
             if (extra instanceof ObjectNode eo && eo.path("image").isArray()) {
                 ArrayNode arr = (ArrayNode) eo.path("image");
@@ -421,7 +425,7 @@ public class AgnesClient {
         return truncate(input, 200);
     }
 
-    /** base（可带可不带 /v1）+ path（以 /v1/ 开头）→ 不重复 /v1 的完整 URL。 */
+    /** base(可带可不带 /v1)+ path(以 /v1/ 开头)→ 不重复 /v1 的完整 URL。 */
     static String joinUrl(String base, String path) {
         String b = rstrip(base);
         if (b.endsWith("/v1") && path.startsWith("/v1/")) {
@@ -491,10 +495,10 @@ public class AgnesClient {
         return "other";
     }
 
-    /** Agnes 调用异常（runner 捕获后落 job.errorMessage + 释放冻结积分）。 */
-    public static class AgnesException extends RuntimeException {
+    /** dap 大模型调用异常(runner 捕获后落 job.errorMessage + 释放冻结积分)。 */
+    public static class DapModelException extends RuntimeException {
         private final String code;
-        public AgnesException(String code, String message) {
+        public DapModelException(String code, String message) {
             super(message);
             this.code = code;
         }
