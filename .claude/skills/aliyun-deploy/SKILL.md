@@ -1,6 +1,6 @@
 ---
 name: aliyun-deploy
-description: Use when deploying, redeploying, verifying, or rolling back the AI Star Eco production stack on Aliyun/ECS, including deploying all apps, deploying selected apps, building release artifacts, using the GitHub Actions production deployment workflow, or troubleshooting production deployment issues for server, web-celebrity, admin, and sau-service.
+description: Use when deploying, redeploying, verifying, or rolling back the AI Star Eco production stack on Aliyun/ECS, including deploying all apps, deploying selected apps, building release artifacts, using the GitHub Actions production deployment workflow, or troubleshooting production deployment issues for server, web-celebrity, web-aiavatar, admin, and sau-service.
 ---
 
 # Aliyun Production Deploy
@@ -17,6 +17,7 @@ Current production services are:
 
 - `server` - Spring Boot backend, systemd unit `aistareco-server`.
 - `web-celebrity` - Next.js 16 celebrity app, systemd unit `aistareco-web-celebrity`.
+- `web-aiavatar` - Next.js 16 AiAvatar app, systemd unit `aistareco-web-aiavatar`.
 - `admin` - Next.js admin app, systemd unit `aistareco-admin`.
 - `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
 - `all` - builds and deploys all current production services above.
@@ -101,7 +102,7 @@ Build release artifacts without deploying:
 
 ```bash
 ./infra/scripts/build-release.sh all
-./infra/scripts/build-release.sh server,web-celebrity
+./infra/scripts/build-release.sh server,web-celebrity,web-aiavatar
 ```
 
 Build locally and deploy in one command:
@@ -121,7 +122,7 @@ DEPLOY_HOST=ecs-user@47.98.162.120 \
 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
 PUBLIC_BASE=http://47.98.162.120 \
 REMOTE_ROOT=/opt/ai-star-eco \
-./infra/scripts/deploy.sh server,web-celebrity
+./infra/scripts/deploy.sh server,web-celebrity,web-aiavatar
 ```
 
 Deploy an already-built release directory:
@@ -157,7 +158,7 @@ sudo ./infra/scripts/update-and-deploy.sh all
 # 独立 / 多选
 sudo ./infra/scripts/update-and-deploy.sh server
 sudo ./infra/scripts/update-and-deploy.sh server,admin
-sudo ./infra/scripts/update-and-deploy.sh "web-celebrity sau-service"
+sudo ./infra/scripts/update-and-deploy.sh "web-celebrity web-aiavatar sau-service"
 
 # 等价快捷方式：deploy-local --pull 会转交给 update-and-deploy.sh
 sudo ./infra/scripts/deploy-local.sh all --pull
@@ -165,7 +166,7 @@ sudo ./infra/scripts/deploy-local.sh all --pull
 # 如果代码已经是目标版本，只部署当前工作区
 sudo ./infra/scripts/deploy-local.sh server
 sudo ./infra/scripts/deploy-local.sh server,admin
-sudo ./infra/scripts/deploy-local.sh "web-celebrity sau-service"
+sudo ./infra/scripts/deploy-local.sh "web-celebrity web-aiavatar sau-service"
 
 # 紧急部署：跳 typecheck + 跳 verify
 SKIP_TYPECHECK=1 sudo ./infra/scripts/deploy-local.sh all --no-verify
@@ -189,7 +190,7 @@ If the user asks for a GitHub workflow, CI/CD, or "流水线部署", prefer the 
 
 - Workflow: `.github/workflows/deploy-production.yml`
 - Trigger: `workflow_dispatch`
-- `services` input accepts `all`, `server`, `server,web-celebrity,admin`, or `sau-service`.
+- `services` input accepts `all`, `server`, `server,web-celebrity,web-aiavatar,admin`, or `sau-service`.
 - Required repository secrets:
   - `PROD_SSH_HOST`
   - `PROD_SSH_USER`

@@ -10,7 +10,7 @@
 #   ./infra/scripts/deploy-local.sh [services] [options]
 #
 # services（参数 / SERVICES 环境变量）：
-#   all                                → server web-celebrity admin sau-service
+#   all                                → server web-celebrity web-aiavatar admin sau-service
 #   server                             → 单个
 #   server,web-celebrity               → 逗号或空格分隔
 #   "server web-celebrity admin"       → 同上
@@ -59,7 +59,7 @@ export PATH="/usr/local/bin:/opt/node-current/bin:/usr/bin:/bin:/usr/sbin:/sbin:
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-DEFAULT_SERVICES="server web-celebrity admin sau-service"
+DEFAULT_SERVICES="server web-celebrity web-aiavatar admin sau-service"
 ORIGINAL_ARGS=("$@")
 
 # ── 参数解析 ────────────────────────────────────────────────────────────
@@ -110,9 +110,9 @@ normalize_services() {
   for item in $raw; do
     case "$item" in
       all) out="$out $DEFAULT_SERVICES" ;;
-      server|web-celebrity|admin|sau-service) out="$out $item" ;;
+      server|web-celebrity|web-aiavatar|admin|sau-service) out="$out $item" ;;
       "") ;;
-      *) fail "unknown service '$item' (expected server|web-celebrity|admin|sau-service|all)" ;;
+      *) fail "unknown service '$item' (expected server|web-celebrity|web-aiavatar|admin|sau-service|all)" ;;
     esac
   done
   # 保序去重
@@ -192,6 +192,7 @@ $SUDO mkdir -p \
   "$REMOTE_ROOT/releases" \
   "$REMOTE_ROOT/server" \
   "$REMOTE_ROOT/web-celebrity" \
+  "$REMOTE_ROOT/web-aiavatar" \
   "$REMOTE_ROOT/admin" \
   "$REMOTE_ROOT/sau-service"
 
@@ -310,6 +311,7 @@ for svc in $SERVICES_TO_DEPLOY; do
   case "$svc" in
     server)        deploy_server ;;
     web-celebrity) extract_app web-celebrity web-celebrity.tar.gz "$REMOTE_ROOT/web-celebrity" aistareco-web-celebrity ;;
+    web-aiavatar)  extract_app web-aiavatar  web-aiavatar.tar.gz  "$REMOTE_ROOT/web-aiavatar"  aistareco-web-aiavatar ;;
     admin)         extract_app admin         admin.tar.gz         "$REMOTE_ROOT/admin"         aistareco-admin ;;
     sau-service)   deploy_sau_service ;;
   esac

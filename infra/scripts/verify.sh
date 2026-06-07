@@ -81,6 +81,7 @@ check_unit nginx
 check_unit docker
 check_unit aistareco-server
 check_unit aistareco-web-celebrity
+check_unit aistareco-web-aiavatar
 check_unit aistareco-admin
 check_unit aistareco-sau-service
 

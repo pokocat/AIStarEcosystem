@@ -18,14 +18,16 @@ infra/
 │   ├── server.env.example          ← Spring Boot 完整变量清单
 │   ├── sau-service.env.example     ← Python sau-service Docker 容器
 │   ├── web.env.example             ← apps/web（Next 14, basePath=/web）
-│   ├── admin.env.example           ← apps/admin（Next 14, basePath=/admin）
+│   ├── admin.env.example           ← apps/admin（Next 16, basePath=/admin）
 │   ├── web-celebrity.env.example   ← apps/web-celebrity（Next 16, 根路径）
 │   ├── web-music.env.example       ← apps/web-music
-│   └── web-drama.env.example       ← apps/web-drama
+│   ├── web-drama.env.example       ← apps/web-drama
+│   └── web-aiavatar.env.example    ← apps/web-aiavatar
 │
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
-│   ├── ai.aibuzz.cn.conf.example  ← HTTPS 多子域生产形态
+│   ├── ai.aibuzz.cn.conf.example   ← HTTPS 多子域生产形态
+│   ├── aistar.aibuzz.cn.conf.example ← AiAvatar 单域 HTTPS 形态
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集
 │
@@ -36,6 +38,7 @@ infra/
 │   ├── aistareco-web-celebrity.service.example
 │   ├── aistareco-web-music.service.example
 │   ├── aistareco-web-drama.service.example
+│   ├── aistareco-web-aiavatar.service.example
 │   └── aistareco-sau-service.service.example   ← Docker 启动型
 │
 ├── rds/                            ← 阿里云 RDS MySQL 8.0 初始化
@@ -73,6 +76,7 @@ infra/
                           │   ├─ celebrity.aibuzz.cn → web-celebrity (3012)
                           │   ├─ music.aibuzz.cn → web-music (3010)
                           │   ├─ drama.aibuzz.cn → web-drama (3011)
+                          │   ├─ aistar.aibuzz.cn → web-aiavatar (3013)
                           │   └─ api.aibuzz.cn → server (8080)
                           │
 ECS 集群 (1~N 台, VPC 内网)│
@@ -83,6 +87,7 @@ ECS 集群 (1~N 台, VPC 内网)│
   │   • aistareco-web-music      :3010  (Next 16 standalone)
   │   • aistareco-web-drama      :3011  (Next 16 standalone)
   │   • aistareco-web-celebrity  :3012  (Next 16 standalone)
+  │   • aistareco-web-aiavatar   :3013  (Next 16 standalone)
   └─ Docker                                                                   
       • aistareco-sau-service    :8090  (FastAPI + Playwright/patchright)
                                        │
@@ -196,11 +201,12 @@ cp infra/systemd/aistareco-admin.service.example          /etc/systemd/system/ai
 cp infra/systemd/aistareco-web-celebrity.service.example  /etc/systemd/system/aistareco-web-celebrity.service
 cp infra/systemd/aistareco-web-music.service.example      /etc/systemd/system/aistareco-web-music.service
 cp infra/systemd/aistareco-web-drama.service.example      /etc/systemd/system/aistareco-web-drama.service
+cp infra/systemd/aistareco-web-aiavatar.service.example   /etc/systemd/system/aistareco-web-aiavatar.service
 cp infra/systemd/aistareco-sau-service.service.example    /etc/systemd/system/aistareco-sau-service.service
 systemctl daemon-reload
 systemctl enable aistareco-server aistareco-web aistareco-admin \
                  aistareco-web-celebrity aistareco-web-music aistareco-web-drama \
-                 aistareco-sau-service
+                 aistareco-web-aiavatar aistareco-sau-service
 ```
 
 ### 3.5 首次部署 + 验证
@@ -258,7 +264,7 @@ PUBLIC_BASE=http://47.98.162.120 \
 ./infra/scripts/deploy.sh server,web-celebrity
 ```
 
-当前生产脚本支持的 `<service>`：`server / web-celebrity / admin / sau-service / all`。
+当前生产脚本支持的 `<service>`：`server / web-celebrity / web-aiavatar / admin / sau-service / all`。
 
 也可以拆成两步，便于先检查产物再发布：
 
@@ -390,7 +396,7 @@ GitHub 仓库需要配置这些 Secrets：
 ```text
 all
 server
-server,web-celebrity,admin
+server,web-celebrity,web-aiavatar,admin
 sau-service
 ```
 

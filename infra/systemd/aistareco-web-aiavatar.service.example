@@ -1,0 +1,22 @@
+# /etc/systemd/system/aistareco-web-aiavatar.service
+# apps/web-aiavatar — Next 16 standalone（根路径，默认端口 3013）
+
+[Unit]
+Description=AI Star Eco Web AiAvatar
+After=network-online.target aistareco-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ecs-user
+WorkingDirectory=/opt/ai-star-eco/web-aiavatar/apps/web-aiavatar
+EnvironmentFile=/etc/aistareco/web-aiavatar.env
+ExecStart=/usr/bin/node /opt/ai-star-eco/web-aiavatar/apps/web-aiavatar/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

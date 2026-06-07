@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-DEFAULT_SERVICES="server web-celebrity admin sau-service"
+DEFAULT_SERVICES="server web-celebrity web-aiavatar admin sau-service"
 RAW_SERVICES=""
 RELEASE_DIR=""
 SERVER_ENV_FILE="${SERVER_ENV_FILE:-/etc/aistareco/server.env}"
@@ -73,9 +73,9 @@ normalize_services() {
   for item in $raw; do
     case "$item" in
       all) out="$out $DEFAULT_SERVICES" ;;
-      server|web-celebrity|admin|sau-service) out="$out $item" ;;
+      server|web-celebrity|web-aiavatar|admin|sau-service) out="$out $item" ;;
       "") ;;
-      *) err "unknown service '$item' (expected server|web-celebrity|admin|sau-service|all)" ;;
+      *) err "unknown service '$item' (expected server|web-celebrity|web-aiavatar|admin|sau-service|all)" ;;
     esac
   done
 
@@ -101,11 +101,11 @@ has_service() {
 }
 
 needs_server_env() {
-  has_service server || has_service admin || has_service web-celebrity || has_service sau-service
+  has_service server || has_service admin || has_service web-celebrity || has_service web-aiavatar || has_service sau-service
 }
 
 needs_release_manifest() {
-  has_service admin || has_service web-celebrity
+  has_service admin || has_service web-celebrity || has_service web-aiavatar
 }
 
 file_mode() {
