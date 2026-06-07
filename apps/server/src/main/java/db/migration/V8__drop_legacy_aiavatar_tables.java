@@ -20,9 +20,9 @@ import java.util.Locale;
  *
  * 该迁移幂等：表不存在时静默跳过（全新库 / H2 dev 均安全）。
  */
-public class V6__drop_legacy_aiavatar_tables extends BaseJavaMigration {
+public class V8__drop_legacy_aiavatar_tables extends BaseJavaMigration {
 
-    private static final Logger log = LoggerFactory.getLogger(V6__drop_legacy_aiavatar_tables.class);
+    private static final Logger log = LoggerFactory.getLogger(V8__drop_legacy_aiavatar_tables.class);
 
     private static final String[] TABLES = {
             // 子表在前（避免潜在外键依赖；当前领域无显式 FK，纯保险顺序）
@@ -53,10 +53,10 @@ public class V6__drop_legacy_aiavatar_tables extends BaseJavaMigration {
         }
         try (Statement st = connection.createStatement()) {
             st.executeUpdate("DROP TABLE " + tableName);
-            log.info("[V6-drop-legacy-aiavatar] dropped {}", tableName);
+            log.info("[V8-drop-legacy-aiavatar] dropped {}", tableName);
         } catch (Exception e) {
             // 不阻断启动：孤儿表留着无害，记 WARN 供人工处理
-            log.warn("[V6-drop-legacy-aiavatar] drop {} failed: {}", tableName, e.getMessage());
+            log.warn("[V8-drop-legacy-aiavatar] drop {} failed: {}", tableName, e.getMessage());
         }
     }
 
