@@ -9,7 +9,7 @@ import { toast } from "./toast";
 
 // ============================================================
 // 移动端 · 创建链路 5 步全屏向导（live 全接 server）
-//   素材&授权/人设 → 形象生成(4 候选) → 调整(迭代/精调) → 出图定稿(图集) → 衍生
+//   素材&授权/人设 → 形象生成(4 候选) → 调整(迭代/精调) → 完成创建直接保存（图集/衍生在资产详情）
 // ============================================================
 const hMC : any = React.createElement;
 const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC } = React;
@@ -253,7 +253,7 @@ function MStepAdjust({ wiz, onReady }) {
 
   return hMC('div', { className: 'm-fade', style: { padding: '18px 18px 0' } },
     hMC('h2', { style: { fontSize: 21, marginBottom: 6 } }, '调整形象'),
-    hMC('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 14 } }, '自然语言整体迭代，或几何精确精调，随时切换。'),
+    hMC('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 14 } }, '自然语言整体迭代，或几何精确精调，随时切换。满意后点底部「完成创建」直接保存到名录；标准图集与衍生可稍后在资产详情里生成。'),
     hMC('div', { style: { display: 'flex', background: 'var(--surface-3)', padding: 3, borderRadius: 'var(--r-pill)', marginBottom: 16 } },
       [['iterate', '自然语言迭代', Icons.wand], ['refine', '精确精调', Icons.sliders]].map(([k, l, ic]: any) => {
         const on = mode === k;
@@ -294,124 +294,6 @@ function MStepAdjust({ wiz, onReady }) {
           hMC(UI.Button, { variant: 'primary', full: true, icon: Icons.sliders, disabled: busy, onClick: applyWarp }, busy ? '生成中…' : '应用精调并重绘')));
 }
 
-// ===== 步骤 4：出图定稿 =====
-function MStepOutput({ wiz, onReady }) {
-  const { char } = wiz;
-  const [tpl, setTpl] = useStateMC(char.templateId || 't1');
-  const [confirmed, setConfirmed] = useStateMC([] as string[]);
-  const [phase, setPhase] = useStateMC(char.shotImages && Object.keys(char.shotImages).length ? 'ready' : 'idle'); // idle | running | ready | failed
-  const [job, setJob] = useStateMC(null as any);
-  const [err, setErr] = useStateMC('');
-  const all = DATA.SHOTS.length;
-  const allDone = confirmed.length === all && phase === 'ready';
-  useEffectMC(() => onReady(allDone), [allDone]);
-  const toggle = k => setConfirmed(c => c.includes(k) ? c.filter(x => x !== k) : [...c, k]);
-
-  const runAtlas = async () => {
-    setPhase('running'); setErr('');
-    try {
-      const j = await AvatarApi.createDerivative(char.id, { type: 'atlas' });
-      setJob(j);
-      await awaitJob(j.id, (jj) => setJob({ ...jj }));
-      const fresh = await AvatarApi.get(char.id);
-      wiz.setChar(fresh);
-      setPhase('ready');
-      toast('标准图集已生成', { tone: 'ok' });
-    } catch (e: any) {
-      setErr(e?.message || '出图失败'); setPhase('failed');
-    }
-  };
-
-  const shotSrc = (key) => (wiz.char.shotImages || {})[key] || null;
-
-  return hMC('div', { className: 'm-fade', style: { padding: '18px 18px 0' } },
-    hMC('h2', { style: { fontSize: 21, marginBottom: 6 } }, '出图定稿'),
-    hMC('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 16 } }, '选美化模板、批量出标准图集，逐张确认后定稿锁定。'),
-    hMC('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 9 } }, '美化模板'),
-    hMC('div', { className: 'm-hscroll', style: { marginBottom: 18 } },
-      DATA.TEMPLATES.slice(0, 5).map(t => {
-        const on = tpl === t.id;
-        return hMC('button', { key: t.id, onClick: () => { setTpl(t.id); wiz.form.templateId = t.id; }, className: 'm-tap', style: { flex: '0 0 116px', textAlign: 'left', padding: 0, cursor: 'pointer', borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1.5px solid ' + (on ? 'var(--primary)' : 'var(--line)'), background: 'var(--surface)' } },
-          hMC('div', { className: 'ph', style: { height: 64, background: `linear-gradient(135deg, hsl(${t.hue} 16% 91%), hsl(${t.hue + 18} 14% 85%))`, position: 'relative' } },
-            on && hMC('div', { style: { position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: 99, background: 'var(--primary)', display: 'grid', placeItems: 'center', color: '#fff' } }, hMC(Icons.check, { size: 12, stroke: 2.6 }))),
-          hMC('div', { style: { padding: '7px 9px 9px' } },
-            hMC('div', { style: { fontSize: 12.5, fontWeight: 700 } }, t.name),
-            hMC('div', { className: 'm-clip1', style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 1 } }, t.sub)));
-      })),
-
-    phase !== 'ready' && hMC('div', { style: { display: 'grid', placeItems: 'center', minHeight: 220, background: 'var(--surface)', border: '1px dashed var(--line-2)', borderRadius: 'var(--r-xl)', textAlign: 'center', padding: 24, marginBottom: 14 } },
-      hMC('div', null,
-        hMC('div', { style: { width: 54, height: 54, borderRadius: 99, background: phase === 'failed' ? 'var(--err-s)' : 'var(--primary-soft)', display: 'grid', placeItems: 'center', color: phase === 'failed' ? 'var(--err)' : 'var(--primary)', margin: '0 auto 12px' } },
-          phase === 'running' ? hMC(UI.Spinner, { size: 24 }) : hMC(phase === 'failed' ? Icons.warn : Icons.images, { size: 25 })),
-        hMC('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 5 } }, phase === 'running' ? (job?.eta || '出图中…') : phase === 'failed' ? '出图没有成功' : '生成标准图集'),
-        hMC('div', { style: { fontSize: 12, color: phase === 'failed' ? 'var(--err)' : 'var(--ink-3)', marginBottom: 14, maxWidth: 240, wordBreak: 'break-all' } },
-          phase === 'running' ? '5 张机位 · 约 1-2 分钟' : phase === 'failed' ? err : '按所选模板出 5 张标准机位图'),
-        phase === 'running' && job && hMC('div', { style: { width: 190, margin: '0 auto' } }, hMC(UI.Progress, { pct: Math.round(job.pct || 0), showLabel: true })),
-        phase !== 'running' && hMC(UI.Button, { variant: 'primary', icon: phase === 'failed' ? Icons.retry : Icons.sparkle, onClick: runAtlas }, phase === 'failed' ? '重试' : '开始出图'))),
-
-    phase === 'ready' && hMC(React.Fragment, null,
-      hMC('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 } },
-        hMC('span', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)' } }, '标准图集 · 逐张确认'),
-        hMC('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-          hMC('button', { onClick: runAtlas, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 4 } }, hMC(Icons.refresh, { size: 13 }), '重出'),
-          hMC('span', { className: 'mono', style: { fontSize: 12, fontWeight: 700, color: allDone ? 'var(--ok)' : 'var(--primary)' } }, confirmed.length + ' / ' + all))),
-      hMC('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 } },
-        DATA.SHOTS.map((s, i) => {
-          const on = confirmed.includes(s.key);
-          return hMC('button', { key: s.key, onClick: () => toggle(s.key), className: 'm-press', style: { padding: 0, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' } },
-            hMC('div', { style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: on ? 'var(--ring)' : 'var(--sh-1)', border: '2px solid ' + (on ? 'var(--primary)' : 'transparent') } },
-              hMC(Portrait, { char: { ...char, shotImages: null }, src: shotSrc(s.key), variant: ['key','key','side','threeq','look'][i] || 'key', ratio: '3 / 4', expr: i === 4 ? 'smile' : 'calm', dim: !on }),
-              hMC('div', { style: { position: 'absolute', top: 7, right: 7, width: 24, height: 24, borderRadius: 99, background: on ? 'var(--primary)' : 'rgba(255,255,255,.86)', display: 'grid', placeItems: 'center', color: on ? '#fff' : 'var(--ink-3)' } }, hMC(Icons.check, { size: 14, stroke: 2.6 }))),
-            hMC('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '0 2px' } },
-              hMC('span', { style: { fontSize: 12, fontWeight: 600 } }, s.name),
-              hMC('span', { className: 'mono', style: { fontSize: 10, color: 'var(--ink-3)' } }, s.spec)));
-        })),
-      !allDone && hMC(UI.Button, { variant: 'line', full: true, icon: Icons.checkc, onClick: () => { setConfirmed(DATA.SHOTS.map(s => s.key)); toast('已全部确认', { tone: 'ok' }); } }, '一键全部确认')));
-}
-
-// ===== 步骤 5：衍生 =====
-function MStepDerive({ wiz, onReady }) {
-  const { char } = wiz;
-  const [jobs, setJobs] = useStateMC({} as any);
-  useEffectMC(() => { onReady(true); }, []);
-
-  const run = async (key) => {
-    if (jobs[key] && jobs[key].status === 'running') return;
-    try {
-      const j = await AvatarApi.createDerivative(char.id, { type: key });
-      setJobs((m) => ({ ...m, [key]: { status: 'running', pct: 3 } }));
-      await awaitJob(j.id, (jj) => setJobs((m) => ({ ...m, [key]: { status: 'running', pct: jj.pct } })));
-      setJobs((m) => ({ ...m, [key]: { status: 'done', pct: 100 } }));
-      const fresh = await AvatarApi.get(char.id);
-      wiz.setChar(fresh);
-      toast((DATA.DERIVS.find(d => d.key === key) || {}).name + ' · 完成', { tone: 'ok' });
-    } catch (e: any) {
-      setJobs((m) => ({ ...m, [key]: { status: 'failed', pct: 0, err: e?.message } }));
-      toast(e?.message || '生成失败', { tone: 'err' });
-    }
-  };
-
-  return hMC('div', { className: 'm-fade', style: { padding: '18px 18px 0' } },
-    hMC('h2', { style: { fontSize: 21, marginBottom: 6 } }, '衍生（可选）'),
-    hMC('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 16 } }, '从定稿形象一键衍生图集 / 场景 / 3D / 视频，完成后保存到名录。也可以先完成创建，之后在资产详情里随时生成。'),
-    hMC('div', { style: { display: 'flex', flexDirection: 'column', gap: 11 } },
-      DATA.DERIVS.map(d => {
-        const j = jobs[d.key];
-        const serverDone = (char.deriv || {})[d.key] === 'done';
-        const running = j && j.status === 'running';
-        const done = (j && j.status === 'done') || serverDone;
-        return hMC('div', { key: d.key, className: 'm-card', style: { padding: 13, display: 'flex', alignItems: 'center', gap: 12 } },
-          hMC('div', { style: { width: 40, height: 40, flex: '0 0 40px', borderRadius: 11, background: DATA.catSoft(d.cat), display: 'grid', placeItems: 'center', color: DATA.catColor(d.cat) } }, hMC(Icons[d.icon], { size: 20 })),
-          hMC('div', { style: { flex: 1, minWidth: 0 } },
-            hMC('div', { style: { fontSize: 14, fontWeight: 700 } }, d.name),
-            running ? hMC('div', { style: { marginTop: 6 } }, hMC(UI.Progress, { pct: Math.round(j.pct), h: 5 }))
-              : hMC('div', { className: 'm-clip1', style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 } }, d.desc)),
-          done ? hMC(UI.Badge, { tone: 'ok', icon: Icons.checkc }, '完成')
-            : running ? hMC('span', { className: 'mono', style: { fontSize: 11, color: 'var(--primary)', fontWeight: 700 } }, Math.round(j.pct) + '%')
-            : hMC(UI.Button, { variant: 'line', size: 'sm', icon: j && j.status === 'failed' ? Icons.retry : Icons.sparkle, onClick: () => run(d.key) }, j && j.status === 'failed' ? '重试' : '生成'));
-      })));
-}
-
 // ===== 向导外壳 =====
 function MCreate({ char: initialChar, ctx }) {
   const order = DATA.CHAIN.map(s => s.key);
@@ -421,8 +303,7 @@ function MCreate({ char: initialChar, ctx }) {
     const st = initialChar?.status;
     if (st === 'proofing') return 'proof';
     if (st === 'iterating' || st === 'refining') return 'adjust';
-    if (st === 'pending') return 'output';
-    if (st === 'finalized' || st === 'deriving') return 'derive';
+    if (st === 'pending' || st === 'finalized' || st === 'deriving') return 'adjust';
     return 'source';
   });
   const [ready, setReady] = useStateMC(false);
@@ -463,7 +344,7 @@ function MCreate({ char: initialChar, ctx }) {
   const archive = async () => {
     setSaving(true);
     try {
-      const done = await AvatarApi.finalize(char.id, { templateId: formRef.current.templateId, confirmedShots: DATA.SHOTS.map(s => s.key), archive: true });
+      const done = await AvatarApi.finalize(char.id, { archive: true });
       toast('已保存到名录 🎉', { tone: 'ok' });
       ctx.finishCreate({ ...char, ...done });
     } catch (e: any) {
@@ -472,7 +353,7 @@ function MCreate({ char: initialChar, ctx }) {
   };
 
   const props = { wiz, onReady: setReady };
-  const body = { source: MStepSource, proof: MStepProof, adjust: MStepAdjust, output: MStepOutput, derive: MStepDerive }[step];
+  const body = { source: MStepSource, proof: MStepProof, adjust: MStepAdjust }[step];
 
   return hMC('div', { className: 'm-overlay', 'data-screen-label': '创建链路' },
     hMC(MStepHeader, { step, idx, onClose: ctx.back }),

@@ -28,6 +28,11 @@ export type AiModelPurpose =
   | "SAFETY_REVIEW"
   | "VIDEO_REF_ANALYSIS"
   | "TEMPLATE_REWRITE"
+  | "APPEARANCE_FORGE"
+  | "DRAMA_SCRIPT_DRAFT"
+  | "DAP_PERSONA"
+  | "DAP_IMAGE"
+  | "DAP_VIDEO"
   | "GENERAL";
 
 /** 单个可用模型条目（通常由 discover/fetch-models 拉取后写入配置）。 */

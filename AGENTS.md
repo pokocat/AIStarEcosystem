@@ -2540,6 +2540,31 @@ web    : api.ts 重写：auth（token/localStorage + 401 全局事件）+ AuthAp
 - **未做**：(a) Agnes 多图视频/关键帧模式；(b) 充值在线支付（UI 引导联系平台）；(c) 公开数字人
   复制到我的名录；(d) 注册自助开通（沿用平台激活码双因素）；(e) 多实例 job 恢复 watchdog（单实例假设）。
 
+**v0.51 修订（创建链路简化 + prompt/端点后台可配 + Agnes 可观测）**：
+
+1. **创建向导 5→3 步**：`CHAIN` 砍掉「出图定稿 / 衍生」两步（source → proof → adjust）。挑选 +
+   调整后底部直接「完成创建」→ `POST /avatars/{id}/finalize {archive:true}`（templateId /
+   confirmedShots 不再随向导传，server 本就 null-safe）。标准图集与六类衍生收口到资产详情
+   tab（原有入口保留）。续作落位：pending/finalized/deriving → adjust。
+2. **图集 tab 不再伪装 5 角度**：`MAtlas` 只有定妆主图（无 shotImages）时展示单张「定妆形象」+
+   引导生成按钮；5 机位网格仅在真实 shotKeys 存在时渲染。配套 dap.image_* prompt 全部加
+   「one single view / no character sheet」约束，防止模型出多视图拼图。
+3. **dap prompt 全点位后台可配**：10 个 promptKey（dap.persona / dap.translate_edit /
+   dap.image_{generate,clone,iterate,warp,look,atlas,deriv} / dap.video_orbit）入
+   `PromptService.KNOWN_KEYS` + `resources/prompts/material/dap.*.md` 基线（seeder 缺行才插）；
+   `DapJobRunner` 全部硬编 prompt 改 `prompts.resolve(key)` + `fill(vars)`；admin
+   「Prompt 管理」页自动列出可改。
+4. **dap 模型接入点后台可配**：`AiModelPurpose` +DAP_PERSONA/DAP_IMAGE/DAP_VIDEO；`AgnesClient`
+   每类调用先 `resolveEndpoint(purpose)`（admin「AI 模型与 Key + AI 应用绑定」），用端点
+   baseUrl+apiKey+model 覆盖，未绑定回退 env AGNES_API_KEY；`joinUrl` 兼容端点 baseUrl 带 /
+   不带 `/v1`。
+5. **Agnes 调用全量可 debug**：`[agnes] call start/ok/http-error/exception` 行带 request=
+   （prompt 截 400、dataURI 只打 `data:image/png;base64 len=N`、不打 api key）+ response=
+   （截 600）+ source=endpoint:xx|env + attempt；IOException 自动重试 1 次（1.2s backoff，
+   对 `EOF reached while reading` 类瞬断有效）。
+6. **dataURI 上行压缩**：身份图 >300KB 时缩到宽 768 JPEG q0.82（PNG alpha 铺白底）再 base64，
+   显著缓解大请求体导致的 EOF/超时；压缩失败回退原图。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

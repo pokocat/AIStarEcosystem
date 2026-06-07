@@ -262,6 +262,19 @@ function MAtlas({ char, busy, onGenerate }) {
         ? hML('div', { style: { maxWidth: 200, margin: '0 auto' } }, hML(UI.Progress, { pct: Math.round(busy.pct || 5), showLabel: true }))
         : hML(UI.Button, { variant: 'primary', icon: Icons.sparkle, onClick: onGenerate }, '生成标准图集'));
   }
+  // 只有定妆主图、还没生成多角度图集 → 展示单张定妆图 + 引导生成（不再把同一张图伪装成 5 个机位）
+  if (!hasReal) {
+    return hML('div', null,
+      busy && hML('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
+        hML(UI.Spinner, { size: 15 }),
+        hML('div', { style: { flex: 1 } }, hML(UI.Progress, { pct: Math.round(busy.pct || 5), h: 5 }))),
+      hML('div', { style: { maxWidth: 240, margin: '0 auto 12px', position: 'relative', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
+        hML(Portrait, { char, variant: 'key', ratio: '3 / 4', expr: 'calm' }),
+        hML('div', { className: 'ph-label', style: { left: 8, bottom: 8 } }, '定妆形象')),
+      hML('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.5 } },
+        '当前只有 1 张定妆形象。点下方按钮生成 5 张标准机位图（正面半身 / 全身 / 左右侧脸 / 表情集）。'),
+      !busy && hML(UI.Button, { variant: 'primary', full: true, icon: Icons.sparkle, onClick: onGenerate }, '生成标准图集'));
+  }
   return hML('div', null,
     busy && hML('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
       hML(UI.Spinner, { size: 15 }),
@@ -269,13 +282,12 @@ function MAtlas({ char, busy, onGenerate }) {
     hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
       DATA.SHOTS.map((sh, i) => hML('div', { key: sh.key },
         hML('div', { style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-          hML(Portrait, { char: { ...char, shotImages: null }, src: shots[sh.key] || null, variant: ['key','key','side','threeq','look'][i] || 'key', ratio: '3 / 4', expr: i === 4 ? 'smile' : 'calm' })),
+          hML(Portrait, { char: { ...char, shotImages: null, imageUrl: null, variantImages: null }, src: shots[sh.key] || null, variant: ['key','key','side','threeq','look'][i] || 'key', ratio: '3 / 4', expr: i === 4 ? 'smile' : 'calm' })),
         hML('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '0 2px' } },
           hML('span', { style: { fontSize: 12, fontWeight: 600 } }, sh.name),
-          hML('span', { className: 'mono', style: { fontSize: 10.5, color: 'var(--ink-3)' } }, sh.spec)))),
-    !hasReal ? null : null),
+          hML('span', { className: 'mono', style: { fontSize: 10.5, color: 'var(--ink-3)' } }, sh.spec))))),
     !busy && hML('div', { style: { marginTop: 14 } },
-      hML(UI.Button, { variant: 'line', full: true, icon: Icons.refresh, onClick: onGenerate }, hasReal ? '重新出图' : '生成标准图集')));
+      hML(UI.Button, { variant: 'line', full: true, icon: Icons.refresh, onClick: onGenerate }, '重新出图')));
 }
 
 function MDerivTab({ char, ctx, busy, onGenerate }) {

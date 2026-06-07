@@ -376,12 +376,11 @@ export const TASKS: Job[] = [
   { id: "JOB-7728", char: "DH-2035", charName: "苏婉 Sūwǎn", kind: "剧情场景图", engine: "SDXL Inpaint", mode: "backend", status: "failed", pct: 0, eta: "生成失败", started: "13:30" },
 ];
 
+// 创建链路 3 步：素材 → 生成挑选 → 调整后直接保存（标准图集 / 衍生在资产详情里随时做）。
 export const CHAIN: ChainStep[] = [
   { key: "source", n: 1, name: "素材 & 授权", icon: "idcard", short: "素材" },
   { key: "proof", n: 2, name: "形象生成", icon: "sparkle", short: "生成" },
-  { key: "adjust", n: 3, name: "调整", icon: "sliders", short: "调整" },
-  { key: "output", n: 4, name: "出图定稿", icon: "checkc", short: "出图定稿" },
-  { key: "derive", n: 5, name: "衍生", icon: "layers", short: "衍生" },
+  { key: "adjust", n: 3, name: "调整 & 保存", icon: "sliders", short: "调整" },
 ];
 
 export const CAPS: CapMeta[] = [

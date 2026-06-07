@@ -51,11 +51,25 @@ public class PromptService {
     public static final String KEY_APPEARANCE_FORGE = "appearance.forge";
     /** v0.43+: 短剧脚本起草（drama 短剧生成）。 */
     public static final String KEY_DRAMA_SCRIPT_DRAFT = "drama.script_draft";
+    /** v0.51+: 数字人资产平台（dap）各大模型调用点位（AgnesClient / DapJobRunner）。 */
+    public static final String KEY_DAP_PERSONA = "dap.persona";
+    public static final String KEY_DAP_TRANSLATE_EDIT = "dap.translate_edit";
+    public static final String KEY_DAP_IMAGE_GENERATE = "dap.image_generate";
+    public static final String KEY_DAP_IMAGE_CLONE = "dap.image_clone";
+    public static final String KEY_DAP_IMAGE_ITERATE = "dap.image_iterate";
+    public static final String KEY_DAP_IMAGE_WARP = "dap.image_warp";
+    public static final String KEY_DAP_IMAGE_LOOK = "dap.image_look";
+    public static final String KEY_DAP_IMAGE_ATLAS = "dap.image_atlas";
+    public static final String KEY_DAP_IMAGE_DERIV = "dap.image_deriv";
+    public static final String KEY_DAP_VIDEO_ORBIT = "dap.video_orbit";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
     public static final List<String> KNOWN_KEYS =
             List.of(KEY_SCRIPT_DRAFT, KEY_SELLING_POINTS, KEY_VARIABLE_EXTRACT, KEY_VIDEO_REF_ANALYSIS,
-                    KEY_APPEARANCE_FORGE, KEY_DRAMA_SCRIPT_DRAFT);
+                    KEY_APPEARANCE_FORGE, KEY_DRAMA_SCRIPT_DRAFT,
+                    KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
+                    KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
+                    KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =
@@ -88,6 +102,9 @@ public class PromptService {
             case VIDEO_REF_ANALYSIS -> KEY_VIDEO_REF_ANALYSIS;
             case APPEARANCE_FORGE -> KEY_APPEARANCE_FORGE;
             case DRAMA_SCRIPT_DRAFT -> KEY_DRAMA_SCRIPT_DRAFT;
+            case DAP_PERSONA -> KEY_DAP_PERSONA;
+            case DAP_IMAGE -> KEY_DAP_IMAGE_GENERATE;
+            case DAP_VIDEO -> KEY_DAP_VIDEO_ORBIT;
             default -> "material." + purpose.wire().toLowerCase();
         };
     }

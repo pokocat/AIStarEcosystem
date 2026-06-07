@@ -75,6 +75,12 @@ const v2b = $$(".m-press").find(b => b.textContent.includes("v2"));
 if (v2b) { click(v2b); await sleep(450); ok("挑选 v2"); }
 const nextB = $$("button").find(b => b.textContent.includes("下一步"));
 if (nextB && !nextB.disabled) { ok("挑选后下一步解锁"); } else bad("下一步未解锁");
+// 3 步向导：下一步直达「调整 & 保存」，底部直接「完成创建」（无出图定稿/衍生步）
+if (nextB && !nextB.disabled) {
+  nextB.textContent.includes("调整") ? ok("下一步直达『调整 & 保存』") : bad("下一步标签异常: " + nextB.textContent.trim());
+  click(nextB); await sleep(400);
+  $$("button").some(b => b.textContent.includes("完成创建")) ? ok("step3 底部即『完成创建』") : bad("完成创建按钮缺失");
+}
 // 通过详情完成入库（向导外的兜底路径不再走，退出向导）
 let gq = 0;
 while (topScreen() && gq++ < 5) { const b = $(".nav-back"); if (!b) break; click(b); await sleep(180); }

@@ -12,6 +12,7 @@ import com.aistareco.aep.dap.repository.DapDerivativeRepository;
 import com.aistareco.aep.dap.repository.DapJobRepository;
 import com.aistareco.aep.dap.repository.DapLookRepository;
 import com.aistareco.aep.service.CreditService;
+import com.aistareco.aep.service.PromptService;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
@@ -53,6 +54,7 @@ public class DapJobRunner {
     private final FileStorageService storage;
     private final CreditService creditService;
     private final DapSupport support;
+    private final PromptService prompts;
 
     public DapJobRunner(DapJobRepository jobRepo,
                         DapAvatarRepository avatarRepo,
@@ -64,7 +66,8 @@ public class DapJobRunner {
                         AgnesClient agnes,
                         FileStorageService storage,
                         CreditService creditService,
-                        DapSupport support) {
+                        DapSupport support,
+                        PromptService prompts) {
         this.jobRepo = jobRepo;
         this.avatarRepo = avatarRepo;
         this.derivRepo = derivRepo;
@@ -76,6 +79,20 @@ public class DapJobRunner {
         this.storage = storage;
         this.creditService = creditService;
         this.support = support;
+        this.prompts = prompts;
+    }
+
+    // ── prompt 解析（admin「Prompt 管理」可改；resource .md 兜底）───────────────
+
+    /** 取 promptKey 的 user 模板并填充占位符。 */
+    private String promptOf(String promptKey, Map<String, String> vars) {
+        PromptService.ResolvedPrompt p = prompts.resolve(promptKey);
+        return PromptService.fill(p.userTemplate(), vars == null ? Map.of() : vars);
+    }
+
+    /** 取 promptKey 的 system 提示词。 */
+    private String systemOf(String promptKey) {
+        return prompts.resolve(promptKey).system();
     }
 
     @Async("dapJobExecutor")
@@ -135,7 +152,8 @@ public class DapJobRunner {
         progress(job, 6, "persona.chat", "解析人设…");
         String imagePrompt;
         if (agnes.isConfigured()) {
-            JsonNode persona = agnes.chatJson(PERSONA_SYSTEM, personaUser(form));
+            JsonNode persona = agnes.chatJson(systemOf(PromptService.KEY_DAP_PERSONA),
+                    promptOf(PromptService.KEY_DAP_PERSONA, personaVars(form)));
             applyPersona(a, persona, desc);
             imagePrompt = persona.path("imagePromptEn").asText(null);
             if (imagePrompt == null || imagePrompt.isBlank()) {
@@ -160,8 +178,8 @@ public class DapJobRunner {
         for (int i = 0; i < 4; i++) {
             byte[] img;
             if (agnes.isConfigured()) {
-                img = agnes.generateImage(imagePrompt + ", " + variantHints[i]
-                        + ", high quality, detailed face, 4k", "768x1024", null);
+                img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_GENERATE,
+                        Map.of("imagePrompt", imagePrompt, "variantHint", variantHints[i])), "768x1024", null);
             } else {
                 img = support.placeholderPortrait(a.getHue() + i * 16, "占位 · v" + (i + 1), 768, 1024);
             }
@@ -190,11 +208,7 @@ public class DapJobRunner {
         progress(job, 30, "image.restore", "复刻形象…");
         byte[] img;
         if (agnes.isConfigured() && !inputs.isEmpty()) {
-            img = agnes.generateImage(
-                    "Create a clean digital-avatar half-body portrait of this exact person. "
-                            + "Faithfully preserve identity, facial features, hairstyle and skin tone. "
-                            + "Soft professional studio lighting, neutral light background, photorealistic, 4k.",
-                    "768x1024", inputs);
+            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_CLONE, null), "768x1024", inputs);
         } else if (agnes.isConfigured()) {
             // 没有可用素材时退化为文生图（不应发生：controller 已校验）
             img = agnes.generateImage("photorealistic half-body portrait of a person, studio lighting", "768x1024", null);
@@ -221,13 +235,12 @@ public class DapJobRunner {
 
         byte[] img;
         if (agnes.isConfigured()) {
-            String en = agnes.chat(TRANSLATE_EDIT_SYSTEM, instruction);
+            String en = agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+                    promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", instruction)));
             checkCancel(job);
             progress(job, 35, "image.edit", "重绘形象…");
-            img = agnes.generateImage(
-                    "Edit this character portrait: " + en
-                            + ". Keep the same person, same identity, same overall composition. High quality.",
-                    "768x1024", identityInputOf(a));
+            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_ITERATE,
+                    Map.of("instruction", en)), "768x1024", identityInputOf(a));
         } else {
             img = support.placeholderPortrait(a.getHue() + a.getVersions() * 7, "占位 · 迭代", 768, 1024);
         }
@@ -272,10 +285,8 @@ public class DapJobRunner {
         byte[] img;
         if (agnes.isConfigured() && any) {
             progress(job, 40, "image.edit", "重绘形象…");
-            img = agnes.generateImage(
-                    "Subtly retouch this exact character portrait: " + en
-                            + "keep identity, lighting and composition unchanged, photorealistic.",
-                    "768x1024", identityInputOf(a));
+            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_WARP,
+                    Map.of("adjustments", en.toString())), "768x1024", identityInputOf(a));
         } else if (!agnes.isConfigured()) {
             img = support.placeholderPortrait(a.getHue() + 3, "占位 · 精调", 768, 1024);
         } else {
@@ -307,7 +318,8 @@ public class DapJobRunner {
         if (scenePrompt != null) {
             en = scenePrompt;
         } else if (agnes.isConfigured() && userPrompt != null && !userPrompt.isBlank()) {
-            en = agnes.chat(TRANSLATE_EDIT_SYSTEM, userPrompt);
+            en = agnes.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
+                    promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", userPrompt)));
         } else {
             en = userPrompt == null ? "new outfit and scene" : userPrompt;
         }
@@ -315,10 +327,8 @@ public class DapJobRunner {
         progress(job, 45, "image.look", "生成造型…");
         byte[] img;
         if (agnes.isConfigured()) {
-            img = agnes.generateImage(
-                    "Restyle this exact character: " + en
-                            + ". Keep the same face and identity, photorealistic, high quality.",
-                    "768x1024", identityInputOf(a));
+            img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_LOOK,
+                    Map.of("style", en)), "768x1024", identityInputOf(a));
         } else {
             img = support.placeholderPortrait(a.getHue() + 24, "占位 · 造型", 768, 1024);
         }
@@ -399,9 +409,9 @@ public class DapJobRunner {
             progress(job, 10 + i * 17, "atlas.image." + (i + 1), "出图 " + s[1] + "（" + (i + 1) + "/5）…");
             byte[] img;
             if (agnes.isConfigured()) {
-                String prompt = "Same person, same identity and hairstyle. " + s[2]
-                        + (tplPrompt != null ? ". " + tplPrompt : "")
-                        + ". Consistent character sheet, clean background, high quality.";
+                String prompt = promptOf(PromptService.KEY_DAP_IMAGE_ATLAS, Map.of(
+                        "shot", s[2],
+                        "template", tplPrompt != null ? ". " + tplPrompt : ""));
                 img = agnes.generateImage(prompt, s[3], identityInputOf(a));
             } else {
                 img = support.placeholderPortrait(a.getHue() + i * 9, "占位 · " + s[1], 768, 1024);
@@ -441,9 +451,8 @@ public class DapJobRunner {
                     it[0] + "（" + (i + 1) + "/" + items.size() + "）…");
             byte[] img;
             if (agnes.isConfigured()) {
-                img = agnes.generateImage(
-                        "Same person, same identity, same face. " + it[1] + ". High quality, detailed.",
-                        it[2], identityInputOf(a));
+                img = agnes.generateImage(promptOf(PromptService.KEY_DAP_IMAGE_DERIV,
+                        Map.of("item", it[1])), it[2], identityInputOf(a));
             } else {
                 img = support.placeholderPortrait(a.getHue() + i * 13, "占位 · " + it[0], 768, 1024);
             }
@@ -476,8 +485,7 @@ public class DapJobRunner {
         String spec;
         if (agnes.isConfigured()) {
             String taskId = agnes.createVideoTask(
-                    "Slow cinematic camera orbit around this person, subtle natural motion, "
-                            + "studio lighting, high quality, no scene change",
+                    promptOf(PromptService.KEY_DAP_VIDEO_ORBIT, null),
                     firstOrNull(identityInputOf(a)), 768, 1152, 121, 24);
             progress(job, 15, "video.poll", "云端渲染中…");
             AgnesClient.VideoTask t = agnes.awaitVideo(taskId, frac -> {
@@ -549,7 +557,11 @@ public class DapJobRunner {
         return inputs;
     }
 
-    /** storage key → Agnes 可消费的图片输入（公网 URL 或 dataURI）。 */
+    /** dataURI 输入超过该字节数时先压缩（缓解大请求体导致的 EOF/超时）。 */
+    private static final int DATAURI_COMPRESS_THRESHOLD_BYTES = 300 * 1024;
+    private static final int DATAURI_MAX_WIDTH = 768;
+
+    /** storage key → Agnes 可消费的图片输入（公网 URL 或 dataURI；大图自动压缩）。 */
     private String toAgnesImageInput(String key) {
         String url = storage.signedUrl(key);
         boolean publicUrl = url != null && (url.startsWith("http://") || url.startsWith("https://"))
@@ -562,9 +574,52 @@ public class DapJobRunner {
             byte[] bytes = Files.readAllBytes(p);
             String mime = key.endsWith(".jpg") || key.endsWith(".jpeg") ? "image/jpeg"
                     : key.endsWith(".webp") ? "image/webp" : "image/png";
+            if (bytes.length > DATAURI_COMPRESS_THRESHOLD_BYTES) {
+                byte[] compressed = compressToJpeg(bytes, DATAURI_MAX_WIDTH);
+                if (compressed != null && compressed.length < bytes.length) {
+                    log.info("[dap] 身份图压缩 key={} {}B → {}B（dataURI 上行）", key, bytes.length, compressed.length);
+                    bytes = compressed;
+                    mime = "image/jpeg";
+                }
+            }
             return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
         } catch (IOException e) {
             log.warn("[dap] 读取身份图失败 key={}: {}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 等比缩到 maxWidth 宽 + JPEG q0.82（PNG alpha 铺白底）。失败返回 null（调用方用原图）。 */
+    private static byte[] compressToJpeg(byte[] raw, int maxWidth) {
+        try {
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(raw));
+            if (src == null) return null;
+            int w = src.getWidth(), h = src.getHeight();
+            int outW = Math.min(w, maxWidth);
+            int outH = (int) Math.round(h * (outW / (double) w));
+            java.awt.image.BufferedImage out =
+                    new java.awt.image.BufferedImage(outW, outH, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = out.createGraphics();
+            g.setColor(java.awt.Color.WHITE);
+            g.fillRect(0, 0, outW, outH);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                    java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(src, 0, 0, outW, outH, null);
+            g.dispose();
+
+            var writer = javax.imageio.ImageIO.getImageWritersByFormatName("jpeg").next();
+            var param = writer.getDefaultWriteParam();
+            param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(0.82f);
+            var bos = new java.io.ByteArrayOutputStream();
+            try (var ios = javax.imageio.ImageIO.createImageOutputStream(bos)) {
+                writer.setOutput(ios);
+                writer.write(null, new javax.imageio.IIOImage(out, null, null), param);
+            } finally {
+                writer.dispose();
+            }
+            return bos.toByteArray();
+        } catch (Exception e) {
             return null;
         }
     }
@@ -592,40 +647,21 @@ public class DapJobRunner {
     }
 
     // ── 人设解析 ──────────────────────────────────────────────
+    // prompt 文本统一走 PromptService（admin「Prompt 管理」可改；resources/prompts/material/dap.*.md 兜底）。
 
-    private static final String PERSONA_SYSTEM = """
-            你是数字人形象设定专家。根据用户给出的描述与偏好，输出**纯 JSON**（不要任何额外文字、不要 markdown 围栏）：
-            {
-              "name": "2-3 字中文名 + 空格 + 罗马音/英文昵称（若用户已提供名称则原样保留）",
-              "codename": "kebab-case 英文代号",
-              "archetype": "形象类型短语，如：品牌虚拟主播 / 二次元 · 星界少女",
-              "tagline": "一句话角色定位（≤20 字）",
-              "gender": "female 或 male",
-              "def": {
-                "年龄": "如：约 22 岁",
-                "气质": "三个词，用 · 分隔",
-                "用途": "适用场景，用 / 分隔",
-                "性格": ["词1", "词2", "词3"],
-                "服饰": "主要着装 · 风格",
-                "形象来源": "AI 原创虚构",
-                "设定语": "一句富有感染力的角色介绍（≤40 字）"
-              },
-              "imagePromptEn": "English image prompt: [Subject] + [Scene] + [Style] + [Lighting] + [Composition] + [Quality], faithful to the user description"
-            }""";
-
-    private String personaUser(Map<String, Object> form) {
-        return "描述：" + str(form, "desc", "（未提供，自由发挥）")
-                + "\n名称：" + str(form, "name", "（未提供）")
-                + "\n年龄段：" + str(form, "age", "未指定")
-                + "\n性别：" + str(form, "gender", "未指定")
-                + "\n族裔：" + str(form, "ethnic", "未指定")
-                + "\n风格：" + str(form, "style", "写实")
-                + "\n姿态：" + str(form, "pose", "半身")
-                + "\n画幅：" + str(form, "orient", "竖屏");
+    /** dap.persona 模板的占位符变量（{{desc}} / {{name}} / ...）。 */
+    private Map<String, String> personaVars(Map<String, Object> form) {
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("desc", str(form, "desc", "（未提供，自由发挥）"));
+        vars.put("name", str(form, "name", "（未提供）"));
+        vars.put("age", str(form, "age", "未指定"));
+        vars.put("gender", str(form, "gender", "未指定"));
+        vars.put("ethnic", str(form, "ethnic", "未指定"));
+        vars.put("style", str(form, "style", "写实"));
+        vars.put("pose", str(form, "pose", "半身"));
+        vars.put("orient", str(form, "orient", "竖屏"));
+        return vars;
     }
-
-    private static final String TRANSLATE_EDIT_SYSTEM =
-            "把这条对数字人形象/造型的中文修改指令翻译成英文图像编辑指令，保留主体、风格、光线、约束等细节；只输出英文，不要解释。";
 
     private void applyPersona(DapAvatar a, JsonNode persona, String desc) {
         String formName = persona.path("name").asText(null);
