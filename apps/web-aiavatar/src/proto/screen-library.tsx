@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, LicenseApi, awaitJob, useApi, seed } from "./api";
+import { DATA, AvatarApi, LicenseApi, awaitJob, useApi, seed, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
@@ -51,7 +51,19 @@ function MLibrary({ ctx }) {
   const [view, setView] = useStateML('grid');
   const [fav, setFav] = useStateML(false);
 
-  const pool = useApi(() => AvatarApi.list(top === 'mine' ? 'mine' : 'public'), seed.avatars(top === 'mine' ? 'mine' : 'public'), [top]);
+  // 显式跟踪 loading，避免「正在拉后端数据」时整页空白（live 模式 seed 为空）
+  const [pool, setPool] = useStateML(seed.avatars(top === 'mine' ? 'mine' : 'public'));
+  const [loading, setLoading] = useStateML(!USE_MOCK);
+  useEffectML(() => {
+    let live = true;
+    const initial = seed.avatars(top === 'mine' ? 'mine' : 'public');
+    setPool(initial);
+    setLoading(!USE_MOCK && initial.length === 0);
+    AvatarApi.list(top === 'mine' ? 'mine' : 'public')
+      .then((d) => { if (live) { setPool(d); setLoading(false); } })
+      .catch(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [top]);
   let list: any = pool.slice();
   if (fav) list = list.filter(c => c.fav);
   if (top === 'public' && cat !== 'all') list = list.filter(c => cat === 'fav' ? c.fav : c.cat === cat);
@@ -97,6 +109,11 @@ function MLibrary({ ctx }) {
 
     (() => {
       const filtered = top === 'mine' && cat !== 'all' && cat !== 'fav' ? list.filter(c => c.path === cat) : list;
+      // 正在拉取且暂无数据 → 骨架屏（而非空白 / 误导的「没有数字人」空态）
+      if (loading && filtered.length === 0) return hML('div', { style: { padding: '14px 18px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px 12px' } },
+        Array.from({ length: 4 }).map((_, i) => hML('div', { key: i },
+          hML('div', { className: 'm-skel', style: { height: 150, borderRadius: 'var(--r-lg)' } }),
+          hML('div', { className: 'm-skel', style: { height: 16, width: '68%', marginTop: 9, borderRadius: 6 } }))));
       if (filtered.length === 0 && !(top === 'mine')) return hML('div', { style: { textAlign: 'center', padding: '70px 0', color: 'var(--ink-3)' } },
         hML('div', { style: { width: 52, height: 52, borderRadius: 99, background: 'var(--surface-3)', display: 'grid', placeItems: 'center', margin: '0 auto 12px', color: 'var(--ink-4)' } }, hML(Icons.search, { size: 22 })),
         hML('div', { style: { fontSize: 14.5, fontWeight: 600, color: 'var(--ink-2)' } }, '没有匹配的数字人'));
@@ -319,8 +336,7 @@ function MDetail({ char: initialChar, ctx }) {
             hML('div', { style: { position: 'relative', borderRadius: 'var(--r-sm)', overflow: 'hidden', border: '1px solid var(--line)' } },
               hML(Portrait, { char, variant: 'key', ratio: '4 / 5', expr: 'calm' }),
               hML(LiveJobBadge, { char, onDone: refresh }),
-              hML('div', { style: { position: 'absolute', bottom: 8, left: 8 } }, hML(MStatusL, { status: char.status })),
-              char.status === 'archived' && hML('div', { style: { position: 'absolute', top: 9, right: 9 } }, hML('span', { className: 'seal', style: { fontSize: 9 } }, '已登记'))),
+              hML('div', { style: { position: 'absolute', bottom: 8, left: 8 } }, hML(MStatusL, { status: char.status }))),
             hML(CornerTicksL, null)),
           hML('div', { style: { flex: 1, minWidth: 0, padding: '14px 14px 12px' } },
             hML('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 } },

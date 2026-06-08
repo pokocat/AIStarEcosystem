@@ -297,7 +297,7 @@ const mockChars: any[] = Mock.CHARS.map((c) => ({ ...c }));
 /** mock 回收站（软删数字人；live 模式由 server 持久化）。 */
 const mockTrash: any[] = [];
 
-function newMockJob(partial: Partial<Mock.Job> & { kind: string }): Mock.Job {
+function newMockJob(partial: Partial<Mock.Job> & { kind: string } & Record<string, unknown>): Mock.Job {
   const id = `JOB-${mockSeq++}`;
   const job: any = {
     id, char: partial.char || "DH-NEW", charName: partial.charName || "新建数字人",
@@ -324,8 +324,23 @@ function tickMockJob(id: string) {
   job.pct = Math.min(100, job.pct + 22 + Math.random() * 14);
   job.eta = job.pct >= 100 ? "已完成" : "生成中…";
   job.stage = job.pct >= 100 ? "done" : "mock.generate";
-  if (job.pct >= 100) { job.pct = 100; job.status = "done"; }
+  if (job.pct >= 100) {
+    job.pct = 100;
+    job.status = "done";
+    // 确定性回填衍生计数（与任务完成同一时刻发生，awaitJob 解析后即可读到最新计数）
+    if (job.derivApply) applyMockDerivDone(job.derivApply);
+  }
   return job;
+}
+
+/** mock：衍生任务完成时把对应数字人的 deriv 状态翻成 done 并累加 counts。 */
+function applyMockDerivDone(apply: { id: string; type: string }) {
+  const c = mockChars.find((x) => x.id === apply.id);
+  if (!c) return;
+  c.deriv = { ...c.deriv, [apply.type]: "done" };
+  const inc: any = { atlas: 5, expr: 4, scene: 2, ward: 2, d3: 1, video: 1 };
+  c.counts = { ...c.counts, [apply.type]: (c.counts?.[apply.type] || 0) + (inc[apply.type] || 1) };
+  c.updated = "刚刚";
 }
 
 /** 轮询任务直到终态；onTick 每次回调最新任务。失败时 reject ApiError。 */
@@ -491,20 +506,9 @@ export const AvatarApi = {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
       const kindZh: any = { atlas: "多角度图集", expr: "表情图集", scene: "剧情场景图", ward: "换装变体", d3: "3D 模型", video: "运镜短视频" };
-      const job = newMockJob({ kind: kindZh[body.type] || "衍生生成", char: id, charName: c?.name });
+      // derivKey 让任务中心能定位回对应衍生；derivApply 让 tickMockJob 在完成时确定性回填计数
+      const job = newMockJob({ kind: kindZh[body.type] || "衍生生成", char: id, charName: c?.name, derivKey: body.type, derivApply: { id, type: body.type } });
       if (c) c.deriv = { ...c.deriv, [body.type]: "running" };
-      // mock：任务完成时把 deriv 状态翻成 done
-      const watch = setInterval(() => {
-        const j = mockJobStore.get(job.id);
-        if (j && j.status !== "running") {
-          clearInterval(watch);
-          if (c) {
-            c.deriv = { ...c.deriv, [body.type]: "done" };
-            const inc: any = { atlas: 5, expr: 4, scene: 2, ward: 2, d3: 1, video: 1 };
-            c.counts = { ...c.counts, [body.type]: (c.counts?.[body.type] || 0) + (inc[body.type] || 1) };
-          }
-        }
-      }, 800);
       return mock({ ...job });
     }
     return apiFetch(`/avatars/${id}/derivatives`, { method: "POST", body: JSON.stringify(body) });
