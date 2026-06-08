@@ -126,25 +126,29 @@ function MWipCard({ char, onOpen }) {
         hMH('span', { className: 'mono', style: { fontSize: 10, color: 'var(--ink-3)', fontWeight: 600 } }, pct + '%'))));
 }
 
-// 大功能卡 — tone: 'dark'(墨) / 'accent'(青) / 'plain'(白底细框)
-function MFeatureCard({ title, sub, cta, tone, icon, onClick, big }) {
-  const plain = tone === 'plain', dark = tone === 'dark', accent = tone === 'accent';
-  const bg = dark ? 'linear-gradient(155deg,#1C2B3A,#14202B)' : accent ? 'var(--grad)' : 'var(--surface)';
-  const fg = plain ? 'var(--ink)' : '#fff';
-  const subC = plain ? 'var(--ink-3)' : 'rgba(255,255,255,.9)';
-  const ctaC = plain ? 'var(--primary)' : '#fff';
+// 大功能卡：统一尺寸，用抽象背景图 + 渐变遮罩提升质感。
+function MFeatureCard({ title, sub, cta, image, icon, onClick }) {
   return hMH('button', { onClick, className: 'm-press', style: {
-    position: 'relative', textAlign: 'left', cursor: 'pointer', padding: 0, overflow: 'hidden',
-    border: plain ? '1px solid var(--line-2)' : 'none',
-    borderRadius: 'var(--r-xl)', height: big ? 150 : 124, background: bg, color: fg,
-    boxShadow: plain ? 'var(--sh-1)' : 'var(--sh-2)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', width: '100%' } },
-    hMH('div', { style: { position: 'absolute', right: -10, bottom: -12, opacity: plain ? 1 : .16, color: plain ? 'var(--surface-3)' : '#fff' } },
-      hMH(icon, { size: big ? 92 : 78, stroke: 1.2 })),
-    hMH('div', { style: { position: 'relative', padding: '15px 15px 0' } },
-      plain && hMH('span', { style: { display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 9, background: 'var(--primary-soft)', color: 'var(--primary)', marginBottom: 10 } }, hMH(icon, { size: 18, stroke: 1.9 })),
-      hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: big ? 19 : 16, lineHeight: 1.14, letterSpacing: '-.02em', maxWidth: '80%' } }, title),
-      sub && hMH('div', { style: { fontSize: 11.5, color: subC, marginTop: 5, maxWidth: '82%', lineHeight: 1.45, fontWeight: 500 } }, sub)),
-    hMH('div', { style: { position: 'relative', padding: '0 15px 13px', display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12.5, color: ctaC } },
+    position: 'relative', height: 142, textAlign: 'left', cursor: 'pointer', padding: 0, overflow: 'hidden',
+    border: '1px solid rgba(255,255,255,.18)', borderRadius: 'var(--r-xl)', background: '#101722', color: '#fff',
+    boxShadow: '0 16px 38px rgba(10,24,42,.16), 0 1px 0 rgba(255,255,255,.32) inset',
+    display: 'flex', flexDirection: 'column', justifyContent: 'space-between', width: '100%' } },
+    hMH('img', { src: image, alt: '', draggable: false, style: {
+      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .88,
+      filter: 'saturate(1.08) contrast(1.02)', transform: 'scale(1.02)', pointerEvents: 'none' } }),
+    hMH('span', { style: { position: 'absolute', inset: 0, background:
+      'linear-gradient(120deg, rgba(5,10,18,.94) 0%, rgba(8,15,25,.78) 46%, rgba(8,15,25,.22) 100%)' } }),
+    hMH('span', { style: { position: 'absolute', inset: 0, background:
+      'radial-gradient(circle at 16% 12%, rgba(255,255,255,.22), transparent 30%), linear-gradient(180deg, rgba(255,255,255,.12), transparent 38%, rgba(0,0,0,.28))', mixBlendMode: 'screen', opacity: .72 } }),
+    hMH('span', { style: { position: 'absolute', left: 1, right: 1, top: 1, height: '50%', borderRadius: 'calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0',
+      background: 'linear-gradient(180deg, rgba(255,255,255,.18), transparent)', pointerEvents: 'none' } }),
+    hMH('div', { style: { position: 'relative', padding: '14px 14px 0' } },
+      hMH('span', { style: { display: 'grid', placeItems: 'center', width: 30, height: 30, borderRadius: 10,
+        background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.20)', color: '#fff',
+        boxShadow: '0 8px 20px rgba(0,0,0,.18)', marginBottom: 9 } }, hMH(icon, { size: 16, stroke: 2 })),
+      hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 16.5, lineHeight: 1.12, letterSpacing: '-.01em', maxWidth: '92%', textShadow: '0 2px 10px rgba(0,0,0,.35)' } }, title),
+      sub && hMH('div', { style: { fontSize: 11.5, color: 'rgba(255,255,255,.74)', marginTop: 5, maxWidth: '94%', lineHeight: 1.38, fontWeight: 500, textShadow: '0 1px 8px rgba(0,0,0,.35)' } }, sub)),
+    hMH('div', { style: { position: 'relative', padding: '0 14px 13px', display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 800, fontSize: 12.5, color: '#fff', textShadow: '0 1px 8px rgba(0,0,0,.36)' } },
       cta, hMH(Icons.arrowR, { size: 15, stroke: 2.2 })));
 }
 
@@ -211,15 +215,14 @@ function MHome({ ctx }) {
       hMH('div', { style: { padding: '0 18px' } },
         hMH(MSectionH, { title: '开始创作' })),
       hMH('div', { style: { padding: '0 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-        hMH(MFeatureCard, { title: '创建数字人', sub: '一句描述，原创虚构形象', cta: '开始创建', big: true, tone: 'dark',
-          icon: Icons.sparkle, onClick: () => ctx.startCreate('ai') }),
-        hMH(MFeatureCard, { title: '真人授权复刻', sub: '录一段动作，合规复刻', cta: '开始录制', big: true, tone: 'accent',
-          icon: Icons.person, onClick: () => ctx.startRealClone() })),
-      hMH('div', { style: { padding: '12px 18px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-        hMH(MFeatureCard, { title: '克隆声音', sub: '录一段即生成', cta: '声音工作室', tone: 'plain',
-          icon: Icons.mic, onClick: () => ctx.go('voice') }),
-        hMH(MFeatureCard, { title: '接入应用', sub: '短剧 · 带货 · 音乐', cta: '应用中心', tone: 'plain',
-          icon: Icons.clapper, onClick: () => ctx.tab('apps') }))));
+        hMH(MFeatureCard, { title: '创建数字人', sub: '一句描述，原创虚构形象', cta: '开始创建',
+          image: '/generated/feature-cards/create-avatar.jpg', icon: Icons.sparkle, onClick: () => ctx.startCreate('ai') }),
+        hMH(MFeatureCard, { title: '真人授权复刻', sub: '录一段动作，合规复刻', cta: '开始录制',
+          image: '/generated/feature-cards/real-clone.jpg', icon: Icons.person, onClick: () => ctx.startRealClone() }),
+        hMH(MFeatureCard, { title: '克隆声音', sub: '录一段即生成', cta: '声音工作室',
+          image: '/generated/feature-cards/voice-clone.jpg', icon: Icons.mic, onClick: () => ctx.go('voice') }),
+        hMH(MFeatureCard, { title: '接入应用', sub: '短剧 · 带货 · 音乐', cta: '应用中心',
+          image: '/generated/feature-cards/app-connect.jpg', icon: Icons.clapper, onClick: () => ctx.tab('apps') }))));
 }
 
 export { MHome };
