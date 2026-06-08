@@ -39,7 +39,7 @@ public final class DapDtos {
             Map<String, Object> deriv, Map<String, Object> counts,
             int versions, String voiceName,
             String imageUrl, List<String> variantImages, Map<String, String> shotImages,
-            String descPrompt) {
+            String descPrompt, Map<String, Object> form) {
 
         public static AvatarDto from(DapAvatar a, String updatedZh, Function<String, String> keyToUrl) {
             List<String> variants = a.getVariantKeys() == null ? List.of()
@@ -57,7 +57,7 @@ public final class DapDtos {
                     a.getPalette(), a.defOrEmpty(), a.derivOrEmpty(), a.countsOrEmpty(),
                     a.getVersions(), a.getVoiceName(),
                     a.getImageKey() != null ? keyToUrl.apply(a.getImageKey()) : null,
-                    variants, shots, a.getDescPrompt());
+                    variants, shots, a.getDescPrompt(), a.getForm());
         }
     }
 

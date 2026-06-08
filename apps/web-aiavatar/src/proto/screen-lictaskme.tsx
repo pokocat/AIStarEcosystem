@@ -158,9 +158,9 @@ function MTasks({ ctx }) {
         hMS('div', { style: { flex: 1, minWidth: 0 } },
           hMS('div', { className: 'm-clip1', style: { fontSize: 14, fontWeight: 700, color: 'var(--ink)' } }, t.kind),
           hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 } },
-            hMS('span', { className: 'm-clip1', style: { fontSize: 12, color: 'var(--ink-3)', minWidth: 0 } }, t.charName),
+            hMS('span', { className: 'm-clip1', style: { fontSize: 12, color: 'var(--ink-3)', minWidth: 0, flex: '1 1 auto' } }, t.charName),
             t.started && hMS('span', { style: { width: 3, height: 3, borderRadius: 99, flex: '0 0 auto', background: 'var(--ink-4)' } }),
-            t.started && hMS('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)', flex: '0 0 auto' } }, t.started))),
+            t.started && hMS('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)', flex: '0 0 auto', whiteSpace: 'nowrap' } }, t.started))),
         t.mode === 'mock' && hMS(UI.Badge, { tone: 'warn' }, '演示')),
       hMS('div', { style: { marginTop: 11 } },
         t.status === 'running'

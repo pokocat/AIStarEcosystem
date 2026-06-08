@@ -487,6 +487,23 @@ export const AvatarApi = {
     }
     return apiFetch(`/avatars/${id}/versions`);
   },
+  switchVersion: (id: string, version: number): Promise<any> => {
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      if (c) { c.versions = (c.versions || 1) + 1; c.updated = "刚刚"; }
+      return mock(c || { id });
+    }
+    return apiFetch(`/avatars/${id}/versions/${version}/switch`, { method: "POST" });
+  },
+  forkVersion: (id: string, version: number): Promise<any> => {
+    if (USE_MOCK) {
+      const c = mockChars.find((x) => x.id === id);
+      const copy = c ? { ...c, id: `DH-${mockSeq++}`, name: `${c.name} · v${version}`, counts: {}, deriv: {}, versions: 1, updated: "刚刚" } : { id: `DH-${mockSeq++}` };
+      mockChars.unshift(copy as any);
+      return mock(copy);
+    }
+    return apiFetch(`/avatars/${id}/versions/${version}/fork`, { method: "POST" });
+  },
   looks: (id: string): Promise<any[]> => {
     if (USE_MOCK) return mock([]);
     return apiFetch(`/avatars/${id}/looks`);
@@ -569,7 +586,7 @@ export const AvatarApi = {
   },
   // —— 端上精调（v0.52：美颜在浏览器实时处理，这里只取图 / 存成品）——
   /** 取当前定妆图字节（同源流式输出，规避 CDN 跨域 canvas 污染）。无图返回 null。 */
-  imageBlob: async (id: string): Promise<Blob | null> => {
+  imageBlob: async (id: string, cacheKey?: string | number): Promise<Blob | null> => {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
       const src = (c && (c.imageUrl || (c.variantImages || [])[0])) || null;
@@ -582,7 +599,8 @@ export const AvatarApi = {
       }
     }
     try {
-      const res = await fetch(`${API_PREFIX}/avatars/${id}/image`, { headers: { ...authHeaders() } });
+      const qs = cacheKey === undefined ? "" : `?t=${encodeURIComponent(String(cacheKey))}`;
+      const res = await fetch(`${API_PREFIX}/avatars/${id}/image${qs}`, { headers: { ...authHeaders() }, cache: "no-store" });
       if (res.status === 401) { fireAuthExpired(); return null; }
       if (!res.ok) return null;
       return await res.blob();

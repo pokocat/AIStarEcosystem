@@ -135,6 +135,16 @@ public class DapAvatarController {
         return ApiResponse.of(avatarService.versions(uid(principal), id));
     }
 
+    @PostMapping("/{id}/versions/{v}/switch")
+    public ApiResponse<AvatarDto> switchVersion(Principal principal, @PathVariable String id, @PathVariable int v) {
+        return ApiResponse.of(avatarService.switchToVersion(uid(principal), id, v));
+    }
+
+    @PostMapping("/{id}/versions/{v}/fork")
+    public ApiResponse<AvatarDto> forkVersion(Principal principal, @PathVariable String id, @PathVariable int v) {
+        return ApiResponse.of(avatarService.forkVersion(uid(principal), id, v));
+    }
+
     @GetMapping("/{id}/looks")
     public ApiResponse<List<LookDto>> looks(Principal principal, @PathVariable String id) {
         return ApiResponse.of(workflow.looks(uid(principal), id));

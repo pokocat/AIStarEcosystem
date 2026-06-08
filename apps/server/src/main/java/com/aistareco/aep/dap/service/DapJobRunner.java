@@ -163,16 +163,17 @@ public class DapJobRunner {
             applyPersonaFallback(a, form);
             imagePrompt = "portrait placeholder";
         }
+        imagePrompt = stabilizeGeneratePrompt(imagePrompt, form, desc, style);
         a.setBasePrompt(imagePrompt);
         a.setDescPrompt(desc);
         checkCancel(job);
 
         progress(job, 18, "image.generate.1", "生成候选 1/4…");
         String[] variantHints = {
-                "front-facing portrait, looking directly at camera",
-                "three-quarter view, gentle smile",
-                "side profile view, elegant posture",
-                "looking back over the shoulder, candid feel"};
+                "vertical close-up face portrait, front-facing, looking directly at camera, clear full face, head and shoulders, consistent outfit and background",
+                "vertical close-up face portrait, slight three-quarter angle, gentle smile, clear full face, head and shoulders, same identity outfit and background",
+                "vertical close-up face portrait, subtle side angle but both eyes visible, clear full face, head and shoulders, same identity outfit and background",
+                "vertical close-up face portrait, calm expression, looking near camera, clear full face, head and shoulders, same identity outfit and background"};
         List<String> keys = new ArrayList<>();
         long bytesTotal = 0;
         for (int i = 0; i < 4; i++) {
@@ -197,6 +198,31 @@ public class DapJobRunner {
         a.setStatus("proofing");
         avatarService.save(a);
         job.setResult(Map.of("variants", keys.size()));
+    }
+
+    private String stabilizeGeneratePrompt(String imagePrompt, Map<String, Object> form, String desc, String style) {
+        StringBuilder sb = new StringBuilder();
+        if (imagePrompt != null && !imagePrompt.isBlank()) {
+            sb.append(imagePrompt.trim());
+        } else {
+            sb.append("portrait of an original virtual character");
+        }
+        appendPromptPart(sb, "Original user description: " + desc);
+        appendPromptPart(sb, "Selected visual style: " + style);
+        appendPromptPart(sb, "Age: " + str(form, "age", ""));
+        appendPromptPart(sb, "Gender: " + str(form, "gender", ""));
+        appendPromptPart(sb, "Ethnicity: " + str(form, "ethnic", ""));
+        appendPromptPart(sb, "Keep the same clothing, scene, role, lighting and visual identity across regenerations.");
+        appendPromptPart(sb, "Vertical close-up face portrait, face centered and clearly visible, head and shoulders only.");
+        return sb.toString();
+    }
+
+    private void appendPromptPart(StringBuilder sb, String part) {
+        if (part == null) return;
+        String p = part.trim();
+        if (p.isBlank() || p.endsWith(":")) return;
+        if (sb.length() > 0) sb.append(", ");
+        sb.append(p);
     }
 
     /** 照片 / 捕获素材 → 高保真复刻 1 张。 */

@@ -129,9 +129,11 @@ function MStepProof({ wiz, onReady }) {
     try {
       const a = await wiz.ensureAvatar();
       const isReal = a.path === 'real';
+      const desc = wiz.form.desc || a.descPrompt || '';
+      const form = { ...(a.form || {}), desc, style: wiz.form.style || (a.form && a.form.style) || '写实', orient: '竖屏', pose: '脸部' };
       const j = await AvatarApi.generate(a.id, isReal
         ? { mode: 'upload' }
-        : { mode: 'describe', form: { desc: wiz.form.desc, style: wiz.form.style } });
+        : { mode: 'describe', form });
       setJob(j);
       await awaitJob(j.id, (jj) => setJob({ ...jj }));
       await settle(a.id);
@@ -279,6 +281,7 @@ function MCreate({ char: initialChar, ctx }) {
   const [char, setChar] = useStateMC(initialChar);
   const [step, setStep] = useStateMC(() => {
     // 续作：按资产状态落位到对应步骤
+    if (initialChar?._startAdjust) return 'adjust';
     const st = initialChar?.status;
     if (st === 'proofing') return 'proof';
     if (st === 'iterating' || st === 'refining') return 'adjust';
@@ -338,10 +341,10 @@ function MCreate({ char: initialChar, ctx }) {
     hMC(MStepHeader, { step, idx, onClose: ctx.back }),
     hMC('div', { id: '__mcbody', className: 'm-body', key: step, style: { paddingBottom: 92 } }, hMC(body, props)),
     hMC('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 11 } },
-      idx > 0 && hMC(UI.Button, { variant: 'line', icon: Icons.arrowL, onClick: goPrev }, '上一步'),
+      idx > 0 && hMC(UI.Button, { variant: 'line', icon: Icons.arrowL, onClick: goPrev, style: { flex: '0 0 104px', padding: '0 12px' } }, '上一步'),
       idx < order.length - 1
-        ? hMC(UI.Button, { variant: 'primary', full: true, size: 'lg', iconR: Icons.arrowR, disabled: !ready, onClick: goNext }, '下一步 · ' + DATA.CHAIN[idx + 1].name)
-        : hMC(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.checkc, disabled: saving, onClick: archive }, saving ? '保存中…' : '完成创建')));
+        ? hMC(UI.Button, { variant: 'primary', full: true, size: 'lg', iconR: Icons.arrowR, disabled: !ready, onClick: goNext, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '下一步')
+        : hMC(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.checkc, disabled: saving, onClick: archive, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, saving ? '保存中…' : '完成创建')));
 }
 
 export { MCreate };

@@ -55,7 +55,15 @@ function VoiceCard({ v, on, playing, onSelect, onPlay }) {
 
 function MChooseVoice({ char, ctx, onPick }) {
   const VOICES = useApi(() => VoiceApi.builtin(), seed.builtinVoices());
-  const [sel, setSel] = useStateVP((char && ctx.voiceFor && ctx.voiceFor(char) && (VOICES.find(v => v.name === ctx.voiceFor(char)) || {}).id) || (VOICES[0] || {}).id);
+  const current = char && ctx.voiceFor && ctx.voiceFor(char);
+  const currentVoice = VOICES.find(v => v.name === current);
+  const inferGender = () => {
+    if (currentVoice) return currentVoice.gender;
+    const raw = String((char && char.form && char.form.gender) || (char && char.def && (char.def['性别'] || char.def['气质'])) || char?.archetype || char?.descPrompt || '');
+    return /男|male|man/i.test(raw) ? 'male' : 'female';
+  };
+  const [tab, setTab] = useStateVP(inferGender());
+  const [sel, setSel] = useStateVP((currentVoice || VOICES.find(v => v.gender === inferGender()) || VOICES[0] || {}).id);
   const [playing, setPlaying] = useStateVP(null);
   const [q, setQ] = useStateVP('');
 
@@ -63,14 +71,7 @@ function MChooseVoice({ char, ctx, onPick }) {
   const females = VOICES.filter(v => v.gender === 'female' && match(v));
   const males = VOICES.filter(v => v.gender === 'male' && match(v));
   const selVoice = VOICES.find(v => v.id === sel) || VOICES[0];
-
-  const section = (label, icon, list) => list.length > 0 && hVP('div', { style: { marginBottom: 6 } },
-    hVP('div', { style: { display: 'flex', alignItems: 'center', gap: 7, margin: '0 2px 11px' } },
-      hVP('span', { style: { width: 24, height: 24, borderRadius: 7, background: 'var(--surface-3)', color: 'var(--ink-2)', display: 'grid', placeItems: 'center' } }, hVP(icon, { size: 14, stroke: 1.9 })),
-      hVP('span', { style: { fontFamily: 'var(--font-disp)', fontSize: 15, fontWeight: 800 } }, label),
-      hVP('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)' } }, list.length)),
-    list.map(v => hVP(VoiceCard, { key: v.id, v, on: sel === v.id, playing: playing === v.id,
-      onSelect: () => setSel(v.id), onPlay: () => setPlaying(p => p === v.id ? null : v.id) })));
+  const list = tab === 'male' ? males : females;
 
   return hVP('div', { className: 'm-overlay', 'data-screen-label': '选择音色' },
     hVP('div', { className: 'wx-nav', style: { paddingLeft: 18 } },
@@ -79,19 +80,27 @@ function MChooseVoice({ char, ctx, onPick }) {
     hVP('div', { className: 'm-body', style: { padding: '2px 18px 92px' } },
       hVP('h1', { style: { fontSize: 22, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 7px' } }, '选择 AI 合成音色'),
       hVP('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 16px' } }, '内置智能音色，由 AI 按音色描述实时合成，无需录制；选定后绑定到该数字人。'),
+      hVP('div', { style: { display: 'flex', background: 'var(--surface-3)', padding: 3, borderRadius: 'var(--r-pill)', marginBottom: 12 } },
+        [['female', '女声', females.length], ['male', '男声', males.length]].map(([k, label, count]: any) => {
+          const on = tab === k;
+          return hVP('button', { key: k, onClick: () => { setTab(k); const first = (k === 'male' ? males : females)[0]; if (first && !((k === 'male' ? males : females).some(v => v.id === sel))) setSel(first.id); }, style: {
+            flex: 1, height: 34, border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent',
+            color: on ? 'var(--ink)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            boxShadow: on ? 'var(--sh-1)' : 'none' } }, label, hVP('span', { className: 'mono', style: { fontSize: 10.5, opacity: .62 } }, count));
+        })),
       // 搜索
       hVP('div', { style: { position: 'relative', marginBottom: 18 } },
         hVP(Icons.search, { size: 15, stroke: 1.9, style: { position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)' } }),
         hVP('input', { value: q, onChange: e => setQ(e.target.value), placeholder: '搜索音色 / 适用场景…', style: { width: '100%', height: 42, padding: '0 14px 0 38px', borderRadius: 'var(--r-pill)', border: '1px solid var(--line-2)', background: 'var(--surface)', fontSize: 14, fontFamily: 'var(--font-ui)', color: 'var(--ink)', outline: 'none', boxShadow: 'var(--sh-1)' } })),
-      section('女声', Icons.user, females),
-      section('男声', Icons.user, males),
-      females.length === 0 && males.length === 0 && hVP('div', { style: { textAlign: 'center', padding: '50px 0', color: 'var(--ink-3)' } },
+      list.map(v => hVP(VoiceCard, { key: v.id, v, on: sel === v.id, playing: playing === v.id,
+        onSelect: () => setSel(v.id), onPlay: () => setPlaying(p => p === v.id ? null : v.id) })),
+      list.length === 0 && hVP('div', { style: { textAlign: 'center', padding: '50px 0', color: 'var(--ink-3)' } },
         hVP('div', { style: { width: 54, height: 54, borderRadius: 99, background: 'var(--surface-3)', color: 'var(--ink-4)', display: 'grid', placeItems: 'center', margin: '0 auto 12px' } }, hVP(Icons.search, { size: 22 })),
         hVP('div', { style: { fontSize: 14.5, fontWeight: 600, color: 'var(--ink-2)' } }, '没有匹配的音色'))),
 
     hVP('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', gap: 11 } },
-      hVP(UI.Button, { variant: 'line', onClick: ctx.back }, '取消'),
-      hVP(UI.Button, { variant: 'dark', full: true, size: 'lg', onClick: () => { ctx.setVoice(char, selVoice.name); if (onPick) onPick(selVoice.name); ctx.toast('已设为默认音色 · ' + selVoice.name, { tone: 'ok' }); ctx.back(); } }, '设为默认')));
+      hVP(UI.Button, { variant: 'line', onClick: ctx.back, style: { flex: '0 0 88px', padding: '0 12px' } }, '取消'),
+      hVP(UI.Button, { variant: 'dark', full: true, size: 'lg', style: { flex: '1 1 0', width: 'auto', padding: '0 14px' }, onClick: () => { ctx.setVoice(char, selVoice.name); if (onPick) onPick(selVoice.name); ctx.toast('已设为默认音色 · ' + selVoice.name, { tone: 'ok' }); ctx.back(); } }, '设为默认')));
 }
 
 export { MChooseVoice };

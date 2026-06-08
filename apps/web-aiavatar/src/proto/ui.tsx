@@ -18,9 +18,9 @@ function Button({ variant = 'primary', size = 'md', icon, iconR, children, onCli
   const base = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: sz.gap,
     height: sz.h, padding: `0 ${sz.px}px`, width: full ? '100%' : 'auto',
-    fontFamily: 'var(--font-ui)', fontSize: sz.fs, fontWeight: 700, letterSpacing: '-.01em',
+    fontFamily: 'var(--font-ui)', fontSize: sz.fs, fontWeight: 700, letterSpacing: 0,
     borderRadius: 'var(--r-md)', border: '1px solid transparent', cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'all .16s cubic-bezier(.4,0,.2,1)', whiteSpace: 'nowrap', opacity: disabled ? .5 : 1,
+    transition: 'all .16s cubic-bezier(.4,0,.2,1)', whiteSpace: 'nowrap', opacity: disabled ? .5 : 1, minWidth: 0,
   };
   const variants = {
     primary: { background: 'var(--primary)', color: 'var(--on-primary)', boxShadow: 'var(--sh-1)' },
@@ -43,7 +43,7 @@ function Button({ variant = 'primary', size = 'md', icon, iconR, children, onCli
     onMouseEnter: () => setHv(true), onMouseLeave: () => setHv(false),
     style: { ...base, ...variants[variant], ...hover, ...style }, ...rest },
     icon && h(icon, { size: sz.ic, stroke: 1.9 }),
-    children && h('span', null, children),
+    children && h('span', { style: { minWidth: 0, whiteSpace: 'nowrap' } }, children),
     iconR && h(iconR, { size: sz.ic, stroke: 1.9 }));
 }
 
@@ -121,10 +121,10 @@ function Seg({ options, value, onChange, size = 'md', style }) {
 // —— Pill 过滤标签 ——
 function FilterPill({ active, children, onClick, count }) {
   return h('button', { onClick, style: {
-    display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 15px',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 34, minWidth: 84, padding: '0 15px',
     background: active ? 'var(--ink)' : 'var(--surface-3)', color: active ? '#fff' : 'var(--ink-2)',
     border: 'none', borderRadius: 'var(--r-pill)',
-    fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .14s' } },
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .14s', whiteSpace: 'nowrap', flex: '0 0 auto' } },
     children,
     count != null && h('span', { style: { fontSize: 11, opacity: .6, fontFamily: 'var(--font-mono)' } }, count));
 }

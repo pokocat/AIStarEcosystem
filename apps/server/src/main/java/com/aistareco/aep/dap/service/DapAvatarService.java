@@ -166,6 +166,71 @@ public class DapAvatarService {
     }
 
     @Transactional
+    public AvatarDto switchToVersion(String userId, String id, int v) {
+        DapAvatar a = required(userId, id);
+        if (hasDerivativeAssets(a)) {
+            throw BusinessException.badRequest("DAP_VERSION_HAS_DERIVATIVES",
+                    "该数字人已有衍生资产，请另存为新数字人，避免形象与衍生资产不一致");
+        }
+        DapAvatarVersion ver = requiredVersion(id, v);
+        if (ver.getImageKey() == null || ver.getImageKey().isBlank()) {
+            throw BusinessException.badRequest("DAP_VERSION_NO_IMAGE", "该版本没有可切换的形象图");
+        }
+        a.setImageKey(ver.getImageKey());
+        a.setStatus("refining");
+        a.setUpdatedAt(Instant.now());
+        addVersion(a, "切换到 " + versionLabel(v), "refine", ver.getImageKey());
+        avatarRepo.save(a);
+        return toDto(a);
+    }
+
+    @Transactional
+    public AvatarDto forkVersion(String userId, String id, int v) {
+        DapAvatar a = required(userId, id);
+        DapAvatarVersion ver = requiredVersion(id, v);
+        if (ver.getImageKey() == null || ver.getImageKey().isBlank()) {
+            throw BusinessException.badRequest("DAP_VERSION_NO_IMAGE", "该版本没有可另存的形象图");
+        }
+        Map<String, Object> deriv = new LinkedHashMap<>();
+        Map<String, Object> counts = new LinkedHashMap<>();
+        DERIV_KEYS.forEach(k -> { deriv.put(k, "empty"); counts.put(k, 0); });
+        DapAvatar copy = DapAvatar.builder()
+                .id(uniqueId("DH"))
+                .ownerUserId(userId)
+                .name(a.getName() + " · " + versionLabel(v))
+                .codename(a.getCodename())
+                .path(a.getPath())
+                .archetype(a.getArchetype())
+                .tagline(a.getTagline())
+                .status("archived")
+                .hue(a.getHue())
+                .hairStyle(a.getHairStyle())
+                .licenseId(a.getLicenseId())
+                .mock(a.isMock())
+                .engine(a.getEngine())
+                .palette(a.getPalette())
+                .def(new LinkedHashMap<>(a.defOrEmpty()))
+                .deriv(deriv)
+                .counts(counts)
+                .versions(1)
+                .voiceName(a.getVoiceName())
+                .imageKey(ver.getImageKey())
+                .variantKeys(new ArrayList<>())
+                .shotKeys(null)
+                .descPrompt(a.getDescPrompt())
+                .form(a.getForm() == null ? null : new LinkedHashMap<>(a.getForm()))
+                .basePrompt(a.getBasePrompt())
+                .templateId(a.getTemplateId())
+                .imageBytes(0)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+        avatarRepo.save(copy);
+        addVersionAt(copy, 1, "从 " + a.getName() + " " + versionLabel(v) + " 另存", "init", ver.getImageKey());
+        return toDto(copy);
+    }
+
+    @Transactional
     public void addVersion(DapAvatar a, String note, String kind, String imageKey) {
         a.setVersions(a.getVersions() + 1);
         versionRepo.save(DapAvatarVersion.builder()
@@ -191,6 +256,29 @@ public class DapAvatarService {
                 .imageKey(imageKey)
                 .createdAt(Instant.now())
                 .build());
+    }
+
+    private DapAvatarVersion requiredVersion(String avatarId, int v) {
+        return versionRepo.findByAvatarIdAndV(avatarId, v)
+                .orElseThrow(() -> BusinessException.notFound("DAP_VERSION_NOT_FOUND", "版本不存在"));
+    }
+
+    private boolean hasDerivativeAssets(DapAvatar a) {
+        Map<String, Object> counts = a.countsOrEmpty();
+        for (String k : DERIV_KEYS) {
+            Object raw = counts.get(k);
+            if (raw instanceof Number n && n.intValue() > 0) return true;
+            if (raw != null) {
+                try { if (Integer.parseInt(String.valueOf(raw)) > 0) return true; }
+                catch (NumberFormatException ignored) {}
+            }
+        }
+        Map<String, Object> shots = a.getShotKeys();
+        return shots != null && !shots.isEmpty();
+    }
+
+    private static String versionLabel(int v) {
+        return "v" + Math.max(1, v);
     }
 
     // ── 候选挑选 / 定稿 / 绑音色 ───────────────────────────────

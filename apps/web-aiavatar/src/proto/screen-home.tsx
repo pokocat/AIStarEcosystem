@@ -11,44 +11,47 @@ import { MShell, MKit } from "./shell";
 // 移动端 V4 · 首页 Home — 悬浮轮播宣传 + 「我的数字人资产」优先 + 空态引导
 // ============================================================
 const hMH : any = React.createElement;
-const { useState: useStateH, useEffect: useEffectH } = React;
+const { useState: useStateH, useEffect: useEffectH, useRef: useRefH } = React;
 const { WxNav: WxNavH } = MShell;
 const { MSection: MSectionH, MStatus: MStatusH, MPath: MPathH, CornerTicks: CornerTicksH } = MKit;
 
 // ——————————————————————————————————————————
-// 悬浮轮播宣传 Banner
-// ——————————————————————————————————————————
-function GradWord({ children }) {
-  return hMH('span', { style: { background: 'linear-gradient(92deg,#5B7CFF,#9B6BFF 55%,#E36BD0)',
-    WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', fontWeight: 800 } }, children);
-}
-
 function MCarousel({ slides }) {
   const [i, setI] = useStateH(0);
+  const dragRef = useRefH(null as any);
   const n = slides.length;
   useEffectH(() => {
     const t = setInterval(() => setI(p => (p + 1) % n), 4600);
     return () => clearInterval(t);
   }, [n]);
   const go = (d, e) => { if (e) e.stopPropagation(); setI(p => (p + d + n) % n); };
+  const down = (e) => { dragRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }; };
+  const up = (e) => {
+    const s = dragRef.current; dragRef.current = null;
+    if (!s) return;
+    const dx = e.clientX - s.x, dy = e.clientY - s.y;
+    if (Math.abs(dx) > 34 && Math.abs(dx) > Math.abs(dy) * 1.3) setI(p => (p + (dx < 0 ? 1 : -1) + n) % n);
+  };
 
   return hMH('div', { style: { position: 'relative', margin: '8px 16px 0' } },
     // 柔光悬浮底
     hMH('div', { style: { position: 'absolute', inset: '6px 10px -8px', borderRadius: 26, pointerEvents: 'none',
       background: slides[i].glow, filter: 'blur(20px)', opacity: .8, transition: 'background .5s' } }),
     // 主体
-    hMH('div', { style: { position: 'relative', height: 150, borderRadius: 'var(--r-2xl)', overflow: 'hidden',
-      boxShadow: '0 10px 30px -8px rgba(20,36,55,.22), 0 2px 8px rgba(20,36,55,.06)', border: '1px solid rgba(255,255,255,.6)' } },
+    hMH('div', { onPointerDown: down, onPointerUp: up, onPointerCancel: () => { dragRef.current = null; }, style: { position: 'relative', height: 166, borderRadius: 'var(--r-2xl)', overflow: 'hidden',
+      boxShadow: '0 10px 30px -8px rgba(20,36,55,.22), 0 2px 8px rgba(20,36,55,.06)', border: '1px solid rgba(255,255,255,.6)', touchAction: 'pan-y' } },
       // 滑轨
       hMH('div', { style: { display: 'flex', height: '100%', width: n * 100 + '%', transform: `translateX(-${i * (100 / n)}%)`, transition: 'transform .5s cubic-bezier(.22,1,.36,1)' } },
         slides.map((s, k) => hMH('button', { key: k, onClick: s.onClick, style: {
           flex: '0 0 ' + (100 / n) + '%', position: 'relative', border: 'none', cursor: 'pointer', padding: 0,
-          background: s.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 15 } },
-          hMH('div', { style: { fontFamily: 'var(--font-disp)', fontSize: 20.5, fontWeight: 800, letterSpacing: '-.02em', color: 'var(--ink)', textAlign: 'center', lineHeight: 1.16, padding: '0 46px', whiteSpace: 'nowrap' } }, s.title),
-          hMH('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 8, height: 38, padding: '0 8px 0 8px', background: 'var(--ink)', color: '#fff', borderRadius: 'var(--r-pill)', boxShadow: '0 6px 16px rgba(20,36,55,.28)' } },
+          background: s.bg, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 10, overflow: 'hidden' } },
+          s.image && hMH('img', { src: s.image, alt: '', draggable: false, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' } }),
+          hMH('span', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(8,16,24,.72), rgba(8,16,24,.32) 54%, rgba(8,16,24,.06))' } }),
+          hMH('div', { style: { position: 'relative', fontFamily: 'var(--font-disp)', fontSize: 21, fontWeight: 800, letterSpacing: 0, color: '#fff', textAlign: 'left', lineHeight: 1.14, padding: '0 76px 0 18px', textShadow: '0 2px 10px rgba(0,0,0,.22)' } }, s.title),
+          hMH('span', { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, margin: '0 0 16px 18px', padding: '0 8px 0 8px', background: 'rgba(255,255,255,.92)', color: 'var(--ink)', borderRadius: 'var(--r-pill)', boxShadow: '0 6px 16px rgba(20,36,55,.22)' } },
             s.badge && hMH('span', { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', background: 'rgba(255,255,255,.16)', padding: '3px 8px', borderRadius: 'var(--r-pill)' } }, s.badge),
             hMH('span', { style: { fontSize: 13.5, fontWeight: 700, paddingLeft: s.badge ? 0 : 8 } }, s.cta),
-            hMH('span', { style: { display: 'grid', placeItems: 'center', width: 26, height: 26, borderRadius: 99, background: 'rgba(255,255,255,.16)' } }, hMH(Icons.arrowR, { size: 14, stroke: 2.4 })))))),
+            hMH('span', { style: { display: 'grid', placeItems: 'center', width: 26, height: 26, borderRadius: 99, background: 'var(--primary)', color: '#fff' } }, hMH(Icons.arrowR, { size: 14, stroke: 2.4 })))))),
       // 左右箭头
       hMH('button', { onClick: e => go(-1, e), 'aria-label': '上一张', style: arrowStyle('left') }, hMH(Icons.chevL, { size: 18, stroke: 2.2 })),
       hMH('button', { onClick: e => go(1, e), 'aria-label': '下一张', style: arrowStyle('right') }, hMH(Icons.chevR, { size: 18, stroke: 2.2 }))),
@@ -173,11 +176,11 @@ function MHome({ ctx }) {
   const hasAssets = myAssets.length > 0;
 
   const SLIDES = [
-    { title: hMH('span', null, hMH(GradWord, null, 'Avatar V'), ' 来了'), cta: '立即体验', badge: 'NEW',
+    { title: '一句话创建你的 AI 数字人', cta: '立即体验', badge: 'NEW', image: '/generated/home-banners/create-avatar.jpg',
       bg: 'linear-gradient(120deg,#DDE6FF,#EBE0FF 52%,#FBE3F1)', glow: 'linear-gradient(120deg,#BFD0FF,#D9C6FF,#F7CDE6)', onClick: () => ctx.startCreate('ai') },
-    { title: hMH('span', null, '真人复刻 ', hMH('span', { style: { color: 'var(--primary)' } }, '15 秒成片')), cta: '开始录制',
+    { title: '真人授权复刻，先录制再生成', cta: '开始录制', image: '/generated/home-banners/real-clone.jpg',
       bg: 'linear-gradient(120deg,#D8F1FB,#E3ECFF)', glow: 'linear-gradient(120deg,#BEE7F7,#CFE0FF)', onClick: () => ctx.startRealClone() },
-    { title: hMH('span', null, '一句话 ', hMH('span', { style: { color: '#1AA06E' } }, '生成数字人')), cta: '去创建',
+    { title: '精调形象，生成图集与视频资产', cta: '生成资产', image: '/generated/home-banners/refine-assets.jpg',
       bg: 'linear-gradient(120deg,#DEF5EA,#DCEFFB)', glow: 'linear-gradient(120deg,#C5EEDA,#C9E6F8)', onClick: () => ctx.startCreate('ai') },
   ];
 

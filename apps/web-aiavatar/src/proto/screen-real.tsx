@@ -111,8 +111,8 @@ function RealIntro({ onReady, onUpload, onClose }) {
         hMR(Icons.shield, { size: 15, style: { color: 'var(--ok)', flex: '0 0 auto', marginTop: 1 } }),
         hMR('span', { style: { fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '录制即代表本人知情同意，素材将加密存档并用于生成肖像授权凭证。'))),
     hMR('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 20px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 12 } },
-      hMR(UI.Button, { variant: 'line', onClick: () => fileRef.current && fileRef.current.click(), icon: Icons.upload }, '上传'),
-      hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.film, onClick: onReady }, '我准备好了')),
+      hMR(UI.Button, { variant: 'line', onClick: () => fileRef.current && fileRef.current.click(), icon: Icons.upload, style: { flex: '0 0 88px', padding: '0 12px' } }, '上传'),
+      hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.film, onClick: onReady, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '准备好了')),
     coach && hMR('div', { style: { position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(11,22,32,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 26px', animation: 'mSheetFade .2s ease both' } },
       hMR('div', { className: 'm-fade', style: { width: '100%', background: 'var(--surface)', borderRadius: 'var(--r-xl)', padding: '22px 20px 20px', boxShadow: 'var(--sh-3)', textAlign: 'center' } },
         hMR('div', { style: { width: 54, height: 54, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMR(Icons.film, { size: 26 })),
@@ -209,12 +209,19 @@ function RealRecording({ onDone, onClose }) {
 
   const read = Math.floor((progress / 100) * SCRIPT.length);
   const secs = Math.floor(progress / 100 * REC_SECONDS);
+  const cancelRecording = () => {
+    doneRef.current = true;
+    try { recRef.current && recRef.current.state !== 'inactive' && recRef.current.stop(); } catch {}
+    if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    onClose('cancelled');
+  };
 
   return hMR('div', { style: { position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: '#0B1620' } },
     hMR('div', { className: 'wx-nav', style: { paddingLeft: 16, justifyContent: 'flex-end', gap: 10 } },
       phase === 'rec' && hMR('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 13px', borderRadius: 99, background: 'rgba(255,255,255,.12)', color: '#fff', fontSize: 13, fontWeight: 700 } },
         hMR('span', { style: { width: 9, height: 9, borderRadius: 99, background: 'var(--err)', animation: 'pulse 1s infinite' } }), hMR('span', { className: 'mono' }, '0:' + String(secs).padStart(2, '0'))),
-      hMR('button', { className: 'm-tap', onClick: () => onClose(), style: { width: 36, height: 36, borderRadius: 99, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,.12)', color: '#fff', display: 'grid', placeItems: 'center' } }, hMR(Icons.x, { size: 20, stroke: 2.2 }))),
+      hMR('button', { className: 'm-tap', onClick: cancelRecording, style: { height: 36, padding: '0 13px', borderRadius: 99, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,.12)', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700 } },
+        hMR(Icons.x, { size: 16, stroke: 2.2 }), '取消录制')),
 
     hMR('div', { style: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '0 16px', overflow: 'hidden' } },
       hMR('div', { style: { flex: '0 0 auto', background: 'rgba(255,255,255,.08)', borderRadius: 'var(--r-lg)', padding: '20px 20px', marginBottom: 14 } },
@@ -275,7 +282,7 @@ function RealVerify({ blobUrl, isImage, stageText, pct, error, onRetry, onClose 
 }
 
 // —— 就绪 + 选择声音 ——
-function RealReady({ avatar, onPickVoice, onClose }) {
+function RealReady({ avatar, onContinue, onClose }) {
   return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
     hMR(CenterNav, { onClose }),
     hMR('div', { className: 'm-body', style: { padding: '2px 22px 28px', textAlign: 'center' } },
@@ -284,21 +291,12 @@ function RealReady({ avatar, onPickVoice, onClose }) {
           hMR('div', { style: { position: 'absolute', inset: 8, borderRadius: 99, background: 'var(--primary-soft)' } }),
           hMR('div', { style: { position: 'relative', width: 44, height: 44, borderRadius: 14, background: 'var(--primary)', display: 'grid', placeItems: 'center', color: '#fff' } }, hMR(Icons.check, { size: 24, stroke: 2.6 }))),
         hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, '你的数字人已就绪！'),
-        hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 20px', maxWidth: 260 } }, '为它选择一个声音，即可开始创作视频。'),
+        hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 20px', maxWidth: 260 } }, '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
         avatar && avatar.imageUrl && hMR('div', { style: { width: 170, margin: '0 auto 20px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
           hMR(Portrait, { char: avatar, variant: 'key', ratio: '4 / 5', expr: 'calm' })),
-        hMR('div', { style: { textAlign: 'left', padding: 18, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-1)', marginBottom: 14 } },
-          hMR('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 } },
-            hMR('span', { style: { fontSize: 15.5, fontWeight: 700 } }, '克隆我的声音'),
-            hMR(UI.Badge, { tone: 'ok' }, '推荐')),
-          hMR('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '单独录一段声音采样，获得与你最接近的声线。'),
-          hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.mic, onClick: () => onPickVoice('new') }, '去录制声音')),
-        hMR('div', { style: { textAlign: 'left', padding: 18, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-1)' } },
-          hMR('div', { style: { fontSize: 15.5, fontWeight: 700, marginBottom: 8 } }, '使用内置 AI 音色'),
-          hMR('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '从 7 款内置智能音色中挑一个，随时可换。'),
-          hMR(UI.Button, { variant: 'line', full: true, size: 'lg', onClick: () => onPickVoice('builtin') }, '挑选音色')))),
+        hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.sliders, onClick: onContinue }, '继续精调'))),
     hMR('div', { style: { flex: '0 0 auto', padding: '8px 22px calc(14px + var(--home-ind))', textAlign: 'center' } },
-      hMR('button', { onClick: () => onPickVoice('skip'), style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--ink-3)' } }, '稍后再说')));
+      hMR('button', { onClick: onClose, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--ink-3)' } }, '稍后再说')));
 }
 
 // —— 外壳：编排 capture → footage → verify → generate ——
@@ -357,20 +355,11 @@ function MRealCapture({ char, ctx }) {
     }
   };
 
-  const finish = async (voiceKind) => {
-    try {
-      const a = avatar;
-      if (a) {
-        const done = await AvatarApi.finalize(a.id, { archive: true });
-        if (voiceKind === 'new') { ctx.finishCreate({ ...a, ...done }); ctx.go('voiceclone', { avatarId: a.id }); return; }
-        if (voiceKind === 'builtin') { ctx.finishCreate({ ...a, ...done }); ctx.chooseVoice({ ...a, ...done }); return; }
-        ctx.finishCreate({ ...a, ...done });
-      } else {
-        ctx.back();
-      }
-    } catch (e: any) {
-      toast(e?.message || '保存失败', { tone: 'err' });
-    }
+  const continueAdjust = async () => {
+    const a = avatar;
+    if (!a) { ctx.back(); return; }
+    const fresh = await AvatarApi.get(a.id).catch(() => a);
+    (ctx.continueAdjust || ctx.realToWizard || ctx.finishCreate)({ ...fresh, _startAdjust: true });
   };
 
   return hMR('div', { className: 'm-overlay', 'data-screen-label': '真人捕获' },
@@ -386,7 +375,7 @@ function MRealCapture({ char, ctx }) {
     stage === 'verify' && hMR(RealVerify, { blobUrl, isImage, stageText, pct, error,
       onRetry: () => runPipeline(nameRef.current || '我的数字人'),
       onClose: () => { if (!busy) ctx.back(); } }),
-    stage === 'ready' && hMR(RealReady, { avatar, onClose: () => finish('skip'), onPickVoice: finish }));
+    stage === 'ready' && hMR(RealReady, { avatar, onClose: ctx.back, onContinue: continueAdjust }));
 }
 
 export { MRealCapture };

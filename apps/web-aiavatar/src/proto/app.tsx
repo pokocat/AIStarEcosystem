@@ -276,6 +276,14 @@ export function App() {
     startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
     startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("真人捕获"); },
     realToWizard: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "create", props: { char } }); return ns; }); setLabel("创建链路"); },
+    continueAdjust: (char) => {
+      setStack((s) => {
+        const ns = s.slice(0, -1);
+        ns.push({ screen: "create", props: { char: { ...char, _startAdjust: true } } });
+        return ns;
+      });
+      setLabel("创建链路");
+    },
     finishCreate: (char) => { reload(); setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "detail", props: { char } }); return ns; }); setLabel("资产详情"); },
     /** 提交生成后回数字人库（生成中的资产在卡片上显示实时进度）。 */
     submitToLibrary: () => { reload(); setSheet(false); setStack([]); setTab("library"); setLabel("数字人库"); },

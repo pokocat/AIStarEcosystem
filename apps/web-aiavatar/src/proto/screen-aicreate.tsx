@@ -18,12 +18,18 @@ const { useState: useStateAC, useEffect: useEffectAC, useRef: useRefAC } = React
 
 // 「选择外观」范例人物
 const EXAMPLES = [
-  { id: 'e1', name: '播客主播', hue: 258, variant: 'key', expr: 'smile', desc: '一位戴着监听耳机的青年男性播客主播，坐在摆满麦克风的桌前，身后是霓虹蓝紫的录音棚灯光，笔记本电脑微微反光，氛围专业而放松。' },
-  { id: 'e2', name: '美妆博主', hue: 28, variant: 'threeq', expr: 'smile', desc: '一位皮肤通透的女性美妆博主，单手托腮坐在化妆台前，环形灯柔和照亮她的脸，身后是整齐的化妆品架与暖色串灯，温馨而专业。' },
-  { id: 'e3', name: '街头潮流', hue: 8, variant: 'look', expr: 'calm', desc: '一位金发女性坐在城市街头的台阶上，身穿做旧夹克与破洞牛仔裤、白色球鞋，身后是涂鸦墙与往来人群，潮流而自信。' },
-  { id: 'e4', name: '烘焙厨房', hue: 178, variant: 'key', expr: 'smile', desc: '一位系着围裙的女性站在温暖的厨房里，面前的木桌上摆着刚做好的蛋糕与餐具，身后是整齐的调料架，亲切而专业。' },
-  { id: 'e5', name: '健身教练', hue: 318, variant: 'side', expr: 'serious', desc: '一位身材健美的女性健身教练，站在洒满自然光的训练室中，身穿亮色运动背心，神情专注而充满活力。' },
-  { id: 'e6', name: '居家生活', hue: 200, variant: 'threeq', expr: 'calm', desc: '一位青年男性站在明亮的家居厨房中，身后是开放式置物架与餐具，自然光从窗外洒入，温暖而生活化。' },
+  { id: 'e1', name: '林澈 · 播客主播', age: '青年', gender: '男', ethnic: '东亚', style: '写实', hue: 258, variant: 'key', expr: 'smile', image: '/generated/avatar-previews/example-podcast-host.jpg', desc: '戴着监听耳机的青年男性播客主播，清爽短发，深色圆领卫衣，坐在专业录音棚桌前，身边有麦克风与笔记本，蓝紫柔光打亮脸部，气质冷静、专业、亲和。' },
+  { id: 'e2', name: '苏念 · 美妆主理人', age: '青年', gender: '女', ethnic: '东亚', style: '写实', hue: 28, variant: 'threeq', expr: 'smile', image: '/generated/avatar-previews/example-beauty-creator.jpg', desc: '皮肤通透的青年女性美妆主理人，柔顺长发，精致自然妆容，浅色针织上衣，坐在化妆台前，环形灯柔和照亮脸部，气质温柔、干净、专业。' },
+  { id: 'e3', name: '秦野 · 街拍创作者', age: '青年', gender: '女', ethnic: '欧美', style: '写实', hue: 8, variant: 'look', expr: 'calm', image: '/generated/avatar-previews/example-street-fashion.jpg', desc: '金发青年女性街拍创作者，五官利落，做旧夹克与白色内搭，城市街头背景，光线自然，气质自信、独立、有潮流感，但脸部清晰居中。' },
+  { id: 'e4', name: '顾安 · 烘焙店主', age: '青年', gender: '女', ethnic: '东亚', style: '写实', hue: 178, variant: 'key', expr: 'smile', image: '/generated/avatar-previews/example-baking-kitchen.jpg', desc: '系着浅色围裙的青年女性烘焙店主，温暖笑容，柔和短发，站在明亮厨房中，木桌和蛋糕作为背景，暖色自然光，气质亲切、可靠、有手作温度。' },
+  { id: 'e5', name: '许遥 · 健身教练', age: '青年', gender: '女', ethnic: '东亚', style: '写实', hue: 318, variant: 'side', expr: 'serious', image: '/generated/avatar-previews/example-fitness-coach.jpg', desc: '身材健康的青年女性健身教练，干净马尾，运动背心外搭轻薄外套，站在自然光训练室中，表情专注，气质阳光、自律、充满能量。' },
+  { id: 'e6', name: '沈泊 · 家居博主', age: '青年', gender: '男', ethnic: '东亚', style: '写实', hue: 200, variant: 'threeq', expr: 'calm', image: '/generated/avatar-previews/example-home-lifestyle.jpg', desc: '青年男性家居生活博主，清爽短发，米色衬衫，站在明亮开放式厨房中，自然光从窗边进入，背景有餐具和绿植，气质温和、松弛、有生活感。' },
+  { id: 'e7', name: '陈一然 · 财经分析师', age: '青年', gender: '女', ethnic: '东亚', style: '写实', hue: 214, variant: 'key', expr: 'calm', image: '/generated/avatar-previews/example-chen-yiran.jpg', desc: '青年女性财经分析师，短发或利落束发，浅灰西装外套，坐在整洁办公桌前，背景有模糊的数据屏幕与玻璃隔断，正面脸部清晰，气质理性、可信、干练。' },
+  { id: 'e8', name: '陆明 · 数码测评人', age: '青年', gender: '男', ethnic: '东亚', style: '写实', hue: 190, variant: 'key', expr: 'smile', image: '/generated/avatar-previews/example-lu-ming.jpg', desc: '青年男性数码测评人，清爽短发，深色夹克，桌面有手机和相机设备，背景是现代工作室，正面脸部清晰，气质聪明、自然、表达欲强。' },
+  { id: 'e9', name: '徐婉清 · 品牌主持', age: '中年', gender: '女', ethnic: '东亚', style: '写实', hue: 34, variant: 'key', expr: 'smile', image: '/generated/avatar-previews/example-xu-wanqing.jpg', desc: '成熟优雅的女性品牌主持人，精致盘发，米白西装，站在高端品牌展厅中，柔和灯光突出脸部，气质从容、可信、优雅。' },
+  { id: 'e10', name: '何予 · 健康教练', age: '青年', gender: '男', ethnic: '东亚', style: '写实', hue: 150, variant: 'key', expr: 'calm', image: '/generated/avatar-previews/example-he-yu.jpg', desc: '青年男性健康教练，短发，运动休闲上衣，站在明亮瑜伽训练空间里，背景干净有绿植，正面脸部清晰，气质健康、温和、专业。' },
+  { id: 'e11', name: '林小满 · 旅行创作者', age: '青年', gender: '女', ethnic: '东亚', style: '写实', hue: 300, variant: 'key', expr: 'smile', image: '/generated/avatar-previews/example-lin-xiaoman.jpg', desc: '青年女性旅行创作者，长发，浅色风衣，背景是明亮城市街景或车站窗光，正面脸部清晰，气质轻盈、好奇、有亲和力。' },
+  { id: 'e12', name: '周辰 · 知识讲师', age: '中年', gender: '男', ethnic: '东亚', style: '写实', hue: 226, variant: 'key', expr: 'calm', image: '/generated/avatar-previews/example-zhou-chen.jpg', desc: '中年男性知识讲师，短发，深色针织衫或西装外套，背景是书架和柔和台灯，正面脸部清晰，气质沉稳、清晰、值得信赖。' },
 ];
 
 // 分段控件（浅底胶囊，选中白底）
@@ -69,9 +75,9 @@ function AIChoosePath({ onPick, onClose }) {
 // ============================================================
 // 上传照片（真实文件选择 + 预览）
 // ============================================================
-function PhotoDemo({ char, variant, expr, ok }) {
+function PhotoDemo({ src, ok }) {
   return hAC('div', { style: { position: 'relative', flex: 1, aspectRatio: '3 / 4', borderRadius: 8, overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-    hAC(Portrait, { char, variant, expr, ratio: '', style: { width: '100%', height: '100%', filter: ok ? 'none' : 'grayscale(.5) brightness(.92)' } }),
+    hAC('img', { src, alt: ok ? '优质照片示例' : '不合格照片示例', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter: ok ? 'none' : 'grayscale(.5) brightness(.92)' } }),
     hAC('span', { style: { position: 'absolute', right: 4, bottom: 4, width: 17, height: 17, borderRadius: 99, display: 'grid', placeItems: 'center',
       background: ok ? 'var(--ok)' : 'var(--err)', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.3)' } },
       hAC(ok ? Icons.check : Icons.x, { size: 11, stroke: 3 })));
@@ -94,10 +100,18 @@ function AIUpload({ char, onUploaded, onClose }) {
   };
 
   const goods = [
-    { v: 'key', e: 'serious' }, { v: 'threeq', e: 'calm' }, { v: 'side', e: 'calm' }, { v: 'look', e: 'smile' }, { v: 'key', e: 'smile' },
+    { src: '/generated/avatar-previews/photo-good-front.jpg' },
+    { src: '/generated/avatar-previews/photo-good-three-quarter.jpg' },
+    { src: '/generated/avatar-previews/photo-good-side.jpg' },
+    { src: '/generated/avatar-previews/photo-good-smile.jpg' },
+    { src: '/generated/avatar-previews/photo-good-fullbody.jpg' },
   ];
   const bads = [
-    { v: 'side', e: 'serious' }, { v: 'key', e: 'calm' }, { v: 'look', e: 'serious' }, { v: 'threeq', e: 'serious' }, { v: 'side', e: 'smile' },
+    { src: '/generated/avatar-previews/photo-bad-group.jpg' },
+    { src: '/generated/avatar-previews/photo-bad-sunglasses.jpg' },
+    { src: '/generated/avatar-previews/photo-bad-pet.jpg' },
+    { src: '/generated/avatar-previews/photo-bad-filter.jpg' },
+    { src: '/generated/avatar-previews/photo-bad-lowres.jpg' },
   ];
   const picked = files.length > 0;
 
@@ -135,17 +149,17 @@ function AIUpload({ char, onUploaded, onClose }) {
           hAC('span', { style: { fontSize: 14.5, fontWeight: 700 } }, '优质照片')),
         hAC('p', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 0 12px' } }, '近期的个人照片（仅限本人），包含近景和全身照，涵盖不同角度、表情（微笑、中性、严肃）和多样服装。确保为高分辨率，并与当前外貌一致。'),
         hAC('div', { style: { display: 'flex', gap: 7, marginBottom: 20 } },
-          goods.map((g, i) => hAC(PhotoDemo, { key: i, char, variant: g.v, expr: g.e, ok: true }))),
+          goods.map((g, i) => hAC(PhotoDemo, { key: i, src: g.src, ok: true }))),
         hAC('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 } },
           hAC('span', { style: { width: 22, height: 22, borderRadius: 99, background: 'var(--err)', color: '#fff', display: 'grid', placeItems: 'center', flex: '0 0 auto' } }, hAC(Icons.x, { size: 13, stroke: 3 })),
           hAC('span', { style: { fontSize: 14.5, fontWeight: 700 } }, '不合格照片')),
         hAC('p', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 0 12px' } }, '不要上传合照、帽子、太阳镜、宠物、重度滤镜、低分辨率图片或截图。避免过旧、过度编辑或与当前外貌不符的照片。'),
         hAC('div', { style: { display: 'flex', gap: 7 } },
-          bads.map((g, i) => hAC(PhotoDemo, { key: i, char, variant: g.v, expr: g.e, ok: false }))))),
+          bads.map((g, i) => hAC(PhotoDemo, { key: i, src: g.src, ok: false }))))),
 
     hAC('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', gap: 11 } },
-      hAC(UI.Button, { variant: 'line', onClick: onClose }, '取消'),
-      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: !picked, icon: Icons.upload, onClick: () => onUploaded(files) }, '上传并生成')));
+      hAC(UI.Button, { variant: 'line', onClick: onClose, style: { flex: '0 0 88px', padding: '0 12px' } }, '取消'),
+      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: !picked, icon: Icons.upload, onClick: () => onUploaded(files), style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '上传并生成')));
 }
 
 // ============================================================
@@ -161,10 +175,10 @@ function ExamplePicker({ char, onPick, onClose }) {
     hAC('div', { className: 'm-body', style: { padding: '4px 18px 24px' } },
       hAC('div', { className: 'm-stagger', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
         EXAMPLES.map(ex => hAC('button', { key: ex.id, onClick: () => onPick(ex), className: 'm-press', style: { position: 'relative', padding: 0, border: 'none', cursor: 'pointer', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
-          hAC(Portrait, { char: { hue: ex.hue }, variant: ex.variant, ratio: '4 / 5', expr: ex.expr }),
+          hAC('img', { src: ex.image, alt: ex.name, style: { display: 'block', width: '100%', aspectRatio: '4 / 5', objectFit: 'cover' } }),
           hAC('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,18,26,.5), transparent 46%)' } }),
           hAC('div', { style: { position: 'absolute', left: 11, bottom: 10, right: 11, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 } },
-            hAC('span', { style: { fontSize: 13.5, fontWeight: 700, color: '#fff' } }, ex.name),
+            hAC('span', { className: 'm-clip1', style: { minWidth: 0, fontSize: 13.5, fontWeight: 700, color: '#fff', textAlign: 'left' } }, ex.name),
             hAC('span', { style: { width: 24, height: 24, borderRadius: 99, background: 'rgba(255,255,255,.92)', color: 'var(--ink)', display: 'grid', placeItems: 'center' } }, hAC(Icons.arrowR, { size: 13, stroke: 2.4 }))))))));
 }
 
@@ -175,12 +189,21 @@ function AIForm({ onGenerate, onClose, char, initial }) {
   const [gender, setGender] = useStateAC(initial?.gender || '未指定');
   const [ethnic, setEthnic] = useStateAC(initial?.ethnic || '未指定');
   const [desc, setDesc] = useStateAC(initial?.desc || '');
-  const [orient, setOrient] = useStateAC(initial?.orient || '竖屏');
-  const [pose, setPose] = useStateAC(initial?.pose || '半身');
+  const orient = '竖屏';
+  const pose = '脸部';
   const [style, setStyle] = useStateAC(initial?.style || '未指定');
   const [examples, setExamples] = useStateAC(false);
 
-  const applyExample = (ex) => { setDesc(ex.desc); if (!name) setName(ex.name); setExamples(false); toast('已套用「' + ex.name + '」示例', { tone: 'ok' }); };
+  const applyExample = (ex) => {
+    setDesc(ex.desc);
+    if (!name) setName(ex.name);
+    if (ex.age) setAge(ex.age);
+    if (ex.gender) setGender(ex.gender);
+    if (ex.ethnic) setEthnic(ex.ethnic);
+    if (ex.style) setStyle(ex.style);
+    setExamples(false);
+    toast('已套用「' + ex.name + '」示例', { tone: 'ok' });
+  };
   const submit = () => {
     if (!desc.trim()) { toast('请先描述形象，或从示例中挑一个', { tone: 'warn' }); return; }
     onGenerate({ name: name.trim(), desc: desc.trim(), age, gender, ethnic, orient, pose, style });
@@ -216,13 +239,14 @@ function AIForm({ onGenerate, onClose, char, initial }) {
         hAC('button', { onClick: () => setExamples(true), style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--primary)' } }, '选择外观')),
       hAC(UI.Textarea, { value: desc, onChange: setDesc, rows: 4, placeholder: '描述外貌、气质、服饰、场景与光线…', style: { marginBottom: 22 } }),
 
-      hAC(UI.Field, { label: '朝向', style: { marginBottom: 18 } }, hAC(SegRow, { options: ['横屏', '竖屏', '方形'], value: orient, onChange: setOrient })),
-      hAC(UI.Field, { label: '姿态', style: { marginBottom: 18 } }, hAC(SegRow, { options: ['全身', '半身', '脸部'], value: pose, onChange: setPose })),
+      hAC('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 } },
+        hAC(UI.Field, { label: '朝向' }, hAC('div', { style: { height: 44, display: 'flex', alignItems: 'center', padding: '0 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--line-2)', background: 'var(--surface-2)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' } }, '竖屏')),
+        hAC(UI.Field, { label: '姿态' }, hAC('div', { style: { height: 44, display: 'flex', alignItems: 'center', padding: '0 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--line-2)', background: 'var(--surface-2)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' } }, '脸部'))),
       hAC(UI.Field, { label: '风格' }, hAC(UI.Select, { value: style, onChange: setStyle, options: ['未指定', '写实', '二次元', '国风', '电影感', '赛博'] }))),
 
     hAC('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', gap: 11 } },
-      hAC(UI.Button, { variant: 'line', onClick: onClose }, '上一步'),
-      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', iconR: Icons.sparkle, disabled: !desc.trim(), onClick: submit }, '生成预览')),
+      hAC(UI.Button, { variant: 'line', onClick: onClose, style: { flex: '0 0 104px', padding: '0 12px' } }, '上一步'),
+      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', iconR: Icons.sparkle, disabled: !desc.trim(), onClick: submit, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '生成预览')),
 
     examples && hAC(ExamplePicker, { char, onPick: applyExample, onClose: () => setExamples(false) }));
 }
@@ -318,8 +342,8 @@ function AIPick({ avatar, busy, onSave, onRegen, onEdit, onClose }) {
         hAC(UI.Button, { variant: 'line', full: true, icon: Icons.refresh, disabled: busy, onClick: onRegen }, '重新生成'),
         hAC(UI.Button, { variant: 'line', full: true, icon: Icons.pen, disabled: busy, onClick: onEdit }, '编辑描述'))),
     hAC('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', gap: 11 } },
-      hAC(UI.Button, { variant: 'line', disabled: busy, onClick: onClose }, '取消'),
-      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: busy || !name.trim(), onClick: () => onSave(sel, name.trim(), voice) }, busy ? '保存中…' : '保存形象')));
+      hAC(UI.Button, { variant: 'line', disabled: busy, onClick: onClose, style: { flex: '0 0 88px', padding: '0 12px' } }, '取消'),
+      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: busy || !name.trim(), onClick: () => onSave(sel, name.trim(), voice), style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, busy ? '保存中…' : '保存形象')));
 }
 
 // —— 就绪 + 命名（上传照片路径）——
@@ -341,8 +365,8 @@ function AIReady({ avatar, busy, onConfirm, onClose }) {
           hAC(UI.Field, { label: '名称', required: true }, hAC(UI.Input, { value: name, onChange: setName, placeholder: '为你的虚拟形象命名' })),
           hAC(RecVoice, { value: voice, onChange: setVoice })))),
     hAC('div', { style: { flex: '0 0 auto', padding: '12px 22px calc(14px + var(--home-ind))', display: 'flex', gap: 11, borderTop: '1px solid var(--line)' } },
-      hAC(UI.Button, { variant: 'line', disabled: busy, onClick: onClose }, '取消'),
-      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: busy || !name.trim(), onClick: () => onConfirm(name.trim(), voice) }, busy ? '保存中…' : '完成')));
+      hAC(UI.Button, { variant: 'line', disabled: busy, onClick: onClose, style: { flex: '0 0 88px', padding: '0 12px' } }, '取消'),
+      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: busy || !name.trim(), onClick: () => onConfirm(name.trim(), voice), style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, busy ? '保存中…' : '完成')));
 }
 
 // —— 外壳：编排 create → photos/generate → poll → pick/ready → finalize ——
@@ -417,9 +441,9 @@ function MAICreate({ char, ctx }) {
       if (mode === 'ai') await AvatarApi.pick(a.id, sel);
       await AvatarApi.patch(a.id, { name });
       if (voice) await VoiceApi.bind(a.id, voice).catch(() => {});
-      const done = await AvatarApi.finalize(a.id, { archive: true });
-      toast('形象已保存到名录 🎉' + (voice ? ' · 音色 ' + voice : ''), { tone: 'ok' });
-      ctx.finishCreate({ ...done, name });
+      const fresh = await AvatarApi.get(a.id).catch(() => ({ ...a, name }));
+      toast('已生成形象 · 下一步精调' + (voice ? ' · 音色 ' + voice : ''), { tone: 'ok' });
+      (ctx.continueAdjust || ctx.realToWizard || ctx.finishCreate)({ ...fresh, name, _startAdjust: true });
     } catch (e: any) {
       toast(e?.message || '保存失败', { tone: 'err' });
     } finally {

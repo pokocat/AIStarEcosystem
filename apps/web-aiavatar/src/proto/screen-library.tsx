@@ -182,7 +182,7 @@ function DerivConfigSheet({ derivKey, char, onClose, onSubmit }) {
 
   return hML(React.Fragment, null,
     hML('div', { className: 'm-sheet-backdrop', onClick: onClose }),
-    hML('div', { className: 'm-sheet', style: { padding: '0 18px calc(16px + var(--home-ind))', maxHeight: '82%', overflowY: 'auto' } },
+    hML('div', { className: 'm-sheet', style: { padding: '0 18px calc(16px + var(--home-ind))', maxHeight: 'calc(100dvh - 58px)', overflowY: 'auto' } },
       hML('div', { className: 'm-sheet-grip' }),
       hML('div', { style: { padding: '6px 0 4px' } },
         hML('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 700, fontSize: 18 } }, (meta.name || '衍生') + ' · 生成配置'),
@@ -243,9 +243,12 @@ function MDetail({ char: initialChar, ctx }) {
   const [tab, setTab] = useStateML('assets');
   const [derivBusy, setDerivBusy] = useStateML({} as any);
   const [cfgKey, setCfgKey] = useStateML(null as any);
+  const [quickGen, setQuickGen] = useStateML(false);
   const [genSeq, setGenSeq] = useStateML(0);          // 生成完成后递增 → 作品库重新拉取
   const [confirmDel, setConfirmDel] = useStateML(false);
   const [deleting, setDeleting] = useStateML(false);
+  const [editingName, setEditingName] = useStateML(false);
+  const [draftName, setDraftName] = useStateML(char.name || '');
   const voice = ctx.voiceFor(char);
   const s = DATA.STATUS[char.status] || DATA.STATUS.draft;
   const isPublic = String(char.id || '').startsWith('PA-');
@@ -281,6 +284,23 @@ function MDetail({ char: initialChar, ctx }) {
       await navigator.clipboard.writeText(char.name + ' · ' + char.id + ' ' + url);
       toast('已复制分享链接', { tone: 'ok' });
     } catch { toast('复制失败，请手动分享', { tone: 'warn' }); }
+  };
+
+  const saveName = async () => {
+    const next = draftName.trim();
+    if (!next || next === char.name) { setEditingName(false); setDraftName(char.name || ''); return; }
+    const prev = char.name;
+    setChar((c) => ({ ...c, name: next }));
+    setEditingName(false);
+    try {
+      await AvatarApi.patch(char.id, { name: next });
+      ctx.reload && ctx.reload();
+      toast('名称已更新', { tone: 'ok' });
+    } catch (e: any) {
+      setChar((c) => ({ ...c, name: prev }));
+      setDraftName(prev || '');
+      toast(e?.message || '名称保存失败', { tone: 'err' });
+    }
   };
 
   const doDelete = async () => {
@@ -335,22 +355,28 @@ function MDetail({ char: initialChar, ctx }) {
             char.mock && hML(UI.Badge, { tone: 'warn' }, 'MOCK'),
             hML(MPathL, { path: char.path }))),
         hML('div', { style: { display: 'flex', gap: 0 } },
-          hML('div', { style: { position: 'relative', padding: 11, background: 'var(--canvas-2)', flex: '0 0 158px' } },
+          hML('div', { style: { position: 'relative', padding: 10, background: 'var(--canvas-2)', flex: '0 0 142px' } },
             hML('div', { style: { position: 'relative', borderRadius: 'var(--r-sm)', overflow: 'hidden', border: '1px solid var(--line)' } },
               hML(Portrait, { char, variant: 'key', ratio: '4 / 5', expr: 'calm' }),
               hML(LiveJobBadge, { char, onDone: refresh }),
               hML('div', { style: { position: 'absolute', bottom: 8, left: 8 } }, hML(MStatusL, { status: char.status }))),
             hML(CornerTicksL, null)),
-          hML('div', { style: { flex: 1, minWidth: 0, padding: '14px 14px 12px' } },
+          hML('div', { style: { flex: 1, minWidth: 0, padding: '12px 12px 12px', display: 'flex', flexDirection: 'column' } },
             hML('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 } },
-              hML('div', { className: 'asset-name-lg', style: { fontSize: 25 } }, char.name),
+              editingName
+                ? hML('div', { style: { flex: 1, minWidth: 0, display: 'flex', gap: 6, alignItems: 'center' } },
+                    hML(UI.Input, { value: draftName, onChange: setDraftName, placeholder: '数字人名称', style: { height: 36, fontSize: 13.5, fontWeight: 700, minWidth: 0 } }),
+                    hML('button', { onClick: saveName, className: 'm-tap', style: { width: 36, flex: '0 0 36px', height: 36, border: 'none', borderRadius: 10, cursor: 'pointer', background: 'var(--primary)', color: '#fff', display: 'grid', placeItems: 'center' } }, hML(Icons.check, { size: 17, stroke: 2.4 })))
+                : hML('button', { onClick: () => { if (!isPublic) { setDraftName(char.name || ''); setEditingName(true); } }, className: 'm-tap', style: { flex: 1, minWidth: 0, padding: 0, background: 'none', border: 'none', cursor: isPublic ? 'default' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 } },
+                    hML('div', { className: 'asset-name-lg m-clip2', style: { fontSize: 18.5, lineHeight: 1.18, minWidth: 0 } }, char.name),
+                    !isPublic && hML(Icons.pen, { size: 14, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } })),
               !isPublic && hML('button', { onClick: toggleFav, className: 'm-tap', style: { background: 'none', border: 'none', cursor: 'pointer', padding: 4, marginTop: 0, color: char.fav ? 'var(--err)' : 'var(--ink-4)', flex: '0 0 auto' } },
                 hML(Icons.heart, { size: 17, stroke: 2 }))),
             hML('div', { className: 'mono', style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 3 } }, char.codename),
             hML('div', { style: { fontSize: 12.5, color: 'var(--ink-2)', marginTop: 8, lineHeight: 1.45 } }, char.tagline),
-            !isPublic && hML('button', { onClick: () => ctx.chooseVoice(char), className: 'm-tap', style: { display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 11, height: 34, padding: '0 11px 0 12px', borderRadius: 'var(--r-pill)', border: '1px solid var(--line-2)', background: 'var(--surface)', cursor: 'pointer', boxShadow: 'var(--sh-1)' } },
+            !isPublic && hML('button', { onClick: () => ctx.chooseVoice(char), className: 'm-tap', style: { display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10, height: 34, maxWidth: '100%', minWidth: 0, padding: '0 9px 0 10px', borderRadius: 'var(--r-pill)', border: '1px solid var(--line-2)', background: 'var(--surface)', cursor: 'pointer', boxShadow: 'var(--sh-1)' } },
               hML('span', { style: { display: 'grid', placeItems: 'center', color: 'var(--ink)' } }, hML('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'currentColor' }, hML('path', { d: 'M7 5v14l12-7z' }))),
-              hML('span', { style: { fontSize: 13, fontWeight: 700, color: 'var(--ink)' } }, voice),
+              hML('span', { className: 'm-clip1', style: { minWidth: 0, fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' } }, voice),
               hML(Icons.chevD, { size: 15, stroke: 2, style: { color: 'var(--ink-3)' } })))),
         char.def && char.def['设定语'] && hML('div', { style: { padding: '0 16px 15px' } },
           hML('div', { style: { fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5, paddingLeft: 11, borderLeft: '2px solid var(--primary-soft)' } }, '“' + char.def['设定语'] + '”'))),
@@ -374,19 +400,21 @@ function MDetail({ char: initialChar, ctx }) {
           }))),
 
       hML('div', { className: 'm-fade', key: tab, style: { padding: '16px 18px 0' } },
-        tab === 'assets' && hML(MAssets, { char, ctx, busy: derivBusy, onGenerate: openDerivConfig, nonce: genSeq }),
-        tab === 'versions' && hML(MVersions, { char }),
+        tab === 'assets' && hML(MAssets, { char, ctx, busy: derivBusy, onGenerate: openDerivConfig, onOpenGenerate: () => setQuickGen(true), nonce: genSeq }),
+        tab === 'versions' && hML(MVersions, { char, ctx, onChanged: refresh }),
         tab === 'license' && hML(MLicense, { char, ctx }))),
 
     // 底部固定操作
     hML('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))',
       background: 'linear-gradient(transparent, var(--surface) 28%)', display: 'flex', gap: 9 } },
       isPublic
-        ? hML(UI.Button, { variant: 'primary', full: true, icon: Icons.grid, onClick: () => ctx.tab('apps') }, '投入应用')
+        ? hML(UI.Button, { variant: 'primary', full: true, icon: Icons.sparkle, onClick: () => setQuickGen(true) }, '生成更多资产')
         : hML(React.Fragment, null,
-            hML(UI.Button, { variant: 'primary', full: true, icon: wip ? Icons.bolt : Icons.wand, onClick: () => wip ? ctx.startCreate(char.path, char) : ctx.openLooks(char) },
+            hML(UI.Button, { variant: 'primary', full: true, icon: wip ? Icons.bolt : Icons.wand, onClick: () => wip ? ctx.startCreate(char.path, char) : ctx.openLooks(char), style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } },
               wip ? (char.status === 'proofing' && (char.variantImages || []).length ? '挑选形象（' + char.variantImages.length + ' 选 1）' : '继续创建链路') : '设计造型'),
-            hML(UI.Button, { variant: 'line', icon: Icons.grid, onClick: () => ctx.tab('apps') }, '投入应用'))),
+            hML(UI.Button, { variant: 'line', icon: Icons.sparkle, onClick: () => setQuickGen(true), style: { flex: '0 0 144px', padding: '0 12px' } }, '生成更多资产'))),
+
+    quickGen && hML(GenPicker, { onPick: (k) => { setQuickGen(false); openDerivConfig(k); }, onClose: () => setQuickGen(false) }),
 
     // 衍生生成配置 sheet（生成前自定义；提交后派发任务）
     cfgKey && hML(DerivConfigSheet, { derivKey: cfgKey, char,
@@ -525,10 +553,9 @@ function GenPicker({ onPick, onClose }) {
           hML(Icons.chevR, { size: 18, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } }))))));
 }
 
-function MAssets({ char, ctx, busy, onGenerate, nonce }) {
+function MAssets({ char, ctx, busy, onGenerate, onOpenGenerate, nonce }) {
   const items = useApi(() => AvatarApi.derivatives(char.id), [] as any[], [char.id, nonce]);
   const [cat, setCat] = useStateML('all');
-  const [picker, setPicker] = useStateML(false);
 
   const isRunning = (k) => !!(busy && busy[k]) || (char.deriv || {})[k] === 'running';
   const atlasCount = () => {
@@ -544,8 +571,6 @@ function MAssets({ char, ctx, busy, onGenerate, nonce }) {
   const present = DATA.DERIVS.filter((d) => catCount(d.key) > 0 || isRunning(d.key));
   const total = DATA.DERIVS.reduce((a, d) => a + catCount(d.key), 0);
 
-  const pic  = picker && hML(GenPicker, { onPick: (k) => { setPicker(false); onGenerate(k); }, onClose: () => setPicker(false) });
-
   // 全空 + 无生成中 → 引导生成第一个
   if (!present.length) {
     return hML('div', null,
@@ -553,8 +578,7 @@ function MAssets({ char, ctx, busy, onGenerate, nonce }) {
         hML('div', { style: { width: 52, height: 52, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hML(Icons.images, { size: 24 })),
         hML('div', { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, '还没有作品'),
         hML('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, '从定妆形象生成标准图集，或生成表情 / 场景 / 换装 / 3D / 运镜视频等衍生资产 —— 生成的内容都会沉淀在这里。'),
-        hML(UI.Button, { variant: 'primary', icon: Icons.sparkle, onClick: () => setPicker(true) }, '生成第一个资产')),
-      pic);
+        hML(UI.Button, { variant: 'primary', icon: Icons.sparkle, onClick: onOpenGenerate }, '生成第一个资产')));
   }
 
   const shown = cat === 'all' ? present : present.filter((d) => d.key === cat);
@@ -567,7 +591,7 @@ function MAssets({ char, ctx, busy, onGenerate, nonce }) {
     hML('div', { style: { display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 14 }, className: 'no-bar' },
       chip('all', '全部 ' + total, cat === 'all', () => setCat('all')),
       present.map((d) => chip(d.key, d.name + ' ' + catCount(d.key), cat === d.key, () => setCat(d.key))),
-      hML('button', { key: '__gen', onClick: () => setPicker(true), className: 'm-tap', style: {
+      hML('button', { key: '__gen', onClick: onOpenGenerate, className: 'm-tap', style: {
         flex: '0 0 auto', height: 32, padding: '0 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
         border: '1px dashed var(--line-3)', background: 'var(--surface)', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 4 } },
         hML(Icons.add, { size: 14, stroke: 2.2 }), '生成')),
@@ -576,14 +600,35 @@ function MAssets({ char, ctx, busy, onGenerate, nonce }) {
     cat === 'atlas'
       ? hML(MAtlas, { char, busy: busy && busy['atlas'], onGenerate: () => onGenerate('atlas') })
       : shown.map((d) => hML(DerivCatSection, { key: d.key, char, cat: d.key, items, running: isRunning(d.key),
-          busyPct: busy && busy[d.key] && busy[d.key].pct, compact: cat === 'all', ctx, onGenerate, onViewAll: () => setCat(d.key) })),
-
-    pic);
+          busyPct: busy && busy[d.key] && busy[d.key].pct, compact: cat === 'all', ctx, onGenerate, onViewAll: () => setCat(d.key) })));
 }
 
-function MVersions({ char }) {
+function MVersions({ char, ctx, onChanged }) {
   const KIND_ICON: any = { archive: Icons.archive, finalize: Icons.checkc, template: Icons.palette, refine: Icons.sliders, iterate: Icons.wand, init: Icons.sparkle, look: Icons.shirt, derive: Icons.layers };
   const evs = useApi(() => AvatarApi.versions(char.id), [], []);
+  const [busy, setBusy] = useStateML(null as any);
+  const counts: any = char.counts || {};
+  const derivedCount = DATA.DERIVS.reduce((a, d) => a + (Number(counts[d.key]) || 0), 0) + (char.shotImages ? Object.keys(char.shotImages).length : 0);
+  const versionNum = (v) => Number(String(v || '').replace(/^v/i, '')) || 1;
+  const apply = async (e) => {
+    if (e.cur || busy) return;
+    const n = versionNum(e.v);
+    setBusy(e.v);
+    try {
+      if (derivedCount > 0) {
+        const fresh = await AvatarApi.forkVersion(char.id, n);
+        toast('已另存为新数字人', { tone: 'ok' });
+        ctx.reload && ctx.reload();
+        ctx.openChar ? ctx.openChar(fresh) : onChanged && onChanged();
+      } else {
+        await AvatarApi.switchVersion(char.id, n);
+        toast('已切换到 ' + e.v, { tone: 'ok' });
+        await (onChanged && onChanged());
+      }
+    } catch (err: any) {
+      toast(err?.message || '版本操作失败', { tone: 'err' });
+    } finally { setBusy(null); }
+  };
   if (!evs.length) return hML('div', { style: { textAlign: 'center', padding: '40px 0', color: 'var(--ink-3)', fontSize: 13 } }, '暂无版本记录');
   return hML('div', null, evs.map((e: any, i) => hML('div', { key: i, style: { display: 'flex', gap: 12 } },
     hML('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '0 0 auto' } },
@@ -595,7 +640,13 @@ function MVersions({ char }) {
           hML('span', { className: 'mono', style: { fontSize: 12.5, fontWeight: 700, color: e.cur ? 'var(--primary)' : 'var(--ink)' } }, e.v),
           e.cur && hML(UI.Badge, { tone: 'primary' }, '当前'),
           hML('span', { style: { fontSize: 11.5, color: 'var(--ink-3)' } }, e.t)),
-        hML('div', { style: { fontSize: 13, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.45 } }, e.note)),
+        hML('div', { style: { fontSize: 13, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.45 } }, e.note),
+        !e.cur && hML('button', { onClick: () => apply(e), disabled: !!busy, className: 'm-tap', style: {
+          marginTop: 8, height: 30, padding: '0 12px', borderRadius: 'var(--r-pill)', border: '1px solid var(--line-2)',
+          background: derivedCount > 0 ? 'var(--surface-3)' : 'var(--primary-soft)', color: derivedCount > 0 ? 'var(--ink-2)' : 'var(--primary)',
+          fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 } },
+          hML(derivedCount > 0 ? Icons.copy : Icons.checkc, { size: 13, stroke: 2 }),
+          busy === e.v ? '处理中…' : (derivedCount > 0 ? '另存为新数字人' : '切换到此版本'))),
       e.imageUrl && hML('div', { style: { width: 44, flex: '0 0 44px', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--line)' } },
         hML('img', { src: e.imageUrl, alt: e.v, style: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' } }))))));
 }

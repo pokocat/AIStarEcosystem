@@ -303,8 +303,8 @@ function MVoiceClone({ ctx, avatarId }) {
               hMM('div', { style: { fontSize: 12, fontWeight: 700 } }, t),
               hMM('div', { style: { fontSize: 10, color: 'var(--ink-3)', marginTop: 2 } }, d))))),
       hMM('div', { style: { flex: '0 0 auto', padding: '12px 20px calc(12px + var(--home-ind))', borderTop: '1px solid var(--line)', display: 'flex', gap: 11 } },
-        hMM(UI.Button, { variant: 'line', icon: Icons.upload, onClick: () => fileRef.current && fileRef.current.click() }, '上传音频'),
-        hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.mic, onClick: startRec }, '开始录音'))),
+        hMM(UI.Button, { variant: 'line', icon: Icons.upload, onClick: () => fileRef.current && fileRef.current.click(), style: { flex: '0 0 116px', padding: '0 12px' } }, '上传音频'),
+        hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.mic, onClick: startRec, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '开始录音'))),
 
     stage === 'rec' && hMM('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
       hMM('div', { className: 'm-body', style: { padding: '6px 20px 0' } },
@@ -350,8 +350,8 @@ function MVoiceClone({ ctx, avatarId }) {
                 hMM('div', { style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, k))))),
         hMM('div', { style: { flex: '0 0 auto' } })),
       hMM('div', { style: { flex: '0 0 auto', padding: '12px 20px calc(12px + var(--home-ind))', borderTop: '1px solid var(--line)', display: 'flex', gap: 11 } },
-        audioUrl && hMM(UI.Button, { variant: 'line', icon: playing ? Icons.bolt : Icons.play, onClick: togglePlay }, playing ? '暂停' : '试听'),
-        hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.checkc, onClick: ctx.back }, '完成'))));
+        audioUrl && hMM(UI.Button, { variant: 'line', icon: playing ? Icons.bolt : Icons.play, onClick: togglePlay, style: { flex: '0 0 88px', padding: '0 12px' } }, playing ? '暂停' : '试听'),
+        hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.checkc, onClick: ctx.back, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '完成'))));
 }
 
 // ============================================================
@@ -434,8 +434,8 @@ function MDerivView({ char, deriv, ctx }) {
 
     hMM('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))',
       background: 'linear-gradient(transparent, var(--surface) 28%)', display: 'flex', gap: 9 } },
-      hMM(UI.Button, { variant: 'line', icon: Icons.refresh, disabled: !!regenBusy, onClick: regen }, regenBusy ? '生成中…' : '重生成'),
-      hMM(UI.Button, { variant: 'primary', full: true, icon: Icons.download, onClick: download }, '下载当前项')));
+      hMM(UI.Button, { variant: 'line', icon: Icons.refresh, disabled: !!regenBusy, onClick: regen, style: { flex: '0 0 126px', padding: '0 12px' } }, regenBusy ? '生成中…' : '重新生成'),
+      hMM(UI.Button, { variant: 'primary', full: true, icon: Icons.download, onClick: download, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '下载当前项')));
 }
 
 // ============================================================

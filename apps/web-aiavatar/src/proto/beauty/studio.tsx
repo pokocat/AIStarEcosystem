@@ -107,7 +107,7 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
     scheduleRender();
   }, [scheduleRender]);
 
-  const init = useCallback(async () => {
+  const init = useCallback(async (seedBlob?: Blob) => {
     setStatus("loading");
     setErrMsg("");
     engineRef.current && engineRef.current.dispose();
@@ -115,7 +115,7 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
     try {
       if (!USE_MOCK) warmupLandmarker();
-      const blob = await AvatarApi.imageBlob(char.id);
+      const blob = seedBlob || await AvatarApi.imageBlob(char.id, `${char?.versions || 0}-${Date.now()}`);
       let source: HTMLImageElement | HTMLCanvasElement;
       let demo = false;
       if (blob) {
@@ -182,9 +182,10 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
       const blob = await engineRef.current.toBlob(params);
       const r = await AvatarApi.applyRefine(char.id, blob, params, describeParams(params));
       toast("已保存为新版本", { tone: "ok" });
-      const fresh = (r && r.avatar) || r;
+      const fresh = { ...(((r && r.avatar) || r || {}) as any) };
+      if (r && r.imageUrl && !fresh.imageUrl) fresh.imageUrl = r.imageUrl;
+      await init(blob); // 新结果成为基底，参数归零继续调；避免刚保存后立刻回源取图的竞态
       onApplied && onApplied(fresh);
-      await init(); // 新结果成为基底，参数归零继续调
     } catch (e: any) {
       toast((e && e.message) || "保存失败", { tone: "err" });
     } finally {
@@ -270,8 +271,8 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
 
     // 操作区
     hB('div', { style: { display: 'flex', gap: 10, marginBottom: 8 } },
-      hB(UI.Button, { variant: 'line', icon: Icons.refresh, disabled: busy || status !== 'ready', onClick: () => update(cloneParams(ZERO_PARAMS)) }, '重置'),
-      hB(UI.Button, { variant: 'primary', full: true, icon: Icons.checkc, disabled: busy || status !== 'ready' || isZeroParams(params), onClick: apply }, busy ? '保存中…' : '应用精调 · 保存新版本')),
+      hB(UI.Button, { variant: 'line', icon: Icons.refresh, disabled: busy || status !== 'ready', onClick: () => update(cloneParams(ZERO_PARAMS)), style: { flex: '0 0 88px', padding: '0 12px' } }, '重置'),
+      hB(UI.Button, { variant: 'primary', full: true, icon: Icons.checkc, disabled: busy || status !== 'ready' || isZeroParams(params), onClick: apply, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, busy ? '保存中…' : '应用保存')),
     hB('div', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', lineHeight: 1.5 } },
       '端上实时处理 · 不消耗积分 · 像素级保持本人特征',
       demoImage ? hB('span', null, hB('br'), '当前为示例画像演示，生成定妆形象后即可精调真实照片') : null));

@@ -70,7 +70,13 @@ public class DapWorkflowService {
         boolean upload = "upload".equals(req.mode());
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        if (req.form() != null) payload.put("form", formMap(req.form()));
+        if (req.form() != null) {
+            Map<String, Object> form = formMap(req.form());
+            payload.put("form", form);
+            a.setForm(form);
+            if (req.form().desc() != null) a.setDescPrompt(req.form().desc());
+            if (req.form().name() != null && !req.form().name().isBlank()) a.setName(req.form().name().trim());
+        }
         if (req.captureId() != null) payload.put("captureId", req.captureId());
 
         if (upload) {
