@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, ShieldCheck, TrendingUp, Plus, Loader2, Trash2 } from "lucide-react";
@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@ai-star-eco/ui/ui/select";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
-import { mockTemplates } from "@/mocks/mixcut";
 import { MixcutApi } from "@/api";
 import type { Template } from "@/components/mixcut-zone/types";
 import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
@@ -56,12 +55,29 @@ export default function MixcutTemplatesPage() {
   const [category, setCategory] = useState("全部");
   const [search, setSearch] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   // 包含用户「另存为」/「保存为我的版本」生成的模板
-  const [templates, setTemplates] = useState<Template[]>(mockTemplates);
+  const [templates, setTemplates] = useState<Template[]>([]);
+
+  const loadTemplates = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) setLoadingTemplates(true);
+    setLoadError(null);
+    try {
+      const next = await MixcutApi.listTemplates();
+      setTemplates(next);
+    } catch (e: any) {
+      setTemplates([]);
+      setLoadError(e?.message ?? "模板加载失败,请稍后重试");
+    } finally {
+      if (!silent) setLoadingTemplates(false);
+    }
+  }, []);
 
   useEffect(() => {
-    MixcutApi.listTemplates().then(setTemplates);
-  }, []);
+    void loadTemplates();
+  }, [loadTemplates]);
 
   const categories = useMemo(() => {
     const values = Array.from(
@@ -103,8 +119,7 @@ export default function MixcutTemplatesPage() {
         ? await MixcutApi.deleteFactoryTemplate(template.template_id)
         : await MixcutApi.deleteTemplate(template.template_id);
       if (deleted) {
-        const next = await MixcutApi.listTemplates();
-        setTemplates(next);
+        await loadTemplates({ silent: true });
       }
     } finally {
       setDeletingId(null);
@@ -128,6 +143,11 @@ export default function MixcutTemplatesPage() {
   }, [templates, category, search]);
 
   const isFiltering = search.trim() !== "" || category !== "全部";
+  const summaryText = loadingTemplates
+    ? "正在加载模板"
+    : isFiltering
+      ? `匹配 ${filtered.length} / 共 ${templates.length} 个模板`
+      : `共 ${templates.length} 个模板`;
 
   return (
     <div className="px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto">
@@ -179,15 +199,26 @@ export default function MixcutTemplatesPage() {
       </Card>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>
-          {isFiltering
-            ? `匹配 ${filtered.length} / 共 ${templates.length} 个模板`
-            : `共 ${templates.length} 个模板`}
-        </span>
+        <span>{summaryText}</span>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
-        {filtered.map((t) => (
+      {loadingTemplates ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5" aria-busy="true" aria-label="模板加载中">
+          {Array.from({ length: 8 }).map((_, idx) => (
+            <div key={idx} className="space-y-3">
+              <div className="aspect-[9/16] rounded-xl bg-secondary/70 animate-pulse" />
+              <div className="h-4 w-3/4 rounded bg-secondary/70 animate-pulse" />
+              <div className="flex gap-2">
+                <div className="h-5 w-14 rounded bg-secondary/60 animate-pulse" />
+                <div className="h-5 w-20 rounded bg-secondary/60 animate-pulse" />
+              </div>
+              <div className="h-3 w-2/3 rounded bg-secondary/50 animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
+          {filtered.map((t) => (
           <div key={t.template_id} className="group rounded-xl">
             <Link
               href={`/mixcut/templates/${t.template_id}`}
@@ -241,10 +272,17 @@ export default function MixcutTemplatesPage() {
               </Link>
             </div>
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
-      {filtered.length === 0 && (
+      {loadError && !loadingTemplates && (
+        <div className="py-12 text-center text-sm text-red-500">
+          {loadError}
+        </div>
+      )}
+
+      {!loadError && !loadingTemplates && filtered.length === 0 && (
         <div className="py-12 text-center text-sm text-muted-foreground">
           没有匹配的模板,试试调整筛选条件
         </div>
