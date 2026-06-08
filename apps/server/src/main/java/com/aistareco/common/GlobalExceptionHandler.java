@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -32,7 +33,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Map<String, Object>> handleBusiness(BusinessException ex, HttpServletRequest request) {
         String logId = errorLogService.record(ex, ex.getCode(), ex.getStatus().value(), request);
-        return json(ex.getStatus(), ex.getCode(), appendLogId(ex.getMessage(), logId));
+        return json(ex.getStatus(), ex.getCode(), appendLogId(ex.getMessage(), logId), ex.getDetails());
     }
 
     @ExceptionHandler(ResponseStatusException.class)
@@ -142,9 +143,19 @@ public class GlobalExceptionHandler {
      * HttpMessageNotWritableException。
      */
     private static ResponseEntity<Map<String, Object>> json(HttpStatus status, String code, String message) {
+        return json(status, code, message, null);
+    }
+
+    private static ResponseEntity<Map<String, Object>> json(HttpStatus status, String code, String message, Object details) {
+        Map<String, Object> error = new LinkedHashMap<>();
+        error.put("code", code);
+        error.put("message", message);
+        if (details != null) {
+            error.put("details", details);
+        }
         return ResponseEntity
                 .status(status)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("error", new ApiErrorBody(code, message)));
+                .body(Map.of("error", error));
     }
 }

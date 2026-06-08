@@ -59,13 +59,38 @@ export function logout() {
 // ── v0.31+ 手机号 + SMS 验证码 登录 / 注册 ────────────────────────────────
 
 export type SmsCodePurpose = "login" | "register";
+export type SmsDeliveryStatus =
+  | "NOT_APPLICABLE"
+  | "ACCEPTED"
+  | "PENDING"
+  | "DELIVERED"
+  | "FAILED"
+  | "UNKNOWN";
+
+export interface SmsRequestCodeResult {
+  sent: boolean;
+  accepted: boolean;
+  provider: "aliyun" | "log" | string;
+  purpose: SmsCodePurpose;
+  templateCode?: string;
+  httpStatus?: number;
+  providerCode?: string;
+  providerMessage?: string;
+  requestId?: string;
+  bizId?: string;
+  deliveryStatus: SmsDeliveryStatus;
+  sendStatus?: number;
+  errCode?: string;
+  sendDate?: string;
+  receiveDate?: string;
+}
 
 /**
  * 请求一个新的短信验证码。失败抛 ApiError（429 速率限制 / 锁定；400 手机号格式）。
- * 成功无显式返回（resolve 即可），码默认 5 分钟有效。
+ * 成功返回短信供应商状态，码默认 5 分钟有效。
  */
-export async function smsRequestCode(phone: string, purpose: SmsCodePurpose = "login"): Promise<void> {
-  await apiFetch<{ sent: boolean }>("/auth/sms/request-code", {
+export async function smsRequestCode(phone: string, purpose: SmsCodePurpose = "login"): Promise<SmsRequestCodeResult> {
+  return apiFetch<SmsRequestCodeResult>("/auth/sms/request-code", {
     method: "POST",
     body: { phone, purpose },
   });

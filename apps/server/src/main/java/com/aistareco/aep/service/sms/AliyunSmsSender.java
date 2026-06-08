@@ -5,6 +5,9 @@ import com.aliyun.auth.credentials.provider.DefaultCredentialProvider;
 import com.aliyun.auth.credentials.provider.ICredentialProvider;
 import com.aliyun.auth.credentials.provider.StaticCredentialProvider;
 import com.aliyun.sdk.service.dysmsapi20170525.AsyncClient;
+import com.aliyun.sdk.service.dysmsapi20170525.models.QuerySendDetailsRequest;
+import com.aliyun.sdk.service.dysmsapi20170525.models.QuerySendDetailsResponse;
+import com.aliyun.sdk.service.dysmsapi20170525.models.QuerySendDetailsResponseBody;
 import com.aliyun.sdk.service.dysmsapi20170525.models.SendSmsRequest;
 import com.aliyun.sdk.service.dysmsapi20170525.models.SendSmsResponse;
 import com.aliyun.sdk.service.dysmsapi20170525.models.SendSmsResponseBody;
@@ -18,6 +21,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +55,12 @@ public class AliyunSmsSender implements SmsSender {
     private final String signName;
     private final String loginTemplateCode;
     private final String registerTemplateCode;
+    private final String region;
     private final long callTimeoutSeconds;
+    private final boolean deliveryQueryEnabled;
+    private final int deliveryQueryAttempts;
+    private final long deliveryQueryInitialDelayMs;
+    private final long deliveryQueryIntervalMs;
     private final ObjectMapper mapper;
     private final ICredentialProvider credentialProvider;
     private final AsyncClient client;
@@ -65,6 +77,10 @@ public class AliyunSmsSender implements SmsSender {
             @Value("${aep.sms.aliyun.connect-timeout-seconds:10}") long connectTimeoutSeconds,
             @Value("${aep.sms.aliyun.response-timeout-seconds:20}") long responseTimeoutSeconds,
             @Value("${aep.sms.aliyun.call-timeout-seconds:30}") long callTimeoutSeconds,
+            @Value("${aep.sms.aliyun.delivery-query-enabled:true}") boolean deliveryQueryEnabled,
+            @Value("${aep.sms.aliyun.delivery-query-attempts:3}") int deliveryQueryAttempts,
+            @Value("${aep.sms.aliyun.delivery-query-initial-delay-ms:1500}") long deliveryQueryInitialDelayMs,
+            @Value("${aep.sms.aliyun.delivery-query-interval-ms:1500}") long deliveryQueryIntervalMs,
             ObjectMapper mapper
     ) {
         String trimmedAccessKeyId = trim(accessKeyId);
@@ -87,11 +103,16 @@ public class AliyunSmsSender implements SmsSender {
         this.signName = trim(signName);
         this.loginTemplateCode = resolvedLoginTemplateCode;
         this.registerTemplateCode = resolvedRegisterTemplateCode;
+        this.region = defaultIfBlank(region, "cn-hangzhou");
         this.callTimeoutSeconds = Math.max(1, callTimeoutSeconds);
+        this.deliveryQueryEnabled = deliveryQueryEnabled;
+        this.deliveryQueryAttempts = Math.max(0, deliveryQueryAttempts);
+        this.deliveryQueryInitialDelayMs = Math.max(0, deliveryQueryInitialDelayMs);
+        this.deliveryQueryIntervalMs = Math.max(0, deliveryQueryIntervalMs);
         this.mapper = mapper;
         this.credentialProvider = buildCredentialProvider(trimmedAccessKeyId, trimmedAccessKeySecret);
         this.client = AsyncClient.builder()
-                .region(defaultIfBlank(region, "cn-hangzhou"))
+                .region(this.region)
                 .credentialsProvider(credentialProvider)
                 .overrideConfiguration(
                         ClientOverrideConfiguration.create()
@@ -103,7 +124,7 @@ public class AliyunSmsSender implements SmsSender {
     }
 
     @Override
-    public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
+    public SmsSendResult sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
         SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
         String templateCode = templateCodeFor(resolvedPurpose);
         try {
@@ -119,19 +140,31 @@ public class AliyunSmsSender implements SmsSender {
             SendSmsResponseBody body = response == null ? null : response.getBody();
             if (body == null) {
                 logAliyunFailure("empty-body", resolvedPurpose, templateCode, phone, statusCode, null);
-                throw new SmsSendException("阿里云短信发送失败：响应体为空" + httpStatusSuffix(statusCode));
+                throw new SmsSendException("阿里云短信发送失败：响应体为空" + httpStatusSuffix(statusCode),
+                        aliyunResult(false, resolvedPurpose, templateCode, statusCode, null, SmsSendResult.DeliveryStatus.UNKNOWN));
             }
             if (statusCode != null && statusCode >= 400) {
                 logAliyunFailure("http-error", resolvedPurpose, templateCode, phone, statusCode, body);
-                throw new SmsSendException(failureMessage("阿里云短信发送失败", statusCode, body));
+                throw new SmsSendException(failureMessage("阿里云短信发送失败", statusCode, body),
+                        aliyunResult(false, resolvedPurpose, templateCode, statusCode, body, SmsSendResult.DeliveryStatus.UNKNOWN));
             }
             if (!"OK".equals(body.getCode())) {
                 logAliyunFailure("provider-error", resolvedPurpose, templateCode, phone, statusCode, body);
-                throw new SmsSendException(failureMessage("阿里云短信发送失败", statusCode, body));
+                throw new SmsSendException(failureMessage("阿里云短信发送失败", statusCode, body),
+                        aliyunResult(false, resolvedPurpose, templateCode, statusCode, body, SmsSendResult.DeliveryStatus.FAILED));
             }
             log.info("[sms-aliyun] sent purpose={} templateCode={} phone={} httpStatus={} code={} message={} requestId={} bizId={}",
                     resolvedPurpose.wire(), templateCode, phone, statusCode, body.getCode(), body.getMessage(),
                     body.getRequestId(), body.getBizId());
+            SmsSendResult accepted = aliyunResult(true, resolvedPurpose, templateCode, statusCode, body, SmsSendResult.DeliveryStatus.ACCEPTED);
+            SmsSendResult checked = queryDeliveryIfConfigured(phone, accepted);
+            if (checked.deliveryStatus() == SmsSendResult.DeliveryStatus.FAILED) {
+                log.warn("[sms-aliyun] delivery failed purpose={} templateCode={} phone={} bizId={} sendStatus={} errCode={} sendDate={} receiveDate={}",
+                        resolvedPurpose.wire(), templateCode, phone, checked.bizId(), checked.sendStatus(),
+                        checked.errCode(), checked.sendDate(), checked.receiveDate());
+                throw new SmsSendException(deliveryFailureMessage(checked), checked);
+            }
+            return checked;
         } catch (SmsSendException e) {
             throw e;
         } catch (InterruptedException e) {
@@ -152,6 +185,139 @@ public class AliyunSmsSender implements SmsSender {
                     resolvedPurpose.wire(), templateCode, phone, e.getMessage(), e);
             throw new SmsSendException("阿里云 SMS 调用异常: " + e.getMessage(), e);
         }
+    }
+
+    private SmsSendResult queryDeliveryIfConfigured(String phone, SmsSendResult accepted) throws InterruptedException {
+        if (!deliveryQueryEnabled || deliveryQueryAttempts <= 0 || isBlank(accepted.bizId())) {
+            return accepted;
+        }
+        SmsSendResult last = accepted;
+        for (int attempt = 0; attempt < deliveryQueryAttempts; attempt++) {
+            long delay = attempt == 0 ? deliveryQueryInitialDelayMs : deliveryQueryIntervalMs;
+            if (delay > 0) {
+                Thread.sleep(delay);
+            }
+            try {
+                QuerySendDetailsRequest request = QuerySendDetailsRequest.builder()
+                        .phoneNumber(phone)
+                        .bizId(accepted.bizId())
+                        .sendDate(LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE))
+                        .pageSize(10L)
+                        .currentPage(1L)
+                        .build();
+                QuerySendDetailsResponse response = client.querySendDetails(request).get(callTimeoutSeconds, TimeUnit.SECONDS);
+                QuerySendDetailsResponseBody body = response == null ? null : response.getBody();
+                if (body == null) {
+                    log.warn("[sms-aliyun] delivery-query empty-body bizId={} requestId={}", accepted.bizId(), accepted.requestId());
+                    last = withDelivery(accepted, SmsSendResult.DeliveryStatus.UNKNOWN, null, "QUERY_EMPTY_BODY", null, null);
+                    continue;
+                }
+                if (!"OK".equals(body.getCode())) {
+                    log.warn("[sms-aliyun] delivery-query provider-error bizId={} code={} message={} requestId={}",
+                            accepted.bizId(), body.getCode(), body.getMessage(), body.getRequestId());
+                    last = withDelivery(accepted, SmsSendResult.DeliveryStatus.UNKNOWN, null, body.getCode(), null, null);
+                    continue;
+                }
+                QuerySendDetailsResponseBody.SmsSendDetailDTO detail = firstDetail(body);
+                if (detail == null) {
+                    last = withDelivery(accepted, SmsSendResult.DeliveryStatus.PENDING, 1L, null, null, null);
+                    continue;
+                }
+                SmsSendResult.DeliveryStatus status = deliveryStatusOf(detail.getSendStatus());
+                return withDelivery(accepted, status, detail.getSendStatus(), detail.getErrCode(),
+                        detail.getSendDate(), detail.getReceiveDate());
+            } catch (InterruptedException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("[sms-aliyun] delivery-query failed bizId={} err={}", accepted.bizId(), rootMessage(e));
+                last = withDelivery(accepted, SmsSendResult.DeliveryStatus.UNKNOWN, null, "QUERY_FAILED", null, null);
+            }
+        }
+        if (last.deliveryStatus() == SmsSendResult.DeliveryStatus.ACCEPTED) {
+            return withDelivery(accepted, SmsSendResult.DeliveryStatus.PENDING, 1L, null, null, null);
+        }
+        return last;
+    }
+
+    private static QuerySendDetailsResponseBody.SmsSendDetailDTO firstDetail(QuerySendDetailsResponseBody body) {
+        if (body == null || body.getSmsSendDetailDTOs() == null) {
+            return null;
+        }
+        List<QuerySendDetailsResponseBody.SmsSendDetailDTO> list = body.getSmsSendDetailDTOs().getSmsSendDetailDTO();
+        return list == null || list.isEmpty() ? null : list.get(0);
+    }
+
+    private static SmsSendResult.DeliveryStatus deliveryStatusOf(Long sendStatus) {
+        if (sendStatus == null) return SmsSendResult.DeliveryStatus.UNKNOWN;
+        if (sendStatus == 1L) return SmsSendResult.DeliveryStatus.PENDING;
+        if (sendStatus == 2L) return SmsSendResult.DeliveryStatus.FAILED;
+        if (sendStatus == 3L) return SmsSendResult.DeliveryStatus.DELIVERED;
+        return SmsSendResult.DeliveryStatus.UNKNOWN;
+    }
+
+    private static SmsSendResult aliyunResult(
+            boolean accepted,
+            SmsCodePurpose purpose,
+            String templateCode,
+            Integer statusCode,
+            SendSmsResponseBody body,
+            SmsSendResult.DeliveryStatus deliveryStatus
+    ) {
+        return new SmsSendResult(
+                accepted && deliveryStatus != SmsSendResult.DeliveryStatus.FAILED,
+                accepted,
+                "aliyun",
+                purpose.wire(),
+                templateCode,
+                statusCode,
+                bodyCode(body),
+                bodyMessage(body),
+                bodyRequestId(body),
+                bodyBizId(body),
+                deliveryStatus,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private static SmsSendResult withDelivery(
+            SmsSendResult base,
+            SmsSendResult.DeliveryStatus deliveryStatus,
+            Long sendStatus,
+            String errCode,
+            String sendDate,
+            String receiveDate
+    ) {
+        return new SmsSendResult(
+                base.accepted() && deliveryStatus != SmsSendResult.DeliveryStatus.FAILED,
+                base.accepted(),
+                base.provider(),
+                base.purpose(),
+                base.templateCode(),
+                base.httpStatus(),
+                base.providerCode(),
+                base.providerMessage(),
+                base.requestId(),
+                base.bizId(),
+                deliveryStatus,
+                sendStatus,
+                errCode,
+                sendDate,
+                receiveDate
+        );
+    }
+
+    private static String deliveryFailureMessage(SmsSendResult result) {
+        StringBuilder sb = new StringBuilder("阿里云短信发送失败：运营商回执失败");
+        if (!isBlank(result.errCode())) {
+            sb.append(" ErrCode=").append(result.errCode());
+        }
+        if (!isBlank(result.bizId())) {
+            sb.append(" BizId=").append(result.bizId());
+        }
+        return sb.toString();
     }
 
     @PreDestroy
@@ -202,6 +368,10 @@ public class AliyunSmsSender implements SmsSender {
 
     private static String trim(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private static void logAliyunFailure(

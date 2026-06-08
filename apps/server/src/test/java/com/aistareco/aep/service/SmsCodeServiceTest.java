@@ -2,6 +2,7 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.service.sms.SmsCodeService;
 import com.aistareco.aep.service.sms.SmsCodePurpose;
+import com.aistareco.aep.service.sms.SmsSendResult;
 import com.aistareco.aep.service.sms.SmsSender;
 import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -159,16 +160,17 @@ class SmsCodeServiceTest {
         SmsCodePurpose lastPurpose;
 
         @Override
-        public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
+        public SmsSendResult sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
             this.lastPhone = phone;
             this.lastCode = code;
             this.lastPurpose = purpose;
+            return SmsSendResult.log(purpose);
         }
     }
 
     private static class FailingSender implements SmsSender {
         @Override
-        public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) throws SmsSendException {
+        public SmsSendResult sendVerificationCode(String phone, String code, SmsCodePurpose purpose) throws SmsSendException {
             throw new SmsSendException("upstream unavailable");
         }
     }

@@ -53,9 +53,10 @@ public class LogSmsSender implements SmsSender {
     }
 
     @Override
-    public void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
+    public SmsSendResult sendVerificationCode(String phone, String code, SmsCodePurpose purpose) {
         SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
         log.info("[sms-log] verification code purpose={} phone={} code={} (NOT sent — driver=log)",
                 resolvedPurpose.wire(), phone, code);
+        return SmsSendResult.log(resolvedPurpose);
     }
 }

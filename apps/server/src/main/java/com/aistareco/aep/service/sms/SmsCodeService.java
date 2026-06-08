@@ -100,11 +100,11 @@ public class SmsCodeService {
      * 发送一个新的验证码。会做：手机号格式校验 → 速率限制 → 锁定状态 → 生成 → SmsSender 调用 → 存储。
      * 失败抛 BusinessException（4xx 透传给前端）。
      */
-    public void requestCode(String phone) {
-        requestCode(phone, SmsCodePurpose.LOGIN);
+    public SmsSendResult requestCode(String phone) {
+        return requestCode(phone, SmsCodePurpose.LOGIN);
     }
 
-    public void requestCode(String phone, SmsCodePurpose purpose) {
+    public SmsSendResult requestCode(String phone, SmsCodePurpose purpose) {
         SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
         validatePhone(phone);
         Instant now = Instant.now();
@@ -127,13 +127,22 @@ public class SmsCodeService {
             }
         }
         String code = generateCode();
+        SmsSendResult sendResult;
         try {
-            sender.sendVerificationCode(phone, code, resolvedPurpose);
+            sendResult = sender.sendVerificationCode(phone, code, resolvedPurpose);
         } catch (SmsSender.SmsSendException e) {
             log.warn("[sms-code] send failed purpose={} phone={} err={}",
                     resolvedPurpose.wire(), phone, e.getMessage());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "SMS_SEND_FAILED",
-                    "短信发送失败：" + e.getMessage());
+                    "短信发送失败：" + e.getMessage(),
+                    e.getResult() == null ? null : e.getResult().toDetailsMap());
+        }
+        if (sendResult != null && sendResult.deliveryStatus() == SmsSendResult.DeliveryStatus.FAILED) {
+            log.warn("[sms-code] provider reported failed delivery purpose={} phone={} details={}",
+                    resolvedPurpose.wire(), phone, sendResult.toDetailsMap());
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "SMS_SEND_FAILED",
+                    "短信发送失败：供应商回执状态为发送失败",
+                    sendResult.toDetailsMap());
         }
         CodeEntry entry = new CodeEntry();
         entry.code = code;
@@ -142,8 +151,12 @@ public class SmsCodeService {
         entry.failures = 0;
         entry.lockedUntil = null;
         store.put(phone, entry);
-        log.info("[sms-code] verification code sent purpose={} phone={} ttlSeconds={}",
-                resolvedPurpose.wire(), phone, ttlSeconds);
+        log.info("[sms-code] verification code sent purpose={} phone={} ttlSeconds={} provider={} deliveryStatus={} bizId={}",
+                resolvedPurpose.wire(), phone, ttlSeconds,
+                sendResult == null ? null : sendResult.provider(),
+                sendResult == null ? null : sendResult.deliveryStatus(),
+                sendResult == null ? null : sendResult.bizId());
+        return sendResult;
     }
 
     /**

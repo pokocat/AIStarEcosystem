@@ -242,6 +242,11 @@ aep:
       connect-timeout-seconds: ${ALIYUN_SMS_CONNECT_TIMEOUT_SECONDS:10}
       response-timeout-seconds: ${ALIYUN_SMS_RESPONSE_TIMEOUT_SECONDS:20}
       call-timeout-seconds: ${ALIYUN_SMS_CALL_TIMEOUT_SECONDS:30}
+      # SendSms 只表示接口调用成功；真实发送状态按官方文档用 QuerySendDetails 查回执。
+      delivery-query-enabled: ${ALIYUN_SMS_DELIVERY_QUERY_ENABLED:true}
+      delivery-query-attempts: ${ALIYUN_SMS_DELIVERY_QUERY_ATTEMPTS:3}
+      delivery-query-initial-delay-ms: ${ALIYUN_SMS_DELIVERY_QUERY_INITIAL_DELAY_MS:1500}
+      delivery-query-interval-ms: ${ALIYUN_SMS_DELIVERY_QUERY_INTERVAL_MS:1500}
 
 # sau-service (Python + Playwright，独立 FastAPI 进程) 集成配置
 # dev: docker-compose 启 apps/sau-service:8090; prod: k8s 同 namespace

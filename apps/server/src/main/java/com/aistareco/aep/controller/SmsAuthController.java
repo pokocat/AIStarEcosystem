@@ -12,6 +12,7 @@ import com.aistareco.aep.service.AuditService;
 import com.aistareco.aep.service.LicenseActivationService;
 import com.aistareco.aep.service.sms.SmsCodeService;
 import com.aistareco.aep.service.sms.SmsCodePurpose;
+import com.aistareco.aep.service.sms.SmsSendResult;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -71,10 +72,10 @@ public class SmsAuthController {
         this.auditService = auditService;
     }
 
-    /** 请求一个新验证码。失败抛 4xx；成功返回 { sent: true }。 */
+    /** 请求一个新验证码。失败抛 4xx/5xx；成功返回短信供应商的结构化状态。 */
     @PostMapping("/request-code")
-    public ApiResponse<Map<String, Object>> requestCode(@RequestBody(required = false) SmsRequestCodeRequest body,
-                                                         HttpServletRequest request) {
+    public ApiResponse<SmsSendResult> requestCode(@RequestBody(required = false) SmsRequestCodeRequest body,
+                                                   HttpServletRequest request) {
         String phone = body == null ? null : body.phone();
         String trimmedPhone = phone == null ? null : phone.trim();
         SmsCodePurpose purpose;
@@ -85,18 +86,23 @@ public class SmsAuthController {
                     ex.getCode(), "请求验证码：用途参数无效", request);
             throw ex;
         }
+        SmsSendResult result;
         try {
-            smsCodeService.requestCode(trimmedPhone, purpose);
+            result = smsCodeService.requestCode(trimmedPhone, purpose);
         } catch (RuntimeException ex) {
             auditService.recordAuthFailure(AuditService.Actions.SMS_REQUEST_CODE, trimmedPhone,
                     errorCodeOf(ex, "SMS_REQUEST_FAILED"),
                     "请求验证码失败 purpose=" + purpose.wire() + " · " + ex.getMessage(), request);
             throw ex;
         }
-        log.info("[auth-sms] request-code ok purpose={} phone={}", purpose.wire(), trimmedPhone);
+        log.info("[auth-sms] request-code ok purpose={} phone={} provider={} deliveryStatus={} bizId={}",
+                purpose.wire(), trimmedPhone,
+                result == null ? null : result.provider(),
+                result == null ? null : result.deliveryStatus(),
+                result == null ? null : result.bizId());
         auditService.recordAuthSuccess(AuditService.Actions.SMS_REQUEST_CODE, null, trimmedPhone,
                 "发送 SMS 验证码 purpose=" + purpose.wire(), request);
-        return ApiResponse.of(Map.of("sent", true));
+        return ApiResponse.of(result);
     }
 
     /**

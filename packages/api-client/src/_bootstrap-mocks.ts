@@ -15,7 +15,7 @@ import type { LicenseRedeemRequest, LicenseRedeemResult } from "@ai-star-eco/typ
 import { mockDelay, setAuthToken } from "./_client";
 import { registerMocks } from "./_mock-registry";
 import { MOCK_TENANTS, MOCK_USER, MOCK_WALLET } from "./_mocks";
-import type { DevAccount, DevLoginResult, PasswordLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult } from "./api/auth";
+import type { DevAccount, DevLoginResult, PasswordLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult, SmsRequestCodeResult } from "./api/auth";
 
 registerMocks([
   // ── account ──────────────────────────────────────────────────────────────
@@ -129,7 +129,18 @@ registerMocks([
   {
     method: "POST",
     pattern: "/auth/sms/request-code",
-    handler: () => mockDelay({ sent: true }),
+    handler: ({ body }) => {
+      const purpose = (body as { purpose?: "login" | "register" } | undefined)?.purpose ?? "login";
+      return mockDelay<SmsRequestCodeResult>({
+        sent: true,
+        accepted: true,
+        provider: "mock",
+        purpose,
+        providerCode: "MOCK_OK",
+        providerMessage: "Mock SMS accepted",
+        deliveryStatus: "NOT_APPLICABLE",
+      });
+    },
   },
   {
     method: "POST",

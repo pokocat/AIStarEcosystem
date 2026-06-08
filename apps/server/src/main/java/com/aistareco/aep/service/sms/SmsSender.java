@@ -18,11 +18,31 @@ public interface SmsSender {
      * @param code  纯数字字符串，长度由 SmsCodeService 决定。
      * @param purpose 验证码用途；真实短信供应商据此选择模板。
      */
-    void sendVerificationCode(String phone, String code, SmsCodePurpose purpose) throws SmsSendException;
+    SmsSendResult sendVerificationCode(String phone, String code, SmsCodePurpose purpose) throws SmsSendException;
 
     /** SMS 发送失败的统一异常。message 会被 controller 透传到用户。 */
     class SmsSendException extends RuntimeException {
-        public SmsSendException(String message) { super(message); }
-        public SmsSendException(String message, Throwable cause) { super(message, cause); }
+        private final SmsSendResult result;
+
+        public SmsSendException(String message) {
+            super(message);
+            this.result = null;
+        }
+        public SmsSendException(String message, Throwable cause) {
+            super(message, cause);
+            this.result = null;
+        }
+        public SmsSendException(String message, SmsSendResult result) {
+            super(message);
+            this.result = result;
+        }
+        public SmsSendException(String message, SmsSendResult result, Throwable cause) {
+            super(message, cause);
+            this.result = result;
+        }
+
+        public SmsSendResult getResult() {
+            return result;
+        }
     }
 }
