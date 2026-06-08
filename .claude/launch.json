@@ -15,6 +15,14 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3003,
       "autoPort": true
+    },
+    {
+      "name": "aiavatar",
+      "cwd": "apps/web-aiavatar",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3013,
+      "autoPort": true
     }
   ]
 }
