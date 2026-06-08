@@ -8,20 +8,24 @@ import * as React from "react";
 import { CelebrityMarketHero } from "@/components/celebrity-zone/CelebrityMarketHero";
 import { CelebrityMarket } from "@/components/celebrity-zone/CelebrityMarket";
 import { listStars } from "@/api/celebrity-zone";
-import { MARKET_STARS, ZONE_OVERVIEW } from "@/mocks/celebrity-zone";
+import { ZONE_OVERVIEW } from "@/mocks/celebrity-zone";
 import type { CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 
 export default function CelebrityMarketPage() {
-  const [stars, setStars] = React.useState<CelebrityStar[]>(MARKET_STARS);
+  const [stars, setStars] = React.useState<CelebrityStar[]>([]);
+  const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const reload = React.useCallback(async () => {
+    setLoading(true);
     try {
       const list = await listStars();
       setStars(list);
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -33,6 +37,8 @@ export default function CelebrityMarketPage() {
         if (!cancelled) setStars(list);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -43,11 +49,16 @@ export default function CelebrityMarketPage() {
       <CelebrityMarketHero
         totalPlays={ZONE_OVERVIEW.hero.totalPlays}
         totalConversions={ZONE_OVERVIEW.hero.totalConversions}
-        activeStars={ZONE_OVERVIEW.hero.activeStars}
+        activeStars={stars.length}
       />
       {loadError && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          明星数据加载失败：{loadError}（已回退到本地占位数据）
+          明星数据加载失败：{loadError}
+        </div>
+      )}
+      {loading && (
+        <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500">
+          明星数据加载中...
         </div>
       )}
       <CelebrityMarket stars={stars} onChanged={reload} />
