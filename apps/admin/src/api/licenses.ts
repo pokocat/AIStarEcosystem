@@ -77,12 +77,23 @@ export interface CreateBatchInput {
   validTo?: string;
 }
 
-export async function createBatch(data: CreateBatchInput): Promise<LicenseBatch> {
-  const row = await apiFetch<Omit<LicenseBatch, "tier">>("/admin/license-batches", {
+export interface CreateBatchResult {
+  batch: LicenseBatch;
+  rawCodes: string[];
+}
+
+export async function createBatch(data: CreateBatchInput): Promise<CreateBatchResult> {
+  const row = await apiFetch<{
+    batch: Omit<LicenseBatch, "tier"> & { tier?: LicenseTier };
+    rawCodes?: string[];
+  }>("/admin/license-batches", {
     method: "POST",
     body: data,
   });
-  return normalizeBatch(row);
+  return {
+    batch: normalizeBatch(row.batch),
+    rawCodes: row.rawCodes ?? [],
+  };
 }
 
 /**

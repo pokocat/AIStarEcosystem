@@ -1,5 +1,6 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.dto.CreateLicenseBatchResultDto;
 import com.aistareco.aep.dto.LicenseBatchDto;
 import com.aistareco.aep.dto.LicenseKeyDto;
 import com.aistareco.aep.dto.PageEnvelope;
@@ -56,7 +57,7 @@ public class AdminLicenseController {
 
     @PostMapping("/license-batches")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<LicenseBatchDto> createBatch(@RequestBody Map<String, Object> body) {
+    public ApiResponse<CreateLicenseBatchResultDto> createBatch(@RequestBody Map<String, Object> body) {
         return ApiResponse.of(licenseService.createBatch(body));
     }
 

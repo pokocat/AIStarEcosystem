@@ -362,7 +362,7 @@ function CreateBatchDialog({
   const [tier, setTier] = React.useState<LicenseTier>("basic");
   const [platforms, setPlatforms] = React.useState<SubProduct[]>([]);
   const [grantOverride, setGrantOverride] = React.useState("");
-  const [totalCount, setTotalCount] = React.useState("10");
+  const [totalCount, setTotalCount] = React.useState("0");
   const [validFrom, setValidFrom] = React.useState("");
   const [validTo, setValidTo] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -377,7 +377,7 @@ function CreateBatchDialog({
     setTier("basic");
     setPlatforms([]);
     setGrantOverride("");
-    setTotalCount("10");
+    setTotalCount("0");
     const today = new Date();
     const oneYearLater = new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000);
     setValidFrom(today.toISOString().slice(0, 10));
@@ -402,14 +402,14 @@ function CreateBatchDialog({
     if (!trimmedName) return setError("批次名不能为空");
     if (!channelId) return setError("请选择销售渠道");
     const count = parseInt(totalCount, 10);
-    if (!Number.isFinite(count) || count < 1) return setError("数量必须是正整数");
+    if (!Number.isFinite(count) || count < 0) return setError("初始铸码数量必须是 0 或正整数");
     if (count > 100) return setError("一次最多 100 把（避免一次性日志爆炸）");
     if (grantOverride.trim() !== "" && !hasOverride) return setError("自定义点数必须是 ≥ 0 的数字");
 
     setBusy(true);
     setError(null);
     try {
-      const batch = await createBatch({
+      const result = await createBatch({
         name: trimmedName,
         sellingChannelId: channelId,
         tier,
@@ -419,7 +419,7 @@ function CreateBatchDialog({
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
         validTo: validTo ? `${validTo}T23:59:59Z` : undefined,
       });
-      onCreated(batch, []);
+      onCreated(result.batch, result.rawCodes);
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建失败");
     } finally {
@@ -433,7 +433,7 @@ function CreateBatchDialog({
         <DialogHeader>
           <DialogTitle>新建批次</DialogTitle>
           <DialogDescription>
-            一个批次 = 一组秘钥 + 等级（点数包）。提交后可通过「铸码」按钮额外补铸激活码并取走明文。
+            一个批次 = 一组秘钥 + 等级（点数包）。默认只建空批次；如填写初始铸码数量，明文会在提交后立即展示一次。
           </DialogDescription>
         </DialogHeader>
 
@@ -477,14 +477,17 @@ function CreateBatchDialog({
               </Select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">数量</label>
+              <label className="text-xs text-muted-foreground">初始铸码数量</label>
               <Input
                 type="number"
-                min={1}
+                min={0}
                 max={100}
                 value={totalCount}
                 onChange={(e) => setTotalCount(e.target.value)}
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                填 0 仅创建批次；之后可点「铸码」生成并复制明文。
+              </p>
             </div>
           </div>
           <div>

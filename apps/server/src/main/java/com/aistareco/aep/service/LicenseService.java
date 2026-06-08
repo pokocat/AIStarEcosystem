@@ -1,5 +1,6 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.CreateLicenseBatchResultDto;
 import com.aistareco.aep.dto.LicenseBatchDto;
 import com.aistareco.aep.dto.LicenseKeyDto;
 import com.aistareco.aep.model.LicenseBatch;
@@ -19,7 +20,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -97,8 +100,11 @@ public class LicenseService {
     }
 
     @Transactional
-    public LicenseBatchDto createBatch(Map<String, Object> body) {
-        int count = getInt(body, "totalCount", 1);
+    public CreateLicenseBatchResultDto createBatch(Map<String, Object> body) {
+        int count = getInt(body, "totalCount", 0);
+        if (count < 0 || count > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "totalCount 必须在 0..100");
+        }
         String name = getString(body, "name");
         if (name == null || name.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "批次 name 不能为空");
@@ -142,6 +148,7 @@ public class LicenseService {
                 .build();
         batchRepo.save(batch);
 
+        List<String> rawCodes = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             String rawCode = UUID.randomUUID().toString().replace("-", "").toUpperCase();
             String codeHash = sha256(rawCode);
@@ -155,9 +162,10 @@ public class LicenseService {
                     .createdAt(Instant.now())
                     .build();
             keyRepo.save(key);
+            rawCodes.add(rawCode);
         }
 
-        return LicenseBatchDto.from(batch);
+        return new CreateLicenseBatchResultDto(LicenseBatchDto.from(batch), rawCodes);
     }
 
     public Page<LicenseKeyDto> listKeys(String batchId, LicenseKey.LicenseKeyStatus status, Pageable pageable) {
