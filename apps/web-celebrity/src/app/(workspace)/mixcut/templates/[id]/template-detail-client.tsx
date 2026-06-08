@@ -50,7 +50,6 @@ import { RadioGroup, RadioGroupItem } from "@ai-star-eco/ui/ui/radio-group";
 import { Switch } from "@ai-star-eco/ui/ui/switch";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
-import { mockTemplates } from "@/mocks/mixcut";
 import {
   PROFILE_LABELS,
   PROFILE_DESCRIPTIONS,
@@ -300,12 +299,9 @@ export function TemplateDetailClient({
   }, [isNewMode, canManageTemplates]);
   const [template, setTemplate] = useState<Template | null>(() => {
     if (freshTemplate) return freshTemplate;
-    // 编辑路由下，不要先把工厂 mockTemplate 作为 fallback initial —— 否则用户进 /edit
-    // 时会有 ~50ms 闪烁「先看到工厂单场景，再切到自己保存的多场景版本」。
-    // 让 template 保持 null，UI 会显示"加载中"直到 async fetch 完成。
-    // 浏览模式下保留 fallback，SSR / 老路径不变。
-    if (wantEdit) return null;
-    return mockTemplates.find((t) => t.template_id === id) ?? null;
+    // 不用 mockTemplates 做首帧 fallback：生产真实后端慢返回时，浏览态也会先闪 mock 模板。
+    // 让 template 保持 null，UI 显示加载态直到 async fetch 完成。
+    return null;
   });
   const [resolved, setResolved] = useState(isNewMode);
   const [autoEditApplied, setAutoEditApplied] = useState(false); // 防 ?edit=1 重复触发
