@@ -7,11 +7,10 @@ import * as React from "react";
 import Link from "next/link";
 import { Sparkles, ArrowRight, ShieldCheck } from "lucide-react";
 import { listStars } from "@/api/celebrity-zone";
-import { MARKET_STARS } from "@/mocks/celebrity-zone";
 import type { CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 
 export default function QuickGeneratePage() {
-  const [stars, setStars] = React.useState<CelebrityStar[]>(MARKET_STARS);
+  const [stars, setStars] = React.useState<CelebrityStar[]>([]);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -19,7 +18,7 @@ export default function QuickGeneratePage() {
     (async () => {
       try {
         const list = await listStars();
-        if (!cancelled && list.length > 0) setStars(list);
+        if (!cancelled) setStars(list);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "加载失败");
       }
@@ -44,7 +43,7 @@ export default function QuickGeneratePage() {
 
       {loadError && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          明星数据加载失败：{loadError}（已回退到本地占位数据）
+          明星数据加载失败：{loadError}
         </div>
       )}
 

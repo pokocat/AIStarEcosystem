@@ -5,12 +5,11 @@
 import * as React from "react";
 import { CelebrityMyProjects } from "@/components/celebrity-zone/CelebrityMyProjects";
 import { listProjects, listStars } from "@/api/celebrity-zone";
-import { CELEBRITY_PROJECTS, MARKET_STARS } from "@/mocks/celebrity-zone";
 import type { CelebrityProject, CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 
 export default function CelebrityProjectsPage() {
-  const [projects, setProjects] = React.useState<CelebrityProject[]>(CELEBRITY_PROJECTS);
-  const [stars, setStars] = React.useState<CelebrityStar[]>(MARKET_STARS);
+  const [projects, setProjects] = React.useState<CelebrityProject[]>([]);
+  const [stars, setStars] = React.useState<CelebrityStar[]>([]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -18,10 +17,10 @@ export default function CelebrityProjectsPage() {
       try {
         const [p, s] = await Promise.all([listProjects(), listStars()]);
         if (cancelled) return;
-        if (p.length > 0) setProjects(p);
-        if (s.length > 0) setStars(s);
+        setProjects(p);
+        setStars(s);
       } catch {
-        // 失败时静默回退 mocks（已作为初始 state）
+        // 失败时保持空态，避免生产环境显示本地 mock 数据。
       }
     })();
     return () => { cancelled = true; };

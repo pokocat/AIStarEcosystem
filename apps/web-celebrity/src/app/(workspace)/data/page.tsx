@@ -7,7 +7,6 @@
 import * as React from "react";
 import { CelebrityDataCenter } from "@/components/celebrity-zone/CelebrityDataCenter";
 import { listStars, listAllVideos } from "@/api/celebrity-zone";
-import { MARKET_STARS, PROJECT_VIDEOS_MAP } from "@/mocks/celebrity-zone";
 import type {
   CelebrityProjectVideo,
   CelebrityStar,
@@ -48,12 +47,8 @@ function buildOverview(stars: CelebrityStar[], videos: CelebrityProjectVideo[]):
 }
 
 export default function CelebrityDataPage() {
-  const fallbackVideos = React.useMemo<CelebrityProjectVideo[]>(
-    () => Object.values(PROJECT_VIDEOS_MAP).flat(),
-    [],
-  );
-  const [stars, setStars] = React.useState<CelebrityStar[]>(MARKET_STARS);
-  const [videos, setVideos] = React.useState<CelebrityProjectVideo[]>(fallbackVideos);
+  const [stars, setStars] = React.useState<CelebrityStar[]>([]);
+  const [videos, setVideos] = React.useState<CelebrityProjectVideo[]>([]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -61,10 +56,10 @@ export default function CelebrityDataPage() {
       try {
         const [s, v] = await Promise.all([listStars(), listAllVideos()]);
         if (cancelled) return;
-        if (s.length > 0) setStars(s);
-        if (v.length > 0) setVideos(v);
+        setStars(s);
+        setVideos(v);
       } catch {
-        // 保留 fallback
+        // 失败时保持空态，避免生产环境显示本地 mock 数据。
       }
     })();
     return () => {

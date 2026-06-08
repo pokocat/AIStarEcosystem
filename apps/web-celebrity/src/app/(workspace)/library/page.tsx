@@ -15,7 +15,6 @@ import { CelebrityVideoLibrary } from "@/components/celebrity-zone/CelebrityVide
 import { ScriptVideosTab } from "@/components/celebrity-zone/ScriptVideosTab";
 import { MixcutOutputsTab } from "@/components/mixcut-zone/MixcutOutputsTab";
 import { deleteVideo as deleteCelebrityVideo, listAllVideos, listProjects, listStars } from "@/api/celebrity-zone";
-import { CELEBRITY_PROJECTS, MARKET_STARS, PROJECT_VIDEOS_MAP } from "@/mocks/celebrity-zone";
 import { useAuth } from "@ai-star-eco/api-client";
 import { useConfirm } from "@/components/common/confirm-dialog";
 import { canUseOperatorTools } from "@/lib/operator-role";
@@ -92,10 +91,9 @@ function ProjectVideosTab() {
   const { user } = useAuth();
   const canDeleteVideos = canUseOperatorTools(user?.operatorRole);
   const { confirm, ConfirmHost } = useConfirm();
-  const fallbackVideos = React.useMemo(() => Object.values(PROJECT_VIDEOS_MAP).flat(), []);
-  const [videos, setVideos] = useState<CelebrityProjectVideo[]>(fallbackVideos);
-  const [stars, setStars] = useState<CelebrityStar[]>(MARKET_STARS);
-  const [projects, setProjects] = useState<CelebrityProject[]>(CELEBRITY_PROJECTS);
+  const [videos, setVideos] = useState<CelebrityProjectVideo[]>([]);
+  const [stars, setStars] = useState<CelebrityStar[]>([]);
+  const [projects, setProjects] = useState<CelebrityProject[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -104,11 +102,11 @@ function ProjectVideosTab() {
       try {
         const [v, p, s] = await Promise.all([listAllVideos(), listProjects(), listStars()]);
         if (cancelled) return;
-        if (v.length > 0) setVideos(v);
-        if (p.length > 0) setProjects(p);
-        if (s.length > 0) setStars(s);
+        setVideos(v);
+        setProjects(p);
+        setStars(s);
       } catch {
-        // 失败静默回退 mocks
+        // 失败时保持空态，避免生产环境显示本地 mock 数据。
       }
     })();
     return () => {

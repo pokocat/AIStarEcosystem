@@ -5,11 +5,6 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Plus, Sparkles } from "lucide-react";
 import { Avatar, Button, Card, Chip, KpiCard } from "@/components/creator";
 import { PipelineStep } from "@/components/console/PipelineStep";
-import {
-  MARKET_STARS,
-  CELEBRITY_PROJECTS,
-  PROJECT_VIDEOS_MAP,
-} from "@/mocks/celebrity-zone";
 import { listStars, listProjects, listAllVideos } from "@/api/celebrity-zone";
 import type {
   CelebrityProject,
@@ -28,10 +23,9 @@ import {
 // 业务总览（围绕"明星市场 → 申请授权 → AI 生成 → 多平台分发 → 带货变现"主线）
 // v0.37+：三个数据源 listStars / listProjects / listAllVideos 接通真后端；USE_MOCK=1 自动回退 mocks。
 export default function CelebrityDashboardPage() {
-  const fallbackVideos = React.useMemo(() => Object.values(PROJECT_VIDEOS_MAP).flat(), []);
-  const [stars, setStars] = React.useState<CelebrityStar[]>(MARKET_STARS);
-  const [projects, setProjects] = React.useState<CelebrityProject[]>(CELEBRITY_PROJECTS);
-  const [allVideos, setAllVideos] = React.useState<CelebrityProjectVideo[]>(fallbackVideos);
+  const [stars, setStars] = React.useState<CelebrityStar[]>([]);
+  const [projects, setProjects] = React.useState<CelebrityProject[]>([]);
+  const [allVideos, setAllVideos] = React.useState<CelebrityProjectVideo[]>([]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -39,11 +33,11 @@ export default function CelebrityDashboardPage() {
       try {
         const [s, p, v] = await Promise.all([listStars(), listProjects(), listAllVideos()]);
         if (cancelled) return;
-        if (s.length > 0) setStars(s);
-        if (p.length > 0) setProjects(p);
-        if (v.length > 0) setAllVideos(v);
+        setStars(s);
+        setProjects(p);
+        setAllVideos(v);
       } catch {
-        // 静默回退 mocks
+        // 失败时保持空态，避免生产环境显示本地 mock 数据。
       }
     })();
     return () => { cancelled = true; };
