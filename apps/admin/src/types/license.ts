@@ -29,14 +29,14 @@ export interface LicenseTierMeta {
 export const LICENSE_TIERS: Record<LicenseTier, LicenseTierMeta> = {
   basic: {
     key: "basic",
-    label: "基础秘钥",
+    label: "基础权益包",
     accountLabel: "个人创作者账户",
     initialCreditGrant: 1_000,
     description: "面向个人体验用户，激活后登记为个人创作者账户。",
   },
   premium: {
     key: "premium",
-    label: "高级秘钥",
+    label: "高级权益包",
     accountLabel: "经纪公司账户",
     initialCreditGrant: 10_000,
     description: "面向机构合作方，激活后登记为经纪公司账户，可创建艺人档案。",

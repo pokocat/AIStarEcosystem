@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionDialog } from "@/components/ActionDialog";
-import { createBatch, listBatches, listKeys, mintKeys, revokeKey } from "@/api/licenses";
+import { createBatch, listBatches, listKeys, mintKeys, revokeBatch } from "@/api/licenses";
 import { listTenants } from "@/api/tenants";
 import { listUsers } from "@/api/users";
 import { SellingChannelsApi } from "@/api";
@@ -82,9 +82,9 @@ export default function LicensesPage() {
   return (
     <div className="admin-page">
       <PageHeader
-        title="秘钥批次"
-        description="批次 = 入场券 + 初始点数包。核销时一次性发放积分，不设订阅。"
-        breadcrumb={[{ label: "平台账户" }, { label: "秘钥批次" }]}
+        title="激活码批次"
+        description="批次定义销售来源、适用范围和单包点数；激活码明文只在生成时展示一次。"
+        breadcrumb={[{ label: "平台账户" }, { label: "激活码批次" }]}
         actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="h-3.5 w-3.5" /> 新建批次
@@ -115,15 +115,15 @@ export default function LicensesPage() {
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="发放中批次"    value={active.length}                 icon={KeySquare}   tone="success" />
-        <StatCard label="已兑换秘钥"    value={activatedKeys}                 icon={CheckCircle2} tone="success" />
-        <StatCard label="未兑换秘钥"    value={pendingKeys}                   icon={AlertCircle}  tone={pendingKeys ? "warning" : "default"} />
+        <StatCard label="已兑换激活码"  value={activatedKeys}                 icon={CheckCircle2} tone="success" />
+        <StatCard label="未兑换激活码"  value={pendingKeys}                   icon={AlertCircle}  tone={pendingKeys ? "warning" : "default"} />
         <StatCard label="累计发放点数"  value={formatCredits(totalGranted)}   icon={KeySquare}    tone="default" />
       </section>
 
       <Tabs defaultValue="batches" className="space-y-4">
         <TabsList>
           <TabsTrigger value="batches">批次 ({batches.length})</TabsTrigger>
-          <TabsTrigger value="keys">秘钥 ({keys.length})</TabsTrigger>
+          <TabsTrigger value="keys">激活码 ({keys.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="batches">
@@ -193,9 +193,9 @@ export default function LicensesPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => setMintTarget(b)}
-                                title="在该批次下追加铸造新激活码（明文一次性返回）"
+                                title="在该批次下生成新激活码（明文一次性返回）"
                               >
-                                <Sparkles className="h-3.5 w-3.5" /> 铸码
+                                <Sparkles className="h-3.5 w-3.5" /> 生成激活码
                               </Button>
                             )}
                             {b.status === "active" ? (
@@ -204,7 +204,7 @@ export default function LicensesPage() {
                                 variant="destructive"
                                 onClick={() => setRevokeTarget(b)}
                               >
-                                撤回
+                                停用批次
                               </Button>
                             ) : (
                               <Button size="sm" variant="ghost">查看</Button>
@@ -227,12 +227,12 @@ export default function LicensesPage() {
 
         <TabsContent value="keys">
           <Card>
-            <CardHeader><CardTitle>秘钥列表</CardTitle></CardHeader>
+            <CardHeader><CardTitle>激活码列表</CardTitle></CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>秘钥编码</TableHead>
+                    <TableHead>激活码</TableHead>
                     <TableHead>等级</TableHead>
                     <TableHead>所属批次</TableHead>
                     <TableHead>兑换人</TableHead>
@@ -264,7 +264,7 @@ export default function LicensesPage() {
                   })}
                   {!loading && !loadError && keys.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无秘钥</TableCell>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">暂无激活码</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -304,22 +304,13 @@ export default function LicensesPage() {
         <ActionDialog
           open={!!revokeTarget}
           onOpenChange={(open) => !open && setRevokeTarget(null)}
-          title={`撤回批次：${revokeTarget.name}`}
-          description={`批次号 ${revokeTarget.batchNo}，已核销 ${revokeTarget.activatedCount} 个秘钥。撤回后未兑换秘钥失效。`}
+          title={`停用批次：${revokeTarget.name}`}
+          description={`高风险操作：批次号 ${revokeTarget.batchNo} 会被标记为“已停用”，所有未兑换激活码会立即作废；已兑换账号和已发积分不会自动回滚。当前已兑换 ${revokeTarget.activatedCount} 个。`}
           tone="danger"
-          confirmLabel="撤回批次"
+          confirmLabel="确认停用批次"
           requireReason
           onConfirm={async () => {
-            const remainingKeys = keys.filter(
-              (k) => k.batchId === revokeTarget.id && k.status === "created",
-            );
-            for (const k of remainingKeys) {
-              try {
-                await revokeKey(k.id);
-              } catch {
-                // 单条失败继续后续
-              }
-            }
+            await revokeBatch(revokeTarget.id);
             await reload();
           }}
         />
@@ -402,7 +393,7 @@ function CreateBatchDialog({
     if (!trimmedName) return setError("批次名不能为空");
     if (!channelId) return setError("请选择销售渠道");
     const count = parseInt(totalCount, 10);
-    if (!Number.isFinite(count) || count < 0) return setError("初始铸码数量必须是 0 或正整数");
+    if (!Number.isFinite(count) || count < 0) return setError("初始生成数量必须是 0 或正整数");
     if (count > 100) return setError("一次最多 100 把（避免一次性日志爆炸）");
     if (grantOverride.trim() !== "" && !hasOverride) return setError("自定义点数必须是 ≥ 0 的数字");
 
@@ -433,7 +424,7 @@ function CreateBatchDialog({
         <DialogHeader>
           <DialogTitle>新建批次</DialogTitle>
           <DialogDescription>
-            一个批次 = 一组秘钥 + 等级（点数包）。默认只建空批次；如填写初始铸码数量，明文会在提交后立即展示一次。
+            一个批次 = 销售来源 + 适用范围 + 权益包。默认只建空批次；如填写初始生成数量，明文激活码会在提交后立即展示一次。
           </DialogDescription>
         </DialogHeader>
 
@@ -464,7 +455,7 @@ function CreateBatchDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground">秘钥等级</label>
+              <label className="text-xs text-muted-foreground">权益等级</label>
               <Select value={tier} onValueChange={(v) => setTier(v as LicenseTier)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -477,7 +468,7 @@ function CreateBatchDialog({
               </Select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">初始铸码数量</label>
+              <label className="text-xs text-muted-foreground">初始生成数量</label>
               <Input
                 type="number"
                 min={0}
@@ -486,7 +477,7 @@ function CreateBatchDialog({
                 onChange={(e) => setTotalCount(e.target.value)}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                填 0 仅创建批次；之后可点「铸码」生成并复制明文。
+                填 0 仅创建批次；之后可点「生成激活码」并复制明文。
               </p>
             </div>
           </div>
@@ -513,8 +504,8 @@ function CreateBatchDialog({
               })}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              v0.53：勾选后该批次秘钥激活时<strong>仅开通所选子应用</strong>（注册 / 已登录追加激活均按此授权）；
-              不勾选为全站秘钥。
+              勾选后该批次激活码<strong>仅开通所选子应用</strong>（注册 / 已登录追加激活均按此授权）；
+              不勾选为全站可用。
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -558,7 +549,7 @@ function CreateBatchDialog({
   );
 }
 
-// ── 铸码 dialog ──────────────────────────────────────────────────────────────
+// ── 生成激活码 dialog ────────────────────────────────────────────────────────
 function MintKeysDialog({
   batch,
   onOpenChange,
@@ -591,7 +582,7 @@ function MintKeysDialog({
       const res = await mintKeys(batch.id, n);
       onMinted(batch, res.rawCodes);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "铸码失败");
+      setError(e instanceof Error ? e.message : "生成失败");
     } finally {
       setBusy(false);
     }
@@ -602,17 +593,17 @@ function MintKeysDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4" /> 铸造激活码
+            <Sparkles className="h-4 w-4" /> 生成激活码
           </DialogTitle>
           <DialogDescription>
-            在批次 <span className="font-medium">{batch?.name}</span> 下追加新激活码。
+            在批次 <span className="font-medium">{batch?.name}</span> 下追加生成新激活码。
             明文仅本次响应返回；server 只存 sha256 哈希。
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-muted-foreground">铸造数量</label>
+            <label className="text-xs text-muted-foreground">生成数量</label>
             <Input
               type="number"
               min={1}
@@ -634,7 +625,7 @@ function MintKeysDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>取消</Button>
           <Button onClick={handleSubmit} disabled={busy}>
-            {busy ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> 铸造中…</> : "铸造"}
+            {busy ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> 生成中…</> : "生成"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -651,17 +642,42 @@ function RawCodesDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const [copied, setCopied] = React.useState(false);
+  const [copyFailed, setCopyFailed] = React.useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const joined = payload ? payload.codes.join("\n") : "";
 
+  React.useEffect(() => {
+    setCopied(false);
+    setCopyFailed(false);
+  }, [payload]);
+
   const handleCopy = async () => {
     if (!joined) return;
-    try {
-      await navigator.clipboard.writeText(joined);
+    let ok = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(joined);
+        ok = true;
+      } catch {
+        ok = false;
+      }
+    }
+    if (!ok && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.select();
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+    }
+    if (ok) {
       setCopied(true);
+      setCopyFailed(false);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // 忽略剪贴板失败；用户可手动选中
+    } else {
+      setCopyFailed(true);
     }
   };
 
@@ -670,7 +686,7 @@ function RawCodesDialog({
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <KeySquare className="h-4 w-4" /> 新铸激活码（共 {payload?.codes.length ?? 0} 把）
+            <KeySquare className="h-4 w-4" /> 新生成激活码（共 {payload?.codes.length ?? 0} 个）
           </DialogTitle>
           <DialogDescription>
             批次 <span className="font-medium">{payload?.batch.name}</span> ·
@@ -680,12 +696,19 @@ function RawCodesDialog({
         </DialogHeader>
 
         <textarea
+          ref={textareaRef}
           readOnly
           value={joined}
           rows={Math.min(payload?.codes.length ?? 1, 12)}
           className="w-full rounded-md border border-border bg-muted/30 p-3 font-mono text-xs"
           onFocus={(e) => e.currentTarget.select()}
         />
+
+        {copyFailed && (
+          <div className="text-xs text-amber-700">
+            浏览器阻止了自动复制，已选中文本时可手动复制。
+          </div>
+        )}
 
         <DialogFooter className="sm:justify-between">
           <Button variant="outline" onClick={handleCopy}>

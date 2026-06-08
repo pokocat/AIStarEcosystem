@@ -116,6 +116,14 @@ export async function mintKeys(batchId: string, count: number): Promise<MintKeys
   );
 }
 
+export async function revokeBatch(id: string): Promise<LicenseBatch> {
+  const row = await apiFetch<Omit<LicenseBatch, "tier">>(
+    `/admin/license-batches/${encodeURIComponent(id)}/revoke`,
+    { method: "PUT" },
+  );
+  return normalizeBatch(row);
+}
+
 export async function revokeKey(id: string): Promise<void> {
   await apiFetch<void>(`/admin/license-keys/${encodeURIComponent(id)}/revoke`, {
     method: "PUT",

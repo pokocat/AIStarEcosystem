@@ -73,6 +73,11 @@ public class AdminLicenseController {
         return ApiResponse.of(Map.of("batchId", id, "count", raws.size(), "rawCodes", raws));
     }
 
+    @PutMapping("/license-batches/{id}/revoke")
+    public ApiResponse<LicenseBatchDto> revokeBatch(@PathVariable String id) {
+        return ApiResponse.of(licenseService.revokeBatch(id));
+    }
+
     // --- License Keys ---
 
     @GetMapping("/license-keys")

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -20,6 +21,8 @@ public interface LicenseKeyRepository extends JpaRepository<LicenseKey, String>,
     Page<LicenseKey> findByStatus(LicenseKey.LicenseKeyStatus status, Pageable pageable);
 
     Page<LicenseKey> findByBatchIdAndStatus(String batchId, LicenseKey.LicenseKeyStatus status, Pageable pageable);
+
+    List<LicenseKey> findAllByBatchId(String batchId);
 
     long countByStatus(LicenseKey.LicenseKeyStatus status);
 

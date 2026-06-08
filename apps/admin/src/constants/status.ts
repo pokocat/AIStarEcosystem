@@ -183,11 +183,11 @@ export const STUDIO_STATUS: Record<string, StatusMeta> = {
   deleted: { label: "已注销", tone: "danger" },
 };
 
-// ── 秘钥 ─────────────────────────────────────────────────────────────────────
+// ── 激活码 ───────────────────────────────────────────────────────────────────
 export const LICENSE_BATCH_STATUS: Record<string, StatusMeta> = {
   active:    { label: "发放中", tone: "success" },
   exhausted: { label: "已售罄", tone: "neutral" },
-  revoked:   { label: "已撤回", tone: "danger" },
+  revoked:   { label: "已停用", tone: "danger" },
   expired:   { label: "已过期", tone: "warning" },
 };
 
@@ -195,17 +195,17 @@ export const LICENSE_KEY_STATUS: Record<string, StatusMeta> = {
   created:   { label: "未兑换", tone: "neutral" },
   activated: { label: "已兑换", tone: "success" },
   expired:   { label: "已过期", tone: "warning" },
-  revoked:   { label: "已撤回", tone: "danger" },
+  revoked:   { label: "已作废", tone: "danger" },
 };
 
 export const LICENSE_TIER: Record<string, StatusMeta> = {
-  basic:   { label: "基础秘钥", tone: "neutral" },
-  premium: { label: "高级秘钥", tone: "primary" },
+  basic:   { label: "基础权益", tone: "neutral" },
+  premium: { label: "高级权益", tone: "primary" },
 };
 
 // ── Ledger / Wallet ──────────────────────────────────────────────────────────
 export const LEDGER_ENTRY_TYPE: Record<string, StatusMeta> = {
-  license_grant: { label: "秘钥入账", tone: "primary" },
+  license_grant: { label: "激活码入账", tone: "primary" },
   recharge:      { label: "充值",         tone: "success" },
   refund:        { label: "退款",         tone: "info" },
   income:        { label: "业务收益",     tone: "success" },

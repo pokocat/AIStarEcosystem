@@ -75,6 +75,10 @@ public class LicenseService {
         long derivedTotal = keyRepo.countByBatchId(batch.getId());
         long derivedActivated = keyRepo.countByBatchIdAndStatus(
                 batch.getId(), LicenseKey.LicenseKeyStatus.ACTIVATED);
+        long derivedCreated = keyRepo.countByBatchIdAndStatus(
+                batch.getId(), LicenseKey.LicenseKeyStatus.CREATED);
+        long derivedRevoked = keyRepo.countByBatchIdAndStatus(
+                batch.getId(), LicenseKey.LicenseKeyStatus.REVOKED);
 
         boolean drifted = batch.getTotalCount() != derivedTotal
                 || batch.getActivatedCount() != derivedActivated;
@@ -94,8 +98,18 @@ public class LicenseService {
                     && derivedTotal > 0 && derivedActivated >= derivedTotal) {
                 batch.setStatus(LicenseBatch.LicenseBatchStatus.EXHAUSTED);
             }
-            batchRepo.save(batch);
         }
+        // 兼容 v0.60 之前 admin 前端逐条 revoke key 但没有改 batch.status 的旧数据。
+        if (batch.getStatus() == LicenseBatch.LicenseBatchStatus.ACTIVE
+                && derivedTotal > 0
+                && derivedCreated == 0
+                && derivedRevoked > 0) {
+            log.warn("[license-counter] self-heal revoked batchId={} name='{}' total={} revoked={} activated={}",
+                    batch.getId(), batch.getName(), derivedTotal, derivedRevoked, derivedActivated);
+            batch.setStatus(LicenseBatch.LicenseBatchStatus.REVOKED);
+            drifted = true;
+        }
+        if (drifted) batchRepo.save(batch);
         return LicenseBatchDto.fromDerived(batch, derivedTotal, derivedActivated);
     }
 
@@ -218,6 +232,31 @@ public class LicenseService {
         batch.setTotalCount(batch.getTotalCount() + count);
         batchRepo.save(batch);
         return raws;
+    }
+
+    @Transactional
+    public LicenseBatchDto revokeBatch(String id) {
+        LicenseBatch batch = batchRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "License batch not found: " + id));
+
+        int revokedKeys = 0;
+        List<LicenseKey> keys = keyRepo.findAllByBatchId(id);
+        for (LicenseKey key : keys) {
+            // 未兑换码立即作废；已兑换账号 / 已发积分不在批次撤回时自动回滚。
+            if (key.getStatus() == LicenseKey.LicenseKeyStatus.CREATED) {
+                key.setStatus(LicenseKey.LicenseKeyStatus.REVOKED);
+                revokedKeys++;
+            }
+        }
+        if (revokedKeys > 0) {
+            keyRepo.saveAll(keys);
+        }
+
+        batch.setStatus(LicenseBatch.LicenseBatchStatus.REVOKED);
+        batchRepo.save(batch);
+        log.warn("[license-batch] revoked batchId={} name='{}' revokedCreatedKeys={}",
+                batch.getId(), batch.getName(), revokedKeys);
+        return toDtoWithDerivedCounts(batch);
     }
 
     @Transactional
