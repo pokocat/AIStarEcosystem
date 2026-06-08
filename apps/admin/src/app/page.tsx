@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Flame,
+  Clock3,
+  ClipboardCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
@@ -36,7 +38,7 @@ import {
   PLATFORM_STATUS,
   TRANSACTION_STATUS,
 } from "@/constants/status";
-import { daysUntil } from "@/lib/utils";
+import { cn, daysUntil } from "@/lib/utils";
 import { formatCredits, formatSignedCredits } from "@/lib/format";
 import type { Artist } from "@/types/artist";
 import type {
@@ -49,6 +51,33 @@ import type { Song } from "@/types/music";
 import type { Drama, Movie, Advertisement } from "@/types/film";
 import type { Platform } from "@/types/distribution";
 import type { Transaction, RevenueSource } from "@/types/finance";
+
+type QueueTone = "primary" | "info" | "warning" | "danger" | "success";
+
+const queueToneClasses: Record<QueueTone, string> = {
+  primary: "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20",
+  info: "bg-info/10 text-info ring-1 ring-inset ring-info/20",
+  warning: "bg-warning/15 text-warning ring-1 ring-inset ring-warning/20",
+  danger: "bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20",
+  success: "bg-success/10 text-success ring-1 ring-inset ring-success/20",
+};
+
+function LoadingBlock({ className }: { className?: string }) {
+  return <span aria-hidden className={cn("admin-skeleton inline-flex rounded-md", className)} />;
+}
+
+function RowSkeleton({ shape = "rounded" }: { shape?: "rounded" | "circle" }) {
+  return (
+    <div className="flex items-center gap-3 px-2 py-2.5" aria-hidden>
+      <LoadingBlock className={cn("h-9 w-9 shrink-0", shape === "circle" ? "rounded-full" : "rounded-lg")} />
+      <div className="min-w-0 flex-1 space-y-2">
+        <LoadingBlock className="h-4 w-2/3" />
+        <LoadingBlock className="h-3 w-1/2" />
+      </div>
+      <LoadingBlock className="h-5 w-14" />
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [artists, setArtists] = React.useState<Artist[]>([]);
@@ -137,7 +166,7 @@ export default function DashboardPage() {
     label: string;
     count: number;
     summary: string;
-    tone: string;
+    tone: QueueTone;
   }> = [
     {
       href: "/content/copyright",
@@ -145,10 +174,7 @@ export default function DashboardPage() {
       label: "版权待核验",
       count: pendingCopyright,
       summary: pendingCopyright > 0 ? "优先处理人工审核，避免发行阻塞" : "当前没有版权阻塞项",
-      tone:
-        pendingCopyright > 0
-          ? "bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-100"
-          : "bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-100",
+      tone: pendingCopyright > 0 ? "danger" : "success",
     },
     {
       href: "/finance/ledger",
@@ -156,10 +182,7 @@ export default function DashboardPage() {
       label: "结算待复核",
       count: actionableTxns.length,
       summary: actionableTxns.length > 0 ? "优先清理处理中与待复核流水" : "结算流水稳定，无需人工介入",
-      tone:
-        actionableTxns.length > 0
-          ? "bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-100"
-          : "bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-100",
+      tone: actionableTxns.length > 0 ? "danger" : "success",
     },
     {
       href: "/platform/accounts",
@@ -167,10 +190,7 @@ export default function DashboardPage() {
       label: "合约异常",
       count: expiringContracts,
       summary: expiringContracts > 0 ? "包含临期与谈判中合约" : "近期没有需要跟进的合约",
-      tone:
-        expiringContracts > 0
-          ? "bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-100"
-          : "bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-100",
+      tone: expiringContracts > 0 ? "warning" : "success",
     },
   ];
 
@@ -180,7 +200,7 @@ export default function DashboardPage() {
     label: string;
     count: number;
     hint: string;
-    tone: string;
+    tone: QueueTone;
   }> = [
     {
       href: "/artists/lifecycle",
@@ -188,7 +208,7 @@ export default function DashboardPage() {
       label: "练习生池",
       count: traineeCount,
       hint: "跟进练习生和新人转化",
-      tone: "bg-indigo-50 text-indigo-600",
+      tone: "primary",
     },
     {
       href: "/distribution/platforms",
@@ -196,7 +216,7 @@ export default function DashboardPage() {
       label: "渠道接入",
       count: pendingPlatforms,
       hint: pendingPlatforms > 0 ? "存在待审核或断开的渠道" : "渠道状态正常",
-      tone: "bg-amber-50 text-amber-600",
+      tone: pendingPlatforms > 0 ? "warning" : "success",
     },
     {
       href: "/content/songs",
@@ -204,7 +224,7 @@ export default function DashboardPage() {
       label: "歌曲制作中",
       count: songsInProduction,
       hint: "查看未发布歌曲进度",
-      tone: "bg-sky-50 text-sky-600",
+      tone: "info",
     },
     {
       href: "/content/dramas",
@@ -212,7 +232,7 @@ export default function DashboardPage() {
       label: "影视项目",
       count: inProductionFilm,
       hint: "关注拍摄与后期阶段项目",
-      tone: "bg-sky-50 text-sky-600",
+      tone: "info",
     },
   ];
 
@@ -237,8 +257,8 @@ export default function DashboardPage() {
       />
 
       {loadError && (
-        <Card className="border-rose-200 bg-rose-50/60">
-          <CardContent className="flex items-center gap-2 py-3 text-sm text-rose-700">
+        <Card className="border-destructive/25 bg-destructive/10">
+          <CardContent className="flex items-center gap-2 py-3 text-sm text-destructive">
             <AlertTriangle className="h-4 w-4" /> 加载失败：{loadError}
           </CardContent>
         </Card>
@@ -246,9 +266,12 @@ export default function DashboardPage() {
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.9fr)]">
         <Card>
-          <CardHeader className="gap-3 border-b border-border pb-4">
+          <CardHeader className="gap-3 border-b border-border/80 pb-4">
             <div className="flex flex-col gap-1">
-              <CardTitle>当前最需要处理的事项</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-primary" />
+                当前最需要处理的事项
+              </CardTitle>
               <CardDescription>把会阻塞审核、结算和合约推进的事项放在最前面。</CardDescription>
             </div>
           </CardHeader>
@@ -259,19 +282,23 @@ export default function DashboardPage() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="group flex items-start gap-4 rounded-lg border border-border px-4 py-4 transition hover:border-indigo-200 hover:bg-surface-muted/40"
+                  className="group flex items-start gap-4 rounded-lg border border-border px-4 py-4 transition-colors hover:border-primary/25 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${item.tone}`}>
+                  <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg", queueToneClasses[item.tone])}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{item.label}</span>
-                        <span className="text-xs text-muted-foreground">需要跟进</span>
+                        <span className="text-xs text-muted-foreground">
+                          {loading ? "正在同步" : item.count > 0 ? "需要跟进" : "状态正常"}
+                        </span>
                       </div>
                       <div className="text-right">
-                        <div className="text-2xl font-semibold leading-none tabular-nums">{item.count}</div>
+                        <div className="text-2xl font-semibold leading-none tracking-tight tabular-nums">
+                          {loading ? <LoadingBlock className="h-7 w-10" /> : item.count}
+                        </div>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground">{item.summary}</p>
@@ -286,20 +313,20 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-1">
           <StatCard
             label="签约艺人"
-            value={totalArtists}
-            hint={`练习生 / 新人 ${traineeCount} · 活跃 ${totalArtists - traineeCount}`}
+            value={loading ? <LoadingBlock className="h-7 w-12" /> : totalArtists}
+            hint={loading ? "正在同步艺人档案" : `练习生 / 新人 ${traineeCount} · 活跃 ${totalArtists - traineeCount}`}
             icon={Users}
           />
           <StatCard
             label="近 6 月 GMV · 积分"
-            value={formatCredits(gmv)}
+            value={loading ? <LoadingBlock className="h-7 w-24" /> : formatCredits(gmv)}
             hint="流媒体 / 代言 / 数字藏品 / 现场合计"
             icon={Wallet}
           />
           <StatCard
             label="发行队列待审核"
-            value={reviewingDist}
-            hint={`全部 ${distributionQueue.length} 项在途`}
+            value={loading ? <LoadingBlock className="h-7 w-10" /> : reviewingDist}
+            hint={loading ? "正在同步发行队列" : `全部 ${distributionQueue.length} 项在途`}
             icon={Send}
             tone={reviewingDist > 0 ? "warning" : "default"}
           />
@@ -360,7 +387,7 @@ export default function DashboardPage() {
             <CardHeader className="flex-row items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <Handshake className="h-4 w-4 text-rose-500" />
+                  <Handshake className="h-4 w-4 text-destructive" />
                   临期 / 谈判合约
                 </CardTitle>
                 <CardDescription>按到期日升序</CardDescription>
@@ -370,6 +397,13 @@ export default function DashboardPage() {
               </Button>
             </CardHeader>
             <CardContent className="-mx-2 divide-y divide-border">
+              {loading && urgentContracts.length === 0 && (
+                <>
+                  <RowSkeleton shape="circle" />
+                  <RowSkeleton shape="circle" />
+                  <RowSkeleton shape="circle" />
+                </>
+              )}
               {urgentContracts.map((c) => (
                 <div key={c.id} className="flex items-center gap-3 px-2 py-2.5">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-lg">
@@ -389,7 +423,7 @@ export default function DashboardPage() {
                     <div
                       className={
                         "text-sm font-medium tabular-nums " +
-                        (c.days <= 30 ? "text-rose-600" : c.days <= 90 ? "text-amber-600" : "text-foreground")
+                        (c.days <= 30 ? "text-destructive" : c.days <= 90 ? "text-warning" : "text-foreground")
                       }
                     >
                       {c.days < 0 ? `已过 ${-c.days}天` : `${c.days} 天`}
@@ -397,9 +431,9 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))}
-              {urgentContracts.length === 0 && (
+              {!loading && urgentContracts.length === 0 && (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                  {loading ? "加载中…" : "暂无待处理合约"}
+                  暂无待处理合约
                 </div>
               )}
             </CardContent>
@@ -409,7 +443,7 @@ export default function DashboardPage() {
             <CardHeader className="flex-row items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <Send className="h-4 w-4 text-amber-500" />
+                  <Send className="h-4 w-4 text-warning" />
                   发行队列待审
                 </CardTitle>
                 <CardDescription>审核通过后推送至目标渠道</CardDescription>
@@ -419,10 +453,23 @@ export default function DashboardPage() {
               </Button>
             </CardHeader>
             <CardContent className="-mx-2 divide-y divide-border">
+              {loading && distributionQueue.length === 0 && (
+                <>
+                  <RowSkeleton />
+                  <RowSkeleton />
+                  <RowSkeleton />
+                </>
+              )}
               {distributionQueue.slice(0, 5).map((d) => (
                 <div key={d.id} className="flex items-center gap-3 px-2 py-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-muted text-xs font-medium text-muted-foreground">
-                    {d.type === "Music" ? "🎵" : d.type === "Video" ? "🎬" : "📡"}
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-info/10 text-info ring-1 ring-inset ring-info/15">
+                    {d.type === "Music" ? (
+                      <Music2 className="h-4 w-4" />
+                    ) : d.type === "Video" ? (
+                      <Film className="h-4 w-4" />
+                    ) : (
+                      <Radio className="h-4 w-4" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{d.title}</div>
@@ -449,7 +496,10 @@ export default function DashboardPage() {
         <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <Card>
             <CardHeader>
-              <CardTitle>运转概况</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-primary" />
+                运转概况
+              </CardTitle>
               <CardDescription>适合每日巡检的辅助视图。</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -459,15 +509,17 @@ export default function DashboardPage() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="group flex items-start gap-3 rounded-lg border border-border px-4 py-4 transition hover:border-indigo-200 hover:bg-surface-muted/40"
+                    className="group flex items-start gap-3 rounded-lg border border-border px-4 py-4 transition-colors hover:border-primary/25 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${item.tone}`}>
-                      <Icon className="h-4.5 w-4.5" />
+                    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", queueToneClasses[item.tone])}>
+                      <Icon className="h-[18px] w-[18px]" />
                     </div>
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{item.label}</span>
-                        <span className="text-sm font-semibold tabular-nums">{item.count}</span>
+                        <span className="text-sm font-semibold tabular-nums">
+                          {loading ? <LoadingBlock className="h-4 w-7" /> : item.count}
+                        </span>
                       </div>
                       <p className="text-xs leading-5 text-muted-foreground">{item.hint}</p>
                     </div>
@@ -481,12 +533,19 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-rose-500" />
+                  <ShieldCheck className="h-4 w-4 text-destructive" />
                   版权核验
                 </CardTitle>
                 <CardDescription>待核验的版权登记</CardDescription>
               </CardHeader>
               <CardContent className="-mx-2 divide-y divide-border">
+                {loading && copyrightItems.length === 0 && (
+                  <>
+                    <RowSkeleton />
+                    <RowSkeleton />
+                    <RowSkeleton />
+                  </>
+                )}
                 {copyrightItems.slice(0, 4).map((c) => (
                   <div key={c.id} className="flex items-center gap-3 px-2 py-2.5">
                     <div className="min-w-0 flex-1">
@@ -507,12 +566,19 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Radio className="h-4 w-4 text-amber-500" />
+                  <Radio className="h-4 w-4 text-warning" />
                   渠道接入
                 </CardTitle>
                 <CardDescription>待审核 / 已断开的分发渠道</CardDescription>
               </CardHeader>
               <CardContent className="-mx-2 divide-y divide-border">
+                {loading && platforms.length === 0 && (
+                  <>
+                    <RowSkeleton />
+                    <RowSkeleton />
+                    <RowSkeleton />
+                  </>
+                )}
                 {platforms.filter((p) => p.status !== "connected").slice(0, 4).map((p) => (
                   <div key={p.id} className="flex items-center gap-3 px-2 py-2.5">
                     <div className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-muted text-base">
@@ -534,12 +600,19 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-rose-500" />
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
                   结算异常
                 </CardTitle>
                 <CardDescription>处理中 / 待复核流水</CardDescription>
               </CardHeader>
               <CardContent className="-mx-2 divide-y divide-border">
+                {loading && actionableTxns.length === 0 && (
+                  <>
+                    <RowSkeleton />
+                    <RowSkeleton />
+                    <RowSkeleton />
+                  </>
+                )}
                 {actionableTxns.slice(0, 4).map((t) => (
                   <div key={t.id} className="flex items-center gap-3 px-2 py-2.5">
                     <div className="min-w-0 flex-1">
@@ -550,7 +623,7 @@ export default function DashboardPage() {
                     <StatusBadge meta={TRANSACTION_STATUS[t.status]} />
                   </div>
                 ))}
-                {actionableTxns.length === 0 && (
+                {!loading && actionableTxns.length === 0 && (
                   <div className="px-2 py-6 text-center text-sm text-muted-foreground">暂无异常流水</div>
                 )}
               </CardContent>

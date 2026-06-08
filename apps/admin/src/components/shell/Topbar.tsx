@@ -84,7 +84,7 @@ export function Topbar({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface px-3 md:px-5">
+      <header className="sticky top-0 z-30 flex h-[60px] items-center gap-3 border-b border-border bg-surface px-3 md:px-5">
         <Button
           variant="ghost"
           size="icon"
@@ -95,19 +95,25 @@ export function Topbar({
           <Menu className="h-4 w-4" />
         </Button>
 
-        {/* Search trigger. Below md: icon-only. md+: full pill with hint. */}
+        <div className="hidden min-w-0 flex-col md:flex">
+          <span className="text-[11px] font-medium leading-4 text-muted-foreground">
+            {currentNav?.group ?? "控制台"}
+          </span>
+          <span className="truncate text-sm font-semibold leading-5 tracking-tight">
+            {currentNav?.label ?? "运营总览"}
+          </span>
+        </div>
+
         <button
           type="button"
           aria-label="搜索页面"
           onClick={() => setPaletteOpen(true)}
           className={cn(
-            "group inline-flex items-center gap-2 rounded-md border border-transparent bg-surface-muted text-muted-foreground transition-colors",
-            "hover:border-border hover:text-foreground",
+            "group inline-flex items-center gap-2 rounded-md border border-border bg-surface-muted text-muted-foreground transition-colors",
+            "hover:border-primary/25 hover:text-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            // Mobile: 36×36 icon.
             "h-9 w-9 justify-center",
-            // md+: expand to a real-looking pill ~360px max.
-            "md:h-9 md:w-auto md:max-w-md md:flex-1 md:justify-start md:px-3"
+            "md:ml-2 md:h-9 md:w-auto md:max-w-md md:flex-1 md:justify-start md:px-3 xl:max-w-xl"
           )}
         >
           <Search className="h-4 w-4 shrink-0" />
@@ -129,10 +135,10 @@ export function Topbar({
                 variant="ghost"
                 size="icon"
                 aria-label="本页指南"
-                className="hidden md:inline-flex"
+                className="hidden md:inline-flex text-muted-foreground"
                 onClick={() => setHelpOpen(true)}
               >
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                <HelpCircle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">本页指南</TooltipContent>
@@ -162,16 +168,16 @@ export function Topbar({
 
         <Link
           href="/profile"
-          className="hidden sm:flex items-center gap-2.5 pl-2 ml-1 border-l border-border rounded-md outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+          className="ml-1 hidden items-center gap-2.5 rounded-md border border-transparent py-1 pl-2 pr-2 outline-none transition-colors hover:border-border hover:bg-surface-muted hover:text-primary focus-visible:ring-2 focus-visible:ring-ring sm:flex"
           aria-label="个人设置"
         >
           <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+            <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20">
               {initials}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col leading-tight">
-            <span className="text-sm font-medium">{displayName}</span>
+            <span className="max-w-[128px] truncate text-sm font-medium">{displayName}</span>
             <span className="text-xs text-muted-foreground">{secondaryLabel}</span>
           </div>
         </Link>

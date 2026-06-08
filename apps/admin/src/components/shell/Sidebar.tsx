@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
@@ -20,6 +21,10 @@ interface SidebarProps {
 export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const { role: currentRole, accountSource } = useAdminIdentity();
+  const navGroups = React.useMemo(
+    () => visibleNavGroups(currentRole, accountSource),
+    [currentRole, accountSource]
+  );
 
   return (
     <>
@@ -34,37 +39,37 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
 
       <aside
         className={cn(
-          "flex w-[244px] shrink-0 flex-col border-r border-border bg-sidebar",
+          "flex w-[268px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar",
           // 窄屏下以抽屉形式出现
           "fixed inset-y-0 left-0 z-50 transform transition-transform duration-200 ease-out lg:static lg:translate-x-0 lg:z-auto",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border">
+        <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-5">
           <div
             aria-hidden
-            className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground font-semibold text-[13px] tracking-tight"
+            className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-[13px] font-semibold tracking-tight text-primary ring-1 ring-inset ring-primary/20"
           >
             AS
           </div>
-          <div className="flex flex-col leading-tight flex-1 min-w-0">
+          <div className="flex min-w-0 flex-1 flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">{ADMIN_BRAND.title}</span>
-            <span className="text-xs text-muted-foreground">{ADMIN_BRAND.subtitle}</span>
+            <span className="text-xs text-muted-foreground">{ADMIN_BRAND.subtitle} · Admin</span>
           </div>
           <button
             type="button"
             aria-label="关闭菜单"
-            className="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/70 lg:hidden"
             onClick={onMobileClose}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-4">
-          {visibleNavGroups(currentRole, accountSource).map((group) => (
-            <div key={group.label} className="space-y-0.5">
-              <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+          {navGroups.map((group) => (
+            <div key={group.label} className="space-y-1">
+              <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground">
                 {group.label}
               </div>
               {group.items.map((item) => {
@@ -81,19 +86,24 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
                     aria-current={active ? "page" : undefined}
                     onClick={onMobileClose}
                     className={cn(
-                      "group flex min-h-9 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                      "group flex min-h-9 items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                       active
                         ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
-                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                     )}
                   >
-                    <Icon
+                    <span
                       className={cn(
-                        "h-4 w-4 shrink-0",
-                        active ? "text-sidebar-primary" : "text-muted-foreground group-hover:text-sidebar-primary"
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                        active ? "bg-primary/10 text-primary" : "text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
                       )}
-                    />
-                    <span className="truncate flex-1">{item.label}</span>
+                    >
+                      <Icon
+                        className="h-4 w-4"
+                        aria-hidden
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {count !== undefined && count > 0 && (
                       <span
                         className={cn(
@@ -106,6 +116,13 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
                         {count}
                       </span>
                     )}
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full transition-colors",
+                        active ? "bg-primary" : "bg-transparent"
+                      )}
+                    />
                   </Link>
                 );
               })}
@@ -115,7 +132,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
 
         <div className="border-t border-sidebar-border px-4 py-3 text-xs text-muted-foreground">
           <div className="flex items-center justify-between">
-            <span>v0.1 · 运营版</span>
+            <span>Next 16 · 运营版</span>
             <span className="inline-flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               已连接

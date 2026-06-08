@@ -29,7 +29,7 @@ export function AppShell({ children }: AppShellProps) {
   return isLoginPage ? (
     <>{children}</>
   ) : (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-background text-foreground">
       <a
         href="#admin-main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
@@ -41,9 +41,9 @@ export function AppShell({ children }: AppShellProps) {
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
-      <div className="flex flex-1 min-w-0 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar unread={unread} onMenuClick={() => setMobileOpen(true)} />
-        <main id="admin-main" className="flex-1 min-w-0 px-4 py-5 sm:px-5 md:px-7 lg:px-8">
+        <main id="admin-main" className="min-w-0 flex-1 px-4 py-5 sm:px-6 md:px-7 lg:px-8 2xl:px-10">
           {children}
         </main>
       </div>

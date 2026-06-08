@@ -7,7 +7,7 @@ import { login, operatorLogin } from "@/api/auth";
 import { getAuthToken } from "@/api/_client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 type LoginMode = "admin" | "operator";
 
@@ -117,12 +117,38 @@ export default function AdminLoginPage() {
             </p>
           </div>
 
-          <Tabs value={mode} onValueChange={(v) => handleModeChange(v as LoginMode)} className="mb-4">
-            <TabsList className="grid grid-cols-2 w-full">
-              <TabsTrigger value="admin">管理员账号</TabsTrigger>
-              <TabsTrigger value="operator">平台运营账号</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div
+            className="mb-4 grid w-full grid-cols-2 rounded-lg bg-muted p-1 text-muted-foreground"
+            role="tablist"
+            aria-label="登录账号类型"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "admin"}
+              className={cn(
+                "inline-flex h-7 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                mode === "admin" ? "bg-surface text-foreground shadow-sm" : "hover:text-foreground"
+              )}
+              onClick={() => handleModeChange("admin")}
+              disabled={submitting}
+            >
+              管理员账号
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "operator"}
+              className={cn(
+                "inline-flex h-7 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                mode === "operator" ? "bg-surface text-foreground shadow-sm" : "hover:text-foreground"
+              )}
+              onClick={() => handleModeChange("operator")}
+              disabled={submitting}
+            >
+              平台运营账号
+            </button>
+          </div>
 
           <form className="space-y-3.5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">

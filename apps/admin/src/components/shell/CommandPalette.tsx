@@ -43,7 +43,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       }
     }
     return out;
-  }, [role]);
+  }, [role, accountSource]);
 
   const filtered = React.useMemo<Hit[]>(() => {
     const q = query.trim().toLowerCase();
@@ -154,7 +154,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     className={cn(
                       "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                       isActive
-                        ? "bg-primary/8 text-foreground"
+                        ? "bg-primary/10 text-foreground"
                         : "text-foreground/85 hover:bg-muted/60"
                     )}
                   >
