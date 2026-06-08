@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -112,15 +113,17 @@ public class CelebrityZoneService {
             // 按 starId 反查 + 注入 auth
             Map<String, CelebrityStarAuthorization> byStarId = new HashMap<>();
             for (CelebrityStarAuthorization a : auths) byStarId.put(a.getStarId(), a);
-            List<CelebrityStar> stars = starRepo.findAllById(byStarId.keySet());
+            List<CelebrityStar> stars = starRepo.findAllById(byStarId.keySet()).stream()
+                    .filter(s -> s.getDeletedAt() == null)
+                    .toList();
             return stars.stream()
                     .map(s -> CelebrityStarDto.from(s, byStarId.get(s.getId())))
                     .toList();
         }
 
         List<CelebrityStar> rows = (category == null || category.isBlank() || "全部".equals(category))
-                ? starRepo.findAll()
-                : starRepo.findByCategory(category);
+                ? starRepo.findByDeletedAtIsNull()
+                : starRepo.findByCategoryAndDeletedAtIsNull(category);
         if ("hot".equals(sort)) {
             rows = new ArrayList<>(rows);
             rows.sort((a, b) -> Boolean.compare(b.isHot(), a.isHot()));
@@ -154,7 +157,7 @@ public class CelebrityZoneService {
      * 注入 authorization 字段。
      */
     public CelebrityStarDto getStar(String id, String userId) {
-        CelebrityStar star = starRepo.findById(id).orElse(null);
+        CelebrityStar star = starRepo.findByIdAndDeletedAtIsNull(id).orElse(null);
         if (star == null) return null;
         if (userId != null && !userId.isBlank()) {
             CelebrityStarAuthorization auth = authRepo.findByUserIdAndStarId(userId, id).orElse(null);
@@ -165,10 +168,11 @@ public class CelebrityZoneService {
 
     public CelebrityStarDto getActiveStar() {
         // 当前活跃明星策略：直接拿第一条已 isHot 的；否则返回任意一条。
-        return starRepo.findAll().stream()
+        List<CelebrityStar> rows = starRepo.findByDeletedAtIsNull();
+        return rows.stream()
                 .filter(CelebrityStar::isHot)
                 .findFirst()
-                .or(() -> starRepo.findAll().stream().findFirst())
+                .or(() -> rows.stream().findFirst())
                 .map(CelebrityStarDto::from)
                 .orElse(null);
     }
@@ -232,7 +236,7 @@ public class CelebrityZoneService {
         if (name == null || name.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PROJECT_NAME_REQUIRED", "项目名称不能为空");
         }
-        CelebrityStar star = starRepo.findById(starId)
+        CelebrityStar star = starRepo.findByIdAndDeletedAtIsNull(starId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
         CelebrityProject p = CelebrityProject.builder()
                 .id("proj-" + UUID.randomUUID().toString().substring(0, 8))
@@ -519,7 +523,7 @@ public class CelebrityZoneService {
     // ── Overview (data center) ──────────────────────────────────────────────
     public Map<String, Object> getOverview() {
         // mock overview：与前端 ZONE_OVERVIEW 结构一致；MVP 阶段统计字段先以聚合占位，后续接入真实指标。
-        long activeStars = starRepo.count();
+        long activeStars = starRepo.countByDeletedAtIsNull();
         long totalVideos = videoRepo.count();
 
         Map<String, Object> hero = new LinkedHashMap<>();
@@ -528,7 +532,7 @@ public class CelebrityZoneService {
         hero.put("activeStars", (int) activeStars);
 
         List<Map<String, Object>> leaderboard = new ArrayList<>();
-        for (CelebrityStar s : starRepo.findAll()) {
+        for (CelebrityStar s : starRepo.findByDeletedAtIsNull()) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("starId", s.getId());
             entry.put("name", s.getName());
@@ -604,19 +608,20 @@ public class CelebrityZoneService {
 
     /** admin PUT /stars/{id} — 整体替换（不含 photos/videos）。 */
     public CelebrityStarDto adminUpdateStar(String id, AdminCelebrityStarUpsertDto req) {
-        CelebrityStar entity = starRepo.findById(id)
+        CelebrityStar entity = starRepo.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
         applyStarUpsert(entity, req);
         return CelebrityStarDto.from(starRepo.save(entity));
     }
 
-    /** admin DELETE /stars/{id}。 */
+    /** admin DELETE /stars/{id}。幂等软删，保留历史项目、视频和授权引用。 */
     public void adminDeleteStar(String id) {
-        if (!starRepo.existsById(id)) {
-            throw new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在");
+        CelebrityStar entity = starRepo.findById(id).orElse(null);
+        if (entity == null || entity.getDeletedAt() != null) {
+            return;
         }
-        // 关联的 CelebrityStarAuthorization / 项目暂不级联；后续在 service 层补软删
-        starRepo.deleteById(id);
+        entity.setDeletedAt(OffsetDateTime.now());
+        starRepo.save(entity);
     }
 
     /** admin POST /stars/{id}/photos — 追加单条 photo（并发安全）。 */
@@ -624,7 +629,7 @@ public class CelebrityZoneService {
         if (req == null || req.url() == null || req.url().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PHOTO_URL_REQUIRED", "url 不能为空");
         }
-        CelebrityStar star = starRepo.findById(starId)
+        CelebrityStar star = starRepo.findByIdAndDeletedAtIsNull(starId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
         List<Map<String, Object>> list = readArr(star.getPhotosJson());
         Map<String, Object> photo = new LinkedHashMap<>();
@@ -644,7 +649,7 @@ public class CelebrityZoneService {
 
     /** admin DELETE /stars/{starId}/photos/{photoId}。 */
     public CelebrityStarDto adminRemoveStarPhoto(String starId, String photoId) {
-        CelebrityStar star = starRepo.findById(starId)
+        CelebrityStar star = starRepo.findByIdAndDeletedAtIsNull(starId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
         List<Map<String, Object>> list = new ArrayList<>(readArr(star.getPhotosJson()));
         boolean removed = list.removeIf(p -> photoId.equals(p.get("id")));
@@ -660,7 +665,7 @@ public class CelebrityZoneService {
         if (req == null || req.title() == null || req.title().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_TITLE_REQUIRED", "title 不能为空");
         }
-        CelebrityStar star = starRepo.findById(starId)
+        CelebrityStar star = starRepo.findByIdAndDeletedAtIsNull(starId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
         List<Map<String, Object>> list = new ArrayList<>(readArr(star.getVideosJson()));
         Map<String, Object> v = new LinkedHashMap<>();
@@ -683,7 +688,7 @@ public class CelebrityZoneService {
 
     /** admin DELETE /stars/{starId}/videos/{videoId}。 */
     public CelebrityStarDto adminRemoveStarVideo(String starId, String videoId) {
-        CelebrityStar star = starRepo.findById(starId)
+        CelebrityStar star = starRepo.findByIdAndDeletedAtIsNull(starId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
         List<Map<String, Object>> list = new ArrayList<>(readArr(star.getVideosJson()));
         boolean removed = list.removeIf(x -> videoId.equals(x.get("id")));

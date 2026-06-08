@@ -4,6 +4,7 @@ import com.aistareco.common.StringListConverter;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -103,4 +104,10 @@ public class CelebrityStar {
     /** 嵌套：videos JSON 数组（[{id,title,durationSec,coverUrl,playUrl,tag}]）。 */
     @Column(name = "videos_json", columnDefinition = "LONGTEXT")
     private String videosJson;
+
+    /**
+     * 软删时间。运营删除后不再出现在 admin / 用户端列表；保留历史项目、视频和授权引用。
+     */
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
 }
