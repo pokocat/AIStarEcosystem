@@ -18,7 +18,7 @@ export default function CelebrityMarketPage() {
   const reload = React.useCallback(async () => {
     try {
       const list = await listStars();
-      if (list.length > 0) setStars(list);
+      setStars(list);
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "加载失败");
@@ -30,7 +30,7 @@ export default function CelebrityMarketPage() {
     (async () => {
       try {
         const list = await listStars();
-        if (!cancelled && list.length > 0) setStars(list);
+        if (!cancelled) setStars(list);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "加载失败");
       }

@@ -41,6 +41,7 @@ export default function AdminCelebrityStarsPage() {
   const [editing, setEditing] = React.useState<CelebrityStar | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<CelebrityStar | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
 
   const reload = React.useCallback(async () => {
@@ -70,14 +71,19 @@ export default function AdminCelebrityStarsPage() {
   const totalGenerated = stars.reduce((sum, s) => sum + (s.stats.totalGenerated || 0), 0);
 
   async function confirmDelete() {
-    if (!pendingDelete) return;
+    if (!pendingDelete || deleting) return;
+    const deletingId = pendingDelete.id;
     setActionError(null);
+    setDeleting(true);
     try {
-      await CelebrityZoneApi.deleteStar(pendingDelete.id);
+      await CelebrityZoneApi.deleteStar(deletingId);
+      setStars((prev) => prev.filter((s) => s.id !== deletingId));
       setPendingDelete(null);
-      await reload();
+      void reload();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "删除失败");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -203,7 +209,7 @@ export default function AdminCelebrityStarsPage() {
         />
       )}
 
-      <Dialog open={!!pendingDelete} onOpenChange={(o) => { if (!o) { setPendingDelete(null); setActionError(null); } }}>
+      <Dialog open={!!pendingDelete} onOpenChange={(o) => { if (!o && !deleting) { setPendingDelete(null); setActionError(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>删除明星</DialogTitle>
@@ -214,8 +220,10 @@ export default function AdminCelebrityStarsPage() {
           <p className="text-xs text-muted-foreground">删除后该明星不再出现在用户端列表，但历史已生成的视频与项目不受影响。该操作不可撤销。</p>
           {actionError && <p className="text-sm text-rose-600">{actionError}</p>}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingDelete(null)}>取消</Button>
-            <Button variant="destructive" onClick={() => void confirmDelete()}>确认删除</Button>
+            <Button variant="outline" disabled={deleting} onClick={() => setPendingDelete(null)}>取消</Button>
+            <Button variant="destructive" disabled={deleting} onClick={() => void confirmDelete()}>
+              {deleting ? "删除中..." : "确认删除"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
