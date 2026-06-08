@@ -9,7 +9,6 @@ import {
   MARKET_STARS,
   CELEBRITY_PROJECTS,
   PROJECT_VIDEOS_MAP,
-  ZONE_OVERVIEW,
 } from "@/mocks/celebrity-zone";
 import { listStars, listProjects, listAllVideos } from "@/api/celebrity-zone";
 import type {
@@ -54,6 +53,8 @@ export default function CelebrityDashboardPage() {
   const pendingStars = stars.filter((s) => s.authorization?.status === "pending");
   const activeProjects = projects.filter((p) => p.status === "进行中");
   const prepProjects = projects.filter((p) => p.status === "筹备中");
+  const pendingReviewCount = allVideos.filter((v) => v.status === "待审核").length;
+  const generatingCount = allVideos.filter((v) => v.status === "生成中").length;
   const pendingReview = allVideos.filter((v) => v.status === "待审核").slice(0, 4);
   const generating = allVideos.filter((v) => v.status === "生成中").slice(0, 3);
 
@@ -115,26 +116,31 @@ export default function CelebrityDashboardPage() {
         </div>
       </div>
 
-      {/* KPI —— 业务核心指标 */}
+      {/* KPI —— 按你当前的真实资产派生（不含模拟经营数据） */}
       <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="30 日 GMV" value="¥8.42M" delta="环比上月 +12.4%" gradient="violet" />
-        <KpiCard
-          label="累计播放 · 近 7 日"
-          value={ZONE_OVERVIEW.hero.totalPlays}
-          delta="环比 +18%"
-          gradient="peach"
-        />
-        <KpiCard
-          label="累计转化"
-          value={ZONE_OVERVIEW.hero.totalConversions}
-          delta="转化率 1.86%"
-          gradient="rose"
-        />
         <KpiCard
           label="授权明星"
           value={`${authorizedStars.length} / ${stars.length}`}
-          delta={`${pendingStars.length} 申请审核中`}
+          delta={pendingStars.length > 0 ? `${pendingStars.length} 申请审核中` : "暂无待审申请"}
           gradient="teal"
+        />
+        <KpiCard
+          label="在产项目"
+          value={`${activeProjects.length}`}
+          delta={prepProjects.length > 0 ? `筹备中 ${prepProjects.length} 条` : "暂无筹备项目"}
+          gradient="violet"
+        />
+        <KpiCard
+          label="已生成视频"
+          value={`${allVideos.length}`}
+          delta={generatingCount > 0 ? `生成中 ${generatingCount} 条` : "暂无生成中任务"}
+          gradient="peach"
+        />
+        <KpiCard
+          label="待审切片"
+          value={`${pendingReviewCount}`}
+          delta="通过后自动进入分发"
+          gradient="rose"
         />
       </div>
 
@@ -367,51 +373,31 @@ export default function CelebrityDashboardPage() {
           )}
         </Card>
 
-        {/* 渠道分发占比 */}
+        {/* 渠道分发占比 —— 真实数据接入前展示诚实空态 */}
         <Card style={{ padding: "22px 22px" }}>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>30 日分发占比</div>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>分发渠道占比</div>
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-0)", marginBottom: 16 }}>
             渠道流量
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {ZONE_OVERVIEW.channelMix.map((c, i) => {
-              const tones = ["accent", "peach", "rose", "teal", "amber"] as const;
-              const color = `var(--${
-                tones[i] === "accent" ? "accent"
-                  : tones[i] === "peach" ? "extra-peach"
-                  : tones[i] === "rose" ? "extra-rose"
-                  : tones[i] === "teal" ? "extra-teal"
-                  : "extra-amber"
-              })`;
-              return (
-                <div key={c.channel}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: 4,
-                      fontSize: 12.5,
-                      color: "var(--fg-1)",
-                    }}
-                  >
-                    <span>{c.channel}</span>
-                    <span className="mono" style={{ color, fontWeight: 600 }}>
-                      {(c.share * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div style={{ height: 6, background: "var(--bg-2)", borderRadius: 3, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${c.share * 100}%`,
-                        height: "100%",
-                        background: color,
-                        transition: "width 240ms ease",
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              alignItems: "flex-start",
+              padding: "18px 16px",
+              border: "1px dashed var(--line-2)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--bg-2)",
+            }}
+          >
+            <div style={{ fontSize: 13, color: "var(--fg-1)", fontWeight: 500 }}>暂无分发数据</div>
+            <div style={{ fontSize: 12, color: "var(--fg-2)", lineHeight: 1.6 }}>
+              开始把生成的视频分发到抖音 / 快手 / 小红书等渠道后，这里会按真实分发记录展示各渠道占比。
+            </div>
+            <Link href="/distribution" style={inlineLink}>
+              前往分发中心 <ArrowUpRight size={12} />
+            </Link>
           </div>
         </Card>
       </div>
@@ -455,10 +441,11 @@ export default function CelebrityDashboardPage() {
                 color: "var(--fg-0)",
               }}
             >
-              {stars.filter((s) => s.isHot).length} 位明星上新，转化率高于均值{" "}
+              {stars.filter((s) => s.isHot).length} 位{" "}
               <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                +32%
-              </span>
+                热门明星
+              </span>{" "}
+              可授权，挑一位开始带货
             </div>
           </div>
         </div>

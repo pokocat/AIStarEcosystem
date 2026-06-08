@@ -244,35 +244,39 @@ const WalletApi = {
     return apiFetch("/me/wallet/packages");
   },
   /**
-   * POST /me/wallet/recharge — 充值落账。
-   * 返回 RechargeResponseDto: { wallet, ledgerEntry }，与 apps/web/src/types/wallet.ts 对齐。
-   * mock：直接落账 recharge 桶 + 可选 gift 桶（bonusCredits）。
+   * POST /me/wallet/recharge — 充值下单（v0.56：不再直接入账）。
+   * 返回 RechargeOrder（status=pending）。平台运营线下收款后核准方到账，付款前不发积分。
+   * mock：返回一张待确认账单，不改钱包余额。
    */
-  recharge(packageId) {
+  recharge(packageId, note) {
     const app = getApp_();
     if (app.globalData.useMock) {
       const pkg = mocks.WALLET_PACKAGES.find((p) => p.id === packageId);
       if (!pkg) return Promise.reject(new Error("套餐不存在"));
-      const c = mocks.WALLET_CREDITS;
-      const bonus = Number(pkg.bonusCredits || 0);
-      c.rechargeBalance += pkg.credits;
-      c.giftBalance += bonus;
-      c.totalBalance = c.licenseBalance + c.rechargeBalance + c.giftBalance;
-      const ledgerEntry = {
-        id: "le-" + Date.now(),
-        walletId: c.id,
+      const c = mocks.WALLET_CREDITS || {};
+      const now = new Date().toISOString();
+      return mockDelay({
+        id: "ro-" + Date.now(),
         userId: c.userId,
-        type: "recharge",
-        amount: pkg.credits,
-        balanceAfter: c.totalBalance,
-        description: "充值套餐 " + pkg.tag + "（" + pkg.credits + " 积分）",
-        referenceId: pkg.id,
-        referenceType: "recharge_package",
-        createdAt: new Date().toISOString()
-      };
-      return mockDelay({ wallet: c, ledgerEntry });
+        packageId: pkg.id,
+        packageTag: pkg.tag,
+        credits: pkg.credits,
+        bonusCredits: Number(pkg.bonusCredits || 0),
+        priceCents: pkg.priceCents,
+        status: "pending",
+        userNote: note,
+        createdAt: now,
+        updatedAt: now
+      });
     }
-    return apiFetch("/me/wallet/recharge", { method: "POST", data: { packageId } });
+    return apiFetch("/me/wallet/recharge", { method: "POST", data: { packageId, note } });
+  },
+
+  /** GET /me/wallet/recharge/orders — 我的充值订单（v0.56）。 */
+  listRechargeOrders() {
+    const app = getApp_();
+    if (app.globalData.useMock) return mockDelay([]);
+    return apiFetch("/me/wallet/recharge/orders");
   }
 };
 

@@ -20,11 +20,22 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 /** 数据中心 Tab：大盘 + 明星榜 + 周趋势 + 渠道占比。 */
 export function CelebrityDataCenter({ overview }: Props) {
-  const maxPlays = Math.max(...overview.weeklyTrend.map((p) => p.plays));
-  const maxConversions = Math.max(...overview.weeklyTrend.map((p) => p.conversions));
+  const hasTrend = overview.weeklyTrend.length > 0;
+  const hasChannels = overview.channelMix.length > 0;
+  const hasLeaderboard = overview.starLeaderboard.length > 0;
+  const maxPlays = Math.max(1, ...overview.weeklyTrend.map((p) => p.plays));
+  const maxConversions = Math.max(1, ...overview.weeklyTrend.map((p) => p.conversions));
 
   return (
     <div className="flex flex-col gap-5">
+      {/* 诚实空态提示：播放 / 转化 / GMV / 趋势暂无真实埋点来源 */}
+      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+        <BarChart3 className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          以下为按你当前授权明星与已生成视频派生的真实统计。播放量、转化、GMV 与渠道占比需打通平台数据回传后展示，目前显示「暂无数据」，不再使用示例数字。
+        </span>
+      </div>
+
       {/* Hero 大盘 */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <HeroStat
@@ -63,6 +74,12 @@ export function CelebrityDataCenter({ overview }: Props) {
               </span>
             </div>
           </div>
+          {!hasTrend ? (
+            <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-zinc-200 bg-zinc-50 text-center">
+              <div className="text-sm font-medium text-zinc-500">暂无趋势数据</div>
+              <div className="px-6 text-xs text-zinc-400">打通平台播放 / 转化回传后，这里按真实埋点展示近 7 天曲线。</div>
+            </div>
+          ) : (
           <div className="flex h-48 items-end gap-2">
             {overview.weeklyTrend.map((d) => {
               const playsPct = (d.plays / maxPlays) * 100;
@@ -92,6 +109,7 @@ export function CelebrityDataCenter({ overview }: Props) {
               );
             })}
           </div>
+          )}
         </div>
 
         {/* 渠道占比 */}
@@ -100,6 +118,12 @@ export function CelebrityDataCenter({ overview }: Props) {
             <div className="text-sm font-medium text-zinc-700">渠道占比</div>
             <Globe2 className="h-4 w-4 text-zinc-500" />
           </div>
+          {!hasChannels ? (
+            <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-zinc-200 bg-zinc-50 py-10 text-center">
+              <div className="text-sm font-medium text-zinc-500">暂无分发数据</div>
+              <div className="px-6 text-xs text-zinc-400">开始分发后按真实记录展示各渠道占比。</div>
+            </div>
+          ) : (
           <ul className="flex flex-col gap-3">
             {overview.channelMix.map((c) => (
               <li key={c.channel}>
@@ -121,6 +145,7 @@ export function CelebrityDataCenter({ overview }: Props) {
               </li>
             ))}
           </ul>
+          )}
         </div>
       </div>
 
@@ -130,6 +155,12 @@ export function CelebrityDataCenter({ overview }: Props) {
           <Crown className="h-4 w-4 text-amber-600" />
           <span className="text-sm font-medium text-zinc-700">明星榜（按生成视频数）</span>
         </div>
+        {!hasLeaderboard ? (
+          <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-zinc-200 bg-zinc-50 py-10 text-center">
+            <div className="text-sm font-medium text-zinc-500">暂无明星榜数据</div>
+            <div className="px-6 text-xs text-zinc-400">生成视频后按真实数量在这里排名。</div>
+          </div>
+        ) : (
         <ul className="flex flex-col gap-2">
           {overview.starLeaderboard.map((row, i) => (
             <li
@@ -173,6 +204,7 @@ export function CelebrityDataCenter({ overview }: Props) {
             </li>
           ))}
         </ul>
+        )}
       </div>
     </div>
   );

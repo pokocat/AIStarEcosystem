@@ -86,14 +86,14 @@
   <view class="cta-fixed safe-bottom">
     <view class="cta-row">
       <view class="cta-meta">
-        <view class="cta-meta-k">需支付</view>
+        <view class="cta-meta-k">应付</view>
         <view class="cta-meta-v mono">¥{{currentPkg.priceYuan || 0}}</view>
       </view>
       <view
         class="cta-btn {{currentPkgId ? '' : 'cta-disabled'}}"
         bindtap="submit"
-      >确认支付</view>
+      >提交充值申请</view>
     </view>
-    <view class="cta-tip">支持微信支付 · 极速到账（mock 即时模拟）</view>
+    <view class="cta-tip">提交后按平台提供方式付款，平台确认收款后积分自动到账</view>
   </view>
 </view>

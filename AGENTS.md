@@ -2784,6 +2784,70 @@ openapi: +/admin/mixcut/templates/{templateId}（put/delete 骨架）+/admin/cel
 - **未做**：(a) 明星 photos/videos 子资源在 web-celebrity 的管理（admin 已有）；(b) 明星带货 `CelebrityTemplate`
   （非混剪）的 web-celebrity 编辑；(c) 明星授权状态机的运营改动；(d) 运营在 web-celebrity 建**个人**混剪模板。
 
+### v0.56（2026-06-07）— 充值改为「下单 → 运营核准入账」+ aiavatar 密码登录 + celebrity 生产化整改
+
+三块并到一节（celebrity 生产化 review + aiavatar 登录对齐）：
+
+**A. 充值订单化（废止「点套餐直接加积分」）**
+
+旧 MVP（`POST /me/wallet/recharge` → `RechargeService.recharge()` 直接入账）= 未付款即发积分的生产事故级漏洞。
+改为：用户下单生成 `RechargeOrder`（PENDING，不入账）→ 平台运营在 admin 后台「线下收款后 approve」→
+才经 `CreditService`（不可变账本，§4.2）入账（PAID）；或 reject（REJECTED）；用户可 cancel 自己的待确认单。
+
+```
+server : 新实体 RechargeOrder（recharge_order 表，PENDING/PAID/REJECTED/CANCELLED 状态机，套餐字段下单时快照）
+       : RechargeOrderRepository / RechargeOrderDto（status 出 wire 小写）
+       : RechargeService 重构：createOrder / listMyOrders / cancelOrder / listForAdmin / approveOrder / rejectOrder
+       :   —— 删除旧 recharge() 直充；入账逻辑（main RECHARGE + 可选 GIFT bonus）移入 approveOrder
+       : AccountController：POST /me/wallet/recharge 改为「下单」返回 RechargeOrderDto（不再入账）；
+       :   +GET /me/wallet/recharge/orders +POST /me/wallet/recharge/orders/{id}/cancel
+       : 新 AdminRechargeOrderController → /api/admin/finance/recharge-orders（GET list?status= / {id}/approve / {id}/reject）
+types  : packages/types/src/wallet.ts +RechargeOrder / RechargeOrderStatus；RechargeRequest +note
+api-client : account.ts rechargeWallet → createRechargeOrder（返回 RechargeOrder）+listMyRechargeOrders +cancelRechargeOrder
+           : _bootstrap-mocks 加 /me/wallet/recharge（返回 pending 订单）+ /orders（[]）
+admin  : types/recharge-order.ts + api/recharge-orders.ts + /finance/recharge-orders 页（待确认/全部/已到账/已驳回/已取消
+       :   过滤 + 入账(useConfirm) / 驳回(requireReason)）；nav「财务」组 +「充值订单」
+web-celebrity : wallet/page.tsx 重写 —— 点套餐 → 确认面板（可填付款备注）→ 提交充值申请（pending）；
+       :   新增「我的充值订单」区（状态徽章 + 取消待确认单）；删「体验版直接到账」文案
+miniprogram : recharge() 改下单语义（mock 返回 pending 订单，不改钱包）；recharge 页 submit/wxml 文案改「提交充值申请」
+openapi: /me/wallet/recharge 改返回 RechargeOrder；+/me/wallet/recharge/orders[/{id}/cancel]；
+       : +/admin/finance/recharge-orders[/{id}/approve|reject]；+RechargeOrder schema；RechargeRequest +note
+```
+
+**B. aiavatar 登录对齐（补密码登录 + 设密码）**
+
+web-aiavatar 自包含登录（screen-login + proto/api.ts）此前只有 验证码登录 / 注册激活 / dev；后端
+`POST /api/auth/password/login` + `POST /api/me/password` + `/api/me.hasPassword` 早就齐全，仅前端没接。
+
+```
+web-aiavatar : proto/api.ts AuthApi +passwordLogin（/auth/password/login）+setPassword（/api/me/password，带 Bearer）
+             : screen-login 登录 tab 加「验证码 / 密码」切换；密码模式校验 + PASSWORD_NOT_SET → 切回验证码
+             : screen-more 新增 MSecurity（账号与安全：读 /api/me.hasPassword，设置/修改密码）；MSettings「账户」组入口
+             : app.tsx 注册 security 覆盖页 + go label
+```
+
+> 真实阿里云短信：后端 `AEP_SMS_DRIVER=aliyun` 即生效（aiavatar 调的就是同一套 `/api/auth/sms/*`，无需前端改动）。
+> 保持 v0.50「自包含、不绑共享层」决策，不引 packages/landing。
+
+**C. celebrity 假数据/固化项整改（用户视角 + 运营视角 review）**
+
+- **仪表盘**：删硬编 GMV `¥8.42M` + mock 累计播放/转化；4 张 KPI 改为按真实资产派生（授权明星 / 在产项目 /
+  已生成视频 / 待审切片）；「渠道流量」「本周热推 +32%」改诚实空态 / 去掉编造百分比。
+- **数据中心**（`/data` + CelebrityDataCenter）：从纯 mock ZONE_OVERVIEW 改为按真实 stars/videos 派生
+  （明星榜按真实生成视频数聚合）；播放/转化/GMV/周趋势/渠道占比无真实埋点来源 → 一律「暂无数据」诚实空态 + 顶部说明条。
+- **账户页**：补「编辑资料」卡（昵称/头像/手机号/邮箱/简介，走后端 `PATCH /me`，此前只有改密码）。
+
+**注意事项**：
+
+- **不破坏其他消费方**：`api-client.rechargeWallet` 仅 celebrity 用（已改）；web-drama 的 recharge 走自家
+  `finance.ts`（`{amount,method}` 形态，仅 USE_MOCK 生效，不打真后端）→ 不受影响；miniprogram 是 celebrity 消费方，已同步改为下单语义。
+- **§4.2 账本不可变**：审批入账仍走 `CreditService.creditAccount`（main + bonus 双分录），不绕账本。
+- **§8.0 不静默降级**：未付款不再发积分；审批是显式人工动作。生产支付网关（微信支付 / 对公）后续接入，
+  当前为「线下收款 + 后台核准」轻量闭环（用户确认的方案）。
+- **未做**：(a) 在线支付网关（wx.requestPayment / 对公自动对账）与回调端点；(b) 订单超时自动过期；
+  (c) 充值发票；(d) celebrity 真实经营埋点（播放/转化/GMV 回传）—— 数据中心已留诚实空态位；
+  (e) 明星档案 stats（粉丝/播放/GMV）仍是 mock 字段，未接真实来源（展示层未编造新假值，沿用既有 mock 卡片）。
+
 ---
 
 ## 8. 约定与陷阱（违反会 review reject）

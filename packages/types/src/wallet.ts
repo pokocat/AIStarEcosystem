@@ -65,9 +65,11 @@ export interface RechargePackage {
   sortOrder?: number;
 }
 
-/** 充值请求体（前端 → 服务端） */
+/** 充值下单请求体（前端 → 服务端） */
 export interface RechargeRequest {
   packageId: ID;
+  /** 用户备注：付款方式 / 转账后四位等（可选） */
+  note?: string;
 }
 
 /** 充值响应（服务端 → 前端） */
@@ -76,4 +78,43 @@ export interface RechargeResponse {
   wallet: Wallet;
   /** 本次落账记录（recharge 主分录；如有 bonus 仍然只返回主分录） */
   ledgerEntry: LedgerEntry;
+}
+
+// ── v0.56：充值订单 / 账单（下单 → 运营核准入账） ───────────────────────────────
+
+/**
+ * 充值订单状态机：
+ * - pending：已下单待确认（用户已提交，等待平台收款核准）
+ * - paid：已核准并到账（积分已入账）
+ * - rejected：已驳回（收款不符 / 无效）
+ * - cancelled：用户取消
+ */
+export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled";
+
+/** 充值订单。下单即生成 PENDING 账单，平台运营线下收款后核准方入账。 */
+export interface RechargeOrder {
+  id: ID;
+  userId: ID;
+  /** 下单时快照的账号信息（admin 列表展示用） */
+  username?: string;
+  displayName?: string;
+  studioName?: string;
+  packageId: ID;
+  packageTag?: string;
+  /** 套餐积分（快照） */
+  credits: number;
+  /** 赠送积分（快照） */
+  bonusCredits: number;
+  /** 价格（人民币分，快照） */
+  priceCents: number;
+  status: RechargeOrderStatus;
+  /** 用户备注（付款方式 / 转账后四位等） */
+  userNote?: string;
+  /** 审批人（admin 标识） */
+  reviewerId?: string;
+  /** 审批备注 / 驳回原因 */
+  reviewNote?: string;
+  createdAt: ISODateTime;
+  updatedAt?: ISODateTime;
+  reviewedAt?: ISODateTime;
 }

@@ -1256,6 +1256,7 @@ components:
       required: [packageId]
       properties:
         packageId: { type: string }
+        note:      { type: string, nullable: true, description: 用户备注（付款方式 / 转账后四位等） }
 
     RechargeResponse:
       type: object
@@ -1263,6 +1264,29 @@ components:
       properties:
         wallet:       { $ref: '#/components/schemas/Wallet' }
         ledgerEntry:  { $ref: '#/components/schemas/LedgerEntry' }
+
+    # ── v0.56：充值订单 / 账单（下单 → 运营核准入账） ──
+    RechargeOrder:
+      type: object
+      required: [id, userId, packageId, credits, bonusCredits, priceCents, status, createdAt]
+      properties:
+        id:           { type: string, example: ro-abc123 }
+        userId:       { type: string }
+        username:     { type: string, nullable: true }
+        displayName:  { type: string, nullable: true }
+        studioName:   { type: string, nullable: true }
+        packageId:    { type: string }
+        packageTag:   { type: string, nullable: true }
+        credits:      { type: integer }
+        bonusCredits: { type: integer }
+        priceCents:   { type: integer }
+        status:       { type: string, enum: [pending, paid, rejected, cancelled] }
+        userNote:     { type: string, nullable: true }
+        reviewerId:   { type: string, nullable: true }
+        reviewNote:   { type: string, nullable: true, description: 审批备注 / 驳回原因 }
+        createdAt:    { type: string, format: date-time }
+        updatedAt:    { type: string, format: date-time, nullable: true }
+        reviewedAt:   { type: string, format: date-time, nullable: true }
 
     # ── v0.4：AI Bot 同事会话（小程序 chat 页消费） ──
     BotMeta:
@@ -4420,13 +4444,30 @@ paths:
   /me/wallet/recharge:
     post:
       tags: [finance]
-      operationId: recharge
-      summary: 充值落账（mock：直接落账；线上接 wx.requestPayment 回调后调用）
+      operationId: createRechargeOrder
+      summary: 充值下单（v0.56：不再直接入账，生成待确认账单；运营核准后方入账）
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/RechargeRequest' }
+      responses:
+        '200':
+          description: 已创建的充值订单（PENDING）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /me/wallet/recharge/orders:
+    get:
+      tags: [finance]
+      operationId: listMyRechargeOrders
+      summary: 我的充值订单（v0.56）
       responses:
         '200':
           description: ok
@@ -4437,7 +4478,31 @@ paths:
                   - $ref: '#/components/schemas/SuccessResponse'
                   - type: object
                     properties:
-                      data: { $ref: '#/components/schemas/RechargeResponse' }
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /me/wallet/recharge/orders/{orderId}/cancel:
+    post:
+      tags: [finance]
+      operationId: cancelRechargeOrder
+      summary: 取消自己的待确认充值订单（v0.56）
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
 
   /me/ledger:
     get:
@@ -5437,6 +5502,21 @@ paths:
     get:    { tags: [admin-finance], operationId: adminGetRechargePackage,    responses: { '200': { description: ok } } }
     put:    { tags: [admin-finance], operationId: adminUpdateRechargePackage, responses: { '200': { description: ok } } }
     delete: { tags: [admin-finance], operationId: adminDeleteRechargePackage, responses: { '200': { description: ok, content: { application/json: { schema: { type: object } } } } } }
+
+  # ── 充值订单核销（v0.56 新增：用户下单 → 运营线下收款后核准入账 / 驳回） ──────
+  /admin/finance/recharge-orders:
+    get:
+      tags: [admin-finance]
+      operationId: adminListRechargeOrders
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, paid, rejected, cancelled, all] } }
+      responses: { '200': { description: ok } }
+  /admin/finance/recharge-orders/{orderId}/approve:
+    parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-finance], operationId: adminApproveRechargeOrder, responses: { '200': { description: ok } } }
+  /admin/finance/recharge-orders/{orderId}/reject:
+    parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-finance], operationId: adminRejectRechargeOrder, responses: { '200': { description: ok } } }
 
   # ── 模板脚本（v0.5 §3.2.7 新增） ──────────────────────────────────────
   /template-scripts/by-template/{templateId}:

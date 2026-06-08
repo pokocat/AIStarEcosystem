@@ -36,6 +36,7 @@ export * as ProductsApi from "./products";
 export * as CelebrityZoneApi from "./celebrity-zone";
 export * as CelebrityAuthorizationsApi from "./celebrity-authorizations";
 export * as RechargePackagesApi from "./recharge-packages";
+export * as RechargeOrdersApi from "./recharge-orders";
 export * as TemplateScriptsApi from "./template-scripts";
 export * as AiModelsApi from "./ai-models";
 export * as PromptsApi from "./prompts";

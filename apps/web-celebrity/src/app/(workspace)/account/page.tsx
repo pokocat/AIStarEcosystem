@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, EyeOff, Lock, Save, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Lock, Save, ShieldCheck, UserCog } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import { Avatar, Button, Card } from "@/components/creator";
 
@@ -20,11 +20,36 @@ export default function AccountPage() {
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  // 资料编辑（昵称 / 头像 / 手机号 / 邮箱 / 简介）—— 后端 PATCH /me。
+  const [profile, setProfile] = React.useState({
+    displayName: "",
+    avatarUrl: "",
+    phone: "",
+    email: "",
+    bio: "",
+  });
+  const [profileDirty, setProfileDirty] = React.useState(false);
+  const [savingProfile, setSavingProfile] = React.useState(false);
+  const [profileMsg, setProfileMsg] = React.useState<string | null>(null);
+  const [profileErr, setProfileErr] = React.useState<string | null>(null);
+
+  const hydrateProfile = React.useCallback((u: { displayName?: string; avatarUrl?: string; phone?: string; email?: string; bio?: string }) => {
+    setProfile({
+      displayName: u.displayName ?? "",
+      avatarUrl: u.avatarUrl ?? "",
+      phone: u.phone ?? "",
+      email: u.email ?? "",
+      bio: u.bio ?? "",
+    });
+  }, []);
+
   React.useEffect(() => {
     let cancelled = false;
     AccountApi.getMe()
       .then((me) => {
-        if (!cancelled) setHasPassword(Boolean(me.hasPassword));
+        if (cancelled) return;
+        setHasPassword(Boolean(me.hasPassword));
+        if (!profileDirty) hydrateProfile(me);
       })
       .catch(() => {
         /* AuthProvider 会处理登录态过期。 */
@@ -32,7 +57,43 @@ export default function AccountPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrateProfile]);
+
+  function setProfileField<K extends keyof typeof profile>(key: K, value: string) {
+    setProfile((p) => ({ ...p, [key]: value }));
+    setProfileDirty(true);
+    setProfileMsg(null);
+    setProfileErr(null);
+  }
+
+  async function saveProfile() {
+    setProfileErr(null);
+    setProfileMsg(null);
+    if (!profile.displayName.trim()) {
+      setProfileErr("请填写昵称");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const updated = await AccountApi.updateProfile({
+        displayName: profile.displayName.trim(),
+        avatarUrl: profile.avatarUrl.trim() || undefined,
+        phone: profile.phone.trim() || undefined,
+        email: profile.email.trim() || undefined,
+        bio: profile.bio.trim() || undefined,
+      });
+      hydrateProfile(updated);
+      setProfileDirty(false);
+      setProfileMsg("资料已更新");
+      await refresh();
+    } catch (err) {
+      const apiErr = err as { error?: { message?: string }; message?: string };
+      setProfileErr(apiErr.error?.message ?? apiErr.message ?? "资料保存失败");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   async function savePassword() {
     setError(null);
@@ -97,6 +158,59 @@ export default function AccountPage() {
             <InfoRow label="手机号" value={user?.phone ?? "未绑定"} />
             <InfoRow label="工作室" value={user?.studio?.name ?? "未绑定"} />
             <InfoRow label="密码登录" value={hasPassword ? "已启用" : "未设置"} />
+          </div>
+        </Card>
+
+        {/* 资料编辑 */}
+        <Card style={{ padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: "var(--radius-md)",
+                background: "var(--accent-soft)",
+                color: "var(--accent-strong)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <UserCog size={16} />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>编辑资料</div>
+              <div style={{ marginTop: 2, fontSize: 12, color: "var(--fg-2)" }}>
+                昵称、头像、联系方式与简介，保存后全站生效。
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 18, display: "grid", gap: 12 }}>
+            <Field label="昵称">
+              <TextInput value={profile.displayName} onChange={(v) => setProfileField("displayName", v)} placeholder="工作室 / 显示名称" />
+            </Field>
+            <Field label="头像链接">
+              <TextInput value={profile.avatarUrl} onChange={(v) => setProfileField("avatarUrl", v)} placeholder="https://…（可留空）" />
+            </Field>
+            <Field label="手机号">
+              <TextInput value={profile.phone} onChange={(v) => setProfileField("phone", v)} placeholder="联系手机号" />
+            </Field>
+            <Field label="邮箱">
+              <TextInput value={profile.email} onChange={(v) => setProfileField("email", v)} placeholder="联系邮箱（可留空）" />
+            </Field>
+            <Field label="简介">
+              <TextArea value={profile.bio} onChange={(v) => setProfileField("bio", v)} placeholder="一句话介绍你的工作室 / 主营品类" />
+            </Field>
+          </div>
+
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+            <Button variant="accent" size="md" onClick={saveProfile} disabled={savingProfile || !profileDirty}>
+              <Save size={13} />
+              {savingProfile ? "保存中" : "保存资料"}
+            </Button>
+            {profileMsg && <span style={{ fontSize: 12, color: "var(--success)" }}>{profileMsg}</span>}
+            {profileErr && <span style={{ fontSize: 12, color: "var(--danger)" }}>{profileErr}</span>}
           </div>
         </Card>
 
@@ -237,6 +351,66 @@ function PasswordInput({
         fontSize: 13,
         color: "var(--fg-0)",
         outline: "none",
+      }}
+    />
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{
+        width: "100%",
+        background: "var(--bg-2)",
+        border: "1px solid var(--line-2)",
+        borderRadius: "var(--radius-md)",
+        padding: "10px 12px",
+        fontSize: 13,
+        color: "var(--fg-0)",
+        outline: "none",
+      }}
+    />
+  );
+}
+
+function TextArea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={3}
+      style={{
+        width: "100%",
+        background: "var(--bg-2)",
+        border: "1px solid var(--line-2)",
+        borderRadius: "var(--radius-md)",
+        padding: "10px 12px",
+        fontSize: 13,
+        color: "var(--fg-0)",
+        outline: "none",
+        resize: "vertical",
+        fontFamily: "inherit",
+        lineHeight: 1.5,
       }}
     />
   );

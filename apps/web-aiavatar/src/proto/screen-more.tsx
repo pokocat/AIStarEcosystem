@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, LicenseApi, AccountApi, AvatarApi, VoiceApi, awaitJob, useApi, seed, USE_MOCK } from "./api";
+import { DATA, LicenseApi, AccountApi, AvatarApi, VoiceApi, AuthApi, awaitJob, useApi, seed, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
@@ -67,6 +67,7 @@ function MSettings({ ctx }) {
 
       hMM(GroupTitle, null, '账户'),
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
+        hMM(Row, { icon: Icons.lock, label: '账号与安全', sub: '设置 / 修改登录密码', onClick: () => ctx.go('security') }),
         hMM(Row, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedGB ?? 0) + ' / ' + (acct.storageQuotaGB ?? 0) + ' GB', onClick: () => ctx.go('storage') }),
         hMM(Row, { icon: Icons.gem, label: '会员与算力', sub: (acct.planLabel || 'PRO') + ' · ' + (acct.credits || 0).toLocaleString() + ' 点', onClick: () => ctx.go('membership'), last: true })),
 
@@ -437,7 +438,69 @@ function MDerivView({ char, deriv, ctx }) {
       hMM(UI.Button, { variant: 'primary', full: true, icon: Icons.download, onClick: download }, '下载当前项')));
 }
 
+// ============================================================
+// 账号与安全 · 设置 / 修改登录密码（手机号 + 密码登录的开通入口）
+// ============================================================
+function MSecurity({ ctx }) {
+  const [hasPwd, setHasPwd] = useStateMM(false);
+  const [loaded, setLoaded] = useStateMM(false);
+  const [cur, setCur] = useStateMM('');
+  const [next, setNext] = useStateMM('');
+  const [confirm, setConfirm] = useStateMM('');
+  const [busy, setBusy] = useStateMM(false);
+
+  useEffectMM(() => {
+    let live = true;
+    if (USE_MOCK) { setHasPwd(false); setLoaded(true); return; }
+    AuthApi.me().then((m: any) => { if (live) { setHasPwd(!!m?.hasPassword); setLoaded(true); } })
+      .catch(() => { if (live) setLoaded(true); });
+    return () => { live = false; };
+  }, []);
+
+  const save = async () => {
+    if (hasPwd && !cur.trim()) { toast('请输入当前密码', { tone: 'warn' }); return; }
+    if (next.length < 6) { toast('新密码至少 6 位', { tone: 'warn' }); return; }
+    if (next !== confirm) { toast('两次输入的新密码不一致', { tone: 'warn' }); return; }
+    setBusy(true);
+    try {
+      if (USE_MOCK) { await new Promise((r) => setTimeout(r, 400)); }
+      else { await AuthApi.setPassword({ currentPassword: hasPwd ? cur : undefined, newPassword: next }); }
+      setHasPwd(true); setCur(''); setNext(''); setConfirm('');
+      toast(hasPwd ? '密码已更新' : '密码已设置 · 下次可用手机号 + 密码登录', { tone: 'ok' });
+    } catch (e: any) {
+      toast(e?.message || '保存失败，请重试', { tone: 'err' });
+    } finally { setBusy(false); }
+  };
+
+  return hMM('div', { className: 'm-overlay', 'data-screen-label': '账号与安全' },
+    hMM(WxNavMM, { title: '账号与安全', onBack: ctx.back }),
+    hMM('div', { className: 'm-body', style: { padding: '6px 18px 30px' } },
+      hMM('div', { style: { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 15px', marginBottom: 18, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-1)' } },
+        hMM('div', { style: { width: 38, height: 38, flex: '0 0 38px', borderRadius: 10, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center' } }, hMM(Icons.lock, { size: 18, stroke: 1.9 })),
+        hMM('div', { style: { flex: 1, minWidth: 0 } },
+          hMM('div', { style: { fontSize: 14.5, fontWeight: 700 } }, '密码登录'),
+          hMM('div', { style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 } }, loaded ? (hasPwd ? '已启用 · 可用手机号 + 密码登录' : '未设置 · 设置后可用密码快速登录') : '加载中…'))),
+
+      hMM(GroupTitle, null, hasPwd ? '修改登录密码' : '设置登录密码'),
+      hMM('div', { className: 'm-card', style: { padding: '15px 15px 17px' } },
+        hasPwd && hMM('div', { style: { marginBottom: 12 } },
+          hMM('div', { style: { fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 7 } }, '当前密码'),
+          hMM(UI.Input, { value: cur, onChange: setCur, placeholder: '当前登录密码', type: 'password' })),
+        hMM('div', { style: { marginBottom: 12 } },
+          hMM('div', { style: { fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 7 } }, '新密码'),
+          hMM(UI.Input, { value: next, onChange: setNext, placeholder: '至少 6 位', type: 'password' })),
+        hMM('div', { style: { marginBottom: 16 } },
+          hMM('div', { style: { fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 7 } }, '确认新密码'),
+          hMM(UI.Input, { value: confirm, onChange: setConfirm, placeholder: '再次输入新密码', type: 'password' })),
+        hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', disabled: busy, onClick: save }, busy ? '保存中…' : hasPwd ? '更新密码' : '设置密码')),
+
+      hMM('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, margin: '16px 2px 0', color: 'var(--ink-3)' } },
+        hMM(Icons.shield, { size: 14, style: { flex: '0 0 auto', marginTop: 1 } }),
+        hMM('span', { style: { fontSize: 11.5, lineHeight: 1.6 } }, '验证码登录始终可用；密码仅用于日常快速登录。改密只影响本平台账号。'))));
+}
+
 export { MSettings };
+export { MSecurity };
 export { MMembership };
 export { MStorage };
 export { MVoiceClone };

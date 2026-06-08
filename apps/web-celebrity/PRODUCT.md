@@ -36,7 +36,7 @@
 | `celebrity-zone` | `CelebrityStar`、`CelebrityStarAuthorization`、`CelebrityProject`、`ProjectVideo`、`Template` | 明星 IP / 授权关系 / 项目 / 生成视频 / 模板 |
 | `product` | `Product`、`ProductCategory`、`ProductInput` | 商品库（带货商品） |
 | `mixcut` | `RenderJob`、`RenderOutput`、`Template`、`MixcutDraft`、`SlotBinding`、`StarClip`、`ProductClip`、`Asset` | 混剪专区：模板 → 实例（草稿）→ 渲染任务 |
-| `wallet` | `Wallet`、`LedgerEntry` | 积分钱包（topbar 显示） |
+| `wallet` | `Wallet`、`LedgerEntry`、`RechargeOrder` | 积分钱包（topbar 显示）；v0.56 起充值走「下单 → 运营核准入账」，钱包页含「我的充值订单」 |
 | `account` | `AepUser`、`Tenant` | 工作室 / 多租户 |
 
 **授权状态机**（`CelebrityAuthStatus`，wire 全小写）：
