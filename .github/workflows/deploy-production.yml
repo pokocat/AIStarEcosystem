@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       services:
-        description: "Services to deploy: all, or comma-separated server,web-celebrity,web-aiavatar,admin,sau-service"
+        description: "Services to deploy: all, or comma-separated server,web-music,web-drama,web-celebrity,web-aiavatar,admin,sau-service"
         required: true
         default: "all"
       public_base:

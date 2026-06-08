@@ -80,6 +80,8 @@ check_unit mysqld
 check_unit nginx
 check_unit docker
 check_unit aistareco-server
+check_unit aistareco-web-music
+check_unit aistareco-web-drama
 check_unit aistareco-web-celebrity
 check_unit aistareco-web-aiavatar
 check_unit aistareco-admin

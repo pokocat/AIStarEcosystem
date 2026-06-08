@@ -5,7 +5,7 @@
 #   ./infra/scripts/build-release.sh [services]
 #
 # services:
-#   all                               -> server,web-celebrity,web-aiavatar,admin,sau-service
+#   all                               -> server,web-music,web-drama,web-celebrity,web-aiavatar,admin,sau-service
 #   server,web-celebrity,web-aiavatar,admin -> comma-separated
 #   "server web-celebrity web-aiavatar admin" -> space-separated
 #
@@ -18,7 +18,7 @@ export PATH="/usr/local/bin:/opt/node-current/bin:/usr/bin:/bin:/usr/sbin:/sbin:
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-DEFAULT_SERVICES="server web-celebrity web-aiavatar admin sau-service"
+DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar admin sau-service"
 RAW_SERVICES="${1:-${SERVICES:-all}}"
 RELEASE_ID="${RELEASE_ID:-$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)}"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist/deploy/$RELEASE_ID}"
@@ -53,13 +53,13 @@ normalize_services() {
       all)
         out="$out $DEFAULT_SERVICES"
         ;;
-      server|web-celebrity|web-aiavatar|admin|sau-service)
+      server|web-music|web-drama|web-celebrity|web-aiavatar|admin|sau-service)
         out="$out $item"
         ;;
       "")
         ;;
       *)
-        fail "unknown service '$item' (expected server|web-celebrity|web-aiavatar|admin|sau-service|all)"
+        fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|admin|sau-service|all)"
         ;;
     esac
   done
@@ -121,6 +121,50 @@ build_server() {
   [[ -f "$jar" ]] || fail "missing server jar: $jar"
   mkdir -p "$OUT_DIR/server"
   cp "$jar" "$OUT_DIR/server/app.jar"
+}
+
+build_web_music() {
+  log "building web-music standalone"
+  if [[ "$SKIP_INSTALL" != "1" ]]; then
+    pnpm install --frozen-lockfile
+  fi
+  if [[ "$SKIP_TYPECHECK" != "1" ]]; then
+    pnpm --filter @ai-star-eco/web-music run typecheck
+  fi
+  pnpm --filter @ai-star-eco/web-music run build
+
+  local tmp="$OUT_DIR/.tmp/web-music"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  copy_dir_contents "apps/web-music/.next/standalone" "$tmp"
+  copy_dir_contents "apps/web-music/.next/static" "$tmp/apps/web-music/.next/static"
+  if [[ -d apps/web-music/public ]]; then
+    copy_dir_contents "apps/web-music/public" "$tmp/apps/web-music/public"
+  fi
+  strip_env_files "$tmp"
+  make_tar_from_dir "$tmp" "$OUT_DIR/web-music.tar.gz"
+}
+
+build_web_drama() {
+  log "building web-drama standalone"
+  if [[ "$SKIP_INSTALL" != "1" ]]; then
+    pnpm install --frozen-lockfile
+  fi
+  if [[ "$SKIP_TYPECHECK" != "1" ]]; then
+    pnpm --filter @ai-star-eco/web-drama run typecheck
+  fi
+  pnpm --filter @ai-star-eco/web-drama run build
+
+  local tmp="$OUT_DIR/.tmp/web-drama"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  copy_dir_contents "apps/web-drama/.next/standalone" "$tmp"
+  copy_dir_contents "apps/web-drama/.next/static" "$tmp/apps/web-drama/.next/static"
+  if [[ -d apps/web-drama/public ]]; then
+    copy_dir_contents "apps/web-drama/public" "$tmp/apps/web-drama/public"
+  fi
+  strip_env_files "$tmp"
+  make_tar_from_dir "$tmp" "$OUT_DIR/web-drama.tar.gz"
 }
 
 build_web_celebrity() {
@@ -232,6 +276,8 @@ NEXT_PUBLIC_SERVER_API_BASE='$NEXT_PUBLIC_SERVER_API_BASE'
 EOF
 
 has_service server && build_server
+has_service web-music && build_web_music
+has_service web-drama && build_web_drama
 has_service web-celebrity && build_web_celebrity
 has_service web-aiavatar && build_web_aiavatar
 has_service admin && build_admin

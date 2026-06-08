@@ -16,13 +16,13 @@ This skill is the repo-local deployment entrypoint. Before any deployment action
 Current production services are:
 
 - `server` - Spring Boot backend, systemd unit `aistareco-server`.
+- `web-music` - Next.js 16 music app, systemd unit `aistareco-web-music`.
+- `web-drama` - Next.js 16 drama app, systemd unit `aistareco-web-drama`.
 - `web-celebrity` - Next.js 16 celebrity app, systemd unit `aistareco-web-celebrity`.
 - `web-aiavatar` - Next.js 16 AiAvatar app, systemd unit `aistareco-web-aiavatar`.
 - `admin` - Next.js admin app, systemd unit `aistareco-admin`.
 - `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
 - `all` - builds and deploys all current production services above.
-
-Do not include `web-music` or `web-drama` in production deploy commands until the deploy scripts explicitly support them.
 
 ## Default Production Parameters
 
@@ -102,7 +102,7 @@ Build release artifacts without deploying:
 
 ```bash
 ./infra/scripts/build-release.sh all
-./infra/scripts/build-release.sh server,web-celebrity,web-aiavatar
+./infra/scripts/build-release.sh server,web-music,web-drama,web-celebrity,web-aiavatar
 ```
 
 Build locally and deploy in one command:
@@ -123,6 +123,7 @@ SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
 PUBLIC_BASE=http://47.98.162.120 \
 REMOTE_ROOT=/opt/ai-star-eco \
 ./infra/scripts/deploy.sh server,web-celebrity,web-aiavatar
+./infra/scripts/deploy.sh web-music,web-drama
 ```
 
 Deploy an already-built release directory:
