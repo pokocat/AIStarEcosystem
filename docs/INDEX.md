@@ -39,8 +39,9 @@
 
 | 文档 | 给谁看 | 一句话 |
 |---|---|---|
-| [`AGENTS.md`](../AGENTS.md) | **统一 agent 入口**（Claude Code / Cursor / Aider / Continue / 自建 SDK） | 项目概览 + 三端架构 + 硬规则 + 新增领域 SOP + v0.5-0.15 增量 + 文档同步纪律 |
+| [`AGENTS.md`](../AGENTS.md) | **统一 agent 入口**（Claude Code / Cursor / Aider / Continue / 自建 SDK） | 项目概览 + 三端架构 + 硬规则 + 新增领域 SOP + 文档同步纪律（精简到 ~34k chars，version log 已外移） |
 | [`CLAUDE.md`](../CLAUDE.md) | Claude Code（自动注入） | **symlink → AGENTS.md**（单点维护，内容等同 AGENTS.md） |
+| [`docs/VERSION_HISTORY.md`](VERSION_HISTORY.md) | 完整连续版本增量（v0.5 → v0.56） | 新实体 / 路由 / 决策 / 注意事项的全量历史；从 AGENTS.md 拆分以保持主文件轻量 |
 | [`apps/miniprogram/agent.md`](../apps/miniprogram/agent.md) | 任何在小程序目录工作的 agent | 微信平台坑（iOS/Android 差异、custom-tab-bar、CSS、setData、轮询清理） |
 | [`.claude/skills/figma-migrate/SKILL.md`](../.claude/skills/figma-migrate/SKILL.md) | 触发 figma-migrate skill 时 | 五件套 + 三端同步 SOP |
 | [`apps/design.md`](../apps/design.md) + [`apps/design/`](../apps/design/) | 前端设计 token 契约 + 设计稿 reference app（"AI IP Design Directions"，三套主题：tech/creator/premium） | 视觉规范真源；新增 UI 时必读 |
@@ -162,7 +163,7 @@ sudo yum install -y ffmpeg ffmpeg-devel
 - **大版本迭代**（如 v0.5.x → v0.6.0）：必须在同一 commit 同步更新：
   - `product_spec*.md` 版本节
   - 受影响 `apps/*/README.md`（版本日志）+ `PRODUCT.md`（功能新增）
-  - `AGENTS.md` §7 v 增量节
+  - `docs/VERSION_HISTORY.md` 追加新版本节（详尽日志）；`AGENTS.md` §7 仅维护「最近 5 版速览」表与 admin sidebar 启用状态
   - 本 INDEX 的 last-reviewed 日期
   - 详 [`AGENTS.md` §9 文档同步纪律](../AGENTS.md)
 - **CLAUDE.md ↔ AGENTS.md**：CLAUDE.md 是 symlink，**不要单独修改**；改 AGENTS.md 即同步两者
