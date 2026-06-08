@@ -330,15 +330,9 @@ export async function getOutputDownloadUrl(outputId: string): Promise<string> {
 // ── 模板编辑 / 另存为 ───────────────────────────────────────────────────────
 //
 // 数据层模型:
-//   - 工厂模板:mockTemplates(写死前端) ∪ server seed(MixcutTemplateSeeder 落 mixcut_template
-//     表;当前 seed 为空,前端 mocks 是 fallback 真值源)
-//   - 用户保存:server mixcut_template 表中 ownerScope=<userId> 的行;
-//     REAL_BACKEND 关闭时回落到 localStorage(隐私模式 / 离线开发体验)
-//   - 列表语义:用户模板覆盖同 templateId 工厂模板;不重复的追加显示
-//   - 删除用户模板 ⇒ 同 templateId 工厂模板恢复显示(若存在)
-//
-// USE_LOCAL(USE_MOCK && !REAL_BACKEND):localStorage 兜底,与原版行为完全一致
-// REAL_BACKEND: 走 /api/mixcut/templates CRUD,mocks 作为 fallback 补齐 server 未 seed 的工厂模板
+//   - USE_LOCAL(USE_MOCK && !REAL_BACKEND):localStorage ∪ mockTemplates,用于离线开发体验。
+//   - REAL_BACKEND:只走 /api/mixcut/templates CRUD。生产不能再把 mock 模版当 fallback,
+//     否则运营后台改了 server 数据后,页面会先闪或兜回前端内置默认模版。
 
 let memoryTemplates: Record<string, Template> | null = null;
 
@@ -402,24 +396,7 @@ function isFactoryDeleted(id: string): boolean {
   return loadDeletedFactoryTemplateIds().includes(id);
 }
 
-/**
- * 合并 server 返回与 mock fallback:按 template_id 去重,server 优先。
- * 用于 REAL_BACKEND 模式下补齐尚未 seed 到 server 的 factory 模板。
- */
-function mergeWithMockFallback(serverList: Template[]): Template[] {
-  const merged: Template[] = [];
-  const seen = new Set<string>();
-  for (const t of serverList) {
-    merged.push(t);
-    seen.add(t.template_id);
-  }
-  for (const t of mockTemplates) {
-    if (!seen.has(t.template_id) && !isFactoryDeleted(t.template_id)) merged.push(t);
-  }
-  return merged;
-}
-
-/** 列出所有模板。USE_LOCAL: localStorage ∪ mocks。REAL_BACKEND: server ∪ mock fallback。 */
+/** 列出所有模板。USE_LOCAL: localStorage ∪ mocks。REAL_BACKEND: server only。 */
 export async function listTemplates(): Promise<Template[]> {
   if (USE_LOCAL) {
     const user = loadUserTemplates();
@@ -437,10 +414,10 @@ export async function listTemplates(): Promise<Template[]> {
     return mockDelay(merged);
   }
   const serverList = await apiFetch<Template[]>("/mixcut/templates");
-  return mergeWithMockFallback(Array.isArray(serverList) ? serverList : []);
+  return Array.isArray(serverList) ? serverList.map((t) => migrateLegacyTemplate(t)) : [];
 }
 
-/** 取单个模板:USE_LOCAL → localStorage > mock; REAL_BACKEND → server > mock fallback。 */
+/** 取单个模板:USE_LOCAL → localStorage > mock; REAL_BACKEND → server only。 */
 export async function getTemplate(id: string): Promise<Template | null> {
   if (USE_LOCAL) {
     if (isFactoryDeleted(id)) return mockDelay(null);
@@ -449,18 +426,13 @@ export async function getTemplate(id: string): Promise<Template | null> {
     const factory = mockTemplates.find((t) => t.template_id === id);
     return mockDelay(factory ?? null);
   }
-  try {
-    const server = await apiFetch<Template | null>(`/mixcut/templates/${id}`);
-    if (server) return migrateLegacyTemplate(server);
-  } catch {
-    /* server 404 / 网络故障 → 走 mock fallback */
-  }
-  if (isFactoryDeleted(id)) return null;
-  return mockTemplates.find((t) => t.template_id === id) ?? null;
+  const server = await apiFetch<Template | null>(`/mixcut/templates/${id}`);
+  return server ? migrateLegacyTemplate(server) : null;
 }
 
-/** 同步版本:供 useState 初始化与 server component 使用(不需要 await)。仅查 mocks,不查 localStorage。 */
+/** 同步版本:仅本地 mock 模式可用;真实后端必须 await API,避免生产渲染 mock 初始值。 */
 export function getTemplateSync(id: string): Template | null {
+  if (!USE_LOCAL) return null;
   const user = loadUserTemplates();
   if (user[id]) return user[id];
   if (isFactoryDeleted(id)) return null;
@@ -536,15 +508,7 @@ export async function deleteFactoryTemplate(id: string): Promise<boolean> {
     if (!deleted.includes(id)) saveDeletedFactoryTemplateIds([...deleted, id]);
     return mockDelay(true);
   }
-  let deleted = await apiFetch<boolean>(`/admin/mixcut/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!deleted && mockTemplates.some((t) => t.template_id === id)) {
-    deleted = true;
-  }
-  if (deleted) {
-    const ids = loadDeletedFactoryTemplateIds();
-    if (!ids.includes(id)) saveDeletedFactoryTemplateIds([...ids, id]);
-  }
-  return deleted;
+  return apiFetch<boolean>(`/admin/mixcut/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 /**
@@ -559,6 +523,7 @@ export function hasUserTemplate(id: string): boolean {
 
 /** 判断 ID 是否对应一条工厂模板(即不可硬删除,只能 override)。 */
 export function isFactoryTemplate(id: string): boolean {
+  if (!USE_LOCAL) return false;
   return mockTemplates.some((t) => t.template_id === id);
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useRef, useState, type ForwardedRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState, type ForwardedRef, type ReactNode } from "react";
 import { notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -29,8 +29,7 @@ import { Separator } from "@/components/mixcut-zone/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/mixcut-zone/ui/tabs";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
-import { mockTemplates, mockStarClips } from "@/mocks/mixcut";
-import type { RenderJob, RenderOutput } from "@/components/mixcut-zone/types";
+import type { RenderJob, RenderOutput, Template, TemplateSlot } from "@/components/mixcut-zone/types";
 import { PROFILE_LABELS, TRANSFORM_LABELS } from "@/constants/mixcut-ui";
 import { cn, formatBytes, relativeTime, shortHash } from "@/components/mixcut-zone/lib/utils";
 import { flatSlotsOf } from "@/components/mixcut-zone/lib/scene-helpers";
@@ -58,9 +57,110 @@ function outputDownloadFilename(job: RenderJob, output: RenderOutput): string {
   return `${job.template_name || "mixcut"}-${jobId}-v${output.variant_index + 1}.mp4`;
 }
 
+function snapshotDuration(job: RenderJob): number {
+  const sceneTotal = (job.scenes_snapshot ?? []).reduce((sum, scene) => {
+    return sum + Math.max(0, scene.duration_sec || 0);
+  }, 0);
+  if (sceneTotal > 0) return sceneTotal;
+
+  const slotEnd = (job.slots_snapshot ?? []).reduce((max, slot) => {
+    return Math.max(max, slot.time_range?.[1] ?? 0);
+  }, 0);
+  if (slotEnd > 0) return slotEnd;
+
+  const outputDuration = job.outputs?.find((o) => o.duration > 0)?.duration;
+  return outputDuration && outputDuration > 0 ? outputDuration : 1;
+}
+
+function snapshotSlotToTemplateSlot(
+  slot: NonNullable<RenderJob["slots_snapshot"]>[number],
+  sceneStart: number,
+  sceneDuration: number,
+): TemplateSlot {
+  const fallbackRange: [number, number] = [0, sceneDuration];
+  let timeRange = fallbackRange;
+  if (slot.time_range) {
+    const start = Math.max(0, slot.time_range[0] - sceneStart);
+    const end = Math.min(sceneDuration, slot.time_range[1] - sceneStart);
+    if (end > start) timeRange = [start, end];
+  }
+  return {
+    slot_id: slot.slot_id,
+    layer_type: slot.layer_type,
+    z_index: slot.z_index,
+    rect: slot.rect,
+    time_range: timeRange,
+    fit: slot.fit,
+    fill_strategy: "user_upload",
+    user_editable: false,
+    required: false,
+    perturbation_policy: slot.perturbation_policy,
+    label: slot.slot_id,
+  };
+}
+
+function templateFromJobSnapshot(job: RenderJob): Template | null {
+  const canvas = job.canvas_snapshot;
+  const slotsSnapshot = job.slots_snapshot ?? [];
+  if (!canvas || slotsSnapshot.length === 0) return null;
+
+  const duration = snapshotDuration(job);
+  const slotById = new Map(slotsSnapshot.map((slot) => [slot.slot_id, slot]));
+  let sceneStart = 0;
+  const scenes =
+    job.scenes_snapshot && job.scenes_snapshot.length > 0
+      ? job.scenes_snapshot.map((scene) => {
+          const sceneDuration = Math.max(0.1, scene.duration_sec || 0);
+          const start = sceneStart;
+          sceneStart += sceneDuration;
+          return {
+            id: scene.id,
+            label: scene.label || scene.id,
+            duration: sceneDuration,
+            slots: scene.slot_ids
+              .map((slotId) => slotById.get(slotId))
+              .filter((slot): slot is NonNullable<typeof slot> => Boolean(slot))
+              .map((slot) => snapshotSlotToTemplateSlot(slot, start, sceneDuration)),
+          };
+        })
+      : [
+          {
+            id: "scene_snapshot",
+            label: "任务快照",
+            duration,
+            slots: slotsSnapshot.map((slot) => snapshotSlotToTemplateSlot(slot, 0, duration)),
+          },
+        ];
+
+  return {
+    template_id: job.template_id,
+    name: job.template_name || "任务模板",
+    version: "snapshot",
+    canvas: {
+      width: canvas.width,
+      height: canvas.height,
+      duration,
+      fps: canvas.fps ?? 30,
+      background_color: "#111827",
+    },
+    scenes,
+    perturbation_profile: job.perturbation_profile,
+    output_variants_default: job.output_variants,
+    quality_gate: { min_phash_distance: 10, max_retries: 3 },
+    metadata: {
+      category: "任务快照",
+      tags: [],
+      thumbnail_url: job.template_thumbnail,
+      required_tier: "basic",
+    },
+    is_factory: false,
+  };
+}
+
 export function JobDetailClient({ id }: { id: string }) {
   const router = useRouter();
   const [job, setJob] = useState<RenderJob | null | undefined>(undefined); // undefined = loading
+  const [liveTemplate, setLiveTemplate] = useState<Template | null>(null);
   const [selectedVariant, setSelectedVariant] = useState(0);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -117,6 +217,27 @@ export function JobDetailClient({ id }: { id: string }) {
     }
   }, [job?.outputs?.length, selectedVariant]);
 
+  const snapshotTemplate = useMemo(() => (job ? templateFromJobSnapshot(job) : null), [job]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!job || snapshotTemplate) {
+      setLiveTemplate(null);
+      return;
+    }
+    setLiveTemplate(null);
+    MixcutApi.getTemplate(job.template_id)
+      .then((t) => {
+        if (!cancelled) setLiveTemplate(t);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveTemplate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.template_id, Boolean(snapshotTemplate)]);
+
   if (job === undefined) {
     return (
       <div className="px-6 lg:px-8 py-12 max-w-[1600px] mx-auto text-center text-muted-foreground text-sm">
@@ -136,7 +257,7 @@ export function JobDetailClient({ id }: { id: string }) {
   const renderFailed =
     job.status === "failed" ||
     (job.status === "success" && !hasOutputs && Boolean(job.error_message));
-  const template = mockTemplates.find((t) => t.template_id === job.template_id);
+  const template = snapshotTemplate ?? liveTemplate;
   const isProcessing = !renderFailed && (job.status === "running" || job.status === "queued" || job.status === "pending");
   const completed = job.status === "success" && !renderFailed;
 
@@ -691,10 +812,7 @@ export function JobDetailClient({ id }: { id: string }) {
                           <div className="text-sm font-medium">{slot?.label || slotId}</div>
                           <div className="text-xs text-muted-foreground mt-0.5">
                             {b.source === "input" && `手填文字："${b.text}"`}
-                            {b.source === "library" && `来自素材库：${(() => {
-                              const s = mockStarClips.find((x) => x.id === b.asset_id);
-                              return s ? s.star_name : "已选素材";
-                            })()}`}
+                            {b.source === "library" && `来自素材库：${uploadBindingLabel(b)}`}
                             {b.source === "upload" && `自己上传：${uploadBindingLabel(b)}`}
                             {b.source === "fixed" && "系统自动填充"}
                           </div>

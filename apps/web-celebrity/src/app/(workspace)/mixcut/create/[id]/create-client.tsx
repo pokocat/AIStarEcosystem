@@ -43,7 +43,6 @@ import { SlotInput } from "@/components/mixcut-zone/slot-input";
 import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker";
 import { ProductPickerDialog } from "@/components/celebrity-zone/ProductPickerDialog";
 import type { Product } from "@ai-star-eco/types/product";
-import { mockTemplates } from "@/mocks/mixcut";
 import { MixcutApi, ProductsApi } from "@/api";
 import type {
   SlotBinding,
@@ -209,10 +208,7 @@ function draftSig(
 export function CreateClient({ id }: { id: string }) {
   const router = useRouter();
   const code = MixcutApi.mockActivationCode;
-  // SSR 没有 localStorage,只能看工厂模板;client hydration 后异步补一次,把用户编辑覆盖回来
-  const [template, setTemplate] = useState(
-    () => mockTemplates.find((t) => t.template_id === id) ?? null
-  );
+  const [template, setTemplate] = useState<Template | null>(null);
   const [resolved, setResolved] = useState(false);
 
   // 所有 hook 必须在 early-return 之前(Rules of Hooks)
@@ -289,10 +285,29 @@ export function CreateClient({ id }: { id: string }) {
   const [reconcile, setReconcile] = useState<{ removed: string[]; versionChanged: boolean } | null>(null);
 
   useEffect(() => {
-    MixcutApi.getTemplate(id).then((t) => {
-      if (t) setTemplate(t);
-      setResolved(true);
-    });
+    let cancelled = false;
+    setResolved(false);
+    setTemplate(null);
+    setBindings({});
+    setFocusedSlot(null);
+    setActiveSceneIdx(0);
+    initFromTemplateRef.current = false;
+    productAutoFillRef.current = false;
+    draftLoadRef.current = false;
+    MixcutApi.getTemplate(id)
+      .then((t) => {
+        if (cancelled) return;
+        setTemplate(t);
+        setResolved(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTemplate(null);
+        setResolved(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   // 当 template 首次变为非空(localStorage 覆盖加载到)时,把 bindings / profile / variants

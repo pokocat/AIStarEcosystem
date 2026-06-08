@@ -16,17 +16,22 @@ import { Badge } from "@/components/mixcut-zone/ui/badge";
 import { Progress } from "@/components/mixcut-zone/ui/progress";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
-import { mockHotTemplates } from "@/mocks/mixcut";
 import { PROFILE_LABELS } from "@/constants/mixcut-ui";
 import { formatNumber, relativeTime } from "@/components/mixcut-zone/lib/utils";
 import { firstScenePreviewTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
-import type { RenderJob } from "@/components/mixcut-zone/types";
+import type { RenderJob, Template } from "@/components/mixcut-zone/types";
 
 export default function MixcutHomePage() {
   const [jobs, setJobs] = useState<RenderJob[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templatesResolved, setTemplatesResolved] = useState(false);
 
   useEffect(() => {
     MixcutApi.listJobs().then(setJobs);
+    MixcutApi.listTemplates()
+      .then((list) => setTemplates(list))
+      .catch(() => setTemplates([]))
+      .finally(() => setTemplatesResolved(true));
   }, []);
 
   // 本月生成的视频条数 = 本月 status=success 任务 output_variants 之和
@@ -42,6 +47,9 @@ export default function MixcutHomePage() {
     return { videosThisMonth, totalJobs: jobs.length };
   })();
   const recentJobs = jobs.slice(0, 2);
+  const hotTemplates = [...templates]
+    .sort((a, b) => (b.metadata.daily_creation_count ?? 0) - (a.metadata.daily_creation_count ?? 0))
+    .slice(0, 4);
 
   return (
     <div className="px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto">
@@ -143,7 +151,7 @@ export default function MixcutHomePage() {
             </Button>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {mockHotTemplates.map((t) => (
+            {hotTemplates.map((t) => (
               <Link
                 key={t.template_id}
                 href={`/mixcut/templates/${t.template_id}`}
@@ -165,6 +173,19 @@ export default function MixcutHomePage() {
                 </div>
               </Link>
             ))}
+            {!templatesResolved &&
+              Array.from({ length: 4 }).map((_, idx) => (
+                <div key={idx} className="space-y-2.5">
+                  <div className="aspect-[9/16] rounded-xl bg-secondary/70 animate-pulse" />
+                  <div className="h-4 w-3/4 rounded bg-secondary/70 animate-pulse" />
+                  <div className="h-3 w-1/2 rounded bg-secondary/50 animate-pulse" />
+                </div>
+              ))}
+            {templatesResolved && hotTemplates.length === 0 && (
+              <div className="col-span-full rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                暂无可用模板
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
