@@ -88,6 +88,7 @@ function MLicenses({ ctx }) {
 function MTasks({ ctx }) {
   const [tasks, setTasks] = useStateMS(seed.jobs());
   const [busyId, setBusyId] = useStateMS('');
+  const [f, setF] = useStateMS('all');
   // 真实轮询（live 2.5s / mock 1.4s 由 JobApi.list 内部模拟推进）
   useEffectMS(() => {
     let live = true;
@@ -99,8 +100,6 @@ function MTasks({ ctx }) {
   const running = tasks.filter(t => t.status === 'running').length;
   const doneN = tasks.filter(t => t.status === 'done').length;
   const failN = tasks.filter(t => t.status === 'failed').length;
-  const modeTone = { mock: 'warn', backend: 'info', selfhost: 'primary' };
-  const modeLabel = { mock: '占位', backend: 'AI 引擎', selfhost: '自部署' };
   const stageText = (t) => [t.stage, t.eta].filter(Boolean).join(' · ');
 
   const retry = async (t) => {
@@ -133,46 +132,76 @@ function MTasks({ ctx }) {
     toast('关联资产不存在或已删除', { tone: 'warn' });
   };
 
+  const filters = [
+    { key: 'all', label: '全部', n: tasks.length },
+    { key: 'running', label: '进行中', n: running },
+    { key: 'done', label: '已完成', n: doneN },
+    { key: 'failed', label: '失败', n: failN },
+  ];
+  const ord = { running: 0, failed: 1, done: 2 };
+  const list = tasks.filter(t => f === 'all' || t.status === f)
+    .slice().sort((a, b) => (ord[a.status] ?? 9) - (ord[b.status] ?? 9));
+  const activeLabel = (filters.find(x => x.key === f) || filters[0]).label;
+  const tint = {
+    running: { c: 'var(--primary)', s: 'var(--primary-soft)' },
+    done:    { c: 'var(--ok)', s: 'var(--ok-s)' },
+    failed:  { c: 'var(--err)', s: 'var(--err-s)' },
+  };
+
+  // 单条任务卡 —— 顶部状态图标 + 名称（+时间/演示标），底部按状态分流操作
+  const taskCard = (t) => {
+    const m = tint[t.status] || tint.running;
+    return hMS('div', { key: t.id, className: 'm-card', style: { padding: '13px 14px' } },
+      hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+        hMS('div', { style: { width: 40, height: 40, flex: '0 0 40px', borderRadius: 11, background: m.s, display: 'grid', placeItems: 'center', color: m.c } },
+          t.status === 'running' ? hMS(UI.Spinner, { size: 17 }) : hMS(t.status === 'failed' ? Icons.warn : Icons.checkc, { size: 20, stroke: 2 })),
+        hMS('div', { style: { flex: 1, minWidth: 0 } },
+          hMS('div', { className: 'm-clip1', style: { fontSize: 14, fontWeight: 700, color: 'var(--ink)' } }, t.kind),
+          hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 } },
+            hMS('span', { className: 'm-clip1', style: { fontSize: 12, color: 'var(--ink-3)', minWidth: 0 } }, t.charName),
+            t.started && hMS('span', { style: { width: 3, height: 3, borderRadius: 99, flex: '0 0 auto', background: 'var(--ink-4)' } }),
+            t.started && hMS('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)', flex: '0 0 auto' } }, t.started))),
+        t.mode === 'mock' && hMS(UI.Badge, { tone: 'warn' }, '演示')),
+      hMS('div', { style: { marginTop: 11 } },
+        t.status === 'running'
+          ? hMS(React.Fragment, null,
+              hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                hMS('div', { style: { flex: 1 } }, hMS(UI.Progress, { pct: Math.round(t.pct), showLabel: true })),
+                hMS(UI.Button, { variant: 'line', size: 'sm', disabled: busyId === t.id, onClick: () => cancel(t) }, busyId === t.id ? '取消中…' : '取消')),
+              stageText(t) && hMS('div', { className: 'm-clip1', style: { marginTop: 7, fontSize: 11.5, color: 'var(--ink-3)' } }, stageText(t)))
+          : t.status === 'failed'
+            ? hMS('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 } },
+                hMS('span', { className: 'm-clip1', style: { fontSize: 12, color: 'var(--err)', flex: 1, minWidth: 0 } }, t.error || t.eta || '生成失败'),
+                hMS(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.retry, disabled: busyId === t.id, onClick: () => retry(t) }, '重试'))
+            : hMS('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 } },
+                hMS('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: 'var(--ok)' } },
+                  hMS(Icons.check, { size: 14, stroke: 2.4 }), '结果已就绪'),
+                hMS(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.eye, onClick: () => view(t) }, '查看'))));
+  };
+
+  // 完全没有任务 —— 教学型空态 + 直接去创建
+  const emptyAll = hMS('div', { style: { textAlign: 'center', padding: '60px 24px 0' } },
+    hMS('div', { style: { width: 60, height: 60, borderRadius: 18, margin: '0 auto 16px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMS(Icons.bolt, { size: 27, stroke: 1.8 })),
+    hMS('div', { style: { fontFamily: 'var(--font-disp)', fontSize: 17, fontWeight: 800, color: 'var(--ink)' } }, '暂无生成任务'),
+    hMS('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.6, margin: '7px auto 20px', maxWidth: 268 } }, '创建数字人、生成图集或衍生时，任务会出现在这里，并实时更新进度。'),
+    hMS(UI.Button, { variant: 'primary', icon: Icons.plus, onClick: () => { ctx.back(); ctx.openCreateSheet(); } }, '创建数字人'));
+
   return hMS('div', { className: 'm-overlay', 'data-screen-label': '任务中心' },
     hMS(WxNavS, { title: '任务中心', onBack: ctx.back }),
-    hMS('div', { className: 'm-body', style: { padding: '4px 18px 28px' } },
-      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '生成、衍生等都是后台任务，会在这里实时更新进度；完成后点「查看」直达成片，失败可重试、进行中可取消。'),
-      hMS('div', { style: { display: 'flex', gap: 10, marginBottom: 18 } },
-        [['进行中', running, 'primary'], ['已完成', doneN, 'ok'], ['失败', failN, 'err']].map(([k, v, t]) =>
-          hMS('div', { key: k, className: 'm-card', style: { flex: 1, padding: '12px 14px' } },
-            hMS('div', { style: { fontSize: 11, color: 'var(--ink-3)', marginBottom: 6 } }, k),
-            hMS('div', { style: { display: 'flex', alignItems: 'baseline', gap: 4 } },
-              hMS('span', { className: 'mono', style: { fontSize: 22, fontWeight: 700, color: `var(--${t})` } }, v),
-              hMS('span', { style: { fontSize: 11, color: 'var(--ink-4)' } }, '项')))),
-      tasks.length === 0 && hMS('div', { style: { textAlign: 'center', padding: '46px 0', color: 'var(--ink-3)' } },
-        hMS('div', { style: { width: 50, height: 50, borderRadius: 99, margin: '0 auto 12px', display: 'grid', placeItems: 'center', background: 'var(--surface-3)', color: 'var(--ink-4)' } }, hMS(Icons.bolt, { size: 22 })),
-        hMS('div', { style: { fontSize: 14, fontWeight: 600, color: 'var(--ink-2)' } }, '暂无生成任务'),
-        hMS('div', { style: { fontSize: 12, marginTop: 4 } }, '创建数字人或生成衍生时会出现在这里')),
-      hMS('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 11 } },
-        tasks.map(t => hMS('div', { key: t.id, className: 'm-card', style: { padding: '13px 14px' } },
-          hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-            hMS('div', { style: { width: 40, height: 40, flex: '0 0 40px', borderRadius: 10, background: t.status === 'failed' ? 'var(--err-s)' : t.status === 'done' ? 'var(--ok-s)' : 'var(--primary-soft)', display: 'grid', placeItems: 'center', color: t.status === 'failed' ? 'var(--err)' : t.status === 'done' ? 'var(--ok)' : 'var(--primary)' } },
-              t.status === 'running' ? hMS(UI.Spinner, { size: 17 }) : hMS(t.status === 'failed' ? Icons.warn : Icons.checkc, { size: 19 })),
-            hMS('div', { style: { flex: 1, minWidth: 0 } },
-              hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' } },
-                hMS('span', { style: { fontSize: 13.5, fontWeight: 700 } }, t.kind),
-                hMS('span', { style: { fontSize: 11.5, color: 'var(--ink-3)' } }, t.charName)),
-              hMS('div', { style: { marginTop: 3 } }, hMS(UI.Badge, { tone: modeTone[t.mode] || 'info' }, (modeLabel[t.mode] || t.mode) + ' · ' + t.engine)))),
-          hMS('div', { style: { marginTop: 11 } },
-            t.status === 'running'
-              ? hMS(React.Fragment, null,
-                  hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                    hMS('div', { style: { flex: 1 } }, hMS(UI.Progress, { pct: Math.round(t.pct), showLabel: true })),
-                    hMS(UI.Button, { variant: 'line', size: 'sm', disabled: busyId === t.id, onClick: () => cancel(t) }, '取消')),
-                  hMS('div', { className: 'm-clip1', style: { marginTop: 7, fontSize: 11, color: 'var(--ink-3)' } },
-                    '· ' + (stageText(t) || '处理中')))
-              : hMS('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 } },
-                  hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 } },
-                    hMS(RegTagM, { prefix: 'JOB', id: t.id }),
-                    hMS('span', { className: 'm-clip1', style: { fontSize: 11, color: t.status === 'failed' ? 'var(--err)' : 'var(--ink-3)', flex: 1 } }, '· ' + ((t as any).error || t.eta))),
-                  t.status === 'failed'
-                    ? hMS(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.retry, disabled: busyId === t.id, onClick: () => retry(t) }, '重试')
-                    : hMS(UI.Button, { variant: 'line', size: 'sm', icon: Icons.eye, onClick: () => view(t) }, '查看')))))))));
+    hMS('div', { className: 'm-body', style: { padding: '6px 18px 28px' } },
+      tasks.length === 0
+        ? emptyAll
+        : hMS(React.Fragment, null,
+            hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } },
+              running > 0 ? running + ' 个任务进行中 · 进度实时更新' : '生成与衍生都在后台完成，记录保留在这里'),
+            hMS('div', { className: 'no-bar', style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' } },
+              filters.map(k => hMS(UI.FilterPill, { key: k.key, active: f === k.key, count: k.n, onClick: () => setF(k.key) }, k.label))),
+            list.length === 0
+              ? hMS('div', { style: { textAlign: 'center', padding: '40px 18px' } },
+                  hMS('div', { style: { fontSize: 13.5, fontWeight: 600, color: 'var(--ink-2)' } }, '没有' + activeLabel + '的任务'),
+                  hMS('button', { onClick: () => setF('all'), className: 'm-tap', style: { marginTop: 10, background: 'none', border: 'none', color: 'var(--primary)', fontSize: 13, fontWeight: 700, cursor: 'pointer' } }, '查看全部任务'))
+              : hMS('div', { key: f, className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 11 } },
+                  list.map(taskCard)))));
 }
 
 // ============ 我的 Me ============
