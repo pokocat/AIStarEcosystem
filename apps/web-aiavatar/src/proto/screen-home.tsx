@@ -24,7 +24,6 @@ function MCarousel({ slides }) {
     const t = setInterval(() => setI(p => (p + 1) % n), 4600);
     return () => clearInterval(t);
   }, [n]);
-  const go = (d, e) => { if (e) e.stopPropagation(); setI(p => (p + d + n) % n); };
   const down = (e) => { dragRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }; };
   const up = (e) => {
     const s = dragRef.current; dragRef.current = null;
@@ -47,24 +46,16 @@ function MCarousel({ slides }) {
           background: s.bg, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 10, overflow: 'hidden' } },
           s.image && hMH('img', { src: s.image, alt: '', draggable: false, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' } }),
           hMH('span', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(8,16,24,.72), rgba(8,16,24,.32) 54%, rgba(8,16,24,.06))' } }),
-          hMH('div', { style: { position: 'relative', fontFamily: 'var(--font-disp)', fontSize: 21, fontWeight: 800, letterSpacing: 0, color: '#fff', textAlign: 'left', lineHeight: 1.14, padding: '0 76px 0 18px', textShadow: '0 2px 10px rgba(0,0,0,.22)' } }, s.title),
+          hMH('div', { style: { position: 'relative', fontFamily: 'var(--font-disp)', fontSize: 21, fontWeight: 800, letterSpacing: 0, color: '#fff', textAlign: 'left', lineHeight: 1.14, padding: '0 18px', textShadow: '0 2px 10px rgba(0,0,0,.22)' } }, s.title),
           hMH('span', { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, margin: '0 0 16px 18px', padding: '0 8px 0 8px', background: 'rgba(255,255,255,.92)', color: 'var(--ink)', borderRadius: 'var(--r-pill)', boxShadow: '0 6px 16px rgba(20,36,55,.22)' } },
             s.badge && hMH('span', { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', background: 'rgba(255,255,255,.16)', padding: '3px 8px', borderRadius: 'var(--r-pill)' } }, s.badge),
             hMH('span', { style: { fontSize: 13.5, fontWeight: 700, paddingLeft: s.badge ? 0 : 8 } }, s.cta),
-            hMH('span', { style: { display: 'grid', placeItems: 'center', width: 26, height: 26, borderRadius: 99, background: 'var(--primary)', color: '#fff' } }, hMH(Icons.arrowR, { size: 14, stroke: 2.4 })))))),
-      // 左右箭头
-      hMH('button', { onClick: e => go(-1, e), 'aria-label': '上一张', style: arrowStyle('left') }, hMH(Icons.chevL, { size: 18, stroke: 2.2 })),
-      hMH('button', { onClick: e => go(1, e), 'aria-label': '下一张', style: arrowStyle('right') }, hMH(Icons.chevR, { size: 18, stroke: 2.2 }))),
+            hMH('span', { style: { display: 'grid', placeItems: 'center', width: 26, height: 26, borderRadius: 99, background: 'var(--primary)', color: '#fff' } }, hMH(Icons.arrowR, { size: 14, stroke: 2.4 }))))))),
     // 圆点
     hMH('div', { style: { display: 'flex', justifyContent: 'center', gap: 6, marginTop: 11 } },
       slides.map((s, k) => hMH('button', { key: k, onClick: () => setI(k), 'aria-label': '第' + (k + 1) + '张', style: {
         width: k === i ? 18 : 6, height: 6, borderRadius: 99, border: 'none', cursor: 'pointer', padding: 0,
         background: k === i ? 'var(--primary)' : 'var(--line-3)', transition: 'all .3s' } }))));
-}
-function arrowStyle(side) {
-  return { position: 'absolute', top: '50%', [side]: 10, transform: 'translateY(-50%)', width: 34, height: 34, borderRadius: 99,
-    border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', color: 'var(--ink-2)',
-    background: 'rgba(255,255,255,.62)', backdropFilter: 'blur(6px)', boxShadow: '0 2px 8px rgba(20,36,55,.12)' };
 }
 
 // ——————————————————————————————————————————
@@ -176,11 +167,11 @@ function MHome({ ctx }) {
   const hasAssets = myAssets.length > 0;
 
   const SLIDES = [
-    { title: '一句话创建你的 AI 数字人', cta: '立即体验', badge: 'NEW', image: '/generated/home-banners/create-avatar.jpg',
+    { title: '一句话生成专属 AI 数字人，马上开工', cta: '立即生成', badge: 'HOT', image: '/generated/home-banners/create-avatar.jpg',
       bg: 'linear-gradient(120deg,#DDE6FF,#EBE0FF 52%,#FBE3F1)', glow: 'linear-gradient(120deg,#BFD0FF,#D9C6FF,#F7CDE6)', onClick: () => ctx.startCreate('ai') },
-    { title: '真人授权复刻，先录制再生成', cta: '开始录制', image: '/generated/home-banners/real-clone.jpg',
+    { title: '真人授权复刻，拍一段就有数字分身', cta: '马上录制', image: '/generated/home-banners/real-clone.jpg',
       bg: 'linear-gradient(120deg,#D8F1FB,#E3ECFF)', glow: 'linear-gradient(120deg,#BEE7F7,#CFE0FF)', onClick: () => ctx.startRealClone() },
-    { title: '精调形象，生成图集与视频资产', cta: '生成资产', image: '/generated/home-banners/refine-assets.jpg',
+    { title: '精修形象加图集视频，内容资产整套出炉', cta: '生成整套', image: '/generated/home-banners/refine-assets.jpg',
       bg: 'linear-gradient(120deg,#DEF5EA,#DCEFFB)', glow: 'linear-gradient(120deg,#C5EEDA,#C9E6F8)', onClick: () => ctx.startCreate('ai') },
   ];
 
