@@ -1050,3 +1050,18 @@ body, .app-root { overflow-x: hidden; }
 .m-body, .m-overlay { overscroll-behavior: contain; }     /* 不把滚动链传给外层 / 浏览器 */
 .wx-tab, .wx-fab, .m-tap, .m-press, button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .wx-tab.on { font-weight: 700; }
+
+/* v0.6 — 下拉刷新指示器（手势在 AppShell 内监听 .m-body 顶部下拉） */
+.m-ptr { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; z-index: 60; }
+.m-ptr-dot {
+  margin-top: 8px; width: 38px; height: 38px; border-radius: 99px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--sh-2);
+  display: grid; place-items: center; color: var(--primary);
+}
+
+/* v0.6 — 骨架屏（拉取后端数据时的占位，替代空白） */
+.m-skel {
+  position: relative; overflow: hidden; background: var(--surface-3);
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.72) 50%, transparent 80%);
+  background-size: 200% 100%; animation: shimmer 1.3s ease-in-out infinite;
+}

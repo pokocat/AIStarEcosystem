@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, JobApi, useApi, seed } from "./api";
+import { DATA, AvatarApi, JobApi, useApi, seed, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
@@ -156,7 +156,16 @@ function MFeatureCard({ title, sub, cta, tone, icon, onClick, big }) {
 
 // ——————————————————————————————————————————
 function MHome({ ctx }) {
-  const avatars = useApi(() => AvatarApi.list('mine'), seed.avatars());
+  // 显式 loading：live 模式拉取资产时先显示骨架，避免误闪「还没有数字人资产」空态
+  const [avatars, setAvatars] = useStateH(seed.avatars());
+  const [loadingAvatars, setLoadingAvatars] = useStateH(!USE_MOCK);
+  useEffectH(() => {
+    let live = true;
+    AvatarApi.list('mine')
+      .then((d) => { if (live) { setAvatars(d); setLoadingAvatars(false); } })
+      .catch(() => { if (live) setLoadingAvatars(false); });
+    return () => { live = false; };
+  }, []);
   const tasks = useApi(() => JobApi.list(), seed.jobs());
   const myAssets = avatars;
   const wip = avatars.filter(c => ['proofing','iterating','refining','pending','deriving'].includes(c.status));
@@ -187,10 +196,17 @@ function MHome({ ctx }) {
       hMH('div', { style: { padding: '0 18px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, marginBottom: 14 } },
         hMH('div', { style: { minWidth: 0 } },
           hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' } }, '我的数字人资产'),
-          hMH('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 } }, hasAssets ? (myAssets.length + ' 个形象 · 可随时调用') : '从这里开始你的第一个数字人')),
+          hMH('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 } }, loadingAvatars && !hasAssets ? '正在加载…' : hasAssets ? (myAssets.length + ' 个形象 · 可随时调用') : '从这里开始你的第一个数字人')),
         hasAssets && hMH('button', { onClick: () => ctx.tab('library'), style: { display: 'inline-flex', alignItems: 'center', gap: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 13, fontWeight: 700, padding: 0, flex: '0 0 auto' } },
           '全部', hMH(Icons.chevR, { size: 15, stroke: 2.2 }))),
-      hasAssets
+      loadingAvatars && !hasAssets
+        ? hMH('div', { className: 'm-hscroll', style: { padding: '0 18px 4px' } },
+            Array.from({ length: 3 }).map((_, i) => hMH('div', { key: i, style: { flex: '0 0 165px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
+              hMH('div', { className: 'm-skel', style: { width: '100%', aspectRatio: '4 / 5' } }),
+              hMH('div', { style: { padding: '10px 12px 13px' } },
+                hMH('div', { className: 'm-skel', style: { height: 13, width: '80%', borderRadius: 5 } }),
+                hMH('div', { className: 'm-skel', style: { height: 11, width: '55%', marginTop: 7, borderRadius: 5 } })))))
+        : hasAssets
         ? hMH('div', { className: 'm-hscroll', style: { padding: '0 18px 4px' } },
             myAssets.map(c => hMH(MAssetCardBig, { key: c.id, char: c, onOpen: ctx.openChar, onJobDone: ctx.reload })),
             hMH(MAddAssetCard, { onClick: ctx.openCreateSheet }))
