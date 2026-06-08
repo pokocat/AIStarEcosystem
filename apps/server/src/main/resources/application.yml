@@ -61,7 +61,7 @@ aep:
       enabled: ${AEP_SEED_DEV_DATA_ENABLED:true}
   jwt:
     secret: ${AEP_JWT_SECRET:aep-dev-secret-key-change-in-prod-32chars}
-    expiration-ms: ${AEP_JWT_EXPIRATION_MS:3600000}
+    expiration-ms: ${AEP_JWT_EXPIRATION_MS:604800000}
   internal:
     # 内部服务（如 apps/llm-gateway）→ apps/server 调用的共享密钥
     # 生产环境 **必须** 用 env 注入；任何写到 git 的 default 都视同泄漏
