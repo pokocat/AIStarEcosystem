@@ -34,8 +34,9 @@ function CodeRow({ phone, value, onChange, purpose }) {
     if (!/^1\d{10}$/.test(phone)) { toast('请输入 11 位手机号', { tone: 'warn' }); return; }
     setSending(true);
     try {
-      await AuthApi.smsRequestCode(phone, purpose);
-      toast('验证码已发送', { tone: 'ok' });
+      const result = await AuthApi.smsRequestCode(phone, purpose);
+      const notice = AuthApi.describeSmsRequestCodeResult(result);
+      toast(notice.message, { tone: notice.tone });
       setLeft(60);
       timer.current = setInterval(() => setLeft((s) => { if (s <= 1) { clearInterval(timer.current); return 0; } return s - 1; }), 1000);
     } catch (e: any) {

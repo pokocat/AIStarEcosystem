@@ -78,9 +78,9 @@ public class AliyunSmsSender implements SmsSender {
             @Value("${aep.sms.aliyun.response-timeout-seconds:20}") long responseTimeoutSeconds,
             @Value("${aep.sms.aliyun.call-timeout-seconds:30}") long callTimeoutSeconds,
             @Value("${aep.sms.aliyun.delivery-query-enabled:true}") boolean deliveryQueryEnabled,
-            @Value("${aep.sms.aliyun.delivery-query-attempts:3}") int deliveryQueryAttempts,
+            @Value("${aep.sms.aliyun.delivery-query-attempts:10}") int deliveryQueryAttempts,
             @Value("${aep.sms.aliyun.delivery-query-initial-delay-ms:1500}") long deliveryQueryInitialDelayMs,
-            @Value("${aep.sms.aliyun.delivery-query-interval-ms:1500}") long deliveryQueryIntervalMs,
+            @Value("${aep.sms.aliyun.delivery-query-interval-ms:5000}") long deliveryQueryIntervalMs,
             ObjectMapper mapper
     ) {
         String trimmedAccessKeyId = trim(accessKeyId);
@@ -224,8 +224,12 @@ public class AliyunSmsSender implements SmsSender {
                     continue;
                 }
                 SmsSendResult.DeliveryStatus status = deliveryStatusOf(detail.getSendStatus());
-                return withDelivery(accepted, status, detail.getSendStatus(), detail.getErrCode(),
+                last = withDelivery(accepted, status, detail.getSendStatus(), detail.getErrCode(),
                         detail.getSendDate(), detail.getReceiveDate());
+                if (status == SmsSendResult.DeliveryStatus.PENDING) {
+                    continue;
+                }
+                return last;
             } catch (InterruptedException e) {
                 throw e;
             } catch (Exception e) {

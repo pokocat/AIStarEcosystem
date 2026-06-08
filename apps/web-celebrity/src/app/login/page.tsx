@@ -193,7 +193,11 @@ function SendCodeButton({
     setSending(true);
     onError("");
     try {
-      await AuthApi.smsRequestCode(trimmed, purpose);
+      const result = await AuthApi.smsRequestCode(trimmed, purpose);
+      const notice = AuthApi.describeSmsRequestCodeResult(result);
+      if (notice.tone === "warn") {
+        onError(notice.message);
+      }
       setCooldown(60);
     } catch (e) {
       const err = e as { error?: { message?: string }; message?: string };

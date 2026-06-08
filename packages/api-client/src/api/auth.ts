@@ -85,6 +85,32 @@ export interface SmsRequestCodeResult {
   receiveDate?: string;
 }
 
+export function describeSmsRequestCodeResult(result: SmsRequestCodeResult): { tone: "ok" | "warn" | "err"; message: string } {
+  const suffix = result.bizId ? `（BizId ${result.bizId}）` : "";
+  switch (result.deliveryStatus) {
+    case "DELIVERED":
+      return { tone: "ok", message: "验证码已送达" };
+    case "NOT_APPLICABLE":
+      return { tone: "ok", message: "验证码请求已处理" };
+    case "FAILED":
+      return {
+        tone: "err",
+        message: `短信发送失败${result.errCode ? `：${result.errCode}` : ""}${suffix}`,
+      };
+    case "PENDING":
+    case "ACCEPTED":
+      return {
+        tone: "warn",
+        message: `短信已提交，运营商回执尚未确认${suffix}`,
+      };
+    default:
+      return {
+        tone: "warn",
+        message: `短信请求已提交，但回执状态未知${suffix}`,
+      };
+  }
+}
+
 /**
  * 请求一个新的短信验证码。失败抛 ApiError（429 速率限制 / 锁定；400 手机号格式）。
  * 成功返回短信供应商状态，码默认 5 分钟有效。

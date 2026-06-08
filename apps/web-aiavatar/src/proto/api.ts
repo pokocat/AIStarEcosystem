@@ -26,11 +26,49 @@ const USER_KEY = "aiavatar_user";
 export class ApiError extends Error {
   code?: string;
   status?: number;
-  constructor(message: string, code?: string, status?: number) {
+  details?: unknown;
+  constructor(message: string, code?: string, status?: number, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.details = details;
+  }
+}
+
+export type SmsDeliveryStatus = "NOT_APPLICABLE" | "ACCEPTED" | "PENDING" | "DELIVERED" | "FAILED" | "UNKNOWN";
+export interface SmsRequestCodeResult {
+  sent: boolean;
+  accepted: boolean;
+  provider: string;
+  purpose: "login" | "register";
+  templateCode?: string;
+  httpStatus?: number;
+  providerCode?: string;
+  providerMessage?: string;
+  requestId?: string;
+  bizId?: string;
+  deliveryStatus: SmsDeliveryStatus;
+  sendStatus?: number;
+  errCode?: string;
+  sendDate?: string;
+  receiveDate?: string;
+}
+
+export function describeSmsRequestCodeResult(result: SmsRequestCodeResult): { tone: "ok" | "warn" | "err"; message: string } {
+  const suffix = result.bizId ? `（BizId ${result.bizId}）` : "";
+  switch (result.deliveryStatus) {
+    case "DELIVERED":
+      return { tone: "ok", message: "验证码已送达" };
+    case "NOT_APPLICABLE":
+      return { tone: "ok", message: "验证码请求已处理" };
+    case "FAILED":
+      return { tone: "err", message: `短信发送失败${result.errCode ? `：${result.errCode}` : ""}${suffix}` };
+    case "PENDING":
+    case "ACCEPTED":
+      return { tone: "warn", message: `短信已提交，运营商回执尚未确认${suffix}` };
+    default:
+      return { tone: "warn", message: `短信请求已提交，但回执状态未知${suffix}` };
   }
 }
 
@@ -98,11 +136,11 @@ async function parseResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     fireAuthExpired();
     const err = json?.error || {};
-    throw new ApiError(err.message || "登录状态已过期，请重新登录", err.code || "UNAUTHORIZED", 401);
+    throw new ApiError(err.message || "登录状态已过期，请重新登录", err.code || "UNAUTHORIZED", 401, err.details);
   }
   if (!res.ok || (json && json.success === false)) {
     const err = json?.error || {};
-    throw new ApiError(err.message || `请求失败（${res.status}）`, err.code, res.status);
+    throw new ApiError(err.message || `请求失败（${res.status}）`, err.code, res.status, err.details);
   }
   if (json && typeof json === "object" && "data" in json) return json.data as T;
   return json as T;
@@ -138,6 +176,7 @@ async function authFetch<T>(path: string, body?: any): Promise<T> {
 }
 
 export const AuthApi = {
+  describeSmsRequestCodeResult,
   /** dev 体验账号清单（生产环境 404 → 返回 []）。 */
   devAccounts: async (): Promise<any[]> => {
     try {
@@ -148,7 +187,7 @@ export const AuthApi = {
   },
   devLogin: (username: string): Promise<{ token: string; user: any }> =>
     authFetch(`/dev-login`, { username }),
-  smsRequestCode: (phone: string, purpose: "login" | "register" = "login"): Promise<{ sent: boolean }> =>
+  smsRequestCode: (phone: string, purpose: "login" | "register" = "login"): Promise<SmsRequestCodeResult> =>
     authFetch(`/sms/request-code`, { phone, purpose }),
   smsLogin: (phone: string, code: string): Promise<{ token: string; user: any }> =>
     authFetch(`/sms/verify`, { phone, code }),

@@ -47,7 +47,7 @@ import * as PublishJobApi from "./api/publish-job";
 import * as SocialAccountApi from "./api/social-account";
 
 export { AccountApi, AuthApi, PublishJobApi, SocialAccountApi };
-export type { SmsCodePurpose } from "./api/auth";
+export type { SmsCodePurpose, SmsDeliveryStatus, SmsRequestCodeResult } from "./api/auth";
 
 // 子路径 alt 入口（按域细粒度引入）：
 //   import { getMe } from "@ai-star-eco/api-client/api/account";

@@ -5,6 +5,23 @@ const { formatActivationCode } = require("../../utils/format.js");
 const app = getApp();
 let smsTimer = null;
 
+function smsNotice(result) {
+  const biz = result && result.bizId ? `（BizId ${result.bizId}）` : "";
+  switch (result && result.deliveryStatus) {
+    case "DELIVERED":
+      return "验证码已送达";
+    case "NOT_APPLICABLE":
+      return "验证码请求已处理";
+    case "FAILED":
+      return `短信发送失败${result.errCode ? `：${result.errCode}` : ""}${biz}`;
+    case "PENDING":
+    case "ACCEPTED":
+      return `短信已提交，运营商回执尚未确认${biz}`;
+    default:
+      return `短信请求已提交，但回执状态未知${biz}`;
+  }
+}
+
 Page({
   data: {
     statusBarHeight: 44,
@@ -61,7 +78,7 @@ Page({
     }
     wx.showLoading({ title: "发送中…", mask: true });
     try {
-      await AuthApi.smsRequestCode(this.data.form.phone, "register");
+      const result = await AuthApi.smsRequestCode(this.data.form.phone, "register");
       wx.hideLoading();
       this.setData({ cooldown: 60 });
       smsTimer = setInterval(() => {
@@ -73,7 +90,7 @@ Page({
           this.setData({ cooldown: next });
         }
       }, 1000);
-      wx.showToast({ icon: "none", title: "验证码已发送" });
+      wx.showToast({ icon: "none", title: smsNotice(result) });
     } catch (e) {
       wx.hideLoading();
       wx.showToast({ icon: "none", title: "发送失败：" + (e.message || "未知错误") });
