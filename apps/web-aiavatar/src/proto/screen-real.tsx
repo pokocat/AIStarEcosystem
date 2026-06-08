@@ -349,7 +349,7 @@ function MRealCapture({ char, ctx }) {
       setAvatar(fresh);
       setPct(100);
       setStage('ready');
-      toast('数字人已生成 · 授权凭证已登记', { tone: 'ok' });
+      toast('数字人已生成 · 肖像授权已保存', { tone: 'ok' });
     } catch (e: any) {
       setError(e?.message || '生成失败，请重试');
     } finally {

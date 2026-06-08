@@ -238,7 +238,7 @@ export const STATUS: Record<AvatarStatus, StatusMeta> = {
   pending: { key: "pending", label: "待定稿", tone: "warn", step: 3 },
   finalized: { key: "finalized", label: "已定稿", tone: "ok", step: 4 },
   deriving: { key: "deriving", label: "衍生中", tone: "primary", step: 4 },
-  archived: { key: "archived", label: "已入库", tone: "ok", step: 5 },
+  archived: { key: "archived", label: "已就绪", tone: "ok", step: 5 },
 };
 
 export const PATHS: Record<AvatarPath, PathMeta> = {

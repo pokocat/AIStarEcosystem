@@ -115,18 +115,28 @@ function MTasks({ ctx }) {
     catch (e: any) { toast(e?.message || '取消失败', { tone: 'err' }); }
     finally { setBusyId(''); }
   };
+  // 任务对应的衍生类型 → 完成后「查看」直接跳到该衍生的成片，而非只回资产首页
+  const derivKeyOf = (t) => {
+    if (t.derivKey && DATA.DERIVS.some((d) => d.key === t.derivKey)) return t.derivKey;
+    const d = DATA.DERIVS.find((d) => d.name === t.kind);
+    return d ? d.key : null;
+  };
   const view = async (t) => {
     try {
       const a = await AvatarApi.get(t.char);
-      if (a && a.id) { ctx.openChar(a); return; }
+      if (a && a.id) {
+        const dk = derivKeyOf(t);
+        if (dk) ctx.openDeriv(a, dk); else ctx.openChar(a);
+        return;
+      }
     } catch {}
     toast('关联资产不存在或已删除', { tone: 'warn' });
   };
 
   return hMS('div', { className: 'm-overlay', 'data-screen-label': '任务中心' },
-    hMS(WxNavS, { title: '作业队列', onBack: ctx.back }),
+    hMS(WxNavS, { title: '任务中心', onBack: ctx.back }),
     hMS('div', { className: 'm-body', style: { padding: '4px 18px 28px' } },
-      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '所有 AI 生成均为异步作业，进度实时刷新；失败可重试，进行中可取消。'),
+      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '生成、衍生等都是后台任务，会在这里实时更新进度；完成后点「查看」直达成片，失败可重试、进行中可取消。'),
       hMS('div', { style: { display: 'flex', gap: 10, marginBottom: 18 } },
         [['进行中', running, 'primary'], ['已完成', doneN, 'ok'], ['失败', failN, 'err']].map(([k, v, t]) =>
           hMS('div', { key: k, className: 'm-card', style: { flex: 1, padding: '12px 14px' } },
@@ -224,7 +234,7 @@ function MMe({ ctx }) {
       hMS('div', { className: 'm-card', style: { padding: 0 } },
         hMS(MeRow, { icon: Icons.mic, label: '声音工作室', sub: myVoices.length + ' 个声线资产', color: 'var(--ink-2)', onClick: () => ctx.go('voice') }),
         hMS(MeRow, { icon: Icons.shield, label: '授权登记', sub: '真人肖像电子授权', color: 'var(--ink-2)', onClick: () => ctx.go('licenses') }),
-        hMS(MeRow, { icon: Icons.bolt, label: '作业队列', sub: '异步生成任务', color: 'var(--primary)', badge: jobs.filter(t => t.status === 'running').length, onClick: () => ctx.go('tasks') }),
+        hMS(MeRow, { icon: Icons.bolt, label: '任务中心', sub: '生成 / 衍生进度', color: 'var(--primary)', badge: jobs.filter(t => t.status === 'running').length, onClick: () => ctx.go('tasks') }),
         hMS(MeRow, { icon: Icons.heart, label: '我的收藏', sub: favCount + ' 个数字人', color: 'var(--ink-2)', onClick: () => ctx.tab('library'), last: true }))),
 
     hMS('div', { style: { padding: '18px 18px 0' } },
