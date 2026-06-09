@@ -91,7 +91,12 @@ public class DapAvatarController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<AvatarDto> get(Principal principal, @PathVariable String id) {
+    public ApiResponse<?> get(Principal principal, @PathVariable String id) {
+        // 数字人广场公开形象（PA-*）只读，来自目录而非用户库 —— 支持详情永久链接 / 刷新冷还原。
+        if (id != null && id.startsWith("PA-")) {
+            Map<String, Object> pub = catalog.publicAvatar(id);
+            if (pub != null) return ApiResponse.of(pub);
+        }
         return ApiResponse.of(avatarService.get(uid(principal), id));
     }
 
@@ -143,6 +148,12 @@ public class DapAvatarController {
     @PostMapping("/{id}/versions/{v}/fork")
     public ApiResponse<AvatarDto> forkVersion(Principal principal, @PathVariable String id, @PathVariable int v) {
         return ApiResponse.of(avatarService.forkVersion(uid(principal), id, v));
+    }
+
+    /** 数字人广场「另存为我的数字人」：复制只读公开数字人（PA-*）为当前用户可编辑的数字人。 */
+    @PostMapping("/{id}/save-as")
+    public ApiResponse<AvatarDto> saveAs(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(avatarService.saveAsFromPublic(uid(principal), id));
     }
 
     @GetMapping("/{id}/looks")

@@ -417,7 +417,13 @@ export const AvatarApi = {
     return apiFetch(`/avatars?${qs}`);
   },
   get: (id: string): Promise<any> => {
-    if (USE_MOCK) return mock(mockChars.find((c) => c.id === id) || mockChars[0]);
+    if (USE_MOCK) {
+      if (String(id).startsWith("PA-")) {
+        const pub = Mock.PUBLIC_AVATARS.find((c) => c.id === id);
+        if (pub) return mock(pub);   // 数字人广场公开形象（只读，不在 mockChars 里）
+      }
+      return mock(mockChars.find((c) => c.id === id) || mockChars[0]);
+    }
     return apiFetch(`/avatars/${id}`);
   },
   create: (body: { path: string; entry?: string; name?: string }): Promise<any> => {
@@ -514,6 +520,21 @@ export const AvatarApi = {
       return mock(copy);
     }
     return apiFetch(`/avatars/${id}/versions/${version}/fork`, { method: "POST" });
+  },
+  /**
+   * 数字人广场「另存为我的数字人」：把只读公开数字人（PA-*）复制为当前用户可编辑的副本（DH-*）。
+   * 复制形象图集 / 设定档案 / 配色，状态置为已就绪，之后可自由改名 / 迭代 / 衍生。
+   */
+  saveAs: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const src = Mock.PUBLIC_AVATARS.find((c) => c.id === id);
+      const copy: any = src
+        ? { ...JSON.parse(JSON.stringify(src)), id: `DH-${mockSeq++}`, codename: `${src.codename || "avatar"}-copy`, fav: false, versions: 1, updated: "刚刚" }
+        : { id: `DH-${mockSeq++}` };
+      mockChars.unshift(copy);
+      return mock(copy);
+    }
+    return apiFetch(`/avatars/${id}/save-as`, { method: "POST" });
   },
   looks: (id: string): Promise<any[]> => {
     if (USE_MOCK) return mock([]);

@@ -517,16 +517,102 @@ export const DATA = {
   catSoft,
 };
 
-// ── 公开数字人 / 应用中心 / 场景库 / 账户（原先内联在屏幕里的 mock，统一收口为数据源）──
+// ── 数字人广场 / 应用中心 / 场景库 / 账户（原先内联在屏幕里的 mock，统一收口为数据源）──
 
-/** 公开（只读复用）数字人。字段较精简，用于库的 public 网格。 */
+/**
+ * 数字人广场（公开只读数字人）。10 个不同风格 / 元素 / 特征的样板形象，
+ * 全部为平台 AI 原创，**只读**；用户「另存为我的数字人」后得到可自由修改的副本。
+ *
+ * 图片：每人 3 张（codex-cli imagegen 生成，存 public/plaza/PA-XX-{1,2,3}.jpg）。
+ *   imageUrl = 正面定妆（-1）；shotImages.right = 右侧 3/4（-2）；shotImages.left = 左侧（-3）。
+ *   根相对路径 → 无论 mock / live 都由本 app 的 /public 直出，server 无需托管。
+ */
+const paImgs = (id: string) => ({
+  imageUrl: `/plaza/${id}-1.jpg`,
+  shotImages: { right: `/plaza/${id}-2.jpg`, left: `/plaza/${id}-3.jpg` } as Record<string, string>,
+});
+
 export const PUBLIC_AVATARS: any[] = [
-  { id: "PA-01", name: "Annie", archetype: "商务职业", hue: 28, cat: "pro", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
-  { id: "PA-02", name: "Christina", archetype: "居家生活", hue: 168, cat: "life", fav: true, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
-  { id: "PA-03", name: "Terry", archetype: "播客主播", hue: 248, cat: "ugc", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
-  { id: "PA-04", name: "Pamela", archetype: "社媒口播", hue: 8, cat: "community", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
-  { id: "PA-05", name: "Marcus", archetype: "专业讲解", hue: 200, cat: "pro", fav: false, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
-  { id: "PA-06", name: "Yuki", archetype: "生活方式", hue: 320, cat: "life", fav: true, path: "ai", status: "archived", counts: {}, deriv: {}, def: {} },
+  {
+    id: "PA-01", name: "Annie 安妮", codename: "annie-pro", path: "ai", archetype: "商务精英主持",
+    tagline: "商务发布会与产品讲解的全能数字主持", hue: 222, cat: "pro", fav: false,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "新闻播报女声",
+    palette: { bg1: "#4F6BFF", bg2: "#1B2A66", skin: "#F2D6BE", hair: "#2A2320", cloth: "#1E2B5A", accent: "#9DB0FF" },
+    def: { 年龄: "约 30 岁", 气质: "专业 · 干练 · 亲和", 用途: "发布会主持 / 产品讲解 / 企业培训", 性格: ["专业", "可信", "沉稳"], 服饰: "海军蓝西装 · 商务", 形象来源: "AI 原创虚构", 设定语: "镜头前永远准时、得体、有说服力的商务搭档。" },
+    counts: {}, deriv: {}, ...paImgs("PA-01"),
+  },
+  {
+    id: "PA-02", name: "Christina 林晚", codename: "christina-home", path: "ai", archetype: "居家生活博主",
+    tagline: "治愈系居家生活与好物种草博主", hue: 28, cat: "life", fav: true,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "亲和邻家女声",
+    palette: { bg1: "#F0C9A0", bg2: "#8A5A38", skin: "#F5DBC4", hair: "#6B4A30", cloth: "#F3E6D2", accent: "#E8B07A" },
+    def: { 年龄: "约 28 岁", 气质: "温暖 · 治愈 · 松弛", 用途: "居家好物 / 生活 vlog / 母婴种草", 性格: ["温柔", "细腻", "真诚"], 服饰: "奶油色针织衫 · 居家", 形象来源: "AI 原创虚构", 设定语: "把日子过成诗，陪你慢慢生活的邻家女孩。" },
+    counts: {}, deriv: {}, ...paImgs("PA-02"),
+  },
+  {
+    id: "PA-03", name: "Terry 陈泽", codename: "terry-podcast", path: "ai", archetype: "播客主播",
+    tagline: "有梗有料的播客主播与访谈口播", hue: 52, cat: "ugc", fav: false,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "青年清爽男声",
+    palette: { bg1: "#B7A35A", bg2: "#4A3A1E", skin: "#EBCBA8", hair: "#1C1712", cloth: "#5C5A2E", accent: "#E0C26A" },
+    def: { 年龄: "约 32 岁", 气质: "松弛 · 健谈 · 有梗", 用途: "播客 / 访谈口播 / 知识脱口秀", 性格: ["幽默", "真实", "健谈"], 服饰: "橄榄绿连帽卫衣 · 休闲", 形象来源: "AI 原创虚构", 设定语: "戴上耳机就有聊不完的话题，懂内容也懂节奏。" },
+    counts: {}, deriv: {}, ...paImgs("PA-03"),
+  },
+  {
+    id: "PA-04", name: "Pamela 苏菲", codename: "pamela-social", path: "ai", archetype: "社媒种草达人",
+    tagline: "高感染力的社媒种草与口播达人", hue: 326, cat: "community", fav: false,
+    status: "archived", updated: "已就绪", versions: 1, engine: "FLUX", voiceName: "少女甜嗓",
+    palette: { bg1: "#FF7EB6", bg2: "#2BB6C4", skin: "#F6D6C0", hair: "#2A2230", cloth: "#FFB3D1", accent: "#36D6E0" },
+    def: { 年龄: "约 24 岁", 气质: "活力 · 时髦 · 有感染力", 用途: "社媒口播 / 美妆种草 / 短视频带货", 性格: ["热情", "自信", "爱分享"], 服饰: "粉色短外套 · 潮流", 形象来源: "AI 原创虚构", 设定语: "自带打光板的种草女孩，三秒抓住你的注意力。" },
+    counts: {}, deriv: {}, ...paImgs("PA-04"),
+  },
+  {
+    id: "PA-05", name: "Marcus 马库斯", codename: "marcus-mentor", path: "ai", archetype: "专业知识讲师",
+    tagline: "权威耐心的知识讲师与财经解读", hue: 214, cat: "pro", fav: false,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "沉稳大叔低音",
+    palette: { bg1: "#7C8AA6", bg2: "#2A3142", skin: "#ECCDB0", hair: "#4A4A52", cloth: "#2E3340", accent: "#C9B07A" },
+    def: { 年龄: "约 45 岁", 气质: "权威 · 沉稳 · 睿智", 用途: "知识科普 / 课程讲师 / 财经解读", 性格: ["严谨", "博学", "耐心"], 服饰: "炭灰西装 · 学者", 形象来源: "AI 原创虚构", 设定语: "把复杂的事讲明白，是值得托付信任的行业前辈。" },
+    counts: {}, deriv: {}, ...paImgs("PA-05"),
+  },
+  {
+    id: "PA-06", name: "Yuki 由纪", codename: "yuki-muse", path: "ai", archetype: "日系生活方式",
+    tagline: "高级感日系生活方式与美妆形象", hue: 36, cat: "life", fav: true,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "御姐优雅女声",
+    palette: { bg1: "#E7DCCB", bg2: "#9A8C76", skin: "#F4DEC9", hair: "#201A18", cloth: "#E3D6C2", accent: "#C7B49A" },
+    def: { 年龄: "约 25 岁", 气质: "清新 · 安静 · 高级", 用途: "美妆 / 生活方式 / 品牌短片", 性格: ["恬静", "审美在线", "自律"], 服饰: "米色高领针织 · 极简", 形象来源: "AI 原创虚构", 设定语: "安静却有存在感，把简单穿成高级的日系女孩。" },
+    counts: {}, deriv: {}, ...paImgs("PA-06"),
+  },
+  {
+    id: "PA-07", name: "Selena 星澜", codename: "selena-stellar", path: "ai", archetype: "二次元星界少女",
+    tagline: "星界主题虚拟主播与二次元 IP", hue: 258, cat: "community", fav: false,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "少女甜嗓",
+    palette: { bg1: "#9A7BFF", bg2: "#2C1E66", skin: "#F3DEC8", hair: "#CBB7FF", cloth: "#6E4DD6", accent: "#FFD36B" },
+    def: { 年龄: "设定 17 岁", 气质: "空灵 · 神秘 · 治愈", 用途: "虚拟主播 / IP 立绘 / 周边", 性格: ["温柔", "疏离", "坚定"], 服饰: "星河长裙 · 流光", 形象来源: "AI 原创虚构", 设定语: "银河彼端的观星少女，能听见每一颗星辰的低语。" },
+    counts: {}, deriv: {}, ...paImgs("PA-07"),
+  },
+  {
+    id: "PA-08", name: "Vex 维克斯", codename: "vex-runner", path: "ai", archetype: "赛博机甲猎人",
+    tagline: "赛博朋克赏金猎人与游戏概念角色", hue: 332, cat: "ugc", fav: false,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "沉稳大叔低音",
+    palette: { bg1: "#FF3D77", bg2: "#1A1030", skin: "#E2BFA6", hair: "#15121C", cloth: "#201A2E", accent: "#38E0FF" },
+    def: { 年龄: "外观 26 岁", 气质: "凌厉 · 冷峻 · 孤傲", 用途: "游戏角色 / 剧情 / 概念设计", 性格: ["寡言", "果决", "重义"], 服饰: "战术夹克 · 义体回路", 形象来源: "AI 原创虚构", 设定语: "左臂是义体，右眼是瞄具，在霓虹雨夜只认筹码与道义。" },
+    counts: {}, deriv: {}, ...paImgs("PA-08"),
+  },
+  {
+    id: "PA-09", name: "Cha 阿茶", codename: "cha-mascot", path: "ai", archetype: "萌系吉祥物",
+    tagline: "萌系奶茶吉祥物与品牌 IP 形象", hue: 32, cat: "community", fav: true,
+    status: "archived", updated: "已就绪", versions: 1, engine: "FLUX", voiceName: "少女甜嗓",
+    palette: { bg1: "#F4D8B0", bg2: "#B07B4E", skin: "#F6E2C8", hair: "#C99B6A", cloth: "#EBD2B0", accent: "#8FD0E8" },
+    def: { 年龄: "设定 ∞", 气质: "呆萌 · 治愈 · 暖心", 用途: "品牌 IP / 吉祥物 / 表情包", 性格: ["好奇", "贴心", "话痨"], 服饰: "奶茶色连帽卫衣 · 萌系", 形象来源: "AI 原创虚构", 设定语: "一杯奶茶里跳出来的快乐使者，负责把可爱传染给每个人。" },
+    counts: {}, deriv: {}, ...paImgs("PA-09"),
+  },
+  {
+    id: "PA-10", name: "Mubai 慕白", codename: "mubai-ink", path: "ai", archetype: "新中式国风雅士",
+    tagline: "新中式国风雅士与文旅时尚形象", hue: 158, cat: "life", fav: false,
+    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "播音正经男声",
+    palette: { bg1: "#3E6B5A", bg2: "#14201C", skin: "#ECCFB2", hair: "#14110F", cloth: "#1C2622", accent: "#6FB59A" },
+    def: { 年龄: "约 27 岁", 气质: "清雅 · 内敛 · 风骨", 用途: "国风 / 文旅 / 时尚大片", 性格: ["儒雅", "沉静", "讲究"], 服饰: "新中式墨竹长衫 · 雅致", 形象来源: "AI 原创虚构", 设定语: "一身墨色入画来，把东方的留白与风骨穿在身上。" },
+    counts: {}, deriv: {}, ...paImgs("PA-10"),
+  },
 ];
 
 export interface ApplicationTool {

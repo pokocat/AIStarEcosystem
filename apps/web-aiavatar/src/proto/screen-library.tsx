@@ -77,7 +77,7 @@ function MLibrary({ ctx }) {
   return hML('div', { className: 'm-body has-tabbar', 'data-screen-label': '数字人库' },
     hML('div', { className: 'wx-nav', style: { paddingLeft: 18 } },
       hML('div', { style: { flex: 1, minWidth: 0, display: 'flex', gap: 22 } },
-        [['mine', '我的数字人'], ['public', '公开数字人']].map(([k, l]) => {
+        [['mine', '我的数字人'], ['public', '数字人广场']].map(([k, l]) => {
           const on = top === k;
           return hML('button', { key: k, onClick: () => setTop(k), style: { position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 6px', fontFamily: 'var(--font-disp)', fontSize: 16.5, fontWeight: on ? 800 : 600, color: on ? 'var(--ink)' : 'var(--ink-3)', whiteSpace: 'nowrap' } },
             l, on && hML('span', { style: { position: 'absolute', left: 0, right: 0, bottom: -1, height: 3, borderRadius: 99, background: 'var(--primary)' } }));
@@ -238,6 +238,34 @@ function DerivConfigSheet({ derivKey, char, onClose, onSubmit }) {
           '开始生成' + (multi ? '（' + chosen.length + ' 张）' : derivKey === 'atlas' ? '(5 张)'.replace('(', '（').replace(')', '）') : '')))));
 }
 
+// —— 数字人广场 · 公开形象只读陈列（形象图集 + 设定档案；不带任何编辑 / 生成入口）——
+function MPublicShowcase({ char }) {
+  const shots = char.shotImages || {};
+  const imgs: any[] = [];
+  if (char.imageUrl) imgs.push({ src: char.imageUrl, label: '定妆形象' });
+  if (shots.right) imgs.push({ src: shots.right, label: '右侧 3/4' });
+  if (shots.left) imgs.push({ src: shots.left, label: '左侧' });
+  const def = char.def || {};
+  const entries = Object.entries(def).filter(([k]) => k !== '设定语');
+  const title = (t) => hML('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 12 } }, t);
+  return hML('div', { className: 'm-fade', style: { padding: '16px 18px 0' } },
+    hML('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 18, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
+      hML(Icons.shield, { size: 16, style: { color: 'var(--primary)', flex: '0 0 auto' } }),
+      hML('span', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '广场公开形象 · 只读展示。「另存为我的数字人」后即可自由改名、迭代与生成衍生。')),
+    imgs.length > 0 && hML('div', { style: { marginBottom: 22 } },
+      title('形象图集'),
+      hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 } },
+        imgs.map((t, i) => hML('div', { key: i, style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
+          hML('img', { src: t.src, alt: t.label, style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
+          hML('div', { className: 'ph-label', style: { left: 7, bottom: 7 } }, t.label))))),
+    entries.length > 0 && hML('div', null,
+      title('设定档案'),
+      hML('div', { style: { display: 'flex', flexDirection: 'column' } },
+        entries.map(([k, v]: any) => hML('div', { key: k, style: { padding: '11px 0', borderBottom: '1px solid var(--line)' } },
+          hML('div', { style: { fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 3 } }, k),
+          hML('div', { style: { fontSize: 13.5, color: 'var(--ink)', fontWeight: Array.isArray(v) ? 400 : 600, lineHeight: 1.45 } }, Array.isArray(v) ? v.join(' · ') : String(v || '—')))))));
+}
+
 function MDetail({ char: initialChar, ctx }) {
   const [char, setChar] = useStateML(initialChar);
   const [tab, setTab] = useStateML('assets');
@@ -247,6 +275,7 @@ function MDetail({ char: initialChar, ctx }) {
   const [genSeq, setGenSeq] = useStateML(0);          // 生成完成后递增 → 作品库重新拉取
   const [confirmDel, setConfirmDel] = useStateML(false);
   const [deleting, setDeleting] = useStateML(false);
+  const [saving, setSaving] = useStateML(false);
   const [editingName, setEditingName] = useStateML(false);
   const [draftName, setDraftName] = useStateML(char.name || '');
   const voice = ctx.voiceFor(char);
@@ -301,6 +330,20 @@ function MDetail({ char: initialChar, ctx }) {
       setDraftName(prev || '');
       toast(e?.message || '名称保存失败', { tone: 'err' });
     }
+  };
+
+  /** 数字人广场「另存为我的数字人」：复制只读公开形象为可编辑副本并打开它。 */
+  const saveAs = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const fresh = await AvatarApi.saveAs(char.id);
+      toast('已另存为我的数字人 · 现在可自由编辑', { tone: 'ok' });
+      ctx.reload && ctx.reload();
+      ctx.openChar ? ctx.openChar(fresh) : ctx.back();
+    } catch (e: any) {
+      toast(e?.message || '另存失败，请稍后重试', { tone: 'err' });
+    } finally { setSaving(false); }
   };
 
   const doDelete = async () => {
@@ -381,34 +424,38 @@ function MDetail({ char: initialChar, ctx }) {
         char.def && char.def['设定语'] && hML('div', { style: { padding: '0 16px 15px' } },
           hML('div', { style: { fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5, paddingLeft: 11, borderLeft: '2px solid var(--primary-soft)' } }, '“' + char.def['设定语'] + '”'))),
 
-      // 概览统计
-      hML('div', { className: 'm-card', style: { margin: '12px 18px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between' } },
-        [['版本', char.versions], ['作品', totalAssets], ['视频', counts.video || 0], ['更新', char.updated]].map(([k, v], i) =>
-          hML('div', { key: i, style: { textAlign: 'center', flex: 1, borderLeft: i ? '1px solid var(--line)' : 'none' } },
-            hML('div', { className: 'mono', style: { fontSize: 16, fontWeight: 700 } }, v),
-            hML('div', { style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, k)))),
+      // 数字人广场公开形象 → 只读陈列（图集 + 设定档案）；自有形象 → 概览统计 + 作品 / 版本 / 档案
+      isPublic
+        ? hML(MPublicShowcase, { char })
+        : hML(React.Fragment, null,
+          // 概览统计
+          hML('div', { className: 'm-card', style: { margin: '12px 18px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between' } },
+            [['版本', char.versions], ['作品', totalAssets], ['视频', counts.video || 0], ['更新', char.updated]].map(([k, v], i) =>
+              hML('div', { key: i, style: { textAlign: 'center', flex: 1, borderLeft: i ? '1px solid var(--line)' : 'none' } },
+                hML('div', { className: 'mono', style: { fontSize: 16, fontWeight: 700 } }, v),
+                hML('div', { style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, k)))),
 
-      // tabs
-      hML('div', { style: { position: 'sticky', top: 0, zIndex: 5, background: 'var(--canvas)', padding: '16px 18px 0', marginTop: 6 } },
-        hML('div', { style: { display: 'flex', gap: 8, overflowX: 'auto' }, className: 'no-bar' },
-          tabs.map(t => {
-            const on = t.key === tab;
-            return hML('button', { key: t.key, onClick: () => setTab(t.key), style: {
-              flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
-              background: on ? 'var(--ink)' : 'transparent', color: on ? '#fff' : 'var(--ink-3)',
-              fontSize: 13.5, fontWeight: on ? 700 : 600 } }, t.label);
-          }))),
+          // tabs
+          hML('div', { style: { position: 'sticky', top: 0, zIndex: 5, background: 'var(--canvas)', padding: '16px 18px 0', marginTop: 6 } },
+            hML('div', { style: { display: 'flex', gap: 8, overflowX: 'auto' }, className: 'no-bar' },
+              tabs.map(t => {
+                const on = t.key === tab;
+                return hML('button', { key: t.key, onClick: () => setTab(t.key), style: {
+                  flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
+                  background: on ? 'var(--ink)' : 'transparent', color: on ? '#fff' : 'var(--ink-3)',
+                  fontSize: 13.5, fontWeight: on ? 700 : 600 } }, t.label);
+              }))),
 
-      hML('div', { className: 'm-fade', key: tab, style: { padding: '16px 18px 0' } },
-        tab === 'assets' && hML(MAssets, { char, ctx, busy: derivBusy, onGenerate: openDerivConfig, onOpenGenerate: () => setQuickGen(true), nonce: genSeq }),
-        tab === 'versions' && hML(MVersions, { char, ctx, onChanged: refresh }),
-        tab === 'license' && hML(MLicense, { char, ctx }))),
+          hML('div', { className: 'm-fade', key: tab, style: { padding: '16px 18px 0' } },
+            tab === 'assets' && hML(MAssets, { char, ctx, busy: derivBusy, onGenerate: openDerivConfig, onOpenGenerate: () => setQuickGen(true), nonce: genSeq }),
+            tab === 'versions' && hML(MVersions, { char, ctx, onChanged: refresh }),
+            tab === 'license' && hML(MLicense, { char, ctx })))),
 
     // 底部固定操作
     hML('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))',
       background: 'linear-gradient(transparent, var(--surface) 28%)', display: 'flex', gap: 9 } },
       isPublic
-        ? hML(UI.Button, { variant: 'primary', full: true, icon: Icons.sparkle, onClick: () => setQuickGen(true) }, '生成更多资产')
+        ? hML(UI.Button, { variant: 'primary', full: true, icon: Icons.copy, disabled: saving, onClick: saveAs }, saving ? '正在另存…' : '另存为我的数字人')
         : hML(React.Fragment, null,
             hML(UI.Button, { variant: 'primary', full: true, icon: wip ? Icons.bolt : Icons.wand, onClick: () => wip ? ctx.startCreate(char.path, char) : ctx.openLooks(char), style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } },
               wip ? (char.status === 'proofing' && (char.variantImages || []).length ? '挑选形象（' + char.variantImages.length + ' 选 1）' : '继续创建链路') : '设计造型'),

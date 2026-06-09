@@ -109,6 +109,26 @@ src/
 
 ## 版本日志
 
+### v0.8（2026-06-09）— 「公开数字人」升级为「数字人广场」（10 个真实样板形象 + 只读 + 另存为）
+
+**目标**：把库里单薄的「公开数字人」tab（6 个无图、无设定的占位）做成真正的**数字人广场**——
+10 个不同**风格 / 元素 / 特征**的样板形象，可浏览、可「另存为我的数字人」后再编辑。
+
+**改动**：
+- **改名**：库 tab「公开数字人」→「**数字人广场**」（`screen-library.tsx`）。
+- **10 个真实公开形象**（`data.ts` `PUBLIC_AVATARS` 6→10，每个带完整 `def` 设定档案 / `palette` 配色 /
+  `tagline` / `voiceName`）：商务精英 Annie、居家博主 Christina、播客 Terry、社媒达人 Pamela、
+  知识讲师 Marcus、日系 Yuki、二次元星界少女 Selena、赛博机甲 Vex、萌系吉祥物 Cha、新中式国风 Mubai
+  （写实 / 二次元 / 赛博 / 3D / 国风混搭，覆盖 pro / life / ugc / community 四类）。
+- **每人 3 张形象图**（codex-cli imagegen 生成，存 `public/plaza/PA-XX-{1,2,3}.jpg`，根相对路径，
+  mock / live 均由本 app `/public` 直出，server 不托管）：正面定妆 / 右侧 3/4 / 左侧。
+- **只读 + 另存为**：广场形象进详情走只读陈列 `MPublicShowcase`（形象图集 + 设定档案，**无任何编辑 /
+  生成入口**）；底部主操作由「生成更多资产」改为「**另存为我的数字人**」→ `AvatarApi.saveAs(id)`
+  复制为可编辑的 `DH-*` 副本并打开（mock 连图复制；live 复制人设、用户再生成自己的形象）。
+- **后端同步**：`DapCatalogService.publicAvatars()` 同形同值扩到 10 + 图片 URL；新增
+  `POST /api/v1/avatars/{id}/save-as`（`DapAvatarService.saveAsFromPublic` 复制公开人设为个人数字人）；
+  `specs/openapi.yaml` 补 path；`pnpm check:api-contract` / 三端编译全绿。
+
 ### v0.7（2026-06-08）— 数字人详情页重构为「作品库」（生成资产统一沉淀）
 
 **痛点**：详情页原「衍生资产」tab 只是个**类型清单**（图集/表情/场景/换装/3D/视频，每类一行 + 「查看」下钻），

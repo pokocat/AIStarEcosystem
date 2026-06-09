@@ -230,6 +230,60 @@ public class DapAvatarService {
         return toDto(copy);
     }
 
+    /**
+     * 数字人广场「另存为我的数字人」：把只读公开数字人（PA-*）复制为当前用户可编辑的数字人。
+     *
+     * <p>广场形象图是 web-aiavatar 自带的静态展示资源（/plaza/*，非 OSS 资产、无 imageKey），
+     * 因此 live 副本只继承人设（名称 / 设定档案 / 配色 / 音色），状态置 draft，由用户走创建链路
+     * 生成属于自己的形象图。mock（演示）模式则连同展示图一起复制（见 proto/api.ts saveAs）。
+     */
+    @Transactional
+    public AvatarDto saveAsFromPublic(String userId, String publicId) {
+        Map<String, Object> pub = catalog.publicAvatar(publicId);
+        if (pub == null) {
+            throw BusinessException.notFound("DAP_PUBLIC_AVATAR_NOT_FOUND", "公开数字人不存在");
+        }
+        Map<String, Object> deriv = new LinkedHashMap<>();
+        Map<String, Object> counts = new LinkedHashMap<>();
+        DERIV_KEYS.forEach(k -> { deriv.put(k, "empty"); counts.put(k, 0); });
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> srcDef = (Map<String, Object>) pub.getOrDefault("def", Map.of());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> srcPalette = (Map<String, Object>) pub.get("palette");
+        int hue = pub.get("hue") instanceof Number n ? n.intValue() : 240;
+        String name = String.valueOf(pub.getOrDefault("name", "公开数字人"));
+
+        DapAvatar copy = DapAvatar.builder()
+                .id(uniqueId("DH"))
+                .ownerUserId(userId)
+                .name(name)
+                .codename(String.valueOf(pub.getOrDefault("codename", "avatar")) + "-copy")
+                .path("ai")
+                .archetype(String.valueOf(pub.getOrDefault("archetype", "AI 原创形象")))
+                .tagline(String.valueOf(pub.getOrDefault("tagline", "")))
+                .status("draft")
+                .hue(hue)
+                .hairStyle("short")
+                .mock(false)
+                .engine(String.valueOf(pub.getOrDefault("engine", "Agnes Image 2.1")))
+                .palette(srcPalette != null ? new LinkedHashMap<>(srcPalette) : support.paletteFor(hue))
+                .def(new LinkedHashMap<>(srcDef))
+                .deriv(deriv)
+                .counts(counts)
+                .versions(1)
+                .voiceName(pub.get("voiceName") != null ? String.valueOf(pub.get("voiceName")) : catalog.recommendVoice(null))
+                .variantKeys(new ArrayList<>())
+                .shotKeys(null)
+                .imageBytes(0)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+        avatarRepo.save(copy);
+        addVersionAt(copy, 1, "从数字人广场「" + name + "」另存", "init", null);
+        return toDto(copy);
+    }
+
     @Transactional
     public void addVersion(DapAvatar a, String note, String kind, String imageKey) {
         a.setVersions(a.getVersions() + 1);

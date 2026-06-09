@@ -6828,6 +6828,8 @@ paths:
   /v1/avatars/{id}/versions/{version}/fork:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } }, { in: path, name: version, required: true, schema: { type: integer } } ]
     post: { tags: [dap], operationId: dapForkAvatarVersion, summary: '从指定版本派生新版本', responses: { '200': { description: ok } } }
+  /v1/avatars/{id}/save-as:
+    post: { tags: [dap], operationId: dapSaveAsFromPublic, summary: '数字人广场「另存为我的数字人」：复制只读公开数字人(PA-*)为可编辑数字人', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/looks:
     get:  { tags: [dap], operationId: dapAvatarLooks, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateLook, description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
