@@ -143,7 +143,7 @@ npx vitest run path/to/file.test.ts
 (cd apps/web   && npx tsc --noEmit) && \
 pnpm typecheck:admin && \
 (cd apps/server && ./mvnw compile -q -o) && \
-(cd apps/web   && npm run check:api-contract)
+pnpm check:api-contract                          # 扫四个活跃子应用 + api-client（不再扫 apps/web）
 ```
 
 workspace 额外门：`pnpm typecheck:all`。
@@ -385,7 +385,7 @@ specs/openapi.yaml                    ← components.schemas 加 schema；paths 
 specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束（扣费、状态机、跨字段）
 ```
 
-> v2.7 起取消"契约 diff 文档"。drift 由 [`apps/web/scripts/check-api-contract.mjs`](apps/web/scripts/check-api-contract.mjs) 守门 —— 任一 `apiFetch(...)` URL 在 openapi.yaml 找不到对应 path → gate fail。
+> v2.7 起取消"契约 diff 文档"。drift 由 [`scripts/check-api-contract.mjs`](scripts/check-api-contract.mjs) 守门（**v0.57 起**改扫四个活跃子应用 `web-{music,drama,celebrity,aiavatar}` + `packages/api-client`，方法级匹配；aiavatar 的 `/api/v1` 前缀已处理；不再扫即将废弃的 `apps/web`）—— 任一 `apiFetch(...)` 的 URL/method 在 openapi.yaml 找不到对应 path → gate fail。根目录跑 `pnpm check:api-contract`。
 
 ### Step 6 — 四门验证
 
@@ -393,7 +393,7 @@ specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束
 (cd apps/web   && npx tsc --noEmit)
 (cd apps/admin && npx tsc --noEmit)
 (cd apps/server && ./mvnw compile -q -o)
-(cd apps/web   && npm run check:api-contract)
+pnpm check:api-contract
 ```
 
 > 对于 Figma 原型变更（新页面 / 新组件），调 [`.claude/skills/figma-migrate/SKILL.md`](.claude/skills/figma-migrate/SKILL.md) 技能。它把上述六步包成 web → admin → server 同步 SOP。
@@ -562,7 +562,7 @@ git grep -nE 'PLATFORM_OPERATOR|FINANCE_ADMIN' -- '*.md'   # 0 命中（除非 v
 git grep -nE 'port 300[01]' -- '*.md'                       # 0 命中
 
 # 2) 接口契约
-(cd apps/web && npm run check:api-contract)
+pnpm check:api-contract
 
 # 3) 三端编译
 (cd apps/web && npx tsc --noEmit) && (cd apps/admin && npx tsc --noEmit) && (cd apps/server && ./mvnw compile -q -o)
