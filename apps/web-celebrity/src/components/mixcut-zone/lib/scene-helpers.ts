@@ -39,17 +39,78 @@ export function migrateLegacyTemplate(t: any): Template {
     };
     const out: Template = { ...t, scenes: [scene] };
     delete (out as any).slots;
-    return out;
+    return normalizeVideoSceneTimings(out);
   }
 
   // 2) 新结构:遍历 scenes.slots 做 layer_type 归一化(幂等)
-  return {
+  const out = {
     ...t,
     scenes: t.scenes.map((sc: TemplateScene) => ({
       ...sc,
       slots: normalizeSlotsLayerType(sc.slots ?? []),
     })),
   } as Template;
+  return normalizeVideoSceneTimings(out);
+}
+
+function clampSec(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+
+function roundSec(v: number): number {
+  return Math.round(v * 1000) / 1000;
+}
+
+/**
+ * 多场景模板里,video slot 的 time_range 实际承担了"本段主视频起止"语义。
+ * 把它规范化成 scene.duration,避免渲染器按旧 scene.duration 让第一段视频放完整段。
+ */
+export function normalizeVideoSceneTimings(template: Template): Template {
+  if (!Array.isArray(template.scenes) || template.scenes.length <= 1) {
+    return {
+      ...template,
+      canvas: { ...template.canvas, duration: totalDuration(template) },
+    };
+  }
+
+  let changed = false;
+  const scenes = template.scenes.map((scene) => {
+    const ranges = scene.slots
+      .filter((slot) => normalizeLayerType(slot.layer_type) === "video" && Array.isArray(slot.time_range))
+      .map((slot) => {
+        const [start, end] = slot.time_range ?? [0, scene.duration];
+        return [Number(start), Number(end)] as [number, number];
+      })
+      .filter(([start, end]) => Number.isFinite(start) && Number.isFinite(end) && end > start);
+
+    if (ranges.length === 0) return scene;
+
+    const base = Math.min(...ranges.map(([start]) => start));
+    const end = Math.max(...ranges.map(([, rangeEnd]) => rangeEnd));
+    const nextDuration = Math.max(1, roundSec(end - base));
+    if (Math.abs(base) < 1e-6 && Math.abs(nextDuration - scene.duration) < 1e-6) return scene;
+
+    changed = true;
+    return {
+      ...scene,
+      duration: nextDuration,
+      slots: scene.slots.map((slot) => {
+        const [start, slotEnd] = slot.time_range ?? [0, scene.duration];
+        const nextStart = roundSec(clampSec(Number(start) - base, 0, nextDuration));
+        const nextEnd = roundSec(clampSec(Number(slotEnd) - base, 0, nextDuration));
+        const timeRange: [number, number] = nextEnd > nextStart ? [nextStart, nextEnd] : [0, nextDuration];
+        return {
+          ...slot,
+          time_range: timeRange,
+        };
+      }),
+    };
+  });
+
+  const next = { ...template, scenes };
+  const duration = totalDuration(next);
+  if (!changed && Math.abs((template.canvas.duration ?? duration) - duration) < 1e-6) return template;
+  return { ...next, canvas: { ...template.canvas, duration } };
 }
 
 /** 取出 flat slot 列表(time_range 还是相对场景的)。预览/创建页用。 */
