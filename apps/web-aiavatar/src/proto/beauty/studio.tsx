@@ -128,7 +128,7 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
       }
       let anchors: FaceAnchors;
       if (demo || USE_MOCK) {
-        // mock / 占位画像：跳过关键点资产加载，直接用标准构图锚点（离线可演示）
+        // mock / 占位画像：跳过关键点资产加载，直接用标准构图锚点（离线可预览）
         anchors = canonicalAnchors();
       } else {
         const pts = await detectLandmarks(source as any);
@@ -208,7 +208,7 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
       hB('canvas', { ref: canvasRef, width: 768, height: 1024, style: { width: '100%', height: 'auto', display: 'block', touchAction: 'manipulation', WebkitTouchCallout: 'none' } }),
       // 角标
       status === 'ready' && hB('div', { style: { position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 } },
-        demoImage && hB(UI.Badge, { tone: 'warn' }, '示例画像'),
+        demoImage && hB(UI.Badge, { tone: 'warn' }, '标准示意图'),
         !demoImage && approx && hB(UI.Badge, { tone: 'warn' }, '未识别人脸 · 近似调整')),
       status === 'ready' && hB('div', { style: { position: 'absolute', right: 10, bottom: 10, padding: '5px 11px', borderRadius: 'var(--r-pill)', background: 'rgba(20,16,30,.55)', color: '#fff', fontSize: 11, fontWeight: 600, pointerEvents: 'none', backdropFilter: 'blur(4px)' } },
         comparing ? '原图' : '按住对比原图'),
@@ -275,5 +275,5 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
       hB(UI.Button, { variant: 'primary', full: true, icon: Icons.checkc, disabled: busy || status !== 'ready' || isZeroParams(params), onClick: apply, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, busy ? '保存中…' : '应用保存')),
     hB('div', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', lineHeight: 1.5 } },
       '端上实时处理 · 不消耗积分 · 像素级保持本人特征',
-      demoImage ? hB('span', null, hB('br'), '当前为示例画像演示，生成定妆形象后即可精调真实照片') : null));
+      demoImage ? hB('span', null, hB('br'), '当前为标准示意图，生成定妆形象后即可精调真实照片') : null));
 }

@@ -87,7 +87,7 @@ function MVoice({ ctx }) {
     }
     // 内置音色
     setPlaying(id);
-    ctx.toast('内置音色为合成声线 · 在线试听即将上线', { tone: 'ok' });
+    ctx.toast('内置音色为合成声线，可直接绑定到数字人资产', { tone: 'ok' });
     setTimeout(() => setPlaying((p) => (p === id ? null : p)), 1800);
   };
 
@@ -148,7 +148,7 @@ function MVoice({ ctx }) {
 
 function MApps({ ctx }) {
   const M_APPS = useApi(() => AppApi.list(), seed.applications());
-  const go = (name) => ctx.toast(name + ' · 即将上线，敬请期待', { tone: 'warn' });
+  const go = (name) => ctx.toast(name + ' · 当前为邀约开通，请联系客户经理获取权限', { tone: 'warn' });
   const appCardImages = {
     music: '/generated/app-cards/music.jpg',
     live: '/generated/app-cards/live-commerce.jpg',
@@ -177,13 +177,13 @@ function MApps({ ctx }) {
           mixBlendMode: 'screen', opacity: .86 } }),
         hMV('span', { style: { position: 'absolute', inset: '1px 1px auto', height: '54%', borderRadius: 'calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0',
           background: 'linear-gradient(180deg, rgba(255,255,255,.92), transparent)', pointerEvents: 'none' } }),
-        // 头行：icon + 即将上线
+        // 头行：icon + 开通状态
         hMV('div', { style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
           hMV('span', { style: { display: 'grid', placeItems: 'center', width: 40, height: 40, borderRadius: 14,
             background: 'rgba(255,255,255,.72)', color: a.g1, border: '1px solid rgba(255,255,255,.86)',
             boxShadow: `0 10px 24px ${a.accent}4D, 0 1px 0 rgba(255,255,255,.9) inset`, backdropFilter: 'blur(8px)' } }, hMV(Icons[a.icon], { size: 20, stroke: 1.9 })),
           hMV('span', { style: { fontSize: 10, fontWeight: 800, color: 'rgba(34,43,58,.68)', background: 'rgba(255,255,255,.68)',
-            border: '1px solid rgba(255,255,255,.78)', padding: '4px 10px', borderRadius: 'var(--r-pill)', boxShadow: '0 8px 18px rgba(70,86,118,.08)', backdropFilter: 'blur(8px)' } }, '即将上线')),
+            border: '1px solid rgba(255,255,255,.78)', padding: '4px 10px', borderRadius: 'var(--r-pill)', boxShadow: '0 8px 18px rgba(70,86,118,.08)', backdropFilter: 'blur(8px)' } }, '邀约开通')),
         // 名称 + 描述
         hMV('div', { style: { position: 'relative', marginTop: 12 } },
           hMV('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },

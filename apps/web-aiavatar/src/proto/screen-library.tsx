@@ -352,7 +352,7 @@ function MDetail({ char: initialChar, ctx }) {
         hML('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 14px', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' } },
           hML('span', { className: 'reg-no', style: { fontSize: 11.5 } }, char.id),
           hML('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            char.mock && hML(UI.Badge, { tone: 'warn' }, 'MOCK'),
+            char.mock && hML(UI.Badge, { tone: 'warn' }, '预览'),
             hML(MPathL, { path: char.path }))),
         hML('div', { style: { display: 'flex', gap: 0 } },
           hML('div', { style: { position: 'relative', padding: 10, background: 'var(--canvas-2)', flex: '0 0 142px' } },

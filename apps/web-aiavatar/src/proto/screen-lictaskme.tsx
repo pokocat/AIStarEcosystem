@@ -148,7 +148,7 @@ function MTasks({ ctx }) {
     failed:  { c: 'var(--err)', s: 'var(--err-s)' },
   };
 
-  // 单条任务卡 —— 顶部状态图标 + 名称（+时间/演示标），底部按状态分流操作
+  // 单条任务卡 —— 顶部状态图标 + 名称（+时间/预览标），底部按状态分流操作
   const taskCard = (t) => {
     const m = tint[t.status] || tint.running;
     return hMS('div', { key: t.id, className: 'm-card', style: { padding: '13px 14px' } },
@@ -161,7 +161,7 @@ function MTasks({ ctx }) {
             hMS('span', { className: 'm-clip1', style: { fontSize: 12, color: 'var(--ink-3)', minWidth: 0, flex: '1 1 auto' } }, t.charName),
             t.started && hMS('span', { style: { width: 3, height: 3, borderRadius: 99, flex: '0 0 auto', background: 'var(--ink-4)' } }),
             t.started && hMS('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-4)', flex: '0 0 auto', whiteSpace: 'nowrap' } }, t.started))),
-        t.mode === 'mock' && hMS(UI.Badge, { tone: 'warn' }, '演示')),
+        t.mode === 'mock' && hMS(UI.Badge, { tone: 'warn' }, '预览')),
       hMS('div', { style: { marginTop: 11 } },
         t.status === 'running'
           ? hMS(React.Fragment, null,
