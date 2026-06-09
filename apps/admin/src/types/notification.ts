@@ -26,6 +26,8 @@ export interface Notification {
   desc: string;
   /** 相对时间文案，如 "2min" / "1h" / "1d" */
   time: string;
+  /** v0.56：admin 消息与日志页展示到秒的绝对创建时间。 */
+  createdAt: string;
   /**
    * v0.34.x：viewedAt 替代旧 boolean read。
    *   null      → 未读

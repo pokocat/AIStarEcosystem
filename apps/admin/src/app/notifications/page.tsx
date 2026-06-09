@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { listNotifications, markNotificationRead } from "@/api/notifications";
 import { NOTIFICATION_TYPE } from "@/constants/status";
 import type { Notification, NotificationAudienceScope, NotificationType } from "@/types/notification";
+import { formatDateTimeCN } from "@/lib/utils";
 
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   revenue: Wallet,
@@ -182,7 +183,9 @@ export default function NotificationsPage() {
                           <Badge tone={meta.tone}>{meta.label}</Badge>
                           <AudienceBadge audience={n.audience} />
                           {n.viewedAt == null && <span className="h-2 w-2 rounded-full bg-rose-500" />}
-                          <span className="text-xs text-muted-foreground">· {n.time} 前</span>
+                          <span className="text-xs text-muted-foreground" title={n.time ? `${n.time} 前` : undefined}>
+                            · {formatDateTimeCN(n.createdAt)}
+                          </span>
                         </div>
                         <div className="text-sm text-muted-foreground mt-0.5">{n.desc}</div>
                       </div>

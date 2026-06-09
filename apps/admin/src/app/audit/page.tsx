@@ -1,285 +1,271 @@
 "use client";
 
 import * as React from "react";
-import { History, FileSignature, Wallet, ShieldCheck, Radio, Search } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Code as CodeIcon,
+  History,
+  KeyRound,
+  LogIn,
+  Search,
+  ShieldCheck,
+  Smartphone,
+  UserPlus,
+  XCircle,
+} from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { listTransactions } from "@/api/finance";
-import { listSignedArtists, listDistributionQueue, listPendingCopyright } from "@/api/coach";
-import { listPlatforms } from "@/api/distribution";
-import type { Transaction } from "@/types/finance";
-import type { SignedArtist, DistributionQueueItem, CopyrightItem } from "@/types/coach";
-import type { Platform } from "@/types/distribution";
-import { formatDateCN } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { AuditApi } from "@/api";
+import type { AuditLog, AuditResult } from "@/types/audit";
+import { AUTH_ACTION_LABEL } from "@/types/audit";
+import { formatDateTimeCN } from "@/lib/utils";
 
-type AuditDomain = "finance" | "contract" | "distribution" | "copyright" | "platform";
+const ACTION_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  "admin.login": ShieldCheck,
+  "admin.operator_login": ShieldCheck,
+  "admin.change_password": KeyRound,
+  "auth.sms.request_code": Smartphone,
+  "auth.sms.login": Smartphone,
+  "auth.sms.register": UserPlus,
+  "auth.password.login": LogIn,
+  "auth.dev_login": CodeIcon,
+  "auth.license.activate": UserPlus,
+};
 
-interface AuditEntry {
-  id: string;
-  time: string;
-  operator: string;
-  domain: AuditDomain;
-  action: string;
-  ref: string;
-  result: "success" | "pending" | "rejected";
-  detail: string;
+const RESOURCE_LABEL: Record<string, string> = {
+  auth: "账号认证",
+  admin: "管理员",
+  operator: "运营账号",
+  user: "用户",
+  account: "账户",
+  license: "激活码",
+  celebrity: "明星带货",
+  mixcut: "混剪模板",
+  recharge: "充值",
+  product: "商品",
+};
+
+function actionLabel(action: string): string {
+  return AUTH_ACTION_LABEL[action] ?? action;
 }
 
-const DOMAIN_META: Record<AuditDomain, { label: string; icon: LucideIcon; tone: "success" | "warning" | "info" | "primary" | "neutral" }> = {
-  finance: { label: "结算", icon: Wallet, tone: "success" },
-  contract: { label: "合约", icon: FileSignature, tone: "primary" },
-  distribution: { label: "分发", icon: Radio, tone: "info" },
-  copyright: { label: "版权", icon: ShieldCheck, tone: "warning" },
-  platform: { label: "渠道", icon: Radio, tone: "neutral" },
-};
+function resultTone(result: AuditResult): "success" | "danger" {
+  return result === "success" ? "success" : "danger";
+}
 
-const RESULT_TONE: Record<AuditEntry["result"], "success" | "warning" | "danger"> = {
-  success: "success",
-  pending: "warning",
-  rejected: "danger",
-};
+function resultLabel(result: AuditResult): string {
+  return result === "success" ? "成功" : "失败";
+}
 
-const RESULT_LABEL: Record<AuditEntry["result"], string> = {
-  success: "已完成",
-  pending: "进行中",
-  rejected: "已驳回",
-};
+function maskIdentifier(value: string | null | undefined): string {
+  if (!value) return "未识别";
+  if (/^1\d{10}$/.test(value)) return `${value.slice(0, 3)}****${value.slice(7)}`;
+  return value;
+}
 
-function buildEntries(
-  transactions: Transaction[],
-  signedArtists: SignedArtist[],
-  distributionQueue: DistributionQueueItem[],
-  copyrightItems: CopyrightItem[],
-  platforms: Platform[],
-): AuditEntry[] {
-  const entries: AuditEntry[] = [];
+function shortId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.length > 12 ? `${value.slice(0, 8)}...` : value;
+}
 
-  transactions.forEach((t) => {
-    entries.push({
-      id: `txn-${t.id}`,
-      time: t.date,
-      operator: t.status === "completed" ? "finance@star" : "ops@star",
-      domain: "finance",
-      action: t.type === "withdrawal" ? "提现复核" : "入账登记",
-      ref: `#${t.id.toUpperCase()}`,
-      result: t.status === "completed" ? "success" : "pending",
-      detail: `${t.source} · ${t.amount}`,
-    });
-  });
+function truncate(value: string | null | undefined, max: number): string {
+  if (!value) return "—";
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
 
-  signedArtists.forEach((s) => {
-    if (s.status === "negotiating") {
-      entries.push({
-        id: `con-${s.id}`,
-        time: s.contractEnd,
-        operator: "coach@star",
-        domain: "contract",
-        action: "合约续约谈判",
-        ref: s.name,
-        result: "pending",
-        detail: `${s.mcn} · 到期 ${s.contractEnd}`,
-      });
-    }
-  });
+function operatorPrimary(log: AuditLog): string {
+  if (log.username) return maskIdentifier(log.username);
+  if (log.userId) return `用户 ${shortId(log.userId)}`;
+  return "未识别";
+}
 
-  distributionQueue.forEach((d) => {
-    entries.push({
-      id: `dist-${d.id}`,
-      time: d.date,
-      operator: "dist@star",
-      domain: "distribution",
-      action: d.status === "reviewing" ? "分发审核" : "分发已放行",
-      ref: d.title,
-      result: d.status === "reviewing" ? "pending" : "success",
-      detail: `${d.artist} · 目标 ${d.platforms} 渠道`,
-    });
-  });
+function objectPrimary(log: AuditLog): string {
+  if (log.resourceType === "auth" || log.action.startsWith("auth.") || log.action.startsWith("admin.")) {
+    return `账号：${maskIdentifier(log.username)}`;
+  }
 
-  copyrightItems.forEach((c) => {
-    entries.push({
-      id: `cp-${c.id}`,
-      time: c.submitted,
-      operator: "legal@star",
-      domain: "copyright",
-      action: c.status === "pending" ? "版权核验" : "版权已核验",
-      ref: c.title,
-      result: c.status === "pending" ? "pending" : "success",
-      detail: `${c.artist} · ${c.type}`,
-    });
-  });
+  const resource = log.resourceType ? (RESOURCE_LABEL[log.resourceType] ?? log.resourceType) : "业务对象";
+  if (log.detail) return `${resource}：${truncate(log.detail, 72)}`;
+  if (log.resourceId) return `${resource}：${log.resourceId}`;
+  return resource;
+}
 
-  platforms.forEach((p) => {
-    if (p.status === "pending" || p.status === "disconnected") {
-      entries.push({
-        id: `plat-${p.id}`,
-        time: p.lastSync,
-        operator: "dist@star",
-        domain: "platform",
-        action: p.status === "pending" ? "渠道接入审核" : "渠道断开处置",
-        ref: p.name,
-        result: p.status === "pending" ? "pending" : "rejected",
-        detail: `${p.category} · 上次同步 ${p.lastSync}`,
-      });
-    }
-  });
-
-  return entries.sort((a, b) => b.time.localeCompare(a.time));
+function objectSecondary(log: AuditLog): string | null {
+  const parts = [
+    log.resourceType ? (RESOURCE_LABEL[log.resourceType] ?? log.resourceType) : null,
+    log.resourceId ? `ID ${shortId(log.resourceId)}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 export default function AuditPage() {
-  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
-  const [signedArtists, setSignedArtists] = React.useState<SignedArtist[]>([]);
-  const [distributionQueue, setDistributionQueue] = React.useState<DistributionQueueItem[]>([]);
-  const [copyrightItems, setCopyrightItems] = React.useState<CopyrightItem[]>([]);
-  const [platforms, setPlatforms] = React.useState<Platform[]>([]);
+  const [logs, setLogs] = React.useState<AuditLog[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
-
   const [query, setQuery] = React.useState("");
-  const [domain, setDomain] = React.useState<AuditDomain | "all">("all");
+  const [resultFilter, setResultFilter] = React.useState<AuditResult | "all">("all");
+
+  const fetchLogs = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await AuditApi.listAuditLogs({
+        result: resultFilter === "all" ? undefined : resultFilter,
+        size: 200,
+      });
+      setLogs(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载审计日志失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [resultFilter]);
 
   React.useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const [tx, sa, dq, cp, pl] = await Promise.all([
-          listTransactions(0, 200),
-          listSignedArtists(),
-          listDistributionQueue(),
-          listPendingCopyright(),
-          listPlatforms(),
-        ]);
-        if (!active) return;
-        setTransactions(tx);
-        setSignedArtists(sa);
-        setDistributionQueue(dq);
-        setCopyrightItems(cp);
-        setPlatforms(pl);
-      } catch (err) {
-        if (active) setLoadError(err instanceof Error ? err.message : "加载失败");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, []);
+    void fetchLogs();
+  }, [fetchLogs]);
 
-  const entries = React.useMemo(
-    () => buildEntries(transactions, signedArtists, distributionQueue, copyrightItems, platforms),
-    [transactions, signedArtists, distributionQueue, copyrightItems, platforms],
-  );
-  const filtered = entries.filter((e) => {
-    if (domain !== "all" && e.domain !== domain) return false;
-    if (query) {
-      const q = query.toLowerCase();
-      const hay = (e.ref + " " + e.detail + " " + e.operator + " " + e.action).toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return logs;
+    return logs.filter((log) => {
+      const hay = [
+        log.username,
+        log.userId,
+        log.action,
+        actionLabel(log.action),
+        objectPrimary(log),
+        log.resourceType,
+        log.resourceId,
+        log.errorCode,
+        log.ipAddress,
+        log.detail,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [logs, query]);
 
-  const pending = entries.filter((e) => e.result === "pending").length;
-  const completed = entries.filter((e) => e.result === "success").length;
+  const counts = React.useMemo(() => {
+    const success = logs.filter((l) => l.result === "success").length;
+    const failure = logs.filter((l) => l.result === "failure").length;
+    const operators = new Set(logs.map((l) => l.username ?? l.userId).filter(Boolean)).size;
+    return { total: logs.length, success, failure, operators };
+  }, [logs]);
 
   return (
     <div className="admin-page">
       <PageHeader
         title="审计日志"
-        description="所有人工介入动作的归档与追溯：结算 / 合约 / 分发 / 版权 / 渠道"
+        description="后端真实 AuditLog：记录谁、何时、从哪里、对哪个业务对象执行了什么动作。"
         breadcrumb={[{ label: "消息与日志" }, { label: "审计日志" }]}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void fetchLogs()} disabled={loading}>
+            <Activity className={loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+            刷新
+          </Button>
+        }
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="记录总数" value={entries.length} icon={History} />
-        <StatCard label="已完成" value={completed} icon={History} tone="success" />
-        <StatCard label="进行中" value={pending} icon={History} tone="warning" />
-        <StatCard label="涉及操作员" value={new Set(entries.map((e) => e.operator)).size} icon={History} />
+        <StatCard label="记录总数" value={counts.total} icon={History} />
+        <StatCard label="成功" value={counts.success} icon={CheckCircle2} tone="success" />
+        <StatCard label="失败" value={counts.failure} icon={XCircle} tone={counts.failure ? "warning" : "default"} />
+        <StatCard label="可识别操作员" value={counts.operators} icon={ShieldCheck} />
       </section>
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <CardTitle>操作流水</CardTitle>
-            <div className="relative w-72">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索单号 / 对象 / 操作员"
-                className="pl-8"
-              />
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative w-80">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="搜索账号 / 业务对象 / IP / 错因 / 说明"
+                  className="pl-8"
+                />
+              </div>
+              {(["all", "success", "failure"] as const).map((result) => (
+                <Button
+                  key={result}
+                  size="sm"
+                  variant={resultFilter === result ? "default" : "ghost"}
+                  onClick={() => setResultFilter(result)}
+                >
+                  {result === "all" ? "全部" : resultLabel(result)}
+                </Button>
+              ))}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={domain} onValueChange={(v) => setDomain(v as AuditDomain | "all")}>
-            <TabsList>
-              <TabsTrigger value="all">全部</TabsTrigger>
-              <TabsTrigger value="finance">结算</TabsTrigger>
-              <TabsTrigger value="contract">合约</TabsTrigger>
-              <TabsTrigger value="distribution">分发</TabsTrigger>
-              <TabsTrigger value="copyright">版权</TabsTrigger>
-              <TabsTrigger value="platform">渠道</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value={domain}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>时间</TableHead>
-                    <TableHead>域</TableHead>
-                    <TableHead>动作</TableHead>
-                    <TableHead>对象</TableHead>
-                    <TableHead>操作员</TableHead>
-                    <TableHead>结果</TableHead>
-                    <TableHead>说明</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[170px]">时间</TableHead>
+                <TableHead className="w-[180px]">动作</TableHead>
+                <TableHead>对象</TableHead>
+                <TableHead className="w-[200px]">操作员</TableHead>
+                <TableHead className="w-[140px]">IP</TableHead>
+                <TableHead className="w-[90px]">结果</TableHead>
+                <TableHead>说明</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中...</TableCell></TableRow>
+              )}
+              {!loading && loadError && (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
+              )}
+              {!loading && !loadError && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">暂无匹配记录</TableCell>
+                </TableRow>
+              )}
+              {!loading && !loadError && filtered.map((log) => {
+                const Icon = ACTION_ICON[log.action] ?? AlertTriangle;
+                const secondary = objectSecondary(log);
+                return (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-xs tabular-nums">{formatDateTimeCN(log.createdAt)}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5 text-xs">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        {actionLabel(log.action)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium">{objectPrimary(log)}</span>
+                        {secondary && <span className="text-[11px] text-muted-foreground">{secondary}</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium">{operatorPrimary(log)}</span>
+                        {log.userId && <span className="text-[11px] font-mono text-muted-foreground">ID {shortId(log.userId)}</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{log.ipAddress ?? "—"}</TableCell>
+                    <TableCell><Badge tone={resultTone(log.result)}>{resultLabel(log.result)}</Badge></TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {log.errorCode ? `${log.errorCode} · ` : ""}{truncate(log.detail, 80)}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading && (
-                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">加载中…</TableCell></TableRow>
-                  )}
-                  {!loading && loadError && (
-                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-rose-600">加载失败：{loadError}</TableCell></TableRow>
-                  )}
-                  {!loading && !loadError && filtered.map((e) => {
-                    const meta = DOMAIN_META[e.domain];
-                    const Icon = meta.icon;
-                    return (
-                      <TableRow key={e.id}>
-                        <TableCell className="text-sm tabular-nums">{formatDateCN(e.time)}</TableCell>
-                        <TableCell>
-                          <Badge tone={meta.tone}>
-                            <Icon className="h-3 w-3" /> {meta.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm font-medium">{e.action}</TableCell>
-                        <TableCell className="text-sm">{e.ref}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{e.operator}</TableCell>
-                        <TableCell>
-                          <Badge tone={RESULT_TONE[e.result]}>{RESULT_LABEL[e.result]}</Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{e.detail}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {!loading && !loadError && filtered.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        无匹配记录
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TabsContent>
-          </Tabs>
+                );
+              })}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

@@ -7,12 +7,50 @@ import type { AuditLog, AuditResult } from "@/types/audit";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import { AUDIT_LOGS } from "@/mocks/audit";
 
-export async function listAuditLogs(
-  userId?: string, action?: string, result?: string, page = 0, size = 20
-): Promise<AuditLog[]> {
-  if (USE_MOCK) return mockDelay(AUDIT_LOGS);
+export interface AuditLogListParams {
+  userId?: string;
+  username?: string;
+  action?: string;
+  actions?: string[];
+  ipAddress?: string;
+  errorCode?: string;
+  result?: AuditResult;
+  since?: string;
+  until?: string;
+  page?: number;
+  size?: number;
+}
+
+export async function listAuditLogs(params: AuditLogListParams = {}): Promise<AuditLog[]> {
+  if (USE_MOCK) {
+    const filtered = AUDIT_LOGS.filter((log) => {
+      if (params.userId && log.userId !== params.userId) return false;
+      if (params.username && !(log.username ?? "").startsWith(params.username)) return false;
+      if (params.action && log.action !== params.action) return false;
+      if (params.actions?.length && !params.actions.includes(log.action)) return false;
+      if (params.ipAddress && !(log.ipAddress ?? "").startsWith(params.ipAddress)) return false;
+      if (params.errorCode && log.errorCode !== params.errorCode) return false;
+      if (params.result && log.result !== params.result) return false;
+      if (params.since && log.createdAt < params.since) return false;
+      if (params.until && log.createdAt > params.until) return false;
+      return true;
+    });
+    return mockDelay(filtered);
+  }
   return apiFetch<AuditLog[]>("/admin/audit-logs", {
-    query: { userId, action, result, page, size },
+    query: {
+      userId: params.userId,
+      username: params.username,
+      action: params.action,
+      actions: params.actions && params.actions.length > 0 ? params.actions.join(",") : undefined,
+      ipAddress: params.ipAddress,
+      errorCode: params.errorCode,
+      result: params.result,
+      since: params.since,
+      until: params.until,
+      page: params.page ?? 0,
+      size: params.size ?? 100,
+    },
   });
 }
 

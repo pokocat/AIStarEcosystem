@@ -40,7 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AuditApi } from "@/api";
 import type { AuditLog, AuditResult } from "@/types/audit";
 import { AUTH_ACTION_LABEL, AUTH_ACTION_KEYS } from "@/types/audit";
-import { formatDateCN } from "@/lib/utils";
+import { formatDateTimeCN } from "@/lib/utils";
 
 const ACTION_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   "admin.login": ShieldCheck,
@@ -270,7 +270,7 @@ export default function AuthLogsPage() {
                       onClick={() => setSelected(log)}
                       className="cursor-pointer"
                     >
-                      <TableCell className="text-xs tabular-nums">{formatDateCN(log.createdAt)}</TableCell>
+                      <TableCell className="text-xs tabular-nums">{formatDateTimeCN(log.createdAt)}</TableCell>
                       <TableCell>
                         <span className="inline-flex items-center gap-1.5 text-xs">
                           <Icon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -349,7 +349,7 @@ function AuthLogDetailDialog({ log, onClose }: { log: AuditLog | null; onClose: 
 
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
               <Field label="发生时间">
-                <span className="tabular-nums">{formatDateCN(log.createdAt)}</span>
+                <span className="tabular-nums">{formatDateTimeCN(log.createdAt)}</span>
               </Field>
               <Field label="结果">
                 <Badge tone={log.result === "success" ? "success" : "danger"}>

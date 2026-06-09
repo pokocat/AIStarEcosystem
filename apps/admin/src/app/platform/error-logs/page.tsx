@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ErrorLogApi } from "@/api";
 import type { ErrorLog } from "@/types/error-log";
-import { formatDateCN } from "@/lib/utils";
+import { formatDateTimeCN } from "@/lib/utils";
 
 function statusTone(status: number | null | undefined): "danger" | "warning" | "neutral" {
   if (status == null) return "neutral";
@@ -31,6 +31,15 @@ function statusTone(status: number | null | undefined): "danger" | "warning" | "
 function truncate(s: string | null | undefined, max: number): string {
   if (!s) return "—";
   return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+function userDisplay(log: ErrorLog): string {
+  return log.username || log.userId || "—";
+}
+
+function shortUserId(id: string | null | undefined): string | null {
+  if (!id) return null;
+  return id.length > 12 ? `${id.slice(0, 8)}…` : id;
 }
 
 export default function ErrorLogsPage() {
@@ -225,7 +234,7 @@ export default function ErrorLogsPage() {
                     onClick={() => setSelected(log)}
                     className="cursor-pointer"
                   >
-                    <TableCell className="text-xs tabular-nums">{formatDateCN(log.occurredAt)}</TableCell>
+                    <TableCell className="text-xs tabular-nums">{formatDateTimeCN(log.occurredAt)}</TableCell>
                     <TableCell>
                       <code className="rounded bg-secondary px-1.5 py-0.5 text-xs font-mono tabular-nums">
                         {log.logId}
@@ -258,8 +267,8 @@ export default function ErrorLogsPage() {
                     <TableCell className="text-xs font-mono text-muted-foreground">{log.httpMethod ?? "—"}</TableCell>
                     <TableCell className="text-xs font-mono">{truncate(log.endpoint, 60)}</TableCell>
                     <TableCell className="text-xs">
-                      {log.username ? (
-                        <span title={log.userId ?? undefined}>{log.username}</span>
+                      {log.username || log.userId ? (
+                        <span title={log.userId ?? undefined}>{userDisplay(log)}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -323,16 +332,16 @@ function ErrorLogDetailDialog({
 
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
               <Field label="发生时间">
-                <span className="tabular-nums">{formatDateCN(log.occurredAt)}</span>
+                <span className="tabular-nums">{formatDateTimeCN(log.occurredAt)}</span>
               </Field>
               <Field label="发生机器">
                 <code className="font-mono">{log.hostname ?? "—"}</code>
               </Field>
               <Field label="用户">
-                {log.username ? (
+                {log.username || log.userId ? (
                   <span>
-                    {log.username}{" "}
-                    <span className="text-muted-foreground">({log.userId})</span>
+                    {log.username ?? "用户名未记录"}{" "}
+                    {log.userId && <span className="text-muted-foreground">({shortUserId(log.userId)})</span>}
                   </span>
                 ) : (
                   <span className="text-muted-foreground">未登录 / 未识别</span>
