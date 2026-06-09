@@ -71,6 +71,9 @@ function normalizeUrl(raw, constants = new Map()) {
     const m = expr.match(/[a-zA-Z_][a-zA-Z0-9_]*/);
     return m ? `{${m[0]}}` : "{var}";
   });
+  // 兜底：嵌套模板字面量（如 `/licenses${status ? `?status=${status}` : ""}`）会被上面的字符串
+  // 正则在内层反引号处截断，残留未闭合的 "${…"；把这种残留动态后缀整体砍掉，归一到基础 path。
+  s = s.replace(/\$\{.*$/, "");
   if (s.length > 1 && s.endsWith("/")) s = s.slice(0, -1);
   return s;
 }

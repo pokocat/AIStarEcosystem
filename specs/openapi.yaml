@@ -6537,7 +6537,64 @@ paths:
 
   # ── film（影视类） ────────────────────────────────
 
-  /film/dramas:      { get: { tags: [film], operationId: listDramas,     responses: { '200': { description: ok } } } }
+  /film/dramas:      { get: { tags: [film], operationId: listDramas,     responses: { '200': { description: ok } } }, post: { tags: [film], operationId: createDrama, summary: '新建短剧项目', responses: { '200': { description: ok } } } }
+
+  # ── v0.57 backfill：活跃子应用既有但此前未文档化的端点（drama / celebrity / distribution / wallet）。
+  #    check:api-contract 改扫四个活跃子应用后暴露的历史欠债；先补 path × method 入契约止血，
+  #    request/response schema 后续按域细化（当前与文件内 /fan/* 等极简条目同风格）。
+  /film/dramas/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [film], operationId: getDrama,    summary: '短剧项目详情', responses: { '200': { description: ok } } }
+    patch:  { tags: [film], operationId: updateDrama, summary: '编辑短剧项目', responses: { '200': { description: ok } } }
+    delete: { tags: [film], operationId: deleteDrama, summary: '删除短剧项目', responses: { '204': { description: ok } } }
+  /film/dramas/{id}/status:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    patch: { tags: [film], operationId: updateDramaStatus, summary: '更新短剧项目状态', responses: { '200': { description: ok } } }
+  /me/scripts:
+    get:  { tags: [drama], operationId: listScripts,  summary: '我的脚本列表', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createScript, summary: '新建脚本', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getScript,    summary: '脚本详情', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteScript, summary: '删除脚本', responses: { '204': { description: ok } } }
+  /me/scripts/{scriptId}/status:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    patch: { tags: [drama], operationId: updateScriptStatus, summary: '更新脚本状态', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}/clone:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: cloneScript, summary: '克隆脚本', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}/generate:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: generateScript, summary: 'AI 生成脚本内容', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}/versions:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    get:  { tags: [drama], operationId: listScriptVersions,  summary: '脚本版本列表', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createScriptVersion, summary: '保存脚本新版本', responses: { '200': { description: ok } } }
+  /me/script-versions/{versionId}:
+    parameters: [ { in: path, name: versionId, required: true, schema: { type: string } } ]
+    get: { tags: [drama], operationId: getScriptVersion, summary: '脚本版本详情', responses: { '200': { description: ok } } }
+  /celebrity/videos/{videoId}:
+    parameters: [ { in: path, name: videoId, required: true, schema: { type: string } } ]
+    delete: { tags: [celebrity], operationId: deleteCelebrityVideo, summary: '删除项目视频', responses: { '204': { description: ok } } }
+  /material/videos:
+    get: { tags: [celebrity], operationId: listMaterialVideos, summary: '素材视频列表', responses: { '200': { description: ok } } }
+  /material/videos/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    delete: { tags: [celebrity], operationId: deleteMaterialVideo, summary: '删除素材视频', responses: { '204': { description: ok } } }
+  /material/videos/batch:
+    post: { tags: [celebrity], operationId: batchMaterialVideos, summary: '批量生成/操作素材视频', responses: { '200': { description: ok } } }
+  /mixcut/outputs/{outputId}/download-url:
+    parameters: [ { in: path, name: outputId, required: true, schema: { type: string } } ]
+    get: { tags: [celebrity], operationId: getMixcutOutputDownloadUrl, summary: '混剪产出下载地址', responses: { '200': { description: ok } } }
+  /distribution/jobs/{id}/cancel:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: cancelDistributionJob, summary: '取消发行任务', responses: { '200': { description: ok } } }
+  /distribution/jobs/{id}/retry:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: retryDistributionJob, summary: '重试发行任务', responses: { '200': { description: ok } } }
+  /me/wallet/withdraw:
+    post: { tags: [account], operationId: withdrawWallet, summary: '提现申请', responses: { '200': { description: ok } } }
+
   /film/movies:      { get: { tags: [film], operationId: listMovies,     responses: { '200': { description: ok } } } }
   /film/ads:         { get: { tags: [film], operationId: listAds,        responses: { '200': { description: ok } } } }
   /film/voice-works: { get: { tags: [film], operationId: listVoiceWorks, responses: { '200': { description: ok } } } }
