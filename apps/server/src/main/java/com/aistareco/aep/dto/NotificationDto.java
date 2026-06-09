@@ -12,6 +12,7 @@ public record NotificationDto(
         String title,
         String desc,
         String time,
+        Instant createdAt,
         /**
          * v0.34.x：viewedAt 替代旧 boolean read。
          *   null         → 未读
@@ -31,6 +32,7 @@ public record NotificationDto(
                 n.getTitle(),
                 n.getDescription(),
                 relativeTime(n.getCreatedAt()),
+                n.getCreatedAt(),
                 n.getViewedAt(),
                 new Audience("all", null, null)
         );

@@ -6,7 +6,7 @@
 
 import type { RenderJob, RenderOutput, MixcutAsset, MixcutAssetKind, Template, MixcutRerunJobRequest, MixcutDraft, MixcutDraftUpsert } from "@/components/mixcut-zone/types";
 import { mockJobs, mockActivationCode, mockTemplates, mockDrafts } from "@/mocks/mixcut";
-import { migrateLegacyTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
+import { migrateLegacyTemplate, normalizeVideoSceneTimings } from "@/components/mixcut-zone/lib/scene-helpers";
 import { apiFetch, API_BASE_URL, getAuthToken, USE_MOCK, mockDelay } from "./_client";
 
 const JOBS_KEY = "aistareco.web.mixcut.jobs.v1";
@@ -441,16 +441,17 @@ export function getTemplateSync(id: string): Template | null {
 
 /** 写入/覆盖一个用户模板。 */
 export async function saveTemplate(t: Template): Promise<Template> {
+  const normalized = normalizeVideoSceneTimings(t);
   if (USE_LOCAL) {
-    const stored = { ...t, is_factory: false };
+    const stored = { ...normalized, is_factory: false };
     const store = loadUserTemplates();
-    store[t.template_id] = stored;
+    store[normalized.template_id] = stored;
     saveUserTemplates();
     return mockDelay(stored);
   }
-  return apiFetch<Template>(`/mixcut/templates/${t.template_id}`, {
+  return apiFetch<Template>(`/mixcut/templates/${normalized.template_id}`, {
     method: "PUT",
-    body: t,
+    body: normalized,
   });
 }
 
@@ -477,21 +478,22 @@ export async function deleteTemplate(id: string): Promise<boolean> {
 
 /** 就地保存工厂模板（覆盖 factory scope，对所有用户可见）。 */
 export async function saveFactoryTemplate(t: Template): Promise<Template> {
+  const normalized = normalizeVideoSceneTimings(t);
   if (USE_LOCAL) {
     // mock：标 is_factory + 写 localStorage override + 撤销「已删除」标记（便于演示）。
-    const stored: Template = { ...t, is_factory: true };
+    const stored: Template = { ...normalized, is_factory: true };
     const store = loadUserTemplates();
-    store[t.template_id] = stored;
+    store[normalized.template_id] = stored;
     saveUserTemplates();
     const deleted = loadDeletedFactoryTemplateIds();
-    if (deleted.includes(t.template_id)) {
-      saveDeletedFactoryTemplateIds(deleted.filter((d) => d !== t.template_id));
+    if (deleted.includes(normalized.template_id)) {
+      saveDeletedFactoryTemplateIds(deleted.filter((d) => d !== normalized.template_id));
     }
     return mockDelay(stored);
   }
-  return apiFetch<Template>(`/admin/mixcut/templates/${t.template_id}`, {
+  return apiFetch<Template>(`/admin/mixcut/templates/${normalized.template_id}`, {
     method: "PUT",
-    body: t,
+    body: normalized,
   });
 }
 

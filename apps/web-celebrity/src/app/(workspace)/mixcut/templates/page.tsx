@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, ShieldCheck, TrendingUp, Plus, Loader2, Trash2 } from "lucide-react";
+import { Search, Plus, Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { Card, CardContent } from "@/components/mixcut-zone/ui/card";
 import { Button } from "@/components/mixcut-zone/ui/button";
@@ -19,8 +19,7 @@ import {
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
 import { MixcutApi } from "@/api";
 import type { Template } from "@/components/mixcut-zone/types";
-import { cn, formatNumber } from "@/components/mixcut-zone/lib/utils";
-import { flatSlotsOf, firstScenePreviewTemplate } from "@/components/mixcut-zone/lib/scene-helpers";
+import { flatSlotsOf, firstScenePreviewTemplate, totalDuration } from "@/components/mixcut-zone/lib/scene-helpers";
 import { canUseOperatorTools } from "@/lib/operator-role";
 import { useConfirm } from "@/components/common/confirm-dialog";
 
@@ -33,8 +32,14 @@ const SLOT_SUMMARY_LABELS = {
 
 const SLOT_SUMMARY_ORDER = ["video", "image", "text", "audio"] as const;
 
-function templateStructureSummary(template: Template): string {
-  const counts = flatSlotsOf(template).reduce<Record<string, number>>((acc, slot) => {
+function formatDuration(seconds: number): string {
+  const rounded = Math.round(seconds * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}s` : `${rounded.toFixed(1)}s`;
+}
+
+function templateListFacts(template: Template) {
+  const slots = flatSlotsOf(template);
+  const counts = slots.reduce<Record<string, number>>((acc, slot) => {
     acc[slot.layer_type] = (acc[slot.layer_type] ?? 0) + 1;
     return acc;
   }, {});
@@ -44,13 +49,22 @@ function templateStructureSummary(template: Template): string {
     .map((layerType) => `${counts[layerType]} ${SLOT_SUMMARY_LABELS[layerType]}`)
     .join(" · ");
 
-  return summary || "空模板";
+  const summedDuration = totalDuration(template);
+  const duration = summedDuration > 0 ? summedDuration : template.canvas.duration;
+
+  return {
+    durationText: formatDuration(duration),
+    sceneText: `${template.scenes.length} 场景`,
+    slotText: `${slots.length} 内容位`,
+    slotSummary: summary || "空模板",
+  };
 }
 
 export default function MixcutTemplatesPage() {
   const router = useRouter();
   const { user } = useAuth();
   const canManageTemplates = canUseOperatorTools(user?.operatorRole);
+  const canEditTemplates = Boolean(user);
   const { confirm, ConfirmHost } = useConfirm();
   const [category, setCategory] = useState("全部");
   const [search, setSearch] = useState("");
@@ -93,12 +107,17 @@ export default function MixcutTemplatesPage() {
   // 新建走 /new 路由：进入编辑器后**不立即落库**，用户点保存才会真正创建模板。
   // 这样取消 / 关页不会在「我的模板」里留下空模板（v0.21+ 修复）。
   const handleCreate = () => {
-    if (!canManageTemplates) return;
+    if (!canEditTemplates) return;
     router.push("/mixcut/templates/new");
   };
 
+  const canDeleteTemplate = (template: Template) => {
+    const isFactory = template.is_factory ?? MixcutApi.isFactoryTemplate(template.template_id);
+    return canManageTemplates || (!isFactory && canEditTemplates);
+  };
+
   const handleDelete = async (template: Template) => {
-    if (!canManageTemplates || deletingId) return;
+    if (!canDeleteTemplate(template) || deletingId) return;
     const isFactory = template.is_factory ?? MixcutApi.isFactoryTemplate(template.template_id);
     const ok = await confirm({
       title: isFactory ? "删除工厂模板?" : "删除模板?",
@@ -158,7 +177,7 @@ export default function MixcutTemplatesPage() {
             选模板，填素材，生成可分发的短视频
           </p>
         </div>
-        {canManageTemplates && (
+        {canEditTemplates && (
           <Button onClick={handleCreate}>
             <Plus className="size-4" />
             新建模板
@@ -218,61 +237,63 @@ export default function MixcutTemplatesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
-          {filtered.map((t) => (
-          <div key={t.template_id} className="group rounded-xl">
-            <Link
-              href={`/mixcut/templates/${t.template_id}`}
-              className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              <TemplatePreview template={firstScenePreviewTemplate(t)} mode="blueprint" />
-            </Link>
-            <div className="mt-3 space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
+          {filtered.map((t) => {
+            const isFactory = t.is_factory ?? MixcutApi.isFactoryTemplate(t.template_id);
+            const showDelete = canDeleteTemplate(t);
+            const facts = templateListFacts(t);
+            return (
+              <div key={t.template_id} className="group rounded-xl">
                 <Link
                   href={`/mixcut/templates/${t.template_id}`}
-                  className="min-w-0 flex-1 rounded-sm font-medium text-sm leading-tight line-clamp-1 hover:underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
+                  className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
-                  {t.name}
+                  <TemplatePreview template={firstScenePreviewTemplate(t)} mode="blueprint" />
                 </Link>
-                <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{t.canvas.duration}s</span>
-                {canManageTemplates && (
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(t)}
-                    disabled={deletingId === t.template_id}
-                    title="删除模板"
-                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <Link
+                      href={`/mixcut/templates/${t.template_id}`}
+                      className="min-w-0 flex-1 rounded-sm font-medium text-sm leading-tight line-clamp-1 hover:underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
+                    >
+                      {t.name}
+                    </Link>
+                    <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{facts.durationText}</span>
+                    {showDelete && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(t)}
+                        disabled={deletingId === t.template_id}
+                        title="删除模板"
+                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingId === t.template_id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                      </button>
+                    )}
+                  </div>
+                  <Link
+                    href={`/mixcut/templates/${t.template_id}`}
+                    className="block rounded-sm space-y-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
                   >
-                    {deletingId === t.template_id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                  </button>
-                )}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant={isFactory ? "brand" : "success"} className="text-[10px]">
+                        {isFactory ? "工厂模板" : "我的模板"}
+                      </Badge>
+                      <Badge variant="muted" className="text-[10px]">{t.metadata.category}</Badge>
+                      {t.metadata.tags.slice(0, 2).map((tag) => (
+                        <span key={tag} className="text-[10px] text-muted-foreground">#{tag}</span>
+                      ))}
+                    </div>
+                    <div className="line-clamp-1 text-[10px] text-muted-foreground">
+                      {facts.sceneText} · {facts.slotText} · {facts.slotSummary}
+                    </div>
+                    <div className="line-clamp-1 text-[10px] text-muted-foreground">
+                      总时长 {facts.durationText} · 版本 {t.version}
+                    </div>
+                  </Link>
+                </div>
               </div>
-              <Link
-                href={`/mixcut/templates/${t.template_id}`}
-                className="block rounded-sm space-y-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
-              >
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <Badge variant="muted" className="text-[10px]">{t.metadata.category}</Badge>
-                  {(t.metadata.hit_rate ?? 0) > 90 && (
-                    <Badge variant="success" className="gap-1 text-[10px]">
-                      <ShieldCheck className="size-2.5" /> 独特性高
-                    </Badge>
-                  )}
-                  {t.metadata.tags.slice(0, 2).map((tag) => (
-                    <span key={tag} className="text-[10px] text-muted-foreground">#{tag}</span>
-                  ))}
-                </div>
-                <div className="line-clamp-1 text-[10px] text-muted-foreground">
-                  {templateStructureSummary(t)}
-                </div>
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <TrendingUp className="size-2.5" />
-                  今日 {formatNumber(t.metadata.daily_creation_count ?? 0)} 条生成
-                </div>
-              </Link>
-            </div>
-          </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

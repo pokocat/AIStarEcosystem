@@ -2,18 +2,18 @@
 # ============================================================
 # 数字人资产平台 · 本地后端一键起服（人工体验用，前台运行，Ctrl+C 停止）
 #
-#   bash scripts/dap-dev.sh                  # MySQL + 真实 Agnes（默认）
-#   PROFILE=dev bash scripts/dap-dev.sh      # H2 内存库（不依赖本地 MySQL）
-#   AGNES=fake bash scripts/dap-dev.sh       # 本地 fake 多模态引擎（离线/省额度）
-#   AGNES=none bash scripts/dap-dev.sh       # 不绑引擎（自己进 admin 配 / 测占位）
-#   DB_PASSWORD= bash scripts/dap-dev.sh     # MySQL root 空密码时
+#   bash apps/web-aiavatar/scripts/dap-dev.sh                  # MySQL + 真实 Agnes（默认）
+#   PROFILE=dev bash apps/web-aiavatar/scripts/dap-dev.sh      # H2 内存库（不依赖本地 MySQL）
+#   AGNES=fake bash apps/web-aiavatar/scripts/dap-dev.sh       # 本地 fake 多模态引擎（离线/省额度）
+#   AGNES=none bash apps/web-aiavatar/scripts/dap-dev.sh       # 不绑引擎（自己进 admin 配 / 测占位）
+#   DB_PASSWORD= bash apps/web-aiavatar/scripts/dap-dev.sh     # MySQL root 空密码时
 #
 # 大模型统一经后台「AI 模型与 Key + AI 应用绑定」管理；本脚本用 aep.dap.dev-seed.* 在开机时
 # 把 DAP_* 端点自动「种」进 admin 表（幂等、不覆盖你在 admin 手配的端点），免去每次手动配置。
 # 前端另开终端：pnpm dev:aiavatar → http://localhost:3013
 # ============================================================
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../../.."   # apps/web-aiavatar/scripts → 仓库根
 ROOT="$(pwd)"
 
 PROFILE="${PROFILE:-mysql}"
@@ -32,7 +32,7 @@ fi
 FAKE_PID=""
 export AEP_DAP_DEV_SEED_ENABLED=true
 if [ "$AGNES" = "fake" ]; then
-  node "$ROOT/scripts/dev-fake-multimodal-server.mjs" &
+  node "$ROOT/apps/web-aiavatar/scripts/dev-fake-multimodal-server.mjs" &
   FAKE_PID=$!
   trap '[ -n "$FAKE_PID" ] && kill $FAKE_PID 2>/dev/null' EXIT
   export AEP_DAP_DEV_SEED_BASE_URL="http://localhost:$FAKE_PORT"

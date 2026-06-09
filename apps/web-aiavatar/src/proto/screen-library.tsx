@@ -352,7 +352,7 @@ function MDetail({ char: initialChar, ctx }) {
         hML('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 14px', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' } },
           hML('span', { className: 'reg-no', style: { fontSize: 11.5 } }, char.id),
           hML('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            char.mock && hML(UI.Badge, { tone: 'warn' }, 'MOCK'),
+            char.mock && hML(UI.Badge, { tone: 'warn' }, '预览'),
             hML(MPathL, { path: char.path }))),
         hML('div', { style: { display: 'flex', gap: 0 } },
           hML('div', { style: { position: 'relative', padding: 10, background: 'var(--canvas-2)', flex: '0 0 142px' } },
@@ -605,7 +605,8 @@ function MAssets({ char, ctx, busy, onGenerate, onOpenGenerate, nonce }) {
 
 function MVersions({ char, ctx, onChanged }) {
   const KIND_ICON: any = { archive: Icons.archive, finalize: Icons.checkc, template: Icons.palette, refine: Icons.sliders, iterate: Icons.wand, init: Icons.sparkle, look: Icons.shirt, derive: Icons.layers };
-  const evs = useApi(() => AvatarApi.versions(char.id), [], []);
+  const [reloadSeq, setReloadSeq] = useStateML(0);
+  const evs = useApi(() => AvatarApi.versions(char.id), [], [char.id, reloadSeq]);
   const [busy, setBusy] = useStateML(null as any);
   const counts: any = char.counts || {};
   const derivedCount = DATA.DERIVS.reduce((a, d) => a + (Number(counts[d.key]) || 0), 0) + (char.shotImages ? Object.keys(char.shotImages).length : 0);
@@ -624,6 +625,7 @@ function MVersions({ char, ctx, onChanged }) {
         await AvatarApi.switchVersion(char.id, n);
         toast('已切换到 ' + e.v, { tone: 'ok' });
         await (onChanged && onChanged());
+        setReloadSeq((s) => s + 1);   // 切换后重新拉取版本时间线，刷新「当前」标记与各行按钮
       }
     } catch (err: any) {
       toast(err?.message || '版本操作失败', { tone: 'err' });

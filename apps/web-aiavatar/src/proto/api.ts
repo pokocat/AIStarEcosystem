@@ -10,7 +10,7 @@
 //     从这里同步再导出（screens 用 DATA.STATUS 等），同样只经本文件。
 //
 // server 端实现：apps/server com.aistareco.aep.dap.*（v0.51，表 dap_*）。
-// 登录：/api/auth/sms/*（生产）+ /api/auth/dev-login（dev 体验账号）。
+// 登录：/api/auth/sms/*（正式账号）+ /api/auth/dev-login（授权内部体验入口）。
 // ============================================================
 import React from "react";
 import * as Mock from "./data";
@@ -18,6 +18,11 @@ import * as Mock from "./data";
 // ── 开关 / 错误 ──────────────────────────────────────────────
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
+export const ENABLE_DEV_LOGIN =
+  typeof process !== "undefined" &&
+  (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1" ||
+    (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN !== "0" &&
+      process.env.NODE_ENV !== "production"));
 const API_PREFIX = "/api/v1";
 const AUTH_PREFIX = "/api/auth";
 const TOKEN_KEY = "aiavatar_token";
@@ -177,7 +182,7 @@ async function authFetch<T>(path: string, body?: any): Promise<T> {
 
 export const AuthApi = {
   describeSmsRequestCodeResult,
-  /** dev 体验账号清单（生产环境 404 → 返回 []）。 */
+  /** 授权内部账号清单（正式环境默认不展示入口）。 */
   devAccounts: async (): Promise<any[]> => {
     try {
       return await authFetch<any[]>(`/dev-accounts`);
@@ -689,7 +694,7 @@ export const VoiceApi = {
     return apiFetch(`/voices/mine`);
   },
   preview: (voiceId: string, text?: string): Promise<{ audioUrl?: string; message?: string; kind?: string }> => {
-    if (USE_MOCK) return mock({ kind: "builtin", message: "内置音色为合成声线，在线试听即将上线" });
+    if (USE_MOCK) return mock({ kind: "builtin", message: "内置音色为合成声线，可直接绑定到数字人资产" });
     return apiFetch(`/voices/preview`, { method: "POST", body: JSON.stringify({ voiceId, text }) });
   },
   bind: (avatarId: string, voiceName: string): Promise<any> => {

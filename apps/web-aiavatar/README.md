@@ -195,7 +195,7 @@ src/
 - **资产消费**：详情四 tab 真数据；衍生查看器真图/真视频播放/下载；造型档案轮询；声音克隆真麦克风
   + 采样回放；任务中心真轮询 + 重试/取消；`Portrait` 支持真实图片（占位画像兜底）。
 - **mock 模式保留**：`NEXT_PUBLIC_USE_MOCK=1` 时内置任务模拟器，全部流程可离线演示推进。
-- **联调工具**：`scripts/dap-dev.sh`（人工体验起服，前台 Ctrl+C 停）+ `scripts/dap-verify.sh`（一键编译+起服+30 步 API E2E）+ `scripts/dev-fake-multimodal-server.mjs`（本地 fake 多模态引擎）。两脚本用 `aep.dap.dev-seed.*` 自动把 DAP_* 端点种进 admin 表，无需手动进后台配置。
+- **联调工具**（均在仓库根目录执行）：`apps/web-aiavatar/scripts/dap-dev.sh`（人工体验起服，前台 Ctrl+C 停）+ `apps/web-aiavatar/scripts/dap-verify.sh`（一键编译+起服+30 步 API E2E）+ `apps/web-aiavatar/scripts/dev-fake-multimodal-server.mjs`（本地 fake 多模态引擎）。两脚本用 `aep.dap.dev-seed.*` 自动把 DAP_* 端点种进 admin 表，无需手动进后台配置。
 - 配套 `next.config.mjs` 增 `/cdn` `/static` rewrites（dev fake-CDN 产物直出）。
 
 ### v0.3（2026-06-06）— 去原型化：真实可投产的全屏 H5 应用

@@ -293,7 +293,7 @@ tab strip header 加全局摘要 `N/M 段已就绪`；当前 active 段在底部
 **注意事项**：
 
 - 字段是**加性兼容**：scenes_snapshot 为空时渲染器行为与 v0.24 完全一致，不影响历史任务。
-- 总和超出 `aep.mixcut.max-output-duration-sec`（默认 15s）时按比例缩放后再渲染；想要更长片需要调高这个上限。
+- 总和超出 `aep.mixcut.max-output-duration-sec`（默认 60s）时按比例缩放后再渲染；想要更长片需要调高这个上限。
 - 源视频 round-robin：scene[i] 对应 `sources[(variantIndex + i) % sources.size()]`，5 场景 + 2 视频会循环复用，5 视频 + 2 场景每变体只用 2 个。
 - 当一个 slot_id 不属于任何场景的 `slot_ids[]`（前端漏发？模板异常？）→ 该 overlay 整片可见（旧行为），不会丢失内容。
 

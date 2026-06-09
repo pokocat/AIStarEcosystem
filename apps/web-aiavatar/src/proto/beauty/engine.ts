@@ -13,6 +13,14 @@ import { BeautyParams, gradeOf } from "./presets";
 const MAX_SIDE = 1600;
 const MAX_OPS = 12;
 
+/** 源图原始分辨率封顶 MAX_SIDE，最小 2px。 */
+function fitDims(source: HTMLImageElement | HTMLCanvasElement): { w: number; h: number } {
+  const sw = (source as HTMLImageElement).naturalWidth || source.width;
+  const sh = (source as HTMLImageElement).naturalHeight || source.height;
+  const scale = Math.min(1, MAX_SIDE / Math.max(sw, sh));
+  return { w: Math.max(2, Math.round(sw * scale)), h: Math.max(2, Math.round(sh * scale)) };
+}
+
 const VERT = `
 attribute vec2 aPos;
 attribute vec2 aUv;
@@ -128,8 +136,8 @@ type Op = { cx: number; cy: number; radius: number; strength: number; dirx: numb
 
 export class BeautyEngine {
   readonly canvas: HTMLCanvasElement;
-  readonly width: number;
-  readonly height: number;
+  private width: number;
+  private height: number;
   private gl: WebGLRenderingContext;
   private prog: WebGLProgram;
   private loc: Record<string, WebGLUniformLocation | null> = {};
@@ -161,11 +169,7 @@ export class BeautyEngine {
   /** 创建引擎：canvas 设为图像原始分辨率（封顶 MAX_SIDE）。WebGL 不可用抛 WEBGL_UNSUPPORTED。 */
   static create(source: HTMLImageElement | HTMLCanvasElement, anchors: FaceAnchors,
                 canvas: HTMLCanvasElement): BeautyEngine {
-    const sw = (source as HTMLImageElement).naturalWidth || source.width;
-    const sh = (source as HTMLImageElement).naturalHeight || source.height;
-    const scale = Math.min(1, MAX_SIDE / Math.max(sw, sh));
-    const w = Math.max(2, Math.round(sw * scale));
-    const h = Math.max(2, Math.round(sh * scale));
+    const { w, h } = fitDims(source);
     canvas.width = w;
     canvas.height = h;
 
@@ -226,6 +230,27 @@ export class BeautyEngine {
 
     gl.viewport(0, 0, w, h);
     return new BeautyEngine(canvas, gl, prog, texImg, texMask, w, h, anchors);
+  }
+
+  /** 复用同一 WebGL 上下文换底图 + 锚点（应用保存后以成品为新基底继续调）。
+   *  不重建 context / 不重编 shader —— 否则 loseContext 过的 canvas 取回的是死上下文，
+   *  再次 compileShader 会静默失败（SHADER_COMPILE: null）。 */
+  reload(source: HTMLImageElement | HTMLCanvasElement, anchors: FaceAnchors) {
+    if (this.disposed) return;
+    const gl = this.gl;
+    const { w, h } = fitDims(source);
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.width = w;
+    this.height = h;
+    this.aspect = w / h;
+    this.anchors = anchors;
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.bindTexture(gl.TEXTURE_2D, this.texImg);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source as any);
+    gl.bindTexture(gl.TEXTURE_2D, this.texMask);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, paintSkinMask(anchors, w, h));
+    gl.viewport(0, 0, w, h);
   }
 
   /** 渲染一帧（original=true 渲原图，用于按住对比）。 */

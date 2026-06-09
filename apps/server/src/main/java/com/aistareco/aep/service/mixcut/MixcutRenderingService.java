@@ -498,8 +498,8 @@ public class MixcutRenderingService {
     /** 归一化矩形 (0..1) ；x,y=左上角。 */
     private record NormRect(double x, double y, double w, double h) {}
 
-    /** 槽位元信息（从 slots_snapshot 派生）。 */
-    private record SlotInfo(String slotId, String layerType, NormRect rect, int zIndex, String fit) {}
+    /** 槽位元信息（从 slots_snapshot 派生）。timeRange 为整片绝对时间窗，缺省时按场景窗口兜底。 */
+    private record SlotInfo(String slotId, String layerType, NormRect rect, int zIndex, String fit, double[] timeRange) {}
 
     /**
      * v0.13+ 扰动贴图池条目：从 job.stickerPoolJson 派生。
@@ -767,7 +767,16 @@ public class MixcutRenderingService {
                         }
                         String fit = s.path("fit").asText("cover");
                         if (!"cover".equals(fit) && !"contain".equals(fit)) fit = "cover";
-                        slotMap.put(slotId, new SlotInfo(slotId, layerType, rect, zIndex, fit));
+                        double[] timeRange = null;
+                        JsonNode tr = s.path("time_range");
+                        if (tr.isArray() && tr.size() >= 2) {
+                            double start = tr.get(0).asDouble(Double.NaN);
+                            double end = tr.get(1).asDouble(Double.NaN);
+                            if (Double.isFinite(start) && Double.isFinite(end) && end > start) {
+                                timeRange = new double[]{Math.max(0.0, start), Math.max(0.0, end)};
+                            }
+                        }
+                        slotMap.put(slotId, new SlotInfo(slotId, layerType, rect, zIndex, fit, timeRange));
                     }
                 }
             }
@@ -1063,6 +1072,7 @@ public class MixcutRenderingService {
         final boolean useSceneSchedule = !ctx.scenes.isEmpty() && caps.concat;
         final int segCount;
         final double[] segDurations;
+        double sceneScheduleScale = 1.0;
         if (useSceneSchedule) {
             segCount = ctx.scenes.size();
             segDurations = new double[segCount];
@@ -1074,6 +1084,7 @@ public class MixcutRenderingService {
             // 总和超出平台硬上限 → 按比例缩到 maxOutputSec
             if (sum > maxOutputSec) {
                 double scale = maxOutputSec / sum;
+                sceneScheduleScale = scale;
                 for (int i = 0; i < segCount; i++) segDurations[i] *= scale;
                 sum = maxOutputSec;
             }
@@ -1101,14 +1112,18 @@ public class MixcutRenderingService {
         int H = ctx.outputHeight;
 
         // perturbation 参数（按 overrides 短路；被关掉的算子用恒等值，不进入 filter）
-        double speed       = ctx.overrides.allowSpeed       ? randomSpeed(profile, rnd)       : 1.0;
+        // 多场景模板的 scene boundary 是业务时间轴，不能在 concat 后整体 setpts 变速；
+        // 否则 0-7s / 7-20s 这类边界会按 1/speed 漂移，overlay enable 仍在原始时间点。
+        final boolean sceneTimingLocked = useSceneSchedule && segCount > 1;
+        final boolean speedAllowed = ctx.overrides.allowSpeed && !sceneTimingLocked && caps.setpts;
+        double speed       = speedAllowed ? randomSpeed(profile, rnd) : 1.0;
         double brightness  = ctx.overrides.allowBrightness  ? randomBrightness(profile, rnd)  : 0.0;
         double saturation  = ctx.overrides.allowSaturation  ? randomSaturation(profile, rnd)  : 1.0;
         boolean mirror     = ctx.overrides.allowMirror      && randomMirror(profile, rnd);
 
         ObjectNode overridesNode = transforms.putObject("overrides");
         overridesNode.put("allow_mirror", ctx.overrides.allowMirror);
-        overridesNode.put("allow_speed", ctx.overrides.allowSpeed);
+        overridesNode.put("allow_speed", speedAllowed);
         overridesNode.put("allow_brightness", ctx.overrides.allowBrightness);
         overridesNode.put("allow_saturation", ctx.overrides.allowSaturation);
         overridesNode.put("allow_position_jitter", ctx.overrides.allowPositionJitter);
@@ -1118,7 +1133,6 @@ public class MixcutRenderingService {
             saturation = 1.0;
         }
         if (!caps.hflip) mirror = false;
-        if (!caps.setpts) speed = 1.0;
 
         // ffmpeg args 累积
         List<String> args = new ArrayList<>();
@@ -1234,6 +1248,7 @@ public class MixcutRenderingService {
         transforms.put("mirror", mirror);
         transforms.put("segments", segCount);
         transforms.put("scene_schedule", useSceneSchedule ? "per_scene" : "legacy_2seg");
+        transforms.put("scene_timing_locked", sceneTimingLocked);
         transforms.put("total_duration_sec", totalDuration);
         transforms.put("canvas_w", W);
         transforms.put("canvas_h", H);
@@ -1424,6 +1439,8 @@ public class MixcutRenderingService {
         }
 
         // v0.25+: slot_id → [sceneStart, sceneEnd]。用来给 overlay 加 enable=between(t,a,b)。
+        // v0.51+: 优先使用前端拍平后的 slot 绝对 time_range，再与所属 scene 窗口求交；
+        // 缺省时才回退整段 scene。这样局部 overlay 和场景切换共用同一条时间轴。
         // useSceneSchedule=false 或 slot 不在任何场景里 → null（overlay 整片可见，与旧行为一致）。
         Map<String, double[]> slotToWindow = new HashMap<>();
         if (useSceneSchedule) {
@@ -1432,7 +1449,17 @@ public class MixcutRenderingService {
                 double s0 = segStart[sIdx];
                 double s1 = Math.min(segEnd[sIdx], totalDuration);
                 for (String sid : sc.slotIds) {
-                    slotToWindow.put(sid, new double[]{s0, s1});
+                    SlotInfo info = ctx.slotMap.get(sid);
+                    double[] tr = info == null ? null : info.timeRange;
+                    if (tr != null) {
+                        double t0 = tr[0] * sceneScheduleScale;
+                        double t1 = tr[1] * sceneScheduleScale;
+                        double w0 = Math.max(s0, t0);
+                        double w1 = Math.min(s1, t1);
+                        if (w1 > w0) slotToWindow.put(sid, new double[]{w0, w1});
+                    } else {
+                        slotToWindow.put(sid, new double[]{s0, s1});
+                    }
                 }
             }
         }

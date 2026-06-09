@@ -2,12 +2,12 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { AuthApi, auth } from "./api";
+import { AuthApi, auth, ENABLE_DEV_LOGIN } from "./api";
 import { toast } from "./toast";
 
 // ============================================================
 // 移动端 · 登录 / 注册（live 模式必经；mock 模式不渲染）
-//   手机验证码登录（生产）+ 注册（验证码 + 激活码双因素）+ 体验账号（dev）
+//   手机验证码登录（生产）+ 注册（验证码 + 激活码双因素）+ 授权内部体验入口
 // ============================================================
 const hLG : any = React.createElement;
 const { useState: useStateLG, useEffect: useEffectLG, useRef: useRefLG } = React;
@@ -63,7 +63,10 @@ export function MLogin({ onLoggedIn }) {
   const [busy, setBusy] = useStateLG(false);
   const [devAccounts, setDevAccounts] = useStateLG([] as any[]);
 
-  useEffectLG(() => { AuthApi.devAccounts().then(setDevAccounts).catch(() => {}); }, []);
+  useEffectLG(() => {
+    if (!ENABLE_DEV_LOGIN) return;
+    AuthApi.devAccounts().then(setDevAccounts).catch(() => {});
+  }, []);
 
   const finish = (data: { token: string; user: any }) => {
     auth.setSession(data.token, data.user);
@@ -145,7 +148,7 @@ export function MLogin({ onLoggedIn }) {
       hLG('div', { style: { display: 'flex', background: 'var(--surface-3)', padding: 3, borderRadius: 'var(--r-pill)', marginBottom: 20 } },
         hLG(Tab, { on: tab === 'login', onClick: () => setTab('login') }, '手机号登录'),
         hLG(Tab, { on: tab === 'register', onClick: () => setTab('register') }, '注册'),
-        devAccounts.length > 0 && hLG(Tab, { on: tab === 'dev', onClick: () => setTab('dev') }, '体验账号')),
+        ENABLE_DEV_LOGIN && devAccounts.length > 0 && hLG(Tab, { on: tab === 'dev', onClick: () => setTab('dev') }, '内部体验')),
 
       tab !== 'dev' && hLG('div', null,
         // 登录方式切换（仅登录 tab）：验证码 / 密码
@@ -173,15 +176,15 @@ export function MLogin({ onLoggedIn }) {
           hLG(Field, { label: '工作室名称' }, hLG(UI.Input, { value: studioName, onChange: setStudioName, placeholder: '如：柯岚工作室' })),
           hLG('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, margin: '4px 0 14px', padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' } },
             hLG(Icons.info, { size: 14, style: { color: 'var(--ink-3)', flex: '0 0 auto', marginTop: 1 } }),
-            hLG('span', { style: { fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.5 } }, '注册需要激活码（双因素开通）。还没有激活码？联系平台获取，或在 dev 环境使用体验账号。'))),
+            hLG('span', { style: { fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.5 } }, '注册需要激活码（双因素开通）。还没有激活码？请联系客户经理或平台运营获取。'))),
         hLG(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: busy,
           onClick: tab === 'register' ? doRegister : (loginMode === 'password' ? doPasswordLogin : doLogin), style: { marginTop: 6 } },
           busy ? '请稍候…' : tab === 'register' ? '注册并登录' : (loginMode === 'password' ? '密码登录' : '登录')),
         tab === 'login' && loginMode === 'password' && hLG('p', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', lineHeight: 1.6, margin: '12px 0 0' } },
           '首次登录请用验证码；登录后可在「我的 → 设置 → 账号与安全」设置密码。')),
 
-      tab === 'dev' && hLG('div', null,
-        hLG('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, 'dev 环境体验账号，一键免密登录。'),
+      tab === 'dev' && ENABLE_DEV_LOGIN && hLG('div', null,
+        hLG('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '内部验证账号，仅用于已授权的内部验证。'),
         devAccounts.map((a: any) => hLG('button', { key: a.username, disabled: busy, onClick: () => doDevLogin(a.username), className: 'm-tap', style: {
           display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '13px 15px', marginBottom: 10, textAlign: 'left', cursor: 'pointer',
           background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-1)' } },

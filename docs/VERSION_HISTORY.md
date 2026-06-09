@@ -485,7 +485,7 @@ MixcutRenderingService :
 **注意事项**：
 
 - 字段全部加性兼容：scenes_snapshot 为空时渲染器行为与 v0.24 完全一致，历史任务不受影响。
-- 总和超出 `aep.mixcut.max-output-duration-sec`（默认 15s）按比例缩放后再渲染；想要更长视频需调高上限。
+- 总和超出 `aep.mixcut.max-output-duration-sec`（默认 60s）按比例缩放后再渲染；想要更长视频需调高上限。
 - 源视频 round-robin：scene[i] → `sources[(variantIndex + i) % sources.size()]`；5 场景 + 2 视频会循环复用，5 视频 + 2 场景每变体只用 2 个。
 - overlay enable 用单引号包 `between(...)`，防止表达式里的逗号被 ffmpeg 当成 filter-chain 分隔符。
 - 一个 slot_id 不属于任何场景的 `slot_ids[]`（前端漏发？模板异常？）→ 该 overlay 整片可见（旧行为），不会丢失内容。

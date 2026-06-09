@@ -86,6 +86,8 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
   const [demoImage, setDemoImage] = useState(false); // 占位画像（mock / 无定妆图）
   const [comparing, setComparing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [warpSel, setWarpSel] = useState("face"); // 精调当前选中项（单滑杆）
+  const [skinSel, setSkinSel] = useState("smooth"); // 美颜当前选中项（单滑杆）
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<BeautyEngine | null>(null);
@@ -110,8 +112,6 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
   const init = useCallback(async (seedBlob?: Blob) => {
     setStatus("loading");
     setErrMsg("");
-    engineRef.current && engineRef.current.dispose();
-    engineRef.current = null;
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
     try {
       if (!USE_MOCK) warmupLandmarker();
@@ -128,15 +128,18 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
       }
       let anchors: FaceAnchors;
       if (demo || USE_MOCK) {
-        // mock / 占位画像：跳过关键点资产加载，直接用标准构图锚点（离线可演示）
+        // mock / 占位画像：跳过关键点资产加载，直接用标准构图锚点（离线可预览）
         anchors = canonicalAnchors();
       } else {
         const pts = await detectLandmarks(source as any);
         anchors = pts ? extractAnchors(pts) : canonicalAnchors();
       }
       if (!canvasRef.current) return;
-      const engine = BeautyEngine.create(source, anchors, canvasRef.current);
-      engineRef.current = engine;
+      // 复用已有上下文换底图；首次（或上下文已 dispose）才新建。
+      // 切忌 dispose 后在同一 canvas 上 create —— loseContext 过的 canvas 会取回死上下文。
+      let engine = engineRef.current;
+      if (engine) engine.reload(source, anchors);
+      else { engine = BeautyEngine.create(source, anchors, canvasRef.current); engineRef.current = engine; }
       const zero = cloneParams(ZERO_PARAMS);
       paramsRef.current = zero;
       setParams(zero);
@@ -197,18 +200,42 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
     Object.keys(p.warp).every((k) => p.warp[k] === (params.warp as any)[k]) &&
     p.skin.smooth === params.skin.smooth && p.skin.whiten === params.skin.whiten;
 
+  // 单滑杆 + 底部横滚参数条（剪映/美图式）：同一时刻只展开一个滑杆，预览常驻可见
+  const chipSliders = (ctrls: any[], group: "warp" | "skin", sel: string, setSel: (k: string) => void) => {
+    const fmt = (v: number) => (group === "warp" ? (v > 0 ? "+" : "") + v : String(v));
+    const cur = ctrls.find((c) => c.key === sel) || ctrls[0];
+    const cv = (params as any)[group][cur.key] || 0;
+    return hB('div', null,
+      // 当前选中项的单滑杆（紧贴预览下沿）
+      hB('div', { style: { marginBottom: 14 } },
+        hB('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 8 } },
+          hB('span', { style: { fontSize: 13.5, fontWeight: 700 } }, cur.name),
+          hB('span', { className: 'mono', style: { fontSize: 12, color: cv !== 0 ? 'var(--primary)' : 'var(--ink-3)', fontWeight: 700 } }, fmt(cv))),
+        hB(UI.Slider, { value: cv, min: cur.min, max: cur.max, onChange: (nv: number) => update({ ...params, [group]: { ...(params as any)[group], [cur.key]: nv } }) })),
+      // 横滚参数条（已调整项亮蓝并带数值）
+      hB('div', { style: { display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -15px', padding: '0 15px 4px', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' } },
+        ctrls.map((c) => {
+          const v = (params as any)[group][c.key] || 0;
+          const on = c.key === sel;
+          const dirty = v !== 0;
+          return hB('button', { key: c.key, onClick: () => setSel(c.key), style: { flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer', whiteSpace: 'nowrap', border: '1.5px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'), background: on ? 'var(--primary-tint)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)', fontSize: 12.5, fontWeight: 600 } },
+            c.name,
+            dirty && hB('span', { className: 'mono', style: { fontSize: 10.5, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink-3)' } }, fmt(v)));
+        })));
+  };
+
   // ── 视图 ───────────────────────────────────────────────────
   return hB('div', null,
     // 预览画布
     hB('div', {
-      style: { position: 'relative', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)', marginBottom: 12, background: 'var(--surface-3)', WebkitUserSelect: 'none', userSelect: 'none' },
+      style: { position: 'relative', width: 'fit-content', maxWidth: '100%', margin: '0 auto 12px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)', background: 'var(--surface-3)', WebkitUserSelect: 'none', userSelect: 'none' },
       onPointerDown: compareDown, onPointerUp: compareUp, onPointerLeave: compareUp, onPointerCancel: compareUp,
       onContextMenu: (e: any) => e.preventDefault(),
     },
-      hB('canvas', { ref: canvasRef, width: 768, height: 1024, style: { width: '100%', height: 'auto', display: 'block', touchAction: 'manipulation', WebkitTouchCallout: 'none' } }),
+      hB('canvas', { ref: canvasRef, width: 768, height: 1024, style: { display: 'block', width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '46vh', touchAction: 'manipulation', WebkitTouchCallout: 'none' } }),
       // 角标
       status === 'ready' && hB('div', { style: { position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 } },
-        demoImage && hB(UI.Badge, { tone: 'warn' }, '示例画像'),
+        demoImage && hB(UI.Badge, { tone: 'warn' }, '标准示意图'),
         !demoImage && approx && hB(UI.Badge, { tone: 'warn' }, '未识别人脸 · 近似调整')),
       status === 'ready' && hB('div', { style: { position: 'absolute', right: 10, bottom: 10, padding: '5px 11px', borderRadius: 'var(--r-pill)', background: 'rgba(20,16,30,.55)', color: '#fff', fontSize: 11, fontWeight: 600, pointerEvents: 'none', backdropFilter: 'blur(4px)' } },
         comparing ? '原图' : '按住对比原图'),
@@ -236,15 +263,7 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
 
     // 面板
     hB('div', { className: 'm-card', style: { padding: 15, marginBottom: 12 } },
-      tab === 'warp' && hB('div', { style: { display: 'flex', flexDirection: 'column', gap: 15 } },
-        DATA.WARP_CTRLS.map((c: any) => {
-          const v = (params.warp as any)[c.key] || 0;
-          return hB('div', { key: c.key },
-            hB('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 7 } },
-              hB('span', { style: { fontSize: 13, fontWeight: 600 } }, c.name),
-              hB('span', { className: 'mono', style: { fontSize: 11.5, color: v !== 0 ? 'var(--primary)' : 'var(--ink-3)', fontWeight: 600 } }, (v > 0 ? '+' : '') + v)),
-            hB(UI.Slider, { value: v, min: c.min, max: c.max, onChange: (nv: number) => update({ ...params, warp: { ...params.warp, [c.key]: nv } }) }));
-        })),
+      tab === 'warp' && chipSliders(DATA.WARP_CTRLS, 'warp', warpSel, setWarpSel),
       tab === 'skin' && hB('div', null,
         hB('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 9 } }, '一键美颜'),
         hB('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
@@ -254,15 +273,7 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
               hB('div', { style: { fontSize: 13, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink)' } }, p.name),
               hB('div', { style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, p.desc));
           })),
-        hB('div', { style: { display: 'flex', flexDirection: 'column', gap: 15 } },
-          SKIN_CTRLS.map((c) => {
-            const v = (params.skin as any)[c.key] || 0;
-            return hB('div', { key: c.key },
-              hB('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 7 } },
-                hB('span', { style: { fontSize: 13, fontWeight: 600 } }, c.name),
-                hB('span', { className: 'mono', style: { fontSize: 11.5, color: v !== 0 ? 'var(--primary)' : 'var(--ink-3)', fontWeight: 600 } }, String(v))),
-              hB(UI.Slider, { value: v, min: c.min, max: c.max, onChange: (nv: number) => update({ ...params, skin: { ...params.skin, [c.key]: nv } }) }));
-          }))),
+        chipSliders(SKIN_CTRLS as any, 'skin', skinSel, setSkinSel)),
       tab === 'filter' && hB('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
         FILTERS.map((f) => {
           const on = params.filter === f.key;
@@ -275,5 +286,5 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
       hB(UI.Button, { variant: 'primary', full: true, icon: Icons.checkc, disabled: busy || status !== 'ready' || isZeroParams(params), onClick: apply, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, busy ? '保存中…' : '应用保存')),
     hB('div', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', lineHeight: 1.5 } },
       '端上实时处理 · 不消耗积分 · 像素级保持本人特征',
-      demoImage ? hB('span', null, hB('br'), '当前为示例画像演示，生成定妆形象后即可精调真实照片') : null));
+      demoImage ? hB('span', null, hB('br'), '当前为标准示意图，生成定妆形象后即可精调真实照片') : null));
 }

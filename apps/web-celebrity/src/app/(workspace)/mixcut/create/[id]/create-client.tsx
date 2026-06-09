@@ -26,6 +26,7 @@ import {
   Save,
   Bookmark,
   PencilRuler,
+  PlayCircle,
   Loader2 as Loader2Icon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-star-eco/ui/ui/collapsible";
@@ -38,6 +39,7 @@ import { Slider } from "@/components/mixcut-zone/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@ai-star-eco/ui/ui/radio-group";
 import { Checkbox } from "@ai-star-eco/ui/ui/checkbox";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
+import { TimelinePreviewDialog } from "@/components/mixcut-zone/timeline-preview-dialog";
 import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
 import { SlotInput } from "@/components/mixcut-zone/slot-input";
 import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker";
@@ -205,6 +207,17 @@ function draftSig(
   return JSON.stringify([sortedBindings, profile, variants, overrides, stickerPool ?? null, productId ?? null]);
 }
 
+function locksSceneTiming(template: Template | null): boolean {
+  return (template?.scenes.length ?? 0) > 1;
+}
+
+function effectiveOverridesForTemplate(
+  template: Template,
+  overrides: Required<PerturbationOverrides>,
+): Required<PerturbationOverrides> {
+  return locksSceneTiming(template) ? { ...overrides, allow_speed: false } : overrides;
+}
+
 export function CreateClient({ id }: { id: string }) {
   const router = useRouter();
   const code = MixcutApi.mockActivationCode;
@@ -261,6 +274,8 @@ export function CreateClient({ id }: { id: string }) {
    * - 单场景模板（scenes.length === 1）下永远是 0，tab 条不渲染，行为与旧版一致。
    */
   const [activeSceneIdx, setActiveSceneIdx] = useState(0);
+  // v0.57+: 编排预览弹窗（纯前端时间轴播放，渲染前核对整片）
+  const [previewOpen, setPreviewOpen] = useState(false);
   const initFromTemplateRef = useRef(false);
   const productAutoFillRef = useRef(false);
   const draftLoadRef = useRef(false);
@@ -331,6 +346,14 @@ export function CreateClient({ id }: { id: string }) {
     setBindings(initial);
     setProfile(template.perturbation_profile);
     setVariants(template.output_variants_default);
+    setOverrides({
+      allow_mirror: true,
+      allow_speed: !locksSceneTiming(template),
+      allow_brightness: true,
+      allow_saturation: true,
+      allow_position_jitter: true,
+      allow_scale_jitter: true,
+    });
   }, [template]);
 
   /**
@@ -397,14 +420,14 @@ export function CreateClient({ id }: { id: string }) {
 
         const seededProfile = d.perturbation_profile ?? template.perturbation_profile;
         const seededVariants = d.output_variants ?? template.output_variants_default;
-        const seededOverrides: Required<PerturbationOverrides> = {
+        const seededOverrides: Required<PerturbationOverrides> = effectiveOverridesForTemplate(template, {
           allow_mirror: d.perturbation_overrides?.allow_mirror ?? true,
           allow_speed: d.perturbation_overrides?.allow_speed ?? true,
           allow_brightness: d.perturbation_overrides?.allow_brightness ?? true,
           allow_saturation: d.perturbation_overrides?.allow_saturation ?? true,
           allow_position_jitter: d.perturbation_overrides?.allow_position_jitter ?? true,
           allow_scale_jitter: d.perturbation_overrides?.allow_scale_jitter ?? true,
-        };
+        });
         const seededSticker = d.sticker_pool?.["_global"];
         setProfile(seededProfile);
         setVariants(seededVariants);
@@ -467,6 +490,7 @@ export function CreateClient({ id }: { id: string }) {
   const allSlots = flatSlotsOf(template);
   const editableSlots = allSlots.filter((s) => s.user_editable);
   const requiredSlots = editableSlots.filter((s) => s.required);
+  const sceneTimingLocked = locksSceneTiming(template);
 
   // v0.26+: 画布预览专用 —— 把模板收窄到「仅当前选中场景」，避免多场景 slot rect 全部叠加在
   // 同一画框里。clamp activeSceneIdx 防止模板异步加载完后越界。
@@ -575,6 +599,7 @@ export function CreateClient({ id }: { id: string }) {
 
   const buildDraftUpsert = (): MixcutDraftUpsert => {
     const { slotsSnapshot, scenesSnapshot, canvasSnapshot } = buildSnapshots();
+    const effectiveOverrides = effectiveOverridesForTemplate(template, overrides);
     return {
       id: activeDraftId ?? undefined,
       template_id: template.template_id,
@@ -586,7 +611,7 @@ export function CreateClient({ id }: { id: string }) {
       canvas_snapshot: canvasSnapshot,
       slots_snapshot: slotsSnapshot,
       scenes_snapshot: scenesSnapshot,
-      perturbation_overrides: overrides,
+      perturbation_overrides: effectiveOverrides,
       sticker_pool: stickerPool ? { _global: stickerPool } : undefined,
       perturbation_profile: profile,
       output_variants: variants,
@@ -671,6 +696,7 @@ export function CreateClient({ id }: { id: string }) {
 
     const jobId = `job_${nanoid(8)}`;
     const { slotsSnapshot, scenesSnapshot, canvasSnapshot } = buildSnapshots();
+    const effectiveOverrides = effectiveOverridesForTemplate(template, overrides);
 
     const job: RenderJob = {
       id: jobId,
@@ -687,7 +713,7 @@ export function CreateClient({ id }: { id: string }) {
       canvas_snapshot: canvasSnapshot,
       slots_snapshot: slotsSnapshot,
       scenes_snapshot: scenesSnapshot,
-      perturbation_overrides: overrides,
+      perturbation_overrides: effectiveOverrides,
       sticker_pool: stickerPool ? { _global: stickerPool } : undefined,
       // v0.26+: 把商品关联透传到 RenderJob，让分发抽屉能反查 product 自动填挂载字段
       product_id: linkedProduct?.id,
@@ -1279,8 +1305,19 @@ export function CreateClient({ id }: { id: string }) {
             )}
           </div>
 
+          {/* v0.57+: 编排预览 —— 渲染前把整片顺序播一遍核对 */}
+          <Button
+            variant="outline"
+            size="default"
+            className="w-full"
+            onClick={() => setPreviewOpen(true)}
+          >
+            <PlayCircle className="size-4" /> 预览效果
+          </Button>
+
           <p className="text-[10px] text-muted-foreground leading-relaxed px-1">
-            点击画布上的素材位 → 中列对应输入框聚焦；切换场景 → 画布同步显示该段
+            点击画布上的素材位 → 中列对应输入框聚焦；切换场景 → 画布同步显示该段。
+            「预览效果」按场景顺序把整片播一遍，核对编排（不含差异化处理）。
           </p>
         </div>
 
@@ -1450,25 +1487,32 @@ export function CreateClient({ id }: { id: string }) {
                         { key: "allow_speed", label: "微调速度", hint: "随机加速/减速 ±20%，听感几乎察觉不到" },
                         { key: "allow_brightness", label: "亮度微调", hint: "轻微变亮/变暗，视觉无感" },
                         { key: "allow_saturation", label: "色彩微调", hint: "颜色饱和度小幅起伏" },
-                      ] as const).map((it) => (
-                        <label
-                          key={it.key}
-                          title={it.hint}
-                          className={cn(
-                            "flex items-center justify-between gap-2 px-2 py-1.5 rounded border cursor-pointer select-none transition-colors text-xs",
-                            "border-transparent text-foreground hover:bg-secondary/40",
-                            "has-[[data-state=checked]]:border-border has-[[data-state=checked]]:bg-secondary/30",
-                          )}
-                        >
-                          <span>{it.label}</span>
-                          <Checkbox
-                            checked={overrides[it.key]}
-                            onCheckedChange={(v) =>
-                              setOverrides((p) => ({ ...p, [it.key]: v === true }))
-                            }
-                          />
-                        </label>
-                      ))}
+                      ] as const).map((it) => {
+                        const disabled = it.key === "allow_speed" && sceneTimingLocked;
+                        return (
+                          <label
+                            key={it.key}
+                            title={disabled ? "多场景模板锁定场景边界，不做速度扰动" : it.hint}
+                            className={cn(
+                              "flex items-center justify-between gap-2 px-2 py-1.5 rounded border select-none transition-colors text-xs",
+                              disabled
+                                ? "cursor-not-allowed border-transparent text-muted-foreground bg-muted/30"
+                                : "cursor-pointer border-transparent text-foreground hover:bg-secondary/40",
+                              "has-[[data-state=checked]]:border-border has-[[data-state=checked]]:bg-secondary/30",
+                            )}
+                          >
+                            <span>{it.label}</span>
+                            <Checkbox
+                              checked={disabled ? false : overrides[it.key]}
+                              disabled={disabled}
+                              onCheckedChange={(v) => {
+                                if (disabled) return;
+                                setOverrides((p) => ({ ...p, [it.key]: v === true }));
+                              }}
+                            />
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1651,6 +1695,12 @@ export function CreateClient({ id }: { id: string }) {
         open={productPickerOpen}
         onOpenChange={setProductPickerOpen}
         onPick={(p) => setLinkedProduct(p)}
+      />
+      <TimelinePreviewDialog
+        template={template}
+        bindings={bindings}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
       />
     </div>
   );

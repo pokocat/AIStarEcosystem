@@ -103,7 +103,7 @@ function DevLoginScreenInner({
             选择经纪公司登录
           </h1>
           <p className="text-sm text-gray-500 font-light">
-            开发模式 · 免密切换账户。每个账号对应一家经纪公司，登录后进入工作台。
+            内部体验入口。每个账号对应一家经纪公司，登录后进入工作台。
           </p>
         </div>
 
@@ -120,7 +120,7 @@ function DevLoginScreenInner({
             </div>
           ) : accounts.length === 0 ? (
             <div className="text-center text-sm text-gray-500 py-6">
-              后端未种子任何 STUDIO 账户。请先启动 server（dev profile）。
+              当前没有可用的内部验证账号，请改用手机号登录或联系管理员。
             </div>
           ) : (
             <>
@@ -171,7 +171,7 @@ function DevLoginScreenInner({
           )}
 
           <div className="pt-3 border-t border-white/5 space-y-2">
-            <div className="text-[11px] text-gray-500">手动输入用户名（调试用）</div>
+            <div className="text-[11px] text-gray-500">输入授权账号</div>
             <div className="flex items-center gap-2">
               <input
                 value={manualUsername}
@@ -210,7 +210,7 @@ function DevLoginScreenInner({
         </Link>
 
         <p className="text-[11px] text-gray-600 text-center font-light">
-          ⚠️ dev-login 仅在后端 dev profile 下启用，生产环境会返回 404。
+          内部体验入口仅面向已授权验证，正式账号请使用手机号登录。
         </p>
       </div>
     </div>

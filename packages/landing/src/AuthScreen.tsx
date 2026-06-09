@@ -68,7 +68,7 @@ export interface AuthScreenProps {
   theme: AuthScreenTheme;
   /** 登录成功后的 fallback 路径（URL `?from=` 优先）。 */
   defaultPostLoginPath?: string;
-  /** 是否显示 dev 免密 tab（默认开发构建显示、生产构建隐藏）。 */
+  /** 是否显示内部免密 tab（默认非生产构建显示、生产构建隐藏）。 */
   enableDev?: boolean;
 }
 
@@ -181,7 +181,7 @@ function AuthScreenInner(props: AuthScreenProps) {
             </TabBtn>
             {enableDev && (
               <TabBtn active={tab === "dev"} onClick={() => setTab("dev")}>
-                <Smartphone size={12} /> 体验账号
+                <Smartphone size={12} /> 内部体验
               </TabBtn>
             )}
           </div>
@@ -224,7 +224,7 @@ function AuthScreenInner(props: AuthScreenProps) {
           }}
         >
           {enableDev
-            ? "验证码 / 密码登录适用于任意环境；体验账号仅在开发环境下可用。"
+            ? "验证码 / 密码登录用于正式账号；内部体验入口仅面向已授权验证。"
             : "验证码 / 密码登录适用于当前环境；新用户请使用激活码完成注册。"}
         </p>
       </div>
@@ -539,8 +539,8 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
           setAccounts([]);
           setError(
             err.message.includes("Invalid JSON")
-              ? "体验账号暂不可用：请确认 apps/server 已启动并启用了 dev profile。"
-              : err.message || "体验账号加载失败（仅开发环境可用）",
+              ? "内部验证账号暂不可用，请联系管理员确认账号配置。"
+              : err.message || "内部验证账号加载失败，请稍后重试。",
           );
         }
       });
@@ -567,11 +567,11 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
       {!accounts ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 88, color: "var(--as-fg-muted)", fontSize: 13 }}>
           <Loader2 size={14} className="animate-spin" style={{ marginRight: 8 }} />
-          加载体验账号中
+          加载内部验证账号中
         </div>
       ) : accounts.length === 0 ? (
         <div style={{ textAlign: "center", color: "var(--as-fg-muted)", fontSize: 13, padding: "24px 0" }}>
-          当前没有可用的体验账号，请改用「手机号登录」。
+          当前没有可用的内部验证账号，请改用「手机号登录」。
         </div>
       ) : (
         <>
@@ -622,7 +622,7 @@ function DevLoginForm({ onSuccess }: { onSuccess: (username: string) => Promise<
       )}
 
       <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--as-border)" }}>
-        <div style={{ marginBottom: 8, fontSize: 11, color: "var(--as-fg-muted)" }}>手动输入账号（仅调试）</div>
+        <div style={{ marginBottom: 8, fontSize: 11, color: "var(--as-fg-muted)" }}>输入授权账号</div>
         <div style={{ display: "flex", gap: 8 }}>
           <input value={manualUsername} onChange={(e) => setManualUsername(e.target.value)} placeholder="studio_starlight" disabled={submitting} style={{ ...inputStyle, flex: 1 }} />
           <button

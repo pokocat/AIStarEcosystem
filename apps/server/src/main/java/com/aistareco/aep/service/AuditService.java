@@ -8,10 +8,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -90,6 +93,7 @@ public class AuditService {
         AuditLog log = AuditLog.builder()
                 .id(UUID.randomUUID().toString())
                 .userId(userId)
+                .username(truncate(firstNonBlank(currentUsername(), userId), 128))
                 .tenantId(tenantId)
                 .action(action)
                 .resourceType(resourceType)
@@ -168,6 +172,21 @@ public class AuditService {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        String normalized = blankToNull(first);
+        return normalized != null ? normalized : blankToNull(second);
+    }
+
+    private static String currentUsername() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return null;
+        Object details = auth.getDetails();
+        if (details instanceof Map<?, ?> m && m.get("username") instanceof String s) {
+            return s;
+        }
+        return null;
     }
 
     private static String truncate(String s, int max) {

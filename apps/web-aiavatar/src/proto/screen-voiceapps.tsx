@@ -87,7 +87,7 @@ function MVoice({ ctx }) {
     }
     // 内置音色
     setPlaying(id);
-    ctx.toast('内置音色为合成声线 · 在线试听即将上线', { tone: 'ok' });
+    ctx.toast('内置音色为合成声线，可直接绑定到数字人资产', { tone: 'ok' });
     setTimeout(() => setPlaying((p) => (p === id ? null : p)), 1800);
   };
 
@@ -148,7 +148,12 @@ function MVoice({ ctx }) {
 
 function MApps({ ctx }) {
   const M_APPS = useApi(() => AppApi.list(), seed.applications());
-  const go = (name) => ctx.toast(name + ' · 即将上线，敬请期待', { tone: 'warn' });
+  const go = (name) => ctx.toast(name + ' · 当前为邀约开通，请联系客户经理获取权限', { tone: 'warn' });
+  const appCardImages = {
+    music: '/generated/app-cards/music.jpg',
+    live: '/generated/app-cards/live-commerce.jpg',
+    drama: '/generated/app-cards/drama.jpg',
+  };
 
   return hMV('div', { className: 'm-body has-tabbar', 'data-screen-label': '应用中心' },
     hMV(WxNavV, { title: '应用中心' }),
@@ -158,26 +163,40 @@ function MApps({ ctx }) {
     // 竖向应用卡片（与平台子应用一一对应：AI 歌手 / AI 短视频带货 / AI 短剧）
     hMV('div', { className: 'm-stagger', style: { padding: '0 18px 8px', display: 'flex', flexDirection: 'column', gap: 13 } },
       M_APPS.map(a => hMV('button', { key: a.key, onClick: () => go(a.name), className: 'm-press', style: {
-        position: 'relative', width: '100%', borderRadius: 'var(--r-xl)', overflow: 'hidden', cursor: 'pointer',
-        border: '1px solid var(--line-2)', background: 'var(--surface)', boxShadow: 'var(--sh-1)', textAlign: 'left', padding: '16px 16px 15px' } },
-        // 角落水印
-        hMV('div', { style: { position: 'absolute', right: -12, bottom: -16, color: 'var(--surface-3)', pointerEvents: 'none' } }, hMV(Icons[a.icon], { size: 110, stroke: 1 })),
-        // 头行：icon + 即将上线
+        position: 'relative', width: '100%', minHeight: 182, borderRadius: 'var(--r-xl)', overflow: 'hidden', cursor: 'pointer',
+        border: '1px solid rgba(255,255,255,.72)', background: '#FDFDFB',
+        boxShadow: '0 16px 36px rgba(76,92,125,.10), 0 1px 0 rgba(255,255,255,.9) inset',
+        textAlign: 'left', padding: '16px 16px 15px' } },
+        hMV('img', { src: appCardImages[a.key] || appCardImages.music, alt: '', draggable: false, style: {
+          position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .92,
+          filter: 'saturate(1.03) contrast(1.01)', pointerEvents: 'none' } }),
+        hMV('span', { style: { position: 'absolute', inset: 0, background:
+          'linear-gradient(105deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.88) 40%, rgba(255,255,255,.48) 67%, rgba(255,255,255,.14) 100%)' } }),
+        hMV('span', { style: { position: 'absolute', inset: 0, background:
+          `radial-gradient(circle at 14% 8%, rgba(255,255,255,.88), transparent 34%), radial-gradient(circle at 88% 12%, ${a.accent}66, transparent 34%), linear-gradient(180deg, rgba(255,255,255,.38), transparent 44%, rgba(245,248,255,.36))`,
+          mixBlendMode: 'screen', opacity: .86 } }),
+        hMV('span', { style: { position: 'absolute', inset: '1px 1px auto', height: '54%', borderRadius: 'calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0',
+          background: 'linear-gradient(180deg, rgba(255,255,255,.92), transparent)', pointerEvents: 'none' } }),
+        // 头行：icon + 开通状态
         hMV('div', { style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-          hMV('span', { style: { display: 'grid', placeItems: 'center', width: 40, height: 40, borderRadius: 12, background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMV(Icons[a.icon], { size: 20, stroke: 1.8 })),
-          hMV('span', { style: { fontSize: 10, fontWeight: 700, color: 'var(--ink-3)', background: 'var(--surface-3)', padding: '3px 9px', borderRadius: 'var(--r-pill)' } }, '即将上线')),
+          hMV('span', { style: { display: 'grid', placeItems: 'center', width: 40, height: 40, borderRadius: 14,
+            background: 'rgba(255,255,255,.72)', color: a.g1, border: '1px solid rgba(255,255,255,.86)',
+            boxShadow: `0 10px 24px ${a.accent}4D, 0 1px 0 rgba(255,255,255,.9) inset`, backdropFilter: 'blur(8px)' } }, hMV(Icons[a.icon], { size: 20, stroke: 1.9 })),
+          hMV('span', { style: { fontSize: 10, fontWeight: 800, color: 'rgba(34,43,58,.68)', background: 'rgba(255,255,255,.68)',
+            border: '1px solid rgba(255,255,255,.78)', padding: '4px 10px', borderRadius: 'var(--r-pill)', boxShadow: '0 8px 18px rgba(70,86,118,.08)', backdropFilter: 'blur(8px)' } }, '邀约开通')),
         // 名称 + 描述
         hMV('div', { style: { position: 'relative', marginTop: 12 } },
           hMV('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
-            hMV('span', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 21, color: 'var(--ink)', letterSpacing: '-.02em' } }, a.name),
-            hMV(Icons.external, { size: 14, stroke: 2, style: { color: 'var(--ink-4)' } })),
-          hMV('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 5, lineHeight: 1.5, fontWeight: 500, paddingRight: 56 } }, a.blurb)),
+            hMV('span', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 21, color: 'var(--ink)', letterSpacing: '-.02em', textShadow: '0 1px 0 rgba(255,255,255,.75)' } }, a.name),
+            hMV(Icons.external, { size: 14, stroke: 2, style: { color: 'rgba(34,43,58,.42)' } })),
+          hMV('div', { style: { fontSize: 12.5, color: 'rgba(37,47,62,.72)', marginTop: 5, lineHeight: 1.5, fontWeight: 600, maxWidth: '74%', minHeight: 38, textShadow: '0 1px 0 rgba(255,255,255,.7)' } }, a.blurb)),
         // 能力标签
         hMV('div', { style: { position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 12 } },
           (a.tools || []).map((t, i) => hMV('span', { key: i, style: {
-            display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: 'var(--ink-2)',
-            background: 'var(--surface-2)', border: '1px solid var(--line)', padding: '4px 10px', borderRadius: 'var(--r-pill)' } },
-            hMV(Icons[t.icon] || Icons.sparkle, { size: 12, stroke: 2 }), t.name)))))));
+            display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: 'rgba(34,43,58,.74)',
+            background: 'rgba(255,255,255,.66)', border: '1px solid rgba(255,255,255,.78)', padding: '4px 10px',
+            borderRadius: 'var(--r-pill)', boxShadow: '0 8px 18px rgba(70,86,118,.08)', backdropFilter: 'blur(8px)' } },
+            hMV(Icons[t.icon] || Icons.sparkle, { size: 12, stroke: 2, style: { color: a.g1 } }), t.name)))))));
 }
 
 export { MVoice };

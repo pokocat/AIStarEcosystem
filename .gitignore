@@ -37,3 +37,7 @@ infra/.local/
 # v0.51 dap：统一文件存储门面本地落盘（FileStorageService local-dir，运行时产物）
 apps/server/file-storage/
 __pycache__/
+.pnpm-store
+.pytest_cache
+.cc-connect
+log

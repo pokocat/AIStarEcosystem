@@ -16,7 +16,7 @@ public class MixcutProperties {
     private String ffprobeBin = "ffprobe";
     private String publicUrlBase = "/static/mixcut";
     private int maxConcurrent = 2;
-    private int maxOutputDurationSec = 15;
+    private int maxOutputDurationSec = 60;
     // 输出分辨率上限：模板 canvas 大于此值时按比例缩到 fit。
     // 720x1280 在 macOS CPU 编码下能跑 ~1x realtime；1080x1920 是 2.25x 像素量，
     // libx264 ultrafast 也通常跑不到 1x realtime，多变体累积会超时。
