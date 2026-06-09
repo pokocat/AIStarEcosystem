@@ -29,7 +29,8 @@ import java.time.Instant;
                 @Index(name = "idx_audit_created", columnList = "createdAt"),
                 @Index(name = "idx_audit_action", columnList = "action"),
                 @Index(name = "idx_audit_user", columnList = "userId"),
-                @Index(name = "idx_audit_username", columnList = "username")
+                @Index(name = "idx_audit_username", columnList = "username"),
+                @Index(name = "idx_audit_app", columnList = "appCode")
         }
 )
 public class AuditLog {
@@ -71,6 +72,15 @@ public class AuditLog {
 
     @Column(length = 512)
     private String userAgent;
+
+    /**
+     * 来源子应用短码：{@code music} / {@code drama} / {@code celebrity} /
+     * {@code aiavatar}（与 {@code PlatformSupport.ALL} 对齐）/ {@code celebrity-mp}（微信小程序）/
+     * {@code admin}（后台）。由客户端的 {@code X-App-Code} 请求头携带，
+     * {@code AuditService.recordAuth(...)} 统一读取。老数据 / 未带头时为 null。
+     */
+    @Column(length = 32)
+    private String appCode;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 16)

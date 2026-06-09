@@ -17,6 +17,7 @@ export {
   API_BASE_URL,
   getAuthToken,
   setAuthToken,
+  setAppCode,
   registerUnauthorizedHandler,
   buildQuery,
   mockDelay,

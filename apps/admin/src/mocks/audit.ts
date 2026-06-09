@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // mocks/audit.ts — 审计日志样本数据。
 // v0.47：补 username / errorCode 字段并扩充登录注册类样本，作 /platform/auth-logs 占位。
+// v0.57：补 appCode（来源子应用）字段，覆盖 admin / celebrity-mp / music / celebrity / aiavatar。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AuditLog } from "@/types/audit";
@@ -18,6 +19,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: null,
     ipAddress: "10.0.13.42",
     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124",
+    appCode: "admin",
     result: "success",
     detail: "admin 后台登录成功 role=SUPER_ADMIN",
     createdAt: "2026-06-03T08:42:11Z",
@@ -33,6 +35,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: "ADMIN_CREDENTIALS_INVALID",
     ipAddress: "203.0.113.7",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/127",
+    appCode: "admin",
     result: "failure",
     detail: "密码错误",
     createdAt: "2026-06-03T08:39:47Z",
@@ -48,6 +51,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: null,
     ipAddress: "10.0.13.55",
     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124",
+    appCode: "admin",
     result: "success",
     detail: "运营账号登录成功 operatorRole=OPERATOR",
     createdAt: "2026-06-03T08:21:02Z",
@@ -63,6 +67,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: null,
     ipAddress: "120.244.166.18",
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5)",
+    appCode: "celebrity-mp",
     result: "success",
     detail: "发送 SMS 验证码 purpose=login",
     createdAt: "2026-06-03T07:55:13Z",
@@ -78,6 +83,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: null,
     ipAddress: "120.244.166.18",
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5)",
+    appCode: "music",
     result: "success",
     detail: "短信登录成功 phone=13900139001 role=STUDIO",
     createdAt: "2026-06-03T07:55:38Z",
@@ -93,6 +99,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: "SMS_CODE_INVALID",
     ipAddress: "171.221.83.4",
     userAgent: "Mozilla/5.0 (Linux; Android 14) Chrome/124",
+    appCode: "celebrity",
     result: "failure",
     detail: "短信注册：验证码校验失败 platform=celebrity · 验证码错误（5 次后锁定）",
     createdAt: "2026-06-03T07:30:11Z",
@@ -108,6 +115,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: null,
     ipAddress: "61.135.169.121",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124",
+    appCode: "celebrity",
     result: "success",
     detail: "密码登录成功 phone=13900139000 role=STUDIO",
     createdAt: "2026-06-02T22:14:55Z",
@@ -123,6 +131,7 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: null,
     ipAddress: "127.0.0.1",
     userAgent: "Mozilla/5.0 (Macintosh) Chrome/124",
+    appCode: "aiavatar",
     result: "success",
     detail: "dev-login 成功 role=STUDIO studio=Luna 个人工作室",
     createdAt: "2026-06-02T15:01:21Z",
@@ -138,12 +147,13 @@ export const AUDIT_LOGS: AuditLog[] = [
     errorCode: null,
     ipAddress: "171.221.85.99",
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5)",
+    appCode: "music",
     result: "success",
     detail: "激活码注册成功 phone=13800138123 platform=music",
     createdAt: "2026-06-02T11:08:54Z",
   },
 
-  // ── 老 mock 行（保留：原 audit 页面仍用） ─────────────────────────────────────
+  // ── 老 mock 行（保留：原 audit 页面仍用；无 appCode → 列表显示 "—"，演示老数据兼容） ──
   {
     id: "al-001",
     userId: "u-001",

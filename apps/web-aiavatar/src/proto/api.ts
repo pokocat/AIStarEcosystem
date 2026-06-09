@@ -119,9 +119,15 @@ export const auth = {
   },
 };
 
+/** 本子应用审计来源短码 —— 随请求作为 X-App-Code 头带上，让 server 登录日志可区分子应用。 */
+const APP_CODE = "aiavatar";
+
 function authHeaders(): Record<string, string> {
   const t = auth.token();
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  return {
+    "X-App-Code": APP_CODE,
+    ...(t ? { Authorization: `Bearer ${t}` } : {}),
+  };
 }
 
 function fireAuthExpired() {
@@ -174,7 +180,7 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
 async function authFetch<T>(path: string, body?: any): Promise<T> {
   const res = await fetch(`${AUTH_PREFIX}${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-App-Code": APP_CODE },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return parseResponse<T>(res);

@@ -70,10 +70,8 @@ function AIChoosePath({ onPick, onClose }) {
     hAC('span', { style: { position: 'relative', flex: 1, minWidth: 0, fontSize: 17, fontWeight: 800, textShadow: '0 1px 0 rgba(255,255,255,.72)' } }, label),
     hAC(Icons.chevR, { size: 18, stroke: 2.2, style: { position: 'relative', color: 'rgba(34,43,58,.42)', flex: '0 0 auto' } }));
   return hAC('div', { style: { position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' } },
-    hAC('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(150deg,#EAF0FF,#F1E8FB 46%,#FCE6F1)' } }),
-    hAC('div', { style: { position: 'absolute', top: '-12%', left: '-14%', width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(123,150,255,.5), transparent 70%)', filter: 'blur(14px)' } }),
-    hAC('div', { style: { position: 'absolute', bottom: '4%', right: '-16%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(232,120,200,.42), transparent 70%)', filter: 'blur(16px)' } }),
-    hAC('div', { style: { position: 'absolute', top: '32%', right: '6%', width: 180, height: 180, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(110,210,255,.4), transparent 70%)', filter: 'blur(14px)' } }),
+    hAC('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(160deg, var(--primary-tint), var(--surface) 60%)' } }),
+    hAC('div', { style: { position: 'absolute', top: '-12%', right: '-16%', width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(18,179,222,.18), transparent 70%)', filter: 'blur(14px)' } }),
     hAC('div', { className: 'wx-nav', style: { position: 'relative', zIndex: 2, paddingLeft: 8 } },
       hAC('button', { className: 'nav-back m-tap', onClick: onClose, style: { color: 'var(--ink)' } }, hAC(Icons.x, { size: 22, stroke: 2.2 })),
       hAC('span', { className: 'nav-title' }), hAC('span', { className: 'nav-spacer' })),

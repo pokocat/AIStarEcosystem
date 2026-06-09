@@ -44,6 +44,7 @@ public class AdminAuditController {
             @RequestParam(required = false) String actions,
             @RequestParam(required = false) String scope,
             @RequestParam(required = false) String ipAddress,
+            @RequestParam(required = false) String appCode,
             @RequestParam(required = false) String errorCode,
             @RequestParam(required = false) String result,
             @RequestParam(required = false) String since,
@@ -56,7 +57,7 @@ public class AdminAuditController {
 
         List<String> actionList = resolveActions(actions, scope, action);
         if (actionList != null
-                || hasText(username) || hasText(ipAddress) || hasText(errorCode)
+                || hasText(username) || hasText(ipAddress) || hasText(appCode) || hasText(errorCode)
                 || hasText(since) || hasText(until)) {
             Instant sinceInstant = parseInstantOrNull(since, "since");
             Instant untilInstant = parseInstantOrNull(until, "until");
@@ -65,6 +66,7 @@ public class AdminAuditController {
                     blankToNull(userId),
                     blankToNull(username),
                     blankToNull(ipAddress),
+                    blankToNull(appCode),
                     resultEnum,
                     blankToNull(errorCode),
                     sinceInstant, untilInstant,

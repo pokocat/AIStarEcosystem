@@ -97,12 +97,12 @@ function MLibrary({ ctx }) {
         const on = cat === c.key;
         return hML('button', { key: c.key, onClick: () => setCat(c.key), style: {
           flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-          border: '1px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'), background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, c.label);
+          border: '1px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'), background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, c.label);
       })),
     top === 'mine' && hML('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '13px 18px 0' } },
       [['all', '全部'], ['real', '真人复刻'], ['ai', 'AI 原创']].map(([k, l]) => {
         const on = cat === k;
-        return hML('button', { key: k, onClick: () => setCat(k), style: { flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', border: '1px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'), background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, l);
+        return hML('button', { key: k, onClick: () => setCat(k), style: { flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', border: '1px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'), background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, l);
       }),
       hML('div', { style: { flex: 1 } }),
       hML('button', { onClick: () => setFav(f => !f), title: '只看收藏', style: { flex: '0 0 auto', display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 99, cursor: 'pointer', background: fav ? 'var(--primary-soft)' : 'var(--surface)', color: fav ? 'var(--primary)' : 'var(--ink-3)', border: '1px solid ' + (fav ? 'var(--primary)' : 'var(--line-2)') } }, hML(Icons.heart, { size: 16, stroke: 2 }))),
@@ -177,8 +177,8 @@ function DerivConfigSheet({ derivKey, char, onClose, onSubmit }) {
 
   const chip = (on, label, onClick, key?) => hML('button', { key: key ?? label, onClick, className: 'm-tap', style: {
     height: 32, padding: '0 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
-    border: '1.5px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'),
-    background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, label);
+    border: '1.5px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'),
+    background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, label);
 
   return hML(React.Fragment, null,
     hML('div', { className: 'm-sheet-backdrop', onClick: onClose }),
@@ -395,7 +395,7 @@ function MDetail({ char: initialChar, ctx }) {
             const on = t.key === tab;
             return hML('button', { key: t.key, onClick: () => setTab(t.key), style: {
               flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
-              background: on ? 'var(--primary-soft)' : 'transparent', color: on ? 'var(--primary)' : 'var(--ink-3)',
+              background: on ? 'var(--ink)' : 'transparent', color: on ? '#fff' : 'var(--ink-3)',
               fontSize: 13.5, fontWeight: on ? 700 : 600 } }, t.label);
           }))),
 
@@ -584,7 +584,7 @@ function MAssets({ char, ctx, busy, onGenerate, onOpenGenerate, nonce }) {
   const shown = cat === 'all' ? present : present.filter((d) => d.key === cat);
   const chip = (key, label, on, onClick) => hML('button', { key, onClick, className: 'm-tap', style: {
     flex: '0 0 auto', height: 32, padding: '0 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
-    border: '1px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'), background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, label);
+    border: '1px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'), background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, label);
 
   return hML('div', null,
     // 分类筛选 + ＋生成

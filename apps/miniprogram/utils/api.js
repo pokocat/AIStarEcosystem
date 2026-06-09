@@ -25,7 +25,8 @@ function apiFetch(path, options) {
   const token = (app.globalData.auth && app.globalData.auth.token) || "";
   const opts = options || {};
   const header = Object.assign(
-    { "Content-Type": "application/json" },
+    // X-App-Code：审计来源短码 —— 让 server 登录日志区分「明星带货·小程序」入口。
+    { "Content-Type": "application/json", "X-App-Code": "celebrity-mp" },
     token ? { Authorization: "Bearer " + token } : {},
     opts.header || {}
   );

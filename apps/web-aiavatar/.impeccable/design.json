@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-09",
+  "title": "Design System: AiAvatar · 数字人资产平台",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Studio Cyan",
+        "canonical": "oklch(73% 0.13 220)",
+        "tonalRamp": ["#062C38", "#0A4757", "#0C6379", "#0C97BE", "#12B3DE", "#4CCBEC", "#9AE2F4", "#E6F5FA"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Deep Slate Ink",
+        "canonical": "oklch(25% 0.025 245)",
+        "tonalRamp": ["#0A1117", "#14202B", "#2B3B49", "#5A6873", "#8A96A1", "#BAC4CD", "#E0E6EC", "#F7F9FB"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Cool Paper",
+        "canonical": "oklch(98% 0.004 240)",
+        "tonalRamp": ["#DCE3EA", "#EBEFF3", "#EDF1F5", "#EEF2F6", "#F6F8FB", "#F7F9FB", "#FCFDFE", "#FFFFFF"]
+      },
+      "ok": {
+        "role": "tertiary",
+        "displayName": "Ledger Green",
+        "canonical": "oklch(64% 0.13 162)",
+        "tonalRamp": ["#073D29", "#0B5E3F", "#0E7E54", "#149069", "#1AA06E", "#4FBA90", "#A6DEC9", "#E2F4EC"]
+      },
+      "warn": {
+        "role": "tertiary",
+        "displayName": "Amber",
+        "canonical": "oklch(70% 0.13 75)",
+        "tonalRamp": ["#4A3203", "#6E4B05", "#936408", "#B87D0B", "#D9920E", "#E6B252", "#F3D9A2", "#FBF0DA"]
+      },
+      "err": {
+        "role": "tertiary",
+        "displayName": "Rose",
+        "canonical": "oklch(60% 0.18 16)",
+        "tonalRamp": ["#4D0E18", "#7A1726", "#A72035", "#D03048", "#E0455C", "#EB7184", "#F5B5C0", "#FBE6EA"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Screen and section headings, top tabs (17px), nav titles. Manrope 700, -0.02em." },
+      "asset-name": { "displayName": "Asset Name", "purpose": "The serif identity of a digital human. The product's single warm, editorial type gesture. Newsreader 500. Never used for UI chrome." },
+      "reg": { "displayName": "Registration No.", "purpose": "The REG · DH-2041 asset number, prefixed by a tinted REG chip. JetBrains Mono, 0.04em." },
+      "label": { "displayName": "Field Label", "purpose": "Uppercase spec-sheet field labels in the dossier. JetBrains Mono 10px, 0.1em." }
+    },
+    "shadows": [
+      { "name": "resting", "value": "0 1px 2px rgba(20,36,55,.035), 0 1px 3px rgba(20,36,55,.04)", "purpose": "Cards, badges, the default float. Barely there." },
+      { "name": "raised", "value": "0 2px 6px rgba(20,36,55,.04), 0 8px 20px rgba(20,36,55,.055)", "purpose": "Card hover and lifted state." },
+      { "name": "overlay", "value": "0 8px 24px rgba(20,36,55,.07), 0 24px 50px rgba(20,36,55,.09)", "purpose": "Modals, bottom sheets, toasts." },
+      { "name": "float", "value": "0 6px 18px rgba(20,40,60,.07), 0 24px 60px rgba(20,40,60,.10)", "purpose": "Floating shells and the desktop content column." },
+      { "name": "focus-ring", "value": "0 0 0 3px rgba(18,179,222,.16)", "purpose": "The cyan focus glow on inputs and selected cards. The only colored shadow." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(.4,0,.2,1)", "purpose": "Default easing for state transitions (buttons, cards, hover). 140 to 200ms." },
+      { "name": "ease-out-soft", "value": "cubic-bezier(.22,1,.36,1)", "purpose": "Entrances: page fade-up, sheets, staggered lists. 300 to 420ms." },
+      { "name": "ease-overshoot", "value": "cubic-bezier(.34,1.56,.64,1)", "purpose": "The one permitted overshoot: archival seal stamp-in and the raised create key press." },
+      { "name": "duration-tap", "value": "120ms", "purpose": "Press feedback on tappable surfaces." },
+      { "name": "duration-state", "value": "160ms", "purpose": "Button and control state changes." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "460px", "purpose": "At and below: app fills the viewport edge-to-edge (no rounded frame), true H5 form." },
+      { "name": "desktop-column", "value": "481px", "purpose": "At and above: app centers as a 480px content column with a hairline and soft shadow." },
+      { "name": "layout-collapse", "value": "1080px", "purpose": "Multi-column workspace grids (detail, refine) collapse to a single column." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The high-emphasis action. Studio Cyan fill, lifts on hover.",
+      "html": "<button class=\"ds-btn-primary\">保存资产</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 16px; font-family:'Manrope',system-ui,sans-serif; font-size:14px; font-weight:700; color:#fff; background:#12B3DE; border:1px solid transparent; border-radius:12px; box-shadow:0 1px 2px rgba(20,36,55,.035),0 1px 3px rgba(20,36,55,.04); cursor:pointer; transition:all .16s cubic-bezier(.4,0,.2,1); } .ds-btn-primary:hover { background:#0C97BE; transform:translateY(-1px); box-shadow:0 2px 6px rgba(20,36,55,.04),0 8px 20px rgba(20,36,55,.055); } .ds-btn-primary:active { transform:translateY(0) scale(.99); } .ds-btn-primary:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(18,179,222,.16); }"
+    },
+    {
+      "name": "Soft Button",
+      "kind": "button",
+      "refersTo": "button-soft",
+      "description": "The quiet primary: Cyan Wash background, cyan text. Used where a full cyan fill would be too loud.",
+      "html": "<button class=\"ds-btn-soft\">试听音色</button>",
+      "css": ".ds-btn-soft { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 16px; font-family:'Manrope',system-ui,sans-serif; font-size:14px; font-weight:700; color:#12B3DE; background:#E6F5FA; border:1px solid transparent; border-radius:12px; cursor:pointer; transition:all .16s cubic-bezier(.4,0,.2,1); } .ds-btn-soft:hover { background:#D7EFF7; } .ds-btn-soft:active { transform:scale(.99); }"
+    },
+    {
+      "name": "Dossier Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "White paper card on cool canvas. Serif asset name over a mono record line. Rests flat, lifts on hover.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-name\">林深</div><div class=\"ds-card-sub\">已就绪 · 3 个版本</div></div>",
+      "css": ".ds-card { max-width:280px; background:#fff; border:1px solid #EBEFF3; border-radius:15px; padding:18px; box-shadow:0 1px 2px rgba(20,36,55,.035),0 1px 3px rgba(20,36,55,.04); transition:transform .18s cubic-bezier(.4,0,.2,1), box-shadow .18s cubic-bezier(.4,0,.2,1); cursor:pointer; } .ds-card:hover { transform:translateY(-2px); box-shadow:0 2px 6px rgba(20,36,55,.04),0 8px 20px rgba(20,36,55,.055); } .ds-card-name { font-family:'Newsreader',Georgia,serif; font-weight:500; font-size:22px; line-height:1.04; letter-spacing:-.01em; color:#14202B; } .ds-card-sub { margin-top:6px; font-family:'Manrope',system-ui,sans-serif; font-size:13px; color:#5A6873; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "White field, cool border. On focus the border turns cyan and a soft cyan ring appears, the only state change.",
+      "html": "<input class=\"ds-input\" placeholder=\"搜索数字人资产\" />",
+      "css": ".ds-input { width:100%; max-width:280px; height:44px; padding:0 14px; font-family:'Manrope',system-ui,sans-serif; font-size:14px; color:#14202B; background:#fff; border:1px solid #E0E6EC; border-radius:12px; outline:none; transition:border-color .15s, box-shadow .15s; } .ds-input::placeholder { color:#8A96A1; } .ds-input:focus { border-color:#12B3DE; box-shadow:0 0 0 3px rgba(18,179,222,.16); }"
+    },
+    {
+      "name": "Filter Pill",
+      "kind": "chip",
+      "refersTo": "filter-pill",
+      "description": "Selection among filters. Active is Deep Slate Ink (not cyan); selection reads as ink, action reads as cyan.",
+      "html": "<div style=\"display:flex; gap:8px;\"><button class=\"ds-pill is-active\">全部</button><button class=\"ds-pill\">公开</button></div>",
+      "css": ".ds-pill { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:34px; min-width:84px; padding:0 15px; font-family:'Manrope',system-ui,sans-serif; font-size:13px; font-weight:600; color:#5A6873; background:#EDF1F5; border:none; border-radius:999px; cursor:pointer; transition:all .14s; } .ds-pill:hover { background:#E0E6EC; } .ds-pill.is-active { background:#14202B; color:#fff; }"
+    },
+    {
+      "name": "Category Badge",
+      "kind": "chip",
+      "refersTo": "badge-primary",
+      "description": "Pill status badge. The primary tone (Cyan Wash + cyan) marks the key deliverable; a leading dot is optional.",
+      "html": "<span class=\"ds-badge-primary\"><span class=\"dot\"></span>定妆形象</span>",
+      "css": ".ds-badge-primary { display:inline-flex; align-items:center; gap:5px; height:23px; padding:0 9px; font-family:'Manrope',system-ui,sans-serif; font-size:11.5px; font-weight:700; letter-spacing:.01em; color:#12B3DE; background:#E6F5FA; border-radius:999px; } .ds-badge-primary .dot { width:6px; height:6px; border-radius:99px; background:#12B3DE; }"
+    },
+    {
+      "name": "Registration Number",
+      "kind": "custom",
+      "refersTo": "reg",
+      "description": "Signature dossier primitive: the accessioned asset number in mono, with a tinted REG chip prefix.",
+      "html": "<span class=\"ds-reg\">DH-2041 · V3</span>",
+      "css": ".ds-reg { display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; font-weight:500; letter-spacing:.04em; color:#8A96A1; } .ds-reg::before { content:'REG'; font-size:8.5px; font-weight:600; letter-spacing:.12em; color:#8A96A1; background:#EDF1F5; padding:2px 5px; border-radius:4px; }"
+    },
+    {
+      "name": "Archival Seal",
+      "kind": "custom",
+      "refersTo": "seal",
+      "description": "Signature dossier primitive: a rotated, pill-outlined mono stamp in Ledger Green, reserved for archived / ready milestones.",
+      "html": "<span class=\"ds-seal\">已归档</span>",
+      "css": ".ds-seal { display:inline-flex; align-items:center; justify-content:center; gap:6px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#1AA06E; border:1.5px solid #1AA06E; border-radius:999px; padding:5px 13px; opacity:.9; transform:rotate(-4deg); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Atelier Ledger",
+    "overview": "Two voices share one surface. A maker's serif (Newsreader) names each creation with warmth; a registrar's mono (JetBrains Mono) records it with precision; and a calm sans (Manrope) runs the controls in between. The atelier is bright, paper-white, and uncluttered. The ledger is exact: every digital human is an accessioned asset with a serif name, a REG · DH-2041 number, a version history, a license, and an archival seal. Cyan is the ink reserved for the active entry. This is a mobile-first H5 product surface, not a marketing page. It rejects the SaaS dark-dashboard reflex and decorative color in equal measure: the shipped 清爽 skin keeps one cyan for action and live state, a small sanctioned secondary palette for identity and wayfinding, and calm gray for dense category chips. The feel is clinical-warm: cool-white paper, hairline cool-gray rules, and soft blue-tuned shadows, warmed by the serif identity layer and rounded corners.",
+    "keyCharacteristics": [
+      "Cool paper-white surfaces (#F7F9FB canvas, #FFFFFF cards), never pure black-on-white.",
+      "One cyan accent (#12B3DE), touching under a tenth of any screen.",
+      "Three type voices with three jobs: serif identity, mono record, sans control.",
+      "Rounded cards floating on soft, blue-tuned shadows, no harsh elevation.",
+      "Mobile-native: real safe areas, a bottom 5-tab bar with a raised center create key.",
+      "Disciplined color: one cyan for action/live, a small sanctioned secondary palette for identity and wayfinding, calm gray for dense category chips."
+    ],
+    "rules": [
+      { "name": "The One Ink Rule", "body": "Cyan (#12B3DE) is reserved for primary action and live/active state. Selection among options (filter pills, view tabs) is ink, not cyan, so the two signals never blur. Cyan is never decoration; on any given screen it touches under a tenth of the pixels. Its rarity is the meaning.", "section": "colors" },
+      { "name": "The Sanctioned Palette Rule", "body": "Beyond cyan, a small named secondary palette is permitted for identity and wayfinding only: downstream-app identity (Music Violet #7C5CE6, Commerce Orange #E8884A, Drama Blue #3E63C8), creation path (AI-Original Violet #8F6BFF vs Real-Person Cyan), and the storage breakdown (video #1AA06E, 3D #D9920E, voice #8A6BFF). Solid icon/bar/badge fills only. Dense derivative-category chips in the asset grid stay Muted Slate (#5A6873) + icon for calm; color is earned by top-level identity surfaces, not by every list row.", "section": "colors" },
+      { "name": "The No-Decorative-Glow Rule", "body": "Secondary colors are solid marks, never full-screen radial-glow beds. No violet or pink blurred blooms behind login, create, or hero screens; at most one faint cyan wash (var(--primary-tint)) over paper.", "section": "colors" },
+      { "name": "The No-Pure-Black, No-Pure-White Rule", "body": "Text is Deep Slate Ink (#14202B), not #000. Canvas is cool Paper (#F7F9FB), not #FFF. Every neutral is tuned toward the slate-blue hue.", "section": "colors" },
+      { "name": "The Three-Voice Rule", "body": "Serif names assets, mono records facts, sans runs controls. Never cross them: no serif on a button, no mono in a paragraph, no sans on an asset's identity name.", "section": "typography" },
+      { "name": "The Serif-Is-Sacred Rule", "body": "Newsreader appears only as an asset's name. It is the product's one moment of warmth; spending it on headings, buttons, or marketing copy cheapens it.", "section": "typography" },
+      { "name": "The Lift-On-Touch Rule", "body": "Cards rest at Resting shadow and rise to Raised with a -2 to -3px translateY on hover or press. Elevation is a response to interaction, not a permanent decoration.", "section": "elevation" },
+      { "name": "The Blue-Shadow Rule", "body": "Every shadow uses rgba(20,36,55,...), the slate-blue ink, never neutral black. Black shadows would read as a different, colder product.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep cyan (#12B3DE) under a tenth of any screen, spent only on active, primary, or live state (The One Ink Rule).",
+      "Do name digital humans in Newsreader serif, and use serif nowhere else (The Serif-Is-Sacred Rule).",
+      "Do keep dense derivative-category chips Muted Slate + icon; reserve the sanctioned secondary palette for identity surfaces (apps, storage, creation paths).",
+      "Do tune every neutral and every shadow toward the slate-blue ink (rgba(20,36,55,...)): text #14202B, canvas #F7F9FB.",
+      "Do rest cards flat at Resting shadow and lift them -2 to -3px on touch.",
+      "Do use real env(safe-area-inset-*); this is a true H5 app, not a framed phone preview.",
+      "Do show skeletons (.m-skel) while loading, not spinners mid-content.",
+      "Do route destructive actions through the Confirm dialog and report results with toasts."
+    ],
+    "donts": [
+      "Don't use #000 or #fff; both read as a different, colder product.",
+      "Don't use decorative full-screen radial-glow beds (violet/pink blurred blooms behind login, create, or hero); at most one faint cyan wash over paper.",
+      "Don't color dense derivative-category chips in the asset grid; those stay Muted Slate + icon. Color is for top-level identity surfaces (apps, storage, creation paths).",
+      "Don't use window.confirm, alert, or prompt; use the Confirm dialog and toasts (a repo-wide rule).",
+      "Don't put serif on buttons, headings, or body, put mono in paragraphs, or put sans on an asset's identity name.",
+      "Don't add side-stripe borders (border-left color accents), gradient text (background-clip: text), or decorative glassmorphism. The only blurs are the frosted tab bar and sheet backdrops.",
+      "Don't make the active filter pill cyan; selection among filters is ink, action is cyan.",
+      "Don't use black or hard drop-shadows; depth is soft, diffuse, and blue-tuned.",
+      "Don't revive the iPhone shell or fake WeChat chrome (status bar, capsule, home bar); v0.3 removed them on purpose."
+    ]
+  }
+}
