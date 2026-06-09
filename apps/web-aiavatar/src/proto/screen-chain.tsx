@@ -213,7 +213,7 @@ function MStepProof({ wiz, onReady }) {
 // ===== 步骤 3：调整 =====
 function MStepAdjust({ wiz, onReady }) {
   const { char } = wiz;
-  const [mode, setMode] = useStateMC('iterate');
+  const [mode, setMode] = useStateMC('refine');
   const [rounds, setRounds] = useStateMC([] as any[]);
   const [input, setInput] = useStateMC('');
   const [busy, setBusy] = useStateMC(false);

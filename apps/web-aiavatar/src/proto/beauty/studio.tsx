@@ -112,8 +112,6 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
   const init = useCallback(async (seedBlob?: Blob) => {
     setStatus("loading");
     setErrMsg("");
-    engineRef.current && engineRef.current.dispose();
-    engineRef.current = null;
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
     try {
       if (!USE_MOCK) warmupLandmarker();
@@ -137,8 +135,11 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
         anchors = pts ? extractAnchors(pts) : canonicalAnchors();
       }
       if (!canvasRef.current) return;
-      const engine = BeautyEngine.create(source, anchors, canvasRef.current);
-      engineRef.current = engine;
+      // 复用已有上下文换底图；首次（或上下文已 dispose）才新建。
+      // 切忌 dispose 后在同一 canvas 上 create —— loseContext 过的 canvas 会取回死上下文。
+      let engine = engineRef.current;
+      if (engine) engine.reload(source, anchors);
+      else { engine = BeautyEngine.create(source, anchors, canvasRef.current); engineRef.current = engine; }
       const zero = cloneParams(ZERO_PARAMS);
       paramsRef.current = zero;
       setParams(zero);
