@@ -6830,6 +6830,14 @@ paths:
     post: { tags: [dap], operationId: dapForkAvatarVersion, summary: '从指定版本派生新版本', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/save-as:
     post: { tags: [dap], operationId: dapSaveAsFromPublic, summary: '数字人广场「另存为我的数字人」：复制只读公开数字人(PA-*)为可编辑数字人', responses: { '200': { description: ok } } }
+  /v1/admin/avatars:
+    get:  { tags: [dap], operationId: dapAdminListPublicAvatars, summary: '数字人广场 · 运营公开数字人列表（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapAdminCreatePublicAvatar, summary: '数字人广场 · 运营新增公开数字人', responses: { '200': { description: ok } } }
+  /v1/admin/avatars/{id}:
+    put:    { tags: [dap], operationId: dapAdminUpdatePublicAvatar, summary: '数字人广场 · 运营编辑公开数字人', responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapAdminDeletePublicAvatar, summary: '数字人广场 · 运营下架公开数字人', responses: { '200': { description: ok } } }
+  /v1/admin/uploads:
+    post: { tags: [dap], operationId: dapAdminUploadImage, summary: '数字人广场 · 运营上传形象图(multipart) → { key, url }', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/looks:
     get:  { tags: [dap], operationId: dapAvatarLooks, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateLook, description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }

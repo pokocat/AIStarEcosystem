@@ -109,6 +109,26 @@ src/
 
 ## 版本日志
 
+### v0.9（2026-06-09）— 数字人广场：大图预览 + 正面半身归位 + 运营上传公开数字人
+
+承接 v0.8，按反馈补三项：
+
+1. **形象图大图预览**（`screen-library.tsx` `MLightbox`）：广场详情「形象图集」每张图可点开看大图，
+   全屏灯箱，多图左右切换 + 计数，点背景 / ✕ 关闭。
+2. **定妆照 = 正面半身**：`data.ts` / `DapCatalogService` 给 `shotImages` 补 `front-half`（= 定妆主图 `-1`），
+   广场图集按「正面半身 / 右侧脸 / 左侧脸」三机位陈列；`tilesForCat` 去重（定妆与正面半身同图时不再重复列）。
+3. **运营内嵌后台 · 上传公开数字人**（沿用 web-celebrity v0.55 运营管理模式）：
+   - 运营（`operatorRole` ∈ operator / super_admin）在数字人广场看到「＋ 新增公开数字人」，
+     弹表单上传**正面半身 / 右侧脸 / 左侧脸**形象图（→ OSS，`§4.7`）+ 填人设（名称 / 简介 / 分类 / 设定档案）；
+     已发布的运营形象在详情可**编辑 / 下架**。普通用户只读、可另存。
+   - 后端：新增 `DapPublicAvatar` 实体 + `DapPublicAvatarService` + `AdminDapPublicAvatarController`
+     （`POST/GET/PUT/DELETE /api/v1/admin/avatars` + `POST /api/v1/admin/uploads` multipart）；
+     `AepSecurityConfig` 加 `/api/v1/admin/** → hasAnyRole(SUPER_ADMIN, OPERATOR)`；
+     `GET /avatars?scope=public` 合并「内置 10 静态样板 + 运营 DB 形象」；`saveAs` 对运营形象连 OSS 图一起复制。
+   - 前端：`api.ts` `PlazaAdminApi`（list/create/update/remove/uploadImage）+ `isOperatorRole`；
+     `screen-library.tsx` `useIsOperator` / `PlazaAvatarForm`。
+   - mock/dev 默认开放运营工具便于本地演示；`pnpm typecheck` / `build` / `check:api-contract` / server 编译全绿。
+
 ### v0.8（2026-06-09）— 「公开数字人」升级为「数字人广场」（10 个真实样板形象 + 只读 + 另存为）
 
 **目标**：把库里单薄的「公开数字人」tab（6 个无图、无设定的占位）做成真正的**数字人广场**——

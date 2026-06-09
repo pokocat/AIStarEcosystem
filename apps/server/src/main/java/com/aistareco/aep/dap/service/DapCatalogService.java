@@ -208,7 +208,8 @@ public class DapCatalogService {
         m.put("counts", Map.of());
         m.put("deriv", Map.of());
         m.put("imageUrl", base + "-1.jpg");
-        m.put("shotImages", Map.of("right", base + "-2.jpg", "left", base + "-3.jpg"));
+        // 正面半身（front-half）= 定妆主图（-1）；右侧脸 / 左侧脸为另两个机位。
+        m.put("shotImages", Map.of("front-half", base + "-1.jpg", "right", base + "-2.jpg", "left", base + "-3.jpg"));
         return m;
     }
 

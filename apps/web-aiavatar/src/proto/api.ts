@@ -119,6 +119,11 @@ export const auth = {
   },
 };
 
+/** 内嵌运营角色判定（operatorRole wire 全小写）—— 数字人广场后台门禁用。 */
+export function isOperatorRole(role?: string | null): boolean {
+  return role === "operator" || role === "super_admin";
+}
+
 /** 本子应用审计来源短码 —— 随请求作为 X-App-Code 头带上，让 server 登录日志可区分子应用。 */
 const APP_CODE = "aiavatar";
 
@@ -305,6 +310,8 @@ let mockSeq = 9000;
 const mockJobStore = new Map<string, any>();
 /** mock 模式下的「我的数字人」可变副本（创建流程会往里加）。 */
 const mockChars: any[] = Mock.CHARS.map((c) => ({ ...c }));
+/** mock 模式下运营新增的「数字人广场」公开数字人（PlazaAdminApi 往里加；live 由 server 持久化）。 */
+const mockPublicExtra: any[] = [];
 /** mock 回收站（软删数字人；live 模式由 server 持久化）。 */
 const mockTrash: any[] = [];
 
@@ -412,14 +419,14 @@ export function useApi<T>(fn: () => Promise<T>, initial: T, deps: any[] = []): T
 
 export const AvatarApi = {
   list: (scope: "mine" | "public" = "mine", params?: { path?: string; status?: string; fav?: boolean; q?: string }): Promise<any[]> => {
-    if (USE_MOCK) return mock(scope === "public" ? Mock.PUBLIC_AVATARS.slice() : mockChars.slice());
+    if (USE_MOCK) return mock(scope === "public" ? [...Mock.PUBLIC_AVATARS, ...mockPublicExtra] : mockChars.slice());
     const qs = new URLSearchParams({ scope, ...(params as any) }).toString();
     return apiFetch(`/avatars?${qs}`);
   },
   get: (id: string): Promise<any> => {
     if (USE_MOCK) {
       if (String(id).startsWith("PA-")) {
-        const pub = Mock.PUBLIC_AVATARS.find((c) => c.id === id);
+        const pub = Mock.PUBLIC_AVATARS.find((c) => c.id === id) || mockPublicExtra.find((c) => c.id === id);
         if (pub) return mock(pub);   // 数字人广场公开形象（只读，不在 mockChars 里）
       }
       return mock(mockChars.find((c) => c.id === id) || mockChars[0]);
@@ -527,9 +534,9 @@ export const AvatarApi = {
    */
   saveAs: (id: string): Promise<any> => {
     if (USE_MOCK) {
-      const src = Mock.PUBLIC_AVATARS.find((c) => c.id === id);
+      const src = Mock.PUBLIC_AVATARS.find((c) => c.id === id) || mockPublicExtra.find((c) => c.id === id);
       const copy: any = src
-        ? { ...JSON.parse(JSON.stringify(src)), id: `DH-${mockSeq++}`, codename: `${src.codename || "avatar"}-copy`, fav: false, versions: 1, updated: "刚刚" }
+        ? { ...JSON.parse(JSON.stringify(src)), id: `DH-${mockSeq++}`, codename: `${src.codename || "avatar"}-copy`, fav: false, versions: 1, updated: "刚刚", managed: undefined }
         : { id: `DH-${mockSeq++}` };
       mockChars.unshift(copy);
       return mock(copy);
@@ -666,6 +673,116 @@ export const AvatarApi = {
     fd.append("params", JSON.stringify(params || {}));
     if (note) fd.append("note", note);
     return apiUpload(`/avatars/${id}/refine-apply`, fd);
+  },
+};
+
+// ── 数字人广场 · 运营内嵌后台（OPERATOR / SUPER_ADMIN）─────────
+// 路径 /api/v1/admin/**（server 门禁 hasAnyRole(SUPER_ADMIN, OPERATOR)）。
+
+/** 新增 / 编辑公开数字人入参。*Url 仅 mock 展示用，server 忽略（认 *Key）。 */
+export interface PlazaUpsert {
+  name: string;
+  codename?: string;
+  archetype?: string;
+  tagline?: string;
+  cat?: string;
+  hue?: number;
+  voiceName?: string;
+  age?: string;
+  temperament?: string;
+  usage?: string;
+  traits?: string[];
+  outfit?: string;
+  persona?: string;
+  frontKey?: string;
+  rightKey?: string;
+  leftKey?: string;
+  frontUrl?: string;
+  rightUrl?: string;
+  leftUrl?: string;
+}
+
+function mockPlazaFrom(body: PlazaUpsert, base: any | null, id?: string): any {
+  const front = body.frontUrl || base?.imageUrl || null;
+  const right = body.rightUrl || base?.shotImages?.right || null;
+  const left = body.leftUrl || base?.shotImages?.left || null;
+  const bd = base?.def || {};
+  const def = {
+    年龄: body.age ?? bd["年龄"] ?? "",
+    气质: body.temperament ?? bd["气质"] ?? "",
+    用途: body.usage ?? bd["用途"] ?? "",
+    性格: body.traits ?? bd["性格"] ?? [],
+    服饰: body.outfit ?? bd["服饰"] ?? "",
+    形象来源: "AI 原创虚构",
+    设定语: body.persona ?? bd["设定语"] ?? "",
+  };
+  const shotImages: Record<string, string> = {};
+  if (front) shotImages["front-half"] = front;
+  if (right) shotImages["right"] = right;
+  if (left) shotImages["left"] = left;
+  return {
+    id: id || `PA-m${mockSeq++}`,
+    name: body.name,
+    codename: body.codename || base?.codename || "plaza-avatar",
+    path: "ai",
+    archetype: body.archetype ?? base?.archetype ?? "",
+    tagline: body.tagline ?? base?.tagline ?? "",
+    status: "archived",
+    updated: "已就绪",
+    hue: body.hue ?? base?.hue ?? 222,
+    cat: body.cat ?? base?.cat ?? "pro",
+    fav: false,
+    versions: 1,
+    engine: "SDXL",
+    voiceName: body.voiceName ?? base?.voiceName ?? "亲和邻家女声",
+    palette: base?.palette || {},
+    def,
+    counts: {},
+    deriv: {},
+    imageUrl: front,
+    shotImages,
+    managed: true,
+  };
+}
+
+export const PlazaAdminApi = {
+  /** 运营公开数字人列表（仅 DB managed 项；内置 10 个不在此列）。 */
+  list: (): Promise<any[]> => {
+    if (USE_MOCK) return mock(mockPublicExtra.slice());
+    return apiFetch(`/admin/avatars`);
+  },
+  /** 上传一张形象图 → { key, url }。key 放进 create/update 的 frontKey/rightKey/leftKey。 */
+  uploadImage: (file: File, kind: "front" | "right" | "left" = "front"): Promise<{ key: string; url: string }> => {
+    if (USE_MOCK) return mock({ key: `mockkey-${mockSeq++}`, url: URL.createObjectURL(file) });
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("kind", kind);
+    return apiUpload(`/admin/uploads`, fd);
+  },
+  create: (body: PlazaUpsert): Promise<any> => {
+    if (USE_MOCK) {
+      const a = mockPlazaFrom(body, null);
+      mockPublicExtra.unshift(a);
+      return mock(a);
+    }
+    return apiFetch(`/admin/avatars`, { method: "POST", body: JSON.stringify(body) });
+  },
+  update: (id: string, body: PlazaUpsert): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockPublicExtra.findIndex((x) => x.id === id);
+      const a = mockPlazaFrom(body, i >= 0 ? mockPublicExtra[i] : null, id);
+      if (i >= 0) mockPublicExtra[i] = a; else mockPublicExtra.unshift(a);
+      return mock(a);
+    }
+    return apiFetch(`/admin/avatars/${id}`, { method: "PUT", body: JSON.stringify(body) });
+  },
+  remove: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockPublicExtra.findIndex((x) => x.id === id);
+      if (i >= 0) mockPublicExtra.splice(i, 1);
+      return mock({ deleted: true });
+    }
+    return apiFetch(`/admin/avatars/${id}`, { method: "DELETE" });
   },
 };
 

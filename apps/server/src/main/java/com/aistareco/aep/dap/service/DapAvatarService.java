@@ -39,19 +39,22 @@ public class DapAvatarService {
     private final FileStorageService storage;
     private final DapSupport support;
     private final DapCatalogService catalog;
+    private final DapPublicAvatarService publicAvatars;
 
     public DapAvatarService(DapAvatarRepository avatarRepo,
                             DapAvatarVersionRepository versionRepo,
                             DapPhotoRepository photoRepo,
                             FileStorageService storage,
                             DapSupport support,
-                            DapCatalogService catalog) {
+                            DapCatalogService catalog,
+                            DapPublicAvatarService publicAvatars) {
         this.avatarRepo = avatarRepo;
         this.versionRepo = versionRepo;
         this.photoRepo = photoRepo;
         this.storage = storage;
         this.support = support;
         this.catalog = catalog;
+        this.publicAvatars = publicAvatars;
     }
 
     // ── 查询 ──────────────────────────────────────────────────
@@ -239,48 +242,78 @@ public class DapAvatarService {
      */
     @Transactional
     public AvatarDto saveAsFromPublic(String userId, String publicId) {
-        Map<String, Object> pub = catalog.publicAvatar(publicId);
-        if (pub == null) {
+        // 来源二选一：内置静态样板（catalog，无 OSS key → 副本无图、走创建链路）
+        //            或运营上传的 DB 公开数字人（有 OSS key → 连图复制为已就绪副本）
+        com.aistareco.aep.dap.model.DapPublicAvatar dbPub = publicAvatars.findEntity(publicId);
+        Map<String, Object> pub = dbPub == null ? catalog.publicAvatar(publicId) : null;
+        if (dbPub == null && pub == null) {
             throw BusinessException.notFound("DAP_PUBLIC_AVATAR_NOT_FOUND", "公开数字人不存在");
         }
         Map<String, Object> deriv = new LinkedHashMap<>();
         Map<String, Object> counts = new LinkedHashMap<>();
         DERIV_KEYS.forEach(k -> { deriv.put(k, "empty"); counts.put(k, 0); });
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> srcDef = (Map<String, Object>) pub.getOrDefault("def", Map.of());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> srcPalette = (Map<String, Object>) pub.get("palette");
-        int hue = pub.get("hue") instanceof Number n ? n.intValue() : 240;
-        String name = String.valueOf(pub.getOrDefault("name", "公开数字人"));
-
-        DapAvatar copy = DapAvatar.builder()
+        DapAvatar.DapAvatarBuilder b = DapAvatar.builder()
                 .id(uniqueId("DH"))
                 .ownerUserId(userId)
-                .name(name)
-                .codename(String.valueOf(pub.getOrDefault("codename", "avatar")) + "-copy")
                 .path("ai")
-                .archetype(String.valueOf(pub.getOrDefault("archetype", "AI 原创形象")))
-                .tagline(String.valueOf(pub.getOrDefault("tagline", "")))
-                .status("draft")
-                .hue(hue)
                 .hairStyle("short")
                 .mock(false)
-                .engine(String.valueOf(pub.getOrDefault("engine", "Agnes Image 2.1")))
-                .palette(srcPalette != null ? new LinkedHashMap<>(srcPalette) : support.paletteFor(hue))
-                .def(new LinkedHashMap<>(srcDef))
                 .deriv(deriv)
                 .counts(counts)
                 .versions(1)
-                .voiceName(pub.get("voiceName") != null ? String.valueOf(pub.get("voiceName")) : catalog.recommendVoice(null))
                 .variantKeys(new ArrayList<>())
-                .shotKeys(null)
                 .imageBytes(0)
                 .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build();
+                .updatedAt(Instant.now());
+
+        String name;
+        String imageKey = null;
+        if (dbPub != null) {
+            // 运营 DB 公开数字人：连 OSS 形象一起复制 → 副本即已就绪可用
+            name = dbPub.getName() != null ? dbPub.getName() : "公开数字人";
+            int hue = dbPub.getHue() != 0 ? dbPub.getHue() : 240;
+            imageKey = dbPub.getFrontKey();
+            Map<String, Object> shotKeys = new LinkedHashMap<>();
+            if (dbPub.getFrontKey() != null) shotKeys.put("front-half", dbPub.getFrontKey());
+            if (dbPub.getRightKey() != null) shotKeys.put("right", dbPub.getRightKey());
+            if (dbPub.getLeftKey() != null) shotKeys.put("left", dbPub.getLeftKey());
+            b.name(name)
+                    .codename((dbPub.getCodename() != null ? dbPub.getCodename() : "avatar") + "-copy")
+                    .archetype(dbPub.getArchetype() != null ? dbPub.getArchetype() : "AI 原创形象")
+                    .tagline(dbPub.getTagline() != null ? dbPub.getTagline() : "")
+                    .status(imageKey != null ? "archived" : "draft")
+                    .hue(hue)
+                    .engine(dbPub.getEngine() != null ? dbPub.getEngine() : "SDXL")
+                    .palette(dbPub.getPalette() != null ? new LinkedHashMap<>(dbPub.getPalette()) : support.paletteFor(hue))
+                    .def(dbPub.getDef() != null ? new LinkedHashMap<>(dbPub.getDef()) : new LinkedHashMap<>())
+                    .voiceName(dbPub.getVoiceName() != null ? dbPub.getVoiceName() : catalog.recommendVoice(null))
+                    .imageKey(imageKey)
+                    .shotKeys(shotKeys.isEmpty() ? null : shotKeys);
+        } else {
+            // 内置静态样板：图是 app 自带静态资源、无 OSS key，副本只承袭人设，走创建链路出图
+            @SuppressWarnings("unchecked")
+            Map<String, Object> srcDef = (Map<String, Object>) pub.getOrDefault("def", Map.of());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> srcPalette = (Map<String, Object>) pub.get("palette");
+            int hue = pub.get("hue") instanceof Number n ? n.intValue() : 240;
+            name = String.valueOf(pub.getOrDefault("name", "公开数字人"));
+            b.name(name)
+                    .codename(String.valueOf(pub.getOrDefault("codename", "avatar")) + "-copy")
+                    .archetype(String.valueOf(pub.getOrDefault("archetype", "AI 原创形象")))
+                    .tagline(String.valueOf(pub.getOrDefault("tagline", "")))
+                    .status("draft")
+                    .hue(hue)
+                    .engine(String.valueOf(pub.getOrDefault("engine", "Agnes Image 2.1")))
+                    .palette(srcPalette != null ? new LinkedHashMap<>(srcPalette) : support.paletteFor(hue))
+                    .def(new LinkedHashMap<>(srcDef))
+                    .voiceName(pub.get("voiceName") != null ? String.valueOf(pub.get("voiceName")) : catalog.recommendVoice(null))
+                    .shotKeys(null);
+        }
+
+        DapAvatar copy = b.build();
         avatarRepo.save(copy);
-        addVersionAt(copy, 1, "从数字人广场「" + name + "」另存", "init", null);
+        addVersionAt(copy, 1, "从数字人广场「" + name + "」另存", "init", imageKey);
         return toDto(copy);
     }
 

@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, LicenseApi, awaitJob, useApi, seed, USE_MOCK } from "./api";
+import { DATA, AvatarApi, LicenseApi, PlazaAdminApi, awaitJob, useApi, seed, USE_MOCK, auth, AuthApi, isOperatorRole } from "./api";
 import { Portrait } from "./portrait";
 import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
@@ -15,6 +15,120 @@ const hML : any = React.createElement;
 const { useState: useStateML, useEffect: useEffectML } = React;
 const { WxNav: WxNavL } = MShell;
 const { MStatus: MStatusL, MPath: MPathL, CornerTicks: CornerTicksL } = MKit;
+
+// —— 数字人广场 · 运营内嵌后台 —————————————————————————————
+/** 当前用户是否运营（OPERATOR / SUPER_ADMIN）。mock/dev 默认开放，便于本地演示。 */
+function useIsOperator() {
+  const [op, setOp] = useStateML(USE_MOCK || isOperatorRole(auth.user()?.operatorRole));
+  useEffectML(() => {
+    if (USE_MOCK) return;
+    let live = true;
+    AuthApi.me().then((u: any) => { if (live) setOp(isOperatorRole(u?.operatorRole)); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  return op;
+}
+
+const PLAZA_CATS: [string, string][] = [['pro', '专业'], ['life', '生活方式'], ['ugc', 'UGC'], ['community', '社区']];
+
+/** 单张形象图上传槽位（点选 → 上传 → 预览）。 */
+function PlazaImgSlot({ label, required, value, busy, onPick }) {
+  return hML('label', { className: 'm-tap', style: {
+      position: 'relative', display: 'block', aspectRatio: '3 / 4', borderRadius: 'var(--r-md)', overflow: 'hidden', cursor: 'pointer',
+      border: '1.5px dashed ' + (value ? 'var(--primary)' : 'var(--line-3)'), background: value ? '#0b0d12' : 'var(--surface-2)' } },
+    value && hML('img', { src: value.url, alt: label, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }),
+    !value && hML('div', { style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--ink-3)' } },
+      busy ? hML(UI.Spinner, { size: 18 }) : hML(Icons.add, { size: 20, stroke: 2 }),
+      hML('div', { style: { fontSize: 11.5, fontWeight: 600 } }, label + (required ? ' *' : ''))),
+    value && hML('div', { className: 'ph-label', style: { left: 6, bottom: 6 } }, busy ? '上传中…' : label),
+    hML('input', { type: 'file', accept: 'image/*', style: { display: 'none' },
+      onChange: (e) => { const f = e.target.files && e.target.files[0]; if (f) onPick(f); e.target.value = ''; } }));
+}
+
+/** 新增 / 编辑公开数字人表单（底部 sheet）。 */
+function PlazaAvatarForm({ avatar, onClose, onSaved }) {
+  const edit = !!avatar;
+  const d0 = (avatar && avatar.def) || {};
+  const initImg = (u) => (u ? { key: undefined, url: u } : null);
+  const [name, setName] = useStateML(avatar?.name || '');
+  const [tagline, setTagline] = useStateML(avatar?.tagline || '');
+  const [archetype, setArchetype] = useStateML(avatar?.archetype || '');
+  const [cat, setCat] = useStateML(avatar?.cat || 'pro');
+  const [front, setFront] = useStateML(initImg(avatar?.shotImages?.['front-half'] || avatar?.imageUrl));
+  const [right, setRight] = useStateML(initImg(avatar?.shotImages?.right));
+  const [left, setLeft] = useStateML(initImg(avatar?.shotImages?.left));
+  const [age, setAge] = useStateML(d0['年龄'] || '');
+  const [temper, setTemper] = useStateML(d0['气质'] || '');
+  const [usage, setUsage] = useStateML(d0['用途'] || '');
+  const [traits, setTraits] = useStateML(Array.isArray(d0['性格']) ? d0['性格'].join('、') : (d0['性格'] || ''));
+  const [outfit, setOutfit] = useStateML(d0['服饰'] || '');
+  const [persona, setPersona] = useStateML(d0['设定语'] || '');
+  const [busyKind, setBusyKind] = useStateML('');
+  const [saving, setSaving] = useStateML(false);
+
+  const pick = async (kind, setter, file) => {
+    setBusyKind(kind);
+    try { const r = await PlazaAdminApi.uploadImage(file, kind); setter({ key: r.key, url: r.url }); }
+    catch (e: any) { toast(e?.message || '图片上传失败', { tone: 'err' }); }
+    finally { setBusyKind(''); }
+  };
+
+  const submit = async () => {
+    if (!name.trim()) { toast('请填写名称', { tone: 'warn' }); return; }
+    if (!front) { toast('请上传正面半身形象图', { tone: 'warn' }); return; }
+    setSaving(true);
+    try {
+      const body: any = {
+        name: name.trim(), tagline: tagline.trim(), archetype: archetype.trim(), cat,
+        frontKey: front.key, rightKey: right?.key, leftKey: left?.key,
+        frontUrl: front.url, rightUrl: right?.url, leftUrl: left?.url,
+        age: age.trim(), temperament: temper.trim(), usage: usage.trim(),
+        traits: traits.split(/[，,、\s]+/).map((s) => s.trim()).filter(Boolean), outfit: outfit.trim(), persona: persona.trim(),
+      };
+      if (edit) await PlazaAdminApi.update(avatar.id, body); else await PlazaAdminApi.create(body);
+      toast(edit ? '已保存' : '已新增公开数字人', { tone: 'ok' });
+      onSaved && onSaved();
+    } catch (e: any) { toast(e?.message || '保存失败', { tone: 'err' }); }
+    finally { setSaving(false); }
+  };
+
+  const field = (label, node) => hML('div', { style: { marginTop: 12 } },
+    hML('div', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 7 } }, label), node);
+
+  return hML(React.Fragment, null,
+    hML('div', { className: 'm-sheet-backdrop', onClick: saving ? undefined : onClose }),
+    hML('div', { className: 'm-sheet', style: { padding: '0 18px calc(16px + var(--home-ind))', maxHeight: 'calc(100dvh - 48px)', overflowY: 'auto' } },
+      hML('div', { className: 'm-sheet-grip' }),
+      hML('div', { style: { padding: '6px 0 2px' } },
+        hML('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 700, fontSize: 18 } }, edit ? '编辑公开数字人' : '新增公开数字人'),
+        hML('div', { style: { fontSize: 12, color: 'var(--ink-3)', marginTop: 3 } }, '上传形象图并填写人设，发布到「数字人广场」供所有用户另存使用。')),
+
+      field('形象图（正面半身 / 右侧脸 / 左侧脸）', hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 } },
+        hML(PlazaImgSlot, { label: '正面半身', required: true, value: front, busy: busyKind === 'front', onPick: (f) => pick('front', setFront, f) }),
+        hML(PlazaImgSlot, { label: '右侧脸', value: right, busy: busyKind === 'right', onPick: (f) => pick('right', setRight, f) }),
+        hML(PlazaImgSlot, { label: '左侧脸', value: left, busy: busyKind === 'left', onPick: (f) => pick('left', setLeft, f) }))),
+
+      field('名称 *', hML(UI.Input, { value: name, onChange: setName, placeholder: '如：Annie 安妮' })),
+      field('一句话简介', hML(UI.Input, { value: tagline, onChange: setTagline, placeholder: '如：商务发布会与产品讲解的全能数字主持' })),
+      field('角色定位', hML(UI.Input, { value: archetype, onChange: setArchetype, placeholder: '如：商务精英主持' })),
+      field('分类', hML('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+        PLAZA_CATS.map(([k, l]) => hML('button', { key: k, onClick: () => setCat(k), className: 'm-tap', style: {
+            height: 32, padding: '0 14px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+            border: '1.5px solid ' + (cat === k ? 'var(--ink)' : 'var(--line-2)'), background: cat === k ? 'var(--ink)' : 'var(--surface)', color: cat === k ? '#fff' : 'var(--ink-2)' } }, l)))),
+
+      hML('div', { style: { marginTop: 16, fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' } }, '设定档案（可选）'),
+      hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 10px' } },
+        field('年龄', hML(UI.Input, { value: age, onChange: setAge, placeholder: '约 30 岁' })),
+        field('气质', hML(UI.Input, { value: temper, onChange: setTemper, placeholder: '专业 · 干练 · 亲和' }))),
+      field('用途', hML(UI.Input, { value: usage, onChange: setUsage, placeholder: '发布会主持 / 产品讲解' })),
+      field('性格（顿号或逗号分隔）', hML(UI.Input, { value: traits, onChange: setTraits, placeholder: '专业、可信、沉稳' })),
+      field('服饰', hML(UI.Input, { value: outfit, onChange: setOutfit, placeholder: '海军蓝西装 · 商务' })),
+      field('设定语', hML(UI.Textarea, { value: persona, onChange: setPersona, rows: 2, placeholder: '一句话点睛的人物设定…' })),
+
+      hML('div', { style: { marginTop: 16 } },
+        hML(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: edit ? Icons.check : Icons.add, disabled: saving || !!busyKind, onClick: submit },
+          saving ? '保存中…' : (edit ? '保存修改' : '发布到数字人广场')))));
+}
 
 // —— 拼贴卡（大图 + 右侧两张小图 + 名称在下）——
 function MCollageCard({ char, onOpen, onJobDone }) {
@@ -50,6 +164,9 @@ function MLibrary({ ctx }) {
   const [q, setQ] = useStateML('');
   const [view, setView] = useStateML('grid');
   const [fav, setFav] = useStateML(false);
+  const isOperator = useIsOperator();
+  const [plazaForm, setPlazaForm] = useStateML(null as any);   // { avatar }（avatar=null → 新增）
+  const [reloadSeq, setReloadSeq] = useStateML(0);
 
   // 显式跟踪 loading，避免「正在拉后端数据」时整页空白（live 模式 seed 为空）
   const [pool, setPool] = useStateML(seed.avatars(top === 'mine' ? 'mine' : 'public'));
@@ -63,7 +180,7 @@ function MLibrary({ ctx }) {
       .then((d) => { if (live) { setPool(d); setLoading(false); } })
       .catch(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [top]);
+  }, [top, reloadSeq]);
   let list: any = pool.slice();
   if (fav) list = list.filter(c => c.fav);
   if (top === 'public' && cat !== 'all') list = list.filter(c => cat === 'fav' ? c.fav : c.cat === cat);
@@ -122,10 +239,20 @@ function MLibrary({ ctx }) {
             top === 'mine' && hML('button', { key: '__new', onClick: ctx.openCreateSheet, className: 'm-tap', style: { height: 150, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1.5px dashed var(--line-3)', background: 'var(--surface-2)', borderRadius: 'var(--r-lg)', color: 'var(--ink-3)' } },
               hML('span', { style: { width: 42, height: 42, borderRadius: 99, background: 'var(--surface)', border: '1px solid var(--line-2)', display: 'grid', placeItems: 'center', color: 'var(--primary)' } }, hML(Icons.add, { size: 20, stroke: 2 })),
               hML('span', { style: { fontSize: 13.5, fontWeight: 700, color: 'var(--ink-2)' } }, '新建数字人')),
+            top === 'public' && isOperator && hML('button', { key: '__newpub', onClick: () => setPlazaForm({ avatar: null }), className: 'm-tap', style: { height: 150, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1.5px dashed var(--primary-soft)', background: 'var(--primary-tint)', borderRadius: 'var(--r-lg)', color: 'var(--primary)' } },
+              hML('span', { style: { width: 42, height: 42, borderRadius: 99, background: 'var(--surface)', border: '1px solid var(--primary-soft)', display: 'grid', placeItems: 'center', color: 'var(--primary)' } }, hML(Icons.add, { size: 20, stroke: 2 })),
+              hML('span', { style: { fontSize: 13, fontWeight: 700 } }, '新增公开数字人'),
+              hML('span', { style: { fontSize: 10.5, color: 'var(--ink-3)' } }, '运营 · 上传形象')),
             filtered.map(c => hML(MCollageCard, { key: c.id, char: c, onOpen: ctx.openChar, onJobDone: ctx.reload })))
         : hML('div', { className: 'm-stagger', style: { padding: '14px 18px 8px', display: 'flex', flexDirection: 'column', gap: 10 } },
             filtered.map(c => hML(MAssetCard, { key: c.id, char: c, onOpen: ctx.openChar })));
-    })());
+    })(),
+
+    plazaForm && hML(PlazaAvatarForm, {
+      avatar: plazaForm.avatar,
+      onClose: () => setPlazaForm(null),
+      onSaved: () => { setPlazaForm(null); setReloadSeq((s) => s + 1); },
+    }));
 }
 
 // ============================================================
@@ -239,12 +366,35 @@ function DerivConfigSheet({ derivKey, char, onClose, onSubmit }) {
 }
 
 // —— 数字人广场 · 公开形象只读陈列（形象图集 + 设定档案；不带任何编辑 / 生成入口）——
+// —— 大图预览灯箱（点开数字人形象图看大图；支持左右切换）——
+function MLightbox({ images, index, onClose, onIndex }) {
+  const img = (images && images[index]) || {};
+  const many = (images || []).length > 1;
+  const go = (e, d) => { e.stopPropagation(); onIndex((index + d + images.length) % images.length); };
+  const navBtn = (side) => ({ position: 'absolute', top: '50%', [side]: 8, transform: 'translateY(-50%)', width: 42, height: 42, borderRadius: 99, border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 2 } as any);
+  return hML('div', { onClick: onClose, style: {
+      position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(8,10,14,.94)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' } },
+    hML('button', { onClick: (e) => { e.stopPropagation(); onClose(); }, className: 'm-tap', style: {
+        position: 'absolute', top: 'calc(10px + env(safe-area-inset-top))', right: 14, width: 38, height: 38, borderRadius: 99,
+        border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 } },
+      hML(Icons.x, { size: 20, stroke: 2 })),
+    hML('img', { src: img.src, alt: img.label || '', onClick: (e) => e.stopPropagation(), style: {
+        maxWidth: '94vw', maxHeight: '78vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 8px 44px rgba(0,0,0,.55)' } }),
+    img.label && hML('div', { style: { marginTop: 14, color: 'rgba(255,255,255,.92)', fontSize: 13.5, fontWeight: 600 } },
+      img.label + (many ? '   ·   ' + (index + 1) + ' / ' + images.length : '')),
+    many && hML(React.Fragment, null,
+      hML('button', { onClick: (e) => go(e, -1), className: 'm-tap', style: navBtn('left') }, hML(Icons.chevL, { size: 24, stroke: 2 })),
+      hML('button', { onClick: (e) => go(e, 1), className: 'm-tap', style: navBtn('right') }, hML(Icons.chevR, { size: 24, stroke: 2 }))));
+}
+
 function MPublicShowcase({ char }) {
   const shots = char.shotImages || {};
-  const imgs: any[] = [];
-  if (char.imageUrl) imgs.push({ src: char.imageUrl, label: '定妆形象' });
-  if (shots.right) imgs.push({ src: shots.right, label: '右侧 3/4' });
-  if (shots.left) imgs.push({ src: shots.left, label: '左侧' });
+  // 标准三机位：正面半身（= 定妆主图）/ 右侧脸 / 左侧脸；缺图时退回定妆主图
+  const order: [string, string][] = [['front-half', '正面半身'], ['right', '右侧脸'], ['left', '左侧脸']];
+  const imgs: any[] = order.filter(([k]) => shots[k]).map(([k, label]) => ({ src: shots[k], label }));
+  if (!imgs.length && char.imageUrl) imgs.push({ src: char.imageUrl, label: '正面半身' });
+  const [lb, setLb] = useStateML(-1);   // 灯箱打开的图片下标（-1 = 关闭）
   const def = char.def || {};
   const entries = Object.entries(def).filter(([k]) => k !== '设定语');
   const title = (t) => hML('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 12 } }, t);
@@ -255,15 +405,20 @@ function MPublicShowcase({ char }) {
     imgs.length > 0 && hML('div', { style: { marginBottom: 22 } },
       title('形象图集'),
       hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 } },
-        imgs.map((t, i) => hML('div', { key: i, style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
+        imgs.map((t, i) => hML('button', { key: i, onClick: () => setLb(i), className: 'm-press', style: {
+            display: 'block', padding: 0, border: 'none', background: 'none', cursor: 'pointer', width: '100%', textAlign: 'left',
+            position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
           hML('img', { src: t.src, alt: t.label, style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
-          hML('div', { className: 'ph-label', style: { left: 7, bottom: 7 } }, t.label))))),
+          hML('div', { style: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 7, background: 'rgba(20,24,30,.45)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: '#fff' } }, hML(Icons.expand, { size: 12, stroke: 2 })),
+          hML('div', { className: 'ph-label', style: { left: 7, bottom: 7 } }, t.label)))),
+      hML('div', { style: { fontSize: 11.5, color: 'var(--ink-4)', marginTop: 8 } }, '点击图片查看大图')),
     entries.length > 0 && hML('div', null,
       title('设定档案'),
       hML('div', { style: { display: 'flex', flexDirection: 'column' } },
         entries.map(([k, v]: any) => hML('div', { key: k, style: { padding: '11px 0', borderBottom: '1px solid var(--line)' } },
           hML('div', { style: { fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 3 } }, k),
-          hML('div', { style: { fontSize: 13.5, color: 'var(--ink)', fontWeight: Array.isArray(v) ? 400 : 600, lineHeight: 1.45 } }, Array.isArray(v) ? v.join(' · ') : String(v || '—')))))));
+          hML('div', { style: { fontSize: 13.5, color: 'var(--ink)', fontWeight: Array.isArray(v) ? 400 : 600, lineHeight: 1.45 } }, Array.isArray(v) ? v.join(' · ') : String(v || '—')))))),
+    lb >= 0 && hML(MLightbox, { images: imgs, index: lb, onClose: () => setLb(-1), onIndex: setLb }));
 }
 
 function MDetail({ char: initialChar, ctx }) {
@@ -281,6 +436,10 @@ function MDetail({ char: initialChar, ctx }) {
   const voice = ctx.voiceFor(char);
   const s = DATA.STATUS[char.status] || DATA.STATUS.draft;
   const isPublic = String(char.id || '').startsWith('PA-');
+  const isOperator = useIsOperator();
+  const managed = isPublic && isOperator && !!char.managed;   // 运营可编辑 / 删除的 DB 公开数字人
+  const [plazaEdit, setPlazaEdit] = useStateML(false);
+  const [confirmDelPub, setConfirmDelPub] = useStateML(false);
   const tabs = [
     { key: 'assets', label: '作品' },
     { key: 'versions', label: '版本' },
@@ -380,11 +539,34 @@ function MDetail({ char: initialChar, ctx }) {
   /** 生成入口统一先弹配置 sheet（不再一键抽卡）。 */
   const openDerivConfig = (key) => { if (!derivBusy[key]) setCfgKey(key); };
 
+  /** 运营删除 DB 公开数字人（数字人广场下架）。 */
+  const doDeletePublic = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await PlazaAdminApi.remove(char.id);
+      setConfirmDelPub(false);
+      toast('已从数字人广场下架', { tone: 'ok' });
+      ctx.reload && ctx.reload();
+      ctx.back();
+    } catch (e: any) { toast(e?.message || '删除失败', { tone: 'err' }); }
+    finally { setDeleting(false); }
+  };
+
   return hML('div', { className: 'm-overlay', 'data-screen-label': '资产详情' },
     hML(WxNavL, { title: char.name, onBack: ctx.back,
       right: hML('div', { style: { display: 'flex', alignItems: 'center', gap: 2 } },
         !isPublic && hML('button', { className: 'm-tap', title: '删除（移入回收站）', onClick: () => setConfirmDel(true), style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', display: 'grid', placeItems: 'center', width: 34, height: 34 } }, hML(Icons.trash, { size: 18, stroke: 1.9 })),
+        managed && hML('button', { className: 'm-tap', title: '编辑公开数字人', onClick: () => setPlazaEdit(true), style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-2)', display: 'grid', placeItems: 'center', width: 34, height: 34 } }, hML(Icons.pen, { size: 17, stroke: 1.9 })),
+        managed && hML('button', { className: 'm-tap', title: '从广场下架', onClick: () => setConfirmDelPub(true), style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--err)', display: 'grid', placeItems: 'center', width: 34, height: 34 } }, hML(Icons.trash, { size: 18, stroke: 1.9 })),
         hML('button', { className: 'm-tap', onClick: share, style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', display: 'grid', placeItems: 'center', width: 34, height: 34 } }, hML(Icons.share, { size: 19, stroke: 1.9 }))) }),
+    hML(UI.Confirm, { open: confirmDelPub, onClose: () => setConfirmDelPub(false), onConfirm: doDeletePublic, busy: deleting, danger: true,
+      title: '从数字人广场下架「' + char.name + '」？',
+      desc: '下架后用户不再能在广场看到或另存该形象；已另存的副本不受影响。',
+      confirmText: '下架' }),
+    plazaEdit && hML(PlazaAvatarForm, { avatar: char,
+      onClose: () => setPlazaEdit(false),
+      onSaved: () => { setPlazaEdit(false); ctx.reload && ctx.reload(); AvatarApi.get(char.id).then((fresh) => fresh && setChar((c) => ({ ...c, ...fresh }))).catch(() => {}); } }),
     hML(UI.Confirm, { open: confirmDel, onClose: () => setConfirmDel(false), onConfirm: doDelete, busy: deleting,
       title: '删除「' + char.name + '」？',
       desc: '将移入回收站，30 天内可恢复；到期后自动彻底清理（含全部图集 / 衍生 / 版本与文件）。',
@@ -530,7 +712,11 @@ function tilesForCat(char, items, cat) {
   if (cat === 'atlas') {
     const shots = char.shotImages || {};
     const shotTiles = DATA.SHOTS.filter((x) => shots[x.key]).map((x) => ({ src: shots[x.key], label: x.name }));
-    if (shotTiles.length) return [...(char.imageUrl ? [{ src: char.imageUrl, label: '定妆形象' }] : []), ...shotTiles];
+    // 定妆主图常等于正面半身（front-half）—— 已在机位里就不再单列「定妆形象」，避免同图重复
+    if (shotTiles.length) {
+      const dup = char.imageUrl && shotTiles.some((t) => t.src === char.imageUrl);
+      return [...(char.imageUrl && !dup ? [{ src: char.imageUrl, label: '定妆形象' }] : []), ...shotTiles];
+    }
     if (char.imageUrl) return [{ src: char.imageUrl, label: '定妆形象' }];
     const v = char.variantImages || [];
     if (v.length) return v.map((u, i) => ({ src: u, label: '候选 v' + (i + 1) }));

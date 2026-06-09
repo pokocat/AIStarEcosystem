@@ -529,7 +529,12 @@ export const DATA = {
  */
 const paImgs = (id: string) => ({
   imageUrl: `/plaza/${id}-1.jpg`,
-  shotImages: { right: `/plaza/${id}-2.jpg`, left: `/plaza/${id}-3.jpg` } as Record<string, string>,
+  // 正面半身（front-half）= 定妆主图（-1）；右侧脸 / 左侧脸为另两个机位。
+  shotImages: {
+    "front-half": `/plaza/${id}-1.jpg`,
+    right: `/plaza/${id}-2.jpg`,
+    left: `/plaza/${id}-3.jpg`,
+  } as Record<string, string>,
 });
 
 export const PUBLIC_AVATARS: any[] = [
