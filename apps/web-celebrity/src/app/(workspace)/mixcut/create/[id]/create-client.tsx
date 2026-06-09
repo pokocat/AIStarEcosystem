@@ -26,6 +26,7 @@ import {
   Save,
   Bookmark,
   PencilRuler,
+  PlayCircle,
   Loader2 as Loader2Icon,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-star-eco/ui/ui/collapsible";
@@ -38,6 +39,7 @@ import { Slider } from "@/components/mixcut-zone/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@ai-star-eco/ui/ui/radio-group";
 import { Checkbox } from "@ai-star-eco/ui/ui/checkbox";
 import { TemplatePreview } from "@/components/mixcut-zone/template-preview";
+import { TimelinePreviewDialog } from "@/components/mixcut-zone/timeline-preview-dialog";
 import { SceneFlowEditor } from "@/components/mixcut-zone/scene-flow-editor";
 import { SlotInput } from "@/components/mixcut-zone/slot-input";
 import { StickerPoolPicker } from "@/components/mixcut-zone/sticker-pool-picker";
@@ -272,6 +274,8 @@ export function CreateClient({ id }: { id: string }) {
    * - 单场景模板（scenes.length === 1）下永远是 0，tab 条不渲染，行为与旧版一致。
    */
   const [activeSceneIdx, setActiveSceneIdx] = useState(0);
+  // v0.57+: 编排预览弹窗（纯前端时间轴播放，渲染前核对整片）
+  const [previewOpen, setPreviewOpen] = useState(false);
   const initFromTemplateRef = useRef(false);
   const productAutoFillRef = useRef(false);
   const draftLoadRef = useRef(false);
@@ -1301,8 +1305,19 @@ export function CreateClient({ id }: { id: string }) {
             )}
           </div>
 
+          {/* v0.57+: 编排预览 —— 渲染前把整片顺序播一遍核对 */}
+          <Button
+            variant="outline"
+            size="default"
+            className="w-full"
+            onClick={() => setPreviewOpen(true)}
+          >
+            <PlayCircle className="size-4" /> 预览效果
+          </Button>
+
           <p className="text-[10px] text-muted-foreground leading-relaxed px-1">
-            点击画布上的素材位 → 中列对应输入框聚焦；切换场景 → 画布同步显示该段
+            点击画布上的素材位 → 中列对应输入框聚焦；切换场景 → 画布同步显示该段。
+            「预览效果」按场景顺序把整片播一遍，核对编排（不含差异化处理）。
           </p>
         </div>
 
@@ -1680,6 +1695,12 @@ export function CreateClient({ id }: { id: string }) {
         open={productPickerOpen}
         onOpenChange={setProductPickerOpen}
         onPick={(p) => setLinkedProduct(p)}
+      />
+      <TimelinePreviewDialog
+        template={template}
+        bindings={bindings}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
       />
     </div>
   );
