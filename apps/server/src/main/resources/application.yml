@@ -106,8 +106,8 @@ aep:
     public-url-base: ${AEP_MIXCUT_PUBLIC_URL_BASE:/static/mixcut}
     # 并发渲染数（@Async 线程池大小）
     max-concurrent: ${AEP_MIXCUT_MAX_CONCURRENT:2}
-    # 单个变体最长时长（秒），超过截断
-    max-output-duration-sec: ${AEP_MIXCUT_MAX_OUTPUT_DURATION_SEC:15}
+    # 单个变体最长时长（秒），超过按比例缩放各场景
+    max-output-duration-sec: ${AEP_MIXCUT_MAX_OUTPUT_DURATION_SEC:60}
     # 输出分辨率上限：模板 canvas 大于此值时按比例缩到 fit。
     # 1080p 软编 CPU 跑不动多 overlay 场景；默认 720p 让 macOS / Linux 容器都 ~1x realtime。
     # 想 1080p 输出请改 max-output-width=1080 + video-codec=h264_videotoolbox（macOS）。

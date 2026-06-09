@@ -289,7 +289,7 @@ aep:
     ffprobe-bin: ${AEP_FFPROBE_BIN:ffprobe}
     public-url-base: ${AEP_MIXCUT_PUBLIC_URL_BASE:/static/mixcut}
     max-concurrent: ${AEP_MIXCUT_MAX_CONCURRENT:2}            # 并发渲染数
-    max-output-duration-sec: ${AEP_MIXCUT_MAX_OUTPUT_DURATION_SEC:15}
+    max-output-duration-sec: ${AEP_MIXCUT_MAX_OUTPUT_DURATION_SEC:60}
     max-asset-bytes: ${AEP_MIXCUT_MAX_ASSET_BYTES:104857600}  # 100 MB
     ffmpeg-timeout-ms: ${AEP_MIXCUT_FFMPEG_TIMEOUT_MS:120000} # 2 分钟
 ```
