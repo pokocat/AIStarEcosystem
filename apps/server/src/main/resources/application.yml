@@ -198,6 +198,8 @@ aep:
     # dev 默认 true（无端点也能联调全链路）；mysql/生产 profile 默认 false →
     # 提交生成任务直接 503 DAP_ENGINE_NOT_CONFIGURED（不生成、不扣费）。
     allow-placeholder: ${AEP_DAP_ALLOW_PLACEHOLDER:true}
+    # 单账户存储配额（MB），account() 出 wire 的 storageQuotaMb（默认 5000MB = 5GB）
+    storage-quota-mb: ${AEP_DAP_STORAGE_QUOTA_MB:5000}
     # 各动作扣费（点，hold→commit/release 三段式）；0 = 免费
     pricing:
       generate: ${AEP_DAP_PRICE_GENERATE:20}

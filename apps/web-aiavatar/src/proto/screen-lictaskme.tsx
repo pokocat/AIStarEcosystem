@@ -270,7 +270,7 @@ function MMe({ ctx }) {
       hMS('div', { style: { fontSize: 12, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '.06em', margin: '0 2px 9px' } }, '账户'),
       hMS('div', { className: 'm-card' },
         hMS(MeRow, { icon: Icons.gem, label: '会员与算力', sub: (acct.planLabel || 'PRO') + ' · ' + (acct.credits || 0).toLocaleString() + ' 点', color: 'var(--ink-2)', onClick: () => ctx.go('membership') }),
-        hMS(MeRow, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedGB ?? 0) + ' / ' + (acct.storageQuotaGB ?? 0) + ' GB', color: 'var(--ink-2)', onClick: () => ctx.go('storage') }),
+        hMS(MeRow, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedMb ?? 0) + ' / ' + (acct.storageQuotaMb ?? 0) + ' MB', color: 'var(--ink-2)', onClick: () => ctx.go('storage') }),
         hMS(MeRow, { icon: Icons.trash, label: '回收站', sub: '已删数字人 · 30 天内可恢复', color: 'var(--ink-2)', onClick: () => ctx.go('trash') }),
         hMS(MeRow, { icon: Icons.settings, label: '设置', color: 'var(--ink-2)', onClick: () => ctx.go('settings'), last: true }))),
 

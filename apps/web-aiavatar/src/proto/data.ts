@@ -588,8 +588,8 @@ export interface Account {
   creditsUsed: number;
   refreshDate: string;
   generatableEstimate: number;
-  storageUsedGB: number;
-  storageQuotaGB: number;
+  storageUsedMb: number;
+  storageQuotaMb: number;
   storageBreakdown: StorageSlice[];
 }
 
@@ -602,13 +602,13 @@ export const ACCOUNT: Account = {
   creditsUsed: 860,
   refreshDate: "6 月 30 日",
   generatableEstimate: 28,
-  storageUsedGB: 68,
-  storageQuotaGB: 200,
+  storageUsedMb: 67,
+  storageQuotaMb: 5000,
   storageBreakdown: [
-    { name: "形象图集", size: 28.4, color: "var(--primary)", icon: "image" },
-    { name: "衍生视频", size: 19.2, color: "#1AA06E", icon: "film" },
-    { name: "3D 资产", size: 11.6, color: "#D9920E", icon: "cube" },
-    { name: "声音文件", size: 5.3, color: "#8A6BFF", icon: "mic" },
-    { name: "授权素材", size: 3.5, color: "var(--ink-3)", icon: "shield" },
+    { name: "形象图集", size: 28, color: "var(--primary)", icon: "image" },
+    { name: "衍生视频", size: 19, color: "#1AA06E", icon: "film" },
+    { name: "3D 资产", size: 12, color: "#D9920E", icon: "cube" },
+    { name: "声音文件", size: 5, color: "#8A6BFF", icon: "mic" },
+    { name: "授权素材", size: 3, color: "var(--ink-3)", icon: "shield" },
   ],
 };

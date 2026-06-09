@@ -98,24 +98,25 @@ public class DapAccountService {
         LocalDate monthEnd = YearMonth.now(ZONE).atEndOfMonth();
         String refreshDate = DateTimeFormatter.ofPattern("M 月 d 日").format(monthEnd);
 
-        // 分类占用（GB，1 位小数）
-        double atlasGB = gb(sumAvatarImageBytes(userId) + lookRepo.sumBytesByOwner(userId)
+        // 分类占用（MB，四舍五入；非空分类不足 1MB 记 1MB）。used = 各分类之和，与下方分类条对齐。
+        long atlasMb = mb(sumAvatarImageBytes(userId) + lookRepo.sumBytesByOwner(userId)
                 + derivRepo.sumBytesByOwnerAndKind(userId, "image"));
-        double videoGB = gb(derivRepo.sumBytesByOwnerAndKind(userId, "video"));
-        double d3GB = gb(derivRepo.sumBytesByOwnerAndKind(userId, "model3d"));
-        double voiceGB = gb(voiceRepo.sumBytesByOwner(userId));
-        double licGB = gb(captureRepo.sumBytesByOwner(userId) + photoRepo.sumBytesByOwner(userId));
-        double used = round1(atlasGB + videoGB + d3GB + voiceGB + licGB);
+        long videoMb = mb(derivRepo.sumBytesByOwnerAndKind(userId, "video"));
+        long d3Mb = mb(derivRepo.sumBytesByOwnerAndKind(userId, "model3d"));
+        long voiceMb = mb(voiceRepo.sumBytesByOwner(userId));
+        long licMb = mb(captureRepo.sumBytesByOwner(userId) + photoRepo.sumBytesByOwner(userId));
+        long usedMb = atlasMb + videoMb + d3Mb + voiceMb + licMb;
+        int quotaMb = props.getStorageQuotaMb();
 
         List<StorageSliceDto> breakdown = List.of(
-                new StorageSliceDto("形象图集", atlasGB, "var(--primary)", "image"),
-                new StorageSliceDto("衍生视频", videoGB, "#1AA06E", "film"),
-                new StorageSliceDto("3D 资产", d3GB, "#D9920E", "cube"),
-                new StorageSliceDto("声音文件", voiceGB, "#8A6BFF", "mic"),
-                new StorageSliceDto("授权素材", licGB, "var(--ink-3)", "shield"));
+                new StorageSliceDto("形象图集", atlasMb, "var(--primary)", "image"),
+                new StorageSliceDto("衍生视频", videoMb, "#1AA06E", "film"),
+                new StorageSliceDto("3D 资产", d3Mb, "#D9920E", "cube"),
+                new StorageSliceDto("声音文件", voiceMb, "#8A6BFF", "mic"),
+                new StorageSliceDto("授权素材", licMb, "var(--ink-3)", "shield"));
 
         return new AccountDto("PRO", "PRO", credits, monthlyGrant, creditsUsed,
-                refreshDate, generatable, used, 200, breakdown);
+                refreshDate, generatable, usedMb, quotaMb, breakdown);
     }
 
     private long sumAvatarImageBytes(String userId) {
@@ -124,11 +125,11 @@ public class DapAccountService {
                 .sum();
     }
 
-    private static double gb(long bytes) {
-        return round1(bytes / 1024.0 / 1024.0 / 1024.0);
-    }
+    private static final long BYTES_PER_MB = 1024L * 1024L;
 
-    private static double round1(double v) {
-        return Math.round(v * 10.0) / 10.0;
+    /** 字节 → MB：四舍五入；&gt;0 但不足 1MB 记 1MB（账户用量展示口径）。 */
+    private static long mb(long bytes) {
+        if (bytes <= 0) return 0;
+        return Math.max(1, Math.round((double) bytes / BYTES_PER_MB));
     }
 }
