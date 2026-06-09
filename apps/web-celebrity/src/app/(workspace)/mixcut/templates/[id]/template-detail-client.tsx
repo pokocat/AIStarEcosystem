@@ -269,11 +269,12 @@ export function TemplateDetailClient({
   // 普通用户仍是 fork 个人副本 / 删个人副本恢复工厂原版（行为不变）。
   const { user, loading: authLoading } = useAuth();
   const canManageTemplates = canUseOperatorTools(user?.operatorRole);
+  const canEditTemplates = Boolean(user);
   const canManage = canManageTemplates;
   const isNewMode = mode === "new";
   // new 模式自动进编辑；view 模式沿用 /edit 路由 / ?edit=1 query
   const requestedEdit = isNewMode || initialEdit || legacyEditQuery;
-  const wantEdit = requestedEdit && canManageTemplates;
+  const wantEdit = requestedEdit && canEditTemplates;
   // new 模式：用内存默认模板（不落库）
   // view 模式：SSR 看工厂模板，client hydration 升级到用户覆盖版本
   const freshTemplate = useMemo<Template | null>(() => {
@@ -296,7 +297,7 @@ export function TemplateDetailClient({
       quality_gate: { min_phash_distance: 10, max_retries: 3 },
       metadata: { category: "未分类", tags: [], required_tier: "basic" },
     };
-  }, [isNewMode, canManageTemplates]);
+  }, [isNewMode]);
   const [template, setTemplate] = useState<Template | null>(() => {
     if (freshTemplate) return freshTemplate;
     // 不用 mockTemplates 做首帧 fallback：生产真实后端慢返回时，浏览态也会先闪 mock 模板。
@@ -322,10 +323,10 @@ export function TemplateDetailClient({
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
 
   useEffect(() => {
-    if (!isNewMode || !canManageTemplates || !freshTemplate || template !== null) return;
+    if (!isNewMode || !canEditTemplates || !freshTemplate || template !== null) return;
     setTemplate(freshTemplate);
     setResolved(true);
-  }, [isNewMode, canManageTemplates, freshTemplate, template]);
+  }, [isNewMode, canEditTemplates, freshTemplate, template]);
 
   useEffect(() => {
     // new 模式跳过 server 取数：直接使用内存默认模板，避免落库
@@ -394,10 +395,10 @@ export function TemplateDetailClient({
       </div>
     );
   }
-  if (requestedEdit && !canManageTemplates) {
-    return <OperatorOnlyNotice />;
+  if (requestedEdit && !canEditTemplates) {
+    return <TemplateEditUnavailableNotice />;
   }
-  if (isNewMode && canManageTemplates && template === null) {
+  if (isNewMode && canEditTemplates && template === null) {
     return (
       <div className="px-6 lg:px-8 py-12 max-w-[1600px] mx-auto text-center text-muted-foreground text-sm">
         加载中…
@@ -434,7 +435,7 @@ export function TemplateDetailClient({
   const deleteRemovesFactoryBase = canManage && isFactory;
 
   const enterEdit = () => {
-    if (!canManageTemplates) return;
+    if (!canEditTemplates) return;
     setWorking(structuredClone(template));
     setEditing(true);
   };
@@ -482,7 +483,7 @@ export function TemplateDetailClient({
   };
 
   const handleSave = async () => {
-    if (!canManageTemplates) return;
+    if (!canEditTemplates) return;
     if (!working) return;
     if (hasValidationError) {
       setSaveError(timeRangeErrors[0]);
@@ -511,7 +512,7 @@ export function TemplateDetailClient({
   };
 
   const handleSaveAs = async () => {
-    if (!canManageTemplates) return;
+    if (!canEditTemplates) return;
     if (!working) return;
     const name = newName.trim();
     if (!name) return;
@@ -540,7 +541,6 @@ export function TemplateDetailClient({
   };
 
   const handleDeleteTemplate = async () => {
-    if (!canManageTemplates) return;
     if (!template || !canDeleteTemplate) return;
     const targetId = template.template_id;
     const targetRestoresFactoryBase = deleteRestoresFactoryBase;
@@ -580,7 +580,6 @@ export function TemplateDetailClient({
   };
 
   const requestDeleteTemplate = () => {
-    if (!canManageTemplates) return;
     if (!template || !canDeleteTemplate) return;
     setConfirmModal({
       title: deleteRestoresFactoryBase ? "删除我的版本?" : deleteRemovesFactoryBase ? "删除工厂模板?" : "删除此模板?",
@@ -841,7 +840,7 @@ export function TemplateDetailClient({
         {!editing && (
           <>
             <div className="hidden md:flex items-center gap-2">
-              {canManageTemplates && (
+              {canEditTemplates && (
                 <Button variant="ghost" size="sm" asChild>
                   <Link href={`/mixcut/templates/${template.template_id}/edit`}>
                     <Pencil className="size-3.5" /> 编辑模板
@@ -872,7 +871,7 @@ export function TemplateDetailClient({
               )}
             </div>
             <div className="flex md:hidden items-center gap-1.5">
-              {(canManageTemplates || canDeleteTemplate) && (
+              {(canEditTemplates || canDeleteTemplate) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="icon" className="size-9 rounded-full" title="模板操作">
@@ -880,14 +879,14 @@ export function TemplateDetailClient({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-[168px]">
-                    {canManageTemplates && (
+                    {canEditTemplates && (
                       <DropdownMenuItem onClick={() => router.push(`/mixcut/templates/${template.template_id}/edit`)}>
                         <Pencil className="size-3.5" /> 编辑模板
                       </DropdownMenuItem>
                     )}
                     {canDeleteTemplate && (
                       <>
-                        {canManageTemplates && <DropdownMenuSeparator />}
+                        {canEditTemplates && <DropdownMenuSeparator />}
                         <DropdownMenuItem
                           onClick={requestDeleteTemplate}
                           disabled={saving}
@@ -993,14 +992,14 @@ export function TemplateDetailClient({
                 disabled={saving || hasValidationError || (!isNewMode && !dirty)}
                 title={hasValidationError ? timeRangeErrors[0] : undefined}
               >
-                <Save className="size-3.5" /> {isNewMode ? "保存新模板" : isFactory ? "保存为我的版本" : "保存"}
+                <Save className="size-3.5" /> {isNewMode ? "保存新模板" : isFactory && !canManage ? "保存为我的版本" : "保存"}
               </Button>
             </div>
           </div>
         ) : null}
       </div>
       {/* 模式提示：draft / factory 互斥，最多展示一条；单行无 Card chrome */}
-      {(isNewMode || (isFactory && editing)) && (
+      {(isNewMode || (isFactory && editing && !canManage)) && (
         <ModeNotice
           tone={isNewMode ? "draft" : "factory"}
           deleteRestores={deleteRestoresFactoryBase}
@@ -1988,7 +1987,7 @@ function ModeNotice({
   );
 }
 
-function OperatorOnlyNotice() {
+function TemplateEditUnavailableNotice() {
   return (
     <div className="px-6 lg:px-8 py-12 max-w-[960px] mx-auto">
       <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.04] p-5 space-y-4">
@@ -1997,9 +1996,9 @@ function OperatorOnlyNotice() {
             <Lock className="size-4" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-base font-semibold">只有平台运营或超管可以编辑混剪模板</h1>
+            <h1 className="text-base font-semibold">请先登录后编辑混剪模板</h1>
             <p className="text-sm text-muted-foreground">
-              公共模板仍可浏览和使用；新建、编辑、另存和删除模板需要运营权限。
+              登录用户可以新建模板、编辑并保存为自己的版本；工厂模板的全局修改和删除仍需要运营权限。
             </p>
           </div>
         </div>
