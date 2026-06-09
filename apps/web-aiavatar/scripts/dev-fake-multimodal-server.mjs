@@ -9,7 +9,7 @@
 //     GET  /img/:seed.png         → PNG 字节
 //     POST /v1/videos             → 异步任务（两轮 in_progress 后 completed）
 //     GET  /v1/videos/:id         → 状态 + video_url（内嵌微型真 mp4）
-// 用法：node scripts/dev-fake-multimodal-server.mjs   # 端口 18181（FAKE_MULTIMODAL_PORT 覆盖）
+// 用法：node apps/web-aiavatar/scripts/dev-fake-multimodal-server.mjs   # 端口 18181（FAKE_MULTIMODAL_PORT 覆盖）
 // ============================================================
 import http from "node:http";
 import zlib from "node:zlib";

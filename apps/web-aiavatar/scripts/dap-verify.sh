@@ -5,12 +5,12 @@
 # 生成引擎统一经后台「AI 应用绑定」管理；脚本用 aep.dap.dev-seed.* 自动把 DAP_* 端点种进 admin 表。
 #
 # 用法（在仓库根目录）：
-#   bash scripts/dap-verify.sh                 # H2 + 真实 Agnes（自动读 ~/dev/Agnes.md 的 key）
-#   PROFILE=mysql bash scripts/dap-verify.sh   # 本地 MySQL + 真实 Agnes
-#   AGNES=fake bash scripts/dap-verify.sh      # 本地 fake 多模态引擎（无外网联调）
-#   AGNES=none bash scripts/dap-verify.sh      # 不绑端点，测占位降级路径（建议 H2）
-#   VIDEO=1 bash scripts/dap-verify.sh         # 额外验证运镜视频（真实 Agnes 下耗时数分钟）
-#   KEEP=1  bash scripts/dap-verify.sh         # 测完不杀 server（继续手动体验前端）
+#   bash apps/web-aiavatar/scripts/dap-verify.sh                 # H2 + 真实 Agnes（自动读 ~/dev/Agnes.md 的 key）
+#   PROFILE=mysql bash apps/web-aiavatar/scripts/dap-verify.sh   # 本地 MySQL + 真实 Agnes
+#   AGNES=fake bash apps/web-aiavatar/scripts/dap-verify.sh      # 本地 fake 多模态引擎（无外网联调）
+#   AGNES=none bash apps/web-aiavatar/scripts/dap-verify.sh      # 不绑端点，测占位降级路径（建议 H2）
+#   VIDEO=1 bash apps/web-aiavatar/scripts/dap-verify.sh         # 额外验证运镜视频（真实 Agnes 下耗时数分钟）
+#   KEEP=1  bash apps/web-aiavatar/scripts/dap-verify.sh         # 测完不杀 server（继续手动体验前端）
 #
 # 产物（全部在 .dap-verify/，已 gitignore）：
 #   report.txt   — PASS/FAIL 总表
@@ -18,7 +18,7 @@
 #   e2e.log      — 每一步请求/响应摘要
 # ============================================================
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../../.."   # apps/web-aiavatar/scripts → 仓库根
 ROOT="$(pwd)"
 OUT="$ROOT/.dap-verify"
 mkdir -p "$OUT"
@@ -61,7 +61,7 @@ if [ "$AGNES" = "real" ] && [ -z "${AGNES_API_KEY:-}" ]; then
   AGNES="fake"
 fi
 if [ "$AGNES" = "fake" ]; then
-  node "$ROOT/scripts/dev-fake-multimodal-server.mjs" > "$OUT/fake-multimodal.log" 2>&1 &
+  node "$ROOT/apps/web-aiavatar/scripts/dev-fake-multimodal-server.mjs" > "$OUT/fake-multimodal.log" 2>&1 &
   FAKE_PID=$!
   export AEP_DAP_DEV_SEED_BASE_URL="http://localhost:$FAKE_PORT"
   export AEP_DAP_DEV_SEED_API_KEY="fake-key"
@@ -135,7 +135,7 @@ ok "server 启动"
 
 # ── 3. E2E（python3 执行断言）─────────────────────────────────
 VIDEO=$VIDEO PROFILE=$PROFILE AGNES=$AGNES SERVER="http://localhost:$SERVER_PORT" \
-python3 "$ROOT/scripts/dap-e2e.py" 2>&1 | tee -a "$OUT/report.txt" "$OUT/e2e.log"
+python3 "$ROOT/apps/web-aiavatar/scripts/dap-e2e.py" 2>&1 | tee -a "$OUT/report.txt" "$OUT/e2e.log"
 E2E_RC=${PIPESTATUS[0]}
 if [ "$E2E_RC" -eq 0 ]; then
   ok "e2e 断言"
