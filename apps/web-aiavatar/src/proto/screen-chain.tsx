@@ -250,11 +250,11 @@ function MStepAdjust({ wiz, onReady }) {
   return hMC('div', { className: 'm-fade', style: { padding: '18px 18px 0' } },
     hMC('h2', { style: { fontSize: 21, marginBottom: 6 } }, '调整形象'),
     hMC('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 14 } }, 'AI 重绘整体迭代，或实时精调美颜（拖动即生效），随时切换。满意后点底部「完成创建」直接保存到名录；标准图集与衍生可稍后在资产详情里生成。'),
-    hMC('div', { style: { display: 'flex', background: 'var(--surface-3)', padding: 3, borderRadius: 'var(--r-pill)', marginBottom: 16 } },
-      [['iterate', 'AI 重绘迭代', Icons.wand], ['refine', '精调美颜', Icons.sliders]].map(([k, l, ic]: any) => {
+    hMC('div', { style: { display: 'flex', background: 'var(--surface-3)', padding: 4, borderRadius: 'var(--r-pill)', marginBottom: 16, border: '1px solid var(--line-2)' } },
+      [['refine', '精调美颜', Icons.sliders], ['iterate', 'AI 重绘迭代', Icons.wand]].map(([k, l, ic]: any) => {
         const on = mode === k;
-        return hMC('button', { key: k, onClick: () => setMode(k), style: { flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 36, border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent', color: on ? 'var(--ink)' : 'var(--ink-3)', fontSize: 12.5, fontWeight: 600, boxShadow: on ? 'var(--sh-1)' : 'none' } },
-          hMC(ic, { size: 15, stroke: 1.9 }), l);
+        return hMC('button', { key: k, onClick: () => setMode(k), style: { flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer', background: on ? 'var(--primary)' : 'transparent', color: on ? '#fff' : 'var(--ink-2)', fontSize: 13, fontWeight: 700, boxShadow: on ? 'var(--sh-2)' : 'none', transition: 'background .2s ease, color .2s ease' } },
+          hMC(ic, { size: 15, stroke: on ? 2.2 : 1.9 }), l);
       })),
 
     mode === 'iterate'
