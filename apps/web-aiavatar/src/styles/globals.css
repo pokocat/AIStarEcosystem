@@ -808,13 +808,20 @@ html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
 /* 中间凸起创建键 */
 .wx-fab-slot { flex: 1; position: relative; display: flex; justify-content: center; }
 .wx-fab {
-  position: absolute; top: -20px; width: 56px; height: 56px; border-radius: 20px; border: none; cursor: pointer;
-  background: var(--grad); color: #fff; display: grid; place-items: center;
-  box-shadow: 0 8px 20px rgba(19,192,238,.46), 0 2px 6px rgba(19,192,238,.3);
+  position: absolute; top: -20px; width: 56px; height: 56px; border-radius: 20px; border: 1px solid rgba(255,255,255,.78); cursor: pointer;
+  background: transparent; color: #fff; display: grid; place-items: center; isolation: isolate;
+  box-shadow: 0 12px 26px rgba(18,179,222,.24), 0 5px 12px rgba(76,92,125,.10);
   transition: transform .18s cubic-bezier(.34,1.56,.64,1);
 }
 .wx-fab:active { transform: scale(.92); }
-.wx-fab .fab-lbl { position: absolute; bottom: -19px; font-size: 10.5px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+.wx-fab .fab-visual { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; z-index: 0; background: #EAFBFF; }
+.wx-fab .fab-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.06); filter: saturate(1.05) contrast(1.03); }
+.wx-fab .fab-veil { position: absolute; inset: 0; background:
+  radial-gradient(circle at 34% 26%, rgba(255,255,255,.72), transparent 42%),
+  linear-gradient(145deg, rgba(255,255,255,.36), rgba(18,179,222,.04) 44%, rgba(16,45,70,.34) 100%);
+  box-shadow: 0 1px 0 rgba(255,255,255,.7) inset; }
+.wx-fab svg { position: relative; z-index: 1; filter: drop-shadow(0 2px 5px rgba(16,45,70,.30)); }
+.wx-fab .fab-lbl { position: absolute; bottom: -19px; z-index: 2; font-size: 10.5px; font-weight: 700; color: var(--primary); white-space: nowrap; text-shadow: 0 1px 0 rgba(255,255,255,.88); }
 
 /* 底部 home indicator */
 .m-home-ind { position: absolute; left: 0; right: 0; bottom: 0; z-index: 95; height: var(--home-ind);
@@ -973,9 +980,9 @@ html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
     0 0 0 1.5px rgba(255,255,255,.05) inset !important;
 }
 
-/* —— FAB 创建键：去彩色光晕，改单色稳重 —— */
+/* —— FAB 创建键：图片层保留轻阴影，避免抢底部导航 —— */
 .wx-fab {
-  box-shadow: 0 6px 16px rgba(18,179,222,.32) !important;
+  box-shadow: 0 12px 26px rgba(18,179,222,.24), 0 5px 12px rgba(76,92,125,.10) !important;
 }
 
 /* —— 占位条纹更淡 —— */

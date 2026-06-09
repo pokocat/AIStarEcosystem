@@ -39,16 +39,30 @@ function freshChar(path, avatars: any[] = []) {
   };
 }
 
+const CREATE_ENTRY_IMAGES = {
+  ai: "/generated/create-entry/ai-design.jpg",
+  real: "/generated/create-entry/real-clone.jpg",
+};
+
 // 创建路径选择 sheet
 function CreateSheet({ onPick, onClose }) {
-  const opt = (path, icon, name, desc, grad) => hA("button", { onClick: () => onPick(path), className: "m-tap", style: {
-    display: "flex", alignItems: "center", gap: 14, width: "100%", padding: 15, textAlign: "left", cursor: "pointer",
-    background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", boxShadow: "var(--sh-1)" } },
-    hA("div", { style: { width: 50, height: 50, flex: "0 0 50px", borderRadius: "var(--r-md)", background: grad, display: "grid", placeItems: "center", color: "#fff", boxShadow: "0 6px 14px rgba(19,192,238,.3)" } }, hA(icon, { size: 25, stroke: 1.9 })),
-    hA("div", { style: { flex: 1, minWidth: 0 } },
-      hA("div", { style: { fontSize: 15.5, fontWeight: 700 } }, name),
-      hA("div", { style: { fontSize: 12, color: "var(--ink-3)", marginTop: 3, lineHeight: 1.45 } }, desc)),
-    hA(Icons.chevR, { size: 18, stroke: 2, style: { color: "var(--ink-4)", flex: "0 0 auto" } }));
+  const opt = (path, icon, name, desc, grad, image) => hA("button", { onClick: () => onPick(path), className: "m-tap", style: {
+    position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: 13, width: "100%", minHeight: 106,
+    padding: "15px 14px", textAlign: "left", cursor: "pointer", background: "#F8FCFD",
+    border: "1px solid rgba(255,255,255,.78)", borderRadius: "var(--r-xl)",
+    boxShadow: "0 14px 30px rgba(76,92,125,.10), 0 1px 0 rgba(255,255,255,.9) inset" } },
+    hA("img", { src: image, alt: "", draggable: false, style: {
+      position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .95, pointerEvents: "none" } }),
+    hA("span", { style: { position: "absolute", inset: 0, background:
+      "linear-gradient(102deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.92) 46%, rgba(255,255,255,.48) 76%, rgba(255,255,255,.18) 100%)" } }),
+    hA("span", { style: { position: "absolute", inset: "1px 1px auto", height: "52%", borderRadius: "calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0",
+      background: "linear-gradient(180deg, rgba(255,255,255,.88), transparent)", pointerEvents: "none" } }),
+    hA("div", { style: { position: "relative", width: 48, height: 48, flex: "0 0 48px", borderRadius: 15, background: grad, display: "grid", placeItems: "center",
+      color: "#fff", boxShadow: "0 10px 24px rgba(18,179,222,.24), 0 1px 0 rgba(255,255,255,.34) inset" } }, hA(icon, { size: 24, stroke: 1.9 })),
+    hA("div", { style: { position: "relative", flex: 1, minWidth: 0, paddingRight: 16 } },
+      hA("div", { style: { fontSize: 16, fontWeight: 800, color: "var(--ink)" } }, name),
+      hA("div", { style: { fontSize: 12, color: "rgba(37,47,62,.68)", marginTop: 4, lineHeight: 1.45, fontWeight: 600 } }, desc)),
+    hA(Icons.chevR, { size: 18, stroke: 2.2, style: { position: "relative", color: "rgba(34,43,58,.42)", flex: "0 0 auto" } }));
   return hA(React.Fragment, null,
     hA("div", { className: "m-sheet-backdrop", onClick: onClose }),
     hA("div", { className: "m-sheet", style: { padding: "0 18px calc(18px + var(--home-ind))" } },
@@ -57,8 +71,8 @@ function CreateSheet({ onPick, onClose }) {
         hA("div", { style: { fontFamily: "var(--font-disp)", fontWeight: 700, fontSize: 18 } }, "创建数字人"),
         hA("div", { style: { fontSize: 12.5, color: "var(--ink-3)", marginTop: 4 } }, "选择创建路径")),
       hA("div", { style: { display: "flex", flexDirection: "column", gap: 11 } },
-        opt("ai", Icons.sparkle, "AI 原创", "一句文字描述，从零原创一个虚构形象，版权自有", "linear-gradient(155deg,#1C2B3A,#14202B)"),
-        opt("real", Icons.person, "真人授权复刻", "录一段动作 / 上传素材，签署授权合规复刻", "var(--grad)"))));
+        opt("ai", Icons.sparkle, "AI 原创", "一句文字描述，从零原创一个虚构形象，版权自有", "linear-gradient(155deg,#2C67F2,#8F6BFF)", CREATE_ENTRY_IMAGES.ai),
+        opt("real", Icons.person, "真人授权复刻", "录一段动作 / 上传素材，签署授权合规复刻", "var(--grad)", CREATE_ENTRY_IMAGES.real))));
 }
 
 // v0.53 平台门禁拦截屏：账号已登录但未开通「数字人资产平台」(aiavatar) 子产品。

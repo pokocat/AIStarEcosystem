@@ -47,12 +47,28 @@ function SegRow({ options, value, onChange }) {
 // ============================================================
 // 步骤 0 · 选择创建方式（上传照片 / 使用 AI 设计）
 // ============================================================
+const AI_ENTRY_IMAGES = {
+  ai: '/generated/create-entry/ai-design.jpg',
+  upload: '/generated/create-entry/photo-upload.jpg',
+};
+
 function AIChoosePath({ onPick, onClose }) {
-  const opt = (key, icon, label) => hAC('button', { onClick: () => onPick(key), className: 'm-press', style: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 11, width: '100%', height: 60,
-    borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer', background: 'var(--ink)', color: '#fff',
-    fontSize: 17, fontWeight: 700, boxShadow: '0 10px 24px -6px rgba(20,36,55,.4)' } },
-    hAC(icon, { size: 22, stroke: 2 }), label);
+  const opt = (key, icon, label, image, accent) => hAC('button', { onClick: () => onPick(key), className: 'm-press', style: {
+    position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12,
+    width: '100%', height: 76, padding: '0 15px', borderRadius: 'var(--r-xl)', border: '1px solid rgba(255,255,255,.78)',
+    cursor: 'pointer', background: '#F9FDFF', color: 'var(--ink)', textAlign: 'left',
+    boxShadow: '0 14px 34px rgba(76,92,125,.14), 0 1px 0 rgba(255,255,255,.92) inset' } },
+    hAC('img', { src: image, alt: '', draggable: false, style: {
+      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .94, pointerEvents: 'none' } }),
+    hAC('span', { style: { position: 'absolute', inset: 0, background:
+      'linear-gradient(102deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.9) 45%, rgba(255,255,255,.48) 76%, rgba(255,255,255,.18) 100%)' } }),
+    hAC('span', { style: { position: 'absolute', inset: 1, borderRadius: 'calc(var(--r-xl) - 1px)', background:
+      'linear-gradient(180deg, rgba(255,255,255,.72), transparent 48%, rgba(238,248,255,.22))', pointerEvents: 'none' } }),
+    hAC('span', { style: { position: 'relative', display: 'grid', placeItems: 'center', width: 42, height: 42, flex: '0 0 42px', borderRadius: 14,
+      background: accent, color: '#fff', boxShadow: '0 10px 22px rgba(18,179,222,.22), 0 1px 0 rgba(255,255,255,.36) inset' } },
+      hAC(icon, { size: 20, stroke: 2 })),
+    hAC('span', { style: { position: 'relative', flex: 1, minWidth: 0, fontSize: 17, fontWeight: 800, textShadow: '0 1px 0 rgba(255,255,255,.72)' } }, label),
+    hAC(Icons.chevR, { size: 18, stroke: 2.2, style: { position: 'relative', color: 'rgba(34,43,58,.42)', flex: '0 0 auto' } }));
   return hAC('div', { style: { position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' } },
     hAC('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(150deg,#EAF0FF,#F1E8FB 46%,#FCE6F1)' } }),
     hAC('div', { style: { position: 'absolute', top: '-12%', left: '-14%', width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(123,150,255,.5), transparent 70%)', filter: 'blur(14px)' } }),
@@ -65,11 +81,11 @@ function AIChoosePath({ onPick, onClose }) {
       hAC('div', { className: 'm-fade', style: { textAlign: 'center', marginBottom: 'auto', marginTop: '18%' } },
         hAC('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 13px', background: 'rgba(255,255,255,.66)', backdropFilter: 'blur(8px)', borderRadius: 'var(--r-pill)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 16, whiteSpace: 'nowrap' } },
           hAC(Icons.sparkle, { size: 13, stroke: 2, style: { color: 'var(--primary)' } }), 'AI 原创虚拟形象'),
-        hAC('h1', { style: { fontSize: 27, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1.18, margin: 0, color: 'var(--ink)' } }, '创建你的', hAC('br', null), 'AI 数字人形象'),
+        hAC('h1', { style: { fontSize: 27, fontWeight: 800, letterSpacing: 0, lineHeight: 1.18, margin: 0, color: 'var(--ink)' } }, '创建你的', hAC('br', null), 'AI 数字人形象'),
         hAC('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '12px auto 0', maxWidth: 280 } }, '上传本人生活照复刻真实长相，或用文字描述从零原创一个虚构形象。')),
       hAC('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 'calc(30px + var(--home-ind))' } },
-        opt('upload', Icons.upload, '上传照片'),
-        opt('ai', Icons.wand, '使用 AI 设计'))));
+        opt('ai', Icons.wand, '使用 AI 设计', AI_ENTRY_IMAGES.ai, 'linear-gradient(155deg,#2C67F2,#8F6BFF)'),
+        opt('upload', Icons.upload, '上传照片', AI_ENTRY_IMAGES.upload, 'linear-gradient(155deg,#13B8D7,#5FD8BC)'))));
 }
 
 // ============================================================

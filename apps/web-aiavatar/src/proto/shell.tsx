@@ -39,6 +39,9 @@ function WxTabBar({ active, onTab, onCreate, meInitial }) {
       if (t.fab) {
         return hM('div', { key: 'create', className: 'wx-fab-slot' },
           hM('button', { className: 'wx-fab', onClick: onCreate, 'aria-label': '创建数字人' },
+            hM('span', { className: 'fab-visual', 'aria-hidden': true },
+              hM('img', { className: 'fab-art', src: '/generated/create-entry/fab-create.jpg', alt: '', draggable: false }),
+              hM('span', { className: 'fab-veil' })),
             hM(Icons.plus, { size: 28, stroke: 2.4 }),
             hM('span', { className: 'fab-lbl' }, '创建')));
       }
