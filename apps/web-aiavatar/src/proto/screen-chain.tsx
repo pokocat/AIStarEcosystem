@@ -15,25 +15,29 @@ import { BeautyStudio } from "./beauty/studio";
 const hMC : any = React.createElement;
 const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC } = React;
 
-// —— 顶部 stepper ——
-function MStepHeader({ step, idx, onClose }) {
-  return hMC('div', { style: { flex: '0 0 auto', background: 'var(--surface)', borderBottom: '1px solid var(--line)' } },
+// —— 顶部 stepper（随滚动收缩：往下读→收起小圆点，回顶部→展开完整）——
+function MStepHeader({ step, idx, onClose, collapsed }) {
+  const cur0 = DATA.CHAIN[idx];
+  const sz = collapsed ? 16 : 26;
+  return hMC('div', { style: { flex: '0 0 auto', background: 'var(--surface)', borderBottom: '1px solid var(--line)', transition: 'box-shadow .25s ease', boxShadow: collapsed ? 'var(--sh-1)' : 'none' } },
     hMC('div', { className: 'wx-nav', style: { paddingLeft: 8 } },
       hMC('button', { className: 'nav-back m-tap', onClick: onClose }, hMC(Icons.x, { size: 22, stroke: 2.2 })),
-      hMC('span', { className: 'nav-title' }, '创建数字人'),
+      hMC('span', { className: 'nav-title' }, collapsed && cur0 ? '创建数字人 · ' + cur0.short : '创建数字人'),
       hMC('span', { className: 'nav-spacer' })),
-    hMC('div', { style: { display: 'flex', alignItems: 'center', gap: 0, padding: '4px 16px 14px' } },
+    hMC('div', { style: { display: 'flex', alignItems: 'center', gap: 0, padding: collapsed ? '0 16px 7px' : '2px 16px 12px', transition: 'padding .25s ease' } },
       DATA.CHAIN.map((s, i) => {
         const done = i < idx, cur = i === idx;
         return hMC(React.Fragment, { key: s.key },
-          i > 0 && hMC('div', { style: { flex: 1, height: 2, background: done ? 'var(--ok)' : 'var(--line-2)', margin: '0 3px', borderRadius: 9 } }),
-          hMC('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '0 0 auto' } },
-            hMC('div', { style: { width: 26, height: 26, borderRadius: 99, display: 'grid', placeItems: 'center',
-              fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 700,
+          i > 0 && hMC('div', { style: { flex: 1, height: 2, background: done ? 'var(--ok)' : 'var(--line-2)', margin: '0 3px', borderRadius: 9, transition: 'background .25s ease' } }),
+          hMC('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: collapsed ? 0 : 4, flex: '0 0 auto' } },
+            hMC('div', { style: { width: sz, height: sz, borderRadius: 99, display: 'grid', placeItems: 'center',
+              fontFamily: 'var(--font-mono)', fontSize: collapsed ? 9 : 11.5, fontWeight: 700,
               background: cur ? 'var(--primary)' : done ? 'var(--ok)' : 'var(--surface-3)',
-              color: (cur || done) ? '#fff' : 'var(--ink-3)', border: (cur || done) ? 'none' : '1px solid var(--line-2)' } },
-              done ? hMC(Icons.check, { size: 13, stroke: 2.6 }) : s.n),
-            hMC('span', { style: { fontSize: 9.5, fontWeight: cur ? 700 : 600, color: cur ? 'var(--primary)' : 'var(--ink-3)', whiteSpace: 'nowrap' } }, s.short)));
+              color: (cur || done) ? '#fff' : 'var(--ink-3)', border: (cur || done) ? 'none' : '1px solid var(--line-2)',
+              transition: 'width .25s ease, height .25s ease, font-size .25s ease' } },
+              done ? hMC(Icons.check, { size: collapsed ? 9 : 13, stroke: 2.6 }) : s.n),
+            hMC('span', { style: { fontSize: 9.5, fontWeight: cur ? 700 : 600, color: cur ? 'var(--primary)' : 'var(--ink-3)', whiteSpace: 'nowrap', overflow: 'hidden',
+              maxHeight: collapsed ? 0 : 16, opacity: collapsed ? 0 : 1, transition: 'max-height .25s ease, opacity .2s ease' } }, s.short)));
       })));
 }
 
@@ -290,8 +294,21 @@ function MCreate({ char: initialChar, ctx }) {
   });
   const [ready, setReady] = useStateMC(false);
   const [saving, setSaving] = useStateMC(false);
+  const [collapsed, setCollapsed] = useStateMC(false); // 顶部 stepper 随滚动收缩
+  const lastScrollRef = useRefMC(0);
   const formRef = useRefMC({ desc: '', style: '写实', templateId: 't1' });
   const idx = order.indexOf(step);
+
+  // 内容上滑（往下读）→ 收起；下滑（回顶部）/ 接近顶部 → 展开
+  const onBodyScroll = (e) => {
+    const st = e.currentTarget.scrollTop;
+    const last = lastScrollRef.current;
+    if (st < 10) setCollapsed(false);
+    else if (st > last + 4) setCollapsed(true);
+    else if (st < last - 4) setCollapsed(false);
+    lastScrollRef.current = st;
+  };
+  const resetScrollUI = () => { lastScrollRef.current = 0; setCollapsed(false); };
 
   const wiz = {
     char,
@@ -319,9 +336,9 @@ function MCreate({ char: initialChar, ctx }) {
         return;
       }
     }
-    if (idx < order.length - 1) { setStep(order[idx + 1]); setReady(false); const b = document.getElementById('__mcbody'); if (b) b.scrollTop = 0; }
+    if (idx < order.length - 1) { setStep(order[idx + 1]); setReady(false); resetScrollUI(); const b = document.getElementById('__mcbody'); if (b) b.scrollTop = 0; }
   };
-  const goPrev = () => { if (idx > 0) { setStep(order[idx - 1]); setReady(true); const b = document.getElementById('__mcbody'); if (b) b.scrollTop = 0; } };
+  const goPrev = () => { if (idx > 0) { setStep(order[idx - 1]); setReady(true); resetScrollUI(); const b = document.getElementById('__mcbody'); if (b) b.scrollTop = 0; } };
 
   const archive = async () => {
     setSaving(true);
@@ -338,8 +355,8 @@ function MCreate({ char: initialChar, ctx }) {
   const body = { source: MStepSource, proof: MStepProof, adjust: MStepAdjust }[step];
 
   return hMC('div', { className: 'm-overlay', 'data-screen-label': '创建链路' },
-    hMC(MStepHeader, { step, idx, onClose: ctx.back }),
-    hMC('div', { id: '__mcbody', className: 'm-body', key: step, style: { paddingBottom: 92 } }, hMC(body, props)),
+    hMC(MStepHeader, { step, idx, onClose: ctx.back, collapsed }),
+    hMC('div', { id: '__mcbody', className: 'm-body', key: step, style: { paddingBottom: 92 }, onScroll: onBodyScroll }, hMC(body, props)),
     hMC('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 11 } },
       idx > 0 && hMC(UI.Button, { variant: 'line', icon: Icons.arrowL, onClick: goPrev, style: { flex: '0 0 104px', padding: '0 12px' } }, '上一步'),
       idx < order.length - 1
