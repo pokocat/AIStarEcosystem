@@ -167,7 +167,12 @@ export function App() {
   const [voiceByChar, setVoiceByChar] = useStateA({});
   const [reloadKey, setReloadKey] = useStateA(0);
   const [refreshSeq, setRefreshSeq] = useStateA(0); // 下拉刷新：递增 → 重挂当前屏 → 重新拉数据
-  const avatars = useApi(() => AvatarApi.list("mine"), seed.avatars(), [reloadKey, authed]);
+  const canLoadPrivateData = USE_MOCK || authed === true;
+  const avatars = useApi(
+    () => (canLoadPrivateData ? AvatarApi.list("mine") : Promise.resolve(seed.avatars())),
+    seed.avatars(),
+    [reloadKey, canLoadPrivateData],
+  );
 
   // 登录态：挂载后读 localStorage；401 全局回登录屏
   useEffectA(() => {
