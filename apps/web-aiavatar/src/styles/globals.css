@@ -1075,3 +1075,24 @@ body, .app-root { overflow-x: hidden; }
   background-image: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.72) 50%, transparent 80%);
   background-size: 200% 100%; animation: shimmer 1.3s ease-in-out infinite;
 }
+
+@supports (content-visibility: auto) {
+  .m-defer-section {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 340px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .m-skel {
+    animation: none !important;
+    background-image: none !important;
+  }
+}

@@ -36,7 +36,7 @@ function PlazaImgSlot({ label, required, value, busy, onPick }) {
   return hML('label', { className: 'm-tap', style: {
       position: 'relative', display: 'block', aspectRatio: '3 / 4', borderRadius: 'var(--r-md)', overflow: 'hidden', cursor: 'pointer',
       border: '1.5px dashed ' + (value ? 'var(--primary)' : 'var(--line-3)'), background: value ? '#0b0d12' : 'var(--surface-2)' } },
-    value && hML('img', { src: value.url, alt: label, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }),
+    value && hML('img', { src: value.url, alt: label, loading: 'lazy', decoding: 'async', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }),
     !value && hML('div', { style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--ink-3)' } },
       busy ? hML(UI.Spinner, { size: 18 }) : hML(Icons.add, { size: 20, stroke: 2 }),
       hML('div', { style: { fontSize: 11.5, fontWeight: 600 } }, label + (required ? ' *' : ''))),
@@ -379,7 +379,7 @@ function MLightbox({ images, index, onClose, onIndex }) {
         position: 'absolute', top: 'calc(10px + env(safe-area-inset-top))', right: 14, width: 38, height: 38, borderRadius: 99,
         border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 } },
       hML(Icons.x, { size: 20, stroke: 2 })),
-    hML('img', { src: img.src, alt: img.label || '', onClick: (e) => e.stopPropagation(), style: {
+    hML('img', { src: img.src, alt: img.label || '', decoding: 'async', onClick: (e) => e.stopPropagation(), style: {
         maxWidth: '94vw', maxHeight: '78vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 8px 44px rgba(0,0,0,.55)' } }),
     img.label && hML('div', { style: { marginTop: 14, color: 'rgba(255,255,255,.92)', fontSize: 13.5, fontWeight: 600 } },
       img.label + (many ? '   ·   ' + (index + 1) + ' / ' + images.length : '')),
@@ -408,7 +408,7 @@ function MPublicShowcase({ char }) {
         imgs.map((t, i) => hML('button', { key: i, onClick: () => setLb(i), className: 'm-press', style: {
             display: 'block', padding: 0, border: 'none', background: 'none', cursor: 'pointer', width: '100%', textAlign: 'left',
             position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-          hML('img', { src: t.src, alt: t.label, style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
+          hML('img', { src: t.src, alt: t.label, loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
           hML('div', { style: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 7, background: 'rgba(20,24,30,.45)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: '#fff' } }, hML(Icons.expand, { size: 12, stroke: 2 })),
           hML('div', { className: 'ph-label', style: { left: 7, bottom: 7 } }, t.label)))),
       hML('div', { style: { fontSize: 11.5, color: 'var(--ink-4)', marginTop: 8 } }, '点击图片查看大图')),
@@ -693,7 +693,7 @@ function MAtlas({ char, busy, onGenerate }) {
         hML('span', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '已生成 ' + variants.length + ' 张候选形象 · 用下方「挑选形象」按钮 4 选 1 定妆')),
       hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
         variants.map((u, i) => hML('div', { key: i, style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-          hML('img', { src: u, alt: '候选 v' + (i + 1), style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
+          hML('img', { src: u, alt: '候选 v' + (i + 1), loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
           hML('div', { className: 'ph-label', style: { left: 8, bottom: 8 } }, 'v' + (i + 1))))));
   }
   if (!hasReal && !char.imageUrl) {
@@ -926,7 +926,7 @@ function MVersions({ char, ctx, onChanged }) {
           hML(derivedCount > 0 ? Icons.copy : Icons.checkc, { size: 13, stroke: 2 }),
           busy === e.v ? '处理中…' : (derivedCount > 0 ? '另存为新数字人' : '切换到此版本'))),
       e.imageUrl && hML('div', { style: { width: 44, flex: '0 0 44px', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--line)' } },
-        hML('img', { src: e.imageUrl, alt: e.v, style: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' } })))))));
+        hML('img', { src: e.imageUrl, alt: e.v, loading: 'lazy', decoding: 'async', style: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' } })))))));
 }
 
 function MLicense({ char, ctx }) {

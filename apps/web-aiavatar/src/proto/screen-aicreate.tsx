@@ -58,7 +58,7 @@ function AIChoosePath({ onPick, onClose }) {
     width: '100%', height: 76, padding: '0 15px', borderRadius: 'var(--r-xl)', border: '1px solid rgba(255,255,255,.78)',
     cursor: 'pointer', background: '#F9FDFF', color: 'var(--ink)', textAlign: 'left',
     boxShadow: '0 14px 34px rgba(76,92,125,.14), 0 1px 0 rgba(255,255,255,.92) inset' } },
-    hAC('img', { src: image, alt: '', draggable: false, style: {
+    hAC('img', { src: image, alt: '', draggable: false, loading: 'lazy', decoding: 'async', fetchPriority: 'low', style: {
       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .94, pointerEvents: 'none' } }),
     hAC('span', { style: { position: 'absolute', inset: 0, background:
       'linear-gradient(102deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.9) 45%, rgba(255,255,255,.48) 76%, rgba(255,255,255,.18) 100%)' } }),
@@ -91,7 +91,7 @@ function AIChoosePath({ onPick, onClose }) {
 // ============================================================
 function PhotoDemo({ src, ok }) {
   return hAC('div', { style: { position: 'relative', flex: 1, aspectRatio: '3 / 4', borderRadius: 8, overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-    hAC('img', { src, alt: ok ? '优质照片示例' : '不合格照片示例', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter: ok ? 'none' : 'grayscale(.5) brightness(.92)' } }),
+    hAC('img', { src, alt: ok ? '优质照片示例' : '不合格照片示例', loading: 'lazy', decoding: 'async', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter: ok ? 'none' : 'grayscale(.5) brightness(.92)' } }),
     hAC('span', { style: { position: 'absolute', right: 4, bottom: 4, width: 17, height: 17, borderRadius: 99, display: 'grid', placeItems: 'center',
       background: ok ? 'var(--ok)' : 'var(--err)', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.3)' } },
       hAC(ok ? Icons.check : Icons.x, { size: 11, stroke: 3 })));
@@ -146,7 +146,7 @@ function AIUpload({ char, onUploaded, onClose }) {
           ? hAC('div', { className: 'm-fade' },
               hAC('div', { style: { display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' } },
                 previews.slice(0, 6).map((u, i) => hAC('div', { key: i, style: { width: 56, height: 72, borderRadius: 8, overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-                  hAC('img', { src: u, alt: '照片 ' + (i + 1), style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })))),
+                  hAC('img', { src: u, alt: '照片 ' + (i + 1), decoding: 'async', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })))),
               hAC('div', { style: { fontSize: 14, fontWeight: 700, color: 'var(--ink)' } }, '已选择 ' + files.length + ' 张照片'),
               hAC('button', { onClick: () => inputRef.current && inputRef.current.click(), style: { marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--primary)' } }, '重新选择'))
           : hAC('div', null,
@@ -189,7 +189,7 @@ function ExamplePicker({ char, onPick, onClose }) {
     hAC('div', { className: 'm-body', style: { padding: '4px 18px 24px' } },
       hAC('div', { className: 'm-stagger', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
         EXAMPLES.map(ex => hAC('button', { key: ex.id, onClick: () => onPick(ex), className: 'm-press', style: { position: 'relative', padding: 0, border: 'none', cursor: 'pointer', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
-          hAC('img', { src: ex.image, alt: ex.name, style: { display: 'block', width: '100%', aspectRatio: '4 / 5', objectFit: 'cover' } }),
+          hAC('img', { src: ex.image, alt: ex.name, loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: '4 / 5', objectFit: 'cover' } }),
           hAC('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,18,26,.5), transparent 46%)' } }),
           hAC('div', { style: { position: 'absolute', left: 11, bottom: 10, right: 11, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 } },
             hAC('span', { className: 'm-clip1', style: { minWidth: 0, fontSize: 13.5, fontWeight: 700, color: '#fff', textAlign: 'left' } }, ex.name),

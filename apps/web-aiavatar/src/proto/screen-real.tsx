@@ -87,7 +87,7 @@ function VideoReview({ badge, onDelete, blobUrl, isImage, beauty, onToggleBeauty
     blobUrl
       ? (isImage
           ? hMR('img', { src: blobUrl, alt: '素材预览', style: { display: 'block', width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', filter: beauty ? BEAUTY_FILTER : undefined } })
-          : hMR('video', { ref: vref, src: blobUrl, playsInline: true, onEnded: () => setPlaying(false), style: { display: 'block', width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', filter: beauty ? BEAUTY_FILTER : undefined } }))
+          : hMR('video', { ref: vref, src: blobUrl, playsInline: true, preload: 'metadata', onEnded: () => setPlaying(false), style: { display: 'block', width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', filter: beauty ? BEAUTY_FILTER : undefined } }))
       : hMR('div', { style: { width: '100%', aspectRatio: '4 / 3', display: 'grid', placeItems: 'center', color: '#7E97A8' } },
           hMR(Icons.film, { size: 38 })),
     badge && hMR('span', { style: { position: 'absolute', top: 12, left: 12, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 99, background: 'rgba(255,255,255,.92)', color: 'var(--ink)', fontSize: 12, fontWeight: 700 } },

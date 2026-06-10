@@ -11,19 +11,31 @@ import { MShell } from "./shell";
 import { toast } from "./toast";
 import { MHome } from "./screen-home";
 import { MLibrary, MDetail } from "./screen-library";
-import { MLooksGrid, MDesignLooks } from "./screen-avatar";
 import { MVoice, MApps } from "./screen-voiceapps";
 import { MLicenses, MTasks, MMe, MTrash } from "./screen-lictaskme";
-import { MDerivView, MMembership, MSettings, MSecurity, MStorage, MVoiceClone } from "./screen-more";
-import { MRealCapture } from "./screen-real";
-import { MCreate } from "./screen-chain";
-import { MAICreate } from "./screen-aicreate";
-import { MChooseVoice } from "./screen-voicepick";
 import { MLogin } from "./screen-login";
 
 const hA : any = React.createElement;
-const { useState: useStateA, useEffect: useEffectA, useRef: useRefA, useCallback: useCallbackA } = React;
+const { useState: useStateA, useEffect: useEffectA, useRef: useRefA, useCallback: useCallbackA, Suspense: SuspenseA } = React;
 const { PhoneFrame, WxTabBar } = MShell;
+
+const lazyScreen = (loader: any, exportName: string) =>
+  React.lazy(() => loader().then((mod: any) => ({ default: mod[exportName] })));
+
+const LAZY_OVERLAYS: any = {
+  looks: lazyScreen(() => import("./screen-avatar"), "MLooksGrid"),
+  designlooks: lazyScreen(() => import("./screen-avatar"), "MDesignLooks"),
+  derivview: lazyScreen(() => import("./screen-more"), "MDerivView"),
+  settings: lazyScreen(() => import("./screen-more"), "MSettings"),
+  security: lazyScreen(() => import("./screen-more"), "MSecurity"),
+  membership: lazyScreen(() => import("./screen-more"), "MMembership"),
+  storage: lazyScreen(() => import("./screen-more"), "MStorage"),
+  voiceclone: lazyScreen(() => import("./screen-more"), "MVoiceClone"),
+  realcapture: lazyScreen(() => import("./screen-real"), "MRealCapture"),
+  create: lazyScreen(() => import("./screen-chain"), "MCreate"),
+  aicreate: lazyScreen(() => import("./screen-aicreate"), "MAICreate"),
+  choosevoice: lazyScreen(() => import("./screen-voicepick"), "MChooseVoice"),
+};
 
 // 合成一个新建草稿数字人（驱动创建向导首屏；live 模式在流程内落 server）
 function freshChar(path, avatars: any[] = []) {
@@ -51,7 +63,7 @@ function CreateSheet({ onPick, onClose }) {
     padding: "15px 14px", textAlign: "left", cursor: "pointer", background: "#F8FCFD",
     border: "1px solid rgba(255,255,255,.78)", borderRadius: "var(--r-xl)",
     boxShadow: "0 14px 30px rgba(76,92,125,.10), 0 1px 0 rgba(255,255,255,.9) inset" } },
-    hA("img", { src: image, alt: "", draggable: false, style: {
+    hA("img", { src: image, alt: "", draggable: false, loading: "lazy", decoding: "async", fetchPriority: "low", style: {
       position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .95, pointerEvents: "none" } }),
     hA("span", { style: { position: "absolute", inset: 0, background:
       "linear-gradient(102deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.92) 46%, rgba(255,255,255,.48) 76%, rgba(255,255,255,.18) 100%)" } }),
@@ -73,6 +85,15 @@ function CreateSheet({ onPick, onClose }) {
       hA("div", { style: { display: "flex", flexDirection: "column", gap: 11 } },
         opt("ai", Icons.sparkle, "AI 原创", "一句文字描述，从零原创一个虚构形象，版权自有", "linear-gradient(155deg,#2C67F2,#8F6BFF)", CREATE_ENTRY_IMAGES.ai),
         opt("real", Icons.person, "真人授权复刻", "录一段动作 / 上传素材，签署授权合规复刻", "var(--grad)", CREATE_ENTRY_IMAGES.real))));
+}
+
+function OverlayLoading({ label }) {
+  return hA("div", { style: {
+    flex: 1, display: "grid", placeItems: "center", padding: 24, background: "var(--canvas)", color: "var(--ink-2)",
+  } },
+    hA("div", { style: { display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, fontWeight: 700 } },
+      hA(UI.Spinner, { size: 18 }),
+      hA("span", null, (label || "页面") + "加载中")));
 }
 
 // v0.53 平台门禁拦截屏：账号已登录但未开通「数字人资产平台」(aiavatar) 子产品。
@@ -329,8 +350,14 @@ export function App() {
   }
 
   const tabScreen = { home: MHome, library: MLibrary, apps: MApps, me: MMe }[tab];
-  const overlayScreen = top && { detail: MDetail, voice: MVoice, licenses: MLicenses, tasks: MTasks, create: MCreate, realcapture: MRealCapture,
-    settings: MSettings, security: MSecurity, membership: MMembership, storage: MStorage, voiceclone: MVoiceClone, trash: MTrash, derivview: MDerivView, looks: MLooksGrid, designlooks: MDesignLooks, aicreate: MAICreate, choosevoice: MChooseVoice }[top.screen];
+  const overlayScreen = top && ({
+    detail: MDetail,
+    voice: MVoice,
+    licenses: MLicenses,
+    tasks: MTasks,
+    trash: MTrash,
+    ...LAZY_OVERLAYS,
+  } as any)[top.screen];
   const hideTabBar = !!top;
 
   // 「我的」tab 头像：用登录用户名首字（live），无则回退通用图标 —— 不再硬编与用户无关的字。
@@ -345,7 +372,8 @@ export function App() {
         hA(tabScreen, { ctx })),
 
       overlayScreen && hA("div", { key: stack.length + top.screen + ":" + refreshSeq, className: "m-page-in", style: { position: "absolute", inset: 0, zIndex: 80, display: "flex", flexDirection: "column", background: "var(--canvas)" } },
-        hA(overlayScreen, { ...top.props, ctx })),
+        hA(SuspenseA, { fallback: hA(OverlayLoading, { label }) },
+          hA(overlayScreen, { ...top.props, ctx }))),
 
       !hideTabBar && hA(WxTabBar, { active: tab, onTab: ctx.tab, onCreate: ctx.openCreateSheet, meInitial }),
 

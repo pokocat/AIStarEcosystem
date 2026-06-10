@@ -70,7 +70,7 @@ function MLooksGrid({ char, ctx }) {
         // 造型卡
         looks.map((l: any) => l.status === 'done' && l.imageUrl
           ? hAV('div', { key: l.id, style: { position: 'relative', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-              hAV('img', { src: l.imageUrl, alt: l.label, style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
+              hAV('img', { src: l.imageUrl, alt: l.label, loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
               hAV('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,18,26,.6), transparent 50%)' } }),
               hAV('div', { style: { position: 'absolute', left: 12, bottom: 11, fontSize: 13, fontWeight: 700, color: '#fff' } }, l.label || '新造型'))
           : l.status === 'failed'

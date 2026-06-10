@@ -21,8 +21,18 @@ function MCarousel({ slides }) {
   const dragRef = useRefH(null as any);
   const n = slides.length;
   useEffectH(() => {
-    const t = setInterval(() => setI(p => (p + 1) % n), 4600);
-    return () => clearInterval(t);
+    if (n <= 1 || typeof window === 'undefined') return;
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return;
+    let t: any = null;
+    const stop = () => { if (t) { clearInterval(t); t = null; } };
+    const start = () => {
+      if (!t && document.visibilityState === 'visible') t = setInterval(() => setI(p => (p + 1) % n), 4600);
+    };
+    const onVisibility = () => (document.visibilityState === 'visible' ? start() : stop());
+    start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [n]);
   const down = (e) => { dragRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }; };
   const up = (e) => {
@@ -44,7 +54,7 @@ function MCarousel({ slides }) {
         slides.map((s, k) => hMH('button', { key: k, onClick: s.onClick, style: {
           flex: '0 0 ' + (100 / n) + '%', position: 'relative', border: 'none', cursor: 'pointer', padding: 0,
           background: s.bg, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 10, overflow: 'hidden' } },
-          s.image && hMH('img', { src: s.image, alt: '', draggable: false, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' } }),
+          s.image && hMH('img', { src: s.image, alt: '', draggable: false, loading: k === 0 ? 'eager' : 'lazy', decoding: 'async', fetchPriority: k === 0 ? 'high' : 'low', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' } }),
           hMH('span', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(8,16,24,.72), rgba(8,16,24,.32) 54%, rgba(8,16,24,.06))' } }),
           hMH('div', { style: { position: 'relative', fontFamily: 'var(--font-disp)', fontSize: 21, fontWeight: 800, letterSpacing: 0, color: '#fff', textAlign: 'left', lineHeight: 1.14, padding: '0 18px', textShadow: '0 2px 10px rgba(0,0,0,.22)' } }, s.title),
           hMH('span', { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, margin: '0 0 16px 18px', padding: '0 8px 0 8px', background: 'rgba(255,255,255,.92)', color: 'var(--ink)', borderRadius: 'var(--r-pill)', boxShadow: '0 6px 16px rgba(20,36,55,.22)' } },
@@ -133,7 +143,7 @@ function MFeatureCard({ title, sub, cta, image, icon, onClick }) {
     border: '1px solid rgba(255,255,255,.18)', borderRadius: 'var(--r-xl)', background: '#101722', color: '#fff',
     boxShadow: '0 16px 38px rgba(10,24,42,.16), 0 1px 0 rgba(255,255,255,.32) inset',
     display: 'flex', flexDirection: 'column', justifyContent: 'space-between', width: '100%' } },
-    hMH('img', { src: image, alt: '', draggable: false, style: {
+    hMH('img', { src: image, alt: '', draggable: false, loading: 'lazy', decoding: 'async', fetchPriority: 'low', style: {
       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .88,
       filter: 'saturate(1.08) contrast(1.02)', transform: 'scale(1.02)', pointerEvents: 'none' } }),
     hMH('span', { style: { position: 'absolute', inset: 0, background:
@@ -190,7 +200,7 @@ function MHome({ ctx }) {
     hMH(MCarousel, { slides: SLIDES }),
 
     // 我的数字人资产（首屏主角）
-    hMH('div', { style: { padding: '24px 0 0' } },
+    hMH('div', { className: 'm-defer-section', style: { padding: '24px 0 0' } },
       hMH('div', { style: { padding: '0 18px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, marginBottom: 14 } },
         hMH('div', { style: { minWidth: 0 } },
           hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' } }, '我的数字人资产'),
@@ -211,7 +221,7 @@ function MHome({ ctx }) {
         : hMH(MAssetEmpty, { ctx })),
 
     // 开始创作
-    hMH('div', { style: { padding: '26px 0 8px' } },
+    hMH('div', { className: 'm-defer-section', style: { padding: '26px 0 8px' } },
       hMH('div', { style: { padding: '0 18px' } },
         hMH(MSectionH, { title: '开始创作' })),
       hMH('div', { style: { padding: '0 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
