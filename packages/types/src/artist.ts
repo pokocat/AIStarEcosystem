@@ -100,7 +100,7 @@ export interface Artist {
   // ── AiAvatar 数字人引用（v0.60 收敛：艺人形象统一来自 AiAvatar）──────────────
   /** 引用的数字人 id（经「引入数字人」创建的艺人必有；遗留孵化艺人为 null） */
   dapAvatarId?: ID | null;
-  /** 首要展示图指针：null=跟随数字人定妆照；"look:<id>" / "deriv:<id>" 指向具体资产 */
+  /** 首要展示图指针：null=跟随数字人定妆照；"look:<id>" / "deriv:<id>" / "variant:<idx>" / "shot:<name>" 指向具体资产 */
   dapDisplayRef?: string | null;
   /** 数字人当前名称（server 实时派生；数字人被删/回收站时为 null） */
   dapAvatarName?: string | null;

@@ -471,7 +471,8 @@ POST /me/digital-ips/import-avatar
   - body.dapAvatarId 必填，校验：findByIdAndOwnerUserId（须本人所有）
       + deletedAt == null（不在回收站，否则 400 DAP_AVATAR_TRASHED）
       + imageKey 非空（已有定妆照，否则 400 DAP_AVATAR_NO_IMAGE）
-  - body.dapDisplayRef 可选；格式 "look:<id>" / "deriv:<id>"，资产必须属于该数字人，
+  - body.dapDisplayRef 可选；格式 "look:<id>" / "deriv:<id>" / "variant:<idx>"（形象变体
+    下标）/ "shot:<name>"（三机位 front-half / right / left），资产必须属于该数字人，
     deriv 仅允许图片类 kind（atlas/expr/scene/ward），否则 400 DAP_DISPLAY_REF_INVALID
   - 不扣孵化积分（incubation.cost 不适用——形象生成费用已在 AiAvatar 端结算）
   - 创建的 DigitalIp：status=ACTIVE（区别于孵化 TRAINEE）、avatarUrl 不落值、
