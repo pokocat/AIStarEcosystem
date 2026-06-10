@@ -433,6 +433,11 @@ export const AvatarApi = {
     }
     return apiFetch(`/avatars/${id}`);
   },
+  /** v0.61 反向「应用于」：数字人被哪些 music/drama 艺人壳引用。 */
+  references: (id: string): Promise<Mock.AvatarReference[]> => {
+    if (USE_MOCK) return mock((Mock.AVATAR_REFERENCES[id] || []).slice());
+    return apiFetch(`/avatars/${id}/references`);
+  },
   create: (body: { path: string; entry?: string; name?: string }): Promise<any> => {
     if (USE_MOCK) {
       const id = `DH-${mockSeq++}`;

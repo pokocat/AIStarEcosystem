@@ -53,19 +53,22 @@ public class DapAvatarController {
     private final DapCatalogService catalog;
     private final DapTrashService trashService;
     private final com.aistareco.aep.dap.service.DapPublicAvatarService publicAvatars;
+    private final com.aistareco.aep.service.DigitalIpService digitalIpService;
 
     public DapAvatarController(DapAvatarService avatarService,
                                DapWorkflowService workflow,
                                DapVoiceService voiceService,
                                DapCatalogService catalog,
                                DapTrashService trashService,
-                               com.aistareco.aep.dap.service.DapPublicAvatarService publicAvatars) {
+                               com.aistareco.aep.dap.service.DapPublicAvatarService publicAvatars,
+                               com.aistareco.aep.service.DigitalIpService digitalIpService) {
         this.avatarService = avatarService;
         this.workflow = workflow;
         this.voiceService = voiceService;
         this.catalog = catalog;
         this.trashService = trashService;
         this.publicAvatars = publicAvatars;
+        this.digitalIpService = digitalIpService;
     }
 
     private static String uid(Principal p) {
@@ -111,6 +114,18 @@ public class DapAvatarController {
     public ApiResponse<AvatarDto> patch(Principal principal, @PathVariable String id,
                                         @RequestBody PatchAvatarRequest req) {
         return ApiResponse.of(avatarService.patch(uid(principal), id, req));
+    }
+
+    /**
+     * v0.61 反向「应用于」：数字人被本人哪些 music / drama 艺人壳引用。
+     * 仅 owner 本人可查（required 同时校验存在 + 归属 + 未在回收站）。
+     */
+    @GetMapping("/{id}/references")
+    public ApiResponse<List<com.aistareco.aep.dap.dto.DapDtos.AvatarReferenceDto>> references(
+            Principal principal, @PathVariable String id) {
+        String userId = uid(principal);
+        avatarService.required(userId, id);
+        return ApiResponse.of(digitalIpService.listAvatarReferences(userId, id));
     }
 
     @DeleteMapping("/{id}")

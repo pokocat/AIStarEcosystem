@@ -2684,4 +2684,24 @@ openapi backfill /admin/users 全组路径 + suspend/reactivate。
   （仓库无此实体，真实实体 `dap_*` 表自 v0.51 起即合规）
 
 **Phase 2 backlog**（见 TODO.md）：drama 成片以角色数字人形象作 i2i 身份输入、
-voiceName 音色联动、aiavatar 反向「应用于」视图、drama 角色实体化（多角色各绑数字人）。
+voiceName 音色联动、~~aiavatar 反向「应用于」视图~~（✅ v0.61）、drama 角色实体化（多角色各绑数字人）。
+
+### v0.61（2026-06-10）— 收敛 Phase 2 ①：aiavatar 反向「应用于」视图
+
+数字人详情页展示「被哪些 music / drama 艺人壳引用」—— v0.60 收敛（艺人 → 数字人单向引用）
+的反向视角，让用户在 AiAvatar 端能看到资产的下游使用面，删数字人前心里有数。
+
+- **server**：
+  - `GET /api/v1/avatars/{id}/references`（DapAvatarController）：仅 owner 本人可查
+    （`required` 校验存在 + 归属 + 不在回收站）；返回 `AvatarReferenceDto[]`
+  - `DapDtos.AvatarReferenceDto`：ipId / ipName / app / type / status / dapDisplayRef /
+    importedAt（= 艺人壳 createdAt）；app 由 kind 派生（ACTOR → drama，其余 → music）
+  - `DigitalIpRepository.findByOwnerUserIdAndDapAvatarIdOrderByCreatedAtAsc` +
+    `DigitalIpService.listAvatarReferences`
+- **web-aiavatar**：`AvatarApi.references` + `AvatarReference` 类型 + mock
+  `AVATAR_REFERENCES`；详情页 `MAppliedTo` 卡片（概览统计与 Tab 之间；行 = 子应用图标 +
+  艺人名 + 引入日期 + 状态徽标；空列表不渲染；公开形象 PA-* 不拉取）
+- **契约**：openapi `/v1/avatars/{id}/references`；BUSINESS_RULES §6.4 反向视图规则
+- **验证**：mock 无头 6/6（DH-2041 双引用渲染 / DH-2026 无引用不渲染）；live 端到端
+  （dev server 实跑：创建数字人 → 占位生成 → pick → music/drama 双引入 → references
+  返回 2 条、app/dapDisplayRef/排序正确、重复引入 409）；四门全绿

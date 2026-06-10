@@ -235,6 +235,16 @@ public class DigitalIpService {
         return toDto(ipRepo.save(ip));
     }
 
+    /**
+     * v0.61 反向「应用于」：数字人被本人哪些 music / drama 艺人壳引用
+     * （aiavatar 详情页展示；调用方需先校验数字人归属）。
+     */
+    public java.util.List<com.aistareco.aep.dap.dto.DapDtos.AvatarReferenceDto> listAvatarReferences(
+            String ownerUserId, String dapAvatarId) {
+        return ipRepo.findByOwnerUserIdAndDapAvatarIdOrderByCreatedAtAsc(ownerUserId, dapAvatarId)
+                .stream().map(com.aistareco.aep.dap.dto.DapDtos.AvatarReferenceDto::from).toList();
+    }
+
     public DigitalIpDto update(String id, Map<String, Object> body) {
         return toDto(applyUpdate(loadOrThrow(id), body));
     }

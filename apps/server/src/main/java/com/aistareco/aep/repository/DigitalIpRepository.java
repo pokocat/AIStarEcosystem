@@ -28,4 +28,8 @@ public interface DigitalIpRepository extends JpaRepository<DigitalIp, String>,
 
     Optional<DigitalIp> findFirstByOwnerUserIdAndDapAvatarIdAndKind(
             String ownerUserId, String dapAvatarId, DigitalIp.DigitalIpKind kind);
+
+    /** v0.61 反向「应用于」：数字人被本人哪些艺人壳引用。 */
+    List<DigitalIp> findByOwnerUserIdAndDapAvatarIdOrderByCreatedAtAsc(
+            String ownerUserId, String dapAvatarId);
 }

@@ -492,6 +492,14 @@ PATCH /me/digital-ips/{id}
   - 新增可改字段 dapDisplayRef：空串/null = 清空（跟随定妆照）；
     非空时校验同上；艺人未引用数字人（dapAvatarId 为空）则 400
   - dapAvatarId 本身不可改（引用关系创建后固定）
+
+GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
+  - 仅数字人 owner 本人可查（required：存在 + 归属 + 不在回收站，否则 404）
+  - 返回 AvatarReferenceDto[]：ipId / ipName / app / type / status /
+    dapDisplayRef / importedAt（= 艺人壳 createdAt），按 createdAt 升序
+  - app 由 kind 派生：ACTOR → drama，其余（SINGER 等）→ music；
+    type / status 出 wire 全小写（enum 规则同 §全局）
+  - 引用为空 → data: []（200，不是 404）；aiavatar 详情页空列表不渲染卡片
 ```
 
 ```
