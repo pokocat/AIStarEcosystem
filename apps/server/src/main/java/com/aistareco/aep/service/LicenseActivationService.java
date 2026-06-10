@@ -51,6 +51,7 @@ public class LicenseActivationService {
     private final StudioRepository studioRepo;
     private final JwtUtil jwtUtil;
     private final PlatformAccessService platformAccessService;
+    private final NotificationPublisher notificationPublisher;
 
     public LicenseActivationService(LicenseKeyRepository keyRepo,
                                      LicenseBatchRepository batchRepo,
@@ -61,7 +62,8 @@ public class LicenseActivationService {
                                      LedgerEntryRepository ledgerRepo,
                                      StudioRepository studioRepo,
                                      JwtUtil jwtUtil,
-                                     PlatformAccessService platformAccessService) {
+                                     PlatformAccessService platformAccessService,
+                                     NotificationPublisher notificationPublisher) {
         this.keyRepo = keyRepo;
         this.batchRepo = batchRepo;
         this.userRepo = userRepo;
@@ -72,6 +74,7 @@ public class LicenseActivationService {
         this.studioRepo = studioRepo;
         this.jwtUtil = jwtUtil;
         this.platformAccessService = platformAccessService;
+        this.notificationPublisher = notificationPublisher;
     }
 
     /** 已通过全部可激活性校验的 key + batch 对。 */
@@ -248,6 +251,15 @@ public class LicenseActivationService {
             batch.setStatus(LicenseBatch.LicenseBatchStatus.EXHAUSTED);
         }
         batchRepo.save(batch);
+
+        // v0.58：注册激活是运营关注的核心事件，写进 admin 收件箱（旁路，失败不阻塞注册）
+        notificationPublisher.notifyAdmins(Notification.NotificationType.FAN,
+                "新用户激活",
+                "用户 " + (user.getDisplayName() != null && !user.getDisplayName().isBlank()
+                        ? user.getDisplayName() : user.getUsername())
+                        + "（登录名 " + user.getUsername() + "）通过激活码完成注册，工作室「"
+                        + studio.getName() + "」，初始积分 " + grant + "（批次 " + batch.getName() + "）。",
+                user.getId());
 
         // v0.31+: operatorRole 优先；新激活用户默认无 operatorRole，落到 kind。
         String role = user.getOperatorRole() != null

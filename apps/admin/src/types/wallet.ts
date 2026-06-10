@@ -11,6 +11,10 @@ import type { ID, ISODateTime } from "./_shared";
 export interface Wallet {
   id: ID;
   userId: ID;
+  /** v0.58：账号登录名（admin 结算中心视图由 server 回填） */
+  username?: string;
+  /** v0.58：账号昵称（同上） */
+  displayName?: string;
   totalBalance: number;        // = licenseBalance + rechargeBalance + giftBalance
   licenseBalance: number;      // License 核销累计入账
   rechargeBalance: number;     // 充值累计入账
@@ -38,6 +42,10 @@ export interface LedgerEntry {
   id: ID;
   walletId: ID;
   userId: ID;
+  /** v0.58：账号登录名（admin 结算中心视图由 server 回填） */
+  username?: string;
+  /** v0.58：账号昵称（同上） */
+  displayName?: string;
   type: LedgerEntryType;
   amount: number;            // 原始整数；正数=入账，负数=出账
   balanceAfter: number;      // 入账后总余额

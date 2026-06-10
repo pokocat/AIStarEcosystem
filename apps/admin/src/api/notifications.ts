@@ -17,3 +17,12 @@ export async function markNotificationRead(id: string): Promise<void> {
     method: "POST",
   });
 }
+
+/** v0.58：全部标记已读（仅运营收件箱行）。返回本次落已读的条数。 */
+export async function markAllNotificationsRead(): Promise<number> {
+  if (USE_MOCK) return mockDelay(0);
+  const res = await apiFetch<{ updated: number }>("/admin/notifications/read-all", {
+    method: "POST",
+  });
+  return res.updated;
+}

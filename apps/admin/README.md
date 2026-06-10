@@ -56,7 +56,7 @@ DataInitializer 默认 seed 两个账号：
 - **分发**：分发渠道、发行队列
 - **基础数据**：积分包（其他子项隐藏）
 - **平台与配置**：**AI 模型与 Key**（v0.41 合并）、**Prompt 管理**（v0.40 新增）、**Agent 平台**、平台配置
-- **消息与日志**：消息中心、审计日志
+- **消息与日志**：消息中心（v0.58 起为真实运营收件箱：充值下单/取消、新用户激活等业务事件实时入箱）、审计日志
 
 ## 隐藏的菜单（v0.5 sidebar enabled = false，URL 直访仍可用）
 
@@ -85,6 +85,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.58 / 2026-06-10**：①消息中心真实化 —— 改为**运营收件箱**（server 只列 `__admin__` 行；充值下单/取消、新用户激活由 `NotificationPublisher` 实时写入，audience 标注关联账号）；「全部标记已读」接通 `POST /admin/notifications/read-all`；删除假的「标为未读」切换（已读不可逆，已读行显示已读时间）。②结算中心（`/finance/ledger`）流水补全 —— 账号列显示 昵称+登录名+用户ID（server DTO 直接回填 `username/displayName`，删除 500 条上限的客户端 join）；余额/统计全部精确值（不再 "433.1K" 近似）；时间全部精确到秒；「导出对账单」真实现（CSV / UTF-8 BOM / 原始整数）；删除无后端的「复核通过/驳回」假按钮（充值核准在「财务 · 充值订单」页），业务交易「处理中」= 积分 hold 冻结中（跟随 CreditHold 状态）。详见 VERSION_HISTORY.md v0.58。
 - **v0.57 / 2026-06-09**：`/platform/auth-logs`（账号登录日志）新增「来源应用」列 + 筛选下拉，区分登录来自哪个子应用（music / drama / celebrity / aiavatar / celebrity-mp 小程序 / admin）。数据来自各前端注入的 `X-App-Code` 请求头 → server `AuditLog.appCode` 列。`types/audit.ts` 增 `appCode` + `APP_CODE_LABEL/KEYS`；`api/audit.ts` 两入参增 `appCode`；admin 自身 `api/_client.ts` 注入 `X-App-Code=admin`。老数据无来源 → 显示 "—"。详见 AGENTS.md / VERSION_HISTORY.md v0.57。
 - **v0.53 / 2026-06-07**：`/platform/licenses` 秘钥批次按子应用拆分。批次表新增「适用范围」列（全站可用 / 子应用徽章）；新建批次弹窗新增「适用子应用」多选 chip（music / drama / celebrity / aiavatar，不勾选 = 全站）+「自定义单包点数」（覆盖等级默认，支持「仅 aiavatar · 发 1000 积分」类批次）。`types/account.ts` 增 `SubProduct` / `SUB_PRODUCT_LABEL_ZH` + `AepUser.platforms`；`types/license.ts` `LicenseBatch.platforms`；`api/licenses.ts` `CreateBatchInput.platforms`。对应 server `LicenseBatch.platforms` 列 + 激活按批次授权（详见 AGENTS.md v0.53）。
   同日第二批（三端对齐审计治理）：`/celebrity/operators` 新增「平台访问」列 + 平台编辑弹窗（PATCH /admin/aep-users/{id}/platforms，仅 SUPER_ADMIN）；`/celebrity/engine-pricing` 动作单价表分两组并新增数字人平台（dap）12 行（0 = 走部署默认价，>0 覆盖立即生效）；`/platform/prompts` KEY_LABEL 补全 16 keys；selling-channels API 入参改用 `SellingChannelUpsertInput` 镜像。详见 `docs/ADMIN_ALIGNMENT_AUDIT.md`。

@@ -13,6 +13,14 @@ import java.time.Instant;
 @Table(name = "aep_notifications")
 public class Notification {
 
+    /**
+     * v0.58：运营收件箱的保留收件人。userId = 该常量的行只进 admin 消息中心
+     * （AdminNotificationController），不会出现在任何真实用户的 /api/notifications 列表里。
+     * 真实业务事件（充值下单 / 取消等）由 {@link com.aistareco.aep.service.NotificationPublisher}
+     * 写入。
+     */
+    public static final String ADMIN_INBOX_USER_ID = "__admin__";
+
     @Id
     private String id;
 
@@ -51,6 +59,20 @@ public class Notification {
      */
     @Column(name = "viewed_at")
     private Instant viewedAt;
+
+    /**
+     * v0.58：推送对象（admin 消息中心「每条消息标注推送对象」）。
+     * scope: all | studio | artist | account；targetId/targetName 指向触发事件的主体
+     * （如充值下单的个人账号）。老数据三列为 null，DTO 出 wire 时回退 scope=all。
+     */
+    @Column(name = "audience_scope", length = 16)
+    private String audienceScope;
+
+    @Column(name = "audience_target_id", length = 64)
+    private String audienceTargetId;
+
+    @Column(name = "audience_target_name", length = 128)
+    private String audienceTargetName;
 
     private Instant createdAt;
 

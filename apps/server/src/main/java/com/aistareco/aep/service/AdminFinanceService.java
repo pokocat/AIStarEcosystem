@@ -3,7 +3,11 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.dto.MonthlyRevenuePointDto;
 import com.aistareco.aep.dto.RevenueSourceDto;
 import com.aistareco.aep.dto.TransactionDto;
+import com.aistareco.aep.model.AepUser;
+import com.aistareco.aep.model.CreditHold;
 import com.aistareco.aep.model.LedgerEntry;
+import com.aistareco.aep.repository.AepUserRepository;
+import com.aistareco.aep.repository.CreditHoldRepository;
 import com.aistareco.aep.repository.LedgerEntryRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -51,9 +55,14 @@ public class AdminFinanceService {
     }
 
     private final LedgerEntryRepository ledgerRepo;
+    private final AepUserRepository userRepo;
+    private final CreditHoldRepository holdRepo;
 
-    public AdminFinanceService(LedgerEntryRepository ledgerRepo) {
+    public AdminFinanceService(LedgerEntryRepository ledgerRepo, AepUserRepository userRepo,
+                               CreditHoldRepository holdRepo) {
         this.ledgerRepo = ledgerRepo;
+        this.userRepo = userRepo;
+        this.holdRepo = holdRepo;
     }
 
     public List<TransactionDto> listTransactions(int page, int size, String userId) {
@@ -61,9 +70,22 @@ public class AdminFinanceService {
         List<LedgerEntry> entries = (userId == null || userId.isBlank())
                 ? ledgerRepo.findAll(pageable).getContent()
                 : ledgerRepo.findByUserId(userId, pageable).getContent();
+        Map<String, AepUser> users = usersOf(entries);
         List<TransactionDto> rows = new ArrayList<>(entries.size());
-        for (LedgerEntry e : entries) rows.add(toTransaction(e));
+        for (LedgerEntry e : entries) rows.add(toTransaction(e, users.get(e.getUserId())));
         return rows;
+    }
+
+    /** 批量取持有人账号信息（v0.58：流水里直接给登录名 / 昵称，前端不再客户端 join）。 */
+    private Map<String, AepUser> usersOf(List<LedgerEntry> entries) {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (LedgerEntry e : entries) {
+            if (e.getUserId() != null && !e.getUserId().isBlank()) ids.add(e.getUserId());
+        }
+        if (ids.isEmpty()) return Map.of();
+        Map<String, AepUser> out = new java.util.HashMap<>();
+        for (AepUser u : userRepo.findAllById(ids)) out.put(u.getId(), u);
+        return out;
     }
 
     /** 最近 6 个完整月（含当月）的入账汇总。缺失月份填 0，保证前端图表轴连续。 */
@@ -102,8 +124,8 @@ public class AdminFinanceService {
         return out;
     }
 
-    private TransactionDto toTransaction(LedgerEntry e) {
-        String dateStr = DATE_FMT.format(e.getCreatedAt() != null ? e.getCreatedAt() : Instant.now());
+    private TransactionDto toTransaction(LedgerEntry e, AepUser owner) {
+        Instant createdAt = e.getCreatedAt() != null ? e.getCreatedAt() : Instant.now();
         String source = e.getDescription() != null && !e.getDescription().isBlank()
                 ? e.getDescription()
                 : (e.getReferenceType() != null ? e.getReferenceType() : e.getEntryType().name().toLowerCase(Locale.ROOT));
@@ -112,11 +134,27 @@ public class AdminFinanceService {
                 e.getId(),
                 source,
                 e.getAmount(),
-                dateStr,
-                "completed",
+                DATE_FMT.format(createdAt),
+                createdAt,
+                statusOf(e),
                 type,
-                e.getUserId()
+                e.getUserId(),
+                owner != null ? owner.getUsername() : null,
+                owner != null ? owner.getDisplayName() : null
         );
+    }
+
+    /**
+     * v0.58：FREEZE 分录的状态跟随其 CreditHold —— hold 仍 ACTIVE（任务进行中，
+     * 等待 commit / release）→ processing；已终态（或查不到 hold）→ completed。
+     * 其余分录类型都是不可变终态记账 → completed。
+     */
+    private String statusOf(LedgerEntry e) {
+        if (e.getEntryType() != LedgerEntry.LedgerEntryType.FREEZE) return "completed";
+        if (e.getReferenceType() == null || e.getReferenceId() == null) return "completed";
+        return holdRepo.findByReferenceTypeAndReferenceId(e.getReferenceType(), e.getReferenceId())
+                .map(h -> h.getStatus() == CreditHold.Status.ACTIVE ? "processing" : "completed")
+                .orElse("completed");
     }
 
     /** LedgerEntry 枚举 → 前端 TransactionType（income / withdrawal / spend / recharge / license_grant）。 */

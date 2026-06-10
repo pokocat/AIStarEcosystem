@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { listNotifications, markNotificationRead } from "@/api/notifications";
+import { listNotifications, markNotificationRead, markAllNotificationsRead } from "@/api/notifications";
 import { NOTIFICATION_TYPE } from "@/constants/status";
 import type { Notification, NotificationAudienceScope, NotificationType } from "@/types/notification";
 import { formatDateTimeCN } from "@/lib/utils";
@@ -97,26 +97,26 @@ export default function NotificationsPage() {
     return true;
   });
 
-  const toggleRead = (id: string) => {
-    // v0.34.x: 已读不可逆。toggle 仅作为运营 UI 上「切回未读」的乐观显示，
-    // 后端 markNotificationRead 仅在 viewedAt==null 时落首次时间，再点不会改时间。
-    setList((prev) =>
-      prev.map((n) =>
-        n.id === id ? { ...n, viewedAt: n.viewedAt ? null : new Date().toISOString() } : n
-      )
-    );
-    markNotificationRead(id).catch(() => { /* 后端未读/已读切换暂未持久化时静默 */ });
+  // v0.34.x：已读不可逆（事件模型）。乐观更新 + 失败回滚，不再提供假的「标为未读」切换。
+  const markRead = (id: string) => {
+    const now = new Date().toISOString();
+    setList((prev) => prev.map((n) => (n.id === id && n.viewedAt == null ? { ...n, viewedAt: now } : n)));
+    markNotificationRead(id).catch(() => {
+      setList((prev) => prev.map((n) => (n.id === id ? { ...n, viewedAt: null } : n)));
+    });
   };
   const markAllRead = () => {
     const now = new Date().toISOString();
+    const prevList = list;
     setList((prev) => prev.map((n) => (n.viewedAt == null ? { ...n, viewedAt: now } : n)));
+    markAllNotificationsRead().catch(() => setList(prevList));
   };
 
   return (
     <div className="admin-page">
       <PageHeader
         title="消息中心"
-        description="平台运营推送、收益到账与系统告警统一收件箱。每条消息标注推送对象，方便溯源。"
+        description="运营收件箱：充值下单 / 取消、新用户激活等真实业务事件实时入箱。每条消息标注关联账号，方便溯源。"
         breadcrumb={[{ label: "消息与日志" }, { label: "消息中心" }]}
         actions={
           <Button size="sm" variant="outline" onClick={markAllRead} disabled={unread === 0}>
@@ -189,9 +189,15 @@ export default function NotificationsPage() {
                         </div>
                         <div className="text-sm text-muted-foreground mt-0.5">{n.desc}</div>
                       </div>
-                      <Button size="sm" variant="ghost" onClick={() => toggleRead(n.id)} className="shrink-0">
-                        {n.viewedAt != null ? "标为未读" : "已读"}
-                      </Button>
+                      {n.viewedAt == null ? (
+                        <Button size="sm" variant="ghost" onClick={() => markRead(n.id)} className="shrink-0">
+                          标记已读
+                        </Button>
+                      ) : (
+                        <span className="shrink-0 text-xs text-muted-foreground self-center">
+                          已读 {formatDateTimeCN(n.viewedAt)}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

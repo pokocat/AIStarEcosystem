@@ -5,7 +5,7 @@
 // 见 product_spec.md §1.4 / §3.1。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ID, ISODate } from "./_shared";
+import type { ID, ISODate, ISODateTime } from "./_shared";
 
 // ── 业务交易（前端展示用，源自 wallet.LedgerEntry 的派生） ────────────────────
 
@@ -24,10 +24,16 @@ export interface Transaction {
   /** 原始数值（credits）；正数=入账，负数=出账 */
   amount: number;
   date: ISODate;
+  /** v0.58：精确到秒的创建时间（date 仅到天，保留兼容） */
+  createdAt?: ISODateTime;
   status: TransactionStatus;
   type: TransactionType;
   /** 账户持有人 id（可选，用于多账户视图） */
   userId?: ID;
+  /** v0.58：账号登录名（admin 结算中心视图由 server 回填） */
+  username?: string;
+  /** v0.58：账号昵称（同上） */
+  displayName?: string;
 }
 
 // ── 月度收益曲线（数值原始，单位 credits） ────────────────────────────────────

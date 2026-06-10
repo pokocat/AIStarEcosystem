@@ -442,11 +442,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.58** | 2026-06-10 | admin 消息中心真实化（NotificationPublisher：充值下单/取消、新用户激活 → 运营收件箱 `__admin__`；核准/驳回 → 用户站内消息）+ 结算中心流水补全（账号登录名/昵称、精确余额、秒级时间、真 CSV 导出） |
 | **v0.57** | 2026-06-09 | 审计日志记录登录来源子应用（`X-App-Code` 头 → `AuditLog.appCode`）+ admin「来源应用」列与筛选 |
 | **v0.56** | 2026-06-07 | 充值「下单 → 运营核准入账」（废止直充）+ aiavatar 密码登录 + celebrity 仪表盘去假数据 |
 | **v0.55** | 2026-06-07 | web-celebrity 运营内嵌管理「明星」+「混剪工厂模板」（沿用 v0.31 模式扩展） |
 | **v0.54** | 2026-06-07 | dap 大模型统一 server 端 admin 管理（删 AGNES env 兜底，类改名 DapMultimodalClient） |
-| **v0.53** | 2026-06-07 | 秘钥按子应用拆分（批次 platforms + 追加激活）+ aiavatar 纳入平台门禁（4 平台全集） |
 
 > 阅读建议：先看本表定位到目标版本，再到 VERSION_HISTORY.md 全文搜索 `### vX.YY`。
 

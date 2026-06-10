@@ -723,7 +723,8 @@ components:
       deprecated: true
       description: |
         legacy /finance/transactions 接口的投影。前端真值源 src/types/finance.ts:Transaction
-        实际只有 id/source/amount/date/status/type/userId 7 个字段。新代码请使用 LedgerEntry。
+        实际字段：id/source/amount/date/status/type/userId；v0.58 追加 createdAt（秒级时间）
+        + username/displayName（admin 结算中心回填）。新代码请使用 LedgerEntry。
       required: [id, userId, type, direction, amount, currency, status,
                  description, createdAt]
       properties:
@@ -1206,6 +1207,8 @@ components:
       properties:
         id:               { type: string }
         userId:           { type: string }
+        username:         { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
+        displayName:      { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
         totalBalance:     { type: integer }
         licenseBalance:   { type: integer, description: license 核销累计入账 }
         rechargeBalance:  { type: integer, description: 充值累计入账 }
@@ -1230,6 +1233,8 @@ components:
         id:            { type: string }
         walletId:      { type: string }
         userId:        { type: string }
+        username:      { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
+        displayName:   { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
         type:          { $ref: '#/components/schemas/LedgerEntryType' }
         amount:        { type: integer, description: 正数=入账，负数=出账 }
         balanceAfter:  { type: integer, description: 入账后总余额（冗余便于审计） }
@@ -5546,6 +5551,57 @@ paths:
   /admin/finance/recharge-orders/{orderId}/reject:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-finance], operationId: adminRejectRechargeOrder, responses: { '200': { description: ok } } }
+
+  # ── 结算中心只读视图（v0.58 backfill：钱包 / 流水 / 业务交易，DTO 附带账号登录名 / 昵称 + 秒级时间） ──
+  /admin/wallets:
+    get:
+      tags: [admin-finance]
+      operationId: adminListWallets
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+      responses: { '200': { description: 'ok（PageEnvelope<Wallet>）' } }
+  /admin/wallets/{userId}:
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
+    get: { tags: [admin-finance], operationId: adminGetWalletByUser, responses: { '200': { description: ok } } }
+  /admin/ledger-entries:
+    get:
+      tags: [admin-finance]
+      operationId: adminListLedgerEntries
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+        - { name: walletId, in: query, schema: { type: string } }
+        - { name: userId, in: query, schema: { type: string } }
+      responses: { '200': { description: 'ok（PageEnvelope<LedgerEntry>）' } }
+  /admin/finance/transactions:
+    get:
+      tags: [admin-finance]
+      operationId: adminListFinanceTransactions
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+        - { name: userId, in: query, schema: { type: string } }
+      responses: { '200': { description: 'ok（LedgerEntry 派生业务交易；FREEZE 且 hold 仍 ACTIVE → processing）' } }
+  /admin/finance/revenue/monthly:
+    get: { tags: [admin-finance], operationId: adminMonthlyRevenue, responses: { '200': { description: ok } } }
+  /admin/finance/revenue/sources:
+    get: { tags: [admin-finance], operationId: adminRevenueSources, responses: { '200': { description: ok } } }
+
+  # ── 运营收件箱（v0.58 真实化：只列 userId=__admin__ 行；业务事件由 NotificationPublisher 写入） ──
+  /admin/notifications:
+    get:
+      tags: [admin-notifications]
+      operationId: adminListNotifications
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+      responses: { '200': { description: 'ok（PageEnvelope<Notification>，含 audience 关联账号）' } }
+  /admin/notifications/{id}/read:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-notifications], operationId: adminMarkNotificationRead, responses: { '200': { description: ok }, '403': { description: 仅运营收件箱行可操作 } } }
+  /admin/notifications/read-all:
+    post: { tags: [admin-notifications], operationId: adminMarkAllNotificationsRead, responses: { '200': { description: 'ok（{updated: n}）' } } }
 
   # ── 模板脚本（v0.5 §3.2.7 新增） ──────────────────────────────────────
   /template-scripts/by-template/{templateId}:
