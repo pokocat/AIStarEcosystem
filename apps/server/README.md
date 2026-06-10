@@ -393,7 +393,7 @@ src/main/java/com/aistareco/aep/
 | `aep_users.platforms` | **平台访问授权列**（v0.43）：CSV（`music,drama,celebrity` 子集；空=全部可访问）。`/api/me` 透出 effective 列表，前端按本子产品判断放行 |
 | `celebrity_stars` 扩字段 | bio / location / fans / cooperation_count / avg_gmv / photos_json / videos_json |
 | `celebrity_templates` 扩字段 | preview_cover / preview_video_url / duration_sec |
-| `aep_notifications` 扩字段 | bot_id（关联 5 个 AI Bot 同事；v0.5.2 拉模式后保留作扩展点） |
+| `aep_notifications` 扩字段 | bot_id（关联 5 个 AI Bot 同事；v0.5.2 拉模式后保留作扩展点）；**v0.58** +`audience_scope`/`audience_target_id`/`audience_target_name`（推送对象溯源，可空，老行回退 scope=all）。运营收件箱行用保留 `user_id='__admin__'`（`Notification.ADMIN_INBOX_USER_ID`），由 `NotificationPublisher` 写入（充值下单/取消、新用户激活），admin `/api/admin/notifications` 只读写该收件箱 |
 | `aep_social_accounts` | sau 绑定账号，存 `display_name` / `platform_account_id` / `avatar_url` 清洁 profile；`storage_state_encrypted` 为 AES-GCM 密文且不出 DTO |
 | `mixcut_render_output` 扩字段 (v0.19) | `publish_count`（INT NOT NULL DEFAULT 0）/ `last_published_at`（OffsetDateTime nullable）—— `MixcutPublishService` 每次派单成功后按 target 数累加；视频库 UI 用此显示「已发 ×N」徽标，允许同一变体再次分发 |
 | `mixcut_render_output` 扩字段 (v0.21) | `deleted_at`（OffsetDateTime nullable）—— 用户在「视频库」点删除后置非空；DTO 转换过滤 `deletedAt != null` 的 output；`MixcutOutputCleanupScheduler @Scheduled(cron="0 30 3 * * *")` 每日凌晨清理 30 天前软删行（本地 mp4 / CDN / DB 全删） |
@@ -425,6 +425,7 @@ server 内部 `aep/service/productlink/ProductLinkHandler` 是策略链接口，
 
 - `PromptAssemblyService` —— 按需把 TemplateScript 装配为引擎请求体（变量替换 + 引擎 adapter + 风控）
 - `NotificationService` —— Bot 消息按需查询合成（5 composer，零事件总线）
+- `NotificationPublisher` (v0.58) —— 业务事件 → 站内消息唯一写入口：`notifyAdmins`（运营收件箱 `__admin__`，audience 指向触发账号）/ `notifyUser`（用户个人收件箱）。旁路写入：失败仅 WARN 不阻塞业务主链路。已接线：充值下单/取消（→admin）、核准/驳回（→用户）、激活码注册（→admin）
 - `AiModelInvocationService` —— OpenAI / OPENAI_COMPATIBLE 的 chat 调用 + provider 测试连通
 - `RechargeService` —— v0.56 充值订单流：`createOrder`（下单 PENDING，不入账）/ `listMyOrders` / `cancelOrder` / `listForAdmin` / `approveOrder`（运营核准 → recharge 主分录 + 可选 gift bonus 副分录入账）/ `rejectOrder`
 - `CelebrityZoneService` —— 引擎价格 in-memory（`mutablePricing`）+ JOBS in-memory（重启失效；v0.6 落表）

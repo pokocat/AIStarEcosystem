@@ -132,6 +132,14 @@ public class SmsAuthController {
             throw new BusinessException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND",
                     "该手机号尚未注册，请先用「激活码 + 手机号」完成注册");
         }
+        // v0.59：与密码登录对齐 —— 停用 / 注销账号拒绝登录（此前短信登录漏了这道闸）
+        if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
+            log.warn("[auth-sms] inactive userId={} status={}", user.getId(), user.getStatus());
+            auditService.recordAuth(AuditService.Actions.SMS_LOGIN, AuditLog.AuditResult.FAILURE,
+                    user.getId(), user.getUsername(),
+                    "ACCOUNT_DISABLED", "短信登录：账号被停用 status=" + user.getStatus(), request);
+            throw new BusinessException(HttpStatus.FORBIDDEN, "ACCOUNT_DISABLED", "该账户已被停用");
+        }
 
         user.setLastLoginAt(Instant.now());
         if (!user.isPhoneVerified()) {

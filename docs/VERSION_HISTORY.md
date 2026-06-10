@@ -2494,3 +2494,109 @@ openapi : 补全扫描暴露的 ~25 个真实未文档化端点（path × method
   导致 `spring-boot:run` 失败 —— 本版 `清掉 ./data` 后重建干净（V1 baseline + ddl-auto 自动建 app_code 列 + 重 seed，实跑确认）。
 
 ---
+
+### v0.58（2026-06-10）— admin 消息中心真实化（业务事件站内消息）+ 结算中心流水补全（账号/精确余额/秒级时间）
+
+两个互相独立的 admin 真实性修复，合并为一版：
+
+**A. 消息中心真实化**。此前 `aep_notifications` 只有 dev seeder 写的演示数据；admin 消息中心
+`repo.findAll` 把**所有用户的个人通知**混进运营视图（运营标已读会改写用户自己的未读状态），且没有任何
+真实业务事件产生站内消息。本版引入**运营收件箱**模型：
+
+```
+server : Notification +ADMIN_INBOX_USER_ID="__admin__" 常量 + audience 三列
+         （audience_scope/audience_target_id/audience_target_name，可空，老行回退 scope=all）
+       : NotificationPublisher（新 service）—— 业务事件 → 站内消息唯一写入口：
+         notifyAdmins(...)（运营收件箱，audience 指向触发账号）/ notifyUser(...)（用户个人收件箱）。
+         旁路写入：发布失败仅 WARN，不阻塞业务主链路（§8.0 观测类例外）
+       : 事件接线（4 处）：
+         RechargeService.createOrder  → admin「新充值订单待核准」（REVENUE，含登录名/套餐/金额）
+         RechargeService.cancelOrder  → admin「充值订单已取消」
+         RechargeService.approve/reject → 用户「充值已到账」/「充值订单被驳回」
+         LicenseActivationService.activate → admin「新用户激活」（FAN，含登录名/工作室/初始积分）
+       : AdminNotificationController 改为只读写 __admin__ 行（findByUserId 分页；
+         markAsRead 对非收件箱行 403）+ 新增 POST /admin/notifications/read-all（批量落 viewedAt）
+       : NotificationDto.audience 从实体落库字段读取（不再硬编码 "all"）
+admin  : api/notifications.ts +markAllNotificationsRead()；消息中心页接通后端 read-all、
+         删除假的「标为未读」切换（已读不可逆，已读行显示已读时间）、文案改为运营收件箱定位
+```
+
+**B. 结算中心（/finance/ledger）流水补全**。三个数据真实性问题：① 流水/钱包/交易只有 userId，
+前端靠 `listUsers(0,500)` 客户端 join（>500 用户即丢失，且只显示昵称无登录名）；② 余额列用
+`formatCompactNumber` 显示近似值（"433.1K"）；③ 时间只到日期。修复：
+
+```
+server : LedgerEntryDto/WalletDto +username/displayName（overload from(e, owner)；
+         用户自查接口不填 → jackson non_null 下 wire 省略，零破坏）
+       : CreditService.listWallets/listLedgerEntries、AdminFinanceService.listTransactions
+         批量 findAllById join 账号（无 N+1）
+       : TransactionDto +createdAt(Instant 秒级)/username/displayName；
+         FREEZE 分录 status 跟随 CreditHold（ACTIVE → processing，终态 → completed），
+         不再恒为 completed
+types  : packages/types + apps/admin 两份 Wallet/LedgerEntry/Transaction 同步加可选字段
+admin  : 结算中心页 —— 账号列显示 昵称+登录名+用户ID 前缀（AccountCell，老数据回退 userId）；
+         余额/统计卡全部 formatCredits 精确值；全部时间 formatDateTimeCN 到秒；
+         删除 listUsers 客户端 join；「导出对账单」真实现（CSV，UTF-8 BOM，原始整数 + ISO 时间）；
+         删除假的「复核通过/驳回」按钮 + 无 onConfirm 的 ActionDialog（账本不可变，无复核后端；
+         充值核准在「财务 · 充值订单」页）；业务交易视图改只读，「处理中」= hold 冻结中
+specs  : openapi.yaml —— Wallet/LedgerEntry/Transaction schema 补字段；backfill
+         /admin/wallets、/admin/ledger-entries、/admin/finance/transactions、
+         /admin/finance/revenue/*、/admin/notifications{,/{id}/read,/read-all} 路径
+```
+
+**注意事项**：
+
+- **DB 迁移**：纯增量可空列（notification audience 三列），与 v0.57 同理走 `ddl-auto=update`
+  自动建列，无需 Flyway 文件。
+- **admin 收件箱起点为空**：不 seed 假消息，真实事件（充值下单/取消、新用户激活）发生才入箱。
+- **wire 兼容**：`viewedAt`/`username`/`displayName` 为 null 时 jackson non_null 序列化直接省略 key，
+  前端按 `== null`（undefined 同样命中）判断，老消费方零影响。
+- **端到端已验证**（dev H2 + dev-login）：下单 → admin 收件箱实时入箱（audience 溯源）→ 核准 →
+  用户收「充值已到账」；取消 / 激活注册同样入箱；read-all 批量已读；admin 标用户个人通知 → 403。
+- **未做**：(a) 更多事件源（混剪任务完成、发布失败告警等）后续按需接 NotificationPublisher；
+  (b) admin 侧边栏未读红点 badge；(c) 结算中心服务端分页（仍取前 200 条窗口）。
+
+---
+
+### v0.59（2026-06-10）— 账号停用 / 恢复完整链路 + 消息中心未读角标 + 砍掉重复的积分包页
+
+v0.58 全面 review 的三项落地（同日第二批）：
+
+**A. /platform/accounts 账号停用 / 恢复真链路**。此前页面的「停用 / 恢复」按钮弹 ActionDialog
+但没有 `onConfirm`（纯装饰），且前后端整条链路缺失。本版补全：
+
+```
+server : AepUserService +suspend()/reactivate()（状态机：仅 ACTIVE→SUSPENDED / SUSPENDED→ACTIVE，
+         否则 409；DELETED 不可恢复）
+       : AdminUserController +POST /admin/users/{id}/suspend（reason 必填，400 SUSPEND_REASON_REQUIRED）
+         +POST /admin/users/{id}/reactivate（reason 选填）
+       : AuditService +recordAdminAction()（运营管理操作审计通用入口：actor 从 SecurityContext、
+         IP/UA/appCode 从 request，永不抛）+ Actions.ADMIN_USER_SUSPEND / ADMIN_USER_REACTIVATE
+       : SmsAuthController /verify 补停用闸（此前短信登录漏查 status —— 停用账号仍可登录；
+         现与密码登录一致返回 403 ACCOUNT_DISABLED）
+admin  : api/users.ts +suspendUser/reactivateUser；accounts 页改 useConfirm + toast 模式
+         （对齐 v0.56 充值订单页惯例），busy 态防重复点击；已注销账号显示「已注销」
+         （删掉无 onClick 的「查看」死按钮）
+```
+
+**已知边界**：JWT 无状态 —— 已签发 token 在到期前（默认 7 天）仍可调 /api/me/**；
+登录闸（密码 / 短信 / dev-login）即时生效。per-request 状态校验需要每请求查库，暂不做。
+
+**B. 消息中心侧栏未读角标**。nav「消息中心」+`badgeKey: notif_unread`；`useSidebarBadges`
+接 `listNotifications()` 数 `viewedAt == null`（与页面同一份 API + 同一过滤条件，遵循
+badge-页面一致性原则）。
+
+**C. 砍掉 /base/credit-packs（积分包）页**。与「财务 · 充值套餐」（真 CRUD）功能重复，
+且自身「新建 / 编辑 / 归档」全是无后端死按钮。删除页面 + nav 项 + 独占的
+api/settings.ts、mocks/settings.ts、types/settings.ts（git grep 确认无其他消费方）；
+「基础数据」组因此整组隐藏（其余子项本就 enabled=false）。server 侧
+SettingsController / AdminSettingsController 保留（遗留 apps/web 仍在调）。
+
+**端到端已验证**（dev H2）：无原因停用 400 → 带原因停用 → dev-login 403 → 重复停用 409 →
+恢复 → 登录恢复 200；审计日志两行落库（actor=admin、resource=aep_user、detail 含原因、IP）。
+openapi backfill /admin/users 全组路径 + suspend/reactivate。
+
+**未做（distribution 两页维持现状）**：分发渠道 / 发行队列的写操作（批准 / 驳回 / 断开 /
+立即同步）仍是无后端假按钮，按决策暂不动，后续可能整页砍掉。
+
+---

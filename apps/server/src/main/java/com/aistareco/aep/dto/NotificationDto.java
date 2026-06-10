@@ -26,6 +26,9 @@ public record NotificationDto(
     public record Audience(String scope, String targetId, String targetName) {}
 
     public static NotificationDto from(Notification n) {
+        // v0.58：audience 从实体落库字段读取；老数据没有 audience 三列时回退 scope=all
+        String scope = n.getAudienceScope() == null || n.getAudienceScope().isBlank()
+                ? "all" : n.getAudienceScope();
         return new NotificationDto(
                 n.getId(),
                 lower(n.getType()),
@@ -34,7 +37,7 @@ public record NotificationDto(
                 relativeTime(n.getCreatedAt()),
                 n.getCreatedAt(),
                 n.getViewedAt(),
-                new Audience("all", null, null)
+                new Audience(scope, n.getAudienceTargetId(), n.getAudienceTargetName())
         );
     }
 

@@ -5,6 +5,7 @@ import com.aistareco.aep.dto.RechargeOrderDto;
 import com.aistareco.aep.dto.RechargePackageDto;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.LedgerEntry;
+import com.aistareco.aep.model.Notification;
 import com.aistareco.aep.model.RechargeOrder;
 import com.aistareco.aep.model.RechargePackage;
 import com.aistareco.aep.model.Studio;
@@ -48,17 +49,20 @@ public class RechargeService {
     private final AepUserRepository userRepo;
     private final StudioRepository studioRepo;
     private final CreditService creditService;
+    private final NotificationPublisher notificationPublisher;
 
     public RechargeService(RechargePackageRepository pkgRepo,
                            RechargeOrderRepository orderRepo,
                            AepUserRepository userRepo,
                            StudioRepository studioRepo,
-                           CreditService creditService) {
+                           CreditService creditService,
+                           NotificationPublisher notificationPublisher) {
         this.pkgRepo = pkgRepo;
         this.orderRepo = orderRepo;
         this.userRepo = userRepo;
         this.studioRepo = studioRepo;
         this.creditService = creditService;
+        this.notificationPublisher = notificationPublisher;
     }
 
     public List<RechargePackageDto> listPackages() {
@@ -109,6 +113,14 @@ public class RechargeService {
         orderRepo.save(order);
         log.info("[recharge] order created id={} userId={} pkg={} credits={} priceCents={}",
                 order.getId(), userId, pkg.getId(), pkg.getCredits(), pkg.getPriceCents());
+        notificationPublisher.notifyAdmins(Notification.NotificationType.REVENUE,
+                "新充值订单待核准",
+                "用户 " + accountLabel(user) + " 提交充值订单 " + order.getId() + "："
+                        + nz(pkg.getTag()) + " " + pkg.getCredits() + " 积分"
+                        + (pkg.getBonusCredits() > 0 ? "（另赠 " + pkg.getBonusCredits() + "）" : "")
+                        + " / " + formatPrice(pkg.getPriceCents())
+                        + "。请确认线下收款后在「财务 · 充值订单」核准入账。",
+                userId);
         return RechargeOrderDto.from(order);
     }
 
@@ -129,6 +141,12 @@ public class RechargeService {
         order.setStatus(RechargeOrder.Status.CANCELLED);
         order.setUpdatedAt(Instant.now());
         orderRepo.save(order);
+        notificationPublisher.notifyAdmins(Notification.NotificationType.REVENUE,
+                "充值订单已取消",
+                "用户 " + accountLabelById(userId) + " 取消了待确认充值订单 " + order.getId()
+                        + "（" + nz(order.getPackageTag()) + " " + order.getCredits() + " 积分 / "
+                        + formatPrice(order.getPriceCents()) + "），无需再核准。",
+                userId);
         return RechargeOrderDto.from(order);
     }
 
@@ -191,6 +209,11 @@ public class RechargeService {
         orderRepo.save(order);
         log.info("[recharge] order approved id={} userId={} reviewer={} credits={} bonus={}",
                 order.getId(), order.getUserId(), reviewerId, order.getCredits(), order.getBonusCredits());
+        notificationPublisher.notifyUser(order.getUserId(), Notification.NotificationType.REVENUE,
+                "充值已到账",
+                "充值订单 " + order.getId() + " 已核准：" + order.getCredits() + " 积分已入账"
+                        + (order.getBonusCredits() > 0 ? "，另赠送 " + order.getBonusCredits() + " 积分" : "")
+                        + "。");
         return RechargeOrderDto.from(order);
     }
 
@@ -210,7 +233,27 @@ public class RechargeService {
         order.setUpdatedAt(Instant.now());
         orderRepo.save(order);
         log.info("[recharge] order rejected id={} userId={} reviewer={}", order.getId(), order.getUserId(), reviewerId);
+        notificationPublisher.notifyUser(order.getUserId(), Notification.NotificationType.REVENUE,
+                "充值订单被驳回",
+                "充值订单 " + order.getId() + "（" + nz(order.getPackageTag()) + " " + order.getCredits()
+                        + " 积分）未通过核准。原因：" + nz(order.getReviewNote()) + "。如有疑问请联系平台运营。");
         return RechargeOrderDto.from(order);
+    }
+
+    /** 「昵称（登录名 xxx）」展示标签；admin 消息中心溯源用。 */
+    private static String accountLabel(AepUser user) {
+        if (user == null) return "（未知账号）";
+        String display = user.getDisplayName() != null && !user.getDisplayName().isBlank()
+                ? user.getDisplayName() : user.getUsername();
+        return display + "（登录名 " + user.getUsername() + "）";
+    }
+
+    private String accountLabelById(String userId) {
+        return accountLabel(userRepo.findById(userId).orElse(null));
+    }
+
+    private static String formatPrice(long priceCents) {
+        return "¥" + (priceCents / 100) + (priceCents % 100 == 0 ? "" : String.format(".%02d", priceCents % 100));
     }
 
     private static String nz(String s) {

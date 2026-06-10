@@ -2,9 +2,11 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.WalletDto;
+import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.CreditHold;
 import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.model.Wallet;
+import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.CreditHoldRepository;
 import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.aep.repository.WalletRepository;
@@ -43,17 +45,23 @@ public class CreditService {
     private final WalletRepository walletRepo;
     private final LedgerEntryRepository ledgerRepo;
     private final CreditHoldRepository holdRepo;
+    private final AepUserRepository userRepo;
 
     public CreditService(WalletRepository walletRepo,
                           LedgerEntryRepository ledgerRepo,
-                          CreditHoldRepository holdRepo) {
+                          CreditHoldRepository holdRepo,
+                          AepUserRepository userRepo) {
         this.walletRepo = walletRepo;
         this.ledgerRepo = ledgerRepo;
         this.holdRepo = holdRepo;
+        this.userRepo = userRepo;
     }
 
+    /** admin 结算中心钱包快照：附带账号登录名 / 昵称（v0.58，批量查询避免 N+1）。 */
     public Page<WalletDto> listWallets(Pageable pageable) {
-        return walletRepo.findAll(pageable).map(WalletDto::from);
+        Page<Wallet> page = walletRepo.findAll(pageable);
+        Map<String, AepUser> users = usersByIds(page.map(Wallet::getUserId).toList());
+        return page.map(w -> WalletDto.from(w, users.get(w.getUserId())));
     }
 
     public WalletDto findWalletByUserId(String userId) {
@@ -522,6 +530,7 @@ public class CreditService {
 
     /**
      * Query ledger entries. Supports filtering by walletId and/or userId.
+     * admin 结算中心消费：附带账号登录名 / 昵称（v0.58，批量查询避免 N+1）。
      */
     public Page<LedgerEntryDto> listLedgerEntries(String walletId, String userId, Pageable pageable) {
         Page<LedgerEntry> page;
@@ -532,7 +541,22 @@ public class CreditService {
         } else {
             page = ledgerRepo.findAll(pageable);
         }
-        return page.map(LedgerEntryDto::from);
+        Map<String, AepUser> users = usersByIds(page.map(LedgerEntry::getUserId).toList());
+        return page.map(e -> LedgerEntryDto.from(e, users.get(e.getUserId())));
+    }
+
+    /** 按 id 批量取用户（去重 + 过滤 null），DTO enrich 用。 */
+    private Map<String, AepUser> usersByIds(java.util.List<String> ids) {
+        java.util.Set<String> distinct = new java.util.HashSet<>();
+        for (String id : ids) {
+            if (id != null && !id.isBlank()) distinct.add(id);
+        }
+        if (distinct.isEmpty()) return Map.of();
+        Map<String, AepUser> out = new java.util.HashMap<>();
+        for (AepUser u : userRepo.findAllById(distinct)) {
+            out.put(u.getId(), u);
+        }
+        return out;
     }
 
     private String getString(Map<String, Object> body, String key) {

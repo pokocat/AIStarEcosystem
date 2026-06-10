@@ -6,8 +6,11 @@ import com.aistareco.aep.dto.PageEnvelope;
 import com.aistareco.aep.dto.WalletDto;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.service.AepUserService;
+import com.aistareco.aep.service.AuditService;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.common.ApiResponse;
+import com.aistareco.common.BusinessException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -23,11 +26,14 @@ public class AdminUserController {
 
     private final AepUserService userService;
     private final CreditService creditService;
+    private final AuditService auditService;
 
     public AdminUserController(AepUserService userService,
-                                CreditService creditService) {
+                                CreditService creditService,
+                                AuditService auditService) {
         this.userService = userService;
         this.creditService = creditService;
+        this.auditService = auditService;
     }
 
     @GetMapping
@@ -74,6 +80,39 @@ public class AdminUserController {
     public void delete(@PathVariable String id) {
         userService.delete(id);
     }
+
+    /**
+     * v0.59：停用账号（仅 ACTIVE 可停用）。reason 必填，写入审计日志（admin.user.suspend）。
+     * 停用后该用户的密码 / 短信 / dev 登录均被拒（ACCOUNT_DISABLED）。
+     */
+    @PostMapping("/{id}/suspend")
+    public ApiResponse<AepUserDto> suspend(@PathVariable String id,
+                                           @RequestBody(required = false) StatusActionRequest body,
+                                           HttpServletRequest request) {
+        String reason = body == null ? null : body.reason();
+        if (reason == null || reason.isBlank()) {
+            throw BusinessException.badRequest("SUSPEND_REASON_REQUIRED", "请填写停用原因");
+        }
+        AepUserDto dto = userService.suspend(id);
+        auditService.recordAdminAction(AuditService.Actions.ADMIN_USER_SUSPEND, "aep_user", id,
+                "停用账号 @" + dto.username() + "：" + reason.trim(), request);
+        return ApiResponse.of(dto);
+    }
+
+    /** v0.59：恢复已停用账号（仅 SUSPENDED 可恢复）。reason 选填，写入审计日志。 */
+    @PostMapping("/{id}/reactivate")
+    public ApiResponse<AepUserDto> reactivate(@PathVariable String id,
+                                              @RequestBody(required = false) StatusActionRequest body,
+                                              HttpServletRequest request) {
+        String reason = body == null ? null : body.reason();
+        AepUserDto dto = userService.reactivate(id);
+        auditService.recordAdminAction(AuditService.Actions.ADMIN_USER_REACTIVATE, "aep_user", id,
+                "恢复账号 @" + dto.username() + (reason == null || reason.isBlank() ? "" : "：" + reason.trim()),
+                request);
+        return ApiResponse.of(dto);
+    }
+
+    public record StatusActionRequest(String reason) {}
 
     /**
      * Manually adjust credit balance for a platform user (运营调差).

@@ -133,9 +133,13 @@ public class FinanceController {
                         (e.getEntryType() != null ? e.getEntryType().name() : ""),
                 e.getAmount(),
                 e.getCreatedAt() == null ? "" : e.getCreatedAt().toString().substring(0, 10),
+                e.getCreatedAt(),
                 "completed",
                 txType(e.getEntryType()),
-                e.getUserId()
+                e.getUserId(),
+                // 用户自查自己的流水，无需回显登录名 / 昵称（wire 上省略）
+                null,
+                null
         );
     }
 

@@ -22,7 +22,6 @@ export * as StaffApi from "./staff";
 export * as MusicApi from "./music";
 export * as NotificationsApi from "./notifications";
 export * as PoseApi from "./pose";
-export * as SettingsApi from "./settings";
 export * as StatsApi from "./stats";
 export * as StudiosApi from "./studios";
 export * as TenantsApi from "./tenants";
