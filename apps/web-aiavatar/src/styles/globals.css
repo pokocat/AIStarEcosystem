@@ -891,6 +891,9 @@ html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
 .m-body p { text-wrap: pretty; }
 @keyframes vbar { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(.5); } }
 
+/* 真人复刻录制：转头方向引导（--nudge 控制方向与幅度；最低不透明度 .45，引擎暂停时仍可见） */
+@keyframes mNudgeX { 0%, 100% { transform: translateX(calc(var(--nudge, 10px) * -0.35)); opacity: .45; } 55% { transform: translateX(var(--nudge, 10px)); opacity: 1; } }
+
 /* ===================== V4「清爽」皮肤覆盖 ===================== */
 /* ============================================================
    数字人资产平台 V4 · 移动端 — 「清爽」皮肤
