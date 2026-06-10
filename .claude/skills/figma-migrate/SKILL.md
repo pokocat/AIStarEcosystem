@@ -1,6 +1,6 @@
 ---
 name: figma-migrate
-description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web，并同步到 apps/admin（管理后台）和 apps/server（Spring Boot 后端），实现三端数据模型完整对齐。遵循 types/mocks/constants/api/component 五件套 + 中文单语约束 + 三端同步（web ↔ admin ↔ server）。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"、"数据模型对齐"。完成后必须更新 README 版本日志和 specs/openapi.yaml；运行 npm run check:api-contract 验证。
+description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的页面/组件迁移到 apps/web，并同步到 apps/admin（管理后台）和 apps/server（Spring Boot 后端），实现三端数据模型完整对齐。遵循 types/mocks/constants/api/component 五件套 + 中文单语约束 + 三端同步（web ↔ admin ↔ server）。触发场景：用户提到"figma 更新了"、"figma 新增了 X 页面"、"把 figma 的 Y 同步到 web"、"迁移 figma 新原型"、"figma 原型做了改动需要同步工程"、"数据模型对齐"。完成后必须更新 README 版本日志和 specs/openapi.yaml；运行 pnpm check:api-contract 验证。
 ---
 
 # Figma → apps/web 迁移手册
@@ -266,7 +266,7 @@ cd apps/web
    - 注意：以「前端 TS interface 字段名」为准，后端 DTO 必须 mirror。
 3. （可选）`specs/BUSINESS_RULES.md`
    - 若新域引入了非平凡的业务规则（扣费、状态机、跨字段约束），在 §2 / §6 追加。
-4. 最后跑：`(cd apps/web && npm run check:api-contract)` 必须通过。
+4. 最后跑：`pnpm check:api-contract` 必须通过。
 
 ---
 

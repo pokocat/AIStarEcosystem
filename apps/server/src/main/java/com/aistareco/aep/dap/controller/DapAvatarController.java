@@ -52,17 +52,20 @@ public class DapAvatarController {
     private final DapVoiceService voiceService;
     private final DapCatalogService catalog;
     private final DapTrashService trashService;
+    private final com.aistareco.aep.dap.service.DapPublicAvatarService publicAvatars;
 
     public DapAvatarController(DapAvatarService avatarService,
                                DapWorkflowService workflow,
                                DapVoiceService voiceService,
                                DapCatalogService catalog,
-                               DapTrashService trashService) {
+                               DapTrashService trashService,
+                               com.aistareco.aep.dap.service.DapPublicAvatarService publicAvatars) {
         this.avatarService = avatarService;
         this.workflow = workflow;
         this.voiceService = voiceService;
         this.catalog = catalog;
         this.trashService = trashService;
+        this.publicAvatars = publicAvatars;
     }
 
     private static String uid(Principal p) {
@@ -80,7 +83,10 @@ public class DapAvatarController {
                                      @RequestParam(required = false) Boolean fav,
                                      @RequestParam(required = false) String q) {
         if ("public".equals(scope)) {
-            return ApiResponse.of(catalog.publicAvatars());
+            // 数字人广场 = 内置 10 个静态样板 + 运营上传的 DB 公开数字人（合并）
+            List<Map<String, Object>> merged = new java.util.ArrayList<>(catalog.publicAvatars());
+            merged.addAll(publicAvatars.listPublicWire());
+            return ApiResponse.of(merged);
         }
         return ApiResponse.of(avatarService.list(uid(principal), path, status, fav, q));
     }
@@ -91,7 +97,13 @@ public class DapAvatarController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<AvatarDto> get(Principal principal, @PathVariable String id) {
+    public ApiResponse<?> get(Principal principal, @PathVariable String id) {
+        // 数字人广场公开形象（PA-*）只读，来自目录 / 运营 DB 而非用户库 —— 支持详情永久链接 / 刷新冷还原。
+        if (id != null && id.startsWith("PA-")) {
+            Map<String, Object> pub = catalog.publicAvatar(id);
+            if (pub == null) pub = publicAvatars.findWire(id);
+            if (pub != null) return ApiResponse.of(pub);
+        }
         return ApiResponse.of(avatarService.get(uid(principal), id));
     }
 
@@ -143,6 +155,12 @@ public class DapAvatarController {
     @PostMapping("/{id}/versions/{v}/fork")
     public ApiResponse<AvatarDto> forkVersion(Principal principal, @PathVariable String id, @PathVariable int v) {
         return ApiResponse.of(avatarService.forkVersion(uid(principal), id, v));
+    }
+
+    /** 数字人广场「另存为我的数字人」：复制只读公开数字人（PA-*）为当前用户可编辑的数字人。 */
+    @PostMapping("/{id}/save-as")
+    public ApiResponse<AvatarDto> saveAs(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(avatarService.saveAsFromPublic(uid(principal), id));
     }
 
     @GetMapping("/{id}/looks")

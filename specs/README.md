@@ -44,9 +44,9 @@ grep -E "^  /" specs/openapi.yaml | awk '{print $1}' | sort
 2. **如有非平凡业务约束**（计算公式 / 状态机 / 跨字段校验），同时改 BUSINESS_RULES.md
 3. **跑 CI 守门**：
    ```bash
-   cd apps/web && npm run check:api-contract
+   pnpm check:api-contract
    ```
-   - 实现：[`apps/web/scripts/check-api-contract.mjs`](../apps/web/scripts/check-api-contract.mjs)
+   - 实现：[`scripts/check-api-contract.mjs`](../scripts/check-api-contract.mjs)
    - 规则：每个前端 `apiFetch("/...")` URL 必须在 openapi.yaml 中找到对应 path
    - 失败信号：`✗ apiFetch URL <X> has no matching path in openapi.yaml`
 

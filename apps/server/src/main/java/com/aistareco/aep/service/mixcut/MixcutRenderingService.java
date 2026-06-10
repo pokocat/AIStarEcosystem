@@ -1156,20 +1156,25 @@ public class MixcutRenderingService {
         //     因为老任务的快照里没有 scenes_snapshot，黑底会让所有变体看起来都一样。
         File[] perSegSrc = new File[segCount];
         String[] perSegMatch = new String[segCount]; // 诊断：user_slot / black_canvas / legacy_roundrobin
+        // v0.58+: 命中主视频 slot 时一并带出该 slot 的绝对 time_range（"本段主视频起止"语义）。
+        // 非 null → 下方按显式 in/out 定点裁切（所见即所得），不再走随机 offset。
+        double[][] perSegTimeRange = new double[segCount][];
         if (useSceneSchedule) {
             for (int i = 0; i < segCount; i++) {
                 SceneSpec sc = ctx.scenes.get(i);
                 File matched = null;
+                double[] matchedWin = null;
                 for (String sid : sc.slotIds) {
                     SlotInfo info = ctx.slotMap.get(sid);
                     if (info != null && VIDEO_LAYERS.contains(info.layerType)) {
                         File f = videoBySlotId == null ? null : videoBySlotId.get(sid);
-                        if (f != null) { matched = f; break; }
+                        if (f != null) { matched = f; matchedWin = info.timeRange; break; }
                     }
                 }
                 if (matched != null) {
                     perSegSrc[i] = matched;
                     perSegMatch[i] = "user_slot";
+                    perSegTimeRange[i] = matchedWin;
                 } else {
                     // null = 哨兵，下方 args 装配阶段会插入 lavfi color=black 合成输入
                     perSegSrc[i] = null;
@@ -1198,6 +1203,7 @@ public class MixcutRenderingService {
             File src = perSegSrc[i];
             double segDur = segDurations[i];
             double offset = 0;
+            String seekMode = "synthetic_black";
             boolean srcHasAudio;
             if (src == null) {
                 // 黑底合成输入：lavfi color。不带 -ss（合成源无时间轴）；
@@ -1207,8 +1213,21 @@ public class MixcutRenderingService {
                 args.add("-i"); args.add("color=c=black:s=" + W + "x" + H + ":r=30");
                 srcHasAudio = false;
             } else {
-                double maxStart = Math.max(0, ffmpeg.probeDurationSec(src) - segDur - 0.5);
-                offset = maxStart > 0 ? rnd.nextDouble() * maxStart : 0;
+                double srcDur = ffmpeg.probeDurationSec(src);
+                // v0.58+: 模板显式设了"本段主视频起止"（slot.time_range）→ 严格定点裁切（所见即所得）。
+                // 否则才走随机 offset 扰动。历史 bug：随机 offset 用固定种子 rnd=new Random(jobId.hashCode())，
+                // 是可复现的伪随机，会让主视频"永远"从同一个错误点开始，无视用户设的 in/out。
+                double[] win = useSceneSchedule ? perSegTimeRange[i] : null;
+                if (win != null) {
+                    // win 是整片绝对窗；减本段输出起点 = 源内 in-point（场景相对，已含 sceneScheduleScale）。
+                    double inPoint = win[0] * sceneScheduleScale - segStart[i];
+                    offset = Math.max(0.0, Math.min(inPoint, Math.max(0.0, srcDur - segDur)));
+                    seekMode = "slot_time_range";
+                } else {
+                    double maxStart = Math.max(0, srcDur - segDur - 0.5);
+                    offset = maxStart > 0 ? rnd.nextDouble() * maxStart : 0;
+                    seekMode = "random";
+                }
                 args.add("-ss"); args.add(format(offset));
                 args.add("-t"); args.add(format(segDur));
                 args.add("-i"); args.add(src.getAbsolutePath());
@@ -1218,6 +1237,7 @@ public class MixcutRenderingService {
             ObjectNode seg = segDetail.objectNode();
             seg.put("src", src == null ? "(black-canvas)" : src.getName());
             seg.put("start", round2(offset));
+            seg.put("seek_mode", seekMode);
             seg.put("duration", round2(segDur));
             seg.put("has_audio", srcHasAudio);
             seg.put("video_match", perSegMatch[i]);

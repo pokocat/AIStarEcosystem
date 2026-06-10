@@ -64,6 +64,9 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
+                        // 数字人广场 · 运营内嵌后台（web-aiavatar）：/api/v1/admin/** 需运营 / 超管。
+                        // 顺序敏感：必须排在通用 /api/v1/** 之前，否则被宽松规则吃掉。
+                        .requestMatchers("/api/v1/admin/**").hasAnyRole("SUPER_ADMIN", "OPERATOR")
                         // 数字人资产平台（web-aiavatar，v0.51 dap 领域）：/api/v1/** 全部需登录。
                         .requestMatchers("/api/v1/**").authenticated()
                         // 素材运营（脚本 / 视频 / 爆款雷达）—— 任意登录用户可读写共享库

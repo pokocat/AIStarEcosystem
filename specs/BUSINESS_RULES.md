@@ -472,7 +472,7 @@ specs/openapi.yaml                   ← 后端接口契约（99 个 path、200+
 specs/BUSINESS_RULES.md              ← 本文件：openapi 表达不了的业务约束
 apps/server/.../*Dto.java            ← Java 镜像，字段名必须与 TS interface 完全相同
 apps/server/.../*Controller.java     ← 最终路由实现（44 个 controller）
-apps/web/scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.yaml paths）
+scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.yaml paths）
 ```
 
 > CLAUDE.md 第一条硬规则：「Frontend types are the single source of truth」。

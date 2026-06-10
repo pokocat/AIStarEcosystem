@@ -81,7 +81,7 @@ DataInitializer 默认 seed 两个账号：
 
 - Types：`apps/admin/src/types/*` 与 `apps/web/src/types/*` **逐字段一致**（admin-only 扩展用 `Admin*` 命名）
 - Server DTO：字段名严格匹配 TS interface
-- Endpoint 全集：`specs/openapi.yaml`，`(cd apps/web && npm run check:api-contract)` 守门
+- Endpoint 全集：`specs/openapi.yaml`，`pnpm check:api-contract` 守门
 
 ## 版本日志
 

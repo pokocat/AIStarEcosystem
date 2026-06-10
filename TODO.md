@@ -189,7 +189,7 @@
 ### apps/web-drama 专项（D-*）
 
 - [ ] **D-1 真后端 CRUD**：`apps/server` 落地 Drama / Script / ScriptVersion / DistributionJob / Transaction 实体 + REST。DTO field 名严格 mirror `packages/types/src/script.ts` + `publish-job.ts`（CLAUDE.md 硬规则 1）。
-- [ ] **D-2 openapi 同步**：`specs/openapi.yaml` 加 drama / script / distribution / finance paths，跑 `(cd apps/web && npm run check:api-contract)` 验证。
+- [ ] **D-2 openapi 同步**：`specs/openapi.yaml` 加 drama / script / distribution / finance paths，跑 `pnpm check:api-contract` 验证。
 - [ ] **D-3 inline style 渐进迁移**：约 573 处 `style={{}}`（三工程最多）。切入口"自建 Dialog → `@ai-star-eco/ui/ui/dialog`"，再批量 ROI 替换 `premium/` 系列。
 - [ ] **D-4 发布任务状态机**：`createPublishJob` mock 用 `setTimeout` 推进 queued → uploading → live。真后端落地后换 SSE 或 polling endpoint。
 - [ ] **D-5 admin 镜像**：`apps/admin` 加 drama 管理视图。

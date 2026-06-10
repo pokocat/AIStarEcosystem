@@ -817,7 +817,7 @@ GET /template-scripts/{id}（仅 published）
 
 **契约门**
 
-- `apps/web/scripts/check-api-contract.mjs`：OK（apps/web 调用全部命中 openapi）
+- `scripts/check-api-contract.mjs`：OK（四个活跃子应用 + api-client 调用全部命中 openapi；v0.57 起不扫 apps/web）
 - 16 个小程序 apiFetch URL 全部在 openapi.yaml 找到对应 path
 - `apps/server`：`mvn compile` BUILD SUCCESS（300 source files）
 
