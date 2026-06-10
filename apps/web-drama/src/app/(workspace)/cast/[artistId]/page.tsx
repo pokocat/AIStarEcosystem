@@ -297,7 +297,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
                 {a.bio}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {a.domains.map((d) => (
+                {(a.domains ?? []).map((d) => (
                   <Chip key={d} tone="neutral">
                     {d}
                   </Chip>

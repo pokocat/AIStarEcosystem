@@ -83,7 +83,10 @@ public record DigitalIpDto(
                         ip.getStatFans(), ip.getStatRevenueCredits(), ip.getStatMonthlyRevenueCredits(),
                         ip.getStatPopularity()
                 ),
-                ip.getBio(), ip.getDomains() == null ? List.of() : ip.getDomains(),
+                // bio 兜底空串：TS Artist.bio 必填，老行（v0.60 前引入/未填简介）可能为 null，
+                // 裸 null 出 wire 会让 drama cast 页 a.bio.length 崩溃
+                ip.getBio() == null ? "" : ip.getBio(),
+                ip.getDomains() == null ? List.of() : ip.getDomains(),
                 ip.getStatEndorsements(), ip.getStatCommercialValueCredits(),
                 ip.getStudioId(), studioName, ip.getOwnerUserId(),
                 ip.getIncubationParams(),

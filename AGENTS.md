@@ -309,7 +309,10 @@ duration: 7820         → formatDuration       → "2h 10min"
 6. **现有「local-only」字段必须分阶段迁移到 OSS**（按 §4.7.4 key-only 规则）：
    - `MixcutAsset.fileUrl`（用户上传素材，当前 `/static/mixcut-assets/...` 本地）
    - `MaterialVideoJob.videoUrl`（素材运营生成视频）
-   - `AiAvatarAsset` 资产 URL（v0.45+）
+   - ~~AiAvatar 数字人资产~~ ✅ 已合规（2026-06-10 审计：dap 域全部走 `FileStorageService`
+     —— DB 存 key、`cdn.upload()` 推 CDN、出 wire 经 `storage.signedUrl()` 签名；
+     无任何绕过 FileStorageService 的直接文件写入。仓库无 `AiAvatarAsset` 实体，
+     真实实体为 `DapAvatar` / `DapLook` / `DapDerivative` 等 `dap_*` 表）
    - `ForgeResult` 视频 URL
 
    迁移姿势：业务 service 在 `upload(...)` / `save(...)` 时调 `cdnUploader.upload(...)`，

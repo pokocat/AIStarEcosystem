@@ -2667,5 +2667,21 @@ openapi backfill /admin/users 全组路径 + suspend/reactivate。
 - music mock artists API 会话内 store 化（引入后列表可见、PATCH 派生展示图）；
   drama mock import/patch 同步派生 `dapDisplayImageUrl`
 
+**v0.60 补丁 2（同日）**：
+
+- drama cast 页崩溃修复（「演员阵容加载失败 · reading 'length'」）：根因是
+  `DigitalIpDto.from` 把老行的 `bio=null` 裸出 wire（TS `Artist.bio` 必填）→
+  cast 卡片 `a.bio.length` 崩。DTO 层 bio 兜底空串（覆盖 v0.60 前的存量行，
+  不止 import 路径）；前端 cast 列表 / 详情页对 `bio` / `domains` 加 `?? ""` /
+  `?? []` 防御
+- Spring Security 401/403 JSON 壳升级：内联 lambda 抽成
+  `SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler` 两个 `@Component`
+  （ObjectMapper 序列化 + body 带 MDC `traceId`，与 `GlobalExceptionHandler`
+  同壳）；TODO.md 2026-04-21 块对应项关闭
+- AiAvatar 资产存储 OSS 合规审计：dap 域全部经 `FileStorageService`
+  （DB 存 key / `cdn.upload()` / 出 wire `storage.signedUrl()` 签名），
+  无绕过写入点；AGENTS.md §4.7.6 陈旧的「`AiAvatarAsset` 待迁移」条目移除
+  （仓库无此实体，真实实体 `dap_*` 表自 v0.51 起即合规）
+
 **Phase 2 backlog**（见 TODO.md）：drama 成片以角色数字人形象作 i2i 身份输入、
 voiceName 音色联动、aiavatar 反向「应用于」视图、drama 角色实体化（多角色各绑数字人）。

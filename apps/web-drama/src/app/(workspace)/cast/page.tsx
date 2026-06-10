@@ -100,7 +100,7 @@ function CastListInner() {
       if (qualityFilter !== "all" && a.quality !== qualityFilter) return false;
       if (q) {
         const needle = q.toLowerCase();
-        if (!a.name.toLowerCase().includes(needle) && !a.bio.toLowerCase().includes(needle))
+        if (!a.name.toLowerCase().includes(needle) && !(a.bio ?? "").toLowerCase().includes(needle))
           return false;
       }
       return true;
@@ -378,7 +378,7 @@ function CastListInner() {
 
                 <div style={{ padding: "16px 18px", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ fontSize: 12, color: "var(--fg-1)", lineHeight: 1.5, minHeight: 36 }}>
-                    {a.bio.length > 56 ? `${a.bio.slice(0, 56)}…` : a.bio}
+                    {(a.bio ?? "").length > 56 ? `${a.bio.slice(0, 56)}…` : a.bio}
                   </div>
 
                   <div
