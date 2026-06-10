@@ -15,7 +15,7 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const isLoginPage = pathname === "/login" || pathname === "/admin/login";
   const badges = useSidebarBadges(!isLoginPage);
-  const unread = Object.values(badges).reduce<number>((s, v) => s + (v ?? 0), 0);
+  const notificationUnread = badges.notif_unread ?? 0;
 
   React.useEffect(() => {
     if (!mobileOpen) return;
@@ -42,7 +42,7 @@ export function AppShell({ children }: AppShellProps) {
         onMobileClose={() => setMobileOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar unread={unread} onMenuClick={() => setMobileOpen(true)} />
+        <Topbar unread={notificationUnread} onMenuClick={() => setMobileOpen(true)} />
         <main id="admin-main" className="min-w-0 flex-1 px-4 py-5 sm:px-6 md:px-7 lg:px-8 2xl:px-10">
           {children}
         </main>
