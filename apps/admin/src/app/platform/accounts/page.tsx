@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ActionDialog } from "@/components/ActionDialog";
-import { listUsers } from "@/api/users";
+import { useConfirm, useToast } from "@/components/feedback";
+import { listUsers, suspendUser, reactivateUser } from "@/api/users";
 import { listStudios } from "@/api/studios";
 import { ACCOUNT_STATUS, STUDIO_KIND } from "@/constants/status";
 import type { AepUser, AccountKind, AccountStatus } from "@/types/account";
@@ -28,7 +28,9 @@ export default function AccountsPage() {
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<"all" | AccountKind>("all");
   const [status, setStatus] = React.useState<"all" | AccountStatus>("all");
-  const [target, setTarget] = React.useState<{ user: AepUser; action: "suspend" | "reactivate" } | null>(null);
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -50,6 +52,59 @@ export default function AccountsPage() {
   React.useEffect(() => {
     void reload();
   }, [reload]);
+
+  async function onSuspend(u: AepUser) {
+    const res = await confirm({
+      title: `停用账号：${u.displayName}`,
+      tone: "danger",
+      confirmLabel: "停用",
+      requireReason: true,
+      description:
+        "停用后该账号的密码 / 短信登录将被拒绝（已签发的登录态最长保留至 token 过期）。原因将写入审计日志。",
+      affected: (
+        <div className="text-sm">
+          {u.displayName} <span className="text-xs text-muted-foreground">@{u.username}</span>
+        </div>
+      ),
+    });
+    if (!res.ok) return;
+    setBusyId(u.id);
+    try {
+      await suspendUser(u.id, res.reason);
+      await reload();
+      toast.success({ title: "已停用", description: `@${u.username} 已无法登录` });
+    } catch (e) {
+      toast.danger({ title: "停用失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onReactivate(u: AepUser) {
+    const res = await confirm({
+      title: `恢复账号：${u.displayName}`,
+      tone: "success",
+      confirmLabel: "恢复",
+      requireReason: false,
+      description: "恢复后该账号即可正常登录。操作将写入审计日志。",
+      affected: (
+        <div className="text-sm">
+          {u.displayName} <span className="text-xs text-muted-foreground">@{u.username}</span>
+        </div>
+      ),
+    });
+    if (!res.ok) return;
+    setBusyId(u.id);
+    try {
+      await reactivateUser(u.id, res.reason || undefined);
+      await reload();
+      toast.success({ title: "已恢复", description: `@${u.username} 可正常登录` });
+    } catch (e) {
+      toast.danger({ title: "恢复失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const studioByOwner = React.useMemo(
     () => new Map(studios.map((s) => [s.ownerUserId, s])),
@@ -188,15 +243,15 @@ export default function AccountsPage() {
                     <TableCell><StatusBadge meta={ACCOUNT_STATUS[u.status]} /></TableCell>
                     <TableCell className="text-right">
                       {u.status === "active" ? (
-                        <Button size="sm" variant="destructive" onClick={() => setTarget({ user: u, action: "suspend" })}>
-                          停用
+                        <Button size="sm" variant="destructive" disabled={busyId === u.id} onClick={() => void onSuspend(u)}>
+                          {busyId === u.id ? "处理中…" : "停用"}
                         </Button>
                       ) : u.status === "suspended" ? (
-                        <Button size="sm" variant="success" onClick={() => setTarget({ user: u, action: "reactivate" })}>
-                          恢复
+                        <Button size="sm" variant="success" disabled={busyId === u.id} onClick={() => void onReactivate(u)}>
+                          {busyId === u.id ? "处理中…" : "恢复"}
                         </Button>
                       ) : (
-                        <Button size="sm" variant="ghost">查看</Button>
+                        <span className="text-xs text-muted-foreground">已注销</span>
                       )}
                     </TableCell>
                   </TableRow>
@@ -212,18 +267,6 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      {target && (
-        <ActionDialog
-          open={!!target}
-          onOpenChange={(open) => !open && setTarget(null)}
-          title={target.action === "suspend" ? `停用账号：${target.user.displayName}` : `恢复账号：${target.user.displayName}`}
-          description={`@${target.user.username}`}
-          tone={target.action === "suspend" ? "danger" : "success"}
-          confirmLabel={target.action === "suspend" ? "停用" : "恢复"}
-          requireReason
-          reasonPlaceholder="操作原因（写入审计日志）"
-        />
-      )}
     </div>
   );
 }

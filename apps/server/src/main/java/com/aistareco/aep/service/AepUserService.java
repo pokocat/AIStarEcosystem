@@ -85,6 +85,35 @@ public class AepUserService {
         userRepo.save(user);
     }
 
+    /**
+     * v0.59：停用账号（仅 ACTIVE → SUSPENDED）。停用后密码 / 短信 / dev 登录均被拒绝
+     * （ACCOUNT_DISABLED）；已签发的 JWT 在到期前仍有效（无状态架构的已知边界）。
+     */
+    public AepUserDto suspend(String id) {
+        AepUser user = userRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + id));
+        if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "仅启用中的账号可停用，当前状态：" + user.getStatus());
+        }
+        user.setStatus(AepUser.UserStatus.SUSPENDED);
+        user.setUpdatedAt(Instant.now());
+        return AepUserDto.from(userRepo.save(user));
+    }
+
+    /** v0.59：恢复账号（仅 SUSPENDED → ACTIVE）。注销（DELETED）账号不可恢复。 */
+    public AepUserDto reactivate(String id) {
+        AepUser user = userRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + id));
+        if (user.getStatus() != AepUser.UserStatus.SUSPENDED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "仅停用中的账号可恢复，当前状态：" + user.getStatus());
+        }
+        user.setStatus(AepUser.UserStatus.ACTIVE);
+        user.setUpdatedAt(Instant.now());
+        return AepUserDto.from(userRepo.save(user));
+    }
+
     private String getString(Map<String, Object> body, String key) {
         Object val = body.get(key);
         return val != null ? val.toString() : null;

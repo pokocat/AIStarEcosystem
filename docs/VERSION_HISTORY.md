@@ -2557,3 +2557,46 @@ specs  : openapi.yaml —— Wallet/LedgerEntry/Transaction schema 补字段；b
   (b) admin 侧边栏未读红点 badge；(c) 结算中心服务端分页（仍取前 200 条窗口）。
 
 ---
+
+### v0.59（2026-06-10）— 账号停用 / 恢复完整链路 + 消息中心未读角标 + 砍掉重复的积分包页
+
+v0.58 全面 review 的三项落地（同日第二批）：
+
+**A. /platform/accounts 账号停用 / 恢复真链路**。此前页面的「停用 / 恢复」按钮弹 ActionDialog
+但没有 `onConfirm`（纯装饰），且前后端整条链路缺失。本版补全：
+
+```
+server : AepUserService +suspend()/reactivate()（状态机：仅 ACTIVE→SUSPENDED / SUSPENDED→ACTIVE，
+         否则 409；DELETED 不可恢复）
+       : AdminUserController +POST /admin/users/{id}/suspend（reason 必填，400 SUSPEND_REASON_REQUIRED）
+         +POST /admin/users/{id}/reactivate（reason 选填）
+       : AuditService +recordAdminAction()（运营管理操作审计通用入口：actor 从 SecurityContext、
+         IP/UA/appCode 从 request，永不抛）+ Actions.ADMIN_USER_SUSPEND / ADMIN_USER_REACTIVATE
+       : SmsAuthController /verify 补停用闸（此前短信登录漏查 status —— 停用账号仍可登录；
+         现与密码登录一致返回 403 ACCOUNT_DISABLED）
+admin  : api/users.ts +suspendUser/reactivateUser；accounts 页改 useConfirm + toast 模式
+         （对齐 v0.56 充值订单页惯例），busy 态防重复点击；已注销账号显示「已注销」
+         （删掉无 onClick 的「查看」死按钮）
+```
+
+**已知边界**：JWT 无状态 —— 已签发 token 在到期前（默认 7 天）仍可调 /api/me/**；
+登录闸（密码 / 短信 / dev-login）即时生效。per-request 状态校验需要每请求查库，暂不做。
+
+**B. 消息中心侧栏未读角标**。nav「消息中心」+`badgeKey: notif_unread`；`useSidebarBadges`
+接 `listNotifications()` 数 `viewedAt == null`（与页面同一份 API + 同一过滤条件，遵循
+badge-页面一致性原则）。
+
+**C. 砍掉 /base/credit-packs（积分包）页**。与「财务 · 充值套餐」（真 CRUD）功能重复，
+且自身「新建 / 编辑 / 归档」全是无后端死按钮。删除页面 + nav 项 + 独占的
+api/settings.ts、mocks/settings.ts、types/settings.ts（git grep 确认无其他消费方）；
+「基础数据」组因此整组隐藏（其余子项本就 enabled=false）。server 侧
+SettingsController / AdminSettingsController 保留（遗留 apps/web 仍在调）。
+
+**端到端已验证**（dev H2）：无原因停用 400 → 带原因停用 → dev-login 403 → 重复停用 409 →
+恢复 → 登录恢复 200；审计日志两行落库（actor=admin、resource=aep_user、detail 含原因、IP）。
+openapi backfill /admin/users 全组路径 + suspend/reactivate。
+
+**未做（distribution 两页维持现状）**：分发渠道 / 发行队列的写操作（批准 / 驳回 / 断开 /
+立即同步）仍是无后端假按钮，按决策暂不动，后续可能整页砍掉。
+
+---

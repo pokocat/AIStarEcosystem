@@ -170,7 +170,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/base/genres",       label: "曲风 / 领域",       icon: Tags,           enabled: false, description: "基础分类维护（数字人产品线）" },
       { href: "/base/wardrobe",     label: "造型库",            icon: Shirt,          enabled: false, description: "服装与道具（数字人产品线）" },
       { href: "/base/pose",         label: "动作与表情",        icon: PersonStanding, enabled: false, description: "动作 / 表情 / 手势库（数字人产品线）" },
-      { href: "/base/credit-packs", label: "积分包",            icon: Coins,          description: "积分售卖规格" },
+      // v0.59：/base/credit-packs（积分包）已删除 —— 与「财务 · 充值套餐」功能重复且无写后端
       { href: "/base/presets",      label: "孵化 / 锻造炉 预设", icon: Sparkles,       enabled: false, description: "数字人形象工坊 预设列表" },
     ],
   },
@@ -186,7 +186,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "消息与日志",
     items: [
-      { href: "/notifications", label: "消息中心", icon: Bell,    description: "运营推送与告警" },
+      { href: "/notifications", label: "消息中心", icon: Bell,    badgeKey: "notif_unread", description: "运营收件箱：充值订单 / 新用户激活等业务事件" },
       { href: "/audit",         label: "审计日志", icon: History, description: "所有人工介入记录" },
       {
         // v0.47：账号登录注册日志 —— 含 IP / UA / 错因 / 失败枚举排查

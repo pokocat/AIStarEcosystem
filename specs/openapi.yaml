@@ -5603,6 +5603,48 @@ paths:
   /admin/notifications/read-all:
     post: { tags: [admin-notifications], operationId: adminMarkAllNotificationsRead, responses: { '200': { description: 'ok（{updated: n}）' } } }
 
+  # ── 用户账号管理（v0.59 backfill + 停用 / 恢复链路） ────────────────────────
+  /admin/users:
+    get:
+      tags: [admin-users]
+      operationId: adminListUsers
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+        - { name: status, in: query, schema: { type: string, enum: [active, suspended, deleted] } }
+        - { name: kind, in: query, schema: { type: string, enum: [personal, studio] } }
+      responses: { '200': { description: 'ok（PageEnvelope<AepUser>）' } }
+    post: { tags: [admin-users], operationId: adminCreateUser, responses: { '201': { description: created } } }
+  /admin/users/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [admin-users], operationId: adminGetUser,    responses: { '200': { description: ok } } }
+    put:    { tags: [admin-users], operationId: adminUpdateUser, responses: { '200': { description: ok } } }
+    patch:  { tags: [admin-users], operationId: adminPatchUser,  responses: { '200': { description: ok } } }
+    delete: { tags: [admin-users], operationId: adminDeleteUser, responses: { '204': { description: ok } } }
+  /admin/users/{id}/wallet:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [admin-users], operationId: adminGetUserWallet, responses: { '200': { description: ok } } }
+  /admin/users/{id}/credits/adjust:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-users], operationId: adminAdjustUserCredits, responses: { '201': { description: created } } }
+  /admin/users/{id}/suspend:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-users]
+      operationId: adminSuspendUser
+      description: |
+        v0.59：停用账号（仅 ACTIVE → SUSPENDED）。body { reason } 必填，写入审计日志
+        （action=admin.user.suspend）。停用后密码 / 短信 / dev 登录返回 403 ACCOUNT_DISABLED；
+        已签发 JWT 在到期前仍有效（无状态架构已知边界）。
+      responses: { '200': { description: ok }, '400': { description: REASON_REQUIRED }, '409': { description: 非 ACTIVE 状态 } }
+  /admin/users/{id}/reactivate:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-users]
+      operationId: adminReactivateUser
+      description: 'v0.59：恢复已停用账号（仅 SUSPENDED → ACTIVE）。body { reason } 选填，写入审计日志。'
+      responses: { '200': { description: ok }, '409': { description: 非 SUSPENDED 状态 } }
+
   # ── 模板脚本（v0.5 §3.2.7 新增） ──────────────────────────────────────
   /template-scripts/by-template/{templateId}:
     parameters: [{ name: templateId, in: path, required: true, schema: { type: string } }]

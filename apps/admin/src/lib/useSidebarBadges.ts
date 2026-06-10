@@ -16,6 +16,7 @@
 //   dist_reviewing     → /distribution/queue       status === "reviewing"
 //   txn_actionable     → /finance/ledger           status ∈ {pending, processing}
 //   event_upcoming     → /community/events         status === "upcoming"
+//   notif_unread       → /notifications            viewedAt == null（v0.59 运营收件箱未读）
 // ─────────────────────────────────────────────────────────────────────────────
 
 "use client";
@@ -30,6 +31,7 @@ import { listPendingCopyright, listDistributionQueue } from "@/api/coach";
 import { listPlatforms } from "@/api/distribution";
 import { listTransactions } from "@/api/finance";
 import { listEvents } from "@/api/community";
+import { listNotifications } from "@/api/notifications";
 
 export function useSidebarBadges(enabled = true): SidebarBadges {
   const [badges, setBadges] = React.useState<SidebarBadges>({});
@@ -48,7 +50,7 @@ export function useSidebarBadges(enabled = true): SidebarBadges {
 
       const [
         users, batches, artists, songs, concerts,
-        copyright, platforms, queue, txns, events,
+        copyright, platforms, queue, txns, events, notifications,
       ] = await Promise.all([
         safe(listUsers(0, 500)),
         safe(listBatches(0, 200)),
@@ -60,6 +62,7 @@ export function useSidebarBadges(enabled = true): SidebarBadges {
         safe(listDistributionQueue()),
         safe(listTransactions()),
         safe(listEvents()),
+        safe(listNotifications()),
       ]);
 
       if (!alive) return;
@@ -77,6 +80,7 @@ export function useSidebarBadges(enabled = true): SidebarBadges {
         dist_reviewing: queue.filter((d) => d.status === "reviewing").length,
         txn_actionable: txns.filter((t) => t.status === "pending" || t.status === "processing").length,
         event_upcoming: events.filter((e) => e.status === "upcoming").length,
+        notif_unread: notifications.filter((n) => n.viewedAt == null).length,
       });
     })();
 

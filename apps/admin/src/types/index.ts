@@ -19,5 +19,4 @@ export * from "./coach";
 export * from "./wardrobe";
 export * from "./pose";
 export * from "./notification";
-export * from "./settings";
 export * from "./navigation";

@@ -34,6 +34,10 @@ public class AuditService {
         public static final String DEV_LOGIN = "auth.dev_login";
         public static final String LICENSE_ACTIVATE = "auth.license.activate";
 
+        /** v0.59：运营对用户账号的状态操作（admin /platform/accounts 停用 / 恢复）。 */
+        public static final String ADMIN_USER_SUSPEND = "admin.user.suspend";
+        public static final String ADMIN_USER_REACTIVATE = "admin.user.reactivate";
+
         /** 所有「登录注册」类动作 —— admin /platform/auth-logs 页默认筛选项。 */
         public static final List<String> AUTH_ALL = List.of(
                 ADMIN_LOGIN, OPERATOR_LOGIN, ADMIN_CHANGE_PASSWORD,
@@ -154,6 +158,37 @@ public class AuditService {
     public void recordAuthFailure(String action, String username, String errorCode,
                                   String detail, HttpServletRequest request) {
         recordAuth(action, AuditLog.AuditResult.FAILURE, null, username, errorCode, detail, request);
+    }
+
+    /**
+     * v0.59：运营后台对业务资源的管理操作审计（如停用 / 恢复用户账号）。
+     * 操作者（userId/username）从 SecurityContext 取（admin JWT）；IP / UA / appCode 从 request 抽。
+     * 与 {@link #recordAuth} 同款「永不抛」语义 —— 审计是旁路，写库失败不影响业务返回。
+     */
+    public void recordAdminAction(String action, String resourceType, String resourceId,
+                                  String detail, HttpServletRequest request) {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String actorId = auth != null && auth.isAuthenticated() ? blankToNull(auth.getName()) : null;
+            AuditLog entry = AuditLog.builder()
+                    .id(UUID.randomUUID().toString())
+                    .userId(actorId)
+                    .username(truncate(firstNonBlank(currentUsername(), actorId), 128))
+                    .tenantId(null)
+                    .action(action)
+                    .resourceType(resourceType)
+                    .resourceId(truncate(resourceId, 128))
+                    .ipAddress(clientIp(request))
+                    .userAgent(request == null ? null : truncate(request.getHeader("User-Agent"), 512))
+                    .appCode(appCode(request))
+                    .result(AuditLog.AuditResult.SUCCESS)
+                    .detail(truncate(detail, 4000))
+                    .createdAt(Instant.now())
+                    .build();
+            auditRepo.save(entry);
+        } catch (Exception persistEx) {
+            log.error("写 AuditLog 自身失败 action={} resource={}:{} → 忽略", action, resourceType, resourceId, persistEx);
+        }
     }
 
     /**
