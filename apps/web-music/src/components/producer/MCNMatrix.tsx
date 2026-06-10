@@ -25,11 +25,20 @@ import type { ForgeResult, ForgeMode, AppearanceStatus } from "@ai-star-eco/type
 import { DEMO_FORGE_VIDEO_POOL } from "@/lib/forge-video";
 import { ArtistAvatar } from "./_shared/ArtistAvatar";
 import { ImportAvatarDialog } from "./ImportAvatarDialog";
+import { DapAvatarGallery } from "./_shared/DapAvatarGallery";
 
 /* ======== Artist Detail Dialog ======== */
 // 结构：左列合并身份（头像 + 名字 + 稀有度 / 状态 / 等级 + 简介 + 领域 / 日期），
 // 右列展示艺人形象（AI 形象画廊：主视频 + 缩略图矩阵）。
 // 其余深度数据（才艺 / 商业 / 工坊）以横向 Tab 呈现在底部，不抢占主区视觉。
+/** ISO 时间 → "2026-06-10"（无效 / 缺失显示 "—"） */
+function fmtDate(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 const ArtistDetailDialog = ({ artist, lang, onClose, onUpdated }: { artist: Artist; lang: Lang; onClose: () => void; onUpdated?: (a: Artist) => void }) => {
   const zh = lang === 'zh';
   const [tab, setTab] = useState<'talents' | 'stats' | 'works' | 'commercial'>('talents');
@@ -151,20 +160,24 @@ const ArtistDetailDialog = ({ artist, lang, onClose, onUpdated }: { artist: Arti
                   <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
                     <Calendar className="w-3 h-3" />{zh ? '创建' : 'Created'}
                   </div>
-                  <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.createdAt}</div>
+                  <div className="text-xs font-semibold text-gray-200 tabular-nums">{fmtDate(artist.createdAt)}</div>
                 </div>
                 <div className="bg-black/20 rounded-lg p-3 border border-white/5">
                   <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" />{zh ? '最后活跃' : 'Last Active'}
                   </div>
-                  <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.lastActive}</div>
+                  <div className="text-xs font-semibold text-gray-200 tabular-nums">{fmtDate(artist.lastActive)}</div>
                 </div>
               </div>
             </div>
 
             {/* ── 右列：AI 形象画廊 ── */}
             <div className="lg:col-span-3">
-              <ArtistAppearanceShowcase artist={artist} />
+              {artist.dapAvatarId ? (
+                <DapAvatarGallery artist={artist} onUpdated={onUpdated} />
+              ) : (
+                <ArtistAppearanceShowcase artist={artist} />
+              )}
             </div>
           </div>
 
@@ -780,6 +793,7 @@ export const MCNMatrix = ({ lang }: { lang: Lang }) => {
         open={showImport}
         onClose={() => setShowImport(false)}
         defaultType="singer"
+        importedAvatarIds={artists.filter((a) => a.type === "singer" && a.dapAvatarId).map((a) => String(a.dapAvatarId))}
         onImported={(a) => setArtists((prev) => [a, ...prev])}
       />
     </div>

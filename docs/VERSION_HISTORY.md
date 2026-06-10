@@ -2652,5 +2652,20 @@ openapi backfill /admin/users 全组路径 + suspend/reactivate。
   运营侧解决（发秘钥默认带 aiavatar 平台），不动门禁代码
 - 遗留孵化艺人（无 dapAvatarId）继续可用，按原 avatarUrl 展示，不迁移
 
+**v0.60 补丁（同日）**：
+
+- 重复引入防护：同 (owner, dapAvatarId, kind) 唯一 → 409 `DAP_AVATAR_ALREADY_IMPORTED`
+  （`DigitalIpRepository.findFirstByOwnerUserIdAndDapAvatarIdAndKind`）；两端 picker
+  对已引入数字人「已引入」置灰；引入 bio 兜底空串（修复 drama `deriveRole` 的
+  `bio.split` 崩溃）
+- 展示图指针补全 `variant:<idx>`（形象变体）/ `shot:<name>`（三机位 front-half/right/left）；
+  AvatarDto 出 wire `variantImages` / `shotImages`；picker 改两栏大图预览 + 分组资产墙
+- music 艺人视图改造：引入艺人右列渲染新 `DapAvatarGallery`（实时引用 AiAvatar 资产，
+  分组画廊 + 「设为首要展示图」+ 深链渲染新形象）；孵化参数卡 → 「数字人引用」卡；
+  快捷入口「AI 形象锻造」→ AiAvatar 外链；日期格式化；sidebar 下线「动作姿态」
+  （/poses → RetiredFeatureNotice）
+- music mock artists API 会话内 store 化（引入后列表可见、PATCH 派生展示图）；
+  drama mock import/patch 同步派生 `dapDisplayImageUrl`
+
 **Phase 2 backlog**（见 TODO.md）：drama 成片以角色数字人形象作 i2i 身份输入、
 voiceName 音色联动、aiavatar 反向「应用于」视图、drama 角色实体化（多角色各绑数字人）。

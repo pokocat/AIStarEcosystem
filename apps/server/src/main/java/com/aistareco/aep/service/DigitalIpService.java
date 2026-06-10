@@ -6,6 +6,7 @@ import com.aistareco.aep.model.DigitalIp;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.DigitalIpRepository;
 import com.aistareco.aep.repository.StudioRepository;
+import com.aistareco.common.BusinessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -181,11 +183,19 @@ public class DigitalIpService {
      * - 数字人必须本人所有、有定妆照、不在回收站；
      * - 形象/展示名实时跟随数字人，{@code avatarUrl} 不落值；
      * - 不扣孵化积分（形象生成费用已在 AiAvatar 端结算）；
-     * - 同一数字人可被多次引入（music 引入为 singer、drama 引入为 actor，各自独立展示图）。
+     * - 同一数字人可跨 kind 多次引入（music 引入为 singer、drama 引入为 actor，各自独立展示图），
+     *   但同 (owner, dapAvatarId, kind) 仅允许一个艺人壳 —— 重复引入 409 DAP_AVATAR_ALREADY_IMPORTED。
      */
     @Transactional
     public DigitalIpDto importFromAvatar(Map<String, Object> body, String ownerUserId) {
         var avatar = dapRefResolver.requireUsable(ownerUserId, requireString(body, "dapAvatarId"));
+
+        var kind = parseEnum(body, "type", DigitalIp.DigitalIpKind.class, DigitalIp.DigitalIpKind.SINGER);
+        ipRepo.findFirstByOwnerUserIdAndDapAvatarIdAndKind(ownerUserId, avatar.getId(), kind)
+                .ifPresent(existing -> {
+                    throw new BusinessException(HttpStatus.CONFLICT, "DAP_AVATAR_ALREADY_IMPORTED",
+                            "该数字人已引入为艺人「" + existing.getName() + "」，请勿重复引入；如需调整可在该艺人详情里更换展示图");
+                });
 
         String displayRef = getString(body, "dapDisplayRef");
         if (displayRef == null || displayRef.isBlank()) {
@@ -206,13 +216,14 @@ public class DigitalIpService {
         DigitalIp ip = DigitalIp.builder()
                 .id(UUID.randomUUID().toString())
                 .name(name)
-                .kind(parseEnum(body, "type", DigitalIp.DigitalIpKind.class, DigitalIp.DigitalIpKind.SINGER))
+                .kind(kind)
                 .quality(parseEnum(body, "quality", DigitalIp.Quality.class, DigitalIp.Quality.COMMON))
                 .status(DigitalIp.DigitalIpStatus.ACTIVE) // 引入即就绪（区别于孵化 TRAINEE）
                 .level(getInt(body, "level", 1))
                 .exp(0)
                 .maxExp(100)
-                .bio(getString(body, "bio"))
+                // bio 兜底为空串：TS Artist.bio 是必填 string，下游有 bio.split 类派生逻辑
+                .bio(Objects.requireNonNullElse(getString(body, "bio"), ""))
                 .dapAvatarId(avatar.getId())
                 .dapDisplayRef(displayRef)
                 .studioId(studioId)

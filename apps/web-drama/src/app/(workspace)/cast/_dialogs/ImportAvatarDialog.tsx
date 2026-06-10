@@ -40,6 +40,8 @@ interface Props {
   onUpdated?: (a: Artist) => void;
   /** 引入时创建的艺人类型（drama 端默认 actor） */
   defaultType?: ArtistType;
+  /** 已引入的数字人 id 列表（同类型重复引入会被拦，网格里置灰标记） */
+  importedAvatarIds?: string[];
 }
 
 function errMsg(e: unknown): string {
@@ -54,8 +56,10 @@ export function ImportAvatarDialog({
   existingArtist,
   onUpdated,
   defaultType = "actor",
+  importedAvatarIds,
 }: Props) {
   const changeMode = !!existingArtist;
+  const importedSet = React.useMemo(() => new Set(importedAvatarIds ?? []), [importedAvatarIds]);
   const [step, setStep] = React.useState<"avatar" | "image">("avatar");
   const [avatars, setAvatars] = React.useState<DapAvatarLite[]>([]);
   const [avatarsLoading, setAvatarsLoading] = React.useState(false);
@@ -250,22 +254,42 @@ export function ImportAvatarDialog({
           )}
           {!avatarsLoading && usable.length > 0 && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-              {usable.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => { setSelected(a); setChosenRef(null); setStep("image"); }}
-                  style={{ ...tile, border: "1px solid var(--line-2)" }}
-                >
-                  <div style={{ aspectRatio: "3 / 4", overflow: "hidden" }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={a.imageUrl!} alt={a.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  </div>
-                  <div style={{ padding: "7px 9px" }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg-0)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</div>
-                    <div style={{ fontSize: 10, color: "var(--fg-3)" }}>{a.id}</div>
-                  </div>
-                </button>
-              ))}
+              {usable.map((a) => {
+                const imported = importedSet.has(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    disabled={imported}
+                    onClick={() => { setSelected(a); setChosenRef(null); setStep("image"); }}
+                    style={{
+                      ...tile,
+                      border: "1px solid var(--line-2)",
+                      opacity: imported ? 0.45 : 1,
+                      cursor: imported ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <div style={{ aspectRatio: "3 / 4", overflow: "hidden" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={a.imageUrl!} alt={a.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    </div>
+                    {imported && (
+                      <span
+                        style={{
+                          position: "absolute", top: 8, right: 8, padding: "2px 6px", borderRadius: 4,
+                          background: "rgba(0,0,0,0.7)", fontSize: 10, color: "var(--accent)",
+                          border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+                        }}
+                      >
+                        已引入
+                      </span>
+                    )}
+                    <div style={{ padding: "7px 9px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg-0)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</div>
+                      <div style={{ fontSize: 10, color: "var(--fg-3)" }}>{imported ? "已引入为演员" : a.id}</div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </>

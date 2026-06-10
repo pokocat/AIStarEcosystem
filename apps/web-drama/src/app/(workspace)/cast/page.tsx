@@ -434,6 +434,9 @@ function CastListInner() {
         open={showNew}
         onOpenChange={setShowNew}
         defaultType="actor"
+        importedAvatarIds={(artistsQ.data ?? [])
+          .filter((a) => a.type === "actor" && a.dapAvatarId)
+          .map((a) => String(a.dapAvatarId))}
         onImported={(a) => {
           invalidate("/me/artists");
           router.push(`/cast/${encodeURIComponent(a.id)}`);

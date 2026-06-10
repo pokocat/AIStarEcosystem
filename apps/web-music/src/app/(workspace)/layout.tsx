@@ -13,7 +13,7 @@ import {
   AudioLines, Heart, ChevronDown, Menu, X,
   Star, CheckCircle2, Film, Tv, Mic,
   Shirt, Building2, Bell, Coins, UserCircle,
-  Megaphone, PersonStanding,
+  Megaphone,
   Package, Factory,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -66,7 +66,6 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { id: "artists", icon: Users, label: "艺人管理" },
       { id: "wardrobe", icon: Shirt, label: "造型与道具" },
-      { id: "poses", icon: PersonStanding, label: "动作姿态" },
     ],
   },
   {

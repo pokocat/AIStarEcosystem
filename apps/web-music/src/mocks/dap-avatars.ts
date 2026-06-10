@@ -67,3 +67,24 @@ export const MOCK_DAP_DERIVS: DapDerivativeLite[] = [
     thumbUrl: null,
   },
 ];
+
+/** mock 版展示图解析：ref → 资产 URL，未命中回退定妆照（镜像 server DapAvatarRefResolver）。 */
+export function resolveMockDisplayImage(avatar: DapAvatarLite, ref: string | null): string | null {
+  if (ref) {
+    if (ref.startsWith("look:")) {
+      const l = MOCK_DAP_LOOKS.find((x) => x.id === ref.slice(5));
+      if (l?.imageUrl) return l.imageUrl;
+    } else if (ref.startsWith("deriv:")) {
+      const d = MOCK_DAP_DERIVS.find((x) => x.id === ref.slice(6));
+      const url = d?.fileUrl || d?.thumbUrl;
+      if (url) return url;
+    } else if (ref.startsWith("variant:")) {
+      const url = (avatar.variantImages ?? [])[Number(ref.slice(8))];
+      if (url) return url;
+    } else if (ref.startsWith("shot:")) {
+      const url = avatar.shotImages?.[ref.slice(5)];
+      if (url) return url;
+    }
+  }
+  return avatar.imageUrl ?? null;
+}

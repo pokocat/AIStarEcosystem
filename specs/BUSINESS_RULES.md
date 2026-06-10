@@ -476,8 +476,11 @@ POST /me/digital-ips/import-avatar
     deriv 仅允许图片类 kind（atlas/expr/scene/ward），否则 400 DAP_DISPLAY_REF_INVALID
   - 不扣孵化积分（incubation.cost 不适用——形象生成费用已在 AiAvatar 端结算）
   - 创建的 DigitalIp：status=ACTIVE（区别于孵化 TRAINEE）、avatarUrl 不落值、
+    bio 缺省空串（TS Artist.bio 必填 string，下游有 split 派生）、
     name 缺省取数字人名称；kind 由 body.type 决定（music 端 singer / drama 端 actor）
-  - 同一数字人可被多次引入（music / drama 各一个艺人壳，独立展示图）——“一人多栖”
+  - 同一数字人可跨 kind 多次引入（music singer / drama actor 各一个艺人壳，独立展示图）
+    ——“一人多栖”；但同 (owner, dapAvatarId, kind) 唯一，重复引入
+    409 DAP_AVATAR_ALREADY_IMPORTED（前端 picker 对已引入数字人置灰标记）
 
 展示图解析（DTO 出 wire，DapAvatarRefResolver）：
   - dapDisplayRef 命中资产 → 该资产 OSS key；未命中 / 为空 → 回退定妆照 imageKey

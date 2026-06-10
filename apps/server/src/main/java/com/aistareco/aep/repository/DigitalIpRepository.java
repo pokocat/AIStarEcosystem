@@ -8,6 +8,7 @@ import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface DigitalIpRepository extends JpaRepository<DigitalIp, String>,
@@ -24,4 +25,7 @@ public interface DigitalIpRepository extends JpaRepository<DigitalIp, String>,
     List<DigitalIp> findByStudioId(String studioId);
 
     long countByStatus(DigitalIp.DigitalIpStatus status);
+
+    Optional<DigitalIp> findFirstByOwnerUserIdAndDapAvatarIdAndKind(
+            String ownerUserId, String dapAvatarId, DigitalIp.DigitalIpKind kind);
 }

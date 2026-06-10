@@ -15,25 +15,15 @@ import { ApiError } from "@ai-star-eco/api-client";
 import * as ArtistsApi from "@/api/artists";
 import {
   AIAVATAR_URL,
-  IMAGE_DERIV_KINDS,
   dapAvatarDeepLink,
-  listDapDerivatives,
-  listDapLooks,
   listMyDapAvatars,
   type DapAvatarLite,
 } from "@/api/dap-avatars";
-
-interface DisplayOption {
-  /** null = 跟随定妆照；"look:<id>" / "deriv:<id>" / "variant:<idx>" / "shot:<name>" */
-  ref: string | null;
-  url: string;
-  label: string;
-  group: DisplayGroup;
-}
-
-type DisplayGroup = "定妆照与机位" | "形象变体" | "造型" | "场景图";
-const DISPLAY_GROUPS: DisplayGroup[] = ["定妆照与机位", "形象变体", "造型", "场景图"];
-const SHOT_LABELS: Record<string, string> = { "front-half": "正面半身", right: "右侧脸", left: "左侧脸" };
+import {
+  DISPLAY_GROUPS,
+  loadDisplayOptions,
+  type DisplayOption,
+} from "@/lib/dap-display-options";
 
 interface ImportAvatarDialogProps {
   open: boolean;
@@ -46,6 +36,8 @@ interface ImportAvatarDialogProps {
   onUpdated?: (artist: Artist) => void;
   /** 引入时创建的艺人类型（music 端 singer / drama 端 actor） */
   defaultType?: ArtistType;
+  /** 已引入的数字人 id 列表（同类型重复引入会被拦，网格里置灰标记） */
+  importedAvatarIds?: string[];
 }
 
 function errMsg(e: unknown): string {
@@ -60,7 +52,9 @@ export function ImportAvatarDialog({
   existingArtist,
   onUpdated,
   defaultType = "singer",
+  importedAvatarIds,
 }: ImportAvatarDialogProps) {
+  const importedSet = useMemo(() => new Set(importedAvatarIds ?? []), [importedAvatarIds]);
   const changeMode = !!existingArtist;
   const [step, setStep] = useState<"avatar" | "image">("avatar");
   const [avatars, setAvatars] = useState<DapAvatarLite[]>([]);
@@ -105,35 +99,8 @@ export function ImportAvatarDialog({
   useEffect(() => {
     if (!open || step !== "image" || !selected) return;
     setOptionsLoading(true);
-    Promise.all([
-      listDapLooks(selected.id).catch(() => []),
-      listDapDerivatives(selected.id).catch(() => []),
-    ])
-      .then(([looks, derivs]) => {
-        const opts: DisplayOption[] = [];
-        const seen = new Set<string>();
-        const push = (o: DisplayOption) => {
-          if (o.url && !seen.has(o.url)) { seen.add(o.url); opts.push(o); }
-        };
-        if (selected.imageUrl) {
-          push({ ref: null, url: selected.imageUrl, label: "定妆照（默认）", group: "定妆照与机位" });
-        }
-        for (const [k, url] of Object.entries(selected.shotImages ?? {})) {
-          push({ ref: `shot:${k}`, url, label: SHOT_LABELS[k] ?? k, group: "定妆照与机位" });
-        }
-        (selected.variantImages ?? []).forEach((url, i) => {
-          push({ ref: `variant:${i}`, url, label: `形象变体 ${i + 1}`, group: "形象变体" });
-        });
-        for (const l of looks) {
-          if (l.imageUrl) push({ ref: `look:${l.id}`, url: l.imageUrl, label: l.label || "造型", group: "造型" });
-        }
-        for (const d of derivs) {
-          if (!IMAGE_DERIV_KINDS.includes(d.kind)) continue;
-          const url = d.fileUrl || d.thumbUrl;
-          if (url) push({ ref: `deriv:${d.id}`, url, label: d.label || d.kind, group: "场景图" });
-        }
-        setOptions(opts);
-      })
+    loadDisplayOptions(selected)
+      .then(setOptions)
       .finally(() => setOptionsLoading(false));
   }, [open, step, selected]);
 
@@ -237,22 +204,35 @@ export function ImportAvatarDialog({
               )}
               {!avatarsLoading && usable.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {usable.map((a) => (
-                    <button
-                      key={a.id}
-                      onClick={() => { setSelected(a); setChosenRef(null); setStep("image"); }}
-                      className="group text-left rounded-xl overflow-hidden border border-white/10 hover:border-cyan-500/50 bg-gray-950/40 transition"
-                    >
-                      <div className="aspect-[3/4] overflow-hidden">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={a.imageUrl!} alt={a.name} className="w-full h-full object-cover group-hover:scale-105 transition" />
-                      </div>
-                      <div className="px-2.5 py-2">
-                        <div className="text-xs font-semibold truncate">{a.name}</div>
-                        <div className="text-[10px] text-gray-500 truncate">{a.id}</div>
-                      </div>
-                    </button>
-                  ))}
+                  {usable.map((a) => {
+                    const imported = importedSet.has(a.id);
+                    return (
+                      <button
+                        key={a.id}
+                        disabled={imported}
+                        onClick={() => { setSelected(a); setChosenRef(null); setStep("image"); }}
+                        className={`group relative text-left rounded-xl overflow-hidden border bg-gray-950/40 transition ${
+                          imported
+                            ? "border-white/5 opacity-50 cursor-not-allowed"
+                            : "border-white/10 hover:border-cyan-500/50"
+                        }`}
+                      >
+                        <div className="aspect-[3/4] overflow-hidden">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={a.imageUrl!} alt={a.name} className={`w-full h-full object-cover transition ${imported ? "" : "group-hover:scale-105"}`} />
+                        </div>
+                        {imported && (
+                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-emerald-300 border border-emerald-500/30">
+                            已引入
+                          </span>
+                        )}
+                        <div className="px-2.5 py-2">
+                          <div className="text-xs font-semibold truncate">{a.name}</div>
+                          <div className="text-[10px] text-gray-500 truncate">{imported ? "已引入为艺人" : a.id}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </>
