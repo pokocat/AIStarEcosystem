@@ -50,6 +50,15 @@ public class DigitalIp {
     @Column(length = 512)
     private String avatarUrl;
 
+    // ── AiAvatar 数字人引用（v0.60 收敛：子应用艺人形象统一来自 AiAvatar）─────
+    /** FK → dap_avatar.id；经「引入数字人」创建的艺人必有，遗留孵化艺人为 null。 */
+    @Column(length = 32)
+    private String dapAvatarId;
+
+    /** 首要展示图指针：null = 跟随数字人定妆照；"look:&lt;id&gt;" / "deriv:&lt;id&gt;" 指向具体资产。 */
+    @Column(length = 64)
+    private String dapDisplayRef;
+
     // ── Six talents (0–100) ──────────────────────────────────────────────────
     private int talentSinging;
     private int talentActing;

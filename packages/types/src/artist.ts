@@ -93,6 +93,30 @@ export interface Artist {
    * 艺人当前"官方形象" = appearance-forge `ForgeResult.id`。
    * 用于艺人详情页 Hero 主图、分发物料默认封面、商业授权主形象。
    * 为空时详情页回落到 `avatar`。
+   * @deprecated v0.60 收敛后形象统一来自 AiAvatar（见 dapAvatarId），仅遗留艺人仍读此字段。
    */
   officialAppearanceId?: ID;
+
+  // ── AiAvatar 数字人引用（v0.60 收敛：艺人形象统一来自 AiAvatar）──────────────
+  /** 引用的数字人 id（经「引入数字人」创建的艺人必有；遗留孵化艺人为 null） */
+  dapAvatarId?: ID | null;
+  /** 首要展示图指针：null=跟随数字人定妆照；"look:<id>" / "deriv:<id>" 指向具体资产 */
+  dapDisplayRef?: string | null;
+  /** 数字人当前名称（server 实时派生；数字人被删/回收站时为 null） */
+  dapAvatarName?: string | null;
+  /** 首要展示图签名 URL（server 实时派生 + 自动回退定妆照；不可用时为 null） */
+  dapDisplayImageUrl?: string | null;
+}
+
+// ── 引入数字人请求（POST /me/digital-ips/import-avatar）──────────────────────
+export interface ImportAvatarRequest {
+  /** 要引入的数字人 id（必填，须本人所有且已有定妆照） */
+  dapAvatarId: ID;
+  /** 艺人类型（music 端默认 singer，drama 端默认 actor） */
+  type?: ArtistType;
+  /** 艺名（缺省 = 数字人名称） */
+  name?: string;
+  /** 首要展示图指针（缺省 = 跟随定妆照） */
+  dapDisplayRef?: string | null;
+  bio?: string;
 }

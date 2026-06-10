@@ -461,9 +461,34 @@ POST /appearance-forge/save  （upsert 行为）
   - 当前从 DEMO_VIDEO_POOL（2 个本地 showreel mp4）随机挑一个
 ```
 
----
+### 6.4 从 AiAvatar 引入数字人（v0.60 收敛）
 
-## 附录：契约文档结构（2026-05-06 起）
+> 背景：music / drama 的艺人形象统一收敛到 AiAvatar（dap 域）。子应用本地的
+> 孵化向导 / 形象锻造入口下线（路由保留提示页），新艺人只能经「引入数字人」创建。
+
+```
+POST /me/digital-ips/import-avatar
+  - body.dapAvatarId 必填，校验：findByIdAndOwnerUserId（须本人所有）
+      + deletedAt == null（不在回收站，否则 400 DAP_AVATAR_TRASHED）
+      + imageKey 非空（已有定妆照，否则 400 DAP_AVATAR_NO_IMAGE）
+  - body.dapDisplayRef 可选；格式 "look:<id>" / "deriv:<id>"，资产必须属于该数字人，
+    deriv 仅允许图片类 kind（atlas/expr/scene/ward），否则 400 DAP_DISPLAY_REF_INVALID
+  - 不扣孵化积分（incubation.cost 不适用——形象生成费用已在 AiAvatar 端结算）
+  - 创建的 DigitalIp：status=ACTIVE（区别于孵化 TRAINEE）、avatarUrl 不落值、
+    name 缺省取数字人名称；kind 由 body.type 决定（music 端 singer / drama 端 actor）
+  - 同一数字人可被多次引入（music / drama 各一个艺人壳，独立展示图）——“一人多栖”
+
+展示图解析（DTO 出 wire，DapAvatarRefResolver）：
+  - dapDisplayRef 命中资产 → 该资产 OSS key；未命中 / 为空 → 回退定妆照 imageKey
+  - key → FileStorageService.signedUrl 实时派生签名 URL（不落库，§4.7 key 真值规则）
+  - 数字人被删 / 回收站 → dapAvatarName 与 dapDisplayImageUrl 均为 null（前端回退占位，
+    不阻断列表）；删除数字人不强拦、不级联删艺人壳
+
+PATCH /me/digital-ips/{id}
+  - 新增可改字段 dapDisplayRef：空串/null = 清空（跟随定妆照）；
+    非空时校验同上；艺人未引用数字人（dapAvatarId 为空）则 400
+  - dapAvatarId 本身不可改（引用关系创建后固定）
+```
 
 ```
 apps/web/src/types/*.ts              ← 唯一前端真值源（23 个域文件）

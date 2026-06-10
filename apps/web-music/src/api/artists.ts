@@ -4,7 +4,7 @@
 // USE_MOCK=1 时返回 mocks/artists.ts；否则走 apiFetch。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Artist } from "@ai-star-eco/types/artist";
+import type { Artist, ImportAvatarRequest } from "@ai-star-eco/types/artist";
 import type { ID } from "@ai-star-eco/types/_shared";
 import { MOCK_ARTISTS } from "@/mocks/artists";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
@@ -38,6 +38,31 @@ export async function createArtist(data: Partial<Artist>): Promise<Artist> {
   return apiFetch<Artist>("/me/digital-ips", {
     method: "POST",
     body: data,
+  });
+}
+
+/**
+ * v0.60 收敛：从 AiAvatar 引入数字人为艺人（引用不复制，不扣孵化积分）。
+ * 形象与展示名实时跟随数字人；展示图可用 dapDisplayRef 指定（缺省跟随定妆照）。
+ */
+export async function importAvatarAsArtist(req: ImportAvatarRequest): Promise<Artist> {
+  if (USE_MOCK) {
+    const fake: Artist = {
+      ...MOCK_ARTISTS[0],
+      id: `mock-${Date.now()}`,
+      name: req.name || "我的数字人",
+      type: req.type ?? "singer",
+      status: "active",
+      dapAvatarId: req.dapAvatarId,
+      dapDisplayRef: req.dapDisplayRef ?? null,
+      createdAt: new Date().toISOString(),
+      lastActive: new Date().toISOString(),
+    } as Artist;
+    return mockDelay(fake);
+  }
+  return apiFetch<Artist>("/me/digital-ips/import-avatar", {
+    method: "POST",
+    body: req,
   });
 }
 

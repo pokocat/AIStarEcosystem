@@ -24,14 +24,16 @@ import { ArtistsApi, AppearanceForgeApi, ApiError } from "@/api";
 import type { ForgeResult, ForgeMode, AppearanceStatus } from "@ai-star-eco/types/appearance-forge";
 import { DEMO_FORGE_VIDEO_POOL } from "@/lib/forge-video";
 import { ArtistAvatar } from "./_shared/ArtistAvatar";
+import { ImportAvatarDialog } from "./ImportAvatarDialog";
 
 /* ======== Artist Detail Dialog ======== */
 // 结构：左列合并身份（头像 + 名字 + 稀有度 / 状态 / 等级 + 简介 + 领域 / 日期），
 // 右列展示艺人形象（AI 形象画廊：主视频 + 缩略图矩阵）。
 // 其余深度数据（才艺 / 商业 / 工坊）以横向 Tab 呈现在底部，不抢占主区视觉。
-const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: Lang; onClose: () => void }) => {
+const ArtistDetailDialog = ({ artist, lang, onClose, onUpdated }: { artist: Artist; lang: Lang; onClose: () => void; onUpdated?: (a: Artist) => void }) => {
   const zh = lang === 'zh';
   const [tab, setTab] = useState<'talents' | 'stats' | 'works' | 'commercial'>('talents');
+  const [showDisplayPicker, setShowDisplayPicker] = useState(false);
   const typeConf = ARTIST_TYPE_CONFIG[artist.type];
   const qualConf = QUALITY_CONFIG[artist.quality];
   const statusConf = STATUS_CONFIG[artist.status];
@@ -89,6 +91,14 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
                   <div className={`absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full ${typeConf.bgColor} flex items-center justify-center text-base border-2 border-gray-900`}>
                     {typeConf.icon}
                   </div>
+                  {artist.dapAvatarId && (
+                    <button
+                      onClick={() => setShowDisplayPicker(true)}
+                      className="mt-2 w-full text-[10px] text-cyan-300 hover:text-cyan-200 border border-cyan-500/30 hover:border-cyan-400/50 rounded-md py-1 transition flex items-center justify-center gap-1"
+                    >
+                      <Sparkles className="w-3 h-3" /> 更换展示图
+                    </button>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h2 className="text-2xl font-bold tracking-tight truncate" style={{ fontFamily: "var(--font-display)" }}>
@@ -299,6 +309,12 @@ const ArtistDetailDialog = ({ artist, lang, onClose }: { artist: Artist; lang: L
           </div>
         </div>
       </motion.div>
+      <ImportAvatarDialog
+        open={showDisplayPicker}
+        onClose={() => setShowDisplayPicker(false)}
+        existingArtist={artist}
+        onUpdated={(a) => onUpdated?.(a)}
+      />
     </div>
   );
 };
@@ -483,8 +499,9 @@ function ArtistAppearanceShowcase({ artist }: { artist: Artist }) {
 }
 
 /* ======== Main MCN Matrix Component ======== */
-export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist: () => void }) => {
+export const MCNMatrix = ({ lang }: { lang: Lang }) => {
   const zh = lang === 'zh';
+  const [showImport, setShowImport] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<ArtistType | 'all'>('all');
@@ -547,8 +564,8 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
           <p className="text-gray-400 font-light mt-1">{zh ? '管理你的AI艺人生态' : 'Manage your AI artist ecosystem'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={onCreateArtist} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
-            <Plus className="w-4 h-4" /> {zh ? '孵化新艺人' : 'New Artist'}
+          <Button onClick={() => setShowImport(true)} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
+            <Plus className="w-4 h-4" /> 从 AiAvatar 引入数字人
           </Button>
         </div>
       </div>
@@ -607,7 +624,7 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
         <div className="flex flex-col items-center justify-center py-16 text-gray-500 text-sm">
           <Users className="w-8 h-8 mb-3 opacity-50" />
           {artists.length === 0
-            ? (zh ? '还没有艺人，点击右上角孵化一个吧' : 'No artists yet — create one to get started')
+            ? '还没有艺人 — 点击右上角从 AiAvatar 引入数字人'
             : (zh ? '当前筛选下没有匹配的艺人' : 'No artists match the current filter')}
         </div>
       )}
@@ -746,7 +763,25 @@ export const MCNMatrix = ({ lang, onCreateArtist }: { lang: Lang; onCreateArtist
       )}
 
       {/* Detail Dialog — 立即挂载/卸载，避免 AnimatePresence+layoutId 残留遮罩导致全页无法点击 */}
-      {selectedArtist && <ArtistDetailDialog artist={selectedArtist} lang={lang} onClose={() => setSelectedArtist(null)} />}
+      {selectedArtist && (
+        <ArtistDetailDialog
+          artist={selectedArtist}
+          lang={lang}
+          onClose={() => setSelectedArtist(null)}
+          onUpdated={(a) => {
+            setArtists((prev) => prev.map((x) => (x.id === a.id ? a : x)));
+            setSelectedArtist(a);
+          }}
+        />
+      )}
+
+      {/* 从 AiAvatar 引入数字人（v0.60 收敛：取代本地孵化/锻造） */}
+      <ImportAvatarDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        defaultType="singer"
+        onImported={(a) => setArtists((prev) => [a, ...prev])}
+      />
     </div>
   );
 };

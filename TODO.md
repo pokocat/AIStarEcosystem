@@ -286,3 +286,20 @@
 
 - [ ] **根 `PRODUCT.md` `## Register` 段补全**：当前只写了一个词 `product`，像未完成的脚手架。其余段（Users / Brand / Design Principles）齐全，是 `/impeccable` skill 的强制上下文，**保留不删**。
 - [ ] **`docs/INDEX.md` last-reviewed 滚动**：当前停在 2026-05-23 / v0.5.4 与 2026-05-21 / v0.21 双行；v0.22 ~ v0.34 增量未追加。每次大版本提交时同 commit 更新。
+
+---
+
+## 2026-06-10 · v0.60 数字人收敛 Phase 2 backlog
+
+Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方向、按需排期的后续：
+
+- [ ] **drama 成片用脸**：短剧生成（/me/drama/episodes/generate）把角色绑定的数字人形象图
+      作为 i2i 身份输入（复用 dap imageKey / derivatives 资产），成片角色脸 = 数字人。
+- [ ] **音色联动**：`DapAvatar.voiceName` 传导给 drama 配音 / music 演唱。
+- [ ] **aiavatar 反向「应用于」视图**：数字人详情显示被哪些音乐人 / 演员壳引用（按 dapAvatarId 反查 digital_ips）。
+- [ ] **drama 角色实体化**：DramaScript payloadJson 里的角色升级为实体（characterName + artistId + dapAvatarId），
+      支持一剧多角色各绑不同数字人。
+- [ ] **物理删除已退役源码**：music IncubationWizardV2 / AppearanceForgeV3、drama 孵化器 / 锻造炉组件
+      及对应 api/mocks（v0.60 仅下线入口，源码保留一版）。
+- [ ] **运营动作**：新发秘钥默认带 aiavatar 平台权限（admin per-账号 platforms 已支持），
+      避免 music/drama 用户引入列表为空却进不去 AiAvatar。

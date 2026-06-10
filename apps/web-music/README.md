@@ -60,6 +60,18 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.60 · 2026-06-10 · 数字人收敛：艺人形象统一引用 AiAvatar {#v060}
+
+- 「艺人管理」创建入口改为 **从 AiAvatar 引入数字人**（两步 picker：选数字人 → 选首要展示图，
+  展示图候选 = 定妆照 / 造型 looks / 场景图 derivatives；缺图深链 AiAvatar 渲染）；
+  详情弹窗可「更换展示图」（PATCH dapDisplayRef）
+- 引用不复制：`Artist.dapDisplayImageUrl` 由 server 实时派生签名 URL，AiAvatar 重渲染自动跟随；
+  `ArtistAvatar` 全 app 优先该字段
+- sidebar 下线「AI艺人孵化」「AI形象锻造」；/incubator /appearance 保留路由 → RetiredFeatureNotice
+  提示页（向导/锻造源码保留一版后删）
+- 新增 `api/dap-avatars.ts`（/v1/avatars 系列，直调 dap 域）+ `mocks/dap-avatars.ts`；
+  `.env.example` 增 `NEXT_PUBLIC_AIAVATAR_URL`
+
 ### v0.43 · 2026-05-29 · 形象锻造接平台大模型 + 登录与平台访问隔离 {#v043}
 
 - ✅ **形象锻造接大模型**：`/appearance` 的对话从 Coze-only 改为**优先走平台大模型**（后端 `ForgeChatService`：`invokeChat` 取整段方案 + 服务端切流成 SSE，Coze 回退）。前端 `api/appearance-forge` 改打 `/appearance-forge/chat/*`；`AppearanceForge.v3` 聊天框接**真流式回复**（实时回写气泡，可多轮打磨）；全量去技术化文案（Coze/Mock → 大模型/演示模式）。

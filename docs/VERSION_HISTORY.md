@@ -1,4 +1,4 @@
-# 版本增量历史（v0.5 → v0.57）
+# 版本增量历史（v0.5 → v0.60）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
@@ -2600,3 +2600,57 @@ openapi backfill /admin/users 全组路径 + suspend/reactivate。
 立即同步）仍是无后端假按钮，按决策暂不动，后续可能整页砍掉。
 
 ---
+
+### v0.60（2026-06-10）— 数字人收敛：music / drama 艺人形象统一引用 AiAvatar
+
+**目标**：子应用不再自建艺人形象（孵化向导 / 形象锻造下线），数字人统一在 AiAvatar
+创建与渲染，music / drama 经「引入数字人」把它变成本应用的艺人 / 演员壳——
+**引用不复制**，AiAvatar 重渲染后子应用形象自动跟随。
+
+**server**：
+
+- `DigitalIp` + `dapAvatarId`（FK → dap_avatar.id）/ `dapDisplayRef`
+  （首要展示图指针：null=跟随定妆照；`look:<id>` / `deriv:<id>`）
+- 新增 `DapAvatarRefResolver`（dap 域）：出 wire 解析展示名 + 签名图 URL
+  （key → `FileStorageService.signedUrl` 实时派生，资产删除静默回退定妆照 → null）；
+  引入校验（本人所有 + 有定妆照 + 不在回收站）+ 展示图指针校验（资产属该数字人，
+  deriv 仅图片类 kind atlas/expr/scene/ward）
+- `POST /api/me/digital-ips/import-avatar`（AccountController）：创建艺人壳，
+  status=ACTIVE、不扣孵化积分、name 缺省取数字人名；`PATCH /me/digital-ips/{id}`
+  可改 / 清 `dapDisplayRef`；dapAvatarId 创建后不可改
+- `DigitalIpDto` + 4 字段：dapAvatarId / dapDisplayRef / dapAvatarName / dapDisplayImageUrl
+  （后两个实时派生；service 统一走 `toDto()`，admin 列表同样附带）
+
+**packages/types**：`Artist` + 4 个可选字段；新增 `ImportAvatarRequest`；
+`officialAppearanceId` 标记 @deprecated。
+
+**web-music**：
+
+- 「艺人管理」创建入口 → `ImportAvatarDialog` 两步 picker
+  （①选数字人 ②选展示图：定妆照 / 造型 looks / 场景图 derivatives 图墙，
+  缺图时深链去 AiAvatar `#/avatar/<id>/scene` 渲染）；艺人详情弹窗加「更换展示图」
+- 新 `api/dap-avatars.ts`（/v1/avatars + looks + derivatives，同 JWT 直调 dap）+ mocks
+- `ArtistAvatar` 统一优先 `dapDisplayImageUrl`（全 app 头像跟随数字人）
+- sidebar 下线「AI艺人孵化」「AI形象锻造」；/incubator /appearance 路由保留
+  → `RetiredFeatureNotice` 提示页（IncubationWizardV2 / AppearanceForgeV3 源码保留一版后删）
+- 顺带清掉 §8.0 「music 形象锻造成片视频未实现（随机 showreel 占位）」技术债——退役而非实现
+
+**web-drama**：
+
+- cast「新增演员」→「从 AiAvatar 引入数字人」（ImportAvatarDialog，drama Dialog 体系）；
+  卡片 hero / 详情 hero 有展示图时用图（否则保留品质渐变）；详情加「更换展示图」
+- 新 api/dap-avatars + mocks/_handlers/dap-avatars（network 拦截层）+ import-avatar handler
+- sidebar 下线「孵化新演员」「形象锻造炉」；/incubator /forge → RetiredFeatureNotice
+
+**决策**：
+
+- 引用不复制：URL 全部出 wire 实时派生（§4.7 key 真值规则），DB 只存 id/指针
+- 数字人删除（回收站）不强拦、不级联：艺人壳展示回退占位，恢复后自动复原
+- 同一数字人可被 music（singer）和 drama（actor）各引入一次 ——「一人多栖」
+- 引入不扣孵化积分（生成费用已在 AiAvatar 端结算）
+- 平台门禁照旧前端拦：未开通 aiavatar 的账号 picker 为空 + 引导文案；
+  运营侧解决（发秘钥默认带 aiavatar 平台），不动门禁代码
+- 遗留孵化艺人（无 dapAvatarId）继续可用，按原 avatarUrl 展示，不迁移
+
+**Phase 2 backlog**（见 TODO.md）：drama 成片以角色数字人形象作 i2i 身份输入、
+voiceName 音色联动、aiavatar 反向「应用于」视图、drama 角色实体化（多角色各绑数字人）。

@@ -24,10 +24,8 @@ import {
   Settings,
   Share2,
   Shirt,
-  Sparkles,
   Users,
   Wallet as WalletIcon,
-  Wand2,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import { PlatformAccessDenied } from "@ai-star-eco/landing";
@@ -57,9 +55,8 @@ const GROUPS: NavGroup[] = [
   {
     title: "创作素材",
     items: [
+      // v0.60 收敛：孵化 / 形象锻造入口下线，数字人统一在 AiAvatar 创建后引入
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
-      { href: "/incubator", icon: Wand2, label: "孵化新演员" },
-      { href: "/forge", icon: Sparkles, label: "形象锻造炉" },
       { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
       { href: "/scripts", icon: PenTool, label: "脚本工坊" },
     ],

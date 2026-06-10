@@ -4,6 +4,7 @@ import type { Artist } from "@ai-star-eco/types/artist";
 import type { ID } from "@ai-star-eco/types/_shared";
 import { ApiError, mockDelay, registerMocks } from "@ai-star-eco/api-client";
 import { MOCK_ARTISTS } from "@/mocks/artists";
+import { MOCK_DAP_AVATARS } from "@/mocks/dap-avatars";
 
 const store: Artist[] = MOCK_ARTISTS.map((a) => JSON.parse(JSON.stringify(a)));
 
@@ -46,6 +47,33 @@ registerMocks([
         id: data.id ?? `art-${Date.now()}`,
         stats: { ...seed.stats, ...(data.stats ?? {}) },
         talents: { ...seed.talents, ...(data.talents ?? {}) },
+        createdAt: now,
+        lastActive: now,
+      } as Artist;
+      store.unshift(artist);
+      return mockDelay({ ...artist });
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/me/digital-ips/import-avatar",
+    handler: ({ body }) => {
+      const req = (body ?? {}) as { dapAvatarId?: string; type?: Artist["type"]; name?: string; dapDisplayRef?: string | null };
+      const avatar = MOCK_DAP_AVATARS.find((a) => a.id === req.dapAvatarId);
+      if (!avatar) throw new ApiError({ code: "DAP_AVATAR_NOT_FOUND", message: "数字人不存在或无权访问" }, 404);
+      const seed = store[0]!;
+      const now = new Date().toISOString();
+      const artist: Artist = {
+        ...seed,
+        id: `art-${Date.now()}`,
+        name: req.name?.trim() || avatar.name,
+        type: req.type ?? "actor",
+        status: "active",
+        avatar: "",
+        dapAvatarId: avatar.id,
+        dapDisplayRef: req.dapDisplayRef ?? null,
+        dapAvatarName: avatar.name,
+        dapDisplayImageUrl: avatar.imageUrl,
         createdAt: now,
         lastActive: now,
       } as Artist;

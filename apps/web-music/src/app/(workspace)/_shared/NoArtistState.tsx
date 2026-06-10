@@ -21,15 +21,12 @@ export function NoArtistState() {
       <p className="text-sm text-gray-400 max-w-md mb-5 font-light">
         {artistsLoading
           ? "正在从后端拉取 /api/me/digital-ips，请稍候。"
-          : "请先在「MCN与孵化」里创建一位 AI 艺人；或联系平台运营将现有艺人归属到当前 studio。"}
+          : "请先在「艺人管理」里从 AiAvatar 引入一位数字人；或联系平台运营将现有艺人归属到当前 studio。"}
       </p>
       {!artistsLoading && (
         <div className="flex items-center gap-2">
           <Button onClick={() => navigate("artists")} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90">
-            进入艺人管理
-          </Button>
-          <Button variant="outline" onClick={() => navigate("incubator")} className="border-white/10">
-            开启 AI 孵化向导
+            去引入数字人
           </Button>
         </div>
       )}

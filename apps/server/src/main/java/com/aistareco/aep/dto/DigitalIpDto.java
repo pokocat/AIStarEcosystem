@@ -38,7 +38,16 @@ public record DigitalIpDto(
         Map<String, Object> incubationParams,
         Instant createdAt,
         Instant lastActive,
-        Instant updatedAt
+        Instant updatedAt,
+        // ── AiAvatar 数字人引用（v0.60 收敛；未引用时均为 null）────────────────
+        /** 引用的数字人 id（dap_avatar.id） */
+        String dapAvatarId,
+        /** 首要展示图指针：null=跟随定妆照；"look:<id>" / "deriv:<id>" */
+        String dapDisplayRef,
+        /** 数字人当前名称（实时派生；数字人被删/回收站 → null） */
+        String dapAvatarName,
+        /** 首要展示图签名 URL（实时派生 + 回退定妆照；不可用 → null） */
+        String dapDisplayImageUrl
 ) {
     public record Talents(
             int singing, int acting, int dancing, int hosting, int comedy, int variety
@@ -54,6 +63,12 @@ public record DigitalIpDto(
     }
 
     public static DigitalIpDto from(DigitalIp ip, String studioName) {
+        return from(ip, studioName, null, null);
+    }
+
+    /** dap 引用版：dapAvatarName / dapDisplayImageUrl 由 DapAvatarRefResolver 实时解析后传入。 */
+    public static DigitalIpDto from(DigitalIp ip, String studioName,
+                                    String dapAvatarName, String dapDisplayImageUrl) {
         return new DigitalIpDto(
                 ip.getId(), ip.getName(),
                 lower(ip.getKind()), lower(ip.getQuality()), lower(ip.getStatus()),
@@ -72,7 +87,9 @@ public record DigitalIpDto(
                 ip.getStatEndorsements(), ip.getStatCommercialValueCredits(),
                 ip.getStudioId(), studioName, ip.getOwnerUserId(),
                 ip.getIncubationParams(),
-                ip.getCreatedAt(), ip.getLastActiveAt(), ip.getUpdatedAt()
+                ip.getCreatedAt(), ip.getLastActiveAt(), ip.getUpdatedAt(),
+                ip.getDapAvatarId(), ip.getDapDisplayRef(),
+                dapAvatarName, dapDisplayImageUrl
         );
     }
 
