@@ -18,12 +18,16 @@ import { ArtistsApi, DapAvatarsApi } from "@/api";
 import type { DapAvatarLite } from "@/api/dap-avatars";
 
 interface DisplayOption {
-  /** null = 跟随定妆照；"look:<id>" / "deriv:<id>" */
+  /** null = 跟随定妆照；"look:<id>" / "deriv:<id>" / "variant:<idx>" / "shot:<name>" */
   ref: string | null;
   url: string;
   label: string;
-  group: "定妆照" | "造型" | "场景图";
+  group: DisplayGroup;
 }
+
+type DisplayGroup = "定妆照与机位" | "形象变体" | "造型" | "场景图";
+const DISPLAY_GROUPS: DisplayGroup[] = ["定妆照与机位", "形象变体", "造型", "场景图"];
+const SHOT_LABELS: Record<string, string> = { "front-half": "正面半身", right: "右侧脸", left: "左侧脸" };
 
 interface Props {
   open: boolean;
@@ -101,16 +105,26 @@ export function ImportAvatarDialog({
     ])
       .then(([looks, derivs]) => {
         const opts: DisplayOption[] = [];
+        const seen = new Set<string>();
+        const push = (o: DisplayOption) => {
+          if (o.url && !seen.has(o.url)) { seen.add(o.url); opts.push(o); }
+        };
         if (selected.imageUrl) {
-          opts.push({ ref: null, url: selected.imageUrl, label: "定妆照（默认）", group: "定妆照" });
+          push({ ref: null, url: selected.imageUrl, label: "定妆照（默认）", group: "定妆照与机位" });
         }
+        for (const [k, url] of Object.entries(selected.shotImages ?? {})) {
+          push({ ref: `shot:${k}`, url, label: SHOT_LABELS[k] ?? k, group: "定妆照与机位" });
+        }
+        (selected.variantImages ?? []).forEach((url, i) => {
+          push({ ref: `variant:${i}`, url, label: `形象变体 ${i + 1}`, group: "形象变体" });
+        });
         for (const l of looks) {
-          if (l.imageUrl) opts.push({ ref: `look:${l.id}`, url: l.imageUrl, label: l.label || "造型", group: "造型" });
+          if (l.imageUrl) push({ ref: `look:${l.id}`, url: l.imageUrl, label: l.label || "造型", group: "造型" });
         }
         for (const d of derivs) {
           if (!DapAvatarsApi.IMAGE_DERIV_KINDS.includes(d.kind)) continue;
           const url = d.fileUrl || d.thumbUrl;
-          if (url) opts.push({ ref: `deriv:${d.id}`, url, label: d.label || d.kind, group: "场景图" });
+          if (url) push({ ref: `deriv:${d.id}`, url, label: d.label || d.kind, group: "场景图" });
         }
         setOptions(opts);
       })
@@ -118,6 +132,7 @@ export function ImportAvatarDialog({
   }, [open, step, selected]);
 
   const usable = React.useMemo(() => avatars.filter((a) => !!a.imageUrl), [avatars]);
+  const current = options.find((o) => o.ref === chosenRef) ?? options[0] ?? null;
 
   async function submit() {
     if (!selected) return;
@@ -164,7 +179,7 @@ export function ImportAvatarDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      width={720}
+      width={980}
       title={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           {step === "image" && !changeMode && (
@@ -264,84 +279,110 @@ export function ImportAvatarDialog({
             </div>
           )}
           {!optionsLoading && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              {(["定妆照", "造型", "场景图"] as const).map((group) => {
-                const groupOpts = options.filter((o) => o.group === group);
-                if (groupOpts.length === 0) return null;
-                return (
-                  <div key={group}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-2)", marginBottom: 8 }}>{group}</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-                      {groupOpts.map((o) => {
-                        const active = chosenRef === o.ref;
-                        return (
-                          <button
-                            key={o.ref ?? "main"}
-                            onClick={() => setChosenRef(o.ref)}
-                            style={{
-                              ...tile,
-                              border: active
-                                ? "1px solid color-mix(in srgb, var(--accent) 75%, transparent)"
-                                : "1px solid var(--line-2)",
-                              boxShadow: active ? "0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent)" : undefined,
-                            }}
-                          >
-                            <div style={{ aspectRatio: "3 / 4", overflow: "hidden" }}>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={o.url} alt={o.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            </div>
-                            {active && (
-                              <span
-                                style={{
-                                  position: "absolute", top: 6, right: 6, width: 18, height: 18, borderRadius: 999,
-                                  background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center",
-                                }}
-                              >
-                                <Check size={11} color="#fff" />
-                              </span>
-                            )}
-                            <div style={{ padding: "5px 8px", fontSize: 10, color: "var(--fg-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {o.label}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+            <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+              {/* 左：当前选择大图预览 */}
+              <div style={{ width: 280, flex: "none", position: "sticky", top: 0 }}>
+                <div style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--line-2)", background: "rgba(255,255,255,0.03)", boxShadow: "0 12px 32px rgba(0,0,0,0.4)" }}>
+                  <div style={{ aspectRatio: "3 / 4" }}>
+                    {current ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={current.url} alt={current.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-3)", fontSize: 12 }}>暂无可用形象图</div>
+                    )}
                   </div>
-                );
-              })}
-              <a
-                href={DapAvatarsApi.dapAvatarDeepLink(selected.id, "scene")}
-                target="_blank"
-                rel="noreferrer"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
-              >
-                <Sparkles size={13} /> 图不够用？去 AiAvatar 为「{selected.name}」渲染场景图 <ExternalLink size={11} />
-              </a>
-              {!changeMode && (
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-2)", marginBottom: 6 }}>
-                    艺名（可选，默认使用数字人名称「{selected.name}」）
-                  </div>
-                  <input
-                    value={stageName}
-                    onChange={(e) => setStageName(e.target.value)}
-                    maxLength={32}
-                    placeholder={selected.name}
-                    style={{
-                      width: 280,
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid var(--line-2)",
-                      borderRadius: "var(--radius-md)",
-                      padding: "8px 12px",
-                      color: "var(--fg-0)",
-                      fontSize: 13,
-                      outline: "none",
-                      fontFamily: "var(--font-sans)",
-                    }}
-                  />
                 </div>
-              )}
+                <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: "var(--fg-0)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {current ? current.label : "—"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 2, lineHeight: 1.5 }}>
+                  将作为该演员在本应用的首要展示图；可随时在详情里更换
+                </div>
+                {!changeMode && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-2)", marginBottom: 6 }}>
+                      艺名（默认「{selected.name}」）
+                    </div>
+                    <input
+                      value={stageName}
+                      onChange={(e) => setStageName(e.target.value)}
+                      maxLength={32}
+                      placeholder={selected.name}
+                      style={{
+                        width: "100%",
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid var(--line-2)",
+                        borderRadius: "var(--radius-md)",
+                        padding: "8px 12px",
+                        color: "var(--fg-0)",
+                        fontSize: 13,
+                        outline: "none",
+                        fontFamily: "var(--font-sans)",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 右：全部形象资产墙 */}
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 18 }}>
+                {DISPLAY_GROUPS.map((group) => {
+                  const groupOpts = options.filter((o) => o.group === group);
+                  if (groupOpts.length === 0) return null;
+                  return (
+                    <div key={group}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg-1)", marginBottom: 8 }}>
+                        {group} <span style={{ color: "var(--fg-3)" }}>（{groupOpts.length}）</span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                        {groupOpts.map((o) => {
+                          const active = chosenRef === o.ref;
+                          return (
+                            <button
+                              key={o.ref ?? "main"}
+                              onClick={() => setChosenRef(o.ref)}
+                              style={{
+                                ...tile,
+                                border: active
+                                  ? "1px solid color-mix(in srgb, var(--accent) 75%, transparent)"
+                                  : "1px solid var(--line-2)",
+                                boxShadow: active ? "0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent)" : undefined,
+                              }}
+                            >
+                              <div style={{ aspectRatio: "3 / 4", overflow: "hidden" }}>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={o.url} alt={o.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              </div>
+                              {active && (
+                                <span
+                                  style={{
+                                    position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: 999,
+                                    background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center",
+                                  }}
+                                >
+                                  <Check size={12} color="#fff" />
+                                </span>
+                              )}
+                              <div style={{ padding: "6px 9px", fontSize: 11, color: "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {o.label}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                <a
+                  href={DapAvatarsApi.dapAvatarDeepLink(selected.id, "scene")}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
+                >
+                  <Sparkles size={13} /> 图不够用？去 AiAvatar 为「{selected.name}」渲染更多造型与场景图 <ExternalLink size={11} />
+                </a>
+              </div>
             </div>
           )}
         </>

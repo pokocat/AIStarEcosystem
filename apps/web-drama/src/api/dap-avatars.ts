@@ -23,6 +23,10 @@ export interface DapAvatarLite {
   status: string;
   /** 定妆照签名 URL（无定妆照的草稿为 null，不可引入） */
   imageUrl: string | null;
+  /** 形象变体图（生成时的多张变体，签名 URL） */
+  variantImages?: string[];
+  /** 机位照（front-half 正面半身 / right 右侧脸 / left 左侧脸 → 签名 URL） */
+  shotImages?: Record<string, string> | null;
 }
 
 /** 造型（dap LookDto 子集） */

@@ -15,9 +15,11 @@ import java.util.Set;
  *
  * v0.60 收敛规则：子应用（music/drama）的艺人形象统一引用 dap 数字人，不复制资产；
  * 展示图指针 {@code dapDisplayRef} 格式：
- *   - null / 空        → 跟随数字人定妆照（DapAvatar.imageKey，永远最新）
- *   - "look:&lt;id&gt;"  → 指定造型（DapLook.imageKey）
- *   - "deriv:&lt;id&gt;" → 指定衍生图（DapDerivative.fileKey，仅图片类 kind）
+ *   - null / 空            → 跟随数字人定妆照（DapAvatar.imageKey，永远最新）
+ *   - "look:&lt;id&gt;"      → 指定造型（DapLook.imageKey）
+ *   - "deriv:&lt;id&gt;"     → 指定衍生图（DapDerivative.fileKey，仅图片类 kind）
+ *   - "variant:&lt;idx&gt;"  → 指定形象变体（DapAvatar.variantKeys[idx]）
+ *   - "shot:&lt;name&gt;"    → 指定机位照（DapAvatar.shotKeys[name]，如 front-half / right / left）
  * 解析失败（资产被删 / 数字人进回收站）一律静默回退，不阻断列表渲染。
  */
 @Service
@@ -77,9 +79,31 @@ public class DapAvatarRefResolver {
                         .map(d -> d.getFileKey() != null ? d.getFileKey() : d.getThumbKey())
                         .orElse(null);
                 if (key != null) return key;
+            } else if (ref.startsWith("variant:")) {
+                String key = variantKey(avatar, ref.substring(8));
+                if (key != null) return key;
+            } else if (ref.startsWith("shot:")) {
+                String key = shotKey(avatar, ref.substring(5));
+                if (key != null) return key;
             }
         }
         return avatar.getImageKey(); // 回退定妆照
+    }
+
+    private String variantKey(DapAvatar avatar, String idxRaw) {
+        try {
+            int idx = Integer.parseInt(idxRaw.trim());
+            var keys = avatar.getVariantKeys();
+            if (keys != null && idx >= 0 && idx < keys.size()) return keys.get(idx);
+        } catch (NumberFormatException ignore) { /* fallthrough */ }
+        return null;
+    }
+
+    private String shotKey(DapAvatar avatar, String name) {
+        var shots = avatar.getShotKeys();
+        if (shots == null) return null;
+        Object key = shots.get(name);
+        return key instanceof String s && !s.isBlank() ? s : null;
     }
 
     /** 引入校验：必须本人所有、不在回收站、已有定妆照。 */
@@ -111,6 +135,18 @@ public class DapAvatarRefResolver {
                     .orElseThrow(() -> BusinessException.badRequest("DAP_DISPLAY_REF_INVALID", "指定的场景图不存在、非图片类或不属于该数字人"));
             return;
         }
-        throw BusinessException.badRequest("DAP_DISPLAY_REF_INVALID", "展示图指针格式应为 look:<id> 或 deriv:<id>");
+        if (ref.startsWith("variant:") || ref.startsWith("shot:")) {
+            DapAvatar avatar = avatarRepo.findById(dapAvatarId)
+                    .orElseThrow(() -> BusinessException.badRequest("DAP_DISPLAY_REF_INVALID", "数字人不存在"));
+            String key = ref.startsWith("variant:")
+                    ? variantKey(avatar, ref.substring(8))
+                    : shotKey(avatar, ref.substring(5));
+            if (key == null) {
+                throw BusinessException.badRequest("DAP_DISPLAY_REF_INVALID", "指定的形象变体/机位照不存在");
+            }
+            return;
+        }
+        throw BusinessException.badRequest("DAP_DISPLAY_REF_INVALID",
+                "展示图指针格式应为 look:<id> / deriv:<id> / variant:<idx> / shot:<name>");
     }
 }

@@ -11,6 +11,16 @@ export const MOCK_DAP_AVATARS: DapAvatarLite[] = [
     name: "凌霄",
     status: "ready",
     imageUrl: "https://images.unsplash.com/photo-1618641986557-1ecd230959aa?w=400&q=80",
+    variantImages: [
+      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&q=80",
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&q=80",
+      "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&q=80",
+    ],
+    shotImages: {
+      "front-half": "https://images.unsplash.com/photo-1618641986557-1ecd230959aa?w=400&q=80",
+      right: "https://images.unsplash.com/photo-1463453091185-61582044d556?w=400&q=80",
+      left: "https://images.unsplash.com/photo-1492447166138-50c3889fccb1?w=400&q=80",
+    },
   },
   {
     id: "DH-MOCK02",

@@ -24,12 +24,16 @@ import {
 } from "@/api/dap-avatars";
 
 interface DisplayOption {
-  /** null = 跟随定妆照；"look:<id>" / "deriv:<id>" */
+  /** null = 跟随定妆照；"look:<id>" / "deriv:<id>" / "variant:<idx>" / "shot:<name>" */
   ref: string | null;
   url: string;
   label: string;
-  group: "定妆照" | "造型" | "场景图";
+  group: DisplayGroup;
 }
+
+type DisplayGroup = "定妆照与机位" | "形象变体" | "造型" | "场景图";
+const DISPLAY_GROUPS: DisplayGroup[] = ["定妆照与机位", "形象变体", "造型", "场景图"];
+const SHOT_LABELS: Record<string, string> = { "front-half": "正面半身", right: "右侧脸", left: "左侧脸" };
 
 interface ImportAvatarDialogProps {
   open: boolean;
@@ -107,16 +111,26 @@ export function ImportAvatarDialog({
     ])
       .then(([looks, derivs]) => {
         const opts: DisplayOption[] = [];
+        const seen = new Set<string>();
+        const push = (o: DisplayOption) => {
+          if (o.url && !seen.has(o.url)) { seen.add(o.url); opts.push(o); }
+        };
         if (selected.imageUrl) {
-          opts.push({ ref: null, url: selected.imageUrl, label: "定妆照（默认）", group: "定妆照" });
+          push({ ref: null, url: selected.imageUrl, label: "定妆照（默认）", group: "定妆照与机位" });
         }
+        for (const [k, url] of Object.entries(selected.shotImages ?? {})) {
+          push({ ref: `shot:${k}`, url, label: SHOT_LABELS[k] ?? k, group: "定妆照与机位" });
+        }
+        (selected.variantImages ?? []).forEach((url, i) => {
+          push({ ref: `variant:${i}`, url, label: `形象变体 ${i + 1}`, group: "形象变体" });
+        });
         for (const l of looks) {
-          if (l.imageUrl) opts.push({ ref: `look:${l.id}`, url: l.imageUrl, label: l.label || "造型", group: "造型" });
+          if (l.imageUrl) push({ ref: `look:${l.id}`, url: l.imageUrl, label: l.label || "造型", group: "造型" });
         }
         for (const d of derivs) {
           if (!IMAGE_DERIV_KINDS.includes(d.kind)) continue;
           const url = d.fileUrl || d.thumbUrl;
-          if (url) opts.push({ ref: `deriv:${d.id}`, url, label: d.label || d.kind, group: "场景图" });
+          if (url) push({ ref: `deriv:${d.id}`, url, label: d.label || d.kind, group: "场景图" });
         }
         setOptions(opts);
       })
@@ -124,6 +138,7 @@ export function ImportAvatarDialog({
   }, [open, step, selected]);
 
   const usable = useMemo(() => avatars.filter((a) => !!a.imageUrl), [avatars]);
+  const current = options.find((o) => o.ref === chosenRef) ?? options[0] ?? null;
 
   async function submit() {
     if (!selected) return;
@@ -162,7 +177,7 @@ export function ImportAvatarDialog({
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[86vh] overflow-hidden flex flex-col"
+        className="relative bg-gray-900 border border-white/10 rounded-2xl w-full max-w-5xl max-h-[88vh] overflow-hidden flex flex-col"
       >
         {/* 头部 */}
         <div className="px-6 pt-5 pb-4 border-b border-white/10 flex items-start justify-between gap-4">
@@ -221,7 +236,7 @@ export function ImportAvatarDialog({
                 </div>
               )}
               {!avatarsLoading && usable.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                   {usable.map((a) => (
                     <button
                       key={a.id}
@@ -251,64 +266,89 @@ export function ImportAvatarDialog({
                 </div>
               )}
               {!optionsLoading && (
-                <div className="space-y-5">
-                  {(["定妆照", "造型", "场景图"] as const).map((group) => {
-                    const groupOpts = options.filter((o) => o.group === group);
-                    if (groupOpts.length === 0) return null;
-                    return (
-                      <div key={group}>
-                        <div className="text-[11px] text-gray-500 font-semibold mb-2">{group}</div>
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
-                          {groupOpts.map((o) => {
-                            const active = chosenRef === o.ref;
-                            return (
-                              <button
-                                key={o.ref ?? "main"}
-                                onClick={() => setChosenRef(o.ref)}
-                                className={`relative text-left rounded-lg overflow-hidden border transition ${
-                                  active ? "border-cyan-400 ring-2 ring-cyan-400/40" : "border-white/10 hover:border-white/30"
-                                }`}
-                              >
-                                <div className="aspect-[3/4] overflow-hidden">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={o.url} alt={o.label} className="w-full h-full object-cover" />
-                                </div>
-                                {active && (
-                                  <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
-                                    <Check className="w-3 h-3 text-white" />
-                                  </span>
-                                )}
-                                <div className="px-2 py-1.5 text-[10px] text-gray-400 truncate bg-gray-950/60">{o.label}</div>
-                              </button>
-                            );
-                          })}
-                        </div>
+                <div className="flex flex-col md:flex-row gap-5">
+                  {/* 左：当前选择大图预览 */}
+                  <div className="md:w-[300px] shrink-0 self-start md:sticky md:top-0">
+                    <div className="rounded-xl overflow-hidden border border-white/15 bg-gray-950/40 shadow-lg shadow-black/30">
+                      <div className="aspect-[3/4]">
+                        {current ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={current.url} alt={current.label} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-600 text-xs">暂无可用形象图</div>
+                        )}
                       </div>
-                    );
-                  })}
-                  <a
-                    href={dapAvatarDeepLink(selected.id, "scene")}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-cyan-300 hover:text-cyan-200 transition"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" /> 图不够用？去 AiAvatar 为「{selected.name}」渲染场景图
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                  {!changeMode && (
-                    <div className="pt-1">
-                      <label className="block text-[11px] text-gray-500 font-semibold mb-1.5">
-                        艺名（可选，默认使用数字人名称「{selected.name}」）
-                      </label>
-                      <input
-                        value={stageName}
-                        onChange={(e) => setStageName(e.target.value)}
-                        maxLength={32}
-                        placeholder={selected.name}
-                        className="w-full sm:w-72 bg-gray-950/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none transition"
-                      />
                     </div>
-                  )}
+                    <div className="mt-2.5 text-sm font-semibold text-white truncate">
+                      {current ? current.label : "—"}
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                      将作为该艺人在本应用的首要展示图；可随时在详情里更换
+                    </p>
+                    {!changeMode && (
+                      <div className="mt-4">
+                        <label className="block text-[11px] text-gray-500 font-semibold mb-1.5">
+                          艺名（默认「{selected.name}」）
+                        </label>
+                        <input
+                          value={stageName}
+                          onChange={(e) => setStageName(e.target.value)}
+                          maxLength={32}
+                          placeholder={selected.name}
+                          className="w-full bg-gray-950/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/40 focus:outline-none transition"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 右：全部形象资产墙 */}
+                  <div className="flex-1 min-w-0 space-y-5">
+                    {DISPLAY_GROUPS.map((group) => {
+                      const groupOpts = options.filter((o) => o.group === group);
+                      if (groupOpts.length === 0) return null;
+                      return (
+                        <div key={group}>
+                          <div className="text-xs text-gray-400 font-semibold mb-2">
+                            {group} <span className="text-gray-600">（{groupOpts.length}）</span>
+                          </div>
+                          <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
+                            {groupOpts.map((o) => {
+                              const active = chosenRef === o.ref;
+                              return (
+                                <button
+                                  key={o.ref ?? "main"}
+                                  onClick={() => setChosenRef(o.ref)}
+                                  className={`group relative text-left rounded-lg overflow-hidden border transition ${
+                                    active ? "border-cyan-400 ring-2 ring-cyan-400/40" : "border-white/10 hover:border-cyan-500/40"
+                                  }`}
+                                >
+                                  <div className="aspect-[3/4] overflow-hidden">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={o.url} alt={o.label} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                                  </div>
+                                  {active && (
+                                    <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center shadow">
+                                      <Check className="w-3.5 h-3.5 text-white" />
+                                    </span>
+                                  )}
+                                  <div className="px-2.5 py-2 text-[11px] text-gray-300 truncate bg-gray-950/70">{o.label}</div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <a
+                      href={dapAvatarDeepLink(selected.id, "scene")}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-cyan-300 hover:text-cyan-200 transition"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> 图不够用？去 AiAvatar 为「{selected.name}」渲染更多造型与场景图
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
               )}
             </>
