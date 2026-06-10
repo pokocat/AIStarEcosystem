@@ -120,6 +120,8 @@ export async function apiFetch<T>(
   const finalHeaders: Record<string, string> = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    // X-App-Code：审计来源短码 —— admin 后台自身的登录/改密事件标记为 admin。
+    "X-App-Code": "admin",
     ...(headers || {}),
   };
 

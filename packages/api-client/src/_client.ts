@@ -53,6 +53,16 @@ export function setAuthToken(token: string | null) {
   }
 }
 
+/**
+ * 来源子应用短码（music / drama / celebrity / aiavatar）。由 AuthProvider 在挂载时注入，
+ * apiFetch 自动作为 `X-App-Code` 头带上 —— 让 server 审计日志能区分登录来自哪个子应用。
+ * 未设置时不带该头（server 端落 null）。
+ */
+let appCode: string | null = null;
+export function setAppCode(code: string | null) {
+  appCode = code && code.trim() ? code.trim() : null;
+}
+
 /** 401 回调——由 AuthContext 注册，用于把用户踢回 /login。 */
 type UnauthorizedHandler = () => void;
 let unauthorizedHandler: UnauthorizedHandler | null = null;
@@ -120,6 +130,7 @@ export async function apiFetch<T>(
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(appCode ? { "X-App-Code": appCode } : {}),
       ...(headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -234,6 +245,7 @@ export async function apiFetchPaginated<T>(
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(appCode ? { "X-App-Code": appCode } : {}),
       ...(headers ?? {}),
     },
     body: body == null ? undefined : JSON.stringify(body),

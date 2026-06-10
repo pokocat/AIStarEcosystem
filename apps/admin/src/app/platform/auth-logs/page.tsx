@@ -39,7 +39,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuditApi } from "@/api";
 import type { AuditLog, AuditResult } from "@/types/audit";
-import { AUTH_ACTION_LABEL, AUTH_ACTION_KEYS } from "@/types/audit";
+import { AUTH_ACTION_LABEL, AUTH_ACTION_KEYS, APP_CODE_KEYS, appCodeLabel } from "@/types/audit";
 import { formatDateTimeCN } from "@/lib/utils";
 
 const ACTION_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -84,6 +84,7 @@ export default function AuthLogsPage() {
   const [resultFilter, setResultFilter] = React.useState<AuditResult | "">("");
   const [usernameFilter, setUsernameFilter] = React.useState("");
   const [ipFilter, setIpFilter] = React.useState("");
+  const [appCodeFilter, setAppCodeFilter] = React.useState<string>("");
 
   const fetchLogs = React.useCallback(async () => {
     setLoading(true);
@@ -94,6 +95,7 @@ export default function AuthLogsPage() {
         result: resultFilter || undefined,
         username: usernameFilter.trim() || undefined,
         ipAddress: ipFilter.trim() || undefined,
+        appCode: appCodeFilter || undefined,
         size: 100,
       });
       setLogs(data);
@@ -102,7 +104,7 @@ export default function AuthLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [actionFilter, resultFilter, usernameFilter, ipFilter]);
+  }, [actionFilter, resultFilter, usernameFilter, ipFilter, appCodeFilter]);
 
   React.useEffect(() => {
     void fetchLogs();
@@ -116,6 +118,8 @@ export default function AuthLogsPage() {
           log.username,
           log.userId,
           log.action,
+          log.appCode,
+          appCodeLabel(log.appCode),
           log.errorCode,
           log.detail,
           log.ipAddress,
@@ -205,6 +209,20 @@ export default function AuthLogsPage() {
               </SelectContent>
             </Select>
 
+            <Select value={appCodeFilter || "_all"} onValueChange={(v) => setAppCodeFilter(v === "_all" ? "" : v)}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="全部来源" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">全部来源</SelectItem>
+                {APP_CODE_KEYS.map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {appCodeLabel(k)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Input
               value={usernameFilter}
               onChange={(e) => setUsernameFilter(e.target.value)}
@@ -230,6 +248,7 @@ export default function AuthLogsPage() {
               <TableRow>
                 <TableHead className="w-[160px]">时间</TableHead>
                 <TableHead className="w-[160px]">动作</TableHead>
+                <TableHead className="w-[140px]">来源应用</TableHead>
                 <TableHead className="w-[160px]">账号</TableHead>
                 <TableHead className="w-[140px]">IP</TableHead>
                 <TableHead className="w-[80px]">结果</TableHead>
@@ -241,21 +260,21 @@ export default function AuthLogsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && loadError && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-rose-600">
+                  <TableCell colSpan={9} className="py-10 text-center text-rose-600">
                     加载失败：{loadError}
                   </TableCell>
                 </TableRow>
               )}
               {!loading && !loadError && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                     暂无匹配的登录日志
                   </TableCell>
                 </TableRow>
@@ -276,6 +295,13 @@ export default function AuthLogsPage() {
                           <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                           {actionLabel(log.action)}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {log.appCode ? (
+                          <Badge tone="neutral">{appCodeLabel(log.appCode)}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs">
                         <div className="flex flex-col gap-0.5">
@@ -355,6 +381,16 @@ function AuthLogDetailDialog({ log, onClose }: { log: AuditLog | null; onClose: 
                 <Badge tone={log.result === "success" ? "success" : "danger"}>
                   {log.result === "success" ? "成功" : "失败"}
                 </Badge>
+              </Field>
+              <Field label="来源应用">
+                {log.appCode ? (
+                  <span className="flex items-center gap-1.5">
+                    <Badge tone="neutral">{appCodeLabel(log.appCode)}</Badge>
+                    <code className="font-mono text-[11px] text-muted-foreground">{log.appCode}</code>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—（未带来源标记 / 老数据）</span>
+                )}
               </Field>
               <Field label="账号 (登录输入)">
                 <span className="font-medium">{maskPhone(log.username)}</span>

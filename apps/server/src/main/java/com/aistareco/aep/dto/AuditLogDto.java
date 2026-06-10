@@ -16,6 +16,7 @@ public record AuditLogDto(
         String errorCode,
         String ipAddress,
         String userAgent,
+        String appCode,
         String result,
         String detail,
         Instant createdAt
@@ -25,7 +26,7 @@ public record AuditLogDto(
                 a.getId(), a.getUserId(), a.getUsername(), a.getTenantId(),
                 a.getAction(), a.getResourceType(), a.getResourceId(),
                 a.getErrorCode(),
-                a.getIpAddress(), a.getUserAgent(), lower(a.getResult()),
+                a.getIpAddress(), a.getUserAgent(), a.getAppCode(), lower(a.getResult()),
                 a.getDetail(), a.getCreatedAt()
         );
     }

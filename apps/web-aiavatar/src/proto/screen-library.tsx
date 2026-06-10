@@ -97,12 +97,12 @@ function MLibrary({ ctx }) {
         const on = cat === c.key;
         return hML('button', { key: c.key, onClick: () => setCat(c.key), style: {
           flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-          border: '1px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'), background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, c.label);
+          border: '1px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'), background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, c.label);
       })),
     top === 'mine' && hML('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '13px 18px 0' } },
       [['all', '全部'], ['real', '真人复刻'], ['ai', 'AI 原创']].map(([k, l]) => {
         const on = cat === k;
-        return hML('button', { key: k, onClick: () => setCat(k), style: { flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', border: '1px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'), background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, l);
+        return hML('button', { key: k, onClick: () => setCat(k), style: { flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', border: '1px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'), background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, l);
       }),
       hML('div', { style: { flex: 1 } }),
       hML('button', { onClick: () => setFav(f => !f), title: '只看收藏', style: { flex: '0 0 auto', display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 99, cursor: 'pointer', background: fav ? 'var(--primary-soft)' : 'var(--surface)', color: fav ? 'var(--primary)' : 'var(--ink-3)', border: '1px solid ' + (fav ? 'var(--primary)' : 'var(--line-2)') } }, hML(Icons.heart, { size: 16, stroke: 2 }))),
@@ -177,8 +177,8 @@ function DerivConfigSheet({ derivKey, char, onClose, onSubmit }) {
 
   const chip = (on, label, onClick, key?) => hML('button', { key: key ?? label, onClick, className: 'm-tap', style: {
     height: 32, padding: '0 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
-    border: '1.5px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'),
-    background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, label);
+    border: '1.5px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'),
+    background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, label);
 
   return hML(React.Fragment, null,
     hML('div', { className: 'm-sheet-backdrop', onClick: onClose }),
@@ -395,7 +395,7 @@ function MDetail({ char: initialChar, ctx }) {
             const on = t.key === tab;
             return hML('button', { key: t.key, onClick: () => setTab(t.key), style: {
               flex: '0 0 auto', height: 34, padding: '0 15px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
-              background: on ? 'var(--primary-soft)' : 'transparent', color: on ? 'var(--primary)' : 'var(--ink-3)',
+              background: on ? 'var(--ink)' : 'transparent', color: on ? '#fff' : 'var(--ink-3)',
               fontSize: 13.5, fontWeight: on ? 700 : 600 } }, t.label);
           }))),
 
@@ -584,7 +584,7 @@ function MAssets({ char, ctx, busy, onGenerate, onOpenGenerate, nonce }) {
   const shown = cat === 'all' ? present : present.filter((d) => d.key === cat);
   const chip = (key, label, on, onClick) => hML('button', { key, onClick, className: 'm-tap', style: {
     flex: '0 0 auto', height: 32, padding: '0 13px', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
-    border: '1px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'), background: on ? 'var(--primary-soft)' : 'var(--surface)', color: on ? 'var(--primary)' : 'var(--ink-2)' } }, label);
+    border: '1px solid ' + (on ? 'var(--ink)' : 'var(--line-2)'), background: on ? 'var(--ink)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-2)' } }, label);
 
   return hML('div', null,
     // 分类筛选 + ＋生成
@@ -608,6 +608,7 @@ function MVersions({ char, ctx, onChanged }) {
   const [reloadSeq, setReloadSeq] = useStateML(0);
   const evs = useApi(() => AvatarApi.versions(char.id), [], [char.id, reloadSeq]);
   const [busy, setBusy] = useStateML(null as any);
+  const [confirm, setConfirm] = useStateML(null as any);  // 待二次确认的版本切换 / 另存
   const counts: any = char.counts || {};
   const derivedCount = DATA.DERIVS.reduce((a, d) => a + (Number(counts[d.key]) || 0), 0) + (char.shotImages ? Object.keys(char.shotImages).length : 0);
   const versionNum = (v) => Number(String(v || '').replace(/^v/i, '')) || 1;
@@ -632,7 +633,19 @@ function MVersions({ char, ctx, onChanged }) {
     } finally { setBusy(null); }
   };
   if (!evs.length) return hML('div', { style: { textAlign: 'center', padding: '40px 0', color: 'var(--ink-3)', fontSize: 13 } }, '暂无版本记录');
-  return hML('div', null, evs.map((e: any, i) => hML('div', { key: i, style: { display: 'flex', gap: 12 } },
+  const forking = !!confirm && derivedCount > 0;
+  return hML(React.Fragment, null,
+    confirm && hML(UI.Confirm, {
+      open: true, busy: !!busy, danger: false,
+      onClose: () => setConfirm(null),
+      onConfirm: async () => { const e = confirm; await apply(e); setConfirm(null); },
+      title: forking ? '另存为新数字人？' : '切换到 ' + confirm.v + '？',
+      desc: forking
+        ? '当前数字人已生成衍生作品，不能直接覆盖原形象；将以 ' + confirm.v + ' 的形象另存为一个新的数字人，原数字人保持不变。'
+        : '将把当前数字人的形象切换为 ' + confirm.v + '，并在版本时间线新增一条切换记录；后续可随时切回其它版本。',
+      confirmText: forking ? '另存为新数字人' : '确认切换',
+    }),
+    hML('div', null, evs.map((e: any, i) => hML('div', { key: i, style: { display: 'flex', gap: 12 } },
     hML('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '0 0 auto' } },
       hML('div', { style: { width: 34, height: 34, borderRadius: 99, background: e.cur ? 'var(--primary)' : 'var(--surface)', border: '1px solid ' + (e.cur ? 'var(--primary)' : 'var(--line-2)'), display: 'grid', placeItems: 'center', color: e.cur ? '#fff' : 'var(--ink-3)' } }, hML(KIND_ICON[e.kind] || Icons.sparkle, { size: 16 })),
       i < evs.length - 1 && hML('div', { style: { width: 2, flex: 1, minHeight: 14, background: 'var(--line)', margin: '4px 0' } })),
@@ -643,14 +656,14 @@ function MVersions({ char, ctx, onChanged }) {
           e.cur && hML(UI.Badge, { tone: 'primary' }, '当前'),
           hML('span', { style: { fontSize: 11.5, color: 'var(--ink-3)' } }, e.t)),
         hML('div', { style: { fontSize: 13, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.45 } }, e.note),
-        !e.cur && hML('button', { onClick: () => apply(e), disabled: !!busy, className: 'm-tap', style: {
+        !e.cur && hML('button', { onClick: () => setConfirm(e), disabled: !!busy, className: 'm-tap', style: {
           marginTop: 8, height: 30, padding: '0 12px', borderRadius: 'var(--r-pill)', border: '1px solid var(--line-2)',
           background: derivedCount > 0 ? 'var(--surface-3)' : 'var(--primary-soft)', color: derivedCount > 0 ? 'var(--ink-2)' : 'var(--primary)',
           fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 } },
           hML(derivedCount > 0 ? Icons.copy : Icons.checkc, { size: 13, stroke: 2 }),
           busy === e.v ? '处理中…' : (derivedCount > 0 ? '另存为新数字人' : '切换到此版本'))),
       e.imageUrl && hML('div', { style: { width: 44, flex: '0 0 44px', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--line)' } },
-        hML('img', { src: e.imageUrl, alt: e.v, style: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' } }))))));
+        hML('img', { src: e.imageUrl, alt: e.v, style: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' } })))))));
 }
 
 function MLicense({ char, ctx }) {

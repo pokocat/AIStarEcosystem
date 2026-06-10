@@ -13,6 +13,8 @@ export interface AuditLogListParams {
   action?: string;
   actions?: string[];
   ipAddress?: string;
+  /** 来源子应用短码（精确匹配），如 "celebrity" / "celebrity-mp" / "aiavatar"。 */
+  appCode?: string;
   errorCode?: string;
   result?: AuditResult;
   since?: string;
@@ -29,6 +31,7 @@ export async function listAuditLogs(params: AuditLogListParams = {}): Promise<Au
       if (params.action && log.action !== params.action) return false;
       if (params.actions?.length && !params.actions.includes(log.action)) return false;
       if (params.ipAddress && !(log.ipAddress ?? "").startsWith(params.ipAddress)) return false;
+      if (params.appCode && log.appCode !== params.appCode) return false;
       if (params.errorCode && log.errorCode !== params.errorCode) return false;
       if (params.result && log.result !== params.result) return false;
       if (params.since && log.createdAt < params.since) return false;
@@ -44,6 +47,7 @@ export async function listAuditLogs(params: AuditLogListParams = {}): Promise<Au
       action: params.action,
       actions: params.actions && params.actions.length > 0 ? params.actions.join(",") : undefined,
       ipAddress: params.ipAddress,
+      appCode: params.appCode,
       errorCode: params.errorCode,
       result: params.result,
       since: params.since,
@@ -68,6 +72,8 @@ export interface AuthLogListParams {
   username?: string;
   /** IP 前缀（LIKE 'xxx%'）。 */
   ipAddress?: string;
+  /** 来源子应用短码（精确匹配），如 "celebrity" / "celebrity-mp" / "aiavatar"。 */
+  appCode?: string;
   errorCode?: string;
   result?: AuditResult;
   /** ISO-8601 起始时间（含）。 */
@@ -100,6 +106,7 @@ export async function listAuthLogs(params: AuthLogListParams = {}): Promise<Audi
       if (params.userId && log.userId !== params.userId) return false;
       if (params.username && !(log.username ?? "").startsWith(params.username)) return false;
       if (params.ipAddress && !(log.ipAddress ?? "").startsWith(params.ipAddress)) return false;
+      if (params.appCode && log.appCode !== params.appCode) return false;
       if (params.errorCode && log.errorCode !== params.errorCode) return false;
       if (params.result && log.result !== params.result) return false;
       if (params.since && log.createdAt < params.since) return false;
@@ -116,6 +123,7 @@ export async function listAuthLogs(params: AuthLogListParams = {}): Promise<Audi
       userId: params.userId,
       username: params.username,
       ipAddress: params.ipAddress,
+      appCode: params.appCode,
       errorCode: params.errorCode,
       result: params.result,
       since: params.since,

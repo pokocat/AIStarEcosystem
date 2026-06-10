@@ -18,12 +18,16 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const SCAN_DIRS = [
-  "apps/web-music/src",
-  "apps/web-drama/src",
-  "apps/web-celebrity/src",
-  "apps/web-aiavatar/src",
-  "packages/api-client/src",
+// 每个扫描根：{ dir, prefix? }。prefix 用于自带 API 基址前缀的 app —— web-aiavatar 的
+// proto/api.ts apiFetch 走 /api/v1，openapi path 去掉 /api 基址后是 /v1/*，故补 "/v1"。
+// （aiavatar 的 authFetch→/api/auth、apiUpload→/api/v1 不走 apiFetch 正则，暂不纳入；
+//  其 auth 端点与其他 app 共用，已被覆盖。）
+const SCAN_TARGETS = [
+  { dir: "apps/web-music/src" },
+  { dir: "apps/web-drama/src" },
+  { dir: "apps/web-celebrity/src" },
+  { dir: "apps/web-aiavatar/src", prefix: "/v1" },
+  { dir: "packages/api-client/src" },
 ];
 const OPENAPI_PATH = join(REPO_ROOT, "specs/openapi.yaml");
 
@@ -67,13 +71,16 @@ function normalizeUrl(raw, constants = new Map()) {
     const m = expr.match(/[a-zA-Z_][a-zA-Z0-9_]*/);
     return m ? `{${m[0]}}` : "{var}";
   });
+  // 兜底：嵌套模板字面量（如 `/licenses${status ? `?status=${status}` : ""}`）会被上面的字符串
+  // 正则在内层反引号处截断，残留未闭合的 "${…"；把这种残留动态后缀整体砍掉，归一到基础 path。
+  s = s.replace(/\$\{.*$/, "");
   if (s.length > 1 && s.endsWith("/")) s = s.slice(0, -1);
   return s;
 }
 
 function extractCalls() {
   const calls = [];
-  for (const dir of SCAN_DIRS) {
+  for (const { dir, prefix = "" } of SCAN_TARGETS) {
     const abs = join(REPO_ROOT, dir);
     for (const file of walk(abs)) {
       const src = readFileSync(file, "utf8");
@@ -91,7 +98,7 @@ function extractCalls() {
           file: file.replace(REPO_ROOT + "/", ""),
           rawUrl: url,
           method,
-          path: normalizeUrl(url, constants),
+          path: prefix + normalizeUrl(url, constants),
         });
       }
     }
@@ -181,7 +188,7 @@ function main() {
   console.log("─".repeat(72));
   console.log("API contract check — monorepo");
   console.log(
-    `  Scanned : ${calls.length} apiFetch call sites across ${SCAN_DIRS.length} roots`,
+    `  Scanned : ${calls.length} apiFetch call sites across ${SCAN_TARGETS.length} roots`,
   );
   console.log(
     `  Spec    : ${paths.size} paths in specs/openapi.yaml (${deprecated.size} deprecated)`,

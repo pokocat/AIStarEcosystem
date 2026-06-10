@@ -77,12 +77,12 @@ public class AuditService {
      * 任一参数为 null 即该维度不过滤。
      */
     public Page<AuditLogDto> search(List<String> actions, String userId, String username,
-                                    String ipAddress, AuditLog.AuditResult result,
+                                    String ipAddress, String appCode, AuditLog.AuditResult result,
                                     String errorCode, Instant since, Instant until, Pageable pageable) {
         List<String> safeActions = (actions == null || actions.isEmpty()) ? null : actions;
         return auditRepo.search(safeActions,
                 blankToNull(userId), blankToNull(username), blankToNull(ipAddress),
-                result, blankToNull(errorCode), since, until, pageable)
+                blankToNull(appCode), result, blankToNull(errorCode), since, until, pageable)
                 .map(AuditLogDto::from);
     }
 
@@ -132,6 +132,7 @@ public class AuditService {
                     .errorCode(truncate(blankToNull(errorCode), 64))
                     .ipAddress(clientIp(request))
                     .userAgent(request == null ? null : truncate(request.getHeader("User-Agent"), 512))
+                    .appCode(appCode(request))
                     .result(result)
                     .detail(truncate(detail, 4000))
                     .createdAt(Instant.now())
@@ -153,6 +154,17 @@ public class AuditService {
     public void recordAuthFailure(String action, String username, String errorCode,
                                   String detail, HttpServletRequest request) {
         recordAuth(action, AuditLog.AuditResult.FAILURE, null, username, errorCode, detail, request);
+    }
+
+    /**
+     * 来源子应用短码：读 {@code X-App-Code} 请求头。审计场景按「清洗后原样存」
+     * （trim + 小写 + 截断 32），不做白名单硬校验 —— 宁可留下未知来源也不静默丢数据。
+     */
+    public static String appCode(HttpServletRequest req) {
+        if (req == null) return null;
+        String raw = req.getHeader("X-App-Code");
+        if (raw == null || raw.isBlank()) return null;
+        return truncate(raw.trim().toLowerCase(java.util.Locale.ROOT), 32);
     }
 
     /** v0.47：与 ErrorLogService 同款 IP 抽取，处理反代场景。 */

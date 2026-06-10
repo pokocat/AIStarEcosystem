@@ -68,7 +68,7 @@ function MSettings({ ctx }) {
       hMM(GroupTitle, null, '账户'),
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
         hMM(Row, { icon: Icons.lock, label: '账号与安全', sub: '设置 / 修改登录密码', onClick: () => ctx.go('security') }),
-        hMM(Row, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedGB ?? 0) + ' / ' + (acct.storageQuotaGB ?? 0) + ' GB', onClick: () => ctx.go('storage') }),
+        hMM(Row, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedMb ?? 0) + ' / ' + (acct.storageQuotaMb ?? 0) + ' MB', onClick: () => ctx.go('storage') }),
         hMM(Row, { icon: Icons.gem, label: '会员与算力', sub: (acct.planLabel || 'PRO') + ' · ' + (acct.credits || 0).toLocaleString() + ' 点', onClick: () => ctx.go('membership'), last: true })),
 
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
@@ -161,16 +161,16 @@ function MMembership({ ctx }) {
 function MStorage({ ctx }) {
   const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
   const STORAGE: any[] = acct.storageBreakdown || [];
-  const used = acct.storageUsedGB ?? STORAGE.reduce((a, s) => a + s.size, 0);
-  const total = acct.storageQuotaGB || 0;
+  const used = acct.storageUsedMb ?? STORAGE.reduce((a, s) => a + s.size, 0);
+  const total = acct.storageQuotaMb || 0;
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '存储用量' },
     hMM(WxNavMM, { title: '存储用量', onBack: ctx.back }),
     hMM('div', { className: 'm-body', style: { padding: '4px 18px 30px' } },
       hMM('div', { className: 'm-card', style: { padding: '20px 18px', marginBottom: 20, textAlign: 'center' } },
         hMM('div', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6, marginBottom: 4 } },
-          hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, color: 'var(--ink)' } }, Number(used).toFixed(1)),
-          hMM('span', { style: { fontSize: 14, color: 'var(--ink-3)' } }, '/ ' + total + ' GB')),
-        hMM('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 16 } }, (acct.planLabel || 'PRO') + ' 会员 · 共 ' + total + ' GB 空间'),
+          hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, color: 'var(--ink)' } }, String(Math.round(Number(used) || 0))),
+          hMM('span', { style: { fontSize: 14, color: 'var(--ink-3)' } }, '/ ' + total + ' MB')),
+        hMM('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 16 } }, (acct.planLabel || 'PRO') + ' 会员 · 共 ' + total + ' MB 空间'),
         hMM('div', { style: { display: 'flex', height: 12, borderRadius: 99, overflow: 'hidden', background: 'var(--surface-3)', marginBottom: 14 } },
           STORAGE.map(s => hMM('div', { key: s.name, style: { width: Math.max(0.5, (s.size / Math.max(1, total)) * 100) + '%', background: s.color } }))),
         hMM(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.gem, onClick: () => ctx.go('membership') }, '扩容空间')),
@@ -183,7 +183,7 @@ function MStorage({ ctx }) {
             hMM('div', { style: { fontSize: 14, fontWeight: 600 } }, s.name),
             hMM('div', { style: { marginTop: 6 } }, hMM('div', { style: { height: 4, borderRadius: 99, background: 'var(--surface-3)', overflow: 'hidden' } },
               hMM('div', { style: { width: (used > 0 ? (s.size / used * 100) : 0) + '%', height: '100%', background: s.color, borderRadius: 99 } })))),
-          hMM('span', { className: 'mono', style: { fontSize: 13, fontWeight: 700, color: 'var(--ink-2)', flex: '0 0 auto' } }, s.size + ' GB'))))));
+          hMM('span', { className: 'mono', style: { fontSize: 13, fontWeight: 700, color: 'var(--ink-2)', flex: '0 0 auto' } }, s.size + ' MB'))))));
 }
 
 // ============================================================

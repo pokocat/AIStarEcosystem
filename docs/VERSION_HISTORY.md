@@ -1,4 +1,4 @@
-# 版本增量历史（v0.5 → v0.56）
+# 版本增量历史（v0.5 → v0.57）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
@@ -2423,5 +2423,48 @@ web-aiavatar : proto/api.ts AuthApi +passwordLogin（/auth/password/login）+set
 - **未做**：(a) 在线支付网关（wx.requestPayment / 对公自动对账）与回调端点；(b) 订单超时自动过期；
   (c) 充值发票；(d) celebrity 真实经营埋点（播放/转化/GMV 回传）—— 数据中心已留诚实空态位；
   (e) 明星档案 stats（粉丝/播放/GMV）仍是 mock 字段，未接真实来源（展示层未编造新假值，沿用既有 mock 卡片）。
+
+---
+
+### v0.57（2026-06-09）— 审计日志记录登录来源子应用（appCode）
+
+admin「账号登录日志」(`/platform/auth-logs`，表 `aep_audit_logs`) 此前覆盖所有子应用的登录，但**无法
+区分来自哪个子应用** —— `AuditLog` 无结构化来源列，只有 register/activate 把 `platform` 拼进自由文本
+`detail`。本版加一个**结构化 `appCode` 维度** + admin 列表「来源应用」列 + 筛选。
+
+**机制（一句话）**：每个客户端带 `X-App-Code` 请求头；server 在唯一审计入口
+`AuditService.recordAuth(...)`（本就持 `HttpServletRequest`）统一读取并落库 → **零改动 auth controller**，
+自动覆盖所有 登录/注册/激活/改密 事件。取值与 `PlatformSupport.ALL` 对齐 + 两个扩展：
+`music` / `drama` / `celebrity` / `aiavatar` / `celebrity-mp`（微信小程序）/ `admin`（后台）。
+server 端「清洗后原样存」（trim + 小写 + 截断 32），不做白名单硬校验（审计宁留未知来源也不静默丢）。
+
+```
+server : AuditLog +appCode 列（VARCHAR(32)，可空）+ idx_audit_app 索引
+       : AuditService.recordAuth 读 X-App-Code（新 helper appCode(req)）→ 落库；search(...) +appCode 维度
+       : AuditLogDto +appCode 字段；AuditLogRepository.search JPQL +appCode 精确匹配
+       : AdminAuditController GET /admin/audit-logs +appCode query 参数
+api-client : _client.ts +setAppCode() + apiFetch/apiFetchPaginated 注入 X-App-Code 头；index.ts 导出
+           : AuthProvider +appCode prop（默认回退 requiredPlatform）→ music/drama/celebrity 零改动自动生效
+web-aiavatar : proto/api.ts 自带 fetch 层 +APP_CODE="aiavatar"（authHeaders + 登录 authFetch 注入头）
+miniprogram : utils/api.js apiFetch 头加 X-App-Code=celebrity-mp
+admin  : api/_client.ts 头加 X-App-Code=admin；types/audit.ts +appCode + APP_CODE_LABEL/KEYS + appCodeLabel()
+       : api/audit.ts 两入参 +appCode（query + mock 过滤）；/platform/auth-logs 页 +「来源应用」列 + 筛选下拉 + 详情字段
+       : mocks/audit.ts 9 条登录样本补 appCode（老行留空 → 显示 "—"，演示老数据兼容）
+```
+
+**注意事项**：
+
+- **覆盖范围（本次确认）**：四个 web 创作端 + 微信小程序 + admin 后台；遗留 `apps/web`（Phase 5 即将删）不投入，
+  其登录该列为 NULL → 显示 "—"。
+- **DB 迁移**：纯增量可空列，**无需 Flyway 文件**。本仓 schema 演进靠
+  `spring.jpa.hibernate.ddl-auto=update`（application.yml，dev H2 + mysql 共用；提交的迁移仅 `V1__baseline.sql`），
+  实体加字段即自动建列。已在内存库 + ddl-auto 实跑验证：app_code 自动建列、X-App-Code 落库、
+  `?appCode=` 过滤精确生效、无头请求落 null。
+- **与 register/activate 的 body `platform` 区分**：那是 license 授权语义（决定授予哪些平台），appCode 是
+  「请求来自哪个 app」的审计归因，两者独立共存，不互相替代。
+- **openapi 已补本次最小契约**：`specs/openapi.yaml` 增加 `/admin/audit-logs` 与 `AuditLog.appCode`，
+  用于记录 admin 登录日志页的数据形态。monorepo `check:api-contract` 当前仍会扫到若干 drama / celebrity /
+  aiavatar 历史缺口，属于既有契约债，不在本版用 `appCode` 改动一次性补完。
+- **未做**：(a) admin 列表「来源分布」统计卡片（仅做列 + 筛选）；(b) 历史老行回填 appCode（无来源信息可回填）。
 
 ---

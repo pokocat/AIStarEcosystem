@@ -134,9 +134,8 @@ export function MLogin({ onLoggedIn }) {
   return hLG('div', { style: { position: 'absolute', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--canvas)' }, 'data-screen-label': '登录' },
     // 顶部品牌区（柔光背景）
     hLG('div', { style: { position: 'relative', flex: '0 0 auto', padding: '28px 26px 26px', overflow: 'hidden',
-      background: 'linear-gradient(150deg,#EAF0FF,#F1E8FB 46%,#FCE6F1)' } },
-      hLG('div', { style: { position: 'absolute', top: -70, right: -60, width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(18,179,222,.30), transparent 70%)', filter: 'blur(10px)' } }),
-      hLG('div', { style: { position: 'absolute', bottom: -80, left: -50, width: 230, height: 230, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(155,107,255,.24), transparent 70%)', filter: 'blur(12px)' } }),
+      background: 'linear-gradient(160deg, var(--primary-tint), var(--surface) 58%)' } },
+      hLG('div', { style: { position: 'absolute', top: -70, right: -60, width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(18,179,222,.16), transparent 70%)', filter: 'blur(10px)' } }),
       hLG('div', { style: { position: 'relative' } },
         hLG('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 13px', background: 'rgba(255,255,255,.7)', backdropFilter: 'blur(8px)', borderRadius: 'var(--r-pill)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 16 } },
           hLG(Icons.sparkle, { size: 13, stroke: 2, style: { color: 'var(--primary)' } }), '数字人资产平台'),

@@ -85,6 +85,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.57 / 2026-06-09**：`/platform/auth-logs`（账号登录日志）新增「来源应用」列 + 筛选下拉，区分登录来自哪个子应用（music / drama / celebrity / aiavatar / celebrity-mp 小程序 / admin）。数据来自各前端注入的 `X-App-Code` 请求头 → server `AuditLog.appCode` 列。`types/audit.ts` 增 `appCode` + `APP_CODE_LABEL/KEYS`；`api/audit.ts` 两入参增 `appCode`；admin 自身 `api/_client.ts` 注入 `X-App-Code=admin`。老数据无来源 → 显示 "—"。详见 AGENTS.md / VERSION_HISTORY.md v0.57。
 - **v0.53 / 2026-06-07**：`/platform/licenses` 秘钥批次按子应用拆分。批次表新增「适用范围」列（全站可用 / 子应用徽章）；新建批次弹窗新增「适用子应用」多选 chip（music / drama / celebrity / aiavatar，不勾选 = 全站）+「自定义单包点数」（覆盖等级默认，支持「仅 aiavatar · 发 1000 积分」类批次）。`types/account.ts` 增 `SubProduct` / `SUB_PRODUCT_LABEL_ZH` + `AepUser.platforms`；`types/license.ts` `LicenseBatch.platforms`；`api/licenses.ts` `CreateBatchInput.platforms`。对应 server `LicenseBatch.platforms` 列 + 激活按批次授权（详见 AGENTS.md v0.53）。
   同日第二批（三端对齐审计治理）：`/celebrity/operators` 新增「平台访问」列 + 平台编辑弹窗（PATCH /admin/aep-users/{id}/platforms，仅 SUPER_ADMIN）；`/celebrity/engine-pricing` 动作单价表分两组并新增数字人平台（dap）12 行（0 = 走部署默认价，>0 覆盖立即生效）；`/platform/prompts` KEY_LABEL 补全 16 keys；selling-channels API 入参改用 `SellingChannelUpsertInput` 镜像。详见 `docs/ADMIN_ALIGNMENT_AUDIT.md`。
 - **v0.42 / 2026-05-30**：admin 升级到 Next 16.2.6 + React 19，纳入根 pnpm workspace；新增 `/profile` 个人设置页（当前身份 + 自助改密），后端新增 `POST /api/admin/auth/change-password`；修复 Topbar / 登录页 render 期间读取浏览器环境造成的 hydration mismatch；全局错误通知接入 API 失败、未处理 Promise、脚本错误和 App Router error boundary。

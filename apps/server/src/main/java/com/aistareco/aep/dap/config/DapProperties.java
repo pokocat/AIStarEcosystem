@@ -25,6 +25,8 @@ public class DapProperties {
     private int trashRetentionDays = 30;
     /** 未配置生成引擎时是否允许占位产物降级（生产应为 false → 提交直接 503，不扣费）。 */
     private boolean allowPlaceholder = false;
+    /** 单账户存储配额（MB）。展示用，account() 出 wire 的 storageQuotaMb。 */
+    private int storageQuotaMb = 5000;
 
     public Http getHttp() { return http; }
     public Video getVideo() { return video; }
@@ -38,6 +40,8 @@ public class DapProperties {
     public void setTrashRetentionDays(int trashRetentionDays) { this.trashRetentionDays = trashRetentionDays; }
     public boolean isAllowPlaceholder() { return allowPlaceholder; }
     public void setAllowPlaceholder(boolean allowPlaceholder) { this.allowPlaceholder = allowPlaceholder; }
+    public int getStorageQuotaMb() { return storageQuotaMb; }
+    public void setStorageQuotaMb(int storageQuotaMb) { this.storageQuotaMb = storageQuotaMb; }
 
     /** 多模态 HTTP 调用参数（chat / image / video / 下载产物共用）。 */
     public static class Http {

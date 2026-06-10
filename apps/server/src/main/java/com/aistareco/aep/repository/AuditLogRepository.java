@@ -40,6 +40,7 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, String>,
               AND (:userId IS NULL OR a.userId = :userId)
               AND (:username IS NULL OR a.username LIKE CONCAT(:username, '%'))
               AND (:ipAddress IS NULL OR a.ipAddress LIKE CONCAT(:ipAddress, '%'))
+              AND (:appCode IS NULL OR a.appCode = :appCode)
               AND (:result IS NULL OR a.result = :result)
               AND (:errorCode IS NULL OR a.errorCode = :errorCode)
               AND (:since IS NULL OR a.createdAt >= :since)
@@ -49,6 +50,7 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, String>,
                           @Param("userId") String userId,
                           @Param("username") String username,
                           @Param("ipAddress") String ipAddress,
+                          @Param("appCode") String appCode,
                           @Param("result") AuditLog.AuditResult result,
                           @Param("errorCode") String errorCode,
                           @Param("since") Instant since,

@@ -13,6 +13,7 @@ import type { AepUser, SubProduct } from "@ai-star-eco/types/account";
 import {
   getAuthToken,
   registerUnauthorizedHandler,
+  setAppCode,
   setAuthToken,
 } from "./_client";
 import * as AuthApi from "./api/auth";
@@ -46,6 +47,12 @@ export interface AuthProviderProps {
   loginPath?: string;
   /** v0.43+: 本子产品 key（music / drama / celebrity）。配置后启用平台访问隔离。 */
   requiredPlatform?: SubProduct;
+  /**
+   * 审计来源短码：随每个请求作为 `X-App-Code` 头带上，让 server 登录日志能区分子应用。
+   * 默认回退到 {@link requiredPlatform}（music/drama/celebrity/aiavatar 已天然提供），
+   * 仅在 app 未配 requiredPlatform 或需覆盖时显式传。
+   */
+  appCode?: string;
 }
 
 const DEFAULT_PUBLIC_PREFIXES = ["/login", "/activate", "/"];
@@ -55,6 +62,7 @@ export function AuthProvider({
   publicPathPrefixes = DEFAULT_PUBLIC_PREFIXES,
   loginPath = "/login",
   requiredPlatform,
+  appCode,
 }: AuthProviderProps) {
   const [user, setUser] = React.useState<AepUser | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -96,6 +104,11 @@ export function AuthProvider({
       setLoading(false);
     }
   }, []);
+
+  // 在首个请求前注入审计来源短码（X-App-Code）；缺省回退到 requiredPlatform。
+  React.useEffect(() => {
+    setAppCode(appCode ?? requiredPlatform ?? null);
+  }, [appCode, requiredPlatform]);
 
   React.useEffect(() => {
     loadMe();

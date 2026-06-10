@@ -229,10 +229,10 @@ public final class DapDtos {
 
     // ── 账户 ──────────────────────────────────────────────────
 
-    public record StorageSliceDto(String name, double size, String color, String icon) {}
+    public record StorageSliceDto(String name, long size, String color, String icon) {}
 
     public record AccountDto(String plan, String planLabel, long credits, long monthlyGrant,
                              long creditsUsed, String refreshDate, long generatableEstimate,
-                             double storageUsedGB, int storageQuotaGB,
+                             long storageUsedMb, int storageQuotaMb,
                              List<StorageSliceDto> storageBreakdown) {}
 }

@@ -2139,7 +2139,7 @@ components:
           type: array
           minItems: 1
           items: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
-          description: ["09:00","12:00","18:00"]，HH:MM 24h；后端会排序去重
+          description: '["09:00","12:00","18:00"]，HH:MM 24h；后端会排序去重'
         timezone:        { type: string, description: 'IANA, 例 "Asia/Shanghai"' }
         max_days:        { type: integer, nullable: true, description: 'null = 直到 outputs 用完；非 null 时要 N <= max_days * time_slots.length' }
         jitter_minutes:  { type: integer, nullable: true, minimum: 0, maximum: 30, description: '[0, 30]；null/0 = 无抖动' }
@@ -2209,6 +2209,35 @@ components:
         requestParams: { type: string, nullable: true, description: '脱敏后的请求参数 JSON 文本' }
         userAgent:     { type: string, nullable: true }
         clientIp:      { type: string, nullable: true }
+
+    AuditLog:
+      type: object
+      description: |
+        v0.47：业务行为审计（登录 / 注册 / 激活 / 改密等正常路径的成功 + 失败都落库）。
+        与 ErrorLog 区别：ErrorLog 是被 GlobalExceptionHandler 兜底的异常；AuditLog 是业务侧主动 record 的合规审计。
+        v0.57：新增 appCode（来源子应用），由客户端 X-App-Code 头携带，AuditService.recordAuth 统一落库。
+        仅 admin 可访问 /admin/audit-logs。
+      required: [id, action, result, createdAt]
+      properties:
+        id:           { type: string, description: 'UUID 内部主键' }
+        userId:       { type: string, nullable: true, description: '登录用户 id（失败登录时可能为 null）' }
+        username:     { type: string, nullable: true, description: '登录输入的辨识串（admin username / 手机号），失败时也落，便于排查暴力枚举' }
+        tenantId:     { type: string, nullable: true }
+        action:       { type: string, description: '动作命名，见 server AuditService.Actions（admin.login / auth.sms.login / auth.password.login / …）' }
+        resourceType: { type: string, nullable: true, description: "登录注册类恒为 'auth'" }
+        resourceId:   { type: string, nullable: true }
+        errorCode:    { type: string, nullable: true, description: '失败时的业务码（如 ADMIN_CREDENTIALS_INVALID）；成功时 null' }
+        ipAddress:    { type: string, nullable: true, description: '客户端 IP（含 X-Forwarded-For / X-Real-IP 兼容）' }
+        userAgent:    { type: string, nullable: true }
+        appCode:
+          type: string
+          nullable: true
+          description: |
+            v0.57：来源子应用短码，由客户端 X-App-Code 头携带。取值 music / drama / celebrity / aiavatar
+            （= server PlatformSupport.ALL）+ celebrity-mp（微信小程序）+ admin（后台）。老数据 / 未带头时为 null。
+        result:       { type: string, enum: [success, failure], description: 'wire 上小写' }
+        detail:       { type: string, nullable: true, description: '人类可读详情（含上下文）' }
+        createdAt:    { type: string, format: date-time }
 
 # ─────────────────────────────────────────
 # PATHS
@@ -6396,6 +6425,44 @@ paths:
                         items: { $ref: '#/components/schemas/PublishJobEvent' }
 
   # ── admin/error-logs（v0.30：错误日志，仅 SUPER_ADMIN） ───────────────
+  /admin/audit-logs:
+    get:
+      tags: [admin-audit-logs]
+      operationId: adminListAuditLogs
+      summary: 列出账号登录注册审计日志（admin）
+      description: |
+        多维过滤登录注册类审计事件（/platform/auth-logs 页数据源）。
+        scope=auth-all 一键过滤「登录注册全集」；或显式传 actions CSV。
+        v0.57：新增 appCode 维度，按来源子应用精确过滤。
+      parameters:
+        - { in: query, name: userId,    schema: { type: string } }
+        - { in: query, name: username,  schema: { type: string }, description: '用户名 / 手机号前缀（LIKE xxx%）' }
+        - { in: query, name: action,    schema: { type: string }, description: '单动作（老调用兼容）' }
+        - { in: query, name: actions,   schema: { type: string }, description: '逗号分隔的动作列表，如 admin.login,auth.sms.login' }
+        - { in: query, name: scope,     schema: { type: string, enum: [auth-all] }, description: '便捷预设：auth-all = 登录注册全集' }
+        - { in: query, name: ipAddress, schema: { type: string }, description: 'IP 前缀（LIKE xxx%）' }
+        - { in: query, name: appCode,   schema: { type: string }, description: 'v0.57：来源子应用短码精确匹配（music/drama/celebrity/aiavatar/celebrity-mp/admin）' }
+        - { in: query, name: errorCode, schema: { type: string } }
+        - { in: query, name: result,    schema: { type: string, enum: [success, failure] } }
+        - { in: query, name: since,     schema: { type: string, format: date-time } }
+        - { in: query, name: until,     schema: { type: string, format: date-time } }
+        - { in: query, name: page,      schema: { type: integer, default: 0 } }
+        - { in: query, name: size,      schema: { type: integer, default: 20, maximum: 200 } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AuditLog' }
+                      pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
   /admin/error-logs:
     get:
       tags: [admin-error-logs]
@@ -6470,7 +6537,64 @@ paths:
 
   # ── film（影视类） ────────────────────────────────
 
-  /film/dramas:      { get: { tags: [film], operationId: listDramas,     responses: { '200': { description: ok } } } }
+  /film/dramas:      { get: { tags: [film], operationId: listDramas,     responses: { '200': { description: ok } } }, post: { tags: [film], operationId: createDrama, summary: '新建短剧项目', responses: { '200': { description: ok } } } }
+
+  # ── v0.57 backfill：活跃子应用既有但此前未文档化的端点（drama / celebrity / distribution / wallet）。
+  #    check:api-contract 改扫四个活跃子应用后暴露的历史欠债；先补 path × method 入契约止血，
+  #    request/response schema 后续按域细化（当前与文件内 /fan/* 等极简条目同风格）。
+  /film/dramas/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [film], operationId: getDrama,    summary: '短剧项目详情', responses: { '200': { description: ok } } }
+    patch:  { tags: [film], operationId: updateDrama, summary: '编辑短剧项目', responses: { '200': { description: ok } } }
+    delete: { tags: [film], operationId: deleteDrama, summary: '删除短剧项目', responses: { '204': { description: ok } } }
+  /film/dramas/{id}/status:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    patch: { tags: [film], operationId: updateDramaStatus, summary: '更新短剧项目状态', responses: { '200': { description: ok } } }
+  /me/scripts:
+    get:  { tags: [drama], operationId: listScripts,  summary: '我的脚本列表', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createScript, summary: '新建脚本', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getScript,    summary: '脚本详情', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteScript, summary: '删除脚本', responses: { '204': { description: ok } } }
+  /me/scripts/{scriptId}/status:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    patch: { tags: [drama], operationId: updateScriptStatus, summary: '更新脚本状态', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}/clone:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: cloneScript, summary: '克隆脚本', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}/generate:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: generateScript, summary: 'AI 生成脚本内容', responses: { '200': { description: ok } } }
+  /me/scripts/{scriptId}/versions:
+    parameters: [ { in: path, name: scriptId, required: true, schema: { type: string } } ]
+    get:  { tags: [drama], operationId: listScriptVersions,  summary: '脚本版本列表', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createScriptVersion, summary: '保存脚本新版本', responses: { '200': { description: ok } } }
+  /me/script-versions/{versionId}:
+    parameters: [ { in: path, name: versionId, required: true, schema: { type: string } } ]
+    get: { tags: [drama], operationId: getScriptVersion, summary: '脚本版本详情', responses: { '200': { description: ok } } }
+  /celebrity/videos/{videoId}:
+    parameters: [ { in: path, name: videoId, required: true, schema: { type: string } } ]
+    delete: { tags: [celebrity], operationId: deleteCelebrityVideo, summary: '删除项目视频', responses: { '204': { description: ok } } }
+  /material/videos:
+    get: { tags: [celebrity], operationId: listMaterialVideos, summary: '素材视频列表', responses: { '200': { description: ok } } }
+  /material/videos/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    delete: { tags: [celebrity], operationId: deleteMaterialVideo, summary: '删除素材视频', responses: { '204': { description: ok } } }
+  /material/videos/batch:
+    post: { tags: [celebrity], operationId: batchMaterialVideos, summary: '批量生成/操作素材视频', responses: { '200': { description: ok } } }
+  /mixcut/outputs/{outputId}/download-url:
+    parameters: [ { in: path, name: outputId, required: true, schema: { type: string } } ]
+    get: { tags: [celebrity], operationId: getMixcutOutputDownloadUrl, summary: '混剪产出下载地址', responses: { '200': { description: ok } } }
+  /distribution/jobs/{id}/cancel:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: cancelDistributionJob, summary: '取消发行任务', responses: { '200': { description: ok } } }
+  /distribution/jobs/{id}/retry:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: retryDistributionJob, summary: '重试发行任务', responses: { '200': { description: ok } } }
+  /me/wallet/withdraw:
+    post: { tags: [account], operationId: withdrawWallet, summary: '提现申请', responses: { '200': { description: ok } } }
+
   /film/movies:      { get: { tags: [film], operationId: listMovies,     responses: { '200': { description: ok } } } }
   /film/ads:         { get: { tags: [film], operationId: listAds,        responses: { '200': { description: ok } } } }
   /film/voice-works: { get: { tags: [film], operationId: listVoiceWorks, responses: { '200': { description: ok } } } }
@@ -6698,6 +6822,12 @@ paths:
     delete: { tags: [dap], operationId: dapPurgeAvatar, description: 立即彻底删除（仅回收站内资产；删行+文件）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/versions:
     get: { tags: [dap], operationId: dapAvatarVersions, responses: { '200': { description: ok } } }
+  /v1/avatars/{id}/versions/{version}/switch:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } }, { in: path, name: version, required: true, schema: { type: integer } } ]
+    post: { tags: [dap], operationId: dapSwitchAvatarVersion, summary: '切换到指定版本', responses: { '200': { description: ok } } }
+  /v1/avatars/{id}/versions/{version}/fork:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } }, { in: path, name: version, required: true, schema: { type: integer } } ]
+    post: { tags: [dap], operationId: dapForkAvatarVersion, summary: '从指定版本派生新版本', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/looks:
     get:  { tags: [dap], operationId: dapAvatarLooks, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateLook, description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
