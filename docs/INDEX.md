@@ -58,7 +58,7 @@
 | 文档 | 用途 |
 |---|---|
 | [`specs/README.md`](../specs/README.md) ★ | **接口契约索引**：openapi.yaml + BUSINESS_RULES.md 关系、186 paths 分组、CI 守门规则、wire 命名规范 |
-| [`specs/openapi.yaml`](../specs/openapi.yaml) | **唯一接口契约**（186 paths）。CI 守门：`(cd apps/web && npm run check:api-contract)` |
+| [`specs/openapi.yaml`](../specs/openapi.yaml) | **唯一接口契约**（186 paths）。CI 守门：`pnpm check:api-contract` |
 | [`specs/BUSINESS_RULES.md`](../specs/BUSINESS_RULES.md) | openapi 表达不了的业务规则：字段校验 / 计算公式 / 状态机 / 错误码 |
 
 新增 / 修改接口时：先改前端 `types/*`（真源）→ 后端 `*Dto` → `specs/openapi.yaml` → CI 自动验。**v0.8 例外**：`/api/mixcut/*` 用 snake_case wire，详见 [`apps/web-celebrity/PRODUCT.md` §5.6](../apps/web-celebrity/PRODUCT.md)。

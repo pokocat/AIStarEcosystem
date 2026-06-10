@@ -201,7 +201,7 @@ tests          : DouyinQueryEmbeddedHandlerTest（4 测）+ ProductLinkServiceTe
 - 「商品ID」列在批量导入时被识别但**不持久化**（server 自己生成 id）；运营手粘表格时 ID 仅作 link URL 的参考。
 - MixcutRenderJob.productId 是软引用字符串（无 FK 约束），reset 时残留指向被删商品的 job 不清理 —— 下游 BatchPublishDrawer fetch product null 时优雅降级（不 prefill），不会崩。
 
-**契约状态**：`(cd apps/web && npm run check:api-contract)` ✅ OK · `pnpm typecheck:all` ✅ 七 workspace 全绿 · `./mvnw compile` + `./mvnw test -Dtest='DouyinQueryEmbeddedHandlerTest,ProductLinkServiceTest'` ✅ 11 测全绿。
+**契约状态**：`pnpm check:api-contract` ✅ OK · `pnpm typecheck:all` ✅ 七 workspace 全绿 · `./mvnw compile` + `./mvnw test -Dtest='DouyinQueryEmbeddedHandlerTest,ProductLinkServiceTest'` ✅ 11 测全绿。
 
 ### v0.27 · 2026-05-22 · 混剪创建页 UX 重构（分步导引 / 渐进披露 / 焦点强化）
 

@@ -2462,9 +2462,35 @@ admin  : api/_client.ts 头加 X-App-Code=admin；types/audit.ts +appCode + APP_
   `?appCode=` 过滤精确生效、无头请求落 null。
 - **与 register/activate 的 body `platform` 区分**：那是 license 授权语义（决定授予哪些平台），appCode 是
   「请求来自哪个 app」的审计归因，两者独立共存，不互相替代。
-- **openapi 已补本次最小契约**：`specs/openapi.yaml` 增加 `/admin/audit-logs` 与 `AuditLog.appCode`，
-  用于记录 admin 登录日志页的数据形态。monorepo `check:api-contract` 当前仍会扫到若干 drama / celebrity /
-  aiavatar 历史缺口，属于既有契约债，不在本版用 `appCode` 改动一次性补完。
+- **openapi 已补**：`specs/openapi.yaml` 增加 `/admin/audit-logs` path（含 `appCode` query）与 `AuditLog.appCode`。
+  扫描暴露的其余历史缺口已在本版 Part B 一并补完（见下）。
 - **未做**：(a) admin 列表「来源分布」统计卡片（仅做列 + 筛选）；(b) 历史老行回填 appCode（无来源信息可回填）。
+
+**B. check:api-contract 改扫四个活跃子应用 + openapi 补全历史欠债**
+
+契约守门从扫即将废弃的 `apps/web` 改为扫四个活跃子应用（`web-{music,drama,celebrity,aiavatar}` + `packages/api-client`），
+方法级匹配。根 `scripts/check-api-contract.mjs` 早已是该形态（prior work），本版收尾：
+
+```
+scripts/check-api-contract.mjs : SCAN_DIRS → SCAN_TARGETS（每根可带 prefix）；web-aiavatar proto/api.ts 走 /api/v1，
+                               :   补 prefix="/v1" 修 ~37 个前缀误报；normalizeUrl 兜底砍嵌套模板残留 "${…"
+退役旧门 : 删 apps/web/scripts/check-api-contract.mjs + apps/web/package.json 的 check:api-contract 脚本；
+        :   根 `pnpm check:api-contract` 为唯一门。文档全量改引用（AGENTS.md ×4 / specs/README / docs/INDEX /
+        :   figma-migrate SKILL / BUSINESS_RULES / admin & web-celebrity README / TODO / product_spec）
+openapi : 补全扫描暴露的 ~25 个真实未文档化端点（path × method 入契约止血，schema 后续细化）：
+        :   drama /me/scripts*（10）+ /me/script-versions/{id}；film /film/dramas/{id}* + POST /film/dramas；
+        :   celebrity /material/videos*（3）+ /celebrity/videos/{videoId} + /mixcut/outputs/{outputId}/download-url；
+        :   distribution /distribution/jobs/{id}/{cancel,retry}；wallet /me/wallet/withdraw；
+        :   dap /v1/avatars/{id}/versions/{version}/{fork,switch}；顺手修 1 处既有 YAML 语法（time_slots description 未引号）
+```
+
+**注意事项**：
+
+- **门现态**：`pnpm check:api-contract` 全绿（308 call sites / 361 paths，0 missing path、0 missing method）。
+- **新增 path 为极简 stub**（path+method+tags+operationId+200，无完整 request/response schema）—— 与文件内 `/fan/*` 等
+  既有极简条目同风格，先把「端点存在」入契约止血；body schema 后续按域补。
+- **遗留 `apps/web` 自有文档**（README / FIGMA_MIGRATION_GUIDE）仍引用已删的本地门 —— 随 apps/web Phase 5 整体删除，未单独改。
+- **本仓 schema 演进靠 `ddl-auto=update`**（非每改一版写 Flyway 文件）；dev 文件库 `apps/server/data` 曾有 Flyway 历史漂移
+  导致 `spring-boot:run` 失败 —— 本版 `清掉 ./data` 后重建干净（V1 baseline + ddl-auto 自动建 app_code 列 + 重 seed，实跑确认）。
 
 ---
