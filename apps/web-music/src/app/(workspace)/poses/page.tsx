@@ -1,12 +1,9 @@
 "use client";
 
-// /poses — 动作姿态库（姿态 / 表情 / 手势 / 自定义）
-import { PoseLibrary } from "@/components/PoseLibrary";
-import { useProducerShell } from "@/lib/producer-shell-context";
-import { NoArtistState } from "../_shared/NoArtistState";
+// /producer/poses — 已下线（v0.60 收敛：动作姿态随形象渲染统一在 AiAvatar 完成）。
+// 路由保留避免旧书签 404；PoseLibrary 源码保留一版，下个版本物理删除。
+import { RetiredFeatureNotice } from "../_shared/RetiredFeatureNotice";
 
 export default function ProducerPosesPage() {
-  const { activeArtist } = useProducerShell();
-  if (!activeArtist) return <NoArtistState />;
-  return <PoseLibrary artist={activeArtist} />;
+  return <RetiredFeatureNotice feature="动作姿态" />;
 }

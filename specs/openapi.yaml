@@ -4707,6 +4707,18 @@ paths:
       responses:
         '200': { description: ok }
 
+  /me/digital-ips/import-avatar:
+    post:
+      tags: [artists]
+      operationId: importMyDigitalIpFromAvatar
+      summary: 从 AiAvatar 引入数字人为艺人（v0.60 收敛；引用不复制，不扣孵化积分）
+      description: |
+        body: { dapAvatarId 必填, type?, name?, dapDisplayRef?("look:<id>"|"deriv:<id>"), bio? }。
+        数字人须本人所有、有定妆照、不在回收站；展示图指针缺省 = 跟随定妆照。
+        DTO 出 wire 附 dapAvatarName / dapDisplayImageUrl（实时派生签名 URL，数字人删除时为 null）。
+      responses:
+        '201': { description: created }
+
   /me/digital-ips/{id}:
     parameters:
       - in: path
@@ -6918,6 +6930,8 @@ paths:
     post: { tags: [dap], operationId: dapRestoreAvatar, description: 从回收站恢复, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/purge:
     delete: { tags: [dap], operationId: dapPurgeAvatar, description: 立即彻底删除（仅回收站内资产；删行+文件）, responses: { '200': { description: ok } } }
+  /v1/avatars/{id}/references:
+    get: { tags: [dap], operationId: dapAvatarReferences, summary: 'v0.61 反向「应用于」：数字人被本人哪些 music/drama 艺人壳引用（AvatarReferenceDto[]：ipId/ipName/app/type/status/dapDisplayRef/importedAt）', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/versions:
     get: { tags: [dap], operationId: dapAvatarVersions, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/versions/{version}/switch:

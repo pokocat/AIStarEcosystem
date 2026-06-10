@@ -227,6 +227,25 @@ public final class DapDtos {
         }
     }
 
+    // ── 引用关系（v0.61 反向「应用于」视图）─────────────────────
+
+    /**
+     * 数字人被 music / drama 艺人壳引用的反向条目（GET /api/v1/avatars/{id}/references）。
+     * app 由 kind 派生：ACTOR → drama，其余（SINGER 等）→ music；importedAt = 艺人壳创建时间。
+     */
+    public record AvatarReferenceDto(String ipId, String ipName, String app, String type,
+                                     String status, String dapDisplayRef, Instant importedAt) {
+        public static AvatarReferenceDto from(com.aistareco.aep.model.DigitalIp ip) {
+            return new AvatarReferenceDto(
+                    ip.getId(), ip.getName(),
+                    ip.getKind() == com.aistareco.aep.model.DigitalIp.DigitalIpKind.ACTOR ? "drama" : "music",
+                    ip.getKind() == null ? null : ip.getKind().name().toLowerCase(java.util.Locale.ROOT),
+                    ip.getStatus() == null ? null : ip.getStatus().name().toLowerCase(java.util.Locale.ROOT),
+                    ip.getDapDisplayRef(),
+                    ip.getCreatedAt());
+        }
+    }
+
     // ── 账户 ──────────────────────────────────────────────────
 
     public record StorageSliceDto(String name, long size, String color, String icon) {}

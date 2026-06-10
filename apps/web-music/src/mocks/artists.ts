@@ -21,6 +21,11 @@ export const MOCK_ARTISTS: Artist[] = [
     exp: 7800,
     maxExp: 10000,
     avatar: "https://images.unsplash.com/photo-1745532665626-09f20c9408dd?w=200&q=80",
+    // v0.60 收敛样例：引用 AiAvatar 数字人（展示图实时跟随）
+    dapAvatarId: "DH-MOCK01",
+    dapDisplayRef: null,
+    dapAvatarName: "凌霄",
+    dapDisplayImageUrl: "https://images.unsplash.com/photo-1618641986557-1ecd230959aa?w=400&q=80",
     talents: { singing: 88, acting: 32, dancing: 65, hosting: 18, comedy: 22, variety: 45 },
     stats: {
       songs: 24, dramas: 1, ads: 5, variety: 3,

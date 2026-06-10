@@ -309,7 +309,10 @@ duration: 7820         → formatDuration       → "2h 10min"
 6. **现有「local-only」字段必须分阶段迁移到 OSS**（按 §4.7.4 key-only 规则）：
    - `MixcutAsset.fileUrl`（用户上传素材，当前 `/static/mixcut-assets/...` 本地）
    - `MaterialVideoJob.videoUrl`（素材运营生成视频）
-   - `AiAvatarAsset` 资产 URL（v0.45+）
+   - ~~AiAvatar 数字人资产~~ ✅ 已合规（2026-06-10 审计：dap 域全部走 `FileStorageService`
+     —— DB 存 key、`cdn.upload()` 推 CDN、出 wire 经 `storage.signedUrl()` 签名；
+     无任何绕过 FileStorageService 的直接文件写入。仓库无 `AiAvatarAsset` 实体，
+     真实实体为 `DapAvatar` / `DapLook` / `DapDerivative` 等 `dap_*` 表）
    - `ForgeResult` 视频 URL
 
    迁移姿势：业务 service 在 `upload(...)` / `save(...)` 时调 `cdnUploader.upload(...)`，
@@ -442,11 +445,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.61** | 2026-06-10 | 收敛 Phase 2 ①：aiavatar 反向「应用于」视图（`GET /v1/avatars/{id}/references` + 详情页 MAppliedTo 卡片，展示数字人被哪些 music/drama 艺人壳引用） |
+| **v0.60** | 2026-06-10 | 数字人收敛：music/drama 艺人形象统一引用 AiAvatar（`POST /me/digital-ips/import-avatar` 引入 + `dapDisplayRef` 指定展示图；本地孵化/锻造入口下线） |
 | **v0.59** | 2026-06-10 | 账号停用/恢复完整链路（/admin/users/{id}/suspend·reactivate + 审计 + 短信登录补停用闸）+ 消息中心未读角标 + 砍掉重复的 /base/credit-packs 页 |
 | **v0.58** | 2026-06-10 | admin 消息中心真实化（NotificationPublisher：充值下单/取消、新用户激活 → 运营收件箱 `__admin__`；核准/驳回 → 用户站内消息）+ 结算中心流水补全（账号登录名/昵称、精确余额、秒级时间、真 CSV 导出） |
 | **v0.57** | 2026-06-09 | 审计日志记录登录来源子应用（`X-App-Code` 头 → `AuditLog.appCode`）+ admin「来源应用」列与筛选 |
-| **v0.56** | 2026-06-07 | 充值「下单 → 运营核准入账」（废止直充）+ aiavatar 密码登录 + celebrity 仪表盘去假数据 |
-| **v0.55** | 2026-06-07 | web-celebrity 运营内嵌管理「明星」+「混剪工厂模板」（沿用 v0.31 模式扩展） |
 
 > 阅读建议：先看本表定位到目标版本，再到 VERSION_HISTORY.md 全文搜索 `### vX.YY`。
 
@@ -501,7 +504,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | 资产存储 CDN | driver=local 时 mysql profile ERROR 横幅（P1） | local fake-CDN（dev 默认） |
 | dev 免密登录 | `aep.dev-auth.enabled` 默认关 | 显式开 |
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
-| music 形象锻造成片视频 | ⚠️ 未实现（随机 showreel 占位，接真前不得开放生产入口） | — |
+| music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
 
 ### 跨 app 约定
 

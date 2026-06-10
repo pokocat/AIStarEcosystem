@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "./_handlers/artists";
+import "./_handlers/dap-avatars";
 import "./_handlers/community";
 import "./_handlers/film";
 import "./_handlers/distribution";

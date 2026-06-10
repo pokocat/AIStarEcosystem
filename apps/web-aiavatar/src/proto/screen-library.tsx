@@ -421,6 +421,31 @@ function MPublicShowcase({ char }) {
     lb >= 0 && hML(MLightbox, { images: imgs, index: lb, onClose: () => setLb(-1), onIndex: setLb }));
 }
 
+/** v0.61 反向「应用于」卡片：数字人被哪些 music/drama 艺人壳引用（引用关系实时来自 server，仅 owner 可见）。 */
+function MAppliedTo({ refs }) {
+  const APP_META: any = {
+    music: { label: 'AI 音乐人', icon: Icons.music },
+    drama: { label: 'AI 短剧', icon: Icons.clapper },
+  };
+  return hML('div', { className: 'm-card', style: { margin: '12px 18px 0', padding: '14px 16px' } },
+    hML('div', { style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 } },
+      hML(Icons.link, { size: 15, stroke: 2, style: { color: 'var(--primary)', flex: '0 0 auto' } }),
+      hML('span', { style: { fontSize: 13.5, fontWeight: 700 } }, '应用于'),
+      hML('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-3)' } }, refs.length)),
+    hML('div', { style: { display: 'flex', flexDirection: 'column' } },
+      refs.map((r: any, i: number) => {
+        const meta = APP_META[r.app] || { label: r.app, icon: Icons.link };
+        return hML('div', { key: r.ipId || i, style: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < refs.length - 1 ? '1px solid var(--line)' : 'none' } },
+          hML('span', { style: { display: 'grid', placeItems: 'center', width: 30, height: 30, borderRadius: 'var(--r-md)', background: 'var(--surface-3)', color: 'var(--ink-2)', flex: '0 0 auto' } },
+            hML(meta.icon, { size: 15, stroke: 2 })),
+          hML('div', { style: { flex: 1, minWidth: 0 } },
+            hML('div', { className: 'm-clip1', style: { fontSize: 13.5, fontWeight: 700 } }, r.ipName),
+            hML('div', { style: { fontSize: 11, color: 'var(--ink-3)', marginTop: 2 } },
+              meta.label + (r.importedAt ? ' · ' + String(r.importedAt).slice(0, 10) + ' 引入' : ''))),
+          hML(UI.Badge, { tone: r.status === 'active' ? 'ok' : 'mute' }, r.status === 'active' ? '活跃' : r.status));
+      })));
+}
+
 function MDetail({ char: initialChar, ctx }) {
   const [char, setChar] = useStateML(initialChar);
   const [tab, setTab] = useStateML('assets');
@@ -433,6 +458,7 @@ function MDetail({ char: initialChar, ctx }) {
   const [saving, setSaving] = useStateML(false);
   const [editingName, setEditingName] = useStateML(false);
   const [draftName, setDraftName] = useStateML(char.name || '');
+  const [refs, setRefs] = useStateML([] as any[]);   // v0.61 反向「应用于」：引用此数字人的艺人壳
   const voice = ctx.voiceFor(char);
   const s = DATA.STATUS[char.status] || DATA.STATUS.draft;
   const isPublic = String(char.id || '').startsWith('PA-');
@@ -453,6 +479,7 @@ function MDetail({ char: initialChar, ctx }) {
   useEffectML(() => {
     if (isPublic) return;
     AvatarApi.get(char.id).then((fresh) => fresh && setChar((c) => ({ ...c, ...fresh }))).catch(() => {});
+    AvatarApi.references(char.id).then((list) => setRefs(list || [])).catch(() => {});
   }, []);
 
   const refresh = async () => {
@@ -616,6 +643,9 @@ function MDetail({ char: initialChar, ctx }) {
               hML('div', { key: i, style: { textAlign: 'center', flex: 1, borderLeft: i ? '1px solid var(--line)' : 'none' } },
                 hML('div', { className: 'mono', style: { fontSize: 16, fontWeight: 700 } }, v),
                 hML('div', { style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, k)))),
+
+          // v0.61 反向「应用于」：被 music/drama 艺人壳引用时展示（空列表不渲染）
+          refs.length > 0 && hML(MAppliedTo, { refs }),
 
           // tabs
           hML('div', { style: { position: 'sticky', top: 0, zIndex: 5, background: 'var(--canvas)', padding: '16px 18px 0', marginTop: 6 } },

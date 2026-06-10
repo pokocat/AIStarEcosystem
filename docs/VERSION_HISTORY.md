@@ -1,4 +1,4 @@
-# 版本增量历史（v0.5 → v0.57）
+# 版本增量历史（v0.5 → v0.60）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
@@ -2600,3 +2600,108 @@ openapi backfill /admin/users 全组路径 + suspend/reactivate。
 立即同步）仍是无后端假按钮，按决策暂不动，后续可能整页砍掉。
 
 ---
+
+### v0.60（2026-06-10）— 数字人收敛：music / drama 艺人形象统一引用 AiAvatar
+
+**目标**：子应用不再自建艺人形象（孵化向导 / 形象锻造下线），数字人统一在 AiAvatar
+创建与渲染，music / drama 经「引入数字人」把它变成本应用的艺人 / 演员壳——
+**引用不复制**，AiAvatar 重渲染后子应用形象自动跟随。
+
+**server**：
+
+- `DigitalIp` + `dapAvatarId`（FK → dap_avatar.id）/ `dapDisplayRef`
+  （首要展示图指针：null=跟随定妆照；`look:<id>` / `deriv:<id>`）
+- 新增 `DapAvatarRefResolver`（dap 域）：出 wire 解析展示名 + 签名图 URL
+  （key → `FileStorageService.signedUrl` 实时派生，资产删除静默回退定妆照 → null）；
+  引入校验（本人所有 + 有定妆照 + 不在回收站）+ 展示图指针校验（资产属该数字人，
+  deriv 仅图片类 kind atlas/expr/scene/ward）
+- `POST /api/me/digital-ips/import-avatar`（AccountController）：创建艺人壳，
+  status=ACTIVE、不扣孵化积分、name 缺省取数字人名；`PATCH /me/digital-ips/{id}`
+  可改 / 清 `dapDisplayRef`；dapAvatarId 创建后不可改
+- `DigitalIpDto` + 4 字段：dapAvatarId / dapDisplayRef / dapAvatarName / dapDisplayImageUrl
+  （后两个实时派生；service 统一走 `toDto()`，admin 列表同样附带）
+
+**packages/types**：`Artist` + 4 个可选字段；新增 `ImportAvatarRequest`；
+`officialAppearanceId` 标记 @deprecated。
+
+**web-music**：
+
+- 「艺人管理」创建入口 → `ImportAvatarDialog` 两步 picker
+  （①选数字人 ②选展示图：定妆照 / 造型 looks / 场景图 derivatives 图墙，
+  缺图时深链去 AiAvatar `#/avatar/<id>/scene` 渲染）；艺人详情弹窗加「更换展示图」
+- 新 `api/dap-avatars.ts`（/v1/avatars + looks + derivatives，同 JWT 直调 dap）+ mocks
+- `ArtistAvatar` 统一优先 `dapDisplayImageUrl`（全 app 头像跟随数字人）
+- sidebar 下线「AI艺人孵化」「AI形象锻造」；/incubator /appearance 路由保留
+  → `RetiredFeatureNotice` 提示页（IncubationWizardV2 / AppearanceForgeV3 源码保留一版后删）
+- 顺带清掉 §8.0 「music 形象锻造成片视频未实现（随机 showreel 占位）」技术债——退役而非实现
+
+**web-drama**：
+
+- cast「新增演员」→「从 AiAvatar 引入数字人」（ImportAvatarDialog，drama Dialog 体系）；
+  卡片 hero / 详情 hero 有展示图时用图（否则保留品质渐变）；详情加「更换展示图」
+- 新 api/dap-avatars + mocks/_handlers/dap-avatars（network 拦截层）+ import-avatar handler
+- sidebar 下线「孵化新演员」「形象锻造炉」；/incubator /forge → RetiredFeatureNotice
+
+**决策**：
+
+- 引用不复制：URL 全部出 wire 实时派生（§4.7 key 真值规则），DB 只存 id/指针
+- 数字人删除（回收站）不强拦、不级联：艺人壳展示回退占位，恢复后自动复原
+- 同一数字人可被 music（singer）和 drama（actor）各引入一次 ——「一人多栖」
+- 引入不扣孵化积分（生成费用已在 AiAvatar 端结算）
+- 平台门禁照旧前端拦：未开通 aiavatar 的账号 picker 为空 + 引导文案；
+  运营侧解决（发秘钥默认带 aiavatar 平台），不动门禁代码
+- 遗留孵化艺人（无 dapAvatarId）继续可用，按原 avatarUrl 展示，不迁移
+
+**v0.60 补丁（同日）**：
+
+- 重复引入防护：同 (owner, dapAvatarId, kind) 唯一 → 409 `DAP_AVATAR_ALREADY_IMPORTED`
+  （`DigitalIpRepository.findFirstByOwnerUserIdAndDapAvatarIdAndKind`）；两端 picker
+  对已引入数字人「已引入」置灰；引入 bio 兜底空串（修复 drama `deriveRole` 的
+  `bio.split` 崩溃）
+- 展示图指针补全 `variant:<idx>`（形象变体）/ `shot:<name>`（三机位 front-half/right/left）；
+  AvatarDto 出 wire `variantImages` / `shotImages`；picker 改两栏大图预览 + 分组资产墙
+- music 艺人视图改造：引入艺人右列渲染新 `DapAvatarGallery`（实时引用 AiAvatar 资产，
+  分组画廊 + 「设为首要展示图」+ 深链渲染新形象）；孵化参数卡 → 「数字人引用」卡；
+  快捷入口「AI 形象锻造」→ AiAvatar 外链；日期格式化；sidebar 下线「动作姿态」
+  （/poses → RetiredFeatureNotice）
+- music mock artists API 会话内 store 化（引入后列表可见、PATCH 派生展示图）；
+  drama mock import/patch 同步派生 `dapDisplayImageUrl`
+
+**v0.60 补丁 2（同日）**：
+
+- drama cast 页崩溃修复（「演员阵容加载失败 · reading 'length'」）：根因是
+  `DigitalIpDto.from` 把老行的 `bio=null` 裸出 wire（TS `Artist.bio` 必填）→
+  cast 卡片 `a.bio.length` 崩。DTO 层 bio 兜底空串（覆盖 v0.60 前的存量行，
+  不止 import 路径）；前端 cast 列表 / 详情页对 `bio` / `domains` 加 `?? ""` /
+  `?? []` 防御
+- Spring Security 401/403 JSON 壳升级：内联 lambda 抽成
+  `SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler` 两个 `@Component`
+  （ObjectMapper 序列化 + body 带 MDC `traceId`，与 `GlobalExceptionHandler`
+  同壳）；TODO.md 2026-04-21 块对应项关闭
+- AiAvatar 资产存储 OSS 合规审计：dap 域全部经 `FileStorageService`
+  （DB 存 key / `cdn.upload()` / 出 wire `storage.signedUrl()` 签名），
+  无绕过写入点；AGENTS.md §4.7.6 陈旧的「`AiAvatarAsset` 待迁移」条目移除
+  （仓库无此实体，真实实体 `dap_*` 表自 v0.51 起即合规）
+
+**Phase 2 backlog**（见 TODO.md）：drama 成片以角色数字人形象作 i2i 身份输入、
+voiceName 音色联动、~~aiavatar 反向「应用于」视图~~（✅ v0.61）、drama 角色实体化（多角色各绑数字人）。
+
+### v0.61（2026-06-10）— 收敛 Phase 2 ①：aiavatar 反向「应用于」视图
+
+数字人详情页展示「被哪些 music / drama 艺人壳引用」—— v0.60 收敛（艺人 → 数字人单向引用）
+的反向视角，让用户在 AiAvatar 端能看到资产的下游使用面，删数字人前心里有数。
+
+- **server**：
+  - `GET /api/v1/avatars/{id}/references`（DapAvatarController）：仅 owner 本人可查
+    （`required` 校验存在 + 归属 + 不在回收站）；返回 `AvatarReferenceDto[]`
+  - `DapDtos.AvatarReferenceDto`：ipId / ipName / app / type / status / dapDisplayRef /
+    importedAt（= 艺人壳 createdAt）；app 由 kind 派生（ACTOR → drama，其余 → music）
+  - `DigitalIpRepository.findByOwnerUserIdAndDapAvatarIdOrderByCreatedAtAsc` +
+    `DigitalIpService.listAvatarReferences`
+- **web-aiavatar**：`AvatarApi.references` + `AvatarReference` 类型 + mock
+  `AVATAR_REFERENCES`；详情页 `MAppliedTo` 卡片（概览统计与 Tab 之间；行 = 子应用图标 +
+  艺人名 + 引入日期 + 状态徽标；空列表不渲染；公开形象 PA-* 不拉取）
+- **契约**：openapi `/v1/avatars/{id}/references`；BUSINESS_RULES §6.4 反向视图规则
+- **验证**：mock 无头 6/6（DH-2041 双引用渲染 / DH-2026 无引用不渲染）；live 端到端
+  （dev server 实跑：创建数字人 → 占位生成 → pick → music/drama 双引入 → references
+  返回 2 条、app/dapDisplayRef/排序正确、重复引入 409）；四门全绿

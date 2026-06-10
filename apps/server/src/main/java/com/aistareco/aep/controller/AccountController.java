@@ -184,6 +184,17 @@ public class AccountController {
         return ApiResponse.of(digitalIpService.create(body, principal.getName()));
     }
 
+    /**
+     * v0.60 收敛：从 AiAvatar 引入数字人为艺人（引用不复制，不扣孵化积分）。
+     * body: { dapAvatarId 必填, type?, name?, dapDisplayRef?("look:<id>"|"deriv:<id>"), bio? }
+     */
+    @PostMapping("/digital-ips/import-avatar")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<DigitalIpDto> importDigitalIpFromAvatar(Principal principal,
+                                                                @RequestBody Map<String, Object> body) {
+        return ApiResponse.of(digitalIpService.importFromAvatar(body, principal.getName()));
+    }
+
     @PutMapping("/digital-ips/{id}")
     public ApiResponse<DigitalIpDto> updateDigitalIp(Principal principal,
                                                       @PathVariable String id,

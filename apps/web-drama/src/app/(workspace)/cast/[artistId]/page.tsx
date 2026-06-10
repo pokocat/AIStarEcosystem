@@ -32,6 +32,7 @@ import {
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { ArtistsApi } from "@/api";
 import { ApiError } from "@ai-star-eco/api-client";
+import { ImportAvatarDialog } from "../_dialogs/ImportAvatarDialog";
 import {
   formatCny,
   formatCompact,
@@ -57,6 +58,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
   const [saving, setSaving] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [archiveOpen, setArchiveOpen] = React.useState(false);
+  const [displayPickerOpen, setDisplayPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (q.data) {
@@ -147,7 +149,9 @@ export default function ArtistDetailPage({ params }: PageProps) {
         <div
           style={{
             height: 200,
-            background: QUALITY_GRADIENT[a.quality],
+            background: a.dapDisplayImageUrl
+              ? `url(${JSON.stringify(a.dapDisplayImageUrl)}) center 18% / cover no-repeat`
+              : QUALITY_GRADIENT[a.quality],
             position: "relative",
           }}
         >
@@ -158,7 +162,27 @@ export default function ArtistDetailPage({ params }: PageProps) {
               background: "linear-gradient(180deg, transparent 35%, rgba(0,0,0,0.55))",
             }}
           />
-          <div style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 8 }}>
+          <div style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 8, alignItems: "center" }}>
+            {a.dapAvatarId && (
+              <button
+                onClick={() => setDisplayPickerOpen(true)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "5px 10px",
+                  borderRadius: "var(--radius-pill)",
+                  border: "1px solid rgba(255,255,255,0.35)",
+                  background: "rgba(0,0,0,0.35)",
+                  color: "#fff",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-sans)",
+                }}
+              >
+                <Sparkles size={11} /> 更换展示图
+              </button>
+            )}
             <StatusBadge tone={a.status === "active" ? "success" : a.status === "retired" ? "neutral" : "info"}>
               {STATUS_LABEL[a.status]}
             </StatusBadge>
@@ -273,7 +297,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
                 {a.bio}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {a.domains.map((d) => (
+                {(a.domains ?? []).map((d) => (
                   <Chip key={d} tone="neutral">
                     {d}
                   </Chip>
@@ -318,6 +342,17 @@ export default function ArtistDetailPage({ params }: PageProps) {
           })}
         </Card>
       </div>
+
+      {/* v0.60：更换数字人展示图（引用指针，AiAvatar 渲染新图后自动跟随） */}
+      <ImportAvatarDialog
+        open={displayPickerOpen}
+        onOpenChange={setDisplayPickerOpen}
+        existingArtist={a}
+        onUpdated={() => {
+          invalidate(key);
+          invalidate("/me/artists");
+        }}
+      />
 
       <ConfirmDialog
         open={archiveOpen}

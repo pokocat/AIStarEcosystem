@@ -29,7 +29,7 @@ import {
   QUALITY_TONE,
   STATUS_LABEL,
 } from "@/lib/cast-derive";
-import { NewArtistDialog } from "./_dialogs/NewArtistDialog";
+import { ImportAvatarDialog } from "./_dialogs/ImportAvatarDialog";
 
 type StatusFilter = "all" | ArtistStatus;
 type QualityFilter = "all" | ArtistQuality;
@@ -100,7 +100,7 @@ function CastListInner() {
       if (qualityFilter !== "all" && a.quality !== qualityFilter) return false;
       if (q) {
         const needle = q.toLowerCase();
-        if (!a.name.toLowerCase().includes(needle) && !a.bio.toLowerCase().includes(needle))
+        if (!a.name.toLowerCase().includes(needle) && !(a.bio ?? "").toLowerCase().includes(needle))
           return false;
       }
       return true;
@@ -132,7 +132,7 @@ function CastListInner() {
         action={
           <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
             <Wand2 size={14} />
-            新增演员
+            从 AiAvatar 引入数字人
           </Button>
         }
       />
@@ -288,7 +288,7 @@ function CastListInner() {
         <EmptyState
           icon={<Users size={28} />}
           title="没有匹配的演员"
-          description={q ? `没有找到与「${q}」相关的演员，试试清除筛选条件。` : "你的演员阵容里还没有 IP，先创建第一个吧。"}
+          description={q ? `没有找到与「${q}」相关的演员，试试清除筛选条件。` : "你的演员阵容里还没有 IP — 从 AiAvatar 引入第一位数字人吧。"}
           action={
             <>
               {(q || statusFilter !== "all" || qualityFilter !== "all") && (
@@ -306,7 +306,7 @@ function CastListInner() {
               )}
               <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
                 <Wand2 size={14} />
-                新增演员
+                引入数字人
               </Button>
             </>
           }
@@ -342,7 +342,9 @@ function CastListInner() {
                 <div
                   style={{
                     height: 168,
-                    background: QUALITY_GRADIENT[a.quality],
+                    background: a.dapDisplayImageUrl
+                      ? `url(${JSON.stringify(a.dapDisplayImageUrl)}) center 20% / cover no-repeat`
+                      : QUALITY_GRADIENT[a.quality],
                     position: "relative",
                   }}
                 >
@@ -376,7 +378,7 @@ function CastListInner() {
 
                 <div style={{ padding: "16px 18px", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ fontSize: 12, color: "var(--fg-1)", lineHeight: 1.5, minHeight: 36 }}>
-                    {a.bio.length > 56 ? `${a.bio.slice(0, 56)}…` : a.bio}
+                    {(a.bio ?? "").length > 56 ? `${a.bio.slice(0, 56)}…` : a.bio}
                   </div>
 
                   <div
@@ -427,12 +429,16 @@ function CastListInner() {
         </div>
       )}
 
-      <NewArtistDialog
+      {/* v0.60 收敛：演员创建改为从 AiAvatar 引入数字人（取代本地孵化表单） */}
+      <ImportAvatarDialog
         open={showNew}
         onOpenChange={setShowNew}
-        onCreated={(a) => {
+        defaultType="actor"
+        importedAvatarIds={(artistsQ.data ?? [])
+          .filter((a) => a.type === "actor" && a.dapAvatarId)
+          .map((a) => String(a.dapAvatarId))}
+        onImported={(a) => {
           invalidate("/me/artists");
-          toast.success(`演员「${a.name}」已加入阵容`);
           router.push(`/cast/${encodeURIComponent(a.id)}`);
         }}
       />

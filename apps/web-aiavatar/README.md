@@ -109,6 +109,19 @@ src/
 
 ## 版本日志
 
+### v0.11（2026-06-10）— 反向「应用于」视图（收敛 Phase 2 ①）
+
+数字人详情页新增「应用于」卡片：展示该数字人被哪些 music / drama 艺人壳引用
+（v0.60 收敛的反向视角）。
+
+- **API**（`api.ts`）：`AvatarApi.references(id)` → `GET /api/v1/avatars/{id}/references`，
+  mock 分支读 `data.ts` 的 `AVATAR_REFERENCES`（DH-2041 双引用 / DH-2038 单引用样例）。
+- **类型**（`data.ts`）：`AvatarReference`（ipId / ipName / app / type / status /
+  dapDisplayRef / importedAt），与 server `DapDtos.AvatarReferenceDto` 字段 1:1。
+- **UI**（`screen-library.tsx` `MAppliedTo`）：概览统计与 Tab 之间插卡；每行 = 子应用图标
+  （music ♪ / drama 🎬）+ 艺人名 + 「AI 音乐人 / AI 短剧 · yyyy-MM-dd 引入」+ 状态徽标；
+  空列表不渲染（多数数字人无引用，不留空壳）；公开形象（PA-*）不拉取。
+
 ### v0.10（2026-06-10）— 真人复刻录制简化：6 秒三角度无声录制 + 美颜预览
 
 暂不做声音复刻，录制只为采集多角度面部素材，故大幅缩短并强化引导（`screen-real.tsx`）：

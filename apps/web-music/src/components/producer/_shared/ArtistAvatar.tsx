@@ -13,6 +13,8 @@ import React from "react";
 interface ArtistLike {
   avatar?: string | null;
   name?: string | null;
+  /** AiAvatar 数字人首要展示图（v0.60 收敛，优先于 avatar） */
+  dapDisplayImageUrl?: string | null;
 }
 
 interface ArtistAvatarProps {
@@ -29,10 +31,11 @@ export function ArtistAvatar({ artist, size, className = "", alt }: ArtistAvatar
   const name = artist.name ?? "";
   const altText = alt ?? name;
 
-  if (artist.avatar) {
+  const imageSrc = artist.dapDisplayImageUrl || artist.avatar;
+  if (imageSrc) {
     return (
       <img
-        src={artist.avatar}
+        src={imageSrc}
         alt={altText}
         style={sizeStyle}
         className={`${sizeClass} object-cover ${className}`.trim()}

@@ -16,7 +16,7 @@
 **核心链路**：
 
 ```
-孵化（声线 / 形象 / 道具）  →  创作（音乐工坊 / 单曲）  →  发行（多平台分发）  →  变现（版权 / 财务）
+引入数字人（AiAvatar 创建形象）  →  创作（音乐工坊 / 单曲）  →  发行（多平台分发）  →  变现（版权 / 财务）
 ```
 
 **与其他子产品的边界**：
@@ -35,7 +35,7 @@
 | `artist` | `Artist`、`ArtistStats`、`TalentProfile` | 数字人歌手主体；type ∈ {singer, actor, dancer, idol, host, entertainer, all_rounder} |
 | `music` | `Song`、`Album`、`Concert`、`MusicGenre` | 单曲 / 专辑 / 演出 |
 | `wardrobe` | `ClothingItem`、`ClothingCategory`、`EquipSlot` | 戏服 / 道具 / 装备槽 |
-| `appearance-forge` | `ForgeTemplate`、`ForgeResult`、`ForgeMode` | 形象锻造（生成数字人外观） |
+| `appearance-forge` | `ForgeTemplate`、`ForgeResult`、`ForgeMode` | 形象锻造（**v0.60 已下线**，遗留数据只读） |
 | `pose / expression / gesture` | `Pose`、`Expression`、`Gesture` | 动作表现库 |
 | `distribution` | `Platform`、`DistributionContent` | 多平台分发渠道 |
 | `community` | `FanTier`、`FanGrowthPoint`、`FanActivity` | 粉丝社群（当前全 mock） |
@@ -54,10 +54,10 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/dashboard` | 工作台 | 经纪大盘（AgencyOverview + ActivityFeed） |
 | `/artist` | 工作台 | 单艺人聚焦视图（默认进入当前在管艺人） |
 | `/artists` | 工作台 | MCN 艺人矩阵（多艺人对比） |
-| `/incubator` | 艺人管理 | AI 艺人孵化向导（多步表单：声线 → 形象 → 风格） |
-| `/appearance` | 艺人管理 | 形象锻造（Coze event stream） |
+| `/incubator` | 艺人管理 | **v0.60 已下线** → 提示页（数字人统一在 AiAvatar 创建后引入） |
+| `/appearance` | 艺人管理 | **v0.60 已下线** → 提示页（同上；艺人管理内可「引入数字人 / 更换展示图」） |
 | `/wardrobe` | 艺人管理 | 戏服 / 道具管理 + 装备槽 |
-| `/poses` | 艺人管理 | 动作姿态库 |
+| `/poses` | 艺人管理 | **v0.60 已下线** → 提示页（动作姿态随形象渲染统一在 AiAvatar 完成） |
 | `/asset-center` ★ | 内容创作 | 素材中心（数字资产库 + 文案库 双 tab） |
 | `/production` ★ | 内容创作 | 制作工坊（切片制作 + AI 数字人 + 混剪批量 三 tab） |
 | `/studio` | 内容创作 | 创作工坊（label 随艺人类型切换：「音乐工坊」「直播工坊」…） |
@@ -76,7 +76,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 **Sidebar 分组**（4 组）：
 
 1. **工作台** — dashboard / artist / artists
-2. **艺人管理** — incubator / appearance / wardrobe / poses
+2. **艺人管理** — artists / wardrobe（incubator / appearance / poses 已于 v0.60 下线）
 3. **内容创作** — **asset-center** ★ / **production** ★ / studio / music / copyright
 4. **商业运营** — notices / distribution / community / finance
 

@@ -1,10 +1,12 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dap.service.DapAvatarRefResolver;
 import com.aistareco.aep.dto.DigitalIpDto;
 import com.aistareco.aep.model.DigitalIp;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.DigitalIpRepository;
 import com.aistareco.aep.repository.StudioRepository;
+import com.aistareco.common.BusinessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -15,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -30,17 +33,33 @@ public class DigitalIpService {
     private final StudioRepository studioRepo;
     private final CreditService creditService;
     private final PlatformConfigService platformConfigService;
+    private final DapAvatarRefResolver dapRefResolver;
 
     public DigitalIpService(DigitalIpRepository ipRepo,
                             AepUserRepository userRepo,
                             StudioRepository studioRepo,
                             CreditService creditService,
-                            PlatformConfigService platformConfigService) {
+                            PlatformConfigService platformConfigService,
+                            DapAvatarRefResolver dapRefResolver) {
         this.ipRepo = ipRepo;
         this.userRepo = userRepo;
         this.studioRepo = studioRepo;
         this.creditService = creditService;
         this.platformConfigService = platformConfigService;
+        this.dapRefResolver = dapRefResolver;
+    }
+
+    /** 出 wire 统一入口：引用了数字人的艺人实时解析展示名 + 签名图 URL。 */
+    private DigitalIpDto toDto(DigitalIp ip) {
+        return toDto(ip, null);
+    }
+
+    private DigitalIpDto toDto(DigitalIp ip, String studioName) {
+        if (ip.getDapAvatarId() == null || ip.getDapAvatarId().isBlank()) {
+            return DigitalIpDto.from(ip, studioName);
+        }
+        DapAvatarRefResolver.View v = dapRefResolver.resolve(ip.getDapAvatarId(), ip.getDapDisplayRef());
+        return DigitalIpDto.from(ip, studioName, v.avatarName(), v.displayImageUrl());
     }
 
     public Page<DigitalIpDto> list(String ownerUserId, String studioId,
@@ -55,7 +74,7 @@ public class DigitalIpService {
         } else {
             page = ipRepo.findAll(pageable);
         }
-        return page.map(DigitalIpDto::from);
+        return page.map(this::toDto);
     }
 
     /**
@@ -85,18 +104,18 @@ public class DigitalIpService {
                     if (b == null) return -1;
                     return b.compareTo(a);
                 })
-                .map(DigitalIpDto::from)
+                .map(this::toDto)
                 .toList();
     }
 
     public DigitalIpDto findById(String id) {
-        return DigitalIpDto.from(loadOrThrow(id));
+        return toDto(loadOrThrow(id));
     }
 
     public DigitalIpDto findOwnedById(String id, String ownerUserId) {
         DigitalIp ip = loadOrThrow(id);
         requireOwner(ip, ownerUserId);
-        return DigitalIpDto.from(ip);
+        return toDto(ip);
     }
 
     @Transactional
@@ -148,19 +167,86 @@ public class DigitalIpService {
         applyIncubationParams(ip, body.get("incubationParams"));
 
         // 孵化扣积分：余额不足会抛 402 PAYMENT_REQUIRED，事务回滚不创建艺人。
-        long cost = platformConfigService.getLong(INCUBATION_COST_CONFIG_KEY, DEFAULT_INCUBATION_COST);
-        if (cost > 0) {
-            creditService.debit(ownerUserId, cost,
+        long incubationCost = platformConfigService.getLong(INCUBATION_COST_CONFIG_KEY, DEFAULT_INCUBATION_COST);
+        if (incubationCost > 0) {
+            creditService.debit(ownerUserId, incubationCost,
                     INCUBATION_LEDGER_REFERENCE_TYPE,
                     ip.getId(),
                     "孵化新艺人：" + ip.getName());
         }
 
-        return DigitalIpDto.from(ipRepo.save(ip));
+        return toDto(ipRepo.save(ip));
+    }
+
+    /**
+     * v0.60 收敛：从 AiAvatar 引入数字人 → 创建艺人壳（引用不复制）。
+     * - 数字人必须本人所有、有定妆照、不在回收站；
+     * - 形象/展示名实时跟随数字人，{@code avatarUrl} 不落值；
+     * - 不扣孵化积分（形象生成费用已在 AiAvatar 端结算）；
+     * - 同一数字人可跨 kind 多次引入（music 引入为 singer、drama 引入为 actor，各自独立展示图），
+     *   但同 (owner, dapAvatarId, kind) 仅允许一个艺人壳 —— 重复引入 409 DAP_AVATAR_ALREADY_IMPORTED。
+     */
+    @Transactional
+    public DigitalIpDto importFromAvatar(Map<String, Object> body, String ownerUserId) {
+        var avatar = dapRefResolver.requireUsable(ownerUserId, requireString(body, "dapAvatarId"));
+
+        var kind = parseEnum(body, "type", DigitalIp.DigitalIpKind.class, DigitalIp.DigitalIpKind.SINGER);
+        ipRepo.findFirstByOwnerUserIdAndDapAvatarIdAndKind(ownerUserId, avatar.getId(), kind)
+                .ifPresent(existing -> {
+                    throw new BusinessException(HttpStatus.CONFLICT, "DAP_AVATAR_ALREADY_IMPORTED",
+                            "该数字人已引入为艺人「" + existing.getName() + "」，请勿重复引入；如需调整可在该艺人详情里更换展示图");
+                });
+
+        String displayRef = getString(body, "dapDisplayRef");
+        if (displayRef == null || displayRef.isBlank()) {
+            displayRef = null;
+        } else {
+            dapRefResolver.requireRefOfAvatar(avatar.getId(), displayRef);
+        }
+
+        String studioId = studioRepo.findByOwnerUserId(ownerUserId)
+                .map(com.aistareco.aep.model.Studio::getId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "当前账号尚未创建工作室，无法引入数字人"));
+
+        String name = getString(body, "name");
+        if (name == null || name.isBlank()) name = avatar.getName();
+
+        Instant now = Instant.now();
+        DigitalIp ip = DigitalIp.builder()
+                .id(UUID.randomUUID().toString())
+                .name(name)
+                .kind(kind)
+                .quality(parseEnum(body, "quality", DigitalIp.Quality.class, DigitalIp.Quality.COMMON))
+                .status(DigitalIp.DigitalIpStatus.ACTIVE) // 引入即就绪（区别于孵化 TRAINEE）
+                .level(getInt(body, "level", 1))
+                .exp(0)
+                .maxExp(100)
+                // bio 兜底为空串：TS Artist.bio 是必填 string，下游有 bio.split 类派生逻辑
+                .bio(Objects.requireNonNullElse(getString(body, "bio"), ""))
+                .dapAvatarId(avatar.getId())
+                .dapDisplayRef(displayRef)
+                .studioId(studioId)
+                .ownerUserId(ownerUserId)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        return toDto(ipRepo.save(ip));
+    }
+
+    /**
+     * v0.61 反向「应用于」：数字人被本人哪些 music / drama 艺人壳引用
+     * （aiavatar 详情页展示；调用方需先校验数字人归属）。
+     */
+    public java.util.List<com.aistareco.aep.dap.dto.DapDtos.AvatarReferenceDto> listAvatarReferences(
+            String ownerUserId, String dapAvatarId) {
+        return ipRepo.findByOwnerUserIdAndDapAvatarIdOrderByCreatedAtAsc(ownerUserId, dapAvatarId)
+                .stream().map(com.aistareco.aep.dap.dto.DapDtos.AvatarReferenceDto::from).toList();
     }
 
     public DigitalIpDto update(String id, Map<String, Object> body) {
-        return DigitalIpDto.from(applyUpdate(loadOrThrow(id), body));
+        return toDto(applyUpdate(loadOrThrow(id), body));
     }
 
     public DigitalIpDto updateOwned(String id, String ownerUserId, Map<String, Object> body) {
@@ -168,7 +254,7 @@ public class DigitalIpService {
         requireOwner(ip, ownerUserId);
         // Owner cannot re-assign ownership.
         body.remove("ownerUserId");
-        return DigitalIpDto.from(applyUpdate(ip, body));
+        return toDto(applyUpdate(ip, body));
     }
 
     public void delete(String id) {
@@ -198,6 +284,20 @@ public class DigitalIpService {
         if (body.containsKey("maxExp")) ip.setMaxExp(getInt(body, "maxExp", ip.getMaxExp()));
         if (body.containsKey("avatar")) ip.setAvatarUrl(getString(body, "avatar"));
         if (body.containsKey("bio")) ip.setBio(getString(body, "bio"));
+
+        // 展示图指针可改可清（清空 = 跟随定妆照）；数字人引用本身（dapAvatarId）不可改。
+        if (body.containsKey("dapDisplayRef")) {
+            String ref = getString(body, "dapDisplayRef");
+            if (ref == null || ref.isBlank()) {
+                ip.setDapDisplayRef(null);
+            } else {
+                if (ip.getDapAvatarId() == null || ip.getDapAvatarId().isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该艺人未引用数字人，无法设置展示图");
+                }
+                dapRefResolver.requireRefOfAvatar(ip.getDapAvatarId(), ref);
+                ip.setDapDisplayRef(ref);
+            }
+        }
 
         if (body.containsKey("studioId")) {
             String studioId = getString(body, "studioId");
