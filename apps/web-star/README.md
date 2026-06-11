@@ -61,6 +61,9 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
 
 ## 版本日志
 
+- **2026-06-11 · 中文字体回退链**：sans / display / mono 三栈补全 `-apple-system` → 苹方 →
+  HarmonyOS Sans SC → MiSans → 雅黑 → Noto Sans SC（tokens.css 与 app.css @theme 双处同步），
+  修复国产 Android ROM 中文字体断档；serif 补 Noto Serif SC。
 - **v0.60 补丁 3 · skill 审计收尾**（2026-06-11）：品牌化 404 `not-found.tsx`（登录态生效；
   匿名未知路径仍由 AuthProvider 引导登录）+ 壳层「跳到主内容」skip-link（main 落焦点）+
   授权规则 accent 冷灰 `#6b7280`→暖灰 `#78716c`（统一 stone 家族）+ html 锚点平滑滚动

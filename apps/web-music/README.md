@@ -60,6 +60,8 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+- **2026-06-11 · 中文字体回退链**：`-apple-system` → 苹方 → HarmonyOS Sans SC → MiSans → 雅黑 → Noto Sans SC，修复国产 Android ROM（鸿蒙 / 小米等）中文字体断档。
+
 ### v0.60 · 2026-06-10 · 数字人收敛：艺人形象统一引用 AiAvatar {#v060}
 
 - 「艺人管理」创建入口改为 **从 AiAvatar 引入数字人**（两步 picker：选数字人 → 选首要展示图，

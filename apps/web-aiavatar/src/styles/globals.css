@@ -519,11 +519,12 @@
   /* —— 圆角（HeyGen 偏圆润）—— */
   --r-xs: 7px; --r-sm: 10px; --r-md: 13px; --r-lg: 17px; --r-xl: 22px; --r-2xl: 28px; --r-pill: 999px;
 
-  /* —— 字体（双层：功能 UI + 资产身份）—— */
-  --font-disp:  'Manrope', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
-  --font-ui:    'Manrope', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  /* —— 字体（双层：功能 UI + 资产身份）——
+     中文回退链：苹方 → 鸿蒙 → 小米 → 雅黑 → 思源/Noto（覆盖国产 Android ROM） */
+  --font-disp:  'Manrope', -apple-system, 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+  --font-ui:    'Manrope', -apple-system, 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
   --font-serif: 'Newsreader', 'Songti SC', 'Noto Serif SC', Georgia, serif;
-  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+  --font-mono:  'JetBrains Mono', ui-monospace, 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', 'Noto Sans SC', monospace;
 }
 
 * { box-sizing: border-box; }

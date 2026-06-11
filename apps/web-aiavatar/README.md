@@ -109,6 +109,8 @@ src/
 
 ## 版本日志
 
+- **2026-06-11 · 中文字体回退链**：`-apple-system` → 苹方 → HarmonyOS Sans SC → MiSans → 雅黑 → Noto Sans SC，修复国产 Android ROM（鸿蒙 / 小米等）中文字体断档。
+
 ### v0.11（2026-06-10）— 反向「应用于」视图（收敛 Phase 2 ①）
 
 数字人详情页新增「应用于」卡片：展示该数字人被哪些 music / drama 艺人壳引用

@@ -7,10 +7,10 @@
 @import './tokens.css';
 
 @theme {
-  --font-sans: "AEP Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "AEP Manrope", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "AEP Instrument Serif", "Songti SC", Georgia, serif;
-  --font-mono: "AEP JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "AEP Inter", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "AEP Manrope", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "AEP Instrument Serif", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-mono: "AEP JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", monospace;
 }
 
 /* ── 通用工具 ─────────────────────────────────────────────────────────────── */

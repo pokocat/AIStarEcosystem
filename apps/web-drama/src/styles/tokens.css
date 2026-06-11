@@ -37,9 +37,10 @@
   --shadow-lg:     0 8px 24px rgba(28,25,23,.08), 0 24px 60px rgba(28,25,23,.10);
   --shadow-accent: 0 8px 24px color-mix(in oklch, var(--accent) 28%, transparent);
 
-  /* —— 字体 —— */
-  --font:     "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-num: "Quicksand", "Noto Sans SC", system-ui, sans-serif;
+  /* —— 字体 ——
+     中文回退链：苹方 → 鸿蒙 → 小米 → 雅黑 → 思源/Noto（Noto 殿后作 Android 原生兜底） */
+  --font:     -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-num: "Quicksand", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
 
   /* 字号 / 字距 */
   --fs-base: 14px;
