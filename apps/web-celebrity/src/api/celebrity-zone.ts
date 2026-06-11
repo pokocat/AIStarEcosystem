@@ -8,6 +8,7 @@ import type {
   CelebrityProject,
   CelebrityProjectStatus,
   CelebrityProjectVideo,
+  CelebrityPricingTier,
   CelebrityShowcase,
   CelebrityStar,
   CelebrityTemplate,
@@ -58,6 +59,61 @@ function visibleProjectVideos(videos: CelebrityProjectVideo[]): CelebrityProject
   return videos.filter((v) => !deleted.has(v.id));
 }
 
+type RawPricingTier = Partial<CelebrityPricingTier> & {
+  perks?: unknown;
+  quota?: unknown;
+};
+
+function normalizePricingFeatures(raw: RawPricingTier): string[] {
+  if (Array.isArray(raw.features)) return raw.features.filter((f): f is string => typeof f === "string");
+  if (Array.isArray(raw.perks)) return raw.perks.filter((f): f is string => typeof f === "string");
+  if (typeof raw.quota === "number" && Number.isFinite(raw.quota)) return [`${raw.quota} 条生成额度`];
+  return ["按授权规则开通使用"];
+}
+
+function normalizePricingTier(raw: RawPricingTier, index: number): CelebrityPricingTier {
+  const name = (typeof raw.name === "string" && raw.name ? raw.name : "体验版") as CelebrityPricingTier["name"];
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id : `${name}-${index + 1}`,
+    name,
+    price: typeof raw.price === "string" && raw.price ? raw.price : "议价",
+    features: normalizePricingFeatures(raw),
+    recommended: typeof raw.recommended === "boolean" ? raw.recommended : name === "标准版" || index === 1,
+  };
+}
+
+function normalizeStar(star: CelebrityStar | null): CelebrityStar | null {
+  if (!star) return star;
+  const auth = (star.authorization ?? {}) as Partial<CelebrityStar["authorization"]>;
+  const stats = (star.stats ?? {}) as Partial<CelebrityStar["stats"]>;
+  return {
+    ...star,
+    subCategories: Array.isArray(star.subCategories) ? star.subCategories : [],
+    authorization: {
+      status: auth.status ?? "unauthorized",
+      scenes: Array.isArray(auth.scenes) ? auth.scenes : [],
+      expireDate: auth.expireDate,
+      availableStyles: typeof auth.availableStyles === "number" ? auth.availableStyles : 0,
+      pendingNote: auth.pendingNote,
+      applyUrl: auth.applyUrl,
+    },
+    stats: {
+      totalGenerated: typeof stats.totalGenerated === "number" ? stats.totalGenerated : 0,
+      totalPlays: stats.totalPlays ?? "—",
+      conversionRate: stats.conversionRate ?? "—",
+      gmv: stats.gmv ?? "—",
+    },
+    sampleVideos: Array.isArray(star.sampleVideos) ? star.sampleVideos : [],
+    pricing: Array.isArray(star.pricing) ? star.pricing.map((tier, idx) => normalizePricingTier(tier, idx)) : [],
+    photos: Array.isArray(star.photos) ? star.photos : [],
+    videos: Array.isArray(star.videos) ? star.videos : [],
+  };
+}
+
+function normalizeStars(stars: CelebrityStar[]): CelebrityStar[] {
+  return stars.map((star) => normalizeStar(star)).filter((star): star is CelebrityStar => Boolean(star));
+}
+
 // ── 明星市场 ────────────────────────────────────────────────────────────────
 export interface StarFilter {
   category?: "全部" | CelebrityCategory;
@@ -89,18 +145,18 @@ export async function listStars(filter?: StarFilter): Promise<CelebrityStar[]> {
   if (filter?.category && filter.category !== "全部") qs.set("category", filter.category);
   if (filter?.sort) qs.set("sort", filter.sort);
   const suffix = qs.toString() ? `?${qs}` : "";
-  return apiFetch<CelebrityStar[]>(`/celebrity/stars${suffix}`);
+  return normalizeStars(await apiFetch<CelebrityStar[]>(`/celebrity/stars${suffix}`));
 }
 
 export async function getStar(id: ID): Promise<CelebrityStar | null> {
   if (USE_MOCK) return mockDelay(STAR_DETAIL_MAP[id] ?? null);
-  return apiFetch<CelebrityStar | null>(`/celebrity/stars/${id}`);
+  return normalizeStar(await apiFetch<CelebrityStar | null>(`/celebrity/stars/${id}`));
 }
 
 /** 旧接口：保留兼容（部分组件直接使用 ACTIVE_STAR fallback） */
 export async function getActiveStar(): Promise<CelebrityStar> {
   if (USE_MOCK) return mockDelay(ACTIVE_STAR);
-  return apiFetch<CelebrityStar>("/celebrity/active-star");
+  return normalizeStar(await apiFetch<CelebrityStar>("/celebrity/active-star"))!;
 }
 
 // ── 明星运营管理（v0.55+） ─────────────────────────────────────────────────────
