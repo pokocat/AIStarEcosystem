@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Megaphone, Search, Flame, Plus, Pencil, Trash2 } from "lucide-react";
+import { Megaphone, Search, Flame, Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,6 @@ export default function AdminCelebrityStarsPage() {
   const [q, setQ] = React.useState("");
   const [category, setCategory] = React.useState<CelebrityCategory | "all">("all");
 
-  const [editing, setEditing] = React.useState<CelebrityStar | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<CelebrityStar | null>(null);
   const [deleting, setDeleting] = React.useState(false);
@@ -91,7 +90,7 @@ export default function AdminCelebrityStarsPage() {
     <div className="admin-page">
       <PageHeader
         title="明星档案"
-        description="AI 明星专区市场可见的明星形象（来自 /admin/celebrity/stars）·授权状态 / 套餐用量 / 引用统计"
+        description="AI 明星专区市场可见的明星形象（来自 /admin/celebrity/stars）·授权状态 / 套餐用量 / 引用统计 · 档案内容由明星在「明星商务工作台」自维护，此处仅运营查看 / 新增 / 下架"
         breadcrumb={[{ label: "明星带货" }, { label: "明星档案" }]}
         actions={
           <Button onClick={() => setCreating(true)}>
@@ -181,9 +180,6 @@ export default function AdminCelebrityStarsPage() {
                   <TableCell className="text-sm">{s.stats.gmv}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
                       <Button size="sm" variant="ghost" onClick={() => setPendingDelete(s)}>
                         <Trash2 className="h-3.5 w-3.5 text-rose-500" />
                       </Button>
@@ -201,11 +197,10 @@ export default function AdminCelebrityStarsPage() {
         </CardContent>
       </Card>
 
-      {(creating || editing) && (
+      {creating && (
         <StarFormDialog
-          star={editing}
-          onClose={() => { setCreating(false); setEditing(null); }}
-          onSaved={async () => { setCreating(false); setEditing(null); await reload(); }}
+          onClose={() => setCreating(false)}
+          onSaved={async () => { setCreating(false); await reload(); }}
         />
       )}
 
@@ -231,26 +226,23 @@ export default function AdminCelebrityStarsPage() {
   );
 }
 
-// ── 表单 dialog（新建 / 编辑共用） ────────────────────────────────────────────
+// ── 表单 dialog（仅新建。v0.62：编辑已移交明星商务工作台 web-star /profile）──────
 function StarFormDialog({
-  star,
   onClose,
   onSaved,
 }: {
-  star: CelebrityStar | null;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const isEdit = !!star;
-  const [name, setName] = React.useState(star?.name ?? "");
-  const [category, setCategory] = React.useState<CelebrityCategory>(star?.category ?? "演员");
-  const [avatar, setAvatar] = React.useState(star?.avatar ?? "");
-  const [cover, setCover] = React.useState(star?.cover ?? "");
-  const [description, setDescription] = React.useState(star?.description ?? "");
-  const [pricingTier, setPricingTier] = React.useState<string>(star?.pricingTier ?? "标准版");
-  const [startingPrice, setStartingPrice] = React.useState(star?.startingPrice ?? "¥99起");
-  const [isHot, setIsHot] = React.useState(star?.isHot ?? false);
-  const [quotaTotal, setQuotaTotal] = React.useState<number>(star?.quotaTotal ?? 100);
+  const [name, setName] = React.useState("");
+  const [category, setCategory] = React.useState<CelebrityCategory>("演员");
+  const [avatar, setAvatar] = React.useState("");
+  const [cover, setCover] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [pricingTier, setPricingTier] = React.useState<string>("标准版");
+  const [startingPrice, setStartingPrice] = React.useState("¥99起");
+  const [isHot, setIsHot] = React.useState(false);
+  const [quotaTotal, setQuotaTotal] = React.useState<number>(100);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -272,11 +264,7 @@ function StarFormDialog({
         isHot,
         quotaTotal,
       } as Partial<CelebrityStar>;
-      if (isEdit && star) {
-        await CelebrityZoneApi.updateStar(star.id, body);
-      } else {
-        await CelebrityZoneApi.createStar(body);
-      }
+      await CelebrityZoneApi.createStar(body);
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
@@ -289,7 +277,7 @@ function StarFormDialog({
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? `编辑明星：${star?.name}` : "新增明星"}</DialogTitle>
+          <DialogTitle>新增明星</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">

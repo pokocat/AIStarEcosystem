@@ -2259,6 +2259,24 @@ components:
         fans:      { type: integer, format: int64 }
         agentView: { type: boolean }
         listedAt:  { type: string, format: date-time, nullable: true }
+        cover:       { type: string, nullable: true, description: 'v0.62：详情字段随档案下发，供 star 端编辑表单预填' }
+        description: { type: string, nullable: true }
+        bio:         { type: string, nullable: true }
+        location:    { type: string, nullable: true }
+
+    StarProfileUpdateInput:
+      type: object
+      description: 档案编辑（v0.62 从 admin 移入 star 端）；avatar / cover 留空 = 不变更
+      required: [name, category, description, fans]
+      properties:
+        name:        { type: string }
+        category:    { type: string }
+        description: { type: string }
+        bio:         { type: string, nullable: true }
+        location:    { type: string, nullable: true }
+        fans:        { type: integer, format: int64 }
+        avatar:      { type: string, nullable: true }
+        cover:       { type: string, nullable: true }
 
     StarOnboardInput:
       type: object
@@ -5596,9 +5614,9 @@ paths:
       operationId: adminCreateCelebrityStar
       responses: { '201': { description: created } }
   /admin/celebrity/stars/{id}:
+    # v0.62：put（adminUpdateCelebrityStar）已下线 —— 档案编辑移交明星商务工作台 PUT /star/profile
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get:    { tags: [admin-celebrity], operationId: adminGetCelebrityStar,    responses: { '200': { description: ok } } }
-    put:    { tags: [admin-celebrity], operationId: adminUpdateCelebrityStar, responses: { '200': { description: ok } } }
     delete: { tags: [admin-celebrity], operationId: adminDeleteCelebrityStar, responses: { '204': { description: ok } } }
 
   /admin/celebrity/stars/{id}/photos:
@@ -7296,6 +7314,29 @@ paths:
 
   /star/profile:
     get: { tags: [star], operationId: starProfile, description: 当前账号绑定的明星档案；未入驻返回 data=null, responses: { '200': { description: ok } } }
+    put:
+      tags: [star]
+      operationId: starUpdateProfile
+      description: 档案编辑（v0.62 从 admin 移入）：明星本人 / 经纪团队自维护营销展示字段；运营字段（isHot / pricingTier / quota / pricing）不开放
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StarProfileUpdateInput' }
+      responses: { '200': { description: ok } }
+  /star/profile/uploads:
+    post:
+      tags: [star]
+      operationId: starUploadProfileImage
+      description: 档案头像 / 封面上传（multipart，kind ∈ avatar / cover）；返回稳定公开 URL 回填档案字段
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                kind: { type: string, enum: [avatar, cover] }
+      responses: { '200': { description: ok } }
   /star/onboard:
     post:
       tags: [star]

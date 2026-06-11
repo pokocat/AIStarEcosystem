@@ -61,9 +61,9 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | 路径 | 模块 | 功能 |
 |---|---|---|
 | `/dashboard` | 工作台 | 今日总览（KPI / 待办 / 进行中任务） |
-| `/market` | 工作台 | 明星市场（浏览所有可申请明星；**运营**额外有「新增 / 编辑 / 删除明星」入口，v0.55） |
+| `/market` | 工作台 | 明星市场（浏览所有可申请明星；**运营**额外有「新增 / 删除明星」入口，v0.55；编辑已于 v0.62 移交 web-star `/profile`） |
 | `/cast` | 工作台 | 我的明星（已授权明星墙） |
-| `/star/[starId]` | 详情 | 明星详情（含授权状态、可申请档位、过往项目；**运营**额外有「编辑 / 删除明星」，v0.55） |
+| `/star/[starId]` | 详情 | 明星详情（含授权状态、可申请档位、过往项目；**运营**额外有「删除明星」，v0.55；编辑已于 v0.62 移交 web-star `/profile`） |
 | `/star/[starId]/apply` | 详情 | 授权申请表单（定价档位选择） |
 | `/star/[starId]/generate` | 详情 | 生成工作流（模板 / 盲盒选择 → AI 生成视频） |
 | `/projects` | 制作 | 我的项目（多项目管理） |
@@ -93,7 +93,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 
 详情页 `/star/<id>`、`/projects/<id>`、`/mixcut/*` 子路由不挂在 sidebar 父级（设计选择 —— 避免与 list 父级竞争高亮）。
 
-**运营内嵌管理（v0.55）**：登录账号 `operatorRole ∈ {operator, super_admin}`（判定见 [`src/lib/operator-role.ts`](src/lib/operator-role.ts) `canUseOperatorTools`）时，在 web-celebrity 内直接获得「商品库（v0.31）/ 明星（v0.55）/ 混剪工厂模板（v0.55）」的写入口；写操作走 `/api/admin/**`，server `hasAnyRole(SUPER_ADMIN, OPERATOR)` 兜底。**运营管理的是共享池** —— 编辑/删除工厂模板与明星对全员生效。普通用户（STUDIO）：明星只读、模板仅浏览 + 用模板创建任务（模板写入口关闭）。
+**运营内嵌管理（v0.55）**：登录账号 `operatorRole ∈ {operator, super_admin}`（判定见 [`src/lib/operator-role.ts`](src/lib/operator-role.ts) `canUseOperatorTools`）时，在 web-celebrity 内直接获得「商品库（v0.31）/ 明星（v0.55）/ 混剪工厂模板（v0.55）」的写入口；写操作走 `/api/admin/**`，server `hasAnyRole(SUPER_ADMIN, OPERATOR)` 兜底。**运营管理的是共享池** —— 编辑/删除工厂模板与明星对全员生效。普通用户（STUDIO）：明星只读、模板仅浏览 + 用模板创建任务（模板写入口关闭）。**v0.62 起明星「编辑」入口下线**（新增 / 删除保留）—— 明星档案由明星本人 / 经纪团队在明星商务工作台（web-star `/profile`，`PUT /api/star/profile`）自维护。
 
 ### 3.3 路由兼容
 

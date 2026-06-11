@@ -68,7 +68,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 关键页面（v0.5 新增）
 
-- `/celebrity/stars`（既有，CRUD 待补 v0.6）
+- `/celebrity/stars`（既有；v0.62 起仅查看 / 新增 / 删除 —— 档案「编辑」移交明星商务工作台 web-star `/profile`）
 - `/celebrity/templates`（既有，CRUD 待补 v0.6）
 - **`/celebrity/template-scripts`**（v0.5 新增）— 模板脚本列表 / 状态推进 / 试跑
 - **`/celebrity/star-authorizations`**（v0.5 新增）— 用户 × 明星 授权 CRUD + 状态机推进

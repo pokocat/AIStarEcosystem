@@ -606,13 +606,8 @@ public class CelebrityZoneService {
         return CelebrityStarDto.from(starRepo.save(entity));
     }
 
-    /** admin PUT /stars/{id} — 整体替换（不含 photos/videos）。 */
-    public CelebrityStarDto adminUpdateStar(String id, AdminCelebrityStarUpsertDto req) {
-        CelebrityStar entity = starRepo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星不存在"));
-        applyStarUpsert(entity, req);
-        return CelebrityStarDto.from(starRepo.save(entity));
-    }
+    // v0.62：adminUpdateStar（PUT /stars/{id}）已下线 —— 档案编辑移交明星商务工作台
+    // （StarWorkbenchService.updateProfile，明星本人 / 经纪团队自维护）。
 
     /** admin DELETE /stars/{id}。幂等软删，保留历史项目、视频和授权引用。 */
     public void adminDeleteStar(String id) {

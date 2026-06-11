@@ -128,8 +128,53 @@ public class StarWorkbenchService {
                 tierLabel(fans),
                 fans,
                 account.isAgentView(),
-                account.getCreatedAt() != null ? account.getCreatedAt().toString() : null
+                account.getCreatedAt() != null ? account.getCreatedAt().toString() : null,
+                star.getCover(),
+                star.getDescription(),
+                star.getBio(),
+                star.getLocation()
         );
+    }
+
+    /**
+     * 档案编辑（v0.62：从 admin PUT /admin/celebrity/stars/{id} 移入 star 端）。
+     * 仅开放营销 / 展示字段；平台运营字段（isHot / pricingTier / quota / pricing）
+     * 不在此接口范围。avatar / cover 留空 = 不变更。
+     */
+    @Transactional
+    public StarProfileDto updateProfile(String userId, StarProfileUpdateRequestDto req) {
+        StarAccount account = requireAccount(userId);
+        CelebrityStar star = starRepo.findById(account.getStarId())
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "STAR_NOT_FOUND", "明星档案不存在"));
+        if (req == null || req.name() == null || req.name().isBlank()) {
+            throw BusinessException.badRequest("STAR_NAME_REQUIRED", "请填写艺名 / 姓名");
+        }
+        if (req.description() == null || req.description().isBlank()) {
+            throw BusinessException.badRequest("STAR_DESCRIPTION_REQUIRED", "请填写一句话定位");
+        }
+        star.setName(req.name().trim());
+        star.setDescription(req.description().trim());
+        if (req.category() != null && !req.category().isBlank()) {
+            star.setCategory(req.category().trim());
+        }
+        if (req.fans() != null) {
+            star.setFans(Math.max(0, req.fans()));
+        }
+        if (req.bio() != null) {
+            star.setBio(req.bio().isBlank() ? null : req.bio().trim());
+        }
+        if (req.location() != null) {
+            star.setLocation(req.location().isBlank() ? null : req.location().trim());
+        }
+        if (req.avatar() != null && !req.avatar().isBlank()) {
+            star.setAvatar(req.avatar().trim());
+        }
+        if (req.cover() != null && !req.cover().isBlank()) {
+            star.setCover(req.cover().trim());
+        }
+        starRepo.save(star);
+        log.info("[star] profile updated userId={} starId={}", userId, star.getId());
+        return toProfile(account, star);
     }
 
     /** 艺人分级（展示用）：S级 ≥ 1000万粉，A级 ≥ 100万粉，其余「新晋」。 */

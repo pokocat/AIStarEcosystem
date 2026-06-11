@@ -49,6 +49,7 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
   /rules               内容授权规则（绿黄橙红四区启停）
   /infringement        侵权巡查（处置弹层 + 留痕）
   /contracts           合同中心（搜索 / 双筛选 / 到期提醒）
+  /profile             档案设置（v0.62：市场展示档案自维护，编辑权从 admin 移入）
 ```
 
 ## 与 web-celebrity 的打通
@@ -56,11 +57,19 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
 | 动作 | 发起端 | 落点 |
 |---|---|---|
 | 明星入驻 `/onboard` | web-star | 创建 CelebrityStar → celebrity 明星市场立即可见 |
+| 档案编辑 `/profile` | web-star | PUT /api/star/profile 更新 CelebrityStar 营销字段 → celebrity 市场展示实时同步（v0.62 起编辑权从 admin 移入） |
 | 带货授权申请 | web-celebrity `/star/[id]/apply` | web-star `/cooperation` 审批 → 批准后 celebrity 端授权态实时变 authorized + 站内通知 |
 | 商品报备 | web-celebrity `/products` 行内「报备」 | web-star `/product-onboard`（step=2 明星审核）→ 入库后双端状态同步 |
 
 ## 版本日志
 
+- **v0.62 · 档案编辑移入 star 端**（2026-06-11）：新增 `/profile` 档案设置页（第 14 模块，
+  导航「档案管理」组 + 侧栏身份卡可点直达）。可编辑：艺名 / 品类 / 一句话定位 / 长简介 /
+  常驻城市 / 粉丝量 / 头像 / 封面（上传走 `POST /api/star/profile/uploads`，multipart，
+  仅 avatar/cover 图片）；保存走 `PUT /api/star/profile`，市场展示实时同步。运营字段
+  （isHot / pricingTier / quota / pricing）不开放。同步下线 admin 与 web-celebrity 运营
+  内嵌的「编辑明星」入口及 `PUT /admin/celebrity/stars/{id}` 接口（新增 / 删除保留）。
+  StarProfile 扩展 cover / description / bio / location 四个可选字段供表单预填。
 - **2026-06-11 · 手机端导航改底部 Tab 栏**：<640 弃用顶部横滑 Tab（内容流模式，不适合
   App 级模块导航），换主流底部 Tab 栏 5 槽（总览 / 带货授权 / 内容审核 / 商品入库 / 全部，
   槽位真值 `STAR_BOTTOM_TABS`）：待办红点角标、其余模块待办计入「全部」、非 Tab 模块时

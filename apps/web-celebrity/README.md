@@ -69,6 +69,14 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.62 · 2026-06-11 · 明星「编辑」入口下线（档案编辑移交 web-star）
+
+- 明星档案改为明星本人 / 经纪团队在明星商务工作台（web-star `/profile`，
+  `PUT /api/star/profile`）自维护；本端运营内嵌的「编辑明星」全部移除：
+  `CelebrityStarCard` 封面 Pencil、`CelebrityStarDetail` header「编辑明星」、
+  `CelebrityMarket` 编辑态。**新增 / 删除保留**（StarFormDialog 退化为仅新建）。
+- `api/celebrity-zone.ts` 的 `updateStar` 移除（server `PUT /admin/celebrity/stars/{id}` 已下线）。
+
 ### v0.55 · 2026-06-07 · 运营内嵌管理「明星」+「混剪工厂模板」
 
 - **背景**：运营角色（`operatorRole`）此前在 web-celebrity 只对**商品库**有内嵌写权限（v0.31），但无法编辑明星、也无法编辑/删除工厂模板。本版把同一套 `canUseOperatorTools(role)` 门控扩展到明星与混剪工厂模板。

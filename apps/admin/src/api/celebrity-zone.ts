@@ -110,10 +110,8 @@ export async function getOverview(): Promise<CelebrityZoneOverview> {
 export async function createStar(body: Partial<CelebrityStar>): Promise<CelebrityStar> {
   return apiFetch<CelebrityStar>("/admin/celebrity/stars", { method: "POST", body });
 }
-/** PUT /admin/celebrity/stars/{id} */
-export async function updateStar(id: string, body: Partial<CelebrityStar>): Promise<CelebrityStar> {
-  return apiFetch<CelebrityStar>(`/admin/celebrity/stars/${encodeURIComponent(id)}`, { method: "PUT", body });
-}
+// v0.62：updateStar（PUT /admin/celebrity/stars/{id}）已下线 —— 档案编辑移交
+// 明星商务工作台（web-star /profile，PUT /api/star/profile）。
 /** DELETE /admin/celebrity/stars/{id} */
 export async function deleteStar(id: string): Promise<void> {
   await apiFetch<void>(`/admin/celebrity/stars/${encodeURIComponent(id)}`, { method: "DELETE" });

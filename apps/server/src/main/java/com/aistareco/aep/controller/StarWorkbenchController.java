@@ -42,6 +42,13 @@ public class StarWorkbenchController {
         return ApiResponse.of(service.getProfile(requireUserId(principal)));
     }
 
+    /** v0.62：档案编辑（从 admin 移入）—— 明星本人 / 经纪团队自维护营销展示字段。 */
+    @PutMapping("/profile")
+    public ApiResponse<StarProfileDto> updateProfile(Principal principal,
+                                                      @RequestBody StarProfileUpdateRequestDto req) {
+        return ApiResponse.of(service.updateProfile(requireUserId(principal), req));
+    }
+
     @PostMapping("/onboard")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<StarProfileDto> onboard(Principal principal, @RequestBody StarOnboardRequestDto req) {

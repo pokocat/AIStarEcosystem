@@ -2,16 +2,15 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Flame, Lock, Clock, ShieldAlert, ShieldCheck, Pencil, Trash2 } from "lucide-react";
+import { Flame, Lock, Clock, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import type { CelebrityAuthStatus, CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 import { AUTH_STATUS_META, CATEGORY_BADGE_CLASS } from "@/constants/celebrity-zone-ui";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
   star: CelebrityStar;
-  /** v0.55+：运营角色 (operatorRole) 时为 true，卡片显示「编辑 / 删除」入口。 */
+  /** v0.55+：运营角色 (operatorRole) 时为 true，卡片显示「删除」入口（v0.62：编辑移交 web-star /profile）。 */
   canManage?: boolean;
-  onEdit?: (star: CelebrityStar) => void;
   onDelete?: (star: CelebrityStar) => void;
 }
 
@@ -37,7 +36,7 @@ const AUTH_COVER_BADGE: Record<CelebrityAuthStatus, string> = {
 };
 
 /** 明星卡片：3:4 公开图 + 名字 + 热门 + 类目/价格 + 授权徽章 */
-export function CelebrityStarCard({ star, canManage, onEdit, onDelete }: Props) {
+export function CelebrityStarCard({ star, canManage, onDelete }: Props) {
   // v0.34+ defensive：admin 新建的明星可能 authorization 缺失 / status 取值不在字典里。
   // 兜底为 "unauthorized" 陈列态，避免 AUTH_STATUS_META[undefined].icon 直接 TypeError。
   const status = star.authorization?.status ?? "unauthorized";
@@ -68,22 +67,9 @@ export function CelebrityStarCard({ star, canManage, onEdit, onDelete }: Props) 
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
 
-        {/* 顶部左：运营管理入口（仅 canManage）。按钮阻断 Link 跳转。 */}
+        {/* 顶部左：运营管理入口（仅 canManage；编辑已移交 web-star /profile）。按钮阻断 Link 跳转。 */}
         {canManage && (
           <div className="absolute left-2 top-2 flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="编辑明星"
-              title="编辑明星"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onEdit?.(star);
-              }}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-zinc-700 shadow-[var(--shadow-lift)] ring-1 ring-white/60 backdrop-blur-sm transition hover:bg-white hover:text-violet-600"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
             <button
               type="button"
               aria-label="删除明星"

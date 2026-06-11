@@ -28,7 +28,7 @@
 | [`apps/web-drama/PRODUCT.md`](../apps/web-drama/PRODUCT.md) ★ | AI 短剧（3011） | 产品定位 / 路由 / 业务领域 / 视觉系统（Premium Cinematic + 金色 accent + serif） |
 | [`apps/web-celebrity/PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) ★ | AI 明星带货（3012） | 产品定位 / 路由 / 业务领域 / 视觉系统（Creator-Friendly + 紫罗兰）+ **混剪专区完整设计** |
 | [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) ★ | AiAvatar 数字人资产平台（3013） | 移动端 H5/小程序形态 SPA · 真人复刻 / AI 原创 · 5 步链路 + 6 类衍生 · 单色青「清爽」皮肤 · mock 驱动自包含（last-reviewed 2026-06-06，v0.50 首版前端落地） |
-| [`apps/web-star/PRODUCT.md`](../apps/web-star/PRODUCT.md) ★ | 明星商务工作台（3014） | 明星/经纪团队审核中枢 · 13+1 模块（IP 资产/带货授权/报白/数字人/AI 形象/内容/商品入库/品牌/收益/规则/侵权/合同）· 浅色主题 · celebrity↔star 打通规格（last-reviewed 2026-06-10，v0.60 首版） |
+| [`apps/web-star/PRODUCT.md`](../apps/web-star/PRODUCT.md) ★ | 明星商务工作台（3014） | 明星/经纪团队审核中枢 · 14+1 模块（IP 资产/带货授权/报白/数字人/AI 形象/内容/商品入库/品牌/收益/规则/侵权/合同/档案设置）· 浅色主题 · celebrity↔star 打通规格（last-reviewed 2026-06-11，v0.62 档案编辑移入） |
 | [`apps/web-star/README.md`](../apps/web-star/README.md) | 明星商务工作台（3014） | 启动 / 路由 / 种子账号（star_shenteng）/ 与 web-celebrity 打通表 / 版本日志 |
 | [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 平台 | 忠实移植原型 / strict 关闭 / 与 v0.45 server 领域解耦 / 字体策略 / 导航栈 决策记录 |
 | [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |

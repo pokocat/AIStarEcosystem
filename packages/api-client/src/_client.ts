@@ -125,15 +125,17 @@ export async function apiFetch<T>(
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
 
   const token = getAuthToken();
+  // FormData 支持 multipart 上传：不设 Content-Type，让浏览器自动加 boundary
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const res = await fetch(url, {
     method,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(appCode ? { "X-App-Code": appCode } : {}),
       ...(headers || {}),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
     signal,
     credentials: "include",
   });

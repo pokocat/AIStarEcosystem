@@ -8,7 +8,7 @@ import {
   AlertCircle, BadgeCheck, Bot, Building2, Camera, CheckCheck, CheckCircle2,
   Clock, CloudUpload, Coins, Database, FileText, Film, Filter, Handshake, Key,
   Layers, LayoutDashboard, Lock, Package, Scissors, Server, Shield, Sparkles,
-  Truck, Upload, XCircle, Zap, type LucideIcon,
+  Truck, Upload, UserCog, XCircle, Zap, type LucideIcon,
 } from "lucide-react";
 import type {
   StarBrandAuthStatus, StarContentStatus, StarContentType, StarContractStatus,
@@ -83,6 +83,13 @@ export const STAR_NAV_GROUPS: StarNavGroup[] = [
     items: [
       { id: "infringement", href: "/infringement", label: "侵权巡查", icon: AlertCircle, color: "#ef4444" },
       { id: "contracts", href: "/contracts", label: "合同中心", icon: FileText, color: "#10b981" },
+    ],
+  },
+  {
+    label: "档案管理",
+    items: [
+      // v0.62：明星档案编辑从 admin 移入 star 端（明星市场展示字段自维护）
+      { id: "profile", href: "/profile", label: "档案设置", icon: UserCog, color: "#0ea5e9" },
     ],
   },
 ];

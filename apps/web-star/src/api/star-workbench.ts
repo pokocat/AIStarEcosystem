@@ -9,8 +9,8 @@ import type {
   StarCooperationDecision, StarCooperationRequest, StarDigitalHumanRequest,
   StarInfringementAction, StarInfringementCase, StarIpAsset, StarIpAssetType,
   StarAiLikenessRequest, StarOnboardInput, StarOverview, StarProductLibItem,
-  StarProductOnboard, StarProfile, StarRevenueSummary, StarSampleStatus,
-  StarWhitelistRequest, StarWhitelistStep,
+  StarProductOnboard, StarProfile, StarProfileUpdateInput, StarRevenueSummary,
+  StarSampleStatus, StarWhitelistRequest, StarWhitelistStep,
 } from "@ai-star-eco/types";
 import { apiFetch, USE_MOCK, mockDelay, buildQuery } from "./_client";
 import { computeMockOverview, mockStore } from "@/mocks/star-workbench";
@@ -25,6 +25,40 @@ export async function getProfile(): Promise<StarProfile | null> {
     return mockDelay(mockStore().profile);
   }
   return apiFetch<StarProfile | null>("/star/profile");
+}
+
+/** v0.62：档案编辑（从 admin 移入 star 端）。 */
+export async function updateProfile(input: StarProfileUpdateInput): Promise<StarProfile> {
+  if (USE_MOCK) {
+    const s = mockStore();
+    if (!s.profile) throw new Error("尚未入驻，无法编辑档案");
+    const tierLabel = input.fans >= 10_000_000 ? "S级" : input.fans >= 1_000_000 ? "A级" : "新晋";
+    s.profile = {
+      ...s.profile,
+      name: input.name,
+      category: input.category,
+      description: input.description,
+      bio: input.bio,
+      location: input.location,
+      fans: input.fans,
+      tierLabel,
+      ...(input.avatar ? { avatar: input.avatar } : {}),
+      ...(input.cover ? { cover: input.cover } : {}),
+    };
+    return mockDelay({ ...s.profile });
+  }
+  return apiFetch<StarProfile>("/star/profile", { method: "PUT", body: input });
+}
+
+/** v0.62：档案头像 / 封面上传（multipart）。返回稳定公开 URL 回填表单字段。 */
+export async function uploadProfileImage(file: File, kind: "avatar" | "cover"): Promise<{ url: string; kind: string }> {
+  if (USE_MOCK) {
+    return mockDelay({ url: URL.createObjectURL(file), kind });
+  }
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", kind);
+  return apiFetch<{ url: string; kind: string }>("/star/profile/uploads", { method: "POST", body: form });
 }
 
 export async function onboard(input: StarOnboardInput): Promise<StarProfile> {

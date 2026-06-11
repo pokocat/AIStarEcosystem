@@ -2779,3 +2779,35 @@ voiceName 音色联动、~~aiavatar 反向「应用于」视图~~（✅ v0.61）
 - **验证**：mock 无头 6/6（DH-2041 双引用渲染 / DH-2026 无引用不渲染）；live 端到端
   （dev server 实跑：创建数字人 → 占位生成 → pick → music/drama 双引入 → references
   返回 2 条、app/dapDisplayRef/排序正确、重复引入 409）；四门全绿
+
+### v0.62（2026-06-11）— 明星档案编辑权移交 star 端（admin 编辑下线）
+
+明星市场展示档案（CelebrityStar 营销字段）改为明星本人 / 经纪团队在明星商务工作台
+自维护；admin 与 web-celebrity 运营内嵌的「编辑明星」入口全部下线（新增 / 软删保留，
+运营字段 isHot / pricingTier / quota / pricing 不开放给明星端 —— 编辑接口下线后这些
+字段暂无编辑面，后续若需要应做 admin 专属运营接口而非恢复整单 PUT）。
+
+- **server**：
+  - `PUT /api/star/profile`（StarWorkbenchController → `StarWorkbenchService.updateProfile`）：
+    name / category / description（必填）+ bio / location / fans / avatar / cover
+    （avatar、cover 留空 = 不变更；bio、location 传空串 = 清空）；归属由 JWT principal
+    解析 StarAccount 绑定，改完即返回扩展后的 StarProfileDto
+  - `POST /api/star/profile/uploads`（新 StarProfileUploadController）：multipart
+    头像 / 封面上传，仅 kind ∈ avatar/cover、仅图片 MIME；要求已绑定明星档案；
+    走统一 FileStorageService（OSS key 前缀 `celebrity/<kind>`），与 admin 上传同构
+  - `StarProfileDto` 扩展 cover / description / bio / location（NON_NULL，老消费方兼容）
+  - 下线 `PUT /api/admin/celebrity/stars/{id}` + `CelebrityZoneService.adminUpdateStar`
+- **packages**：
+  - types：`StarProfile` 加 4 个可选详情字段；新增 `StarProfileUpdateInput`
+  - api-client：`apiFetch` 支持 FormData body（multipart 不设 Content-Type，对齐 admin 自有 _client）
+- **web-star**：`/profile` 档案设置页（第 14 模块；导航新增「档案管理」组，侧栏身份卡
+  可点直达）；`StarWorkbenchApi.updateProfile / uploadProfileImage`（含 USE_MOCK 分支，
+  mock 下 fans 改动实时重算 tierLabel）；保存后 refreshProfile 同步壳层身份卡
+- **admin**：明星档案页删「编辑」按钮，StarFormDialog 退化为仅新建；
+  `CelebrityZoneApi.updateStar` 移除；页面描述注明编辑已移交工作台
+- **web-celebrity**：运营内嵌编辑（v0.55 canManage 模式）同步下线 —— 市场卡片 / 详情页
+  的 Pencil 编辑入口移除（删除保留），StarFormDialog 仅新建，api `updateStar` 移除
+- **契约**：openapi 删 `PUT /admin/celebrity/stars/{id}`；加 `PUT /star/profile` +
+  `POST /star/profile/uploads` + `StarProfileUpdateInput` schema + StarProfile 扩展字段
+- **注意**：photos / videos 的 admin append/remove 端点保留（当前无 UI 使用方）；
+  后续若给 star 端开放资料图集 / 形象视频管理，按本版同样姿势迁移

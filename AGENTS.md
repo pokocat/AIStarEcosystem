@@ -449,12 +449,12 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.62** | 2026-06-11 | 明星档案编辑权移交 star 端：web-star 新增 `/profile` 档案设置（14+1 模块）+ `PUT /api/star/profile` + `POST /api/star/profile/uploads`；下线 admin / web-celebrity 运营「编辑明星」入口与 `PUT /admin/celebrity/stars/{id}`（新增/软删保留）；api-client `apiFetch` 支持 FormData |
 | **v0.60-补丁** | 2026-06-10 | 收敛 Phase 2 ①：aiavatar 反向「应用于」视图（`GET /v1/avatars/{id}/references` + 详情页 MAppliedTo 卡片，展示数字人被哪些 music/drama 艺人壳引用） |
 | **v0.61** | 2026-06-10 | 数字人收敛：music/drama 艺人形象统一引用 AiAvatar（`POST /me/digital-ips/import-avatar` 引入 + `dapDisplayRef` 指定展示图；本地孵化/锻造入口下线） |
 | **v0.60** | 2026-06-10 | 第五子应用「明星商务工作台」web-star（3014，浅色主题，13+1 模块）+ `/api/star/**` 域（12 实体）+ celebrity↔star 双端打通（入驻上架明星市场 / 带货授权审批 / 商品报备 6 步入库）+ SubProduct/PlatformSupport 加 `star` 平台 |
 | **v0.59** | 2026-06-10 | 账号停用/恢复完整链路（/admin/users/{id}/suspend·reactivate + 审计 + 短信登录补停用闸）+ 消息中心未读角标 + 砍掉重复的 /base/credit-packs 页 |
 | **v0.58** | 2026-06-10 | admin 消息中心真实化（NotificationPublisher：充值下单/取消、新用户激活 → 运营收件箱 `__admin__`；核准/驳回 → 用户站内消息）+ 结算中心流水补全（账号登录名/昵称、精确余额、秒级时间、真 CSV 导出） |
-| **v0.57** | 2026-06-09 | 审计日志记录登录来源子应用（`X-App-Code` 头 → `AuditLog.appCode`）+ admin「来源应用」列与筛选 |
 
 > 阅读建议：先看本表定位到目标版本，再到 VERSION_HISTORY.md 全文搜索 `### vX.YY`。
 

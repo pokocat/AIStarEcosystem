@@ -192,16 +192,8 @@ export async function createStar(body: Partial<CelebrityStar>): Promise<Celebrit
   return apiFetch<CelebrityStar>("/admin/celebrity/stars", { method: "POST", body });
 }
 
-export async function updateStar(id: ID, body: Partial<CelebrityStar>): Promise<CelebrityStar> {
-  if (USE_MOCK) {
-    const base = STAR_DETAIL_MAP[id] ?? MARKET_STARS.find((s) => s.id === id) ?? null;
-    return mockDelay(mockStarFrom(body, base ? { ...base, id } : null));
-  }
-  return apiFetch<CelebrityStar>(`/admin/celebrity/stars/${encodeURIComponent(id)}`, {
-    method: "PUT",
-    body,
-  });
-}
+// v0.62：updateStar（PUT /admin/celebrity/stars/{id}）已下线 —— 档案编辑移交
+// 明星商务工作台（web-star /profile，PUT /api/star/profile）。
 
 export async function deleteStar(id: ID): Promise<void> {
   if (USE_MOCK) {

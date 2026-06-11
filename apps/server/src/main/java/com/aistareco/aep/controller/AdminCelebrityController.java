@@ -41,17 +41,12 @@ public class AdminCelebrityController {
         return ApiResponse.of(service.getStar(id));
     }
 
-    // ── Stars 写（v0.5 新增）────────────────────────────────────────────────
+    // ── Stars 写（v0.5 新增；v0.62 起档案「编辑」移交明星商务工作台 PUT /api/star/profile，
+    //    admin 仅保留运营性的新增 / 软删）──────────────────────────────────────
     @PostMapping("/stars")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CelebrityStarDto> createStar(@RequestBody AdminCelebrityStarUpsertDto req) {
         return ApiResponse.of(service.adminCreateStar(req));
-    }
-
-    @PutMapping("/stars/{id}")
-    public ApiResponse<CelebrityStarDto> updateStar(@PathVariable String id,
-                                                     @RequestBody AdminCelebrityStarUpsertDto req) {
-        return ApiResponse.of(service.adminUpdateStar(id, req));
     }
 
     @DeleteMapping("/stars/{id}")

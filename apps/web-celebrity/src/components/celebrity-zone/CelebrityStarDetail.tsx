@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Flame, Pencil, RefreshCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Flame, RefreshCcw, Trash2 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import type { CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
 import {
@@ -15,7 +15,6 @@ import { CelebrityAuthBanner } from "./CelebrityAuthBanner";
 import { CelebrityPricingTierCard } from "./CelebrityPricingTierCard";
 import { CelebrityHeroCta } from "./CelebrityHeroCta";
 import { CelebrityVideoPlayer } from "./CelebrityVideoPlayer";
-import { StarFormDialog } from "./StarFormDialog";
 import { CelebrityZoneApi } from "@/api";
 import { canUseOperatorTools } from "@/lib/operator-role";
 import { useConfirm } from "@/components/common/confirm-dialog";
@@ -24,7 +23,7 @@ import { cn } from "@ai-star-eco/ui/ui/utils";
 
 interface Props {
   star: CelebrityStar;
-  /** v0.55+：明星被运营编辑后回调（父级重新拉 getStar 刷新）。 */
+  /** v0.55+：明星档案变化后回调（父级重新拉 getStar 刷新）。v0.62 起编辑移交 web-star，仅删除场景保留。 */
   onChanged?: () => void | Promise<void>;
 }
 
@@ -38,7 +37,6 @@ export function CelebrityStarDetail({ star, onChanged }: Props) {
   const { user } = useAuth();
   const canManage = canUseOperatorTools(user?.operatorRole);
   const { confirm, ConfirmHost } = useConfirm();
-  const [editing, setEditing] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
 
   const handleDelete = async () => {
@@ -89,13 +87,6 @@ export function CelebrityStarDetail({ star, onChanged }: Props) {
         )}
         {canManage && (
           <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="inline-flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/10 px-2.5 py-1.5 text-xs text-violet-600 transition hover:border-violet-500 hover:bg-violet-500/20"
-            >
-              <Pencil className="h-3.5 w-3.5" /> 编辑明星
-            </button>
             <button
               type="button"
               onClick={() => void handleDelete()}
@@ -284,17 +275,7 @@ export function CelebrityStarDetail({ star, onChanged }: Props) {
         </div>
       </div>
 
-      {/* 运营：明星编辑表单 + 删除确认 */}
-      {canManage && editing && (
-        <StarFormDialog
-          star={star}
-          onClose={() => setEditing(false)}
-          onSaved={async () => {
-            setEditing(false);
-            await onChanged?.();
-          }}
-        />
-      )}
+      {/* 运营：删除确认（档案编辑已移交明星商务工作台 web-star /profile） */}
       <ConfirmHost />
     </div>
   );

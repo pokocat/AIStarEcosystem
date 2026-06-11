@@ -38,7 +38,6 @@ export function CelebrityMarket({ stars, onChanged }: Props) {
   const { user } = useAuth();
   const canManage = canUseOperatorTools(user?.operatorRole);
   const { confirm, ConfirmHost } = useConfirm();
-  const [editing, setEditing] = React.useState<CelebrityStar | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
 
@@ -64,8 +63,9 @@ export function CelebrityMarket({ stars, onChanged }: Props) {
   );
 
   // 透传给每个卡片的运营管理 props（非运营时为 undefined，卡片不渲染入口）。
+  // v0.62：编辑入口下线（档案编辑移交 web-star /profile），仅保留删除。
   const cardManageProps = canManage
-    ? { canManage: true, onEdit: setEditing, onDelete: handleDelete }
+    ? { canManage: true, onDelete: handleDelete }
     : {};
 
   const authorizedStars = React.useMemo(
@@ -236,17 +236,12 @@ export function CelebrityMarket({ stars, onChanged }: Props) {
         )}
       </section>
 
-      {/* 运营：明星新增 / 编辑表单 + 删除确认 */}
-      {canManage && (creating || editing) && (
+      {/* 运营：明星新增表单 + 删除确认（编辑已移交 web-star /profile） */}
+      {canManage && creating && (
         <StarFormDialog
-          star={editing}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
+          onClose={() => setCreating(false)}
           onSaved={async () => {
             setCreating(false);
-            setEditing(null);
             await onChanged?.();
           }}
         />

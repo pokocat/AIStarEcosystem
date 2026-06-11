@@ -39,6 +39,26 @@ export interface StarProfile {
   fans: number;              // 粉丝数（原始整数，展示层 formatCompactNumber）
   agentView: boolean;        // true = 经纪人视角（账号 role=agent）
   listedAt?: ISODateTime;    // 入驻（在 celebrity 市场可见）时间
+  // v0.62：档案编辑移入 star 端，详情字段随档案下发（编辑表单预填）
+  cover?: string;            // 明星市场详情页封面
+  description?: string;      // 一句话定位（市场卡片文案）
+  bio?: string;              // 详情页长简介
+  location?: string;         // 常驻城市
+}
+
+/**
+ * 档案编辑（v0.62：明星档案编辑从 admin 移到 star 端，由本人 / 经纪团队自维护）。
+ * 平台运营字段（isHot / pricingTier / quota / pricing）不开放给明星端。
+ */
+export interface StarProfileUpdateInput {
+  name: string;
+  category: string;
+  description: string;       // 一句话定位（必填，市场卡片文案）
+  bio?: string;
+  location?: string;
+  fans: number;
+  avatar?: string;           // 留空 = 不变更
+  cover?: string;            // 留空 = 不变更
 }
 
 /** 入驻申请（明星首次开通工作台 → 同步创建 celebrity 市场档案） */

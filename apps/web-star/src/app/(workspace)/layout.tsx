@@ -263,7 +263,8 @@ function Shell({ children }: { children: React.ReactNode }) {
           style={{ background: "var(--bg-1)", borderRight: "1px solid var(--line)", top: 57, height: "calc(100dvh - 57px)" }}
         >
           <div className="p-3" style={{ borderBottom: "1px solid var(--line)" }}>
-            <div className="flex items-center gap-2.5 p-2.5 rounded-xl" style={{ background: "#f59e0b0d", border: "1px solid #f59e0b26" }}>
+            {/* 身份卡可点 → 档案设置（v0.62：档案编辑移入 star 端） */}
+            <Link href="/profile" title="档案设置" className="flex items-center gap-2.5 p-2.5 rounded-xl transition hover:brightness-95" style={{ background: "#f59e0b0d", border: "1px solid #f59e0b26" }}>
               <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden" style={{ background: "var(--gradient-star)" }}>
                 {profile?.avatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -278,7 +279,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                   {profile ? `${profile.tierLabel}艺人 · ${formatWan(profile.fans)}粉` : "档案加载中"}
                 </div>
               </div>
-            </div>
+            </Link>
           </div>
           {navContent(false)}
           {totalPending > 0 && (

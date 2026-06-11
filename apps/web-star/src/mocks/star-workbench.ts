@@ -22,6 +22,10 @@ export const MOCK_PROFILE: StarProfile = {
   fans: 45_300_000,
   agentView: true,
   listedAt: "2026-04-01T10:00:00+08:00",
+  cover: "https://picsum.photos/seed/star-yuzhen-cover/600/800",
+  description: "硬汉戏骨，正剧带货双栖，信任感拉满",
+  bio: "代表作《五号特工组》《密查》等，深耕年代剧 / 谍战剧二十年；直播带货以真诚人设见长，粉丝画像 30-55 岁高净值家庭用户。",
+  location: "北京",
 };
 
 // ── IP 授权（4 类资产） ──────────────────────────────────────────────────────
