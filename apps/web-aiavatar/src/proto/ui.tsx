@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { createPortal } from "react-dom";
 import { Icons } from "./icons";
 
 // ============================================================
@@ -224,7 +225,7 @@ function Modal({ open, onClose, children, w = 720, title }) {
     window.addEventListener('keydown', fn); return () => window.removeEventListener('keydown', fn);
   }, [open]);
   if (!open) return null;
-  return h('div', { onClick: onClose, style: {
+  const node = h('div', { onClick: onClose, style: {
     position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(26,25,34,.42)', backdropFilter: 'blur(3px)',
     display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '6vh 20px', overflow: 'auto' } },
     h('div', { onClick: e => e.stopPropagation(), className: 'fade-up', style: {
@@ -235,6 +236,10 @@ function Modal({ open, onClose, children, w = 720, title }) {
         h('h3', { style: { fontSize: 19 } }, title),
         h('button', { onClick: onClose, style: { background: 'var(--surface-3)', border: 'none', width: 34, height: 34, borderRadius: 99, cursor: 'pointer', display: 'grid', placeItems: 'center', color: 'var(--ink-2)' } }, h(Icons.x, { size: 18 }))),
       children));
+  // portal 到 body：调用方常把 Modal 渲染在 .m-fade / .m-stagger 内容里，这些容器的
+  // transform 动画（fill-mode: both 永久生效）会常驻 stacking context，fixed 覆盖层
+  // 在其中压不过外层 sticky / 底部操作栏（与 MLightbox 同因）。
+  return typeof document === 'undefined' ? node : createPortal(node, document.body);
 }
 
 // —— Confirm（二次确认；危险操作用，替代原生 confirm）——

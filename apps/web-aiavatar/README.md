@@ -109,6 +109,11 @@ src/
 
 ## 版本日志
 
+- **2026-06-11 · 灯箱 / Modal 层级修复**：`MLightbox` 与 `UI.Modal` 改 `createPortal` 渲染到
+  `document.body`。根因：详情页 tab 内容容器 `.m-fade` 的 `mFadeUp` transform 动画带
+  `fill-mode: both`（永久生效）→ 容器常驻 stacking context，`fixed + zIndex:200` 的覆盖层
+  在其中压不过外层 sticky tab 条（z 5）/ 底部操作栏（z 20），表现为大图预览被 Tab 条和
+  CTA 按钮「切开」。portal 跳出后为真全屏顶层（无头实测：覆盖中部 + 底栏，挂 body 下）。
 - **2026-06-11 · 中文字体回退链**：`-apple-system` → 苹方 → HarmonyOS Sans SC → MiSans → 雅黑 → Noto Sans SC，修复国产 Android ROM（鸿蒙 / 小米等）中文字体断档。
 
 ### v0.11（2026-06-10）— 反向「应用于」视图（收敛 Phase 2 ①）

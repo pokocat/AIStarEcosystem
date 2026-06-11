@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { createPortal } from "react-dom";
 import { Icons } from "./icons";
 import * as UI from "./ui";
 import { DATA, AvatarApi, LicenseApi, PlazaAdminApi, awaitJob, useApi, seed, USE_MOCK, auth, AuthApi, isOperatorRole } from "./api";
@@ -372,7 +373,7 @@ function MLightbox({ images, index, onClose, onIndex }) {
   const many = (images || []).length > 1;
   const go = (e, d) => { e.stopPropagation(); onIndex((index + d + images.length) % images.length); };
   const navBtn = (side) => ({ position: 'absolute', top: '50%', [side]: 8, transform: 'translateY(-50%)', width: 42, height: 42, borderRadius: 99, border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 2 } as any);
-  return hML('div', { onClick: onClose, style: {
+  const node = hML('div', { onClick: onClose, style: {
       position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(8,10,14,.94)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' } },
     hML('button', { onClick: (e) => { e.stopPropagation(); onClose(); }, className: 'm-tap', style: {
@@ -386,6 +387,10 @@ function MLightbox({ images, index, onClose, onIndex }) {
     many && hML(React.Fragment, null,
       hML('button', { onClick: (e) => go(e, -1), className: 'm-tap', style: navBtn('left') }, hML(Icons.chevL, { size: 24, stroke: 2 })),
       hML('button', { onClick: (e) => go(e, 1), className: 'm-tap', style: navBtn('right') }, hML(Icons.chevR, { size: 24, stroke: 2 }))));
+  // portal 到 body：灯箱常被渲染在 .m-fade tab 内容里，mFadeUp 的 transform 动画
+  // （fill-mode: both 永久生效）让该容器成为常驻 stacking context —— fixed + zIndex:200
+  // 在其中压不过外层的 sticky tab 条（z 5）/ 底部操作栏（z 20）。portal 跳出后才是真全屏顶层。
+  return typeof document === 'undefined' ? node : createPortal(node, document.body);
 }
 
 function MPublicShowcase({ char }) {
