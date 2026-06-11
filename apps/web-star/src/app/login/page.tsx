@@ -109,7 +109,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: "var(--bg-0)" }}>
+    <div className="min-h-dvh flex flex-col overflow-x-hidden" style={{ background: "var(--bg-0)" }}>
       <div className="absolute inset-x-0 top-0 h-64 star-grid-pattern" aria-hidden />
       <div className="relative flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-[calc(100vw-2rem)] sm:max-w-sm">

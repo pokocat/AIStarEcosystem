@@ -7,11 +7,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, Bell, LogOut, Star } from "lucide-react";
+import { AlertCircle, Bell, LayoutGrid, LogOut, Star } from "lucide-react";
 import { useAuth, AuthApi } from "@ai-star-eco/api-client";
 import { STAR_NAV_GROUPS } from "@/constants/star-ui";
 import { StarShellProvider, useStarShell } from "@/lib/star-shell-context";
 import { formatWan } from "@/lib/format";
+import { Modal } from "@/components/star/page-kit";
 
 function navBadgeCount(badgeKey: string | undefined, byModule: Map<string, number>): number {
   if (!badgeKey) return 0;
@@ -23,6 +24,14 @@ function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, hasPlatformAccess, logout } = useAuth();
   const { profile, profileLoading, overview } = useStarShell();
+  const mobileNavRef = React.useRef<HTMLElement>(null);
+  const [moduleSheetOpen, setModuleSheetOpen] = React.useState(false);
+
+  // <1024 顶部横向 Tab：路由变化时把活跃模块滚动到可视区中部
+  React.useEffect(() => {
+    const active = mobileNavRef.current?.querySelector<HTMLElement>('[data-active="true"]');
+    active?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [pathname]);
 
   // 未入驻 → 引导到入驻页（onboard 在 workspace 外，公共布局）
   React.useEffect(() => {
@@ -41,7 +50,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   if (user && !hasPlatformAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-6">
+      <div className="min-h-dvh flex items-center justify-center px-6">
         <div className="star-card max-w-md w-full p-8 text-center">
           <div className="mx-auto w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "var(--brand-soft)" }}>
             <AlertCircle className="w-6 h-6" style={{ color: "var(--brand)" }} />
@@ -63,14 +72,18 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   const navContent = (horizontal: boolean) => (
-    <nav className={horizontal ? "flex items-center gap-1 overflow-x-auto scrollbar-thin px-3 py-2" : "flex-1 px-3 pb-4 overflow-y-auto scrollbar-thin"}>
-      {STAR_NAV_GROUPS.map((group) => (
+    <nav
+      ref={horizontal ? mobileNavRef : undefined}
+      className={horizontal ? "flex items-center gap-1 overflow-x-auto scrollbar-none overscroll-x-contain px-3 py-1.5" : "flex-1 px-3 pb-4 overflow-y-auto scrollbar-thin"}
+    >
+      {STAR_NAV_GROUPS.map((group, gi) => (
         <div key={group.label} className={horizontal ? "flex items-center gap-1 shrink-0" : "mb-1"}>
           {!horizontal && (
             <div className="px-2.5 pt-5 pb-1.5 text-[10px] font-bold tracking-widest uppercase" style={{ color: "var(--ink-2)" }}>
               {group.label}
             </div>
           )}
+          {horizontal && gi > 0 && <span aria-hidden className="w-px h-4 mx-1 shrink-0" style={{ background: "var(--line-strong)" }} />}
           {group.items.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
@@ -79,9 +92,10 @@ function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.id}
                 href={item.href}
+                data-active={active || undefined}
                 className={
                   horizontal
-                    ? "relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors shrink-0"
+                    ? "relative flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors shrink-0"
                     : "relative w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left mb-0.5 transition-colors"
                 }
                 style={
@@ -112,10 +126,18 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-0)" }}>
+    <div className="min-h-dvh" style={{ background: "var(--bg-0)" }}>
+      {/* 键盘用户跳过 14 项导航直达内容（视觉隐藏，聚焦时浮现） */}
+      <a
+        href="#star-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2.5 focus:rounded-xl focus:text-sm focus:font-bold"
+        style={{ background: "var(--ink-0)", color: "#fff" }}
+      >
+        跳到主内容
+      </a>
       {/* ── 顶栏 ── */}
       <header
-        className="flex items-center justify-between px-5 h-[57px] sticky top-0 z-20"
+        className="flex items-center justify-between px-4 sm:px-5 h-[57px] sticky top-0 z-20"
         style={{ background: "rgba(255,255,255,0.85)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--line)" }}
       >
         <div className="flex items-center gap-3 min-w-0">
@@ -129,8 +151,8 @@ function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <Link href="/dashboard" className="relative p-1" aria-label="待办通知">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <Link href="/dashboard" className="relative p-1 touch-hit" aria-label="待办通知">
             <Bell className="w-5 h-5" style={{ color: "var(--ink-1)" }} />
             {totalPending > 0 && (
               <span
@@ -151,7 +173,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           )}
           <button
             onClick={() => { AuthApi.logout(); logout(); }}
-            className="p-1 transition hover:opacity-70"
+            className="p-1 touch-hit transition hover:opacity-70"
             title="退出登录"
             aria-label="退出登录"
           >
@@ -160,17 +182,70 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* ── <1024：顶部横向导航 ── */}
-      <div className="star-topnav-mobile sticky top-[57px] z-10" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--line)" }}>
-        {navContent(true)}
+      {/* ── <1024：顶部横向导航（横滑 Tab + 「全部」模块抽屉） ── */}
+      <div className="star-topnav-mobile sticky top-[57px] z-10 flex items-stretch" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--line)" }}>
+        <div className="relative flex-1 min-w-0">
+          {navContent(true)}
+          {/* 右缘渐隐：提示还有更多模块可横滑 */}
+          <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-8" style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.92))" }} />
+        </div>
+        <button
+          onClick={() => setModuleSheetOpen(true)}
+          className="shrink-0 flex items-center gap-1 px-3.5 text-[13px] font-semibold transition active:bg-[var(--bg-2)]"
+          style={{ borderLeft: "1px solid var(--line)", color: "var(--ink-1)" }}
+          aria-label="打开全部模块"
+        >
+          <LayoutGrid className="w-4 h-4" style={{ color: "var(--ink-2)" }} />
+          全部
+        </button>
       </div>
 
+      {/* 全部模块抽屉（<1024 顶部 Tab 的全景入口） */}
+      <Modal open={moduleSheetOpen} title="全部模块" onClose={() => setModuleSheetOpen(false)}>
+        <div className="space-y-4">
+          {STAR_NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              <div className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color: "var(--ink-2)" }}>{group.label}</div>
+              <div className="grid grid-cols-4 gap-2">
+                {group.items.map((item) => {
+                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  const Icon = item.icon;
+                  const badge = navBadgeCount(item.badgeKey, byModule);
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => setModuleSheetOpen(false)}
+                      className="relative flex flex-col items-center gap-1.5 rounded-xl px-1 py-2.5 min-h-[64px] text-center transition active:scale-[0.97]"
+                      style={active
+                        ? { background: `${item.color}12`, border: `1px solid ${item.color}2e` }
+                        : { background: "var(--bg-0)", border: "1px solid var(--line)" }}
+                    >
+                      <Icon className="w-5 h-5" style={{ color: item.color }} />
+                      <span className="text-[11px] font-semibold leading-tight" style={{ color: active ? "var(--ink-0)" : "var(--ink-1)" }}>{item.label}</span>
+                      {badge > 0 && (
+                        <span
+                          className="absolute top-1 right-1 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[9px] font-bold px-1 tabular"
+                          style={{ background: `${item.color}1a`, color: item.color }}
+                        >
+                          {badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
       {/* ── 主体 ── */}
-      <div className="flex" style={{ minHeight: "calc(100vh - 57px)" }}>
+      <div className="flex" style={{ minHeight: "calc(100dvh - 57px)" }}>
         {/* 侧导航（≥1024） */}
         <aside
           className="star-sidebar-desktop w-[240px] shrink-0 flex flex-col sticky"
-          style={{ background: "var(--bg-1)", borderRight: "1px solid var(--line)", top: 57, height: "calc(100vh - 57px)" }}
+          style={{ background: "var(--bg-1)", borderRight: "1px solid var(--line)", top: 57, height: "calc(100dvh - 57px)" }}
         >
           <div className="p-3" style={{ borderBottom: "1px solid var(--line)" }}>
             <div className="flex items-center gap-2.5 p-2.5 rounded-xl" style={{ background: "#f59e0b0d", border: "1px solid #f59e0b26" }}>
@@ -202,7 +277,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* 内容区 */}
-        <main className="flex-1 min-w-0">{children}</main>
+        <main id="star-main" tabIndex={-1} className="flex-1 min-w-0 outline-none" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>{children}</main>
       </div>
     </div>
   );

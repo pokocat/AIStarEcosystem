@@ -13,7 +13,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import { BRAND_STATUS_CFG, SAMPLE_STATUS_CFG } from "@/constants/star-ui";
 import { formatDateTime, formatMonthsZh, formatWanYuan } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, InlineError, LoadingList,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, InlineError, LoadingList,
   PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -54,24 +54,25 @@ export default function BrandAuthPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="品牌授权管理" sub="品牌方向明星申请形象授权，平台 + 明星双层审核，双向寄样验收后激活" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
       {/* 审核链 */}
       <div className="star-card p-3" style={{ borderColor: `${ACCENT}26`, background: `${ACCENT}05` }}>
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
+        {/* <sm 五列等分（不横滑）；≥sm 横向链 + 箭头 */}
+        <div className="grid grid-cols-5 gap-1 sm:flex sm:items-center sm:gap-2 sm:overflow-x-auto sm:scrollbar-thin">
           {CHAIN.map((s, si) => {
             const SIcon = s.icon;
             return (
               <React.Fragment key={s.label}>
-                <div className="flex flex-col items-center text-center gap-1 shrink-0 min-w-[72px]">
+                <div className="flex flex-col items-center text-center gap-1 min-w-0 sm:shrink-0 sm:min-w-[72px]">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${s.color}12`, border: `1px solid ${s.color}30` }}>
                     <SIcon className="w-4 h-4" style={{ color: s.color }} />
                   </div>
-                  <span className="text-[9px]" style={{ color: "var(--ink-1)" }}>{s.label}</span>
+                  <span className="text-[9px] leading-tight" style={{ color: "var(--ink-1)" }}>{s.label}</span>
                 </div>
-                {si < CHAIN.length - 1 && <ChevronRight className="w-3 h-3 shrink-0 -mt-2" style={{ color: "var(--ink-2)" }} />}
+                {si < CHAIN.length - 1 && <ChevronRight className="hidden sm:block w-3 h-3 shrink-0 -mt-2" style={{ color: "var(--ink-2)" }} />}
               </React.Fragment>
             );
           })}
@@ -153,13 +154,16 @@ export default function BrandAuthPage() {
                 </div>
               </div>
               {actionable && (
-                <div className="flex items-center gap-2 px-4 pb-3 pt-2.5 flex-wrap" style={{ borderTop: "1px solid var(--line)" }}>
-                  <div className="flex-1 min-w-[180px] text-[11px] flex items-center gap-1" style={{ color: "var(--star-gold-deep)" }}>
-                    <AlertCircle className="w-3 h-3 shrink-0" />
-                    {isCelebReview && "平台已预审通过，等待你的决定"}
-                    {needsReceive && "品牌样品运输中，送达后请确认签收"}
-                    {needsConfirm && "样品已签收，确认质量后即可激活授权"}
-                  </div>
+                <CardActions
+                  hintIcon={AlertCircle}
+                  hint={
+                    <>
+                      {isCelebReview && "平台已预审通过，等待你的决定"}
+                      {needsReceive && "品牌样品运输中，送达后请确认签收"}
+                      {needsConfirm && "样品已签收，确认质量后即可激活授权"}
+                    </>
+                  }
+                >
                   <DangerGhostButton onClick={() => mutate(req.id, () => StarWorkbenchApi.rejectBrandAuth(req.id))} busy={busyId === req.id}>
                     驳回
                   </DangerGhostButton>
@@ -178,7 +182,7 @@ export default function BrandAuthPage() {
                       样品确认，激活授权
                     </ActionButton>
                   )}
-                </div>
+                </CardActions>
               )}
             </div>
           );

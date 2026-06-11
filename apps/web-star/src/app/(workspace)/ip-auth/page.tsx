@@ -51,7 +51,7 @@ export default function IpAuthPage() {
   const expandedMeta = expanded ? IP_AUTH_META[expanded] : null;
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
       <PageHeader title="IP授权中心" sub="管理人像、切片、数字人等授权，传递至技术公司和火山引擎" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -61,12 +61,19 @@ export default function IpAuthPage() {
           <Globe className="w-4 h-4" style={{ color: "#6366f1" }} />
           <span className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>授权传递链路</span>
         </div>
-        <div className="flex items-start gap-2 overflow-x-auto scrollbar-thin pb-1">
+        {/* <sm 2×2 网格（不横滑，序号标记顺序）；≥sm 横向链 + 虚线连接 */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-start sm:gap-2 sm:overflow-x-auto sm:scrollbar-thin sm:pb-1">
           {RELAY_STEPS.map((step, i) => {
             const StepIcon = step.icon;
             return (
               <React.Fragment key={step.label}>
-                <div className="flex flex-col items-center text-center gap-1.5 shrink-0 min-w-[96px]">
+                <div className="relative flex flex-col items-center text-center gap-1.5 sm:shrink-0 sm:min-w-[96px] rounded-xl p-2 sm:p-0" style={{ background: `${step.color}07` }}>
+                  <span
+                    className="sm:hidden absolute top-1.5 left-1.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center tabular"
+                    style={{ background: `${step.color}14`, color: step.color }}
+                  >
+                    {i + 1}
+                  </span>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${step.color}12`, border: `1px solid ${step.color}33` }}>
                     <StepIcon className="w-5 h-5" style={{ color: step.color }} />
                   </div>
@@ -74,7 +81,7 @@ export default function IpAuthPage() {
                   <span className="text-[9px]" style={{ color: "var(--ink-2)" }}>{step.desc}</span>
                 </div>
                 {i < RELAY_STEPS.length - 1 && (
-                  <div className="flex-1 min-w-[20px] border-t border-dashed mt-5" style={{ borderColor: "var(--line-strong)" }} />
+                  <div className="hidden sm:block flex-1 min-w-[20px] border-t border-dashed mt-5" style={{ borderColor: "var(--line-strong)" }} />
                 )}
               </React.Fragment>
             );
@@ -135,13 +142,13 @@ export default function IpAuthPage() {
                         tabIndex={0}
                         onClick={(e) => { e.stopPropagation(); if (busyType !== type) void advance(type); }}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (busyType !== type) void advance(type); } }}
-                        className="w-full mt-0.5 py-1.5 rounded-lg text-[10px] font-bold text-white transition hover:brightness-105 cursor-pointer"
+                        className="w-full mt-0.5 py-1.5 max-sm:min-h-[40px] flex items-center justify-center rounded-lg text-[10px] max-sm:text-[11px] font-bold text-white transition hover:brightness-105 cursor-pointer"
                         style={{ background: meta.color, opacity: busyType === type ? 0.6 : 1 }}
                       >
                         {busyType === type ? "处理中…" : IP_NEXT_ACTION[asset.status]}
                       </span>
                     ) : (
-                      <div className="w-full mt-0.5 py-1.5 rounded-lg text-[10px] font-bold" style={{ background: `${meta.color}12`, color: meta.color }}>
+                      <div className="w-full mt-0.5 py-1.5 max-sm:min-h-[40px] flex items-center justify-center rounded-lg text-[10px] max-sm:text-[11px] font-bold" style={{ background: `${meta.color}12`, color: meta.color }}>
                         ✓ 已激活
                       </div>
                     )}
@@ -162,7 +169,7 @@ export default function IpAuthPage() {
                 style={{ borderColor: `${expandedMeta.color}40`, background: `${expandedMeta.color}05` }}
               >
                 <div className="px-4 py-4 space-y-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {(() => { const EIcon = expandedMeta.icon; return <EIcon className="w-4 h-4" style={{ color: expandedMeta.color }} />; })()}
                     <span className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>{expandedMeta.label}</span>
                     <span className="text-[11px] ml-1" style={{ color: "var(--ink-2)" }}>{expandedMeta.desc}</span>

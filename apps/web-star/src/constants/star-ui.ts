@@ -75,7 +75,7 @@ export const STAR_NAV_GROUPS: StarNavGroup[] = [
     label: "财务设置",
     items: [
       { id: "revenue", href: "/revenue", label: "分成收益", icon: Coins, color: "#eab308" },
-      { id: "rules", href: "/rules", label: "授权规则", icon: Shield, color: "#6b7280" },
+      { id: "rules", href: "/rules", label: "授权规则", icon: Shield, color: "#78716c" },
     ],
   },
   {

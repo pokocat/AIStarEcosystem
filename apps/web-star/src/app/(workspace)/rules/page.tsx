@@ -35,7 +35,7 @@ export default function RulesPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="内容授权规则" sub="绿 / 黄 / 橙 / 红四区策略，决定哪些内容自动放行、人工审或禁止" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -66,7 +66,7 @@ export default function RulesPage() {
                 <button
                   onClick={() => toggle(rule.id)}
                   disabled={busyId === rule.id}
-                  className="relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-60"
+                  className="relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-60 touch-hit"
                   style={{ background: rule.enabled ? "var(--ok)" : "var(--line-strong)" }}
                   aria-label={`${rule.enabled ? "停用" : "启用"}${rule.name}`}
                 >

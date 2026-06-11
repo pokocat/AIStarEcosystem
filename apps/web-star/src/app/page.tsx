@@ -38,7 +38,7 @@ export default function LandingPage() {
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-0)" }}>
+    <div className="min-h-dvh" style={{ background: "var(--bg-0)" }}>
       {/* ── 顶栏 ── */}
       <header className="max-w-6xl mx-auto flex items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">
@@ -85,7 +85,7 @@ export default function LandingPage() {
             从 IP 资产托管、授权审核、内容把关、商品准入到收益结算 ——
             所有商业化请求经你的审批阀门流转，人设、合规与法律边界尽在掌控。
           </p>
-          <div className="mt-8 flex items-center justify-center gap-3">
+          <div className="mt-8 flex items-center justify-center gap-3 flex-wrap">
             <Link
               href={user ? "/dashboard" : "/login"}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90 hover:shadow-lg"

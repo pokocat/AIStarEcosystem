@@ -10,7 +10,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import { CONTENT_STATUS_CFG, CONTENT_TYPE_CFG, getPlatformColor } from "@/constants/star-ui";
 import { formatDateTime, formatDurationZh, formatWan } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, FilterChip, GhostButton,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, FilterChip, GhostButton,
   InlineError, LoadingList, Modal, NoteBox, PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -71,7 +71,7 @@ export default function ContentReviewPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="内容审核" sub="审核 MCN 制作的切片、数字人、AI 形象视频 —— 通过 / 要求修改 / 驳回" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -139,13 +139,13 @@ export default function ContentReviewPage() {
                 </div>
               </div>
               {item.status === "pending" && (
-                <div className="flex justify-end gap-2 px-4 pb-3 pt-2.5" style={{ borderTop: "1px solid var(--line)" }}>
+                <CardActions>
                   <DangerGhostButton onClick={() => mutate(item.id, () => StarWorkbenchApi.rejectContent(item.id))} busy={busyId === item.id}>
                     驳回
                   </DangerGhostButton>
                   <button
                     onClick={() => { setRevising(item); setRevisionNote(""); }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:bg-orange-50"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 max-sm:min-h-[44px] rounded-lg text-xs font-bold transition hover:bg-orange-50"
                     style={{ color: "#ea580c", border: "1px solid #ea580c33", background: "#ea580c0a" }}
                   >
                     <RotateCcw className="w-3.5 h-3.5" />要求修改
@@ -153,7 +153,7 @@ export default function ContentReviewPage() {
                   <ActionButton color="#16a34a" icon={CheckCheck} onClick={() => mutate(item.id, () => StarWorkbenchApi.approveContent(item.id))} busy={busyId === item.id}>
                     通过
                   </ActionButton>
-                </div>
+                </CardActions>
               )}
             </div>
           );

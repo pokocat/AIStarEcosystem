@@ -11,7 +11,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import { COOPERATION_SCENES, COOPERATION_STATUS_CFG } from "@/constants/star-ui";
 import { formatDateTime } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, FilterChip, GhostButton,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, FilterChip, GhostButton,
   InlineError, LoadingList, Modal, NoteBox, PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -86,7 +86,7 @@ export default function CooperationPage() {
   const countOf = (s: string) => (items ?? []).filter((c) => (s === "all" ? true : c.status === s)).length;
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="带货授权" sub="AI 明星带货端创作者发起的 AI 复刻授权申请 —— 批准后对方即可用你的 IP 生成带货视频" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -153,13 +153,10 @@ export default function CooperationPage() {
                 </div>
               </div>
               {isPending && (
-                <div className="flex items-center gap-2 px-4 pb-3 pt-2.5" style={{ borderTop: "1px solid var(--line)" }}>
-                  <div className="flex-1 text-[11px] flex items-center gap-1" style={{ color: "var(--star-gold-deep)" }}>
-                    <Clock className="w-3 h-3" />等待你的授权决定，批准后创作者端立即生效
-                  </div>
+                <CardActions hint="等待你的授权决定，批准后创作者端立即生效" hintIcon={Clock}>
                   <DangerGhostButton onClick={() => { setRejecting(req); setReason(""); }}>驳回</DangerGhostButton>
                   <ActionButton color={ACCENT} icon={CheckCheck} onClick={() => openApprove(req)}>批准授权</ActionButton>
-                </div>
+                </CardActions>
               )}
             </div>
           );
@@ -190,7 +187,7 @@ export default function CooperationPage() {
                   <button
                     key={s}
                     onClick={() => setScenes((prev) => (on ? prev.filter((x) => x !== s) : [...prev, s]))}
-                    className="px-3 h-8 rounded-lg text-xs font-semibold transition"
+                    className="px-3 h-8 max-sm:h-11 max-sm:px-4 rounded-lg text-xs font-semibold transition"
                     style={on
                       ? { background: `${ACCENT}12`, border: `1px solid ${ACCENT}55`, color: ACCENT }
                       : { background: "var(--bg-2)", border: "1px solid transparent", color: "var(--ink-1)" }}
@@ -208,7 +205,7 @@ export default function CooperationPage() {
                 <button
                   key={m}
                   onClick={() => setExpireMonths(m)}
-                  className="px-3 h-8 rounded-lg text-xs font-semibold transition tabular"
+                  className="px-3 h-8 max-sm:h-11 max-sm:px-4 rounded-lg text-xs font-semibold transition tabular"
                   style={expireMonths === m
                     ? { background: `${ACCENT}12`, border: `1px solid ${ACCENT}55`, color: ACCENT }
                     : { background: "var(--bg-2)", border: "1px solid transparent", color: "var(--ink-1)" }}
@@ -225,7 +222,7 @@ export default function CooperationPage() {
                 <button
                   key={n}
                   onClick={() => setStyles(n)}
-                  className="px-3 h-8 rounded-lg text-xs font-semibold transition tabular"
+                  className="px-3 h-8 max-sm:h-11 max-sm:px-4 rounded-lg text-xs font-semibold transition tabular"
                   style={styles === n
                     ? { background: `${ACCENT}12`, border: `1px solid ${ACCENT}55`, color: ACCENT }
                     : { background: "var(--bg-2)", border: "1px solid transparent", color: "var(--ink-1)" }}

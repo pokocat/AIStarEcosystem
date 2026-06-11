@@ -35,6 +35,24 @@
   text-wrap: balance;
 }
 
+/* 触摸横滑容器：隐藏滚动条（移动端顶部 Tab 等触摸面） */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* 小尺寸控件的触控热区扩展（视觉不变，命中区 ≥44px） */
+@utility touch-hit {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+}
+
 /* 工作台卡片：白底 + 细边 + 柔影，hover 上浮（产品文档 §4.7） */
 @utility star-card {
   background: var(--bg-1);
@@ -94,6 +112,13 @@ select:focus-visible {
   }
 }
 
+/* 锚点平滑滚动（landing #features 等；尊重减少动态偏好） */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 /* ── 响应式（<1024 侧导航折叠为顶部 Tab，产品文档 §4.7） ─────────────────── */
 @media (max-width: 1023px) {
   .star-sidebar-desktop {
@@ -103,5 +128,15 @@ select:focus-visible {
 @media (min-width: 1024px) {
   .star-topnav-mobile {
     display: none;
+  }
+}
+
+/* ── 移动端（<640） ──────────────────────────────────────────────────────── */
+@media (max-width: 639px) {
+  /* iOS Safari：表单控件字号 <16px 聚焦时自动放大页面，强制 16px 防缩放 */
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px !important;
   }
 }

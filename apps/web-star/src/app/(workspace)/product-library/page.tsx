@@ -22,7 +22,7 @@ export default function ProductLibraryPage() {
   }, []);
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader
         title="商品库"
         sub={items ? `共 ${items.length} 件已审核入库商品，达人可带货创作` : "已审核入库商品的运营视图"}

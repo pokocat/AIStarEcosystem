@@ -11,7 +11,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import { PRODUCT_SOURCE_CFG, PRODUCT_SOURCE_FILTERS, PRODUCT_STEPS, SAMPLE_STATUS_CFG } from "@/constants/star-ui";
 import { formatDateTime, formatYuan } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, FilterChip, InlineError,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, FilterChip, InlineError,
   LoadingList, PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -46,7 +46,7 @@ export default function ProductOnboardPage() {
   const filtered = all.filter((p) => sourceFilter === "all" || p.source === sourceFilter);
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="商品入库管理" sub="平台发起 · 达人选品 · 品牌申请 三条入库路径，平台 + 明星双路收样审核" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -64,8 +64,8 @@ export default function ProductOnboardPage() {
         ))}
       </div>
 
-      {/* 步骤图例 */}
-      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1">
+      {/* 步骤图例（≥sm；<sm 卡内进度条自带当前步标签） */}
+      <div className="hidden sm:flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1">
         {PRODUCT_STEPS.map((step, i) => (
           <React.Fragment key={step.label}>
             <div className="flex items-center gap-1 shrink-0">
@@ -134,6 +134,27 @@ export default function ProductOnboardPage() {
                         <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />{item.platformNote}
                       </div>
                     )}
+                    {/* <sm 紧凑进度条（右侧垂直步骤条在窄屏隐藏，这里补步骤上下文） */}
+                    {!isRejected && (
+                      <div className="mt-2.5 sm:hidden">
+                        <div className="flex items-center gap-1">
+                          {PRODUCT_STEPS.map((step, si) => {
+                            const done = item.step > si || isInLibrary;
+                            const current = item.step === si && !isInLibrary;
+                            return (
+                              <div
+                                key={si}
+                                className="flex-1 h-1 rounded-full"
+                                style={{ background: done ? step.color : current ? `${step.color}80` : "var(--bg-2)" }}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="mt-1 text-[10px]" style={{ color: "var(--ink-2)" }}>
+                          {isInLibrary ? "已完成全部入库流程" : `当前：${PRODUCT_STEPS[item.step]?.label ?? ""}`}
+                        </div>
+                      </div>
+                    )}
                     {/* 双路寄样 */}
                     {item.step >= 3 && !isRejected && (
                       <div className="mt-2.5 grid grid-cols-2 gap-1.5 max-w-md">
@@ -199,13 +220,16 @@ export default function ProductOnboardPage() {
 
               {/* 操作条 */}
               {actionable && (
-                <div className="flex items-center gap-2 px-4 pb-3 pt-2.5 flex-wrap" style={{ borderTop: "1px solid var(--line)" }}>
-                  <div className="flex-1 min-w-[180px] text-[11px] flex items-center gap-1" style={{ color: "var(--star-gold-deep)" }}>
-                    <AlertCircle className="w-3 h-3 shrink-0" />
-                    {needsReview && "需要你审核这款商品"}
-                    {needsReceive && "样品运输中，送达后请确认签收"}
-                    {needsConfirm && "样品已签收，请体验后确认质量"}
-                  </div>
+                <CardActions
+                  hintIcon={AlertCircle}
+                  hint={
+                    <>
+                      {needsReview && "需要你审核这款商品"}
+                      {needsReceive && "样品运输中，送达后请确认签收"}
+                      {needsConfirm && "样品已签收，请体验后确认质量"}
+                    </>
+                  }
+                >
                   <DangerGhostButton onClick={() => mutate(item.id, () => StarWorkbenchApi.rejectProductOnboard(item.id))} busy={busyId === item.id}>
                     驳回
                   </DangerGhostButton>
@@ -224,7 +248,7 @@ export default function ProductOnboardPage() {
                       样品通过，入库
                     </ActionButton>
                   )}
-                </div>
+                </CardActions>
               )}
             </div>
           );

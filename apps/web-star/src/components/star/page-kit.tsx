@@ -12,8 +12,8 @@ import { Loader2, X, type LucideIcon } from "lucide-react";
 
 export function PageHeader({ title, sub, right }: { title: string; sub?: string; right?: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <div>
+    <div className="flex items-start justify-between gap-x-3 gap-y-2 flex-wrap">
+      <div className="min-w-0">
         <h2 className="text-lg font-black tracking-tight" style={{ color: "var(--ink-0)", fontFamily: "var(--font-display)" }}>{title}</h2>
         {sub && <p className="text-xs mt-1" style={{ color: "var(--ink-1)" }}>{sub}</p>}
       </div>
@@ -38,7 +38,7 @@ export function FilterChip({
     <motion.button
       onClick={onClick}
       whileTap={{ scale: 0.95 }}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
+      className="flex items-center gap-1.5 px-3 py-1.5 max-sm:min-h-[38px] rounded-full text-xs font-semibold transition-colors"
       style={active
         ? { background: `${color}14`, border: `1px solid ${color}55`, color }
         : { background: "var(--bg-1)", border: "1px solid var(--line)", color: "var(--ink-1)" }}
@@ -73,7 +73,7 @@ export function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled || busy}
-      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50 shadow-sm"
+      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 max-sm:min-h-[44px] max-sm:px-4 rounded-lg text-xs font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50 shadow-sm"
       style={{ background: color }}
     >
       {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : Icon ? <Icon className="w-3.5 h-3.5" /> : null}
@@ -87,7 +87,7 @@ export function DangerGhostButton({ children, onClick, disabled, busy }: { child
     <button
       onClick={onClick}
       disabled={disabled || busy}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:bg-red-50 active:scale-[0.98] disabled:opacity-50"
+      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 max-sm:min-h-[44px] max-sm:px-4 rounded-lg text-xs font-bold transition hover:bg-red-50 active:scale-[0.98] disabled:opacity-50"
       style={{ color: "var(--danger)", border: "1px solid #dc262633", background: "#dc26260a" }}
     >
       {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -101,11 +101,34 @@ export function GhostButton({ children, onClick, disabled }: { children: React.R
     <button
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:bg-[var(--bg-2)] disabled:opacity-50"
+      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 max-sm:min-h-[44px] max-sm:px-4 rounded-lg text-xs font-bold transition hover:bg-[var(--bg-2)] disabled:opacity-50"
       style={{ color: "var(--ink-1)", border: "1px solid var(--line-strong)", background: "var(--bg-1)" }}
     >
       {children}
     </button>
+  );
+}
+
+// ── 卡片操作条（提示行 + 按钮组） ────────────────────────────────────────────
+// 桌面：提示与按钮同行；<sm：提示独占一行，按钮平分整行宽（拇指友好）。
+
+export function CardActions({ hint, hintColor = "var(--star-gold-deep)", hintIcon: HintIcon, children }: {
+  hint?: React.ReactNode;
+  hintColor?: string;
+  hintIcon?: LucideIcon;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 pb-3 pt-2.5" style={{ borderTop: "1px solid var(--line)" }}>
+      {hint && (
+        <div className="sm:flex-1 min-w-0 text-[11px] flex items-center gap-1" style={{ color: hintColor }}>
+          {HintIcon && <HintIcon className="w-3 h-3 shrink-0" />}
+          <span className="min-w-0">{hint}</span>
+        </div>
+      )}
+      {/* <sm 按钮按内容比例伸展占满整行（flex-auto 避免长文案按钮折行） */}
+      <div className={`flex items-center gap-2 max-sm:[&>*]:flex-auto ${hint ? "" : "sm:ml-auto"}`}>{children}</div>
+    </div>
   );
 }
 
@@ -187,30 +210,35 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
       style={{ background: "rgba(28,25,23,0.4)", backdropFilter: "blur(4px)" }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
+      {/* <sm 底部抽屉：全宽 + 仅上圆角 + 安全区；≥sm 居中卡片 */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+        className="w-full max-sm:max-w-none rounded-t-2xl sm:rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 sm:slide-in-from-bottom-2 duration-200"
         style={{ maxWidth: width, background: "var(--bg-1)", border: "1px solid var(--line)", boxShadow: "var(--shadow-lift)" }}
       >
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--line)" }}>
-          <h3 className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg transition hover:bg-[var(--bg-2)]" aria-label="关闭">
+        <div className="flex items-center justify-between pl-5 pr-3 py-3.5 sm:py-4" style={{ borderBottom: "1px solid var(--line)" }}>
+          <h3 className="text-sm font-bold min-w-0 truncate" style={{ color: "var(--ink-0)" }}>{title}</h3>
+          <button onClick={onClose} className="p-2 -my-1 rounded-lg transition hover:bg-[var(--bg-2)] shrink-0" aria-label="关闭">
             <X className="w-4 h-4" style={{ color: "var(--ink-2)" }} />
           </button>
         </div>
-        <div className="px-5 py-4 max-h-[65vh] overflow-y-auto scrollbar-thin">{children}</div>
+        <div className="px-5 py-4 max-h-[70dvh] sm:max-h-[65vh] overflow-y-auto scrollbar-thin overscroll-contain">{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-2 px-5 py-3.5" style={{ borderTop: "1px solid var(--line)", background: "var(--bg-0)" }}>
+          <div
+            className="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-5 py-3 sm:py-3.5 max-sm:[&>button]:flex-auto"
+            style={{ borderTop: "1px solid var(--line)", background: "var(--bg-0)", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+          >
             {footer}
           </div>
         )}
+        {!footer && <div style={{ paddingBottom: "env(safe-area-inset-bottom)" }} />}
       </div>
     </div>
   );

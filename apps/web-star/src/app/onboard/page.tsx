@@ -89,14 +89,14 @@ export default function OnboardPage() {
 
   if (loading || checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-0)" }}>
+      <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--bg-0)" }}>
         <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--ink-2)" }} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen py-12 px-4" style={{ background: "var(--bg-0)" }}>
+    <div className="min-h-dvh py-12 px-4" style={{ background: "var(--bg-0)" }}>
       <div className="max-w-xl mx-auto">
         <div className="flex flex-col items-center text-center mb-8">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: "var(--gradient-star)" }}>

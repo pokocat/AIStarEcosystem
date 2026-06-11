@@ -10,7 +10,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import { DH_USAGE_CFG } from "@/constants/star-ui";
 import { formatDateTime, formatMonthsZh } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, InlineError, LoadingList,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, InlineError, LoadingList,
   NoteBox, PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -43,7 +43,7 @@ export default function DigitalHumanPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="数字人授权管理" sub="审核 MCN 申请使用你的数字人形象 —— 用途、平台与时长逐项把关" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -93,14 +93,14 @@ export default function DigitalHumanPage() {
                 )}
               </div>
               {isPending && (
-                <div className="flex justify-end gap-2 px-4 pb-3 pt-2.5" style={{ borderTop: "1px solid var(--line)" }}>
+                <CardActions>
                   <DangerGhostButton onClick={() => mutate(req.id, () => StarWorkbenchApi.rejectDigitalHuman(req.id))} busy={busyId === req.id}>
                     驳回
                   </DangerGhostButton>
                   <ActionButton color={ACCENT} icon={CheckCheck} onClick={() => mutate(req.id, () => StarWorkbenchApi.approveDigitalHuman(req.id))} busy={busyId === req.id}>
                     批准授权
                   </ActionButton>
-                </div>
+                </CardActions>
               )}
             </div>
           );

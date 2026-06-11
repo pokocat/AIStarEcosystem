@@ -57,7 +57,7 @@ export default function InfringementPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="侵权巡查" sub="全网监测未经授权的 IP 使用，快速响应仿冒与盗用行为" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -118,7 +118,7 @@ export default function InfringementPage() {
                     {c.actionNote && (
                       <p className="text-[11px] mb-1.5" style={{ color: "var(--ink-2)" }}>处置备注：{c.actionNote}</p>
                     )}
-                    <div className="flex items-center gap-4 text-[11px]" style={{ color: "var(--ink-2)" }}>
+                    <div className="flex items-center gap-x-4 gap-y-1 text-[11px] flex-wrap" style={{ color: "var(--ink-2)" }}>
                       <span>举报来源：{c.reportedBy}</span>
                       <span>{formatDateTime(c.reportedAt)}</span>
                     </div>

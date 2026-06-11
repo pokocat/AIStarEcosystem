@@ -10,7 +10,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import { AI_MODEL_CFG, RISK_LEVEL_CFG } from "@/constants/star-ui";
 import { formatDateTime } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, InlineError, LoadingList,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, InlineError, LoadingList,
   NoteBox, PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -43,7 +43,7 @@ export default function AiLikenessPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="AI形象授权管理" sub="审核 AI 声音 / 人脸 / 全身形象申请，按低中高三级风险分级处理" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -100,7 +100,7 @@ export default function AiLikenessPage() {
                 )}
               </div>
               {isPending && (
-                <div className="flex justify-end gap-2 px-4 pb-3 pt-2.5" style={{ borderTop: "1px solid var(--line)" }}>
+                <CardActions>
                   <DangerGhostButton onClick={() => mutate(req.id, () => StarWorkbenchApi.rejectAiLikeness(req.id))} busy={busyId === req.id}>
                     驳回
                   </DangerGhostButton>
@@ -112,7 +112,7 @@ export default function AiLikenessPage() {
                   >
                     {req.riskLevel === "high" ? "强制批准（慎）" : "批准授权"}
                   </ActionButton>
-                </div>
+                </CardActions>
               )}
             </div>
           );

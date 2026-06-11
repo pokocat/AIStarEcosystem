@@ -55,7 +55,16 @@
 - **弹层**：page-kit `<Modal>`（输入采集 / 二次确认），禁原生 confirm/alert/prompt。
 - **可访问性**：全局 `:focus-visible` 焦点环；`prefers-reduced-motion` 停用动画；
   状态不只靠颜色（图标 + 文案并行）。
-- **响应式**：≥1024 侧导航 240px；<1024 折叠为顶部横向 Tab。
+- **响应式**：≥1024 侧导航 240px；<1024 折叠为顶部横向 Tab（活跃模块自动滚动居中 +
+  右端「全部」按钮打开分组模块抽屉，解决 14 模块横滑发现性）。
+- **移动端（<640）**：弹层一律底部抽屉形态（全宽 + 仅上圆角 + 安全区 padding，footer
+  按钮按内容比例占满整行）；卡片操作条用 page-kit `<CardActions>`（提示独占一行 +
+  按钮整行伸展）；主操作触控高度 ≥44px、筛选 chip ≥38px，小控件用 `touch-hit` 扩展
+  命中区；表单控件字号强制 16px 防 iOS 聚焦缩放；hover-only 可供性（如复制图标）触屏常显。
+- **移动端禁横滑原则（<sm）**：除顶部模块 Tab 外不引入横向滚动 —— KPI 卡竖排（标签行→
+  数值→副文，杜绝截断）；链路/流程图（IP 链路、传递链路、品牌审核链）折叠为 2×2 或
+  N 等分网格（序号标记顺序）；步骤图例 `<sm` 隐藏，由卡内紧凑进度条 + 当前步标签承担；
+  多组 chips 筛选 `<sm` 收口为原生 `<select>`（带计数）一行放下；视口高度一律 `dvh`。
 - **数值**：一律原始整数（fans / priceCents / amountCents / durationSec…），
   展示经 `src/lib/format.ts`（formatWan / formatYuan / formatWanYuan /
   formatDurationZh / formatMonthsZh）。

@@ -15,7 +15,7 @@ import {
 } from "@/constants/star-ui";
 import { formatDateTime, formatMonthsZh, formatWan } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, FilterChip, InlineError,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, FilterChip, InlineError,
   LoadingList, PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -69,12 +69,42 @@ export default function WhitelistPage() {
     .filter((r) => statusFilter === "all" || r.status === statusFilter);
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="报白账号授权" sub="审核 MCN 提交的切片账号报白申请，按 5 步流程推进至平台授权" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
-      {/* 双筛选条 */}
-      <div className="star-card p-3 space-y-2.5">
+      {/* <sm：双原生 select 一行收口（chips 折行占屏过高）；≥sm 保留 chip 筛选卡 */}
+      <div className="sm:hidden grid grid-cols-2 gap-2">
+        <select
+          value={platformFilter}
+          onChange={(e) => setPlatformFilter(e.target.value)}
+          aria-label="按平台筛选"
+          className="h-10 px-3 rounded-xl text-sm outline-none min-w-0"
+          style={{ background: "var(--bg-1)", border: "1px solid var(--line-strong)", color: "var(--ink-0)" }}
+        >
+          {PLATFORM_FILTERS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}（{p.id === "all" ? all.length : all.filter((r) => r.platform === p.id).length}）
+            </option>
+          ))}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="按状态筛选"
+          className="h-10 px-3 rounded-xl text-sm outline-none min-w-0"
+          style={{ background: "var(--bg-1)", border: "1px solid var(--line-strong)", color: "var(--ink-0)" }}
+        >
+          {WL_STATUS_FILTERS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}（{s.id === "all" ? all.length : all.filter((r) => r.status === s.id).length}）
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* 双筛选条（≥sm） */}
+      <div className="hidden sm:block star-card p-3 space-y-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold shrink-0 w-10" style={{ color: "var(--ink-2)" }}>平台</span>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -109,8 +139,8 @@ export default function WhitelistPage() {
         </div>
       </div>
 
-      {/* 流程图例 */}
-      <div className="flex items-center gap-2 px-1 overflow-x-auto scrollbar-thin pb-1">
+      {/* 流程图例（≥sm；<sm 卡内 5 步进度自带标签，图例冗余） */}
+      <div className="hidden sm:flex items-center gap-2 px-1 overflow-x-auto scrollbar-thin pb-1">
         {WL_STEPS.map((step, i) => (
           <React.Fragment key={step.id}>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -154,6 +184,12 @@ export default function WhitelistPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>{req.accountHandle}</span>
                     <Pill color={pColor}>{req.platform}</Pill>
+                    {/* <sm：状态 pill 内联展示（右列已隐藏） */}
+                    <span className="sm:hidden inline-flex items-center gap-1">
+                      {isAuthorized
+                        ? <Pill color="#16a34a" icon={CheckCircle2} strong>授权成功</Pill>
+                        : <Pill color={cfg.color} icon={CfgIcon} strong>{cfg.label}</Pill>}
+                    </span>
                     <span className="text-[11px]" style={{ color: "var(--ink-2)" }}>{req.mcnName}</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--bg-2)", color: "var(--ink-1)" }}>{req.mcnLevel} · 信用 {req.creditScore}</span>
                   </div>
@@ -185,19 +221,29 @@ export default function WhitelistPage() {
                         <CheckCheck className="w-3 h-3" />已复制报白参数
                       </div>
                     )}
-                    <div className="flex items-center gap-3 flex-wrap">
+                    {/* <sm 堆叠列表行（标签左 / 值+复制右）；≥sm 内联 */}
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3 sm:flex-wrap">
                       {[
                         { icon: Hash, label: "账号ID", value: req.accountId, ck: `id-${req.id}` },
                         { icon: Phone, label: "手机号", value: req.phone, ck: `ph-${req.id}` },
                         { icon: Fingerprint, label: "UID", value: req.uid, ck: `uid-${req.id}` },
                       ].map(({ icon: Icon, label, value, ck }) => (
-                        <button key={ck} onClick={() => copyToClipboard(value, ck)} className="flex items-center gap-1 group transition hover:opacity-75">
-                          <Icon className="w-2.5 h-2.5" style={{ color: "var(--ink-2)" }} />
-                          <span className="text-[10px]" style={{ color: "var(--ink-2)" }}>{label}:</span>
-                          <span className="text-[11px] font-mono" style={{ color: isPending && stepIdx === 0 ? "#0e7490" : "var(--ink-1)" }}>{value}</span>
-                          {copiedId === ck
-                            ? <CheckCheck className="w-2.5 h-2.5" style={{ color: "var(--ok)" }} />
-                            : <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition" style={{ color: "var(--ink-2)" }} />}
+                        <button
+                          key={ck}
+                          onClick={() => copyToClipboard(value, ck)}
+                          className="flex items-center gap-1 py-1.5 -my-1 max-sm:w-full max-sm:justify-between max-sm:py-2 max-sm:my-0 group transition hover:opacity-75"
+                        >
+                          <span className="flex items-center gap-1 shrink-0">
+                            <Icon className="w-2.5 h-2.5" style={{ color: "var(--ink-2)" }} />
+                            <span className="text-[10px]" style={{ color: "var(--ink-2)" }}>{label}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[11px] font-mono truncate" style={{ color: isPending && stepIdx === 0 ? "#0e7490" : "var(--ink-1)" }}>{value}</span>
+                            {/* 触屏无 hover：<sm 常显复制图标提示可点 */}
+                            {copiedId === ck
+                              ? <CheckCheck className="w-2.5 h-2.5 shrink-0" style={{ color: "var(--ok)" }} />
+                              : <Copy className="w-2.5 h-2.5 shrink-0 opacity-50 sm:opacity-0 sm:group-hover:opacity-100 transition" style={{ color: "var(--ink-2)" }} />}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -239,7 +285,7 @@ export default function WhitelistPage() {
                   )}
                 </div>
 
-                <div className="flex flex-col items-end gap-2 shrink-0">
+                <div className="hidden sm:flex flex-col items-end gap-2 shrink-0">
                   {isAuthorized ? (
                     <Pill color="#16a34a" icon={CheckCircle2} strong>授权成功</Pill>
                   ) : (
@@ -250,13 +296,17 @@ export default function WhitelistPage() {
               </div>
 
               {isPending && (
-                <div className="flex items-center gap-2 px-4 pb-3 pt-2.5" style={{ borderTop: "1px solid var(--line)" }}>
-                  <div className="flex-1 text-[11px]" style={{ color: "var(--ink-2)" }}>
-                    {stepIdx === 0 && "点击右侧按钮开始报白，参数将自动复制"}
-                    {stepIdx === 1 && "已联系平台，等待平台下发短信验证码"}
-                    {stepIdx === 2 && "验证码已下发，等待达人确认"}
-                    {stepIdx === 3 && "平台报白审核中，通过后确认授权"}
-                  </div>
+                <CardActions
+                  hintColor="var(--ink-2)"
+                  hint={
+                    <>
+                      {stepIdx === 0 && "点击「开始联系平台」报白，参数将自动复制"}
+                      {stepIdx === 1 && "已联系平台，等待平台下发短信验证码"}
+                      {stepIdx === 2 && "验证码已下发，等待达人确认"}
+                      {stepIdx === 3 && "平台报白审核中，通过后确认授权"}
+                    </>
+                  }
+                >
                   <DangerGhostButton onClick={() => mutate(req.id, () => StarWorkbenchApi.rejectWhitelistRequest(req.id))} busy={busyId === req.id}>
                     驳回
                   </DangerGhostButton>
@@ -271,7 +321,7 @@ export default function WhitelistPage() {
                   >
                     {stepCfg.action}
                   </ActionButton>
-                </div>
+                </CardActions>
               )}
             </div>
           );

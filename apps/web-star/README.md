@@ -61,6 +61,25 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
 
 ## 版本日志
 
+- **v0.60 补丁 3 · skill 审计收尾**（2026-06-11）：品牌化 404 `not-found.tsx`（登录态生效；
+  匿名未知路径仍由 AuthProvider 引导登录）+ 壳层「跳到主内容」skip-link（main 落焦点）+
+  授权规则 accent 冷灰 `#6b7280`→暖灰 `#78716c`（统一 stone 家族）+ html 锚点平滑滚动
+  （尊重 reduced-motion）+ openGraph 元数据。
+- **v0.60 补丁 2 · 移动端 redesign**（2026-06-11，`redesign-existing-projects` skill 审计）：
+  消除 `<sm` 横滑（dashboard IP 链路 / ip-auth 传递链路改 2×2 序号网格、brand-auth 审核链
+  5 等分、whitelist 与 product-onboard 步骤图例隐藏 + 卡内进度条补上下文）；dashboard KPI
+  卡改竖排杜绝文字截断；whitelist 双 chips 筛选 `<sm` 收口为原生双 select 一行（带计数）+
+  报白参数改堆叠列表行；CardActions / Modal footer 按钮改按内容比例伸展（长文案不折行）；
+  全部 `100vh/min-h-screen` → `dvh`；revenue YAxis 收窄。新增产品约束「移动端禁横滑原则」
+  （PRODUCT.md §4）。
+- **v0.60 补丁 · 移动端适配**（2026-06-11）：全端手机适配（390px 实测，桌面端零变化）。
+  壳层：顶部横向 Tab 触控加大 + 活跃项自动居中 + 分组分隔 + 右缘渐隐 + 「全部」模块
+  抽屉（4 列分组网格带待办角标）；page-kit：Modal <sm 变底部抽屉（安全区 + footer 按钮
+  平分）、新增 `<CardActions>` 卡片操作条原语（7 个审批页统一接入）、三种按钮 <sm
+  ≥44px 触控高、FilterChip ≥38px；全局：`touch-hit` 命中区扩展（规则开关 / 顶栏图标）、
+  表单控件 16px 防 iOS 聚焦缩放、`viewportFit: cover` + safe-area；页面级：p-4 sm:p-6
+  边距、whitelist 状态 pill 移动端内联 + 复制图标触屏常显、ip-auth 资产卡主按钮加大、
+  contracts 筛选 select 平分整行、landing CTA 折行。
 - **v0.60**（2026-06-10）：首版。13 个 Figma 原型模块全量浅色化复刻 + 新增「带货授权」
   打通模块；后端 `/api/star/**` 域（12 实体）+ `/api/me/celebrity/*` 打通端点；
   mock / 真后端双模式；H2 与 MySQL 双双 E2E 验证。
