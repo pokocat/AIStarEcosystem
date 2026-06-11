@@ -61,6 +61,10 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
 
 ## 版本日志
 
+- **2026-06-11 · 手机端导航改底部 Tab 栏**：<640 弃用顶部横滑 Tab（内容流模式，不适合
+  App 级模块导航），换主流底部 Tab 栏 5 槽（总览 / 带货授权 / 内容审核 / 商品入库 / 全部，
+  槽位真值 `STAR_BOTTOM_TABS`）：待办红点角标、其余模块待办计入「全部」、非 Tab 模块时
+  「全部」高亮示位；640-1023 平板保留顶部横向 Tab。顺带省回顶部 ~44px 纵向空间。
 - **2026-06-11 · 中文字体回退链**：sans / display / mono 三栈补全 `-apple-system` → 苹方 →
   HarmonyOS Sans SC → MiSans → 雅黑 → Noto Sans SC（tokens.css 与 app.css @theme 双处同步），
   修复国产 Android ROM 中文字体断档；serif 补 Noto Serif SC。

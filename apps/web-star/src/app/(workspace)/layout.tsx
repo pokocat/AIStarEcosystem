@@ -9,7 +9,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AlertCircle, Bell, LayoutGrid, LogOut, Star } from "lucide-react";
 import { useAuth, AuthApi } from "@ai-star-eco/api-client";
-import { STAR_NAV_GROUPS } from "@/constants/star-ui";
+import { STAR_NAV_GROUPS, STAR_BOTTOM_TABS } from "@/constants/star-ui";
 import { StarShellProvider, useStarShell } from "@/lib/star-shell-context";
 import { formatWan } from "@/lib/format";
 import { Modal } from "@/components/star/page-kit";
@@ -47,6 +47,21 @@ function Shell({ children }: { children: React.ReactNode }) {
   }, [overview]);
 
   const totalPending = overview?.pendingTotal ?? 0;
+
+  // <640 底部 Tab 栏：固定 4 槽 + 「全部」；其余模块的待办计入「全部」角标
+  const bottomTabs = React.useMemo(
+    () =>
+      STAR_BOTTOM_TABS.flatMap((t) => {
+        const item = STAR_NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === t.id);
+        return item ? [{ ...item, label: t.shortLabel ?? item.label }] : [];
+      }),
+    []
+  );
+  const onBottomTab = bottomTabs.some((t) => pathname === t.href || pathname.startsWith(`${t.href}/`));
+  const restPending = Math.max(
+    0,
+    totalPending - bottomTabs.reduce((s, t) => s + navBadgeCount(t.badgeKey, byModule), 0)
+  );
 
   if (user && !hasPlatformAccess) {
     return (
@@ -182,8 +197,8 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* ── <1024：顶部横向导航（横滑 Tab + 「全部」模块抽屉） ── */}
-      <div className="star-topnav-mobile sticky top-[57px] z-10 flex items-stretch" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--line)" }}>
+      {/* ── 640-1023：顶部横向导航（横滑 Tab + 「全部」模块抽屉）；<640 走底部 Tab 栏 ── */}
+      <div className="star-topnav-mobile max-sm:hidden sticky top-[57px] z-10 flex items-stretch" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--line)" }}>
         <div className="relative flex-1 min-w-0">
           {navContent(true)}
           {/* 右缘渐隐：提示还有更多模块可横滑 */}
@@ -276,9 +291,76 @@ function Shell({ children }: { children: React.ReactNode }) {
           )}
         </aside>
 
-        {/* 内容区 */}
-        <main id="star-main" tabIndex={-1} className="flex-1 min-w-0 outline-none" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>{children}</main>
+        {/* 内容区（<640 预留底部 Tab 栏高度） */}
+        <main
+          id="star-main"
+          tabIndex={-1}
+          className="flex-1 min-w-0 outline-none pb-[env(safe-area-inset-bottom)] max-sm:pb-[calc(4.25rem+env(safe-area-inset-bottom))]"
+        >
+          {children}
+        </main>
       </div>
+
+      {/* ── <640：底部 Tab 栏（主流移动端导航模式） ── */}
+      <nav
+        className="sm:hidden fixed bottom-0 inset-x-0 z-20 flex items-stretch"
+        style={{
+          background: "rgba(255,255,255,0.94)",
+          backdropFilter: "blur(12px)",
+          borderTop: "1px solid var(--line)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+        aria-label="主导航"
+      >
+        {bottomTabs.map((item) => {
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const Icon = item.icon;
+          const badge = navBadgeCount(item.badgeKey, byModule);
+          return (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 pt-2 pb-1.5 min-h-[56px] transition-colors"
+              aria-current={active ? "page" : undefined}
+            >
+              <span className="relative">
+                <Icon className="w-5 h-5" style={{ color: active ? item.color : "var(--ink-2)" }} />
+                {badge > 0 && (
+                  <span
+                    className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full flex items-center justify-center text-[9px] font-bold text-white tabular"
+                    style={{ background: "var(--brand)" }}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </span>
+              <span className="text-[10px] font-semibold" style={{ color: active ? item.color : "var(--ink-1)" }}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+        <button
+          onClick={() => setModuleSheetOpen(true)}
+          className="flex-1 flex flex-col items-center justify-center gap-0.5 pt-2 pb-1.5 min-h-[56px] transition-colors"
+          aria-label="打开全部模块"
+        >
+          <span className="relative">
+            <LayoutGrid className="w-5 h-5" style={{ color: !onBottomTab ? "var(--ink-0)" : "var(--ink-2)" }} />
+            {restPending > 0 && (
+              <span
+                className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full flex items-center justify-center text-[9px] font-bold text-white tabular"
+                style={{ background: "var(--brand)" }}
+              >
+                {restPending}
+              </span>
+            )}
+          </span>
+          <span className="text-[10px] font-semibold" style={{ color: !onBottomTab ? "var(--ink-0)" : "var(--ink-1)" }}>
+            全部
+          </span>
+        </button>
+      </nav>
     </div>
   );
 }

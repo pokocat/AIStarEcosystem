@@ -87,6 +87,16 @@ export const STAR_NAV_GROUPS: StarNavGroup[] = [
   },
 ];
 
+/** <640 底部 Tab 栏固定 4 槽（第 5 槽「全部」内建于壳层）：
+    总览 + 两条 celebrity↔star 打通核心（带货授权 / 商品入库）+ 内容审核（产品定位的审批阀门）。
+    label 过长时用 shortLabel 替代。 */
+export const STAR_BOTTOM_TABS: { id: string; shortLabel?: string }[] = [
+  { id: "overview", shortLabel: "总览" },
+  { id: "cooperation" },
+  { id: "contentReview" },
+  { id: "productOnboard" },
+];
+
 // ── 风险分区 ─────────────────────────────────────────────────────────────────
 
 export const ZONE_COLORS: Record<StarRiskZone, string> = {
