@@ -685,16 +685,28 @@ function MAtlas({ char, busy, onGenerate }) {
   const shots = char.shotImages || {};
   const hasReal = Object.keys(shots).length > 0;
   const variants = char.variantImages || [];
+  const [lb, setLb] = useStateML(null as any);
+  const lightbox = lb && hML(MLightbox, { images: lb.images, index: lb.index, onClose: () => setLb(null), onIndex: (i) => setLb((v) => ({ ...v, index: i })) });
+  const openLightbox = (images: any[], index: number) => {
+    const target = images[index];
+    const usable = images.filter((x) => x && x.src);
+    if (!target || !target.src || !usable.length) return;
+    const at = Math.max(0, usable.findIndex((x) => x.src === target.src));
+    setLb({ images: usable, index: at });
+  };
   // 候选已生成但还没挑选定妆 → 先展示候选，引导去挑选
   if (!hasReal && !char.imageUrl && variants.length) {
+    const images = variants.map((u, i) => ({ src: u, label: '候选 v' + (i + 1) }));
     return hML('div', null,
       hML('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
         hML(Icons.sparkle, { size: 15, style: { color: 'var(--primary)', flex: '0 0 auto' } }),
         hML('span', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '已生成 ' + variants.length + ' 张候选形象 · 用下方「挑选形象」按钮 4 选 1 定妆')),
       hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-        variants.map((u, i) => hML('div', { key: i, style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-          hML('img', { src: u, alt: '候选 v' + (i + 1), loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
-          hML('div', { className: 'ph-label', style: { left: 8, bottom: 8 } }, 'v' + (i + 1))))));
+        images.map((img, i) => hML('button', { key: i, onClick: () => openLightbox(images, i), className: 'm-press', style: { position: 'relative', display: 'block', width: '100%', padding: 0, border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)', background: 'none' } },
+          hML('img', { src: img.src, alt: img.label, loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
+          hML('div', { style: { position: 'absolute', top: 7, right: 7, width: 22, height: 22, borderRadius: 7, background: 'rgba(20,24,30,.45)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: 'var(--surface)' } }, hML(Icons.expand, { size: 12, stroke: 2 })),
+          hML('div', { className: 'ph-label', style: { left: 8, bottom: 8 } }, img.label)))),
+      lightbox);
   }
   if (!hasReal && !char.imageUrl) {
     // 完全没有生成产物（mock 数据除外）→ 引导生成
@@ -708,30 +720,36 @@ function MAtlas({ char, busy, onGenerate }) {
   }
   // 只有定妆主图、还没生成多角度图集 → 展示单张定妆图 + 引导生成（不再把同一张图伪装成 5 个机位）
   if (!hasReal) {
+    const images = char.imageUrl ? [{ src: char.imageUrl, label: '定妆形象' }] : [];
     return hML('div', null,
       busy && hML('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
         hML(UI.Spinner, { size: 15 }),
         hML('div', { style: { flex: 1 } }, hML(UI.Progress, { pct: Math.round(busy.pct || 5), h: 5 }))),
-      hML('div', { style: { maxWidth: 240, margin: '0 auto 12px', position: 'relative', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
+      hML('button', { onClick: () => openLightbox(images, 0), className: 'm-press', style: { display: 'block', width: '100%', maxWidth: 240, margin: '0 auto 12px', padding: 0, border: 'none', cursor: char.imageUrl ? 'pointer' : 'default', textAlign: 'left', position: 'relative', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-2)', background: 'none' } },
         hML(Portrait, { char, variant: 'key', ratio: '3 / 4', expr: 'calm' }),
+        char.imageUrl && hML('div', { style: { position: 'absolute', top: 8, right: 8, width: 24, height: 24, borderRadius: 8, background: 'rgba(20,24,30,.45)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: 'var(--surface)' } }, hML(Icons.expand, { size: 13, stroke: 2 })),
         hML('div', { className: 'ph-label', style: { left: 8, bottom: 8 } }, '定妆形象')),
       hML('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.5 } },
         '当前只有 1 张定妆形象。点下方按钮生成 5 张标准机位图（正面半身 / 全身 / 左右侧脸 / 表情集）。'),
-      !busy && hML(UI.Button, { variant: 'primary', full: true, icon: Icons.sparkle, onClick: onGenerate }, '生成标准图集'));
+      !busy && hML(UI.Button, { variant: 'primary', full: true, icon: Icons.sparkle, onClick: onGenerate }, '生成标准图集'),
+      lightbox);
   }
+  const images = DATA.SHOTS.map((sh) => ({ src: shots[sh.key] || null, label: sh.name }));
   return hML('div', null,
     busy && hML('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
       hML(UI.Spinner, { size: 15 }),
       hML('div', { style: { flex: 1 } }, hML(UI.Progress, { pct: Math.round(busy.pct || 5), h: 5 }))),
     hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
       DATA.SHOTS.map((sh, i) => hML('div', { key: sh.key },
-        hML('div', { style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-          hML(Portrait, { char: { ...char, shotImages: null, imageUrl: null, variantImages: null }, src: shots[sh.key] || null, variant: ['key','key','side','threeq','look'][i] || 'key', ratio: '3 / 4', expr: i === 4 ? 'smile' : 'calm' })),
+        hML('button', { onClick: () => openLightbox(images, i), className: 'm-press', style: { position: 'relative', display: 'block', width: '100%', padding: 0, border: 'none', cursor: shots[sh.key] ? 'pointer' : 'default', textAlign: 'left', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)', background: 'none' } },
+          hML(Portrait, { char: { ...char, shotImages: null, imageUrl: null, variantImages: null }, src: shots[sh.key] || null, variant: ['key','key','side','threeq','look'][i] || 'key', ratio: '3 / 4', expr: i === 4 ? 'smile' : 'calm' }),
+          shots[sh.key] && hML('div', { style: { position: 'absolute', top: 7, right: 7, width: 22, height: 22, borderRadius: 7, background: 'rgba(20,24,30,.45)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: 'var(--surface)' } }, hML(Icons.expand, { size: 12, stroke: 2 }))),
         hML('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '0 2px' } },
           hML('span', { style: { fontSize: 12, fontWeight: 600 } }, sh.name),
           hML('span', { className: 'mono', style: { fontSize: 10.5, color: 'var(--ink-3)' } }, sh.spec))))),
     !busy && hML('div', { style: { marginTop: 14 } },
-      hML(UI.Button, { variant: 'line', full: true, icon: Icons.refresh, onClick: onGenerate }, '重新出图')));
+      hML(UI.Button, { variant: 'line', full: true, icon: Icons.refresh, onClick: onGenerate }, '重新出图')),
+    lightbox);
 }
 
 // ── 作品库 —— 该数字人「全部已生成资产」统一陈列（图集 / 表情 / 场景 / 换装 / 3D / 视频）──
@@ -766,6 +784,8 @@ function AssetTile({ char, tile, idx, onClick }) {
   return hML('button', { onClick, className: 'm-press', style: { display: 'block', padding: 0, border: 'none', background: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' } },
     hML('div', { style: { position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
       hML(Portrait, { char: { ...char, shotImages: null, imageUrl: null, variantImages: null }, src: tile.src || null, variant: variants[idx % variants.length], ratio: '3 / 4', expr: exprs[idx % exprs.length] }),
+      tile.src && !tile.video && hML('div', { style: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 7, background: 'rgba(20,24,30,.45)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: 'var(--surface)' } },
+        hML(Icons.expand, { size: 12, stroke: 2 })),
       tile.video && hML('div', { style: { position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' } },
         hML('span', { style: { width: 32, height: 32, borderRadius: 99, background: 'rgba(20,30,40,.5)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: '#fff' } },
           hML('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'currentColor' }, hML('path', { d: 'M7 5v14l12-7z' })))),
@@ -773,13 +793,13 @@ function AssetTile({ char, tile, idx, onClick }) {
 }
 
 /** 单个分类区块：标题 + 计数 + 生成入口 + 作品网格（含生成中进度）。 */
-function DerivCatSection({ char, cat, items, running, busyPct, compact, ctx, onGenerate, onViewAll }) {
+function DerivCatSection({ char, cat, items, running, busyPct, compact, ctx, onGenerate, onViewAll, onPreview }) {
   const d = DATA.DERIVS.find((x) => x.key === cat) || DATA.DERIVS[0];
   const tiles = tilesForCat(char, items, cat);
   const count = tiles.length;
   const capped = compact && count > 6;
   const view = capped ? tiles.slice(0, 6) : tiles;
-  const open = () => (cat === 'atlas' ? onViewAll() : ctx.openDeriv(char, cat));
+  const fallback = () => (cat === 'atlas' ? onViewAll() : ctx.openDeriv(char, cat));
   return hML('div', { style: { marginBottom: 20 } },
     hML('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 } },
       hML('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } },
@@ -791,7 +811,7 @@ function DerivCatSection({ char, cat, items, running, busyPct, compact, ctx, onG
     running && hML('div', { style: { marginBottom: 10 } }, hML(UI.Progress, { pct: Math.round(busyPct || 4), h: 5 })),
     count > 0
       ? hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 } },
-          view.map((t, i) => hML(AssetTile, { key: i, char, tile: t, idx: i, onClick: open })),
+          view.map((t, i) => hML(AssetTile, { key: i, char, tile: t, idx: i, onClick: () => onPreview(cat, tiles, i, fallback) })),
           capped && hML('button', { onClick: onViewAll, className: 'm-tap', style: { aspectRatio: '3 / 4', borderRadius: 'var(--r-md)', border: '1px dashed var(--line-3)', background: 'var(--surface-2)', cursor: 'pointer', display: 'grid', placeItems: 'center', color: 'var(--ink-3)', fontSize: 13, fontWeight: 700 } }, '+' + (count - 6)))
       : !running && hML('div', { style: { fontSize: 12, color: 'var(--ink-4)', padding: '2px 0 4px' } }, '点右上「生成」创建' + d.name));
 }
@@ -819,6 +839,14 @@ function GenPicker({ onPick, onClose }) {
 function MAssets({ char, ctx, busy, onGenerate, onOpenGenerate, nonce }) {
   const items = useApi(() => AvatarApi.derivatives(char.id), [] as any[], [char.id, nonce]);
   const [cat, setCat] = useStateML('all');
+  const [lb, setLb] = useStateML(null as any);
+  const openPreview = (_cat, tiles, index, fallback) => {
+    const tile = tiles[index];
+    if (!tile || !tile.src || tile.video) { fallback(); return; }
+    const images = tiles.filter((x) => x && x.src && !x.video).map((x) => ({ src: x.src, label: x.label }));
+    const at = Math.max(0, images.findIndex((x) => x.src === tile.src));
+    setLb({ images, index: at });
+  };
 
   const isRunning = (k) => !!(busy && busy[k]) || (char.deriv || {})[k] === 'running';
   const atlasCount = () => {
@@ -863,7 +891,8 @@ function MAssets({ char, ctx, busy, onGenerate, onOpenGenerate, nonce }) {
     cat === 'atlas'
       ? hML(MAtlas, { char, busy: busy && busy['atlas'], onGenerate: () => onGenerate('atlas') })
       : shown.map((d) => hML(DerivCatSection, { key: d.key, char, cat: d.key, items, running: isRunning(d.key),
-          busyPct: busy && busy[d.key] && busy[d.key].pct, compact: cat === 'all', ctx, onGenerate, onViewAll: () => setCat(d.key) })));
+          busyPct: busy && busy[d.key] && busy[d.key].pct, compact: cat === 'all', ctx, onGenerate, onViewAll: () => setCat(d.key), onPreview: openPreview })),
+    lb && hML(MLightbox, { images: lb.images, index: lb.index, onClose: () => setLb(null), onIndex: (i) => setLb((v) => ({ ...v, index: i })) }));
 }
 
 function MVersions({ char, ctx, onChanged }) {
