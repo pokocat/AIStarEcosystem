@@ -1,0 +1,107 @@
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+@source '../../../../packages/ui/src/**/*.{js,ts,jsx,tsx}';
+@import 'tw-animate-css';
+@import '@ai-star-eco/ui/styles/globals.css';
+/* star 专属 · 浅色设计令牌（覆盖在 ui globals 之后） */
+@import './tokens.css';
+
+@theme {
+  --font-sans: "AEP Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "AEP Manrope", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "AEP Instrument Serif", "Songti SC", Georgia, serif;
+  --font-mono: "AEP JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── 通用工具 ─────────────────────────────────────────────────────────────── */
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@utility text-balance {
+  text-wrap: balance;
+}
+
+/* 工作台卡片：白底 + 细边 + 柔影，hover 上浮（产品文档 §4.7） */
+@utility star-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+@utility star-card-hover {
+  &:hover {
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-1px);
+    border-color: var(--line-strong);
+  }
+}
+
+/* 数字 / 单号等 tabular 排版 */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* landing 网格纹理 */
+@utility star-grid-pattern {
+  background-image:
+    linear-gradient(rgba(28, 25, 23, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 25, 23, 0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+/* ── 可访问性 ────────────────────────────────────────────────────────────── */
+
+/* 键盘焦点环：所有可交互元素统一可见焦点（WCAG AA） */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role='button']:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 8px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--star-gold) !important;
+}
+
+/* 减少动态：偏好设置下停用装饰性动画 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── 响应式（<1024 侧导航折叠为顶部 Tab，产品文档 §4.7） ─────────────────── */
+@media (max-width: 1023px) {
+  .star-sidebar-desktop {
+    display: none;
+  }
+}
+@media (min-width: 1024px) {
+  .star-topnav-mobile {
+    display: none;
+  }
+}

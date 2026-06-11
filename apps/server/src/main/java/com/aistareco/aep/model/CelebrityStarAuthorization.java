@@ -60,6 +60,10 @@ public class CelebrityStarAuthorization {
     /** 仅 pending 状态：审核进度文案，如 "经纪团队复核中（48h SLA）"。 */
     private String pendingNote;
 
+    /** v0.60: 申请方留言（web-celebrity 申请授权时填写，web-star 带货授权页展示）。 */
+    @Column(length = 512)
+    private String applicantNote;
+
     /** expired/unauthorized 时跳转的申请/续约入口（站内路由）。 */
     private String applyUrl;
 

@@ -368,3 +368,48 @@ export async function startGeneration(
     body: payload,
   });
 }
+
+// ── 带货授权申请（v0.60 · web-star 打通） ───────────────────────────────────
+
+export interface StarAuthApplyPayload {
+  scenes: string[];
+  note?: string;
+}
+
+export interface StarAuthApplyResult {
+  id: ID;
+  starId: ID;
+  status: string;
+  pendingNote?: string;
+}
+
+/**
+ * 向明星发起 AI 复刻带货授权申请。
+ * 真实链路：POST /api/me/celebrity/stars/{id}/authorization/apply →
+ * 明星商务工作台（web-star）「带货授权」队列审批 → 批准后本端授权状态变 authorized。
+ */
+export async function applyStarAuthorization(
+  starId: ID,
+  payload: StarAuthApplyPayload,
+): Promise<StarAuthApplyResult> {
+  if (USE_MOCK) {
+    const star = STAR_DETAIL_MAP[starId] ?? MARKET_STARS.find((s) => s.id === starId);
+    if (star) {
+      star.authorization = {
+        ...star.authorization,
+        status: "pending",
+        pendingNote: "经纪团队复核中（48h SLA）",
+      };
+    }
+    return mockDelay({
+      id: `auth-mock-${Date.now()}`,
+      starId,
+      status: "pending",
+      pendingNote: "经纪团队复核中（48h SLA）",
+    });
+  }
+  return apiFetch<StarAuthApplyResult>(`/me/celebrity/stars/${starId}/authorization/apply`, {
+    method: "POST",
+    body: payload,
+  });
+}

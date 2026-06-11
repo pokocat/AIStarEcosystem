@@ -2600,3 +2600,77 @@ openapi backfill /admin/users 全组路径 + suspend/reactivate。
 立即同步）仍是无后端假按钮，按决策暂不动，后续可能整页砍掉。
 
 ---
+
+### v0.60（2026-06-10）— 第五子应用「明星商务工作台」web-star + celebrity↔star 双端打通
+
+**新子应用 `apps/web-star`（port 3014，`@ai-star-eco/web-star`）**：明星本人 / 经纪团队的
+审核与运营中枢。源自 Figma 原型 `CelebrityWorkbench.tsx`（明星端工作台 v3.0，暗色）——
+全量浅色化复刻（白底 + 红黑灰 + 星光金，产品文档 §4.7 约束），桌面优先（≥1024 侧导航
+240px，<1024 顶部横向 Tab）。13 个原型模块 + 新增 1 个打通模块「带货授权」：
+
+```
+dashboard / ip-auth / cooperation★ / whitelist / digital-human / ai-likeness /
+content-review / product-onboard★ / product-library / brand-auth / revenue /
+rules / infringement / contracts        （★ = 双端打通核心）
+```
+
+公开页：landing（自绘浅色，不用 ProductLanding）/ login（验证码+密码+dev 种子）/
+onboard（明星入驻表单）。前端形态：types/mocks/constants/api 四件套 + page-kit 通用原语
+（Modal / FilterChip / ActionButton / Pill / NoteBox / EmptyState / LoadingList）；
+USE_MOCK=1 时 mocks 内存 store 让全部状态机操作可演示（人设「于震」）。
+
+**新增 server star 域**（`/api/star/**` → authenticated，38 个端点）：
+
+| 实体 | 用途 |
+|---|---|
+| `StarAccount` | AepUser ↔ CelebrityStar 绑定（unique user_id；agentView） |
+| `StarIpAsset` | IP 资产 4 类 × 6 状态机（notStarted→…→active；火山 projectId 回执） |
+| `StarWhitelistRequest` | 报白 5 步（received→…→authorized）+ 信用分/粉丝量（原始整数） |
+| `StarDigitalHumanRequest` / `StarAiLikenessRequest` | 数字人三用途 / AI 形象三模型三风险 |
+| `StarContentReview` | 内容四态（revision 带意见） |
+| `StarProductOnboard` | 商品入库 6 步 + 双路寄样；`productId`+`submittedByUserId` 关联公共商品池与报备人；step=5 即商品库（libraryAt/salesCount 派生 `StarProductLibItemDto`） |
+| `StarBrandAuthRequest` | 品牌授权 6 态 + 双向寄样 |
+| `StarContentRule` / `StarInfringementCase` / `StarContract` / `StarRevenueMonth` | 规则 / 侵权 / 合同 / 月度分成（列名 `rev_month` 避 H2 保留字 MONTH） |
+
+`StarWorkbenchService` 单服务收口全部状态机（只前进不回退）；`StarWorkbenchController`
+所有单据按 principal → StarAccount 绑定逐条校验归属。seed：`StarWorkbenchDataInitializer`
+@Order(3)，账号 `star_shenteng / star123`（platforms=`star`）绑 `star-shen-teng` + 全模块
+演示数据。
+
+**双端打通（本版核心）**：
+
+1. **入驻 → 市场可见**：POST `/star/onboard` 创建 CelebrityStar（含默认 authorizationJson/
+   pricing/stats）+ StarAccount 绑定 + 4 IP 资产 + 四区默认规则 → web-celebrity 明星市场
+   立即出现该明星（同表读取，无同步动作）。
+2. **带货授权闭环**：web-celebrity `CelebrityApplyForm` 真实提交（新端点
+   POST `/me/celebrity/stars/{id}/authorization/apply`，CelebrityStarAuthorization upsert→
+   PENDING + applicantNote 新列）→ web-star `/cooperation` 审批（approve 设 scenes/expireDate/
+   availableStyles → AUTHORIZED；reject → UNAUTHORIZED）→ celebrity 端明星详情授权块实时
+   变化 + NotificationPublisher 站内通知申请方。
+3. **商品报备 6 步**：web-celebrity 商品库行内「报备」按钮（StarFilingDialog 选已授权明星）
+   → POST `/me/celebrity/products/{id}/star-filings` 建 StarProductOnboard（source=creator，
+   step=2 平台初审视为已过——商品池本身已运营审核）→ web-star 审核通过（step3 + 平台路
+   默认验收 + 明星路寄样发货）→ 签收（step4）→ 确认（双路 approved → step5 入库 + 通知
+   报备人）→ GET `/me/celebrity/star-filings` celebrity 端回查 stepLabel。重复报备 409
+   `FILING_ALREADY_EXISTS`。
+
+**平台体系**：`SubProduct` / `ALL_SUB_PRODUCTS` / `SUB_PRODUCT_LABEL_ZH`（packages/types +
+admin 镜像）与 server `PlatformSupport.ALL` 同步加 `star`；AuthProvider
+requiredPlatform="star"（X-App-Code 审计短码同值）。
+
+**工程**：pnpm-workspace + 根 scripts（dev:star / typecheck:web-star）+
+check-api-contract SCAN_TARGETS 加 `apps/web-star/src`；openapi.yaml +41 路径方法 +
+19 schemas（Star* 前缀）。
+
+**E2E 已验证**（H2 与 MySQL `aistareco_star_e2e` 双跑）：密码/dev 登录 → 申请→待审队列→
+批准（弹层选场景/时长/风格）→ celebrity 授权态 authorized → 报备→审核→签收→确认→
+入库 → 双端状态/角标/站内通知全同步；重复报备 409；新账号入驻「贾玲」→ 市场第 4 位明星
+→ 对其申请授权即时出现在其工作台。浏览器级（playwright preview）双端 UI 全流程复核。
+
+**坑位记录**：
+- H2 保留字 `MONTH` → 列名必须 `rev_month`（首启崩溃 + 半截 seed；幂等按 user 存在判断会
+  跳过未种完的表，dev 下删 `apps/server/data/` 重启即恢复）。
+- motion（framer-motion 12）AnimatePresence exit 在 React 19 偶发卡死（遮罩残留）——
+  web-star 弹层一律「条件卸载 + tw-animate 进场」，列表不做入场 stagger。
+- mysql profile 本地联调需 `AEP_CDN_DRIVER=local` + 非默认 `AEP_JWT_SECRET` /
+  `AEP_SECRET_KEY`（32 字节），否则 fail-fast。
