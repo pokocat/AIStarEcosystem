@@ -167,7 +167,7 @@ function MApps({ ctx }) {
         border: '1px solid rgba(255,255,255,.72)', background: '#FDFDFB',
         boxShadow: '0 16px 36px rgba(76,92,125,.10), 0 1px 0 rgba(255,255,255,.9) inset',
         textAlign: 'left', padding: '16px 16px 15px' } },
-        hMV('img', { src: appCardImages[a.key] || appCardImages.music, alt: '', draggable: false, style: {
+        hMV('img', { src: appCardImages[a.key] || appCardImages.music, alt: '', draggable: false, loading: 'lazy', decoding: 'async', fetchPriority: 'low', style: {
           position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .92,
           filter: 'saturate(1.03) contrast(1.01)', pointerEvents: 'none' } }),
         hMV('span', { style: { position: 'absolute', inset: 0, background:

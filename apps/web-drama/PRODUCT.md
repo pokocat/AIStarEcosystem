@@ -25,7 +25,7 @@
                        →  [出片 / 多平台分发 — 下游能力，Phase 2]
 ```
 
-**辅助素材库（跨项目复用）**：演员 IP 阵容（cast）/ 形象锻造炉（forge）/ 戏服与道具（wardrobe）/ 跨项目脚本归档（scripts），在 sidebar「创作素材」组。
+**辅助素材库（跨项目复用）**：演员 IP 阵容（cast，演员经「从 AiAvatar 引入数字人」创建）/ 戏服与道具（wardrobe）/ 跨项目脚本归档（scripts），在 sidebar「创作素材」组。形象创建（孵化 / 锻造炉）已于 v0.60 收敛至 AiAvatar。
 
 
 **与其他子产品的边界**：
@@ -44,7 +44,7 @@
 | `artist` | `Artist`、`ArtistStatus`、`ArtistQuality` | 演员 IP（虚拟人 / 数字 IP），跨项目复用 |
 | `film` | `Drama`、`Movie`、`Advertisement`、`VoiceWork` | 短剧 / 电影 / 广告 / 配音剧 |
 | `wardrobe` | `ClothingItem`、`ClothingCategory`、`EquipSlot` | 戏服 / 道具（演员可装备） |
-| `appearance-forge` | `ForgeRequest`、`ForgeResult`、`ForgeMode` | 形象锻造（批量生成多角色形象） |
+| `appearance-forge` | `ForgeRequest`、`ForgeResult`、`ForgeMode` | 形象锻造（**v0.60 已下线**，遗留数据只读） |
 | `script` | `Script`、`ScriptVersion`、`ScriptKind` | 跨项目脚本归档（剧集/广告/宣传片/配音） |
 | `account` | `AepUser`、`Studio`、`Tenant` | 工作室 / 团队 / 多租户 |
 | `settings` | `CreditPack`、`RechargeRecord` | 充值 / 流水 |
@@ -79,8 +79,8 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/cast` | 工作台 | 演员阵容（多艺人卡片墙） |
 | `/cast/[id]` | 工作台 | 演员详情（履历 / 装备 / 历史项目） |
 | `/cast/[id]/generate` | 工作台 | 演员形象生成（针对某角色） |
-| `/incubator` | 工作台 | 多步孵化器（localStorage 草稿保留） |
-| `/forge` | 工作台 | 形象锻造（**v0.43 对话式 AI 形象顾问**，接平台大模型流式生成；影院风独立 UI） |
+| `/incubator` | 工作台 | **v0.60 已下线** → 提示页（数字人统一在 AiAvatar 创建后引入） |
+| `/forge` | 工作台 | **v0.60 已下线** → 提示页（同上；cast 内可「引入数字人 / 更换展示图」） |
 | `/wardrobe` | 工作台 | 戏服 / 道具上传 + 分配给演员 |
 | `/scripts` | 工作台 | 脚本库（多版本对比） |
 | `/scripts/[id]` | 工作台 | 脚本编辑器（**版本树 + AI 续写**） |

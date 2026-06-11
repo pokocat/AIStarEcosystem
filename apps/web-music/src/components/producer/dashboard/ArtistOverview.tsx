@@ -18,7 +18,7 @@ import React from "react";
 import { motion } from "motion/react";
 import {
   ChevronDown, TrendingUp, Users, Flame, Handshake, Music, Shirt, Sparkles,
-  Globe as GlobeIcon, Heart, Wallet, Wand2, ChevronRight, Calendar,
+  Globe as GlobeIcon, Heart, Wallet, Wand2, ChevronRight, Calendar, ExternalLink,
 } from "lucide-react";
 import { Button } from "@ai-star-eco/ui/ui/button";
 import { Badge } from "@ai-star-eco/ui/ui/badge";
@@ -34,6 +34,8 @@ import { formatCredits, formatCompactNumber, formatDuration } from "@/lib/format
 import { ArtistRadarCard } from "../ArtistRadarCard";
 import { AppearanceGallery } from "./artist/AppearanceGallery";
 import { ArtistAvatar } from "../_shared/ArtistAvatar";
+import { DapAvatarGallery } from "../_shared/DapAvatarGallery";
+import { AIAVATAR_URL, dapAvatarDeepLink } from "@/api/dap-avatars";
 
 interface Props {
   artist: Artist;
@@ -48,6 +50,14 @@ const SONG_STATUS_LABEL: Record<Song["status"], { label: string; tone: string }>
   mixing:    { label: "混音中", tone: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   released:  { label: "已发行", tone: "bg-green-500/10 text-green-400 border-green-500/20" },
 };
+
+/** ISO 时间 → "2026-06-10"（无效 / 缺失显示 "—"） */
+function fmtDate(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavigate }: Props) {
   const typeConf = ARTIST_TYPE_CONFIG[artist.type];
@@ -162,7 +172,7 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
           <div className="relative bg-black/30 rounded-xl p-4 border border-white/5">
             <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">简介</div>
             <p className="text-sm text-gray-200 leading-relaxed">
-              {artist.bio || "该艺人尚未填写简介。可在「AI 艺人孵化」向导里补充。"}
+              {artist.bio || "该艺人尚未填写简介。"}
             </p>
           </div>
 
@@ -184,13 +194,13 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
               <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
                 <Calendar className="w-3 h-3" />创建
               </div>
-              <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.createdAt}</div>
+              <div className="text-xs font-semibold text-gray-200 tabular-nums">{fmtDate(artist.createdAt)}</div>
             </div>
             <div className="bg-black/20 rounded-lg p-3 border border-white/5">
               <div className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1">
                 <TrendingUp className="w-3 h-3" />最后活跃
               </div>
-              <div className="text-xs font-semibold text-gray-200 tabular-nums">{artist.lastActive}</div>
+              <div className="text-xs font-semibold text-gray-200 tabular-nums">{fmtDate(artist.lastActive)}</div>
             </div>
           </div>
 
@@ -222,9 +232,13 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
           </div>
         </motion.div>
 
-        {/* 右：AI 形象画廊（compact：不重复展示简介，hero + 缩略条占主视觉） */}
+        {/* 右：AI 形象画廊 —— 引入数字人的艺人实时引用 AiAvatar 资产；遗留艺人只读展示锻造历史 */}
         <div className="lg:col-span-3">
-          <AppearanceGallery artist={artist} onGoToForge={() => onNavigate("appearance")} variant="compact" />
+          {artist.dapAvatarId ? (
+            <DapAvatarGallery artist={artist} onUpdated={onSelectArtist} />
+          ) : (
+            <AppearanceGallery artist={artist} onGoToForge={() => onNavigate("appearance")} variant="compact" />
+          )}
         </div>
       </div>
 
@@ -268,34 +282,65 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
           </div>
         </div>
 
-        <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-          <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>孵化参数</h3>
-          {artist.domains?.length ? (
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {artist.domains.map(d => (
-                <Badge key={d} className="text-[10px] bg-white/[0.06] text-gray-200 border-0">{d}</Badge>
-              ))}
-            </div>
-          ) : null}
-          {Object.keys(incubation).length === 0 ? (
-            <p className="text-xs text-gray-500 font-light">该艺人没有写入孵化参数。可在「AI 艺人孵化」向导重新配置。</p>
-          ) : (
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              {Object.entries(incubation).map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between gap-2 min-w-0">
-                  <dt className="text-gray-500 shrink-0">{k}</dt>
-                  <dd className="text-gray-200 truncate" title={v}>{v}</dd>
-                </div>
-              ))}
+        {artist.dapAvatarId ? (
+          /* 引入数字人创建的艺人：展示引用信息（形象真值在 AiAvatar） */
+          <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
+            <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>数字人引用</h3>
+            {artist.domains?.length ? (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {artist.domains.map(d => (
+                  <Badge key={d} className="text-[10px] bg-white/[0.06] text-gray-200 border-0">{d}</Badge>
+                ))}
+              </div>
+            ) : null}
+            <dl className="space-y-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-gray-500 shrink-0">来源数字人</dt>
+                <dd className="text-gray-200 truncate">{artist.dapAvatarName || "（不可用）"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-gray-500 shrink-0">数字人 ID</dt>
+                <dd className="text-gray-400 truncate font-mono text-[11px]">{artist.dapAvatarId}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-gray-500 shrink-0">展示图</dt>
+                <dd className="text-gray-200 truncate">{artist.dapDisplayRef ? "已指定（见形象画廊）" : "跟随定妆照"}</dd>
+              </div>
             </dl>
-          )}
-          <Button
-            variant="ghost" size="sm" onClick={() => onNavigate("incubator")}
-            className="mt-4 w-full justify-between text-cyan-400 hover:bg-cyan-500/10 text-xs"
-          >
-            调整孵化参数 <ChevronRight className="w-3 h-3" />
-          </Button>
-        </div>
+            <p className="text-[11px] text-gray-500 font-light mt-3 leading-relaxed">
+              形象为实时引用：在 AiAvatar 重新渲染 / 改名后，这里自动跟随更新。
+            </p>
+            <a href={dapAvatarDeepLink(String(artist.dapAvatarId))} target="_blank" rel="noreferrer" className="block mt-4">
+              <Button variant="ghost" size="sm" className="w-full justify-between text-cyan-400 hover:bg-cyan-500/10 text-xs">
+                去 AiAvatar 管理该数字人 <ExternalLink className="w-3 h-3" />
+              </Button>
+            </a>
+          </div>
+        ) : (
+          /* 遗留孵化艺人：只读展示历史孵化参数（孵化向导已下线） */
+          <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
+            <h3 className="text-lg font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>孵化参数</h3>
+            {artist.domains?.length ? (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {artist.domains.map(d => (
+                  <Badge key={d} className="text-[10px] bg-white/[0.06] text-gray-200 border-0">{d}</Badge>
+                ))}
+              </div>
+            ) : null}
+            {Object.keys(incubation).length === 0 ? (
+              <p className="text-xs text-gray-500 font-light">该艺人没有写入孵化参数（孵化向导已下线，遗留数据只读）。</p>
+            ) : (
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                {Object.entries(incubation).map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between gap-2 min-w-0">
+                    <dt className="text-gray-500 shrink-0">{k}</dt>
+                    <dd className="text-gray-200 truncate" title={v}>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 音乐作品（造型 / 道具已上移至左侧身份列） */}
@@ -339,12 +384,11 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
           )}
       </motion.div>
 
-      {/* 快捷入口 */}
+      {/* 快捷入口（v0.60：形象锻造下线，改为 AiAvatar 外链） */}
       <div className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {[
             { id: "studio",       icon: Wand2,      label: typeConf.workshop.zh, color: "text-cyan-300" },
-            { id: "appearance",   icon: Sparkles,   label: "AI 形象锻造",         color: "text-purple-300" },
             { id: "wardrobe",     icon: Shirt,      label: "造型与道具",          color: "text-pink-300" },
             { id: "distribution", icon: GlobeIcon,  label: "全网分发",            color: "text-amber-300" },
             { id: "community",    icon: Heart,      label: "粉丝社群",            color: "text-red-300" },
@@ -359,6 +403,16 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
               <span className="text-xs text-gray-200 font-medium truncate">{a.label}</span>
             </button>
           ))}
+          <a
+            href={artist.dapAvatarId ? dapAvatarDeepLink(String(artist.dapAvatarId)) : AIAVATAR_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-cyan-500/25 transition text-left"
+          >
+            <Sparkles className="w-4 h-4 text-purple-300" />
+            <span className="text-xs text-gray-200 font-medium truncate">AiAvatar 数字人</span>
+            <ExternalLink className="w-3 h-3 text-gray-500 ml-auto shrink-0" />
+          </a>
         </div>
       </div>
 

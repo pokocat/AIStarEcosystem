@@ -76,9 +76,13 @@ export function formatCny(n: number): string {
 }
 
 export function deriveRole(a: Artist): string {
-  const firstClause = a.bio.split(/[，,。.;；]/)[0].trim();
+  // 引入数字人创建的艺人可能没有 bio（空串兜底）
+  const firstClause = (a.bio ?? "").split(/[，,。.;；]/)[0].trim();
   const rawHint = STATUS_HINT[a.status] ?? "";
   const statusHint = rawHint && !firstClause.includes(rawHint) ? rawHint : "";
+  if (!firstClause) {
+    return `${QUALITY_LABEL[a.quality]}${statusHint}`;
+  }
   if (/[A-Z]\s*类|S\s*类|[一二三四五六七八九十]\s*类/.test(firstClause)) {
     return `${firstClause}${statusHint}`;
   }

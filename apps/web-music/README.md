@@ -27,7 +27,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 /incubator           ← 新艺人孵化向导（IncubationWizardV2 多步表单 + draft 持久化）
 /appearance          ← 形象锻造（AppearanceForge.v3，Coze event stream 占位）
 /wardrobe            ← 戏服 / 道具（WardrobeSystem，上传 + 分配）
-/poses               ← 动作姿态库
+/poses               ← 已下线（v0.60 提示页；姿态随形象渲染统一在 AiAvatar）
 /asset-center  ★v0.39 ← 素材中心（数字资产库 + 文案库 双 tab）
 /production    ★v0.39 ← 制作工坊（切片制作 + AI 数字人 + 混剪批量 三 tab）
 /studio              ← 音乐工坊（MusicLibrary + 生成 dialog）
@@ -59,6 +59,23 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - `music.ts` / `artists.ts` / `wardrobe.ts` / `distribution.ts` / `finance.ts` / `copyright.ts`（store / products / pose / generation / notifications / settings 同节奏）—— 真后端落地后切实数据源，mock 分支保留。
 
 ## 版本日志
+
+### v0.60 · 2026-06-10 · 数字人收敛：艺人形象统一引用 AiAvatar {#v060}
+
+- 「艺人管理」创建入口改为 **从 AiAvatar 引入数字人**（两步 picker：选数字人 → 选首要展示图，
+  展示图候选 = 定妆照 / 造型 looks / 场景图 derivatives；缺图深链 AiAvatar 渲染）；
+  详情弹窗可「更换展示图」（PATCH dapDisplayRef）
+- 引用不复制：`Artist.dapDisplayImageUrl` 由 server 实时派生签名 URL，AiAvatar 重渲染自动跟随；
+  `ArtistAvatar` 全 app 优先该字段
+- sidebar 下线「AI艺人孵化」「AI形象锻造」；/incubator /appearance 保留路由 → RetiredFeatureNotice
+  提示页（向导/锻造源码保留一版后删）
+- 新增 `api/dap-avatars.ts`（/v1/avatars 系列，直调 dap 域）+ `mocks/dap-avatars.ts`；
+  `.env.example` 增 `NEXT_PUBLIC_AIAVATAR_URL`
+- **v0.60 补丁（2026-06-10）**：重复引入防护（同数字人同类型 409 `DAP_AVATAR_ALREADY_IMPORTED`，
+  picker 网格「已引入」置灰）；展示图候选补全 **形象变体 / 三机位**（`variant:<idx>` / `shot:<name>`）；
+  艺人视图右列对引入艺人改渲染 `DapAvatarGallery`（实时引用 AiAvatar 资产 + 「设为首要展示图」），
+  孵化参数卡对引入艺人改为「数字人引用」卡；sidebar 下线「动作姿态」（/poses → 提示页）；
+  创建/最后活跃日期格式化；mock 模式 artists API 会话内 store 化（引入后列表可见、可更换展示图）
 
 ### v0.43 · 2026-05-29 · 形象锻造接平台大模型 + 登录与平台访问隔离 {#v043}
 

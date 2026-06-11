@@ -10,10 +10,10 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Music, Layers, Shield, TrendingUp,
   Globe as GlobeIcon, Wallet, Settings, LogOut, ChevronRight,
-  Sparkles, AudioLines, Heart, ChevronDown, Menu, X,
+  AudioLines, Heart, ChevronDown, Menu, X,
   Star, CheckCircle2, Film, Tv, Mic,
-  Wand2, Shirt, Building2, Bell, Coins, UserCircle,
-  Megaphone, PersonStanding,
+  Shirt, Building2, Bell, Coins, UserCircle,
+  Megaphone,
   Package, Factory,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -62,12 +62,10 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
   },
   {
     title: "艺人管理",
+    // v0.60 收敛：孵化 / 形象锻造入口下线，数字人统一在 AiAvatar 创建后引入
     items: [
-      { id: "artists", icon: Users, label: "MCN与孵化" },
-      { id: "incubator", icon: Wand2, label: "AI艺人孵化" },
-      { id: "appearance", icon: Sparkles, label: "AI形象锻造" },
+      { id: "artists", icon: Users, label: "艺人管理" },
       { id: "wardrobe", icon: Shirt, label: "造型与道具" },
-      { id: "poses", icon: PersonStanding, label: "动作姿态" },
     ],
   },
   {

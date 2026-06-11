@@ -401,7 +401,7 @@ function MDerivView({ char, deriv, ctx }) {
       hMM('div', { style: { padding: '4px 18px 0' } },
         hMM('div', { style: { position: 'relative', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)', background: '#0E171F' } },
           cur && isVid && cur.fileUrl
-            ? hMM('video', { key: cur.id, src: cur.fileUrl, controls: true, playsInline: true, poster: cur.thumbUrl || undefined, style: { display: 'block', width: '100%', aspectRatio: '9 / 14', objectFit: 'contain', background: '#0E171F' } })
+            ? hMM('video', { key: cur.id, src: cur.fileUrl, controls: true, playsInline: true, preload: 'metadata', poster: cur.thumbUrl || undefined, style: { display: 'block', width: '100%', aspectRatio: '9 / 14', objectFit: 'contain', background: '#0E171F' } })
             : hMM(Portrait, { char: { ...char, shotImages: null }, src: cur ? cur.fileUrl : null, variant: variants[sel % variants.length], ratio: isVid ? '16 / 10' : '4 / 5', expr: exprs[sel % exprs.length] }),
           hMM('div', { style: { position: 'absolute', top: 10, left: 10 } }, hMM(UI.Badge, { tone: 'mute', style: { background: 'rgba(255,255,255,.86)' } }, d.name + (count ? ' · ' + (Math.min(sel + 1, count)) + '/' + count : ''))),
           is3d && hMM('div', { style: { position: 'absolute', bottom: 10, left: 10, right: 10, display: 'flex', justifyContent: 'center' } },

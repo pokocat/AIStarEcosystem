@@ -1,7 +1,5 @@
 package com.aistareco.aep.config;
 
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -16,8 +14,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-import java.io.IOException;
-
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -27,6 +23,8 @@ public class AepSecurityConfig {
     private final InternalAuthFilter internalFilter;
     private final TraceFilter traceFilter;
     private final ApiOperationLogFilter apiOperationLogFilter;
+    private final SecurityJsonEntryPoint jsonEntryPoint;
+    private final SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler;
 
     /** dev profile 专用。非 dev 环境不会注入。 */
     @Autowired(required = false)
@@ -35,11 +33,15 @@ public class AepSecurityConfig {
     public AepSecurityConfig(JwtAuthenticationFilter jwtFilter,
                               InternalAuthFilter internalFilter,
                               TraceFilter traceFilter,
-                              ApiOperationLogFilter apiOperationLogFilter) {
+                              ApiOperationLogFilter apiOperationLogFilter,
+                              SecurityJsonEntryPoint jsonEntryPoint,
+                              SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler) {
         this.jwtFilter = jwtFilter;
         this.internalFilter = internalFilter;
         this.traceFilter = traceFilter;
         this.apiOperationLogFilter = apiOperationLogFilter;
+        this.jsonEntryPoint = jsonEntryPoint;
+        this.jsonAccessDeniedHandler = jsonAccessDeniedHandler;
     }
 
     @Bean
@@ -48,10 +50,8 @@ public class AepSecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((request, response, authException) ->
-                                writeAuthError(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "登录状态无效或已过期"))
-                        .accessDeniedHandler((request, response, accessDeniedException) ->
-                                writeAuthError(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN", "当前账号没有执行该操作的权限"))
+                        .authenticationEntryPoint(jsonEntryPoint)
+                        .accessDeniedHandler(jsonAccessDeniedHandler)
                 )
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
@@ -105,16 +105,6 @@ public class AepSecurityConfig {
             http.addFilterAfter(devAutoAuthFilter, JwtAuthenticationFilter.class);
         }
         return http.build();
-    }
-
-    private static void writeAuthError(HttpServletResponse response,
-                                       int status,
-                                       String code,
-                                       String message) throws IOException {
-        response.setStatus(status);
-        response.setCharacterEncoding("UTF-8");
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write("{\"error\":{\"code\":\"" + code + "\",\"message\":\"" + message + "\"}}");
     }
 
     @Bean

@@ -53,7 +53,7 @@ function Portrait({ char = {}, variant = 'key', ratio = '3 / 4', radius = 0, exp
       cursor: onClick ? 'pointer' : 'default', display: 'grid', placeItems: 'center',
       background: `linear-gradient(155deg, ${bg1}, ${bg2})`, ...style } },
     // 真实图片（生成后）
-    real && RCE('img', { src: real, alt: char.name || '', loading: 'lazy', draggable: false, style: {
+    real && RCE('img', { src: real, alt: char.name || '', loading: 'lazy', decoding: 'async', draggable: false, style: {
       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: imgFit, display: 'block' } }),
     // 占位画像（无真实图时）
     !real && RCE('div', { style: { position: 'absolute', width: '56%', aspectRatio: '1', top: '13%',

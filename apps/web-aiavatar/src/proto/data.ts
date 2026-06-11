@@ -133,6 +133,27 @@ export interface Avatar {
   _fresh?: boolean;
 }
 
+/**
+ * v0.61 反向「应用于」：数字人被 music / drama 艺人壳引用的反向条目
+ * （GET /api/v1/avatars/{id}/references；server 镜像 DapDtos.AvatarReferenceDto）。
+ */
+export interface AvatarReference {
+  /** 艺人壳 id（digital_ips.id） */
+  ipId: string;
+  /** 艺人名 */
+  ipName: string;
+  /** 引用方子应用：music（AI 音乐人）/ drama（AI 短剧） */
+  app: "music" | "drama";
+  /** 艺人 kind 小写（singer / actor / …） */
+  type: string;
+  /** 艺人状态小写（active / trainee / …） */
+  status: string;
+  /** 该艺人壳指定的展示图指针（null = 跟随定妆照） */
+  dapDisplayRef: string | null;
+  /** 引入时间（ISO 8601） */
+  importedAt: string;
+}
+
 export interface TemplateMeta {
   id: string;
   name: string;
@@ -399,6 +420,17 @@ export const CHARS: Avatar[] = [
     versions: 2,
   },
 ];
+
+/** v0.61 反向「应用于」mock：{avatarId → 引用它的艺人壳}。仅 USE_MOCK=1 时由 AvatarApi.references 读取。 */
+export const AVATAR_REFERENCES: Record<string, AvatarReference[]> = {
+  "DH-2041": [
+    { ipId: "ip-mock-3001", ipName: "林深", app: "music", type: "singer", status: "active", dapDisplayRef: null, importedAt: "2026-06-08T09:30:00Z" },
+    { ipId: "ip-mock-3002", ipName: "林深（剧装）", app: "drama", type: "actor", status: "active", dapDisplayRef: "shot:front-half", importedAt: "2026-06-09T14:00:00Z" },
+  ],
+  "DH-2038": [
+    { ipId: "ip-mock-3003", ipName: "星岚", app: "drama", type: "actor", status: "active", dapDisplayRef: null, importedAt: "2026-06-10T03:20:00Z" },
+  ],
+};
 
 export const TEMPLATES: TemplateMeta[] = [
   { id: "t1", name: "影棚柔光", sub: "商务证件 · 均匀布光", kind: "beauty", tags: ["磨皮", "提亮", "商务"], engine: "GFPGAN", hue: 246 },

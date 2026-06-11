@@ -20,6 +20,7 @@ export {
 } from "@ai-star-eco/api-client";
 
 export * as ArtistsApi from "./artists";
+export * as DapAvatarsApi from "./dap-avatars";
 export * as MusicApi from "./music";
 export * as WardrobeApi from "./wardrobe";
 export * as PoseApi from "./pose";
