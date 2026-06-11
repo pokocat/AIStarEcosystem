@@ -69,11 +69,13 @@
   --info: #0284c7;
   --danger: #dc2626;
 
-  /* ── 字体 ── */
-  --font-sans: "AEP Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "AEP Manrope", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "AEP Instrument Serif", "Songti SC", Georgia, serif;
-  --font-mono: "AEP JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* ── 字体 ──
+     拉丁 webfont + 中文系统字体策略：中文回退链覆盖 iOS/macOS（苹方）→
+     鸿蒙 → 小米 → Windows（雅黑）→ Android 原生（思源/Noto），避免国产 ROM 断档 */
+  --font-sans: "AEP Inter", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "AEP Manrope", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "AEP Instrument Serif", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-mono: "AEP JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", monospace;
 
   /* ── 圆角（卡片 rounded-2xl 16px 为主） ── */
   --radius-sm: 8px;

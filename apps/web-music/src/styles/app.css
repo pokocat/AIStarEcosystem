@@ -57,10 +57,17 @@
   --sidebar-ring: oklch(0.66 0.13 285 / 0.55);
 }
 
-/* Display font 退场：所有 `var(--font-display)` 静默回落到 Inter。
+/* 字体：packages/ui 的 --font-sans 只有裸 Inter（零中文回退，国产 ROM 直接掉
+   system-ui 兜底）。本地覆盖补全中文回退链：苹方 → 鸿蒙 → 小米 → 雅黑 → 思源/Noto。
+   不动 packages/ui（避免波及其他子应用）。 */
+html {
+  --font-sans: 'Inter', -apple-system, 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Display font 退场：所有 `var(--font-display)` 静默回落到 Inter（含中文回退链）。
    product register 明令禁止 display 字体进 UI label/button/data。 */
 html {
-  --font-display: var(--font-sans, 'Inter', ui-sans-serif, system-ui, sans-serif) !important;
+  --font-display: var(--font-sans) !important;
 }
 
 @layer base {
