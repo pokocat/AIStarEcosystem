@@ -109,10 +109,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-0)" }}>
+    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: "var(--bg-0)" }}>
       <div className="absolute inset-x-0 top-0 h-64 star-grid-pattern" aria-hidden />
       <div className="relative flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-[calc(100vw-2rem)] sm:max-w-sm">
           {/* 品牌 */}
           <Link href="/" className="flex flex-col items-center gap-3 mb-8">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: "var(--gradient-star)" }}>
@@ -124,7 +124,7 @@ export default function LoginPage() {
             </div>
           </Link>
 
-          <div className="star-card p-6">
+          <div className="star-card p-4 sm:p-6">
             {/* 模式切换 */}
             <div className="grid grid-cols-2 gap-1 p-1 rounded-xl mb-5" style={{ background: "var(--bg-2)" }}>
               {([
@@ -157,7 +157,7 @@ export default function LoginPage() {
                 style={fieldStyle}
               />
               {mode === "code" ? (
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
@@ -170,7 +170,7 @@ export default function LoginPage() {
                   <button
                     onClick={sendCode}
                     disabled={cooldown > 0}
-                    className="shrink-0 h-11 px-3.5 rounded-xl text-[13px] font-semibold transition disabled:opacity-50"
+                    className="w-full sm:w-auto sm:shrink-0 h-11 px-3.5 rounded-xl text-[13px] font-semibold transition disabled:opacity-50"
                     style={{ border: "1px solid var(--line-strong)", color: "var(--ink-0)", background: "var(--bg-1)" }}
                   >
                     {cooldown > 0 ? `${cooldown}s` : "获取验证码"}

@@ -84,6 +84,7 @@ check_unit aistareco-web-music
 check_unit aistareco-web-drama
 check_unit aistareco-web-celebrity
 check_unit aistareco-web-aiavatar
+check_unit aistareco-web-star
 check_unit aistareco-admin
 check_unit aistareco-sau-service
 

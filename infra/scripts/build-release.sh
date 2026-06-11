@@ -5,9 +5,9 @@
 #   ./infra/scripts/build-release.sh [services]
 #
 # services:
-#   all                               -> server,web-music,web-drama,web-celebrity,web-aiavatar,admin,sau-service
-#   server,web-celebrity,web-aiavatar,admin -> comma-separated
-#   "server web-celebrity web-aiavatar admin" -> space-separated
+#   all                               -> server,web-music,web-drama,web-celebrity,web-aiavatar,web-star,admin,sau-service
+#   server,web-celebrity,web-aiavatar,web-star,admin -> comma-separated
+#   "server web-celebrity web-aiavatar web-star admin" -> space-separated
 #
 # Output:
 #   dist/deploy/<RELEASE_ID>/
@@ -18,7 +18,7 @@ export PATH="/usr/local/bin:/opt/node-current/bin:/usr/bin:/bin:/usr/sbin:/sbin:
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar admin sau-service"
+DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star admin sau-service"
 RAW_SERVICES="${1:-${SERVICES:-all}}"
 RELEASE_ID="${RELEASE_ID:-$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)}"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist/deploy/$RELEASE_ID}"
@@ -53,13 +53,13 @@ normalize_services() {
       all)
         out="$out $DEFAULT_SERVICES"
         ;;
-      server|web-music|web-drama|web-celebrity|web-aiavatar|admin|sau-service)
+      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service)
         out="$out $item"
         ;;
       "")
         ;;
       *)
-        fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|admin|sau-service|all)"
+        fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service|all)"
         ;;
     esac
   done
@@ -211,6 +211,28 @@ build_web_aiavatar() {
   make_tar_from_dir "$tmp" "$OUT_DIR/web-aiavatar.tar.gz"
 }
 
+build_web_star() {
+  log "building web-star standalone"
+  if [[ "$SKIP_INSTALL" != "1" ]]; then
+    pnpm install --frozen-lockfile
+  fi
+  if [[ "$SKIP_TYPECHECK" != "1" ]]; then
+    pnpm --filter @ai-star-eco/web-star run typecheck
+  fi
+  pnpm --filter @ai-star-eco/web-star run build
+
+  local tmp="$OUT_DIR/.tmp/web-star"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  copy_dir_contents "apps/web-star/.next/standalone" "$tmp"
+  copy_dir_contents "apps/web-star/.next/static" "$tmp/apps/web-star/.next/static"
+  if [[ -d apps/web-star/public ]]; then
+    copy_dir_contents "apps/web-star/public" "$tmp/apps/web-star/public"
+  fi
+  strip_env_files "$tmp"
+  make_tar_from_dir "$tmp" "$OUT_DIR/web-star.tar.gz"
+}
+
 build_admin() {
   log "building admin standalone"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
@@ -280,6 +302,7 @@ has_service web-music && build_web_music
 has_service web-drama && build_web_drama
 has_service web-celebrity && build_web_celebrity
 has_service web-aiavatar && build_web_aiavatar
+has_service web-star && build_web_star
 has_service admin && build_admin
 has_service sau-service && build_sau_service
 

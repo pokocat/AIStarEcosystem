@@ -6,11 +6,11 @@
 #
 # Usage:
 #   sudo ./infra/scripts/install-host-deps.sh all
-#   sudo ./infra/scripts/install-host-deps.sh server,web-aiavatar
+#   sudo ./infra/scripts/install-host-deps.sh server,web-aiavatar,web-star
 
 set -euo pipefail
 
-DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar admin sau-service"
+DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star admin sau-service"
 RAW_SERVICES="${1:-${SERVICES:-all}}"
 NODE_VERSION="${NODE_VERSION:-24.14.1}"
 PNPM_VERSION="${PNPM_VERSION:-10.33.2}"
@@ -48,9 +48,9 @@ normalize_services() {
   for item in $raw; do
     case "$item" in
       all) out="$out $DEFAULT_SERVICES" ;;
-      server|web-music|web-drama|web-celebrity|web-aiavatar|admin|sau-service) out="$out $item" ;;
+      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service) out="$out $item" ;;
       "") ;;
-      *) fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|admin|sau-service|all)" ;;
+      *) fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service|all)" ;;
     esac
   done
 
@@ -76,7 +76,7 @@ has_service() {
 }
 
 needs_node() {
-  has_service web-music || has_service web-drama || has_service web-celebrity || has_service web-aiavatar || has_service admin
+  has_service web-music || has_service web-drama || has_service web-celebrity || has_service web-aiavatar || has_service web-star || has_service admin
 }
 
 needs_java() {

@@ -71,12 +71,21 @@ server {
     }
 }
 
-# ── apps/web-celebrity 可选：直接 :3012 暴露（用 HTTPS 多子域形态后此 block 可删）
+# ── apps/web-celebrity / web-star 可选：直接端口暴露（用 HTTPS 多子域形态后可删）
 # server {
 #     listen 3012 default_server;
 #     server_name _;
 #     location / {
 #         proxy_pass http://127.0.0.1:3012;
+#         include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
+#     }
+# }
+#
+# server {
+#     listen 3014;
+#     server_name _;
+#     location / {
+#         proxy_pass http://127.0.0.1:3014;
 #         include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
 #     }
 # }
