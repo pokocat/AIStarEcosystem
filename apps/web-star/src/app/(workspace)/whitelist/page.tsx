@@ -73,8 +73,38 @@ export default function WhitelistPage() {
       <PageHeader title="报白账号授权" sub="审核 MCN 提交的切片账号报白申请，按 5 步流程推进至平台授权" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
-      {/* 双筛选条 */}
-      <div className="star-card p-3 space-y-2.5">
+      {/* <sm：双原生 select 一行收口（chips 折行占屏过高）；≥sm 保留 chip 筛选卡 */}
+      <div className="sm:hidden grid grid-cols-2 gap-2">
+        <select
+          value={platformFilter}
+          onChange={(e) => setPlatformFilter(e.target.value)}
+          aria-label="按平台筛选"
+          className="h-10 px-3 rounded-xl text-sm outline-none min-w-0"
+          style={{ background: "var(--bg-1)", border: "1px solid var(--line-strong)", color: "var(--ink-0)" }}
+        >
+          {PLATFORM_FILTERS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}（{p.id === "all" ? all.length : all.filter((r) => r.platform === p.id).length}）
+            </option>
+          ))}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="按状态筛选"
+          className="h-10 px-3 rounded-xl text-sm outline-none min-w-0"
+          style={{ background: "var(--bg-1)", border: "1px solid var(--line-strong)", color: "var(--ink-0)" }}
+        >
+          {WL_STATUS_FILTERS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}（{s.id === "all" ? all.length : all.filter((r) => r.status === s.id).length}）
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* 双筛选条（≥sm） */}
+      <div className="hidden sm:block star-card p-3 space-y-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold shrink-0 w-10" style={{ color: "var(--ink-2)" }}>平台</span>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -109,8 +139,8 @@ export default function WhitelistPage() {
         </div>
       </div>
 
-      {/* 流程图例 */}
-      <div className="flex items-center gap-2 px-1 overflow-x-auto scrollbar-thin pb-1">
+      {/* 流程图例（≥sm；<sm 卡内 5 步进度自带标签，图例冗余） */}
+      <div className="hidden sm:flex items-center gap-2 px-1 overflow-x-auto scrollbar-thin pb-1">
         {WL_STEPS.map((step, i) => (
           <React.Fragment key={step.id}>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -191,20 +221,29 @@ export default function WhitelistPage() {
                         <CheckCheck className="w-3 h-3" />已复制报白参数
                       </div>
                     )}
-                    <div className="flex items-center gap-3 flex-wrap">
+                    {/* <sm 堆叠列表行（标签左 / 值+复制右）；≥sm 内联 */}
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3 sm:flex-wrap">
                       {[
                         { icon: Hash, label: "账号ID", value: req.accountId, ck: `id-${req.id}` },
                         { icon: Phone, label: "手机号", value: req.phone, ck: `ph-${req.id}` },
                         { icon: Fingerprint, label: "UID", value: req.uid, ck: `uid-${req.id}` },
                       ].map(({ icon: Icon, label, value, ck }) => (
-                        <button key={ck} onClick={() => copyToClipboard(value, ck)} className="flex items-center gap-1 py-1.5 -my-1 group transition hover:opacity-75">
-                          <Icon className="w-2.5 h-2.5" style={{ color: "var(--ink-2)" }} />
-                          <span className="text-[10px]" style={{ color: "var(--ink-2)" }}>{label}:</span>
-                          <span className="text-[11px] font-mono" style={{ color: isPending && stepIdx === 0 ? "#0e7490" : "var(--ink-1)" }}>{value}</span>
-                          {/* 触屏无 hover：<sm 常显复制图标提示可点 */}
-                          {copiedId === ck
-                            ? <CheckCheck className="w-2.5 h-2.5" style={{ color: "var(--ok)" }} />
-                            : <Copy className="w-2.5 h-2.5 opacity-50 sm:opacity-0 sm:group-hover:opacity-100 transition" style={{ color: "var(--ink-2)" }} />}
+                        <button
+                          key={ck}
+                          onClick={() => copyToClipboard(value, ck)}
+                          className="flex items-center gap-1 py-1.5 -my-1 max-sm:w-full max-sm:justify-between max-sm:py-2 max-sm:my-0 group transition hover:opacity-75"
+                        >
+                          <span className="flex items-center gap-1 shrink-0">
+                            <Icon className="w-2.5 h-2.5" style={{ color: "var(--ink-2)" }} />
+                            <span className="text-[10px]" style={{ color: "var(--ink-2)" }}>{label}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[11px] font-mono truncate" style={{ color: isPending && stepIdx === 0 ? "#0e7490" : "var(--ink-1)" }}>{value}</span>
+                            {/* 触屏无 hover：<sm 常显复制图标提示可点 */}
+                            {copiedId === ck
+                              ? <CheckCheck className="w-2.5 h-2.5 shrink-0" style={{ color: "var(--ok)" }} />
+                              : <Copy className="w-2.5 h-2.5 shrink-0 opacity-50 sm:opacity-0 sm:group-hover:opacity-100 transition" style={{ color: "var(--ink-2)" }} />}
+                          </span>
                         </button>
                       ))}
                     </div>

@@ -126,7 +126,8 @@ export function CardActions({ hint, hintColor = "var(--star-gold-deep)", hintIco
           <span className="min-w-0">{hint}</span>
         </div>
       )}
-      <div className={`flex items-center gap-2 max-sm:[&>*]:flex-1 ${hint ? "" : "sm:ml-auto"}`}>{children}</div>
+      {/* <sm 按钮按内容比例伸展占满整行（flex-auto 避免长文案按钮折行） */}
+      <div className={`flex items-center gap-2 max-sm:[&>*]:flex-auto ${hint ? "" : "sm:ml-auto"}`}>{children}</div>
     </div>
   );
 }
@@ -231,7 +232,7 @@ export function Modal({
         <div className="px-5 py-4 max-h-[70dvh] sm:max-h-[65vh] overflow-y-auto scrollbar-thin overscroll-contain">{children}</div>
         {footer && (
           <div
-            className="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-5 py-3 sm:py-3.5 max-sm:[&>button]:flex-1"
+            className="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-5 py-3 sm:py-3.5 max-sm:[&>button]:flex-auto"
             style={{ borderTop: "1px solid var(--line)", background: "var(--bg-0)", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
           >
             {footer}

@@ -64,8 +64,8 @@ export default function ProductOnboardPage() {
         ))}
       </div>
 
-      {/* 步骤图例 */}
-      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1">
+      {/* 步骤图例（≥sm；<sm 卡内进度条自带当前步标签） */}
+      <div className="hidden sm:flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1">
         {PRODUCT_STEPS.map((step, i) => (
           <React.Fragment key={step.label}>
             <div className="flex items-center gap-1 shrink-0">
@@ -132,6 +132,27 @@ export default function ProductOnboardPage() {
                     {item.platformNote && (
                       <div className="mt-1.5 text-[11px] flex items-center gap-1" style={{ color: "#0369a1" }}>
                         <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />{item.platformNote}
+                      </div>
+                    )}
+                    {/* <sm 紧凑进度条（右侧垂直步骤条在窄屏隐藏，这里补步骤上下文） */}
+                    {!isRejected && (
+                      <div className="mt-2.5 sm:hidden">
+                        <div className="flex items-center gap-1">
+                          {PRODUCT_STEPS.map((step, si) => {
+                            const done = item.step > si || isInLibrary;
+                            const current = item.step === si && !isInLibrary;
+                            return (
+                              <div
+                                key={si}
+                                className="flex-1 h-1 rounded-full"
+                                style={{ background: done ? step.color : current ? `${step.color}80` : "var(--bg-2)" }}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="mt-1 text-[10px]" style={{ color: "var(--ink-2)" }}>
+                          {isInLibrary ? "已完成全部入库流程" : `当前：${PRODUCT_STEPS[item.step]?.label ?? ""}`}
+                        </div>
                       </div>
                     )}
                     {/* 双路寄样 */}

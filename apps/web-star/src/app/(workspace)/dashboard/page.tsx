@@ -61,23 +61,18 @@ export default function DashboardPage() {
     <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
       <PageHeader title="工作台总览" sub="明星 IP 授权与商业运营全景" />
 
-      {/* KPI 网格 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      {/* KPI 网格（竖排卡：标签行 → 数值 → 副文，窄屏不截断） */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-3">
         {kpis.map((k, i) => {
           const KIcon = k.icon;
           return (
-            <div
-              key={k.label}
-              className="star-card star-card-hover px-4 py-3.5 flex items-center gap-3"
-            >
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${k.color}12` }}>
-                <KIcon className="w-4 h-4" style={{ color: k.color }} />
+            <div key={k.label} className="star-card star-card-hover px-3.5 py-3 sm:px-4 sm:py-3.5">
+              <div className="flex items-center gap-1.5">
+                <KIcon className="w-3.5 h-3.5 shrink-0" style={{ color: k.color }} />
+                <span className="text-[11px] font-medium" style={{ color: "var(--ink-1)" }}>{k.label}</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] truncate" style={{ color: "var(--ink-1)" }}>{k.label}</div>
-                <div className="text-[10px] truncate" style={{ color: "var(--ink-2)" }}>{k.sub}</div>
-              </div>
-              <div className="text-lg font-black shrink-0 tabular" style={{ color: k.color }}>{k.value}</div>
+              <div className="mt-1.5 text-xl font-black tabular leading-none" style={{ color: k.color }}>{k.value}</div>
+              <div className="mt-1 text-[10px]" style={{ color: "var(--ink-2)" }}>{k.sub}</div>
             </div>
           );
         })}
@@ -89,7 +84,8 @@ export default function DashboardPage() {
           <Key className="w-4 h-4" style={{ color: "#6366f1" }} />
           <span className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>IP授权链路状态</span>
         </div>
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-thin">
+        {/* <sm 2×2 网格（不横滑）；≥sm 横向链路 + 箭头 */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-1 sm:overflow-x-auto sm:pb-1 sm:scrollbar-thin">
           {IP_ASSET_TYPES.map((type: StarIpAssetType, i) => {
             const auth = ipAssets?.find((a) => a.type === type);
             const meta = IP_AUTH_META[type];
@@ -99,17 +95,23 @@ export default function DashboardPage() {
               <React.Fragment key={type}>
                 <Link
                   href="/ip-auth"
-                  className="flex flex-col items-center gap-1 p-2.5 rounded-xl shrink-0 min-w-[86px] transition hover:-translate-y-0.5"
+                  className="relative flex flex-col items-center gap-1 p-2.5 rounded-xl sm:shrink-0 sm:min-w-[86px] transition hover:-translate-y-0.5"
                   style={{
                     background: `${meta.color}0a`,
                     border: `1px solid ${auth?.status === "active" ? `${meta.color}55` : `${meta.color}1f`}`,
                   }}
                 >
+                  <span
+                    className="sm:hidden absolute top-1.5 left-1.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center tabular"
+                    style={{ background: `${meta.color}14`, color: meta.color }}
+                  >
+                    {i + 1}
+                  </span>
                   <Icon className="w-5 h-5" style={{ color: meta.color }} />
                   <span className="text-[10px] font-bold" style={{ color: "var(--ink-0)" }}>{meta.label}</span>
                   <span className="text-[9px] font-bold" style={{ color: sc?.color ?? "var(--ink-2)" }}>{sc?.label ?? "—"}</span>
                 </Link>
-                {i < IP_ASSET_TYPES.length - 1 && <ChevronRight className="w-3 h-3 shrink-0" style={{ color: "var(--ink-2)" }} />}
+                {i < IP_ASSET_TYPES.length - 1 && <ChevronRight className="hidden sm:block w-3 h-3 shrink-0" style={{ color: "var(--ink-2)" }} />}
               </React.Fragment>
             );
           })}

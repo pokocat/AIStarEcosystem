@@ -61,12 +61,19 @@ export default function IpAuthPage() {
           <Globe className="w-4 h-4" style={{ color: "#6366f1" }} />
           <span className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>授权传递链路</span>
         </div>
-        <div className="flex items-start gap-2 overflow-x-auto scrollbar-thin pb-1">
+        {/* <sm 2×2 网格（不横滑，序号标记顺序）；≥sm 横向链 + 虚线连接 */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-start sm:gap-2 sm:overflow-x-auto sm:scrollbar-thin sm:pb-1">
           {RELAY_STEPS.map((step, i) => {
             const StepIcon = step.icon;
             return (
               <React.Fragment key={step.label}>
-                <div className="flex flex-col items-center text-center gap-1.5 shrink-0 min-w-[96px]">
+                <div className="relative flex flex-col items-center text-center gap-1.5 sm:shrink-0 sm:min-w-[96px] rounded-xl p-2 sm:p-0" style={{ background: `${step.color}07` }}>
+                  <span
+                    className="sm:hidden absolute top-1.5 left-1.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center tabular"
+                    style={{ background: `${step.color}14`, color: step.color }}
+                  >
+                    {i + 1}
+                  </span>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${step.color}12`, border: `1px solid ${step.color}33` }}>
                     <StepIcon className="w-5 h-5" style={{ color: step.color }} />
                   </div>
@@ -74,7 +81,7 @@ export default function IpAuthPage() {
                   <span className="text-[9px]" style={{ color: "var(--ink-2)" }}>{step.desc}</span>
                 </div>
                 {i < RELAY_STEPS.length - 1 && (
-                  <div className="flex-1 min-w-[20px] border-t border-dashed mt-5" style={{ borderColor: "var(--line-strong)" }} />
+                  <div className="hidden sm:block flex-1 min-w-[20px] border-t border-dashed mt-5" style={{ borderColor: "var(--line-strong)" }} />
                 )}
               </React.Fragment>
             );

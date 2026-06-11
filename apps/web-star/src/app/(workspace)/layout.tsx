@@ -50,7 +50,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   if (user && !hasPlatformAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-6">
+      <div className="min-h-dvh flex items-center justify-center px-6">
         <div className="star-card max-w-md w-full p-8 text-center">
           <div className="mx-auto w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "var(--brand-soft)" }}>
             <AlertCircle className="w-6 h-6" style={{ color: "var(--brand)" }} />
@@ -126,7 +126,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-0)" }}>
+    <div className="min-h-dvh" style={{ background: "var(--bg-0)" }}>
       {/* ── 顶栏 ── */}
       <header
         className="flex items-center justify-between px-4 sm:px-5 h-[57px] sticky top-0 z-20"
@@ -233,11 +233,11 @@ function Shell({ children }: { children: React.ReactNode }) {
       </Modal>
 
       {/* ── 主体 ── */}
-      <div className="flex" style={{ minHeight: "calc(100vh - 57px)" }}>
+      <div className="flex" style={{ minHeight: "calc(100dvh - 57px)" }}>
         {/* 侧导航（≥1024） */}
         <aside
           className="star-sidebar-desktop w-[240px] shrink-0 flex flex-col sticky"
-          style={{ background: "var(--bg-1)", borderRight: "1px solid var(--line)", top: 57, height: "calc(100vh - 57px)" }}
+          style={{ background: "var(--bg-1)", borderRight: "1px solid var(--line)", top: 57, height: "calc(100dvh - 57px)" }}
         >
           <div className="p-3" style={{ borderBottom: "1px solid var(--line)" }}>
             <div className="flex items-center gap-2.5 p-2.5 rounded-xl" style={{ background: "#f59e0b0d", border: "1px solid #f59e0b26" }}>

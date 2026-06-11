@@ -38,7 +38,7 @@ export default function LandingPage() {
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-0)" }}>
+    <div className="min-h-dvh" style={{ background: "var(--bg-0)" }}>
       {/* ── 顶栏 ── */}
       <header className="max-w-6xl mx-auto flex items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">

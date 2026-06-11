@@ -61,6 +61,13 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
 
 ## 版本日志
 
+- **v0.60 补丁 2 · 移动端 redesign**（2026-06-11，`redesign-existing-projects` skill 审计）：
+  消除 `<sm` 横滑（dashboard IP 链路 / ip-auth 传递链路改 2×2 序号网格、brand-auth 审核链
+  5 等分、whitelist 与 product-onboard 步骤图例隐藏 + 卡内进度条补上下文）；dashboard KPI
+  卡改竖排杜绝文字截断；whitelist 双 chips 筛选 `<sm` 收口为原生双 select 一行（带计数）+
+  报白参数改堆叠列表行；CardActions / Modal footer 按钮改按内容比例伸展（长文案不折行）；
+  全部 `100vh/min-h-screen` → `dvh`；revenue YAxis 收窄。新增产品约束「移动端禁横滑原则」
+  （PRODUCT.md §4）。
 - **v0.60 补丁 · 移动端适配**（2026-06-11）：全端手机适配（390px 实测，桌面端零变化）。
   壳层：顶部横向 Tab 触控加大 + 活跃项自动居中 + 分组分隔 + 右缘渐隐 + 「全部」模块
   抽屉（4 列分组网格带待办角标）；page-kit：Modal <sm 变底部抽屉（安全区 + footer 按钮

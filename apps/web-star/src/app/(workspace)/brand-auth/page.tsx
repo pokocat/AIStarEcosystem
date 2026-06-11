@@ -60,18 +60,19 @@ export default function BrandAuthPage() {
 
       {/* 审核链 */}
       <div className="star-card p-3" style={{ borderColor: `${ACCENT}26`, background: `${ACCENT}05` }}>
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
+        {/* <sm 五列等分（不横滑）；≥sm 横向链 + 箭头 */}
+        <div className="grid grid-cols-5 gap-1 sm:flex sm:items-center sm:gap-2 sm:overflow-x-auto sm:scrollbar-thin">
           {CHAIN.map((s, si) => {
             const SIcon = s.icon;
             return (
               <React.Fragment key={s.label}>
-                <div className="flex flex-col items-center text-center gap-1 shrink-0 min-w-[72px]">
+                <div className="flex flex-col items-center text-center gap-1 min-w-0 sm:shrink-0 sm:min-w-[72px]">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${s.color}12`, border: `1px solid ${s.color}30` }}>
                     <SIcon className="w-4 h-4" style={{ color: s.color }} />
                   </div>
-                  <span className="text-[9px]" style={{ color: "var(--ink-1)" }}>{s.label}</span>
+                  <span className="text-[9px] leading-tight" style={{ color: "var(--ink-1)" }}>{s.label}</span>
                 </div>
-                {si < CHAIN.length - 1 && <ChevronRight className="w-3 h-3 shrink-0 -mt-2" style={{ color: "var(--ink-2)" }} />}
+                {si < CHAIN.length - 1 && <ChevronRight className="hidden sm:block w-3 h-3 shrink-0 -mt-2" style={{ color: "var(--ink-2)" }} />}
               </React.Fragment>
             );
           })}

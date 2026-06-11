@@ -75,10 +75,10 @@ export default function RevenuePage() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
               <XAxis dataKey="month" tick={{ fill: "#a8a29e", fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis
-                tick={{ fill: "#a8a29e", fontSize: 11 }}
+                tick={{ fill: "#a8a29e", fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
-                width={56}
+                width={44}
                 tickFormatter={(v: number) => (v >= 10000 ? `${(v / 10000).toFixed(0)}万` : String(v))}
               />
               <Tooltip
