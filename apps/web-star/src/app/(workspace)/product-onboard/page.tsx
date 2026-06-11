@@ -11,7 +11,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import { PRODUCT_SOURCE_CFG, PRODUCT_SOURCE_FILTERS, PRODUCT_STEPS, SAMPLE_STATUS_CFG } from "@/constants/star-ui";
 import { formatDateTime, formatYuan } from "@/lib/format";
 import {
-  ActionButton, DangerGhostButton, EmptyState, FilterChip, InlineError,
+  ActionButton, CardActions, DangerGhostButton, EmptyState, FilterChip, InlineError,
   LoadingList, PageHeader, Pill,
 } from "@/components/star/page-kit";
 
@@ -46,7 +46,7 @@ export default function ProductOnboardPage() {
   const filtered = all.filter((p) => sourceFilter === "all" || p.source === sourceFilter);
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="商品入库管理" sub="平台发起 · 达人选品 · 品牌申请 三条入库路径，平台 + 明星双路收样审核" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -199,13 +199,16 @@ export default function ProductOnboardPage() {
 
               {/* 操作条 */}
               {actionable && (
-                <div className="flex items-center gap-2 px-4 pb-3 pt-2.5 flex-wrap" style={{ borderTop: "1px solid var(--line)" }}>
-                  <div className="flex-1 min-w-[180px] text-[11px] flex items-center gap-1" style={{ color: "var(--star-gold-deep)" }}>
-                    <AlertCircle className="w-3 h-3 shrink-0" />
-                    {needsReview && "需要你审核这款商品"}
-                    {needsReceive && "样品运输中，送达后请确认签收"}
-                    {needsConfirm && "样品已签收，请体验后确认质量"}
-                  </div>
+                <CardActions
+                  hintIcon={AlertCircle}
+                  hint={
+                    <>
+                      {needsReview && "需要你审核这款商品"}
+                      {needsReceive && "样品运输中，送达后请确认签收"}
+                      {needsConfirm && "样品已签收，请体验后确认质量"}
+                    </>
+                  }
+                >
                   <DangerGhostButton onClick={() => mutate(item.id, () => StarWorkbenchApi.rejectProductOnboard(item.id))} busy={busyId === item.id}>
                     驳回
                   </DangerGhostButton>
@@ -224,7 +227,7 @@ export default function ProductOnboardPage() {
                       样品通过，入库
                     </ActionButton>
                   )}
-                </div>
+                </CardActions>
               )}
             </div>
           );

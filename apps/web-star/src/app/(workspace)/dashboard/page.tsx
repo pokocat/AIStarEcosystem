@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
   if (!overview) {
     return (
-      <div className="p-6 space-y-5 max-w-5xl">
+      <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
         <PageHeader title="工作台总览" sub="明星 IP 授权与商业运营全景" />
         <LoadingList rows={3} />
       </div>
@@ -58,7 +58,7 @@ export default function DashboardPage() {
     .filter((item) => item.count > 0);
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
       <PageHeader title="工作台总览" sub="明星 IP 授权与商业运营全景" />
 
       {/* KPI 网格 */}

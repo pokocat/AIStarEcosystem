@@ -56,7 +56,7 @@ export default function ContractsPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <PageHeader title="合同中心" sub="管理 IP 授权合同、补充协议和结算单据" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -83,13 +83,13 @@ export default function ContractsPage() {
           />
         </div>
         <div className="flex gap-2">
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)} className="h-10 px-3 rounded-xl text-sm outline-none" style={selectStyle}>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)} className="h-10 px-3 rounded-xl text-sm outline-none flex-1 md:flex-none min-w-0" style={selectStyle}>
             <option value="all">全部类型</option>
             <option value="authorization">授权合同</option>
             <option value="amendment">补充协议</option>
             <option value="settlement">结算单</option>
           </select>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="h-10 px-3 rounded-xl text-sm outline-none" style={selectStyle}>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="h-10 px-3 rounded-xl text-sm outline-none flex-1 md:flex-none min-w-0" style={selectStyle}>
             <option value="all">全部状态</option>
             <option value="active">生效中</option>
             <option value="pending">待签署</option>

@@ -51,7 +51,7 @@ export default function IpAuthPage() {
   const expandedMeta = expanded ? IP_AUTH_META[expanded] : null;
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
       <PageHeader title="IP授权中心" sub="管理人像、切片、数字人等授权，传递至技术公司和火山引擎" />
       <InlineError message={error} onDismiss={() => setError(null)} />
 
@@ -135,13 +135,13 @@ export default function IpAuthPage() {
                         tabIndex={0}
                         onClick={(e) => { e.stopPropagation(); if (busyType !== type) void advance(type); }}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (busyType !== type) void advance(type); } }}
-                        className="w-full mt-0.5 py-1.5 rounded-lg text-[10px] font-bold text-white transition hover:brightness-105 cursor-pointer"
+                        className="w-full mt-0.5 py-1.5 max-sm:min-h-[40px] flex items-center justify-center rounded-lg text-[10px] max-sm:text-[11px] font-bold text-white transition hover:brightness-105 cursor-pointer"
                         style={{ background: meta.color, opacity: busyType === type ? 0.6 : 1 }}
                       >
                         {busyType === type ? "处理中…" : IP_NEXT_ACTION[asset.status]}
                       </span>
                     ) : (
-                      <div className="w-full mt-0.5 py-1.5 rounded-lg text-[10px] font-bold" style={{ background: `${meta.color}12`, color: meta.color }}>
+                      <div className="w-full mt-0.5 py-1.5 max-sm:min-h-[40px] flex items-center justify-center rounded-lg text-[10px] max-sm:text-[11px] font-bold" style={{ background: `${meta.color}12`, color: meta.color }}>
                         ✓ 已激活
                       </div>
                     )}
@@ -162,7 +162,7 @@ export default function IpAuthPage() {
                 style={{ borderColor: `${expandedMeta.color}40`, background: `${expandedMeta.color}05` }}
               >
                 <div className="px-4 py-4 space-y-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {(() => { const EIcon = expandedMeta.icon; return <EIcon className="w-4 h-4" style={{ color: expandedMeta.color }} />; })()}
                     <span className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>{expandedMeta.label}</span>
                     <span className="text-[11px] ml-1" style={{ color: "var(--ink-2)" }}>{expandedMeta.desc}</span>

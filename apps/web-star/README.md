@@ -61,6 +61,14 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
 
 ## 版本日志
 
+- **v0.60 补丁 · 移动端适配**（2026-06-11）：全端手机适配（390px 实测，桌面端零变化）。
+  壳层：顶部横向 Tab 触控加大 + 活跃项自动居中 + 分组分隔 + 右缘渐隐 + 「全部」模块
+  抽屉（4 列分组网格带待办角标）；page-kit：Modal <sm 变底部抽屉（安全区 + footer 按钮
+  平分）、新增 `<CardActions>` 卡片操作条原语（7 个审批页统一接入）、三种按钮 <sm
+  ≥44px 触控高、FilterChip ≥38px；全局：`touch-hit` 命中区扩展（规则开关 / 顶栏图标）、
+  表单控件 16px 防 iOS 聚焦缩放、`viewportFit: cover` + safe-area；页面级：p-4 sm:p-6
+  边距、whitelist 状态 pill 移动端内联 + 复制图标触屏常显、ip-auth 资产卡主按钮加大、
+  contracts 筛选 select 平分整行、landing CTA 折行。
 - **v0.60**（2026-06-10）：首版。13 个 Figma 原型模块全量浅色化复刻 + 新增「带货授权」
   打通模块；后端 `/api/star/**` 域（12 实体）+ `/api/me/celebrity/*` 打通端点；
   mock / 真后端双模式；H2 与 MySQL 双双 E2E 验证。

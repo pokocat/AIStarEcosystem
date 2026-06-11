@@ -55,7 +55,12 @@
 - **弹层**：page-kit `<Modal>`（输入采集 / 二次确认），禁原生 confirm/alert/prompt。
 - **可访问性**：全局 `:focus-visible` 焦点环；`prefers-reduced-motion` 停用动画；
   状态不只靠颜色（图标 + 文案并行）。
-- **响应式**：≥1024 侧导航 240px；<1024 折叠为顶部横向 Tab。
+- **响应式**：≥1024 侧导航 240px；<1024 折叠为顶部横向 Tab（活跃模块自动滚动居中 +
+  右端「全部」按钮打开分组模块抽屉，解决 14 模块横滑发现性）。
+- **移动端（<640）**：弹层一律底部抽屉形态（全宽 + 仅上圆角 + 安全区 padding，footer
+  按钮平分整行）；卡片操作条用 page-kit `<CardActions>`（提示独占一行 + 按钮整行平分）；
+  主操作触控高度 ≥44px、筛选 chip ≥38px，小控件用 `touch-hit` 扩展命中区；表单控件
+  字号强制 16px 防 iOS 聚焦缩放；hover-only 可供性（如复制图标）触屏常显。
 - **数值**：一律原始整数（fans / priceCents / amountCents / durationSec…），
   展示经 `src/lib/format.ts`（formatWan / formatYuan / formatWanYuan /
   formatDurationZh / formatMonthsZh）。

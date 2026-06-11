@@ -24,7 +24,7 @@ export default function RevenuePage() {
 
   if (!summary) {
     return (
-      <div className="p-6 space-y-5 max-w-5xl">
+      <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
         <PageHeader title="分成收益" sub="GMV 透明可追溯，按月结算" />
         <InlineError message={error} onDismiss={() => setError(null)} />
         {error ? <EmptyState icon={Coins} title="收益数据加载失败" /> : <LoadingList />}
@@ -47,7 +47,7 @@ export default function RevenuePage() {
   const detailRows = [...summary.months].reverse().filter((m) => m.gmvCents > 0 || m.status === "processing");
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
       <PageHeader title="分成收益" sub="GMV 带货趋势与按月分成结算（T+1 月 15 日打款）" />
 
       {/* KPI */}
