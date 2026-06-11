@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Admin Console favicon</title>
+  <rect width="64" height="64" rx="16" fill="oklch(0.962 0.011 164)" />
+  <rect
+    x="13"
+    y="13"
+    width="38"
+    height="38"
+    rx="10"
+    fill="oklch(0.996 0.003 164)"
+    stroke="oklch(0.43 0.105 188)"
+    stroke-width="3"
+  />
+  <path
+    d="M22 25h20M22 32h20M22 39h20M25 22v20M32 22v20M39 22v20"
+    fill="none"
+    stroke="oklch(0.86 0.02 178)"
+    stroke-linecap="round"
+    stroke-width="2"
+  />
+  <circle cx="25" cy="25" r="3.5" fill="oklch(0.43 0.105 188)" />
+  <circle cx="39" cy="32" r="3.5" fill="oklch(0.62 0.16 152)" />
+  <path
+    d="M25 39l5 5 10-12"
+    fill="none"
+    stroke="oklch(0.58 0.16 237)"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="4"
+  />
+</svg>

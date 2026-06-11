@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>AiAvatar favicon</title>
+  <rect width="64" height="64" rx="16" fill="oklch(0.97 0.012 215)" />
+  <rect
+    x="16"
+    y="12"
+    width="32"
+    height="40"
+    rx="14"
+    fill="oklch(0.995 0.004 215)"
+    stroke="oklch(0.72 0.095 205)"
+    stroke-width="3"
+  />
+  <path
+    d="M24 12h-7a5 5 0 0 0-5 5v7M40 12h7a5 5 0 0 1 5 5v7M12 40v7a5 5 0 0 0 5 5h7M52 40v7a5 5 0 0 1-5 5h-7"
+    fill="none"
+    stroke="oklch(0.42 0.11 210)"
+    stroke-linecap="round"
+    stroke-width="3.5"
+  />
+  <circle cx="25" cy="31" r="3" fill="oklch(0.28 0.035 225)" />
+  <circle cx="39" cy="31" r="3" fill="oklch(0.28 0.035 225)" />
+  <path
+    d="M25 41c3.7 2.7 10.3 2.7 14 0"
+    fill="none"
+    stroke="oklch(0.28 0.035 225)"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M32 20v-4"
+    fill="none"
+    stroke="oklch(0.72 0.095 205)"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+</svg>

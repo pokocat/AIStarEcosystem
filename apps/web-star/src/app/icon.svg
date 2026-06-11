@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Star Workbench favicon</title>
+  <rect width="64" height="64" rx="16" fill="oklch(0.955 0.018 72)" />
+  <rect
+    x="17"
+    y="12"
+    width="30"
+    height="40"
+    rx="7"
+    fill="oklch(0.992 0.008 72)"
+    stroke="oklch(0.78 0.045 72)"
+    stroke-width="2.5"
+  />
+  <path
+    d="M24 22h16M24 43h12"
+    fill="none"
+    stroke="oklch(0.43 0.055 42)"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M32 26l2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L32 26Z"
+    fill="oklch(0.72 0.12 78)"
+    stroke="oklch(0.52 0.09 60)"
+    stroke-linejoin="round"
+    stroke-width="1.7"
+  />
+  <path
+    d="M41 12v10h6"
+    fill="none"
+    stroke="oklch(0.78 0.045 72)"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2.5"
+  />
+</svg>
