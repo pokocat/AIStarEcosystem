@@ -127,6 +127,14 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh" style={{ background: "var(--bg-0)" }}>
+      {/* 键盘用户跳过 14 项导航直达内容（视觉隐藏，聚焦时浮现） */}
+      <a
+        href="#star-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2.5 focus:rounded-xl focus:text-sm focus:font-bold"
+        style={{ background: "var(--ink-0)", color: "#fff" }}
+      >
+        跳到主内容
+      </a>
       {/* ── 顶栏 ── */}
       <header
         className="flex items-center justify-between px-4 sm:px-5 h-[57px] sticky top-0 z-20"
@@ -269,7 +277,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* 内容区 */}
-        <main className="flex-1 min-w-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>{children}</main>
+        <main id="star-main" tabIndex={-1} className="flex-1 min-w-0 outline-none" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>{children}</main>
       </div>
     </div>
   );

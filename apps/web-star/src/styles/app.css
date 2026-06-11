@@ -112,6 +112,13 @@ select:focus-visible {
   }
 }
 
+/* 锚点平滑滚动（landing #features 等；尊重减少动态偏好） */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 /* ── 响应式（<1024 侧导航折叠为顶部 Tab，产品文档 §4.7） ─────────────────── */
 @media (max-width: 1023px) {
   .star-sidebar-desktop {

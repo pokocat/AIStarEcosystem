@@ -61,6 +61,10 @@ Next 16.2.6 / React 19 / Tailwind v4 / pnpm workspace。依赖共享包
 
 ## 版本日志
 
+- **v0.60 补丁 3 · skill 审计收尾**（2026-06-11）：品牌化 404 `not-found.tsx`（登录态生效；
+  匿名未知路径仍由 AuthProvider 引导登录）+ 壳层「跳到主内容」skip-link（main 落焦点）+
+  授权规则 accent 冷灰 `#6b7280`→暖灰 `#78716c`（统一 stone 家族）+ html 锚点平滑滚动
+  （尊重 reduced-motion）+ openGraph 元数据。
 - **v0.60 补丁 2 · 移动端 redesign**（2026-06-11，`redesign-existing-projects` skill 审计）：
   消除 `<sm` 横滑（dashboard IP 链路 / ip-auth 传递链路改 2×2 序号网格、brand-auth 审核链
   5 等分、whitelist 与 product-onboard 步骤图例隐藏 + 卡内进度条补上下文）；dashboard KPI
