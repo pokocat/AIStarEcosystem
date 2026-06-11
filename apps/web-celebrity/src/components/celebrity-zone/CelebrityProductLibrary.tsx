@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   Sparkles,
   Trash2,
   Wand2,
@@ -30,6 +31,7 @@ import {
 import { ProductFormDialog } from "./ProductFormDialog";
 import { ProductBatchImportDialog } from "./ProductBatchImportDialog";
 import { ProductGenerateDialog } from "./ProductGenerateDialog";
+import { StarFilingDialog } from "./StarFilingDialog";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import { useConfirm } from "@/components/common/confirm-dialog";
@@ -61,6 +63,7 @@ export function CelebrityProductLibrary() {
   const [viewMode, setViewMode] = React.useState<ViewMode>("list");
   const [quickLinkOpen, setQuickLinkOpen] = React.useState(false);
   const [generatingFor, setGeneratingFor] = React.useState<Product | null>(null);
+  const [filingFor, setFilingFor] = React.useState<Product | null>(null);
   const [refreshing, setRefreshing] = React.useState<Set<string>>(new Set());
   const { confirm, ConfirmHost } = useConfirm();
 
@@ -350,6 +353,7 @@ export function CelebrityProductLibrary() {
                 onEdit={() => handleEdit(p)}
                 onDelete={() => handleDelete(p)}
                 onGenerate={() => handleGenerate(p)}
+                onFile={() => setFilingFor(p)}
                 onRefreshImages={() => handleRefreshImages(p)}
                 isRefreshing={refreshing.has(p.id)}
               />
@@ -364,6 +368,7 @@ export function CelebrityProductLibrary() {
                 onEdit={() => handleEdit(p)}
                 onDelete={() => handleDelete(p)}
                 onGenerate={() => handleGenerate(p)}
+                onFile={() => setFilingFor(p)}
                 onRefreshImages={() => handleRefreshImages(p)}
                 isRefreshing={refreshing.has(p.id)}
               />
@@ -381,6 +386,7 @@ export function CelebrityProductLibrary() {
                 onEdit={() => handleEdit(p)}
                 onDelete={() => handleDelete(p)}
                 onGenerate={() => handleGenerate(p)}
+                onFile={() => setFilingFor(p)}
                 onRefreshImages={() => handleRefreshImages(p)}
                 isRefreshing={refreshing.has(p.id)}
               />
@@ -393,6 +399,7 @@ export function CelebrityProductLibrary() {
               onEdit={handleEdit}
               onDelete={handleDelete}
               onGenerate={handleGenerate}
+              onFile={setFilingFor}
               onRefreshImages={handleRefreshImages}
               refreshingIds={refreshing}
             />
@@ -438,6 +445,8 @@ export function CelebrityProductLibrary() {
         product={generatingFor}
       />
 
+      <StarFilingDialog product={filingFor} onClose={() => setFilingFor(null)} />
+
       <ConfirmHost />
     </div>
   );
@@ -450,6 +459,7 @@ function ProductTable({
   onEdit,
   onDelete,
   onGenerate,
+  onFile,
   onRefreshImages,
   refreshingIds,
 }: {
@@ -458,6 +468,7 @@ function ProductTable({
   onEdit: (p: Product) => void;
   onDelete: (p: Product) => void;
   onGenerate: (p: Product) => void;
+  onFile: (p: Product) => void;
   onRefreshImages: (p: Product) => void;
   refreshingIds: Set<string>;
 }) {
@@ -546,6 +557,14 @@ function ProductTable({
                       {p.images.length}
                     </span>
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => onFile(p)}
+                    className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-amber-400/40 bg-amber-500/[0.06] px-2 py-1 text-[11px] text-amber-700 hover:border-amber-500 hover:bg-amber-500/15"
+                    title="报备给已授权明星，进入明星端商品入库流程"
+                  >
+                    <Send className="h-3 w-3" /> 报备
+                  </button>
                   {canManage && p.link && (
                     <button
                       type="button"
@@ -596,6 +615,7 @@ function ProductMobileCard({
   onEdit,
   onDelete,
   onGenerate,
+  onFile,
   onRefreshImages,
   isRefreshing,
 }: {
@@ -604,6 +624,7 @@ function ProductMobileCard({
   onEdit: () => void;
   onDelete: () => void;
   onGenerate: () => void;
+  onFile: () => void;
   onRefreshImages: () => void;
   isRefreshing: boolean;
 }) {
@@ -661,6 +682,14 @@ function ProductMobileCard({
         >
           <Images className="h-3.5 w-3.5" /> 素材 {product.images.length}
         </Link>
+        <button
+          type="button"
+          onClick={onFile}
+          className="mobile-touch-target inline-flex items-center justify-center gap-1 rounded-xl border border-amber-400/40 bg-amber-500/[0.06] px-3 text-xs font-medium text-amber-700"
+          title="报备给已授权明星"
+        >
+          <Send className="h-3.5 w-3.5" /> 报备明星
+        </button>
         {canManage && product.link && (
           <button
             type="button"
@@ -701,6 +730,7 @@ function ProductCard({
   onEdit,
   onDelete,
   onGenerate,
+  onFile,
   onRefreshImages,
   isRefreshing,
 }: {
@@ -709,6 +739,7 @@ function ProductCard({
   onEdit: () => void;
   onDelete: () => void;
   onGenerate: () => void;
+  onFile: () => void;
   onRefreshImages: () => void;
   isRefreshing: boolean;
 }) {
@@ -779,6 +810,14 @@ function ProductCard({
             {product.images.length}
           </span>
         </Link>
+        <button
+          type="button"
+          onClick={onFile}
+          className="inline-flex items-center gap-1 rounded-md border border-amber-400/40 bg-amber-500/[0.06] px-2 py-1 text-[11px] text-amber-700 hover:border-amber-500 hover:bg-amber-500/15"
+          title="报备给已授权明星，进入明星端商品入库流程"
+        >
+          <Send className="h-3 w-3" /> 报备
+        </button>
         {canManage && product.link && (
           <button
             type="button"

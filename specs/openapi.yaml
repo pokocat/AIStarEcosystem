@@ -2244,6 +2244,282 @@ components:
         detail:       { type: string, nullable: true, description: '人类可读详情（含上下文）' }
         createdAt:    { type: string, format: date-time }
 
+
+    # ── 明星商务工作台（web-star，v0.60） ─────────────────────────────────────
+
+    StarProfile:
+      type: object
+      description: 当前账号绑定的明星档案（starId = celebrity 域 CelebrityStar.id，双端打通根基）
+      properties:
+        starId:    { type: string }
+        name:      { type: string }
+        avatar:    { type: string }
+        category:  { type: string }
+        tierLabel: { type: string, description: '艺人分级：S级（≥1000万粉）/ A级（≥100万粉）/ 新晋' }
+        fans:      { type: integer, format: int64 }
+        agentView: { type: boolean }
+        listedAt:  { type: string, format: date-time, nullable: true }
+
+    StarOnboardInput:
+      type: object
+      required: [name, category, description, fans, startingPriceCents]
+      properties:
+        name:               { type: string }
+        category:           { type: string }
+        description:        { type: string }
+        bio:                { type: string, nullable: true }
+        location:           { type: string, nullable: true }
+        fans:               { type: integer, format: int64 }
+        startingPriceCents: { type: integer }
+        agentView:          { type: boolean, nullable: true }
+
+    StarOverview:
+      type: object
+      properties:
+        ipActiveCount:        { type: integer }
+        ipTotalCount:         { type: integer }
+        pendingTotal:         { type: integer }
+        productLibraryCount:  { type: integer }
+        activeBrandDeals:     { type: integer }
+        monthGmvCents:        { type: integer, format: int64 }
+        monthGmvDeltaPercent: { type: integer }
+        monthRevenueCents:    { type: integer, format: int64 }
+        pendingByModule:
+          type: array
+          items:
+            type: object
+            properties:
+              module: { type: string, enum: [ipAuth, cooperation, whitelist, digitalHuman, aiLikeness, contentReview, productOnboard, brandAuth] }
+              count:  { type: integer }
+
+    StarIpAsset:
+      type: object
+      description: IP 授权中心资产；6 状态机 notStarted→preparing→uploaded→techReceived→volcanoSync→active
+      properties:
+        id:               { type: string }
+        type:             { type: string, enum: [portrait, clip, digitalHuman, documents] }
+        status:           { type: string, enum: [notStarted, preparing, uploaded, techReceived, volcanoSync, active] }
+        techCompany:      { type: string }
+        volcanoProjectId: { type: string, nullable: true }
+        filesCount:       { type: integer }
+        requiredFiles:    { type: integer }
+        uploadedAt:       { type: string, format: date, nullable: true }
+        activatedAt:      { type: string, format: date, nullable: true }
+        note:             { type: string, nullable: true }
+
+    StarCooperationRequest:
+      type: object
+      description: 带货授权申请（后端实体即 CelebrityStarAuthorization —— celebrity↔star 打通核心）
+      properties:
+        id:              { type: string }
+        applicantUserId: { type: string }
+        applicantName:   { type: string }
+        scenes:          { type: array, items: { type: string } }
+        note:            { type: string, nullable: true }
+        status:          { type: string, enum: [pending, authorized, unauthorized, expired] }
+        requestedAt:     { type: string, format: date-time }
+        decidedAt:       { type: string, format: date-time, nullable: true }
+        expireDate:      { type: string, format: date, nullable: true }
+        availableStyles: { type: integer, nullable: true }
+
+    StarCooperationDecision:
+      type: object
+      properties:
+        scenes:          { type: array, items: { type: string }, nullable: true }
+        expireMonths:    { type: integer, nullable: true }
+        availableStyles: { type: integer, nullable: true }
+        reason:          { type: string, nullable: true, description: 驳回理由 }
+
+    StarWhitelistRequest:
+      type: object
+      description: 账号报白申请；5 步 received→contacting→sms→processing→authorized
+      properties:
+        id:               { type: string }
+        mcnName:          { type: string }
+        accountHandle:    { type: string }
+        accountId:        { type: string }
+        phone:            { type: string, description: 已脱敏 }
+        uid:              { type: string }
+        platform:         { type: string, enum: [抖音, 视频号, 快手, 小红书] }
+        fans:             { type: integer, format: int64 }
+        accountAgeMonths: { type: integer }
+        mcnLevel:         { type: string }
+        requestedAt:      { type: string, format: date-time }
+        status:           { type: string, enum: [pending, approved, rejected, info_required] }
+        whitelistStep:    { type: string, enum: [received, contacting, sms, processing, authorized] }
+        message:          { type: string, nullable: true }
+        recentVideos:     { type: integer }
+        avgViews:         { type: integer, format: int64 }
+        creditScore:      { type: integer }
+
+    StarDigitalHumanRequest:
+      type: object
+      properties:
+        id:             { type: string }
+        mcnName:        { type: string }
+        usageType:      { type: string, enum: [live, shortVideo, ads] }
+        platforms:      { type: array, items: { type: string } }
+        purpose:        { type: string }
+        durationMonths: { type: integer }
+        requestedAt:    { type: string, format: date-time }
+        status:         { type: string, enum: [pending, approved, rejected] }
+        riskNote:       { type: string, nullable: true }
+
+    StarAiLikenessRequest:
+      type: object
+      properties:
+        id:          { type: string }
+        mcnName:     { type: string }
+        modelType:   { type: string, enum: [voice, face, fullBody] }
+        riskLevel:   { type: string, enum: [low, medium, high] }
+        platforms:   { type: array, items: { type: string } }
+        purpose:     { type: string }
+        requestedAt: { type: string, format: date-time }
+        status:      { type: string, enum: [pending, approved, rejected] }
+        aiVendor:    { type: string }
+
+    StarContentReview:
+      type: object
+      properties:
+        id:           { type: string }
+        title:        { type: string }
+        type:         { type: string, enum: [clip, digitalHuman, aiLikeness] }
+        uploader:     { type: string }
+        mcnName:      { type: string }
+        durationSec:  { type: integer }
+        submittedAt:  { type: string, format: date-time }
+        status:       { type: string, enum: [pending, approved, revision, rejected] }
+        platform:     { type: string }
+        views:        { type: integer, format: int64, nullable: true }
+        revisionNote: { type: string, nullable: true }
+
+    StarProductOnboard:
+      type: object
+      description: 商品入库单；step 0=已提交 1=平台初审 2=明星审核 3=样品寄送 4=样品确认 5=已入库 6=已驳回；creator 报备来源带 productId 关联公共商品池
+      properties:
+        id:               { type: string }
+        productId:        { type: string, nullable: true }
+        productName:      { type: string }
+        brand:            { type: string }
+        category:         { type: string }
+        priceCents:       { type: integer }
+        source:           { type: string, enum: [platform, creator, brand] }
+        submittedBy:      { type: string }
+        mcnName:          { type: string, nullable: true }
+        step:             { type: integer, minimum: 0, maximum: 6 }
+        platformSample:   { $ref: '#/components/schemas/StarSampleStatus' }
+        celebSample:      { $ref: '#/components/schemas/StarSampleStatus' }
+        submittedAt:      { type: string, format: date-time }
+        trackingPlatform: { type: string, nullable: true }
+        trackingCeleb:    { type: string, nullable: true }
+        platformNote:     { type: string, nullable: true }
+
+    StarSampleStatus:
+      type: string
+      enum: [notSent, shipping, delivered, approved, rejected]
+      description: 双路寄样状态（商品入库 / 品牌授权共用）
+
+    StarProductLibItem:
+      type: object
+      description: 商品库条目（由 step=5 入库单派生）
+      properties:
+        id:          { type: string }
+        productId:   { type: string, nullable: true }
+        productName: { type: string }
+        brand:       { type: string }
+        category:    { type: string }
+        approvedAt:  { type: string, format: date }
+        priceCents:  { type: integer }
+        mcnName:     { type: string }
+        salesCount:  { type: integer }
+
+    StarBrandAuthRequest:
+      type: object
+      description: 品牌授权；pending→platformReview→celebReview→sampleStage→approved（↘rejected），双路寄样均 approved 才激活
+      properties:
+        id:             { type: string }
+        brandName:      { type: string }
+        authTypes:      { type: array, items: { type: string } }
+        purpose:        { type: string }
+        durationMonths: { type: integer }
+        amountCents:    { type: integer, format: int64 }
+        platforms:      { type: array, items: { type: string } }
+        status:         { type: string, enum: [pending, platformReview, celebReview, sampleStage, approved, rejected] }
+        platformSample: { $ref: '#/components/schemas/StarSampleStatus' }
+        celebSample:    { $ref: '#/components/schemas/StarSampleStatus' }
+        submittedAt:    { type: string, format: date-time }
+        platformNote:   { type: string, nullable: true }
+
+    StarRevenueSummary:
+      type: object
+      properties:
+        totalGmvCents:      { type: integer, format: int64 }
+        monthGmvCents:      { type: integer, format: int64 }
+        pendingAmountCents: { type: integer, format: int64 }
+        paidAmountCents:    { type: integer, format: int64 }
+        months:
+          type: array
+          items:
+            type: object
+            properties:
+              id:           { type: string }
+              month:        { type: string, example: '2026-05' }
+              gmvCents:     { type: integer, format: int64 }
+              sharePercent: { type: integer }
+              amountCents:  { type: integer, format: int64 }
+              status:       { type: string, enum: [processing, paid] }
+
+    StarContentRule:
+      type: object
+      description: 内容授权规则（绿/黄/橙/红四区，所有审核动作的策略来源）
+      properties:
+        id:          { type: string }
+        name:        { type: string }
+        zone:        { type: string, enum: [green, yellow, orange, red] }
+        enabled:     { type: boolean }
+        description: { type: string }
+
+    StarInfringementCase:
+      type: object
+      description: 侵权巡查案例；pending→investigating→confirmed→resolved（dismiss=误报直接 resolved）
+      properties:
+        id:          { type: string }
+        platform:    { type: string }
+        url:         { type: string }
+        ipName:      { type: string }
+        severity:    { type: string, enum: [high, medium, low] }
+        status:      { type: string, enum: [pending, investigating, confirmed, resolved] }
+        reportedBy:  { type: string }
+        reportedAt:  { type: string, format: date-time }
+        description: { type: string }
+        actionNote:  { type: string, nullable: true }
+
+    StarContract:
+      type: object
+      properties:
+        id:          { type: string }
+        title:       { type: string }
+        type:        { type: string, enum: [authorization, amendment, settlement] }
+        mcnName:     { type: string }
+        ipName:      { type: string }
+        signDate:    { type: string, format: date }
+        startDate:   { type: string, format: date }
+        endDate:     { type: string, format: date }
+        amountCents: { type: integer, format: int64 }
+        status:      { type: string, enum: [active, expired, pending, terminated] }
+
+    StarProductFiling:
+      type: object
+      description: celebrity 端商品报备回执（id = StarProductOnboard.id）
+      properties:
+        id:          { type: string }
+        productId:   { type: string }
+        starId:      { type: string }
+        starName:    { type: string }
+        step:        { type: integer }
+        stepLabel:   { type: string }
+        submittedAt: { type: string, format: date-time }
+
 # ─────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────
@@ -7015,3 +7291,185 @@ paths:
     get: { tags: [dap], operationId: dapScenes, responses: { '200': { description: ok } } }
   /v1/templates:
     get: { tags: [dap], operationId: dapTemplates, responses: { '200': { description: ok } } }
+
+  # ── 明星商务工作台（web-star，v0.60；/api/star/** authenticated） ──────────
+
+  /star/profile:
+    get: { tags: [star], operationId: starProfile, description: 当前账号绑定的明星档案；未入驻返回 data=null, responses: { '200': { description: ok } } }
+  /star/onboard:
+    post:
+      tags: [star]
+      operationId: starOnboard
+      description: 明星入驻：创建 CelebrityStar（celebrity 市场立即可见）+ 账号绑定 + 初始化 IP 资产与默认规则
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StarOnboardInput' }
+      responses: { '201': { description: created } }
+  /star/overview:
+    get: { tags: [star], operationId: starOverview, responses: { '200': { description: ok } } }
+  /star/ip-assets:
+    get: { tags: [star], operationId: starListIpAssets, responses: { '200': { description: ok } } }
+  /star/ip-assets/{type}/advance:
+    post:
+      tags: [star]
+      operationId: starAdvanceIpAsset
+      parameters: [{ in: path, name: type, required: true, schema: { type: string, enum: [portrait, clip, digitalHuman, documents] } }]
+      responses: { '200': { description: ok } }
+  /star/cooperations:
+    get:
+      tags: [star]
+      operationId: starListCooperations
+      description: 带货授权申请列表（celebrity 端创作者发起，明星端审批）
+      parameters: [{ in: query, name: status, schema: { type: string, enum: [pending, authorized, unauthorized, expired] } }]
+      responses: { '200': { description: ok } }
+  /star/cooperations/{id}/approve:
+    post:
+      tags: [star]
+      operationId: starApproveCooperation
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StarCooperationDecision' }
+      responses: { '200': { description: 'CelebrityStarAuthorization → authorized；申请方收站内通知' } }
+  /star/cooperations/{id}/reject:
+    post:
+      tags: [star]
+      operationId: starRejectCooperation
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StarCooperationDecision' }
+      responses: { '200': { description: 'CelebrityStarAuthorization → unauthorized' } }
+  /star/whitelist-requests:
+    get: { tags: [star], operationId: starListWhitelist, responses: { '200': { description: ok } } }
+  /star/whitelist-requests/{id}/advance:
+    post: { tags: [star], operationId: starAdvanceWhitelist, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: '5 步推进；到 authorized 时 status=approved' } } }
+  /star/whitelist-requests/{id}/reject:
+    post: { tags: [star], operationId: starRejectWhitelist, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/digital-human-requests:
+    get: { tags: [star], operationId: starListDigitalHuman, responses: { '200': { description: ok } } }
+  /star/digital-human-requests/{id}/approve:
+    post: { tags: [star], operationId: starApproveDigitalHuman, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/digital-human-requests/{id}/reject:
+    post: { tags: [star], operationId: starRejectDigitalHuman, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/ai-likeness-requests:
+    get: { tags: [star], operationId: starListAiLikeness, responses: { '200': { description: ok } } }
+  /star/ai-likeness-requests/{id}/approve:
+    post: { tags: [star], operationId: starApproveAiLikeness, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/ai-likeness-requests/{id}/reject:
+    post: { tags: [star], operationId: starRejectAiLikeness, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/content-reviews:
+    get: { tags: [star], operationId: starListContentReviews, responses: { '200': { description: ok } } }
+  /star/content-reviews/{id}/approve:
+    post: { tags: [star], operationId: starApproveContent, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/content-reviews/{id}/revision:
+    post:
+      tags: [star]
+      operationId: starReviseContent
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { note: { type: string } } }
+      responses: { '200': { description: '回改意见回流 MCN 端返工列表' } }
+  /star/content-reviews/{id}/reject:
+    post: { tags: [star], operationId: starRejectContent, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/product-onboards:
+    get: { tags: [star], operationId: starListProductOnboards, responses: { '200': { description: ok } } }
+  /star/product-onboards/{id}/approve:
+    post: { tags: [star], operationId: starApproveProductOnboard, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: 'step 2→3：平台路默认验收，明星路开始寄样' } } }
+  /star/product-onboards/{id}/reject:
+    post: { tags: [star], operationId: starRejectProductOnboard, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: 'step→6；creator 报备来源同步站内通知报备人' } } }
+  /star/product-onboards/{id}/receive-sample:
+    post: { tags: [star], operationId: starReceiveProductSample, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: '明星样品 shipping→delivered；step 3→4' } } }
+  /star/product-onboards/{id}/confirm-sample:
+    post: { tags: [star], operationId: starConfirmProductSample, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: '明星样品 →approved；双路 approved → step 5 入库 + 通知报备人' } } }
+  /star/product-library:
+    get: { tags: [star], operationId: starListProductLibrary, responses: { '200': { description: ok } } }
+  /star/brand-auths:
+    get: { tags: [star], operationId: starListBrandAuths, responses: { '200': { description: ok } } }
+  /star/brand-auths/{id}/approve:
+    post: { tags: [star], operationId: starApproveBrandAuth, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: 'celebReview→sampleStage' } } }
+  /star/brand-auths/{id}/reject:
+    post: { tags: [star], operationId: starRejectBrandAuth, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/brand-auths/{id}/receive-sample:
+    post: { tags: [star], operationId: starReceiveBrandSample, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/brand-auths/{id}/confirm-sample:
+    post: { tags: [star], operationId: starConfirmBrandSample, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: '双路 approved → 授权激活 approved' } } }
+  /star/revenue:
+    get: { tags: [star], operationId: starRevenue, responses: { '200': { description: ok } } }
+  /star/content-rules:
+    get: { tags: [star], operationId: starListContentRules, responses: { '200': { description: ok } } }
+  /star/content-rules/{id}/toggle:
+    post: { tags: [star], operationId: starToggleContentRule, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /star/infringements:
+    get: { tags: [star], operationId: starListInfringements, responses: { '200': { description: ok } } }
+  /star/infringements/{id}/transition:
+    post:
+      tags: [star]
+      operationId: starTransitionInfringement
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [investigate, confirm, resolve, dismiss] }
+                note:   { type: string, nullable: true }
+      responses: { '200': { description: ok } }
+  /star/contracts:
+    get: { tags: [star], operationId: starListContracts, responses: { '200': { description: ok } } }
+
+  # ── celebrity → star 打通（/api/me/** authenticated，v0.60） ───────────────
+
+  /me/celebrity/stars/{starId}/authorization/apply:
+    post:
+      tags: [star, celebrity]
+      operationId: celebrityApplyStarAuthorization
+      description: 创作者申请明星带货授权：CelebrityStarAuthorization upsert 至 pending → web-star「带货授权」审批
+      parameters: [{ in: path, name: starId, required: true, schema: { type: string } }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scenes: { type: array, items: { type: string } }
+                note:   { type: string, nullable: true }
+      responses:
+        '201': { description: '申请已提交（pending）' }
+        '409': { description: 'AUTH_ALREADY_PENDING / AUTH_ALREADY_AUTHORIZED' }
+  /me/celebrity/products/{productId}/star-filings:
+    post:
+      tags: [star, celebrity]
+      operationId: celebrityFileProductToStar
+      description: 把公共商品池商品报备给明星 → web-star「商品入库」step=2 明星审核
+      parameters: [{ in: path, name: productId, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [starId]
+              properties:
+                starId: { type: string }
+      responses:
+        '201': { description: created }
+        '409': { description: FILING_ALREADY_EXISTS }
+  /me/celebrity/star-filings:
+    get:
+      tags: [star, celebrity]
+      operationId: celebrityListStarFilings
+      description: 我的商品报备单（celebrity 端回查 6 步流转状态）
+      parameters:
+        - { in: query, name: productId, schema: { type: string } }
+        - { in: query, name: starId, schema: { type: string } }
+      responses: { '200': { description: ok } }

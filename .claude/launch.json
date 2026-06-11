@@ -2,6 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "star",
+      "cwd": "apps/web-star",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3014,
+      "autoPort": true
+    },
+    {
       "name": "celebrity",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@ai-star-eco/web-celebrity", "exec", "next", "dev"],

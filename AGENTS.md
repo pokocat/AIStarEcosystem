@@ -18,7 +18,7 @@
 **核心信息（避免新 agent 反复翻仓）**：
 
 - 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (prod)
-- 四个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013）
+- 五个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013）/ **web-star**（3014，明星商务工作台）
 - 遗留 web app: **apps/web**（3002，即将删除）/ 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 
@@ -38,7 +38,8 @@ Aisingerecosystem/
 │   ├── web-music/          # AI 音乐人（Next 16 / React 19 / Tailwind v4）— port 3010
 │   ├── web-drama/          # AI 短剧（同上）— port 3011
 │   ├── web-celebrity/      # AI 明星带货（同上）— port 3012
-│   └── web-aiavatar/       # AiAvatar 数字人资产平台（移动端 H5/小程序形态 SPA）— port 3013
+│   ├── web-aiavatar/       # AiAvatar 数字人资产平台（移动端 H5/小程序形态 SPA）— port 3013
+│   └── web-star/           # 明星商务工作台（明星/经纪团队审核中枢，浅色主题）— port 3014
 ├── packages/               # pnpm workspace 共享包（新代码真源）
 │   ├── types/              # @ai-star-eco/types（22 域类型定义）
 │   ├── ui/                 # @ai-star-eco/ui（48 shadcn + ThemeProvider + globals.css）
@@ -75,7 +76,7 @@ Aisingerecosystem/
 
 | 代次 | 仓 | 栈 |
 |---|---|---|
-| 新代码 | `packages/*` + `apps/web-{music,drama,celebrity}` + `apps/admin` | Next **16.2.6** + React **19** + Tailwind **v4** + **pnpm** |
+| 新代码 | `packages/*` + `apps/web-{music,drama,celebrity,star}` + `apps/admin` | Next **16.2.6** + React **19** + Tailwind **v4** + **pnpm** |
 | 遗留 | `apps/web` | Next 14.2 + React 18 + npm（不动） |
 | 后端 | `apps/server` | Spring Boot 3.3.5 + Java 17 |
 | 小程序 | `apps/miniprogram` | 微信小程序原生 |
@@ -114,6 +115,7 @@ pnpm dev:music                                # web-music — http://localhost:3
 pnpm dev:drama                                # web-drama — http://localhost:3011
 pnpm dev:celebrity                            # web-celebrity — http://localhost:3012
 pnpm dev:aiavatar                             # web-aiavatar — http://localhost:3013
+pnpm dev:star                                 # web-star — http://localhost:3014
 pnpm dev:admin                                # apps/admin — http://localhost:3003
 
 pnpm typecheck:all                            # workspace 一次性 typecheck
@@ -226,6 +228,7 @@ workspace 额外门：`pnpm typecheck:all`。
 /api/auth/**               → permitAll（注册 / 激活）
 /api/admin/auth/login      → permitAll（管理员登录）
 /api/me/**                 → authenticated（JWT；controller 必须校验 ownerUserId == principal.id）
+/api/star/**               → authenticated（v0.60 明星商务工作台；controller 按 StarAccount 绑定校验归属）
 /api/admin/**              → hasAnyRole("SUPER_ADMIN", "OPERATOR")
 /api/internal/**           → hasRole("INTERNAL")（X-Internal-Secret 校验）
 其他                        → permitAll
@@ -413,6 +416,7 @@ pnpm check:api-contract
 | **AI 短剧** | `apps/web-drama/` | 3011 | [`apps/web-drama/PRODUCT.md`](apps/web-drama/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
 | **AI 明星带货** | `apps/web-celebrity/` | 3012 | [`apps/web-celebrity/PRODUCT.md`](apps/web-celebrity/PRODUCT.md) | 同 PRODUCT.md | `/dashboard` |
 | **AiAvatar** | `apps/web-aiavatar/` | 3013 | [`apps/web-aiavatar/README.md`](apps/web-aiavatar/README.md) | [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md) | `/`（移动端 SPA） |
+| **明星商务工作台** | `apps/web-star/` | 3014 | [`apps/web-star/PRODUCT.md`](apps/web-star/PRODUCT.md) | 同 PRODUCT.md §4 | `/dashboard`（浅色桌面端） |
 
 前三个业务 app 路由形态一致：
 
@@ -445,8 +449,9 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **v0.61** | 2026-06-10 | 收敛 Phase 2 ①：aiavatar 反向「应用于」视图（`GET /v1/avatars/{id}/references` + 详情页 MAppliedTo 卡片，展示数字人被哪些 music/drama 艺人壳引用） |
-| **v0.60** | 2026-06-10 | 数字人收敛：music/drama 艺人形象统一引用 AiAvatar（`POST /me/digital-ips/import-avatar` 引入 + `dapDisplayRef` 指定展示图；本地孵化/锻造入口下线） |
+| **v0.60-补丁** | 2026-06-10 | 收敛 Phase 2 ①：aiavatar 反向「应用于」视图（`GET /v1/avatars/{id}/references` + 详情页 MAppliedTo 卡片，展示数字人被哪些 music/drama 艺人壳引用） |
+| **v0.61** | 2026-06-10 | 数字人收敛：music/drama 艺人形象统一引用 AiAvatar（`POST /me/digital-ips/import-avatar` 引入 + `dapDisplayRef` 指定展示图；本地孵化/锻造入口下线） |
+| **v0.60** | 2026-06-10 | 第五子应用「明星商务工作台」web-star（3014，浅色主题，13+1 模块）+ `/api/star/**` 域（12 实体）+ celebrity↔star 双端打通（入驻上架明星市场 / 带货授权审批 / 商品报备 6 步入库）+ SubProduct/PlatformSupport 加 `star` 平台 |
 | **v0.59** | 2026-06-10 | 账号停用/恢复完整链路（/admin/users/{id}/suspend·reactivate + 审计 + 短信登录补停用闸）+ 消息中心未读角标 + 砍掉重复的 /base/credit-packs 页 |
 | **v0.58** | 2026-06-10 | admin 消息中心真实化（NotificationPublisher：充值下单/取消、新用户激活 → 运营收件箱 `__admin__`；核准/驳回 → 用户站内消息）+ 结算中心流水补全（账号登录名/昵称、精确余额、秒级时间、真 CSV 导出） |
 | **v0.57** | 2026-06-09 | 审计日志记录登录来源子应用（`X-App-Code` 头 → `AuditLog.appCode`）+ admin「来源应用」列与筛选 |

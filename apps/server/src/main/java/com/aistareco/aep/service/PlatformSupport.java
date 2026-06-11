@@ -10,8 +10,9 @@ import java.util.stream.Collectors;
 /**
  * 子产品平台访问隔离的纯函数工具（无 Spring 依赖，DTO 可直接静态调用）。
  *
- * 平台 = 四个子产品：{@code music}（AI 音乐人） / {@code drama}（AI 短剧） /
- * {@code celebrity}（AI 明星带货） / {@code aiavatar}（数字人资产平台，v0.53+）。
+ * 平台 = 五个子产品：{@code music}（AI 音乐人） / {@code drama}（AI 短剧） /
+ * {@code celebrity}（AI 明星带货） / {@code aiavatar}（数字人资产平台，v0.53+） /
+ * {@code star}（明星商务工作台，v0.60+）。
  * 一个账号可被授予其中若干个平台的访问权，字段以 CSV 形式落在 {@code aep_users.platforms}。
  */
 public final class PlatformSupport {
@@ -23,9 +24,11 @@ public final class PlatformSupport {
     public static final String CELEBRITY = "celebrity";
     /** v0.53+: web-aiavatar 数字人资产平台纳入平台门禁。 */
     public static final String AIAVATAR = "aiavatar";
+    /** v0.60+: web-star 明星商务工作台纳入平台门禁。 */
+    public static final String STAR = "star";
 
     /** 平台全集（注册顺序即展示顺序）。 */
-    public static final List<String> ALL = List.of(MUSIC, DRAMA, CELEBRITY, AIAVATAR);
+    public static final List<String> ALL = List.of(MUSIC, DRAMA, CELEBRITY, AIAVATAR, STAR);
 
     /** 把 CSV 解析为干净的平台列表（去空格 / 去空项 / 去重 / 仅保留已知平台 / 保序）。 */
     public static List<String> parse(String csv) {

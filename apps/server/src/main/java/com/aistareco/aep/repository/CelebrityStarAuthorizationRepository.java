@@ -22,4 +22,7 @@ public interface CelebrityStarAuthorizationRepository
 
     /** 该用户的全部授权（其他场景预留）。 */
     List<CelebrityStarAuthorization> findByUserId(String userId);
+
+    /** v0.60: 某明星名下的全部授权申请（web-star 明星端「带货授权」审批列表）。 */
+    List<CelebrityStarAuthorization> findByStarIdOrderByCreatedAtDesc(String starId);
 }

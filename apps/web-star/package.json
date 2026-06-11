@@ -1,0 +1,37 @@
+{
+  "name": "@ai-star-eco/web-star",
+  "version": "0.1.0",
+  "private": true,
+  "description": "明星商务工作台 — 明星本人 / 经纪团队的审核与运营中枢（独立 Next 16 应用，浅色主题）。",
+  "scripts": {
+    "dev": "next dev -p 3014",
+    "build": "next build",
+    "start": "next start -p 3014",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test": "echo 'No unit tests for web-star yet (mock-driven UI app, type-safety guarded by typecheck).' && exit 0"
+  },
+  "dependencies": {
+    "@ai-star-eco/api-client": "workspace:*",
+    "@ai-star-eco/types": "workspace:*",
+    "@ai-star-eco/ui": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.547.0",
+    "motion": "^12.0.0",
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/node": "^20.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.1.12",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,103 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   web-star · 明星商务工作台 设计令牌（浅色 light 主题）
+   视觉基调：白底浅色 + 红黑灰系列感 + 星光金点缀（amber→red 渐变星标）。
+   高密度审核工作台：小字号层级体系、柔和分层阴影、模块彩色 accent 原样保留。
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── 自托管字体（与 web-celebrity 同源 woff2，无外网依赖） ────────────────── */
+@font-face {
+  font-family: "AEP Inter";
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AEP Manrope";
+  src: url("/fonts/manrope-latin.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AEP JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AEP Instrument Serif";
+  src: url("/fonts/instrument-serif-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AEP Instrument Serif";
+  src: url("/fonts/instrument-serif-italic-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ── 画布与层级 ── */
+  --bg-0: #f7f6f3;            /* 暖白画布 */
+  --bg-1: #fefdfb;            /* 卡片（暖近白，不用纯白） */
+  --bg-2: #f1efea;            /* hover / well */
+  --line: #e9e6df;            /* 分隔线 */
+  --line-strong: #d9d4ca;
+
+  /* ── 文本（红黑灰系列：近黑 ink） ── */
+  --ink-0: #1c1917;           /* 主文本 */
+  --ink-1: #57534e;           /* 次级 */
+  --ink-2: #a8a29e;           /* 弱化 */
+
+  /* ── 品牌：正红 + 星光金 ── */
+  --brand: #dc2626;
+  --brand-deep: #b91c1c;
+  --brand-soft: #fef2f2;
+  --star-gold: #f59e0b;
+  --star-gold-deep: #b45309;
+  --gradient-star: linear-gradient(135deg, #f59e0b, #ef4444);
+  --gradient-ink: linear-gradient(135deg, #292524, #57534e);
+
+  /* ── 状态色 ── */
+  --ok: #16a34a;
+  --warn: #d97706;
+  --info: #0284c7;
+  --danger: #dc2626;
+
+  /* ── 字体 ── */
+  --font-sans: "AEP Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "AEP Manrope", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "AEP Instrument Serif", "Songti SC", Georgia, serif;
+  --font-mono: "AEP JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── 圆角（卡片 rounded-2xl 16px 为主） ── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* ── 焦点环 ── */
+  --focus-ring: 0 0 0 2px var(--bg-0), 0 0 0 4px #d9770680;
+
+  /* ── 阴影（柔和分层，hover 上浮） ── */
+  --shadow-soft: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-card: 0 1px 3px rgba(28, 25, 23, 0.05), 0 1px 2px rgba(28, 25, 23, 0.03);
+  --shadow-lift: 0 8px 24px rgba(28, 25, 23, 0.08), 0 2px 6px rgba(28, 25, 23, 0.04);
+}
+
+html {
+  background: var(--bg-0);
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--ink-0);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}

@@ -64,6 +64,8 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
+                        // v0.60: 明星商务工作台（web-star）—— 登录后由 controller 解析明星档案绑定
+                        .requestMatchers("/api/star/**").authenticated()
                         // 数字人广场 · 运营内嵌后台（web-aiavatar）：/api/v1/admin/** 需运营 / 超管。
                         // 顺序敏感：必须排在通用 /api/v1/** 之前，否则被宽松规则吃掉。
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("SUPER_ADMIN", "OPERATOR")

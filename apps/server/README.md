@@ -339,6 +339,32 @@ src/main/java/com/aistareco/aep/
 | `COACH` | 普通用户 | 掌门人，通过秘钥注册 |
 | `FAN` | 普通用户 | 粉丝，通过秘钥注册 |
 
+### 明星商务工作台域（star_*，v0.60）
+
+> 服务 apps/web-star（`/api/star/**`，authenticated）。账号经 `star_accounts` 绑定
+> celebrity 域 `celebrity_stars`（一账号一明星）；带货授权直接复用
+> `celebrity_star_authorizations`（web-celebrity 申请 → 明星端审批，同表同状态机）。
+
+| 实体 | 表 | 说明 |
+|------|----|------|
+| `StarAccount` | `star_accounts` | AepUser ↔ CelebrityStar 绑定（unique user_id；agentView 经纪人视角） |
+| `StarIpAsset` | `star_ip_assets` | IP 资产 4 类（portrait/clip/digitalHuman/documents）× 6 状态机 notStarted→preparing→uploaded→techReceived→volcanoSync→active |
+| `StarWhitelistRequest` | `star_whitelist_requests` | 账号报白 5 步 received→contacting→sms→processing→authorized；fans/avgViews 原始整数 |
+| `StarDigitalHumanRequest` | `star_digital_human_requests` | 数字人授权（live/shortVideo/ads） |
+| `StarAiLikenessRequest` | `star_ai_likeness_requests` | AI 形象授权（voice/face/fullBody × low/medium/high） |
+| `StarContentReview` | `star_content_reviews` | 内容审核四态（revision 带 revisionNote 回流） |
+| `StarProductOnboard` | `star_product_onboards` | 商品入库 6 步 + 双路寄样；productId/submittedByUserId 关联公共商品池与报备人；step=5 即商品库（libraryAt/salesCount） |
+| `StarBrandAuthRequest` | `star_brand_auth_requests` | 品牌授权 pending→platformReview→celebReview→sampleStage→approved + 双向寄样 |
+| `StarContentRule` | `star_content_rules` | 绿/黄/橙/红四区规则启停 |
+| `StarInfringementCase` | `star_infringement_cases` | 侵权巡查 pending→investigating→confirmed→resolved |
+| `StarContract` | `star_contracts` | 合同（authorization/amendment/settlement）|
+| `StarRevenueMonth` | `star_revenue_months` | 月度分成（列名 `rev_month` 避 H2 保留字 MONTH；金额存分） |
+
+打通端点（`/api/me/celebrity/**`）：`POST stars/{id}/authorization/apply`（创作者申请授权）、
+`POST products/{id}/star-filings` + `GET star-filings`（商品报备与回查）。
+种子（dev）：`star_shenteng / star123` 绑 `star-shen-teng`，全模块演示数据
+（`StarWorkbenchDataInitializer` @Order(3)）。
+
 ### 数字人资产平台域（dap_*，v0.51）
 
 > 服务 apps/web-aiavatar（/api/v1/**）。账户复用 aep_users + 钱包；多模态大模型（文本/图片/视频）经 `DapMultimodalClient` 统一从后台「AI 应用绑定」端点解析（purpose=DAP_PERSONA/DAP_IMAGE/DAP_VIDEO，无 env 兜底）。

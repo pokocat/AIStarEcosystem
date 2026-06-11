@@ -21,5 +21,6 @@ import * as CelebrityZoneApi from "./celebrity-zone";
 import * as ProductsApi from "./products";
 import * as MixcutApi from "./mixcut";
 import * as MaterialOpsApi from "./material-ops";
+import * as StarFilingApi from "./star-filing";
 
-export { CelebrityZoneApi, ProductsApi, MixcutApi, MaterialOpsApi };
+export { CelebrityZoneApi, ProductsApi, MixcutApi, MaterialOpsApi, StarFilingApi };

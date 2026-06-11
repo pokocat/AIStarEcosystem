@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { CelebrityStar } from "@ai-star-eco/types/celebrity-zone";
+import { applyStarAuthorization } from "@/api/celebrity-zone";
 import { CTA_PRIMARY, CTA_SECONDARY } from "@/constants/celebrity-zone-ui";
 import {
   Select,
@@ -44,12 +45,44 @@ const INITIAL: FormState = {
 const inputCls =
   "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-violet-500";
 
+/** 把表单合作场景文本解析为标准场景集（带货 / 种草 / 测评 / 代言）。 */
+function parseScenes(raw: string): string[] {
+  const known = ["带货", "种草", "测评", "代言"];
+  const picked = known.filter((k) => raw.includes(k));
+  return picked.length > 0 ? picked : ["带货"];
+}
+
 export function CelebrityApplyForm({ star }: Props) {
   const [form, setForm] = React.useState<FormState>(INITIAL);
   const [submitted, setSubmitted] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const set = (patch: Partial<FormState>) => setForm({ ...form, ...patch });
-  const canSubmit = form.company.trim() && form.brand.trim() && form.contact.trim();
+  const canSubmit = Boolean(form.company.trim() && form.brand.trim() && form.contact.trim()) && !submitting;
+
+  const submit = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      // 申请落到明星商务工作台（web-star）「带货授权」审批队列
+      const note = [
+        `公司：${form.company.trim()}`,
+        `品牌：${form.brand.trim()}`,
+        form.budget && `月预算：${form.budget}`,
+        `联系：${form.contact.trim()}`,
+        form.note.trim() && `备注：${form.note.trim()}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      await applyStarAuthorization(star.id, { scenes: parseScenes(form.scenes), note });
+      setSubmitted(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "提交失败，请稍后再试");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (submitted) {
     return (
@@ -59,8 +92,8 @@ export function CelebrityApplyForm({ star }: Props) {
         </div>
         <h2 className="text-lg font-semibold text-zinc-900">申请已提交</h2>
         <p className="text-sm leading-relaxed text-zinc-600">
-          平台将在 3 个工作日内通过站内通知和邮件回复您。如有紧急合作需求，
-          可直接联系商务团队 <a className="text-emerald-600 font-medium" href="mailto:bd@aistareco.com">bd@aistareco.com</a>。
+          申请已实时进入「{star.name}」经纪团队的明星商务工作台审批队列（48h SLA）。
+          审批结果将通过站内通知告知；批准后本页授权状态自动更新为「已授权」。
         </p>
         <div className="flex gap-2">
           <Link href={`/star/${star.id}`} className={CTA_SECONDARY}>
@@ -125,7 +158,7 @@ export function CelebrityApplyForm({ star }: Props) {
         onSubmit={(e) => {
           e.preventDefault();
           if (!canSubmit) return;
-          setSubmitted(true);
+          void submit();
         }}
         className="grid grid-cols-1 gap-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-[var(--shadow-soft)] sm:grid-cols-2"
       >
@@ -188,6 +221,12 @@ export function CelebrityApplyForm({ star }: Props) {
           />
         </Field>
 
+        {error && (
+          <div className="sm:col-span-2 rounded-lg border border-pink-300/50 bg-pink-50 px-3 py-2 text-xs text-pink-700">
+            {error}
+          </div>
+        )}
+
         <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 pt-4">
           <a
             href="mailto:bd@aistareco.com"
@@ -196,7 +235,7 @@ export function CelebrityApplyForm({ star }: Props) {
             <Mail className="h-3.5 w-3.5" /> 紧急合作可直接邮件 bd@aistareco.com
           </a>
           <button type="submit" disabled={!canSubmit} className={CTA_PRIMARY}>
-            提交申请
+            {submitting ? "提交中…" : "提交申请"}
           </button>
         </div>
       </form>
