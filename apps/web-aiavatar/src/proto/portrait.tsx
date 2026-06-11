@@ -39,11 +39,14 @@ function realSrcFor(char: any, variant: string, src?: string): string | null {
 function Portrait({ char = {}, variant = 'key', ratio = '3 / 4', radius = 0, expr = 'calm',
                     showName, dim, badge, className, style, src, imgFit = 'cover', onClick }: any) {
   const real = realSrcFor(char, variant, src);
-  const hue = (char.hue != null ? char.hue : 250);
-  const bg1  = `hsl(${hue} 20% 94%)`;
-  const bg2  = `hsl(${hue} 18% 86%)`;
-  const fg   = `hsl(${hue} 14% 64%)`;
-  const ring = `hsl(${hue} 16% 80%)`;
+  // 占位色统一收敛到品牌冷蓝灰族（V4 清爽皮肤纪律：去彩虹）——
+  // 此前按 char.hue 每人一色，库网格在未出图时变成洗褪色的彩虹墙。
+  // 保留 char.hue 做 ±4° 微差，肉眼几乎同色但相邻卡不至于完全死板。
+  const hue = 208 + (((char.hue != null ? char.hue : 0) % 9) - 4);
+  const bg1  = `hsl(${hue} 16% 95%)`;
+  const bg2  = `hsl(${hue} 14% 88%)`;
+  const fg   = `hsl(${hue} 10% 68%)`;
+  const ring = `hsl(${hue} 12% 82%)`;
   // 多角度：轻微偏转 / 镜像，区分 正面 / 侧面 / 四分之三 / 回眸
   const turn = { key: 0, front: 0, side: -13, threeq: -7, back: 0, look: 8 }[variant] || 0;
   const flip = variant === 'side' ? ' scaleX(.92)' : '';

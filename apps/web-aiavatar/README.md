@@ -109,6 +109,13 @@ src/
 
 ## 版本日志
 
+- **2026-06-11 · 色彩纪律审计（redesign skill）**：V4「单青色清爽」皮肤的四处彩虹泄漏收敛 ——
+  ①首页「开始创作」4 张暗卡的霓虹素材（蓝紫星云/绿金全息/紫粉声波/蓝绿芯片各一色系）
+  统一品牌 duotone：底图 `grayscale` + 右上青色微光遮罩（screen 混合），四卡成为一组刻意的
+  深墨暗段落而非彩色噪音；②Portrait 占位画像不再按 `char.hue` 每人一色（库网格彩虹墙），
+  统一冷蓝灰族（hue 208±4 微差）；③首页轮播 bg/glow 紫粉 pastel → 青蓝族（皮肤明言去紫粉的漏网）；
+  ④底部 FAB 由彩虹底图改实色品牌青渐变（底图降为 18% 去色纹理）；⑤详情统计行「2 小时前」
+  文案降字号，不再撑爆 16px 数字槽。纯 CSS/常量级改动，无结构变更。
 - **2026-06-11 · 灯箱 / Modal 层级修复**：`MLightbox` 与 `UI.Modal` 改 `createPortal` 渲染到
   `document.body`。根因：详情页 tab 内容容器 `.m-fade` 的 `mFadeUp` transform 动画带
   `fill-mode: both`（永久生效）→ 容器常驻 stacking context，`fixed + zIndex:200` 的覆盖层

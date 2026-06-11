@@ -136,20 +136,22 @@ function MWipCard({ char, onOpen }) {
         hMH('span', { className: 'mono', style: { fontSize: 10, color: 'var(--ink-3)', fontWeight: 600 } }, pct + '%'))));
 }
 
-// 大功能卡：统一尺寸，用抽象背景图 + 渐变遮罩提升质感。
+// 大功能卡：统一尺寸，抽象背景图经品牌 duotone（去色 + 青色高光）收敛 ——
+// 原图四张各一霓虹色系（蓝紫/绿金/紫粉/蓝绿），在单青色清爽皮肤里互相打架；
+// 去色后统一为「深墨底 + 青色微光」，四张卡成为一组刻意的暗段落而非彩虹噪音。
 function MFeatureCard({ title, sub, cta, image, icon, onClick }) {
   return hMH('button', { onClick, className: 'm-press', style: {
     position: 'relative', height: 142, textAlign: 'left', cursor: 'pointer', padding: 0, overflow: 'hidden',
-    border: '1px solid rgba(255,255,255,.18)', borderRadius: 'var(--r-xl)', background: '#101722', color: '#fff',
+    border: '1px solid rgba(255,255,255,.18)', borderRadius: 'var(--r-xl)', background: '#0E1822', color: '#fff',
     boxShadow: '0 16px 38px rgba(10,24,42,.16), 0 1px 0 rgba(255,255,255,.32) inset',
     display: 'flex', flexDirection: 'column', justifyContent: 'space-between', width: '100%' } },
     hMH('img', { src: image, alt: '', draggable: false, loading: 'lazy', decoding: 'async', fetchPriority: 'low', style: {
-      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .88,
-      filter: 'saturate(1.08) contrast(1.02)', transform: 'scale(1.02)', pointerEvents: 'none' } }),
+      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: .8,
+      filter: 'grayscale(1) brightness(.94) contrast(1.05)', transform: 'scale(1.02)', pointerEvents: 'none' } }),
     hMH('span', { style: { position: 'absolute', inset: 0, background:
-      'linear-gradient(120deg, rgba(5,10,18,.94) 0%, rgba(8,15,25,.78) 46%, rgba(8,15,25,.22) 100%)' } }),
+      'linear-gradient(120deg, rgba(7,13,20,.94) 0%, rgba(9,16,25,.78) 46%, rgba(9,16,25,.26) 100%)' } }),
     hMH('span', { style: { position: 'absolute', inset: 0, background:
-      'radial-gradient(circle at 16% 12%, rgba(255,255,255,.22), transparent 30%), linear-gradient(180deg, rgba(255,255,255,.12), transparent 38%, rgba(0,0,0,.28))', mixBlendMode: 'screen', opacity: .72 } }),
+      'radial-gradient(circle at 84% 24%, rgba(18,179,222,.42), transparent 52%), radial-gradient(circle at 16% 12%, rgba(255,255,255,.16), transparent 30%), linear-gradient(180deg, rgba(255,255,255,.08), transparent 38%, rgba(0,0,0,.26))', mixBlendMode: 'screen', opacity: .8 } }),
     hMH('span', { style: { position: 'absolute', left: 1, right: 1, top: 1, height: '50%', borderRadius: 'calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0',
       background: 'linear-gradient(180deg, rgba(255,255,255,.18), transparent)', pointerEvents: 'none' } }),
     hMH('div', { style: { position: 'relative', padding: '14px 14px 0' } },
@@ -181,10 +183,11 @@ function MHome({ ctx }) {
   const hasAssets = myAssets.length > 0;
 
   const SLIDES = [
+    // bg/glow 统一青蓝族 pastel（V4 清爽皮肤纪律：去紫/粉）—— glow 在轮播两侧 blur 可见
     { title: '一句话生成专属 AI 数字人，马上开工', cta: '立即生成', badge: 'HOT', image: '/generated/home-banners/create-avatar.jpg',
-      bg: 'linear-gradient(120deg,#DDE6FF,#EBE0FF 52%,#FBE3F1)', glow: 'linear-gradient(120deg,#BFD0FF,#D9C6FF,#F7CDE6)', onClick: () => ctx.startCreate('ai') },
+      bg: 'linear-gradient(120deg,#D8F1FB,#E0EDFB 52%,#E8F6F4)', glow: 'linear-gradient(120deg,#BEE7F7,#CDE1F5,#CFEFE9)', onClick: () => ctx.startCreate('ai') },
     { title: '真人授权复刻，拍一段就有数字分身', cta: '马上录制', image: '/generated/home-banners/real-clone.jpg',
-      bg: 'linear-gradient(120deg,#D8F1FB,#E3ECFF)', glow: 'linear-gradient(120deg,#BEE7F7,#CFE0FF)', onClick: () => ctx.startRealClone() },
+      bg: 'linear-gradient(120deg,#D8F1FB,#E3ECFB)', glow: 'linear-gradient(120deg,#BEE7F7,#CFE0F5)', onClick: () => ctx.startRealClone() },
     { title: '精修形象加图集视频，内容资产整套出炉', cta: '生成整套', image: '/generated/home-banners/refine-assets.jpg',
       bg: 'linear-gradient(120deg,#DEF5EA,#DCEFFB)', glow: 'linear-gradient(120deg,#C5EEDA,#C9E6F8)', onClick: () => ctx.startCreate('ai') },
   ];

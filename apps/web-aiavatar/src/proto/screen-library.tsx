@@ -646,7 +646,10 @@ function MDetail({ char: initialChar, ctx }) {
           hML('div', { className: 'm-card', style: { margin: '12px 18px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between' } },
             [['版本', char.versions], ['作品', totalAssets], ['视频', counts.video || 0], ['更新', char.updated]].map(([k, v], i) =>
               hML('div', { key: i, style: { textAlign: 'center', flex: 1, borderLeft: i ? '1px solid var(--line)' : 'none' } },
-                hML('div', { className: 'mono', style: { fontSize: 16, fontWeight: 700 } }, v),
+                // 「更新」是文案（如 "2 小时前"），降字号 + 行高补齐，不破坏数字行节奏
+                hML('div', { className: 'mono', style: typeof v === 'number'
+                  ? { fontSize: 16, fontWeight: 700 }
+                  : { fontSize: 12.5, fontWeight: 700, lineHeight: '22px', whiteSpace: 'nowrap' } }, v),
                 hML('div', { style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, k)))),
 
           // v0.61 反向「应用于」：被 music/drama 艺人壳引用时展示（空列表不渲染）
