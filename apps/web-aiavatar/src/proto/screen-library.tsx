@@ -376,8 +376,8 @@ function MLightbox({ images, index, onClose, onIndex }) {
       position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(8,10,14,.94)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' } },
     hML('button', { onClick: (e) => { e.stopPropagation(); onClose(); }, className: 'm-tap', style: {
-        position: 'absolute', top: 'calc(10px + env(safe-area-inset-top))', right: 14, width: 38, height: 38, borderRadius: 99,
-        border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 } },
+        position: 'absolute', top: 'calc(52px + env(safe-area-inset-top))', right: 14, width: 44, height: 44, borderRadius: 99,
+        border: 'none', background: 'rgba(255,255,255,.18)', color: 'var(--surface)', display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 } },
       hML(Icons.x, { size: 20, stroke: 2 })),
     hML('img', { src: img.src, alt: img.label || '', decoding: 'async', onClick: (e) => e.stopPropagation(), style: {
         maxWidth: '94vw', maxHeight: '78vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 8px 44px rgba(0,0,0,.55)' } }),
