@@ -155,6 +155,25 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     [ctx, data, state.ep],
   );
 
+  // 手改（场景/台词/分镜表单）debounce 落库，避免切阶段或刷新丢编辑。
+  // 用 ref 取最新 state（setState 异步），且只在用户编辑时排程 —— 不订阅 scenes/shotsMap
+  // 变化本身，避免「保存→data prop 重置→再保存」的循环。
+  const scenesRef = React.useRef(scenes);
+  const shotsRef = React.useRef(shotsMap);
+  scenesRef.current = scenes;
+  shotsRef.current = shotsMap;
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueSave = React.useCallback(() => {
+    if (!ctx || locked) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persist(scenesRef.current, shotsRef.current).catch(() => {});
+    }, 1500);
+  }, [ctx, locked, persist]);
+  React.useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+  }, []);
+
   /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（对话驱动改写用）。 */
   const runEpDraft = async (cost: number, instruction?: string, aiReply?: string) => {
     if (phase === "gen") return;
@@ -213,22 +232,34 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     );
   };
 
-  /* —— 场景 / 台词草稿 —— */
-  const updScene = (i: number, patch: Partial<EpScene>) =>
+  /* —— 场景 / 台词草稿（手改 → debounce 落库） —— */
+  const updScene = (i: number, patch: Partial<EpScene>) => {
     setScenes((arr) => arr.map((s, j) => (j === i ? { ...s, ...patch } : s)));
-  const updLine = (si: number, li: number, patch: Partial<ScriptLine>) =>
+    queueSave();
+  };
+  const updLine = (si: number, li: number, patch: Partial<ScriptLine>) => {
     setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: s.lines.map((l, k) => (k === li ? { ...l, ...patch } : l)) } : s)));
-  const addLine = (si: number) =>
+    queueSave();
+  };
+  const addLine = (si: number) => {
     setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: [...s.lines, { who: "旁白", text: "" }] } : s)));
-  const delLine = (si: number, li: number) =>
+    queueSave();
+  };
+  const delLine = (si: number, li: number) => {
     setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: s.lines.filter((_, k) => k !== li) } : s)));
+    queueSave();
+  };
 
-  /* —— 分镜 —— */
-  const updShot = (sceneId: string, id: string, patch: Partial<FormShot>) =>
+  /* —— 分镜（手改 → debounce 落库） —— */
+  const updShot = (sceneId: string, id: string, patch: Partial<FormShot>) => {
     setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)) }));
-  const delShot = (sceneId: string, id: string) =>
+    queueSave();
+  };
+  const delShot = (sceneId: string, id: string) => {
     setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).filter((s) => s.id !== id).map((s, i) => ({ ...s, no: i + 1 })) }));
-  const addShot = (sceneId: string, sceneIdx: number) =>
+    queueSave();
+  };
+  const addShot = (sceneId: string, sceneIdx: number) => {
     setShotsMap((m) => {
       const list = m[sceneId] ?? [];
       return {
@@ -254,6 +285,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         ],
       };
     });
+    queueSave();
+  };
   const genShots = async (sceneId: string, sceneIdx: number) => {
     const scene = scenes[sceneIdx];
     if (!scene) return;
