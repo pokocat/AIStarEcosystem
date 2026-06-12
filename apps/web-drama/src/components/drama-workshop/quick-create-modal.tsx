@@ -4,7 +4,7 @@
 // 左挑模板(封面 + 一句话描述),右看效果与估时大纲(统一预览组件),满意直接开拍。
 import * as React from "react";
 import { ArrowRight, Check, Wand2, X, Zap } from "lucide-react";
-import { Cost } from "@/components/drama-ui";
+import { CreditButton } from "@/components/drama-ui";
 import { CONTENT_TYPES, TEMPLATES, getTplMeta } from "@/mocks/drama-workshop";
 import { TplPreviewBody } from "./preview-modal";
 import { VideoCover } from "./video-cover";
@@ -186,10 +186,16 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
               <Wand2 size={13} /> 想从零聊出故事?用 AI 引导式 <ArrowRight size={13} />
             </button>
             <span className="grow" />
-            <Cost n={18} prefix="模板预填 · 约" />
-            <button type="button" className="btn btn-grad" onClick={() => onCreate({ type, template: tpl, idea })}>
+            <CreditButton
+              cost={18}
+              onConfirm={() => onCreate({ type, template: tpl, idea })}
+              confirmTitle="套模板开剧"
+              confirmBody="按所选爆款模板预填并立项新剧。"
+              className="btn btn-grad"
+              markSize={15}
+            >
               <Zap size={16} /> 立即开剧
-            </button>
+            </CreditButton>
           </div>
         </div>
       </div>

@@ -170,6 +170,8 @@
   font-size: 12px; font-weight: 600; color: var(--ink-3);
 }
 .cost b { font-family: var(--font-num); color: var(--accent-2); }
+/* 钻石标记：贴在「会消耗积分」的按钮/提示上，不带数字（数字在点击后的确认弹窗里） */
+.credit-mark { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; flex: none; }
 @keyframes balPulse { 0% { transform: scale(1); color: var(--accent-2); } 30% { transform: scale(1.28); color: #f59e0b; } 100% { transform: scale(1); color: var(--accent-2); } }
 .balance-pulse { display: inline-block; animation: balPulse .5s ease; }
 

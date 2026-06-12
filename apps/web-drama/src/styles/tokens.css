@@ -11,6 +11,7 @@
   --accent-2:      #e11d48;   /* 玫红 */
   --accent-soft:   color-mix(in oklch, var(--accent) 13%, #fff);
   --accent-2-soft: color-mix(in oklch, var(--accent-2) 13%, #fff);
+  --gem:           #f59e0b;   /* 金/琥珀 —— 积分钻石标记 */
 
   /* —— 画布 / 表面 —— */
   --bg:        #fafaf9;       /* 暖白页面底 */

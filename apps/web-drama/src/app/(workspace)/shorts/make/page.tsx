@@ -21,10 +21,15 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
-import { GenSkeleton, Thumb } from "@/components/drama-ui";
+import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
 import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { matById, SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
+
+// 单镜各路径积分消耗(仅用于确认弹窗展示,真实计费在后台)
+const SHORT_FRAME_COST = 2;
+const SHORT_DIRECT_COST = 9;
+const SHORT_CLIP_COST = 7;
 
 /** 短视频分镜 = 结构化表单分镜 + 出镜引擎 */
 interface ShortShot extends FormShot {
@@ -120,36 +125,45 @@ function ShortShotCard({
         <span style={{ fontSize: 11, lineHeight: 1.4, height: 31, overflow: "hidden", color: "var(--ink-2)" }}>{s.visual}</span>
         {s.flow === "draft" && (
           <div className="col gap-1">
-            <button
-              type="button"
+            <CreditButton
+              cost={SHORT_FRAME_COST}
+              onConfirm={onFrame}
+              confirmTitle="渲染首帧"
+              confirmBody="先渲首帧锁画面,稳妥省抽卡。"
               className="btn btn-grad btn-sm"
               style={{ height: 30, justifyContent: "center", fontSize: 11.5 }}
               disabled={!!busy}
-              onClick={onFrame}
+              markSize={12}
             >
-              <ImageIcon size={12} /> 首帧 <span className="faint" style={{ fontSize: 9.5, color: "#fff", opacity: 0.8 }}>2</span>
-            </button>
-            <button
-              type="button"
+              <ImageIcon size={12} /> 首帧
+            </CreditButton>
+            <CreditButton
+              cost={SHORT_DIRECT_COST}
+              onConfirm={onDirect}
+              confirmTitle="直接生成视频"
+              confirmBody="跳过首帧,直接生成这镜分镜视频。"
               className="btn btn-line btn-sm"
               style={{ height: 28, justifyContent: "center", fontSize: 11 }}
               disabled={!!busy}
-              onClick={onDirect}
+              markSize={11}
             >
-              <Zap size={11} /> 直出视频 9
-            </button>
+              <Zap size={11} /> 直出视频
+            </CreditButton>
           </div>
         )}
         {s.flow === "frame" && (
-          <button
-            type="button"
+          <CreditButton
+            cost={SHORT_CLIP_COST}
+            onConfirm={onClip}
+            confirmTitle="生成视频"
+            confirmBody="基于已选首帧生成动态视频。"
             className="btn btn-primary btn-sm"
             style={{ height: 30, justifyContent: "center", fontSize: 11.5 }}
             disabled={!!busy}
-            onClick={onClip}
+            markSize={12}
           >
-            <Film size={12} /> 生成视频 <span className="faint" style={{ fontSize: 9.5, color: "#fff", opacity: 0.8 }}>7</span>
-          </button>
+            <Film size={12} /> 生成视频
+          </CreditButton>
         )}
         {s.flow === "clip" && (
           <button type="button" className="btn btn-primary btn-sm" style={{ height: 30, justifyContent: "center", fontSize: 11.5 }} onClick={onDone}>

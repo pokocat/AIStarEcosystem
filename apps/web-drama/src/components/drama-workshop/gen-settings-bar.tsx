@@ -1,7 +1,8 @@
 "use client";
 
 // 生成设置栏 — 设计真源 v4 screens-factory-v4.jsx `GenSettingsBar`:
-// 模型 / 画幅比 / 分辨率 / 时长 / 数量 + @素材参考(打通素材库)。
+// 模型 / 画幅比 / 分辨率 + @素材参考(打通素材库)。
+// 注:单镜时长不在此设置 —— 时长由分镜逐镜累计得来,这里调全局时长无意义(已移除);生成数量同除。
 import * as React from "react";
 import { Check, ChevronDown, Mic, Play, Sliders, Sparkles, Users, X, Zap } from "lucide-react";
 import { MAT_CATS, MATERIALS, type Material } from "@/mocks/drama-workshop";
@@ -46,8 +47,6 @@ export function GenSettingsBar({ defaultRatio, refs, setRefs }: GenSettingsBarPr
   const [model, setModel] = React.useState(GEN_MODELS[0]);
   const [ratio, setRatio] = React.useState(defaultRatio ?? "Auto");
   const [res, setRes] = React.useState("480p");
-  const [dur, setDur] = React.useState(5);
-  const [count, setCount] = React.useState(1);
   const mats = MATERIALS;
   const cats = MAT_CATS.map((c) => c.key);
   const has = (id: string) => refs.some((x) => x.id === id);
@@ -76,7 +75,7 @@ export function GenSettingsBar({ defaultRatio, refs, setRefs }: GenSettingsBarPr
           <Sliders size={15} />
           {model.name}
           <span className="faint num" style={{ fontWeight: 600 }}>
-            · {ratio} · {res} · {dur}s · {count}
+            · {ratio} · {res}
           </span>
           <ChevronDown size={13} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
         </button>
@@ -323,24 +322,6 @@ export function GenSettingsBar({ defaultRatio, refs, setRefs }: GenSettingsBarPr
             </div>
           </div>
 
-          <div className="row gap-3" style={{ flexWrap: "wrap" }}>
-            <div className="col gap-2 grow" style={{ minWidth: 200 }}>
-              <div className="row">
-                <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>单镜时长</span>
-                <span className="grow" />
-                <span className="num" style={{ fontWeight: 700 }}>{dur}s</span>
-              </div>
-              <input type="range" min={2} max={10} step={1} value={dur} onChange={(e) => setDur(+e.target.value)} className="gen-range" />
-            </div>
-            <div className="col gap-2 grow" style={{ minWidth: 200 }}>
-              <div className="row">
-                <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>生成数量</span>
-                <span className="grow" />
-                <span className="num" style={{ fontWeight: 700 }}>{count} 条</span>
-              </div>
-              <input type="range" min={1} max={4} step={1} value={count} onChange={(e) => setCount(+e.target.value)} className="gen-range" />
-            </div>
-          </div>
         </div>
       )}
     </div>

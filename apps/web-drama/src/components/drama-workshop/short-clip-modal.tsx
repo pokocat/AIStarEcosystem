@@ -4,7 +4,7 @@
 // 选剧 + 选集 → AI 扫描高光片段 → 剪成竖屏推广片。
 import * as React from "react";
 import { Clapperboard, Search, X, Zap } from "lucide-react";
-import { Cost, GenSkeleton, Thumb } from "@/components/drama-ui";
+import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { PROJECTS } from "@/mocks/drama-workshop";
 
 export interface ShortClipModalProps {
@@ -123,9 +123,9 @@ export function ShortClipModal({ onClose, onMake }: ShortClipModalProps) {
           </div>
 
           {!clips && !scanning && (
-            <button type="button" className="btn btn-line" style={{ alignSelf: "flex-start" }} onClick={scan}>
-              <Search size={15} /> 扫描高光片段 <Cost n={8} />
-            </button>
+            <CreditButton cost={8} onConfirm={scan} confirmTitle="扫描高光片段" confirmBody="AI 会分析剧情节奏与情绪曲线,挑出高光片段。" className="btn btn-line" style={{ alignSelf: "flex-start" }}>
+              <Search size={15} /> 扫描高光片段
+            </CreditButton>
           )}
           {scanning && (
             <div className="card" style={{ padding: 16 }}>
@@ -165,19 +165,21 @@ export function ShortClipModal({ onClose, onMake }: ShortClipModalProps) {
             {picked.length} 集 · {clips ? clips.length + " 个高光" : "待扫描"}
           </span>
           <span className="grow" />
-          <Cost n={14} prefix="剪辑约" />
-          <button
-            type="button"
-            className="btn btn-grad"
-            disabled={!clips}
-            style={{ opacity: clips ? 1 : 0.5 }}
-            onClick={() => {
+          <CreditButton
+            cost={14}
+            onConfirm={() => {
               onClose();
               onMake({ format: "hook", idea: drama.title + " · 高光推广片", fromClip: true });
             }}
+            confirmTitle="剪成竖屏推广片"
+            confirmBody="把选中高光剪成一条竖屏推广片。"
+            className="btn btn-grad"
+            disabled={!clips}
+            style={{ opacity: clips ? 1 : 0.5 }}
+            markSize={15}
           >
             <Zap size={16} /> 剪成竖屏推广片
-          </button>
+          </CreditButton>
         </div>
       </div>
     </div>

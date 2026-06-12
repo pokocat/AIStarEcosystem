@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Cost, Editable, GenSkeleton, Meta } from "@/components/drama-ui";
+import { CreditButton, Editable, GenSkeleton, Meta } from "@/components/drama-ui";
 import {
   PROJECT_DATA,
   type ContentType,
@@ -150,15 +150,17 @@ export function GuidedStart({ type, onEnter }: GuidedStartProps) {
             fontFamily: "var(--font)",
           }}
         />
-        <button
-          type="button"
+        <CreditButton
+          cost={6}
+          onConfirm={run}
+          confirmTitle="AI 挖掘选题"
+          confirmBody="AI 会沿五个维度追问并扩写选题方向。"
           className="btn btn-grad"
           style={{ height: 46 }}
-          onClick={run}
+          markSize={15}
         >
           <Wand2 size={16} /> {cards ? "重新挖掘" : "开始挖掘"}
-        </button>
-        <Cost n={6} />
+        </CreditButton>
       </div>
 
       {gen && <GenSkeleton lines={3} label="AI 正在沿五个维度追问、并扩写选题方向…" />}

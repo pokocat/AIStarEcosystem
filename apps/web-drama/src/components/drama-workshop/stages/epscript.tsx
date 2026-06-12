@@ -18,7 +18,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { Avatar, Cost, Editable, GenSkeleton } from "@/components/drama-ui";
+import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
 import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
 import { ShotFormCard, type FormShot } from "../shot-form";
 import { matById, MATERIALS, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
@@ -239,16 +239,18 @@ export function EpScriptStage({ state, dispatch, data }: {
               <span className="faint" style={{ fontSize: 11 }}>给人看的速览,不直接喂给生成</span>
               <span className="grow" />
               {!locked && (
-                <button
-                  type="button"
+                <CreditButton
+                  cost={10}
+                  onConfirm={regenFromPlot}
+                  confirmTitle="重新生成分场分镜"
+                  confirmBody="AI 会按当前剧情把整集重写为新的分场分镜。"
                   className="btn btn-line btn-sm"
                   style={{ flex: "none" }}
                   disabled={phase === "gen"}
-                  onClick={regenFromPlot}
-                  title="对下面的分场分镜不满意?改好剧情后点这里,AI 按它整集重写 · 约 10 积分"
+                  title="对下面的分场分镜不满意?改好剧情后点这里,AI 按它整集重写"
                 >
-                  <RefreshCw size={13} /> 基于剧情重新生成分场分镜 <Cost n={10} prefix="约" />
-                </button>
+                  <RefreshCw size={13} /> 基于剧情重新生成分场分镜
+                </CreditButton>
               )}
             </div>
             <div style={{ fontSize: 13.5, lineHeight: 1.75 }}>
@@ -354,9 +356,9 @@ export function EpScriptStage({ state, dispatch, data }: {
                           </button>
                         </div>
                         {!locked && (
-                          <button type="button" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => genShots(s.id, i)}>
-                            <Wand2 size={13} /> 把这场拆成分镜表单 <Cost n={SHOT_GEN_COST} />
-                          </button>
+                          <CreditButton cost={SHOT_GEN_COST} onConfirm={() => genShots(s.id, i)} confirmTitle="拆分镜" confirmBody="AI 会把这一场拆成可逐镜编辑的分镜表单。" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }}>
+                            <Wand2 size={13} /> 把这场拆成分镜表单
+                          </CreditButton>
                         )}
                       </div>
                     )}

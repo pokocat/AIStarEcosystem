@@ -17,7 +17,7 @@ import {
   Wand2,
   Zap,
 } from "lucide-react";
-import { Cost, Thumb } from "@/components/drama-ui";
+import { CreditButton, Thumb } from "@/components/drama-ui";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { PreviewModal } from "@/components/drama-workshop/preview-modal";
 import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
@@ -295,12 +295,16 @@ export default function HomePage() {
                 </button>
               )}
               <span className="grow" />
-              <span style={{ flex: "none", whiteSpace: "nowrap" }}>
-                <Cost n={isShort ? 10 : 6} prefix={isShort ? "约" : "立项约"} />
-              </span>
-              <button type="button" className="btn btn-grad" style={{ height: 40, padding: "0 22px", flex: "none" }} onClick={submit}>
+              <CreditButton
+                cost={isShort ? 10 : 6}
+                onConfirm={submit}
+                confirmTitle={isShort ? "开做短视频" : "开拍新剧"}
+                className="btn btn-grad"
+                style={{ height: 40, padding: "0 22px", flex: "none" }}
+                markSize={15}
+              >
                 <Zap size={16} /> {isShort ? "开做" : "开拍"}
-              </button>
+              </CreditButton>
             </div>
           </div>
 

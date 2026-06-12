@@ -4,7 +4,7 @@
 // 统一范式：输入/上文 → AI 起草（积分预估）→ 可编辑结构化结果 → 局部重写 / 整体重生成 → ✓锁定进下一步。
 import * as React from "react";
 import { Check, Lock, RefreshCw, Sparkles, Wand2 } from "lucide-react";
-import { Cost } from "./cost-badge";
+import { CreditButton } from "./credit";
 import { GenError } from "./gen-state";
 
 export interface AICollabProps {
@@ -72,12 +72,16 @@ export function AICollab({
           <div style={{ fontWeight: 700 }}>{title}</div>
           {hint && <div className="faint" style={{ fontSize: 12 }}>{hint}</div>}
         </div>
-        {showStartActions && onGenerate && (
-          <button type="button" className="btn btn-grad btn-sm" onClick={onGenerate}>
-            <Wand2 size={15} /> {generateLabel}
-          </button>
-        )}
-        {showStartActions && cost != null && <Cost n={cost} />}
+        {showStartActions && onGenerate &&
+          (cost != null ? (
+            <CreditButton cost={cost} onConfirm={onGenerate} confirmTitle={title} className="btn btn-grad btn-sm">
+              <Wand2 size={15} /> {generateLabel}
+            </CreditButton>
+          ) : (
+            <button type="button" className="btn btn-grad btn-sm" onClick={onGenerate}>
+              <Wand2 size={15} /> {generateLabel}
+            </button>
+          ))}
       </div>
 
       {/* 内容 */}
@@ -96,11 +100,16 @@ export function AICollab({
             gap: 10,
           }}
         >
-          {onGenerate && (
-            <button type="button" className="btn btn-line btn-sm" onClick={onGenerate}>
-              <RefreshCw size={15} /> 整体重新生成
-            </button>
-          )}
+          {onGenerate &&
+            (cost != null ? (
+              <CreditButton cost={cost} onConfirm={onGenerate} confirmTitle={title} className="btn btn-line btn-sm">
+                <RefreshCw size={15} /> 整体重新生成
+              </CreditButton>
+            ) : (
+              <button type="button" className="btn btn-line btn-sm" onClick={onGenerate}>
+                <RefreshCw size={15} /> 整体重新生成
+              </button>
+            ))}
           {onLock && (
             <button type="button" className="btn btn-primary" onClick={onLock}>
               <Check size={16} /> {lockLabel}

@@ -4,7 +4,7 @@
 // 创意推荐 / 模板库 / 快速开剧右栏共用同一套预览(封面 + 描述 + 估时大纲 + 动作)。
 import * as React from "react";
 import { Clock, Film, Sparkles, X } from "lucide-react";
-import { Cost } from "@/components/drama-ui";
+import { CreditButton } from "@/components/drama-ui";
 import type { Template } from "@/mocks/drama-workshop";
 import { tplBeats, type PreviewBeat } from "@/mocks/drama-workshop";
 import { VideoCover } from "./video-cover";
@@ -200,11 +200,17 @@ export function PreviewModal({
             style={{ padding: "12px 20px 16px", borderTop: "1px solid var(--line-soft)", background: "var(--surface)", flex: "none" }}
           >
             <span className="grow" />
-            {actions.map((a, i) => (
-              <button key={i} type="button" className={cls[a.variant ?? "line"]} onClick={a.onClick}>
-                {a.icon} {a.label} {a.cost != null && <Cost n={a.cost} prefix="约" />}
-              </button>
-            ))}
+            {actions.map((a, i) =>
+              a.cost != null ? (
+                <CreditButton key={i} cost={a.cost} onConfirm={a.onClick} confirmTitle={a.label} className={cls[a.variant ?? "line"]}>
+                  {a.icon} {a.label}
+                </CreditButton>
+              ) : (
+                <button key={i} type="button" className={cls[a.variant ?? "line"]} onClick={a.onClick}>
+                  {a.icon} {a.label}
+                </button>
+              ),
+            )}
           </div>
         )}
       </div>

@@ -5,7 +5,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Image as ImageIcon, Lock, RefreshCw, Sparkles, Wand2 } from "lucide-react";
-import { Cost, Thumb } from "@/components/drama-ui";
+import { CreditButton, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../../workbench";
 import { STAGE_BY_KEY } from "../../stages-config";
 import type { WorkshopAction, WorkshopState } from "../../workbench";
@@ -51,9 +51,18 @@ export function CastStage({ state, dispatch, data }: CastStageProps) {
           desc="给关键角色绑定一个数字人分身锁住形象 —— 这是跨集一致性和真人脸的地基。"
           right={
             <div className="row gap-2">
-              <button type="button" className="btn btn-primary btn-sm">
-                <Wand2 size={15} /> 从大纲重抽角色 <Cost n={STAGE_BY_KEY.cast.cost} />
-              </button>
+              <CreditButton
+                cost={STAGE_BY_KEY.cast.cost}
+                onConfirm={() => {
+                  dispatch({ type: "spend", n: STAGE_BY_KEY.cast.cost });
+                  toast.success("已按大纲重新抽取角色");
+                }}
+                confirmTitle="重抽角色"
+                confirmBody="AI 会按当前大纲重新抽取角色阵容。"
+                className="btn btn-primary btn-sm"
+              >
+                <Wand2 size={15} /> 从大纲重抽角色
+              </CreditButton>
             </div>
           }
         />

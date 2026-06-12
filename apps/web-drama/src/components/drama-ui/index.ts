@@ -1,7 +1,8 @@
 export { Thumb } from "./thumb";
 export type { ThumbProps } from "./thumb";
 export { Avatar } from "./avatar";
-export { Cost } from "./cost-badge";
+export { CreditMark, CreditButton } from "./credit";
+export type { CreditMarkProps, CreditButtonProps } from "./credit";
 export { useGen, GenSkeleton, GenError } from "./gen-state";
 export type { GenPhase } from "./gen-state";
 export { AICollab, RewriteTagPill, REWRITE_LABEL, REWRITE_TONE } from "./ai-collab";

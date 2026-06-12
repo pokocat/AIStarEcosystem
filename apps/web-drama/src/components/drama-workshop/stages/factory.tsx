@@ -3,7 +3,7 @@
 // 视频工厂 — 设计真源 v4 screens-factory-v4.jsx `FactoryStage4`:
 // 每镜双路径(先渲首帧看效果·稳妥省抽卡 / 直接生成分镜视频·快),
 // 流水:待渲 → 选首帧 → 首帧已锁 → 动态待验收 → 已成片;
-// 生成设置栏(模型/画幅/分辨率/时长/数量 + @素材参考)。
+// 生成设置栏(模型/画幅/分辨率 + @素材参考)。
 import * as React from "react";
 import { toast } from "sonner";
 import {
@@ -18,7 +18,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { Avatar, Cost, EngineTag, Thumb } from "@/components/drama-ui";
+import { Avatar, CreditButton, EngineTag, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import { GenSettingsBar } from "../gen-settings-bar";
 import { matById, type BoardShot, type Material, type ProjectData } from "@/mocks/drama-workshop";
@@ -98,6 +98,7 @@ export function FactoryStage({ state, dispatch, data }: FactoryStageProps) {
     done: shots.filter((s) => s.flow === "done").length,
   };
   const pct = stat.total ? Math.round((stat.done / stat.total) * 100) : 0;
+  const draftCount = shots.filter((s) => s.flow === "draft").length;
 
   const run = (id: string, to: FlowKey, ms = 1200) => {
     setBusy({ id, to });
@@ -218,12 +219,20 @@ export function FactoryStage({ state, dispatch, data }: FactoryStageProps) {
                 />
               </div>
             </div>
-            <button type="button" className="btn btn-line btn-sm" style={{ flex: "none" }} onClick={batchFrame}>
+            <CreditButton
+              cost={draftCount * FRAME_COST}
+              onConfirm={batchFrame}
+              confirmTitle="批量渲染首帧"
+              confirmBody={`为 ${draftCount} 个待渲镜头各出 4 版首帧。`}
+              className="btn btn-line btn-sm"
+              style={{ flex: "none" }}
+              disabled={draftCount === 0}
+            >
               <ImageIcon size={14} /> 全部待渲先出首帧
-            </button>
+            </CreditButton>
           </div>
 
-          {/* 生成设置:模型 / 画幅比 / 分辨率 / 时长 / 数量 + @素材参考 */}
+          {/* 生成设置:模型 / 画幅比 / 分辨率 + @素材参考 */}
           <GenSettingsBar defaultRatio="9:16" refs={refs} setRefs={setRefs} />
 
           {/* 镜头网格 */}
@@ -370,30 +379,28 @@ function FactoryCard({
     if (s.flow === "draft")
       return (
         <>
-          <button
-            type="button"
+          <CreditButton
+            cost={FRAME_COST}
+            onConfirm={onRenderFrame}
+            confirmTitle="渲染首帧"
+            confirmBody="先渲首帧锁画面,稳妥省抽卡。"
             className="btn btn-grad btn-sm grow"
-            title={`先渲首帧锁画面,稳妥省抽卡 · 约 ${FRAME_COST} 积分`}
+            title="先渲首帧锁画面,稳妥省抽卡"
             style={{ justifyContent: "center" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRenderFrame();
-            }}
           >
             <ImageIcon size={13} /> 首帧
-          </button>
-          <button
-            type="button"
+          </CreditButton>
+          <CreditButton
+            cost={CLIP_COST}
+            onConfirm={onRenderDirect}
+            confirmTitle="直接生成视频"
+            confirmBody="跳过首帧,直接生成这镜分镜视频。"
             className="btn btn-line btn-sm grow"
-            title={`跳过首帧,直接生成分镜视频 · 约 ${CLIP_COST} 积分`}
+            title="跳过首帧,直接生成分镜视频"
             style={{ justifyContent: "center" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRenderDirect();
-            }}
           >
             <Zap size={13} /> 直出
-          </button>
+          </CreditButton>
         </>
       );
     if (s.flow === "frame")
@@ -404,17 +411,16 @@ function FactoryCard({
       );
     if (s.flow === "frameLocked")
       return (
-        <button
-          type="button"
+        <CreditButton
+          cost={CLIP_COST}
+          onConfirm={onRenderClip}
+          confirmTitle="渲染动态"
+          confirmBody="基于已锁定首帧渲染动态视频。"
           className="btn btn-grad btn-sm grow"
           style={{ justifyContent: "center" }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRenderClip();
-          }}
         >
           <Film size={13} /> 渲动态
-        </button>
+        </CreditButton>
       );
     if (s.flow === "clip")
       return (
@@ -773,19 +779,19 @@ function FactoryDrawer({
         <div className="col gap-2" style={{ padding: 14, borderTop: "1px solid var(--line-soft)" }}>
           {s.flow === "draft" && (
             <div className="col gap-2">
-              <button type="button" className="btn btn-grad" disabled={!!busy} onClick={onRenderFrame}>
-                <ImageIcon size={15} /> 先渲首帧看效果 · 稳妥 <Cost n={FRAME_COST} />
-              </button>
-              <button type="button" className="btn btn-line" disabled={!!busy} onClick={onRenderDirect} style={{ justifyContent: "center" }}>
-                <Zap size={15} /> 直接生成分镜视频 · 快 <Cost n={CLIP_COST} />
-              </button>
+              <CreditButton cost={FRAME_COST} onConfirm={onRenderFrame} confirmTitle="渲染首帧" confirmBody="先渲首帧锁画面,稳妥省抽卡。" className="btn btn-grad" disabled={!!busy} markSize={15}>
+                <ImageIcon size={15} /> 先渲首帧看效果 · 稳妥
+              </CreditButton>
+              <CreditButton cost={CLIP_COST} onConfirm={onRenderDirect} confirmTitle="直接生成视频" confirmBody="跳过首帧,直接生成这镜分镜视频。" className="btn btn-line" disabled={!!busy} style={{ justifyContent: "center" }} markSize={15}>
+                <Zap size={15} /> 直接生成分镜视频 · 快
+              </CreditButton>
             </div>
           )}
           {s.flow === "frame" && (
             <div className="row gap-2">
-              <button type="button" className="btn btn-line btn-sm grow" disabled={!!busy} onClick={onReframe} style={{ justifyContent: "center" }}>
-                <RefreshCw size={14} /> 换一批 <Cost n={FRAME_COST} />
-              </button>
+              <CreditButton cost={FRAME_COST} onConfirm={onReframe} confirmTitle="重渲首帧" confirmBody="重新出 4 版首帧候选。" className="btn btn-line btn-sm grow" disabled={!!busy} style={{ justifyContent: "center" }}>
+                <RefreshCw size={14} /> 换一批
+              </CreditButton>
               <button type="button" className="btn btn-grad grow" onClick={onLockFrame} style={{ justifyContent: "center" }}>
                 <Lock size={15} /> 锁定第 {s.frameIdx + 1} 版
               </button>
@@ -793,19 +799,19 @@ function FactoryDrawer({
           )}
           {s.flow === "frameLocked" && (
             <div className="row gap-2">
-              <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={onReframe} style={{ justifyContent: "center" }}>
+              <CreditButton cost={FRAME_COST} onConfirm={onReframe} confirmTitle="重渲首帧" confirmBody="改首帧会重新出 4 版候选。" className="btn btn-ghost btn-sm" disabled={!!busy} style={{ justifyContent: "center" }}>
                 <ImageIcon size={14} /> 改首帧
-              </button>
-              <button type="button" className="btn btn-grad grow" disabled={!!busy} onClick={onRenderClip} style={{ justifyContent: "center" }}>
-                <Film size={15} /> 渲染动态 <Cost n={CLIP_COST} />
-              </button>
+              </CreditButton>
+              <CreditButton cost={CLIP_COST} onConfirm={onRenderClip} confirmTitle="渲染动态" confirmBody="基于已锁定首帧渲染动态视频。" className="btn btn-grad grow" disabled={!!busy} style={{ justifyContent: "center" }} markSize={15}>
+                <Film size={15} /> 渲染动态
+              </CreditButton>
             </div>
           )}
           {s.flow === "clip" && (
             <div className="row gap-2">
-              <button type="button" className="btn btn-line btn-sm grow" disabled={!!busy} onClick={onRenderClip} style={{ justifyContent: "center" }}>
-                <RefreshCw size={14} /> 重渲动态 <Cost n={CLIP_COST} />
-              </button>
+              <CreditButton cost={CLIP_COST} onConfirm={onRenderClip} confirmTitle="重渲动态" confirmBody="重新渲染这镜的动态视频。" className="btn btn-line btn-sm grow" disabled={!!busy} style={{ justifyContent: "center" }}>
+                <RefreshCw size={14} /> 重渲动态
+              </CreditButton>
               <button type="button" className="btn btn-primary grow" onClick={onApprove} style={{ justifyContent: "center" }}>
                 <Check size={15} /> 验收入片
               </button>
@@ -813,9 +819,9 @@ function FactoryDrawer({
           )}
           {s.flow === "done" && (
             <div className="row gap-2">
-              <button type="button" className="btn btn-ghost btn-sm grow" onClick={onReframe} style={{ justifyContent: "center" }}>
+              <CreditButton cost={FRAME_COST} onConfirm={onReframe} confirmTitle="回炉重渲" confirmBody="重新出首帧,这镜会回到挑首帧步骤。" className="btn btn-ghost btn-sm grow" style={{ justifyContent: "center" }}>
                 <RefreshCw size={14} /> 回炉重渲
-              </button>
+              </CreditButton>
               <button type="button" className="btn btn-line grow" onClick={onClose} style={{ justifyContent: "center" }}>
                 <Check size={15} /> 完成
               </button>

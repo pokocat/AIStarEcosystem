@@ -7,12 +7,17 @@
 // 短剧「剧集脚本」与短视频制作页共用。
 import * as React from "react";
 import { Check, Film, Image as ImageIcon, Play, RefreshCw, X, Zap } from "lucide-react";
-import { Editable, Thumb } from "@/components/drama-ui";
+import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
 import { RefCell, RichScript } from "./script-refs";
 import { SubToggle } from "./script-refs";
 import type { Material } from "@/mocks/drama-workshop";
 
 export type ShotFlow = "draft" | "frame" | "clip" | "done";
+
+// 单镜各路径积分消耗(仅用于确认弹窗展示,真实计费在后台)
+const FRAME_COST = 2;
+const DIRECT_COST = 9;
+const CLIP_COST = 7;
 
 export interface FormShot {
   id: string;
@@ -155,18 +160,18 @@ export function ShotFormCard({
           </div>
           {s.flow === "draft" && (
             <>
-              <button type="button" className="btn btn-grad btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} onClick={onRenderFrame} title="先渲首帧锁画面,稳妥省抽卡 · 约 2 积分">
-                <ImageIcon size={11} /> 首帧 · 2
-              </button>
-              <button type="button" className="btn btn-line btn-sm" style={{ height: 24, justifyContent: "center", fontSize: 10, padding: 0 }} disabled={!!busy} onClick={onRenderDirect} title="跳过首帧,直接生成分镜视频 · 约 9 积分">
-                <Zap size={10} /> 直出 · 9
-              </button>
+              <CreditButton cost={FRAME_COST} onConfirm={onRenderFrame} confirmTitle="渲染首帧" confirmBody="先渲首帧锁画面,稳妥省抽卡。" className="btn btn-grad btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} markSize={11}>
+                <ImageIcon size={11} /> 首帧
+              </CreditButton>
+              <CreditButton cost={DIRECT_COST} onConfirm={onRenderDirect} confirmTitle="直接生成视频" confirmBody="跳过首帧,直接生成这镜分镜视频。" className="btn btn-line btn-sm" style={{ height: 24, justifyContent: "center", fontSize: 10, padding: 0 }} disabled={!!busy} markSize={10}>
+                <Zap size={10} /> 直出
+              </CreditButton>
             </>
           )}
           {s.flow === "frame" && (
-            <button type="button" className="btn btn-primary btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} onClick={onRenderClip}>
-              <Film size={11} /> 渲成片 · 7
-            </button>
+            <CreditButton cost={CLIP_COST} onConfirm={onRenderClip} confirmTitle="渲染成片" confirmBody="基于已选首帧渲染动态成片。" className="btn btn-primary btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} markSize={11}>
+              <Film size={11} /> 渲成片
+            </CreditButton>
           )}
           {s.flow === "clip" && (
             <button type="button" className="btn btn-primary btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} onClick={onApprove}>
