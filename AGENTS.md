@@ -449,6 +449,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.64** | 2026-06-12 | 短剧「六阶段项目工作台」接真后端：新实体 `DramaProject`（`drama_projects` 表，整套 `ProjectData` JSON-document）+ `DramaProjectService` + `DramaProjectController`（`/api/me/drama/projects*` + `/{id}/outline/ai-draft` 大模型起草分集大纲，复用 `DRAMA_SCRIPT_DRAFT` 端点）；web-drama 列表/新建/工作台加载/保存/大纲 AI 全部从 mock 切真（`ProjectsApi`）。dev 用 `scripts/dev-fake-llm-server.mjs`(:8091) 联调大模型链路 |
 | **v0.62** | 2026-06-11 | 明星档案编辑权移交 star 端：web-star 新增 `/profile` 档案设置（14+1 模块）+ `PUT /api/star/profile` + `POST /api/star/profile/uploads`；下线 admin / web-celebrity 运营「编辑明星」入口与 `PUT /admin/celebrity/stars/{id}`（新增/软删保留）；api-client `apiFetch` 支持 FormData |
 | **v0.60-补丁** | 2026-06-10 | 收敛 Phase 2 ①：aiavatar 反向「应用于」视图（`GET /v1/avatars/{id}/references` + 详情页 MAppliedTo 卡片，展示数字人被哪些 music/drama 艺人壳引用） |
 | **v0.61** | 2026-06-10 | 数字人收敛：music/drama 艺人形象统一引用 AiAvatar（`POST /me/digital-ips/import-avatar` 引入 + `dapDisplayRef` 指定展示图；本地孵化/锻造入口下线） |

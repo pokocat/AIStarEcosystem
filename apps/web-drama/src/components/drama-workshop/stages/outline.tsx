@@ -22,6 +22,8 @@ import { Field, GenSkeleton } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import type { EpisodeOutline, ProjectData } from "@/mocks/drama-workshop";
+import { ProjectsApi } from "@/api";
+import type { StageContext } from "./stage-context";
 
 const SCOPE_OPTS = [
   { key: "trial", name: "先开个头试试", eps: 6 as number | null, cost: 6 },
@@ -35,11 +37,14 @@ interface OutlineStageProps {
   data: ProjectData;
   /** 模板模式:已预填,做"改而非建"的提示 */
   prefilled?: boolean;
+  /** v0.64+:项目 id + 保存回调（真实后端落地）。 */
+  ctx?: StageContext;
 }
 
-export function OutlineStage({ state, dispatch, data, prefilled }: OutlineStageProps) {
+export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineStageProps) {
   const total = data.projectInfo.episodes;
-  const [phase, setPhase] = React.useState<"idle" | "gen" | "done">("done");
+  // 空项目(还没大纲)→ idle 引导生成;已有大纲 → done 直接展示。
+  const [phase, setPhase] = React.useState<"idle" | "gen" | "done">(data.episodes.length ? "done" : "idle");
   const [scope, setScope] = React.useState<"trial" | "full">("trial");
   const [dur, setDur] = React.useState(DUR_OPTS[1]);
   const [eps, setEps] = React.useState<EpisodeOutline[]>(data.episodes);
@@ -49,6 +54,29 @@ export function OutlineStage({ state, dispatch, data, prefilled }: OutlineStageP
   const locked = !!state.lockedStages.outline;
   const scopeOpt = SCOPE_OPTS.find((s) => s.key === scope)!;
   const showEps = scope === "trial" && !locked ? eps.slice(0, 6) : eps;
+
+  // 真实大纲生成：调后端大模型 → 合并进整套文档 → 落库。无 ctx(脱离工作台)时退化为本地演示。
+  const runOutline = async (nextScope: "trial" | "full", cost: number) => {
+    setScope(nextScope);
+    setPhase("gen");
+    if (!ctx) {
+      dispatch({ type: "spend", n: cost });
+      setTimeout(() => setPhase("done"), 1400);
+      return;
+    }
+    try {
+      const count = nextScope === "trial" ? 6 : total || undefined;
+      const episodes = await ProjectsApi.outlineAiDraft(ctx.projectId, count);
+      setEps(episodes);
+      await ctx.saveData({ ...data, episodes }, { stage: 2 });
+      dispatch({ type: "spend", n: cost });
+      setPhase("done");
+      toast.success("大纲已生成 · 可改可重来");
+    } catch (e) {
+      setPhase(data.episodes.length ? "done" : "idle");
+      toast.error(e instanceof Error ? e.message : "大纲生成失败，请稍后重试");
+    }
+  };
 
   const reorderEp = (fromNo: number, toNo: number) =>
     setEps((arr) => {
@@ -61,17 +89,8 @@ export function OutlineStage({ state, dispatch, data, prefilled }: OutlineStageP
       return next;
     });
 
-  const gen = () => {
-    setPhase("gen");
-    dispatch({ type: "spend", n: scopeOpt.cost });
-    setTimeout(() => setPhase("done"), 1400);
-  };
-  const fillRest = () => {
-    setScope("full");
-    setPhase("gen");
-    dispatch({ type: "spend", n: 12 });
-    setTimeout(() => setPhase("done"), 1400);
-  };
+  const gen = () => runOutline(scope, scopeOpt.cost);
+  const fillRest = () => runOutline("full", 12);
 
   return (
     <div className="scroll" style={{ height: "100%" }}>
@@ -297,7 +316,16 @@ export function OutlineStage({ state, dispatch, data, prefilled }: OutlineStageP
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => dispatch({ type: "lock", stage: "outline", cost: 0 })}
+                  onClick={async () => {
+                    if (ctx) {
+                      try {
+                        await ctx.saveData({ ...data, episodes: eps }, { stage: 3, progress: 40 });
+                      } catch {
+                        /* saveData 内部已提示，锁定仍继续 */
+                      }
+                    }
+                    dispatch({ type: "lock", stage: "outline", cost: 0 });
+                  }}
                 >
                   <Check size={16} /> 锁定大纲 · 去定角色
                 </button>

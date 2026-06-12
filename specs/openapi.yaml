@@ -6977,6 +6977,18 @@ paths:
   /me/script-versions/{versionId}:
     parameters: [ { in: path, name: versionId, required: true, schema: { type: string } } ]
     get: { tags: [drama], operationId: getScriptVersion, summary: '脚本版本详情', responses: { '200': { description: ok } } }
+  # ── v0.64 短剧项目工作台（六阶段 ProjectData CRUD + 大纲 AI）。DramaProjectController。 ──
+  /me/drama/projects:
+    get:  { tags: [drama], operationId: listDramaProjects,  summary: '我的短剧项目列表（六阶段工作台卡片）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createDramaProject, summary: '新建短剧项目（seed 空 ProjectData）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getDramaProject,    summary: '短剧项目详情（meta + 整套 ProjectData）', responses: { '200': { description: ok } } }
+    put:    { tags: [drama], operationId: saveDramaProject,   summary: '保存整套工作台文档', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaProject, summary: '删除短剧项目（软删）', responses: { '204': { description: ok } } }
+  /me/drama/projects/{id}/outline/ai-draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }
   /celebrity/videos/{videoId}:
     parameters: [ { in: path, name: videoId, required: true, schema: { type: string } } ]
     delete: { tags: [celebrity], operationId: deleteCelebrityVideo, summary: '删除项目视频', responses: { '204': { description: ok } } }

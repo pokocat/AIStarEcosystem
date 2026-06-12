@@ -4,10 +4,14 @@ export const dynamic = "force-dynamic";
 
 // 短剧工作台 v4 — 沉浸式接管:项目设置阶段走左阶段轨,剧集制作阶段走
 // 左分集导航 + 顶部步骤页签(剧集脚本 → 视频工厂 → 成片配方)。
+// v0.64+:整套 ProjectData 由后端 /me/drama/projects/{id} 真实加载 + 保存。
 import * as React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { getProjectData, PROJECTS, type ProjectData } from "@/mocks/drama-workshop";
+import { toast } from "sonner";
+import { ProjectsApi } from "@/api";
+import { useAsync } from "@/lib/drama-query";
+import type { ProjectData } from "@/mocks/drama-workshop";
 import {
   WorkshopShell,
   type WorkshopAction,
@@ -20,6 +24,7 @@ import {
   OutlineStage,
   PromptStage,
   TopicStage,
+  type StageContext,
 } from "@/components/drama-workshop/stages";
 
 export default function ProjectWorkbench() {
@@ -27,38 +32,51 @@ export default function ProjectWorkbench() {
   const params = useParams<{ projectId: string }>();
   const search = useSearchParams();
   const id = params?.projectId ?? "";
-  const meta = PROJECTS.find((p) => p.id === id);
-  const data = getProjectData(id);
-  // 快速开剧 / 模板入口:?from=template → 大纲按"模板已预填"展示
   const fromTemplate = search?.get("from") === "template";
 
-  if (!meta || !data) {
-    return (
-      <div className="col center" style={{ height: "100%", gap: 14, textAlign: "center" }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>没找到这部短剧</h1>
-        <div className="muted">可能是链接过期了。回到短剧工坊重新挑选一部。</div>
-        <button
-          type="button"
-          className="btn btn-line"
-          onClick={() => router.push("/projects")}
-        >
-          <ChevronLeft size={16} /> 返回短剧工坊
-        </button>
-      </div>
-    );
+  const { data: detail, isLoading, error } = useAsync(
+    `/me/drama/projects/${id}`,
+    () => ProjectsApi.getProject(id),
+  );
+
+  // 整套文档保留一份可编辑副本，阶段内的 AI 生成 / 编辑乐观更新它，再落库。
+  const [data, setData] = React.useState<ProjectData | null>(null);
+  React.useEffect(() => {
+    if (detail?.data) setData(detail.data);
+  }, [detail]);
+
+  const saveData = React.useCallback<StageContext["saveData"]>(
+    async (next, opts) => {
+      setData(next);
+      try {
+        await ProjectsApi.saveProject(id, next, opts);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "保存失败，请重试");
+        throw e;
+      }
+    },
+    [id],
+  );
+
+  if (isLoading || (!data && !error)) {
+    return <WorkbenchLoading />;
+  }
+  if (error || !detail || !data) {
+    return <WorkbenchNotFound onBack={() => router.push("/projects")} />;
   }
 
   return (
     <WorkshopShell
-      meta={meta}
+      meta={detail.meta}
       data={data}
-      initialStage={fromTemplate ? "outline" : meta.stage <= 3 ? "outline" : "epscript"}
+      initialStage={fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
       renderStage={({ state, dispatch }) => (
         <StageOutlet
           state={state}
           dispatch={dispatch}
           data={data}
-          prefilled={fromTemplate || meta.mode === "template"}
+          prefilled={fromTemplate || detail.meta.mode === "template"}
+          ctx={{ projectId: id, saveData }}
         />
       )}
     />
@@ -70,17 +88,19 @@ function StageOutlet({
   dispatch,
   data,
   prefilled,
+  ctx,
 }: {
   state: WorkshopState;
   dispatch: React.Dispatch<WorkshopAction>;
   data: ProjectData;
   prefilled: boolean;
+  ctx: StageContext;
 }) {
   switch (state.stage) {
     case "topic":
       return <TopicStage state={state} dispatch={dispatch} data={data} />;
     case "outline":
-      return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} />;
+      return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "cast":
       return <CastStage state={state} dispatch={dispatch} data={data} />;
     case "epscript":
@@ -92,4 +112,35 @@ function StageOutlet({
     default:
       return null;
   }
+}
+
+function WorkbenchLoading() {
+  return (
+    <div className="col center" style={{ height: "100%", gap: 14 }}>
+      <span
+        aria-hidden
+        style={{
+          width: 34,
+          height: 34,
+          border: "3px solid var(--line)",
+          borderTopColor: "var(--accent)",
+          borderRadius: "50%",
+          animation: "drama-spin .8s linear infinite",
+        }}
+      />
+      <div className="muted" style={{ fontSize: 13 }}>正在打开短剧工作台…</div>
+    </div>
+  );
+}
+
+function WorkbenchNotFound({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="col center" style={{ height: "100%", gap: 14, textAlign: "center" }}>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>没找到这部短剧</h1>
+      <div className="muted">可能是链接过期或已删除。回到短剧工坊重新挑选一部。</div>
+      <button type="button" className="btn btn-line" onClick={onBack}>
+        <ChevronLeft size={16} /> 返回短剧工坊
+      </button>
+    </div>
+  );
 }

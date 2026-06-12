@@ -32,3 +32,4 @@ export * as StoreApi from "./store";
 export * as GenerationApi from "./generation";
 export * as ScriptsApi from "./scripts";
 export * as ShortDramaApi from "./short-drama";
+export * as ProjectsApi from "./projects";

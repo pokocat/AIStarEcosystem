@@ -67,6 +67,15 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.64 · 2026-06-12 · 六阶段项目工作台接真后端（mock → 真实 API）
+
+- **真后端落地**：`/projects` 列表、`/projects/new`（从零 + 套模板）、`/projects/[id]` 工作台从 mock 静态数据切到真实接口 `ProjectsApi`（→ `/api/me/drama/projects*`，后端 `DramaProjectController` + `DramaProject` JSON-document 实体）。
+- **整套 ProjectData 持久化**：工作台加载真实文档；阶段内编辑 → 乐观更新 + `PUT` 落库（`saveData` 注入各阶段的 `StageContext`）。
+- **大纲 AI 真连大模型**：`OutlineStage` 的「AI 生成大纲」调 `POST /me/drama/projects/{id}/outline/ai-draft` → 真实大模型起草分集大纲 → 合并入文档 + 落库；空项目展示 idle 引导态，失败 toast 报错（带后端错误码文案）。
+- **状态闭环**：列表/详情加载态（spinner/skeleton）、空状态（无项目→建卡 + 工作台 idle）、错误态（加载失败重试 / 生成失败提示）、鉴权（`/api/me/**` 按 JWT principal 隔离归属）。
+- **CRUD 全链路**：新建（guided/template/衍生）→ seed 空文档 → 工作台 → 大纲 AI → 保存 → 列表「继续上次」。dev 用 `scripts/dev-fake-llm-server.mjs`（:8091）联调大模型链路。
+- 注:视频工厂（分镜出片）走真实 agnes 视频端点有额度，本期保持联调态；详见 `docs/VERSION_HISTORY.md` §v0.64 的「仍待办」。
+
 ### v0.63 补丁 2 · 2026-06-12 · 剧集脚本:本集剧情 + 出场人物管理 + 加对白简化
 
 - **本集剧情置顶**:剧集脚本顶部新增可编辑「本集剧情」卡(给人看的速览,不直接喂给生成);

@@ -2811,3 +2811,44 @@ voiceName 音色联动、~~aiavatar 反向「应用于」视图~~（✅ v0.61）
   `POST /star/profile/uploads` + `StarProfileUpdateInput` schema + StarProfile 扩展字段
 - **注意**：photos / videos 的 admin append/remove 端点保留（当前无 UI 使用方）；
   后续若给 star 端开放资料图集 / 形象视频管理，按本版同样姿势迁移
+
+### v0.64（2026-06-12）— 短剧「六阶段项目工作台」接真后端（mock → 真实 API）
+
+**背景**：web-drama 的项目工作台（选题 → 大纲 → 角色 → 剧集脚本 → 分镜工厂 → 成片配方）此前
+是纯前端 mock（`mocks/drama-workshop` 静态 `ProjectData`），无任何持久化。本版补齐整套后端 +
+前端切真，跑通「新建 → 加载 → 大纲 AI → 保存 → 持久化」主路径。
+
+**后端（新增）**：
+- 实体 `DramaProject`（`drama_projects` 表）——JSON-document：整套 `ProjectData` 存
+  `payload_json`（LONGTEXT），另存列表卡片核心列 `title/type/type_key/ratio/episodes/progress/
+  stage/mode/cover_from/cover_to`；按 `owner_user_id` 隔离 + `deleted_at` 软删。与 `DramaScript` 同惯例。
+- `DramaProjectService`：`listProjects` / `getProject`（{meta,data}）/ `createProject`（按内容类型
+  seed 一份**空但合法**的 ProjectData，各阶段渲染空状态）/ `saveProject`（整套落库 + 回算卡片字段）/
+  `deleteProject`（软删）/ `outlineAiDraft`（大模型起草分集大纲 `[{no,hook,synopsis,beat}]`，复用
+  `DRAMA_SCRIPT_DRAFT` 已绑定端点 + 大纲专属 prompt；未配 503 `AI_NOT_CONFIGURED` / 调用失败
+  502 `AI_CALL_FAILED` / 解析失败 502 `AI_BAD_OUTPUT`，**不静默兜底**）。
+- `DramaProjectController` → `GET/POST /api/me/drama/projects`、`GET/PUT/DELETE /{id}`、
+  `POST /{id}/outline/ai-draft`。落 `/api/me/**` → JWT principal 隔离。
+- 联调：`scripts/dev-fake-llm-server.mjs` 加「分集大纲」JSON 分支（先于脚本分支，避开 `episode` 子串）。
+
+**前端（mock → 真实 API）**：
+- 新 `api/projects.ts`（`ProjectsApi`：list/get/create/save/delete/outlineAiDraft，带 `USE_MOCK` 分支）。
+- `/projects` 列表：`useAsync` 拉真实列表 + 加载/空/错误（重试）态；「继续上次」取最近更新项；
+  新建（从零 `/projects/new` guided/template + 套模板弹窗 + 成片预览衍生）全部走 `createProject`
+  真实立项（**修掉原先硬编码跳 `p1` mock id 的死链**）。
+- `/projects/[id]` 工作台：`getProject` 真实加载（加载态 spinner / 找不到态）；整套 `data` 提升为
+  可编辑副本，经 `StageContext.saveData` 注入各阶段，乐观更新 + `PUT` 落库。
+- `OutlineStage`：「AI 生成大纲」调 `outlineAiDraft` 真连大模型 → 合并入文档 + 保存；空项目
+  idle 引导态；失败 toast（带后端错误码文案）。
+
+**验证**：curl 全链路（create→outline-AI→save→GET 持久化→list→delete 软删 404）+ 浏览器主路径
+（空列表 → 工作台加载真实 logline/集数 → 点「AI 生成大纲」→ 真实大模型出 6 集 → 落库 → reload 仍在
+→ 列表「继续上次」卡）。三门全绿：web-drama typecheck / `check:api-contract` / server compile。
+
+**仍待办（下一阶段候选）**：
+- 其余阶段（角色绑定 / 剧集脚本-分镜 / 成片配方）的**逐项编辑持久化**与 AI（剧集脚本可直接复用
+  已验证的 `DRAMA_SCRIPT_DRAFT` 管线）尚为前端态；本版已铺好「整套文档 load/save + StageContext」
+  的承接点，按 `OutlineStage` 同姿势接入即可。
+- 视频工厂（分镜出片）走真实 agnes 视频端点**有额度**，本期保持联调态（fake :8091），未接真实计费。
+- 大纲/生成动作的**真实积分扣减**（`CreditService`）未接（当前工作台余额为展示态）；接入时按
+  `hold/commit/release` 三段式或 `debit` 同步扣。

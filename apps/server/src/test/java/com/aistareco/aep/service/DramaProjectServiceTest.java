@@ -1,0 +1,151 @@
+package com.aistareco.aep.service;
+
+import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.DramaProject;
+import com.aistareco.aep.repository.DramaProjectRepository;
+import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * DramaProjectService 工作台文档 CRUD + 大纲 AI：
+ * seed 合法性 / 保存回写 / 归属隔离 / 软删 / 大模型未配置抛错 / 大纲解析。
+ * 用内存 Map 背书 repo（避免 JPA 上下文），ObjectMapper 用真实实例。
+ */
+class DramaProjectServiceTest {
+
+    private static final ObjectMapper OM = new ObjectMapper();
+
+    private Map<String, DramaProject> store;
+    private AiModelInvocationService invocation;
+    private DramaProjectService svc;
+
+    @BeforeEach
+    void setup() {
+        store = new HashMap<>();
+        DramaProjectRepository repo = mock(DramaProjectRepository.class);
+        invocation = mock(AiModelInvocationService.class);
+        svc = new DramaProjectService(repo, invocation, OM);
+
+        when(repo.save(any())).thenAnswer(inv -> {
+            DramaProject p = inv.getArgument(0);
+            store.put(p.getId(), p);
+            return p;
+        });
+        when(repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(anyString(), anyString())).thenAnswer(inv -> {
+            DramaProject p = store.get(inv.<String>getArgument(0));
+            if (p == null || p.getDeletedAt() != null
+                    || !Objects.equals(p.getOwnerUserId(), inv.getArgument(1))) return Optional.empty();
+            return Optional.of(p);
+        });
+        when(repo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(anyString())).thenAnswer(inv -> {
+            List<DramaProject> out = new ArrayList<>();
+            for (DramaProject p : store.values()) {
+                if (p.getDeletedAt() == null && Objects.equals(p.getOwnerUserId(), inv.getArgument(0))) out.add(p);
+            }
+            return out;
+        });
+    }
+
+    private static JsonNode node(String json) {
+        try {
+            return OM.readTree(json);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String createReturningId(String body, String user) {
+        return svc.createProject(node(body), user).path("meta").path("id").asText();
+    }
+
+    @Test
+    void createSeedsValidEmptyProjectData() {
+        JsonNode detail = svc.createProject(
+                node("{\"title\":\"测试剧\",\"type\":\"悬疑短剧\",\"typeKey\":\"mystery\",\"mode\":\"guided\",\"episodes\":12}"),
+                "u1");
+        assertEquals("测试剧", detail.path("meta").path("title").asText());
+        assertEquals(1, detail.path("meta").path("stage").asInt());
+        JsonNode data = detail.path("data");
+        for (String k : List.of("projectInfo", "topicCards", "episodes", "characters", "script", "storyboard", "promptPack")) {
+            assertTrue(data.has(k), "ProjectData missing key: " + k);
+        }
+        assertEquals(0, data.path("episodes").size());
+        assertEquals(12, data.path("projectInfo").path("episodes").asInt());
+    }
+
+    @Test
+    void saveRoundTripsAndRecomputesCardFields() {
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        svc.saveProject(id, node("{\"data\":{\"projectInfo\":{\"title\":\"改名了\",\"episodes\":6},"
+                + "\"episodes\":[{\"no\":1,\"hook\":\"h\",\"synopsis\":\"s\",\"beat\":\"b\"}]},\"stage\":3,\"progress\":40}"), "u1");
+        JsonNode got = svc.getProject(id, "u1");
+        assertEquals("改名了", got.path("meta").path("title").asText());
+        assertEquals(3, got.path("meta").path("stage").asInt());
+        assertEquals(40, got.path("meta").path("progress").asInt());
+        assertEquals(1, got.path("data").path("episodes").size());
+    }
+
+    @Test
+    void ownershipIsolatesProjects() {
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.getProject(id, "u2"));
+        assertEquals("DRAMA_PROJECT_NOT_FOUND", ex.getCode());
+        assertTrue(svc.listProjects("u2").isEmpty());
+        assertEquals(1, svc.listProjects("u1").size());
+    }
+
+    @Test
+    void deleteSoftRemoves() {
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        svc.deleteProject(id, "u1");
+        assertThrows(BusinessException.class, () -> svc.getProject(id, "u1"));
+        assertTrue(svc.listProjects("u1").isEmpty());
+    }
+
+    @Test
+    void outlineThrowsWhenAiNotConfigured() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.outlineAiDraft(id, null, "u1"));
+        assertEquals("AI_NOT_CONFIGURED", ex.getCode());
+    }
+
+    @Test
+    void outlineParsesEpisodesFromLlmJson() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "{\"episodes\":[{\"no\":1,\"hook\":\"开场钩子\",\"synopsis\":\"梗概\",\"beat\":\"转折\"}]}",
+                        "stop", 100L, "ep", "fake-model"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\",\"episodes\":3}", "u1");
+        JsonNode out = svc.outlineAiDraft(id, null, "u1");
+        assertEquals(1, out.path("episodes").size());
+        assertEquals("开场钩子", out.path("episodes").get(0).path("hook").asText());
+        assertEquals(1, out.path("episodes").get(0).path("no").asInt());
+    }
+
+    @Test
+    void outlineThrowsOnUnparseableLlmOutput() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "对不起我无法生成", "stop", 10L, "ep", "fake-model"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.outlineAiDraft(id, null, "u1"));
+        assertEquals("AI_BAD_OUTPUT", ex.getCode());
+    }
+}

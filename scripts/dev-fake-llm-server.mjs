@@ -64,6 +64,20 @@ function buildProse(text) {
 
 // ── 结构化 JSON（短剧脚本 / 变量 / 卖点等 json_object 模式） ──────────────────
 function buildJsonContent(text) {
+  // 分集大纲（必须先于脚本分支：脚本分支会命中 "episode" 子串）
+  if (/分集大纲|分集结构|分集剧情|大纲/.test(text)) {
+    const beats = [
+      { hook: "开场即抛出最大悬念，3 秒抓住观众", synopsis: "主角在一次意外中卷入旋涡，命运齿轮开始转动。", beat: "身份反转的第一道伏笔" },
+      { hook: "看似平静下暗流涌动，旧关系被点燃", synopsis: "关键人物登场，主角与对手第一次正面交锋。", beat: "误会加深，情绪升温" },
+      { hook: "一封信/一通电话打破平衡", synopsis: "秘密被揭开一角，主角被迫做出艰难抉择。", beat: "信任崩塌的转折点" },
+      { hook: "绝境时刻，主角背水一战", synopsis: "矛盾全面爆发，多方势力交汇对撞。", beat: "高光反击，爽感拉满" },
+      { hook: "真相浮出水面，前情全部呼应", synopsis: "层层反转后，隐藏的幕后被揭穿。", beat: "终极揭谜" },
+      { hook: "余波与收束，留一个回味的扣子", synopsis: "主角完成蜕变，关系尘埃落定，埋下续作钩子。", beat: "情绪释怀 + 续作悬念" },
+    ];
+    return JSON.stringify({
+      episodes: beats.map((b, i) => ({ no: i + 1, ...b })),
+    });
+  }
   // 短剧脚本起草
   if (/短剧|剧本|分镜|scenes|episode|台词|镜头/.test(text)) {
     return JSON.stringify({

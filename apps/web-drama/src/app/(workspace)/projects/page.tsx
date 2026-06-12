@@ -13,7 +13,9 @@ import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
-import { PROJECTS, REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
+import { CONTENT_TYPES, REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
+import { ProjectsApi } from "@/api";
+import { useAsync } from "@/lib/drama-query";
 
 export default function ProjectsHubPage() {
   return (
@@ -26,14 +28,14 @@ export default function ProjectsHubPage() {
 function ProjectsHubInner() {
   const router = useRouter();
   const sp = useSearchParams();
-  const [loading, setLoading] = React.useState(true);
   const [quickOpen, setQuickOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<DramaProjectSummary | null>(null);
 
-  React.useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(t);
-  }, []);
+  const { data: projects, isLoading: loading, error, refetch } = useAsync(
+    "/me/drama/projects",
+    () => ProjectsApi.listProjects(),
+  );
+  const list = projects ?? [];
 
   // 兼容旧链接 ?new=1 → 跳新建流
   React.useEffect(() => {
@@ -42,18 +44,36 @@ function ProjectsHubInner() {
     }
   }, [sp, router]);
 
-  const main = PROJECTS.find((p) => p.main);
-  const rest = PROJECTS.filter((p) => !p.main && p.episodes > 1); // 只留多集短剧
+  // 最近更新的作为「继续上次」大卡，其余进网格。
+  const main = list[0];
+  const rest = list.slice(1);
 
   // 已完成的短剧:先看成片预览,再决定看脚本还是衍生
   const openProject = (p: DramaProjectSummary) => {
     if (p.done) setPreview(p);
     else router.push(`/projects/${p.id}`);
   };
-  const quickCreate = () => {
+  const quickCreate = async (payload: { type: string; template: string; idea: string }) => {
     setQuickOpen(false);
-    router.push("/projects/p1?from=template");
-    toast.success("模板已预填大纲与钩子,改改就能用");
+    const ct = CONTENT_TYPES.find((t) => t.key === payload.type);
+    const vertical = !ct || !/16:9/.test(ct.ratio);
+    try {
+      const detail = await ProjectsApi.createProject({
+        title: (payload.idea || payload.template || ct?.name || "新短剧").slice(0, 24),
+        type: ct?.name ?? "短剧",
+        typeKey: payload.type,
+        mode: "template",
+        ratio: vertical ? "9:16" : "16:9",
+        episodes: vertical ? 12 : 1,
+        logline: payload.idea ?? "",
+        coverFrom: ct?.from,
+        coverTo: ct?.to,
+      });
+      toast.success("已套用模板立项,改改大纲就能用");
+      router.push(`/projects/${detail.meta.id}?from=template`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "立项失败，请重试");
+    }
   };
 
   return (
@@ -82,6 +102,16 @@ function ProjectsHubInner() {
           </button>
         </div>
       </div>
+
+      {/* 加载失败 */}
+      {!!error && !loading && (
+        <div className="card col center" style={{ padding: 28, gap: 12, textAlign: "center", marginBottom: 20 }}>
+          <div className="muted" style={{ fontSize: 13.5 }}>
+            短剧列表加载失败 —— {error instanceof Error ? error.message : "请稍后重试"}
+          </div>
+          <button type="button" className="btn btn-line btn-sm" onClick={refetch}>重新加载</button>
+        </div>
+      )}
 
       {/* 继续上次 */}
       {main && !loading && (
@@ -224,10 +254,25 @@ function ProjectsHubInner() {
             setPreview(null);
             router.push(`/projects/${id}`);
           }}
-          onDerive={() => {
+          onDerive={async () => {
+            const src = preview;
             setPreview(null);
-            toast.success(`已按《${preview.title}》的结构衍生新剧,大纲可直接改`);
-            router.push("/projects/p1?from=template");
+            try {
+              const detail = await ProjectsApi.createProject({
+                title: `${src.title} · 衍生`,
+                type: src.type,
+                typeKey: src.typeKey,
+                mode: "template",
+                ratio: src.ratio,
+                episodes: src.episodes,
+                coverFrom: src.cover.from,
+                coverTo: src.cover.to,
+              });
+              toast.success(`已按《${src.title}》的结构衍生新剧,大纲可直接改`);
+              router.push(`/projects/${detail.meta.id}?from=template`);
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "衍生失败，请重试");
+            }
           }}
         />
       )}

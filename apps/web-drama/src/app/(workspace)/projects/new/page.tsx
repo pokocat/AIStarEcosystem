@@ -7,16 +7,44 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { toast } from "sonner";
 import { PickMode, PickType, StepDot } from "@/components/drama-workshop/new-project";
+import { ProjectsApi } from "@/api";
 import type { ContentType } from "@/mocks/drama-workshop";
 
 export default function NewProjectFlow() {
   const router = useRouter();
   const [step, setStep] = React.useState<1 | 2>(1);
   const [type, setType] = React.useState<ContentType | null>(null);
+  const creating = React.useRef(false);
 
-  const enterWorkbench = (payload: { projectId: string }) => {
-    router.push(`/projects/${payload.projectId}`);
+  // 真实立项：按所选内容类型 + 模式 + 灵感创建后端项目，再进工作台。
+  const enterWorkbench = async (payload: {
+    mode: "guided" | "template";
+    topic?: string;
+    template?: string;
+  }) => {
+    if (!type || creating.current) return;
+    creating.current = true;
+    const vertical = !/16:9/.test(type.ratio);
+    const seed = (payload.topic || payload.template || "").trim();
+    try {
+      const detail = await ProjectsApi.createProject({
+        title: seed ? seed.slice(0, 24) : `${type.name}新剧`,
+        type: type.name,
+        typeKey: type.key,
+        mode: payload.mode,
+        ratio: vertical ? "9:16" : "16:9",
+        episodes: vertical ? 12 : 1,
+        logline: payload.topic ?? "",
+        coverFrom: type.from,
+        coverTo: type.to,
+      });
+      router.push(`/projects/${detail.meta.id}${payload.mode === "template" ? "?from=template" : ""}`);
+    } catch (e) {
+      creating.current = false;
+      toast.error(e instanceof Error ? e.message : "立项失败，请重试");
+    }
   };
 
   return (
