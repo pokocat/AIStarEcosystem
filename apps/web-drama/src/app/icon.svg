@@ -1,18 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title>短剧工坊 favicon</title>
-  <defs>
-    <linearGradient id="core" x1="96" y1="72" x2="416" y2="440" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="oklch(0.3 0.035 42)" />
-      <stop offset="1" stop-color="oklch(0.16 0.018 34)" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="120" fill="url(#core)" />
-  <rect x="42" y="42" width="428" height="428" rx="100" fill="none" stroke="oklch(0.78 0.15 48 / 0.24)" stroke-width="2" />
-  <circle cx="244" cy="252" r="126" fill="none" stroke="oklch(0.72 0.17 48)" stroke-width="22" stroke-linecap="round" stroke-dasharray="420 310" transform="rotate(136 244 252)" />
-  <circle cx="348" cy="150" r="28" fill="oklch(0.77 0.158 48)" />
-  <path d="M219 166c15 49 44 78 93 93-49 15-78 44-93 93-15-49-44-78-93-93 49-15 78-44 93-93Z" fill="oklch(0.98 0.006 90)" />
-  <path d="M314 243h92c17 0 30 13 30 30v72c0 17-13 30-30 30h-92c-17 0-30-13-30-30v-72c0-17 13-30 30-30Z" fill="none" stroke="oklch(0.84 0.12 48)" stroke-width="19" stroke-linejoin="round" />
-  <path d="M300 257h120M316 257l26-38M361 257l26-38M406 257l26-38" fill="none" stroke="oklch(0.84 0.12 48)" stroke-width="15" stroke-linecap="round" />
-  <path d="M351 288l48 28-48 28v-56Z" fill="oklch(0.84 0.12 48)" />
-  <circle cx="348" cy="150" r="8" fill="oklch(0.24 0.03 42)" />
+  <circle cx="256" cy="256" r="232" fill="oklch(0.68 0.18 48)" />
+  <path d="M135 206h242c28 0 50 22 50 50v106c0 28-22 50-50 50H135c-28 0-50-22-50-50V256c0-28 22-50 50-50Z" fill="oklch(0.98 0.006 90)" />
+  <path d="M92 186 390 99l30 80-298 87-30-80Z" fill="oklch(0.98 0.006 90)" />
+  <path d="M152 168 191 139M238 143l39-29M324 118l39-29M132 261h248" stroke="oklch(0.68 0.18 48)" stroke-width="24" stroke-linecap="round" />
+  <path d="M223 292 315 346 223 400V292Z" fill="oklch(0.68 0.18 48)" />
 </svg>

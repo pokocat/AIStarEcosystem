@@ -1,17 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title>AI Star Eco Admin favicon</title>
-  <defs>
-    <linearGradient id="core" x1="96" y1="72" x2="416" y2="440" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="oklch(0.29 0.033 145)" />
-      <stop offset="1" stop-color="oklch(0.16 0.016 152)" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="120" fill="url(#core)" />
-  <rect x="42" y="42" width="428" height="428" rx="100" fill="none" stroke="oklch(0.72 0.13 145 / 0.24)" stroke-width="2" />
-  <circle cx="240" cy="252" r="124" fill="none" stroke="oklch(0.66 0.14 145)" stroke-width="22" stroke-linecap="round" stroke-dasharray="420 310" transform="rotate(136 240 252)" />
-  <circle cx="347" cy="151" r="28" fill="oklch(0.7 0.13 145)" />
-  <path d="M219 166c15 49 44 78 93 93-49 15-78 44-93 93-15-49-44-78-93-93 49-15 78-44 93-93Z" fill="oklch(0.98 0.006 90)" />
-  <path d="M321 237h46v46h-46zM394 237h46v46h-46zM321 310h46v46h-46zM394 310h46v46h-46z" fill="oklch(0.74 0.12 145)" />
-  <path d="M327 404l30 30 72-82" fill="none" stroke="oklch(0.76 0.12 145)" stroke-width="23" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="347" cy="151" r="8" fill="oklch(0.24 0.027 145)" />
+  <circle cx="256" cy="256" r="232" fill="oklch(0.58 0.13 145)" />
+  <path d="M123 126h100v100H123V126ZM289 126h100v100H289V126ZM123 292h100v100H123V292Z" fill="oklch(0.98 0.006 90)" />
+  <path d="M292 352 337 397 426 283" fill="none" stroke="oklch(0.98 0.006 90)" stroke-width="45" stroke-linecap="round" stroke-linejoin="round" />
 </svg>

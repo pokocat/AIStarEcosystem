@@ -1,17 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title>AiAvatar favicon</title>
-  <defs>
-    <linearGradient id="core" x1="96" y1="72" x2="416" y2="440" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="oklch(0.3 0.03 190)" />
-      <stop offset="1" stop-color="oklch(0.16 0.015 205)" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="120" fill="url(#core)" />
-  <rect x="42" y="42" width="428" height="428" rx="100" fill="none" stroke="oklch(0.8 0.11 190 / 0.24)" stroke-width="2" />
-  <circle cx="238" cy="252" r="125" fill="none" stroke="oklch(0.74 0.12 190)" stroke-width="22" stroke-linecap="round" stroke-dasharray="430 300" transform="rotate(135 238 252)" />
-  <circle cx="344" cy="151" r="28" fill="oklch(0.78 0.11 190)" />
-  <path d="M219 166c15 49 44 78 93 93-49 15-78 44-93 93-15-49-44-78-93-93 49-15 78-44 93-93Z" fill="oklch(0.98 0.006 90)" />
-  <path d="M321 263h-28v-28c0-17 14-31 31-31h28M409 204h28c17 0 31 14 31 31v28M468 329v28c0 17-14 31-31 31h-28M352 388h-28c-17 0-31-14-31-31v-28" fill="none" stroke="oklch(0.82 0.105 190)" stroke-width="20" stroke-linecap="round" />
-  <path d="M343 300c0-25 19-43 45-43s45 18 45 43M350 337c23 18 53 18 76 0" fill="none" stroke="oklch(0.82 0.105 190)" stroke-width="17" stroke-linecap="round" />
-  <circle cx="344" cy="151" r="8" fill="oklch(0.24 0.026 190)" />
+  <circle cx="256" cy="256" r="232" fill="oklch(0.62 0.12 190)" />
+  <path d="M160 185c0-47 38-85 96-85s96 38 96 85v44c0 76-42 139-96 139s-96-63-96-139v-44Z" fill="none" stroke="oklch(0.98 0.006 90)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M189 306c38 35 96 35 134 0M190 235h38M284 235h38" stroke="oklch(0.98 0.006 90)" stroke-width="28" stroke-linecap="round" />
+  <path d="M105 174v-42c0-16 13-29 29-29h42M407 174v-42c0-16-13-29-29-29h-42M105 338v42c0 16 13 29 29 29h42M407 338v42c0 16-13 29-29 29h-42" fill="none" stroke="oklch(0.98 0.006 90)" stroke-width="28" stroke-linecap="round" />
 </svg>

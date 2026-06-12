@@ -1,17 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title>AI 明星带货 favicon</title>
-  <defs>
-    <linearGradient id="core" x1="96" y1="72" x2="416" y2="440" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="oklch(0.3 0.032 76)" />
-      <stop offset="1" stop-color="oklch(0.16 0.015 70)" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="120" fill="url(#core)" />
-  <rect x="42" y="42" width="428" height="428" rx="100" fill="none" stroke="oklch(0.82 0.13 78 / 0.24)" stroke-width="2" />
-  <circle cx="238" cy="250" r="124" fill="none" stroke="oklch(0.76 0.14 78)" stroke-width="22" stroke-linecap="round" stroke-dasharray="420 310" transform="rotate(134 238 250)" />
-  <circle cx="346" cy="150" r="28" fill="oklch(0.82 0.13 78)" />
-  <path d="M220 166c15 49 44 78 93 93-49 15-78 44-93 93-15-49-44-78-93-93 49-15 78-44 93-93Z" fill="oklch(0.98 0.006 90)" />
-  <path d="M343 246h79l38 38v80c0 15-12 27-27 27h-90c-15 0-27-12-27-27v-91c0-15 12-27 27-27Z" fill="oklch(0.82 0.13 78)" />
-  <path d="M393 286l11 24 26 3-19 18 5 26-23-13-23 13 5-26-19-18 26-3 11-24Z" fill="oklch(0.22 0.024 76)" />
-  <circle cx="346" cy="150" r="8" fill="oklch(0.24 0.028 76)" />
+  <circle cx="256" cy="256" r="232" fill="oklch(0.72 0.15 78)" />
+  <path d="M159 133h147c20 0 39 8 53 22l75 75c20 20 20 52 0 72L304 432c-20 20-52 20-72 0L104 304c-14-14-22-32-22-52V184c0-28 22-51 51-51h26Z" fill="oklch(0.98 0.006 90)" />
+  <circle cx="174" cy="225" r="29" fill="oklch(0.72 0.15 78)" />
+  <path d="M282 209 305 258l54 7-39 38 10 54-48-26-48 26 10-54-39-38 54-7 23-49Z" fill="oklch(0.72 0.15 78)" />
 </svg>

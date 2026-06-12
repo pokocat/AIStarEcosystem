@@ -1,16 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title>AI 音乐人 favicon</title>
-  <defs>
-    <linearGradient id="core" x1="96" y1="72" x2="416" y2="440" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="oklch(0.29 0.033 292)" />
-      <stop offset="1" stop-color="oklch(0.16 0.018 282)" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="120" fill="url(#core)" />
-  <rect x="42" y="42" width="428" height="428" rx="100" fill="none" stroke="oklch(0.82 0.13 298 / 0.24)" stroke-width="2" />
-  <circle cx="244" cy="252" r="126" fill="none" stroke="oklch(0.72 0.16 298)" stroke-width="22" stroke-linecap="round" stroke-dasharray="470 260" transform="rotate(134 244 252)" />
-  <circle cx="338" cy="153" r="27" fill="oklch(0.74 0.15 298)" />
-  <path d="M222 164c15 50 45 80 95 95-50 15-80 45-95 95-15-50-45-80-95-95 50-15 80-45 95-95Z" fill="oklch(0.98 0.006 90)" />
-  <path d="M332 252v78M372 226v130M412 272v42" fill="none" stroke="oklch(0.78 0.155 298)" stroke-width="24" stroke-linecap="round" />
-  <circle cx="338" cy="153" r="8" fill="oklch(0.24 0.03 292)" />
+  <circle cx="256" cy="256" r="232" fill="oklch(0.64 0.15 285)" />
+  <path d="M315 143v185c0 45-33 78-82 78-42 0-72-23-72-56 0-35 32-59 76-59 18 0 34 4 47 12V178l-2-22 33-13Z" fill="oklch(0.98 0.006 90)" />
+  <path d="M315 143c38 31 68 42 106 42v56c-43 0-79-15-106-45v-53Z" fill="oklch(0.98 0.006 90)" />
 </svg>
