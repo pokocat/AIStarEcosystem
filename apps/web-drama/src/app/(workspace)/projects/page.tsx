@@ -2,31 +2,34 @@
 
 export const dynamic = "force-dynamic";
 
-// 我的短剧 — 短剧工坊首页（设计真源:screens-entry.jsx `HomeScreen`）。
-// 新建按钮 → /projects/new(B4 创建流);项目卡 → /projects/<id>(B5 工作台)。
+// 短剧工坊 — 设计真源 v4 app-v4.jsx `ProjectsHub`:
+// 只收多集连续短剧(单集作品在「短视频工坊」);继续上次大卡 + 紧凑竖版网格。
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Layers, Plus, Sliders } from "lucide-react";
-import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
+import { toast } from "sonner";
+import { ArrowRight, Clock, Wand2, Zap } from "lucide-react";
+import { Thumb } from "@/components/drama-ui";
+import { ProjectCard } from "@/components/drama-workshop/project-card";
+import { stageNameByNo } from "@/components/drama-workshop/stages-config";
+import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
 import { PROJECTS, type DramaProjectSummary } from "@/mocks/drama-workshop";
 
-export default function ProjectsHomePage() {
+export default function ProjectsHubPage() {
   return (
-    <React.Suspense fallback={<HomeSkeleton />}>
-      <ProjectsHomeInner />
+    <React.Suspense fallback={<HubSkeleton />}>
+      <ProjectsHubInner />
     </React.Suspense>
   );
 }
 
-function ProjectsHomeInner() {
+function ProjectsHubInner() {
   const router = useRouter();
   const sp = useSearchParams();
   const [loading, setLoading] = React.useState(true);
-  const [operator, setOperator] = React.useState(false);
+  const [quickOpen, setQuickOpen] = React.useState(false);
 
-  // 进入页面给一点骨架时间（与设计真源 final-home loading 行为一致）。
   React.useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 500);
+    const t = setTimeout(() => setLoading(false), 450);
     return () => clearTimeout(t);
   }, []);
 
@@ -37,80 +40,105 @@ function ProjectsHomeInner() {
     }
   }, [sp, router]);
 
+  const main = PROJECTS.find((p) => p.main);
+  const rest = PROJECTS.filter((p) => !p.main && p.episodes > 1); // 只留多集短剧
+
   const openProject = (p: DramaProjectSummary) => router.push(`/projects/${p.id}`);
-  const openNew = () => router.push("/projects/new");
+  const quickCreate = () => {
+    setQuickOpen(false);
+    router.push("/projects/p1?from=template");
+    toast.success("模板已预填大纲与钩子,改改就能用");
+  };
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-      {/* 标题区 + 顶部操作 */}
-      <div
-        className="row"
-        style={{ marginBottom: 28, gap: 16, flexWrap: "wrap" }}
-      >
+      <div className="row" style={{ marginBottom: 22, gap: 16, flexWrap: "wrap" }}>
         <div className="grow" style={{ minWidth: 280 }}>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 30,
-              fontWeight: 800,
-              letterSpacing: "-.02em",
-            }}
-          >
-            我的短剧
-          </h1>
-          <div className="muted" style={{ marginTop: 6 }}>
-            从灵感到能直接开拍的成片配方,一条流水线搞定
-          </div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>短剧工坊</h1>
+          <div className="muted" style={{ marginTop: 4 }}>你的多集连续短剧都在这里 —— 点卡片接着做</div>
         </div>
         <div className="row gap-3">
-          {/* 运营身份开关(演示,实际权限由后端 operatorRole 控制) */}
           <button
             type="button"
-            className="chip static"
-            title="切换运营身份(演示)"
-            onClick={() => setOperator((v) => !v)}
-            style={{
-              background: operator ? "var(--accent-soft)" : "var(--surface-2)",
-              color: operator ? "var(--accent)" : "var(--ink-3)",
-            }}
+            className="btn btn-line"
+            style={{ height: 44, padding: "0 18px" }}
+            onClick={() => router.push("/projects/new")}
           >
-            <Sliders size={13} /> 运营身份 {operator ? "开" : "关"}
+            <Wand2 size={16} /> 从零开剧
           </button>
-          {operator && (
-            <button type="button" className="btn btn-line btn-sm">
-              <Layers size={15} /> 爆款拆解
-            </button>
-          )}
           <button
             type="button"
             className="btn btn-grad"
-            style={{ height: 46, padding: "0 22px", fontSize: 15 }}
-            onClick={openNew}
+            style={{ height: 44, padding: "0 18px" }}
+            onClick={() => setQuickOpen(true)}
           >
-            <Plus size={18} /> 新建短剧
+            <Zap size={16} /> 套模板开剧
           </button>
         </div>
       </div>
 
-      {/* 网格 */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(232px, 1fr))",
-          gap: 20,
-        }}
-      >
-        {/* 新建卡 */}
+      {/* 继续上次 */}
+      {main && !loading && (
         <button
           type="button"
-          onClick={openNew}
+          className="card row gap-4 fade-up"
+          onClick={() => openProject(main)}
+          style={{ width: "100%", padding: 16, marginBottom: 24, textAlign: "left", alignItems: "center" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = "var(--shadow-lg)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+          }}
+        >
+          <Thumb
+            from={main.cover.from}
+            to={main.cover.to}
+            w={72}
+            ratio={main.ratio === "16:9" ? "16/10" : "9/16"}
+            radius={11}
+            stripes={false}
+          />
+          <div className="col gap-2 grow" style={{ minWidth: 0 }}>
+            <div className="row gap-2">
+              <span className="tag tag-accent">
+                <Clock size={11} /> 继续上次
+              </span>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>{main.title}</span>
+              <span className="tag tag-gray">{main.type}</span>
+            </div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              上次做到「{stageNameByNo(main.stage)}」· {main.updated}更新
+            </div>
+            <div style={{ height: 6, borderRadius: 99, background: "var(--surface-2)", overflow: "hidden", maxWidth: 420 }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: main.progress + "%",
+                  borderRadius: 99,
+                  background: "linear-gradient(90deg,var(--accent),var(--accent-2))",
+                }}
+              />
+            </div>
+          </div>
+          <span className="btn btn-primary" style={{ flex: "none" }}>
+            接着做 <ArrowRight size={16} />
+          </span>
+        </button>
+      )}
+
+      {/* 紧凑竖版网格 */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, alignItems: "start" }}>
+        <button
+          type="button"
+          onClick={() => setQuickOpen(true)}
           className="col center"
           style={{
             aspectRatio: "3/4",
             borderRadius: "var(--radius)",
             border: "2px dashed var(--line)",
             color: "var(--ink-3)",
-            gap: 10,
+            gap: 9,
             background: "var(--surface)",
             transition: "border-color .18s, color .18s",
             cursor: "pointer",
@@ -126,33 +154,33 @@ function ProjectsHomeInner() {
         >
           <div
             style={{
-              width: 52,
-              height: 52,
-              borderRadius: 16,
+              width: 46,
+              height: 46,
+              borderRadius: 15,
               background: "var(--accent-soft)",
               display: "grid",
               placeItems: "center",
               color: "var(--accent)",
             }}
           >
-            <Plus size={26} />
+            <Zap size={23} />
           </div>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>开一部新剧</span>
+          <span style={{ fontWeight: 700, fontSize: 13.5 }}>开一部新的</span>
+          <span className="faint" style={{ fontSize: 11 }}>套爆款模板·免大纲费</span>
         </button>
 
-        {/* 项目卡 / 骨架 */}
         {loading
-          ? Array.from({ length: 6 }).map((_, i) => <ProjectCardSkeleton key={i} />)
-          : PROJECTS.map((p, i) => (
-              <ProjectCard
-                key={p.id}
-                p={p}
-                delay={i * 40}
-                stageNames={STAGE_NAMES}
-                onOpen={openProject}
-              />
-            ))}
+          ? Array.from({ length: 5 }).map((_, i) => <ProjectCardSkeleton key={i} />)
+          : rest.map((p, i) => <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} />)}
       </div>
+
+      {quickOpen && (
+        <QuickCreateModal
+          onClose={() => setQuickOpen(false)}
+          onCreate={quickCreate}
+          onGuided={() => router.push("/projects/new")}
+        />
+      )}
     </div>
   );
 }
@@ -160,7 +188,7 @@ function ProjectsHomeInner() {
 function ProjectCardSkeleton() {
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div className="skel" style={{ aspectRatio: "3/2", borderRadius: 0 }} />
+      <div className="skel" style={{ aspectRatio: "3/4", borderRadius: 0 }} />
       <div style={{ padding: 14 }}>
         <div className="skel" style={{ height: 12, width: "60%", marginBottom: 10 }} />
         <div className="skel" style={{ height: 8, width: "100%", marginBottom: 8 }} />
@@ -170,18 +198,12 @@ function ProjectCardSkeleton() {
   );
 }
 
-function HomeSkeleton() {
+function HubSkeleton() {
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-      <div className="skel" style={{ height: 36, width: 180, marginBottom: 8 }} />
-      <div className="skel" style={{ height: 16, width: 320, marginBottom: 28 }} />
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(232px, 1fr))",
-          gap: 20,
-        }}
-      >
+      <div className="skel" style={{ height: 32, width: 180, marginBottom: 8 }} />
+      <div className="skel" style={{ height: 16, width: 320, marginBottom: 24 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18 }}>
         {Array.from({ length: 6 }).map((_, i) => (
           <ProjectCardSkeleton key={i} />
         ))}

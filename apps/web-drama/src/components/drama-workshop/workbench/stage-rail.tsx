@@ -1,19 +1,23 @@
 "use client";
 
-// 六阶段轨 — 设计真源:components.jsx `StageRail / StageItem`。
-// 左侧固定 248px,项目阶段 1-3 + 剧集阶段 4-6,软锁可自由跳。
+// 阶段轨 v4 — 设计真源:app-v4.jsx `StageRail2`。
+// 项目设置逐项列出;剧集制作收敛为单一「剧集工作台」入口,
+// 进入后左轨变为分集导航,步骤在顶部页签切换。
 import * as React from "react";
-import { Lock } from "lucide-react";
-import { STAGES, type StageDef, type StageKey } from "../stages-config";
+import { ChevronLeft, Film, Lock } from "lucide-react";
+import { STAGES, type StageDef, type StageKey, EPISODE_STAGE_KEYS } from "../stages-config";
 
 interface StageRailProps {
   current: StageKey;
   locked: Partial<Record<StageKey, boolean>>;
+  ep: number;
   onJump: (key: StageKey) => void;
   onHome?: () => void;
 }
 
-export function StageRail({ current, locked, onJump, onHome }: StageRailProps) {
+export function StageRail({ current, locked, ep, onJump, onHome }: StageRailProps) {
+  const setup = STAGES.filter((s) => s.scope === "项目");
+  const inEp = EPISODE_STAGE_KEYS.includes(current);
   return (
     <nav
       className="col"
@@ -30,57 +34,84 @@ export function StageRail({ current, locked, onJump, onHome }: StageRailProps) {
       <button
         type="button"
         onClick={onHome}
-        className="row gap-3"
+        className="row gap-2"
         style={{
-          padding: "8px 10px",
-          borderRadius: 12,
+          padding: "7px 10px",
+          borderRadius: 11,
           marginBottom: 8,
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
+          color: "var(--ink-3)",
+          fontWeight: 600,
+          fontSize: 12.5,
           textAlign: "left",
-          color: "var(--ink)",
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = "var(--surface-2)";
+          e.currentTarget.style.color = "var(--ink)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "var(--ink-3)";
         }}
       >
-        <img src="/icon.svg" alt="" style={{ width: 30, height: 30, borderRadius: 9, flex: "none" }} />
-        <span style={{ fontWeight: 800, letterSpacing: ".01em" }}>短剧工坊</span>
+        <ChevronLeft size={14} /> 回短剧工坊
       </button>
 
-      <div
-        className="faint"
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          padding: "8px 12px 4px",
-          letterSpacing: ".06em",
-        }}
-      >
-        项目阶段 · 跨集共享
+      <div className="faint" style={{ fontSize: 11, fontWeight: 700, padding: "10px 12px 4px", letterSpacing: ".06em" }}>
+        项目设置 · 跨集共享
       </div>
-      {STAGES.slice(0, 3).map((s) => (
+      {setup.map((s) => (
         <StageItem key={s.key} s={s} current={current} locked={locked} onJump={onJump} />
       ))}
 
-      <div
-        className="faint"
+      <div className="faint" style={{ fontSize: 11, fontWeight: 700, padding: "14px 12px 4px", letterSpacing: ".06em" }}>
+        剧集制作 · 逐集推进
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (!inEp) onJump("epscript");
+        }}
+        className="row gap-3"
         style={{
-          fontSize: 11,
-          fontWeight: 700,
-          padding: "12px 12px 4px",
-          letterSpacing: ".06em",
+          padding: "10px 11px",
+          borderRadius: 12,
+          textAlign: "left",
+          background: inEp ? "var(--accent-soft)" : "transparent",
+          color: inEp ? "var(--accent)" : "var(--ink-2)",
+        }}
+        onMouseEnter={(e) => {
+          if (!inEp) e.currentTarget.style.background = "var(--surface-2)";
+        }}
+        onMouseLeave={(e) => {
+          if (!inEp) e.currentTarget.style.background = "transparent";
         }}
       >
-        剧集阶段 · 针对当前集
-      </div>
-      {STAGES.slice(3).map((s) => (
-        <StageItem key={s.key} s={s} current={current} locked={locked} onJump={onJump} />
-      ))}
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 9,
+            flex: "none",
+            display: "grid",
+            placeItems: "center",
+            background: inEp ? "var(--accent)" : "var(--surface-2)",
+            color: inEp ? "#fff" : "var(--ink-3)",
+          }}
+        >
+          <Film size={16} />
+        </div>
+        <div className="col" style={{ minWidth: 0, gap: 1 }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>剧集工作台</span>
+          <span className="faint" style={{ fontSize: 10.5, whiteSpace: "nowrap" }}>
+            第 {ep} 集 · 脚本→工厂→成片
+          </span>
+        </div>
+      </button>
+      {inEp && (
+        <div className="faint" style={{ fontSize: 10.5, padding: "2px 12px 0", lineHeight: 1.5 }}>
+          进入后左侧变为分集列表,步骤在顶部页签切换
+        </div>
+      )}
     </nav>
   );
 }
@@ -112,8 +143,6 @@ function StageItem({
         color: active ? "var(--accent)" : "var(--ink-2)",
         fontWeight: active ? 700 : 600,
         transition: "background .15s",
-        border: "none",
-        cursor: "pointer",
       }}
       onMouseEnter={(e) => {
         if (!active) e.currentTarget.style.background = "var(--surface-2)";

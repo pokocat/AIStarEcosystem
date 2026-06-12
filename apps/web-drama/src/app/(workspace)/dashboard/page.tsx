@@ -1,473 +1,443 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
+// 首页 · AI 开拍 — 设计真源 v4 screens-home-v3.jsx `Home3`:
+// 居中 AI 对话框(短视频 / 短剧 一键切换 + 近期热点 + 今日灵感)+
+// 封面式创意推荐(统一预览弹窗)+ 继续上次。
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowUpRight,
+  ArrowRight,
   Clock,
+  Edit,
   Film,
-  PlayCircle,
+  Layers,
+  RefreshCw,
   Sparkles,
   Wand2,
+  Zap,
 } from "lucide-react";
-import type { Drama, DramaStatus } from "@ai-star-eco/types/film";
-import type { Artist } from "@ai-star-eco/types/artist";
-import { Button, Card, Chip, KpiCard, Meter } from "@/components/premium";
-import { SectionHeader, ViewHeader, StatusBadge, LoadingBlock, ErrorBlock } from "@/components/common";
-import { useAsync, invalidate } from "@/lib/drama-query";
-import { ArtistsApi, FilmApi } from "@/api";
-import { deriveCastView } from "@/lib/cast-derive";
-import { NewProjectDialog } from "../projects/_dialogs/NewProjectDialog";
-import { NewScriptDialog } from "../scripts/_dialogs/NewScriptDialog";
-import { NewArtistDialog } from "../cast/_dialogs/NewArtistDialog";
+import { Cost, Thumb } from "@/components/drama-ui";
+import { stageNameByNo } from "@/components/drama-workshop/stages-config";
+import { PreviewModal } from "@/components/drama-workshop/preview-modal";
+import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
+import { VideoCover } from "@/components/drama-workshop/video-cover";
+import {
+  HOT_TOPICS,
+  IDEA_POOL,
+  IDEA_TAGS,
+  PROJECTS,
+  SHORT_FORMATS,
+  ideaBeats,
+  type IdeaRec,
+} from "@/mocks/drama-workshop";
 
-type ProjectTone = "accent" | "success" | "warning" | "danger" | "info" | "violet" | "neutral";
-
-const DRAMA_STATUS_LABEL: Record<DramaStatus, string> = {
-  released: "在线",
-  filming: "制作中",
-  "post-production": "首映 T-3",
-  casting: "选角",
-};
-const DRAMA_STATUS_TONE: Record<DramaStatus, ProjectTone> = {
-  released: "success",
-  filming: "info",
-  "post-production": "accent",
-  casting: "violet",
-};
-
-function deriveSched(d: Drama): string {
-  if (d.status === "released") return d.releaseDate ? `首播 ${d.releaseDate.slice(0, 10)}` : "已上线";
-  if (d.status === "filming") return "拍摄中";
-  if (d.status === "post-production")
-    return d.releaseDate ? `首映 ${d.releaseDate.slice(0, 10)}` : "后期制作";
-  return "选角中";
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 5) return "夜深了";
+  if (h < 11) return "早上好";
+  if (h < 14) return "中午好";
+  if (h < 18) return "下午好";
+  return "晚上好";
 }
 
-export default function DashboardPage() {
+export default function HomePage() {
   const router = useRouter();
+  const [idea, setIdea] = React.useState("");
+  const [mode, setMode] = React.useState<"short" | "drama">("short"); // 短视频在前且默认
+  const [page, setPage] = React.useState(0);
+  const [sparkN, setSparkN] = React.useState(0);
+  const [preview, setPreview] = React.useState<IdeaRec | null>(null);
+  const [quickOpen, setQuickOpen] = React.useState(false);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const recs = Array.from({ length: 6 }).map((_, i) => IDEA_POOL[(page * 6 + i) % IDEA_POOL.length]);
+  const main = PROJECTS.find((p) => p.main);
+  const isShort = mode === "short";
+  const curFmt = SHORT_FORMATS[0];
 
-  const dramasQ = useAsync<Drama[]>("/film/dramas", () => FilmApi.listDramas());
-  const artistsQ = useAsync<Artist[]>("/me/artists", () => ArtistsApi.listArtists());
-
-  const [showNewProject, setShowNewProject] = React.useState(false);
-  const [showNewScript, setShowNewScript] = React.useState(false);
-  const [showNewArtist, setShowNewArtist] = React.useState(false);
-
-  const dramas = dramasQ.data ?? [];
-  const artists = artistsQ.data ?? [];
-
-  const dramaMain = dramas.filter((d) => d.id.startsWith("d-"));
-  const releasedCount = dramaMain.filter((d) => d.status === "released").length;
-  const filmingCount = dramaMain.filter((d) => d.status === "filming").length;
-
-  const totalViews = dramaMain.reduce((s, d) => s + d.views, 0);
-  const totalRevenue = dramaMain.reduce((s, d) => s + d.revenue, 0);
-
-  const activeArtists = artists.filter((a) => a.status === "active");
-  const castPreview = activeArtists.slice(0, 4).map(deriveCastView);
+  const goShortMake = (text?: string | null) => {
+    const q = text?.trim() ? `&idea=${encodeURIComponent(text.trim())}` : "";
+    router.push(`/shorts/make?fmt=sell${q}`);
+  };
+  const ideaCreate = (_text: string) => {
+    router.push("/projects/p1");
+    toast.success("AI 已根据你的点子立项《落地窗后》,大纲已就绪");
+  };
+  const submit = () => {
+    if (isShort) {
+      goShortMake(idea);
+      return;
+    }
+    if (!idea.trim()) {
+      inputRef.current?.focus();
+      return;
+    }
+    ideaCreate(idea.trim());
+  };
+  const fillRec = (r: IdeaRec) => {
+    setIdea(r.hook);
+    setPreview(null);
+    inputRef.current?.focus();
+  };
+  const dailySpark = () => {
+    if (isShort) {
+      if (curFmt) setIdea(curFmt.sample);
+      inputRef.current?.focus();
+      return;
+    }
+    const pool = IDEA_POOL.filter((r) => !r.personal);
+    const r = pool[sparkN % pool.length];
+    setSparkN((n) => n + 1);
+    setIdea(`${r.cat}向 · ${r.hook}`);
+    inputRef.current?.focus();
+  };
+  const quickCreate = () => {
+    setQuickOpen(false);
+    router.push("/projects/p1?from=template");
+    toast.success("模板已预填大纲与钩子,改改就能用");
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-      <ViewHeader
-        eyebrow="工作台总览"
-        title={<>今天的工作台</>}
-        meta={`${dramaMain.length} 部在产剧集 · ${activeArtists.length} 位演员 IP 在线 · 同步于 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`}
-        action={
-          <>
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={() => toast.info("排期日历功能即将上线", { description: "v0.7 排期与工时" })}
-            >
-              <Clock size={14} />
-              排期日历
-            </Button>
-            <Link href="/projects" style={{ textDecoration: "none" }}>
-              <Button variant="primary" size="md">
-                <Sparkles size={14} />
-                去做短剧
-              </Button>
-            </Link>
-          </>
-        }
-      />
-
-      {/* 主线引导:dashboard 是大盘视图,真正的创作主战场是「我的短剧」 */}
-      <div
-        className="card row gap-3"
-        style={{
-          padding: "14px 18px",
-          background: "linear-gradient(95deg, var(--accent-soft), var(--accent-2-soft))",
-          border: "none",
-          alignItems: "center",
-        }}
-      >
+    <div className="scroll ws-flush" style={{ background: "var(--bg)" }}>
+      <div style={{ position: "relative", overflow: "hidden", paddingBottom: 48 }}>
         <div
+          className="home-blob home-blob-a"
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 11,
-            background: "linear-gradient(135deg,var(--accent),var(--accent-2))",
-            display: "grid",
-            placeItems: "center",
-            color: "#fff",
-            flex: "none",
+            position: "absolute",
+            top: -160,
+            left: "18%",
+            width: 420,
+            height: 420,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, color-mix(in oklch, var(--accent) 16%, transparent), transparent 70%)",
+            pointerEvents: "none",
           }}
-        >
-          <Sparkles size={18} />
-        </div>
-        <div className="grow" style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 14 }}>从灵感到能直接开拍的成片配方</div>
-          <div className="faint" style={{ fontSize: 12.5, marginTop: 2 }}>
-            短剧工坊的 6 阶段流水线：选题立项 · 大纲分集 · 角色与资产 · 单集剧本 · 分镜工作台 · 成片配方
+        />
+        <div
+          className="home-blob home-blob-b"
+          style={{
+            position: "absolute",
+            top: -100,
+            right: "12%",
+            width: 380,
+            height: 380,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, color-mix(in oklch, var(--accent-2) 13%, transparent), transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          className="home-blob home-blob-c"
+          style={{
+            position: "absolute",
+            top: 60,
+            left: "46%",
+            width: 300,
+            height: 300,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, color-mix(in oklch, var(--accent) 10%, transparent), transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "60px 40px 8px", position: "relative", textAlign: "center" }}>
+          <div className="faint" style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>{greeting()},创作者</div>
+          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.25 }}>
+            今天想做{isShort ? "一条" : "一部"}什么
+            <span
+              style={{
+                background: "linear-gradient(120deg,var(--accent),var(--accent-2))",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              {isShort ? "短视频" : "短剧"}
+            </span>
+            ?
+          </h1>
+          <div className="muted" style={{ marginTop: 8, fontSize: 14.5 }}>
+            {isShort
+              ? "说句话 —— AI 出口播脚本和分镜,单条速成,同样竖屏 9:16"
+              : "一句话点子就够 —— AI 替你立项、铺大纲、写剧本、拆分镜,竖屏连载"}
           </div>
-        </div>
-        <Link href="/projects" style={{ textDecoration: "none" }}>
-          <button type="button" className="btn btn-grad btn-sm">
-            进入短剧工坊
-          </button>
-        </Link>
-      </div>
 
-      {/* KPI grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-        <Link href="/cast" style={{ textDecoration: "none" }}>
-          <KpiCard
-            label="演员 IP · 在线"
-            value={String(activeArtists.length)}
-            delta={`共 ${artists.length} 个 IP`}
-            tone="accent"
-            spark={[42, 50, 48, 60, 68, 70, 84]}
-          />
-        </Link>
-        <Link href="/projects" style={{ textDecoration: "none" }}>
-          <KpiCard
-            label="在产剧集"
-            value={String(dramaMain.length)}
-            delta={`${releasedCount} 在线 · ${filmingCount} 制作`}
-            tone="violet"
-            spark={[22, 26, 30, 36, 38, 44, 48]}
-          />
-        </Link>
-        <Link href="/insights" style={{ textDecoration: "none" }}>
-          <KpiCard
-            label="累计播放"
-            value={totalViews >= 1_000_000 ? `${(totalViews / 1_000_000).toFixed(1)}M` : `${(totalViews / 1000).toFixed(0)}K`}
-            delta="+14.2% vs 上月"
-            tone="info"
-            spark={[30, 38, 42, 48, 56, 64, 72]}
-          />
-        </Link>
-        <Link href="/finance" style={{ textDecoration: "none" }}>
-          <KpiCard
-            label="累计营收"
-            value={`¥${(totalRevenue / 10_000).toFixed(1)}万`}
-            delta="+9.6% vs 上月"
-            tone="success"
-            spark={[28, 30, 36, 40, 48, 54, 62]}
-          />
-        </Link>
-      </div>
-
-      {/* cast + quick draw */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-        <Card style={{ padding: "22px 24px" }}>
-          <SectionHeader
-            eyebrow="cast & roster"
-            title="演员 IP 阵容"
-            right={
-              <Link
-                href="/cast"
-                style={{
-                  fontSize: 12,
-                  color: "var(--accent)",
-                  fontFamily: "var(--font-mono)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                查看全部 <ArrowUpRight size={12} />
-              </Link>
-            }
-          />
-          {artistsQ.isLoading && <LoadingBlock rows={2} height={92} />}
-          {!!artistsQ.error && (
-            <ErrorBlock
-              message="演员 IP 加载失败"
-              onRetry={artistsQ.refetch}
-            />
-          )}
-          {!artistsQ.isLoading && !artistsQ.error && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-              {castPreview.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => router.push(`/cast/${encodeURIComponent(c.id)}`)}
-                  style={{
-                    display: "flex",
-                    gap: 14,
-                    padding: 14,
-                    borderRadius: "var(--radius-md)",
-                    background: "rgba(255,255,255,0.02)",
-                    border: "1px solid var(--line)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    color: "var(--fg-0)",
-                    fontFamily: "var(--font-sans)",
-                    transition: "border-color 140ms ease, background 140ms ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.borderColor =
-                      "color-mix(in srgb, var(--accent) 30%, transparent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--line)";
-                  }}
-                >
-                  <div
+          {/* 类型切换 · 轻量分段(短视频在前) */}
+          <div className="row" style={{ justifyContent: "center", marginTop: 20 }}>
+            <div
+              className="row"
+              style={{
+                background: "color-mix(in oklch, var(--surface) 78%, transparent)",
+                border: "1px solid var(--line-soft)",
+                borderRadius: 999,
+                padding: 3,
+                gap: 2,
+              }}
+            >
+              {(
+                [
+                  { k: "short", icon: Zap, name: "短视频" },
+                  { k: "drama", icon: Film, name: "短剧" },
+                ] as const
+              ).map((o) => {
+                const on = mode === o.k;
+                const OIcon = o.icon;
+                return (
+                  <button
+                    key={o.k}
+                    type="button"
+                    onClick={() => setMode(o.k)}
+                    className="row gap-2"
                     style={{
-                      width: 60,
-                      height: 80,
-                      borderRadius: "var(--radius-sm)",
-                      background: c.gradient,
-                      flexShrink: 0,
-                      position: "relative",
-                      overflow: "hidden",
+                      padding: "7px 18px",
+                      borderRadius: 999,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      background: on ? "var(--surface)" : "transparent",
+                      boxShadow: on ? "var(--shadow-sm)" : "none",
+                      color: on ? "var(--accent)" : "var(--ink-3)",
+                      transition: "color .15s, background .15s",
                     }}
                   >
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        background:
-                          "linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.4))",
-                      }}
-                    />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <div
-                        style={{
-                          fontSize: 15,
-                          fontWeight: 600,
-                          color: "var(--fg-0)",
-                          fontFamily: "var(--font-display)",
-                        }}
-                      >
-                        {c.name}
-                      </div>
-                      <Chip tone={c.tone}>{c.fidelity}</Chip>
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--fg-2)", marginBottom: 10, lineHeight: 1.4 }}>
-                      {c.role}
-                    </div>
-                    <div
-                      className="mono"
-                      style={{
-                        display: "flex",
-                        gap: 12,
-                        fontSize: 10.5,
-                        color: "var(--fg-3)",
-                        letterSpacing: 0.3,
-                      }}
-                    >
-                      <span>{c.series} 部剧集</span>
-                      <span style={{ color: "var(--fg-2)" }}>{c.plays}</span>
-                      <span style={{ color: "var(--accent)" }}>{c.revenue}</span>
-                    </div>
-                  </div>
+                    <OIcon size={14} />
+                    {o.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 对话框 · 轻盈质感 */}
+          <div
+            className="col"
+            style={{
+              marginTop: 14,
+              borderRadius: 20,
+              overflow: "hidden",
+              textAlign: "left",
+              background: "var(--surface)",
+              border: "1px solid var(--line-soft)",
+              boxShadow: "0 18px 50px -24px color-mix(in oklch, var(--accent) 35%, transparent), 0 2px 8px rgba(20,10,50,.04)",
+            }}
+          >
+            <textarea
+              ref={inputRef}
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder={
+                isShort
+                  ? "比如:" + (curFmt?.sample ?? "")
+                  : "比如:单亲妈妈白天送外卖晚上学剪辑,三年后逆袭…(没灵感就点下面的 ✦ 今日灵感)"
+              }
+              style={{
+                width: "100%",
+                minHeight: 76,
+                border: "none",
+                outline: "none",
+                resize: "none",
+                padding: "14px 18px 4px",
+                fontSize: 14.5,
+                lineHeight: 1.6,
+                background: "transparent",
+                fontFamily: "inherit",
+              }}
+            />
+
+            {/* 热点轻提示:点一个填进输入框 */}
+            <div className="row gap-2" style={{ padding: "4px 14px 0", flexWrap: "wrap", alignItems: "center" }}>
+              <span className="row gap-1" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-2)", flex: "none" }}>
+                <Zap size={12} /> 近期热点
+              </span>
+              {HOT_TOPICS.map((h) => (
+                <button
+                  key={h.label}
+                  type="button"
+                  className="chip"
+                  style={{ height: 26, fontSize: 11.5, padding: "0 10px" }}
+                  title={h.idea}
+                  onClick={() => {
+                    setIdea(h.idea);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  {h.label}
                 </button>
               ))}
             </div>
-          )}
-        </Card>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card style={{ padding: "22px 22px" }}>
-            <SectionHeader eyebrow="system pulse" title="工作台状态" />
-            <Meter label="渲染队列利用" value={62} tone="accent" hint="GPU · 渲染剧集 · 02 上线" />
-            <Meter label="形象保真度" value={88} tone="success" hint="平均 · 全部 A 类演员" />
-            <Meter label="授权额度" value={34} tone="warning" hint="≈ 22 天剩余" />
-            <Meter label="脚本审稿" value={76} tone="info" hint="本周 18 / 24 已审" />
-          </Card>
-
-          <Card glass style={{ padding: "22px 22px" }}>
-            <SectionHeader eyebrow="quick draw" title="快速动作" />
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <Button
-                variant="primary"
-                size="md"
-                style={{ width: "100%" }}
-                onClick={() => setShowNewProject(true)}
+            <div className="row gap-2" style={{ padding: "10px 14px 12px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="chip"
+                onClick={dailySpark}
+                style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+                title={isShort ? "随机填个示例点子" : "AI 随机给一个创意"}
               >
-                <Wand2 size={14} />
-                启动新剧集
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                style={{ width: "100%" }}
-                onClick={() => setShowNewScript(true)}
-              >
-                <Film size={14} />
-                新建脚本
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                style={{ width: "100%" }}
-                onClick={() => setShowNewArtist(true)}
-              >
-                <Sparkles size={14} />
-                新增演员 IP
-              </Button>
-              <Button
-                variant="ghost"
-                size="md"
-                style={{ width: "100%" }}
-                onClick={() => router.push("/finance")}
-              >
-                <PlayCircle size={14} />
-                查看授权台账
-              </Button>
+                <Sparkles size={13} /> {isShort ? "给我灵感" : "今日灵感"}
+              </button>
+              {isShort && <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>随机来一个</span>}
+              {!isShort && (
+                <button type="button" className="chip" onClick={() => setQuickOpen(true)}>
+                  <Layers size={13} /> 套爆款模板
+                </button>
+              )}
+              {!isShort && (
+                <button type="button" className="chip" onClick={() => router.push("/projects/new")}>
+                  <Wand2 size={13} /> 跟 AI 聊出故事
+                </button>
+              )}
+              <span className="grow" />
+              <span style={{ flex: "none", whiteSpace: "nowrap" }}>
+                <Cost n={isShort ? 10 : 6} prefix={isShort ? "约" : "立项约"} />
+              </span>
+              <button type="button" className="btn btn-grad" style={{ height: 40, padding: "0 22px", flex: "none" }} onClick={submit}>
+                <Zap size={16} /> {isShort ? "开做" : "开拍"}
+              </button>
             </div>
-          </Card>
-        </div>
-      </div>
+          </div>
 
-      {/* projects */}
-      <Card style={{ padding: "22px 24px" }}>
-        <SectionHeader
-          eyebrow="project pipeline"
-          title="项目流水线"
-          right={
-            <Link
-              href="/projects"
-              style={{
-                fontSize: 12,
-                color: "var(--accent)",
-                fontFamily: "var(--font-mono)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              查看全部 <ArrowUpRight size={12} />
-            </Link>
-          }
-        />
-        {dramasQ.isLoading && <LoadingBlock rows={3} height={48} />}
-        {!!dramasQ.error && <ErrorBlock onRetry={dramasQ.refetch} />}
-        {!dramasQ.isLoading && !dramasQ.error && (
-          <div
-            style={{
-              overflow: "hidden",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--line)",
-            }}
-          >
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  {["剧名", "类型", "集数", "主演", "状态", "排期"].map((h) => (
-                    <th
-                      key={h}
-                      className="eyebrow"
-                      style={{
-                        textAlign: "left",
-                        padding: "12px 16px",
-                        borderBottom: "1px solid var(--line)",
-                        color: "var(--fg-2)",
-                        fontWeight: 500,
-                      }}
+          <div className="row" style={{ marginTop: 26, marginBottom: 12 }}>
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>{isShort ? "热门短视频点子" : "创意推荐"}</span>
+            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>
+              {isShort ? "点一个直接开做" : "点卡片预览效果,满意一键开拍"}
+            </span>
+            <span className="grow" />
+            {!isShort && (
+              <button type="button" className="chip" onClick={() => setPage((p) => p + 1)}>
+                <RefreshCw size={12} /> 换一批
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 封面式创意卡(紧凑竖版) */}
+        <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 40px", position: "relative" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(158px,1fr))", gap: 14 }}>
+            {(isShort ? recs.slice(0, 5) : recs).map((r, i) => (
+              <button
+                key={r.title}
+                type="button"
+                className="card col fade-up"
+                onClick={() => setPreview(r)}
+                style={{ padding: 0, overflow: "hidden", textAlign: "left", animationDelay: i * 35 + "ms", transition: "transform .15s, box-shadow .15s" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-3px)";
+                  e.currentTarget.style.boxShadow = "var(--shadow-lg)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+                }}
+              >
+                <VideoCover from={r.from} to={r.to} ratio="3/4" label="效果预览">
+                  <span className="thumb-label" style={{ position: "absolute", top: 8, left: 8 }}>{r.cat}</span>
+                  {r.personal && (
+                    <span
+                      className="tag tag-pink"
+                      style={{ position: "absolute", top: 8, right: 8, background: "rgba(255,255,255,.92)" }}
                     >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {dramaMain.map((p, i) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => router.push(`/projects/${encodeURIComponent(p.id)}`)}
+                      <Sparkles size={10} fill="currentColor" strokeWidth={0} /> 猜你想拍
+                    </span>
+                  )}
+                </VideoCover>
+                <div className="col gap-1" style={{ padding: "11px 13px 13px" }}>
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>{r.title}</div>
+                  <div
+                    className="faint"
                     style={{
-                      borderBottom: i < dramaMain.length - 1 ? "1px solid var(--line)" : "none",
-                      cursor: "pointer",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.background =
-                        "rgba(255,255,255,0.02)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.background = "transparent";
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
                     }}
                   >
-                    <td
-                      style={{
-                        padding: "14px 16px",
-                        color: "var(--fg-0)",
-                        fontWeight: 500,
-                        fontFamily: "var(--font-display)",
-                      }}
-                    >
-                      {p.title}
-                    </td>
-                    <td style={{ padding: "14px 16px", color: "var(--fg-1)" }}>{p.genre}</td>
-                    <td className="mono" style={{ padding: "14px 16px", color: "var(--fg-1)", fontSize: 12 }}>
-                      {p.episodes > 0 ? `${p.episodes} 集` : "—"}
-                    </td>
-                    <td style={{ padding: "14px 16px", color: "var(--fg-1)" }}>{p.role}</td>
-                    <td style={{ padding: "14px 16px" }}>
-                      <StatusBadge tone={DRAMA_STATUS_TONE[p.status]}>{DRAMA_STATUS_LABEL[p.status]}</StatusBadge>
-                    </td>
-                    <td
-                      className="mono"
-                      style={{ padding: "14px 16px", color: "var(--fg-2)", fontSize: 12 }}
-                    >
-                      {deriveSched(p)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    {r.hook}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 继续上次(轻量入口,完整列表在「短剧工坊」) */}
+        {main && (
+          <div style={{ maxWidth: 1000, margin: "0 auto", padding: "28px 40px 0", position: "relative" }}>
+            <button
+              type="button"
+              className="card row gap-4 fade-up"
+              onClick={() => router.push(`/projects/${main.id}`)}
+              style={{ width: "100%", padding: 13, textAlign: "left", alignItems: "center" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = "var(--shadow-lg)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+              }}
+            >
+              <Thumb from={main.cover.from} to={main.cover.to} w={42} ratio="9/16" radius={9} stripes={false} />
+              <div className="col gap-1 grow" style={{ minWidth: 0 }}>
+                <div className="row gap-2">
+                  <span className="tag tag-accent">
+                    <Clock size={11} /> 继续上次
+                  </span>
+                  <span style={{ fontWeight: 800, fontSize: 14.5 }}>{main.title}</span>
+                </div>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  上次做到「{stageNameByNo(main.stage)}」· {main.updated}更新
+                </div>
+              </div>
+              <span className="btn btn-primary btn-sm" style={{ flex: "none" }}>
+                接着做 <ArrowRight size={14} />
+              </span>
+            </button>
           </div>
         )}
-      </Card>
+      </div>
 
-      <NewProjectDialog
-        open={showNewProject}
-        onOpenChange={setShowNewProject}
-        onCreated={(d) => {
-          invalidate("/film/dramas");
-          toast.success(`项目「${d.title}」已创建`);
-          router.push(`/projects/${encodeURIComponent(d.id)}`);
-        }}
-      />
-      <NewScriptDialog
-        open={showNewScript}
-        onOpenChange={setShowNewScript}
-        onCreated={(s) => {
-          invalidate("/me/scripts");
-          toast.success(`脚本「${s.title}」已创建`);
-          router.push(`/scripts/${encodeURIComponent(s.id)}`);
-        }}
-      />
-      <NewArtistDialog
-        open={showNewArtist}
-        onOpenChange={setShowNewArtist}
-        onCreated={(a) => {
-          invalidate("/me/artists");
-          toast.success(`演员「${a.name}」已加入阵容`);
-          router.push(`/cast/${encodeURIComponent(a.id)}`);
-        }}
-      />
+      {preview && (
+        <PreviewModal
+          item={{
+            cover: { from: preview.from, to: preview.to },
+            title: preview.title,
+            cat: preview.cat,
+            desc: preview.hook,
+            personal: preview.personal,
+            tags: IDEA_TAGS[preview.cat] ?? ["爆款结构"],
+            beats: ideaBeats(preview.cat),
+            coverLabel: "效果预览 · 同题材成片片段",
+          }}
+          onClose={() => setPreview(null)}
+          actions={[
+            { label: "填进对话框改改", icon: <Edit size={15} />, variant: "line", onClick: () => fillRec(preview) },
+            {
+              label: "用这个开拍",
+              icon: <Zap size={15} />,
+              variant: "grad",
+              cost: 6,
+              onClick: () => {
+                const h = preview.hook;
+                setPreview(null);
+                ideaCreate(h);
+              },
+            },
+          ]}
+        />
+      )}
+      {quickOpen && (
+        <QuickCreateModal
+          onClose={() => setQuickOpen(false)}
+          onCreate={quickCreate}
+          onGuided={() => router.push("/projects/new")}
+        />
+      )}
     </div>
   );
 }

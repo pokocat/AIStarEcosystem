@@ -1,5 +1,6 @@
 export { StageRail } from "./stage-rail";
-export { EpisodeStrip } from "./episode-strip";
+export { EpisodeRail } from "./episode-rail";
+export { StepTabs } from "./step-tabs";
 export { CastPanel } from "./cast-panel";
 export { ProjectTopbar } from "./project-topbar";
 export { StageHeader } from "./stage-header";

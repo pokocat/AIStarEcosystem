@@ -273,3 +273,25 @@ img, video, canvas, svg { max-width: 100%; }
   .ws-topbar-sub { display: none; }
   .ws-content-badge { display: none !important; }
 }
+
+/* ---------- v4:首页背景动效(reduced-motion 下自动静止) ---------- */
+@keyframes homeBlobA { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(34px,28px) scale(1.08); } }
+@keyframes homeBlobB { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-30px,22px) scale(1.1); } }
+@keyframes homeBlobC { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-26px) scale(1.12); } }
+.home-blob { will-change: transform; }
+@media (prefers-reduced-motion: no-preference) {
+  .home-blob-a { animation: homeBlobA 15s ease-in-out infinite; }
+  .home-blob-b { animation: homeBlobB 19s ease-in-out infinite; }
+  .home-blob-c { animation: homeBlobC 23s ease-in-out infinite; }
+}
+
+/* ---------- v4:生成设置滑块 ---------- */
+.gen-range { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--surface-2); outline: none; cursor: pointer; }
+.gen-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--ink); border: 3px solid var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; }
+.gen-range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); border: 3px solid var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; }
+
+/* ---------- v4:整屏接管页(自带滚动与留白,抵消 ws-content 内边距) ---------- */
+.ws-content > .ws-flush { margin: -28px -32px; height: calc(100% + 56px); }
+@media (max-width: 860px) {
+  .ws-content > .ws-flush { margin: -18px -16px; height: calc(100% + 36px); }
+}

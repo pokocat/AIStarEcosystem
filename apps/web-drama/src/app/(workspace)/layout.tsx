@@ -15,7 +15,8 @@ import {
   Coins,
   Compass,
   Film,
-  LayoutDashboard,
+  Image as ImageIcon,
+  Layers,
   LogOut,
   Menu,
   PenTool,
@@ -24,12 +25,17 @@ import {
   Settings,
   Share2,
   Shirt,
+  Sliders,
+  Sparkles,
   Users,
   Wallet as WalletIcon,
+  Zap,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
+import { REVIEW_PENDING_COUNT } from "@/mocks/drama-workshop";
+import { useOperator } from "@/lib/use-operator";
 
 interface NavItem {
   href: string;
@@ -37,6 +43,8 @@ interface NavItem {
   label: string;
   /** 设为 true 时，仅在路径完全相等时高亮；否则前缀匹配也高亮（用于详情页继承父 tab）。 */
   exact?: boolean;
+  /** 待办角标(剧本审阅) */
+  badge?: number;
 }
 
 interface NavGroup {
@@ -44,17 +52,28 @@ interface NavGroup {
   items: NavItem[];
 }
 
+// v4 信息架构 — 设计真源 app-v4.jsx `NAV_V3`:创作 / 提效 / 素材;
+// 既有的分发洞察与账户分组保留在下方。
 const GROUPS: NavGroup[] = [
   {
-    title: "短剧工坊",
+    title: "创作",
     items: [
-      { href: "/projects", icon: Clapperboard, label: "我的短剧" },
-      { href: "/dashboard", icon: LayoutDashboard, label: "总览", exact: true },
+      { href: "/dashboard", icon: Sparkles, label: "首页", exact: true },
+      { href: "/projects", icon: Film, label: "短剧工坊" },
+      { href: "/shorts", icon: Zap, label: "短视频工坊" },
     ],
   },
   {
-    title: "创作素材",
+    title: "提效",
     items: [
+      { href: "/templates", icon: Layers, label: "模板库" },
+      { href: "/review", icon: PenTool, label: "剧本审阅", badge: REVIEW_PENDING_COUNT },
+    ],
+  },
+  {
+    title: "素材",
+    items: [
+      { href: "/assets", icon: ImageIcon, label: "素材库" },
       // v0.60 收敛：孵化 / 形象锻造入口下线，数字人统一在 AiAvatar 创建后引入
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
       { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
@@ -87,6 +106,7 @@ function isActive(pathname: string | null, item: NavItem): boolean {
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [operator, setOperator] = useOperator();
   return (
     <aside
       style={{
@@ -175,12 +195,50 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     size={15}
                     color={active ? "var(--accent)" : "var(--ink-3)"}
                   />
-                  <span>{it.label}</span>
+                  <span style={{ flex: 1 }}>{it.label}</span>
+                  {!!it.badge && (
+                    <span
+                      className="num"
+                      style={{
+                        minWidth: 17,
+                        height: 17,
+                        padding: "0 5px",
+                        borderRadius: 99,
+                        background: "var(--accent-2)",
+                        color: "#fff",
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      {it.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
           </div>
         ))}
+      </div>
+
+      {/* 运营身份开关(演示;开启后模板库可新建模板) */}
+      <div style={{ padding: "0 14px 10px" }}>
+        <button
+          type="button"
+          className="chip static"
+          title="切换运营身份(演示)"
+          onClick={() => setOperator(!operator)}
+          style={{
+            width: "100%",
+            justifyContent: "flex-start",
+            cursor: "pointer",
+            background: operator ? "var(--accent-soft)" : "var(--surface-2)",
+            color: operator ? "var(--accent)" : "var(--ink-3)",
+          }}
+        >
+          <Sliders size={13} /> 运营身份 {operator ? "开" : "关"}
+        </button>
       </div>
 
       <div

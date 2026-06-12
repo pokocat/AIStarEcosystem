@@ -36,6 +36,16 @@ export const TEMPLATES: Record<string, Template[]> = {
     { id: "t6", name: "甜宠·闪婚霸总",       eps: 76, pace: "高糖快节奏",           scene: "下饭剧",       hooks: ["闪婚开局", "马甲掉落", "高甜收官"] },
     { id: "t7", name: "甜宠·契约恋人",       eps: 68, pace: "甜虐交替",             scene: "女性向",       hooks: ["契约开局", "假戏真做", "双向奔赴"] },
   ],
+  corporate: [
+    { id: "t8", name: "企业品牌片 · 60 秒",  eps: 1,  pace: "产品+口播·一镜到底感", scene: "官网/招商",     hooks: ["痛点开场", "产品高光", "代言人口播"] },
+  ],
+  public: [
+    { id: "t9", name: "公益短片 · 情绪向",   eps: 1,  pace: "叙事+留白· 90 秒",     scene: "传播/募捐",     hooks: ["真实切入", "情绪推进", "呼吁收束"] },
+  ],
+  social: [
+    { id: "t10", name: "个人自传 · 励志逆袭", eps: 1, pace: "第一人称口播· 45 秒",   scene: "个人 IP/招募",  hooks: ["低谷开场", "转折奋斗", "高光逆袭"] },
+    { id: "t11", name: "口播带货 · 单条种草", eps: 1, pace: "强钩子+转化· 30 秒",   scene: "电商/直播切片", hooks: ["痛点提问", "卖点演示", "催单引导"] },
+  ],
 };
 
 export const AVATAR_LIBRARY: AvatarLibItem[] = [

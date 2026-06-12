@@ -3,6 +3,11 @@
 export * from "./types";
 export * from "./avatar-themes";
 export * from "./meta";
+export * from "./materials";
+export * from "./shorts";
+export * from "./home-ideas";
+export * from "./template-meta";
+export * from "./review";
 export { PROJECT_DATA } from "./projects";
 
 import type { ProjectData } from "./types";
