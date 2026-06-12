@@ -43,56 +43,174 @@ export function InlineRefChip({ r, n }: { r: Material; n: string | number }) {
   );
 }
 
-/* 视频脚本富文本:渲染 [参考N] 为 chip,点击进入原文编辑 */
+/* 视频脚本富文本:渲染 [参考N] 为 chip,点击进入原文编辑;
+   编辑态支持输入 @xxx 唤出素材库联想,选中即插入 [参考N] 引用 */
 export function RichScript({
   text,
   refs,
   onCommit,
+  onRefsChange,
   placeholder,
   minHeight,
 }: {
   text: string;
   refs?: Material[];
   onCommit?: (v: string) => void;
+  /** 提供后,编辑态输入 @ 可联想素材并自动把素材加入参考列表 */
+  onRefsChange?: (next: Material[]) => void;
   placeholder?: string;
   minHeight?: number;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(text || "");
+  const [mention, setMention] = React.useState<{ query: string; at: number } | null>(null);
+  const taRef = React.useRef<HTMLTextAreaElement>(null);
   React.useEffect(() => {
     setDraft(text || "");
   }, [text]);
 
+  const detectMention = (val: string, caret: number) => {
+    const before = val.slice(0, caret);
+    const m = before.match(/@([^\s@\[\]【】]{0,12})$/);
+    setMention(m ? { query: m[1], at: caret - m[0].length } : null);
+  };
+
+  const pickMention = (mat: Material) => {
+    const list = refs ?? [];
+    let next = list;
+    let idx = list.findIndex((x) => x.id === mat.id);
+    if (idx < 0) {
+      next = [...list, mat];
+      idx = next.length - 1;
+      onRefsChange?.(next);
+    }
+    const caret = taRef.current?.selectionStart ?? draft.length;
+    const token = `[参考${idx + 1}] `;
+    const nv = draft.slice(0, mention?.at ?? caret) + token + draft.slice(caret);
+    setDraft(nv);
+    setMention(null);
+    requestAnimationFrame(() => {
+      const el = taRef.current;
+      if (el) {
+        el.focus();
+        const pos = (mention?.at ?? caret) + token.length;
+        el.setSelectionRange(pos, pos);
+      }
+    });
+  };
+
   if (editing) {
+    const cand = mention
+      ? MATERIALS.filter(
+          (m) =>
+            !mention.query ||
+            m.name.includes(mention.query) ||
+            m.cat.includes(mention.query) ||
+            (m.tags ?? []).some((t) => t.includes(mention.query)),
+        ).slice(0, 8)
+      : [];
     return (
-      <textarea
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          setEditing(false);
-          onCommit?.(draft);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            (e.target as HTMLTextAreaElement).blur();
-          }
-        }}
-        style={{
-          width: "100%",
-          minHeight: minHeight ?? 72,
-          border: "1.5px solid var(--accent)",
-          borderRadius: 10,
-          padding: "8px 10px",
-          fontSize: 13,
-          lineHeight: 1.8,
-          outline: "none",
-          background: "var(--surface)",
-          resize: "vertical",
-          fontFamily: "inherit",
-        }}
-      />
+      <span style={{ position: "relative", display: "block" }}>
+        <textarea
+          ref={taRef}
+          autoFocus
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+          }}
+          onClick={(e) => detectMention(draft, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+          onBlur={() => {
+            // 点联想项时不收起(onMouseDown 已 preventDefault)
+            setEditing(false);
+            setMention(null);
+            onCommit?.(draft);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && mention) {
+              e.preventDefault();
+              setMention(null);
+              return;
+            }
+            if (e.key === "Enter" && !e.shiftKey && !mention) {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).blur();
+            }
+          }}
+          placeholder="输入 @ 可引用素材库素材…"
+          style={{
+            width: "100%",
+            minHeight: minHeight ?? 72,
+            border: "1.5px solid var(--accent)",
+            borderRadius: 10,
+            padding: "8px 10px",
+            fontSize: 13,
+            lineHeight: 1.8,
+            outline: "none",
+            background: "var(--surface)",
+            resize: "vertical",
+            fontFamily: "inherit",
+          }}
+        />
+        {mention && cand.length > 0 && (
+          <span
+            className="card pop-in col"
+            style={{
+              position: "absolute",
+              left: 0,
+              top: "100%",
+              marginTop: 2,
+              zIndex: 60,
+              width: 260,
+              padding: 6,
+              gap: 2,
+              boxShadow: "var(--shadow-lg)",
+              maxHeight: 240,
+              overflowY: "auto",
+            }}
+          >
+            <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 6px" }}>
+              @ 引用素材{mention.query ? ` · “${mention.query}”` : ""}
+            </span>
+            {cand.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="row gap-2"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickMention(m);
+                }}
+                style={{ padding: "5px 6px", borderRadius: 8, textAlign: "left" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--accent-soft)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <span
+                  style={{
+                    width: 26,
+                    height: 20,
+                    borderRadius: 5,
+                    background: `linear-gradient(140deg,${m.from},${m.to})`,
+                    flex: "none",
+                    display: "inline-grid",
+                    placeItems: "center",
+                  }}
+                >
+                  {m.kind === "video" && <Play size={8} fill="#fff" strokeWidth={0} />}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {m.name}
+                </span>
+                <span className="faint" style={{ fontSize: 10, flex: "none", marginLeft: "auto" }}>{m.cat}</span>
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
     );
   }
   const parts = String(text || "").split(/(\[参考\d+\])/);

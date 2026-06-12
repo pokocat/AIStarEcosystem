@@ -1,270 +1,340 @@
 "use client";
 
-// 剧集脚本(剧本 + 分镜合并) — 设计真源 v4 screens-episode-v4.jsx `ScriptBoardStage`:
-// 顶部操作条(生成方式 / 视图切换)+ 场景卡片(默认,卡内承接本场分镜)/
-// 脚本表格(平铺:时间 / 场景 / 视频脚本 / 语音 / 字幕 / 参考)+ 右下悬浮 CTA。
+// 剧集脚本 — 结构化分镜表单(参照「短剧分镜V2 · 结构化版-适配Web表单」):
+// 基础通用信息 + 按场分组的分镜表单卡(镜号/时间线/画面/音频[人声+音效+BGM]/
+// 镜头参数/特效氛围/参考素材/字幕),左列保留 首帧 → 成片 渐进渲染;
+// 左下悬浮 AI 对话框(【衍生上一集】【给我惊喜】),模板在立项时已套全量。
 import * as React from "react";
 import { toast } from "sonner";
 import {
   ArrowRight,
   Check,
-  Copy,
-  Edit,
-  Film,
+  Clapperboard,
   Image as ImageIcon,
-  Layers,
   Lock,
-  Mic,
-  Package,
-  RefreshCw,
+  Plus,
   Wand2,
+  X,
 } from "lucide-react";
 import { Avatar, Cost, Editable, GenSkeleton } from "@/components/drama-ui";
-import { RefCell, RichScript, SubToggle } from "../script-refs";
-import { SceneBlock } from "./scene-block";
+import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
+import { ShotFormCard, type FormShot } from "../shot-form";
 import { matById, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 
 const SHOT_GEN_COST = 6;
 
-/** 剧集脚本里的场景:剧本场景 + 参考素材 + 字幕开关 */
-export interface EpScene extends ScriptScene {
+interface EpScene extends ScriptScene {
   refs: Material[];
-  sub: boolean;
 }
 
-const SRC_OPTS: { key: string; name: string; icon: React.ElementType; cost: number; hot?: boolean }[] = [
-  { key: "template", name: "套爆款模板", icon: Layers, cost: 12, hot: true },
-  { key: "derive", name: "衍生上一集", icon: Copy, cost: 8 },
-  { key: "free", name: "AI 自由起草", icon: Wand2, cost: 22 },
-];
+function toFormShot(sh: BoardShot, refs: Material[]): FormShot {
+  return {
+    id: sh.id,
+    no: sh.no,
+    dur: sh.dur,
+    visual: sh.desc,
+    size: sh.size,
+    move: sh.move,
+    voWho: sh.line?.who ?? "旁白",
+    voText: sh.line?.text ?? "",
+    sfx: sh.voice ?? "",
+    bgm: "",
+    fx: "",
+    refs: [...refs],
+    sub: true,
+    flow: sh.done ? "clip" : "draft",
+  };
+}
 
-interface EpScriptStageProps {
+export function EpScriptStage({ state, dispatch, data }: {
   state: WorkshopState;
   dispatch: React.Dispatch<WorkshopAction>;
   data: ProjectData;
-}
+}) {
+  const keyChars = data.characters.filter((c) => c.role === "key");
+  const speakerOptions = ["旁白", ...data.characters.map((c) => c.name)];
 
-export function EpScriptStage({ state, dispatch, data }: EpScriptStageProps) {
   const initScenes = React.useCallback((): EpScene[] => {
-    const keyChar = data.characters.find((c) => c.role === "key" && c.bound);
     return data.script.scenes.map((s, i) => {
       const refs = (i === 0 ? [matById("a1"), matById("r1")] : [matById("r1")]).filter(Boolean) as Material[];
-      let action = s.action;
-      if (i === 0 && action && refs.length && keyChar && action.includes(keyChar.name)) {
-        action = action.replace(keyChar.name, "[参考1] ");
-      }
-      return { ...s, action, refs, sub: true, lines: s.lines.map((l) => ({ ...l })) };
+      return { ...s, refs, lines: s.lines.map((l) => ({ ...l })) };
     });
   }, [data]);
+  const initShots = React.useCallback((): Record<string, FormShot[]> => {
+    const refsFor = (i: number) => (i === 0 ? [matById("a1"), matById("r1")] : [matById("r1")]).filter(Boolean) as Material[];
+    return Object.fromEntries(
+      data.storyboard.scenes.map((sc, i) => [sc.id, sc.shots.map((sh) => toFormShot(sh, refsFor(i)))]),
+    );
+  }, [data]);
 
-  const [view, setView] = React.useState<"cards" | "sheet">("cards");
-  const [source, setSource] = React.useState<string>("template");
   const [phase, setPhase] = React.useState<"gen" | "done">("done");
   const [scenes, setScenes] = React.useState<EpScene[]>(initScenes);
-  const [shotsMap, setShotsMap] = React.useState<Record<string, BoardShot[]>>(() =>
-    Object.fromEntries(data.storyboard.scenes.map((sc) => [sc.id, sc.shots])),
-  );
+  const [shotsMap, setShotsMap] = React.useState<Record<string, FormShot[]>>(initShots);
   const [genScene, setGenScene] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState<{ id: string; to: FormShot["flow"] } | null>(null);
+  const [style, setStyle] = React.useState(() => `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`);
+  const [chat, setChat] = React.useState<ChatMsg[]>([
+    { who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` },
+  ]);
   const locked = !!state.lockedStages.epscript;
 
   React.useEffect(() => {
     setScenes(initScenes());
-    setShotsMap(Object.fromEntries(data.storyboard.scenes.map((sc) => [sc.id, sc.shots])));
-    setView("cards");
-  }, [state.ep, initScenes, data.storyboard.scenes]);
+    setShotsMap(initShots());
+    setChat([{ who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` }]);
+  }, [state.ep, initScenes, initShots]);
 
-  const regen = (src: string) => {
-    setSource(src);
+  /* —— AI 对话驱动整体重写 —— */
+  const sendChat = (text: string) => {
+    if (phase === "gen") return;
+    setChat((c) => [...c, { who: "me", text }]);
     setPhase("gen");
-    const cost = SRC_OPTS.find((o) => o.key === src)?.cost ?? 12;
-    dispatch({ type: "spend", n: cost });
+    dispatch({ type: "spend", n: text === "衍生上一集" ? 8 : 10 });
     setTimeout(() => {
       setScenes(initScenes());
+      setShotsMap(initShots());
       setPhase("done");
-      toast.success("剧本草稿已就绪,分镜会跟着场景联动");
+      setChat((c) => [
+        ...c,
+        {
+          who: "ai",
+          text:
+            text === "衍生上一集"
+              ? "已按上一集的人物关系和节奏衍生出本集脚本,钩子接得上,你看看。"
+              : text === "给我惊喜"
+                ? "给你换了个更狠的开场钩子,反转提前了一镜 —— 脚本已更新,看看够不够惊喜。"
+                : "改好了 —— 脚本已更新,你再看看还哪里要调?",
+        },
+      ]);
     }, 1300);
   };
 
-  const genShots = (sceneId: string) => {
+  /* —— 场景 / 台词草稿 —— */
+  const updScene = (i: number, patch: Partial<EpScene>) =>
+    setScenes((arr) => arr.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const updLine = (si: number, li: number, patch: Partial<ScriptLine>) =>
+    setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: s.lines.map((l, k) => (k === li ? { ...l, ...patch } : l)) } : s)));
+  const addLine = (si: number, who: string) =>
+    setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: [...s.lines, { who, text: "" }] } : s)));
+  const delLine = (si: number, li: number) =>
+    setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: s.lines.filter((_, k) => k !== li) } : s)));
+
+  /* —— 分镜 —— */
+  const updShot = (sceneId: string, id: string, patch: Partial<FormShot>) =>
+    setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)) }));
+  const delShot = (sceneId: string, id: string) =>
+    setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).filter((s) => s.id !== id).map((s, i) => ({ ...s, no: i + 1 })) }));
+  const addShot = (sceneId: string, sceneIdx: number) =>
+    setShotsMap((m) => {
+      const list = m[sceneId] ?? [];
+      return {
+        ...m,
+        [sceneId]: [
+          ...list,
+          {
+            id: sceneId + "-add" + Date.now(),
+            no: list.length + 1,
+            dur: 4,
+            visual: "",
+            size: "中景",
+            move: "固定",
+            voWho: "旁白",
+            voText: "",
+            sfx: "",
+            bgm: "",
+            fx: "",
+            refs: scenes[sceneIdx]?.refs ?? [],
+            sub: true,
+            flow: "draft",
+          },
+        ],
+      };
+    });
+  const genShots = (sceneId: string, sceneIdx: number) => {
     setGenScene(sceneId);
     dispatch({ type: "spend", n: SHOT_GEN_COST });
     setTimeout(() => {
       const donor = data.storyboard.scenes.find((x) => x.shots.length > 0);
       setShotsMap((m) => ({
         ...m,
-        [sceneId]: (donor?.shots ?? [])
-          .slice(0, 3)
-          .map((sh, i) => ({ ...sh, id: sceneId + "-n" + i, no: i + 1, done: false })),
+        [sceneId]: (donor?.shots ?? []).slice(0, 3).map((sh, i) =>
+          toFormShot({ ...sh, id: sceneId + "-n" + i, no: i + 1, done: false }, scenes[sceneIdx]?.refs ?? []),
+        ),
       }));
       setGenScene(null);
-      toast.success("本场分镜已生成,提示词已挂到每个镜头");
+      toast.success("本场分镜已拆好,逐镜表单可直接改");
+    }, 1400);
+  };
+  const render = (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
+    setBusy({ id, to });
+    dispatch({ type: "spend", n: cost });
+    setTimeout(() => {
+      setBusy(null);
+      updShot(sceneId, id, { flow: to });
+      toast.success(msg);
     }, 1400);
   };
 
-  const upd = (i: number, patch: Partial<EpScene>) =>
-    setScenes((arr) => arr.map((s, j) => (j === i ? { ...s, ...patch } : s)));
-  const updLine = (si: number, li: number, patch: Partial<ScriptLine>) =>
-    setScenes((arr) =>
-      arr.map((s, j) =>
-        j === si ? { ...s, lines: s.lines.map((l, k) => (k === li ? { ...l, ...patch } : l)) } : s,
-      ),
-    );
-  const addLine = (si: number) =>
-    setScenes((arr) =>
-      arr.map((s, j) => (j === si ? { ...s, lines: [...s.lines, { who: "旁白", text: "" }] } : s)),
-    );
-  const delLine = (si: number, li: number) =>
-    setScenes((arr) =>
-      arr.map((s, j) => (j === si ? { ...s, lines: s.lines.filter((_, k) => k !== li) } : s)),
-    );
-  const delScene = (si: number) => setScenes((arr) => arr.filter((_, j) => j !== si));
+  /* 时间线累计(跨场连续) */
+  const allShots = scenes.flatMap((s) => shotsMap[s.id] ?? []);
+  const totalDur = allShots.reduce((a, x) => a + (x.dur || 0), 0);
+  const starts = new Map<string, number>();
+  {
+    let acc = 0;
+    for (const sc of scenes) for (const sh of shotsMap[sc.id] ?? []) {
+      starts.set(sh.id, acc);
+      acc += sh.dur || 0;
+    }
+  }
 
   return (
     <div className="col" style={{ height: "100%", minHeight: 0, position: "relative" }}>
-      {/* ===== 顶部操作条 ===== */}
-      <div
-        className="row"
-        style={{
-          padding: "10px 24px",
-          gap: 10,
-          borderBottom: "1px solid var(--line-soft)",
-          background: "var(--surface)",
-          flex: "none",
-          flexWrap: "wrap",
-        }}
-      >
-        {!locked && (
-          <>
-            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700, flex: "none" }}>生成方式</span>
-            <div className="row gap-1" style={{ flex: "none" }}>
-              {SRC_OPTS.map((o) => {
-                const OIcon = o.icon;
-                return (
-                  <button
-                    key={o.key}
-                    type="button"
-                    className={"chip" + (source === o.key ? " on" : "")}
-                    title={`约 ${o.cost} 积分`}
-                    onClick={() => regen(o.key)}
-                  >
-                    <OIcon size={12} /> {o.name}
-                    {o.hot && source !== o.key ? " ·推荐" : ""}
-                  </button>
-                );
-              })}
-            </div>
-            <button type="button" className="chip" style={{ flex: "none" }} onClick={() => regen(source)}>
-              <RefreshCw size={12} /> 重新生成
-            </button>
-          </>
-        )}
-        {locked && (
-          <span className="row gap-2" style={{ color: "var(--accent)", fontSize: 12.5, fontWeight: 700 }}>
-            <Lock size={14} /> 本集脚本已锁定,视频工厂以此为准
-          </span>
-        )}
-        <span className="grow" />
-        <div className="row" style={{ background: "var(--surface-2)", borderRadius: 999, padding: 3, gap: 2, flex: "none" }}>
-          {(
-            [
-              ["cards", Film, "场景卡片"],
-              ["sheet", Layers, "脚本表格"],
-            ] as const
-          ).map(([k, VIcon, label]) => (
-            <button
-              key={k}
-              type="button"
-              className="chip"
-              onClick={() => setView(k)}
-              style={{
-                height: 26,
-                background: view === k ? "var(--surface)" : "transparent",
-                color: view === k ? "var(--accent)" : "var(--ink-3)",
-                boxShadow: view === k ? "var(--shadow-sm)" : "none",
-              }}
-            >
-              <VIcon size={12} /> {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ===== 正文 ===== */}
       <div className="scroll grow" style={{ minHeight: 0 }}>
-        <div style={{ maxWidth: 1020, margin: "0 auto", padding: "22px 32px 110px" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: "20px 28px 130px" }}>
+          {locked && (
+            <div className="row gap-3 fade-up" style={{ padding: "10px 14px", background: "var(--accent-soft)", borderRadius: 12, marginBottom: 14, color: "var(--accent)" }}>
+              <Lock size={15} />
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>本集脚本已锁定,视频工厂以此为准 —— 仍可回改后重新通过。</span>
+            </div>
+          )}
+
+          {/* ===== 基础通用信息 ===== */}
+          <div className="card" style={{ padding: "14px 16px", marginBottom: 14 }}>
+            <div className="row gap-2" style={{ marginBottom: 10 }}>
+              <Clapperboard size={15} style={{ color: "var(--accent)" }} />
+              <span style={{ fontWeight: 800, fontSize: 13.5 }}>基础通用信息</span>
+              <span className="faint" style={{ fontSize: 11 }}>跨镜共享,改一处全集生效</span>
+              <span className="grow" />
+              <span className="tag tag-accent num">整体时长 · {totalDur}s</span>
+            </div>
+            <div className="col gap-2" style={{ fontSize: 13 }}>
+              <div className="row gap-2" style={{ alignItems: "flex-start" }}>
+                <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>作品风格</span>
+                <span className="grow" style={{ minWidth: 0 }}><Editable block value={style} placeholder="风格关键词…" onCommit={setStyle} /></span>
+              </div>
+              <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none" }}>核心人物</span>
+                {keyChars.map((c) => (
+                  <span key={c.id} className="row" style={{ padding: "2px 9px 2px 2px", borderRadius: 999, background: "var(--accent-soft)", gap: 5 }}>
+                    <Avatar theme={c.avatar} size={18} bound={c.bound} />
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent)" }}>{c.name}</span>
+                  </span>
+                ))}
+              </div>
+              <div className="row gap-2" style={{ alignItems: "flex-start" }}>
+                <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>拍摄场景</span>
+                <span className="grow muted" style={{ minWidth: 0, fontSize: 12.5 }}>
+                  {scenes.map((s) => s.place.replace(/^(内景|外景)\s*·\s*/, "")).join(" / ")}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {phase === "gen" && (
             <div className="card" style={{ padding: 18 }}>
-              <GenSkeleton lines={3} label={`正在写第 ${state.ep} 集剧本…`} />
+              <GenSkeleton lines={4} label={`正在重写第 ${state.ep} 集脚本…`} />
             </div>
           )}
 
-          {phase === "done" && view === "sheet" && (
-            <ScriptSheet
-              scenes={scenes}
-              shotsMap={shotsMap}
-              chars={state.chars}
-              locked={locked}
-              genScene={genScene}
-              onEditScene={upd}
-              onEditLine={updLine}
-              onGenShots={genShots}
-            />
-          )}
-
-          {phase === "done" && view === "cards" && (
+          {/* ===== 按场分组的分镜表单 ===== */}
+          {phase === "done" && (
             <div className="col gap-4">
               {scenes.map((s, i) => {
                 const shots = shotsMap[s.id] ?? [];
                 return (
-                  <div key={s.id} className="card fade-up" style={{ padding: 0, overflow: "hidden", animationDelay: i * 50 + "ms" }}>
-                    {/* 场景剧本 */}
-                    <div style={{ padding: "16px 18px 6px" }}>
-                      <SceneBlock
-                        s={s}
-                        i={i}
-                        chars={state.chars}
-                        onEdit={(patch) => upd(i, patch)}
-                        onEditLine={(li, patch) => updLine(i, li, patch)}
-                        onAddLine={() => addLine(i)}
-                        onDelLine={(li) => delLine(i, li)}
-                        onDelScene={() => delScene(i)}
-                        onRewrite={() => toast.success("已重写本场台词")}
-                      />
+                  <div key={s.id} className="col gap-2">
+                    {/* 场分隔条 */}
+                    <div className="row gap-2" style={{ marginTop: i === 0 ? 0 : 6 }}>
+                      <span className="num tag tag-accent" style={{ flex: "none" }}>场 {i + 1}</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <Editable value={s.place} placeholder="时空标题" onCommit={(v) => updScene(i, { place: v })} />
+                      </span>
+                      <span className="tag tag-gray" style={{ flex: "none" }}>
+                        <Editable value={s.mood} placeholder="情绪" onCommit={(v) => updScene(i, { mood: v })} />
+                      </span>
+                      <span className="grow" style={{ height: 1, background: "var(--line-soft)" }} />
+                      {shots.length > 0 && <span className="faint num" style={{ fontSize: 11, flex: "none" }}>{shots.length} 镜 · {shots.reduce((a, x) => a + x.dur, 0)}s</span>}
+                      {!locked && shots.length > 0 && (
+                        <button type="button" className="chip" style={{ height: 23, fontSize: 10.5, flex: "none" }} onClick={() => addShot(s.id, i)}>
+                          <Plus size={11} /> 加一镜
+                        </button>
+                      )}
                     </div>
-                    {/* 本场分镜(同卡承接,不割裂) */}
-                    <div style={{ borderTop: "1px dashed var(--line)", background: "var(--surface-2)", padding: "12px 18px 14px" }}>
-                      <div className="row gap-2" style={{ marginBottom: shots.length || genScene === s.id ? 10 : 0 }}>
-                        <Film size={14} style={{ color: "var(--accent)" }} />
-                        <span style={{ fontWeight: 700, fontSize: 12.5 }}>本场分镜</span>
-                        {shots.length > 0 ? (
-                          <span className="faint num" style={{ fontSize: 11.5 }}>
-                            {shots.length} 镜 · 共 {shots.reduce((a, x) => a + (x.dur || 0), 0)}s · 文字脚本,出片在视频工厂
+
+                    {/* 没拆镜:剧本草稿(动作 + 台词,可选说话人)+ AI 拆镜 */}
+                    {shots.length === 0 && genScene !== s.id && (
+                      <div className="card col gap-3" style={{ padding: "13px 15px", border: "1.5px dashed var(--line)" }}>
+                        <div className="row gap-2" style={{ alignItems: "flex-start" }}>
+                          <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>场面描述</span>
+                          <span className="grow" style={{ minWidth: 0, fontSize: 13 }}>
+                            <Editable block value={s.action} placeholder="这一场发生了什么…" onCommit={(v) => updScene(i, { action: v })} />
                           </span>
-                        ) : (
-                          <span className="faint" style={{ fontSize: 11.5 }}>剧本定了就拆镜头,每镜自动带视频提示词</span>
-                        )}
-                        <span className="grow" />
-                        {shots.length > 0 && !locked && (
-                          <button type="button" className="chip" style={{ height: 25, fontSize: 11 }} onClick={() => genShots(s.id)}>
-                            <RefreshCw size={11} /> 重拆本场
-                          </button>
-                        )}
-                        {shots.length === 0 && genScene !== s.id && !locked && (
-                          <button type="button" className="btn btn-primary btn-sm" onClick={() => genShots(s.id)}>
-                            <Wand2 size={13} /> 生成本场分镜 <Cost n={SHOT_GEN_COST} />
+                        </div>
+                        <div className="col gap-1">
+                          {s.lines.map((l, j) => (
+                            <div key={j} className="row gap-2" style={{ alignItems: "center" }}>
+                              <select
+                                value={speakerOptions.includes(l.who) ? l.who : l.who || "旁白"}
+                                onChange={(e) => updLine(i, j, { who: e.target.value })}
+                                style={{ height: 24, border: "1px solid var(--line)", borderRadius: 7, fontSize: 11.5, fontWeight: 700, background: "var(--surface-2)", color: "var(--ink-2)", outline: "none", flex: "none" }}
+                              >
+                                {(speakerOptions.includes(l.who) ? speakerOptions : [l.who, ...speakerOptions]).map((w) => (
+                                  <option key={w} value={w}>{w}</option>
+                                ))}
+                              </select>
+                              <span className="grow" style={{ fontSize: 13, minWidth: 0 }}>
+                                <Editable block value={l.text} placeholder="写一句台词 / 旁白…" onCommit={(v) => updLine(i, j, { text: v })} />
+                              </span>
+                              <button type="button" className="btn btn-icon btn-ghost btn-sm" style={{ width: 22, height: 22, flex: "none" }} onClick={() => delLine(i, j)}>
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))}
+                          {/* 加一句台词:先选旁白还是角色 */}
+                          <div className="row gap-1" style={{ flexWrap: "wrap", marginTop: 2 }}>
+                            <span className="faint" style={{ fontSize: 10.5, alignSelf: "center" }}>加一句:</span>
+                            {speakerOptions.map((w) => (
+                              <button key={w} type="button" className="chip" style={{ height: 22, fontSize: 10.5 }} onClick={() => addLine(i, w)}>
+                                <Plus size={10} /> {w}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {!locked && (
+                          <button type="button" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => genShots(s.id, i)}>
+                            <Wand2 size={13} /> 把这场拆成分镜表单 <Cost n={SHOT_GEN_COST} />
                           </button>
                         )}
                       </div>
-                      {genScene === s.id && <GenSkeleton lines={1} label="正在按台词与情绪拆镜头…" />}
-                      {shots.length > 0 && (
-                        <div className="row gap-2" style={{ overflowX: "auto", paddingBottom: 4, alignItems: "stretch" }}>
-                          {shots.map((sh) => (
-                            <MiniShot key={sh.id} sh={sh} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    )}
+                    {genScene === s.id && (
+                      <div className="card" style={{ padding: 14 }}>
+                        <GenSkeleton lines={2} label="正在按台词与情绪拆镜头…" />
+                      </div>
+                    )}
+
+                    {/* 已拆镜:逐镜表单卡 */}
+                    {shots.map((sh) => (
+                      <ShotFormCard
+                        key={sh.id}
+                        s={sh}
+                        start={starts.get(sh.id) ?? 0}
+                        colors={sh.flow === "draft" ? { from: "#cbd5e1", to: "#94a3b8" } : { from: "#fb923c", to: "#f472b6" }}
+                        speakerOptions={speakerOptions}
+                        busy={busy && busy.id === sh.id ? busy.to : null}
+                        locked={locked}
+                        onPatch={(patch) => updShot(s.id, sh.id, patch)}
+                        onDelete={() => delShot(s.id, sh.id)}
+                        onRenderFrame={() => render(s.id, sh.id, "frame", 2, "首帧已出,满意就渲成片")}
+                        onRenderDirect={() => render(s.id, sh.id, "clip", 9, "分镜视频已生成,验收看看")}
+                        onRenderClip={() => render(s.id, sh.id, "clip", 7, "成片已渲,验收看看")}
+                        onApprove={() => {
+                          updShot(s.id, sh.id, { flow: "done" });
+                          toast.success("本镜已验收入片");
+                        }}
+                      />
+                    ))}
                   </div>
                 );
               })}
@@ -273,341 +343,23 @@ export function EpScriptStage({ state, dispatch, data }: EpScriptStageProps) {
         </div>
       </div>
 
-      {/* ===== 悬浮操作(右下角):下一步永远看得见 ===== */}
+      {/* 悬浮 AI 对话(左下):模板化提示词 衍生上一集 / 给我惊喜 */}
+      <AiChatPanel msgs={chat} quick={["衍生上一集", "给我惊喜"]} busy={phase === "gen"} onSend={sendChat} />
+
+      {/* 悬浮 CTA(右下) */}
       {phase === "done" && !locked && (
-        <div
-          className="row gap-2 pop-in"
-          style={{
-            position: "absolute",
-            right: 26,
-            bottom: 22,
-            zIndex: 20,
-            background: "var(--surface)",
-            padding: 10,
-            borderRadius: 16,
-            boxShadow: "var(--shadow-lg)",
-            border: "1px solid var(--line-soft)",
-          }}
-        >
-          <span className="faint" style={{ fontSize: 11.5, alignSelf: "center", paddingLeft: 4 }}>
-            脚本和分镜都满意了?
-          </span>
-          <button
-            type="button"
-            className="btn btn-grad"
-            onClick={() => dispatch({ type: "lock", stage: "epscript", cost: 30 })}
-          >
-            <Check size={15} /> 通过整集 · 进视频工厂
+        <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
+          <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>脚本和分镜都满意了?</span>
+          <button type="button" className="btn btn-grad btn-sm" onClick={() => dispatch({ type: "lock", stage: "epscript", cost: 30 })}>
+            <Check size={14} /> 通过整集 · 进视频工厂
           </button>
         </div>
       )}
       {locked && (
-        <div
-          className="row gap-2 pop-in"
-          style={{
-            position: "absolute",
-            right: 26,
-            bottom: 22,
-            zIndex: 20,
-            background: "var(--surface)",
-            padding: 10,
-            borderRadius: 16,
-            boxShadow: "var(--shadow-lg)",
-            border: "1px solid var(--line-soft)",
-          }}
-        >
-          <button type="button" className="btn btn-grad" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
-            <ImageIcon size={14} /> 去视频工厂出片 <ArrowRight size={13} />
+        <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
+          <button type="button" className="btn btn-grad btn-sm" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
+            <ImageIcon size={13} /> 去视频工厂出片 <ArrowRight size={12} />
           </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============ 脚本表格视图(平铺:时间 / 场景 / 视频脚本 / 语音 / 字幕 / 参考) ============ */
-const SH_TH: React.CSSProperties = {
-  textAlign: "left",
-  fontSize: 11.5,
-  fontWeight: 700,
-  color: "var(--ink-3)",
-  letterSpacing: ".05em",
-  padding: "10px 14px",
-  background: "var(--surface-2)",
-  borderBottom: "1px solid var(--line)",
-  position: "sticky",
-  top: 0,
-  zIndex: 2,
-  whiteSpace: "nowrap",
-};
-const SH_TD: React.CSSProperties = {
-  padding: "14px",
-  borderBottom: "1px solid var(--line-soft)",
-  verticalAlign: "top",
-  fontSize: 13,
-  lineHeight: 1.7,
-};
-
-function fmtT(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return m + ":" + String(s).padStart(2, "0");
-}
-
-function ScriptSheet({
-  scenes,
-  shotsMap,
-  chars,
-  locked,
-  genScene,
-  onEditScene,
-  onEditLine,
-  onGenShots,
-}: {
-  scenes: EpScene[];
-  shotsMap: Record<string, BoardShot[]>;
-  chars: WorkshopState["chars"];
-  locked: boolean;
-  genScene: string | null;
-  onEditScene: (i: number, patch: Partial<EpScene>) => void;
-  onEditLine: (si: number, li: number, patch: Partial<ScriptLine>) => void;
-  onGenShots: (sceneId: string) => void;
-}) {
-  let acc = 0;
-  const rows = scenes.map((s) => {
-    const shots = shotsMap[s.id] ?? [];
-    const dur = shots.length ? shots.reduce((a, x) => a + (x.dur || 0), 0) : 15;
-    const r = { s, shots, start: acc, end: acc + dur, est: !shots.length };
-    acc += dur;
-    return r;
-  });
-  const findChar = (name: string) => chars.find((c) => c.name === name);
-  return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}>
-          <thead>
-            <tr>
-              <th style={{ ...SH_TH, width: 84 }}>时间</th>
-              <th style={{ ...SH_TH, width: 118 }}>场景</th>
-              <th style={{ ...SH_TH, width: "36%" }}>视频脚本</th>
-              <th style={SH_TH}>语音</th>
-              <th style={{ ...SH_TH, width: 56 }}>字幕</th>
-              <th style={{ ...SH_TH, width: 104 }}>参考</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ s, shots, start, end, est }, i) => (
-              <tr key={s.id}>
-                {/* 时间 */}
-                <td style={{ ...SH_TD, whiteSpace: "nowrap" }}>
-                  <div className="num" style={{ fontWeight: 800, fontSize: 13, color: "var(--accent)" }}>
-                    {fmtT(start)}-{fmtT(end)}
-                  </div>
-                  {est && (
-                    <div className="faint" style={{ fontSize: 10.5, marginTop: 2 }}>估 · 待拆镜</div>
-                  )}
-                </td>
-                {/* 场景 */}
-                <td style={SH_TD}>
-                  <div style={{ fontWeight: 700, fontSize: 12.5 }}>
-                    <Editable value={s.place} placeholder="场景" onCommit={(v) => onEditScene(i, { place: v })} />
-                  </div>
-                  <span className="tag tag-gray" style={{ marginTop: 6 }}>{s.mood}</span>
-                </td>
-                {/* 视频脚本(动作 + 分镜,可内嵌 [参考N] 引用) */}
-                <td style={{ ...SH_TD, fontSize: 13.5 }}>
-                  {(s.action || !shots.length) && (
-                    <div style={{ marginBottom: shots.length ? 8 : 0, color: "var(--ink-2)" }}>
-                      <RichScript
-                        text={s.action}
-                        refs={s.refs}
-                        onCommit={(v) => onEditScene(i, { action: v })}
-                        placeholder="点击编写视频脚本…用 [参考N] 引用右侧素材"
-                      />
-                    </div>
-                  )}
-                  {shots.length > 0 && (
-                    <div className="col" style={{ gap: 6 }}>
-                      {shots.map((sh) => (
-                        <div key={sh.id} className="row gap-2" style={{ alignItems: "flex-start" }}>
-                          <span
-                            className="num"
-                            style={{
-                              flex: "none",
-                              fontSize: 10.5,
-                              fontWeight: 800,
-                              color: "var(--accent)",
-                              background: "var(--accent-soft)",
-                              borderRadius: 6,
-                              padding: "1px 7px",
-                              marginTop: 4,
-                            }}
-                          >
-                            #{sh.no}
-                          </span>
-                          <span style={{ minWidth: 0, lineHeight: 1.8 }}>
-                            <b>
-                              {sh.size} · {sh.move} · <span className="num">{sh.dur}s</span>:
-                            </b>{" "}
-                            <RichScript text={sh.desc} refs={s.refs} />
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {shots.length === 0 && genScene !== s.id && s.action && !locked && (
-                    <button
-                      type="button"
-                      className="chip"
-                      style={{ height: 25, fontSize: 11, marginTop: 6 }}
-                      onClick={() => onGenShots(s.id)}
-                    >
-                      <Wand2 size={11} /> 拆分镜 · {SHOT_GEN_COST} 积分
-                    </button>
-                  )}
-                  {genScene === s.id && (
-                    <div style={{ marginTop: 6 }}>
-                      <GenSkeleton lines={1} label="正在拆镜头…" />
-                    </div>
-                  )}
-                </td>
-                {/* 语音 */}
-                <td style={SH_TD}>
-                  {s.lines.length > 0 ? (
-                    <div className="col" style={{ gap: 6 }}>
-                      {s.lines.map((l, j) => {
-                        const c = findChar(l.who);
-                        return (
-                          <div key={j} className="row gap-2" style={{ alignItems: "flex-start" }}>
-                            {c ? (
-                              <Avatar theme={c.avatar} size={18} />
-                            ) : (
-                              <span
-                                style={{
-                                  width: 18,
-                                  height: 18,
-                                  borderRadius: "50%",
-                                  background: "var(--surface-2)",
-                                  display: "inline-grid",
-                                  placeItems: "center",
-                                  color: "var(--ink-3)",
-                                  flex: "none",
-                                  marginTop: 2,
-                                }}
-                              >
-                                <Mic size={10} />
-                              </span>
-                            )}
-                            <span style={{ minWidth: 0 }}>
-                              <b style={{ fontSize: 12.5 }}>{l.who}</b>
-                              {l.emotion && (
-                                <span className="tag tag-pink" style={{ margin: "0 5px", transform: "translateY(-1px)" }}>
-                                  {l.emotion}
-                                </span>
-                              )}
-                              :&ldquo;
-                              <Editable
-                                value={l.text}
-                                placeholder="台词…"
-                                onCommit={(v) => onEditLine(i, j, { text: v })}
-                                style={{ display: "inline" }}
-                              />
-                              &rdquo;
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <span className="faint" style={{ fontStyle: "italic" }}>环境音 / 无台词</span>
-                  )}
-                </td>
-                {/* 字幕 */}
-                <td style={SH_TD}>
-                  <SubToggle on={s.sub !== false} onToggle={() => onEditScene(i, { sub: s.sub === false })} />
-                </td>
-                {/* 参考 */}
-                <td style={SH_TD}>
-                  <RefCell refs={s.refs} onChange={(next) => onEditScene(i, { refs: next })} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="row gap-2" style={{ padding: "10px 14px", borderTop: "1px solid var(--line-soft)", background: "var(--surface-2)" }}>
-        <Edit size={12} style={{ color: "var(--ink-3)" }} />
-        <span className="faint" style={{ fontSize: 11.5 }}>
-          场景、视频脚本、台词点击即可改 · 脚本里用 [参考N] 引用右侧素材 · 共约{" "}
-          {fmtT(rows.reduce((a, r) => a + (r.end - r.start), 0))}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* 分镜迷你卡:纯文字(这一步还没生成视频,画面在视频工厂才出) */
-function MiniShot({ sh }: { sh: BoardShot }) {
-  const [peek, setPeek] = React.useState(false);
-  return (
-    <div
-      className="col"
-      style={{
-        flex: "none",
-        width: 196,
-        background: "var(--surface)",
-        borderRadius: 12,
-        border: "1px solid var(--line-soft)",
-        padding: "10px 11px",
-        gap: 5,
-      }}
-    >
-      <div className="row gap-2">
-        <span
-          className="num"
-          style={{
-            fontSize: 10.5,
-            fontWeight: 800,
-            color: "var(--accent)",
-            background: "var(--accent-soft)",
-            borderRadius: 6,
-            padding: "1px 7px",
-            flex: "none",
-          }}
-        >
-          #{sh.no}
-        </span>
-        <span
-          className="faint num"
-          style={{ fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}
-        >
-          {sh.size} · {sh.move}
-        </span>
-        <span className="num" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", marginLeft: "auto", flex: "none" }}>
-          {sh.dur}s
-        </span>
-      </div>
-      <span style={{ fontSize: 11.5, lineHeight: 1.55, color: "var(--ink-2)" }}>{sh.desc}</span>
-      <button
-        type="button"
-        className="chip"
-        style={{
-          height: 22,
-          fontSize: 10,
-          alignSelf: "flex-start",
-          padding: "0 8px",
-          marginTop: "auto",
-          background: peek ? "var(--accent-soft)" : "var(--surface-2)",
-          color: peek ? "var(--accent)" : "var(--ink-3)",
-        }}
-        onClick={() => setPeek(!peek)}
-      >
-        <Package size={10} /> 视频提示词
-      </button>
-      {peek && (
-        <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--ink-2)", background: "var(--surface-2)", borderRadius: 8, padding: "6px 8px" }}>
-          {sh.size} · {sh.move} · {sh.dur}s · {sh.engine === "avatar" ? "数字人出镜" : "场景特效"} —— {sh.desc}
         </div>
       )}
     </div>

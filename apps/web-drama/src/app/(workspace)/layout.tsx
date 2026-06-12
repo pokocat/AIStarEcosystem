@@ -34,7 +34,6 @@ import {
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
-import { REVIEW_PENDING_COUNT } from "@/mocks/drama-workshop";
 import { useOperator } from "@/lib/use-operator";
 
 interface NavItem {
@@ -43,8 +42,6 @@ interface NavItem {
   label: string;
   /** 设为 true 时，仅在路径完全相等时高亮；否则前缀匹配也高亮（用于详情页继承父 tab）。 */
   exact?: boolean;
-  /** 待办角标(剧本审阅) */
-  badge?: number;
 }
 
 interface NavGroup {
@@ -64,11 +61,9 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
+    // v0.63 补丁:剧本审阅收进「短剧工坊」页内入口,不再占一级菜单
     title: "提效",
-    items: [
-      { href: "/templates", icon: Layers, label: "模板库" },
-      { href: "/review", icon: PenTool, label: "剧本审阅", badge: REVIEW_PENDING_COUNT },
-    ],
+    items: [{ href: "/templates", icon: Layers, label: "模板库" }],
   },
   {
     title: "素材",
@@ -112,7 +107,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       style={{
         background: "var(--bg-1)",
         borderRight: "1px solid var(--line)",
-        padding: "20px 0",
+        padding: "14px 0",
         display: "flex",
         flexDirection: "column",
         height: "100%",
@@ -123,7 +118,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         onClick={onNavigate}
         className="row gap-3"
         style={{
-          padding: "0 18px 18px",
+          padding: "0 18px 12px",
           borderBottom: "1px solid var(--line)",
           color: "var(--ink)",
           textDecoration: "none",
@@ -154,13 +149,13 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </Link>
 
-      <div style={{ padding: "16px 12px", flex: 1, overflowY: "auto" }}>
+      <div style={{ padding: "10px 12px", flex: 1, overflowY: "auto", minHeight: 0 }}>
         {GROUPS.map((g, gi) => (
           <div key={gi}>
             <div
               className="faint"
               style={{
-                padding: gi === 0 ? "8px 12px 6px" : "18px 12px 6px",
+                padding: gi === 0 ? "4px 12px 4px" : "12px 12px 4px",
                 fontSize: 11,
                 fontWeight: 700,
                 letterSpacing: ".05em",
@@ -180,8 +175,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     display: "flex",
                     alignItems: "center",
                     gap: 12,
-                    padding: "9px 12px",
-                    borderRadius: 12,
+                    padding: "7px 12px",
+                    borderRadius: 11,
                     background: active ? "var(--accent-soft)" : "transparent",
                     color: active ? "var(--accent)" : "var(--ink-2)",
                     fontSize: 13.5,
@@ -196,25 +191,6 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     color={active ? "var(--accent)" : "var(--ink-3)"}
                   />
                   <span style={{ flex: 1 }}>{it.label}</span>
-                  {!!it.badge && (
-                    <span
-                      className="num"
-                      style={{
-                        minWidth: 17,
-                        height: 17,
-                        padding: "0 5px",
-                        borderRadius: 99,
-                        background: "var(--accent-2)",
-                        color: "#fff",
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        display: "grid",
-                        placeItems: "center",
-                      }}
-                    >
-                      {it.badge}
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -223,7 +199,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       {/* 运营身份开关(演示;开启后模板库可新建模板) */}
-      <div style={{ padding: "0 14px 10px" }}>
+      <div style={{ padding: "0 14px 8px", flex: "none" }}>
         <button
           type="button"
           className="chip static"
@@ -243,8 +219,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div
         style={{
-          padding: "14px 18px",
+          padding: "10px 18px",
           borderTop: "1px solid var(--line)",
+          flexShrink: 0,
           display: "flex",
           alignItems: "center",
           gap: 10,

@@ -15,57 +15,27 @@ import {
   Film,
   Image as ImageIcon,
   Play,
+  Plus,
   RefreshCw,
   Sparkles,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Editable, GenSkeleton, Thumb } from "@/components/drama-ui";
+import { GenSkeleton, Thumb } from "@/components/drama-ui";
 import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
-import { RefCell, RichScript, SubToggle } from "@/components/drama-workshop/script-refs";
+import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { matById, SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
 
-type ShotFlow = "draft" | "frame" | "clip" | "done";
-
-interface ShortShot {
-  id: string;
-  no: number;
-  /** 时长(秒) */
-  dur: number;
-  /** 画面 / 视频脚本 */
-  visual: string;
-  /** 语音口播 */
-  vo: string;
+/** 短视频分镜 = 结构化表单分镜 + 出镜引擎 */
+interface ShortShot extends FormShot {
   engine: string;
-  flow: ShotFlow;
   frameIdx: number;
-  refs: Material[];
-  sub: boolean;
 }
 
 interface ChatMsg {
   who: "ai" | "me";
   text: string;
 }
-
-const SV_TH: React.CSSProperties = {
-  textAlign: "left",
-  fontSize: 11.5,
-  fontWeight: 700,
-  color: "var(--ink-3)",
-  letterSpacing: ".05em",
-  padding: "10px 14px",
-  background: "var(--surface-2)",
-  borderBottom: "1px solid var(--line)",
-  whiteSpace: "nowrap",
-};
-const SV_TD: React.CSSProperties = {
-  padding: "13px 14px",
-  borderBottom: "1px solid var(--line-soft)",
-  verticalAlign: "top",
-  fontSize: 13,
-  lineHeight: 1.7,
-};
 
 /* 单镜出片卡(竖屏) */
 function ShortShotCard({
@@ -222,7 +192,24 @@ function ShortMakerInner() {
       const beatRefs = (isAv ? [matById("a1"), matById("mp1")] : [matById("r1")]).filter((m): m is Material => m != null);
       let visual = b.visual;
       if (isAv && beatRefs.length && visual.includes("数字人")) visual = visual.replace("数字人", "[参考1] ");
-      return { ...b, id: "sh" + i, no: i + 1, flow: "draft" as ShotFlow, frameIdx: 0, refs: beatRefs, sub: true, visual };
+      return {
+        id: "sh" + i,
+        no: i + 1,
+        dur: b.dur,
+        visual,
+        size: isAv ? "中近景" : "中景",
+        move: i === 0 ? "推近" : "固定",
+        voWho: "口播",
+        voText: b.vo,
+        sfx: "",
+        bgm: "",
+        fx: "",
+        refs: beatRefs,
+        sub: true,
+        flow: "draft" as ShotFlow,
+        engine: b.engine,
+        frameIdx: 0,
+      };
     });
   }, [fmt]);
 
@@ -273,7 +260,7 @@ function ShortMakerInner() {
   };
 
   const STEP_META: { key: "script" | "factory"; no: number; name: string; icon: React.ElementType }[] = [
-    { key: "script", no: 1, name: "口播脚本", icon: Clapperboard },
+    { key: "script", no: 1, name: "分镜脚本", icon: Clapperboard },
     { key: "factory", no: 2, name: "视频工厂", icon: ImageIcon },
   ];
 
@@ -431,13 +418,13 @@ function ShortMakerInner() {
             </div>
           </div>
 
-          {/* 右:生成的脚本 */}
+          {/* 右:结构化分镜脚本(表单式 · 带时间线) */}
           <div className="scroll grow" style={{ minHeight: 0, background: "var(--bg)" }}>
             <div style={{ maxWidth: 760, margin: "0 auto", padding: "22px 28px 110px" }}>
               <div className="row gap-2" style={{ marginBottom: 14 }}>
                 <Clapperboard size={16} style={{ color: "var(--accent)" }} />
-                <span style={{ fontWeight: 800, fontSize: 16 }}>口播脚本</span>
-                <span className="faint num" style={{ fontSize: 12 }}>{shots.length} 镜 · 约 {total}s</span>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>分镜脚本</span>
+                <span className="faint num" style={{ fontSize: 12 }}>{shots.length} 镜 · 约 {total}s · 时间线自动累计</span>
                 <span className="grow" />
                 <button type="button" className="chip" disabled={phase === "gen"} onClick={regen}>
                   <RefreshCw size={12} /> 重新生成
@@ -448,54 +435,39 @@ function ShortMakerInner() {
                   <GenSkeleton lines={4} label="正在写口播稿并拆分镜…" />
                 </div>
               ) : (
-                <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
-                      <thead>
-                        <tr>
-                          <th style={{ ...SV_TH, width: 56 }}>镜号</th>
-                          <th style={{ ...SV_TH, width: "44%" }}>视频脚本</th>
-                          <th style={SV_TH}>语音</th>
-                          <th style={{ ...SV_TH, width: 58 }}>字幕</th>
-                          <th style={{ ...SV_TH, width: 108 }}>参考</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {shots.map((s) => (
-                          <tr key={s.id}>
-                            <td style={{ ...SV_TD, whiteSpace: "nowrap" }}>
-                              <span className="num" style={{ fontWeight: 800, color: "var(--accent)", fontSize: 13 }}>#{s.no}</span>
-                              <div className="faint num" style={{ fontSize: 10.5, marginTop: 2 }}>{s.dur}s</div>
-                            </td>
-                            <td style={{ ...SV_TD, fontSize: 13.5 }}>
-                              <RichScript
-                                text={s.visual}
-                                refs={s.refs}
-                                onCommit={(v) => updShot(s.id, { visual: v })}
-                                placeholder="点击编写视频脚本…"
-                              />
-                            </td>
-                            <td style={SV_TD}>
-                              <span style={{ color: "var(--ink)" }}>
-                                “<Editable block value={s.vo} placeholder="语音口播…" onCommit={(v) => updShot(s.id, { vo: v })} style={{ display: "inline" }} />”
-                              </span>
-                            </td>
-                            <td style={SV_TD}>
-                              <SubToggle on={s.sub !== false} onToggle={() => updShot(s.id, { sub: s.sub === false })} />
-                            </td>
-                            <td style={SV_TD}>
-                              <RefCell refs={s.refs} onChange={(next) => updShot(s.id, { refs: next })} />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="row gap-2" style={{ padding: "10px 14px", borderTop: "1px solid var(--line-soft)", background: "var(--surface-2)" }}>
+                <div className="col gap-3">
+                  {shots.map((s2, i) => (
+                    <ShotFormCard
+                      key={s2.id}
+                      s={s2}
+                      start={shots.slice(0, i).reduce((a, x) => a + (x.dur || 0), 0)}
+                      colors={s2.flow === "draft" ? { from: "#cbd5e1", to: "#94a3b8" } : { from: fmt.from, to: fmt.to }}
+                      speakerOptions={["口播", "旁白"]}
+                      busy={busy && busy.id === s2.id ? busy.to : null}
+                      onPatch={(patch) => updShot(s2.id, patch)}
+                      onDelete={() => setShots((arr) => arr.filter((x) => x.id !== s2.id).map((x, j) => ({ ...x, no: j + 1 })))}
+                      onRenderFrame={() => render(s2.id, "frame", 2)}
+                      onRenderDirect={() => render(s2.id, "clip", 9)}
+                      onRenderClip={() => render(s2.id, "clip", 7)}
+                      onApprove={() => updShot(s2.id, { flow: "done" })}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-line btn-sm"
+                    style={{ alignSelf: "flex-start" }}
+                    onClick={() =>
+                      setShots((arr) => [
+                        ...arr,
+                        { id: "add" + Date.now(), no: arr.length + 1, dur: 4, visual: "", size: "中景", move: "固定", voWho: "口播", voText: "", sfx: "", bgm: "", fx: "", refs: [], sub: true, flow: "draft", engine: "fx", frameIdx: 0 },
+                      ])
+                    }
+                  >
+                    <Plus size={14} /> 加一镜
+                  </button>
+                  <div className="row gap-2" style={{ padding: "4px 2px" }}>
                     <Edit size={12} style={{ color: "var(--ink-3)" }} />
-                    <span className="faint" style={{ fontSize: 11.5 }}>
-                      视频脚本、语音点击即可改 · 脚本里用 [参考N] 引用右侧选的素材 · 也可让左侧 AI 整体重写
-                    </span>
+                    <span className="faint" style={{ fontSize: 11.5 }}>所有字段点击即可改 · 画面里输入 @ 引用素材 · 也可让左侧 AI 整体重写</span>
                   </div>
                 </div>
               )}

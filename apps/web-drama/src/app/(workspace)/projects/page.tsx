@@ -7,12 +7,13 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, Clock, Wand2, Zap } from "lucide-react";
+import { ArrowRight, Clock, PenTool, Wand2, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
-import { PROJECTS, type DramaProjectSummary } from "@/mocks/drama-workshop";
+import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
+import { PROJECTS, REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
 
 export default function ProjectsHubPage() {
   return (
@@ -27,6 +28,7 @@ function ProjectsHubInner() {
   const sp = useSearchParams();
   const [loading, setLoading] = React.useState(true);
   const [quickOpen, setQuickOpen] = React.useState(false);
+  const [preview, setPreview] = React.useState<DramaProjectSummary | null>(null);
 
   React.useEffect(() => {
     const t = setTimeout(() => setLoading(false), 450);
@@ -43,7 +45,11 @@ function ProjectsHubInner() {
   const main = PROJECTS.find((p) => p.main);
   const rest = PROJECTS.filter((p) => !p.main && p.episodes > 1); // 只留多集短剧
 
-  const openProject = (p: DramaProjectSummary) => router.push(`/projects/${p.id}`);
+  // 已完成的短剧:先看成片预览,再决定看脚本还是衍生
+  const openProject = (p: DramaProjectSummary) => {
+    if (p.done) setPreview(p);
+    else router.push(`/projects/${p.id}`);
+  };
   const quickCreate = () => {
     setQuickOpen(false);
     router.push("/projects/p1?from=template");
@@ -127,6 +133,33 @@ function ProjectsHubInner() {
         </button>
       )}
 
+      {/* 剧本审阅入口(收进短剧工坊,不再占一级菜单) */}
+      <button
+        type="button"
+        className="card row gap-3 fade-up"
+        onClick={() => router.push("/review")}
+        style={{ width: "100%", padding: "11px 16px", marginBottom: 20, textAlign: "left", alignItems: "center" }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = "var(--shadow-lg)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+        }}
+      >
+        <span style={{ width: 34, height: 34, borderRadius: 11, background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)", flex: "none" }}>
+          <PenTool size={17} />
+        </span>
+        <span style={{ fontWeight: 700, fontSize: 13.5 }}>剧本审阅</span>
+        <span className="faint" style={{ fontSize: 12 }}>跨项目待审剧本集中过目,原地通读、原地通过</span>
+        <span className="grow" />
+        {REVIEW_PENDING_COUNT > 0 && (
+          <span className="num" style={{ minWidth: 18, height: 18, padding: "0 6px", borderRadius: 99, background: "var(--accent-2)", color: "#fff", fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center" }}>
+            {REVIEW_PENDING_COUNT}
+          </span>
+        )}
+        <span className="btn btn-line btn-sm" style={{ flex: "none" }}>去审阅 <ArrowRight size={13} /></span>
+      </button>
+
       {/* 紧凑竖版网格 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, alignItems: "start" }}>
         <button
@@ -174,6 +207,30 @@ function ProjectsHubInner() {
           : rest.map((p, i) => <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} />)}
       </div>
 
+      {preview && (
+        <WorkPreviewModal
+          item={{
+            title: preview.title,
+            cover: preview.cover,
+            ratio: preview.ratio,
+            metaLine: `${preview.type} · 全 ${preview.episodes} 集 · ${preview.updated}更新`,
+            durLabel: `${preview.episodes} 集`,
+          }}
+          onClose={() => setPreview(null)}
+          scriptLabel="切到脚本视图"
+          deriveLabel="衍生新剧"
+          onScript={() => {
+            const id = preview.id;
+            setPreview(null);
+            router.push(`/projects/${id}`);
+          }}
+          onDerive={() => {
+            setPreview(null);
+            toast.success(`已按《${preview.title}》的结构衍生新剧,大纲可直接改`);
+            router.push("/projects/p1?from=template");
+          }}
+        />
+      )}
       {quickOpen && (
         <QuickCreateModal
           onClose={() => setQuickOpen(false)}

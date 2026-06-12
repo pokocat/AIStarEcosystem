@@ -8,6 +8,7 @@ import { Clapperboard, Play, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
+import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
 import { MY_SHORTS, PROJECTS, type DramaProjectSummary, type ShortVideoItem } from "@/mocks/drama-workshop";
 
 interface MakeCtx {
@@ -106,6 +107,7 @@ function ShortCard({ s, onOpen, delay }: { s: ShortVideoItem; onOpen: () => void
 export default function ShortsStudioPage() {
   const router = useRouter();
   const [clipOpen, setClipOpen] = React.useState(false);
+  const [preview, setPreview] = React.useState<ShortVideoItem | null>(null);
   const shorts = MY_SHORTS;
   const singles = PROJECTS.filter((p) => p.episodes === 1); // 宣传片 / 自传等单集作品
 
@@ -180,7 +182,16 @@ export default function ShortsStudioPage() {
           <span className="faint" style={{ fontSize: 11 }}>说句话·出片</span>
         </button>
         {shorts.map((s, i) => (
-          <ShortCard key={s.id} s={s} delay={i * 35} onOpen={() => onMake({ format: "sell", idea: null, reopen: s.title })} />
+          <ShortCard
+            key={s.id}
+            s={s}
+            delay={i * 35}
+            onOpen={() => {
+              // 已发布的成片:先看成片预览,再决定看脚本还是衍生
+              if (s.status === "done") setPreview(s);
+              else onMake({ format: "sell", idea: null, reopen: s.title });
+            }}
+          />
         ))}
         {singles.map((p, i) => (
           <ProjectCard key={p.id} p={p} stageNames={STAGE_NAMES} onOpen={openProject} delay={(shorts.length + i) * 35} />
@@ -188,6 +199,30 @@ export default function ShortsStudioPage() {
       </div>
 
       {clipOpen && <ShortClipModal onClose={() => setClipOpen(false)} onMake={onMake} />}
+      {preview && (
+        <WorkPreviewModal
+          item={{
+            title: preview.title,
+            cover: { from: preview.from, to: preview.to },
+            ratio: "9:16",
+            metaLine: `${preview.fmt} · 播放 ${preview.plays} · 竖屏 9:16`,
+            durLabel: preview.dur,
+          }}
+          onClose={() => setPreview(null)}
+          scriptLabel="切到脚本视图"
+          deriveLabel="衍生新片"
+          onScript={() => {
+            const t = preview.title;
+            setPreview(null);
+            onMake({ format: "sell", idea: null, reopen: t });
+          }}
+          onDerive={() => {
+            const t = preview.title;
+            setPreview(null);
+            onMake({ format: "sell", idea: `衍生自「${t}」,换个钩子再来一条` });
+          }}
+        />
+      )}
     </div>
   );
 }

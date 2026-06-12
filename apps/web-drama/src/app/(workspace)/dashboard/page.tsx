@@ -30,6 +30,7 @@ import {
   SHORT_FORMATS,
   ideaBeats,
   type IdeaRec,
+  type ShortFormat,
 } from "@/mocks/drama-workshop";
 
 function greeting() {
@@ -48,6 +49,7 @@ export default function HomePage() {
   const [page, setPage] = React.useState(0);
   const [sparkN, setSparkN] = React.useState(0);
   const [preview, setPreview] = React.useState<IdeaRec | null>(null);
+  const [fmtPreview, setFmtPreview] = React.useState<ShortFormat | null>(null);
   const [quickOpen, setQuickOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const recs = Array.from({ length: 6 }).map((_, i) => IDEA_POOL[(page * 6 + i) % IDEA_POOL.length]);
@@ -140,9 +142,9 @@ export default function HomePage() {
           }}
         />
 
-        <div style={{ maxWidth: 760, margin: "0 auto", padding: "60px 40px 8px", position: "relative", textAlign: "center" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "36px 40px 8px", position: "relative", textAlign: "center" }}>
           <div className="faint" style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>{greeting()},创作者</div>
-          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.25 }}>
+          <h1 style={{ margin: 0, fontSize: 31, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.25 }}>
             今天想做{isShort ? "一条" : "一部"}什么
             <span
               style={{
@@ -163,7 +165,7 @@ export default function HomePage() {
           </div>
 
           {/* 类型切换 · 轻量分段(短视频在前) */}
-          <div className="row" style={{ justifyContent: "center", marginTop: 20 }}>
+          <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
             <div
               className="row"
               style={{
@@ -302,10 +304,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="row" style={{ marginTop: 26, marginBottom: 12 }}>
-            <span style={{ fontWeight: 700, fontSize: 13.5 }}>{isShort ? "热门短视频点子" : "创意推荐"}</span>
+          <div className="row" style={{ marginTop: 22, marginBottom: 12 }}>
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>{isShort ? "短视频模板" : "创意推荐"}</span>
             <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>
-              {isShort ? "点一个直接开做" : "点卡片预览效果,满意一键开拍"}
+              {isShort ? "点卡片看成片预览,满意一键套用开做" : "点卡片预览效果,满意一键开拍"}
             </span>
             <span className="grow" />
             {!isShort && (
@@ -319,7 +321,39 @@ export default function HomePage() {
         {/* 封面式创意卡(紧凑竖版) */}
         <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 40px", position: "relative" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(158px,1fr))", gap: 14 }}>
-            {(isShort ? recs.slice(0, 5) : recs).map((r, i) => (
+            {isShort &&
+              SHORT_FORMATS.map((f, i) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  className="card col fade-up"
+                  onClick={() => setFmtPreview(f)}
+                  style={{ padding: 0, overflow: "hidden", textAlign: "left", animationDelay: i * 35 + "ms", transition: "transform .15s, box-shadow .15s" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-3px)";
+                    e.currentTarget.style.boxShadow = "var(--shadow-lg)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "none";
+                    e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+                  }}
+                >
+                  <VideoCover from={f.from} to={f.to} ratio="3/4" label="成片预览">
+                    <span className="thumb-label" style={{ position: "absolute", top: 8, left: 8 }}>{f.tip}</span>
+                    <span className="thumb-label num" style={{ position: "absolute", top: 8, right: 8 }}>{f.dur}s</span>
+                  </VideoCover>
+                  <div className="col gap-1" style={{ padding: "11px 13px 13px" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{f.name}</div>
+                    <div
+                      className="faint"
+                      style={{ fontSize: 12, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                    >
+                      {f.sample}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            {!isShort && recs.map((r, i) => (
               <button
                 key={r.title}
                 type="button"
@@ -426,6 +460,41 @@ export default function HomePage() {
                 const h = preview.hook;
                 setPreview(null);
                 ideaCreate(h);
+              },
+            },
+          ]}
+        />
+      )}
+      {fmtPreview && (
+        <PreviewModal
+          item={{
+            cover: { from: fmtPreview.from, to: fmtPreview.to },
+            title: fmtPreview.name,
+            cat: "短视频模板",
+            desc: `示例:${fmtPreview.sample}`,
+            tags: [fmtPreview.tip, `约 ${fmtPreview.dur}s`, "竖屏 9:16"],
+            beats: (() => {
+              let acc = 0;
+              return fmtPreview.beats.map((b) => {
+                const r = { range: `${acc}-${acc + b.dur}s`, beat: b.visual.slice(0, 18), est: `${b.dur}s` };
+                acc += b.dur;
+                return r;
+              });
+            })(),
+            beatsLabel: "分镜节拍 · 套用后逐镜可改",
+            coverLabel: "成片预览 · 同格式样片",
+          }}
+          onClose={() => setFmtPreview(null)}
+          actions={[
+            {
+              label: "用这个模板开做",
+              icon: <Zap size={15} />,
+              variant: "grad",
+              cost: 10,
+              onClick: () => {
+                const k = fmtPreview.key;
+                setFmtPreview(null);
+                router.push(`/shorts/make?fmt=${encodeURIComponent(k)}`);
               },
             },
           ]}
