@@ -310,7 +310,13 @@ export default function AdminAiModelsPage() {
   }
 
   const bindingsByGroup = React.useMemo(() => {
-    const grouped = Object.fromEntries(BINDING_GROUPS.map((group) => [group.key, []])) as Record<BindingGroupKey, AiAppBinding[]>;
+    const grouped: Record<BindingGroupKey, AiAppBinding[]> = {
+      celebrity: [],
+      drama: [],
+      aiavatar: [],
+      creator: [],
+      platform: [],
+    };
     for (const binding of bindings) {
       const key = BINDING_GROUP_BY_PURPOSE.get(binding.purpose) ?? "platform";
       grouped[key].push(binding);
@@ -676,25 +682,25 @@ export default function AdminAiModelsPage() {
                         : "新建时必填。服务端用 AES-GCM 加密落库，仅在调用时解密。"
                     }
                   >
-	                    <div className="relative">
+                    <div className="relative">
                       <Lock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-	                      <Input
-	                        type="password"
-	                        autoComplete="new-password"
-	                        className="pl-8"
-	                        placeholder={editing.defaults?.apiKeyHint ?? (editing.id ? "***（不修改）" : "sk-...")}
-	                        value={editing.apiKey}
-	                        onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
-	                      />
-	                    </div>
-	                  </Field>
-	                  <Field label="固定模型" hint="本端点固定调用的模型，例如 gpt-4o / qwen-plus / doubao-1-5-pro-32k">
-	                    <Input
-	                      value={editing.model}
-	                      onChange={(e) => setEditing({ ...editing, model: e.target.value })}
-	                      placeholder={placeholderFor(editing, "model", "gpt-4o")}
-	                    />
-	                  </Field>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        className="pl-8"
+                        placeholder={editing.defaults?.apiKeyHint ?? (editing.id ? "***（不修改）" : "sk-...")}
+                        value={editing.apiKey}
+                        onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
+                      />
+                    </div>
+                  </Field>
+                  <Field label="固定模型" hint="本端点固定调用的模型，例如 gpt-4o / qwen-plus / doubao-1-5-pro-32k">
+                    <Input
+                      value={editing.model}
+                      onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+                      placeholder={placeholderFor(editing, "model", "gpt-4o")}
+                    />
+                  </Field>
                   <Field label="启用" hint="停用后绑定到该端点的 AI 应用会报「未配置」">
                     <div className="flex h-9 items-center">
                       <Switch checked={editing.enabled} onCheckedChange={(v) => setEditing({ ...editing, enabled: v })} />
@@ -722,10 +728,10 @@ export default function AdminAiModelsPage() {
                     </div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-	                      {editing.models.map((m) => {
-	                        const activeModel = editing.model.trim() || editing.defaults?.model;
-	                        const active = activeModel === m.id;
-	                        return (
+                      {editing.models.map((m) => {
+                        const activeModel = editing.model.trim() || editing.defaults?.model;
+                        const active = activeModel === m.id;
+                        return (
                           <button
                             key={m.id}
                             type="button"
@@ -738,12 +744,12 @@ export default function AdminAiModelsPage() {
                                 ? "border-primary/30 bg-primary/10 text-primary"
                                 : "border-border bg-surface text-muted-foreground hover:text-foreground",
                             )}
-	                          >
-	                            {m.id}
-	                            {active && <span className="font-sans">· {editing.model.trim() ? "固定" : "默认"}</span>}
-	                          </button>
-	                        );
-	                      })}
+                          >
+                            {m.id}
+                            {active && <span className="font-sans">· {editing.model.trim() ? "固定" : "默认"}</span>}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -762,33 +768,33 @@ export default function AdminAiModelsPage() {
                   </button>
                   {showAdvanced && (
                     <div className="grid grid-cols-1 gap-4 border-t border-border p-3.5 md:grid-cols-2">
-	                      <Field label="API 版本" hint="仅 Azure OpenAI 需要，例如 2024-08-01-preview">
-	                        <Input
-	                          value={editing.apiVersion}
-	                          onChange={(e) => setEditing({ ...editing, apiVersion: e.target.value })}
-	                          placeholder={placeholderFor(editing, "apiVersion", "留空")}
-	                        />
-	                      </Field>
-	                      <Field label="计费归属用户" hint="外部网关 Key 调用按 token 扣该用户钱包；留空 = 平台级，仅累计不扣费">
-	                        <div className="flex gap-2">
-	                          <Input
-	                            value={editing.ownerUserId}
-	                            onChange={(e) => setEditing({ ...editing, ownerUserId: e.target.value, clearOwnerUserId: false })}
-	                            placeholder={placeholderFor(editing, "ownerUserId", "留空 = 平台级（不计费）")}
-	                          />
-	                          {(editing.defaults?.ownerUserId || editing.ownerUserId) && (
-	                            <Button
-	                              type="button"
-	                              variant={editing.clearOwnerUserId ? "warning" : "outline"}
-	                              size="sm"
-	                              className="h-9 shrink-0"
-	                              onClick={() => setEditing({ ...editing, ownerUserId: "", clearOwnerUserId: !editing.clearOwnerUserId })}
-	                            >
-	                              {editing.clearOwnerUserId ? "将清空" : "平台级"}
-	                            </Button>
-	                          )}
-	                        </div>
-	                      </Field>
+                      <Field label="API 版本" hint="仅 Azure OpenAI 需要，例如 2024-08-01-preview">
+                        <Input
+                          value={editing.apiVersion}
+                          onChange={(e) => setEditing({ ...editing, apiVersion: e.target.value })}
+                          placeholder={placeholderFor(editing, "apiVersion", "留空")}
+                        />
+                      </Field>
+                      <Field label="计费归属用户" hint="外部网关 Key 调用按 token 扣该用户钱包；留空 = 平台级，仅累计不扣费">
+                        <div className="flex gap-2">
+                          <Input
+                            value={editing.ownerUserId}
+                            onChange={(e) => setEditing({ ...editing, ownerUserId: e.target.value, clearOwnerUserId: false })}
+                            placeholder={placeholderFor(editing, "ownerUserId", "留空 = 平台级（不计费）")}
+                          />
+                          {(editing.defaults?.ownerUserId || editing.ownerUserId) && (
+                            <Button
+                              type="button"
+                              variant={editing.clearOwnerUserId ? "warning" : "outline"}
+                              size="sm"
+                              className="h-9 shrink-0"
+                              onClick={() => setEditing({ ...editing, ownerUserId: "", clearOwnerUserId: !editing.clearOwnerUserId })}
+                            >
+                              {editing.clearOwnerUserId ? "将清空" : "平台级"}
+                            </Button>
+                          )}
+                        </div>
+                      </Field>
                     </div>
                   )}
                 </section>
