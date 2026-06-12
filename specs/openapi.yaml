@@ -6989,6 +6989,42 @@ paths:
   /me/drama/projects/{id}/outline/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/epscript/ai-draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: aiDraftDramaEpscript, summary: 'AI 把整集重写为分场+分镜（大模型）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/epscript/split-scene:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: splitDramaScene, summary: 'AI 把单场拆成镜头表（大模型）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/cast/ai-draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: aiDraftDramaCast, summary: 'AI 从大纲重抽角色阵容（大模型）', responses: { '200': { description: ok } } }
+  # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
+  /me/drama/render/frame:
+    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）', responses: { '200': { description: ok } } }
+  /me/drama/render/clip:
+    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）', responses: { '200': { description: ok } } }
+  # ── v0.65 短剧分发（用户侧平台连接 + 发布任务）。DramaDistributionController。 ──
+  /me/distribution/platforms:
+    get: { tags: [distribution], operationId: listMyDistributionPlatforms, summary: '平台目录 + 我的连接状态', responses: { '200': { description: ok } } }
+  /me/distribution/platforms/{platformId}/connection:
+    parameters: [ { in: path, name: platformId, required: true, schema: { type: string } } ]
+    post:   { tags: [distribution], operationId: connectMyPlatform,    summary: '连接平台', responses: { '200': { description: ok } } }
+    delete: { tags: [distribution], operationId: disconnectMyPlatform, summary: '断开平台', responses: { '204': { description: ok } } }
+  /me/distribution/jobs:
+    get:  { tags: [distribution], operationId: listMyPublishJobs,  summary: '我的发布任务（可按 projectId 过滤）', responses: { '200': { description: ok } } }
+    post: { tags: [distribution], operationId: createMyPublishJob, summary: '创建发布任务（需先连接平台）', responses: { '200': { description: ok } } }
+  /me/distribution/jobs/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get: { tags: [distribution], operationId: getMyPublishJob, summary: '发布任务详情', responses: { '200': { description: ok } } }
+  /me/distribution/jobs/{id}/retry:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: retryMyPublishJob, summary: '重试失败任务', responses: { '200': { description: ok } } }
+  /me/distribution/jobs/{id}/cancel:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: cancelMyPublishJob, summary: '取消任务', responses: { '200': { description: ok } } }
+  # ── v0.65 提现（drama 财务页；账本 WITHDRAW + 运营线下打款）。 ──
+  /me/wallet/withdraw:
+    post: { tags: [wallet], operationId: withdrawWallet, summary: '提现（账本侧扣减，status=processing）', responses: { '200': { description: ok } } }
   /celebrity/videos/{videoId}:
     parameters: [ { in: path, name: videoId, required: true, schema: { type: string } } ]
     delete: { tags: [celebrity], operationId: deleteCelebrityVideo, summary: '删除项目视频', responses: { '204': { description: ok } } }

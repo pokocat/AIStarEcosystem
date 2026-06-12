@@ -21,8 +21,10 @@ import {
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
 import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
 import { ShotFormCard, type FormShot } from "../shot-form";
-import { matById, MATERIALS, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
+import { matById, MATERIALS, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
+import { ProjectsApi, RenderApi } from "@/api";
+import type { StageContext } from "./stage-context";
 
 const SHOT_GEN_COST = 6;
 
@@ -45,14 +47,41 @@ function toFormShot(sh: BoardShot, refs: Material[]): FormShot {
     fx: "",
     refs: [...refs],
     sub: true,
-    flow: sh.done ? "clip" : "draft",
+    flow: (sh.flow as FormShot["flow"]) ?? (sh.done ? "clip" : "draft"),
+    frameUrls: sh.frameUrls,
+    frameUrl: sh.frameUrl,
+    videoUrl: sh.videoUrl,
+    jobId: sh.jobId,
   };
 }
 
-export function EpScriptStage({ state, dispatch, data }: {
+/** FormShot → BoardShot（落库形态；engine 沿用旧值，缺省 seedance）。 */
+function toBoardShot(sh: FormShot, prevEngine?: BoardShot["engine"]): BoardShot {
+  return {
+    id: sh.id,
+    no: sh.no,
+    size: sh.size,
+    move: sh.move,
+    dur: sh.dur,
+    engine: prevEngine ?? "seedance",
+    desc: sh.visual,
+    cast: [],
+    line: sh.voText ? { who: sh.voWho || "旁白", text: sh.voText } : null,
+    voice: sh.sfx || undefined,
+    done: sh.flow === "done",
+    flow: sh.flow,
+    frameUrls: sh.frameUrls,
+    frameUrl: sh.frameUrl,
+    videoUrl: sh.videoUrl,
+    jobId: sh.jobId,
+  };
+}
+
+export function EpScriptStage({ state, dispatch, data, ctx }: {
   state: WorkshopState;
   dispatch: React.Dispatch<WorkshopAction>;
   data: ProjectData;
+  ctx?: StageContext;
 }) {
   /** 本集出场人物(可在整集设置里添加:素材库人物 / 临时演员) */
   const initCast = React.useCallback(
@@ -103,42 +132,85 @@ export function EpScriptStage({ state, dispatch, data }: {
     setChat([{ who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` }]);
   }, [state.ep, initScenes, initShots, initCast, initPlot]);
 
-  /** 基于整集剧情重新生成分场分镜 */
-  const regenFromPlot = () => {
+  /** 落库：本地 scenes/shotsMap → ProjectData.script + storyboard（缺 ctx 时跳过，仅本地演示）。 */
+  const persist = React.useCallback(
+    async (scenesNext: EpScene[], shotsNext: Record<string, FormShot[]>) => {
+      if (!ctx) return;
+      const prevEngine = new Map<string, BoardShot["engine"]>();
+      for (const sc of data.storyboard.scenes) for (const sh of sc.shots) prevEngine.set(sh.id, sh.engine);
+      const scriptScenes: ScriptScene[] = scenesNext.map(({ refs: _refs, ...s }) => ({
+        ...s,
+        lines: s.lines.map((l) => ({ ...l })),
+      }));
+      const boardScenes: BoardScene[] = scenesNext.map((s) => ({
+        id: s.id,
+        shots: (shotsNext[s.id] ?? []).map((sh) => toBoardShot(sh, prevEngine.get(sh.id))),
+      }));
+      await ctx.saveData({
+        ...data,
+        script: { ep: state.ep, scenes: scriptScenes },
+        storyboard: { ep: state.ep, scenes: boardScenes },
+      });
+    },
+    [ctx, data, state.ep],
+  );
+
+  /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（对话驱动改写用）。 */
+  const runEpDraft = async (cost: number, instruction?: string, aiReply?: string) => {
     if (phase === "gen") return;
     setPhase("gen");
-    dispatch({ type: "spend", n: 10 });
-    setTimeout(() => {
-      setScenes(initScenes());
-      setShotsMap(initShots());
+    if (!ctx) {
+      // 脱离工作台的演示态
+      setTimeout(() => {
+        setScenes(initScenes());
+        setShotsMap(initShots());
+        setPhase("done");
+        toast.success("已按最新整集剧情重写分场分镜");
+      }, 1300);
+      return;
+    }
+    try {
+      const res = await ProjectsApi.epscriptAiDraft(ctx.projectId, {
+        ep: state.ep,
+        plot: instruction ? `${plot}。改写要求：${instruction}` : plot,
+        style,
+        cast: cast.map((c) => c.name),
+      });
+      const defaultRefs = (i: number) =>
+        (i === 0 ? [matById("a1"), matById("r1")] : [matById("r1")]).filter(Boolean) as Material[];
+      const scenesNext: EpScene[] = res.scenes.map((s, i) => ({ ...s, refs: defaultRefs(i) }));
+      const shotsNext: Record<string, FormShot[]> = Object.fromEntries(
+        res.boardScenes.map((bs, i) => [bs.id, bs.shots.map((sh) => toFormShot(sh, defaultRefs(i)))]),
+      );
+      setScenes(scenesNext);
+      setShotsMap(shotsNext);
+      await persist(scenesNext, shotsNext);
+      dispatch({ type: "spend", n: cost });
       setPhase("done");
+      if (aiReply) setChat((c) => [...c, { who: "ai", text: aiReply }]);
       toast.success("已按最新整集剧情重写分场分镜");
-    }, 1300);
+    } catch (e) {
+      setPhase("done");
+      const msg = e instanceof Error ? e.message : "分场分镜生成失败，请稍后重试";
+      setChat((c) => [...c, { who: "ai", text: `生成失败：${msg}` }]);
+      toast.error(msg);
+    }
   };
+
+  /** 基于整集剧情重新生成分场分镜 */
+  const regenFromPlot = () => void runEpDraft(10);
 
   /* —— AI 对话驱动整体重写 —— */
   const sendChat = (text: string) => {
     if (phase === "gen") return;
     setChat((c) => [...c, { who: "me", text }]);
-    setPhase("gen");
-    dispatch({ type: "spend", n: text === "衍生上一集" ? 8 : 10 });
-    setTimeout(() => {
-      setScenes(initScenes());
-      setShotsMap(initShots());
-      setPhase("done");
-      setChat((c) => [
-        ...c,
-        {
-          who: "ai",
-          text:
-            text === "衍生上一集"
-              ? "已按上一集的人物关系和节奏衍生出本集脚本,钩子接得上,你看看。"
-              : text === "给我惊喜"
-                ? "给你换了个更狠的开场钩子,反转提前了一镜 —— 脚本已更新,看看够不够惊喜。"
-                : "改好了 —— 脚本已更新,你再看看还哪里要调?",
-        },
-      ]);
-    }, 1300);
+    void runEpDraft(
+      text === "衍生上一集" ? 8 : 10,
+      text,
+      text === "衍生上一集"
+        ? "已按上一集的人物关系和节奏衍生出本集脚本,钩子接得上,你看看。"
+        : "改好了 —— 脚本已更新,你再看看还哪里要调?",
+    );
   };
 
   /* —— 场景 / 台词草稿 —— */
@@ -182,29 +254,83 @@ export function EpScriptStage({ state, dispatch, data }: {
         ],
       };
     });
-  const genShots = (sceneId: string, sceneIdx: number) => {
+  const genShots = async (sceneId: string, sceneIdx: number) => {
+    const scene = scenes[sceneIdx];
+    if (!scene) return;
     setGenScene(sceneId);
-    dispatch({ type: "spend", n: SHOT_GEN_COST });
-    setTimeout(() => {
-      const donor = data.storyboard.scenes.find((x) => x.shots.length > 0);
-      setShotsMap((m) => ({
-        ...m,
-        [sceneId]: (donor?.shots ?? []).slice(0, 3).map((sh, i) =>
-          toFormShot({ ...sh, id: sceneId + "-n" + i, no: i + 1, done: false }, scenes[sceneIdx]?.refs ?? []),
-        ),
-      }));
-      setGenScene(null);
+    try {
+      if (!ctx) {
+        // 演示态
+        await new Promise((r) => setTimeout(r, 1200));
+        const donor = data.storyboard.scenes.find((x) => x.shots.length > 0);
+        setShotsMap((m) => ({
+          ...m,
+          [sceneId]: (donor?.shots ?? []).slice(0, 3).map((sh, i) =>
+            toFormShot({ ...sh, id: sceneId + "-n" + i, no: i + 1, done: false }, scene.refs)),
+        }));
+      } else {
+        const shots = await ProjectsApi.splitSceneShots(ctx.projectId, {
+          sceneId,
+          place: scene.place,
+          action: scene.action,
+          lines: scene.lines,
+          style,
+        });
+        const next = { ...shotsMap, [sceneId]: shots.map((sh) => toFormShot(sh, scene.refs)) };
+        setShotsMap(next);
+        await persist(scenes, next);
+      }
+      dispatch({ type: "spend", n: SHOT_GEN_COST });
       toast.success("本场分镜已拆好,逐镜表单可直接改");
-    }, 1400);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "拆镜失败，请稍后重试");
+    } finally {
+      setGenScene(null);
+    }
   };
-  const render = (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
+
+  /** 单镜真实渲染：frame=首帧（图像），clip=直出/成片（视频任务 + 轮询）。 */
+  const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
+    const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
+    if (!shot) return;
     setBusy({ id, to });
-    dispatch({ type: "spend", n: cost });
-    setTimeout(() => {
-      setBusy(null);
-      updShot(sceneId, id, { flow: to });
+    try {
+      let patch: Partial<FormShot>;
+      if (to === "frame") {
+        const frames = await RenderApi.renderFrame({
+          prompt: `${shot.visual}。景别：${shot.size}，运镜：${shot.move}。`,
+          ratio: data.projectInfo.ratio,
+          count: 1,
+        });
+        patch = { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url };
+      } else {
+        const job = await RenderApi.renderClip({
+          prompt: `${shot.visual}。景别：${shot.size}，运镜：${shot.move}。${shot.voText ? "台词：" + shot.voText : ""}`,
+          name: `第${state.ep}集 镜${shot.no}`,
+          durationSec: shot.dur,
+          ratio: data.projectInfo.ratio,
+          projectId: ctx?.projectId,
+          frameUrl: shot.frameUrl,
+        });
+        const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
+        if (done.status === "failed") {
+          throw new Error(done.error_message || "视频生成失败，请重试");
+        }
+        patch = { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id };
+      }
+      const next = {
+        ...shotsMap,
+        [sceneId]: (shotsMap[sceneId] ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)),
+      };
+      setShotsMap(next);
+      await persist(scenes, next);
+      dispatch({ type: "spend", n: cost });
       toast.success(msg);
-    }, 1400);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "渲染失败，请稍后重试");
+    } finally {
+      setBusy(null);
+    }
   };
 
   /* 时间线累计(跨场连续) */
@@ -384,7 +510,12 @@ export function EpScriptStage({ state, dispatch, data }: {
                         onRenderDirect={() => render(s.id, sh.id, "clip", 9, "分镜视频已生成,验收看看")}
                         onRenderClip={() => render(s.id, sh.id, "clip", 7, "成片已渲,验收看看")}
                         onApprove={() => {
-                          updShot(s.id, sh.id, { flow: "done" });
+                          const next = {
+                            ...shotsMap,
+                            [s.id]: (shotsMap[s.id] ?? []).map((x) => (x.id === sh.id ? { ...x, flow: "done" as const } : x)),
+                          };
+                          setShotsMap(next);
+                          void persist(scenes, next);
                           toast.success("本镜已验收入片");
                         }}
                       />
@@ -404,7 +535,16 @@ export function EpScriptStage({ state, dispatch, data }: {
       {phase === "done" && !locked && (
         <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
           <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>脚本和分镜都满意了?</span>
-          <button type="button" className="btn btn-grad btn-sm" onClick={() => dispatch({ type: "lock", stage: "epscript", cost: 30 })}>
+          <button
+            type="button"
+            className="btn btn-grad btn-sm"
+            onClick={async () => {
+              try {
+                await persist(scenes, shotsMap);
+              } catch { /* persist 内部已提示 */ }
+              dispatch({ type: "lock", stage: "epscript", cost: 30 });
+            }}
+          >
             <Check size={14} /> 通过整集 · 进视频工厂
           </button>
         </div>

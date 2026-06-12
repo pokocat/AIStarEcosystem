@@ -35,6 +35,7 @@ export type WorkshopAction =
   | { type: "setEp"; ep: number }
   | { type: "bindAvatar"; charId: string; avatar?: string }
   | { type: "toggleRole"; charId: string }
+  | { type: "setChars"; chars: CharacterDef[] }
   | { type: "spend"; n: number }
   | { type: "runAllComplete"; keys: StageKey[]; cost: number };
 
@@ -56,6 +57,8 @@ function reducer(state: WorkshopState, a: WorkshopAction): WorkshopState {
     }
     case "setEp":
       return { ...state, ep: a.ep };
+    case "setChars":
+      return { ...state, chars: a.chars.map((c) => ({ ...c })) };
     case "bindAvatar":
       return {
         ...state,

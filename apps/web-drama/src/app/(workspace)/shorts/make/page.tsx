@@ -25,6 +25,7 @@ import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
 import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { matById, SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
+import { RenderApi, ShortDramaApi } from "@/api";
 
 // 单镜各路径积分消耗(仅用于确认弹窗展示,真实计费在后台)
 const SHORT_FRAME_COST = 2;
@@ -65,14 +66,25 @@ function ShortShotCard({
   return (
     <div className="card col" style={{ padding: 0, overflow: "hidden", gap: 0 }}>
       <div style={{ position: "relative" }}>
-        <Thumb
-          from={rendered ? fmt.from : "#cbd5e1"}
-          to={rendered ? fmt.to : "#94a3b8"}
-          ratio="9/16"
-          radius={0}
-          stripes={!rendered}
-          style={{ width: "100%" }}
-        />
+        {isVideo && s.videoUrl ? (
+          <video
+            src={s.videoUrl}
+            muted
+            playsInline
+            preload="metadata"
+            style={{ width: "100%", aspectRatio: "9/16", objectFit: "cover", background: "#000", display: "block" }}
+          />
+        ) : (
+          <Thumb
+            from={rendered ? fmt.from : "#cbd5e1"}
+            to={rendered ? fmt.to : "#94a3b8"}
+            src={s.frameUrl ?? s.frameUrls?.[0]}
+            ratio="9/16"
+            radius={0}
+            stripes={!rendered}
+            style={{ width: "100%" }}
+          />
+        )}
         <span
           className="num"
           style={{
@@ -241,36 +253,93 @@ function ShortMakerInner() {
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
 
-  const regen = () => {
+  /** 真实 AI 生成口播脚本（DRAMA_SCRIPT_DRAFT）→ 映射为结构化分镜表。 */
+  const runScript = async (instruction?: string, aiReply?: string) => {
+    if (phase === "gen") return;
     setPhase("gen");
-    setTimeout(() => {
-      setShots(init());
+    try {
+      const theme = instruction ? `${title}。要求：${instruction}` : title;
+      const drafts = await ShortDramaApi.aiDraftScripts({
+        theme,
+        genre: fmt.name,
+        durationSec: total || 30,
+        count: 1,
+      });
+      const script = drafts[0];
+      if (!script || !script.scenes?.length) throw new Error("AI 没有产出可用脚本，请换个说法重试");
+      setShots(
+        script.scenes.map((sc, i) => ({
+          id: "sh" + Date.now() + "_" + i,
+          no: i + 1,
+          dur: Math.max(2, sc.duration_sec || 4),
+          visual: sc.shot || sc.summary || "",
+          size: i === 0 ? "中近景" : "中景",
+          move: i === 0 ? "推近" : "固定",
+          voWho: "口播",
+          voText: sc.dialogue ?? "",
+          sfx: "",
+          bgm: "",
+          fx: "",
+          refs: [],
+          sub: true,
+          flow: "draft" as ShotFlow,
+          engine: "avatar",
+          frameIdx: 0,
+        })),
+      );
       setPhase("done");
+      if (aiReply) setChat((c) => [...c, { who: "ai", text: aiReply }]);
       toast.success("口播脚本和分镜已生成,改满意就去出片");
-    }, 1300);
+    } catch (e) {
+      setPhase("done");
+      const msg = e instanceof Error ? e.message : "脚本生成失败，请稍后重试";
+      setChat((c) => [...c, { who: "ai", text: `生成失败：${msg}` }]);
+      toast.error(msg);
+    }
   };
+  const regen = () => void runScript();
   const QUICK = ["口吻再口语一点", "开头加个更狠的钩子", "缩到 20 秒内", "多一点产品特写"];
   const sendChat = (text: string) => {
     const t = (text || "").trim();
     if (!t || phase === "gen") return;
     setChat((c) => [...c, { who: "me", text: t }]);
     setDraft("");
-    setPhase("gen");
-    setTimeout(() => {
-      setShots(init());
-      setPhase("done");
-      setChat((c) => [...c, { who: "ai", text: "改好了——右侧脚本已更新,你再看看还哪里要调?" }]);
-    }, 1200);
+    void runScript(t, "改好了——右侧脚本已更新,你再看看还哪里要调?");
   };
   const updShot = (id: string, patch: Partial<ShortShot>) =>
     setShots((arr) => arr.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  const render = (id: string, to: ShotFlow, _cost: number) => {
+  /** 单镜真实渲染：frame=首帧（图像），clip=视频（异步任务 + 轮询）。 */
+  const render = async (id: string, to: ShotFlow, _cost: number) => {
+    const shot = shots.find((s) => s.id === id);
+    if (!shot || busy) return;
     setBusy({ id, to });
-    setTimeout(() => {
+    try {
+      if (to === "frame") {
+        const frames = await RenderApi.renderFrame({
+          prompt: `${shot.visual}。竖屏短视频画面，${fmt.name}风格。`,
+          ratio: "9:16",
+          count: 1,
+        });
+        updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url });
+        toast.success("首帧已出,确认后再生成视频");
+      } else {
+        const job = await RenderApi.renderClip({
+          prompt: `${shot.visual}。${shot.voText ? "口播：" + shot.voText : ""}竖屏短视频，${fmt.name}风格。`,
+          name: `${fmt.name} 镜${shot.no}`,
+          durationSec: shot.dur,
+          ratio: "9:16",
+          frameUrl: shot.frameUrl,
+        });
+        const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
+        if (done.status === "failed") throw new Error(done.error_message || "视频生成失败，请重试");
+        updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id });
+        toast.success("镜头视频已生成");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "渲染失败，请稍后重试");
+    } finally {
       setBusy(null);
-      updShot(id, { flow: to });
-      toast.success(to === "frame" ? "首帧已出,确认后再生成视频" : "镜头视频已生成");
-    }, 1500);
+    }
   };
 
   const STEP_META: { key: "script" | "factory"; no: number; name: string; icon: React.ElementType }[] = [

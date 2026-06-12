@@ -3,7 +3,7 @@
 import type { ID } from "@ai-star-eco/types/_shared";
 import type { PublishJob, PublishJobStatus } from "@ai-star-eco/types/publish-job";
 import { ApiError, mockDelay, registerMocks } from "@ai-star-eco/api-client";
-import { PLATFORMS, CONTENT_ITEMS, PLATFORM_DATA } from "@/mocks/distribution";
+import { PLATFORMS } from "@/mocks/distribution";
 import { PUBLISH_JOBS } from "@/mocks/publish-jobs";
 import type { CreatePublishJobInput, PlatformConnectionWire } from "@/api/distribution";
 
@@ -48,22 +48,13 @@ function startMockProgression(jobId: ID) {
 }
 
 registerMocks([
-  { method: "GET", pattern: "/distribution/platforms", handler: () => mockDelay(PLATFORMS) },
-  { method: "GET", pattern: "/distribution/content", handler: () => mockDelay(CONTENT_ITEMS) },
-  { method: "GET", pattern: "/distribution/platform-views", handler: () => mockDelay(PLATFORM_DATA) },
-  {
-    method: "GET",
-    pattern: "/distribution/connections",
-    handler: () => mockDelay<PlatformConnectionWire[]>([]),
-  },
+  { method: "GET", pattern: "/me/distribution/platforms", handler: () => mockDelay(PLATFORMS) },
   {
     method: "POST",
-    pattern: "/distribution/platforms/:platformId/connection",
+    pattern: "/me/distribution/platforms/:platformId/connection",
     handler: ({ params }) =>
       mockDelay<PlatformConnectionWire>({
         id: `mock-${Date.now()}`,
-        tenantId: "mock-tenant",
-        userId: "mock-user",
         platformId: params.platformId,
         status: "connected",
         connectedAt: new Date().toISOString(),
@@ -71,12 +62,12 @@ registerMocks([
   },
   {
     method: "DELETE",
-    pattern: "/distribution/platforms/:platformId/connection",
+    pattern: "/me/distribution/platforms/:platformId/connection",
     handler: () => mockDelay(undefined),
   },
   {
     method: "GET",
-    pattern: "/distribution/jobs",
+    pattern: "/me/distribution/jobs",
     handler: ({ query }) => {
       const projectId = query?.projectId as ID | undefined;
       const arr = projectId ? jobStore.filter((j) => j.projectId === projectId) : jobStore;
@@ -85,7 +76,7 @@ registerMocks([
   },
   {
     method: "GET",
-    pattern: "/distribution/jobs/:id",
+    pattern: "/me/distribution/jobs/:id",
     handler: ({ params }) => {
       const found = jobStore.find((j) => j.id === params.id);
       return mockDelay(found ? { ...found } : null);
@@ -93,7 +84,7 @@ registerMocks([
   },
   {
     method: "POST",
-    pattern: "/distribution/jobs",
+    pattern: "/me/distribution/jobs",
     handler: ({ body }) => {
       const input = body as CreatePublishJobInput;
       const now = new Date().toISOString();
@@ -115,7 +106,7 @@ registerMocks([
   },
   {
     method: "POST",
-    pattern: "/distribution/jobs/:id/retry",
+    pattern: "/me/distribution/jobs/:id/retry",
     handler: ({ params }) => {
       const idx = jobStore.findIndex((j) => j.id === params.id);
       if (idx < 0) throw notFound(params.id);
@@ -132,7 +123,7 @@ registerMocks([
   },
   {
     method: "POST",
-    pattern: "/distribution/jobs/:id/cancel",
+    pattern: "/me/distribution/jobs/:id/cancel",
     handler: ({ params }) => {
       const idx = jobStore.findIndex((j) => j.id === params.id);
       if (idx < 0) throw notFound(params.id);

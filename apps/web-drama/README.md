@@ -67,6 +67,17 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.65 · 2026-06-12 · 全站接真后端（server 模式所有接口真连，与 mock 完全隔离）
+
+- **剧集脚本 / 分镜 AI 真连**：`EpScriptStage` 的「重写分场分镜」「衍生上一集 / 给我惊喜」「单场拆镜」走 `ProjectsApi.epscriptAiDraft / splitSceneShots`（真大模型），结果合并入 `ProjectData.script + storyboard` 并 `PUT` 落库。
+- **选角 AI**：`CastStage`「从大纲重抽角色」走 `ProjectsApi.castAiDraft`，写回 `state.chars` + `ProjectData.characters`（新 `setChars` reducer action）。
+- **分镜首帧 / 视频渲染真连**：`FactoryStage` + `EpScriptStage` + `/shorts/make` 的 首帧/直出/动态 走 `RenderApi.renderFrame`（图像→CDN）/`renderClip`（视频任务 + `pollClipJob` 轮询）；`Thumb` 加 `src` 支持真图，成片用 `<video>` 渲染。镜头渲染态（frameUrls/frameUrl/videoUrl/jobId/flow）落 `BoardShot` 持久化。
+- **短视频工坊真连**：`/shorts/make` 的 AI 脚本走 `ShortDramaApi.aiDraftScripts`，逐镜首帧/视频走 `RenderApi`。
+- **分发真后端**：`distribution.ts` 全部重指向 `/me/distribution/**`（平台连接 + 发布任务，后端 `@Scheduled` 推进）；删无人消费的 content/platform-views/connections 旧函数。
+- **财务真连**：`finance.ts` 充值改走真实「下单→运营核准」流程（`/me/wallet/packages` + `/me/wallet/recharge`），提现走 `/me/wallet/withdraw`。
+- **清债**：删死代码 `api/generation.ts` + `mocks/_handlers/generation.ts`（无人引用）。
+- 详见 `docs/VERSION_HISTORY.md` §v0.65（含真模型实测记录与「仍待办」）。
+
 ### v0.64 · 2026-06-12 · 六阶段项目工作台接真后端（mock → 真实 API）
 
 - **真后端落地**：`/projects` 列表、`/projects/new`（从零 + 套模板）、`/projects/[id]` 工作台从 mock 静态数据切到真实接口 `ProjectsApi`（→ `/api/me/drama/projects*`，后端 `DramaProjectController` + `DramaProject` JSON-document 实体）。

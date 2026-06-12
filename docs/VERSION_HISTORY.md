@@ -2852,3 +2852,58 @@ voiceName 音色联动、~~aiavatar 反向「应用于」视图~~（✅ v0.61）
 - 视频工厂（分镜出片）走真实 agnes 视频端点**有额度**，本期保持联调态（fake :8091），未接真实计费。
 - 大纲/生成动作的**真实积分扣减**（`CreditService`）未接（当前工作台余额为展示态）；接入时按
   `hold/commit/release` 三段式或 `debit` 同步扣。
+
+### v0.65（2026-06-12）— 短剧全站接真后端（server 模式所有接口真连，与 mock 完全隔离）
+
+承接 v0.64 工作台地基，把短剧剩余流程全部从前端态切到真后端：剧集脚本/分镜/选角 AI、
+分镜首帧（图像）与视频渲染、分发、财务。`USE_MOCK=1` 仍走 `mocks/_handlers/*`，`USE_MOCK=0`
+（server 模式）所有 `apiFetch` 真打后端 —— 两条路径在 `api/*.ts` 顶部 `if (USE_MOCK)` 处彻底分叉。
+
+**后端（新增/扩展）**：
+- `AiModelPurpose` +`IMAGE_GENERATION`（通用图像生成）；已纳入 `DevFakeAiSeeder` 种子绑定。
+  ⚠️ 注意 H2 老库 `ai_app_binding.purpose` 是 enum 列，加枚举值后需把列 `ALTER` 成 `VARCHAR`
+  （本版已对开发库执行；生产 MySQL 用 `VARCHAR` 不受影响）。
+- `DramaProjectService` +3 个 AI：`epscriptAiDraft`（整集→分场 ScriptScene[] + 分镜 BoardScene[]）/
+  `splitSceneShots`（单场→镜头表）/`castAiDraft`（选角 CharacterDef[]）；统一 `callJson` + 归一化
+  （BoardShot id/no、dur 钳 1-30、engine→avatar|seedance；CharacterDef role→key|extra）。
+  `DramaProjectController` +`/{id}/epscript/{ai-draft,split-scene}` + `/{id}/cast/ai-draft`。
+- 新 `DramaRenderService` + `DramaRenderController`（`/me/drama/render/{frame,clip}`）：
+  - **首帧**=图像生成（`IMAGE_GENERATION`，OpenAI `POST {base}/images/generations`，response_format
+    url|b64_json）→ 字节经 `CdnUploader.upload` 落 CDN（key 真值 + `CdnUrlSigner.signKey` 派生 URL，
+    遵 §4.7）→ `CreditService.debit` 按次扣 2 分。未配 503 `IMAGE_NOT_CONFIGURED` / 失败 502
+    `IMAGE_CALL_FAILED`，不静默兜底。
+  - **视频**=委派 `MaterialVideoJobService`（kind="drama-shot"，异步 submit+poll，自带 hold/commit/
+    release 计费 30/条），前端轮询复用 `/me/drama/episodes/jobs/{id}`。
+- 分发真后端：实体 `DramaPublishJob`（`drama_publish_jobs`）+ `DramaPlatformConnection`
+  （`drama_platform_connections`，user×platform 唯一约束）；`DramaDistributionService`（14 平台静态
+  目录 + 连接 CRUD + 发布任务 `@Scheduled(2s)` 状态机 queued→uploading→transcoding→publishing→live，
+  支持 scheduledAt 定时）；`DramaDistributionController`（`/me/distribution/**`）。未连平台发布 409。
+- 提现：`CreditService.withdraw`（账本侧 `WITHDRAW` 原子扣减，余额不足 402）+ `AccountController`
+  `/me/wallet/withdraw`（返回 status=processing 的 Transaction，真实打款运营线下）。
+
+**前端（mock → 真实 API）**：
+- 新 `api/render.ts`（`RenderApi`：renderFrame/renderClip/pollClipJob，带 USE_MOCK 占位帧/即时任务）。
+- `EpScriptStage`/`FactoryStage`/`CastStage`/`/shorts/make` 全部接 `ProjectsApi` + `RenderApi` +
+  `ShortDramaApi`；镜头渲染态（frameUrls/frameUrl/videoUrl/jobId/flow）落 `BoardShot` 持久化；
+  `Thumb` +`src`（真图 cover），成片用 `<video>`；`WorkshopShell` +`setChars` reducer action。
+- `distribution.ts` 重指向 `/me/distribution/**` + 删 content/platform-views/connections 死函数；
+  `finance.ts` 充值改走「套餐下单→运营核准」、提现走 `/me/wallet/withdraw`。
+- 删死代码 `api/generation.ts` + `mocks/_handlers/generation.ts`（全仓 0 引用）。
+
+**验证（真模型实测，最小请求）**：
+- 🟢 **图像**：bind IMAGE_GENERATION → agnes-image-2.1-flash，`/me/drama/render/frame` 出**真
+  720×1280 PNG**（11s，1.3MB，画面与 prompt 一致）→ 落 CDN → 浏览器工厂页点「首帧」真渲染、
+  4 版候选落库、卡片转「选首帧」态。
+- 🟢 **视频**：bind VIDEO_GENERATION → agnes-video-v2.0，真 submit（拿到 agnes taskId）+ 服务端
+  轮询进度 11→95%；agnes 视频生成 >600s 超过 worker 默认 `AEP_VIDEO_MAX_WAIT_SEC=600`（生产
+  需调高）。连通性已证（submit + poll 协议匹配 `POST /videos` + `GET /videos/{id}`）。
+- curl 全链路：epscript/split/cast AI、frame(fake)、clip(fake 即时)、distribution（连接→发布→
+  @Scheduled live→未连 409）、withdraw（余额 3000→2868，流水正确）。
+- 浏览器：真列表「继续上次」、工作台加载真 logline、工厂首帧真渲染落库。
+- 三门全绿 + `DramaProjectServiceTest` 9 用例（含 epscript/cast 解析）。dev 默认回绑 fake 端点。
+
+**仍待办**：
+- 真实视频要在生产把 `AEP_VIDEO_MAX_WAIT_SEC` 调高（agnes 视频 >10min）；首帧目前固定 2 分、
+  视频 30 分，后续可挪 admin `CelebrityActionPricingService` 统一定价。
+- 「成片配方」(PromptStage) 仍为前端态（只读汇总，不涉及生成，优先级低）；社交账号真实 OAuth
+  分发（sau-service）与本版的服务端模拟传输并存，接入时替换 `DramaDistributionService.tick`。

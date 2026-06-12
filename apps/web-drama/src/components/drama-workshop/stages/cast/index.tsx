@@ -12,11 +12,14 @@ import type { WorkshopAction, WorkshopState } from "../../workbench";
 import type { CharacterDef, ProjectData } from "@/mocks/drama-workshop";
 import { CharCard } from "./char-card";
 import { AvatarPicker, ScenePicker } from "./avatar-picker";
+import { ProjectsApi } from "@/api";
+import type { StageContext } from "../stage-context";
 
 interface CastStageProps {
   state: WorkshopState;
   dispatch: React.Dispatch<WorkshopAction>;
   data: ProjectData;
+  ctx?: StageContext;
 }
 
 const SCENE_LIB = [
@@ -28,12 +31,34 @@ const SCENE_LIB = [
   { id: "r6", name: "空镜街道",   from: "#a78bfa", to: "#6366f1" },
 ];
 
-export function CastStage({ state, dispatch, data }: CastStageProps) {
+export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
   const [binding, setBinding] = React.useState<CharacterDef | null>(null);
   const [scenePick, setScenePick] = React.useState<{ id: string; name: string } | null>(null);
   const [sceneLocks, setSceneLocks] = React.useState<Record<string, string>>({});
+  const [drafting, setDrafting] = React.useState(false);
 
   const unbound = state.chars.filter((c) => c.role === "key" && !c.bound).length;
+
+  /** 真实 AI 重抽角色阵容 → 更新工作台 + 落库。 */
+  const redraftCast = async () => {
+    if (drafting) return;
+    setDrafting(true);
+    try {
+      if (!ctx) {
+        toast.success("已按大纲重新抽取角色");
+        return;
+      }
+      const chars = await ProjectsApi.castAiDraft(ctx.projectId);
+      dispatch({ type: "setChars", chars });
+      await ctx.saveData({ ...data, characters: chars });
+      dispatch({ type: "spend", n: STAGE_BY_KEY.cast.cost });
+      toast.success(`已按大纲重新抽取 ${chars.length} 个角色`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "角色生成失败，请稍后重试");
+    } finally {
+      setDrafting(false);
+    }
+  };
 
   const confirmBind = (charId: string, avatar: string) => {
     dispatch({ type: "bindAvatar", charId, avatar });
@@ -53,15 +78,13 @@ export function CastStage({ state, dispatch, data }: CastStageProps) {
             <div className="row gap-2">
               <CreditButton
                 cost={STAGE_BY_KEY.cast.cost}
-                onConfirm={() => {
-                  dispatch({ type: "spend", n: STAGE_BY_KEY.cast.cost });
-                  toast.success("已按大纲重新抽取角色");
-                }}
+                onConfirm={() => void redraftCast()}
                 confirmTitle="重抽角色"
-                confirmBody="AI 会按当前大纲重新抽取角色阵容。"
+                confirmBody="AI 会按当前大纲重新抽取角色阵容（会替换现有角色列表）。"
                 className="btn btn-primary btn-sm"
+                disabled={drafting}
               >
-                <Wand2 size={15} /> 从大纲重抽角色
+                <Wand2 size={15} /> {drafting ? "正在重抽…" : "从大纲重抽角色"}
               </CreditButton>
             </div>
           }

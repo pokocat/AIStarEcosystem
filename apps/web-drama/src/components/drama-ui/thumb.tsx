@@ -7,6 +7,8 @@ import * as React from "react";
 export interface ThumbProps {
   from: string;
   to: string;
+  /** 真实画面 URL（如分镜首帧）。设置后覆盖渐变背景，cover 填充。 */
+  src?: string;
   /** 默认 "9/16" 竖屏；可写 "16/9" "16/10" "16/7" "3/2" "3/4" 等 */
   ratio?: string;
   w?: number | string;
@@ -26,6 +28,7 @@ export interface ThumbProps {
 export function Thumb({
   from,
   to,
+  src,
   ratio = "9/16",
   w,
   h,
@@ -42,13 +45,15 @@ export function Thumb({
     <div
       onClick={onClick}
       title={title}
-      className={["thumb", stripes ? "thumb-stripes" : "", className].filter(Boolean).join(" ")}
+      className={["thumb", stripes && !src ? "thumb-stripes" : "", className].filter(Boolean).join(" ")}
       style={{
         aspectRatio: w ? undefined : ratio,
         width: w,
         height: h,
         borderRadius: radius,
-        background: `linear-gradient(150deg, ${from}, ${to})`,
+        background: src
+          ? `url(${JSON.stringify(src)}) center/cover no-repeat, linear-gradient(150deg, ${from}, ${to})`
+          : `linear-gradient(150deg, ${from}, ${to})`,
         ...style,
       }}
     >

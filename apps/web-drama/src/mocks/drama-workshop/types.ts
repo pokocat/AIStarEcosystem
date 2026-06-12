@@ -129,6 +129,17 @@ export interface BoardShot {
   overLimit?: boolean;
   /** 特效镜参考图片数（含 cast） */
   refImg?: number;
+  /** v0.65 渲染产物（真后端落库在 ProjectData.storyboard 内） */
+  /** 首帧候选 URL（渲染一次出多版） */
+  frameUrls?: string[];
+  /** 已锁定的首帧 URL */
+  frameUrl?: string;
+  /** 成片视频 URL */
+  videoUrl?: string;
+  /** 进行中的视频任务 id（轮询 /me/drama/episodes/jobs/{id}） */
+  jobId?: string;
+  /** 渲染流水状态（draft/frame/frameLocked/clip/done），缺省 draft */
+  flow?: string;
 }
 
 export interface BoardScene {

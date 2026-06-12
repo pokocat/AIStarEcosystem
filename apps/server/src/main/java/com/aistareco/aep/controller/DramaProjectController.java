@@ -58,4 +58,22 @@ public class DramaProjectController {
     public ApiResponse<JsonNode> outlineAiDraft(Principal principal, @PathVariable String id, @RequestBody(required = false) JsonNode body) {
         return ApiResponse.of(service.outlineAiDraft(id, body, principal.getName()));
     }
+
+    /** 剧集脚本（分场分镜）AI 起草。body: { ep, plot, style?, cast? } → { scenes, boardScenes }。 */
+    @PostMapping("/{id}/epscript/ai-draft")
+    public ApiResponse<JsonNode> epscriptAiDraft(Principal principal, @PathVariable String id, @RequestBody JsonNode body) {
+        return ApiResponse.of(service.epscriptAiDraft(id, body, principal.getName()));
+    }
+
+    /** 单场拆镜。body: { sceneId, place?, action, lines?, style? } → { shots }。 */
+    @PostMapping("/{id}/epscript/split-scene")
+    public ApiResponse<JsonNode> splitScene(Principal principal, @PathVariable String id, @RequestBody JsonNode body) {
+        return ApiResponse.of(service.splitSceneShots(id, body, principal.getName()));
+    }
+
+    /** 从大纲重抽角色阵容。→ { characters }（未落库）。 */
+    @PostMapping("/{id}/cast/ai-draft")
+    public ApiResponse<JsonNode> castAiDraft(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(service.castAiDraft(id, principal.getName()));
+    }
 }

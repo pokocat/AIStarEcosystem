@@ -43,6 +43,11 @@ export interface FormShot {
   refs: Material[];
   sub: boolean;
   flow: ShotFlow;
+  /** v0.65 真实渲染产物 */
+  frameUrls?: string[];
+  frameUrl?: string;
+  videoUrl?: string;
+  jobId?: string;
 }
 
 function fmtT(sec: number) {
@@ -131,14 +136,25 @@ export function ShotFormCard({
         {/* 左:渲染渐进(首帧 → 成片) */}
         <div className="col gap-2" style={{ width: 104, flex: "none" }}>
           <div style={{ position: "relative" }}>
-            <Thumb
-              from={rendered ? colors.from : "#cbd5e1"}
-              to={rendered ? colors.to : "#94a3b8"}
-              ratio="9/14"
-              radius={10}
-              stripes={!rendered}
-              style={{ width: "100%" }}
-            />
+            {isVideo && s.videoUrl ? (
+              <video
+                src={s.videoUrl}
+                muted
+                playsInline
+                preload="metadata"
+                style={{ width: "100%", aspectRatio: "9/14", objectFit: "cover", borderRadius: 10, display: "block", background: "#000" }}
+              />
+            ) : (
+              <Thumb
+                from={rendered ? colors.from : "#cbd5e1"}
+                to={rendered ? colors.to : "#94a3b8"}
+                src={s.frameUrl ?? s.frameUrls?.[0]}
+                ratio="9/14"
+                radius={10}
+                stripes={!rendered}
+                style={{ width: "100%" }}
+              />
+            )}
             {busy && (
               <span style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.32)", display: "grid", placeItems: "center", borderRadius: 10 }}>
                 <span aria-hidden style={{ width: 20, height: 20, border: "3px solid rgba(255,255,255,.4)", borderTopColor: "#fff", borderRadius: "50%", animation: "drama-spin .7s linear infinite" }} />

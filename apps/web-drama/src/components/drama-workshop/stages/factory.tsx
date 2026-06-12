@@ -23,6 +23,8 @@ import { StageHeader } from "../workbench";
 import { GenSettingsBar } from "../gen-settings-bar";
 import { matById, type BoardShot, type Material, type ProjectData } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
+import { RenderApi } from "@/api";
+import type { StageContext } from "./stage-context";
 
 const FRAME_COST = 2;
 const CLIP_COST = 9;
@@ -55,9 +57,10 @@ interface FactoryStageProps {
   state: WorkshopState;
   dispatch: React.Dispatch<WorkshopAction>;
   data: ProjectData;
+  ctx?: StageContext;
 }
 
-export function FactoryStage({ state, dispatch, data }: FactoryStageProps) {
+export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) {
   const build = React.useCallback((): FactoryShot[] => {
     const list: FactoryShot[] = [];
     data.storyboard.scenes.forEach((sc, si) => {
@@ -68,8 +71,8 @@ export function FactoryStage({ state, dispatch, data }: FactoryStageProps) {
           sceneId: sc.id,
           place,
           sceneNo: si + 1,
-          // done 的镜头默认演示为「动态待验收」,其余「待渲」
-          flow: sh.done ? "clip" : "draft",
+          // 持久化的 flow 优先；老数据回退 done→clip / 其余 draft
+          flow: (sh.flow as FlowKey) ?? (sh.done ? "clip" : "draft"),
           frameIdx: 0,
         }),
       );
@@ -83,6 +86,32 @@ export function FactoryStage({ state, dispatch, data }: FactoryStageProps) {
   }, [state.ep, build]);
   const upd = (id: string, patch: Partial<FactoryShot>) =>
     setShots((arr) => arr.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+
+  /** 落库：把工厂镜头的渲染态写回 ProjectData.storyboard（缺 ctx 时跳过）。 */
+  const persistShots = React.useCallback(
+    async (arr: FactoryShot[]) => {
+      if (!ctx) return;
+      const byId = new Map(arr.map((s) => [s.id, s]));
+      const scenes = data.storyboard.scenes.map((sc) => ({
+        ...sc,
+        shots: sc.shots.map((sh) => {
+          const f = byId.get(sh.id);
+          if (!f) return sh;
+          return {
+            ...sh,
+            flow: f.flow,
+            done: f.flow === "done",
+            frameUrls: f.frameUrls,
+            frameUrl: f.frameUrl,
+            videoUrl: f.videoUrl,
+            jobId: f.jobId,
+          };
+        }),
+      }));
+      await ctx.saveData({ ...data, storyboard: { ...data.storyboard, scenes } });
+    },
+    [ctx, data],
+  );
 
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<{ id: string; to: FlowKey } | null>(null);
@@ -100,38 +129,126 @@ export function FactoryStage({ state, dispatch, data }: FactoryStageProps) {
   const pct = stat.total ? Math.round((stat.done / stat.total) * 100) : 0;
   const draftCount = shots.filter((s) => s.flow === "draft").length;
 
-  const run = (id: string, to: FlowKey, ms = 1200) => {
-    setBusy({ id, to });
-    setTimeout(() => {
-      setBusy(null);
-      upd(id, { flow: to });
-      dispatch({ type: "spend", n: to === "frame" ? FRAME_COST : to === "clip" ? CLIP_COST : 0 });
-      if (to === "frame") toast.success("首帧已出 4 版,挑一版锁定");
-      if (to === "clip") toast.success("动态已渲染,验收看看");
-    }, ms);
+  /** 镜头 → 生成提示词（画面 + 镜头参数 + 台词 + 角色参考名）。 */
+  const shotPrompt = (s: FactoryShot) => {
+    const castNames = (s.cast ?? [])
+      .map((cid) => state.chars.find((c) => c.id === cid)?.name)
+      .filter(Boolean)
+      .join("、");
+    return `${s.desc || s.place}。景别：${s.size}，运镜：${s.move}。` +
+      (s.line?.text ? `台词：${s.line.text}。` : "") +
+      (castNames ? `出场人物：${castNames}。` : "") +
+      `${data.projectInfo.type}风格。`;
   };
-  const renderFrame = (id: string) => run(id, "frame");
-  const renderDirect = (id: string) => run(id, "clip", 1600);
+
+  /** 首帧渲染（真实图像生成，出 4 版候选）。 */
+  const renderFrame = async (id: string) => {
+    const s = shots.find((x) => x.id === id);
+    if (!s || busy) return;
+    setBusy({ id, to: "frame" });
+    try {
+      const frames = await RenderApi.renderFrame({
+        prompt: shotPrompt(s),
+        ratio: data.projectInfo.ratio,
+        count: 4,
+      });
+      const next = shots.map((x) =>
+        x.id === id
+          ? { ...x, flow: "frame" as FlowKey, frameUrls: frames.map((f) => f.url), frameIdx: 0, frameUrl: undefined, videoUrl: undefined }
+          : x,
+      );
+      setShots(next);
+      await persistShots(next);
+      dispatch({ type: "spend", n: FRAME_COST });
+      toast.success(`首帧已出 ${frames.length} 版,挑一版锁定`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "首帧渲染失败，请稍后重试");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** 视频渲染（直出或基于已锁首帧；异步任务 + 轮询）。 */
+  const renderVideo = async (id: string, useFrame: boolean) => {
+    const s = shots.find((x) => x.id === id);
+    if (!s || busy) return;
+    setBusy({ id, to: "clip" });
+    try {
+      const job = await RenderApi.renderClip({
+        prompt: shotPrompt(s),
+        name: `第${state.ep}集 镜${s.no}`,
+        durationSec: s.dur,
+        ratio: data.projectInfo.ratio,
+        projectId: ctx?.projectId,
+        frameUrl: useFrame ? s.frameUrl ?? s.frameUrls?.[s.frameIdx] : undefined,
+      });
+      const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
+      if (done.status === "failed") throw new Error(done.error_message || "视频生成失败，请重试");
+      const next = shots.map((x) =>
+        x.id === id ? { ...x, flow: "clip" as FlowKey, videoUrl: done.video_url ?? undefined, jobId: job.id } : x,
+      );
+      setShots(next);
+      await persistShots(next);
+      dispatch({ type: "spend", n: CLIP_COST });
+      toast.success("动态已渲染,验收看看");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "视频生成失败，请稍后重试");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const renderDirect = (id: string) => void renderVideo(id, false);
+  const renderClip = (id: string) => void renderVideo(id, true);
   const lockFrame = (id: string) => {
-    upd(id, { flow: "frameLocked" });
+    const next = shots.map((x) =>
+      x.id === id ? { ...x, flow: "frameLocked" as FlowKey, frameUrl: x.frameUrls?.[x.frameIdx] ?? x.frameUrl } : x,
+    );
+    setShots(next);
+    void persistShots(next);
     toast.success("首帧已锁,动态渲染会严格基于它");
   };
-  const renderClip = (id: string) => run(id, "clip", 1500);
   const approve = (id: string) => {
-    upd(id, { flow: "done" });
+    const next = shots.map((x) => (x.id === id ? { ...x, flow: "done" as FlowKey } : x));
+    setShots(next);
+    void persistShots(next);
     toast.success("本镜验收通过,已入片");
   };
-  const reframe = (id: string) => run(id, "frame");
+  const reframe = (id: string) => void renderFrame(id);
 
-  const batchFrame = () => {
-    const ids = shots.filter((s) => s.flow === "draft").map((s) => s.id);
-    if (!ids.length) {
+  /** 批量首帧：顺序逐镜渲染（控制真实模型请求节奏）。 */
+  const batchFrame = async () => {
+    const drafts = shots.filter((s) => s.flow === "draft");
+    if (!drafts.length) {
       toast.success("没有待渲首帧的镜头");
       return;
     }
-    dispatch({ type: "spend", n: ids.length * FRAME_COST });
-    setShots((arr) => arr.map((s) => (s.flow === "draft" ? { ...s, flow: "frame" } : s)));
-    toast.success(`已为 ${ids.length} 个镜头各出 4 版首帧`);
+    let okCount = 0;
+    let cur = shots;
+    for (const d of drafts) {
+      setBusy({ id: d.id, to: "frame" });
+      try {
+        const frames = await RenderApi.renderFrame({
+          prompt: shotPrompt(d),
+          ratio: data.projectInfo.ratio,
+          count: 4,
+        });
+        cur = cur.map((x) =>
+          x.id === d.id ? { ...x, flow: "frame" as FlowKey, frameUrls: frames.map((f) => f.url), frameIdx: 0 } : x,
+        );
+        setShots(cur);
+        dispatch({ type: "spend", n: FRAME_COST });
+        okCount++;
+      } catch (e) {
+        toast.error(`镜 ${d.no} 首帧失败：${e instanceof Error ? e.message : "未知错误"}`);
+        break;
+      }
+    }
+    setBusy(null);
+    if (okCount > 0) {
+      await persistShots(cur);
+      toast.success(`已为 ${okCount} 个镜头各出 4 版首帧`);
+    }
   };
 
   const open = shots.find((s) => s.id === openId);
@@ -453,7 +570,7 @@ function FactoryCard({
       }}
     >
       <button type="button" style={{ position: "relative", display: "block", width: "100%" }} onClick={onOpen}>
-        <Thumb from={col.from} to={col.to} ratio="9/13" radius={0} style={{ width: "100%" }} stripes={!rendered}>
+        <Thumb from={col.from} to={col.to} src={s.frameUrl ?? s.frameUrls?.[0]} ratio="9/13" radius={0} style={{ width: "100%" }} stripes={!rendered}>
           {rendered && (
             <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
               <span
@@ -567,8 +684,18 @@ function FactoryDrawer({
     if (busy === "frame") return <RenderBusy label="正在渲染 4 版首帧…" />;
     if (busy === "clip") return <RenderBusy label="正在基于锁定首帧渲染动态…" />;
     if (at >= FLOW_ORDER.indexOf("clip")) {
+      if (s.videoUrl) {
+        return (
+          <video
+            src={s.videoUrl}
+            controls
+            playsInline
+            style={{ width: "100%", aspectRatio: "9/16", objectFit: "cover", borderRadius: 14, background: "#000", display: "block" }}
+          />
+        );
+      }
       return (
-        <Thumb from={col.from} to={col.to} ratio="9/16" radius={14} style={{ width: "100%" }}>
+        <Thumb from={col.from} to={col.to} src={s.frameUrl ?? s.frameUrls?.[s.frameIdx]} ratio="9/16" radius={14} style={{ width: "100%" }}>
           <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
             <span
               style={{
@@ -594,7 +721,7 @@ function FactoryDrawer({
       const locked = at >= FLOW_ORDER.indexOf("frameLocked");
       return (
         <div className="col gap-2">
-          <Thumb from={col.from} to={col.to} ratio="9/16" radius={14} style={{ width: "100%" }}>
+          <Thumb from={col.from} to={col.to} src={s.frameUrls?.[s.frameIdx] ?? s.frameUrl} ratio="9/16" radius={14} style={{ width: "100%" }}>
             <span className="thumb-label" style={{ position: "absolute", left: 10, bottom: 10 }}>
               {locked ? "已锁首帧 · 第 " + (s.frameIdx + 1) + " 版" : "首帧预览 · 第 " + (s.frameIdx + 1) + " 版"}
             </span>
@@ -620,7 +747,7 @@ function FactoryDrawer({
           </Thumb>
           {!locked && (
             <div className="row gap-2">
-              {frameVariants.map((v) => (
+              {(s.frameUrls?.length ? s.frameUrls.map((_, i) => i) : frameVariants).map((v) => (
                 <button
                   key={v}
                   type="button"
@@ -633,7 +760,7 @@ function FactoryDrawer({
                     position: "relative",
                   }}
                 >
-                  <Thumb from={col.from} to={col.to} ratio="9/13" radius={0} style={{ width: "100%" }} />
+                  <Thumb from={col.from} to={col.to} src={s.frameUrls?.[v]} ratio="9/13" radius={0} style={{ width: "100%" }} />
                   <span
                     className="num"
                     style={{

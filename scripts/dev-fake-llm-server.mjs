@@ -64,6 +64,56 @@ function buildProse(text) {
 
 // ── 结构化 JSON（短剧脚本 / 变量 / 卖点等 json_object 模式） ──────────────────
 function buildJsonContent(text) {
+  // 分场分镜（剧集脚本工作台 · 必须先于"短剧脚本"与"大纲"分支）
+  if (/分场|镜头表|拆成镜头/.test(text)) {
+    const mkShots = (descs) =>
+      descs.map((d, i) => ({
+        size: i === 0 ? "中近景" : "特写",
+        move: i === 0 ? "缓慢推近" : "固定",
+        dur: 4 + i,
+        desc: d,
+        engine: i % 2 === 0 ? "avatar" : "seedance",
+        line: i === 0 ? { who: "旁白", text: "夜色像一层没拧干的湿布。" } : null,
+      }));
+    if (/拆成镜头|镜头表。场面/.test(text) && !/scenes/.test(text)) {
+      // 单场拆镜
+      return JSON.stringify({
+        shots: mkShots(["主角立于窗前，霓虹在玻璃上流动", "手指无意识摩挲杯沿，神情恍惚", "窗外对楼一盏灯亮起"]),
+      });
+    }
+    return JSON.stringify({
+      scenes: [
+        {
+          place: "内景 · 公寓客厅 · 深夜",
+          mood: "压抑悬疑",
+          action: "主角整理新公寓，无意瞥见对楼窗口的人影。",
+          lines: [
+            { who: "旁白", text: "搬进来的第一晚，她就觉得哪里不对。" },
+            { who: "主角", text: "那扇窗……怎么会亮着？" },
+          ],
+          shots: mkShots(["搬家纸箱散落，主角拆箱", "她抬头瞥向窗外", "对楼窗口人影一闪而过"]),
+        },
+        {
+          place: "外景 · 楼下街道 · 雨夜",
+          mood: "紧张",
+          action: "主角撑伞下楼查看，街道空无一人。",
+          lines: [{ who: "主角", text: "有人吗？" }],
+          shots: mkShots(["伞面特写，雨珠滚落", "空旷街道全景，路灯昏黄"]),
+        },
+      ],
+    });
+  }
+  // 角色阵容（选角）
+  if (/角色阵容|characters/.test(text)) {
+    return JSON.stringify({
+      characters: [
+        { name: "林夏", role: "key", cast: "女 · 28 岁 · 广告公司 AE", desc: "敏感坚韧，搬入新公寓后被卷入失踪谜团，弧线从自我怀疑到直面真相。" },
+        { name: "沈一鸣", role: "key", cast: "男 · 32 岁 · 刑警", desc: "冷静克制，因旧案与林夏命运交错，弧线从公事公办到并肩作战。" },
+        { name: "陈姨", role: "extra", cast: "女 · 55 岁 · 楼栋管理员", desc: "热心却藏着秘密，是线索的关键转述者。" },
+        { name: "神秘住户", role: "extra", cast: "性别不明 · 对楼 1703", desc: "全剧悬念之眼，每次出现都伴随灯光异象。" },
+      ],
+    });
+  }
   // 分集大纲（必须先于脚本分支：脚本分支会命中 "episode" 子串）
   if (/分集大纲|分集结构|分集剧情|大纲/.test(text)) {
     const beats = [
@@ -181,6 +231,14 @@ const server = http.createServer(async (req, res) => {
   if (path.endsWith("/chat/completions") && req.method === "POST") {
     const body = await readBody(req);
     return send(res, 200, chatResponse(body));
+  }
+
+  // 图像生成（OpenAI images 兼容；必须先于通用 /generations 视频分支）
+  if (path.includes("/images/generations") && req.method === "POST") {
+    // 1x1 PNG 占位（dev 链路验证用；真实图像由 admin 绑定真模型端点产出）
+    const PNG_1PX =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    return send(res, 200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: PNG_1PX }] });
   }
 
   // 视频任务提交

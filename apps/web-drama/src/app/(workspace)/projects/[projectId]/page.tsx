@@ -96,17 +96,29 @@ function StageOutlet({
   prefilled: boolean;
   ctx: StageContext;
 }) {
+  // 角色绑定 / 主配切换发生在 reducer（WorkshopState.chars）——变化时落库到 ProjectData.characters。
+  const charsRef = React.useRef(state.chars);
+  React.useEffect(() => {
+    if (charsRef.current === state.chars) return;
+    charsRef.current = state.chars;
+    const t = setTimeout(() => {
+      void ctx.saveData({ ...data, characters: state.chars }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.chars]);
+
   switch (state.stage) {
     case "topic":
       return <TopicStage state={state} dispatch={dispatch} data={data} />;
     case "outline":
       return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "cast":
-      return <CastStage state={state} dispatch={dispatch} data={data} />;
+      return <CastStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "epscript":
-      return <EpScriptStage state={state} dispatch={dispatch} data={data} />;
+      return <EpScriptStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "factory":
-      return <FactoryStage state={state} dispatch={dispatch} data={data} />;
+      return <FactoryStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "prompt":
       return <PromptStage state={state} dispatch={dispatch} data={data} />;
     default:

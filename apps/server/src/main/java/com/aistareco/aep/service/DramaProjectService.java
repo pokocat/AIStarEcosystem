@@ -198,6 +198,229 @@ public class DramaProjectService {
         return out;
     }
 
+    // ── 剧集脚本（分场分镜）AI 起草 ────────────────────────────────────────────────
+
+    /**
+     * 按本集剧情把整集重写为「分场 + 分镜」。body: { ep, plot, style?, cast?[] }
+     * → { scenes: ScriptScene[], boardScenes: BoardScene[] }（未落库，前端合并后 PUT 保存）。
+     */
+    public JsonNode epscriptAiDraft(String id, JsonNode body, String userId) {
+        DramaProject row = requireOwned(id, userId);
+        requireLlm();
+        int ep = body != null ? body.path("ep").asInt(1) : 1;
+        String plot = orDefault(text(body, "plot"), "");
+        if (plot.isBlank()) {
+            JsonNode outline = readPayload(row).path("episodes");
+            for (JsonNode e : outline) {
+                if (e.path("no").asInt() == ep) plot = e.path("synopsis").asText("");
+            }
+        }
+        if (plot.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PLOT_REQUIRED", "请先填写本集剧情再生成分场分镜");
+        }
+        String style = orDefault(text(body, "style"), "");
+        StringBuilder castSb = new StringBuilder();
+        if (body != null && body.get("cast") != null && body.get("cast").isArray()) {
+            for (JsonNode c : body.get("cast")) {
+                if (castSb.length() > 0) castSb.append("、");
+                castSb.append(c.isObject() ? c.path("name").asText("") : c.asText(""));
+            }
+        }
+
+        String system = "你是资深短剧导演兼分镜师。只输出 JSON，不要解释。";
+        String user = "把第 " + ep + " 集按剧情拆成分场与镜头表。剧情：" + plot + "。"
+                + (style.isBlank() ? "" : "作品风格：" + style + "。")
+                + (castSb.length() == 0 ? "" : "出场人物：" + castSb + "。")
+                + "严格返回 JSON：{\"scenes\":[{\"place\":\"内景/外景 · 地点 · 时间\",\"mood\":\"情绪\","
+                + "\"action\":\"这场发生了什么\",\"lines\":[{\"who\":\"角色名或旁白\",\"text\":\"台词\"}],"
+                + "\"shots\":[{\"size\":\"景别\",\"move\":\"运镜\",\"dur\":时长秒(整数),\"desc\":\"画面内容(纯视觉)\","
+                + "\"engine\":\"avatar(有人物出镜)或seedance(空镜/特效)\"}]}]}";
+
+        JsonNode root = callJson(system, user, 0.85);
+        JsonNode scenesIn = root.path("scenes");
+        if (!scenesIn.isArray() || scenesIn.isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+                    "分场分镜生成返回的内容无法解析，请重试或换个说法。");
+        }
+        ArrayNode scriptScenes = om.createArrayNode();
+        ArrayNode boardScenes = om.createArrayNode();
+        int si = 1;
+        for (JsonNode sc : scenesIn) {
+            if (!sc.isObject()) continue;
+            String sceneId = "sc_" + ep + "_" + si;
+            ObjectNode ss = om.createObjectNode();
+            ss.put("id", sceneId);
+            ss.put("place", orDefault(text(sc, "place"), "内景 · 未命名场景"));
+            ss.put("mood", orDefault(text(sc, "mood"), ""));
+            ss.put("action", orDefault(text(sc, "action"), ""));
+            ArrayNode lines = om.createArrayNode();
+            if (sc.get("lines") != null && sc.get("lines").isArray()) {
+                for (JsonNode l : sc.get("lines")) {
+                    ObjectNode line = om.createObjectNode();
+                    line.put("who", orDefault(text(l, "who"), "旁白"));
+                    line.put("text", orDefault(text(l, "text"), ""));
+                    lines.add(line);
+                }
+            }
+            ss.set("lines", lines);
+            scriptScenes.add(ss);
+
+            ObjectNode bs = om.createObjectNode();
+            bs.put("id", sceneId);
+            ArrayNode shots = om.createArrayNode();
+            int no = 1;
+            if (sc.get("shots") != null && sc.get("shots").isArray()) {
+                for (JsonNode sh : sc.get("shots")) {
+                    shots.add(normalizeShot(sh, sceneId, no++));
+                }
+            }
+            bs.set("shots", shots);
+            boardScenes.add(bs);
+            si++;
+        }
+        log.info("[drama-project] epscript ai-draft ok user={} id={} ep={} scenes={}", userId, id, ep, scriptScenes.size());
+        ObjectNode out = om.createObjectNode();
+        out.set("scenes", scriptScenes);
+        out.set("boardScenes", boardScenes);
+        return out;
+    }
+
+    /** 把单场（场面描述 + 台词）拆成镜头表。body: { sceneId, place?, action, lines?[], style? } → { shots: BoardShot[] } */
+    public JsonNode splitSceneShots(String id, JsonNode body, String userId) {
+        requireOwned(id, userId);
+        requireLlm();
+        String action = orDefault(text(body, "action"), "");
+        String sceneId = orDefault(text(body, "sceneId"), "sc");
+        if (action.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SCENE_REQUIRED", "请先写这场的场面描述再拆镜");
+        }
+        StringBuilder linesSb = new StringBuilder();
+        if (body.get("lines") != null && body.get("lines").isArray()) {
+            for (JsonNode l : body.get("lines")) {
+                linesSb.append(l.path("who").asText("旁白")).append("：").append(l.path("text").asText("")).append("\n");
+            }
+        }
+        String system = "你是资深短剧分镜师。只输出 JSON，不要解释。";
+        String user = "把这一场拆成镜头表。场面：" + orDefault(text(body, "place"), "") + "。描述：" + action + "。"
+                + (linesSb.length() == 0 ? "" : "台词：\n" + linesSb)
+                + "严格返回 JSON：{\"shots\":[{\"size\":\"景别\",\"move\":\"运镜\",\"dur\":时长秒(整数),"
+                + "\"desc\":\"画面内容(纯视觉)\",\"engine\":\"avatar或seedance\",\"line\":{\"who\":\"说话人\",\"text\":\"这镜的台词(可空)\"}}]}";
+
+        JsonNode root = callJson(system, user, 0.8);
+        JsonNode shotsIn = root.path("shots");
+        if (!shotsIn.isArray() || shotsIn.isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "拆镜返回的内容无法解析，请重试。");
+        }
+        ArrayNode shots = om.createArrayNode();
+        int no = 1;
+        for (JsonNode sh : shotsIn) shots.add(normalizeShot(sh, sceneId, no++));
+        ObjectNode out = om.createObjectNode();
+        out.set("shots", shots);
+        return out;
+    }
+
+    /** 从大纲重抽角色阵容。→ { characters: CharacterDef[] }（未落库）。 */
+    public JsonNode castAiDraft(String id, String userId) {
+        DramaProject row = requireOwned(id, userId);
+        requireLlm();
+        JsonNode data = readPayload(row);
+        String logline = data.path("projectInfo").path("logline").asText("");
+        StringBuilder eps = new StringBuilder();
+        int n = 0;
+        for (JsonNode e : data.path("episodes")) {
+            if (n++ >= 6) break;
+            eps.append("第").append(e.path("no").asInt()).append("集：").append(e.path("synopsis").asText("")).append("\n");
+        }
+        String system = "你是资深短剧选角导演。只输出 JSON，不要解释。";
+        String user = "为短剧《" + orDefault(row.getTitle(), "未命名") + "》设计角色阵容（3-5 人，主角 1-2 个）。"
+                + (logline.isBlank() ? "" : "一句话剧情：" + logline + "。")
+                + (eps.length() == 0 ? "" : "分集梗概：\n" + eps)
+                + "严格返回 JSON：{\"characters\":[{\"name\":\"角色名\",\"role\":\"key(主角)或extra(配角)\","
+                + "\"cast\":\"一句话人物卡(性别·年龄·职业)\",\"desc\":\"人物性格与成长弧线\"}]}";
+
+        JsonNode root = callJson(system, user, 0.9);
+        JsonNode charsIn = root.path("characters");
+        if (!charsIn.isArray() || charsIn.isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "角色生成返回的内容无法解析，请重试。");
+        }
+        ArrayNode chars = om.createArrayNode();
+        int i = 1;
+        for (JsonNode c : charsIn) {
+            if (!c.isObject()) continue;
+            ObjectNode ch = om.createObjectNode();
+            ch.put("id", "ch_" + i);
+            ch.put("name", orDefault(text(c, "name"), "角色 " + i));
+            String role = orDefault(text(c, "role"), "extra");
+            ch.put("role", role.equals("key") ? "key" : "extra");
+            ch.put("cast", orDefault(text(c, "cast"), ""));
+            ch.put("desc", orDefault(text(c, "desc"), ""));
+            ch.put("avatar", "a" + (((i - 1) % 8) + 1));
+            ch.put("bound", false);
+            chars.add(ch);
+            i++;
+        }
+        log.info("[drama-project] cast ai-draft ok user={} id={} got={}", userId, id, chars.size());
+        ObjectNode out = om.createObjectNode();
+        out.set("characters", chars);
+        return out;
+    }
+
+    /** BoardShot 归一化（id/no/默认值）。 */
+    private ObjectNode normalizeShot(JsonNode sh, String sceneId, int no) {
+        ObjectNode shot = om.createObjectNode();
+        shot.put("id", sceneId + "_s" + no);
+        shot.put("no", no);
+        shot.put("size", orDefault(text(sh, "size"), "中景"));
+        shot.put("move", orDefault(text(sh, "move"), "固定"));
+        int dur = sh.path("dur").asInt(sh.path("duration_sec").asInt(4));
+        shot.put("dur", Math.max(1, Math.min(30, dur)));
+        String engine = orDefault(text(sh, "engine"), "seedance");
+        shot.put("engine", engine.equals("avatar") ? "avatar" : "seedance");
+        shot.put("desc", orDefault(text(sh, "desc"), ""));
+        shot.set("cast", om.createArrayNode());
+        JsonNode line = sh.get("line");
+        if (line != null && line.isObject() && !line.path("text").asText("").isBlank()) {
+            ObjectNode l = om.createObjectNode();
+            l.put("who", line.path("who").asText("旁白"));
+            l.put("text", line.path("text").asText(""));
+            shot.set("line", l);
+        } else {
+            shot.putNull("line");
+        }
+        return shot;
+    }
+
+    private void requireLlm() {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                    "AI 生成还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+        }
+    }
+
+    /** 统一 JSON 模式调用 + 容错解析。 */
+    private JsonNode callJson(String system, String user, double temperature) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", system));
+        messages.add(Map.of("role", "user", "content", user));
+        Map<String, Object> options = new LinkedHashMap<>();
+        options.put("temperature", temperature);
+        options.put("max_tokens", 4096);
+        options.put("response_format", Map.of("type", "json_object"));
+        AiModelInvocationService.AiModelResponse resp;
+        try {
+            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成调用失败，请稍后重试。");
+        }
+        JsonNode root = tryReadJson(resp.content());
+        if (root == null) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回的内容无法解析，请重试。");
+        }
+        return root;
+    }
+
     // ── 内部工具 ────────────────────────────────────────────────────────────────
 
     private DramaProject requireOwned(String id, String userId) {

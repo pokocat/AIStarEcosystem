@@ -139,6 +139,44 @@ class DramaProjectServiceTest {
     }
 
     @Test
+    void epscriptDraftParsesScenesAndShots() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "{\"scenes\":[{\"place\":\"内景 · 客厅 · 夜\",\"mood\":\"悬疑\",\"action\":\"她发现异样\","
+                                + "\"lines\":[{\"who\":\"旁白\",\"text\":\"第一晚就不对劲\"}],"
+                                + "\"shots\":[{\"size\":\"中近景\",\"move\":\"推近\",\"dur\":4,\"desc\":\"拆箱抬头\",\"engine\":\"avatar\",\"line\":{\"who\":\"旁白\",\"text\":\"第一晚\"}},"
+                                + "{\"size\":\"特写\",\"move\":\"固定\",\"dur\":99,\"desc\":\"窗口人影\",\"engine\":\"weird\"}]}]}",
+                        "stop", 100L, "ep", "fake-model"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        JsonNode out = svc.epscriptAiDraft(id, node("{\"ep\":1,\"plot\":\"她搬进新公寓\"}"), "u1");
+        assertEquals(1, out.path("scenes").size());
+        assertEquals(1, out.path("boardScenes").size());
+        JsonNode shots = out.path("boardScenes").get(0).path("shots");
+        assertEquals(2, shots.size());
+        assertEquals("sc_1_1_s1", shots.get(0).path("id").asText());
+        assertEquals(30, shots.get(1).path("dur").asInt(), "dur 超界应被钳到 30");
+        assertEquals("seedance", shots.get(1).path("engine").asText(), "未知 engine 归一化为 seedance");
+        assertEquals("旁白", shots.get(0).path("line").path("who").asText());
+    }
+
+    @Test
+    void castDraftParsesCharacters() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "{\"characters\":[{\"name\":\"林夏\",\"role\":\"key\",\"cast\":\"女·28\",\"desc\":\"坚韧\"},"
+                                + "{\"name\":\"陈姨\",\"role\":\"weird\",\"cast\":\"女·55\",\"desc\":\"热心\"}]}",
+                        "stop", 80L, "ep", "fake-model"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        JsonNode out = svc.castAiDraft(id, "u1");
+        assertEquals(2, out.path("characters").size());
+        assertEquals("key", out.path("characters").get(0).path("role").asText());
+        assertEquals("extra", out.path("characters").get(1).path("role").asText(), "非法 role 归一化为 extra");
+        assertFalse(out.path("characters").get(0).path("bound").asBoolean());
+    }
+
+    @Test
     void outlineThrowsOnUnparseableLlmOutput() {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
         when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))

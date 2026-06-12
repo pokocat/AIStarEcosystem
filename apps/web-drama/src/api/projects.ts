@@ -8,9 +8,14 @@ import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import {
   PROJECTS,
   getProjectData,
+  type BoardScene,
+  type BoardShot,
+  type CharacterDef,
   type DramaProjectSummary,
   type EpisodeOutline,
   type ProjectData,
+  type ScriptLine,
+  type ScriptScene,
 } from "@/mocks/drama-workshop";
 
 /** 详情壳：列表卡片字段 + 整套工作台文档。 */
@@ -127,6 +132,85 @@ export async function saveProject(
 export async function deleteProject(id: string): Promise<void> {
   if (USE_MOCK) return mockDelay(undefined);
   await apiFetch<void>(`/me/drama/projects/${id}`, { method: "DELETE" });
+}
+
+// ── 剧集脚本 / 角色 AI ─────────────────────────────────────────────────────────
+
+export interface EpscriptDraftResult {
+  scenes: ScriptScene[];
+  boardScenes: BoardScene[];
+}
+
+/** 按本集剧情把整集重写为分场 + 分镜（未落库，前端合并后 saveProject）。 */
+export async function epscriptAiDraft(
+  id: string,
+  input: { ep: number; plot: string; style?: string; cast?: string[] },
+): Promise<EpscriptDraftResult> {
+  if (USE_MOCK) {
+    const sceneId = `sc_${input.ep}_1`;
+    const scenes: ScriptScene[] = [
+      {
+        id: sceneId,
+        place: "内景 · 公寓客厅 · 深夜",
+        mood: "压抑悬疑",
+        action: input.plot.slice(0, 40) || "主角发现对楼窗口的异样灯光。",
+        lines: [{ who: "旁白", text: "搬进来的第一晚，她就觉得哪里不对。" }],
+      },
+    ];
+    const boardScenes: BoardScene[] = [
+      {
+        id: sceneId,
+        shots: [
+          { id: `${sceneId}_s1`, no: 1, size: "中近景", move: "缓慢推近", dur: 4, engine: "avatar", desc: "主角拆箱，抬头瞥向窗外", cast: [], line: null },
+          { id: `${sceneId}_s2`, no: 2, size: "特写", move: "固定", dur: 5, engine: "seedance", desc: "对楼窗口人影一闪而过", cast: [], line: null },
+        ],
+      },
+    ];
+    return mockDelay({ scenes, boardScenes }, 1300);
+  }
+  return apiFetch<EpscriptDraftResult>(`/me/drama/projects/${id}/epscript/ai-draft`, {
+    method: "POST",
+    body: { ep: input.ep, plot: input.plot, style: input.style, cast: input.cast },
+  });
+}
+
+/** 把单场拆成镜头表（未落库）。 */
+export async function splitSceneShots(
+  id: string,
+  input: { sceneId: string; place?: string; action: string; lines?: ScriptLine[]; style?: string },
+): Promise<BoardShot[]> {
+  if (USE_MOCK) {
+    return mockDelay(
+      [
+        { id: `${input.sceneId}_s1`, no: 1, size: "中近景", move: "缓慢推近", dur: 4, engine: "avatar" as const, desc: input.action.slice(0, 30) || "主角入画", cast: [], line: null },
+        { id: `${input.sceneId}_s2`, no: 2, size: "特写", move: "固定", dur: 4, engine: "seedance" as const, desc: "关键道具特写", cast: [], line: null },
+      ],
+      1100,
+    );
+  }
+  const res = await apiFetch<{ shots: BoardShot[] }>(`/me/drama/projects/${id}/epscript/split-scene`, {
+    method: "POST",
+    body: input,
+  });
+  return res.shots ?? [];
+}
+
+/** 从大纲重抽角色阵容（未落库）。 */
+export async function castAiDraft(id: string): Promise<CharacterDef[]> {
+  if (USE_MOCK) {
+    return mockDelay(
+      [
+        { id: "ch_1", name: "林夏", role: "key" as const, cast: "女 · 28 岁 · 广告公司 AE", desc: "敏感坚韧，弧线从自我怀疑到直面真相。", avatar: "a1", bound: false },
+        { id: "ch_2", name: "沈一鸣", role: "key" as const, cast: "男 · 32 岁 · 刑警", desc: "冷静克制，因旧案与主角命运交错。", avatar: "a4", bound: false },
+        { id: "ch_3", name: "陈姨", role: "extra" as const, cast: "女 · 55 岁 · 楼栋管理员", desc: "热心却藏着秘密。", avatar: "a2", bound: false },
+      ],
+      1200,
+    );
+  }
+  const res = await apiFetch<{ characters: CharacterDef[] }>(`/me/drama/projects/${id}/cast/ai-draft`, {
+    method: "POST",
+  });
+  return res.characters ?? [];
 }
 
 /** 大纲 AI 起草：按 projectInfo 生成分集大纲（未落库，前端合并后再 saveProject）。 */
