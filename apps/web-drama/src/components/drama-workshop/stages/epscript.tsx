@@ -13,13 +13,15 @@ import {
   Image as ImageIcon,
   Lock,
   Plus,
+  RefreshCw,
+  UserRound,
   Wand2,
   X,
 } from "lucide-react";
 import { Avatar, Cost, Editable, GenSkeleton } from "@/components/drama-ui";
 import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
 import { ShotFormCard, type FormShot } from "../shot-form";
-import { matById, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
+import { matById, MATERIALS, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 
 const SHOT_GEN_COST = 6;
@@ -52,8 +54,22 @@ export function EpScriptStage({ state, dispatch, data }: {
   dispatch: React.Dispatch<WorkshopAction>;
   data: ProjectData;
 }) {
-  const keyChars = data.characters.filter((c) => c.role === "key");
-  const speakerOptions = ["旁白", ...data.characters.map((c) => c.name)];
+  /** 本集出场人物(可在整集设置里添加:素材库人物 / 临时演员) */
+  const initCast = React.useCallback(
+    (): EpCharacter[] =>
+      data.characters.map((c) => ({ id: c.id, name: c.name, theme: c.avatar, bound: c.bound, removable: false })),
+    [data],
+  );
+  const [cast, setCast] = React.useState<EpCharacter[]>(initCast);
+  const speakerOptions = ["旁白", ...cast.map((c) => c.name)];
+
+  /** 整集剧情(给人看的速览,不直接用于生成;改完可让 AI 按它重生成分场分镜) */
+  const epOutline = data.episodes[state.ep - 1];
+  const initPlot = React.useCallback(
+    () => (epOutline ? `${epOutline.hook}。${epOutline.synopsis}` : data.projectInfo.logline),
+    [epOutline, data],
+  );
+  const [plot, setPlot] = React.useState<string>(initPlot);
 
   const initScenes = React.useCallback((): EpScene[] => {
     return data.script.scenes.map((s, i) => {
@@ -82,8 +98,23 @@ export function EpScriptStage({ state, dispatch, data }: {
   React.useEffect(() => {
     setScenes(initScenes());
     setShotsMap(initShots());
+    setCast(initCast());
+    setPlot(initPlot());
     setChat([{ who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` }]);
-  }, [state.ep, initScenes, initShots]);
+  }, [state.ep, initScenes, initShots, initCast, initPlot]);
+
+  /** 基于整集剧情重新生成分场分镜 */
+  const regenFromPlot = () => {
+    if (phase === "gen") return;
+    setPhase("gen");
+    dispatch({ type: "spend", n: 10 });
+    setTimeout(() => {
+      setScenes(initScenes());
+      setShotsMap(initShots());
+      setPhase("done");
+      toast.success("已按最新整集剧情重写分场分镜");
+    }, 1300);
+  };
 
   /* —— AI 对话驱动整体重写 —— */
   const sendChat = (text: string) => {
@@ -115,8 +146,8 @@ export function EpScriptStage({ state, dispatch, data }: {
     setScenes((arr) => arr.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const updLine = (si: number, li: number, patch: Partial<ScriptLine>) =>
     setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: s.lines.map((l, k) => (k === li ? { ...l, ...patch } : l)) } : s)));
-  const addLine = (si: number, who: string) =>
-    setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: [...s.lines, { who, text: "" }] } : s)));
+  const addLine = (si: number) =>
+    setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: [...s.lines, { who: "旁白", text: "" }] } : s)));
   const delLine = (si: number, li: number) =>
     setScenes((arr) => arr.map((s, j) => (j === si ? { ...s, lines: s.lines.filter((_, k) => k !== li) } : s)));
 
@@ -199,6 +230,32 @@ export function EpScriptStage({ state, dispatch, data }: {
             </div>
           )}
 
+          {/* ===== 本集剧情(先改剧情,再让 AI 按它重生成分场分镜) ===== */}
+          <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
+            <div className="row gap-2" style={{ marginBottom: 8 }}>
+              <span className="num tag tag-accent" style={{ flex: "none" }}>第 {state.ep} 集</span>
+              <span style={{ fontWeight: 800, fontSize: 13.5 }}>本集剧情</span>
+              {epOutline && <span className="tag tag-gray" style={{ flex: "none" }}>{epOutline.beat}</span>}
+              <span className="faint" style={{ fontSize: 11 }}>给人看的速览,不直接喂给生成</span>
+              <span className="grow" />
+              {!locked && (
+                <button
+                  type="button"
+                  className="btn btn-line btn-sm"
+                  style={{ flex: "none" }}
+                  disabled={phase === "gen"}
+                  onClick={regenFromPlot}
+                  title="对下面的分场分镜不满意?改好剧情后点这里,AI 按它整集重写 · 约 10 积分"
+                >
+                  <RefreshCw size={13} /> 基于剧情重新生成分场分镜 <Cost n={10} prefix="约" />
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.75 }}>
+              <Editable block value={plot} placeholder="这一集大致讲什么…" onCommit={setPlot} style={{ display: "block" }} />
+            </div>
+          </div>
+
           {/* ===== 基础通用信息 ===== */}
           <div className="card" style={{ padding: "14px 16px", marginBottom: 14 }}>
             <div className="row gap-2" style={{ marginBottom: 10 }}>
@@ -213,14 +270,9 @@ export function EpScriptStage({ state, dispatch, data }: {
                 <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>作品风格</span>
                 <span className="grow" style={{ minWidth: 0 }}><Editable block value={style} placeholder="风格关键词…" onCommit={setStyle} /></span>
               </div>
-              <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
-                <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none" }}>核心人物</span>
-                {keyChars.map((c) => (
-                  <span key={c.id} className="row" style={{ padding: "2px 9px 2px 2px", borderRadius: 999, background: "var(--accent-soft)", gap: 5 }}>
-                    <Avatar theme={c.avatar} size={18} bound={c.bound} />
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent)" }}>{c.name}</span>
-                  </span>
-                ))}
+              <div className="row gap-2" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+                <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 4 }}>出场人物</span>
+                <CastEditor cast={cast} onChange={setCast} disabled={locked} />
               </div>
               <div className="row gap-2" style={{ alignItems: "flex-start" }}>
                 <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>拍摄场景</span>
@@ -291,15 +343,15 @@ export function EpScriptStage({ state, dispatch, data }: {
                               </button>
                             </div>
                           ))}
-                          {/* 加一句台词:先选旁白还是角色 */}
-                          <div className="row gap-1" style={{ flexWrap: "wrap", marginTop: 2 }}>
-                            <span className="faint" style={{ fontSize: 10.5, alignSelf: "center" }}>加一句:</span>
-                            {speakerOptions.map((w) => (
-                              <button key={w} type="button" className="chip" style={{ height: 22, fontSize: 10.5 }} onClick={() => addLine(i, w)}>
-                                <Plus size={10} /> {w}
-                              </button>
-                            ))}
-                          </div>
+                          {/* 加一句对白:直接加一行,行内再选说话人(选项来自整集出场人物) */}
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ height: 24, fontSize: 11, alignSelf: "flex-start", marginTop: 2 }}
+                            onClick={() => addLine(i)}
+                          >
+                            <Plus size={11} /> 加一句对白
+                          </button>
                         </div>
                         {!locked && (
                           <button type="button" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => genShots(s.id, i)}>
@@ -360,6 +412,111 @@ export function EpScriptStage({ state, dispatch, data }: {
           <button type="button" className="btn btn-grad btn-sm" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
             <ImageIcon size={13} /> 去视频工厂出片 <ArrowRight size={12} />
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============ 本集出场人物编辑(整集设置内) ============ */
+interface EpCharacter {
+  id: string;
+  name: string;
+  /** 项目角色的数字人主题 key */
+  theme?: string;
+  bound?: boolean;
+  /** 素材库人物带来的配色 */
+  from?: string;
+  to?: string;
+  /** 临时演员 / 后加的人物可移除 */
+  removable?: boolean;
+}
+
+const TEMP_SUGGESTS = ["路人甲", "路人乙", "群演"];
+
+function CastEditor({ cast, onChange, disabled }: { cast: EpCharacter[]; onChange: (next: EpCharacter[]) => void; disabled?: boolean }) {
+  const [adding, setAdding] = React.useState(false);
+  const [name, setName] = React.useState("");
+  const matPeople = MATERIALS.filter((m) => m.cat === "人物" && !cast.some((c) => c.name === m.name));
+
+  const addTemp = (n: string) => {
+    const v = n.trim();
+    if (!v || cast.some((c) => c.name === v)) return;
+    onChange([...cast, { id: "tmp" + Date.now(), name: v, removable: true }]);
+    setName("");
+  };
+  const addFromMaterial = (m: Material) => {
+    onChange([...cast, { id: "mat-" + m.id, name: m.name, from: m.from, to: m.to, removable: true }]);
+  };
+
+  return (
+    <div className="col gap-2 grow" style={{ minWidth: 0 }}>
+      <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+        {cast.map((c) => (
+          <span key={c.id} className="row" style={{ padding: "2px 8px 2px 2px", borderRadius: 999, background: c.theme ? "var(--accent-soft)" : "var(--surface-2)", gap: 5 }}>
+            {c.theme ? (
+              <Avatar theme={c.theme} size={18} bound={c.bound} />
+            ) : c.from ? (
+              <span style={{ width: 18, height: 18, borderRadius: "50%", background: `linear-gradient(140deg,${c.from},${c.to})`, flex: "none" }} />
+            ) : (
+              <span style={{ width: 18, height: 18, borderRadius: "50%", background: "var(--surface)", display: "grid", placeItems: "center", color: "var(--ink-3)", flex: "none" }}>
+                <UserRound size={11} />
+              </span>
+            )}
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: c.theme ? "var(--accent)" : "var(--ink-2)" }}>{c.name}</span>
+            {c.removable && !disabled && (
+              <button type="button" title="移除" onClick={() => onChange(cast.filter((x) => x.id !== c.id))} style={{ color: "var(--ink-3)", display: "grid", placeItems: "center" }}>
+                <X size={11} />
+              </button>
+            )}
+          </span>
+        ))}
+        {!disabled && (
+          <button type="button" className="chip" style={{ height: 24, fontSize: 11 }} onClick={() => setAdding(!adding)}>
+            <Plus size={11} /> 添加人物
+          </button>
+        )}
+      </div>
+
+      {adding && !disabled && (
+        <div className="card col gap-2 pop-in" style={{ padding: "10px 12px", background: "var(--surface-2)", border: "1px dashed var(--line)" }}>
+          {matPeople.length > 0 && (
+            <div className="row gap-2" style={{ flexWrap: "wrap", alignItems: "center" }}>
+              <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, flex: "none" }}>从素材库选</span>
+              {matPeople.slice(0, 6).map((m) => (
+                <button key={m.id} type="button" className="row gap-1" title={`把素材「${m.name}」加为出场人物`} onClick={() => addFromMaterial(m)}
+                  style={{ padding: "2px 8px 2px 2px", borderRadius: 999, background: "var(--surface)", border: "1px solid var(--line)", gap: 5 }}>
+                  <span style={{ width: 17, height: 17, borderRadius: "50%", background: `linear-gradient(140deg,${m.from},${m.to})`, flex: "none" }} />
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>{m.name}</span>
+                  <Plus size={10} style={{ color: "var(--ink-3)" }} />
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="row gap-2" style={{ flexWrap: "wrap", alignItems: "center" }}>
+            <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, flex: "none" }}>临时演员</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addTemp(name);
+                }
+              }}
+              placeholder="比如:路人甲"
+              style={{ height: 26, width: 120, border: "1px solid var(--line)", borderRadius: 8, padding: "0 8px", fontSize: 11.5, outline: "none", background: "var(--surface)" }}
+            />
+            <button type="button" className="btn btn-primary btn-sm" style={{ height: 26, fontSize: 11 }} disabled={!name.trim()} onClick={() => addTemp(name)}>
+              <Plus size={11} /> 添加
+            </button>
+            {TEMP_SUGGESTS.filter((t) => !cast.some((c) => c.name === t)).map((t) => (
+              <button key={t} type="button" className="chip" style={{ height: 22, fontSize: 10.5 }} onClick={() => addTemp(t)}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <span className="faint" style={{ fontSize: 10 }}>加进来的人物会出现在下面每场对白和分镜人声的说话人选项里</span>
         </div>
       )}
     </div>
