@@ -36,7 +36,7 @@ export interface NavGroup {
 }
 
 interface Props {
-  brand: { initials: string; name: string; meta?: string };
+  brand: { initials: string; name: string; meta?: string; logoSrc?: string };
   groups: NavGroup[];
   footer?: React.ReactNode;
 }
@@ -69,23 +69,31 @@ export function Sidebar({ brand, groups, footer }: Props) {
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            background: "var(--accent)",
-            borderRadius: "var(--radius-md)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "var(--font-mono)",
-            fontWeight: 700,
-            fontSize: 12.5,
-            color: "#fff",
-          }}
-        >
-          {brand.initials}
-        </div>
+        {brand.logoSrc ? (
+          <img
+            src={brand.logoSrc}
+            alt=""
+            style={{ width: 28, height: 28, borderRadius: "var(--radius-md)", flex: "none" }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              background: "var(--accent)",
+              borderRadius: "var(--radius-md)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "var(--font-mono)",
+              fontWeight: 700,
+              fontSize: 12.5,
+              color: "#fff",
+            }}
+          >
+            {brand.initials}
+          </div>
+        )}
         <div style={{ lineHeight: 1.2 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-0)" }}>
             {brand.name}

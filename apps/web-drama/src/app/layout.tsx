@@ -26,6 +26,10 @@ const quicksand = Quicksand({
 export const metadata: Metadata = {
   title: "短剧工坊 — AI Star Eco",
   description: "从灵感到能直接开拍的成片配方,一条流水线搞定。",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
 };
 
 export const viewport: Viewport = {

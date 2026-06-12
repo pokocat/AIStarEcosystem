@@ -6,6 +6,10 @@ import { AppProviders } from "./providers";
 export const metadata: Metadata = {
   title: "明星商务工作台 — AI Star Eco",
   description: "明星 IP 资产托管、授权审核、商品准入与收益结算的一站式商务中枢",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
   openGraph: {
     title: "明星商务工作台 — AI Star Eco",
     description: "明星 IP 资产托管、授权审核、商品准入与收益结算的一站式商务中枢",

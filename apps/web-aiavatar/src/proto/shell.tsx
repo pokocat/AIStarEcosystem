@@ -15,11 +15,15 @@ const { useState: useStateM, useEffect: useEffectM, useRef: useRefM } = React;
 // —— 顶部导航栏 ——
 //  title 居中；onBack 时左侧返回；left/right 为可选操作槽（真实可用，无胶囊占位）
 function WxNav({ title, onBack, left, right }) {
+  const titleNode = !onBack && title === '数字人资产'
+    ? hM('img', { src: '/brand/logo.svg', alt: '数字人资产平台', style: { height: 28, width: 'auto', display: 'block' } })
+    : title;
+
   return hM('div', { className: 'wx-nav' },
     onBack
       ? hM('button', { className: 'nav-back m-tap', onClick: onBack, 'aria-label': '返回' }, hM(Icons.chevL, { size: 24, stroke: 2.2 }))
       : (left || hM('span', { className: 'nav-spacer' })),
-    hM('span', { className: 'nav-title' }, title),
+    hM('span', { className: 'nav-title' }, titleNode),
     right || hM('span', { className: 'nav-spacer' }));
 }
 

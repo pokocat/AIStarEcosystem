@@ -1,37 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title>AiAvatar favicon</title>
-  <rect width="64" height="64" rx="16" fill="oklch(0.97 0.012 215)" />
-  <rect
-    x="16"
-    y="12"
-    width="32"
-    height="40"
-    rx="14"
-    fill="oklch(0.995 0.004 215)"
-    stroke="oklch(0.72 0.095 205)"
-    stroke-width="3"
-  />
-  <path
-    d="M24 12h-7a5 5 0 0 0-5 5v7M40 12h7a5 5 0 0 1 5 5v7M12 40v7a5 5 0 0 0 5 5h7M52 40v7a5 5 0 0 1-5 5h-7"
-    fill="none"
-    stroke="oklch(0.42 0.11 210)"
-    stroke-linecap="round"
-    stroke-width="3.5"
-  />
-  <circle cx="25" cy="31" r="3" fill="oklch(0.28 0.035 225)" />
-  <circle cx="39" cy="31" r="3" fill="oklch(0.28 0.035 225)" />
-  <path
-    d="M25 41c3.7 2.7 10.3 2.7 14 0"
-    fill="none"
-    stroke="oklch(0.28 0.035 225)"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
-  <path
-    d="M32 20v-4"
-    fill="none"
-    stroke="oklch(0.72 0.095 205)"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
+  <defs>
+    <linearGradient id="core" x1="96" y1="72" x2="416" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="oklch(0.3 0.03 190)" />
+      <stop offset="1" stop-color="oklch(0.16 0.015 205)" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="url(#core)" />
+  <rect x="42" y="42" width="428" height="428" rx="100" fill="none" stroke="oklch(0.8 0.11 190 / 0.24)" stroke-width="2" />
+  <circle cx="238" cy="252" r="125" fill="none" stroke="oklch(0.74 0.12 190)" stroke-width="22" stroke-linecap="round" stroke-dasharray="430 300" transform="rotate(135 238 252)" />
+  <circle cx="344" cy="151" r="28" fill="oklch(0.78 0.11 190)" />
+  <path d="M219 166c15 49 44 78 93 93-49 15-78 44-93 93-15-49-44-78-93-93 49-15 78-44 93-93Z" fill="oklch(0.98 0.006 90)" />
+  <path d="M321 263h-28v-28c0-17 14-31 31-31h28M409 204h28c17 0 31 14 31 31v28M468 329v28c0 17-14 31-31 31h-28M352 388h-28c-17 0-31-14-31-31v-28" fill="none" stroke="oklch(0.82 0.105 190)" stroke-width="20" stroke-linecap="round" />
+  <path d="M343 300c0-25 19-43 45-43s45 18 45 43M350 337c23 18 53 18 76 0" fill="none" stroke="oklch(0.82 0.105 190)" stroke-width="17" stroke-linecap="round" />
+  <circle cx="344" cy="151" r="8" fill="oklch(0.24 0.026 190)" />
 </svg>

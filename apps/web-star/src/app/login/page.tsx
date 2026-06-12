@@ -6,7 +6,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { KeyRound, Loader2, MessageSquareText, Star, UserRound } from "lucide-react";
+import { KeyRound, Loader2, MessageSquareText, UserRound } from "lucide-react";
 import { AuthApi, ENABLE_DEV_LOGIN, useAuth } from "@ai-star-eco/api-client";
 
 type Mode = "code" | "password";
@@ -115,13 +115,8 @@ export default function LoginPage() {
         <div className="w-full max-w-[calc(100vw-2rem)] sm:max-w-sm">
           {/* 品牌 */}
           <Link href="/" className="flex flex-col items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: "var(--gradient-star)" }}>
-              <Star className="w-6 h-6 text-white" fill="currentColor" />
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-black" style={{ color: "var(--ink-0)", fontFamily: "var(--font-display)" }}>明星商务工作台</div>
-              <div className="text-[11px] mt-0.5" style={{ color: "var(--ink-2)" }}>明星本人 / 经纪团队登录</div>
-            </div>
+            <img src="/brand/logo.svg" alt="明星商务工作台" className="h-12 w-auto" />
+            <div className="text-[11px] mt-0.5" style={{ color: "var(--ink-2)" }}>明星本人 / 经纪团队登录</div>
           </Link>
 
           <div className="star-card p-4 sm:p-6">

@@ -119,11 +119,7 @@ function Brand() {
   return (
     <div style={{ textAlign: "center", marginBottom: 28 }}>
       <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 20, textDecoration: "none" }}>
-        <div style={{ width: 34, height: 34, background: "var(--accent)", borderRadius: "var(--radius-md)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 14, color: "#fff" }}>iP</div>
-        <div style={{ textAlign: "left", lineHeight: 1.15 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 600 }}>AI 明星带货</div>
-          <div className="mono" style={{ fontSize: 10, color: "var(--fg-2)", letterSpacing: 0.4 }}>AI Star Eco · Celebrity</div>
-        </div>
+        <img src="/brand/logo.svg" alt="AI 明星带货" style={{ height: 42, width: "auto", display: "block" }} />
       </Link>
       <h1 style={{ fontSize: 28, fontFamily: "var(--font-display)", fontWeight: 600, letterSpacing: "var(--tracking-tight)", margin: "0 0 8px", lineHeight: 1.25 }}>
         登录到

@@ -61,6 +61,8 @@ export interface AuthScreenProps {
   brandLabel: string;
   /** 顶栏品牌英文副标题，例 "AI Star Eco · Music"。 */
   brandSub: string;
+  /** 完整品牌 logo，可选；不传时使用 icon + 文案。 */
+  brandLogoSrc?: string;
   /** 品牌 mark 图标。 */
   icon: LucideIcon;
   /** 主标题下的一句话说明。 */
@@ -81,6 +83,7 @@ function AuthScreenInner(props: AuthScreenProps) {
     platform,
     brandLabel,
     brandSub,
+    brandLogoSrc,
     icon: Icon,
     tagline,
     theme,
@@ -134,24 +137,30 @@ function AuthScreenInner(props: AuthScreenProps) {
             href="/"
             style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 18, textDecoration: "none", color: "inherit" }}
           >
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: "var(--as-radius)",
-                background: "var(--as-accent)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--as-accent-fg)",
-              }}
-            >
-              <Icon size={20} strokeWidth={2.2} />
-            </div>
-            <div style={{ textAlign: "left", lineHeight: 1.15 }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>{brandLabel}</div>
-              <div style={{ fontSize: 10, color: "var(--as-fg-muted)", letterSpacing: 0.4 }}>{brandSub}</div>
-            </div>
+            {brandLogoSrc ? (
+              <img src={brandLogoSrc} alt={brandLabel} style={{ height: 42, width: "auto", display: "block" }} />
+            ) : (
+              <>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: "var(--as-radius)",
+                    background: "var(--as-accent)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--as-accent-fg)",
+                  }}
+                >
+                  <Icon size={20} strokeWidth={2.2} />
+                </div>
+                <div style={{ textAlign: "left", lineHeight: 1.15 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{brandLabel}</div>
+                  <div style={{ fontSize: 10, color: "var(--as-fg-muted)", letterSpacing: 0.4 }}>{brandSub}</div>
+                </div>
+              </>
+            )}
           </Link>
           <h1 style={{ fontSize: 25, fontWeight: 600, margin: "0 0 8px", lineHeight: 1.25 }}>
             登录工作台

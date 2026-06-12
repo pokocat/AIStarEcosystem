@@ -156,9 +156,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         style={{ background: "rgba(255,255,255,0.85)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--line)" }}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--gradient-star)" }}>
-            <Star className="w-4 h-4 text-white" fill="currentColor" />
-          </div>
+          <img src="/icon.svg" alt="" className="w-8 h-8 rounded-xl shrink-0" />
           <div className="min-w-0">
             <div className="text-sm font-bold truncate" style={{ color: "var(--ink-0)" }}>明星商务工作台</div>
             <div className="text-[10px] truncate" style={{ color: "var(--star-gold-deep)" }}>

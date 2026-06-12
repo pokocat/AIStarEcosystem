@@ -455,7 +455,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       }}
     >
       <Sidebar
-        brand={{ initials: "iP", name: "AI 明星带货", meta: "明星带货 · v0.5" }}
+        brand={{ initials: "iP", name: "AI 明星带货", meta: "明星带货 · v0.5", logoSrc: "/icon.svg" }}
         groups={groups}
         footer={
           <>

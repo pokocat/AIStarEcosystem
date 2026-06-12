@@ -271,7 +271,7 @@ export function MobileShell({
             }}
           >
             <Sidebar
-              brand={{ initials: "iP", name: "AI 明星带货", meta: "明星带货" }}
+              brand={{ initials: "iP", name: "AI 明星带货", meta: "明星带货", logoSrc: "/icon.svg" }}
               groups={groups}
               footer={
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

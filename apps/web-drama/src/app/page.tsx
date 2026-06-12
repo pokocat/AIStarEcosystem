@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Clapperboard,
   Film,
   Layers,
   LogOut,
@@ -113,35 +112,7 @@ export default function DramaLandingPage() {
         }}
       >
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: "var(--radius-md)",
-              background: "var(--gradient-gold)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 8px 24px rgba(212,175,106,0.25)",
-            }}
-          >
-            <Clapperboard size={18} color="#1a1410" strokeWidth={2.4} />
-          </div>
-          <div style={{ lineHeight: 1.1 }}>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 700,
-                letterSpacing: "var(--tracking-tight)",
-                fontFamily: "var(--font-display)",
-              }}
-            >
-              AI 短剧
-            </div>
-            <div className="eyebrow" style={{ fontSize: 9.5 }}>
-              AI STAR ECO · 短剧工坊
-            </div>
-          </div>
+          <img src="/brand/logo.svg" alt="短剧工坊" style={{ height: 40, width: "auto", display: "block" }} />
         </Link>
         <nav style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <Link

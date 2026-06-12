@@ -4,7 +4,6 @@
 // 左侧固定 248px,项目阶段 1-3 + 剧集阶段 4-6,软锁可自由跳。
 import * as React from "react";
 import { Lock } from "lucide-react";
-import { Clapperboard } from "../stages-config";
 import { STAGES, type StageDef, type StageKey } from "../stages-config";
 
 interface StageRailProps {
@@ -49,20 +48,7 @@ export function StageRail({ current, locked, onJump, onHome }: StageRailProps) {
           e.currentTarget.style.background = "transparent";
         }}
       >
-        <div
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 9,
-            background: "linear-gradient(135deg,var(--accent),var(--accent-2))",
-            display: "grid",
-            placeItems: "center",
-            color: "#fff",
-            flex: "none",
-          }}
-        >
-          <Clapperboard size={17} />
-        </div>
+        <img src="/icon.svg" alt="" style={{ width: 30, height: 30, borderRadius: 9, flex: "none" }} />
         <span style={{ fontWeight: 800, letterSpacing: ".01em" }}>短剧工坊</span>
       </button>
 

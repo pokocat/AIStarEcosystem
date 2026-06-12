@@ -89,15 +89,7 @@ export default function AdminLoginPage() {
     <main className="grid min-h-screen place-items-center bg-background px-4 py-12">
       <div className="w-full max-w-sm space-y-5">
         <header className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground font-semibold text-[13px] tracking-tight">
-              AS
-            </div>
-            <div className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold tracking-tight">AI Star Eco</span>
-              <span className="text-xs text-muted-foreground">运营工作台</span>
-            </div>
-          </div>
+          <img src="/brand/logo.svg" alt="AI Star Eco 运营工作台" className="h-10 w-auto" />
           <span
             className={`inline-flex items-center gap-1.5 rounded-full border bg-surface px-2 py-0.5 text-[11px] font-medium ${envClasses.chip}`}
             title={host ? `当前域：${host}` : undefined}

@@ -137,8 +137,7 @@ export function MLogin({ onLoggedIn }) {
       background: 'linear-gradient(160deg, var(--primary-tint), var(--surface) 58%)' } },
       hLG('div', { style: { position: 'absolute', top: -70, right: -60, width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(18,179,222,.16), transparent 70%)', filter: 'blur(10px)' } }),
       hLG('div', { style: { position: 'relative' } },
-        hLG('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 13px', background: 'rgba(255,255,255,.7)', backdropFilter: 'blur(8px)', borderRadius: 'var(--r-pill)', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 16 } },
-          hLG(Icons.sparkle, { size: 13, stroke: 2, style: { color: 'var(--primary)' } }), '数字人资产平台'),
+        hLG('img', { src: '/brand/logo.svg', alt: '数字人资产平台', style: { height: 38, width: 'auto', display: 'block', marginBottom: 16 } }),
         hLG('h1', { style: { fontSize: 26, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1.2, margin: 0, color: 'var(--ink)' } }, '登录后，开始创建', hLG('br', null), '你的数字分身'),
         hLG('p', { style: { fontSize: 13, color: 'var(--ink-2)', margin: '10px 0 0', lineHeight: 1.5 } }, '形象、声音与衍生资产都会安全沉淀在你的账户里。'))),
 

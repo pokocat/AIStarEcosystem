@@ -6,6 +6,10 @@ import { FeedbackProviders } from "@/components/feedback";
 export const metadata: Metadata = {
   title: "AI Star Eco · 运营工作台",
   description: "AI 虚拟艺人孵化平台 · 运营人员管理后台",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

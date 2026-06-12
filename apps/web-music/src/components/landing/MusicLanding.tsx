@@ -18,7 +18,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, LogOut, AudioLines, Mic2, TrendingUp, Shield } from "lucide-react";
+import { ArrowRight, LogOut, Mic2, TrendingUp, Shield } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 
 const POST_LOGIN_PATH = "/dashboard";
@@ -62,13 +62,7 @@ export function MusicLanding() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex items-center justify-between px-6 md:px-12 py-5 border-b border-border">
         <Link href="/" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/15 border border-primary/25 flex items-center justify-center">
-            <AudioLines className="w-5 h-5 text-primary" strokeWidth={2.25} />
-          </div>
-          <div className="leading-tight">
-            <div className="text-base font-semibold tracking-tight">AI 音乐人</div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">AI Star Eco</div>
-          </div>
+          <img src="/brand/logo.svg" alt="AI 音乐人" className="h-10 w-auto" />
         </Link>
         <nav className="flex items-center gap-2">
           <Link

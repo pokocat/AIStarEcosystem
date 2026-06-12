@@ -111,29 +111,7 @@ export default function CelebrityLandingPage() {
         }}
       >
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <div
-            style={{
-              width: 30,
-              height: 30,
-              background: "var(--accent)",
-              borderRadius: "var(--radius-md)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: "var(--font-mono)",
-              fontWeight: 700,
-              fontSize: 13,
-              color: "#fff",
-            }}
-          >
-            iP
-          </div>
-          <div style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg-0)" }}>AI 明星带货</div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--fg-2)", letterSpacing: 0.4 }}>
-              AI STAR ECO · 明星矩阵
-            </div>
-          </div>
+          <img src="/brand/logo.svg" alt="AI 明星带货" style={{ height: 42, width: "auto", display: "block" }} />
         </Link>
 
         <nav className="hidden md:flex" style={{ alignItems: "center", gap: 28 }}>

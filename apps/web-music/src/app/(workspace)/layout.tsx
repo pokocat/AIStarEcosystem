@@ -10,7 +10,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Music, Layers, Shield, TrendingUp,
   Globe as GlobeIcon, Wallet, Settings, LogOut, ChevronRight,
-  AudioLines, Heart, ChevronDown, Menu, X,
+  Heart, ChevronDown, Menu, X,
   Star, CheckCircle2, Film, Tv, Mic,
   Shirt, Building2, Bell, Coins, UserCircle,
   Megaphone,
@@ -259,9 +259,7 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
     <>
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
-        <div className="w-7 h-7 rounded-md bg-primary/15 border border-primary/25 flex items-center justify-center shrink-0">
-          <AudioLines className="w-4 h-4 text-primary" strokeWidth={2.25} />
-        </div>
+        <img src="/icon.svg" alt="" className="w-8 h-8 rounded-md shrink-0" />
         {(sidebarOpen || isMobile) && (
           <div className="leading-tight whitespace-nowrap">
             <div className="text-sm font-semibold tracking-tight text-foreground">AI 音乐人</div>

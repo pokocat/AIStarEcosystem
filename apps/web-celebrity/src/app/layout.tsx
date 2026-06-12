@@ -6,6 +6,10 @@ import { AppProviders } from "./providers";
 export const metadata: Metadata = {
   title: "AI 明星带货 — AI Star Eco",
   description: "基于真人明星授权的 AI 复刻 IP 带货平台",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
 };
 
 // 移动 H5：声明视口 + 适配刘海/底部安全区（viewport-fit=cover 让 env(safe-area-inset-*) 生效）。

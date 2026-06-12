@@ -42,13 +42,7 @@ export default function LandingPage() {
       {/* ── 顶栏 ── */}
       <header className="max-w-6xl mx-auto flex items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--gradient-star)" }}>
-            <Star className="w-4.5 h-4.5 text-white" fill="currentColor" />
-          </div>
-          <div>
-            <div className="text-sm font-bold" style={{ color: "var(--ink-0)" }}>明星商务工作台</div>
-            <div className="text-[10px] tracking-wide" style={{ color: "var(--ink-2)" }}>AI STAR ECO · CELEBRITY BUSINESS</div>
-          </div>
+          <img src="/brand/logo.svg" alt="明星商务工作台" className="h-10 w-auto" />
         </div>
         <Link
           href={user ? "/dashboard" : "/login"}

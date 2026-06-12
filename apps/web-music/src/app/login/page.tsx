@@ -10,6 +10,7 @@ export default function LoginPage() {
       platform="music"
       brandLabel="AI 音乐人"
       brandSub="AI Star Eco · Music"
+      brandLogoSrc="/brand/logo.svg"
       icon={Music}
       tagline="手机号支持验证码或密码登录；新用户用激活码 + 手机号完成注册，开通后即可孵化数字人歌手。"
       defaultPostLoginPath="/dashboard"

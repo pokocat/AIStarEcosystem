@@ -14,6 +14,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "AI 音乐人 — AI Star Eco",
   description: "为 MCN 机构打造的歌手数字人 IP 工作台",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
