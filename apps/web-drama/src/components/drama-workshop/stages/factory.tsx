@@ -21,9 +21,10 @@ import {
 import { Avatar, CreditButton, EngineTag, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import { GenSettingsBar } from "../gen-settings-bar";
-import { matById, type BoardShot, type Material, type ProjectData } from "@/mocks/drama-workshop";
+import { getEpisodeDoc, matById, withEpisodeDoc, type BoardShot, type Material, type ProjectData } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { RenderApi } from "@/api";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
 
 const FRAME_COST = 2;
@@ -61,10 +62,12 @@ interface FactoryStageProps {
 }
 
 export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) {
+  const cfg = useDramaConfig();
   const build = React.useCallback((): FactoryShot[] => {
     const list: FactoryShot[] = [];
-    data.storyboard.scenes.forEach((sc, si) => {
-      const place = data.script.scenes.find((x) => x.id === sc.id)?.place ?? `场景 ${si + 1}`;
+    const doc = getEpisodeDoc(data, state.ep);
+    doc.storyboard.scenes.forEach((sc, si) => {
+      const place = doc.script.scenes.find((x) => x.id === sc.id)?.place ?? `场景 ${si + 1}`;
       sc.shots.forEach((sh) =>
         list.push({
           ...sh,
@@ -78,7 +81,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       );
     });
     return list;
-  }, [data]);
+  }, [data, state.ep]);
 
   const [shots, setShots] = React.useState<FactoryShot[]>(build);
   React.useEffect(() => {
@@ -92,7 +95,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     async (arr: FactoryShot[]) => {
       if (!ctx) return;
       const byId = new Map(arr.map((s) => [s.id, s]));
-      const scenes = data.storyboard.scenes.map((sc) => ({
+      const doc = getEpisodeDoc(data, state.ep);
+      const scenes = doc.storyboard.scenes.map((sc) => ({
         ...sc,
         shots: sc.shots.map((sh) => {
           const f = byId.get(sh.id);
@@ -108,9 +112,11 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
           };
         }),
       }));
-      await ctx.saveData({ ...data, storyboard: { ...data.storyboard, scenes } });
+      await ctx.saveData(
+        withEpisodeDoc(data, state.ep, { ...doc, storyboard: { ...doc.storyboard, scenes } }),
+      );
     },
-    [ctx, data],
+    [ctx, data, state.ep],
   );
 
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -159,7 +165,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       );
       setShots(next);
       await persistShots(next);
-      dispatch({ type: "spend", n: FRAME_COST });
+      dispatch({ type: "spend", n: cfg.prices.frame });
       toast.success(`首帧已出 ${frames.length} 版,挑一版锁定`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "首帧渲染失败，请稍后重试");
@@ -189,7 +195,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       );
       setShots(next);
       await persistShots(next);
-      dispatch({ type: "spend", n: CLIP_COST });
+      dispatch({ type: "spend", n: cfg.prices.clip });
       toast.success("动态已渲染,验收看看");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "视频生成失败，请稍后重试");
@@ -237,7 +243,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
           x.id === d.id ? { ...x, flow: "frame" as FlowKey, frameUrls: frames.map((f) => f.url), frameIdx: 0 } : x,
         );
         setShots(cur);
-        dispatch({ type: "spend", n: FRAME_COST });
+        dispatch({ type: "spend", n: cfg.prices.frame });
         okCount++;
       } catch (e) {
         toast.error(`镜 ${d.no} 首帧失败：${e instanceof Error ? e.message : "未知错误"}`);
@@ -337,7 +343,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
               </div>
             </div>
             <CreditButton
-              cost={draftCount * FRAME_COST}
+              cost={draftCount * cfg.prices.frame}
               onConfirm={batchFrame}
               confirmTitle="批量渲染首帧"
               confirmBody={`为 ${draftCount} 个待渲镜头各出 4 版首帧。`}
@@ -364,6 +370,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
                 key={s.id}
                 s={s}
                 i={i}
+                frameCost={cfg.prices.frame}
+                clipCost={cfg.prices.clip}
                 active={openId === s.id}
                 busy={busy && busy.id === s.id ? busy.to : null}
                 onOpen={() => setOpenId(s.id)}
@@ -387,9 +395,9 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
             )}
             <div className="grow">
               <div style={{ fontWeight: 700 }}>
-                {stat.done === stat.total && stat.total > 0 ? "本集镜头全部成片 🎉" : "逐镜成片后,导出整集配方"}
+                {stat.done === stat.total && stat.total > 0 ? "本集镜头全部成片 🎉" : "逐镜成片后,一键拼成完整片"}
               </div>
-              <div className="faint" style={{ fontSize: 12.5 }}>成片镜头会带着锁定的首帧与运动参数,打包进可复用的成片配方</div>
+              <div className="faint" style={{ fontSize: 12.5 }}>已出片镜头会按场序与镜号拼接成完整一集,产物落 CDN 可直接分发</div>
             </div>
             <button
               type="button"
@@ -397,7 +405,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
               disabled={stat.total === 0}
               onClick={() => dispatch({ type: "jump", stage: "prompt" })}
             >
-              去成片配方 <ArrowRight size={15} />
+              去成片合成 <ArrowRight size={15} />
             </button>
           </div>
         </div>
@@ -407,6 +415,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         <FactoryDrawer
           s={open}
           chars={state.chars}
+          frameCost={cfg.prices.frame}
+          clipCost={cfg.prices.clip}
           busy={busy && busy.id === open.id ? busy.to : null}
           onClose={() => setOpenId(null)}
           onRenderFrame={() => renderFrame(open.id)}
@@ -472,6 +482,8 @@ function Spin() {
 function FactoryCard({
   s,
   i,
+  frameCost,
+  clipCost,
   active,
   busy,
   onOpen,
@@ -482,6 +494,8 @@ function FactoryCard({
 }: {
   s: FactoryShot;
   i: number;
+  frameCost: number;
+  clipCost: number;
   active: boolean;
   busy: FlowKey | null;
   onOpen: () => void;
@@ -497,7 +511,7 @@ function FactoryCard({
       return (
         <>
           <CreditButton
-            cost={FRAME_COST}
+            cost={frameCost}
             onConfirm={onRenderFrame}
             confirmTitle="渲染首帧"
             confirmBody="先渲首帧锁画面,稳妥省抽卡。"
@@ -508,7 +522,7 @@ function FactoryCard({
             <ImageIcon size={13} /> 首帧
           </CreditButton>
           <CreditButton
-            cost={CLIP_COST}
+            cost={clipCost}
             onConfirm={onRenderDirect}
             confirmTitle="直接生成视频"
             confirmBody="跳过首帧,直接生成这镜分镜视频。"
@@ -529,7 +543,7 @@ function FactoryCard({
     if (s.flow === "frameLocked")
       return (
         <CreditButton
-          cost={CLIP_COST}
+          cost={clipCost}
           onConfirm={onRenderClip}
           confirmTitle="渲染动态"
           confirmBody="基于已锁定首帧渲染动态视频。"
@@ -653,6 +667,8 @@ function FactoryCard({
 function FactoryDrawer({
   s,
   chars,
+  frameCost,
+  clipCost,
   busy,
   onClose,
   onRenderFrame,
@@ -665,6 +681,8 @@ function FactoryDrawer({
 }: {
   s: FactoryShot;
   chars: WorkshopState["chars"];
+  frameCost: number;
+  clipCost: number;
   busy: FlowKey | null;
   onClose: () => void;
   onRenderFrame: () => void;
@@ -906,17 +924,17 @@ function FactoryDrawer({
         <div className="col gap-2" style={{ padding: 14, borderTop: "1px solid var(--line-soft)" }}>
           {s.flow === "draft" && (
             <div className="col gap-2">
-              <CreditButton cost={FRAME_COST} onConfirm={onRenderFrame} confirmTitle="渲染首帧" confirmBody="先渲首帧锁画面,稳妥省抽卡。" className="btn btn-grad" disabled={!!busy} markSize={15}>
+              <CreditButton cost={frameCost} onConfirm={onRenderFrame} confirmTitle="渲染首帧" confirmBody="先渲首帧锁画面,稳妥省抽卡。" className="btn btn-grad" disabled={!!busy} markSize={15}>
                 <ImageIcon size={15} /> 先渲首帧看效果 · 稳妥
               </CreditButton>
-              <CreditButton cost={CLIP_COST} onConfirm={onRenderDirect} confirmTitle="直接生成视频" confirmBody="跳过首帧,直接生成这镜分镜视频。" className="btn btn-line" disabled={!!busy} style={{ justifyContent: "center" }} markSize={15}>
+              <CreditButton cost={clipCost} onConfirm={onRenderDirect} confirmTitle="直接生成视频" confirmBody="跳过首帧,直接生成这镜分镜视频。" className="btn btn-line" disabled={!!busy} style={{ justifyContent: "center" }} markSize={15}>
                 <Zap size={15} /> 直接生成分镜视频 · 快
               </CreditButton>
             </div>
           )}
           {s.flow === "frame" && (
             <div className="row gap-2">
-              <CreditButton cost={FRAME_COST} onConfirm={onReframe} confirmTitle="重渲首帧" confirmBody="重新出 4 版首帧候选。" className="btn btn-line btn-sm grow" disabled={!!busy} style={{ justifyContent: "center" }}>
+              <CreditButton cost={frameCost} onConfirm={onReframe} confirmTitle="重渲首帧" confirmBody="重新出 4 版首帧候选。" className="btn btn-line btn-sm grow" disabled={!!busy} style={{ justifyContent: "center" }}>
                 <RefreshCw size={14} /> 换一批
               </CreditButton>
               <button type="button" className="btn btn-grad grow" onClick={onLockFrame} style={{ justifyContent: "center" }}>
@@ -926,17 +944,17 @@ function FactoryDrawer({
           )}
           {s.flow === "frameLocked" && (
             <div className="row gap-2">
-              <CreditButton cost={FRAME_COST} onConfirm={onReframe} confirmTitle="重渲首帧" confirmBody="改首帧会重新出 4 版候选。" className="btn btn-ghost btn-sm" disabled={!!busy} style={{ justifyContent: "center" }}>
+              <CreditButton cost={frameCost} onConfirm={onReframe} confirmTitle="重渲首帧" confirmBody="改首帧会重新出 4 版候选。" className="btn btn-ghost btn-sm" disabled={!!busy} style={{ justifyContent: "center" }}>
                 <ImageIcon size={14} /> 改首帧
               </CreditButton>
-              <CreditButton cost={CLIP_COST} onConfirm={onRenderClip} confirmTitle="渲染动态" confirmBody="基于已锁定首帧渲染动态视频。" className="btn btn-grad grow" disabled={!!busy} style={{ justifyContent: "center" }} markSize={15}>
+              <CreditButton cost={clipCost} onConfirm={onRenderClip} confirmTitle="渲染动态" confirmBody="基于已锁定首帧渲染动态视频。" className="btn btn-grad grow" disabled={!!busy} style={{ justifyContent: "center" }} markSize={15}>
                 <Film size={15} /> 渲染动态
               </CreditButton>
             </div>
           )}
           {s.flow === "clip" && (
             <div className="row gap-2">
-              <CreditButton cost={CLIP_COST} onConfirm={onRenderClip} confirmTitle="重渲动态" confirmBody="重新渲染这镜的动态视频。" className="btn btn-line btn-sm grow" disabled={!!busy} style={{ justifyContent: "center" }}>
+              <CreditButton cost={clipCost} onConfirm={onRenderClip} confirmTitle="重渲动态" confirmBody="重新渲染这镜的动态视频。" className="btn btn-line btn-sm grow" disabled={!!busy} style={{ justifyContent: "center" }}>
                 <RefreshCw size={14} /> 重渲动态
               </CreditButton>
               <button type="button" className="btn btn-primary grow" onClick={onApprove} style={{ justifyContent: "center" }}>
@@ -946,7 +964,7 @@ function FactoryDrawer({
           )}
           {s.flow === "done" && (
             <div className="row gap-2">
-              <CreditButton cost={FRAME_COST} onConfirm={onReframe} confirmTitle="回炉重渲" confirmBody="重新出首帧,这镜会回到挑首帧步骤。" className="btn btn-ghost btn-sm grow" style={{ justifyContent: "center" }}>
+              <CreditButton cost={frameCost} onConfirm={onReframe} confirmTitle="回炉重渲" confirmBody="重新出首帧,这镜会回到挑首帧步骤。" className="btn btn-ghost btn-sm grow" style={{ justifyContent: "center" }}>
                 <RefreshCw size={14} /> 回炉重渲
               </CreditButton>
               <button type="button" className="btn btn-line grow" onClick={onClose} style={{ justifyContent: "center" }}>

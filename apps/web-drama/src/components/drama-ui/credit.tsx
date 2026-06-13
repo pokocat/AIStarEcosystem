@@ -10,6 +10,7 @@
 import * as React from "react";
 import { Gem } from "lucide-react";
 import { dramaConfirm } from "./confirm-dialog";
+import { getDramaConfig } from "@/api/drama-config";
 
 export interface CreditMarkProps {
   size?: number;
@@ -73,6 +74,17 @@ export function CreditButton({
   const handleClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (disabled) return;
+    // 小额免打扰（v0.66）：消耗低于阈值（admin「短剧专区」可配，默认 10）直接执行
+    let threshold = 10;
+    try {
+      threshold = (await getDramaConfig()).confirmThreshold;
+    } catch {
+      /* 配置拉取失败用默认阈值 */
+    }
+    if (cost < threshold) {
+      onConfirm();
+      return;
+    }
     const ok = await dramaConfirm({ cost, title: confirmTitle, body: confirmBody, confirmLabel });
     if (ok) onConfirm();
   };

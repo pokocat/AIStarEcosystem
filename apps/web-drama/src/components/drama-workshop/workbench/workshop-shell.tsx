@@ -13,7 +13,6 @@ import { StageRail } from "./stage-rail";
 import { EpisodeRail } from "./episode-rail";
 import { StepTabs } from "./step-tabs";
 import { CastPanel } from "./cast-panel";
-import { RunAllDialog } from "./run-all-dialog";
 import { EPISODE_STAGE_KEYS, type StageKey } from "../stages-config";
 
 export interface WorkshopState {
@@ -36,8 +35,7 @@ export type WorkshopAction =
   | { type: "bindAvatar"; charId: string; avatar?: string }
   | { type: "toggleRole"; charId: string }
   | { type: "setChars"; chars: CharacterDef[] }
-  | { type: "spend"; n: number }
-  | { type: "runAllComplete"; keys: StageKey[]; cost: number };
+  | { type: "spend"; n: number };
 
 function reducer(state: WorkshopState, a: WorkshopAction): WorkshopState {
   switch (a.type) {
@@ -83,16 +81,6 @@ function reducer(state: WorkshopState, a: WorkshopAction): WorkshopState {
       };
     case "spend":
       return { ...state, balance: Math.max(0, state.balance - a.n) };
-    case "runAllComplete": {
-      const ls = { ...state.lockedStages };
-      for (const k of a.keys) if (k !== "prompt") ls[k] = true;
-      return {
-        ...state,
-        lockedStages: ls,
-        stage: "prompt",
-        balance: Math.max(0, state.balance - a.cost),
-      };
-    }
     default:
       return state;
   }
@@ -118,7 +106,6 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
   }));
   // v4:角色面板默认收起,把宽度留给剧本正文
   const [castCollapsed, setCastCollapsed] = React.useState(true);
-  const [runAllOpen, setRunAllOpen] = React.useState(false);
   const [narrow, setNarrow] = React.useState(false);
   React.useEffect(() => {
     const mq = window.matchMedia("(max-width: 1180px)");
@@ -134,11 +121,6 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
   const handleLogout = () => {
     logout();
     toast.success("已退出登录");
-  };
-  const handleRunAllComplete = (keys: StageKey[], cost: number) => {
-    setRunAllOpen(false);
-    dispatch({ type: "runAllComplete", keys, cost });
-    toast.success("连跑完成 · 成片配方已就绪");
   };
 
   return (
@@ -170,7 +152,6 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
           balancePulseKey={state.balance}
           hideMeta={narrow}
           onHome={handleHome}
-          onRunAll={() => setRunAllOpen(true)}
           onLogout={handleLogout}
         />
 
@@ -197,14 +178,6 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
         />
       )}
 
-      {runAllOpen && (
-        <RunAllDialog
-          current={state.stage}
-          locked={state.lockedStages}
-          onCancel={() => setRunAllOpen(false)}
-          onComplete={handleRunAllComplete}
-        />
-      )}
     </div>
   );
 }

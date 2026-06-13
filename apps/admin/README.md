@@ -116,3 +116,5 @@ DataInitializer 默认 seed 两个账号：
 - **v0.5.0 / 2026-05-08**：明星 / 模板 / 授权 / 套餐 / 引擎价 / 模板脚本 / AI 模型 全栈 admin CRUD；sidebar 聚焦明星带货线。详见 `product_spec_ai_celebrity.md` v0.5 节。
 - **v0.4.0 / 2026-05-07**：server 端用户侧接口打通（小程序和 server 双端跑通）；admin 维持 GET-only。
 - 之前版本：见 `product_spec_ai_celebrity.md`。
+
+- **v0.66**：新增导航组「短剧专区」→ `/drama/config`（web-drama 个性化配置：扣费确认阈值 + 大纲/分场分镜/拆镜/选角/首帧单价；真值存 `aep_platform_configs` `drama.credit.*`，分镜视频单价沿用「引擎价格」`material.video-generate`）。

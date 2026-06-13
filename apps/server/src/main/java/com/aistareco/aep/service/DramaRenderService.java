@@ -56,6 +56,7 @@ public class DramaRenderService {
     private final CreditService creditService;
     private final CdnUploader cdnUploader;
     private final CdnUrlSigner signer;
+    private final PlatformConfigService configs;
     private final ObjectMapper om;
 
     public DramaRenderService(AiModelInvocationService invocation,
@@ -64,6 +65,7 @@ public class DramaRenderService {
                               CreditService creditService,
                               CdnUploader cdnUploader,
                               CdnUrlSigner signer,
+                              PlatformConfigService configs,
                               ObjectMapper om) {
         this.invocation = invocation;
         this.usage = usage;
@@ -71,6 +73,7 @@ public class DramaRenderService {
         this.creditService = creditService;
         this.cdnUploader = cdnUploader;
         this.signer = signer;
+        this.configs = configs;
         this.om = om;
     }
 
@@ -113,11 +116,13 @@ public class DramaRenderService {
             frames.add(f);
         }
 
-        // 一次「首帧渲染」动作 = 固定 FRAME_COST（与前端确认弹窗一致），与版数解耦
-        long cost = FRAME_COST;
-        creditService.debit(userId, cost, "DRAMA_FRAME",
-                "frame_" + UUID.randomUUID().toString().substring(0, 8),
-                "短剧首帧渲染（" + count + " 版）");
+        // 一次「首帧渲染」动作 = 固定单价（admin 短剧专区可配），与版数解耦
+        long cost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);
+        if (cost > 0) {
+            creditService.debit(userId, cost, "DRAMA_FRAME",
+                    "frame_" + UUID.randomUUID().toString().substring(0, 8),
+                    "短剧首帧渲染（" + count + " 版）");
+        }
         log.info("[drama-render] frame ok user={} count={} endpoint={} size={}", userId, count, ep.getName(), size);
 
         ObjectNode out = om.createObjectNode();

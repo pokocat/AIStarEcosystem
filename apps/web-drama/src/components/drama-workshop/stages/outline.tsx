@@ -23,6 +23,7 @@ import { StageHeader } from "../workbench";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import type { EpisodeOutline, ProjectData } from "@/mocks/drama-workshop";
 import { ProjectsApi } from "@/api";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
 
 const SCOPE_OPTS = [
@@ -52,6 +53,9 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
     setEps(data.episodes);
   }, [data.episodes]);
   const locked = !!state.lockedStages.outline;
+  const cfg = useDramaConfig();
+  const scopeCost = (k: "trial" | "full") => (k === "trial" ? cfg.prices.outlineTrial : cfg.prices.outlineFull);
+  const fillRestCost = Math.max(0, cfg.prices.outlineFull - cfg.prices.outlineTrial);
   const scopeOpt = SCOPE_OPTS.find((s) => s.key === scope)!;
   const showEps = scope === "trial" && !locked ? eps.slice(0, 6) : eps;
 
@@ -89,8 +93,8 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
       return next;
     });
 
-  const gen = () => runOutline(scope, scopeOpt.cost);
-  const fillRest = () => runOutline("full", 12);
+  const gen = () => runOutline(scope, scopeCost(scope));
+  const fillRest = () => runOutline("full", fillRestCost);
 
   return (
     <div className="scroll" style={{ height: "100%" }}>
@@ -175,7 +179,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                           {o.name}
                         </span>
                         <span className="faint num" style={{ fontSize: 11 }}>
-                          {o.eps ? `前 ${o.eps} 集` : `全部 ${total} 集`} · {o.cost} 积分
+                          {o.eps ? `前 ${o.eps} 集` : `全部 ${total} 集`} · {scopeCost(o.key)} 积分
                         </span>
                       </button>
                     );
@@ -205,7 +209,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                   <Sparkles size={16} /> {phase === "done" ? "重新生成大纲" : "AI 生成大纲"}
                 </button>
                 <span className="cost">
-                  <Zap size={12} /> {scopeOpt.name} · 约 <b className="num">{scopeOpt.cost}</b> 积分
+                  <Zap size={12} /> {scopeOpt.name} · 约 <b className="num">{scopeCost(scope)}</b> 积分
                 </span>
               </div>
             </div>
@@ -304,7 +308,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                   <div className="faint" style={{ fontSize: 12 }}>AI 会顺着这 6 集的节奏与人物关系往后铺,口吻不会断</div>
                 </div>
                 <button type="button" className="btn btn-primary btn-sm" style={{ flex: "none" }} onClick={fillRest}>
-                  铺完整 {total} 集 · 补 12 积分
+                  铺完整 {total} 集 · 补 {fillRestCost} 积分
                 </button>
               </div>
             )}

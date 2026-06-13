@@ -8,6 +8,7 @@ import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import {
   PROJECTS,
   getProjectData,
+  type AssembledEpisode,
   type BoardScene,
   type BoardShot,
   type CharacterDef,
@@ -211,6 +212,20 @@ export async function castAiDraft(id: string): Promise<CharacterDef[]> {
     method: "POST",
   });
   return res.characters ?? [];
+}
+
+/** 成片合成（v0.66）：把某集已出片分镜按序拼成完整片（未落库，前端合并后 saveProject）。 */
+export async function assembleEpisode(id: string, ep: number): Promise<AssembledEpisode> {
+  if (USE_MOCK) {
+    return mockDelay(
+      { url: "/videos/showreel-01.mp4", durationSec: 36, shotCount: 6, at: new Date().toISOString() },
+      1800,
+    );
+  }
+  return apiFetch<AssembledEpisode>(`/me/drama/projects/${id}/assemble`, {
+    method: "POST",
+    body: { ep },
+  });
 }
 
 /** 大纲 AI 起草：按 projectInfo 生成分集大纲（未落库，前端合并后再 saveProject）。 */

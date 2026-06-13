@@ -120,6 +120,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/celebrity/mixcut-official-clips", label: "官方明星片段", icon: Sparkles, description: "v0.21：直播切片 / 综艺片段，用户在「我的混剪库」可消费" },
     ],
   },
+  // v0.66：短剧专区 —— web-drama 的个性化配置集中地（扣费确认阈值 / AI 动作单价等）
+  {
+    label: "短剧专区",
+    items: [
+      { href: "/drama/config", label: "个性化配置", icon: Clapperboard, description: "扣费确认阈值（小额免打扰）+ 大纲/分镜/选角/首帧等 AI 动作单价" },
+    ],
+  },
   // v0.5：财务（钱包 + 套餐）保留启用
   {
     label: "财务",

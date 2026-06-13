@@ -6989,6 +6989,12 @@ paths:
   /me/drama/projects/{id}/outline/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }
+  # ── v0.66 短剧专区配置 + 成片合成 ──
+  /me/drama/config:
+    get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（扣费确认阈值 + 各 AI 动作单价；真值在 admin 短剧专区）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/assemble:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: assembleDramaEpisode, summary: '成片合成：把某集已出片分镜按序 ffmpeg 拼接为完整片（产物落 CDN）', responses: { '200': { description: ok } } }
   /me/drama/projects/{id}/epscript/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaEpscript, summary: 'AI 把整集重写为分场+分镜（大模型）', responses: { '200': { description: ok } } }

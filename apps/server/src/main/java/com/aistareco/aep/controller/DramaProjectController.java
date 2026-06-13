@@ -1,5 +1,6 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.service.DramaAssembleService;
 import com.aistareco.aep.service.DramaProjectService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,9 +19,11 @@ import java.util.List;
 public class DramaProjectController {
 
     private final DramaProjectService service;
+    private final DramaAssembleService assembleService;
 
-    public DramaProjectController(DramaProjectService service) {
+    public DramaProjectController(DramaProjectService service, DramaAssembleService assembleService) {
         this.service = service;
+        this.assembleService = assembleService;
     }
 
     /** 列表卡片 DramaProjectSummary[]。 */
@@ -75,5 +78,12 @@ public class DramaProjectController {
     @PostMapping("/{id}/cast/ai-draft")
     public ApiResponse<JsonNode> castAiDraft(Principal principal, @PathVariable String id) {
         return ApiResponse.of(service.castAiDraft(id, principal.getName()));
+    }
+
+    /** 成片合成：把某集已出片分镜按序拼成完整片。body: { ep } → { url, cdnKey, durationSec, shotCount, at }。 */
+    @PostMapping("/{id}/assemble")
+    public ApiResponse<JsonNode> assemble(Principal principal, @PathVariable String id,
+                                          @RequestBody(required = false) JsonNode body) {
+        return ApiResponse.of(assembleService.assemble(id, body, principal.getName()));
     }
 }

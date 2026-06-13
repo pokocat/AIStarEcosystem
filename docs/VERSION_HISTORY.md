@@ -2907,3 +2907,37 @@ voiceName 音色联动、~~aiavatar 反向「应用于」视图~~（✅ v0.61）
   视频 30 分，后续可挪 admin `CelebrityActionPricingService` 统一定价。
 - 「成片配方」(PromptStage) 仍为前端态（只读汇总，不涉及生成，优先级低）；社交账号真实 OAuth
   分发（sau-service）与本版的服务端模拟传输并存，接入时替换 `DramaDistributionService.tick`。
+
+### v0.66（2026-06-12）— 短剧扣费体验 + 按集隔离 + 成片合成（配方退役）
+
+**① LLM 动作 server 端真扣积分 + 小额免打扰**：
+- `DramaProjectService` 注入 `CreditService` + `PlatformConfigService`，四个 AI 动作（大纲起草 /
+  整集分场分镜 / 单场拆镜 / 重抽角色）经 `withCharge`（hold → 生成 → commitHold；失败 releaseHold
+  不扣，refType `DRAMA_AI`）；首帧单价同步改为配置读取。单价 0 = 免费跳过。
+- 前端 `CreditButton` 增加阈值逻辑：消耗 **< confirmThreshold（默认 10）** 直接执行不弹确认；
+  ≥ 阈值才弹 `dramaConfirm`。阈值与各动作单价由新 `GET /api/me/drama/config` 下发
+  （`api/drama-config.ts` 模块级缓存 + `useDramaConfig()` hook，outline/epscript/cast/factory
+  全部从硬编码常量切到配置价）。
+- **admin 新「短剧专区」**（nav group + `/drama/config` 页）：扣费确认阈值 + 6 个动作单价的
+  表单化管理，真值存 `PlatformConfig`（`drama.credit.*`，`DramaConfigSeeder` 幂等 seed 默认值）；
+  分镜视频单价沿用 celebrity `material.video-generate` 定价（页内跳「引擎价格」）。
+**② 按集存档（修切集互相覆盖）**：`ProjectData` + `episodeDocs: Record<ep, {script, storyboard,
+assembled?}>`；epscript / factory / assemble 经 `getEpisodeDoc(data, ep)` 读（episodeDocs 优先，
+老项目回读 legacy `script`/`storyboard` 字段）、`withEpisodeDoc` 写。浏览器实测 ep1↔ep2 内容互不污染。
+**③「成片配方」退役 →「成片合成」**：分镜已真实出片，第 6 阶段改为按序拼接交付。
+- server `DramaAssembleService`（复用 mixcut `FfmpegRunner`）：episodeDocs[ep].storyboard 取有
+  videoUrl 的镜头按场序+镜号 → 下载临时区 → `ffmpeg -f concat -c copy`（失败回退 libx264 重编码）
+  → `CdnUploader` 落 CDN → 返回 `{url, cdnKey, durationSec, shotCount}`；前端合并入
+  episodeDocs[ep].assembled 落库。`POST /api/me/drama/projects/{id}/assemble`。
+- 新 `AssembleStage`（stages-config key 沿用 `prompt` 防大改，名称/副标改「成片合成 · 拼接完整片」）：
+  待拼镜头网格 + 一键拼接 + 成片播放器/下载/重拼；空态引导去视频工厂。`stages/prompt.tsx` 删除。
+**④ 删冗余入口**：`RunAllDialog`（一键连跑）+ workshop 顶栏入口、(workspace) 顶栏「新建短剧」按钮删除。
+
+**验证**：钱包 2864→2848（大纲6+分场10）→重抽-5；流水 hold/commit 成对；阈值 5<10 无弹窗 /
+10≥10 弹窗 / admin 改 99 后 10 也免打扰（改回）；真 ffmpeg 拼 2 镜（2s+3s testsrc/smptebars）
+→ 5.02s mp4 落 cdn-mock 可播；admin 专区页加载真值 + 保存 12 即刻生效（GET 同步）。
+门禁：drama/admin typecheck 0 错、server compile 0 错、contract OK、`DramaProjectServiceTest` 11/11
+（新增 hold/commit、失败 release 两用例）。
+
+**已知未覆盖**：USE_MOCK=1 浏览器级回归本轮未跑（新 api 均带 mock 分支）；老项目（episodeDocs
+启用前）首次保存某集后其它集回读切换为空文档属预期迁移语义。

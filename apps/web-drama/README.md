@@ -67,6 +67,13 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.66 · 2026-06-12 · 扣费体验 + 按集隔离 + 成片合成
+
+- **小额免打扰**：`CreditButton` 消耗 < 阈值（默认 10，admin「短剧专区」可配）直接执行不弹确认；≥ 阈值才弹。各 AI 动作单价从硬编码切到 `GET /me/drama/config`（`api/drama-config.ts` 缓存 + `useDramaConfig()`），server 端四个 LLM 动作真扣积分（hold→commit / 失败 release）。
+- **按集存档**：`ProjectData.episodeDocs`（key=集号）取代单份 script/storyboard；epscript / factory / 成片合成经 `getEpisodeDoc`/`withEpisodeDoc` 读写，**切集不再互相覆盖**（老项目回读 legacy 字段）。
+- **成片合成**（替代「成片配方」）：新 `AssembleStage` —— 本集已出片镜头按序一键拼接（server ffmpeg concat → CDN），含成片播放/下载/重拼与空态引导；`stages/prompt.tsx` 删除（stage key 沿用 `prompt`）。
+- **删冗余**：一键连跑（RunAllDialog）与顶栏「新建短剧」按钮下线。
+
 ### v0.65 · 2026-06-12 · 全站接真后端（server 模式所有接口真连，与 mock 完全隔离）
 
 - **剧集脚本 / 分镜 AI 真连**：`EpScriptStage` 的「重写分场分镜」「衍生上一集 / 给我惊喜」「单场拆镜」走 `ProjectsApi.epscriptAiDraft / splitSceneShots`（真大模型），结果合并入 `ProjectData.script + storyboard` 并 `PUT` 落库。

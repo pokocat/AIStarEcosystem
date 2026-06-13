@@ -38,14 +38,37 @@ public class DramaProjectService {
 
     private final DramaProjectRepository repo;
     private final AiModelInvocationService invocation;
+    private final CreditService creditService;
+    private final PlatformConfigService configs;
     private final ObjectMapper om;
 
     public DramaProjectService(DramaProjectRepository repo,
                                AiModelInvocationService invocation,
+                               CreditService creditService,
+                               PlatformConfigService configs,
                                ObjectMapper om) {
         this.repo = repo;
         this.invocation = invocation;
+        this.creditService = creditService;
+        this.configs = configs;
         this.om = om;
+    }
+
+    /** 扣费包裹（v0.66）：hold → 生成 → commit；失败 release 不扣。价格 0 = 免费跳过。 */
+    private <T> T withCharge(String userId, long price, String desc, java.util.function.Supplier<T> work) {
+        if (price <= 0) return work.get();
+        String ref = "da_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        creditService.hold(userId, price, "DRAMA_AI", ref, desc);
+        try {
+            T out = work.get();
+            creditService.commitHold("DRAMA_AI", ref, price, desc);
+            return out;
+        } catch (RuntimeException e) {
+            try {
+                creditService.releaseHold("DRAMA_AI", ref, desc + " · 失败释放");
+            } catch (Exception ignore) { /* 释放失败仅记账问题，不掩盖原始错误 */ }
+            throw e;
+        }
     }
 
     // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -177,25 +200,30 @@ public class DramaProjectService {
         options.put("max_tokens", 4096);
         options.put("response_format", Map.of("type", "json_object"));
 
-        AiModelInvocationService.AiModelResponse resp;
-        try {
-            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "大纲生成调用失败，请稍后重试。");
-        }
+        long price = count <= 6
+                ? configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_TRIAL, 6)
+                : configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_FULL, 18);
+        return withCharge(userId, price, "短剧大纲 AI 起草（" + count + " 集）", () -> {
+            AiModelInvocationService.AiModelResponse resp;
+            try {
+                resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "大纲生成调用失败，请稍后重试。");
+            }
 
-        ArrayNode episodes = parseEpisodes(resp.content());
-        if (episodes.isEmpty()) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "大纲生成返回的内容无法解析，请重试或换个说法。");
-        }
-        log.info("[drama-project] outline ai-draft ok user={} id={} got={} model={}",
-                userId, id, episodes.size(), resp.modelUsed());
-        ObjectNode out = om.createObjectNode();
-        out.set("episodes", episodes);
-        return out;
+            ArrayNode episodes = parseEpisodes(resp.content());
+            if (episodes.isEmpty()) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+                        "大纲生成返回的内容无法解析，请重试或换个说法。");
+            }
+            log.info("[drama-project] outline ai-draft ok user={} id={} got={} model={}",
+                    userId, id, episodes.size(), resp.modelUsed());
+            ObjectNode out = om.createObjectNode();
+            out.set("episodes", episodes);
+            return out;
+        });
     }
 
     // ── 剧集脚本（分场分镜）AI 起草 ────────────────────────────────────────────────
@@ -236,6 +264,9 @@ public class DramaProjectService {
                 + "\"shots\":[{\"size\":\"景别\",\"move\":\"运镜\",\"dur\":时长秒(整数),\"desc\":\"画面内容(纯视觉)\","
                 + "\"engine\":\"avatar(有人物出镜)或seedance(空镜/特效)\"}]}]}";
 
+        return withCharge(userId,
+                configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_EPSCRIPT, 10),
+                "整集分场分镜 AI 重写（第 " + ep + " 集）", () -> {
         JsonNode root = callJson(system, user, 0.85);
         JsonNode scenesIn = root.path("scenes");
         if (!scenesIn.isArray() || scenesIn.isEmpty()) {
@@ -283,6 +314,7 @@ public class DramaProjectService {
         out.set("scenes", scriptScenes);
         out.set("boardScenes", boardScenes);
         return out;
+        });
     }
 
     /** 把单场（场面描述 + 台词）拆成镜头表。body: { sceneId, place?, action, lines?[], style? } → { shots: BoardShot[] } */
@@ -306,17 +338,21 @@ public class DramaProjectService {
                 + "严格返回 JSON：{\"shots\":[{\"size\":\"景别\",\"move\":\"运镜\",\"dur\":时长秒(整数),"
                 + "\"desc\":\"画面内容(纯视觉)\",\"engine\":\"avatar或seedance\",\"line\":{\"who\":\"说话人\",\"text\":\"这镜的台词(可空)\"}}]}";
 
-        JsonNode root = callJson(system, user, 0.8);
-        JsonNode shotsIn = root.path("shots");
-        if (!shotsIn.isArray() || shotsIn.isEmpty()) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "拆镜返回的内容无法解析，请重试。");
-        }
-        ArrayNode shots = om.createArrayNode();
-        int no = 1;
-        for (JsonNode sh : shotsIn) shots.add(normalizeShot(sh, sceneId, no++));
-        ObjectNode out = om.createObjectNode();
-        out.set("shots", shots);
-        return out;
+        return withCharge(userId,
+                configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SPLIT_SCENE, 6),
+                "单场拆镜 AI", () -> {
+            JsonNode root = callJson(system, user, 0.8);
+            JsonNode shotsIn = root.path("shots");
+            if (!shotsIn.isArray() || shotsIn.isEmpty()) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "拆镜返回的内容无法解析，请重试。");
+            }
+            ArrayNode shots = om.createArrayNode();
+            int no = 1;
+            for (JsonNode sh : shotsIn) shots.add(normalizeShot(sh, sceneId, no++));
+            ObjectNode out = om.createObjectNode();
+            out.set("shots", shots);
+            return out;
+        });
     }
 
     /** 从大纲重抽角色阵容。→ { characters: CharacterDef[] }（未落库）。 */
@@ -338,6 +374,9 @@ public class DramaProjectService {
                 + "严格返回 JSON：{\"characters\":[{\"name\":\"角色名\",\"role\":\"key(主角)或extra(配角)\","
                 + "\"cast\":\"一句话人物卡(性别·年龄·职业)\",\"desc\":\"人物性格与成长弧线\"}]}";
 
+        return withCharge(userId,
+                configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CAST, 5),
+                "从大纲重抽角色 AI", () -> {
         JsonNode root = callJson(system, user, 0.9);
         JsonNode charsIn = root.path("characters");
         if (!charsIn.isArray() || charsIn.isEmpty()) {
@@ -363,6 +402,7 @@ public class DramaProjectService {
         ObjectNode out = om.createObjectNode();
         out.set("characters", chars);
         return out;
+        });
     }
 
     /** BoardShot 归一化（id/no/默认值）。 */
@@ -457,6 +497,8 @@ public class DramaProjectService {
         promptPack.put("scene", "");
         promptPack.set("shots", om.createArrayNode());
         root.set("promptPack", promptPack);
+        // v0.66：按集存档（剧本/分镜/成片），切集互不覆盖
+        root.set("episodeDocs", om.createObjectNode());
         return root;
     }
 

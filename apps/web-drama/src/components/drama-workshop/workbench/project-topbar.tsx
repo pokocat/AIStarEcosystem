@@ -1,7 +1,7 @@
 "use client";
 
 // 顶部项目条 — 设计真源:app.jsx Workbench `header`(项目封面+标题+类型 chip+
-// 集数·时长·画幅+一键连跑+余额徽标)。
+// 集数·时长·画幅+余额徽标)。
 import * as React from "react";
 import { ChevronLeft, LogOut, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
@@ -16,7 +16,6 @@ interface ProjectTopbarProps {
   /** 窄视口隐藏集数·时长·画幅(标题优先) */
   hideMeta?: boolean;
   onHome?: () => void;
-  onRunAll?: () => void;
   onLogout?: () => void;
 }
 
@@ -27,7 +26,6 @@ export function ProjectTopbar({
   balancePulseKey,
   hideMeta,
   onHome,
-  onRunAll,
   onLogout,
 }: ProjectTopbarProps) {
   return (
@@ -91,9 +89,6 @@ export function ProjectTopbar({
         </div>
       )}
       <div className="grow" />
-      <button type="button" className="btn btn-line btn-sm" onClick={onRunAll}>
-        <Zap size={14} /> 一键连跑
-      </button>
       <div className="cost">
         <Zap size={14} /> 余额{" "}
         <b className="num balance-pulse" key={balancePulseKey ?? balance}>

@@ -10,6 +10,7 @@ import { StageHeader } from "../../workbench";
 import { STAGE_BY_KEY } from "../../stages-config";
 import type { WorkshopAction, WorkshopState } from "../../workbench";
 import type { CharacterDef, ProjectData } from "@/mocks/drama-workshop";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import { CharCard } from "./char-card";
 import { AvatarPicker, ScenePicker } from "./avatar-picker";
 import { ProjectsApi } from "@/api";
@@ -32,6 +33,7 @@ const SCENE_LIB = [
 ];
 
 export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
+  const cfg = useDramaConfig();
   const [binding, setBinding] = React.useState<CharacterDef | null>(null);
   const [scenePick, setScenePick] = React.useState<{ id: string; name: string } | null>(null);
   const [sceneLocks, setSceneLocks] = React.useState<Record<string, string>>({});
@@ -51,7 +53,7 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
       const chars = await ProjectsApi.castAiDraft(ctx.projectId);
       dispatch({ type: "setChars", chars });
       await ctx.saveData({ ...data, characters: chars });
-      dispatch({ type: "spend", n: STAGE_BY_KEY.cast.cost });
+      dispatch({ type: "spend", n: cfg.prices.cast });
       toast.success(`已按大纲重新抽取 ${chars.length} 个角色`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "角色生成失败，请稍后重试");
@@ -77,7 +79,7 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
           right={
             <div className="row gap-2">
               <CreditButton
-                cost={STAGE_BY_KEY.cast.cost}
+                cost={cfg.prices.cast}
                 onConfirm={() => void redraftCast()}
                 confirmTitle="重抽角色"
                 confirmBody="AI 会按当前大纲重新抽取角色阵容（会替换现有角色列表）。"

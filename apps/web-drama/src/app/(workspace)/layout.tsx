@@ -20,7 +20,6 @@ import {
   LogOut,
   Menu,
   PenTool,
-  Plus,
   Search,
   Settings,
   Share2,
@@ -442,16 +441,6 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         <span className="num" style={{ fontSize: 13, fontWeight: 700 }}>
           {wallet ? wallet.totalBalance.toLocaleString("zh-CN") : "—"}
         </span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => router.push("/projects?new=1")}
-        title="新建短剧项目"
-        className="btn btn-grad btn-sm"
-      >
-        <Plus size={14} />
-        <span className="ws-btn-label">新建短剧</span>
       </button>
 
       <button

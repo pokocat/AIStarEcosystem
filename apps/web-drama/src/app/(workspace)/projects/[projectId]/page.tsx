@@ -22,7 +22,7 @@ import {
   EpScriptStage,
   FactoryStage,
   OutlineStage,
-  PromptStage,
+  AssembleStage,
   TopicStage,
   type StageContext,
 } from "@/components/drama-workshop/stages";
@@ -120,7 +120,7 @@ function StageOutlet({
     case "factory":
       return <FactoryStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "prompt":
-      return <PromptStage state={state} dispatch={dispatch} data={data} />;
+      return <AssembleStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     default:
       return null;
   }

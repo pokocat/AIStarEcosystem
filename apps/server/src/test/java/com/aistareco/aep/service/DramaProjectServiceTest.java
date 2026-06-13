@@ -31,6 +31,7 @@ class DramaProjectServiceTest {
 
     private Map<String, DramaProject> store;
     private AiModelInvocationService invocation;
+    private CreditService creditService;
     private DramaProjectService svc;
 
     @BeforeEach
@@ -38,7 +39,11 @@ class DramaProjectServiceTest {
         store = new HashMap<>();
         DramaProjectRepository repo = mock(DramaProjectRepository.class);
         invocation = mock(AiModelInvocationService.class);
-        svc = new DramaProjectService(repo, invocation, OM);
+        creditService = mock(CreditService.class);
+        PlatformConfigService configs = mock(PlatformConfigService.class);
+        // 配置读取一律返回调用方默认值（与未配置时的线上行为一致）
+        when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.<Long>getArgument(1));
+        svc = new DramaProjectService(repo, invocation, creditService, configs, OM);
 
         when(repo.save(any())).thenAnswer(inv -> {
             DramaProject p = inv.getArgument(0);
@@ -185,5 +190,36 @@ class DramaProjectServiceTest {
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.outlineAiDraft(id, null, "u1"));
         assertEquals("AI_BAD_OUTPUT", ex.getCode());
+    }
+
+    // ── v0.66 扣费（hold → 生成 → commit；失败 release 不扣） ─────────────────────
+
+    @Test
+    void aiSuccessHoldsAndCommitsCredits() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "{\"episodes\":[{\"no\":1,\"hook\":\"h\",\"synopsis\":\"s\",\"beat\":\"b\"}]}",
+                        "stop", 100L, "ep", "fake-model"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\",\"episodes\":3}", "u1");
+        svc.outlineAiDraft(id, null, "u1");
+        // 默认 count=min(3,6)=3 ≤ 6 → 试铺价 6
+        verify(creditService).hold(eq("u1"), eq(6L), eq("DRAMA_AI"), anyString(), anyString());
+        verify(creditService).commitHold(eq("DRAMA_AI"), anyString(), eq(6L), anyString());
+        verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void aiFailureReleasesHold() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "不是 JSON", "stop", 10L, "ep", "fake-model"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        assertThrows(BusinessException.class,
+                () -> svc.epscriptAiDraft(id, node("{\"ep\":1,\"plot\":\"剧情\"}"), "u1"));
+        verify(creditService).hold(eq("u1"), eq(10L), eq("DRAMA_AI"), anyString(), anyString());
+        verify(creditService).releaseHold(eq("DRAMA_AI"), anyString(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
     }
 }

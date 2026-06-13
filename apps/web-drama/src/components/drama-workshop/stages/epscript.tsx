@@ -21,12 +21,12 @@ import {
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
 import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
 import { ShotFormCard, type FormShot } from "../shot-form";
-import { matById, MATERIALS, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
+import { getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { ProjectsApi, RenderApi } from "@/api";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
 
-const SHOT_GEN_COST = 6;
 
 interface EpScene extends ScriptScene {
   refs: Material[];
@@ -100,18 +100,19 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   );
   const [plot, setPlot] = React.useState<string>(initPlot);
 
+  // v0.66：按集取文档 —— 切集互不覆盖（episodeDocs 优先，老项目回读 legacy 字段）
   const initScenes = React.useCallback((): EpScene[] => {
-    return data.script.scenes.map((s, i) => {
+    return getEpisodeDoc(data, state.ep).script.scenes.map((s, i) => {
       const refs = (i === 0 ? [matById("a1"), matById("r1")] : [matById("r1")]).filter(Boolean) as Material[];
       return { ...s, refs, lines: s.lines.map((l) => ({ ...l })) };
     });
-  }, [data]);
+  }, [data, state.ep]);
   const initShots = React.useCallback((): Record<string, FormShot[]> => {
     const refsFor = (i: number) => (i === 0 ? [matById("a1"), matById("r1")] : [matById("r1")]).filter(Boolean) as Material[];
     return Object.fromEntries(
-      data.storyboard.scenes.map((sc, i) => [sc.id, sc.shots.map((sh) => toFormShot(sh, refsFor(i)))]),
+      getEpisodeDoc(data, state.ep).storyboard.scenes.map((sc, i) => [sc.id, sc.shots.map((sh) => toFormShot(sh, refsFor(i)))]),
     );
-  }, [data]);
+  }, [data, state.ep]);
 
   const [phase, setPhase] = React.useState<"gen" | "done">("done");
   const [scenes, setScenes] = React.useState<EpScene[]>(initScenes);
@@ -123,6 +124,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     { who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` },
   ]);
   const locked = !!state.lockedStages.epscript;
+  const cfg = useDramaConfig();
 
   React.useEffect(() => {
     setScenes(initScenes());
@@ -132,12 +134,13 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     setChat([{ who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` }]);
   }, [state.ep, initScenes, initShots, initCast, initPlot]);
 
-  /** 落库：本地 scenes/shotsMap → ProjectData.script + storyboard（缺 ctx 时跳过，仅本地演示）。 */
+  /** 落库（v0.66）：本地 scenes/shotsMap → episodeDocs[当前集]，切集互不覆盖。 */
   const persist = React.useCallback(
     async (scenesNext: EpScene[], shotsNext: Record<string, FormShot[]>) => {
       if (!ctx) return;
+      const curDoc = getEpisodeDoc(data, state.ep);
       const prevEngine = new Map<string, BoardShot["engine"]>();
-      for (const sc of data.storyboard.scenes) for (const sh of sc.shots) prevEngine.set(sh.id, sh.engine);
+      for (const sc of curDoc.storyboard.scenes) for (const sh of sc.shots) prevEngine.set(sh.id, sh.engine);
       const scriptScenes: ScriptScene[] = scenesNext.map(({ refs: _refs, ...s }) => ({
         ...s,
         lines: s.lines.map((l) => ({ ...l })),
@@ -146,11 +149,13 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         id: s.id,
         shots: (shotsNext[s.id] ?? []).map((sh) => toBoardShot(sh, prevEngine.get(sh.id))),
       }));
-      await ctx.saveData({
-        ...data,
-        script: { ep: state.ep, scenes: scriptScenes },
-        storyboard: { ep: state.ep, scenes: boardScenes },
-      });
+      await ctx.saveData(
+        withEpisodeDoc(data, state.ep, {
+          ...curDoc,
+          script: { ep: state.ep, scenes: scriptScenes },
+          storyboard: { ep: state.ep, scenes: boardScenes },
+        }),
+      );
     },
     [ctx, data, state.ep],
   );
@@ -217,14 +222,14 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   };
 
   /** 基于整集剧情重新生成分场分镜 */
-  const regenFromPlot = () => void runEpDraft(10);
+  const regenFromPlot = () => void runEpDraft(cfg.prices.epscript);
 
   /* —— AI 对话驱动整体重写 —— */
   const sendChat = (text: string) => {
     if (phase === "gen") return;
     setChat((c) => [...c, { who: "me", text }]);
     void runEpDraft(
-      text === "衍生上一集" ? 8 : 10,
+      cfg.prices.epscript,
       text,
       text === "衍生上一集"
         ? "已按上一集的人物关系和节奏衍生出本集脚本,钩子接得上,你看看。"
@@ -313,7 +318,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         setShotsMap(next);
         await persist(scenes, next);
       }
-      dispatch({ type: "spend", n: SHOT_GEN_COST });
+      dispatch({ type: "spend", n: cfg.prices.splitScene });
       toast.success("本场分镜已拆好,逐镜表单可直接改");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "拆镜失败，请稍后重试");
@@ -399,7 +404,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               <span className="grow" />
               {!locked && (
                 <CreditButton
-                  cost={10}
+                  cost={cfg.prices.epscript}
                   onConfirm={regenFromPlot}
                   confirmTitle="重新生成分场分镜"
                   confirmBody="AI 会按当前剧情把整集重写为新的分场分镜。"
@@ -515,7 +520,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                           </button>
                         </div>
                         {!locked && (
-                          <CreditButton cost={SHOT_GEN_COST} onConfirm={() => genShots(s.id, i)} confirmTitle="拆分镜" confirmBody="AI 会把这一场拆成可逐镜编辑的分镜表单。" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }}>
+                          <CreditButton cost={cfg.prices.splitScene} onConfirm={() => genShots(s.id, i)} confirmTitle="拆分镜" confirmBody="AI 会把这一场拆成可逐镜编辑的分镜表单。" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }}>
                             <Wand2 size={13} /> 把这场拆成分镜表单
                           </CreditButton>
                         )}
