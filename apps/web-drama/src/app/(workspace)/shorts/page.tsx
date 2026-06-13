@@ -116,12 +116,15 @@ export default function ShortsStudioPage() {
   const singles = (projectsQ.data ?? []).filter((p) => p.episodes === 1); // 宣传片 / 自传等单集作品
 
   const onMake = (ctx: MakeCtx) => {
-    router.push(
-      "/shorts/make?fmt=" +
-        encodeURIComponent(ctx.format) +
-        (ctx.idea ? "&idea=" + encodeURIComponent(ctx.idea) : "") +
-        (ctx.reopen ? "&reopen=" + encodeURIComponent(ctx.reopen) : ""),
-    );
+    // v0.73 修：点子经 sessionStorage 一次性带入（不入 URL）；fmt / reopen 仍走 URL。
+    if (ctx.idea?.trim() && typeof window !== "undefined") {
+      sessionStorage.setItem("drama.shorts.idea", ctx.idea.trim());
+    }
+    const params = new URLSearchParams();
+    if (ctx.format) params.set("fmt", ctx.format);
+    if (ctx.reopen) params.set("reopen", ctx.reopen);
+    const qs = params.toString();
+    router.push(`/shorts/make${qs ? "?" + qs : ""}`);
   };
   const openProject = (p: DramaProjectSummary) => router.push("/projects/" + p.id);
 

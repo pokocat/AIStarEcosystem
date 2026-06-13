@@ -29,7 +29,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(PromptTemplateSeeder.class);
 
     /** 推新默认 prompt 基线时改这个值；下次启动会刷新 version==1 的行。 */
-    private static final String SEED_VERSION = "v6-2026-06-06-dap-edit-strength";
+    // v7：drama 工作台 prompt 数据化（v0.71）+ 出图/出片 prompt（v0.72）+ script_draft 加 sfx/bgm/fx
+    //     + recipe 抽取（v0.73）。bump 触发 reseedBaselineIfUntouched 刷新未改动行（含 drama.script_draft）。
+    private static final String SEED_VERSION = "v7-2026-06-13-drama-prompts";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

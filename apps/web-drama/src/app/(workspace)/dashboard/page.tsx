@@ -63,8 +63,11 @@ export default function HomePage() {
   const curFmt = SHORT_FORMATS[0];
 
   const goShortMake = (text?: string | null) => {
-    const q = text?.trim() ? `&idea=${encodeURIComponent(text.trim())}` : "";
-    router.push(`/shorts/make?fmt=sell${q}`);
+    // v0.73 修：点子经 sessionStorage 一次性带入（不入 URL，避免长文案/刷新重复请求）；
+    // 自由文本进短视频不预设模版（不再强制 fmt=sell）。
+    const seed = text?.trim();
+    if (seed && typeof window !== "undefined") sessionStorage.setItem("drama.shorts.idea", seed);
+    router.push("/shorts/make");
   };
   // 一句话点子 → 真实立项（DramaProject），再跳到新项目工作台补大纲。
   // 自由文本无题材选择，落到「通用 / 自定义」骨架；点子原文作为 logline，

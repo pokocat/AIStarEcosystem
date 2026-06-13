@@ -6,8 +6,8 @@ import * as React from "react";
 import { Check, Play, Plus, Users, X } from "lucide-react";
 import { MAT_CATS, MATERIALS, type Material } from "@/mocks/drama-workshop";
 
-/* 行内引用 chip:迷你缩略 + 「图片N/视频N」 */
-export function InlineRefChip({ r, n }: { r: Material; n: string | number }) {
+/* 行内引用 chip:迷你缩略 + 「图片N/视频N」+ 可选 × 删除（@ 进来的引用可在正文里直接删） */
+export function InlineRefChip({ r, n, onRemove }: { r: Material; n: string | number; onRemove?: () => void }) {
   return (
     <span
       title={r.name + " · " + (r.cat || "素材")}
@@ -15,7 +15,7 @@ export function InlineRefChip({ r, n }: { r: Material; n: string | number }) {
         display: "inline-flex",
         alignItems: "center",
         gap: 5,
-        padding: "1px 8px 1px 3px",
+        padding: onRemove ? "1px 4px 1px 3px" : "1px 8px 1px 3px",
         margin: "0 2px",
         borderRadius: 8,
         background: "var(--accent-soft)",
@@ -39,6 +39,32 @@ export function InlineRefChip({ r, n }: { r: Material; n: string | number }) {
         {r.kind === "video" && <Play size={7} fill="#fff" strokeWidth={0} />}
       </span>
       {r.kind === "video" ? "视频" : "图片"} {n}
+      {onRemove && (
+        <button
+          type="button"
+          aria-label="删除该引用"
+          title="删除该引用"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove();
+          }}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "var(--accent)",
+            cursor: "pointer",
+            display: "inline-grid",
+            placeItems: "center",
+            padding: 0,
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+          }}
+        >
+          <X size={11} />
+        </button>
+      )}
     </span>
   );
 }
@@ -213,6 +239,15 @@ export function RichScript({
       </span>
     );
   }
+  // 删除某条引用（0-based）：从 refs 移除 + 正文里去掉 [参考N]，并把更大的序号 -1（保持引用对齐）。
+  const removeRef = (idx: number) => {
+    const list = refs ?? [];
+    onRefsChange?.(list.filter((_, i) => i !== idx));
+    let nv = String(text || "").replace(new RegExp(`\\[参考${idx + 1}\\]\\s?`, "g"), "");
+    nv = nv.replace(/\[参考(\d+)\]/g, (_, k) => `[参考${+k > idx + 1 ? +k - 1 : +k}]`);
+    onCommit?.(nv);
+  };
+  const canRemove = !!onCommit && !!onRefsChange;
   const parts = String(text || "").split(/(\[参考\d+\])/);
   const empty = !text || !text.trim();
   return (
@@ -235,7 +270,7 @@ export function RichScript({
           if (m) {
             const r = (refs ?? [])[+m[1] - 1];
             return r ? (
-              <InlineRefChip key={i} r={r} n={m[1]} />
+              <InlineRefChip key={i} r={r} n={m[1]} onRemove={canRemove ? () => removeRef(+m[1] - 1) : undefined} />
             ) : (
               <span key={i} className="faint">
                 [参考{m[1]}]
@@ -260,6 +295,7 @@ export function RefCell({ refs, onChange }: { refs?: Material[]; onChange: (next
           <span
             key={r.id}
             title={`参考${i + 1} · ${r.name} · 脚本里用 [参考${i + 1}] 引用`}
+            className="ref-chip"
             style={{ position: "relative", display: "inline-block" }}
           >
             <span
@@ -283,7 +319,7 @@ export function RefCell({ refs, onChange }: { refs?: Material[]; onChange: (next
               style={{
                 position: "absolute",
                 top: -5,
-                right: -5,
+                left: -5,
                 width: 14,
                 height: 14,
                 borderRadius: "50%",
@@ -298,6 +334,29 @@ export function RefCell({ refs, onChange }: { refs?: Material[]; onChange: (next
             >
               {i + 1}
             </span>
+            <button
+              type="button"
+              aria-label={`删除参考${i + 1}`}
+              title="删除该参考"
+              onClick={() => onChange(list.filter((_, idx) => idx !== i))}
+              style={{
+                position: "absolute",
+                top: -6,
+                right: -6,
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "var(--ink)",
+                color: "#fff",
+                border: "1.5px solid var(--surface)",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                padding: 0,
+              }}
+            >
+              <X size={9} />
+            </button>
           </span>
         ))}
         <button

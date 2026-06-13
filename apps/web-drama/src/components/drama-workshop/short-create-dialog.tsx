@@ -44,9 +44,11 @@ export function ShortCreateDialog({ initialIdea = "" }: { initialIdea?: string }
       inputRef.current?.focus();
       return;
     }
-    const fmt = picked?.key ?? "sell"; // 没选模版默认口播带货
-    const q = idea.trim() ? "&idea=" + encodeURIComponent(idea.trim()) : "";
-    router.push(`/shorts/make?fmt=${encodeURIComponent(fmt)}${q}`);
+    // v0.73 修：点子经 sessionStorage 一次性带入（不入 URL）；没选模版就不带 fmt（别假装套了口播带货）。
+    const seed = idea.trim();
+    if (seed && typeof window !== "undefined") sessionStorage.setItem("drama.shorts.idea", seed);
+    const q = picked?.key ? `?fmt=${encodeURIComponent(picked.key)}` : "";
+    router.push(`/shorts/make${q}`);
   };
 
   return (

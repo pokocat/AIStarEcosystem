@@ -233,9 +233,19 @@ export default function ShortMakerPage() {
 function ShortMakerInner() {
   const router = useRouter();
   const sp = useSearchParams();
-  const fmtKey = sp.get("fmt") ?? "sell";
-  const idea = sp.get("idea");
+  // v0.73 修：fmt 不再默认 sell —— 没选模版就别假装「已套用口播带货」。
+  const fmtKey = sp.get("fmt");
+  const hasTemplate = !!fmtKey;
   const reopen = sp.get("reopen");
+  // idea 不再走 URL（文案太长 / 含敏感内容、且刷新会重复触发生成、重复扣费）：
+  // 经 sessionStorage 一次性带入，读完即清；刷新后无 idea → 不自动重跑。
+  const [idea] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const v = sessionStorage.getItem("drama.shorts.idea");
+    if (v) sessionStorage.removeItem("drama.shorts.idea");
+    return v;
+  });
+  // fmt 仅作 genre / 时长默认兜底（始终非空）；是否「套了模版」看 hasTemplate。
   const fmt = SHORT_FORMATS.find((f) => f.key === fmtKey) ?? SHORT_FORMATS[0];
 
   const [step, setStep] = React.useState<"script" | "factory">("script");
@@ -243,17 +253,17 @@ function ShortMakerInner() {
   // 空脚本 + 仅一句 AI 引导;真带入点子(来自首页/重开)才自动跑一次真实生成。
   const [phase, setPhase] = React.useState<"idle" | "gen" | "done">("idle");
   const realIdea = idea || reopen; // 仅当真带入点子时非空
-  const title = realIdea || fmt.name;
+  const title = realIdea || (hasTemplate ? fmt.name : "短视频");
 
-  // 套模版上下文：把模版的分镜节拍 / 口播结构作为 AI 生成参考，喂进对话流（提示词/skill 加载）。
-  const templateRef = fmt.beats?.length
+  // 套模版上下文：仅当用户「确实选了模版」(hasTemplate)，才把模版节拍作为 AI 生成参考。
+  const templateRef = hasTemplate && fmt.beats?.length
     ? `「${fmt.name}」模版（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）：` +
       fmt.beats.map((b, i) => `镜${i + 1}(${b.dur}s) 画面:${b.visual} 口播:${b.vo}`).join("；")
     : "";
-  // 开场即把模版「装进」对话里：用户一眼看到套了哪个模版、AI 会照什么节拍来。
+  // 开场白：选了模版才说「已套用 X 模版」；没选就给中性引导，不要假装套了口播带货。
   const tplIntro = reopen
     ? "接着改这条短视频 —— 告诉我要怎么调,我重写口播和分镜。"
-    : fmt.beats?.length
+    : hasTemplate && fmt.beats?.length
       ? `已套用【${fmt.name}】模版 —— 我照它的爆款节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）帮你拆,说说你的主题/产品就行。`
       : "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。";
 
@@ -283,7 +293,7 @@ function ShortMakerInner() {
       const theme = instruction ? `${title}。要求：${instruction}` : title;
       const drafts = await ShortDramaApi.aiDraftScripts({
         theme,
-        genre: fmt.name,
+        genre: hasTemplate ? fmt.name : "通用短视频",
         durationSec: total || fmt.dur || 30,
         count: 1,
         reference: templateRef,
@@ -312,7 +322,12 @@ function ShortMakerInner() {
         })),
       );
       setPhase("done");
-      if (aiReply) setChat((c) => [...c, { who: "ai", text: aiReply }]);
+      // 生成完成后对话框一定给一条反馈（不只在「改一版」时）。
+      const audioBits = script.scenes.some((sc) => sc.sfx || sc.bgm || sc.fx) ? "（含音效 / BGM / 特效建议）" : "";
+      setChat((c) => [
+        ...c,
+        { who: "ai", text: aiReply ?? `脚本和分镜已生成 ✓ 共 ${script.scenes.length} 个分镜${audioBits}。右侧可逐镜改，满意就去「视频工厂」出片。` },
+      ]);
       toast.success("口播脚本和分镜已生成,改满意就去出片");
     } catch (e) {
       setPhase("done");
