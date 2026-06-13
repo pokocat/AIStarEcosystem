@@ -7013,9 +7013,9 @@ paths:
     post: { tags: [drama], operationId: aiDraftDramaCast, summary: 'AI 从大纲重抽角色阵容（大模型）', responses: { '200': { description: ok } } }
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/frame:
-    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }
   /me/drama/render/clip:
-    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）。v0.72 起 body={kind?,vars{},name?,duration_sec?,ratio?,project_id?,frame_url?}：出片提示词模板服务端化（drama.clip_video/drama.short_clip_video）', responses: { '200': { description: ok } } }
   # ── v0.65 短剧分发（用户侧平台连接 + 发布任务）。DramaDistributionController。 ──
   /me/distribution/platforms:
     get: { tags: [distribution], operationId: listMyDistributionPlatforms, summary: '平台目录 + 我的连接状态', responses: { '200': { description: ok } } }

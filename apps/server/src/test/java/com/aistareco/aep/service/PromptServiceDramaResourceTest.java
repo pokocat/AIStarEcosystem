@@ -37,6 +37,31 @@ class PromptServiceDramaResourceTest {
     }
 
     @Test
+    void dramaMediaPromptsResolveFromResource() {
+        // v0.72：图像/视频是单 prompt（无 system，整块为 user 模板）。
+        PromptService svc = realService();
+        for (String key : new String[]{
+                PromptService.KEY_DRAMA_FRAME_IMAGE, PromptService.KEY_DRAMA_CLIP_VIDEO,
+                PromptService.KEY_DRAMA_SHORT_FRAME_IMAGE, PromptService.KEY_DRAMA_SHORT_CLIP_VIDEO}) {
+            PromptService.ResolvedPrompt p = svc.resolve(key);
+            assertEquals("resource", p.origin(), key + " 应能从 .md 解析（非 code 兜底）");
+            assertTrue(p.userTemplate().contains("{{visual}}"), key + " 模板应含 {{visual}} 占位符");
+        }
+    }
+
+    @Test
+    void mediaFillStripsUnfilledPlaceholders() {
+        // renderFrame/renderClip 用 vars 填充后会清掉残留占位符；这里验证 fill + 清洗组合行为。
+        PromptService.ResolvedPrompt p = realService().resolve(PromptService.KEY_DRAMA_FRAME_IMAGE);
+        String filled = PromptService.fill(p.userTemplate(), java.util.Map.of(
+                "visual", "林夏拆纸箱抬头看窗外", "size", "中近景", "move", "缓慢推近"))
+                .replaceAll("\\{\\{[^}]*}}", "").trim();
+        assertTrue(filled.contains("林夏拆纸箱抬头看窗外"));
+        assertTrue(filled.contains("景别：中近景"));
+        assertFalse(filled.contains("{{"), "残留占位符应被清掉");
+    }
+
+    @Test
     void outlineTemplateKeepsPlaceholders() {
         PromptService.ResolvedPrompt p = realService().resolve(PromptService.KEY_DRAMA_OUTLINE);
         assertTrue(p.userTemplate().contains("{{title}}"));

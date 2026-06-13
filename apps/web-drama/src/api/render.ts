@@ -14,15 +14,21 @@ export interface RenderedFrame {
   cdnKey: string;
 }
 
+// v0.72：出图/出片提示词模板在 server 端（admin「短剧专区·提示词设置」可改）。
+// 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
-  prompt: string;
+  /** shot=工作台分镜（drama.frame_image）/ short=短视频分镜（drama.short_frame_image）。默认 shot。 */
+  kind?: "shot" | "short";
+  /** 填充 server 端 prompt 模板的占位符：visual/size/move/lineClause/castClause/styleSuffix/metaPrefix… */
+  vars: Record<string, string>;
   ratio?: string;
   count?: number;
   refImages?: string[];
 }
 
 export interface RenderClipInput {
-  prompt: string;
+  kind?: "shot" | "short";
+  vars: Record<string, string>;
   name?: string;
   durationSec?: number;
   ratio?: string;
@@ -53,7 +59,8 @@ export async function renderFrame(input: RenderFrameInput): Promise<RenderedFram
   const res = await apiFetch<{ frames: RenderedFrame[]; cost: number }>("/me/drama/render/frame", {
     method: "POST",
     body: {
-      prompt: input.prompt,
+      kind: input.kind ?? "shot",
+      vars: input.vars,
       ratio: input.ratio,
       count: input.count,
       ref_images: input.refImages,
@@ -83,7 +90,8 @@ export async function renderClip(input: RenderClipInput): Promise<DramaEpisodeJo
   return apiFetch<DramaEpisodeJob>("/me/drama/render/clip", {
     method: "POST",
     body: {
-      prompt: input.prompt,
+      kind: input.kind ?? "shot",
+      vars: input.vars,
       name: input.name,
       duration_sec: input.durationSec,
       ratio: input.ratio,

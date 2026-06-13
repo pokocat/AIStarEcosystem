@@ -56,6 +56,12 @@ public class PromptService {
     public static final String KEY_DRAMA_EPSCRIPT = "drama.epscript";
     public static final String KEY_DRAMA_SPLIT_SCENE = "drama.split_scene";
     public static final String KEY_DRAMA_CAST = "drama.cast";
+    /** v0.72+: 分镜出图 / 出片提示词（图像 / 视频生成，单 prompt，无 system）。
+     *  workbench=短剧工作台分镜；short=短视频工坊分镜。 */
+    public static final String KEY_DRAMA_FRAME_IMAGE = "drama.frame_image";
+    public static final String KEY_DRAMA_CLIP_VIDEO = "drama.clip_video";
+    public static final String KEY_DRAMA_SHORT_FRAME_IMAGE = "drama.short_frame_image";
+    public static final String KEY_DRAMA_SHORT_CLIP_VIDEO = "drama.short_clip_video";
     /** v0.51+: 数字人资产平台（dap）各大模型调用点位（DapMultimodalClient / DapJobRunner）。 */
     public static final String KEY_DAP_PERSONA = "dap.persona";
     public static final String KEY_DAP_TRANSLATE_EDIT = "dap.translate_edit";
@@ -73,6 +79,8 @@ public class PromptService {
             List.of(KEY_SCRIPT_DRAFT, KEY_SELLING_POINTS, KEY_VARIABLE_EXTRACT, KEY_VIDEO_REF_ANALYSIS,
                     KEY_APPEARANCE_FORGE, KEY_DRAMA_SCRIPT_DRAFT,
                     KEY_DRAMA_OUTLINE, KEY_DRAMA_EPSCRIPT, KEY_DRAMA_SPLIT_SCENE, KEY_DRAMA_CAST,
+                    KEY_DRAMA_FRAME_IMAGE, KEY_DRAMA_CLIP_VIDEO,
+                    KEY_DRAMA_SHORT_FRAME_IMAGE, KEY_DRAMA_SHORT_CLIP_VIDEO,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT);

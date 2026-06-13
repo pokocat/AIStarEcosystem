@@ -137,15 +137,22 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
   const draftCount = shots.filter((s) => s.flow === "draft").length;
 
   /** 镜头 → 生成提示词（画面 + 镜头参数 + 台词 + 角色参考名）。 */
-  const shotPrompt = (s: FactoryShot) => {
+  // v0.72：出图/出片提示词模板在 server 端（drama.frame_image / drama.clip_video，admin 可改）。
+  // 这里只产出填充用的结构化 vars；可选片段（台词/出场人物）仍在前端按是否存在拼成整句，
+  // 与 v0.71 文本 prompt 的 {{xxxClause}} 同规则。
+  const shotVars = (s: FactoryShot): Record<string, string> => {
     const castNames = (s.cast ?? [])
       .map((cid) => state.chars.find((c) => c.id === cid)?.name)
       .filter(Boolean)
       .join("、");
-    return `${s.desc || s.place}。景别：${s.size}，运镜：${s.move}。` +
-      (s.line?.text ? `台词：${s.line.text}。` : "") +
-      (castNames ? `出场人物：${castNames}。` : "") +
-      `${data.projectInfo.type}风格。`;
+    return {
+      visual: s.desc || s.place || "",
+      size: s.size || "",
+      move: s.move || "",
+      lineClause: s.line?.text ? `台词：${s.line.text}。` : "",
+      castClause: castNames ? `出场人物：${castNames}。` : "",
+      styleSuffix: `${data.projectInfo.type}风格。`,
+    };
   };
 
   /** 首帧渲染（真实图像生成，出 4 版候选）。 */
@@ -155,7 +162,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     setBusy({ id, to: "frame" });
     try {
       const frames = await RenderApi.renderFrame({
-        prompt: shotPrompt(s),
+        kind: "shot",
+        vars: shotVars(s),
         ratio: data.projectInfo.ratio,
         count: 4,
       });
@@ -182,7 +190,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     setBusy({ id, to: "clip" });
     try {
       const job = await RenderApi.renderClip({
-        prompt: shotPrompt(s),
+        kind: "shot",
+        vars: shotVars(s),
         name: `第${state.ep}集 镜${s.no}`,
         durationSec: s.dur,
         ratio: data.projectInfo.ratio,
@@ -236,7 +245,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       setBusy({ id: d.id, to: "frame" });
       try {
         const frames = await RenderApi.renderFrame({
-          prompt: shotPrompt(d),
+          kind: "shot",
+          vars: shotVars(d),
           ratio: data.projectInfo.ratio,
           count: 4,
         });

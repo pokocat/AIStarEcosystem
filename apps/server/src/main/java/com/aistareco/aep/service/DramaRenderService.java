@@ -24,7 +24,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -57,6 +59,7 @@ public class DramaRenderService {
     private final CdnUploader cdnUploader;
     private final CdnUrlSigner signer;
     private final PlatformConfigService configs;
+    private final PromptService promptService;
     private final ObjectMapper om;
 
     public DramaRenderService(AiModelInvocationService invocation,
@@ -66,6 +69,7 @@ public class DramaRenderService {
                               CdnUploader cdnUploader,
                               CdnUrlSigner signer,
                               PlatformConfigService configs,
+                              PromptService promptService,
                               ObjectMapper om) {
         this.invocation = invocation;
         this.usage = usage;
@@ -74,7 +78,34 @@ public class DramaRenderService {
         this.cdnUploader = cdnUploader;
         this.signer = signer;
         this.configs = configs;
+        this.promptService = promptService;
         this.om = om;
+    }
+
+    /**
+     * 出图 / 出片提示词服务端化（v0.72）：模板存 PromptService（admin「短剧专区 · 提示词设置」可改），
+     * 前端只传结构化字段（vars）+ kind（shot=工作台分镜 / short=短视频分镜）选模板。
+     * §8.0：模板未配置（origin=code）即报错，不静默兜底。过渡期仍兼容旧客户端直接传 prompt。
+     */
+    private String buildMediaPrompt(JsonNode body, String workbenchKey, String shortKey) {
+        String legacy = text(body, "prompt");
+        if (legacy != null && !legacy.isBlank()) return legacy; // 过渡兼容；新前端走 vars
+        String kind = orDefault(text(body, "kind"), "shot");
+        String key = "short".equals(kind) ? shortKey : workbenchKey;
+        PromptService.ResolvedPrompt p = promptService.resolve(key);
+        if ("code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "分镜出图 / 出片的提示词尚未配置（promptKey=" + key
+                            + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
+        }
+        Map<String, String> vars = new LinkedHashMap<>();
+        JsonNode v = body.get("vars");
+        if (v != null && v.isObject()) {
+            v.fields().forEachRemaining(e ->
+                    vars.put(e.getKey(), e.getValue() == null || e.getValue().isNull() ? "" : e.getValue().asText()));
+        }
+        // fill 后清掉未填充的残留占位符，避免把 {{x}} 原样喂给图像/视频模型
+        return PromptService.fill(p.userTemplate(), vars).replaceAll("\\{\\{[^}]*}}", "").trim();
     }
 
     // ── 首帧（图像） ─────────────────────────────────────────────────────────────
@@ -84,8 +115,9 @@ public class DramaRenderService {
      * → { frames: [ { url, cdnKey } ... ], cost }
      */
     public JsonNode renderFrame(JsonNode body, String userId) {
-        String prompt = text(body, "prompt");
-        if (prompt == null || prompt.isBlank()) {
+        String prompt = buildMediaPrompt(body,
+                PromptService.KEY_DRAMA_FRAME_IMAGE, PromptService.KEY_DRAMA_SHORT_FRAME_IMAGE);
+        if (prompt.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再渲染首帧");
         }
         AiModelEndpoint ep = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
@@ -208,8 +240,9 @@ public class DramaRenderService {
      * → 视频任务卡（轮询走 /api/me/drama/episodes/jobs/{id}）。
      */
     public JsonNode renderClip(JsonNode body, String userId) {
-        String prompt = text(body, "prompt");
-        if (prompt == null || prompt.isBlank()) {
+        String prompt = buildMediaPrompt(body,
+                PromptService.KEY_DRAMA_CLIP_VIDEO, PromptService.KEY_DRAMA_SHORT_CLIP_VIDEO);
+        if (prompt.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再生成视频");
         }
         int durationSec = clamp(body.path("duration_sec").asInt(5), 2, 60);

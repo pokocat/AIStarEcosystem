@@ -337,14 +337,19 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       let patch: Partial<FormShot>;
       if (to === "frame") {
         const frames = await RenderApi.renderFrame({
-          prompt: `${shot.visual}。景别：${shot.size}，运镜：${shot.move}。`,
+          kind: "shot",
+          vars: { visual: shot.visual, size: shot.size, move: shot.move, lineClause: "", castClause: "", styleSuffix: "" },
           ratio: data.projectInfo.ratio,
           count: 1,
         });
         patch = { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url };
       } else {
         const job = await RenderApi.renderClip({
-          prompt: `${shot.visual}。景别：${shot.size}，运镜：${shot.move}。${shot.voText ? "台词：" + shot.voText : ""}`,
+          kind: "shot",
+          vars: {
+            visual: shot.visual, size: shot.size, move: shot.move,
+            lineClause: shot.voText ? `台词：${shot.voText}` : "", castClause: "", styleSuffix: "",
+          },
           name: `第${state.ep}集 镜${shot.no}`,
           durationSec: shot.dur,
           ratio: data.projectInfo.ratio,

@@ -24,10 +24,12 @@ interface DramaPromptMeta {
   blurb: string;
   /** 该 prompt 调用时由后端填充的占位符，列给运营避免乱删。 */
   vars: string[];
-  /** 推荐 temperature（留空即用，无需每次设）。 */
+  /** 推荐 temperature（留空即用，无需每次设）。仅文本类用。 */
   defaultTemp: number;
   /** 试运行样例参数。 */
   sample: Record<string, string>;
+  /** text=对话生成（有 system + 调参）；media=图像/视频单 prompt（无 system / 不调温度）。默认 text。 */
+  kind?: "text" | "media";
 }
 
 // 与 server PromptService 的 drama.* key 对齐（v0.71）。新 key 加进这里即出现友好名 + 说明。
@@ -86,9 +88,44 @@ const DRAMA_META: Record<string, DramaPromptMeta> = {
     defaultTemp: 0.9,
     sample: { theme: "上班族手忙脚乱的早晨", genre: "都市喜剧", duration: "38", count: "1" },
   },
+  "drama.frame_image": {
+    label: "⑤ 分镜首帧出图（工作台）",
+    blurb: "短剧工作台「视频工厂」点首帧时，把分镜镜头描述拼成图像生成提示词。这是给图像模型看的单条 prompt（无 system / 不吃温度参数）。",
+    vars: ["{{visual}} 画面内容", "{{size}} 景别", "{{move}} 运镜", "{{lineClause}} 台词（可空）", "{{castClause}} 出场人物（可空）", "{{styleSuffix}} 题材风格后缀"],
+    defaultTemp: 0,
+    sample: { visual: "林夏在客厅拆纸箱，抬头望向窗外", size: "中近景", move: "缓慢推近", lineClause: "", castClause: "出场人物：林夏。", styleSuffix: "悬疑短剧风格。" },
+    kind: "media",
+  },
+  "drama.clip_video": {
+    label: "⑥ 分镜出片 / 直出视频（工作台）",
+    blurb: "短剧工作台分镜「直出 / 动态」视频时的提示词（首帧参考由后端自动追加）。",
+    vars: ["{{visual}} 画面内容", "{{size}} 景别", "{{move}} 运镜", "{{lineClause}} 台词（可空）", "{{castClause}} 出场人物（可空）", "{{styleSuffix}} 题材风格后缀"],
+    defaultTemp: 0,
+    sample: { visual: "对楼窗口人影一闪而过", size: "特写", move: "固定", lineClause: "", castClause: "", styleSuffix: "悬疑短剧风格。" },
+    kind: "media",
+  },
+  "drama.short_frame_image": {
+    label: "⑦ 短视频首帧出图",
+    blurb: "短视频工坊单镜首帧出图提示词。`{{metaPrefix}}` 是全片设定（主角/场景/风格），保证跨镜一致。",
+    vars: ["{{metaPrefix}} 全片设定前缀", "{{visual}} 画面内容", "{{styleSuffix}} 风格后缀"],
+    defaultTemp: 0,
+    sample: { metaPrefix: "主角：阿杰，年轻上班族。场景：清晨出租屋。", visual: "闹钟狂响，阿杰一个鲤鱼打挺弹起", styleSuffix: "竖屏短视频画面，口播带货风格。" },
+    kind: "media",
+  },
+  "drama.short_clip_video": {
+    label: "⑧ 短视频出片视频",
+    blurb: "短视频工坊单镜出片视频提示词。",
+    vars: ["{{metaPrefix}} 全片设定前缀", "{{visual}} 画面内容", "{{lineClause}} 口播（可空）", "{{styleSuffix}} 风格后缀"],
+    defaultTemp: 0,
+    sample: { metaPrefix: "主角：阿杰，年轻上班族。", visual: "阿杰举着保温杯对镜头比心", lineClause: "口播：家人们这个真的绝了。", styleSuffix: "竖屏短视频，口播带货风格。" },
+    kind: "media",
+  },
 };
 
-const DRAMA_KEY_ORDER = ["drama.outline", "drama.epscript", "drama.split_scene", "drama.cast", "drama.script_draft"];
+const DRAMA_KEY_ORDER = [
+  "drama.outline", "drama.epscript", "drama.split_scene", "drama.cast", "drama.script_draft",
+  "drama.frame_image", "drama.clip_video", "drama.short_frame_image", "drama.short_clip_video",
+];
 
 export default function DramaPromptsPage() {
   const toast = useToast();
@@ -134,6 +171,8 @@ export default function DramaPromptsPage() {
 
   const active = list.find((p) => p.promptKey === activeKey) ?? null;
   const meta = activeKey ? DRAMA_META[activeKey] : undefined;
+  // 图像/视频是单 prompt：无 system、不吃 temperature/maxTokens/jsonMode。
+  const isMedia = meta?.kind === "media";
 
   React.useEffect(() => {
     if (!active) return;
@@ -256,18 +295,22 @@ export default function DramaPromptsPage() {
               <CardContent className="space-y-4">
                 {meta && <p className="text-sm text-muted-foreground">{meta.blurb}</p>}
 
-                <div>
-                  <div className="mb-1.5 text-sm font-medium">System Prompt（角色设定 / 总规则）</div>
-                  <Textarea
-                    value={systemPrompt}
-                    onChange={(e) => setSystemPrompt(e.target.value)}
-                    rows={4}
-                    className="font-mono text-xs"
-                  />
-                </div>
+                {!isMedia && (
+                  <div>
+                    <div className="mb-1.5 text-sm font-medium">System Prompt（角色设定 / 总规则）</div>
+                    <Textarea
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
+                      rows={4}
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                )}
 
                 <div>
-                  <div className="mb-1.5 text-sm font-medium">User 模板（具体指令 + 输出 JSON 结构）</div>
+                  <div className="mb-1.5 text-sm font-medium">
+                    {isMedia ? "出图 / 出片提示词模板（给图像 / 视频模型的单条 prompt）" : "User 模板（具体指令 + 输出 JSON 结构）"}
+                  </div>
                   <Textarea
                     value={userTemplate}
                     onChange={(e) => setUserTemplate(e.target.value)}
@@ -286,7 +329,12 @@ export default function DramaPromptsPage() {
                   )}
                 </div>
 
-                {/* 调参 + 人性化说明 */}
+                {/* 调参 + 人性化说明（仅文本生成；图像/视频不吃这些参数） */}
+                {isMedia ? (
+                  <p className="rounded-lg border border-dashed border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+                    图像 / 视频生成只用上面这条提示词；不使用 temperature / max_tokens / JSON 模式。比例、版数、首帧参考由前端按镜头传入，单价在「短剧专区 · 个性化配置」里调。
+                  </p>
+                ) : (
                 <div className="rounded-lg border border-border p-4">
                   <div className="mb-3 text-sm font-medium">调用参数（留空即用推荐默认，无需每次设置）</div>
                   <div className="flex flex-wrap items-start gap-6">
@@ -325,6 +373,7 @@ export default function DramaPromptsPage() {
                     </div>
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
 

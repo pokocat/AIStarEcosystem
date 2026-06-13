@@ -353,7 +353,8 @@ function ShortMakerInner() {
     try {
       if (to === "frame") {
         const frames = await RenderApi.renderFrame({
-          prompt: `${metaCtx}${shot.visual}。竖屏短视频画面，${fmt.name}风格。`,
+          kind: "short",
+          vars: { metaPrefix: metaCtx, visual: shot.visual, styleSuffix: `竖屏短视频画面，${fmt.name}风格。` },
           ratio: "9:16",
           count: 1,
         });
@@ -361,7 +362,11 @@ function ShortMakerInner() {
         toast.success("首帧已出,确认后再生成视频");
       } else {
         const job = await RenderApi.renderClip({
-          prompt: `${metaCtx}${shot.visual}。${shot.voText ? "口播：" + shot.voText : ""}竖屏短视频，${fmt.name}风格。`,
+          kind: "short",
+          vars: {
+            metaPrefix: metaCtx, visual: shot.visual,
+            lineClause: shot.voText ? `口播：${shot.voText}` : "", styleSuffix: `竖屏短视频，${fmt.name}风格。`,
+          },
           name: `${fmt.name} 镜${shot.no}`,
           durationSec: shot.dur,
           ratio: "9:16",
