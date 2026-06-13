@@ -140,7 +140,7 @@ export default function ShortsStudioPage() {
           type="button"
           className="btn btn-grad"
           style={{ height: 44, padding: "0 18px" }}
-          onClick={() => onMake({ format: "sell", idea: null })}
+          onClick={() => router.push("/shorts/new")}
         >
           <Zap size={16} /> 新建短视频
         </button>
@@ -149,7 +149,7 @@ export default function ShortsStudioPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(158px, 1fr))", gap: 16, alignItems: "start" }}>
         <button
           type="button"
-          onClick={() => onMake({ format: "sell", idea: null })}
+          onClick={() => router.push("/shorts/new")}
           className="col center"
           style={{
             aspectRatio: "3/4",
