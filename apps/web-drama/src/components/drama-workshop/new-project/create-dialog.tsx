@@ -36,9 +36,10 @@ export function CreateDialog({
   const [overlayOpen, setOverlayOpen] = React.useState(focusTemplate);
   const [sparkN, setSparkN] = React.useState(0);
 
-  // 只展示「确有模板」的内容类型（排除「通用/自定义」）。
+  // 短剧 = 多集连续剧：套模板浮层只列「有多集模板」的类型（悬疑/宫斗/甜宠…）。
+  // 单集模板（企业宣传片/公益/口播/自传）属短视频，不在短剧创建流里露出（仍可从「模板库」创建）。
   const typesWithTpl = React.useMemo(
-    () => cat.contentTypes.filter((t) => t.key !== "custom" && (cat.templates[t.key]?.length ?? 0) > 0),
+    () => cat.contentTypes.filter((t) => t.key !== "custom" && (cat.templates[t.key] ?? []).some((tp) => tp.eps > 1)),
     [cat],
   );
   // 运营把目录模板清空时（catalog templates: {}），不渲染浮层空壳 —— 退回纯对话框。
@@ -48,7 +49,7 @@ export function CreateDialog({
     if (!browseKey && typesWithTpl.length) setBrowseKey(typesWithTpl[0].key);
   }, [browseKey, typesWithTpl]);
   const browseType = cat.contentTypes.find((t) => t.key === browseKey) ?? null;
-  const browseTpls = browseType ? cat.templates[browseType.key] ?? [] : [];
+  const browseTpls = browseType ? (cat.templates[browseType.key] ?? []).filter((tp) => tp.eps > 1) : [];
 
   const canSubmit = idea.trim().length > 0 || !!picked;
 
