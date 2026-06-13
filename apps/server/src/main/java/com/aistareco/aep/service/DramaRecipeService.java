@@ -151,6 +151,147 @@ public class DramaRecipeService {
         return out;
     }
 
+    /** 已发布配方（创意库）：按套用热度降序。任意已登录 drama 用户可见。 */
+    public List<JsonNode> listPublished() {
+        List<DramaRecipe> rows =
+                new ArrayList<>(repo.findByStatusAndDeletedAtIsNullOrderByUpdatedAtDesc("published"));
+        rows.sort((a, b) -> Integer.compare(b.getUseCount(), a.getUseCount()));
+        List<JsonNode> out = new ArrayList<>();
+        for (DramaRecipe r : rows) out.add(toDto(r));
+        return out;
+    }
+
+    /** 运营审核队列：待审（submitted）。 */
+    public List<JsonNode> listForReview() {
+        List<JsonNode> out = new ArrayList<>();
+        for (DramaRecipe r : repo.findByStatusAndDeletedAtIsNullOrderByUpdatedAtDesc("submitted")) out.add(toDto(r));
+        return out;
+    }
+
+    /** 运营发布（→ 进创意库）。 */
+    public JsonNode publish(String recipeId) {
+        DramaRecipe r = requireRecipe(recipeId);
+        OffsetDateTime now = OffsetDateTime.now();
+        r.setStatus("published");
+        r.setPublishedAt(now);
+        r.setReviewNote(null);
+        r.setUpdatedAt(now);
+        repo.save(r);
+        log.info("[drama-recipe] published id={}", recipeId);
+        return toDto(r);
+    }
+
+    /** 运营驳回（带理由）。 */
+    public JsonNode reject(String recipeId, String note) {
+        DramaRecipe r = requireRecipe(recipeId);
+        r.setStatus("rejected");
+        r.setReviewNote(note == null ? "" : note);
+        r.setUpdatedAt(OffsetDateTime.now());
+        repo.save(r);
+        log.info("[drama-recipe] rejected id={} note={}", recipeId, note);
+        return toDto(r);
+    }
+
+    /** 套用已发布配方 → 新建一个预填项目（mainline + 分集骨架 + 角色原型），返回 { projectId }。 */
+    public JsonNode applyToNewProject(String recipeId, String userId) {
+        DramaRecipe r = requireRecipe(recipeId);
+        if (!"published".equals(r.getStatus())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_PUBLISHED", "该配方尚未发布，不能套用。");
+        }
+        JsonNode data = readJson(r.getPayloadJson());
+        OffsetDateTime now = OffsetDateTime.now();
+        String pid = "dp_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        ObjectNode pd = seedProjectFromRecipe(r, data);
+        boolean hasBeats = data.path("beats").isArray() && data.path("beats").size() > 0;
+        DramaProject p = DramaProject.builder()
+                .id(pid).ownerUserId(userId)
+                .title(orDefault(r.getTitle(), "未命名短剧"))
+                .type(orDefault(r.getType(), "短剧"))
+                .typeKey(orDefault(r.getTypeKey(), "custom"))
+                .ratio(orDefault(r.getRatio(), "9:16"))
+                .episodes(r.getEpisodes() > 0 ? r.getEpisodes() : 12)
+                .progress(0).stage(hasBeats ? 2 : 1).mode("template")
+                .coverFrom(orDefault(r.getCoverFrom(), "#f97316"))
+                .coverTo(orDefault(r.getCoverTo(), "#e11d48"))
+                .payloadJson(write(pd)).createdAt(now).updatedAt(now).build();
+        projectRepo.save(p);
+        r.setUseCount(r.getUseCount() + 1);
+        r.setUpdatedAt(now);
+        repo.save(r);
+        log.info("[drama-recipe] applied recipe={} → project={} user={}", recipeId, pid, userId);
+        ObjectNode out = om.createObjectNode();
+        out.put("projectId", pid);
+        return out;
+    }
+
+    private DramaRecipe requireRecipe(String id) {
+        return repo.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_RECIPE_NOT_FOUND", "配方不存在"));
+    }
+
+    /** 用 recipe 预填一份「空但合法」的 ProjectData：mainline + 分集大纲骨架 + 角色原型。 */
+    private ObjectNode seedProjectFromRecipe(DramaRecipe r, JsonNode data) {
+        ObjectNode root = om.createObjectNode();
+        ObjectNode info = om.createObjectNode();
+        info.put("title", orDefault(r.getTitle(), "未命名短剧"));
+        info.put("type", orDefault(r.getType(), "短剧"));
+        int eps = r.getEpisodes() > 0 ? r.getEpisodes() : 12;
+        info.put("episodes", eps);
+        info.put("duration", "每集 ~75 秒");
+        info.put("ratio", orDefault(r.getRatio(), "9:16"));
+        info.put("logline", "");
+        info.put("mainline", data.path("mainline").asText(""));
+        root.set("projectInfo", info);
+        root.set("topicCards", om.createArrayNode());
+
+        ArrayNode episodes = om.createArrayNode();
+        int i = 1;
+        for (JsonNode b : data.path("beats")) {
+            if (!b.isObject()) continue;
+            ObjectNode e = om.createObjectNode();
+            e.put("no", b.path("no").asInt(i));
+            e.put("hook", b.path("hook").asText(""));
+            e.put("synopsis", b.path("beat").asText(""));
+            e.put("beat", b.path("beat").asText(""));
+            episodes.add(e);
+            i++;
+        }
+        root.set("episodes", episodes);
+
+        ArrayNode chars = om.createArrayNode();
+        int ci = 1;
+        for (JsonNode c : data.path("characters")) {
+            if (!c.isObject()) continue;
+            ObjectNode ch = om.createObjectNode();
+            ch.put("id", "ch_" + ci);
+            ch.put("name", c.path("archetype").asText("角色 " + ci));
+            ch.put("role", "key".equals(c.path("role").asText()) ? "key" : "extra");
+            ch.put("cast", "");
+            ch.put("desc", c.path("desc").asText(""));
+            ch.put("avatar", "a" + (((ci - 1) % 8) + 1));
+            ch.put("bound", false);
+            chars.add(ch);
+            ci++;
+        }
+        root.set("characters", chars);
+
+        ObjectNode script = om.createObjectNode();
+        script.put("ep", 1);
+        script.set("scenes", om.createArrayNode());
+        root.set("script", script);
+        ObjectNode sb = om.createObjectNode();
+        sb.put("ep", 1);
+        sb.set("scenes", om.createArrayNode());
+        root.set("storyboard", sb);
+        ObjectNode pp = om.createObjectNode();
+        pp.put("ep", 1);
+        pp.put("scene", "");
+        pp.set("shots", om.createArrayNode());
+        root.set("promptPack", pp);
+        root.set("episodeDocs", om.createObjectNode());
+        return root;
+    }
+
     // ── 工具 ────────────────────────────────────────────────────────────────────
 
     private String summarizeOutline(JsonNode episodes) {

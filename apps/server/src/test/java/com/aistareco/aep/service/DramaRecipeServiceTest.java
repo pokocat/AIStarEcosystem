@@ -118,4 +118,65 @@ class DramaRecipeServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.extractFromProject("dp1", "u2"));
         assertEquals("DRAMA_PROJECT_NOT_FOUND", ex.getCode());
     }
+
+    // ── 审核 / 发布 / 套用 ───────────────────────────────────────────────────────
+
+    private DramaRecipe seedRecipe(String id, String status) {
+        DramaRecipe r = DramaRecipe.builder()
+                .id(id).ownerUserId("u1").sourceProjectId("dp1").status(status).origin("extracted")
+                .title("反转悬疑配方").summary("适合都市悬疑").typeKey("mystery").type("悬疑短剧").ratio("9:16").episodes(80)
+                .coverFrom("#f97316").coverTo("#e11d48").useCount(0)
+                .payloadJson("{\"mainline\":\"通用追凶\",\"beats\":[{\"no\":1,\"hook\":\"开局悬念\",\"beat\":\"建立不安\"}],"
+                        + "\"characters\":[{\"role\":\"key\",\"archetype\":\"坚韧女主\",\"desc\":\"成长弧线\"}],\"hooks\":[],\"notes\":\"\"}")
+                .build();
+        when(recipeRepo.findByIdAndDeletedAtIsNull(id)).thenReturn(Optional.of(r));
+        return r;
+    }
+
+    @Test
+    void publishSetsStatusAndTimestamp() {
+        seedRecipe("dr1", "submitted");
+        JsonNode dto = svc.publish("dr1");
+        assertEquals("published", dto.path("status").asText());
+        assertNotNull(dto.path("publishedAt").asText(null));
+    }
+
+    @Test
+    void rejectSetsStatusAndNote() {
+        seedRecipe("dr1", "submitted");
+        JsonNode dto = svc.reject("dr1", "去具体化不够");
+        assertEquals("rejected", dto.path("status").asText());
+        assertEquals("去具体化不够", dto.path("reviewNote").asText());
+    }
+
+    @Test
+    void applyPublishedRecipeSeedsNewProjectFromBeats() {
+        seedRecipe("dr1", "published");
+        when(projectRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        JsonNode out = svc.applyToNewProject("dr1", "u9");
+        String pid = out.path("projectId").asText();
+        assertTrue(pid.startsWith("dp_"));
+        // 校验落库的项目：mode=template、mainline 来自配方、分集骨架来自 beats
+        org.mockito.ArgumentCaptor<DramaProject> cap = org.mockito.ArgumentCaptor.forClass(DramaProject.class);
+        verify(projectRepo).save(cap.capture());
+        DramaProject p = cap.getValue();
+        assertEquals("u9", p.getOwnerUserId());
+        assertEquals("template", p.getMode());
+        assertTrue(p.getPayloadJson().contains("通用追凶"));
+        assertTrue(p.getPayloadJson().contains("开局悬念"));
+    }
+
+    @Test
+    void applyUnpublishedRecipeThrows() {
+        seedRecipe("dr1", "submitted");
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.applyToNewProject("dr1", "u9"));
+        assertEquals("DRAMA_RECIPE_NOT_PUBLISHED", ex.getCode());
+    }
+
+    @Test
+    void publishMissingRecipeThrows() {
+        when(recipeRepo.findByIdAndDeletedAtIsNull("nope")).thenReturn(Optional.empty());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.publish("nope"));
+        assertEquals("DRAMA_RECIPE_NOT_FOUND", ex.getCode());
+    }
 }

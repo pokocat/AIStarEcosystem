@@ -6998,6 +6998,22 @@ paths:
   /me/drama/projects/{id}/extract-recipe:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: extractDramaRecipe, summary: 'v0.73 抽 skill：把本项目反向蒸馏成可复用配方 Recipe（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
+  # ── v0.73 短剧配方 Recipe（抽 skill 飞轮）：用户侧 + 运营侧（运营在 web-drama 后台审核/发布，非 admin）──
+  /me/drama/recipes:
+    get: { tags: [drama], operationId: listMyDramaRecipes, summary: '我抽取/提交过的配方（含审核状态）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/published:
+    get: { tags: [drama], operationId: listPublishedDramaRecipes, summary: '创意库：已发布配方（任意已登录，按套用热度降序）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/review:
+    get: { tags: [drama], operationId: listDramaRecipesForReview, summary: '运营审核队列：待审配方（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/publish:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: publishDramaRecipe, summary: '运营发布配方（OPERATOR/SUPER_ADMIN）→ 进创意库', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/reject:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: rejectDramaRecipe, summary: '运营驳回配方（OPERATOR/SUPER_ADMIN）。body:{note?}', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/apply:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: applyDramaRecipe, summary: '套用已发布配方 → 新建预填项目，返回 {projectId}', responses: { '200': { description: ok } } }
   # ── v0.67 短剧平台目录（运营在 web-drama 端维护：热点/创意推荐/模板等）。读=任意已登录；写=运营 ──
   /me/drama/catalog:
     get: { tags: [drama], operationId: getDramaCatalog, summary: '短剧平台目录（内容类型/模板/格式/热点/创意推荐；未配项 null，前端回退默认）', responses: { '200': { description: ok } } }
