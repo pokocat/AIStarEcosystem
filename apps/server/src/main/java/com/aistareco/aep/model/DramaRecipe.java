@@ -1,0 +1,82 @@
+package com.aistareco.aep.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.OffsetDateTime;
+
+/**
+ * 短剧「可复用配方」Recipe（v0.73，抽 skill 飞轮）。
+ *
+ * 由一部已完成的爆款 {@link DramaProject} 反向蒸馏而来：剥离具体剧情，保留可迁移的
+ * 结构 / 套路 / 爽点节奏（mainline 模板 + 分集 beats + 角色原型 + 钩子），供他人「一键套用」
+ * 去拍不同题材的新剧。
+ *
+ * 生命周期：用户从自己的项目抽取 → status=submitted（待运营审核）→ 运营 publish / reject。
+ * published 的 Recipe 进创意库，所有 drama 用户可见、可套用。
+ *
+ * payloadJson 结构（前端 DramaRecipe TS 接口即契约真源）：
+ *   { mainline, beats:[{no,hook,beat}], characters:[{role,archetype,desc}], hooks:[], notes }
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "drama_recipes")
+public class DramaRecipe {
+
+    @Id
+    private String id;
+
+    /** 抽取者（提交人）。运营审核不改属主。 */
+    @Column(name = "owner_user_id")
+    private String ownerUserId;
+
+    /** 抽自哪部项目（可空：官方手建配方无来源项目）。 */
+    @Column(name = "source_project_id")
+    private String sourceProjectId;
+
+    /** draft | submitted | published | rejected */
+    private String status;
+
+    /** extracted（从项目抽取）| official（运营手建） */
+    private String origin;
+
+    private String title;
+    /** 一句话配方说明（适合拍什么、爽点在哪）。 */
+    @Column(length = 512)
+    private String summary;
+
+    @Column(name = "type_key")
+    private String typeKey;
+    private String type;
+    private String ratio;
+    private int episodes;
+
+    @Column(name = "cover_from")
+    private String coverFrom;
+    @Column(name = "cover_to")
+    private String coverTo;
+
+    /** 套用次数（发布后累计，用于热度排序）。 */
+    @Column(name = "use_count")
+    private int useCount;
+
+    /** 审核备注 / 驳回理由。 */
+    @Column(name = "review_note", length = 512)
+    private String reviewNote;
+
+    @Lob
+    @Column(name = "payload_json", columnDefinition = "LONGTEXT")
+    private String payloadJson;
+
+    @Column(name = "created_at")
+    private OffsetDateTime createdAt;
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
+    @Column(name = "published_at")
+    private OffsetDateTime publishedAt;
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+}

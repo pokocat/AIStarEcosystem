@@ -2,6 +2,7 @@ package com.aistareco.aep.controller;
 
 import com.aistareco.aep.service.DramaAssembleService;
 import com.aistareco.aep.service.DramaProjectService;
+import com.aistareco.aep.service.DramaRecipeService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatus;
@@ -20,10 +21,13 @@ public class DramaProjectController {
 
     private final DramaProjectService service;
     private final DramaAssembleService assembleService;
+    private final DramaRecipeService recipeService;
 
-    public DramaProjectController(DramaProjectService service, DramaAssembleService assembleService) {
+    public DramaProjectController(DramaProjectService service, DramaAssembleService assembleService,
+                                  DramaRecipeService recipeService) {
         this.service = service;
         this.assembleService = assembleService;
+        this.recipeService = recipeService;
     }
 
     /** 列表卡片 DramaProjectSummary[]。 */
@@ -85,5 +89,11 @@ public class DramaProjectController {
     public ApiResponse<JsonNode> assemble(Principal principal, @PathVariable String id,
                                           @RequestBody(required = false) JsonNode body) {
         return ApiResponse.of(assembleService.assemble(id, body, principal.getName()));
+    }
+
+    /** v0.73 抽 skill：把本项目反向蒸馏成可复用配方 Recipe（status=submitted，待运营审核）。→ Recipe DTO。 */
+    @PostMapping("/{id}/extract-recipe")
+    public ApiResponse<JsonNode> extractRecipe(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(recipeService.extractFromProject(id, principal.getName()));
     }
 }

@@ -6995,6 +6995,9 @@ paths:
   /me/drama/projects/{id}/assemble:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: assembleDramaEpisode, summary: '成片合成：把某集已出片分镜按序 ffmpeg 拼接为完整片（产物落 CDN）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/extract-recipe:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: extractDramaRecipe, summary: 'v0.73 抽 skill：把本项目反向蒸馏成可复用配方 Recipe（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
   # ── v0.67 短剧平台目录（运营在 web-drama 端维护：热点/创意推荐/模板等）。读=任意已登录；写=运营 ──
   /me/drama/catalog:
     get: { tags: [drama], operationId: getDramaCatalog, summary: '短剧平台目录（内容类型/模板/格式/热点/创意推荐；未配项 null，前端回退默认）', responses: { '200': { description: ok } } }
