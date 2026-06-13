@@ -10,6 +10,7 @@ import { Lightbulb, Plus, RefreshCw, Save, Sparkles, Trash2, X } from "lucide-re
 import { useAuth } from "@ai-star-eco/api-client";
 import { getCatalog, resetCatalog, saveCatalog, type CatalogField, type HotTopic } from "@/api/catalog";
 import type { IdeaRec } from "@/mocks/drama-workshop";
+import { RecipeReviewSection } from "@/components/drama-workshop/recipe-review-section";
 
 export default function OperationsPage() {
   const { user } = useAuth();
@@ -207,6 +208,9 @@ export default function OperationsPage() {
               </button>
             </div>
           </div>
+
+          {/* 配方审核（v0.73 抽 skill）—— 用户从爆款抽出的可复用模板在此发布到创意库 */}
+          <RecipeReviewSection />
 
           <div className="muted" style={{ fontSize: 12.5, padding: "0 2px" }}>
             注:模板库 / 格式 / 内容类型也走同一套后端目录（drama.catalog.*），可按需扩进本页编辑。

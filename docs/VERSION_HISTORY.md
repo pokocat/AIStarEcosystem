@@ -3043,3 +3043,26 @@ web-drama「把这部抽成模板」入口 + 创意库一键套用（用 Recipe 
 
 门禁：server compile、web-drama typecheck 绿；**真机验证**：server 重启 +9 key 入库 / 刷新 25 行基线 / `drama.script_draft` 含 sfx-bgm-fx / extract-recipe 端点 404 业务码均 OK。
 **未跑**：fake-llm(8091) 未起，实际「生成出音效字段」+ 灯箱/删除的浏览器级回归未跑（前端 typecheck 绿、为标准实现）。
+
+### v0.73 slice 2-3（2026-06-13）— 抽 skill 飞轮前端闭环 + 全链路浏览器验收
+
+后端（slice 1-2）之上补齐前端，飞轮跑通：
+- **运营审核/发布**（在 web-drama 运营后台，**非 admin**）：`/operations` 页新增 `RecipeReviewSection`
+  ——`isOperator`(operatorRole) 可见，列待审配方（标题/摘要/题材/可展开看 mainline+beats 骨架），发布 / 驳回（带可空理由）。
+- **用户主动抽取**：`WorkPreviewModal` 加「抽成模板」按钮（仅已完成项目），调
+  `RecipesApi.extractFromProject` → 提交待审 + toast。
+- **创意库一键套用**：短剧工坊 `/projects` 新增 `RecipeLibrarySection`（已发布配方横向卡），套用 →
+  `RecipesApi.applyRecipe` → 后端建预填项目 → 跳工作台。
+- `RecipesApi`（api/recipes.ts + index）：extract / listMine / listPublished / listForReview /
+  publish / reject / applyRecipe，均带 USE_MOCK 分支。dev fake-llm 加「可复用配方」分支返回结构化 recipe。
+
+**门禁全绿**：server compile + `DramaRecipeServiceTest` 10/10 + drama 后端 22/22；`pnpm check:api-contract` OK；
+web-drama `typecheck` + `build` 绿。
+**全链路真机验收**（8080 + fake-llm 8091 + web-drama 3011，真实浏览器，登录态 celebrity_operator/operator）：
+① 用户在「午夜来电」点抽成模板 → toast「已提交运营审核」；② 运营 `/operations` 配方审核见待审 2，点发布 →
+toast + 待审 2→1 / 已发布 1→2；③ 用户 `/projects` 创意库点套用开拍 → 落到新项目
+`dp_7959ec1c80e6`，工作台「大纲分集 · 模板已预填」，主线 = 配方 mainline、6 段 beats 已铺成分集大纲、
+mode=template / stage=2。**生产可上线**。
+
+**已知**：dev fake-llm 仅联调用；生产连真模型时配方质量取决于真模型对 `drama.recipe_extract` 提示词的产出。
+抽取暂不扣费（如需计费加 `drama.credit.recipe-extract`）。

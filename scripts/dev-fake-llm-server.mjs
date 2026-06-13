@@ -64,6 +64,30 @@ function buildProse(text) {
 
 // ── 结构化 JSON（短剧脚本 / 变量 / 卖点等 json_object 模式） ──────────────────
 function buildJsonContent(text) {
+  // 配方抽取（v0.73 抽 skill · 必须最先判：prompt 里含"分集大纲/角色阵容"会误命中下面的分支）
+  if (/可复用配方|蒸馏成|reusable recipe/.test(text)) {
+    return JSON.stringify({
+      title: "重生复仇·步步反杀",
+      summary: "适合都市/古装复仇爽剧：开局打脸 + 中段反转 + 末集双线收束，强钩子快节奏。",
+      mainline:
+        "主角遭遇背叛跌入谷底，凭借信息差与隐藏底牌步步反杀，最终在众目睽睽下完成身份揭晓与复仇闭环。",
+      beats: [
+        { no: 1, hook: "开局即打脸", beat: "建立屈辱与隐藏底牌，抛出最大悬念" },
+        { no: 2, hook: "身份反转伏笔", beat: "对手轻敌，主角暗中布局" },
+        { no: 3, hook: "信任崩塌", beat: "盟友/亲情线第一次撕裂" },
+        { no: 4, hook: "高光反击", beat: "第一次正面打脸，爽感拉满" },
+        { no: 5, hook: "终极揭谜", beat: "幕后真相浮出，前情呼应" },
+        { no: 6, hook: "收束留扣", beat: "复仇闭环 + 续作悬念" },
+      ],
+      characters: [
+        { role: "key", archetype: "扮猪吃虎的复仇女主", desc: "隐忍布局，弧线从谷底到掌控全局" },
+        { role: "key", archetype: "笑面虎反派", desc: "步步紧逼，最终自食恶果" },
+        { role: "extra", archetype: "关键转述者", desc: "推动信息差的线索人物" },
+      ],
+      hooks: ["开场即打脸", "每集留扣", "中段大反转", "末集双线收束"],
+      notes: "竖屏 9:16、单集 60-90s、强钩子快节奏；最适合复仇/逆袭题材。",
+    });
+  }
   // 分场分镜（剧集脚本工作台 · 必须先于"短剧脚本"与"大纲"分支）
   if (/分场|镜头表|拆成镜头/.test(text)) {
     const mkShots = (descs) =>

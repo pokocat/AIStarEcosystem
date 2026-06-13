@@ -33,3 +33,4 @@ export * as ScriptsApi from "./scripts";
 export * as ShortDramaApi from "./short-drama";
 export * as ProjectsApi from "./projects";
 export * as RenderApi from "./render";
+export * as RecipesApi from "./recipes";

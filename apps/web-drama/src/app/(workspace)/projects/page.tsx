@@ -13,7 +13,8 @@ import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
 import { REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
-import { ProjectsApi } from "@/api";
+import { ProjectsApi, RecipesApi } from "@/api";
+import { RecipeLibrarySection } from "@/components/drama-workshop/recipe-library-section";
 import { useAsync } from "@/lib/drama-query";
 import { aiErrorMessage } from "@/lib/ai-error";
 
@@ -29,6 +30,7 @@ function ProjectsHubInner() {
   const router = useRouter();
   const sp = useSearchParams();
   const [preview, setPreview] = React.useState<DramaProjectSummary | null>(null);
+  const [extracting, setExtracting] = React.useState(false);
 
   const { data: projects, isLoading: loading, error, refetch } = useAsync(
     "/me/drama/projects",
@@ -167,6 +169,9 @@ function ProjectsHubInner() {
         <span className="btn btn-line btn-sm" style={{ flex: "none" }}>去审阅 <ArrowRight size={13} /></span>
       </button>
 
+      {/* 创意库 · 爆款模板（v0.73 抽 skill）—— 平台发布的可复用配方，一键套用预填新剧 */}
+      <RecipeLibrarySection />
+
       {/* 紧凑竖版网格 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, alignItems: "start" }}>
         <button
@@ -226,10 +231,25 @@ function ProjectsHubInner() {
           onClose={() => setPreview(null)}
           scriptLabel="切到脚本视图"
           deriveLabel="衍生新剧"
+          extracting={extracting}
           onScript={() => {
             const id = preview.id;
             setPreview(null);
             router.push(`/projects/${id}`);
+          }}
+          onExtract={async () => {
+            if (extracting) return;
+            const src = preview;
+            setExtracting(true);
+            try {
+              await RecipesApi.extractFromProject(src.id);
+              setPreview(null);
+              toast.success(`已把《${src.title}》抽成模板,提交平台运营审核,通过后进创意库`);
+            } catch (e) {
+              toast.error(aiErrorMessage(e, "抽取模板失败，请稍后重试"));
+            } finally {
+              setExtracting(false);
+            }
           }}
           onDerive={async () => {
             const src = preview;

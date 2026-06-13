@@ -3,7 +3,7 @@
 // 成片预览弹窗 — 点击已完成的短剧 / 短视频时先看成片效果,
 // 可切换到脚本视图,或一键衍生新剧。
 import * as React from "react";
-import { Clapperboard, Copy, Play, X } from "lucide-react";
+import { Boxes, Clapperboard, Copy, Play, X } from "lucide-react";
 
 export interface WorkPreviewItem {
   title: string;
@@ -21,15 +21,22 @@ export function WorkPreviewModal({
   onClose,
   onScript,
   onDerive,
+  onExtract,
   scriptLabel = "查看脚本",
   deriveLabel = "衍生新剧",
+  extractLabel = "抽成模板",
+  extracting = false,
 }: {
   item: WorkPreviewItem;
   onClose: () => void;
   onScript: () => void;
   onDerive: () => void;
+  /** v0.73 抽 skill：把这部爆款蒸馏成可复用配方（提交运营审核）。提供后显示「抽成模板」按钮。 */
+  onExtract?: () => void;
   scriptLabel?: string;
   deriveLabel?: string;
+  extractLabel?: string;
+  extracting?: boolean;
 }) {
   const [playing, setPlaying] = React.useState(false);
   const vertical = item.ratio !== "16:9";
@@ -96,6 +103,18 @@ export function WorkPreviewModal({
               <Copy size={15} /> {deriveLabel}
             </button>
           </div>
+          {onExtract && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ justifyContent: "center", marginTop: 2 }}
+              disabled={extracting}
+              onClick={onExtract}
+              title="把这部爆款的结构 / 套路抽成可复用模板，提交平台运营审核后进创意库"
+            >
+              <Boxes size={15} /> {extracting ? "AI 抽取中…" : extractLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>
