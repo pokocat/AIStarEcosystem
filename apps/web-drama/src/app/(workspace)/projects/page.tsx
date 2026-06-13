@@ -34,7 +34,8 @@ function ProjectsHubInner() {
     "/me/drama/projects",
     () => ProjectsApi.listProjects(),
   );
-  const list = projects ?? [];
+  // 只收多集连续短剧；单集作品（宣传片 / 自传 / 口播等）归「短视频工坊」，避免串档。
+  const list = (projects ?? []).filter((p) => p.episodes > 1);
 
   // 兼容旧链接 ?new=1 → 跳新建流
   React.useEffect(() => {

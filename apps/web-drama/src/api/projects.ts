@@ -43,9 +43,13 @@ export interface SaveProjectOptions {
   progress?: number;
 }
 
-/** 多集短剧列表（单集作品在「短视频工坊」，此处只收多集）。 */
+/**
+ * 用户全部短剧项目（多集短剧 + 单集作品/宣传片）。后端按 updatedAt 倒序返回全集；
+ * 由各页按集数分流：短剧工坊只收多集（episodes > 1），短视频工坊只收单集（episodes === 1）。
+ * （mock 同样返回全集，保持与真后端一致。）
+ */
 export async function listProjects(): Promise<DramaProjectSummary[]> {
-  if (USE_MOCK) return mockDelay(PROJECTS.filter((p) => p.episodes > 1));
+  if (USE_MOCK) return mockDelay(PROJECTS);
   return apiFetch<DramaProjectSummary[]>("/me/drama/projects");
 }
 

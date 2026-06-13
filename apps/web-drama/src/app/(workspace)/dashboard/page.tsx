@@ -56,8 +56,9 @@ export default function HomePage() {
   const cat = useDramaCatalog(); // 运营可维护的「近期热点 / 创意推荐」
   const recs = Array.from({ length: 6 }).map((_, i) => cat.ideas[(page * 6 + i) % Math.max(1, cat.ideas.length)]);
   // v0.66:「继续上次」取真实最近项目（无项目则不显示），不再用 mock PROJECTS。
+  // 这里是短剧首页 → 只接最近的多集短剧；单集作品（宣传片等）的续做在「短视频工坊」。
   const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
-  const main = projectsQ.data?.[0];
+  const main = projectsQ.data?.find((p) => p.episodes > 1);
   const isShort = mode === "short";
   const curFmt = SHORT_FORMATS[0];
 
