@@ -118,3 +118,4 @@ DataInitializer 默认 seed 两个账号：
 - 之前版本：见 `product_spec_ai_celebrity.md`。
 
 - **v0.66**：新增导航组「短剧专区」→ `/drama/config`（web-drama 个性化配置：扣费确认阈值 + 大纲/分场分镜/拆镜/选角/首帧单价；真值存 `aep_platform_configs` `drama.credit.*`，分镜视频单价沿用「引擎价格」`material.video-generate`）。
+- **v0.71**：短剧专区新增 `/drama/prompts`「提示词设置」。短剧各 AI 动作（大纲 `drama.outline` / 整集分场分镜 `drama.epscript` / 单场拆镜 `drama.split_scene` / 选角 `drama.cast` + 短视频脚本 `drama.script_draft`）的 system + user 提示词与调参在此维护。复用「Prompt 管理」同一后端 `/api/admin/prompts`（SUPER_ADMIN/OPERATOR），按 `drama.*` 过滤；每个 prompt 给友好名 / 用途 / 可用占位符提示 / 试运行，并对 `temperature`（创意发散度）/ `max_tokens`（单次最长输出）/ `jsonMode`（强制 JSON）三个专业参数加人性化说明 + 推荐默认占位（留空即用，无需每次设）。改完保存 1 分钟内全节点生效。

@@ -49,8 +49,13 @@ public class PromptService {
     public static final String KEY_VIDEO_REF_ANALYSIS = "material.video_ref_analysis";
     /** v0.43+: 形象锻造对话（music/drama 形象顾问）。 */
     public static final String KEY_APPEARANCE_FORGE = "appearance.forge";
-    /** v0.43+: 短剧脚本起草（drama 短剧生成）。 */
+    /** v0.43+: 短剧脚本起草（drama 短视频脚本生成）。 */
     public static final String KEY_DRAMA_SCRIPT_DRAFT = "drama.script_draft";
+    /** v0.71+: 短剧六阶段工作台各 AI 动作（共用 DRAMA_SCRIPT_DRAFT 端点绑定，prompt 各自可配）。 */
+    public static final String KEY_DRAMA_OUTLINE = "drama.outline";
+    public static final String KEY_DRAMA_EPSCRIPT = "drama.epscript";
+    public static final String KEY_DRAMA_SPLIT_SCENE = "drama.split_scene";
+    public static final String KEY_DRAMA_CAST = "drama.cast";
     /** v0.51+: 数字人资产平台（dap）各大模型调用点位（DapMultimodalClient / DapJobRunner）。 */
     public static final String KEY_DAP_PERSONA = "dap.persona";
     public static final String KEY_DAP_TRANSLATE_EDIT = "dap.translate_edit";
@@ -67,6 +72,7 @@ public class PromptService {
     public static final List<String> KNOWN_KEYS =
             List.of(KEY_SCRIPT_DRAFT, KEY_SELLING_POINTS, KEY_VARIABLE_EXTRACT, KEY_VIDEO_REF_ANALYSIS,
                     KEY_APPEARANCE_FORGE, KEY_DRAMA_SCRIPT_DRAFT,
+                    KEY_DRAMA_OUTLINE, KEY_DRAMA_EPSCRIPT, KEY_DRAMA_SPLIT_SCENE, KEY_DRAMA_CAST,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT);

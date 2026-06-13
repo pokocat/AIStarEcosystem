@@ -1,5 +1,6 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.PromptParamsDto;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.DramaProject;
 import com.aistareco.aep.repository.DramaProjectRepository;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,6 +33,7 @@ class DramaProjectServiceTest {
 
     private Map<String, DramaProject> store;
     private AiModelInvocationService invocation;
+    private PromptService promptService;
     private CreditService creditService;
     private DramaProjectService svc;
 
@@ -39,11 +42,15 @@ class DramaProjectServiceTest {
         store = new HashMap<>();
         DramaProjectRepository repo = mock(DramaProjectRepository.class);
         invocation = mock(AiModelInvocationService.class);
+        promptService = mock(PromptService.class);
+        // 默认：prompt 已配置（origin=resource）。具体测试可对单个 key 覆盖为 code（未配置）。
+        when(promptService.resolve(anyString())).thenAnswer(inv -> new PromptService.ResolvedPrompt(
+                "你是助手。只输出 JSON。", "{{input}}", new PromptParamsDto(null, null, null), "resource"));
         creditService = mock(CreditService.class);
         PlatformConfigService configs = mock(PlatformConfigService.class);
         // 配置读取一律返回调用方默认值（与未配置时的线上行为一致）
         when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.<Long>getArgument(1));
-        svc = new DramaProjectService(repo, invocation, creditService, configs, OM);
+        svc = new DramaProjectService(repo, invocation, promptService, creditService, configs, OM);
 
         when(repo.save(any())).thenAnswer(inv -> {
             DramaProject p = inv.getArgument(0);
@@ -221,5 +228,40 @@ class DramaProjectServiceTest {
         verify(creditService).hold(eq("u1"), eq(10L), eq("DRAMA_AI"), anyString(), anyString());
         verify(creditService).releaseHold(eq("DRAMA_AI"), anyString(), anyString());
         verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+    }
+
+    // ── v0.71 prompt 数据化（resolve → fill → 参数 / 未配置闸） ─────────────────────
+
+    @Test
+    void throwsWhenPromptNotConfigured() {
+        // 端点已绑，但 prompt 未配置（DB / resource 都没有，origin=code）→ 不调模型、不扣费
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(promptService.resolve(PromptService.KEY_DRAMA_EPSCRIPT)).thenReturn(new PromptService.ResolvedPrompt(
+                "你是助手。", "{{input}}", new PromptParamsDto(null, null, null), "code"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.epscriptAiDraft(id, node("{\"ep\":1,\"plot\":\"剧情\"}"), "u1"));
+        assertEquals("PROMPT_NOT_CONFIGURED", ex.getCode());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void promptParamsOverrideTemperatureAndMaxTokens() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(promptService.resolve(PromptService.KEY_DRAMA_OUTLINE)).thenReturn(new PromptService.ResolvedPrompt(
+                "sys", "为《{{title}}》生成 {{count}} 集大纲", new PromptParamsDto(0.3, 1234, true), "db"));
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "{\"episodes\":[{\"no\":1,\"hook\":\"h\",\"synopsis\":\"s\",\"beat\":\"b\"}]}",
+                        "stop", 1L, "ep", "fake-model"));
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\",\"episodes\":3}", "u1");
+        svc.outlineAiDraft(id, null, "u1");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> opts = ArgumentCaptor.forClass(Map.class);
+        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), opts.capture());
+        assertEquals(0.3, opts.getValue().get("temperature"), "运营设的 temperature 应覆盖默认");
+        assertEquals(1234, opts.getValue().get("max_tokens"), "运营设的 max_tokens 应生效");
     }
 }

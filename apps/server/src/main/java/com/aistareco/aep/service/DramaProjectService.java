@@ -38,17 +38,20 @@ public class DramaProjectService {
 
     private final DramaProjectRepository repo;
     private final AiModelInvocationService invocation;
+    private final PromptService promptService;
     private final CreditService creditService;
     private final PlatformConfigService configs;
     private final ObjectMapper om;
 
     public DramaProjectService(DramaProjectRepository repo,
                                AiModelInvocationService invocation,
+                               PromptService promptService,
                                CreditService creditService,
                                PlatformConfigService configs,
                                ObjectMapper om) {
         this.repo = repo;
         this.invocation = invocation;
+        this.promptService = promptService;
         this.creditService = creditService;
         this.configs = configs;
         this.om = om;
@@ -185,34 +188,19 @@ public class DramaProjectService {
         int total = info.path("episodes").asInt(row.getEpisodes() > 0 ? row.getEpisodes() : 6);
         int count = clamp(body != null ? body.path("count").asInt(Math.min(total, 6)) : Math.min(total, 6), 1, 12);
 
-        String system = "你是资深短剧编剧。只输出 JSON，不要解释。";
-        String user = "为短剧《" + title + "》（类型：" + type + "）生成分集大纲，共 " + count + " 集。"
-                + (logline.isBlank() ? "" : "一句话简介：" + logline + "。")
-                + (mainline.isBlank() ? "" : "主线：" + mainline + "。")
-                + "每集要有强钩子。严格返回 JSON：{\"episodes\":[{\"no\":集号(整数),"
-                + "\"hook\":\"开场钩子\",\"synopsis\":\"剧情梗概\",\"beat\":\"情绪转折/记忆点\"}]}";
-
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", system));
-        messages.add(Map.of("role", "user", "content", user));
-        Map<String, Object> options = new LinkedHashMap<>();
-        options.put("temperature", 0.9);
-        options.put("max_tokens", 4096);
-        options.put("response_format", Map.of("type", "json_object"));
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("title", title);
+        vars.put("type", type);
+        vars.put("count", String.valueOf(count));
+        vars.put("loglineClause", logline.isBlank() ? "" : "一句话简介：" + logline + "。");
+        vars.put("mainlineClause", mainline.isBlank() ? "" : "主线：" + mainline + "。");
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_OUTLINE, vars, 0.9);
 
         long price = count <= 6
                 ? configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_TRIAL, 6)
                 : configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_FULL, 18);
         return withCharge(userId, price, "短剧大纲 AI 起草（" + count + " 集）", () -> {
-            AiModelInvocationService.AiModelResponse resp;
-            try {
-                resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
-            } catch (BusinessException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "大纲生成调用失败，请稍后重试。");
-            }
-
+            AiModelInvocationService.AiModelResponse resp = invoke(pc);
             ArrayNode episodes = parseEpisodes(resp.content());
             if (episodes.isEmpty()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
@@ -255,19 +243,17 @@ public class DramaProjectService {
             }
         }
 
-        String system = "你是资深短剧导演兼分镜师。只输出 JSON，不要解释。";
-        String user = "把第 " + ep + " 集按剧情拆成分场与镜头表。剧情：" + plot + "。"
-                + (style.isBlank() ? "" : "作品风格：" + style + "。")
-                + (castSb.length() == 0 ? "" : "出场人物：" + castSb + "。")
-                + "严格返回 JSON：{\"scenes\":[{\"place\":\"内景/外景 · 地点 · 时间\",\"mood\":\"情绪\","
-                + "\"action\":\"这场发生了什么\",\"lines\":[{\"who\":\"角色名或旁白\",\"text\":\"台词\"}],"
-                + "\"shots\":[{\"size\":\"景别\",\"move\":\"运镜\",\"dur\":时长秒(整数),\"desc\":\"画面内容(纯视觉)\","
-                + "\"engine\":\"avatar(有人物出镜)或seedance(空镜/特效)\"}]}]}";
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("ep", String.valueOf(ep));
+        vars.put("plot", plot);
+        vars.put("styleClause", style.isBlank() ? "" : "作品风格：" + style + "。");
+        vars.put("castClause", castSb.length() == 0 ? "" : "出场人物：" + castSb + "。");
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_EPSCRIPT, vars, 0.85);
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_EPSCRIPT, 10),
                 "整集分场分镜 AI 重写（第 " + ep + " 集）", () -> {
-        JsonNode root = callJson(system, user, 0.85);
+        JsonNode root = callJson(pc);
         JsonNode scenesIn = root.path("scenes");
         if (!scenesIn.isArray() || scenesIn.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
@@ -332,16 +318,16 @@ public class DramaProjectService {
                 linesSb.append(l.path("who").asText("旁白")).append("：").append(l.path("text").asText("")).append("\n");
             }
         }
-        String system = "你是资深短剧分镜师。只输出 JSON，不要解释。";
-        String user = "把这一场拆成镜头表。场面：" + orDefault(text(body, "place"), "") + "。描述：" + action + "。"
-                + (linesSb.length() == 0 ? "" : "台词：\n" + linesSb)
-                + "严格返回 JSON：{\"shots\":[{\"size\":\"景别\",\"move\":\"运镜\",\"dur\":时长秒(整数),"
-                + "\"desc\":\"画面内容(纯视觉)\",\"engine\":\"avatar或seedance\",\"line\":{\"who\":\"说话人\",\"text\":\"这镜的台词(可空)\"}}]}";
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("place", orDefault(text(body, "place"), ""));
+        vars.put("action", action);
+        vars.put("linesClause", linesSb.length() == 0 ? "" : "台词：\n" + linesSb);
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_SPLIT_SCENE, vars, 0.8);
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SPLIT_SCENE, 6),
                 "单场拆镜 AI", () -> {
-            JsonNode root = callJson(system, user, 0.8);
+            JsonNode root = callJson(pc);
             JsonNode shotsIn = root.path("shots");
             if (!shotsIn.isArray() || shotsIn.isEmpty()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "拆镜返回的内容无法解析，请重试。");
@@ -367,17 +353,16 @@ public class DramaProjectService {
             if (n++ >= 6) break;
             eps.append("第").append(e.path("no").asInt()).append("集：").append(e.path("synopsis").asText("")).append("\n");
         }
-        String system = "你是资深短剧选角导演。只输出 JSON，不要解释。";
-        String user = "为短剧《" + orDefault(row.getTitle(), "未命名") + "》设计角色阵容（3-5 人，主角 1-2 个）。"
-                + (logline.isBlank() ? "" : "一句话剧情：" + logline + "。")
-                + (eps.length() == 0 ? "" : "分集梗概：\n" + eps)
-                + "严格返回 JSON：{\"characters\":[{\"name\":\"角色名\",\"role\":\"key(主角)或extra(配角)\","
-                + "\"cast\":\"一句话人物卡(性别·年龄·职业)\",\"desc\":\"人物性格与成长弧线\"}]}";
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("title", orDefault(row.getTitle(), "未命名"));
+        vars.put("loglineClause", logline.isBlank() ? "" : "一句话剧情：" + logline + "。");
+        vars.put("epsClause", eps.length() == 0 ? "" : "分集梗概：\n" + eps);
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_CAST, vars, 0.9);
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CAST, 5),
                 "从大纲重抽角色 AI", () -> {
-        JsonNode root = callJson(system, user, 0.9);
+        JsonNode root = callJson(pc);
         JsonNode charsIn = root.path("characters");
         if (!charsIn.isArray() || charsIn.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "角色生成返回的内容无法解析，请重试。");
@@ -437,24 +422,50 @@ public class DramaProjectService {
         }
     }
 
-    /** 统一 JSON 模式调用 + 容错解析。 */
-    private JsonNode callJson(String system, String user, double temperature) {
+    /** 一次解析好的 prompt 调用包（system/user 已填充，参数已定）。 */
+    private record PromptCall(String system, String user, double temperature, int maxTokens, boolean jsonMode) {}
+
+    /**
+     * 解析 prompt（DB→resource→code 兜底）+ 填充占位符 + 选定参数。
+     * origin=code（DB 与 resource 都没有该 key）视为「prompt 未配置」→ 抛错不扣费（§8.0）。
+     * temperature/maxTokens 取运营在 admin 设的值；为空时回落到本动作的推荐默认。
+     */
+    private PromptCall preparePrompt(String promptKey, Map<String, String> vars, double defaultTemp) {
+        PromptService.ResolvedPrompt p = promptService.resolve(promptKey);
+        if ("code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "该短剧 AI 动作的提示词尚未配置（promptKey=" + promptKey
+                            + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
+        }
+        double temperature = p.params().temperature() != null ? p.params().temperature() : defaultTemp;
+        int maxTokens = p.params().maxTokens() != null && p.params().maxTokens() > 0 ? p.params().maxTokens() : 4096;
+        boolean jsonMode = p.params().jsonMode() == null || p.params().jsonMode();
+        return new PromptCall(p.system(), PromptService.fill(p.userTemplate(), vars), temperature, maxTokens, jsonMode);
+    }
+
+    /** 低层 chat 调用（统一错误码）。 */
+    private AiModelInvocationService.AiModelResponse invoke(PromptCall pc) {
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", system));
-        messages.add(Map.of("role", "user", "content", user));
+        if (pc.system() != null && !pc.system().isBlank()) {
+            messages.add(Map.of("role", "system", "content", pc.system()));
+        }
+        messages.add(Map.of("role", "user", "content", pc.user()));
         Map<String, Object> options = new LinkedHashMap<>();
-        options.put("temperature", temperature);
-        options.put("max_tokens", 4096);
-        options.put("response_format", Map.of("type", "json_object"));
-        AiModelInvocationService.AiModelResponse resp;
+        options.put("temperature", pc.temperature());
+        options.put("max_tokens", pc.maxTokens());
+        if (pc.jsonMode()) options.put("response_format", Map.of("type", "json_object"));
         try {
-            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            return invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成调用失败，请稍后重试。");
         }
-        JsonNode root = tryReadJson(resp.content());
+    }
+
+    /** chat 调用 + JSON 容错解析。 */
+    private JsonNode callJson(PromptCall pc) {
+        JsonNode root = tryReadJson(invoke(pc).content());
         if (root == null) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回的内容无法解析，请重试。");
         }

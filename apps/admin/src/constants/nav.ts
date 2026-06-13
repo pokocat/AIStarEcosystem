@@ -34,6 +34,7 @@ import {
   Package,
   Briefcase,
   UserCog,
+  MessageSquareText,
 } from "lucide-react";
 
 export interface NavItem {
@@ -125,6 +126,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "短剧专区",
     items: [
       { href: "/drama/config", label: "个性化配置", icon: Clapperboard, description: "扣费确认阈值（小额免打扰）+ 大纲/分镜/选角/首帧等 AI 动作单价" },
+      { href: "/drama/prompts", label: "提示词设置", icon: MessageSquareText, description: "短剧各 AI 动作（大纲/分场分镜/拆镜/选角）的 system+user 提示词与调参" },
     ],
   },
   // v0.5：财务（钱包 + 套餐）保留启用
