@@ -23,8 +23,6 @@ import { PreviewModal } from "@/components/drama-workshop/preview-modal";
 import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
 import { VideoCover } from "@/components/drama-workshop/video-cover";
 import {
-  HOT_TOPICS,
-  IDEA_POOL,
   IDEA_TAGS,
   SHORT_FORMATS,
   ideaBeats,
@@ -33,6 +31,7 @@ import {
 } from "@/mocks/drama-workshop";
 import { ProjectsApi } from "@/api";
 import { useAsync } from "@/lib/drama-query";
+import { useDramaCatalog } from "@/lib/use-drama-catalog";
 
 function greeting() {
   const h = new Date().getHours();
@@ -53,7 +52,8 @@ export default function HomePage() {
   const [fmtPreview, setFmtPreview] = React.useState<ShortFormat | null>(null);
   const [quickOpen, setQuickOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
-  const recs = Array.from({ length: 6 }).map((_, i) => IDEA_POOL[(page * 6 + i) % IDEA_POOL.length]);
+  const cat = useDramaCatalog(); // 运营可维护的「近期热点 / 创意推荐」
+  const recs = Array.from({ length: 6 }).map((_, i) => cat.ideas[(page * 6 + i) % Math.max(1, cat.ideas.length)]);
   // v0.66:「继续上次」取真实最近项目（无项目则不显示），不再用 mock PROJECTS。
   const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
   const main = projectsQ.data?.[0];
@@ -90,7 +90,7 @@ export default function HomePage() {
       inputRef.current?.focus();
       return;
     }
-    const pool = IDEA_POOL.filter((r) => !r.personal);
+    const pool = cat.ideas.filter((r) => !r.personal);
     const r = pool[sparkN % pool.length];
     setSparkN((n) => n + 1);
     setIdea(`${r.cat}向 · ${r.hook}`);
@@ -259,7 +259,7 @@ export default function HomePage() {
               <span className="row gap-1" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-2)", flex: "none" }}>
                 <Zap size={12} /> 近期热点
               </span>
-              {HOT_TOPICS.map((h) => (
+              {cat.hotTopics.map((h) => (
                 <button
                   key={h.label}
                   type="button"

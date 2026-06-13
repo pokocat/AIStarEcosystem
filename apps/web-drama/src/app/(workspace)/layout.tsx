@@ -91,6 +91,12 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+// v0.67：仅真实平台运营（operatorRole）可见 —— 维护平台目录内容（热点 / 创意推荐等）。
+const OPERATOR_GROUP: NavGroup = {
+  title: "运营",
+  items: [{ href: "/operations", icon: Sliders, label: "内容目录" }],
+};
+
 function isActive(pathname: string | null, item: NavItem): boolean {
   if (!pathname) return false;
   if (item.exact) return pathname === item.href;
@@ -101,6 +107,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [operator, setOperator] = useOperator();
+  // 真实运营身份才显示「运营 · 内容目录」入口（与下方演示开关无关）。
+  const groups = user?.operatorRole ? [...GROUPS, OPERATOR_GROUP] : GROUPS;
   return (
     <aside
       style={{
@@ -149,7 +157,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </Link>
 
       <div style={{ padding: "10px 12px", flex: 1, overflowY: "auto", minHeight: 0 }}>
-        {GROUPS.map((g, gi) => (
+        {groups.map((g, gi) => (
           <div key={gi}>
             <div
               className="faint"
