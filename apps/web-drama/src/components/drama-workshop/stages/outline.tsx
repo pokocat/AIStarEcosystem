@@ -18,6 +18,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { Field, GenSkeleton } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import type { WorkshopAction, WorkshopState } from "../workbench";
@@ -78,7 +79,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
       toast.success("大纲已生成 · 可改可重来");
     } catch (e) {
       setPhase(data.episodes.length ? "done" : "idle");
-      toast.error(e instanceof Error ? e.message : "大纲生成失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "大纲生成失败，请稍后重试"));
     }
   };
 

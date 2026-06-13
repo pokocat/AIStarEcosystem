@@ -155,8 +155,10 @@ public class DramaRenderService {
             HttpResponse<String> resp = HTTP.send(httpReq, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {
                 log.warn("[drama-render] image http {} body={}", resp.statusCode(), truncate(resp.body(), 300));
-                throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
-                        "图像模型返回 HTTP " + resp.statusCode() + "，请稍后重试。");
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
+                        "图像生成失败，请稍后重试",
+                        "endpoint=" + ep.getName() + " model=" + ep.getModel()
+                                + " status=" + resp.statusCode() + " body=" + truncate(resp.body(), 300));
             }
             JsonNode root = om.readTree(resp.body());
             JsonNode data0 = root.path("data").path(0);
@@ -182,8 +184,9 @@ public class DramaRenderService {
             throw e;
         } catch (Exception e) {
             log.warn("[drama-render] image call failed: {}", e.toString());
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
-                    "图像模型调用失败，请稍后重试。");
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
+                    "图像生成失败，请稍后重试",
+                    "endpoint=" + ep.getName() + " err=" + e);
         }
     }
 

@@ -6,6 +6,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Check, Clapperboard, Download, Film, Package, RefreshCw } from "lucide-react";
 import { StageHeader } from "../workbench";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { getEpisodeDoc, withEpisodeDoc, type ProjectData } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { ProjectsApi } from "@/api";
@@ -47,7 +48,7 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
       );
       toast.success(`第 ${state.ep} 集完整片已合成（${result.shotCount ?? clips.length} 镜）`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "成片拼接失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "成片拼接失败，请稍后重试"));
     } finally {
       setBusy(false);
     }

@@ -67,6 +67,19 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.69 · 2026-06-13 · 短剧新建对话框 + 套爆款模板浮层（与短视频一致 · 退役旧向导）
+
+- **对话框新建**：`/projects/new` 由「两步向导（选类型 → 选模式）」改为与短视频一致的**居中 AI 对话框**：一句话点子 → 真实 `createProject` 立项 → 进六阶段工作台补大纲。新组件 `new-project/create-dialog.tsx`。
+- **套爆款模板浮层**：对话框「上方」悬浮一层模板选择浮层（可展开 / 收起）—— 内容类型 chips + 横向模板卡（封面 / 集数 / 钩子），选中以「已选模板」pill 回填对话框、并作主线喂大纲 AI；运营清空目录时浮层整体不渲染（退回纯对话框）。
+- **入口统一 + 去 mock**：首页「套爆款模板」、工坊「套模板开剧 / 开一部新的」、模板库「一键开剧 / 衍生改编」全部走真实 `createProject`（不再 `/projects/p1`），并经 `aiErrorMessage` 脱敏报错（首页 `ideaCreate` 同步补齐）。删除旧向导 7 文件（pick-type / pick-mode / guided-start / template-start / step-dot / mode-card / index，其中残留的 mock `p1` id 一并清除）。
+
+### v0.68 · 2026-06-13 · AI 报错脱敏 + 短剧图像/视频可配 + 整体短视频说明 + 首页打磨
+
+- **AI 报错脱敏封装**：所有「AI 生成 / 渲染」catch 分支统一经 `lib/ai-error.ts` 的 `aiErrorMessage()`，不再把后台技术细节（上游响应体 JSON、HTTP 状态、端点名、异常类）直出给用户；命中泄漏特征即换友好兜底文案，并保留「追查号」。后端同步在源头封装（`AiModelInvocationService` / `MaterialVideoModelClient` / `DramaRenderService` / `DapMultimodalClient` 改返回友好文案，技术细节经新增 `BusinessException.internalDetail` 落 ErrorLog 供追查号排障）。覆盖 outline / cast / epscript / factory / assemble / shorts-make 共 11 处。
+- **整体短视频说明（meta）**：`/shorts/make` 生成脚本时 AI 先给出 `meta`（标题 / 风格 / 主场景 / 主角），渲染为可编辑卡片置于分镜上方，并注入每镜首帧/视频提示词（`metaPromptPrefix`）以统一全片风格与人物、提升出片一致性。`DramaScript` 增 `meta?: ScriptMeta`，后端 `aiDraft` 保证返回（缺则从 title/genre/logline 兜底合成）。
+- **首页打磨**：「开做」改「开始制作」；空输入时主 CTA 置灰且不可提交（聚焦提示）；`ws-topbar` 改透明 + `--line-soft` 细线分隔（消除左栏 + 顶栏两块实色相邻的厚重感）。
+- **运营开关露出入口**：侧栏「运营身份」开关开启后即显示「运营 · 内容目录」入口（此前仅真实 `operatorRole` 可见）；真实写入仍由后端按角色校验。
+
 ### v0.67 · 2026-06-13 · 工程债收口（D-7 a11y / D-6 测试基线 / D-3 重复样式提取）
 
 - **D-7 弹层 a11y 统一**：抽 `lib/use-modal-a11y.ts`（ESC + 焦点陷阱 + 初始/还原焦点 + body 锁，单一来源）。`common/Dialog.tsx` 接入 + 补 `aria-labelledby/-describedby`；新增 `common/ModalShell.tsx` 给命令式弹层提供 `.overlay` + `role=dialog` + a11y，收编 short-clip / quick-create / preview 三个此前裸 `<div className="overlay">`（全缺 ESC / focus trap）。**不换 packages/ui 的 shadcn dialog** —— 那套亮色 token 会破坏 drama 暗色 premium 玻璃视觉；强化共享容器即让所有调用方一处受益。

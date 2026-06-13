@@ -29,6 +29,8 @@ import {
   type Template,
 } from "@/mocks/drama-workshop";
 import { useOperator } from "@/lib/use-operator";
+import { ProjectsApi } from "@/api";
+import { aiErrorMessage } from "@/lib/ai-error";
 
 type Scope = "all" | "multi" | "single";
 
@@ -70,9 +72,29 @@ export default function TemplatesPage() {
     all.some((tp) => tp.typeKey === k && inScope(tp)),
   );
 
-  const handleUse = (derive: boolean) => {
-    router.push("/projects/p1?from=template");
-    toast.success(derive ? "已衍生模板结构,大纲可直接改" : "模板已预填大纲与钩子,改改就能用");
+  // 真实立项：按所选模板创建后端项目（不再 mock /projects/p1），再进工作台补大纲。
+  const handleUse = async (tp: TplWithType, derive: boolean) => {
+    const ct = CONTENT_TYPES.find((c) => c.key === tp.typeKey);
+    const vertical = !ct || !/16:9/.test(ct.ratio);
+    const cover = getTplMeta(tp).cover;
+    try {
+      const detail = await ProjectsApi.createProject({
+        title: (derive ? `${tp.name} · 衍生` : tp.name).slice(0, 24),
+        type: tp.typeName || ct?.name || "短剧",
+        typeKey: tp.typeKey,
+        mode: "template",
+        ratio: vertical ? "9:16" : "16:9",
+        episodes: tp.eps > 0 ? tp.eps : vertical ? 12 : 1,
+        logline: "",
+        mainline: getTplMeta(tp).desc, // 模板梗概作主线，喂给大纲 AI
+        coverFrom: cover.from,
+        coverTo: cover.to,
+      });
+      toast.success(derive ? "已按模板结构衍生新剧,大纲可直接改" : "已套用模板立项,改改大纲就能用");
+      router.push(`/projects/${detail.meta.id}?from=template`);
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "立项失败，请重试"));
+    }
   };
 
   const handleCreate = (tp: Template, typeKey: string, meta: NewTplMeta) => {
@@ -228,7 +250,7 @@ export default function TemplatesPage() {
                     style={{ justifyContent: "center" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleUse(false);
+                      void handleUse(tp, false);
                     }}
                   >
                     <Zap size={14} /> {tp.eps > 1 ? "一键开剧" : "一键开做"}
@@ -238,7 +260,7 @@ export default function TemplatesPage() {
                     style={{ justifyContent: "center" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleUse(true);
+                      void handleUse(tp, true);
                     }}
                   >
                     <Copy size={14} /> 衍生改编
@@ -301,18 +323,17 @@ export default function TemplatesPage() {
                   icon: <Copy size={15} />,
                   variant: "line",
                   onClick: () => {
+                    void handleUse(pv, true);
                     setPv(null);
-                    handleUse(true);
                   },
                 },
                 {
                   label: "一键开剧",
                   icon: <Zap size={15} />,
                   variant: "grad",
-                  cost: 18,
                   onClick: () => {
+                    void handleUse(pv, false);
                     setPv(null);
-                    handleUse(false);
                   },
                 },
               ]}

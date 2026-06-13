@@ -91,7 +91,7 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
-// v0.67：仅真实平台运营（operatorRole）可见 —— 维护平台目录内容（热点 / 创意推荐等）。
+// 维护平台目录内容（热点 / 创意推荐等）。真实运营身份或开启「运营身份」开关时显示。
 const OPERATOR_GROUP: NavGroup = {
   title: "运营",
   items: [{ href: "/operations", icon: Sliders, label: "内容目录" }],
@@ -107,8 +107,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [operator, setOperator] = useOperator();
-  // 真实运营身份才显示「运营 · 内容目录」入口（与下方演示开关无关）。
-  const groups = user?.operatorRole ? [...GROUPS, OPERATOR_GROUP] : GROUPS;
+  // 真实运营身份，或开启下方「运营身份」开关，都会显示「运营 · 内容目录」入口。
+  // 开关仅前端预览运营视图；真实写入仍由后端按角色校验（见 /operations 页与 DramaCatalogController）。
+  const showOperator = !!user?.operatorRole || operator;
+  const groups = showOperator ? [...GROUPS, OPERATOR_GROUP] : GROUPS;
   return (
     <aside
       style={{
@@ -205,12 +207,12 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </div>
 
-      {/* 运营身份开关(演示;开启后模板库可新建模板) */}
+      {/* 运营身份开关：开启后显示「运营 · 内容目录」入口 + 模板库可新建模板 */}
       <div style={{ padding: "0 14px 8px", flex: "none" }}>
         <button
           type="button"
           className="chip static"
-          title="切换运营身份(演示)"
+          title="切换运营身份"
           onClick={() => setOperator(!operator)}
           style={{
             width: "100%",
@@ -405,10 +407,9 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         alignItems: "center",
         gap: 16,
         padding: "14px 28px",
-        borderBottom: "1px solid var(--line)",
-        background: "color-mix(in oklch, var(--bg) 86%, transparent)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
+        // 透明顶栏 + 一条细线分隔，避免左栏 + 顶栏两块实色相邻显得厚重。
+        borderBottom: "1px solid var(--line-soft)",
+        background: "transparent",
       }}
     >
       <button

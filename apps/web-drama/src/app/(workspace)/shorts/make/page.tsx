@@ -26,6 +26,36 @@ import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
 import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
 import { RenderApi, ShortDramaApi } from "@/api";
+import type { ScriptMeta } from "@/api/short-drama";
+import { aiErrorMessage } from "@/lib/ai-error";
+
+// 整体短视频说明（meta）卡片里输入框/文本域的统一样式。
+const META_INPUT: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid var(--line)",
+  borderRadius: 9,
+  padding: "8px 10px",
+  fontSize: 13,
+  lineHeight: 1.5,
+  background: "var(--surface-2)",
+  color: "var(--ink)",
+  outline: "none",
+  fontFamily: "inherit",
+};
+
+/** 把「整体短视频说明」拼成注入每镜提示词的前缀，统一全片风格 / 场景 / 主角。 */
+function metaPromptPrefix(meta: ScriptMeta | null): string {
+  if (!meta) return "";
+  const parts = [
+    meta.title?.trim() || "",
+    meta.style?.length ? `风格：${meta.style.join("、")}` : "",
+    meta.scene?.trim() ? `场景：${meta.scene.trim()}` : "",
+    meta.character?.name?.trim()
+      ? `主角：${meta.character.name.trim()}${meta.character.description?.trim() ? `（${meta.character.description.trim()}）` : ""}`
+      : "",
+  ].filter(Boolean);
+  return parts.length ? `【整体设定】${parts.join("｜")}。` : "";
+}
 
 // 单镜各路径积分消耗(仅用于确认弹窗展示,真实计费在后台)
 const SHORT_FRAME_COST = 2;
@@ -216,6 +246,8 @@ function ShortMakerInner() {
   const title = realIdea || fmt.name;
 
   const [shots, setShots] = React.useState<ShortShot[]>([]);
+  // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
+  const [meta, setMeta] = React.useState<ScriptMeta | null>(null);
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
   const [refs, setRefs] = React.useState<Material[]>([]); // @数字人参考
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
@@ -245,6 +277,7 @@ function ShortMakerInner() {
       });
       const script = drafts[0];
       if (!script || !script.scenes?.length) throw new Error("AI 没有产出可用脚本，请换个说法重试");
+      setMeta(script.meta ?? null);
       setShots(
         script.scenes.map((sc, i) => ({
           id: "sh" + Date.now() + "_" + i,
@@ -270,7 +303,7 @@ function ShortMakerInner() {
       toast.success("口播脚本和分镜已生成,改满意就去出片");
     } catch (e) {
       setPhase("done");
-      const msg = e instanceof Error ? e.message : "脚本生成失败，请稍后重试";
+      const msg = aiErrorMessage(e, "脚本生成失败，请稍后重试");
       setChat((c) => [...c, { who: "ai", text: `生成失败：${msg}` }]);
       toast.error(msg);
     }
@@ -302,10 +335,12 @@ function ShortMakerInner() {
     const shot = shots.find((s) => s.id === id);
     if (!shot || busy) return;
     setBusy({ id, to });
+    // 把「整体短视频说明」注入每镜提示词，保证风格 / 场景 / 主角跨镜一致 —— 出片更准确。
+    const metaCtx = metaPromptPrefix(meta);
     try {
       if (to === "frame") {
         const frames = await RenderApi.renderFrame({
-          prompt: `${shot.visual}。竖屏短视频画面，${fmt.name}风格。`,
+          prompt: `${metaCtx}${shot.visual}。竖屏短视频画面，${fmt.name}风格。`,
           ratio: "9:16",
           count: 1,
         });
@@ -313,7 +348,7 @@ function ShortMakerInner() {
         toast.success("首帧已出,确认后再生成视频");
       } else {
         const job = await RenderApi.renderClip({
-          prompt: `${shot.visual}。${shot.voText ? "口播：" + shot.voText : ""}竖屏短视频，${fmt.name}风格。`,
+          prompt: `${metaCtx}${shot.visual}。${shot.voText ? "口播：" + shot.voText : ""}竖屏短视频，${fmt.name}风格。`,
           name: `${fmt.name} 镜${shot.no}`,
           durationSec: shot.dur,
           ratio: "9:16",
@@ -325,7 +360,7 @@ function ShortMakerInner() {
         toast.success("镜头视频已生成");
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "渲染失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "渲染失败，请稍后重试"));
     } finally {
       setBusy(null);
     }
@@ -502,6 +537,71 @@ function ShortMakerInner() {
                   <RefreshCw size={12} /> 重新生成
                 </button>
               </div>
+
+              {/* 整体短视频说明：AI 先定调，统领分镜与逐镜出片，可直接改 */}
+              {meta && (
+                <div className="card col gap-3" style={{ padding: 16, marginBottom: 16 }}>
+                  <div className="row gap-2" style={{ alignItems: "center" }}>
+                    <Sparkles size={15} style={{ color: "var(--accent)" }} />
+                    <span style={{ fontWeight: 800, fontSize: 14 }}>整体短视频说明</span>
+                    <span className="faint" style={{ fontSize: 11 }}>AI 先定调 · 分镜与出片都据此保持一致，可直接改</span>
+                  </div>
+                  <div className="col gap-1">
+                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>标题</span>
+                    <input
+                      value={meta.title ?? ""}
+                      onChange={(e) => setMeta({ ...meta, title: e.target.value })}
+                      placeholder="一句话标题"
+                      style={META_INPUT}
+                    />
+                  </div>
+                  <div className="col gap-1">
+                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>风格</span>
+                    <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                      {meta.style?.length ? (
+                        meta.style.map((s, i) => (
+                          <span
+                            key={i}
+                            className="chip static"
+                            style={{ height: 24, fontSize: 11.5, background: "var(--accent-soft)", color: "var(--accent)" }}
+                          >
+                            {s}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="faint" style={{ fontSize: 12 }}>—</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="col gap-1">
+                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主场景</span>
+                    <textarea
+                      value={meta.scene ?? ""}
+                      onChange={(e) => setMeta({ ...meta, scene: e.target.value })}
+                      placeholder="主场景一句话描述"
+                      rows={2}
+                      style={{ ...META_INPUT, resize: "none" }}
+                    />
+                  </div>
+                  <div className="col gap-1">
+                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主角</span>
+                    <input
+                      value={meta.character?.name ?? ""}
+                      onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), name: e.target.value } })}
+                      placeholder="角色名"
+                      style={META_INPUT}
+                    />
+                    <textarea
+                      value={meta.character?.description ?? ""}
+                      onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), description: e.target.value } })}
+                      placeholder="形象与性格一句话"
+                      rows={2}
+                      style={{ ...META_INPUT, resize: "none" }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {phase === "gen" ? (
                 <div className="card" style={{ padding: 18 }}>
                   <GenSkeleton lines={4} label="正在写口播稿并拆分镜…" />

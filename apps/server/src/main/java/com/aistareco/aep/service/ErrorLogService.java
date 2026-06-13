@@ -2,6 +2,7 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.model.ErrorLog;
 import com.aistareco.aep.repository.ErrorLogRepository;
+import com.aistareco.common.BusinessException;
 import com.aistareco.common.TraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -81,7 +82,7 @@ public class ErrorLogService {
                     .httpStatus(httpStatus)
                     .errorType(ex.getClass().getSimpleName())
                     .errorCode(errorCode)
-                    .message(truncate(ex.getMessage(), 4096))
+                    .message(truncate(persistMessage(ex), 4096))
                     .stacktrace(stackTrace(ex))
                     .requestParams(request == null ? null : sanitizeQuery(request.getQueryString()))
                     .userAgent(request == null ? null : truncate(request.getHeader("User-Agent"), 512))
@@ -129,6 +130,19 @@ public class ErrorLogService {
             return s;
         }
         return null;
+    }
+
+    /**
+     * 入库的 message：在用户可见文案后追加 BusinessException 的 internalDetail（仅服务端可见的
+     * 技术细节，如上游响应体 / HTTP 状态 / 端点名）。这样运营拿「追查号」一查即得根因，
+     * 而返回给用户的响应仍是脱敏后的友好文案。
+     */
+    private static String persistMessage(Throwable ex) {
+        String base = ex.getMessage();
+        if (ex instanceof BusinessException be && be.getInternalDetail() != null && !be.getInternalDetail().isBlank()) {
+            return (base == null ? "" : base) + " | detail=" + be.getInternalDetail();
+        }
+        return base;
     }
 
     private static String stackTrace(Throwable ex) {

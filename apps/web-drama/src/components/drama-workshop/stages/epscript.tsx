@@ -18,6 +18,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
 import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
 import { ShotFormCard, type FormShot } from "../shot-form";
@@ -215,7 +216,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       toast.success("已按最新整集剧情重写分场分镜");
     } catch (e) {
       setPhase("done");
-      const msg = e instanceof Error ? e.message : "分场分镜生成失败，请稍后重试";
+      const msg = aiErrorMessage(e, "分场分镜生成失败，请稍后重试");
       setChat((c) => [...c, { who: "ai", text: `生成失败：${msg}` }]);
       toast.error(msg);
     }
@@ -321,7 +322,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       dispatch({ type: "spend", n: cfg.prices.splitScene });
       toast.success("本场分镜已拆好,逐镜表单可直接改");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "拆镜失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "拆镜失败，请稍后重试"));
     } finally {
       setGenScene(null);
     }
@@ -365,7 +366,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       dispatch({ type: "spend", n: cost });
       toast.success(msg);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "渲染失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "渲染失败，请稍后重试"));
     } finally {
       setBusy(null);
     }

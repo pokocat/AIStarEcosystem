@@ -143,8 +143,9 @@ const BINDING_GROUPS: Array<{
   {
     key: "drama",
     label: "AI 短剧",
-    description: "短剧生成链路使用的分场景脚本起草能力。",
-    purposes: ["DRAMA_SCRIPT_DRAFT"],
+    description:
+      "短剧生成链路：分场景脚本起草、分镜首帧图像、短剧/短视频生成。其中「图像生成 / 视频生成」为跨产品共享端点（同一端点亦服务明星带货视频），在此改绑会同时影响其它产品线。",
+    purposes: ["DRAMA_SCRIPT_DRAFT", "IMAGE_GENERATION", "VIDEO_GENERATION"],
   },
   {
     key: "aiavatar",
@@ -166,9 +167,10 @@ const BINDING_GROUPS: Array<{
   },
 ];
 
-const BINDING_GROUP_BY_PURPOSE = new Map<AiModelPurpose, BindingGroupKey>(
-  BINDING_GROUPS.flatMap((group) => group.purposes.map((purpose) => [purpose, group.key] as const)),
-);
+// 被任一分组显式声明的用途集合；未声明的用途落到「平台通用」兜底分组。
+// 注意：一个用途可以出现在多个分组（如 VIDEO_GENERATION 同时服务明星带货与短剧），
+// 故这里用集合判定「是否已声明」，而非 purpose→单一分组 的映射。
+const DECLARED_PURPOSES = new Set<AiModelPurpose>(BINDING_GROUPS.flatMap((group) => group.purposes));
 
 function valueOrDefault(form: FormState, key: keyof Pick<FormState, "name" | "baseUrl" | "apiVersion" | "model" | "ownerUserId">): string {
   const value = form[key].trim();
@@ -197,8 +199,13 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     ...EMPTY_FORM,
     id: p.id,
     mode: "edit",
+    name: p.name,
     providerType: p.providerType,
+    baseUrl: p.baseUrl,
+    apiVersion: p.apiVersion ?? "",
+    model: p.model ?? "",
     models: p.models ?? [],
+    ownerUserId: p.ownerUserId ?? "",
     enabled: p.enabled,
     defaults: {
       name: p.name,
@@ -317,9 +324,17 @@ export default function AdminAiModelsPage() {
       creator: [],
       platform: [],
     };
-    for (const binding of bindings) {
-      const key = BINDING_GROUP_BY_PURPOSE.get(binding.purpose) ?? "platform";
-      grouped[key].push(binding);
+    const byPurpose = new Map(bindings.map((b) => [b.purpose, b] as const));
+    // 显式分组：一个用途可被多个分组声明（共享端点同时出现在各产品线 tab）。
+    for (const group of BINDING_GROUPS) {
+      for (const purpose of group.purposes) {
+        const b = byPurpose.get(purpose);
+        if (b) grouped[group.key].push(b);
+      }
+    }
+    // 未被任何分组声明的用途 → 落到「平台通用」兜底。
+    for (const b of bindings) {
+      if (!DECLARED_PURPOSES.has(b.purpose)) grouped.platform.push(b);
     }
     return grouped;
   }, [bindings]);
@@ -625,9 +640,15 @@ export default function AdminAiModelsPage() {
               <CardContent className="space-y-5">
                 {editing.mode !== "create" && (
                   <div className="rounded-md border border-border bg-surface-muted/50 px-3.5 py-2.5 text-xs text-muted-foreground">
-                    {editing.mode === "edit" ? "正在编辑" : "正在复制"}「{editing.defaults?.sourceName ?? editing.defaults?.name}」。
-                    表单默认留空，placeholder 显示{editing.mode === "edit" ? "当前值" : "复制来源"}；只填写要修改的字段即可。
-                    {editing.mode === "copy" && " 上游 API 密钥不会复制，需要重新填写。"}
+                    {editing.mode === "edit" ? (
+                      <>
+                        正在编辑「{editing.defaults?.sourceName ?? editing.defaults?.name}」。当前配置已填入表单；上游 API 密钥不会回显，留空表示不修改。
+                      </>
+                    ) : (
+                      <>
+                        正在复制「{editing.defaults?.sourceName ?? editing.defaults?.name}」。placeholder 显示复制来源；上游 API 密钥不会复制，需要重新填写。
+                      </>
+                    )}
                   </div>
                 )}
                 <section className="grid grid-cols-1 gap-4 md:grid-cols-2">

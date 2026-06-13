@@ -5,6 +5,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Image as ImageIcon, Lock, RefreshCw, Sparkles, Wand2 } from "lucide-react";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { CreditButton, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../../workbench";
 import { STAGE_BY_KEY } from "../../stages-config";
@@ -56,7 +57,7 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
       dispatch({ type: "spend", n: cfg.prices.cast });
       toast.success(`已按大纲重新抽取 ${chars.length} 个角色`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "角色生成失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "角色生成失败，请稍后重试"));
     } finally {
       setDrafting(false);
     }

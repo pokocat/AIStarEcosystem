@@ -138,7 +138,13 @@ public class DramaScriptService {
         vars.put("genre", genre);
         vars.put("duration", String.valueOf(durationSec));
         vars.put("count", String.valueOf(count));
-        String userContent = PromptService.fill(prompt.userTemplate(), vars);
+        String userContent = PromptService.fill(prompt.userTemplate(), vars)
+                // 结构保障层（与 admin 模板正交）：要求每个脚本对象额外带 meta「整体短视频说明」，
+                // 统领全片风格 / 场景 / 人物，让后续首帧与视频生成更一致、更准确。
+                + "\n\n【额外输出要求】请在每个脚本对象中额外包含一个 meta 字段，用于统领全片："
+                + "{\"title\":\"短视频标题\",\"style\":[\"风格标签\"],\"scene\":\"主场景一句话描述\","
+                + "\"character\":{\"name\":\"主角名\",\"description\":\"主角形象与性格一句话\"}}。"
+                + "meta 必须与下方分镜内容保持一致，会作为生成首帧与视频的统一参考。";
 
         List<Map<String, String>> messages = new ArrayList<>();
         if (prompt.system() != null && !prompt.system().isBlank()) {
@@ -228,6 +234,28 @@ public class DramaScriptService {
         String logline = text(script, "logline");
         if (title != null) sb.append("【剧名】").append(title).append(genre != null ? "（" + genre + "）" : "").append("\n");
         if (logline != null) sb.append("【一句话简介】").append(logline).append("\n");
+        // 整体短视频说明（meta）统一全片风格 / 场景 / 人物，提升画面与人物一致性。
+        JsonNode meta = script.get("meta");
+        if (meta != null && meta.isObject()) {
+            JsonNode style = meta.get("style");
+            if (style != null && style.isArray() && style.size() > 0) {
+                StringBuilder tags = new StringBuilder();
+                style.forEach(t -> tags.append(tags.length() == 0 ? "" : "、").append(t.asText("")));
+                sb.append("【整体风格】").append(tags).append("\n");
+            }
+            String scene = text(meta, "scene");
+            if (scene != null && !scene.isBlank()) sb.append("【主场景】").append(scene).append("\n");
+            JsonNode ch = meta.get("character");
+            if (ch != null && ch.isObject()) {
+                String name = orDefault(text(ch, "name"), "");
+                String desc = orDefault(text(ch, "description"), "");
+                if (!name.isBlank() || !desc.isBlank()) {
+                    sb.append("【主角】").append(name);
+                    if (!desc.isBlank()) sb.append("：").append(desc);
+                    sb.append("\n");
+                }
+            }
+        }
         JsonNode scenes = script.get("scenes");
         if (scenes != null && scenes.isArray() && scenes.size() > 0) {
             sb.append("【分镜脚本】（共 ").append(scenes.size()).append(" 镜）\n");
@@ -280,9 +308,41 @@ public class DramaScriptService {
             // scenes 必须存在且非空才算有效脚本
             JsonNode scenes = script.get("scenes");
             if (scenes == null || !scenes.isArray() || scenes.size() == 0) continue;
+            ensureMeta(script, genre);
             out.add(script);
         }
         return out;
+    }
+
+    /**
+     * 保证脚本带一个结构完整的 meta「整体短视频说明」对象：
+     * { title, style:[], scene, character:{name, description} }。
+     * 模型已给就补全缺字段；没给就从 title / genre / logline 兜底合成 —— 前端永远有东西可展示。
+     */
+    private void ensureMeta(ObjectNode script, String genre) {
+        JsonNode metaNode = script.get("meta");
+        ObjectNode meta = (metaNode != null && metaNode.isObject())
+                ? ((ObjectNode) metaNode).deepCopy() : om.createObjectNode();
+        if (!meta.hasNonNull("title")) {
+            meta.put("title", orDefault(text(script, "title"), "未命名短视频"));
+        }
+        if (meta.get("style") == null || !meta.get("style").isArray() || meta.get("style").isEmpty()) {
+            ArrayNode style = om.createArrayNode();
+            for (String s : orDefault(genre, "").split("[，,、/\\s]+")) {
+                if (s != null && !s.isBlank()) style.add(s.trim());
+            }
+            meta.set("style", style);
+        }
+        if (!meta.hasNonNull("scene")) {
+            meta.put("scene", orDefault(text(script, "logline"), ""));
+        }
+        JsonNode chNode = meta.get("character");
+        ObjectNode character = (chNode != null && chNode.isObject())
+                ? ((ObjectNode) chNode).deepCopy() : om.createObjectNode();
+        if (!character.hasNonNull("name")) character.put("name", "");
+        if (!character.hasNonNull("description")) character.put("description", "");
+        meta.set("character", character);
+        script.set("meta", meta);
     }
 
     private JsonNode tryReadJson(String content) {

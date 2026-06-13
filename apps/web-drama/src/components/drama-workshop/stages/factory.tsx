@@ -18,6 +18,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, EngineTag, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import { GenSettingsBar } from "../gen-settings-bar";
@@ -168,7 +169,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       dispatch({ type: "spend", n: cfg.prices.frame });
       toast.success(`首帧已出 ${frames.length} 版,挑一版锁定`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "首帧渲染失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "首帧渲染失败，请稍后重试"));
     } finally {
       setBusy(null);
     }
@@ -198,7 +199,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       dispatch({ type: "spend", n: cfg.prices.clip });
       toast.success("动态已渲染,验收看看");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "视频生成失败，请稍后重试");
+      toast.error(aiErrorMessage(e, "视频生成失败，请稍后重试"));
     } finally {
       setBusy(null);
     }
@@ -246,7 +247,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         dispatch({ type: "spend", n: cfg.prices.frame });
         okCount++;
       } catch (e) {
-        toast.error(`镜 ${d.no} 首帧失败：${e instanceof Error ? e.message : "未知错误"}`);
+        toast.error(`镜 ${d.no} 首帧失败：${aiErrorMessage(e, "未知错误")}`);
         break;
       }
     }

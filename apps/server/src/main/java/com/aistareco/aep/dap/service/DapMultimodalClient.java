@@ -346,8 +346,9 @@ public class DapMultimodalClient {
                     log.warn("[dap-ai] call http-error method={} path={} operation={} status={} durationMs={} request={} body={}",
                             req.method(), path, operationFromPath(req), resp.statusCode(), elapsedMs(startNanos),
                             requestSummary == null ? "-" : requestSummary, truncate(resp.body(), 600));
+                    // 不把上游响应体直出给用户；完整 body 已在上面 log.warn（含 job 上下文）落盘供排障。
                     throw new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(),
-                            "大模型调用失败 HTTP " + resp.statusCode() + "(" + path + "): " + truncate(resp.body(), 200));
+                            "AI 生成失败，请稍后重试");
                 }
                 log.info("[dap-ai] call ok method={} path={} operation={} status={} durationMs={} bytes={} response={}",
                         req.method(), path, operationFromPath(req), resp.statusCode(), elapsedMs(startNanos),

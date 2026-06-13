@@ -20,9 +20,9 @@ import {
 import { CreditButton, Thumb } from "@/components/drama-ui";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { PreviewModal } from "@/components/drama-workshop/preview-modal";
-import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
 import { VideoCover } from "@/components/drama-workshop/video-cover";
 import {
+  CONTENT_TYPES,
   IDEA_TAGS,
   SHORT_FORMATS,
   ideaBeats,
@@ -32,6 +32,7 @@ import {
 import { ProjectsApi } from "@/api";
 import { useAsync } from "@/lib/drama-query";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
+import { aiErrorMessage } from "@/lib/ai-error";
 
 function greeting() {
   const h = new Date().getHours();
@@ -50,8 +51,8 @@ export default function HomePage() {
   const [sparkN, setSparkN] = React.useState(0);
   const [preview, setPreview] = React.useState<IdeaRec | null>(null);
   const [fmtPreview, setFmtPreview] = React.useState<ShortFormat | null>(null);
-  const [quickOpen, setQuickOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const creating = React.useRef(false); // 防连点重复立项
   const cat = useDramaCatalog(); // 运营可维护的「近期热点 / 创意推荐」
   const recs = Array.from({ length: 6 }).map((_, i) => cat.ideas[(page * 6 + i) % Math.max(1, cat.ideas.length)]);
   // v0.66:「继续上次」取真实最近项目（无项目则不显示），不再用 mock PROJECTS。
@@ -64,20 +65,51 @@ export default function HomePage() {
     const q = text?.trim() ? `&idea=${encodeURIComponent(text.trim())}` : "";
     router.push(`/shorts/make?fmt=sell${q}`);
   };
-  const ideaCreate = (_text: string) => {
-    router.push("/projects/p1");
-    toast.success("AI 已根据你的点子立项《落地窗后》,大纲已就绪");
-  };
-  const submit = () => {
-    if (isShort) {
-      goShortMake(idea);
+  // 一句话点子 → 真实立项（DramaProject），再跳到新项目工作台补大纲。
+  // 自由文本无题材选择，落到「通用 / 自定义」骨架；点子原文作为 logline，
+  // 由工作台大纲阶段的 AI 起草消费（与 /projects/new 引导流一致）。
+  const ideaCreate = async (
+    text: string,
+    opts?: { title?: string; coverFrom?: string; coverTo?: string },
+  ) => {
+    const seed = text.trim();
+    if (!seed) {
+      inputRef.current?.focus();
       return;
     }
+    if (creating.current) return;
+    const ct = CONTENT_TYPES.find((t) => t.key === "custom");
+    creating.current = true;
+    try {
+      const detail = await ProjectsApi.createProject({
+        title: (opts?.title?.trim() || seed).slice(0, 24),
+        type: ct?.name ?? "通用 / 自定义",
+        typeKey: ct?.key ?? "custom",
+        mode: "guided",
+        ratio: "9:16",
+        episodes: 12,
+        logline: seed,
+        coverFrom: opts?.coverFrom ?? ct?.from,
+        coverTo: opts?.coverTo ?? ct?.to,
+      });
+      router.push(`/projects/${detail.meta.id}`);
+      toast.success("AI 已根据你的点子立项,接着补大纲就能开拍");
+    } catch (e) {
+      creating.current = false;
+      toast.error(aiErrorMessage(e, "立项失败，请重试"));
+    }
+  };
+  const submit = () => {
+    // 空输入不可提交（按钮也会置灰）；聚焦输入框提示用户先写点子。
     if (!idea.trim()) {
       inputRef.current?.focus();
       return;
     }
-    ideaCreate(idea.trim());
+    if (isShort) {
+      goShortMake(idea);
+      return;
+    }
+    void ideaCreate(idea.trim());
   };
   const fillRec = (r: IdeaRec) => {
     setIdea(r.hook);
@@ -96,11 +128,7 @@ export default function HomePage() {
     setIdea(`${r.cat}向 · ${r.hook}`);
     inputRef.current?.focus();
   };
-  const quickCreate = () => {
-    setQuickOpen(false);
-    router.push("/projects/p1?from=template");
-    toast.success("模板已预填大纲与钩子,改改就能用");
-  };
+  // 套爆款模板 → 真实立项（template 模式），与短剧工坊的快捷立项一致。
 
   return (
     <div className="scroll ws-flush" style={{ background: "var(--bg)" }}>
@@ -288,7 +316,7 @@ export default function HomePage() {
               </button>
               {isShort && <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>随机来一个</span>}
               {!isShort && (
-                <button type="button" className="chip" onClick={() => setQuickOpen(true)}>
+                <button type="button" className="chip" onClick={() => router.push("/projects/new?focus=template")}>
                   <Layers size={13} /> 套爆款模板
                 </button>
               )}
@@ -301,12 +329,13 @@ export default function HomePage() {
               <CreditButton
                 cost={isShort ? 10 : 6}
                 onConfirm={submit}
-                confirmTitle={isShort ? "开做短视频" : "开拍新剧"}
+                confirmTitle={isShort ? "开始制作短视频" : "开拍新剧"}
                 className="btn btn-grad"
                 style={{ height: 40, padding: "0 22px", flex: "none" }}
                 markSize={15}
+                disabled={!idea.trim()}
               >
-                <Zap size={16} /> {isShort ? "开做" : "开拍"}
+                <Zap size={16} /> {isShort ? "开始制作" : "开拍"}
               </CreditButton>
             </div>
           </div>
@@ -314,7 +343,7 @@ export default function HomePage() {
           <div className="row" style={{ marginTop: 22, marginBottom: 12 }}>
             <span style={{ fontWeight: 700, fontSize: 13.5 }}>{isShort ? "短视频模板" : "创意推荐"}</span>
             <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>
-              {isShort ? "点卡片看成片预览,满意一键套用开做" : "点卡片预览效果,满意一键开拍"}
+              {isShort ? "点卡片看成片预览,满意一键套用就做" : "点卡片预览效果,满意一键开拍"}
             </span>
             <span className="grow" />
             {!isShort && (
@@ -464,9 +493,9 @@ export default function HomePage() {
               variant: "grad",
               cost: 6,
               onClick: () => {
-                const h = preview.hook;
+                const rec = preview;
                 setPreview(null);
-                ideaCreate(h);
+                void ideaCreate(rec.hook, { title: rec.title, coverFrom: rec.from, coverTo: rec.to });
               },
             },
           ]}
@@ -494,7 +523,7 @@ export default function HomePage() {
           onClose={() => setFmtPreview(null)}
           actions={[
             {
-              label: "用这个模板开做",
+              label: "用这个模板开始制作",
               icon: <Zap size={15} />,
               variant: "grad",
               cost: 10,
@@ -505,13 +534,6 @@ export default function HomePage() {
               },
             },
           ]}
-        />
-      )}
-      {quickOpen && (
-        <QuickCreateModal
-          onClose={() => setQuickOpen(false)}
-          onCreate={quickCreate}
-          onGuided={() => router.push("/projects/new")}
         />
       )}
     </div>

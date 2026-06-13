@@ -213,10 +213,11 @@ public class AiModelInvocationService {
             log.warn("[ai-chat] invoke http-error purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
                     purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
                     resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
-            throw new BusinessException(HttpStatus.valueOf(resp.statusCode()),
-                    "AI_PROVIDER_HTTP_" + resp.statusCode(),
-                    "端点 " + e.getName() + " HTTP " + resp.statusCode() + ": "
-                            + snippet(resp.body()));
+            // 不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏）；技术细节进 ErrorLog 供「追查号」排障。
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
+                    "AI 生成失败，请稍后重试",
+                    "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
+                            + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
         }
         Map<?, ?> parsed = OM.readValue(resp.body(), Map.class);
         Object choices = parsed.get("choices");

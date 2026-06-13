@@ -11,11 +11,11 @@ import { ArrowRight, Clock, PenTool, Wand2, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
-import { QuickCreateModal } from "@/components/drama-workshop/quick-create-modal";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
-import { CONTENT_TYPES, REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
+import { REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
 import { ProjectsApi } from "@/api";
 import { useAsync } from "@/lib/drama-query";
+import { aiErrorMessage } from "@/lib/ai-error";
 
 export default function ProjectsHubPage() {
   return (
@@ -28,7 +28,6 @@ export default function ProjectsHubPage() {
 function ProjectsHubInner() {
   const router = useRouter();
   const sp = useSearchParams();
-  const [quickOpen, setQuickOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<DramaProjectSummary | null>(null);
 
   const { data: projects, isLoading: loading, error, refetch } = useAsync(
@@ -53,29 +52,6 @@ function ProjectsHubInner() {
     if (p.done) setPreview(p);
     else router.push(`/projects/${p.id}`);
   };
-  const quickCreate = async (payload: { type: string; template: string; idea: string }) => {
-    setQuickOpen(false);
-    const ct = CONTENT_TYPES.find((t) => t.key === payload.type);
-    const vertical = !ct || !/16:9/.test(ct.ratio);
-    try {
-      const detail = await ProjectsApi.createProject({
-        title: (payload.idea || payload.template || ct?.name || "新短剧").slice(0, 24),
-        type: ct?.name ?? "短剧",
-        typeKey: payload.type,
-        mode: "template",
-        ratio: vertical ? "9:16" : "16:9",
-        episodes: vertical ? 12 : 1,
-        logline: payload.idea ?? "",
-        coverFrom: ct?.from,
-        coverTo: ct?.to,
-      });
-      toast.success("已套用模板立项,改改大纲就能用");
-      router.push(`/projects/${detail.meta.id}?from=template`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "立项失败，请重试");
-    }
-  };
-
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
       <div className="row" style={{ marginBottom: 22, gap: 16, flexWrap: "wrap" }}>
@@ -96,7 +72,7 @@ function ProjectsHubInner() {
             type="button"
             className="btn btn-grad"
             style={{ height: 44, padding: "0 18px" }}
-            onClick={() => setQuickOpen(true)}
+            onClick={() => router.push("/projects/new?focus=template")}
           >
             <Zap size={16} /> 套模板开剧
           </button>
@@ -194,7 +170,7 @@ function ProjectsHubInner() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, alignItems: "start" }}>
         <button
           type="button"
-          onClick={() => setQuickOpen(true)}
+          onClick={() => router.push("/projects/new?focus=template")}
           className="col center"
           style={{
             aspectRatio: "3/4",
@@ -271,16 +247,9 @@ function ProjectsHubInner() {
               toast.success(`已按《${src.title}》的结构衍生新剧,大纲可直接改`);
               router.push(`/projects/${detail.meta.id}?from=template`);
             } catch (e) {
-              toast.error(e instanceof Error ? e.message : "衍生失败，请重试");
+              toast.error(aiErrorMessage(e, "衍生失败，请重试"));
             }
           }}
-        />
-      )}
-      {quickOpen && (
-        <QuickCreateModal
-          onClose={() => setQuickOpen(false)}
-          onCreate={quickCreate}
-          onGuided={() => router.push("/projects/new")}
         />
       )}
     </div>
