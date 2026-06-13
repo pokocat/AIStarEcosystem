@@ -19,7 +19,6 @@ import {
 import { toast } from "sonner";
 import { Avatar, Thumb } from "@/components/drama-ui";
 import {
-  REVIEW_QUEUE_INIT,
   getProjectData,
   type CharacterDef,
   type ReviewItem,
@@ -56,9 +55,8 @@ const TD: React.CSSProperties = {
 };
 
 export default function ReviewPage() {
-  const [queue, setQueue] = React.useState<ReviewItem[]>(() =>
-    REVIEW_QUEUE_INIT.map((x) => ({ ...x, cover: { ...x.cover } })),
-  );
+  // v0.66:剧本审阅暂无后端 → 不再伪造待审队列;空起步（项目提交审阅后入队）。
+  const [queue, setQueue] = React.useState<ReviewItem[]>([]);
   const [reviewItem, setReviewItem] = React.useState<ReviewItem | null>(null);
 
   const approve = (item: ReviewItem) => {
@@ -100,7 +98,7 @@ export default function ReviewPage() {
         {pending.length === 0 && (
           <div className="card col center" style={{ padding: 32, color: "var(--ink-3)", gap: 8 }}>
             <Check size={26} />
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>都审完了,清爽</span>
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>暂无待审剧本 —— 项目里提交审阅的剧本会出现在这里</span>
           </div>
         )}
         {pending.map((it, i) => (

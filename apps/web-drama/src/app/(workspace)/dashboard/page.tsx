@@ -26,12 +26,13 @@ import {
   HOT_TOPICS,
   IDEA_POOL,
   IDEA_TAGS,
-  PROJECTS,
   SHORT_FORMATS,
   ideaBeats,
   type IdeaRec,
   type ShortFormat,
 } from "@/mocks/drama-workshop";
+import { ProjectsApi } from "@/api";
+import { useAsync } from "@/lib/drama-query";
 
 function greeting() {
   const h = new Date().getHours();
@@ -53,7 +54,9 @@ export default function HomePage() {
   const [quickOpen, setQuickOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const recs = Array.from({ length: 6 }).map((_, i) => IDEA_POOL[(page * 6 + i) % IDEA_POOL.length]);
-  const main = PROJECTS.find((p) => p.main);
+  // v0.66:「继续上次」取真实最近项目（无项目则不显示），不再用 mock PROJECTS。
+  const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
+  const main = projectsQ.data?.[0];
   const isShort = mode === "short";
   const curFmt = SHORT_FORMATS[0];
 

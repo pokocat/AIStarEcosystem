@@ -9,7 +9,9 @@ import { Thumb } from "@/components/drama-ui";
 import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
-import { MY_SHORTS, PROJECTS, type DramaProjectSummary, type ShortVideoItem } from "@/mocks/drama-workshop";
+import { type DramaProjectSummary, type ShortVideoItem } from "@/mocks/drama-workshop";
+import { ProjectsApi } from "@/api";
+import { useAsync } from "@/lib/drama-query";
 
 interface MakeCtx {
   format: string;
@@ -108,8 +110,10 @@ export default function ShortsStudioPage() {
   const router = useRouter();
   const [clipOpen, setClipOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<ShortVideoItem | null>(null);
-  const shorts = MY_SHORTS;
-  const singles = PROJECTS.filter((p) => p.episodes === 1); // 宣传片 / 自传等单集作品
+  // v0.66:短视频成片暂不持久化（无后端）→ 不再伪造「我的短视频」;单集作品取真实项目。
+  const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
+  const shorts: ShortVideoItem[] = [];
+  const singles = (projectsQ.data ?? []).filter((p) => p.episodes === 1); // 宣传片 / 自传等单集作品
 
   const onMake = (ctx: MakeCtx) => {
     router.push(

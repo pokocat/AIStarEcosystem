@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
 import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
-import { matById, SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
+import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
 import { RenderApi, ShortDramaApi } from "@/api";
 
 // 单镜各路径积分消耗(仅用于确认弹窗展示,真实计费在后台)
@@ -209,45 +209,23 @@ function ShortMakerInner() {
   const fmt = SHORT_FORMATS.find((f) => f.key === fmtKey) ?? SHORT_FORMATS[0];
 
   const [step, setStep] = React.useState<"script" | "factory">("script");
-  const [phase, setPhase] = React.useState<"gen" | "done">("done");
-  const title = reopen || idea || fmt.sample;
+  // v0.66:诚实 idle 起步 —— 不再用 fmt.beats / fmt.sample 伪造分镜和「已聊过」的对话。
+  // 空脚本 + 仅一句 AI 引导;真带入点子(来自首页/重开)才自动跑一次真实生成。
+  const [phase, setPhase] = React.useState<"idle" | "gen" | "done">("idle");
+  const realIdea = idea || reopen; // 仅当真带入点子时非空
+  const title = realIdea || fmt.name;
 
-  const init = React.useCallback((): ShortShot[] => {
-    return fmt.beats.map((b, i) => {
-      const isAv = b.engine === "avatar";
-      const beatRefs = (isAv ? [matById("a1"), matById("mp1")] : [matById("r1")]).filter((m): m is Material => m != null);
-      let visual = b.visual;
-      if (isAv && beatRefs.length && visual.includes("数字人")) visual = visual.replace("数字人", "[参考1] ");
-      return {
-        id: "sh" + i,
-        no: i + 1,
-        dur: b.dur,
-        visual,
-        size: isAv ? "中近景" : "中景",
-        move: i === 0 ? "推近" : "固定",
-        voWho: "口播",
-        voText: b.vo,
-        sfx: "",
-        bgm: "",
-        fx: "",
-        refs: beatRefs,
-        sub: true,
-        flow: "draft" as ShotFlow,
-        engine: b.engine,
-        frameIdx: 0,
-      };
-    });
-  }, [fmt]);
-
-  const [shots, setShots] = React.useState<ShortShot[]>(init);
+  const [shots, setShots] = React.useState<ShortShot[]>([]);
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
   const [refs, setRefs] = React.useState<Material[]>([]); // @数字人参考
-  const initIdea = idea || reopen || fmt.sample;
-  const [chat, setChat] = React.useState<ChatMsg[]>(() => [
-    { who: "ai", text: "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。" },
-    { who: "me", text: initIdea },
-    { who: "ai", text: `好的,我按这个思路出了一版脚本——共 ${fmt.beats.length} 个镜头,右侧可直接改。想调节节奏、换钩子或口吻,跟我说就行。` },
-  ]);
+  const [chat, setChat] = React.useState<ChatMsg[]>(() =>
+    realIdea
+      ? [
+          { who: "ai", text: "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。" },
+          { who: "me", text: realIdea },
+        ]
+      : [{ who: "ai", text: "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。" }],
+  );
   const [draft, setDraft] = React.useState("");
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
@@ -298,6 +276,17 @@ function ShortMakerInner() {
     }
   };
   const regen = () => void runScript();
+
+  // 真带入点子时,自动跑一次真实生成（不伪造结果；失败会在对话里显示真实错误）。
+  const autoGenRef = React.useRef(false);
+  React.useEffect(() => {
+    if (realIdea && !autoGenRef.current) {
+      autoGenRef.current = true;
+      void runScript();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realIdea]);
+
   const QUICK = ["口吻再口语一点", "开头加个更狠的钩子", "缩到 20 秒内", "多一点产品特写"];
   const sendChat = (text: string) => {
     const t = (text || "").trim();
@@ -509,13 +498,22 @@ function ShortMakerInner() {
                 <span style={{ fontWeight: 800, fontSize: 16 }}>分镜脚本</span>
                 <span className="faint num" style={{ fontSize: 12 }}>{shots.length} 镜 · 约 {total}s · 时间线自动累计</span>
                 <span className="grow" />
-                <button type="button" className="chip" disabled={phase === "gen"} onClick={regen}>
+                <button type="button" className="chip" disabled={phase === "gen" || shots.length === 0} onClick={regen}>
                   <RefreshCw size={12} /> 重新生成
                 </button>
               </div>
               {phase === "gen" ? (
                 <div className="card" style={{ padding: 18 }}>
                   <GenSkeleton lines={4} label="正在写口播稿并拆分镜…" />
+                </div>
+              ) : shots.length === 0 ? (
+                <div className="card col center" style={{ padding: "48px 24px", textAlign: "center", gap: 12 }}>
+                  <div style={{ width: 52, height: 52, borderRadius: 16, background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)" }}>
+                    <Clapperboard size={26} />
+                  </div>
+                  <div className="muted" style={{ maxWidth: 340, fontSize: 13.5 }}>
+                    左边跟 AI 说一句你的想法,它就帮你写口播脚本、拆好分镜 —— 改满意了再去出片。
+                  </div>
                 </div>
               ) : (
                 <div className="col gap-3">
@@ -610,7 +608,7 @@ function ShortMakerInner() {
               <ImageIcon size={13} /> 去视频工厂
             </button>
           </>
-        ) : doneCount === shots.length ? (
+        ) : shots.length > 0 && doneCount === shots.length ? (
           <button
             type="button"
             className="btn btn-grad"

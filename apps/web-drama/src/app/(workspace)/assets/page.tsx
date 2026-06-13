@@ -23,9 +23,7 @@ import { toast } from "sonner";
 import { Thumb } from "@/components/drama-ui";
 import {
   ASSET_USAGE,
-  MATERIALS,
   MAT_CATS,
-  setMaterials,
   type Material,
 } from "@/mocks/drama-workshop";
 
@@ -55,17 +53,16 @@ const ASSET_PALETTES: [string, string][] = [
 type MediaFilter = "all" | "image" | "video";
 
 export default function AssetsPage() {
-  const [items, setItems] = React.useState<Material[]>(() => MATERIALS.map((m) => ({ ...m })));
+  // v0.66:素材库暂无后端 → 不再伪造「你的素材」;空起步,用户上传即入库（本地）。
+  const [items, setItems] = React.useState<Material[]>([]);
   const [q, setQ] = React.useState("");
   const [cat, setCat] = React.useState("all"); // all / 人物 / 场景 / 道具 / 其他
   const [media, setMedia] = React.useState<MediaFilter>("all"); // all / image / video
   const [sel, setSel] = React.useState<Material | null>(null);
   const [adding, setAdding] = React.useState(false);
 
-  const sync = (next: Material[]) => {
-    setItems(next);
-    setMaterials(next);
-  };
+  // v0.66:本地态（无后端）。不再回写共享 MATERIALS mock —— 否则会清掉别处 @素材 选择器的样例。
+  const sync = (next: Material[]) => setItems(next);
   const create = (m: Material) => {
     sync([m, ...items]);
     setAdding(false);
@@ -163,7 +160,7 @@ export default function AssetsPage() {
           <div style={{ width: 50, height: 50, borderRadius: 15, background: "var(--surface-2)", display: "grid", placeItems: "center" }}>
             <ImageIcon size={24} />
           </div>
-          <span style={{ fontSize: 13.5, fontWeight: 600 }}>没有匹配的素材</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{q || cat !== "all" || media !== "all" ? "没有匹配的素材" : "素材库还是空的 —— 上传图片 / 视频建素材"}</span>
           <button className="btn btn-line btn-sm" onClick={() => setAdding(true)}>
             <Plus size={14} /> 上传一个
           </button>
