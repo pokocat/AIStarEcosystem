@@ -66,6 +66,8 @@ export interface AiDraftParams {
   genre?: string;
   durationSec?: number;
   count?: number;
+  /** 套模版上下文：爆款模版的分镜节拍 / 口播结构，作为 AI 生成参考一并喂给大模型。 */
+  reference?: string;
 }
 
 export interface GenerateEpisodesParams {
@@ -130,6 +132,7 @@ export async function aiDraftScripts(params: AiDraftParams): Promise<DramaScript
       genre: params.genre,
       duration_sec: params.durationSec,
       count: params.count,
+      reference: params.reference,
     },
   });
 }

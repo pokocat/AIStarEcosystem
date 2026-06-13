@@ -8,6 +8,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronLeft, ChevronUp, Layers, Sparkles, Wand2, X } from "lucide-react";
 import { VideoCover } from "@/components/drama-workshop/video-cover";
+import { PreviewModal } from "@/components/drama-workshop/preview-modal";
 import { SHORT_FORMATS, SHORT_IDEAS, type ShortFormat } from "@/mocks/drama-workshop";
 
 export function ShortCreateDialog({ initialIdea = "" }: { initialIdea?: string }) {
@@ -16,6 +17,7 @@ export function ShortCreateDialog({ initialIdea = "" }: { initialIdea?: string }
 
   const [idea, setIdea] = React.useState(initialIdea);
   const [picked, setPicked] = React.useState<ShortFormat | null>(null);
+  const [previewFmt, setPreviewFmt] = React.useState<ShortFormat | null>(null); // 先预览，确认后才套用
   const [overlayOpen, setOverlayOpen] = React.useState(true); // 默认展开，模版直接可见（短视频新建以挑模版为主）；可收起为 pill
   const [sparkN, setSparkN] = React.useState(0);
 
@@ -108,7 +110,7 @@ export function ShortCreateDialog({ initialIdea = "" }: { initialIdea?: string }
                       <button
                         key={f.key}
                         type="button"
-                        onClick={() => pick(f)}
+                        onClick={() => setPreviewFmt(f)}
                         className="col"
                         style={{
                           flex: "none",
@@ -266,6 +268,40 @@ export function ShortCreateDialog({ initialIdea = "" }: { initialIdea?: string }
           </div>
         </div>
       </div>
+
+      {previewFmt && (
+        <PreviewModal
+          item={{
+            cover: { from: previewFmt.from, to: previewFmt.to },
+            title: previewFmt.name,
+            cat: previewFmt.tip,
+            desc: previewFmt.sample,
+            coverLabel: "成片预览 · 同格式样片",
+            beatsLabel: "分镜节拍 · 套用后逐镜可改",
+            beats: (() => {
+              let acc = 0;
+              return previewFmt.beats.map((b) => {
+                const r = { range: `${acc}-${acc + b.dur}s`, beat: b.visual.slice(0, 18), est: `${b.dur}s` };
+                acc += b.dur;
+                return r;
+              });
+            })(),
+          }}
+          onClose={() => setPreviewFmt(null)}
+          actions={[
+            {
+              label: "用这个模版",
+              icon: <Wand2 size={15} />,
+              variant: "grad",
+              onClick: () => {
+                const f = previewFmt;
+                setPreviewFmt(null);
+                pick(f);
+              },
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

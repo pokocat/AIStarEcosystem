@@ -138,13 +138,22 @@ public class DramaScriptService {
         vars.put("genre", genre);
         vars.put("duration", String.valueOf(durationSec));
         vars.put("count", String.valueOf(count));
-        String userContent = PromptService.fill(prompt.userTemplate(), vars)
-                // 结构保障层（与 admin 模板正交）：要求每个脚本对象额外带 meta「整体短视频说明」，
-                // 统领全片风格 / 场景 / 人物，让后续首帧与视频生成更一致、更准确。
-                + "\n\n【额外输出要求】请在每个脚本对象中额外包含一个 meta 字段，用于统领全片："
-                + "{\"title\":\"短视频标题\",\"style\":[\"风格标签\"],\"scene\":\"主场景一句话描述\","
-                + "\"character\":{\"name\":\"主角名\",\"description\":\"主角形象与性格一句话\"}}。"
-                + "meta 必须与下方分镜内容保持一致，会作为生成首帧与视频的统一参考。";
+        StringBuilder uc = new StringBuilder(PromptService.fill(prompt.userTemplate(), vars));
+        // 套模版上下文：用户选定的爆款模版分镜节拍 / 口播结构作为生成参考（前端从 ShortFormat.beats 拼）。
+        String reference = orDefault(text(body, "reference"), "");
+        if (reference.length() > 2000) reference = reference.substring(0, 2000);
+        if (!reference.isBlank()) {
+            uc.append("\n\n【参考爆款模版】用户选定了一个爆款短视频模版，下面是它的分镜节拍 / 口播结构。")
+              .append("请把上述主题套进同样的结构、节奏与钩子打法（具体内容按主题改写，但保持镜数与节拍走向）：\n")
+              .append(reference);
+        }
+        // 结构保障层（与 admin 模板正交）：要求每个脚本对象额外带 meta「整体短视频说明」，
+        // 统领全片风格 / 场景 / 人物，让后续首帧与视频生成更一致、更准确。
+        uc.append("\n\n【额外输出要求】请在每个脚本对象中额外包含一个 meta 字段，用于统领全片：")
+          .append("{\"title\":\"短视频标题\",\"style\":[\"风格标签\"],\"scene\":\"主场景一句话描述\",")
+          .append("\"character\":{\"name\":\"主角名\",\"description\":\"主角形象与性格一句话\"}}。")
+          .append("meta 必须与下方分镜内容保持一致，会作为生成首帧与视频的统一参考。");
+        String userContent = uc.toString();
 
         List<Map<String, String>> messages = new ArrayList<>();
         if (prompt.system() != null && !prompt.system().isBlank()) {

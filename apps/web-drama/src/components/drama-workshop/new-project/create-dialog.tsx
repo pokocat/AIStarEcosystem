@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, ChevronLeft, ChevronUp, Layers, Sparkles, Wand2, X, Zap } from "lucide-react";
 import { VideoCover } from "@/components/drama-workshop/video-cover";
+import { PreviewModal } from "@/components/drama-workshop/preview-modal";
 import { getTplMeta, type ContentType, type Template } from "@/mocks/drama-workshop";
 import { ProjectsApi } from "@/api";
 import type { CreateProjectInput } from "@/api/projects";
@@ -31,6 +32,7 @@ export function CreateDialog({
 
   const [idea, setIdea] = React.useState(initialIdea);
   const [picked, setPicked] = React.useState<Picked | null>(null);
+  const [previewTpl, setPreviewTpl] = React.useState<Picked | null>(null); // 先预览，确认后才套用
   const [overlayOpen, setOverlayOpen] = React.useState(focusTemplate);
   const [sparkN, setSparkN] = React.useState(0);
 
@@ -50,9 +52,8 @@ export function CreateDialog({
 
   const canSubmit = idea.trim().length > 0 || !!picked;
 
-  const pickTpl = (tpl: Template) => {
-    if (!browseType) return;
-    setPicked({ tpl, type: browseType });
+  const pickTpl = (p: Picked) => {
+    setPicked(p);
     setOverlayOpen(false); // 收起浮层，模板以 pill 落进对话框
     inputRef.current?.focus();
   };
@@ -197,7 +198,7 @@ export function CreateDialog({
                     <button
                       key={tp.id}
                       type="button"
-                      onClick={() => pickTpl(tp)}
+                      onClick={() => browseType && setPreviewTpl({ tpl: tp, type: browseType })}
                       className="col"
                       style={{
                         flex: "none",
@@ -392,6 +393,32 @@ export function CreateDialog({
           </div>
         </div>
       </div>
+
+      {previewTpl && (
+        <PreviewModal
+          item={{
+            cover: getTplMeta(previewTpl.tpl).cover,
+            title: previewTpl.tpl.name,
+            cat: previewTpl.type.name,
+            desc: getTplMeta(previewTpl.tpl).desc,
+            tpl: previewTpl.tpl,
+            tags: previewTpl.tpl.hooks,
+          }}
+          onClose={() => setPreviewTpl(null)}
+          actions={[
+            {
+              label: "用这个模板",
+              icon: <Wand2 size={15} />,
+              variant: "grad",
+              onClick: () => {
+                const p = previewTpl;
+                setPreviewTpl(null);
+                pickTpl(p);
+              },
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

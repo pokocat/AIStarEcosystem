@@ -245,6 +245,18 @@ function ShortMakerInner() {
   const realIdea = idea || reopen; // 仅当真带入点子时非空
   const title = realIdea || fmt.name;
 
+  // 套模版上下文：把模版的分镜节拍 / 口播结构作为 AI 生成参考，喂进对话流（提示词/skill 加载）。
+  const templateRef = fmt.beats?.length
+    ? `「${fmt.name}」模版（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）：` +
+      fmt.beats.map((b, i) => `镜${i + 1}(${b.dur}s) 画面:${b.visual} 口播:${b.vo}`).join("；")
+    : "";
+  // 开场即把模版「装进」对话里：用户一眼看到套了哪个模版、AI 会照什么节拍来。
+  const tplIntro = reopen
+    ? "接着改这条短视频 —— 告诉我要怎么调,我重写口播和分镜。"
+    : fmt.beats?.length
+      ? `已套用【${fmt.name}】模版 —— 我照它的爆款节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）帮你拆,说说你的主题/产品就行。`
+      : "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。";
+
   const [shots, setShots] = React.useState<ShortShot[]>([]);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
   const [meta, setMeta] = React.useState<ScriptMeta | null>(null);
@@ -253,10 +265,10 @@ function ShortMakerInner() {
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
     realIdea
       ? [
-          { who: "ai", text: "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。" },
+          { who: "ai", text: tplIntro },
           { who: "me", text: realIdea },
         ]
-      : [{ who: "ai", text: "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。" }],
+      : [{ who: "ai", text: tplIntro }],
   );
   const [draft, setDraft] = React.useState("");
 
@@ -272,8 +284,9 @@ function ShortMakerInner() {
       const drafts = await ShortDramaApi.aiDraftScripts({
         theme,
         genre: fmt.name,
-        durationSec: total || 30,
+        durationSec: total || fmt.dur || 30,
         count: 1,
+        reference: templateRef,
       });
       const script = drafts[0];
       if (!script || !script.scenes?.length) throw new Error("AI 没有产出可用脚本，请换个说法重试");
