@@ -5,6 +5,7 @@
 import * as React from "react";
 import { ArrowRight, Check, Wand2, X, Zap } from "lucide-react";
 import { CreditButton } from "@/components/drama-ui";
+import { ModalShell } from "@/components/common/ModalShell";
 import { CONTENT_TYPES, TEMPLATES, getTplMeta } from "@/mocks/drama-workshop";
 import { TplPreviewBody } from "./preview-modal";
 import { VideoCover } from "./video-cover";
@@ -32,25 +33,14 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
   const meta = getTplMeta(cur);
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div
-        className="card pop-in col"
-        style={{ width: 940, maxWidth: "96vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalShell
+      onClose={onClose}
+      label="快速开剧 · 套爆款模板"
+      className="card pop-in col"
+      style={{ width: 940, maxWidth: "96vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
+    >
         <div className="row gap-3" style={{ padding: "16px 22px 12px", flex: "none" }}>
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              background: "linear-gradient(135deg,var(--accent),var(--accent-2))",
-              display: "grid",
-              placeItems: "center",
-              flex: "none",
-              color: "#fff",
-            }}
-          >
+          <div className="icon-badge" style={{ width: 38, height: 38, borderRadius: 12 }}>
             <Zap size={20} fill="currentColor" strokeWidth={0} />
           </div>
           <div className="grow">
@@ -198,7 +188,6 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
             </CreditButton>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

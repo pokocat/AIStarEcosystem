@@ -70,18 +70,7 @@ export function AiChatPanel({
       }}
     >
       <div className="row gap-2" style={{ padding: "9px 12px", borderBottom: "1px solid var(--line-soft)", flex: "none" }}>
-        <span
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: 7,
-            background: "linear-gradient(135deg,var(--accent),var(--accent-2))",
-            display: "grid",
-            placeItems: "center",
-            flex: "none",
-            color: "#fff",
-          }}
-        >
+        <span className="icon-badge" style={{ width: 22, height: 22, borderRadius: 7 }}>
           <Sparkles size={12} />
         </span>
         <span style={{ fontWeight: 700, fontSize: 12.5 }}>AI 脚本助手</span>

@@ -72,6 +72,16 @@
 .faint { color: var(--ink-3); }
 .num   { font-family: var(--font-num); font-feature-settings: "tnum"; }
 
+/* 渐变图标盒（accent 渐变底 + 居中白图标）—— 跨 ~12 处弹层 / 阶段头部的重复 inline 模式提取（D-3）。
+   不变部分集中在此；调用方仅保留 width / height / borderRadius 等尺寸 inline。 */
+.icon-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
 [contenteditable]:empty:before { content: attr(data-ph); color: var(--ink-3); font-weight: 400; font-style: normal; }
 [contenteditable]:hover { background: var(--line-soft); }
 

@@ -67,6 +67,12 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.67 · 2026-06-13 · 工程债收口（D-7 a11y / D-6 测试基线 / D-3 重复样式提取）
+
+- **D-7 弹层 a11y 统一**：抽 `lib/use-modal-a11y.ts`（ESC + 焦点陷阱 + 初始/还原焦点 + body 锁，单一来源）。`common/Dialog.tsx` 接入 + 补 `aria-labelledby/-describedby`；新增 `common/ModalShell.tsx` 给命令式弹层提供 `.overlay` + `role=dialog` + a11y，收编 short-clip / quick-create / preview 三个此前裸 `<div className="overlay">`（全缺 ESC / focus trap）。**不换 packages/ui 的 shadcn dialog** —— 那套亮色 token 会破坏 drama 暗色 premium 玻璃视觉；强化共享容器即让所有调用方一处受益。
+- **D-6 单元测试基线**：真后端落地后建立首个 vitest（+ jsdom + @testing-library/react）。`format.test.ts`（15 例边界）+ `drama-query.test.tsx`（6 例缓存语义）。测试驱动**修了一个真实 bug**：`drama-query` 取数失败时 re-throw 让 `useAsync` 丢弃的 promise 变 unhandled rejection（改为错误只落 `entry.error`，两个消费者从那里读）。`pnpm test` 21/21。
+- **D-3 重复样式提取（非全量迁移）**：实测 inline `style={{}}` ~1615 处（原 TODO 估 573 严重低估），drama 为 Figma Make 移植、inline 精确定位是设计工作流的一部分，机械全迁移不可取。改为按重复模式提取：新增 `.icon-badge` 工具类（accent 渐变图标盒不变部分），迁移 4 处代表（computed-style 验证逐属性等价、零回归）。详见 `TODO.md` §D-3。
+
 ### v0.66 · 2026-06-12 · 扣费体验 + 按集隔离 + 成片合成
 
 - **小额免打扰**：`CreditButton` 消耗 < 阈值（默认 10，admin「短剧专区」可配）直接执行不弹确认；≥ 阈值才弹。各 AI 动作单价从硬编码切到 `GET /me/drama/config`（`api/drama-config.ts` 缓存 + `useDramaConfig()`），server 端四个 LLM 动作真扣积分（hold→commit / 失败 release）。

@@ -126,18 +126,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
             }}
           >
             <div className="row gap-2" style={{ padding: "12px 18px 10px" }}>
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 9,
-                  background: "linear-gradient(135deg,var(--accent),var(--accent-2))",
-                  display: "grid",
-                  placeItems: "center",
-                  flex: "none",
-                  color: "#fff",
-                }}
-              >
+              <div className="icon-badge" style={{ width: 30, height: 30, borderRadius: 9 }}>
                 <Sparkles size={16} fill="currentColor" strokeWidth={0} />
               </div>
               <div className="grow">

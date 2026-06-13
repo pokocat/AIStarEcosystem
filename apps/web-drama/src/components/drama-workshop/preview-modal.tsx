@@ -5,6 +5,7 @@
 import * as React from "react";
 import { Clock, Film, Sparkles, X } from "lucide-react";
 import { CreditButton } from "@/components/drama-ui";
+import { ModalShell } from "@/components/common/ModalShell";
 import type { Template } from "@/mocks/drama-workshop";
 import { tplBeats, type PreviewBeat } from "@/mocks/drama-workshop";
 import { VideoCover } from "./video-cover";
@@ -177,12 +178,13 @@ export function PreviewModal({
     ghost: "btn btn-ghost",
   };
   return (
-    <div className="overlay" onClick={onClose} style={{ zIndex: 90 }}>
-      <div
-        className="card pop-in col"
-        style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalShell
+      onClose={onClose}
+      label="模板预览"
+      overlayZIndex={90}
+      className="card pop-in col"
+      style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
+    >
         <div className="scroll col" style={{ padding: "18px 20px 16px", minHeight: 0, position: "relative" }}>
           <button
             type="button"
@@ -213,7 +215,6 @@ export function PreviewModal({
             )}
           </div>
         )}
-      </div>
-    </div>
+    </ModalShell>
   );
 }

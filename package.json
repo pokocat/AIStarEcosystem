@@ -24,5 +24,8 @@
     "dev:admin": "pnpm --filter @ai-star-eco/admin-new run dev",
     "typecheck:admin": "pnpm --filter @ai-star-eco/admin-new run typecheck",
     "check:api-contract": "node scripts/check-api-contract.mjs"
+  },
+  "dependencies": {
+    "miniprogram-ci": "^2.1.31"
   }
 }
