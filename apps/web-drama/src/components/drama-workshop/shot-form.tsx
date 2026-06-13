@@ -10,6 +10,7 @@ import { Check, Film, Image as ImageIcon, Play, RefreshCw, X, Zap } from "lucide
 import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
 import { RefCell, RichScript } from "./script-refs";
 import { SubToggle } from "./script-refs";
+import { MediaLightbox, type LightboxMedia } from "./media-lightbox";
 import type { Material } from "@/mocks/drama-workshop";
 
 export type ShotFlow = "draft" | "frame" | "clip" | "done";
@@ -99,6 +100,13 @@ export function ShotFormCard({
   const rendered = s.flow !== "draft";
   const isVideo = s.flow === "clip" || s.flow === "done";
   const whoList = speakerOptions.includes(s.voWho) || !s.voWho ? speakerOptions : [s.voWho, ...speakerOptions];
+  const [lightbox, setLightbox] = React.useState<LightboxMedia | null>(null);
+  const frameSrc = s.frameUrl ?? s.frameUrls?.[0];
+  // 渲染产物可点开预览：成片看视频、首帧看大图（draft 占位图不可点）。
+  const previewable: LightboxMedia | null =
+    isVideo && s.videoUrl ? { src: s.videoUrl, kind: "video" }
+    : rendered && frameSrc ? { src: frameSrc, kind: "image" }
+    : null;
 
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -135,7 +143,11 @@ export function ShotFormCard({
       <div className="row gap-4" style={{ padding: "12px 14px 14px", alignItems: "stretch" }}>
         {/* 左:渲染渐进(首帧 → 成片) */}
         <div className="col gap-2" style={{ width: 104, flex: "none" }}>
-          <div style={{ position: "relative" }}>
+          <div
+            style={{ position: "relative", cursor: previewable && !busy ? "zoom-in" : undefined }}
+            title={previewable ? (previewable.kind === "video" ? "点开预览视频" : "点开看大图") : undefined}
+            onClick={previewable && !busy ? () => setLightbox(previewable) : undefined}
+          >
             {isVideo && s.videoUrl ? (
               <video
                 src={s.videoUrl}
@@ -258,6 +270,7 @@ export function ShotFormCard({
           </FieldRow>
         </div>
       </div>
+      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
     </div>
   );
 }

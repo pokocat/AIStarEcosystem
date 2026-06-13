@@ -105,7 +105,10 @@ public class DramaRenderService {
                     vars.put(e.getKey(), e.getValue() == null || e.getValue().isNull() ? "" : e.getValue().asText()));
         }
         // fill 后清掉未填充的残留占位符，避免把 {{x}} 原样喂给图像/视频模型
-        return PromptService.fill(p.userTemplate(), vars).replaceAll("\\{\\{[^}]*}}", "").trim();
+        String finalPrompt = PromptService.fill(p.userTemplate(), vars).replaceAll("\\{\\{[^}]*}}", "").trim();
+        // 排查用：出图/出片拼装数据 + 最终发给模型的提示词全文（图像生成不走 ai-chat-io，这里兜底记录）。
+        log.info("[drama-render] promptKey={} kind={} origin={} vars={} prompt={}", key, kind, p.origin(), vars, finalPrompt);
+        return finalPrompt;
     }
 
     // ── 首帧（图像） ─────────────────────────────────────────────────────────────

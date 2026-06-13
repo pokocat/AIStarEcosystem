@@ -440,6 +440,8 @@ public class DramaProjectService {
         double temperature = p.params().temperature() != null ? p.params().temperature() : defaultTemp;
         int maxTokens = p.params().maxTokens() != null && p.params().maxTokens() > 0 ? p.params().maxTokens() : 4096;
         boolean jsonMode = p.params().jsonMode() == null || p.params().jsonMode();
+        // 排查用：拼装后的结构化数据（vars）+ 提示词来源。最终发给模型的全文见 aep.ai.chat.io。
+        log.info("[drama-ai] promptKey={} origin={} vars={}", promptKey, p.origin(), vars);
         return new PromptCall(p.system(), PromptService.fill(p.userTemplate(), vars), temperature, maxTokens, jsonMode);
     }
 

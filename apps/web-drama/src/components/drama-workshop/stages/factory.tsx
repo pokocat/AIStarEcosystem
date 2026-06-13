@@ -22,6 +22,7 @@ import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, EngineTag, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import { GenSettingsBar } from "../gen-settings-bar";
+import { MediaLightbox, type LightboxMedia } from "../media-lightbox";
 import { getEpisodeDoc, matById, withEpisodeDoc, type BoardShot, type Material, type ProjectData } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { RenderApi } from "@/api";
@@ -708,6 +709,8 @@ function FactoryDrawer({
   const col = shotColors(s.engine);
   const cast = (s.cast ?? []).map((id) => chars.find((c) => c.id === id)).filter(Boolean);
   const frameVariants = [0, 1, 2, 3];
+  const [lightbox, setLightbox] = React.useState<LightboxMedia | null>(null);
+  const openImage = (src?: string) => { if (src) setLightbox({ src, kind: "image" }); };
 
   const preview = () => {
     if (busy === "frame") return <RenderBusy label="正在渲染 4 版首帧…" />;
@@ -724,7 +727,7 @@ function FactoryDrawer({
         );
       }
       return (
-        <Thumb from={col.from} to={col.to} src={s.frameUrl ?? s.frameUrls?.[s.frameIdx]} ratio="9/16" radius={14} style={{ width: "100%" }}>
+        <Thumb from={col.from} to={col.to} src={s.frameUrl ?? s.frameUrls?.[s.frameIdx]} ratio="9/16" radius={14} style={{ width: "100%", cursor: "zoom-in" }} title="点开看大图" onClick={() => openImage(s.frameUrl ?? s.frameUrls?.[s.frameIdx])}>
           <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
             <span
               style={{
@@ -750,7 +753,7 @@ function FactoryDrawer({
       const locked = at >= FLOW_ORDER.indexOf("frameLocked");
       return (
         <div className="col gap-2">
-          <Thumb from={col.from} to={col.to} src={s.frameUrls?.[s.frameIdx] ?? s.frameUrl} ratio="9/16" radius={14} style={{ width: "100%" }}>
+          <Thumb from={col.from} to={col.to} src={s.frameUrls?.[s.frameIdx] ?? s.frameUrl} ratio="9/16" radius={14} style={{ width: "100%", cursor: "zoom-in" }} title="点开看大图" onClick={() => openImage(s.frameUrls?.[s.frameIdx] ?? s.frameUrl)}>
             <span className="thumb-label" style={{ position: "absolute", left: 10, bottom: 10 }}>
               {locked ? "已锁首帧 · 第 " + (s.frameIdx + 1) + " 版" : "首帧预览 · 第 " + (s.frameIdx + 1) + " 版"}
             </span>
@@ -985,6 +988,7 @@ function FactoryDrawer({
           )}
         </div>
       </aside>
+      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
     </>
   );
 }

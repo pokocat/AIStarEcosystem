@@ -11,6 +11,12 @@ export interface DramaScene {
   summary: string;
   shot: string;
   dialogue: string;
+  /** 音效 / 环境音（AI 可选生成，留空 = 无）。 */
+  sfx?: string;
+  /** 背景音乐建议（AI 可选生成，留空 = 无）。 */
+  bgm?: string;
+  /** 画面包装 / 特效氛围（AI 可选生成，留空 = 无）。 */
+  fx?: string;
   duration_sec: number;
 }
 
