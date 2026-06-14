@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import {
   ArrowRight,
   Check,
-  Edit,
   GripVertical,
   Layers,
   Link as LinkIcon,
@@ -19,7 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
-import { Field, GenSkeleton } from "@/components/drama-ui";
+import { Editable, Field, GenSkeleton } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import type { EpisodeOutline, ProjectData } from "@/mocks/drama-workshop";
@@ -83,16 +82,34 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
     }
   };
 
-  const reorderEp = (fromNo: number, toNo: number) =>
-    setEps((arr) => {
-      const f = arr.findIndex((x) => x.no === fromNo);
-      const tIdx = arr.findIndex((x) => x.no === toNo);
-      if (f < 0 || tIdx < 0 || f === tIdx) return arr;
-      const next = [...arr];
-      const [m] = next.splice(f, 1);
-      next.splice(tIdx, 0, m);
-      return next;
-    });
+  // v0.76：大纲的手改 / 调序 / 加集都即时落库（此前只在「AI 生成」「锁定」时存，刷新即丢）。
+  const saveEps = React.useCallback(
+    (nextEps: EpisodeOutline[]) => {
+      setEps(nextEps);
+      if (!ctx) return;
+      ctx.notifyEditing?.();
+      void ctx.saveData({ ...data, episodes: nextEps }, { stage: 2 }).catch(() => {});
+    },
+    [ctx, data],
+  );
+
+  const reorderEp = (fromNo: number, toNo: number) => {
+    const f = eps.findIndex((x) => x.no === fromNo);
+    const tIdx = eps.findIndex((x) => x.no === toNo);
+    if (f < 0 || tIdx < 0 || f === tIdx) return;
+    const next = [...eps];
+    const [m] = next.splice(f, 1);
+    next.splice(tIdx, 0, m);
+    saveEps(next);
+  };
+
+  const addEp = () => {
+    const maxNo = eps.reduce((a, e) => Math.max(a, e.no), 0);
+    saveEps([...eps, { no: maxNo + 1, hook: "", synopsis: "", beat: "自定义" }]);
+  };
+
+  const editEp = (no: number, patch: Partial<EpisodeOutline>) =>
+    saveEps(eps.map((e) => (e.no === no ? { ...e, ...patch } : e)));
 
   const gen = () => runOutline(scope, scopeCost(scope));
   const fillRest = () => runOutline("full", fillRestCost);
@@ -273,8 +290,9 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                 e={e}
                 delay={i * 45}
                 prefilled={prefilled}
+                editable={!locked}
                 onReorder={reorderEp}
-                onRewrite={() => toast.success(`已为第 ${e.no} 集重写梗概`)}
+                onEdit={editEp}
               />
             ))}
             {scope === "trial" && !locked && (
@@ -304,7 +322,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
             )}
             {!locked && (
               <div className="row gap-3" style={{ justifyContent: "flex-end", marginTop: 6 }}>
-                <button type="button" className="btn btn-line" onClick={() => toast.success("已加一集占位,可手动填梗概")}>
+                <button type="button" className="btn btn-line" onClick={addEp}>
                   <Plus size={15} /> 加一集
                 </button>
                 <button
@@ -336,16 +354,17 @@ function EpisodeRow({
   e,
   delay,
   prefilled,
+  editable,
   onReorder,
-  onRewrite,
+  onEdit,
 }: {
   e: EpisodeOutline;
   delay: number;
   prefilled?: boolean;
+  editable?: boolean;
   onReorder?: (fromNo: number, toNo: number) => void;
-  onRewrite?: () => void;
+  onEdit?: (no: number, patch: Partial<EpisodeOutline>) => void;
 }) {
-  const [hover, setHover] = React.useState(false);
   const [over, setOver] = React.useState(false);
   return (
     <div
@@ -357,8 +376,6 @@ function EpisodeRow({
         borderLeft: prefilled ? "3px solid var(--accent-2)" : undefined,
         boxShadow: over ? "0 0 0 2px var(--accent)" : undefined,
       }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       onDragOver={(ev) => {
         ev.preventDefault();
         setOver(true);
@@ -401,17 +418,27 @@ function EpisodeRow({
               </span>
             )}
           </div>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{e.hook}</div>
-          <div className="muted" style={{ fontSize: 12.5 }}>{e.synopsis}</div>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+            {editable ? (
+              <Editable value={e.hook} placeholder="本集钩子…" onCommit={(v) => onEdit?.(e.no, { hook: v })} />
+            ) : (
+              e.hook
+            )}
+          </div>
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            {editable ? (
+              <Editable
+                block
+                value={e.synopsis}
+                placeholder="本集梗概…"
+                onCommit={(v) => onEdit?.(e.no, { synopsis: v })}
+                style={{ display: "block" }}
+              />
+            ) : (
+              e.synopsis
+            )}
+          </div>
         </div>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          style={{ opacity: hover ? 1 : 0, transition: "opacity .15s", flex: "none" }}
-          onClick={onRewrite}
-        >
-          <Edit size={14} /> 重写梗概
-        </button>
       </div>
     </div>
   );

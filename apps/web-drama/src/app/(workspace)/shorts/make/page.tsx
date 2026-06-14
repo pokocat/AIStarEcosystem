@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 
 // 短视频制作 — 设计真源 v4 screens-shorts-v4.jsx `ShortMaker` + `ShortShotCard`:
 // 单屏两步:① AI 对话 + 口播脚本表 → ② 视频工厂逐镜出片 → 合成成片。
+// v0.76:整页编辑态由后端短视频草稿（/me/drama/shorts）持久化 —— 进页即建/读草稿（id 进 URL），
+// 编辑防抖自动保存，刷新 / 返回 / 换设备都能接着做（此前纯内存态，刷新即丢）。
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -24,10 +26,14 @@ import { toast } from "sonner";
 import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
 import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
+import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
-import { RenderApi, ShortDramaApi } from "@/api";
+import { RenderApi, ShortDramaApi, ShortsApi } from "@/api";
 import type { ScriptMeta } from "@/api/short-drama";
+import type { ShortDraftData } from "@/api/shorts";
 import { aiErrorMessage } from "@/lib/ai-error";
+import { useSaveStatus } from "@/lib/use-save-status";
+import { invalidate } from "@/lib/drama-query";
 
 // 整体短视频说明（meta）卡片里输入框/文本域的统一样式。
 const META_INPUT: React.CSSProperties = {
@@ -224,66 +230,231 @@ function ShortShotCard({
 
 export default function ShortMakerPage() {
   return (
-    <React.Suspense fallback={<div className="col ws-flush" style={{ background: "var(--bg)" }} />}>
-      <ShortMakerInner />
+    <React.Suspense fallback={<ShortMakerLoading />}>
+      <ShortMakerGate />
     </React.Suspense>
   );
 }
 
-function ShortMakerInner() {
+/**
+ * 草稿网关：解析 URL 的 draft id —— 有则读取草稿，无则按 fmt / idea(sessionStorage) / reopen 新建一条草稿，
+ * 把 id 写进 URL（刷新后命中读取分支）。就绪后渲染制作页，整页状态由该草稿承载。
+ */
+function ShortMakerGate() {
   const router = useRouter();
   const sp = useSearchParams();
-  // v0.73 修：fmt 不再默认 sell —— 没选模版就别假装「已套用口播带货」。
+  const draftIdParam = sp.get("draft");
   const fmtKey = sp.get("fmt");
-  const hasTemplate = !!fmtKey;
-  const reopen = sp.get("reopen");
-  // idea 不再走 URL（文案太长 / 含敏感内容、且刷新会重复触发生成、重复扣费）：
-  // 经 sessionStorage 一次性带入，读完即清；刷新后无 idea → 不自动重跑。
-  const [idea] = React.useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const v = sessionStorage.getItem("drama.shorts.idea");
-    if (v) sessionStorage.removeItem("drama.shorts.idea");
-    return v;
-  });
+  const reopenParam = sp.get("reopen");
+
+  // 点子经 sessionStorage 一次性带入（不入 URL：文案长/含敏感内容），读完即清。
+  const ideaRef = React.useRef<string | null | undefined>(undefined);
+  if (ideaRef.current === undefined) {
+    if (typeof window !== "undefined") {
+      const v = sessionStorage.getItem("drama.shorts.idea");
+      if (v) sessionStorage.removeItem("drama.shorts.idea");
+      ideaRef.current = v ?? null;
+    } else {
+      ideaRef.current = null;
+    }
+  }
+
+  const [draftId, setDraftId] = React.useState<string | null>(draftIdParam);
+  const [initial, setInitial] = React.useState<ShortDraftData | null>(null);
+  const [err, setErr] = React.useState<string | null>(null);
+  const startedRef = React.useRef(false);
+  const createdIdRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    // 已是我们刚建并写进 URL 的 id：无需再拉。
+    if (draftIdParam && draftIdParam === createdIdRef.current) return;
+    if (startedRef.current && !draftIdParam) return; // 防 StrictMode / 重入重复建
+    let alive = true;
+    (async () => {
+      try {
+        if (draftIdParam) {
+          const detail = await ShortsApi.getDraft(draftIdParam);
+          if (!alive) return;
+          setDraftId(draftIdParam);
+          setInitial(detail.data);
+          return;
+        }
+        startedRef.current = true;
+        const fmt = fmtKey ? SHORT_FORMATS.find((f) => f.key === fmtKey) : null;
+        const detail = await ShortsApi.createDraft({
+          fmtKey: fmtKey ?? null,
+          fmtName: fmt?.name,
+          coverFrom: fmt?.from,
+          coverTo: fmt?.to,
+          idea: ideaRef.current,
+          reopen: reopenParam,
+        });
+        // 新建结果即使在 StrictMode 清理后也要落地，否则会卡在加载态。
+        createdIdRef.current = detail.meta.id;
+        setDraftId(detail.meta.id);
+        setInitial(detail.data);
+        invalidate("/me/drama/shorts");
+        const params = new URLSearchParams();
+        params.set("draft", detail.meta.id);
+        if (fmtKey) params.set("fmt", fmtKey);
+        router.replace(`/shorts/make?${params.toString()}`);
+      } catch (e) {
+        if (alive) setErr(aiErrorMessage(e, "打开短视频草稿失败，请返回工坊重试"));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftIdParam]);
+
+  if (err) return <ShortMakerError msg={err} onBack={() => router.push("/shorts")} />;
+  if (!draftId || !initial) return <ShortMakerLoading />;
+  return <ShortMakerInner key={draftId} draftId={draftId} fmtKey={fmtKey} reopen={reopenParam} initial={initial} />;
+}
+
+function ShortMakerLoading() {
+  return (
+    <div className="col center ws-flush" style={{ background: "var(--bg)", gap: 14 }}>
+      <span
+        aria-hidden
+        style={{
+          width: 34,
+          height: 34,
+          border: "3px solid var(--line)",
+          borderTopColor: "var(--accent)",
+          borderRadius: "50%",
+          animation: "drama-spin .8s linear infinite",
+        }}
+      />
+      <div className="muted" style={{ fontSize: 13 }}>正在打开短视频草稿…</div>
+    </div>
+  );
+}
+
+function ShortMakerError({ msg, onBack }: { msg: string; onBack: () => void }) {
+  return (
+    <div className="col center ws-flush" style={{ background: "var(--bg)", gap: 14, textAlign: "center" }}>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>打不开这条短视频</h1>
+      <div className="muted" style={{ maxWidth: 360 }}>{msg}</div>
+      <button type="button" className="btn btn-line" onClick={onBack}>
+        <ChevronLeft size={16} /> 返回短视频工坊
+      </button>
+    </div>
+  );
+}
+
+function ShortMakerInner({
+  draftId,
+  fmtKey,
+  reopen,
+  initial,
+}: {
+  draftId: string;
+  fmtKey: string | null;
+  reopen: string | null;
+  initial: ShortDraftData;
+}) {
+  const router = useRouter();
+  const resolvedFmtKey = fmtKey ?? initial.fmtKey ?? null;
+  const hasTemplate = !!resolvedFmtKey;
   // fmt 仅作 genre / 时长默认兜底（始终非空）；是否「套了模版」看 hasTemplate。
-  const fmt = SHORT_FORMATS.find((f) => f.key === fmtKey) ?? SHORT_FORMATS[0];
+  const fmt = SHORT_FORMATS.find((f) => f.key === resolvedFmtKey) ?? SHORT_FORMATS[0];
+  const realIdea = initial.idea || initial.reopen || reopen; // 仅当真带入点子时非空
 
-  const [step, setStep] = React.useState<"script" | "factory">("script");
-  // v0.66:诚实 idle 起步 —— 不再用 fmt.beats / fmt.sample 伪造分镜和「已聊过」的对话。
-  // 空脚本 + 仅一句 AI 引导;真带入点子(来自首页/重开)才自动跑一次真实生成。
-  const [phase, setPhase] = React.useState<"idle" | "gen" | "done">("idle");
-  const realIdea = idea || reopen; // 仅当真带入点子时非空
-  const title = realIdea || (hasTemplate ? fmt.name : "短视频");
-
-  // 套模版上下文：仅当用户「确实选了模版」(hasTemplate)，才把模版节拍作为 AI 生成参考。
+  // 套模版上下文：仅当确实选了模版，才把模版节拍作为 AI 生成参考。
   const templateRef = hasTemplate && fmt.beats?.length
     ? `「${fmt.name}」模版（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）：` +
       fmt.beats.map((b, i) => `镜${i + 1}(${b.dur}s) 画面:${b.visual} 口播:${b.vo}`).join("；")
     : "";
-  // 开场白：选了模版才说「已套用 X 模版」；没选就给中性引导，不要假装套了口播带货。
-  const tplIntro = reopen
+  const tplIntro = initial.reopen
     ? "接着改这条短视频 —— 告诉我要怎么调,我重写口播和分镜。"
     : hasTemplate && fmt.beats?.length
       ? `已套用【${fmt.name}】模版 —— 我照它的爆款节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）帮你拆,说说你的主题/产品就行。`
       : "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。";
 
-  const [shots, setShots] = React.useState<ShortShot[]>([]);
+  const [step, setStep] = React.useState<"script" | "factory">(initial.step ?? "script");
+  const [phase, setPhase] = React.useState<"idle" | "gen" | "done">(initial.shots.length ? "done" : "idle");
+  const [shots, setShots] = React.useState<ShortShot[]>(() => (initial.shots as ShortShot[]) ?? []);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
-  const [meta, setMeta] = React.useState<ScriptMeta | null>(null);
+  const [meta, setMeta] = React.useState<ScriptMeta | null>(initial.meta ?? null);
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
-  const [refs, setRefs] = React.useState<Material[]>([]); // @数字人参考
+  const [refs, setRefs] = React.useState<Material[]>(() => initial.refs ?? []); // @数字人参考
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
-    realIdea
-      ? [
-          { who: "ai", text: tplIntro },
-          { who: "me", text: realIdea },
-        ]
-      : [{ who: "ai", text: tplIntro }],
+    initial.chat?.length
+      ? (initial.chat as ChatMsg[])
+      : realIdea
+        ? [
+            { who: "ai", text: tplIntro },
+            { who: "me", text: realIdea },
+          ]
+        : [{ who: "ai", text: tplIntro }],
   );
   const [draft, setDraft] = React.useState("");
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
+  const title = meta?.title || initial.title || realIdea || (hasTemplate ? fmt.name : "短视频");
+
+  // ── 草稿自动保存（v0.76）──────────────────────────────────────────────────────
+  const { status: saveStatusValue, notifyEditing, track } = useSaveStatus();
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dataRef = React.useRef<ShortDraftData>(initial);
+  dataRef.current = {
+    idea: initial.idea ?? null,
+    reopen: initial.reopen ?? reopen ?? null,
+    fmtKey: resolvedFmtKey,
+    fmtName: fmt.name,
+    title: meta?.title || initial.title || title,
+    step,
+    meta,
+    shots,
+    chat,
+    refs,
+  };
+
+  const queueSave = React.useCallback(() => {
+    notifyEditing();
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void track(() => ShortsApi.saveDraft(draftId, dataRef.current, { status: "draft" })).catch(() => {});
+    }, 1200);
+  }, [draftId, notifyEditing, track]);
+
+  const flushSave = React.useCallback(
+    async (opts?: { status?: "draft" | "done"; progress?: number }) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      await track(() => ShortsApi.saveDraft(draftId, dataRef.current, opts ?? { status: "draft" }));
+    },
+    [draftId, track],
+  );
+
+  // 持久化态变化即防抖落库（跳过首挂载，避免刚载入就回存一次）。
+  const mounted = React.useRef(false);
+  React.useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    queueSave();
+  }, [step, meta, shots, chat, refs, queueSave]);
+  React.useEffect(
+    () => () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    },
+    [],
+  );
+
+  /** 离开制作页前 flush 未落库改动 + 刷新工坊列表。 */
+  const leaveToStudio = async () => {
+    try {
+      await flushSave();
+    } catch {
+      /* flush 失败不阻塞返回（草稿在内存仍在；beforeunload 已兜底刷新场景） */
+    }
+    invalidate("/me/drama/shorts");
+    router.push("/shorts");
+  };
 
   /** 真实 AI 生成口播脚本（DRAMA_SCRIPT_DRAFT）→ 映射为结构化分镜表。 */
   const runScript = async (instruction?: string, aiReply?: string) => {
@@ -330,7 +501,7 @@ function ShortMakerInner() {
       ]);
       toast.success("口播脚本和分镜已生成,改满意就去出片");
     } catch (e) {
-      setPhase("done");
+      setPhase(shots.length ? "done" : "idle");
       const msg = aiErrorMessage(e, "脚本生成失败，请稍后重试");
       setChat((c) => [...c, { who: "ai", text: `生成失败：${msg}` }]);
       toast.error(msg);
@@ -338,15 +509,15 @@ function ShortMakerInner() {
   };
   const regen = () => void runScript();
 
-  // 真带入点子时,自动跑一次真实生成（不伪造结果；失败会在对话里显示真实错误）。
+  // 真带入点子且尚无分镜时,自动跑一次真实生成（不伪造结果；失败会在对话里显示真实错误）。
   const autoGenRef = React.useRef(false);
   React.useEffect(() => {
-    if (realIdea && !autoGenRef.current) {
+    if (!autoGenRef.current && realIdea && shots.length === 0) {
       autoGenRef.current = true;
       void runScript();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [realIdea]);
+  }, []);
 
   const QUICK = ["口吻再口语一点", "开头加个更狠的钩子", "缩到 20 秒内", "多一点产品特写"];
   const sendChat = (text: string) => {
@@ -411,7 +582,7 @@ function ShortMakerInner() {
         className="row"
         style={{ height: 58, padding: "0 24px", borderBottom: "1px solid var(--line)", background: "var(--surface)", gap: 14, flex: "none" }}
       >
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => router.push("/shorts")} style={{ flex: "none" }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void leaveToStudio()} style={{ flex: "none" }}>
           <ChevronLeft size={15} /> 工坊
         </button>
         <span
@@ -745,7 +916,13 @@ function ShortMakerInner() {
           <button
             type="button"
             className="btn btn-grad"
-            onClick={() => {
+            onClick={async () => {
+              try {
+                await flushSave({ status: "done", progress: 100 });
+              } catch {
+                /* flush 失败：草稿仍是 draft 态，用户可重试，不误报完成 */
+              }
+              invalidate("/me/drama/shorts");
               toast.success("短视频已合成,可在「我的短视频」查看");
               router.push("/shorts");
             }}
@@ -758,6 +935,8 @@ function ShortMakerInner() {
           </span>
         )}
       </div>
+
+      <SaveStatus status={saveStatusValue} />
     </div>
   );
 }

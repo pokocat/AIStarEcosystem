@@ -6989,6 +6989,15 @@ paths:
   /me/drama/projects/{id}/outline/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }
+  # ── v0.76 短视频制作草稿（整页编辑态可恢复：刷新/返回/换设备接着做）──
+  /me/drama/shorts:
+    get:  { tags: [drama], operationId: listDramaShorts,  summary: '我的短视频草稿列表（工坊卡片）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createDramaShort, summary: '新建短视频草稿（seed 最小 ShortDraftData）', responses: { '200': { description: ok } } }
+  /me/drama/shorts/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getDramaShort,    summary: '短视频草稿详情（meta + 整页 ShortDraftData）', responses: { '200': { description: ok } } }
+    put:    { tags: [drama], operationId: saveDramaShort,   summary: '保存整页短视频草稿（回算时长/镜数/进度）', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaShort, summary: '删除短视频草稿（软删）', responses: { '204': { description: ok } } }
   # ── v0.66 短剧专区配置 + 成片合成 ──
   /me/drama/config:
     get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（扣费确认阈值 + 各 AI 动作单价；真值在 admin 短剧专区）', responses: { '200': { description: ok } } }

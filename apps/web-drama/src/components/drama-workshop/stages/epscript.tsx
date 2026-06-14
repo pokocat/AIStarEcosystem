@@ -171,6 +171,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueSave = React.useCallback(() => {
     if (!ctx || locked) return;
+    ctx.notifyEditing?.(); // 标脏：1.5s 防抖落库前离开也会提醒（v0.76）
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       void persist(scenesRef.current, shotsRef.current).catch(() => {});

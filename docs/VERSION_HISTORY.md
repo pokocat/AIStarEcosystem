@@ -3205,3 +3205,43 @@ CTA 到位、零 console error。
 - **admin `/content/dramas`** 仍是占位页：「已发布内容库 / 统计 / 下架」待做，但前提是先澄清 drama 是否需要
   「上架」概念（目前直接分发，无上架阶段）。
 - **inline style D-3**：~1615 处，已定性为「按重复模式渐进提取」（v0.67 起 `.icon-badge`），非债务，可续。
+---
+
+### v0.76（2026-06-13）— 短剧 / 短视频制作支持「草稿」（刷新 / 返回不再丢进度）
+
+**背景**：用户反馈「短剧和短视频制作，做到一半，刷新返回就没了」。排查发现两条链路根因不同：
+- **短视频制作（`/shorts/make`）**：整页纯 React 内存态（脚本 / 分镜 / 首帧 / 片段 / AI 对话），唯一跨页的
+  `idea` 存 sessionStorage 且读一次即删；「合成成片」按钮无任何 API 调用 —— **后端零持久化**，刷新即全丢。
+- **短剧大纲（outline 阶段）**：项目本有 `DramaProject` 落库，但大纲的**拖拽调序 / 加一集 / 改梗概**
+  都只改内存不落库（只「AI 生成」「锁定」才存）；「加一集」「重写梗概」还是假 toast。其余阶段
+  （epscript / factory / cast）早已防抖落库（含出片产物）。
+
+**方案**（用户决策：短视频建专用后端草稿表 + 两线统一「自动保存 + 离开提醒兜底」）：
+
+后端（新实体，§5 SOP）：
+- `DramaShort`（`drama_shorts` 表，ddl-auto 建）+ `DramaShortRepository` + `DramaShortService` + `DramaShortController`。
+  整页编辑态 `payloadJson` = `ShortDraftData{step,meta,shots[],chat[],refs,idea,reopen,fmtKey}`；列表卡片核心列
+  `title/fmtKey/fmtName/cover/durationSec/shotCount/doneCount/status(draft|done)/progress` 在保存时按
+  `payload.shots` 回算。CRUD 按 `ownerUserId` 隔离 + 软删。端点 `/api/me/drama/shorts/**`（list/create/get/save/delete）。
+  **不碰 AI / 计费**：出脚本 / 出片仍走既有 `/me/drama/scripts/ai-draft`、`/me/drama/render/*`。
+- 测试 `DramaShortServiceTest` 4/4（新建 seed / 整页保存回算 / 完成态 / 归属隔离 + 软删）。
+
+前端（apps/web-drama）：
+- `api/shorts.ts`（`ShortsApi`，带 USE_MOCK 进程内存表）。`/shorts/make` 重构为「网关 + 制作页」：
+  进页有 `?draft=id` 则读，无则按 fmt / idea / reopen 建草稿并把 id 写进 URL（刷新即命中读取分支）；
+  整页状态防抖（1.2s）自动保存；「合成成片」`flushSave({status:'done'})` 后跳转；返回工坊前 flush。
+- `/shorts` 工坊列表改读真后端草稿卡（草稿 / 已完成 + 进度 + 接着做）。
+- 短剧 outline：调序 / 加一集 / 钩子 + 梗概行内编辑全部即时 `ctx.saveData` 落库（删假「重写梗概」按钮）。
+- 共用 `lib/use-save-status.ts`（`useSaveStatus`：编辑代际 vs 已保存代际判脏）+ `save-status.tsx` 指示器
+  （「保存中 / 已自动保存 / 保存失败」）+ `beforeunload` 离开提醒兜底；短剧工作台与短视频制作页共用。
+  `StageContext` 加 `notifyEditing`（epscript / cast 防抖落库前标脏，指示器 + 兜底即时反映）。
+
+**门禁全绿**：server compile + `DramaShortServiceTest` 4/4；`pnpm check:api-contract` OK；web-drama `typecheck` OK。
+**全链路真机验收**（8088 server + web-drama → 8088，真实浏览器，dev-login 默认 STUDIO）：
+① 短视频：建草稿 → URL 带 `?draft=`，编辑后切「视频工厂」步 → 顶部「已自动保存」；**hard reload** 后
+URL 仍带 id、步骤 / 分镜 / 出片产物 / meta 全部恢复（含 `step=script` 的编辑也存活）；`/shorts` 列表见草稿卡
+（0:15 · 草稿 · 1/2 镜）。② 短剧：项目大纲点「加一集」→ 后端 4 集 + 「已自动保存」→ **hard reload** 后大纲
+仍是 01–04。**生产可上线**。
+
+**版本号注**：本提交在 v0.73 分支线（`claude/competent-cartwright-e3c442`）并入 loving-maxwell 后记 v0.76（v0.74/0.75 已被官方配方 seeder / 创意市场占用）；并行分支
+（`claude/loving-maxwell-qun0yw`）另有「创意市场 v0.74-75」不同特性，两线合并时需把版本号 / 文档归一。

@@ -11,6 +11,8 @@ import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { ProjectsApi } from "@/api";
 import { useAsync } from "@/lib/drama-query";
+import { useSaveStatus } from "@/lib/use-save-status";
+import { SaveStatus } from "@/components/drama-workshop/save-status";
 import type { ProjectData } from "@/mocks/drama-workshop";
 import {
   WorkshopShell,
@@ -45,17 +47,19 @@ export default function ProjectWorkbench() {
     if (detail?.data) setData(detail.data);
   }, [detail]);
 
+  // v0.76：统一保存状态机（指示器 + 离开提醒兜底）。所有阶段落库都经 saveData 漏斗。
+  const { status: saveStatusValue, notifyEditing, track } = useSaveStatus();
   const saveData = React.useCallback<StageContext["saveData"]>(
     async (next, opts) => {
       setData(next);
       try {
-        await ProjectsApi.saveProject(id, next, opts);
+        await track(() => ProjectsApi.saveProject(id, next, opts));
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "保存失败，请重试");
         throw e;
       }
     },
-    [id],
+    [id, track],
   );
 
   if (isLoading || (!data && !error)) {
@@ -66,20 +70,23 @@ export default function ProjectWorkbench() {
   }
 
   return (
-    <WorkshopShell
-      meta={detail.meta}
-      data={data}
-      initialStage={fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
-      renderStage={({ state, dispatch }) => (
-        <StageOutlet
-          state={state}
-          dispatch={dispatch}
-          data={data}
-          prefilled={fromTemplate || detail.meta.mode === "template"}
-          ctx={{ projectId: id, saveData }}
-        />
-      )}
-    />
+    <>
+      <WorkshopShell
+        meta={detail.meta}
+        data={data}
+        initialStage={fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
+        renderStage={({ state, dispatch }) => (
+          <StageOutlet
+            state={state}
+            dispatch={dispatch}
+            data={data}
+            prefilled={fromTemplate || detail.meta.mode === "template"}
+            ctx={{ projectId: id, saveData, notifyEditing }}
+          />
+        )}
+      />
+      <SaveStatus status={saveStatusValue} />
+    </>
   );
 }
 
@@ -101,6 +108,7 @@ function StageOutlet({
   React.useEffect(() => {
     if (charsRef.current === state.chars) return;
     charsRef.current = state.chars;
+    ctx.notifyEditing?.(); // 标脏：防抖落库前离开也会提醒
     const t = setTimeout(() => {
       void ctx.saveData({ ...data, characters: state.chars }).catch(() => {});
     }, 600);
