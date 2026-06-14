@@ -8,6 +8,7 @@ import com.aistareco.aep.model.Notification;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaRecipeRepository;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,25 +48,31 @@ public class DramaRecipeService {
 
     private final DramaRecipeRepository repo;
     private final DramaProjectRepository projectRepo;
+    private final DramaShortService shortService;
     private final AiModelInvocationService invocation;
     private final PromptService promptService;
     private final AepUserRepository userRepo;
     private final NotificationPublisher notifier;
+    private final CdnUrlSigner cdnUrlSigner;
     private final ObjectMapper om;
 
     public DramaRecipeService(DramaRecipeRepository repo,
                               DramaProjectRepository projectRepo,
+                              DramaShortService shortService,
                               AiModelInvocationService invocation,
                               PromptService promptService,
                               AepUserRepository userRepo,
                               NotificationPublisher notifier,
+                              CdnUrlSigner cdnUrlSigner,
                               ObjectMapper om) {
         this.repo = repo;
         this.projectRepo = projectRepo;
+        this.shortService = shortService;
         this.invocation = invocation;
         this.promptService = promptService;
         this.userRepo = userRepo;
         this.notifier = notifier;
+        this.cdnUrlSigner = cdnUrlSigner == null ? CdnUrlSigner.NOOP : cdnUrlSigner;
         this.om = om;
     }
 
@@ -361,36 +368,74 @@ public class DramaRecipeService {
         return toDto(r);
     }
 
-    /** 套用已发布配方 → 新建一个预填项目（mainline + 分集骨架 + 角色原型），返回 { projectId }。 */
-    public JsonNode applyToNewProject(String recipeId, String userId) {
+    /**
+     * 套用已发布配方。按创意「单集 / 多集」分流到对应工作台（v0.77）：
+     *   · 多集（episodes&gt;1）→ 新建六阶段短剧项目（mainline + 分集骨架 + 角色原型），
+     *     返回 { kind:"project", projectId }，前端跳 /projects/{id}。
+     *   · 单集（episodes≤1，如官方风格短片）→ 新建一条短视频草稿（带创意风格 styleRef），
+     *     返回 { kind:"short", shortId }，前端跳 /shorts/make 进短视频工厂出片。
+     * 套用任一形态都累加 useCount（热度）。
+     */
+    public JsonNode applyRecipe(String recipeId, String userId) {
         DramaRecipe r = requireRecipe(recipeId);
         if (!"published".equals(r.getStatus())) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_PUBLISHED", "该配方尚未发布，不能套用。");
         }
-        JsonNode data = readJson(r.getPayloadJson());
         OffsetDateTime now = OffsetDateTime.now();
-        String pid = "dp_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        ObjectNode pd = seedProjectFromRecipe(r, data);
-        boolean hasBeats = data.path("beats").isArray() && data.path("beats").size() > 0;
-        DramaProject p = DramaProject.builder()
-                .id(pid).ownerUserId(userId)
-                .title(orDefault(r.getTitle(), "未命名短剧"))
-                .type(orDefault(r.getType(), "短剧"))
-                .typeKey(orDefault(r.getTypeKey(), "custom"))
-                .ratio(orDefault(r.getRatio(), "9:16"))
-                .episodes(r.getEpisodes() > 0 ? r.getEpisodes() : 12)
-                .progress(0).stage(hasBeats ? 2 : 1).mode("template")
-                .coverFrom(orDefault(r.getCoverFrom(), "#f97316"))
-                .coverTo(orDefault(r.getCoverTo(), "#e11d48"))
-                .payloadJson(write(pd)).createdAt(now).updatedAt(now).build();
-        projectRepo.save(p);
+        ObjectNode out = om.createObjectNode();
+
+        if (r.getEpisodes() <= 1) {
+            // 单集创意 → 短视频草稿（短视频工厂逐镜出片）
+            String shortId = shortService.createFromRecipe(
+                    userId,
+                    orDefault(r.getTitle(), "未命名短视频"),
+                    orDefault(r.getType(), "风格短片"),
+                    r.getCoverFrom(), r.getCoverTo(),
+                    orDefault(r.getTitle(), "风格创意"),
+                    buildStyleRef(r));
+            out.put("kind", "short");
+            out.put("shortId", shortId);
+            log.info("[drama-recipe] applied(single→short) recipe={} → short={} user={}", recipeId, shortId, userId);
+        } else {
+            // 多集创意 → 六阶段短剧项目
+            JsonNode data = readJson(r.getPayloadJson());
+            String pid = "dp_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+            ObjectNode pd = seedProjectFromRecipe(r, data);
+            boolean hasBeats = data.path("beats").isArray() && data.path("beats").size() > 0;
+            DramaProject p = DramaProject.builder()
+                    .id(pid).ownerUserId(userId)
+                    .title(orDefault(r.getTitle(), "未命名短剧"))
+                    .type(orDefault(r.getType(), "短剧"))
+                    .typeKey(orDefault(r.getTypeKey(), "custom"))
+                    .ratio(orDefault(r.getRatio(), "9:16"))
+                    .episodes(r.getEpisodes() > 0 ? r.getEpisodes() : 12)
+                    .progress(0).stage(hasBeats ? 2 : 1).mode("template")
+                    .coverFrom(orDefault(r.getCoverFrom(), "#f97316"))
+                    .coverTo(orDefault(r.getCoverTo(), "#e11d48"))
+                    .payloadJson(write(pd)).createdAt(now).updatedAt(now).build();
+            projectRepo.save(p);
+            out.put("kind", "project");
+            out.put("projectId", pid);
+            log.info("[drama-recipe] applied(multi→project) recipe={} → project={} user={}", recipeId, pid, userId);
+        }
+
         r.setUseCount(r.getUseCount() + 1);
         r.setUpdatedAt(now);
         repo.save(r);
-        log.info("[drama-recipe] applied recipe={} → project={} user={}", recipeId, pid, userId);
-        ObjectNode out = om.createObjectNode();
-        out.put("projectId", pid);
         return out;
+    }
+
+    /** 单集创意套进短视频时喂给出脚本 AI 的「风格参考」：一句话说明 + 可迁移主线（若有）。 */
+    private String buildStyleRef(DramaRecipe r) {
+        StringBuilder sb = new StringBuilder();
+        if (r.getSummary() != null && !r.getSummary().isBlank()) sb.append(r.getSummary().trim());
+        JsonNode data = readJson(r.getPayloadJson());
+        String mainline = data.path("mainline").asText("");
+        if (mainline != null && !mainline.isBlank()) {
+            if (sb.length() > 0) sb.append("。");
+            sb.append("主线：").append(mainline.trim());
+        }
+        return sb.toString();
     }
 
     private DramaRecipe requireRecipe(String id) {
@@ -567,11 +612,13 @@ public class DramaRecipeService {
         cover.put("from", orDefault(r.getCoverFrom(), "#f97316"));
         cover.put("to", orDefault(r.getCoverTo(), "#e11d48"));
         o.set("cover", cover);
-        if (r.getCoverImage() != null && !r.getCoverImage().isBlank()) {
-            o.put("coverImage", r.getCoverImage());
+        String coverImage = resolveAssetUrl(r.getCoverImage());
+        if (coverImage != null && !coverImage.isBlank()) {
+            o.put("coverImage", coverImage);
         }
-        if (r.getPreviewVideo() != null && !r.getPreviewVideo().isBlank()) {
-            o.put("previewVideo", r.getPreviewVideo());
+        String previewVideo = resolveAssetUrl(r.getPreviewVideo());
+        if (previewVideo != null && !previewVideo.isBlank()) {
+            o.put("previewVideo", previewVideo);
         }
         o.put("useCount", r.getUseCount());
         if (r.getReviewNote() != null) o.put("reviewNote", r.getReviewNote());
@@ -581,6 +628,16 @@ public class DramaRecipeService {
         o.put("publishedAt", r.getPublishedAt() != null ? r.getPublishedAt().toString() : null);
         o.put("consentAt", r.getConsentAt() != null ? r.getConsentAt().toString() : null);
         return o;
+    }
+
+    private String resolveAssetUrl(String raw) {
+        if (raw == null || raw.isBlank()) return raw;
+        String value = raw.trim();
+        if (value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://")) {
+            return cdnUrlSigner.maybeSign(value);
+        }
+        String signed = cdnUrlSigner.signKey(value);
+        return signed == null || signed.isBlank() ? value : signed;
     }
 
     private JsonNode readPayload(DramaProject row) {

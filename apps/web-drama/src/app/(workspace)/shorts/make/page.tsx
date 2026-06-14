@@ -362,16 +362,27 @@ function ShortMakerInner({
   const fmt = SHORT_FORMATS.find((f) => f.key === resolvedFmtKey) ?? SHORT_FORMATS[0];
   const realIdea = initial.idea || initial.reopen || reopen; // 仅当真带入点子时非空
 
+  // v0.77：由创意市场「单集创意」套用而来 —— 不套短视频模版，而是按创意风格出脚本。
+  const styleName = initial.styleName ?? "";
+  const styleRef = initial.styleRef ?? "";
+  const hasStyle = !hasTemplate && !!styleRef;
+  const displayName = hasStyle ? styleName || "风格创意" : fmt.name;
+
   // 套模版上下文：仅当确实选了模版，才把模版节拍作为 AI 生成参考。
   const templateRef = hasTemplate && fmt.beats?.length
     ? `「${fmt.name}」模版（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）：` +
       fmt.beats.map((b, i) => `镜${i + 1}(${b.dur}s) 画面:${b.visual} 口播:${b.vo}`).join("；")
     : "";
+  // 创意风格参考：把创意名 + 风格说明喂给出脚本 AI，让成片照这个风格走（不直接复述说明）。
+  const styleRefLine = hasStyle ? `参考创意风格【${styleName || "风格短片"}】：${styleRef}` : "";
+  const aiReference = [templateRef, styleRefLine].filter(Boolean).join(" ");
   const tplIntro = initial.reopen
     ? "接着改这条短视频 —— 告诉我要怎么调,我重写口播和分镜。"
-    : hasTemplate && fmt.beats?.length
-      ? `已套用【${fmt.name}】模版 —— 我照它的爆款节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）帮你拆,说说你的主题/产品就行。`
-      : "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。";
+    : hasStyle
+      ? `已套用【${styleName || "风格创意"}】创意风格 —— 说个你的主题 / 产品,我照这个风格帮你写口播和分镜。`
+      : hasTemplate && fmt.beats?.length
+        ? `已套用【${fmt.name}】模版 —— 我照它的爆款节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）帮你拆,说说你的主题/产品就行。`
+        : "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。";
 
   const [step, setStep] = React.useState<"script" | "factory">(initial.step ?? "script");
   const [phase, setPhase] = React.useState<"idle" | "gen" | "done">(initial.shots.length ? "done" : "idle");
@@ -404,7 +415,10 @@ function ShortMakerInner({
     idea: initial.idea ?? null,
     reopen: initial.reopen ?? reopen ?? null,
     fmtKey: resolvedFmtKey,
-    fmtName: fmt.name,
+    // 没套短视频模版时保留草稿原本的 fmtName（如创意套用来的「风格短片」），不被默认模版名覆盖。
+    fmtName: hasTemplate ? fmt.name : initial.fmtName || fmt.name,
+    styleName: styleName || undefined,
+    styleRef: styleRef || undefined,
     title: meta?.title || initial.title || title,
     step,
     meta,
@@ -464,10 +478,10 @@ function ShortMakerInner({
       const theme = instruction ? `${title}。要求：${instruction}` : title;
       const drafts = await ShortDramaApi.aiDraftScripts({
         theme,
-        genre: hasTemplate ? fmt.name : "通用短视频",
+        genre: hasTemplate ? fmt.name : hasStyle ? styleName || fmt.name : "通用短视频",
         durationSec: total || fmt.dur || 30,
         count: 1,
-        reference: templateRef,
+        reference: aiReference,
       });
       const script = drafts[0];
       if (!script || !script.scenes?.length) throw new Error("AI 没有产出可用脚本，请换个说法重试");
@@ -592,7 +606,7 @@ function ShortMakerInner({
           <span style={{ fontWeight: 800, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 360 }}>
             {title}
           </span>
-          <span className="faint num" style={{ fontSize: 11 }}>{fmt.name} · 竖屏 9:16 · 约 {total}s</span>
+          <span className="faint num" style={{ fontSize: 11 }}>{displayName} · 竖屏 9:16 · 约 {total}s</span>
         </div>
         {/* 步骤切换 */}
         <span className="grow" />

@@ -3245,3 +3245,27 @@ URL 仍带 id、步骤 / 分镜 / 出片产物 / meta 全部恢复（含 `step=s
 
 **版本号注**：本提交在 v0.73 分支线（`claude/competent-cartwright-e3c442`）并入 loving-maxwell 后记 v0.76（v0.74/0.75 已被官方配方 seeder / 创意市场占用）；并行分支
 （`claude/loving-maxwell-qun0yw`）另有「创意市场 v0.74-75」不同特性，两线合并时需把版本号 / 文档归一。
+
+### v0.77（2026-06-14）— 创意市场「套用」按单 / 多集分流（单集创意改去短视频工厂）
+
+**背景**：用户反馈「创意市场套模版的逻辑错了，单极模版应该匹配去短视频」。原 `applyRecipe`（即旧
+`applyToNewProject`）无论创意是单集还是多集，**一律新建六阶段短剧项目并跳 `/projects/{id}`**。但创意市场里
+官方内置的 19 条全是 `episodes=1` 的「风格短片」（单集），套用后被丢进六阶段分集工作台 —— 形态完全不对。
+
+**方案**（按创意 episodes 分流，路径不变 / 仅响应体变；无新表）：
+- 后端 `DramaRecipeService.applyToNewProject` → 改名 `applyRecipe`，按 `episodes`：
+  - **多集（&gt;1）** → 维持原逻辑：新建 `DramaProject`（mode=template + 分集骨架），返回 `{ kind:"project", projectId }`。
+  - **单集（≤1）** → 新建一条 `DramaShort` 短视频草稿，返回 `{ kind:"short", shortId }`。两形态都累加 `useCount`。
+- `DramaShortService.createFromRecipe(...)`：把创意的一句话说明 + 可迁移主线蒸成 `styleRef`（+ `styleName`）
+  落进 `ShortDraftData`，**不套短视频模版**（`fmtKey=null`）；短视频工厂出脚本时把 `styleRef` 当风格参考
+  （照创意风格拆用户主题，而非复述创意说明）。`ShortDraftData` 加可选 `styleName` / `styleRef`（自动保存随整页 deep-copy 落库）。
+- 前端 `templates/page.tsx` 套用按 `kind` 分跳：单集 → `/shorts/make?draft=`、多集 → `/projects/{id}`；
+  详情弹窗「套用你会得到什么」对单集如实改写（进短视频工厂逐镜出片，非六阶段）。`/shorts/make`
+  顶栏标题 / AI 开场白识别 `styleName` 显示「已套用【XX】创意风格」。
+- 契约：`/me/drama/recipes/{id}/apply` 路径与方法不变（openapi 该端点本就只声明 200，无 schema），仅响应体由
+  `{projectId}` 变为判别式 `{kind, projectId|shortId}`，无需改 openapi。
+
+**门禁全绿**：server compile + `DramaRecipeServiceTest` 24/24（+2：单集→短视频草稿 / 多集→项目）+
+`DramaShortServiceTest` 4/4；`pnpm check:api-contract` OK；web-drama `typecheck` + `build` OK。
+**真机浏览器验收**（mock 模式）：创意市场单集「韦斯·安德森风格短片」套用 → 跳 `/shorts/make?draft=`、
+工厂顶栏 + AI 开场白显示已套用该创意风格、无报错、已自动保存；多集「反转悬疑·80 集」套用 → 仍跳 `/projects/`。

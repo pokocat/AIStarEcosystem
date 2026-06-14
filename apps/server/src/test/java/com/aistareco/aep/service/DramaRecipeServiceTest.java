@@ -8,6 +8,7 @@ import com.aistareco.aep.model.DramaRecipe;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaRecipeRepository;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +31,7 @@ class DramaRecipeServiceTest {
 
     private DramaProjectRepository projectRepo;
     private DramaRecipeRepository recipeRepo;
+    private DramaShortService shortService;
     private AiModelInvocationService invocation;
     private PromptService promptService;
     private AepUserRepository userRepo;
@@ -45,6 +47,7 @@ class DramaRecipeServiceTest {
     void setup() {
         projectRepo = mock(DramaProjectRepository.class);
         recipeRepo = mock(DramaRecipeRepository.class);
+        shortService = mock(DramaShortService.class);
         invocation = mock(AiModelInvocationService.class);
         promptService = mock(PromptService.class);
         userRepo = mock(AepUserRepository.class);
@@ -53,7 +56,7 @@ class DramaRecipeServiceTest {
                 "你是操盘手。只输出 JSON。", "蒸馏《{{title}}》（{{type}}）：{{outline}}",
                 new PromptParamsDto(null, null, null), "resource"));
         when(recipeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        svc = new DramaRecipeService(recipeRepo, projectRepo, invocation, promptService, userRepo, notifier, OM);
+        svc = new DramaRecipeService(recipeRepo, projectRepo, shortService, invocation, promptService, userRepo, notifier, CdnUrlSigner.NOOP, OM);
     }
 
     /** 蒸馏链路成功 stub（端点 + LLM 输出可解析）。 */
@@ -191,10 +194,11 @@ class DramaRecipeServiceTest {
     }
 
     @Test
-    void applyPublishedRecipeSeedsNewProjectFromBeats() {
-        seedRecipe("dr1", "published");
+    void applyPublishedMultiEpisodeRecipeSeedsNewProjectFromBeats() {
+        seedRecipe("dr1", "published"); // episodes=80 → 多集 → 项目
         when(projectRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        JsonNode out = svc.applyToNewProject("dr1", "u9");
+        JsonNode out = svc.applyRecipe("dr1", "u9");
+        assertEquals("project", out.path("kind").asText());
         String pid = out.path("projectId").asText();
         assertTrue(pid.startsWith("dp_"));
         // 校验落库的项目：mode=template、mainline 来自配方、分集骨架来自 beats
@@ -205,12 +209,36 @@ class DramaRecipeServiceTest {
         assertEquals("template", p.getMode());
         assertTrue(p.getPayloadJson().contains("通用追凶"));
         assertTrue(p.getPayloadJson().contains("开局悬念"));
+        verifyNoInteractions(shortService);
+    }
+
+    @Test
+    void applyPublishedSingleEpisodeRecipeCreatesShortDraft() {
+        // episodes=1（官方风格短片）→ 单集 → 短视频草稿，不建项目
+        DramaRecipe r = DramaRecipe.builder()
+                .id("dr1").ownerUserId("__official__").status("published").origin("official")
+                .title("韦斯·安德森风格短片").summary("对称构图 · 复古色 · 章节卡").typeKey("style").type("风格短片")
+                .ratio("16:9").episodes(1).coverFrom("#0ea5e9").coverTo("#22c55e").useCount(3)
+                .payloadJson("{\"mainline\":\"\",\"beats\":[],\"characters\":[],\"hooks\":[],\"notes\":\"创作方法…\"}")
+                .build();
+        when(recipeRepo.findByIdAndDeletedAtIsNull("dr1")).thenReturn(Optional.of(r));
+        when(shortService.createFromRecipe(eq("u9"), anyString(), anyString(), any(), any(), anyString(), anyString()))
+                .thenReturn("dvs_made1");
+
+        JsonNode out = svc.applyRecipe("dr1", "u9");
+        assertEquals("short", out.path("kind").asText());
+        assertEquals("dvs_made1", out.path("shortId").asText());
+        // 风格作为 styleRef 传给短视频草稿；不建项目；useCount 累加
+        verify(shortService).createFromRecipe(eq("u9"), eq("韦斯·安德森风格短片"), eq("风格短片"),
+                eq("#0ea5e9"), eq("#22c55e"), eq("韦斯·安德森风格短片"), contains("对称构图"));
+        verify(projectRepo, never()).save(any());
+        assertEquals(4, r.getUseCount());
     }
 
     @Test
     void applyUnpublishedRecipeThrows() {
         seedRecipe("dr1", "submitted");
-        BusinessException ex = assertThrows(BusinessException.class, () -> svc.applyToNewProject("dr1", "u9"));
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.applyRecipe("dr1", "u9"));
         assertEquals("DRAMA_RECIPE_NOT_PUBLISHED", ex.getCode());
     }
 
@@ -319,6 +347,27 @@ class DramaRecipeServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.createBuiltin(body, "op1"));
         assertEquals("DRAMA_RECIPE_TITLE_REQUIRED", ex.getCode());
         verify(recipeRepo, never()).save(any());
+    }
+
+    @Test
+    void listPublishedSignsPreviewVideoKey() {
+        DramaRecipe r = seedRecipe("dr1", "published");
+        r.setCoverImage("media/seed/drama/recipes/home/demo.jpg");
+        r.setPreviewVideo("seed/flova/skills/demo.mp4");
+        when(recipeRepo.findByStatusAndDeletedAtIsNullOrderByUpdatedAtDesc("published"))
+                .thenReturn(java.util.List.of(r));
+        CdnUrlSigner signer = mock(CdnUrlSigner.class);
+        when(signer.signKey("media/seed/drama/recipes/home/demo.jpg")).thenReturn("https://oss.test/signed-demo.jpg");
+        when(signer.signKey("seed/flova/skills/demo.mp4")).thenReturn("https://oss.test/signed-demo.mp4");
+        DramaRecipeService withSigner = new DramaRecipeService(
+                recipeRepo, projectRepo, shortService, invocation, promptService, userRepo, notifier, signer, OM);
+
+        JsonNode dto = withSigner.listPublished().get(0);
+
+        assertEquals("https://oss.test/signed-demo.jpg", dto.path("coverImage").asText());
+        assertEquals("https://oss.test/signed-demo.mp4", dto.path("previewVideo").asText());
+        verify(signer).signKey("media/seed/drama/recipes/home/demo.jpg");
+        verify(signer).signKey("seed/flova/skills/demo.mp4");
     }
 
     @Test

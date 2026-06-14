@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import { createDraft as createShortDraft } from "./shorts";
 
 // submitted=用户自助待审 · invited=运营邀请待用户授权 · published=已上架 · rejected=审核驳回 · declined=用户谢绝
 export type RecipeStatus = "draft" | "submitted" | "invited" | "published" | "rejected" | "declined";
@@ -49,7 +50,7 @@ export interface DramaRecipe {
   cover: { from: string; to: string };
   /** v0.74：官方内置配方的真实预览图（/recipes/<id>.webp）；为空时回退 cover 渐变。 */
   coverImage?: string;
-  /** v0.75 补丁：配方详情页的范例视频（/recipes/<id>.mp4，poster 用 coverImage）；为空时详情页占位「范例视频整理中」。 */
+  /** 配方详情页的范例视频可播放 URL（后端由 OSS key 派生/签名，poster 用 coverImage）。 */
   previewVideo?: string;
   useCount: number;
   reviewNote?: string;
@@ -141,7 +142,27 @@ export async function listMine(): Promise<DramaRecipe[]> {
 
 /** 创意市场：已发布配方（官方内置 + 用户作品，按套用热度降序）。 */
 export async function listPublished(): Promise<DramaRecipe[]> {
-  if (USE_MOCK) return mockDelay([mockRecipe({ status: "published", publishedAt: new Date().toISOString(), useCount: 12 })]);
+  if (USE_MOCK)
+    return mockDelay([
+      // 单集官方风格短片（套用 → 短视频工厂）
+      mockRecipe({
+        id: "dr_mock_style",
+        status: "published",
+        origin: "official",
+        title: "韦斯·安德森风格短片",
+        summary: "对称构图 · 复古色卡 · 章节标题卡，适合 1–3 分钟风格化短片。",
+        typeKey: "style",
+        type: "风格短片",
+        ratio: "16:9",
+        episodes: 1,
+        cover: { from: "#0ea5e9", to: "#22c55e" },
+        useCount: 42,
+        publishedAt: new Date().toISOString(),
+        data: { mainline: "", beats: [], characters: [], hooks: [], notes: "【创作方法】对称机位…" },
+      }),
+      // 多集用户短剧（套用 → 六阶段项目）
+      mockRecipe({ status: "published", publishedAt: new Date().toISOString(), useCount: 12 }),
+    ]);
   return apiFetch<DramaRecipe[]>("/me/drama/recipes/published");
 }
 
@@ -166,10 +187,34 @@ export async function reject(id: string, note?: string): Promise<DramaRecipe> {
   });
 }
 
-/** 套用已发布配方 → 新建预填项目，返回 { projectId }。 */
-export async function applyRecipe(id: string): Promise<{ projectId: string }> {
-  if (USE_MOCK) return mockDelay({ projectId: `dp_mock_${Date.now()}` });
-  return apiFetch<{ projectId: string }>(`/me/drama/recipes/${encodeURIComponent(id)}/apply`, { method: "POST" });
+/**
+ * 套用已发布配方的落地形态（v0.77 按单 / 多集分流）：
+ *   多集 → 六阶段短剧项目（跳 /projects/{id}）；单集 → 短视频草稿（跳 /shorts/make）。
+ */
+export type ApplyRecipeResult =
+  | { kind: "project"; projectId: string }
+  | { kind: "short"; shortId: string };
+
+/**
+ * 套用已发布配方。多集创意新建六阶段项目，单集创意（如官方风格短片）新建短视频草稿。
+ * 传完整 recipe 以便 mock 模式镜像后端的单 / 多集分流（单集还会把风格 styleRef 带进短视频草稿）。
+ */
+export async function applyRecipe(r: DramaRecipe): Promise<ApplyRecipeResult> {
+  if (USE_MOCK) {
+    if (r.episodes > 1) return mockDelay({ kind: "project", projectId: `dp_mock_${Date.now()}` });
+    // 单集：建一条带风格的短视频草稿（mock store 里真建，跳转后工厂可加载）
+    const styleRef = [r.summary, r.data?.mainline ? `主线：${r.data.mainline}` : ""].filter(Boolean).join("。");
+    const d = await createShortDraft({
+      title: r.title,
+      fmtName: r.type,
+      coverFrom: r.cover.from,
+      coverTo: r.cover.to,
+      styleName: r.title,
+      styleRef,
+    });
+    return { kind: "short", shortId: d.meta.id };
+  }
+  return apiFetch<ApplyRecipeResult>(`/me/drama/recipes/${encodeURIComponent(r.id)}/apply`, { method: "POST" });
 }
 
 // ── 运营：从用户作品精选（通道②）+ 手建内置（通道③）；用户：回应邀请 ──────────────

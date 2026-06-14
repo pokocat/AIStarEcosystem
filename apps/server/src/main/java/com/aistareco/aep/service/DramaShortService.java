@@ -152,6 +152,56 @@ public class DramaShortService {
         repo.save(row);
     }
 
+    /**
+     * v0.77：从「单集创意」（创意市场已发布 Recipe，episodes≤1）套用生成一条短视频草稿。
+     *
+     * 与用户自建短视频不同：不套短视频模版（fmtKey=null），而是把创意的风格 / 方法作为
+     * styleName + styleRef 落进草稿。短视频工厂的 AI 出脚本时把 styleRef 当风格参考，
+     * 让成片照这个创意的风格走（不直接复述创意说明，而是按其风格拆你的主题）。返回新草稿 id。
+     */
+    public String createFromRecipe(String userId, String title, String type,
+                                   String coverFrom, String coverTo,
+                                   String styleName, String styleRef) {
+        OffsetDateTime now = OffsetDateTime.now();
+        String safeTitle = orDefault(title, "未命名短视频");
+        String fmtName = orDefault(type, "风格短片");
+
+        ObjectNode data = om.createObjectNode();
+        data.putNull("idea");
+        data.putNull("reopen");
+        data.putNull("fmtKey");
+        data.put("fmtName", fmtName);
+        data.put("title", safeTitle);
+        if (styleName != null && !styleName.isBlank()) data.put("styleName", styleName);
+        if (styleRef != null && !styleRef.isBlank()) data.put("styleRef", styleRef);
+        data.put("step", "script");
+        data.putNull("meta");
+        data.set("shots", om.createArrayNode());
+        data.set("chat", om.createArrayNode());
+        data.set("refs", om.createArrayNode());
+
+        DramaShort row = DramaShort.builder()
+                .id("dvs_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
+                .ownerUserId(userId)
+                .title(safeTitle)
+                .fmtKey(null)
+                .fmtName(fmtName)
+                .coverFrom(orDefault(coverFrom, "#f97316"))
+                .coverTo(orDefault(coverTo, "#e11d48"))
+                .durationSec(0)
+                .shotCount(0)
+                .doneCount(0)
+                .status("draft")
+                .progress(0)
+                .payloadJson(write(data))
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        repo.save(row);
+        log.info("[drama-short] create-from-recipe user={} id={} style={}", userId, row.getId(), styleName);
+        return row.getId();
+    }
+
     // ── 内部工具 ────────────────────────────────────────────────────────────────
 
     private DramaShort requireOwned(String id, String userId) {

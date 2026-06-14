@@ -64,10 +64,13 @@ public class DramaRecipeController {
         return ApiResponse.of(service.reject(id, note));
     }
 
-    /** 套用已发布配方 → 新建预填项目，返回 { projectId }（前端拿到后跳工作台）。 */
+    /**
+     * 套用已发布配方。多集 → 新建六阶段项目 { kind:"project", projectId }；
+     * 单集 → 新建短视频草稿 { kind:"short", shortId }。前端按 kind 跳对应工作台。
+     */
     @PostMapping("/{id}/apply")
     public ApiResponse<JsonNode> apply(Principal principal, @PathVariable String id) {
-        return ApiResponse.of(service.applyToNewProject(id, principal.getName()));
+        return ApiResponse.of(service.applyRecipe(id, principal.getName()));
     }
 
     // ── 运营：精选用户作品（双通道之②） + 手建内置（通道③） ──────────────────────

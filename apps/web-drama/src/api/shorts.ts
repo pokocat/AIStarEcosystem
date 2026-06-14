@@ -65,6 +65,10 @@ export interface ShortDraftData {
   fmtKey?: string | null;
   fmtName?: string;
   title?: string;
+  /** v0.77：由「单集创意」套用而来时，创意名（展示在工厂顶栏 / 对话引导）。 */
+  styleName?: string;
+  /** v0.77：创意风格参考（一句话说明 + 主线），出脚本 AI 按此风格拆你的主题。 */
+  styleRef?: string;
   step: "script" | "factory";
   meta: ScriptMeta | null;
   shots: ShortDraftShot[];
@@ -85,6 +89,9 @@ export interface CreateShortInput {
   coverTo?: string;
   idea?: string | null;
   reopen?: string | null;
+  /** v0.77：由「单集创意」套用而来时携带的创意名 / 风格参考（真实后端走 recipes/apply，本字段仅 mock 用）。 */
+  styleName?: string;
+  styleRef?: string;
 }
 
 export interface SaveShortOptions {
@@ -145,6 +152,8 @@ export async function createDraft(input: CreateShortInput): Promise<ShortDraftDe
         reopen: input.reopen ?? null,
         fmtKey: input.fmtKey ?? null,
         fmtName: input.fmtName || "短视频",
+        styleName: input.styleName || undefined,
+        styleRef: input.styleRef || undefined,
         title: input.title || input.idea || input.reopen || input.fmtName || "未命名短视频",
         step: "script",
         meta: null,

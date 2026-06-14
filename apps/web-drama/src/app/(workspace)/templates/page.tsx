@@ -91,9 +91,15 @@ export default function TemplatesPage() {
     if (applying) return;
     setApplying(r.id);
     try {
-      const { projectId } = await RecipesApi.applyRecipe(r.id);
-      toast.success(`已套用「${r.title}」,大纲骨架已铺好,接着改就能开拍`);
-      router.push(`/projects/${projectId}`);
+      const res = await RecipesApi.applyRecipe(r);
+      if (res.kind === "short") {
+        // 单集创意 → 短视频工厂，按这个风格说个主题就开拍
+        toast.success(`已套用「${r.title}」创意 —— 去短视频工厂,说个主题就开拍`);
+        router.push(`/shorts/make?draft=${encodeURIComponent(res.shortId)}`);
+      } else {
+        toast.success(`已套用「${r.title}」,大纲骨架已铺好,接着改就能开拍`);
+        router.push(`/projects/${res.projectId}`);
+      }
     } catch (e) {
       toast.error(aiErrorMessage(e, "套用失败，请稍后重试"));
     } finally {
@@ -348,48 +354,129 @@ function RecipeCard({
   );
 }
 
+function RecipePreviewHeroVideo({ r }: { r: DramaRecipe }) {
+  const ref = React.useRef<HTMLVideoElement>(null);
+  const [state, setState] = React.useState<"loading" | "playing" | "error">("loading");
+
+  React.useEffect(() => {
+    setState("loading");
+    const video = ref.current;
+    if (!video || !r.previewVideo) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    const timer = window.setTimeout(() => {
+      void video.play().catch(() => setState("error"));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [r.previewVideo]);
+
+  const playSilently = () => {
+    const video = ref.current;
+    if (!video) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    void video.play().then(() => setState("playing")).catch(() => setState("error"));
+  };
+
+  return (
+    <>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video
+        ref={ref}
+        src={r.previewVideo}
+        poster={r.coverImage || undefined}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+        controlsList="nodownload nofullscreen noremoteplayback"
+        aria-label={`${r.title} 范例视频`}
+        onLoadedMetadata={(e) => {
+          const video = e.currentTarget;
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            const ratio = video.videoWidth / video.videoHeight;
+            video.parentElement?.style.setProperty("--preview-aspect", String(ratio));
+            video.parentElement?.style.setProperty("--preview-max-h", ratio < 1 ? "min(68vh, 520px)" : "min(58vh, 360px)");
+          }
+          playSilently();
+        }}
+        onLoadedData={playSilently}
+        onCanPlay={playSilently}
+        onPlaying={() => setState("playing")}
+        onError={() => setState("error")}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", background: "#000", pointerEvents: "none" }}
+      />
+      {state === "error" && (
+        <div className="col center" style={{ position: "absolute", inset: 0, zIndex: 3, gap: 8, padding: 20, textAlign: "center", color: "#fff", background: "rgba(0,0,0,.58)" }}>
+          <AlertCircle size={22} />
+          <span style={{ fontSize: 13, fontWeight: 800 }}>范例视频加载失败</span>
+          <a href={r.previewVideo} target="_blank" rel="noreferrer" style={{ color: "#fff", fontSize: 12, textDecoration: "underline", textUnderlineOffset: 3 }}>
+            打开视频源地址
+          </a>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ── 创意详情弹窗（editorial · 只读 + 套用） ──────────────────────────────────────
    编辑/精品向：媒体 hero 上叠标题+作者（gradient scrim）；下方简介/内容双 tab。
    硬约束：不外露 payload（beats/characters/notes/mainline 原文），内容 tab 只给「套用后你会得到什么」的计数能力清单。 */
 function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; applying: boolean; onClose: () => void; onApply: () => void }) {
   const [tab, setTab] = React.useState<"intro" | "content">("intro");
-  const [playing, setPlaying] = React.useState(false);
 
   const portrait = !/16\s*:\s*9/.test(r.ratio); // 竖屏剧（9:16 等）hero 更高
-  const heroH = portrait ? 280 : 196;
+  const ratioMatch = r.ratio.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
+  const fallbackAspect = ratioMatch ? Number(ratioMatch[1]) / Number(ratioMatch[2]) : portrait ? 9 / 16 : 16 / 9;
   const fmtTime = (s: string | null) =>
     s ? new Date(s).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/\//g, "-") : null;
   const updated = fmtTime(r.updatedAt) || fmtTime(r.publishedAt);
 
-  // 内容 tab：套用后你会得到什么（计数 + 能力，不外露具体文字）
+  // 内容 tab：套用后你会得到什么（计数 + 能力，不外露具体文字）。
+  // 单集创意 → 短视频工厂；多集创意 → 六阶段项目，文案各自如实。
+  const isShort = r.episodes <= 1;
   const beatN = r.data?.beats?.length ?? 0;
   const charN = r.data?.characters?.length ?? 0;
   const hasMethod = !!r.data?.mainline || beatN > 0;
-  const features: { label: string; sub: string }[] = [
-    { label: "主线骨架", sub: hasMethod ? "可迁移的故事主线，套用后自动展开到你的项目" : "完整创作方法已内置，套用后自动铺好大纲" },
-    beatN > 0
-      ? { label: `${beatN} 段分集节拍`, sub: "逐集钩子与转折骨架，开拍前可逐条改写" }
-      : { label: r.episodes > 1 ? `${r.episodes} 集分集结构` : "单集节拍结构", sub: "套用后按集铺好分场骨架" },
-    charN > 0
-      ? { label: `${charN} 个角色原型`, sub: "人设原型自动入项目，替换成你的角色即可" }
-      : { label: "角色原型方案", sub: "套用后给出可改写的人设原型" },
-    { label: "完整分镜方案", sub: `${r.ratio} 画幅 · 套用后进六阶段工作台直接出图出片` },
-  ];
+  const features: { label: string; sub: string }[] = isShort
+    ? [
+        { label: "风格创意已内置", sub: "套用后 AI 按这个风格 / 方法帮你写口播脚本和分镜" },
+        { label: "单条速成", sub: `${r.ratio} 画幅 · 进短视频工厂逐镜出片、一键合成成片` },
+        r.previewVideo
+          ? { label: "范例成片可对照", sub: "照着上方范例视频找感觉，描述你的主题就开拍" }
+          : { label: "说个主题就开拍", sub: "不用想结构，描述你的产品 / 主题，AI 接管节奏" },
+      ]
+    : [
+        { label: "主线骨架", sub: hasMethod ? "可迁移的故事主线，套用后自动展开到你的项目" : "完整创作方法已内置，套用后自动铺好大纲" },
+        beatN > 0
+          ? { label: `${beatN} 段分集节拍`, sub: "逐集钩子与转折骨架，开拍前可逐条改写" }
+          : { label: `${r.episodes} 集分集结构`, sub: "套用后按集铺好分场骨架" },
+        charN > 0
+          ? { label: `${charN} 个角色原型`, sub: "人设原型自动入项目，替换成你的角色即可" }
+          : { label: "角色原型方案", sub: "套用后给出可改写的人设原型" },
+        { label: "完整分镜方案", sub: `${r.ratio} 画幅 · 套用后进六阶段工作台直接出图出片` },
+      ];
 
   return (
     <ModalShell onClose={onClose} label={r.title} overlayZIndex={90} className="card pop-in col" style={{ width: 560, maxWidth: "94vw", maxHeight: "92vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
       {/* ── 媒体 hero ── */}
-      <div style={{ position: "relative", flex: "none", height: heroH, background: `linear-gradient(140deg,${r.cover.from},${r.cover.to})`, overflow: "hidden" }}>
-        {playing && r.previewVideo ? (
-          // eslint-disable-next-line jsx-a11y/media-has-caption
-          <video
-            src={r.previewVideo}
-            poster={r.coverImage || undefined}
-            controls
-            autoPlay
-            playsInline
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: portrait ? "contain" : "cover", background: "#000" }}
-          />
+      <div
+        style={{
+          position: "relative",
+          flex: "none",
+          width: "100%",
+          aspectRatio: `var(--preview-aspect, ${fallbackAspect})`,
+          minHeight: portrait ? 260 : 190,
+          maxHeight: `var(--preview-max-h, ${portrait ? "min(68vh, 520px)" : "min(58vh, 360px)"})`,
+          background: `linear-gradient(140deg,${r.cover.from},${r.cover.to})`,
+          overflow: "hidden",
+        }}
+      >
+        {r.previewVideo ? (
+          <RecipePreviewHeroVideo r={r} />
         ) : (
           <>
             {r.coverImage && (
@@ -399,32 +486,12 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             {/* 底部渐变 scrim，承托叠加标题 */}
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,.34) 0%,rgba(0,0,0,0) 32%,rgba(0,0,0,0) 50%,rgba(0,0,0,.72) 100%)" }} />
 
-            {/* 播放态：有视频→可点击的大播放钮；无视频→占位 */}
-            {r.previewVideo ? (
-              <button
-                type="button"
-                onClick={() => setPlaying(true)}
-                aria-label="播放范例视频"
-                className="center"
-                style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "transparent", border: "none", cursor: "pointer" }}
-              >
-                <span
-                  className="center"
-                  style={{ width: 58, height: 58, borderRadius: 999, background: "rgba(255,255,255,.92)", boxShadow: "0 6px 22px rgba(0,0,0,.28)", transition: "transform .15s" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.08)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.transform = "none")}
-                >
-                  <Play size={22} fill="var(--ink)" color="var(--ink)" style={{ marginLeft: 3 }} />
-                </span>
-              </button>
-            ) : (
-              <div className="col center" style={{ position: "absolute", inset: 0, gap: 8 }}>
-                <span className="center" style={{ width: 50, height: 50, borderRadius: 999, background: "rgba(255,255,255,.22)", backdropFilter: "blur(2px)" }}>
-                  <Film size={20} color="#fff" />
-                </span>
-                <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.92)", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>范例视频整理中</span>
-              </div>
-            )}
+            <div className="col center" style={{ position: "absolute", inset: 0, gap: 8 }}>
+              <span className="center" style={{ width: 50, height: 50, borderRadius: 999, background: "rgba(255,255,255,.22)", backdropFilter: "blur(2px)" }}>
+                <Film size={20} color="#fff" />
+              </span>
+              <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.92)", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>范例视频整理中</span>
+            </div>
 
             {/* 叠加：源标 + 关闭 */}
             <span style={{ position: "absolute", top: 12, left: 12 }}>
@@ -457,10 +524,34 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             </div>
           </>
         )}
-        {playing && r.previewVideo && (
-          <button type="button" aria-label="关闭" onClick={onClose} className="btn btn-icon btn-sm" style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.9)", zIndex: 2 }}>
-            <X size={16} />
-          </button>
+        {r.previewVideo && (
+          <>
+            <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "linear-gradient(180deg,rgba(0,0,0,.42) 0%,rgba(0,0,0,.08) 38%,rgba(0,0,0,.12) 58%,rgba(0,0,0,.76) 100%)" }} />
+            <span style={{ position: "absolute", top: 12, left: 12, zIndex: 2 }}>
+              <SourceBadge r={r} />
+            </span>
+            <button type="button" aria-label="关闭" onClick={onClose} className="btn btn-icon btn-sm" style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.9)", zIndex: 2 }}>
+              <X size={16} />
+            </button>
+            {r.useCount > 0 && (
+              <span
+                className="row gap-1 num"
+                style={{ position: "absolute", left: 12, bottom: 12, zIndex: 2, alignItems: "center", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 999, boxShadow: "0 4px 14px rgba(0,0,0,.28)" }}
+              >
+                <Flame size={13} fill="currentColor" /> {r.useCount} 人用过
+              </span>
+            )}
+            <div className="col" style={{ position: "absolute", left: 18, right: 18, bottom: r.useCount > 0 ? 44 : 14, gap: 2, zIndex: 2 }}>
+              {!isOfficial(r) && (
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,.85)", textShadow: "0 1px 3px rgba(0,0,0,.5)" }}>
+                  @{r.authorName || "用户"}
+                </span>
+              )}
+              <span style={{ fontSize: portrait ? 22 : 20, fontWeight: 800, letterSpacing: "-.02em", color: "#fff", lineHeight: 1.2, textShadow: "0 2px 10px rgba(0,0,0,.5)" }}>
+                {r.title}
+              </span>
+            </div>
+          </>
         )}
       </div>
 
@@ -550,7 +641,9 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             </div>
             <div className="row gap-2" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--accent-soft)", color: "var(--accent)", alignItems: "center" }}>
               <Sparkles size={14} style={{ flex: "none" }} />
-              <span style={{ fontSize: 12, lineHeight: 1.5, fontWeight: 600 }}>具体剧本细节不在此预览,套用后在工作台里逐条可见、可改。</span>
+              <span style={{ fontSize: 12, lineHeight: 1.5, fontWeight: 600 }}>
+                {isShort ? "具体脚本细节不在此预览,套用后在短视频工厂里逐镜可见、可改。" : "具体剧本细节不在此预览,套用后在工作台里逐条可见、可改。"}
+              </span>
             </div>
           </>
         )}
