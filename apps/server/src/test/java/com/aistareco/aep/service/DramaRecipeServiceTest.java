@@ -78,6 +78,30 @@ class DramaRecipeServiceTest {
         when(projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull("dp1", "u1")).thenReturn(Optional.of(p));
     }
 
+    private void seedDoneShort(String status, String videoUrl) throws Exception {
+        var meta = OM.createObjectNode();
+        meta.put("id", "dvs1");
+        meta.put("title", "世界杯趣玩");
+        meta.put("fmtKey", "style");
+        meta.put("fmtName", "风格短片");
+        meta.put("from", "#fb923c");
+        meta.put("to", "#ef4444");
+        meta.put("status", status);
+        meta.put("shotCount", 1);
+        meta.put("doneCount", 1);
+        if (videoUrl == null) meta.putNull("videoUrl"); else meta.put("videoUrl", videoUrl);
+        var data = (com.fasterxml.jackson.databind.node.ObjectNode) OM.readTree(
+                "{\"title\":\"世界杯趣玩\",\"fmtKey\":\"style\",\"fmtName\":\"风格短片\","
+                        + "\"styleRef\":\"黏土动画世界杯趣味短片\","
+                        + "\"meta\":{\"title\":\"世界杯趣玩\",\"character\":{\"name\":\"足球少年\",\"description\":\"热情活泼\"}},"
+                        + "\"shots\":[{\"no\":1,\"dur\":6,\"visual\":\"男孩在球场奔跑挥手\",\"voText\":\"世界杯这样玩才开心\",\"move\":\"跟拍\",\"flow\":\"done\",\"videoUrl\":\"https://cdn.test/clip.mp4\"}],"
+                        + "\"chat\":[],\"refs\":[]}");
+        var detail = OM.createObjectNode();
+        detail.set("meta", meta);
+        detail.set("data", data);
+        when(shortService.getShort("dvs1", "u1")).thenReturn(detail);
+    }
+
     @Test
     void extractDistillsProjectIntoSubmittedRecipe() {
         seedProject();
@@ -161,6 +185,36 @@ class DramaRecipeServiceTest {
         JsonNode dto = svc.extractFromProject("dp1", "u1");
         assertEquals("submitted", dto.path("status").asText());
         verify(recipeRepo).save(any(DramaRecipe.class));
+    }
+
+    @Test
+    void extractShortDistillsDoneShortIntoSingleEpisodeRecipe() throws Exception {
+        seedDoneShort("done", "https://cdn.test/clip.mp4");
+        stubDistillOk();
+
+        JsonNode dto = svc.extractFromShort("dvs1", "u1");
+
+        assertEquals("submitted", dto.path("status").asText());
+        assertEquals("extracted", dto.path("origin").asText());
+        assertEquals("dvs1", dto.path("sourceProjectId").asText());
+        assertEquals(1, dto.path("episodes").asInt());
+        assertEquals("style", dto.path("typeKey").asText());
+        assertEquals("风格短片", dto.path("type").asText());
+        assertEquals("u1", dto.path("ownerUserId").asText());
+        verify(recipeRepo).save(any(DramaRecipe.class));
+    }
+
+    @Test
+    void extractShortRequiresDoneVideo() throws Exception {
+        seedDoneShort("draft", "https://cdn.test/clip.mp4");
+        BusinessException draft = assertThrows(BusinessException.class, () -> svc.extractFromShort("dvs1", "u1"));
+        assertEquals("DRAMA_RECIPE_NEEDS_DONE_SHORT", draft.getCode());
+
+        reset(shortService);
+        seedDoneShort("done", null);
+        BusinessException noVideo = assertThrows(BusinessException.class, () -> svc.extractFromShort("dvs1", "u1"));
+        assertEquals("DRAMA_RECIPE_NEEDS_SHORT_VIDEO", noVideo.getCode());
+        verify(recipeRepo, never()).save(any());
     }
 
     // ── 审核 / 发布 / 套用 ───────────────────────────────────────────────────────

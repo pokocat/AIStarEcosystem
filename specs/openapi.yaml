@@ -6998,6 +6998,9 @@ paths:
     get:    { tags: [drama], operationId: getDramaShort,    summary: '短视频草稿详情（meta + 整页 ShortDraftData）', responses: { '200': { description: ok } } }
     put:    { tags: [drama], operationId: saveDramaShort,   summary: '保存整页短视频草稿（回算时长/镜数/进度）', responses: { '200': { description: ok } } }
     delete: { tags: [drama], operationId: deleteDramaShort, summary: '删除短视频草稿（软删）', responses: { '204': { description: ok } } }
+  /me/drama/shorts/{id}/extract-recipe:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: extractDramaShortRecipe, summary: '完成短视频发布到创意中心：反向蒸馏成单集可复用创意（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
   # ── v0.66 短剧专区配置 + 成片合成 ──
   /me/drama/config:
     get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,shortEntry,clip}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价）', responses: { '200': { description: ok } } }

@@ -20,10 +20,12 @@ import {
   Plus,
   RefreshCw,
   Sparkles,
+  Trash2,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
+import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
 import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
@@ -414,6 +416,7 @@ function ShortMakerInner({
   );
   const [draft, setDraft] = React.useState("");
   const [draftStatus, setDraftStatus] = React.useState<"draft" | "done">(initialStatus);
+  const [deleting, setDeleting] = React.useState(false);
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
@@ -480,6 +483,29 @@ function ShortMakerInner({
     }
     invalidate("/me/drama/shorts");
     router.push("/shorts");
+  };
+
+  const deleteCurrentDraft = async () => {
+    if (deleting) return;
+    const ok = await dramaConfirm({
+      title: "删除这条草稿?",
+      body: "删除后会从短视频工坊移除，当前脚本、分镜和已生成镜头都不会再出现在这条草稿里。",
+      confirmLabel: "删除草稿",
+      cancelLabel: "先保留",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setDeleting(true);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    try {
+      await ShortsApi.deleteDraft(draftId);
+      invalidate("/me/drama/shorts");
+      toast.success("草稿已删除");
+      router.push("/shorts");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "删除草稿失败，请稍后重试"));
+      setDeleting(false);
+    }
   };
 
   /** 真实 AI 生成口播脚本（DRAMA_SCRIPT_DRAFT）→ 映射为结构化分镜表。 */
@@ -647,6 +673,17 @@ function ShortMakerInner({
             );
           })}
         </div>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => void deleteCurrentDraft()}
+          disabled={deleting}
+          aria-busy={deleting}
+          title="删除草稿"
+          style={{ flex: "none", color: "#dc2626", border: "1px solid #fecaca", background: "#fff7f7" }}
+        >
+          <Trash2 size={14} /> {deleting ? "删除中" : "删除草稿"}
+        </button>
       </header>
 
       {/* 脚本步:左 AI 对话 / 右 生成脚本 · 工厂步:居中滚动 */}

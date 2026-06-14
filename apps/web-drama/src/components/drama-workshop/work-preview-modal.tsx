@@ -124,49 +124,55 @@ export function WorkPreviewModal({
         </div>
 
         {/* 信息 + 动作 */}
-        <div className="col gap-2" style={{ padding: "14px 18px 16px" }}>
+        <div className="col gap-2" style={{ padding: compactActions ? "14px 18px 14px" : "14px 18px 16px" }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>{item.title}</div>
-          <div className="faint num" style={{ fontSize: 12 }}>{item.metaLine}</div>
           {compactActions ? (
-            <div className="row gap-2" style={{ justifyContent: "flex-end", marginTop: 6 }}>
-              <button
-                type="button"
-                className="btn btn-icon btn-sm"
-                onClick={onScript}
-                aria-label={scriptLabel}
-                title={scriptLabel}
-                style={{ width: 34, height: 34, borderRadius: 10 }}
-              >
-                <Copy size={15} />
-              </button>
-              {item.videoUrl ? (
-                <a
-                  className="btn btn-icon btn-sm"
-                  href={item.videoUrl}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="下载视频"
-                  title="下载视频"
-                  style={{ width: 34, height: 34, borderRadius: 10 }}
-                >
-                  <Download size={15} />
-                </a>
-              ) : (
+            <div className="row gap-2" data-testid="compact-preview-meta-row" style={{ alignItems: "center", minHeight: 38 }}>
+              <div className="faint num grow" style={{ fontSize: 12, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {item.metaLine}
+              </div>
+              <div className="row gap-2" data-testid="compact-preview-actions" style={{ flexShrink: 0 }}>
                 <button
                   type="button"
                   className="btn btn-icon btn-sm"
-                  disabled
-                  aria-label="暂无可下载视频"
-                  title="暂无可下载视频"
-                  style={{ width: 34, height: 34, borderRadius: 10, opacity: 0.5 }}
+                  onClick={onScript}
+                  disabled={extracting}
+                  aria-label={scriptLabel}
+                  title={scriptLabel}
+                  style={{ width: 44, height: 34, borderRadius: 10, border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink-2)", opacity: extracting ? 0.55 : 1 }}
                 >
-                  <Download size={15} />
+                  <Boxes size={15} />
                 </button>
-              )}
+                {item.videoUrl ? (
+                  <a
+                    className="btn btn-icon btn-sm"
+                    href={item.videoUrl}
+                    download
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="下载视频"
+                    title="下载视频"
+                    style={{ width: 44, height: 34, borderRadius: 10, border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink-2)" }}
+                  >
+                    <Download size={15} />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-icon btn-sm"
+                    disabled
+                    aria-label="暂无可下载视频"
+                    title="暂无可下载视频"
+                    style={{ width: 44, height: 34, borderRadius: 10, border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink-2)", opacity: 0.5 }}
+                  >
+                    <Download size={15} />
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <>
+              <div className="faint num" style={{ fontSize: 12 }}>{item.metaLine}</div>
               <div className="row gap-2" style={{ marginTop: 8 }}>
                 <button type="button" className="btn btn-line grow" style={{ justifyContent: "center" }} onClick={onScript}>
                   <Clapperboard size={15} /> {scriptLabel}

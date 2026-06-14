@@ -3,6 +3,7 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.config.DramaConfigSeeder;
 import com.aistareco.aep.model.DramaShort;
 import com.aistareco.aep.repository.DramaShortRepository;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,7 +56,7 @@ class DramaShortServiceTest {
         configs = mock(PlatformConfigService.class);
         // 默认回落传入的默认值（短视频开拍默认 10）；具体扣费用例再按 key 覆盖。
         when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.getArgument(1, Long.class));
-        svc = new DramaShortService(repo, OM, creditService, configs);
+        svc = new DramaShortService(repo, OM, creditService, configs, CdnUrlSigner.NOOP);
     }
 
     @Test
@@ -117,6 +118,32 @@ class DramaShortServiceTest {
         JsonNode saved = svc.saveShort(id, body, USER);
         assertEquals("done", saved.get("meta").get("status").asText());
         assertEquals(100, saved.get("meta").get("progress").asInt());
+    }
+
+    @Test
+    void listResignsPreviewMediaUrls() {
+        CdnUrlSigner signer = mock(CdnUrlSigner.class);
+        when(signer.maybeSign("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/drama/frames/old.png"))
+                .thenReturn("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/drama/frames/old.png?x-oss-signature=fresh");
+        when(signer.maybeSign("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/material-videos/old.mp4"))
+                .thenReturn("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/material-videos/old.mp4?x-oss-signature=fresh");
+        svc = new DramaShortService(repo, OM, creditService, configs, signer);
+
+        String id = svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER).get("meta").get("id").asText();
+        var body = OM.createObjectNode();
+        body.set("data", readTree("{\"step\":\"factory\","
+                + "\"shots\":[{\"id\":\"s1\",\"dur\":5,\"flow\":\"done\","
+                + "\"frameUrl\":\"https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/drama/frames/old.png\","
+                + "\"videoUrl\":\"https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/material-videos/old.mp4\"}],"
+                + "\"chat\":[],\"refs\":[]}"));
+        body.put("status", "done");
+        svc.saveShort(id, body, USER);
+
+        JsonNode summary = svc.listShorts(USER).get(0);
+        assertEquals("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/drama/frames/old.png?x-oss-signature=fresh",
+                summary.get("coverUrl").asText());
+        assertEquals("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/material-videos/old.mp4?x-oss-signature=fresh",
+                summary.get("videoUrl").asText());
     }
 
     @Test

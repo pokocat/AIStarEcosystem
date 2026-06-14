@@ -88,6 +88,29 @@ public class DramaRecipeService {
         return toDto(recipe);
     }
 
+    /** 用户把自己已完成的短视频蒸馏成单集创意（status=submitted，待运营审核）。 */
+    public JsonNode extractFromShort(String shortId, String userId) {
+        JsonNode detail = shortService.getShort(shortId, userId);
+        JsonNode meta = detail.path("meta");
+        JsonNode data = detail.path("data");
+        if (!"done".equals(meta.path("status").asText(""))) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NEEDS_DONE_SHORT",
+                    "这条短视频还没有完成，完成成片后再发布到创意中心。");
+        }
+        if (meta.path("shotCount").asInt(0) <= 0 || !data.path("shots").isArray() || data.path("shots").isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NEEDS_SHORT_SHOTS",
+                    "这条短视频还没有分镜内容，无法抽成创意。");
+        }
+        if (nonBlank(text(meta, "videoUrl")) == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NEEDS_SHORT_VIDEO",
+                    "这条短视频还没有可播放成片，生成成片后再发布到创意中心。");
+        }
+        guardNoActiveRecipe(shortId);
+        DramaRecipe recipe = distillAndSaveShort(shortId, userId, meta, data, "submitted", "extracted", resolveAuthorName(userId));
+        log.info("[drama-recipe] extracted(short) id={} short={} user={}", recipe.getId(), shortId, userId);
+        return toDto(recipe);
+    }
+
     // ── 通道② 运营邀请精选用户作品 ────────────────────────────────────────────────
 
     /**
@@ -298,6 +321,91 @@ public class DramaRecipeService {
                 .episodes(eps)
                 .coverFrom(orDefault(project.getCoverFrom(), "#f97316"))
                 .coverTo(orDefault(project.getCoverTo(), "#e11d48"))
+                .useCount(0)
+                .payloadJson(write(payload))
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        repo.save(recipe);
+        return recipe;
+    }
+
+    /** 调 LLM 把一条完成短视频蒸馏成单集 Recipe 并落库。sourceProjectId 复用为来源作品 id（dvs_*）。 */
+    private DramaRecipe distillAndSaveShort(String shortId, String userId, JsonNode meta, JsonNode data,
+                                            String status, String origin, String authorName) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                    "抽取配方还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+        }
+
+        String title = orDefault(text(meta, "title"), orDefault(text(data, "title"), "未命名短视频"));
+        String type = orDefault(text(meta, "fmtName"), orDefault(text(data, "fmtName"), "风格短片"));
+        String typeKey = orDefault(text(meta, "fmtKey"), orDefault(text(data, "fmtKey"), "style"));
+        String mainline = firstNonBlank(text(data, "styleRef"), text(data, "idea"), text(data, "reopen"), title);
+
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("title", title);
+        vars.put("type", type);
+        vars.put("episodes", "1");
+        vars.put("logline", mainline);
+        vars.put("mainline", mainline);
+        vars.put("outline", summarizeShortShots(data.path("shots")));
+        vars.put("characters", summarizeShortCharacters(data.path("meta")));
+
+        PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_RECIPE_EXTRACT);
+        if ("code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "配方抽取的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_RECIPE_EXTRACT
+                            + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
+        }
+        log.info("[drama-recipe] distill short={} vars={}", shortId, vars);
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (p.system() != null && !p.system().isBlank()) {
+            messages.add(Map.of("role", "system", "content", p.system()));
+        }
+        messages.add(Map.of("role", "user", "content", PromptService.fill(p.userTemplate(), vars)));
+        Map<String, Object> options = new LinkedHashMap<>();
+        options.put("temperature", p.params().temperature() != null ? p.params().temperature() : 0.7);
+        options.put("max_tokens", p.params().maxTokens() != null && p.params().maxTokens() > 0 ? p.params().maxTokens() : 4096);
+        options.put("response_format", Map.of("type", "json_object"));
+
+        AiModelInvocationService.AiModelResponse resp;
+        try {
+            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "配方抽取调用失败，请稍后重试。");
+        }
+        JsonNode root = tryReadJson(resp.content());
+        if (root == null || !root.isObject()) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "配方抽取返回的内容无法解析，请重试。");
+        }
+
+        ObjectNode payload = om.createObjectNode();
+        payload.put("mainline", orDefault(text(root, "mainline"), ""));
+        payload.set("beats", normalizeBeats(root.path("beats")));
+        payload.set("characters", normalizeArchetypes(root.path("characters")));
+        payload.set("hooks", root.path("hooks").isArray() ? root.get("hooks").deepCopy() : om.createArrayNode());
+        payload.put("notes", orDefault(text(root, "notes"), ""));
+
+        OffsetDateTime now = OffsetDateTime.now();
+        DramaRecipe recipe = DramaRecipe.builder()
+                .id("dr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
+                .ownerUserId(userId)
+                .sourceProjectId(shortId)
+                .status(status)
+                .origin(origin)
+                .authorName(authorName)
+                .title(orDefault(text(root, "title"), title + " · 创意"))
+                .summary(orDefault(text(root, "summary"), ""))
+                .typeKey(typeKey)
+                .type(type)
+                .ratio("9:16")
+                .episodes(1)
+                .coverFrom(orDefault(text(meta, "from"), "#f97316"))
+                .coverTo(orDefault(text(meta, "to"), "#e11d48"))
                 .useCount(0)
                 .payloadJson(write(payload))
                 .createdAt(now)
@@ -562,6 +670,35 @@ public class DramaRecipeService {
         return sb.toString();
     }
 
+    private String summarizeShortShots(JsonNode shots) {
+        if (shots == null || !shots.isArray() || shots.isEmpty()) return "（未设定）";
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        for (JsonNode sh : shots) {
+            if (n++ >= 12) break;
+            int no = sh.path("no").asInt(n);
+            sb.append("镜头").append(no);
+            String visual = text(sh, "visual");
+            if (visual != null && !visual.isBlank()) sb.append("｜画面：").append(visual);
+            String line = text(sh, "voText");
+            if (line != null && !line.isBlank()) sb.append("｜口播：").append(line);
+            String move = text(sh, "move");
+            if (move != null && !move.isBlank()) sb.append("｜运动：").append(move);
+            int dur = sh.path("dur").asInt(0);
+            if (dur > 0) sb.append("｜时长：").append(dur).append("秒");
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
+    private String summarizeShortCharacters(JsonNode meta) {
+        JsonNode ch = meta == null ? null : meta.path("character");
+        if (ch == null || ch.isMissingNode() || ch.isNull()) return "（未设定）";
+        String name = orDefault(text(ch, "name"), "主角");
+        String desc = orDefault(text(ch, "description"), "");
+        return "- " + name + "（主角）：" + desc;
+    }
+
     private ArrayNode normalizeBeats(JsonNode beats) {
         ArrayNode out = om.createArrayNode();
         if (!beats.isArray()) return out;
@@ -684,6 +821,21 @@ public class DramaRecipeService {
 
     private static String orDefault(String v, String d) {
         return v == null || v.isBlank() ? d : v;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) return "";
+        for (String v : values) {
+            String n = nonBlank(v);
+            if (n != null) return n;
+        }
+        return "";
+    }
+
+    private static String nonBlank(String v) {
+        if (v == null) return null;
+        String t = v.trim();
+        return t.isBlank() ? null : t;
     }
 
     private String write(JsonNode node) {

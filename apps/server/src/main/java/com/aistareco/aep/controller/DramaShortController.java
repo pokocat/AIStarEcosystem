@@ -1,6 +1,7 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.service.DramaShortService;
+import com.aistareco.aep.service.DramaRecipeService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatus;
@@ -18,9 +19,11 @@ import java.util.List;
 public class DramaShortController {
 
     private final DramaShortService service;
+    private final DramaRecipeService recipeService;
 
-    public DramaShortController(DramaShortService service) {
+    public DramaShortController(DramaShortService service, DramaRecipeService recipeService) {
         this.service = service;
+        this.recipeService = recipeService;
     }
 
     /** 列表卡片 ShortDraftSummary[]。 */
@@ -45,6 +48,12 @@ public class DramaShortController {
     @PutMapping("/{id}")
     public ApiResponse<JsonNode> save(Principal principal, @PathVariable String id, @RequestBody JsonNode body) {
         return ApiResponse.of(service.saveShort(id, body, principal.getName()));
+    }
+
+    /** 完成短视频 → 发布到创意中心（status=submitted 待运营审核）。 */
+    @PostMapping("/{id}/extract-recipe")
+    public ApiResponse<JsonNode> extractRecipe(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(recipeService.extractFromShort(id, principal.getName()));
     }
 
     @DeleteMapping("/{id}")

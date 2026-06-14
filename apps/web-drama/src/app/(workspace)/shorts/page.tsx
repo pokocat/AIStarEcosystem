@@ -5,15 +5,18 @@
 // v0.76:短视频成片有真后端草稿（/me/drama/shorts），列表即真实草稿，点开接着做。
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Clapperboard, Copy, Play, Zap } from "lucide-react";
+import { toast } from "sonner";
+import { Boxes, Clapperboard, Play, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
+import { PublishCreativeCenterModal } from "@/components/drama-workshop/publish-creative-center-modal";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
 import { type DramaProjectSummary } from "@/mocks/drama-workshop";
-import { ProjectsApi, ShortsApi } from "@/api";
+import { ProjectsApi, RecipesApi, ShortsApi } from "@/api";
 import type { ShortDraftSummary } from "@/api/shorts";
 import { useAsync } from "@/lib/drama-query";
+import { aiErrorMessage } from "@/lib/ai-error";
 
 interface MakeCtx {
   format: string;
@@ -32,12 +35,14 @@ function fmtDur(sec: number): string {
 function DraftCard({
   d,
   onOpen,
-  onReplicate,
+  onPublish,
+  publishing,
   delay,
 }: {
   d: ShortDraftSummary;
   onOpen: () => void;
-  onReplicate: () => void;
+  onPublish: () => void;
+  publishing?: boolean;
   delay?: number;
 }) {
   const done = d.status === "done";
@@ -160,15 +165,17 @@ function DraftCard({
               <button
                 type="button"
                 className="btn btn-icon btn-sm"
-                aria-label="复刻"
-                title="复刻"
-                style={{ width: 24, height: 24, borderRadius: 7 }}
+                aria-label="发布到创意中心"
+                title="发布到创意中心"
+                disabled={publishing}
+                aria-busy={publishing}
+                style={{ width: 24, height: 24, borderRadius: 7, opacity: publishing ? 0.55 : 1 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onReplicate();
+                  onPublish();
                 }}
               >
-                <Copy size={11} />
+                <Boxes size={11} />
               </button>
             </>
           )}
@@ -182,6 +189,8 @@ export default function ShortsStudioPage() {
   const router = useRouter();
   const [clipOpen, setClipOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<ShortDraftSummary | null>(null);
+  const [publishTarget, setPublishTarget] = React.useState<ShortDraftSummary | null>(null);
+  const [publishingId, setPublishingId] = React.useState<string | null>(null);
   // v0.76:短视频草稿真后端 —— 列表即真实草稿；单集作品另取真实项目（episodes===1）。
   const draftsQ = useAsync("/me/drama/shorts", () => ShortsApi.listDrafts());
   const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
@@ -200,11 +209,29 @@ export default function ShortsStudioPage() {
     router.push(`/shorts/make${qs ? "?" + qs : ""}`);
   };
   const editDraft = (id: string) => router.push(`/shorts/make?draft=${encodeURIComponent(id)}`);
-  const replicateDraft = (d: ShortDraftSummary) => {
-    const params = new URLSearchParams();
-    if (d.fmtKey) params.set("fmt", d.fmtKey);
-    params.set("reopen", d.title);
-    router.push(`/shorts/make?${params.toString()}`);
+  const requestPublish = (d: ShortDraftSummary) => {
+    if (publishingId) return;
+    setPublishTarget(d);
+  };
+  const closePublishModal = () => {
+    if (publishingId) return;
+    setPublishTarget(null);
+  };
+  const publishShort = async () => {
+    const d = publishTarget;
+    if (!d) return;
+    if (publishingId) return;
+    setPublishingId(d.id);
+    try {
+      await RecipesApi.extractFromShort(d.id);
+      setPublishTarget(null);
+      setPreview(null);
+      toast.success(`已把《${d.title}》发布到创意中心，运营审核通过后公开可套用`);
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "发布到创意中心失败，请稍后重试"));
+    } finally {
+      setPublishingId(null);
+    }
   };
   const openDraft = (d: ShortDraftSummary) => {
     if (d.status === "done") {
@@ -276,7 +303,14 @@ export default function ShortsStudioPage() {
           <span className="faint" style={{ fontSize: 11 }}>说句话·出片</span>
         </button>
         {drafts.map((d, i) => (
-          <DraftCard key={d.id} d={d} delay={i * 35} onOpen={() => openDraft(d)} onReplicate={() => replicateDraft(d)} />
+          <DraftCard
+            key={d.id}
+            d={d}
+            delay={i * 35}
+            onOpen={() => openDraft(d)}
+            onPublish={() => requestPublish(d)}
+            publishing={publishingId === d.id}
+          />
         ))}
         {singles.map((p, i) => (
           <ProjectCard key={p.id} p={p} stageNames={STAGE_NAMES} onOpen={openProject} delay={(drafts.length + i) * 35} />
@@ -296,18 +330,20 @@ export default function ShortsStudioPage() {
             durLabel: preview.durationSec > 0 ? fmtDur(preview.durationSec) : undefined,
           }}
           onClose={() => setPreview(null)}
-          scriptLabel="复刻"
-          deriveLabel="复刻"
+          scriptLabel="发布到创意中心"
+          deriveLabel="发布到创意中心"
           compactActions
-          onScript={() => {
-            const item = preview;
-            setPreview(null);
-            replicateDraft(item);
-          }}
-          onDerive={() => {
-            setPreview(null);
-            replicateDraft(preview);
-          }}
+          extracting={publishingId === preview.id}
+          onScript={() => requestPublish(preview)}
+          onDerive={() => requestPublish(preview)}
+        />
+      )}
+      {publishTarget && (
+        <PublishCreativeCenterModal
+          title={publishTarget.title}
+          publishing={publishingId === publishTarget.id}
+          onClose={closePublishModal}
+          onConfirm={() => void publishShort()}
         />
       )}
     </div>

@@ -3,7 +3,8 @@
 // 用户：成片后发布到创意市场（→ 待运营审核）、看「我发布的创意」、套用已发布、回应运营邀请。
 // 运营：审核队列 + 发布/驳回 + 从用户作品精选（候选/邀请）+ 手建内置（后端 requireOperator；
 //       维护入口在 web-drama 运营视图，不在 admin）。
-// 后端：/api/me/drama/recipes/** + /api/me/drama/projects/{id}/extract-recipe。
+// 后端：/api/me/drama/recipes/** + /api/me/drama/projects/{id}/extract-recipe
+//      + /api/me/drama/shorts/{id}/extract-recipe。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
@@ -132,6 +133,12 @@ function mockRecipe(over?: Partial<DramaRecipe>): DramaRecipe {
 export async function extractFromProject(projectId: string): Promise<DramaRecipe> {
   if (USE_MOCK) return mockDelay(mockRecipe(), 1400);
   return apiFetch<DramaRecipe>(`/me/drama/projects/${encodeURIComponent(projectId)}/extract-recipe`, { method: "POST" });
+}
+
+/** 用户把一条已完成短视频发布到创意中心（→ status=submitted 待运营审核）。 */
+export async function extractFromShort(shortId: string): Promise<DramaRecipe> {
+  if (USE_MOCK) return mockDelay(mockRecipe({ sourceProjectId: shortId, type: "风格短片", typeKey: "style", episodes: 1 }), 1400);
+  return apiFetch<DramaRecipe>(`/me/drama/shorts/${encodeURIComponent(shortId)}/extract-recipe`, { method: "POST" });
 }
 
 /** 我抽取 / 提交过的配方（含审核状态）。 */

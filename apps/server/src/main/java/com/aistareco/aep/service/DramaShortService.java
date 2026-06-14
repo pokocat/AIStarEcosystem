@@ -3,6 +3,7 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.config.DramaConfigSeeder;
 import com.aistareco.aep.model.DramaShort;
 import com.aistareco.aep.repository.DramaShortRepository;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,13 +42,16 @@ public class DramaShortService {
     private final ObjectMapper om;
     private final CreditService creditService;
     private final PlatformConfigService configs;
+    private final CdnUrlSigner cdnUrlSigner;
 
     public DramaShortService(DramaShortRepository repo, ObjectMapper om,
-                             CreditService creditService, PlatformConfigService configs) {
+                             CreditService creditService, PlatformConfigService configs,
+                             CdnUrlSigner cdnUrlSigner) {
         this.repo = repo;
         this.om = om;
         this.creditService = creditService;
         this.configs = configs;
+        this.cdnUrlSigner = cdnUrlSigner == null ? CdnUrlSigner.NOOP : cdnUrlSigner;
     }
 
     /**
@@ -292,8 +296,10 @@ public class DramaShortService {
         o.put("doneCount", s.getDoneCount());
         o.put("status", orDefault(s.getStatus(), "draft"));
         o.put("progress", s.getProgress());
-        if (media.coverUrl() != null) o.put("coverUrl", media.coverUrl()); else o.putNull("coverUrl");
-        if (media.videoUrl() != null) o.put("videoUrl", media.videoUrl()); else o.putNull("videoUrl");
+        String coverUrl = resolveAssetUrl(media.coverUrl());
+        String videoUrl = resolveAssetUrl(media.videoUrl());
+        if (coverUrl != null) o.put("coverUrl", coverUrl); else o.putNull("coverUrl");
+        if (videoUrl != null) o.put("videoUrl", videoUrl); else o.putNull("videoUrl");
         o.put("updated", relativeTime(s.getUpdatedAt()));
         o.put("updatedAt", s.getUpdatedAt() != null ? s.getUpdatedAt().toString() : null);
         return o;
@@ -332,6 +338,20 @@ public class DramaShortService {
             return nonBlank(arr.get(0).asText(null));
         }
         return null;
+    }
+
+    /**
+     * 草稿 payload 保存的是当时生成接口返回的资源 URL，可能是裸 OSS URL，也可能是已经过期的签名 URL。
+     * 列表/详情出 wire 时必须重新签名，否则完成态卡片首帧会在签名过期或 OSS 私有桶下变成 403。
+     */
+    private String resolveAssetUrl(String raw) {
+        if (raw == null || raw.isBlank()) return raw;
+        String value = raw.trim();
+        if (value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://")) {
+            return cdnUrlSigner.maybeSign(value);
+        }
+        String signed = cdnUrlSigner.signKey(value);
+        return signed == null || signed.isBlank() ? value : signed;
     }
 
     private ObjectNode toDetail(DramaShort s) {
