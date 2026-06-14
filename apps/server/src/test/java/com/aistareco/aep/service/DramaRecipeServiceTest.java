@@ -137,6 +137,29 @@ class DramaRecipeServiceTest {
         assertEquals("DRAMA_PROJECT_NOT_FOUND", ex.getCode());
     }
 
+    @Test
+    void extractThrowsWhenActiveRecipeExists() {
+        seedProject();
+        when(recipeRepo.findBySourceProjectIdAndDeletedAtIsNull("dp1")).thenReturn(java.util.List.of(
+                DramaRecipe.builder().id("drOld").sourceProjectId("dp1").status("published").build()));
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.extractFromProject("dp1", "u1"));
+        assertEquals("DRAMA_RECIPE_ALREADY_EXISTS", ex.getCode());
+        // 守门在蒸馏前：不触发大模型、不落库
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(recipeRepo, never()).save(any());
+    }
+
+    @Test
+    void extractAllowedWhenPriorRecipeRejected() {
+        seedProject();
+        when(recipeRepo.findBySourceProjectIdAndDeletedAtIsNull("dp1")).thenReturn(java.util.List.of(
+                DramaRecipe.builder().id("drOld").sourceProjectId("dp1").status("rejected").build()));
+        stubDistillOk();
+        JsonNode dto = svc.extractFromProject("dp1", "u1");
+        assertEquals("submitted", dto.path("status").asText());
+        verify(recipeRepo).save(any(DramaRecipe.class));
+    }
+
     // ── 审核 / 发布 / 套用 ───────────────────────────────────────────────────────
 
     private DramaRecipe seedRecipe(String id, String status) {
@@ -226,6 +249,20 @@ class DramaRecipeServiceTest {
         when(projectRepo.findByIdAndDeletedAtIsNull("ghost")).thenReturn(Optional.empty());
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.inviteFromProject("ghost", "op1"));
         assertEquals("DRAMA_PROJECT_NOT_FOUND", ex.getCode());
+        verify(recipeRepo, never()).save(any());
+    }
+
+    @Test
+    void inviteThrowsWhenActiveRecipeExists() {
+        DramaProject p = DramaProject.builder()
+                .id("dp1").ownerUserId("u1").title("落地窗后").type("悬疑短剧").typeKey("mystery")
+                .ratio("9:16").episodes(80).coverFrom("#f97316").coverTo("#e11d48").stage(4).payloadJson(PAYLOAD).build();
+        when(projectRepo.findByIdAndDeletedAtIsNull("dp1")).thenReturn(Optional.of(p));
+        when(recipeRepo.findBySourceProjectIdAndDeletedAtIsNull("dp1")).thenReturn(java.util.List.of(
+                DramaRecipe.builder().id("drOld").sourceProjectId("dp1").status("invited").build()));
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.inviteFromProject("dp1", "op1"));
+        assertEquals("DRAMA_RECIPE_ALREADY_EXISTS", ex.getCode());
+        verify(notifier, never()).notifyUser(anyString(), any(), anyString(), anyString());
         verify(recipeRepo, never()).save(any());
     }
 

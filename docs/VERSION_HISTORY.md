@@ -3145,6 +3145,36 @@ mode=template / stage=2。**生产可上线**。
 **已知**：运营精选候选池为「跨用户、stage≥2、最近 80 条」（去重已抽过的）；旧 row 无 `authorName` 时前端
 回退「来自@用户」。运营手建/精选/审核入口均在 web-drama 端（非 admin），与 v0.73 同源决策。
 
+### v0.75 补丁（2026-06-13）— 创意市场三项硬化（重复守门 + 弹窗 a11y + 加载错误态）
+
+针对 v0.75 评审发现的三处优化：
+
+- **后端「重复入市」守门**：`DramaRecipeService.guardNoActiveRecipe(projectId)` —— 同一来源项目已有
+  `submitted`/`invited`/`published` 配方时，`extractFromProject`（用户自助）与 `inviteFromProject`
+  （运营精选）在蒸馏**前**抛 409 `DRAMA_RECIPE_ALREADY_EXISTS`（**不触发大模型、不落库、不发站内信**）；
+  `rejected`/`declined` 视为可重来不拦。补 `DramaRecipeRepository.findBySourceProjectIdAndDeletedAtIsNull`。
+  防「双运营 / 过期 UI 重复邀请」「用户狂点发布堆审核队列 + 免费刷 LLM」。`DramaRecipeServiceTest` 19→**22**
+  （+extract 重复拦截 / rejected 可重来 / invite 重复拦截）。
+- **弹窗 a11y**：`/templates` 三弹窗（详情 / 新建内置 / 从用户作品精选）+ `WorkPreviewModal` 由裸
+  `<div className="overlay">` 迁到 `ModalShell`（`role=dialog` + `aria-modal` + 焦点陷阱 + ESC + 焦点还原），
+  与 P2（v0.67）既有规范对齐。
+- **加载错误态**：创意市场主页 `listPublished` 失败不再静默吞成空态 —— 显示错误条 + 「重试」（沿用
+  `/operations` 内联卡片样式），空态加 `!error` 门控避免「后端挂了却显示『还没有创意』」。
+- **详情弹窗重设计（不外露 payload）**：`RecipeDetailModal` 由「逐集列 beats / 列 character 描述 /
+  展示 mainline·notes 原文」改为**营销式预览卡**（设计评审 3 版择优合成，editorial + 社会证明嫁接）——
+  顶部范例视频 hero（`previewVideo` 有值→点播放真 video / 竖屏 contain；为空→「范例视频整理中」占位）+
+  作者署名/大标题叠层 + 🔥「N 人用过」社会证明徽标；「简介 / 套用你会得到什么」双 tab：简介=summary+题材/
+  集数/画幅 tag+更新时间，内容 tab=**高层能力清单 teaser**（主线骨架 / N 段分集节拍 / M 个角色原型 /
+  完整分镜方案，只讲「套用后得到什么」不展开具体文字）。
+- **previewVideo 字段端到端**：`DramaRecipe` 加列 `preview_video`（镜像 `cover_image`，静态营销素材
+  `/recipes/<id>.mp4`）+ `toDto` 出 wire + `DramaRecipeSeeder` 映射（seed JSON 加 `"previewVideo"` 即生效）+
+  前端 `recipes.ts` 类型 `previewVideo?`。openapi 这批 recipe 端点宽松定义（无 schema 组件）无需改。
+
+**门禁全绿**：server `DramaRecipeServiceTest` 22/22 + `pnpm check:api-contract` + web-drama
+`typecheck`/`build`。Mock 模式浏览器实测：详情弹窗 `role=dialog`/`aria-label`/焦点陷阱/ESC 关闭均生效；
+重设计弹窗双 tab 渲染正确、payload 三处细节（mainline/notes/beat）零泄露、Flame 社会证明 + 视频占位 + 强化
+CTA 到位、零 console error。
+
 ---
 
 ## 短剧线（web-drama）· 当前未完成事项（截至 v0.75，2026-06-13）

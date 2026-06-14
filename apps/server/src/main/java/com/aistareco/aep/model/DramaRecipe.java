@@ -75,6 +75,11 @@ public class DramaRecipe {
     @Column(name = "cover_image", length = 512)
     private String coverImage;
 
+    /** v0.75 补丁：配方详情页的范例视频（如 /recipes/&lt;id&gt;.mp4，web-drama public 直出，封面用 coverImage 做 poster）；
+        为空时详情页展示「范例视频整理中」占位。仅作展示用静态营销素材。 */
+    @Column(name = "preview_video", length = 512)
+    private String previewVideo;
+
     /** 套用次数（发布后累计，用于热度排序）。 */
     @Column(name = "use_count")
     private int useCount;

@@ -75,6 +75,7 @@ public class DramaRecipeService {
     public JsonNode extractFromProject(String projectId, String userId) {
         DramaProject project = projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull(projectId, userId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+        guardNoActiveRecipe(projectId);
         DramaRecipe recipe = distillAndSave(project, "submitted", "extracted", resolveAuthorName(userId), null);
         log.info("[drama-recipe] extracted(self) id={} project={} user={}", recipe.getId(), projectId, userId);
         return toDto(recipe);
@@ -128,6 +129,7 @@ public class DramaRecipeService {
     public JsonNode inviteFromProject(String projectId, String operatorId) {
         DramaProject project = projectRepo.findByIdAndDeletedAtIsNull(projectId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+        guardNoActiveRecipe(projectId);
         String authorName = orDefault(resolveAuthorName(project.getOwnerUserId()), "用户");
         DramaRecipe recipe = distillAndSave(project, "invited", "featured", authorName, operatorId);
         notifier.notifyUser(project.getOwnerUserId(), Notification.NotificationType.CONTENT,
@@ -396,6 +398,22 @@ public class DramaRecipeService {
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_RECIPE_NOT_FOUND", "配方不存在"));
     }
 
+    /**
+     * 防「重复入市」守门：同一来源项目已存在「进行中 / 已上架」的配方
+     * （submitted 待审核 / invited 待授权 / published 已上架）时拒绝再次抽取或精选，
+     * 避免重复站内信、重复审核队列项、以及重复触发大模型蒸馏。
+     * rejected / declined 视为可重来，不拦。
+     */
+    private void guardNoActiveRecipe(String projectId) {
+        for (DramaRecipe r : repo.findBySourceProjectIdAndDeletedAtIsNull(projectId)) {
+            String s = r.getStatus();
+            if ("submitted".equals(s) || "invited".equals(s) || "published".equals(s)) {
+                throw new BusinessException(HttpStatus.CONFLICT, "DRAMA_RECIPE_ALREADY_EXISTS",
+                        "这部作品已经在创意市场流程中（待审核 / 待授权 / 已上架），无需重复提交。");
+            }
+        }
+    }
+
     /** 用 recipe 预填一份「空但合法」的 ProjectData：mainline + 分集大纲骨架 + 角色原型。 */
     private ObjectNode seedProjectFromRecipe(DramaRecipe r, JsonNode data) {
         ObjectNode root = om.createObjectNode();
@@ -551,6 +569,9 @@ public class DramaRecipeService {
         o.set("cover", cover);
         if (r.getCoverImage() != null && !r.getCoverImage().isBlank()) {
             o.put("coverImage", r.getCoverImage());
+        }
+        if (r.getPreviewVideo() != null && !r.getPreviewVideo().isBlank()) {
+            o.put("previewVideo", r.getPreviewVideo());
         }
         o.put("useCount", r.getUseCount());
         if (r.getReviewNote() != null) o.put("reviewNote", r.getReviewNote());

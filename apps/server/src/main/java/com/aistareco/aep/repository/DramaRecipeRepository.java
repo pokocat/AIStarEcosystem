@@ -21,4 +21,7 @@ public interface DramaRecipeRepository extends JpaRepository<DramaRecipe, String
 
     /** 候选项目是否已抽过配方（运营精选去重）。 */
     List<DramaRecipe> findBySourceProjectIdInAndDeletedAtIsNull(Collection<String> sourceProjectIds);
+
+    /** 某来源项目名下未删除的配方（防「重复入市」守门用）。 */
+    List<DramaRecipe> findBySourceProjectIdAndDeletedAtIsNull(String sourceProjectId);
 }

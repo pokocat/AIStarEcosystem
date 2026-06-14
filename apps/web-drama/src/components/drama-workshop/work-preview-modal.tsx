@@ -4,6 +4,7 @@
 // 可切换到脚本视图,或一键衍生新剧。
 import * as React from "react";
 import { Boxes, Clapperboard, Copy, Play, X } from "lucide-react";
+import { ModalShell } from "@/components/common/ModalShell";
 
 export interface WorkPreviewItem {
   title: string;
@@ -41,12 +42,13 @@ export function WorkPreviewModal({
   const [playing, setPlaying] = React.useState(false);
   const vertical = item.ratio !== "16:9";
   return (
-    <div className="overlay" onClick={onClose} style={{ zIndex: 90 }}>
-      <div
-        className="card pop-in col"
-        style={{ width: vertical ? 420 : 640, maxWidth: "94vw", maxHeight: "92vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalShell
+      onClose={onClose}
+      label={`成片预览 · ${item.title}`}
+      overlayZIndex={90}
+      className="card pop-in col"
+      style={{ width: vertical ? 420 : 640, maxWidth: "94vw", maxHeight: "92vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
+    >
         {/* 成片播放区 */}
         <div style={{ position: "relative", background: "#0c0a09", display: "grid", placeItems: "center", padding: vertical ? "14px 0" : 0 }}>
           <div
@@ -116,7 +118,6 @@ export function WorkPreviewModal({
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

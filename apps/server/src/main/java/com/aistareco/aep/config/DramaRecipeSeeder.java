@@ -81,6 +81,7 @@ public class DramaRecipeSeeder implements CommandLineRunner {
             r.setCoverFrom(n.path("coverFrom").asText("#f97316"));
             r.setCoverTo(n.path("coverTo").asText("#e11d48"));
             r.setCoverImage(n.path("coverImage").asText(null));
+            r.setPreviewVideo(n.path("previewVideo").asText(null));
             r.setPayloadJson(n.path("payload").toString());
             r.setUpdatedAt(now);
             r.setDeletedAt(null);

@@ -49,6 +49,8 @@ export interface DramaRecipe {
   cover: { from: string; to: string };
   /** v0.74：官方内置配方的真实预览图（/recipes/<id>.webp）；为空时回退 cover 渐变。 */
   coverImage?: string;
+  /** v0.75 补丁：配方详情页的范例视频（/recipes/<id>.mp4，poster 用 coverImage）；为空时详情页占位「范例视频整理中」。 */
+  previewVideo?: string;
   useCount: number;
   reviewNote?: string;
   data: RecipeData;

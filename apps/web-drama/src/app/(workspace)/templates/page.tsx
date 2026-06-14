@@ -13,6 +13,10 @@ import {
   ArrowRight,
   Boxes,
   Check,
+  Clock,
+  Film,
+  Flame,
+  Play,
   Plus,
   Search,
   Sparkles,
@@ -29,6 +33,7 @@ import type { BuiltinRecipeInput, DramaRecipe, RecipeBeat, RecipeCandidate } fro
 import { CONTENT_TYPES } from "@/mocks/drama-workshop";
 import { useOperator } from "@/lib/use-operator";
 import { aiErrorMessage } from "@/lib/ai-error";
+import { ModalShell } from "@/components/common/ModalShell";
 
 type Scope = "all" | "official" | "user";
 
@@ -42,6 +47,7 @@ export default function TemplatesPage() {
 
   const [recipes, setRecipes] = React.useState<DramaRecipe[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [scope, setScope] = React.useState<Scope>("all");
   const [filter, setFilter] = React.useState("all");
   const [q, setQ] = React.useState("");
@@ -52,9 +58,11 @@ export default function TemplatesPage() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       setRecipes(await RecipesApi.listPublished());
-    } catch {
+    } catch (e) {
+      setError(aiErrorMessage(e, "创意市场加载失败，请稍后重试"));
       setRecipes([]);
     } finally {
       setLoading(false);
@@ -187,6 +195,13 @@ export default function TemplatesPage() {
         </div>
       )}
 
+      {error && !loading && (
+        <div className="card row" style={{ padding: 16, marginBottom: 18, gap: 12, justifyContent: "space-between", alignItems: "center" }}>
+          <span className="muted" style={{ fontSize: 13.5 }}>{error}</span>
+          <button type="button" className="btn btn-line btn-sm" style={{ flex: "none" }} onClick={() => void load()}>重试</button>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(248px,1fr))", gap: 16 }}>
           {Array.from({ length: 6 }).map((_, i) => (
@@ -199,7 +214,7 @@ export default function TemplatesPage() {
             </div>
           ))}
         </div>
-      ) : list.length === 0 ? (
+      ) : list.length === 0 && !error ? (
         <div className="card col center" style={{ padding: 40, gap: 8, textAlign: "center" }}>
           <Boxes size={26} style={{ color: "var(--ink-3)" }} />
           <div style={{ fontWeight: 700 }}>这里还没有创意</div>
@@ -333,66 +348,227 @@ function RecipeCard({
   );
 }
 
-/* ── 创意详情弹窗（只读 + 套用） ───────────────────────────────────────────────── */
+/* ── 创意详情弹窗（editorial · 只读 + 套用） ──────────────────────────────────────
+   编辑/精品向：媒体 hero 上叠标题+作者（gradient scrim）；下方简介/内容双 tab。
+   硬约束：不外露 payload（beats/characters/notes/mainline 原文），内容 tab 只给「套用后你会得到什么」的计数能力清单。 */
 function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; applying: boolean; onClose: () => void; onApply: () => void }) {
+  const [tab, setTab] = React.useState<"intro" | "content">("intro");
+  const [playing, setPlaying] = React.useState(false);
+
+  const portrait = !/16\s*:\s*9/.test(r.ratio); // 竖屏剧（9:16 等）hero 更高
+  const heroH = portrait ? 280 : 196;
+  const fmtTime = (s: string | null) =>
+    s ? new Date(s).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/\//g, "-") : null;
+  const updated = fmtTime(r.updatedAt) || fmtTime(r.publishedAt);
+
+  // 内容 tab：套用后你会得到什么（计数 + 能力，不外露具体文字）
+  const beatN = r.data?.beats?.length ?? 0;
+  const charN = r.data?.characters?.length ?? 0;
+  const hasMethod = !!r.data?.mainline || beatN > 0;
+  const features: { label: string; sub: string }[] = [
+    { label: "主线骨架", sub: hasMethod ? "可迁移的故事主线，套用后自动展开到你的项目" : "完整创作方法已内置，套用后自动铺好大纲" },
+    beatN > 0
+      ? { label: `${beatN} 段分集节拍`, sub: "逐集钩子与转折骨架，开拍前可逐条改写" }
+      : { label: r.episodes > 1 ? `${r.episodes} 集分集结构` : "单集节拍结构", sub: "套用后按集铺好分场骨架" },
+    charN > 0
+      ? { label: `${charN} 个角色原型`, sub: "人设原型自动入项目，替换成你的角色即可" }
+      : { label: "角色原型方案", sub: "套用后给出可改写的人设原型" },
+    { label: "完整分镜方案", sub: `${r.ratio} 画幅 · 套用后进六阶段工作台直接出图出片` },
+  ];
+
   return (
-    <div className="overlay" onClick={onClose} style={{ zIndex: 90 }}>
-      <div className="card pop-in col" style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ height: 120, background: `linear-gradient(140deg,${r.cover.from},${r.cover.to})`, position: "relative", flex: "none" }}>
-          {r.coverImage && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={r.coverImage} alt={r.title} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-          )}
-          <span style={{ position: "absolute", top: 10, left: 10 }}>
-            <SourceBadge r={r} />
-          </span>
-          <button type="button" className="btn btn-icon btn-sm" onClick={onClose} style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.9)" }}>
+    <ModalShell onClose={onClose} label={r.title} overlayZIndex={90} className="card pop-in col" style={{ width: 560, maxWidth: "94vw", maxHeight: "92vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+      {/* ── 媒体 hero ── */}
+      <div style={{ position: "relative", flex: "none", height: heroH, background: `linear-gradient(140deg,${r.cover.from},${r.cover.to})`, overflow: "hidden" }}>
+        {playing && r.previewVideo ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video
+            src={r.previewVideo}
+            poster={r.coverImage || undefined}
+            controls
+            autoPlay
+            playsInline
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: portrait ? "contain" : "cover", background: "#000" }}
+          />
+        ) : (
+          <>
+            {r.coverImage && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={r.coverImage} alt={r.title} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+            )}
+            {/* 底部渐变 scrim，承托叠加标题 */}
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,.34) 0%,rgba(0,0,0,0) 32%,rgba(0,0,0,0) 50%,rgba(0,0,0,.72) 100%)" }} />
+
+            {/* 播放态：有视频→可点击的大播放钮；无视频→占位 */}
+            {r.previewVideo ? (
+              <button
+                type="button"
+                onClick={() => setPlaying(true)}
+                aria-label="播放范例视频"
+                className="center"
+                style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "transparent", border: "none", cursor: "pointer" }}
+              >
+                <span
+                  className="center"
+                  style={{ width: 58, height: 58, borderRadius: 999, background: "rgba(255,255,255,.92)", boxShadow: "0 6px 22px rgba(0,0,0,.28)", transition: "transform .15s" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.08)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = "none")}
+                >
+                  <Play size={22} fill="var(--ink)" color="var(--ink)" style={{ marginLeft: 3 }} />
+                </span>
+              </button>
+            ) : (
+              <div className="col center" style={{ position: "absolute", inset: 0, gap: 8 }}>
+                <span className="center" style={{ width: 50, height: 50, borderRadius: 999, background: "rgba(255,255,255,.22)", backdropFilter: "blur(2px)" }}>
+                  <Film size={20} color="#fff" />
+                </span>
+                <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.92)", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>范例视频整理中</span>
+              </div>
+            )}
+
+            {/* 叠加：源标 + 关闭 */}
+            <span style={{ position: "absolute", top: 12, left: 12 }}>
+              <SourceBadge r={r} />
+            </span>
+            <button type="button" aria-label="关闭" onClick={onClose} className="btn btn-icon btn-sm" style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.9)" }}>
+              <X size={16} />
+            </button>
+
+            {/* 左下：社会证明徽标 —— 醒目「N 人用过」（嫁接 market 版） */}
+            {r.useCount > 0 && (
+              <span
+                className="row gap-1 num"
+                style={{ position: "absolute", left: 12, bottom: 12, zIndex: 2, alignItems: "center", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 999, boxShadow: "0 4px 14px rgba(0,0,0,.28)" }}
+              >
+                <Flame size={13} fill="currentColor" /> {r.useCount} 人用过
+              </span>
+            )}
+
+            {/* 叠加：作者署名 + 大标题（editorial 杂志层级） */}
+            <div className="col" style={{ position: "absolute", left: 18, right: 18, bottom: r.useCount > 0 ? 44 : 14, gap: 2 }}>
+              {!isOfficial(r) && (
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,.85)", textShadow: "0 1px 3px rgba(0,0,0,.5)" }}>
+                  @{r.authorName || "用户"}
+                </span>
+              )}
+              <span style={{ fontSize: portrait ? 22 : 20, fontWeight: 800, letterSpacing: "-.02em", color: "#fff", lineHeight: 1.2, textShadow: "0 2px 10px rgba(0,0,0,.5)" }}>
+                {r.title}
+              </span>
+            </div>
+          </>
+        )}
+        {playing && r.previewVideo && (
+          <button type="button" aria-label="关闭" onClick={onClose} className="btn btn-icon btn-sm" style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.9)", zIndex: 2 }}>
             <X size={16} />
           </button>
-        </div>
-        <div className="scroll col gap-3" style={{ padding: "16px 20px", minHeight: 0 }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 18 }}>{r.title}</div>
-            <div className="faint num" style={{ fontSize: 12, marginTop: 3 }}>
-              {r.type} · {r.episodes > 1 ? `${r.episodes} 集` : "单集"} · {r.ratio}
-              {r.useCount > 0 ? ` · ${r.useCount} 人用过` : ""}
+        )}
+      </div>
+
+      {/* ── tab 栏（下划线选中指示） ── */}
+      <div className="row" style={{ flex: "none", padding: "0 20px", borderBottom: "1px solid var(--line-soft)", gap: 22 }}>
+        {([["intro", "简介"], ["content", "套用你会得到什么"]] as const).map(([k, label]) => {
+          const on = tab === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setTab(k)}
+              style={{
+                position: "relative",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "13px 0",
+                fontSize: 13.5,
+                fontWeight: on ? 800 : 600,
+                color: on ? "var(--ink)" : "var(--ink-3)",
+                fontFamily: "inherit",
+                transition: "color .15s",
+              }}
+            >
+              {label}
+              <span
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: -1,
+                  height: 2.5,
+                  borderRadius: 99,
+                  background: on ? "linear-gradient(120deg,var(--accent),var(--accent-2))" : "transparent",
+                }}
+              />
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── tab 正文 ── */}
+      <div className="scroll col" style={{ padding: "18px 20px 20px", minHeight: 0, gap: 16 }}>
+        {tab === "intro" ? (
+          <>
+            {r.summary ? (
+              <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.7, color: "var(--ink)", fontWeight: 450 }}>{r.summary}</p>
+            ) : (
+              <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>一套验证过的创作配方，套用后自动铺好大纲与分集骨架。</p>
+            )}
+
+            <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+              <span className="tag tag-accent" style={{ fontSize: 11.5 }}>{r.type}</span>
+              <span className="tag tag-gray" style={{ fontSize: 11.5 }}>{r.episodes > 1 ? `${r.episodes} 集` : "单集短片"}</span>
+              <span className="tag tag-gray num" style={{ fontSize: 11.5 }}>{r.ratio}</span>
+              {r.useCount > 0 && (
+                <span className="tag tag-gray num row gap-1" style={{ fontSize: 11.5 }}>
+                  <Users size={11} /> {r.useCount} 人用过
+                </span>
+              )}
             </div>
-          </div>
-          {r.summary && <div className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>{r.summary}</div>}
-          {r.data?.mainline && (
-            <div className="col gap-1" style={{ padding: "10px 12px", background: "var(--surface-2)", borderRadius: 10 }}>
-              <span className="faint" style={{ fontSize: 11, fontWeight: 700 }}>主线骨架</span>
-              <span style={{ fontSize: 12.5, lineHeight: 1.6 }}>{r.data.mainline}</span>
-            </div>
-          )}
-          {r.data?.beats?.length > 0 && (
-            <div className="col gap-1">
-              <span className="faint" style={{ fontSize: 11, fontWeight: 700 }}>分集节拍（{r.data.beats.length}）</span>
-              {r.data.beats.map((b) => (
-                <div key={b.no} style={{ fontSize: 12, lineHeight: 1.55 }}>
-                  <span className="num" style={{ color: "var(--accent)" }}>第{b.no}集</span>
-                  {b.hook ? <span> · 钩子：{b.hook}</span> : null}
-                  {b.beat ? <span className="faint"> · {b.beat}</span> : null}
+
+            {updated && (
+              <div className="row gap-1 faint num" style={{ fontSize: 11.5, marginTop: 2 }}>
+                <Clock size={12} /> 最近更新 {updated}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.65 }}>
+              一键套用,以下创作方法会自动展开到你的新项目,接着改就能开拍 ——
+            </p>
+            <div className="col" style={{ gap: 2 }}>
+              {features.map((f, i) => (
+                <div key={i} className="row gap-3" style={{ alignItems: "flex-start", padding: "11px 12px", borderRadius: 12, background: i % 2 ? "transparent" : "var(--surface-2)" }}>
+                  <span className="center" style={{ width: 22, height: 22, borderRadius: 999, flex: "none", marginTop: 1, background: "var(--accent-soft)", color: "var(--accent)" }}>
+                    <Check size={13} strokeWidth={3} />
+                  </span>
+                  <div className="col" style={{ gap: 2, minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13.5, color: "var(--ink)" }}>{f.label}</span>
+                    <span className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>{f.sub}</span>
+                  </div>
                 </div>
               ))}
             </div>
-          )}
-          {r.data?.characters?.length > 0 && (
-            <div style={{ fontSize: 12 }}>
-              <b>角色原型：</b>
-              {r.data.characters.map((c) => c.archetype).filter(Boolean).join("、") || "—"}
+            <div className="row gap-2" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--accent-soft)", color: "var(--accent)", alignItems: "center" }}>
+              <Sparkles size={14} style={{ flex: "none" }} />
+              <span style={{ fontSize: 12, lineHeight: 1.5, fontWeight: 600 }}>具体剧本细节不在此预览,套用后在工作台里逐条可见、可改。</span>
             </div>
-          )}
-          {r.data?.notes && <div className="faint" style={{ fontSize: 12 }}>套用建议：{r.data.notes}</div>}
-        </div>
-        <div className="row gap-3" style={{ padding: "12px 20px", borderTop: "1px solid var(--line-soft)", justifyContent: "flex-end", flex: "none" }}>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>关闭</button>
-          <button type="button" className="btn btn-grad" disabled={applying} onClick={onApply}>
-            <Zap size={15} /> {applying ? "套用中…" : "套用开拍"}
+          </>
+        )}
+      </div>
+
+      {/* ── 底部动作：源标 + 关闭 + 强化主 CTA ── */}
+      <div className="row gap-3" style={{ padding: "12px 20px", borderTop: "1px solid var(--line-soft)", alignItems: "center", flex: "none" }}>
+        <span style={{ flex: "none" }}>
+          <SourceBadge r={r} />
+        </span>
+        <div className="row gap-2" style={{ flex: 1, justifyContent: "flex-end", alignItems: "stretch" }}>
+          <button type="button" className="btn btn-ghost" onClick={onClose} style={{ flex: "none" }}>关闭</button>
+          <button type="button" className="btn btn-grad" disabled={applying} onClick={onApply} style={{ flex: 1, maxWidth: 200, justifyContent: "center", fontWeight: 800, fontSize: 15 }}>
+            <Zap size={16} /> {applying ? "套用中…" : "套用开拍"}
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -452,8 +628,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
   };
 
   return (
-    <div className="overlay" onClick={onClose} style={{ zIndex: 95 }}>
-      <div className="card pop-in col" style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }} onClick={(e) => e.stopPropagation()}>
+    <ModalShell onClose={onClose} label="新建内置创意" overlayZIndex={95} className="card pop-in col" style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
         <div className="row gap-3" style={{ padding: "16px 20px 12px", flex: "none" }}>
           <div style={{ width: 36, height: 36, borderRadius: 11, background: "linear-gradient(135deg,var(--accent),var(--accent-2))", display: "grid", placeItems: "center", flex: "none" }}>
             <Sparkles size={18} color="#fff" />
@@ -525,8 +700,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
             <Check size={15} /> {saving ? "上架中…" : "上架到创意市场"}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -563,8 +737,7 @@ function CandidatesModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="overlay" onClick={onClose} style={{ zIndex: 95 }}>
-      <div className="card pop-in col" style={{ width: 600, maxWidth: "94vw", maxHeight: "88vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }} onClick={(e) => e.stopPropagation()}>
+    <ModalShell onClose={onClose} label="从用户作品精选" overlayZIndex={95} className="card pop-in col" style={{ width: 600, maxWidth: "94vw", maxHeight: "88vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
         <div className="row gap-3" style={{ padding: "16px 20px 12px", flex: "none", borderBottom: "1px solid var(--line-soft)" }}>
           <div style={{ width: 36, height: 36, borderRadius: 11, background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)", flex: "none" }}>
             <UserPlus size={18} />
@@ -608,8 +781,7 @@ function CandidatesModal({ onClose }: { onClose: () => void }) {
             })
           )}
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
