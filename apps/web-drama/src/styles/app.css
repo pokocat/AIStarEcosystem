@@ -101,9 +101,10 @@
 .btn-primary:hover:not(:disabled) { background: color-mix(in oklch, var(--accent) 90%, #000); }
 .btn-grad    { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: var(--shadow-accent); }
 .btn-grad:hover:not(:disabled) { filter: brightness(1.04); }
-.btn-ghost   { background: var(--surface-2); color: var(--ink); }
-.btn-ghost:hover:not(:disabled) { background: color-mix(in oklch, var(--surface-2) 80%, var(--accent) 8%); }
-.btn-line    { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+/* 次级按钮文字用 --ink-2（暖灰），与 chip 一致 —— 明亮创意风，避免次级动作上近黑文字的「管理系统灰沉感」；hover 收深为 --ink 给反馈。 */
+.btn-ghost   { background: var(--surface-2); color: var(--ink-2); }
+.btn-ghost:hover:not(:disabled) { background: color-mix(in oklch, var(--surface-2) 80%, var(--accent) 8%); color: var(--ink); }
+.btn-line    { background: var(--surface); color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--line); }
 .btn-line:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
 .btn-sm   { height: 32px; padding: 0 13px; font-size: 13px; }
 .btn-icon { width: 40px; padding: 0; justify-content: center; }
