@@ -43,6 +43,7 @@ public class DramaConfigController {
         prices.put("splitScene", configs.getLong(DramaConfigSeeder.KEY_SPLIT_SCENE, 6));
         prices.put("cast", configs.getLong(DramaConfigSeeder.KEY_CAST, 5));
         prices.put("frame", configs.getLong(DramaConfigSeeder.KEY_FRAME, 2));
+        prices.put("shortEntry", configs.getLong(DramaConfigSeeder.KEY_SHORT_ENTRY, 10));
         Long clip = actionPricing.creditPriceOf(CelebrityActionPricingService.ACTION_VIDEO_GENERATE);
         prices.put("clip", clip != null ? clip : 30L);
         return ApiResponse.of(out);

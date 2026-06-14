@@ -3269,3 +3269,48 @@ URL 仍带 id、步骤 / 分镜 / 出片产物 / meta 全部恢复（含 `step=s
 `DramaShortServiceTest` 4/4；`pnpm check:api-contract` OK；web-drama `typecheck` + `build` OK。
 **真机浏览器验收**（mock 模式）：创意市场单集「韦斯·安德森风格短片」套用 → 跳 `/shorts/make?draft=`、
 工厂顶栏 + AI 开场白显示已套用该创意风格、无报错、已自动保存；多集「反转悬疑·80 集」套用 → 仍跳 `/projects/`。
+
+### v0.78（2026-06-14）— 统一 TipTap 输入组件 + 短视频新建流程重做（去重 + 引用 chip + 进工作台真扣费）
+
+**背景**：用户三件事——① 把对话框输入「做成 TipTap」，全站输入处复用同一套（先落地短视频新建）；
+② 重做短视频新建流程：首页短视频 tab 点创意推荐 → 预览弹窗下方只留一个「试试同款」→ 以引用 chip 形态进对话框
+→ 开始制作进工作台（**这一跳真消耗积分，且可配，原写死 10**）→ 对话框内容带进工厂；③ `/shorts/new`「又重复实现了一套」
+（`ShortCreateDialog` 用写死的 `SHORT_FORMATS`，不是创意中心），改成复用首页。
+
+**关键发现**：原首页那个 `10` 只是 `CreditButton` 确认弹窗的展示数字 —— **进工作台并不真扣**，
+`DramaShortService.createShort` 无任何 `CreditService`；短视频「AI 出口播脚本和分镜」（`DramaScriptService.aiDraft`，
+进页 idea 非空时自动跑）**也不收费**，真正扣费只发生在逐镜首帧/出片。所以把「进工作台」做成真扣费 = 落在
+**新建草稿** 这一步，且不与下游出图/出片重复（用户决策：「进工作台真实扣一笔」）。
+
+**A. 后端 · 进工作台开拍真扣费（可配）**
+- `DramaConfigSeeder` 加 key `drama.credit.short-entry`（默认 10）；`DramaConfigController` 暴露 `prices.shortEntry`。
+- `DramaShortService` 注入 `CreditService` + `PlatformConfigService`，新增 `withEntryCharge`（hold→建草稿→commit，
+  失败 release，价≤0 跳过，refType `DRAMA_SHORT`），包住 `createShort`（自建）与 `createFromRecipe`（套用单集创意）。
+  二者皆「新建草稿 = 进工作台」各扣一次；**重开已有草稿走 `getShort`，不计费**。
+- 客户端 `api/drama-config.ts`（`DramaCreditPrices.shortEntry` + 默认 10）+ admin `drama/config/page.tsx` 注册该 key。
+- 测试：`DramaShortServiceTest` 4→8（hold+commit 一次 / 套用单集计一次 / 价 0 跳过 / 失败 release 不 commit 且不落库）。
+
+**B. 复用 TipTap 输入组件 `DramaComposer`**（`components/drama-workshop/composer.tsx` + `composer-ref.ts`）
+- 首个编辑器依赖：`@tiptap/react`+`pm`+`starter-kit`+`extension-placeholder`（v2.27，React 19 兼容；
+  `immediatelyRender:false` 解决 Next 16 SSR hydration）。
+- 「引用 chip 托盘 + 富文本正文」一体：`ComposerRef{kind,label,sub,from,to}` + `COMPOSER_REF_META`（kind→图标/中文名，
+  加类型只动一处）；命令式句柄 `setText/getText/focus/clear`（给我灵感 / 回填用，不打断光标）；回车提交、Shift+回车换行、
+  输入法合成中不拦截。占位符 CSS 落 `styles/app.css`（`.drama-composer .ProseMirror`）。
+
+**C. 短视频新建流程重做（去重 + 引用 chip）**
+- 新建 `ShortCreateConsole`（`variant=home|standalone`）—— 短视频创建唯一真源：`DramaComposer` 对话框 +
+  创意市场**单集创意**（`RecipesApi.listPublished` 过滤 `episodes≤1`）创意推荐 + 给我灵感 + 开始制作。
+- 首页 `dashboard/page.tsx`：短视频 tab 渲染 `<ShortCreateConsole variant="home"/>`；短剧 tab 维持原内联控制台
+  （把短/剧共用的 `recipePromptSeed/recipeTags/recipeBeats/recipeEstimate` 抽到 `recipe-preview.ts` 共用）。
+- `/shorts/new`：改渲染 `<ShortCreateConsole variant="standalone"/>`（带返回工坊头）；**删 `short-create-dialog.tsx`**
+  （写死 `SHORT_FORMATS` 的重复实现）。
+- 交互：点创意卡 → 预览弹窗下方**只一个「试试同款」** → 以引用 chip 进 `DramaComposer`（不自动填正文，留给用户补主题）
+  → 开始制作（`CreditButton cost=cfg.prices.shortEntry` 确认）→ 带创意：`applyRecipe`（后端按风格 seed 草稿 + 扣费）
+  + 自由主题经 `sessionStorage` 带入；纯点子：进工厂 `createShort` 扣费。`/shorts/make` 网关把带入的自由主题注入
+  创意草稿（idea 空且无分镜时），工厂据「创意风格 + 你的主题」起草。
+
+**门禁全绿**：server compile + 全量 drama 测试 48/48（`DramaShortServiceTest` 8 + `DramaRecipeServiceTest` 24 +
+`DramaProjectServiceTest` 13 + `DramaRecipeSeederTest` 3）；`pnpm typecheck:admin` + `check:api-contract` OK；
+web-drama `typecheck` + `vitest` 28/28 + `build`（含 TipTap SSR）全绿。
+**契约**：路径/方法不变 —— 仅 `POST /me/drama/shorts` 行为加「进工作台扣费」、`GET /me/drama/config` 响应加
+`prices.shortEntry`（openapi summary 已同步）。

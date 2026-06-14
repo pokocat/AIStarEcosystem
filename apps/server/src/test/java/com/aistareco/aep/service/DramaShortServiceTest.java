@@ -1,5 +1,6 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.config.DramaConfigSeeder;
 import com.aistareco.aep.model.DramaShort;
 import com.aistareco.aep.repository.DramaShortRepository;
 import com.aistareco.common.BusinessException;
@@ -28,6 +29,8 @@ class DramaShortServiceTest {
 
     private Map<String, DramaShort> db;
     private DramaShortRepository repo;
+    private CreditService creditService;
+    private PlatformConfigService configs;
     private DramaShortService svc;
 
     @BeforeEach
@@ -48,7 +51,11 @@ class DramaShortServiceTest {
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null)
                         .toList());
-        svc = new DramaShortService(repo, OM);
+        creditService = mock(CreditService.class);
+        configs = mock(PlatformConfigService.class);
+        // 默认回落传入的默认值（短视频开拍默认 10）；具体扣费用例再按 key 覆盖。
+        when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.getArgument(1, Long.class));
+        svc = new DramaShortService(repo, OM, creditService, configs);
     }
 
     @Test
@@ -119,6 +126,46 @@ class DramaShortServiceTest {
         svc.deleteShort(id, USER);
         assertTrue(svc.listShorts(USER).isEmpty());
         assertThrows(BusinessException.class, () -> svc.getShort(id, USER));
+    }
+
+    @Test
+    void createChargesEntryThroughHoldThenCommit() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER);
+        // 进工作台开拍 = hold → 建草稿 → commit（一次，且不释放）。
+        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void createFromRecipeChargesEntryOnce() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(8L);
+        String id = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e", "韦斯·安德森风格", "对称构图 · 复古色卡");
+        assertTrue(id.startsWith("dvs_"));
+        verify(creditService).hold(eq(USER), eq(8L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(8L), anyString());
+    }
+
+    @Test
+    void zeroPriceSkipsCharge() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(0L);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER);
+        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void chargeFailureReleasesHoldAndDoesNotPersist() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        // 建草稿过程中失败（repo.save 抛错）→ release，不 commit。
+        // 用 doThrow 形式避免触发 setUp 里 save 的 thenAnswer（否则 stub 阶段传 null 会 NPE）。
+        doThrow(new RuntimeException("db down")).when(repo).save(any());
+        assertThrows(RuntimeException.class,
+                () -> svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER));
+        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
     }
 
     private static JsonNode readTree(String s) {

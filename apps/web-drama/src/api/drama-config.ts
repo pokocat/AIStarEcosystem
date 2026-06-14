@@ -14,6 +14,8 @@ export interface DramaCreditPrices {
   cast: number;
   frame: number;
   clip: number;
+  /** v0.78：进短视频工作台开拍（新建草稿 = AI 出口播脚本与分镜）单次积分。 */
+  shortEntry: number;
 }
 
 export interface DramaCreditConfig {
@@ -32,6 +34,7 @@ export const DRAMA_CONFIG_DEFAULTS: DramaCreditConfig = {
     cast: 5,
     frame: 2,
     clip: 30,
+    shortEntry: 10,
   },
 };
 

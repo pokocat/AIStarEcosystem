@@ -307,3 +307,27 @@ img, video, canvas, svg { max-width: 100%; }
 @media (max-width: 860px) {
   .ws-content > .ws-flush { margin: -18px -16px; height: calc(100% + 36px); }
 }
+
+/* ============================================================
+   DramaComposer · TipTap 富文本输入（v0.78）—— 全站统一点子/提示词输入
+   ============================================================ */
+.drama-composer .ProseMirror {
+  outline: none;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: var(--composer-min-h, 72px);
+}
+.drama-composer .ProseMirror p { margin: 0; }
+.drama-composer .ProseMirror:focus { outline: none; }
+/* TipTap Placeholder 扩展：空段落首行占位（与 [contenteditable] data-ph 同色） */
+.drama-composer .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ink-3);
+  pointer-events: none;
+  height: 0;
+  float: left;
+}

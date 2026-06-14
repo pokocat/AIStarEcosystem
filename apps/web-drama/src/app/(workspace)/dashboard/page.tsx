@@ -21,15 +21,11 @@ import { CreditButton, Thumb } from "@/components/drama-ui";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { PreviewModal } from "@/components/drama-workshop/preview-modal";
 import { VideoCover } from "@/components/drama-workshop/video-cover";
-import {
-  CONTENT_TYPES,
-  IDEA_TAGS,
-  SHORT_FORMATS,
-  ideaBeats,
-  type IdeaRec,
-  type ShortFormat,
-} from "@/mocks/drama-workshop";
-import { ProjectsApi } from "@/api";
+import { ShortCreateConsole } from "@/components/drama-workshop/short-create-console";
+import { recipeBeats, recipeEstimate, recipePromptSeed, recipeTags } from "@/components/drama-workshop/recipe-preview";
+import { CONTENT_TYPES } from "@/mocks/drama-workshop";
+import { ProjectsApi, RecipesApi } from "@/api";
+import type { DramaRecipe } from "@/api/recipes";
 import { useAsync } from "@/lib/drama-query";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
 import { aiErrorMessage } from "@/lib/ai-error";
@@ -49,26 +45,26 @@ export default function HomePage() {
   const [mode, setMode] = React.useState<"short" | "drama">("short"); // 短视频在前且默认
   const [page, setPage] = React.useState(0);
   const [sparkN, setSparkN] = React.useState(0);
-  const [preview, setPreview] = React.useState<IdeaRec | null>(null);
-  const [fmtPreview, setFmtPreview] = React.useState<ShortFormat | null>(null);
+  const [preview, setPreview] = React.useState<DramaRecipe | null>(null);
+  const [applyingId, setApplyingId] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const creating = React.useRef(false); // 防连点重复立项
+  const isShort = mode === "short";
   const cat = useDramaCatalog(); // 运营可维护的「近期热点 / 创意推荐」
-  const recs = Array.from({ length: 6 }).map((_, i) => cat.ideas[(page * 6 + i) % Math.max(1, cat.ideas.length)]);
+  const recipesQ = useAsync("/me/drama/recipes/published", () => RecipesApi.listPublished());
+  const publishedRecipes = recipesQ.data ?? [];
+  // 首页只直接渲染「短剧」创意卡；短视频 tab 的创意推荐（单集创意）由 ShortCreateConsole 自管。
+  const recipePool = publishedRecipes
+    .filter((r) => r.episodes > 1)
+    .sort((a, b) => Number(b.id.startsWith("rcp-official-home-")) - Number(a.id.startsWith("rcp-official-home-")));
+  const recs = recipePool.length
+    ? Array.from({ length: Math.min(6, recipePool.length) }).map((_, i) => recipePool[(page * 6 + i) % recipePool.length])
+    : [];
   // v0.66:「继续上次」取真实最近项目（无项目则不显示），不再用 mock PROJECTS。
   // 这里是短剧首页 → 只接最近的多集短剧；单集作品（宣传片等）的续做在「短视频工坊」。
   const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
   const main = projectsQ.data?.find((p) => p.episodes > 1);
-  const isShort = mode === "short";
-  const curFmt = SHORT_FORMATS[0];
 
-  const goShortMake = (text?: string | null) => {
-    // v0.73 修：点子经 sessionStorage 一次性带入（不入 URL，避免长文案/刷新重复请求）；
-    // 自由文本进短视频不预设模版（不再强制 fmt=sell）。
-    const seed = text?.trim();
-    if (seed && typeof window !== "undefined") sessionStorage.setItem("drama.shorts.idea", seed);
-    router.push("/shorts/make");
-  };
   // 一句话点子 → 真实立项（DramaProject），再跳到新项目工作台补大纲。
   // 自由文本无题材选择，落到「通用 / 自定义」骨架；点子原文作为 logline，
   // 由工作台大纲阶段的 AI 起草消费（与 /projects/new 引导流一致）。
@@ -109,30 +105,42 @@ export default function HomePage() {
       inputRef.current?.focus();
       return;
     }
-    if (isShort) {
-      goShortMake(idea);
-      return;
-    }
     void ideaCreate(idea.trim());
   };
-  const fillRec = (r: IdeaRec) => {
-    setIdea(r.hook);
+  const fillRec = (r: DramaRecipe) => {
+    setIdea(recipePromptSeed(r));
     setPreview(null);
     inputRef.current?.focus();
   };
   const dailySpark = () => {
-    if (isShort) {
-      if (curFmt) setIdea(curFmt.sample);
+    const pool = recipePool.length ? recipePool : publishedRecipes;
+    if (!pool.length) {
       inputRef.current?.focus();
       return;
     }
-    const pool = cat.ideas.filter((r) => !r.personal);
     const r = pool[sparkN % pool.length];
     setSparkN((n) => n + 1);
-    setIdea(`${r.cat}向 · ${r.hook}`);
+    setIdea(recipePromptSeed(r));
     inputRef.current?.focus();
   };
-  // 套爆款模板 → 真实立项（template 模式），与短剧工坊的快捷立项一致。
+  const applyRecipe = async (r: DramaRecipe) => {
+    setApplyingId(r.id);
+    try {
+      const out = await RecipesApi.applyRecipe(r);
+      setPreview(null);
+      if (out.kind === "short") {
+        router.push(`/shorts/make?draft=${encodeURIComponent(out.shortId)}`);
+        toast.success(`已套用「${r.title}」创意，去短视频工厂继续`);
+      } else {
+        router.push(`/projects/${out.projectId}`);
+        toast.success(`已套用「${r.title}」创意，已生成项目骨架`);
+      }
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "套用创意失败，请重试"));
+    } finally {
+      setApplyingId(null);
+    }
+  };
 
   return (
     <div className="scroll ws-flush" style={{ background: "var(--bg)" }}>
@@ -245,6 +253,8 @@ export default function HomePage() {
           </div>
 
           {/* 对话框 · 轻盈质感 */}
+          {!isShort && (
+          <>
           <div
             className="col"
             style={{
@@ -267,11 +277,7 @@ export default function HomePage() {
                   submit();
                 }
               }}
-              placeholder={
-                isShort
-                  ? "比如:" + (curFmt?.sample ?? "")
-                  : "比如:单亲妈妈白天送外卖晚上学剪辑,三年后逆袭…(没灵感就点下面的 ✦ 今日灵感)"
-              }
+              placeholder="比如:单亲妈妈白天送外卖晚上学剪辑,三年后逆袭…(没灵感就点下面的 ✦ 今日灵感)"
               style={{
                 width: "100%",
                 minHeight: 76,
@@ -314,60 +320,55 @@ export default function HomePage() {
                 className="chip"
                 onClick={dailySpark}
                 style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-                title={isShort ? "随机填个示例点子" : "AI 随机给一个创意"}
+                title="AI 随机给一个创意"
               >
-                <Sparkles size={13} /> {isShort ? "给我灵感" : "今日灵感"}
+                <Sparkles size={13} /> 今日灵感
               </button>
-              {isShort && <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>随机来一个</span>}
-              {!isShort && (
-                <button type="button" className="chip" onClick={() => router.push("/projects/new?focus=template")}>
-                  <Layers size={13} /> 套爆款模板
-                </button>
-              )}
-              {!isShort && (
-                <button type="button" className="chip" onClick={() => router.push("/projects/new")}>
-                  <Wand2 size={13} /> 跟 AI 聊出故事
-                </button>
-              )}
+              <button type="button" className="chip" onClick={() => router.push("/projects/new?focus=template")}>
+                <Layers size={13} /> 套爆款模板
+              </button>
+              <button type="button" className="chip" onClick={() => router.push("/projects/new")}>
+                <Wand2 size={13} /> 跟 AI 聊出故事
+              </button>
               <span className="grow" />
               <CreditButton
-                cost={isShort ? 10 : 6}
+                cost={6}
                 onConfirm={submit}
-                confirmTitle={isShort ? "开始制作短视频" : "开拍新剧"}
+                confirmTitle="开拍新剧"
                 className="btn btn-grad"
                 style={{ height: 40, padding: "0 22px", flex: "none" }}
                 markSize={15}
                 disabled={!idea.trim()}
               >
-                <Zap size={16} /> {isShort ? "开始制作" : "开拍"}
+                <Zap size={16} /> 开拍
               </CreditButton>
             </div>
           </div>
 
           <div className="row" style={{ marginTop: 22, marginBottom: 12 }}>
-            <span style={{ fontWeight: 700, fontSize: 13.5 }}>{isShort ? "短视频模板" : "创意推荐"}</span>
-            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>
-              {isShort ? "点卡片看成片预览,满意一键套用就做" : "点卡片预览效果,满意一键开拍"}
-            </span>
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>创意推荐</span>
+            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>点卡片预览效果,满意一键开拍</span>
             <span className="grow" />
-            {!isShort && (
+            {recipePool.length > 6 && (
               <button type="button" className="chip" onClick={() => setPage((p) => p + 1)}>
                 <RefreshCw size={12} /> 换一批
               </button>
             )}
           </div>
+          </>
+          )}
         </div>
 
-        {/* 封面式创意卡(紧凑竖版) */}
+        {/* 封面式创意卡(紧凑竖版) · 短剧 */}
+        {!isShort && (
         <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 40px", position: "relative" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(158px,1fr))", gap: 14 }}>
-            {isShort &&
-              SHORT_FORMATS.map((f, i) => (
+            {recs.map((r, i) => (
                 <button
-                  key={f.key}
+                  key={r.id}
                   type="button"
                   className="card col fade-up"
-                  onClick={() => setFmtPreview(f)}
+                  onClick={() => setPreview(r)}
                   style={{ padding: 0, overflow: "hidden", textAlign: "left", animationDelay: i * 35 + "ms", transition: "transform .15s, box-shadow .15s" }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = "translateY(-3px)";
@@ -378,68 +379,42 @@ export default function HomePage() {
                     e.currentTarget.style.boxShadow = "var(--shadow-sm)";
                   }}
                 >
-                  <VideoCover from={f.from} to={f.to} ratio="3/4" label="成片预览">
-                    <span className="thumb-label" style={{ position: "absolute", top: 8, left: 8 }}>{f.tip}</span>
-                    <span className="thumb-label num" style={{ position: "absolute", top: 8, right: 8 }}>{f.dur}s</span>
+                  <VideoCover from={r.cover.from} to={r.cover.to} src={r.coverImage} ratio="3/4" label="效果预览">
+                    <span className="thumb-label" style={{ position: "absolute", top: 8, left: 8 }}>{r.type}</span>
+                    <span className="thumb-label num" style={{ position: "absolute", top: 8, right: 8 }}>
+                      {r.episodes > 1 ? `${r.episodes}集` : "单集"}
+                    </span>
                   </VideoCover>
                   <div className="col gap-1" style={{ padding: "11px 13px 13px" }}>
-                    <div style={{ fontWeight: 800, fontSize: 14 }}>{f.name}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{r.title}</div>
                     <div
                       className="faint"
                       style={{ fontSize: 12, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
                     >
-                      {f.sample}
+                      {r.summary || r.data?.mainline}
                     </div>
                   </div>
                 </button>
               ))}
-            {!isShort && recs.map((r, i) => (
-              <button
-                key={r.title}
-                type="button"
-                className="card col fade-up"
-                onClick={() => setPreview(r)}
-                style={{ padding: 0, overflow: "hidden", textAlign: "left", animationDelay: i * 35 + "ms", transition: "transform .15s, box-shadow .15s" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-3px)";
-                  e.currentTarget.style.boxShadow = "var(--shadow-lg)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "none";
-                  e.currentTarget.style.boxShadow = "var(--shadow-sm)";
-                }}
-              >
-                <VideoCover from={r.from} to={r.to} ratio="3/4" label="效果预览">
-                  <span className="thumb-label" style={{ position: "absolute", top: 8, left: 8 }}>{r.cat}</span>
-                  {r.personal && (
-                    <span
-                      className="tag tag-pink"
-                      style={{ position: "absolute", top: 8, right: 8, background: "rgba(255,255,255,.92)" }}
-                    >
-                      <Sparkles size={10} fill="currentColor" strokeWidth={0} /> 猜你想拍
-                    </span>
-                  )}
-                </VideoCover>
-                <div className="col gap-1" style={{ padding: "11px 13px 13px" }}>
-                  <div style={{ fontWeight: 800, fontSize: 14 }}>{r.title}</div>
-                  <div
-                    className="faint"
-                    style={{
-                      fontSize: 12,
-                      lineHeight: 1.55,
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {r.hook}
-                  </div>
+            {recs.length === 0 && (
+              <div className="card col gap-2" style={{ padding: 18, minHeight: 180, justifyContent: "center" }}>
+                <Sparkles size={18} style={{ color: "var(--accent)" }} />
+                <div style={{ fontWeight: 800 }}>正在同步创意市场</div>
+                <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+                  创意推荐现在直接来自创意市场；稍等片刻即可显示已上架创意。
                 </div>
-              </button>
-            ))}
+              </div>
+            )}
           </div>
         </div>
+        )}
+
+        {/* 短视频 tab：复用 ShortCreateConsole（TipTap 对话框 + 创意市场单集创意，含「试试同款」引用 chip） */}
+        {isShort && (
+          <div style={{ maxWidth: 760, margin: "0 auto", padding: "14px 40px 0", position: "relative" }}>
+            <ShortCreateConsole variant="home" />
+          </div>
+        )}
 
         {/* 继续上次(轻量入口,完整列表在「短剧工坊」) */}
         {main && (
@@ -479,63 +454,26 @@ export default function HomePage() {
       {preview && (
         <PreviewModal
           item={{
-            cover: { from: preview.from, to: preview.to },
+            cover: { from: preview.cover.from, to: preview.cover.to, src: preview.coverImage },
+            previewVideo: preview.previewVideo,
             title: preview.title,
-            cat: preview.cat,
-            desc: preview.hook,
-            personal: preview.personal,
-            tags: IDEA_TAGS[preview.cat] ?? ["爆款结构"],
-            beats: ideaBeats(preview.cat),
+            cat: preview.type,
+            desc: preview.summary || preview.data?.mainline || "套用后会生成可编辑的项目骨架。",
+            personal: preview.id.startsWith("rcp-official-home-single-mother"),
+            tags: recipeTags(preview),
+            beats: recipeBeats(preview),
+            estimate: recipeEstimate(preview),
             coverLabel: "效果预览 · 同题材成片片段",
           }}
           onClose={() => setPreview(null)}
           actions={[
             { label: "填进对话框改改", icon: <Edit size={15} />, variant: "line", onClick: () => fillRec(preview) },
             {
-              label: "用这个开拍",
+              label: applyingId === preview.id ? "套用中…" : "用这个开拍",
               icon: <Zap size={15} />,
               variant: "grad",
-              cost: 6,
-              onClick: () => {
-                const rec = preview;
-                setPreview(null);
-                void ideaCreate(rec.hook, { title: rec.title, coverFrom: rec.from, coverTo: rec.to });
-              },
-            },
-          ]}
-        />
-      )}
-      {fmtPreview && (
-        <PreviewModal
-          item={{
-            cover: { from: fmtPreview.from, to: fmtPreview.to },
-            title: fmtPreview.name,
-            cat: "短视频模板",
-            desc: `示例:${fmtPreview.sample}`,
-            tags: [fmtPreview.tip, `约 ${fmtPreview.dur}s`, "竖屏 9:16"],
-            beats: (() => {
-              let acc = 0;
-              return fmtPreview.beats.map((b) => {
-                const r = { range: `${acc}-${acc + b.dur}s`, beat: b.visual.slice(0, 18), est: `${b.dur}s` };
-                acc += b.dur;
-                return r;
-              });
-            })(),
-            beatsLabel: "分镜节拍 · 套用后逐镜可改",
-            coverLabel: "成片预览 · 同格式样片",
-          }}
-          onClose={() => setFmtPreview(null)}
-          actions={[
-            {
-              label: "用这个模板开始制作",
-              icon: <Zap size={15} />,
-              variant: "grad",
-              cost: 10,
-              onClick: () => {
-                const k = fmtPreview.key;
-                setFmtPreview(null);
-                router.push(`/shorts/make?fmt=${encodeURIComponent(k)}`);
-              },
+              cost: 6, // 首页创意卡只剩短剧（多集）→ 立项展示价；短视频(单集)创意在 ShortCreateConsole 走 cfg.prices.shortEntry
+              onClick: () => void applyRecipe(preview),
             },
           ]}
         />

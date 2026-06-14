@@ -1,5 +1,6 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.config.DramaConfigSeeder;
 import com.aistareco.aep.model.DramaShort;
 import com.aistareco.aep.repository.DramaShortRepository;
 import com.aistareco.common.BusinessException;
@@ -33,12 +34,43 @@ public class DramaShortService {
 
     private static final Logger log = LoggerFactory.getLogger(DramaShortService.class);
 
+    /** 进工作台开拍扣费默认单价（admin「短剧专区」drama.credit.short-entry 可改）。 */
+    private static final long SHORT_ENTRY_COST_DEFAULT = 10;
+
     private final DramaShortRepository repo;
     private final ObjectMapper om;
+    private final CreditService creditService;
+    private final PlatformConfigService configs;
 
-    public DramaShortService(DramaShortRepository repo, ObjectMapper om) {
+    public DramaShortService(DramaShortRepository repo, ObjectMapper om,
+                             CreditService creditService, PlatformConfigService configs) {
         this.repo = repo;
         this.om = om;
+        this.creditService = creditService;
+        this.configs = configs;
+    }
+
+    /**
+     * 进工作台开拍扣费包裹（v0.78）：hold → 建草稿 → commit；失败 release 不扣，价格 ≤0 = 免费跳过。
+     * 「进工作台」= 新建一条短视频草稿（自建 createShort / 套用单集创意 createFromRecipe），
+     * 等价于一次 AI 出口播脚本与分镜的开销 —— 单价 admin「短剧专区」可配。
+     * 重开已有草稿（getShort / saveShort）走读取分支，不经此扣费。
+     */
+    private <T> T withEntryCharge(String userId, java.util.function.Supplier<T> work) {
+        long price = configs.getLong(DramaConfigSeeder.KEY_SHORT_ENTRY, SHORT_ENTRY_COST_DEFAULT);
+        if (price <= 0) return work.get();
+        String ref = "dse_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        creditService.hold(userId, price, "DRAMA_SHORT", ref, "短视频开拍 · AI 出口播脚本与分镜");
+        try {
+            T out = work.get();
+            creditService.commitHold("DRAMA_SHORT", ref, price, "短视频开拍 · AI 出口播脚本与分镜");
+            return out;
+        } catch (RuntimeException e) {
+            try {
+                creditService.releaseHold("DRAMA_SHORT", ref, "短视频开拍 · 失败释放");
+            } catch (Exception ignore) { /* 释放失败仅记账问题，不掩盖原始错误 */ }
+            throw e;
+        }
     }
 
     // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -66,6 +98,11 @@ public class DramaShortService {
         if (body == null || !body.isObject()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_BODY_REQUIRED", "缺少新建短视频参数");
         }
+        return withEntryCharge(userId, () -> doCreateShort(body, userId));
+    }
+
+    /** 实际建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
+    private JsonNode doCreateShort(JsonNode body, String userId) {
         OffsetDateTime now = OffsetDateTime.now();
         String fmtKey = text(body, "fmtKey");
         String fmtName = orDefault(text(body, "fmtName"), fmtKey == null ? "短视频" : fmtKey);
@@ -162,6 +199,14 @@ public class DramaShortService {
     public String createFromRecipe(String userId, String title, String type,
                                    String coverFrom, String coverTo,
                                    String styleName, String styleRef) {
+        return withEntryCharge(userId, () ->
+                doCreateFromRecipe(userId, title, type, coverFrom, coverTo, styleName, styleRef));
+    }
+
+    /** 实际从单集创意建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
+    private String doCreateFromRecipe(String userId, String title, String type,
+                                      String coverFrom, String coverTo,
+                                      String styleName, String styleRef) {
         OffsetDateTime now = OffsetDateTime.now();
         String safeTitle = orDefault(title, "未命名短视频");
         String fmtName = orDefault(type, "风格短片");

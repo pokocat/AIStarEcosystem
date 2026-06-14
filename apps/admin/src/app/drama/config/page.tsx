@@ -35,6 +35,7 @@ const FIELDS: FieldDef[] = [
   { key: "drama.credit.split-scene", label: "单场拆镜", hint: "「把这场拆成分镜表单」单次积分", group: "price" },
   { key: "drama.credit.cast", label: "重抽角色阵容", hint: "「从大纲重抽角色」单次积分", group: "price" },
   { key: "drama.credit.frame", label: "分镜首帧渲染", hint: "首帧图像渲染单次积分（一次出多版仍按单次计）", group: "price" },
+  { key: "drama.credit.short-entry", label: "短视频 · 进工作台开拍", hint: "新建一条短视频草稿 = AI 出口播脚本与分镜单次积分；从创意市场套用单集创意同样计费（重开已有草稿不计费）", group: "price" },
 ];
 
 const DEFAULTS: Record<string, number> = {
@@ -45,6 +46,7 @@ const DEFAULTS: Record<string, number> = {
   "drama.credit.split-scene": 6,
   "drama.credit.cast": 5,
   "drama.credit.frame": 2,
+  "drama.credit.short-entry": 10,
 };
 
 export default function DramaConfigPage() {

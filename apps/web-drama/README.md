@@ -68,6 +68,13 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.78 · 2026-06-14 · 统一 TipTap 输入组件 + 短视频新建流程重做（去重 + 引用 chip + 进工作台真扣费）
+
+- **TipTap 输入组件 `DramaComposer`**（`components/drama-workshop/composer.tsx` + `composer-ref.ts`）：全站点子 / 提示词输入复用同一套「引用 chip 托盘 + 富文本正文」。首个编辑器依赖 `@tiptap/*@2.27`（`immediatelyRender:false` 适配 Next 16 SSR）；命令式 `setText/focus/clear`（给我灵感 / 回填）；回车提交、Shift+回车换行、输入法合成中不拦截。引用类型经 `COMPOSER_REF_META` 注册表扩展（kind→图标/中文名，加类型只动一处）。本版先接入短视频新建，其余 20+ 输入后续分批迁。
+- **短视频新建去重 + 引用 chip**：新建 `ShortCreateConsole`（`variant=home|standalone`）为短视频创建唯一真源（创意市场单集创意 + `DramaComposer` 对话框 + 给我灵感 + 开始制作）。首页短视频 tab 与 `/shorts/new` 都复用它；**删 `short-create-dialog.tsx`**（写死 `SHORT_FORMATS`、非创意中心的重复实现）。点创意卡 → 预览弹窗下方只一个「试试同款」→ 以引用 chip 进对话框（可再补主题）→ 开始制作进工厂；自由主题经 `sessionStorage` 注入创意草稿，工厂据「创意风格 + 你的主题」起草。
+- **进工作台真扣费（可配）**：原首页那个「10」只是确认弹窗展示数字、进工作台并不真扣。现「新建短视频草稿 = 进工作台」走后端真扣一笔 `drama.credit.short-entry`（默认 10，admin「短剧专区」可配；重开已有草稿不计费）。`CreditButton` 单价改读 `cfg.prices.shortEntry`。
+- 验收：web-drama `typecheck` + `vitest` 28/28 + `build`（含 TipTap SSR）全绿；server drama 测试 48/48（`DramaShortServiceTest` 8）。
+
 ### v0.76 · 2026-06-13 · 短剧 / 短视频制作支持「草稿」（刷新 / 返回不再丢进度）
 
 - **短视频制作可恢复**：`/shorts/make` 此前整页纯内存态，刷新 / 返回即丢。改为进页即「建/读」后端草稿（`ShortsApi`，`/api/me/drama/shorts`），草稿 id 写进 URL（`?draft=`）；脚本 / 分镜 / 出片产物 / AI 对话 / 步骤等整页状态防抖自动保存；「合成成片」标 `done`。`/shorts` 工坊列表改读真后端草稿卡（草稿 / 已完成 + 进度），点开接着做。

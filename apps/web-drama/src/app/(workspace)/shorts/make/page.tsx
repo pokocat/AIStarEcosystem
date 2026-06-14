@@ -275,8 +275,14 @@ function ShortMakerGate() {
         if (draftIdParam) {
           const detail = await ShortsApi.getDraft(draftIdParam);
           if (!alive) return;
+          const data = detail.data;
+          // 从创意市场「试试同款」套用而来的草稿（idea 空、尚无分镜）：若用户在对话框
+          // 又补了一句自由主题（经 sessionStorage 带入），注入它 —— 工厂据「创意风格 + 你的主题」起草。
+          if (ideaRef.current && !data.idea && !(data.shots && data.shots.length)) {
+            data.idea = ideaRef.current;
+          }
           setDraftId(draftIdParam);
-          setInitial(detail.data);
+          setInitial(data);
           return;
         }
         startedRef.current = true;
@@ -475,7 +481,10 @@ function ShortMakerInner({
     if (phase === "gen") return;
     setPhase("gen");
     try {
-      const theme = instruction ? `${title}。要求：${instruction}` : title;
+      // 出脚本的「主题」优先用用户真实点子：创意套用而来时 title 可能是创意名（如「韦斯·安德森风格」），
+      // 不能当成视频主题，否则会丢掉用户补的主题。创意风格仍由 aiReference（styleRef）单独喂入。
+      const subject = realIdea || title;
+      const theme = instruction ? `${subject}。要求：${instruction}` : subject;
       const drafts = await ShortDramaApi.aiDraftScripts({
         theme,
         genre: hasTemplate ? fmt.name : hasStyle ? styleName || fmt.name : "通用短视频",
