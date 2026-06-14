@@ -1,4 +1,4 @@
-# 版本增量历史（v0.5 → v0.60）
+# 版本增量历史（v0.5 → v0.75）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
@@ -2811,3 +2811,506 @@ voiceName 音色联动、~~aiavatar 反向「应用于」视图~~（✅ v0.61）
   `POST /star/profile/uploads` + `StarProfileUpdateInput` schema + StarProfile 扩展字段
 - **注意**：photos / videos 的 admin append/remove 端点保留（当前无 UI 使用方）；
   后续若给 star 端开放资料图集 / 形象视频管理，按本版同样姿势迁移
+
+### v0.64（2026-06-12）— 短剧「六阶段项目工作台」接真后端（mock → 真实 API）
+
+**背景**：web-drama 的项目工作台（选题 → 大纲 → 角色 → 剧集脚本 → 分镜工厂 → 成片配方）此前
+是纯前端 mock（`mocks/drama-workshop` 静态 `ProjectData`），无任何持久化。本版补齐整套后端 +
+前端切真，跑通「新建 → 加载 → 大纲 AI → 保存 → 持久化」主路径。
+
+**后端（新增）**：
+- 实体 `DramaProject`（`drama_projects` 表）——JSON-document：整套 `ProjectData` 存
+  `payload_json`（LONGTEXT），另存列表卡片核心列 `title/type/type_key/ratio/episodes/progress/
+  stage/mode/cover_from/cover_to`；按 `owner_user_id` 隔离 + `deleted_at` 软删。与 `DramaScript` 同惯例。
+- `DramaProjectService`：`listProjects` / `getProject`（{meta,data}）/ `createProject`（按内容类型
+  seed 一份**空但合法**的 ProjectData，各阶段渲染空状态）/ `saveProject`（整套落库 + 回算卡片字段）/
+  `deleteProject`（软删）/ `outlineAiDraft`（大模型起草分集大纲 `[{no,hook,synopsis,beat}]`，复用
+  `DRAMA_SCRIPT_DRAFT` 已绑定端点 + 大纲专属 prompt；未配 503 `AI_NOT_CONFIGURED` / 调用失败
+  502 `AI_CALL_FAILED` / 解析失败 502 `AI_BAD_OUTPUT`，**不静默兜底**）。
+- `DramaProjectController` → `GET/POST /api/me/drama/projects`、`GET/PUT/DELETE /{id}`、
+  `POST /{id}/outline/ai-draft`。落 `/api/me/**` → JWT principal 隔离。
+- 联调：`scripts/dev-fake-llm-server.mjs` 加「分集大纲」JSON 分支（先于脚本分支，避开 `episode` 子串）。
+
+**前端（mock → 真实 API）**：
+- 新 `api/projects.ts`（`ProjectsApi`：list/get/create/save/delete/outlineAiDraft，带 `USE_MOCK` 分支）。
+- `/projects` 列表：`useAsync` 拉真实列表 + 加载/空/错误（重试）态；「继续上次」取最近更新项；
+  新建（从零 `/projects/new` guided/template + 套模板弹窗 + 成片预览衍生）全部走 `createProject`
+  真实立项（**修掉原先硬编码跳 `p1` mock id 的死链**）。
+- `/projects/[id]` 工作台：`getProject` 真实加载（加载态 spinner / 找不到态）；整套 `data` 提升为
+  可编辑副本，经 `StageContext.saveData` 注入各阶段，乐观更新 + `PUT` 落库。
+- `OutlineStage`：「AI 生成大纲」调 `outlineAiDraft` 真连大模型 → 合并入文档 + 保存；空项目
+  idle 引导态；失败 toast（带后端错误码文案）。
+
+**验证**：curl 全链路（create→outline-AI→save→GET 持久化→list→delete 软删 404）+ 浏览器主路径
+（空列表 → 工作台加载真实 logline/集数 → 点「AI 生成大纲」→ 真实大模型出 6 集 → 落库 → reload 仍在
+→ 列表「继续上次」卡）。三门全绿：web-drama typecheck / `check:api-contract` / server compile。
+
+**仍待办（下一阶段候选）**：
+- 其余阶段（角色绑定 / 剧集脚本-分镜 / 成片配方）的**逐项编辑持久化**与 AI（剧集脚本可直接复用
+  已验证的 `DRAMA_SCRIPT_DRAFT` 管线）尚为前端态；本版已铺好「整套文档 load/save + StageContext」
+  的承接点，按 `OutlineStage` 同姿势接入即可。
+- 视频工厂（分镜出片）走真实 agnes 视频端点**有额度**，本期保持联调态（fake :8091），未接真实计费。
+- 大纲/生成动作的**真实积分扣减**（`CreditService`）未接（当前工作台余额为展示态）；接入时按
+  `hold/commit/release` 三段式或 `debit` 同步扣。
+
+### v0.65（2026-06-12）— 短剧全站接真后端（server 模式所有接口真连，与 mock 完全隔离）
+
+承接 v0.64 工作台地基，把短剧剩余流程全部从前端态切到真后端：剧集脚本/分镜/选角 AI、
+分镜首帧（图像）与视频渲染、分发、财务。`USE_MOCK=1` 仍走 `mocks/_handlers/*`，`USE_MOCK=0`
+（server 模式）所有 `apiFetch` 真打后端 —— 两条路径在 `api/*.ts` 顶部 `if (USE_MOCK)` 处彻底分叉。
+
+**后端（新增/扩展）**：
+- `AiModelPurpose` +`IMAGE_GENERATION`（通用图像生成）；已纳入 `DevFakeAiSeeder` 种子绑定。
+  ⚠️ 注意 H2 老库 `ai_app_binding.purpose` 是 enum 列，加枚举值后需把列 `ALTER` 成 `VARCHAR`
+  （本版已对开发库执行；生产 MySQL 用 `VARCHAR` 不受影响）。
+- `DramaProjectService` +3 个 AI：`epscriptAiDraft`（整集→分场 ScriptScene[] + 分镜 BoardScene[]）/
+  `splitSceneShots`（单场→镜头表）/`castAiDraft`（选角 CharacterDef[]）；统一 `callJson` + 归一化
+  （BoardShot id/no、dur 钳 1-30、engine→avatar|seedance；CharacterDef role→key|extra）。
+  `DramaProjectController` +`/{id}/epscript/{ai-draft,split-scene}` + `/{id}/cast/ai-draft`。
+- 新 `DramaRenderService` + `DramaRenderController`（`/me/drama/render/{frame,clip}`）：
+  - **首帧**=图像生成（`IMAGE_GENERATION`，OpenAI `POST {base}/images/generations`，response_format
+    url|b64_json）→ 字节经 `CdnUploader.upload` 落 CDN（key 真值 + `CdnUrlSigner.signKey` 派生 URL，
+    遵 §4.7）→ `CreditService.debit` 按次扣 2 分。未配 503 `IMAGE_NOT_CONFIGURED` / 失败 502
+    `IMAGE_CALL_FAILED`，不静默兜底。
+  - **视频**=委派 `MaterialVideoJobService`（kind="drama-shot"，异步 submit+poll，自带 hold/commit/
+    release 计费 30/条），前端轮询复用 `/me/drama/episodes/jobs/{id}`。
+- 分发真后端：实体 `DramaPublishJob`（`drama_publish_jobs`）+ `DramaPlatformConnection`
+  （`drama_platform_connections`，user×platform 唯一约束）；`DramaDistributionService`（14 平台静态
+  目录 + 连接 CRUD + 发布任务 `@Scheduled(2s)` 状态机 queued→uploading→transcoding→publishing→live，
+  支持 scheduledAt 定时）；`DramaDistributionController`（`/me/distribution/**`）。未连平台发布 409。
+- 提现：`CreditService.withdraw`（账本侧 `WITHDRAW` 原子扣减，余额不足 402）+ `AccountController`
+  `/me/wallet/withdraw`（返回 status=processing 的 Transaction，真实打款运营线下）。
+
+**前端（mock → 真实 API）**：
+- 新 `api/render.ts`（`RenderApi`：renderFrame/renderClip/pollClipJob，带 USE_MOCK 占位帧/即时任务）。
+- `EpScriptStage`/`FactoryStage`/`CastStage`/`/shorts/make` 全部接 `ProjectsApi` + `RenderApi` +
+  `ShortDramaApi`；镜头渲染态（frameUrls/frameUrl/videoUrl/jobId/flow）落 `BoardShot` 持久化；
+  `Thumb` +`src`（真图 cover），成片用 `<video>`；`WorkshopShell` +`setChars` reducer action。
+- `distribution.ts` 重指向 `/me/distribution/**` + 删 content/platform-views/connections 死函数；
+  `finance.ts` 充值改走「套餐下单→运营核准」、提现走 `/me/wallet/withdraw`。
+- 删死代码 `api/generation.ts` + `mocks/_handlers/generation.ts`（全仓 0 引用）。
+
+**验证（真模型实测，最小请求）**：
+- 🟢 **图像**：bind IMAGE_GENERATION → agnes-image-2.1-flash，`/me/drama/render/frame` 出**真
+  720×1280 PNG**（11s，1.3MB，画面与 prompt 一致）→ 落 CDN → 浏览器工厂页点「首帧」真渲染、
+  4 版候选落库、卡片转「选首帧」态。
+- 🟢 **视频**：bind VIDEO_GENERATION → agnes-video-v2.0，真 submit（拿到 agnes taskId）+ 服务端
+  轮询进度 11→95%；agnes 视频生成 >600s 超过 worker 默认 `AEP_VIDEO_MAX_WAIT_SEC=600`（生产
+  需调高）。连通性已证（submit + poll 协议匹配 `POST /videos` + `GET /videos/{id}`）。
+- curl 全链路：epscript/split/cast AI、frame(fake)、clip(fake 即时)、distribution（连接→发布→
+  @Scheduled live→未连 409）、withdraw（余额 3000→2868，流水正确）。
+- 浏览器：真列表「继续上次」、工作台加载真 logline、工厂首帧真渲染落库。
+- 三门全绿 + `DramaProjectServiceTest` 9 用例（含 epscript/cast 解析）。dev 默认回绑 fake 端点。
+
+**仍待办**：
+- 真实视频要在生产把 `AEP_VIDEO_MAX_WAIT_SEC` 调高（agnes 视频 >10min）；首帧目前固定 2 分、
+  视频 30 分，后续可挪 admin `CelebrityActionPricingService` 统一定价。
+- 「成片配方」(PromptStage) 仍为前端态（只读汇总，不涉及生成，优先级低）；社交账号真实 OAuth
+  分发（sau-service）与本版的服务端模拟传输并存，接入时替换 `DramaDistributionService.tick`。
+
+### v0.66（2026-06-12）— 短剧扣费体验 + 按集隔离 + 成片合成（配方退役）
+
+**① LLM 动作 server 端真扣积分 + 小额免打扰**：
+- `DramaProjectService` 注入 `CreditService` + `PlatformConfigService`，四个 AI 动作（大纲起草 /
+  整集分场分镜 / 单场拆镜 / 重抽角色）经 `withCharge`（hold → 生成 → commitHold；失败 releaseHold
+  不扣，refType `DRAMA_AI`）；首帧单价同步改为配置读取。单价 0 = 免费跳过。
+- 前端 `CreditButton` 增加阈值逻辑：消耗 **< confirmThreshold（默认 10）** 直接执行不弹确认；
+  ≥ 阈值才弹 `dramaConfirm`。阈值与各动作单价由新 `GET /api/me/drama/config` 下发
+  （`api/drama-config.ts` 模块级缓存 + `useDramaConfig()` hook，outline/epscript/cast/factory
+  全部从硬编码常量切到配置价）。
+- **admin 新「短剧专区」**（nav group + `/drama/config` 页）：扣费确认阈值 + 6 个动作单价的
+  表单化管理，真值存 `PlatformConfig`（`drama.credit.*`，`DramaConfigSeeder` 幂等 seed 默认值）；
+  分镜视频单价沿用 celebrity `material.video-generate` 定价（页内跳「引擎价格」）。
+**② 按集存档（修切集互相覆盖）**：`ProjectData` + `episodeDocs: Record<ep, {script, storyboard,
+assembled?}>`；epscript / factory / assemble 经 `getEpisodeDoc(data, ep)` 读（episodeDocs 优先，
+老项目回读 legacy `script`/`storyboard` 字段）、`withEpisodeDoc` 写。浏览器实测 ep1↔ep2 内容互不污染。
+**③「成片配方」退役 →「成片合成」**：分镜已真实出片，第 6 阶段改为按序拼接交付。
+- server `DramaAssembleService`（复用 mixcut `FfmpegRunner`）：episodeDocs[ep].storyboard 取有
+  videoUrl 的镜头按场序+镜号 → 下载临时区 → `ffmpeg -f concat -c copy`（失败回退 libx264 重编码）
+  → `CdnUploader` 落 CDN → 返回 `{url, cdnKey, durationSec, shotCount}`；前端合并入
+  episodeDocs[ep].assembled 落库。`POST /api/me/drama/projects/{id}/assemble`。
+- 新 `AssembleStage`（stages-config key 沿用 `prompt` 防大改，名称/副标改「成片合成 · 拼接完整片」）：
+  待拼镜头网格 + 一键拼接 + 成片播放器/下载/重拼；空态引导去视频工厂。`stages/prompt.tsx` 删除。
+**④ 删冗余入口**：`RunAllDialog`（一键连跑）+ workshop 顶栏入口、(workspace) 顶栏「新建短剧」按钮删除。
+
+**验证**：钱包 2864→2848（大纲6+分场10）→重抽-5；流水 hold/commit 成对；阈值 5<10 无弹窗 /
+10≥10 弹窗 / admin 改 99 后 10 也免打扰（改回）；真 ffmpeg 拼 2 镜（2s+3s testsrc/smptebars）
+→ 5.02s mp4 落 cdn-mock 可播；admin 专区页加载真值 + 保存 12 即刻生效（GET 同步）。
+门禁：drama/admin typecheck 0 错、server compile 0 错、contract OK、`DramaProjectServiceTest` 11/11
+（新增 hold/commit、失败 release 两用例）。
+
+**已知未覆盖**：USE_MOCK=1 浏览器级回归本轮未跑（新 api 均带 mock 分支）；老项目（episodeDocs
+启用前）首次保存某集后其它集回读切换为空文档属预期迁移语义。
+
+### v0.67（2026-06-13）— 平台目录运营 CMS（drama 端自运营）+ 首页灵感接真 + 工程债收口
+
+两条线：**平台目录自运营**与**工程债收口**。
+
+**A. 平台目录运营 CMS（catalog）**：短剧的「内容类型 / 模板 / 格式 / 近期热点 / 创意推荐」从前端硬编码改为
+运营可维护的平台目录。`DramaCatalogController`（`GET /api/me/drama/catalog`：任意已登录可读；
+`PUT|DELETE /catalog/{field}`：仅 OPERATOR/SUPER_ADMIN 写），存储复用 `PlatformConfigService`
+（key 前缀 `drama.catalog.*`），未配某项回退前端内置默认。维护入口在 **web-drama `/operations`
+（非 admin）—— 「子应用自运营」模式**（与 v0.73 Recipe 审核同源决策：drama 的运营动作放子应用端，
+admin 只保留扣费/prompt 等平台级配置）。消费端：`/dashboard` 首页灵感、新建对话框等改 `getCatalog()`
+动态加载，删假种子。
+
+**B. 工程债收口（根 TODO 的 D-7 / D-6 / D-3）**：
+- **D-7 弹层 a11y 统一**：抽 `lib/use-modal-a11y.ts`（ESC + 焦点陷阱 + 初始/还原焦点 + body 锁，单一来源），
+  `common/Dialog.tsx` 接入 + 补 `aria-labelledby/-describedby`；新增 `common/ModalShell.tsx` 给命令式弹层
+  提供 `.overlay` + `role=dialog` + a11y，收编 short-clip / quick-create / preview 三个此前裸
+  `<div className="overlay">`（全缺 ESC / focus）。**不换 packages/ui 的 shadcn dialog**（亮色 token 会破坏
+  drama 暗色 premium 玻璃视觉），强化共享容器即让所有调用方一处受益。
+- **D-6 测试基线**：真后端落地后建立首个 vitest（+ jsdom + @testing-library/react）。`format.test.ts`
+  （15 例边界）+ `drama-query.test.tsx`（6 例缓存语义），`pnpm test` 21/21。测试驱动**修了一个真实 bug**：
+  `drama-query` 取数失败时 re-throw 让 `useAsync` 丢弃的 promise 变 unhandled rejection（改为错误只落
+  `entry.error`，两个消费者从那里读）。
+- **D-3 重复样式提取（非全量迁移）**：实测 inline `style={{}}` ~1615 处（原 TODO 估 573 严重低估），drama 为
+  Figma Make 移植、inline 精确定位是设计工作流的一部分，机械全迁移不可取 → 改为按重复模式提取：新增
+  `.icon-badge` 工具类，迁移 4 处代表（computed-style 验证逐属性等价、零回归）。
+
+### v0.71（2026-06-13）— 短剧工作台 prompt 数据化 + 短剧专区「提示词设置」后台
+
+把六阶段工作台写死在 `DramaProjectService` 的 4 段 LLM prompt 抽进统一的 `PromptService`，运营
+可在 admin 改提示词与调参，无需改代码或重启（1min 缓存，PUT 立即失效）。
+
+- **后端**：`PromptService` 新增 4 个 key `drama.outline` / `drama.epscript` / `drama.split_scene` /
+  `drama.cast`（并入 `KNOWN_KEYS`，`PromptTemplateSeeder` 自动从 resource seed），新增 4 个 resource
+  默认 `resources/prompts/material/drama.*.md`（system + `---` + user 模板，占位符 `{{title}}`/`{{count}}`/
+  `{{loglineClause}}` 等）。`DramaProjectService` 4 个 AI 方法（大纲/整集分场分镜/单场拆镜/选角）改为
+  `promptService.resolve(key)` + `PromptService.fill(userTemplate, vars)`；可选片段（简介/主线/风格/出场/
+  台词/分集梗概）由 Java 拼成 `{{xxxClause}}` 变量注入，行为与旧写死串 1:1 一致。4 个 prompt 仍共用
+  `DRAMA_SCRIPT_DRAFT` 端点绑定（运营只需绑一个模型），但 prompt 各自可配。
+- **参数**：`temperature`/`maxTokens`/`jsonMode` 取运营在 admin 设的值；为空回落到本动作推荐默认
+  （大纲 0.9 / 分场分镜 0.85 / 拆镜 0.8 / 选角 0.9，maxTokens 4096，jsonMode 开）。
+- **§8.0 不静默降级**：端点未绑 → `AI_NOT_CONFIGURED`；prompt 未配置（DB/resource 都没有，origin=code）
+  → `PROMPT_NOT_CONFIGURED`；二者都在扣费前，**不调模型、不扣费、不兜假**。
+- **admin**：新页 `/drama/prompts`（短剧专区 ·「提示词设置」），复用 `/api/admin/prompts`
+  （SUPER_ADMIN/OPERATOR）按 `drama.*` 过滤，给每个 prompt 友好名 / 用途 / 可用占位符提示 / 试运行，
+  并对 temperature / max_tokens / jsonMode 三个专业参数加人性化说明 + 推荐默认占位。
+- 无新表 / 新实体 / 新端点（复用既有 `prompt_template` + `/api/admin/prompts`）；openapi 不变。
+
+门禁：server compile 0 错、`pnpm typecheck:admin` 0 错、`pnpm check:api-contract` OK；
+`DramaProjectServiceTest` 13/13（新增 `PROMPT_NOT_CONFIGURED` 闸 + 参数覆盖两用例）+ 新
+`PromptServiceDramaResourceTest` 2/2（4 个 resource 真实解析 origin=resource + fill 占位符）。
+
+**已知未覆盖**：v0.72 待做 —— 图像/视频 prompt 服务端化（`drama.frame_image` / `drama.clip_video`，
+把前端 `factory.tsx` 的 `shotPrompt` 拼接挪到服务端模板）。运行中的旧 server 需重启后 seeder 才会
+落 4 个新 key（本版无 schema 变更，重启零风险）。
+
+### v0.72（2026-06-13）— 图像 / 视频 prompt 服务端化（出图 / 出片提示词进后台）
+
+把 3 处前端写死的出图 / 出片 prompt 拼接（`factory.tsx` 的 `shotPrompt`、`epscript.tsx` 单镜渲染、
+`shorts/make` 短视频单镜）全部抽到服务端模板，运营在 admin 可改，所有用户即时生效。
+
+- **后端**：`PromptService` 新增 4 个 key —— `drama.frame_image` / `drama.clip_video`（工作台分镜）、
+  `drama.short_frame_image` / `drama.short_clip_video`（短视频工坊）；resource 默认为单 prompt 模板
+  （无 `---`，整块即 user，占位符 `{{visual}}`/`{{size}}`/`{{move}}`/`{{lineClause}}`/`{{castClause}}`/
+  `{{styleSuffix}}`/`{{metaPrefix}}`）。`DramaRenderService` 新增 `buildMediaPrompt(body, workbenchKey, shortKey)`：
+  按 `body.kind`（shot/short）选模板 → `resolve()` + `fill(vars)` → 清掉未填充残留 `{{}}`；
+  `origin=code` → `PROMPT_NOT_CONFIGURED`（§8.0）。renderFrame/renderClip 不再读 `body.prompt`
+  （保留过渡兼容：若仍传 `prompt` 则直用）。图像/视频不吃 temperature/maxTokens。
+- **前端**：`render.ts` 的 `RenderFrameInput`/`RenderClipInput` 由 `prompt:string` 改为
+  `{ kind?, vars }`；`factory.tsx`（`shotPrompt`→`shotVars`）、`epscript.tsx`、`shorts/make` 三处改为
+  传结构化 vars（可选片段台词/出场/口播仍在前端按存在与否拼成整句，输出与旧 1:1）。
+- **admin**：`/drama/prompts` 页新增这 4 个 `kind:"media"` key，编辑时隐藏 System / 调参（图像视频不适用），
+  只露提示词模板 + 可用占位符 + 试运行；并提示比例/版数/首帧/单价的来源。
+- 仍无新表 / 新实体 / 新端点（`/me/drama/render/{frame,clip}` 路径不变，仅请求体形态变；openapi summary 同步）。
+
+门禁：server compile 0 错、`pnpm typecheck:all` 全绿、`pnpm check:api-contract` OK；
+`DramaProjectServiceTest` 13/13 + `PromptServiceDramaResourceTest` 4/4（新增 4 media key 解析 +
+fill 清洗残留占位符用例）。运行中旧 server 需重启后 seeder 落 4 新 key（无 schema 变更，零风险）。
+
+### v0.72 补丁（2026-06-13）— 验证反馈三修：分镜补音效/BGM/特效 + 渲染产物灯箱 + AI 全链路日志
+
+1. **短视频分镜补全音效 / BGM / 特效氛围**：之前所有分镜的 `sfx`/`bgm`/`fx` 恒为空（脚本 prompt 根本没要这几项）。
+   `drama.script_draft.md` 场景 schema 加 `sfx`/`bgm`/`fx`（约束「按需填、平淡镜留空、不每镜硬塞」）；
+   `DramaScene` TS 加可选 `sfx?`/`bgm?`/`fx?`；`shorts/make` 映射由写死 `""` 改读 `sc.sfx/bgm/fx`。
+   后端 `parseScripts` 走 `deepCopy` 原样透传，无需改 Java。
+2. **首帧 / 视频可点开预览**：新增 `MediaLightbox`（portal 到 body，避免被卡片裁切；图看大图 / 视频带 controls+自动播放，Esc/点遮罩关闭）。
+   接入共用的 `ShotFormCard`（短视频工坊 + 工作台剧集脚本两处）渲染产物点击放大；工作台「视频工厂」抽屉的首帧 Thumb 也接灯箱（视频本就有 controls）。
+   生产存储仍走 `CdnUploader`（OSS，§4.7）—— 首帧字节 `cdnUploader.upload` 落 OSS、出 wire 经 `CdnUrlSigner` 签名；本补丁仅前端展示层，无存储改动。
+3. **AI 全链路日志（排查用）**：`AiModelInvocationService` 加独立 logger `aep.ai.chat.io`，记「发给大模型的最终提示词全文（messages）」+「模型原文返回」；
+   `DramaProjectService.preparePrompt` / `DramaRenderService.buildMediaPrompt` 记「拼装后结构化数据（vars）」+ 出图/出片最终 prompt（图像生成不走 chat，故在此兜底记录）。运维可单独给该 logger 调级别/落盘。
+
+门禁：server compile 0 错、`pnpm typecheck:all` 全绿、`pnpm check:api-contract` OK；drama 后端测试 17/17。
+**未覆盖**：灯箱 / 音效字段为前端展示，本轮未跑浏览器级回归（建议重启 server 后连真模型验证「分镜带音效」+ 点开大图 + 日志落盘）。
+
+### v0.73（2026-06-13）— 抽 skill 飞轮（Recipe MVP · 后端抽取核心）
+
+「爆款项目 → 反向抽成可复用配方 → 运营审核发布 → 他人一键套用」飞轮的第一刀：后端抽取核心。
+MVP 范围按拍板 = **官方/运营从爆款抽取**（暂不做用户自建市场 / 分成）。
+
+- **新实体** `DramaRecipe`（`drama_recipes` 表，ddl-auto 自动建）：从爆款 `DramaProject` 蒸馏的可迁移结构
+  —— 列字段 status(draft/submitted/published/rejected) / origin(extracted/official) / title / summary /
+  typeKey / type / ratio / episodes / cover / useCount / reviewNote / sourceProjectId；`payloadJson` =
+  `{ mainline, beats:[{no,hook,beat}], characters:[{role,archetype,desc}], hooks:[], notes }`。
+- **抽取器** `DramaRecipeService.extractFromProject(projectId, userId)`：加载属主项目 → 把 ProjectData
+  （大纲/角色）喂新 prompt `drama.recipe_extract`（resource 默认 + admin 可改）→ 大模型「去具体化」蒸馏
+  成可复用配方 → 落库 status=submitted。§8.0：端点未绑 `AI_NOT_CONFIGURED`、prompt 未配
+  `PROMPT_NOT_CONFIGURED`、缺大纲 `DRAMA_RECIPE_NEEDS_OUTLINE`、LLM 失败/解析失败
+  `AI_CALL_FAILED`/`AI_BAD_OUTPUT`。复用 `DRAMA_SCRIPT_DRAFT` 端点绑定（不新增模型绑定）。
+- **端点** `POST /api/me/drama/projects/{id}/extract-recipe`（属主，→ Recipe DTO）。`PromptService`
+  加 key `drama.recipe_extract` + `KNOWN_KEYS`（admin Prompt 管理自动出现）+ resource `.md`。
+- 抽取暂不扣费（运营 / power-user 动作；后续可加 `drama.credit.recipe-extract`）。
+
+门禁：server compile 0 错、新 `DramaRecipeServiceTest` 5/5（归属 / 端点未配 / prompt 未配 / 缺大纲 /
+LLM 解析为 submitted 配方）+ drama 后端 22/22、contract OK（openapi 补 extract-recipe path）。
+
+**待续（v0.73 后续刀）**：运营审核/发布（web-drama 运营后台，**非 admin**）→ 已发布配方进创意库；
+web-drama「把这部抽成模板」入口 + 创意库一键套用（用 Recipe 预填新项目 mainline + 分集骨架）。
+
+### v0.73 补丁（2026-06-13）— 短视频制作 5 处验证反馈修复
+
+1. **shorts/make 的 idea 不再走 URL**：改 sessionStorage 一次性带入（`drama.shorts.idea`，读完即清）—— 解决「长文案/敏感内容进 URL」+「每次刷新都重复请求、重复扣费」。四个入口（dashboard 自由文本 / 格式卡 / short-create-dialog / shorts 工坊）统一改造。
+2. **不再强制「已套用口播带货」**：`fmt` 不再默认 `sell`；`hasTemplate=!!fmt`，没选模版就给中性开场白 + 不注入 templateRef + genre 用「通用短视频」。
+3. **生成完成必给对话反馈**：runScript 成功后对话框总会追加一条「脚本和分镜已生成 ✓ 共 N 个分镜…」（之前只有「改一版」才有回复）。
+4. **参考素材可删除**：`RefCell` 每个参考加 × 删除；正文里 `@` 出来的 `[参考N]` 行内 chip 也加 × —— 删除时同步从 refs 移除并把正文里更大的序号 −1（保持对齐）。
+5. **分镜补音效/BGM/特效真正生效**：dev 用 file-H2（持久），`drama.script_draft` 早已 seed，v0.72 改的 resource 不会自动覆盖 → bump `PromptTemplateSeeder.SEED_VERSION`→`v7-2026-06-13-drama-prompts`，触发 `reseedBaselineIfUntouched` 刷新未改动行。**已验证**：重启后 `drama.script_draft` 含 sfx/bgm/fx；9 个新 drama key（含 `recipe_extract`）入库。
+
+门禁：server compile、web-drama typecheck 绿；**真机验证**：server 重启 +9 key 入库 / 刷新 25 行基线 / `drama.script_draft` 含 sfx-bgm-fx / extract-recipe 端点 404 业务码均 OK。
+**未跑**：fake-llm(8091) 未起，实际「生成出音效字段」+ 灯箱/删除的浏览器级回归未跑（前端 typecheck 绿、为标准实现）。
+
+### v0.73 slice 2-3（2026-06-13）— 抽 skill 飞轮前端闭环 + 全链路浏览器验收
+
+后端（slice 1-2）之上补齐前端，飞轮跑通：
+- **运营审核/发布**（在 web-drama 运营后台，**非 admin**）：`/operations` 页新增 `RecipeReviewSection`
+  ——`isOperator`(operatorRole) 可见，列待审配方（标题/摘要/题材/可展开看 mainline+beats 骨架），发布 / 驳回（带可空理由）。
+- **用户主动抽取**：`WorkPreviewModal` 加「抽成模板」按钮（仅已完成项目），调
+  `RecipesApi.extractFromProject` → 提交待审 + toast。
+- **创意库一键套用**：短剧工坊 `/projects` 新增 `RecipeLibrarySection`（已发布配方横向卡），套用 →
+  `RecipesApi.applyRecipe` → 后端建预填项目 → 跳工作台。
+- `RecipesApi`（api/recipes.ts + index）：extract / listMine / listPublished / listForReview /
+  publish / reject / applyRecipe，均带 USE_MOCK 分支。dev fake-llm 加「可复用配方」分支返回结构化 recipe。
+
+**门禁全绿**：server compile + `DramaRecipeServiceTest` 10/10 + drama 后端 22/22；`pnpm check:api-contract` OK；
+web-drama `typecheck` + `build` 绿。
+**全链路真机验收**（8080 + fake-llm 8091 + web-drama 3011，真实浏览器，登录态 celebrity_operator/operator）：
+① 用户在「午夜来电」点抽成模板 → toast「已提交运营审核」；② 运营 `/operations` 配方审核见待审 2，点发布 →
+toast + 待审 2→1 / 已发布 1→2；③ 用户 `/projects` 创意库点套用开拍 → 落到新项目
+`dp_7959ec1c80e6`，工作台「大纲分集 · 模板已预填」，主线 = 配方 mainline、6 段 beats 已铺成分集大纲、
+mode=template / stage=2。**生产可上线**。
+
+**已知**：dev fake-llm 仅联调用；生产连真模型时配方质量取决于真模型对 `drama.recipe_extract` 提示词的产出。
+抽取暂不扣费（如需计费加 `drama.credit.recipe-extract`）。
+
+---
+
+### v0.74（2026-06-13）— 官方内置配方 seeder（19 条）+ 配方封面图
+
+把 flova skill 转换的一批官方创意做成平台内置：
+- 新增 `DramaRecipeSeeder`（`CommandLineRunner` `@Order(72)`）：声明式幂等 upsert
+  `resources/seed/drama-recipes-official.json`（19 条 `origin=official`，`ownerUserId=__official__`，直接
+  `status=published`）；按 id 更新内容字段但保留运行期 `useCount` + 首次 `createdAt`；dev 每启动重 seed，
+  prod 首插后按 id 更新（改 seed 重启即生效）。
+- `DramaRecipe` 加列 `coverImage`（官方配方真实预览图 `/recipes/<id>.webp`，落 `web-drama/public/recipes/`；
+  为空时前端回退 `coverFrom/coverTo` 渐变）。`extracted` 配方默认无图。
+
+### v0.75（2026-06-13）— 模板库 → 创意市场（双通道精选授权 + 我发布的创意）
+
+把 mock 的「模板库」退役，统一为基于已发布 `DramaRecipe` 的**创意市场**（官方内置 + 用户发布同台）。
+
+**后端（DramaRecipe 双通道 + 内置手建）**：
+- `DramaRecipe` 加列 `authorName`（来源用户展示名 → 「来自用户@xx」）/ `invitedBy`（运营邀请审计）/
+  `consentAt`（用户授权时刻）；`status` 增 `invited`（待用户授权）|`declined`（用户谢绝）；`origin` 增
+  `featured`（运营精选用户作品）。
+- `DramaRecipeService`：抽出公共蒸馏 `distillAndSave`，三通道复用 —— ① `extractFromProject`（用户自助→
+  submitted）② `inviteFromProject`（运营对任意用户项目发起→invited，给作者发授权站内信）+ `respondInvite`
+  （作者 approve→published/consentAt · decline→declined）③ `createBuiltin`（运营手建→origin=official 直接
+  published）。`listCandidates` = 跨用户已铺大纲项目池（标作者 + 是否已抽过）。`resolveAuthorName`（注入
+  `AepUserRepository`）。publish/reject/invite/approve 经 `NotificationPublisher` 发站内信（旁路，§8.0）。
+- 仓库：`DramaProjectRepository.findTop80ByDeletedAtIsNullAndStageGreaterThanEqualOrderByUpdatedAtDesc` +
+  `findByIdAndDeletedAtIsNull`；`DramaRecipeRepository.findBySourceProjectIdInAndDeletedAtIsNull`。
+- 新端点（openapi 同步）：`GET /me/drama/recipes/candidates`、`POST /me/drama/recipes/invite`、
+  `POST /me/drama/recipes/builtin`（均 `requireOperator`）、`POST /me/drama/recipes/{id}/respond`（属主授权）。
+
+**前端（web-drama）**：
+- `/templates` 重建为「创意市场」：`listPublished`（官方+用户）网格 + 源标（官方 ⭐ / 来自@昵称）+ scope
+  （全部/官方内置/用户作品）+ 题材 + 搜索 + 详情弹窗 + 「套用开拍」；运营（operatorRole/运营身份）见
+  「新建内置创意」表单 + 「从用户作品精选」候选弹窗（邀请）。
+- 新子页 `/templates/published`「我发布的创意」：`listMine` 按状态分档（审核中/已上架/已驳回/运营邀请待授权/
+  已谢绝），invited 行可「授权精选 / 谢绝」。
+- 「抽成模板」去技术化改名 **「发布到创意市场」**（`WorkPreviewModal` 默认 + tooltip + toast）。
+- **工坊移除「创意库·爆款模板」块**（删 `RecipeLibrarySection`）——模板选择只在新建时（创意市场套用 /
+  `/projects/new`）。`RecipesApi` 加 `listCandidates/invite/createBuiltin/respondInvite`（USE_MOCK 分支）。
+- 侧栏：模板库 → **创意市场**（+ 二级入口「我发布的创意」，父项激活时展开）；**戏服与道具 / 脚本工坊 /
+  多平台分发** 打「建设中」标（`NavItem.badge`）。`/operations` 配方审核改称「创意审核」，加来源作者标。
+
+**门禁全绿**：server 32/32（`DramaRecipeServiceTest` 19/19，含 invite/respond/builtin/candidates）+
+`pnpm check:api-contract` + web-drama `typecheck`/`build`。
+**真机浏览器全链路验收**（8080 + fake-llm 8091 + web-drama 3011，登录态 celebrity_operator/operator）：
+创意市场渲染 23 条/源标正确；新建内置创意 → 计数 21→22；从用户作品精选 → 邀请 → toast；我发布的创意
+授权精选 → 上架「来自@平台运营」（真 authorName）/ 用户作品 2→3；工坊无「创意库·爆款模板」；成片预览按钮
+= 「发布到创意市场」；侧栏建设中标 ×3；零 console error。**生产可上线**。
+
+**已知**：运营精选候选池为「跨用户、stage≥2、最近 80 条」（去重已抽过的）；旧 row 无 `authorName` 时前端
+回退「来自@用户」。运营手建/精选/审核入口均在 web-drama 端（非 admin），与 v0.73 同源决策。
+
+### v0.75 补丁（2026-06-13）— 创意市场三项硬化（重复守门 + 弹窗 a11y + 加载错误态）
+
+针对 v0.75 评审发现的三处优化：
+
+- **后端「重复入市」守门**：`DramaRecipeService.guardNoActiveRecipe(projectId)` —— 同一来源项目已有
+  `submitted`/`invited`/`published` 配方时，`extractFromProject`（用户自助）与 `inviteFromProject`
+  （运营精选）在蒸馏**前**抛 409 `DRAMA_RECIPE_ALREADY_EXISTS`（**不触发大模型、不落库、不发站内信**）；
+  `rejected`/`declined` 视为可重来不拦。补 `DramaRecipeRepository.findBySourceProjectIdAndDeletedAtIsNull`。
+  防「双运营 / 过期 UI 重复邀请」「用户狂点发布堆审核队列 + 免费刷 LLM」。`DramaRecipeServiceTest` 19→**22**
+  （+extract 重复拦截 / rejected 可重来 / invite 重复拦截）。
+- **弹窗 a11y**：`/templates` 三弹窗（详情 / 新建内置 / 从用户作品精选）+ `WorkPreviewModal` 由裸
+  `<div className="overlay">` 迁到 `ModalShell`（`role=dialog` + `aria-modal` + 焦点陷阱 + ESC + 焦点还原），
+  与 P2（v0.67）既有规范对齐。
+- **加载错误态**：创意市场主页 `listPublished` 失败不再静默吞成空态 —— 显示错误条 + 「重试」（沿用
+  `/operations` 内联卡片样式），空态加 `!error` 门控避免「后端挂了却显示『还没有创意』」。
+- **详情弹窗重设计（不外露 payload）**：`RecipeDetailModal` 由「逐集列 beats / 列 character 描述 /
+  展示 mainline·notes 原文」改为**营销式预览卡**（设计评审 3 版择优合成，editorial + 社会证明嫁接）——
+  顶部范例视频 hero（`previewVideo` 有值→点播放真 video / 竖屏 contain；为空→「范例视频整理中」占位）+
+  作者署名/大标题叠层 + 🔥「N 人用过」社会证明徽标；「简介 / 套用你会得到什么」双 tab：简介=summary+题材/
+  集数/画幅 tag+更新时间，内容 tab=**高层能力清单 teaser**（主线骨架 / N 段分集节拍 / M 个角色原型 /
+  完整分镜方案，只讲「套用后得到什么」不展开具体文字）。
+- **previewVideo 字段端到端**：`DramaRecipe` 加列 `preview_video`（镜像 `cover_image`，静态营销素材
+  `/recipes/<id>.mp4`）+ `toDto` 出 wire + `DramaRecipeSeeder` 映射（seed JSON 加 `"previewVideo"` 即生效）+
+  前端 `recipes.ts` 类型 `previewVideo?`。openapi 这批 recipe 端点宽松定义（无 schema 组件）无需改。
+
+**门禁全绿**：server `DramaRecipeServiceTest` 22/22 + `pnpm check:api-contract` + web-drama
+`typecheck`/`build`。Mock 模式浏览器实测：详情弹窗 `role=dialog`/`aria-label`/焦点陷阱/ESC 关闭均生效；
+重设计弹窗双 tab 渲染正确、payload 三处细节（mainline/notes/beat）零泄露、Flame 社会证明 + 视频占位 + 强化
+CTA 到位、零 console error。
+
+---
+
+## 短剧线（web-drama）· 当前未完成事项（截至 v0.75，2026-06-13）
+
+> 核心创作 → 渲染 → 分发 → 抽 skill 飞轮闭环已全部真后端落地并提交。以下为剩余项，按性质分层。
+> 单项细节在各自版本节，本表只做集中索引，避免散落漂移。
+
+**功能缺口（需外部联动 / 后续版本，非纯前端能收尾）**
+
+- **真实平台发布 OAuth**：`DramaDistributionService` 当前是服务端模拟状态机（queued→uploading→
+  transcoding→publishing→live），14 个平台目录已备好但不真传。接入抖音 / 视频号开放平台 API 由
+  **sau-service** 后续完成，drama 侧仅做任务派发与状态管理（架构已预留）。
+- **数字人成片用脸**（v0.74+ 规划）：drama 已能引入 AiAvatar（`import-avatar` + `dapDisplayRef`），
+  但成片角色脸尚未真用数字人作 i2i 身份输入，仍是普通 img2img；需复用 dap imageKey / derivatives 资产。
+- **生产视频超时调优**：`AEP_VIDEO_MAX_WAIT_SEC` 需按 agnes 视频实际延迟（>10min）在生产 env 调高。
+- **Recipe 抽取计费**（可选）：当前抽取不扣费；如需计费加 `drama.credit.recipe-extract`。
+
+**有意的设计决策（非缺口，列此防误判为待办）**
+
+- **运营动作放 web-drama `/operations`，不进 admin**：Recipe 审核发布、平台目录（catalog）维护都在
+  web-drama 端（OPERATOR 权限），admin 只保留扣费（`/drama/config`）与 prompt（`/drama/prompts`）等
+  平台级配置。这是「子应用自运营」模式（类比 celebrity 端侧运营），有意为之。
+- **素材库 mock**：wardrobe / pose / community / artists / film 等仍走 mock，刻意避免素材管理复杂度，
+  不在核心创作路径上。
+
+**工程 / 文档长尾**
+
+- **admin `/content/dramas`** 仍是占位页：「已发布内容库 / 统计 / 下架」待做，但前提是先澄清 drama 是否需要
+  「上架」概念（目前直接分发，无上架阶段）。
+- **inline style D-3**：~1615 处，已定性为「按重复模式渐进提取」（v0.67 起 `.icon-badge`），非债务，可续。
+---
+
+### v0.76（2026-06-13）— 短剧 / 短视频制作支持「草稿」（刷新 / 返回不再丢进度）
+
+**背景**：用户反馈「短剧和短视频制作，做到一半，刷新返回就没了」。排查发现两条链路根因不同：
+- **短视频制作（`/shorts/make`）**：整页纯 React 内存态（脚本 / 分镜 / 首帧 / 片段 / AI 对话），唯一跨页的
+  `idea` 存 sessionStorage 且读一次即删；「合成成片」按钮无任何 API 调用 —— **后端零持久化**，刷新即全丢。
+- **短剧大纲（outline 阶段）**：项目本有 `DramaProject` 落库，但大纲的**拖拽调序 / 加一集 / 改梗概**
+  都只改内存不落库（只「AI 生成」「锁定」才存）；「加一集」「重写梗概」还是假 toast。其余阶段
+  （epscript / factory / cast）早已防抖落库（含出片产物）。
+
+**方案**（用户决策：短视频建专用后端草稿表 + 两线统一「自动保存 + 离开提醒兜底」）：
+
+后端（新实体，§5 SOP）：
+- `DramaShort`（`drama_shorts` 表，ddl-auto 建）+ `DramaShortRepository` + `DramaShortService` + `DramaShortController`。
+  整页编辑态 `payloadJson` = `ShortDraftData{step,meta,shots[],chat[],refs,idea,reopen,fmtKey}`；列表卡片核心列
+  `title/fmtKey/fmtName/cover/durationSec/shotCount/doneCount/status(draft|done)/progress` 在保存时按
+  `payload.shots` 回算。CRUD 按 `ownerUserId` 隔离 + 软删。端点 `/api/me/drama/shorts/**`（list/create/get/save/delete）。
+  **不碰 AI / 计费**：出脚本 / 出片仍走既有 `/me/drama/scripts/ai-draft`、`/me/drama/render/*`。
+- 测试 `DramaShortServiceTest` 4/4（新建 seed / 整页保存回算 / 完成态 / 归属隔离 + 软删）。
+
+前端（apps/web-drama）：
+- `api/shorts.ts`（`ShortsApi`，带 USE_MOCK 进程内存表）。`/shorts/make` 重构为「网关 + 制作页」：
+  进页有 `?draft=id` 则读，无则按 fmt / idea / reopen 建草稿并把 id 写进 URL（刷新即命中读取分支）；
+  整页状态防抖（1.2s）自动保存；「合成成片」`flushSave({status:'done'})` 后跳转；返回工坊前 flush。
+- `/shorts` 工坊列表改读真后端草稿卡（草稿 / 已完成 + 进度 + 接着做）。
+- 短剧 outline：调序 / 加一集 / 钩子 + 梗概行内编辑全部即时 `ctx.saveData` 落库（删假「重写梗概」按钮）。
+- 共用 `lib/use-save-status.ts`（`useSaveStatus`：编辑代际 vs 已保存代际判脏）+ `save-status.tsx` 指示器
+  （「保存中 / 已自动保存 / 保存失败」）+ `beforeunload` 离开提醒兜底；短剧工作台与短视频制作页共用。
+  `StageContext` 加 `notifyEditing`（epscript / cast 防抖落库前标脏，指示器 + 兜底即时反映）。
+
+**门禁全绿**：server compile + `DramaShortServiceTest` 4/4；`pnpm check:api-contract` OK；web-drama `typecheck` OK。
+**全链路真机验收**（8088 server + web-drama → 8088，真实浏览器，dev-login 默认 STUDIO）：
+① 短视频：建草稿 → URL 带 `?draft=`，编辑后切「视频工厂」步 → 顶部「已自动保存」；**hard reload** 后
+URL 仍带 id、步骤 / 分镜 / 出片产物 / meta 全部恢复（含 `step=script` 的编辑也存活）；`/shorts` 列表见草稿卡
+（0:15 · 草稿 · 1/2 镜）。② 短剧：项目大纲点「加一集」→ 后端 4 集 + 「已自动保存」→ **hard reload** 后大纲
+仍是 01–04。**生产可上线**。
+
+**版本号注**：本提交在 v0.73 分支线（`claude/competent-cartwright-e3c442`）并入 loving-maxwell 后记 v0.76（v0.74/0.75 已被官方配方 seeder / 创意市场占用）；并行分支
+（`claude/loving-maxwell-qun0yw`）另有「创意市场 v0.74-75」不同特性，两线合并时需把版本号 / 文档归一。
+
+### v0.77（2026-06-14）— 创意市场「套用」按单 / 多集分流（单集创意改去短视频工厂）
+
+**背景**：用户反馈「创意市场套模版的逻辑错了，单极模版应该匹配去短视频」。原 `applyRecipe`（即旧
+`applyToNewProject`）无论创意是单集还是多集，**一律新建六阶段短剧项目并跳 `/projects/{id}`**。但创意市场里
+官方内置的 19 条全是 `episodes=1` 的「风格短片」（单集），套用后被丢进六阶段分集工作台 —— 形态完全不对。
+
+**方案**（按创意 episodes 分流，路径不变 / 仅响应体变；无新表）：
+- 后端 `DramaRecipeService.applyToNewProject` → 改名 `applyRecipe`，按 `episodes`：
+  - **多集（&gt;1）** → 维持原逻辑：新建 `DramaProject`（mode=template + 分集骨架），返回 `{ kind:"project", projectId }`。
+  - **单集（≤1）** → 新建一条 `DramaShort` 短视频草稿，返回 `{ kind:"short", shortId }`。两形态都累加 `useCount`。
+- `DramaShortService.createFromRecipe(...)`：把创意的一句话说明 + 可迁移主线蒸成 `styleRef`（+ `styleName`）
+  落进 `ShortDraftData`，**不套短视频模版**（`fmtKey=null`）；短视频工厂出脚本时把 `styleRef` 当风格参考
+  （照创意风格拆用户主题，而非复述创意说明）。`ShortDraftData` 加可选 `styleName` / `styleRef`（自动保存随整页 deep-copy 落库）。
+- 前端 `templates/page.tsx` 套用按 `kind` 分跳：单集 → `/shorts/make?draft=`、多集 → `/projects/{id}`；
+  详情弹窗「套用你会得到什么」对单集如实改写（进短视频工厂逐镜出片，非六阶段）。`/shorts/make`
+  顶栏标题 / AI 开场白识别 `styleName` 显示「已套用【XX】创意风格」。
+- 契约：`/me/drama/recipes/{id}/apply` 路径与方法不变（openapi 该端点本就只声明 200，无 schema），仅响应体由
+  `{projectId}` 变为判别式 `{kind, projectId|shortId}`，无需改 openapi。
+
+**门禁全绿**：server compile + `DramaRecipeServiceTest` 24/24（+2：单集→短视频草稿 / 多集→项目）+
+`DramaShortServiceTest` 4/4；`pnpm check:api-contract` OK；web-drama `typecheck` + `build` OK。
+**真机浏览器验收**（mock 模式）：创意市场单集「韦斯·安德森风格短片」套用 → 跳 `/shorts/make?draft=`、
+工厂顶栏 + AI 开场白显示已套用该创意风格、无报错、已自动保存；多集「反转悬疑·80 集」套用 → 仍跳 `/projects/`。
+
+### v0.78（2026-06-14）— 统一 TipTap 输入组件 + 短视频新建流程重做（去重 + 引用 chip + 进工作台真扣费）
+
+**背景**：用户三件事——① 把对话框输入「做成 TipTap」，全站输入处复用同一套（先落地短视频新建）；
+② 重做短视频新建流程：首页短视频 tab 点创意推荐 → 预览弹窗下方只留一个「试试同款」→ 以引用 chip 形态进对话框
+→ 开始制作进工作台（**这一跳真消耗积分，且可配，原写死 10**）→ 对话框内容带进工厂；③ `/shorts/new`「又重复实现了一套」
+（`ShortCreateDialog` 用写死的 `SHORT_FORMATS`，不是创意中心），改成复用首页。
+
+**关键发现**：原首页那个 `10` 只是 `CreditButton` 确认弹窗的展示数字 —— **进工作台并不真扣**，
+`DramaShortService.createShort` 无任何 `CreditService`；短视频「AI 出口播脚本和分镜」（`DramaScriptService.aiDraft`，
+进页 idea 非空时自动跑）**也不收费**，真正扣费只发生在逐镜首帧/出片。所以把「进工作台」做成真扣费 = 落在
+**新建草稿** 这一步，且不与下游出图/出片重复（用户决策：「进工作台真实扣一笔」）。
+
+**A. 后端 · 进工作台开拍真扣费（可配）**
+- `DramaConfigSeeder` 加 key `drama.credit.short-entry`（默认 10）；`DramaConfigController` 暴露 `prices.shortEntry`。
+- `DramaShortService` 注入 `CreditService` + `PlatformConfigService`，新增 `withEntryCharge`（hold→建草稿→commit，
+  失败 release，价≤0 跳过，refType `DRAMA_SHORT`），包住 `createShort`（自建）与 `createFromRecipe`（套用单集创意）。
+  二者皆「新建草稿 = 进工作台」各扣一次；**重开已有草稿走 `getShort`，不计费**。
+- 客户端 `api/drama-config.ts`（`DramaCreditPrices.shortEntry` + 默认 10）+ admin `drama/config/page.tsx` 注册该 key。
+- 测试：`DramaShortServiceTest` 4→8（hold+commit 一次 / 套用单集计一次 / 价 0 跳过 / 失败 release 不 commit 且不落库）。
+
+**B. 复用 TipTap 输入组件 `DramaComposer`**（`components/drama-workshop/composer.tsx` + `composer-ref.ts`）
+- 首个编辑器依赖：`@tiptap/react`+`pm`+`starter-kit`+`extension-placeholder`（v2.27，React 19 兼容；
+  `immediatelyRender:false` 解决 Next 16 SSR hydration）。
+- 「引用 chip 托盘 + 富文本正文」一体：`ComposerRef{kind,label,sub,from,to}` + `COMPOSER_REF_META`（kind→图标/中文名，
+  加类型只动一处）；命令式句柄 `setText/getText/focus/clear`（给我灵感 / 回填用，不打断光标）；回车提交、Shift+回车换行、
+  输入法合成中不拦截。占位符 CSS 落 `styles/app.css`（`.drama-composer .ProseMirror`）。
+
+**C. 短视频新建流程重做（去重 + 引用 chip）**
+- 新建 `ShortCreateConsole`（`variant=home|standalone`）—— 短视频创建唯一真源：`DramaComposer` 对话框 +
+  创意市场**单集创意**（`RecipesApi.listPublished` 过滤 `episodes≤1`）创意推荐 + 给我灵感 + 开始制作。
+- 首页 `dashboard/page.tsx`：短视频 tab 渲染 `<ShortCreateConsole variant="home"/>`；短剧 tab 维持原内联控制台
+  （把短/剧共用的 `recipePromptSeed/recipeTags/recipeBeats/recipeEstimate` 抽到 `recipe-preview.ts` 共用）。
+- `/shorts/new`：改渲染 `<ShortCreateConsole variant="standalone"/>`（带返回工坊头）；**删 `short-create-dialog.tsx`**
+  （写死 `SHORT_FORMATS` 的重复实现）。
+- 交互：点创意卡 → 预览弹窗下方**只一个「试试同款」** → 以引用 chip 进 `DramaComposer`（不自动填正文，留给用户补主题）
+  → 开始制作（`CreditButton cost=cfg.prices.shortEntry` 确认）→ 带创意：`applyRecipe`（后端按风格 seed 草稿 + 扣费）
+  + 自由主题经 `sessionStorage` 带入；纯点子：进工厂 `createShort` 扣费。`/shorts/make` 网关把带入的自由主题注入
+  创意草稿（idea 空且无分镜时），工厂据「创意风格 + 你的主题」起草。
+
+**门禁全绿**：server compile + 全量 drama 测试 48/48（`DramaShortServiceTest` 8 + `DramaRecipeServiceTest` 24 +
+`DramaProjectServiceTest` 13 + `DramaRecipeSeederTest` 3）；`pnpm typecheck:admin` + `check:api-contract` OK；
+web-drama `typecheck` + `vitest` 28/28 + `build`（含 TipTap SSR）全绿。
+**契约**：路径/方法不变 —— 仅 `POST /me/drama/shorts` 行为加「进工作台扣费」、`GET /me/drama/config` 响应加
+`prices.shortEntry`（openapi summary 已同步）。

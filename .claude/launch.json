@@ -31,6 +31,14 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3013,
       "autoPort": true
+    },
+    {
+      "name": "drama",
+      "cwd": "apps/web-drama",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3011,
+      "autoPort": true
     }
   ]
 }

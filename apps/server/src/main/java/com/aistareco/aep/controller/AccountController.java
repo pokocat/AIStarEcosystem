@@ -12,6 +12,7 @@ import com.aistareco.aep.dto.RechargeOrderDto;
 import com.aistareco.aep.dto.RechargePackageDto;
 import com.aistareco.aep.dto.SongDto;
 import com.aistareco.aep.dto.TenantDto;
+import com.aistareco.aep.dto.TransactionDto;
 import com.aistareco.aep.dto.WalletDto;
 import com.aistareco.aep.model.DigitalIp;
 import com.aistareco.aep.model.Song;
@@ -20,6 +21,7 @@ import com.aistareco.aep.repository.ConcertRepository;
 import com.aistareco.aep.repository.DigitalIpRepository;
 import com.aistareco.aep.repository.SongRepository;
 import com.aistareco.aep.service.AccountSelfService;
+import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.DigitalIpService;
 import com.aistareco.aep.service.NotificationService;
 import com.aistareco.aep.service.RechargeService;
@@ -54,6 +56,7 @@ public class AccountController {
     private final DigitalIpRepository digitalIpRepo;
     private final RechargeService rechargeService;
     private final NotificationService notificationService;
+    private final CreditService creditService;
 
     public AccountController(AccountSelfService accountSelfService,
                              DigitalIpService digitalIpService,
@@ -62,7 +65,8 @@ public class AccountController {
                              ConcertRepository concertRepo,
                              DigitalIpRepository digitalIpRepo,
                              RechargeService rechargeService,
-                             NotificationService notificationService) {
+                             NotificationService notificationService,
+                             CreditService creditService) {
         this.accountSelfService = accountSelfService;
         this.digitalIpService = digitalIpService;
         this.songRepo = songRepo;
@@ -71,6 +75,7 @@ public class AccountController {
         this.digitalIpRepo = digitalIpRepo;
         this.rechargeService = rechargeService;
         this.notificationService = notificationService;
+        this.creditService = creditService;
     }
 
     /**
@@ -152,6 +157,32 @@ public class AccountController {
     }
 
     public record RechargeOrderRequest(String packageId, String note) {}
+
+    /**
+     * v0.65：提现（drama 财务页）。账本侧原子扣减 + WITHDRAW 流水；真实打款由运营线下处理。
+     * body: { amount, bankCard? } → Transaction（status=processing，与 /finance/transactions 同 shape）。
+     */
+    @PostMapping("/wallet/withdraw")
+    public ApiResponse<TransactionDto> withdraw(Principal principal, @RequestBody WithdrawRequest req) {
+        long amount = req == null ? 0 : req.amount();
+        String card = req == null || req.bankCard() == null ? "" : req.bankCard();
+        String cardTail = card.length() >= 4 ? card.substring(card.length() - 4) : card;
+        LedgerEntryDto entry = creditService.withdraw(principal.getName(), amount,
+                "提现至银行卡" + (cardTail.isBlank() ? "" : "（尾号 " + cardTail + "）"));
+        return ApiResponse.of(new TransactionDto(
+                entry.id(),
+                entry.description(),
+                entry.amount(),
+                entry.createdAt() == null ? "" : entry.createdAt().toString().substring(0, 10),
+                entry.createdAt(),
+                "processing",
+                "withdrawal",
+                principal.getName(),
+                null,
+                null));
+    }
+
+    public record WithdrawRequest(long amount, String bankCard) {}
 
     @GetMapping("/ledger")
     public PageEnvelope<LedgerEntryDto> ledger(

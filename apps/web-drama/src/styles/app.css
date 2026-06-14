@@ -72,6 +72,16 @@
 .faint { color: var(--ink-3); }
 .num   { font-family: var(--font-num); font-feature-settings: "tnum"; }
 
+/* 渐变图标盒（accent 渐变底 + 居中白图标）—— 跨 ~12 处弹层 / 阶段头部的重复 inline 模式提取（D-3）。
+   不变部分集中在此；调用方仅保留 width / height / borderRadius 等尺寸 inline。 */
+.icon-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
 [contenteditable]:empty:before { content: attr(data-ph); color: var(--ink-3); font-weight: 400; font-style: normal; }
 [contenteditable]:hover { background: var(--line-soft); }
 
@@ -91,9 +101,10 @@
 .btn-primary:hover:not(:disabled) { background: color-mix(in oklch, var(--accent) 90%, #000); }
 .btn-grad    { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: var(--shadow-accent); }
 .btn-grad:hover:not(:disabled) { filter: brightness(1.04); }
-.btn-ghost   { background: var(--surface-2); color: var(--ink); }
-.btn-ghost:hover:not(:disabled) { background: color-mix(in oklch, var(--surface-2) 80%, var(--accent) 8%); }
-.btn-line    { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+/* 次级按钮文字用 --ink-2（暖灰），与 chip 一致 —— 明亮创意风，避免次级动作上近黑文字的「管理系统灰沉感」；hover 收深为 --ink 给反馈。 */
+.btn-ghost   { background: var(--surface-2); color: var(--ink-2); }
+.btn-ghost:hover:not(:disabled) { background: color-mix(in oklch, var(--surface-2) 80%, var(--accent) 8%); color: var(--ink); }
+.btn-line    { background: var(--surface); color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--line); }
 .btn-line:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
 .btn-sm   { height: 32px; padding: 0 13px; font-size: 13px; }
 .btn-icon { width: 40px; padding: 0; justify-content: center; }
@@ -170,6 +181,8 @@
   font-size: 12px; font-weight: 600; color: var(--ink-3);
 }
 .cost b { font-family: var(--font-num); color: var(--accent-2); }
+/* 钻石标记：贴在「会消耗积分」的按钮/提示上，不带数字（数字在点击后的确认弹窗里） */
+.credit-mark { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; flex: none; }
 @keyframes balPulse { 0% { transform: scale(1); color: var(--accent-2); } 30% { transform: scale(1.28); color: #f59e0b; } 100% { transform: scale(1); color: var(--accent-2); } }
 .balance-pulse { display: inline-block; animation: balPulse .5s ease; }
 
@@ -272,4 +285,50 @@ img, video, canvas, svg { max-width: 100%; }
   .ws-btn-label { display: none; }
   .ws-topbar-sub { display: none; }
   .ws-content-badge { display: none !important; }
+}
+
+/* ---------- v4:首页背景动效(reduced-motion 下自动静止) ---------- */
+@keyframes homeBlobA { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(34px,28px) scale(1.08); } }
+@keyframes homeBlobB { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-30px,22px) scale(1.1); } }
+@keyframes homeBlobC { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-26px) scale(1.12); } }
+.home-blob { will-change: transform; }
+@media (prefers-reduced-motion: no-preference) {
+  .home-blob-a { animation: homeBlobA 15s ease-in-out infinite; }
+  .home-blob-b { animation: homeBlobB 19s ease-in-out infinite; }
+  .home-blob-c { animation: homeBlobC 23s ease-in-out infinite; }
+}
+
+/* ---------- v4:生成设置滑块 ---------- */
+.gen-range { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--surface-2); outline: none; cursor: pointer; }
+.gen-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--ink); border: 3px solid var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; }
+.gen-range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); border: 3px solid var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; }
+
+/* ---------- v4:整屏接管页(自带滚动与留白,抵消 ws-content 内边距) ---------- */
+.ws-content > .ws-flush { margin: -28px -32px; height: calc(100% + 56px); }
+@media (max-width: 860px) {
+  .ws-content > .ws-flush { margin: -18px -16px; height: calc(100% + 36px); }
+}
+
+/* ============================================================
+   DramaComposer · TipTap 富文本输入（v0.78）—— 全站统一点子/提示词输入
+   ============================================================ */
+.drama-composer .ProseMirror {
+  outline: none;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: var(--composer-min-h, 72px);
+}
+.drama-composer .ProseMirror p { margin: 0; }
+.drama-composer .ProseMirror:focus { outline: none; }
+/* TipTap Placeholder 扩展：空段落首行占位（与 [contenteditable] data-ph 同色） */
+.drama-composer .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ink-3);
+  pointer-events: none;
+  height: 0;
+  float: left;
 }

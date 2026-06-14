@@ -15,21 +15,29 @@ import {
   Coins,
   Compass,
   Film,
-  LayoutDashboard,
+  Image as ImageIcon,
+  Layers,
   LogOut,
   Menu,
   PenTool,
-  Plus,
   Search,
   Settings,
   Share2,
   Shirt,
+  Sliders,
+  Sparkles,
   Users,
   Wallet as WalletIcon,
+  Zap,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
+
+interface NavSubItem {
+  href: string;
+  label: string;
+}
 
 interface NavItem {
   href: string;
@@ -37,6 +45,10 @@ interface NavItem {
   label: string;
   /** 设为 true 时，仅在路径完全相等时高亮；否则前缀匹配也高亮（用于详情页继承父 tab）。 */
   exact?: boolean;
+  /** 右侧小标签，如「建设中」。 */
+  badge?: string;
+  /** 父项激活时展开的二级入口（如创意市场 → 我发布的创意）。 */
+  children?: NavSubItem[];
 }
 
 interface NavGroup {
@@ -44,27 +56,39 @@ interface NavGroup {
   items: NavItem[];
 }
 
+// v4 信息架构 — 设计真源 app-v4.jsx `NAV_V3`:创作 / 提效 / 素材;
+// 既有的分发洞察与账户分组保留在下方。
 const GROUPS: NavGroup[] = [
   {
-    title: "短剧工坊",
+    title: "创作",
     items: [
-      { href: "/projects", icon: Clapperboard, label: "我的短剧" },
-      { href: "/dashboard", icon: LayoutDashboard, label: "总览", exact: true },
+      { href: "/dashboard", icon: Sparkles, label: "首页", exact: true },
+      { href: "/projects", icon: Film, label: "短剧工坊" },
+      { href: "/shorts", icon: Zap, label: "短视频工坊" },
     ],
   },
   {
-    title: "创作素材",
+    // v0.63 补丁:剧本审阅收进「短剧工坊」页内入口,不再占一级菜单
+    title: "提效",
     items: [
+      // v0.75：模板库 → 创意市场（官方内置 + 用户发布统一在此）+ 子页「我发布的创意」
+      { href: "/templates", icon: Layers, label: "创意市场", children: [{ href: "/templates/published", label: "我发布的创意" }] },
+    ],
+  },
+  {
+    title: "素材",
+    items: [
+      { href: "/assets", icon: ImageIcon, label: "素材库" },
       // v0.60 收敛：孵化 / 形象锻造入口下线，数字人统一在 AiAvatar 创建后引入
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
-      { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
-      { href: "/scripts", icon: PenTool, label: "脚本工坊" },
+      { href: "/wardrobe", icon: Shirt, label: "戏服与道具", badge: "建设中" },
+      { href: "/scripts", icon: PenTool, label: "脚本工坊", badge: "建设中" },
     ],
   },
   {
     title: "分发与洞察",
     items: [
-      { href: "/distribution", icon: Share2, label: "多平台分发" },
+      { href: "/distribution", icon: Share2, label: "多平台分发", badge: "建设中" },
       { href: "/insights", icon: BarChart3, label: "数据洞察" },
       { href: "/trends", icon: Compass, label: "趋势雷达" },
     ],
@@ -78,6 +102,12 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+// 维护平台目录内容（热点 / 创意推荐等）。仅在 admin 后台授予运营身份（operatorRole）后自动显示。
+const OPERATOR_GROUP: NavGroup = {
+  title: "运营",
+  items: [{ href: "/operations", icon: Sliders, label: "内容目录" }],
+};
+
 function isActive(pathname: string | null, item: NavItem): boolean {
   if (!pathname) return false;
   if (item.exact) return pathname === item.href;
@@ -87,12 +117,17 @@ function isActive(pathname: string | null, item: NavItem): boolean {
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  // 运营入口完全由后端授予的运营身份（operatorRole）决定：admin 后台
+  //（/celebrity/operators）配置 aep_users.operatorRole 后，/api/me 返回该字段，
+  // 前端自动展示「运营 · 内容目录」入口。无前端开关，避免越权预览。
+  const showOperator = !!user?.operatorRole;
+  const groups = showOperator ? [...GROUPS, OPERATOR_GROUP] : GROUPS;
   return (
     <aside
       style={{
         background: "var(--bg-1)",
         borderRight: "1px solid var(--line)",
-        padding: "20px 0",
+        padding: "14px 0",
         display: "flex",
         flexDirection: "column",
         height: "100%",
@@ -103,7 +138,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         onClick={onNavigate}
         className="row gap-3"
         style={{
-          padding: "0 18px 18px",
+          padding: "0 18px 12px",
           borderBottom: "1px solid var(--line)",
           color: "var(--ink)",
           textDecoration: "none",
@@ -134,13 +169,13 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </Link>
 
-      <div style={{ padding: "16px 12px", flex: 1, overflowY: "auto" }}>
-        {GROUPS.map((g, gi) => (
+      <div style={{ padding: "10px 12px", flex: 1, overflowY: "auto", minHeight: 0 }}>
+        {groups.map((g, gi) => (
           <div key={gi}>
             <div
               className="faint"
               style={{
-                padding: gi === 0 ? "8px 12px 6px" : "18px 12px 6px",
+                padding: gi === 0 ? "4px 12px 4px" : "12px 12px 4px",
                 fontSize: 11,
                 fontWeight: 700,
                 letterSpacing: ".05em",
@@ -152,31 +187,72 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               const Icon = it.icon;
               const active = isActive(pathname, it);
               return (
-                <Link
-                  key={it.href}
-                  href={it.href}
-                  onClick={onNavigate}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "9px 12px",
-                    borderRadius: 12,
-                    background: active ? "var(--accent-soft)" : "transparent",
-                    color: active ? "var(--accent)" : "var(--ink-2)",
-                    fontSize: 13.5,
-                    fontWeight: active ? 700 : 600,
-                    marginBottom: 2,
-                    transition: "background 160ms ease, color 160ms ease",
-                    textDecoration: "none",
-                  }}
-                >
-                  <Icon
-                    size={15}
-                    color={active ? "var(--accent)" : "var(--ink-3)"}
-                  />
-                  <span>{it.label}</span>
-                </Link>
+                <React.Fragment key={it.href}>
+                  <Link
+                    href={it.href}
+                    onClick={onNavigate}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "7px 12px",
+                      borderRadius: 11,
+                      background: active ? "var(--accent-soft)" : "transparent",
+                      color: active ? "var(--accent)" : "var(--ink-2)",
+                      fontSize: 13.5,
+                      fontWeight: active ? 700 : 600,
+                      marginBottom: 2,
+                      transition: "background 160ms ease, color 160ms ease",
+                      textDecoration: "none",
+                    }}
+                  >
+                    <Icon
+                      size={15}
+                      color={active ? "var(--accent)" : "var(--ink-3)"}
+                    />
+                    <span style={{ flex: 1 }}>{it.label}</span>
+                    {it.badge && (
+                      <span
+                        style={{
+                          flex: "none",
+                          fontSize: 9.5,
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: 999,
+                          color: "#b45309",
+                          background: "rgba(245,158,11,.16)",
+                          letterSpacing: ".02em",
+                        }}
+                      >
+                        {it.badge}
+                      </span>
+                    )}
+                  </Link>
+                  {it.children && active &&
+                    it.children.map((c) => {
+                      const cActive = pathname === c.href;
+                      return (
+                        <Link
+                          key={c.href}
+                          href={c.href}
+                          onClick={onNavigate}
+                          style={{
+                            display: "block",
+                            padding: "6px 12px 6px 39px",
+                            borderRadius: 11,
+                            color: cActive ? "var(--accent)" : "var(--ink-3)",
+                            fontSize: 12.5,
+                            fontWeight: cActive ? 700 : 500,
+                            marginBottom: 2,
+                            textDecoration: "none",
+                            transition: "color 160ms ease",
+                          }}
+                        >
+                          {c.label}
+                        </Link>
+                      );
+                    })}
+                </React.Fragment>
               );
             })}
           </div>
@@ -185,8 +261,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div
         style={{
-          padding: "14px 18px",
+          padding: "10px 18px",
           borderTop: "1px solid var(--line)",
+          flexShrink: 0,
           display: "flex",
           alignItems: "center",
           gap: 10,
@@ -363,10 +440,9 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         alignItems: "center",
         gap: 16,
         padding: "14px 28px",
-        borderBottom: "1px solid var(--line)",
-        background: "color-mix(in oklch, var(--bg) 86%, transparent)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
+        // 透明顶栏 + 一条细线分隔，避免左栏 + 顶栏两块实色相邻显得厚重。
+        borderBottom: "1px solid var(--line-soft)",
+        background: "transparent",
       }}
     >
       <button
@@ -407,16 +483,6 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         <span className="num" style={{ fontSize: 13, fontWeight: 700 }}>
           {wallet ? wallet.totalBalance.toLocaleString("zh-CN") : "—"}
         </span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => router.push("/projects?new=1")}
-        title="新建短剧项目"
-        className="btn btn-grad btn-sm"
-      >
-        <Plus size={14} />
-        <span className="ws-btn-label">新建短剧</span>
       </button>
 
       <button

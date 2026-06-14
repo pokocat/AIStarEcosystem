@@ -41,3 +41,5 @@ __pycache__/
 .pytest_cache
 .cc-connect
 log
+/resources/
+apps/web-drama/public/recipes/home/

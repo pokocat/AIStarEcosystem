@@ -37,6 +37,9 @@ import java.util.*;
 public class AiModelInvocationService {
 
     private static final Logger log = LoggerFactory.getLogger(AiModelInvocationService.class);
+    /** 大模型 I/O 全文流水（发给模型的最终提示词 + 模型原文返回），便于排查。
+     *  独立 logger，运维可在 logback 单独调级别/落单独文件，不污染主 log。 */
+    private static final Logger ioLog = LoggerFactory.getLogger("aep.ai.chat.io");
     private static final ObjectMapper OM = new ObjectMapper();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
@@ -202,6 +205,13 @@ public class AiModelInvocationService {
                 messages == null ? 0 : messages.size(),
                 options == null ? null : options.get("max_tokens"),
                 hasJsonMode(options));
+        // 发给大模型的最终提示词全文（排查用）。独立 logger，默认 INFO，可单独降级/落盘。
+        if (ioLog.isInfoEnabled()) {
+            try {
+                ioLog.info("[ai-chat-io] REQUEST purpose={} endpoint={} model={} messages={}",
+                        purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(messages));
+            } catch (Exception ignore) { /* 序列化失败不阻塞主链路 */ }
+        }
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Bearer " + apiKey)
@@ -213,10 +223,11 @@ public class AiModelInvocationService {
             log.warn("[ai-chat] invoke http-error purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
                     purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
                     resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
-            throw new BusinessException(HttpStatus.valueOf(resp.statusCode()),
-                    "AI_PROVIDER_HTTP_" + resp.statusCode(),
-                    "端点 " + e.getName() + " HTTP " + resp.statusCode() + ": "
-                            + snippet(resp.body()));
+            // 不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏）；技术细节进 ErrorLog 供「追查号」排障。
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
+                    "AI 生成失败，请稍后重试",
+                    "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
+                            + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
         }
         Map<?, ?> parsed = OM.readValue(resp.body(), Map.class);
         Object choices = parsed.get("choices");
@@ -241,6 +252,11 @@ public class AiModelInvocationService {
             promptTokens = asLong(usageMap.get("prompt_tokens"));
             completionTokens = asLong(usageMap.get("completion_tokens"));
             tokensUsed = asLong(usageMap.get("total_tokens"));
+        }
+        // 模型原文返回全文（排查用）。
+        if (ioLog.isInfoEnabled()) {
+            ioLog.info("[ai-chat-io] RESPONSE purpose={} model={} finish={} content={}",
+                    purpose == null ? null : purpose.wire(), model, finishReason, content);
         }
         // v0.41：自建用量流水。best-effort，失败只 log，不阻断 chat 返回。
         usage.record(e.getId(), e.getName(), model,

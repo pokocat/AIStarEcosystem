@@ -64,6 +64,94 @@ function buildProse(text) {
 
 // ── 结构化 JSON（短剧脚本 / 变量 / 卖点等 json_object 模式） ──────────────────
 function buildJsonContent(text) {
+  // 配方抽取（v0.73 抽 skill · 必须最先判：prompt 里含"分集大纲/角色阵容"会误命中下面的分支）
+  if (/可复用配方|蒸馏成|reusable recipe/.test(text)) {
+    return JSON.stringify({
+      title: "重生复仇·步步反杀",
+      summary: "适合都市/古装复仇爽剧：开局打脸 + 中段反转 + 末集双线收束，强钩子快节奏。",
+      mainline:
+        "主角遭遇背叛跌入谷底，凭借信息差与隐藏底牌步步反杀，最终在众目睽睽下完成身份揭晓与复仇闭环。",
+      beats: [
+        { no: 1, hook: "开局即打脸", beat: "建立屈辱与隐藏底牌，抛出最大悬念" },
+        { no: 2, hook: "身份反转伏笔", beat: "对手轻敌，主角暗中布局" },
+        { no: 3, hook: "信任崩塌", beat: "盟友/亲情线第一次撕裂" },
+        { no: 4, hook: "高光反击", beat: "第一次正面打脸，爽感拉满" },
+        { no: 5, hook: "终极揭谜", beat: "幕后真相浮出，前情呼应" },
+        { no: 6, hook: "收束留扣", beat: "复仇闭环 + 续作悬念" },
+      ],
+      characters: [
+        { role: "key", archetype: "扮猪吃虎的复仇女主", desc: "隐忍布局，弧线从谷底到掌控全局" },
+        { role: "key", archetype: "笑面虎反派", desc: "步步紧逼，最终自食恶果" },
+        { role: "extra", archetype: "关键转述者", desc: "推动信息差的线索人物" },
+      ],
+      hooks: ["开场即打脸", "每集留扣", "中段大反转", "末集双线收束"],
+      notes: "竖屏 9:16、单集 60-90s、强钩子快节奏；最适合复仇/逆袭题材。",
+    });
+  }
+  // 分场分镜（剧集脚本工作台 · 必须先于"短剧脚本"与"大纲"分支）
+  if (/分场|镜头表|拆成镜头/.test(text)) {
+    const mkShots = (descs) =>
+      descs.map((d, i) => ({
+        size: i === 0 ? "中近景" : "特写",
+        move: i === 0 ? "缓慢推近" : "固定",
+        dur: 4 + i,
+        desc: d,
+        engine: i % 2 === 0 ? "avatar" : "seedance",
+        line: i === 0 ? { who: "旁白", text: "夜色像一层没拧干的湿布。" } : null,
+      }));
+    if (/拆成镜头|镜头表。场面/.test(text) && !/scenes/.test(text)) {
+      // 单场拆镜
+      return JSON.stringify({
+        shots: mkShots(["主角立于窗前，霓虹在玻璃上流动", "手指无意识摩挲杯沿，神情恍惚", "窗外对楼一盏灯亮起"]),
+      });
+    }
+    return JSON.stringify({
+      scenes: [
+        {
+          place: "内景 · 公寓客厅 · 深夜",
+          mood: "压抑悬疑",
+          action: "主角整理新公寓，无意瞥见对楼窗口的人影。",
+          lines: [
+            { who: "旁白", text: "搬进来的第一晚，她就觉得哪里不对。" },
+            { who: "主角", text: "那扇窗……怎么会亮着？" },
+          ],
+          shots: mkShots(["搬家纸箱散落，主角拆箱", "她抬头瞥向窗外", "对楼窗口人影一闪而过"]),
+        },
+        {
+          place: "外景 · 楼下街道 · 雨夜",
+          mood: "紧张",
+          action: "主角撑伞下楼查看，街道空无一人。",
+          lines: [{ who: "主角", text: "有人吗？" }],
+          shots: mkShots(["伞面特写，雨珠滚落", "空旷街道全景，路灯昏黄"]),
+        },
+      ],
+    });
+  }
+  // 角色阵容（选角）
+  if (/角色阵容|characters/.test(text)) {
+    return JSON.stringify({
+      characters: [
+        { name: "林夏", role: "key", cast: "女 · 28 岁 · 广告公司 AE", desc: "敏感坚韧，搬入新公寓后被卷入失踪谜团，弧线从自我怀疑到直面真相。" },
+        { name: "沈一鸣", role: "key", cast: "男 · 32 岁 · 刑警", desc: "冷静克制，因旧案与林夏命运交错，弧线从公事公办到并肩作战。" },
+        { name: "陈姨", role: "extra", cast: "女 · 55 岁 · 楼栋管理员", desc: "热心却藏着秘密，是线索的关键转述者。" },
+        { name: "神秘住户", role: "extra", cast: "性别不明 · 对楼 1703", desc: "全剧悬念之眼，每次出现都伴随灯光异象。" },
+      ],
+    });
+  }
+  // 分集大纲（必须先于脚本分支：脚本分支会命中 "episode" 子串）
+  if (/分集大纲|分集结构|分集剧情|大纲/.test(text)) {
+    const beats = [
+      { hook: "开场即抛出最大悬念，3 秒抓住观众", synopsis: "主角在一次意外中卷入旋涡，命运齿轮开始转动。", beat: "身份反转的第一道伏笔" },
+      { hook: "看似平静下暗流涌动，旧关系被点燃", synopsis: "关键人物登场，主角与对手第一次正面交锋。", beat: "误会加深，情绪升温" },
+      { hook: "一封信/一通电话打破平衡", synopsis: "秘密被揭开一角，主角被迫做出艰难抉择。", beat: "信任崩塌的转折点" },
+      { hook: "绝境时刻，主角背水一战", synopsis: "矛盾全面爆发，多方势力交汇对撞。", beat: "高光反击，爽感拉满" },
+      { hook: "真相浮出水面，前情全部呼应", synopsis: "层层反转后，隐藏的幕后被揭穿。", beat: "终极揭谜" },
+      { hook: "余波与收束，留一个回味的扣子", synopsis: "主角完成蜕变，关系尘埃落定，埋下续作钩子。", beat: "情绪释怀 + 续作悬念" },
+    ];
+    return JSON.stringify({
+      episodes: beats.map((b, i) => ({ no: i + 1, ...b })),
+    });
+  }
   // 短剧脚本起草
   if (/短剧|剧本|分镜|scenes|episode|台词|镜头/.test(text)) {
     return JSON.stringify({
@@ -167,6 +255,14 @@ const server = http.createServer(async (req, res) => {
   if (path.endsWith("/chat/completions") && req.method === "POST") {
     const body = await readBody(req);
     return send(res, 200, chatResponse(body));
+  }
+
+  // 图像生成（OpenAI images 兼容；必须先于通用 /generations 视频分支）
+  if (path.includes("/images/generations") && req.method === "POST") {
+    // 1x1 PNG 占位（dev 链路验证用；真实图像由 admin 绑定真模型端点产出）
+    const PNG_1PX =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    return send(res, 200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: PNG_1PX }] });
   }
 
   // 视频任务提交

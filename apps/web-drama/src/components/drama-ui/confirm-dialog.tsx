@@ -3,7 +3,7 @@
 // 平台自有确认弹窗 — 设计真源：components.jsx `ConfirmDialog`。
 // 强制：禁止用浏览器原生 confirm/alert/prompt（AGENTS.md §8）。
 import * as React from "react";
-import { Zap } from "lucide-react";
+import { Gem, Zap } from "lucide-react";
 
 interface DramaConfirmDialogProps {
   open: boolean;
@@ -47,10 +47,10 @@ export function DramaConfirmDialog({
               display: "grid",
               placeItems: "center",
               flex: "none",
-              color: tone === "danger" ? "#dc2626" : "var(--accent)",
+              color: tone === "danger" ? "#dc2626" : "var(--gem)",
             }}
           >
-            <Zap size={19} />
+            {tone === "danger" ? <Zap size={19} /> : <Gem size={19} />}
           </div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
         </div>
@@ -77,9 +77,10 @@ export function DramaConfirmDialog({
               marginBottom: 20,
             }}
           >
-            <span style={{ fontWeight: 600, fontSize: 13 }}>预计总消耗</span>
-            <span style={{ fontWeight: 700, color: "var(--accent)" }} className="num">
-              {cost} 积分
+            <span style={{ fontWeight: 600, fontSize: 13 }}>本次预计消耗</span>
+            <span className="row gap-1" style={{ fontWeight: 700, color: "var(--accent-2)" }}>
+              <Gem size={14} style={{ color: "var(--gem)" }} />
+              <span className="num">{cost}</span> 积分
             </span>
           </div>
         )}

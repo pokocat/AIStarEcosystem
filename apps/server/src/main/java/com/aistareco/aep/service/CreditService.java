@@ -200,6 +200,50 @@ public class CreditService {
     }
 
     /**
+     * 提现（v0.65）：从可用余额原子扣减并写 WITHDRAW 账本（与 {@link #debit} 同扣桶顺序）。
+     * 余额不足抛 402。真实打款由运营线下处理，本方法只负责账本侧扣减。
+     */
+    @Transactional
+    public LedgerEntryDto withdraw(String userId, long amount, String description) {
+        if (amount <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "提现金额必须为正数");
+        }
+        Wallet wallet = walletRepo.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "钱包不存在或余额不足"));
+        if (wallet.getTotalBalance() < amount) {
+            throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
+                    "余额不足，本次提现需 " + amount + "，当前可用 " + wallet.getTotalBalance());
+        }
+        long deduct = amount;
+        long fromGift = Math.min(wallet.getGiftBalance(), deduct);
+        wallet.setGiftBalance(wallet.getGiftBalance() - fromGift);
+        deduct -= fromGift;
+        long fromLicense = Math.min(wallet.getLicenseBalance(), deduct);
+        wallet.setLicenseBalance(wallet.getLicenseBalance() - fromLicense);
+        deduct -= fromLicense;
+        long fromRecharge = Math.min(wallet.getRechargeBalance(), deduct);
+        wallet.setRechargeBalance(wallet.getRechargeBalance() - fromRecharge);
+
+        long newBalance = wallet.getTotalBalance() - amount;
+        wallet.setTotalBalance(newBalance);
+        wallet.setUpdatedAt(Instant.now());
+        walletRepo.save(wallet);
+
+        LedgerEntry entry = LedgerEntry.builder()
+                .id(UUID.randomUUID().toString())
+                .walletId(wallet.getId())
+                .userId(userId)
+                .entryType(LedgerEntry.LedgerEntryType.WITHDRAW)
+                .amount(-amount)
+                .balanceAfter(newBalance)
+                .description(description)
+                .referenceType("WITHDRAW")
+                .createdAt(Instant.now())
+                .build();
+        return LedgerEntryDto.from(ledgerRepo.save(entry));
+    }
+
+    /**
      * 业务侧"加积分"通用入口（v0.4 新增）：原子地把 amount 加入指定桶并写一条 LedgerEntry。
      * 调用方负责选对桶：
      *   - RECHARGE：充值落账

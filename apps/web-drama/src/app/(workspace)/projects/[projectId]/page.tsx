@@ -2,62 +2,91 @@
 
 export const dynamic = "force-dynamic";
 
-// 短剧工作台 — 沉浸式接管,自带 StageRail + 顶部项目条 + EpisodeStrip +
-// CastPanel + 中央阶段视图。
-// 各阶段内容(topic/outline/cast/script/board/prompt)由 B6/B7 填入完整组件,
-// 当前 B5 给出 stub:每个阶段一张占位卡,验收外壳布局。
+// 短剧工作台 v4 — 沉浸式接管:项目设置阶段走左阶段轨,剧集制作阶段走
+// 左分集导航 + 顶部步骤页签(剧集脚本 → 视频工厂 → 成片配方)。
+// v0.64+:整套 ProjectData 由后端 /me/drama/projects/{id} 真实加载 + 保存。
 import * as React from "react";
-import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, Sparkles } from "lucide-react";
-import { getProjectData, PROJECTS, type ProjectData } from "@/mocks/drama-workshop";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
+import { toast } from "sonner";
+import { ProjectsApi } from "@/api";
+import { useAsync } from "@/lib/drama-query";
+import { useSaveStatus } from "@/lib/use-save-status";
+import { SaveStatus } from "@/components/drama-workshop/save-status";
+import type { ProjectData } from "@/mocks/drama-workshop";
 import {
-  StageHeader,
   WorkshopShell,
   type WorkshopAction,
   type WorkshopState,
 } from "@/components/drama-workshop/workbench";
-import type { StageKey } from "@/components/drama-workshop";
 import {
-  BoardStage,
   CastStage,
+  EpScriptStage,
+  FactoryStage,
   OutlineStage,
-  PromptStage,
-  ScriptStage,
+  AssembleStage,
   TopicStage,
+  type StageContext,
 } from "@/components/drama-workshop/stages";
 
 export default function ProjectWorkbench() {
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
+  const search = useSearchParams();
   const id = params?.projectId ?? "";
-  const meta = PROJECTS.find((p) => p.id === id);
-  const data = getProjectData(id);
+  const fromTemplate = search?.get("from") === "template";
 
-  if (!meta || !data) {
-    return (
-      <div className="col center" style={{ height: "100%", gap: 14, textAlign: "center" }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>没找到这部短剧</h1>
-        <div className="muted">可能是链接过期了。回到我的短剧重新挑选一部。</div>
-        <button
-          type="button"
-          className="btn btn-line"
-          onClick={() => router.push("/projects")}
-        >
-          <ChevronLeft size={16} /> 返回我的短剧
-        </button>
-      </div>
-    );
+  const { data: detail, isLoading, error } = useAsync(
+    `/me/drama/projects/${id}`,
+    () => ProjectsApi.getProject(id),
+  );
+
+  // 整套文档保留一份可编辑副本，阶段内的 AI 生成 / 编辑乐观更新它，再落库。
+  const [data, setData] = React.useState<ProjectData | null>(null);
+  React.useEffect(() => {
+    if (detail?.data) setData(detail.data);
+  }, [detail]);
+
+  // v0.76：统一保存状态机（指示器 + 离开提醒兜底）。所有阶段落库都经 saveData 漏斗。
+  const { status: saveStatusValue, notifyEditing, track } = useSaveStatus();
+  const saveData = React.useCallback<StageContext["saveData"]>(
+    async (next, opts) => {
+      setData(next);
+      try {
+        await track(() => ProjectsApi.saveProject(id, next, opts));
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "保存失败，请重试");
+        throw e;
+      }
+    },
+    [id, track],
+  );
+
+  if (isLoading || (!data && !error)) {
+    return <WorkbenchLoading />;
+  }
+  if (error || !detail || !data) {
+    return <WorkbenchNotFound onBack={() => router.push("/projects")} />;
   }
 
   return (
-    <WorkshopShell
-      meta={meta}
-      data={data}
-      initialStage={meta.stage <= 3 ? "outline" : "script"}
-      renderStage={({ state, dispatch }) => (
-        <StageOutlet state={state} dispatch={dispatch} data={data} prefilled={meta.mode === "template"} />
-      )}
-    />
+    <>
+      <WorkshopShell
+        meta={detail.meta}
+        data={data}
+        initialStage={fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
+        renderStage={({ state, dispatch }) => (
+          <StageOutlet
+            state={state}
+            dispatch={dispatch}
+            data={data}
+            prefilled={fromTemplate || detail.meta.mode === "template"}
+            ctx={{ projectId: id, saveData, notifyEditing }}
+          />
+        )}
+      />
+      <SaveStatus status={saveStatusValue} />
+    </>
   );
 }
 
@@ -66,103 +95,72 @@ function StageOutlet({
   dispatch,
   data,
   prefilled,
+  ctx,
 }: {
   state: WorkshopState;
   dispatch: React.Dispatch<WorkshopAction>;
   data: ProjectData;
   prefilled: boolean;
+  ctx: StageContext;
 }) {
+  // 角色绑定 / 主配切换发生在 reducer（WorkshopState.chars）——变化时落库到 ProjectData.characters。
+  const charsRef = React.useRef(state.chars);
+  React.useEffect(() => {
+    if (charsRef.current === state.chars) return;
+    charsRef.current = state.chars;
+    ctx.notifyEditing?.(); // 标脏：防抖落库前离开也会提醒
+    const t = setTimeout(() => {
+      void ctx.saveData({ ...data, characters: state.chars }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.chars]);
+
   switch (state.stage) {
     case "topic":
       return <TopicStage state={state} dispatch={dispatch} data={data} />;
     case "outline":
-      return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} />;
+      return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "cast":
-      return <CastStage state={state} dispatch={dispatch} data={data} />;
-    case "script":
-      return <ScriptStage state={state} dispatch={dispatch} data={data} />;
-    case "board":
-      return <BoardStage state={state} dispatch={dispatch} data={data} />;
+      return <CastStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
+    case "epscript":
+      return <EpScriptStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
+    case "factory":
+      return <FactoryStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "prompt":
-      return <PromptStage state={state} dispatch={dispatch} data={data} />;
+      return <AssembleStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     default:
-      return <StageStub state={state} dispatch={dispatch} />;
+      return null;
   }
 }
 
-// 各阶段占位 — B6/B7 将以真实组件替换。
-const STAGE_META: Record<
-  StageKey,
-  { no: number; scope: "项目" | "剧集"; title: string; desc: string }
-> = {
-  topic:   { no: 1, scope: "项目", title: "选题立项",     desc: "立项起点已在新建时完成,这里随时回看与微调。" },
-  outline: { no: 2, scope: "项目", title: "大纲分集",     desc: "铺好人物小传、主线,再把故事拆成一集一集的钩子和梗概。" },
-  cast:    { no: 3, scope: "项目", title: "角色与资产", desc: "给关键角色绑定一个数字人分身锁住形象 —— 这是跨集一致性和真人脸的地基。" },
-  script:  { no: 4, scope: "剧集", title: "单集剧本",     desc: "把这一集写成一个个场景。点任意文字即可直接编辑。" },
-  board:   { no: 5, scope: "剧集", title: "分镜工作台", desc: "按剧本场景逐场拆镜。描述、台词点击即改,景别运镜在精修栏点选。" },
-  prompt:  { no: 6, scope: "剧集", title: "成片配方",     desc: "逐镜整理好,可直接喂给视频大模型开拍。" },
-};
-
-function StageStub({
-  state,
-  dispatch,
-}: {
-  state: WorkshopState;
-  dispatch: React.Dispatch<WorkshopAction>;
-}) {
-  const m = STAGE_META[state.stage];
-  const titleWithEp =
-    m.scope === "剧集" ? `第 ${state.ep} 集 · ${m.title.replace(/^.*·\s*/, "")}` : m.title;
+function WorkbenchLoading() {
   return (
-    <div className="scroll" style={{ height: "100%" }}>
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 32px 64px" }}>
-        <StageHeader no={m.no} scope={m.scope} title={titleWithEp} desc={m.desc} />
-        <div
-          className="card col center"
-          style={{ padding: "60px 24px", gap: 14, textAlign: "center" }}
-        >
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 20,
-              background: "var(--accent-soft)",
-              display: "grid",
-              placeItems: "center",
-              color: "var(--accent)",
-            }}
-          >
-            <Sparkles size={28} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>
-              「{m.title}」工作区
-            </div>
-            <div className="muted" style={{ fontSize: 13.5, marginTop: 4, maxWidth: 380 }}>
-              {m.desc}
-            </div>
-          </div>
-          <div className="row gap-3">
-            {state.lockedStages[state.stage] ? (
-              <span className="tag tag-accent">已锁定</span>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-grad"
-                onClick={() =>
-                  dispatch({ type: "lock", stage: state.stage, cost: 0 })
-                }
-              >
-                <Sparkles size={15} /> 演示:锁定本阶段并进入下一步
-              </button>
-            )}
-          </div>
-          <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>
-            真正的「{m.title}」交互将在{" "}
-            {m.scope === "项目" ? "B6" : "B7"} 批次填入。
-          </div>
-        </div>
-      </div>
+    <div className="col center" style={{ height: "100%", gap: 14 }}>
+      <span
+        aria-hidden
+        style={{
+          width: 34,
+          height: 34,
+          border: "3px solid var(--line)",
+          borderTopColor: "var(--accent)",
+          borderRadius: "50%",
+          animation: "drama-spin .8s linear infinite",
+        }}
+      />
+      <div className="muted" style={{ fontSize: 13 }}>正在打开短剧工作台…</div>
+    </div>
+  );
+}
+
+function WorkbenchNotFound({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="col center" style={{ height: "100%", gap: 14, textAlign: "center" }}>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>没找到这部短剧</h1>
+      <div className="muted">可能是链接过期或已删除。回到短剧工坊重新挑选一部。</div>
+      <button type="button" className="btn btn-line" onClick={onBack}>
+        <ChevronLeft size={16} /> 返回短剧工坊
+      </button>
     </div>
   );
 }

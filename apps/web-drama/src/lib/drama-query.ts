@@ -56,7 +56,12 @@ function load<T>(key: string, loader: () => Promise<T>): CacheEntry<T> {
         const cur = cache.get(key) as CacheEntry<T> | undefined;
         if (cur) cur.error = e;
         notify(key);
-        throw e;
+        // 不 re-throw：错误已落 entry.error，两个消费者都从那里读 ——
+        //   usePageData：Suspense 在本 promise settle 后重渲染，命中 `if (entry.error) throw`，交 error boundary；
+        //   useAsync：直接读 entry.error。
+        // 若在此 re-throw，useAsync 丢弃的 promise 会变成 unhandled rejection（触发全局 error 噪音）。
+        // 该 resolved 值永不被消费，仅作 Suspense 的 settle 信号。
+        return undefined as T;
       });
     entry = { promise, ts: Date.now() };
     cache.set(key, entry as CacheEntry<unknown>);

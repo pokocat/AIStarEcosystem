@@ -38,6 +38,7 @@ class MaterialVideoModelClientTest {
         assertEquals("processing", MaterialVideoModelClient.normalizeStatus("PROCESSING"));
         assertEquals("processing", MaterialVideoModelClient.normalizeStatus("RUNNING"));
         assertEquals("processing", MaterialVideoModelClient.normalizeStatus("queued"));
+        assertEquals("processing", MaterialVideoModelClient.normalizeStatus("in_progress"));
         assertEquals("processing", MaterialVideoModelClient.normalizeStatus(null));
     }
 
@@ -63,8 +64,34 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
+    void extractVideoUrl_agnes_shape() {
+        assertEquals("https://storage.googleapis.com/agnes/video.mp4",
+                MaterialVideoModelClient.extractVideoUrl(json("""
+                    {"status":"completed","remixed_from_video_id":"https://storage.googleapis.com/agnes/video.mp4"}
+                    """)));
+        assertEquals("https://storage.googleapis.com/agnes/data-video.mp4",
+                MaterialVideoModelClient.extractVideoUrl(json("""
+                    {"data":{"status":"completed","remixed_from_video_id":"https://storage.googleapis.com/agnes/data-video.mp4"}}
+                    """)));
+    }
+
+    @Test
     void extractVideoUrl_returns_null_when_not_ready() {
         // 进行中：还没有成片 URL
         assertNull(MaterialVideoModelClient.extractVideoUrl(json("{\"task_status\":\"PROCESSING\"}")));
+    }
+
+    @Test
+    void normalizeFrames_matches_agnes_rule() {
+        assertEquals(121, MaterialVideoModelClient.normalizeFrames(120));
+        assertEquals(145, MaterialVideoModelClient.normalizeFrames(144));
+        assertEquals(441, MaterialVideoModelClient.normalizeFrames(2000));
+    }
+
+    @Test
+    void dimensionsForAspect_maps_vertical_short_video() {
+        MaterialVideoModelClient.Dimensions d = MaterialVideoModelClient.dimensionsForAspect("9:16");
+        assertEquals(768, d.width());
+        assertEquals(1152, d.height());
     }
 }

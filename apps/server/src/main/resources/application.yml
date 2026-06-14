@@ -4,6 +4,12 @@ server:
 spring:
   profiles:
     active: dev
+  config:
+    import:
+      # 本地联调可把 OSS / SMS / JWT 等环境变量放在 apps/server/.env。
+      # 从 apps/server 目录启动时命中 .env；从仓库根目录启动时命中 apps/server/.env。
+      - optional:file:.env[.properties]
+      - optional:file:apps/server/.env[.properties]
   jpa:
     hibernate:
       ddl-auto: update

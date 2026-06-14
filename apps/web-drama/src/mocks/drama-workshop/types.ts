@@ -129,6 +129,17 @@ export interface BoardShot {
   overLimit?: boolean;
   /** 特效镜参考图片数（含 cast） */
   refImg?: number;
+  /** v0.65 渲染产物（真后端落库在 ProjectData.storyboard 内） */
+  /** 首帧候选 URL（渲染一次出多版） */
+  frameUrls?: string[];
+  /** 已锁定的首帧 URL */
+  frameUrl?: string;
+  /** 成片视频 URL */
+  videoUrl?: string;
+  /** 进行中的视频任务 id（轮询 /me/drama/episodes/jobs/{id}） */
+  jobId?: string;
+  /** 渲染流水状态（draft/frame/frameLocked/clip/done），缺省 draft */
+  flow?: string;
 }
 
 export interface BoardScene {
@@ -166,12 +177,31 @@ export interface PromptPack {
   shots: PromptShot[];
 }
 
+/** v0.66：单集成片（拼接产物）。 */
+export interface AssembledEpisode {
+  url: string;
+  cdnKey?: string;
+  durationSec?: number;
+  shotCount?: number;
+  at?: string;
+}
+
+/** v0.66：按集存档（剧本 + 分镜 + 成片），切集互不覆盖。 */
+export interface EpisodeDoc {
+  script: { ep: number; scenes: ScriptScene[] };
+  storyboard: { ep: number; scenes: BoardScene[] };
+  assembled?: AssembledEpisode;
+}
+
 export interface ProjectData {
   projectInfo: ProjectInfo;
   topicCards: TopicCard[];
   episodes: EpisodeOutline[];
   characters: CharacterDef[];
+  /** legacy 单集文档（episodeDocs 启用前的旧项目 / mock 演示数据回读用） */
   script: { ep: number; scenes: ScriptScene[] };
   storyboard: { ep: number; scenes: BoardScene[] };
   promptPack: PromptPack;
+  /** v0.66：按集存档；key = String(ep)。存在该字段时以它为准。 */
+  episodeDocs?: Record<string, EpisodeDoc>;
 }

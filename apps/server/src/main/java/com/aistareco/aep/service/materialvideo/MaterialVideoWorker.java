@@ -103,7 +103,7 @@ public class MaterialVideoWorker {
             Thread.sleep(intervalMs);
             long elapsed = System.currentTimeMillis() - start;
 
-            MaterialVideoModelClient.PollResult poll = modelClient.poll(submit.taskId());
+            MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
             if (poll.succeeded()) {
                 if (poll.videoUrl() == null || poll.videoUrl().isBlank()) {
                     markFailed(jobId, "视频大模型返回成功但未给出成片 URL（taskId=" + submit.taskId() + "）");

@@ -44,6 +44,7 @@ public class DevFakeAiSeeder implements CommandLineRunner {
             AiModelPurpose.SELLING_POINTS,
             AiModelPurpose.VARIABLE_EXTRACT,
             AiModelPurpose.VIDEO_GENERATION,
+            AiModelPurpose.IMAGE_GENERATION,
             AiModelPurpose.GENERAL
     );
 

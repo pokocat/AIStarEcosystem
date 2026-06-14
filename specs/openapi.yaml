@@ -6977,6 +6977,108 @@ paths:
   /me/script-versions/{versionId}:
     parameters: [ { in: path, name: versionId, required: true, schema: { type: string } } ]
     get: { tags: [drama], operationId: getScriptVersion, summary: '脚本版本详情', responses: { '200': { description: ok } } }
+  # ── v0.64 短剧项目工作台（六阶段 ProjectData CRUD + 大纲 AI）。DramaProjectController。 ──
+  /me/drama/projects:
+    get:  { tags: [drama], operationId: listDramaProjects,  summary: '我的短剧项目列表（六阶段工作台卡片）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createDramaProject, summary: '新建短剧项目（seed 空 ProjectData）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getDramaProject,    summary: '短剧项目详情（meta + 整套 ProjectData）', responses: { '200': { description: ok } } }
+    put:    { tags: [drama], operationId: saveDramaProject,   summary: '保存整套工作台文档', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaProject, summary: '删除短剧项目（软删）', responses: { '204': { description: ok } } }
+  /me/drama/projects/{id}/outline/ai-draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }
+  # ── v0.76 短视频制作草稿（整页编辑态可恢复：刷新/返回/换设备接着做）──
+  /me/drama/shorts:
+    get:  { tags: [drama], operationId: listDramaShorts,  summary: '我的短视频草稿列表（工坊卡片）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createDramaShort, summary: '新建短视频草稿（seed 最小 ShortDraftData）—— v0.78：进工作台开拍扣一笔可配积分 drama.credit.short-entry（hold→commit，余额不足 402；重开已有草稿走 GET 不计费）', responses: { '200': { description: ok } } }
+  /me/drama/shorts/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getDramaShort,    summary: '短视频草稿详情（meta + 整页 ShortDraftData）', responses: { '200': { description: ok } } }
+    put:    { tags: [drama], operationId: saveDramaShort,   summary: '保存整页短视频草稿（回算时长/镜数/进度）', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaShort, summary: '删除短视频草稿（软删）', responses: { '204': { description: ok } } }
+  /me/drama/shorts/{id}/extract-recipe:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: extractDramaShortRecipe, summary: '完成短视频发布到创意中心：反向蒸馏成单集可复用创意（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
+  # ── v0.66 短剧专区配置 + 成片合成 ──
+  /me/drama/config:
+    get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,shortEntry,clip}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/assemble:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: assembleDramaEpisode, summary: '成片合成：把某集已出片分镜按序 ffmpeg 拼接为完整片（产物落 CDN）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/extract-recipe:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: extractDramaRecipe, summary: 'v0.73 抽 skill：把本项目反向蒸馏成可复用配方 Recipe（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
+  # ── v0.73 短剧配方 Recipe（抽 skill 飞轮）：用户侧 + 运营侧（运营在 web-drama 后台审核/发布，非 admin）──
+  /me/drama/recipes:
+    get: { tags: [drama], operationId: listMyDramaRecipes, summary: '我抽取/提交过的配方（含审核状态）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/published:
+    get: { tags: [drama], operationId: listPublishedDramaRecipes, summary: '创意库：已发布配方（任意已登录，按套用热度降序）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/review:
+    get: { tags: [drama], operationId: listDramaRecipesForReview, summary: '运营审核队列：待审配方（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/publish:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: publishDramaRecipe, summary: '运营发布配方（OPERATOR/SUPER_ADMIN）→ 进创意库', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/reject:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: rejectDramaRecipe, summary: '运营驳回配方（OPERATOR/SUPER_ADMIN）。body:{note?}', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/apply:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: applyDramaRecipe, summary: '套用已发布配方 → 新建预填项目，返回 {projectId}', responses: { '200': { description: ok } } }
+  # ── v0.75 创意市场双通道：运营精选用户作品（候选/邀请）+ 运营手建内置 + 用户授权 ──
+  /me/drama/recipes/candidates:
+    get: { tags: [drama], operationId: listDramaRecipeCandidates, summary: '运营「从用户作品精选」候选池（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/invite:
+    post: { tags: [drama], operationId: inviteDramaRecipe, summary: '运营对某用户项目发起「邀请精选」→ invited 待用户授权（OPERATOR/SUPER_ADMIN）。body:{projectId}', responses: { '200': { description: ok } } }
+  /me/drama/recipes/builtin:
+    post: { tags: [drama], operationId: createBuiltinDramaRecipe, summary: '运营手建内置创意（OPERATOR/SUPER_ADMIN）→ 直接发布', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/respond:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: respondDramaRecipeInvite, summary: '用户对运营邀请授权/谢绝。body:{approve:boolean}', responses: { '200': { description: ok } } }
+  # ── v0.67 短剧平台目录（运营在 web-drama 端维护：热点/创意推荐/模板等）。读=任意已登录；写=运营 ──
+  /me/drama/catalog:
+    get: { tags: [drama], operationId: getDramaCatalog, summary: '短剧平台目录（内容类型/模板/格式/热点/创意推荐；未配项 null，前端回退默认）', responses: { '200': { description: ok } } }
+  /me/drama/catalog/{field}:
+    parameters: [ { in: path, name: field, required: true, schema: { type: string } } ]
+    put:    { tags: [drama], operationId: saveDramaCatalog,  summary: '运营写入某目录（OPERATOR/SUPER_ADMIN，否则 403）', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: resetDramaCatalog, summary: '运营恢复某目录为内置默认（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/epscript/ai-draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: aiDraftDramaEpscript, summary: 'AI 把整集重写为分场+分镜（大模型）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/epscript/split-scene:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: splitDramaScene, summary: 'AI 把单场拆成镜头表（大模型）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/cast/ai-draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: aiDraftDramaCast, summary: 'AI 从大纲重抽角色阵容（大模型）', responses: { '200': { description: ok } } }
+  # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
+  /me/drama/render/frame:
+    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }
+  /me/drama/render/clip:
+    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）。v0.72 起 body={kind?,vars{},name?,duration_sec?,ratio?,project_id?,frame_url?}：出片提示词模板服务端化（drama.clip_video/drama.short_clip_video）', responses: { '200': { description: ok } } }
+  # ── v0.65 短剧分发（用户侧平台连接 + 发布任务）。DramaDistributionController。 ──
+  /me/distribution/platforms:
+    get: { tags: [distribution], operationId: listMyDistributionPlatforms, summary: '平台目录 + 我的连接状态', responses: { '200': { description: ok } } }
+  /me/distribution/platforms/{platformId}/connection:
+    parameters: [ { in: path, name: platformId, required: true, schema: { type: string } } ]
+    post:   { tags: [distribution], operationId: connectMyPlatform,    summary: '连接平台', responses: { '200': { description: ok } } }
+    delete: { tags: [distribution], operationId: disconnectMyPlatform, summary: '断开平台', responses: { '204': { description: ok } } }
+  /me/distribution/jobs:
+    get:  { tags: [distribution], operationId: listMyPublishJobs,  summary: '我的发布任务（可按 projectId 过滤）', responses: { '200': { description: ok } } }
+    post: { tags: [distribution], operationId: createMyPublishJob, summary: '创建发布任务（需先连接平台）', responses: { '200': { description: ok } } }
+  /me/distribution/jobs/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get: { tags: [distribution], operationId: getMyPublishJob, summary: '发布任务详情', responses: { '200': { description: ok } } }
+  /me/distribution/jobs/{id}/retry:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: retryMyPublishJob, summary: '重试失败任务', responses: { '200': { description: ok } } }
+  /me/distribution/jobs/{id}/cancel:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [distribution], operationId: cancelMyPublishJob, summary: '取消任务', responses: { '200': { description: ok } } }
+  # ── v0.65 提现（drama 财务页；账本 WITHDRAW + 运营线下打款）。 ──
+  /me/wallet/withdraw:
+    post: { tags: [wallet], operationId: withdrawWallet, summary: '提现（账本侧扣减，status=processing）', responses: { '200': { description: ok } } }
   /celebrity/videos/{videoId}:
     parameters: [ { in: path, name: videoId, required: true, schema: { type: string } } ]
     delete: { tags: [celebrity], operationId: deleteCelebrityVideo, summary: '删除项目视频', responses: { '204': { description: ok } } }

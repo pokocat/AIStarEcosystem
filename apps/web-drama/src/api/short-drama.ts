@@ -11,7 +11,30 @@ export interface DramaScene {
   summary: string;
   shot: string;
   dialogue: string;
+  /** 音效 / 环境音（AI 可选生成，留空 = 无）。 */
+  sfx?: string;
+  /** 背景音乐建议（AI 可选生成，留空 = 无）。 */
+  bgm?: string;
+  /** 画面包装 / 特效氛围（AI 可选生成，留空 = 无）。 */
+  fx?: string;
   duration_sec: number;
+}
+
+/** 主角设定（统领全片人物形象与性格）。 */
+export interface ScriptCharacter {
+  name: string;
+  description: string;
+}
+
+/**
+ * 整体短视频说明（meta）—— AI 先定调：标题 / 风格 / 主场景 / 主角。
+ * 作为分镜与逐镜出片（首帧、视频）的统一参考，使生成更一致、更准确。
+ */
+export interface ScriptMeta {
+  title: string;
+  style: string[];
+  scene: string;
+  character: ScriptCharacter;
 }
 
 export interface DramaScript {
@@ -21,6 +44,8 @@ export interface DramaScript {
   genre: string;
   duration_sec: number;
   status: string; // draft | ready
+  /** 整体短视频说明（后端 ai-draft 保证返回，老脚本可能没有）。 */
+  meta?: ScriptMeta;
   scenes: DramaScene[];
   created_at?: string;
   updated_at?: string;
@@ -47,6 +72,8 @@ export interface AiDraftParams {
   genre?: string;
   durationSec?: number;
   count?: number;
+  /** 套模版上下文：爆款模版的分镜节拍 / 口播结构，作为 AI 生成参考一并喂给大模型。 */
+  reference?: string;
 }
 
 export interface GenerateEpisodesParams {
@@ -63,6 +90,15 @@ const MOCK_SCRIPT: DramaScript = {
   genre: "都市情感",
   duration_sec: 60,
   status: "draft",
+  meta: {
+    title: "误会重逢",
+    style: ["都市情感", "高级感", "反转"],
+    scene: "午后高档连锁咖啡馆，暖色调，落地窗洒入阳光，人来人往",
+    character: {
+      name: "顾衍（失忆总裁）",
+      description: "三十出头，西装挺括、神色疏离，因车祸失忆；眼神里藏着说不清的熟悉与怅然",
+    },
+  },
   scenes: [
     { heading: "日 · 咖啡馆 · 内", summary: "总裁排队点单，与前妻擦肩。", shot: "中近景，手持轻微晃动，暖色调", dialogue: "（旁白）有些人一转身，就是一辈子。", duration_sec: 12 },
     { heading: "日 · 咖啡馆 · 卡座", summary: "前妻认出他，欲言又止。", shot: "正反打特写，浅景深", dialogue: "前妻：你……还喝三分糖吗？", duration_sec: 16 },
@@ -102,6 +138,7 @@ export async function aiDraftScripts(params: AiDraftParams): Promise<DramaScript
       genre: params.genre,
       duration_sec: params.durationSec,
       count: params.count,
+      reference: params.reference,
     },
   });
 }

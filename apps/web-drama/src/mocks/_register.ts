@@ -18,7 +18,6 @@ import "./_handlers/wardrobe";
 import "./_handlers/notifications";
 import "./_handlers/pose";
 import "./_handlers/store";
-import "./_handlers/generation";
 import "./_handlers/settings";
 import "./_handlers/scripts";
 import "./_handlers/appearance-forge";

@@ -44,6 +44,7 @@ import type {
   AiAppBinding,
   AiModelUsageReport,
   AiModelUsageStat,
+  AdminAiModelEndpointUpsert,
 } from "@/api/ai-models";
 
 const PROVIDER_TYPES: AiModelProviderType[] = [
@@ -77,8 +78,21 @@ const PROVIDER_LABEL: Record<AiModelProviderType, string> = {
 const SUPPORTED_PROVIDERS = new Set<AiModelProviderType>(["OPENAI", "OPENAI_COMPATIBLE"]);
 const NONE = "__none__";
 
+type EditMode = "create" | "edit" | "copy";
+
+interface FormDefaults {
+  name?: string;
+  baseUrl?: string;
+  apiVersion?: string;
+  model?: string;
+  ownerUserId?: string;
+  apiKeyHint?: string;
+  sourceName?: string;
+}
+
 interface FormState {
   id?: string;
+  mode: EditMode;
   name: string;
   providerType: AiModelProviderType;
   baseUrl: string;
@@ -87,22 +101,140 @@ interface FormState {
   model: string;
   models: AiModelEntry[];
   ownerUserId: string;
+  clearOwnerUserId: boolean;
   enabled: boolean;
+  defaults?: FormDefaults;
 }
 
 const EMPTY_FORM: FormState = {
+  mode: "create",
   name: "",
   providerType: "OPENAI_COMPATIBLE",
-  baseUrl: "https://api.openai.com/v1",
+  baseUrl: "",
   apiKey: "",
   apiVersion: "",
-  model: "gpt-4o",
+  model: "",
   models: [],
   ownerUserId: "",
+  clearOwnerUserId: false,
   enabled: true,
+  defaults: {
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o",
+  },
 };
 
 type TestState = "idle" | "running" | "ok" | "fail";
+
+type BindingGroupKey = "celebrity" | "drama" | "aiavatar" | "creator" | "platform";
+
+const BINDING_GROUPS: Array<{
+  key: BindingGroupKey;
+  label: string;
+  description: string;
+  purposes: AiModelPurpose[];
+}> = [
+  {
+    key: "celebrity",
+    label: "明星带货",
+    description: "模板脚本、商品卖点、变量抽取、参考分析与带货视频生成。",
+    purposes: ["SCRIPT_DRAFT", "SELLING_POINTS", "VARIABLE_EXTRACT", "VIDEO_GENERATION", "VIDEO_REF_ANALYSIS", "TEMPLATE_REWRITE"],
+  },
+  {
+    key: "drama",
+    label: "AI 短剧",
+    description:
+      "短剧生成链路：分场景脚本起草、分镜首帧图像、短剧/短视频生成。其中「图像生成 / 视频生成」为跨产品共享端点（同一端点亦服务明星带货视频），在此改绑会同时影响其它产品线。",
+    purposes: ["DRAMA_SCRIPT_DRAFT", "IMAGE_GENERATION", "VIDEO_GENERATION"],
+  },
+  {
+    key: "aiavatar",
+    label: "AiAvatar",
+    description: "数字人人设解析、图片生成与视频生成的多模态调用。",
+    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO"],
+  },
+  {
+    key: "creator",
+    label: "音乐/短剧形象",
+    description: "AI 音乐人与 AI 短剧共用的形象锻造顾问能力。",
+    purposes: ["APPEARANCE_FORGE"],
+  },
+  {
+    key: "platform",
+    label: "平台通用",
+    description: "风控复检与兜底通用能力。新增未归类用途也会先落在这里。",
+    purposes: ["SAFETY_REVIEW", "GENERAL"],
+  },
+];
+
+// 被任一分组显式声明的用途集合；未声明的用途落到「平台通用」兜底分组。
+// 注意：一个用途可以出现在多个分组（如 VIDEO_GENERATION 同时服务明星带货与短剧），
+// 故这里用集合判定「是否已声明」，而非 purpose→单一分组 的映射。
+const DECLARED_PURPOSES = new Set<AiModelPurpose>(BINDING_GROUPS.flatMap((group) => group.purposes));
+
+function valueOrDefault(form: FormState, key: keyof Pick<FormState, "name" | "baseUrl" | "apiVersion" | "model" | "ownerUserId">): string {
+  const value = form[key].trim();
+  if (value) return value;
+  const fallback = form.defaults?.[key]?.trim();
+  return fallback ?? "";
+}
+
+function placeholderFor(form: FormState, key: keyof FormDefaults, fallback: string): string {
+  const value = form.defaults?.[key]?.trim();
+  if (!value) return fallback;
+  if (form.mode === "edit") return `当前：${value}`;
+  if (form.mode === "copy") return `复制来源：${value}`;
+  return value;
+}
+
+function formTitle(form: FormState | null): string {
+  if (!form) return "操作";
+  if (form.mode === "edit") return "编辑端点";
+  if (form.mode === "copy") return "复制为新端点";
+  return "新建端点";
+}
+
+function editFormFromEndpoint(p: AiModelEndpoint): FormState {
+  return {
+    ...EMPTY_FORM,
+    id: p.id,
+    mode: "edit",
+    name: p.name,
+    providerType: p.providerType,
+    baseUrl: p.baseUrl,
+    apiVersion: p.apiVersion ?? "",
+    model: p.model ?? "",
+    models: p.models ?? [],
+    ownerUserId: p.ownerUserId ?? "",
+    enabled: p.enabled,
+    defaults: {
+      name: p.name,
+      baseUrl: p.baseUrl,
+      apiVersion: p.apiVersion ?? "",
+      model: p.model ?? "",
+      ownerUserId: p.ownerUserId ?? "",
+      sourceName: p.name,
+    },
+  };
+}
+
+function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
+  return {
+    ...EMPTY_FORM,
+    mode: "copy",
+    providerType: p.providerType,
+    models: p.models ?? [],
+    enabled: p.enabled,
+    defaults: {
+      name: `${p.name} 副本`,
+      baseUrl: p.baseUrl,
+      apiVersion: p.apiVersion ?? "",
+      model: p.model ?? "",
+      ownerUserId: p.ownerUserId ?? "",
+      sourceName: p.name,
+    },
+  };
+}
 
 export default function AdminAiModelsPage() {
   const toast = useToast();
@@ -114,6 +246,7 @@ export default function AdminAiModelsPage() {
   const [err, setErr] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<FormState | null>(null);
   const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [bindingGroup, setBindingGroup] = React.useState<BindingGroupKey>("celebrity");
   const [testing, setTesting] = React.useState<Record<string, { state: TestState; message?: string }>>({});
   const [presets, setPresets] = React.useState<AiModelProviderPreset[]>([]);
   const [fetchingModels, setFetchingModels] = React.useState(false);
@@ -170,18 +303,52 @@ export default function AdminAiModelsPage() {
   function startFromPreset(p: AiModelProviderPreset) {
     setEditing({
       ...EMPTY_FORM,
-      name: p.name,
+      mode: "create",
       providerType: p.providerType,
-      baseUrl: p.baseUrl,
-      model: p.suggestedModel ?? "",
       models: [],
+      defaults: {
+        name: p.name,
+        baseUrl: p.baseUrl,
+        model: p.suggestedModel ?? "",
+        apiKeyHint: p.apiKeyHint,
+      },
     });
     setShowAdvanced(false);
   }
 
+  const bindingsByGroup = React.useMemo(() => {
+    const grouped: Record<BindingGroupKey, AiAppBinding[]> = {
+      celebrity: [],
+      drama: [],
+      aiavatar: [],
+      creator: [],
+      platform: [],
+    };
+    const byPurpose = new Map(bindings.map((b) => [b.purpose, b] as const));
+    // 显式分组：一个用途可被多个分组声明（共享端点同时出现在各产品线 tab）。
+    for (const group of BINDING_GROUPS) {
+      for (const purpose of group.purposes) {
+        const b = byPurpose.get(purpose);
+        if (b) grouped[group.key].push(b);
+      }
+    }
+    // 未被任何分组声明的用途 → 落到「平台通用」兜底。
+    for (const b of bindings) {
+      if (!DECLARED_PURPOSES.has(b.purpose)) grouped.platform.push(b);
+    }
+    return grouped;
+  }, [bindings]);
+
+  React.useEffect(() => {
+    if (bindingsByGroup[bindingGroup]?.length) return;
+    const firstNonEmpty = BINDING_GROUPS.find((group) => bindingsByGroup[group.key].length > 0);
+    if (firstNonEmpty) setBindingGroup(firstNonEmpty.key);
+  }, [bindingGroup, bindingsByGroup]);
+
   async function onFetchModels() {
     if (!editing) return;
-    if (!editing.baseUrl.trim()) {
+    const baseUrl = valueOrDefault(editing, "baseUrl");
+    if (!baseUrl) {
       toast.warning({ title: "请先填写调用地址" });
       return;
     }
@@ -196,7 +363,7 @@ export default function AdminAiModelsPage() {
         ? await AiModelsApi.fetchModels(editing.id!)
         : await AiModelsApi.discoverModels({
             providerType: editing.providerType,
-            baseUrl: editing.baseUrl.trim(),
+            baseUrl,
             apiKey: editing.apiKey.trim(),
           });
       if (r.ok) {
@@ -226,7 +393,13 @@ export default function AdminAiModelsPage() {
 
   async function onSave() {
     if (!editing) return;
-    if (!editing.name.trim() || !editing.baseUrl.trim()) {
+    const name = valueOrDefault(editing, "name");
+    const baseUrl = valueOrDefault(editing, "baseUrl");
+    const apiVersion = valueOrDefault(editing, "apiVersion");
+    const model = valueOrDefault(editing, "model");
+    const ownerUserId = valueOrDefault(editing, "ownerUserId");
+
+    if (!name || !baseUrl) {
       toast.warning({ title: "端点名称 / 调用地址 必填" });
       return;
     }
@@ -235,18 +408,23 @@ export default function AdminAiModelsPage() {
       return;
     }
     try {
-      const body = {
-        name: editing.name.trim(),
+      const body: AdminAiModelEndpointUpsert = {
+        name,
         providerType: editing.providerType,
-        baseUrl: editing.baseUrl.trim(),
+        baseUrl,
         ...(editing.apiKey.trim() ? { apiKey: editing.apiKey.trim() } : {}),
-        apiVersion: editing.apiVersion.trim() || undefined,
-        model: editing.model.trim() || undefined,
+        apiVersion: apiVersion || undefined,
+        model: model || undefined,
         models: editing.models,
-        // 显式传空串 → 清空为平台级；非空 → 设置归属
-        ownerUserId: editing.ownerUserId.trim(),
         enabled: editing.enabled,
       };
+      if (editing.clearOwnerUserId) {
+        body.ownerUserId = "";
+      } else if (editing.ownerUserId.trim()) {
+        body.ownerUserId = editing.ownerUserId.trim();
+      } else if (ownerUserId) {
+        body.ownerUserId = ownerUserId;
+      }
       if (editing.id) {
         await AiModelsApi.update(editing.id, body);
       } else {
@@ -427,7 +605,7 @@ export default function AdminAiModelsPage() {
         <TabsContent value="endpoints" className="space-y-6">
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-base">{editing ? (editing.id ? "编辑端点" : "新建端点") : "操作"}</CardTitle>
+              <CardTitle className="text-base">{formTitle(editing)}</CardTitle>
               {!editing && (
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => void refresh()}>
@@ -460,12 +638,25 @@ export default function AdminAiModelsPage() {
             )}
             {editing && (
               <CardContent className="space-y-5">
+                {editing.mode !== "create" && (
+                  <div className="rounded-md border border-border bg-surface-muted/50 px-3.5 py-2.5 text-xs text-muted-foreground">
+                    {editing.mode === "edit" ? (
+                      <>
+                        正在编辑「{editing.defaults?.sourceName ?? editing.defaults?.name}」。当前配置已填入表单；上游 API 密钥不会回显，留空表示不修改。
+                      </>
+                    ) : (
+                      <>
+                        正在复制「{editing.defaults?.sourceName ?? editing.defaults?.name}」。placeholder 显示复制来源；上游 API 密钥不会复制，需要重新填写。
+                      </>
+                    )}
+                  </div>
+                )}
                 <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Field label="端点名称" hint="给运营用的备注，例如「主用 GPT-4o」">
                     <Input
                       value={editing.name}
                       onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                      placeholder="主用 GPT-4o"
+                      placeholder={placeholderFor(editing, "name", "主用 GPT-4o")}
                     />
                   </Field>
                   <Field
@@ -501,7 +692,7 @@ export default function AdminAiModelsPage() {
                     <Input
                       value={editing.baseUrl}
                       onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })}
-                      placeholder="https://api.openai.com/v1"
+                      placeholder={placeholderFor(editing, "baseUrl", "https://api.openai.com/v1")}
                     />
                   </Field>
                   <Field
@@ -518,7 +709,7 @@ export default function AdminAiModelsPage() {
                         type="password"
                         autoComplete="new-password"
                         className="pl-8"
-                        placeholder={editing.id ? "***（不修改）" : "sk-..."}
+                        placeholder={editing.defaults?.apiKeyHint ?? (editing.id ? "***（不修改）" : "sk-...")}
                         value={editing.apiKey}
                         onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
                       />
@@ -528,7 +719,7 @@ export default function AdminAiModelsPage() {
                     <Input
                       value={editing.model}
                       onChange={(e) => setEditing({ ...editing, model: e.target.value })}
-                      placeholder="gpt-4o"
+                      placeholder={placeholderFor(editing, "model", "gpt-4o")}
                     />
                   </Field>
                   <Field label="启用" hint="停用后绑定到该端点的 AI 应用会报「未配置」">
@@ -559,7 +750,8 @@ export default function AdminAiModelsPage() {
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {editing.models.map((m) => {
-                        const active = editing.model === m.id;
+                        const activeModel = editing.model.trim() || editing.defaults?.model;
+                        const active = activeModel === m.id;
                         return (
                           <button
                             key={m.id}
@@ -575,7 +767,7 @@ export default function AdminAiModelsPage() {
                             )}
                           >
                             {m.id}
-                            {active && <span className="font-sans">· 固定</span>}
+                            {active && <span className="font-sans">· {editing.model.trim() ? "固定" : "默认"}</span>}
                           </button>
                         );
                       })}
@@ -601,15 +793,28 @@ export default function AdminAiModelsPage() {
                         <Input
                           value={editing.apiVersion}
                           onChange={(e) => setEditing({ ...editing, apiVersion: e.target.value })}
-                          placeholder="留空"
+                          placeholder={placeholderFor(editing, "apiVersion", "留空")}
                         />
                       </Field>
                       <Field label="计费归属用户" hint="外部网关 Key 调用按 token 扣该用户钱包；留空 = 平台级，仅累计不扣费">
-                        <Input
-                          value={editing.ownerUserId}
-                          onChange={(e) => setEditing({ ...editing, ownerUserId: e.target.value })}
-                          placeholder="留空 = 平台级（不计费）"
-                        />
+                        <div className="flex gap-2">
+                          <Input
+                            value={editing.ownerUserId}
+                            onChange={(e) => setEditing({ ...editing, ownerUserId: e.target.value, clearOwnerUserId: false })}
+                            placeholder={placeholderFor(editing, "ownerUserId", "留空 = 平台级（不计费）")}
+                          />
+                          {(editing.defaults?.ownerUserId || editing.ownerUserId) && (
+                            <Button
+                              type="button"
+                              variant={editing.clearOwnerUserId ? "warning" : "outline"}
+                              size="sm"
+                              className="h-9 shrink-0"
+                              onClick={() => setEditing({ ...editing, ownerUserId: "", clearOwnerUserId: !editing.clearOwnerUserId })}
+                            >
+                              {editing.clearOwnerUserId ? "将清空" : "平台级"}
+                            </Button>
+                          )}
+                        </div>
                       </Field>
                     </div>
                   )}
@@ -653,53 +858,53 @@ export default function AdminAiModelsPage() {
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}
               {!loading && !err && (
-                <Table>
+                <Table className="min-w-[1180px] table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>名称</TableHead>
-                      <TableHead>类型</TableHead>
-                      <TableHead>调用地址</TableHead>
-                      <TableHead>上游密钥</TableHead>
-                      <TableHead>固定模型</TableHead>
-                      <TableHead>网关 Key</TableHead>
-                      <TableHead className="text-right">累计 tokens</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead className="w-[320px] text-right">操作</TableHead>
+                      <TableHead className="w-[190px]">名称</TableHead>
+                      <TableHead className="w-[132px]">类型</TableHead>
+                      <TableHead className="w-[190px]">调用地址</TableHead>
+                      <TableHead className="w-[132px]">上游密钥</TableHead>
+                      <TableHead className="w-[150px]">固定模型</TableHead>
+                      <TableHead className="w-[128px]">网关 Key</TableHead>
+                      <TableHead className="w-[112px] text-right">累计 tokens</TableHead>
+                      <TableHead className="w-[88px]">状态</TableHead>
+                      <TableHead className="w-[258px] text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.map((p) => {
                       const t = testing[p.id];
                       return (
-                        <TableRow key={p.id}>
-                          <TableCell>
-                            <div className="font-medium">{p.name}</div>
-                            <div className="font-mono text-[10px] text-muted-foreground">{p.id}</div>
+                        <TableRow key={p.id} className="h-[76px]">
+                          <TableCell className="py-3">
+                            <div className="truncate font-medium" title={p.name}>{p.name}</div>
+                            <div className="truncate font-mono text-[10px] text-muted-foreground" title={p.id}>{p.id}</div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-3">
                             <Badge tone="neutral" className="font-normal">
                               {PROVIDER_LABEL[p.providerType] ?? p.providerType}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-[200px] truncate text-xs font-mono">{p.baseUrl}</TableCell>
-                          <TableCell className="text-xs font-mono">{p.upstreamApiKeyMasked}</TableCell>
-                          <TableCell className="text-xs">{p.model ?? "—"}</TableCell>
-                          <TableCell className="text-xs">
+                          <TableCell className="truncate py-3 font-mono text-xs" title={p.baseUrl}>{p.baseUrl}</TableCell>
+                          <TableCell className="truncate py-3 font-mono text-xs" title={p.upstreamApiKeyMasked}>{p.upstreamApiKeyMasked}</TableCell>
+                          <TableCell className="truncate py-3 text-xs" title={p.model ?? undefined}>{p.model ?? "—"}</TableCell>
+                          <TableCell className="truncate py-3 text-xs">
                             {p.keyRevokedAt ? (
                               <Badge tone="danger" className="font-normal">
                                 已撤销
                               </Badge>
                             ) : p.hasKey ? (
-                              <span className="font-mono">{p.keyMasked}</span>
+                              <span className="font-mono" title={p.keyMasked}>{p.keyMasked}</span>
                             ) : (
                               <span className="text-muted-foreground">未生成</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums text-xs">
+                          <TableCell className="py-3 text-right tabular-nums text-xs">
                             {p.totalTokens.toLocaleString()}
                             <div className="text-[10px] text-muted-foreground">{p.totalCalls.toLocaleString()} 次</div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-3">
                             {p.enabled ? (
                               <Badge tone="success" className="font-normal">
                                 已启用
@@ -710,57 +915,57 @@ export default function AdminAiModelsPage() {
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell className="space-x-1 text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                setEditing({
-                                  id: p.id,
-                                  name: p.name,
-                                  providerType: p.providerType,
-                                  baseUrl: p.baseUrl,
-                                  apiKey: "",
-                                  apiVersion: p.apiVersion ?? "",
-                                  model: p.model ?? "",
-                                  models: p.models ?? [],
-                                  ownerUserId: p.ownerUserId ?? "",
-                                  enabled: p.enabled,
-                                })
-                              }
-                            >
-                              编辑
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void onTest(p.id)}
-                              aria-live="polite"
-                              className={cn(
-                                t?.state === "ok" && "border-success/40 text-success",
-                                t?.state === "fail" && "border-destructive/40 text-destructive",
-                              )}
-                            >
-                              {t?.state === "running"
-                                ? "测试中…"
-                                : t?.state === "ok"
-                                ? "已联通"
-                                : t?.state === "fail"
-                                ? "已失败"
-                                : "测试连接"}
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => void onMintKey(p)}>
-                              <KeyRound className="mr-1 h-3.5 w-3.5" />
-                              {p.hasKey ? "重生成 Key" : "生成 Key"}
-                            </Button>
-                            {p.hasKey && (
-                              <Button size="sm" variant="outline" onClick={() => void onRevokeKey(p)}>
-                                撤销 Key
+                          <TableCell className="py-3 text-right">
+                            <div className="flex flex-wrap justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2"
+                                onClick={() => setEditing(editFormFromEndpoint(p))}
+                              >
+                                编辑
                               </Button>
-                            )}
-                            <Button size="sm" variant="destructive" onClick={() => void onDelete(p)}>
-                              删除
-                            </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2"
+                                onClick={() => setEditing(copyFormFromEndpoint(p))}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                                复制
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void onTest(p.id)}
+                                aria-live="polite"
+                                className={cn(
+                                  "h-7 px-2",
+                                  t?.state === "ok" && "border-success/40 text-success",
+                                  t?.state === "fail" && "border-destructive/40 text-destructive",
+                                )}
+                              >
+                                {t?.state === "running"
+                                  ? "测试中"
+                                  : t?.state === "ok"
+                                  ? "已联通"
+                                  : t?.state === "fail"
+                                  ? "已失败"
+                                  : "测试"}
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => void onMintKey(p)}>
+                                <KeyRound className="h-3.5 w-3.5" />
+                                {p.hasKey ? "重生成" : "生成 Key"}
+                              </Button>
+                              {p.hasKey && (
+                                <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => void onRevokeKey(p)}>
+                                  撤销
+                                </Button>
+                              )}
+                              <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => void onDelete(p)}>
+                                删除
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -787,66 +992,31 @@ export default function AdminAiModelsPage() {
             </CardHeader>
             <CardContent>
               <div className="mb-3 text-xs text-muted-foreground">
-                每个 AI 应用（用途）固定指向一个模型接入端点。前端用到该能力时，经此绑定路由到对应模型。
-                当前实际消费的是：脚本起草 / 卖点提取 / 变量抽取。
+                每个 AI 应用固定指向一个模型接入端点。按业务应用分组后，运营可以直接看出这条绑定服务哪条产品线。
               </div>
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}
               {!loading && !err && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[180px]">AI 应用</TableHead>
-                      <TableHead>绑定端点</TableHead>
-                      <TableHead className="w-[160px]">状态</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bindings.map((b) => (
-                      <TableRow key={b.purpose}>
-                        <TableCell>
-                          <div className="font-medium">{b.purposeLabel}</div>
-                          <div className="font-mono text-[10px] text-muted-foreground">{b.purpose}</div>
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={b.endpointId ?? NONE}
-                            onValueChange={(v) => void onBind(b.purpose, v)}
-                          >
-                            <SelectTrigger className="max-w-sm">
-                              <SelectValue placeholder="未绑定" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={NONE}>未绑定</SelectItem>
-                              {endpoints.map((ep) => (
-                                <SelectItem key={ep.id} value={ep.id}>
-                                  {ep.name}
-                                  {ep.model ? ` · ${ep.model}` : ""}
-                                  {!ep.enabled ? "（已停用）" : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          {!b.endpointId ? (
-                            <Badge tone="neutral" className="font-normal text-muted-foreground">
-                              未绑定
-                            </Badge>
-                          ) : b.endpointEnabled === false ? (
-                            <Badge tone="danger" className="font-normal">
-                              端点已停用
-                            </Badge>
-                          ) : (
-                            <Badge tone="success" className="font-normal">
-                              已绑定
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                <Tabs value={bindingGroup} onValueChange={(v) => setBindingGroup(v as BindingGroupKey)}>
+                  <TabsList className="h-auto flex-wrap justify-start">
+                    {BINDING_GROUPS.map((group) => (
+                      <TabsTrigger key={group.key} value={group.key} className="gap-1.5">
+                        {group.label}
+                        <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {bindingsByGroup[group.key].length}
+                        </span>
+                      </TabsTrigger>
                     ))}
-                  </TableBody>
-                </Table>
+                  </TabsList>
+                  {BINDING_GROUPS.map((group) => (
+                    <TabsContent key={group.key} value={group.key} className="space-y-3">
+                      <div className="rounded-md border border-border bg-surface-muted/45 px-3.5 py-2 text-xs text-muted-foreground">
+                        {group.description}
+                      </div>
+                      <BindingTable bindings={bindingsByGroup[group.key]} endpoints={endpoints} onBind={onBind} />
+                    </TabsContent>
+                  ))}
+                </Tabs>
               )}
             </CardContent>
           </Card>
@@ -908,6 +1078,88 @@ export default function AdminAiModelsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function BindingTable({
+  bindings,
+  endpoints,
+  onBind,
+}: {
+  bindings: AiAppBinding[];
+  endpoints: AiModelEndpoint[];
+  onBind: (purpose: AiModelPurpose, value: string) => void | Promise<void>;
+}) {
+  if (bindings.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+        当前分组暂无 AI 应用绑定。
+      </div>
+    );
+  }
+
+  return (
+    <Table className="min-w-[760px] table-fixed">
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[220px]">AI 能力</TableHead>
+          <TableHead>绑定端点</TableHead>
+          <TableHead className="w-[140px]">状态</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {bindings.map((binding) => (
+          <TableRow key={binding.purpose} className="h-[68px]">
+            <TableCell className="py-3">
+              <div className="font-medium">{binding.purposeLabel}</div>
+              <div className="font-mono text-[10px] text-muted-foreground">{binding.purpose}</div>
+            </TableCell>
+            <TableCell className="py-3">
+              <Select value={binding.endpointId ?? NONE} onValueChange={(value) => void onBind(binding.purpose, value)}>
+                <SelectTrigger className="max-w-md">
+                  <SelectValue placeholder="未绑定" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>未绑定</SelectItem>
+                  {endpoints.map((endpoint) => (
+                    <SelectItem key={endpoint.id} value={endpoint.id}>
+                      {endpoint.name}
+                      {endpoint.model ? ` · ${endpoint.model}` : ""}
+                      {!endpoint.enabled ? "（已停用）" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </TableCell>
+            <TableCell className="py-3">
+              <BindingStatusBadge binding={binding} />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function BindingStatusBadge({ binding }: { binding: AiAppBinding }) {
+  if (!binding.endpointId) {
+    return (
+      <Badge tone="neutral" className="font-normal text-muted-foreground">
+        未绑定
+      </Badge>
+    );
+  }
+  if (binding.endpointEnabled === false) {
+    return (
+      <Badge tone="danger" className="font-normal">
+        端点已停用
+      </Badge>
+    );
+  }
+  return (
+    <Badge tone="success" className="font-normal">
+      已绑定
+    </Badge>
   );
 }
 

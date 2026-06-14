@@ -5,17 +5,18 @@
 import * as React from "react";
 import { Clock } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
+import { STAGE_NAMES } from "./stages-config";
 import type { DramaProjectSummary } from "@/mocks/drama-workshop";
 
 interface ProjectCardProps {
   p: DramaProjectSummary;
   delay?: number;
   onOpen?: (p: DramaProjectSummary) => void;
-  /** 六阶段名,用来显示"走到「分镜工作台」" */
-  stageNames: readonly string[];
+  /** 阶段名,用来显示"走到「剧集脚本」";默认取 v4 六阶段 */
+  stageNames?: readonly string[];
 }
 
-export function ProjectCard({ p, delay = 0, onOpen, stageNames }: ProjectCardProps) {
+export function ProjectCard({ p, delay = 0, onOpen, stageNames = STAGE_NAMES }: ProjectCardProps) {
   const [hover, setHover] = React.useState(false);
   const stageLabel = stageNames[p.stage - 1] ?? "选题立项";
   return (
@@ -40,7 +41,7 @@ export function ProjectCard({ p, delay = 0, onOpen, stageNames }: ProjectCardPro
         <Thumb
           from={p.cover.from}
           to={p.cover.to}
-          ratio={p.ratio === "16:9" ? "16/10" : "3/2"}
+          ratio={p.ratio === "16:9" ? "16/10" : "3/4"}
           radius={0}
           stripes
           style={{ width: "100%" }}
