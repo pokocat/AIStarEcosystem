@@ -77,7 +77,7 @@ export function RecipeReviewSection() {
         {loading ? (
           <span className="muted" style={{ fontSize: 13 }}>正在加载配方…</span>
         ) : pending.length === 0 ? (
-          <span className="faint" style={{ fontSize: 13 }}>暂无待审创意。用户在「已完成短剧」点「发布到创意市场」后会出现在这里。</span>
+          <span className="faint" style={{ fontSize: 13 }}>暂无待审创意。用户在「已完成短剧」或「短视频工坊」点「发布到创意中心」后会出现在这里。</span>
         ) : (
           pending.map((r) => {
             const open = expanded === r.id;
