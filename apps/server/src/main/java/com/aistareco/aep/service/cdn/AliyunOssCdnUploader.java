@@ -28,8 +28,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -54,6 +56,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
     private final String region;
     private final String baseUrl;
     private final String keyPrefix;
+    private final List<String> absoluteKeyPrefixes;
     private final OSS ossClient;
 
     // v0.47+：URL 签名配置
@@ -69,6 +72,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
             @Value("${aep.cdn.oss.access-key-secret:}") String accessKeySecret,
             @Value("${aep.cdn.oss.base-url:}") String baseUrl,
             @Value("${aep.cdn.oss.key-prefix:}") String keyPrefix,
+            @Value("${aep.cdn.oss.absolute-key-prefixes:media}") String absoluteKeyPrefixes,
             @Value("${aep.cdn.oss.region:}") String region,
             @Value("${aep.cdn.signed-url.strategy:none}") String signStrategyRaw,
             @Value("${aep.cdn.signed-url.ttl-seconds:3600}") long ttlSeconds,
@@ -78,6 +82,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
         this.bucket = requireText(bucket, "aep.cdn.oss.bucket");
         this.baseUrl = trimTrailingSlash(requireText(baseUrl, "aep.cdn.oss.base-url"));
         this.keyPrefix = normalizePrefix(keyPrefix);
+        this.absoluteKeyPrefixes = normalizePrefixList(absoluteKeyPrefixes);
         // v0.47+：region 优先取配置；缺失则从 endpoint 推导（"oss-cn-hangzhou(-internal).aliyuncs.com" → "cn-hangzhou"）
         this.region = resolveRegion(region, this.endpoint);
         String id = requireText(accessKeyId, "aep.cdn.oss.access-key-id");
@@ -102,9 +107,10 @@ public class AliyunOssCdnUploader implements CdnUploader {
                             + "(请在阿里云 CDN 控制台「访问控制 → URL 鉴权 Type A」获取 PrivateKey)");
         }
 
-        log.info("[cdn] AliyunOssCdnUploader bucket={} endpoint={} region={} publicBase={} keyPrefix={} signVersion=V4 signStrategy={} ttl={}s",
+        log.info("[cdn] AliyunOssCdnUploader bucket={} endpoint={} region={} publicBase={} keyPrefix={} absoluteKeyPrefixes={} signVersion=V4 signStrategy={} ttl={}s",
                 this.bucket, this.endpoint, this.region, this.baseUrl,
                 this.keyPrefix.isBlank() ? "<none>" : this.keyPrefix,
+                this.absoluteKeyPrefixes.isEmpty() ? "<none>" : String.join(",", this.absoluteKeyPrefixes),
                 this.signStrategy, this.defaultTtlSeconds);
         if (this.signStrategy == SignStrategy.NONE) {
             log.warn("[cdn] aep.cdn.signed-url.strategy=none —— 生产环境强烈建议改为 oss 或 cdn 防 OSS 流量盗刷");
@@ -342,9 +348,17 @@ public class AliyunOssCdnUploader implements CdnUploader {
 
     private String objectKeyFor(String key) {
         String clean = normalizeKey(key);
+        if (isAbsoluteObjectKey(clean)) return clean;
         if (keyPrefix.isBlank()) return clean;
         if (clean.equals(keyPrefix) || clean.startsWith(keyPrefix + "/")) return clean;
         return keyPrefix + "/" + clean;
+    }
+
+    private boolean isAbsoluteObjectKey(String clean) {
+        for (String prefix : absoluteKeyPrefixes) {
+            if (clean.equals(prefix) || clean.startsWith(prefix + "/")) return true;
+        }
+        return false;
     }
 
     private static String normalizeKey(String key) {
@@ -366,6 +380,15 @@ public class AliyunOssCdnUploader implements CdnUploader {
             throw new IllegalStateException("invalid aep.cdn.oss.key-prefix: " + value);
         }
         return clean;
+    }
+
+    private static List<String> normalizePrefixList(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        return Arrays.stream(value.split(","))
+                .map(AliyunOssCdnUploader::normalizePrefix)
+                .filter(v -> !v.isBlank())
+                .distinct()
+                .toList();
     }
 
     private static String requireText(String value, String name) {

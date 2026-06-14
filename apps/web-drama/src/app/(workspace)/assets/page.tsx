@@ -24,6 +24,8 @@ import { Thumb } from "@/components/drama-ui";
 import {
   ASSET_USAGE,
   MAT_CATS,
+  MATERIALS,
+  setMaterials,
   type Material,
 } from "@/mocks/drama-workshop";
 
@@ -51,18 +53,55 @@ const ASSET_PALETTES: [string, string][] = [
 ];
 
 type MediaFilter = "all" | "image" | "video";
+const STORAGE_KEY = "aistareco.web-drama.assets.v1";
+
+function cloneMaterials(list: Material[]): Material[] {
+  return list.map((m) => ({ ...m, tags: [...(m.tags ?? [])] }));
+}
+
+function loadInitialMaterials(): Material[] {
+  if (typeof window === "undefined") return cloneMaterials(MATERIALS);
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Material[];
+      if (Array.isArray(parsed)) return cloneMaterials(parsed);
+    }
+  } catch {
+    // 本地缓存损坏时回退到内置素材池。
+  }
+  return cloneMaterials(MATERIALS);
+}
+
+function persistMaterials(next: Material[]) {
+  const snapshot = cloneMaterials(next);
+  setMaterials(snapshot);
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // 存储失败不阻塞当前会话的素材操作。
+  }
+}
 
 export default function AssetsPage() {
-  // v0.66:素材库暂无后端 → 不再伪造「你的素材」;空起步,用户上传即入库（本地）。
-  const [items, setItems] = React.useState<Material[]>([]);
+  // 暂无后端资产表：浏览器本地持久化 + 内置素材池兜底，避免刷新 / 重启后空库。
+  const [items, setItems] = React.useState<Material[]>(loadInitialMaterials);
   const [q, setQ] = React.useState("");
   const [cat, setCat] = React.useState("all"); // all / 人物 / 场景 / 道具 / 其他
   const [media, setMedia] = React.useState<MediaFilter>("all"); // all / image / video
   const [sel, setSel] = React.useState<Material | null>(null);
   const [adding, setAdding] = React.useState(false);
 
-  // v0.66:本地态（无后端）。不再回写共享 MATERIALS mock —— 否则会清掉别处 @素材 选择器的样例。
-  const sync = (next: Material[]) => setItems(next);
+  React.useEffect(() => {
+    setMaterials(items);
+  }, [items]);
+
+  const sync = (next: Material[]) => {
+    const snapshot = cloneMaterials(next);
+    persistMaterials(snapshot);
+    setItems(snapshot);
+  };
   const create = (m: Material) => {
     sync([m, ...items]);
     setAdding(false);

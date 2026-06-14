@@ -75,8 +75,8 @@ public class DramaRecipe {
     @Column(name = "cover_image", length = 512)
     private String coverImage;
 
-    /** v0.75 补丁：配方详情页的范例视频（如 /recipes/&lt;id&gt;.mp4，web-drama public 直出，封面用 coverImage 做 poster）；
-        为空时详情页展示「范例视频整理中」占位。仅作展示用静态营销素材。 */
+    /** v0.75 补丁：配方详情页的范例视频。seed/DB 优先存 OSS 逻辑 key，出 wire 时由 CdnUrlSigner 派生 URL；
+        老数据也兼容 /recipes/&lt;id&gt;.mp4 或完整 URL。为空时详情页展示「范例视频整理中」占位。 */
     @Column(name = "preview_video", length = 512)
     private String previewVideo;
 

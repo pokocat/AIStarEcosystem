@@ -8,6 +8,7 @@ import { Thumb } from "@/components/drama-ui";
 interface VideoCoverProps {
   from: string;
   to: string;
+  src?: string;
   ratio?: string;
   label?: string;
   big?: boolean;
@@ -15,9 +16,9 @@ interface VideoCoverProps {
   style?: React.CSSProperties;
 }
 
-export function VideoCover({ from, to, ratio = "16/9", label, big, children, style }: VideoCoverProps) {
+export function VideoCover({ from, to, src, ratio = "16/9", label, big, children, style }: VideoCoverProps) {
   return (
-    <Thumb from={from} to={to} ratio={ratio} radius={0} style={{ width: "100%", ...style }}>
+    <Thumb from={from} to={to} src={src} ratio={ratio} radius={0} style={{ width: "100%", ...style }}>
       <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
         <span
           style={{

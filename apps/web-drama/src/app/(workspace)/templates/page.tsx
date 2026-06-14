@@ -5,18 +5,18 @@ export const dynamic = "force-dynamic";
 // 创意市场（v0.75）—— 统一承载「官方内置创意」+「用户发布的创意」。
 // 数据真源 = 已发布的 DramaRecipe（origin: official=官方 / extracted=用户自助 / featured=运营精选）。
 // 用户：浏览 + 「套用开拍」（预填新项目，建-时选）。
-// 运营（operatorRole 或运营身份开关）：新建内置创意 + 从用户作品精选（邀请授权）。
+// 运营（后端授予的 operatorRole）：新建内置创意 + 从用户作品精选（邀请授权）。
 // 子页「我发布的创意」= /templates/published。
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  AlertCircle,
   Boxes,
   Check,
   Clock,
   Film,
   Flame,
-  Play,
   Plus,
   Search,
   Sparkles,
@@ -31,7 +31,6 @@ import { useAuth } from "@ai-star-eco/api-client";
 import { RecipesApi } from "@/api";
 import type { BuiltinRecipeInput, DramaRecipe, RecipeBeat, RecipeCandidate } from "@/api/recipes";
 import { CONTENT_TYPES } from "@/mocks/drama-workshop";
-import { useOperator } from "@/lib/use-operator";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { ModalShell } from "@/components/common/ModalShell";
 
@@ -42,8 +41,8 @@ const isOfficial = (r: DramaRecipe) => r.origin === "official";
 export default function TemplatesPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const [operator] = useOperator();
-  const showOperator = !!user?.operatorRole || operator;
+  // 运营操作（新建内置创意 / 从用户作品精选）仅对后端授予运营身份的账号显示。
+  const showOperator = !!user?.operatorRole;
 
   const [recipes, setRecipes] = React.useState<DramaRecipe[]>([]);
   const [loading, setLoading] = React.useState(true);

@@ -33,7 +33,6 @@ import {
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
-import { useOperator } from "@/lib/use-operator";
 
 interface NavSubItem {
   href: string;
@@ -103,7 +102,7 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
-// 维护平台目录内容（热点 / 创意推荐等）。真实运营身份或开启「运营身份」开关时显示。
+// 维护平台目录内容（热点 / 创意推荐等）。仅在 admin 后台授予运营身份（operatorRole）后自动显示。
 const OPERATOR_GROUP: NavGroup = {
   title: "运营",
   items: [{ href: "/operations", icon: Sliders, label: "内容目录" }],
@@ -118,10 +117,10 @@ function isActive(pathname: string | null, item: NavItem): boolean {
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [operator, setOperator] = useOperator();
-  // 真实运营身份，或开启下方「运营身份」开关，都会显示「运营 · 内容目录」入口。
-  // 开关仅前端预览运营视图；真实写入仍由后端按角色校验（见 /operations 页与 DramaCatalogController）。
-  const showOperator = !!user?.operatorRole || operator;
+  // 运营入口完全由后端授予的运营身份（operatorRole）决定：admin 后台
+  //（/celebrity/operators）配置 aep_users.operatorRole 后，/api/me 返回该字段，
+  // 前端自动展示「运营 · 内容目录」入口。无前端开关，避免越权预览。
+  const showOperator = !!user?.operatorRole;
   const groups = showOperator ? [...GROUPS, OPERATOR_GROUP] : GROUPS;
   return (
     <aside
@@ -258,25 +257,6 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             })}
           </div>
         ))}
-      </div>
-
-      {/* 运营身份开关：开启后显示「运营 · 内容目录」入口 + 模板库可新建模板 */}
-      <div style={{ padding: "0 14px 8px", flex: "none" }}>
-        <button
-          type="button"
-          className="chip static"
-          title="切换运营身份"
-          onClick={() => setOperator(!operator)}
-          style={{
-            width: "100%",
-            justifyContent: "flex-start",
-            cursor: "pointer",
-            background: operator ? "var(--accent-soft)" : "var(--surface-2)",
-            color: operator ? "var(--accent)" : "var(--ink-3)",
-          }}
-        >
-          <Sliders size={13} /> 运营身份 {operator ? "开" : "关"}
-        </button>
       </div>
 
       <div

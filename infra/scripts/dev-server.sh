@@ -26,7 +26,8 @@
 #   ./infra/scripts/dev-server.sh --env-file FILE      # 默认 infra/env/server.local.env
 #   ./infra/scripts/dev-server.sh --mvn-args "-DskipTests"
 #
-# ⚠️ infra/env/*.env 已被 gitignore。本机 env 可放 dev 密钥；真实 OSS/RDS 密钥不要写入 git。
+# 若 apps/server/.env 存在，会在 infra/env/server.local.env 之后叠加加载，便于本地用真 OSS 联调。
+# ⚠️ infra/env/*.env 和 apps/server/.env 已被 gitignore。本机 env 可放 dev 密钥；真实 OSS/RDS 密钥不要写入 git。
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -47,6 +48,7 @@ MYSQL_DB="aistareco"
 MVN_ARGS=""
 LOG_FILE=""
 LOCAL_ENV_FILE="${AISTARECO_DEV_SERVER_ENV_FILE:-infra/env/server.local.env}"
+SERVER_DOTENV_FILE="${AISTARECO_SERVER_DOTENV_FILE:-apps/server/.env}"
 DOCKER_CONTAINER="aistareco-mysql-dev"
 DOCKER_VOLUME="aistareco-mysql-dev-data"
 DOCKER_IMAGE="mysql:8.0"
@@ -164,13 +166,8 @@ reset_local_env_scope() {
   unset AEP_CDN_SIGNED_URL_TTL_SECONDS AEP_CDN_SIGNED_URL_CDN_AUTH_KEY
 }
 
-load_local_env_file() {
-  [[ -f "${LOCAL_ENV_FILE}" ]] || generate_local_env_file
-  [[ -r "${LOCAL_ENV_FILE}" ]] || die "本机 env 不可读: ${LOCAL_ENV_FILE}"
-
-  reset_local_env_scope
-  log "加载本机 env: ${LOCAL_ENV_FILE}"
-
+parse_env_file() {
+  local env_file="$1"
   local line trimmed key value first last lineno
   lineno=0
   while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -180,11 +177,11 @@ load_local_env_file() {
     if [[ "${trimmed}" == export[[:space:]]* ]]; then
       trimmed="$(trim "${trimmed#export}")"
     fi
-    [[ "${trimmed}" == *=* ]] || die "${LOCAL_ENV_FILE}:${lineno} 不是 KEY=VALUE 格式"
+    [[ "${trimmed}" == *=* ]] || die "${env_file}:${lineno} 不是 KEY=VALUE 格式"
 
     key="$(trim "${trimmed%%=*}")"
     value="$(trim "${trimmed#*=}")"
-    [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "${LOCAL_ENV_FILE}:${lineno} 非法变量名: ${key}"
+    [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "${env_file}:${lineno} 非法变量名: ${key}"
 
     if [[ ${#value} -ge 2 ]]; then
       first="${value:0:1}"
@@ -194,9 +191,50 @@ load_local_env_file() {
       fi
     fi
     export "${key}=${value}"
-  done < "${LOCAL_ENV_FILE}"
+  done < "${env_file}"
+}
+
+load_local_env_file() {
+  [[ -f "${LOCAL_ENV_FILE}" ]] || generate_local_env_file
+  [[ -r "${LOCAL_ENV_FILE}" ]] || die "本机 env 不可读: ${LOCAL_ENV_FILE}"
+
+  reset_local_env_scope
+  log "加载本机 env: ${LOCAL_ENV_FILE}"
+  parse_env_file "${LOCAL_ENV_FILE}"
+
+  if [[ -f "${SERVER_DOTENV_FILE}" ]]; then
+    [[ -r "${SERVER_DOTENV_FILE}" ]] || die "server dotenv 不可读: ${SERVER_DOTENV_FILE}"
+    log "叠加 server dotenv: ${SERVER_DOTENV_FILE}"
+    parse_env_file "${SERVER_DOTENV_FILE}"
+  fi
+
+  normalize_cdn_env_after_overlay
 
   export SPRING_PROFILES_ACTIVE="${PROFILE}"
+}
+
+normalize_cdn_env_after_overlay() {
+  local cdn_driver sign_strategy public_base oss_base
+  cdn_driver="$(lower "$(env_value AEP_CDN_DRIVER)")"
+  [[ "${cdn_driver}" == "oss" ]] || return 0
+
+  sign_strategy="$(lower "$(env_value AEP_CDN_SIGNED_URL_STRATEGY)")"
+  if [[ -z "${sign_strategy}" || "${sign_strategy}" == "none" ]]; then
+    export AEP_CDN_SIGNED_URL_STRATEGY=oss
+    warn "AEP_CDN_DRIVER=oss 但签名策略仍是本地 none，已按本地真 OSS 联调改用 oss"
+  fi
+
+  public_base="$(env_value AEP_CDN_PUBLIC_BASE_URL)"
+  oss_base="$(env_value AEP_CDN_OSS_BASE_URL)"
+  if [[ -n "${oss_base}" ]] && {
+    [[ -z "${public_base}" ]] ||
+    [[ "${public_base}" == "/cdn" ]] ||
+    [[ "${public_base}" == http://localhost:* ]] ||
+    [[ "${public_base}" == http://127.0.0.1:* ]]
+  }; then
+    export AEP_CDN_PUBLIC_BASE_URL="${oss_base}"
+    warn "AEP_CDN_PUBLIC_BASE_URL 仍是本地地址，已按 AEP_CDN_OSS_BASE_URL 覆盖"
+  fi
 }
 
 env_value() {

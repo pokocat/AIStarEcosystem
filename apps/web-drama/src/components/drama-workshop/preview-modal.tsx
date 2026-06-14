@@ -4,14 +4,14 @@
 // 创意推荐 / 模板库 / 快速开剧右栏共用同一套预览(封面 + 描述 + 估时大纲 + 动作)。
 import * as React from "react";
 import { Clock, Film, Sparkles, X } from "lucide-react";
-import { CreditButton } from "@/components/drama-ui";
+import { CreditButton, Thumb } from "@/components/drama-ui";
 import { ModalShell } from "@/components/common/ModalShell";
 import type { Template } from "@/mocks/drama-workshop";
 import { tplBeats, type PreviewBeat } from "@/mocks/drama-workshop";
-import { VideoCover } from "./video-cover";
 
 export interface TplPreviewItem {
-  cover: { from: string; to: string };
+  cover: { from: string; to: string; src?: string };
+  previewVideo?: string;
   title: string;
   cat?: string;
   desc: string;
@@ -22,10 +22,157 @@ export interface TplPreviewItem {
   coverLabel?: string;
   beats?: PreviewBeat[] | null;
   beatsLabel?: string;
+  estimate?: string | null;
+}
+
+function PreviewHeroMedia({
+  cover,
+  previewVideo,
+  cat,
+  personal,
+  label,
+}: {
+  cover: TplPreviewItem["cover"];
+  previewVideo?: string;
+  cat?: string;
+  personal?: boolean;
+  label: string;
+}) {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [natural, setNatural] = React.useState<{ w: number; h: number } | null>(null);
+  const [videoError, setVideoError] = React.useState(false);
+  const aspect = natural && natural.w > 0 && natural.h > 0 ? natural.w / natural.h : null;
+  const isPortrait = aspect != null && aspect < 1;
+  const frameWidth = isPortrait && aspect
+    ? `min(100%, calc(min(64vh, 520px) * ${aspect}))`
+    : "100%";
+
+  React.useEffect(() => {
+    setNatural(null);
+    setVideoError(false);
+    const video = videoRef.current;
+    if (!video || !previewVideo) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    const timer = window.setTimeout(() => {
+      void video.play().catch(() => {
+        // Muted autoplay should normally pass; if the browser blocks or the object fails,
+        // keep the non-interactive poster fallback instead of exposing video controls.
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [previewVideo]);
+
+  const tryPlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    void video.play().catch(() => {});
+  };
+
+  if (!previewVideo || videoError) {
+    return (
+      <Thumb from={cover.from} to={cover.to} src={cover.src} ratio="16/9" radius={0} style={{ width: "100%" }}>
+        {cat && (
+          <span className="thumb-label" style={{ position: "absolute", top: 10, left: 10 }}>
+            {cat}
+          </span>
+        )}
+        {personal && (
+          <span
+            className="tag tag-pink"
+            style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.92)" }}
+          >
+            <Sparkles size={10} fill="currentColor" strokeWidth={0} /> 猜你想拍
+          </span>
+        )}
+        <span className="thumb-label" style={{ position: "absolute", left: 10, bottom: 10 }}>
+          {videoError ? "视频加载失败 · 已显示封面" : label}
+        </span>
+      </Thumb>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: frameWidth,
+        maxWidth: "100%",
+        margin: "0 auto",
+        aspectRatio: natural ? `${natural.w} / ${natural.h}` : "16 / 9",
+        background: `linear-gradient(150deg, ${cover.from}, ${cover.to})`,
+        borderRadius: 14,
+        overflow: "hidden",
+      }}
+    >
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video
+        ref={videoRef}
+        src={previewVideo}
+        poster={cover.src}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+        controlsList="nodownload nofullscreen noremoteplayback"
+        aria-label={`${cat || "创意"}范例视频`}
+        onLoadedMetadata={(e) => {
+          const video = e.currentTarget;
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setNatural({ w: video.videoWidth, h: video.videoHeight });
+          }
+          tryPlay();
+        }}
+        onLoadedData={tryPlay}
+        onCanPlay={tryPlay}
+        onError={() => setVideoError(true)}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          background: "#050505",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          background: "linear-gradient(180deg,rgba(0,0,0,.26),rgba(0,0,0,0) 40%,rgba(0,0,0,.44))",
+        }}
+      />
+      {cat && (
+        <span className="thumb-label" style={{ position: "absolute", top: 10, left: 10 }}>
+          {cat}
+        </span>
+      )}
+      <span className="thumb-label" style={{ position: "absolute", left: 10, bottom: 10 }}>
+        {label}
+      </span>
+      {personal && (
+        <span
+          className="tag tag-pink"
+          style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.92)" }}
+        >
+          <Sparkles size={10} fill="currentColor" strokeWidth={0} /> 猜你想拍
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function TplPreviewBody({
   cover,
+  previewVideo,
   title,
   cat,
   desc,
@@ -35,33 +182,20 @@ export function TplPreviewBody({
   coverLabel,
   beats: beatsProp,
   beatsLabel,
+  estimate,
 }: TplPreviewItem) {
   const beats = tpl ? tplBeats(tpl) : beatsProp;
   const label = beatsLabel ?? (tpl ? "估时大纲" : "AI 会这样帮你拍");
   return (
     <div className="col gap-3">
       <div style={{ borderRadius: 14, overflow: "hidden", flex: "none" }}>
-        <VideoCover
-          from={cover.from}
-          to={cover.to}
-          ratio="16/9"
-          big
+        <PreviewHeroMedia
+          cover={cover}
+          previewVideo={previewVideo}
+          cat={cat}
+          personal={personal}
           label={coverLabel ?? (tpl ? "模板效果预览 · 同结构成片片段" : "效果预览 · 同类型成片片段")}
-        >
-          {cat && (
-            <span className="thumb-label" style={{ position: "absolute", top: 10, left: 10 }}>
-              {cat}
-            </span>
-          )}
-          {personal && (
-            <span
-              className="tag tag-pink"
-              style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.92)" }}
-            >
-              <Sparkles size={10} fill="currentColor" strokeWidth={0} /> 猜你想拍
-            </span>
-          )}
-        </VideoCover>
+        />
       </div>
       <div>
         <div className="row gap-2">
@@ -133,7 +267,7 @@ export function TplPreviewBody({
           )}
         </div>
       )}
-      {!tpl && !beats && (
+      {!tpl && !beats && estimate !== null && (
         <div
           className="row gap-2"
           style={{
@@ -145,8 +279,8 @@ export function TplPreviewBody({
             fontWeight: 600,
           }}
         >
-          <Clock size={13} style={{ color: "var(--accent)" }} /> AI 估算 · 约 60-80 集 · 每集 75
-          秒左右,开拍后给出完整估时大纲
+          <Clock size={13} style={{ color: "var(--accent)" }} />{" "}
+          {estimate ?? "AI 估算 · 开拍后根据你的主题生成逐镜节奏和完整估时大纲"}
         </div>
       )}
     </div>
