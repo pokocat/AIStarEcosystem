@@ -35,12 +35,21 @@ import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
 import { useOperator } from "@/lib/use-operator";
 
+interface NavSubItem {
+  href: string;
+  label: string;
+}
+
 interface NavItem {
   href: string;
   icon: React.ElementType;
   label: string;
   /** 设为 true 时，仅在路径完全相等时高亮；否则前缀匹配也高亮（用于详情页继承父 tab）。 */
   exact?: boolean;
+  /** 右侧小标签，如「建设中」。 */
+  badge?: string;
+  /** 父项激活时展开的二级入口（如创意市场 → 我发布的创意）。 */
+  children?: NavSubItem[];
 }
 
 interface NavGroup {
@@ -62,7 +71,10 @@ const GROUPS: NavGroup[] = [
   {
     // v0.63 补丁:剧本审阅收进「短剧工坊」页内入口,不再占一级菜单
     title: "提效",
-    items: [{ href: "/templates", icon: Layers, label: "模板库" }],
+    items: [
+      // v0.75：模板库 → 创意市场（官方内置 + 用户发布统一在此）+ 子页「我发布的创意」
+      { href: "/templates", icon: Layers, label: "创意市场", children: [{ href: "/templates/published", label: "我发布的创意" }] },
+    ],
   },
   {
     title: "素材",
@@ -70,14 +82,14 @@ const GROUPS: NavGroup[] = [
       { href: "/assets", icon: ImageIcon, label: "素材库" },
       // v0.60 收敛：孵化 / 形象锻造入口下线，数字人统一在 AiAvatar 创建后引入
       { href: "/cast", icon: Users, label: "演员 IP 阵容" },
-      { href: "/wardrobe", icon: Shirt, label: "戏服与道具" },
-      { href: "/scripts", icon: PenTool, label: "脚本工坊" },
+      { href: "/wardrobe", icon: Shirt, label: "戏服与道具", badge: "建设中" },
+      { href: "/scripts", icon: PenTool, label: "脚本工坊", badge: "建设中" },
     ],
   },
   {
     title: "分发与洞察",
     items: [
-      { href: "/distribution", icon: Share2, label: "多平台分发" },
+      { href: "/distribution", icon: Share2, label: "多平台分发", badge: "建设中" },
       { href: "/insights", icon: BarChart3, label: "数据洞察" },
       { href: "/trends", icon: Compass, label: "趋势雷达" },
     ],
@@ -176,31 +188,72 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               const Icon = it.icon;
               const active = isActive(pathname, it);
               return (
-                <Link
-                  key={it.href}
-                  href={it.href}
-                  onClick={onNavigate}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "7px 12px",
-                    borderRadius: 11,
-                    background: active ? "var(--accent-soft)" : "transparent",
-                    color: active ? "var(--accent)" : "var(--ink-2)",
-                    fontSize: 13.5,
-                    fontWeight: active ? 700 : 600,
-                    marginBottom: 2,
-                    transition: "background 160ms ease, color 160ms ease",
-                    textDecoration: "none",
-                  }}
-                >
-                  <Icon
-                    size={15}
-                    color={active ? "var(--accent)" : "var(--ink-3)"}
-                  />
-                  <span style={{ flex: 1 }}>{it.label}</span>
-                </Link>
+                <React.Fragment key={it.href}>
+                  <Link
+                    href={it.href}
+                    onClick={onNavigate}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "7px 12px",
+                      borderRadius: 11,
+                      background: active ? "var(--accent-soft)" : "transparent",
+                      color: active ? "var(--accent)" : "var(--ink-2)",
+                      fontSize: 13.5,
+                      fontWeight: active ? 700 : 600,
+                      marginBottom: 2,
+                      transition: "background 160ms ease, color 160ms ease",
+                      textDecoration: "none",
+                    }}
+                  >
+                    <Icon
+                      size={15}
+                      color={active ? "var(--accent)" : "var(--ink-3)"}
+                    />
+                    <span style={{ flex: 1 }}>{it.label}</span>
+                    {it.badge && (
+                      <span
+                        style={{
+                          flex: "none",
+                          fontSize: 9.5,
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: 999,
+                          color: "#b45309",
+                          background: "rgba(245,158,11,.16)",
+                          letterSpacing: ".02em",
+                        }}
+                      >
+                        {it.badge}
+                      </span>
+                    )}
+                  </Link>
+                  {it.children && active &&
+                    it.children.map((c) => {
+                      const cActive = pathname === c.href;
+                      return (
+                        <Link
+                          key={c.href}
+                          href={c.href}
+                          onClick={onNavigate}
+                          style={{
+                            display: "block",
+                            padding: "6px 12px 6px 39px",
+                            borderRadius: 11,
+                            color: cActive ? "var(--accent)" : "var(--ink-3)",
+                            fontSize: 12.5,
+                            fontWeight: cActive ? 700 : 500,
+                            marginBottom: 2,
+                            textDecoration: "none",
+                            transition: "color 160ms ease",
+                          }}
+                        >
+                          {c.label}
+                        </Link>
+                      );
+                    })}
+                </React.Fragment>
               );
             })}
           </div>

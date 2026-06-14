@@ -209,11 +209,11 @@ export default function OperationsPage() {
             </div>
           </div>
 
-          {/* 配方审核（v0.73 抽 skill）—— 用户从爆款抽出的可复用模板在此发布到创意库 */}
+          {/* 创意审核（v0.73/v0.75）—— 用户自助发布到创意市场的创意在此审核 / 发布 / 驳回 */}
           <RecipeReviewSection />
 
           <div className="muted" style={{ fontSize: 12.5, padding: "0 2px" }}>
-            注:模板库 / 格式 / 内容类型也走同一套后端目录（drama.catalog.*），可按需扩进本页编辑。
+            注:运营「新建内置创意 / 从用户作品精选」入口在「创意市场」页;此处为用户自助发布的审核队列。
           </div>
         </div>
       )}

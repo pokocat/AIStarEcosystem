@@ -1,13 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/recipes.ts — 短剧「可复用配方」Recipe（v0.73 抽 skill 飞轮）。
-// 用户：从爆款项目抽成配方（→ 待运营审核）、看自己的、套用已发布配方。
-// 运营：审核队列 + 发布 / 驳回（后端 requireOperator；维护入口在 web-drama 运营后台，不在 admin）。
+// api/recipes.ts — 短剧「创意市场」配方 Recipe（v0.73 抽 skill 飞轮，v0.75 双通道）。
+// 用户：成片后发布到创意市场（→ 待运营审核）、看「我发布的创意」、套用已发布、回应运营邀请。
+// 运营：审核队列 + 发布/驳回 + 从用户作品精选（候选/邀请）+ 手建内置（后端 requireOperator；
+//       维护入口在 web-drama 运营视图，不在 admin）。
 // 后端：/api/me/drama/recipes/** + /api/me/drama/projects/{id}/extract-recipe。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 
-export type RecipeStatus = "draft" | "submitted" | "published" | "rejected";
+// submitted=用户自助待审 · invited=运营邀请待用户授权 · published=已上架 · rejected=审核驳回 · declined=用户谢绝
+export type RecipeStatus = "draft" | "submitted" | "invited" | "published" | "rejected" | "declined";
 
 export interface RecipeBeat {
   no: number;
@@ -32,7 +34,12 @@ export interface DramaRecipe {
   ownerUserId: string;
   sourceProjectId: string | null;
   status: RecipeStatus;
-  origin: "extracted" | "official";
+  // extracted=用户自助 · featured=运营邀请精选用户作品 · official=运营手建内置
+  origin: "extracted" | "featured" | "official";
+  /** 来源用户展示名（用于「来自用户@xx」标签）。official 内置为空。 */
+  authorName?: string;
+  /** 运营发起邀请时记录的运营 id（审计；自助提交为空）。 */
+  invitedBy?: string;
   title: string;
   summary: string;
   typeKey: string;
@@ -40,12 +47,50 @@ export interface DramaRecipe {
   ratio: string;
   episodes: number;
   cover: { from: string; to: string };
+  /** v0.74：官方内置配方的真实预览图（/recipes/<id>.webp）；为空时回退 cover 渐变。 */
+  coverImage?: string;
   useCount: number;
   reviewNote?: string;
   data: RecipeData;
   createdAt: string | null;
   updatedAt: string | null;
   publishedAt: string | null;
+  /** 用户对运营邀请的授权时间。 */
+  consentAt?: string | null;
+}
+
+/** 运营「从用户作品精选」候选项（一部用户已铺大纲的项目）。 */
+export interface RecipeCandidate {
+  projectId: string;
+  title: string;
+  type: string;
+  typeKey: string;
+  ratio: string;
+  episodes: number;
+  stage: number;
+  cover: { from: string; to: string };
+  authorName: string;
+  ownerUserId: string;
+  /** 是否已抽过配方（精选去重提示）。 */
+  hasRecipe: boolean;
+  updatedAt: string | null;
+}
+
+/** 运营手建内置创意入参。 */
+export interface BuiltinRecipeInput {
+  title: string;
+  summary?: string;
+  type?: string;
+  typeKey?: string;
+  ratio?: string;
+  episodes?: number;
+  mainline?: string;
+  notes?: string;
+  beats?: RecipeBeat[];
+  characters?: RecipeArchetype[];
+  hooks?: string[];
+  coverFrom?: string;
+  coverTo?: string;
 }
 
 function mockRecipe(over?: Partial<DramaRecipe>): DramaRecipe {
@@ -80,7 +125,7 @@ function mockRecipe(over?: Partial<DramaRecipe>): DramaRecipe {
   };
 }
 
-/** 把一部已完成项目抽成可复用配方（→ status=submitted 待运营审核）。 */
+/** 用户把一部成片发布到创意市场（→ status=submitted 待运营审核）。 */
 export async function extractFromProject(projectId: string): Promise<DramaRecipe> {
   if (USE_MOCK) return mockDelay(mockRecipe(), 1400);
   return apiFetch<DramaRecipe>(`/me/drama/projects/${encodeURIComponent(projectId)}/extract-recipe`, { method: "POST" });
@@ -92,7 +137,7 @@ export async function listMine(): Promise<DramaRecipe[]> {
   return apiFetch<DramaRecipe[]>("/me/drama/recipes");
 }
 
-/** 创意库：已发布配方（按套用热度降序）。 */
+/** 创意市场：已发布配方（官方内置 + 用户作品，按套用热度降序）。 */
 export async function listPublished(): Promise<DramaRecipe[]> {
   if (USE_MOCK) return mockDelay([mockRecipe({ status: "published", publishedAt: new Date().toISOString(), useCount: 12 })]);
   return apiFetch<DramaRecipe[]>("/me/drama/recipes/published");
@@ -123,4 +168,53 @@ export async function reject(id: string, note?: string): Promise<DramaRecipe> {
 export async function applyRecipe(id: string): Promise<{ projectId: string }> {
   if (USE_MOCK) return mockDelay({ projectId: `dp_mock_${Date.now()}` });
   return apiFetch<{ projectId: string }>(`/me/drama/recipes/${encodeURIComponent(id)}/apply`, { method: "POST" });
+}
+
+// ── 运营：从用户作品精选（通道②）+ 手建内置（通道③）；用户：回应邀请 ──────────────
+
+/** 运营「从用户作品精选」候选池。 */
+export async function listCandidates(): Promise<RecipeCandidate[]> {
+  if (USE_MOCK)
+    return mockDelay([
+      {
+        projectId: "dp_mock_cand",
+        title: "（示例）逆袭の楼下奶茶店",
+        type: "甜宠短剧",
+        typeKey: "romance",
+        ratio: "9:16",
+        episodes: 24,
+        stage: 5,
+        cover: { from: "#db2777", to: "#9333ea" },
+        authorName: "示例用户",
+        ownerUserId: "u_demo",
+        hasRecipe: false,
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+  return apiFetch<RecipeCandidate[]>("/me/drama/recipes/candidates");
+}
+
+/** 运营对某用户项目发起「邀请精选」→ invited 待用户授权。 */
+export async function invite(projectId: string): Promise<DramaRecipe> {
+  if (USE_MOCK) return mockDelay(mockRecipe({ status: "invited", origin: "featured", authorName: "示例用户" }));
+  return apiFetch<DramaRecipe>("/me/drama/recipes/invite", { method: "POST", body: { projectId } });
+}
+
+/** 运营手建内置创意（直接发布）。 */
+export async function createBuiltin(input: BuiltinRecipeInput): Promise<DramaRecipe> {
+  if (USE_MOCK)
+    return mockDelay(
+      mockRecipe({ status: "published", origin: "official", title: input.title, publishedAt: new Date().toISOString() }),
+    );
+  return apiFetch<DramaRecipe>("/me/drama/recipes/builtin", { method: "POST", body: input });
+}
+
+/** 用户对运营邀请授权 / 谢绝。 */
+export async function respondInvite(id: string, approve: boolean): Promise<DramaRecipe> {
+  if (USE_MOCK)
+    return mockDelay(mockRecipe({ id, status: approve ? "published" : "declined", origin: "featured" }));
+  return apiFetch<DramaRecipe>(`/me/drama/recipes/${encodeURIComponent(id)}/respond`, {
+    method: "POST",
+    body: { approve },
+  });
 }

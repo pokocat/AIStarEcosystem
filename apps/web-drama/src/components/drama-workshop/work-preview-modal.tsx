@@ -24,14 +24,14 @@ export function WorkPreviewModal({
   onExtract,
   scriptLabel = "查看脚本",
   deriveLabel = "衍生新剧",
-  extractLabel = "抽成模板",
+  extractLabel = "发布到创意市场",
   extracting = false,
 }: {
   item: WorkPreviewItem;
   onClose: () => void;
   onScript: () => void;
   onDerive: () => void;
-  /** v0.73 抽 skill：把这部爆款蒸馏成可复用配方（提交运营审核）。提供后显示「抽成模板」按钮。 */
+  /** v0.73 抽 skill：把这部成片发布到创意市场（提交运营审核）。提供后显示「发布到创意市场」按钮。 */
   onExtract?: () => void;
   scriptLabel?: string;
   deriveLabel?: string;
@@ -110,9 +110,9 @@ export function WorkPreviewModal({
               style={{ justifyContent: "center", marginTop: 2 }}
               disabled={extracting}
               onClick={onExtract}
-              title="把这部爆款的结构 / 套路抽成可复用模板，提交平台运营审核后进创意库"
+              title="把这部成片的结构 / 套路做成可复用创意，提交平台运营审核后进创意市场公开可套用"
             >
-              <Boxes size={15} /> {extracting ? "AI 抽取中…" : extractLabel}
+              <Boxes size={15} /> {extracting ? "发布中…" : extractLabel}
             </button>
           )}
         </div>

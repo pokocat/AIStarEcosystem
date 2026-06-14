@@ -37,7 +37,7 @@ export function RecipeReviewSection() {
     setBusyId(r.id);
     try {
       await RecipesApi.publish(r.id);
-      toast.success(`已发布「${r.title}」到创意库`);
+      toast.success(`已发布「${r.title}」到创意市场`);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "发布失败");
@@ -64,9 +64,9 @@ export function RecipeReviewSection() {
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
       <div className="row gap-2" style={{ padding: "14px 18px", borderBottom: "1px solid var(--line-soft)" }}>
         <Boxes size={16} style={{ color: "var(--accent)" }} />
-        <span style={{ fontWeight: 800, fontSize: 15 }}>配方审核</span>
+        <span style={{ fontWeight: 800, fontSize: 15 }}>创意审核</span>
         <span className="faint" style={{ fontSize: 12 }}>
-          用户从爆款抽出的可复用模板 · 待审 {pending.length} · 已发布 {published.length}
+          用户自助发布到创意市场的创意 · 待审 {pending.length} · 已上架 {published.length}
         </span>
         <span className="grow" />
         <button type="button" className="btn btn-line btn-sm" disabled={loading} onClick={() => void load()}>
@@ -77,7 +77,7 @@ export function RecipeReviewSection() {
         {loading ? (
           <span className="muted" style={{ fontSize: 13 }}>正在加载配方…</span>
         ) : pending.length === 0 ? (
-          <span className="faint" style={{ fontSize: 13 }}>暂无待审配方。用户在「已完成短剧」点「抽成模板」后会出现在这里。</span>
+          <span className="faint" style={{ fontSize: 13 }}>暂无待审创意。用户在「已完成短剧」点「发布到创意市场」后会出现在这里。</span>
         ) : (
           pending.map((r) => {
             const open = expanded === r.id;
@@ -86,12 +86,20 @@ export function RecipeReviewSection() {
               <div key={r.id} className="card" style={{ padding: 12, background: "var(--surface-2)", border: "none" }}>
                 <div className="row gap-3" style={{ alignItems: "flex-start" }}>
                   <span
-                    style={{ width: 36, height: 48, borderRadius: 7, flex: "none", background: `linear-gradient(140deg,${r.cover.from},${r.cover.to})` }}
-                  />
+                    style={{ width: 36, height: 48, borderRadius: 7, flex: "none", overflow: "hidden", background: `linear-gradient(140deg,${r.cover.from},${r.cover.to})` }}
+                  >
+                    {r.coverImage && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.coverImage} alt={r.title} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    )}
+                  </span>
                   <div className="col grow" style={{ minWidth: 0, gap: 3 }}>
                     <div className="row gap-2" style={{ alignItems: "center" }}>
                       <span style={{ fontWeight: 800, fontSize: 14 }}>{r.title}</span>
                       <span className="tag tag-accent" style={{ fontSize: 10.5 }}>{r.type}</span>
+                      {r.authorName && (
+                        <span className="tag tag-gray" style={{ fontSize: 10.5 }}>来自 @{r.authorName}</span>
+                      )}
                       <span className="faint num" style={{ fontSize: 11 }}>{r.episodes} 集 · {r.ratio}</span>
                     </div>
                     <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{r.summary || "（无摘要）"}</div>

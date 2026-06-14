@@ -30,7 +30,8 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 /projects/[id]/distribute ← 多平台发布（旧）
 /shorts              ← 短视频工坊（v0.63:短视频 + 单集宣传片/自传资产库 + 从短剧切片）
 /shorts/make         ← 短视频制作（v0.63:左 AI 对话 + 右口播脚本表 → 视频工厂出片）
-/templates           ← 模板库（v0.63:多集/单集筛选 + 统一预览 + 运营新建模板）
+/templates           ← 创意市场（v0.75，原模板库:官方内置+用户发布统一 + 源标 + 套用开拍;运营新建内置/精选授权）
+/templates/published ← 我发布的创意（v0.75:本人创意按状态分档 + 运营邀请授权/谢绝）
 /review              ← 剧本审阅（v0.63:跨项目待审队列 + Excel 式平铺表格）
 /assets              ← 素材库（v0.63:标签化图片/视频 增删改查 + AI 自动打标）
 /cast                ← 演员 IP 阵容（跨项目 IP 资产，带主线 banner）

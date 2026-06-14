@@ -7014,6 +7014,16 @@ paths:
   /me/drama/recipes/{id}/apply:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: applyDramaRecipe, summary: '套用已发布配方 → 新建预填项目，返回 {projectId}', responses: { '200': { description: ok } } }
+  # ── v0.75 创意市场双通道：运营精选用户作品（候选/邀请）+ 运营手建内置 + 用户授权 ──
+  /me/drama/recipes/candidates:
+    get: { tags: [drama], operationId: listDramaRecipeCandidates, summary: '运营「从用户作品精选」候选池（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
+  /me/drama/recipes/invite:
+    post: { tags: [drama], operationId: inviteDramaRecipe, summary: '运营对某用户项目发起「邀请精选」→ invited 待用户授权（OPERATOR/SUPER_ADMIN）。body:{projectId}', responses: { '200': { description: ok } } }
+  /me/drama/recipes/builtin:
+    post: { tags: [drama], operationId: createBuiltinDramaRecipe, summary: '运营手建内置创意（OPERATOR/SUPER_ADMIN）→ 直接发布', responses: { '200': { description: ok } } }
+  /me/drama/recipes/{id}/respond:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: respondDramaRecipeInvite, summary: '用户对运营邀请授权/谢绝。body:{approve:boolean}', responses: { '200': { description: ok } } }
   # ── v0.67 短剧平台目录（运营在 web-drama 端维护：热点/创意推荐/模板等）。读=任意已登录；写=运营 ──
   /me/drama/catalog:
     get: { tags: [drama], operationId: getDramaCatalog, summary: '短剧平台目录（内容类型/模板/格式/热点/创意推荐；未配项 null，前端回退默认）', responses: { '200': { description: ok } } }

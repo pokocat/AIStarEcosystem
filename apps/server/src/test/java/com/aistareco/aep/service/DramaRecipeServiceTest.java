@@ -1,9 +1,11 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.PromptParamsDto;
+import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.DramaProject;
 import com.aistareco.aep.model.DramaRecipe;
+import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaRecipeRepository;
 import com.aistareco.common.BusinessException;
@@ -30,6 +32,8 @@ class DramaRecipeServiceTest {
     private DramaRecipeRepository recipeRepo;
     private AiModelInvocationService invocation;
     private PromptService promptService;
+    private AepUserRepository userRepo;
+    private NotificationPublisher notifier;
     private DramaRecipeService svc;
 
     private static final String PAYLOAD = "{\"projectInfo\":{\"title\":\"落地窗后\",\"type\":\"悬疑短剧\","
@@ -43,11 +47,25 @@ class DramaRecipeServiceTest {
         recipeRepo = mock(DramaRecipeRepository.class);
         invocation = mock(AiModelInvocationService.class);
         promptService = mock(PromptService.class);
+        userRepo = mock(AepUserRepository.class);
+        notifier = mock(NotificationPublisher.class);
         when(promptService.resolve(anyString())).thenAnswer(inv -> new PromptService.ResolvedPrompt(
                 "你是操盘手。只输出 JSON。", "蒸馏《{{title}}》（{{type}}）：{{outline}}",
                 new PromptParamsDto(null, null, null), "resource"));
         when(recipeRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        svc = new DramaRecipeService(recipeRepo, projectRepo, invocation, promptService, OM);
+        svc = new DramaRecipeService(recipeRepo, projectRepo, invocation, promptService, userRepo, notifier, OM);
+    }
+
+    /** 蒸馏链路成功 stub（端点 + LLM 输出可解析）。 */
+    private void stubDistillOk() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(
+                        "{\"title\":\"反转悬疑·步步惊心\",\"summary\":\"适合都市悬疑\",\"mainline\":\"通用追凶主线\","
+                                + "\"beats\":[{\"no\":1,\"hook\":\"开局悬念\",\"beat\":\"建立不安\"}],"
+                                + "\"characters\":[{\"role\":\"key\",\"archetype\":\"敏感坚韧女主\",\"desc\":\"自我怀疑到直面\"}],"
+                                + "\"hooks\":[\"开场即悬念\"],\"notes\":\"竖屏强钩子\"}",
+                        "stop", 100L, "ep", "fake-model"));
     }
 
     private void seedProject() {
@@ -178,5 +196,114 @@ class DramaRecipeServiceTest {
         when(recipeRepo.findByIdAndDeletedAtIsNull("nope")).thenReturn(Optional.empty());
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.publish("nope"));
         assertEquals("DRAMA_RECIPE_NOT_FOUND", ex.getCode());
+    }
+
+    // ── 通道② 运营邀请精选 + 用户授权 ───────────────────────────────────────────────
+
+    @Test
+    void inviteCreatesInvitedFeaturedRecipeAndNotifiesAuthor() {
+        DramaProject p = DramaProject.builder()
+                .id("dp1").ownerUserId("u1").title("落地窗后").type("悬疑短剧").typeKey("mystery")
+                .ratio("9:16").episodes(80).coverFrom("#f97316").coverTo("#e11d48").stage(4).payloadJson(PAYLOAD).build();
+        when(projectRepo.findByIdAndDeletedAtIsNull("dp1")).thenReturn(Optional.of(p));
+        AepUser author = mock(AepUser.class);
+        when(author.getDisplayName()).thenReturn("阿珍工作室");
+        when(userRepo.findById("u1")).thenReturn(Optional.of(author));
+        stubDistillOk();
+
+        JsonNode dto = svc.inviteFromProject("dp1", "op1");
+        assertEquals("invited", dto.path("status").asText());
+        assertEquals("featured", dto.path("origin").asText());
+        assertEquals("阿珍工作室", dto.path("authorName").asText());
+        assertEquals("op1", dto.path("invitedBy").asText());
+        assertEquals("dp1", dto.path("sourceProjectId").asText());
+        verify(notifier).notifyUser(eq("u1"), any(), anyString(), anyString());
+        verify(recipeRepo).save(any(DramaRecipe.class));
+    }
+
+    @Test
+    void inviteThrowsWhenProjectMissing() {
+        when(projectRepo.findByIdAndDeletedAtIsNull("ghost")).thenReturn(Optional.empty());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.inviteFromProject("ghost", "op1"));
+        assertEquals("DRAMA_PROJECT_NOT_FOUND", ex.getCode());
+        verify(recipeRepo, never()).save(any());
+    }
+
+    @Test
+    void respondApprovePublishesWithConsent() {
+        seedRecipe("dr1", "invited");
+        JsonNode dto = svc.respondInvite("dr1", "u1", true);
+        assertEquals("published", dto.path("status").asText());
+        assertNotNull(dto.path("consentAt").asText(null));
+        verify(notifier).notifyAdmins(any(), anyString(), anyString(), eq("u1"));
+    }
+
+    @Test
+    void respondDeclineSetsDeclined() {
+        seedRecipe("dr1", "invited");
+        JsonNode dto = svc.respondInvite("dr1", "u1", false);
+        assertEquals("declined", dto.path("status").asText());
+    }
+
+    @Test
+    void respondByNonOwnerThrows() {
+        seedRecipe("dr1", "invited");
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.respondInvite("dr1", "u2", true));
+        assertEquals("DRAMA_RECIPE_NOT_OWNER", ex.getCode());
+    }
+
+    @Test
+    void respondWhenNotInvitedThrows() {
+        seedRecipe("dr1", "submitted");
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.respondInvite("dr1", "u1", true));
+        assertEquals("DRAMA_RECIPE_NOT_INVITED", ex.getCode());
+    }
+
+    // ── 通道③ 运营手建内置 ─────────────────────────────────────────────────────────
+
+    @Test
+    void createBuiltinPublishesOfficialRecipe() throws Exception {
+        JsonNode body = OM.readTree("{\"title\":\"都市逆袭·三幕式\",\"summary\":\"通用爽剧骨架\","
+                + "\"type\":\"风格短片\",\"typeKey\":\"style\",\"ratio\":\"9:16\",\"episodes\":1,"
+                + "\"mainline\":\"小人物谷底翻盘\",\"beats\":[{\"no\":1,\"hook\":\"屈辱开局\",\"beat\":\"埋反转\"}]}");
+        JsonNode dto = svc.createBuiltin(body, "op1");
+        assertEquals("published", dto.path("status").asText());
+        assertEquals("official", dto.path("origin").asText());
+        assertEquals("__official__", dto.path("ownerUserId").asText());
+        assertEquals("都市逆袭·三幕式", dto.path("title").asText());
+        assertEquals(1, dto.path("data").path("beats").size());
+        assertFalse(dto.has("authorName"));
+        verify(recipeRepo).save(any(DramaRecipe.class));
+    }
+
+    @Test
+    void createBuiltinRequiresTitle() throws Exception {
+        JsonNode body = OM.readTree("{\"summary\":\"无名\"}");
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.createBuiltin(body, "op1"));
+        assertEquals("DRAMA_RECIPE_TITLE_REQUIRED", ex.getCode());
+        verify(recipeRepo, never()).save(any());
+    }
+
+    @Test
+    void listCandidatesMarksAlreadyExtractedProjects() {
+        DramaProject a = DramaProject.builder().id("dpA").ownerUserId("u1").title("A").type("悬疑短剧")
+                .typeKey("mystery").ratio("9:16").episodes(60).stage(3).coverFrom("#111").coverTo("#222").build();
+        DramaProject b = DramaProject.builder().id("dpB").ownerUserId("u2").title("B").type("甜宠短剧")
+                .typeKey("romance").ratio("9:16").episodes(70).stage(5).coverFrom("#333").coverTo("#444").build();
+        when(projectRepo.findTop80ByDeletedAtIsNullAndStageGreaterThanEqualOrderByUpdatedAtDesc(2))
+                .thenReturn(java.util.List.of(a, b));
+        DramaRecipe existing = DramaRecipe.builder().id("drX").sourceProjectId("dpA").status("submitted").build();
+        when(recipeRepo.findBySourceProjectIdInAndDeletedAtIsNull(anyCollection()))
+                .thenReturn(java.util.List.of(existing));
+        AepUser u = mock(AepUser.class);
+        when(u.getUsername()).thenReturn("作者");
+        when(userRepo.findById(anyString())).thenReturn(Optional.of(u));
+
+        java.util.List<JsonNode> out = svc.listCandidates();
+        assertEquals(2, out.size());
+        JsonNode first = out.stream().filter(n -> "dpA".equals(n.path("projectId").asText())).findFirst().orElseThrow();
+        JsonNode second = out.stream().filter(n -> "dpB".equals(n.path("projectId").asText())).findFirst().orElseThrow();
+        assertTrue(first.path("hasRecipe").asBoolean());
+        assertFalse(second.path("hasRecipe").asBoolean());
     }
 }

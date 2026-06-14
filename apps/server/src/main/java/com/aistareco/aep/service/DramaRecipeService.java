@@ -1,8 +1,11 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.DramaProject;
 import com.aistareco.aep.model.DramaRecipe;
+import com.aistareco.aep.model.Notification;
+import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaRecipeRepository;
 import com.aistareco.common.BusinessException;
@@ -17,44 +20,194 @@ import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * 短剧「可复用配方」Recipe 服务（v0.73，抽 skill 飞轮）。
+ * 短剧「创意市场」配方 Recipe 服务（v0.73 抽 skill 飞轮，v0.75 双通道 + 内置手建）。
  *
- * MVP 范围：用户把自己已完成的爆款项目反向蒸馏成 Recipe（status=submitted，待运营审核），
- * 运营 publish 后进创意库供他人套用。不静默兜底：端点 / prompt 未配置或 LLM 失败 → 带 code 报错。
+ * 三条入市通道，统一落 {@link DramaRecipe}（origin 区分来源、status 走生命周期）：
+ *   ① 用户自助：{@link #extractFromProject} → submitted（待运营审核）→ publish/reject。
+ *   ② 运营邀请精选：{@link #inviteFromProject} → invited（待用户授权）→ {@link #respondInvite}
+ *      approve → published / decline → declined。
+ *   ③ 运营手建内置：{@link #createBuiltin} → 直接 published（origin=official，无作者）。
+ *
+ * 不静默兜底：端点 / prompt 未配置或 LLM 失败 → 带 code 报错（§8.0）。
  */
 @Service
 public class DramaRecipeService {
 
     private static final Logger log = LoggerFactory.getLogger(DramaRecipeService.class);
+    private static final String OFFICIAL_OWNER = "__official__";
 
     private final DramaRecipeRepository repo;
     private final DramaProjectRepository projectRepo;
     private final AiModelInvocationService invocation;
     private final PromptService promptService;
+    private final AepUserRepository userRepo;
+    private final NotificationPublisher notifier;
     private final ObjectMapper om;
 
     public DramaRecipeService(DramaRecipeRepository repo,
                               DramaProjectRepository projectRepo,
                               AiModelInvocationService invocation,
                               PromptService promptService,
+                              AepUserRepository userRepo,
+                              NotificationPublisher notifier,
                               ObjectMapper om) {
         this.repo = repo;
         this.projectRepo = projectRepo;
         this.invocation = invocation;
         this.promptService = promptService;
+        this.userRepo = userRepo;
+        this.notifier = notifier;
         this.om = om;
     }
 
-    /** 把某个已完成项目蒸馏成 Recipe（status=submitted）。返回 Recipe DTO。 */
+    // ── 通道① 用户自助抽取 ────────────────────────────────────────────────────────
+
+    /** 用户把自己已完成项目蒸馏成 Recipe（status=submitted，待运营审核）。返回 Recipe DTO。 */
     public JsonNode extractFromProject(String projectId, String userId) {
         DramaProject project = projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull(projectId, userId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+        DramaRecipe recipe = distillAndSave(project, "submitted", "extracted", resolveAuthorName(userId), null);
+        log.info("[drama-recipe] extracted(self) id={} project={} user={}", recipe.getId(), projectId, userId);
+        return toDto(recipe);
+    }
+
+    // ── 通道② 运营邀请精选用户作品 ────────────────────────────────────────────────
+
+    /**
+     * 运营「从用户作品精选」候选池：任意用户、已铺大纲的最近项目（运营侧浏览，不含官方内置项目）。
+     * 每条标注作者与是否已抽过配方（去重提示）。
+     */
+    public List<JsonNode> listCandidates() {
+        List<DramaProject> projects = projectRepo
+                .findTop80ByDeletedAtIsNullAndStageGreaterThanEqualOrderByUpdatedAtDesc(2);
+        List<String> ids = projects.stream().map(DramaProject::getId).collect(Collectors.toList());
+        Set<String> withRecipe = new HashSet<>();
+        if (!ids.isEmpty()) {
+            for (DramaRecipe r : repo.findBySourceProjectIdInAndDeletedAtIsNull(ids)) {
+                // 已被拒 / 已谢绝的不算占用，可重新精选
+                if (r.getSourceProjectId() != null
+                        && !"rejected".equals(r.getStatus()) && !"declined".equals(r.getStatus())) {
+                    withRecipe.add(r.getSourceProjectId());
+                }
+            }
+        }
+        List<JsonNode> out = new ArrayList<>();
+        for (DramaProject p : projects) {
+            if (OFFICIAL_OWNER.equals(p.getOwnerUserId())) continue;
+            ObjectNode o = om.createObjectNode();
+            o.put("projectId", p.getId());
+            o.put("title", orDefault(p.getTitle(), "未命名短剧"));
+            o.put("type", orDefault(p.getType(), "短剧"));
+            o.put("typeKey", orDefault(p.getTypeKey(), "custom"));
+            o.put("ratio", orDefault(p.getRatio(), "9:16"));
+            o.put("episodes", p.getEpisodes());
+            o.put("stage", p.getStage());
+            ObjectNode cover = om.createObjectNode();
+            cover.put("from", orDefault(p.getCoverFrom(), "#f97316"));
+            cover.put("to", orDefault(p.getCoverTo(), "#e11d48"));
+            o.set("cover", cover);
+            o.put("authorName", orDefault(resolveAuthorName(p.getOwnerUserId()), "用户"));
+            o.put("ownerUserId", p.getOwnerUserId());
+            o.put("hasRecipe", withRecipe.contains(p.getId()));
+            o.put("updatedAt", p.getUpdatedAt() != null ? p.getUpdatedAt().toString() : null);
+            out.add(o);
+        }
+        return out;
+    }
+
+    /** 运营对某用户项目发起「邀请精选」→ status=invited，给作者发授权站内信。 */
+    public JsonNode inviteFromProject(String projectId, String operatorId) {
+        DramaProject project = projectRepo.findByIdAndDeletedAtIsNull(projectId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+        String authorName = orDefault(resolveAuthorName(project.getOwnerUserId()), "用户");
+        DramaRecipe recipe = distillAndSave(project, "invited", "featured", authorName, operatorId);
+        notifier.notifyUser(project.getOwnerUserId(), Notification.NotificationType.CONTENT,
+                "运营想把你的《" + orDefault(project.getTitle(), "短剧") + "》精选进创意市场",
+                "平台运营希望把这部作品做成可复用的创意模板、公开供他人套用，并署名「来自你」。"
+                        + "去「创意市场 · 我发布的创意」确认是否授权。");
+        log.info("[drama-recipe] invited id={} project={} operator={} owner={}",
+                recipe.getId(), projectId, operatorId, project.getOwnerUserId());
+        return toDto(recipe);
+    }
+
+    /** 用户对运营邀请授权 / 谢绝。approve → published（consentAt 写入）；decline → declined。 */
+    public JsonNode respondInvite(String recipeId, String userId, boolean approve) {
+        DramaRecipe r = requireRecipe(recipeId);
+        if (!userId.equals(r.getOwnerUserId())) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "DRAMA_RECIPE_NOT_OWNER", "只能处理对你自己作品的邀请。");
+        }
+        if (!"invited".equals(r.getStatus())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_INVITED", "该配方不在「待授权」状态。");
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        if (approve) {
+            r.setStatus("published");
+            r.setConsentAt(now);
+            r.setPublishedAt(now);
+            notifier.notifyAdmins(Notification.NotificationType.CONTENT,
+                    "用户已授权精选", orDefault(r.getAuthorName(), "用户") + " 授权《" + orDefault(r.getTitle(), "短剧")
+                            + "》进入创意市场。", userId);
+        } else {
+            r.setStatus("declined");
+        }
+        r.setUpdatedAt(now);
+        repo.save(r);
+        log.info("[drama-recipe] invite-response id={} user={} approve={}", recipeId, userId, approve);
+        return toDto(r);
+    }
+
+    // ── 通道③ 运营手建内置创意 ────────────────────────────────────────────────────
+
+    /** 运营手建内置创意（origin=official，直接 published）。body 见前端 BuiltinRecipeInput。 */
+    public JsonNode createBuiltin(JsonNode body, String operatorId) {
+        String title = text(body, "title");
+        if (title == null || title.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_TITLE_REQUIRED", "请填写创意名称。");
+        }
+        ObjectNode payload = om.createObjectNode();
+        payload.put("mainline", orDefault(text(body, "mainline"), ""));
+        payload.set("beats", normalizeBeats(body.path("beats")));
+        payload.set("characters", normalizeArchetypes(body.path("characters")));
+        payload.set("hooks", body.path("hooks").isArray() ? body.get("hooks").deepCopy() : om.createArrayNode());
+        payload.put("notes", orDefault(text(body, "notes"), ""));
+
+        OffsetDateTime now = OffsetDateTime.now();
+        DramaRecipe recipe = DramaRecipe.builder()
+                .id("dr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
+                .ownerUserId(OFFICIAL_OWNER)
+                .status("published")
+                .origin("official")
+                .title(title.trim())
+                .summary(orDefault(text(body, "summary"), ""))
+                .typeKey(orDefault(text(body, "typeKey"), "style"))
+                .type(orDefault(text(body, "type"), "风格短片"))
+                .ratio(orDefault(text(body, "ratio"), "9:16"))
+                .episodes(body.path("episodes").asInt(1))
+                .coverFrom(orDefault(text(body, "coverFrom"), "#7c3aed"))
+                .coverTo(orDefault(text(body, "coverTo"), "#ec4899"))
+                .useCount(0)
+                .payloadJson(write(payload))
+                .createdAt(now).updatedAt(now).publishedAt(now)
+                .build();
+        repo.save(recipe);
+        log.info("[drama-recipe] builtin created id={} operator={} title={}", recipe.getId(), operatorId, title);
+        return toDto(recipe);
+    }
+
+    // ── 蒸馏核心（通道①②共用） ──────────────────────────────────────────────────
+
+    /** 调 LLM 把一部项目蒸馏成 Recipe 并落库。owner 取项目归属；invitedBy 非空=运营邀请。 */
+    private DramaRecipe distillAndSave(DramaProject project, String status, String origin,
+                                       String authorName, String invitedBy) {
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "抽取配方还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
@@ -86,7 +239,8 @@ public class DramaRecipeService {
                     "配方抽取的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_RECIPE_EXTRACT
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
-        log.info("[drama-recipe] extract project={} user={} vars={}", projectId, userId, vars);
+        log.info("[drama-recipe] distill project={} owner={} invitedBy={} vars={}",
+                project.getId(), project.getOwnerUserId(), invitedBy, vars);
 
         List<Map<String, String>> messages = new ArrayList<>();
         if (p.system() != null && !p.system().isBlank()) {
@@ -121,10 +275,12 @@ public class DramaRecipeService {
         OffsetDateTime now = OffsetDateTime.now();
         DramaRecipe recipe = DramaRecipe.builder()
                 .id("dr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
-                .ownerUserId(userId)
-                .sourceProjectId(projectId)
-                .status("submitted")
-                .origin("extracted")
+                .ownerUserId(project.getOwnerUserId())
+                .sourceProjectId(project.getId())
+                .status(status)
+                .origin(origin)
+                .authorName(authorName)
+                .invitedBy(invitedBy)
                 .title(orDefault(text(root, "title"), title + " · 配方"))
                 .summary(orDefault(text(root, "summary"), ""))
                 .typeKey(orDefault(project.getTypeKey(), "custom"))
@@ -139,19 +295,19 @@ public class DramaRecipeService {
                 .updatedAt(now)
                 .build();
         repo.save(recipe);
-        log.info("[drama-recipe] extracted id={} project={} user={} beats={}",
-                recipe.getId(), projectId, userId, payload.path("beats").size());
-        return toDto(recipe);
+        return recipe;
     }
 
-    /** 我抽取/提交过的配方。 */
+    // ── 列表 / 审核 / 套用 ────────────────────────────────────────────────────────
+
+    /** 我抽取/提交过的配方（含审核 / 邀请状态）。 */
     public List<JsonNode> listMine(String userId) {
         List<JsonNode> out = new ArrayList<>();
         for (DramaRecipe r : repo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId)) out.add(toDto(r));
         return out;
     }
 
-    /** 已发布配方（创意库）：按套用热度降序。任意已登录 drama 用户可见。 */
+    /** 已发布配方（创意市场）：按套用热度降序。任意已登录 drama 用户可见。 */
     public List<JsonNode> listPublished() {
         List<DramaRecipe> rows =
                 new ArrayList<>(repo.findByStatusAndDeletedAtIsNullOrderByUpdatedAtDesc("published"));
@@ -161,14 +317,14 @@ public class DramaRecipeService {
         return out;
     }
 
-    /** 运营审核队列：待审（submitted）。 */
+    /** 运营审核队列：待审（submitted）。invited 走用户授权、不进此队列。 */
     public List<JsonNode> listForReview() {
         List<JsonNode> out = new ArrayList<>();
         for (DramaRecipe r : repo.findByStatusAndDeletedAtIsNullOrderByUpdatedAtDesc("submitted")) out.add(toDto(r));
         return out;
     }
 
-    /** 运营发布（→ 进创意库）。 */
+    /** 运营发布（→ 进创意市场）。提交人非官方时给作者发上架站内信。 */
     public JsonNode publish(String recipeId) {
         DramaRecipe r = requireRecipe(recipeId);
         OffsetDateTime now = OffsetDateTime.now();
@@ -177,17 +333,28 @@ public class DramaRecipeService {
         r.setReviewNote(null);
         r.setUpdatedAt(now);
         repo.save(r);
+        if (!OFFICIAL_OWNER.equals(r.getOwnerUserId())) {
+            notifier.notifyUser(r.getOwnerUserId(), Notification.NotificationType.CONTENT,
+                    "你的创意已上架创意市场",
+                    "《" + orDefault(r.getTitle(), "短剧") + "》已通过审核，进入创意市场公开可套用。");
+        }
         log.info("[drama-recipe] published id={}", recipeId);
         return toDto(r);
     }
 
-    /** 运营驳回（带理由）。 */
+    /** 运营驳回（带理由）。给作者发驳回站内信。 */
     public JsonNode reject(String recipeId, String note) {
         DramaRecipe r = requireRecipe(recipeId);
         r.setStatus("rejected");
         r.setReviewNote(note == null ? "" : note);
         r.setUpdatedAt(OffsetDateTime.now());
         repo.save(r);
+        if (!OFFICIAL_OWNER.equals(r.getOwnerUserId())) {
+            notifier.notifyUser(r.getOwnerUserId(), Notification.NotificationType.CONTENT,
+                    "创意未通过审核",
+                    "《" + orDefault(r.getTitle(), "短剧") + "》暂未通过。"
+                            + (note == null || note.isBlank() ? "" : "原因：" + note));
+        }
         log.info("[drama-recipe] rejected id={} note={}", recipeId, note);
         return toDto(r);
     }
@@ -294,6 +461,16 @@ public class DramaRecipeService {
 
     // ── 工具 ────────────────────────────────────────────────────────────────────
 
+    /** 解析用户展示名（displayName ?? username）。official / 缺失 → null。 */
+    private String resolveAuthorName(String userId) {
+        if (userId == null || userId.isBlank() || OFFICIAL_OWNER.equals(userId)) return null;
+        AepUser u = userRepo.findById(userId).orElse(null);
+        if (u == null) return "用户";
+        if (u.getDisplayName() != null && !u.getDisplayName().isBlank()) return u.getDisplayName();
+        if (u.getUsername() != null && !u.getUsername().isBlank()) return u.getUsername();
+        return "用户";
+    }
+
     private String summarizeOutline(JsonNode episodes) {
         StringBuilder sb = new StringBuilder();
         int n = 0;
@@ -360,6 +537,8 @@ public class DramaRecipeService {
         o.put("sourceProjectId", r.getSourceProjectId());
         o.put("status", r.getStatus());
         o.put("origin", r.getOrigin());
+        if (r.getAuthorName() != null && !r.getAuthorName().isBlank()) o.put("authorName", r.getAuthorName());
+        if (r.getInvitedBy() != null && !r.getInvitedBy().isBlank()) o.put("invitedBy", r.getInvitedBy());
         o.put("title", orDefault(r.getTitle(), "未命名配方"));
         o.put("summary", orDefault(r.getSummary(), ""));
         o.put("typeKey", orDefault(r.getTypeKey(), "custom"));
@@ -370,12 +549,16 @@ public class DramaRecipeService {
         cover.put("from", orDefault(r.getCoverFrom(), "#f97316"));
         cover.put("to", orDefault(r.getCoverTo(), "#e11d48"));
         o.set("cover", cover);
+        if (r.getCoverImage() != null && !r.getCoverImage().isBlank()) {
+            o.put("coverImage", r.getCoverImage());
+        }
         o.put("useCount", r.getUseCount());
         if (r.getReviewNote() != null) o.put("reviewNote", r.getReviewNote());
         o.set("data", readJson(r.getPayloadJson()));
         o.put("createdAt", r.getCreatedAt() != null ? r.getCreatedAt().toString() : null);
         o.put("updatedAt", r.getUpdatedAt() != null ? r.getUpdatedAt().toString() : null);
         o.put("publishedAt", r.getPublishedAt() != null ? r.getPublishedAt().toString() : null);
+        o.put("consentAt", r.getConsentAt() != null ? r.getConsentAt().toString() : null);
         return o;
     }
 

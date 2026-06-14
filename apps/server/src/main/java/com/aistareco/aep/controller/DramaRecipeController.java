@@ -70,6 +70,41 @@ public class DramaRecipeController {
         return ApiResponse.of(service.applyToNewProject(id, principal.getName()));
     }
 
+    // ── 运营：精选用户作品（双通道之②） + 手建内置（通道③） ──────────────────────
+
+    /** 运营「从用户作品精选」候选池（OPERATOR / SUPER_ADMIN）。 */
+    @GetMapping("/candidates")
+    public ApiResponse<List<JsonNode>> listCandidates(Authentication auth) {
+        requireOperator(auth);
+        return ApiResponse.of(service.listCandidates());
+    }
+
+    /** 运营对某用户项目发起「邀请精选」（OPERATOR / SUPER_ADMIN）。body: { projectId } */
+    @PostMapping("/invite")
+    public ApiResponse<JsonNode> invite(Authentication auth, @RequestBody JsonNode body) {
+        requireOperator(auth);
+        String projectId = body != null && body.hasNonNull("projectId") ? body.get("projectId").asText() : null;
+        if (projectId == null || projectId.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROJECT_ID_REQUIRED", "缺少 projectId。");
+        }
+        return ApiResponse.of(service.inviteFromProject(projectId, auth.getName()));
+    }
+
+    /** 运营手建内置创意（OPERATOR / SUPER_ADMIN），直接发布。 */
+    @PostMapping("/builtin")
+    public ApiResponse<JsonNode> createBuiltin(Authentication auth, @RequestBody JsonNode body) {
+        requireOperator(auth);
+        return ApiResponse.of(service.createBuiltin(body, auth.getName()));
+    }
+
+    /** 用户对运营邀请授权 / 谢绝。body: { approve: boolean } */
+    @PostMapping("/{id}/respond")
+    public ApiResponse<JsonNode> respond(Principal principal, @PathVariable String id,
+                                         @RequestBody(required = false) JsonNode body) {
+        boolean approve = body != null && body.hasNonNull("approve") && body.get("approve").asBoolean();
+        return ApiResponse.of(service.respondInvite(id, principal.getName(), approve));
+    }
+
     private static void requireOperator(Authentication auth) {
         boolean ok = auth != null && auth.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)

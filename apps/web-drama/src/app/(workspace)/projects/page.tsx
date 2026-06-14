@@ -14,7 +14,6 @@ import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
 import { REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
 import { ProjectsApi, RecipesApi } from "@/api";
-import { RecipeLibrarySection } from "@/components/drama-workshop/recipe-library-section";
 import { useAsync } from "@/lib/drama-query";
 import { aiErrorMessage } from "@/lib/ai-error";
 
@@ -169,9 +168,6 @@ function ProjectsHubInner() {
         <span className="btn btn-line btn-sm" style={{ flex: "none" }}>去审阅 <ArrowRight size={13} /></span>
       </button>
 
-      {/* 创意库 · 爆款模板（v0.73 抽 skill）—— 平台发布的可复用配方，一键套用预填新剧 */}
-      <RecipeLibrarySection />
-
       {/* 紧凑竖版网格 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, alignItems: "start" }}>
         <button
@@ -244,9 +240,9 @@ function ProjectsHubInner() {
             try {
               await RecipesApi.extractFromProject(src.id);
               setPreview(null);
-              toast.success(`已把《${src.title}》抽成模板,提交平台运营审核,通过后进创意库`);
+              toast.success(`已把《${src.title}》发布到创意市场,运营审核通过后公开可套用`);
             } catch (e) {
-              toast.error(aiErrorMessage(e, "抽取模板失败，请稍后重试"));
+              toast.error(aiErrorMessage(e, "发布失败，请稍后重试"));
             } finally {
               setExtracting(false);
             }

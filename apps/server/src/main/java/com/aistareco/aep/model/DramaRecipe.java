@@ -12,8 +12,11 @@ import java.time.OffsetDateTime;
  * 结构 / 套路 / 爽点节奏（mainline 模板 + 分集 beats + 角色原型 + 钩子），供他人「一键套用」
  * 去拍不同题材的新剧。
  *
- * 生命周期：用户从自己的项目抽取 → status=submitted（待运营审核）→ 运营 publish / reject。
- * published 的 Recipe 进创意库，所有 drama 用户可见、可套用。
+ * 生命周期（v0.75 双通道入「创意市场」）：
+ *   ① 用户自助：用户从自己项目抽取 → status=submitted（待运营审核）→ 运营 publish / reject。
+ *   ② 运营邀请精选：运营对任意用户的成片发起邀请 → status=invited（待用户授权）→
+ *      用户 approve → published（consentAt 写入）/ decline → declined。
+ * published 的 Recipe 进创意市场，所有 drama 用户可见、可套用。origin=official 为运营手建内置。
  *
  * payloadJson 结构（前端 DramaRecipe TS 接口即契约真源）：
  *   { mainline, beats:[{no,hook,beat}], characters:[{role,archetype,desc}], hooks:[], notes }
@@ -37,11 +40,19 @@ public class DramaRecipe {
     @Column(name = "source_project_id")
     private String sourceProjectId;
 
-    /** draft | submitted | published | rejected */
+    /** draft | submitted | invited | published | rejected | declined */
     private String status;
 
-    /** extracted（从项目抽取）| official（运营手建） */
+    /** extracted（用户自助抽取）| featured（运营邀请精选用户作品）| official（运营手建内置） */
     private String origin;
+
+    /** 来源用户展示名（用于「来自用户@xx」标签）。official 内置为空。 */
+    @Column(name = "author_name", length = 128)
+    private String authorName;
+
+    /** 运营发起「邀请精选」时记录运营 userId（审计；自助提交为空）。 */
+    @Column(name = "invited_by")
+    private String invitedBy;
 
     private String title;
     /** 一句话配方说明（适合拍什么、爽点在哪）。 */
@@ -58,6 +69,11 @@ public class DramaRecipe {
     private String coverFrom;
     @Column(name = "cover_to")
     private String coverTo;
+
+    /** v0.74：官方内置配方的真实预览图（如 /recipes/&lt;id&gt;.webp，web-drama public 直出）；
+        为空时前端回退到 coverFrom/coverTo 渐变。extracted 配方默认无图。 */
+    @Column(name = "cover_image", length = 512)
+    private String coverImage;
 
     /** 套用次数（发布后累计，用于热度排序）。 */
     @Column(name = "use_count")
@@ -77,6 +93,9 @@ public class DramaRecipe {
     private OffsetDateTime updatedAt;
     @Column(name = "published_at")
     private OffsetDateTime publishedAt;
+    /** 用户对运营邀请的授权时间（approve 时写入）。 */
+    @Column(name = "consent_at")
+    private OffsetDateTime consentAt;
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 }
