@@ -7052,6 +7052,19 @@ paths:
   /me/drama/projects/{id}/cast/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaCast, summary: 'AI 从大纲重抽角色阵容（大模型）', responses: { '200': { description: ok } } }
+  # ── v0.74 互动短剧（剧情互动）：剧集分支图 CRUD + AI 起草 + 按集生成。DramaInteractiveController。 ──
+  /me/drama/interactive/series:
+    get:  { tags: [drama], operationId: listInteractiveSeries, summary: '我的互动剧列表（剧集分支图摘要）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: saveInteractiveSeries, summary: '保存互动剧（整张剧集图内嵌 payloadJson，mode=interactive_series）', responses: { '200': { description: ok } } }
+  /me/drama/interactive/series/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getInteractiveSeries,    summary: '互动剧详情（完整剧集图）', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteInteractiveSeries, summary: '删除互动剧（软删）', responses: { '204': { description: ok } } }
+  /me/drama/interactive/ai-draft:
+    post: { tags: [drama], operationId: aiDraftInteractiveSeries, summary: 'AI 起草整张剧集分支图（大模型，prompt=drama.interactive_draft，复用 DRAMA_SCRIPT_DRAFT 端点）。body:{theme,genre?,branch_points?,endings?}', responses: { '200': { description: ok } } }
+  /me/drama/interactive/series/{seriesId}/episodes/{episodeId}/generate:
+    parameters: [ { in: path, name: seriesId, required: true, schema: { type: string } }, { in: path, name: episodeId, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: generateInteractiveEpisode, summary: '按集生成视频（复用 MaterialVideoJob 管线 kind=drama-interactive-node，回写 node.video_job_id，轮询 /me/drama/episodes/jobs/{id}）', responses: { '200': { description: ok } } }
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/frame:
     post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }

@@ -1,0 +1,350 @@
+"use client";
+
+export const dynamic = "force-dynamic";
+
+// 互动短剧编辑器 —— 剧集分支地图 + 配置互动 + 批量生成 + 导出互动配置(manifest)。
+// 编辑全部 live 写入本地 draft，页面级「保存」统一持久化。
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Download, GitBranch, Play, Plus, Save, Sparkles } from "lucide-react";
+import { Button, Card, Chip } from "@/components/premium";
+import { ConfirmDialog, ErrorBlock, LoadingBlock, SectionHeader } from "@/components/common";
+import { MediaLightbox } from "@/components/drama-workshop/media-lightbox";
+import { useAsync, mutate, invalidate } from "@/lib/drama-query";
+import { ApiError } from "@ai-star-eco/api-client";
+import * as InteractiveDramaApi from "@/api/interactive-drama";
+import type { InteractiveSeries } from "@/api/interactive-drama";
+import { addEpisode as addEpisodeFn, applyNodePatch, blankEpisode, removeEpisode as removeEpisodeFn, summarize, validateSeries } from "@/lib/interactive-graph";
+import { EpisodeCard } from "../_components/EpisodeCard";
+import { EpisodeEditorDialog } from "../_components/EpisodeEditorDialog";
+import { ManifestPreviewDialog } from "../_components/ManifestPreviewDialog";
+import { PlaythroughDialog } from "../_components/PlaythroughDialog";
+
+const LIST_KEY = "/me/interactive/series";
+
+function BackLink() {
+  return (
+    <Link href="/interactive" style={{ textDecoration: "none", width: "fit-content" }}>
+      <span className="row gap-1" style={{ fontSize: 12.5, color: "var(--ink-2)", fontWeight: 600 }}>
+        <ArrowLeft size={14} /> 返回互动短剧
+      </span>
+    </Link>
+  );
+}
+
+/** dirty 比对时忽略 status/时间戳（saveSeries 会派生它们）。 */
+function snap(s: InteractiveSeries | null): string {
+  if (!s) return "";
+  const { updated_at, created_at, status, ...rest } = s;
+  void updated_at;
+  void created_at;
+  void status;
+  return JSON.stringify(rest);
+}
+
+export default function InteractiveEditorPage({ params }: { params: Promise<{ seriesId: string }> }) {
+  const { seriesId } = React.use(params);
+  const router = useRouter();
+  const key = `/me/interactive/series/${seriesId}`;
+  const q = useAsync<InteractiveSeries>(key, () => InteractiveDramaApi.getSeries(seriesId));
+
+  const [draft, setDraft] = React.useState<InteractiveSeries | null>(null);
+  const [savedSnap, setSavedSnap] = React.useState("");
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [showManifest, setShowManifest] = React.useState(false);
+  const [deleteEpId, setDeleteEpId] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [genBusy, setGenBusy] = React.useState(false);
+  const [previewSrc, setPreviewSrc] = React.useState<string | null>(null);
+  const [showPlaythrough, setShowPlaythrough] = React.useState(false);
+
+  React.useEffect(() => {
+    if (q.data && draft === null) {
+      const copy = JSON.parse(JSON.stringify(q.data)) as InteractiveSeries;
+      setDraft(copy);
+      setSavedSnap(snap(copy));
+    }
+  }, [q.data, draft]);
+
+  const dirty = draft ? snap(draft) !== savedSnap : false;
+  const validation = React.useMemo(() => (draft ? validateSeries(draft) : null), [draft]);
+  const summary = draft ? summarize(draft) : null;
+
+  // ── 节点增删改 ─────────────────────────────────────────────────────────────
+  function patchEpisode(id: string, patch: Parameters<typeof applyNodePatch>[2]) {
+    setDraft((d) => (d ? applyNodePatch(d, id, patch) : d));
+  }
+  function handleAddEpisode(): string {
+    const ep = blankEpisode(`第 ${(draft?.episodes.length ?? 0) + 1} 集`, "");
+    setDraft((d) => (d ? addEpisodeFn(d, ep) : d));
+    return ep.id;
+  }
+  function handleRemoveEpisode(id: string) {
+    setDraft((d) => (d ? removeEpisodeFn(d, id) : d));
+  }
+  function handleSetStart(id: string) {
+    setDraft((d) => (d ? { ...d, start_episode_id: id } : d));
+  }
+
+  // ── 保存 ───────────────────────────────────────────────────────────────────
+  async function handleSave() {
+    if (!draft || saving) return;
+    setSaving(true);
+    try {
+      const saved = await InteractiveDramaApi.saveSeries(draft);
+      setDraft(saved);
+      setSavedSnap(snap(saved));
+      mutate(key, saved);
+      invalidate(LIST_KEY);
+      toast.success("已保存");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── 生成（先存当前图，再逐集生成，最后持久化） ──────────────────────────────
+  async function runGenerate(ids: string[]) {
+    if (!draft || genBusy) return;
+    const targets = ids.length ? ids : draft.episodes.filter((e) => e.gen_status !== "ready").map((e) => e.id);
+    if (!targets.length) {
+      toast("所有剧集都已生成");
+      return;
+    }
+    setGenBusy(true);
+    try {
+      let cur = await InteractiveDramaApi.saveSeries(draft);
+      setDraft(cur);
+      setSavedSnap(snap(cur));
+      mutate(key, cur);
+      for (const id of targets) {
+        cur = applyNodePatch(cur, id, { gen_status: "generating" });
+        setDraft(cur);
+        const res = await InteractiveDramaApi.generateEpisode(cur.id, id);
+        cur = applyNodePatch(cur, id, {
+          gen_status: res.gen_status,
+          video_url: res.video_url ?? null,
+          video_job_id: res.video_job_id ?? null,
+          duration_sec: res.duration_sec ?? cur.episodes.find((e) => e.id === id)?.duration_sec,
+        });
+        setDraft(cur);
+      }
+      cur = await InteractiveDramaApi.saveSeries(cur);
+      setDraft(cur);
+      setSavedSnap(snap(cur));
+      mutate(key, cur);
+      invalidate(LIST_KEY);
+      toast.success(targets.length > 1 ? "剧集生成完成" : "该集已生成");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "生成失败");
+    } finally {
+      setGenBusy(false);
+    }
+  }
+
+  // ── 渲染 ───────────────────────────────────────────────────────────────────
+  if (q.error && !draft) {
+    return (
+      <div style={{ padding: 8 }}>
+        <BackLink />
+        <ErrorBlock onRetry={q.refetch} />
+      </div>
+    );
+  }
+  if (!draft || !validation || !summary) {
+    return (
+      <div style={{ padding: 8 }}>
+        <BackLink />
+        <LoadingBlock rows={4} height={110} />
+      </div>
+    );
+  }
+
+  const pendingCount = draft.episodes.filter((e) => e.gen_status !== "ready").length;
+  const editingNode = draft.episodes.find((e) => e.id === editingId) ?? null;
+  const delEp = draft.episodes.find((e) => e.id === deleteEpId) ?? null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <BackLink />
+
+      {/* 头部 */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 20, flexWrap: "wrap" }}>
+        <div>
+          <div className="eyebrow">剧情互动 · 配置剧集分支</div>
+          <h1 style={{ fontSize: 30, fontWeight: 700, margin: "8px 0 6px", letterSpacing: "var(--tracking-tight)" }}>{draft.title}</h1>
+          <div className="row gap-2" style={{ flexWrap: "wrap", fontSize: 13, color: "var(--ink-2)" }}>
+            <Chip tone="neutral">{draft.genre}</Chip>
+            <span>{summary.episode_count} 集</span>
+            <span>· {summary.branch_count} 互动点</span>
+            <span>· {summary.ending_count} 结局</span>
+            <span>· {summary.ready_count}/{summary.episode_count} 已生成</span>
+            {dirty && <Chip tone="warning">未保存</Chip>}
+          </div>
+        </div>
+        <div className="row gap-2">
+          <Button variant="secondary" size="md" onClick={() => setShowPlaythrough(true)} disabled={draft.episodes.length === 0}>
+            <Play size={14} /> 试玩走查
+          </Button>
+          <Button variant="secondary" size="md" onClick={() => setShowManifest(true)}>
+            <Download size={14} /> 预览并导出
+          </Button>
+          <Button variant="primary" size="md" loading={saving} disabled={!dirty && !saving} onClick={handleSave}>
+            <Save size={14} /> 保存
+          </Button>
+        </div>
+      </div>
+
+      {/* 说明条 */}
+      <div className="card row gap-3" style={{ padding: "11px 15px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", alignItems: "flex-start" }}>
+        <GitBranch size={15} style={{ color: "var(--accent)", flex: "none", marginTop: 2 }} />
+        <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+          下面每张卡是一<b style={{ color: "var(--ink)" }}>集</b>。给某集设「互动分支」，填好问题和选项、每个选项指向下一集；
+          生成每集视频后，<b style={{ color: "var(--ink)" }}>导出互动配置</b>交给抖音 / TikTok 播放。互动只发生在剧集之间。
+        </div>
+      </div>
+
+      {/* 主体两栏 */}
+      <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {/* 左：剧集分支地图 */}
+        <div style={{ flex: "3 1 460px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+          <SectionHeader
+            eyebrow="按勾选顺序铺开"
+            title="剧集分支地图"
+            right={
+              <Button variant="secondary" size="sm" onClick={() => setEditingId(handleAddEpisode())}>
+                <Plus size={13} /> 新增剧集
+              </Button>
+            }
+          />
+          {draft.episodes.map((node) => (
+            <EpisodeCard
+              key={node.id}
+              series={draft}
+              node={node}
+              isStart={node.id === draft.start_episode_id}
+              genBusy={genBusy}
+              onEdit={() => setEditingId(node.id)}
+              onGenerate={() => runGenerate([node.id])}
+              onPreview={() => node.video_url && setPreviewSrc(node.video_url)}
+              onSetStart={() => handleSetStart(node.id)}
+              onDelete={() => setDeleteEpId(node.id)}
+            />
+          ))}
+        </div>
+
+        {/* 右：生成 / 校验 / 导出 */}
+        <div style={{ flex: "1 1 300px", minWidth: 280, display: "flex", flexDirection: "column", gap: 14, position: "sticky", top: 8 }}>
+          {/* 生成 */}
+          <Card style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>生成剧集视频</div>
+            <div>
+              <div className="row" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--ink-2)", marginBottom: 6 }}>
+                <span>已生成</span>
+                <span className="mono">
+                  {summary.ready_count} / {summary.episode_count}
+                </span>
+              </div>
+              <div style={{ height: 6, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${summary.episode_count ? (summary.ready_count / summary.episode_count) * 100 : 0}%`,
+                    height: "100%",
+                    background: "var(--gradient-gold)",
+                    transition: "width 240ms ease",
+                  }}
+                />
+              </div>
+            </div>
+            <Button variant="primary" size="md" loading={genBusy} disabled={pendingCount === 0} onClick={() => runGenerate([])}>
+              <Sparkles size={14} /> {pendingCount > 0 ? `生成全部待生成（${pendingCount}）` : "全部已生成"}
+            </Button>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.5 }}>
+              生成的是当前已保存的剧集图；每集一条 9:16 竖屏成片。P1 为演示生成，接真实视频引擎见 P2。
+            </div>
+          </Card>
+
+          {/* 校验 */}
+          <Card style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>结构校验</div>
+            {validation.errors.length === 0 && validation.warnings.length === 0 ? (
+              <div className="row gap-2" style={{ fontSize: 12.5, color: "var(--success)" }}>
+                <CheckCircle2 size={14} /> 结构完整，可以导出。
+              </div>
+            ) : (
+              <>
+                {validation.errors.map((m, i) => (
+                  <div key={`e${i}`} className="row gap-2" style={{ fontSize: 12, color: "var(--danger)", alignItems: "flex-start" }}>
+                    <AlertTriangle size={13} style={{ flex: "none", marginTop: 1 }} />
+                    <span>{m}</span>
+                  </div>
+                ))}
+                {validation.warnings.map((m, i) => (
+                  <div key={`w${i}`} className="row gap-2" style={{ fontSize: 12, color: "var(--warning)", alignItems: "flex-start" }}>
+                    <AlertTriangle size={13} style={{ flex: "none", marginTop: 1 }} />
+                    <span>{m}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </Card>
+
+          {/* 导出 */}
+          <Card style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>导出互动配置</div>
+            <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+              一份 JSON manifest，描述起始集、每集的互动与分支跳转 —— 交给社媒平台播放的规范产物。
+            </div>
+            <Button variant="secondary" size="md" onClick={() => setShowManifest(true)}>
+              <Download size={14} /> 预览并导出 JSON
+            </Button>
+          </Card>
+        </div>
+      </div>
+
+      {/* 单集编辑器 */}
+      <EpisodeEditorDialog
+        open={!!editingNode}
+        onClose={() => setEditingId(null)}
+        node={editingNode}
+        series={draft}
+        isStart={editingNode?.id === draft.start_episode_id}
+        onPatch={(patch) => editingId && patchEpisode(editingId, patch)}
+        onAddTarget={handleAddEpisode}
+        onSetStart={() => editingId && handleSetStart(editingId)}
+        onDelete={() => {
+          if (editingId) {
+            setDeleteEpId(editingId);
+            setEditingId(null);
+          }
+        }}
+      />
+
+      {/* 导出预览 */}
+      <ManifestPreviewDialog open={showManifest} onOpenChange={setShowManifest} series={draft} />
+
+      {/* 试玩走查 */}
+      <PlaythroughDialog open={showPlaythrough} onOpenChange={setShowPlaythrough} series={draft} />
+
+      {/* 成片抽查 */}
+      <MediaLightbox media={previewSrc ? { src: previewSrc, kind: "video" } : null} onClose={() => setPreviewSrc(null)} />
+
+      {/* 删除集确认 */}
+      <ConfirmDialog
+        open={!!deleteEpId}
+        onOpenChange={(o) => !o && setDeleteEpId(null)}
+        title={`删除「${delEp?.title ?? ""}」`}
+        description="删除后，其它集对它的跳转（互动选项 / 下一集）会一并清理。"
+        destructive
+        confirmLabel="删除"
+        onConfirm={() => {
+          if (deleteEpId) handleRemoveEpisode(deleteEpId);
+        }}
+      />
+    </div>
+  );
+}
