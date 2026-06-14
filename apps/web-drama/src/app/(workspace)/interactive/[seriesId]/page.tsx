@@ -9,7 +9,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Coins, Download, GitBranch, Play, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Coins, Download, GitBranch, List, Network, Play, Plus, Sparkles } from "lucide-react";
 import { Button, Card, Chip } from "@/components/premium";
 import { ConfirmDialog, ErrorBlock, LoadingBlock, SectionHeader } from "@/components/common";
 import { MediaLightbox } from "@/components/drama-workshop/media-lightbox";
@@ -19,8 +19,9 @@ import { useSaveStatus } from "@/lib/use-save-status";
 import { getDramaConfig } from "@/api/drama-config";
 import { ApiError } from "@ai-star-eco/api-client";
 import * as InteractiveDramaApi from "@/api/interactive-drama";
-import type { InteractiveSeries } from "@/api/interactive-drama";
-import { addEpisode as addEpisodeFn, applyNodePatch, blankEpisode, cloneEpisode, removeEpisode as removeEpisodeFn, summarize, validateSeries } from "@/lib/interactive-graph";
+import type { EpisodeNode, InteractiveSeries } from "@/api/interactive-drama";
+import { addEpisode as addEpisodeFn, applyNodePatch, blankChoice, blankEpisode, cloneEpisode, removeEpisode as removeEpisodeFn, summarize, validateSeries } from "@/lib/interactive-graph";
+import { BranchCanvas } from "../_components/BranchCanvas";
 import { EpisodeCard } from "../_components/EpisodeCard";
 import { EpisodeEditorDialog } from "../_components/EpisodeEditorDialog";
 import { ManifestPreviewDialog } from "../_components/ManifestPreviewDialog";
@@ -36,6 +37,20 @@ function BackLink() {
       </span>
     </Link>
   );
+}
+
+function segStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "5px 11px",
+    borderRadius: "calc(var(--radius-sm) - 2px)",
+    border: "none",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: active ? 700 : 600,
+    background: active ? "var(--surface)" : "transparent",
+    color: active ? "var(--accent)" : "var(--ink-3)",
+    boxShadow: active ? "var(--shadow-sm)" : "none",
+  };
 }
 
 /** 自动保存快照比对时忽略 status/时间戳（saveSeries 会派生它们）。 */
@@ -62,6 +77,7 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
   const [previewSrc, setPreviewSrc] = React.useState<string | null>(null);
   const [showPlaythrough, setShowPlaythrough] = React.useState(false);
   const [clipPrice, setClipPrice] = React.useState<number | null>(null);
+  const [view, setView] = React.useState<"canvas" | "list">("canvas");
 
   // 自动保存（复用 v0.76 草稿状态机）：编辑即标脏 + 防抖落库 + 离开提醒兜底。
   const { status: saveStatus, notifyEditing, track } = useSaveStatus();
@@ -122,6 +138,38 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
     const copy = cloneEpisode(src);
     setDraft((d) => (d ? addEpisodeFn(d, copy) : d));
     toast.success(`已复制为「${copy.title}」`);
+  }
+
+  // 画布连线：从 fromId 接一条分支到 toId。已是互动 → 加一个选项；已有线性下一集（再连一条）
+  // → 升级为互动二选；否则设为线性下一集。结局集不能往外连。
+  function handleConnect(fromId: string, toId: string) {
+    if (!draft || fromId === toId) return;
+    const from = draft.episodes.find((e) => e.id === fromId);
+    if (!from) return;
+    if (from.is_ending) {
+      toast.error("结局集没有后续，不能从它拉分支");
+      return;
+    }
+    let patch: Partial<EpisodeNode>;
+    let msg: string;
+    if (from.interaction) {
+      const ch = blankChoice(toId);
+      ch.label = `选项 ${from.interaction.choices.length + 1}`;
+      patch = { interaction: { ...from.interaction, choices: [...from.interaction.choices, ch] } };
+      msg = "已加一个分支选项";
+    } else if (from.next_episode_id && from.next_episode_id !== toId) {
+      const c1 = blankChoice(from.next_episode_id);
+      c1.label = "选项 1";
+      const c2 = blankChoice(toId);
+      c2.label = "选项 2";
+      patch = { next_episode_id: null, interaction: { prompt: "", choices: [c1, c2], countdown_sec: null, default_choice_id: null } };
+      msg = "已升级为互动分支（2 选）—— 去补一下问题文案";
+    } else {
+      patch = { next_episode_id: toId, is_ending: false };
+      msg = "已接为下一集";
+    }
+    setDraft((d) => (d ? applyNodePatch(d, fromId, patch) : d));
+    toast.success(msg);
   }
   function handleSetStart(id: string) {
     setDraft((d) => (d ? { ...d, start_episode_id: id } : d));
@@ -229,30 +277,49 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
         {/* 左：剧集分支地图 */}
         <div style={{ flex: "3 1 460px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
           <SectionHeader
-            eyebrow="按勾选顺序铺开"
+            eyebrow={view === "canvas" ? "点节点编辑 · 用「拉线」手柄接分支" : "逐集配置"}
             title="剧集分支地图"
             right={
-              <Button variant="secondary" size="sm" onClick={() => setEditingId(handleAddEpisode())}>
-                <Plus size={13} /> 新增剧集
-              </Button>
+              <div className="row gap-2">
+                <div className="row" style={{ background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: 2, gap: 2 }}>
+                  <button type="button" onClick={() => setView("canvas")} className="row gap-1" style={segStyle(view === "canvas")}>
+                    <Network size={13} /> 图
+                  </button>
+                  <button type="button" onClick={() => setView("list")} className="row gap-1" style={segStyle(view === "list")}>
+                    <List size={13} /> 列表
+                  </button>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => setEditingId(handleAddEpisode())}>
+                  <Plus size={13} /> 新增剧集
+                </Button>
+              </div>
             }
           />
-          {draft.episodes.map((node) => (
-            <EpisodeCard
-              key={node.id}
+          {view === "canvas" ? (
+            <BranchCanvas
               series={draft}
-              node={node}
-              isStart={node.id === draft.start_episode_id}
-              unreachable={!validation.reachable.has(node.id)}
-              genBusy={genBusy}
-              onEdit={() => setEditingId(node.id)}
-              onGenerate={() => runGenerate([node.id])}
-              onPreview={() => node.video_url && setPreviewSrc(node.video_url)}
-              onClone={() => handleCloneEpisode(node.id)}
-              onSetStart={() => handleSetStart(node.id)}
-              onDelete={() => setDeleteEpId(node.id)}
+              reachable={validation.reachable}
+              onEditNode={(id) => setEditingId(id)}
+              onConnect={handleConnect}
             />
-          ))}
+          ) : (
+            draft.episodes.map((node) => (
+              <EpisodeCard
+                key={node.id}
+                series={draft}
+                node={node}
+                isStart={node.id === draft.start_episode_id}
+                unreachable={!validation.reachable.has(node.id)}
+                genBusy={genBusy}
+                onEdit={() => setEditingId(node.id)}
+                onGenerate={() => runGenerate([node.id])}
+                onPreview={() => node.video_url && setPreviewSrc(node.video_url)}
+                onClone={() => handleCloneEpisode(node.id)}
+                onSetStart={() => handleSetStart(node.id)}
+                onDelete={() => setDeleteEpId(node.id)}
+              />
+            ))
+          )}
         </div>
 
         {/* 右：生成 / 校验 / 导出 */}
