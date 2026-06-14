@@ -9,15 +9,18 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Download, GitBranch, Play, Plus, Save, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Coins, Download, GitBranch, Play, Plus, Sparkles } from "lucide-react";
 import { Button, Card, Chip } from "@/components/premium";
 import { ConfirmDialog, ErrorBlock, LoadingBlock, SectionHeader } from "@/components/common";
 import { MediaLightbox } from "@/components/drama-workshop/media-lightbox";
+import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { useAsync, mutate, invalidate } from "@/lib/drama-query";
+import { useSaveStatus } from "@/lib/use-save-status";
+import { getDramaConfig } from "@/api/drama-config";
 import { ApiError } from "@ai-star-eco/api-client";
 import * as InteractiveDramaApi from "@/api/interactive-drama";
 import type { InteractiveSeries } from "@/api/interactive-drama";
-import { addEpisode as addEpisodeFn, applyNodePatch, blankEpisode, removeEpisode as removeEpisodeFn, summarize, validateSeries } from "@/lib/interactive-graph";
+import { addEpisode as addEpisodeFn, applyNodePatch, blankEpisode, cloneEpisode, removeEpisode as removeEpisodeFn, summarize, validateSeries } from "@/lib/interactive-graph";
 import { EpisodeCard } from "../_components/EpisodeCard";
 import { EpisodeEditorDialog } from "../_components/EpisodeEditorDialog";
 import { ManifestPreviewDialog } from "../_components/ManifestPreviewDialog";
@@ -35,7 +38,7 @@ function BackLink() {
   );
 }
 
-/** dirty 比对时忽略 status/时间戳（saveSeries 会派生它们）。 */
+/** 自动保存快照比对时忽略 status/时间戳（saveSeries 会派生它们）。 */
 function snap(s: InteractiveSeries | null): string {
   if (!s) return "";
   const { updated_at, created_at, status, ...rest } = s;
@@ -52,24 +55,52 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
   const q = useAsync<InteractiveSeries>(key, () => InteractiveDramaApi.getSeries(seriesId));
 
   const [draft, setDraft] = React.useState<InteractiveSeries | null>(null);
-  const [savedSnap, setSavedSnap] = React.useState("");
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [showManifest, setShowManifest] = React.useState(false);
   const [deleteEpId, setDeleteEpId] = React.useState<string | null>(null);
-  const [saving, setSaving] = React.useState(false);
   const [genBusy, setGenBusy] = React.useState(false);
   const [previewSrc, setPreviewSrc] = React.useState<string | null>(null);
   const [showPlaythrough, setShowPlaythrough] = React.useState(false);
+  const [clipPrice, setClipPrice] = React.useState<number | null>(null);
+
+  // 自动保存（复用 v0.76 草稿状态机）：编辑即标脏 + 防抖落库 + 离开提醒兜底。
+  const { status: saveStatus, notifyEditing, track } = useSaveStatus();
+  const lastSavedRef = React.useRef<string>("");
 
   React.useEffect(() => {
     if (q.data && draft === null) {
       const copy = JSON.parse(JSON.stringify(q.data)) as InteractiveSeries;
       setDraft(copy);
-      setSavedSnap(snap(copy));
+      lastSavedRef.current = snap(copy);
     }
   }, [q.data, draft]);
 
-  const dirty = draft ? snap(draft) !== savedSnap : false;
+  // 单集生成的视频单价（真后端按集计费；mock 仅展示预估）。
+  React.useEffect(() => {
+    getDramaConfig().then((c) => setClipPrice(c.prices.clip)).catch(() => {});
+  }, []);
+
+  // 防抖自动保存：draft 变化且与已落库快照不同 → 标脏 + 900ms 落库。
+  // 生成期间（genBusy）由 runGenerate 自行持久化，这里跳过以免重复保存。
+  React.useEffect(() => {
+    if (!draft || genBusy) return;
+    if (snap(draft) === lastSavedRef.current) return;
+    notifyEditing();
+    const d = draft;
+    const t = setTimeout(() => {
+      track(() => InteractiveDramaApi.saveSeries(d))
+        .then((saved) => {
+          lastSavedRef.current = snap(saved);
+          mutate(key, saved);
+          invalidate(LIST_KEY);
+        })
+        .catch(() => {
+          /* SaveStatus 会显示「保存失败」 */
+        });
+    }, 900);
+    return () => clearTimeout(t);
+  }, [draft, genBusy, notifyEditing, track, key]);
+
   const validation = React.useMemo(() => (draft ? validateSeries(draft) : null), [draft]);
   const summary = draft ? summarize(draft) : null;
 
@@ -85,29 +116,18 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
   function handleRemoveEpisode(id: string) {
     setDraft((d) => (d ? removeEpisodeFn(d, id) : d));
   }
+  function handleCloneEpisode(id: string) {
+    const src = draft?.episodes.find((e) => e.id === id);
+    if (!src) return;
+    const copy = cloneEpisode(src);
+    setDraft((d) => (d ? addEpisodeFn(d, copy) : d));
+    toast.success(`已复制为「${copy.title}」`);
+  }
   function handleSetStart(id: string) {
     setDraft((d) => (d ? { ...d, start_episode_id: id } : d));
   }
 
-  // ── 保存 ───────────────────────────────────────────────────────────────────
-  async function handleSave() {
-    if (!draft || saving) return;
-    setSaving(true);
-    try {
-      const saved = await InteractiveDramaApi.saveSeries(draft);
-      setDraft(saved);
-      setSavedSnap(snap(saved));
-      mutate(key, saved);
-      invalidate(LIST_KEY);
-      toast.success("已保存");
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "保存失败");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ── 生成（先存当前图，再逐集生成，最后持久化） ──────────────────────────────
+  // ── 生成（先存当前图，再逐集生成，最后持久化；保存均经 track 反映状态） ──────
   async function runGenerate(ids: string[]) {
     if (!draft || genBusy) return;
     const targets = ids.length ? ids : draft.episodes.filter((e) => e.gen_status !== "ready").map((e) => e.id);
@@ -117,9 +137,9 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
     }
     setGenBusy(true);
     try {
-      let cur = await InteractiveDramaApi.saveSeries(draft);
+      let cur = await track(() => InteractiveDramaApi.saveSeries(draft));
+      lastSavedRef.current = snap(cur);
       setDraft(cur);
-      setSavedSnap(snap(cur));
       mutate(key, cur);
       for (const id of targets) {
         cur = applyNodePatch(cur, id, { gen_status: "generating" });
@@ -133,9 +153,9 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
         });
         setDraft(cur);
       }
-      cur = await InteractiveDramaApi.saveSeries(cur);
+      cur = await track(() => InteractiveDramaApi.saveSeries(cur));
+      lastSavedRef.current = snap(cur);
       setDraft(cur);
-      setSavedSnap(snap(cur));
       mutate(key, cur);
       invalidate(LIST_KEY);
       toast.success(targets.length > 1 ? "剧集生成完成" : "该集已生成");
@@ -183,18 +203,14 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
             <span>· {summary.branch_count} 互动点</span>
             <span>· {summary.ending_count} 结局</span>
             <span>· {summary.ready_count}/{summary.episode_count} 已生成</span>
-            {dirty && <Chip tone="warning">未保存</Chip>}
           </div>
         </div>
         <div className="row gap-2">
           <Button variant="secondary" size="md" onClick={() => setShowPlaythrough(true)} disabled={draft.episodes.length === 0}>
             <Play size={14} /> 试玩走查
           </Button>
-          <Button variant="secondary" size="md" onClick={() => setShowManifest(true)}>
+          <Button variant="primary" size="md" onClick={() => setShowManifest(true)}>
             <Download size={14} /> 预览并导出
-          </Button>
-          <Button variant="primary" size="md" loading={saving} disabled={!dirty && !saving} onClick={handleSave}>
-            <Save size={14} /> 保存
           </Button>
         </div>
       </div>
@@ -227,10 +243,12 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
               series={draft}
               node={node}
               isStart={node.id === draft.start_episode_id}
+              unreachable={!validation.reachable.has(node.id)}
               genBusy={genBusy}
               onEdit={() => setEditingId(node.id)}
               onGenerate={() => runGenerate([node.id])}
               onPreview={() => node.video_url && setPreviewSrc(node.video_url)}
+              onClone={() => handleCloneEpisode(node.id)}
               onSetStart={() => handleSetStart(node.id)}
               onDelete={() => setDeleteEpId(node.id)}
             />
@@ -263,8 +281,19 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
             <Button variant="primary" size="md" loading={genBusy} disabled={pendingCount === 0} onClick={() => runGenerate([])}>
               <Sparkles size={14} /> {pendingCount > 0 ? `生成全部待生成（${pendingCount}）` : "全部已生成"}
             </Button>
+            {clipPrice != null && pendingCount > 0 && (
+              <div className="row gap-1" style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+                <Coins size={12} /> 预计消耗 ~{(pendingCount * clipPrice).toLocaleString("zh-CN")} 积分（{pendingCount} 集 × {clipPrice}/集）
+              </div>
+            )}
+            {summary.episode_count >= 12 && (
+              <div className="row gap-1" style={{ fontSize: 11, color: "var(--warning)", alignItems: "flex-start" }}>
+                <AlertTriangle size={12} style={{ flex: "none", marginTop: 1 }} />
+                分支较多（{summary.episode_count} 集）。让不同选项「收束」到同一集，可控制集数与生成成本。
+              </div>
+            )}
             <div style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.5 }}>
-              生成的是当前已保存的剧集图；每集一条 9:16 竖屏成片。P1 为演示生成，接真实视频引擎见 P2。
+              生成的是当前自动保存的剧集图；每集一条 9:16 竖屏成片。mock 即时占位，真后端走视频引擎按集计费。
             </div>
           </Card>
 
@@ -332,6 +361,9 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
 
       {/* 成片抽查 */}
       <MediaLightbox media={previewSrc ? { src: previewSrc, kind: "video" } : null} onClose={() => setPreviewSrc(null)} />
+
+      {/* 自动保存状态指示（底部悬浮药丸） */}
+      <SaveStatus status={saveStatus} />
 
       {/* 删除集确认 */}
       <ConfirmDialog
