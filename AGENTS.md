@@ -96,6 +96,10 @@ Aisingerecosystem/
 
 ## 2. Daily Commands
 
+### 飞书 CLI
+
+- 已配置飞书 CLI app：`cli_aaa471e87738dbdb`（brand: `feishu`）；后续先跑 `lark-cli doctor`，不要重复 `lark-cli config init --new`；禁止记录 `appSecret` / access token / refresh token。
+
 ### 后端 Spring Boot
 
 ```bash

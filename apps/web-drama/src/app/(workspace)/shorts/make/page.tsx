@@ -261,6 +261,7 @@ function ShortMakerGate() {
 
   const [draftId, setDraftId] = React.useState<string | null>(draftIdParam);
   const [initial, setInitial] = React.useState<ShortDraftData | null>(null);
+  const [initialStatus, setInitialStatus] = React.useState<"draft" | "done">("draft");
   const [err, setErr] = React.useState<string | null>(null);
   const startedRef = React.useRef(false);
   const createdIdRef = React.useRef<string | null>(null);
@@ -283,6 +284,7 @@ function ShortMakerGate() {
           }
           setDraftId(draftIdParam);
           setInitial(data);
+          setInitialStatus(detail.meta.status === "done" ? "done" : "draft");
           return;
         }
         startedRef.current = true;
@@ -299,6 +301,7 @@ function ShortMakerGate() {
         createdIdRef.current = detail.meta.id;
         setDraftId(detail.meta.id);
         setInitial(detail.data);
+        setInitialStatus(detail.meta.status === "done" ? "done" : "draft");
         invalidate("/me/drama/shorts");
         const params = new URLSearchParams();
         params.set("draft", detail.meta.id);
@@ -316,7 +319,7 @@ function ShortMakerGate() {
 
   if (err) return <ShortMakerError msg={err} onBack={() => router.push("/shorts")} />;
   if (!draftId || !initial) return <ShortMakerLoading />;
-  return <ShortMakerInner key={draftId} draftId={draftId} fmtKey={fmtKey} reopen={reopenParam} initial={initial} />;
+  return <ShortMakerInner key={draftId} draftId={draftId} fmtKey={fmtKey} reopen={reopenParam} initial={initial} initialStatus={initialStatus} />;
 }
 
 function ShortMakerLoading() {
@@ -355,11 +358,13 @@ function ShortMakerInner({
   fmtKey,
   reopen,
   initial,
+  initialStatus,
 }: {
   draftId: string;
   fmtKey: string | null;
   reopen: string | null;
   initial: ShortDraftData;
+  initialStatus: "draft" | "done";
 }) {
   const router = useRouter();
   const resolvedFmtKey = fmtKey ?? initial.fmtKey ?? null;
@@ -408,6 +413,7 @@ function ShortMakerInner({
         : [{ who: "ai", text: tplIntro }],
   );
   const [draft, setDraft] = React.useState("");
+  const [draftStatus, setDraftStatus] = React.useState<"draft" | "done">(initialStatus);
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
@@ -437,16 +443,16 @@ function ShortMakerInner({
     notifyEditing();
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      void track(() => ShortsApi.saveDraft(draftId, dataRef.current, { status: "draft" })).catch(() => {});
+      void track(() => ShortsApi.saveDraft(draftId, dataRef.current, { status: draftStatus })).catch(() => {});
     }, 1200);
-  }, [draftId, notifyEditing, track]);
+  }, [draftId, draftStatus, notifyEditing, track]);
 
   const flushSave = React.useCallback(
     async (opts?: { status?: "draft" | "done"; progress?: number }) => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      await track(() => ShortsApi.saveDraft(draftId, dataRef.current, opts ?? { status: "draft" }));
+      await track(() => ShortsApi.saveDraft(draftId, dataRef.current, opts ?? { status: draftStatus }));
     },
-    [draftId, track],
+    [draftId, draftStatus, track],
   );
 
   // 持久化态变化即防抖落库（跳过首挂载，避免刚载入就回存一次）。
@@ -917,10 +923,10 @@ function ShortMakerInner({
       <div
         className="row gap-2 pop-in"
         style={{
-          position: "absolute",
+          position: "fixed",
           right: 26,
-          bottom: 22,
-          zIndex: 20,
+          bottom: "calc(22px + env(safe-area-inset-bottom))",
+          zIndex: 80,
           background: "var(--surface)",
           padding: 10,
           borderRadius: 16,
@@ -941,9 +947,13 @@ function ShortMakerInner({
             className="btn btn-grad"
             onClick={async () => {
               try {
+                setDraftStatus("done");
                 await flushSave({ status: "done", progress: 100 });
-              } catch {
+              } catch (e) {
                 /* flush 失败：草稿仍是 draft 态，用户可重试，不误报完成 */
+                setDraftStatus("draft");
+                toast.error(aiErrorMessage(e, "合成完成状态保存失败，请稍后重试"));
+                return;
               }
               invalidate("/me/drama/shorts");
               toast.success("短视频已合成,可在「我的短视频」查看");

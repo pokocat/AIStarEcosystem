@@ -280,6 +280,7 @@ public class DramaShortService {
 
     private ObjectNode toSummary(DramaShort s) {
         ObjectNode o = om.createObjectNode();
+        PreviewMedia media = previewMedia(readPayload(s));
         o.put("id", s.getId());
         o.put("title", orDefault(s.getTitle(), "未命名短视频"));
         if (s.getFmtKey() != null) o.put("fmtKey", s.getFmtKey()); else o.putNull("fmtKey");
@@ -291,9 +292,46 @@ public class DramaShortService {
         o.put("doneCount", s.getDoneCount());
         o.put("status", orDefault(s.getStatus(), "draft"));
         o.put("progress", s.getProgress());
+        if (media.coverUrl() != null) o.put("coverUrl", media.coverUrl()); else o.putNull("coverUrl");
+        if (media.videoUrl() != null) o.put("videoUrl", media.videoUrl()); else o.putNull("videoUrl");
         o.put("updated", relativeTime(s.getUpdatedAt()));
         o.put("updatedAt", s.getUpdatedAt() != null ? s.getUpdatedAt().toString() : null);
         return o;
+    }
+
+    private PreviewMedia previewMedia(JsonNode payload) {
+        JsonNode shots = payload == null ? null : payload.path("shots");
+        if (shots == null || !shots.isArray() || shots.isEmpty()) {
+            return new PreviewMedia(null, null);
+        }
+        String video = null;
+        String cover = null;
+        for (JsonNode sh : shots) {
+            if (video == null && "done".equals(sh.path("flow").asText(""))) {
+                video = nonBlank(text(sh, "videoUrl"));
+            }
+            if (cover == null) {
+                cover = firstFrameUrl(sh);
+            }
+            if (video != null && cover != null) break;
+        }
+        if (video == null) {
+            for (JsonNode sh : shots) {
+                video = nonBlank(text(sh, "videoUrl"));
+                if (video != null) break;
+            }
+        }
+        return new PreviewMedia(cover, video);
+    }
+
+    private static String firstFrameUrl(JsonNode shot) {
+        String one = nonBlank(text(shot, "frameUrl"));
+        if (one != null) return one;
+        JsonNode arr = shot == null ? null : shot.get("frameUrls");
+        if (arr != null && arr.isArray() && !arr.isEmpty()) {
+            return nonBlank(arr.get(0).asText(null));
+        }
+        return null;
     }
 
     private ObjectNode toDetail(DramaShort s) {
@@ -324,6 +362,12 @@ public class DramaShortService {
     private static String orDefault(String v, String d) {
         return v == null || v.isBlank() ? d : v;
     }
+
+    private static String nonBlank(String v) {
+        return v == null || v.isBlank() ? null : v;
+    }
+
+    private record PreviewMedia(String coverUrl, String videoUrl) {}
 
     private String write(JsonNode node) {
         try {

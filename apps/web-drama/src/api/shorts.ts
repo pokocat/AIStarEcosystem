@@ -25,6 +25,8 @@ export interface ShortDraftSummary {
   doneCount: number;
   status: ShortDraftStatus;
   progress: number;
+  coverUrl?: string | null;
+  videoUrl?: string | null;
   updated: string;
   updatedAt: string | null;
 }
@@ -117,8 +119,19 @@ function mockSummary(id: string, input: CreateShortInput): ShortDraftSummary {
     doneCount: 0,
     status: "draft",
     progress: 0,
+    coverUrl: null,
+    videoUrl: null,
     updated: "刚刚",
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function mockPreviewMedia(data: ShortDraftData): Pick<ShortDraftSummary, "coverUrl" | "videoUrl"> {
+  const videoShot = data.shots.find((s) => s.flow === "done" && s.videoUrl) ?? data.shots.find((s) => s.videoUrl);
+  const coverShot = data.shots.find((s) => s.frameUrl || s.frameUrls?.[0]) ?? videoShot;
+  return {
+    coverUrl: coverShot?.frameUrl ?? coverShot?.frameUrls?.[0] ?? null,
+    videoUrl: videoShot?.videoUrl ?? null,
   };
 }
 
@@ -188,6 +201,7 @@ export async function saveDraft(
       doneCount,
       status: opts?.status ?? prev?.meta.status ?? "draft",
       progress: opts?.progress ?? (shotCount > 0 ? Math.round((doneCount / shotCount) * 100) : 0),
+      ...mockPreviewMedia(data),
       updated: "刚刚",
       updatedAt: new Date().toISOString(),
     };

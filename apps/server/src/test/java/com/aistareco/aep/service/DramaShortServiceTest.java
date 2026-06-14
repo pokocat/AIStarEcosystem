@@ -84,8 +84,8 @@ class DramaShortServiceTest {
         // 整页保存：2 镜（1 已成片），meta.title 覆盖标题
         String payload = "{\"step\":\"factory\",\"fmtKey\":\"sell\",\"fmtName\":\"口播带货\","
                 + "\"meta\":{\"title\":\"熬夜精华·转化版\",\"style\":[\"高级感\"],\"scene\":\"咖啡馆\",\"character\":{\"name\":\"主播\",\"description\":\"\"}},"
-                + "\"shots\":[{\"id\":\"sh1\",\"dur\":9,\"flow\":\"done\",\"visual\":\"产品特写\"},"
-                + "{\"id\":\"sh2\",\"dur\":6,\"flow\":\"frame\",\"visual\":\"对比\"}],"
+                + "\"shots\":[{\"id\":\"sh1\",\"dur\":9,\"flow\":\"done\",\"visual\":\"产品特写\",\"frameUrl\":\"https://cdn.example.com/f1.jpg\",\"videoUrl\":\"https://cdn.example.com/v1.mp4\"},"
+                + "{\"id\":\"sh2\",\"dur\":6,\"flow\":\"frame\",\"visual\":\"对比\",\"frameUrls\":[\"https://cdn.example.com/f2.jpg\"]}],"
                 + "\"chat\":[],\"refs\":[]}";
         var body = OM.createObjectNode();
         body.set("data", readTree(payload));
@@ -96,10 +96,13 @@ class DramaShortServiceTest {
         assertEquals(2, meta.get("shotCount").asInt());
         assertEquals(1, meta.get("doneCount").asInt());
         assertEquals(50, meta.get("progress").asInt());              // 1/2
+        assertEquals("https://cdn.example.com/f1.jpg", meta.get("coverUrl").asText());
+        assertEquals("https://cdn.example.com/v1.mp4", meta.get("videoUrl").asText());
 
         // 列表能取回，且整页 data 原样回读
         List<JsonNode> list = svc.listShorts(USER);
         assertEquals(1, list.size());
+        assertEquals("https://cdn.example.com/v1.mp4", list.get(0).get("videoUrl").asText());
         JsonNode reloaded = svc.getShort(id, USER).get("data");
         assertEquals(2, reloaded.get("shots").size());
         assertEquals("factory", reloaded.get("step").asText());

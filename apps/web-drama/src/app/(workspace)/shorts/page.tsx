@@ -5,10 +5,11 @@
 // v0.76:短视频成片有真后端草稿（/me/drama/shorts），列表即真实草稿，点开接着做。
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Clapperboard, Play, Zap } from "lucide-react";
+import { Clapperboard, Copy, Play, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
+import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
 import { type DramaProjectSummary } from "@/mocks/drama-workshop";
 import { ProjectsApi, ShortsApi } from "@/api";
 import type { ShortDraftSummary } from "@/api/shorts";
@@ -28,16 +29,36 @@ function fmtDur(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function DraftCard({ d, onOpen, delay }: { d: ShortDraftSummary; onOpen: () => void; delay?: number }) {
+function DraftCard({
+  d,
+  onOpen,
+  onReplicate,
+  delay,
+}: {
+  d: ShortDraftSummary;
+  onOpen: () => void;
+  onReplicate: () => void;
+  delay?: number;
+}) {
+  const done = d.status === "done";
   const st =
-    d.status === "done"
+    done
       ? { t: "已完成", c: "#15803d", bg: "#dcfce7" }
       : { t: "草稿", c: "var(--accent)", bg: "var(--accent-soft)" };
+  const coverUrl = d.coverUrl ?? undefined;
+  const videoUrl = d.videoUrl ?? undefined;
   return (
-    <button
-      type="button"
+    <article
+      role="button"
+      tabIndex={0}
       className="card col fade-up"
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       style={{ padding: 0, overflow: "hidden", gap: 0, animationDelay: (delay ?? 0) + "ms", textAlign: "left" }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-2px)";
@@ -49,7 +70,32 @@ function DraftCard({ d, onOpen, delay }: { d: ShortDraftSummary; onOpen: () => v
       }}
     >
       <div style={{ position: "relative" }}>
-        <Thumb from={d.from} to={d.to} ratio="3/4" radius={0} stripes={d.shotCount === 0} style={{ width: "100%" }} />
+        {videoUrl ? (
+          <video
+            src={videoUrl}
+            poster={coverUrl}
+            muted
+            playsInline
+            preload="metadata"
+            style={{
+              width: "100%",
+              aspectRatio: "3/4",
+              objectFit: "cover",
+              display: "block",
+              background: `linear-gradient(150deg, ${d.from}, ${d.to})`,
+            }}
+          />
+        ) : (
+          <Thumb
+            from={d.from}
+            to={d.to}
+            src={coverUrl}
+            ratio="3/4"
+            radius={0}
+            stripes={d.shotCount === 0}
+            style={{ width: "100%" }}
+          />
+        )}
         <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
           <span
             style={{
@@ -108,15 +154,34 @@ function DraftCard({ d, onOpen, delay }: { d: ShortDraftSummary; onOpen: () => v
           ) : (
             <span className="faint">未起草</span>
           )}
+          {done && (
+            <>
+              <span className="grow" />
+              <button
+                type="button"
+                className="btn btn-icon btn-sm"
+                aria-label="复刻"
+                title="复刻"
+                style={{ width: 24, height: 24, borderRadius: 7 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReplicate();
+                }}
+              >
+                <Copy size={11} />
+              </button>
+            </>
+          )}
         </span>
       </div>
-    </button>
+    </article>
   );
 }
 
 export default function ShortsStudioPage() {
   const router = useRouter();
   const [clipOpen, setClipOpen] = React.useState(false);
+  const [preview, setPreview] = React.useState<ShortDraftSummary | null>(null);
   // v0.76:短视频草稿真后端 —— 列表即真实草稿；单集作品另取真实项目（episodes===1）。
   const draftsQ = useAsync("/me/drama/shorts", () => ShortsApi.listDrafts());
   const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
@@ -134,7 +199,20 @@ export default function ShortsStudioPage() {
     const qs = params.toString();
     router.push(`/shorts/make${qs ? "?" + qs : ""}`);
   };
-  const openDraft = (d: ShortDraftSummary) => router.push(`/shorts/make?draft=${encodeURIComponent(d.id)}`);
+  const editDraft = (id: string) => router.push(`/shorts/make?draft=${encodeURIComponent(id)}`);
+  const replicateDraft = (d: ShortDraftSummary) => {
+    const params = new URLSearchParams();
+    if (d.fmtKey) params.set("fmt", d.fmtKey);
+    params.set("reopen", d.title);
+    router.push(`/shorts/make?${params.toString()}`);
+  };
+  const openDraft = (d: ShortDraftSummary) => {
+    if (d.status === "done") {
+      setPreview(d);
+      return;
+    }
+    editDraft(d.id);
+  };
   const openProject = (p: DramaProjectSummary) => router.push("/projects/" + p.id);
 
   return (
@@ -142,7 +220,7 @@ export default function ShortsStudioPage() {
       <div className="row" style={{ marginBottom: 22 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>短视频工坊</h1>
-          <div className="muted" style={{ marginTop: 4 }}>你的短视频、宣传片、个人自传等单集作品都在这里 —— 点开接着做</div>
+          <div className="muted" style={{ marginTop: 4 }}>你的短视频、宣传片、个人自传等单集作品都在这里 —— 完成后点开播放，草稿接着做</div>
         </div>
         <div className="grow" />
         <button type="button" className="btn btn-line" style={{ height: 44, padding: "0 18px" }} onClick={() => setClipOpen(true)}>
@@ -198,7 +276,7 @@ export default function ShortsStudioPage() {
           <span className="faint" style={{ fontSize: 11 }}>说句话·出片</span>
         </button>
         {drafts.map((d, i) => (
-          <DraftCard key={d.id} d={d} delay={i * 35} onOpen={() => openDraft(d)} />
+          <DraftCard key={d.id} d={d} delay={i * 35} onOpen={() => openDraft(d)} onReplicate={() => replicateDraft(d)} />
         ))}
         {singles.map((p, i) => (
           <ProjectCard key={p.id} p={p} stageNames={STAGE_NAMES} onOpen={openProject} delay={(drafts.length + i) * 35} />
@@ -206,6 +284,32 @@ export default function ShortsStudioPage() {
       </div>
 
       {clipOpen && <ShortClipModal onClose={() => setClipOpen(false)} onMake={onMake} />}
+      {preview && (
+        <WorkPreviewModal
+          item={{
+            title: preview.title,
+            cover: { from: preview.from, to: preview.to },
+            coverUrl: preview.coverUrl,
+            videoUrl: preview.videoUrl,
+            ratio: "9:16",
+            metaLine: `${preview.fmtName} · ${preview.doneCount}/${preview.shotCount} 镜 · ${preview.updated}更新`,
+            durLabel: preview.durationSec > 0 ? fmtDur(preview.durationSec) : undefined,
+          }}
+          onClose={() => setPreview(null)}
+          scriptLabel="复刻"
+          deriveLabel="复刻"
+          compactActions
+          onScript={() => {
+            const item = preview;
+            setPreview(null);
+            replicateDraft(item);
+          }}
+          onDerive={() => {
+            setPreview(null);
+            replicateDraft(preview);
+          }}
+        />
+      )}
     </div>
   );
 }
