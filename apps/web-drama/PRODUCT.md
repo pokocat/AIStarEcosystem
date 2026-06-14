@@ -77,6 +77,19 @@
 
 **后端契约不变**：仍走 `POST /api/me/drama/scripts*` + `POST /api/me/drama/episodes/generate`（v0.43）。前端 6 阶段工作台属于 UI 编排层，富数据先以 mock 演示，持久化由 `DramaScript.scenes[]` 承接（结构化扩展见 v0.45+ 后端契约规划）。
 
+**v0.74 互动短剧（剧情互动 · 创作端落地，独立模块）**：新业务模式 —— 一部剧 = 剧集有向图，某集播完插入「互动」（问题 + 选项），观众选择决定下一集播哪条分支（**互动在剧集之间，不在单集内**）。入口 `/interactive`。只做创作端：配置剧集分支图 → 生成每集视频 → 导出互动配置 manifest（`schema=ai-star-eco.interactive-drama/v1`）交社媒平台播放；消费侧播放器不在本期。前端 `api/interactive-drama.ts` + `lib/interactive-graph.ts`（mock 与真后端双通）；后端 `DramaInteractiveController`（`/api/me/drama/interactive/**`）+ `DramaInteractiveService` 真持久化 + AI 起草 + 按集生成。
+
+能力：**AI 起草**（一句话灵感 → 整张可玩剧集图，复用 `DRAMA_SCRIPT_DRAFT` 端点 + `drama.interactive_draft` 提示词）· **配置编辑器**（剧集分支地图 + 三种流转 + 校验）· **按集生成**（复用 `MaterialVideoJobService`，kind=`drama-interactive-node`）· **试玩走查**（创作端验证分支，复用 `MediaLightbox` 抽查成片）· **导出 manifest**。
+
+| 实体 | 作用 |
+|---|---|
+| `DramaInteractiveSeries`（server）/ `InteractiveSeries`（web） | 一部互动剧 = 剧集图（`start_episode_id` + `episodes[]`），整张图内嵌专用表 `drama_interactive_series` 的 `payloadJson`（与线性短剧脚本隔离） |
+| `EpisodeNode` | 一集 = 图节点（整集成片 + 生成态 + 三选一流转：互动分支 / 线性下一集 / 结局集） |
+| `EpisodeInteraction` / `EpisodeChoice` | 看完某集后的互动（问题 + 选项，每个选项 → 目标集 + 可选限时） |
+| `InteractiveManifest` | 导出给抖音 / TikTok 的规范产物（解析后带视频地址的剧集图） |
+
+下一步：平台适配器（manifest → 抖音/TikTok 互动格式，走 sau-service driver 套路）、可视化画布编辑器、每集分镜细化、状态化分支（变量/条件）。
+
 后端 API 在 [`/api/film/**`](../../specs/openapi.yaml)（按 tag 分组：film / wardrobe / appearance-forge / settings）。
 
 ---

@@ -34,6 +34,8 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 /templates/published ← 我发布的创意（v0.75:本人创意按状态分档 + 运营邀请授权/谢绝）
 /review              ← 剧本审阅（v0.63:跨项目待审队列 + Excel 式平铺表格）
 /assets              ← 素材库（v0.63:标签化图片/视频 增删改查 + AI 自动打标）
+/interactive         ← 互动短剧（剧情互动 · 互动剧列表，v0.74）
+/interactive/[id]    ← 互动剧编辑器（剧集分支地图 + 生成 + 导出互动配置）
 /cast                ← 演员 IP 阵容（跨项目 IP 资产，带主线 banner）
 /cast/[id]           ← 演员详情
 /cast/[id]/generate  ← 形象生成
@@ -82,6 +84,65 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 - **统一保存反馈**：新增 `useSaveStatus` + `SaveStatus` 指示器（「保存中 / 已自动保存 / 保存失败」）+ 离开页面前「有未保存改动」浏览器提醒兜底；短剧工作台与短视频制作页共用。
 - 验收：`DramaShortServiceTest` 4/4 + 全链路真机浏览器（短视频建→编辑→刷新恢复；短剧加一集→刷新仍在）。
 
+### v0.74 · 2026-06-14 · 互动短剧（剧情互动）—— 创作端落地（配置/生成/AI 起草/试玩走查 + 真后端）
+
+新业务模式「剧情互动」：把「一部剧 = 线性 1→2→3 集」升级成「一部剧 = 剧集有向图」——
+某集播完插入「互动」（一个问题 + 几个选项），观众的选择决定下一集播哪条分支。**互动发生在
+剧集之间，不在单集内。** 只做创作端：配置剧集分支图 → 生成每集视频 → 导出互动配置；
+播放 / 渲染 / 分发后续对接抖音 / TikTok（消费侧播放器不在本期）。mock 与真后端双通。
+
+**前端（`apps/web-drama`）**
+
+```
+api/interactive-drama.ts        类型契约（EpisodeNode / EpisodeInteraction / EpisodeChoice /
+                                InteractiveSeries / 导出 manifest）+ mock-first API；
+                                aiDraftSeries（AI 起草）+ generateEpisode（live 提交后轮询既有
+                                /episodes/jobs/{id} 到终态，异步封装在 api 层）
+lib/interactive-graph.ts        纯逻辑：派生摘要 / 校验（可达性·选项指向·结局·断点）/
+                                导出 manifest / 新建骨架 / draftSeriesFromTheme（mock AI）/ 节点增删改
+mocks/interactive-drama.ts      内存 store + 2 个样例（落地窗后·互动版 / 霸总的选择）
+app/(workspace)/interactive/page.tsx              列表（KPI + 卡片 + AI 起草 + 新建 + 删除）
+app/(workspace)/interactive/[seriesId]/page.tsx   编辑器：剧集分支地图 + 批量生成 + 校验 +
+                                                  试玩走查 + 成片抽查 + 导出（live draft + 页面保存）
+interactive/_components/        NewSeriesDialog / AiDraftDialog（一句话灵感 → 整张图）/
+                                EpisodeEditorDialog（三种流转：互动分支 / 线性下一集 / 结局集 +
+                                选项→目标集，可新建分支集）/ EpisodeCard（分支可视化 + 预览）/
+                                ManifestPreviewDialog（预览 + 下载 JSON）/ PlaythroughDialog（试玩走查）
+```
+
+- **AI 起草**：给一句话灵感 + 互动点/结局数，AI 直接搭好一张可玩的剧集分支图（与短剧/短视频
+  工坊的「AI 起草」一致）。复用 `MediaLightbox` 抽查成片、`aiErrorMessage` 脱敏报错。
+- **试玩走查**：创作端验证工具，从起始集像观众一样走一遍、在互动点做选择，确认分支接得对不对、
+  能走到哪个结局（不是面向观众的播放器，仅结构走查）。
+
+**后端（`apps/server`，真持久化 + AI 起草 + 按集生成）**
+
+```
+model/DramaInteractiveSeries.java        专用实体（表 drama_interactive_series），整张剧集图内嵌
+                                         payloadJson；按 ownerUserId 隔离 + 软删（与 DramaScript 同惯例）
+repository/DramaInteractiveSeriesRepository.java
+service/DramaInteractiveService.java     CRUD + aiDraft（大模型，prompt=drama.interactive_draft，
+                                         复用 DRAMA_SCRIPT_DRAFT 端点）+ generateEpisode（复用
+                                         MaterialVideoJobService，kind="drama-interactive-node"，回写 node.video_job_id）
+controller/DramaInteractiveController.java   /api/me/drama/interactive/**（series CRUD + ai-draft + 按集 generate）
+resources/prompts/material/drama.interactive_draft.md   起草整张剧集图的提示词
+PromptService                            +KEY_DRAMA_INTERACTIVE_DRAFT（注册进 KNOWN_KEYS）
+specs/openapi.yaml                       +/me/drama/interactive/* 五条路径（契约门已过）
+```
+
+- **数据模型**：整部剧集图内嵌一行 payloadJson —— 用**专用表** `drama_interactive_series`（而非塞进
+  `drama_scripts`），与线性短剧脚本干净隔离；满足「单文档内嵌整张图」决策，零跨表负担。
+- **生成**复用 `MaterialVideoJobService`（kind="drama-interactive-node"）：generate 提交任务 + 回写
+  `node.video_job_id`，前端轮询既有 `/episodes/jobs/{id}` 到终态再把 video_url 落回图并保存。
+- **不静默兜底**：AI 未配端点 → 503 `AI_NOT_CONFIGURED`；提示词未配 → 503 `PROMPT_NOT_CONFIGURED`；
+  调用失败 → 502 `AI_CALL_FAILED`；输出无法解析 → 502 `AI_BAD_OUTPUT`。
+- **导出 manifest**（`schema=ai-star-eco.interactive-drama/v1`）：解析后带视频地址的剧集图，交给社媒
+  平台的规范产物；平台适配器（→ 抖音 / TikTok 互动视频格式）走 sau-service per-platform driver 同款套路。
+- **未做（下一步）**：平台适配器落地、可视化画布编辑器（当前为结构化列表）、每集分镜细化（接
+  「单集剧本」阶段）、状态化分支（变量/条件累积）、消费侧播放（交平台）。
+
+> 本版基于合入 `loving-maxwell`（drama v0.59→v0.73：全站接真后端 / 配方退役成片合成 / 提示词服务端化 /
+> skill 飞轮 Recipe）后的工程架构续做，互动短剧已与「真后端 + AI 起草」的整体形态对齐。
 ### v0.71 · 2026-06-13 · 套模版先预览后确认 + 短视频模版提示词喂进 AI 对话流
 
 - **预览 → 确认**：短剧 / 短视频「套模版浮层」里点模版卡不再直接套用，而是弹 `PreviewModal`（封面 + 估时大纲 / 分镜节拍 + 钩子标签），点「用这个模版」确认后才回填对话框、进入使用流程。
@@ -243,7 +304,6 @@ template-meta.ts / review.ts`;`ProjectCard` 竖屏封面裁 3/4 紧凑版。
 - **v0.60 补丁（2026-06-10）**：重复引入防护（同数字人同类型 409 `DAP_AVATAR_ALREADY_IMPORTED`，
   picker「已引入」置灰）；展示图候选补全 **形象变体 / 三机位**；修复引入演员无 bio 时
   `deriveRole` 崩溃（bio 空兜底）；mock 层 import/patch 同步派生 `dapDisplayImageUrl`
-
 ### v0.44 · 2026-06-01 · 短剧工坊视觉与业务流整体重构（B1-B8.5）
 
 按 Figma Make 原型（短剧工坊·桌面 + 移动端）逐项落地。**全站视觉令牌切到暖白橙红，业务主线从"短剧生成单页"重构为"6 阶段工作台流水线"。** 8 批渐进完成，每批 playwright 截图验收。
