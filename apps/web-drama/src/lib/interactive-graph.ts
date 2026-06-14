@@ -204,6 +204,15 @@ export function blankChoice(targetId: string): EpisodeChoice {
   return { id: genId("ch"), label: "", next_episode_id: targetId };
 }
 
+/** 复制一集：保留内容（标题/分支标签/剧情/分镜/时长），但重置生成态、清空流转（新副本未接线）。 */
+export function cloneEpisode(ep: EpisodeNode): EpisodeNode {
+  const fresh = blankEpisode(`${ep.title || "未命名"} 副本`, ep.synopsis);
+  fresh.branch_label = ep.branch_label;
+  fresh.duration_sec = ep.duration_sec ?? 60;
+  fresh.scenes = ep.scenes ? JSON.parse(JSON.stringify(ep.scenes)) : undefined;
+  return fresh;
+}
+
 /** 新建一部互动剧骨架。single=单集起步；branch=带一个分支点的示例。 */
 export function buildSkeleton(input: CreateSeriesInput): InteractiveSeries {
   const now = new Date().toISOString();

@@ -3,7 +3,7 @@
 // 剧集分支地图里的一个节点卡：标题 + 生成态 + 流转可视化（互动选项 / 线性 / 结局）+ 操作。
 
 import * as React from "react";
-import { ArrowRight, Flag, GitBranch, Loader2, Pencil, Play, Sparkles, Star, Trash2 } from "lucide-react";
+import { ArrowRight, Copy, Flag, GitBranch, Loader2, Pencil, Play, Sparkles, Star, Trash2 } from "lucide-react";
 import { Card, Button, Chip } from "@/components/premium";
 import { StatusBadge, type StatusTone } from "@/components/common";
 import { episodeTitle } from "@/lib/interactive-graph";
@@ -20,15 +20,18 @@ interface Props {
   series: InteractiveSeries;
   node: EpisodeNode;
   isStart: boolean;
+  /** 从起始集走不到（孤立节点）—— 在卡片上就地高亮。 */
+  unreachable?: boolean;
   genBusy: boolean;
   onEdit: () => void;
   onGenerate: () => void;
   onPreview: () => void;
+  onClone: () => void;
   onSetStart: () => void;
   onDelete: () => void;
 }
 
-export function EpisodeCard({ series, node, isStart, genBusy, onEdit, onGenerate, onPreview, onSetStart, onDelete }: Props) {
+export function EpisodeCard({ series, node, isStart, unreachable, genBusy, onEdit, onGenerate, onPreview, onClone, onSetStart, onDelete }: Props) {
   const gen = GEN_META[node.gen_status ?? "idle"];
   const flowNode =
     node.is_ending ? "ending" : node.interaction ? "interactive" : node.next_episode_id ? "linear" : "dead";
@@ -47,6 +50,7 @@ export function EpisodeCard({ series, node, isStart, genBusy, onEdit, onGenerate
             )}
             {node.branch_label && <Chip tone="violet">{node.branch_label}</Chip>}
             <StatusBadge tone={gen.tone}>{gen.label}</StatusBadge>
+            {unreachable && !isStart && <StatusBadge tone="warning">孤立 · 走不到</StatusBadge>}
           </div>
           {node.synopsis && (
             <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>{node.synopsis}</div>
@@ -151,6 +155,9 @@ export function EpisodeCard({ series, node, isStart, genBusy, onEdit, onGenerate
             <Star size={12} /> 设为起始
           </Button>
         )}
+        <button type="button" title="复制本集（生成新分支变体）" onClick={onClone} className="btn btn-icon btn-ghost btn-sm" style={{ color: "var(--ink-3)" }}>
+          <Copy size={13} />
+        </button>
         <button type="button" title="删除此集" onClick={onDelete} className="btn btn-icon btn-ghost btn-sm" style={{ color: "var(--danger)" }}>
           <Trash2 size={13} />
         </button>
