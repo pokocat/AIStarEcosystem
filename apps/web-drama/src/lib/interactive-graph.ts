@@ -1,27 +1,117 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // lib/interactive-graph.ts — 互动短剧「剧集图」的纯逻辑（无网络）。
-// 派生摘要 / 校验 / 导出 manifest / 新建骨架 / 节点增删改。前端契约真源是
-// api/interactive-drama.ts；本文件只 type-import 它的类型，提供纯函数。
+// 派生摘要 / 校验 / 导出 Story Config / 新建骨架 / 节点增删改 / 旧结构迁移。
+// 前端契约真源是 api/interactive-drama.ts；本文件只 type-import 它的类型，提供纯函数。
+//
+// 模型对齐抖音小程序「互动视频」规范：一集（视频）的时间轴上可有 0..N 个「互动点」
+// （interactions[]，在 trigger_time 秒触发，类型 choice/input/countdown），选项 →
+// nextVideoId 跳转；剧级带 global_flags（道具 / 好感度等状态）。导出 manifest = 平台
+// 下发的 Story Config（camelCase）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
   CreateSeriesInput,
-  EpisodeChoice,
   EpisodeNode,
+  GlobalFlagDef,
+  Interaction,
+  InteractionOption,
   InteractiveManifest,
   InteractiveSeries,
   InteractiveSeriesSummary,
   ManifestEpisode,
+  ManifestInteraction,
 } from "@/api/interactive-drama";
 
-/** 导出给社媒平台的互动配置 schema 版本（我们自己的规范格式）。 */
-export const INTERACTIVE_MANIFEST_SCHEMA = "ai-star-eco.interactive-drama/v1";
+/** 导出给社媒平台的互动配置 schema 版本（v2 = 抖音 Story Config 对齐：时间轴互动 + globalFlags）。 */
+export const INTERACTIVE_MANIFEST_SCHEMA = "ai-star-eco.interactive-drama/v2";
 
 let _seq = 0;
 /** 生成本地 id（mock / 新建节点用；落库时后端可 upsert 同 id）。 */
 export function genId(prefix: string): string {
   _seq += 1;
   return `${prefix}_${Date.now().toString(36)}${_seq.toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+}
+
+// ── 迁移 / 规整 ───────────────────────────────────────────────────────────────
+// 旧模型（单 `interaction` 对象，互动只在整集播完）→ 新模型（`interactions[]` 时间轴互动点）。
+// 读路径（mock store / 后端老 row）经此升级，编辑器 / 画布 / 导出统一吃新结构。
+
+interface LegacyChoice {
+  id?: string;
+  label?: string;
+  next_episode_id?: string;
+}
+interface LegacyInteraction {
+  prompt?: string;
+  choices?: LegacyChoice[];
+  countdown_sec?: number | null;
+  default_choice_id?: string | null;
+}
+
+/** 规整一集：补齐 interactions[]（含旧 interaction 迁移）+ 每个互动点 / 选项的必备字段。 */
+export function normalizeEpisode(raw: EpisodeNode): EpisodeNode {
+  const e = raw as EpisodeNode & { interaction?: LegacyInteraction | null };
+  let interactions: Interaction[] = Array.isArray(e.interactions) ? e.interactions : [];
+
+  // 旧 `interaction`（整集播完弹）→ 一个落在视频末尾（trigger_time = 时长）的 choice 互动点。
+  if (interactions.length === 0 && e.interaction && Array.isArray(e.interaction.choices)) {
+    const li = e.interaction;
+    interactions = [
+      {
+        id: genId("itx"),
+        trigger_time: e.duration_sec ?? 60,
+        type: "choice",
+        prompt: li.prompt ?? "",
+        options: (li.choices ?? []).map((c) => ({
+          id: c.id ?? genId("opt"),
+          label: c.label ?? "",
+          next_episode_id: c.next_episode_id ?? "",
+        })),
+        countdown_sec: li.countdown_sec ?? null,
+        default_option_id: li.default_choice_id ?? null,
+        condition: null,
+      },
+    ];
+  }
+
+  const normInteractions: Interaction[] = interactions.map((i) => ({
+    id: i.id ?? genId("itx"),
+    trigger_time: typeof i.trigger_time === "number" ? i.trigger_time : e.duration_sec ?? 60,
+    type: i.type ?? "choice",
+    prompt: i.prompt ?? "",
+    options: Array.isArray(i.options)
+      ? i.options.map((o) => ({
+          id: o.id ?? genId("opt"),
+          label: o.label ?? "",
+          next_episode_id: o.next_episode_id ?? "",
+          ...(o.set_flags ? { set_flags: o.set_flags } : {}),
+        }))
+      : [],
+    countdown_sec: i.countdown_sec ?? null,
+    default_option_id: i.default_option_id ?? null,
+    condition: i.condition ?? null,
+  }));
+
+  const out = { ...e, interactions: normInteractions } as EpisodeNode & { interaction?: unknown };
+  delete out.interaction; // 丢弃旧字段
+  return out;
+}
+
+/** 规整一部剧：补 global_flags + 规整每集。读路径（getSeries / 派生摘要）调用。 */
+export function normalizeSeries(raw: InteractiveSeries): InteractiveSeries {
+  return {
+    ...raw,
+    global_flags: Array.isArray(raw.global_flags) ? raw.global_flags : [],
+    episodes: (raw.episodes ?? []).map(normalizeEpisode),
+  };
+}
+
+/** 一集所有「向外跳转」的目标集 id（所有互动点的选项 + 线性下一集）。 */
+export function episodeTargets(e: EpisodeNode): string[] {
+  const outs: string[] = [];
+  for (const itx of e.interactions ?? []) for (const o of itx.options) if (o.next_episode_id) outs.push(o.next_episode_id);
+  if (e.next_episode_id) outs.push(e.next_episode_id);
+  return outs;
 }
 
 // ── 派生 ─────────────────────────────────────────────────────────────────────
@@ -34,7 +124,7 @@ export function summarize(s: InteractiveSeries): InteractiveSeriesSummary {
     genre: s.genre,
     status: s.status,
     episode_count: eps.length,
-    branch_count: eps.filter((e) => !!e.interaction && (e.interaction.choices?.length ?? 0) > 0).length,
+    branch_count: eps.reduce((n, e) => n + (e.interactions?.length ?? 0), 0), // 互动点总数
     ending_count: eps.filter((e) => !!e.is_ending).length,
     ready_count: eps.filter((e) => e.gen_status === "ready").length,
     updated_at: s.updated_at,
@@ -62,11 +152,12 @@ export interface SeriesValidation {
   ok: boolean;
 }
 
-/** 校验剧集图：起点、可达性、选项指向、结局、断点。 */
+/** 校验剧集图：起点、可达性、互动点（类型 / 选项指向 / 触发时间）、结局、断点、标记引用。 */
 export function validateSeries(s: InteractiveSeries): SeriesValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
   const byId = new Map(s.episodes.map((e) => [e.id, e] as const));
+  const flagKeys = new Set((s.global_flags ?? []).map((f) => f.key));
 
   if (!byId.has(s.start_episode_id)) {
     errors.push("没有设置有效的起始集。");
@@ -81,30 +172,44 @@ export function validateSeries(s: InteractiveSeries): SeriesValidation {
     reachable.add(id);
     const ep = byId.get(id);
     if (!ep) continue;
-    const nexts: string[] = [];
-    if (ep.interaction) for (const c of ep.interaction.choices) nexts.push(c.next_episode_id);
-    if (ep.next_episode_id) nexts.push(ep.next_episode_id);
-    for (const n of nexts) if (byId.has(n) && !reachable.has(n)) queue.push(n);
+    for (const n of episodeTargets(ep)) if (byId.has(n) && !reachable.has(n)) queue.push(n);
   }
 
   for (const ep of s.episodes) {
-    const flows = (ep.interaction?.choices.length ?? 0) + (ep.next_episode_id ? 1 : 0);
+    const optionCount = ep.interactions.reduce((n, i) => n + i.options.length, 0);
+    const flows = optionCount + (ep.next_episode_id ? 1 : 0);
     if (!ep.is_ending && flows === 0) {
       warnings.push(`「${ep.title}」既不是结局，也没有互动或下一集 —— 剧情会断在这里。`);
     }
-    if (ep.interaction) {
-      if (ep.interaction.choices.length < 2) {
-        errors.push(`「${ep.title}」的互动至少要有 2 个选项。`);
+    for (const itx of ep.interactions) {
+      const at = `@${itx.trigger_time}s`;
+      if (itx.type === "choice" && itx.options.length < 2) {
+        errors.push(`「${ep.title}」的「选择」互动（${at}）至少要有 2 个选项。`);
       }
-      if (!ep.interaction.prompt.trim()) {
-        errors.push(`「${ep.title}」的互动还没填问题文案。`);
+      if (!itx.prompt.trim()) {
+        errors.push(`「${ep.title}」有个互动（${at}）还没填问题文案。`);
       }
-      for (const c of ep.interaction.choices) {
-        if (!c.next_episode_id || !byId.has(c.next_episode_id)) {
-          errors.push(`「${ep.title}」里选项「${c.label || "未命名"}」没有指向有效的下一集。`);
+      if (typeof ep.duration_sec === "number" && itx.trigger_time > ep.duration_sec) {
+        warnings.push(`「${ep.title}」的互动触发时间（${itx.trigger_time}s）超过了本集时长（${ep.duration_sec}s）。`);
+      }
+      for (const o of itx.options) {
+        if (!o.next_episode_id || !byId.has(o.next_episode_id)) {
+          errors.push(`「${ep.title}」里选项「${o.label || "未命名"}」没有指向有效的下一集。`);
         }
-        if (!c.label.trim()) {
+        if (!o.label.trim()) {
           warnings.push(`「${ep.title}」有一个选项还没填文案。`);
+        }
+        if (o.set_flags) {
+          for (const k of Object.keys(o.set_flags)) {
+            if (!flagKeys.has(k)) warnings.push(`「${ep.title}」的选项写了未声明的剧情标记「${k}」—— 记得在「全局标记」里声明。`);
+          }
+        }
+      }
+      if (itx.condition && itx.condition.trim()) {
+        const refs = itx.condition.match(/globalFlags\.(\w+)/g) ?? [];
+        for (const token of refs) {
+          const k = token.split(".")[1];
+          if (k && !flagKeys.has(k)) warnings.push(`「${ep.title}」的互动条件引用了未声明的标记「${k}」。`);
         }
       }
     }
@@ -123,33 +228,49 @@ export function validateSeries(s: InteractiveSeries): SeriesValidation {
   return { errors, warnings, reachable, ok: errors.length === 0 };
 }
 
-// ── 导出 manifest ────────────────────────────────────────────────────────────
+// ── 导出 manifest（抖音 Story Config v2，camelCase） ──────────────────────────
+
+function defaultFlagValue(f: GlobalFlagDef): number | boolean | string {
+  if (f.default !== undefined) return f.default;
+  return f.type === "boolean" ? false : f.type === "number" ? 0 : "";
+}
 
 export function buildManifest(s: InteractiveSeries): InteractiveManifest {
   const episodes: ManifestEpisode[] = s.episodes.map((e) => ({
-    id: e.id,
+    episodeId: e.id,
     title: e.title,
-    video_url: e.video_url ?? null,
-    duration_sec: e.duration_sec,
-    interaction: e.interaction
-      ? {
-          prompt: e.interaction.prompt,
-          choices: e.interaction.choices.map((c) => ({ label: c.label, next_episode: c.next_episode_id })),
-          countdown_sec: e.interaction.countdown_sec ?? null,
-        }
-      : null,
-    next_episode: e.next_episode_id ?? null,
-    is_ending: e.is_ending || undefined,
-    ending_label: e.ending_label || undefined,
+    videoUrl: e.video_url ?? null,
+    durationSec: e.duration_sec,
+    interactions: e.interactions.map<ManifestInteraction>((i) => ({
+      triggerTime: i.trigger_time,
+      interactionType: i.type,
+      ...(i.condition && i.condition.trim() ? { condition: i.condition.trim() } : {}),
+      uiConfig: {
+        question: i.prompt,
+        options: i.options.map((o) => ({
+          id: o.id,
+          text: o.label,
+          nextVideoId: o.next_episode_id,
+          ...(o.set_flags ? { setFlags: o.set_flags } : {}),
+        })),
+        countdownSec: i.countdown_sec ?? null,
+      },
+    })),
+    nextVideoId: e.next_episode_id ?? null,
+    isEnding: e.is_ending || undefined,
+    endingLabel: e.ending_label || undefined,
   }));
+  const globalFlags: Record<string, number | boolean | string> = {};
+  for (const f of s.global_flags ?? []) globalFlags[f.key] = defaultFlagValue(f);
   return {
     schema: INTERACTIVE_MANIFEST_SCHEMA,
-    series_id: s.id,
+    dramaId: s.id,
     title: s.title,
     genre: s.genre,
-    start_episode: s.start_episode_id,
+    startEpisodeId: s.start_episode_id,
+    globalFlags,
     episodes,
-    generated_at: new Date().toISOString(),
+    generatedAt: new Date().toISOString(),
   };
 }
 
@@ -163,17 +284,16 @@ export function applyNodePatch(
   return { ...s, episodes: s.episodes.map((e) => (e.id === episodeId ? { ...e, ...patch } : e)) };
 }
 
-/** 删除一集，并清理其它集对它的引用（线性下一集 / 互动选项）。 */
+/** 删除一集，并清理其它集对它的引用（线性下一集 / 互动选项；选项删空的 choice 互动点一并移除）。 */
 export function removeEpisode(s: InteractiveSeries, episodeId: string): InteractiveSeries {
   const episodes = s.episodes
     .filter((e) => e.id !== episodeId)
     .map((e) => {
       const next = e.next_episode_id === episodeId ? null : e.next_episode_id;
-      let interaction = e.interaction
-        ? { ...e.interaction, choices: e.interaction.choices.filter((c) => c.next_episode_id !== episodeId) }
-        : e.interaction;
-      if (interaction && interaction.choices.length === 0) interaction = null; // 选项删空 → 降级为无互动
-      return { ...e, next_episode_id: next, interaction };
+      const interactions = e.interactions
+        .map((itx) => ({ ...itx, options: itx.options.filter((o) => o.next_episode_id !== episodeId) }))
+        .filter((itx) => itx.type !== "choice" || itx.options.length > 0);
+      return { ...e, next_episode_id: next, interactions };
     });
   let start = s.start_episode_id;
   if (start === episodeId) start = episodes[0]?.id ?? "";
@@ -194,14 +314,42 @@ export function blankEpisode(title: string, synopsis?: string): EpisodeNode {
     duration_sec: 60,
     gen_status: "idle",
     video_url: null,
-    interaction: null,
+    interactions: [],
     next_episode_id: null,
     is_ending: false,
   };
 }
 
-export function blankChoice(targetId: string): EpisodeChoice {
-  return { id: genId("ch"), label: "", next_episode_id: targetId };
+export function blankOption(targetId: string): InteractionOption {
+  return { id: genId("opt"), label: "", next_episode_id: targetId };
+}
+
+/** 新建一个互动点（默认 choice、触发在 triggerTime 秒、含两个空选项指向给定目标）。 */
+export function blankInteraction(triggerTime: number, targetA?: string, targetB?: string): Interaction {
+  return {
+    id: genId("itx"),
+    trigger_time: Math.max(0, Math.round(triggerTime)),
+    type: "choice",
+    prompt: "",
+    options: [blankOption(targetA ?? ""), blankOption(targetB ?? targetA ?? "")],
+    countdown_sec: 10,
+    default_option_id: null,
+    condition: null,
+  };
+}
+
+/** 拼一个 choice 互动点（工厂 / AI 起草内部用）。 */
+function choiceInteraction(triggerTime: number, prompt: string, options: { label: string; next: string }[], countdown = 10): Interaction {
+  return {
+    id: genId("itx"),
+    trigger_time: triggerTime,
+    type: "choice",
+    prompt,
+    options: options.map((o) => ({ id: genId("opt"), label: o.label, next_episode_id: o.next })),
+    countdown_sec: countdown,
+    default_option_id: null,
+    condition: null,
+  };
 }
 
 /** 复制一集：保留内容（标题/分支标签/剧情/分镜/时长），但重置生成态、清空流转（新副本未接线）。 */
@@ -223,6 +371,7 @@ export function buildSkeleton(input: CreateSeriesInput): InteractiveSeries {
     genre: input.genre,
     logline: input.logline,
     status: "draft",
+    global_flags: [] as GlobalFlagDef[],
     created_at: now,
     updated_at: now,
   };
@@ -232,7 +381,7 @@ export function buildSkeleton(input: CreateSeriesInput): InteractiveSeries {
     return { ...base, start_episode_id: ep1.id, episodes: [ep1] };
   }
 
-  // branch 示例：1 集 → 互动 → 2 个结局
+  // branch 示例：1 集 → 末尾互动 → 2 个结局
   const e1 = blankEpisode("第 1 集 · 抉择前夜", "矛盾爆发，主角必须做出选择。");
   const eA = blankEpisode("第 2 集 · A 线", "选择 A 之后的走向。");
   const eB = blankEpisode("第 2 集 · B 线", "选择 B 之后的走向。");
@@ -242,15 +391,12 @@ export function buildSkeleton(input: CreateSeriesInput): InteractiveSeries {
   eA.ending_label = "结局 A";
   eB.is_ending = true;
   eB.ending_label = "结局 B";
-  e1.interaction = {
-    prompt: "看完这一集，主角该怎么选？",
-    choices: [
-      { id: genId("ch"), label: "选择 A", next_episode_id: eA.id },
-      { id: genId("ch"), label: "选择 B", next_episode_id: eB.id },
-    ],
-    countdown_sec: 10,
-    default_choice_id: null,
-  };
+  e1.interactions = [
+    choiceInteraction(e1.duration_sec ?? 60, "看完这一集，主角该怎么选？", [
+      { label: "选择 A", next: eA.id },
+      { label: "选择 B", next: eB.id },
+    ]),
+  ];
   return { ...base, start_episode_id: e1.id, episodes: [e1, eA, eB] };
 }
 
@@ -279,6 +425,7 @@ export function draftSeriesFromTheme(input: {
     genre,
     logline: `围绕「${tag}」展开，关键时刻由观众替主角抉择，走向不同结局。`,
     status: "draft",
+    global_flags: [] as GlobalFlagDef[],
     created_at: now,
     updated_at: now,
   };
@@ -289,16 +436,16 @@ export function draftSeriesFromTheme(input: {
     const labels = ["顺从内心", "选择现实", "另辟蹊径", "停下脚步"];
     const endLabels = ["HE · 圆满", "BE · 遗憾", "开放 · 留白", "反转 · 意外"];
     const endingNodes: EpisodeNode[] = [];
-    const choices: EpisodeChoice[] = [];
+    const options: { label: string; next: string }[] = [];
     for (let i = 0; i < endings; i++) {
       const ep = blankEpisode(`大结局 · ${endLabels[i]}`, `选择「${labels[i]}」之后的走向与收束。`);
       ep.is_ending = true;
       ep.ending_label = endLabels[i];
       ep.branch_label = labels[i];
       endingNodes.push(ep);
-      choices.push({ id: genId("ch"), label: labels[i], next_episode_id: ep.id });
+      options.push({ label: labels[i], next: ep.id });
     }
-    e1.interaction = { prompt: `面对「${tag}」，主角该怎么选？`, choices, countdown_sec: 10, default_choice_id: null };
+    e1.interactions = [choiceInteraction(e1.duration_sec ?? 60, `面对「${tag}」，主角该怎么选？`, options)];
     return { ...base, start_episode_id: e1.id, episodes: [e1, ...endingNodes] };
   }
 
@@ -318,24 +465,18 @@ export function draftSeriesFromTheme(input: {
   beA.branch_label = "A 线";
   endB.ending_label = "开放结局";
   endB.branch_label = "B 线";
-  e1.interaction = {
-    prompt: `面对「${tag}」，主角该怎么选？`,
-    choices: [
-      { id: genId("ch"), label: "迎难而上", next_episode_id: eA.id },
-      { id: genId("ch"), label: "暂避锋芒", next_episode_id: eB.id },
-    ],
-    countdown_sec: 10,
-    default_choice_id: null,
-  };
-  eA.interaction = {
-    prompt: "A 线的关键一步，主角如何应对？",
-    choices: [
-      { id: genId("ch"), label: "全力一搏", next_episode_id: heA.id },
-      { id: genId("ch"), label: "保留退路", next_episode_id: beA.id },
-    ],
-    countdown_sec: 8,
-    default_choice_id: null,
-  };
+  e1.interactions = [
+    choiceInteraction(e1.duration_sec ?? 60, `面对「${tag}」，主角该怎么选？`, [
+      { label: "迎难而上", next: eA.id },
+      { label: "暂避锋芒", next: eB.id },
+    ]),
+  ];
+  eA.interactions = [
+    choiceInteraction(eA.duration_sec ?? 60, "A 线的关键一步，主角如何应对？", [
+      { label: "全力一搏", next: heA.id },
+      { label: "保留退路", next: beA.id },
+    ], 8),
+  ];
   eB.next_episode_id = endB.id;
   return { ...base, start_episode_id: e1.id, episodes: [e1, eA, eB, heA, beA, endB] };
 }

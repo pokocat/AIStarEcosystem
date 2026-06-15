@@ -7,6 +7,7 @@
 import * as React from "react";
 import { Flag, Link2, Star, X } from "lucide-react";
 import type { EpisodeGenStatus, EpisodeNode, InteractiveSeries } from "@/api/interactive-drama";
+import { episodeTargets } from "@/lib/interactive-graph";
 
 const NW = 208; // 节点宽
 const NH = 66; // 节点高
@@ -31,9 +32,7 @@ interface Props {
 }
 
 function outgoing(e: EpisodeNode): string[] {
-  if (e.interaction) return e.interaction.choices.map((c) => c.next_episode_id).filter(Boolean);
-  if (e.next_episode_id) return [e.next_episode_id];
-  return [];
+  return episodeTargets(e);
 }
 
 export function BranchCanvas({ series, reachable, onEditNode, onConnect }: Props) {
@@ -192,8 +191,8 @@ export function BranchCanvas({ series, reachable, onEditNode, onConnect }: Props
           const isSource = connectFrom === node.id;
           const flowText = isEnding
             ? `结局${node.ending_label ? " · " + node.ending_label : ""}`
-            : node.interaction
-              ? `互动 · ${node.interaction.choices.length} 选`
+            : node.interactions.length > 0
+              ? `互动 · ${node.interactions.length} 点`
               : node.next_episode_id
                 ? "线性 →"
                 : "未接后续";
@@ -259,7 +258,7 @@ export function BranchCanvas({ series, reachable, onEditNode, onConnect }: Props
                 <span
                   style={{
                     fontSize: 10.5,
-                    color: node.interaction ? "var(--accent)" : orphan ? "var(--warning)" : "var(--ink-3)",
+                    color: node.interactions.length > 0 ? "var(--accent)" : orphan ? "var(--warning)" : "var(--ink-3)",
                     fontWeight: 600,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -354,13 +353,14 @@ function layout(series: InteractiveSeries): {
 
   const edges: Edge[] = [];
   for (const e of eps) {
-    if (e.interaction) {
-      for (const c of e.interaction.choices) {
-        if (c.next_episode_id && byId.has(c.next_episode_id)) {
-          edges.push({ from: e.id, to: c.next_episode_id, kind: "choice", label: c.label });
+    for (const itx of e.interactions) {
+      for (const o of itx.options) {
+        if (o.next_episode_id && byId.has(o.next_episode_id)) {
+          edges.push({ from: e.id, to: o.next_episode_id, kind: "choice", label: o.label });
         }
       }
-    } else if (e.next_episode_id && byId.has(e.next_episode_id)) {
+    }
+    if (e.next_episode_id && byId.has(e.next_episode_id)) {
       edges.push({ from: e.id, to: e.next_episode_id, kind: "linear" });
     }
   }

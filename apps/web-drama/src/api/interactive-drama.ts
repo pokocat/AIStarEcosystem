@@ -16,23 +16,42 @@ import { apiFetch, USE_MOCK, mockDelay, clientError } from "./_client";
 import type { DramaScene, DramaEpisodeJob } from "./short-drama";
 import * as ProjectsApi from "./projects";
 import * as store from "@/mocks/interactive-drama";
-import { blankEpisode, buildSkeleton, draftSeriesFromTheme, genId, summarize, deriveStatus } from "@/lib/interactive-graph";
+import { blankEpisode, buildSkeleton, draftSeriesFromTheme, genId, normalizeSeries, summarize, deriveStatus } from "@/lib/interactive-graph";
 
 export type EpisodeGenStatus = "idle" | "generating" | "ready" | "failed";
 
-/** 一个互动选项 → 指向下一集。 */
-export interface EpisodeChoice {
-  id: string;
-  label: string; // "原谅他"
-  next_episode_id: string; // → 跳到哪一集
+/** 互动类型（spec: interactionType）。 */
+export type InteractionType = "choice" | "input" | "countdown";
+
+/** 一个互动选项 → 指向下一集（spec: uiConfig.options[]）。 */
+export interface InteractionOption {
+  id: string; // "A" / "B"
+  label: string; // spec: text，如 "相信他"
+  next_episode_id: string; // spec: nextVideoId → 跳到哪一集
+  set_flags?: Record<string, string | number | boolean>; // spec进阶：选择后写入剧情标记
 }
 
-/** 看完某集之后弹出的互动（剧集之间，不在单集内）。 */
-export interface EpisodeInteraction {
-  prompt: string; // "她该原谅他吗？"
-  choices: EpisodeChoice[]; // 2-4 个
-  countdown_sec?: number | null; // 可选限时（交给平台播放时用）
-  default_choice_id?: string | null; // 超时默认选项
+/**
+ * 视频内某时间点触发的互动（spec: interactions[]）。对齐抖音互动视频：
+ * 在 trigger_time（秒）插入一个问题 + 选项，选择决定下一集；可带条件与限时。
+ */
+export interface Interaction {
+  id: string;
+  trigger_time: number; // spec: triggerTime（秒，视频内触发点）
+  type: InteractionType; // spec: interactionType
+  prompt: string; // spec: uiConfig.question
+  options: InteractionOption[]; // spec: uiConfig.options（choice 2-4 个）
+  countdown_sec?: number | null; // spec: uiConfig.countdownSec（超时自动选 default）
+  default_option_id?: string | null; // 超时默认项
+  condition?: string | null; // spec进阶：条件触发，如 "globalFlags.hasKey == true"
+}
+
+/** 全局剧情标记声明（spec进阶: globalFlags —— 道具 / 好感度等，被选项 set_flags 写、被 condition 读）。 */
+export interface GlobalFlagDef {
+  key: string; // hasKey / affection
+  label?: string;
+  type: "boolean" | "number" | "string";
+  default?: string | number | boolean;
 }
 
 /** 一集 = 剧集图的一个节点（整集成片）。 */
@@ -49,9 +68,10 @@ export interface EpisodeNode {
   video_job_id?: string | null;
   video_url?: string | null;
 
-  // 流转（三选一语义）
-  interaction?: EpisodeInteraction | null; // 有互动 → 看完弹选项决定下一集
-  next_episode_id?: string | null; // 无互动的线性下一集
+  /** 本集视频时间轴上的互动点（0..N，按 trigger_time 触发）。 */
+  interactions: Interaction[];
+  /** 视频自然播完、且没有互动跳转时的线性下一集。 */
+  next_episode_id?: string | null;
   is_ending?: boolean; // 结局集
   ending_label?: string; // "HE · 重圆" / "BE · 错过"
 }
@@ -64,6 +84,8 @@ export interface InteractiveSeries {
   logline?: string;
   status: string; // draft | ready
   start_episode_id: string;
+  /** 全局剧情标记声明（spec进阶: globalFlags；被选项 set_flags 写、被 condition 读）。 */
+  global_flags?: GlobalFlagDef[];
   episodes: EpisodeNode[];
   created_at?: string;
   updated_at?: string;
@@ -98,41 +120,53 @@ export interface EpisodeGenResult {
   duration_sec?: number;
 }
 
-// ── 导出 manifest（交给抖音 / TikTok 的规范格式 v1） ──────────────────────────
+// ── 导出 manifest（抖音小程序「互动视频」Story Config 规范 v2，camelCase） ───────
+// 对齐 spec：每集 = { episodeId, videoUrl, interactions:[{ triggerTime, interactionType,
+// condition?, uiConfig:{ question, options:[{id,text,nextVideoId,setFlags?}], countdownSec }}] }；
+// 剧级带 dramaId / startEpisodeId / globalFlags 初值。这是交给平台播放器的下发配置。
 
-export interface ManifestChoice {
-  label: string;
-  next_episode: string;
+export interface ManifestOption {
+  id: string;
+  text: string; // spec: option.text（= 内部 option.label）
+  nextVideoId: string; // spec: option.nextVideoId（= 内部 next_episode_id）
+  setFlags?: Record<string, number | boolean | string>;
+}
+export interface ManifestUiConfig {
+  question: string;
+  options: ManifestOption[];
+  countdownSec?: number | null;
 }
 export interface ManifestInteraction {
-  prompt: string;
-  choices: ManifestChoice[];
-  countdown_sec?: number | null;
+  triggerTime: number; // spec: triggerTime
+  interactionType: InteractionType; // spec: interactionType
+  condition?: string; // spec进阶: condition
+  uiConfig: ManifestUiConfig; // spec: uiConfig
 }
 export interface ManifestEpisode {
-  id: string;
+  episodeId: string; // spec: episodeId
   title: string;
-  video_url?: string | null;
-  duration_sec?: number;
-  interaction?: ManifestInteraction | null;
-  next_episode?: string | null;
-  is_ending?: boolean;
-  ending_label?: string;
+  videoUrl: string | null; // spec: videoUrl
+  durationSec?: number;
+  interactions: ManifestInteraction[]; // spec: interactions
+  nextVideoId?: string | null; // 线性续播（无互动跳转时）
+  isEnding?: boolean;
+  endingLabel?: string;
 }
 export interface InteractiveManifest {
   schema: string;
-  series_id: string;
+  dramaId: string; // spec: dramaId（= series id）
   title: string;
   genre: string;
-  start_episode: string;
+  startEpisodeId: string;
+  globalFlags: Record<string, number | boolean | string>; // spec: globalFlags 初值
   episodes: ManifestEpisode[];
-  generated_at: string;
+  generatedAt: string;
 }
 
 // ── API（USE_MOCK=1 走内存 store；=0 走后端，路径为 P2 规划契约） ─────────────
 
 export async function listSeries(): Promise<InteractiveSeriesSummary[]> {
-  if (USE_MOCK) return mockDelay(store.allSeries().map(summarize));
+  if (USE_MOCK) return mockDelay(store.allSeries().map((s) => summarize(normalizeSeries(s))));
   return apiFetch<InteractiveSeriesSummary[]>("/me/drama/interactive/series");
 }
 
@@ -140,9 +174,10 @@ export async function getSeries(id: string): Promise<InteractiveSeries> {
   if (USE_MOCK) {
     const s = store.getSeriesById(id);
     if (!s) throw clientError("互动剧不存在", 404, "interactive.not_found");
-    return mockDelay(s);
+    return mockDelay(normalizeSeries(s));
   }
-  return apiFetch<InteractiveSeries>(`/me/drama/interactive/series/${id}`);
+  // 后端老 row 可能是旧单-interaction 形态；读路径统一升级成 interactions[] 新结构。
+  return normalizeSeries(await apiFetch<InteractiveSeries>(`/me/drama/interactive/series/${id}`));
 }
 
 export async function createSeries(input: CreateSeriesInput): Promise<InteractiveSeries> {

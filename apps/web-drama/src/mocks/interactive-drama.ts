@@ -2,6 +2,9 @@
 // mocks/interactive-drama.ts — 互动短剧 mock 内存 store（USE_MOCK=1）。
 // 模块级 Map，client 端跨页导航保持（新建 → 列表可见 → 编辑 → 生成 → 持久）。
 // 仅 type-import api 的类型，避免运行时循环依赖。
+//
+// 样本对齐抖音「互动视频」结构：每集时间轴上的 interactions[]（trigger_time/type/options→
+// 下一集 + countdown_sec + 可选 condition），剧级 global_flags（道具 / 好感度），选项可 set_flags。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { InteractiveSeries } from "@/api/interactive-drama";
@@ -18,7 +21,7 @@ function clone<T>(v: T): T {
 const store = new Map<string, InteractiveSeries>();
 
 function seed() {
-  // ① 落地窗后 · 互动版 —— 6 集 / 2 互动点 / 3 结局，前两集已生成。
+  // ① 落地窗后 · 互动版 —— 6 集 / 多互动点 / 3 结局；带全局标记 + 条件触发 + 选项置位。
   const demo1: InteractiveSeries = {
     id: "dis_demo_chuanghou",
     title: "落地窗后 · 互动版",
@@ -26,6 +29,10 @@ function seed() {
     logline: "她在落地窗后撞见真相，而你替她做下每一个选择。",
     status: "draft",
     start_episode_id: "ep_s1_10",
+    global_flags: [
+      { key: "sawTruth", label: "看清真相", type: "boolean", default: false },
+      { key: "affection", label: "好感度", type: "number", default: 0 },
+    ],
     created_at: "2026-06-05T09:00:00.000Z",
     updated_at: "2026-06-07T14:32:00.000Z",
     episodes: [
@@ -37,15 +44,21 @@ function seed() {
         gen_status: "ready",
         video_job_id: "mvj_seed_1",
         video_url: "/videos/showreel-01.mp4",
-        interaction: {
-          prompt: "看完这一集，她该当面拆穿他吗？",
-          choices: [
-            { id: "ch_s1_10_a", label: "当面拆穿", next_episode_id: "ep_s1_11a" },
-            { id: "ch_s1_10_b", label: "假装不知", next_episode_id: "ep_s1_11b" },
-          ],
-          countdown_sec: 10,
-          default_choice_id: null,
-        },
+        interactions: [
+          {
+            id: "itx_s1_10_1",
+            trigger_time: 70,
+            type: "choice",
+            prompt: "看完这一集，她该当面拆穿他吗？",
+            options: [
+              { id: "A", label: "当面拆穿", next_episode_id: "ep_s1_11a", set_flags: { sawTruth: true, affection: -1 } },
+              { id: "B", label: "假装不知", next_episode_id: "ep_s1_11b" },
+            ],
+            countdown_sec: 10,
+            default_option_id: "B",
+            condition: null,
+          },
+        ],
         next_episode_id: null,
         is_ending: false,
       },
@@ -58,15 +71,22 @@ function seed() {
         gen_status: "ready",
         video_job_id: "mvj_seed_2",
         video_url: "/videos/showreel-02.mp4",
-        interaction: {
-          prompt: "他跪下来求原谅，她该……",
-          choices: [
-            { id: "ch_s1_11a_a", label: "原谅他", next_episode_id: "ep_s1_he" },
-            { id: "ch_s1_11a_b", label: "转身离开", next_episode_id: "ep_s1_be" },
-          ],
-          countdown_sec: 8,
-          default_choice_id: null,
-        },
+        interactions: [
+          {
+            id: "itx_s1_11a_1",
+            trigger_time: 75,
+            type: "choice",
+            prompt: "他跪下来求原谅，她该……",
+            options: [
+              { id: "A", label: "原谅他", next_episode_id: "ep_s1_he", set_flags: { affection: 1 } },
+              { id: "B", label: "转身离开", next_episode_id: "ep_s1_be" },
+            ],
+            countdown_sec: 8,
+            default_option_id: null,
+            // 只有真正「看清真相」的观众路径才触发这道更尖锐的抉择
+            condition: "globalFlags.sawTruth == true",
+          },
+        ],
         next_episode_id: null,
         is_ending: false,
       },
@@ -78,7 +98,7 @@ function seed() {
         duration_sec: 80,
         gen_status: "idle",
         video_url: null,
-        interaction: null,
+        interactions: [],
         next_episode_id: "ep_s1_open",
         is_ending: false,
       },
@@ -90,7 +110,7 @@ function seed() {
         duration_sec: 90,
         gen_status: "idle",
         video_url: null,
-        interaction: null,
+        interactions: [],
         next_episode_id: null,
         is_ending: true,
         ending_label: "HE · 重圆",
@@ -103,7 +123,7 @@ function seed() {
         duration_sec: 90,
         gen_status: "idle",
         video_url: null,
-        interaction: null,
+        interactions: [],
         next_episode_id: null,
         is_ending: true,
         ending_label: "BE · 错过",
@@ -116,7 +136,7 @@ function seed() {
         duration_sec: 85,
         gen_status: "idle",
         video_url: null,
-        interaction: null,
+        interactions: [],
         next_episode_id: null,
         is_ending: true,
         ending_label: "开放结局",
@@ -132,6 +152,7 @@ function seed() {
     logline: "一纸婚约，签或不签，由屏幕前的你决定。",
     status: "draft",
     start_episode_id: "ep_s2_1",
+    global_flags: [],
     created_at: "2026-06-06T10:00:00.000Z",
     updated_at: "2026-06-06T18:08:00.000Z",
     episodes: [
@@ -142,15 +163,21 @@ function seed() {
         duration_sec: 60,
         gen_status: "idle",
         video_url: null,
-        interaction: {
-          prompt: "她要不要签下这份婚约？",
-          choices: [
-            { id: "ch_s2_1_a", label: "签下名字", next_episode_id: "ep_s2_2a" },
-            { id: "ch_s2_1_b", label: "撕掉合约", next_episode_id: "ep_s2_2b" },
-          ],
-          countdown_sec: 10,
-          default_choice_id: null,
-        },
+        interactions: [
+          {
+            id: "itx_s2_1_1",
+            trigger_time: 55,
+            type: "choice",
+            prompt: "她要不要签下这份婚约？",
+            options: [
+              { id: "A", label: "签下名字", next_episode_id: "ep_s2_2a" },
+              { id: "B", label: "撕掉合约", next_episode_id: "ep_s2_2b" },
+            ],
+            countdown_sec: 10,
+            default_option_id: null,
+            condition: null,
+          },
+        ],
         next_episode_id: null,
         is_ending: false,
       },
@@ -162,7 +189,7 @@ function seed() {
         duration_sec: 65,
         gen_status: "idle",
         video_url: null,
-        interaction: null,
+        interactions: [],
         next_episode_id: null,
         is_ending: true,
         ending_label: "甜宠结局",
@@ -175,7 +202,7 @@ function seed() {
         duration_sec: 65,
         gen_status: "idle",
         video_url: null,
-        interaction: null,
+        interactions: [],
         next_episode_id: null,
         is_ending: true,
         ending_label: "反转结局",

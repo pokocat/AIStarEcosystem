@@ -1,7 +1,8 @@
 "use client";
 
 // 互动配置 manifest 预览 / 导出 —— 交给社媒平台（抖音 / TikTok）的规范产物。
-// manifest 本质 = 解析后带视频地址的剧集图（schema=ai-star-eco.interactive-drama/v1）。
+// manifest = 抖音小程序「互动视频」Story Config（schema=ai-star-eco.interactive-drama/v2）：
+// 每集 videoUrl + 时间轴 interactions（triggerTime / interactionType / uiConfig）+ 剧级 globalFlags。
 
 import * as React from "react";
 import { toast } from "sonner";
@@ -67,7 +68,7 @@ export function ManifestPreviewDialog({ open, onOpenChange, series }: Props) {
         >
           <AlertTriangle size={14} style={{ flex: "none", marginTop: 1 }} />
           <span>
-            还有 <b>{ungenerated}</b> 集没有生成视频，导出的配置里这些集的 <code>video_url</code> 为空 —— 平台侧需要补齐才能完整播放。
+            还有 <b>{ungenerated}</b> 集没有生成视频，导出的配置里这些集的 <code>videoUrl</code> 为空 —— 平台侧需要补齐才能完整播放。
           </span>
         </div>
       )}

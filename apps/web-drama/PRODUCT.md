@@ -77,18 +77,19 @@
 
 **后端契约不变**：仍走 `POST /api/me/drama/scripts*` + `POST /api/me/drama/episodes/generate`（v0.43）。前端 6 阶段工作台属于 UI 编排层，富数据先以 mock 演示，持久化由 `DramaScript.scenes[]` 承接（结构化扩展见 v0.45+ 后端契约规划）。
 
-**v0.74 互动短剧（剧情互动 · 整合进短剧工坊）**：新业务模式 —— 一部剧 = 剧集有向图，某集播完插入「互动」（问题 + 选项），观众选择决定下一集播哪条分支（**互动在剧集之间，不在单集内**）。**整合进「短剧工坊」**(`/projects`)：同列表以「互动剧」标签展示 + 类型筛选（全部/短剧/互动剧），创建走任意短剧卡片/工作台「转成互动剧」（`convertProjectToInteractive` 按大纲铺线性链再接分支）或顶部「AI 起草 / 新建互动剧」；不再是一级页面，旧 `/interactive` 重定向。只做创作端：配置剧集分支图 → 生成每集视频 → 导出互动配置 manifest（`schema=ai-star-eco.interactive-drama/v1`）交社媒平台播放；消费侧播放器不在本期。前端 `api/interactive-drama.ts` + `lib/interactive-graph.ts`（mock 与真后端双通）；后端 `DramaInteractiveController`（`/api/me/drama/interactive/**`）+ `DramaInteractiveService` 真持久化 + AI 起草 + 按集生成。
+**v0.74 互动短剧（剧情互动 · 整合进短剧工坊）/ v0.79 数据结构对齐抖音「互动视频」**：新业务模式 —— 一部剧 = 剧集有向图，每集（一条视频）的时间轴上可有多个「互动点」（在 `trigger_time` 秒触发，类型 choice/input/countdown，选项→下一集），观众选择决定走向（v0.79 起对齐抖音「互动视频」：互动落在视频时间轴而非仅整集播完，并支持 `condition` 条件触发 + `global_flags` 状态追踪 + 选项 `set_flags` 置位）。**整合进「短剧工坊」**(`/projects`)：同列表以「互动剧」标签展示 + 类型筛选（全部/短剧/互动剧），创建走任意短剧卡片/工作台「转成互动剧」（`convertProjectToInteractive` 按大纲铺线性链再接分支）或顶部「AI 起草 / 新建互动剧」；不再是一级页面，旧 `/interactive` 重定向。只做创作端：配置剧集分支图 → 生成每集视频 → 导出互动配置 manifest（Story Config v2，`schema=ai-star-eco.interactive-drama/v2`：每集 videoUrl + 时间轴 interactions + 剧级 globalFlags）交社媒平台播放；消费侧播放器不在本期。前端 `api/interactive-drama.ts` + `lib/interactive-graph.ts`（mock 与真后端双通，读路径 `normalizeSeries` 迁移旧结构）；后端 `DramaInteractiveController`（`/api/me/drama/interactive/**`）+ `DramaInteractiveService`（`migrateShape` 读时升级旧 row）真持久化 + AI 起草 + 按集生成。
 
 能力：**AI 起草**（一句话灵感 → 整张可玩剧集图，复用 `DRAMA_SCRIPT_DRAFT` 端点 + `drama.interactive_draft` 提示词）· **配置编辑器**（剧集分支地图 + 三种流转 + 校验）· **按集生成**（复用 `MaterialVideoJobService`，kind=`drama-interactive-node`）· **试玩走查**（创作端验证分支，复用 `MediaLightbox` 抽查成片）· **导出 manifest**。
 
 | 实体 | 作用 |
 |---|---|
 | `DramaInteractiveSeries`（server）/ `InteractiveSeries`（web） | 一部互动剧 = 剧集图（`start_episode_id` + `episodes[]`），整张图内嵌专用表 `drama_interactive_series` 的 `payloadJson`（与线性短剧脚本隔离） |
-| `EpisodeNode` | 一集 = 图节点（整集成片 + 生成态 + 三选一流转：互动分支 / 线性下一集 / 结局集） |
-| `EpisodeInteraction` / `EpisodeChoice` | 看完某集后的互动（问题 + 选项，每个选项 → 目标集 + 可选限时） |
-| `InteractiveManifest` | 导出给抖音 / TikTok 的规范产物（解析后带视频地址的剧集图） |
+| `EpisodeNode` | 一集 = 图节点（整集成片 + 生成态 + 时间轴 `interactions[]` + 「播完之后」续播 / 结局） |
+| `Interaction` / `InteractionOption` | 时间轴互动点（`trigger_time` + `type` choice/input/countdown + `prompt` + 选项→目标集 + `countdown_sec` + `condition`）；选项可 `set_flags` 写全局标记 |
+| `GlobalFlagDef`（剧级 `global_flags`） | 道具 / 好感度等剧情状态声明（被 `set_flags` 写、`condition` 读，导出为 manifest `globalFlags` 初值） |
+| `InteractiveManifest` | 导出给抖音 / TikTok 的 Story Config（v2，camelCase：videoUrl + 时间轴 interactions + globalFlags） |
 
-下一步：平台适配器（manifest → 抖音/TikTok 互动格式，走 sau-service driver 套路）、可视化画布编辑器、每集分镜细化、状态化分支（变量/条件）。
+下一步：平台适配器（Story Config → 抖音/TikTok 互动格式，走 sau-service driver 套路）、每集分镜细化、选项 `set_flags` 的可视化编辑（模型 / 导出已支持，UI 待补）、运行时埋点回流（spec §三 行为数据 → 推荐/个性化结局）。
 
 后端 API 在 [`/api/film/**`](../../specs/openapi.yaml)（按 tag 分组：film / wardrobe / appearance-forge / settings）。
 
