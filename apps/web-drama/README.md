@@ -70,6 +70,26 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.79 · 2026-06-15 · 互动短剧数据结构对齐抖音「互动视频」（时间轴互动点 + globalFlags + 条件触发）
+
+按抖音小程序「互动视频」Story Config 规范重构互动剧数据模型，并保留旧 row 平滑迁移：
+
+- **模型升级**：每集（一条视频）从「单 `interaction`（整集播完才弹）」升级为视频时间轴上的 **`interactions[]`**
+  —— 每个互动点带 `trigger_time`（触发秒数）、`type`（choice / input / countdown）、`prompt`、
+  `options[{id,label,next_episode_id,set_flags?}]`、`countdown_sec`、`condition`（条件触发，如
+  `globalFlags.hasKey == true`）；剧级新增 **`global_flags`**（道具 / 好感度等状态声明：选项 `set_flags` 写、
+  互动 `condition` 读）。单集可有多个互动点、可中途触发，对齐真实互动视频形态。
+- **导出 manifest 升 v2 = Story Config**（camelCase，直接下发抖音播放器）：`{ dramaId, startEpisodeId,
+  globalFlags, episodes:[{ episodeId, videoUrl, durationSec, interactions:[{ triggerTime, interactionType,
+  condition?, uiConfig:{ question, options:[{id,text,nextVideoId,setFlags?}], countdownSec } }], nextVideoId?,
+  isEnding?, endingLabel? }] }`。
+- **平滑迁移**：前端 `normalizeSeries` + 后端 `migrateShape`（读路径就地升级），旧「单 interaction」row 零迁移
+  即服务新结构；`branch_count` 改为互动点总数。
+- **编辑器**：`EpisodeEditorDialog` 改为「互动点列表」（每点 触发秒 / 类型 / 问题 / 选项→集 / 限时 / 条件）+
+  「播完之后」续播 / 结局；编辑器右栏加「全局标记」声明卡；`BranchCanvas` / `EpisodeCard` / `PlaythroughDialog` /
+  AI 起草 prompt（`drama.interactive_draft`）全部跟随新结构。
+- 门禁：web-drama typecheck + build（28 路由）+ server `mvn compile` + `check:api-contract` 全绿。
+
 ### v0.78 · 2026-06-14 · 统一 TipTap 输入组件 + 短视频新建流程重做（去重 + 引用 chip + 进工作台真扣费）
 
 - **TipTap 输入组件 `DramaComposer`**（`components/drama-workshop/composer.tsx` + `composer-ref.ts`）：全站点子 / 提示词输入复用同一套「引用 chip 托盘 + 富文本正文」。首个编辑器依赖 `@tiptap/*@2.27`（`immediatelyRender:false` 适配 Next 16 SSR）；命令式 `setText/focus/clear`（给我灵感 / 回填）；回车提交、Shift+回车换行、输入法合成中不拦截。引用类型经 `COMPOSER_REF_META` 注册表扩展（kind→图标/中文名，加类型只动一处）。本版先接入短视频新建，其余 20+ 输入后续分批迁。

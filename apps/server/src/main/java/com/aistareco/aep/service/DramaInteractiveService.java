@@ -245,23 +245,34 @@ public class DramaInteractiveService {
             }
             ids.add(node.get("id").asText());
             if (!node.hasNonNull("gen_status")) node.put("gen_status", "idle");
-            JsonNode inter = node.get("interaction");
-            if (inter != null && inter.isObject()) {
-                JsonNode choices = inter.get("choices");
-                if (choices != null && choices.isArray()) {
-                    for (JsonNode c : choices) {
-                        if (c.isObject() && !c.hasNonNull("id")) {
-                            ((ObjectNode) c).put("id", "ch_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
-                        }
-                    }
-                }
-            }
         }
         if (!s.hasNonNull("genre")) s.put("genre", genre);
         if (!s.hasNonNull("title")) s.put("title", "未命名互动剧");
         String start = text(s, "start_episode_id");
         if (start == null || !ids.contains(start)) {
             s.put("start_episode_id", episodes.get(0).path("id").asText());
+        }
+        // 兼容模型可能输出旧 interaction 形态 → 升级为 interactions[]；并补 interaction / option id。
+        migrateShape(s);
+        for (JsonNode epNode : s.path("episodes")) {
+            if (!epNode.isObject()) continue;
+            JsonNode itxs = epNode.get("interactions");
+            if (itxs == null || !itxs.isArray()) continue;
+            for (JsonNode itxNode : itxs) {
+                if (!itxNode.isObject()) continue;
+                ObjectNode itx = (ObjectNode) itxNode;
+                if (!itx.hasNonNull("id")) itx.put("id", "itx_" + shortId(8));
+                if (!itx.hasNonNull("type")) itx.put("type", "choice");
+                if (!itx.has("trigger_time")) itx.put("trigger_time", epNode.path("duration_sec").asInt(60));
+                JsonNode opts = itx.get("options");
+                if (opts != null && opts.isArray()) {
+                    for (JsonNode oNode : opts) {
+                        if (oNode.isObject() && !((ObjectNode) oNode).hasNonNull("id")) {
+                            ((ObjectNode) oNode).put("id", "opt_" + shortId(6));
+                        }
+                    }
+                }
+            }
         }
         return s;
     }
@@ -309,10 +320,8 @@ public class DramaInteractiveService {
         if (episodes != null && episodes.isArray()) {
             epCount = episodes.size();
             for (JsonNode ep : episodes) {
-                JsonNode inter = ep.get("interaction");
-                if (inter != null && inter.isObject() && inter.path("choices").isArray() && inter.path("choices").size() > 0) {
-                    branchCount++;
-                }
+                JsonNode itxs = ep.get("interactions"); // payload 经 readPayload 已迁移为 interactions[]
+                if (itxs != null && itxs.isArray()) branchCount += itxs.size();
                 if (ep.path("is_ending").asBoolean(false)) endingCount++;
                 if ("ready".equals(ep.path("gen_status").asText(""))) readyCount++;
             }
@@ -361,10 +370,65 @@ public class DramaInteractiveService {
     private ObjectNode readPayload(DramaInteractiveSeries row) {
         try {
             JsonNode n = row.getPayloadJson() != null ? om.readTree(row.getPayloadJson()) : om.createObjectNode();
-            return n.isObject() ? (ObjectNode) n : om.createObjectNode();
+            ObjectNode payload = n.isObject() ? (ObjectNode) n : om.createObjectNode();
+            migrateShape(payload);
+            return payload;
         } catch (Exception e) {
             return om.createObjectNode();
         }
+    }
+
+    /**
+     * 旧结构（每集单 `interaction` 对象，互动只在整集播完）→ 新结构（`interactions[]` 时间轴
+     * 互动点，对齐抖音「互动视频」规范）。读路径就地升级，老 row 零迁移即可服务新前端。
+     */
+    private void migrateShape(ObjectNode payload) {
+        if (!payload.path("global_flags").isArray()) {
+            payload.set("global_flags", om.createArrayNode());
+        }
+        JsonNode episodes = payload.get("episodes");
+        if (episodes == null || !episodes.isArray()) return;
+        for (JsonNode epNode : episodes) {
+            if (!epNode.isObject()) continue;
+            ObjectNode ep = (ObjectNode) epNode;
+            if (ep.path("interactions").isArray()) {
+                ep.remove("interaction");
+                continue;
+            }
+            ArrayNode interactions = om.createArrayNode();
+            JsonNode legacy = ep.get("interaction");
+            if (legacy != null && legacy.isObject() && legacy.path("choices").isArray()) {
+                ObjectNode itx = om.createObjectNode();
+                itx.put("id", "itx_" + shortId(8));
+                itx.put("trigger_time", ep.path("duration_sec").asInt(60));
+                itx.put("type", "choice");
+                itx.put("prompt", legacy.path("prompt").asText(""));
+                ArrayNode options = om.createArrayNode();
+                for (JsonNode c : legacy.get("choices")) {
+                    ObjectNode o = om.createObjectNode();
+                    String oid = c.path("id").asText("");
+                    o.put("id", oid.isEmpty() ? "opt_" + shortId(6) : oid);
+                    o.put("label", c.path("label").asText(""));
+                    o.put("next_episode_id", c.path("next_episode_id").asText(""));
+                    options.add(o);
+                }
+                itx.set("options", options);
+                JsonNode cd = legacy.get("countdown_sec");
+                if (cd != null && !cd.isNull()) itx.set("countdown_sec", cd);
+                else itx.putNull("countdown_sec");
+                JsonNode dc = legacy.get("default_choice_id");
+                if (dc != null && !dc.isNull()) itx.set("default_option_id", dc);
+                else itx.putNull("default_option_id");
+                itx.putNull("condition");
+                interactions.add(itx);
+            }
+            ep.set("interactions", interactions);
+            ep.remove("interaction");
+        }
+    }
+
+    private static String shortId(int len) {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, len);
     }
 
     private JsonNode tryReadJson(String content) {

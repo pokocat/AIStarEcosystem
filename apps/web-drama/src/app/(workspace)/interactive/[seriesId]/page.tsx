@@ -9,9 +9,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Coins, Download, GitBranch, List, Network, Play, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Coins, Download, GitBranch, List, Network, Play, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button, Card, Chip } from "@/components/premium";
-import { ConfirmDialog, ErrorBlock, LoadingBlock, SectionHeader } from "@/components/common";
+import { ConfirmDialog, ErrorBlock, LoadingBlock, SectionHeader, Select, TextInput } from "@/components/common";
 import { MediaLightbox } from "@/components/drama-workshop/media-lightbox";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { useAsync, mutate, invalidate } from "@/lib/drama-query";
@@ -19,8 +19,8 @@ import { useSaveStatus } from "@/lib/use-save-status";
 import { getDramaConfig } from "@/api/drama-config";
 import { ApiError } from "@ai-star-eco/api-client";
 import * as InteractiveDramaApi from "@/api/interactive-drama";
-import type { EpisodeNode, InteractiveSeries } from "@/api/interactive-drama";
-import { addEpisode as addEpisodeFn, applyNodePatch, blankChoice, blankEpisode, cloneEpisode, removeEpisode as removeEpisodeFn, summarize, validateSeries } from "@/lib/interactive-graph";
+import type { EpisodeNode, GlobalFlagDef, InteractiveSeries } from "@/api/interactive-drama";
+import { addEpisode as addEpisodeFn, applyNodePatch, blankEpisode, blankInteraction, blankOption, cloneEpisode, removeEpisode as removeEpisodeFn, summarize, validateSeries } from "@/lib/interactive-graph";
 import { BranchCanvas } from "../_components/BranchCanvas";
 import { EpisodeCard } from "../_components/EpisodeCard";
 import { EpisodeEditorDialog } from "../_components/EpisodeEditorDialog";
@@ -140,8 +140,8 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
     toast.success(`已复制为「${copy.title}」`);
   }
 
-  // 画布连线：从 fromId 接一条分支到 toId。已是互动 → 加一个选项；已有线性下一集（再连一条）
-  // → 升级为互动二选；否则设为线性下一集。结局集不能往外连。
+  // 画布连线：从 fromId 接一条分支到 toId。已有 choice 互动点 → 加一个选项；已有线性续播
+  // （再连一条）→ 升级为末尾互动二选；否则设为线性续播。结局集不能往外连。
   function handleConnect(fromId: string, toId: string) {
     if (!draft || fromId === toId) return;
     const from = draft.episodes.find((e) => e.id === fromId);
@@ -152,17 +152,18 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
     }
     let patch: Partial<EpisodeNode>;
     let msg: string;
-    if (from.interaction) {
-      const ch = blankChoice(toId);
-      ch.label = `选项 ${from.interaction.choices.length + 1}`;
-      patch = { interaction: { ...from.interaction, choices: [...from.interaction.choices, ch] } };
+    const choiceItx = from.interactions.find((i) => i.type === "choice");
+    if (choiceItx) {
+      const opt = blankOption(toId);
+      opt.label = `选项 ${choiceItx.options.length + 1}`;
+      patch = {
+        interactions: from.interactions.map((i) => (i.id === choiceItx.id ? { ...i, options: [...i.options, opt] } : i)),
+      };
       msg = "已加一个分支选项";
     } else if (from.next_episode_id && from.next_episode_id !== toId) {
-      const c1 = blankChoice(from.next_episode_id);
-      c1.label = "选项 1";
-      const c2 = blankChoice(toId);
-      c2.label = "选项 2";
-      patch = { next_episode_id: null, interaction: { prompt: "", choices: [c1, c2], countdown_sec: null, default_choice_id: null } };
+      const itx = blankInteraction(from.duration_sec ?? 60, from.next_episode_id, toId);
+      const upgraded = { ...itx, options: itx.options.map((o, k) => ({ ...o, label: `选项 ${k + 1}` })) };
+      patch = { next_episode_id: null, interactions: [...from.interactions, upgraded] };
       msg = "已升级为互动分支（2 选）—— 去补一下问题文案";
     } else {
       patch = { next_episode_id: toId, is_ending: false };
@@ -173,6 +174,19 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
   }
   function handleSetStart(id: string) {
     setDraft((d) => (d ? { ...d, start_episode_id: id } : d));
+  }
+
+  // ── 全局剧情标记（spec: globalFlags；被选项 set_flags 写、被互动 condition 读） ──
+  function addFlag() {
+    setDraft((d) =>
+      d ? { ...d, global_flags: [...(d.global_flags ?? []), { key: `flag${(d.global_flags?.length ?? 0) + 1}`, type: "boolean" }] } : d,
+    );
+  }
+  function updateFlag(idx: number, patch: Partial<GlobalFlagDef>) {
+    setDraft((d) => (d ? { ...d, global_flags: (d.global_flags ?? []).map((f, i) => (i === idx ? { ...f, ...patch } : f)) } : d));
+  }
+  function removeFlag(idx: number) {
+    setDraft((d) => (d ? { ...d, global_flags: (d.global_flags ?? []).filter((_, i) => i !== idx) } : d));
   }
 
   // ── 生成（先存当前图，再逐集生成，最后持久化；保存均经 track 反映状态） ──────
@@ -267,8 +281,8 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
       <div className="card row gap-3" style={{ padding: "11px 15px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", alignItems: "flex-start" }}>
         <GitBranch size={15} style={{ color: "var(--accent)", flex: "none", marginTop: 2 }} />
         <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
-          下面每张卡是一<b style={{ color: "var(--ink)" }}>集</b>。给某集设「互动分支」，填好问题和选项、每个选项指向下一集；
-          生成每集视频后，<b style={{ color: "var(--ink)" }}>导出互动配置</b>交给抖音 / TikTok 播放。互动只发生在剧集之间。
+          下面每张卡是一<b style={{ color: "var(--ink)" }}>集</b>（一条视频）。在某集时间轴上加<b style={{ color: "var(--ink)" }}>互动点</b>（第几秒弹、问什么、选项跳哪一集）；
+          生成每集视频后，<b style={{ color: "var(--ink)" }}>导出互动配置</b>交给抖音 / TikTok 播放。
         </div>
       </div>
 
@@ -386,6 +400,42 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
                   </div>
                 ))}
               </>
+            )}
+          </Card>
+
+          {/* 全局标记 */}
+          <Card style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="row gap-2" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>全局标记</div>
+              <Button variant="ghost" size="sm" onClick={addFlag}>
+                <Plus size={12} /> 加标记
+              </Button>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+              道具 / 好感度等剧情状态（spec: globalFlags）。被互动「触发条件」读、导出为配置初值（set_flags 写值随导出 manifest 下发）。
+            </div>
+            {(draft.global_flags ?? []).length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--ink-3)" }}>暂无标记。</div>
+            ) : (
+              (draft.global_flags ?? []).map((f, i) => (
+                <div key={i} className="row gap-2" style={{ alignItems: "center" }}>
+                  <TextInput value={f.key} onChange={(e) => updateFlag(i, { key: e.target.value })} placeholder="key，如 hasKey" style={{ flex: 1 }} />
+                  <Select value={f.type} onChange={(e) => updateFlag(i, { type: e.target.value as GlobalFlagDef["type"] })} style={{ width: 84 }}>
+                    <option value="boolean">布尔</option>
+                    <option value="number">数值</option>
+                    <option value="string">文本</option>
+                  </Select>
+                  <button
+                    type="button"
+                    title="删除标记"
+                    onClick={() => removeFlag(i)}
+                    className="btn btn-icon btn-ghost btn-sm"
+                    style={{ flex: "none", color: "var(--danger)" }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))
             )}
           </Card>
 

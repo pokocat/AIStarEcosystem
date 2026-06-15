@@ -37,7 +37,7 @@ export function PlaythroughDialog({ open, onOpenChange, series }: Props) {
   }, [open, reset]);
 
   const current = path.length ? byId.get(path[path.length - 1].episodeId) ?? null : null;
-  const flow = !current ? "none" : current.is_ending ? "ending" : current.interaction ? "interactive" : current.next_episode_id ? "linear" : "dead";
+  const flow = !current ? "none" : current.is_ending ? "ending" : current.interactions.length > 0 ? "interactive" : current.next_episode_id ? "linear" : "dead";
 
   return (
     <Dialog
@@ -94,45 +94,54 @@ export function PlaythroughDialog({ open, onOpenChange, series }: Props) {
             </div>
           )}
 
-          {flow === "interactive" && current.interaction && (
-            <div>
-              <div className="row gap-2" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)", marginBottom: 10 }}>
-                <GitBranch size={15} style={{ color: "var(--accent)" }} />
-                {current.interaction.prompt || "（未填互动问题）"}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {current.interaction.choices.map((c) => {
-                  const exists = !!c.next_episode_id && byId.has(c.next_episode_id);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      disabled={!exists}
-                      onClick={() => exists && setPath((p) => [...p, { episodeId: c.next_episode_id, via: c.label }])}
-                      className="row gap-2"
-                      style={{
-                        width: "100%",
-                        justifyContent: "space-between",
-                        padding: "12px 16px",
-                        borderRadius: "var(--radius-sm)",
-                        border: "1px solid var(--line-2)",
-                        background: exists ? "var(--surface)" : "var(--surface-2)",
-                        color: exists ? "var(--ink)" : "var(--ink-3)",
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                        cursor: exists ? "pointer" : "not-allowed",
-                        textAlign: "left",
-                      }}
-                    >
-                      <span>{c.label || "（未命名选项）"}</span>
-                      <span className="row gap-1" style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 500 }}>
-                        {exists ? episodeTitle(series, c.next_episode_id) : "目标缺失"}
-                        <ArrowRight size={12} />
+          {flow === "interactive" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {[...current.interactions]
+                .sort((a, b) => a.trigger_time - b.trigger_time)
+                .map((itx) => (
+                  <div key={itx.id}>
+                    <div className="row gap-2" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)", marginBottom: 10, flexWrap: "wrap" }}>
+                      <GitBranch size={15} style={{ color: "var(--accent)" }} />
+                      <span className="row gap-1" style={{ fontSize: 11, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: 6, padding: "1px 6px" }}>
+                        {itx.trigger_time}s
                       </span>
-                    </button>
-                  );
-                })}
-              </div>
+                      {itx.prompt || "（未填互动问题）"}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {itx.options.map((o) => {
+                        const exists = !!o.next_episode_id && byId.has(o.next_episode_id);
+                        return (
+                          <button
+                            key={o.id}
+                            type="button"
+                            disabled={!exists}
+                            onClick={() => exists && setPath((p) => [...p, { episodeId: o.next_episode_id, via: o.label }])}
+                            className="row gap-2"
+                            style={{
+                              width: "100%",
+                              justifyContent: "space-between",
+                              padding: "12px 16px",
+                              borderRadius: "var(--radius-sm)",
+                              border: "1px solid var(--line-2)",
+                              background: exists ? "var(--surface)" : "var(--surface-2)",
+                              color: exists ? "var(--ink)" : "var(--ink-3)",
+                              fontSize: 13.5,
+                              fontWeight: 600,
+                              cursor: exists ? "pointer" : "not-allowed",
+                              textAlign: "left",
+                            }}
+                          >
+                            <span>{o.label || "（未命名选项）"}</span>
+                            <span className="row gap-1" style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 500 }}>
+                              {exists ? episodeTitle(series, o.next_episode_id) : "目标缺失"}
+                              <ArrowRight size={12} />
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
             </div>
           )}
 

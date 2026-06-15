@@ -7053,15 +7053,18 @@ paths:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaCast, summary: 'AI 从大纲重抽角色阵容（大模型）', responses: { '200': { description: ok } } }
   # ── v0.74 互动短剧（剧情互动）：剧集分支图 CRUD + AI 起草 + 按集生成。DramaInteractiveController。 ──
+  # v0.79 数据结构对齐抖音「互动视频」：每集时间轴 interactions[]（trigger_time/type/options→next_episode_id +
+  # countdown_sec + condition）+ 剧级 global_flags + 选项 set_flags。后端读路径把旧单-interaction row 就地迁移成
+  # interactions[]（payloadJson 整张图内嵌，mode=interactive_series；路径不变，仅 body 形态升级）。
   /me/drama/interactive/series:
-    get:  { tags: [drama], operationId: listInteractiveSeries, summary: '我的互动剧列表（剧集分支图摘要）', responses: { '200': { description: ok } } }
-    post: { tags: [drama], operationId: saveInteractiveSeries, summary: '保存互动剧（整张剧集图内嵌 payloadJson，mode=interactive_series）', responses: { '200': { description: ok } } }
+    get:  { tags: [drama], operationId: listInteractiveSeries, summary: '我的互动剧列表（剧集分支图摘要：episode_count/branch_count=互动点总数/ending_count/ready_count）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: saveInteractiveSeries, summary: '保存互动剧（整张剧集图内嵌 payloadJson：episodes[].interactions[] + global_flags）', responses: { '200': { description: ok } } }
   /me/drama/interactive/series/{id}:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
-    get:    { tags: [drama], operationId: getInteractiveSeries,    summary: '互动剧详情（完整剧集图）', responses: { '200': { description: ok } } }
+    get:    { tags: [drama], operationId: getInteractiveSeries,    summary: '互动剧详情（完整剧集图；旧 row 读时迁移为 interactions[]）', responses: { '200': { description: ok } } }
     delete: { tags: [drama], operationId: deleteInteractiveSeries, summary: '删除互动剧（软删）', responses: { '204': { description: ok } } }
   /me/drama/interactive/ai-draft:
-    post: { tags: [drama], operationId: aiDraftInteractiveSeries, summary: 'AI 起草整张剧集分支图（大模型，prompt=drama.interactive_draft，复用 DRAMA_SCRIPT_DRAFT 端点）。body:{theme,genre?,branch_points?,endings?}', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: aiDraftInteractiveSeries, summary: 'AI 起草整张剧集分支图（大模型，prompt=drama.interactive_draft 输出 interactions[] 新结构，复用 DRAMA_SCRIPT_DRAFT 端点）。body:{theme,genre?,branch_points?,endings?}', responses: { '200': { description: ok } } }
   /me/drama/interactive/series/{seriesId}/episodes/{episodeId}/generate:
     parameters: [ { in: path, name: seriesId, required: true, schema: { type: string } }, { in: path, name: episodeId, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: generateInteractiveEpisode, summary: '按集生成视频（复用 MaterialVideoJob 管线 kind=drama-interactive-node，回写 node.video_job_id，轮询 /me/drama/episodes/jobs/{id}）', responses: { '200': { description: ok } } }
