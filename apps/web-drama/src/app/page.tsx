@@ -232,12 +232,12 @@ export default function DramaLandingPage() {
               margin: "0 0 8px",
             }}
           >
-            <span style={{ display: "block" }}>把短剧</span>
+            <span style={{ display: "block" }}>好故事</span>
             <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400, display: "inline-block", paddingBottom: 6, color: "var(--accent)" }}>
-              工业流
+              值得被拍出来
             </span>
             <span>，</span>
-            <span style={{ display: "block", marginTop: 4 }}>搬进数字人世界</span>
+            <span style={{ display: "block", marginTop: 4 }}>哪怕只有你一个人</span>
           </h1>
 
           <p
@@ -249,9 +249,9 @@ export default function DramaLandingPage() {
               margin: "32px auto 12px",
             }}
           >
-            演员 IP 阵容 · 脚本工坊 · 项目流水线 · 多平台分发——
+            不用攒一个剧组，也不用熬通宵。把脑子里的那点灵感丢进来，
             <br />
-            让创作团队以更轻的人力跑出更密的内容节奏。
+            起本子、定角色、出画面、铺渠道，我们陪你做到能发出去的那一刻。
           </p>
 
           <div
