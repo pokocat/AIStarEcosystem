@@ -118,7 +118,7 @@ export default function MyPublishedPage() {
         <div className="card col center" style={{ padding: 40, gap: 8, textAlign: "center" }}>
           <Boxes size={26} style={{ color: "var(--ink-3)" }} />
           <div style={{ fontWeight: 700 }}>你还没有发布过创意</div>
-          <div className="faint" style={{ fontSize: 12.5 }}>在「已完成短剧」的成片预览里点「发布到创意市场」,通过审核后就会出现在创意市场。</div>
+          <div className="faint" style={{ fontSize: 12.5 }}>在「已完成短剧」或「短视频工坊」的成片预览里点「发布到创意中心」，通过审核后就会出现在创意市场。</div>
         </div>
       ) : (
         <div className="col gap-2">

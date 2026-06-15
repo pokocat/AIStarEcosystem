@@ -222,10 +222,20 @@ export default function TemplatesPage() {
       ) : list.length === 0 && !error ? (
         <div className="card col center" style={{ padding: 40, gap: 8, textAlign: "center" }}>
           <Boxes size={26} style={{ color: "var(--ink-3)" }} />
-          <div style={{ fontWeight: 700 }}>这里还没有创意</div>
-          <div className="faint" style={{ fontSize: 12.5 }}>
-            {showOperator ? "用「新建内置创意」铺点官方种子，或从用户作品里精选。" : "创作者发布、运营精选的爆款创意会陆续出现在这里。"}
-          </div>
+          {recipes.length > 0 ? (
+            <>
+              <div style={{ fontWeight: 700 }}>没有匹配的创意</div>
+              <div className="faint" style={{ fontSize: 12.5 }}>试试调整搜索词或类型筛选</div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => { setQ(""); setFilter("all"); setScope("all"); }}>清除筛选</button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700 }}>这里还没有创意</div>
+              <div className="faint" style={{ fontSize: 12.5 }}>
+                {showOperator ? "用「新建内置创意」铺点官方种子，或从用户作品里精选。" : "创作者发布、运营精选的爆款创意会陆续出现在这里。"}
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(248px,1fr))", gap: 16, alignItems: "start" }}>

@@ -15,7 +15,7 @@ import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal
 import { type DramaProjectSummary } from "@/mocks/drama-workshop";
 import { ProjectsApi, RecipesApi, ShortsApi } from "@/api";
 import type { ShortDraftSummary } from "@/api/shorts";
-import { useAsync } from "@/lib/drama-query";
+import { useAsync, invalidate } from "@/lib/drama-query";
 import { aiErrorMessage } from "@/lib/ai-error";
 
 interface MakeCtx {
@@ -37,12 +37,15 @@ function DraftCard({
   onOpen,
   onPublish,
   publishing,
+  submitted,
   delay,
 }: {
   d: ShortDraftSummary;
   onOpen: () => void;
   onPublish: () => void;
   publishing?: boolean;
+  /** 已成功提交过审——隐藏发布按钮，显示「已提交」标记 */
+  submitted?: boolean;
   delay?: number;
 }) {
   const done = d.status === "done";
@@ -162,21 +165,31 @@ function DraftCard({
           {done && (
             <>
               <span className="grow" />
-              <button
-                type="button"
-                className="btn btn-icon btn-sm"
-                aria-label="发布到创意中心"
-                title="发布到创意中心"
-                disabled={publishing}
-                aria-busy={publishing}
-                style={{ width: 24, height: 24, borderRadius: 7, opacity: publishing ? 0.55 : 1 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPublish();
-                }}
-              >
-                <Boxes size={11} />
-              </button>
+              {submitted ? (
+                <span
+                  title="已提交审核"
+                  aria-label="已提交审核"
+                  style={{ width: 24, height: 24, borderRadius: 7, display: "grid", placeItems: "center", color: "#15803d", background: "#dcfce7", fontSize: 10 }}
+                >
+                  <Boxes size={11} />
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-icon btn-sm"
+                  aria-label="发布到创意中心"
+                  title="发布到创意中心"
+                  disabled={publishing}
+                  aria-busy={publishing}
+                  style={{ width: 24, height: 24, borderRadius: 7, opacity: publishing ? 0.55 : 1 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPublish();
+                  }}
+                >
+                  <Boxes size={11} />
+                </button>
+              )}
             </>
           )}
         </span>
@@ -191,6 +204,8 @@ export default function ShortsStudioPage() {
   const [preview, setPreview] = React.useState<ShortDraftSummary | null>(null);
   const [publishTarget, setPublishTarget] = React.useState<ShortDraftSummary | null>(null);
   const [publishingId, setPublishingId] = React.useState<string | null>(null);
+  // 已成功提交过审的草稿 ID 集合（本地标记，防止重复提交 + 给用户明确反馈）
+  const [submittedShortIds, setSubmittedShortIds] = React.useState<Set<string>>(new Set());
   // v0.76:短视频草稿真后端 —— 列表即真实草稿；单集作品另取真实项目（episodes===1）。
   const draftsQ = useAsync("/me/drama/shorts", () => ShortsApi.listDrafts());
   const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
@@ -211,6 +226,7 @@ export default function ShortsStudioPage() {
   const editDraft = (id: string) => router.push(`/shorts/make?draft=${encodeURIComponent(id)}`);
   const requestPublish = (d: ShortDraftSummary) => {
     if (publishingId) return;
+    if (submittedShortIds.has(d.id)) return;
     setPublishTarget(d);
   };
   const closePublishModal = () => {
@@ -224,8 +240,10 @@ export default function ShortsStudioPage() {
     setPublishingId(d.id);
     try {
       await RecipesApi.extractFromShort(d.id);
+      setSubmittedShortIds((prev) => new Set([...prev, d.id]));
       setPublishTarget(null);
       setPreview(null);
+      invalidate("/me/drama/recipes"); // 刷新「我发布的创意」列表
       toast.success(`已把《${d.title}》发布到创意中心，运营审核通过后公开可套用`);
     } catch (e) {
       toast.error(aiErrorMessage(e, "发布到创意中心失败，请稍后重试"));
@@ -310,6 +328,7 @@ export default function ShortsStudioPage() {
             onOpen={() => openDraft(d)}
             onPublish={() => requestPublish(d)}
             publishing={publishingId === d.id}
+            submitted={submittedShortIds.has(d.id)}
           />
         ))}
         {singles.map((p, i) => (
@@ -330,10 +349,10 @@ export default function ShortsStudioPage() {
             durLabel: preview.durationSec > 0 ? fmtDur(preview.durationSec) : undefined,
           }}
           onClose={() => setPreview(null)}
-          scriptLabel="发布到创意中心"
+          scriptLabel={submittedShortIds.has(preview.id) ? "已提交审核" : "发布到创意中心"}
           deriveLabel="发布到创意中心"
           compactActions
-          extracting={publishingId === preview.id}
+          extracting={publishingId === preview.id || submittedShortIds.has(preview.id)}
           onScript={() => requestPublish(preview)}
           onDerive={() => requestPublish(preview)}
         />
