@@ -44,37 +44,37 @@ const SHOWREEL = [
   {
     title: "婚礼上掏出的不是戒指",
     genre: "悬疑爱情",
-    cover: "/recipes/home/wedding-missing.jpg",
+    cover: "/recipes/5ef6b8ad22b0495e8140ad97abae3572.webp",
     tone: "danger" as const,
   },
   {
     title: "相亲角随手指了个首富",
     genre: "甜宠爽剧",
-    cover: "/recipes/home/flash-marriage.jpg",
+    cover: "/recipes/9cc5247917724cfa9d0d3ff597ce98d8.webp",
     tone: "accent" as const,
   },
   {
     title: "重回高考前那个夏天",
     genre: "催泪青春",
-    cover: "/recipes/home/exam-summer.jpg",
+    cover: "/recipes/8dfa87bf72d6493889b82031d97729db.webp",
     tone: "info" as const,
   },
   {
     title: "一觉醒来成了王府厨娘",
     genre: "古装轻喜",
-    cover: "/recipes/home/royal-kitchen-maid.jpg",
+    cover: "/recipes/7f72f68f86704599bf498993ff3b49a9.webp",
     tone: "warning" as const,
   },
   {
     title: "冷宫醒来的第一夜",
     genre: "古装权谋",
-    cover: "/recipes/home/cold-palace.jpg",
+    cover: "/recipes/d4af828913d64c719caaca1fa1b33672.webp",
     tone: "violet" as const,
   },
   {
     title: "重生进自己追的漫画",
     genre: "脑洞漫剧",
-    cover: "/recipes/home/comic-rebirth.jpg",
+    cover: "/recipes/88ae8c5b62ba4f1ca3500dafbcca7d35.webp",
     tone: "success" as const,
   },
 ];
@@ -303,13 +303,13 @@ export default function DramaLandingPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
               gap: 18,
             }}
           >
             {SHOWREEL.map((s) => (
+              <Link key={s.title} href={isLoggedIn ? "/templates" : "/login?from=%2Ftemplates"} style={{ display: "block", textDecoration: "none" }}>
               <Card
-                key={s.title}
                 glass
                 style={{
                   padding: 0,
@@ -317,6 +317,15 @@ export default function DramaLandingPage() {
                   position: "relative",
                   height: 240,
                   cursor: "pointer",
+                  transition: "transform .18s, box-shadow .18s",
+                }}
+                onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => {
+                  e.currentTarget.style.transform = "translateY(-3px)";
+                  e.currentTarget.style.boxShadow = "0 12px 40px rgba(0,0,0,.5)";
+                }}
+                onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => {
+                  e.currentTarget.style.transform = "";
+                  e.currentTarget.style.boxShadow = "";
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -371,6 +380,7 @@ export default function DramaLandingPage() {
                   </div>
                 </div>
               </Card>
+              </Link>
             ))}
           </div>
         </section>
@@ -380,7 +390,7 @@ export default function DramaLandingPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
               gap: 18,
             }}
           >
