@@ -7057,6 +7057,10 @@ paths:
     post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }
   /me/drama/render/clip:
     post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）。v0.72 起 body={kind?,vars{},name?,duration_sec?,ratio?,project_id?,frame_url?}：出片提示词模板服务端化（drama.clip_video/drama.short_clip_video）', responses: { '200': { description: ok } } }
+  # ── v0.79 互动剧（剧情互动短剧）= DramaProject 的形态（mode=interactive），不是独立实体：剧集（图节点）即项目大纲分集，每集视频复用六阶段成片，分支编排（互动点/接线/全局标记）叠加在 ProjectData.interactive。仅新增一个 AI 起草端点，其余复用 /me/drama/projects/**。 ──
+  /me/drama/projects/{id}/interactive/draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: interactiveDraftDramaProject, summary: '互动剧 AI 起草整张分支图（大模型，body:{theme?} → 大纲分集 + 分支叠加层 {episodes, interactive}，未落库，前端合并后 PUT 保存）。未配置 → 503 AI_NOT_CONFIGURED', responses: { '200': { description: ok } } }
   # ── v0.65 短剧分发（用户侧平台连接 + 发布任务）。DramaDistributionController。 ──
   /me/distribution/platforms:
     get: { tags: [distribution], operationId: listMyDistributionPlatforms, summary: '平台目录 + 我的连接状态', responses: { '200': { description: ok } } }

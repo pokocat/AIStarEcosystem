@@ -26,6 +26,8 @@ public class DramaConfigSeeder implements CommandLineRunner {
     public static final String KEY_FRAME = "drama.credit.frame";
     /** 进短视频工作台开拍（新建草稿即 AI 出口播脚本与分镜）单次积分。 */
     public static final String KEY_SHORT_ENTRY = "drama.credit.short-entry";
+    /** 互动剧 · AI 起草整张分支图单次积分（v0.79）。 */
+    public static final String KEY_INTERACTIVE_DRAFT = "drama.credit.interactive-draft";
 
     private final PlatformConfigService configs;
 
@@ -45,5 +47,7 @@ public class DramaConfigSeeder implements CommandLineRunner {
         configs.seedIfAbsent(KEY_FRAME, IntNode.valueOf(2), "短剧 · 分镜首帧渲染单次积分（一次出多版仍按单次计）");
         configs.seedIfAbsent(KEY_SHORT_ENTRY, IntNode.valueOf(10),
                 "短视频 · 进工作台开拍单次积分（新建一条短视频草稿 = AI 出口播脚本与分镜；从创意市场套用单集创意同样计费）");
+        configs.seedIfAbsent(KEY_INTERACTIVE_DRAFT, IntNode.valueOf(18),
+                "互动剧 · AI 起草整张剧集分支图单次积分（一句话主题 → 可玩可达含结局的有向图）");
     }
 }

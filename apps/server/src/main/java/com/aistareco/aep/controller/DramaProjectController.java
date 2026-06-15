@@ -66,6 +66,12 @@ public class DramaProjectController {
         return ApiResponse.of(service.outlineAiDraft(id, body, principal.getName()));
     }
 
+    /** v0.79 互动剧 AI 起草整张分支图。body: { theme? } → { episodes, interactive }（未落库，前端合并后再 PUT 保存）。 */
+    @PostMapping("/{id}/interactive/draft")
+    public ApiResponse<JsonNode> interactiveDraft(Principal principal, @PathVariable String id, @RequestBody(required = false) JsonNode body) {
+        return ApiResponse.of(service.interactiveDraft(id, body, principal.getName()));
+    }
+
     /** 剧集脚本（分场分镜）AI 起草。body: { ep, plot, style?, cast? } → { scenes, boardScenes }。 */
     @PostMapping("/{id}/epscript/ai-draft")
     public ApiResponse<JsonNode> epscriptAiDraft(Principal principal, @PathVariable String id, @RequestBody JsonNode body) {

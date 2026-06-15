@@ -1,8 +1,10 @@
 // 设计真源 data.js 的 TS 化数据契约。
 // 严格按按项目隔离：每项目自带 projectInfo / topicCards / episodes / characters / script / storyboard / promptPack。
 import type { EngineKey } from "@/components/drama-ui/engine-tag";
+import type { InteractiveOverlay } from "@/lib/interactive-types";
 
-export type CreationMode = "guided" | "template";
+// v0.79：interactive = 互动剧形态（剧集图 + 互动点 + 全局标记，叠加在项目上，复用六阶段制作）。
+export type CreationMode = "guided" | "template" | "interactive";
 
 export interface DramaProjectSummary {
   id: string;
@@ -204,4 +206,9 @@ export interface ProjectData {
   promptPack: PromptPack;
   /** v0.66：按集存档；key = String(ep)。存在该字段时以它为准。 */
   episodeDocs?: Record<string, EpisodeDoc>;
+  /**
+   * v0.79：互动剧分支叠加层。存在且 enabled 时该项目为「互动剧」——
+   * 工作台显示「互动编排」阶段；剧集（图节点）= 上面的 episodes，每集视频 = episodeDocs[no].assembled。
+   */
+  interactive?: InteractiveOverlay;
 }

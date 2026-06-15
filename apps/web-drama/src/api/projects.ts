@@ -18,6 +18,7 @@ import {
   type ScriptLine,
   type ScriptScene,
 } from "@/mocks/drama-workshop";
+import type { InteractiveOverlay } from "@/lib/interactive-types";
 
 /** 详情壳：列表卡片字段 + 整套工作台文档。 */
 export interface ProjectDetail {
@@ -29,7 +30,8 @@ export interface CreateProjectInput {
   title?: string;
   type: string;
   typeKey: string;
-  mode: "guided" | "template";
+  /** v0.79：interactive = 互动剧形态（剧集分支图 + 互动点，叠加在项目上）。 */
+  mode: "guided" | "template" | "interactive";
   ratio?: string;
   episodes?: number;
   logline?: string;
@@ -251,4 +253,93 @@ export async function outlineAiDraft(id: string, count?: number): Promise<Episod
     { method: "POST", body: { count } },
   );
   return res.episodes ?? [];
+}
+
+/** v0.79 互动剧 AI 起草整张分支图（大纲分集 + 分支叠加层）；未落库，调用方合并入 ProjectData 后整图保存。 */
+export interface InteractiveDraftResult {
+  episodes: EpisodeOutline[];
+  interactive: InteractiveOverlay;
+}
+
+export async function interactiveDraft(id: string, theme?: string): Promise<InteractiveDraftResult> {
+  if (USE_MOCK) {
+    // 本地联调样本：6 节点「古宅惊魂夜」可玩图（含 globalFlags + 条件触发 + setFlags）。
+    const episodes: EpisodeOutline[] = [
+      { no: 1, hook: "误入古宅", synopsis: "暴雨夜，你的车抛锚在荒山，只有一座亮着灯的古宅。", beat: "钩子" },
+      { no: 2, hook: "温暖的客厅", synopsis: "壁炉噼啪作响，桌上似乎放着一把铜钥匙。", beat: "线索" },
+      { no: 3, hook: "幽长走廊", synopsis: "锈蚀铁门在身后吱呀作响，走廊深不见底。", beat: "悬疑" },
+      { no: 4, hook: "密室门前", synopsis: "尽头一扇紧锁的门，门后似有出路。", beat: "抉择" },
+      { no: 5, hook: "逃出生天", synopsis: "钥匙转动，门开了，你冲进雨夜。", beat: "结局" },
+      { no: 6, hook: "困死古宅", synopsis: "门纹丝不动，灯一盏盏熄灭。", beat: "结局" },
+    ];
+    const interactive: InteractiveOverlay = {
+      enabled: true,
+      startEpisodeId: "ep1",
+      globalFlags: { hasKey: false, affection: 0 },
+      nodes: {
+        ep1: {
+          isEnding: false,
+          nextVideoId: null,
+          interactions: [
+            {
+              id: "ep1_i1", triggerTime: 48, interactionType: "choice",
+              uiConfig: {
+                question: "门厅有两道门，你推开哪一扇？", countdownSec: 10,
+                options: [
+                  { id: "A", text: "雕花木门（透出暖光）", nextVideoId: "ep2", setFlags: { affection: 1 } },
+                  { id: "B", text: "锈蚀铁门（吱呀作响）", nextVideoId: "ep3" },
+                ],
+              },
+            },
+          ],
+        },
+        ep2: {
+          isEnding: false,
+          nextVideoId: null,
+          interactions: [
+            {
+              id: "ep2_i1", triggerTime: 40, interactionType: "choice",
+              uiConfig: {
+                question: "桌上的铜钥匙，拿吗？", countdownSec: 8,
+                options: [
+                  { id: "A", text: "悄悄收进口袋", nextVideoId: "ep4", setFlags: { hasKey: true } },
+                  { id: "B", text: "礼貌地告辞", nextVideoId: "ep3" },
+                ],
+              },
+            },
+          ],
+        },
+        ep3: { isEnding: false, nextVideoId: "ep4", interactions: [] },
+        ep4: {
+          isEnding: false,
+          nextVideoId: null,
+          interactions: [
+            {
+              id: "ep4_i1", triggerTime: 44, interactionType: "choice",
+              condition: "globalFlags.hasKey == true",
+              uiConfig: {
+                question: "你手里正好有钥匙——", countdownSec: 10,
+                options: [{ id: "A", text: "插入钥匙开门", nextVideoId: "ep5" }],
+              },
+            },
+            {
+              id: "ep4_i2", triggerTime: 46, interactionType: "choice",
+              uiConfig: {
+                question: "门锁着，怎么办？", countdownSec: 10,
+                options: [{ id: "A", text: "用力撞门", nextVideoId: "ep6" }],
+              },
+            },
+          ],
+        },
+        ep5: { isEnding: true, endingLabel: "逃出生天", nextVideoId: null, interactions: [] },
+        ep6: { isEnding: true, endingLabel: "困死古宅", nextVideoId: null, interactions: [] },
+      },
+    };
+    void theme;
+    return mockDelay({ episodes, interactive }, 1600);
+  }
+  return apiFetch<InteractiveDraftResult>(`/me/drama/projects/${id}/interactive/draft`, {
+    method: "POST",
+    body: { theme },
+  });
 }

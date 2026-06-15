@@ -6,4 +6,5 @@ export { CastStage } from "./cast";
 export { EpScriptStage } from "./epscript";
 export { FactoryStage } from "./factory";
 export { AssembleStage } from "./assemble";
+export { BranchStage } from "./branch";
 export { SceneBlock } from "./scene-block";

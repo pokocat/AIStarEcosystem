@@ -122,7 +122,8 @@ public class DramaProjectService {
                 .coverFrom(orDefault(text(body, "coverFrom"), "#f97316"))
                 .coverTo(orDefault(text(body, "coverTo"), "#e11d48"))
                 .payloadJson(write(seedProjectData(title, type, episodes, ratio,
-                        orDefault(text(body, "logline"), ""), orDefault(text(body, "mainline"), ""))))
+                        orDefault(text(body, "logline"), ""), orDefault(text(body, "mainline"), ""),
+                        "interactive".equals(mode))))
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -154,6 +155,8 @@ public class DramaProjectService {
         }
         if (body.has("stage")) row.setStage(clamp(body.path("stage").asInt(row.getStage()), 1, 6));
         if (body.has("progress")) row.setProgress(clamp(body.path("progress").asInt(row.getProgress()), 0, 100));
+        // v0.79：payload 带 interactive.enabled（新建互动剧 / 从线性转换）→ 卡片 mode 同步为 interactive。
+        if (data.path("interactive").path("enabled").asBoolean(false)) row.setMode("interactive");
         row.setPayloadJson(write(data));
         row.setUpdatedAt(OffsetDateTime.now());
         repo.save(row);
@@ -390,6 +393,158 @@ public class DramaProjectService {
         });
     }
 
+    // ── 互动剧 AI 起草整张分支图（v0.79，互动剧 = 项目形态，不是独立实体） ──────────────
+
+    /**
+     * 一句话主题 → 大纲分集（图节点）+ 分支叠加层（起始集 / 全局标记 / 按集互动点 + 接线）。
+     * 不落库，返回 { episodes: EpisodeOutline[], interactive: {startEpisodeId, globalFlags, nodes} }，
+     * 前端合并入 ProjectData 后整图保存（与 {@link #outlineAiDraft} 同惯例）。每一集仍走六阶段制作出片。
+     */
+    public JsonNode interactiveDraft(String id, JsonNode body, String userId) {
+        DramaProject row = requireOwned(id, userId);
+        requireLlm();
+        JsonNode info = readPayload(row).path("projectInfo");
+        String theme = orDefault(text(body, "theme"),
+                orDefault(text(info, "title"), orDefault(row.getTitle(), ""))).trim();
+        if (theme.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_THEME_REQUIRED", "请先填写一句话主题再起草互动剧");
+        }
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("theme", theme);
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_INTERACTIVE_DRAFT, vars, 0.9);
+
+        long price = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_INTERACTIVE_DRAFT, 18);
+        return withCharge(userId, price, "互动剧 AI 起草分支图", () -> {
+            ObjectNode out = buildInteractiveDraft(callJson(pc));
+            if (out.path("episodes").size() == 0) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+                        "互动剧起草返回的内容无法解析，请重试或换个说法。");
+            }
+            log.info("[drama-project] interactive ai-draft ok user={} id={} episodes={}",
+                    userId, id, out.path("episodes").size());
+            return out;
+        });
+    }
+
+    /** 把大模型返回的互动剧图（no 基）归一化为 { episodes（大纲）, interactive（startEpisodeId/globalFlags/nodes） }。 */
+    private ObjectNode buildInteractiveDraft(JsonNode root) {
+        ArrayNode episodes = om.createArrayNode();
+        ObjectNode nodes = om.createObjectNode();
+        ObjectNode flags = om.createObjectNode();
+        JsonNode flagsIn = root.path("globalFlags");
+        if (flagsIn.isObject()) flagsIn.fields().forEachRemaining(f -> flags.set(safeFlagName(f.getKey()), f.getValue()));
+
+        List<JsonNode> list = new ArrayList<>();
+        for (JsonNode e : root.path("episodes")) if (e.isObject()) list.add(e);
+        // 先分配稳定集号（缺省 / 冲突时顺延），再建大纲 + overlay 节点。
+        java.util.Set<Integer> nos = new java.util.LinkedHashSet<>();
+        int[] noByIdx = new int[list.size()];
+        int auto = 1;
+        for (int i = 0; i < list.size(); i++) {
+            int no = list.get(i).path("no").asInt(0);
+            if (no <= 0 || nos.contains(no)) { while (nos.contains(auto)) auto++; no = auto; }
+            nos.add(no);
+            noByIdx[i] = no;
+        }
+        for (int i = 0; i < list.size(); i++) {
+            JsonNode e = list.get(i);
+            int no = noByIdx[i];
+            String eid = "ep" + no;
+            ObjectNode outline = om.createObjectNode();
+            outline.put("no", no);
+            outline.put("hook", orDefault(text(e, "hook"), orDefault(text(e, "title"), "第 " + no + " 集")));
+            outline.put("synopsis", orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), "")));
+            outline.put("beat", orDefault(text(e, "beat"), ""));
+            episodes.add(outline);
+
+            ObjectNode node = om.createObjectNode();
+            boolean isEnding = e.path("isEnding").asBoolean(false);
+            node.set("interactions", normalizeInteractions(e.path("interactions"), eid));
+            int nextNo = e.path("nextEp").asInt(0);
+            if (!isEnding && nextNo > 0 && nos.contains(nextNo)) node.put("nextVideoId", "ep" + nextNo);
+            else node.putNull("nextVideoId");
+            node.put("isEnding", isEnding);
+            if (isEnding) node.put("endingLabel", orDefault(text(e, "endingLabel"), "结局"));
+            nodes.set(eid, node);
+        }
+
+        int startNo = root.path("startEp").asInt(0);
+        String startId = (startNo > 0 && nos.contains(startNo)) ? "ep" + startNo
+                : (episodes.size() > 0 ? "ep" + episodes.get(0).path("no").asInt(1) : "ep1");
+
+        ObjectNode out = om.createObjectNode();
+        out.set("episodes", episodes);
+        ObjectNode interactive = om.createObjectNode();
+        interactive.put("enabled", true);
+        interactive.put("startEpisodeId", startId);
+        interactive.set("globalFlags", flags);
+        interactive.set("nodes", nodes);
+        out.set("interactive", interactive);
+        return out;
+    }
+
+    /** 互动点归一化：稳定 id、按 triggerTime 升序、选项 nextEp(集号) → nextVideoId("ep"+集号)、setFlags 收对象。 */
+    private ArrayNode normalizeInteractions(JsonNode arr, String epId) {
+        ArrayNode out = om.createArrayNode();
+        if (!arr.isArray()) return out;
+        List<ObjectNode> points = new ArrayList<>();
+        int i = 1;
+        for (JsonNode it : arr) {
+            if (!it.isObject()) continue;
+            ObjectNode point = om.createObjectNode();
+            point.put("id", epId + "_i" + i);
+            point.put("triggerTime", Math.max(0, it.path("triggerTime").asInt(0)));
+            String type = orDefault(text(it, "interactionType"), "choice");
+            if (!type.equals("choice") && !type.equals("input") && !type.equals("countdown")) type = "choice";
+            point.put("interactionType", type);
+            String condition = text(it, "condition");
+            if (condition != null && !condition.isBlank()) point.put("condition", condition);
+
+            ObjectNode ui = om.createObjectNode();
+            JsonNode uiIn = it.path("uiConfig");
+            ui.put("question", orDefault(text(uiIn, "question"), orDefault(text(it, "question"), "你的选择？")));
+            int cd = uiIn.path("countdownSec").asInt(it.path("countdownSec").asInt(0));
+            if (cd > 0) ui.put("countdownSec", clamp(cd, 1, 60));
+            String inputKey = text(uiIn, "inputKey");
+            if (inputKey != null && !inputKey.isBlank()) ui.put("inputKey", safeFlagName(inputKey));
+
+            ArrayNode optsOut = om.createArrayNode();
+            JsonNode optsIn = uiIn.path("options");
+            int oi = 0;
+            if (optsIn.isArray()) {
+                for (JsonNode o : optsIn) {
+                    if (!o.isObject()) continue;
+                    ObjectNode opt = om.createObjectNode();
+                    opt.put("id", orDefault(text(o, "id"), oi < 26 ? String.valueOf((char) ('A' + oi)) : "O" + oi));
+                    opt.put("text", orDefault(text(o, "text"), "选项 " + (oi + 1)));
+                    int ne = o.path("nextEp").asInt(0);
+                    if (ne > 0) opt.put("nextVideoId", "ep" + ne); else opt.putNull("nextVideoId");
+                    JsonNode setFlags = o.path("setFlags");
+                    if (setFlags.isObject() && setFlags.size() > 0) {
+                        ObjectNode sf = om.createObjectNode();
+                        setFlags.fields().forEachRemaining(f -> sf.set(safeFlagName(f.getKey()), f.getValue()));
+                        opt.set("setFlags", sf);
+                    }
+                    optsOut.add(opt);
+                    oi++;
+                }
+            }
+            ui.set("options", optsOut);
+            point.set("uiConfig", ui);
+            points.add(point);
+            i++;
+        }
+        points.sort((a, b) -> Integer.compare(a.path("triggerTime").asInt(0), b.path("triggerTime").asInt(0)));
+        points.forEach(out::add);
+        return out;
+    }
+
+    /** flag 名只留字母数字下划线（与 condition 表达式里 globalFlags.X 取词一致）。 */
+    private static String safeFlagName(String raw) {
+        String s = raw == null ? "" : raw.trim().replaceAll("[^A-Za-z0-9_]", "");
+        return s.isBlank() ? "flag" : s;
+    }
+
     /** BoardShot 归一化（id/no/默认值）。 */
     private ObjectNode normalizeShot(JsonNode sh, String sceneId, int no) {
         ObjectNode shot = om.createObjectNode();
@@ -483,7 +638,7 @@ public class DramaProjectService {
 
     /** 新建时的空 ProjectData（结构合法、各数组为空，前端各阶段渲染空状态）。 */
     private ObjectNode seedProjectData(String title, String type, int episodes, String ratio,
-                                       String logline, String mainline) {
+                                       String logline, String mainline, boolean interactive) {
         ObjectNode root = om.createObjectNode();
         ObjectNode info = om.createObjectNode();
         info.put("title", title);
@@ -512,6 +667,16 @@ public class DramaProjectService {
         root.set("promptPack", promptPack);
         // v0.66：按集存档（剧本/分镜/成片），切集互不覆盖
         root.set("episodeDocs", om.createObjectNode());
+        // v0.79：互动剧形态 —— 叠加分支编排层（起始集 / 全局标记 / 按集互动点 + 接线），
+        // 剧集（图节点）即上面的 episodes，每集视频复用六阶段成片。空图，由 AI 起草 / 手动加集填充。
+        if (interactive) {
+            ObjectNode ov = om.createObjectNode();
+            ov.put("enabled", true);
+            ov.put("startEpisodeId", "ep1");
+            ov.set("globalFlags", om.createObjectNode());
+            ov.set("nodes", om.createObjectNode());
+            root.set("interactive", ov);
+        }
         return root;
     }
 
