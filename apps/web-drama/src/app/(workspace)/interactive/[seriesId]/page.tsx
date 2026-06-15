@@ -31,9 +31,9 @@ const LIST_KEY = "/me/interactive/series";
 
 function BackLink() {
   return (
-    <Link href="/interactive" style={{ textDecoration: "none", width: "fit-content" }}>
+    <Link href="/projects?filter=interactive" style={{ textDecoration: "none", width: "fit-content" }}>
       <span className="row gap-1" style={{ fontSize: 12.5, color: "var(--ink-2)", fontWeight: 600 }}>
-        <ArrowLeft size={14} /> 返回互动短剧
+        <ArrowLeft size={14} /> 返回短剧工坊
       </span>
     </Link>
   );

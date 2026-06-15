@@ -7,15 +7,19 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, Clock, PenTool, Wand2, Zap } from "lucide-react";
+import { ArrowRight, Clock, Flag, GitBranch, Layers, PenTool, Sparkles, Wand2, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
 import { REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
 import { ProjectsApi, RecipesApi } from "@/api";
-import { useAsync } from "@/lib/drama-query";
+import * as InteractiveDramaApi from "@/api/interactive-drama";
+import type { InteractiveSeriesSummary } from "@/api/interactive-drama";
+import { useAsync, invalidate } from "@/lib/drama-query";
 import { aiErrorMessage } from "@/lib/ai-error";
+import { AiDraftDialog } from "../interactive/_components/AiDraftDialog";
+import { NewSeriesDialog } from "../interactive/_components/NewSeriesDialog";
 
 export default function ProjectsHubPage() {
   return (
@@ -37,6 +41,30 @@ function ProjectsHubInner() {
   );
   // 只收多集连续短剧；单集作品（宣传片 / 自传 / 口播等）归「短视频工坊」，避免串档。
   const list = (projects ?? []).filter((p) => p.episodes > 1);
+
+  // 互动剧整合进短剧工坊：同列表以「互动剧」标签展示 + 按类型筛选（不再单独一级页面）。
+  const { data: interactiveData } = useAsync("/me/interactive/series", () =>
+    InteractiveDramaApi.listSeries(),
+  );
+  const interactiveList = interactiveData ?? [];
+  const [filter, setFilter] = React.useState<"all" | "drama" | "interactive">(() => {
+    const f = sp.get("filter");
+    return f === "interactive" || f === "drama" ? f : "all";
+  });
+  const [showAiDraft, setShowAiDraft] = React.useState(false);
+  const [showNewInteractive, setShowNewInteractive] = React.useState(false);
+
+  // 把一部短剧转换成互动剧 → 进互动剧编辑器（流程引擎）接分支。
+  async function handleConvert(p: DramaProjectSummary) {
+    try {
+      const s = await InteractiveDramaApi.convertProjectToInteractive(p.id);
+      invalidate("/me/interactive/series");
+      toast.success(`已转换为互动剧「${s.title}」，去接分支吧`);
+      router.push(`/interactive/${s.id}`);
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "转换失败，请重试"));
+    }
+  }
 
   // 兼容旧链接 ?new=1 → 跳新建流
   React.useEffect(() => {
@@ -91,8 +119,36 @@ function ProjectsHubInner() {
         </div>
       )}
 
+      {/* 类型筛选 + 互动剧创建（互动剧整合进本列表，以标签区分） */}
+      <div className="row" style={{ gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        {(
+          [
+            ["all", "全部"],
+            ["drama", "短剧"],
+            ["interactive", "互动剧"],
+          ] as const
+        ).map(([k, label]) => {
+          const active = filter === k;
+          const count =
+            k === "drama" ? list.length : k === "interactive" ? interactiveList.length : list.length + interactiveList.length;
+          return (
+            <button key={k} type="button" onClick={() => setFilter(k)} className="row gap-1" style={chipStyle(active)}>
+              {label}
+              <span className="num" style={{ opacity: 0.6 }}>{count}</span>
+            </button>
+          );
+        })}
+        <span className="grow" />
+        <button type="button" className="btn btn-line btn-sm" onClick={() => setShowAiDraft(true)}>
+          <Sparkles size={14} /> AI 起草互动剧
+        </button>
+        <button type="button" className="btn btn-line btn-sm" onClick={() => setShowNewInteractive(true)}>
+          <GitBranch size={14} /> 新建互动剧
+        </button>
+      </div>
+
       {/* 继续上次 */}
-      {main && !loading && (
+      {filter !== "interactive" && main && !loading && (
         <button
           type="button"
           className="card row gap-4 fade-up"
@@ -142,6 +198,7 @@ function ProjectsHubInner() {
       )}
 
       {/* 剧本审阅入口(收进短剧工坊,不再占一级菜单) */}
+      {filter !== "interactive" && (
       <button
         type="button"
         className="card row gap-3 fade-up"
@@ -167,9 +224,11 @@ function ProjectsHubInner() {
         )}
         <span className="btn btn-line btn-sm" style={{ flex: "none" }}>去审阅 <ArrowRight size={13} /></span>
       </button>
+      )}
 
       {/* 紧凑竖版网格 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, alignItems: "start" }}>
+        {filter !== "interactive" && (
         <button
           type="button"
           onClick={() => router.push("/projects/new?focus=template")}
@@ -209,10 +268,23 @@ function ProjectsHubInner() {
           <span style={{ fontWeight: 700, fontSize: 13.5 }}>开一部新的</span>
           <span className="faint" style={{ fontSize: 11 }}>套爆款模板·免大纲费</span>
         </button>
+        )}
 
-        {loading
-          ? Array.from({ length: 5 }).map((_, i) => <ProjectCardSkeleton key={i} />)
-          : rest.map((p, i) => <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} />)}
+        {filter !== "interactive" &&
+          (loading
+            ? Array.from({ length: 5 }).map((_, i) => <ProjectCardSkeleton key={i} />)
+            : rest.map((p, i) => (
+                <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} onConvert={handleConvert} />
+              )))}
+        {filter !== "drama" &&
+          interactiveList.map((s, i) => (
+            <InteractiveCard key={s.id} s={s} delay={i * 40} onOpen={() => router.push(`/interactive/${s.id}`)} />
+          ))}
+        {filter === "interactive" && interactiveList.length === 0 && (
+          <div className="muted" style={{ gridColumn: "1 / -1", padding: "20px 4px", fontSize: 13 }}>
+            还没有互动剧 —— 用上方「AI 起草互动剧」开始，或在任意短剧卡片点「转互动剧」。
+          </div>
+        )}
       </div>
 
       {preview && (
@@ -269,7 +341,91 @@ function ProjectsHubInner() {
           }}
         />
       )}
+
+      <AiDraftDialog
+        open={showAiDraft}
+        onOpenChange={setShowAiDraft}
+        onCreated={(s) => {
+          invalidate("/me/interactive/series");
+          toast.success(`AI 已起草互动剧「${s.title}」`);
+          router.push(`/interactive/${s.id}`);
+        }}
+      />
+      <NewSeriesDialog
+        open={showNewInteractive}
+        onOpenChange={setShowNewInteractive}
+        onCreated={(s) => {
+          invalidate("/me/interactive/series");
+          toast.success(`已创建互动剧「${s.title}」`);
+          router.push(`/interactive/${s.id}`);
+        }}
+      />
     </div>
+  );
+}
+
+function chipStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "6px 14px",
+    borderRadius: 999,
+    border: active ? "1px solid var(--accent)" : "1px solid var(--line-2)",
+    background: active ? "var(--accent-soft)" : "var(--surface)",
+    color: active ? "var(--accent)" : "var(--ink-2)",
+    fontSize: 13,
+    fontWeight: active ? 700 : 600,
+    cursor: "pointer",
+  };
+}
+
+function InteractiveCard({ s, onOpen, delay = 0 }: { s: InteractiveSeriesSummary; onOpen: () => void; delay?: number }) {
+  const [hover, setHover] = React.useState(false);
+  return (
+    <button
+      type="button"
+      className="card col fade-up"
+      onClick={onOpen}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        textAlign: "left",
+        animationDelay: delay + "ms",
+        transform: hover ? "translateY(-3px)" : "none",
+        boxShadow: hover ? "var(--shadow-lg)" : "var(--shadow-sm)",
+        transition: "transform .18s, box-shadow .18s",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ position: "relative" }}>
+        <Thumb from="#8b5cf6" to="#e11d48" ratio="3/4" radius={0} stripes style={{ width: "100%" }}>
+          <div style={{ position: "absolute", inset: 0, padding: 14, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span className="tag" style={{ background: "rgba(255,255,255,.92)", color: "var(--accent-2)", fontWeight: 800 }}>
+                <GitBranch size={11} /> 互动剧
+              </span>
+              <span className="tag" style={{ background: "rgba(255,255,255,.85)", color: s.status === "ready" ? "#15803d" : "var(--ink-2)" }}>
+                {s.status === "ready" ? "就绪" : "草稿"}
+              </span>
+            </div>
+            <div style={{ color: "#fff" }}>
+              <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-.01em", textShadow: "0 1px 8px rgba(0,0,0,.25)" }}>{s.title}</div>
+            </div>
+          </div>
+        </Thumb>
+      </div>
+      <div className="col gap-2" style={{ padding: 14 }}>
+        <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+          <span className="tag tag-gray">{s.genre}</span>
+        </div>
+        <div className="row gap-3 faint" style={{ fontSize: 11.5, flexWrap: "wrap" }}>
+          <span className="row gap-1"><Layers size={12} /> {s.episode_count} 集</span>
+          <span className="row gap-1"><GitBranch size={12} /> {s.branch_count} 互动点</span>
+          <span className="row gap-1"><Flag size={12} /> {s.ending_count} 结局</span>
+          <span className="row gap-1"><Sparkles size={12} /> {s.ready_count}/{s.episode_count} 已生成</span>
+        </div>
+      </div>
+    </button>
   );
 }
 

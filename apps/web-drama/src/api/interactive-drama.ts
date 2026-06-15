@@ -14,8 +14,9 @@
 
 import { apiFetch, USE_MOCK, mockDelay, clientError } from "./_client";
 import type { DramaScene, DramaEpisodeJob } from "./short-drama";
+import * as ProjectsApi from "./projects";
 import * as store from "@/mocks/interactive-drama";
-import { buildSkeleton, draftSeriesFromTheme, summarize, deriveStatus } from "@/lib/interactive-graph";
+import { blankEpisode, buildSkeleton, draftSeriesFromTheme, genId, summarize, deriveStatus } from "@/lib/interactive-graph";
 
 export type EpisodeGenStatus = "idle" | "generating" | "ready" | "failed";
 
@@ -188,6 +189,41 @@ export async function deleteSeries(id: string): Promise<void> {
     return mockDelay(undefined);
   }
   await apiFetch<void>(`/me/drama/interactive/series/${id}`, { method: "DELETE" });
+}
+
+/**
+ * 把一个普通短剧项目（DramaProject 六阶段）转换成互动剧：按分集大纲铺成一条线性链，
+ * 末集设为结局；之后在互动剧编辑器（流程引擎 / 分支画布）里接分支。客户端组合
+ * （getProject → 建图 → saveSeries），mock 与 live 都通；后端无需新端点。
+ */
+export async function convertProjectToInteractive(projectId: string): Promise<InteractiveSeries> {
+  const detail = await ProjectsApi.getProject(projectId);
+  const info = detail.data.projectInfo;
+  const outline = detail.data.episodes ?? [];
+  const now = new Date().toISOString();
+  const nodes: EpisodeNode[] = outline.length
+    ? outline.map((o) => blankEpisode(`第 ${o.no} 集`, o.synopsis || o.beat || o.hook || ""))
+    : [blankEpisode("第 1 集", info.logline || info.mainline || "故事开场。")];
+  for (let i = 0; i < nodes.length; i++) {
+    if (i < nodes.length - 1) {
+      nodes[i].next_episode_id = nodes[i + 1].id;
+    } else {
+      nodes[i].is_ending = true;
+      nodes[i].ending_label = "结局";
+    }
+  }
+  const series: InteractiveSeries = {
+    id: genId("dis"),
+    title: `${info.title || detail.meta.title} · 互动版`,
+    genre: info.type || detail.meta.type || "都市",
+    logline: info.logline || info.mainline || "",
+    status: "draft",
+    start_episode_id: nodes[0].id,
+    episodes: nodes,
+    created_at: now,
+    updated_at: now,
+  };
+  return saveSeries(series);
 }
 
 /**

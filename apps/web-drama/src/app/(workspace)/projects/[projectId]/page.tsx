@@ -10,6 +10,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { ProjectsApi } from "@/api";
+import * as InteractiveDramaApi from "@/api/interactive-drama";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { useAsync } from "@/lib/drama-query";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
@@ -62,6 +64,17 @@ export default function ProjectWorkbench() {
     [id, track],
   );
 
+  // 转换成互动剧：把本项目按大纲铺成剧集分支图，进互动剧编辑器（流程引擎）接分支。
+  const handleConvertInteractive = React.useCallback(async () => {
+    try {
+      const s = await InteractiveDramaApi.convertProjectToInteractive(id);
+      toast.success(`已转换为互动剧「${s.title}」，去接分支吧`);
+      router.push(`/interactive/${s.id}`);
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "转换失败，请重试"));
+    }
+  }, [id, router]);
+
   if (isLoading || (!data && !error)) {
     return <WorkbenchLoading />;
   }
@@ -75,6 +88,7 @@ export default function ProjectWorkbench() {
         meta={detail.meta}
         data={data}
         initialStage={fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
+        onConvertInteractive={handleConvertInteractive}
         renderStage={({ state, dispatch }) => (
           <StageOutlet
             state={state}
